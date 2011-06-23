@@ -1906,7 +1906,7 @@ public:
   ///
   BasicBlock *getIncomingBlock(const Use &U) const {
     assert(this == U.getUser() && "Iterator doesn't point to PHI's Uses?");
-    return getIncomingBlock(&U - op_begin());
+    return getIncomingBlock(unsigned(&U - op_begin()));
   }
 
   /// getIncomingBlock - Return incoming basic block corresponding
