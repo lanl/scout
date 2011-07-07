@@ -79,6 +79,11 @@ namespace clang {
   class NonTypeTemplateParmDecl;
   class TemplateTemplateParmDecl;
   class TagDecl;
+
+// ndm
+  
+  class MeshDecl;
+  
   class RecordDecl;
   class CXXRecordDecl;
   class EnumDecl;
@@ -1667,6 +1672,30 @@ public:
 
     Float, Double, LongDouble,
 
+    // ndm - Scout vector types
+    
+    Bool2,
+    Bool3,
+    Bool4,
+    Char2,
+    Char3,
+    Char4,
+    Short2,
+    Short3,
+    Short4,
+    Int2,
+    Int3,
+    Int4,
+    Long2,
+    Long3,
+    Long4,
+    Float2,
+    Float3,
+    Float4,
+    Double2,
+    Double3,
+    Double4,
+
     NullPtr,  // This is the type of C++0x 'nullptr'.
 
     /// The primitive Objective C 'id' type.  The user-visible 'id'
@@ -3101,6 +3130,35 @@ public:
   static bool classof(const RecordType *) { return true; }
 };
 
+// ndm - Scout MeshType
+
+class MeshType : public Type{
+  MeshDecl* decl;
+  
+public:
+
+  MeshType(const MeshDecl* D)
+  : Type(Mesh, QualType(), false, false, false) {}
+    
+  MeshDecl* getDecl() const {
+    return decl;
+  }
+  
+  bool isBeingDefined() const;
+  
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+  
+  // ndm TODO - is this correct?
+  
+  static bool classof(const MeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast;
+  }
+
+};
+    
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.
 class EnumType : public TagType {

@@ -205,6 +205,11 @@ Retry:
       SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
                                              DeclEnd, attrs);
+      
+      // ndm - test
+      //StmtResult r = Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
+      //r.get()->dump();
+      //return r;
       return Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
     }
 
@@ -244,6 +249,12 @@ Retry:
   case tok::kw_for:                 // C99 6.8.5.3: for-statement
     return ParseForStatement(attrs);
 
+  // ndm - Scout Stmts
+  case tok::kw_forall:
+    return ParseForAllStatement(attrs);
+  case tok::kw_renderall:
+    return ParseRenderAllStatement(attrs);
+      
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement(attrs);
     SemiError = "goto";

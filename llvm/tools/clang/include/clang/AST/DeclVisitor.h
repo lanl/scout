@@ -19,6 +19,9 @@
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclTemplate.h"
 
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
 namespace clang {
 
 #define DISPATCH(NAME, CLASS) \

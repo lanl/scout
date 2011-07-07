@@ -45,6 +45,30 @@ serialization::TypeIdxFromBuiltin(const BuiltinType *BT) {
   case BuiltinType::Int128:     ID = PREDEF_TYPE_INT128_ID;     break;
   case BuiltinType::Float:      ID = PREDEF_TYPE_FLOAT_ID;      break;
   case BuiltinType::Double:     ID = PREDEF_TYPE_DOUBLE_ID;     break;
+
+  // ndm - Scout vector types
+  case BuiltinType::Bool2:      ID = PREDEF_TYPE_BOOL2_ID;     break;
+  case BuiltinType::Bool3:      ID = PREDEF_TYPE_BOOL3_ID;     break;
+  case BuiltinType::Bool4:      ID = PREDEF_TYPE_BOOL4_ID;     break;
+  case BuiltinType::Char2:      ID = PREDEF_TYPE_CHAR2_ID;     break;
+  case BuiltinType::Char3:      ID = PREDEF_TYPE_CHAR3_ID;     break;
+  case BuiltinType::Char4:      ID = PREDEF_TYPE_CHAR4_ID;     break;
+  case BuiltinType::Short2:     ID = PREDEF_TYPE_SHORT2_ID;    break;
+  case BuiltinType::Short3:     ID = PREDEF_TYPE_SHORT3_ID;    break;
+  case BuiltinType::Short4:     ID = PREDEF_TYPE_SHORT4_ID;    break;
+  case BuiltinType::Int2:       ID = PREDEF_TYPE_INT2_ID;      break;
+  case BuiltinType::Int3:       ID = PREDEF_TYPE_INT3_ID;      break;
+  case BuiltinType::Int4:       ID = PREDEF_TYPE_INT4_ID;      break;
+  case BuiltinType::Long2:      ID = PREDEF_TYPE_LONG2_ID;     break;
+  case BuiltinType::Long3:      ID = PREDEF_TYPE_LONG3_ID;     break;
+  case BuiltinType::Long4:      ID = PREDEF_TYPE_LONG4_ID;     break;
+  case BuiltinType::Float2:     ID = PREDEF_TYPE_FLOAT2_ID;    break;
+  case BuiltinType::Float3:     ID = PREDEF_TYPE_FLOAT3_ID;    break;
+  case BuiltinType::Float4:     ID = PREDEF_TYPE_FLOAT4_ID;    break;
+  case BuiltinType::Double2:    ID = PREDEF_TYPE_DOUBLE2_ID;   break;
+  case BuiltinType::Double3:    ID = PREDEF_TYPE_DOUBLE3_ID;   break;
+  case BuiltinType::Double4:    ID = PREDEF_TYPE_DOUBLE4_ID;   break;
+
   case BuiltinType::LongDouble: ID = PREDEF_TYPE_LONGDOUBLE_ID; break;
   case BuiltinType::NullPtr:    ID = PREDEF_TYPE_NULLPTR_ID;    break;
   case BuiltinType::Char16:     ID = PREDEF_TYPE_CHAR16_ID;     break;

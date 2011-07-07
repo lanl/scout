@@ -172,6 +172,9 @@ PUNCTUATOR(hash,                "#")
 PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
+// ndm - Scout specific operators
+PUNCTUATOR(equalgreater,        "=>")
+
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")
 PUNCTUATOR(arrowstar,           "->*")
@@ -202,6 +205,48 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   KEYBORLAND - This is a keyword if Borland extensions are enabled
 //   BOOLSUPPORT - This is a keyword if 'bool' is a built-in type
 //
+
+// ndm - Scout keywords
+KEYWORD(bool2                       , KEYSCOUT)
+KEYWORD(bool3                       , KEYSCOUT)
+KEYWORD(bool4                       , KEYSCOUT)
+KEYWORD(char2                       , KEYSCOUT)
+KEYWORD(char3                       , KEYSCOUT)
+KEYWORD(char4                       , KEYSCOUT)
+KEYWORD(short2                      , KEYSCOUT)
+KEYWORD(short3                      , KEYSCOUT)
+KEYWORD(short4                      , KEYSCOUT)
+KEYWORD(int2                        , KEYSCOUT)
+KEYWORD(int3                        , KEYSCOUT)
+KEYWORD(int4                        , KEYSCOUT)
+KEYWORD(long2                       , KEYSCOUT)
+KEYWORD(long3                       , KEYSCOUT)
+KEYWORD(long4                       , KEYSCOUT)
+KEYWORD(float2                      , KEYSCOUT)
+KEYWORD(float3                      , KEYSCOUT)
+KEYWORD(float4                      , KEYSCOUT)
+KEYWORD(double2                     , KEYSCOUT)
+KEYWORD(double3                     , KEYSCOUT)
+KEYWORD(double4                     , KEYSCOUT)
+KEYWORD(forall                      , KEYSCOUT)
+KEYWORD(structured                  , KEYSCOUT)
+KEYWORD(uniform                     , KEYSCOUT)
+KEYWORD(rectlinear                  , KEYSCOUT)
+KEYWORD(unstructured                , KEYSCOUT)
+KEYWORD(mesh                        , KEYSCOUT)
+KEYWORD(where                       , KEYSCOUT)
+KEYWORD(of                          , KEYSCOUT)
+KEYWORD(cells                       , KEYSCOUT)
+KEYWORD(vertices                    , KEYSCOUT)
+//KEYWORD(in                          , KEYSCOUT)
+KEYWORD(expr                        , KEYSCOUT)
+//KEYWORD(apply                       , KEYSCOUT)
+KEYWORD(renderall                   , KEYSCOUT)
+KEYWORD(faces                       , KEYSCOUT)
+KEYWORD(edges                       , KEYSCOUT)
+KEYWORD(color                       , KEYSCOUT)
+
+
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)
 KEYWORD(case                        , KEYALL)

@@ -964,6 +964,31 @@ bool Parser::isCXXSimpleTypeSpecifier() const {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+  // ndm - Scout vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_wchar_t:
   case tok::kw_char16_t:
   case tok::kw_char32_t:
@@ -1073,6 +1098,77 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
   case tok::kw_double:
     DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec, DiagID);
     break;
+
+
+  // ndm - Scout vector types
+      
+  case tok::kw_bool2:
+    DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_bool3:
+    DS.SetTypeSpecType(DeclSpec::TST_bool3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_bool4:
+    DS.SetTypeSpecType(DeclSpec::TST_bool4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_char2:
+    DS.SetTypeSpecType(DeclSpec::TST_char2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_char3:
+    DS.SetTypeSpecType(DeclSpec::TST_char3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_char4:
+    DS.SetTypeSpecType(DeclSpec::TST_char4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_short2:
+    DS.SetTypeSpecType(DeclSpec::TST_short2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_short3:
+    DS.SetTypeSpecType(DeclSpec::TST_short3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_short4:
+    DS.SetTypeSpecType(DeclSpec::TST_short4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_int2:
+    DS.SetTypeSpecType(DeclSpec::TST_int2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_int3:
+    DS.SetTypeSpecType(DeclSpec::TST_int3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_int4:
+    DS.SetTypeSpecType(DeclSpec::TST_int4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_long2:
+    DS.SetTypeSpecType(DeclSpec::TST_long2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_long3:
+    DS.SetTypeSpecType(DeclSpec::TST_long3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_long4:
+    DS.SetTypeSpecType(DeclSpec::TST_long4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_float2:
+    DS.SetTypeSpecType(DeclSpec::TST_float2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_float3:
+    DS.SetTypeSpecType(DeclSpec::TST_float3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_float4:
+    DS.SetTypeSpecType(DeclSpec::TST_float4, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_double2:
+    DS.SetTypeSpecType(DeclSpec::TST_double2, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_double3:
+    DS.SetTypeSpecType(DeclSpec::TST_double3, Loc, PrevSpec, DiagID);
+    break;
+  case tok::kw_double4:
+    DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec, DiagID);
+    break;
+    
+  // ndm - end Scout vector types
+
+
   case tok::kw_wchar_t:
     DS.SetTypeSpecType(DeclSpec::TST_wchar, Loc, PrevSpec, DiagID);
     break;

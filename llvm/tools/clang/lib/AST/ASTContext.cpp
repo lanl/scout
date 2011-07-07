@@ -14,6 +14,10 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
+
+// ndm - include Scout Decls.
+#include "clang/AST/DeclScout.h"
+
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/TypeLoc.h"
@@ -382,6 +386,30 @@ void ASTContext::InitBuiltinTypes() {
   InitBuiltinType(FloatTy,             BuiltinType::Float);
   InitBuiltinType(DoubleTy,            BuiltinType::Double);
   InitBuiltinType(LongDoubleTy,        BuiltinType::LongDouble);
+
+  // ndm - Scout vector types
+  
+  InitBuiltinType(Bool2Ty,             BuiltinType::Bool2);
+  InitBuiltinType(Bool3Ty,             BuiltinType::Bool3);
+  InitBuiltinType(Bool4Ty,             BuiltinType::Bool4);
+  InitBuiltinType(Char2Ty,             BuiltinType::Char2);
+  InitBuiltinType(Char3Ty,             BuiltinType::Char3);
+  InitBuiltinType(Char4Ty,             BuiltinType::Char4);
+  InitBuiltinType(Short2Ty,            BuiltinType::Short2);
+  InitBuiltinType(Short3Ty,            BuiltinType::Short3);
+  InitBuiltinType(Short4Ty,            BuiltinType::Short4);
+  InitBuiltinType(Int2Ty,              BuiltinType::Int2);
+  InitBuiltinType(Int3Ty,              BuiltinType::Int3);
+  InitBuiltinType(Int4Ty,              BuiltinType::Int4);
+  InitBuiltinType(Long2Ty,             BuiltinType::Long2);
+  InitBuiltinType(Long3Ty,             BuiltinType::Long3);
+  InitBuiltinType(Long4Ty,             BuiltinType::Long4);
+  InitBuiltinType(Float2Ty,            BuiltinType::Float2);
+  InitBuiltinType(Float3Ty,            BuiltinType::Float3);
+  InitBuiltinType(Float4Ty,            BuiltinType::Float4);
+  InitBuiltinType(Double2Ty,           BuiltinType::Double2);
+  InitBuiltinType(Double3Ty,           BuiltinType::Double3);
+  InitBuiltinType(Double4Ty,           BuiltinType::Double4);
 
   // GNU extension, 128-bit integers.
   InitBuiltinType(Int128Ty,            BuiltinType::Int128);
@@ -947,7 +975,25 @@ ASTContext::getTypeInfo(const Type *T) const {
     Align = toBits(Layout.getAlignment());
     break;
   }
-
+  
+  // ndm - Scout Mesh    
+  // TODO - finish implementation
+  // Do we need ASTMeshLayout like ASTRecordLayout?
+      
+  case Type::Mesh: {
+    const MeshType *MT = cast<MeshType>(T);
+    
+    if (MT->getDecl()->isInvalidDecl()) {
+      Width = 8;
+      Align = 8;
+      break;
+    }
+    
+    Width = 8;
+    Align = 8;
+    break;
+  }
+      
   case Type::SubstTemplateTypeParm:
     return getTypeInfo(cast<SubstTemplateTypeParmType>(T)->
                        getReplacementType().getTypePtr());
@@ -1615,6 +1661,11 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::ObjCInterface:
   case Type::ObjCObjectPointer:
   case Type::Record:
+
+  // ndm - Scout Mesh
+  // Mesh is not variably-modified
+  case Type::Mesh:
+      
   case Type::Enum:
   case Type::UnresolvedUsing:
   case Type::TypeOfExpr:
@@ -2158,6 +2209,13 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);
+}
+
+// ndm - Scout
+// TODO - implement
+
+QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
+  return QualType();
 }
 
 QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
@@ -2880,6 +2938,14 @@ QualType ASTContext::getTagDeclType(const TagDecl *Decl) const {
   // FIXME: What is the design on getTagDeclType when it requires casting
   // away const?  mutable?
   return getTypeDeclType(const_cast<TagDecl*>(Decl));
+}
+
+// ndm - Scout Mesh
+QualType ASTContext::getMeshDeclType(const MeshDecl *Decl) const {
+  assert (Decl);
+  // FIXME: What is the design on getTagDeclType when it requires casting
+  // away const?  mutable?
+  return getTypeDeclType(const_cast<MeshDecl*>(Decl));
 }
 
 /// getSizeType - Return the unique type for "size_t" (C99 7.17), the result
@@ -5752,6 +5818,10 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   }
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
+  
+  // ndm - Scout Mesh
+  case Type::Mesh:    
+      
   case Type::Record:
   case Type::Enum:
     return QualType();

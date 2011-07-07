@@ -1086,6 +1086,11 @@ DeduceTemplateArguments(Sema &S,
     case Type::Vector:
     case Type::FunctionNoProto:
     case Type::Record:
+      
+    // ndm - Scout Mesh
+    // Currently not used a template
+    case Type::Mesh:
+      
     case Type::Enum:
     case Type::ObjCObject:
     case Type::ObjCInterface:
@@ -4185,6 +4190,10 @@ MarkUsedTemplateParameters(Sema &SemaRef, QualType T,
   case Type::VariableArray:
   case Type::FunctionNoProto:
   case Type::Record:
+
+  // ndm - Scout Mesh
+  case Type::Mesh:
+      
   case Type::Enum:
   case Type::ObjCInterface:
   case Type::ObjCObject:

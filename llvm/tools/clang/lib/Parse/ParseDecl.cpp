@@ -19,6 +19,9 @@
 #include "clang/Sema/PrettyDeclStackTrace.h"
 #include "RAIIObjectsForParser.h"
 #include "llvm/ADT/SmallSet.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -178,6 +181,31 @@ void Parser::ParseGNUAttributes(ParsedAttributes &attrs,
           case tok::kw_unsigned:
           case tok::kw_float:
           case tok::kw_double:
+
+          // ndm - Scout vector types
+              
+          case tok::kw_bool2:
+          case tok::kw_bool3:
+          case tok::kw_bool4: 
+          case tok::kw_char2:
+          case tok::kw_char3:
+          case tok::kw_char4: 
+          case tok::kw_short2:
+          case tok::kw_short3:
+          case tok::kw_short4: 
+          case tok::kw_int2:
+          case tok::kw_int3:
+          case tok::kw_int4: 
+          case tok::kw_long2:
+          case tok::kw_long3:
+          case tok::kw_long4: 
+          case tok::kw_float2:
+          case tok::kw_float3:
+          case tok::kw_float4: 
+          case tok::kw_double2:
+          case tok::kw_double3:
+          case tok::kw_double4: 
+
           case tok::kw_void:
           case tok::kw_typeof: {
             AttributeList *attr
@@ -1783,6 +1811,120 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec,
                                      DiagID);
       break;
+
+    // ndm - Scout vector types
+        
+    case tok::kw_bool2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_bool3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_bool4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_char2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+        
+    case tok::kw_char3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+        
+    case tok::kw_char4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_short2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_short3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short3, Loc, PrevSpec,
+                                     DiagID);
+      break;      
+        
+    case tok::kw_short4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_int2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_int3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int3, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+      
+    case tok::kw_int4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_long2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_long3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long3, Loc, PrevSpec,
+                                     DiagID);
+      break;   
+        
+    case tok::kw_long4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long4, Loc, PrevSpec,
+                                     DiagID);
+      break;         
+        
+    case tok::kw_float2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_float3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float3, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_float4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_double2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double2, Loc, PrevSpec,
+                                     DiagID);
+      break;         
+        
+    case tok::kw_double3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double3, Loc, PrevSpec,
+                                     DiagID);
+      break;  
+        
+    case tok::kw_double4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec,
+                                     DiagID);
+      break;  
+    
+
+    // ndm - end Scout vector types
+
+
     case tok::kw_wchar_t:
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_wchar, Loc, PrevSpec,
                                      DiagID);
@@ -1843,6 +1985,19 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
 
+    case tok::kw_uniform:
+    case tok::kw_rectlinear:
+    case tok::kw_structured:
+    case tok::kw_unstructured: {
+        
+      // for now, at least the presence of one of the above keywords is sufficient
+      // to denote the beginning of a mesh definition
+        
+      ParseMeshSpecifier(DS);
+        
+      continue;
+    }
+        
     // enum-specifier:
     case tok::kw_enum:
       ConsumeToken();
@@ -2082,6 +2237,121 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
   case tok::kw_double:
     isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec, DiagID);
     break;
+
+
+    // ndm - Scout vector types
+        
+    case tok::kw_bool2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_bool3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_bool4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_char2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+        
+    case tok::kw_char3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+        
+    case tok::kw_char4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_short2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+        
+    case tok::kw_short3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short3, Loc, PrevSpec,
+                                     DiagID);
+      break;      
+        
+    case tok::kw_short4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_int2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_int3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int3, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+      
+    case tok::kw_int4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_long2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_long3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long3, Loc, PrevSpec,
+                                     DiagID);
+      break;   
+        
+    case tok::kw_long4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long4, Loc, PrevSpec,
+                                     DiagID);
+      break;         
+        
+    case tok::kw_float2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float2, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_float3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float3, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_float4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float4, Loc, PrevSpec,
+                                     DiagID);
+      break; 
+        
+    case tok::kw_double2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double2, Loc, PrevSpec,
+                                     DiagID);
+      break;         
+        
+    case tok::kw_double3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double3, Loc, PrevSpec,
+                                     DiagID);
+      break;  
+        
+    case tok::kw_double4: 
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec,
+                                     DiagID);
+      break;  
+    
+
+    // ndm - end Scout vector types
+
+
   case tok::kw_wchar_t:
     isInvalid = DS.SetTypeSpecType(DeclSpec::TST_wchar, Loc, PrevSpec, DiagID);
     break;
@@ -2122,6 +2392,20 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
     ConsumeToken();
     ParseClassSpecifier(Kind, Loc, DS, TemplateInfo, AS_none,
                         SuppressDeclarations);
+    return true;
+  }
+
+  // ndm - Scout mesh definition
+  case tok::kw_uniform:
+  case tok::kw_rectlinear:
+  case tok::kw_structured:
+  case tok::kw_unstructured: {
+    
+    // for now, at least the presence of one of the above keywords is sufficient
+    // to denote the beginning of a mesh definition
+      
+    ParseMeshSpecifier(DS);
+      
     return true;
   }
 
@@ -2788,6 +3072,31 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+// ndm - Scout vector types
+
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -2801,7 +3110,9 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_union:
     // enum-specifier
   case tok::kw_enum:
-    
+  
+  // ndm - TODO - add uniform / structured, etc. keywords here?
+      
     // typedef-name
   case tok::annot_typename:
     return true;
@@ -2857,6 +3168,31 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+  // ndm - Scout vector types
+
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -2982,6 +3318,31 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+  // ndm - Scout vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -4256,6 +4617,31 @@ bool Parser::TryAltiVecVectorTokenOutOfLine() {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+  // ndm - Scout vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_bool:
   case tok::kw___pixel:
     Tok.setKind(tok::kw___vector);

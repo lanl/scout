@@ -456,6 +456,30 @@ public:
   CanQualType DependentTy, OverloadTy, BoundMemberTy, UnknownAnyTy;
   CanQualType ObjCBuiltinIdTy, ObjCBuiltinClassTy, ObjCBuiltinSelTy;
 
+  // ndm - Scout vector types
+
+  CanQualType Bool2Ty;
+  CanQualType Bool3Ty;
+  CanQualType Bool4Ty;
+  CanQualType Char2Ty;
+  CanQualType Char3Ty;
+  CanQualType Char4Ty;
+  CanQualType Short2Ty;
+  CanQualType Short3Ty;
+  CanQualType Short4Ty;
+  CanQualType Int2Ty;
+  CanQualType Int3Ty;
+  CanQualType Int4Ty;
+  CanQualType Long2Ty;
+  CanQualType Long3Ty;
+  CanQualType Long4Ty;
+  CanQualType Float2Ty;
+  CanQualType Float3Ty;
+  CanQualType Float4Ty;
+  CanQualType Double2Ty;
+  CanQualType Double3Ty;
+  CanQualType Double4Ty;
+
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
@@ -701,6 +725,10 @@ public:
   QualType getTypedefType(const TypedefNameDecl *Decl,
                           QualType Canon = QualType()) const;
 
+  // ndm - Scout Mesh
+  
+  QualType getMeshType(const MeshDecl *Decl) const;
+  
   QualType getRecordType(const RecordDecl *Decl) const;
 
   QualType getEnumType(const EnumDecl *Decl) const;
@@ -795,7 +823,10 @@ public:
   /// getTagDeclType - Return the unique reference to the type for the
   /// specified TagDecl (struct/union/class/enum) decl.
   QualType getTagDeclType(const TagDecl *Decl) const;
-
+  
+  // ndm - Scout Mesh
+  QualType getMeshDeclType(const MeshDecl *Decl) const;
+  
   /// getSizeType - Return the unique type for "size_t" (C99 7.17), defined
   /// in <stddef.h>. The sizeof operator requires this (C99 6.5.3.4p4).
   CanQualType getSizeType() const;
@@ -1134,7 +1165,7 @@ public:
   /// specified record (struct/union/class), which indicates its size and field
   /// position information.
   const ASTRecordLayout &getASTRecordLayout(const RecordDecl *D) const;
-
+  
   /// getASTObjCInterfaceLayout - Get or compute information about the
   /// layout of the specified Objective-C interface.
   const ASTRecordLayout &getASTObjCInterfaceLayout(const ObjCInterfaceDecl *D)

@@ -82,6 +82,10 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::ConstantArray:
   case Type::IncompleteArray:
   case Type::VariableArray:
+
+  // ndm - Scout Mesh
+  case Type::Mesh:
+      
   case Type::Record:
   case Type::ObjCObject:
   case Type::ObjCInterface:

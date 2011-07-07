@@ -12,6 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/Stmt.h"
+
+// ndm - include Scout Stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/StmtCXX.h"

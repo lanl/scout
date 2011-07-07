@@ -37,6 +37,10 @@ public:
   unsigned C1X               : 1;  // C1X Support
   unsigned Microsoft         : 1;  // Microsoft extensions.
   unsigned Borland           : 1;  // Borland extensions.
+
+  // ndm - Scout extensions
+  unsigned Scout             : 1;  // Scout extensions.
+
   unsigned CPlusPlus         : 1;  // C++ Support
   unsigned CPlusPlus0x       : 1;  // C++0x Support
   unsigned CXXOperatorNames  : 1;  // Treat C++ operator names as keywords.
@@ -184,6 +188,10 @@ public:
     ObjCInferRelatedResultType = 1;
     NoConstantCFStrings = 0; InlineVisibilityHidden = 0;
     C99 = C1X = Microsoft = Borland = CPlusPlus = CPlusPlus0x = 0;
+
+    // ndm - Scout extensions
+    Scout = 0;
+
     CXXOperatorNames = PascalStrings = WritableStrings = ConstStrings = 0;
     Exceptions = ObjCExceptions = CXXExceptions = SjLjExceptions = 0;
     TraditionalCPP = Freestanding = NoBuiltin = 0;

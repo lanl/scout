@@ -1417,6 +1417,29 @@ bool CursorVisitor::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {
   case BuiltinType::BoundMember:
   case BuiltinType::Dependent:
   case BuiltinType::UnknownAny:
+
+  // ndm - Scout vector types
+  case BuiltinType::Bool2:
+  case BuiltinType::Bool3:
+  case BuiltinType::Bool4:
+  case BuiltinType::Char2:
+  case BuiltinType::Char3:
+  case BuiltinType::Char4:
+  case BuiltinType::Short2:
+  case BuiltinType::Short3:
+  case BuiltinType::Short4:
+  case BuiltinType::Int2:
+  case BuiltinType::Int3:
+  case BuiltinType::Int4:
+  case BuiltinType::Long2:
+  case BuiltinType::Long3:
+  case BuiltinType::Long4:
+  case BuiltinType::Float2:
+  case BuiltinType::Float3:
+  case BuiltinType::Float4:
+  case BuiltinType::Double2:
+  case BuiltinType::Double3:
+  case BuiltinType::Double4:
     break;
 
   case BuiltinType::ObjCId:
@@ -3948,6 +3971,10 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::StaticAssert:
   case Decl::Block:
   case Decl::Label:  // FIXME: Is this right??
+
+  // ndm - Scout Mesh
+  case Decl::Mesh:
+
     return C;
 
   // Declaration kinds that don't make any sense here, but are

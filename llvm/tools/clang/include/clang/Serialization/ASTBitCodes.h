@@ -504,7 +504,32 @@ namespace clang {
       /// \brief The 'unknown any' placeholder type.
       PREDEF_TYPE_UNKNOWN_ANY   = 29,
       /// \brief The placeholder type for bound member functions.
-      PREDEF_TYPE_BOUND_MEMBER  = 30
+      PREDEF_TYPE_BOUND_MEMBER  = 30,
+
+      // ndm - Scout vector types
+      
+      PREDEF_TYPE_BOOL2_ID     = 50,
+      PREDEF_TYPE_BOOL3_ID     = 51,
+      PREDEF_TYPE_BOOL4_ID     = 52,
+      PREDEF_TYPE_CHAR2_ID     = 53,
+      PREDEF_TYPE_CHAR3_ID     = 54,
+      PREDEF_TYPE_CHAR4_ID     = 55,
+      PREDEF_TYPE_SHORT2_ID    = 56,
+      PREDEF_TYPE_SHORT3_ID    = 57,
+      PREDEF_TYPE_SHORT4_ID    = 58,
+      PREDEF_TYPE_INT2_ID      = 59,
+      PREDEF_TYPE_INT3_ID      = 60,
+      PREDEF_TYPE_INT4_ID      = 61,
+      PREDEF_TYPE_LONG2_ID     = 62,
+      PREDEF_TYPE_LONG3_ID     = 63,
+      PREDEF_TYPE_LONG4_ID     = 64,
+      PREDEF_TYPE_FLOAT2_ID    = 65,
+      PREDEF_TYPE_FLOAT3_ID    = 66,
+      PREDEF_TYPE_FLOAT4_ID    = 67,
+      PREDEF_TYPE_DOUBLE2_ID   = 68,
+      PREDEF_TYPE_DOUBLE3_ID   = 69,
+      PREDEF_TYPE_DOUBLE4_ID   = 70
+
     };
 
     /// \brief The number of predefined type IDs that are reserved for

@@ -47,6 +47,10 @@ TYPE("objective-c-cpp-output",   PP_ObjC,      INVALID,         "mi",    "u")
 TYPE("objective-c",              ObjC,         PP_ObjC,         0,       "u")
 TYPE("c++-cpp-output",           PP_CXX,       INVALID,         "ii",    "u")
 TYPE("c++",                      CXX,          PP_CXX,          0,       "u")
+
+// ndm - Scout Type
+TYPE("scout",                    Scout,        PP_CXX,          0,       "u") 
+
 TYPE("objective-c++-cpp-output", PP_ObjCXX,    INVALID,         "mii",   "u")
 TYPE("objective-c++",            ObjCXX,       PP_ObjCXX,       0,       "u")
 

@@ -14,6 +14,10 @@
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclContextInternals.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
@@ -461,6 +465,9 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCIvar:
       return IDNS_Member;
 
+    // ndm - Scout Mesh
+    case Mesh:
+      
     case Record:
     case CXXRecord:
     case Enum:

@@ -21,6 +21,10 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/DeclTemplate.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
 #include "clang/Basic/LangOptions.h"
 
 using namespace clang;

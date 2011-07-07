@@ -28,6 +28,9 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
+
+#include <iostream>
+
 using namespace clang;
 
 static const char *getAnalysisStoreName(AnalysisStores Kind) {
@@ -336,6 +339,10 @@ static const char *getInputKindName(InputKind Kind) {
   case IK_LLVM_IR:           return "ir";
   case IK_ObjC:              return "objective-c";
   case IK_ObjCXX:            return "objective-c++";
+
+  // ndm - Scout input kind
+  case IK_Scout:             return "scout";
+
   case IK_OpenCL:            return "cl";
   case IK_CUDA:              return "cuda";
   case IK_PreprocessedC:     return "cpp-output";
@@ -1282,6 +1289,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       .Case("objective-c++-header", IK_ObjCXX)
       .Case("ast", IK_AST)
       .Case("ir", IK_LLVM_IR)
+
+      // ndm - Scout input kind
+      .Case("scout", IK_Scout)
+
       .Default(IK_None);
     if (DashX == IK_None)
       Diags.Report(diag::err_drv_invalid_value)
@@ -1408,6 +1419,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_PreprocessedObjC:
       LangStd = LangStandard::lang_gnu99;
       break;
+    // ndm - Scout language standard uses C++
+    case IK_Scout:
     case IK_CXX:
     case IK_PreprocessedCXX:
     case IK_ObjCXX:
@@ -1452,6 +1465,11 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.Trigraphs = !Opts.GNUMode;
 
   Opts.DollarIdents = !Opts.AsmPreprocessor;
+
+  // ndm - Scout language options
+  if(IK == IK_Scout){
+    Opts.Scout = 1;
+  }
 }
 
 static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
@@ -1479,6 +1497,10 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C/ObjC";
         break;
+
+      // ndm - Scout input kind
+      case IK_Scout:
+
       case IK_CXX:
       case IK_ObjCXX:
       case IK_PreprocessedCXX:

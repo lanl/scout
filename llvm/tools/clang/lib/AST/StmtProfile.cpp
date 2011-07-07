@@ -124,6 +124,16 @@ void StmtProfiler::VisitDoStmt(const DoStmt *S) {
   VisitStmt(S);
 }
 
+// ndm - Scout Stmts
+
+void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
+  VisitStmt(S);
+}
+
 void StmtProfiler::VisitForStmt(const ForStmt *S) {
   VisitStmt(S);
 }

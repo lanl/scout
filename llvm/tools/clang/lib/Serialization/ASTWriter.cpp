@@ -243,6 +243,12 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
          "Cannot serialize in the middle of a type definition");
 }
 
+// ndm - Scout Mesh
+// TODO implement
+void ASTTypeWriter::VisitMeshType(const MeshType *T) {
+
+}
+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
   Code = TYPE_RECORD;
@@ -510,6 +516,13 @@ void TypeLocWriter::VisitUnaryTransformTypeLoc(UnaryTransformTypeLoc TL) {
 }
 void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);
+}
+
+// ndm - Scout Mesh
+// TODO implement
+
+void TypeLocWriter::VisitMeshTypeLoc(MeshTypeLoc TL) {
+
 }
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);

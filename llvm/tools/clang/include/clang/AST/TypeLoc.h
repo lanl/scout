@@ -579,6 +579,20 @@ public:
   EnumDecl *getDecl() const { return getTypePtr()->getDecl(); }
 };
 
+// ndm - Scout Mesh support class
+  
+/// \brief Wrapper for source info for mesh types.
+class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeLoc,
+                                                     MeshTypeLoc,
+                                                     MeshType> {
+  public:
+    MeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+                                                       
+    void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+      // ndm TODO - why is this method needed when tag/record etc. does not need one
+    }
+};
+  
 /// \brief Wrapper for template type parameters.
 class TemplateTypeParmTypeLoc :
     public InheritingConcreteTypeLoc<TypeSpecTypeLoc,

@@ -15,8 +15,15 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "clang/AST/Expr.h"
+
+// ndm - include Scout stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
 
 using namespace clang;
 
@@ -641,6 +648,31 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_int:
   case TST_float:
   case TST_double:
+
+  // ndm - Scout vector types
+
+  case TST_bool2:
+  case TST_bool3:
+  case TST_bool4:
+  case TST_char2:
+  case TST_char3:
+  case TST_char4:
+  case TST_short2:
+  case TST_short3:
+  case TST_short4:
+  case TST_int2:
+  case TST_int3:
+  case TST_int4:
+  case TST_long2:
+  case TST_long3:
+  case TST_long4:
+  case TST_float2:
+  case TST_float3:
+  case TST_float4:
+  case TST_double2:
+  case TST_double3:
+  case TST_double4:
+
   case TST_bool:
   case TST_decimal32:
   case TST_decimal64:

@@ -560,5 +560,16 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
+// ndm - Scout specific errors
+def err_expected_numeric_constant_in_mesh_def : Error<
+"expected a numeric constant in mesh definition dimensions">;
+def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
+def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
+def err_expected_of_kw: Error<"expected of keyword">;
+def err_invalid_renderall_body: Error<"Invalid renderall body">;
+def err_invalid_forall_op: Error<"Invalid forall op">;
+def err_invalid_forall_body: Error<"Invalid forall body">;
+def err_expected_mesh_kw: Error<"expected mesh keyword">;
+
 } // end of Parse Issue category.
 } // end of Parser diagnostics

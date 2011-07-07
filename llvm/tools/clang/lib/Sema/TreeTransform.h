@@ -26,6 +26,10 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Stmt.h"
+
+// ndm - include Scout stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Sema/Ownership.h"
@@ -691,6 +695,13 @@ public:
     return SemaRef.Context.getTypeDeclType(Enum);
   }
 
+  // ndm - Scout Mesh
+  // TODO implement
+  QualType RebuildMeshType(MeshDecl *Mesh) {
+    //return SemaRef.Context.getTypeDeclType(Mesh);
+    return QualType();
+  }
+  
   /// \brief Build a new typeof(expr) type.
   ///
   /// By default, performs semantic analysis when building the typeof type.
@@ -4287,6 +4298,36 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
   return Result;
 }
 
+// ndm - Scout Mesh
+// TODO - implement
+  
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
+                                                   MeshTypeLoc TL) {
+  /*
+  const MeshType *T = TL.getTypePtr();
+  MeshDecl *Mesh
+  = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                        T->getDecl()));
+  if (!Mesh)
+    return QualType();
+  
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      Mesh != T->getDecl()) {
+    Result = getDerived().RebuildMeshType(Record);
+    if (Result.isNull())
+      return QualType();
+  }
+  
+  RecordTypeLoc NewTL = TLB.push<RecordTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+  
+  return Result;
+  */
+  return QualType();
+}
+  
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformEnumType(TypeLocBuilder &TLB,
                                                    EnumTypeLoc TL) {
@@ -5197,6 +5238,25 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
                                      FullInc, S->getRParenLoc(), Body.get());
 }
 
+// ndm - Scout Stmts
+// TODO - implement
+  
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+  
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformGotoStmt(GotoStmt *S) {

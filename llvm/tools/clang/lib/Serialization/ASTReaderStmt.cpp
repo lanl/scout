@@ -78,6 +78,11 @@ namespace clang {
     void VisitWhileStmt(WhileStmt *S);
     void VisitDoStmt(DoStmt *S);
     void VisitForStmt(ForStmt *S);
+
+    // ndm - Scout Stmts
+    void VisitForAllStmt(ForAllStmt *S);
+    void VisitRenderAllStmt(RenderAllStmt *S);
+  
     void VisitGotoStmt(GotoStmt *S);
     void VisitIndirectGotoStmt(IndirectGotoStmt *S);
     void VisitContinueStmt(ContinueStmt *S);
@@ -323,6 +328,17 @@ void ASTStmtReader::VisitForStmt(ForStmt *S) {
   S->setForLoc(ReadSourceLocation(Record, Idx));
   S->setLParenLoc(ReadSourceLocation(Record, Idx));
   S->setRParenLoc(ReadSourceLocation(Record, Idx));
+}
+
+// ndm - Scout Stmts
+// TODO - implement
+
+void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
+
+}
+
+void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
+  
 }
 
 void ASTStmtReader::VisitGotoStmt(GotoStmt *S) {

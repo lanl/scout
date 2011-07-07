@@ -274,6 +274,16 @@ void StmtPrinter::VisitForStmt(ForStmt *Node) {
   }
 }
 
+// ndm - Scout Stmts
+// TODO - implement
+void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
+  
+}
+
+void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
+  
+}
+
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
   Indent() << "for (";
   if (DeclStmt *DS = dyn_cast<DeclStmt>(Node->getElement()))

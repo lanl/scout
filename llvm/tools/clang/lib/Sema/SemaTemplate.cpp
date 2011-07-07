@@ -19,6 +19,13 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/DeclFriend.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
+// ndm - include Scout stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeVisitor.h"
@@ -3164,6 +3171,13 @@ bool UnnamedLocalNoLinkageFinder::VisitDecltypeType(const DecltypeType*) {
 
 bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
                                                     const UnaryTransformType*) {
+  return false;
+}
+
+// ndm - Scout Mesh
+// TODO implement
+
+bool UnnamedLocalNoLinkageFinder::VisitMeshType(const MeshType* T) {
   return false;
 }
 

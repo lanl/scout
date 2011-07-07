@@ -265,6 +265,31 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
       return llvm::IntegerType::get(getLLVMContext(),
         static_cast<unsigned>(Context.getTypeSize(T)));
 
+    // ndm - Scout vector types
+    // TODO - fix
+    case BuiltinType::Bool2:
+    case BuiltinType::Bool3:
+    case BuiltinType::Bool4:
+    case BuiltinType::Char2:
+    case BuiltinType::Char3:
+    case BuiltinType::Char4:
+    case BuiltinType::Short2:
+    case BuiltinType::Short3:
+    case BuiltinType::Short4:
+    case BuiltinType::Int2:
+    case BuiltinType::Int3:
+    case BuiltinType::Int4:
+    case BuiltinType::Long2:
+    case BuiltinType::Long3:
+    case BuiltinType::Long4:
+    case BuiltinType::Float2:
+    case BuiltinType::Float3:
+    case BuiltinType::Float4:
+    case BuiltinType::Double2:
+    case BuiltinType::Double3:
+    case BuiltinType::Double4:
+      return llvm::IntegerType::get(getLLVMContext(), 8);
+        
     case BuiltinType::Float:
     case BuiltinType::Double:
     case BuiltinType::LongDouble:
@@ -400,6 +425,12 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
     return llvm::PointerType::getUnqual(T);
   }
 
+  // ndm - Scout Mesh
+  // TODO - fix
+  case Type::Mesh: {
+    return llvm::IntegerType::get(getLLVMContext(), 8);
+  }
+      
   case Type::Record:
   case Type::Enum: {
     const TagDecl *TD = cast<TagType>(Ty).getDecl();

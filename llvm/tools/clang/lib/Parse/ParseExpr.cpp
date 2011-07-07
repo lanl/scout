@@ -914,6 +914,31 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_unsigned:
   case tok::kw_float:
   case tok::kw_double:
+
+  // ndm - Scout vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:

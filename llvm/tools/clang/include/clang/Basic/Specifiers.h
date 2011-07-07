@@ -56,6 +56,30 @@ namespace clang {
     TST_decltype,     // C++0x decltype
     TST_underlyingType, // __underlying_type for C++0x
     TST_auto,         // C++0x auto
+
+    // ndm - Scout vector types
+    TST_bool2,
+    TST_bool3,
+    TST_bool4,
+    TST_char2,
+    TST_char3,
+    TST_char4,
+    TST_short2,
+    TST_short3,
+    TST_short4,
+    TST_int2,
+    TST_int3,
+    TST_int4,
+    TST_long2,
+    TST_long3,
+    TST_long4,
+    TST_float2,
+    TST_float3,
+    TST_float4,
+    TST_double2,
+    TST_double3,
+    TST_double4,
+
     TST_unknown_anytype, // __unknown_anytype extension
     TST_error         // erroneous type
   };

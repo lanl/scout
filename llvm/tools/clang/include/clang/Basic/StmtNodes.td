@@ -17,6 +17,11 @@ def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
+
+// ndm - Scout Stmts
+def ForAllStmt : Stmt;
+def RenderAllStmt : Stmt;
+
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
 def ContinueStmt : Stmt;

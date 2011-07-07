@@ -5241,7 +5241,9 @@ class BuiltinOperatorOverloadBuilder {
                         LastPromotedIntegralType = 9;
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 9;
-  static const unsigned NumArithmeticTypes = 18;
+
+  // ndm - updated count from 18 to 39
+  static const unsigned NumArithmeticTypes = 39;
 
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
@@ -5271,6 +5273,30 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::ShortTy,
       &ASTContext::UnsignedCharTy,
       &ASTContext::UnsignedShortTy,
+
+      // ndm - Scout vector types
+        
+      &ASTContext::Bool2Ty,
+      &ASTContext::Bool3Ty,
+      &ASTContext::Bool4Ty,
+      &ASTContext::Char2Ty,
+      &ASTContext::Char3Ty,
+      &ASTContext::Char4Ty,  
+      &ASTContext::Short2Ty,
+      &ASTContext::Short3Ty,
+      &ASTContext::Short4Ty,
+      &ASTContext::Int2Ty,
+      &ASTContext::Int3Ty,
+      &ASTContext::Int4Ty,
+      &ASTContext::Long2Ty,
+      &ASTContext::Long3Ty,
+      &ASTContext::Long4Ty,
+      &ASTContext::Float2Ty,
+      &ASTContext::Float3Ty,
+      &ASTContext::Float4Ty,
+      &ASTContext::Double2Ty,
+      &ASTContext::Double3Ty,
+      &ASTContext::Double4Ty
       // End of integral types.
       // FIXME: What about complex?
     };

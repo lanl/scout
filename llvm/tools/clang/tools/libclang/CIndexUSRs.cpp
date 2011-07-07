@@ -578,6 +578,32 @@ void USRGenerator::VisitType(QualType T) {
           c = 'D'; break;
         case BuiltinType::NullPtr:
           c = 'n'; break;
+
+	// ndm - Scout vector types
+	// TODO - fix
+        case BuiltinType::Bool2:
+        case BuiltinType::Bool3:
+        case BuiltinType::Bool4:
+        case BuiltinType::Char2:
+        case BuiltinType::Char3:
+        case BuiltinType::Char4:
+        case BuiltinType::Short2:
+        case BuiltinType::Short3:
+        case BuiltinType::Short4:
+        case BuiltinType::Int2:
+        case BuiltinType::Int3:
+        case BuiltinType::Int4:
+        case BuiltinType::Long2:
+        case BuiltinType::Long3:
+        case BuiltinType::Long4:
+        case BuiltinType::Float2:
+        case BuiltinType::Float3:
+        case BuiltinType::Float4:
+        case BuiltinType::Double2:
+        case BuiltinType::Double3:
+        case BuiltinType::Double4:
+	  c = 'v'; break;
+
         case BuiltinType::Overload:
         case BuiltinType::BoundMember:
         case BuiltinType::Dependent:

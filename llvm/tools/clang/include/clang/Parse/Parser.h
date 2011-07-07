@@ -1347,6 +1347,12 @@ private:
   StmtResult ParseSwitchStatement(ParsedAttributes &Attr);
   StmtResult ParseWhileStatement(ParsedAttributes &Attr);
   StmtResult ParseDoStatement(ParsedAttributes &Attr);
+  
+  // ndm - Scout Stmts
+  
+  StmtResult ParseForAllStatement(ParsedAttributes &Attr);
+  StmtResult ParseRenderAllStatement(ParsedAttributes &Attr);
+  
   StmtResult ParseForStatement(ParsedAttributes &Attr);
   StmtResult ParseGotoStatement(ParsedAttributes &Attr);
   StmtResult ParseContinueStatement(ParsedAttributes &Attr);
@@ -1812,6 +1818,12 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
   MemInitResult ParseMemInitializer(Decl *ConstructorDecl);
   void HandleMemberFunctionDefaultArgs(Declarator& DeclaratorInfo,
                                        Decl *ThisDecl);
+
+  // ndm - Scout parsing methods
+  
+  void ParseMeshSpecifier(DeclSpec &DS);
+  
+  void ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]

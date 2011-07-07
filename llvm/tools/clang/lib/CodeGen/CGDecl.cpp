@@ -72,6 +72,12 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::Block:
     assert(0 && "Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
+  
+  // ndm - Scout Mesh
+  // TODO - fix, do not enough information at this point
+  case Decl::Mesh:
+    return; 
+      
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;
   case Decl::EnumConstant: // enum ? { X = ? }

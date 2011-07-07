@@ -112,6 +112,10 @@ void TypePrinter::print(const Type *T, Qualifiers Quals, std::string &buffer) {
     case Type::TypeOf:
     case Type::Decltype:
     case Type::UnaryTransform:
+
+    // ndm - Scout Mesh
+    case Type::Mesh:
+      
     case Type::Record:
     case Type::Enum:
     case Type::Elaborated:
@@ -706,6 +710,12 @@ void TypePrinter::printRecord(const RecordType *T, std::string &S) {
 
 void TypePrinter::printEnum(const EnumType *T, std::string &S) { 
   printTag(T->getDecl(), S);
+}
+
+// ndm - Scout Mesh
+// TODO implement based on printTag()
+void TypePrinter::printMesh(const MeshType *T, std::string &S) {
+
 }
 
 void TypePrinter::printTemplateTypeParm(const TemplateTypeParmType *T, 

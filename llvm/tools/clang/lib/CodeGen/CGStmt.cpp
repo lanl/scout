@@ -15,6 +15,7 @@
 #include "CodeGenModule.h"
 #include "CodeGenFunction.h"
 #include "TargetInfo.h"
+
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
@@ -126,6 +127,15 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::IfStmtClass:       EmitIfStmt(cast<IfStmt>(*S));             break;
   case Stmt::WhileStmtClass:    EmitWhileStmt(cast<WhileStmt>(*S));       break;
   case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
+  
+  // ndm - Scout Stmts
+  case Stmt::ForAllStmtClass:
+      EmitForAllStmt(cast<ForAllStmt>(*S));
+      break;
+  case Stmt::RenderAllStmtClass: 
+      EmitRenderAllStmt(cast<RenderAllStmt>(*S));
+      break;
+      
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
@@ -547,6 +557,17 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
   // emitting a branch, try to erase it.
   if (!EmitBoolCondBranch)
     SimplifyForwardingBlocks(LoopCond.getBlock());
+}
+
+// ndm - Scout Stmts
+// TODO - implement
+
+void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
+  
+}
+
+void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
+  
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {

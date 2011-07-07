@@ -17,6 +17,10 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
+
+// ndm - include Scout Decls
+#include "clang/AST/DeclScout.h"
+
 #include "clang/AST/Expr.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TypeVisitor.h"
@@ -1438,6 +1442,29 @@ const char *BuiltinType::getName(const LangOptions &LO) const {
   case ObjCId:            return "id";
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
+
+  // ndm - Scout vector types
+  case Bool2:             return "bool2";
+  case Bool3:             return "bool3";
+  case Bool4:             return "bool4";
+  case Char2:             return "char2";
+  case Char3:             return "char3";
+  case Char4:             return "char4";
+  case Short2:            return "short2";
+  case Short3:            return "short3";
+  case Short4:            return "short4";
+  case Int2:              return "int2";
+  case Int3:              return "int3";
+  case Int4:              return "int4";
+  case Long2:             return "long2";
+  case Long3:             return "long3";
+  case Long4:             return "long4";
+  case Float2:            return "float2";
+  case Float3:            return "float3";
+  case Float4:            return "float4";
+  case Double2:           return "double2";
+  case Double3:           return "double3";
+  case Double4:           return "double4";
   }
   
   llvm_unreachable("Invalid builtin type.");
@@ -1931,6 +1958,18 @@ static CachedProperties computeCachedProperties(const Type *T) {
     //     - it is a fundamental type (3.9.1); or
     return CachedProperties(ExternalLinkage, DefaultVisibility, false);
 
+  
+  // ndm - Scout Mesh
+  // TODO - is this correct?
+    case Type::Mesh: {
+    const MeshDecl *Mesh = cast<MeshType>(T)->getDecl();
+    
+    NamedDecl::LinkageInfo LV = Mesh->getLinkageAndVisibility();
+    bool IsLocalOrUnnamed =
+      Mesh->getDeclContext()->isFunctionOrMethod() || !Mesh->getIdentifier();
+    return CachedProperties(LV.linkage(), LV.visibility(), IsLocalOrUnnamed);
+  }
+      
   case Type::Record:
   case Type::Enum: {
     const TagDecl *Tag = cast<TagType>(T)->getDecl();

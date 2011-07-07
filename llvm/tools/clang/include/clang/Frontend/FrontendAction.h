@@ -39,7 +39,9 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR
+  IK_LLVM_IR,
+  // ndm - Scout input kind
+  IK_Scout
 };
 
 

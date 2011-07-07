@@ -19,6 +19,9 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 
+// ndm - Scout Stmts
+#include "clang/AST/StmtScout.h"
+
 namespace clang {
 
 template <typename T> struct make_ptr       { typedef       T *type; };

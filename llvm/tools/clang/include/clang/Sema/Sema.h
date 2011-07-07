@@ -24,6 +24,10 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/TypeLoc.h"
+
+// ndm - include Scout Stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TemplateKinds.h"
 #include "clang/Basic/TypeTraits.h"
@@ -1117,6 +1121,27 @@ public:
                                     SourceLocation NewTagLoc,
                                     const IdentifierInfo &Name);
 
+  // ndm - Scout mesh
+  // create the beginning part of a mesh definition
+  Decl* ActOnMeshDefinition(Scope* S,
+                            tok::TokenKind MeshType,
+                            SourceLocation KWLoc,
+                            IdentifierInfo* Name,
+                            SourceLocation NameLoc);
+  
+  void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
+  
+  FieldDecl *HandleMeshField(Scope *S, MeshDecl *MeshD, 
+                             SourceLocation DeclStart, Declarator &D);
+  
+  
+  FieldDecl *CheckMeshFieldDecl(DeclarationName Name, QualType T,
+                                TypeSourceInfo *TInfo,
+                                MeshDecl *Mesh, SourceLocation Loc,
+                                SourceLocation TSSL,
+                                NamedDecl *PrevDecl,
+                                Declarator *D = 0);
+  
   enum TagUseKind {
     TUK_Reference,   // Reference to a tag:  'struct foo *X;'
     TUK_Declaration, // Fwd decl of a tag:   'struct foo;'
@@ -2038,6 +2063,23 @@ public:
                           FullExprArg Third,
                           SourceLocation RParenLoc,
                           Stmt *Body);
+  
+  // ndm - Scout Stmts
+  
+  StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
+                             ForAllStmt::ForAllType Type,
+                             Expr* Ind, Expr* Mesh,
+                             SourceLocation LParenLoc,
+                             Expr* Op, SourceLocation RParenLoc,
+                             Stmt* Body);
+                             
+  
+  StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
+                                RenderAllStmt::RenderAllType Type,
+                                Expr* Ind,
+                                Expr* Mesh,
+                                Stmt* Body);
+    
   StmtResult ActOnObjCForCollectionStmt(SourceLocation ForColLoc,
                                         SourceLocation LParenLoc,
                                         Stmt *First, Expr *Second,

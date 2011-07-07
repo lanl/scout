@@ -15,6 +15,10 @@
 #define CLANG_CODEGEN_CODEGENFUNCTION_H
 
 #include "clang/AST/Type.h"
+
+// ndm - include Scout Stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/CharUnits.h"
@@ -1773,6 +1777,12 @@ public:
   void EmitIfStmt(const IfStmt &S);
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
+  
+  // ndm - Scout Stmts
+  
+  void EmitForAllStmt(const ForAllStmt &S);
+  void EmitRenderAllStmt(const RenderAllStmt &S);
+  
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);
   void EmitDeclStmt(const DeclStmt &S);

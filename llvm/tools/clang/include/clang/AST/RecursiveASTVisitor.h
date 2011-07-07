@@ -15,6 +15,13 @@
 #define LLVM_CLANG_AST_RECURSIVEASTVISITOR_H
 
 #include "clang/AST/Decl.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
+// ndm - include Scout stmts
+#include "clang/AST/StmtScout.h"
+
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"
@@ -383,6 +390,11 @@ private:
   bool TraverseArrayTypeLocHelper(ArrayTypeLoc TL);
   bool TraverseRecordHelper(RecordDecl *D);
   bool TraverseCXXRecordHelper(CXXRecordDecl *D);
+  
+// ndm - Scout mesh
+  
+  bool TraverseMeshHelper(MeshDecl* D);
+  
   bool TraverseDeclaratorHelper(DeclaratorDecl *D);
   bool TraverseDeclContextHelper(DeclContext *DC);
   bool TraverseFunctionHelper(FunctionDecl *D);
@@ -759,6 +771,9 @@ DEF_TRAVERSE_TYPE(AutoType, {
     TRY_TO(TraverseType(T->getDeducedType()));
   })
 
+// ndm - Scout Mesh
+DEF_TRAVERSE_TYPE(MeshType, { })
+
 DEF_TRAVERSE_TYPE(RecordType, { })
 DEF_TRAVERSE_TYPE(EnumType, { })
 DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
@@ -979,6 +994,9 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
     TRY_TO(TraverseType(TL.getTypePtr()->getDeducedType()));
   })
 
+// ndm - Scout Mesh
+DEF_TRAVERSE_TYPELOC(MeshType, { })
+  
 DEF_TRAVERSE_TYPELOC(RecordType, { })
 DEF_TRAVERSE_TYPELOC(EnumType, { })
 DEF_TRAVERSE_TYPELOC(TemplateTypeParmType, { })
@@ -1412,6 +1430,18 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
   return true;
 }
 
+// ndm - Scout Mesh
+  
+// Helper methods for MeshDecl and its children.
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseMeshHelper(                                                          MeshDecl *D) {
+// We shouldn't traverse D->getTypeForDecl(); it's a result of
+// declaring the type, not something that was written in the source.
+    
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+  
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::TraverseCXXRecordHelper(
     CXXRecordDecl *D) {
@@ -1433,6 +1463,12 @@ DEF_TRAVERSE_DECL(RecordDecl, {
     TRY_TO(TraverseRecordHelper(D));
   })
 
+  
+// ndm - Scout Mesh
+DEF_TRAVERSE_DECL(MeshDecl, {
+  TRY_TO(TraverseMeshHelper(D));
+})
+  
 DEF_TRAVERSE_DECL(CXXRecordDecl, {
     TRY_TO(TraverseCXXRecordHelper(D));
   })
@@ -1710,6 +1746,12 @@ DEF_TRAVERSE_STMT(ContinueStmt, { })
 DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
+
+// ndm - Scout Stmts
+  
+DEF_TRAVERSE_STMT(ForAllStmt, { })
+DEF_TRAVERSE_STMT(RenderAllStmt, { })  
+  
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })
 DEF_TRAVERSE_STMT(IndirectGotoStmt, { })

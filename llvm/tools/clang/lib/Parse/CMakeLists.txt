@@ -11,9 +11,11 @@ add_clang_library(clangParse
   ParseObjc.cpp
   ParsePragma.cpp
   ParseStmt.cpp
+  ParseStmtScout.cpp
   ParseTemplate.cpp
   ParseTentative.cpp
   Parser.cpp
+  ParseDeclScout.cpp
   )
 
 add_dependencies(clangParse ClangAttrClasses ClangAttrList ClangDeclNodes ClangDiagnosticParse ClangStmtNodes)

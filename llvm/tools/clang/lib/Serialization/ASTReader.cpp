@@ -3640,6 +3640,13 @@ void TypeLocReader::VisitAutoTypeLoc(AutoTypeLoc TL) {
 void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
 }
+
+// ndm - Scout Mesh
+// TODO - implement
+void TypeLocReader::VisitMeshTypeLoc(MeshTypeLoc TL) {
+
+}
+
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
 }
@@ -3784,6 +3791,30 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_OBJC_ID:       T = Context->ObjCBuiltinIdTy;    break;
     case PREDEF_TYPE_OBJC_CLASS:    T = Context->ObjCBuiltinClassTy; break;
     case PREDEF_TYPE_OBJC_SEL:      T = Context->ObjCBuiltinSelTy;   break;
+
+    // ndm - Scout vector types
+    
+    case PREDEF_TYPE_BOOL2_ID:      T = Context->Bool2Ty;            break;
+    case PREDEF_TYPE_BOOL3_ID:      T = Context->Bool3Ty;            break;
+    case PREDEF_TYPE_BOOL4_ID:      T = Context->Bool4Ty;            break;
+    case PREDEF_TYPE_CHAR2_ID:      T = Context->Char2Ty;            break;
+    case PREDEF_TYPE_CHAR3_ID:      T = Context->Char3Ty;            break;
+    case PREDEF_TYPE_CHAR4_ID:      T = Context->Char4Ty;            break;
+    case PREDEF_TYPE_SHORT2_ID:     T = Context->Short2Ty;           break;
+    case PREDEF_TYPE_SHORT3_ID:     T = Context->Short3Ty;           break;
+    case PREDEF_TYPE_SHORT4_ID:     T = Context->Short4Ty;           break;
+    case PREDEF_TYPE_INT2_ID:       T = Context->Int2Ty;             break;
+    case PREDEF_TYPE_INT3_ID:       T = Context->Int3Ty;             break;
+    case PREDEF_TYPE_INT4_ID:       T = Context->Int4Ty;             break;
+    case PREDEF_TYPE_LONG2_ID:      T = Context->Long2Ty;            break;
+    case PREDEF_TYPE_LONG3_ID:      T = Context->Long3Ty;            break;
+    case PREDEF_TYPE_LONG4_ID:      T = Context->Long4Ty;            break;
+    case PREDEF_TYPE_FLOAT2_ID:     T = Context->Float2Ty;           break;
+    case PREDEF_TYPE_FLOAT3_ID:     T = Context->Float3Ty;           break;
+    case PREDEF_TYPE_FLOAT4_ID:     T = Context->Float4Ty;           break;
+    case PREDEF_TYPE_DOUBLE2_ID:    T = Context->Double2Ty;          break;
+    case PREDEF_TYPE_DOUBLE3_ID:    T = Context->Double3Ty;          break;
+    case PREDEF_TYPE_DOUBLE4_ID:    T = Context->Double4Ty;          break;
     }
 
     assert(!T.isNull() && "Unknown predefined type");

@@ -94,7 +94,11 @@ namespace {
     KEYOPENCL = 0x200,
     KEYC1X = 0x400,
     KEYARC = 0x800,
-    KEYALL = 0x0fff
+
+    // ndm - Scout TokenKinds
+    KEYSCOUT = 0x1000,
+    
+    KEYALL = 0x0ffff
   };
 }
 
@@ -123,7 +127,10 @@ static void AddKeyword(llvm::StringRef Keyword,
   else if (!LangOpts.CPlusPlus && (Flags & KEYNOCXX)) AddResult = 2;
   else if (LangOpts.C1X && (Flags & KEYC1X)) AddResult = 2;
   else if (LangOpts.ObjCAutoRefCount && (Flags & KEYARC)) AddResult = 2;
-           
+
+  // ndm - Scout keywords
+  else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
+         
   // Don't add this keyword if disabled in this language.
   if (AddResult == 0) return;
 

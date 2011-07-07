@@ -15,6 +15,10 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
+
+// ndm - include Scout declarations
+#include "clang/AST/DeclScout.h"
+
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclVisitor.h"
@@ -67,6 +71,10 @@ namespace {
     QualType VisitUnaryTransformType(const UnaryTransformType *T);
     QualType VisitAutoType(const AutoType *T);
     // FIXME: DependentDecltypeType
+
+    // ndm - Scout Mesh
+    QualType VisitMeshType(const MeshType* T);
+                            
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
     // FIXME: TemplateTypeParmType
@@ -103,6 +111,11 @@ namespace {
     Decl *VisitTypeAliasDecl(TypeAliasDecl *D);
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
+    
+    // ndm - Scout Mesh
+                            
+    Decl* VisitMeshDecl(MeshDecl* D);
+                            
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
     Decl *VisitCXXMethodDecl(CXXMethodDecl *D);
@@ -627,6 +640,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
+  // ndm - Scout Mesh
+  case Type::Mesh:    
+      
   case Type::Record:
   case Type::Enum:
     if (!IsStructurallyEquivalent(Context,
@@ -1364,6 +1380,30 @@ QualType ASTNodeImporter::VisitBuiltinType(const BuiltinType *T) {
   case BuiltinType::Double: return Importer.getToContext().DoubleTy;
   case BuiltinType::LongDouble: return Importer.getToContext().LongDoubleTy;
 
+  // ndm - Scout vector typse
+      
+  case BuiltinType::Bool2: return Importer.getToContext().Bool2Ty;    
+  case BuiltinType::Bool3: return Importer.getToContext().Bool3Ty;
+  case BuiltinType::Bool4: return Importer.getToContext().Bool4Ty;
+  case BuiltinType::Char2: return Importer.getToContext().Char2Ty;    
+  case BuiltinType::Char3: return Importer.getToContext().Char3Ty;
+  case BuiltinType::Char4: return Importer.getToContext().Char4Ty;
+  case BuiltinType::Short2: return Importer.getToContext().Short2Ty;    
+  case BuiltinType::Short3: return Importer.getToContext().Short3Ty;
+  case BuiltinType::Short4: return Importer.getToContext().Short4Ty;
+  case BuiltinType::Int2: return Importer.getToContext().Int2Ty;    
+  case BuiltinType::Int3: return Importer.getToContext().Int3Ty;
+  case BuiltinType::Int4: return Importer.getToContext().Int4Ty;
+  case BuiltinType::Long2: return Importer.getToContext().Long2Ty;    
+  case BuiltinType::Long3: return Importer.getToContext().Long3Ty;
+  case BuiltinType::Long4: return Importer.getToContext().Long4Ty;
+  case BuiltinType::Float2: return Importer.getToContext().Float2Ty;    
+  case BuiltinType::Float3: return Importer.getToContext().Float3Ty;
+  case BuiltinType::Float4: return Importer.getToContext().Float4Ty;
+  case BuiltinType::Double2: return Importer.getToContext().Double2Ty;    
+  case BuiltinType::Double3: return Importer.getToContext().Double3Ty;
+  case BuiltinType::Double4: return Importer.getToContext().Double4Ty;
+
   case BuiltinType::NullPtr:
     // FIXME: Make sure that the "to" context supports C++0x!
     return Importer.getToContext().NullPtrTy;
@@ -1611,6 +1651,18 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
     return QualType();
 
   return Importer.getToContext().getTagDeclType(ToDecl);
+}
+
+// ndm - Scout Mesh
+// TODO is this correct?
+
+QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
+  MeshDecl *ToDecl
+  = dyn_cast_or_null<MeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getMeshDeclType(ToDecl);
 }
 
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
@@ -2177,6 +2229,13 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   }
   
   return D2;
+}
+
+// ndm - Scout Mesh
+// TODO implement
+
+Decl *ASTNodeImporter::VisitMeshDecl(MeshDecl *D){
+  return 0;
 }
 
 Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {

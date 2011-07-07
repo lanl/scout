@@ -187,6 +187,32 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::ULongLong:
     case BuiltinType::Float:
     case BuiltinType::Double:
+
+    // ndm - Scout vector types
+    // temporary hack to get the AST side working... will revisit later
+    
+    case BuiltinType::Bool2:
+    case BuiltinType::Bool3:
+    case BuiltinType::Bool4:
+    case BuiltinType::Char2:
+    case BuiltinType::Char3:
+    case BuiltinType::Char4:
+    case BuiltinType::Short2:
+    case BuiltinType::Short3:
+    case BuiltinType::Short4:
+    case BuiltinType::Int2:
+    case BuiltinType::Int3:
+    case BuiltinType::Int4:
+    case BuiltinType::Long2:
+    case BuiltinType::Long3:
+    case BuiltinType::Long4:
+    case BuiltinType::Float2:
+    case BuiltinType::Float3:
+    case BuiltinType::Float4:
+    case BuiltinType::Double2:
+    case BuiltinType::Double3:
+    case BuiltinType::Double4:
+
     case BuiltinType::LongDouble:
     case BuiltinType::Char16:
     case BuiltinType::Char32:
@@ -428,6 +454,13 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv116__enum_type_infoE";
     break;
 
+  // ndm - Scout Mesh
+  // TODO - fix
+      
+  case Type::Mesh:
+    VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
+    break;
+      
   case Type::Record: {
     const CXXRecordDecl *RD = 
       cast<CXXRecordDecl>(cast<RecordType>(Ty)->getDecl());
@@ -618,7 +651,14 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // Itanium C++ ABI 2.9.5p5:
     // abi::__function_type_info adds no data members to std::type_info.
     break;
-
+      
+  // ndm - Scout Mesh
+  // TODO - is this correct?    
+      
+  case Type::Mesh:
+    // abi::__enum_mesh_info adds no data members to std::type_info.
+    break;
+      
   case Type::Enum:
     // Itanium C++ ABI 2.9.5p5:
     // abi::__enum_type_info adds no data members to std::type_info.
