@@ -61,16 +61,7 @@ class Token {
   ///    This is null.
   void *PtrData;
 
-  /// Kind - The actual flavor of token this is.
-  ///
-  //unsigned char Kind; // DON'T make Kind a 'tok::TokenKind';
-                        // MSVC will treat it as a signed char and
-                        // TokenKinds > 127 won't be handled correctly.
-
-  // ndm - increase the size of Kind to accommodate additional Scout
-  // token kinds
   unsigned short Kind;
-  unsigned Kind : 16;
 
   /// Flags - Bits we track about this token, members of the TokenFlags enum.
   unsigned char Flags;
