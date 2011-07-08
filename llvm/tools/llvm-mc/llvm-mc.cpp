@@ -19,11 +19,11 @@
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Target/TargetAsmBackend.h"
 #include "llvm/Target/TargetAsmParser.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/SubtargetFeature.h" // FIXME.
 #include "llvm/Target/TargetAsmInfo.h"  // FIXME.
 #include "llvm/Target/TargetLowering.h"  // FIXME.
 #include "llvm/Target/TargetLoweringObjectFile.h"  // FIXME.
@@ -309,17 +309,13 @@ static int AssembleInput(const char *ProgName) {
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;
-  if (MCPU.size()) {
-    SubtargetFeatures Features;
-    Features.setCPU(MCPU);
-    FeaturesStr = Features.getString();
-  }
 
   // FIXME: We shouldn't need to do this (and link in codegen).
   //        When we split this out, we should do it in a way that makes
   //        it straightforward to switch subtargets on the fly (.e.g,
   //        the .cpu and .code16 directives).
   OwningPtr<TargetMachine> TM(TheTarget->createTargetMachine(TripleName,
+                                                             MCPU,
                                                              FeaturesStr));
 
   if (!TM) {
@@ -347,7 +343,7 @@ static int AssembleInput(const char *ProgName) {
   // FIXME: There is a bit of code duplication with addPassesToEmitFile.
   if (FileType == OFT_AssemblyFile) {
     MCInstPrinter *IP =
-      TheTarget->createMCInstPrinter(*TM, OutputAsmVariant, *MAI);
+      TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI);
     MCCodeEmitter *CE = 0;
     TargetAsmBackend *TAB = 0;
     if (ShowEncoding) {
@@ -375,7 +371,8 @@ static int AssembleInput(const char *ProgName) {
 
   OwningPtr<MCAsmParser> Parser(createMCAsmParser(*TheTarget, SrcMgr, Ctx,
                                                    *Str.get(), *MAI));
-  OwningPtr<TargetAsmParser> TAP(TheTarget->createAsmParser(*Parser, *TM));
+  OwningPtr<TargetAsmParser>
+    TAP(TheTarget->createAsmParser(TripleName, MCPU, FeaturesStr, *Parser));
   if (!TAP) {
     errs() << ProgName
            << ": error: this target does not support assembly parsing.\n";
@@ -415,17 +412,13 @@ static int DisassembleInput(const char *ProgName, bool Enhanced) {
   } else {
     // Package up features to be passed to target/subtarget
     std::string FeaturesStr;
-    if (MCPU.size()) {
-      SubtargetFeatures Features;
-      Features.setCPU(MCPU);
-      FeaturesStr = Features.getString();
-    }
 
     // FIXME: We shouldn't need to do this (and link in codegen).
     //        When we split this out, we should do it in a way that makes
     //        it straightforward to switch subtargets on the fly (.e.g,
     //        the .cpu and .code16 directives).
     OwningPtr<TargetMachine> TM(TheTarget->createTargetMachine(TripleName,
+                                                               MCPU, 
                                                                FeaturesStr));
 
     if (!TM) {
@@ -434,7 +427,7 @@ static int DisassembleInput(const char *ProgName, bool Enhanced) {
       return 1;
     }
 
-    Res = Disassembler::disassemble(*TheTarget, *TM, TripleName,
+    Res = Disassembler::disassemble(*TheTarget, TripleName,
                                     *Buffer.take(), Out->os());
   }
 

@@ -24,12 +24,13 @@ class PTXTargetMachine;
 namespace PTXISD {
   enum NodeType {
     FIRST_NUMBER = ISD::BUILTIN_OP_END,
-    READ_PARAM,
+    LOAD_PARAM,
+    STORE_PARAM,
     EXIT,
     RET,
     COPY_ADDRESS
   };
-} // namespace PTXISD
+}                               // namespace PTXISD
 
 class PTXTargetLowering : public TargetLowering {
   public:

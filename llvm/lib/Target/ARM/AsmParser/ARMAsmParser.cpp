@@ -20,14 +20,20 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Target/TargetRegistry.h"
 #include "llvm/Target/TargetAsmParser.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
+
+#define GET_SUBTARGETINFO_ENUM
+#include "ARMGenSubtargetInfo.inc"
+
 using namespace llvm;
 
 namespace {
@@ -36,7 +42,7 @@ class ARMOperand;
 
 class ARMAsmParser : public TargetAsmParser {
   MCAsmParser &Parser;
-  TargetMachine &TM;
+  OwningPtr<const MCSubtargetInfo> STI;
 
   MCAsmParser &getParser() const { return Parser; }
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
@@ -79,6 +85,15 @@ class ARMAsmParser : public TargetAsmParser {
   void GetMnemonicAcceptInfo(StringRef Mnemonic, bool &CanAcceptCarrySet,
                              bool &CanAcceptPredicationCode);
 
+  bool isThumb() const {
+    // FIXME: Can tablegen auto-generate this?
+    return (STI->getFeatureBits() & ARM::ModeThumb) != 0;
+  }
+
+  bool isThumbOne() const {
+    return isThumb() && (STI->getFeatureBits() & ARM::FeatureThumb2) == 0;
+  }
+
   /// @name Auto-generated Match Functions
   /// {
 
@@ -113,13 +128,14 @@ class ARMAsmParser : public TargetAsmParser {
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
 
 public:
-  ARMAsmParser(const Target &T, MCAsmParser &_Parser, TargetMachine &_TM)
-    : TargetAsmParser(T), Parser(_Parser), TM(_TM) {
-      MCAsmParserExtension::Initialize(_Parser);
-      // Initialize the set of available features.
-      setAvailableFeatures(ComputeAvailableFeatures(
-          &TM.getSubtarget<ARMSubtarget>()));
-    }
+  ARMAsmParser(StringRef TT, StringRef CPU, StringRef FS, MCAsmParser &_Parser)
+    : TargetAsmParser(), Parser(_Parser),
+      STI(ARM_MC::createARMMCSubtargetInfo(TT, CPU, FS)) {
+
+    MCAsmParserExtension::Initialize(_Parser);
+    // Initialize the set of available features.
+    setAvailableFeatures(ComputeAvailableFeatures(STI->getFeatureBits()));
+  }
 
   virtual bool ParseInstruction(StringRef Name, SMLoc NameLoc,
                                 SmallVectorImpl<MCParsedAsmOperand*> &Operands);
@@ -350,6 +366,22 @@ public:
   bool isCondCode() const { return Kind == CondCode; }
   bool isCCOut() const { return Kind == CCOut; }
   bool isImm() const { return Kind == Immediate; }
+  bool isImm0_255() const {
+    if (Kind != Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= 0 && Value < 256;
+  }
+  bool isT2SOImm() const {
+    if (Kind != Immediate)
+      return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return ARM_AM::getT2SOImmVal(Value) != -1;
+  }
   bool isReg() const { return Kind == Register; }
   bool isRegList() const { return Kind == RegisterList; }
   bool isDPRRegList() const { return Kind == DPRRegisterList; }
@@ -511,6 +543,16 @@ public:
   }
 
   void addImmOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    addExpr(Inst, getImm());
+  }
+
+  void addImm0_255Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    addExpr(Inst, getImm());
+  }
+
+  void addT2SOImmOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     addExpr(Inst, getImm());
   }
@@ -1761,7 +1803,7 @@ static StringRef SplitMnemonic(StringRef Mnemonic,
       Mnemonic == "vcle" ||
       (Mnemonic == "smlal" || Mnemonic == "umaal" || Mnemonic == "umlal" ||
        Mnemonic == "vabal" || Mnemonic == "vmlal" || Mnemonic == "vpadal" ||
-       Mnemonic == "vqdmlal"))
+       Mnemonic == "vqdmlal" || Mnemonic == "bics"))
     return Mnemonic;
 
   // First, split out any predication code.
@@ -1769,7 +1811,9 @@ static StringRef SplitMnemonic(StringRef Mnemonic,
     .Case("eq", ARMCC::EQ)
     .Case("ne", ARMCC::NE)
     .Case("hs", ARMCC::HS)
+    .Case("cs", ARMCC::HS)
     .Case("lo", ARMCC::LO)
+    .Case("cc", ARMCC::LO)
     .Case("mi", ARMCC::MI)
     .Case("pl", ARMCC::PL)
     .Case("vs", ARMCC::VS)
@@ -1824,8 +1868,6 @@ static StringRef SplitMnemonic(StringRef Mnemonic,
 void ARMAsmParser::
 GetMnemonicAcceptInfo(StringRef Mnemonic, bool &CanAcceptCarrySet,
                       bool &CanAcceptPredicationCode) {
-  bool isThumb = TM.getSubtarget<ARMSubtarget>().isThumb();
-
   if (Mnemonic == "and" || Mnemonic == "lsl" || Mnemonic == "lsr" ||
       Mnemonic == "rrx" || Mnemonic == "ror" || Mnemonic == "sub" ||
       Mnemonic == "smull" || Mnemonic == "add" || Mnemonic == "adc" ||
@@ -1834,7 +1876,7 @@ GetMnemonicAcceptInfo(StringRef Mnemonic, bool &CanAcceptCarrySet,
       Mnemonic == "rsb" || Mnemonic == "rsc" || Mnemonic == "orn" ||
       Mnemonic == "sbc" || Mnemonic == "mla" || Mnemonic == "umull" ||
       Mnemonic == "eor" || Mnemonic == "smlal" ||
-      (Mnemonic == "mov" && !isThumb)) {
+      (Mnemonic == "mov" && !isThumbOne())) {
     CanAcceptCarrySet = true;
   } else {
     CanAcceptCarrySet = false;
@@ -1851,10 +1893,9 @@ GetMnemonicAcceptInfo(StringRef Mnemonic, bool &CanAcceptCarrySet,
     CanAcceptPredicationCode = true;
   }
 
-  if (isThumb)
+  if (isThumb())
     if (Mnemonic == "bkpt" || Mnemonic == "mcr" || Mnemonic == "mcrr" ||
-        Mnemonic == "mrc" || Mnemonic == "mrrc" || Mnemonic == "cdp" ||
-        Mnemonic == "mov")
+        Mnemonic == "mrc" || Mnemonic == "mrrc" || Mnemonic == "cdp")
       CanAcceptPredicationCode = false;
 }
 
@@ -2179,12 +2220,12 @@ bool ARMAsmParser::ParseDirectiveCode(SMLoc L) {
   // includes Feature_IsThumb or not to match the right instructions.  This is
   // blocked on the FIXME in llvm-mc.cpp when creating the TargetMachine.
   if (Val == 16){
-    assert(TM.getSubtarget<ARMSubtarget>().isThumb() &&
+    assert(isThumb() &&
 	   "switching between arm/thumb not yet suppported via .code 16)");
     getParser().getStreamer().EmitAssemblerFlag(MCAF_Code16);
   }
   else{
-    assert(!TM.getSubtarget<ARMSubtarget>().isThumb() &&
+    assert(!isThumb() &&
            "switching between thumb/arm not yet suppported via .code 32)");
     getParser().getStreamer().EmitAssemblerFlag(MCAF_Code32);
    }

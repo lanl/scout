@@ -25,11 +25,12 @@ extern "C" void LLVMInitializeAlphaTarget() {
 }
 
 AlphaTargetMachine::AlphaTargetMachine(const Target &T, const std::string &TT,
+                                       const std::string &CPU,
                                        const std::string &FS)
-  : LLVMTargetMachine(T, TT),
+  : LLVMTargetMachine(T, TT, CPU, FS),
     DataLayout("e-f128:128:128-n64"),
     FrameLowering(Subtarget),
-    Subtarget(TT, FS),
+    Subtarget(TT, CPU, FS),
     TLInfo(*this),
     TSInfo(*this) {
   setRelocationModel(Reloc::PIC_);

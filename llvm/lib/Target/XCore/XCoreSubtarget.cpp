@@ -7,14 +7,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the XCore specific subclass of TargetSubtarget.
+// This file implements the XCore specific subclass of TargetSubtargetInfo.
 //
 //===----------------------------------------------------------------------===//
 
 #include "XCoreSubtarget.h"
 #include "XCore.h"
+
+#define GET_SUBTARGETINFO_ENUM
+#define GET_SUBTARGETINFO_MC_DESC
+#define GET_SUBTARGETINFO_TARGET_DESC
+#define GET_SUBTARGETINFO_CTOR
+#include "XCoreGenSubtargetInfo.inc"
+
 using namespace llvm;
 
-XCoreSubtarget::XCoreSubtarget(const std::string &TT, const std::string &FS)
+XCoreSubtarget::XCoreSubtarget(const std::string &TT,
+                               const std::string &CPU, const std::string &FS)
+  : XCoreGenSubtargetInfo(TT, CPU, FS)
 {
 }

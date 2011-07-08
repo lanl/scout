@@ -26,11 +26,19 @@ class SubRegIndex {
   string Namespace = "";
 }
 
+// RegAltNameIndex - The alternate name set to use for register operands of
+// this register class when printing.
+class RegAltNameIndex {
+  string Namespace = "";
+}
+def NoRegAltName : RegAltNameIndex;
+
 // Register - You should define one instance of this class for each register
 // in the target machine.  String n will become the "name" of the register.
-class Register<string n> {
+class Register<string n, list<string> altNames = []> {
   string Namespace = "";
   string AsmName = n;
+  list<string> AltNames = altNames;
 
   // Aliases - A list of registers that this register overlaps with.  A read or
   // modification of this register can potentially read or modify the aliased
@@ -47,6 +55,10 @@ class Register<string n> {
   // to address it. Sub-sub-register indices are automatically inherited from
   // SubRegs.
   list<SubRegIndex> SubRegIndices = [];
+
+  // RegAltNameIndices - The alternate name indices which are valid for this
+  // register.
+  list<RegAltNameIndex> RegAltNameIndices = [];
 
   // CompositeIndices - Specify subreg indices that don't correspond directly to
   // a register in SubRegs and are not inherited. The following formats are
@@ -92,7 +104,7 @@ class RegisterWithSubRegs<string n, list<Register> subregs> : Register<n> {
 // registers by register allocators.
 //
 class RegisterClass<string namespace, list<ValueType> regTypes, int alignment,
-                    dag regList> {
+                    dag regList, RegAltNameIndex idx = NoRegAltName> {
   string Namespace = namespace;
 
   // RegType - Specify the list ValueType of the registers in this register
@@ -123,6 +135,11 @@ class RegisterClass<string namespace, list<ValueType> regTypes, int alignment,
   // allocation used by the register allocator.
   //
   dag MemberList = regList;
+
+  // AltNameIndex - The alternate register name to use when printing operands
+  // of this register class. Every register in the register class must have
+  // a valid alternate name for the given index.
+  RegAltNameIndex altNameIndex = idx;
 
   // SubRegClasses - Specify the register class of subregisters as a list of
   // dags: (RegClass SubRegIndex, SubRegindex, ...)
@@ -307,6 +324,9 @@ class Instruction {
   bit isAsCheapAsAMove = 0; // As cheap (or cheaper) than a move instruction.
   bit hasExtraSrcRegAllocReq = 0; // Sources have special regalloc requirement?
   bit hasExtraDefRegAllocReq = 0; // Defs have special regalloc requirement?
+  bit isPseudo     = 0;     // Is this instruction a pseudo-instruction?
+                            // If so, won't have encoding information for
+                            // the [MC]CodeEmitter stuff.
 
   // Side effect flags - When set, the flags have these meanings:
   //
@@ -321,6 +341,11 @@ class Instruction {
   // Is this instruction a "real" instruction (with a distinct machine
   // encoding), or is it a pseudo instruction used for codegen modeling
   // purposes.
+  // FIXME: For now this is distinct from isPseudo, above, as code-gen-only
+  // instructions can (and often do) still have encoding information
+  // associated with them. Once we've migrated all of them over to true
+  // pseudo-instructions that are lowered to real instructions prior to
+  // the printer/emitter, we can remove this attribute and just use isPseudo.
   bit isCodeGenOnly = 0;
 
   // Is this instruction a pseudo instruction for use by the assembler parser.
@@ -348,6 +373,14 @@ class Instruction {
   ///@}
 }
 
+/// PseudoInstExpansion - Expansion information for a pseudo-instruction.
+/// Which instruction it expands to and how the operands map from the
+/// pseudo.
+class PseudoInstExpansion<dag Result> {
+  dag ResultInst = Result;     // The instruction to generate.
+  bit isPseudo = 1;
+}
+
 /// Predicates - These are extra conditionals which are turned into instruction
 /// selector matching code. Currently each predicate is just a string.
 class Predicate<string cond> {
@@ -357,6 +390,15 @@ class Predicate<string cond> {
   /// matcher, this is true.  Targets should set this by inheriting their
   /// feature from the AssemblerPredicate class in addition to Predicate.
   bit AssemblerMatcherPredicate = 0;
+
+  /// AssemblerCondString - Name of the subtarget feature being tested used
+  /// as alternative condition string used for assembler matcher.
+  /// e.g. "ModeThumb" is translated to "(Bits & ModeThumb) != 0".
+  ///      "!ModeThumb" is translated to "(Bits & ModeThumb) == 0".
+  /// It can also list multiple features separated by ",".
+  /// e.g. "ModeThumb,FeatureThumb2" is translated to
+  ///      "(Bits & ModeThumb) != 0 && (Bits & FeatureThumb2) != 0".
+  string AssemblerCondString = "";
 }
 
 /// NoHonorSignDependentRounding - This predicate is true if support for
@@ -464,6 +506,24 @@ class Operand<ValueType ty> {
   // can match a subset of some other class, in which case the AsmOperandClass
   // should declare the other operand as one of its super classes.
   AsmOperandClass ParserMatchClass = ImmAsmOperand;
+}
+
+class RegisterOperand<RegisterClass regclass, string pm = "printOperand"> {
+  // RegClass - The register class of the operand.
+  RegisterClass RegClass = regclass;
+  // PrintMethod - The target method to call to print register operands of
+  // this type. The method normally will just use an alt-name index to look
+  // up the name to print. Default to the generic printOperand().
+  string PrintMethod = pm;
+  // ParserMatchClass - The "match class" that operands of this type fit
+  // in. Match classes are used to define the order in which instructions are
+  // match, to ensure that which instructions gets matched is deterministic.
+  //
+  // The target specific parser must be able to classify an parsed operand into
+  // a unique class, which does not partially overlap with any other classes. It
+  // can match a subset of some other class, in which case the AsmOperandClass
+  // should declare the other operand as one of its super classes.
+  AsmOperandClass ParserMatchClass;
 }
 
 def i1imm  : Operand<i1>;
@@ -646,8 +706,9 @@ def DefaultAsmParser : AsmParser;
 
 /// AssemblerPredicate - This is a Predicate that can be used when the assembler
 /// matches instructions and aliases.
-class AssemblerPredicate {
+class AssemblerPredicate<string cond> {
   bit AssemblerMatcherPredicate = 1;
+  string AssemblerCondString = cond;
 }
 
 

@@ -255,6 +255,12 @@ let Properties = [IntrReadMem] in {
   def int_exp2 : Intrinsic<[llvm_anyfloat_ty], [LLVMMatchType<0>]>;
 }
 
+let Properties = [IntrNoMem] in {
+  def int_fma  : Intrinsic<[llvm_anyfloat_ty],
+                         [LLVMMatchType<0>, LLVMMatchType<0>,
+                          LLVMMatchType<0>]>;
+}
+
 // NOTE: these are internal interfaces.
 def int_setjmp     : Intrinsic<[llvm_i32_ty],  [llvm_ptr_ty]>;
 def int_longjmp    : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty]>;
@@ -265,6 +271,11 @@ def int_siglongjmp : Intrinsic<[], [llvm_ptr_ty, llvm_i32_ty]>;
 def int_objectsize : Intrinsic<[llvm_anyint_ty], [llvm_ptr_ty, llvm_i1_ty],
                                [IntrNoMem]>,
                                GCCBuiltin<"__builtin_object_size">;
+
+//===------------------------- Expect Intrinsics --------------------------===//
+//
+def int_expect : Intrinsic<[llvm_anyint_ty], [LLVMMatchType<0>,
+                                              LLVMMatchType<0>], [IntrNoMem]>;
 
 //===-------------------- Bit Manipulation Intrinsics ---------------------===//
 //

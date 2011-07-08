@@ -20,6 +20,7 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 
 namespace llvm {
+  template <typename T> class ArrayRef;
   class MCSection;
   class MCContext;
   class MachineFunction;
@@ -30,8 +31,9 @@ class TargetAsmInfo {
   unsigned PointerSize;
   bool IsLittleEndian;
   TargetFrameLowering::StackDirection StackDir;
-  const TargetRegisterInfo *TRI;
   std::vector<MachineMove> InitialFrameState;
+  const TargetRegisterInfo *TRI;
+  const TargetFrameLowering *TFI;
   const TargetLoweringObjectFile *TLOF;
 
 public:
@@ -82,6 +84,9 @@ public:
   bool isFunctionEHFrameSymbolPrivate() const {
     return TLOF->isFunctionEHFrameSymbolPrivate();
   }
+
+  int getCompactUnwindEncoding(ArrayRef<MCCFIInstruction> Instrs,
+                               int DataAlignmentFactor, bool IsEH) const;
 
   const unsigned *getCalleeSavedRegs(MachineFunction *MF = 0) const {
     return TRI->getCalleeSavedRegs(MF);

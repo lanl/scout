@@ -438,8 +438,10 @@ def HasFMA3      : Predicate<"Subtarget->hasFMA3()">;
 def HasFMA4      : Predicate<"Subtarget->hasFMA4()">;
 def FPStackf32   : Predicate<"!Subtarget->hasXMM()">;
 def FPStackf64   : Predicate<"!Subtarget->hasXMMInt()">;
-def In32BitMode  : Predicate<"!Subtarget->is64Bit()">, AssemblerPredicate;
-def In64BitMode  : Predicate<"Subtarget->is64Bit()">, AssemblerPredicate;
+def In32BitMode  : Predicate<"!Subtarget->is64Bit()">,
+                             AssemblerPredicate<"!Mode64Bit">;
+def In64BitMode  : Predicate<"Subtarget->is64Bit()">,
+                             AssemblerPredicate<"Mode64Bit">;
 def IsWin64      : Predicate<"Subtarget->isTargetWin64()">;
 def NotWin64     : Predicate<"!Subtarget->isTargetWin64()">;
 def SmallCode    : Predicate<"TM.getCodeModel() == CodeModel::Small">;
@@ -669,7 +671,7 @@ def PUSH64rmm: I<0xFF, MRM6m, (outs), (ins i64mem:$src), "push{q}\t$src", []>;
 }
 
 let Defs = [RSP], Uses = [RSP], neverHasSideEffects = 1, mayStore = 1 in {
-def PUSH64i8   : Ii8<0x6a, RawFrm, (outs), (ins i8imm:$imm),
+def PUSH64i8   : Ii8<0x6a, RawFrm, (outs), (ins i64i8imm:$imm),
                      "push{q}\t$imm", []>;
 def PUSH64i16  : Ii16<0x68, RawFrm, (outs), (ins i16imm:$imm),
                       "push{q}\t$imm", []>;

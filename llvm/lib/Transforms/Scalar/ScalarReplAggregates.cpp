@@ -30,6 +30,7 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Analysis/DebugInfo.h"
 #include "llvm/Analysis/DIBuilder.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/Loads.h"
@@ -152,7 +153,8 @@ namespace {
     void RewriteLoadUserOfWholeAlloca(LoadInst *LI, AllocaInst *AI,
                                       SmallVector<AllocaInst*, 32> &NewElts);
 
-    static MemTransferInst *isOnlyCopiedFromConstantGlobal(AllocaInst *AI);
+    static MemTransferInst *isOnlyCopiedFromConstantGlobal(
+        AllocaInst *AI, SmallVector<Instruction*, 4> &ToDelete);
   };
   
   // SROA_DT - SROA that uses DominatorTree.
@@ -1093,16 +1095,37 @@ bool SROA::runOnFunction(Function &F) {
 namespace {
 class AllocaPromoter : public LoadAndStorePromoter {
   AllocaInst *AI;
+  DIBuilder *DIB;
+  SmallVector<DbgDeclareInst *, 4> DDIs;
+  SmallVector<DbgValueInst *, 4> DVIs;
 public:
   AllocaPromoter(const SmallVectorImpl<Instruction*> &Insts, SSAUpdater &S,
-                 DbgDeclareInst *DD, DIBuilder *&DB)
-    : LoadAndStorePromoter(Insts, S, DD, DB), AI(0) {}
+                 DIBuilder *DB)
+    : LoadAndStorePromoter(Insts, S), AI(0), DIB(DB) {}
   
   void run(AllocaInst *AI, const SmallVectorImpl<Instruction*> &Insts) {
     // Remember which alloca we're promoting (for isInstInList).
     this->AI = AI;
+    if (MDNode *DebugNode = MDNode::getIfExists(AI->getContext(), AI))
+      for (Value::use_iterator UI = DebugNode->use_begin(),
+             E = DebugNode->use_end(); UI != E; ++UI)
+        if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(*UI))
+          DDIs.push_back(DDI);
+        else if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(*UI))
+          DVIs.push_back(DVI);
+
     LoadAndStorePromoter::run(Insts);
     AI->eraseFromParent();
+    for (SmallVector<DbgDeclareInst *, 4>::iterator I = DDIs.begin(), 
+           E = DDIs.end(); I != E; ++I) {
+      DbgDeclareInst *DDI = *I;
+      DDI->eraseFromParent();
+    }
+    for (SmallVector<DbgValueInst *, 4>::iterator I = DVIs.begin(), 
+           E = DVIs.end(); I != E; ++I) {
+      DbgValueInst *DVI = *I;
+      DVI->eraseFromParent();
+    }
   }
   
   virtual bool isInstInList(Instruction *I,
@@ -1110,6 +1133,45 @@ public:
     if (LoadInst *LI = dyn_cast<LoadInst>(I))
       return LI->getOperand(0) == AI;
     return cast<StoreInst>(I)->getPointerOperand() == AI;
+  }
+
+  virtual void updateDebugInfo(Instruction *Inst) const {
+    for (SmallVector<DbgDeclareInst *, 4>::const_iterator I = DDIs.begin(), 
+           E = DDIs.end(); I != E; ++I) {
+      DbgDeclareInst *DDI = *I;
+      if (StoreInst *SI = dyn_cast<StoreInst>(Inst))
+        ConvertDebugDeclareToDebugValue(DDI, SI, *DIB);
+      else if (LoadInst *LI = dyn_cast<LoadInst>(Inst))
+        ConvertDebugDeclareToDebugValue(DDI, LI, *DIB);
+    }
+    for (SmallVector<DbgValueInst *, 4>::const_iterator I = DVIs.begin(), 
+           E = DVIs.end(); I != E; ++I) {
+      DbgValueInst *DVI = *I;
+      if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+        Instruction *DbgVal = NULL;
+        // If an argument is zero extended then use argument directly. The ZExt
+        // may be zapped by an optimization pass in future.
+        Argument *ExtendedArg = NULL;
+        if (ZExtInst *ZExt = dyn_cast<ZExtInst>(SI->getOperand(0)))
+          ExtendedArg = dyn_cast<Argument>(ZExt->getOperand(0));
+        if (SExtInst *SExt = dyn_cast<SExtInst>(SI->getOperand(0)))
+          ExtendedArg = dyn_cast<Argument>(SExt->getOperand(0));
+        if (ExtendedArg)
+          DbgVal = DIB->insertDbgValueIntrinsic(ExtendedArg, 0, 
+                                                DIVariable(DVI->getVariable()),
+                                                SI);
+        else
+          DbgVal = DIB->insertDbgValueIntrinsic(SI->getOperand(0), 0, 
+                                                DIVariable(DVI->getVariable()),
+                                                SI);
+        DbgVal->setDebugLoc(DVI->getDebugLoc());
+      } else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+        Instruction *DbgVal = 
+          DIB->insertDbgValueIntrinsic(LI->getOperand(0), 0, 
+                                       DIVariable(DVI->getVariable()), LI);
+        DbgVal->setDebugLoc(DVI->getDebugLoc());
+      }
+    }
   }
 };
 } // end anon namespace
@@ -1302,7 +1364,7 @@ static bool tryToMakeAllocaBePromotable(AllocaInst *AI, const TargetData *TD) {
         LoadInst *TrueLoad = 
           Builder.CreateLoad(SI->getTrueValue(), LI->getName()+".t");
         LoadInst *FalseLoad = 
-          Builder.CreateLoad(SI->getFalseValue(), LI->getName()+".t");
+          Builder.CreateLoad(SI->getFalseValue(), LI->getName()+".f");
         
         // Transfer alignment and TBAA info if present.
         TrueLoad->setAlignment(LI->getAlignment());
@@ -1380,10 +1442,9 @@ bool SROA::performPromotion(Function &F) {
     DT = &getAnalysis<DominatorTree>();
 
   BasicBlock &BB = F.getEntryBlock();  // Get the entry node for the function
-
+  DIBuilder DIB(*F.getParent());
   bool Changed = false;
   SmallVector<Instruction*, 64> Insts;
-  DIBuilder *DIB = 0;
   while (1) {
     Allocas.clear();
 
@@ -1407,21 +1468,13 @@ bool SROA::performPromotion(Function &F) {
         for (Value::use_iterator UI = AI->use_begin(), E = AI->use_end();
              UI != E; ++UI)
           Insts.push_back(cast<Instruction>(*UI));
-
-        DbgDeclareInst *DDI = FindAllocaDbgDeclare(AI);
-        if (DDI && !DIB)
-          DIB = new DIBuilder(*AI->getParent()->getParent()->getParent());
-        AllocaPromoter(Insts, SSA, DDI, DIB).run(AI, Insts);
+        AllocaPromoter(Insts, SSA, &DIB).run(AI, Insts);
         Insts.clear();
       }
     }
     NumPromoted += Allocas.size();
     Changed = true;
   }
-
-  // FIXME: Is there a better way to handle the lazy initialization of DIB
-  // so that there doesn't need to be an explicit delete?
-  delete DIB;
 
   return Changed;
 }
@@ -1443,8 +1496,8 @@ static bool ShouldAttemptScalarRepl(AllocaInst *AI) {
 
 
 // performScalarRepl - This algorithm is a simple worklist driven algorithm,
-// which runs on all of the malloc/alloca instructions in the function, removing
-// them if they are only used by getelementptr instructions.
+// which runs on all of the alloca instructions in the function, removing them
+// if they are only used by getelementptr instructions.
 //
 bool SROA::performScalarRepl(Function &F) {
   std::vector<AllocaInst*> WorkList;
@@ -1478,12 +1531,15 @@ bool SROA::performScalarRepl(Function &F) {
     // the constant global instead.  This is commonly produced by the CFE by
     // constructs like "void foo() { int A[] = {1,2,3,4,5,6,7,8,9...}; }" if 'A'
     // is only subsequently read.
-    if (MemTransferInst *TheCopy = isOnlyCopiedFromConstantGlobal(AI)) {
+    SmallVector<Instruction *, 4> ToDelete;
+    if (MemTransferInst *Copy = isOnlyCopiedFromConstantGlobal(AI, ToDelete)) {
       DEBUG(dbgs() << "Found alloca equal to global: " << *AI << '\n');
-      DEBUG(dbgs() << "  memcpy = " << *TheCopy << '\n');
-      Constant *TheSrc = cast<Constant>(TheCopy->getSource());
+      DEBUG(dbgs() << "  memcpy = " << *Copy << '\n');
+      for (unsigned i = 0, e = ToDelete.size(); i != e; ++i)
+        ToDelete[i]->eraseFromParent();
+      Constant *TheSrc = cast<Constant>(Copy->getSource());
       AI->replaceAllUsesWith(ConstantExpr::getBitCast(TheSrc, AI->getType()));
-      TheCopy->eraseFromParent();  // Don't mutate the global.
+      Copy->eraseFromParent();  // Don't mutate the global.
       AI->eraseFromParent();
       ++NumGlobals;
       Changed = true;
@@ -2507,8 +2563,14 @@ static bool PointsToConstantGlobal(Value *V) {
 /// the uses.  If we see a memcpy/memmove that targets an unoffseted pointer to
 /// the alloca, and if the source pointer is a pointer to a constant global, we
 /// can optimize this.
-static bool isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
-                                           bool isOffset) {
+static bool
+isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
+                               bool isOffset,
+                               SmallVector<Instruction *, 4> &LifetimeMarkers) {
+  // We track lifetime intrinsics as we encounter them.  If we decide to go
+  // ahead and replace the value with the global, this lets the caller quickly
+  // eliminate the markers.
+
   for (Value::use_iterator UI = V->use_begin(), E = V->use_end(); UI!=E; ++UI) {
     User *U = cast<Instruction>(*UI);
 
@@ -2520,7 +2582,8 @@ static bool isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
 
     if (BitCastInst *BCI = dyn_cast<BitCastInst>(U)) {
       // If uses of the bitcast are ok, we are ok.
-      if (!isOnlyCopiedFromConstantGlobal(BCI, TheCopy, isOffset))
+      if (!isOnlyCopiedFromConstantGlobal(BCI, TheCopy, isOffset,
+                                          LifetimeMarkers))
         return false;
       continue;
     }
@@ -2528,7 +2591,8 @@ static bool isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
       // If the GEP has all zero indices, it doesn't offset the pointer.  If it
       // doesn't, it does.
       if (!isOnlyCopiedFromConstantGlobal(GEP, TheCopy,
-                                         isOffset || !GEP->hasAllZeroIndices()))
+                                          isOffset || !GEP->hasAllZeroIndices(),
+                                          LifetimeMarkers))
         return false;
       continue;
     }
@@ -2552,6 +2616,16 @@ static bool isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
       // copy, so it is only a read of the alloca.
       if (CS.paramHasAttr(ArgNo+1, Attribute::ByVal))
         continue;
+    }
+
+    // Lifetime intrinsics can be handled by the caller.
+    if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(U)) {
+      if (II->getIntrinsicID() == Intrinsic::lifetime_start ||
+          II->getIntrinsicID() == Intrinsic::lifetime_end) {
+        assert(II->use_empty() && "Lifetime markers have no result to use!");
+        LifetimeMarkers.push_back(II);
+        continue;
+      }
     }
 
     // If this is isn't our memcpy/memmove, reject it as something we can't
@@ -2590,9 +2664,11 @@ static bool isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
 /// isOnlyCopiedFromConstantGlobal - Return true if the specified alloca is only
 /// modified by a copy from a constant global.  If we can prove this, we can
 /// replace any uses of the alloca with uses of the global directly.
-MemTransferInst *SROA::isOnlyCopiedFromConstantGlobal(AllocaInst *AI) {
+MemTransferInst *
+SROA::isOnlyCopiedFromConstantGlobal(AllocaInst *AI,
+                                     SmallVector<Instruction*, 4> &ToDelete) {
   MemTransferInst *TheCopy = 0;
-  if (::isOnlyCopiedFromConstantGlobal(AI, TheCopy, false))
+  if (::isOnlyCopiedFromConstantGlobal(AI, TheCopy, false, ToDelete))
     return TheCopy;
   return 0;
 }

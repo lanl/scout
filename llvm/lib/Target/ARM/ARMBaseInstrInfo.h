@@ -20,6 +20,9 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
 
+#define GET_INSTRINFO_HEADER
+#include "ARMGenInstrInfo.inc"
+
 namespace llvm {
   class ARMSubtarget;
   class ARMBaseRegisterInfo;
@@ -172,7 +175,7 @@ namespace ARMII {
   };
 }
 
-class ARMBaseInstrInfo : public TargetInstrInfoImpl {
+class ARMBaseInstrInfo : public ARMGenInstrInfo {
   const ARMSubtarget &Subtarget;
 
 protected:
@@ -353,25 +356,25 @@ public:
                         SDNode *UseNode, unsigned UseIdx) const;
 private:
   int getVLDMDefCycle(const InstrItineraryData *ItinData,
-                      const TargetInstrDesc &DefTID,
+                      const MCInstrDesc &DefMCID,
                       unsigned DefClass,
                       unsigned DefIdx, unsigned DefAlign) const;
   int getLDMDefCycle(const InstrItineraryData *ItinData,
-                     const TargetInstrDesc &DefTID,
+                     const MCInstrDesc &DefMCID,
                      unsigned DefClass,
                      unsigned DefIdx, unsigned DefAlign) const;
   int getVSTMUseCycle(const InstrItineraryData *ItinData,
-                      const TargetInstrDesc &UseTID,
+                      const MCInstrDesc &UseMCID,
                       unsigned UseClass,
                       unsigned UseIdx, unsigned UseAlign) const;
   int getSTMUseCycle(const InstrItineraryData *ItinData,
-                     const TargetInstrDesc &UseTID,
+                     const MCInstrDesc &UseMCID,
                      unsigned UseClass,
                      unsigned UseIdx, unsigned UseAlign) const;
   int getOperandLatency(const InstrItineraryData *ItinData,
-                        const TargetInstrDesc &DefTID,
+                        const MCInstrDesc &DefMCID,
                         unsigned DefIdx, unsigned DefAlign,
-                        const TargetInstrDesc &UseTID,
+                        const MCInstrDesc &UseMCID,
                         unsigned UseIdx, unsigned UseAlign) const;
 
   int getInstrLatency(const InstrItineraryData *ItinData,

@@ -588,6 +588,7 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   IMM("imm0_31");
   IMM("imm0_31_m1");
   IMM("nModImm");
+  IMM("imm0_255");
   IMM("imm0_4095");
   IMM("jt2block_operand");
   IMM("t_imm_s4");
@@ -772,6 +773,11 @@ static void populateInstInfo(CompoundConstantEmitter &infoArray,
 
   for (index = 0; index < numInstructions; ++index) {
     const CodeGenInstruction& inst = *numberedInstructions[index];
+
+    // We don't need to do anything for pseudo-instructions, as we'll never
+    // see them here. We'll only see real instructions.
+    if (inst.isPseudo)
+      continue;
 
     CompoundConstantEmitter *infoStruct = new CompoundConstantEmitter;
     infoArray.addEntry(infoStruct);

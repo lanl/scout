@@ -16,7 +16,7 @@ using namespace llvm;
 
 MipsMCAsmInfo::MipsMCAsmInfo(const Target &T, StringRef TT) {
   AlignmentIsInBytes          = false;
-  Data16bitsDirective         = "\t.half\t";
+  Data16bitsDirective         = "\t.2byte\t";
   Data32bitsDirective         = "\t.4byte\t";
   Data64bitsDirective         = 0;
   PrivateGlobalPrefix         = "$";
@@ -28,4 +28,5 @@ MipsMCAsmInfo::MipsMCAsmInfo(const Target &T, StringRef TT) {
   SupportsDebugInformation = true;
   ExceptionsType = ExceptionHandling::DwarfCFI;
   HasLEB128 = true;
+  DwarfRegNumForCFI = true;
 }

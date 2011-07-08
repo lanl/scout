@@ -78,18 +78,23 @@ extern "C" void LLVMInitializeARMTarget() {
 ///
 ARMBaseTargetMachine::ARMBaseTargetMachine(const Target &T,
                                            const std::string &TT,
-                                           const std::string &FS,
-                                           bool isThumb)
-  : LLVMTargetMachine(T, TT),
-    Subtarget(TT, FS, isThumb),
+                                           const std::string &CPU,
+                                           const std::string &FS)
+  : LLVMTargetMachine(T, TT, CPU, FS),
+    Subtarget(TT, CPU, FS),
     JITInfo(),
     InstrItins(Subtarget.getInstrItineraryData()) {
   DefRelocModel = getRelocationModel();
+
+  // Default to soft float ABI
+  if (FloatABIType == FloatABI::Default)
+    FloatABIType = FloatABI::Soft;
 }
 
 ARMTargetMachine::ARMTargetMachine(const Target &T, const std::string &TT,
+                                   const std::string &CPU,
                                    const std::string &FS)
-  : ARMBaseTargetMachine(T, TT, FS, false), InstrInfo(Subtarget),
+  : ARMBaseTargetMachine(T, TT, CPU, FS), InstrInfo(Subtarget),
     DataLayout(Subtarget.isAPCS_ABI() ?
                std::string("e-p:32:32-f64:32:64-i64:32:64-"
                            "v128:32:128-v64:32:64-n32") :
@@ -105,8 +110,9 @@ ARMTargetMachine::ARMTargetMachine(const Target &T, const std::string &TT,
 }
 
 ThumbTargetMachine::ThumbTargetMachine(const Target &T, const std::string &TT,
+                                       const std::string &CPU,
                                        const std::string &FS)
-  : ARMBaseTargetMachine(T, TT, FS, true),
+  : ARMBaseTargetMachine(T, TT, CPU, FS),
     InstrInfo(Subtarget.hasThumb2()
               ? ((ARMBaseInstrInfo*)new Thumb2InstrInfo(Subtarget))
               : ((ARMBaseInstrInfo*)new Thumb1InstrInfo(Subtarget))),

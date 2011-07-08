@@ -15,7 +15,9 @@
 #define X86REGISTERINFO_H
 
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "X86GenRegisterInfo.h.inc"
+
+#define GET_REGINFO_HEADER
+#include "X86GenRegisterInfo.inc"
 
 namespace llvm {
   class Type;
@@ -78,6 +80,10 @@ public:
 
   // FIXME: This should be tablegen'd like getDwarfRegNum is
   int getSEHRegNum(unsigned i) const;
+
+  /// getCompactUnwindRegNum - This function maps the register to the number for
+  /// compact unwind encoding. Return -1 if the register isn't valid.
+  int getCompactUnwindRegNum(unsigned RegNum, bool isEH) const;
 
   /// Code Generation virtual methods...
   /// 

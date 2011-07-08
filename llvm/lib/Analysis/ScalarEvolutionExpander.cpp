@@ -936,7 +936,8 @@ SCEVExpander::getAddRecExprPHILiterally(const SCEVAddRecExpr *Normalized,
   BasicBlock *Header = L->getHeader();
   Builder.SetInsertPoint(Header, Header->begin());
   pred_iterator HPB = pred_begin(Header), HPE = pred_end(Header);
-  PHINode *PN = Builder.CreatePHI(ExpandTy, std::distance(HPB, HPE), "lsr.iv");
+  PHINode *PN = Builder.CreatePHI(ExpandTy, std::distance(HPB, HPE),
+                                  Twine(IVName) + ".iv");
   rememberInstruction(PN);
 
   // Create the step instructions and populate the PHI.
@@ -954,7 +955,7 @@ SCEVExpander::getAddRecExprPHILiterally(const SCEVAddRecExpr *Normalized,
     // at IVIncInsertPos.
     Instruction *InsertPos = L == IVIncInsertLoop ?
       IVIncInsertPos : Pred->getTerminator();
-    Builder.SetInsertPoint(InsertPos->getParent(), InsertPos);
+    Builder.SetInsertPoint(InsertPos);
     Value *IncV;
     // If the PHI is a pointer, use a GEP, otherwise use an add or sub.
     if (isPointer) {
@@ -972,8 +973,8 @@ SCEVExpander::getAddRecExprPHILiterally(const SCEVAddRecExpr *Normalized,
       }
     } else {
       IncV = isNegative ?
-        Builder.CreateSub(PN, StepV, "lsr.iv.next") :
-        Builder.CreateAdd(PN, StepV, "lsr.iv.next");
+        Builder.CreateSub(PN, StepV, Twine(IVName) + ".iv.next") :
+        Builder.CreateAdd(PN, StepV, Twine(IVName) + ".iv.next");
       rememberInstruction(IncV);
     }
     PN->addIncoming(IncV, Pred);

@@ -466,6 +466,12 @@ namespace llvm {
     /// fit into displacement field of the instruction.
     bool isOffsetSuitableForCodeModel(int64_t Offset, CodeModel::Model M,
                                       bool hasSymbolicDisplacement = true);
+
+
+    /// isCalleePop - Determines whether the callee is required to pop its
+    /// own arguments. Callee pop is necessary to support tail calls.
+    bool isCalleePop(CallingConv::ID CallingConv,
+                     bool is64Bit, bool IsVarArg, bool TailCallOpt);
   }
 
   //===--------------------------------------------------------------------===//
@@ -589,10 +595,6 @@ namespace llvm {
     /// The operand object must already have been set up with the operand type.
     virtual ConstraintWeight getSingleConstraintMatchWeight(
       AsmOperandInfo &info, const char *constraint) const;
-
-    std::vector<unsigned>
-      getRegClassForInlineAsmConstraint(const std::string &Constraint,
-                                        EVT VT) const;
 
     virtual const char *LowerXConstraint(EVT ConstraintVT) const;
 

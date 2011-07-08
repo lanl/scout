@@ -235,10 +235,16 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     // Setup Windows compiler runtime calls.
     setLibcallName(RTLIB::SDIV_I64, "_alldiv");
     setLibcallName(RTLIB::UDIV_I64, "_aulldiv");
+    setLibcallName(RTLIB::SREM_I64, "_allrem");
+    setLibcallName(RTLIB::UREM_I64, "_aullrem");
+    setLibcallName(RTLIB::MUL_I64, "_allmul");
     setLibcallName(RTLIB::FPTOUINT_F64_I64, "_ftol2");
     setLibcallName(RTLIB::FPTOUINT_F32_I64, "_ftol2");
     setLibcallCallingConv(RTLIB::SDIV_I64, CallingConv::X86_StdCall);
     setLibcallCallingConv(RTLIB::UDIV_I64, CallingConv::X86_StdCall);
+    setLibcallCallingConv(RTLIB::SREM_I64, CallingConv::X86_StdCall);
+    setLibcallCallingConv(RTLIB::UREM_I64, CallingConv::X86_StdCall);
+    setLibcallCallingConv(RTLIB::MUL_I64, CallingConv::X86_StdCall);
     setLibcallCallingConv(RTLIB::FPTOUINT_F64_I64, CallingConv::C);
     setLibcallCallingConv(RTLIB::FPTOUINT_F32_I64, CallingConv::C);
   }
@@ -646,6 +652,10 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
     addLegalFPImmediate(APFloat(-1.0f)); // FLD1/FCHS
   }
 
+  // We don't support FMA.
+  setOperationAction(ISD::FMA, MVT::f64, Expand);
+  setOperationAction(ISD::FMA, MVT::f32, Expand);
+
   // Long double always uses X87.
   if (!UseSoftFloat) {
     addRegisterClass(MVT::f80, X86::RFP80RegisterClass);
@@ -670,6 +680,8 @@ X86TargetLowering::X86TargetLowering(X86TargetMachine &TM)
       setOperationAction(ISD::FSIN           , MVT::f80  , Expand);
       setOperationAction(ISD::FCOS           , MVT::f80  , Expand);
     }
+
+    setOperationAction(ISD::FMA, MVT::f80, Expand);
   }
 
   // Always use a library call for pow.
@@ -1511,20 +1523,15 @@ X86TargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
     // If this is a call to a function that returns an fp value on the floating
     // point stack, we must guarantee the the value is popped from the stack, so
     // a CopyFromReg is not good enough - the copy instruction may be eliminated
-    // if the return value is not used. We use the FpGET_ST0 instructions
+    // if the return value is not used. We use the FpPOP_RETVAL instruction
     // instead.
     if (VA.getLocReg() == X86::ST0 || VA.getLocReg() == X86::ST1) {
       // If we prefer to use the value in xmm registers, copy it out as f80 and
       // use a truncate to move it from fp stack reg to xmm reg.
       if (isScalarFPTypeInSSEReg(VA.getValVT())) CopyVT = MVT::f80;
-      bool isST0 = VA.getLocReg() == X86::ST0;
-      unsigned Opc = 0;
-      if (CopyVT == MVT::f32) Opc = isST0 ? X86::FpGET_ST0_32:X86::FpGET_ST1_32;
-      if (CopyVT == MVT::f64) Opc = isST0 ? X86::FpGET_ST0_64:X86::FpGET_ST1_64;
-      if (CopyVT == MVT::f80) Opc = isST0 ? X86::FpGET_ST0_80:X86::FpGET_ST1_80;
       SDValue Ops[] = { Chain, InFlag };
-      Chain = SDValue(DAG.getMachineNode(Opc, dl, CopyVT, MVT::Other, MVT::Glue,
-                                         Ops, 2), 1);
+      Chain = SDValue(DAG.getMachineNode(X86::FpPOP_RETVAL, dl, CopyVT,
+                                         MVT::Other, MVT::Glue, Ops, 2), 1);
       Val = Chain.getValue(0);
 
       // Round the f80 to the right size, which also moves it to the appropriate
@@ -1898,7 +1905,7 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
   }
 
   // Some CCs need callee pop.
-  if (Subtarget->IsCalleePop(isVarArg, CallConv)) {
+  if (X86::isCalleePop(CallConv, Is64Bit, isVarArg, GuaranteedTailCallOpt)) {
     FuncInfo->setBytesToPopOnReturn(StackSize); // Callee pops everything.
   } else {
     FuncInfo->setBytesToPopOnReturn(0); // Callee pops nothing.
@@ -2383,7 +2390,7 @@ X86TargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 
   // Create the CALLSEQ_END node.
   unsigned NumBytesForCalleeToPush;
-  if (Subtarget->IsCalleePop(isVarArg, CallConv))
+  if (X86::isCalleePop(CallConv, Is64Bit, isVarArg, GuaranteedTailCallOpt))
     NumBytesForCalleeToPush = NumBytes;    // Callee pops everything
   else if (!Is64Bit && !IsTailCallConvention(CallConv) && IsStructRet)
     // If this is a call to a struct-return function, the callee
@@ -2505,6 +2512,10 @@ bool MatchingStackOffset(SDValue Arg, unsigned Offset, ISD::ArgFlagsTy Flags,
     if (!FINode)
       return false;
     FI = FINode->getIndex();
+  } else if (Arg.getOpcode() == ISD::FrameIndex && Flags.isByVal()) {
+    FrameIndexSDNode *FINode = cast<FrameIndexSDNode>(Arg);
+    FI = FINode->getIndex();
+    Bytes = Flags.getByValSize();
   } else
     return false;
 
@@ -2554,6 +2565,11 @@ X86TargetLowering::IsEligibleForTailCallOptimization(SDValue Callee,
   // Also avoid sibcall optimization if either caller or callee uses struct
   // return semantics.
   if (isCalleeStructRet || isCallerStructRet)
+    return false;
+
+  // An stdcall caller is expected to clean up its arguments; the callee
+  // isn't going to do that.
+  if (!CCMatch && CallerCC==CallingConv::X86_StdCall)
     return false;
 
   // Do not sibcall optimize vararg calls unless all arguments are passed via
@@ -2691,11 +2707,6 @@ X86TargetLowering::IsEligibleForTailCallOptimization(SDValue Callee,
       }
     }
   }
-
-  // An stdcall caller is expected to clean up its arguments; the callee
-  // isn't going to do that.
-  if (!CCMatch && CallerCC==CallingConv::X86_StdCall)
-    return false;
 
   return true;
 }
@@ -2874,6 +2885,29 @@ bool X86::isOffsetSuitableForCodeModel(int64_t Offset, CodeModel::Model M,
     return true;
 
   return false;
+}
+
+/// isCalleePop - Determines whether the callee is required to pop its
+/// own arguments. Callee pop is necessary to support tail calls.
+bool X86::isCalleePop(CallingConv::ID CallingConv,
+                      bool is64Bit, bool IsVarArg, bool TailCallOpt) {
+  if (IsVarArg)
+    return false;
+
+  switch (CallingConv) {
+  default:
+    return false;
+  case CallingConv::X86_StdCall:
+    return !is64Bit;
+  case CallingConv::X86_FastCall:
+    return !is64Bit;
+  case CallingConv::X86_ThisCall:
+    return !is64Bit;
+  case CallingConv::Fast:
+    return TailCallOpt;
+  case CallingConv::GHC:
+    return TailCallOpt;
+  }
 }
 
 /// TranslateX86CC - do a one to one translation of a ISD::CondCode to the X86
@@ -9045,10 +9079,11 @@ SDValue X86TargetLowering::LowerXALUO(SDValue Op, SelectionDAG &DAG) const {
 SDValue X86TargetLowering::LowerMEMBARRIER(SDValue Op, SelectionDAG &DAG) const{
   DebugLoc dl = Op.getDebugLoc();
 
-  if (!Subtarget->hasSSE2()) {
+  // Go ahead and emit the fence on x86-64 even if we asked for no-sse2.
+  // There isn't any reason to disable it if the target processor supports it.
+  if (!Subtarget->hasSSE2() && !Subtarget->is64Bit()) {
     SDValue Chain = Op.getOperand(0);
-    SDValue Zero = DAG.getConstant(0,
-                                   Subtarget->is64Bit() ? MVT::i64 : MVT::i32);
+    SDValue Zero = DAG.getConstant(0, MVT::i32);
     SDValue Ops[] = {
       DAG.getRegister(X86::ESP, MVT::i32), // Base
       DAG.getTargetConstant(1, MVT::i8),   // Scale
@@ -12570,6 +12605,7 @@ X86TargetLowering::getConstraintType(const std::string &Constraint) const {
     case 'y':
     case 'x':
     case 'Y':
+    case 'l':
       return C_RegisterClass;
     case 'a':
     case 'b':
@@ -12853,60 +12889,6 @@ void X86TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
   return TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops, DAG);
 }
 
-std::vector<unsigned> X86TargetLowering::
-getRegClassForInlineAsmConstraint(const std::string &Constraint,
-                                  EVT VT) const {
-  if (Constraint.size() == 1) {
-    // FIXME: not handling fp-stack yet!
-    switch (Constraint[0]) {      // GCC X86 Constraint Letters
-    default: break;  // Unknown constraint letter
-    case 'q':   // GENERAL_REGS in 64-bit mode, Q_REGS in 32-bit mode.
-      if (Subtarget->is64Bit()) {
-        if (VT == MVT::i32)
-          return make_vector<unsigned>(X86::EAX, X86::EDX, X86::ECX, X86::EBX,
-                                       X86::ESI, X86::EDI, X86::R8D, X86::R9D,
-                                       X86::R10D,X86::R11D,X86::R12D,
-                                       X86::R13D,X86::R14D,X86::R15D,
-                                       X86::EBP, X86::ESP, 0);
-        else if (VT == MVT::i16)
-          return make_vector<unsigned>(X86::AX,  X86::DX,  X86::CX, X86::BX,
-                                       X86::SI,  X86::DI,  X86::R8W,X86::R9W,
-                                       X86::R10W,X86::R11W,X86::R12W,
-                                       X86::R13W,X86::R14W,X86::R15W,
-                                       X86::BP,  X86::SP, 0);
-        else if (VT == MVT::i8)
-          return make_vector<unsigned>(X86::AL,  X86::DL,  X86::CL, X86::BL,
-                                       X86::SIL, X86::DIL, X86::R8B,X86::R9B,
-                                       X86::R10B,X86::R11B,X86::R12B,
-                                       X86::R13B,X86::R14B,X86::R15B,
-                                       X86::BPL, X86::SPL, 0);
-
-        else if (VT == MVT::i64)
-          return make_vector<unsigned>(X86::RAX, X86::RDX, X86::RCX, X86::RBX,
-                                       X86::RSI, X86::RDI, X86::R8,  X86::R9,
-                                       X86::R10, X86::R11, X86::R12,
-                                       X86::R13, X86::R14, X86::R15,
-                                       X86::RBP, X86::RSP, 0);
-
-        break;
-      }
-      // 32-bit fallthrough
-    case 'Q':   // Q_REGS
-      if (VT == MVT::i32)
-        return make_vector<unsigned>(X86::EAX, X86::EDX, X86::ECX, X86::EBX, 0);
-      else if (VT == MVT::i16)
-        return make_vector<unsigned>(X86::AX, X86::DX, X86::CX, X86::BX, 0);
-      else if (VT == MVT::i8)
-        return make_vector<unsigned>(X86::AL, X86::DL, X86::CL, X86::BL, 0);
-      else if (VT == MVT::i64)
-        return make_vector<unsigned>(X86::RAX, X86::RDX, X86::RCX, X86::RBX, 0);
-      break;
-    }
-  }
-
-  return std::vector<unsigned>();
-}
-
 std::pair<unsigned, const TargetRegisterClass*>
 X86TargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
                                                 EVT VT) const {
@@ -12916,6 +12898,32 @@ X86TargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
     // GCC Constraint Letters
     switch (Constraint[0]) {
     default: break;
+      // TODO: Slight differences here in allocation order and leaving
+      // RIP in the class. Do they matter any more here than they do
+      // in the normal allocation?
+    case 'q':   // GENERAL_REGS in 64-bit mode, Q_REGS in 32-bit mode.
+      if (Subtarget->is64Bit()) {
+	if (VT == MVT::i32 || VT == MVT::f32)
+	  return std::make_pair(0U, X86::GR32RegisterClass);
+	else if (VT == MVT::i16)
+	  return std::make_pair(0U, X86::GR16RegisterClass);
+	else if (VT == MVT::i8)
+	  return std::make_pair(0U, X86::GR8RegisterClass);
+	else if (VT == MVT::i64 || VT == MVT::f64)
+	  return std::make_pair(0U, X86::GR64RegisterClass);
+	break;
+      }
+      // 32-bit fallthrough
+    case 'Q':   // Q_REGS
+      if (VT == MVT::i32 || VT == MVT::f32)
+	return std::make_pair(0U, X86::GR32_ABCDRegisterClass);
+      else if (VT == MVT::i16)
+	return std::make_pair(0U, X86::GR16_ABCDRegisterClass);
+      else if (VT == MVT::i8)
+	return std::make_pair(0U, X86::GR8_ABCD_LRegisterClass);
+      else if (VT == MVT::i64)
+	return std::make_pair(0U, X86::GR64_ABCDRegisterClass);
+      break;
     case 'r':   // GENERAL_REGS
     case 'l':   // INDEX_REGS
       if (VT == MVT::i8)

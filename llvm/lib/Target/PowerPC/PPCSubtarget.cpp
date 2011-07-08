@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the PPC specific subclass of TargetSubtarget.
+// This file implements the PPC specific subclass of TargetSubtargetInfo.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,8 +15,14 @@
 #include "PPC.h"
 #include "llvm/GlobalValue.h"
 #include "llvm/Target/TargetMachine.h"
-#include "PPCGenSubtarget.inc"
 #include <cstdlib>
+
+#define GET_SUBTARGETINFO_ENUM
+#define GET_SUBTARGETINFO_MC_DESC
+#define GET_SUBTARGETINFO_TARGET_DESC
+#define GET_SUBTARGETINFO_CTOR
+#include "PPCGenSubtargetInfo.inc"
+
 using namespace llvm;
 
 #if defined(__APPLE__)
@@ -57,9 +63,10 @@ static const char *GetCurrentPowerPCCPU() {
 #endif
 
 
-PPCSubtarget::PPCSubtarget(const std::string &TT, const std::string &FS,
-                           bool is64Bit)
-  : StackAlignment(16)
+PPCSubtarget::PPCSubtarget(const std::string &TT, const std::string &CPU,
+                           const std::string &FS, bool is64Bit)
+  : PPCGenSubtargetInfo(TT, CPU, FS)
+  , StackAlignment(16)
   , DarwinDirective(PPC::DIR_NONE)
   , IsGigaProcessor(false)
   , Has64BitSupport(false)
@@ -73,13 +80,19 @@ PPCSubtarget::PPCSubtarget(const std::string &TT, const std::string &FS,
   , TargetTriple(TT) {
 
   // Determine default and user specified characteristics
-  std::string CPU = "generic";
+  std::string CPUName = CPU;
+  if (CPUName.empty())
+    CPUName = "generic";
 #if defined(__APPLE__)
-  CPU = GetCurrentPowerPCCPU();
+  if (CPUName == "generic")
+    CPUName = GetCurrentPowerPCCPU();
 #endif
 
   // Parse features string.
-  ParseSubtargetFeatures(FS, CPU);
+  ParseSubtargetFeatures(CPUName, FS);
+
+  // Initialize scheduling itinerary for the specified CPU.
+  InstrItins = getInstrItineraryForCPU(CPUName);
 
   // If we are generating code for ppc64, verify that options make sense.
   if (is64Bit) {

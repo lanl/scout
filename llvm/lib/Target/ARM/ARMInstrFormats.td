@@ -282,15 +282,13 @@ class InstThumb<AddrMode am, SizeFlagVal sz, IndexMode im,
   : InstTemplate<am, sz, im, f, d, cstr, itin>;
 
 class PseudoInst<dag oops, dag iops, InstrItinClass itin, list<dag> pattern>
-  // FIXME: This really should derive from InstTemplate instead, as pseudos
-  //        don't need encoding information. TableGen doesn't like that
-  //        currently. Need to figure out why and fix it.
-  : InstARM<AddrModeNone, SizeSpecial, IndexModeNone, Pseudo, GenericDomain,
-            "", itin> {
+  : InstTemplate<AddrModeNone, SizeSpecial, IndexModeNone, Pseudo,
+                 GenericDomain, "", itin> {
   let OutOperandList = oops;
   let InOperandList = iops;
   let Pattern = pattern;
   let isCodeGenOnly = 1;
+  let isPseudo = 1;
 }
 
 // PseudoInst that's ARM-mode only.
@@ -316,6 +314,25 @@ class t2PseudoInst<dag oops, dag iops, SizeFlagVal sz, InstrItinClass itin,
   let SZ = sz;
   list<Predicate> Predicates = [IsThumb2];
 }
+
+class ARMPseudoExpand<dag oops, dag iops, SizeFlagVal sz,
+                      InstrItinClass itin, list<dag> pattern,
+                      dag Result>
+  : ARMPseudoInst<oops, iops, sz, itin, pattern>,
+    PseudoInstExpansion<Result>;
+
+class tPseudoExpand<dag oops, dag iops, SizeFlagVal sz,
+                    InstrItinClass itin, list<dag> pattern,
+                    dag Result>
+  : tPseudoInst<oops, iops, sz, itin, pattern>,
+    PseudoInstExpansion<Result>;
+
+class t2PseudoExpand<dag oops, dag iops, SizeFlagVal sz,
+                    InstrItinClass itin, list<dag> pattern,
+                    dag Result>
+  : t2PseudoInst<oops, iops, sz, itin, pattern>,
+    PseudoInstExpansion<Result>;
+
 // Almost all ARM instructions are predicable.
 class I<dag oops, dag iops, AddrMode am, SizeFlagVal sz,
         IndexMode im, Format f, InstrItinClass itin,

@@ -34,9 +34,10 @@ def imm0_7_neg : PatLeaf<(i32 imm), [{
   return (uint32_t)-N->getZExtValue() < 8;
 }], imm_neg_XFORM>;
 
-def imm0_255 : ImmLeaf<i32, [{
-  return Imm >= 0 && Imm < 256;
-}]>;
+def imm0_255_asmoperand : AsmOperandClass { let Name = "Imm0_255"; }
+def imm0_255 : Operand<i32>, ImmLeaf<i32, [{ return Imm >= 0 && Imm < 256; }]> {
+  let ParserMatchClass = imm0_255_asmoperand;
+}
 def imm0_255_comp : PatLeaf<(i32 imm), [{
   return ~((uint32_t)N->getZExtValue()) < 256;
 }]>;
@@ -360,27 +361,6 @@ def tADDspr : TIt<(outs GPR:$dst), (ins GPR:$lhs, GPR:$rhs), IIC_iALUr,
 //  Control Flow Instructions.
 //
 
-let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
-  def tBX_RET : TI<(outs), (ins), IIC_Br, "bx\tlr",
-                   [(ARMretflag)]>,
-                T1Special<{1,1,0,?}> {
-    // A6.2.3 & A8.6.25
-    let Inst{6-3} = 0b1110; // Rm = lr
-    let Inst{2-0} = 0b000;
-  }
-
-  // Alternative return instruction used by vararg functions.
-  def tBX_RET_vararg : TI<(outs), (ins tGPR:$Rm),
-                          IIC_Br, "bx\t$Rm",
-                          []>,
-                       T1Special<{1,1,0,?}> {
-    // A6.2.3 & A8.6.25
-    bits<4> Rm;
-    let Inst{6-3} = Rm;
-    let Inst{2-0} = 0b000;
-  }
-}
-
 // Indirect branches
 let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
   def tBX : TI<(outs), (ins GPR:$Rm, pred:$p), IIC_Br, "bx${p}\t$Rm", []>,
@@ -404,17 +384,14 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
   }
 }
 
-// FIXME: remove when we have a way to marking a MI with these properties.
-let isReturn = 1, isTerminator = 1, isBarrier = 1, mayLoad = 1,
-    hasExtraDefRegAllocReq = 1 in
-def tPOP_RET : T1I<(outs), (ins pred:$p, reglist:$regs, variable_ops),
-                   IIC_iPop_Br,
-                   "pop${p}\t$regs", []>,
-               T1Misc<{1,1,0,?,?,?,?}> {
-  // A8.6.121
-  bits<16> regs;
-  let Inst{8}   = regs{15};     // registers = P:'0000000':register_list
-  let Inst{7-0} = regs{7-0};
+let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
+  def tBX_RET : tPseudoExpand<(outs), (ins pred:$p), Size2Bytes, IIC_Br,
+                   [(ARMretflag)], (tBX LR, pred:$p)>;
+
+  // Alternative return instruction used by vararg functions.
+  def tBX_RET_vararg : tPseudoExpand<(outs), (ins tGPR:$Rm, pred:$p),
+                   Size2Bytes, IIC_Br, [],
+                   (tBX GPR:$Rm, pred:$p)>;
 }
 
 // All calls clobber the non-callee saved registers. SP is marked as a use to
@@ -534,8 +511,8 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
   // Just a pseudo for a tBL instruction. Needed to let regalloc know about
   // the clobber of LR.
   let Defs = [LR] in
-  def tBfar : tPseudoInst<(outs), (ins t_bltarget:$target),
-                          Size4Bytes, IIC_Br, []>;
+  def tBfar : tPseudoExpand<(outs), (ins t_bltarget:$target),
+                          Size4Bytes, IIC_Br, [], (tBL t_bltarget:$target)>;
 
   def tBR_JTr : tPseudoInst<(outs),
                       (ins tGPR:$target, i32imm:$jt, i32imm:$id),
@@ -582,6 +559,33 @@ let isBranch = 1, isTerminator = 1 in {
     let Inst{2-0} = Rn;
   }
 }
+
+// Tail calls
+let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1 in {
+  // Darwin versions.
+  let Defs = [R0, R1, R2, R3, R9, R12, QQQQ0, QQQQ2, QQQQ3, PC],
+      Uses = [SP] in {
+    // tTAILJMPd: Darwin version uses a Thumb2 branch (no Thumb1 tail calls
+    // on Darwin), so it's in ARMInstrThumb2.td.
+    def tTAILJMPr : tPseudoExpand<(outs), (ins tcGPR:$dst, variable_ops),
+                     Size4Bytes, IIC_Br, [],
+                     (tBX GPR:$dst, (ops 14, zero_reg))>,
+                     Requires<[IsThumb, IsDarwin]>;
+  }
+  // Non-Darwin versions (the difference is R9).
+  let Defs = [R0, R1, R2, R3, R12, QQQQ0, QQQQ2, QQQQ3, PC],
+      Uses = [SP] in {
+    def tTAILJMPdND : tPseudoExpand<(outs), (ins t_brtarget:$dst, variable_ops),
+                   Size4Bytes, IIC_Br, [],
+                   (tB t_brtarget:$dst)>,
+                 Requires<[IsThumb, IsNotDarwin]>;
+    def tTAILJMPrND : tPseudoExpand<(outs), (ins tcGPR:$dst, variable_ops),
+                     Size4Bytes, IIC_Br, [],
+                     (tBX GPR:$dst, (ops 14, zero_reg))>,
+                     Requires<[IsThumb, IsNotDarwin]>;
+  }
+}
+
 
 // A8.6.218 Supervisor Call (Software Interrupt) -- for disassembly only
 // A8.6.16 B: Encoding T1
@@ -685,19 +689,6 @@ def tLDRspi : T1pIs<(outs tGPR:$Rt), (ins t_addrmode_sp:$addr), IIC_iLoad_i,
   let Inst{7-0} = addr;
 }
 
-// Special instruction for restore. It cannot clobber condition register
-// when it's expanded by eliminateCallFramePseudoInstr().
-let canFoldAsLoad = 1, mayLoad = 1, neverHasSideEffects = 1 in
-// FIXME: Pseudo for tLDRspi
-def tRestore : T1pIs<(outs tGPR:$dst), (ins t_addrmode_sp:$addr), IIC_iLoad_i,
-                     "ldr", "\t$dst, $addr", []>,
-               T1LdStSP<{1,?,?}> {
-  bits<3> Rt;
-  bits<8> addr;
-  let Inst{10-8} = Rt;
-  let Inst{7-0} = addr;
-}
-
 // Load tconstpool
 // FIXME: Use ldr.n to work around a Darwin assembler bug.
 let canFoldAsLoad = 1, isReMaterializable = 1 in
@@ -748,19 +739,6 @@ def tSTRspi : T1pIs<(outs), (ins tGPR:$Rt, t_addrmode_sp:$addr), IIC_iStore_i,
                     "str", "\t$Rt, $addr",
                     [(store tGPR:$Rt, t_addrmode_sp:$addr)]>,
               T1LdStSP<{0,?,?}> {
-  bits<3> Rt;
-  bits<8> addr;
-  let Inst{10-8} = Rt;
-  let Inst{7-0} = addr;
-}
-
-let mayStore = 1, neverHasSideEffects = 1 in
-// Special instruction for spill. It cannot clobber condition register when it's
-// expanded by eliminateCallFramePseudoInstr().
-// FIXME: Pseudo for tSTRspi
-def tSpill : T1pIs<(outs), (ins tGPR:$src, t_addrmode_sp:$addr), IIC_iStore_i,
-                  "str", "\t$src, $addr", []>,
-             T1LdStSP<{0,?,?}> {
   bits<3> Rt;
   bits<8> addr;
   let Inst{10-8} = Rt;
@@ -1072,7 +1050,7 @@ def tLSRrr :                    // A8.6.91
 
 // Move register
 let isMoveImm = 1 in
-def tMOVi8 : T1sI<(outs tGPR:$Rd), (ins i32imm:$imm8), IIC_iMOVi,
+def tMOVi8 : T1sI<(outs tGPR:$Rd), (ins imm0_255:$imm8), IIC_iMOVi,
                   "mov", "\t$Rd, $imm8",
                   [(set tGPR:$Rd, imm0_255:$imm8)]>,
              T1General<{1,0,0,?,?}> {
@@ -1083,18 +1061,18 @@ def tMOVi8 : T1sI<(outs tGPR:$Rd), (ins i32imm:$imm8), IIC_iMOVi,
   let Inst{7-0}  = imm8;
 }
 
-// TODO: A7-73: MOV(2) - mov setting flag.
+// A7-73: MOV(2) - mov setting flag.
 
 let neverHasSideEffects = 1 in {
-// FIXME: Make this predicable.
-def tMOVr       : T1I<(outs tGPR:$Rd), (ins tGPR:$Rm), IIC_iMOVr,
-                      "mov\t$Rd, $Rm", []>,
-                  T1Special<0b1000> {
+def tMOVr : Thumb1pI<(outs GPR:$Rd), (ins GPR:$Rm), AddrModeNone,
+                      Size2Bytes, IIC_iMOVr,
+                      "mov", "\t$Rd, $Rm", "", []>,
+                  T1Special<{1,0,?,?}> {
   // A8.6.97
   bits<4> Rd;
   bits<4> Rm;
-  // Bits {7-6} are encoded by the T1Special value.
-  let Inst{5-3} = Rm{2-0};
+  let Inst{7}   = Rd{3};
+  let Inst{6-3} = Rm;
   let Inst{2-0} = Rd{2-0};
 }
 let Defs = [CPSR] in
@@ -1106,39 +1084,6 @@ def tMOVSr      : T1I<(outs tGPR:$Rd), (ins tGPR:$Rm), IIC_iMOVr,
   let Inst{15-6} = 0b0000000000;
   let Inst{5-3}  = Rm;
   let Inst{2-0}  = Rd;
-}
-
-// FIXME: Make these predicable.
-def tMOVgpr2tgpr : T1I<(outs tGPR:$Rd), (ins GPR:$Rm), IIC_iMOVr,
-                       "mov\t$Rd, $Rm", []>,
-                   T1Special<{1,0,0,?}> {
-  // A8.6.97
-  bits<4> Rd;
-  bits<4> Rm;
-  // Bit {7} is encoded by the T1Special value.
-  let Inst{6-3} = Rm;
-  let Inst{2-0} = Rd{2-0};
-}
-def tMOVtgpr2gpr : T1I<(outs GPR:$Rd), (ins tGPR:$Rm), IIC_iMOVr,
-                       "mov\t$Rd, $Rm", []>,
-                   T1Special<{1,0,?,0}> {
-  // A8.6.97
-  bits<4> Rd;
-  bits<4> Rm;
-  // Bit {6} is encoded by the T1Special value.
-  let Inst{7}   = Rd{3};
-  let Inst{5-3} = Rm{2-0};
-  let Inst{2-0} = Rd{2-0};
-}
-def tMOVgpr2gpr  : T1I<(outs GPR:$Rd), (ins GPR:$Rm), IIC_iMOVr,
-                       "mov\t$Rd, $Rm", []>,
-                   T1Special<{1,0,?,?}> {
-  // A8.6.97
-  bits<4> Rd;
-  bits<4> Rm;
-  let Inst{7}   = Rd{3};
-  let Inst{6-3} = Rm;
-  let Inst{2-0} = Rd{2-0};
 }
 } // neverHasSideEffects
 
@@ -1280,31 +1225,6 @@ let usesCustomInserter = 1 in  // Expanded after instruction selection.
               NoItinerary,
              [/*(set tGPR:$dst, (ARMcmov tGPR:$false, tGPR:$true, imm:$cc))*/]>;
 
-
-// 16-bit movcc in IT blocks for Thumb2.
-let neverHasSideEffects = 1 in {
-def tMOVCCr : T1pIt<(outs GPR:$Rdn), (ins GPR:$Rn, GPR:$Rm), IIC_iCMOVr,
-                    "mov", "\t$Rdn, $Rm", []>,
-              T1Special<{1,0,?,?}> {
-  bits<4> Rdn;
-  bits<4> Rm;
-  let Inst{7}   = Rdn{3};
-  let Inst{6-3} = Rm;
-  let Inst{2-0} = Rdn{2-0};
-}
-
-let isMoveImm = 1 in
-def tMOVCCi : T1pIt<(outs tGPR:$Rdn), (ins tGPR:$Rn, i32imm:$Rm), IIC_iCMOVi,
-                    "mov", "\t$Rdn, $Rm", []>,
-              T1General<{1,0,0,?,?}> {
-  bits<3> Rdn;
-  bits<8> Rm;
-  let Inst{10-8} = Rdn;
-  let Inst{7-0}  = Rm;
-}
-
-} // neverHasSideEffects
-
 // tLEApcrel - Load a pc-relative address into a register without offending the
 // assembler.
 
@@ -1424,13 +1344,11 @@ def tCDP : T1Cop<(outs), (ins p_imm:$cop, i32imm:$opc1,
 //
 
 // __aeabi_read_tp preserves the registers r1-r3.
-let isCall = 1, Defs = [R0, LR], Uses = [SP] in
-def tTPsoft : TIx2<0b11110, 0b11, 1, (outs), (ins), IIC_Br,
-                   "bl\t__aeabi_read_tp",
-                   [(set R0, ARMthread_pointer)]> {
-  // Encoding is 0xf7fffffe.
-  let Inst = 0xf7fffffe;
-}
+// This is a pseudo inst so that we can get the encoding right,
+// complete with fixup for the aeabi_read_tp function.
+let isCall = 1, Defs = [R0, R12, LR, CPSR], Uses = [SP] in
+def tTPsoft : tPseudoInst<(outs), (ins), Size4Bytes, IIC_Br,
+                          [(set R0, ARMthread_pointer)]>;
 
 //===----------------------------------------------------------------------===//
 // SJLJ Exception handling intrinsics
@@ -1569,3 +1487,12 @@ def tLDRpci_pic : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr, pclabel:$cp),
                [(set GPR:$dst, (ARMpic_add (load (ARMWrapper tconstpool:$addr)),
                                            imm:$cp))]>,
                Requires<[IsThumb, IsThumb1Only]>;
+
+// Pseudo-instruction for merged POP and return.
+// FIXME: remove when we have a way to marking a MI with these properties.
+let isReturn = 1, isTerminator = 1, isBarrier = 1, mayLoad = 1,
+    hasExtraDefRegAllocReq = 1 in
+def tPOP_RET : tPseudoExpand<(outs), (ins pred:$p, reglist:$regs, variable_ops),
+                           Size2Bytes, IIC_iPop_Br, [],
+                           (tPOP pred:$p, reglist:$regs)>;
+

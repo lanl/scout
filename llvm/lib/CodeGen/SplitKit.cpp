@@ -76,12 +76,14 @@ SlotIndex SplitAnalysis::computeLastSplitPoint(unsigned Num) {
       return LSP.first;
     // There may not be a call instruction (?) in which case we ignore LPad.
     LSP.second = LSP.first;
-    for (MachineBasicBlock::const_iterator I = FirstTerm, E = MBB->begin();
-         I != E; --I)
+    for (MachineBasicBlock::const_iterator I = MBB->end(), E = MBB->begin();
+         I != E;) {
+      --I;
       if (I->getDesc().isCall()) {
         LSP.second = LIS.getInstructionIndex(I);
         break;
       }
+    }
   }
 
   // If CurLI is live into a landing pad successor, move the last split point
@@ -122,7 +124,7 @@ void SplitAnalysis::analyzeUses() {
   // Compute per-live block info.
   if (!calcLiveBlockInfo()) {
     // FIXME: calcLiveBlockInfo found inconsistencies in the live range.
-    // I am looking at you, SimpleRegisterCoalescing!
+    // I am looking at you, RegisterCoalescer!
     DidRepairRange = true;
     ++NumRepairs;
     DEBUG(dbgs() << "*** Fixing inconsistent live interval! ***\n");
@@ -165,7 +167,7 @@ bool SplitAnalysis::calcLiveBlockInfo() {
     tie(Start, Stop) = LIS.getSlotIndexes()->getMBBRange(BI.MBB);
 
     // If the block contains no uses, the range must be live through. At one
-    // point, SimpleRegisterCoalescing could create dangling ranges that ended
+    // point, RegisterCoalescer could create dangling ranges that ended
     // mid-block.
     if (UseI == UseE || *UseI >= Stop) {
       ++NumThroughBlocks;
@@ -634,6 +636,7 @@ unsigned SplitEditor::openIntv() {
 void SplitEditor::selectIntv(unsigned Idx) {
   assert(Idx != 0 && "Cannot select the complement interval");
   assert(Idx < Edit->size() && "Can only select previously opened interval");
+  DEBUG(dbgs() << "    selectIntv " << OpenIdx << " -> " << Idx << '\n');
   OpenIdx = Idx;
 }
 
@@ -651,6 +654,24 @@ SlotIndex SplitEditor::enterIntvBefore(SlotIndex Idx) {
   assert(MI && "enterIntvBefore called with invalid index");
 
   VNInfo *VNI = defFromParent(OpenIdx, ParentVNI, Idx, *MI->getParent(), MI);
+  return VNI->def;
+}
+
+SlotIndex SplitEditor::enterIntvAfter(SlotIndex Idx) {
+  assert(OpenIdx && "openIntv not called before enterIntvAfter");
+  DEBUG(dbgs() << "    enterIntvAfter " << Idx);
+  Idx = Idx.getBoundaryIndex();
+  VNInfo *ParentVNI = Edit->getParent().getVNInfoAt(Idx);
+  if (!ParentVNI) {
+    DEBUG(dbgs() << ": not live\n");
+    return Idx;
+  }
+  DEBUG(dbgs() << ": valno " << ParentVNI->id << '\n');
+  MachineInstr *MI = LIS.getInstructionFromIndex(Idx);
+  assert(MI && "enterIntvAfter called with invalid index");
+
+  VNInfo *VNI = defFromParent(OpenIdx, ParentVNI, Idx, *MI->getParent(),
+                              llvm::next(MachineBasicBlock::iterator(MI)));
   return VNI->def;
 }
 
@@ -1004,12 +1025,6 @@ void SplitEditor::finish(SmallVectorImpl<unsigned> *LRMap) {
       for (unsigned i = 0, e = Edit->size(); i != e; ++i)
         markComplexMapped(i, ParentVNI);
   }
-
-#ifndef NDEBUG
-  // Every new interval must have a def by now, otherwise the split is bogus.
-  for (LiveRangeEdit::iterator I = Edit->begin(), E = Edit->end(); I != E; ++I)
-    assert((*I)->hasAtLeastOneValue() && "Split interval has no value");
-#endif
 
   // Transfer the simply mapped values, check if any are skipped.
   bool Skipped = transferValues();

@@ -17,10 +17,16 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace llvm;
-
+#define GET_REGINFO_MC_DESC
+#define GET_REGINFO_TARGET_DESC
 #include "PTXGenRegisterInfo.inc"
 
+using namespace llvm;
+
+PTXRegisterInfo::PTXRegisterInfo(PTXTargetMachine &TM,
+                                 const TargetInstrInfo &TII)
+  : PTXGenRegisterInfo() {
+}
 
 void PTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                           int SPAdj,

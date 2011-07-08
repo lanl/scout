@@ -44,6 +44,10 @@
 #include "llvm/ADT/STLExtras.h"
 #include <cstdlib>
 
+#define GET_REGINFO_MC_DESC
+#define GET_REGINFO_TARGET_DESC
+#include "PPCGenRegisterInfo.inc"
+
 // FIXME (64-bit): Eventually enable by default.
 namespace llvm {
 cl::opt<bool> EnablePPC32RS("enable-ppc32-regscavenger",
@@ -110,8 +114,7 @@ unsigned PPCRegisterInfo::getRegisterNumbering(unsigned RegEnum) {
 
 PPCRegisterInfo::PPCRegisterInfo(const PPCSubtarget &ST,
                                  const TargetInstrInfo &tii)
-  : PPCGenRegisterInfo(PPC::ADJCALLSTACKDOWN, PPC::ADJCALLSTACKUP),
-    Subtarget(ST), TII(tii) {
+  : PPCGenRegisterInfo(), Subtarget(ST), TII(tii) {
   ImmToIdxMap[PPC::LD]   = PPC::LDX;    ImmToIdxMap[PPC::STD]  = PPC::STDX;
   ImmToIdxMap[PPC::LBZ]  = PPC::LBZX;   ImmToIdxMap[PPC::STB]  = PPC::STBX;
   ImmToIdxMap[PPC::LHZ]  = PPC::LHZX;   ImmToIdxMap[PPC::LHA]  = PPC::LHAX;
@@ -710,5 +713,3 @@ int PPCRegisterInfo::getLLVMRegNum(unsigned RegNum, bool isEH) const {
 
   return PPCGenRegisterInfo::getLLVMRegNumFull(RegNum, Flavour);
 }
-
-#include "PPCGenRegisterInfo.inc"

@@ -29,7 +29,6 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Target/Mangler.h"
-#include "llvm/Target/SubtargetFeature.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -37,6 +36,7 @@
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Target/TargetAsmParser.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegistry.h"
@@ -157,9 +157,10 @@ LTOModule *LTOModule::makeLTOModule(MemoryBuffer *buffer,
 
   // construct LTOModule, hand over ownership of module and target
   SubtargetFeatures Features;
-  Features.getDefaultSubtargetFeatures("" /* cpu */, llvm::Triple(Triple));
+  Features.getDefaultSubtargetFeatures(llvm::Triple(Triple));
   std::string FeatureStr = Features.getString();
-  TargetMachine *target = march->createTargetMachine(Triple, FeatureStr);
+  std::string CPU;
+  TargetMachine *target = march->createTargetMachine(Triple, CPU, FeatureStr);
   LTOModule *Ret = new LTOModule(m.take(), target);
   bool Err = Ret->ParseSymbols();
   if (Err) {
@@ -191,7 +192,7 @@ bool LTOModule::objcClassNameFromExpression(Constant *c, std::string &name) {
       Constant *cn = gvn->getInitializer();
       if (ConstantArray *ca = dyn_cast<ConstantArray>(cn)) {
         if (ca->isCString()) {
-          name = ".objc_class_name_" + ca->getAsString();
+          name = ".objc_class_name_" + ca->getAsCString();
           return true;
         }
       }
@@ -618,7 +619,10 @@ bool LTOModule::addAsmGlobalSymbols(MCContext &Context) {
                                                   Context, *Streamer,
                                                   *_target->getMCAsmInfo()));
   OwningPtr<TargetAsmParser>
-    TAP(_target->getTarget().createAsmParser(*Parser.get(), *_target.get()));
+    TAP(_target->getTarget().createAsmParser(_target->getTargetTriple(),
+                                             _target->getTargetCPU(),
+                                             _target->getTargetFeatureString(),
+                                             *Parser.get()));
   Parser->setTargetParser(*TAP);
   int Res = Parser->Run(false);
   if (Res)

@@ -17,7 +17,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/ADT/BitVector.h"
 
-#include "PTXGenRegisterInfo.h.inc"
+#define GET_REGINFO_HEADER
+#include "PTXGenRegisterInfo.inc"
 
 namespace llvm {
 class PTXTargetMachine;
@@ -25,7 +26,7 @@ class MachineFunction;
 
 struct PTXRegisterInfo : public PTXGenRegisterInfo {
   PTXRegisterInfo(PTXTargetMachine &TM,
-                  const TargetInstrInfo &TII) {}
+                  const TargetInstrInfo &TII);
 
   virtual const unsigned
     *getCalleeSavedRegs(const MachineFunction *MF = 0) const {

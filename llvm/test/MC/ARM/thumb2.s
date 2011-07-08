@@ -49,6 +49,22 @@
 @ CHECK: mov.w	r0, #66846720           @ encoding: [0x7f,0x70,0x4f,0xf0]
   mov.w	r0, #66846720
 
+@ Aliases w/ the vanilla 'mov' mnemonic, and explicit alternative selection.
+  mov r2, #0xbf000000
+  mov r1, #0x100
+  mov r3, #32
+  mov.w r3, #32
+  movw r3, #32
+
+@ CHECK: mov.w r2, #3204448256 @ encoding: [0x4f,0xf0,0x3f,0x42]
+@ CHECK: mov.w r1, #256 @ encoding: [0x4f,0xf4,0x80,0x71]
+@ CHECK: mov r3, #32 @ encoding: [0x20,0x23]
+@ CHECK: mov.w r3, #32 @ encoding: [0x4f,0xf0,0x20,0x03]
+@ CHECK: movw  r3, #32 @ encoding: [0x40,0xf2,0x20,0x03]
+
+
+
+
 @ CHECK: rrx	r0, r0                  @ encoding: [0x30,0x00,0x4f,0xea]
   rrx	r0, r0
 
@@ -302,3 +318,23 @@
   ldrexd  r0, r1, [r0]
 @ CHECK: ssat16  r0, #7, r0 @ encoding: [0x20,0xf3,0x06,0x00]
   ssat16  r0, #7, r0
+
+  and r1, #0xff
+  and r1, r1, #0xff
+  orr r1, 0x100
+  orr r1, r1, 0x100
+  eor r1, 0x100
+  eor r1, r1, 0x100
+  bic r1, 0x100
+  bic r1, r1, 0x100
+
+@ CHECK: and r1, r1, #255 @ encoding: [0x01,0xf0,0xff,0x01]
+@ CHECK: and r1, r1, #255 @ encoding: [0x01,0xf0,0xff,0x01]
+@ CHECK: orr r1, r1, #256 @ encoding: [0x41,0xf4,0x80,0x71]
+@ CHECK: orr r1, r1, #256 @ encoding: [0x41,0xf4,0x80,0x71]
+@ CHECK: eor r1, r1, #256 @ encoding: [0x81,0xf4,0x80,0x71]
+@ CHECK: eor r1, r1, #256 @ encoding: [0x81,0xf4,0x80,0x71]
+@ CHECK: bic r1, r1, #256 @ encoding: [0x21,0xf4,0x80,0x71]
+@ CHECK: bic r1, r1, #256 @ encoding: [0x21,0xf4,0x80,0x71]
+
+

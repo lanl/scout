@@ -98,10 +98,10 @@ static cl::opt<cl::boolOrDefault>
 EnableFastISelOption("fast-isel", cl::Hidden,
   cl::desc("Enable the \"fast\" instruction selector"));
 
-LLVMTargetMachine::LLVMTargetMachine(const Target &T,
-                                     const std::string &Triple)
-  : TargetMachine(T), TargetTriple(Triple) {
-  AsmInfo = T.createAsmInfo(TargetTriple);
+LLVMTargetMachine::LLVMTargetMachine(const Target &T, StringRef Triple,
+                                     StringRef CPU, StringRef FS)
+  : TargetMachine(T, Triple, CPU, FS) {
+  AsmInfo = T.createAsmInfo(Triple);
 }
 
 // Set the default code model for the JIT for a generic target.
@@ -136,14 +136,14 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   default: return true;
   case CGFT_AssemblyFile: {
     MCInstPrinter *InstPrinter =
-      getTarget().createMCInstPrinter(*this, MAI.getAssemblerDialect(), MAI);
+      getTarget().createMCInstPrinter(MAI.getAssemblerDialect(), MAI);
 
     // Create a code emitter if asked to show the encoding.
     MCCodeEmitter *MCE = 0;
     TargetAsmBackend *TAB = 0;
     if (ShowMCEncoding) {
       MCE = getTarget().createCodeEmitter(*this, *Context);
-      TAB = getTarget().createAsmBackend(TargetTriple);
+      TAB = getTarget().createAsmBackend(getTargetTriple());
     }
 
     MCStreamer *S = getTarget().createAsmStreamer(*Context, Out,
@@ -160,12 +160,12 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
     // Create the code emitter for the target if it exists.  If not, .o file
     // emission fails.
     MCCodeEmitter *MCE = getTarget().createCodeEmitter(*this, *Context);
-    TargetAsmBackend *TAB = getTarget().createAsmBackend(TargetTriple);
+    TargetAsmBackend *TAB = getTarget().createAsmBackend(getTargetTriple());
     if (MCE == 0 || TAB == 0)
       return true;
 
-    AsmStreamer.reset(getTarget().createObjectStreamer(TargetTriple, *Context,
-                                                       *TAB, Out, MCE,
+    AsmStreamer.reset(getTarget().createObjectStreamer(getTargetTriple(),
+                                                       *Context, *TAB, Out, MCE,
                                                        hasMCRelaxAll(),
                                                        hasMCNoExecStack()));
     AsmStreamer.get()->InitSections();
@@ -241,12 +241,12 @@ bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM,
   // Create the code emitter for the target if it exists.  If not, .o file
   // emission fails.
   MCCodeEmitter *MCE = getTarget().createCodeEmitter(*this, *Ctx);
-  TargetAsmBackend *TAB = getTarget().createAsmBackend(TargetTriple);
+  TargetAsmBackend *TAB = getTarget().createAsmBackend(getTargetTriple());
   if (MCE == 0 || TAB == 0)
     return true;
 
   OwningPtr<MCStreamer> AsmStreamer;
-  AsmStreamer.reset(getTarget().createObjectStreamer(TargetTriple, *Ctx,
+  AsmStreamer.reset(getTarget().createObjectStreamer(getTargetTriple(), *Ctx,
                                                      *TAB, Out, MCE,
                                                      hasMCRelaxAll(),
                                                      hasMCNoExecStack()));
@@ -302,10 +302,6 @@ bool LLVMTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   // coming from the front-end and/or optimizer is valid.
   if (!DisableVerify)
     PM.add(createVerifierPass());
-
-  // Simplify ObjC ARC code. This is done late because it makes re-optimization
-  // difficult.
-  PM.add(createObjCARCContractPass());
 
   // Run loop strength reduction before anything else.
   if (OptLevel != CodeGenOpt::None && !DisableLSR) {
@@ -388,6 +384,12 @@ bool LLVMTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   // Expand pseudo-instructions emitted by ISel.
   PM.add(createExpandISelPseudosPass());
 
+  // Pre-ra tail duplication.
+  if (OptLevel != CodeGenOpt::None && !DisableEarlyTailDup) {
+    PM.add(createTailDuplicatePass(true));
+    printAndVerify(PM, "After Pre-RegAlloc TailDuplicate");
+  }
+
   // Optimize PHIs before DCE: removing dead PHI cycles may make more
   // instructions dead.
   if (OptLevel != CodeGenOpt::None)
@@ -414,12 +416,6 @@ bool LLVMTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
 
     PM.add(createPeepholeOptimizerPass());
     printAndVerify(PM, "After codegen peephole optimization pass");
-  }
-
-  // Pre-ra tail duplication.
-  if (OptLevel != CodeGenOpt::None && !DisableEarlyTailDup) {
-    PM.add(createTailDuplicatePass(true));
-    printAndVerify(PM, "After Pre-RegAlloc TailDuplicate");
   }
 
   // Run pre-ra passes.

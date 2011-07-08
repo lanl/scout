@@ -139,6 +139,10 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::REM_F64] = "fmod";
   Names[RTLIB::REM_F80] = "fmodl";
   Names[RTLIB::REM_PPCF128] = "fmodl";
+  Names[RTLIB::FMA_F32] = "fmaf";
+  Names[RTLIB::FMA_F64] = "fma";
+  Names[RTLIB::FMA_F80] = "fmal";
+  Names[RTLIB::FMA_PPCF128] = "fmal";
   Names[RTLIB::POWI_F32] = "__powisf2";
   Names[RTLIB::POWI_F64] = "__powidf2";
   Names[RTLIB::POWI_F80] = "__powixf2";
@@ -2623,7 +2627,6 @@ PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
 
 TargetLowering::ConstraintType
 TargetLowering::getConstraintType(const std::string &Constraint) const {
-  // FIXME: lots more standard ones to handle.
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     default: break;
@@ -2736,13 +2739,6 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
   }
   }
 }
-
-std::vector<unsigned> TargetLowering::
-getRegClassForInlineAsmConstraint(const std::string &Constraint,
-                                  EVT VT) const {
-  return std::vector<unsigned>();
-}
-
 
 std::pair<unsigned, const TargetRegisterClass*> TargetLowering::
 getRegForInlineAsmConstraint(const std::string &Constraint,
@@ -3217,6 +3213,32 @@ bool TargetLowering::isLegalAddressingMode(const AddrMode &AM,
   }
 
   return true;
+}
+
+/// BuildExactDiv - Given an exact SDIV by a constant, create a multiplication
+/// with the multiplicative inverse of the constant.
+SDValue TargetLowering::BuildExactSDIV(SDValue Op1, SDValue Op2, DebugLoc dl,
+                                       SelectionDAG &DAG) const {
+  ConstantSDNode *C = cast<ConstantSDNode>(Op2);
+  APInt d = C->getAPIntValue();
+  assert(d != 0 && "Division by zero!");
+
+  // Shift the value upfront if it is even, so the LSB is one.
+  unsigned ShAmt = d.countTrailingZeros();
+  if (ShAmt) {
+    // TODO: For UDIV use SRL instead of SRA.
+    SDValue Amt = DAG.getConstant(ShAmt, getShiftAmountTy(Op1.getValueType()));
+    Op1 = DAG.getNode(ISD::SRA, dl, Op1.getValueType(), Op1, Amt);
+    d = d.ashr(ShAmt);
+  }
+
+  // Calculate the multiplicative inverse, using Newton's method.
+  APInt t, xn = d;
+  while ((t = d*xn) != 1)
+    xn *= APInt(d.getBitWidth(), 2) - t;
+
+  Op2 = DAG.getConstant(xn, Op1.getValueType());
+  return DAG.getNode(ISD::MUL, dl, Op1.getValueType(), Op1, Op2);
 }
 
 /// BuildSDIVSequence - Given an ISD::SDIV node expressing a divide by constant,

@@ -1991,11 +1991,11 @@ def : Pat<(alignednontemporalstore (v2i64 VR128:$src), addr:$dst),
 
 // There is no AVX form for instructions below this point
 def MOVNTImr : I<0xC3, MRMDestMem, (outs), (ins i32mem:$dst, GR32:$src),
-                 "movnti\t{$src, $dst|$dst, $src}",
+                 "movnti{l}\t{$src, $dst|$dst, $src}",
                  [(nontemporalstore (i32 GR32:$src), addr:$dst)]>,
                TB, Requires<[HasSSE2]>;
 def MOVNTI_64mr : RI<0xC3, MRMDestMem, (outs), (ins i64mem:$dst, GR64:$src),
-                     "movnti\t{$src, $dst|$dst, $src}",
+                     "movnti{q}\t{$src, $dst|$dst, $src}",
                      [(nontemporalstore (i64 GR64:$src), addr:$dst)]>,
                   TB, Requires<[HasSSE2]>;
 }
@@ -5195,33 +5195,52 @@ def AESKEYGENASSIST128rm : AESAI<0xDF, MRMSrcMem, (outs VR128:$dst),
 // CLMUL Instructions
 //===----------------------------------------------------------------------===//
 
-// Only the AVX version of CLMUL instructions are described here.
-
 // Carry-less Multiplication instructions
-def VPCLMULQDQrr : CLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
+let Constraints = "$src1 = $dst" in {
+def PCLMULQDQrr : CLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
+           (ins VR128:$src1, VR128:$src2, i8imm:$src3),
+           "pclmulqdq\t{$src3, $src2, $dst|$dst, $src2, $src3}",
+           []>;
+
+def PCLMULQDQrm : CLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
+           (ins VR128:$src1, i128mem:$src2, i8imm:$src3),
+           "pclmulqdq\t{$src3, $src2, $dst|$dst, $src2, $src3}",
+           []>;
+}
+
+// AVX carry-less Multiplication instructions
+def VPCLMULQDQrr : AVXCLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
            (ins VR128:$src1, VR128:$src2, i8imm:$src3),
            "vpclmulqdq\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
            []>;
 
-def VPCLMULQDQrm : CLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
+def VPCLMULQDQrm : AVXCLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
            (ins VR128:$src1, i128mem:$src2, i8imm:$src3),
            "vpclmulqdq\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
            []>;
 
-// Assembler Only
-multiclass avx_vpclmul<string asm> {
-  def rr : I<0, Pseudo, (outs VR128:$dst), (ins VR128:$src1, VR128:$src2),
-             !strconcat(asm, "\t{$src2, $src1, $dst|$dst, $src1, $src2}"),
-             []>;
 
-  def rm : I<0, Pseudo, (outs VR128:$dst), (ins VR128:$src1, i128mem:$src2),
-             !strconcat(asm, "\t{$src2, $src1, $dst|$dst, $src1, $src2}"),
-             []>;
+multiclass pclmul_alias<string asm, int immop> {
+  def : InstAlias<!strconcat("pclmul", asm, 
+                           "dq {$src, $dst|$dst, $src}"),
+                  (PCLMULQDQrr VR128:$dst, VR128:$src, immop)>;
+
+  def : InstAlias<!strconcat("pclmul", asm, 
+                             "dq {$src, $dst|$dst, $src}"),
+                  (PCLMULQDQrm VR128:$dst, i128mem:$src, immop)>;
+
+  def : InstAlias<!strconcat("vpclmul", asm, 
+                             "dq {$src2, $src1, $dst|$dst, $src1, $src2}"),
+                  (VPCLMULQDQrr VR128:$dst, VR128:$src1, VR128:$src2, immop)>;
+
+  def : InstAlias<!strconcat("vpclmul", asm, 
+                             "dq {$src2, $src1, $dst|$dst, $src1, $src2}"),
+                  (VPCLMULQDQrm VR128:$dst, VR128:$src1, i128mem:$src2, immop)>;
 }
-defm VPCLMULHQHQDQ : avx_vpclmul<"vpclmulhqhqdq">;
-defm VPCLMULHQLQDQ : avx_vpclmul<"vpclmulhqlqdq">;
-defm VPCLMULLQHQDQ : avx_vpclmul<"vpclmullqhqdq">;
-defm VPCLMULLQLQDQ : avx_vpclmul<"vpclmullqlqdq">;
+defm : pclmul_alias<"hqhq", 0x11>;
+defm : pclmul_alias<"hqlq", 0x01>;
+defm : pclmul_alias<"lqhq", 0x10>;
+defm : pclmul_alias<"lqlq", 0x00>;
 
 //===----------------------------------------------------------------------===//
 // AVX Instructions

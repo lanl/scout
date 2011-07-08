@@ -618,6 +618,21 @@ DIE *DwarfDebug::constructInlinedScopeDIE(DbgScope *Scope) {
   return ScopeDIE;
 }
 
+/// isUnsignedDIType - Return true if type encoding is unsigned.
+static bool isUnsignedDIType(DIType Ty) {
+  DIDerivedType DTy(Ty);
+  if (DTy.Verify())
+    return isUnsignedDIType(DTy.getTypeDerivedFrom());
+
+  DIBasicType BTy(Ty);
+  if (BTy.Verify()) {
+    unsigned Encoding = BTy.getEncoding();
+    if (Encoding == dwarf::DW_ATE_unsigned ||
+        Encoding == dwarf::DW_ATE_unsigned_char)
+      return true;
+  }
+  return false;
+}
 
 /// constructVariableDIE - Construct a DIE for the given DbgVariable.
 DIE *DwarfDebug::constructVariableDIE(DbgVariable *DV, DbgScope *Scope) {
@@ -718,6 +733,11 @@ DIE *DwarfDebug::constructVariableDIE(DbgVariable *DV, DbgScope *Scope) {
       else if (DVInsn->getOperand(0).isFPImm())
         updated =
           VariableCU->addConstantFPValue(VariableDie, DVInsn->getOperand(0));
+      else if (DVInsn->getOperand(0).isCImm())
+        updated =
+          VariableCU->addConstantValue(VariableDie, 
+                                       DVInsn->getOperand(0).getCImm(),
+                                       isUnsignedDIType(DV->getType()));
     } else {
       VariableCU->addVariableAddress(DV, VariableDie, 
                                      Asm->getDebugValueLocation(DVInsn));
@@ -913,22 +933,6 @@ CompileUnit *DwarfDebug::getCompileUnit(const MDNode *N) const {
   return I->second;
 }
 
-/// isUnsignedDIType - Return true if type encoding is unsigned.
-static bool isUnsignedDIType(DIType Ty) {
-  DIDerivedType DTy(Ty);
-  if (DTy.Verify())
-    return isUnsignedDIType(DTy.getTypeDerivedFrom());
-
-  DIBasicType BTy(Ty);
-  if (BTy.Verify()) {
-    unsigned Encoding = BTy.getEncoding();
-    if (Encoding == dwarf::DW_ATE_unsigned ||
-        Encoding == dwarf::DW_ATE_unsigned_char)
-      return true;
-  }
-  return false;
-}
-
 // Return const exprssion if value is a GEP to access merged global
 // constant. e.g.
 // i8* getelementptr ({ i8, i8, i8, i8 }* @_MergedGlobals, i32 0, i32 0)
@@ -1017,7 +1021,7 @@ void DwarfDebug::constructGlobalVariableDIE(const MDNode *N) {
     } else {
       TheCU->addBlock(VariableDIE, dwarf::DW_AT_location, 0, Block);
     } 
-  } else if (ConstantInt *CI = 
+  } else if (const ConstantInt *CI = 
              dyn_cast_or_null<ConstantInt>(GV.getConstant()))
     TheCU->addConstantValue(VariableDIE, CI, isUnsignedDIType(GTy));
   else if (const ConstantExpr *CE = getMergedGlobalExpr(N->getOperand(11))) {
@@ -1351,6 +1355,34 @@ static bool isDbgValueInDefinedReg(const MachineInstr *MI) {
          MI->getOperand(1).isImm() && MI->getOperand(1).getImm() == 0;
 }
 
+/// getDebugLocEntry - Get .debug_loc entry for the instraction range starting
+/// at MI.
+static DotDebugLocEntry getDebugLocEntry(AsmPrinter *Asm, 
+                                         const MCSymbol *FLabel, 
+                                         const MCSymbol *SLabel,
+                                         const MachineInstr *MI) {
+  const MDNode *Var =  MI->getOperand(MI->getNumOperands() - 1).getMetadata();
+
+  if (MI->getNumOperands() != 3) {
+    MachineLocation MLoc = Asm->getDebugValueLocation(MI);
+    return DotDebugLocEntry(FLabel, SLabel, MLoc, Var);
+  }
+  if (MI->getOperand(0).isReg() && MI->getOperand(1).isImm()) {
+    MachineLocation MLoc;
+    MLoc.set(MI->getOperand(0).getReg(), MI->getOperand(1).getImm());
+    return DotDebugLocEntry(FLabel, SLabel, MLoc, Var);
+  }
+  if (MI->getOperand(0).isImm())
+    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getImm());
+  if (MI->getOperand(0).isFPImm())
+    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getFPImm());
+  if (MI->getOperand(0).isCImm())
+    return DotDebugLocEntry(FLabel, SLabel, MI->getOperand(0).getCImm());
+
+  assert (0 && "Unexpected 3 operand DBG_VALUE instruction!");
+  return DotDebugLocEntry();
+}
+
 /// collectVariableInfo - Populate DbgScope entries with variables' info.
 void
 DwarfDebug::collectVariableInfo(const MachineFunction *MF,
@@ -1424,6 +1456,8 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
         SLabel = FunctionEndSym;
       else {
         const MachineInstr *End = HI[1];
+        DEBUG(dbgs() << "DotDebugLoc Pair:\n" 
+              << "\t" << *Begin << "\t" << *End << "\n");
         if (End->isDebugValue())
           SLabel = getLabelBeforeInsn(End);
         else {
@@ -1435,25 +1469,7 @@ DwarfDebug::collectVariableInfo(const MachineFunction *MF,
       }
 
       // The value is valid until the next DBG_VALUE or clobber.
-      MachineLocation MLoc;
-      if (Begin->getNumOperands() == 3) {
-        if (Begin->getOperand(0).isReg() && Begin->getOperand(1).isImm()) {
-          MLoc.set(Begin->getOperand(0).getReg(), 
-                   Begin->getOperand(1).getImm());
-          DotDebugLocEntries.
-            push_back(DotDebugLocEntry(FLabel, SLabel, MLoc, Var));
-        }
-        // FIXME: Handle isFPImm also.
-        else if (Begin->getOperand(0).isImm()) {
-          DotDebugLocEntries.
-            push_back(DotDebugLocEntry(FLabel, SLabel, 
-                                       Begin->getOperand(0).getImm()));
-        }
-      } else {
-        MLoc = Asm->getDebugValueLocation(Begin);
-        DotDebugLocEntries.
-          push_back(DotDebugLocEntry(FLabel, SLabel, MLoc, Var));
-      }
+      DotDebugLocEntries.push_back(getDebugLocEntry(Asm, FLabel, SLabel, Begin));
     }
     DotDebugLocEntries.push_back(DotDebugLocEntry());
   }
@@ -1842,8 +1858,6 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
 
   assert(UserVariables.empty() && DbgValues.empty() && "Maps weren't cleaned");
 
-  /// ProcessedArgs - Collection of arguments already processed.
-  SmallPtrSet<const MDNode *, 8> ProcessedArgs;
   const TargetRegisterInfo *TRI = Asm->TM.getRegisterInfo();
   /// LiveUserVar - Map physreg numbers to the MDNode they contain.
   std::vector<const MDNode*> LiveUserVar(TRI->getNumRegs());
@@ -1883,8 +1897,12 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
           if (Prev->isDebugValue()) {
             // Coalesce identical entries at the end of History.
             if (History.size() >= 2 &&
-                Prev->isIdenticalTo(History[History.size() - 2]))
+                Prev->isIdenticalTo(History[History.size() - 2])) {
+              DEBUG(dbgs() << "Coalesce identical DBG_VALUE entries:\n"
+                    << "\t" << *Prev 
+                    << "\t" << *History[History.size() - 2] << "\n");
               History.pop_back();
+            }
 
             // Terminate old register assignments that don't reach MI;
             MachineFunction::const_iterator PrevMBB = Prev->getParent();
@@ -1894,9 +1912,12 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
               // its basic block.
               MachineBasicBlock::const_iterator LastMI =
                 PrevMBB->getLastNonDebugInstr();
-              if (LastMI == PrevMBB->end())
+              if (LastMI == PrevMBB->end()) {
                 // Drop DBG_VALUE for empty range.
+                DEBUG(dbgs() << "Drop DBG_VALUE for empty range:\n"
+                      << "\t" << *Prev << "\n");
                 History.pop_back();
+              }
               else {
                 // Terminate after LastMI.
                 History.push_back(LastMI);
@@ -2597,56 +2618,61 @@ void DwarfDebug::emitDebugLoc() {
       MCSymbol *end = Asm->OutStreamer.getContext().CreateTempSymbol();
       Asm->EmitLabelDifference(end, begin, 2);
       Asm->OutStreamer.EmitLabel(begin);
-      if (Entry.isConstant()) {
+      if (Entry.isInt()) {
         DIBasicType BTy(DV.getType());
         if (BTy.Verify() &&
             (BTy.getEncoding()  == dwarf::DW_ATE_signed 
              || BTy.getEncoding() == dwarf::DW_ATE_signed_char)) {
           Asm->OutStreamer.AddComment("DW_OP_consts");
           Asm->EmitInt8(dwarf::DW_OP_consts);
-          Asm->EmitSLEB128(Entry.getConstant());
+          Asm->EmitSLEB128(Entry.getInt());
         } else {
           Asm->OutStreamer.AddComment("DW_OP_constu");
           Asm->EmitInt8(dwarf::DW_OP_constu);
-          Asm->EmitULEB128(Entry.getConstant());
+          Asm->EmitULEB128(Entry.getInt());
         }
-      } else if (DV.hasComplexAddress()) {
-        unsigned N = DV.getNumAddrElements();
-        unsigned i = 0;
-        if (N >= 2 && DV.getAddrElement(0) == DIBuilder::OpPlus) {
-          if (Entry.Loc.getOffset()) {
-            i = 2;
-            Asm->EmitDwarfRegOp(Entry.Loc);
-            Asm->OutStreamer.AddComment("DW_OP_deref");
-            Asm->EmitInt8(dwarf::DW_OP_deref);
-            Asm->OutStreamer.AddComment("DW_OP_plus_uconst");
-            Asm->EmitInt8(dwarf::DW_OP_plus_uconst);
-            Asm->EmitSLEB128(DV.getAddrElement(1));
-          } else {
-            // If first address element is OpPlus then emit
-            // DW_OP_breg + Offset instead of DW_OP_reg + Offset.
-            MachineLocation Loc(Entry.Loc.getReg(), DV.getAddrElement(1));
-            Asm->EmitDwarfRegOp(Loc);
-            i = 2;
-          }
-        } else {
+      } else if (Entry.isLocation()) {
+        if (!DV.hasComplexAddress()) 
+          // Regular entry.
           Asm->EmitDwarfRegOp(Entry.Loc);
+        else {
+          // Complex address entry.
+          unsigned N = DV.getNumAddrElements();
+          unsigned i = 0;
+          if (N >= 2 && DV.getAddrElement(0) == DIBuilder::OpPlus) {
+            if (Entry.Loc.getOffset()) {
+              i = 2;
+              Asm->EmitDwarfRegOp(Entry.Loc);
+              Asm->OutStreamer.AddComment("DW_OP_deref");
+              Asm->EmitInt8(dwarf::DW_OP_deref);
+              Asm->OutStreamer.AddComment("DW_OP_plus_uconst");
+              Asm->EmitInt8(dwarf::DW_OP_plus_uconst);
+              Asm->EmitSLEB128(DV.getAddrElement(1));
+            } else {
+              // If first address element is OpPlus then emit
+              // DW_OP_breg + Offset instead of DW_OP_reg + Offset.
+              MachineLocation Loc(Entry.Loc.getReg(), DV.getAddrElement(1));
+              Asm->EmitDwarfRegOp(Loc);
+              i = 2;
+            }
+          } else {
+            Asm->EmitDwarfRegOp(Entry.Loc);
+          }
+          
+          // Emit remaining complex address elements.
+          for (; i < N; ++i) {
+            uint64_t Element = DV.getAddrElement(i);
+            if (Element == DIBuilder::OpPlus) {
+              Asm->EmitInt8(dwarf::DW_OP_plus_uconst);
+              Asm->EmitULEB128(DV.getAddrElement(++i));
+            } else if (Element == DIBuilder::OpDeref)
+              Asm->EmitInt8(dwarf::DW_OP_deref);
+            else llvm_unreachable("unknown Opcode found in complex address");
+          }
         }
-
-        // Emit remaining complex address elements.
-        for (; i < N; ++i) {
-          uint64_t Element = DV.getAddrElement(i);
-          if (Element == DIBuilder::OpPlus) {
-            Asm->EmitInt8(dwarf::DW_OP_plus_uconst);
-            Asm->EmitULEB128(DV.getAddrElement(++i));
-          } else if (Element == DIBuilder::OpDeref)
-            Asm->EmitInt8(dwarf::DW_OP_deref);
-          else llvm_unreachable("unknown Opcode found in complex address");
-        }
-      } else {
-        // Regular entry.
-        Asm->EmitDwarfRegOp(Entry.Loc);
       }
+      // else ... ignore constant fp. There is not any good way to
+      // to represent them here in dwarf.
       Asm->OutStreamer.EmitLabel(end);
     }
   }

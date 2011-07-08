@@ -20,8 +20,15 @@ TargetAsmInfo::TargetAsmInfo(const TargetMachine &TM) {
   const TargetData &TD = *TM.getTargetData();
   IsLittleEndian = TD.isLittleEndian();
   PointerSize = TD.getPointerSize();
-  const TargetFrameLowering &TFI = *TM.getFrameLowering();
-  StackDir = TFI.getStackGrowthDirection();
+
+  TFI = TM.getFrameLowering();
+  StackDir = TFI->getStackGrowthDirection();
   TRI = TM.getRegisterInfo();
-  TFI.getInitialFrameState(InitialFrameState);
+  TFI->getInitialFrameState(InitialFrameState);
+}
+
+int TargetAsmInfo::getCompactUnwindEncoding(ArrayRef<MCCFIInstruction> Instrs,
+                                            int DataAlignmentFactor,
+                                            bool IsEH) const {
+  return TFI->getCompactUnwindEncoding(Instrs, DataAlignmentFactor, IsEH);
 }

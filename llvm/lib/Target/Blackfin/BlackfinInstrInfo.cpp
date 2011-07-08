@@ -19,12 +19,15 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#define GET_INSTRINFO_CTOR
+#define GET_INSTRINFO_MC_DESC
 #include "BlackfinGenInstrInfo.inc"
 
 using namespace llvm;
 
 BlackfinInstrInfo::BlackfinInstrInfo(BlackfinSubtarget &ST)
-  : TargetInstrInfoImpl(BlackfinInsts, array_lengthof(BlackfinInsts)),
+  : BlackfinGenInstrInfo(BF::ADJCALLSTACKDOWN, BF::ADJCALLSTACKUP),
     RI(ST, *this),
     Subtarget(ST) {}
 

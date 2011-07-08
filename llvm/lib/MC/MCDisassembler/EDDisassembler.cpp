@@ -167,11 +167,11 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   if (!Tgt)
     return;
   
+  std::string CPU;
   std::string featureString;
-  
-  TargetMachine.reset(Tgt->createTargetMachine(tripleString,
+  TargetMachine.reset(Tgt->createTargetMachine(tripleString, CPU,
                                                featureString));
-  
+
   const TargetRegisterInfo *registerInfo = TargetMachine->getRegisterInfo();
   
   if (!registerInfo)
@@ -183,7 +183,7 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   
   if (!AsmInfo)
     return;
-  
+
   Disassembler.reset(Tgt->createMCDisassembler());
   
   if (!Disassembler)
@@ -193,8 +193,7 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   
   InstString.reset(new std::string);
   InstStream.reset(new raw_string_ostream(*InstString));
-  InstPrinter.reset(Tgt->createMCInstPrinter(*TargetMachine, LLVMSyntaxVariant,
-                                             *AsmInfo));
+  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo));
   
   if (!InstPrinter)
     return;
@@ -372,8 +371,10 @@ int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
   OwningPtr<MCAsmParser> genericParser(createMCAsmParser(*Tgt, sourceMgr,
                                                          context, *streamer,
                                                          *AsmInfo));
-  OwningPtr<TargetAsmParser> TargetParser(Tgt->createAsmParser(*genericParser,
-                                                               *TargetMachine));
+
+  StringRef triple = tripleFromArch(Key.Arch);
+  OwningPtr<TargetAsmParser> TargetParser(Tgt->createAsmParser(triple, "", "",
+                                                               *genericParser));
   
   AsmToken OpcodeToken = genericParser->Lex();
   AsmToken NextToken = genericParser->Lex();  // consume next token, because specificParser expects us to
