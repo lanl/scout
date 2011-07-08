@@ -3180,8 +3180,8 @@ class MeshType : public Type{
 public:
 
   MeshType(const MeshDecl* D)
-  : Type(Mesh, QualType(), false, false, false) {}
-    
+    : Type(Mesh, QualType(), false, false, false, false) {}
+  
   MeshDecl* getDecl() const {
     return decl;
   }
