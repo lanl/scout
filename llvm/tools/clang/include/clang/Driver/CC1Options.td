@@ -356,8 +356,6 @@ def ast_dump_xml : Flag<"-ast-dump-xml">,
   HelpText<"Build ASTs and then debug dump them in a verbose XML format">;
 def ast_view : Flag<"-ast-view">,
   HelpText<"Build ASTs and view them with GraphViz">;
-def boostcon : Flag<"-boostcon">,
-  HelpText<"BoostCon workshop mode">;
 def print_decl_contexts : Flag<"-print-decl-contexts">,
   HelpText<"Print DeclContexts and their Decls">;
 def emit_pth : Flag<"-emit-pth">,
@@ -494,10 +492,14 @@ def fobjc_arc : Flag<"-fobjc-arc">,
   HelpText<"Synthesize retain and release calls for Objective-C pointers">;
 def fobjc_arc_cxxlib_EQ : Joined<"-fobjc-arc-cxxlib=">,
   HelpText<"Objective-C++ Automatic Reference Counting standard library kind">;
-def fobjc_no_arc_runtime : Flag<"-fobjc-no-arc-runtime">,
-  HelpText<"Implement -fobjc-arc without any extra runtime support">;
 def fobjc_arc_exceptions : Flag<"-fobjc-arc-exceptions">,
   HelpText<"Use EH-safe code when synthesizing retains and releases in -fobjc-arc">;
+def fobjc_runtime_has_arc : Flag<"-fobjc-runtime-has-arc">,
+  HelpText<"The target Objective-C runtime provides ARC entrypoints">;
+def fobjc_runtime_has_weak : Flag<"-fobjc-runtime-has-weak">,
+  HelpText<"The target Objective-C runtime supports ARC weak operations">;
+def fobjc_runtime_has_terminate : Flag<"-fobjc-runtime-has-terminate">,
+  HelpText<"The target Objective-C runtime provides an objc_terminate entrypoint">;
 def fobjc_gc : Flag<"-fobjc-gc">,
   HelpText<"Enable Objective-C garbage collection">;
 def fobjc_gc_only : Flag<"-fobjc-gc-only">,

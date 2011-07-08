@@ -301,26 +301,31 @@ void Sema::LookupTemplateName(LookupResult &Found,
   if (Found.empty() && !isDependent) {
     // If we did not find any names, attempt to correct any typos.
     DeclarationName Name = Found.getLookupName();
-    if (DeclarationName Corrected = CorrectTypo(Found, S, &SS, LookupCtx,
-                                                false, CTC_CXXCasts)) {
+    Found.clear();
+    if (TypoCorrection Corrected = CorrectTypo(Found.getLookupNameInfo(),
+                                               Found.getLookupKind(), S, &SS,
+                                               LookupCtx, false,
+                                               CTC_CXXCasts)) {
+      Found.setLookupName(Corrected.getCorrection());
+      if (Corrected.getCorrectionDecl())
+        Found.addDecl(Corrected.getCorrectionDecl());
       FilterAcceptableTemplateNames(Found);
       if (!Found.empty()) {
+        std::string CorrectedStr(Corrected.getAsString(getLangOptions()));
+        std::string CorrectedQuotedStr(Corrected.getQuoted(getLangOptions()));
         if (LookupCtx)
           Diag(Found.getNameLoc(), diag::err_no_member_template_suggest)
-            << Name << LookupCtx << Found.getLookupName() << SS.getRange()
-            << FixItHint::CreateReplacement(Found.getNameLoc(),
-                                          Found.getLookupName().getAsString());
+            << Name << LookupCtx << CorrectedQuotedStr << SS.getRange()
+            << FixItHint::CreateReplacement(Found.getNameLoc(), CorrectedStr);
         else
           Diag(Found.getNameLoc(), diag::err_no_template_suggest)
-            << Name << Found.getLookupName()
-            << FixItHint::CreateReplacement(Found.getNameLoc(),
-                                          Found.getLookupName().getAsString());
+            << Name << CorrectedQuotedStr
+            << FixItHint::CreateReplacement(Found.getNameLoc(), CorrectedStr);
         if (TemplateDecl *Template = Found.getAsSingle<TemplateDecl>())
           Diag(Template->getLocation(), diag::note_previous_decl)
-            << Template->getDeclName();
+            << CorrectedQuotedStr;
       }
     } else {
-      Found.clear();
       Found.setLookupName(Name);
     }
   }
@@ -1863,7 +1868,8 @@ void Sema::NoteAllFoundTemplates(TemplateName Name) {
 QualType Sema::CheckTemplateIdType(TemplateName Name,
                                    SourceLocation TemplateLoc,
                                    TemplateArgumentListInfo &TemplateArgs) {
-  DependentTemplateName *DTN = Name.getAsDependentTemplateName();
+  DependentTemplateName *DTN
+    = Name.getUnderlying().getAsDependentTemplateName();
   if (DTN && DTN->isIdentifier())
     // When building a template-id where the template-name is dependent,
     // assume the template is a type template. Either our assumption is
@@ -1899,6 +1905,7 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
 
   QualType CanonType;
 
+  bool InstantiationDependent = false;
   if (TypeAliasTemplateDecl *AliasTemplate
         = dyn_cast<TypeAliasTemplateDecl>(Template)) {
     // Find the canonical type for this type alias template specialization.
@@ -1924,7 +1931,7 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
       return QualType();
   } else if (Name.isDependent() ||
              TemplateSpecializationType::anyDependentTemplateArguments(
-               TemplateArgs)) {
+               TemplateArgs, InstantiationDependent)) {
     // This class template specialization is a dependent
     // type. Therefore, its canonical type is another class template
     // specialization type that contains all of the converted
@@ -4841,10 +4848,12 @@ Sema::ActOnClassTemplateSpecialization(Scope *S, unsigned TagSpec,
                                          Converted))
       return true;
 
+    bool InstantiationDependent;
     if (!Name.isDependent() &&
         !TemplateSpecializationType::anyDependentTemplateArguments(
                                              TemplateArgs.getArgumentArray(),
-                                                         TemplateArgs.size())) {
+                                                         TemplateArgs.size(),
+                                                     InstantiationDependent)) {
       Diag(TemplateNameLoc, diag::err_partial_spec_fully_specialized)
         << ClassTemplate->getDeclName();
       isPartialSpecialization = false;
@@ -5369,7 +5378,7 @@ Sema::CheckDependentFunctionTemplateSpecialization(FunctionDecl *FD,
 /// explicitly provided as in, e.g., \c void sort<>(char*, char*);
 /// as it anyway contains info on the angle brackets locations.
 ///
-/// \param PrevDecl the set of declarations that may be specialized by
+/// \param Previous the set of declarations that may be specialized by
 /// this function specialization.
 bool
 Sema::CheckFunctionTemplateSpecialization(FunctionDecl *FD,
@@ -5433,13 +5442,12 @@ Sema::CheckFunctionTemplateSpecialization(FunctionDecl *FD,
   FunctionTemplateSpecializationInfo *SpecInfo
     = Specialization->getTemplateSpecializationInfo();
   assert(SpecInfo && "Function template specialization info missing?");
-  {
-    // Note: do not overwrite location info if previous template
-    // specialization kind was explicit.
-    TemplateSpecializationKind TSK = SpecInfo->getTemplateSpecializationKind();
-    if (TSK == TSK_Undeclared || TSK == TSK_ImplicitInstantiation)
-      Specialization->setLocation(FD->getLocation());
-  }
+
+  // Note: do not overwrite location info if previous template
+  // specialization kind was explicit.
+  TemplateSpecializationKind TSK = SpecInfo->getTemplateSpecializationKind();
+  if (TSK == TSK_Undeclared || TSK == TSK_ImplicitInstantiation)
+    Specialization->setLocation(FD->getLocation());
 
   // FIXME: Check if the prior specialization has a point of instantiation.
   // If so, we have run afoul of .

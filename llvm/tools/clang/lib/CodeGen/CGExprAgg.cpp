@@ -360,6 +360,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_IntegralComplexToFloatingComplex:
   case CK_ObjCProduceObject:
   case CK_ObjCConsumeObject:
+  case CK_ObjCReclaimReturnedObject:
     llvm_unreachable("cast kind invalid for aggregate types");
   }
 }
@@ -588,7 +589,7 @@ AggExprEmitter::EmitInitializationToLValue(Expr* E, LValue LV) {
     EmitNullInitializationToLValue(LV);
   } else if (type->isReferenceType()) {
     RValue RV = CGF.EmitReferenceBindingToExpr(E, /*InitializedDecl=*/0);
-    CGF.EmitStoreThroughLValue(RV, LV, type);
+    CGF.EmitStoreThroughLValue(RV, LV);
   } else if (type->isAnyComplexType()) {
     CGF.EmitComplexExprIntoAddr(E, LV.getAddress(), false);
   } else if (CGF.hasAggregateLLVMType(type)) {
@@ -597,7 +598,7 @@ AggExprEmitter::EmitInitializationToLValue(Expr* E, LValue LV) {
   } else if (LV.isSimple()) {
     CGF.EmitScalarInit(E, /*D=*/0, LV, /*Captured=*/false);
   } else {
-    CGF.EmitStoreThroughLValue(RValue::get(CGF.EmitScalarExpr(E)), LV, type);
+    CGF.EmitStoreThroughLValue(RValue::get(CGF.EmitScalarExpr(E)), LV);
   }
 }
 
@@ -612,7 +613,7 @@ void AggExprEmitter::EmitNullInitializationToLValue(LValue lv) {
   if (!CGF.hasAggregateLLVMType(type)) {
     // For non-aggregates, we can store zero
     llvm::Value *null = llvm::Constant::getNullValue(CGF.ConvertType(type));
-    CGF.EmitStoreThroughLValue(RValue::get(null), lv, type);
+    CGF.EmitStoreThroughLValue(RValue::get(null), lv);
   } else {
     // There's a potential optimization opportunity in combining
     // memsets; that would be easy for arrays, but relatively

@@ -1401,39 +1401,44 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
   }
 
   // We didn't find anything, so try to correct for a typo.
-  DeclarationName Corrected;
-  if (S && (Corrected = CorrectTypo(R, S, &SS, 0, false, CTC))) {
-    if (!R.empty()) {
-      if (isa<ValueDecl>(*R.begin()) || isa<FunctionTemplateDecl>(*R.begin())) {
+  TypoCorrection Corrected;
+  if (S && (Corrected = CorrectTypo(R.getLookupNameInfo(), R.getLookupKind(),
+                                    S, &SS, NULL, false, CTC))) {
+    std::string CorrectedStr(Corrected.getAsString(getLangOptions()));
+    std::string CorrectedQuotedStr(Corrected.getQuoted(getLangOptions()));
+    R.setLookupName(Corrected.getCorrection());
+
+    if (!Corrected.isKeyword()) {
+      NamedDecl *ND = Corrected.getCorrectionDecl();
+      R.addDecl(ND);
+      if (isa<ValueDecl>(ND) || isa<FunctionTemplateDecl>(ND)) {
         if (SS.isEmpty())
-          Diag(R.getNameLoc(), diagnostic_suggest) << Name << R.getLookupName()
-            << FixItHint::CreateReplacement(R.getNameLoc(),
-                                            R.getLookupName().getAsString());
+          Diag(R.getNameLoc(), diagnostic_suggest) << Name << CorrectedQuotedStr
+            << FixItHint::CreateReplacement(R.getNameLoc(), CorrectedStr);
         else
           Diag(R.getNameLoc(), diag::err_no_member_suggest)
-            << Name << computeDeclContext(SS, false) << R.getLookupName()
+            << Name << computeDeclContext(SS, false) << CorrectedQuotedStr
             << SS.getRange()
-            << FixItHint::CreateReplacement(R.getNameLoc(),
-                                            R.getLookupName().getAsString());
-        if (NamedDecl *ND = R.getAsSingle<NamedDecl>())
+            << FixItHint::CreateReplacement(R.getNameLoc(), CorrectedStr);
+        if (ND)
           Diag(ND->getLocation(), diag::note_previous_decl)
-            << ND->getDeclName();
+            << CorrectedQuotedStr;
 
         // Tell the callee to try to recover.
         return false;
       }
 
-      if (isa<TypeDecl>(*R.begin()) || isa<ObjCInterfaceDecl>(*R.begin())) {
+      if (isa<TypeDecl>(ND) || isa<ObjCInterfaceDecl>(ND)) {
         // FIXME: If we ended up with a typo for a type name or
         // Objective-C class name, we're in trouble because the parser
         // is in the wrong place to recover. Suggest the typo
         // correction, but don't make it a fix-it since we're not going
         // to recover well anyway.
         if (SS.isEmpty())
-          Diag(R.getNameLoc(), diagnostic_suggest) << Name << R.getLookupName();
+          Diag(R.getNameLoc(), diagnostic_suggest) << Name << CorrectedQuotedStr;
         else
           Diag(R.getNameLoc(), diag::err_no_member_suggest)
-            << Name << computeDeclContext(SS, false) << R.getLookupName()
+            << Name << computeDeclContext(SS, false) << CorrectedQuotedStr
             << SS.getRange();
 
         // Don't try to recover; it won't work.
@@ -1443,15 +1448,15 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
       // FIXME: We found a keyword. Suggest it, but don't provide a fix-it
       // because we aren't able to recover.
       if (SS.isEmpty())
-        Diag(R.getNameLoc(), diagnostic_suggest) << Name << Corrected;
+        Diag(R.getNameLoc(), diagnostic_suggest) << Name << CorrectedQuotedStr;
       else
         Diag(R.getNameLoc(), diag::err_no_member_suggest)
-        << Name << computeDeclContext(SS, false) << Corrected
+        << Name << computeDeclContext(SS, false) << CorrectedQuotedStr
         << SS.getRange();
       return true;
     }
-    R.clear();
   }
+  R.clear();
 
   // Emit a special diagnostic for failed member lookups.
   // FIXME: computing the declaration context might fail here (?)
@@ -3096,7 +3101,7 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
 
   if (ResultType->isVoidType() && !getLangOptions().CPlusPlus) {
     // GNU extension: subscripting on pointer to void
-    Diag(LLoc, diag::ext_gnu_void_ptr)
+    Diag(LLoc, diag::ext_gnu_subscript_void_type)
       << BaseExpr->getSourceRange();
 
     // C forbids expressions of unqualified void type from being l-values.
@@ -4057,13 +4062,20 @@ ExprResult Sema::CheckCastTypes(SourceLocation CastStartLoc, SourceRange TyR,
             ExprPtr->getPointeeType()->isObjCLifetimeType() &&
             !CastQuals.compatiblyIncludesObjCLifetime(ExprQuals)) {
           Diag(castExpr->getLocStart(), 
-               diag::err_typecheck_incompatible_lifetime)
+               diag::err_typecheck_incompatible_ownership)
             << castExprType << castType << AA_Casting
             << castExpr->getSourceRange();
           
           return ExprError();
         }
       }
+    } 
+    else if (!CheckObjCARCUnavailableWeakConversion(castType, castExprType)) {
+           Diag(castExpr->getLocStart(), 
+                diag::err_arc_cast_of_weak_unavailable)
+                << castExprType << castType 
+                << castExpr->getSourceRange();
+          return ExprError();
     }
   }
   
@@ -4137,20 +4149,57 @@ ExprResult Sema::CheckExtVectorCast(SourceRange R, QualType DestTy,
 }
 
 ExprResult
-Sema::ActOnCastExpr(Scope *S, SourceLocation LParenLoc, ParsedType Ty,
+Sema::ActOnCastExpr(Scope *S, SourceLocation LParenLoc,
+                    Declarator &D, ParsedType &Ty,
                     SourceLocation RParenLoc, Expr *castExpr) {
-  assert((Ty != 0) && (castExpr != 0) &&
+  assert(!D.isInvalidType() && (castExpr != 0) &&
          "ActOnCastExpr(): missing type or expr");
 
-  TypeSourceInfo *castTInfo;
-  QualType castType = GetTypeFromParser(Ty, &castTInfo);
-  if (!castTInfo)
-    castTInfo = Context.getTrivialTypeSourceInfo(castType);
+  TypeSourceInfo *castTInfo = GetTypeForDeclaratorCast(D, castExpr->getType());
+  if (D.isInvalidType())
+    return ExprError();
+
+  if (getLangOptions().CPlusPlus) {
+    // Check that there are no default arguments (C++ only).
+    CheckExtraCXXDefaultArguments(D);
+  }
+
+  QualType castType = castTInfo->getType();
+  Ty = CreateParsedType(castType, castTInfo);
+
+  bool isVectorLiteral = false;
+
+  // Check for an altivec or OpenCL literal,
+  // i.e. all the elements are integer constants.
+  ParenExpr *PE = dyn_cast<ParenExpr>(castExpr);
+  ParenListExpr *PLE = dyn_cast<ParenListExpr>(castExpr);
+  if (getLangOptions().AltiVec && castType->isVectorType() && (PE || PLE)) {
+    if (PLE && PLE->getNumExprs() == 0) {
+      Diag(PLE->getExprLoc(), diag::err_altivec_empty_initializer);
+      return ExprError();
+    }
+    if (PE || PLE->getNumExprs() == 1) {
+      Expr *E = (PE ? PE->getSubExpr() : PLE->getExpr(0));
+      if (!E->getType()->isVectorType())
+        isVectorLiteral = true;
+    }
+    else
+      isVectorLiteral = true;
+  }
+
+  // If this is a vector initializer, '(' type ')' '(' init, ..., init ')'
+  // then handle it as such.
+  if (isVectorLiteral)
+    return BuildVectorLiteral(LParenLoc, RParenLoc, castExpr, castTInfo);
 
   // If the Expr being casted is a ParenListExpr, handle it specially.
-  if (isa<ParenListExpr>(castExpr))
-    return ActOnCastOfParenListExpr(S, LParenLoc, RParenLoc, castExpr,
-                                    castTInfo);
+  // This is not an AltiVec-style cast, so turn the ParenListExpr into a
+  // sequence of BinOp comma operators.
+  if (isa<ParenListExpr>(castExpr)) {
+    ExprResult Result = MaybeConvertParenListExprToParenExpr(S, castExpr);
+    if (Result.isInvalid()) return ExprError();
+    castExpr = Result.take();
+  }
 
   return BuildCStyleCastExpr(LParenLoc, castTInfo, RParenLoc, castExpr);
 }
@@ -4174,6 +4223,67 @@ Sema::BuildCStyleCastExpr(SourceLocation LParenLoc, TypeSourceInfo *Ty,
                                       LParenLoc, RParenLoc));
 }
 
+ExprResult Sema::BuildVectorLiteral(SourceLocation LParenLoc,
+                                    SourceLocation RParenLoc, Expr *E,
+                                    TypeSourceInfo *TInfo) {
+  assert((isa<ParenListExpr>(E) || isa<ParenExpr>(E)) &&
+         "Expected paren or paren list expression");
+
+  Expr **exprs;
+  unsigned numExprs;
+  Expr *subExpr;
+  if (ParenListExpr *PE = dyn_cast<ParenListExpr>(E)) {
+    exprs = PE->getExprs();
+    numExprs = PE->getNumExprs();
+  } else {
+    subExpr = cast<ParenExpr>(E)->getSubExpr();
+    exprs = &subExpr;
+    numExprs = 1;
+  }
+
+  QualType Ty = TInfo->getType();
+  assert(Ty->isVectorType() && "Expected vector type");
+
+  llvm::SmallVector<Expr *, 8> initExprs;
+  // '(...)' form of vector initialization in AltiVec: the number of
+  // initializers must be one or must match the size of the vector.
+  // If a single value is specified in the initializer then it will be
+  // replicated to all the components of the vector
+  if (Ty->getAs<VectorType>()->getVectorKind() ==
+      VectorType::AltiVecVector) {
+    unsigned numElems = Ty->getAs<VectorType>()->getNumElements();
+    // The number of initializers must be one or must match the size of the
+    // vector. If a single value is specified in the initializer then it will
+    // be replicated to all the components of the vector
+    if (numExprs == 1) {
+      QualType ElemTy = Ty->getAs<VectorType>()->getElementType();
+      ExprResult Literal = Owned(exprs[0]);
+      Literal = ImpCastExprToType(Literal.take(), ElemTy,
+                                  PrepareScalarCast(*this, Literal, ElemTy));
+      return BuildCStyleCastExpr(LParenLoc, TInfo, RParenLoc, Literal.take());
+    }
+    else if (numExprs < numElems) {
+      Diag(E->getExprLoc(),
+           diag::err_incorrect_number_of_vector_initializers);
+      return ExprError();
+    }
+    else
+      for (unsigned i = 0, e = numExprs; i != e; ++i)
+        initExprs.push_back(exprs[i]);
+  }
+  else
+    for (unsigned i = 0, e = numExprs; i != e; ++i)
+      initExprs.push_back(exprs[i]);
+
+  // FIXME: This means that pretty-printing the final AST will produce curly
+  // braces instead of the original commas.
+  InitListExpr *initE = new (Context) InitListExpr(Context, LParenLoc,
+                                                   &initExprs[0],
+                                                   initExprs.size(), RParenLoc);
+  initE->setType(Ty);
+  return BuildCompoundLiteralExpr(LParenLoc, TInfo, RParenLoc, initE);
+}
+
 /// This is not an AltiVec-style cast, so turn the ParenListExpr into a sequence
 /// of comma binary operators.
 ExprResult
@@ -4193,88 +4303,14 @@ Sema::MaybeConvertParenListExprToParenExpr(Scope *S, Expr *expr) {
   return ActOnParenExpr(E->getLParenLoc(), E->getRParenLoc(), Result.get());
 }
 
-ExprResult
-Sema::ActOnCastOfParenListExpr(Scope *S, SourceLocation LParenLoc,
-                               SourceLocation RParenLoc, Expr *Op,
-                               TypeSourceInfo *TInfo) {
-  ParenListExpr *PE = cast<ParenListExpr>(Op);
-  QualType Ty = TInfo->getType();
-  bool isVectorLiteral = false;
-
-  // Check for an altivec or OpenCL literal,
-  // i.e. all the elements are integer constants.
-  if (getLangOptions().AltiVec && Ty->isVectorType()) {
-    if (PE->getNumExprs() == 0) {
-      Diag(PE->getExprLoc(), diag::err_altivec_empty_initializer);
-      return ExprError();
-    }
-    if (PE->getNumExprs() == 1) {
-      if (!PE->getExpr(0)->getType()->isVectorType())
-        isVectorLiteral = true;
-    }
-    else
-      isVectorLiteral = true;
-  }
-
-  // If this is a vector initializer, '(' type ')' '(' init, ..., init ')'
-  // then handle it as such.
-  if (isVectorLiteral) {
-    llvm::SmallVector<Expr *, 8> initExprs;
-    // '(...)' form of vector initialization in AltiVec: the number of
-    // initializers must be one or must match the size of the vector.
-    // If a single value is specified in the initializer then it will be
-    // replicated to all the components of the vector
-    if (Ty->getAs<VectorType>()->getVectorKind() ==
-        VectorType::AltiVecVector) {
-      unsigned numElems = Ty->getAs<VectorType>()->getNumElements();
-      // The number of initializers must be one or must match the size of the
-      // vector. If a single value is specified in the initializer then it will
-      // be replicated to all the components of the vector
-      if (PE->getNumExprs() == 1) {
-        QualType ElemTy = Ty->getAs<VectorType>()->getElementType();
-        ExprResult Literal = Owned(PE->getExpr(0));
-        Literal = ImpCastExprToType(Literal.take(), ElemTy,
-                                    PrepareScalarCast(*this, Literal, ElemTy));
-        return BuildCStyleCastExpr(LParenLoc, TInfo, RParenLoc, Literal.take());
-      }
-      else if (PE->getNumExprs() < numElems) {
-        Diag(PE->getExprLoc(),
-             diag::err_incorrect_number_of_vector_initializers);
-        return ExprError();
-      }
-      else
-        for (unsigned i = 0, e = PE->getNumExprs(); i != e; ++i)
-          initExprs.push_back(PE->getExpr(i));
-    }
-    else
-      for (unsigned i = 0, e = PE->getNumExprs(); i != e; ++i)
-        initExprs.push_back(PE->getExpr(i));
-
-    // FIXME: This means that pretty-printing the final AST will produce curly
-    // braces instead of the original commas.
-    InitListExpr *E = new (Context) InitListExpr(Context, LParenLoc,
-                                                 &initExprs[0],
-                                                 initExprs.size(), RParenLoc);
-    E->setType(Ty);
-    return BuildCompoundLiteralExpr(LParenLoc, TInfo, RParenLoc, E);
-  } else {
-    // This is not an AltiVec-style cast, so turn the ParenListExpr into a
-    // sequence of BinOp comma operators.
-    ExprResult Result = MaybeConvertParenListExprToParenExpr(S, Op);
-    if (Result.isInvalid()) return ExprError();
-    return BuildCStyleCastExpr(LParenLoc, TInfo, RParenLoc, Result.take());
-  }
-}
-
 ExprResult Sema::ActOnParenOrParenListExpr(SourceLocation L,
                                                   SourceLocation R,
-                                                  MultiExprArg Val,
-                                                  ParsedType TypeOfCast) {
+                                                  MultiExprArg Val) {
   unsigned nexprs = Val.size();
   Expr **exprs = reinterpret_cast<Expr**>(Val.release());
   assert((exprs != 0) && "ActOnParenOrParenListExpr() missing expr list");
   Expr *expr;
-  if (nexprs == 1 && TypeOfCast && !TypeIsVectorType(TypeOfCast))
+  if (nexprs == 1)
     expr = new (Context) ParenExpr(L, R, exprs[0]);
   else
     expr = new (Context) ParenListExpr(Context, L, exprs, nexprs, R,
@@ -4376,7 +4412,7 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS, ExprR
 
   // Now check the two expressions.
   if (LHSTy->isVectorType() || RHSTy->isVectorType())
-    return CheckVectorOperands(QuestionLoc, LHS, RHS);
+    return CheckVectorOperands(LHS, RHS, QuestionLoc, /*isCompAssign*/false);
 
   // OpenCL: If the condition is a vector, and both operands are scalar,
   // attempt to implicity convert them to the vector type to act like the
@@ -5099,6 +5135,7 @@ Sema::AssignConvertType
 Sema::CheckAssignmentConstraints(QualType lhsType, ExprResult &rhs,
                                  CastKind &Kind) {
   QualType rhsType = rhs.get()->getType();
+  QualType origLhsType = lhsType;
 
   // Get canonical types.  We're not formatting these types, just comparing
   // them.
@@ -5253,7 +5290,13 @@ Sema::CheckAssignmentConstraints(QualType lhsType, ExprResult &rhs,
     // A* -> B*
     if (rhsType->isObjCObjectPointerType()) {
       Kind = CK_BitCast;
-      return checkObjCPointerTypesForAssignment(*this, lhsType, rhsType);
+      Sema::AssignConvertType result = 
+        checkObjCPointerTypesForAssignment(*this, lhsType, rhsType);
+      if (getLangOptions().ObjCAutoRefCount &&
+          result == Compatible && 
+          !CheckObjCARCUnavailableWeakConversion(origLhsType, rhsType))
+        result = IncompatibleObjCWeakRef;
+      return result;
     }
 
     // int or null -> A*
@@ -5421,8 +5464,12 @@ Sema::CheckSingleAssignmentConstraints(QualType lhsType, ExprResult &rExpr) {
                                                  AA_Assigning);
       if (Res.isInvalid())
         return Incompatible;
+      Sema::AssignConvertType result = Compatible;
+      if (getLangOptions().ObjCAutoRefCount &&
+          !CheckObjCARCUnavailableWeakConversion(lhsType, rExpr.get()->getType()))
+        result = IncompatibleObjCWeakRef;
       rExpr = move(Res);
-      return Compatible;
+      return result;
     }
 
     // FIXME: Currently, we fall through and treat C++ classes like C
@@ -5474,7 +5521,8 @@ QualType Sema::InvalidOperands(SourceLocation Loc, ExprResult &lex, ExprResult &
   return QualType();
 }
 
-QualType Sema::CheckVectorOperands(SourceLocation Loc, ExprResult &lex, ExprResult &rex) {
+QualType Sema::CheckVectorOperands(ExprResult &lex, ExprResult &rex,
+                                   SourceLocation Loc, bool isCompAssign) {
   // For conversion purposes, we ignore any qualifiers.
   // For example, "const float" and "float" are equivalent.
   QualType lhsType =
@@ -5486,42 +5534,33 @@ QualType Sema::CheckVectorOperands(SourceLocation Loc, ExprResult &lex, ExprResu
   if (lhsType == rhsType)
     return lhsType;
 
-  // Handle the case of a vector & extvector type of the same size and element
-  // type.  It would be nice if we only had one vector type someday.
-  if (getLangOptions().LaxVectorConversions) {
-    if (const VectorType *LV = lhsType->getAs<VectorType>()) {
-      if (const VectorType *RV = rhsType->getAs<VectorType>()) {
-        if (LV->getElementType() == RV->getElementType() &&
-            LV->getNumElements() == RV->getNumElements()) {
-          if (lhsType->isExtVectorType()) {
-            rex = ImpCastExprToType(rex.take(), lhsType, CK_BitCast);
-            return lhsType;
-          } 
-
-          lex = ImpCastExprToType(lex.take(), rhsType, CK_BitCast);
-          return rhsType;
-        } else if (Context.getTypeSize(lhsType) ==Context.getTypeSize(rhsType)){
-          // If we are allowing lax vector conversions, and LHS and RHS are both
-          // vectors, the total size only needs to be the same. This is a
-          // bitcast; no bits are changed but the result type is different.
-          rex = ImpCastExprToType(rex.take(), lhsType, CK_BitCast);
-          return lhsType;
-        }
-      }
-    }
-  }
-
   // Handle the case of equivalent AltiVec and GCC vector types
   if (lhsType->isVectorType() && rhsType->isVectorType() &&
       Context.areCompatibleVectorTypes(lhsType, rhsType)) {
-    lex = ImpCastExprToType(lex.take(), rhsType, CK_BitCast);
+    if (lhsType->isExtVectorType()) {
+      rex = ImpCastExprToType(rex.take(), lhsType, CK_BitCast);
+      return lhsType;
+    }
+
+    if (!isCompAssign)
+      lex = ImpCastExprToType(lex.take(), rhsType, CK_BitCast);
     return rhsType;
+  }
+
+  if (getLangOptions().LaxVectorConversions &&
+      Context.getTypeSize(lhsType) == Context.getTypeSize(rhsType)) {
+    // If we are allowing lax vector conversions, and LHS and RHS are both
+    // vectors, the total size only needs to be the same. This is a
+    // bitcast; no bits are changed but the result type is different.
+    // FIXME: Should we really be allowing this?
+    rex = ImpCastExprToType(rex.take(), lhsType, CK_BitCast);
+    return lhsType;
   }
 
   // Canonicalize the ExtVector to the LHS, remember if we swapped so we can
   // swap back (so that we don't reverse the inputs to a subtract, for instance.
   bool swapped = false;
-  if (rhsType->isExtVectorType()) {
+  if (rhsType->isExtVectorType() && !isCompAssign) {
     swapped = true;
     std::swap(rex, lex);
     std::swap(rhsType, lhsType);
@@ -5554,6 +5593,7 @@ QualType Sema::CheckVectorOperands(SourceLocation Loc, ExprResult &lex, ExprResu
   }
 
   // Vectors of different size or scalar and non-ext-vector are errors.
+  if (swapped) std::swap(rex, lex);
   Diag(Loc, diag::err_typecheck_vector_not_convertable)
     << lex.get()->getType() << rex.get()->getType()
     << lex.get()->getSourceRange() << rex.get()->getSourceRange();
@@ -5563,7 +5603,7 @@ QualType Sema::CheckVectorOperands(SourceLocation Loc, ExprResult &lex, ExprResu
 QualType Sema::CheckMultiplyDivideOperands(
   ExprResult &lex, ExprResult &rex, SourceLocation Loc, bool isCompAssign, bool isDiv) {
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType())
-    return CheckVectorOperands(Loc, lex, rex);
+    return CheckVectorOperands(lex, rex, Loc, isCompAssign);
 
   QualType compType = UsualArithmeticConversions(lex, rex, isCompAssign);
   if (lex.isInvalid() || rex.isInvalid())
@@ -5587,7 +5627,7 @@ QualType Sema::CheckRemainderOperands(
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType()) {
     if (lex.get()->getType()->hasIntegerRepresentation() && 
         rex.get()->getType()->hasIntegerRepresentation())
-      return CheckVectorOperands(Loc, lex, rex);
+      return CheckVectorOperands(lex, rex, Loc, isCompAssign);
     return InvalidOperands(Loc, lex, rex);
   }
 
@@ -5606,10 +5646,149 @@ QualType Sema::CheckRemainderOperands(
   return compType;
 }
 
+/// \brief Diagnose invalid arithmetic on two void pointers.
+static void diagnoseArithmeticOnTwoVoidPointers(Sema &S, SourceLocation Loc,
+                                                Expr *LHS, Expr *RHS) {
+  S.Diag(Loc, S.getLangOptions().CPlusPlus
+                ? diag::err_typecheck_pointer_arith_void_type
+                : diag::ext_gnu_void_ptr)
+    << 1 /* two pointers */ << LHS->getSourceRange() << RHS->getSourceRange();
+}
+
+/// \brief Diagnose invalid arithmetic on a void pointer.
+static void diagnoseArithmeticOnVoidPointer(Sema &S, SourceLocation Loc,
+                                            Expr *Pointer) {
+  S.Diag(Loc, S.getLangOptions().CPlusPlus
+                ? diag::err_typecheck_pointer_arith_void_type
+                : diag::ext_gnu_void_ptr)
+    << 0 /* one pointer */ << Pointer->getSourceRange();
+}
+
+/// \brief Diagnose invalid arithmetic on two function pointers.
+static void diagnoseArithmeticOnTwoFunctionPointers(Sema &S, SourceLocation Loc,
+                                                    Expr *LHS, Expr *RHS) {
+  assert(LHS->getType()->isAnyPointerType());
+  assert(RHS->getType()->isAnyPointerType());
+  S.Diag(Loc, S.getLangOptions().CPlusPlus
+                ? diag::err_typecheck_pointer_arith_function_type
+                : diag::ext_gnu_ptr_func_arith)
+    << 1 /* two pointers */ << LHS->getType()->getPointeeType()
+    // We only show the second type if it differs from the first.
+    << (unsigned)!S.Context.hasSameUnqualifiedType(LHS->getType(),
+                                                   RHS->getType())
+    << RHS->getType()->getPointeeType()
+    << LHS->getSourceRange() << RHS->getSourceRange();
+}
+
+/// \brief Diagnose invalid arithmetic on a function pointer.
+static void diagnoseArithmeticOnFunctionPointer(Sema &S, SourceLocation Loc,
+                                                Expr *Pointer) {
+  assert(Pointer->getType()->isAnyPointerType());
+  S.Diag(Loc, S.getLangOptions().CPlusPlus
+                ? diag::err_typecheck_pointer_arith_function_type
+                : diag::ext_gnu_ptr_func_arith)
+    << 0 /* one pointer */ << Pointer->getType()->getPointeeType()
+    << 0 /* one pointer, so only one type */
+    << Pointer->getSourceRange();
+}
+
+/// \brief Check the validity of an arithmetic pointer operand.
+///
+/// If the operand has pointer type, this code will check for pointer types
+/// which are invalid in arithmetic operations. These will be diagnosed
+/// appropriately, including whether or not the use is supported as an
+/// extension.
+///
+/// \returns True when the operand is valid to use (even if as an extension).
+static bool checkArithmeticOpPointerOperand(Sema &S, SourceLocation Loc,
+                                            Expr *Operand) {
+  if (!Operand->getType()->isAnyPointerType()) return true;
+
+  QualType PointeeTy = Operand->getType()->getPointeeType();
+  if (PointeeTy->isVoidType()) {
+    diagnoseArithmeticOnVoidPointer(S, Loc, Operand);
+    return !S.getLangOptions().CPlusPlus;
+  }
+  if (PointeeTy->isFunctionType()) {
+    diagnoseArithmeticOnFunctionPointer(S, Loc, Operand);
+    return !S.getLangOptions().CPlusPlus;
+  }
+
+  if ((Operand->getType()->isPointerType() &&
+       !Operand->getType()->isDependentType()) ||
+      Operand->getType()->isObjCObjectPointerType()) {
+    QualType PointeeTy = Operand->getType()->getPointeeType();
+    if (S.RequireCompleteType(
+          Loc, PointeeTy,
+          S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
+            << PointeeTy << Operand->getSourceRange()))
+      return false;
+  }
+
+  return true;
+}
+
+/// \brief Check the validity of a binary arithmetic operation w.r.t. pointer
+/// operands.
+///
+/// This routine will diagnose any invalid arithmetic on pointer operands much
+/// like \see checkArithmeticOpPointerOperand. However, it has special logic
+/// for emitting a single diagnostic even for operations where both LHS and RHS
+/// are (potentially problematic) pointers.
+///
+/// \returns True when the operand is valid to use (even if as an extension).
+static bool checkArithmeticBinOpPointerOperands(Sema &S, SourceLocation Loc,
+                                                Expr *LHS, Expr *RHS) {
+  bool isLHSPointer = LHS->getType()->isAnyPointerType();
+  bool isRHSPointer = RHS->getType()->isAnyPointerType();
+  if (!isLHSPointer && !isRHSPointer) return true;
+
+  QualType LHSPointeeTy, RHSPointeeTy;
+  if (isLHSPointer) LHSPointeeTy = LHS->getType()->getPointeeType();
+  if (isRHSPointer) RHSPointeeTy = RHS->getType()->getPointeeType();
+
+  // Check for arithmetic on pointers to incomplete types.
+  bool isLHSVoidPtr = isLHSPointer && LHSPointeeTy->isVoidType();
+  bool isRHSVoidPtr = isRHSPointer && RHSPointeeTy->isVoidType();
+  if (isLHSVoidPtr || isRHSVoidPtr) {
+    if (!isRHSVoidPtr) diagnoseArithmeticOnVoidPointer(S, Loc, LHS);
+    else if (!isLHSVoidPtr) diagnoseArithmeticOnVoidPointer(S, Loc, RHS);
+    else diagnoseArithmeticOnTwoVoidPointers(S, Loc, LHS, RHS);
+
+    return !S.getLangOptions().CPlusPlus;
+  }
+
+  bool isLHSFuncPtr = isLHSPointer && LHSPointeeTy->isFunctionType();
+  bool isRHSFuncPtr = isRHSPointer && RHSPointeeTy->isFunctionType();
+  if (isLHSFuncPtr || isRHSFuncPtr) {
+    if (!isRHSFuncPtr) diagnoseArithmeticOnFunctionPointer(S, Loc, LHS);
+    else if (!isLHSFuncPtr) diagnoseArithmeticOnFunctionPointer(S, Loc, RHS);
+    else diagnoseArithmeticOnTwoFunctionPointers(S, Loc, LHS, RHS);
+
+    return !S.getLangOptions().CPlusPlus;
+  }
+
+  Expr *Operands[] = { LHS, RHS };
+  for (unsigned i = 0; i < 2; ++i) {
+    Expr *Operand = Operands[i];
+    if ((Operand->getType()->isPointerType() &&
+         !Operand->getType()->isDependentType()) ||
+        Operand->getType()->isObjCObjectPointerType()) {
+      QualType PointeeTy = Operand->getType()->getPointeeType();
+      if (S.RequireCompleteType(
+            Loc, PointeeTy,
+            S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
+              << PointeeTy << Operand->getSourceRange()))
+        return false;
+    }
+  }
+  return true;
+}
+
 QualType Sema::CheckAdditionOperands( // C99 6.5.6
   ExprResult &lex, ExprResult &rex, SourceLocation Loc, QualType* CompLHSTy) {
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType()) {
-    QualType compType = CheckVectorOperands(Loc, lex, rex);
+    QualType compType = CheckVectorOperands(lex, rex, Loc, CompLHSTy);
     if (CompLHSTy) *CompLHSTy = compType;
     return compType;
   }
@@ -5631,42 +5810,12 @@ QualType Sema::CheckAdditionOperands( // C99 6.5.6
     std::swap(PExp, IExp);
 
   if (PExp->getType()->isAnyPointerType()) {
-
     if (IExp->getType()->isIntegerType()) {
+      if (!checkArithmeticOpPointerOperand(*this, Loc, PExp))
+        return QualType();
+
       QualType PointeeTy = PExp->getType()->getPointeeType();
 
-      // Check for arithmetic on pointers to incomplete types.
-      if (PointeeTy->isVoidType()) {
-        if (getLangOptions().CPlusPlus) {
-          Diag(Loc, diag::err_typecheck_pointer_arith_void_type)
-            << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-          return QualType();
-        }
-
-        // GNU extension: arithmetic on pointer to void
-        Diag(Loc, diag::ext_gnu_void_ptr)
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      } else if (PointeeTy->isFunctionType()) {
-        if (getLangOptions().CPlusPlus) {
-          Diag(Loc, diag::err_typecheck_pointer_arith_function_type)
-            << PExp->getType() << PExp->getSourceRange();
-          return QualType();
-        }
-
-        // GNU extension: arithmetic on pointer to function
-        Diag(Loc, diag::ext_gnu_ptr_func_arith)
-          << PExp->getType() << PExp->getSourceRange();
-      } else {
-        // Check if we require a complete type.
-        if (((PExp->getType()->isPointerType() &&
-              !PExp->getType()->isDependentType()) ||
-              PExp->getType()->isObjCObjectPointerType()) &&
-             RequireCompleteType(Loc, PointeeTy,
-                           PDiag(diag::err_typecheck_arithmetic_incomplete_type)
-                             << PExp->getSourceRange()
-                             << PExp->getType()))
-          return QualType();
-      }
       // Diagnose bad cases where we step over interface counts.
       if (PointeeTy->isObjCObjectType() && LangOpts.ObjCNonFragileABI) {
         Diag(Loc, diag::err_arithmetic_nonfragile_interface)
@@ -5694,7 +5843,7 @@ QualType Sema::CheckAdditionOperands( // C99 6.5.6
 QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
                                         SourceLocation Loc, QualType* CompLHSTy) {
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType()) {
-    QualType compType = CheckVectorOperands(Loc, lex, rex);
+    QualType compType = CheckVectorOperands(lex, rex, Loc, CompLHSTy);
     if (CompLHSTy) *CompLHSTy = compType;
     return compType;
   }
@@ -5716,35 +5865,6 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
   if (lex.get()->getType()->isAnyPointerType()) {
     QualType lpointee = lex.get()->getType()->getPointeeType();
 
-    // The LHS must be an completely-defined object type.
-
-    bool ComplainAboutVoid = false;
-    Expr *ComplainAboutFunc = 0;
-    if (lpointee->isVoidType()) {
-      if (getLangOptions().CPlusPlus) {
-        Diag(Loc, diag::err_typecheck_pointer_arith_void_type)
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-        return QualType();
-      }
-
-      // GNU C extension: arithmetic on pointer to void
-      ComplainAboutVoid = true;
-    } else if (lpointee->isFunctionType()) {
-      if (getLangOptions().CPlusPlus) {
-        Diag(Loc, diag::err_typecheck_pointer_arith_function_type)
-          << lex.get()->getType() << lex.get()->getSourceRange();
-        return QualType();
-      }
-
-      // GNU C extension: arithmetic on pointer to function
-      ComplainAboutFunc = lex.get();
-    } else if (!lpointee->isDependentType() &&
-               RequireCompleteType(Loc, lpointee,
-                                   PDiag(diag::err_typecheck_sub_ptr_object)
-                                     << lex.get()->getSourceRange()
-                                     << lex.get()->getType()))
-      return QualType();
-
     // Diagnose bad cases where we step over interface counts.
     if (lpointee->isObjCObjectType() && LangOpts.ObjCNonFragileABI) {
       Diag(Loc, diag::err_arithmetic_nonfragile_interface)
@@ -5754,13 +5874,8 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
 
     // The result type of a pointer-int computation is the pointer type.
     if (rex.get()->getType()->isIntegerType()) {
-      if (ComplainAboutVoid)
-        Diag(Loc, diag::ext_gnu_void_ptr)
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      if (ComplainAboutFunc)
-        Diag(Loc, diag::ext_gnu_ptr_func_arith)
-          << ComplainAboutFunc->getType()
-          << ComplainAboutFunc->getSourceRange();
+      if (!checkArithmeticOpPointerOperand(*this, Loc, lex.get()))
+        return QualType();
 
       if (CompLHSTy) *CompLHSTy = lex.get()->getType();
       return lex.get()->getType();
@@ -5769,33 +5884,6 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
     // Handle pointer-pointer subtractions.
     if (const PointerType *RHSPTy = rex.get()->getType()->getAs<PointerType>()) {
       QualType rpointee = RHSPTy->getPointeeType();
-
-      // RHS must be a completely-type object type.
-      // Handle the GNU void* extension.
-      if (rpointee->isVoidType()) {
-        if (getLangOptions().CPlusPlus) {
-          Diag(Loc, diag::err_typecheck_pointer_arith_void_type)
-            << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-          return QualType();
-        }
-
-        ComplainAboutVoid = true;
-      } else if (rpointee->isFunctionType()) {
-        if (getLangOptions().CPlusPlus) {
-          Diag(Loc, diag::err_typecheck_pointer_arith_function_type)
-            << rex.get()->getType() << rex.get()->getSourceRange();
-          return QualType();
-        }
-
-        // GNU extension: arithmetic on pointer to function
-        if (!ComplainAboutFunc)
-          ComplainAboutFunc = rex.get();
-      } else if (!rpointee->isDependentType() &&
-                 RequireCompleteType(Loc, rpointee,
-                                     PDiag(diag::err_typecheck_sub_ptr_object)
-                                       << rex.get()->getSourceRange()
-                                       << rex.get()->getType()))
-        return QualType();
 
       if (getLangOptions().CPlusPlus) {
         // Pointee types must be the same: C++ [expr.add]
@@ -5817,13 +5905,9 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
         }
       }
 
-      if (ComplainAboutVoid)
-        Diag(Loc, diag::ext_gnu_void_ptr)
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      if (ComplainAboutFunc)
-        Diag(Loc, diag::ext_gnu_ptr_func_arith)
-          << ComplainAboutFunc->getType()
-          << ComplainAboutFunc->getSourceRange();
+      if (!checkArithmeticBinOpPointerOperands(*this, Loc,
+                                               lex.get(), rex.get()))
+        return QualType();
 
       if (CompLHSTy) *CompLHSTy = lex.get()->getType();
       return Context.getPointerDiffType();
@@ -5917,7 +6001,7 @@ QualType Sema::CheckShiftOperands(ExprResult &lex, ExprResult &rex, SourceLocati
 
   // Vector shifts promote their scalar inputs to vector type.
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType())
-    return CheckVectorOperands(Loc, lex, rex);
+    return CheckVectorOperands(lex, rex, Loc, isCompAssign);
 
   // Shifts don't perform usual arithmetic conversions, they just do integer
   // promotions on each operand. C99 6.5.7p3
@@ -6386,7 +6470,7 @@ QualType Sema::CheckVectorCompareOperands(ExprResult &lex, ExprResult &rex,
                                           bool isRelational) {
   // Check to make sure we're operating on vectors of the same type and width,
   // Allowing one side to be a scalar of element type.
-  QualType vType = CheckVectorOperands(Loc, lex, rex);
+  QualType vType = CheckVectorOperands(lex, rex, Loc, /*isCompAssign*/false);
   if (vType.isNull())
     return vType;
 
@@ -6441,7 +6525,7 @@ inline QualType Sema::CheckBitwiseOperands(
   if (lex.get()->getType()->isVectorType() || rex.get()->getType()->isVectorType()) {
     if (lex.get()->getType()->hasIntegerRepresentation() &&
         rex.get()->getType()->hasIntegerRepresentation())
-      return CheckVectorOperands(Loc, lex, rex);
+      return CheckVectorOperands(lex, rex, Loc, isCompAssign);
     
     return InvalidOperands(Loc, lex, rex);
   }
@@ -6746,8 +6830,8 @@ QualType Sema::CheckAssignmentOperands(Expr *LHS, ExprResult &RHS,
     if (ConvTy == Compatible) {
       if (LHSType.getObjCLifetime() == Qualifiers::OCL_Strong)
         checkRetainCycles(LHS, RHS.get());
-      else
-        checkUnsafeAssigns(Loc, LHSType, RHS.get());
+      else if (getLangOptions().ObjCAutoRefCount)
+        checkUnsafeExprAssigns(Loc, LHS, RHS.get());
     }
   } else {
     // Compound assignment "x += y"
@@ -6830,29 +6914,9 @@ static QualType CheckIncrementDecrementOperand(Sema &S, Expr *Op,
     QualType PointeeTy = ResType->getPointeeType();
 
     // C99 6.5.2.4p2, 6.5.6p2
-    if (PointeeTy->isVoidType()) {
-      if (S.getLangOptions().CPlusPlus) {
-        S.Diag(OpLoc, diag::err_typecheck_pointer_arith_void_type)
-          << Op->getSourceRange();
-        return QualType();
-      }
-
-      // Pointer to void is a GNU extension in C.
-      S.Diag(OpLoc, diag::ext_gnu_void_ptr) << Op->getSourceRange();
-    } else if (PointeeTy->isFunctionType()) {
-      if (S.getLangOptions().CPlusPlus) {
-        S.Diag(OpLoc, diag::err_typecheck_pointer_arith_function_type)
-          << Op->getType() << Op->getSourceRange();
-        return QualType();
-      }
-
-      S.Diag(OpLoc, diag::ext_gnu_ptr_func_arith)
-        << ResType << Op->getSourceRange();
-    } else if (S.RequireCompleteType(OpLoc, PointeeTy,
-                 S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
-                             << Op->getSourceRange()
-                             << ResType))
+    if (!checkArithmeticOpPointerOperand(S, OpLoc, Op))
       return QualType();
+
     // Diagnose bad cases where we step over interface counts.
     else if (PointeeTy->isObjCObjectType() && S.LangOpts.ObjCNonFragileABI) {
       S.Diag(OpLoc, diag::err_arithmetic_nonfragile_interface)
@@ -8598,7 +8662,7 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
 
 
     } else if (lhq.getObjCLifetime() != rhq.getObjCLifetime()) {
-      DiagKind = diag::err_typecheck_incompatible_lifetime;
+      DiagKind = diag::err_typecheck_incompatible_ownership;
       break;
     }
 
@@ -8636,6 +8700,9 @@ bool Sema::DiagnoseAssignmentResult(AssignConvertType ConvTy,
     break;
   case IncompatibleVectors:
     DiagKind = diag::warn_incompatible_vectors;
+    break;
+  case IncompatibleObjCWeakRef:
+    DiagKind = diag::err_arc_weak_unavailable_assign;
     break;
   case Incompatible:
     DiagKind = diag::err_typecheck_convert_incompatible;

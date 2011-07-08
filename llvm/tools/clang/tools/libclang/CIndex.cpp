@@ -1330,6 +1330,11 @@ bool CursorVisitor::VisitTemplateName(TemplateName Name, SourceLocation Loc) {
     return Visit(MakeCursorTemplateRef(
                                   Name.getAsQualifiedTemplateName()->getDecl(), 
                                        Loc, TU));
+
+  case TemplateName::SubstTemplateTemplateParm:
+    return Visit(MakeCursorTemplateRef(
+                         Name.getAsSubstTemplateTemplateParm()->getParameter(),
+                                       Loc, TU));
       
   case TemplateName::SubstTemplateTemplateParmPack:
     return Visit(MakeCursorTemplateRef(
@@ -2612,9 +2617,9 @@ unsigned clang_defaultSaveOptions(CXTranslationUnit TU) {
 int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
                               unsigned options) {
   if (!TU)
-    return 1;
+    return CXSaveError_InvalidTU;
   
-  int result = static_cast<ASTUnit *>(TU->TUData)->Save(FileName);
+  CXSaveError result = static_cast<ASTUnit *>(TU->TUData)->Save(FileName);
   if (getenv("LIBCLANG_RESOURCE_USAGE"))
     PrintLibclangResourceUsage(TU);
   return result;
@@ -3416,11 +3421,34 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   return createCXString((const char*) 0);
 }
 
+struct GetCursorData {
+  SourceLocation TokenBeginLoc;
+  CXCursor &BestCursor;
+
+  GetCursorData(SourceLocation tokenBegin, CXCursor &outputCursor)
+    : TokenBeginLoc(tokenBegin), BestCursor(outputCursor) { }
+};
+
 enum CXChildVisitResult GetCursorVisitor(CXCursor cursor,
                                          CXCursor parent,
                                          CXClientData client_data) {
-  CXCursor *BestCursor = static_cast<CXCursor *>(client_data);
-  
+  GetCursorData *Data = static_cast<GetCursorData *>(client_data);
+  CXCursor *BestCursor = &Data->BestCursor;
+
+  if (clang_isExpression(cursor.kind) &&
+      clang_isDeclaration(BestCursor->kind)) {
+    Decl *D = getCursorDecl(*BestCursor);
+
+    // Avoid having the cursor of an expression replace the declaration cursor
+    // when the expression source range overlaps the declaration range.
+    // This can happen for C++ constructor expressions whose range generally
+    // include the variable declaration, e.g.:
+    //  MyCXXClass foo; // Make sure pointing at 'foo' returns a VarDecl cursor.
+    if (D->getLocation().isValid() && Data->TokenBeginLoc.isValid() &&
+        D->getLocation() == Data->TokenBeginLoc)
+      return CXChildVisit_Break;
+  }
+
   // If our current best cursor is the construction of a temporary object, 
   // don't replace that cursor with a type reference, because we want 
   // clang_getCursor() to point at the constructor.
@@ -3464,8 +3492,9 @@ CXCursor clang_getCursor(CXTranslationUnit TU, CXSourceLocation Loc) {
     // FIXME: Would be great to have a "hint" cursor, then walk from that
     // hint cursor upward until we find a cursor whose source range encloses
     // the region of interest, rather than starting from the translation unit.
+    GetCursorData ResultData(SLoc, Result);
     CXCursor Parent = clang_getTranslationUnitCursor(TU);
-    CursorVisitor CursorVis(TU, GetCursorVisitor, &Result,
+    CursorVisitor CursorVis(TU, GetCursorVisitor, &ResultData,
                             Decl::MaxPCHLevel, true, SourceLocation(SLoc));
     CursorVis.VisitChildren(Parent);
   }
@@ -3554,6 +3583,10 @@ unsigned clang_isExpression(enum CXCursorKind K) {
 
 unsigned clang_isStatement(enum CXCursorKind K) {
   return K >= CXCursor_FirstStmt && K <= CXCursor_LastStmt;
+}
+
+unsigned clang_isAttribute(enum CXCursorKind K) {
+    return K >= CXCursor_FirstAttr && K <= CXCursor_LastAttr;
 }
 
 unsigned clang_isTranslationUnit(enum CXCursorKind K) {
@@ -4654,6 +4687,24 @@ AnnotateTokensWorker::Visit(CXCursor cursor, CXCursor parent) {
     break;
   }
 
+  // Avoid having the cursor of an expression "overwrite" the annotation of the
+  // variable declaration that it belongs to.
+  // This can happen for C++ constructor expressions whose range generally
+  // include the variable declaration, e.g.:
+  //  MyCXXClass foo; // Make sure we don't annotate 'foo' as a CallExpr cursor.
+  if (clang_isExpression(cursorK)) {
+    Expr *E = getCursorExpr(cursor);
+    if (Decl *D = getCursorParentDecl(cursor)) {
+      const unsigned I = NextToken();
+      if (E->getLocStart().isValid() && D->getLocation().isValid() &&
+          E->getLocStart() == D->getLocation() &&
+          E->getLocStart() == GetTokenLoc(I)) {
+        Cursors[I] = updateC;
+        AdvanceToken();
+      }
+    }
+  }
+
   // Visit children to get their cursor information.
   const unsigned BeforeChildren = NextToken();
   VisitChildren(cursor);
@@ -5385,10 +5436,9 @@ CXTUResourceUsage clang_getCXTUResourceUsage(CXTranslationUnit TU) {
   
   // How much memory is being used by the Preprocessor?
   Preprocessor &pp = astUnit->getPreprocessor();
-  const llvm::BumpPtrAllocator &ppAlloc = pp.getPreprocessorAllocator();
   createCXTUResourceUsageEntry(*entries,
                                CXTUResourceUsage_Preprocessor,
-                               ppAlloc.getTotalMemory());
+                               pp.getTotalMemory());
   
   if (PreprocessingRecord *pRec = pp.getPreprocessingRecord()) {
     createCXTUResourceUsageEntry(*entries,

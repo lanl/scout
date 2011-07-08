@@ -154,6 +154,12 @@ public:
   /// copied.
   NestedNameSpecifierLoc getWithLocInContext(ASTContext &Context) const;
 
+  /// \brief Retrieve the location of the name in the last qualifier
+  /// in this nested name specifier.  For example:
+  ///   ::foo::bar<0>::
+  ///          ^~~
+  SourceLocation getLastQualifierNameLoc() const;
+
   /// No scope specifier.
   bool isEmpty() const { return !Range.isValid(); }
   /// A scope specifier is present, but may be valid or invalid.
@@ -1377,7 +1383,9 @@ public:
     ForContext,          // Declaration within first part of a for loop.
     ConditionContext,    // Condition declaration in a C++ if/switch/while/for.
     TemplateParamContext,// Within a template parameter list.
+    CXXNewContext,       // C++ new-expression.
     CXXCatchContext,     // C++ catch exception-declaration
+    ObjCCatchContext,    // Objective-C catch exception-declaration
     BlockLiteralContext,  // Block literal declarator.
     TemplateTypeArgContext, // Template type argument.
     AliasDeclContext,    // C++0x alias-declaration.
@@ -1527,7 +1535,9 @@ public:
     case PrototypeContext:
     case ObjCPrototypeContext:
     case TemplateParamContext:
+    case CXXNewContext:
     case CXXCatchContext:
+    case ObjCCatchContext:
     case BlockLiteralContext:
     case TemplateTypeArgContext:
       return true;
@@ -1549,9 +1559,11 @@ public:
     case PrototypeContext:
     case TemplateParamContext:
     case CXXCatchContext:
+    case ObjCCatchContext:
       return true;
 
     case TypeNameContext:
+    case CXXNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case ObjCPrototypeContext:
@@ -1580,7 +1592,9 @@ public:
     case ObjCPrototypeContext:
     case TemplateParamContext:
     case CXXCatchContext:
+    case ObjCCatchContext:
     case TypeNameContext:
+    case CXXNewContext:
     case AliasDeclContext:
     case AliasTemplateContext:
     case BlockLiteralContext:
@@ -1725,6 +1739,14 @@ public:
     return const_cast<Declarator*>(this)->getFunctionTypeInfo();
   }
 
+  /// \brief Determine whether the declaration that will be produced from 
+  /// this declaration will be a function.
+  /// 
+  /// A declaration can declare a function even if the declarator itself
+  /// isn't a function declarator, if the type specifier refers to a function
+  /// type. This routine checks for both cases.
+  bool isDeclarationOfFunction() const;
+  
   /// takeAttributes - Takes attributes from the given parsed-attributes
   /// set and add them to this declarator.
   ///

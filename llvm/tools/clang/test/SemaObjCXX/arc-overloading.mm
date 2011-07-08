@@ -1,7 +1,7 @@
-// RUN: %clang_cc1 -fobjc-nonfragile-abi -fsyntax-only -fobjc-arc -verify -fblocks %s
+// RUN: %clang_cc1 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify -fblocks %s
 
-// Simple lifetime conversions + diagnostics.
-int &f0(id __strong const *); // expected-note{{candidate function not viable: 1st argument ('__weak id *') has __weak lifetime, but parameter has __strong lifetime}}
+// Simple ownership conversions + diagnostics.
+int &f0(id __strong const *); // expected-note{{candidate function not viable: 1st argument ('__weak id *') has __weak ownership, but parameter has __strong ownership}}
 
 void test_f0() {
   id __strong *sip;
@@ -46,7 +46,7 @@ void test_f2() {
   id __autoreleasing *aip;
   id __unsafe_unretained *uip;
 
-  // Prefer non-lifetime conversions to lifetime conversions.
+  // Prefer non-ownership conversions to ownership conversions.
   int &ir1 = f2(sip);
   int &ir2 = f2(csip);
   float &fr1 = f2(aip);
@@ -55,18 +55,18 @@ void test_f2() {
 }
 
 // Writeback conversion
-int &f3(id __autoreleasing *); // expected-note{{candidate function not viable: 1st argument ('__unsafe_unretained id *') has __unsafe_unretained lifetime, but parameter has __autoreleasing lifetime}}
+int &f3(id __autoreleasing *); // expected-note{{candidate function not viable: 1st argument ('__unsafe_unretained id *') has __unsafe_unretained ownership, but parameter has __autoreleasing ownership}}
 
 void test_f3() {
-  id __strong *sip;
-  id __weak *wip;
-  id __autoreleasing *aip;
-  id __unsafe_unretained *uip;
+  id __strong sip;
+  id __weak wip;
+  id __autoreleasing aip;
+  id __unsafe_unretained uip;
 
-  int &ir1 = f3(sip);
-  int &ir2 = f3(wip);
-  int &ir3 = f3(aip);
-  f3(uip); // expected-error{{no matching function for call to 'f3'}}
+  int &ir1 = f3(&sip);
+  int &ir2 = f3(&wip);
+  int &ir3 = f3(&aip);
+  f3(&uip); // expected-error{{no matching function for call to 'f3'}}
 }
 
 // Writeback conversion vs. no conversion
@@ -74,15 +74,15 @@ int &f4(id __autoreleasing *);
 float &f4(id __strong *);
 
 void test_f4() {
-  id __strong *sip;
-  id __weak *wip;
-  id __autoreleasing *aip;
-  extern __weak id *weak_global_ptr;
+  id __strong sip;
+  id __weak wip;
+  id __autoreleasing aip;
+  extern __weak id weak_global_ptr;
 
-  float &fr1 = f4(sip);
-  int &ir1 = f4(wip);
-  int &ir2 = f4(aip);
-  int &ir3 = f4(weak_global_ptr); // expected-error{{passing address of non-local object to __autoreleasing parameter for write-back}}
+  float &fr1 = f4(&sip);
+  int &ir1 = f4(&wip);
+  int &ir2 = f4(&aip);
+  int &ir3 = f4(&weak_global_ptr); // expected-error{{passing address of non-local object to __autoreleasing parameter for write-back}}
 }
 
 // Writeback conversion vs. other conversion.
@@ -90,13 +90,13 @@ int &f5(id __autoreleasing *);
 float &f5(id const __unsafe_unretained *);
 
 void test_f5() {
-  id __strong *sip;
-  id __weak *wip;
-  id __autoreleasing *aip;
+  id __strong sip;
+  id __weak wip;
+  id __autoreleasing aip;
 
-  int &ir1 = f5(wip);
-  float &fr1 = f5(sip);
-  int &ir2 = f5(aip);
+  int &ir1 = f5(&wip);
+  float &fr1 = f5(&sip);
+  int &ir2 = f5(&aip);
 }
 
 @interface A
@@ -106,19 +106,19 @@ int &f6(id __autoreleasing *);
 float &f6(id const __unsafe_unretained *);
 
 void test_f6() {
-  A* __strong *sip;
-  A* __weak *wip;
-  A* __autoreleasing *aip;
+  A* __strong sip;
+  A* __weak wip;
+  A* __autoreleasing aip;
 
-  int &ir1 = f6(wip);
-  float &fr1 = f6(sip);
-  int &ir2 = f6(aip);
+  int &ir1 = f6(&wip);
+  float &fr1 = f6(&sip);
+  int &ir2 = f6(&aip);
 }
 
 // Reference binding
-void f7(__strong id&); // expected-note{{candidate function not viable: 1st argument ('__weak id') has __weak lifetime, but parameter has __strong lifetime}} \
- // expected-note{{candidate function not viable: 1st argument ('__autoreleasing id') has __autoreleasing lifetime, but parameter has __strong lifetime}} \
- // expected-note{{candidate function not viable: 1st argument ('__unsafe_unretained id') has __unsafe_unretained lifetime, but parameter has __strong lifetime}}
+void f7(__strong id&); // expected-note{{candidate function not viable: 1st argument ('__weak id') has __weak ownership, but parameter has __strong ownership}} \
+ // expected-note{{candidate function not viable: 1st argument ('__autoreleasing id') has __autoreleasing ownership, but parameter has __strong ownership}} \
+ // expected-note{{candidate function not viable: 1st argument ('__unsafe_unretained id') has __unsafe_unretained ownership, but parameter has __strong ownership}}
 
 void test_f7() {
   __strong id strong_id;

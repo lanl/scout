@@ -436,7 +436,7 @@ Sema::SemaBuiltinAtomicOverloaded(ExprResult TheCallResult) {
   case Qualifiers::OCL_Weak:
   case Qualifiers::OCL_Strong:
   case Qualifiers::OCL_Autoreleasing:
-    Diag(DRE->getLocStart(), diag::err_arc_atomic_lifetime)
+    Diag(DRE->getLocStart(), diag::err_arc_atomic_ownership)
       << ValType << FirstArg->getSourceRange();
     return ExprError();
   }
@@ -3543,6 +3543,7 @@ static bool findRetainCycleOwner(Expr *e, RetainCycleOwner &owner) {
       case CK_BitCast:
       case CK_LValueBitCast:
       case CK_LValueToRValue:
+      case CK_ObjCReclaimReturnedObject:
         e = cast->getSubExpr();
         continue;
 
@@ -3720,15 +3721,50 @@ void Sema::checkRetainCycles(Expr *receiver, Expr *argument) {
     diagnoseRetainCycle(*this, capturer, owner);
 }
 
-void Sema::checkUnsafeAssigns(SourceLocation Loc,
+bool Sema::checkUnsafeAssigns(SourceLocation Loc,
                               QualType LHS, Expr *RHS) {
   Qualifiers::ObjCLifetime LT = LHS.getObjCLifetime();
   if (LT != Qualifiers::OCL_Weak && LT != Qualifiers::OCL_ExplicitNone)
-    return;
-  if (ImplicitCastExpr *cast = dyn_cast<ImplicitCastExpr>(RHS))
-    if (cast->getCastKind() == CK_ObjCConsumeObject)
+    return false;
+  // strip off any implicit cast added to get to the one arc-specific
+  while (ImplicitCastExpr *cast = dyn_cast<ImplicitCastExpr>(RHS)) {
+    if (cast->getCastKind() == CK_ObjCConsumeObject) {
       Diag(Loc, diag::warn_arc_retained_assign)
         << (LT == Qualifiers::OCL_ExplicitNone) 
         << RHS->getSourceRange();
+      return true;
+    }
+    RHS = cast->getSubExpr();
+  }
+  return false;
 }
 
+void Sema::checkUnsafeExprAssigns(SourceLocation Loc,
+                              Expr *LHS, Expr *RHS) {
+  QualType LHSType = LHS->getType();
+  if (checkUnsafeAssigns(Loc, LHSType, RHS))
+    return;
+  Qualifiers::ObjCLifetime LT = LHSType.getObjCLifetime();
+  // FIXME. Check for other life times.
+  if (LT != Qualifiers::OCL_None)
+    return;
+  
+  if (ObjCPropertyRefExpr *PRE = dyn_cast<ObjCPropertyRefExpr>(LHS)) {
+    if (PRE->isImplicitProperty())
+      return;
+    const ObjCPropertyDecl *PD = PRE->getExplicitProperty();
+    if (!PD)
+      return;
+    
+    unsigned Attributes = PD->getPropertyAttributes();
+    if (Attributes & ObjCPropertyDecl::OBJC_PR_assign)
+      while (ImplicitCastExpr *cast = dyn_cast<ImplicitCastExpr>(RHS)) {
+        if (cast->getCastKind() == CK_ObjCConsumeObject) {
+          Diag(Loc, diag::warn_arc_retained_property_assign)
+          << RHS->getSourceRange();
+          return;
+        }
+        RHS = cast->getSubExpr();
+      }
+  }
+}

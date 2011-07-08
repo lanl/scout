@@ -36,8 +36,10 @@ using llvm::StringRef;
 //  not release it."
 //
 
-cocoa::NamingConvention cocoa::deriveNamingConvention(Selector S) {
-  switch (S.getMethodFamily()) {
+cocoa::NamingConvention cocoa::deriveNamingConvention(Selector S, 
+                                                    const ObjCMethodDecl *MD) {
+  switch (MD && MD->hasAttr<ObjCMethodFamilyAttr>()? MD->getMethodFamily() 
+                                                   : S.getMethodFamily()) {
   case OMF_None:
   case OMF_autorelease:
   case OMF_dealloc:
@@ -45,6 +47,7 @@ cocoa::NamingConvention cocoa::deriveNamingConvention(Selector S) {
   case OMF_retain:
   case OMF_retainCount:
   case OMF_self:
+  case OMF_performSelector:
     return NoConvention;
 
   case OMF_init:

@@ -313,7 +313,7 @@ void TransformActionsImpl::removeStmt(Stmt *S) {
   assert(IsInTransaction && "Actions only allowed during a transaction");
   ActionData data;
   data.Kind = Act_RemoveStmt;
-  data.S = S;
+  data.S = S->IgnoreImplicit(); // important for uniquing
   CachedActions.push_back(data);
 }
 
@@ -388,7 +388,7 @@ bool TransformActionsImpl::canInsert(SourceLocation loc) {
 
   if (loc.isFileID())
     return true;
-  return SM.isAtStartOfMacroInstantiation(loc);
+  return PP.isAtStartOfMacroInstantiation(loc);
 }
 
 bool TransformActionsImpl::canInsertAfterToken(SourceLocation loc) {
@@ -401,7 +401,7 @@ bool TransformActionsImpl::canInsertAfterToken(SourceLocation loc) {
 
   if (loc.isFileID())
     return true;
-  return SM.isAtEndOfMacroInstantiation(loc);
+  return PP.isAtEndOfMacroInstantiation(loc);
 }
 
 bool TransformActionsImpl::canRemoveRange(SourceRange range) {

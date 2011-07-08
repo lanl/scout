@@ -1079,14 +1079,7 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
   assert(!DS.isFriendSpecified());
   assert(!Init || !HasDeferredInit);
 
-  bool isFunc = false;
-  if (D.isFunctionDeclarator())
-    isFunc = true;
-  else if (D.getNumTypeObjects() == 0 &&
-           D.getDeclSpec().getTypeSpecType() == DeclSpec::TST_typename) {
-    QualType TDType = GetTypeFromParser(DS.getRepAsType());
-    isFunc = TDType->isFunctionType();
-  }
+  bool isFunc = D.isDeclarationOfFunction();
 
   // C++ 9.2p6: A member shall not be declared to have automatic storage
   // duration (auto, register) or with the extern storage-class-specifier.
@@ -1433,25 +1426,27 @@ Sema::ActOnMemInitializer(Decl *ConstructorD,
       }
 
       // If no results were found, try to correct typos.
+      TypoCorrection Corr;
       if (R.empty() && BaseType.isNull() &&
-          CorrectTypo(R, S, &SS, ClassDecl, 0, CTC_NoKeywords) && 
-          R.isSingleResult()) {
-        if (FieldDecl *Member = R.getAsSingle<FieldDecl>()) {
+          (Corr = CorrectTypo(R.getLookupNameInfo(), R.getLookupKind(), S, &SS,
+                              ClassDecl, false, CTC_NoKeywords))) {
+        std::string CorrectedStr(Corr.getAsString(getLangOptions()));
+        std::string CorrectedQuotedStr(Corr.getQuoted(getLangOptions()));
+        if (FieldDecl *Member = Corr.getCorrectionDeclAs<FieldDecl>()) {
           if (Member->getDeclContext()->getRedeclContext()->Equals(ClassDecl)) {
             // We have found a non-static data member with a similar
             // name to what was typed; complain and initialize that
             // member.
             Diag(R.getNameLoc(), diag::err_mem_init_not_member_or_class_suggest)
-              << MemberOrBase << true << R.getLookupName()
-              << FixItHint::CreateReplacement(R.getNameLoc(),
-                                              R.getLookupName().getAsString());
+              << MemberOrBase << true << CorrectedQuotedStr
+              << FixItHint::CreateReplacement(R.getNameLoc(), CorrectedStr);
             Diag(Member->getLocation(), diag::note_previous_decl)
-              << Member->getDeclName();
+              << CorrectedQuotedStr;
 
             return BuildMemberInitializer(Member, (Expr**)Args, NumArgs, IdLoc,
                                           LParenLoc, RParenLoc);
           }
-        } else if (TypeDecl *Type = R.getAsSingle<TypeDecl>()) {
+        } else if (TypeDecl *Type = Corr.getCorrectionDeclAs<TypeDecl>()) {
           const CXXBaseSpecifier *DirectBaseSpec;
           const CXXBaseSpecifier *VirtualBaseSpec;
           if (FindBaseInitializer(*this, ClassDecl, 
@@ -1461,9 +1456,8 @@ Sema::ActOnMemInitializer(Decl *ConstructorD,
             // similar name to what was typed; complain and initialize
             // that base class.
             Diag(R.getNameLoc(), diag::err_mem_init_not_member_or_class_suggest)
-              << MemberOrBase << false << R.getLookupName()
-              << FixItHint::CreateReplacement(R.getNameLoc(),
-                                              R.getLookupName().getAsString());
+              << MemberOrBase << false << CorrectedQuotedStr
+              << FixItHint::CreateReplacement(R.getNameLoc(), CorrectedStr);
 
             const CXXBaseSpecifier *BaseSpec = DirectBaseSpec? DirectBaseSpec 
                                                              : VirtualBaseSpec;
@@ -4713,6 +4707,13 @@ Decl *Sema::ActOnStartNamespaceDef(Scope *NamespcScope,
       // Make our StdNamespace cache point at the first real definition of the
       // "std" namespace.
       StdNamespace = Namespc;
+
+      // Add this instance of "std" to the set of known namespaces
+      KnownNamespaces[Namespc] = false;
+    } else if (!Namespc->isInline()) {
+      // Since this is an "original" namespace, add it to the known set of
+      // namespaces if it is not an inline namespace.
+      KnownNamespaces[Namespc] = false;
     }
 
     PushOnScopeChains(Namespc, DeclRegionScope);
@@ -4848,6 +4849,39 @@ static bool IsUsingDirectiveInToplevelContext(DeclContext *CurContext) {
   }
 }
 
+static bool TryNamespaceTypoCorrection(Sema &S, LookupResult &R, Scope *Sc,
+                                       CXXScopeSpec &SS,
+                                       SourceLocation IdentLoc,
+                                       IdentifierInfo *Ident) {
+  R.clear();
+  if (TypoCorrection Corrected = S.CorrectTypo(R.getLookupNameInfo(),
+                                               R.getLookupKind(), Sc, &SS, NULL,
+                                               false, S.CTC_NoKeywords, NULL)) {
+    if (Corrected.getCorrectionDeclAs<NamespaceDecl>() ||
+        Corrected.getCorrectionDeclAs<NamespaceAliasDecl>()) {
+      std::string CorrectedStr(Corrected.getAsString(S.getLangOptions()));
+      std::string CorrectedQuotedStr(Corrected.getQuoted(S.getLangOptions()));
+      if (DeclContext *DC = S.computeDeclContext(SS, false))
+        S.Diag(IdentLoc, diag::err_using_directive_member_suggest)
+          << Ident << DC << CorrectedQuotedStr << SS.getRange()
+          << FixItHint::CreateReplacement(IdentLoc, CorrectedStr);
+      else
+        S.Diag(IdentLoc, diag::err_using_directive_suggest)
+          << Ident << CorrectedQuotedStr
+          << FixItHint::CreateReplacement(IdentLoc, CorrectedStr);
+
+      S.Diag(Corrected.getCorrectionDecl()->getLocation(),
+           diag::note_namespace_defined_here) << CorrectedQuotedStr;
+
+      Ident = Corrected.getCorrectionAsIdentifierInfo();
+      R.addDecl(Corrected.getCorrectionDecl());
+      return true;
+    }
+    R.setLookupName(Ident);
+  }
+  return false;
+}
+
 Decl *Sema::ActOnUsingDirective(Scope *S,
                                           SourceLocation UsingLoc,
                                           SourceLocation NamespcLoc,
@@ -4876,6 +4910,7 @@ Decl *Sema::ActOnUsingDirective(Scope *S,
     return 0;
 
   if (R.empty()) {
+    R.clear();
     // Allow "using namespace std;" or "using namespace ::std;" even if 
     // "std" hasn't been defined yet, for GCC compatibility.
     if ((!Qualifier || Qualifier->getKind() == NestedNameSpecifier::Global) &&
@@ -4885,27 +4920,7 @@ Decl *Sema::ActOnUsingDirective(Scope *S,
       R.resolveKind();
     } 
     // Otherwise, attempt typo correction.
-    else if (DeclarationName Corrected = CorrectTypo(R, S, &SS, 0, false, 
-                                                       CTC_NoKeywords, 0)) {
-      if (R.getAsSingle<NamespaceDecl>() || 
-          R.getAsSingle<NamespaceAliasDecl>()) {
-        if (DeclContext *DC = computeDeclContext(SS, false))
-          Diag(IdentLoc, diag::err_using_directive_member_suggest)
-            << NamespcName << DC << Corrected << SS.getRange()
-            << FixItHint::CreateReplacement(IdentLoc, Corrected.getAsString());        
-        else
-          Diag(IdentLoc, diag::err_using_directive_suggest)
-            << NamespcName << Corrected
-            << FixItHint::CreateReplacement(IdentLoc, Corrected.getAsString());
-        Diag(R.getFoundDecl()->getLocation(), diag::note_namespace_defined_here)
-          << Corrected;
-        
-        NamespcName = Corrected.getAsIdentifierInfo();
-      } else {
-        R.clear();
-        R.setLookupName(NamespcName);
-      }
-    }
+    else TryNamespaceTypoCorrection(*this, R, S, SS, IdentLoc, NamespcName);
   }
   
   if (!R.empty()) {
@@ -5823,30 +5838,7 @@ Decl *Sema::ActOnNamespaceAliasDef(Scope *S,
     return 0;
 
   if (R.empty()) {
-    if (DeclarationName Corrected = CorrectTypo(R, S, &SS, 0, false, 
-                                                CTC_NoKeywords, 0)) {
-      if (R.getAsSingle<NamespaceDecl>() || 
-          R.getAsSingle<NamespaceAliasDecl>()) {
-        if (DeclContext *DC = computeDeclContext(SS, false))
-          Diag(IdentLoc, diag::err_using_directive_member_suggest)
-            << Ident << DC << Corrected << SS.getRange()
-            << FixItHint::CreateReplacement(IdentLoc, Corrected.getAsString());        
-        else
-          Diag(IdentLoc, diag::err_using_directive_suggest)
-            << Ident << Corrected
-            << FixItHint::CreateReplacement(IdentLoc, Corrected.getAsString());
-        
-        Diag(R.getFoundDecl()->getLocation(), diag::note_namespace_defined_here)
-          << Corrected;
-        
-        Ident = Corrected.getAsIdentifierInfo();
-      } else {
-        R.clear();
-        R.setLookupName(Ident);
-      }
-    }
-    
-    if (R.empty()) {
+    if (!TryNamespaceTypoCorrection(*this, R, S, SS, IdentLoc, Ident)) {
       Diag(NamespaceLoc, diag::err_expected_namespace_name) << SS.getRange();
       return 0;
     }
@@ -8045,14 +8037,8 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
       Diag(Loc, diag::err_objc_object_catch);
       Invalid = true;
     } else if (T->isObjCObjectPointerType()) {
-      if (!getLangOptions().ObjCNonFragileABI) {
-        if (T->isObjCIdType() || T->isObjCQualifiedIdType())
-          Diag(Loc, diag::warn_objc_pointer_cxx_catch_fragile);
-        else {
-          Diag(Loc, diag::err_objc_pointer_cxx_catch_fragile);
-          Invalid = true;
-        }
-      }
+      if (!getLangOptions().ObjCNonFragileABI)
+        Diag(Loc, diag::warn_objc_pointer_cxx_catch_fragile);
     }
   }
 
@@ -8060,7 +8046,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
                                     ExDeclType, TInfo, SC_None, SC_None);
   ExDecl->setExceptionVariable(true);
   
-  if (!Invalid) {
+  if (!Invalid && !ExDeclType->isDependentType()) {
     if (const RecordType *recordType = ExDeclType->getAs<RecordType>()) {
       // C++ [except.handle]p16:
       //   The object declared in an exception-declaration or, if the 
@@ -8926,25 +8912,16 @@ DeclResult Sema::ActOnCXXConditionDeclaration(Scope *S, Declarator &D) {
   // new class or enumeration.
   assert(D.getDeclSpec().getStorageClassSpec() != DeclSpec::SCS_typedef &&
          "Parser allowed 'typedef' as storage class of condition decl.");
-  
-  TagDecl *OwnedTag = 0;
-  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S, &OwnedTag);
-  QualType Ty = TInfo->getType();
-  
-  if (Ty->isFunctionType()) { // The declarator shall not specify a function...
-                              // We exit without creating a CXXConditionDeclExpr because a FunctionDecl
-                              // would be created and CXXConditionDeclExpr wants a VarDecl.
-    Diag(D.getIdentifierLoc(), diag::err_invalid_use_of_function_type)
-      << D.getSourceRange();
-    return DeclResult();
-  } else if (OwnedTag && OwnedTag->isDefinition()) {
-    // The type-specifier-seq shall not declare a new class or enumeration.
-    Diag(OwnedTag->getLocation(), diag::err_type_defined_in_condition);
-  }
-  
+
   Decl *Dcl = ActOnDeclarator(S, D);
   if (!Dcl)
-    return DeclResult();
+    return true;
+
+  if (isa<FunctionDecl>(Dcl)) { // The declarator shall not specify a function.
+    Diag(Dcl->getLocation(), diag::err_invalid_use_of_function_type)
+      << D.getSourceRange();
+    return true;
+  }
 
   return Dcl;
 }

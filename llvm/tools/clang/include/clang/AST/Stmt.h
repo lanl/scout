@@ -154,9 +154,10 @@ protected:
     unsigned ObjectKind : 2;
     unsigned TypeDependent : 1;
     unsigned ValueDependent : 1;
+    unsigned InstantiationDependent : 1;
     unsigned ContainsUnexpandedParameterPack : 1;
   };
-  enum { NumExprBits = 15 };
+  enum { NumExprBits = 16 };
 
   class DeclRefExprBitfields {
     friend class DeclRefExpr;
@@ -291,6 +292,10 @@ public:
   /// viewAST - Visualize an AST rooted at this Stmt* using GraphViz.  Only
   ///   works on systems with GraphViz (Mac OS X) or dot+gv installed.
   void viewAST() const;
+
+  /// Skip past any implicit AST nodes which might surround this
+  /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
+  Stmt *IgnoreImplicit();
 
   // Implement isa<T> support.
   static bool classof(const Stmt *) { return true; }

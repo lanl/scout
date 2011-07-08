@@ -261,7 +261,8 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts, Diagnostic &Diags) {
     return false;
 
   // FIXME: We shouldn't need to do this (and link in codegen).
-  OwningPtr<TargetMachine> TM(TheTarget->createTargetMachine(Opts.Triple, ""));
+  OwningPtr<TargetMachine> TM(TheTarget->createTargetMachine(Opts.Triple,
+                                                             "", ""));
   if (!TM) {
     Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
     return false;
@@ -281,7 +282,7 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts, Diagnostic &Diags) {
   // FIXME: There is a bit of code duplication with addPassesToEmitFile.
   if (Opts.OutputType == AssemblerInvocation::FT_Asm) {
     MCInstPrinter *IP =
-      TheTarget->createMCInstPrinter(*TM, Opts.OutputAsmVariant, *MAI);
+      TheTarget->createMCInstPrinter(Opts.OutputAsmVariant, *MAI);
     MCCodeEmitter *CE = 0;
     TargetAsmBackend *TAB = 0;
     if (Opts.ShowEncoding) {
@@ -307,7 +308,9 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts, Diagnostic &Diags) {
 
   OwningPtr<MCAsmParser> Parser(createMCAsmParser(*TheTarget, SrcMgr, Ctx,
                                                   *Str.get(), *MAI));
-  OwningPtr<TargetAsmParser> TAP(TheTarget->createAsmParser(*Parser, *TM));
+  OwningPtr<TargetAsmParser> TAP(
+    TheTarget->createAsmParser(TM->getTargetTriple(), TM->getTargetCPU(),
+                               TM->getTargetFeatureString(), *Parser));
   if (!TAP) {
     Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
     return false;

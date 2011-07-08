@@ -2369,6 +2369,15 @@ ASTReader::ReadASTBlock(PerFileData &F) {
         TentativeDefinitions.insert(TentativeDefinitions.end(),
                                     Record.begin(), Record.end());
       break;
+        
+    case KNOWN_NAMESPACES:
+      // Optimization for the first block.
+      if (KnownNamespaces.empty())
+        KnownNamespaces.swap(Record);
+      else
+        KnownNamespaces.insert(KnownNamespaces.end(), 
+                               Record.begin(), Record.end());
+      break;
     }
     First = false;
   }
@@ -4483,6 +4492,17 @@ ASTReader::ReadMethodPool(Selector Sel) {
   return std::pair<ObjCMethodList, ObjCMethodList>();
 }
 
+void ASTReader::ReadKnownNamespaces(
+                          llvm::SmallVectorImpl<NamespaceDecl *> &Namespaces) {
+  Namespaces.clear();
+  
+  for (unsigned I = 0, N = KnownNamespaces.size(); I != N; ++I) {
+    if (NamespaceDecl *Namespace 
+                = dyn_cast_or_null<NamespaceDecl>(GetDecl(KnownNamespaces[I])))
+      Namespaces.push_back(Namespace);
+  }
+}
+
 void ASTReader::LoadSelector(Selector Sel) {
   // It would be complicated to avoid reading the methods anyway. So don't.
   ReadMethodPool(Sel);
@@ -4752,6 +4772,14 @@ ASTReader::ReadTemplateName(PerFileData &F, const RecordData &Record,
                                                GetIdentifierInfo(Record, Idx));
     return Context->getDependentTemplateName(NNS,
                                          (OverloadedOperatorKind)Record[Idx++]);
+  }
+
+  case TemplateName::SubstTemplateTemplateParm: {
+    TemplateTemplateParmDecl *param
+      = cast_or_null<TemplateTemplateParmDecl>(GetDecl(Record[Idx++]));
+    if (!param) return TemplateName();
+    TemplateName replacement = ReadTemplateName(F, Record, Idx);
+    return Context->getSubstTemplateTemplateParm(param, replacement);
   }
       
   case TemplateName::SubstTemplateTemplateParmPack: {

@@ -19,6 +19,7 @@
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/HostInfo.h"
+#include "clang/Driver/ObjCRuntime.h"
 #include "clang/Driver/OptTable.h"
 #include "clang/Driver/Option.h"
 #include "clang/Driver/Options.h"
@@ -74,8 +75,7 @@ bool Darwin::HasNativeLLVMSupport() const {
   return true;
 }
 
-/// Darwin provides an ARC runtime starting in MacOS X 10.7 and iOS 5.0.
-bool Darwin::HasARCRuntime() const {
+bool Darwin::hasARCRuntime() const {
   // FIXME: Remove this once there is a proper way to detect an ARC runtime
   // for the simulator.
   switch (ARCRuntimeForSimulator) {
@@ -91,6 +91,21 @@ bool Darwin::HasARCRuntime() const {
     return !isIPhoneOSVersionLT(5);
   else
     return !isMacosxVersionLT(10, 7);
+}
+
+/// Darwin provides an ARC runtime starting in MacOS X 10.7 and iOS 5.0.
+void Darwin::configureObjCRuntime(ObjCRuntime &runtime) const {
+  if (runtime.getKind() != ObjCRuntime::NeXT)
+    return ToolChain::configureObjCRuntime(runtime);
+
+  runtime.HasARC = runtime.HasWeak = hasARCRuntime();
+
+  // So far, objc_terminate is only available in iOS 5.
+  // FIXME: do the simulator logic properly.
+  if (!ARCRuntimeForSimulator && isTargetIPhoneOS())
+    runtime.HasTerminate = !isIPhoneOSVersionLT(5);
+  else
+    runtime.HasTerminate = false;
 }
 
 // FIXME: Can we tablegen this?
@@ -1462,7 +1477,7 @@ static std::string findGCCBaseLibDir(const std::string &GccTriple) {
     ret.append(Version);
     return ret;
   }
-  static const char* GccVersions[] = {"4.6.0", "4.6",
+  static const char* GccVersions[] = {"4.6.1", "4.6.0", "4.6",
                                       "4.5.2", "4.5.1", "4.5",
                                       "4.4.5", "4.4.4", "4.4.3", "4.4",
                                       "4.3.4", "4.3.3", "4.3.2", "4.3",

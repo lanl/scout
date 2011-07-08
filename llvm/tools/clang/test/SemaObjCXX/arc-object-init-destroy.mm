@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fobjc-nonfragile-abi -fsyntax-only -fobjc-arc -verify -Warc-abi -fblocks -triple x86_64-apple-darwin10.0.0 %s
+// RUN: %clang_cc1 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify -Warc-abi -fblocks -triple x86_64-apple-darwin10.0.0 %s
 
 typedef __strong id strong_id;
 typedef __weak id weak_id;
@@ -37,7 +37,7 @@ void test_new(int n) {
 
   // ... but not for arrays.
   typedef id id_array[2][3];
-  (void)new id_array; // expected-error{{'new' cannot allocate an array of 'id' with no explicit lifetime}}
+  (void)new id_array; // expected-error{{'new' cannot allocate an array of 'id' with no explicit ownership}}
 
   typedef __strong id strong_id_array[2][3];
   typedef __strong id strong_id_3[3];

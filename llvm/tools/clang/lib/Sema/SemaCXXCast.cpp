@@ -134,17 +134,23 @@ static TryCastResult TryReinterpretCast(Sema &Self, ExprResult &SrcExpr,
 /// ActOnCXXNamedCast - Parse {dynamic,static,reinterpret,const}_cast's.
 ExprResult
 Sema::ActOnCXXNamedCast(SourceLocation OpLoc, tok::TokenKind Kind,
-                        SourceLocation LAngleBracketLoc, ParsedType Ty,
+                        SourceLocation LAngleBracketLoc, Declarator &D,
                         SourceLocation RAngleBracketLoc,
                         SourceLocation LParenLoc, Expr *E,
                         SourceLocation RParenLoc) {
-  
-  TypeSourceInfo *DestTInfo;
-  QualType DestType = GetTypeFromParser(Ty, &DestTInfo);
-  if (!DestTInfo)
-    DestTInfo = Context.getTrivialTypeSourceInfo(DestType, SourceLocation());
 
-  return BuildCXXNamedCast(OpLoc, Kind, DestTInfo, move(E),
+  assert(!D.isInvalidType());
+
+  TypeSourceInfo *TInfo = GetTypeForDeclaratorCast(D, E->getType());
+  if (D.isInvalidType())
+    return ExprError();
+
+  if (getLangOptions().CPlusPlus) {
+    // Check that there are no default arguments (C++ only).
+    CheckExtraCXXDefaultArguments(D);
+  }
+
+  return BuildCXXNamedCast(OpLoc, Kind, TInfo, move(E),
                            SourceRange(LAngleBracketLoc, RAngleBracketLoc),
                            SourceRange(LParenLoc, RParenLoc));
 }
@@ -1711,7 +1717,8 @@ Sema::CXXCheckCStyleCast(SourceRange R, QualType CastTy, ExprValueKind &VK,
     Kind = CK_Dependent;
     return Owned(CastExpr);
   }
-
+  
+  QualType origCastExprType = CastExpr->getType();
   if (VK == VK_RValue && !CastTy->isRecordType()) {
     ExprResult CastExprRes = DefaultFunctionArrayLvalueConversion(CastExpr);
     if (CastExprRes.isInvalid())
@@ -1767,8 +1774,15 @@ Sema::CXXCheckCStyleCast(SourceRange R, QualType CastTy, ExprValueKind &VK,
     }
   }
 
-  if (getLangOptions().ObjCAutoRefCount && tcr == TC_Success)
+  if (getLangOptions().ObjCAutoRefCount && tcr == TC_Success) {
     CheckObjCARCConversion(R, CastTy, CastExpr, CCK);
+    if (!CheckObjCARCUnavailableWeakConversion(CastTy, 
+                                               origCastExprType))
+      Diag(CastExpr->getLocStart(), 
+           diag::err_arc_cast_of_weak_unavailable)
+      << origCastExprType << CastTy 
+      << CastExpr->getSourceRange();
+  }
 
   if (tcr != TC_Success && msg != 0) {
     if (CastExpr->getType() == Context.OverloadTy) {

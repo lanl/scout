@@ -480,23 +480,63 @@ Sema::ActOnCXXNullPtrLiteral(SourceLocation Loc) {
 
 /// ActOnCXXThrow - Parse throw expressions.
 ExprResult
-Sema::ActOnCXXThrow(SourceLocation OpLoc, Expr *Ex) {
+Sema::ActOnCXXThrow(Scope *S, SourceLocation OpLoc, Expr *Ex) {
+  bool IsThrownVarInScope = false;
+  if (Ex) {
+    // C++0x [class.copymove]p31:
+    //   When certain criteria are met, an implementation is allowed to omit the 
+    //   copy/move construction of a class object [...]
+    //
+    //     - in a throw-expression, when the operand is the name of a 
+    //       non-volatile automatic object (other than a function or catch-
+    //       clause parameter) whose scope does not extend beyond the end of the 
+    //       innermost enclosing try-block (if there is one), the copy/move 
+    //       operation from the operand to the exception object (15.1) can be 
+    //       omitted by constructing the automatic object directly into the 
+    //       exception object
+    if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Ex->IgnoreParens()))
+      if (VarDecl *Var = dyn_cast<VarDecl>(DRE->getDecl())) {
+        if (Var->hasLocalStorage() && !Var->getType().isVolatileQualified()) {
+          for( ; S; S = S->getParent()) {
+            if (S->isDeclScope(Var)) {
+              IsThrownVarInScope = true;
+              break;
+            }
+            
+            if (S->getFlags() &
+                (Scope::FnScope | Scope::ClassScope | Scope::BlockScope |
+                 Scope::FunctionPrototypeScope | Scope::ObjCMethodScope |
+                 Scope::TryScope))
+              break;
+          }
+        }
+      }
+  }
+  
+  return BuildCXXThrow(OpLoc, Ex, IsThrownVarInScope);
+}
+
+ExprResult Sema::BuildCXXThrow(SourceLocation OpLoc, Expr *Ex, 
+                               bool IsThrownVarInScope) {
   // Don't report an error if 'throw' is used in system headers.
   if (!getLangOptions().CXXExceptions &&
       !getSourceManager().isInSystemHeader(OpLoc))
     Diag(OpLoc, diag::err_exceptions_disabled) << "throw";
-
+  
   if (Ex && !Ex->isTypeDependent()) {
-    ExprResult ExRes = CheckCXXThrowOperand(OpLoc, Ex);
+    ExprResult ExRes = CheckCXXThrowOperand(OpLoc, Ex, IsThrownVarInScope);
     if (ExRes.isInvalid())
       return ExprError();
     Ex = ExRes.take();
   }
-  return Owned(new (Context) CXXThrowExpr(Ex, Context.VoidTy, OpLoc));
+  
+  return Owned(new (Context) CXXThrowExpr(Ex, Context.VoidTy, OpLoc,
+                                          IsThrownVarInScope));
 }
 
 /// CheckCXXThrowOperand - Validate the operand of a throw.
-ExprResult Sema::CheckCXXThrowOperand(SourceLocation ThrowLoc, Expr *E) {
+ExprResult Sema::CheckCXXThrowOperand(SourceLocation ThrowLoc, Expr *E,
+                                      bool IsThrownVarInScope) {
   // C++ [except.throw]p3:
   //   A throw-expression initializes a temporary object, called the exception
   //   object, the type of which is determined by removing any top-level
@@ -535,14 +575,28 @@ ExprResult Sema::CheckCXXThrowOperand(SourceLocation ThrowLoc, Expr *E) {
 
   // Initialize the exception result.  This implicitly weeds out
   // abstract types or types with inaccessible copy constructors.
-  const VarDecl *NRVOVariable = getCopyElisionCandidate(QualType(), E, false);
-
-  // FIXME: Determine whether we can elide this copy per C++0x [class.copy]p32.
+  
+  // C++0x [class.copymove]p31:
+  //   When certain criteria are met, an implementation is allowed to omit the 
+  //   copy/move construction of a class object [...]
+  //
+  //     - in a throw-expression, when the operand is the name of a 
+  //       non-volatile automatic object (other than a function or catch-clause 
+  //       parameter) whose scope does not extend beyond the end of the 
+  //       innermost enclosing try-block (if there is one), the copy/move 
+  //       operation from the operand to the exception object (15.1) can be 
+  //       omitted by constructing the automatic object directly into the 
+  //       exception object
+  const VarDecl *NRVOVariable = 0;
+  if (IsThrownVarInScope)
+    NRVOVariable = getCopyElisionCandidate(QualType(), E, false);
+  
   InitializedEntity Entity =
       InitializedEntity::InitializeException(ThrowLoc, E->getType(),
-                                             /*NRVO=*/false);
+                                             /*NRVO=*/NRVOVariable != 0);
   Res = PerformMoveOrCopyInitialization(Entity, NRVOVariable,
-                                        QualType(), E);
+                                        QualType(), E,
+                                        IsThrownVarInScope);
   if (Res.isInvalid())
     return ExprError();
   E = Res.take();
@@ -828,8 +882,7 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
     }
   }
 
-  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, /*Scope=*/0, /*OwnedDecl=*/0,
-                                               /*AllowAuto=*/true);
+  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, /*Scope=*/0);
   QualType AllocType = TInfo->getType();
   if (D.isInvalidType())
     return ExprError();
@@ -1144,7 +1197,7 @@ bool Sema::CheckAllocatedType(QualType AllocType, SourceLocation Loc,
       QualType BaseAllocType = Context.getBaseElementType(AT);
       if (BaseAllocType.getObjCLifetime() == Qualifiers::OCL_None &&
           BaseAllocType->isObjCLifetimeType())
-        return Diag(Loc, diag::err_arc_new_array_without_lifetime)
+        return Diag(Loc, diag::err_arc_new_array_without_ownership)
           << BaseAllocType;
     }
   }
@@ -3169,6 +3222,20 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
                                             ExprValueKind &VK,
                                             SourceLocation Loc,
                                             bool isIndirect) {
+  assert(!lex.get()->getType()->isPlaceholderType() &&
+         !rex.get()->getType()->isPlaceholderType() &&
+         "placeholders should have been weeded out by now");
+
+  // The LHS undergoes lvalue conversions if this is ->*.
+  if (isIndirect) {
+    lex = DefaultLvalueConversion(lex.take());
+    if (lex.isInvalid()) return QualType();
+  }
+
+  // The RHS always undergoes lvalue conversions.
+  rex = DefaultLvalueConversion(rex.take());
+  if (rex.isInvalid()) return QualType();
+
   const char *OpSpelling = isIndirect ? "->*" : ".*";
   // C++ 5.5p2
   //   The binary operator .* [p3: ->*] binds its second operand, which shall
@@ -3636,7 +3703,7 @@ QualType Sema::CXXCheckConditionalOperands(ExprResult &Cond, ExprResult &LHS, Ex
 
   // Extension: conditional operator involving vector types.
   if (LTy->isVectorType() || RTy->isVectorType())
-    return CheckVectorOperands(QuestionLoc, LHS, RHS);
+    return CheckVectorOperands(LHS, RHS, QuestionLoc, /*isCompAssign*/false);
 
   //   -- The second and third operands have arithmetic or enumeration type;
   //      the usual arithmetic conversions are performed to bring them to a
@@ -3972,13 +4039,12 @@ ExprResult Sema::MaybeBindToTemporary(Expr *E) {
       ReturnsRetained = (D && D->hasAttr<NSReturnsRetainedAttr>());
     }
 
-    if (ReturnsRetained) {
-      ExprNeedsCleanups = true;
-      E = ImplicitCastExpr::Create(Context, E->getType(),
-                                   CK_ObjCConsumeObject, E, 0,
-                                   VK_RValue);
-    }
-    return Owned(E);
+    ExprNeedsCleanups = true;
+
+    CastKind ck = (ReturnsRetained ? CK_ObjCConsumeObject
+                                   : CK_ObjCReclaimReturnedObject);
+    return Owned(ImplicitCastExpr::Create(Context, E->getType(), ck, E, 0,
+                                          VK_RValue));
   }
 
   if (!getLangOptions().CPlusPlus)
@@ -4461,7 +4527,16 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
   //   [Except in specific positions,] an lvalue that does not have
   //   array type is converted to the value stored in the
   //   designated object (and is no longer an lvalue).
-  if (E->isRValue()) return Owned(E);
+  if (E->isRValue()) {
+    // In C, function designators (i.e. expressions of function type)
+    // are r-values, but we still want to do function-to-pointer decay
+    // on them.  This is both technically correct and convenient for
+    // some clients.
+    if (!getLangOptions().CPlusPlus && E->getType()->isFunctionType())
+      return DefaultFunctionArrayConversion(E);
+
+    return Owned(E);
+  }
 
   // We always want to do this on ObjC property references.
   if (E->getObjectKind() == OK_ObjCProperty) {

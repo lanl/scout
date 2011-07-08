@@ -6831,7 +6831,7 @@ void DiagnoseBadConversion(Sema &S, OverloadCandidate *Cand, unsigned I) {
     }
 
     if (FromQs.getObjCLifetime() != ToQs.getObjCLifetime()) {
-      S.Diag(Fn->getLocation(), diag::note_ovl_candidate_bad_lifetime)
+      S.Diag(Fn->getLocation(), diag::note_ovl_candidate_bad_ownership)
         << (unsigned) FnKind << FnDesc
         << (FromExpr ? FromExpr->getSourceRange() : SourceRange())
         << FromTy
@@ -7969,13 +7969,17 @@ static void AddOverloadedCallCandidate(Sema &S,
                                  TemplateArgumentListInfo *ExplicitTemplateArgs,
                                        Expr **Args, unsigned NumArgs,
                                        OverloadCandidateSet &CandidateSet,
-                                       bool PartialOverloading) {
+                                       bool PartialOverloading,
+                                       bool KnownValid) {
   NamedDecl *Callee = FoundDecl.getDecl();
   if (isa<UsingShadowDecl>(Callee))
     Callee = cast<UsingShadowDecl>(Callee)->getTargetDecl();
 
   if (FunctionDecl *Func = dyn_cast<FunctionDecl>(Callee)) {
-    assert(!ExplicitTemplateArgs && "Explicit template arguments?");
+    if (ExplicitTemplateArgs) {
+      assert(!KnownValid && "Explicit template arguments?");
+      return;
+    }
     S.AddOverloadCandidate(Func, FoundDecl, Args, NumArgs, CandidateSet,
                            false, PartialOverloading);
     return;
@@ -7989,9 +7993,7 @@ static void AddOverloadedCallCandidate(Sema &S,
     return;
   }
 
-  assert(false && "unhandled case in overloaded call candidate");
-
-  // do nothing?
+  assert(!KnownValid && "unhandled case in overloaded call candidate");
 }
 
 /// \brief Add the overload candidates named by callee and/or found by argument
@@ -8042,7 +8044,7 @@ void Sema::AddOverloadedCallCandidates(UnresolvedLookupExpr *ULE,
          E = ULE->decls_end(); I != E; ++I)
     AddOverloadedCallCandidate(*this, I.getPair(), ExplicitTemplateArgs,
                                Args, NumArgs, CandidateSet,
-                               PartialOverloading);
+                               PartialOverloading, /*KnownValid*/ true);
 
   if (ULE->requiresADL())
     AddArgumentDependentLookupCandidates(ULE->getName(), /*Operator*/ false,
@@ -8084,13 +8086,15 @@ DiagnoseTwoPhaseLookup(Sema &SemaRef, SourceLocation FnLoc,
       for (LookupResult::iterator I = R.begin(), E = R.end(); I != E; ++I)
         AddOverloadedCallCandidate(SemaRef, I.getPair(),
                                    ExplicitTemplateArgs, Args, NumArgs,
-                                   Candidates, false);
+                                   Candidates, false, /*KnownValid*/ false);
 
       OverloadCandidateSet::iterator Best;
-      if (Candidates.BestViableFunction(SemaRef, FnLoc, Best) != OR_Success)
+      if (Candidates.BestViableFunction(SemaRef, FnLoc, Best) != OR_Success) {
         // No viable functions. Don't bother the user with notes for functions
         // which don't work and shouldn't be found anyway.
+        R.clear();
         return false;
+      }
 
       // Find the namespaces where ADL would have looked, and suggest
       // declaring the function there instead.
@@ -9190,13 +9194,14 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
       TheCall->getMethodDecl()->isPure()) {
     const CXXMethodDecl *MD = TheCall->getMethodDecl();
 
-    if (isa<CXXThisExpr>(MemExpr->getBase()->IgnoreParenCasts()))
+    if (isa<CXXThisExpr>(MemExpr->getBase()->IgnoreParenCasts())) {
       Diag(MemExpr->getLocStart(), 
            diag::warn_call_to_pure_virtual_member_function_from_ctor_dtor)
         << MD->getDeclName() << isa<CXXDestructorDecl>(CurContext)
         << MD->getParent()->getDeclName();
 
       Diag(MD->getLocStart(), diag::note_previous_decl) << MD->getDeclName();
+    }
   }
   return MaybeBindToTemporary(TheCall);
 }

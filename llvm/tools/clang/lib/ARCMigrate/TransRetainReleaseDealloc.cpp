@@ -31,7 +31,6 @@ namespace {
 
 class RetainReleaseDeallocRemover :
                        public RecursiveASTVisitor<RetainReleaseDeallocRemover> {
-  Decl *Dcl;
   Stmt *Body;
   MigrationPass &Pass;
 
@@ -39,8 +38,8 @@ class RetainReleaseDeallocRemover :
   llvm::OwningPtr<ParentMap> StmtMap;
 
 public:
-  RetainReleaseDeallocRemover(Decl *D, MigrationPass &pass)
-    : Dcl(D), Body(0), Pass(pass) { }
+  RetainReleaseDeallocRemover(MigrationPass &pass)
+    : Body(0), Pass(pass) { }
 
   void transformBody(Stmt *body) {
     Body = body;
@@ -117,11 +116,16 @@ private:
       return true;
     }
 
-    if (ParenExpr *parenE = dyn_cast_or_null<ParenExpr>(StmtMap->getParent(E)))
+    Stmt *parent = StmtMap->getParent(E);
+
+    if (ImplicitCastExpr *castE = dyn_cast_or_null<ImplicitCastExpr>(parent))
+      return tryRemoving(castE);
+
+    if (ParenExpr *parenE = dyn_cast_or_null<ParenExpr>(parent))
       return tryRemoving(parenE);
 
     if (BinaryOperator *
-          bopE = dyn_cast_or_null<BinaryOperator>(StmtMap->getParent(E))) {
+          bopE = dyn_cast_or_null<BinaryOperator>(parent)) {
       if (bopE->getOpcode() == BO_Comma && bopE->getLHS() == E &&
           isRemovable(bopE)) {
         Pass.TA.replace(bopE->getSourceRange(), bopE->getRHS()->getSourceRange());

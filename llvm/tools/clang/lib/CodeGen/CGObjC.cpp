@@ -466,7 +466,7 @@ void CodeGenFunction::GenerateObjCGetter(ObjCImplementationDecl *IMP,
     } 
     else {
         LValue LV = EmitLValueForIvar(TypeOfSelfObject(), LoadObjCSelf(), 
-                                    Ivar, 0);
+                                      Ivar, 0);
         QualType propType = PD->getType();
 
         llvm::Value *value;
@@ -478,7 +478,7 @@ void CodeGenFunction::GenerateObjCGetter(ObjCImplementationDecl *IMP,
               PD->getType()->isObjCRetainableType())
             value = emitARCRetainLoadOfScalar(*this, LV, IVART);
           else
-            value = EmitLoadOfLValue(LV, IVART).getScalarVal();
+            value = EmitLoadOfLValue(LV).getScalarVal();
 
           value = Builder.CreateBitCast(value, ConvertType(propType));
         }
@@ -1141,7 +1141,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   // time through the loop.
   if (!elementIsVariable) {
     elementLValue = EmitLValue(cast<Expr>(S.getElement()));
-    EmitStoreThroughLValue(RValue::get(CurrentItem), elementLValue, elementType);
+    EmitStoreThroughLValue(RValue::get(CurrentItem), elementLValue);
   } else {
     EmitScalarInit(CurrentItem, elementLValue);
   }
@@ -1205,7 +1205,7 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
 
     llvm::Value *null = llvm::Constant::getNullValue(convertedElementType);
     elementLValue = EmitLValue(cast<Expr>(S.getElement()));
-    EmitStoreThroughLValue(RValue::get(null), elementLValue, elementType);
+    EmitStoreThroughLValue(RValue::get(null), elementLValue);
   }
 
   if (DI) {
@@ -1311,7 +1311,7 @@ static llvm::Constant *createARCRuntimeFunction(CodeGenModule &CGM,
 
   // In -fobjc-no-arc-runtime, emit weak references to the runtime
   // support library.
-  if (CGM.getLangOptions().ObjCNoAutoRefCountRuntime)
+  if (!CGM.getCodeGenOpts().ObjCRuntimeHasARC)
     if (llvm::Function *f = dyn_cast<llvm::Function>(fn))
       f->setLinkage(llvm::Function::ExternalWeakLinkage);
 
@@ -1566,9 +1566,10 @@ llvm::Value *CodeGenFunction::EmitARCStoreStrongCall(llvm::Value *addr,
 /// Store into a strong object.  Sometimes calls this:
 ///   call void @objc_storeStrong(i8** %addr, i8* %value)
 /// Other times, breaks it down into components.
-llvm::Value *CodeGenFunction::EmitARCStoreStrong(LValue dst, QualType type,
+llvm::Value *CodeGenFunction::EmitARCStoreStrong(LValue dst,
                                                  llvm::Value *newValue,
                                                  bool ignored) {
+  QualType type = dst.getType();
   bool isBlock = type->isBlockPointerType();
 
   // Use a store barrier at -O0 unless this is a block type or the
@@ -1585,15 +1586,11 @@ llvm::Value *CodeGenFunction::EmitARCStoreStrong(LValue dst, QualType type,
   newValue = EmitARCRetain(type, newValue);
 
   // Read the old value.
-  llvm::Value *oldValue =
-    EmitLoadOfScalar(dst.getAddress(), dst.isVolatileQualified(),
-                     dst.getAlignment(), type, dst.getTBAAInfo());
+  llvm::Value *oldValue = EmitLoadOfScalar(dst);
 
   // Store.  We do this before the release so that any deallocs won't
   // see the old value.
-  EmitStoreOfScalar(newValue, dst.getAddress(),
-                    dst.isVolatileQualified(), dst.getAlignment(),
-                    type, dst.getTBAAInfo());
+  EmitStoreOfScalar(newValue, dst);
 
   // Finally, release the old value.
   EmitARCRelease(oldValue, /*precise*/ false);
@@ -1894,9 +1891,10 @@ namespace {
 
       // If it's a VLA, we have to load the stored size.  Note that
       // this is the size of the VLA in bytes, not its size in elements.
-      llvm::Value *vlaSizeInBytes = 0;
+      llvm::Value *numVLAElements = 0;
       if (isa<VariableArrayType>(arrayType)) {
-        vlaSizeInBytes = CGF.GetVLASize(cast<VariableArrayType>(arrayType));
+        numVLAElements =
+          CGF.getVLASize(cast<VariableArrayType>(arrayType)).first;
 
         // Walk into all VLAs.  This doesn't require changes to addr,
         // which has type T* where T is the first non-VLA element type.
@@ -1907,7 +1905,7 @@ namespace {
           // If we only have VLA components, 'addr' requires no adjustment.
           if (!arrayType) {
             baseType = elementType;
-            return divideVLASizeByBaseType(CGF, vlaSizeInBytes, baseType);
+            return numVLAElements;
           }
         } while (isa<VariableArrayType>(arrayType));
 
@@ -1947,22 +1945,20 @@ namespace {
         assert(arrayType && "LLVM and Clang types are out-of-synch");
       }
 
+      baseType = arrayType->getElementType();
+
       // Create the actual GEP.
       addr = CGF.Builder.CreateInBoundsGEP(addr, gepIndices.begin(),
                                            gepIndices.end(), "array.begin");
 
-      baseType = arrayType->getElementType();
+      llvm::Value *numElements
+        = llvm::ConstantInt::get(CGF.IntPtrTy, countFromCLAs);
 
-      // If we had an VLA dimensions, we need to use the captured size.
-      if (vlaSizeInBytes)
-        return divideVLASizeByBaseType(CGF, vlaSizeInBytes, baseType);
+      // If we had any VLA dimensions, factor them in.
+      if (numVLAElements)
+        numElements = CGF.Builder.CreateNUWMul(numVLAElements, numElements);
 
-      // Otherwise, use countFromCLAs.
-      assert(countFromCLAs == (uint64_t)
-               (Ctx.getTypeSizeInChars(origArrayType).getQuantity() /
-                Ctx.getTypeSizeInChars(baseType).getQuantity()));
-
-      return llvm::ConstantInt::get(CGF.IntPtrTy, countFromCLAs);
+      return numElements;
     }
 
     static llvm::Value *divideVLASizeByBaseType(CodeGenFunction &CGF,
@@ -2185,7 +2181,7 @@ static TryEmitResult tryEmitARCRetainLoadOfScalar(CodeGenFunction &CGF,
   case Qualifiers::OCL_ExplicitNone:
   case Qualifiers::OCL_Strong:
   case Qualifiers::OCL_Autoreleasing:
-    return TryEmitResult(CGF.EmitLoadOfLValue(lvalue, type).getScalarVal(),
+    return TryEmitResult(CGF.EmitLoadOfLValue(lvalue).getScalarVal(),
                          false);
 
   case Qualifiers::OCL_Weak:
@@ -2273,14 +2269,14 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
   // If we're loading retained from a __strong xvalue, we can avoid 
   // an extra retain/release pair by zeroing out the source of this
   // "move" operation.
-  if (e->isXValue() &&
+  if (e->isXValue() && !e->getType().isConstQualified() &&
       e->getType().getObjCLifetime() == Qualifiers::OCL_Strong) {
     // Emit the lvalue
     LValue lv = CGF.EmitLValue(e);
     
     // Load the object pointer and cast it to the appropriate type.
     QualType exprType = e->getType();
-    llvm::Value *result = CGF.EmitLoadOfLValue(lv, exprType).getScalarVal();
+    llvm::Value *result = CGF.EmitLoadOfLValue(lv).getScalarVal();
     
     if (resultType)
       result = CGF.Builder.CreateBitCast(result, resultType);
@@ -2289,8 +2285,7 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
     llvm::Value *null 
       = llvm::ConstantPointerNull::get(
                             cast<llvm::PointerType>(CGF.ConvertType(exprType)));
-    CGF.EmitStoreOfScalar(null, lv.getAddress(), lv.isVolatileQualified(),
-                          lv.getAlignment(), exprType);
+    CGF.EmitStoreOfScalar(null, lv);
     
     return TryEmitResult(result, true);
   }
@@ -2334,6 +2329,14 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
       // the retain/release pair.
       case CK_ObjCConsumeObject: {
         llvm::Value *result = CGF.EmitScalarExpr(ce->getSubExpr());
+        if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
+        return TryEmitResult(result, true);
+      }
+
+      // For reclaims, emit the subexpression as a retained call and
+      // skip the consumption.
+      case CK_ObjCReclaimReturnedObject: {
+        llvm::Value *result = emitARCRetainCall(CGF, ce->getSubExpr());
         if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
         return TryEmitResult(result, true);
       }
@@ -2431,7 +2434,7 @@ CodeGenFunction::EmitARCStoreStrong(const BinaryOperator *e,
                       e->getType(), lvalue.getTBAAInfo());
     EmitARCRelease(oldValue, /*precise*/ false);
   } else {
-    value = EmitARCStoreStrong(lvalue, e->getType(), value, ignored);
+    value = EmitARCStoreStrong(lvalue, value, ignored);
   }
 
   return std::pair<LValue,llvm::Value*>(lvalue, value);
@@ -2462,13 +2465,7 @@ void CodeGenFunction::EmitObjCAutoreleasePoolStmt(
 
   // Keep track of the current cleanup stack depth.
   RunCleanupsScope Scope(*this);
-  const llvm::Triple Triple = getContext().Target.getTriple();
-  if (CGM.getLangOptions().ObjCAutoRefCount ||
-      (CGM.isTargetDarwin() && 
-       ((Triple.getArch() == llvm::Triple::x86_64 && 
-         Triple.getDarwinMajorNumber() >= 11)
-        || (Triple.getEnvironmentName() == "iphoneos" && 
-            Triple.getDarwinMajorNumber() >= 5)))) {
+  if (CGM.getCodeGenOpts().ObjCRuntimeHasARC) {
     llvm::Value *token = EmitObjCAutoreleasePoolPush();
     EHStack.pushCleanup<CallObjCAutoreleasePoolObject>(NormalCleanup, token);
   } else {
@@ -2485,4 +2482,22 @@ void CodeGenFunction::EmitObjCAutoreleasePoolStmt(
     DI->EmitRegionEnd(Builder);
   }
 }
+
+/// EmitExtendGCLifetime - Given a pointer to an Objective-C object,
+/// make sure it survives garbage collection until this point.
+void CodeGenFunction::EmitExtendGCLifetime(llvm::Value *object) {
+  // We just use an inline assembly.
+  const llvm::Type *paramTypes[] = { VoidPtrTy };
+  llvm::FunctionType *extenderType
+    = llvm::FunctionType::get(VoidTy, paramTypes, /*variadic*/ false);
+  llvm::Value *extender
+    = llvm::InlineAsm::get(extenderType,
+                           /* assembly */ "",
+                           /* constraints */ "r",
+                           /* side effects */ true);
+
+  object = Builder.CreateBitCast(object, VoidPtrTy);
+  Builder.CreateCall(extender, object)->setDoesNotThrow();
+}
+
 CGObjCRuntime::~CGObjCRuntime() {}

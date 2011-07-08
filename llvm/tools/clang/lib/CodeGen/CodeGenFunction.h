@@ -1530,16 +1530,18 @@ public:
   // instruction in LLVM instead once it works well enough.
   llvm::Value *EmitVAArg(llvm::Value *VAListAddr, QualType Ty);
 
-  /// EmitVLASize - Generate code for any VLA size expressions that might occur
-  /// in a variably modified type. If Ty is a VLA, will return the value that
-  /// corresponds to the size in bytes of the VLA type. Will return 0 otherwise.
+  /// EmitVLASize - Capture all the sizes for the VLA expressions in
+  /// the given variably-modified type and store them in the VLASizeMap.
   ///
   /// This function can be called with a null (unreachable) insert point.
-  llvm::Value *EmitVLASize(QualType Ty);
+  void EmitVariablyModifiedType(QualType Ty);
 
-  // GetVLASize - Returns an LLVM value that corresponds to the size in bytes
-  // of a variable length array type.
-  llvm::Value *GetVLASize(const VariableArrayType *);
+  /// getVLASize - Returns an LLVM value that corresponds to the size,
+  /// in non-variably-sized elements, of a variable length array type,
+  /// plus that largest non-variably-sized element type.  Assumes that
+  /// the type has already been emitted with EmitVariablyModifiedType.
+  std::pair<llvm::Value*,QualType> getVLASize(const VariableArrayType *vla);
+  std::pair<llvm::Value*,QualType> getVLASize(QualType vla);
 
   /// LoadCXXThis - Load the value of 'this'. This function is only valid while
   /// generating code for an C++ member function.
@@ -1864,6 +1866,11 @@ public:
   llvm::Value *EmitLoadOfScalar(llvm::Value *Addr, bool Volatile,
                                 unsigned Alignment, QualType Ty,
                                 llvm::MDNode *TBAAInfo = 0);
+
+  /// EmitLoadOfScalar - Load a scalar value from an address, taking
+  /// care to appropriately convert from the memory representation to
+  /// the LLVM value representation.  The l-value must be a simple
+  /// l-value.
   llvm::Value *EmitLoadOfScalar(LValue lvalue);
 
   /// EmitStoreOfScalar - Store a scalar value to an address, taking
@@ -1872,23 +1879,27 @@ public:
   void EmitStoreOfScalar(llvm::Value *Value, llvm::Value *Addr,
                          bool Volatile, unsigned Alignment, QualType Ty,
                          llvm::MDNode *TBAAInfo = 0);
+
+  /// EmitStoreOfScalar - Store a scalar value to an address, taking
+  /// care to appropriately convert from the memory representation to
+  /// the LLVM value representation.  The l-value must be a simple
+  /// l-value.
   void EmitStoreOfScalar(llvm::Value *value, LValue lvalue);
 
   /// EmitLoadOfLValue - Given an expression that represents a value lvalue,
   /// this method emits the address of the lvalue, then loads the result as an
   /// rvalue, returning the rvalue.
-  RValue EmitLoadOfLValue(LValue V, QualType LVType);
-  RValue EmitLoadOfExtVectorElementLValue(LValue V, QualType LVType);
-  RValue EmitLoadOfBitfieldLValue(LValue LV, QualType ExprType);
+  RValue EmitLoadOfLValue(LValue V);
+  RValue EmitLoadOfExtVectorElementLValue(LValue V);
+  RValue EmitLoadOfBitfieldLValue(LValue LV);
   RValue EmitLoadOfPropertyRefLValue(LValue LV,
                                  ReturnValueSlot Return = ReturnValueSlot());
 
   /// EmitStoreThroughLValue - Store the specified rvalue into the specified
   /// lvalue, where both are guaranteed to the have the same type, and that type
   /// is 'Ty'.
-  void EmitStoreThroughLValue(RValue Src, LValue Dst, QualType Ty);
-  void EmitStoreThroughExtVectorComponentLValue(RValue Src, LValue Dst,
-                                                QualType Ty);
+  void EmitStoreThroughLValue(RValue Src, LValue Dst);
+  void EmitStoreThroughExtVectorComponentLValue(RValue Src, LValue Dst);
   void EmitStoreThroughPropertyRefLValue(RValue Src, LValue Dst);
 
   /// EmitStoreThroughLValue - Store Src into Dst with same constraints as
@@ -1897,7 +1908,7 @@ public:
   /// \param Result [out] - If non-null, this will be set to a Value* for the
   /// bit-field contents after the store, appropriate for use as the result of
   /// an assignment to the bit-field.
-  void EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst, QualType Ty,
+  void EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst,
                                       llvm::Value **Result=0);
 
   /// Emit an l-value for an assignment (simple or compound) of complex type.
@@ -2072,8 +2083,8 @@ public:
   void EmitARCMoveWeak(llvm::Value *dst, llvm::Value *src);
   llvm::Value *EmitARCRetainAutorelease(QualType type, llvm::Value *value);
   llvm::Value *EmitARCRetainAutoreleaseNonBlock(llvm::Value *value);
-  llvm::Value *EmitARCStoreStrong(LValue addr, QualType type,
-                                  llvm::Value *value, bool ignored);
+  llvm::Value *EmitARCStoreStrong(LValue lvalue, llvm::Value *value,
+                                  bool ignored);
   llvm::Value *EmitARCStoreStrongCall(llvm::Value *addr, llvm::Value *value,
                                       bool ignored);
   llvm::Value *EmitARCRetain(QualType type, llvm::Value *value);
@@ -2153,6 +2164,10 @@ public:
   /// pointers.
   void EmitGCMemmoveCollectable(llvm::Value *DestPtr, llvm::Value *SrcPtr,
                                 QualType Ty);
+
+  /// EmitExtendGCLifetime - Given a pointer to an Objective-C object,
+  /// make sure it survives garbage collection until this point.
+  void EmitExtendGCLifetime(llvm::Value *object);
 
   /// EmitComplexExpr - Emit the computation of the specified expression of
   /// complex type, returning the result.

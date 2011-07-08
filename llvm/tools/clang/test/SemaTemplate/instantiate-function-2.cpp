@@ -42,3 +42,25 @@ namespace PR9654 {
     f<int>(0);
   }
 }
+
+namespace AliasTagDef {
+  template<typename T>
+  T f() {
+    using S = struct { // expected-warning {{C++0x}}
+      T g() {
+        return T();
+      }
+    };
+    return S().g();
+  }
+
+  int n = f<int>();
+}
+
+namespace PR10273 {
+  template<typename T> void (f)(T t) {}
+
+  void g() {
+    (f)(17);
+  }
+}

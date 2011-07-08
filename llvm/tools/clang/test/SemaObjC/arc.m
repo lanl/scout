@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fsyntax-only -fobjc-arc -fblocks -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
 
 typedef unsigned long NSUInteger;
 
@@ -329,7 +329,7 @@ void test14() {
 }
 
 void test15() {
-  __block __autoreleasing id x; // expected-error {{__block variables cannot have __autoreleasing lifetime}}
+  __block __autoreleasing id x; // expected-error {{__block variables cannot have __autoreleasing ownership}}
 }
 
 struct Test16;
@@ -397,16 +397,16 @@ void test19(void) {
 }
 
 // rdar://problem/8951453
-static __thread id test20_implicit; // expected-error {{thread-local variable has non-trivial lifetime: type is '__strong id'}}
-static __thread __strong id test20_strong; // expected-error {{thread-local variable has non-trivial lifetime: type is '__strong id'}}
-static __thread __weak id test20_weak; // expected-error {{thread-local variable has non-trivial lifetime: type is '__weak id'}}
-static __thread __autoreleasing id test20_autoreleasing; // expected-error {{thread-local variable has non-trivial lifetime: type is '__autoreleasing id'}} expected-error {{global variables cannot have __autoreleasing lifetime}}
+static __thread id test20_implicit; // expected-error {{thread-local variable has non-trivial ownership: type is '__strong id'}}
+static __thread __strong id test20_strong; // expected-error {{thread-local variable has non-trivial ownership: type is '__strong id'}}
+static __thread __weak id test20_weak; // expected-error {{thread-local variable has non-trivial ownership: type is '__weak id'}}
+static __thread __autoreleasing id test20_autoreleasing; // expected-error {{thread-local variable has non-trivial ownership: type is '__autoreleasing id'}} expected-error {{global variables cannot have __autoreleasing ownership}}
 static __thread __unsafe_unretained id test20_unsafe;
 void test20(void) {
-  static __thread id test20_implicit; // expected-error {{thread-local variable has non-trivial lifetime: type is '__strong id'}}
-  static __thread __strong id test20_strong; // expected-error {{thread-local variable has non-trivial lifetime: type is '__strong id'}}
-  static __thread __weak id test20_weak; // expected-error {{thread-local variable has non-trivial lifetime: type is '__weak id'}}
-  static __thread __autoreleasing id test20_autoreleasing; // expected-error {{thread-local variable has non-trivial lifetime: type is '__autoreleasing id'}} expected-error {{global variables cannot have __autoreleasing lifetime}}
+  static __thread id test20_implicit; // expected-error {{thread-local variable has non-trivial ownership: type is '__strong id'}}
+  static __thread __strong id test20_strong; // expected-error {{thread-local variable has non-trivial ownership: type is '__strong id'}}
+  static __thread __weak id test20_weak; // expected-error {{thread-local variable has non-trivial ownership: type is '__weak id'}}
+  static __thread __autoreleasing id test20_autoreleasing; // expected-error {{thread-local variable has non-trivial ownership: type is '__autoreleasing id'}} expected-error {{global variables cannot have __autoreleasing ownership}}
   static __thread __unsafe_unretained id test20_unsafe;
 }
 
@@ -415,7 +415,7 @@ _Bool fn(id obj) {
     return (_Bool)obj;
 }
 
-// Check casting w/ lifetime qualifiers.
+// Check casting w/ ownership qualifiers.
 void test21() {
   __strong id *sip;
   (void)(__weak id *)sip; // expected-error{{casting '__strong id *' to type '__weak id *' changes retain/release properties of pointer}}
@@ -425,7 +425,7 @@ void test21() {
 }
 
 // rdar://problem/9340462
-void test22(id x[]) { // expected-error {{must explicitly describe intended lifetime of an object array parameter}}
+void test22(id x[]) { // expected-error {{must explicitly describe intended ownership of an object array parameter}}
 }
 
 // rdar://problem/9400219
@@ -464,7 +464,7 @@ void test25(Class *classes) {
 
 void test26(id y) {
   extern id test26_var1;
-  __sync_swap(&test26_var1, 0, y); // expected-error {{cannot perform atomic operation on a pointer to type '__strong id': type has non-trivial lifetime}}
+  __sync_swap(&test26_var1, 0, y); // expected-error {{cannot perform atomic operation on a pointer to type '__strong id': type has non-trivial ownership}}
 
   extern __unsafe_unretained id test26_var2;
   __sync_swap(&test26_var2, 0, y);
@@ -518,12 +518,12 @@ typedef struct Bark Bark;
 
 // rdar://9495837
 @interface Test30
-- (id) new;
++ (id) new;
 - (void)Meth;
 @end
 
 @implementation Test30
-- (id) new { return 0; }
++ (id) new { return 0; }
 - (void) Meth {
   __weak id x = [Test30 new]; // expected-warning {{assigning retained object to weak variable}}
   id __unsafe_unretained u = [Test30 new]; // expected-warning {{assigning retained object to unsafe_unretained variable}}
@@ -572,3 +572,38 @@ int Test33(id someid) {
   return (int)someid;
 }
 
+// rdar://9636091
+@interface I34
+@property (nonatomic, retain) id newName __attribute__((ns_returns_not_retained)) ;
+
+@property (nonatomic, retain) id newName1 __attribute__((ns_returns_not_retained)) ;
+- (id) newName1 __attribute__((ns_returns_not_retained));
+
+@property (nonatomic, retain) id newName2 __attribute__((ns_returns_not_retained)); // expected-note {{roperty declared here}}
+- (id) newName2;   // expected-warning {{property declared as returning non-retained objects; getter returning retained objects}}
+@end
+
+@implementation I34
+@synthesize newName;
+
+@synthesize newName1;
+- (id) newName1 { return 0; }
+
+@synthesize newName2;
+@end
+
+void test35(void) {
+  extern void test36_helper(id*);
+  id x;
+  __strong id *xp = 0;
+
+  test36_helper(&x);
+  test36_helper(xp); // expected-error {{passing address of non-local object to __autoreleasing parameter for write-back}}
+
+  // rdar://problem/9665710
+  __block id y;
+  test36_helper(&y);
+  ^{ test36_helper(&y); }();
+
+  __strong int non_objc_type; // expected-warning {{'__strong' only applies to objective-c object or block pointer types}} 
+}

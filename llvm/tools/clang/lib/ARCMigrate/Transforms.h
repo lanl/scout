@@ -31,7 +31,6 @@ namespace trans {
 
 void rewriteAutoreleasePool(MigrationPass &pass);
 void rewriteUnbridgedCasts(MigrationPass &pass);
-void rewriteAllocCopyWithZone(MigrationPass &pass);
 void makeAssignARCSafe(MigrationPass &pass);
 void removeRetainReleaseDealloc(MigrationPass &pass);
 void removeZeroOutPropsInDealloc(MigrationPass &pass);
@@ -60,25 +59,8 @@ class BodyTransform : public RecursiveASTVisitor<BodyTransform<BODY_TRANS> > {
 public:
   BodyTransform(MigrationPass &pass) : Pass(pass) { }
 
-  void handleBody(Decl *D) {
-    Stmt *body = D->getBody();
-    if (body) {
-      BODY_TRANS(D, Pass).transformBody(body);
-    }
-  }
-
-  bool TraverseBlockDecl(BlockDecl *D) {
-    handleBody(D);
-    return true;
-  }
-  bool TraverseObjCMethodDecl(ObjCMethodDecl *D) {
-    if (D->isThisDeclarationADefinition())
-      handleBody(D);
-    return true;
-  }
-  bool TraverseFunctionDecl(FunctionDecl *D) {
-    if (D->isThisDeclarationADefinition())
-      handleBody(D);
+  bool TraverseStmt(Stmt *rootS) {
+    BODY_TRANS(Pass).transformBody(rootS);
     return true;
   }
 };

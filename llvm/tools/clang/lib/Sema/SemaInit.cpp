@@ -1184,6 +1184,15 @@ void InitListChecker::CheckStructUnionTypes(const InitializedEntity &Entity,
       continue;
     }
 
+    // Make sure we can use this declaration.
+    if (SemaRef.DiagnoseUseOfDecl(*Field, 
+                                  IList->getInit(Index)->getLocStart())) {
+      ++Index;
+      ++Field;
+      hadError = true;
+      continue;
+    }        
+
     InitializedEntity MemberEntity =
       InitializedEntity::InitializeMember(*Field, &Entity);
     CheckSubElementType(MemberEntity, IList, Field->getType(), Index,
@@ -1443,19 +1452,23 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
         // was a typo for another field name.
         LookupResult R(SemaRef, FieldName, D->getFieldLoc(),
                        Sema::LookupMemberName);
-        if (SemaRef.CorrectTypo(R, /*Scope=*/0, /*SS=*/0, RT->getDecl(), false,
-                                Sema::CTC_NoKeywords) &&
-            (ReplacementField = R.getAsSingle<FieldDecl>()) &&
+        TypoCorrection Corrected = SemaRef.CorrectTypo(
+            DeclarationNameInfo(FieldName, D->getFieldLoc()),
+            Sema::LookupMemberName, /*Scope=*/NULL, /*SS=*/NULL,
+            RT->getDecl(), false, Sema::CTC_NoKeywords);
+        if ((ReplacementField = Corrected.getCorrectionDeclAs<FieldDecl>()) &&
             ReplacementField->getDeclContext()->getRedeclContext()
                                                       ->Equals(RT->getDecl())) {
+          std::string CorrectedStr(
+              Corrected.getAsString(SemaRef.getLangOptions()));
+          std::string CorrectedQuotedStr(
+              Corrected.getQuoted(SemaRef.getLangOptions()));
           SemaRef.Diag(D->getFieldLoc(),
                        diag::err_field_designator_unknown_suggest)
-            << FieldName << CurrentObjectType << R.getLookupName()
-            << FixItHint::CreateReplacement(D->getFieldLoc(),
-                                            R.getLookupName().getAsString());
+            << FieldName << CurrentObjectType << CorrectedQuotedStr
+            << FixItHint::CreateReplacement(D->getFieldLoc(), CorrectedStr);
           SemaRef.Diag(ReplacementField->getLocation(),
-                       diag::note_previous_decl)
-            << ReplacementField->getDeclName();
+                       diag::note_previous_decl) << CorrectedQuotedStr;
         } else {
           SemaRef.Diag(D->getFieldLoc(), diag::err_field_designator_unknown)
             << FieldName << CurrentObjectType;
@@ -1498,6 +1511,12 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       FieldIndex = 0;
       StructuredList->setInitializedFieldInUnion(*Field);
     }
+
+    // Make sure we can use this declaration.
+    if (SemaRef.DiagnoseUseOfDecl(*Field, D->getFieldLoc())) {
+      ++Index;
+      return true;
+    }        
 
     // Update the designator with the field declaration.
     D->setField(*Field);
@@ -3195,24 +3214,24 @@ static void TryUserDefinedConversion(Sema &S,
 enum InvalidICRKind { IIK_okay, IIK_nonlocal, IIK_nonscalar };
 
 /// Determines whether this expression is an acceptable ICR source.
-static InvalidICRKind isInvalidICRSource(ASTContext &C, Expr *e) {
+static InvalidICRKind isInvalidICRSource(ASTContext &C, Expr *e,
+                                         bool isAddressOf) {
   // Skip parens.
   e = e->IgnoreParens();
 
   // Skip address-of nodes.
   if (UnaryOperator *op = dyn_cast<UnaryOperator>(e)) {
     if (op->getOpcode() == UO_AddrOf)
-      return isInvalidICRSource(C, op->getSubExpr());
+      return isInvalidICRSource(C, op->getSubExpr(), /*addressof*/ true);
 
   // Skip certain casts.
-  } else if (CastExpr *cast = dyn_cast<CastExpr>(e)) {
-    switch (cast->getCastKind()) {
+  } else if (CastExpr *ce = dyn_cast<CastExpr>(e)) {
+    switch (ce->getCastKind()) {
     case CK_Dependent:
     case CK_BitCast:
     case CK_LValueBitCast:
-    case CK_LValueToRValue:
     case CK_NoOp:
-      return isInvalidICRSource(C, cast->getSubExpr());
+      return isInvalidICRSource(C, ce->getSubExpr(), isAddressOf);
 
     case CK_ArrayToPointerDecay:
       return IIK_nonscalar;
@@ -3225,16 +3244,25 @@ static InvalidICRKind isInvalidICRSource(ASTContext &C, Expr *e) {
     }
 
   // If we have a declaration reference, it had better be a local variable.
-  } else if (DeclRefExpr *declRef = dyn_cast<DeclRefExpr>(e)) {
-    if (VarDecl *var = dyn_cast<VarDecl>(declRef->getDecl()))
-      return (var->hasLocalStorage() ? IIK_okay : IIK_nonlocal);
+  } else if (isa<DeclRefExpr>(e) || isa<BlockDeclRefExpr>(e)) {
+    if (!isAddressOf) return IIK_nonlocal;
+
+    VarDecl *var;
+    if (isa<DeclRefExpr>(e)) {
+      var = dyn_cast<VarDecl>(cast<DeclRefExpr>(e)->getDecl());
+      if (!var) return IIK_nonlocal;
+    } else {
+      var = cast<BlockDeclRefExpr>(e)->getDecl();
+    }
+
+    return (var->hasLocalStorage() ? IIK_okay : IIK_nonlocal);
 
   // If we have a conditional operator, check both sides.
   } else if (ConditionalOperator *cond = dyn_cast<ConditionalOperator>(e)) {
-    if (InvalidICRKind iik = isInvalidICRSource(C, cond->getLHS()))
+    if (InvalidICRKind iik = isInvalidICRSource(C, cond->getLHS(), isAddressOf))
       return iik;
 
-    return isInvalidICRSource(C, cond->getRHS());
+    return isInvalidICRSource(C, cond->getRHS(), isAddressOf);
 
   // These are never scalar.
   } else if (isa<ArraySubscriptExpr>(e)) {
@@ -3254,7 +3282,7 @@ static InvalidICRKind isInvalidICRSource(ASTContext &C, Expr *e) {
 static void checkIndirectCopyRestoreSource(Sema &S, Expr *src) {
   assert(src->isRValue());
 
-  InvalidICRKind iik = isInvalidICRSource(S.Context, src);
+  InvalidICRKind iik = isInvalidICRSource(S.Context, src, false);
   if (iik == IIK_okay) return;
 
   S.Diag(src->getExprLoc(), diag::err_arc_nonlocal_writeback)

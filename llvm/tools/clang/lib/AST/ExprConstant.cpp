@@ -536,15 +536,7 @@ bool LValueExprEvaluator::VisitMemberExpr(const MemberExpr *E) {
   if (FD->getType()->isReferenceType())
     return false;
 
-  // FIXME: This is linear time.
-  unsigned i = 0;
-  for (RecordDecl::field_iterator Field = RD->field_begin(),
-                               FieldEnd = RD->field_end();
-       Field != FieldEnd; (void)++Field, ++i) {
-    if (*Field == FD)
-      break;
-  }
-
+  unsigned i = FD->getFieldIndex();
   Result.Offset += Info.Ctx.toCharUnitsFromBits(RL.getFieldOffset(i));
   return true;
 }
@@ -956,7 +948,7 @@ public:
     : ExprEvaluatorBaseTy(info), Result(result) {}
 
   bool Success(const llvm::APSInt &SI, const Expr *E) {
-    assert(E->getType()->isIntegralOrEnumerationType() && 
+    assert(E->getType()->isIntegralOrEnumerationType() &&
            "Invalid evaluation result.");
     assert(SI.isSigned() == E->getType()->isSignedIntegerOrEnumerationType() &&
            "Invalid evaluation result.");
@@ -1106,8 +1098,25 @@ static bool EvaluateInteger(const Expr* E, APSInt &Result, EvalInfo &Info) {
 
 bool IntExprEvaluator::CheckReferencedDecl(const Expr* E, const Decl* D) {
   // Enums are integer constant exprs.
-  if (const EnumConstantDecl *ECD = dyn_cast<EnumConstantDecl>(D))
-    return Success(ECD->getInitVal(), E);
+  if (const EnumConstantDecl *ECD = dyn_cast<EnumConstantDecl>(D)) {
+    // Check for signedness/width mismatches between E type and ECD value.
+    bool SameSign = (ECD->getInitVal().isSigned()
+                     == E->getType()->isSignedIntegerOrEnumerationType());
+    bool SameWidth = (ECD->getInitVal().getBitWidth()
+                      == Info.Ctx.getIntWidth(E->getType()));
+    if (SameSign && SameWidth)
+      return Success(ECD->getInitVal(), E);
+    else {
+      // Get rid of mismatch (otherwise Success assertions will fail)
+      // by computing a new value matching the type of E.
+      llvm::APSInt Val = ECD->getInitVal();
+      if (!SameSign)
+        Val.setIsSigned(!ECD->getInitVal().isSigned());
+      if (!SameWidth)
+        Val = Val.extOrTrunc(Info.Ctx.getIntWidth(E->getType()));
+      return Success(Val, E);
+    }
+  }
 
   // In C++, const, non-volatile integers initialized with ICEs are ICEs.
   // In C, they can also be folded, although they are not ICEs.
@@ -1810,6 +1819,7 @@ bool IntExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_UserDefinedConversion:
   case CK_ObjCProduceObject:
   case CK_ObjCConsumeObject:
+  case CK_ObjCReclaimReturnedObject:
     return false;
 
   case CK_LValueToRValue:
@@ -2316,6 +2326,7 @@ bool ComplexExprEvaluator::VisitCastExpr(const CastExpr *E) {
   case CK_IntegralComplexToBoolean:
   case CK_ObjCProduceObject:
   case CK_ObjCConsumeObject:
+  case CK_ObjCReclaimReturnedObject:
     llvm_unreachable("invalid cast kind for complex value");
 
   case CK_LValueToRValue:

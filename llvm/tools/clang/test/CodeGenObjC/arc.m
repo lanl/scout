@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fblocks -fobjc-arc -O2 -disable-llvm-optzns -o - %s | FileCheck %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fblocks -fobjc-arc -o - %s | FileCheck -check-prefix=CHECK-GLOBALS %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fblocks -fobjc-arc -fobjc-runtime-has-weak -O2 -disable-llvm-optzns -o - %s | FileCheck %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fblocks -fobjc-arc -fobjc-runtime-has-weak -o - %s | FileCheck -check-prefix=CHECK-GLOBALS %s
 
 // CHECK: define void @test0
 void test0(id x) {
@@ -283,7 +283,10 @@ void test10() {
   // CHECK-NEXT: load [[TEST10]]** [[X]], align
   // CHECK-NEXT: load i8** @"\01L_OBJC_SELECTOR_REFERENCES_{{[0-9]*}}"
   // CHECK-NEXT: bitcast
-  // CHECK-NEXT: call [[TEST10]]* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
+  // CHECK-NEXT: [[T0:%.*]] = call [[TEST10]]* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST10]]* [[T0]] to i8*
+  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T1]])
+  // CHECK-NEXT: [[V:%.*]] = bitcast i8* [[T2]] to [[TEST10]]*
   // CHECK-NEXT: load i8** @"\01L_OBJC_SELECTOR_REFERENCES_{{[0-9]*}}"
   // CHECK-NEXT: bitcast
   // CHECK-NEXT: [[T0:%.*]] = call [[TEST10]]* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend
@@ -292,6 +295,8 @@ void test10() {
   // CHECK-NEXT: [[T3:%.*]] = bitcast i8* [[T2]] to [[TEST10]]*
   // CHECK-NEXT: [[T4:%.*]] = bitcast [[TEST10]]* [[T3]] to i8*
   // CHECK-NEXT: store i8* [[T4]], i8** [[Y]]
+  // CHECK-NEXT: [[T0:%.*]] = bitcast [[TEST10]]* [[V]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T0]])
   // CHECK-NEXT: [[T0:%.*]] = load i8** [[Y]]
   // CHECK-NEXT: call void @objc_release(i8* [[T0]])
   // CHECK-NEXT: [[T0:%.*]] = load [[TEST10]]** [[X]]
@@ -323,11 +328,15 @@ void test12(void) {
 
   __weak id x = test12_helper();
   // CHECK-NEXT: [[T0:%.*]] = call i8* @test12_helper()
-  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[X]], i8* [[T0]])
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[X]], i8* [[T1]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
 
   x = test12_helper();
-  // CHECK-NEXT: [[T1:%.*]] = call i8* @test12_helper()
+  // CHECK-NEXT: [[T0:%.*]] = call i8* @test12_helper()
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
   // CHECK-NEXT: call i8* @objc_storeWeak(i8** [[X]], i8* [[T1]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
 
   id y = x;
   // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_loadWeakRetained(i8** [[X]])
@@ -487,23 +496,23 @@ void test20(unsigned n) {
   id x[n];
 
   // Capture the VLA size.
+  // CHECK-NEXT: [[T0:%.*]] = load i32* [[N]], align 4
+  // CHECK-NEXT: [[DIM:%.*]] = zext i32 [[T0]] to i64
+
+  // Save the stack pointer.
   // CHECK-NEXT: [[T0:%.*]] = call i8* @llvm.stacksave()
   // CHECK-NEXT: store i8* [[T0]], i8** [[SAVED_STACK]]
-  // CHECK-NEXT: [[T0:%.*]] = load i32* [[N]], align 4
-  // CHECK-NEXT: [[T1:%.*]] = zext i32 [[T0]] to i64
-  // CHECK-NEXT: [[VLA_SIZE:%.*]] = mul i64 8, [[T1]]
 
   // Allocate the VLA.
-  // CHECK-NEXT: [[T0:%.*]] = alloca i8, i64 [[VLA_SIZE]], align 16
-  // CHECK-NEXT: [[VLA:%.*]] = bitcast i8* [[T0]] to i8**
+  // CHECK-NEXT: [[VLA:%.*]] = alloca i8*, i64 [[DIM]], align 16
 
   // Zero-initialize.
   // CHECK-NEXT: [[T0:%.*]] = bitcast i8** [[VLA]] to i8*
-  // CHECK-NEXT: call void @llvm.memset.p0i8.i64(i8* [[T0]], i8 0, i64 [[VLA_SIZE]], i32 8, i1 false)
+  // CHECK-NEXT: [[T1:%.*]] = mul nuw i64 [[DIM]], 8
+  // CHECK-NEXT: call void @llvm.memset.p0i8.i64(i8* [[T0]], i8 0, i64 [[T1]], i32 8, i1 false)
 
   // Destroy.
-  // CHECK-NEXT: [[VLA_COUNT:%.*]] = udiv i64 [[VLA_SIZE]], 8
-  // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[VLA]], i64 [[VLA_COUNT]]
+  // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[VLA]], i64 [[DIM]]
   // CHECK-NEXT: br label
 
   // CHECK:      [[CUR:%.*]] = phi i8**
@@ -529,25 +538,28 @@ void test21(unsigned n) {
   id x[2][n][3];
 
   // Capture the VLA size.
+  // CHECK-NEXT: [[T0:%.*]] = load i32* [[N]], align 4
+  // CHECK-NEXT: [[DIM:%.*]] = zext i32 [[T0]] to i64
+
   // CHECK-NEXT: [[T0:%.*]] = call i8* @llvm.stacksave()
   // CHECK-NEXT: store i8* [[T0]], i8** [[SAVED_STACK]]
-  // CHECK-NEXT: [[T0:%.*]] = load i32* [[N]], align 4
-  // CHECK-NEXT: [[T1:%.*]] = zext i32 [[T0]] to i64
-  // CHECK-NEXT: [[T2:%.*]] = mul i64 24, [[T1]]
-  // CHECK-NEXT: [[VLA_SIZE:%.*]] = mul i64 [[T2]], 2
+
 
   // Allocate the VLA.
-  // CHECK-NEXT: [[T0:%.*]] = alloca i8, i64 [[VLA_SIZE]], align 16
-  // CHECK-NEXT: [[VLA:%.*]] = bitcast i8* [[T0]] to [3 x i8*]*
+  // CHECK-NEXT: [[T0:%.*]] = mul nuw i64 2, [[DIM]]
+  // CHECK-NEXT: [[VLA:%.*]] = alloca [3 x i8*], i64 [[T0]], align 16
 
   // Zero-initialize.
   // CHECK-NEXT: [[T0:%.*]] = bitcast [3 x i8*]* [[VLA]] to i8*
-  // CHECK-NEXT: call void @llvm.memset.p0i8.i64(i8* [[T0]], i8 0, i64 [[VLA_SIZE]], i32 8, i1 false)
+  // CHECK-NEXT: [[T1:%.*]] = mul nuw i64 2, [[DIM]]
+  // CHECK-NEXT: [[T2:%.*]] = mul nuw i64 [[T1]], 24
+  // CHECK-NEXT: call void @llvm.memset.p0i8.i64(i8* [[T0]], i8 0, i64 [[T2]], i32 8, i1 false)
 
   // Destroy.
+  // CHECK-NEXT: [[T0:%.*]] = mul nuw i64 2, [[DIM]]
   // CHECK-NEXT: [[BEGIN:%.*]] = getelementptr inbounds [3 x i8*]* [[VLA]], i32 0, i32 0
-  // CHECK-NEXT: [[VLA_COUNT:%.*]] = udiv i64 [[VLA_SIZE]], 8
-  // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 [[VLA_COUNT]]
+  // CHECK-NEXT: [[T1:%.*]] = mul nuw i64 [[T0]], 3
+  // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 [[T1]]
   // CHECK-NEXT: br label
 
   // CHECK:      [[CUR:%.*]] = phi i8**
@@ -1211,7 +1223,9 @@ void test39(void) {
   // CHECK:      [[VAR:%.*]] = alloca i8*
   // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
   // CHECK-NEXT: [[T0:%.*]] = call i8* @test39_source()
-  // CHECK-NEXT: store i8* [[T0]], i8** [[VAR]],
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: store i8* [[T1]], i8** [[VAR]],
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   // 0x40000000 - has signature but no copy/dispose
   // CHECK:      store i32 1073741824, i32*
   // CHECK:      [[CAPTURE:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
@@ -1236,7 +1250,9 @@ void test40(void) {
   // CHECK-NEXT: store i32 33554432, i32* [[T0]]
   // CHECK:      [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* [[VAR]], i32 0, i32 6
   // CHECK-NEXT: [[T0:%.*]] = call i8* @test40_source()
-  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[SLOT]], i8* [[T0]])
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[SLOT]], i8* [[T1]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   // CHECK-NEXT: [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* [[VAR]], i32 0, i32 6
   // 0x42000000 - has signature, copy/dispose helpers
   // CHECK:      store i32 1107296256,
@@ -1284,7 +1300,9 @@ void test41(void) {
   // CHECK:      [[VAR:%.*]] = alloca i8*,
   // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
   // CHECK:      [[T0:%.*]] = call i8* @test41_source()
-  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[VAR]], i8* [[T0]])
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: call i8* @objc_initWeak(i8** [[VAR]], i8* [[T1]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   // 0x42000000 - has signature, copy/dispose helpers
   // CHECK:      store i32 1107296256,
   // CHECK:      [[SLOT:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
@@ -1386,17 +1404,21 @@ void test46(__weak id *wp, __weak volatile id *wvp) {
   // TODO: this is sub-optimal, we should retain at the actual call site.
 
   // CHECK:      [[T0:%.*]] = call i8* @test46_helper()
-  // CHECK-NEXT: [[T1:%.*]] = load i8*** {{%.*}}, align 8
-  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_storeWeak(i8** [[T1]], i8* [[T0]])
-  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_retain(i8* [[T2]])
-  // CHECK-NEXT: store i8* [[T3]], i8**
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8*** {{%.*}}, align 8
+  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_storeWeak(i8** [[T2]], i8* [[T1]])
+  // CHECK-NEXT: [[T4:%.*]] = call i8* @objc_retain(i8* [[T3]])
+  // CHECK-NEXT: store i8* [[T4]], i8**
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   id x = *wp = test46_helper();
 
   // CHECK:      [[T0:%.*]] = call i8* @test46_helper()
-  // CHECK-NEXT: [[T1:%.*]] = load i8*** {{%.*}}, align 8
-  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_storeWeak(i8** [[T1]], i8* [[T0]])
-  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_retain(i8* [[T2]])
-  // CHECK-NEXT: store i8* [[T3]], i8**
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8*** {{%.*}}, align 8
+  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_storeWeak(i8** [[T2]], i8* [[T1]])
+  // CHECK-NEXT: [[T4:%.*]] = call i8* @objc_retain(i8* [[T3]])
+  // CHECK-NEXT: store i8* [[T4]], i8**
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   id y = *wvp = test46_helper();
 }
 
@@ -1429,8 +1451,10 @@ void test48(void) {
   // CHECK:      [[X:%.*]] = alloca i8*
   // CHECK-NEXT: [[T0:%.*]] = call i8* @objc_initWeak(i8** [[X]], i8* null)
   // CHECK-NEXT: [[T1:%.*]] = call i8* @test48_helper()
-  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_storeWeak(i8** [[X]], i8* [[T1]])
+  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T1]])
   // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_storeWeak(i8** [[X]], i8* [[T2]])
+  // CHECK-NEXT: [[T4:%.*]] = call i8* @objc_storeWeak(i8** [[X]], i8* [[T3]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T2]])
   // CHECK-NEXT: call void @objc_destroyWeak(i8** [[X]])
   // CHECK-NEXT: ret void
 }

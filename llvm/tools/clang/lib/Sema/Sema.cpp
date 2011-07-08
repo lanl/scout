@@ -141,8 +141,8 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
   : TheTargetAttributesSema(0), FPFeatures(pp.getLangOptions()),
     LangOpts(pp.getLangOptions()), PP(pp), Context(ctxt), Consumer(consumer),
     Diags(PP.getDiagnostics()), SourceMgr(PP.getSourceManager()),
-    ExternalSource(0), CodeCompleter(CodeCompleter), CurContext(0), 
-    PackContext(0), MSStructPragmaOn(false), VisContext(0),
+    CollectStats(false), ExternalSource(0), CodeCompleter(CodeCompleter),
+    CurContext(0), PackContext(0), MSStructPragmaOn(false), VisContext(0),
     ExprNeedsCleanups(0), LateTemplateParser(0), OpaqueParser(0),
     IdResolver(pp.getLangOptions()), CXXTypeInfoDecl(0), MSVCGuidDecl(0),
     GlobalNewDeleteDeclared(false), 
@@ -154,6 +154,8 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
     AnalysisWarnings(*this)
 {
   TUScope = 0;
+  LoadedExternalKnownNamespaces = false;
+  
   if (getLangOptions().CPlusPlus)
     FieldCollector.reset(new CXXFieldCollector());
 
@@ -230,6 +232,15 @@ bool Sema::makeUnavailableInSystemHeader(SourceLocation loc,
 
 ASTMutationListener *Sema::getASTMutationListener() const {
   return getASTConsumer().GetASTMutationListener();
+}
+
+/// \brief Print out statistics about the semantic analysis.
+void Sema::PrintStats() const {
+  llvm::errs() << "\n*** Semantic Analysis Stats:\n";
+  llvm::errs() << NumSFINAEErrors << " SFINAE diagnostics trapped.\n";
+
+  BumpAlloc.PrintStats();
+  AnalysisWarnings.PrintStats();
 }
 
 /// ImpCastExprToType - If Expr is not of type 'Type', insert an implicit cast.
@@ -776,6 +787,10 @@ ExternalSemaSource::~ExternalSemaSource() {}
 std::pair<ObjCMethodList, ObjCMethodList>
 ExternalSemaSource::ReadMethodPool(Selector Sel) {
   return std::pair<ObjCMethodList, ObjCMethodList>();
+}
+
+void ExternalSemaSource::ReadKnownNamespaces(
+                           llvm::SmallVectorImpl<NamespaceDecl *> &Namespaces) {  
 }
 
 void PrettyDeclStackTraceEntry::print(llvm::raw_ostream &OS) const {

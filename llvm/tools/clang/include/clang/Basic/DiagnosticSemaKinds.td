@@ -330,6 +330,8 @@ def err_duplicate_class_def : Error<
   "duplicate interface definition for class %0">;
 def err_undef_superclass : Error<
   "cannot find interface declaration for %0, superclass of %1">;
+def err_forward_superclass : Error<
+  "attempting to use the forward class %0 as superclass of %1">;
 def err_no_nsconstant_string_class : Error<
   "cannot find interface declaration for %0">;
 def err_recursive_superclass : Error<
@@ -355,6 +357,8 @@ def err_class_extension_after_impl : Error<
   "cannot declare class extension for %0 after class implementation">;
 def note_implementation_declared : Note<
   "class implementation is declared here">;
+def note_class_declared : Note<
+  "class is declared here">;
 def warn_dup_category_def : Warning<
   "duplicate definition of category %1 on interface %0">;
 def err_conflicting_super_class : Error<"conflicting super class name %0">;
@@ -439,6 +443,9 @@ def warn_atomic_property_rule : Warning<
 def warn_ownin_getter_rule : Warning<
   "property's synthesized getter follows Cocoa naming"
   " convention for returning 'owned' objects">;
+def warn_property_getter_owning_mismatch : Warning<
+  "property declared as returning non-retained objects"
+  "; getter returning retained objects">;
 def err_ownin_getter_rule : Error<
   "property's synthesized getter follows Cocoa naming"
   " convention for returning 'owned' objects">;
@@ -479,6 +486,10 @@ def error_missing_property_ivar_decl : Error<
   " ivar or must explicitly name an ivar">;
 def error_synthesize_weak_non_arc_or_gc : Error<
   "@synthesize of 'weak' property is only allowed in ARC or GC mode">;
+def err_arc_perform_selector_retains : Error<
+  "performSelector names a selector which retains the object">;
+def warn_arc_perform_selector_leaks : Warning<
+  "performSelector may cause a leak because its selector is unknown">;
 
 def error_synthesized_ivar_yet_not_supported : Error<
   "instance variable synthesis not yet supported"
@@ -1179,9 +1190,9 @@ def err_as_qualified_auto_decl : Error<
   "automatic variable qualified with an address space">;
 def err_arg_with_address_space : Error<
   "parameter may not be qualified with an address space">;
-def err_attr_objc_lifetime_bad_type : Error<
+def err_attr_objc_ownership_bad_type : Error<
   "the type %0 cannot be retained">;
-def err_attr_objc_lifetime_redundant : Error<
+def err_attr_objc_ownership_redundant : Error<
   "the type %0 already has retainment attributes set on it">;
 def err_attribute_not_string : Error<
   "argument to %0 attribute was not a string literal">;
@@ -1238,6 +1249,8 @@ def warn_function_attribute_wrong_type : Warning<
   "'%0' only applies to function types; type here is %1">;
 def warn_pointer_attribute_wrong_type : Warning<
   "'%0' only applies to pointer types; type here is %1">;
+def warn_objc_object_attribute_wrong_type : Warning<
+  "'%0' only applies to objective-c object or block pointer types; type here is %1">;
 def warn_gnu_inline_attribute_requires_inline : Warning<
   "'gnu_inline' attribute requires function to be marked 'inline',"
   " attribute ignored">;
@@ -1601,8 +1614,8 @@ def note_ovl_candidate_bad_gc : Note<"candidate "
     "function (the implicit move assignment operator)|"
     "constructor (inherited)}0%1 not viable: "
     "%select{%ordinal6|'this'}5 argument (%2) has %select{no|__weak|__strong}3 "
-    "lifetime, but parameter has %select{no|__weak|__strong}4 lifetime">;
-def note_ovl_candidate_bad_lifetime : Note<"candidate "
+    "ownership, but parameter has %select{no|__weak|__strong}4 ownership">;
+def note_ovl_candidate_bad_ownership : Note<"candidate "
     "%select{function|function|constructor|"
     "function |function |constructor |"
     "constructor (the implicit default constructor)|"
@@ -1610,9 +1623,9 @@ def note_ovl_candidate_bad_lifetime : Note<"candidate "
     "function (the implicit copy assignment operator)|"
     "constructor (inherited)}0%1 not viable: "
     "%select{%ordinal6|'this'}5 argument (%2) has "
-    "%select{no|__unsafe_unretained|__strong|__weak|__autoreleasing}3 lifetime,"
+    "%select{no|__unsafe_unretained|__strong|__weak|__autoreleasing}3 ownership,"
     " but parameter has %select{no|__unsafe_unretained|__strong|__weak|"
-    "__autoreleasing}4 lifetime">;
+    "__autoreleasing}4 ownership">;
 def note_ovl_candidate_bad_cvr_this : Note<"candidate "
     "%select{|function|||function||||"
     "function (the implicit copy assignment operator)|}0 not viable: "
@@ -2496,7 +2509,7 @@ def note_protected_by_cxx_catch : Note<
   "jump bypasses initialization of catch block">;
 def note_protected_by___block : Note<
   "jump bypasses setup of __block variable">;
-def note_protected_by_objc_lifetime : Note<
+def note_protected_by_objc_ownership : Note<
   "jump bypasses initialization of retaining variable">;
 
 def note_exits_cleanup : Note<
@@ -2519,7 +2532,7 @@ def note_exits_cxx_catch : Note<
   "jump exits catch block">;
 def note_exits_objc_autoreleasepool : Note<
   "jump exits autoreleasepool block">;
-def note_exits_objc_lifetime : Note<
+def note_exits_objc_ownership : Note<
   "jump exits scope of retaining variable">;
 
 def err_func_returning_array_function : Error<
@@ -2557,6 +2570,13 @@ let CategoryName = "Automatic Reference Counting Issue" in {
 // ARC-mode diagnostics.
 def err_arc_weak_no_runtime : Error<
   "the current deployment target does not support automated __weak references">;
+def err_arc_unsupported_weak_class : Error<
+  "class is incompatible with __weak references">;
+def err_arc_weak_unavailable_assign : Error<
+  "assignment of a weak-unavailable object to a __weak object">;
+def err_arc_cast_of_weak_unavailable : Error<
+  "cast of weak-unavailable object of type %0 to"
+  " a __weak object of type %1">;
 def err_arc_illegal_explicit_message : Error<
   "ARC forbids explicit message send of %0">;
 def err_arc_unused_init_message : Error<
@@ -2599,29 +2619,34 @@ def warn_arc_non_pod_class_with_object_member : Warning<
   "to make it ABI-compatible">, InGroup<AutomaticReferenceCountingABI>,
   DefaultIgnore;
 def warn_arc_retained_assign : Warning<
-  "assigning retained object to %select{weak|unsafe_unretained}0 variable">,
+  "assigning retained object to %select{weak|unsafe_unretained}0 variable"
+  "; object will be released after assignment">,
+  InGroup<ARCUnsafeRetainedAssign>;
+def warn_arc_retained_property_assign : Warning<
+  "assigning retained object to unsafe property"
+  "; object will be released after assignment">,
   InGroup<ARCUnsafeRetainedAssign>;
 def warn_arc_trivial_member_function_with_object_member : Warning<
   "%0 cannot be shared between ARC and non-ARC "
   "code; add a non-trivial %select{copy constructor|copy assignment operator|"
   "destructor}1 to make it ABI-compatible">, 
   InGroup<AutomaticReferenceCountingABI>, DefaultIgnore;
-def err_arc_new_array_without_lifetime : Error<
-  "'new' cannot allocate an array of %0 with no explicit lifetime">;
+def err_arc_new_array_without_ownership : Error<
+  "'new' cannot allocate an array of %0 with no explicit ownership">;
 def warn_err_new_delete_object_array : Warning<
   "%select{allocating|destroying}0 an array of %1; this array must not "
   "%select{be deleted in|have been allocated from}0 non-ARC code">,
   InGroup<AutomaticReferenceCountingABI>, DefaultIgnore;
 def err_arc_autoreleasing_var : Error<
   "%select{__block variables|global variables|fields|ivars}0 cannot have "
-  "__autoreleasing lifetime">;
-def err_arc_thread_lifetime : Error<
-  "thread-local variable has non-trivial lifetime: type is %0">;
-def err_arc_indirect_no_lifetime : Error<
-  "%select{pointer|reference}1 to non-const type %0 with no explicit lifetime">,
+  "__autoreleasing ownership">;
+def err_arc_thread_ownership : Error<
+  "thread-local variable has non-trivial ownership: type is %0">;
+def err_arc_indirect_no_ownership : Error<
+  "%select{pointer|reference}1 to non-const type %0 with no explicit ownership">,
   InGroup<AutomaticReferenceCounting>;
-def err_arc_array_param_no_lifetime : Error<
-  "must explicitly describe intended lifetime of an object array parameter">;
+def err_arc_array_param_no_ownership : Error<
+  "must explicitly describe intended ownership of an object array parameter">;
 def err_arc_pseudo_dtor_inconstant_quals : Error<
   "pseudo-destructor destroys object of type %0 with inconsistently-qualified "
   "type %1">;
@@ -2648,24 +2673,24 @@ def warn_arc_retain_cycle : Warning<
 def note_arc_retain_cycle_owner : Note<
   "block will be retained by %select{the captured object|an object strongly "
   "retained by the captured object}0">;
-def note_nontrivial_objc_lifetime : Note<
+def note_nontrivial_objc_ownership : Note<
   "because type %0 has %select{no|no|__strong|__weak|__autoreleasing}1 "
-  "lifetime">;
+  "ownership">;
 def warn_arc_object_memaccess : Warning<
   "%select{destination for|source of}0 this %1 call is a pointer to "
-  "lifetime-qualified type %2">, InGroup<ARCNonPodMemAccess>;
+  "ownership-qualified type %2">, InGroup<ARCNonPodMemAccess>;
 
-def err_arc_strong_property_lifetime : Error<
+def err_arc_strong_property_ownership : Error<
   "existing ivar %1 for strong property %0 may not be "
   "%select{|__unsafe_unretained||__weak}2">;
-def err_arc_assign_property_lifetime : Error<
+def err_arc_assign_property_ownership : Error<
   "existing ivar %1 for unsafe_unretained property %0 must be __unsafe_unretained">;
-def err_arc_inconsistent_property_lifetime : Error<
+def err_arc_inconsistent_property_ownership : Error<
   "%select{strong|weak|unsafe_unretained}1 property %0 may not also be "
   "declared %select{|__unsafe_unretained|__strong|__weak|__autoreleasing}2">;
-def err_arc_atomic_lifetime : Error<
+def err_arc_atomic_ownership : Error<
   "cannot perform atomic operation on a pointer to type %0: type has "
-  "non-trivial lifetime">;
+  "non-trivial ownership">;
 
 def err_arc_bridge_cast_incompatible : Error<
   "incompatible types casting %0 to %1 with a %select{__bridge|"
@@ -2828,6 +2853,8 @@ def err_subscript_function_type : Error<
   "subscript of pointer to function type %0">;
 def err_subscript_incomplete_type : Error<
   "subscript of pointer to incomplete type %0">;
+def ext_gnu_subscript_void_type : Extension<
+  "subscript of a pointer to void is a GNU extension">, InGroup<PointerArith>;
 def err_typecheck_member_reference_struct_union : Error<
   "member reference base type %0 is not a structure or union">;
 def err_typecheck_member_reference_ivar : Error<
@@ -2866,7 +2893,7 @@ def err_member_def_undefined_record : Error<
 def err_member_def_does_not_match : Error<
   "out-of-line definition of %0 does not match any declaration in %1">;
 def err_member_def_does_not_match_ret_type : Error<
-  "out-of-line definition of %q0 differ from the declaration in the return type">;
+  "out-of-line definition of %q0 differs from the declaration in the return type">;
 def err_nonstatic_member_out_of_line : Error<
   "non-static data member defined out-of-line">;
 def err_nonstatic_flexible_variable : Error<
@@ -2890,11 +2917,12 @@ def err_ivar_reference_type : Error<
 def err_typecheck_illegal_increment_decrement : Error<
   "cannot %select{decrement|increment}1 value of type %0">;
 def err_typecheck_arithmetic_incomplete_type : Error<
-  "arithmetic on pointer to incomplete type %0">;
+  "arithmetic on a pointer to an incomplete type %0">;
 def err_typecheck_pointer_arith_function_type : Error<
-  "arithmetic on pointer to function type %0">;
+  "arithmetic on%select{ a|}0 pointer%select{|s}0 to%select{ the|}2 "
+  "function type%select{|s}2 %1%select{| and %3}2">;
 def err_typecheck_pointer_arith_void_type : Error<
-  "arithmetic on pointer to void type">;
+  "arithmetic on%select{ a|}0 pointer%select{|s}0 to void">;
 def err_typecheck_decl_incomplete_type : Error<
   "variable has incomplete type %0">;
 def ext_typecheck_decl_incomplete_type : ExtWarn<
@@ -3082,9 +3110,11 @@ def note_forward_class : Note<
 def err_duplicate_property : Error<
   "property has a previous declaration">;
 def ext_gnu_void_ptr : Extension<
-  "use of GNU void* extension">, InGroup<PointerArith>;
+  "arithmetic on%select{ a|}0 pointer%select{|s}0 to void is a GNU extension">,
+  InGroup<PointerArith>;
 def ext_gnu_ptr_func_arith : Extension<
-  "arithmetic on pointer to function type %0 is a GNU extension">,
+  "arithmetic on%select{ a|}0 pointer%select{|s}0 to%select{ the|}2 function "
+  "type%select{|s}2 %1%select{| and %3}2 is a GNU extension">,
   InGroup<PointerArith>;
 def error_readonly_property_assignment : Error<
   "assigning to property with 'readonly' attribute not allowed">;
@@ -3154,11 +3184,8 @@ def err_qualified_objc_catch_parm : Error<
 def err_objc_pointer_cxx_catch_gnu : Error<
   "can't catch Objective C exceptions in C++ in the GNU runtime">;
 def warn_objc_pointer_cxx_catch_fragile : Warning<
-  "catching Objective C id's exceptions in C++ in the non-unified "
-  "exception model">;
-def err_objc_pointer_cxx_catch_fragile : Error<
-"can't catch Objective C exceptions in C++ in the non-unified "
-"exception model">;
+  "can not catch an exception thrown with @throw in C++ in the non-unified "
+  "exception model">, InGroup<ObjCNonUnifiedException>;
 def err_objc_object_catch : Error<
   "can't catch an Objective C object by value">;
 def err_incomplete_type_objc_at_encode : Error<
@@ -3542,7 +3569,7 @@ def err_typecheck_incompatible_address_space : Error<
   "|sending %0 to parameter of type %1"
   "|casting %0 to type %1}2"
   " changes address space of pointer">;
-def err_typecheck_incompatible_lifetime : Error<
+def err_typecheck_incompatible_ownership : Error<
   "%select{assigning %1 to %0"
   "|passing %0 to parameter of type %1"
   "|returning %0 from a function with result type %1"
@@ -4177,8 +4204,9 @@ def ext_return_missing_expr : ExtWarn<
   "non-void %select{function|method}1 %0 should return a value">, DefaultError,
   InGroup<ReturnType>;
 def ext_return_has_expr : ExtWarn<
-  "void %select{function|method}1 %0 should not return a value">, DefaultError,
-  InGroup<ReturnType>;
+  "%select{void function|void method|constructor|destructor}1 %0 "
+  "should not return a value">,
+  DefaultError, InGroup<ReturnType>;
 def ext_return_has_void_expr : Extension<
   "void %select{function|method}1 %0 should not return void expression">;
 def warn_noreturn_function_has_return_expr : Warning<
@@ -4308,6 +4336,11 @@ def err_typecheck_member_reference_ivar_suggest : Error<
   "%0 does not have a member named %1; did you mean %2?">;
 def err_property_not_found_suggest : Error<
   "property %0 not found on object of type %1; did you mean %2?">;
+def err_ivar_access_using_property_syntax_suggest : Error<
+  "property %0 not found on object of type %1; did you mean to access ivar %2?">;
+def err_property_found_suggest : Error<
+  "property %0 found on object of type %1; did you mean to access "
+  "it with the \".\" operator?">;
 def err_undef_interface_suggest : Error<
   "cannot find interface declaration for %0; did you mean %1?">;
 def warn_undef_interface_suggest : Warning<

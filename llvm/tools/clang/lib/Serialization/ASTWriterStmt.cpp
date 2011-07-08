@@ -375,6 +375,7 @@ void ASTStmtWriter::VisitExpr(Expr *E) {
   Writer.AddTypeRef(E->getType(), Record);
   Record.push_back(E->isTypeDependent());
   Record.push_back(E->isValueDependent());
+  Record.push_back(E->isInstantiationDependent());
   Record.push_back(E->containsUnexpandedParameterPack());
   Record.push_back(E->getValueKind());
   Record.push_back(E->getObjectKind());
@@ -1173,6 +1174,7 @@ void ASTStmtWriter::VisitCXXThrowExpr(CXXThrowExpr *E) {
   VisitExpr(E);
   Writer.AddSourceLocation(E->getThrowLoc(), Record);
   Writer.AddStmt(E->getSubExpr());
+  Record.push_back(E->isThrownVariableInScope());
   Code = serialization::EXPR_CXX_THROW;
 }
 

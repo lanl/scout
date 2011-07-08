@@ -38,7 +38,7 @@ add_clang_library(clangAST
   RecordLayoutBuilder.cpp
   Stmt.cpp
   
-// ndm - Scout Stmts
+# ndm - Scout Stmts
   StmtScout.cpp
   
   StmtDumper.cpp

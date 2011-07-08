@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fblocks -fobjc-arc -O2 -disable-llvm-optzns -o - %s | FileCheck %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -emit-llvm -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fblocks -fobjc-arc -O2 -disable-llvm-optzns -o - %s | FileCheck %s
 
 // rdar://problem/9315552
 // The analogous ObjC testcase test46 in arr.m.
@@ -9,17 +9,21 @@ void test0(__weak id *wp, __weak volatile id *wvp) {
   // TODO: in the non-volatile case, we do not need to be reloading.
 
   // CHECK:      [[T0:%.*]] = call i8* @_Z12test0_helperv()
-  // CHECK-NEXT: [[T1:%.*]] = load i8*** {{%.*}}, align 8
-  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_storeWeak(i8** [[T1]], i8* [[T0]])
-  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_retain(i8* [[T2]])
-  // CHECK-NEXT: store i8* [[T3]], i8**
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8*** {{%.*}}, align 8
+  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_storeWeak(i8** [[T2]], i8* [[T1]])
+  // CHECK-NEXT: [[T4:%.*]] = call i8* @objc_retain(i8* [[T3]])
+  // CHECK-NEXT: store i8* [[T4]], i8**
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   id x = *wp = test0_helper();
 
   // CHECK:      [[T0:%.*]] = call i8* @_Z12test0_helperv()
-  // CHECK-NEXT: [[T1:%.*]] = load i8*** {{%.*}}, align 8
-  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_storeWeak(i8** [[T1]], i8* [[T0]])
-  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_loadWeakRetained(i8** [[T1]])
-  // CHECK-NEXT: store i8* [[T3]], i8**
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8*** {{%.*}}, align 8
+  // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_storeWeak(i8** [[T2]], i8* [[T1]])
+  // CHECK-NEXT: [[T4:%.*]] = call i8* @objc_loadWeakRetained(i8** [[T2]])
+  // CHECK-NEXT: store i8* [[T4]], i8**
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
   id y = *wvp = test0_helper();
 }
 

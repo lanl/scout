@@ -63,7 +63,7 @@ static void checkARCPropertyDecl(Sema &S, ObjCPropertyDecl *property) {
 
   property->setInvalidDecl();
   S.Diag(property->getLocation(),
-         diag::err_arc_inconsistent_property_lifetime)
+         diag::err_arc_inconsistent_property_ownership)
     << property->getDeclName()
     << selector
     << propertyLifetime;
@@ -420,7 +420,7 @@ static void checkARCPropertyImpl(Sema &S, SourceLocation propertyImplLoc,
 
     case Qualifiers::OCL_ExplicitNone:
     case Qualifiers::OCL_Weak:
-      S.Diag(propertyImplLoc, diag::err_arc_strong_property_lifetime)
+      S.Diag(propertyImplLoc, diag::err_arc_strong_property_ownership)
         << property->getDeclName()
         << ivar->getDeclName()
         << ivarLifetime;
@@ -463,7 +463,7 @@ static void checkARCPropertyImpl(Sema &S, SourceLocation propertyImplLoc,
 
     case Qualifiers::OCL_Weak:
     case Qualifiers::OCL_Strong:
-      S.Diag(propertyImplLoc, diag::err_arc_assign_property_lifetime)
+      S.Diag(propertyImplLoc, diag::err_arc_assign_property_ownership)
         << property->getDeclName()
         << ivar->getDeclName();
       break;
@@ -592,7 +592,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
           PropertyIvarType = Context.getQualifiedType(PropertyIvarType, qs);
         }
         else if (kind & ObjCPropertyDecl::OBJC_PR_weak) {
-          if (getLangOptions().ObjCNoAutoRefCountRuntime) {
+          if (!getLangOptions().ObjCRuntimeHasWeak) {
             Diag(PropertyLoc, diag::err_arc_weak_no_runtime);
             Diag(property->getLocation(), diag::note_property_declare);
           }
@@ -736,6 +736,12 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
           ResExpr = MaybeCreateExprWithCleanups(ResExpr);
         PIDecl->setGetterCXXConstructor(ResExpr);
       }
+    }
+    if (property->hasAttr<NSReturnsNotRetainedAttr>() &&
+        !getterMethod->hasAttr<NSReturnsNotRetainedAttr>()) {
+      Diag(getterMethod->getLocation(), 
+           diag::warn_property_getter_owning_mismatch);
+      Diag(property->getLocation(), diag::note_property_declare);
     }
   }
   if (ObjCMethodDecl *setterMethod = property->getSetterMethodDecl()) {
@@ -1273,7 +1279,7 @@ void Sema::DiagnoseUnimplementedProperties(Scope *S, ObjCImplDecl* IMPDecl,
     // Is there a matching propery synthesize/dynamic?
     if (Prop->isInvalidDecl() ||
         Prop->getPropertyImplementation() == ObjCPropertyDecl::Optional ||
-        PropImplMap.count(Prop))
+        PropImplMap.count(Prop) || Prop->hasAttr<UnavailableAttr>())
       continue;
     if (!InsMap.count(Prop->getGetterName())) {
       Diag(Prop->getLocation(),
@@ -1369,7 +1375,8 @@ void Sema::DiagnoseOwningPropertyGetterSynthesis(const ObjCImplementationDecl *D
       continue;
     
     const ObjCPropertyDecl *PD = PID->getPropertyDecl();
-    if (PD && !D->getInstanceMethod(PD->getGetterName())) {
+    if (PD && !PD->hasAttr<NSReturnsNotRetainedAttr>() &&
+        !D->getInstanceMethod(PD->getGetterName())) {
       ObjCMethodDecl *method = PD->getGetterMethodDecl();
       if (!method)
         continue;
@@ -1465,6 +1472,9 @@ void Sema::ProcessPropertyDecl(ObjCPropertyDecl *property,
     // and the real context should be the same.
     if (lexicalDC)
       GetterMethod->setLexicalDeclContext(lexicalDC);
+    if (property->hasAttr<NSReturnsNotRetainedAttr>())
+      GetterMethod->addAttr(
+        ::new (Context) NSReturnsNotRetainedAttr(Loc, Context));
   } else
     // A user declared getter will be synthesize when @synthesize of
     // the property with the same name is seen in the @implementation

@@ -711,3 +711,94 @@ namespace test27 {
     b<A>(f);
   }
 }
+
+// An injected class name type in a unresolved-name.
+namespace test28 {
+  template <class T> struct A {
+    enum { bit };
+  };
+
+  template <class T> void foo(decltype(A<T>::A::bit) x);
+
+  void test() {
+    foo<char>(A<char>::bit);
+    // CHECK: call void @_ZN6test283fooIcEEvDtsr1AIT_E1AE3bitE(
+  }
+}
+
+// An enclosing template type parameter in an unresolved-name.
+namespace test29 {
+  template <class T> struct A {
+    template <class U> static void foo(decltype(T::fn(U())) x);
+  };
+  struct B { static int fn(int); static long fn(long); };
+
+  void test() {
+    A<B>::foo<int>(0);
+    // CHECK: call void @_ZN6test291AINS_1BEE3fooIiEEvDTclsrS1_2fncvT__EEE(
+  }
+}
+
+// An enclosing template template parameter in an unresolved-name.
+namespace test30 {
+  template <template <class> class T> struct A {
+    template <class U> static void foo(decltype(T<U>::fn()) x);
+  };
+  template <class T> struct B { static T fn(); };
+
+  void test() {
+    A<B>::foo<int>(0);
+    // CHECK: call void @_ZN6test301AINS_1BEE3fooIiEEvDTclsrS1_IT_EE2fnEE(
+  }
+}
+
+namespace test31 { // instantiation-dependent mangling of decltype
+  int x;
+  template<class T> auto f1(T p)->decltype(x) { return 0; }
+  // The return type in the mangling of the template signature
+  // is encoded as "i".
+  template<class T> auto f2(T p)->decltype(p) { return 0; }
+  // The return type in the mangling of the template signature
+  // is encoded as "Dtfp_E".
+  void g(int);
+  template<class T> auto f3(T p)->decltype(g(p)) {}
+
+  // CHECK: define weak_odr i32 @_ZN6test312f1IiEEiT_(
+  template int f1(int);
+  // CHECK: define weak_odr i32 @_ZN6test312f2IiEEDtfp_ET_
+  template int f2(int);
+  // CHECK: define weak_odr void @_ZN6test312f3IiEEDTcl1gfp_EET_
+  template void f3(int);
+}
+
+// PR10205
+namespace test32 {
+  template<typename T, int=T::value> struct A {
+    typedef int type;
+  };
+  struct B { enum { value = 4 }; };
+
+  template <class T> typename A<T>::type foo() { return 0; }
+  void test() {
+    foo<B>();
+    // CHECK: call i32 @_ZN6test323fooINS_1BEEENS_1AIT_XsrS3_5valueEE4typeEv()
+  }
+}
+
+namespace test33 {
+  template <class T> struct X {
+    enum { value = T::value };
+  };
+
+  template<typename T, int=X<T>::value> struct A {
+    typedef int type;
+  };
+  struct B { enum { value = 4 }; };
+
+  template <class T> typename A<T>::type foo() { return 0; }
+
+  void test() {
+    foo<B>();
+    // CHECK: call i32 @_ZN6test333fooINS_1BEEENS_1AIT_Xsr1XIS3_EE5valueEE4typeEv()
+  }
+}

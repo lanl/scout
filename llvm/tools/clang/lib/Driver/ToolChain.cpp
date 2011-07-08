@@ -15,7 +15,9 @@
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/HostInfo.h"
+#include "clang/Driver/ObjCRuntime.h"
 #include "clang/Driver/Options.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace clang::driver;
 
@@ -45,6 +47,25 @@ types::ID ToolChain::LookupTypeForExtension(const char *Ext) const {
 
 bool ToolChain::HasNativeLLVMSupport() const {
   return false;
+}
+
+void ToolChain::configureObjCRuntime(ObjCRuntime &runtime) const {
+  switch (runtime.getKind()) {
+  case ObjCRuntime::NeXT:
+    // Assume a minimal NeXT runtime.
+    runtime.HasARC = false;
+    runtime.HasWeak = false;
+    runtime.HasTerminate = false;
+    return;
+
+  case ObjCRuntime::GNU:
+    // Assume a maximal GNU runtime.
+    runtime.HasARC = true;
+    runtime.HasWeak = true;
+    runtime.HasTerminate = false; // to be added
+    return;
+  }
+  llvm_unreachable("invalid runtime kind!");
 }
 
 /// getARMTargetCPU - Get the (LLVM) name of the ARM cpu we are targeting.

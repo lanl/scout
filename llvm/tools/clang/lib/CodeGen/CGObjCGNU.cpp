@@ -392,6 +392,9 @@ private:
   /// Emits a reference to a class.  This allows the linker to object if there
   /// is no class of the matching name.
   void EmitClassRef(const std::string &className);
+  /// Emits a pointer to the named class
+  llvm::Value *GetClassNamed(CGBuilderTy &Builder, const std::string &Name,
+                             bool isWeak);
 protected:
   /// Looks up the method for sending a message to the specified object.  This
   /// mechanism differs between the GCC and GNU runtimes, so this method must be
@@ -438,7 +441,7 @@ public:
                                    bool lval = false);
   virtual llvm::Value *GetSelector(CGBuilderTy &Builder, const ObjCMethodDecl
       *Method);
-  virtual llvm::Constant *GetEHType(QualType T, const CodeGenFunction *CGF=0);
+  virtual llvm::Constant *GetEHType(QualType T);
 
   virtual llvm::Function *GenerateMethod(const ObjCMethodDecl *OMD,
                                          const ObjCContainerDecl *CD);
@@ -484,6 +487,7 @@ public:
   virtual llvm::Value *EmitIvarOffset(CodeGenFunction &CGF,
                                       const ObjCInterfaceDecl *Interface,
                                       const ObjCIvarDecl *Ivar);
+  virtual llvm::Value *EmitNSAutoreleasePoolClassRef(CGBuilderTy &Builder);
   virtual llvm::Constant *BuildGCBlockLayout(CodeGenModule &CGM,
                                              const CGBlockInfo &blockInfo) {
     return NULLPtr;
@@ -740,12 +744,15 @@ CGObjCGNU::CGObjCGNU(CodeGenModule &cgm, unsigned runtimeABIVersion,
   IMPTy = llvm::PointerType::getUnqual(llvm::FunctionType::get(IdTy, IMPArgs,
               true));
 
+  const LangOptions &Opts = CGM.getLangOptions();
+  if ((Opts.getGCMode() != LangOptions::NonGC) || Opts.ObjCAutoRefCount)
+    RuntimeVersion = 10;
+
   // Don't bother initialising the GC stuff unless we're compiling in GC mode
-  if (CGM.getLangOptions().getGCMode() != LangOptions::NonGC) {
+  if (Opts.getGCMode() != LangOptions::NonGC) {
     // This is a bit of an hack.  We should sort this out by having a proper
     // CGObjCGNUstep subclass for GC, but we may want to really support the old
     // ABI and GC added in ObjectiveC2.framework, so we fudge it a bit for now
-    RuntimeVersion = 10;
     // Get selectors needed in GC mode
     RetainSel = GetNullarySelector("retain", CGM.getContext());
     ReleaseSel = GetNullarySelector("release", CGM.getContext());
@@ -772,22 +779,35 @@ CGObjCGNU::CGObjCGNU(CodeGenModule &cgm, unsigned runtimeABIVersion,
   }
 }
 
-// This has to perform the lookup every time, since posing and related
-// techniques can modify the name -> class mapping.
-llvm::Value *CGObjCGNU::GetClass(CGBuilderTy &Builder,
-                                 const ObjCInterfaceDecl *OID) {
-  llvm::Value *ClassName = CGM.GetAddrOfConstantCString(OID->getNameAsString());
+llvm::Value *CGObjCGNU::GetClassNamed(CGBuilderTy &Builder,
+                                      const std::string &Name,
+                                      bool isWeak) {
+  llvm::Value *ClassName = CGM.GetAddrOfConstantCString(Name);
   // With the incompatible ABI, this will need to be replaced with a direct
   // reference to the class symbol.  For the compatible nonfragile ABI we are
   // still performing this lookup at run time but emitting the symbol for the
   // class externally so that we can make the switch later.
-  EmitClassRef(OID->getNameAsString());
+  //
+  // Libobjc2 contains an LLVM pass that replaces calls to objc_lookup_class
+  // with memoized versions or with static references if it's safe to do so.
+  if (!isWeak)
+    EmitClassRef(Name);
   ClassName = Builder.CreateStructGEP(ClassName, 0);
 
   llvm::Constant *ClassLookupFn =
     CGM.CreateRuntimeFunction(llvm::FunctionType::get(IdTy, PtrToInt8Ty, true),
                               "objc_lookup_class");
   return Builder.CreateCall(ClassLookupFn, ClassName);
+}
+
+// This has to perform the lookup every time, since posing and related
+// techniques can modify the name -> class mapping.
+llvm::Value *CGObjCGNU::GetClass(CGBuilderTy &Builder,
+                                 const ObjCInterfaceDecl *OID) {
+  return GetClassNamed(Builder, OID->getNameAsString(), OID->isWeakImported());
+}
+llvm::Value *CGObjCGNU::EmitNSAutoreleasePoolClassRef(CGBuilderTy &Builder) {
+  return GetClassNamed(Builder, "NSAutoreleasePool", false);
 }
 
 llvm::Value *CGObjCGNU::GetSelector(CGBuilderTy &Builder, Selector Sel,
@@ -832,7 +852,7 @@ llvm::Value *CGObjCGNU::GetSelector(CGBuilderTy &Builder, const ObjCMethodDecl
   return GetSelector(Builder, Method->getSelector(), SelTypes, false);
 }
 
-llvm::Constant *CGObjCGNU::GetEHType(QualType T, const CodeGenFunction *CGF) {
+llvm::Constant *CGObjCGNU::GetEHType(QualType T) {
   if (!CGM.getLangOptions().CPlusPlus) {
       if (T->isObjCIdType()
           || T->isObjCQualifiedIdType()) {
@@ -1859,13 +1879,25 @@ void CGObjCGNU::GenerateClass(const ObjCImplementationDecl *OID) {
       if (CGM.getContext().getLangOptions().ObjCNonFragileABI) {
         Offset = BaseOffset - superInstanceSize;
       }
-      IvarOffsets.push_back(
-          llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext), Offset));
-      IvarOffsetValues.push_back(new llvm::GlobalVariable(TheModule, IntTy,
+      llvm::Constant *OffsetValue = llvm::ConstantInt::get(IntTy, Offset);
+      // Create the direct offset value
+      std::string OffsetName = "__objc_ivar_offset_value_" + ClassName +"." +
+          IVD->getNameAsString();
+      llvm::GlobalVariable *OffsetVar = TheModule.getGlobalVariable(OffsetName);
+      if (OffsetVar) {
+        OffsetVar->setInitializer(OffsetValue);
+        // If this is the real definition, change its linkage type so that
+        // different modules will use this one, rather than their private
+        // copy.
+        OffsetVar->setLinkage(llvm::GlobalValue::ExternalLinkage);
+      } else
+        OffsetVar = new llvm::GlobalVariable(TheModule, IntTy,
           false, llvm::GlobalValue::ExternalLinkage,
-          llvm::ConstantInt::get(IntTy, Offset),
+          OffsetValue,
           "__objc_ivar_offset_value_" + ClassName +"." +
-          IVD->getNameAsString()));
+          IVD->getNameAsString());
+      IvarOffsets.push_back(OffsetValue);
+      IvarOffsetValues.push_back(OffsetVar);
   }
   llvm::GlobalVariable *IvarOffsetArray =
     MakeGlobalArray(PtrToIntTy, IvarOffsetValues, ".ivar.offsets");
@@ -2132,8 +2164,7 @@ llvm::Function *CGObjCGNU::ModuleInitFunction() {
   // constants
   llvm::StructType * ModuleTy = llvm::StructType::get(LongTy, LongTy,
       PtrToInt8Ty, llvm::PointerType::getUnqual(SymTabTy), 
-      (CGM.getLangOptions().getGCMode() == LangOptions::NonGC) ? NULL : IntTy,
-      NULL);
+      (RuntimeVersion >= 10) ? IntTy : NULL, NULL);
   Elements.clear();
   // Runtime version, used for ABI compatibility checking.
   Elements.push_back(llvm::ConstantInt::get(LongTy, RuntimeVersion));
@@ -2152,14 +2183,21 @@ llvm::Function *CGObjCGNU::ModuleInitFunction() {
   Elements.push_back(MakeConstantString(path, ".objc_source_file_name"));
   Elements.push_back(SymTab);
 
-  switch (CGM.getLangOptions().getGCMode()) {
-    case LangOptions::GCOnly:
+  if (RuntimeVersion >= 10)
+    switch (CGM.getLangOptions().getGCMode()) {
+      case LangOptions::GCOnly:
         Elements.push_back(llvm::ConstantInt::get(IntTy, 2));
-    case LangOptions::NonGC:
         break;
-    case LangOptions::HybridGC:
-        Elements.push_back(llvm::ConstantInt::get(IntTy, 1));
-  }
+      case LangOptions::NonGC:
+        if (CGM.getLangOptions().ObjCAutoRefCount)
+          Elements.push_back(llvm::ConstantInt::get(IntTy, 1));
+        else
+          Elements.push_back(llvm::ConstantInt::get(IntTy, 0));
+        break;
+      case LangOptions::HybridGC:
+          Elements.push_back(llvm::ConstantInt::get(IntTy, 1));
+        break;
+    }
 
   llvm::Value *Module = MakeGlobal(ModuleTy, Elements);
 
@@ -2420,10 +2458,19 @@ llvm::Value *CGObjCGNU::EmitIvarOffset(CodeGenFunction &CGF,
                          const ObjCIvarDecl *Ivar) {
   if (CGM.getLangOptions().ObjCNonFragileABI) {
     Interface = FindIvarInterface(CGM.getContext(), Interface, Ivar);
-    return CGF.Builder.CreateZExtOrBitCast(
-        CGF.Builder.CreateLoad(CGF.Builder.CreateLoad(
-                ObjCIvarOffsetVariable(Interface, Ivar), false, "ivar")),
-        PtrDiffTy);
+    if (RuntimeVersion < 10)
+      return CGF.Builder.CreateZExtOrBitCast(
+          CGF.Builder.CreateLoad(CGF.Builder.CreateLoad(
+                  ObjCIvarOffsetVariable(Interface, Ivar), false, "ivar")),
+          PtrDiffTy);
+    std::string name = "__objc_ivar_offset_value_" +
+      Interface->getNameAsString() +"." + Ivar->getNameAsString();
+    llvm::Value *Offset = TheModule.getGlobalVariable(name);
+    if (!Offset)
+      Offset = new llvm::GlobalVariable(TheModule, IntTy,
+          false, llvm::GlobalValue::CommonLinkage,
+          0, name);
+    return CGF.Builder.CreateLoad(Offset);
   }
   uint64_t Offset = ComputeIvarBaseOffset(CGF.CGM, Interface, Ivar);
   return llvm::ConstantInt::get(PtrDiffTy, Offset, "ivar");

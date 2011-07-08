@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fobjc-nonfragile-abi -fsyntax-only -fobjc-arc -verify -fblocks %s
+// RUN: %clang_cc1 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify -fblocks %s
 // rdar://8843600
 
 void * cvt(id arg) // expected-note{{candidate function not viable: cannot convert argument of incomplete type 'void *' to '__strong id'}}
@@ -7,8 +7,7 @@ void * cvt(id arg) // expected-note{{candidate function not viable: cannot conve
   (void)(int*)arg; // expected-error {{cast of an Objective-C pointer to 'int *' is disallowed with ARC}}
   (void)(id)arg;
   (void)(__autoreleasing id*)arg; // expected-error{{C-style cast from 'id' to '__autoreleasing id *' casts away qualifiers}}
-  (void)(id*)arg; // expected-error {{pointer to non-const type 'id' with no explicit lifetime}} \
-  // expected-error{{C-style cast from 'id' to '__autoreleasing id *' casts away qualifiers}}
+  (void)(id*)arg; // expected-error{{C-style cast from 'id' to '__strong id *' casts away qualifiers}}
 
   (void)(__autoreleasing id**)voidp_val;
   (void)(void*)voidp_val;
@@ -42,8 +41,7 @@ void static_casts(id arg) {
   (void)static_cast<int*>(arg); // expected-error {{cannot cast from type 'id' to pointer type 'int *'}}
   (void)static_cast<id>(arg);
   (void)static_cast<__autoreleasing id*>(arg); // expected-error{{cannot cast from type 'id' to pointer type '__autoreleasing id *'}}
-  (void)static_cast<id*>(arg); // expected-error {{cannot cast from type 'id' to pointer type '__autoreleasing id *'}} \
-  // expected-error{{pointer to non-const type 'id' with no explicit lifetime}}
+  (void)static_cast<id*>(arg); // expected-error {{cannot cast from type 'id' to pointer type '__strong id *'}}
 
   (void)static_cast<__autoreleasing id**>(voidp_val);
   (void)static_cast<void*>(voidp_val);
@@ -57,8 +55,8 @@ void static_casts(id arg) {
 
 void test_const_cast(__strong id *sip, __weak id *wip, 
                      const __strong id *csip, __weak const id *cwip) {
-  // Cannot use const_cast to cast between lifetime qualifications or
-  // add/remove lifetime qualifications.
+  // Cannot use const_cast to cast between ownership qualifications or
+  // add/remove ownership qualifications.
   (void)const_cast<__strong id *>(wip); // expected-error{{is not allowed}}
   (void)const_cast<__weak id *>(sip); // expected-error{{is not allowed}}
 
@@ -69,7 +67,7 @@ void test_const_cast(__strong id *sip, __weak id *wip,
 
 void test_reinterpret_cast(__strong id *sip, __weak id *wip, 
                            const __strong id *csip, __weak const id *cwip) {
-  // Okay to reinterpret_cast to add/remove/change lifetime
+  // Okay to reinterpret_cast to add/remove/change ownership
   // qualifications.
   (void)reinterpret_cast<__strong id *>(wip);
   (void)reinterpret_cast<__weak id *>(sip);
@@ -83,7 +81,7 @@ void test_reinterpret_cast(__strong id *sip, __weak id *wip,
 
 void test_cstyle_cast(__strong id *sip, __weak id *wip, 
                       const __strong id *csip, __weak const id *cwip) {
-  // C-style casts aren't allowed to change Objective-C lifetime
+  // C-style casts aren't allowed to change Objective-C ownership
   // qualifiers (beyond what the normal implicit conversion allows).
 
   (void)(__strong id *)wip; // expected-error{{C-style cast from '__weak id *' to '__strong id *' casts away qualifiers}}
@@ -103,7 +101,7 @@ void test_cstyle_cast(__strong id *sip, __weak id *wip,
 
 void test_functional_cast(__strong id *sip, __weak id *wip,
                           __autoreleasing id *aip) {
-  // Functional casts aren't allowed to change Objective-C lifetime
+  // Functional casts aren't allowed to change Objective-C ownership
   // qualifiers (beyond what the normal implicit conversion allows).
 
   typedef __strong id *strong_id_pointer;
@@ -196,3 +194,28 @@ void from_void(void *vp) {
   aip = vp; // expected-error{{assigning to '__autoreleasing id *' from incompatible type 'void *'}}
   uip = vp; // expected-error{{assigning to '__unsafe_unretained id *' from incompatible type 'void *'}}
 }
+
+typedef void (^Block)();
+typedef void (^Block_strong)() __strong;
+typedef void (^Block_autoreleasing)() __autoreleasing;
+
+@class NSString;
+
+void ownership_transfer_in_cast(void *vp, Block *pblk) {
+  __strong NSString **sip2 = static_cast<NSString **>(static_cast<__strong id *>(vp));
+  __strong NSString **&si2pref = static_cast<NSString **&>(sip2);
+  __weak NSString **wip2 = static_cast<NSString **>(static_cast<__weak id *>(vp));
+  __autoreleasing id *aip2 = static_cast<id *>(static_cast<__autoreleasing id *>(vp));
+  __unsafe_unretained id *uip2 = static_cast<id *>(static_cast<__unsafe_unretained id *>(vp));
+  __strong id *sip3 = reinterpret_cast<id *>(reinterpret_cast<__strong id *>(vp));
+  __weak id *wip3 = reinterpret_cast<id *>(reinterpret_cast<__weak id *>(vp));
+  __autoreleasing id *aip3 = reinterpret_cast<id *>(reinterpret_cast<__autoreleasing id *>(vp));
+  __unsafe_unretained id *uip3 = reinterpret_cast<id *>(reinterpret_cast<__unsafe_unretained id *>(vp));
+
+  Block_strong blk_strong1;
+  Block_strong blk_strong2 = static_cast<Block>(blk_strong1);
+  Block_autoreleasing *blk_auto = static_cast<Block*>(pblk);
+}
+
+// Make sure we don't crash.
+void writeback_test(NSString & &) {} // expected-error {{type name declared as a reference to a reference}}

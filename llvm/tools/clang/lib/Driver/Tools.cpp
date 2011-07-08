@@ -17,6 +17,7 @@
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Job.h"
 #include "clang/Driver/HostInfo.h"
+#include "clang/Driver/ObjCRuntime.h"
 #include "clang/Driver/Option.h"
 #include "clang/Driver/Options.h"
 #include "clang/Driver/ToolChain.h"
@@ -155,19 +156,30 @@ static bool isObjCAutoRefCount(const ArgList &Args) {
 }
 
 static void addProfileRT(const ToolChain &TC, const ArgList &Args,
-                         ArgStringList &CmdArgs) {
-  if (Args.hasArg(options::OPT_fprofile_arcs) ||
-      Args.hasArg(options::OPT_fprofile_generate) ||
-      Args.hasArg(options::OPT_fcreate_profile) ||
-      Args.hasArg(options::OPT_coverage)) {
-    // GCC links libgcov.a by adding -L<inst>/gcc/lib/gcc/<triple>/<ver> -lgcov
-    // to the link line. We cannot do the same thing because unlike gcov
-    // there is a libprofile_rt.so. We used to use the -l:libprofile_rt.a
-    // syntax, but that is not supported by old linkers.
-    const char *lib = Args.MakeArgString(TC.getDriver().Dir + "/../lib/" +
-                                         "libprofile_rt.a");
-    CmdArgs.push_back(lib);
+                         ArgStringList &CmdArgs,
+                         llvm::Triple Triple) {
+  if (!(Args.hasArg(options::OPT_fprofile_arcs) ||
+        Args.hasArg(options::OPT_fprofile_generate) ||
+        Args.hasArg(options::OPT_fcreate_profile) ||
+        Args.hasArg(options::OPT_coverage)))
+    return;
+
+  // GCC links libgcov.a by adding -L<inst>/gcc/lib/gcc/<triple>/<ver> -lgcov to
+  // the link line. We cannot do the same thing because unlike gcov there is a
+  // libprofile_rt.so. We used to use the -l:libprofile_rt.a syntax, but that is
+  // not supported by old linkers.
+  llvm::Twine ProfileRT =
+    llvm::Twine(TC.getDriver().Dir) + "/../lib/" + "libprofile_rt.a";
+
+  if (Triple.getOS() == llvm::Triple::Darwin) {
+    // On Darwin, if the static library doesn't exist try the dylib.
+    bool Exists;
+    if (llvm::sys::fs::exists(ProfileRT.str(), Exists) || !Exists)
+      ProfileRT =
+        llvm::Twine(TC.getDriver().Dir) + "/../lib/" + "libprofile_rt.dylib";
   }
+
+  CmdArgs.push_back(Args.MakeArgString(ProfileRT));
 }
 
 void Clang::AddPreprocessingOptions(const Driver &D,
@@ -749,7 +761,6 @@ void Clang::AddSparcTargetArgs(const ArgList &Args,
     //
     // FIXME: This changes CPP defines, we need -target-soft-float.
     CmdArgs.push_back("-msoft-float");
-    CmdArgs.push_back("soft");
     CmdArgs.push_back("-target-feature");
     CmdArgs.push_back("+soft-float");
   } else {
@@ -828,6 +839,14 @@ void Clang::AddX86TargetArgs(const ArgList &Args,
     CmdArgs.push_back(CPUName);
   }
 
+  // The required algorithm here is slightly strange: the options are applied
+  // in order (so -mno-sse -msse2 disables SSE3), but any option that gets
+  // directly overridden later is ignored (so "-mno-sse -msse2 -mno-sse2 -msse"
+  // is equivalent to "-mno-sse2 -msse"). The -cc1 handling deals with the
+  // former correctly, but not the latter; handle directly-overridden
+  // attributes here.
+  llvm::StringMap<unsigned> PrevFeature;
+  std::vector<const char*> Features;
   for (arg_iterator it = Args.filtered_begin(options::OPT_m_x86_Features_Group),
          ie = Args.filtered_end(); it != ie; ++it) {
     llvm::StringRef Name = (*it)->getOption().getName();
@@ -841,8 +860,17 @@ void Clang::AddX86TargetArgs(const ArgList &Args,
     if (IsNegative)
       Name = Name.substr(3);
 
-    CmdArgs.push_back("-target-feature");
-    CmdArgs.push_back(Args.MakeArgString((IsNegative ? "-" : "+") + Name));
+    unsigned& Prev = PrevFeature[Name];
+    if (Prev)
+      Features[Prev - 1] = 0;
+    Prev = Features.size() + 1;
+    Features.push_back(Args.MakeArgString((IsNegative ? "-" : "+") + Name));
+  }
+  for (unsigned i = 0; i < Features.size(); i++) {
+    if (Features[i]) {
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back(Features[i]);
+    }
   }
 }
 
@@ -859,7 +887,7 @@ shouldUseExceptionTablesForObjCExceptions(unsigned objcABIVersion,
   if (Triple.getOS() != llvm::Triple::Darwin)
     return false;
 
-  return (Triple.getDarwinMajorNumber() >= 9 &&
+  return (!Triple.isMacOSXVersionLT(10,5) &&
           (Triple.getArch() == llvm::Triple::x86_64 ||
            Triple.getArch() == llvm::Triple::arm));  
 }
@@ -1394,15 +1422,15 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_working_directory);
 
   if (!Args.hasArg(options::OPT_fno_objc_arc)) {
-    if (const Arg *A = Args.getLastArg(options::OPT_ccc_arrmt_check,
-                                       options::OPT_ccc_arrmt_modify)) {
+    if (const Arg *A = Args.getLastArg(options::OPT_ccc_arcmt_check,
+                                       options::OPT_ccc_arcmt_modify)) {
       switch (A->getOption().getID()) {
       default:
         llvm_unreachable("missed a case");
-      case options::OPT_ccc_arrmt_check:
+      case options::OPT_ccc_arcmt_check:
         CmdArgs.push_back("-arcmt-check");
         break;
-      case options::OPT_ccc_arrmt_modify:
+      case options::OPT_ccc_arcmt_modify:
         CmdArgs.push_back("-arcmt-modify");
         break;
       }
@@ -1573,47 +1601,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     options::OPT_fno_lax_vector_conversions))
     CmdArgs.push_back("-fno-lax-vector-conversions");
 
-  // Allow -fno-objc-arr to trump -fobjc-arr/-fobjc-arc.
-  // NOTE: This logic is duplicated in ToolChains.cpp.
-  bool ARC = isObjCAutoRefCount(Args);
-  if (ARC) {
-    CmdArgs.push_back("-fobjc-arc");
-
-    // Certain deployment targets don't have runtime support.
-    if (!getToolChain().HasARCRuntime())
-      CmdArgs.push_back("-fobjc-no-arc-runtime");
-
-    // Allow the user to enable full exceptions code emission.
-    // We define off for Objective-CC, on for Objective-C++.
-    if (Args.hasFlag(options::OPT_fobjc_arc_exceptions,
-                     options::OPT_fno_objc_arc_exceptions,
-                     /*default*/ types::isCXX(InputType)))
-      CmdArgs.push_back("-fobjc-arc-exceptions");
-  }
-
-  // -fobjc-infer-related-result-type is the default, except in the Objective-C
-  // rewriter.
-  if (IsRewriter)
-    CmdArgs.push_back("-fno-objc-infer-related-result-type");
-  
-  // Handle -fobjc-gc and -fobjc-gc-only. They are exclusive, and -fobjc-gc-only
-  // takes precedence.
-  const Arg *GCArg = Args.getLastArg(options::OPT_fobjc_gc_only);
-  if (!GCArg)
-    GCArg = Args.getLastArg(options::OPT_fobjc_gc);
-  if (GCArg) {
-    if (ARC) {
-      D.Diag(clang::diag::err_drv_objc_gc_arr)
-        << GCArg->getAsString(Args);
-    } else if (getToolChain().SupportsObjCGC()) {
-      GCArg->render(Args, CmdArgs);
-    } else {
-      // FIXME: We should move this to a hard error.
-      D.Diag(clang::diag::warn_drv_objc_gc_unsupported)
-        << GCArg->getAsString(Args);
-    }
-  }
-
   if (Args.getLastArg(options::OPT_fapple_kext))
     CmdArgs.push_back("-fapple-kext");
 
@@ -1778,17 +1765,27 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    false))
     CmdArgs.push_back("-fgnu89-inline");
 
-  // -fnext-runtime defaults to on Darwin and when rewriting Objective-C, and is
-  // -the -cc1 default.
-  bool NeXTRuntimeIsDefault =
-    IsRewriter || getToolChain().getTriple().getOS() == llvm::Triple::Darwin;
-  if (!Args.hasFlag(options::OPT_fnext_runtime, options::OPT_fgnu_runtime,
-                    NeXTRuntimeIsDefault))
-    CmdArgs.push_back("-fgnu-runtime");
-
   // -fobjc-nonfragile-abi=0 is default.
+  ObjCRuntime objCRuntime;
   unsigned objcABIVersion = 0;
   if (types::isObjC(InputType)) {
+    bool NeXTRuntimeIsDefault
+      = (IsRewriter || getToolChain().getTriple().isOSDarwin());
+    if (Args.hasFlag(options::OPT_fnext_runtime, options::OPT_fgnu_runtime,
+                     NeXTRuntimeIsDefault)) {
+      objCRuntime.setKind(ObjCRuntime::NeXT);
+    } else {
+      CmdArgs.push_back("-fgnu-runtime");
+      objCRuntime.setKind(ObjCRuntime::GNU);
+    }
+    getToolChain().configureObjCRuntime(objCRuntime);
+    if (objCRuntime.HasARC)
+      CmdArgs.push_back("-fobjc-runtime-has-arc");
+    if (objCRuntime.HasWeak)
+      CmdArgs.push_back("-fobjc-runtime-has-weak");
+    if (objCRuntime.HasTerminate)
+      CmdArgs.push_back("-fobjc-runtime-has-terminate");
+
     // Compute the Objective-C ABI "version" to use. Version numbers are
     // slightly confusing for historical reasons:
     //   1 - Traditional "fragile" ABI
@@ -1861,6 +1858,43 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-fobjc-default-synthesize-properties");
     }
 #endif
+  }
+
+  // Allow -fno-objc-arr to trump -fobjc-arr/-fobjc-arc.
+  // NOTE: This logic is duplicated in ToolChains.cpp.
+  bool ARC = isObjCAutoRefCount(Args);
+  if (ARC) {
+    CmdArgs.push_back("-fobjc-arc");
+
+    // Allow the user to enable full exceptions code emission.
+    // We define off for Objective-CC, on for Objective-C++.
+    if (Args.hasFlag(options::OPT_fobjc_arc_exceptions,
+                     options::OPT_fno_objc_arc_exceptions,
+                     /*default*/ types::isCXX(InputType)))
+      CmdArgs.push_back("-fobjc-arc-exceptions");
+  }
+
+  // -fobjc-infer-related-result-type is the default, except in the Objective-C
+  // rewriter.
+  if (IsRewriter)
+    CmdArgs.push_back("-fno-objc-infer-related-result-type");
+  
+  // Handle -fobjc-gc and -fobjc-gc-only. They are exclusive, and -fobjc-gc-only
+  // takes precedence.
+  const Arg *GCArg = Args.getLastArg(options::OPT_fobjc_gc_only);
+  if (!GCArg)
+    GCArg = Args.getLastArg(options::OPT_fobjc_gc);
+  if (GCArg) {
+    if (ARC) {
+      D.Diag(clang::diag::err_drv_objc_gc_arr)
+        << GCArg->getAsString(Args);
+    } else if (getToolChain().SupportsObjCGC()) {
+      GCArg->render(Args, CmdArgs);
+    } else {
+      // FIXME: We should move this to a hard error.
+      D.Diag(clang::diag::warn_drv_objc_gc_unsupported)
+        << GCArg->getAsString(Args);
+    }
   }
 
   // Add exception args.
@@ -2985,7 +3019,7 @@ void darwin::Link::AddLinkArgs(Compilation &C,
   Args.AddLastArg(CmdArgs, options::OPT_dynamic);
   Args.AddAllArgs(CmdArgs, options::OPT_exported__symbols__list);
   Args.AddLastArg(CmdArgs, options::OPT_flat__namespace);
-  Args.AddLastArg(CmdArgs, options::OPT_force__load);
+  Args.AddAllArgs(CmdArgs, options::OPT_force__load);
   Args.AddAllArgs(CmdArgs, options::OPT_headerpad__max__install__names);
   Args.AddAllArgs(CmdArgs, options::OPT_image__base);
   Args.AddAllArgs(CmdArgs, options::OPT_init);
@@ -3210,8 +3244,12 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   // In ARC, if we don't have runtime support, link in the runtime
   // stubs.  We have to do this *before* adding any of the normal
   // linker inputs so that its initializer gets run first.
-  if (!getDarwinToolChain().HasARCRuntime() && isObjCAutoRefCount(Args))
-    getDarwinToolChain().AddLinkARCArgs(Args, CmdArgs);
+  if (isObjCAutoRefCount(Args)) {
+    ObjCRuntime runtime;
+    getDarwinToolChain().configureObjCRuntime(runtime);
+    if (!runtime.HasARC)
+      getDarwinToolChain().AddLinkARCArgs(Args, CmdArgs);
+  }
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
 
@@ -3241,7 +3279,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // endfile_spec is empty.
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   Args.AddAllArgs(CmdArgs, options::OPT_T_Group);
   Args.AddAllArgs(CmdArgs, options::OPT_F);
@@ -3400,7 +3438,7 @@ void auroraux::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                 getToolChain().GetFilePath("crtend.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
@@ -3708,7 +3746,7 @@ void freebsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                                                     "crtn.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));
@@ -3863,7 +3901,7 @@ void netbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                                                     "crtn.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   const char *Exec = Args.MakeArgString(FindTargetProgramPath(getToolChain(),
                                                       ToolTriple.getTriple(),
@@ -4087,7 +4125,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   if (Args.hasArg(options::OPT_use_gold_plugin)) {
     CmdArgs.push_back("-plugin");
@@ -4171,7 +4209,7 @@ void minix::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                               "/usr/gnu/lib/libend.a")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("/usr/gnu/bin/gld"));
@@ -4328,7 +4366,7 @@ void dragonfly::Link::ConstructJob(Compilation &C, const JobAction &JA,
                               getToolChain().GetFilePath("crtn.o")));
   }
 
-  addProfileRT(getToolChain(), Args, CmdArgs);
+  addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
   const char *Exec =
     Args.MakeArgString(getToolChain().GetProgramPath("ld"));

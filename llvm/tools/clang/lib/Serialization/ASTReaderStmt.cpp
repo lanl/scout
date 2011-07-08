@@ -60,7 +60,7 @@ namespace clang {
 
     /// \brief The number of record fields required for the Expr class
     /// itself.
-    static const unsigned NumExprFields = NumStmtFields + 6;
+    static const unsigned NumExprFields = NumStmtFields + 7;
     
     /// \brief Read and initialize a ExplicitTemplateArgumentList structure.
     void ReadExplicitTemplateArgumentList(ExplicitTemplateArgumentList &ArgList,
@@ -430,6 +430,7 @@ void ASTStmtReader::VisitExpr(Expr *E) {
   E->setType(Reader.GetType(Record[Idx++]));
   E->setTypeDependent(Record[Idx++]);
   E->setValueDependent(Record[Idx++]);
+  E->setInstantiationDependent(Record[Idx++]);
   E->ExprBits.ContainsUnexpandedParameterPack = Record[Idx++];
   E->setValueKind(static_cast<ExprValueKind>(Record[Idx++]));
   E->setObjectKind(static_cast<ExprObjectKind>(Record[Idx++]));
@@ -1187,8 +1188,9 @@ void ASTStmtReader::VisitCXXThisExpr(CXXThisExpr *E) {
 
 void ASTStmtReader::VisitCXXThrowExpr(CXXThrowExpr *E) {
   VisitExpr(E);
-  E->setThrowLoc(ReadSourceLocation(Record, Idx));
-  E->setSubExpr(Reader.ReadSubExpr());
+  E->ThrowLoc = ReadSourceLocation(Record, Idx);
+  E->Op = Reader.ReadSubExpr();
+  E->IsThrownVariableInScope = Record[Idx++];
 }
 
 void ASTStmtReader::VisitCXXDefaultArgExpr(CXXDefaultArgExpr *E) {

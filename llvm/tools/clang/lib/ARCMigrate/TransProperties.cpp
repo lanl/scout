@@ -112,11 +112,11 @@ public:
   }
 
   void applyWeak(PropData &prop) {
-    assert(!Pass.Ctx.getLangOptions().ObjCNoAutoRefCountRuntime);
+    assert(Pass.Ctx.getLangOptions().ObjCRuntimeHasWeak);
 
     Transaction Trans(Pass.TA);
     Pass.TA.insert(prop.IvarD->getLocation(), "__weak "); 
-    Pass.TA.clearDiagnostic(diag::err_arc_assign_property_lifetime,
+    Pass.TA.clearDiagnostic(diag::err_arc_assign_property_ownership,
                             prop.ArcPropAssignErrorLoc);
   }
 
@@ -126,7 +126,7 @@ public:
       if (PI->ShouldChangeToWeak) {
         Transaction Trans(Pass.TA);
         Pass.TA.insert(PI->IvarD->getLocation(), "__unsafe_unretained ");
-        Pass.TA.clearDiagnostic(diag::err_arc_assign_property_lifetime,
+        Pass.TA.clearDiagnostic(diag::err_arc_assign_property_ownership,
                                 PI->ArcPropAssignErrorLoc);
       }
     }
@@ -151,18 +151,18 @@ public:
           != Qualifiers::OCL_Strong)
       return true;
     if (!Pass.TA.hasDiagnostic(
-                      diag::err_arc_assign_property_lifetime, D->getLocation()))
+                      diag::err_arc_assign_property_ownership, D->getLocation()))
       return true;
 
     // There is a "error: existing ivar for assign property must be
     // __unsafe_unretained"; fix it.
 
-    if (Pass.Ctx.getLangOptions().ObjCNoAutoRefCountRuntime) {
+    if (!Pass.Ctx.getLangOptions().ObjCRuntimeHasWeak) {
       // We will just add __unsafe_unretained to the ivar.
       Transaction Trans(Pass.TA);
       Pass.TA.insert(ivarD->getLocation(), "__unsafe_unretained ");
       Pass.TA.clearDiagnostic(
-                      diag::err_arc_assign_property_lifetime, D->getLocation());
+                      diag::err_arc_assign_property_ownership, D->getLocation());
     } else {
       // Mark that we want the ivar to become weak.
       unsigned loc = SM.getInstantiationLoc(propD->getAtLoc()).getRawEncoding();

@@ -303,6 +303,11 @@ public:
   /// __builtin_va_list, which is target-specific.
   virtual const char *getVAListDeclaration() const = 0;
 
+  /// isValidClobber - Returns whether the passed in string is
+  /// a valid clobber in an inline asm statement. This is used by
+  /// Sema.
+  bool isValidClobber(llvm::StringRef Name) const;
+
   /// isValidGCCRegisterName - Returns whether the passed in string
   /// is a valid register name according to GCC. This is used by Sema for
   /// inline asm statements.
@@ -524,6 +529,7 @@ public:
 
   // getRegParmMax - Returns maximal number of args passed in registers.
   unsigned getRegParmMax() const {
+    assert(RegParmMax < 7 && "RegParmMax value is larger than AST can handle");
     return RegParmMax;
   }
 

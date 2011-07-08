@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fsyntax-only -fobjc-arc -fblocks -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
 // rdar://9309489
 
 @interface MyClass {
@@ -33,7 +33,7 @@
 @public
     id __unsafe_unretained x;   // should be __weak
     id __strong y;
-    id __autoreleasing z; // expected-error {{ivars cannot have __autoreleasing lifetime}}
+    id __autoreleasing z; // expected-error {{ivars cannot have __autoreleasing ownership}}
 }
 @property(weak) id x; // expected-note {{property declared here}}
 @property(weak) id y; // expected-note {{property declared here}}

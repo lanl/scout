@@ -1010,7 +1010,7 @@ public:
   virtual llvm::Value *GetSelector(CGBuilderTy &Builder,
                                    const ObjCMethodDecl *Method);
 
-  virtual llvm::Constant *GetEHType(QualType T, const CodeGenFunction *CGF=0);
+  virtual llvm::Constant *GetEHType(QualType T);
 
   virtual void GenerateCategory(const ObjCCategoryImplDecl *CMD);
 
@@ -1271,7 +1271,7 @@ public:
   virtual llvm::Value *GenerateProtocolRef(CGBuilderTy &Builder,
                                            const ObjCProtocolDecl *PD);
 
-  virtual llvm::Constant *GetEHType(QualType T, const CodeGenFunction *CGF=0);
+  virtual llvm::Constant *GetEHType(QualType T);
 
   virtual llvm::Constant *GetPropertyGetFunction() {
     return ObjCTypes.getGetPropertyFn();
@@ -1414,12 +1414,20 @@ llvm::Value *CGObjCMac::GetSelector(CGBuilderTy &Builder, const ObjCMethodDecl
   return EmitSelector(Builder, Method->getSelector());
 }
 
-llvm::Constant *CGObjCMac::GetEHType(QualType T, const CodeGenFunction *CGF) {
+llvm::Constant *CGObjCMac::GetEHType(QualType T) {
   if (T->isObjCIdType() ||
       T->isObjCQualifiedIdType()) {
     return CGM.GetAddrOfRTTIDescriptor(
-              CGF->getContext().ObjCIdRedefinitionType, /*ForEH=*/true);
+              CGM.getContext().ObjCIdRedefinitionType, /*ForEH=*/true);
   }
+  if (T->isObjCClassType() ||
+      T->isObjCQualifiedClassType()) {
+    return CGM.GetAddrOfRTTIDescriptor(
+             CGM.getContext().ObjCClassRedefinitionType, /*ForEH=*/true);
+  }
+  if (T->isObjCObjectPointerType())
+    return CGM.GetAddrOfRTTIDescriptor(T,  /*ForEH=*/true);
+  
   llvm_unreachable("asking for catch type for ObjC type in fragile runtime");
   return 0;
 }
@@ -2402,11 +2410,8 @@ llvm::Constant *CGObjCMac::EmitIvarList(const ObjCImplementationDecl *ID,
   ObjCInterfaceDecl *OID =
     const_cast<ObjCInterfaceDecl*>(ID->getClassInterface());
 
-  llvm::SmallVector<ObjCIvarDecl*, 16> OIvars;
-  CGM.getContext().ShallowCollectObjCIvars(OID, OIvars);
-
-  for (unsigned i = 0, e = OIvars.size(); i != e; ++i) {
-    ObjCIvarDecl *IVD = OIvars[i];
+  for (ObjCIvarDecl *IVD = OID->all_declared_ivar_begin(); 
+       IVD; IVD = IVD->getNextIvar()) {
     // Ignore unnamed bit-fields.
     if (!IVD->getDeclName())
       continue;
@@ -3900,16 +3905,21 @@ llvm::Constant *CGObjCCommonMac::BuildIvarLayout(
       !CGM.getLangOptions().ObjCAutoRefCount)
     return llvm::Constant::getNullValue(PtrTy);
 
-  llvm::SmallVector<ObjCIvarDecl*, 32> Ivars;
-  const ObjCInterfaceDecl *OI = OMD->getClassInterface();
-  if (CGM.getLangOptions().ObjCAutoRefCount)
-    CGM.getContext().ShallowCollectObjCIvars(OI, Ivars);
-  else
+  ObjCInterfaceDecl *OI = 
+    const_cast<ObjCInterfaceDecl*>(OMD->getClassInterface());
+  llvm::SmallVector<FieldDecl*, 32> RecFields;
+  if (CGM.getLangOptions().ObjCAutoRefCount) {
+    for (ObjCIvarDecl *IVD = OI->all_declared_ivar_begin(); 
+         IVD; IVD = IVD->getNextIvar())
+      RecFields.push_back(cast<FieldDecl>(IVD));
+  }
+  else {
+    llvm::SmallVector<ObjCIvarDecl*, 32> Ivars;
     CGM.getContext().DeepCollectObjCIvars(OI, true, Ivars);
 
-  llvm::SmallVector<FieldDecl*, 32> RecFields;
-  for (unsigned k = 0, e = Ivars.size(); k != e; ++k)
-    RecFields.push_back(cast<FieldDecl>(Ivars[k]));
+    for (unsigned k = 0, e = Ivars.size(); k != e; ++k)
+      RecFields.push_back(cast<FieldDecl>(Ivars[k]));
+  }
 
   if (RecFields.empty())
     return llvm::Constant::getNullValue(PtrTy);
@@ -5269,17 +5279,14 @@ llvm::Constant *CGObjCNonFragileABIMac::EmitIvarList(
 
   std::vector<llvm::Constant*> Ivars, Ivar(5);
 
-  const ObjCInterfaceDecl *OID = ID->getClassInterface();
+  ObjCInterfaceDecl *OID = 
+    const_cast<ObjCInterfaceDecl*>(ID->getClassInterface());
   assert(OID && "CGObjCNonFragileABIMac::EmitIvarList - null interface");
 
   // FIXME. Consolidate this with similar code in GenerateClass.
 
-  // Collect declared and synthesized ivars in a small vector.
-  llvm::SmallVector<ObjCIvarDecl*, 16> OIvars;
-  CGM.getContext().ShallowCollectObjCIvars(OID, OIvars);
-
-  for (unsigned i = 0, e = OIvars.size(); i != e; ++i) {
-    ObjCIvarDecl *IVD = OIvars[i];
+  for (ObjCIvarDecl *IVD = OID->all_declared_ivar_begin(); 
+       IVD; IVD = IVD->getNextIvar()) {
     // Ignore unnamed bit-fields.
     if (!IVD->getDeclName())
       continue;
@@ -6021,7 +6028,7 @@ CGObjCNonFragileABIMac::EmitSynchronizedStmt(CodeGen::CodeGenFunction &CGF,
 }
 
 llvm::Constant *
-CGObjCNonFragileABIMac::GetEHType(QualType T, const CodeGenFunction *CGF) {
+CGObjCNonFragileABIMac::GetEHType(QualType T) {
   // There's a particular fixed type info for 'id'.
   if (T->isObjCIdType() ||
       T->isObjCQualifiedIdType()) {
