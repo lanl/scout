@@ -17,10 +17,6 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
-
-// ndm - include Scout Decls
-#include "clang/AST/DeclScout.h"
-
 #include "clang/AST/Expr.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TypeVisitor.h"
@@ -2258,3 +2254,9 @@ bool QualType::hasTrivialCopyAssignment(ASTContext &Context) const {
   
   return true;
 }
+
+// ndm - Scout types
+bool MeshType::isBeingDefined() const{
+  return decl->isBeingDefined();
+}
+

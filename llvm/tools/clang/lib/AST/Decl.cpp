@@ -2431,6 +2431,49 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
+// ndm - Scout Decl implementation
+MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                           SourceLocation StartLoc, SourceLocation IdLoc,
+                           IdentifierInfo* Id, MeshDecl* PrevDecl){
+  
+  MeshDecl* M = new (C) MeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+SourceLocation MeshDecl::getOuterLocStart() const {
+  
+}
+
+SourceRange MeshDecl::getSourceRange() const {
+  SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
+  return SourceRange(getOuterLocStart(), E);
+}
+
+void MeshDecl::startDefinition() {
+  IsBeingDefined = true;
+}
+
+void MeshDecl::completeDefinition() {
+  IsDefinition = true;
+  IsBeingDefined = false;
+}
+
+MeshDecl* MeshDecl::getDefinition() const{
+  if(isDefinition()){
+    return const_cast<MeshDecl*>(this);
+  }
+  
+  // ndm - not fully implemented
+  
+  return 0;
+}
+
+MeshDecl::field_iterator MeshDecl::field_begin() const{
+  return field_iterator(decl_iterator(FirstDecl));
+}
+
 //===----------------------------------------------------------------------===//
 // Other Decl Allocation/Deallocation Method Implementations
 //===----------------------------------------------------------------------===//

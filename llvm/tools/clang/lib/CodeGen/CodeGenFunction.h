@@ -15,10 +15,6 @@
 #define CLANG_CODEGEN_CODEGENFUNCTION_H
 
 #include "clang/AST/Type.h"
-
-// ndm - include Scout Stmts
-#include "clang/AST/StmtScout.h"
-
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/CharUnits.h"

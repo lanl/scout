@@ -15,13 +15,6 @@
 #define LLVM_CLANG_AST_RECURSIVEASTVISITOR_H
 
 #include "clang/AST/Decl.h"
-
-// ndm - include Scout declarations
-#include "clang/AST/DeclScout.h"
-
-// ndm - include Scout stmts
-#include "clang/AST/StmtScout.h"
-
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclObjC.h"

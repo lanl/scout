@@ -11,7 +11,6 @@ add_clang_library(clangAST
   AttrImpl.cpp
   CXXInheritance.cpp
   Decl.cpp
-  DeclScout.cpp
   DeclarationName.cpp
   DeclBase.cpp
   DeclCXX.cpp
@@ -37,10 +36,6 @@ add_clang_library(clangAST
   RecordLayout.cpp
   RecordLayoutBuilder.cpp
   Stmt.cpp
-  
-# ndm - Scout Stmts
-  StmtScout.cpp
-  
   StmtDumper.cpp
   StmtIterator.cpp
   StmtPrinter.cpp
@@ -49,7 +44,6 @@ add_clang_library(clangAST
   TemplateBase.cpp
   TemplateName.cpp
   Type.cpp
-  TypeScout.cpp
   TypeLoc.cpp
   TypePrinter.cpp
   )

@@ -13,10 +13,6 @@
 //===----------------------------------------------------------------------===//
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclVisitor.h"
-
-// ndm - include Scout declarations
-#include "clang/AST/DeclScout.h"
-
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"

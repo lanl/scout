@@ -50,6 +50,8 @@
 #include <cstdio>
 #include <sys/stat.h>
 
+#include <iostream>
+
 using namespace clang;
 using namespace clang::serialization;
 

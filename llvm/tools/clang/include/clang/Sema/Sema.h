@@ -26,10 +26,6 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/AST/TypeLoc.h"
-
-// ndm - include Scout Stmts
-#include "clang/AST/StmtScout.h"
-
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TemplateKinds.h"
 #include "clang/Basic/TypeTraits.h"
@@ -1099,13 +1095,16 @@ public:
                             IdentifierInfo* Name,
                             SourceLocation NameLoc);
   
+  Decl* ActOnMeshField(Scope *S, Decl *MeshD, 
+                       SourceLocation DeclStart, Declarator &D);
+  
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
   
-  FieldDecl *HandleMeshField(Scope *S, MeshDecl *MeshD, 
+  FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD, 
                              SourceLocation DeclStart, Declarator &D);
   
   
-  FieldDecl *CheckMeshFieldDecl(DeclarationName Name, QualType T,
+  FieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                 TypeSourceInfo *TInfo,
                                 MeshDecl *Mesh, SourceLocation Loc,
                                 SourceLocation TSSL,

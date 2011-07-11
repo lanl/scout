@@ -21,6 +21,9 @@
 #include "ParsePragma.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTConsumer.h"
+
+#include <iostream>
+
 using namespace clang;
 
 Parser::Parser(Preprocessor &pp, Sema &actions)

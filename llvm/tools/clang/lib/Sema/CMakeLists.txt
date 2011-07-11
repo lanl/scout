@@ -20,7 +20,6 @@ add_clang_library(clangSema
   SemaDeclAttr.cpp
   SemaDeclCXX.cpp
   SemaDeclObjC.cpp
-  SemaDeclScout.cpp
   SemaExceptionSpec.cpp
   SemaExpr.cpp
   SemaExprCXX.cpp
@@ -31,7 +30,6 @@ add_clang_library(clangSema
   SemaObjCProperty.cpp
   SemaOverload.cpp
   SemaStmt.cpp
-  SemaStmtScout.cpp
   SemaTemplate.cpp
   SemaTemplateDeduction.cpp
   SemaTemplateInstantiate.cpp

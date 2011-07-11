@@ -26,10 +26,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/Stmt.h"
-
-// ndm - include Scout stmts
-#include "clang/AST/StmtScout.h"
-
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Sema/Ownership.h"

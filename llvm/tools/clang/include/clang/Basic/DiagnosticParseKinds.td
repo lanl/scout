@@ -570,6 +570,8 @@ def err_invalid_renderall_body: Error<"Invalid renderall body">;
 def err_invalid_forall_op: Error<"Invalid forall op">;
 def err_invalid_forall_body: Error<"Invalid forall body">;
 def err_expected_mesh_kw: Error<"expected mesh keyword">;
+def err_expected_semi_mesh_declaration : Error<
+"expected ';' at end of mesh declaration">;
 
 } // end of Parse Issue category.
 } // end of Parser diagnostics

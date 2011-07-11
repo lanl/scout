@@ -19,10 +19,6 @@
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/DeclCXX.h"
-
-// ndm - include Scout declarations
-#include "clang/AST/DeclScout.h"
-
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 using namespace clang;

@@ -15,10 +15,6 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
-
-// ndm - include Scout declarations
-#include "clang/AST/DeclScout.h"
-
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclVisitor.h"

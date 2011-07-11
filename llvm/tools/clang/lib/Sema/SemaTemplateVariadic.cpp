@@ -15,15 +15,8 @@
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "clang/AST/Expr.h"
-
-// ndm - include Scout stmts
-#include "clang/AST/StmtScout.h"
-
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
-
-// ndm - include Scout declarations
-#include "clang/AST/DeclScout.h"
 
 using namespace clang;
 

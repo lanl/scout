@@ -14,10 +14,6 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
-
-// ndm - include Scout Decls.
-#include "clang/AST/DeclScout.h"
-
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/TypeLoc.h"
@@ -36,6 +32,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include "CXXABI.h"
 #include <map>
+
+#include <iostream>
 
 using namespace clang;
 
@@ -2178,6 +2176,9 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     assert(!Enum->getPreviousDeclaration() &&
            "enum has previous declaration");
     return getEnumType(Enum);
+  // ndm - Scout Mesh
+  } else if (const MeshDecl *Mesh = dyn_cast<MeshDecl>(Decl)) {
+    return getMeshType(Mesh);
   } else if (const UnresolvedUsingTypenameDecl *Using =
                dyn_cast<UnresolvedUsingTypenameDecl>(Decl)) {
     Type *newType = new (*this, TypeAlignment) UnresolvedUsingType(Using);
@@ -2222,7 +2223,12 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
 // TODO - implement
 
 QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
-  return QualType();
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+  
+  MeshType *newType = new (*this, TypeAlignment) MeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
 }
 
 QualType ASTContext::getEnumType(const EnumDecl *Decl) const {

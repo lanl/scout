@@ -2361,3 +2361,28 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
   assert(Block);
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
 }
+
+// ndm - Scout Stmts
+StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
+                                 ForAllStmt::ForAllType Type,
+                                 Expr* Ind, Expr* Mesh,
+                                 SourceLocation LParenLoc,
+                                 Expr* Op, SourceLocation RParenLoc,
+                                 Stmt* Body){
+  
+  return Owned(new (Context) ForAllStmt(Context, Type,
+                                        Ind, Mesh,
+                                        Op, Body, ForAllLoc, LParenLoc,
+                                        RParenLoc));
+}
+
+
+StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
+                                    RenderAllStmt::RenderAllType Type,
+                                    Expr* Ind,
+                                    Expr* Mesh,
+                                    Stmt* Body){
+  return Owned(new (Context) RenderAllStmt(Context, Type,
+                                           Ind, Mesh,
+                                           Body, RenderAllLoc));
+}
