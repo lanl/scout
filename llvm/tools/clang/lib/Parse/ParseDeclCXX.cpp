@@ -2761,6 +2761,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
   ConsumeBrace();
 }
 
+// ndm - Scout Mesh
 void Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
@@ -2878,6 +2879,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
   }
 }
 
+// ndm - Scout Mesh
 void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
                                       "parsing Scout mesh body");
@@ -2976,4 +2978,3 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   StructScope.Exit();
 }
-
