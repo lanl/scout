@@ -4643,7 +4643,7 @@ bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
 // ndm - Scout Mesh
 
 void Parser::
-ParseMeshDeclaration(DeclSpec &DS, FieldCallback &Fields) {
+ParseMeshDeclaration(DeclSpec &DS, FieldCallback &Fields, unsigned FieldType) {
   ParseSpecifierQualifierList(DS);
   
   // Read mesh-declarators until we find the semicolon.
@@ -4663,6 +4663,10 @@ ParseMeshDeclaration(DeclSpec &DS, FieldCallback &Fields) {
     
     // We're done with this declarator;  invoke the callback.
     Decl *D = Fields.invoke(DeclaratorInfo);
+    
+    FieldDecl* FD = cast<FieldDecl>(D);
+    FD->setMeshFieldType(FieldDecl::MeshFieldType(FieldType));
+    
     PD.complete(D);
     
     // If we don't have a comma, it is either the end of the list (a ';')

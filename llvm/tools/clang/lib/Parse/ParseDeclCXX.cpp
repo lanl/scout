@@ -2761,13 +2761,6 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
   ConsumeBrace();
 }
 
-// ndm - Scout Decls
-namespace{
-  
-  typedef llvm::SmallVector<Decl*, 32> FieldVec;
-  
-} // end namespace
-
 void Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
@@ -2873,6 +2866,8 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
                                                      Name,
                                                      NameLoc)); 
   
+  Dec->setDimensions(dims);
+  
   ParseMeshBody(MeshLocation, Dec);
   
   if(Tok.is(tok::semi)){
@@ -2892,8 +2887,30 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   ParseScope StructScope(this, Scope::ClassScope|Scope::DeclScope);
   Actions.ActOnMeshStartDefinition(getCurScope(), Dec);
   
-  FieldVec FieldDecls;
+  unsigned fieldType = FieldDecl::FieldNone;
+  
+  llvm::SmallVector<Decl *, 32> FieldDecls;
   while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)){
+
+    if(Tok.is(tok::kw_cells)){
+      ConsumeToken();
+      fieldType = FieldDecl::FieldCells;
+      if(Tok.isNot(tok::colon)){
+        Diag(Tok, diag::err_expected_colon_after) << "cells";
+        SkipUntil(tok::r_brace, true, true);
+      }
+      ConsumeToken();
+    }
+    else if(Tok.is(tok::kw_vertices)){
+      ConsumeToken();
+      fieldType = FieldDecl::FieldVertices;
+      if(Tok.isNot(tok::colon)){
+        Diag(Tok, diag::err_expected_colon_after) << "vertices";
+        SkipUntil(tok::r_brace, true, true);
+      }
+      ConsumeToken();
+    }
+    
     DeclSpec DS(AttrFactory);
     
     struct ScoutFieldCallback : FieldCallback {
@@ -2910,12 +2927,13 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
         Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
                                                FD.D.getDeclSpec().getSourceRange().getBegin(),
                                                FD.D);
+                
         FieldDecls.push_back(Field);
         return Field;
       }
     } Callback(*this, Dec, FieldDecls);
     
-    ParseMeshDeclaration(DS, Callback);
+    ParseMeshDeclaration(DS, Callback, fieldType);
     
     if(Tok.is(tok::semi)){
       ConsumeToken();
@@ -2932,6 +2950,28 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     }
     
   }
+  
+  // ndm - test - dump fields
+  /*
+  llvm::SmallVectorImpl<Decl*>::iterator itr = FieldDecls.begin();
+  while(itr != FieldDecls.end()){
+    FieldDecl* fd = cast<FieldDecl>(*itr);
+    switch(fd->meshFieldType()){
+      case FieldDecl::FieldNone:
+        std::cerr << "none: ";
+        break;
+      case FieldDecl::FieldCells:
+        std::cerr << "cells: ";
+        break;
+      case FieldDecl::FieldVertices:
+        std::cerr << "vertices: ";
+        break;
+    }
+    fd->dump();
+    std::cerr << std::endl;
+    ++itr;
+  }
+  */
   
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   StructScope.Exit();

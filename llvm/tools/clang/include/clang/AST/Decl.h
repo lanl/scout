@@ -1974,10 +1974,27 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
+  // ndm - Scout Mesh fields are instances of FieldDecl, with the appropriate
+  // FieldType of MeshFieldType set
+  
+public:
+  
+  enum MeshFieldType{
+    FieldNone,
+    FieldVertices,
+    FieldCells
+  };
+
+private:
+  
   // FIXME: This can be packed into the bitfields in Decl.
   bool Mutable : 1;
   mutable unsigned CachedFieldIndex : 31;
 
+
+  // ndm - Scout Mesh
+  unsigned FieldType : 2;
+  
   /// \brief A pointer to either the in-class initializer for this field (if
   /// the boolean value is false), or the bit width expression for this bit
   /// field (if the boolean value is true).
@@ -1995,7 +2012,8 @@ protected:
             bool HasInit)
     : DeclaratorDecl(DK, DC, IdLoc, Id, T, TInfo, StartLoc),
       Mutable(Mutable), CachedFieldIndex(0),
-      InitializerOrBitWidth(BW, !HasInit) {
+      FieldType(FieldNone),
+      InitializerOrBitWidth(BW, !HasInit){
     assert(!(BW && HasInit) && "got initializer for bitfield");
   }
 
@@ -2074,6 +2092,15 @@ public:
 
   SourceRange getSourceRange() const;
 
+  // ndm - Scout Mesh
+  void setMeshFieldType(MeshFieldType type){
+    FieldType = type;
+  }
+  
+  MeshFieldType meshFieldType() const{
+    return MeshFieldType(FieldType);
+  }
+  
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const FieldDecl *D) { return true; }

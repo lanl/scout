@@ -1813,7 +1813,9 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
   
   void ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
-  void ParseMeshDeclaration(DeclSpec &DS, FieldCallback &Fields);
+  void ParseMeshDeclaration(DeclSpec &DS,
+                            FieldCallback &Fields,
+                            unsigned FieldType);
   
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]
