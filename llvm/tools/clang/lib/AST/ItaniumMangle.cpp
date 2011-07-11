@@ -790,6 +790,10 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ExtVector:
     case Type::FunctionProto:
     case Type::FunctionNoProto:
+
+    // ndm - Scout Mesh
+    case Type::Mesh:
+        
     case Type::Enum:
     case Type::Paren:
     case Type::Elaborated:
