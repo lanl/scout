@@ -811,8 +811,8 @@ void ForAllStmt::setInd(Expr* expr){
   SubExprs[IND] = reinterpret_cast<Stmt*>(expr);
 }
 
-RenderAllStmt::RenderAllStmt(ASTContext &C, RenderAllType T, Expr *Ind, Expr *Mesh, 
-                             Stmt *Body, SourceLocation FL)
+RenderAllStmt::RenderAllStmt(ASTContext &C, RenderAllType T, Expr *Ind,
+                             Expr *Mesh, Stmt *Body, SourceLocation FL)
 : Stmt(RenderAllStmtClass), 
 Type(T),
 RenderAllLoc(FL){
@@ -830,5 +830,4 @@ const Expr* RenderAllStmt::getInd() const{
 void RenderAllStmt::setInd(Expr* expr){
   SubExprs[IND] = reinterpret_cast<Stmt*>(expr);
 }
-
 

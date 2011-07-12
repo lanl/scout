@@ -29,6 +29,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+
+#include <iostream>
+
 using namespace clang;
 using namespace sema;
 
@@ -2386,3 +2389,68 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                            Ind, Mesh,
                                            Body, RenderAllLoc));
 }
+
+// ndm - Scout Stmts
+
+void Sema::ActOnForAllInductionVariable(Scope* S,
+                                        tok::TokenKind VariableType,
+                                        SourceLocation Location,
+                                        IdentifierInfo* II){
+  
+  // ndm - TODO - do anything with VariableType / QualType?
+  
+  ASTContext::GetBuiltinTypeError err;
+  
+  QualType type = Context.GetBuiltinType(BuiltinType::Int, err); 
+  
+  ImplicitParamDecl* D = 
+  ImplicitParamDecl::Create(Context, CurContext, Location,  
+                            II, type);
+  
+  
+  D->setImplicit();
+  S->AddDecl(D);
+  IdResolver.AddDecl(D);
+}
+
+// ndm - Scout Stmts
+
+void Sema::ActOnRenderAllInductionVariable(Scope* S,
+                                           tok::TokenKind VariableType,
+                                           SourceLocation Location,
+                                           IdentifierInfo* II){
+  
+  // ndm - TODO - do anything with VariableType / QualType?
+  
+  ASTContext::GetBuiltinTypeError err;
+    
+  QualType type = Context.GetBuiltinType(BuiltinType::Int, err); 
+  
+  ImplicitParamDecl* D = 
+  ImplicitParamDecl::Create(Context, CurContext, Location,  
+                            II, type);
+  
+  
+  D->setImplicit();
+  S->AddDecl(D);
+  IdResolver.AddDecl(D);
+  
+  //TypeSourceInfo *TInfo = Context.getTrivialTypeSourceInfo(type, Location);
+  
+  //VarDecl* D = 
+  //VarDecl::Create(Context, CurContext, Location, Location, II, type,
+  //                TInfo, SC_Auto, SC_None);
+  
+  
+  //D->setImplicit();
+  
+  //FinalizeDeclaration(D);
+  //CurContext->addHiddenDecl(D);
+  
+  //DeclGroupPtrTy DG =
+  //BuildDeclaratorGroup((Decl**)&D, 1, /*TypeMayContainAuto=*/false);
+  //ActOnDeclStmt(DG, Location, Location);
+  
+  //S->AddDecl(D);  
+}
+

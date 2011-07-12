@@ -702,7 +702,7 @@ void Parser::DiagnoseProhibitedAttributes(ParsedAttributesWithRange &attrs) {
 Parser::DeclGroupPtrTy Parser::ParseDeclaration(StmtVector &Stmts,
                                                 unsigned Context,
                                                 SourceLocation &DeclEnd,
-                                          ParsedAttributesWithRange &attrs) {
+                                          ParsedAttributesWithRange &attrs) {  
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
   
   Decl *SingleDecl = 0;
@@ -766,6 +766,7 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(StmtVector &Stmts,
                                                       ParsedAttributes &attrs,
                                                       bool RequireSemi,
                                                       ForRangeInit *FRI) {
+
   // Parse the common declaration-specifiers piece.
   ParsingDeclSpec DS(*this);
   DS.takeAttributesFrom(attrs);
@@ -775,6 +776,7 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(StmtVector &Stmts,
   StmtResult R = Actions.ActOnVlaStmt(DS);
   if (R.isUsable())
     Stmts.push_back(R.release());
+  
   
   // C99 6.7.2.3p6: Handle "struct-or-union identifier;", "enum { X };"
   // declaration-specifiers init-declarator-list[opt] ';'
@@ -797,6 +799,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
                                               bool AllowFunctionDefinitions,
                                               SourceLocation *DeclEnd,
                                               ForRangeInit *FRI) {
+  
   // Parse the first declarator.
   ParsingDeclarator D(*this, DS, static_cast<Declarator::TheContext>(Context));
   ParseDeclarator(D);

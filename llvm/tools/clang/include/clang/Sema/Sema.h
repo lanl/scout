@@ -1111,6 +1111,16 @@ public:
                                 NamedDecl *PrevDecl,
                                 Declarator *D = 0);
   
+  void ActOnForAllInductionVariable(Scope* S,
+                                    tok::TokenKind VariableType,
+                                    SourceLocation Location,
+                                    IdentifierInfo* II);
+  
+  void ActOnRenderAllInductionVariable(Scope* S,
+                                       tok::TokenKind VariableType,
+                                       SourceLocation Location,
+                                       IdentifierInfo* II);
+  
   enum TagUseKind {
     TUK_Reference,   // Reference to a tag:  'struct foo *X;'
     TUK_Declaration, // Fwd decl of a tag:   'struct foo;'

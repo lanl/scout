@@ -20,6 +20,9 @@
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -2058,92 +2061,105 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
 
 // ndm - Scout Stmts
 StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
-  /*
-   assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
-   SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
+  assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
+  SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
    
-   ForAllStmt::ForAllType Type;
-   
-   switch(Tok.getKind()){
-   case tok::kw_cells:
-   Type = ForAllStmt::Cells;
-   break;
-   case tok::kw_vertices:
-   Type = ForAllStmt::Vertices;
-   break; 
-   default: {
-   Diag(Tok, diag::err_expected_vertices_cells);
-   SkipUntil(tok::semi);
-   return StmtError();
-   }
-   }
-   
-   ConsumeToken();
-   
-   if(Tok.isNot(tok::identifier)){
-   Diag(Tok, diag::err_expected_ident);
-   SkipUntil(tok::semi);
-   return StmtError();
-   }
-   
-   Expr* Ind = ParseExpression().get();
-   
-   if(Tok.isNot(tok::kw_of)){
-   Diag(Tok, diag::err_expected_of_kw);
-   SkipUntil(tok::semi);
-   return StmtError();
-   }
-   
-   ConsumeToken();
-   
-   if(Tok.isNot(tok::identifier)){
-   Diag(Tok, diag::err_expected_ident);
-   SkipUntil(tok::semi);
-   return StmtError();
-   }
-   
-   Expr* Mesh = ParseExpression().get();
-   
-   Expr* Op;
-   
-   SourceLocation LParenLoc;
-   SourceLocation RParenLoc;
-   
-   if(Tok.is(tok::l_paren)){
-   LParenLoc = ConsumeParen();
-   ExprResult OpResult = ParseExpression();
-   if(OpResult.isInvalid()){
-   Diag(Tok, diag::err_invalid_forall_op);
-   SkipUntil(tok::l_brace);
-   ConsumeToken();
-   return StmtError();
-   }
-   if(Tok.isNot(tok::r_paren)){
-   Diag(Tok, diag::err_expected_rparen);
-   SkipUntil(tok::l_brace);
-   ConsumeToken();
-   return StmtError();
-   }
-   RParenLoc = ConsumeParen();
-   }
-   else{
-   Op = 0; 
-   }
-   
-   StmtResult BodyResult = ParseStatement();
-   if(BodyResult.isInvalid()){
-   Diag(Tok, diag::err_invalid_forall_body);
-   SkipUntil(tok::semi);
-   return StmtError();
-   }
-   
-   Stmt* Body = BodyResult.get();
-   
-   
-   return Actions.ActOnForAllStmt(ForAllLoc, Type, Ind, Mesh, LParenLoc,
-   Op, RParenLoc, Body);
-   */
+  ForAllStmt::ForAllType Type;
+    
+  tok::TokenKind VariableType = Tok.getKind();
+  
+  switch(VariableType){
+    case tok::kw_cells:
+      Type = ForAllStmt::Cells;
+      break;
+    case tok::kw_vertices:
+      Type = ForAllStmt::Vertices;
+      break; 
+    default: {
+      Diag(Tok, diag::err_expected_vertices_cells);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+  }
+  
+  ConsumeToken();
+  
+  // ndm - TODO - are these all of the flags and just the flags we need?
+  unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope | 
+  Scope::DeclScope | Scope::ControlScope;
+  
+  ParseScope ForAllScope(this, ScopeFlags);
+  
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  
+  Actions.ActOnForAllInductionVariable(getCurScope(),
+                                       VariableType,
+                                       Tok.getLocation(),
+                                       Tok.getIdentifierInfo());
+  
+  Expr* Ind = ParseExpression().get();
+  
+  if(Tok.isNot(tok::kw_of)){
+    Diag(Tok, diag::err_expected_of_kw);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  
+  ConsumeToken();
+  
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  
+  Expr* Mesh = ParseExpression().get();
+  
+  Expr* Op;
+  
+  SourceLocation LParenLoc;
+  SourceLocation RParenLoc;
+  
+  if(Tok.is(tok::l_paren)){
+    LParenLoc = ConsumeParen();
+    ExprResult OpResult = ParseExpression();
+    if(OpResult.isInvalid()){
+      Diag(Tok, diag::err_invalid_forall_op);
+      SkipUntil(tok::l_brace);
+      ConsumeToken();
+      return StmtError();
+    }
+    if(Tok.isNot(tok::r_paren)){
+      Diag(Tok, diag::err_expected_rparen);
+      SkipUntil(tok::l_brace);
+      ConsumeToken();
+      return StmtError();
+    }
+    RParenLoc = ConsumeParen();
+  }
+  else{
+    Op = 0; 
+  }
+  
+  StmtResult BodyResult = ParseStatement();
+  if(BodyResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_forall_body);
+    SkipUntil(tok::semi);
+    return StmtError();
+  }
+  
+  Stmt* Body = BodyResult.get();
+  
+  
+  return Actions.ActOnForAllStmt(ForAllLoc, Type, Ind, Mesh, LParenLoc,
+                                 Op, RParenLoc, Body);
 }
+
+// ndm - Scout Stmts
 
 StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
   assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
@@ -2151,7 +2167,9 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
   
   RenderAllStmt::RenderAllType Type;
   
-  switch(Tok.getKind()){
+  tok::TokenKind VariableType = Tok.getKind();
+  
+  switch(VariableType){
     case tok::kw_faces:
       Type = RenderAllStmt::Faces;
       break;
@@ -2168,6 +2186,12 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     }
   }
   
+  // ndm - TODO - are these all of the flags and just the flags we need?
+  unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope | 
+  Scope::DeclScope | Scope::ControlScope;
+  
+  ParseScope ForAllScope(this, ScopeFlags);
+  
   ConsumeToken();
   
   if(Tok.isNot(tok::identifier)){
@@ -2175,6 +2199,11 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);
     return StmtError();
   }
+  
+  Actions.ActOnRenderAllInductionVariable(getCurScope(),
+                                          VariableType,
+                                          Tok.getLocation(),
+                                          Tok.getIdentifierInfo()); 
   
   Expr* Ind = ParseExpression().get();
   
@@ -2201,7 +2230,10 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
   
+  ForAllScope.Exit();
+  
   Stmt* Body = BodyResult.get();
   
   return Actions.ActOnRenderAllStmt(RenderAllLoc, Type, Ind, Mesh, Body);
 }
+
