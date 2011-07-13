@@ -9,10 +9,16 @@
 # 
 
 project(Scout)
+find_package(CUDA)
+
 cmake_minimum_required(VERSION 2.8.4)
 enable_testing()
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
+
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE DEBUG)
+ENDIF()
 
 # Add paths for custom cmake modules.  Note that we add some of our
 # own module paths as well as pick up LLVM's. 

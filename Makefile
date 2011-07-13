@@ -11,7 +11,7 @@
 
 arch        := $(shell uname -s)
 date        := $(shell /bin/date "+%m-%d-%Y")
-cmake_flags := -DCMAKE_BUILD_TYPE=Debug
+cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG
 build_dir   := build
 
 # Attempt to figure out how many processors are available for a parallel build.
