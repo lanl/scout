@@ -8,17 +8,20 @@
 # Scout with CMake. 
 # 
 
-project(scout)
+project(Scout)
 cmake_minimum_required(VERSION 2.8.4)
 enable_testing()
 
-set(CMAKE_VERBOSE_MAKEFILE OFF)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
-# Add paths for custom modules... 
+# Add paths for custom cmake modules.  Note that we add some of our
+# own module paths as well as pick up LLVM's. 
 set(CMAKE_MODULE_PATH 
   ${CMAKE_MODULE_PATH}
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
+  "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake"
+  "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake/modules"
   )
 
 set(PACKAGE_NAME scout)
@@ -30,6 +33,11 @@ set(SCOUT_MAIN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SCOUT_MAIN_INC_DIR ${SCOUT_MAIN_SRC_DIR/include})
 set(SCOUT_BINARY_DIR   ${CMAKE_CURRENT_BINARY_DIR})
 
-# 
-# 
+# Note: Please place individual entries within the associated 
+# subdirectories vs. adding full paths here.  For example, 
+# use lib/CMakeLists.txt to add a library vs. adding lib/mylib
+# below. 
 add_subdirectory(llvm)
+add_subdirectory(lib)
+add_subdirectory(sandbox)
+

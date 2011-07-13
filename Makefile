@@ -31,23 +31,11 @@ default: $(build_dir)
 	(cd $(build_dir); make -j $(nprocs))
 
 $(build_dir):
-	@((test -d $(build_dir)) || (mkdir $(build_dir) || (mkdir $(build_dir)/doxygen)))
+	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	(cd $(build_dir); cmake $(cmake_flags) ..)
-
-doc: $(build_dir)
-	(cd $(build_dir); make doc)
-
-test: test/frontend test/backend
-
-test/frontend: 
-	make -C build/test/scfe test
-
-test/backend: 
-	make -C build/test/scc test
 
 clean:
 	-@/bin/rm -rf $(build_dir)
-	-@/bin/rm -rf codeblock[0-9]*.* *.dot 
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
