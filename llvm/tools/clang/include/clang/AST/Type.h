@@ -30,6 +30,8 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
 
+#include <iostream>
+
 using llvm::isa;
 using llvm::cast;
 using llvm::cast_or_null;
@@ -1647,6 +1649,8 @@ public:
 };
 
 template <> inline const TypedefType *Type::getAs() const {
+  //std::cerr << "x1" << std::endl;
+  
   return dyn_cast<TypedefType>(this);
 }
 
@@ -1655,6 +1659,7 @@ template <> inline const TypedefType *Type::getAs() const {
 #define TYPE(Class, Base)
 #define LEAF_TYPE(Class) \
 template <> inline const Class##Type *Type::getAs() const { \
+  //std::cerr << "x9" << std::endl; \
   return dyn_cast<Class##Type>(CanonicalType); \
 } \
 template <> inline const Class##Type *Type::castAs() const { \
@@ -3180,7 +3185,7 @@ class MeshType : public Type{
 public:
 
   MeshType(const MeshDecl* D)
-    : Type(Mesh, QualType(), false, false, false, false) {}
+    : Type(Mesh, QualType(), true, false, false, false) {}
   
   MeshDecl* getDecl() const {
     return decl;
@@ -4839,6 +4844,8 @@ struct ArrayType_cannot_be_used_with_getAs<T, true>;
   
 /// Member-template getAs<specific type>'.
 template <typename T> const T *Type::getAs() const {
+  //std::cerr << "x999" << std::endl;
+  
   ArrayType_cannot_be_used_with_getAs<T> at;
   (void)at;
   
