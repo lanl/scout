@@ -1649,8 +1649,6 @@ public:
 };
 
 template <> inline const TypedefType *Type::getAs() const {
-  //std::cerr << "x1" << std::endl;
-
   return dyn_cast<TypedefType>(this);
 }
 
@@ -3184,7 +3182,7 @@ class MeshType : public Type{
 public:
 
   MeshType(const MeshDecl* D)
-    : Type(Mesh, QualType(), true, false, false, false) {}
+    : Type(Mesh, QualType(), false, false, false, false) {}
 
   MeshDecl* getDecl() const {
     return decl;
@@ -3200,7 +3198,7 @@ public:
   static bool classof(const MeshType* T) { return true; }
 
   static bool classof(const Type *T) {
-    return T->getTypeClass() >= TagFirst && T->getTypeClass() <= TagLast;
+    return T->getTypeClass() == Mesh;
   }
 
 };
@@ -4843,8 +4841,6 @@ struct ArrayType_cannot_be_used_with_getAs<T, true>;
 
 /// Member-template getAs<specific type>'.
 template <typename T> const T *Type::getAs() const {
-  //std::cerr << "x999" << std::endl;
-
   ArrayType_cannot_be_used_with_getAs<T> at;
   (void)at;
 
