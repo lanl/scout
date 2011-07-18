@@ -15,6 +15,9 @@
 #include "clang/AST/TypeLocVisitor.h"
 #include "clang/AST/Expr.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -53,6 +56,7 @@ namespace {
 /// \brief Returns the size of the type source info data block.
 unsigned TypeLoc::getFullDataSizeForType(QualType Ty) {
   if (Ty.isNull()) return 0;
+  
   return TypeSizer().Visit(TypeLoc(Ty, 0));
 }
 

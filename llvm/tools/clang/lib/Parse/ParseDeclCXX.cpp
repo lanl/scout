@@ -2797,6 +2797,8 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
     return;
   }
   
+  
+  
   MeshDecl::MeshDimensionVec dims;
   
   // parse mesh dimensions
@@ -2877,6 +2879,8 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
   else{
     Diag(Tok, diag::err_expected_semi_mesh_declaration);
   }
+  
+  Dec->completeDefinition();
 }
 
 // ndm - Scout Mesh

@@ -14,6 +14,8 @@
 #ifndef LLVM_CLANG_SEMA_OWNERSHIP_H
 #define LLVM_CLANG_SEMA_OWNERSHIP_H
 
+#include <iostream>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/PointerIntPair.h"
 

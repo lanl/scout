@@ -2407,10 +2407,8 @@ void Sema::ActOnForAllInductionVariable(Scope* S,
   ImplicitParamDecl::Create(Context, CurContext, Location,  
                             II, type);
   
-  
-  D->setImplicit();
-  S->AddDecl(D);
-  IdResolver.AddDecl(D);
+ 
+  PushOnScopeChains(D, S, true);
 }
 
 // ndm - Scout Stmts
@@ -2424,16 +2422,17 @@ void Sema::ActOnRenderAllInductionVariable(Scope* S,
   
   ASTContext::GetBuiltinTypeError err;
     
-  QualType type = Context.GetBuiltinType(BuiltinType::Int, err); 
+  QualType type = Context.GetBuiltinType(BuiltinType::Int, err);
   
   ImplicitParamDecl* D = 
   ImplicitParamDecl::Create(Context, CurContext, Location,  
                             II, type);
   
+  PushOnScopeChains(D, S, true);
   
-  D->setImplicit();
-  S->AddDecl(D);
-  IdResolver.AddDecl(D);
+  //D->setImplicit();
+  //S->AddDecl(D);
+  //IdResolver.AddDecl(D);
   
   //TypeSourceInfo *TInfo = Context.getTrivialTypeSourceInfo(type, Location);
   
