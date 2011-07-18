@@ -2368,13 +2368,14 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
 // ndm - Scout Stmts
 StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  ForAllStmt::ForAllType Type,
-                                 Expr* Ind, Expr* Mesh,
+                                 IdentifierInfo* LoopVariableII,
+                                 IdentifierInfo* MeshII,
                                  SourceLocation LParenLoc,
                                  Expr* Op, SourceLocation RParenLoc,
                                  Stmt* Body){
   
   return Owned(new (Context) ForAllStmt(Context, Type,
-                                        Ind, Mesh,
+                                        LoopVariableII, MeshII,
                                         Op, Body, ForAllLoc, LParenLoc,
                                         RParenLoc));
 }
@@ -2382,20 +2383,20 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
 
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     RenderAllStmt::RenderAllType Type,
-                                    Expr* Ind,
-                                    Expr* Mesh,
+                                    IdentifierInfo* LoopVariableII,
+                                    IdentifierInfo* MeshII,
                                     Stmt* Body){
   return Owned(new (Context) RenderAllStmt(Context, Type,
-                                           Ind, Mesh,
+                                           LoopVariableII, MeshII,
                                            Body, RenderAllLoc));
 }
 
 // ndm - Scout Stmts
 
-void Sema::ActOnForAllInductionVariable(Scope* S,
-                                        tok::TokenKind VariableType,
-                                        SourceLocation Location,
-                                        IdentifierInfo* II){
+void Sema::ActOnForAllLoopVariable(Scope* S,
+                                   tok::TokenKind VariableType,
+                                   SourceLocation Location,
+                                   IdentifierInfo* II){
   
   // ndm - TODO - do anything with VariableType / QualType?
   
@@ -2413,10 +2414,10 @@ void Sema::ActOnForAllInductionVariable(Scope* S,
 
 // ndm - Scout Stmts
 
-void Sema::ActOnRenderAllInductionVariable(Scope* S,
-                                           tok::TokenKind VariableType,
-                                           SourceLocation Location,
-                                           IdentifierInfo* II){
+void Sema::ActOnRenderAllLoopVariable(Scope* S,
+                                      tok::TokenKind VariableType,
+                                      SourceLocation Location,
+                                      IdentifierInfo* II){
   
   // ndm - TODO - do anything with VariableType / QualType?
   

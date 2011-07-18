@@ -1589,13 +1589,10 @@ public:
   
 private:
   
-  // IND is the induction variable: forall cells IND ....
-  //                             OR forall IND => sten(c)
-  // MESH is the mesh identifier: for all cells c of MESH
   // OP is the operation or condition: ... myMesh '(' OP ')' { ...
   // BODY is compound stmts : '{' BODY '}' 
   
-  enum {IND, MESH, OP, BODY, END_EXPR};
+  enum {OP, BODY, END_EXPR};
   
   ForAllType Type;
   
@@ -1603,10 +1600,13 @@ private:
   
   SourceLocation ForAllLoc;
   SourceLocation LParenLoc, RParenLoc;
+  IdentifierInfo* MeshII;
+  IdentifierInfo* LoopVariableII;
   
 public:
-  ForAllStmt(ASTContext &C, ForAllType Type, Expr *Ind, Expr *Mesh, Expr *Op, 
-             Stmt *Body, SourceLocation FL, SourceLocation LP, SourceLocation RP);
+  ForAllStmt(ASTContext &C, ForAllType Type, IdentifierInfo* LII, 
+             IdentifierInfo* MII, Expr *Op, Stmt *Body, 
+             SourceLocation FL, SourceLocation LP, SourceLocation RP);
   
   explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
   
@@ -1619,22 +1619,28 @@ public:
     Type = T;
   }
   
-  Expr* getInd();
-  const Expr* getInd() const;
-  void setInd(Expr* expr);
-  
-  Expr* getMesh(){
-    return reinterpret_cast<Expr*>(SubExprs[MESH]);
+  IdentifierInfo* getLoopVariable(){
+    return LoopVariableII;
   }
   
-  const Expr* getMesh() const{
-    return reinterpret_cast<Expr*>(SubExprs[MESH]);
+  const IdentifierInfo* getLoopVariable() const{
+    return LoopVariableII;
+  }
+  void setLoopVariable(IdentifierInfo* II){
+    LoopVariableII = II;
   }
   
-  void setMesh(Expr* M){
-    SubExprs[MESH] = reinterpret_cast<Stmt*>(M);
+  IdentifierInfo* getMesh(){
+    return MeshII;
   }
   
+  const IdentifierInfo* getMesh() const{
+    return MeshII;
+  }
+  void setMesh(IdentifierInfo* II){
+    MeshII = II;
+  }
+
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }
@@ -1697,7 +1703,7 @@ private:
   // MESH is the mesh identifier: renderall cells c of MESH ...
   // BODY is compound stmts : '{' BODY '}' 
   
-  enum {IND, MESH, BODY, END_EXPR};
+  enum {MESH, BODY, END_EXPR};
   
   Stmt* SubExprs[END_EXPR];
   
@@ -1705,10 +1711,14 @@ private:
   
   RenderAllType Type;
   
+  IdentifierInfo* LoopVariableII;
+  
+  IdentifierInfo* MeshII;
+  
 public:
   
-  RenderAllStmt(ASTContext &C, RenderAllType Type, Expr *Ind, Expr *Mesh,
-                Stmt *Body, SourceLocation RL);
+  RenderAllStmt(ASTContext &C, RenderAllType Type, IdentifierInfo* LII, 
+                IdentifierInfo* MII, Stmt *Body, SourceLocation RL);
   
   explicit RenderAllStmt(EmptyShell Empty) 
   : Stmt(RenderAllStmtClass, Empty) { }
@@ -1721,20 +1731,26 @@ public:
     Type = T;
   }
   
-  Expr* getInd();
-  const Expr* getInd() const;
-  void setInd(Expr* expr);
-  
-  Expr* getMesh(){
-    return reinterpret_cast<Expr*>(SubExprs[MESH]);
+  IdentifierInfo* getLoopVariable(){
+    return LoopVariableII;
   }
   
-  const Expr* getMesh() const{
-    return reinterpret_cast<Expr*>(SubExprs[MESH]);
+  const IdentifierInfo* getLoopVariable() const{
+    return LoopVariableII;
+  }
+  void setLoopVariable(IdentifierInfo* II){
+    LoopVariableII = II;
   }
   
-  void setMesh(Expr* M){
-    SubExprs[MESH] = reinterpret_cast<Stmt*>(M);
+  IdentifierInfo* getMesh(){
+    return MeshII;
+  }
+  
+  const IdentifierInfo* getMesh() const{
+    return MeshII;
+  }
+  void setMesh(IdentifierInfo* II){
+    MeshII = II;
   }
   
   Stmt* getBody(){

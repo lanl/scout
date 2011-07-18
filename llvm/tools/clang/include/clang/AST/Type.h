@@ -3194,8 +3194,6 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  // ndm TODO - is this correct?
-
   static bool classof(const MeshType* T) { return true; }
 
   static bool classof(const Type *T) {

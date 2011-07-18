@@ -2096,12 +2096,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
   
-  Actions.ActOnForAllInductionVariable(getCurScope(),
-                                       VariableType,
-                                       Tok.getLocation(),
-                                       Tok.getIdentifierInfo());
+  IdentifierInfo* LoopVariableII = Tok.getIdentifierInfo();
   
-  Expr* Ind = ParseExpression().get();
+  Actions.ActOnForAllLoopVariable(getCurScope(),
+                                  VariableType,
+                                  Tok.getLocation(),
+                                  LoopVariableII);
+  
+  ConsumeToken();
   
   if(Tok.isNot(tok::kw_of)){
     Diag(Tok, diag::err_expected_of_kw);
@@ -2117,7 +2119,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
   
-  Expr* Mesh = ParseExpression().get();
+  IdentifierInfo* MeshII = Tok.getIdentifierInfo();
+  
+  ConsumeToken();
   
   Expr* Op;
   
@@ -2155,8 +2159,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
   Stmt* Body = BodyResult.get();
   
   
-  return Actions.ActOnForAllStmt(ForAllLoc, Type, Ind, Mesh, LParenLoc,
-                                 Op, RParenLoc, Body);
+  return Actions.ActOnForAllStmt(ForAllLoc, Type, LoopVariableII, MeshII,
+                                 LParenLoc, Op, RParenLoc, Body);
 }
 
 // ndm - Scout Stmts
@@ -2200,12 +2204,14 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
   
-  Actions.ActOnRenderAllInductionVariable(getCurScope(),
-                                          VariableType,
-                                          Tok.getLocation(),
-                                          Tok.getIdentifierInfo()); 
+  Actions.ActOnRenderAllLoopVariable(getCurScope(),
+                                     VariableType,
+                                     Tok.getLocation(),
+                                     Tok.getIdentifierInfo()); 
   
-  Expr* Ind = ParseExpression().get();
+  IdentifierInfo* LoopVariableII = Tok.getIdentifierInfo();
+  
+  ConsumeToken();
   
   if(Tok.isNot(tok::kw_of)){
     Diag(Tok, diag::err_expected_of_kw);
@@ -2221,7 +2227,9 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
   
-  Expr* Mesh = ParseExpression().get();
+  IdentifierInfo* MeshII = Tok.getIdentifierInfo();
+  
+  ConsumeToken();
   
   StmtResult BodyResult = ParseStatement();
   if(BodyResult.isInvalid()){
@@ -2234,6 +2242,7 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
   
   Stmt* Body = BodyResult.get();
   
-  return Actions.ActOnRenderAllStmt(RenderAllLoc, Type, Ind, Mesh, Body);
+  return Actions.ActOnRenderAllStmt(RenderAllLoc, Type,
+                                    LoopVariableII, MeshII, Body);
 }
 

@@ -1111,15 +1111,15 @@ public:
                                 NamedDecl *PrevDecl,
                                 Declarator *D = 0);
   
-  void ActOnForAllInductionVariable(Scope* S,
-                                    tok::TokenKind VariableType,
-                                    SourceLocation Location,
-                                    IdentifierInfo* II);
+  void ActOnForAllLoopVariable(Scope* S,
+                               tok::TokenKind VariableType,
+                               SourceLocation Location,
+                               IdentifierInfo* II);
   
-  void ActOnRenderAllInductionVariable(Scope* S,
-                                       tok::TokenKind VariableType,
-                                       SourceLocation Location,
-                                       IdentifierInfo* II);
+  void ActOnRenderAllLoopVariable(Scope* S,
+                                  tok::TokenKind VariableType,
+                                  SourceLocation Location,
+                                  IdentifierInfo* II);
   
   enum TagUseKind {
     TUK_Reference,   // Reference to a tag:  'struct foo *X;'
@@ -2060,7 +2060,8 @@ public:
   
   StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
                              ForAllStmt::ForAllType Type,
-                             Expr* Ind, Expr* Mesh,
+                             IdentifierInfo* LoopVariableII,
+                             IdentifierInfo* MeshII,
                              SourceLocation LParenLoc,
                              Expr* Op, SourceLocation RParenLoc,
                              Stmt* Body);
@@ -2068,8 +2069,8 @@ public:
   
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 RenderAllStmt::RenderAllType Type,
-                                Expr* Ind,
-                                Expr* Mesh,
+                                IdentifierInfo* LoopVariableII,
+                                IdentifierInfo* MeshII,
                                 Stmt* Body);
     
   StmtResult ActOnObjCForCollectionStmt(SourceLocation ForColLoc,
