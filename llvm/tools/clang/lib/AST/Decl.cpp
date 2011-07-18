@@ -2465,8 +2465,6 @@ MeshDecl* MeshDecl::getDefinition() const{
     return const_cast<MeshDecl*>(this);
   }
   
-  // ndm - not fully implemented
-  
   return 0;
 }
 

@@ -637,7 +637,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
 
   // ndm - Scout Mesh
+  // TODO - fix
   case Type::Mesh:    
+      return false;
+      
       
   case Type::Record:
   case Type::Enum:

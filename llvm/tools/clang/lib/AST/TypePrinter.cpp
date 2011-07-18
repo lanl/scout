@@ -21,6 +21,9 @@
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <iostream>
+
 using namespace clang;
 
 namespace {
@@ -115,7 +118,7 @@ void TypePrinter::print(const Type *T, Qualifiers Quals, std::string &buffer) {
 
     // ndm - Scout Mesh
     case Type::Mesh:
-      
+
     case Type::Record:
     case Type::Enum:
     case Type::Elaborated:
@@ -715,7 +718,7 @@ void TypePrinter::printEnum(const EnumType *T, std::string &S) {
 // ndm - Scout Mesh
 // TODO implement based on printTag()
 void TypePrinter::printMesh(const MeshType *T, std::string &S) {
-
+  S = "mesh";
 }
 
 void TypePrinter::printTemplateTypeParm(const TemplateTypeParmType *T, 

@@ -2959,8 +2959,9 @@ static bool RebuildDeclaratorInCurrentInstantiation(Sema &S, Declarator &D,
 }
 
 Decl *Sema::ActOnDeclarator(Scope *S, Declarator &D) {
-  return HandleDeclarator(S, D, MultiTemplateParamsArg(*this),
-                          /*IsFunctionDefinition=*/false);
+  Decl* r = HandleDeclarator(S, D, MultiTemplateParamsArg(*this),
+                             /*IsFunctionDefinition=*/false);
+  return r;
 }
 
 /// DiagnoseClassNameShadow - Implement C++ [class.mem]p13:
@@ -2986,6 +2987,7 @@ bool Sema::DiagnoseClassNameShadow(DeclContext *DC,
 Decl *Sema::HandleDeclarator(Scope *S, Declarator &D,
                              MultiTemplateParamsArg TemplateParamLists,
                              bool IsFunctionDefinition) {
+  
   // TODO: consider using NameInfo for diagnostic.
   DeclarationNameInfo NameInfo = GetNameForDeclarator(D);
   DeclarationName Name = NameInfo.getName();
@@ -3028,6 +3030,7 @@ Decl *Sema::HandleDeclarator(Scope *S, Declarator &D,
         << D.getCXXScopeSpec().getRange();
       return 0;
     }
+    
     bool IsDependentContext = DC->isDependentContext();
 
     if (!IsDependentContext && 
@@ -3071,14 +3074,18 @@ Decl *Sema::HandleDeclarator(Scope *S, Declarator &D,
   }
 
   if (DiagnoseClassNameShadow(DC, NameInfo))
+
+    
     // If this is a typedef, we'll end up spewing multiple diagnostics.
     // Just return early; it's safer.
-    if (D.getDeclSpec().getStorageClassSpec() == DeclSpec::SCS_typedef)
+    if (D.getDeclSpec().getStorageClassSpec() == DeclSpec::SCS_typedef){
       return 0;
+    }
   
   NamedDecl *New;
 
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
+  
   QualType R = TInfo->getType();
 
   if (DiagnoseUnexpandedParameterPack(D.getIdentifierLoc(), TInfo,
@@ -5794,6 +5801,8 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl,
     InitializationSequence InitSeq(*this, Entity, Kind, 0, 0);
     ExprResult Init = InitSeq.Perform(*this, Entity, Kind,
                                       MultiExprArg(*this, 0, 0));
+    
+    
     if (Init.isInvalid())
       Var->setInvalidDecl();
     else if (Init.get())
@@ -9138,10 +9147,13 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
   
   // ndm - do we need to pass PrevDecl as the last parameter?
   
-  return MeshDecl::Create(Context, Decl::Mesh, DC, 
-                          KWLoc, NameLoc, 
-                          Name, 0);
+  MeshDecl* MD = MeshDecl::Create(Context, Decl::Mesh, DC, 
+                                  KWLoc, NameLoc, 
+                                  Name, 0);
   
+  PushOnScopeChains(MD, S, true);
+  
+  return MD;
 }
 
 // ndm - Scout Mesh
@@ -9256,3 +9268,4 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
   NewFD->setAccess(AS_public);
   return NewFD;
 }
+
