@@ -1809,9 +1809,9 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
 
   // ndm - Scout parsing methods
   
-  void ParseMeshSpecifier(DeclSpec &DS);
+  bool ParseMeshSpecifier(DeclSpec &DS);
   
-  void ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
+  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
   void ParseMeshDeclaration(DeclSpec &DS,
                             FieldCallback &Fields,

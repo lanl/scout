@@ -578,6 +578,77 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
+// ndm - Scout Mesh
+// return true if there is an error
+
+static bool
+LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
+                       SourceRange BaseRange, const MeshType *MTy,
+                       SourceLocation OpLoc, CXXScopeSpec &SS){
+  
+  MeshDecl *MDecl = MTy->getDecl();
+  
+  DeclContext *DC = MDecl;
+  
+  SemaRef.LookupQualifiedName(R, DC);
+ 
+  if(R.empty()){
+    SemaRef.Diag(OpLoc, diag::err_invalid_mesh_field) << R.getLookupName();
+    return true;
+  }
+  
+  NamedDecl* ND = R.getFoundDecl();
+
+  assert(isa<FieldDecl>(ND) && "expected a field decl");
+
+  FieldDecl* FD = cast<FieldDecl>(ND);
+  
+  switch(FD->meshFieldType()){
+    case FieldDecl::FieldCells:
+    {
+      if(MTy->getInstanceType() != MeshType::CellsInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldVertices:
+    {
+      if(MTy->getInstanceType() != MeshType::VerticesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_vertices_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldFaces:
+    {
+      if(MTy->getInstanceType() != MeshType::FacesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_faces_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldEdges:
+    {
+      if(MTy->getInstanceType() != MeshType::EdgesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_edges_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    default:
+    {
+      assert(false && "unknown mesh field type");
+    }
+  }
+  
+  return false;
+}
+
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                SourceLocation OpLoc, bool IsArrow,
@@ -981,6 +1052,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
                        bool &IsArrow, SourceLocation OpLoc,
                        CXXScopeSpec &SS,
                        Decl *ObjCImpDecl, bool HasTemplateArgs) {
+
   assert(BaseExpr.get() && "no base expression");
 
   // Perform default conversions.
@@ -1039,6 +1111,18 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
+  // ndm - Scout Mesh
+  
+  if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
+    if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
+                               MTy, OpLoc, SS))
+      return ExprError();
+    
+    // Returning valid-but-null is how we indicate to the caller that
+    // the lookup result was filled in.
+    return Owned((Expr*) 0);
+  }
+  
   // Handle ivar access to Objective-C objects.
   if (const ObjCObjectType *OTy = BaseType->getAs<ObjCObjectType>()) {
     IdentifierInfo *Member = MemberName.getAsIdentifierInfo();
@@ -1355,6 +1439,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   UnresolvedSet<4> Overloads;
   if (isExprCallable(*BaseExpr.get(), ZeroArgCallTy, Overloads)) {
     if (ZeroArgCallTy.isNull()) {
+      BaseExpr.get()->dump();
       Diag(BaseExpr.get()->getExprLoc(), diag::err_member_reference_needs_call)
           << (Overloads.size() > 1) << 0 << BaseExpr.get()->getSourceRange();
       UnresolvedSet<2> PlausibleOverloads;

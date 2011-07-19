@@ -2762,7 +2762,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
 }
 
 // ndm - Scout Mesh
-void Parser::ParseMeshSpecifier(DeclSpec &DS){
+bool Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
   // tok::kw_structured, or tok::kw_unstructured
@@ -2794,7 +2794,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
     DS.SetTypeSpecError();
     SkipUntil(tok::r_brace);
     SkipUntil(tok::semi);
-    return;
+    return false;
   }
   
   
@@ -2815,7 +2815,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
         DS.SetTypeSpecError();
         SkipUntil(tok::r_brace);
         SkipUntil(tok::semi);
-        return;
+        return false;
       }
       
       dims.push_back(Actions.ActOnNumericConstant(Tok).get());
@@ -2828,7 +2828,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
       
       if(Tok.is(tok::eof)){
         Diag(Tok, diag::err_expected_lsquare);
-        return;
+        return false;
       }
       
       if(Tok.isNot(tok::comma)){
@@ -2847,7 +2847,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
     DS.SetTypeSpecError();
     SkipUntil(tok::r_square);
     SkipUntil(tok::semi);
-    return;
+    return false;
   }
   
   ConsumeBracket();
@@ -2858,7 +2858,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
     DS.SetTypeSpecError();
     SkipUntil(tok::r_brace);
     SkipUntil(tok::semi);
-    return;
+    return false;
   }
   
   MeshDecl* Dec = 
@@ -2871,7 +2871,7 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   Dec->setDimensions(dims);
   
-  ParseMeshBody(MeshLocation, Dec);
+  bool valid = ParseMeshBody(MeshLocation, Dec);
   
   if(Tok.is(tok::semi)){
     ConsumeToken();
@@ -2880,11 +2880,16 @@ void Parser::ParseMeshSpecifier(DeclSpec &DS){
     Diag(Tok, diag::err_expected_semi_mesh_declaration);
   }
   
-  Dec->completeDefinition();
+  if(valid){
+    Dec->completeDefinition();
+    return true;
+  }
+  
+  return false;
 }
 
 // ndm - Scout Mesh
-void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
+bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
                                       "parsing Scout mesh body");
   
@@ -2894,6 +2899,8 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   Actions.ActOnMeshStartDefinition(getCurScope(), Dec);
   
   unsigned fieldType = FieldDecl::FieldNone;
+  
+  bool valid = true;
   
   llvm::SmallVector<Decl *, 32> FieldDecls;
   while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)){
@@ -2940,6 +2947,11 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       }
     } Callback(*this, Dec, FieldDecls);
     
+    if(fieldType == FieldDecl::FieldNone){
+      Diag(Tok, diag::err_no_mesh_field_specifier);
+      valid = false;
+    }
+    
     ParseMeshDeclaration(DS, Callback, fieldType);
     
     if(Tok.is(tok::semi)){
@@ -2983,4 +2995,6 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   MeshScope.Exit();
   Actions.ActOnMeshFinish();
+  
+  return valid;
 }

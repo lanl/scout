@@ -4419,5 +4419,20 @@ def err_not_mesh_variable_forall : Error<
 def err_not_mesh_variable_renderall : Error<
 "not a mesh variable %0 while parsing renderall statement">;
 
+def err_invalid_mesh_field : Error<
+"%0 is not a valid mesh field">;
+
+def err_invalid_mesh_cells_field : Error<
+"%0 is not a cells field on the mesh">;
+
+def err_invalid_mesh_vertices_field : Error<
+"%0 is not a vertices field on the mesh">;
+
+def err_invalid_mesh_faces_field : Error<
+"%0 is not a faces field on the mesh">;
+
+def err_invalid_mesh_edges_field : Error<
+"%0 is not an edges field on the mesh">;
+
 } // end of sema component.
 

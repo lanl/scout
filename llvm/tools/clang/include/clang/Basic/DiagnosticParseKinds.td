@@ -572,6 +572,8 @@ def err_invalid_forall_body: Error<"Invalid forall body">;
 def err_expected_mesh_kw: Error<"expected mesh keyword">;
 def err_expected_semi_mesh_declaration : Error<
 "expected ';' at end of mesh declaration">;
+def err_no_mesh_field_specifier : Error<
+"no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
 
 } // end of Parse Issue category.
 } // end of Parser diagnostics

@@ -1982,7 +1982,9 @@ public:
   enum MeshFieldType{
     FieldNone,
     FieldVertices,
-    FieldCells
+    FieldCells,
+    FieldFaces,
+    FieldEdges
   };
 
 private:
