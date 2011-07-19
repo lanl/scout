@@ -2097,11 +2097,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
   }
   
   IdentifierInfo* LoopVariableII = Tok.getIdentifierInfo();
-  
-  Actions.ActOnForAllLoopVariable(getCurScope(),
-                                  VariableType,
-                                  Tok.getLocation(),
-                                  LoopVariableII);
+  SourceLocation LoopVariableLoc = Tok.getLocation();
   
   ConsumeToken();
   
@@ -2120,8 +2116,18 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
   }
   
   IdentifierInfo* MeshII = Tok.getIdentifierInfo();
+  SourceLocation MeshLoc = Tok.getLocation();
   
   ConsumeToken();
+  
+  if(!Actions.ActOnForAllLoopVariable(getCurScope(),
+                                      VariableType,
+                                      LoopVariableII,
+                                      LoopVariableLoc,
+                                      MeshII,
+                                      MeshLoc)){
+    return StmtError();
+  }
   
   Expr* Op;
   
@@ -2203,13 +2209,9 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);
     return StmtError();
   }
-  
-  Actions.ActOnRenderAllLoopVariable(getCurScope(),
-                                     VariableType,
-                                     Tok.getLocation(),
-                                     Tok.getIdentifierInfo()); 
-  
+
   IdentifierInfo* LoopVariableII = Tok.getIdentifierInfo();
+  SourceLocation LoopVariableLoc = Tok.getLocation();
   
   ConsumeToken();
   
@@ -2228,8 +2230,18 @@ StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
   }
   
   IdentifierInfo* MeshII = Tok.getIdentifierInfo();
+  SourceLocation MeshLoc = Tok.getLocation();
   
   ConsumeToken();
+  
+  if(!Actions.ActOnRenderAllLoopVariable(getCurScope(),
+                                         VariableType,
+                                         LoopVariableII,
+                                         LoopVariableLoc,
+                                         MeshII,
+                                         MeshLoc)){
+    return StmtError();
+  }
   
   StmtResult BodyResult = ParseStatement();
   if(BodyResult.isInvalid()){

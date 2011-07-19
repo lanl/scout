@@ -9168,7 +9168,7 @@ Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
 void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
   MeshDecl *Mesh = cast<MeshDecl>(MeshD);
   
-  // Enter the tag context.
+  // Enter the mesh context.
   PushDeclContext(S, Mesh);
 }
 
@@ -9267,5 +9267,9 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
     
   NewFD->setAccess(AS_public);
   return NewFD;
+}
+
+void Sema::ActOnMeshFinish(){
+  PopDeclContext();
 }
 

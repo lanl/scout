@@ -2890,7 +2890,7 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   
   SourceLocation LBraceLoc = ConsumeBrace();
   
-  ParseScope StructScope(this, Scope::ClassScope|Scope::DeclScope);
+  ParseScope MeshScope(this, Scope::ClassScope|Scope::DeclScope);
   Actions.ActOnMeshStartDefinition(getCurScope(), Dec);
   
   unsigned fieldType = FieldDecl::FieldNone;
@@ -2930,9 +2930,10 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       
       virtual Decl* invoke(FieldDeclarator& FD) {
         // Install the declarator into the current MeshDecl.
-        Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
-                                               FD.D.getDeclSpec().getSourceRange().getBegin(),
-                                               FD.D);
+        Decl* Field = 
+        P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
+                                 FD.D.getDeclSpec().getSourceRange().getBegin(),
+                                 FD.D);
                 
         FieldDecls.push_back(Field);
         return Field;
@@ -2980,5 +2981,6 @@ void Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   */
   
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
-  StructScope.Exit();
+  MeshScope.Exit();
+  Actions.ActOnMeshFinish();
 }

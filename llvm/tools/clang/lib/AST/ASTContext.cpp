@@ -2225,7 +2225,8 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
 QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
   
-  MeshType *newType = new (*this, TypeAlignment) MeshType(Decl);
+  MeshType *newType = 
+  new (*this, TypeAlignment) MeshType(Decl);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);

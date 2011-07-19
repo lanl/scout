@@ -1100,6 +1100,8 @@ public:
   
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
   
+  void ActOnMeshFinish();
+  
   FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD, 
                              SourceLocation DeclStart, Declarator &D);
   
@@ -1111,15 +1113,19 @@ public:
                                 NamedDecl *PrevDecl,
                                 Declarator *D = 0);
   
-  void ActOnForAllLoopVariable(Scope* S,
+  bool ActOnForAllLoopVariable(Scope* S,
                                tok::TokenKind VariableType,
-                               SourceLocation Location,
-                               IdentifierInfo* II);
+                               IdentifierInfo* LoopVariableII,
+                               SourceLocation LoopVariableLoc,
+                               IdentifierInfo* MeshII,
+                               SourceLocation MeshLoc);
   
-  void ActOnRenderAllLoopVariable(Scope* S,
+  bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
-                                  SourceLocation Location,
-                                  IdentifierInfo* II);
+                                  IdentifierInfo* LoopVariableII,
+                                  SourceLocation LoopVariableLoc,
+                                  IdentifierInfo* MeshII,
+                                  SourceLocation MeshLoc);
   
   enum TagUseKind {
     TUK_Reference,   // Reference to a tag:  'struct foo *X;'

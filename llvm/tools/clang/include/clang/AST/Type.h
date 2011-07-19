@@ -3177,18 +3177,34 @@ public:
 // ndm - Scout MeshType
 
 class MeshType : public Type{
+public:
+  enum InstanceType{
+    MeshInstance,
+    CellsInstance,
+    VerticesInstance,
+    FacesInstance,
+    EdgesInstance
+  };
+  
+private:
+  
   MeshDecl* decl;
-
+  InstanceType instanceType;
+  
 public:
 
-  MeshType(const MeshDecl* D)
+  MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
     : Type(Mesh, QualType(), false, false, false, false),
-  decl(const_cast<MeshDecl*>(D)) {} 
+  decl(const_cast<MeshDecl*>(D)), instanceType(IT) {} 
 
   MeshDecl* getDecl() const {
     return decl;
   }
 
+  InstanceType getInstanceType() const{
+    return instanceType;
+  }
+  
   bool isBeingDefined() const;
 
   bool isSugared() const { return false; }

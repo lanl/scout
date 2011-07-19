@@ -2393,64 +2393,156 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
 
 // ndm - Scout Stmts
 
-void Sema::ActOnForAllLoopVariable(Scope* S,
+bool Sema::ActOnForAllLoopVariable(Scope* S,
                                    tok::TokenKind VariableType,
-                                   SourceLocation Location,
-                                   IdentifierInfo* II){
+                                   IdentifierInfo* LoopVariableII,
+                                   SourceLocation LoopVariableLoc,
+                                   IdentifierInfo* MeshII,
+                                   SourceLocation MeshLoc){
   
-  // ndm - TODO - do anything with VariableType / QualType?
+  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
+                       LookupOrdinaryName);
   
-  ASTContext::GetBuiltinTypeError err;
+  LookupName(LResult, S);
+    
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_forall) << LoopVariableII;
+    return false;
+  }
   
-  QualType type = Context.GetBuiltinType(BuiltinType::Int, err); 
+  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
+  
+  LookupName(MResult, S);
+  
+  if(MResult.getResultKind() != LookupResult::Found){
+    Diag(MeshLoc, diag::err_unknown_mesh_variable_forall) << MeshII;
+    return false;
+  }
+
+  NamedDecl* ND = MResult.getFoundDecl();
+
+  if(!isa<VarDecl>(ND)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
+    return false;
+  }
+
+  VarDecl* VD = cast<VarDecl>(ND);
+
+  const Type* T = VD->getType().getTypePtr();
+  
+  if(!isa<MeshType>(T)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
+    return false;
+  }
+
+  MeshDecl* MD = cast<MeshType>(T)->getDecl();
+  
+  MeshType::InstanceType IT;
+  switch(VariableType){
+    case tok::kw_cells:
+      IT = MeshType::CellsInstance;
+      break;
+    case tok::kw_vertices:
+      IT = MeshType::VerticesInstance;
+      break;
+    case tok::kw_faces:
+      IT = MeshType::FacesInstance;
+      break;
+    case tok::kw_edges:
+      IT = MeshType::EdgesInstance;
+      break;
+    default:
+      assert(false && "invalid variable type");
+  }
+  
+  
+  Type* MT = new MeshType(MD, IT);
   
   ImplicitParamDecl* D = 
-  ImplicitParamDecl::Create(Context, CurContext, Location,  
-                            II, type);
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
+                            LoopVariableII, QualType(MT, 0));
   
  
   PushOnScopeChains(D, S, true);
+  
+  return true;
 }
 
 // ndm - Scout Stmts
 
-void Sema::ActOnRenderAllLoopVariable(Scope* S,
+bool Sema::ActOnRenderAllLoopVariable(Scope* S,
                                       tok::TokenKind VariableType,
-                                      SourceLocation Location,
-                                      IdentifierInfo* II){
+                                      IdentifierInfo* LoopVariableII,
+                                      SourceLocation LoopVariableLoc,
+                                      IdentifierInfo* MeshII,
+                                      SourceLocation MeshLoc){
   
-  // ndm - TODO - do anything with VariableType / QualType?
+
+  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
+                       LookupOrdinaryName);
   
-  ASTContext::GetBuiltinTypeError err;
-    
-  QualType type = Context.GetBuiltinType(BuiltinType::Int, err);
+  LookupName(LResult, S);
+  
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_renderall) << LoopVariableII;
+    return false;
+  }
+  
+  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
+  
+  LookupName(MResult, S);
+  
+  if(MResult.getResultKind() != LookupResult::Found){
+    Diag(MeshLoc, diag::err_unknown_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+  
+  NamedDecl* ND = MResult.getFoundDecl();
+  
+  if(!isa<VarDecl>(ND)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+  
+  VarDecl* VD = cast<VarDecl>(ND);
+  
+  const Type* T = VD->getType().getTypePtr();
+  
+  if(!isa<MeshType>(T)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+  
+  MeshDecl* MD = cast<MeshType>(T)->getDecl();
+  
+  MeshType::InstanceType IT;
+  switch(VariableType){
+    case tok::kw_cells:
+      IT = MeshType::CellsInstance;
+      break;
+    case tok::kw_vertices:
+      IT = MeshType::VerticesInstance;
+      break;
+    case tok::kw_faces:
+      IT = MeshType::FacesInstance;
+      break;
+    case tok::kw_edges:
+      IT = MeshType::EdgesInstance;
+      break;
+    default:
+      assert(false && "invalid variable type");
+  }
+  
+  
+  Type* MT = new MeshType(MD, IT);
   
   ImplicitParamDecl* D = 
-  ImplicitParamDecl::Create(Context, CurContext, Location,  
-                            II, type);
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
+                            LoopVariableII, QualType(MT, 0));
+  
   
   PushOnScopeChains(D, S, true);
   
-  //D->setImplicit();
-  //S->AddDecl(D);
-  //IdResolver.AddDecl(D);
-  
-  //TypeSourceInfo *TInfo = Context.getTrivialTypeSourceInfo(type, Location);
-  
-  //VarDecl* D = 
-  //VarDecl::Create(Context, CurContext, Location, Location, II, type,
-  //                TInfo, SC_Auto, SC_None);
-  
-  
-  //D->setImplicit();
-  
-  //FinalizeDeclaration(D);
-  //CurContext->addHiddenDecl(D);
-  
-  //DeclGroupPtrTy DG =
-  //BuildDeclaratorGroup((Decl**)&D, 1, /*TypeMayContainAuto=*/false);
-  //ActOnDeclStmt(DG, Location, Location);
-  
-  //S->AddDecl(D);  
+  return true;
 }
 

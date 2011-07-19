@@ -4403,5 +4403,21 @@ def note_related_result_type_inferred : Note<
 
 }
 
+// ndm - Scout specific diagnostics
+def err_loop_variable_shadows_forall : Error<
+"forall loop variable %0 shadows an existing identifier">;
+def err_loop_variable_shadows_renderall : Error<
+"renderall loop variable %0 shadows an existing identifier">;
+
+def err_unknown_mesh_variable_renderall : Error<
+"unknown mesh variable %0 while parsing renderall statement">;
+def err_unknown_mesh_variable_forall : Error<
+"unknown mesh variable %0 while parsing forall statement">;
+
+def err_not_mesh_variable_forall : Error<
+"not a mesh variable %0 while parsing forall statement">;
+def err_not_mesh_variable_renderall : Error<
+"not a mesh variable %0 while parsing renderall statement">;
+
 } // end of sema component.
 
