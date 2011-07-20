@@ -46,4 +46,4 @@ set(SCOUT_BINARY_DIR   ${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(llvm)
 add_subdirectory(lib)
 add_subdirectory(sandbox)
-
+add_subdirectory(tools)
