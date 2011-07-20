@@ -2533,7 +2533,6 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
       assert(false && "invalid variable type");
   }
   
-  
   Type* MT = new MeshType(MD, IT);
   
   ImplicitParamDecl* D = 
@@ -2542,6 +2541,16 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   
   
   PushOnScopeChains(D, S, true);
+  
+  ASTContext::GetBuiltinTypeError err;
+  QualType ColorType = Context.GetBuiltinType(BuiltinType::Float4, err); 
+  
+  ImplicitParamDecl* CD = 
+  ImplicitParamDecl::Create(Context, CurContext, MeshLoc,  
+                            &Context.Idents.get("color"),
+                            ColorType);
+  
+  PushOnScopeChains(CD, S, true);
   
   return true;
 }
