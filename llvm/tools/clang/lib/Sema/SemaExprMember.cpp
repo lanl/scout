@@ -834,10 +834,10 @@ static MemberExpr *BuildMemberExpr(ASTContext &C, Expr *Base, bool isArrow,
 }
 
 static ScoutVectorMemberExpr 
-*BuildScoutVectorMemberExpr(ASTContext &C, Expr* base, 
+*BuildScoutVectorMemberExpr(ASTContext &C, Expr* base, SourceLocation loc,
                             unsigned index, QualType ty) {
   
-  return ScoutVectorMemberExpr::Create(C, base, index, ty);
+  return ScoutVectorMemberExpr::Create(C, base, loc, index, ty);
 }
 
 ExprResult
@@ -870,8 +870,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Bool3:
       case BuiltinType::Bool4: {
        
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Bool, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Bool), 0);
         isScoutVector = true;
         break;
         
@@ -880,8 +879,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Char3:
       case BuiltinType::Char4: {
         
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Char_S, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Char_S), 0);
         isScoutVector = true;
         break;
         
@@ -890,8 +888,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Short3:
       case BuiltinType::Short4: {
         
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Short, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Short), 0);
         isScoutVector = true;
         break;
         
@@ -899,9 +896,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Int2:
       case BuiltinType::Int3:
       case BuiltinType::Int4: {
-        
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Int, err);
+
+        VCType = QualType(new BuiltinType(BuiltinType::Int), 0);
         isScoutVector = true;
         break;
         
@@ -911,8 +907,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Long3:
       case BuiltinType::Long4: {
         
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Long, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Long), 0);
         isScoutVector = true;
         break;
         
@@ -922,8 +917,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Float3:
       case BuiltinType::Float4: {
         
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Float, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Float), 0);
         isScoutVector = true;
         break;
         
@@ -934,8 +928,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       case BuiltinType::Double3:
       case BuiltinType::Double4: {
 
-        ASTContext::GetBuiltinTypeError err;
-        VCType = Context.GetBuiltinType(BuiltinType::Double, err);
+        VCType = QualType(new BuiltinType(BuiltinType::Double), 0);
         isScoutVector = true;
         break;
         
@@ -963,7 +956,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
         assert(false && "expected index = 0-3 while indexing Scout vector");
       }
       
-      return Owned(BuildScoutVectorMemberExpr(Context, BaseExpr, 
+      return Owned(BuildScoutVectorMemberExpr(Context, BaseExpr, OpLoc,
                                               index, VCType));
     }
   }

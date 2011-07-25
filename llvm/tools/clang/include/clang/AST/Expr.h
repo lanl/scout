@@ -2227,20 +2227,22 @@ public:
   
 class ScoutVectorMemberExpr : public Expr {
   Stmt* Base;
+
+  SourceLocation Loc;
   
   unsigned index;
   
-  SourceLocation Loc;
-  
 public:
-  ScoutVectorMemberExpr(Expr* base, unsigned index, QualType ty)
+  ScoutVectorMemberExpr(Expr* base, SourceLocation loc,
+                        unsigned index, QualType ty)
   : Expr(ScoutVectorMemberExprClass, ty, VK_LValue, 
          OK_Ordinary, false, false, false, false),
-  Base(base), index(index){ 
-    
+  Base(base), Loc(loc), index(index){ 
+
   }
   
   static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base, 
+                                       SourceLocation loc,
                                        unsigned index, QualType ty);
   
   void setBase(Expr *E) { Base = E; }
@@ -2252,7 +2254,7 @@ public:
   static bool classof(const ScoutVectorMemberExpr *) { return true; }
   
   // Iterators
-  child_range children() { return child_range(&Base, &Base); }
+  child_range children() { return child_range(&Base, &Base+1); }
   
   SourceRange getSourceRange() const{
     return SourceRange(Loc, Loc);

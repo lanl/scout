@@ -2542,8 +2542,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   
   PushOnScopeChains(D, S, true);
   
-  ASTContext::GetBuiltinTypeError err;
-  QualType ColorType = Context.GetBuiltinType(BuiltinType::Float4, err); 
+  QualType ColorType(new BuiltinType(BuiltinType::Float4), 0);
   
   ImplicitParamDecl* CD = 
   ImplicitParamDecl::Create(Context, CurContext, MeshLoc,  

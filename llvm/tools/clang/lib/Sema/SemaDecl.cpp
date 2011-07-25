@@ -9268,8 +9268,7 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // ndm - Scout Mesh
 
 void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  ASTContext::GetBuiltinTypeError err;
-  QualType PositionType = Context.GetBuiltinType(BuiltinType::Int4, err);
+  QualType PositionType(new BuiltinType(BuiltinType::Int4), 0);
   
   // ndm - ok to pass null type source info and bit field width? 
   

@@ -1011,10 +1011,12 @@ SourceRange MemberExpr::getSourceRange() const {
 // ndm - Scout vector types
 
 ScoutVectorMemberExpr*
-ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base, 
+ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
+                              SourceLocation loc, 
                               unsigned index, QualType ty){
   
-  ScoutVectorMemberExpr* E = new (C) ScoutVectorMemberExpr(base, index, ty);
+  ScoutVectorMemberExpr* E = 
+  new (C) ScoutVectorMemberExpr(base, loc, index, ty);
   
   return E;
 }
