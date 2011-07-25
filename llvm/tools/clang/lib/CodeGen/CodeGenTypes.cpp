@@ -433,31 +433,35 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
 
   // ndm - Scout Mesh
   case Type::Mesh: {
-    // Implemented as an n-dimensional array of struct's type.
+    // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty).getDecl();
     MeshDecl::MeshDimensionVec dims = mesh->dimensions();
+
+    typedef llvm::ArrayType ArrayTy;
+
     MeshDecl::field_iterator it     = mesh->field_begin();
     MeshDecl::field_iterator it_end = mesh->field_end();
 
-    // A list of struct member types.
     std::vector< const llvm::Type * > eltTys;
     for( ; it != it_end; ++it) {
-      eltTys.push_back(ConvertNewType(it->getType()));
+      // Identify the type of each mesh member.
+      const llvm::Type *ty = ConvertNewType(it->getType());
+      unsigned numElts = dims.back()->EvaluateAsInt(Context).getSExtValue();
+      ty = ArrayTy::get(ty, numElts);
+      // Construct an n-dimensional array of that type.
+      for(int i = dims.size() - 2; i >= 0; --i) {
+        numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
+        ty = ArrayTy::get(ty, numElts);
+      }
+      eltTys.push_back(ty);
     }
+
     typedef llvm::ArrayRef< const llvm::Type * > Array;
     typedef llvm::StructType StructTy;
-    // Construct a struct type.
+    // Construct a struct of array's type.
     StructTy *structTy = StructTy::get(getLLVMContext(), Array(eltTys), false);
 
-    unsigned numElts = dims[dims.size() - 1]->EvaluateAsInt(Context).getSExtValue();
-    typedef llvm::ArrayType ArrayTy;
-    const llvm::Type *ty = ArrayTy::get(structTy, numElts);
-    // Construct an n-dimensional array of struct's type.
-    for(int i = dims.size() - 2; i >= 0; --i) {
-      numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
-      ty = ArrayTy::get(ty, numElts);
-    }
-    return ty;
+    return structTy;
   }
 
   case Type::Record:
