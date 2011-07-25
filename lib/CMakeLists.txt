@@ -10,4 +10,6 @@
 
 project(ScoutLibraries)
 
+add_subdirectory(standard)    # Scout's standard library
+add_subdirectory(runtime)     # Scout's runtime library 
 
