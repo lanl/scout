@@ -49,14 +49,14 @@ CodeGenTypes::~CodeGenTypes() {
 /// to handle cyclic structures properly.
 void CodeGenTypes::HandleLateResolvedPointers() {
   assert(!PointersToResolve.empty() && "No pointers to resolve!");
-  
+
   // Any pointers that were converted deferred evaluation of their pointee type,
   // creating an opaque type instead.  This is in order to avoid problems with
   // circular types.  Loop through all these defered pointees, if any, and
   // resolve them now.
   while (!PointersToResolve.empty()) {
     std::pair<QualType, llvm::OpaqueType*> P = PointersToResolve.pop_back_val();
-    
+
     // We can handle bare pointers here because we know that the only pointers
     // to the Opaque type are P.second and from other types.  Refining the
     // opqaue type away will invalidate P.second, but we don't mind :).
@@ -70,7 +70,7 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD, const llvm::Type *Ty,
   llvm::SmallString<256> TypeName;
   llvm::raw_svector_ostream OS(TypeName);
   OS << RD->getKindName() << '.';
-  
+
   // Name the codegen type after the typedef name
   // if there is no tag type name available
   if (RD->getIdentifier()) {
@@ -99,7 +99,7 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD, const llvm::Type *Ty,
 /// ConvertType - Convert the specified type to its LLVM form.
 const llvm::Type *CodeGenTypes::ConvertType(QualType T, bool IsRecursive) {
   const llvm::Type *Result = ConvertTypeRecursive(T);
-  
+
   // If this is a top-level call to ConvertType and sub-conversions caused
   // pointers to get lazily built as opaque types, resolve the pointers, which
   // might cause Result to be merged away.
@@ -222,6 +222,10 @@ static const llvm::Type* getTypeForFormat(llvm::LLVMContext &VMContext,
 const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
   const clang::Type &Ty = *Context.getCanonicalType(T).getTypePtr();
 
+  typedef llvm::VectorType VectorTy;
+  typedef llvm::IntegerType IntTy;
+  unsigned numVecElts = 1;
+
   switch (Ty.getTypeClass()) {
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
@@ -266,30 +270,32 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
         static_cast<unsigned>(Context.getTypeSize(T)));
 
     // ndm - Scout vector types
-    // TODO - fix
-    case BuiltinType::Bool2:
-    case BuiltinType::Bool3:
-    case BuiltinType::Bool4:
-    case BuiltinType::Char2:
-    case BuiltinType::Char3:
-    case BuiltinType::Char4:
-    case BuiltinType::Short2:
-    case BuiltinType::Short3:
-    case BuiltinType::Short4:
-    case BuiltinType::Int2:
-    case BuiltinType::Int3:
-    case BuiltinType::Int4:
-    case BuiltinType::Long2:
-    case BuiltinType::Long3:
-    case BuiltinType::Long4:
-    case BuiltinType::Float2:
-    case BuiltinType::Float3:
-    case BuiltinType::Float4:
-    case BuiltinType::Double2:
-    case BuiltinType::Double3:
-    case BuiltinType::Double4:
-      return llvm::IntegerType::get(getLLVMContext(), 8);
-        
+    case BuiltinType::Bool2:   numVecElts = 2;
+    case BuiltinType::Bool3:   numVecElts = 3;
+    case BuiltinType::Bool4:   numVecElts = 4;
+      return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), numVecElts);
+    case BuiltinType::Char2:   numVecElts = 2;
+    case BuiltinType::Char3:   numVecElts = 3;
+    case BuiltinType::Char4:   numVecElts = 4;
+    case BuiltinType::Short2:  numVecElts = 2;
+    case BuiltinType::Short3:  numVecElts = 3;
+    case BuiltinType::Short4:  numVecElts = 3;
+    case BuiltinType::Int2:    numVecElts = 2;
+    case BuiltinType::Int3:    numVecElts = 3;
+    case BuiltinType::Int4:    numVecElts = 4;
+    case BuiltinType::Long2:   numVecElts = 2;
+    case BuiltinType::Long3:   numVecElts = 3;
+    case BuiltinType::Long4:   numVecElts = 4;
+      return VectorTy::get(IntTy::get(getLLVMContext(),
+        static_cast<unsigned>(Context.getTypeSize(T))), numVecElts);
+    case BuiltinType::Float2:  numVecElts = 2;
+    case BuiltinType::Float3:  numVecElts = 3;
+    case BuiltinType::Float4:  numVecElts = 4;
+    case BuiltinType::Double2: numVecElts = 2;
+    case BuiltinType::Double3: numVecElts = 3;
+    case BuiltinType::Double4: numVecElts = 4;
+      return VectorTy::get(getTypeForFormat(getLLVMContext(),
+        Context.getFloatTypeSemantics(T)), numVecElts);
     case BuiltinType::Float:
     case BuiltinType::Double:
     case BuiltinType::LongDouble:
@@ -301,11 +307,11 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
       const llvm::Type *Ty = llvm::Type::getInt8Ty(getLLVMContext());
       return llvm::PointerType::getUnqual(Ty);
     }
-        
+
     case BuiltinType::UInt128:
     case BuiltinType::Int128:
       return llvm::IntegerType::get(getLLVMContext(), 128);
-    
+
     case BuiltinType::Overload:
     case BuiltinType::Dependent:
     case BuiltinType::BoundMember:
@@ -382,7 +388,7 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
       FunctionTypes.insert(std::make_pair(&Ty, ResultType));
       return ResultType;
     }
-    
+
     // The function type can be built; call the appropriate routines to
     // build it.
     const CGFunctionInfo *FI;
@@ -426,11 +432,34 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
   }
 
   // ndm - Scout Mesh
-  // TODO - fix
   case Type::Mesh: {
-    return llvm::IntegerType::get(getLLVMContext(), 8);
+    // Implemented as an n-dimensional array of struct's type.
+    MeshDecl *mesh = cast<MeshType>(Ty).getDecl();
+    MeshDecl::MeshDimensionVec dims = mesh->dimensions();
+    MeshDecl::field_iterator it     = mesh->field_begin();
+    MeshDecl::field_iterator it_end = mesh->field_end();
+
+    // A list of struct member types.
+    std::vector< const llvm::Type * > eltTys;
+    for( ; it != it_end; ++it) {
+      eltTys.push_back(ConvertNewType(it->getType()));
+    }
+    typedef llvm::ArrayRef< const llvm::Type * > Array;
+    typedef llvm::StructType StructTy;
+    // Construct a struct type.
+    StructTy *structTy = StructTy::get(getLLVMContext(), Array(eltTys), false);
+
+    unsigned numElts = dims[dims.size() - 1]->EvaluateAsInt(Context).getSExtValue();
+    typedef llvm::ArrayType ArrayTy;
+    const llvm::Type *ty = ArrayTy::get(structTy, numElts);
+    // Construct an n-dimensional array of struct's type.
+    for(int i = dims.size() - 2; i >= 0; --i) {
+      numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
+      ty = ArrayTy::get(ty, numElts);
+    }
+    return ty;
   }
-      
+
   case Type::Record:
   case Type::Enum: {
     const TagDecl *TD = cast<TagType>(Ty).getDecl();
@@ -501,7 +530,7 @@ const llvm::Type *CodeGenTypes::ConvertTagDeclType(const TagDecl *TD) {
   const RecordDecl *RD = cast<const RecordDecl>(TD);
 
   // Force conversion of non-virtual base classes recursively.
-  if (const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(TD)) {    
+  if (const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(TD)) {
     for (CXXRecordDecl::base_class_const_iterator i = RD->bases_begin(),
          e = RD->bases_end(); i != e; ++i) {
       if (!i->isVirtual()) {
@@ -557,9 +586,9 @@ bool CodeGenTypes::isZeroInitializable(QualType T) {
   // No need to check for member pointers when not compiling C++.
   if (!Context.getLangOptions().CPlusPlus)
     return true;
-  
+
   T = Context.getBaseElementType(T);
-  
+
   // Records are non-zero-initializable if they contain any
   // non-zero-initializable subobjects.
   if (const RecordType *RT = T->getAs<RecordType>()) {
@@ -570,7 +599,7 @@ bool CodeGenTypes::isZeroInitializable(QualType T) {
   // We have to ask the ABI about member pointers.
   if (const MemberPointerType *MPT = T->getAs<MemberPointerType>())
     return getCXXABI().isZeroInitializable(MPT);
-  
+
   // Everything else is okay.
   return true;
 }
