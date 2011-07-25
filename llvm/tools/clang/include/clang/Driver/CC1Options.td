@@ -679,3 +679,9 @@ def cl_mad_enable : Flag<"-cl-mad-enable">,
   HelpText<"OpenCL only. Enable less precise MAD instructions to be generated.">;
 def cl_std_EQ : Joined<"-cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
+
+//===----------------------------------------------------------------------===//
+// ndm - Scout Options
+//===----------------------------------------------------------------------===//
+def view_ast : Flag<"-view-ast">,
+HelpText<"View the AST of a parsed file with GraphViz">;

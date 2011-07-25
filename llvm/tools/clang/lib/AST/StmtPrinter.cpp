@@ -855,6 +855,14 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
                                                     Node->getNumTemplateArgs(),
                                                                 Policy);
 }
+
+// ndm - Scout vector types
+// TODO - implement
+
+void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
+  
+}
+
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());
   OS << (Node->isArrow() ? "->isa" : ".isa");

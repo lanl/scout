@@ -347,6 +347,13 @@ void StmtProfiler::VisitMemberExpr(const MemberExpr *S) {
   ID.AddBoolean(S->isArrow());
 }
 
+// ndm - Scout vector types
+// TODO - implement
+
+void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S){
+  
+}
+
 void StmtProfiler::VisitCompoundLiteralExpr(const CompoundLiteralExpr *S) {
   VisitExpr(S);
   ID.AddBoolean(S->isFileScope());

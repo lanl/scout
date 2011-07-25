@@ -1998,12 +1998,14 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_rectlinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
-        
+      
       // for now, at least the presence of one of the above keywords is sufficient
       // to denote the beginning of a mesh definition
         
       ParseMeshSpecifier(DS);
-        
+      
+      
+      
       continue;
     }
         
@@ -2412,7 +2414,7 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
     
     // for now, at least the presence of one of the above keywords is sufficient
     // to denote the beginning of a mesh definition
-      
+    
     ParseMeshSpecifier(DS);
       
     return true;
@@ -3111,6 +3113,12 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_double3:
   case tok::kw_double4: 
 
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+  case tok::kw_mesh:
+      
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -3125,8 +3133,6 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
     // enum-specifier
   case tok::kw_enum:
   
-  // ndm - TODO - add uniform / structured, etc. keywords here?
-      
     // typedef-name
   case tok::annot_typename:
     return true;
@@ -3207,6 +3213,12 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_double3:
   case tok::kw_double4: 
 
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+      
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -3357,6 +3369,12 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_double3:
   case tok::kw_double4: 
 
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+      
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:

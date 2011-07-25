@@ -833,6 +833,13 @@ static MemberExpr *BuildMemberExpr(ASTContext &C, Expr *Base, bool isArrow,
                             TemplateArgs, Ty, VK, OK);
 }
 
+static ScoutVectorMemberExpr 
+*BuildScoutVectorMemberExpr(ASTContext &C, Expr* base, 
+                            unsigned index, QualType ty) {
+  
+  return ScoutVectorMemberExpr::Create(C, base, index, ty);
+}
+
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                SourceLocation OpLoc, bool IsArrow,
@@ -852,6 +859,115 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
+  // ndm - Scout vector types
+  
+  if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){    
+    QualType VCType;
+    bool isScoutVector = false;
+    
+    switch(BT->getKind()){
+      case BuiltinType::Bool2:
+      case BuiltinType::Bool3:
+      case BuiltinType::Bool4: {
+       
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Bool, err);
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Char2:
+      case BuiltinType::Char3:
+      case BuiltinType::Char4: {
+        
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Char_S, err);
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Short2:
+      case BuiltinType::Short3:
+      case BuiltinType::Short4: {
+        
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Short, err);
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Int2:
+      case BuiltinType::Int3:
+      case BuiltinType::Int4: {
+        
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Int, err);
+        isScoutVector = true;
+        break;
+        
+      }
+        
+      case BuiltinType::Long2:
+      case BuiltinType::Long3:
+      case BuiltinType::Long4: {
+        
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Long, err);
+        isScoutVector = true;
+        break;
+        
+      }
+        
+      case BuiltinType::Float2:
+      case BuiltinType::Float3:
+      case BuiltinType::Float4: {
+        
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Float, err);
+        isScoutVector = true;
+        break;
+        
+      }
+        
+        
+      case BuiltinType::Double2:
+      case BuiltinType::Double3:
+      case BuiltinType::Double4: {
+
+        ASTContext::GetBuiltinTypeError err;
+        VCType = Context.GetBuiltinType(BuiltinType::Double, err);
+        isScoutVector = true;
+        break;
+        
+      }
+      default:
+        break;
+    }
+    
+    if(isScoutVector){
+      std::string mn = MemberName.getAsString();
+      unsigned index;
+      if(mn == "x"){
+        index = 0;
+      }
+      else if(mn == "y"){
+        index = 1;
+      }
+      else if(mn == "z"){
+        index = 2;
+      }
+      else if(mn == "w"){
+        index = 3;
+      }
+      else{
+        assert(false && "expected index = 0-3 while indexing Scout vector");
+      }
+      
+      return Owned(BuildScoutVectorMemberExpr(Context, BaseExpr, 
+                                              index, VCType));
+    }
+  }
+  
   if (R.isAmbiguous())
     return ExprError();
 
@@ -1121,6 +1237,54 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     // Returning valid-but-null is how we indicate to the caller that
     // the lookup result was filled in.
     return Owned((Expr*) 0);
+  }
+  
+  if (const BuiltinType *BTy = BaseType->getAs<BuiltinType>()) {
+    switch(BTy->getKind()){
+      case BuiltinType::Bool2:
+      case BuiltinType::Char2:
+      case BuiltinType::Short2:
+      case BuiltinType::Int2:
+      case BuiltinType::Long2:
+      case BuiltinType::Float2:
+      case BuiltinType::Double2: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+        
+      case BuiltinType::Bool3:
+      case BuiltinType::Char3:
+      case BuiltinType::Short3:
+      case BuiltinType::Int3:
+      case BuiltinType::Long3:
+      case BuiltinType::Float3:
+      case BuiltinType::Double3: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y" || ms == "z"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+        
+      case BuiltinType::Bool4:
+      case BuiltinType::Char4:
+      case BuiltinType::Short4:
+      case BuiltinType::Int4:
+      case BuiltinType::Long4:
+      case BuiltinType::Float4:
+      case BuiltinType::Double4: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y" || ms == "z" || ms == "w"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+      default:
+        break;
+    }    
   }
   
   // Handle ivar access to Objective-C objects.
@@ -1439,7 +1603,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   UnresolvedSet<4> Overloads;
   if (isExprCallable(*BaseExpr.get(), ZeroArgCallTy, Overloads)) {
     if (ZeroArgCallTy.isNull()) {
-      BaseExpr.get()->dump();
+      // ndm - test
+      //BaseExpr.get()->dump();
       Diag(BaseExpr.get()->getExprLoc(), diag::err_member_reference_needs_call)
           << (Overloads.size() > 1) << 0 << BaseExpr.get()->getSourceRange();
       UnresolvedSet<2> PlausibleOverloads;

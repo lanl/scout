@@ -36,6 +36,8 @@
 #include <map>
 #include <set>
 
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//

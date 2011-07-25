@@ -2994,7 +2994,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   MeshScope.Exit();
-  Actions.ActOnMeshFinish();
+  Actions.ActOnMeshFinish(StartLoc, Dec);
   
   return valid;
 }

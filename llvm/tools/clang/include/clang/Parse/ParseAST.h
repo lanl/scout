@@ -20,7 +20,8 @@ namespace clang {
   class ASTContext;
   class CodeCompleteConsumer;
   class Sema;
-
+  class ASTViewScout;
+  
   /// \brief Parse the entire file specified, notifying the ASTConsumer as
   /// the file is parsed.
   ///
@@ -36,11 +37,12 @@ namespace clang {
   void ParseAST(Preprocessor &pp, ASTConsumer *C,
                 ASTContext &Ctx, bool PrintStats = false,
                 bool CompleteTranslationUnit = true,
-                CodeCompleteConsumer *CompletionConsumer = 0);
+                CodeCompleteConsumer *CompletionConsumer = 0,
+                ASTViewScout* ASTViewer = 0);
 
   /// \brief Parse the main file known to the preprocessor, producing an 
   /// abstract syntax tree.
-  void ParseAST(Sema &S, bool PrintStats = false);
+  void ParseAST(Sema &S, bool PrintStats = false, ASTViewScout* ASTViewer = 0);
   
 }  // end namespace clang
 

@@ -65,6 +65,10 @@ def UnaryExprOrTypeTraitExpr : DStmt<Expr>;
 def ArraySubscriptExpr : DStmt<Expr>;
 def CallExpr : DStmt<Expr>;
 def MemberExpr : DStmt<Expr>;
+
+// ndm - Scout Vector Member Expr
+def ScoutVectorMemberExpr : DStmt<Expr>;
+
 def CastExpr : DStmt<Expr, 1>;
 def BinaryOperator : DStmt<Expr>;
 def CompoundAssignOperator : DStmt<BinaryOperator>;

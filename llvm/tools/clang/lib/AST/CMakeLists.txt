@@ -46,6 +46,9 @@ add_clang_library(clangAST
   Type.cpp
   TypeLoc.cpp
   TypePrinter.cpp
+
+# ndm - scout
+  ASTViewScout.cpp
   )
 
 add_dependencies(clangAST ClangARMNeon ClangAttrClasses ClangAttrList 

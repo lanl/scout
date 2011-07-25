@@ -1792,6 +1792,13 @@ DEF_TRAVERSE_STMT(MemberExpr, {
         S->getTemplateArgs(), S->getNumTemplateArgs()));
   })
 
+// ndm - Scout vector types
+// TODO - implement
+  
+DEF_TRAVERSE_STMT(ScoutVectorMemberExpr, {
+
+})
+  
 DEF_TRAVERSE_STMT(ImplicitCastExpr, {
     // We don't traverse the cast type, as it's not written in the
     // source code.

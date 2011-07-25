@@ -9143,11 +9143,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
   
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
   
-  DeclContext* DC = Context.getTranslationUnitDecl();
-  
-  // ndm - do we need to pass PrevDecl as the last parameter?
-  
-  MeshDecl* MD = MeshDecl::Create(Context, Decl::Mesh, DC, 
+  MeshDecl* MD = MeshDecl::Create(Context, Decl::Mesh, CurContext, 
                                   KWLoc, NameLoc, 
                                   Name, 0);
   
@@ -9269,7 +9265,23 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
   return NewFD;
 }
 
-void Sema::ActOnMeshFinish(){
+// ndm - Scout Mesh
+
+void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
+  ASTContext::GetBuiltinTypeError err;
+  QualType PositionType = Context.GetBuiltinType(BuiltinType::Int4, err);
+  
+  // ndm - ok to pass null type source info and bit field width? 
+  
+  FieldDecl *PositionFD = 
+  FieldDecl::Create(Context, Mesh, Loc, Loc,
+                    &Context.Idents.get("position"), PositionType, 0,
+                    0, true, false);
+  
+  PositionFD->setMeshFieldType(FieldDecl::FieldCells);
+  
+  Mesh->addDecl(PositionFD);
+  
   PopDeclContext();
 }
 

@@ -6167,6 +6167,17 @@ TreeTransform<Derived>::TransformMemberExpr(MemberExpr *E) {
                                         FirstQualifierInScope);
 }
 
+// ndm - support for Scout vector member referencing
+// TODO - implement  
+  
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+  ExprResult R(false);
+  R.set(E);
+  return R;
+}
+  
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformBinaryOperator(BinaryOperator *E) {

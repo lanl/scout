@@ -18,6 +18,9 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//

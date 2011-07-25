@@ -20,6 +20,9 @@
 #include "llvm/Support/Program.h"
 #include <sys/stat.h>
 #include <errno.h>
+
+#include <iostream>
+
 using namespace clang::driver;
 
 Compilation::Compilation(const Driver &D, const ToolChain &_DefaultToolChain,

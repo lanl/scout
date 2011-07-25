@@ -2223,6 +2223,45 @@ public:
   friend class ASTStmtWriter;
 };
 
+// ndm Scout vector types
+  
+class ScoutVectorMemberExpr : public Expr {
+  Stmt* Base;
+  
+  unsigned index;
+  
+  SourceLocation Loc;
+  
+public:
+  ScoutVectorMemberExpr(Expr* base, unsigned index, QualType ty)
+  : Expr(ScoutVectorMemberExprClass, ty, VK_LValue, 
+         OK_Ordinary, false, false, false, false),
+  Base(base), index(index){ 
+    
+  }
+  
+  static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base, 
+                                       unsigned index, QualType ty);
+  
+  void setBase(Expr *E) { Base = E; }
+  Expr *getBase() const { return cast<Expr>(Base); }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ScoutVectorMemberExprClass;
+  }
+  static bool classof(const ScoutVectorMemberExpr *) { return true; }
+  
+  // Iterators
+  child_range children() { return child_range(&Base, &Base); }
+  
+  SourceRange getSourceRange() const{
+    return SourceRange(Loc, Loc);
+  }
+  
+  friend class ASTReader;
+  friend class ASTStmtWriter;
+};
+  
 /// CompoundLiteralExpr - [C99 6.5.2.5]
 ///
 class CompoundLiteralExpr : public Expr {

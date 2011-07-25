@@ -76,6 +76,9 @@ public:
   unsigned FixWhatYouCan : 1;              ///< Apply fixes even if there are
                                            /// unfixable errors.
 
+  // ndm - Scout View AST option
+  unsigned ViewAST : 1;
+  
   enum {
     ARCMT_None,
     ARCMT_Check,
@@ -134,6 +137,11 @@ public:
     ShowCodePatternsInCodeCompletion = 0;
     ShowGlobalSymbolsInCodeCompletion = 1;
     ShowStats = 0;
+    
+// ndm - View AST flag
+    
+    ViewAST = 0;
+    
     ShowTimers = 0;
     ShowVersion = 0;
     ARCMTAction = ARCMT_None;

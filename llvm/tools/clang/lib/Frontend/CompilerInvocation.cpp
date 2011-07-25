@@ -423,6 +423,11 @@ static void FrontendOptsToArgs(const FrontendOptions &Opts,
     Res.push_back("-no-code-completion-globals");
   if (Opts.ShowStats)
     Res.push_back("-print-stats");
+
+  // ndm - View AST flag
+  if (Opts.ViewAST)
+    Res.push_back("-view-ast");
+  
   if (Opts.ShowTimers)
     Res.push_back("-ftime-report");
   if (Opts.ShowVersion)
@@ -1249,6 +1254,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.ShowGlobalSymbolsInCodeCompletion
     = !Args.hasArg(OPT_no_code_completion_globals);
   Opts.ShowStats = Args.hasArg(OPT_print_stats);
+  
+  // ndm - Scout View AST flag
+  Opts.ViewAST = Args.hasArg(OPT_view_ast);
+  
   Opts.ShowTimers = Args.hasArg(OPT_ftime_report);
   Opts.ShowVersion = Args.hasArg(OPT_version);
   Opts.ASTMergeFiles = Args.getAllArgValues(OPT_ast_merge);

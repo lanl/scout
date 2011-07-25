@@ -25,6 +25,12 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
+// ndm - include Scout AST viewer
+#include "clang/AST/ASTViewScout.h"
+
+#include <iostream>
+
 using namespace clang;
 
 namespace {
@@ -376,7 +382,15 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(usesCompleteTranslationUnit(), CompletionConsumer);
 
-  ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats);
+  // ndm - use AST viewer if the front-end option -view-ast was passed
+  if(CI.getFrontendOpts().ViewAST){
+    ASTViewScout ASTViewer(CI.getSema());
+    
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats, &ASTViewer);
+  }
+  else{
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats);
+  }
 }
 
 ASTConsumer *

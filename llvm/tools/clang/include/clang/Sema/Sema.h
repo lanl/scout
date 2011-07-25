@@ -1100,7 +1100,7 @@ public:
   
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
   
-  void ActOnMeshFinish();
+  void ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
   
   FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD, 
                              SourceLocation DeclStart, Declarator &D);

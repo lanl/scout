@@ -1008,6 +1008,17 @@ SourceRange MemberExpr::getSourceRange() const {
   return SourceRange(StartLoc, EndLoc);
 }
 
+// ndm - Scout vector types
+
+ScoutVectorMemberExpr*
+ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base, 
+                              unsigned index, QualType ty){
+  
+  ScoutVectorMemberExpr* E = new (C) ScoutVectorMemberExpr(base, index, ty);
+  
+  return E;
+}
+
 const char *CastExpr::getCastKindName() const {
   switch (getCastKind()) {
   case CK_Dependent:

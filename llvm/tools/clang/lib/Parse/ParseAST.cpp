@@ -25,6 +25,11 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
+// ndm - Scout AST view
+#include "clang/AST/ASTViewScout.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -35,10 +40,13 @@ using namespace clang;
 /// the file is parsed.  This inserts the parsed decls into the translation unit
 /// held by Ctx.
 ///
+
+// ndm - added ASTViewer param
 void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
                      bool CompleteTranslationUnit,
-                     CodeCompleteConsumer *CompletionConsumer) {
+                     CodeCompleteConsumer *CompletionConsumer,
+                     ASTViewScout* ASTViewer) {
 
   llvm::OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
                                    CompleteTranslationUnit,
@@ -47,10 +55,11 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleaupSema(S.get());
   
-  ParseAST(*S.get(), PrintStats);
+  ParseAST(*S.get(), PrintStats, ASTViewer);
 }
 
-void clang::ParseAST(Sema &S, bool PrintStats) {
+// ndm - added ASTViewer param
+void clang::ParseAST(Sema &S, bool PrintStats, ASTViewScout* ASTViewer) {
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
     Decl::CollectingStats(true);
@@ -85,8 +94,14 @@ void clang::ParseAST(Sema &S, bool PrintStats) {
     // If we got a null return and something *was* parsed, ignore it.  This
     // is due to a top-level semicolon, an action override, or a parse error
     // skipping something.
-    if (ADecl)
+    if (ADecl){
       Consumer->HandleTopLevelDecl(ADecl.get());
+      
+      // ndm - AST Viewer
+      if(ASTViewer){
+        ASTViewer->addDeclGroup(ADecl.get());
+      }
+    }
   };
   // Check for any pending objective-c implementation decl.
   while ((ADecl = P.FinishPendingObjCActions()))
