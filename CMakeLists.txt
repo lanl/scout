@@ -35,15 +35,18 @@ set(PACKAGE_VERSION 0.10)
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_BUGREPORT "scoutbugs@lanl.gov")
 
-set(SCOUT_MAIN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(SCOUT_MAIN_INC_DIR ${SCOUT_MAIN_SRC_DIR/include})
+set(SCOUT_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(SCOUT_INCLUDE_DIR ${SCOUT_SRC_DIR}/include)
 set(SCOUT_BINARY_DIR   ${CMAKE_CURRENT_BINARY_DIR})
+
+set(SCOUT_ENABLE_RT_THREADS OFF CACHE BOOL "Enable threads in scout's runtime libraries.")
+set(SCOUT_ENABLE_RT_OPENGL  OFF CACHE BOOL "Enable OpenGL in scout's runtime libraries.")
 
 # Note: Please place individual entries within the associated 
 # subdirectories vs. adding full paths here.  For example, 
 # use lib/CMakeLists.txt to add a library vs. adding lib/mylib
 # below. 
-add_subdirectory(llvm)
-add_subdirectory(lib)
-add_subdirectory(sandbox)
-add_subdirectory(tools)
+add_subdirectory(llvm)       # scout compiler based on active llvm development. 
+add_subdirectory(lib)        # scout runtime and standard libraries 
+add_subdirectory(sandbox)    # proof-of-concept test codes 
+add_subdirectory(tools)      # various command line tools 
