@@ -234,7 +234,7 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::UShort:
             return T == C.ShortTy;
           case BuiltinType::Int:
-            return T == C.UIntTy;
+            return T == C.IntTy;
           case BuiltinType::UInt:
             return T == C.UnsignedIntTy;
           case BuiltinType::Long:
