@@ -1320,6 +1320,7 @@ void Sema::DecomposeUnqualifiedId(const UnqualifiedId &Id,
 /// \return false if new lookup candidates were found
 bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                                CorrectTypoContext CTC) {
+  
   DeclarationName Name = R.getLookupName();
 
   unsigned diagnostic = diag::err_undeclared_var_use;
@@ -1675,6 +1676,59 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     // If this name wasn't predeclared and if this is not a function
     // call, diagnose the problem.
     if (R.empty()) {
+      
+      // ndm - Scout forall/renderall
+      // check undeclared identifiers to see if they can be qualified
+      // as member reference expr's by enclosing forall / renderall 
+      // loop variables
+      
+      for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
+          sitrEnd = SCLStack.end();
+          sitr != sitrEnd; ++sitr){
+        
+        VarDecl* vd = *sitr;
+        
+        const MeshType* mt = dyn_cast<MeshType>(vd->getType());
+        MeshDecl* md = mt->getDecl();
+        
+        for(MeshDecl::field_iterator fitr = md->field_begin(),
+            fitrEnd = md->field_end();
+            fitr != fitrEnd; ++fitr){
+          
+          FieldDecl* fd = *fitr;
+          
+          bool valid;
+          
+          switch(fd->meshFieldType()){
+            case FieldDecl::FieldVertices:
+              valid = mt->getInstanceType() == MeshType::VerticesInstance;
+              break;
+            case FieldDecl::FieldCells:
+              valid = mt->getInstanceType() == MeshType::CellsInstance;
+              break;
+            case FieldDecl::FieldFaces:
+              valid = mt->getInstanceType() == MeshType::FacesInstance;
+              break;
+            case FieldDecl::FieldEdges:
+              valid = mt->getInstanceType() == MeshType::EdgesInstance;
+              break;
+            default:
+              assert(false && "invalid field type while attempting to look "
+                     "up unqualified forall/renderall variable");
+          }
+          
+          if(valid && Name.getAsString() == fd->getName()){
+            Expr* baseExpr = 
+            BuildDeclRefExpr(vd, QualType(mt, 0), VK_LValue, NameLoc).get();
+            
+            return Owned(BuildMemberReferenceExpr(baseExpr, QualType(mt, 0),
+                                                  NameLoc, false, SS, 0, 
+                                                  NameInfo, TemplateArgs));
+                                         
+          }
+        }
+      }
+      
       if (DiagnoseEmptyLookup(S, SS, R, CTC_Unknown))
         return ExprError();
 

@@ -2374,6 +2374,8 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  Expr* Op, SourceLocation RParenLoc,
                                  Stmt* Body){
   
+  SCLStack.pop_back();
+  
   return Owned(new (Context) ForAllStmt(Context, Type,
                                         LoopVariableII, MeshII,
                                         Op, Body, ForAllLoc, LParenLoc,
@@ -2386,6 +2388,9 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     IdentifierInfo* LoopVariableII,
                                     IdentifierInfo* MeshII,
                                     Stmt* Body){
+  
+  SCLStack.pop_back();
+  
   return Owned(new (Context) RenderAllStmt(Context, Type,
                                            LoopVariableII, MeshII,
                                            Body, RenderAllLoc));
@@ -2399,6 +2404,8 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
                                    SourceLocation LoopVariableLoc,
                                    IdentifierInfo* MeshII,
                                    SourceLocation MeshLoc){
+  
+  // lookup result below
   
   LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
                        LookupOrdinaryName);
@@ -2456,7 +2463,7 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   }
   
   
-  Type* MT = new MeshType(MD, IT);
+  MeshType* MT = new MeshType(MD, IT);
   
   ImplicitParamDecl* D = 
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
@@ -2464,6 +2471,8 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   
  
   PushOnScopeChains(D, S, true);
+  
+  SCLStack.push_back(D);
   
   return true;
 }
@@ -2533,7 +2542,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
       assert(false && "invalid variable type");
   }
   
-  Type* MT = new MeshType(MD, IT);
+  MeshType* MT = new MeshType(MD, IT);
   
   ImplicitParamDecl* D = 
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
@@ -2550,6 +2559,8 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
                             ColorType);
   
   PushOnScopeChains(CD, S, true);
+  
+  SCLStack.push_back(D);
   
   return true;
 }

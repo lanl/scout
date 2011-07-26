@@ -6015,6 +6015,14 @@ public:
   /// itself and in routines directly invoked from the parser and *never* from
   /// template substitution or instantiation.
   Scope *getCurScope() const { return CurScope; }
+
+// ndm - Scout
+// support for unqualified variables within a forall / renderall loop
+  
+private:
+  typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
+  
+  ScoutLoopStack SCLStack;
 };
 
 /// \brief RAII object that enters a new expression evaluation context.
