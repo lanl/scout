@@ -224,7 +224,6 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
 
   typedef llvm::VectorType VectorTy;
   typedef llvm::IntegerType IntTy;
-  unsigned numVecElts = 1;
 
   switch (Ty.getTypeClass()) {
 #define TYPE(Class, Base)
@@ -270,32 +269,42 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
         static_cast<unsigned>(Context.getTypeSize(T)));
 
     // ndm - Scout vector types
-    case BuiltinType::Bool2:   numVecElts = 2;
-    case BuiltinType::Bool3:   numVecElts = 3;
-    case BuiltinType::Bool4:   numVecElts = 4;
-      return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), numVecElts);
-    case BuiltinType::Char2:   numVecElts = 2;
-    case BuiltinType::Char3:   numVecElts = 3;
-    case BuiltinType::Char4:   numVecElts = 4;
-    case BuiltinType::Short2:  numVecElts = 2;
-    case BuiltinType::Short3:  numVecElts = 3;
-    case BuiltinType::Short4:  numVecElts = 3;
-    case BuiltinType::Int2:    numVecElts = 2;
-    case BuiltinType::Int3:    numVecElts = 3;
-    case BuiltinType::Int4:    numVecElts = 4;
-    case BuiltinType::Long2:   numVecElts = 2;
-    case BuiltinType::Long3:   numVecElts = 3;
-    case BuiltinType::Long4:   numVecElts = 4;
+    case BuiltinType::Bool2:
+      return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 2);
+    case BuiltinType::Bool3:
+      return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 3);
+    case BuiltinType::Bool4:
+      return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 4);
+    case BuiltinType::Char2:
+    case BuiltinType::Short2:
+    case BuiltinType::Int2:
+    case BuiltinType::Long2:
       return VectorTy::get(IntTy::get(getLLVMContext(),
-        static_cast<unsigned>(Context.getTypeSize(T))), numVecElts);
-    case BuiltinType::Float2:  numVecElts = 2;
-    case BuiltinType::Float3:  numVecElts = 3;
-    case BuiltinType::Float4:  numVecElts = 4;
-    case BuiltinType::Double2: numVecElts = 2;
-    case BuiltinType::Double3: numVecElts = 3;
-    case BuiltinType::Double4: numVecElts = 4;
+        static_cast<unsigned>(Context.getTypeSize(T))), 2);
+    case BuiltinType::Char3:
+    case BuiltinType::Short3:
+    case BuiltinType::Int3:
+    case BuiltinType::Long3:
+      return VectorTy::get(IntTy::get(getLLVMContext(),
+        static_cast<unsigned>(Context.getTypeSize(T))), 3);
+    case BuiltinType::Char4:
+    case BuiltinType::Short4:
+    case BuiltinType::Int4:
+    case BuiltinType::Long4:
+      return VectorTy::get(IntTy::get(getLLVMContext(),
+        static_cast<unsigned>(Context.getTypeSize(T))), 4);
+    case BuiltinType::Float2:
+    case BuiltinType::Double2:
       return VectorTy::get(getTypeForFormat(getLLVMContext(),
-        Context.getFloatTypeSemantics(T)), numVecElts);
+        Context.getFloatTypeSemantics(T)), 2);
+    case BuiltinType::Float3:
+    case BuiltinType::Double3:
+      return VectorTy::get(getTypeForFormat(getLLVMContext(),
+        Context.getFloatTypeSemantics(T)), 3);
+    case BuiltinType::Float4:
+    case BuiltinType::Double4:
+      return VectorTy::get(getTypeForFormat(getLLVMContext(),
+        Context.getFloatTypeSemantics(T)), 4);
     case BuiltinType::Float:
     case BuiltinType::Double:
     case BuiltinType::LongDouble:

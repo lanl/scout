@@ -125,7 +125,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
     // C99 6.5.2.5p5 says that compound literals are lvalues.
     // In C++, they're class temporaries.
   case Expr::CompoundLiteralExprClass:
-    return Ctx.getLangOptions().CPlusPlus? Cl::CL_ClassTemporary 
+    return Ctx.getLangOptions().CPlusPlus? Cl::CL_ClassTemporary
                                          : Cl::CL_LValue;
 
     // Expressions that are prvalues.
@@ -295,9 +295,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
     return ClassifyUnnamed(Ctx, cast<ExplicitCastExpr>(E)->getTypeAsWritten());
 
   case Expr::CXXUnresolvedConstructExprClass:
-    return ClassifyUnnamed(Ctx, 
+    return ClassifyUnnamed(Ctx,
                       cast<CXXUnresolvedConstructExpr>(E)->getTypeAsWritten());
-      
+
   case Expr::BinaryConditionalOperatorClass: {
     if (!Lang.CPlusPlus) return Cl::CL_PRValue;
     const BinaryConditionalOperator *co = cast<BinaryConditionalOperator>(E);
@@ -320,7 +320,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
       return (kind == Cl::CL_PRValue) ? Cl::CL_ObjCMessageRValue : kind;
     }
     return Cl::CL_PRValue;
-      
+
     // Some C++ expressions are always class temporaries.
   case Expr::CXXConstructExprClass:
   case Expr::CXXTemporaryObjectExprClass:
@@ -328,29 +328,32 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
 
   case Expr::VAArgExprClass:
     return ClassifyUnnamed(Ctx, E->getType());
-      
+
   case Expr::DesignatedInitExprClass:
     return ClassifyInternal(Ctx, cast<DesignatedInitExpr>(E)->getInit());
-      
+
   case Expr::StmtExprClass: {
     const CompoundStmt *S = cast<StmtExpr>(E)->getSubStmt();
     if (const Expr *LastExpr = dyn_cast_or_null<Expr>(S->body_back()))
       return ClassifyUnnamed(Ctx, LastExpr->getType());
     return Cl::CL_PRValue;
   }
-      
+
   case Expr::CXXUuidofExprClass:
     return Cl::CL_LValue;
-      
+
   case Expr::PackExpansionExprClass:
     return ClassifyInternal(Ctx, cast<PackExpansionExpr>(E)->getPattern());
-      
+
   case Expr::MaterializeTemporaryExprClass:
     return cast<MaterializeTemporaryExpr>(E)->isBoundToLvalueReference()
-              ? Cl::CL_LValue 
+              ? Cl::CL_LValue
               : Cl::CL_XValue;
+
+  case Expr::ScoutVectorMemberExprClass:
+    return Cl::CL_LValue;
   }
-  
+
   llvm_unreachable("unhandled expression kind in classification");
   return Cl::CL_LValue;
 }
@@ -477,14 +480,14 @@ static Cl::Kinds ClassifyBinaryOp(ASTContext &Ctx, const BinaryOperator *E) {
   //   operand.
   if (E->getOpcode() == BO_PtrMemD)
     return (E->getType()->isFunctionType() || E->getType() == Ctx.BoundMemberTy)
-             ? Cl::CL_MemberFunction 
+             ? Cl::CL_MemberFunction
              : ClassifyInternal(Ctx, E->getLHS());
 
   // C++ [expr.mptr.oper]p6: The result of an ->* expression is an lvalue if its
   //   second operand is a pointer to data member and a prvalue otherwise.
   if (E->getOpcode() == BO_PtrMemI)
     return (E->getType()->isFunctionType() || E->getType() == Ctx.BoundMemberTy)
-             ? Cl::CL_MemberFunction 
+             ? Cl::CL_MemberFunction
              : Cl::CL_LValue;
 
   // All other binary operations are prvalues.

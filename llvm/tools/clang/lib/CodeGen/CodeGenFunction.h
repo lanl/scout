@@ -276,14 +276,14 @@ public:
     A0_saved a0_saved;
     A1_saved a1_saved;
     A2_saved a2_saved;
-    
+
     void Emit(CodeGenFunction &CGF, bool IsForEHCleanup) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
       A2 a2 = DominatingValue<A2>::restore(CGF, a2_saved);
       T::Emit(CGF, IsForEHCleanup, a0, a1, a2);
     }
-    
+
   public:
     ConditionalCleanup3(A0_saved a0, A1_saved a1, A2_saved a2)
     : a0_saved(a0), a1_saved(a1), a2_saved(a2) {}
@@ -739,11 +739,11 @@ public:
       typedef EHScopeStack::UnconditionalCleanup3<T, A0, A1, A2> CleanupType;
       return EHStack.pushCleanup<CleanupType>(kind, a0, a1, a2);
     }
-    
+
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
-    
+
     typedef EHScopeStack::ConditionalCleanup3<T, A0, A1, A2> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved, a2_saved);
     initFullExprCleanup();
@@ -846,7 +846,7 @@ public:
   /// block through the normal cleanup handling code (if any) and then
   /// on to \arg Dest.
   void EmitBranchThroughCleanup(JumpDest Dest);
-  
+
   /// isObviouslyBranchWithoutCleanups - Return true if a branch to the
   /// specified destination obviously has no cleanups to run.  'false' is always
   /// a conservatively correct answer for this method.
@@ -923,7 +923,7 @@ public:
 
   public:
     PeepholeProtection() : Inst(0) {}
-  };  
+  };
 
   /// An RAII object to set (and then clear) a mapping for an OpaqueValueExpr.
   class OpaqueValueMapping {
@@ -1015,7 +1015,7 @@ public:
       CGF.OpaqueRValues.insert(std::make_pair(OpaqueValue, rv));
     }
   };
-  
+
   /// getByrefValueFieldNumber - Given a declaration, returns the LLVM field
   /// number that holds the value.
   unsigned getByRefValueLLVMField(const ValueDecl *VD) const;
@@ -1113,10 +1113,10 @@ public:
 
   CodeGenTypes &getTypes() const { return CGM.getTypes(); }
   ASTContext &getContext() const { return CGM.getContext(); }
-  CGDebugInfo *getDebugInfo() { 
-    if (DisableDebugInfo) 
+  CGDebugInfo *getDebugInfo() {
+    if (DisableDebugInfo)
       return NULL;
-    return DebugInfo; 
+    return DebugInfo;
   }
   void disableDebugInfo() { DisableDebugInfo = true; }
   void enableDebugInfo() { DisableDebugInfo = false; }
@@ -1592,7 +1592,7 @@ public:
                               bool ForVirtualBase, llvm::Value *This,
                               CallExpr::const_arg_iterator ArgBeg,
                               CallExpr::const_arg_iterator ArgEnd);
-  
+
   void EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                               llvm::Value *This, llvm::Value *Src,
                               CallExpr::const_arg_iterator ArgBeg,
@@ -1719,7 +1719,7 @@ public:
   };
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
   void EmitAutoVarInit(const AutoVarEmission &emission);
-  void EmitAutoVarCleanups(const AutoVarEmission &emission);  
+  void EmitAutoVarCleanups(const AutoVarEmission &emission);
 
   void EmitStaticVarDecl(const VarDecl &D,
                          llvm::GlobalValue::LinkageTypes Linkage);
@@ -1775,12 +1775,12 @@ public:
   void EmitIfStmt(const IfStmt &S);
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
-  
+
   // ndm - Scout Stmts
-  
+
   void EmitForAllStmt(const ForAllStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
-  
+
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);
   void EmitDeclStmt(const DeclStmt &S);
@@ -1932,6 +1932,7 @@ public:
   LValue EmitCastLValue(const CastExpr *E);
   LValue EmitNullInitializationLValue(const CXXScalarValueInitExpr *E);
   LValue EmitMaterializeTemporaryExpr(const MaterializeTemporaryExpr *E);
+  LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   LValue EmitOpaqueValueLValue(const OpaqueValueExpr *e);
 
   llvm::Value *EmitIvarOffset(const ObjCInterfaceDecl *Interface,
@@ -2005,12 +2006,12 @@ public:
                                 const llvm::Type *Ty);
   llvm::Value *BuildVirtualCall(const CXXDestructorDecl *DD, CXXDtorType Type,
                                 llvm::Value *This, const llvm::Type *Ty);
-  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD, 
+  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD,
                                          NestedNameSpecifier *Qual,
                                          const llvm::Type *Ty);
-  
+
   llvm::Value *BuildAppleKextVirtualDestructorCall(const CXXDestructorDecl *DD,
-                                                   CXXDtorType Type, 
+                                                   CXXDtorType Type,
                                                    const CXXRecordDecl *RD);
 
   RValue EmitCXXMemberCall(const CXXMethodDecl *MD,
@@ -2114,11 +2115,11 @@ public:
   void PushARCFieldWeakReleaseCleanup(CleanupKind cleanupKind,
                                       const FieldDecl *Field);
 
-  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr); 
+  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr);
   llvm::Value *EmitObjCAutoreleasePoolPush();
   llvm::Value *EmitObjCMRRAutoreleasePoolPush();
   void EmitObjCAutoreleasePoolCleanup(llvm::Value *Ptr);
-  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr); 
+  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr);
 
   /// EmitReferenceBindingToExpr - Emits a reference binding to the passed in
   /// expression. Will emit a temporary variable if E is not an LValue.
@@ -2230,7 +2231,7 @@ public:
                                         llvm::GlobalVariable *Addr);
 
   void EmitCXXConstructExpr(const CXXConstructExpr *E, AggValueSlot Dest);
-  
+
   void EmitSynthesizedCXXCopyCtor(llvm::Value *Dest, llvm::Value *Src,
                                   const Expr *Exp);
 
@@ -2252,7 +2253,7 @@ public:
   /// If the statement (recursively) contains a switch or loop with a break
   /// inside of it, this is fine.
   static bool containsBreak(const Stmt *S);
-  
+
   /// ConstantFoldsToSimpleInteger - If the specified expression does not fold
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the boolean result in Result.
@@ -2262,7 +2263,7 @@ public:
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the folded value.
   bool ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APInt &Result);
-  
+
   /// EmitBranchOnBoolExpr - Emit a branch on a boolean condition (e.g. for an
   /// if statement) to the specified blocks.  Based on the condition, this might
   /// try to simplify the codegen of the conditional based on the branch.

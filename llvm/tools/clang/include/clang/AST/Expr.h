@@ -57,8 +57,8 @@ class Expr : public Stmt {
 
 protected:
   Expr(StmtClass SC, QualType T, ExprValueKind VK, ExprObjectKind OK,
-       bool TD, bool VD, bool ID, bool ContainsUnexpandedParameterPack) 
-    : Stmt(SC) 
+       bool TD, bool VD, bool ID, bool ContainsUnexpandedParameterPack)
+    : Stmt(SC)
   {
     ExprBits.TypeDependent = TD;
     ExprBits.ValueDependent = VD;
@@ -98,8 +98,8 @@ public:
   bool isValueDependent() const { return ExprBits.ValueDependent; }
 
   /// \brief Set whether this expression is value-dependent or not.
-  void setValueDependent(bool VD) { 
-    ExprBits.ValueDependent = VD; 
+  void setValueDependent(bool VD) {
+    ExprBits.ValueDependent = VD;
     if (VD)
       ExprBits.InstantiationDependent = true;
   }
@@ -118,8 +118,8 @@ public:
   bool isTypeDependent() const { return ExprBits.TypeDependent; }
 
   /// \brief Set whether this expression is type-dependent or not.
-  void setTypeDependent(bool TD) { 
-    ExprBits.TypeDependent = TD; 
+  void setTypeDependent(bool TD) {
+    ExprBits.TypeDependent = TD;
     if (TD)
       ExprBits.InstantiationDependent = true;
   }
@@ -141,12 +141,12 @@ public:
   /// }
   /// \endcode
   ///
-  bool isInstantiationDependent() const { 
-    return ExprBits.InstantiationDependent; 
+  bool isInstantiationDependent() const {
+    return ExprBits.InstantiationDependent;
   }
-  
+
   /// \brief Set whether this expression is instantiation-dependent or not.
-  void setInstantiationDependent(bool ID) { 
+  void setInstantiationDependent(bool ID) {
     ExprBits.InstantiationDependent = ID;
   }
 
@@ -164,8 +164,8 @@ public:
   ///
   /// The expressions \c args and \c static_cast<Types&&>(args) both
   /// contain parameter packs.
-  bool containsUnexpandedParameterPack() const { 
-    return ExprBits.ContainsUnexpandedParameterPack; 
+  bool containsUnexpandedParameterPack() const {
+    return ExprBits.ContainsUnexpandedParameterPack;
   }
 
   /// \brief Set the bit that describes whether this expression
@@ -303,12 +303,12 @@ public:
     bool isPRValue() const { return Kind >= CL_Function; }
     bool isRValue() const { return Kind >= CL_XValue; }
     bool isModifiable() const { return getModifiable() == CM_Modifiable; }
-    
+
     /// \brief Create a simple, modifiably lvalue
     static Classification makeSimpleLValue() {
       return Classification(CL_LValue, CM_Modifiable);
     }
-    
+
   };
   /// \brief Classify - Classify this expression according to the C++0x
   ///        expression taxonomy.
@@ -391,13 +391,13 @@ public:
 
   /// \brief Returns whether this expression refers to a vector element.
   bool refersToVectorElement() const;
-  
+
   /// isKnownToHaveBooleanValue - Return true if this is an integer expression
   /// that is known to return 0 or 1.  This happens for _Bool/bool expressions
   /// but also int expressions which are produced by things like comparisons in
   /// C.
   bool isKnownToHaveBooleanValue() const;
-  
+
   /// isIntegerConstantExpr - Return true if this expression is a valid integer
   /// constant expression, and, if so, return its value in Result.  If not a
   /// valid i-c-e, return false and fill in Loc (if specified) with the location
@@ -462,11 +462,11 @@ public:
   bool isEvaluatable(const ASTContext &Ctx) const;
 
   /// HasSideEffects - This routine returns true for all those expressions
-  /// which must be evaluated each time and must not be optimized away 
+  /// which must be evaluated each time and must not be optimized away
   /// or evaluated at compile time. Example is a function call, volatile
   /// variable read.
   bool HasSideEffects(const ASTContext &Ctx) const;
-  
+
   /// EvaluateAsInt - Call Evaluate and return the folded integer. This
   /// must be called on an expression that constant folds to an integer.
   llvm::APSInt EvaluateAsInt(const ASTContext &Ctx) const;
@@ -499,16 +499,16 @@ public:
   enum NullPointerConstantValueDependence {
     /// \brief Specifies that the expression should never be value-dependent.
     NPC_NeverValueDependent = 0,
-    
+
     /// \brief Specifies that a value-dependent expression of integral or
     /// dependent type should be considered a null pointer constant.
     NPC_ValueDependentIsNull,
-    
+
     /// \brief Specifies that a value-dependent expression should be considered
     /// to never be a null pointer constant.
     NPC_ValueDependentIsNotNull
   };
-  
+
   /// isNullPointerConstant - C99 6.3.2.3p3 - Test if this reduces down to
   /// a Null pointer constant. The return value can further distinguish the
   /// kind of NULL pointer constant that was detected.
@@ -567,11 +567,11 @@ public:
   const Expr *IgnoreParenImpCasts() const {
     return const_cast<Expr*>(this)->IgnoreParenImpCasts();
   }
-  
+
   /// Ignore parentheses and lvalue casts.  Strip off any ParenExpr and
   /// CastExprs that represent lvalue casts, returning their operand.
   Expr *IgnoreParenLValueCasts();
-  
+
   const Expr *IgnoreParenLValueCasts() const {
     return const_cast<Expr*>(this)->IgnoreParenLValueCasts();
   }
@@ -584,19 +584,19 @@ public:
   /// \brief Determine whether this expression is a default function argument.
   ///
   /// Default arguments are implicitly generated in the abstract syntax tree
-  /// by semantic analysis for function calls, object constructions, etc. in 
+  /// by semantic analysis for function calls, object constructions, etc. in
   /// C++. Default arguments are represented by \c CXXDefaultArgExpr nodes;
   /// this routine also looks through any implicit casts to determine whether
   /// the expression is a default argument.
   bool isDefaultArgument() const;
-  
+
   /// \brief Determine whether the result of this expression is a
   /// temporary object of the given class type.
   bool isTemporaryObject(ASTContext &Ctx, const CXXRecordDecl *TempTy) const;
 
   /// \brief Whether this expression is an implicit reference to 'this' in C++.
   bool isImplicitCXXThis() const;
-  
+
   const Expr *IgnoreParens() const {
     return const_cast<Expr*>(this)->IgnoreParens();
   }
@@ -631,14 +631,14 @@ class OpaqueValueExpr : public Expr {
   friend class ASTStmtReader;
   Expr *SourceExpr;
   SourceLocation Loc;
-  
+
 public:
-  OpaqueValueExpr(SourceLocation Loc, QualType T, ExprValueKind VK, 
+  OpaqueValueExpr(SourceLocation Loc, QualType T, ExprValueKind VK,
                   ExprObjectKind OK = OK_Ordinary)
     : Expr(OpaqueValueExprClass, T, VK, OK,
-           T->isDependentType(), T->isDependentType(), 
+           T->isDependentType(), T->isDependentType(),
            T->isInstantiationDependentType(),
-           false), 
+           false),
       SourceExpr(0), Loc(Loc) {
   }
 
@@ -652,7 +652,7 @@ public:
 
   /// \brief Retrieve the location of this expression.
   SourceLocation getLocation() const { return Loc; }
-  
+
   SourceRange getSourceRange() const {
     if (SourceExpr) return SourceExpr->getSourceRange();
     return Loc;
@@ -686,20 +686,20 @@ public:
 struct ExplicitTemplateArgumentList {
   /// \brief The source location of the left angle bracket ('<');
   SourceLocation LAngleLoc;
-  
+
   /// \brief The source location of the right angle bracket ('>');
   SourceLocation RAngleLoc;
-  
+
   /// \brief The number of template arguments in TemplateArgs.
   /// The actual template arguments (if any) are stored after the
   /// ExplicitTemplateArgumentList structure.
   unsigned NumTemplateArgs;
-  
+
   /// \brief Retrieve the template arguments
   TemplateArgumentLoc *getTemplateArgs() {
     return reinterpret_cast<TemplateArgumentLoc *> (this + 1);
   }
-  
+
   /// \brief Retrieve the template arguments
   const TemplateArgumentLoc *getTemplateArgs() const {
     return reinterpret_cast<const TemplateArgumentLoc *> (this + 1);
@@ -979,7 +979,7 @@ private:
 public:
   PredefinedExpr(SourceLocation l, QualType type, IdentType IT)
     : Expr(PredefinedExprClass, type, VK_LValue, OK_Ordinary,
-           type->isDependentType(), type->isDependentType(), 
+           type->isDependentType(), type->isDependentType(),
            type->isInstantiationDependentType(),
            /*ContainsUnexpandedParameterPack=*/false),
       Loc(l), Type(IT) {}
@@ -1041,14 +1041,14 @@ protected:
 };
 
 class APIntStorage : public APNumericStorage {
-public:  
-  llvm::APInt getValue() const { return getIntValue(); } 
+public:
+  llvm::APInt getValue() const { return getIntValue(); }
   void setValue(ASTContext &C, const llvm::APInt &Val) { setIntValue(C, Val); }
 };
 
 class APFloatStorage : public APNumericStorage {
-public:  
-  llvm::APFloat getValue() const { return llvm::APFloat(getIntValue()); } 
+public:
+  llvm::APFloat getValue() const { return llvm::APFloat(getIntValue()); }
   void setValue(ASTContext &C, const llvm::APFloat &Val) {
     setIntValue(C, Val.bitcastToAPInt());
   }
@@ -1256,7 +1256,7 @@ public:
                                const SourceLocation *Loc, unsigned NumStrs);
 
   /// Simple constructor for string literals made from one token.
-  static StringLiteral *Create(ASTContext &C, llvm::StringRef Str, bool Wide, 
+  static StringLiteral *Create(ASTContext &C, llvm::StringRef Str, bool Wide,
                                bool Pascal, QualType Ty, SourceLocation Loc) {
     return Create(C, Str, Wide, Pascal, Ty, &Loc, 1);
   }
@@ -1275,7 +1275,7 @@ public:
 
   bool isWide() const { return IsWide; }
   bool isPascal() const { return IsPascal; }
-  
+
   bool containsNonAsciiOrNull() const {
     llvm::StringRef Str = getString();
     for (unsigned i = 0, e = Str.size(); i != e; ++i)
@@ -1295,7 +1295,7 @@ public:
     assert(TokNum < NumConcatenated && "Invalid tok number");
     TokLocs[TokNum] = L;
   }
-  
+
   /// getLocationOfByte - Return a source location that points to the specified
   /// byte of this string literal.
   ///
@@ -1390,7 +1390,7 @@ public:
     : Expr(UnaryOperatorClass, type, VK, OK,
            input->isTypeDependent() || type->isDependentType(),
            input->isValueDependent(),
-           (input->isInstantiationDependent() || 
+           (input->isInstantiationDependent() ||
             type->isInstantiationDependentType()),
            input->containsUnexpandedParameterPack()),
       Opc(opc), Loc(l), Val(input) {}
@@ -1466,14 +1466,14 @@ public:
 /// @code
 /// struct S {
 ///   float f;
-///   double d;    
+///   double d;
 /// };
 /// struct T {
 ///   int i;
 ///   struct S s[10];
 /// };
 /// @endcode
-/// we can represent and evaluate the expression @c offsetof(struct T, s[2].d). 
+/// we can represent and evaluate the expression @c offsetof(struct T, s[2].d).
 
 class OffsetOfExpr : public Expr {
 public:
@@ -1495,48 +1495,48 @@ public:
 
   private:
     enum { MaskBits = 2, Mask = 0x03 };
-    
+
     /// \brief The source range that covers this part of the designator.
     SourceRange Range;
-    
+
     /// \brief The data describing the designator, which comes in three
     /// different forms, depending on the lower two bits.
-    ///   - An unsigned index into the array of Expr*'s stored after this node 
+    ///   - An unsigned index into the array of Expr*'s stored after this node
     ///     in memory, for [constant-expression] designators.
     ///   - A FieldDecl*, for references to a known field.
     ///   - An IdentifierInfo*, for references to a field with a given name
     ///     when the class type is dependent.
-    ///   - A CXXBaseSpecifier*, for references that look at a field in a 
+    ///   - A CXXBaseSpecifier*, for references that look at a field in a
     ///     base class.
     uintptr_t Data;
-    
+
   public:
     /// \brief Create an offsetof node that refers to an array element.
-    OffsetOfNode(SourceLocation LBracketLoc, unsigned Index, 
+    OffsetOfNode(SourceLocation LBracketLoc, unsigned Index,
                  SourceLocation RBracketLoc)
       : Range(LBracketLoc, RBracketLoc), Data((Index << 2) | Array) { }
-    
+
     /// \brief Create an offsetof node that refers to a field.
-    OffsetOfNode(SourceLocation DotLoc, FieldDecl *Field, 
+    OffsetOfNode(SourceLocation DotLoc, FieldDecl *Field,
                  SourceLocation NameLoc)
-      : Range(DotLoc.isValid()? DotLoc : NameLoc, NameLoc), 
+      : Range(DotLoc.isValid()? DotLoc : NameLoc, NameLoc),
         Data(reinterpret_cast<uintptr_t>(Field) | OffsetOfNode::Field) { }
-    
+
     /// \brief Create an offsetof node that refers to an identifier.
     OffsetOfNode(SourceLocation DotLoc, IdentifierInfo *Name,
                  SourceLocation NameLoc)
-      : Range(DotLoc.isValid()? DotLoc : NameLoc, NameLoc), 
+      : Range(DotLoc.isValid()? DotLoc : NameLoc, NameLoc),
         Data(reinterpret_cast<uintptr_t>(Name) | Identifier) { }
 
     /// \brief Create an offsetof node that refers into a C++ base class.
     explicit OffsetOfNode(const CXXBaseSpecifier *Base)
       : Range(), Data(reinterpret_cast<uintptr_t>(Base) | OffsetOfNode::Base) {}
-    
+
     /// \brief Determine what kind of offsetof node this is.
-    Kind getKind() const { 
+    Kind getKind() const {
       return static_cast<Kind>(Data & Mask);
     }
-    
+
     /// \brief For an array element node, returns the index into the array
     /// of expressions.
     unsigned getArrayExprIndex() const {
@@ -1549,28 +1549,28 @@ public:
       assert(getKind() == Field);
       return reinterpret_cast<FieldDecl *>(Data & ~(uintptr_t)Mask);
     }
-    
+
     /// \brief For a field or identifier offsetof node, returns the name of
     /// the field.
     IdentifierInfo *getFieldName() const;
-    
+
     /// \brief For a base class node, returns the base specifier.
     CXXBaseSpecifier *getBase() const {
       assert(getKind() == Base);
-      return reinterpret_cast<CXXBaseSpecifier *>(Data & ~(uintptr_t)Mask);      
+      return reinterpret_cast<CXXBaseSpecifier *>(Data & ~(uintptr_t)Mask);
     }
-    
+
     /// \brief Retrieve the source range that covers this offsetof node.
     ///
     /// For an array element node, the source range contains the locations of
     /// the square brackets. For a field or identifier node, the source range
-    /// contains the location of the period (if there is one) and the 
+    /// contains the location of the period (if there is one) and the
     /// identifier.
     SourceRange getSourceRange() const { return Range; }
   };
 
 private:
-  
+
   SourceLocation OperatorLoc, RParenLoc;
   // Base type;
   TypeSourceInfo *TSInfo;
@@ -1578,26 +1578,26 @@ private:
   unsigned NumComps;
   // Number of sub-expressions (i.e. array subscript expressions).
   unsigned NumExprs;
-  
-  OffsetOfExpr(ASTContext &C, QualType type, 
+
+  OffsetOfExpr(ASTContext &C, QualType type,
                SourceLocation OperatorLoc, TypeSourceInfo *tsi,
-               OffsetOfNode* compsPtr, unsigned numComps, 
+               OffsetOfNode* compsPtr, unsigned numComps,
                Expr** exprsPtr, unsigned numExprs,
                SourceLocation RParenLoc);
 
   explicit OffsetOfExpr(unsigned numComps, unsigned numExprs)
     : Expr(OffsetOfExprClass, EmptyShell()),
-      TSInfo(0), NumComps(numComps), NumExprs(numExprs) {}  
+      TSInfo(0), NumComps(numComps), NumExprs(numExprs) {}
 
 public:
-  
-  static OffsetOfExpr *Create(ASTContext &C, QualType type, 
-                              SourceLocation OperatorLoc, TypeSourceInfo *tsi, 
-                              OffsetOfNode* compsPtr, unsigned numComps, 
+
+  static OffsetOfExpr *Create(ASTContext &C, QualType type,
+                              SourceLocation OperatorLoc, TypeSourceInfo *tsi,
+                              OffsetOfNode* compsPtr, unsigned numComps,
                               Expr** exprsPtr, unsigned numExprs,
                               SourceLocation RParenLoc);
 
-  static OffsetOfExpr *CreateEmpty(ASTContext &C, 
+  static OffsetOfExpr *CreateEmpty(ASTContext &C,
                                    unsigned NumComps, unsigned NumExprs);
 
   /// getOperatorLoc - Return the location of the operator.
@@ -1607,14 +1607,14 @@ public:
   /// \brief Return the location of the right parentheses.
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation R) { RParenLoc = R; }
-  
+
   TypeSourceInfo *getTypeSourceInfo() const {
     return TSInfo;
   }
   void setTypeSourceInfo(TypeSourceInfo *tsi) {
     TSInfo = tsi;
   }
-  
+
   const OffsetOfNode &getComponent(unsigned Idx) const {
     assert(Idx < NumComps && "Subscript out of range");
     return reinterpret_cast<const OffsetOfNode *> (this + 1)[Idx];
@@ -1624,7 +1624,7 @@ public:
     assert(Idx < NumComps && "Subscript out of range");
     reinterpret_cast<OffsetOfNode *> (this + 1)[Idx] = ON;
   }
-  
+
   unsigned getNumComponents() const {
     return NumComps;
   }
@@ -1643,7 +1643,7 @@ public:
     reinterpret_cast<Expr **>(
                 reinterpret_cast<OffsetOfNode *>(this+1) + NumComps)[Idx] = E;
   }
-  
+
   unsigned getNumExpressions() const {
     return NumExprs;
   }
@@ -1909,7 +1909,7 @@ public:
   Expr **getArgs() {
     return reinterpret_cast<Expr **>(SubExprs+getNumPreArgs()+PREARGS_START);
   }
-  
+
   /// getArg - Return the specified argument.
   Expr *getArg(unsigned Arg) {
     assert(Arg < NumArgs && "Arg access out of range!");
@@ -2037,7 +2037,7 @@ public:
              const DeclarationNameInfo &NameInfo, QualType ty,
              ExprValueKind VK, ExprObjectKind OK)
     : Expr(MemberExprClass, ty, VK, OK,
-           base->isTypeDependent(), 
+           base->isTypeDependent(),
            base->isValueDependent(),
            base->isInstantiationDependent(),
            base->containsUnexpandedParameterPack()),
@@ -2102,13 +2102,13 @@ public:
     return getMemberQualifier()->QualifierLoc.getNestedNameSpecifier();
   }
 
-  /// \brief If the member name was qualified, retrieves the 
+  /// \brief If the member name was qualified, retrieves the
   /// nested-name-specifier that precedes the member name, with source-location
   /// information.
   NestedNameSpecifierLoc getQualifierLoc() const {
     if (!hasQualifier())
       return NestedNameSpecifierLoc();
-    
+
     return getMemberQualifier()->QualifierLoc;
   }
 
@@ -2151,7 +2151,7 @@ public:
     if (!hasExplicitTemplateArgs()) return 0;
     return &getExplicitTemplateArgs();
   }
-  
+
   /// \brief Retrieve the location of the left angle bracket following the
   /// member name ('<'), if any.
   SourceLocation getLAngleLoc() const {
@@ -2203,14 +2203,14 @@ public:
   void setMemberLoc(SourceLocation L) { MemberLoc = L; }
 
   SourceRange getSourceRange() const;
-  
+
   SourceLocation getExprLoc() const { return MemberLoc; }
 
   /// \brief Determine whether the base of this explicit is implicit.
   bool isImplicitAccess() const {
     return getBase() && getBase()->isImplicitCXXThis();
   }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MemberExprClass;
   }
@@ -2224,46 +2224,48 @@ public:
 };
 
 // ndm Scout vector types
-  
+
 class ScoutVectorMemberExpr : public Expr {
   Stmt* Base;
 
   SourceLocation Loc;
-  
+
   unsigned index;
-  
+
 public:
   ScoutVectorMemberExpr(Expr* base, SourceLocation loc,
                         unsigned index, QualType ty)
-  : Expr(ScoutVectorMemberExprClass, ty, VK_LValue, 
+  : Expr(ScoutVectorMemberExprClass, ty, VK_LValue,
          OK_Ordinary, false, false, false, false),
-  Base(base), Loc(loc), index(index){ 
+    Base(base), Loc(loc), index(index){
 
   }
-  
-  static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base, 
+
+  static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base,
                                        SourceLocation loc,
                                        unsigned index, QualType ty);
-  
+
   void setBase(Expr *E) { Base = E; }
   Expr *getBase() const { return cast<Expr>(Base); }
-  
+
+  unsigned getIdx() const { return index; }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ScoutVectorMemberExprClass;
   }
   static bool classof(const ScoutVectorMemberExpr *) { return true; }
-  
+
   // Iterators
   child_range children() { return child_range(&Base, &Base+1); }
-  
+
   SourceRange getSourceRange() const{
     return SourceRange(Loc, Loc);
   }
-  
+
   friend class ASTReader;
   friend class ASTStmtWriter;
 };
-  
+
 /// CompoundLiteralExpr - [C99 6.5.2.5]
 ///
 class CompoundLiteralExpr : public Expr {
@@ -2281,7 +2283,7 @@ public:
   CompoundLiteralExpr(SourceLocation lparenloc, TypeSourceInfo *tinfo,
                       QualType T, ExprValueKind VK, Expr *init, bool fileScope)
     : Expr(CompoundLiteralExprClass, T, VK, OK_Ordinary,
-           tinfo->getType()->isDependentType(), 
+           tinfo->getType()->isDependentType(),
            init->isValueDependent(),
            (init->isInstantiationDependent() ||
             tinfo->getType()->isInstantiationDependentType()),
@@ -2418,7 +2420,7 @@ protected:
          // Cast expressions are value-dependent if the type is
          // dependent or if the subexpression is value-dependent.
          ty->isDependentType() || (op && op->isValueDependent()),
-         (ty->isInstantiationDependentType() || 
+         (ty->isInstantiationDependentType() ||
           (op && op->isInstantiationDependent())),
          (ty->containsUnexpandedParameterPack() ||
           op->containsUnexpandedParameterPack())),
@@ -2899,7 +2901,7 @@ public:
   //   the expression if the condition evaluates to false.  This is
   //   the same as getRHS.
   Expr *getFalseExpr() const { return cast<Expr>(SubExprs[RHS]); }
-  
+
   Expr *getLHS() const { return cast<Expr>(SubExprs[LHS]); }
   Expr *getRHS() const { return cast<Expr>(SubExprs[RHS]); }
 
@@ -2985,7 +2987,7 @@ public:
   Expr *getFalseExpr() const {
     return cast<Expr>(SubExprs[RHS]);
   }
-  
+
   SourceRange getSourceRange() const {
     return SourceRange(getCommon()->getLocStart(), getFalseExpr()->getLocEnd());
   }
@@ -3145,7 +3147,7 @@ public:
 
   /// \brief Retrieve the array of expressions.
   Expr **getSubExprs() { return reinterpret_cast<Expr **>(SubExprs); }
-  
+
   /// getExpr - Return the Expr at the specified index.
   Expr *getExpr(unsigned Index) {
     assert((Index < NumExprs) && "Arg access out of range!");
@@ -3393,7 +3395,7 @@ public:
 
   /// \brief Retrieve the set of initializers.
   Expr **getInits() { return reinterpret_cast<Expr **>(InitExprs.data()); }
-    
+
   const Expr *getInit(unsigned Init) const {
     assert(Init < getNumInits() && "Initializer access out of range!");
     return cast_or_null<Expr>(InitExprs[Init]);
@@ -3764,7 +3766,7 @@ public:
 
   Designator *getDesignator(unsigned Idx) { return &designators_begin()[Idx]; }
 
-  void setDesignators(ASTContext &C, const Designator *Desigs, 
+  void setDesignators(ASTContext &C, const Designator *Desigs,
                       unsigned NumDesigs);
 
   Expr *getArrayIndex(const Designator& D);
@@ -4099,7 +4101,7 @@ protected:
 public:
   BlockExpr(BlockDecl *BD, QualType ty)
     : Expr(BlockExprClass, ty, VK_RValue, OK_Ordinary,
-           ty->isDependentType(), false, 
+           ty->isDependentType(), false,
            // FIXME: Check for instantiate-dependence in the statement?
            ty->isInstantiationDependentType(),
            false),
@@ -4163,7 +4165,7 @@ public:
 
   bool isConstQualAdded() const { return ConstQualAdded; }
   void setConstQualAdded(bool C) { ConstQualAdded = C; }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == BlockDeclRefExprClass;
   }
@@ -4181,12 +4183,12 @@ private:
   Expr* SrcExpr;
   QualType DstType;
   SourceLocation BuiltinLoc, RParenLoc;
-  
+
 public:
   AsTypeExpr(Expr* SrcExpr, QualType DstType,
              ExprValueKind VK, ExprObjectKind OK,
              SourceLocation BuiltinLoc, SourceLocation RParenLoc)
-    : Expr(AsTypeExprClass, DstType, VK, OK, 
+    : Expr(AsTypeExprClass, DstType, VK, OK,
            DstType->isDependentType(),
            DstType->isDependentType() || SrcExpr->isValueDependent(),
            (DstType->isInstantiationDependentType() ||
@@ -4195,23 +4197,23 @@ public:
             SrcExpr->containsUnexpandedParameterPack())),
   SrcExpr(SrcExpr), DstType(DstType),
   BuiltinLoc(BuiltinLoc), RParenLoc(RParenLoc) {}
-  
+
   /// \brief Build an empty __builtin_astype
   explicit AsTypeExpr(EmptyShell Empty) : Expr(AsTypeExprClass, Empty) {}
-  
+
   /// getSrcExpr - Return the Expr to be converted.
   Expr *getSrcExpr() const { return SrcExpr; }
   QualType getDstType() const { return DstType; }
-  
+
   SourceRange getSourceRange() const {
     return SourceRange(BuiltinLoc, RParenLoc);
   }
-  
+
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == AsTypeExprClass; 
+    return T->getStmtClass() == AsTypeExprClass;
   }
   static bool classof(const AsTypeExpr *) { return true; }
-  
+
   // Iterators
   child_range children() { return child_range(); }
 };

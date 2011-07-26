@@ -234,9 +234,9 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
           case BuiltinType::UShort:
             return T == C.ShortTy;
           case BuiltinType::Int:
-            return T == C.UnsignedIntTy;
+            return T == C.UIntTy;
           case BuiltinType::UInt:
-            return T == C.IntTy;
+            return T == C.UnsignedIntTy;
           case BuiltinType::Long:
             return T == C.UnsignedLongTy;
           case BuiltinType::ULong:
@@ -277,21 +277,21 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
         C.getCanonicalType(PT->getPointeeType()).getUnqualifiedType();
       return pointeeTy == C.getWCharType();
     }
-    
+
     case WIntTy: {
       // Instead of doing a lookup for the definition of 'wint_t' (which
       // is defined by the system headers) instead see if wchar_t and
       // the argument type promote to the same type.
       QualType PromoWChar =
-        C.getWCharType()->isPromotableIntegerType() 
+        C.getWCharType()->isPromotableIntegerType()
           ? C.getPromotedIntegerType(C.getWCharType()) : C.getWCharType();
-      QualType PromoArg = 
+      QualType PromoArg =
         argTy->isPromotableIntegerType()
           ? C.getPromotedIntegerType(argTy) : argTy;
-      
+
       PromoWChar = C.getCanonicalType(PromoWChar).getUnqualifiedType();
       PromoArg = C.getCanonicalType(PromoArg).getUnqualifiedType();
-      
+
       return PromoWChar == PromoArg;
     }
 
@@ -407,7 +407,7 @@ bool FormatSpecifier::hasValidLengthModifier() const {
   switch (LM.getKind()) {
     case LengthModifier::None:
       return true;
-      
+
         // Handle most integer flags
     case LengthModifier::AsChar:
     case LengthModifier::AsShort:
@@ -427,7 +427,7 @@ bool FormatSpecifier::hasValidLengthModifier() const {
         default:
           return false;
       }
-      
+
         // Handle 'l' flag
     case LengthModifier::AsLong:
       switch (CS.getKind()) {
@@ -452,7 +452,7 @@ bool FormatSpecifier::hasValidLengthModifier() const {
         default:
           return false;
       }
-      
+
     case LengthModifier::AsLongDouble:
       switch (CS.getKind()) {
         case ConversionSpecifier::aArg:
