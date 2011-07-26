@@ -2550,13 +2550,11 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   
   
   PushOnScopeChains(D, S, true);
-  
-  QualType ColorType(new BuiltinType(BuiltinType::Float4), 0);
-  
+
   ImplicitParamDecl* CD = 
   ImplicitParamDecl::Create(Context, CurContext, MeshLoc,  
                             &Context.Idents.get("color"),
-                            ColorType);
+                            Context.Float4Ty);
   
   PushOnScopeChains(CD, S, true);
   

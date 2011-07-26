@@ -9268,13 +9268,11 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // ndm - Scout Mesh
 
 void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  QualType PositionType(new BuiltinType(BuiltinType::Int4), 0);
-  
   // ndm - ok to pass null type source info and bit field width? 
   
   FieldDecl *PositionFD = 
   FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("position"), PositionType, 0,
+                    &Context.Idents.get("position"), Context.Int4Ty, 0,
                     0, true, false);
   
   PositionFD->setMeshFieldType(FieldDecl::FieldCells);
