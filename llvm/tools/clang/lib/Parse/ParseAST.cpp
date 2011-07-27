@@ -27,7 +27,6 @@
 
 // ndm - Scout AST view
 #include "clang/AST/ASTViewScout.h"
-
 #include <iostream>
 
 using namespace clang;
@@ -94,12 +93,12 @@ void clang::ParseAST(Sema &S, bool PrintStats, ASTViewScout* ASTViewer) {
     // If we got a null return and something *was* parsed, ignore it.  This
     // is due to a top-level semicolon, an action override, or a parse error
     // skipping something.
-    if (ADecl){
+    if (ADecl){      
       Consumer->HandleTopLevelDecl(ADecl.get());
       
       // ndm - AST Viewer
       if(ASTViewer){
-        ASTViewer->addDeclGroup(ADecl.get());
+        ASTViewer->outputGraphviz(ADecl.get());
       }
     }
   };

@@ -22,15 +22,10 @@ public:
 
   ~ASTViewScout();
 
-  void addDeclGroup(DeclGroupRef declGroup);
-
-  void generateGraphViz(const std::string& outFilePath);
+  void outputGraphviz(DeclGroupRef declGroup);
 
 private:
-  typedef std::vector<Decl*> DeclVec;
-
-  DeclVec declVec;
-  Sema& sema;
+  Sema& sema_;
 };
 
 } // end namespace clang
