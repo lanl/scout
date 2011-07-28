@@ -27,6 +27,10 @@ namespace{
     : head_(head),
     id_(-1){
       
+      string escapedHead = head;
+      escapeStr_(escapedHead);
+      head_ = escapedHead;
+      
     }
     
     ~ViewASTNode(){
@@ -55,6 +59,11 @@ namespace{
     }
     
     void addAttr(const string& attr){
+      // to save space, skip pointer values which are always hex values
+      if(attr.size() >= 2 && attr[0] == '0' && attr[1] == 'x'){
+        return;
+      }
+      
       string escapedAttr = attr;
       escapeStr_(escapedAttr);
       attrVec_.push_back(escapedAttr);
@@ -79,6 +88,8 @@ namespace{
     }
     
   private:
+    
+    // escape a string so that it can safely be used in Graphviz
     void escapeStr_(string& str){
       for(size_t i = 0; i < str.size(); ++i){
         if((str[i] == '\"' || str[i] == '<' || str[i] == '>') && 
@@ -97,6 +108,7 @@ namespace{
     int id_;
   };
   
+  // parse the AST from text and return the top-level node
   ViewASTNode* viewASTParse(const string& str){
     typedef vector<ViewASTNode*> ViewASTNodeStack;
     ViewASTNodeStack stack;
@@ -145,17 +157,21 @@ namespace{
         stack.back()->addAttr(attr);
       }
       else if(str[i] == '\"'){
-        string attr;
+        string head;
         char last = 0;
         
         for(;;){
-          if(str[i] == ' ' || str[i] == '\n'){
-            if(last != ' ' && last != '\n'){
-              attr += ' ';
+          if(str[i] == '\n'){
+            break;
+          }
+
+          if(str[i] == ' '){
+            if(last != ' '){
+              head += ' ';
             }
           }
           else{
-            attr += str[i];
+            head += str[i];
           }
           
           if(str[i] == '\"' && last && last != '\\'){
@@ -166,7 +182,50 @@ namespace{
           ++i;
         }
         
-        stack.back()->addAttr(attr);
+        if(str[i] == '\"'){
+          stack.back()->addAttr(head);
+          continue;
+        }
+        
+        ViewASTNode* n = new ViewASTNode(head);
+        
+        if(!stack.empty()){
+          stack.back()->addChild(n);
+        }
+        
+        ++i;
+        
+        string body;
+        size_t open = 0;
+        last = 0;
+        for(;;){
+          if(str[i] == ' ' || str[i] == '\n'){
+            if(last != ' ' && last != '\n'){
+              body += ' ';
+            }
+          }
+          else{
+            body += str[i];
+          }
+          
+          if(str[i] == '('){
+            ++open;
+          }
+          else if(str[i] == ')'){
+            --open;
+            if(open == 0){
+              break;
+            }
+          }
+          
+          last = str[i];
+          ++i;
+        }
+        
+        ++i;
+        assert(str[i] == '\"');
+        
+        n->addChild(viewASTParse(body));
       }
       else if(str[i] == ')'){
         if(stack.size() == 1){
