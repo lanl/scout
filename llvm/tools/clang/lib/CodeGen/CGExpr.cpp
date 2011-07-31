@@ -46,6 +46,7 @@ llvm::Value *CodeGenFunction::EmitCastToVoidPtr(llvm::Value *value) {
 /// block.
 llvm::AllocaInst *CodeGenFunction::CreateTempAlloca(const llvm::Type *Ty,
                                                     const llvm::Twine &Name) {
+  DEBUG("CreateTempAlloca");
   if (!Builder.isNamePreserving())
     return new llvm::AllocaInst(Ty, 0, "", AllocaInsertPt);
   return new llvm::AllocaInst(Ty, 0, Name, AllocaInsertPt);
@@ -60,6 +61,7 @@ void CodeGenFunction::InitTempAlloca(llvm::AllocaInst *Var,
 
 llvm::AllocaInst *CodeGenFunction::CreateIRTemp(QualType Ty,
                                                 const llvm::Twine &Name) {
+  DEBUG("CreateIRTemp");
   llvm::AllocaInst *Alloc = CreateTempAlloca(ConvertType(Ty), Name);
   // FIXME: Should we prefer the preferred type alignment here?
   CharUnits Align = getContext().getTypeAlignInChars(Ty);
@@ -69,6 +71,7 @@ llvm::AllocaInst *CodeGenFunction::CreateIRTemp(QualType Ty,
 
 llvm::AllocaInst *CodeGenFunction::CreateMemTemp(QualType Ty,
                                                  const llvm::Twine &Name) {
+  DEBUG("CreateMemTemp");
   llvm::AllocaInst *Alloc = CreateTempAlloca(ConvertTypeForMem(Ty), Name);
   // FIXME: Should we prefer the preferred type alignment here?
   CharUnits Align = getContext().getTypeAlignInChars(Ty);
@@ -133,6 +136,7 @@ void CodeGenFunction::EmitAnyExprToMem(const Expr *E,
                                        llvm::Value *Location,
                                        Qualifiers Quals,
                                        bool IsInit) {
+  DEBUG("EmitAnyExprToMem");
   if (E->getType()->isAnyComplexType())
     EmitComplexExprIntoAddr(E, Location, Quals.hasVolatile());
   else if (hasAggregateLLVMType(E->getType()))
@@ -205,6 +209,7 @@ EmitExprForReferenceBinding(CodeGenFunction &CGF, const Expr *E,
                             const CXXDestructorDecl *&ReferenceTemporaryDtor,
                             QualType &ObjCARCReferenceLifetimeType,
                             const NamedDecl *InitializedDecl) {
+  CGF.DEBUG("EmitExprForReferenceBinding");
   // Look through expressions for materialized temporaries (for now).
   if (const MaterializeTemporaryExpr *M
                                       = dyn_cast<MaterializeTemporaryExpr>(E)) {
@@ -428,6 +433,7 @@ EmitExprForReferenceBinding(CodeGenFunction &CGF, const Expr *E,
 RValue
 CodeGenFunction::EmitReferenceBindingToExpr(const Expr *E,
                                             const NamedDecl *InitializedDecl) {
+  DEBUG("EmitReferenceBindingToExpr");
   llvm::Value *ReferenceTemporary = 0;
   const CXXDestructorDecl *ReferenceTemporaryDtor = 0;
   QualType ObjCARCReferenceLifetimeType;
@@ -621,6 +627,7 @@ LValue CodeGenFunction::EmitCheckedLValue(const Expr *E) {
 /// length type, this is not possible.
 ///
 LValue CodeGenFunction::EmitLValue(const Expr *E) {
+  DEBUG("EmitLValue");
   switch (E->getStmtClass()) {
   default: return EmitUnsupportedLValue(E, "l-value expression");
 
@@ -766,6 +773,7 @@ void CodeGenFunction::EmitStoreOfScalar(llvm::Value *Value, llvm::Value *Addr,
                                         bool Volatile, unsigned Alignment,
                                         QualType Ty,
                                         llvm::MDNode *TBAAInfo) {
+  DEBUG("EmitStoreOfScalar");
   Value = EmitToMemory(Value, Ty);
   llvm::StoreInst *Store = Builder.CreateStore(Value, Addr, Volatile);
   if (Alignment)
@@ -929,6 +937,7 @@ RValue CodeGenFunction::EmitLoadOfExtVectorElementLValue(LValue LV) {
 /// lvalue, where both are guaranteed to the have the same type, and that type
 /// is 'Ty'.
 void CodeGenFunction::EmitStoreThroughLValue(RValue Src, LValue Dst) {
+  DEBUG("EmitStoreThroughLValue");
   if (!Dst.isSimple()) {
     if (Dst.isVectorElt()) {
       // Read/modify/write the vector, inserting the new element.
@@ -1723,10 +1732,27 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
 }
 
 LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
+  DEBUG("EmitMemberExpr");
   bool isNonGC = false;
   Expr *BaseExpr = E->getBase();
   llvm::Value *BaseValue = NULL;
   Qualifiers BaseQuals;
+
+  // Check if this is a Scout '*.position.{x,y,z.w}' intrinsic.
+  if(E->getMemberDecl()->getName() == "position") {
+    return MakeAddrLValue(ScoutIdxVars[0], getContext().IntTy);
+  }
+
+  // Check if this is a Scout mesh member expression.
+  if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
+    const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
+    if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
+      if(isa<MeshType>(VD->getType())) {
+        llvm::StringRef memberName = E->getMemberDecl()->getName();
+        return EmitMeshMemberExpr(VD, memberName);
+      }
+    }
+  }
 
   // If this is s.x, emit s as an lvalue.  If it is s->x, emit s as a scalar.
   if (E->isArrow()) {
@@ -1955,6 +1981,7 @@ EmitConditionalOperatorLValue(const AbstractConditionalOperator *expr) {
 /// are permitted with aggregate result, including noop aggregate casts, and
 /// cast from scalar to union.
 LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
+  DEBUG("EmitCastLValue");
   switch (E->getCastKind()) {
   case CK_ToVoid:
     return EmitUnsupportedLValue(E, "unexpected cast lvalue");
@@ -2120,6 +2147,7 @@ LValue CodeGenFunction::EmitMaterializeTemporaryExpr(
 
 RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
                                      ReturnValueSlot ReturnValue) {
+  DEBUG("EmitCallExpr");
   if (CGDebugInfo *DI = getDebugInfo()) {
     DI->setLocation(E->getLocStart());
     DI->UpdateLineDirectiveRegion(Builder);
@@ -2137,9 +2165,12 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
   if (const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getCallee())) {
     if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(CE->getSubExpr())) {
       TargetDecl = DRE->getDecl();
-      if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(TargetDecl))
+      if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(TargetDecl)) {
         if (unsigned builtinID = FD->getBuiltinID())
           return EmitBuiltinExpr(FD, builtinID, E);
+        else if(FD->getNameInfo().getAsString() == "cshift")
+          return EmitCShiftExpr(E->arg_begin(), E->arg_end());
+      }
     }
   }
 
@@ -2207,6 +2238,7 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
 }
 
 LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
+  DEBUG("EmitBinaryOperatorLValue");
   // Comma expressions just emit their LHS then their RHS as an l-value.
   if (E->getOpcode() == BO_Comma) {
     EmitIgnoredExpr(E->getLHS());
@@ -2251,6 +2283,7 @@ LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
 }
 
 LValue CodeGenFunction::EmitCallExprLValue(const CallExpr *E) {
+  DEBUG("EmitCallExprLValue");
   RValue RV = EmitCallExpr(E);
 
   if (!RV.isScalar())
@@ -2358,6 +2391,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
                                  CallExpr::const_arg_iterator ArgBeg,
                                  CallExpr::const_arg_iterator ArgEnd,
                                  const Decl *TargetDecl) {
+  DEBUG("EmitCall");
   // Get the actual function type. The callee type will always be a pointer to
   // function type or a block pointer type.
   assert(CalleeType->isFunctionPointerType() &&
@@ -2396,9 +2430,89 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
 
 LValue CodeGenFunction::
 EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
-  LValue LHS = EmitLValue(E->getBase());
-  const llvm::Type *idxTy = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *Idx = llvm::ConstantInt::get(idxTy, E->getIdx());
-  return LValue::MakeVectorElt(LHS.getAddress(), Idx,
+  DEBUG("EmitScoutVectorMemberExpr");
+  if(isa<MemberExpr>(E->getBase())) {
+    ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
+    if(VD->getName() == "position") {
+      return MakeAddrLValue(ScoutIdxVars[E->getIdx()], getContext().IntTy);
+    }
+    assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
+  } else {
+    LValue LHS = EmitLValue(E->getBase());
+    const llvm::Type *idxTy = llvm::Type::getInt32Ty(getLLVMContext());
+    llvm::Value *Idx = llvm::ConstantInt::get(idxTy, E->getIdx());
+    return LValue::MakeVectorElt(LHS.getAddress(), Idx,
                                  E->getBase()->getType());
+  }
+}
+
+std::pair< FieldDecl *, int > CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  for(unsigned i = 0; it != it_end; ++it, ++i) {
+    if(dyn_cast<NamedDecl>(*it)->getName() == memberName) {
+      return std::make_pair(*it, i);
+    }
+  }
+  return std::make_pair(*it, -1);
+}
+
+RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
+  DEBUG("EmitCShiftExpr");
+  if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*ArgBeg)) {
+    if(const MemberExpr *ME = dyn_cast<MemberExpr>(CE->getSubExpr())) {
+      Expr *BaseExpr = ME->getBase();
+      const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
+      const VarDecl *VD = dyn_cast<VarDecl>(ND);
+
+      std::vector< RValue > RVs;
+      RVs.push_back(EmitAnyExpr(*(++ArgBeg)));
+      RVs.push_back(EmitAnyExpr(*(++ArgBeg)));
+      llvm::StringRef memberName = ME->getMemberDecl()->getName();
+      LValue LV = EmitMeshMemberExpr(VD, memberName, RVs);
+      return RValue::get(Builder.CreateLoad(LV.getAddress()));
+    }
+  }
+  assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
+}
+
+LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
+                                           llvm::StringRef memberName,
+                                           std::vector< RValue > cshift) {
+  DEBUG("EmitMeshMemberExpr");
+  const MeshType *MT = cast<MeshType>(VD->getType());
+  MeshDecl *MD = MT->getDecl();
+  MeshDecl::MeshDimensionVec dims = MD->dimensions();
+
+  std::pair< FieldDecl *, int > field;
+  field = FindFieldDecl(MD, memberName);
+  int idx = field.second;
+  assert(idx != -1 && "Could not find field in Scout mesh!");
+
+  llvm::Value *baseAddr = GetImplicitMeshVariable();
+  llvm::StringRef name = field.first->getName();
+  llvm::Value *addr = Builder.CreateStructGEP(baseAddr, idx, name);
+  const QualType Ty = field.first->getType();
+  const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+  std::vector< llvm::Value * > idxList(2, zero);
+  for(unsigned i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
+    idxList[1] = Builder.CreateLoad(ScoutIdxVars[i]);
+    if(!cshift.empty()) {
+      // Add shift to current idx.
+      RValue RV = cshift[i];
+      llvm::Value *shift;
+      if(RV.isAggregate()) {
+        shift = Builder.CreateLoad(RV.getAggregateAddr());
+      } else {
+        shift = RV.getScalarVal();
+      }
+      shift = Builder.CreateAdd(idxList[1], shift);
+      unsigned dim = dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+      // Circular shift; require idx in range [0..dim - 1].
+      idxList[1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
+    }
+    addr = Builder.CreateGEP(addr, idxList.begin(), idxList.end(), "arrayidx");
+  }
+  return MakeAddrLValue(addr, Ty);
 }

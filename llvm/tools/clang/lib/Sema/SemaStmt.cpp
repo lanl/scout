@@ -261,7 +261,7 @@ Sema::ActOnDefaultStmt(SourceLocation DefaultLoc, SourceLocation ColonLoc,
 StmtResult
 Sema::ActOnLabelStmt(SourceLocation IdentLoc, LabelDecl *TheDecl,
                      SourceLocation ColonLoc, Stmt *SubStmt) {
-  
+
   // If the label was multiply defined, reject it now.
   if (TheDecl->getStmt()) {
     Diag(IdentLoc, diag::err_redefinition_of_label) << TheDecl->getDeclName();
@@ -530,7 +530,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     = CondExpr->isTypeDependent() || CondExpr->isValueDependent();
   unsigned CondWidth
     = HasDependentValue ? 0 : Context.getIntWidth(CondTypeBeforePromotion);
-  bool CondIsSigned 
+  bool CondIsSigned
     = CondTypeBeforePromotion->isSignedIntegerOrEnumerationType();
 
   // Accumulate all of the case values in a vector so that we can sort them
@@ -1078,7 +1078,7 @@ static bool FinishForRangeVarDecl(Sema &SemaRef, VarDecl *Decl, Expr *Init,
   // In ARC, infer lifetime.
   // FIXME: ARC may want to turn this into 'const __unsafe_unretained' if
   // we're doing the equivalent of fast iteration.
-  if (SemaRef.getLangOptions().ObjCAutoRefCount && 
+  if (SemaRef.getLangOptions().ObjCAutoRefCount &&
       SemaRef.inferObjCARCLifetime(Decl))
     Decl->setInvalidDecl();
 
@@ -1705,7 +1705,7 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
 
   // If we need to check for the named return value optimization, save the
   // return statement in our scope for later processing.
-  if (getLangOptions().CPlusPlus && FnRetType->isRecordType() && 
+  if (getLangOptions().CPlusPlus && FnRetType->isRecordType() &&
       !CurContext->isDependentContext())
     FunctionScopes.back()->Returns.push_back(Result);
 
@@ -1717,7 +1717,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // Check for unexpanded parameter packs.
   if (RetValExp && DiagnoseUnexpandedParameterPack(RetValExp))
     return StmtError();
-  
+
   if (getCurBlock())
     return ActOnBlockReturnStmt(ReturnLoc, RetValExp);
 
@@ -1734,7 +1734,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     DeclaredRetType = MD->getResultType();
     if (MD->hasRelatedResultType() && MD->getClassInterface()) {
       // In the implementation of a method with a related return type, the
-      // type used to type-check the validity of return statements within the 
+      // type used to type-check the validity of return statements within the
       // method body is a pointer to the type of the class being implemented.
       FnRetType = Context.getObjCInterfaceType(MD->getClassInterface());
       FnRetType = Context.getObjCObjectPointerType(FnRetType);
@@ -1846,7 +1846,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   if (getLangOptions().CPlusPlus && FnRetType->isRecordType() &&
       !CurContext->isDependentContext())
     FunctionScopes.back()->Returns.push_back(Result);
-  
+
   return Owned(Result);
 }
 
@@ -1885,18 +1885,18 @@ static bool CheckAsmLValue(const Expr *E, Sema &S) {
 
 /// isOperandMentioned - Return true if the specified operand # is mentioned
 /// anywhere in the decomposed asm string.
-static bool isOperandMentioned(unsigned OpNo, 
+static bool isOperandMentioned(unsigned OpNo,
                          llvm::ArrayRef<AsmStmt::AsmStringPiece> AsmStrPieces) {
   for (unsigned p = 0, e = AsmStrPieces.size(); p != e; ++p) {
     const AsmStmt::AsmStringPiece &Piece = AsmStrPieces[p];
     if (!Piece.isOperand()) continue;
-    
+
     // If this is a reference to the input and if the input was the smaller
     // one, then we have to reject this asm.
     if (Piece.getOperandNo() == OpNo)
       return true;
   }
- 
+
   return false;
 }
 
@@ -2077,7 +2077,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
     // then we can promote the smaller one to a larger input and the asm string
     // won't notice.
     bool SmallerValueMentioned = false;
-    
+
     // If this is a reference to the input and if the input was the smaller
     // one, then we have to reject this asm.
     if (isOperandMentioned(InputOpNo, Pieces)) {
@@ -2098,7 +2098,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
     if (!SmallerValueMentioned && InputDomain != AD_Other &&
         OutputConstraintInfos[TiedTo].allowsRegister())
       continue;
-    
+
     // Either both of the operands were mentioned or the smaller one was
     // mentioned.  One more special case that we'll allow: if the tied input is
     // integer, unmentioned, and is a constant, then we'll allow truncating it
@@ -2113,7 +2113,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       NS->setInputExpr(i, InputExpr);
       continue;
     }
-    
+
     Diag(InputExpr->getLocStart(),
          diag::err_asm_tying_incompatible_types)
       << InTy << OutTy << OutputExpr->getSourceRange()
@@ -2368,15 +2368,16 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
 // ndm - Scout Stmts
 StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  ForAllStmt::ForAllType Type,
+                                 const MeshType *MT,
                                  IdentifierInfo* LoopVariableII,
                                  IdentifierInfo* MeshII,
                                  SourceLocation LParenLoc,
                                  Expr* Op, SourceLocation RParenLoc,
                                  Stmt* Body){
-  
+
   SCLStack.pop_back();
-  
-  return Owned(new (Context) ForAllStmt(Context, Type,
+
+  return Owned(new (Context) ForAllStmt(Context, Type, MT,
                                         LoopVariableII, MeshII,
                                         Op, Body, ForAllLoc, LParenLoc,
                                         RParenLoc));
@@ -2388,9 +2389,9 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     IdentifierInfo* LoopVariableII,
                                     IdentifierInfo* MeshII,
                                     Stmt* Body){
-  
+
   SCLStack.pop_back();
-  
+
   return Owned(new (Context) RenderAllStmt(Context, Type,
                                            LoopVariableII, MeshII,
                                            Body, RenderAllLoc));
@@ -2404,23 +2405,23 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
                                    SourceLocation LoopVariableLoc,
                                    IdentifierInfo* MeshII,
                                    SourceLocation MeshLoc){
-  
+
   // lookup result below
-  
+
   LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
                        LookupOrdinaryName);
-  
+
   LookupName(LResult, S);
-    
+
   if(LResult.getResultKind() != LookupResult::NotFound){
     Diag(LoopVariableLoc, diag::err_loop_variable_shadows_forall) << LoopVariableII;
     return false;
   }
-  
+
   LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
-  
+
   LookupName(MResult, S);
-  
+
   if(MResult.getResultKind() != LookupResult::Found){
     Diag(MeshLoc, diag::err_unknown_mesh_variable_forall) << MeshII;
     return false;
@@ -2436,14 +2437,14 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   VarDecl* VD = cast<VarDecl>(ND);
 
   const Type* T = VD->getType().getTypePtr();
-  
+
   if(!isa<MeshType>(T)){
     Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
     return false;
   }
 
   MeshDecl* MD = cast<MeshType>(T)->getDecl();
-  
+
   MeshType::InstanceType IT;
   switch(VariableType){
     case tok::kw_cells:
@@ -2461,19 +2462,19 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
     default:
       assert(false && "invalid variable type");
   }
-  
-  
+
+
   MeshType* MT = new MeshType(MD, IT);
-  
-  ImplicitParamDecl* D = 
-  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
+
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
                             LoopVariableII, QualType(MT, 0));
-  
- 
+
+
   PushOnScopeChains(D, S, true);
-  
+
   SCLStack.push_back(D);
-  
+
   return true;
 }
 
@@ -2485,45 +2486,45 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
                                       SourceLocation LoopVariableLoc,
                                       IdentifierInfo* MeshII,
                                       SourceLocation MeshLoc){
-  
+
 
   LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
                        LookupOrdinaryName);
-  
+
   LookupName(LResult, S);
-  
+
   if(LResult.getResultKind() != LookupResult::NotFound){
     Diag(LoopVariableLoc, diag::err_loop_variable_shadows_renderall) << LoopVariableII;
     return false;
   }
-  
+
   LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
-  
+
   LookupName(MResult, S);
-  
+
   if(MResult.getResultKind() != LookupResult::Found){
     Diag(MeshLoc, diag::err_unknown_mesh_variable_renderall) << MeshII;
     return false;
   }
-  
+
   NamedDecl* ND = MResult.getFoundDecl();
-  
+
   if(!isa<VarDecl>(ND)){
     Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
     return false;
   }
-  
+
   VarDecl* VD = cast<VarDecl>(ND);
-  
+
   const Type* T = VD->getType().getTypePtr();
-  
+
   if(!isa<MeshType>(T)){
     Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
     return false;
   }
-  
+
   MeshDecl* MD = cast<MeshType>(T)->getDecl();
-  
+
   MeshType::InstanceType IT;
   switch(VariableType){
     case tok::kw_cells:
@@ -2541,25 +2542,25 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
     default:
       assert(false && "invalid variable type");
   }
-  
+
   MeshType* MT = new MeshType(MD, IT);
-  
-  ImplicitParamDecl* D = 
-  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,  
+
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
                             LoopVariableII, QualType(MT, 0));
-  
-  
+
+
   PushOnScopeChains(D, S, true);
 
-  ImplicitParamDecl* CD = 
-  ImplicitParamDecl::Create(Context, CurContext, MeshLoc,  
+  ImplicitParamDecl* CD =
+  ImplicitParamDecl::Create(Context, CurContext, MeshLoc,
                             &Context.Idents.get("color"),
                             Context.Float4Ty);
-  
+
   PushOnScopeChains(CD, S, true);
-  
+
   SCLStack.push_back(D);
-  
+
   return true;
 }
 

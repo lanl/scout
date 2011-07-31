@@ -247,7 +247,7 @@ public:
     if (Stmt::CollectingStats()) Stmt::addStmtClass(SC);
   }
 
-  StmtClass getStmtClass() const { 
+  StmtClass getStmtClass() const {
     return static_cast<StmtClass>(StmtBits.sClass);
   }
   const char *getStmtClassName() const;
@@ -477,7 +477,7 @@ public:
   body_iterator body_begin() { return Body; }
   body_iterator body_end() { return Body + size(); }
   Stmt *body_back() { return !body_empty() ? Body[size()-1] : 0; }
-  
+
   void setLastStmt(Stmt *S) {
     assert(!body_empty() && "setLastStmt");
     Body[size()-1] = S;
@@ -655,7 +655,7 @@ public:
   child_range children() { return child_range(&SubStmt, &SubStmt+1); }
 };
 
-  
+
 /// LabelStmt - Represents a label, which has a substatement.  For example:
 ///    foo: return;
 ///
@@ -700,11 +700,11 @@ class IfStmt : public Stmt {
 
   SourceLocation IfLoc;
   SourceLocation ElseLoc;
-  
+
 public:
-  IfStmt(ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond, 
+  IfStmt(ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond,
          Stmt *then, SourceLocation EL = SourceLocation(), Stmt *elsev = 0);
-  
+
   /// \brief Build an empty if/then/else statement
   explicit IfStmt(EmptyShell Empty) : Stmt(IfStmtClass, Empty) { }
 
@@ -718,13 +718,13 @@ public:
   /// \endcode
   VarDecl *getConditionVariable() const;
   void setConditionVariable(ASTContext &C, VarDecl *V);
-  
+
   /// If this IfStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
   const DeclStmt *getConditionVariableDeclStmt() const {
     return reinterpret_cast<DeclStmt*>(SubExprs[VAR]);
   }
-  
+
   const Expr *getCond() const { return reinterpret_cast<Expr*>(SubExprs[COND]);}
   void setCond(Expr *E) { SubExprs[COND] = reinterpret_cast<Stmt *>(E); }
   const Stmt *getThen() const { return SubExprs[THEN]; }
@@ -791,7 +791,7 @@ public:
   /// \endcode
   VarDecl *getConditionVariable() const;
   void setConditionVariable(ASTContext &C, VarDecl *V);
-  
+
   /// If this SwitchStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
   const DeclStmt *getConditionVariableDeclStmt() const {
@@ -861,7 +861,7 @@ class WhileStmt : public Stmt {
   Stmt* SubExprs[END_EXPR];
   SourceLocation WhileLoc;
 public:
-  WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body, 
+  WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body,
             SourceLocation WL);
 
   /// \brief Build an empty while statement.
@@ -969,14 +969,14 @@ class ForStmt : public Stmt {
   SourceLocation LParenLoc, RParenLoc;
 
 public:
-  ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar, Expr *Inc, 
+  ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar, Expr *Inc,
           Stmt *Body, SourceLocation FL, SourceLocation LP, SourceLocation RP);
 
   /// \brief Build an empty for statement.
   explicit ForStmt(EmptyShell Empty) : Stmt(ForStmtClass, Empty) { }
 
   Stmt *getInit() { return SubExprs[INIT]; }
-  
+
   /// \brief Retrieve the variable declared in this "for" statement, if any.
   ///
   /// In the following example, "y" is the condition variable.
@@ -987,7 +987,7 @@ public:
   /// \endcode
   VarDecl *getConditionVariable() const;
   void setConditionVariable(ASTContext &C, VarDecl *V);
-  
+
   /// If this ForStmt has a condition variable, return the faux DeclStmt
   /// associated with the creation of that condition variable.
   const DeclStmt *getConditionVariableDeclStmt() const {
@@ -1172,7 +1172,7 @@ class ReturnStmt : public Stmt {
   Stmt *RetExpr;
   SourceLocation RetLoc;
   const VarDecl *NRVOCandidate;
-  
+
 public:
   ReturnStmt(SourceLocation RL)
     : Stmt(ReturnStmtClass), RetExpr(0), RetLoc(RL), NRVOCandidate(0) { }
@@ -1198,7 +1198,7 @@ public:
   /// also marked as an NRVO object.
   const VarDecl *getNRVOCandidate() const { return NRVOCandidate; }
   void setNRVOCandidate(const VarDecl *Var) { NRVOCandidate = Var; }
-  
+
   SourceRange getSourceRange() const;
 
   static bool classof(const Stmt *T) {
@@ -1232,16 +1232,16 @@ class AsmStmt : public Stmt {
   StringLiteral **Constraints;
   Stmt **Exprs;
   StringLiteral **Clobbers;
-  
+
 public:
-  AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple, bool isvolatile, 
+  AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple, bool isvolatile,
           bool msasm, unsigned numoutputs, unsigned numinputs,
           IdentifierInfo **names, StringLiteral **constraints,
           Expr **exprs, StringLiteral *asmstr, unsigned numclobbers,
           StringLiteral **clobbers, SourceLocation rparenloc);
 
   /// \brief Build an empty inline-assembly statement.
-  explicit AsmStmt(EmptyShell Empty) : Stmt(AsmStmtClass, Empty), 
+  explicit AsmStmt(EmptyShell Empty) : Stmt(AsmStmtClass, Empty),
     Names(0), Constraints(0), Exprs(0), Clobbers(0) { }
 
   SourceLocation getAsmLoc() const { return AsmLoc; }
@@ -1323,7 +1323,7 @@ public:
   llvm::StringRef getOutputName(unsigned i) const {
     if (IdentifierInfo *II = getOutputIdentifier(i))
       return II->getName();
-    
+
     return llvm::StringRef();
   }
 
@@ -1384,7 +1384,7 @@ public:
 
   Expr *getInputExpr(unsigned i);
   void setInputExpr(unsigned i, Expr *E);
-  
+
   const Expr *getInputExpr(unsigned i) const {
     return const_cast<AsmStmt*>(this)->getInputExpr(i);
   }
@@ -1394,7 +1394,7 @@ public:
                                       StringLiteral **Constraints,
                                       Stmt **Exprs,
                                       unsigned NumOutputs,
-                                      unsigned NumInputs,                                      
+                                      unsigned NumInputs,
                                       StringLiteral **Clobbers,
                                       unsigned NumClobbers);
 
@@ -1578,62 +1578,67 @@ public:
 };
 
 // ndm - Scout Stmts
-  
+
 class ForAllStmt : public Stmt {
-  
+
 public:
   enum ForAllType{
     Cells,
     Vertices
   };
-  
+
 private:
-  
+
   // OP is the operation or condition: ... myMesh '(' OP ')' { ...
-  // BODY is compound stmts : '{' BODY '}' 
-  
+  // BODY is compound stmts : '{' BODY '}'
+
   enum {OP, BODY, END_EXPR};
-  
+
   ForAllType Type;
-  
+  const MeshType *meshType;
+
   Stmt* SubExprs[END_EXPR];
-  
+
   SourceLocation ForAllLoc;
   SourceLocation LParenLoc, RParenLoc;
   IdentifierInfo* MeshII;
   IdentifierInfo* LoopVariableII;
-  
+
 public:
-  ForAllStmt(ASTContext &C, ForAllType Type, IdentifierInfo* LII, 
-             IdentifierInfo* MII, Expr *Op, Stmt *Body, 
-             SourceLocation FL, SourceLocation LP, SourceLocation RP);
-  
+  ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
+             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+             Stmt *Body, SourceLocation FL, SourceLocation LP,
+             SourceLocation RP);
+
   explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
-  
-  
+
+  const MeshType *getMeshType() const {
+    return meshType;
+  }
+
   ForAllType getType(){
     return Type;
   }
-  
+
   void setType(ForAllType T){
     Type = T;
   }
-  
+
   IdentifierInfo* getLoopVariable(){
     return LoopVariableII;
   }
-  
+
   const IdentifierInfo* getLoopVariable() const{
     return LoopVariableII;
   }
   void setLoopVariable(IdentifierInfo* II){
     LoopVariableII = II;
   }
-  
+
   IdentifierInfo* getMesh(){
     return MeshII;
   }
-  
+
   const IdentifierInfo* getMesh() const{
     return MeshII;
   }
@@ -1644,50 +1649,50 @@ public:
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }
-  
+
   const Expr* getOp() const{
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }
-  
+
   void setOp(Expr* O){
     SubExprs[OP] = reinterpret_cast<Stmt*>(O);
   }
-  
+
   Stmt* getBody(){
     return SubExprs[BODY];
   }
-  
+
   const Stmt* getBody() const{
     return SubExprs[BODY];
   }
-  
+
   void setBody(Stmt* B){
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
   }
-  
+
   SourceLocation getForAllLoc() const { return ForAllLoc; }
   void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
   SourceLocation getLParenLoc() const { return LParenLoc; }
   void setLParenLoc(SourceLocation L) { LParenLoc = L; }
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForAllStmtClass;
   }
-  
+
   static bool classof(const ForAllStmt *) { return true; }
-  
+
   SourceRange getSourceRange() const {
     return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
   }
-  
+
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
-  
+
 };
-  
+
 class RenderAllStmt : public Stmt {
 public:
   enum RenderAllType{
@@ -1695,95 +1700,95 @@ public:
     Faces,
     Edges
   };
-  
+
 private:
-  
-  
+
+
   // IND is the induction variable: renderall cells IND ...
   // MESH is the mesh identifier: renderall cells c of MESH ...
-  // BODY is compound stmts : '{' BODY '}' 
-  
+  // BODY is compound stmts : '{' BODY '}'
+
   enum {MESH, BODY, END_EXPR};
-  
+
   Stmt* SubExprs[END_EXPR];
-  
+
   SourceLocation RenderAllLoc;
-  
+
   RenderAllType Type;
-  
+
   IdentifierInfo* LoopVariableII;
-  
+
   IdentifierInfo* MeshII;
-  
+
 public:
-  
-  RenderAllStmt(ASTContext &C, RenderAllType Type, IdentifierInfo* LII, 
+
+  RenderAllStmt(ASTContext &C, RenderAllType Type, IdentifierInfo* LII,
                 IdentifierInfo* MII, Stmt *Body, SourceLocation RL);
-  
-  explicit RenderAllStmt(EmptyShell Empty) 
+
+  explicit RenderAllStmt(EmptyShell Empty)
   : Stmt(RenderAllStmtClass, Empty) { }
-  
+
   RenderAllType getType(){
     return Type;
   }
-  
+
   void setType(RenderAllType T){
     Type = T;
   }
-  
+
   IdentifierInfo* getLoopVariable(){
     return LoopVariableII;
   }
-  
+
   const IdentifierInfo* getLoopVariable() const{
     return LoopVariableII;
   }
   void setLoopVariable(IdentifierInfo* II){
     LoopVariableII = II;
   }
-  
+
   IdentifierInfo* getMesh(){
     return MeshII;
   }
-  
+
   const IdentifierInfo* getMesh() const{
     return MeshII;
   }
   void setMesh(IdentifierInfo* II){
     MeshII = II;
   }
-  
+
   Stmt* getBody(){
     return SubExprs[BODY];
   }
-  
+
   const Stmt* getBody() const{
     return SubExprs[BODY];
   }
-  
+
   void setBody(Stmt* B){
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
   }
-  
+
   SourceLocation getRenderAllLoc() const { return RenderAllLoc; }
   void setRenderAllLoc(SourceLocation L) { RenderAllLoc = L; }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == RenderAllStmtClass;
   }
-  
+
   static bool classof(const RenderAllStmt *) { return true; }
-  
+
   SourceRange getSourceRange() const {
     return SourceRange(RenderAllLoc, SubExprs[BODY]->getLocEnd());
   }
-  
+
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
-  
+
 };
-  
+
 }  // end namespace clang
 
 #endif
