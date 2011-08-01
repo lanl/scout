@@ -2465,20 +2465,18 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
       const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
       const VarDecl *VD = dyn_cast<VarDecl>(ND);
 
-      std::vector< RValue > RVs;
-      RVs.push_back(EmitAnyExpr(*(++ArgBeg)));
-      RVs.push_back(EmitAnyExpr(*(++ArgBeg)));
+      RValue RV = EmitAnyExpr(*(++ArgBeg));
+      int axis = cast<IntegerLiteral>(*(++ArgBeg))->getValue().getSExtValue();
       llvm::StringRef memberName = ME->getMemberDecl()->getName();
-      LValue LV = EmitMeshMemberExpr(VD, memberName, RVs);
+      LValue LV = EmitMeshMemberExpr(VD, memberName, axis, RV);
       return RValue::get(Builder.CreateLoad(LV.getAddress()));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
 }
 
-LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
-                                           llvm::StringRef memberName,
-                                           std::vector< RValue > cshift) {
+LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
+                                           int axis, RValue RV) {
   DEBUG("EmitMeshMemberExpr");
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshDecl *MD = MT->getDecl();
@@ -2498,9 +2496,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD,
   std::vector< llvm::Value * > idxList(2, zero);
   for(unsigned i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
     idxList[1] = Builder.CreateLoad(ScoutIdxVars[i]);
-    if(!cshift.empty()) {
+    if(axis == i) {
       // Add shift to current idx.
-      RValue RV = cshift[i];
       llvm::Value *shift;
       if(RV.isAggregate()) {
         shift = Builder.CreateLoad(RV.getAggregateAddr());

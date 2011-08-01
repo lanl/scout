@@ -1806,9 +1806,8 @@ public:
 
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
-  LValue EmitMeshMemberExpr(const VarDecl *VD,
-                            llvm::StringRef memberName,
-                            std::vector< RValue > cshift = std::vector< RValue >());
+  LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
+                            int axis = -1, RValue RV = RValue());
 
   void DEBUG(const char *s) {
     //llvm::outs() << "Attempting " << s << ".\n";
