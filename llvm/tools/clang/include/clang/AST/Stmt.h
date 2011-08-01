@@ -1708,7 +1708,7 @@ private:
   // MESH is the mesh identifier: renderall cells c of MESH ...
   // BODY is compound stmts : '{' BODY '}'
 
-  enum {MESH, BODY, END_EXPR};
+  enum {BODY, END_EXPR};
 
   Stmt* SubExprs[END_EXPR];
 
@@ -1754,6 +1754,7 @@ public:
   const IdentifierInfo* getMesh() const{
     return MeshII;
   }
+  
   void setMesh(IdentifierInfo* II){
     MeshII = II;
   }
@@ -1771,6 +1772,7 @@ public:
   }
 
   SourceLocation getRenderAllLoc() const { return RenderAllLoc; }
+  
   void setRenderAllLoc(SourceLocation L) { RenderAllLoc = L; }
 
   static bool classof(const Stmt *T) {
