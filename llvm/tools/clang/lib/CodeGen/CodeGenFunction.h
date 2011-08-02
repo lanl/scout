@@ -664,6 +664,8 @@ public:
   /// Scout defined mesh variables.
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
+  /// Scout defined color variable.
+  llvm::Value *ScoutColor;
 
   void SetImplicitMeshVariable(llvm::StringRef name) {
     for(unsigned i = 0, e = ScoutMeshVars.size(); i < e; ++i) {

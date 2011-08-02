@@ -2075,9 +2075,12 @@ public:
 
 
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
-                                RenderAllStmt::RenderAllType Type,
+                                ForAllStmt::ForAllType Type,
+                                const MeshType *MT,
                                 IdentifierInfo* LoopVariableII,
                                 IdentifierInfo* MeshII,
+                                SourceLocation LParenLoc,
+                                Expr *Op, SourceLocation RParenLoc,
                                 Stmt* Body);
 
   StmtResult ActOnObjCForCollectionStmt(SourceLocation ForColLoc,

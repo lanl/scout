@@ -257,7 +257,7 @@ Retry:
   case tok::kw_forall:
     return ParseForAllStatement(attrs);
   case tok::kw_renderall:
-    return ParseRenderAllStatement(attrs);
+    return ParseForAllStatement(attrs, false);
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement(attrs);
@@ -2061,17 +2061,23 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
 }
 
 // ndm - Scout Stmts
-StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
-  assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
-  SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
+StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
+  if(ForAll)
+    assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
+  else
+    assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
 
-  ForAllStmt::ForAllType Type;
+  SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
 
   tok::TokenKind VariableType = Tok.getKind();
 
-  switch(VariableType){
+  ForAllStmt::ForAllType Type;
+  switch(VariableType) {
     case tok::kw_cells:
       Type = ForAllStmt::Cells;
+      break;
+    case tok::kw_edges:
+      Type = ForAllStmt::Edges;
       break;
     case tok::kw_vertices:
       Type = ForAllStmt::Vertices;
@@ -2121,12 +2127,22 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
 
   ConsumeToken();
 
-  if(!Actions.ActOnForAllLoopVariable(getCurScope(),
-                                      VariableType,
-                                      LoopVariableII,
-                                      LoopVariableLoc,
-                                      MeshII,
-                                      MeshLoc)){
+  bool success = false;
+  if(ForAll)
+    success = Actions.ActOnForAllLoopVariable(getCurScope(),
+                                              VariableType,
+                                              LoopVariableII,
+                                              LoopVariableLoc,
+                                              MeshII,
+                                              MeshLoc);
+   else
+     success = Actions.ActOnRenderAllLoopVariable(getCurScope(),
+                                                  VariableType,
+                                                  LoopVariableII,
+                                                  LoopVariableLoc,
+                                                  MeshII,
+                                                  MeshLoc);
+  if(!success) {
     return StmtError();
   }
 
@@ -2163,7 +2179,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
 
   StmtResult BodyResult = ParseStatement();
   if(BodyResult.isInvalid()){
-    Diag(Tok, diag::err_invalid_forall_body);
+    if(ForAll)
+      Diag(Tok, diag::err_invalid_forall_body);
+    else
+      Diag(Tok, diag::err_invalid_renderall_body);
     SkipUntil(tok::semi);
     return StmtError();
   }
@@ -2171,96 +2190,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs) {
   Stmt* Body = BodyResult.get();
 
 
-  return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
-                                 LParenLoc, Op, RParenLoc, Body);
+  if(ForAll)
+    return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
+                                   LParenLoc, Op, RParenLoc, Body);
+  else
+    return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
+                                      LParenLoc, Op, RParenLoc, Body);
 }
-
-// ndm - Scout Stmts
-
-StmtResult Parser::ParseRenderAllStatement(ParsedAttributes &attrs) {
-  assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
-  SourceLocation RenderAllLoc = ConsumeToken();  // eat the 'renderall'.
-
-  RenderAllStmt::RenderAllType Type;
-
-  tok::TokenKind VariableType = Tok.getKind();
-
-  switch(VariableType){
-    case tok::kw_faces:
-      Type = RenderAllStmt::Faces;
-      break;
-    case tok::kw_edges:
-      Type = RenderAllStmt::Edges;
-      break;
-    case tok::kw_cells:
-      Type = RenderAllStmt::Cells;
-      break;
-    default: {
-      Diag(Tok, diag::err_expected_faces_edges_cells);
-      SkipUntil(tok::semi);
-      return StmtError();
-    }
-  }
-
-  // ndm - TODO - are these all of the flags and just the flags we need?
-  unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
-  Scope::DeclScope | Scope::ControlScope;
-
-  ParseScope ForAllScope(this, ScopeFlags);
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::semi);
-    return StmtError();
-  }
-
-  IdentifierInfo* LoopVariableII = Tok.getIdentifierInfo();
-  SourceLocation LoopVariableLoc = Tok.getLocation();
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::kw_of)){
-    Diag(Tok, diag::err_expected_of_kw);
-    SkipUntil(tok::semi);
-    return StmtError();
-  }
-
-  ConsumeToken();
-
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::semi);
-    return StmtError();
-  }
-
-  IdentifierInfo* MeshII = Tok.getIdentifierInfo();
-  SourceLocation MeshLoc = Tok.getLocation();
-
-  ConsumeToken();
-
-  if(!Actions.ActOnRenderAllLoopVariable(getCurScope(),
-                                         VariableType,
-                                         LoopVariableII,
-                                         LoopVariableLoc,
-                                         MeshII,
-                                         MeshLoc)){
-    return StmtError();
-  }
-
-  StmtResult BodyResult = ParseStatement();
-  if(BodyResult.isInvalid()){
-    Diag(Tok, diag::err_invalid_renderall_body);
-    SkipUntil(tok::semi);
-    return StmtError();
-  }
-
-  ForAllScope.Exit();
-
-  Stmt* Body = BodyResult.get();
-
-  return Actions.ActOnRenderAllStmt(RenderAllLoc, Type,
-                                    LoopVariableII, MeshII, Body);
-}
-

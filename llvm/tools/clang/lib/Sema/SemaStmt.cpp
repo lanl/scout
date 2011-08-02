@@ -2385,16 +2385,20 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
 
 
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
-                                    RenderAllStmt::RenderAllType Type,
+                                    ForAllStmt::ForAllType Type,
+                                    const MeshType *MT,
                                     IdentifierInfo* LoopVariableII,
                                     IdentifierInfo* MeshII,
+                                    SourceLocation LParenLoc,
+                                    Expr *Op, SourceLocation RParenLoc,
                                     Stmt* Body){
 
   SCLStack.pop_back();
 
-  return Owned(new (Context) RenderAllStmt(Context, Type,
+  return Owned(new (Context) RenderAllStmt(Context, Type, MT,
                                            LoopVariableII, MeshII,
-                                           Body, RenderAllLoc));
+                                           Op, Body, RenderAllLoc, LParenLoc,
+                                           RParenLoc));
 }
 
 // ndm - Scout Stmts

@@ -845,6 +845,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       llvm_unreachable("unexpected dependent or non-canonical type!");
 
     // These types are never variably-modified.
+    case Type::Mesh:
     case Type::Builtin:
     case Type::Complex:
     case Type::Vector:

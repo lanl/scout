@@ -1320,8 +1320,22 @@ static LValue EmitFunctionDeclLValue(CodeGenFunction &CGF,
 }
 
 LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
+  DEBUG("EmitDeclRefLValue");
   const NamedDecl *ND = E->getDecl();
   unsigned Alignment = getContext().getDeclAlign(ND).getQuantity();
+
+  // Check if this is a Scout 'color' expression.
+  if(ND->getName() == "color") {
+    const ValueDecl *VD = cast<ValueDecl>(ND);
+    llvm::Value *idx  = Builder.CreateLoad(ScoutIdxVars[0]);
+
+    const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+    llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+
+    llvm::Value *args[] = { zero, idx };
+    llvm::Value *val = Builder.CreateInBoundsGEP(ScoutColor, args, args + 2, "coloridx");
+    return MakeAddrLValue(val, VD->getType(), Alignment);
+  }
 
   if (ND->hasAttr<WeakRefAttr>()) {
     const ValueDecl *VD = cast<ValueDecl>(ND);
@@ -2493,9 +2507,9 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   const QualType Ty = field.first->getType();
   const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-  std::vector< llvm::Value * > idxList(2, zero);
-  for(unsigned i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
-    idxList[1] = Builder.CreateLoad(ScoutIdxVars[i]);
+  llvm::Value *args[] = {  zero, zero };
+  for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
+    args[1] = Builder.CreateLoad(ScoutIdxVars[i]);
     if(axis == i) {
       // Add shift to current idx.
       llvm::Value *shift;
@@ -2504,12 +2518,12 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
       } else {
         shift = RV.getScalarVal();
       }
-      shift = Builder.CreateAdd(idxList[1], shift);
+      shift = Builder.CreateAdd(args[1], shift);
       unsigned dim = dims[i]->EvaluateAsInt(getContext()).getSExtValue();
       // Circular shift; require idx in range [0..dim - 1].
-      idxList[1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
+      args[1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
     }
-    addr = Builder.CreateGEP(addr, idxList.begin(), idxList.end(), "arrayidx");
+    addr = Builder.CreateInBoundsGEP(addr, args, args + 2, "arrayidx");
   }
   return MakeAddrLValue(addr, Ty);
 }

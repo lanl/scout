@@ -788,6 +788,23 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
 
 // ndm - Scout Stmts
 
+ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T, const MeshType *MT,
+                       IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+                       Stmt *Body, SourceLocation FL, SourceLocation LP,
+                       SourceLocation RP)
+: Stmt(SC),
+Type(T),
+meshType(MT),
+ForAllLoc(FL),
+LParenLoc(LP),
+RParenLoc(RP),
+MeshII(MII),
+LoopVariableII(LII)
+{
+  setOp(Op);
+  setBody(Body);
+}
+
 ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
                        IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
                        Stmt *Body, SourceLocation FL, SourceLocation LP,
@@ -798,20 +815,17 @@ meshType(MT),
 ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
-LoopVariableII(LII),
-MeshII(MII)
+MeshII(MII),
+LoopVariableII(LII)
 {
   setOp(Op);
   setBody(Body);
 }
 
-RenderAllStmt::RenderAllStmt(ASTContext &C, RenderAllType T,
-                             IdentifierInfo* LII, IdentifierInfo* MII,
-                             Stmt *Body, SourceLocation FL)
-: Stmt(RenderAllStmtClass),
-Type(T),
-RenderAllLoc(FL),
-LoopVariableII(LII),
-MeshII(MII){
-  setBody(Body);
+RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
+                             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+                             Stmt *Body, SourceLocation RL, SourceLocation RP,
+                             SourceLocation LP)
+  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, Op, Body, RL, RP, LP)
+{
 }

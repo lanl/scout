@@ -653,7 +653,24 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
+  DEBUG("EmitRenderAllStmt");
 
+  const MeshType *MT = S.getMeshType();
+  MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+  unsigned dim = 1;
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    dim *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+  }
+
+  const llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+  llvm::Type *elTy = llvm::VectorType::get(fltTy, 4);
+  llvm::Type *Ty   = llvm::ArrayType::get(elTy, dim);
+
+  llvm::AllocaInst *Alloca = new llvm::AllocaInst(Ty, "color");
+  llvm::BasicBlock *Block = AllocaInsertPt->getParent();
+  Block->getInstList().insertAfter(&*AllocaInsertPt, Alloca);
+  ScoutColor = Alloca;
+  EmitForAllStmt(cast<ForAllStmt>(S));
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {

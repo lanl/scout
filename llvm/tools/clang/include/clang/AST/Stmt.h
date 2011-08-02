@@ -1584,7 +1584,8 @@ class ForAllStmt : public Stmt {
 public:
   enum ForAllType{
     Cells,
-    Vertices
+    Vertices,
+    Edges
   };
 
 private:
@@ -1610,7 +1611,14 @@ public:
              Stmt *Body, SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
 
+  ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type, const MeshType *MT,
+             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+             Stmt *Body, SourceLocation FL, SourceLocation LP,
+             SourceLocation RP);
+
   explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
+
+  ForAllStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) { }
 
   const MeshType *getMeshType() const {
     return meshType;
@@ -1693,102 +1701,33 @@ public:
 
 };
 
-class RenderAllStmt : public Stmt {
-public:
-  enum RenderAllType{
-    Cells,
-    Faces,
-    Edges
-  };
-
+class RenderAllStmt : public ForAllStmt {
 private:
 
 
   // IND is the induction variable: renderall cells IND ...
   // MESH is the mesh identifier: renderall cells c of MESH ...
   // BODY is compound stmts : '{' BODY '}'
-
-  enum {BODY, END_EXPR};
-
-  Stmt* SubExprs[END_EXPR];
-
-  SourceLocation RenderAllLoc;
-
-  RenderAllType Type;
-
-  IdentifierInfo* LoopVariableII;
-
-  IdentifierInfo* MeshII;
-
 public:
 
-  RenderAllStmt(ASTContext &C, RenderAllType Type, IdentifierInfo* LII,
-                IdentifierInfo* MII, Stmt *Body, SourceLocation RL);
+  RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
+                IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+                Stmt *Body, SourceLocation RL, SourceLocation LP,
+                SourceLocation RP);
 
   explicit RenderAllStmt(EmptyShell Empty)
-  : Stmt(RenderAllStmtClass, Empty) { }
+    : ForAllStmt(RenderAllStmtClass, Empty) { }
 
-  RenderAllType getType(){
-    return Type;
-  }
 
-  void setType(RenderAllType T){
-    Type = T;
-  }
+  SourceLocation getRenderAllLoc() const { return getForAllLoc(); }
 
-  IdentifierInfo* getLoopVariable(){
-    return LoopVariableII;
-  }
-
-  const IdentifierInfo* getLoopVariable() const{
-    return LoopVariableII;
-  }
-  void setLoopVariable(IdentifierInfo* II){
-    LoopVariableII = II;
-  }
-
-  IdentifierInfo* getMesh(){
-    return MeshII;
-  }
-
-  const IdentifierInfo* getMesh() const{
-    return MeshII;
-  }
-  
-  void setMesh(IdentifierInfo* II){
-    MeshII = II;
-  }
-
-  Stmt* getBody(){
-    return SubExprs[BODY];
-  }
-
-  const Stmt* getBody() const{
-    return SubExprs[BODY];
-  }
-
-  void setBody(Stmt* B){
-    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
-  }
-
-  SourceLocation getRenderAllLoc() const { return RenderAllLoc; }
-  
-  void setRenderAllLoc(SourceLocation L) { RenderAllLoc = L; }
+  void setRenderAllLoc(SourceLocation L) { setForAllLoc(L); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == RenderAllStmtClass;
   }
 
   static bool classof(const RenderAllStmt *) { return true; }
-
-  SourceRange getSourceRange() const {
-    return SourceRange(RenderAllLoc, SubExprs[BODY]->getLocEnd());
-  }
-
-  child_range children() {
-    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
-  }
-
 };
 
 }  // end namespace clang
