@@ -261,7 +261,7 @@ namespace{
           attr += str[i];
           
           char n = str[i+1];
-          if(n == ' ' || n == '\n' || n == ')'){
+          if(n == ' ' || n == '\n' || n == ')' || n == '\''){
             break;
           }
           
@@ -333,10 +333,10 @@ void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
       if(FunctionDecl* fd = dyn_cast<FunctionDecl>(decl)){
         if(fd->hasBody()){
           Stmt* body = fd->getBody();
-          std::string str;
+          string str;
           llvm::raw_string_ostream ostr(str);
           body->dump(ostr, sema_.getSourceManager());
-          std::cerr << ostr.str() << std::endl;
+          cerr << ostr.str() << endl;
           ViewASTNode* root = viewASTParse(ostr.str());
           viewASTOutputGraphviz(root);
           delete root;

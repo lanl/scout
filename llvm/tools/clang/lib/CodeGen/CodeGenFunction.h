@@ -656,6 +656,31 @@ public:
   /// full-expression cleanup.
   void initFullExprCleanup();
 
+  typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
+  typedef CallExpr::const_arg_iterator ArgIterator;
+  typedef std::pair< FieldDecl *, int > FieldPair;
+  /// Scout forall induction variables.
+  Vector ScoutIdxVars;
+  /// Scout defined mesh variables.
+  Vector ScoutMeshVars;
+  llvm::Value *ImplicitMeshVar;
+  /// Scout defined color variable.
+  llvm::Value *ScoutColor;
+
+  void SetImplicitMeshVariable(llvm::StringRef name) {
+    for(unsigned i = 0, e = ScoutMeshVars.size(); i < e; ++i) {
+      if(ScoutMeshVars[i]->getName() == name) {
+        ImplicitMeshVar = ScoutMeshVars[i];
+        return;
+      }
+    }
+    assert(false && "Undeclared implicit Scout mesh variable!");
+  }
+
+  llvm::Value *GetImplicitMeshVariable() {
+    return ImplicitMeshVar;
+  }
+
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
     return DominatingValue<T>::save(*this, value);
@@ -1781,6 +1806,17 @@ public:
   void EmitForAllStmt(const ForAllStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
 
+  LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
+  RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+  LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
+                            int axis = -1, RValue RV = RValue());
+
+  void DEBUG(const char *s) {
+    //llvm::outs() << "Attempting " << s << ".\n";
+  }
+
+  FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);
   void EmitDeclStmt(const DeclStmt &S);
@@ -1932,7 +1968,6 @@ public:
   LValue EmitCastLValue(const CastExpr *E);
   LValue EmitNullInitializationLValue(const CXXScalarValueInitExpr *E);
   LValue EmitMaterializeTemporaryExpr(const MaterializeTemporaryExpr *E);
-  LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   LValue EmitOpaqueValueLValue(const OpaqueValueExpr *e);
 
   llvm::Value *EmitIvarOffset(const ObjCInterfaceDecl *Interface,

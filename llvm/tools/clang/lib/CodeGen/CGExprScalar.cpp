@@ -2627,12 +2627,21 @@ Value *ScalarExprEmitter::VisitAsTypeExpr(AsTypeExpr *E) {
 }
 
 Value *ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+  CGF.DEBUG("VisitScoutVectorMemberExpr");
   TestAndClearIgnoreResultAssign();
 
-  Value *Base = Visit(E->getBase());
-  const llvm::Type *idxTy = llvm::Type::getInt32Ty(VMContext);
-  Value *Idx = llvm::ConstantInt::get(idxTy, E->getIdx());
-  return Builder.CreateExtractElement(Base, Idx, "scvecext");
+  if(isa<MemberExpr>(E->getBase())) {
+    ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
+    if(VD->getName() == "position") {
+      return Builder.CreateLoad(CGF.ScoutIdxVars[E->getIdx()]);
+    }
+    assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
+  } else {
+    Value *Base = Visit(E->getBase());
+    const llvm::Type *idxTy = llvm::Type::getInt32Ty(VMContext);
+    Value *Idx = llvm::ConstantInt::get(idxTy, E->getIdx());
+    return Builder.CreateExtractElement(Base, Idx, "scvecext");
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -2642,6 +2651,7 @@ Value *ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
 /// EmitScalarExpr - Emit the computation of the specified expression of scalar
 /// type, ignoring the result.
 Value *CodeGenFunction::EmitScalarExpr(const Expr *E, bool IgnoreResultAssign) {
+  DEBUG("EmitScalarExpr");
   assert(E && !hasAggregateLLVMType(E->getType()) &&
          "Invalid scalar expression to emit");
 
