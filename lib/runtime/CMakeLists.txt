@@ -12,6 +12,7 @@ enable_testing()
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
+  ${PNG_INCLUDE_DIR}
 )
 
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)

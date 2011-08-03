@@ -16,6 +16,14 @@
 
 namespace scout 
 {
+  // Some shorthand for various types...
+  typedef unsigned char    uchar;
+  typedef unsigned char*   ucharp;  
+  typedef unsigned short   ushort;
+  typedef unsigned short*  ushortp;
+  typedef unsigned long    ulong;
+  typedef unsigned long*   ulongp;
+  
   
   // Use these types when supporting operations on mesh types.
   // 

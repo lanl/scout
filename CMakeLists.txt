@@ -8,7 +8,10 @@
 # Scout with CMake. 
 # 
 project(Scout)
+
 find_package(CUDA)
+find_package(PNG)
+find_package(OpenGL)
 
 cmake_minimum_required(VERSION 2.8.4)
 enable_testing()
@@ -40,14 +43,29 @@ set(PACKAGE_BUGREPORT "scoutbugs@lanl.gov")
 
 set(SCOUT_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SCOUT_INCLUDE_DIR ${SCOUT_SRC_DIR}/include)
-set(SCOUT_BINARY_DIR   ${CMAKE_CURRENT_BINARY_DIR})
+set(SCOUT_REGRESSION_DIR ${SCOUT_SRC_DIR}/test)
+set(SCOUT_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(SCOUT_BINARY_REGRESSION_DIR  ${SCOUT_BINARY_DIR}/test)
+
+set(SCOUT_ENABLE_RT_THREADS  OFF CACHE BOOL "Enable threads in scout's runtime libraries.")
 
 
-# Build configuration settings. 
-#
-set(SCOUT_ENABLE_RT_THREADS OFF CACHE BOOL "Enable threads in scout's runtime libraries.")
-set(SCOUT_ENABLE_RT_OPENGL  ON  CACHE BOOL "Enable OpenGL in scout's runtime libraries.")
+if (OPENGL_FOUND) 
+  set(SCOUT_ENABLE_RT_OPENGL   ON  CACHE BOOL "Enable OpenGL in scout's runtime libraries.")
+  add_definitions(-DSC_ENABLE_OPENGL ${PNG_DEFINITIONS})
+endif()
 
+
+if (PNG_FOUND) 
+  set(SCOUT_ENABLE_PNG_SUPPORT ON  CACHE_BOOL "Enable PNG in scout's runtime libraries.")
+  add_definitions(-DSC_ENABLE_PNG ${PNG_DEFINITIONS})
+endif()
+
+# Note: Here we try to override some of the LLVM default
+# configurations such that we can skip building some of 
+# backends that we really don't care about... 
+set(LLVM_TARGETS_TO_BUILD ARM CppBackend PowerPC PTX X86
+  CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
 
 # Note: Please place individual entries within the associated 
 # subdirectories vs. adding full paths here.  For example, 
@@ -58,3 +76,10 @@ add_subdirectory(llvm)       # scout compiler based on active llvm development.
 add_subdirectory(lib)        # scout runtime and standard libraries 
 add_subdirectory(sandbox)    # proof-of-concept test codes 
 add_subdirectory(tools)      # various command line tools 
+
+# Note: For active developers we should always make sure that 
+# regression checks are a standard practice...
+set(SCOUT_ENABLE_REGRESSIONS ON CACHE STRING "Enable the building of regression tests.")
+if (SCOUT_ENABLE_REGRESSIONS)
+  add_subdirectory(test)
+endif()

@@ -19,7 +19,7 @@ using namespace scout;
 //
 framebuffer_t::framebuffer_t(dim_t w, dim_t h, float r, float g, float b, float a)
 {
-  assert(width > 0 && height > 0);
+  assert(w > 0 && h > 0);
   
   width  = w;
   height = h;
@@ -49,9 +49,9 @@ void framebuffer_t::clear()
 {
   index_t size = width * height;
 
-#pragma omp for schedule (dynamic,width)
+  #pragma omp for schedule (dynamic,width)
   for(index_t i = 0; i < size; ++i) {
-    pixels[i].vec = bg_color.vec;
+    pixels[i] = bg_color;
   }
 }
 

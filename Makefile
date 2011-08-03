@@ -20,11 +20,15 @@ arch := $(shell uname -s)
 
 ifeq ($(arch),Darwin) 
   sysprof = /usr/sbin/system_profiler -detailLevel mini SPHardwareDataType
-  nprocs := -j $(shell $(sysprof) | /usr/bin/grep -i cores | /usr/bin/awk '{print $$ NF}')
+  nprocs := $(shell ($(sysprof) | /usr/bin/grep -i cores | /usr/bin/awk '{print $$ NF}'))
 else 
-  nprocs := -j $(shell /bin/cat /proc/cpuinfo | /bin/grep processor | /usr/bin/wc -l)
+  nprocs := $(shell /bin/cat /proc/cpuinfo | /bin/grep processor | /usr/bin/wc -l)
 endif 
 
+nprocs := $(shell expr $(nprocs) \* 2)
+
+# Since we're likely I/O bound try and sneak in twice as many build
+# threads as we have cores...
 
 default: $(build_dir)
 	echo "building using $(nprocs) processors."

@@ -88,8 +88,10 @@ if( MSVC )
   set(LLVM_TARGETS_TO_BUILD X86
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 else( MSVC )
-  set(LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS}
-    CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+  if (NOT LLVM_TARGETS_TO_BUILD) 
+    set(LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS}
+      CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+  endif()
 endif( MSVC )
 
 option(LLVM_ENABLE_CBE_PRINTF_A "Set to ON if CBE is enabled for printf %a output" ON)

@@ -27,7 +27,12 @@ namespace scout
     float4    bg_color;
     float4   *pixels;
   };
+
 }
+
+#ifdef SC_ENABLE_PNG
+bool extern save_framebuffer_as_png(const scout::framebuffer_t* fb, const char *filename);
+#endif
 
 #endif
 
