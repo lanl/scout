@@ -12,14 +12,15 @@
 #ifndef SCOUT_FRAMEBUFFER_H_
 #define SCOUT_FRAMEBUFFER_H_
 
-#include "scout/types.h"
+#include "runtime/types.h"
 
-namespace scout
+namespace scout 
 {
-  struct framebuffer_t {
+
+  struct framebuffer_rt {
     
-    framebuffer_t(dim_t w, dim_t h, float r=0.0f, float b=0.0f, float g=0.0f, float a=1.0f);
-    ~framebuffer_t();
+    framebuffer_rt(dim_t w, dim_t h, float r=0.0f, float b=0.0f, float g=0.0f, float a=1.0f);
+    ~framebuffer_rt();
 
     void clear();
     
@@ -27,11 +28,13 @@ namespace scout
     float4    bg_color;
     float4   *pixels;
   };
-
 }
 
+
 #ifdef SC_ENABLE_PNG
-bool extern save_framebuffer_as_png(const scout::framebuffer_t* fb, const char *filename);
+
+bool extern save_framebuffer_as_png(const scout::framebuffer_rt* fb, const char *filename);
+
 #endif
 
 #endif
