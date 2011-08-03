@@ -107,6 +107,8 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
   ExtendedTokenMode = 0;
 }
 
+// ndm - modified the following Lexer Ctors to support string lexer
+
 /// Lexer constructor - Create a new lexer object for the specified buffer
 /// with the specified preprocessor managing the lexing process.  This lexer
 /// assumes that the associated file buffer and Preprocessor objects will
@@ -114,7 +116,9 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   : PreprocessorLexer(&PP, FID),
     FileLoc(PP.getSourceManager().getLocForStartOfFile(FID)),
-    Features(PP.getLangOptions()) {
+    Features(PP.getLangOptions()),
+    StringLexerMemoryBuffer(0),
+    StringLexerStringRef(0){
 
   InitLexer(InputFile->getBufferStart(), InputFile->getBufferStart(),
             InputFile->getBufferEnd());
@@ -128,7 +132,10 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
 /// range will outlive it, so it doesn't take ownership of it.
 Lexer::Lexer(SourceLocation fileloc, const LangOptions &features,
              const char *BufStart, const char *BufPtr, const char *BufEnd)
-  : FileLoc(fileloc), Features(features) {
+  : FileLoc(fileloc),
+Features(features),
+StringLexerMemoryBuffer(0),
+StringLexerStringRef(0){
 
   InitLexer(BufStart, BufPtr, BufEnd);
 
@@ -141,13 +148,46 @@ Lexer::Lexer(SourceLocation fileloc, const LangOptions &features,
 /// range will outlive it, so it doesn't take ownership of it.
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *FromFile,
              const SourceManager &SM, const LangOptions &features)
-  : FileLoc(SM.getLocForStartOfFile(FID)), Features(features) {
+  : FileLoc(SM.getLocForStartOfFile(FID)),
+Features(features),
+StringLexerMemoryBuffer(0),
+StringLexerStringRef(0){
 
   InitLexer(FromFile->getBufferStart(), FromFile->getBufferStart(),
             FromFile->getBufferEnd());
 
   // We *are* in raw mode.
   LexingRawMode = true;
+}
+
+// ndm - string lexer
+Lexer::Lexer(const std::string& str, Preprocessor& PP)
+: PreprocessorLexer(&PP, FileID()),
+FileLoc(PP.getSourceManager().getLocForStartOfFile(FileID())),
+Features(PP.getLangOptions()){
+  
+  StringLexerStringRef = new llvm::StringRef(str);
+  
+  StringLexerMemoryBuffer = 
+  llvm::MemoryBuffer::getMemBuffer(*StringLexerStringRef);
+  
+  InitLexer(StringLexerMemoryBuffer->getBufferStart(),
+            StringLexerMemoryBuffer->getBufferStart(),
+            StringLexerMemoryBuffer->getBufferEnd());
+  
+  // Default to keeping comments if the preprocessor wants them.
+  SetCommentRetentionState(PP.getCommentRetentionState());
+}
+
+// ndm - added Dtor
+Lexer::~Lexer(){
+  if(StringLexerMemoryBuffer){
+    delete StringLexerMemoryBuffer;
+  }
+  
+  if(StringLexerStringRef){
+    delete StringLexerStringRef;
+  }
 }
 
 /// Create_PragmaLexer: Lexer constructor - Create a new lexer object for
@@ -2090,6 +2130,13 @@ LexNextToken:
 
   switch (Char) {
   case 0:  // Null.
+    // ndm - special handling for string lexer, as EOF code below interferes
+    // with the state of the preprocessor
+    if(StringLexerMemoryBuffer){
+      Kind = tok::eof;
+      break;
+    }
+      
     // Found end of file?
     if (CurPtr-1 == BufferEnd) {
       // Read the PP instance variable into an automatic variable, because

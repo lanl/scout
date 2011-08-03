@@ -1330,7 +1330,6 @@ private:
   // ndm - Scout Stmts
 
   StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll = true);
-  StmtResult ParseRenderAllStatement(ParsedAttributes &Attr);
 
   StmtResult ParseForStatement(ParsedAttributes &Attr);
   StmtResult ParseGotoStatement(ParsedAttributes &Attr);
@@ -1817,6 +1816,17 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
                             FieldCallback &Fields,
                             unsigned FieldType);
 
+  // ndm - insert CPP code into the lexer stream for parsing. 
+  // Inserts a stream of tokens AFTER the current token Tok.
+  // This is a good method for handling cases such as inserting the call
+  // to initScout(argc, argv) at the beginning of main(), for other cases
+  // it may be necessary to construct the AST manually.
+  void InsertCPPCode(const std::string& code, bool beforeLookAhead=false);
+  
+  // ndm
+  // Debugging method for displaying the next N lookahead tokens.
+  void DumpLookAheads(unsigned N);
+  
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]
   void ParseBaseClause(Decl *ClassDecl);

@@ -1536,3 +1536,66 @@ void Parser::ParseMicrosoftIfExistsExternalDeclaration() {
   }
   ConsumeBrace();
 }
+
+// ndm - parser utility method
+void Parser::InsertCPPCode(const std::string& code, bool beforeLookAhead){
+    
+  typedef std::vector<Token> TokenStream;
+  Lexer lexer(code, PP);
+  
+  TokenStream tokenStream;
+  
+  for(;;){
+    Token tok;
+    lexer.Lex(tok);
+    if(tok.is(tok::eof)){
+      break;
+    }
+    tokenStream.push_back(tok);
+  }
+  
+  if(beforeLookAhead){
+    tokenStream.push_back(Tok);
+  }
+  
+  for(TokenStream::reverse_iterator itr = tokenStream.rbegin(),
+      itrEnd = tokenStream.rend(); itr != itrEnd; ++itr){
+    PP.EnterToken(*itr);
+  }
+  
+  if(beforeLookAhead){
+    ConsumeAnyToken();
+  }
+}
+
+// ndm - debugging method for displaying the next N lookahead tokens
+void Parser::DumpLookAheads(unsigned N){
+  for(unsigned i = 0; i < N; ++i){
+    const Token& t = GetLookAheadToken(i);
+        
+    std::cerr << "lookahead[" << i << "]: " << t.getName();
+    
+    if(t.is(tok::eof)){
+      break;
+    }
+    
+    size_t length = t.getLength();
+    
+    if(t.isLiteral()){
+      std::string str = t.getLiteralData();
+      str = str.substr(0, length);
+      std::cerr << " = " << str;
+    }
+    else if(t.is(tok::identifier)){
+      std::cerr << " = " << t.getIdentifierInfo()->getName().str();
+    }
+    else if(t.is(tok::raw_identifier)){
+      std::string str = t.getRawIdentifierData();
+      str = str.substr(0, length);
+      std::cerr << " = " << str;
+    }
+    std::cerr << std::endl;
+  }
+  std::cerr << std::endl;
+}
+

@@ -719,9 +719,9 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
                                 Tok.getLocation(),
                                 "in compound statement ('{}')");
   InMessageExpressionRAIIObject InMessage(*this, false);
-
-  SourceLocation LBraceLoc = ConsumeBrace();  // eat the '{'.
-
+  
+  SourceLocation LBraceLoc = ConsumeBrace(); // eat the '{'.
+  
   StmtVector Stmts(Actions);
 
   // "__label__ X, Y, Z;" is the GNU "Local Label" extension.  These are
@@ -1827,6 +1827,27 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
+  // ndm - insert the call to scoutInit(argc, argv) at the top of main
+  if(getLang().Scout){    
+    FunctionDecl* fd = Actions.getCurFunctionDecl();
+    if(fd->isMain()){
+      assert(Tok.is(tok::l_brace) && 
+             "expected lbrace when inserting scoutInit()");
+      
+      assert(fd->param_size() == 2 && "expected main with two params");
+      FunctionDecl::param_iterator itr = fd->param_begin();
+      
+      ParmVarDecl* paramArgc = *itr;
+      ++itr;
+      ParmVarDecl* paramArgv = *itr;
+      
+      std::string code = "scoutInit(" + paramArgc->getName().str() +
+      ", " + paramArgv->getName().str() + ");";
+      
+      InsertCPPCode(code);
+    }
+  }
+  
   // Do not enter a scope for the brace, as the arguments are in the same scope
   // (the function body) as the body itself.  Instead, just read the statement
   // list and put it into a CompoundStmt for safe keeping.
@@ -2193,7 +2214,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   if(ForAll)
     return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                    LParenLoc, Op, RParenLoc, Body);
-  else
+  else{
+    InsertCPPCode("scoutSwapBuffers();", true);
+    
     return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                       LParenLoc, Op, RParenLoc, Body);
+  }
 }
