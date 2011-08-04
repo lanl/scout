@@ -55,7 +55,6 @@ if (OPENGL_FOUND)
   add_definitions(-DSC_ENABLE_OPENGL ${PNG_DEFINITIONS})
 endif()
 
-
 if (PNG_FOUND) 
   set(SCOUT_ENABLE_PNG_SUPPORT ON  CACHE_BOOL "Enable PNG in scout's runtime libraries.")
   add_definitions(-DSC_ENABLE_PNG ${PNG_DEFINITIONS})

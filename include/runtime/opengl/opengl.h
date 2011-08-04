@@ -32,7 +32,10 @@
 
 #endif
 
-extern void glErrorCheck(const std::string& file, int line_no);
+namespace scout 
+{
+  extern void glErrorCheck(const std::string& file, int line_no);
+}
 
 #endif
 

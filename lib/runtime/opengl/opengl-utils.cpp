@@ -15,21 +15,24 @@
 #include "runtime/opengl/opengl.h"
 
 using namespace std;
-using namespace scout;
 
-
-// ----- glErrorCheck
-//
-void glErrorCheck(const std::string& file, int line_no)
+namespace scout 
 {
-  GLenum error = glGetError();
-  if (error != GL_NO_ERROR) {
-    cerr << "OpenGL runtime error:\n";
-    cerr << "   file: " << file << endl;
-    cerr << "   line: " << line_no << endl;
-    cerr << "   mesg: '" << (const char*)gluErrorString(error) << "'\n";
+  
+  // ----- glErrorCheck
+  //
+  void glErrorCheck(const std::string& file, int line_no)
+  {
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+      cerr << "OpenGL runtime error:\n";
+      cerr << "   file: " << file << endl;
+      cerr << "   line: " << line_no << endl;
+      cerr << "   mesg: '" << (const char*)gluErrorString(error) << "'\n";
 
-    // fall flat on our face for now... 
-    abort(); 
+      abort(); // fall flat on our face for now... 
+
+    }
   }
+  
 }

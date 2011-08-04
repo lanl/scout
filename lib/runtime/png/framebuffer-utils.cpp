@@ -12,7 +12,6 @@
 #include <cassert>
 #include <limits.h>
 
-#include "scout/types.h"
 #include "runtime/framebuffer.h"
 
 using namespace scout;
@@ -30,7 +29,7 @@ using namespace scout;
 // buffer to avoid strange transparent PNG images -- thus a
 // temporary 3-channel image buffer is created on each invocation.
 // In a tight loop within Scout this could be a bottleneck... 
-bool save_framebuffer_as_png(const framebuffer_t* fb, const char *filename)
+bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
 {
   assert(fb != 0);
   assert(filename != 0);

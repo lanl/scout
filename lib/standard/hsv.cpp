@@ -13,7 +13,7 @@
 
 #include <math.h>
 #include <xmmintrin.h> 
-#include "scout/types.h"
+#include "runtime/types.h"
 
 // ----- hsva
 //

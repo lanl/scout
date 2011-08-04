@@ -15,9 +15,9 @@
 using namespace scout;
 
 
-// ----- framebuffer_t
+// ----- framebuffer_rt
 //
-framebuffer_t::framebuffer_t(dim_t w, dim_t h, float r, float g, float b, float a)
+framebuffer_rt::framebuffer_rt(dim_t w, dim_t h, float r, float g, float b, float a)
 {
   assert(w > 0 && h > 0);
   
@@ -35,9 +35,9 @@ framebuffer_t::framebuffer_t(dim_t w, dim_t h, float r, float g, float b, float 
 }
 
 
-// ----- ~framebuffer_t
+// ----- ~framebuffer_rt
 //
-framebuffer_t::~framebuffer_t()
+framebuffer_rt::~framebuffer_rt()
 {
   delete []pixels;
 }
@@ -45,7 +45,7 @@ framebuffer_t::~framebuffer_t()
 
 // ----- clear
 //
-void framebuffer_t::clear()
+void framebuffer_rt::clear()
 {
   index_t size = width * height;
 
@@ -54,5 +54,4 @@ void framebuffer_t::clear()
     pixels[i] = bg_color;
   }
 }
-
     

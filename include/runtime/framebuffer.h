@@ -33,7 +33,7 @@ namespace scout
 
 #ifdef SC_ENABLE_PNG
 
-bool extern save_framebuffer_as_png(const scout::framebuffer_rt* fb, const char *filename);
+extern bool save_framebuffer_as_png(const scout::framebuffer_rt* fb, const char *filename);
 
 #endif
 

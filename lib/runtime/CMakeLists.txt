@@ -15,14 +15,17 @@ include_directories(
   ${PNG_INCLUDE_DIR}
 )
 
+
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
+file(GLOB rt_srcs *.cpp)
 
 if(SCOUT_ENABLE_RT_OPENGL) 
-  file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)
-  file(GLOB rt_srcs *.cpp opengl/*.cpp)
-else()
-  file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
-  file(GLOB rt_srcs *.cpp)
+  file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)
+  file(GLOB gl_srcs opengl/*.cpp)
+endif()
+
+if(SCOUT_ENABLE_PNG_SUPPORT) 
+  file(GLOB png_srcs png/*.cpp)
 endif()
 
 if (SCOUT_ENABLE_RT_THREADS) 
@@ -30,4 +33,4 @@ if (SCOUT_ENABLE_RT_THREADS)
 endif()
 
 # We probably want the runtime to dynamic...
-add_library(scRuntime STATIC ${rt_srcs})
+add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs})
