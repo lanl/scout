@@ -2184,6 +2184,10 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
           return EmitBuiltinExpr(FD, builtinID, E);
         else if(FD->getNameInfo().getAsString() == "cshift")
           return EmitCShiftExpr(E->arg_begin(), E->arg_end());
+        else if(FD->getNameInfo().getAsString() == "scoutSwapBuffers") {
+          EmitScoutFrameBuffer();
+          //return RValue::get(0);
+        }
       }
     }
   }
@@ -2526,4 +2530,39 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
     addr = Builder.CreateInBoundsGEP(addr, args, args + 2, "arrayidx");
   }
   return MakeAddrLValue(addr, Ty);
+}
+
+void CodeGenFunction::EmitScoutFrameBuffer() {
+  const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+
+  if(!CGM.getModule().getNamedGlobal("_framebuffer")) {
+    const llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+    const llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+    const llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+
+    const llvm::Type *args[] = { i32Ty, i32Ty, flt4Ty, flt4PtrTy };
+    typedef llvm::ArrayRef< const llvm::Type * > Array;
+    const llvm::Type *structTy = llvm::StructType::get(getLLVMContext(),
+                                                       Array(args),
+                                                       false);
+    const llvm::Type *structPtrTy = llvm::PointerType::get(structTy, 0);
+    new llvm::GlobalVariable(CGM.getModule(),
+                             structPtrTy,
+                             false,
+                             llvm::GlobalValue::ExternalLinkage,
+                             0,
+                             "_framebuffer");
+  }
+
+  llvm::Value *FB = CGM.getModule().getNamedGlobal("_framebuffer");
+  FB = Builder.CreateLoad(FB);
+
+  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::Value *three = llvm::ConstantInt::get(i32Ty, 3);
+  llvm::Value *args[] = { zero, three };
+
+  llvm::Value *var = Builder.CreateInBoundsGEP(FB, args, args + 2, "pixels");
+  args[1] = zero;
+  llvm::Value *val = Builder.CreateInBoundsGEP(ScoutColor, args, args + 2, "coloridx");
+  Builder.CreateStore(val, var);
 }
