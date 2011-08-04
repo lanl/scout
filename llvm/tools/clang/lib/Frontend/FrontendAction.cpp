@@ -198,7 +198,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
   // ndm - include the scout header file if this is a Scout file
   if(CI.getLangOpts().Scout){
-    CI.getPreprocessorOpts().Includes.push_back("scout.h");
+    CI.getPreprocessorOpts().Includes.push_back("runtime/scout.h");
+    CI.getPreprocessorOpts().Includes.push_back("scout/scout.h");
   }
   
   //PreprocessorOptions& opts = CI.getPreprocessorOpts();
