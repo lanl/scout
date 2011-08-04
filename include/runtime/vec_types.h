@@ -12,6 +12,8 @@
 #ifndef SCOUT_VEC_TYPES_H_
 #define SCOUT_VEC_TYPES_H_
 
+#ifndef SCOUT_TOP_LEVEL
+
 namespace scout 
 {
   
@@ -30,6 +32,8 @@ namespace scout
   };
   
 }
+
+#endif // SCOUT_TOP_LEVEL
 
 #endif 
 
