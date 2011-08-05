@@ -1712,6 +1712,9 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
             case FieldDecl::FieldEdges:
               valid = mt->getInstanceType() == MeshType::EdgesInstance;
               break;
+            case FieldDecl::FieldAll:
+              valid = true;
+              break;
             default:
               assert(false && "invalid field type while attempting to look "
                      "up unqualified forall/renderall variable");

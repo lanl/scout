@@ -1981,6 +1981,7 @@ public:
   
   enum MeshFieldType{
     FieldNone,
+    FieldAll,
     FieldVertices,
     FieldCells,
     FieldFaces,

@@ -640,6 +640,10 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
       }
       break;
     }
+    case FieldDecl::FieldAll:
+    {
+      break;
+    }
     default:
     {
       assert(false && "unknown mesh field type");

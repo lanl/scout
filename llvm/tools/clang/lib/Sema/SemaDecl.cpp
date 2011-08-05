@@ -9278,6 +9278,33 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   PositionFD->setMeshFieldType(FieldDecl::FieldCells);
   
   Mesh->addDecl(PositionFD);
+
+  FieldDecl *WidthFD = 
+  FieldDecl::Create(Context, Mesh, Loc, Loc,
+                    &Context.Idents.get("width"), Context.IntTy, 0,
+                    0, true, false);
+  
+  WidthFD->setMeshFieldType(FieldDecl::FieldAll);
+  
+  Mesh->addDecl(WidthFD);
+  
+  FieldDecl *HeightFD = 
+  FieldDecl::Create(Context, Mesh, Loc, Loc,
+                    &Context.Idents.get("height"), Context.IntTy, 0,
+                    0, true, false);
+  
+  HeightFD->setMeshFieldType(FieldDecl::FieldAll);
+  
+  Mesh->addDecl(HeightFD);
+  
+  FieldDecl *DepthFD = 
+  FieldDecl::Create(Context, Mesh, Loc, Loc,
+                    &Context.Idents.get("depth"), Context.IntTy, 0,
+                    0, true, false);
+  
+  DepthFD->setMeshFieldType(FieldDecl::FieldAll);
+  
+  Mesh->addDecl(DepthFD);
   
   PopDeclContext();
 }
