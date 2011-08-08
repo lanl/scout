@@ -293,6 +293,9 @@ public:
   ///   works on systems with GraphViz (Mac OS X) or dot+gv installed.
   void viewAST() const;
 
+  // ndm - convert the Stmt or Expr back into code
+  std::string toCPPCode(ASTContext& context);
+  
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();

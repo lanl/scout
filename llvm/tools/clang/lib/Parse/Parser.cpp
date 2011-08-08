@@ -1538,7 +1538,9 @@ void Parser::ParseMicrosoftIfExistsExternalDeclaration() {
 }
 
 // ndm - parser utility method
-void Parser::InsertCPPCode(const std::string& code, bool beforeLookAhead){
+void Parser::InsertCPPCode(const std::string& code,
+                           SourceLocation location,
+                           bool beforeLookAhead){
     
   typedef std::vector<Token> TokenStream;
   Lexer lexer(code, PP);
@@ -1548,6 +1550,7 @@ void Parser::InsertCPPCode(const std::string& code, bool beforeLookAhead){
   for(;;){
     Token tok;
     lexer.Lex(tok);
+    tok.setLocation(location);
     if(tok.is(tok::eof)){
       break;
     }
@@ -1575,7 +1578,7 @@ void Parser::DumpLookAheads(unsigned N){
         
     std::cerr << "lookahead[" << i << "]: " << t.getName();
     
-    if(t.is(tok::eof)){
+    if(t.is(tok::eof) || t.is(tok::semi)){
       break;
     }
     
@@ -1599,3 +1602,181 @@ void Parser::DumpLookAheads(unsigned N){
   std::cerr << std::endl;
 }
 
+std::string Parser::TokToStr(const Token& tok){
+  if(tok.isLiteral()){
+    size_t length = tok.getLength();
+
+    std::string ret = tok.getLiteralData();
+    ret = ret.substr(0, length);
+    return ret;
+  }
+  else if(tok.is(tok::identifier)){
+    return tok.getIdentifierInfo()->getName().str();
+  }
+  
+  switch(tok.getKind()){
+    case tok::l_square:{
+      return "[";
+    }
+    case tok::r_square:{
+      return "]";
+    }
+    case tok::l_paren:{
+      return "(";
+    }
+    case tok::r_paren:{
+      return ")";
+    }
+    case tok::l_brace:{
+      return "{";
+    }
+    case tok::r_brace:{
+      return "}";
+    }
+    case tok::period:{
+      return ".";
+    }
+    case tok::ellipsis:{
+      return "...";
+    }
+    case tok::amp:{
+      return "&";
+    }
+    case tok::ampamp:{
+      return "&&";
+    }
+    case tok::ampequal:{
+      return "&=";
+    }
+    case tok::star:{
+      return "*";
+    }
+    case tok::starequal:{
+      return "*=";
+    }
+    case tok::plus:{
+      return "+";
+    }
+    case tok::plusplus:{
+      return "++";
+    }
+    case tok::plusequal:{
+      return "+=";
+    }
+    case tok::minus:{
+      return "-";
+    }
+    case tok::minusequal:{
+      return "-=";
+    }
+    case tok::tilde:{
+      return "~";
+    }
+    case tok::exclaim:{
+      return "!";
+    }
+    case tok::exclaimequal:{
+      return "!=";
+    }
+    case tok::slash:{
+      return "/";
+    }
+    case tok::slashequal:{
+      return "/=";
+    }
+    case tok::percent:{
+      return "%";
+    }
+    case tok::percentequal:{
+      return "%=";
+    }
+    case tok::less:{
+      return "<";
+    }
+    case tok::lessless:{
+      return "<<";
+    }
+    case tok::lessequal:{
+      return "<=";
+    }
+    case tok::lesslessequal:{
+      return "<<=";
+    }
+    case tok::greater:{
+      return ">";
+    }
+    case tok::greatergreater:{
+      return ">>";
+    }
+    case tok::greaterequal:{
+      return ">=";
+    }
+    case tok::greatergreaterequal:{
+      return ">>=";
+    }
+    case tok::caret:{
+      return "^";
+    }
+    case tok::caretequal:{
+      return "^=";
+    }
+    case tok::pipe:{
+      return "|";
+    }
+    case tok::pipepipe:{
+      return "||";
+    }
+    case tok::pipeequal:{
+      return "|=";
+    }
+    case tok::question:{
+      return "?";
+    }
+    case tok::colon:{
+      return ":";
+    }
+    case tok::semi:{
+      return ";";
+    }
+    case tok::equal:{
+      return "=";
+    }
+    case tok::equalequal:{
+      return "==";
+    }
+    case tok::comma:{
+      return ",";
+    }
+    case tok::hash:{
+      return "#";
+    }
+    case tok::hashhash:{
+      return "##";
+    }
+    case tok::hashat:{
+      return "#@";
+    }
+    case tok::periodstar:{
+      return ".*";
+    }
+    case tok::arrowstar:{
+      return "->*";
+    }
+    case tok::coloncolon:{
+      return "::";
+    }
+    case tok::at:{
+      return "@";
+    }
+    case tok::lesslessless:{
+      return "<<<";
+    }
+    case tok::greatergreatergreater:{
+      return ">>>";
+    }
+    default:
+    {
+      return tok.getName();
+    }
+  }
+}

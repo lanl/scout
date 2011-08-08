@@ -81,6 +81,9 @@ using namespace clang;
 ///
 StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement) {
+  // ndm - test
+  //DumpLookAheads(20);
+  
   const char *SemiError = 0;
   StmtResult Res;
 
@@ -258,6 +261,10 @@ Retry:
     return ParseForAllStatement(attrs);
   case tok::kw_renderall:
     return ParseForAllStatement(attrs, false);
+  case tok::kw_window:
+      return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
+  case tok::kw_image:
+    return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement(attrs);
@@ -1844,7 +1851,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
       std::string code = "scoutInit(" + paramArgc->getName().str() +
       ", " + paramArgv->getName().str() + ");";
       
-      InsertCPPCode(code);
+      InsertCPPCode(code, LBraceLoc, false);
     }
   }
   
@@ -2198,6 +2205,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     Op = 0;
   }
 
+  SourceLocation BodyLoc = Tok.getLocation();
+  
   StmtResult BodyResult = ParseStatement();
   if(BodyResult.isInvalid()){
     if(ForAll)
@@ -2215,7 +2224,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                    LParenLoc, Op, RParenLoc, Body);
   else{
-    InsertCPPCode("scoutSwapBuffers();", true);
+    InsertCPPCode("scoutSwapBuffers();", BodyLoc);
     
     return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                       LParenLoc, Op, RParenLoc, Body);

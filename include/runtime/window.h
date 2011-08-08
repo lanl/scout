@@ -16,6 +16,7 @@
 
 #include "runtime/types.h"
 #include "runtime/viewport.h"
+#include "runtime/vec_types.h"
 
 namespace scout 
 {
@@ -26,7 +27,8 @@ namespace scout
 
    public:
   
-    window_rt(dim_t w = 1024, dim_t h = 1024)
+    window_rt(dim_t w, dim_t h, float4 bgColor,
+	      bool saveFrames, const char* filename)
         : width(w), height(h)
     { }
 

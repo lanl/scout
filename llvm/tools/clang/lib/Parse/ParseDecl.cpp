@@ -20,7 +20,9 @@
 #include "RAIIObjectsForParser.h"
 #include "llvm/ADT/SmallSet.h"
 
+// ndm
 #include <iostream>
+#include <map>
 
 using namespace clang;
 
@@ -1994,6 +1996,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
 
+    // ndm
+        
     case tok::kw_uniform:
     case tok::kw_rectlinear:
     case tok::kw_structured:
@@ -2008,7 +2012,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       
       continue;
     }
-        
+    
     // enum-specifier:
     case tok::kw_enum:
       ConsumeToken();
@@ -3901,8 +3905,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     if (D.getContext() == Declarator::MemberContext)
       Diag(Tok, diag::err_expected_member_name_or_semi)
         << D.getDeclSpec().getSourceRange();
-    else if (getLang().CPlusPlus)
+    else if (getLang().CPlusPlus){
       Diag(Tok, diag::err_expected_unqualified_id) << getLang().CPlusPlus;
+    }
     else
       Diag(Tok, diag::err_expected_ident_lparen);
     D.SetIdentifier(0, Tok.getLocation());
@@ -4702,3 +4707,225 @@ ParseMeshDeclaration(DeclSpec &DS, FieldCallback &Fields, unsigned FieldType) {
     FirstDeclarator = false;
   }
 }
+
+// ndm - parse a window or image declaration
+// return true on success
+
+StmtResult 
+Parser::ParseWindowOrImageDeclaration(bool window,
+                                      StmtVector &Stmts,
+                                      bool OnlyStatement){
+  if(window){
+    assert(Tok.is(tok::kw_window) && "Not a window declaration stmt!");
+  }
+  else{
+    assert(Tok.is(tok::kw_image) && "Not an image declaration stmt!");
+  }
+  
+  ConsumeToken();
+  
+  // ndm - need to indicate error somehow, with return value?
+  
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::l_square)){
+    Diag(Tok, diag::err_expected_lsquare);
+    
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeBracket();
+
+  if(Tok.isNot(tok::numeric_constant)){
+    Diag(Tok, diag::err_expected_numeric_constant_in_window_def);
+    
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ExprResult XSize = Actions.ActOnNumericConstant(Tok).get();
+  
+  ConsumeToken();
+  
+  if(Tok.isNot(tok::comma)){
+    Diag(Tok, diag::err_expected_comma);
+    
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeToken();
+  
+  ExprResult YSize = Actions.ActOnNumericConstant(Tok).get();
+  
+  ConsumeToken();
+  
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_rsquare);
+    
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeBracket();
+  
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok, diag::err_expected_lbrace);
+    
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeBrace();
+  
+  typedef std::map<std::string, Expr*> ArgExprMap;
+  
+  ArgExprMap argExprMap;
+
+  bool error = false;
+  
+  for(;;){
+    if(Tok.is(tok::r_brace) || Tok.is(tok::eof)){
+      break;
+    }
+    
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+      
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+    
+    IdentifierInfo* Arg = Tok.getIdentifierInfo();
+    SourceLocation ArgLoc = ConsumeToken();
+    
+    if(Tok.isNot(tok::equal)){
+      Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
+      
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+    
+    ConsumeToken();
+    
+    ExprResult argResult = ParseExpression();
+    if(argResult.isInvalid()){
+      error = true;
+    }
+    
+    argExprMap[Arg->getName()] = argResult.get();
+    
+    if(Tok.isNot(tok::semi)){
+      if(window){
+        Diag(Tok, diag::err_expected_semi_window_arg);        
+      }
+      else{
+        Diag(Tok, diag::err_expected_semi_image_arg);
+      }
+      
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+    
+    ConsumeToken();
+  }
+
+  assert(Tok.is(tok::r_brace) && "expected r_brace");
+  
+  ConsumeBrace();
+  
+  assert(Tok.is(tok::semi) && "expected semi");
+  
+  ConsumeToken();
+  
+  if(error){
+    return StmtError();
+  }
+  
+  std::string code;
+  
+  if(window){
+    code = "scout::window_rt " + Name->getName().str() + "(" +
+    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
+    
+    ArgExprMap::iterator itr = argExprMap.find("background");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "background";
+      error = true;
+    }
+    
+    code += ToCPPCode(itr->second) + ", ";
+    
+    itr = argExprMap.find("save_frames");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "save_frames";
+      error = true;
+    }
+    
+    code += ToCPPCode(itr->second) + ", ";
+    
+    itr = argExprMap.find("filename");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "filename";
+      error = true;
+    }
+    
+    code += ToCPPCode(itr->second) + ");";
+  }
+  else{
+    code = "scout::image_rt " + Name->getName().str() + "(" +
+    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
+    
+    ArgExprMap::iterator itr = argExprMap.find("background");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_image_decl) << "background";
+      error = true;
+    }
+    
+    code += ToCPPCode(itr->second) + ", ";
+    
+    itr = argExprMap.find("filename");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_image_decl) << "filename";
+      error = true;
+    }
+    
+    code += ToCPPCode(itr->second) + ");";
+  }
+  
+  if(error){
+    return StmtError();
+  }
+
+  //std::cerr << "code is: " << code << std::endl;
+  
+  InsertCPPCode(code, NameLoc);
+  
+  return ParseStatementOrDeclaration(Stmts, OnlyStatement);
+}
+

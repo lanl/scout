@@ -4,6 +4,8 @@
 #define SCOUT_TOP_LEVEL
 
 #include "runtime/framebuffer.h"
+#include "runtime/window.h"
+#include "runtime/image.h"
 
 extern scout::framebuffer_rt* _framebuffer;
 

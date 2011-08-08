@@ -20,6 +20,7 @@
 #include "llvm/Support/Format.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -1570,6 +1571,13 @@ void Stmt::printPretty(llvm::raw_ostream &OS, ASTContext& Context,
 
   StmtPrinter P(OS, Context, Helper, Policy, Indentation);
   P.Visit(const_cast<Stmt*>(this));
+}
+
+std::string Stmt::toCPPCode(ASTContext& context){
+  std::string str;
+  llvm::raw_string_ostream ostr(str);
+  printPretty(ostr, context, 0, PrintingPolicy(context.getLangOptions()));
+  return ostr.str();
 }
 
 //===----------------------------------------------------------------------===//

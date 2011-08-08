@@ -173,7 +173,7 @@ PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
 // ndm - Scout specific operators
-PUNCTUATOR(equalgreater,        "=>")
+//PUNCTUATOR(equalgreater,        "=>")
 
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")
@@ -245,6 +245,8 @@ KEYWORD(renderall                   , KEYSCOUT)
 KEYWORD(faces                       , KEYSCOUT)
 KEYWORD(edges                       , KEYSCOUT)
 //KEYWORD(color                       , KEYSCOUT)
+KEYWORD(window                      , KEYSCOUT)
+KEYWORD(image                       , KEYSCOUT)
 
 
 KEYWORD(auto                        , KEYALL)

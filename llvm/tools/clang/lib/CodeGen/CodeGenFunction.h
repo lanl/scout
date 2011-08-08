@@ -1813,7 +1813,7 @@ public:
   void EmitScoutFrameBuffer();
 
   void DEBUG(const char *s) {
-    llvm::outs() << "Attempting " << s << ".\n";
+    //llvm::outs() << "Attempting " << s << ".\n";
   }
 
   FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);

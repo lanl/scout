@@ -574,6 +574,18 @@ def err_expected_semi_mesh_declaration : Error<
 "expected ';' at end of mesh declaration">;
 def err_no_mesh_field_specifier : Error<
 "no mesh field specifier has been specified, i.e: 'cells', 'vertices', etc.">;
+def err_expected_numeric_constant_in_window_def : Error<
+"expected a numeric constant in window dimensions definition">;
+
+def err_missing_field_window_decl : Error<
+"in window declaration, missing %0 field">;
+def err_expected_semi_window_arg : Error<
+"expected ';' at end window field">;
+
+def err_missing_field_image_decl : Error<
+"in image declaration, missing %0 field">;
+def err_expected_semi_image_arg : Error<
+"expected ';' at end image field">;
 
 } // end of Parse Issue category.
 } // end of Parser diagnostics
