@@ -2184,8 +2184,17 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   SourceLocation LParenLoc;
   SourceLocation RParenLoc;
 
-  if(Tok.is(tok::l_paren)){
+  if(Tok.is(tok::kw_where)){
+    ConsumeToken();
+    if(Tok.isNot(tok::l_paren)){
+      Diag(Tok, diag::err_invalid_forall_op);
+      SkipUntil(tok::l_brace);
+      ConsumeToken();
+      return StmtError();
+    }
+    
     LParenLoc = ConsumeParen();
+    
     ExprResult OpResult = ParseExpression();
     if(OpResult.isInvalid()){
       Diag(Tok, diag::err_invalid_forall_op);
@@ -2193,6 +2202,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       ConsumeToken();
       return StmtError();
     }
+    
+    Op = OpResult.get();
+    
     if(Tok.isNot(tok::r_paren)){
       Diag(Tok, diag::err_expected_rparen);
       SkipUntil(tok::l_brace);
@@ -2218,7 +2230,6 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   }
 
   Stmt* Body = BodyResult.get();
-
 
   if(ForAll)
     return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
