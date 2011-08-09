@@ -603,6 +603,10 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
 
   FieldDecl* FD = cast<FieldDecl>(ND);
   
+  if(MTy->getInstanceType() == MeshType::MeshInstance){
+    return false;
+  }
+  
   switch(FD->meshFieldType()){
     case FieldDecl::FieldCells:
     {
@@ -1600,8 +1604,6 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   UnresolvedSet<4> Overloads;
   if (isExprCallable(*BaseExpr.get(), ZeroArgCallTy, Overloads)) {
     if (ZeroArgCallTy.isNull()) {
-      // ndm - test
-      //BaseExpr.get()->dump();
       Diag(BaseExpr.get()->getExprLoc(), diag::err_member_reference_needs_call)
           << (Overloads.size() > 1) << 0 << BaseExpr.get()->getSourceRange();
       UnresolvedSet<2> PlausibleOverloads;

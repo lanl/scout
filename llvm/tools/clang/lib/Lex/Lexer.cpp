@@ -33,6 +33,9 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include <cctype>
+
+#include <iostream>
+
 using namespace clang;
 
 static void InitCharacterInfo();
@@ -1279,9 +1282,23 @@ static bool isHexaLiteral(const char *Start, const LangOptions &Features) {
 /// constant.
 void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   unsigned Size;
+
+  // ndm
+  unsigned Size2;
+
   char C = getCharAndSize(CurPtr, Size);
   char PrevCh = 0;
   while (isNumberBody(C)) { // FIXME: UCNs?
+
+    // ndm - support for Scout ".." punctuator
+    // this case is needed because we might have: [1..width]
+    // where the first '.' would normally be lexed as part of the 
+    // numeric constant
+  
+    if(C == '.' && getCharAndSize(CurPtr + 1, Size2) == '.'){
+      break;
+    }
+    
     CurPtr = ConsumeChar(CurPtr, Size, Result);
     PrevCh = C;
     C = getCharAndSize(CurPtr, Size);
@@ -2317,11 +2334,18 @@ LexNextToken:
     } else if (Features.CPlusPlus && Char == '*') {
       Kind = tok::periodstar;
       CurPtr += SizeTmp;
-    } else if (Char == '.' &&
-               getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
-      Kind = tok::ellipsis;
-      CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
-                           SizeTmp2, Result);
+    } else if (Char == '.') {
+
+      if(getCharAndSize(CurPtr+SizeTmp, SizeTmp2) == '.') {
+        CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
+                             SizeTmp2, Result);
+        Kind = tok::ellipsis;
+      }
+      // ndm - Scout .. punctuator
+      else{
+        CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
+        Kind = tok::periodperiod;
+      }
     } else {
       Kind = tok::period;
     }

@@ -1579,7 +1579,13 @@ void Parser::DumpLookAheads(unsigned N){
     std::cerr << "lookahead[" << i << "]: " << t.getName();
     
     if(t.is(tok::eof) || t.is(tok::semi)){
+      std::cerr << std::endl;
       break;
+    }
+    
+    if(t.isAnnotation()){
+      std::cerr << std::endl;
+      continue;
     }
     
     size_t length = t.getLength();
@@ -1779,4 +1785,24 @@ std::string Parser::TokToStr(const Token& tok){
       return tok.getName();
     }
   }
+}
+
+bool Parser::isScoutSource(SourceLocation location) const{
+  std::string bufferName = Actions.SourceMgr.getBufferName(location);
+  std::string ext;
+  
+  bool valid = false;
+  for(int i = bufferName.length() - 1; i >= 0; --i){
+    if(bufferName[i] == '.'){
+      valid = true;
+      break;
+    }
+    ext.insert(0, 1, bufferName[i]);
+  }
+  
+  if(!valid){
+    return false;
+  }
+  
+  return ext == "sc" || ext == "sch";
 }

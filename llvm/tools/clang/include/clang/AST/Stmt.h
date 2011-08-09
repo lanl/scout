@@ -1608,6 +1608,16 @@ private:
   IdentifierInfo* MeshII;
   IdentifierInfo* LoopVariableII;
 
+  Expr* XStart;
+  Expr* XEnd;
+  Expr* XStride;
+  Expr* YStart;
+  Expr* YEnd;
+  Expr* YStride;
+  Expr* ZStart;
+  Expr* ZEnd;
+  Expr* ZStride;
+  
 public:
   ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
              IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
@@ -1681,6 +1691,78 @@ public:
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
   }
 
+  Expr* getXStart(){
+    return XStart;
+  }
+  
+  void setXStart(Expr* XS){
+    XStart = XS;
+  }
+  
+  Expr* getXEnd(){
+    return XEnd;
+  }
+  
+  void setXEnd(Expr* XE){
+    XEnd = XE;
+  }
+  
+  Expr* getXStride(){
+    return XStride;
+  }
+  
+  void setXStride(Expr* XS){
+    XStride = XS;
+  }
+  
+  Expr* getYStart(){
+    return YStart;
+  }
+  
+  void setYStart(Expr* YS){
+    YStart = YS;
+  }
+  
+  Expr* getYEnd(){
+    return YEnd;
+  }
+  
+  void setYEnd(Expr* YE){
+    YEnd = YE;
+  }
+  
+  Expr* getYStride(){
+    return YStride;
+  }
+  
+  void setYStride(Expr* YS){
+    YStride = YS;
+  }
+  
+  Expr* getZStart(){
+    return ZStart;
+  }
+  
+  void setZStart(Expr* ZS){
+    ZStart = ZS;
+  }
+  
+  Expr* getZEnd(){
+    return ZEnd;
+  }
+  
+  void setZEnd(Expr* ZE){
+    ZEnd = ZE;
+  }
+  
+  Expr* getZStride(){
+    return ZStride;
+  }
+  
+  void setZStride(Expr* ZS){
+    ZStride = ZS;
+  }
+    
   SourceLocation getForAllLoc() const { return ForAllLoc; }
   void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
   SourceLocation getLParenLoc() const { return LParenLoc; }

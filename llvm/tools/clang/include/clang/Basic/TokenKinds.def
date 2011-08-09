@@ -172,8 +172,8 @@ PUNCTUATOR(hash,                "#")
 PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
-// ndm - Scout specific operators
-//PUNCTUATOR(equalgreater,        "=>")
+// ndm - Scout specific punctuators
+PUNCTUATOR(periodperiod,        "..")
 
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")

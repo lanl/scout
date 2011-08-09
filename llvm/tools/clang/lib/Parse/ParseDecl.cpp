@@ -4922,8 +4922,6 @@ Parser::ParseWindowOrImageDeclaration(bool window,
     return StmtError();
   }
 
-  //std::cerr << "code is: " << code << std::endl;
-  
   InsertCPPCode(code, NameLoc);
   
   return ParseStatementOrDeclaration(Stmts, OnlyStatement);

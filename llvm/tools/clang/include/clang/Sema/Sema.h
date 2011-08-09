@@ -6023,7 +6023,6 @@ public:
 // ndm - Scout
 // support for unqualified variables within a forall / renderall loop
 
-private:
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 
   ScoutLoopStack SCLStack;

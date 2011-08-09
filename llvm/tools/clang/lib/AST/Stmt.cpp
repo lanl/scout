@@ -788,8 +788,9 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
 
 // ndm - Scout Stmts
 
-ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T, const MeshType *MT,
-                       IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
+                       const MeshType *MT, IdentifierInfo* LII, 
+                       IdentifierInfo* MII, Expr *Op,
                        Stmt *Body, SourceLocation FL, SourceLocation LP,
                        SourceLocation RP)
 : Stmt(SC),
@@ -799,7 +800,19 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
-LoopVariableII(LII)
+LoopVariableII(LII),
+XStart(0),
+XEnd(0),
+XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+YStart(0),
+YEnd(0),
+YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+ZStart(0),
+ZEnd(0),
+ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL))
 {
   setOp(Op);
   setBody(Body);
@@ -816,7 +829,19 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
-LoopVariableII(LII)
+LoopVariableII(LII),
+XStart(0),
+XEnd(0),
+XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+YStart(0),
+YEnd(0),
+YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+ZStart(0),
+ZEnd(0),
+ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL))
 {
   setOp(Op);
   setBody(Body);

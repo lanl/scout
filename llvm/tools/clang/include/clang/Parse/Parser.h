@@ -1327,10 +1327,6 @@ private:
   StmtResult ParseWhileStatement(ParsedAttributes &Attr);
   StmtResult ParseDoStatement(ParsedAttributes &Attr);
 
-  // ndm - Scout Stmts
-
-  StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
-
   StmtResult ParseForStatement(ParsedAttributes &Attr);
   StmtResult ParseGotoStatement(ParsedAttributes &Attr);
   StmtResult ParseContinueStatement(ParsedAttributes &Attr);
@@ -1805,40 +1801,6 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
   MemInitResult ParseMemInitializer(Decl *ConstructorDecl);
   void HandleMemberFunctionDefaultArgs(Declarator& DeclaratorInfo,
                                        Decl *ThisDecl);
-
-  // ndm - Scout parsing methods
-
-  bool ParseMeshSpecifier(DeclSpec &DS);
-
-  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
-
-  void ParseMeshDeclaration(DeclSpec &DS,
-                            FieldCallback &Fields,
-                            unsigned FieldType);
-
-  StmtResult ParseWindowOrImageDeclaration(bool window,
-                                           StmtVector &Stmts,
-                                           bool OnlyStatement);
-  
-  // ndm - insert CPP code into the lexer stream for parsing. 
-  // Inserts a stream of tokens AFTER the current token Tok.
-  // This is a good method for handling cases such as inserting the call
-  // to initScout(argc, argv) at the beginning of main(), for other cases
-  // it may be necessary to construct the AST manually.
-  void InsertCPPCode(const std::string& code,
-                     SourceLocation location,
-                     bool beforeLookAhead=true);
-  
-  // ndm
-  // Debugging method for displaying the next N lookahead tokens.
-  void DumpLookAheads(unsigned N);
-  
-  // ndm - convert a token into a string representation
-  std::string TokToStr(const Token& tok);
-  
-  std::string ToCPPCode(Stmt* stmt){
-    return stmt->toCPPCode(Actions.Context);
-  }
   
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]
@@ -1935,6 +1897,55 @@ bool ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
                                          MacroInfo *MacroInfo,
                                          unsigned ArgumentIndex);
   virtual void CodeCompleteNaturalLanguage();
+  
+  
+  // **************************** ndm - Scout parsing methods
+  
+  StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
+  
+  StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
+                                       SourceLocation NameLoc,
+                                       VarDecl* VD);
+  
+  bool ParseMeshSpecifier(DeclSpec &DS);
+  
+  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
+  
+  void ParseMeshDeclaration(DeclSpec &DS,
+                            FieldCallback &Fields,
+                            unsigned FieldType);
+  
+  StmtResult ParseWindowOrImageDeclaration(bool window,
+                                           StmtVector &Stmts,
+                                           bool OnlyStatement);
+  
+  // ndm - insert CPP code into the lexer stream for parsing. 
+  // Inserts a stream of tokens AFTER the current token Tok.
+  // This is a good method for handling cases such as inserting the call
+  // to initScout(argc, argv) at the beginning of main(), for other cases
+  // it may be necessary to construct the AST manually.
+  void InsertCPPCode(const std::string& code,
+                     SourceLocation location,
+                     bool beforeLookAhead=true);
+  
+  // ndm
+  // Debugging method for displaying the next N lookahead tokens.
+  void DumpLookAheads(unsigned N);
+  
+  // ndm - convert a token into a string representation
+  std::string TokToStr(const Token& tok);
+  
+  std::string ToCPPCode(Stmt* stmt){
+    return stmt->toCPPCode(Actions.Context);
+  }
+  
+  // return whether this source location came from a '.sc' or '.sch' file
+  bool isScoutSource(SourceLocation location) const;
+  
+  bool isScoutLang() const{
+    return getLang().Scout;
+  }
+  
 };
 
 }  // end namespace clang

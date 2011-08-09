@@ -202,6 +202,27 @@ Retry:
         // FIXME: Implement this!
         break;
       }
+      
+      // ndm - detect the forall shorthand, e.g:
+      // m.a[1..width-2][1..height-2] = MAX_TEMP;
+      if(isScoutLang() && isScoutSource(NameLoc) && 
+         GetLookAheadToken(1).is(tok::period) &&
+         GetLookAheadToken(2).is(tok::identifier) &&
+         GetLookAheadToken(3).is(tok::l_square)){
+        
+        LookupResult 
+        Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
+        
+        Actions.LookupName(Result, getCurScope());
+        
+        if(Result.getResultKind() == LookupResult::Found){
+          if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
+            if(isa<MeshType>(vd->getType().getTypePtr())){
+              return ParseForAllShortStatement(Name, NameLoc, vd);
+            }
+          }
+        }
+      }
     }
 
     // Fall through
@@ -2240,4 +2261,145 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                       LParenLoc, Op, RParenLoc, Body);
   }
+}
+
+StmtResult
+Parser::ParseForAllShortStatement(IdentifierInfo* Name,
+                                  SourceLocation NameLoc,
+                                  VarDecl* VD){
+  ConsumeToken();
+  
+  assert(Tok.is(tok::period) && "expected period");
+  ConsumeToken();
+  
+  assert(Tok.is(tok::identifier) && "expected identifier");
+  
+  IdentifierInfo* FieldName = Tok.getIdentifierInfo();
+  SourceLocation FieldLoc = ConsumeToken();
+    
+  Expr* XStart = 0;
+  Expr* XEnd = 0;
+  Expr* YStart = 0;
+  Expr* YEnd = 0;
+  Expr* ZStart = 0;
+  Expr* ZEnd = 0;
+  
+  Actions.SCLStack.push_back(VD);
+  
+  for(size_t i = 0; i < 3; ++i){
+    
+    assert(Tok.is(tok::l_square) && "expected l_square");
+    ConsumeBracket();
+    
+    ExprResult Start = ParseExpression();
+    if(Start.isInvalid()){
+      SkipUntil(tok::semi);
+      Actions.SCLStack.pop_back();
+      return StmtError();
+    }
+    
+    if(Tok.isNot(tok::periodperiod)){
+      Diag(Tok, diag::err_expected_periodperiod);
+      SkipUntil(tok::semi);
+      Actions.SCLStack.pop_back();
+      return StmtError();
+    }
+    
+    ConsumeToken();
+    
+    ExprResult End = ParseExpression();
+    if(End.isInvalid()){
+      SkipUntil(tok::semi);
+      Actions.SCLStack.pop_back();
+      return StmtError();
+    }
+    
+    switch(i){
+      case 0:
+      {
+        XStart = Start.get();
+        XEnd = End.get();
+        break;
+      }
+      case 1:
+      {
+        YStart = Start.get();
+        YEnd = End.get();
+        break;
+      }
+      case 2:
+      {
+        ZStart = Start.get();
+        ZEnd = End.get();
+        break;
+      }
+    }
+    
+    if(Tok.isNot(tok::r_square)){
+      Diag(Tok, diag::err_expected_rsquare);
+      SkipUntil(tok::semi);
+      Actions.SCLStack.pop_back();
+      return StmtError();
+    }
+    
+    ConsumeBracket();
+    
+    if(Tok.isNot(tok::l_square)){
+      break;
+    }
+  }
+  
+  if(Tok.isNot(tok::equal) &&
+     Tok.isNot(tok::plusequal) &&
+     Tok.isNot(tok::minusequal) &&
+     Tok.isNot(tok::starequal) &&
+     Tok.isNot(tok::slashequal)){
+    Diag(Tok, diag::err_expected_forall_binary_op);
+    SkipUntil(tok::semi);
+    Actions.SCLStack.pop_back();
+    return StmtError();
+  }
+  
+  std::string code = FieldName->getName().str() + " " + TokToStr(Tok) + " ";
+  
+  SourceLocation CodeLoc = ConsumeToken();
+  
+  ExprResult rhs = ParseExpression();
+  
+  if(rhs.isInvalid()){
+    SkipUntil(tok::semi);
+    Actions.SCLStack.pop_back();
+    return StmtError();
+  }
+  
+  code += ToCPPCode(rhs.get());
+
+  InsertCPPCode(code, CodeLoc);
+
+  Stmt* Body = ParseStatement().get();
+  
+  // Lookup the meshtype and store it for the ForAllStmt Constructor.
+  LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
+  Actions.LookupName(LR, getCurScope());
+  const MeshType *MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
+  
+  StmtResult ForAllResult = 
+  Actions.ActOnForAllStmt(NameLoc,
+                          ForAllStmt::Cells,
+                          MT,
+                          &Actions.Context.Idents.get("c"),
+                          Name,
+                          NameLoc,
+                          0, NameLoc, Body);
+  
+  ForAllStmt* FAS = cast<ForAllStmt>(ForAllResult.get()); 
+  
+  FAS->setXStart(XStart);
+  FAS->setXEnd(XEnd);
+  FAS->setYStart(YStart);
+  FAS->setYEnd(YEnd);  
+  FAS->setZStart(ZStart);
+  FAS->setZEnd(ZEnd);
+  
+  return ForAllResult;
 }

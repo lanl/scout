@@ -1698,26 +1698,32 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
           FieldDecl* fd = *fitr;
           
           bool valid;
-          
-          switch(fd->meshFieldType()){
-            case FieldDecl::FieldVertices:
-              valid = mt->getInstanceType() == MeshType::VerticesInstance;
-              break;
-            case FieldDecl::FieldCells:
-              valid = mt->getInstanceType() == MeshType::CellsInstance;
-              break;
-            case FieldDecl::FieldFaces:
-              valid = mt->getInstanceType() == MeshType::FacesInstance;
-              break;
-            case FieldDecl::FieldEdges:
-              valid = mt->getInstanceType() == MeshType::EdgesInstance;
-              break;
-            case FieldDecl::FieldAll:
-              valid = true;
-              break;
-            default:
-              assert(false && "invalid field type while attempting to look "
-                     "up unqualified forall/renderall variable");
+
+          if(mt->getInstanceType() == MeshType::MeshInstance){
+            valid = true;
+          }
+          else{
+            switch(fd->meshFieldType()){
+              case FieldDecl::FieldVertices:
+                
+                valid = mt->getInstanceType() == MeshType::VerticesInstance;
+                break;
+              case FieldDecl::FieldCells:
+                valid = mt->getInstanceType() == MeshType::CellsInstance;
+                break;
+              case FieldDecl::FieldFaces:
+                valid = mt->getInstanceType() == MeshType::FacesInstance;
+                break;
+              case FieldDecl::FieldEdges:
+                valid = mt->getInstanceType() == MeshType::EdgesInstance;
+                break;
+              case FieldDecl::FieldAll:
+                valid = true;
+                break;
+              default:
+                assert(false && "invalid field type while attempting "
+                       "to look up unqualified forall/renderall variable");
+            }
           }
           
           if(valid && Name.getAsString() == fd->getName()){

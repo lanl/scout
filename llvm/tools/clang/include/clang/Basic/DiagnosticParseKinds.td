@@ -587,5 +587,8 @@ def err_missing_field_image_decl : Error<
 def err_expected_semi_image_arg : Error<
 "expected ';' at end image field">;
 
+def err_expected_periodperiod : Error<"expected '..'">;
+def err_expected_forall_binary_op : Error<"expected binary operator">;
+
 } // end of Parse Issue category.
 } // end of Parser diagnostics
