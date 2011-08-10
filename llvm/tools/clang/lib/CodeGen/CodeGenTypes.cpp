@@ -453,16 +453,20 @@ const llvm::Type *CodeGenTypes::ConvertNewType(QualType T) {
 
     std::vector< const llvm::Type * > eltTys;
     for( ; it != it_end; ++it) {
-      // Identify the type of each mesh member.
-      const llvm::Type *ty = ConvertNewType(it->getType());
-      unsigned numElts = dims.back()->EvaluateAsInt(Context).getSExtValue();
-      ty = ArrayTy::get(ty, numElts);
-      // Construct an n-dimensional array of that type.
-      for(int i = dims.size() - 2; i >= 0; --i) {
-        numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
+      llvm::StringRef name = it->getName();
+      // Do not generate code for implicit mesh member variables.
+      if(!(name == "position" || name == "width" || name == "height" || name == "depth")) {
+        // Identify the type of each mesh member.
+        const llvm::Type *ty = ConvertNewType(it->getType());
+        unsigned numElts = dims.back()->EvaluateAsInt(Context).getSExtValue();
         ty = ArrayTy::get(ty, numElts);
+        // Construct an n-dimensional array of that type.
+        for(int i = dims.size() - 2; i >= 0; --i) {
+          numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
+          ty = ArrayTy::get(ty, numElts);
+        }
+        eltTys.push_back(ty);
       }
-      eltTys.push_back(ty);
     }
 
     typedef llvm::ArrayRef< const llvm::Type * > Array;

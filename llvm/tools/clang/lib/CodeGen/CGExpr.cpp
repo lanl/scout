@@ -1327,13 +1327,12 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   // Check if this is a Scout 'color' expression.
   if(ND->getName() == "color") {
     const ValueDecl *VD = cast<ValueDecl>(ND);
-    llvm::Value *idx  = Builder.CreateLoad(ScoutIdxVars[0]);
 
-    const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-    llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+    const llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
+    llvm::Value *arg = Builder.CreateZExt(Builder.CreateLoad(ForallIndVar), i64Ty);
 
-    llvm::Value *args[] = { zero, idx };
-    llvm::Value *val = Builder.CreateInBoundsGEP(ScoutColor, args, args + 2, "coloridx");
+    llvm::Value *addr = Builder.CreateLoad(ScoutColor);
+    llvm::Value *val = Builder.CreateInBoundsGEP(addr, arg, "coloridx");
     return MakeAddrLValue(val, VD->getType(), Alignment);
   }
 
@@ -1753,9 +1752,20 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   Qualifiers BaseQuals;
 
   // Check if this is a Scout '*.position.{x,y,z.w}' intrinsic.
-  if(E->getMemberDecl()->getName() == "position") {
+  if(E->getMemberDecl()->getName() == "position")
     return MakeAddrLValue(ScoutIdxVars[0], getContext().IntTy);
-  }
+
+  // Check if this is a Scout '*.width' instrinsic.
+  if(E->getMemberDecl()->getName() == "width")
+    return MakeAddrLValue(ScoutMeshSizes[0], getContext().IntTy);
+
+  // Check if this is a Scout '*.height' instrinsic.
+  if(E->getMemberDecl()->getName() == "height")
+    return MakeAddrLValue(ScoutMeshSizes[1], getContext().IntTy);
+
+  // Check if this is a Scout '*.depth' instrinsic.
+  if(E->getMemberDecl()->getName() == "depth")
+    return MakeAddrLValue(ScoutMeshSizes[2], getContext().IntTy);
 
   // Check if this is a Scout mesh member expression.
   if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
@@ -2184,10 +2194,8 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
           return EmitBuiltinExpr(FD, builtinID, E);
         else if(FD->getNameInfo().getAsString() == "cshift")
           return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-        else if(FD->getNameInfo().getAsString() == "scoutSwapBuffers") {
+        else if(FD->getNameInfo().getAsString() == "scoutSwapBuffers")
           EmitScoutFrameBuffer();
-          //return RValue::get(0);
-        }
       }
     }
   }
@@ -2511,9 +2519,10 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   const QualType Ty = field.first->getType();
   const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-  llvm::Value *args[] = {  zero, zero };
+
+  std::vector< llvm::Value * > args(1, zero);
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
-    args[1] = Builder.CreateLoad(ScoutIdxVars[i]);
+    args.push_back(Builder.CreateLoad(ScoutIdxVars[i]));
     if(axis == i) {
       // Add shift to current idx.
       llvm::Value *shift;
@@ -2522,17 +2531,19 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
       } else {
         shift = RV.getScalarVal();
       }
-      shift = Builder.CreateAdd(args[1], shift);
+      shift = Builder.CreateAdd(args[i + 1], shift);
       unsigned dim = dims[i]->EvaluateAsInt(getContext()).getSExtValue();
       // Circular shift; require idx in range [0..dim - 1].
-      args[1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
+      args[i + 1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
     }
-    addr = Builder.CreateInBoundsGEP(addr, args, args + 2, "arrayidx");
   }
+
+  addr = Builder.CreateInBoundsGEP(addr, args.begin(), args.end(), "arrayidx");
   return MakeAddrLValue(addr, Ty);
 }
 
 void CodeGenFunction::EmitScoutFrameBuffer() {
+  DEBUG("EmitScoutFrameBuffer");
   const llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
 
   if(!CGM.getModule().getNamedGlobal("_framebuffer")) {
@@ -2562,7 +2573,6 @@ void CodeGenFunction::EmitScoutFrameBuffer() {
   llvm::Value *args[] = { zero, three };
 
   llvm::Value *var = Builder.CreateInBoundsGEP(FB, args, args + 2, "pixels");
-  args[1] = zero;
-  llvm::Value *val = Builder.CreateInBoundsGEP(ScoutColor, args, args + 2, "coloridx");
+  llvm::Value *val = Builder.CreateLoad(ScoutColor);
   Builder.CreateStore(val, var);
 }
