@@ -3239,6 +3239,11 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
+  // ndm - add Scout libs
+  CmdArgs.push_back("-lpng");
+  CmdArgs.push_back("-lscRuntime");
+  CmdArgs.push_back("-lscStandard");
+
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
   // In ARC, if we don't have runtime support, link in the runtime
@@ -4132,6 +4137,11 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
     std::string Plugin = ToolChain.getDriver().Dir + "/../lib/LLVMgold.so";
     CmdArgs.push_back(Args.MakeArgString(Plugin));
   }
+
+  // ndm - add Scout libs
+  CmdArgs.push_back("-lpng");
+  CmdArgs.push_back("-lscRuntime");
+  CmdArgs.push_back("-lscStandard");
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
