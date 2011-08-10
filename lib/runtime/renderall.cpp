@@ -31,6 +31,8 @@ inline float4 bilinearSample(const float4 *buffer, int wd, int ht, float x,
                    lerp(x, buffer[yu*wd + xl], buffer[yu*wd + xu]));
 }
 
+namespace scout{
+
 void mapToFrameBuffer(const float4 *colors, int dataw, int datah, 
                       framebuffer_rt &fb, const viewport_rt &vp, 
                       MapFilterType filter) 
@@ -97,3 +99,4 @@ void mapToFrameBuffer(const float4 *colors, int dataw, int datah,
     }
 }
 
+} // end namespace scout
