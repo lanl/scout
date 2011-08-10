@@ -575,7 +575,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
-  SetImplicitMeshVariable(MeshII->getName());
+  llvm::StringRef meshName = MeshII->getName();
+  SetImplicitMeshVariable(meshName);
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
@@ -595,6 +596,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
   Builder.CreateStore(zero, indVar);
+  ForallIndVar = indVar;
 
   // Clear the list of stale ScoutIdxVars.
   ScoutIdxVars.clear();
@@ -604,6 +606,9 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, name);
     Builder.CreateStore(zero, lval);
     ScoutIdxVars.push_back(lval);
+    lval = Builder.CreateAlloca(i32Ty, 0, meshName + "_" + toString(i));
+    Builder.CreateStore(llvm::ConstantInt::get(i32Ty, dimsI[i]), lval);
+    ScoutMeshSizes.push_back(lval);
   }
 
   JumpDest LoopExit = getJumpDestInCurrentScope("forall.end");
@@ -655,21 +660,48 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   DEBUG("EmitRenderAllStmt");
 
+  const llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+  llvm::Type *Ty = llvm::PointerType::get(llvm::VectorType::get(fltTy, 4), 0);
+
   const MeshType *MT = S.getMeshType();
   MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+
   unsigned dim = 1;
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
     dim *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
   }
 
-  const llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
-  llvm::Type *elTy = llvm::VectorType::get(fltTy, 4);
-  llvm::Type *Ty   = llvm::ArrayType::get(elTy, dim);
+  const llvm::Type *i8Ty = llvm::Type::getInt8Ty(getLLVMContext());
+  const llvm::Type *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
 
-  llvm::AllocaInst *Alloca = new llvm::AllocaInst(Ty, "color");
-  llvm::BasicBlock *Block = AllocaInsertPt->getParent();
-  Block->getInstList().insertAfter(&*AllocaInsertPt, Alloca);
-  ScoutColor = Alloca;
+  const llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
+  llvm::AttrListPtr namPAL;
+  llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
+  llvm::AttributeWithIndex PAWI;
+  PAWI.Index = 0u; PAWI.Attrs = 0 | llvm::Attribute::NoAlias;
+  Attrs.push_back(PAWI);
+  namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
+
+  if(!CGM.getModule().getFunction("_Znam")) {
+    const llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, /*isVarArg=*/false);
+    llvm::Function *namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
+                                                  "_Znam", &CGM.getModule());
+    namF->setAttributes(namPAL);
+  }
+
+  llvm::BasicBlock *BB = Builder.GetInsertBlock();
+  Builder.SetInsertPoint(&*AllocaInsertPt);
+
+  llvm::Constant *nam = CGM.getModule().getFunction("_Znam");
+
+  llvm::CallInst *call = Builder.CreateCall(nam, llvm::ConstantInt::get(i64Ty, 16 * dim));
+  call->setAttributes(namPAL);
+  llvm::Value *val = Builder.CreateBitCast(call, Ty);
+  llvm::Value *alloca = Builder.CreateAlloca(Ty, 0, "color");
+  val = Builder.CreateStore(val, alloca);
+
+  Builder.SetInsertPoint(BB);
+  ScoutColor = alloca;
   EmitForAllStmt(cast<ForAllStmt>(S));
 }
 

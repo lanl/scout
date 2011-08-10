@@ -659,13 +659,27 @@ public:
   typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< FieldDecl *, int > FieldPair;
-  /// Scout forall induction variables.
+  /// Scout forall explicit induction variable.
+  llvm::Value *ForallIndVar;
+  /// Scout forall implicit induction variables.
   Vector ScoutIdxVars;
+  /// Scout mesh dimension sizes.
+  Vector ScoutMeshSizes;
   /// Scout defined mesh variables.
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
   /// Scout defined color variable.
   llvm::Value *ScoutColor;
+
+  llvm::StringRef toString(int i) {
+    switch(i) {
+    case 0: return "width";
+    case 1: return "height";
+    case 2: return "depth";
+    default:
+      assert(false && "Unknown dimension in toString()!\n");
+    }
+  }
 
   void SetImplicitMeshVariable(llvm::StringRef name) {
     for(unsigned i = 0, e = ScoutMeshVars.size(); i < e; ++i) {
