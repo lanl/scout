@@ -121,10 +121,12 @@ namespace{
       if(str[i] == '('){
         string head;
         
-        do{
-          ++i;
+        ++i;
+        
+        while(str[i] != ' '){
           head += str[i];
-        } while(str[i] != ' ');
+          ++i;
+        }
         
         ViewASTNode* n = new ViewASTNode(head);
         
@@ -274,17 +276,31 @@ namespace{
     
     assert(false && "viewASTParse parse error");
   }
+
+  bool isScoutASTNode(const string& name){
+    return name == "ForAllStmt" || name == "RenderAllStmt" || 
+    name == "ScoutVectorMemberExpr";
+  }
   
   void viewASTOutputNodes(ViewASTNode* n, int& id){
     n->setId(id);
     cout << "  node" << id << " [label = \"";
-    cout << "<f0> " << n->head();
+
+    cout << "<f0> ";
     
+    cout << n->head();
+        
     for(size_t i = 0; i < n->attrCount(); ++i){
       cout << " | <f" << i+1 << "> " << n->attr(i);
     }
     
-    cout << "\"];" << endl;
+    cout << "\"";
+    
+    if(isScoutASTNode(n->head())){
+      cout << ", style=\"filled\", fillcolor=\"slategray3\"";
+    }
+    
+    cout << "];" << endl;
     
     for(size_t i = 0; i < n->childCount(); ++i){
       viewASTOutputNodes(n->child(i), ++id);
