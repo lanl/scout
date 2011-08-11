@@ -1656,6 +1656,10 @@ static void EmitValidateOperandClass(AsmMatcherInfo &Info,
   OS << "  " << Info.Target.getName() << "Operand &Operand = *("
      << Info.Target.getName() << "Operand*)GOp;\n";
 
+  // The InvalidMatchClass is not to match any operand.
+  OS << "  if (Kind == InvalidMatchClass)\n";
+  OS << "    return false;\n\n";
+
   // Check for Token operands first.
   OS << "  if (Operand.isToken())\n";
   OS << "    return MatchTokenString(Operand.getToken()) == Kind;\n\n";
@@ -2168,7 +2172,7 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "\n#ifdef GET_ASSEMBLER_HEADER\n";
   OS << "#undef GET_ASSEMBLER_HEADER\n";
   OS << "  // This should be included into the middle of the declaration of\n";
-  OS << "  // your subclasses implementation of TargetAsmParser.\n";
+  OS << "  // your subclasses implementation of MCTargetAsmParser.\n";
   OS << "  unsigned ComputeAvailableFeatures(uint64_t FeatureBits) const;\n";
   OS << "  enum MatchResultTy {\n";
   OS << "    Match_ConversionFail,\n";

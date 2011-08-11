@@ -7,14 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Target/TargetAsmParser.h"
-#include "X86.h"
-#include "X86Subtarget.h"
+#include "MCTargetDesc/X86BaseInfo.h"
+#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetAsmParser.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
@@ -28,17 +27,14 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
-#define GET_SUBTARGETINFO_ENUM
-#include "X86GenSubtargetInfo.inc"
-
 using namespace llvm;
 
 namespace {
 struct X86Operand;
 
-class X86ATTAsmParser : public TargetAsmParser {
+class X86ATTAsmParser : public MCTargetAsmParser {
+  MCSubtargetInfo &STI;
   MCAsmParser &Parser;
-  OwningPtr<const MCSubtargetInfo> STI;
 
 private:
   MCAsmParser &getParser() const { return Parser; }
@@ -51,6 +47,7 @@ private:
   X86Operand *ParseMemOperand(unsigned SegReg, SMLoc StartLoc);
 
   bool ParseDirectiveWord(unsigned Size, SMLoc L);
+  bool ParseDirectiveCode(StringRef IDVal, SMLoc L);
 
   bool MatchAndEmitInstruction(SMLoc IDLoc,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
@@ -64,9 +61,13 @@ private:
   /// or %es:(%edi) in 32bit mode.
   bool isDstOp(X86Operand &Op);
 
-  bool is64Bit() {
+  bool is64BitMode() const {
     // FIXME: Can tablegen auto-generate this?
-    return (STI->getFeatureBits() & X86::Mode64Bit) != 0;
+    return (STI.getFeatureBits() & X86::Mode64Bit) != 0;
+  }
+  void SwitchMode() {
+    unsigned FB = ComputeAvailableFeatures(STI.ToggleFeature(X86::Mode64Bit));
+    setAvailableFeatures(FB);
   }
 
   /// @name Auto-generated Matcher Functions
@@ -78,13 +79,11 @@ private:
   /// }
 
 public:
-  X86ATTAsmParser(StringRef TT, StringRef CPU, StringRef FS,
-                  MCAsmParser &parser)
-    : TargetAsmParser(), Parser(parser),
-      STI(X86_MC::createX86MCSubtargetInfo(TT, CPU, FS)) {
+  X86ATTAsmParser(MCSubtargetInfo &sti, MCAsmParser &parser)
+    : MCTargetAsmParser(), STI(sti), Parser(parser) {
 
     // Initialize the set of available features.
-    setAvailableFeatures(ComputeAvailableFeatures(STI->getFeatureBits()));
+    setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
   }
   virtual bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc);
 
@@ -147,7 +146,7 @@ struct X86Operand : public MCParsedAsmOperand {
   /// getEndLoc - Get the location of the last token of this operand.
   SMLoc getEndLoc() const { return EndLoc; }
 
-  virtual void dump(raw_ostream &OS) const {}
+  virtual void print(raw_ostream &OS) const {}
 
   StringRef getToken() const {
     assert(Kind == Token && "Invalid access!");
@@ -227,6 +226,21 @@ struct X86Operand : public MCParsedAsmOperand {
     return ((                                  Value <= 0x000000000000007FULL)||
             (0x00000000FFFFFF80ULL <= Value && Value <= 0x00000000FFFFFFFFULL)||
             (0xFFFFFFFFFFFFFF80ULL <= Value && Value <= 0xFFFFFFFFFFFFFFFFULL));
+  }
+  bool isImmZExtu32u8() const {
+    if (!isImm())
+      return false;
+
+    // If this isn't a constant expr, just assume it fits and let relaxation
+    // handle it.
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE)
+      return true;
+
+    // Otherwise, check the value is in a range that makes sense for this
+    // extension.
+    uint64_t Value = CE->getValue();
+    return (Value <= 0x00000000000000FFULL);
   }
   bool isImmSExti64i8() const {
     if (!isImm())
@@ -357,7 +371,7 @@ struct X86Operand : public MCParsedAsmOperand {
 } // end anonymous namespace.
 
 bool X86ATTAsmParser::isSrcOp(X86Operand &Op) {
-  unsigned basereg = is64Bit() ? X86::RSI : X86::ESI;
+  unsigned basereg = is64BitMode() ? X86::RSI : X86::ESI;
 
   return (Op.isMem() &&
     (Op.Mem.SegReg == 0 || Op.Mem.SegReg == X86::DS) &&
@@ -367,7 +381,7 @@ bool X86ATTAsmParser::isSrcOp(X86Operand &Op) {
 }
 
 bool X86ATTAsmParser::isDstOp(X86Operand &Op) {
-  unsigned basereg = is64Bit() ? X86::RDI : X86::EDI;
+  unsigned basereg = is64BitMode() ? X86::RDI : X86::EDI;
 
   return Op.isMem() && Op.Mem.SegReg == X86::ES &&
     isa<MCConstantExpr>(Op.Mem.Disp) &&
@@ -387,19 +401,25 @@ bool X86ATTAsmParser::ParseRegister(unsigned &RegNo,
   if (Tok.isNot(AsmToken::Identifier))
     return Error(Tok.getLoc(), "invalid register name");
 
-  // FIXME: Validate register for the current architecture; we have to do
-  // validation later, so maybe there is no need for this here.
   RegNo = MatchRegisterName(Tok.getString());
 
   // If the match failed, try the register name as lowercase.
   if (RegNo == 0)
     RegNo = MatchRegisterName(LowercaseString(Tok.getString()));
 
-  // FIXME: This should be done using Requires<In32BitMode> and
-  // Requires<In64BitMode> so "eiz" usage in 64-bit instructions
-  // can be also checked.
-  if (RegNo == X86::RIZ && !is64Bit())
-    return Error(Tok.getLoc(), "riz register in 64-bit mode only");
+  if (!is64BitMode()) {
+    // FIXME: This should be done using Requires<In32BitMode> and
+    // Requires<In64BitMode> so "eiz" usage in 64-bit instructions can be also
+    // checked.
+    // FIXME: Check AH, CH, DH, BH cannot be used in an instruction requiring a
+    // REX prefix.
+    if (RegNo == X86::RIZ ||
+        X86MCRegisterClasses[X86::GR64RegClassID].contains(RegNo) ||
+        X86II::isX86_64NonExtLowByteReg(RegNo) ||
+        X86II::isX86_64ExtendedReg(RegNo))
+      return Error(Tok.getLoc(), "register %"
+                   + Tok.getString() + " is only available in 64-bit mode");
+  }
 
   // Parse "%st" as "%st(0)" and "%st(1)", which is multiple tokens.
   if (RegNo == 0 && (Tok.getString() == "st" || Tok.getString() == "ST")) {
@@ -477,7 +497,7 @@ X86Operand *X86ATTAsmParser::ParseOperand() {
     SMLoc Start, End;
     if (ParseRegister(RegNo, Start, End)) return 0;
     if (RegNo == X86::EIZ || RegNo == X86::RIZ) {
-      Error(Start, "eiz and riz can only be used as index registers");
+      Error(Start, "%eiz and %riz can only be used as index registers");
       return 0;
     }
 
@@ -818,7 +838,7 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
   // Transform "movs[bwl] %ds:(%esi), %es:(%edi)" into "movs[bwl]"
   if (Name.startswith("movs") && Operands.size() == 3 &&
       (Name == "movsb" || Name == "movsw" || Name == "movsl" ||
-       (is64Bit() && Name == "movsq"))) {
+       (is64BitMode() && Name == "movsq"))) {
     X86Operand &Op = *(X86Operand*)Operands.begin()[1];
     X86Operand &Op2 = *(X86Operand*)Operands.begin()[2];
     if (isSrcOp(Op) && isDstOp(Op2)) {
@@ -831,7 +851,7 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
   // Transform "lods[bwl] %ds:(%esi),{%al,%ax,%eax,%rax}" into "lods[bwl]"
   if (Name.startswith("lods") && Operands.size() == 3 &&
       (Name == "lods" || Name == "lodsb" || Name == "lodsw" ||
-       Name == "lodsl" || (is64Bit() && Name == "lodsq"))) {
+       Name == "lodsl" || (is64BitMode() && Name == "lodsq"))) {
     X86Operand *Op1 = static_cast<X86Operand*>(Operands[1]);
     X86Operand *Op2 = static_cast<X86Operand*>(Operands[2]);
     if (isSrcOp(*Op1) && Op2->isReg()) {
@@ -861,7 +881,7 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
   // Transform "stos[bwl] {%al,%ax,%eax,%rax},%es:(%edi)" into "stos[bwl]"
   if (Name.startswith("stos") && Operands.size() == 3 &&
       (Name == "stos" || Name == "stosb" || Name == "stosw" ||
-       Name == "stosl" || (is64Bit() && Name == "stosq"))) {
+       Name == "stosl" || (is64BitMode() && Name == "stosq"))) {
     X86Operand *Op1 = static_cast<X86Operand*>(Operands[1]);
     X86Operand *Op2 = static_cast<X86Operand*>(Operands[2]);
     if (isDstOp(*Op2) && Op1->isReg()) {
@@ -1101,6 +1121,8 @@ bool X86ATTAsmParser::ParseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getIdentifier();
   if (IDVal == ".word")
     return ParseDirectiveWord(2, DirectiveID.getLoc());
+  else if (IDVal.startswith(".code"))
+    return ParseDirectiveCode(IDVal, DirectiveID.getLoc());
   return true;
 }
 
@@ -1129,15 +1151,35 @@ bool X86ATTAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
   return false;
 }
 
+/// ParseDirectiveCode
+///  ::= .code32 | .code64
+bool X86ATTAsmParser::ParseDirectiveCode(StringRef IDVal, SMLoc L) {
+  if (IDVal == ".code32") {
+    Parser.Lex();
+    if (is64BitMode()) {
+      SwitchMode();
+      getParser().getStreamer().EmitAssemblerFlag(MCAF_Code32);
+    }
+  } else if (IDVal == ".code64") {
+    Parser.Lex();
+    if (!is64BitMode()) {
+      SwitchMode();
+      getParser().getStreamer().EmitAssemblerFlag(MCAF_Code64);
+    }
+  } else {
+    return Error(L, "unexpected directive " + IDVal);
+  }
 
+  return false;
+}
 
 
 extern "C" void LLVMInitializeX86AsmLexer();
 
 // Force static initialization.
 extern "C" void LLVMInitializeX86AsmParser() {
-  RegisterAsmParser<X86ATTAsmParser> X(TheX86_32Target);
-  RegisterAsmParser<X86ATTAsmParser> Y(TheX86_64Target);
+  RegisterMCAsmParser<X86ATTAsmParser> X(TheX86_32Target);
+  RegisterMCAsmParser<X86ATTAsmParser> Y(TheX86_64Target);
   LLVMInitializeX86AsmLexer();
 }
 

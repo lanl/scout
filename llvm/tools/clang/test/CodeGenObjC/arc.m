@@ -475,14 +475,12 @@ void test19() {
   // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 5
   // CHECK-NEXT: br label
 
-  // CHECK:      [[CUR:%.*]] = phi i8**
-  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[END]]
-  // CHECK-NEXT: br i1 [[EQ]],
-
-  // CHECK:      [[T0:%.*]] = load i8** [[CUR]]
+  // CHECK:      [[AFTER:%.*]] = phi i8** [ [[END]], {{%.*}} ], [ [[NEXT:%.*]], {{%.*}} ]
+  // CHECK-NEXT: [[CUR:%.*]] = getelementptr inbounds i8** [[AFTER]], i64 -1
+  // CHECK-NEXT: [[T0:%.*]] = load i8** [[CUR]]
   // CHECK-NEXT: call void @objc_release(i8* [[T0]]) nounwind, !clang.imprecise_release
-  // CHECK-NEXT: [[NEXT:%.*]] = getelementptr inbounds i8** [[CUR]], i32 1
-  // CHECK-NEXT: br label
+  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[BEGIN]]
+  // CHECK-NEXT: br i1 [[EQ]],
 
   // CHECK:      ret void
 }
@@ -513,16 +511,15 @@ void test20(unsigned n) {
 
   // Destroy.
   // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[VLA]], i64 [[DIM]]
-  // CHECK-NEXT: br label
+  // CHECK-NEXT: [[EMPTY:%.*]] = icmp eq i8** [[VLA]], [[END]]
+  // CHECK-NEXT: br i1 [[EMPTY]]
 
-  // CHECK:      [[CUR:%.*]] = phi i8**
-  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[END]]
-  // CHECK-NEXT: br i1 [[EQ]],
-
-  // CHECK:      [[T0:%.*]] = load i8** [[CUR]]
+  // CHECK:      [[AFTER:%.*]] = phi i8** [ [[END]], {{%.*}} ], [ [[CUR:%.*]], {{%.*}} ]
+  // CHECK-NEXT: [[CUR:%.*]] = getelementptr inbounds i8** [[AFTER]], i64 -1
+  // CHECK-NEXT: [[T0:%.*]] = load i8** [[CUR]]
   // CHECK-NEXT: call void @objc_release(i8* [[T0]]) nounwind, !clang.imprecise_release
-  // CHECK-NEXT: [[NEXT:%.*]] = getelementptr inbounds i8** [[CUR]], i32 1
-  // CHECK-NEXT: br label
+  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[VLA]]
+  // CHECK-NEXT: br i1 [[EQ]],
 
   // CHECK:      [[T0:%.*]] = load i8** [[SAVED_STACK]]
   // CHECK-NEXT: call void @llvm.stackrestore(i8* [[T0]])
@@ -560,16 +557,15 @@ void test21(unsigned n) {
   // CHECK-NEXT: [[BEGIN:%.*]] = getelementptr inbounds [3 x i8*]* [[VLA]], i32 0, i32 0
   // CHECK-NEXT: [[T1:%.*]] = mul nuw i64 [[T0]], 3
   // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 [[T1]]
-  // CHECK-NEXT: br label
+  // CHECK-NEXT: [[EMPTY:%.*]] = icmp eq i8** [[BEGIN]], [[END]]
+  // CHECK-NEXT: br i1 [[EMPTY]]
 
-  // CHECK:      [[CUR:%.*]] = phi i8**
-  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[END]]
-  // CHECK-NEXT: br i1 [[EQ]],
-
-  // CHECK:      [[T0:%.*]] = load i8** [[CUR]]
+  // CHECK:      [[AFTER:%.*]] = phi i8** [ [[END]], {{%.*}} ], [ [[CUR:%.*]], {{%.*}} ]
+  // CHECK-NEXT: [[CUR:%.*]] = getelementptr inbounds i8** [[AFTER]], i64 -1
+  // CHECK-NEXT: [[T0:%.*]] = load i8** [[CUR]]
   // CHECK-NEXT: call void @objc_release(i8* [[T0]]) nounwind, !clang.imprecise_release
-  // CHECK-NEXT: [[NEXT:%.*]] = getelementptr inbounds i8** [[CUR]], i32 1
-  // CHECK-NEXT: br label
+  // CHECK-NEXT: [[EQ:%.*]] = icmp eq i8** [[CUR]], [[BEGIN]]
+  // CHECK-NEXT: br i1 [[EQ]],
 
   // CHECK:      [[T0:%.*]] = load i8** [[SAVED_STACK]]
   // CHECK-NEXT: call void @llvm.stackrestore(i8* [[T0]])
@@ -582,18 +578,18 @@ void test22(_Bool cond) {
   // CHECK:      define void @test22(
   // CHECK:      [[COND:%.*]] = alloca i8,
   // CHECK-NEXT: [[X:%.*]] = alloca i8*,
-  // CHECK-NEXT: [[RELCOND:%.*]] = alloca i1
   // CHECK-NEXT: [[RELVAL:%.*]] = alloca i8*
-  // CHECK-NEXT: store i1 false, i1* [[RELCOND]]
+  // CHECK-NEXT: [[RELCOND:%.*]] = alloca i1
   // CHECK-NEXT: zext
   // CHECK-NEXT: store
   // CHECK-NEXT: [[T0:%.*]] = load i8* [[COND]]
   // CHECK-NEXT: [[T1:%.*]] = trunc i8 [[T0]] to i1
+  // CHECK-NEXT: store i1 false, i1* [[RELCOND]]
   // CHECK-NEXT: br i1 [[T1]],
   // CHECK:      br label
   // CHECK:      [[CALL:%.*]] = call i8* @test22_helper()
-  // CHECK-NEXT: store i1 true, i1* [[RELCOND]]
   // CHECK-NEXT: store i8* [[CALL]], i8** [[RELVAL]]
+  // CHECK-NEXT: store i1 true, i1* [[RELCOND]]
   // CHECK-NEXT: br label
   // CHECK:      [[T0:%.*]] = phi i8* [ null, {{%.*}} ], [ [[CALL]], {{%.*}} ]
   // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retain(i8* [[T0]]) nounwind
@@ -622,7 +618,7 @@ void test22(_Bool cond) {
 int (^test25(int x))(void) {
   // CHECK:    define i32 ()* @test25(
   // CHECK:      [[X:%.*]] = alloca i32,
-  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
+  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
   // CHECK-NEXT: store i32 {{%.*}}, i32* [[X]]
   // CHECK:      [[T0:%.*]] = bitcast [[BLOCK_T]]* [[BLOCK]] to i32 ()*
   // CHECK-NEXT: [[T1:%.*]] = bitcast i32 ()* [[T0]] to i8*
@@ -647,12 +643,11 @@ int (^test25(int x))(void) {
 // CHECK-NEXT: [[BEGIN:%.*]] = getelementptr inbounds [4 x i8*]* [[X]], i32 0, i32 0
 // CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 4
 // CHECK-NEXT: br label
-// CHECK:      [[CUR:%.*]] = phi i8**
-// CHECK-NEXT: [[ISDONE:%.*]] = icmp eq i8** [[CUR]], [[END]]
+// CHECK:      [[PAST:%.*]] = phi i8** [ [[END]], {{%.*}} ], [ [[CUR:%.*]], {{%.*}} ]
+// CHECK-NEXT: [[CUR]] = getelementptr inbounds i8** [[PAST]], i64 -1
+// CHECK-NEXT: call void @objc_storeStrong(i8** [[CUR]], i8* null)
+// CHECK-NEXT: [[ISDONE:%.*]] = icmp eq i8** [[CUR]], [[BEGIN]]
 // CHECK-NEXT: br i1 [[ISDONE]],
-// CHECK:      call void @objc_storeStrong(i8** [[CUR]], i8* null)
-// CHECK-NEXT: [[NEXT:%.*]] = getelementptr inbounds i8** [[CUR]], i32 1
-// CHECK-NEXT: br label
 // CHECK:      ret void
 
 // Check that 'init' retains self.
@@ -890,7 +885,7 @@ char *helper;
 void test31(id x) {
 // CHECK:    define void @test31(
 // CHECK:      [[X:%.*]] = alloca i8*,
-// CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
+// CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
 // CHECK-NEXT: [[PARM:%.*]] = call i8* @objc_retain(i8* {{%.*}})
 // CHECK-NEXT: store i8* [[PARM]], i8** [[X]]
 // CHECK:      [[SLOT:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
@@ -1120,7 +1115,7 @@ void test36(id x) {
 
   // CHECK: br label
   // CHECK: call void @objc_release
-  // CHECK: br label
+  // CHECK: br i1
 
   // CHECK: call void @objc_release
   // CHECK-NEXT: ret void
@@ -1165,7 +1160,7 @@ void test38(void) {
 
   // CHECK:    define void @test38()
   // CHECK:      [[VAR:%.*]] = alloca [[BYREF_T:%.*]],
-  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
+  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
   // CHECK:      [[T0:%.*]] = getelementptr inbounds [[BYREF_T]]* [[VAR]], i32 0, i32 2
   // 0x02000000 - has copy/dispose helpers
   // CHECK-NEXT: store i32 33554432, i32* [[T0]]
@@ -1200,7 +1195,7 @@ void test38(void) {
   // CHECK-NEXT: call void @objc_release(i8* [[T1]])
 
   // CHECK:    define internal void @__test38_block_invoke_
-  // CHECK:      [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* {{%.*}}, i32 0, i32 6
+  // CHECK:      [[SLOT:%.*]] = getelementptr inbounds {{.*}}, i32 0, i32 6
   // CHECK-NEXT: [[T0:%.*]] = load i8** [[SLOT]], align 8
   // CHECK-NEXT: store i8* null, i8** [[SLOT]],
   // CHECK-NEXT: call void @objc_release(i8* [[T0]])
@@ -1221,8 +1216,8 @@ void test39(void) {
 
   // CHECK:    define void @test39()
   // CHECK:      [[VAR:%.*]] = alloca i8*
-  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
-  // CHECK-NEXT: [[T0:%.*]] = call i8* @test39_source()
+  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
+  // CHECK: [[T0:%.*]] = call i8* @test39_source()
   // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
   // CHECK-NEXT: store i8* [[T1]], i8** [[VAR]],
   // CHECK-NEXT: call void @objc_release(i8* [[T1]])
@@ -1231,8 +1226,8 @@ void test39(void) {
   // CHECK:      [[CAPTURE:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
   // CHECK-NEXT: [[T0:%.*]] = load i8** [[VAR]]
   // CHECK-NEXT: store i8* [[T0]], i8** [[CAPTURE]]
-  // CHECK-NEXT: [[T0:%.*]] = bitcast [[BLOCK_T]]* [[BLOCK]] to void ()*
-  // CHECK-NEXT: call void @test39_helper(void ()* [[T0]])
+  // CHECK-NEXT: [[T0:%.*]] = bitcast [[BLOCK_T]]* [[BLOCK]] to
+  // CHECK: call void @test39_helper
   // CHECK-NEXT: ret void
 }
 
@@ -1244,7 +1239,7 @@ void test40(void) {
 
   // CHECK:    define void @test40()
   // CHECK:      [[VAR:%.*]] = alloca [[BYREF_T:%.*]],
-  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
+  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
   // CHECK:      [[T0:%.*]] = getelementptr inbounds [[BYREF_T]]* [[VAR]], i32 0, i32 2
   // 0x02000000 - has copy/dispose helpers
   // CHECK-NEXT: store i32 33554432, i32* [[T0]]
@@ -1276,7 +1271,7 @@ void test40(void) {
   // CHECK-NEXT: call void @objc_destroyWeak(i8** [[T0]])
 
   // CHECK:    define internal void @__test40_block_invoke_
-  // CHECK:      [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* {{%.*}}, i32 0, i32 6
+  // CHECK:      [[SLOT:%.*]] = getelementptr inbounds {{.*}}, i32 0, i32 6
   // CHECK-NEXT: call i8* @objc_storeWeak(i8** [[SLOT]], i8* null)
   // CHECK-NEXT: ret void
 
@@ -1298,7 +1293,7 @@ void test41(void) {
 
   // CHECK:    define void @test41()
   // CHECK:      [[VAR:%.*]] = alloca i8*,
-  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
+  // CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
   // CHECK:      [[T0:%.*]] = call i8* @test41_source()
   // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
   // CHECK-NEXT: call i8* @objc_initWeak(i8** [[VAR]], i8* [[T1]])
@@ -1335,8 +1330,8 @@ void test41(void) {
 // CHECK:    define internal void @"\01-[Test42 test]"
 // CHECK:      [[SELF:%.*]] = alloca [[TEST42:%.*]]*,
 // CHECK-NEXT: alloca i8*
-// CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:%.*]],
-// CHECK-NEXT: store
+// CHECK-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
+// CHECK: store
 // CHECK-NEXT: store
 // CHECK:      [[T0:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
 // CHECK-NEXT: [[T1:%.*]] = load [[TEST42]]** [[SELF]],
@@ -1344,8 +1339,8 @@ void test41(void) {
 // CHECK-NEXT: [[T3:%.*]] = call i8* @objc_retain(i8* [[T2]])
 // CHECK-NEXT: [[T4:%.*]] = bitcast i8* [[T3]] to [[TEST42]]*
 // CHECK-NEXT: store [[TEST42]]* [[T4]], [[TEST42]]** [[T0]]
-// CHECK-NEXT: bitcast [[BLOCK_T]]* [[BLOCK]] to void ()*
-// CHECK-NEXT: call void @test42_helper(
+// CHECK-NEXT: bitcast [[BLOCK_T]]* [[BLOCK]] to
+// CHECK: call void @test42_helper(
 // CHECK-NEXT: [[T1:%.*]] = load [[TEST42]]** [[T0]]
 // CHECK-NEXT: [[T2:%.*]] = bitcast [[TEST42]]* [[T1]] to i8*
 // CHECK-NEXT: call void @objc_release(i8* [[T2]])
@@ -1532,4 +1527,315 @@ void test53(void) {
 // CHECK-NEXT: [[T0:%.*]] = load i8** [[X]]
 // CHECK-NEXT: call void @objc_release(i8* [[T0]])
 // CHECK-NEXT: ret void
+}
+
+// <rdar://problem/9758798>
+// CHECK: define void @test54(i32 %first, ...)
+void test54(int first, ...) {
+  __builtin_va_list arglist;
+  // CHECK: call void @llvm.va_start
+  __builtin_va_start(arglist, first);
+  // CHECK: call i8* @objc_retain
+  id obj = __builtin_va_arg(arglist, id);
+  // CHECK: call void @llvm.va_end
+  __builtin_va_end(arglist);
+  // CHECK: call void @objc_release
+  // CHECK: ret void
+}
+
+// PR10228
+@interface Test55Base @end
+@interface Test55 : Test55Base @end
+@implementation Test55 (Category)
+- (void) dealloc {}
+@end
+// CHECK:   define internal void @"\01-[Test55(Category) dealloc]"(
+// CHECK-NOT: ret
+// CHECK:     call void bitcast (i8* ({{%.*}}*, i8*, ...)* @objc_msgSendSuper2 to void ({{%.*}}*, i8*)*)(
+
+// rdar://problem/8024350
+@protocol Test56Protocol
++ (id) make __attribute__((ns_returns_retained));
+@end
+@interface Test56<Test56Protocol> @end
+@implementation Test56
+// CHECK: define internal i8* @"\01+[Test56 make]"(
++ (id) make {
+  extern id test56_helper(void);
+  // CHECK:      [[T0:%.*]] = call i8* @test56_helper()
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: ret i8* [[T1]]
+  return test56_helper();
+}
+@end
+void test56_test(void) {
+  id x = [Test56 make];
+  // CHECK: define void @test56_test()
+  // CHECK:      [[X:%.*]] = alloca i8*, align 8
+  // CHECK:      [[T0:%.*]] = call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to i8* (i8*, i8*)*)(
+  // CHECK-NEXT: store i8* [[T0]], i8** [[X]]
+  // CHECK-NEXT: [[T0:%.*]] = load i8** [[X]]
+  // CHECK-NEXT: call void @objc_release(i8* [[T0]])
+  // CHECK-NEXT: ret void
+}
+
+// rdar://problem/9784964
+@interface Test57
+@property (nonatomic, strong) id strong;
+@property (nonatomic, weak) id weak;
+@property (nonatomic, unsafe_unretained) id unsafe;
+@end
+@implementation Test57
+@synthesize strong, weak, unsafe;
+@end
+// CHECK: define internal i8* @"\01-[Test57 strong]"(
+// CHECK:      [[T0:%.*]] = load [[TEST57:%.*]]** {{%.*}}
+// CHECK-NEXT: [[T1:%.*]] = load i64* @"OBJC_IVAR_$_Test57.strong"
+// CHECK-NEXT: [[T2:%.*]] = bitcast [[TEST57]]* [[T0]] to i8*
+// CHECK-NEXT: [[T3:%.*]] = getelementptr inbounds i8* [[T2]], i64 [[T1]]
+// CHECK-NEXT: [[T4:%.*]] = bitcast i8* [[T3]] to i8**
+// CHECK-NEXT: [[T5:%.*]] = load i8** [[T4]]
+// CHECK-NEXT: ret i8* [[T5]]
+
+// CHECK: define internal i8* @"\01-[Test57 weak]"(
+// CHECK:      [[T0:%.*]] = load [[TEST57]]** {{%.*}}
+// CHECK-NEXT: [[T1:%.*]] = load i64* @"OBJC_IVAR_$_Test57.weak"
+// CHECK-NEXT: [[T2:%.*]] = bitcast [[TEST57]]* [[T0]] to i8*
+// CHECK-NEXT: [[T3:%.*]] = getelementptr inbounds i8* [[T2]], i64 [[T1]]
+// CHECK-NEXT: [[T4:%.*]] = bitcast i8* [[T3]] to i8**
+// CHECK-NEXT: [[T5:%.*]] = call i8* @objc_loadWeakRetained(i8** [[T4]])
+// CHECK-NEXT: [[T6:%.*]] = call i8* @objc_autoreleaseReturnValue(i8* [[T5]])
+// CHECK-NEXT: ret i8* [[T6]]
+
+// CHECK: define internal i8* @"\01-[Test57 unsafe]"(
+// CHECK:      [[T0:%.*]] = load [[TEST57]]** {{%.*}}
+// CHECK-NEXT: [[T1:%.*]] = load i64* @"OBJC_IVAR_$_Test57.unsafe"
+// CHECK-NEXT: [[T2:%.*]] = bitcast [[TEST57]]* [[T0]] to i8*
+// CHECK-NEXT: [[T3:%.*]] = getelementptr inbounds i8* [[T2]], i64 [[T1]]
+// CHECK-NEXT: [[T4:%.*]] = bitcast i8* [[T3]] to i8**
+// CHECK-NEXT: [[T5:%.*]] = load i8** [[T4]]
+// CHECK-NEXT: ret i8* [[T5]]
+
+// rdar://problem/9821110
+@interface Test58
+- (char*) interior __attribute__((objc_returns_inner_pointer));
+// Should we allow this on properties?
+@end
+extern Test58 *test58_helper(void);
+
+// CHECK: define void @test58a()
+void test58a(void) {
+  // CHECK:      [[T0:%.*]] = call [[TEST58:%.*]]* @test58_helper()
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T1]])
+  // CHECK-NEXT: [[T3:%.*]] = bitcast i8* [[T2]] to [[TEST58]]*
+  // CHECK-NEXT: store [[TEST58]]* [[T3]]
+  // CHECK-NEXT: [[T0:%.*]] = load [[TEST58]]**
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_retainAutorelease(i8* [[T1]])
+  // CHECK-NEXT: [[T3:%.*]] = bitcast i8* [[T2]] to [[TEST58]]*
+  // CHECK-NEXT: [[T4:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T5:%.*]] = bitcast [[TEST58]]* [[T3]] to i8*
+  // CHECK-NEXT: [[T6:%.*]] = call i8* bitcast
+  // CHECK-NEXT: store i8* [[T6]], i8**
+  // CHECK-NEXT: [[T0:%.*]] = load [[TEST58]]**
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]]) nounwind, !clang.imprecise_release
+  // CHECK-NEXT: ret void
+  Test58 *ptr = test58_helper();
+  char *c = [(ptr) interior];
+}
+
+// CHECK: define void @test58b()
+void test58b(void) {
+  // CHECK:      [[T0:%.*]] = call [[TEST58:%.*]]* @test58_helper()
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: [[T2:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T1]])
+  // CHECK-NEXT: [[T3:%.*]] = bitcast i8* [[T2]] to [[TEST58]]*
+  // CHECK-NEXT: store [[TEST58]]* [[T3]]
+  // CHECK-NEXT: [[T0:%.*]] = load [[TEST58]]**
+  // CHECK-NEXT: [[T1:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T2:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: [[T3:%.*]] = call i8* bitcast
+  // CHECK-NEXT: store i8* [[T3]], i8**
+  // CHECK-NEXT: [[T0:%.*]] = load [[TEST58]]**
+  // CHECK-NEXT: [[T1:%.*]] = bitcast [[TEST58]]* [[T0]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]]) nounwind
+  // CHECK-NOT:  clang.imprecise_release
+  // CHECK-NEXT: ret void
+  __attribute__((objc_precise_lifetime)) Test58 *ptr = test58_helper();
+  char *c = [ptr interior];
+}
+
+// rdar://problem/9842343
+void test59(void) {
+  extern id test59_getlock(void);
+  extern void test59_body(void);
+  @synchronized (test59_getlock()) {
+    test59_body();
+  }
+
+  // CHECK:    define void @test59()
+  // CHECK:      [[T0:%.*]] = call i8* @test59_getlock()
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: call void @objc_sync_enter(i8* [[T1]])
+  // CHECK-NEXT: call void @test59_body()
+  // CHECK-NEXT: call void @objc_sync_exit(i8* [[T1]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
+  // CHECK-NEXT: ret void
+}
+
+// rdar://problem/9814099
+// Test that we correctly initialize __block variables
+// when the initialization captures the variable.
+void test60a(void) {
+  __block void (^block)(void) = ^{ block(); };
+  // CHECK:    define void @test60a()
+  // CHECK:      [[BYREF:%.*]] = alloca [[BYREF_T:%.*]],
+
+  // Zero-initialization before running the initializer.
+  // CHECK:      [[T0:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 6
+  // CHECK-NEXT: store void ()* null, void ()** [[T0]], align 8
+
+  // Run the initializer as an assignment.
+  // CHECK:      [[T0:%.*]] = bitcast void ()* {{%.*}} to i8*
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainBlock(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = bitcast i8* [[T1]] to void ()*
+  // CHECK-NEXT: [[T3:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 1
+  // CHECK-NEXT: [[T4:%.*]] = load [[BYREF_T]]** [[T3]]
+  // CHECK-NEXT: [[T5:%.*]] = getelementptr inbounds [[BYREF_T]]* [[T4]], i32 0, i32 6
+  // CHECK-NEXT: [[T6:%.*]] = load void ()** [[T5]], align 8
+  // CHECK-NEXT: store void ()* {{%.*}}, void ()** [[T5]], align 8
+  // CHECK-NEXT: [[T7:%.*]] = bitcast void ()* [[T6]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T7]])
+
+  // Destroy at end of function.
+  // CHECK-NEXT: [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 6
+  // CHECK-NEXT: [[T0:%.*]] = bitcast [[BYREF_T]]* [[BYREF]] to i8*
+  // CHECK-NEXT: call void @_Block_object_dispose(i8* [[T0]], i32 8)
+  // CHECK-NEXT: [[T1:%.*]] = load void ()** [[SLOT]]
+  // CHECK-NEXT: [[T2:%.*]] = bitcast void ()* [[T1]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T2]])
+  // CHECK-NEXT: ret void
+}
+
+// Test that we correctly assign to __block variables when the
+// assignment captures the variable.
+void test60b(void) {
+  __block void (^block)(void);
+  block = ^{ block(); };
+
+  // CHECK:    define void @test60b()
+  // CHECK:      [[BYREF:%.*]] = alloca [[BYREF_T:%.*]],
+
+  // Zero-initialize.
+  // CHECK:      [[T0:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 6
+  // CHECK-NEXT: store void ()* null, void ()** [[T0]], align 8
+
+  // CHECK-NEXT: [[SLOT:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 6
+
+  // The assignment.
+  // CHECK:      [[T0:%.*]] = bitcast void ()* {{%.*}} to i8*
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainBlock(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = bitcast i8* [[T1]] to void ()*
+  // CHECK-NEXT: [[T3:%.*]] = getelementptr inbounds [[BYREF_T]]* [[BYREF]], i32 0, i32 1
+  // CHECK-NEXT: [[T4:%.*]] = load [[BYREF_T]]** [[T3]]
+  // CHECK-NEXT: [[T5:%.*]] = getelementptr inbounds [[BYREF_T]]* [[T4]], i32 0, i32 6
+  // CHECK-NEXT: [[T6:%.*]] = load void ()** [[T5]], align 8
+  // CHECK-NEXT: store void ()* {{%.*}}, void ()** [[T5]], align 8
+  // CHECK-NEXT: [[T7:%.*]] = bitcast void ()* [[T6]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T7]])
+
+  // Destroy at end of function.
+  // CHECK-NEXT: [[T0:%.*]] = bitcast [[BYREF_T]]* [[BYREF]] to i8*
+  // CHECK-NEXT: call void @_Block_object_dispose(i8* [[T0]], i32 8)
+  // CHECK-NEXT: [[T1:%.*]] = load void ()** [[SLOT]]
+  // CHECK-NEXT: [[T2:%.*]] = bitcast void ()* [[T1]] to i8*
+  // CHECK-NEXT: call void @objc_release(i8* [[T2]])
+  // CHECK-NEXT: ret void
+}
+
+// Verify that we don't try to reclaim the result of performSelector.
+// rdar://problem/9887545
+@interface Test61
+- (id) performSelector: (SEL) selector;
+- (void) test61_void;
+- (id) test61_id;
+@end
+void test61(void) {
+  // CHECK:    define void @test61()
+  // CHECK:      [[Y:%.*]] = alloca i8*, align 8
+
+  extern id test61_make(void);
+
+  // CHECK-NEXT: [[T0:%.*]] = call i8* @test61_make()
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T3:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T4:%.*]] = call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to i8* (i8*, i8*, i8*)*)(i8* [[T1]], i8* [[T3]], i8* [[T2]])
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
+  [test61_make() performSelector: @selector(test61_void)];
+
+  // CHECK-NEXT: [[T0:%.*]] = call i8* @test61_make()
+  // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+  // CHECK-NEXT: [[T2:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T3:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
+  // CHECK-NEXT: [[T4:%.*]] = call i8* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to i8* (i8*, i8*, i8*)*)(i8* [[T1]], i8* [[T3]], i8* [[T2]])
+  // CHECK-NEXT: [[T5:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T4]])
+  // CHECK-NEXT: store i8* [[T5]], i8** [[Y]]
+  // CHECK-NEXT: call void @objc_release(i8* [[T1]])
+  id y = [test61_make() performSelector: @selector(test61_id)];
+
+  // CHECK-NEXT: [[T0:%.*]] = load i8** [[Y]]
+  // CHECK-NEXT: call void @objc_release(i8* [[T0]])
+  // CHECK-NEXT: ret void
+}
+
+// rdar://problem/9891815
+void test62(void) {
+  // CHECK:    define void @test62()
+  // CHECK:      [[I:%.*]] = alloca i32, align 4
+  // CHECK-NEXT: [[CLEANUP_VALUE:%.*]] = alloca i8*
+  // CHECK-NEXT: [[CLEANUP_REQUIRED:%.*]] = alloca i1
+  extern id test62_make(void);
+  extern void test62_body(void);
+
+  // CHECK-NEXT: store i32 0, i32* [[I]], align 4
+  // CHECK-NEXT: br label
+
+  // CHECK:      [[T0:%.*]] = load i32* [[I]], align 4
+  // CHECK-NEXT: [[T1:%.*]] = icmp ne i32 [[T0]], 20
+  // CHECK-NEXT: br i1 [[T1]],
+
+  for (unsigned i = 0; i != 20; ++i) {
+    // CHECK:      [[T0:%.*]] = load i32* [[I]], align 4
+    // CHECK-NEXT: [[T1:%.*]] = icmp ne i32 [[T0]], 0
+    // CHECK-NEXT: store i1 false, i1* [[CLEANUP_REQUIRED]]
+    // CHECK-NEXT: br i1 [[T1]],
+    // CHECK:      [[T0:%.*]] = call i8* @test62_make()
+    // CHECK-NEXT: [[T1:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T0]])
+    // CHECK-NEXT: store i8* [[T1]], i8** [[CLEANUP_VALUE]]
+    // CHECK-NEXT: store i1 true, i1* [[CLEANUP_REQUIRED]]
+    // CHECK-NEXT: [[T2:%.*]] = icmp ne i8* [[T1]], null
+    // CHECK-NEXT: br label
+    // CHECK:      [[COND:%.*]] = phi i1 [ false, {{%.*}} ], [ [[T2]], {{%.*}} ]
+    // CHECK-NEXT: [[T0:%.*]] = load i1* [[CLEANUP_REQUIRED]]
+    // CHECK-NEXT: br i1 [[T0]],
+    // CHECK:      [[T0:%.*]] = load i8** [[CLEANUP_VALUE]]
+    // CHECK-NEXT: call void @objc_release(i8* [[T0]])
+    // CHECK-NEXT: br label
+    // CHECK:      br i1 [[COND]]
+    // CHECK:      call void @test62_body()
+    // CHECK-NEXT: br label
+    // CHECK:      br label
+    if (i != 0 && test62_make() != 0)
+      test62_body();
+  }
+
+  // CHECK:      [[T0:%.*]] = load i32* [[I]], align 4
+  // CHECK-NEXT: [[T1:%.*]] = add i32 [[T0]], 1
+  // CHECK-NEXT: store i32 [[T1]], i32* [[I]]
+  // CHECK-NEXT: br label
+
+  // CHECK:      ret void
 }

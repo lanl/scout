@@ -21,8 +21,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/ADT/SmallVector.h"
 
-#define GET_SUBTARGETINFO_ENUM
-#define GET_SUBTARGETINFO_MC_DESC
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "X86GenSubtargetInfo.inc"
@@ -187,45 +185,59 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
 
   X86_MC::GetCpuIDAndInfo(0x1, &EAX, &EBX, &ECX, &EDX);
   
-  if ((EDX >> 15) & 1) HasCMov = true;
-  if ((EDX >> 23) & 1) X86SSELevel = MMX;
-  if ((EDX >> 25) & 1) X86SSELevel = SSE1;
-  if ((EDX >> 26) & 1) X86SSELevel = SSE2;
-  if (ECX & 0x1)       X86SSELevel = SSE3;
-  if ((ECX >> 9)  & 1) X86SSELevel = SSSE3;
-  if ((ECX >> 19) & 1) X86SSELevel = SSE41;
-  if ((ECX >> 20) & 1) X86SSELevel = SSE42;
+  if ((EDX >> 15) & 1) HasCMov = true;      ToggleFeature(X86::FeatureCMOV);
+  if ((EDX >> 23) & 1) X86SSELevel = MMX;   ToggleFeature(X86::FeatureMMX);
+  if ((EDX >> 25) & 1) X86SSELevel = SSE1;  ToggleFeature(X86::FeatureSSE1);
+  if ((EDX >> 26) & 1) X86SSELevel = SSE2;  ToggleFeature(X86::FeatureSSE2);
+  if (ECX & 0x1)       X86SSELevel = SSE3;  ToggleFeature(X86::FeatureSSE3);
+  if ((ECX >> 9)  & 1) X86SSELevel = SSSE3; ToggleFeature(X86::FeatureSSSE3);
+  if ((ECX >> 19) & 1) X86SSELevel = SSE41; ToggleFeature(X86::FeatureSSE41);
+  if ((ECX >> 20) & 1) X86SSELevel = SSE42; ToggleFeature(X86::FeatureSSE42);
   // FIXME: AVX codegen support is not ready.
-  //if ((ECX >> 28) & 1) { HasAVX = true; X86SSELevel = NoMMXSSE; }
+  //if ((ECX >> 28) & 1) { HasAVX = true; } ToggleFeature(X86::FeatureAVX);
 
   bool IsIntel = memcmp(text.c, "GenuineIntel", 12) == 0;
   bool IsAMD   = !IsIntel && memcmp(text.c, "AuthenticAMD", 12) == 0;
 
-  HasCLMUL = IsIntel && ((ECX >> 1) & 0x1);
-  HasFMA3  = IsIntel && ((ECX >> 12) & 0x1);
-  HasPOPCNT = IsIntel && ((ECX >> 23) & 0x1);
-  HasAES   = IsIntel && ((ECX >> 25) & 0x1);
+  HasCLMUL = IsIntel && ((ECX >> 1) & 0x1);   ToggleFeature(X86::FeatureCLMUL);
+  HasFMA3  = IsIntel && ((ECX >> 12) & 0x1);  ToggleFeature(X86::FeatureFMA3);
+  HasPOPCNT = IsIntel && ((ECX >> 23) & 0x1); ToggleFeature(X86::FeaturePOPCNT);
+  HasAES   = IsIntel && ((ECX >> 25) & 0x1);  ToggleFeature(X86::FeatureAES);
 
   if (IsIntel || IsAMD) {
     // Determine if bit test memory instructions are slow.
     unsigned Family = 0;
     unsigned Model  = 0;
     X86_MC::DetectFamilyModel(EAX, Family, Model);
-    IsBTMemSlow = IsAMD || (Family == 6 && Model >= 13);
+    if (IsAMD || (Family == 6 && Model >= 13)) {
+      IsBTMemSlow = true;
+      ToggleFeature(X86::FeatureSlowBTMem);
+    }
     // If it's Nehalem, unaligned memory access is fast.
-    if (Family == 15 && Model == 26)
+    if (Family == 15 && Model == 26) {
       IsUAMemFast = true;
+      ToggleFeature(X86::FeatureFastUAMem);
+    }
 
     X86_MC::GetCpuIDAndInfo(0x80000001, &EAX, &EBX, &ECX, &EDX);
-    HasX86_64 = (EDX >> 29) & 0x1;
-    HasSSE4A = IsAMD && ((ECX >> 6) & 0x1);
-    HasFMA4 = IsAMD && ((ECX >> 16) & 0x1);
+    if ((EDX >> 29) & 0x1) {
+      HasX86_64 = true;
+      ToggleFeature(X86::Feature64Bit);
+    }
+    if (IsAMD && ((ECX >> 6) & 0x1)) {
+      HasSSE4A = true;
+      ToggleFeature(X86::FeatureSSE4A);
+    }
+    if (IsAMD && ((ECX >> 16) & 0x1)) {
+      HasFMA4 = true;
+      ToggleFeature(X86::FeatureFMA4);
+    }
   }
 }
 
 X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
                            const std::string &FS, 
-                           unsigned StackAlignOverride)
+                           unsigned StackAlignOverride, bool is64Bit)
   : X86GenSubtargetInfo(TT, CPU, FS)
   , PICStyle(PICStyles::None)
   , X86SSELevel(NoMMXSSE)
@@ -246,20 +258,9 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   // FIXME: this is a known good value for Yonah. How about others?
   , MaxInlineSizeThreshold(128)
   , TargetTriple(TT)
-  , In64BitMode(false) {
-  // Insert the architecture feature derived from the target triple into the
-  // feature string. This is important for setting features that are implied
-  // based on the architecture version.
-  std::string ArchFS = X86_MC::ParseX86Triple(TT);
-  if (!FS.empty()) {
-    if (!ArchFS.empty())
-      ArchFS = ArchFS + "," + FS;
-    else
-      ArchFS = FS;
-  }
-
+  , In64BitMode(is64Bit) {
   // Determine default and user specified characteristics
-  if (!ArchFS.empty()) {
+  if (!FS.empty() || !CPU.empty()) {
     std::string CPUName = CPU;
     if (CPUName.empty()) {
 #if defined (__x86_64__) || defined(__i386__)
@@ -269,33 +270,42 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
 #endif
     }
 
+    // Make sure 64-bit features are available in 64-bit mode. (But make sure
+    // SSE2 can be turned off explicitly.)
+    std::string FullFS = FS;
+    if (In64BitMode) {
+      if (!FullFS.empty())
+        FullFS = "+64bit,+sse2," + FullFS;
+      else
+        FullFS = "+64bit,+sse2";
+    }
+
     // If feature string is not empty, parse features string.
-    ParseSubtargetFeatures(CPUName, ArchFS);
-    // All X86-64 CPUs also have SSE2, however user might request no SSE via 
-    // -mattr, so don't force SSELevel here.
-    if (HasAVX)
-      X86SSELevel = NoMMXSSE;
+    ParseSubtargetFeatures(CPUName, FullFS);
   } else {
     // Otherwise, use CPUID to auto-detect feature set.
     AutoDetectSubtargetFeatures();
 
-    // If CPU is 64-bit capable, default to 64-bit mode if not specified.
-    In64BitMode = HasX86_64;
+    // Make sure 64-bit features are available in 64-bit mode.
+    if (In64BitMode) {
+      HasX86_64 = true; ToggleFeature(X86::Feature64Bit);
+      HasCMov = true;   ToggleFeature(X86::FeatureCMOV);
 
-    // Make sure SSE2 is enabled; it is available on all X86-64 CPUs.
-    if (In64BitMode && !HasAVX && X86SSELevel < SSE2)
-      X86SSELevel = SSE2;
+      if (!HasAVX && X86SSELevel < SSE2) {
+        X86SSELevel = SSE2;
+        ToggleFeature(X86::FeatureSSE1);
+        ToggleFeature(X86::FeatureSSE2);
+      }
+    }
   }
 
-  // If requesting codegen for X86-64, make sure that 64-bit features
-  // are enabled.
-  // FIXME: Remove this feature since it's not actually being used.
-  if (In64BitMode) {
-    HasX86_64 = true;
+  // It's important to keep the MCSubtargetInfo feature bits in sync with
+  // target data structure which is shared with MC code emitter, etc.
+  if (In64BitMode)
+    ToggleFeature(X86::Mode64Bit);
 
-    // All 64-bit cpus have cmov support.
-    HasCMov = true;
-  }
+  if (HasAVX)
+    X86SSELevel = NoMMXSSE;
     
   DEBUG(dbgs() << "Subtarget features: SSELevel " << X86SSELevel
                << ", 3DNowLevel " << X863DNowLevel

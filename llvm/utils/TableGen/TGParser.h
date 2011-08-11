@@ -24,8 +24,8 @@ namespace llvm {
   class Record;
   class RecordVal;
   class RecordKeeper;
-  struct RecTy;
-  struct Init;
+  class RecTy;
+  class Init;
   struct MultiClass;
   struct SubClassReference;
   struct SubMultiClassReference;

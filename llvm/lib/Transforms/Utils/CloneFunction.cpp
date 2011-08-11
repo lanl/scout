@@ -140,7 +140,7 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
 Function *llvm::CloneFunction(const Function *F, ValueToValueMapTy &VMap,
                               bool ModuleLevelChanges,
                               ClonedCodeInfo *CodeInfo) {
-  std::vector<const Type*> ArgTypes;
+  std::vector<Type*> ArgTypes;
 
   // The user might be deleting arguments to the function by specifying them in
   // the VMap.  If so, we need to not add the arguments to the arg ty vector
@@ -338,8 +338,7 @@ ConstantFoldMappedInstruction(const Instruction *I) {
             return ConstantFoldLoadThroughGEPConstantExpr(GV->getInitializer(),
                                                           CE);
 
-  return ConstantFoldInstOperands(I->getOpcode(), I->getType(), &Ops[0],
-                                  Ops.size(), TD);
+  return ConstantFoldInstOperands(I->getOpcode(), I->getType(), Ops, TD);
 }
 
 /// CloneAndPruneFunctionInto - This works exactly like CloneFunctionInto,

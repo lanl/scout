@@ -208,6 +208,7 @@ def MQ : Separate<"-MQ">, HelpText<"Specify target to quote for dependency">;
 def MT : Separate<"-MT">, HelpText<"Specify target for dependency">;
 def MP : Flag<"-MP">,
   HelpText<"Create phony target for each dependency (other than main file)">;
+def MG : Flag<"-MG">, HelpText<"Add missing headers to dependency list">;
 
 //===----------------------------------------------------------------------===//
 // Diagnostic Options
@@ -263,7 +264,7 @@ def ftabstop : Separate<"-ftabstop">, MetaVarName<"<N>">,
 def ferror_limit : Separate<"-ferror-limit">, MetaVarName<"<N>">,
   HelpText<"Set the maximum number of errors to emit before stopping (0 = no limit).">;
 def fmacro_backtrace_limit : Separate<"-fmacro-backtrace-limit">, MetaVarName<"<N>">,
-  HelpText<"Set the maximum number of entries to print in a macro instantiation backtrace (0 = no limit).">;
+  HelpText<"Set the maximum number of entries to print in a macro expansion backtrace (0 = no limit).">;
 def ftemplate_backtrace_limit : Separate<"-ftemplate-backtrace-limit">, MetaVarName<"<N>">,
   HelpText<"Set the maximum number of entries to print in a template instantiation backtrace (0 = no limit).">;
 def fmessage_length : Separate<"-fmessage-length">, MetaVarName<"<N>">,
@@ -389,6 +390,14 @@ def arcmt_check : Flag<"-arcmt-check">,
   HelpText<"Check for ARC migration issues that need manual handling">;
 def arcmt_modify : Flag<"-arcmt-modify">,
   HelpText<"Apply modifications to files to conform to ARC">;
+def arcmt_migrate : Flag<"-arcmt-migrate">,
+  HelpText<"Apply modifications and produces temporary files that conform to ARC">;
+def arcmt_migrate_directory : Separate<"-arcmt-migrate-directory">,
+  HelpText<"Directory for temporary files produced during ARC migration">;
+def arcmt_migrate_report_output : Separate<"-arcmt-migrate-report-output">,
+  HelpText<"Output path for the plist report">;
+def arcmt_migrate_emit_arc_errors : Flag<"-arcmt-migrate-emit-errors">,
+  HelpText<"Emit ARC errors even if the migrator can fix them">;
 
 def import_module : Separate<"-import-module">,
   HelpText<"Import a module definition file">;
@@ -577,6 +586,8 @@ def fdelayed_template_parsing : Flag<"-fdelayed-template-parsing">,
            "translation unit ">;
 def funknown_anytype : Flag<"-funknown-anytype">,
   HelpText<"Enable parser support for the __unknown_anytype type; for testing purposes only">;
+def fdebugger_support : Flag<"-fdebugger-support">,
+  HelpText<"Enable special debugger support behavior">;
 def fdeprecated_macro : Flag<"-fdeprecated-macro">,
   HelpText<"Defines the __DEPRECATED macro">;
 def fno_deprecated_macro : Flag<"-fno-deprecated-macro">,
@@ -598,6 +609,8 @@ def I : JoinedOrSeparate<"-I">, MetaVarName<"<directory>">,
   HelpText<"Add directory to include search path">;
 def idirafter : JoinedOrSeparate<"-idirafter">, MetaVarName<"<directory>">,
   HelpText<"Add directory to AFTER include search path">;
+def index_header_map : Flag<"-index-header-map">, 
+  HelpText<"Make the next included directory (-I or -F) an indexer header map">;
 def iquote : JoinedOrSeparate<"-iquote">, MetaVarName<"<directory>">,
   HelpText<"Add directory to QUOTE include search path">;
 def cxx_isystem : JoinedOrSeparate<"-cxx-isystem">, MetaVarName<"<directory>">,

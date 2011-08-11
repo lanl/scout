@@ -23,6 +23,7 @@ add_llvm_library(LLVMCodeGen
   IntrinsicLowering.cpp
   LLVMTargetMachine.cpp
   LatencyPriorityQueue.cpp
+  LexicalScopes.cpp
   LiveDebugVariables.cpp
   LiveInterval.cpp
   LiveIntervalAnalysis.cpp
@@ -33,6 +34,7 @@ add_llvm_library(LLVMCodeGen
   LocalStackSlotAllocation.cpp
   LowerSubregs.cpp
   MachineBasicBlock.cpp
+  MachineBlockFrequencyInfo.cpp
   MachineBranchProbabilityInfo.cpp
   MachineCSE.cpp
   MachineDominators.cpp
@@ -94,6 +96,16 @@ add_llvm_library(LLVMCodeGen
   UnreachableBlockElim.cpp
   VirtRegMap.cpp
   VirtRegRewriter.cpp
+  )
+
+add_llvm_library_dependencies(LLVMCodeGen
+  LLVMAnalysis
+  LLVMCore
+  LLVMMC
+  LLVMScalarOpts
+  LLVMSupport
+  LLVMTarget
+  LLVMTransformUtils
   )
 
 add_subdirectory(SelectionDAG)

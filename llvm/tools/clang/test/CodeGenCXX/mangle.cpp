@@ -802,3 +802,59 @@ namespace test33 {
     // CHECK: call i32 @_ZN6test333fooINS_1BEEENS_1AIT_Xsr1XIS3_EE5valueEE4typeEv()
   }
 }
+
+namespace test34 {
+  // Mangling for instantiation-dependent decltype expressions.
+  template<typename T>
+  void f(decltype(sizeof(decltype(T() + T())))) {}
+
+  // CHECK: define weak_odr void @_ZN6test341fIiEEvDTstDTplcvT__EcvS1__EEE
+  template void f<int>(decltype(sizeof(1)));
+
+  // Mangling for non-instantiation-dependent sizeof expressions.
+  template<unsigned N>
+  void f2(int (&)[N + sizeof(int*)]) {}
+
+  // CHECK: define weak_odr void @_ZN6test342f2ILj4EEEvRAplT_Lm8E_i
+  template void f2<4>(int (&)[4 + sizeof(int*)]);
+
+  // Mangling for non-instantiation-dependent sizeof expressions
+  // involving an implicit conversion of the result of the sizeof.
+  template<unsigned long long N>
+  void f3(int (&)[N + sizeof(int*)]) {}
+
+  // CHECK: define weak_odr void @_ZN6test342f3ILy4EEEvRAplT_Ly8E_i
+  template void f3<4>(int (&)[4 + sizeof(int*)]);
+
+  // Mangling for instantiation-dependent sizeof() expressions as
+  // template arguments.
+  template<unsigned> struct A { };
+
+  template<typename T> void f4(::test34::A<sizeof(sizeof(decltype(T() + T())))>) { }
+
+  // CHECK: define weak_odr void @_ZN6test342f4IiEEvNS_1AIXszstDTplcvT__EcvS2__EEEEE
+  template void f4<int>(A<sizeof(sizeof(int))>);
+}
+
+namespace test35 {
+  // Dependent operator names of unknown arity.
+  struct A { 
+    template<typename U> A operator+(U) const;
+  };
+
+  template<typename T>
+  void f1(decltype(sizeof(&T::template operator+<int>))) {}
+
+  // CHECK: define weak_odr void @_ZN6test352f1INS_1AEEEvDTszadsrT_plIiEE
+  template void f1<A>(__SIZE_TYPE__);
+}
+
+namespace test36 {
+  template<unsigned> struct A { };
+
+  template<typename ...Types>
+  auto f1(Types... values) -> A<sizeof...(values)> { }
+
+  // CHECK: define weak_odr {{.*}} @_ZN6test362f1IJifEEENS_1AIXsZfp_EEEDpT_
+  template A<2> f1(int, float);
+}

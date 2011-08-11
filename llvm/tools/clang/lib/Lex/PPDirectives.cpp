@@ -275,9 +275,9 @@ void Preprocessor::SkipExcludedConditionalBlock(SourceLocation IfTokenLoc,
     // that we can't use Tok.getIdentifierInfo() because its lookup is disabled
     // when skipping.
     char DirectiveBuf[20];
-    llvm::StringRef Directive;
+    StringRef Directive;
     if (!Tok.needsCleaning() && Tok.getLength() < 20) {
-      Directive = llvm::StringRef(RawCharData, Tok.getLength());
+      Directive = StringRef(RawCharData, Tok.getLength());
     } else {
       std::string DirectiveStr = getSpelling(Tok);
       unsigned IdLen = DirectiveStr.size();
@@ -288,11 +288,11 @@ void Preprocessor::SkipExcludedConditionalBlock(SourceLocation IfTokenLoc,
         continue;
       }
       memcpy(DirectiveBuf, &DirectiveStr[0], IdLen);
-      Directive = llvm::StringRef(DirectiveBuf, IdLen);
+      Directive = StringRef(DirectiveBuf, IdLen);
     }
 
     if (Directive.startswith("if")) {
-      llvm::StringRef Sub = Directive.substr(2);
+      StringRef Sub = Directive.substr(2);
       if (Sub.empty() ||   // "if"
           Sub == "def" ||   // "ifdef"
           Sub == "ndef") {  // "ifndef"
@@ -307,7 +307,7 @@ void Preprocessor::SkipExcludedConditionalBlock(SourceLocation IfTokenLoc,
           Callbacks->Endif();
       }
     } else if (Directive[0] == 'e') {
-      llvm::StringRef Sub = Directive.substr(1);
+      StringRef Sub = Directive.substr(1);
       if (Sub == "ndif") {  // "endif"
         CheckEndOfDirective("endif");
         PPConditionalInfo CondInfo;
@@ -472,12 +472,12 @@ void Preprocessor::PTHSkipExcludedConditionalBlock() {
 /// return null on failure.  isAngled indicates whether the file reference is
 /// for system #include's or not (i.e. using <> instead of "").
 const FileEntry *Preprocessor::LookupFile(
-    llvm::StringRef Filename,
+    StringRef Filename,
     bool isAngled,
     const DirectoryLookup *FromDir,
     const DirectoryLookup *&CurDir,
-    llvm::SmallVectorImpl<char> *SearchPath,
-    llvm::SmallVectorImpl<char> *RelativePath) {
+    SmallVectorImpl<char> *SearchPath,
+    SmallVectorImpl<char> *RelativePath) {
   // If the header lookup mechanism may be relative to the current file, pass in
   // info about where the current file is.
   const FileEntry *CurFileEnt = 0;
@@ -777,7 +777,7 @@ void Preprocessor::HandleLineDirective(Token &Tok) {
   } else {
     // Parse and validate the string, converting it into a unique ID.
     StringLiteralParser Literal(&StrTok, 1, *this);
-    assert(!Literal.AnyWide && "Didn't allow wide strings in");
+    assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return DiscardUntilEndOfDirective();
     if (Literal.Pascal) {
@@ -825,7 +825,7 @@ static bool ReadLineMarkerFlags(bool &IsFileEntry, bool &IsFileExit,
     // If we are leaving the current presumed file, check to make sure the
     // presumed include stack isn't empty!
     FileID CurFileID =
-      SM.getDecomposedInstantiationLoc(FlagTok.getLocation()).first;
+      SM.getDecomposedExpansionLoc(FlagTok.getLocation()).first;
     PresumedLoc PLoc = SM.getPresumedLoc(FlagTok.getLocation());
     if (PLoc.isInvalid())
       return true;
@@ -834,7 +834,7 @@ static bool ReadLineMarkerFlags(bool &IsFileEntry, bool &IsFileExit,
     // different physical file, then we aren't in a "1" line marker flag region.
     SourceLocation IncLoc = PLoc.getIncludeLoc();
     if (IncLoc.isInvalid() ||
-        SM.getDecomposedInstantiationLoc(IncLoc).first != CurFileID) {
+        SM.getDecomposedExpansionLoc(IncLoc).first != CurFileID) {
       PP.Diag(FlagTok, diag::err_pp_linemarker_invalid_pop);
       PP.DiscardUntilEndOfDirective();
       return true;
@@ -910,7 +910,7 @@ void Preprocessor::HandleDigitDirective(Token &DigitTok) {
   } else {
     // Parse and validate the string, converting it into a unique ID.
     StringLiteralParser Literal(&StrTok, 1, *this);
-    assert(!Literal.AnyWide && "Didn't allow wide strings in");
+    assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return DiscardUntilEndOfDirective();
     if (Literal.Pascal) {
@@ -1011,7 +1011,7 @@ void Preprocessor::HandleIdentSCCSDirective(Token &Tok) {
 /// spelling of the filename, but is also expected to handle the case when
 /// this method decides to use a different buffer.
 bool Preprocessor::GetIncludeFilenameSpelling(SourceLocation Loc,
-                                              llvm::StringRef &Buffer) {
+                                              StringRef &Buffer) {
   // Get the text form of the filename.
   assert(!Buffer.empty() && "Can't have tokens with empty spellings!");
 
@@ -1020,27 +1020,27 @@ bool Preprocessor::GetIncludeFilenameSpelling(SourceLocation Loc,
   if (Buffer[0] == '<') {
     if (Buffer.back() != '>') {
       Diag(Loc, diag::err_pp_expects_filename);
-      Buffer = llvm::StringRef();
+      Buffer = StringRef();
       return true;
     }
     isAngled = true;
   } else if (Buffer[0] == '"') {
     if (Buffer.back() != '"') {
       Diag(Loc, diag::err_pp_expects_filename);
-      Buffer = llvm::StringRef();
+      Buffer = StringRef();
       return true;
     }
     isAngled = false;
   } else {
     Diag(Loc, diag::err_pp_expects_filename);
-    Buffer = llvm::StringRef();
+    Buffer = StringRef();
     return true;
   }
 
   // Diagnose #include "" as invalid.
   if (Buffer.size() <= 2) {
     Diag(Loc, diag::err_pp_empty_filename);
-    Buffer = llvm::StringRef();
+    Buffer = StringRef();
     return true;
   }
 
@@ -1122,7 +1122,7 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
 
   // Reserve a buffer to get the spelling.
   llvm::SmallString<128> FilenameBuffer;
-  llvm::StringRef Filename;
+  StringRef Filename;
   SourceLocation End;
   
   switch (FilenameTok.getKind()) {
@@ -1180,15 +1180,16 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
   const FileEntry *File = LookupFile(
       Filename, isAngled, LookupFrom, CurDir,
       Callbacks ? &SearchPath : NULL, Callbacks ? &RelativePath : NULL);
-  if (File == 0) {
-    Diag(FilenameTok, diag::err_pp_file_not_found) << Filename;
-    return;
-  }
 
   // Notify the callback object that we've seen an inclusion directive.
   if (Callbacks)
     Callbacks->InclusionDirective(HashLoc, IncludeTok, Filename, isAngled, File,
                                   End, SearchPath, RelativePath);
+
+  if (File == 0) {
+    Diag(FilenameTok, diag::warn_pp_file_not_found) << Filename;
+    return;
+  }
 
   // The #included file will be considered to be a system header if either it is
   // in a system include directory, or if the #includer is a system include
@@ -1283,7 +1284,7 @@ void Preprocessor::HandleIncludeMacrosDirective(SourceLocation HashLoc,
 /// closing ), updating MI with what we learn.  Return true if an error occurs
 /// parsing the arg list.
 bool Preprocessor::ReadMacroDefinitionArgList(MacroInfo *MI) {
-  llvm::SmallVector<IdentifierInfo*, 32> Arguments;
+  SmallVector<IdentifierInfo*, 32> Arguments;
 
   Token Tok;
   while (1) {
@@ -1594,7 +1595,7 @@ void Preprocessor::HandleUndefDirective(Token &UndefTok) {
   // If the macro is not defined, this is a noop undef, just return.
   if (MI == 0) return;
 
-  if (!MI->isUsed())
+  if (!MI->isUsed() && MI->isWarnIfUnused())
     Diag(MI->getDefinitionLoc(), diag::pp_macro_not_used);
 
   // If the callbacks want to know, tell them about the macro #undef.

@@ -58,7 +58,7 @@ bool LowerExpectIntrinsic::HandleSwitchExpect(SwitchInst *SI) {
     return false;
 
   LLVMContext &Context = CI->getContext();
-  const Type *Int32Ty = Type::getInt32Ty(Context);
+  Type *Int32Ty = Type::getInt32Ty(Context);
 
   unsigned caseNo = SI->findCaseValue(ExpectedValue);
   std::vector<Value *> Vec;
@@ -105,7 +105,7 @@ bool LowerExpectIntrinsic::HandleIfExpect(BranchInst *BI) {
     return false;
 
   LLVMContext &Context = CI->getContext();
-  const Type *Int32Ty = Type::getInt32Ty(Context);
+  Type *Int32Ty = Type::getInt32Ty(Context);
   bool Likely = ExpectedValue->isOne();
 
   // If expect value is equal to 1 it means that we are more likely to take
@@ -116,7 +116,7 @@ bool LowerExpectIntrinsic::HandleIfExpect(BranchInst *BI) {
     ConstantInt::get(Int32Ty, Likely ? UnlikelyBranchWeight : LikelyBranchWeight)
   };
 
-  MDNode *WeightsNode = MDNode::get(Context, ArrayRef<Value *>(Ops, 3));
+  MDNode *WeightsNode = MDNode::get(Context, Ops);
   BI->setMetadata(LLVMContext::MD_prof, WeightsNode);
 
   CmpI->setOperand(0, ArgValue);

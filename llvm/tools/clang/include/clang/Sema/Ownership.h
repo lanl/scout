@@ -14,8 +14,7 @@
 #ifndef LLVM_CLANG_SEMA_OWNERSHIP_H
 #define LLVM_CLANG_SEMA_OWNERSHIP_H
 
-#include <iostream>
-
+#include "clang/Basic/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/PointerIntPair.h"
 
@@ -331,7 +330,7 @@ namespace clang {
   };
 
   class ParsedTemplateArgument;
-    
+
   class ASTTemplateArgsPtr {
     ParsedTemplateArgument *Args;
     mutable unsigned Count;
@@ -370,7 +369,7 @@ namespace clang {
 
   /// \brief A small vector that owns a set of AST nodes.
   template <class PtrTy, unsigned N = 8>
-  class ASTOwningVector : public llvm::SmallVector<PtrTy, N> {
+  class ASTOwningVector : public SmallVector<PtrTy, N> {
     ASTOwningVector(ASTOwningVector &); // do not implement
     ASTOwningVector &operator=(ASTOwningVector &); // do not implement
 

@@ -23,6 +23,8 @@ namespace frontend {
   enum IncludeDirGroup {
     Quoted = 0,     ///< '#include ""' paths, added by'gcc -iquote'.
     Angled,         ///< Paths for '#include <>' added by '-I'.
+    IndexHeaderMap, ///< Like Angled, but marks header maps used when
+                       ///  building frameworks.
     System,         ///< Like Angled, but marks system directories.
     CXXSystem,      ///< Like System, but only used for C++.
     After           ///< Like System, but searched after the system directories.
@@ -44,7 +46,7 @@ public:
     /// path.
     unsigned IgnoreSysRoot : 1;
 
-    Entry(llvm::StringRef path, frontend::IncludeDirGroup group,
+    Entry(StringRef path, frontend::IncludeDirGroup group,
           bool isUserSupplied, bool isFramework, bool ignoreSysRoot)
       : Path(path), Group(group), IsUserSupplied(isUserSupplied),
         IsFramework(isFramework), IgnoreSysRoot(ignoreSysRoot) {}
@@ -89,13 +91,13 @@ public:
   unsigned Verbose : 1;
 
 public:
-  HeaderSearchOptions(llvm::StringRef _Sysroot = "/")
+  HeaderSearchOptions(StringRef _Sysroot = "/")
     : Sysroot(_Sysroot), UseBuiltinIncludes(true),
       UseStandardIncludes(true), UseStandardCXXIncludes(true), UseLibcxx(false),
       Verbose(false) {}
 
   /// AddPath - Add the \arg Path path to the specified \arg Group list.
-  void AddPath(llvm::StringRef Path, frontend::IncludeDirGroup Group,
+  void AddPath(StringRef Path, frontend::IncludeDirGroup Group,
                bool IsUserSupplied, bool IsFramework, bool IgnoreSysRoot) {
     UserEntries.push_back(Entry(Path, Group, IsUserSupplied, IsFramework,
                                 IgnoreSysRoot));

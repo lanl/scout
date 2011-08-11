@@ -55,8 +55,9 @@ def FormatExtraArgs : DiagGroup<"format-extra-args">;
 def FormatZeroLength : DiagGroup<"format-zero-length">;
 
 def CXXHexFloats : DiagGroup<"c++-hex-floats">;
+def CXX0xNarrowing : DiagGroup<"c++0x-narrowing">;
 
-def : DiagGroup<"c++0x-compat", [CXXHexFloats]>;
+def CXX0xCompat : DiagGroup<"c++0x-compat", [CXXHexFloats, CXX0xNarrowing]>;
 def : DiagGroup<"effc++">;
 def ExitTimeDestructors : DiagGroup<"exit-time-destructors">;
 def FourByteMultiChar : DiagGroup<"four-char-constants">;
@@ -108,6 +109,8 @@ def ReturnType : DiagGroup<"return-type">;
 def BindToTemporaryCopy : DiagGroup<"bind-to-temporary-copy">;
 def SelfAssignment : DiagGroup<"self-assign">;
 def SemiBeforeMethodBody : DiagGroup<"semicolon-before-method-body">;
+def Sentinel : DiagGroup<"sentinel">;
+def MissingMethodReturnType : DiagGroup<"missing-method-return-type">;
 def : DiagGroup<"sequence-point">;
 def Shadow : DiagGroup<"shadow">;
 def : DiagGroup<"shorten-64-to-32">;
@@ -160,7 +163,8 @@ def UnusedMemberFunction : DiagGroup<"unused-member-function",
                                      [UnneededMemberFunction]>;
 def UnusedLabel : DiagGroup<"unused-label">;
 def UnusedParameter : DiagGroup<"unused-parameter">;
-def UnusedValue    : DiagGroup<"unused-value">;
+def UnusedResult : DiagGroup<"unused-result">;
+def UnusedValue    : DiagGroup<"unused-value", [UnusedResult]>;
 def UnusedVariable : DiagGroup<"unused-variable">;
 def UsedButMarkedUnused : DiagGroup<"used-but-marked-unused">;
 def ReadOnlySetterAttrs : DiagGroup<"readonly-setter-attrs">;
@@ -183,6 +187,7 @@ def Selector : DiagGroup<"selector">;
 def NonfragileAbi2 : DiagGroup<"nonfragile-abi2">;
 def Protocol : DiagGroup<"protocol">;
 def SuperSubClassMismatch : DiagGroup<"super-class-method-mismatch">;
+def OverridingMethodMismatch : DiagGroup<"overriding-method-mismatch">;
 def : DiagGroup<"variadic-macros">;
 def VariadicMacros : DiagGroup<"variadic-macros">;
 def VectorConversions : DiagGroup<"vector-conversions">;      // clang specific
@@ -243,6 +248,7 @@ def Extra : DiagGroup<"extra", [
     IgnoredQualifiers,
     InitializerOverrides,
     SemiBeforeMethodBody,
+    MissingMethodReturnType,
     SignCompare,
     UnusedParameter
   ]>;
@@ -265,10 +271,12 @@ def Most : DiagGroup<"most", [
     Uninitialized,
     UnknownPragmas,
     Unused,
-    VectorConversions,
     VolatileRegisterVar,
     OverloadedVirtual
  ]>;
+
+// Thread Safety warnings 
+def : DiagGroup<"thread-safety">;
 
 // -Wall is -Wmost -Wparentheses
 def : DiagGroup<"all", [Most, Parentheses]>;
@@ -299,3 +307,4 @@ def Microsoft : DiagGroup<"microsoft">;
 
 def ObjCNonUnifiedException : DiagGroup<"objc-nonunified-exceptions">;
 
+def ObjCProtocolMethodImpl : DiagGroup<"objc-protocol-method-implementation">;

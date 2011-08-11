@@ -293,7 +293,16 @@ class Instruction {
   // code.
   list<Predicate> Predicates = [];
 
-  // Code size.
+  // Size - Size of encoded instruction, or zero if the size cannot be determined
+  // from the opcode.
+  int Size = 0;
+
+  // DecoderNamespace - The "namespace" in which this instruction exists, on
+  // targets like ARM which multiple ISA namespaces exist.
+  string DecoderNamespace = "";
+
+  // Code size, for instruction selection.
+  // FIXME: What does this actually mean?
   int CodeSize = 0;
 
   // Added complexity passed onto matching pattern.
@@ -495,6 +504,7 @@ class Operand<ValueType ty> {
   string EncoderMethod = "";
   string DecoderMethod = "";
   string AsmOperandLowerMethod = ?;
+  string OperandType = "OPERAND_UNKNOWN";
   dag MIOperandInfo = (ops);
 
   // ParserMatchClass - The "match class" that operands of this type fit
@@ -526,6 +536,7 @@ class RegisterOperand<RegisterClass regclass, string pm = "printOperand"> {
   AsmOperandClass ParserMatchClass;
 }
 
+let OperandType = "OPERAND_IMMEDIATE" in {
 def i1imm  : Operand<i1>;
 def i8imm  : Operand<i8>;
 def i16imm : Operand<i16>;
@@ -534,6 +545,7 @@ def i64imm : Operand<i64>;
 
 def f32imm : Operand<f32>;
 def f64imm : Operand<f64>;
+}
 
 /// zero_reg definition - Special node to stand for the zero register.
 ///

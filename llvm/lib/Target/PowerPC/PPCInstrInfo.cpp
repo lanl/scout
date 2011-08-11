@@ -12,24 +12,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "PPCInstrInfo.h"
+#include "PPC.h"
 #include "PPCInstrBuilder.h"
 #include "PPCMachineFunctionInfo.h"
-#include "PPCPredicates.h"
 #include "PPCTargetMachine.h"
 #include "PPCHazardRecognizers.h"
-#include "llvm/ADT/STLExtras.h"
+#include "MCTargetDesc/PPCPredicates.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/ADT/STLExtras.h"
 
 #define GET_INSTRINFO_CTOR
-#define GET_INSTRINFO_MC_DESC
 #include "PPCGenInstrInfo.inc"
 
 namespace llvm {
@@ -401,7 +402,7 @@ PPCInstrInfo::StoreRegToStackSlot(MachineFunction &MF,
       // If the saved register wasn't CR0, shift the bits left so that they are
       // in CR0's slot.
       if (SrcReg != PPC::CR0) {
-        unsigned ShiftBits = PPCRegisterInfo::getRegisterNumbering(SrcReg)*4;
+        unsigned ShiftBits = getPPCRegisterNumbering(SrcReg)*4;
         // rlwinm scratch, scratch, ShiftBits, 0, 31.
         NewMIs.push_back(BuildMI(MF, DL, get(PPC::RLWINM), ScratchReg)
                        .addReg(ScratchReg).addImm(ShiftBits)
@@ -536,7 +537,7 @@ PPCInstrInfo::LoadRegFromStackSlot(MachineFunction &MF, DebugLoc DL,
     // If the reloaded register isn't CR0, shift the bits right so that they are
     // in the right CR's slot.
     if (DestReg != PPC::CR0) {
-      unsigned ShiftBits = PPCRegisterInfo::getRegisterNumbering(DestReg)*4;
+      unsigned ShiftBits = getPPCRegisterNumbering(DestReg)*4;
       // rlwinm r11, r11, 32-ShiftBits, 0, 31.
       NewMIs.push_back(BuildMI(MF, DL, get(PPC::RLWINM), ScratchReg)
                     .addReg(ScratchReg).addImm(32-ShiftBits).addImm(0)

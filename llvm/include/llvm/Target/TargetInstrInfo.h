@@ -32,6 +32,7 @@ class SelectionDAG;
 class ScheduleDAG;
 class TargetRegisterClass;
 class TargetRegisterInfo;
+class BranchProbability;
 
 template<class T> class SmallVectorImpl;
 
@@ -321,7 +322,7 @@ public:
   virtual
   bool isProfitableToIfCvt(MachineBasicBlock &MBB, unsigned NumCyles,
                            unsigned ExtraPredCycles,
-                           float Probability, float Confidence) const {
+                           const BranchProbability &Probability) const {
     return false;
   }
 
@@ -336,7 +337,7 @@ public:
                       unsigned NumTCycles, unsigned ExtraTCycles,
                       MachineBasicBlock &FMBB,
                       unsigned NumFCycles, unsigned ExtraFCycles,
-                      float Probability, float Confidence) const {
+                      const BranchProbability &Probability) const {
     return false;
   }
 
@@ -348,7 +349,7 @@ public:
   /// will be properly predicted.
   virtual bool
   isProfitableToDupForIfCvt(MachineBasicBlock &MBB, unsigned NumCyles,
-                            float Probability, float Confidence) const {
+                            const BranchProbability &Probability) const {
     return false;
   }
 
@@ -692,6 +693,12 @@ public:
                                      unsigned &SrcOpIdx2) const;
   virtual bool canFoldMemoryOperand(const MachineInstr *MI,
                                     const SmallVectorImpl<unsigned> &Ops) const;
+  virtual bool hasLoadFromStackSlot(const MachineInstr *MI,
+                                    const MachineMemOperand *&MMO,
+                                    int &FrameIndex) const;
+  virtual bool hasStoreToStackSlot(const MachineInstr *MI,
+                                   const MachineMemOperand *&MMO,
+                                   int &FrameIndex) const;
   virtual bool PredicateInstruction(MachineInstr *MI,
                             const SmallVectorImpl<MachineOperand> &Pred) const;
   virtual void reMaterialize(MachineBasicBlock &MBB,

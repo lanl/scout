@@ -23,11 +23,67 @@
 using namespace clang;
 using namespace arcmt;
 using namespace trans;
-using llvm::StringRef;
 
 //===----------------------------------------------------------------------===//
 // Helpers.
 //===----------------------------------------------------------------------===//
+
+/// \brief True if the class is one that does not support weak.
+static bool isClassInWeakBlacklist(ObjCInterfaceDecl *cls) {
+  if (!cls)
+    return false;
+
+  bool inList = llvm::StringSwitch<bool>(cls->getName())
+                 .Case("NSColorSpace", true)
+                 .Case("NSFont", true)
+                 .Case("NSFontPanel", true)
+                 .Case("NSImage", true)
+                 .Case("NSLazyBrowserCell", true)
+                 .Case("NSWindow", true)
+                 .Case("NSWindowController", true)
+                 .Case("NSMenuView", true)
+                 .Case("NSPersistentUIWindowInfo", true)
+                 .Case("NSTableCellView", true)
+                 .Case("NSATSTypeSetter", true)
+                 .Case("NSATSGlyphStorage", true)
+                 .Case("NSLineFragmentRenderingContext", true)
+                 .Case("NSAttributeDictionary", true)
+                 .Case("NSParagraphStyle", true)
+                 .Case("NSTextTab", true)
+                 .Case("NSSimpleHorizontalTypesetter", true)
+                 .Case("_NSCachedAttributedString", true)
+                 .Case("NSStringDrawingTextStorage", true)
+                 .Case("NSTextView", true)
+                 .Case("NSSubTextStorage", true)
+                 .Default(false);
+
+  if (inList)
+    return true;
+
+  return isClassInWeakBlacklist(cls->getSuperClass());
+}
+
+bool trans::canApplyWeak(ASTContext &Ctx, QualType type) {
+  if (!Ctx.getLangOptions().ObjCRuntimeHasWeak)
+    return false;
+
+  QualType T = type;
+  while (const PointerType *ptr = T->getAs<PointerType>())
+    T = ptr->getPointeeType();
+  if (const ObjCObjectPointerType *ObjT = T->getAs<ObjCObjectPointerType>()) {
+    ObjCInterfaceDecl *Class = ObjT->getInterfaceDecl();
+    if (!Class || Class->getName() == "NSObject")
+      return false; // id/NSObject is not safe for weak.
+    if (Class->isForwardDecl())
+      return false; // forward classes are not verifiable, therefore not safe.
+    if (Class->isArcWeakrefUnavailable())
+      return false;
+    if (isClassInWeakBlacklist(Class))
+      return false;
+  }
+
+  return true;
+}
 
 /// \brief 'Loc' is the end of a statement range. This returns the location
 /// immediately after the semicolon following the statement.
@@ -37,9 +93,9 @@ SourceLocation trans::findLocationAfterSemi(SourceLocation loc,
                                             ASTContext &Ctx) {
   SourceManager &SM = Ctx.getSourceManager();
   if (loc.isMacroID()) {
-    if (!Lexer::isAtEndOfMacroInstantiation(loc, SM, Ctx.getLangOptions()))
+    if (!Lexer::isAtEndOfMacroExpansion(loc, SM, Ctx.getLangOptions()))
       return SourceLocation();
-    loc = SM.getInstantiationRange(loc).second;
+    loc = SM.getExpansionRange(loc).second;
   }
   loc = Lexer::getLocForEndOfToken(loc, /*Offset=*/0, SM, Ctx.getLangOptions());
 
@@ -48,7 +104,7 @@ SourceLocation trans::findLocationAfterSemi(SourceLocation loc,
 
   // Try to load the file buffer.
   bool invalidTemp = false;
-  llvm::StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
+  StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
   if (invalidTemp)
     return SourceLocation();
 
@@ -93,6 +149,25 @@ bool trans::hasSideEffects(Expr *E, ASTContext &Ctx) {
   }
 
   return true;
+}
+
+bool trans::isGlobalVar(Expr *E) {
+  E = E->IgnoreParenCasts();
+  if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
+    return DRE->getDecl()->getDeclContext()->isFileContext() &&
+           DRE->getDecl()->getLinkage() == ExternalLinkage;
+  if (ConditionalOperator *condOp = dyn_cast<ConditionalOperator>(E))
+    return isGlobalVar(condOp->getTrueExpr()) &&
+           isGlobalVar(condOp->getFalseExpr());
+
+  return false;  
+}
+
+StringRef trans::getNilString(ASTContext &Ctx) {
+  if (Ctx.Idents.get("nil").hasMacroDefinition())
+    return "nil";
+  else
+    return "0";
 }
 
 namespace {
@@ -208,13 +283,14 @@ void trans::collectRemovables(Stmt *S, ExprSet &exprs) {
 
 static void independentTransforms(MigrationPass &pass) {
   rewriteAutoreleasePool(pass);
-  changeIvarsOfAssignProperties(pass);
+  rewriteProperties(pass);
   removeRetainReleaseDealloc(pass);
   rewriteUnusedInitDelegate(pass);
   removeZeroOutPropsInDealloc(pass);
   makeAssignARCSafe(pass);
   rewriteUnbridgedCasts(pass);
   rewriteBlockObjCVariable(pass);
+  checkAPIUses(pass);
 }
 
 std::vector<TransformFn> arcmt::getAllTransformations() {

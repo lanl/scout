@@ -179,6 +179,7 @@ Sema::HandlePropertyInClassExtension(Scope *S, ObjCCategoryDecl *CDecl,
   // Set setter/getter selector name. Needed later.
   PDecl->setGetterName(GetterSel);
   PDecl->setSetterName(SetterSel);
+  ProcessDeclAttributes(S, PDecl, FD.D);
   DC->addDecl(PDecl);
 
   // We need to look in the @interface to see if the @property was
@@ -200,10 +201,6 @@ Sema::HandlePropertyInClassExtension(Scope *S, ObjCCategoryDecl *CDecl,
       CreatePropertyDecl(S, CCPrimary, AtLoc,
                          FD, GetterSel, SetterSel, isAssign, isReadWrite,
                          Attributes, T, MethodImplKind, DC);
-    // Mark written attribute as having no attribute because
-    // this is not a user-written property declaration in primary
-    // class.
-    PDecl->setPropertyAttributesAsWritten(ObjCPropertyDecl::OBJC_PR_noattr);
 
     // A case of continuation class adding a new property in the class. This
     // is not what it was meant for. However, gcc supports it and so should we.
@@ -336,6 +333,35 @@ ObjCPropertyDecl *Sema::CreatePropertyDecl(Scope *S,
   PDecl->setGetterName(GetterSel);
   PDecl->setSetterName(SetterSel);
 
+  unsigned attributesAsWritten = 0;
+  if (Attributes & ObjCDeclSpec::DQ_PR_readonly)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_readonly;
+  if (Attributes & ObjCDeclSpec::DQ_PR_readwrite)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_readwrite;
+  if (Attributes & ObjCDeclSpec::DQ_PR_getter)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_getter;
+  if (Attributes & ObjCDeclSpec::DQ_PR_setter)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_setter;
+  if (Attributes & ObjCDeclSpec::DQ_PR_assign)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_assign;
+  if (Attributes & ObjCDeclSpec::DQ_PR_retain)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_retain;
+  if (Attributes & ObjCDeclSpec::DQ_PR_strong)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_strong;
+  if (Attributes & ObjCDeclSpec::DQ_PR_weak)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_weak;
+  if (Attributes & ObjCDeclSpec::DQ_PR_copy)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_copy;
+  if (Attributes & ObjCDeclSpec::DQ_PR_unsafe_unretained)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_unsafe_unretained;
+  if (Attributes & ObjCDeclSpec::DQ_PR_nonatomic)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_nonatomic;
+  if (Attributes & ObjCDeclSpec::DQ_PR_atomic)
+    attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_atomic;
+
+  PDecl->setPropertyAttributesAsWritten(
+                  (ObjCPropertyDecl::PropertyAttributeKind)attributesAsWritten);
+
   if (Attributes & ObjCDeclSpec::DQ_PR_readonly)
     PDecl->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_readonly);
 
@@ -370,11 +396,6 @@ ObjCPropertyDecl *Sema::CreatePropertyDecl(Scope *S,
     PDecl->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_nonatomic);
   else if (Attributes & ObjCDeclSpec::DQ_PR_atomic)
     PDecl->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_atomic);
-
-  // FIXME: Why do PropertyAttributesAsWritten get set from PropertyAttributes,
-  // shouldn't PropertyAttributesAsWritten get set *only* through the attributes
-  // of the ObjCDeclSpec ?
-  PDecl->setPropertyAttributesAsWritten(PDecl->getPropertyAttributes());
 
   // 'unsafe_unretained' is alias for 'assign'.
   if (Attributes & ObjCDeclSpec::DQ_PR_unsafe_unretained)
@@ -582,6 +603,13 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
       // property attributes.
       if (getLangOptions().ObjCAutoRefCount &&
           !PropertyIvarType.getObjCLifetime()) {
+
+        if (!property->hasWrittenStorageAttribute() &&
+            property->getType()->isObjCRetainableType()) {
+          Diag(PropertyLoc,
+               diag::err_arc_objc_property_default_assign_on_object);
+          Diag(property->getLocation(), diag::note_property_declare);
+        }
 
         // retain/copy have retaining lifetime.
         if (kind & (ObjCPropertyDecl::OBJC_PR_retain |
@@ -882,13 +910,16 @@ Sema::DiagnosePropertyMismatch(ObjCPropertyDecl *Property,
   QualType RHSType =
     Context.getCanonicalType(Property->getType());
 
-  if (!Context.typesAreCompatible(LHSType, RHSType)) {
-    // FIXME: Incorporate this test with typesAreCompatible.
-    if (LHSType->isObjCQualifiedIdType() && RHSType->isObjCQualifiedIdType())
-      if (Context.ObjCQualifiedIdTypesAreCompatible(LHSType, RHSType, false))
-        return;
-    Diag(Property->getLocation(), diag::warn_property_types_are_incompatible)
-      << Property->getType() << SuperProperty->getType() << inheritedName;
+  if (!Context.propertyTypesAreCompatible(LHSType, RHSType)) {
+    // Do cases not handled in above.
+    // FIXME. For future support of covariant property types, revisit this.
+    bool IncompatibleObjC = false;
+    QualType ConvertedType;
+    if (!isObjCPointerConversion(RHSType, LHSType, 
+                                 ConvertedType, IncompatibleObjC) ||
+        IncompatibleObjC)
+        Diag(Property->getLocation(), diag::warn_property_types_are_incompatible)
+        << Property->getType() << SuperProperty->getType() << inheritedName;
   }
 }
 
@@ -1672,17 +1703,13 @@ void Sema::CheckObjCPropertyAttributes(Decl *PDecl,
                       ObjCDeclSpec::DQ_PR_weak)) &&
       !(Attributes & ObjCDeclSpec::DQ_PR_readonly) &&
       PropertyTy->isObjCObjectPointerType()) {
-    if (getLangOptions().ObjCAutoRefCount)
-      Diag(Loc, diag::err_arc_objc_property_default_assign_on_object);
-    else {
-      // Skip this warning in gc-only mode.
-      if (getLangOptions().getGCMode() != LangOptions::GCOnly)
-        Diag(Loc, diag::warn_objc_property_no_assignment_attribute);
+    // Skip this warning in gc-only mode.
+    if (getLangOptions().getGCMode() != LangOptions::GCOnly)
+      Diag(Loc, diag::warn_objc_property_no_assignment_attribute);
 
-      // If non-gc code warn that this is likely inappropriate.
-      if (getLangOptions().getGCMode() == LangOptions::NonGC)
-        Diag(Loc, diag::warn_objc_property_default_assign_on_object);
-    }
+    // If non-gc code warn that this is likely inappropriate.
+    if (getLangOptions().getGCMode() == LangOptions::NonGC)
+      Diag(Loc, diag::warn_objc_property_default_assign_on_object);
 
     // FIXME: Implement warning dependent on NSCopying being
     // implemented. See also:

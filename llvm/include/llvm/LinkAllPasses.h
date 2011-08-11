@@ -62,7 +62,6 @@ namespace {
       (void) llvm::createDeadCodeEliminationPass();
       (void) llvm::createDeadInstEliminationPass();
       (void) llvm::createDeadStoreEliminationPass();
-      (void) llvm::createDeadTypeEliminationPass();
       (void) llvm::createDomOnlyPrinterPass();
       (void) llvm::createDomPrinterPass();
       (void) llvm::createDomOnlyViewerPass();
@@ -94,7 +93,6 @@ namespace {
       (void) llvm::createLoopRotatePass();
       (void) llvm::createLowerExpectIntrinsicPass();
       (void) llvm::createLowerInvokePass();
-      (void) llvm::createLowerSetJmpPass();
       (void) llvm::createLowerSwitchPass();
       (void) llvm::createNoAAPass();
       (void) llvm::createNoProfileInfoPass();

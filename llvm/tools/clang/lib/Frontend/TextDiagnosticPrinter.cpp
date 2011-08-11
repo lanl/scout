@@ -23,24 +23,24 @@
 #include <algorithm>
 using namespace clang;
 
-static const enum llvm::raw_ostream::Colors noteColor =
-  llvm::raw_ostream::BLACK;
-static const enum llvm::raw_ostream::Colors fixitColor =
-  llvm::raw_ostream::GREEN;
-static const enum llvm::raw_ostream::Colors caretColor =
-  llvm::raw_ostream::GREEN;
-static const enum llvm::raw_ostream::Colors warningColor =
-  llvm::raw_ostream::MAGENTA;
-static const enum llvm::raw_ostream::Colors errorColor = llvm::raw_ostream::RED;
-static const enum llvm::raw_ostream::Colors fatalColor = llvm::raw_ostream::RED;
+static const enum raw_ostream::Colors noteColor =
+  raw_ostream::BLACK;
+static const enum raw_ostream::Colors fixitColor =
+  raw_ostream::GREEN;
+static const enum raw_ostream::Colors caretColor =
+  raw_ostream::GREEN;
+static const enum raw_ostream::Colors warningColor =
+  raw_ostream::MAGENTA;
+static const enum raw_ostream::Colors errorColor = raw_ostream::RED;
+static const enum raw_ostream::Colors fatalColor = raw_ostream::RED;
 // Used for changing only the bold attribute.
-static const enum llvm::raw_ostream::Colors savedColor =
-  llvm::raw_ostream::SAVEDCOLOR;
+static const enum raw_ostream::Colors savedColor =
+  raw_ostream::SAVEDCOLOR;
 
 /// \brief Number of spaces to indent when word-wrapping.
 const unsigned WordWrapIndentation = 6;
 
-TextDiagnosticPrinter::TextDiagnosticPrinter(llvm::raw_ostream &os,
+TextDiagnosticPrinter::TextDiagnosticPrinter(raw_ostream &os,
                                              const DiagnosticOptions &diags,
                                              bool _OwnsOutputStream)
   : OS(os), LangOpts(0), DiagOpts(&diags),
@@ -85,8 +85,8 @@ void TextDiagnosticPrinter::HighlightRange(const CharSourceRange &R,
          "Expect a correspondence between source and caret line!");
   if (!R.isValid()) return;
 
-  SourceLocation Begin = SM.getInstantiationLoc(R.getBegin());
-  SourceLocation End = SM.getInstantiationLoc(R.getEnd());
+  SourceLocation Begin = SM.getExpansionLoc(R.getBegin());
+  SourceLocation End = SM.getExpansionLoc(R.getEnd());
 
   // If the End location and the start location are the same and are a macro
   // location, then the range was something that came from a macro expansion
@@ -94,27 +94,27 @@ void TextDiagnosticPrinter::HighlightRange(const CharSourceRange &R,
   // highlight the range.  If this is a function-like macro, we'd also like to
   // highlight the arguments.
   if (Begin == End && R.getEnd().isMacroID())
-    End = SM.getInstantiationRange(R.getEnd()).second;
+    End = SM.getExpansionRange(R.getEnd()).second;
 
-  unsigned StartLineNo = SM.getInstantiationLineNumber(Begin);
+  unsigned StartLineNo = SM.getExpansionLineNumber(Begin);
   if (StartLineNo > LineNo || SM.getFileID(Begin) != FID)
     return;  // No intersection.
 
-  unsigned EndLineNo = SM.getInstantiationLineNumber(End);
+  unsigned EndLineNo = SM.getExpansionLineNumber(End);
   if (EndLineNo < LineNo || SM.getFileID(End) != FID)
     return;  // No intersection.
 
   // Compute the column number of the start.
   unsigned StartColNo = 0;
   if (StartLineNo == LineNo) {
-    StartColNo = SM.getInstantiationColumnNumber(Begin);
+    StartColNo = SM.getExpansionColumnNumber(Begin);
     if (StartColNo) --StartColNo;  // Zero base the col #.
   }
 
   // Compute the column number of the end.
   unsigned EndColNo = CaretLine.size();
   if (EndLineNo == LineNo) {
-    EndColNo = SM.getInstantiationColumnNumber(End);
+    EndColNo = SM.getExpansionColumnNumber(End);
     if (EndColNo) {
       --EndColNo;  // Zero base the col #.
 
@@ -292,15 +292,15 @@ static void SelectInterestingSourceRegion(std::string &SourceLine,
   }
 }
 
-/// Look through spelling locations for a macro argument instantiation, and
+/// Look through spelling locations for a macro argument expansion, and
 /// if found skip to it so that we can trace the argument rather than the macros
-/// in which that argument is used. If no macro argument instantiation is found,
+/// in which that argument is used. If no macro argument expansion is found,
 /// don't skip anything and return the starting location.
-static SourceLocation skipToMacroArgInstantiation(const SourceManager &SM,
+static SourceLocation skipToMacroArgExpansion(const SourceManager &SM,
                                                   SourceLocation StartLoc) {
   for (SourceLocation L = StartLoc; L.isMacroID();
        L = SM.getImmediateSpellingLoc(L)) {
-    if (SM.isMacroArgInstantiation(L))
+    if (SM.isMacroArgExpansion(L))
       return L;
   }
 
@@ -317,12 +317,12 @@ static SourceLocation getImmediateMacroCallerLoc(const SourceManager &SM,
   // When we have the location of (part of) an expanded parameter, its spelling
   // location points to the argument as typed into the macro call, and
   // therefore is used to locate the macro caller.
-  if (SM.isMacroArgInstantiation(Loc))
+  if (SM.isMacroArgExpansion(Loc))
     return SM.getImmediateSpellingLoc(Loc);
 
   // Otherwise, the caller of the macro is located where this macro is
-  // instantiated (while the spelling is part of the macro definition).
-  return SM.getImmediateInstantiationRange(Loc).first;
+  // expanded (while the spelling is part of the macro definition).
+  return SM.getImmediateExpansionRange(Loc).first;
 }
 
 /// Gets the location of the immediate macro callee, one level down the stack
@@ -332,10 +332,10 @@ static SourceLocation getImmediateMacroCalleeLoc(const SourceManager &SM,
   if (!Loc.isMacroID()) return Loc;
 
   // When we have the location of (part of) an expanded parameter, its
-  // instantiation location points to the unexpanded paramater reference within
+  // expansion location points to the unexpanded paramater reference within
   // the macro definition (or callee).
-  if (SM.isMacroArgInstantiation(Loc))
-    return SM.getImmediateInstantiationRange(Loc).first;
+  if (SM.isMacroArgExpansion(Loc))
+    return SM.getImmediateExpansionRange(Loc).first;
 
   // Otherwise, the callee of the macro is located where this location was
   // spelled inside the macro definition.
@@ -356,16 +356,16 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
   assert(!Loc.isInvalid() && "must have a valid source location here");
 
   // If this is a macro ID, first emit information about where this was
-  // instantiated (recursively) then emit information about where the token was
+  // expanded (recursively) then emit information about where the token was
   // spelled from.
   if (!Loc.isFileID()) {
-    // Whether to suppress printing this macro instantiation.
+    // Whether to suppress printing this macro expansion.
     bool Suppressed 
       = OnMacroInst >= MacroSkipStart && OnMacroInst < MacroSkipEnd;
 
-    // When processing macros, skip over the instantiations leading up to
-    // a macro argument, and trace the argument's instantiation stack instead.
-    Loc = skipToMacroArgInstantiation(SM, Loc);
+    // When processing macros, skip over the expansions leading up to
+    // a macro argument, and trace the argument's expansion stack instead.
+    Loc = skipToMacroArgExpansion(SM, Loc);
 
     SourceLocation OneLevelUp = getImmediateMacroCallerLoc(SM, Loc);
 
@@ -388,7 +388,7 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
     }
 
     if (!Suppressed) {
-      // Don't print recursive instantiation notes from an instantiation note.
+      // Don't print recursive expansion notes from an expansion note.
       Loc = SM.getSpellingLoc(Loc);
 
       // Get the pretty name, according to #line directives etc.
@@ -410,7 +410,7 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
           OS << PLoc.getColumn() << ':';
         OS << ' ';
       }
-      OS << "note: instantiated from:\n";
+      OS << "note: expanded from:\n";
 
       EmitCaretDiagnostic(Loc, Ranges, NumRanges, SM, 0, 0,
                           Columns, OnMacroInst + 1, MacroSkipStart,
@@ -421,7 +421,7 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
     if (OnMacroInst == MacroSkipStart) {
       // Tell the user that we've skipped contexts.
       OS << "note: (skipping " << (MacroSkipEnd - MacroSkipStart) 
-      << " contexts in backtrace; use -fmacro-backtrace-limit=0 to see "
+      << " expansions in backtrace; use -fmacro-backtrace-limit=0 to see "
       "all)\n";
     }
     
@@ -519,7 +519,7 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
         // We have an insertion hint. Determine whether the inserted
         // code is on the same line as the caret.
         std::pair<FileID, unsigned> HintLocInfo
-          = SM.getDecomposedInstantiationLoc(Hint->RemoveRange.getBegin());
+          = SM.getDecomposedExpansionLoc(Hint->RemoveRange.getBegin());
         if (SM.getLineNumber(HintLocInfo.first, HintLocInfo.second) ==
               SM.getLineNumber(FID, FileOffset)) {
           // Insert the new code into the line just below the code
@@ -660,7 +660,7 @@ void TextDiagnosticPrinter::EmitCaretDiagnostic(SourceLocation Loc,
 /// greater than or equal to Idx or, if no such character exists,
 /// returns the end of the string.
 static unsigned skipWhitespace(unsigned Idx,
-                               const llvm::SmallVectorImpl<char> &Str,
+                               const SmallVectorImpl<char> &Str,
                                unsigned Length) {
   while (Idx < Length && isspace(Str[Idx]))
     ++Idx;
@@ -693,7 +693,7 @@ static inline char findMatchingPunctuation(char c) {
 /// \returns the index pointing one character past the end of the
 /// word.
 static unsigned findEndOfWord(unsigned Start,
-                              const llvm::SmallVectorImpl<char> &Str,
+                              const SmallVectorImpl<char> &Str,
                               unsigned Length, unsigned Column,
                               unsigned Columns) {
   assert(Start < Str.size() && "Invalid start position!");
@@ -764,8 +764,8 @@ static unsigned findEndOfWord(unsigned Start,
 ///
 /// \returns true if word-wrapping was required, or false if the
 /// string fit on the first line.
-static bool PrintWordWrapped(llvm::raw_ostream &OS,
-                             const llvm::SmallVectorImpl<char> &Str,
+static bool PrintWordWrapped(raw_ostream &OS,
+                             const SmallVectorImpl<char> &Str,
                              unsigned Columns,
                              unsigned Column = 0,
                              unsigned Indentation = WordWrapIndentation) {
@@ -833,7 +833,7 @@ static PresumedLoc getDiagnosticPresumedLoc(const SourceManager &SM,
   // This is a condensed form of the algorithm used by EmitCaretDiagnostic to
   // walk to the top of the macro call stack.
   while (Loc.isMacroID()) {
-    Loc = skipToMacroArgInstantiation(SM, Loc);
+    Loc = skipToMacroArgExpansion(SM, Loc);
     Loc = getImmediateMacroCallerLoc(SM, Loc);
   }
 
@@ -914,7 +914,7 @@ void TextDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
                 
         if (DiagOpts->ShowSourceRanges && Info.getNumRanges()) {
           FileID CaretFileID =
-            SM.getFileID(SM.getInstantiationLoc(Info.getLocation()));
+            SM.getFileID(SM.getExpansionLoc(Info.getLocation()));
           bool PrintedRange = false;
 
           for (unsigned i = 0, e = Info.getNumRanges(); i != e; ++i) {
@@ -923,8 +923,8 @@ void TextDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
 
             SourceLocation B = Info.getRange(i).getBegin();
             SourceLocation E = Info.getRange(i).getEnd();
-            B = SM.getInstantiationLoc(B);
-            E = SM.getInstantiationLoc(E);
+            B = SM.getExpansionLoc(B);
+            E = SM.getExpansionLoc(E);
 
             // If the End location and the start location are the same and are a
             // macro location, then the range was something that came from a
@@ -932,7 +932,7 @@ void TextDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
             // best we can do is to highlight the range.  If this is a
             // function-like macro, we'd also like to highlight the arguments.
             if (B == E && Info.getRange(i).getEnd().isMacroID())
-              E = SM.getInstantiationRange(Info.getRange(i).getEnd()).second;
+              E = SM.getExpansionRange(Info.getRange(i).getEnd()).second;
 
             std::pair<FileID, unsigned> BInfo = SM.getDecomposedLoc(B);
             std::pair<FileID, unsigned> EInfo = SM.getDecomposedLoc(E);
@@ -1010,7 +1010,7 @@ void TextDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
         OptionName += "-Werror";
     }
 
-    llvm::StringRef Opt = DiagnosticIDs::getWarningOptionForDiag(Info.getID());
+    StringRef Opt = DiagnosticIDs::getWarningOptionForDiag(Info.getID());
     if (!Opt.empty()) {
       if (!OptionName.empty())
         OptionName += ',';
@@ -1114,13 +1114,13 @@ void TextDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
     const SourceManager &SM = LastLoc.getManager();
     unsigned MacroInstSkipStart = 0, MacroInstSkipEnd = 0;
     if (DiagOpts && DiagOpts->MacroBacktraceLimit && !LastLoc.isFileID()) {
-      // Compute the length of the macro-instantiation backtrace, so that we
+      // Compute the length of the macro-expansion backtrace, so that we
       // can establish which steps in the macro backtrace we'll skip.
       SourceLocation Loc = LastLoc;
       unsigned Depth = 0;
       do {
         ++Depth;
-        Loc = skipToMacroArgInstantiation(SM, Loc);
+        Loc = skipToMacroArgExpansion(SM, Loc);
         Loc = getImmediateMacroCallerLoc(SM, Loc);
       } while (!Loc.isFileID());
       

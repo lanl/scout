@@ -122,7 +122,7 @@ public:
   ///
   X86Subtarget(const std::string &TT, const std::string &CPU,
                const std::string &FS,
-               unsigned StackAlignOverride);
+               unsigned StackAlignOverride, bool is64Bit);
 
   /// getStackAlignment - Returns the minimum alignment known to hold of the
   /// stack frame on entry to the function and which must be maintained by every
@@ -199,7 +199,8 @@ public:
   }
 
   bool isTargetWin64() const {
-    return In64BitMode && (isTargetMingw() || isTargetWindows());
+    // FIXME: x86_64-cygwin has not been released yet.
+    return In64BitMode && (isTargetCygMing() || isTargetWindows());
   }
 
   bool isTargetEnvMacho() const {

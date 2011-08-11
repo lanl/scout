@@ -14,7 +14,9 @@
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/system_error.h"
 
 using namespace clang;
 using namespace arcmt;
@@ -37,6 +39,20 @@ VerifyDiags("verify",llvm::cl::desc("Verify emitted diagnostics and warnings"));
 static llvm::cl::opt<bool>
 VerboseOpt("v", llvm::cl::desc("Enable verbose output"));
 
+static llvm::cl::opt<bool>
+VerifyTransformedFiles("verify-transformed-files",
+llvm::cl::desc("Read pairs of file mappings (typically the output of "
+               "c-arcmt-test) and compare their contents with the filenames "
+               "provided in command-line"));
+
+static llvm::cl::opt<std::string>
+RemappingsFile("remappings-file",
+               llvm::cl::desc("Pairs of file mappings (typically the output of "
+               "c-arcmt-test)"));
+
+static llvm::cl::list<std::string>
+ResultFiles(llvm::cl::Positional, llvm::cl::desc("<filename>..."));
+
 static llvm::cl::extrahelp extraHelp(
   "\nusage with compiler args: arcmt-test [options] --args [compiler flags]\n");
 
@@ -53,24 +69,24 @@ llvm::sys::Path GetExecutablePath(const char *Argv0) {
 }
 
 static void printSourceLocation(SourceLocation loc, ASTContext &Ctx,
-                                llvm::raw_ostream &OS);
+                                raw_ostream &OS);
 static void printSourceRange(CharSourceRange range, ASTContext &Ctx,
-                             llvm::raw_ostream &OS);
+                             raw_ostream &OS);
 
 namespace {
 
 class PrintTransforms : public MigrationProcess::RewriteListener {
   ASTContext *Ctx;
-  llvm::raw_ostream &OS;
+  raw_ostream &OS;
 
 public:
-  PrintTransforms(llvm::raw_ostream &OS)
+  PrintTransforms(raw_ostream &OS)
     : Ctx(0), OS(OS) { }
 
   virtual void start(ASTContext &ctx) { Ctx = &ctx; }
   virtual void finish() { Ctx = 0; }
 
-  virtual void insert(SourceLocation loc, llvm::StringRef text) {
+  virtual void insert(SourceLocation loc, StringRef text) {
     assert(Ctx);
     OS << "Insert: ";
     printSourceLocation(loc, *Ctx, OS);
@@ -87,8 +103,8 @@ public:
 
 } // anonymous namespace
 
-static bool checkForMigration(llvm::StringRef resourcesPath,
-                              llvm::ArrayRef<const char *> Args) {
+static bool checkForMigration(StringRef resourcesPath,
+                              ArrayRef<const char *> Args) {
   DiagnosticClient *DiagClient =
     new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
@@ -118,7 +134,7 @@ static bool checkForMigration(llvm::StringRef resourcesPath,
   return Diags->getClient()->getNumErrors() > 0;
 }
 
-static void printResult(FileRemapper &remapper, llvm::raw_ostream &OS) {
+static void printResult(FileRemapper &remapper, raw_ostream &OS) {
   CompilerInvocation CI;
   remapper.applyMappings(CI);
   PreprocessorOptions &PPOpts = CI.getPreprocessorOpts();
@@ -129,8 +145,8 @@ static void printResult(FileRemapper &remapper, llvm::raw_ostream &OS) {
   }
 }
 
-static bool performTransformations(llvm::StringRef resourcesPath,
-                                   llvm::ArrayRef<const char *> Args) {
+static bool performTransformations(StringRef resourcesPath,
+                                   ArrayRef<const char *> Args) {
   // Check first.
   if (checkForMigration(resourcesPath, Args))
     return true;
@@ -183,12 +199,111 @@ static bool performTransformations(llvm::StringRef resourcesPath,
   return false;
 }
 
+static bool filesCompareEqual(StringRef fname1, StringRef fname2) {
+  using namespace llvm;
+
+  OwningPtr<MemoryBuffer> file1;
+  MemoryBuffer::getFile(fname1, file1);
+  if (!file1)
+    return false;
+  
+  OwningPtr<MemoryBuffer> file2;
+  MemoryBuffer::getFile(fname2, file2);
+  if (!file2)
+    return false;
+
+  return file1->getBuffer() == file2->getBuffer();
+}
+
+static bool verifyTransformedFiles(ArrayRef<std::string> resultFiles) {
+  using namespace llvm;
+
+  assert(!resultFiles.empty());
+
+  std::map<StringRef, StringRef> resultMap;
+
+  for (ArrayRef<std::string>::iterator
+         I = resultFiles.begin(), E = resultFiles.end(); I != E; ++I) {
+    StringRef fname(*I);
+    if (!fname.endswith(".result")) {
+      errs() << "error: filename '" << fname
+                   << "' does not have '.result' extension\n";
+      return true;
+    }
+    resultMap[sys::path::stem(fname)] = fname;
+  }
+
+  OwningPtr<MemoryBuffer> inputBuf;
+  if (RemappingsFile.empty())
+    MemoryBuffer::getSTDIN(inputBuf);
+  else
+    MemoryBuffer::getFile(RemappingsFile, inputBuf);
+  if (!inputBuf) {
+    errs() << "error: could not read remappings input\n";
+    return true;
+  }
+
+  SmallVector<StringRef, 8> strs;
+  inputBuf->getBuffer().split(strs, "\n", /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+
+  if (strs.empty()) {
+    errs() << "error: no files to verify from stdin\n";
+    return true;
+  }
+  if (strs.size() % 2 != 0) {
+    errs() << "error: files to verify are not original/result pairs\n";
+    return true;
+  }
+
+  for (unsigned i = 0, e = strs.size(); i != e; i += 2) {
+    StringRef inputOrigFname = strs[i];
+    StringRef inputResultFname = strs[i+1];
+
+    std::map<StringRef, StringRef>::iterator It;
+    It = resultMap.find(sys::path::filename(inputOrigFname));
+    if (It == resultMap.end()) {
+      errs() << "error: '" << inputOrigFname << "' is not in the list of "
+             << "transformed files to verify\n";
+      return true;
+    }
+
+    bool exists = false;
+    sys::fs::exists(It->second, exists);
+    if (!exists) {
+      errs() << "error: '" << It->second << "' does not exist\n";
+      return true;
+    }
+    sys::fs::exists(inputResultFname, exists);
+    if (!exists) {
+      errs() << "error: '" << inputResultFname << "' does not exist\n";
+      return true;
+    }
+
+    if (!filesCompareEqual(It->second, inputResultFname)) {
+      errs() << "error: '" << It->second << "' is different than "
+             << "'" << inputResultFname << "'\n";
+      return true;
+    }
+
+    resultMap.erase(It);
+  }
+
+  if (!resultMap.empty()) {
+    for (std::map<StringRef, StringRef>::iterator
+           I = resultMap.begin(), E = resultMap.end(); I != E; ++I)
+      errs() << "error: '" << I->second << "' was not verified!\n";
+    return true;
+  }
+
+  return false; 
+}
+
 //===----------------------------------------------------------------------===//
 // Misc. functions.
 //===----------------------------------------------------------------------===//
 
 static void printSourceLocation(SourceLocation loc, ASTContext &Ctx,
-                                llvm::raw_ostream &OS) {
+                                raw_ostream &OS) {
   SourceManager &SM = Ctx.getSourceManager();
   PresumedLoc PL = SM.getPresumedLoc(loc);
 
@@ -198,7 +313,7 @@ static void printSourceLocation(SourceLocation loc, ASTContext &Ctx,
 }
 
 static void printSourceRange(CharSourceRange range, ASTContext &Ctx,
-                             llvm::raw_ostream &OS) {
+                             raw_ostream &OS) {
   SourceManager &SM = Ctx.getSourceManager();
   const LangOptions &langOpts = Ctx.getLangOptions();
 
@@ -223,7 +338,6 @@ static void printSourceRange(CharSourceRange range, ASTContext &Ctx,
 //===----------------------------------------------------------------------===//
 
 int main(int argc, const char **argv) {
-  using llvm::StringRef;
   void *MainAddr = (void*) (intptr_t) GetExecutablePath;
   llvm::sys::PrintStackTraceOnErrorSignal();
 
@@ -236,13 +350,21 @@ int main(int argc, const char **argv) {
       break;
   }
   llvm::cl::ParseCommandLineOptions(optargc, const_cast<char **>(argv), "arcmt-test");
-  
+
+  if (VerifyTransformedFiles) {
+    if (ResultFiles.empty()) {
+      llvm::cl::PrintHelpMessage();
+      return 1;
+    }
+    return verifyTransformedFiles(ResultFiles);
+  }
+
   if (optargc == argc) {
     llvm::cl::PrintHelpMessage();
     return 1;
   }
 
-  llvm::ArrayRef<const char*> Args(argv+optargc+1, argc-optargc-1);
+  ArrayRef<const char*> Args(argv+optargc+1, argc-optargc-1);
 
   if (CheckOnly)
     return checkForMigration(resourcesPath, Args);

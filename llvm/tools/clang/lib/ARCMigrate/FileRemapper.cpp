@@ -27,7 +27,7 @@ FileRemapper::~FileRemapper() {
   clear();
 }
 
-void FileRemapper::clear(llvm::StringRef outputDir) {
+void FileRemapper::clear(StringRef outputDir) {
   for (MappingsTy::iterator
          I = FromToMappings.begin(), E = FromToMappings.end(); I != E; ++I)
     resetTarget(I->second);
@@ -40,7 +40,7 @@ void FileRemapper::clear(llvm::StringRef outputDir) {
   }
 }
 
-std::string FileRemapper::getRemapInfoFile(llvm::StringRef outputDir) {
+std::string FileRemapper::getRemapInfoFile(StringRef outputDir) {
   assert(!outputDir.empty());
   llvm::sys::Path dir(outputDir);
   llvm::sys::Path infoFile = dir;
@@ -48,7 +48,7 @@ std::string FileRemapper::getRemapInfoFile(llvm::StringRef outputDir) {
   return infoFile.str();
 }
 
-bool FileRemapper::initFromDisk(llvm::StringRef outputDir, Diagnostic &Diag,
+bool FileRemapper::initFromDisk(StringRef outputDir, Diagnostic &Diag,
                                 bool ignoreIfFilesChanged) {
   assert(FromToMappings.empty() &&
          "initFromDisk should be called before any remap calls");
@@ -71,11 +71,8 @@ bool FileRemapper::initFromDisk(llvm::StringRef outputDir, Diagnostic &Diag,
     fin >> fromFilename >> timeModified >> toFilename;
     if (fin.eof())
       break;
-    if (!fin.good()) {
-      if (ignoreIfFilesChanged)
-        return false;
+    if (!fin.good())
       return report(std::string("Error in format of file: ") + infoFile, Diag);
-    }
 
     const FileEntry *origFE = FileMgr->getFile(fromFilename);
     if (!origFE) {
@@ -105,7 +102,7 @@ bool FileRemapper::initFromDisk(llvm::StringRef outputDir, Diagnostic &Diag,
   return false;
 }
 
-bool FileRemapper::flushToDisk(llvm::StringRef outputDir, Diagnostic &Diag) {
+bool FileRemapper::flushToDisk(StringRef outputDir, Diagnostic &Diag) {
   using namespace llvm::sys;
 
   bool existed;
@@ -117,18 +114,22 @@ bool FileRemapper::flushToDisk(llvm::StringRef outputDir, Diagnostic &Diag) {
   std::string infoFile = getRemapInfoFile(outputDir);
   llvm::raw_fd_ostream infoOut(infoFile.c_str(), errMsg,
                                llvm::raw_fd_ostream::F_Binary);
-  if (!errMsg.empty() || infoOut.has_error())
+  if (!errMsg.empty())
     return report(errMsg, Diag);
 
   for (MappingsTy::iterator
          I = FromToMappings.begin(), E = FromToMappings.end(); I != E; ++I) {
 
     const FileEntry *origFE = I->first;
-    infoOut << origFE->getName() << '\n';
+    llvm::SmallString<200> origPath = StringRef(origFE->getName());
+    fs::make_absolute(origPath);
+    infoOut << origPath << '\n';
     infoOut << (uint64_t)origFE->getModificationTime() << '\n';
 
     if (const FileEntry *FE = I->second.dyn_cast<const FileEntry *>()) {
-      infoOut << FE->getName() << '\n';
+      llvm::SmallString<200> newPath = StringRef(FE->getName());
+      fs::make_absolute(newPath);
+      infoOut << newPath << '\n';
     } else {
 
       llvm::SmallString<64> tempPath;
@@ -156,7 +157,7 @@ bool FileRemapper::flushToDisk(llvm::StringRef outputDir, Diagnostic &Diag) {
 }
 
 bool FileRemapper::overwriteOriginal(Diagnostic &Diag,
-                                     llvm::StringRef outputDir) {
+                                     StringRef outputDir) {
   using namespace llvm::sys;
 
   for (MappingsTy::iterator
@@ -183,7 +184,7 @@ bool FileRemapper::overwriteOriginal(Diagnostic &Diag,
       std::string errMsg;
       llvm::raw_fd_ostream Out(origFE->getName(), errMsg,
                                llvm::raw_fd_ostream::F_Binary);
-      if (!errMsg.empty() || Out.has_error())
+      if (!errMsg.empty())
         return report(errMsg, Diag);
 
       llvm::MemoryBuffer *mem = I->second.get<llvm::MemoryBuffer *>();
@@ -228,11 +229,11 @@ void FileRemapper::transferMappingsAndClear(CompilerInvocation &CI) {
   clear();
 }
 
-void FileRemapper::remap(llvm::StringRef filePath, llvm::MemoryBuffer *memBuf) {
+void FileRemapper::remap(StringRef filePath, llvm::MemoryBuffer *memBuf) {
   remap(getOriginalFile(filePath), memBuf);
 }
 
-void FileRemapper::remap(llvm::StringRef filePath, llvm::StringRef newPath) {
+void FileRemapper::remap(StringRef filePath, StringRef newPath) {
   const FileEntry *file = getOriginalFile(filePath);
   const FileEntry *newfile = FileMgr->getFile(newPath);
   remap(file, newfile);
@@ -253,7 +254,7 @@ void FileRemapper::remap(const FileEntry *file, const FileEntry *newfile) {
   ToFromMappings[newfile] = file;
 }
 
-const FileEntry *FileRemapper::getOriginalFile(llvm::StringRef filePath) {
+const FileEntry *FileRemapper::getOriginalFile(StringRef filePath) {
   const FileEntry *file = FileMgr->getFile(filePath);
   // If we are updating a file that overriden an original file,
   // actually update the original file.

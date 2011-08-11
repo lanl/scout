@@ -15,6 +15,7 @@
 #ifndef CLANG_CODEGEN_TARGETINFO_H
 #define CLANG_CODEGEN_TARGETINFO_H
 
+#include "clang/Basic/LLVM.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
@@ -106,9 +107,9 @@ namespace clang {
       return Address;
     }
 
-    virtual const llvm::Type* adjustInlineAsmType(CodeGen::CodeGenFunction &CGF,
-                                                  llvm::StringRef Constraint, 
-                                                  const llvm::Type* Ty) const {
+    virtual llvm::Type* adjustInlineAsmType(CodeGen::CodeGenFunction &CGF,
+                                            StringRef Constraint, 
+                                            llvm::Type* Ty) const {
       return Ty;
     }
 
@@ -122,7 +123,7 @@ namespace clang {
     /// a particular instruction sequence.  This functions returns
     /// that instruction sequence in inline assembly, which will be
     /// empty if none is required.
-    virtual llvm::StringRef getARCRetainAutoreleasedReturnValueMarker() const {
+    virtual StringRef getARCRetainAutoreleasedReturnValueMarker() const {
       return "";
     }
   };

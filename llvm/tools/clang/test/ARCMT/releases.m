@@ -1,6 +1,8 @@
-// RUN: %clang_cc1 -fobjc-nonfragile-abi -fblocks -fsyntax-only -fobjc-arc -x objective-c %s.result
-// RUN: arcmt-test --args -triple x86_64-apple-darwin10 -fblocks -fobjc-nonfragile-abi -fsyntax-only -x objective-c %s > %t
+// RUN: %clang_cc1 -fobjc-nonfragile-abi -fobjc-exceptions -fblocks -fsyntax-only -fobjc-arc -x objective-c %s.result
+// RUN: arcmt-test --args -triple x86_64-apple-darwin10 -fobjc-exceptions -fblocks -fobjc-nonfragile-abi -fsyntax-only -x objective-c %s > %t
 // RUN: diff %t %s.result
+
+#define nil 0
 
 typedef int BOOL;
 
@@ -36,6 +38,11 @@ id IhaveSideEffect();
   [IhaveSideEffect() release];
 
   [x release], x = 0;
+
+  @try {
+  } @finally {
+    [x release];
+  }
 }
   
 @end
@@ -78,3 +85,15 @@ void test2(id p) {
   RELEASE_MACRO(p);
   RELEASE_MACRO2(p);
 }
+
+@implementation Foo2
+
+static id internal_var = 0;
+
++ (void)setIt:(id)newone {
+    if (internal_var != newone) {
+        [internal_var release];
+        internal_var = [newone retain];
+    }
+}
+@end

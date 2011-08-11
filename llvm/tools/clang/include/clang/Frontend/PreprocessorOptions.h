@@ -41,6 +41,7 @@ class PreprocessorOptions {
 public:
   std::vector<std::pair<std::string, bool/*isUndef*/> > Macros;
   std::vector<std::string> Includes;
+  std::vector<std::string> Modules;
   std::vector<std::string> MacroIncludes;
 
   unsigned UsePredefines : 1; /// Initialize the preprocessor with the compiler
@@ -48,11 +49,11 @@ public:
 
   unsigned DetailedRecord : 1; /// Whether we should maintain a detailed
                                /// record of all macro definitions and
-                               /// instantiations.
+                               /// expansions.
   
   /// \brief Whether the detailed preprocessing record includes nested macro 
-  /// instantiations.
-  unsigned DetailedRecordIncludesNestedMacroInstantiations : 1;
+  /// expansions.
+  unsigned DetailedRecordIncludesNestedMacroExpansions : 1;
   
   /// The implicit PCH included at the start of the translation unit, or empty.
   std::string ImplicitPCHInclude;
@@ -154,7 +155,7 @@ public:
   
 public:
   PreprocessorOptions() : UsePredefines(true), DetailedRecord(false),
-                          DetailedRecordIncludesNestedMacroInstantiations(true),
+                          DetailedRecordIncludesNestedMacroExpansions(true),
                           DisablePCHValidation(false), DisableStatCache(false),
                           DumpDeserializedPCHDecls(false),
                           PrecompiledPreambleBytes(0, true),
@@ -162,13 +163,13 @@ public:
                           RetainRemappedFileBuffers(false),
                           ObjCXXARCStandardLibrary(ARCXX_nolib) { }
 
-  void addMacroDef(llvm::StringRef Name) {
+  void addMacroDef(StringRef Name) {
     Macros.push_back(std::make_pair(Name, false));
   }
-  void addMacroUndef(llvm::StringRef Name) {
+  void addMacroUndef(StringRef Name) {
     Macros.push_back(std::make_pair(Name, true));
   }
-  void addRemappedFile(llvm::StringRef From, llvm::StringRef To) {
+  void addRemappedFile(StringRef From, StringRef To) {
     RemappedFiles.push_back(std::make_pair(From, To));
   }
   
@@ -176,7 +177,7 @@ public:
     return RemappedFiles.erase(Remapped);
   }
   
-  void addRemappedFile(llvm::StringRef From, const llvm::MemoryBuffer * To) {
+  void addRemappedFile(StringRef From, const llvm::MemoryBuffer * To) {
     RemappedFileBuffers.push_back(std::make_pair(From, To));
   }
   

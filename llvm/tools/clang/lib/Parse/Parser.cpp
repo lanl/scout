@@ -75,7 +75,7 @@ Parser::Parser(Preprocessor &pp, Sema &actions)
 
 /// If a crash happens while the parser is active, print out a line indicating
 /// what the current token is.
-void PrettyStackTraceParserEntry::print(llvm::raw_ostream &OS) const {
+void PrettyStackTraceParserEntry::print(raw_ostream &OS) const {
   const Token &Tok = P.getCurToken();
   if (Tok.is(tok::eof)) {
     OS << "<eof> parser at end of file\n";
@@ -301,6 +301,9 @@ bool Parser::SkipUntil(const tok::TokenKind *Toks, unsigned NumToks,
 
     case tok::string_literal:
     case tok::wide_string_literal:
+    case tok::utf8_string_literal:
+    case tok::utf16_string_literal:
+    case tok::utf32_string_literal:
       ConsumeStringToken();
       break;
         

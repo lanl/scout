@@ -6,6 +6,7 @@ tablegen(XCoreGenAsmWriter.inc -gen-asm-writer)
 tablegen(XCoreGenDAGISel.inc -gen-dag-isel)
 tablegen(XCoreGenCallingConv.inc -gen-callingconv)
 tablegen(XCoreGenSubtargetInfo.inc -gen-subtarget)
+add_public_tablegen_target(XCoreCommonTableGen)
 
 add_llvm_target(XCoreCodeGen
   XCoreAsmPrinter.cpp
@@ -13,7 +14,6 @@ add_llvm_target(XCoreCodeGen
   XCoreInstrInfo.cpp
   XCoreISelDAGToDAG.cpp
   XCoreISelLowering.cpp
-  XCoreMCAsmInfo.cpp
   XCoreRegisterInfo.cpp
   XCoreSubtarget.cpp
   XCoreTargetMachine.cpp
@@ -21,4 +21,17 @@ add_llvm_target(XCoreCodeGen
   XCoreSelectionDAGInfo.cpp
   )
 
+add_llvm_library_dependencies(LLVMXCoreCodeGen
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
+  LLVMXCoreDesc
+  LLVMXCoreInfo
+  )
+
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)

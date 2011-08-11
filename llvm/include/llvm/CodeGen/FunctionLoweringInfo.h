@@ -19,6 +19,7 @@
 #include "llvm/Instructions.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/SmallVector.h"
 #ifndef NDEBUG
@@ -139,7 +140,7 @@ public:
 
   unsigned CreateReg(EVT VT);
   
-  unsigned CreateRegs(const Type *Ty);
+  unsigned CreateRegs(Type *Ty);
   
   unsigned InitializeRegForValue(const Value *V) {
     unsigned &R = ValueMap[V];

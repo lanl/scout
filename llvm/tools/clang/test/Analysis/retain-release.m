@@ -1,6 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease -analyzer-store=basic -fblocks -verify %s
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease -analyzer-store=region -fblocks -verify %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease -analyzer-store=basic -fblocks -verify -x objective-c++ %s
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease -analyzer-store=region -fblocks -verify -x objective-c++ %s
 
 #if __has_feature(attribute_ns_returns_retained)
@@ -518,7 +516,7 @@ void f17(int x, CFTypeRef p) {
 @implementation TestReturnNotOwnedWhenExpectedOwned
 - (NSString*)newString {
   NSString *s = [NSString stringWithUTF8String:"hello"];
-  return s; // expected-warning{{Object with +0 retain counts returned to caller where a +1 (owning) retain count is expected}}
+  return s; // expected-warning{{Object with a +0 retain count returned to caller where a +1 (owning) retain count is expected}}
 }
 @end
 
@@ -736,7 +734,7 @@ typedef CFTypeRef OtherRef;
 - (id)initReturningNewClassBad2 {
   [self release];
   self = [[RDar6320065Subclass alloc] init];
-  return [self autorelease]; // expected-warning{{Object with +0 retain counts returned to caller where a +1 (owning) retain count is expected}}
+  return [self autorelease]; // expected-warning{{Object with a +0 retain count returned to caller where a +1 (owning) retain count is expected}}
 }
 
 @end
@@ -1303,7 +1301,7 @@ CFDateRef returnsRetainedCFDate()  {
 }
 
 - (CFDateRef) newCFRetainedAsCFNoAttr {
-  return (CFDateRef)[(id)[self returnsCFRetainedAsCF] autorelease]; // expected-warning{{Object with +0 retain counts returned to caller where a +1 (owning) retain count is expected}}
+  return (CFDateRef)[(id)[self returnsCFRetainedAsCF] autorelease]; // expected-warning{{Object with a +0 retain count returned to caller where a +1 (owning) retain count is expected}}
 }
 
 - (NSDate*) alsoReturnsRetained {
@@ -1446,7 +1444,7 @@ static void rdar_8724287(CFErrorRef error)
     while (error_to_dump != ((void*)0)) {
         CFDictionaryRef info;
 
-        info = CFErrorCopyUserInfo(error_to_dump); // expected-warning{{Potential leak of an object allocated on line 1449 and stored into 'info'}}
+        info = CFErrorCopyUserInfo(error_to_dump); // expected-warning{{Potential leak of an object allocated on line 1447 and stored into 'info'}}
 
         if (info != ((void*)0)) {
         }
@@ -1486,4 +1484,84 @@ void rdar9726279() {
   TwoDoubles twoDoubles = { 0.0, 0.0 };
   NSValue *value = [[NSValue alloc] _prefix_initWithTwoDoubles:twoDoubles];
   [value release];
+}
+
+// <rdar://problem/9732321>
+// Test camelcase support for CF conventions.  While Core Foundation APIs
+// don't use camel casing, other code is allowed to use it.
+CFArrayRef camelcase_create_1() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef camelcase_createno() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // expected-warning {{leak}}
+}
+
+CFArrayRef camelcase_copy() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef camelcase_copying() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // expected-warning {{leak}}
+}
+
+CFArrayRef copyCamelCase() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef __copyCamelCase() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef __createCamelCase() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef camel_create() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+
+CFArrayRef camel_creat() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // expected-warning {{leak}}
+}
+
+CFArrayRef camel_copy() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef camel_copyMachine() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // no-warning
+}
+
+CFArrayRef camel_copymachine() {
+  return CFArrayCreateMutable(0, 10, &kCFTypeArrayCallBacks); // expected-warning {{leak}}
+}
+
+// rdar://problem/8024350
+@protocol F18P
+- (id) clone;
+@end
+@interface F18 : NSObject<F18P> @end
+@interface F18(Cat)
+- (id) clone NS_RETURNS_RETAINED;
+@end
+
+@implementation F18
+- (id) clone {
+  return [F18 alloc];
+}
+@end
+
+// Radar 6582778.
+void rdar6582778(void) {
+  CFAbsoluteTime t = CFAbsoluteTimeGetCurrent();
+  CFTypeRef vals[] = { CFDateCreate(0, t) }; // expected-warning {{leak}}
+}
+
+CFTypeRef global;
+
+void rdar6582778_2(void) {
+  CFAbsoluteTime t = CFAbsoluteTimeGetCurrent();
+  global = CFDateCreate(0, t); // no-warning
 }

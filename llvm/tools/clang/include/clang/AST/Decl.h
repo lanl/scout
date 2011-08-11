@@ -115,7 +115,7 @@ public:
   /// getName - Get the name of identifier for this declaration as a StringRef.
   /// This requires that the declaration have a name and that it be a simple
   /// identifier.
-  llvm::StringRef getName() const {
+  StringRef getName() const {
     assert(Name.isIdentifier() && "Name is not a simple identifier");
     return getIdentifier() ? getIdentifier()->getName() : "";
   }
@@ -132,7 +132,7 @@ public:
   // FIXME: Deprecated, move clients to getName().
   std::string getNameAsString() const { return Name.getAsString(); }
 
-  void printName(llvm::raw_ostream &os) const { return Name.printName(os); }
+  void printName(raw_ostream &os) const { return Name.printName(os); }
 
   /// getDeclName - Get the actual, stored name of the declaration,
   /// which may be a special name.
@@ -294,7 +294,7 @@ public:
   static bool classofKind(Kind K) { return K >= firstNamed && K <= lastNamed; }
 };
 
-inline llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+inline raw_ostream &operator<<(raw_ostream &OS,
                                      const NamedDecl *ND) {
   ND->getDeclName().printName(OS);
   return OS;
@@ -1198,6 +1198,8 @@ public:
                              StorageClass S, StorageClass SCAsWritten,
                              Expr *DefArg);
 
+  virtual SourceRange getSourceRange() const;
+
   void setObjCMethodScopeInfo(unsigned parameterIndex) {
     ParmVarDeclBits.IsObjCMethodParam = true;
 
@@ -1602,7 +1604,7 @@ public:
 
   /// Whether this is a constexpr function or constexpr constructor.
   // FIXME: C++0x: Implement tracking of the constexpr specifier.
-  bool isConstExpr() const { return false; }
+  bool isConstexpr() const { return false; }
 
   /// Whether this templated function will be late parsed.
   bool isLateTemplateParsed() const { return IsLateTemplateParsed; }
@@ -1773,6 +1775,8 @@ public:
   bool isInlined() const;
 
   bool isInlineDefinitionExternallyVisible() const;
+
+  bool doesDeclarationForceExternallyVisibleDefinition() const;
                        
   /// isOverloadedOperator - Whether this function declaration
   /// represents an C++ overloaded operator, e.g., "operator+".
@@ -2059,6 +2063,11 @@ public:
            "bit width or initializer already set");
     InitializerOrBitWidth.setPointer(BW);
     InitializerOrBitWidth.setInt(1);
+  }
+  /// removeBitWidth - Remove the bitfield width from this member.
+  void removeBitWidth() {
+    assert(isBitField() && "no bit width to remove");
+    InitializerOrBitWidth.setPointer(0);
   }
 
   /// hasInClassInitializer - Determine whether this member has a C++0x in-class

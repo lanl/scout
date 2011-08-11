@@ -35,7 +35,7 @@ CXXRecordDecl::DefinitionData::DefinitionData(CXXRecordDecl *D)
     Abstract(false), IsStandardLayout(true), HasNoNonEmptyBases(true),
     HasPrivateFields(false), HasProtectedFields(false), HasPublicFields(false),
     HasMutableFields(false), HasTrivialDefaultConstructor(true),
-    HasConstExprNonCopyMoveConstructor(false), HasTrivialCopyConstructor(true),
+    HasConstexprNonCopyMoveConstructor(false), HasTrivialCopyConstructor(true),
     HasTrivialMoveConstructor(true), HasTrivialCopyAssignment(true),
     HasTrivialMoveAssignment(true), HasTrivialDestructor(true),
     HasNonLiteralTypeFieldsOrBases(false), ComputedVisibleConversions(false),
@@ -89,7 +89,7 @@ CXXRecordDecl::setBases(CXXBaseSpecifier const * const *Bases,
   llvm::SmallPtrSet<CanQualType, 8> SeenVBaseTypes;
   
   // The virtual bases of this class.
-  llvm::SmallVector<const CXXBaseSpecifier *, 8> VBases;
+  SmallVector<const CXXBaseSpecifier *, 8> VBases;
 
   data().Bases = new(C) CXXBaseSpecifier [NumBases];
   data().NumBases = NumBases;
@@ -244,22 +244,8 @@ CXXRecordDecl::setBases(CXXBaseSpecifier const * const *Bases,
   // Create base specifier for any direct or indirect virtual bases.
   data().VBases = new (C) CXXBaseSpecifier[VBases.size()];
   data().NumVBases = VBases.size();
-  for (int I = 0, E = VBases.size(); I != E; ++I) {
-    TypeSourceInfo *VBaseTypeInfo = VBases[I]->getTypeSourceInfo();
-
-    // Skip dependent types; we can't do any checking on them now.
-    if (VBaseTypeInfo->getType()->isDependentType())
-      continue;
-
-    CXXRecordDecl *VBaseClassDecl = cast<CXXRecordDecl>(
-      VBaseTypeInfo->getType()->getAs<RecordType>()->getDecl());
-
-    data().getVBases()[I] =
-      CXXBaseSpecifier(VBaseClassDecl->getSourceRange(), true,
-                       VBaseClassDecl->getTagKind() == TTK_Class,
-                       VBases[I]->getAccessSpecifier(), VBaseTypeInfo,
-                       SourceLocation());
-  }
+  for (int I = 0, E = VBases.size(); I != E; ++I)
+    data().getVBases()[I] = *VBases[I];
 }
 
 /// Callback function for CXXRecordDecl::forallBases that acknowledges
@@ -301,7 +287,7 @@ bool CXXRecordDecl::isTriviallyCopyable() const {
 /// (if there is one).
 static CXXMethodDecl *
 GetBestOverloadCandidateSimple(
-  const llvm::SmallVectorImpl<std::pair<CXXMethodDecl *, Qualifiers> > &Cands) {
+  const SmallVectorImpl<std::pair<CXXMethodDecl *, Qualifiers> > &Cands) {
   if (Cands.empty())
     return 0;
   if (Cands.size() == 1)
@@ -327,7 +313,7 @@ CXXConstructorDecl *CXXRecordDecl::getCopyConstructor(unsigned TypeQuals) const{
     = Context.DeclarationNames.getCXXConstructorName(
                                           Context.getCanonicalType(ClassType));
   unsigned FoundTQs;
-  llvm::SmallVector<std::pair<CXXMethodDecl *, Qualifiers>, 4> Found;
+  SmallVector<std::pair<CXXMethodDecl *, Qualifiers>, 4> Found;
   DeclContext::lookup_const_iterator Con, ConEnd;
   for (llvm::tie(Con, ConEnd) = this->lookup(ConstructorName);
        Con != ConEnd; ++Con) {
@@ -363,7 +349,7 @@ CXXMethodDecl *CXXRecordDecl::getCopyAssignmentOperator(bool ArgIsConst) const {
   QualType Class = Context.getTypeDeclType(const_cast<CXXRecordDecl *>(this));
   DeclarationName Name = Context.DeclarationNames.getCXXOperatorName(OO_Equal);
   
-  llvm::SmallVector<std::pair<CXXMethodDecl *, Qualifiers>, 4> Found;
+  SmallVector<std::pair<CXXMethodDecl *, Qualifiers>, 4> Found;
   DeclContext::lookup_const_iterator Op, OpEnd;
   for (llvm::tie(Op, OpEnd) = this->lookup(Name); Op != OpEnd; ++Op) {
     // C++ [class.copy]p9:
@@ -558,11 +544,10 @@ NotASpecialMember:;
         }
       }
     }
-    if (Constructor->isConstExpr() &&
-        !Constructor->isCopyOrMoveConstructor()) {
-      // Record if we see any constexpr constructors which are niether copy
+    if (Constructor->isConstexpr() && !Constructor->isCopyOrMoveConstructor()) {
+      // Record if we see any constexpr constructors which are neither copy
       // nor move constructors.
-      data().HasConstExprNonCopyMoveConstructor = true;
+      data().HasConstexprNonCopyMoveConstructor = true;
     }
 
     // C++ [dcl.init.aggr]p1:

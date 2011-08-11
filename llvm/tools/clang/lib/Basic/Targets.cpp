@@ -37,7 +37,7 @@ using namespace clang;
 /// DefineStd - Define a macro name and standard variants.  For example if
 /// MacroName is "unix", then this will define "__unix", "__unix__", and "unix"
 /// when in GNU mode.
-static void DefineStd(MacroBuilder &Builder, llvm::StringRef MacroName,
+static void DefineStd(MacroBuilder &Builder, StringRef MacroName,
                       const LangOptions &Opts) {
   assert(MacroName[0] != '_' && "Identifier should be in the user's namespace");
 
@@ -77,7 +77,7 @@ public:
 
 static void getDarwinDefines(MacroBuilder &Builder, const LangOptions &Opts,
                              const llvm::Triple &Triple,
-                             llvm::StringRef &PlatformName,
+                             StringRef &PlatformName,
                              VersionTuple &PlatformMinVersion) {
   Builder.defineMacro("__APPLE_CC__", "5621");
   Builder.defineMacro("__APPLE__");
@@ -146,6 +146,14 @@ static void getDarwinDefines(MacroBuilder &Builder, const LangOptions &Opts,
     }
   }
 
+  // If -ccc-host-triple arch-pc-win32-macho option specified, we're
+  // generating code for Win32 ABI. No need to emit
+  // __ENVIRONMENT_XX_OS_VERSION_MIN_REQUIRED__.
+  if (PlatformName == "win32") {
+    PlatformMinVersion = VersionTuple(Maj, Min, Rev);
+    return;
+  }
+
   // Set the appropriate OS version define.
   if (PlatformName == "ios") {
     assert(Maj < 10 && Min < 100 && Rev < 100 && "Invalid version!");
@@ -194,9 +202,9 @@ public:
       this->MCountName = "\01mcount";
     }
 
-  virtual std::string isValidSectionSpecifier(llvm::StringRef SR) const {
+  virtual std::string isValidSectionSpecifier(StringRef SR) const {
     // Let MCSectionMachO validate this.
-    llvm::StringRef Segment, Section;
+    StringRef Segment, Section;
     unsigned TAA, StubSize;
     bool HasTAA;
     return llvm::MCSectionMachO::ParseSectionSpecifier(SR, Segment, Section,
@@ -239,7 +247,7 @@ protected:
     // FreeBSD defines; list based off of gcc output
 
     // FIXME: Move version number handling to llvm::Triple.
-    llvm::StringRef Release = Triple.getOSName().substr(strlen("freebsd"), 1);
+    StringRef Release = Triple.getOSName().substr(strlen("freebsd"), 1);
 
     Builder.defineMacro("__FreeBSD__", Release);
     Builder.defineMacro("__FreeBSD_cc_version", Release + "00001");
@@ -495,7 +503,7 @@ protected:
       Builder.defineMacro("_MT");
 
     if (Opts.MSCVersion != 0)
-      Builder.defineMacro("_MSC_VER", llvm::Twine(Opts.MSCVersion));
+      Builder.defineMacro("_MSC_VER", Twine(Opts.MSCVersion));
 
     if (Opts.Microsoft) {
       Builder.defineMacro("_MSC_EXTENSIONS");
@@ -1110,18 +1118,18 @@ const TargetInfo::AddlRegName AddlRegNames[] = {
 // most of the implementation can be shared.
 class X86TargetInfo : public TargetInfo {
   enum X86SSEEnum {
-    NoMMXSSE, MMX, SSE1, SSE2, SSE3, SSSE3, SSE41, SSE42
+    NoSSE, SSE1, SSE2, SSE3, SSSE3, SSE41, SSE42
   } SSELevel;
-  enum AMD3DNowEnum {
-    NoAMD3DNow, AMD3DNow, AMD3DNowAthlon
-  } AMD3DNowLevel;
+  enum MMX3DNowEnum {
+    NoMMX3DNow, MMX, AMD3DNow, AMD3DNowAthlon
+  } MMX3DNowLevel;
 
   bool HasAES;
   bool HasAVX;
 
 public:
   X86TargetInfo(const std::string& triple)
-    : TargetInfo(triple), SSELevel(NoMMXSSE), AMD3DNowLevel(NoAMD3DNow),
+    : TargetInfo(triple), SSELevel(NoSSE), MMX3DNowLevel(NoMMX3DNow),
       HasAES(false), HasAVX(false) {
     LongDoubleFormat = &llvm::APFloat::x87DoubleExtended;
   }
@@ -1159,6 +1167,9 @@ public:
   virtual void getDefaultFeatures(const std::string &CPU,
                                   llvm::StringMap<bool> &Features) const;
   virtual void HandleTargetFeatures(std::vector<std::string> &Features);
+  virtual const char* getABI() const {
+    return MMX3DNowLevel == NoMMX3DNow ? "no-mmx" : "";
+  }
 };
 
 void X86TargetInfo::getDefaultFeatures(const std::string &CPU,
@@ -1190,31 +1201,38 @@ void X86TargetInfo::getDefaultFeatures(const std::string &CPU,
     ;
   else if (CPU == "pentium-mmx" || CPU == "pentium2")
     setFeatureEnabled(Features, "mmx", true);
-  else if (CPU == "pentium3")
+  else if (CPU == "pentium3") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse", true);
-  else if (CPU == "pentium-m" || CPU == "pentium4" || CPU == "x86-64")
+  } else if (CPU == "pentium-m" || CPU == "pentium4" || CPU == "x86-64") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse2", true);
-  else if (CPU == "yonah" || CPU == "prescott" || CPU == "nocona")
+  } else if (CPU == "yonah" || CPU == "prescott" || CPU == "nocona") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse3", true);
-  else if (CPU == "core2")
+  } else if (CPU == "core2") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "ssse3", true);
-  else if (CPU == "penryn") {
+  } else if (CPU == "penryn") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse4", true);
     Features["sse42"] = false;
-  } else if (CPU == "atom")
+  } else if (CPU == "atom") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse3", true);
-  else if (CPU == "corei7") {
+  } else if (CPU == "corei7") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse4", true);
     setFeatureEnabled(Features, "aes", true);
   } else if (CPU == "corei7-avx") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse4", true);
     setFeatureEnabled(Features, "aes", true);
-//    setFeatureEnabled(Features, "avx", true);
+    //setFeatureEnabled(Features, "avx", true);
   } else if (CPU == "k6" || CPU == "winchip-c6")
     setFeatureEnabled(Features, "mmx", true);
   else if (CPU == "k6-2" || CPU == "k6-3" || CPU == "athlon" ||
            CPU == "athlon-tbird" || CPU == "winchip2" || CPU == "c3") {
-    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "3dnow", true);
   } else if (CPU == "athlon-4" || CPU == "athlon-xp" || CPU == "athlon-mp") {
     setFeatureEnabled(Features, "sse", true);
@@ -1226,8 +1244,10 @@ void X86TargetInfo::getDefaultFeatures(const std::string &CPU,
   } else if (CPU == "k8-sse3") {
     setFeatureEnabled(Features, "sse3", true);
     setFeatureEnabled(Features, "3dnowa", true);
-  } else if (CPU == "c3-2")
+  } else if (CPU == "c3-2") {
+    setFeatureEnabled(Features, "mmx", true);
     setFeatureEnabled(Features, "sse", true);
+  }
 }
 
 bool X86TargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
@@ -1243,34 +1263,31 @@ bool X86TargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
     if (Name == "mmx")
       Features["mmx"] = true;
     else if (Name == "sse")
-      Features["mmx"] = Features["sse"] = true;
+      Features["sse"] = true;
     else if (Name == "sse2")
-      Features["mmx"] = Features["sse"] = Features["sse2"] = true;
+      Features["sse"] = Features["sse2"] = true;
     else if (Name == "sse3")
-      Features["mmx"] = Features["sse"] = Features["sse2"] =
-        Features["sse3"] = true;
+      Features["sse"] = Features["sse2"] = Features["sse3"] = true;
     else if (Name == "ssse3")
-      Features["mmx"] = Features["sse"] = Features["sse2"] = Features["sse3"] =
+      Features["sse"] = Features["sse2"] = Features["sse3"] =
         Features["ssse3"] = true;
     else if (Name == "sse4" || Name == "sse4.2")
-      Features["mmx"] = Features["sse"] = Features["sse2"] = Features["sse3"] =
+      Features["sse"] = Features["sse2"] = Features["sse3"] =
         Features["ssse3"] = Features["sse41"] = Features["sse42"] = true;
     else if (Name == "sse4.1")
-      Features["mmx"] = Features["sse"] = Features["sse2"] = Features["sse3"] =
+      Features["sse"] = Features["sse2"] = Features["sse3"] =
         Features["ssse3"] = Features["sse41"] = true;
     else if (Name == "3dnow")
-      Features["3dnowa"] = true;
+      Features["mmx"] = Features["3dnow"] = true;
     else if (Name == "3dnowa")
-      Features["3dnow"] = Features["3dnowa"] = true;
+      Features["mmx"] = Features["3dnow"] = Features["3dnowa"] = true;
     else if (Name == "aes")
       Features["aes"] = true;
     else if (Name == "avx")
       Features["avx"] = true;
   } else {
     if (Name == "mmx")
-      Features["mmx"] = Features["3dnow"] = Features["3dnowa"] =
-        Features["sse"] = Features["sse2"] = Features["sse3"] =
-        Features["ssse3"] = Features["sse41"] = Features["sse42"] = false;
+      Features["mmx"] = Features["3dnow"] = Features["3dnowa"] = false;
     else if (Name == "sse")
       Features["sse"] = Features["sse2"] = Features["sse3"] =
         Features["ssse3"] = Features["sse41"] = Features["sse42"] = false;
@@ -1328,18 +1345,25 @@ void X86TargetInfo::HandleTargetFeatures(std::vector<std::string> &Features) {
       .Case("sse3", SSE3)
       .Case("sse2", SSE2)
       .Case("sse", SSE1)
-      .Case("mmx", MMX)
-      .Default(NoMMXSSE);
+      .Default(NoSSE);
     SSELevel = std::max(SSELevel, Level);
 
-    AMD3DNowEnum ThreeDNowLevel =
-      llvm::StringSwitch<AMD3DNowEnum>(Features[i].substr(1))
+    MMX3DNowEnum ThreeDNowLevel =
+      llvm::StringSwitch<MMX3DNowEnum>(Features[i].substr(1))
         .Case("3dnowa", AMD3DNowAthlon)
         .Case("3dnow", AMD3DNow)
-        .Default(NoAMD3DNow);
+        .Case("mmx", MMX)
+        .Default(NoMMX3DNow);
 
-    AMD3DNowLevel = std::max(AMD3DNowLevel, ThreeDNowLevel);
+    MMX3DNowLevel = std::max(MMX3DNowLevel, ThreeDNowLevel);
   }
+
+  // Don't tell the backend if we're turning off mmx; it will end up disabling
+  // SSE, which we don't want.
+  std::vector<std::string>::iterator it;
+  it = std::find(Features.begin(), Features.end(), "-mmx");
+  if (it != Features.end())
+    Features.erase(it);
 }
 
 /// X86TargetInfo::getTargetDefines - Return a set of the X86-specific #defines
@@ -1394,9 +1418,7 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
   case SSE1:
     Builder.defineMacro("__SSE__");
     Builder.defineMacro("__SSE_MATH__");   // -mfp-math=sse always implied.
-  case MMX:
-    Builder.defineMacro("__MMX__");
-  case NoMMXSSE:
+  case NoSSE:
     break;
   }
 
@@ -1407,23 +1429,25 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
     case SSSE3:
     case SSE3:
     case SSE2:
-      Builder.defineMacro("_M_IX86_FP", llvm::Twine(2));
+      Builder.defineMacro("_M_IX86_FP", Twine(2));
       break;
     case SSE1:
-      Builder.defineMacro("_M_IX86_FP", llvm::Twine(1));
+      Builder.defineMacro("_M_IX86_FP", Twine(1));
       break;
     default:
-      Builder.defineMacro("_M_IX86_FP", llvm::Twine(0));
+      Builder.defineMacro("_M_IX86_FP", Twine(0));
     }
   }
 
   // Each case falls through to the previous one here.
-  switch (AMD3DNowLevel) {
+  switch (MMX3DNowLevel) {
   case AMD3DNowAthlon:
     Builder.defineMacro("__3dNOW_A__");
   case AMD3DNow:
     Builder.defineMacro("__3dNOW__");
-  case NoAMD3DNow:
+  case MMX:
+    Builder.defineMacro("__MMX__");
+  case NoMMX3DNow:
     break;
   }
 }
@@ -1680,9 +1704,6 @@ protected:
   virtual void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
                             MacroBuilder &Builder) const {
     // RTEMS defines; list based off of gcc output
-
-    // FIXME: Move version number handling to llvm::Triple.
-    llvm::StringRef Release = Triple.getOSName().substr(strlen("rtems"), 1);
 
     Builder.defineMacro("__rtems__");
     Builder.defineMacro("__ELF__");
@@ -1942,6 +1963,17 @@ public:
       // structures. This corresponds to PCC_BITFIELD_TYPE_MATTERS in gcc.
       UseBitFieldTypeAlignment = false;
 
+      /// Do force alignment of members that follow zero length bitfields.  If
+      /// the alignment of the zero-length bitfield is greater than the member 
+      /// that follows it, `bar', `bar' will be aligned as the  type of the 
+      /// zero length bitfield.
+      UseZeroLengthBitfieldAlignment = true;
+
+      /// gcc forces the alignment to 4 bytes, regardless of the type of the
+      /// zero length bitfield.  This corresponds to EMPTY_FIELD_BOUNDARY in
+      /// gcc.
+      ZeroLengthBitfieldBoundary = 32;
+
       if (IsThumb) {
         // Thumb1 add sp, #imm requires the immediate value be multiple of 4,
         // so set preferred for small types to 32.
@@ -2011,7 +2043,7 @@ public:
       Features.erase(it);
   }
 
-  static const char *getCPUDefineSuffix(llvm::StringRef Name) {
+  static const char *getCPUDefineSuffix(StringRef Name) {
     return llvm::StringSwitch<const char*>(Name)
       .Cases("arm8", "arm810", "4")
       .Cases("strongarm", "strongarm110", "strongarm1100", "strongarm1110", "4")
@@ -2050,7 +2082,7 @@ public:
     Builder.defineMacro("__LITTLE_ENDIAN__");
     Builder.defineMacro("__REGISTER_PREFIX__", "");
 
-    llvm::StringRef CPUArch = getCPUDefineSuffix(CPU);
+    StringRef CPUArch = getCPUDefineSuffix(CPU);
     Builder.defineMacro("__ARM_ARCH_" + CPUArch + "__");
 
     // Subtarget options.
@@ -2112,6 +2144,9 @@ public:
     case 'w': // VFP Floating point register single precision
     case 'P': // VFP Floating point register double precision
       Info.setAllowsRegister();
+      return true;
+    case 'Q': // A memory address that is a single base register.
+      Info.setAllowsMemory();
       return true;
     case 'U': // a memory reference...
       switch (Name[1]) {
@@ -2661,8 +2696,26 @@ public:
   }
   virtual void getArchDefines(const LangOptions &Opts,
                                 MacroBuilder &Builder) const {
-    if (ABI == "o32")
+    if (ABI == "o32") {
       Builder.defineMacro("__mips_o32");
+      Builder.defineMacro("_ABIO32", "1");
+      Builder.defineMacro("_MIPS_SIM", "_ABIO32");
+    }
+    else if (ABI == "n32") {
+      Builder.defineMacro("__mips_n32");
+      Builder.defineMacro("_ABIN32", "2");
+      Builder.defineMacro("_MIPS_SIM", "_ABIN32");
+    }
+    else if (ABI == "n64") {
+      Builder.defineMacro("__mips_n64");
+      Builder.defineMacro("_ABI64", "3");
+      Builder.defineMacro("_MIPS_SIM", "_ABI64");
+    }
+    else if (ABI == "o64") {
+      Builder.defineMacro("__mips_o64");
+      Builder.defineMacro("_ABIO64", "4");
+      Builder.defineMacro("_MIPS_SIM", "_ABIO64");
+    }
     else if (ABI == "eabi")
       Builder.defineMacro("__mips_eabi");
   }
@@ -3039,7 +3092,8 @@ TargetInfo *TargetInfo::CreateTargetInfo(Diagnostic &Diags,
   Opts.Features.clear();
   for (llvm::StringMap<bool>::const_iterator it = Features.begin(),
          ie = Features.end(); it != ie; ++it)
-    Opts.Features.push_back(std::string(it->second ? "+" : "-") + it->first());
+    Opts.Features.push_back(std::string(it->second ? "+" : "-") +
+                            it->first().str());
   Target->HandleTargetFeatures(Opts.Features);
 
   return Target.take();

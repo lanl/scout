@@ -70,6 +70,8 @@ public:
                           const char *Modifier = 0); 
   void printPredicateOperand(const MachineInstr *MI, raw_ostream &O);
 
+  void printCall(const MachineInstr *MI, raw_ostream &O);
+
   unsigned GetOrCreateSourceID(StringRef FileName,
                                StringRef DirName);
 
@@ -115,7 +117,7 @@ static const char *getStateSpaceName(unsigned addressSpace) {
   return NULL;
 }
 
-static const char *getTypeName(const Type* type) {
+static const char *getTypeName(Type* type) {
   while (true) {
     switch (type->getTypeID()) {
       default: llvm_unreachable("Unknown type");
@@ -130,7 +132,7 @@ static const char *getTypeName(const Type* type) {
         }
       case Type::ArrayTyID:
       case Type::PointerTyID:
-        type = dyn_cast<const SequentialType>(type)->getElementType();
+        type = dyn_cast<SequentialType>(type)->getElementType();
         break;
     }
   }
@@ -242,6 +244,19 @@ void PTXAsmPrinter::EmitFunctionBodyStart() {
       OutStreamer.EmitRawText(Twine(def));
     }
   }
+
+  unsigned Index = 1;
+  // Print parameter passing params
+  for (PTXMachineFunctionInfo::param_iterator
+       i = MFI->paramBegin(), e = MFI->paramEnd(); i != e; ++i) {
+    std::string def = "\t.param .b";
+    def += utostr(*i);
+    def += " __ret_";
+    def += utostr(Index);
+    Index++;
+    def += ";";
+    OutStreamer.EmitRawText(Twine(def));
+  }
 }
 
 void PTXAsmPrinter::EmitInstruction(const MachineInstr *MI) {
@@ -302,7 +317,11 @@ void PTXAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   printPredicateOperand(MI, OS);
 
   // Write instruction to str
-  printInstruction(MI, OS);
+  if (MI->getOpcode() == PTX::CALL) {
+    printCall(MI, OS);
+  } else {
+    printInstruction(MI, OS);
+  }
   OS << ';';
   OS.flush();
 
@@ -406,8 +425,8 @@ void PTXAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
 
 
   if (PointerType::classof(gv->getType())) {
-    const PointerType* pointerTy = dyn_cast<const PointerType>(gv->getType());
-    const Type* elementTy = pointerTy->getElementType();
+    PointerType* pointerTy = dyn_cast<PointerType>(gv->getType());
+    Type* elementTy = pointerTy->getElementType();
 
     decl += ".b8 ";
     decl += gvsym->getName();
@@ -417,14 +436,14 @@ void PTXAsmPrinter::EmitVariableDeclaration(const GlobalVariable *gv) {
     {
       assert(elementTy->isArrayTy() && "Only pointers to arrays are supported");
 
-      const ArrayType* arrayTy = dyn_cast<const ArrayType>(elementTy);
+      ArrayType* arrayTy = dyn_cast<ArrayType>(elementTy);
       elementTy = arrayTy->getElementType();
 
       unsigned numElements = arrayTy->getNumElements();
 
       while (elementTy->isArrayTy()) {
 
-        arrayTy = dyn_cast<const ArrayType>(elementTy);
+        arrayTy = dyn_cast<ArrayType>(elementTy);
         elementTy = arrayTy->getElementType();
 
         numElements *= arrayTy->getNumElements();
@@ -567,6 +586,28 @@ printPredicateOperand(const MachineInstr *MI, raw_ostream &O) {
       O << '!';
     O << getRegisterName(reg);
   }
+}
+
+void PTXAsmPrinter::
+printCall(const MachineInstr *MI, raw_ostream &O) {
+
+  O << "\tcall.uni\t";
+
+  const GlobalValue *Address = MI->getOperand(2).getGlobal();
+  O << Address->getName() << ", (";
+
+  // (0,1) : predicate register/flag
+  // (2)   : callee
+  for (unsigned i = 3; i < MI->getNumOperands(); ++i) {
+    //const MachineOperand& MO = MI->getOperand(i);
+
+    printReturnOperand(MI, i, O);
+    if (i < MI->getNumOperands()-1) {
+      O << ", ";
+    }
+  }
+
+  O << ")";
 }
 
 unsigned PTXAsmPrinter::GetOrCreateSourceID(StringRef FileName,

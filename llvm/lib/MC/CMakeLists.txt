@@ -6,6 +6,7 @@ add_llvm_library(LLVMMC
   MCAsmStreamer.cpp
   MCAssembler.cpp
   MCCodeEmitter.cpp
+  MCCodeGenInfo.cpp
   MCContext.cpp
   MCDisassembler.cpp
   MCELF.cpp
@@ -14,12 +15,14 @@ add_llvm_library(LLVMMC
   MCExpr.cpp
   MCInst.cpp
   MCInstPrinter.cpp
+  MCInstrAnalysis.cpp
   MCLabel.cpp
   MCDwarf.cpp
   MCLoggingStreamer.cpp
   MCMachOStreamer.cpp
   MCMachObjectTargetWriter.cpp
   MCNullStreamer.cpp
+  MCObjectFileInfo.cpp
   MCObjectStreamer.cpp
   MCObjectWriter.cpp
   MCPureStreamer.cpp
@@ -36,7 +39,13 @@ add_llvm_library(LLVMMC
   WinCOFFStreamer.cpp
   WinCOFFObjectWriter.cpp
   SubtargetFeature.cpp
-  TargetAsmBackend.cpp
+  MCAsmBackend.cpp
+  MCTargetAsmLexer.cpp
+  )
+
+add_llvm_library_dependencies(LLVMMC
+  LLVMObject
+  LLVMSupport
   )
 
 add_subdirectory(MCParser)

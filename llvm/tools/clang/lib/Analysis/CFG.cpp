@@ -394,7 +394,7 @@ private:
 
   // Interface to CFGBlock - adding CFGElements.
   void appendStmt(CFGBlock *B, const Stmt *S) {
-    if (alwaysAdd(S))
+    if (alwaysAdd(S) && cachedEntry)
       cachedEntry->second = B;
 
     // All block-level expressions should have already been IgnoreParens()ed.
@@ -461,15 +461,17 @@ inline bool AddStmtChoice::alwaysAdd(CFGBuilder &builder,
 }
 
 bool CFGBuilder::alwaysAdd(const Stmt *stmt) {
+  bool shouldAdd = BuildOpts.alwaysAdd(stmt);
+  
   if (!BuildOpts.forcedBlkExprs)
-    return false;
+    return shouldAdd;
 
   if (lastLookup == stmt) {  
     if (cachedEntry) {
       assert(cachedEntry->first == stmt);
       return true;
     }
-    return false;
+    return shouldAdd;
   }
   
   lastLookup = stmt;
@@ -480,13 +482,13 @@ bool CFGBuilder::alwaysAdd(const Stmt *stmt) {
   if (!fb) {
     // No need to update 'cachedEntry', since it will always be null.
     assert(cachedEntry == 0);
-    return false;
+    return shouldAdd;
   }
 
   CFG::BuildOptions::ForcedBlkExprs::iterator itr = fb->find(stmt);
   if (itr == fb->end()) {
     cachedEntry = 0;
-    return false;
+    return shouldAdd;
   }
 
   cachedEntry = &*itr;
@@ -1331,7 +1333,7 @@ CFGBlock *CFGBuilder::VisitDeclStmt(DeclStmt *DS) {
   CFGBlock *B = 0;
 
   // FIXME: Add a reverse iterator for DeclStmt to avoid this extra copy.
-  typedef llvm::SmallVector<Decl*,10> BufTy;
+  typedef SmallVector<Decl*,10> BufTy;
   BufTy Buf(DS->decl_begin(), DS->decl_end());
 
   for (BufTy::reverse_iterator I = Buf.rbegin(), E = Buf.rend(); I != E; ++I) {
@@ -2202,6 +2204,15 @@ CFGBlock *CFGBuilder::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E,
          VA != 0; VA = FindVA(VA->getElementType().getTypePtr()))
       lastBlock = addStmt(VA->getSizeExpr());
   }
+  else {
+    // For sizeof(x), where 'x' is a VLA, we should include the computation
+    // of the lvalue of 'x'.
+    Expr *subEx = E->getArgumentExpr();
+    if (subEx->getType()->isVariableArrayType()) {
+      assert(subEx->isLValue());
+      lastBlock = addStmt(subEx);
+    }
+  }
 
   return lastBlock;
 }
@@ -2774,7 +2785,7 @@ CFGBlock *CFGBuilder::VisitChildrenForTemporaryDtors(Stmt *E) {
   // When visiting children for destructors we want to visit them in reverse
   // order. Because there's no reverse iterator for children must to reverse
   // them in helper vector.
-  typedef llvm::SmallVector<Stmt *, 4> ChildrenVect;
+  typedef SmallVector<Stmt *, 4> ChildrenVect;
   ChildrenVect ChildrenRev;
   for (Stmt::child_range I = E->children(); I; ++I) {
     if (*I) ChildrenRev.push_back(*I);
@@ -3223,7 +3234,7 @@ public:
   void setBlockID(signed i) { currentBlock = i; }
   void setStmtID(unsigned i) { currentStmt = i; }
 
-  virtual bool handledStmt(Stmt* S, llvm::raw_ostream& OS) {
+  virtual bool handledStmt(Stmt* S, raw_ostream& OS) {
     StmtMapTy::iterator I = StmtMap.find(S);
 
     if (I == StmtMap.end())
@@ -3238,7 +3249,7 @@ public:
     return true;
   }
 
-  bool handleDecl(const Decl* D, llvm::raw_ostream& OS) {
+  bool handleDecl(const Decl* D, raw_ostream& OS) {
     DeclMapTy::iterator I = DeclMap.find(D);
 
     if (I == DeclMap.end())
@@ -3260,11 +3271,11 @@ namespace {
 class CFGBlockTerminatorPrint
   : public StmtVisitor<CFGBlockTerminatorPrint,void> {
 
-  llvm::raw_ostream& OS;
+  raw_ostream& OS;
   StmtPrinterHelper* Helper;
   PrintingPolicy Policy;
 public:
-  CFGBlockTerminatorPrint(llvm::raw_ostream& os, StmtPrinterHelper* helper,
+  CFGBlockTerminatorPrint(raw_ostream& os, StmtPrinterHelper* helper,
                           const PrintingPolicy &Policy)
     : OS(os), Helper(helper), Policy(Policy) {}
 
@@ -3354,7 +3365,7 @@ public:
 };
 } // end anonymous namespace
 
-static void print_elem(llvm::raw_ostream &OS, StmtPrinterHelper* Helper,
+static void print_elem(raw_ostream &OS, StmtPrinterHelper* Helper,
                        const CFGElement &E) {
   if (const CFGStmt *CS = E.getAs<CFGStmt>()) {
     Stmt *S = CS->getStmt();
@@ -3445,7 +3456,7 @@ static void print_elem(llvm::raw_ostream &OS, StmtPrinterHelper* Helper,
   }
 }
 
-static void print_block(llvm::raw_ostream& OS, const CFG* cfg,
+static void print_block(raw_ostream& OS, const CFG* cfg,
                         const CFGBlock& B,
                         StmtPrinterHelper* Helper, bool print_edges) {
 
@@ -3571,7 +3582,7 @@ static void print_block(llvm::raw_ostream& OS, const CFG* cfg,
 void CFG::dump(const LangOptions &LO) const { print(llvm::errs(), LO); }
 
 /// print - A simple pretty printer of a CFG that outputs to an ostream.
-void CFG::print(llvm::raw_ostream &OS, const LangOptions &LO) const {
+void CFG::print(raw_ostream &OS, const LangOptions &LO) const {
   StmtPrinterHelper Helper(this, LO);
 
   // Print the entry block.
@@ -3598,14 +3609,14 @@ void CFGBlock::dump(const CFG* cfg, const LangOptions &LO) const {
 
 /// print - A simple pretty printer of a CFGBlock that outputs to an ostream.
 ///   Generally this will only be called from CFG::print.
-void CFGBlock::print(llvm::raw_ostream& OS, const CFG* cfg,
+void CFGBlock::print(raw_ostream& OS, const CFG* cfg,
                      const LangOptions &LO) const {
   StmtPrinterHelper Helper(cfg, LO);
   print_block(OS, cfg, *this, &Helper, true);
 }
 
 /// printTerminator - A simple pretty printer of the terminator of a CFGBlock.
-void CFGBlock::printTerminator(llvm::raw_ostream &OS,
+void CFGBlock::printTerminator(raw_ostream &OS,
                                const LangOptions &LO) const {
   CFGBlockTerminatorPrint TPrinter(OS, NULL, PrintingPolicy(LO));
   TPrinter.Visit(const_cast<Stmt*>(getTerminator().getStmt()));

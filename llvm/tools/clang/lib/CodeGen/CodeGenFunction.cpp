@@ -32,8 +32,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
   : CodeGenTypeCache(cgm), CGM(cgm),
     Target(CGM.getContext().Target), Builder(cgm.getModule().getContext()),
     AutoreleaseResult(false), BlockInfo(0), BlockPointer(0),
-    NormalCleanupDest(0), EHCleanupDest(0), NextCleanupDestIndex(1),
-    ExceptionSlot(0), EHSelectorSlot(0),
+    NormalCleanupDest(0), NextCleanupDestIndex(1),
+    EHResumeBlock(0), ExceptionSlot(0), EHSelectorSlot(0),
     DebugInfo(0), DisableDebugInfo(false), DidCallStackSave(false),
     IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),
     CXXThisDecl(0), CXXThisValue(0), CXXVTTDecl(0), CXXVTTValue(0),
@@ -45,11 +45,11 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
 }
 
 
-const llvm::Type *CodeGenFunction::ConvertTypeForMem(QualType T) {
+llvm::Type *CodeGenFunction::ConvertTypeForMem(QualType T) {
   return CGM.getTypes().ConvertTypeForMem(T);
 }
 
-const llvm::Type *CodeGenFunction::ConvertType(QualType T) {
+llvm::Type *CodeGenFunction::ConvertType(QualType T) {
   return CGM.getTypes().ConvertType(T);
 }
 
@@ -194,7 +194,7 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
     }
   }
 
-  EmitIfUsed(*this, RethrowBlock.getBlock());
+  EmitIfUsed(*this, EHResumeBlock);
   EmitIfUsed(*this, TerminateLandingPad);
   EmitIfUsed(*this, TerminateHandler);
   EmitIfUsed(*this, UnreachableBlock);
@@ -218,15 +218,15 @@ bool CodeGenFunction::ShouldInstrumentFunction() {
 /// function instrumentation is enabled.
 void CodeGenFunction::EmitFunctionInstrumentation(const char *Fn) {
   // void __cyg_profile_func_{enter,exit} (void *this_fn, void *call_site);
-  const llvm::PointerType *PointerTy = Int8PtrTy;
-  const llvm::Type *ProfileFuncArgs[] = { PointerTy, PointerTy };
-  const llvm::FunctionType *FunctionTy =
+  llvm::PointerType *PointerTy = Int8PtrTy;
+  llvm::Type *ProfileFuncArgs[] = { PointerTy, PointerTy };
+  llvm::FunctionType *FunctionTy =
     llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
                             ProfileFuncArgs, false);
 
   llvm::Constant *F = CGM.CreateRuntimeFunction(FunctionTy, Fn);
   llvm::CallInst *CallSite = Builder.CreateCall(
-    CGM.getIntrinsic(llvm::Intrinsic::returnaddress, 0, 0),
+    CGM.getIntrinsic(llvm::Intrinsic::returnaddress),
     llvm::ConstantInt::get(Int32Ty, 0),
     "callsite");
 
@@ -652,7 +652,7 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
   llvm::Value *baseSizeInChars
     = llvm::ConstantInt::get(CGF.IntPtrTy, baseSizeAndAlign.first.getQuantity());
 
-  const llvm::Type *i8p = Builder.getInt8PtrTy();
+  llvm::Type *i8p = Builder.getInt8PtrTy();
 
   llvm::Value *begin = Builder.CreateBitCast(dest, i8p, "vla.begin");
   llvm::Value *end = Builder.CreateInBoundsGEP(dest, sizeInChars, "vla.end");
@@ -697,7 +697,7 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
   // Cast the dest ptr to the appropriate i8 pointer type.
   unsigned DestAS =
     cast<llvm::PointerType>(DestPtr->getType())->getAddressSpace();
-  const llvm::Type *BP = Builder.getInt8PtrTy(DestAS);
+  llvm::Type *BP = Builder.getInt8PtrTy(DestAS);
   if (DestPtr->getType() != BP)
     DestPtr = Builder.CreateBitCast(DestPtr, BP, "tmp");
 
@@ -747,7 +747,7 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
       new llvm::GlobalVariable(CGM.getModule(), NullConstant->getType(),
                                /*isConstant=*/true,
                                llvm::GlobalVariable::PrivateLinkage,
-                               NullConstant, llvm::Twine());
+                               NullConstant, Twine());
     llvm::Value *SrcPtr =
       Builder.CreateBitCast(NullVariable, Builder.getInt8PtrTy());
 
@@ -790,6 +790,83 @@ llvm::BasicBlock *CodeGenFunction::GetIndirectGotoBlock() {
   // Create the indirect branch instruction.
   IndirectBranch = TmpBuilder.CreateIndirectBr(DestVal);
   return IndirectBranch->getParent();
+}
+
+/// Computes the length of an array in elements, as well as the base
+/// element type and a properly-typed first element pointer.
+llvm::Value *CodeGenFunction::emitArrayLength(const ArrayType *origArrayType,
+                                              QualType &baseType,
+                                              llvm::Value *&addr) {
+  const ArrayType *arrayType = origArrayType;
+
+  // If it's a VLA, we have to load the stored size.  Note that
+  // this is the size of the VLA in bytes, not its size in elements.
+  llvm::Value *numVLAElements = 0;
+  if (isa<VariableArrayType>(arrayType)) {
+    numVLAElements = getVLASize(cast<VariableArrayType>(arrayType)).first;
+
+    // Walk into all VLAs.  This doesn't require changes to addr,
+    // which has type T* where T is the first non-VLA element type.
+    do {
+      QualType elementType = arrayType->getElementType();
+      arrayType = getContext().getAsArrayType(elementType);
+
+      // If we only have VLA components, 'addr' requires no adjustment.
+      if (!arrayType) {
+        baseType = elementType;
+        return numVLAElements;
+      }
+    } while (isa<VariableArrayType>(arrayType));
+
+    // We get out here only if we find a constant array type
+    // inside the VLA.
+  }
+
+  // We have some number of constant-length arrays, so addr should
+  // have LLVM type [M x [N x [...]]]*.  Build a GEP that walks
+  // down to the first element of addr.
+  SmallVector<llvm::Value*, 8> gepIndices;
+
+  // GEP down to the array type.
+  llvm::ConstantInt *zero = Builder.getInt32(0);
+  gepIndices.push_back(zero);
+
+  // It's more efficient to calculate the count from the LLVM
+  // constant-length arrays than to re-evaluate the array bounds.
+  uint64_t countFromCLAs = 1;
+
+  llvm::ArrayType *llvmArrayType =
+    cast<llvm::ArrayType>(
+      cast<llvm::PointerType>(addr->getType())->getElementType());
+  while (true) {
+    assert(isa<ConstantArrayType>(arrayType));
+    assert(cast<ConstantArrayType>(arrayType)->getSize().getZExtValue()
+             == llvmArrayType->getNumElements());
+
+    gepIndices.push_back(zero);
+    countFromCLAs *= llvmArrayType->getNumElements();
+
+    llvmArrayType =
+      dyn_cast<llvm::ArrayType>(llvmArrayType->getElementType());
+    if (!llvmArrayType) break;
+
+    arrayType = getContext().getAsArrayType(arrayType->getElementType());
+    assert(arrayType && "LLVM and Clang types are out-of-synch");
+  }
+
+  baseType = arrayType->getElementType();
+
+  // Create the actual GEP.
+  addr = Builder.CreateInBoundsGEP(addr, gepIndices, "array.begin");
+
+  llvm::Value *numElements
+    = llvm::ConstantInt::get(SizeTy, countFromCLAs);
+
+  // If we had any VLA dimensions, factor them in.
+  if (numVLAElements)
+    numElements = Builder.CreateNUWMul(numVLAElements, numElements);
+
+  return numElements;
 }
 
 std::pair<llvm::Value*, QualType>

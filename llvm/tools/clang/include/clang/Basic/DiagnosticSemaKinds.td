@@ -383,27 +383,75 @@ def note_undef_method_impl : Note<"method definition for %0 not found">;
 def note_required_for_protocol_at : 
   Note<"required for direct or indirect protocol %0">;
 
+def warn_conflicting_overriding_ret_types : Warning<
+  "conflicting return type in "
+  "declaration of %0: %1 vs %2">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_conflicting_ret_types : Warning<
-  "conflicting return type in implementation of %0: %1 vs %2">;
+  "conflicting return type in "
+  "implementation of %0: %1 vs %2">;
+
+def warn_conflicting_overriding_ret_type_modifiers : Warning<
+  "conflicting distributed object modifiers on return type "
+  "in declaration of %0">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_conflicting_ret_type_modifiers : Warning<
   "conflicting distributed object modifiers on return type "
   "in implementation of %0">,
   InGroup<DiagGroup<"distributed-object-modifiers">>;
+
+def warn_non_covariant_overriding_ret_types : Warning<
+  "conflicting return type in "
+  "declaration of %0: %1 vs %2">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_non_covariant_ret_types : Warning<
-  "conflicting return type in implementation of %0: %1 vs %2">,
+  "conflicting return type in "
+  "implementation of %0: %1 vs %2">,
   InGroup<DiagGroup<"method-signatures">>, DefaultIgnore;
 
+def warn_conflicting_overriding_param_types : Warning<
+  "conflicting parameter types in "
+  "declaration of %0: %1 vs %2">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_conflicting_param_types : Warning<
-  "conflicting parameter types in implementation of %0: %1 vs %2">;
+  "conflicting parameter types in "
+  "implementation of %0: %1 vs %2">;
 def warn_conflicting_param_modifiers : Warning<
   "conflicting distributed object modifiers on parameter type "
   "in implementation of %0">,
   InGroup<DiagGroup<"distributed-object-modifiers">>;
+
+def warn_conflicting_overriding_param_modifiers : Warning<
+  "conflicting distributed object modifiers on parameter type "
+  "in declaration of %0">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
+def warn_non_contravariant_overriding_param_types : Warning<
+  "conflicting parameter types in "
+  "declaration of %0: %1 vs %2">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_non_contravariant_param_types : Warning<
-  "conflicting parameter types in implementation of %0: %1 vs %2">,
+  "conflicting parameter types in "
+  "implementation of %0: %1 vs %2">,
   InGroup<DiagGroup<"method-signatures">>, DefaultIgnore;
+
+def warn_conflicting_overriding_variadic :Warning<
+  "conflicting variadic declaration of method and its "
+  "implementation">,
+  InGroup<OverridingMethodMismatch>, DefaultIgnore;
+
 def warn_conflicting_variadic :Warning<
-  "conflicting variadic declaration of method and its implementation">;
+  "conflicting variadic declaration of method and its "
+  "implementation">;
+
+def warn_category_method_impl_match:Warning<
+  "category is implementing a method which will also be implemented"
+  " by its primary class">, InGroup<ObjCProtocolMethodImpl>;
 
 def warn_implements_nscopying : Warning<
 "default assign attribute on property %0 which implements "
@@ -489,7 +537,8 @@ def error_synthesize_weak_non_arc_or_gc : Error<
 def err_arc_perform_selector_retains : Error<
   "performSelector names a selector which retains the object">;
 def warn_arc_perform_selector_leaks : Warning<
-  "performSelector may cause a leak because its selector is unknown">;
+  "performSelector may cause a leak because its selector is unknown">,
+  InGroup<DiagGroup<"arc-performSelector-leaks">>;
 
 def error_synthesized_ivar_yet_not_supported : Error<
   "instance variable synthesis not yet supported"
@@ -1119,6 +1168,8 @@ def err_attribute_wrong_number_arguments : Error<
   ":requires exactly %0 arguments}0">;
 def err_attribute_too_many_arguments : Error<
   "attribute takes no more than %0 argument%s0">;
+def err_attribute_too_few_arguments : Error<
+  "attribute takes at least %0 argument%s0">;
 def err_iboutletcollection_type : Error<
   "invalid type %0 as argument of iboutletcollection attribute">;
 def err_iboutletcollection_object_type : Error<
@@ -1131,6 +1182,10 @@ def err_attribute_bad_neon_vector_size : Error<
   "Neon vector size must be 64 or 128 bits">;
 def err_attribute_argument_not_int : Error<
   "'%0' attribute requires integer constant">;
+def err_attribute_argument_not_class : Error<
+  "%0 attribute requires arguments that are class type or point to class type">;
+def err_attribute_first_argument_not_int_or_bool : Error<
+  "%0 attribute first argument must be of int or bool type">;
 def err_attribute_argument_outof_range : Error<
   "init_priority attribute requires integer constant between "
   "101 and 65535 inclusive">;
@@ -1186,6 +1241,8 @@ def err_attribute_address_space_too_high : Error<
   "address space is larger than the maximum supported (%0)">;
 def err_attribute_address_multiple_qualifiers : Error<
   "multiple address spaces specified for type">;
+def err_attribute_address_function_type : Error<
+  "function type may not be qualified with an address space">;
 def err_as_qualified_auto_decl : Error<
   "automatic variable qualified with an address space">;
 def err_arg_with_address_space : Error<
@@ -1238,7 +1295,7 @@ def warn_attribute_wrong_decl_type : Warning<
   "parameters and methods|functions, methods and blocks|"
   "classes and virtual methods|functions, methods, and parameters|"
   "classes|virtual methods|class members|variables|methods|"
-  "variables, functions and labels}1">;
+  "variables, functions and labels|fields and global variables}1">;
 def err_attribute_wrong_decl_type : Error<
   "%0 attribute only applies to %select{functions|unions|"
   "variables and functions|functions and methods|parameters|"
@@ -1276,6 +1333,9 @@ def warn_objc_precise_lifetime_meaningless : Error<
 def warn_label_attribute_not_unused : Warning<
   "The only valid attribute for labels is 'unused'">;
 def err_invalid_pcs : Error<"Invalid PCS type">;
+def err_attribute_can_be_applied_only_to_value_decl : Error<
+  "%0 attribute can only be applied to value declarations">;
+
 
 // Availability attribute
 def warn_availability_unknown_platform : Warning<
@@ -1284,6 +1344,21 @@ def warn_availability_version_ordering : Warning<
   "feature cannot be %select{introduced|deprecated|obsoleted}0 in %1 version "
   "%2 before it was %select{introduced|deprecated|obsoleted}3 in version %4; "
   "attribute ignored">;
+  
+// Thread Safety Attributes
+// Errors when parsing the attributes
+def err_attribute_argument_out_of_range : Error<
+  "%0 attribute parameter %1 is out of bounds: "
+  "%plural{0:no parameters to index into|"
+  "1:can only be 1, since there is one parameter|"
+  ":must be between 1 and %2}2">;
+def err_attribute_argument_not_lockable : Error<
+  "%0 attribute requires arguments whose type is annotated "
+  "with 'lockable' attribute">;
+def err_attribute_decl_not_lockable : Error<
+  "%0 attribute can only be applied in a context annotated "
+  "with 'lockable' attribute">;
+
 
 def warn_impcast_vector_scalar : Warning<
   "implicit conversion turns vector to scalar: %0 to %1">,
@@ -1409,7 +1484,7 @@ def err_attribute_overloadable_no_prototype : Error<
   "'overloadable' function %0 must have a prototype">;
 def warn_ns_attribute_wrong_return_type : Warning<
   "%0 attribute only applies to %select{functions|methods}1 that "
-  "return %select{an Objective-C object|a pointer}2">;
+  "return %select{an Objective-C object|a pointer|a non-retainable pointer}2">;
 def warn_ns_attribute_wrong_parameter_type : Warning<
   "%0 attribute only applies to %select{Objective-C object|pointer}1 "
   "parameters">;
@@ -1592,7 +1667,22 @@ def note_ovl_candidate_bad_conv : Note<"candidate "
     "function (the implicit move assignment operator)|"
     "constructor (inherited)}0%1"
     " not viable: no known conversion from %2 to %3 for "
-    "%select{%ordinal5 argument|object argument}4">;
+    "%select{%ordinal5 argument|object argument}4; "
+    "%select{|dereference the argument with *|"
+    "take the address of the argument with &|"
+    "remove *|"
+    "remove &}6">;
+def note_ovl_candidate_bad_arc_conv : Note<"candidate "
+    "%select{function|function|constructor|"
+    "function |function |constructor |"
+    "constructor (the implicit default constructor)|"
+    "constructor (the implicit copy constructor)|"
+    "constructor (the implicit move constructor)|"
+    "function (the implicit copy assignment operator)|"
+    "function (the implicit move assignment operator)|"
+    "constructor (inherited)}0%1"
+    " not viable: cannot implicitly convert argument of type %2 to %3 for "
+    "%select{%ordinal5 argument|object argument}4 under ARC">;
 def note_ovl_candidate_bad_addrspace : Note<"candidate "
     "%select{function|function|constructor|"
     "function |function |constructor |"
@@ -2086,10 +2176,10 @@ def err_explicit_instantiation_must_be_global : Error<
   "explicit instantiation of %0 must occur at global scope">;
 def warn_explicit_instantiation_out_of_scope_0x : Warning<
   "explicit instantiation of %0 not in a namespace enclosing %1">, 
-  InGroup<DiagGroup<"-Wc++0x-compat"> >;
+  InGroup<CXX0xCompat>;
 def warn_explicit_instantiation_must_be_global_0x : Warning<
   "explicit instantiation of %0 must occur at global scope">, 
-  InGroup<DiagGroup<"-Wc++0x-compat"> >;
+  InGroup<CXX0xCompat>;
   
 def err_explicit_instantiation_requires_name : Error<
   "explicit instantiation declaration requires a name">;
@@ -2121,7 +2211,7 @@ def err_explicit_instantiation_unqualified_wrong_namespace : Error<
   "explicit instantiation of %q0 must occur in %1">;
 def warn_explicit_instantiation_unqualified_wrong_namespace_0x : Warning<
   "explicit instantiation of %q0 must occur in %1">, 
-  InGroup<DiagGroup<"c++0x-compat"> >;
+  InGroup<CXX0xCompat>;
 def err_explicit_instantiation_undefined_member : Error<
   "explicit instantiation of undefined %select{member class|member function|"
   "static data member}0 %1 of class template %2">;
@@ -2265,9 +2355,11 @@ def note_unavailable_here : Note<
   "%select{declaration|function}0 has been explicitly marked "
   "%select{unavailable|deleted|deprecated}1 here">;
 def warn_not_enough_argument : Warning<
-  "not enough variable arguments in %0 declaration to fit a sentinel">;
+  "not enough variable arguments in %0 declaration to fit a sentinel">,
+  InGroup<Sentinel>;
 def warn_missing_sentinel : Warning <
-  "missing sentinel in %select{function call|method dispatch|block call}0">;
+  "missing sentinel in %select{function call|method dispatch|block call}0">,
+  InGroup<Sentinel>;
 def note_sentinel_here : Note<
   "%select{function|method|block}0 has been explicitly marked sentinel here">;
 def warn_missing_prototype : Warning<
@@ -2440,6 +2532,21 @@ def err_empty_scalar_initializer : Error<"scalar initializer cannot be empty">;
 def err_illegal_initializer : Error<
   "illegal initializer (only variables can be initialized)">;
 def err_illegal_initializer_type : Error<"illegal initializer type %0">;
+def err_init_list_variable_narrowing : Error<
+  "non-constant-expression cannot be narrowed from type %0 to %1 in "
+  "initializer list">;
+def err_init_list_constant_narrowing : Error<
+  "constant expression evaluates to %0 which cannot be narrowed to type %1">;
+def warn_init_list_variable_narrowing : Warning<
+  "non-constant-expression cannot be narrowed from type %0 to %1 in "
+  "initializer list in C++0x">,
+  InGroup<CXX0xNarrowing>, DefaultIgnore;
+def warn_init_list_constant_narrowing : Warning<
+  "constant expression evaluates to %0 which cannot be narrowed to type %1 in "
+  "C++0x">,
+  InGroup<CXX0xNarrowing>, DefaultIgnore;
+def note_init_list_narrowing_override : Note<
+  "override this message by inserting an explicit cast">;
 def err_init_objc_class : Error<
   "cannot initialize Objective-C class type %0">;
 def err_implicit_empty_initializer : Error<
@@ -2511,6 +2618,12 @@ def note_protected_by___block : Note<
   "jump bypasses setup of __block variable">;
 def note_protected_by_objc_ownership : Note<
   "jump bypasses initialization of retaining variable">;
+def note_enters_block_captures_cxx_obj : Note<
+  "jump enters lifetime of block which captures a destructible c++ object">;
+def note_enters_block_captures_strong : Note<
+  "jump enters lifetime of block which strongly captures a variable">;
+def note_enters_block_captures_weak : Note<
+  "jump enters lifetime of block which weakly captures a variable">;
 
 def note_exits_cleanup : Note<
   "jump exits scope of variable with __attribute__((cleanup))">;
@@ -2534,6 +2647,12 @@ def note_exits_objc_autoreleasepool : Note<
   "jump exits autoreleasepool block">;
 def note_exits_objc_ownership : Note<
   "jump exits scope of retaining variable">;
+def note_exits_block_captures_cxx_obj : Note<
+  "jump exits lifetime of block which captures a destructible c++ object">;
+def note_exits_block_captures_strong : Note<
+  "jump exits lifetime of block which strongly captures a variable">;
+def note_exits_block_captures_weak : Note<
+  "jump exits lifetime of block which weakly captures a variable">;
 
 def err_func_returning_array_function : Error<
   "function cannot return %select{array|function}0 type %1">;
@@ -2590,8 +2709,8 @@ def err_arc_mismatched_cast : Error<
 def err_arc_objc_object_in_struct : Error<
   "ARC forbids Objective-C objects in structs or unions">;
 def err_arc_objc_property_default_assign_on_object : Error<
-  "ARC forbids properties of Objective-C objects "
-  "with unspecified storage attribute">;
+  "ARC forbids synthesizing a property of an Objective-C object "
+  "with unspecified ownership or storage attribute">;
 def err_arc_illegal_selector : Error<
   "ARC forbids use of %0 in a @selector">;
 def err_arc_illegal_method_def : Error<
@@ -2664,6 +2783,8 @@ def err_arc_may_not_respond : Error<
   "selector %1">;
 def err_arc_receiver_forward_instance : Error<
   "receiver type %0 for instance message is a forward declaration">;
+def err_arc_collection_forward : Error<
+  "collection expression type %0 is a forward declaration">;
 def err_arc_multiple_method_decl : Error< 
   "multiple methods named %0 found with mismatched result, "
   "parameter type or attributes">;
@@ -2910,6 +3031,9 @@ def warn_member_extra_qualification : Warning<
 def err_member_qualification : Error<
   "non-friend class member %0 cannot have a qualified name">;  
 def note_member_def_close_match : Note<"member declaration nearly matches">;
+def note_member_def_close_param_match : Note<
+  "type of %ordinal0 parameter of member declaration does not match "
+  "definition (%1 vs %2)">;
 def err_typecheck_ivar_variable_size : Error<
   "instance variables must have a constant size">;
 def err_ivar_reference_type : Error<
@@ -3026,9 +3150,6 @@ def err_stmtexpr_file_scope : Error<
   "statement expression not allowed at file scope">;
 def warn_mixed_sign_comparison : Warning<
   "comparison of integers of different signs: %0 and %1">,
-  InGroup<SignCompare>, DefaultIgnore;
-def warn_mixed_sign_conditional : Warning<
-  "operands of ? are integers of different signs: %0 and %1">,
   InGroup<SignCompare>, DefaultIgnore;
 def warn_lunsigned_always_true_comparison : Warning<
   "comparison of unsigned%select{| enum}2 expression %0 is always %1">,
@@ -3331,7 +3452,7 @@ def err_ambiguous_delete_operand : Error<"ambiguous conversion of delete "
                                          "expression of type %0 to a pointer">;
 def warn_delete_incomplete : Warning<
   "deleting pointer to incomplete type %0 may cause undefined behaviour">;
-def err_delete_incomplete_class_type : Warning<
+def err_delete_incomplete_class_type : Error<
   "deleting incomplete class type %0; no conversions to pointer type">;
 def warn_delete_array_type : Warning<
   "'delete' applied to a pointer-to-array type %0 treated as delete[]">;
@@ -3373,6 +3494,9 @@ def warn_non_virtual_dtor : Warning<
 def warn_delete_non_virtual_dtor : Warning<
   "delete called on %0 that has virtual functions but non-virtual destructor">,
   InGroup<DeleteNonVirtualDtor>, DefaultIgnore;
+def warn_delete_abstract_non_virtual_dtor : Warning<
+  "delete called on %0 that is abstract but has non-virtual destructor">,
+  InGroup<DeleteNonVirtualDtor>;
 def warn_overloaded_virtual : Warning<
   "%q0 hides overloaded virtual %select{function|functions}1">,
   InGroup<OverloadedVirtual>, DefaultIgnore;
@@ -3489,7 +3613,11 @@ def err_typecheck_convert_incompatible : Error<
   "%select{from incompatible type|to parameter of incompatible type|"
   "from a function with incompatible result type|to incompatible type|"
   "with an expression of incompatible type|to parameter of incompatible type|"
-  "to incompatible type}2 %1">;
+  "to incompatible type}2 %1; "
+  "%select{|dereference with *|"
+  "take the address with &|"
+  "remove *|"
+  "remove &}3">;
 def warn_incompatible_qualified_id : Warning<
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
   " %0 "
@@ -3502,13 +3630,21 @@ def ext_typecheck_convert_pointer_int : ExtWarn<
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
   " %0 "
   "%select{from|to parameter of type|from a function with result type|to type|"
-  "with an expression of type|to parameter of type|to type}2 %1">;
+  "with an expression of type|to parameter of type|to type}2 %1; "
+  "%select{|dereference with *|"
+  "take the address with &|"
+  "remove *|"
+  "remove &}3">;
 def ext_typecheck_convert_int_pointer : ExtWarn<
   "incompatible integer to pointer conversion "
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
   " %0 "
   "%select{from|to parameter of type|from a function with result type|to type|"
-  "with an expression of type|to parameter of type|to type}2 %1">;
+  "with an expression of type|to parameter of type|to type}2 %1; "
+  "%select{|dereference with *|"
+  "take the address with &|"
+  "remove *|"
+  "remove &}3">;
 def ext_typecheck_convert_pointer_void_func : Extension<
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
   " %0 "
@@ -3527,7 +3663,11 @@ def ext_typecheck_convert_incompatible_pointer : ExtWarn<
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
   " %0 "
   "%select{from|to parameter of type|from a function with result type|to type|"
-  "with an expression of type|to parameter of type|to type}2 %1">,
+  "with an expression of type|to parameter of type|to type}2 %1"
+  "%select{|dereference with *|"
+  "take the address with &|"
+  "remove *|"
+  "remove &}3">,
   InGroup<DiagGroup<"incompatible-pointer-types">>;
 def ext_typecheck_convert_discards_qualifiers : ExtWarn<
   "%select{assigning to|passing|returning|converting|initializing|sending|casting}2"
@@ -3617,11 +3757,11 @@ def err_typecheck_call_too_few_args_at_least : Error<
 def err_typecheck_call_too_many_args : Error<
   "too many arguments to %select{function|block|method}0 call, "
   "expected %1, have %2">;
-def note_typecheck_call_too_many_args : Note<
-  "%0 declared here">;
 def err_typecheck_call_too_many_args_at_most : Error<
   "too many arguments to %select{function|block|method}0 call, "
   "expected at most %1, have %2">;
+def note_callee_decl : Note<
+  "%0 declared here">;
 def warn_call_wrong_number_of_arguments : Warning<
   "too %select{few|many}0 arguments in call to %1">;
 def err_atomic_builtin_must_be_pointer : Error<
@@ -3703,6 +3843,9 @@ def warn_unused_property_expr : Warning<
 def warn_unused_call : Warning<
   "ignoring return value of function declared with %0 attribute">,
   InGroup<UnusedValue>;
+def warn_unused_result : Warning<
+  "ignoring return value of function declared with warn_unused_result "
+  "attribute">, InGroup<DiagGroup<"unused-result">>;
 
 def err_incomplete_type_used_in_type_trait_expr : Error<
   "incomplete type %0 used in type trait expression">;
@@ -4002,12 +4145,19 @@ def err_out_of_line_default_deletes : Error<
 def err_defaulted_move_unsupported : Error<
   "defaulting move functions not yet supported">;
 
+def warn_ptr_arith_precedes_bounds : Warning<
+  "the pointer decremented by %0 refers before the beginning of the array">,
+  InGroup<DiagGroup<"array-bounds-pointer-arithmetic">>, DefaultIgnore;
+def warn_ptr_arith_exceeds_bounds : Warning<
+  "the pointer incremented by %0 refers past the end of the array (that "
+  "contains %1 element%s2)">,
+  InGroup<DiagGroup<"array-bounds-pointer-arithmetic">>, DefaultIgnore;
 def warn_array_index_precedes_bounds : Warning<
   "array index of '%0' indexes before the beginning of the array">,
   InGroup<DiagGroup<"array-bounds">>;
 def warn_array_index_exceeds_bounds : Warning<
-  "array index of '%0' indexes past the end of an array (that contains %1 elements)">,
-  InGroup<DiagGroup<"array-bounds">>;
+  "array index of '%0' indexes past the end of an array (that contains %1 "
+  "element%s2)">, InGroup<DiagGroup<"array-bounds">>;
 def note_array_index_out_of_bounds : Note<
   "array %0 declared here">;
 
@@ -4074,15 +4224,20 @@ def warn_scanf_scanlist_incomplete : Warning<
   
 // CHECK: returning address/reference of stack memory
 def warn_ret_stack_addr : Warning<
-  "address of stack memory associated with local variable %0 returned">;
+  "address of stack memory associated with local variable %0 returned">,
+  InGroup<DiagGroup<"return-stack-address">>;
 def warn_ret_stack_ref : Warning<
-  "reference to stack memory associated with local variable %0 returned">;
+  "reference to stack memory associated with local variable %0 returned">,
+  InGroup<DiagGroup<"return-stack-address">>;
 def warn_ret_local_temp_addr : Warning<
-  "returning address of local temporary object">;
+  "returning address of local temporary object">,
+  InGroup<DiagGroup<"return-stack-address">>;
 def warn_ret_local_temp_ref : Warning<
-  "returning reference to local temporary object">;
+  "returning reference to local temporary object">,
+  InGroup<DiagGroup<"return-stack-address">>;
 def warn_ret_addr_label : Warning<
-  "returning address of label, which is local">;
+  "returning address of label, which is local">,
+  InGroup<DiagGroup<"return-stack-address">>;
 def err_ret_local_block : Error<
   "returning block that lives on the local stack">;
 def note_ref_var_local_bind : Note<
@@ -4196,6 +4351,12 @@ def err_second_parameter_to_va_arg_abstract: Error<
 def warn_second_parameter_to_va_arg_not_pod : Warning<
   "second argument to 'va_arg' is of non-POD type %0">,
   InGroup<DiagGroup<"non-pod-varargs">>, DefaultError;
+def warn_second_parameter_to_va_arg_ownership_qualified : Warning<
+  "second argument to 'va_arg' is of ARC ownership-qualified type %0">,
+  InGroup<DiagGroup<"non-pod-varargs">>, DefaultError;
+def warn_second_parameter_to_va_arg_never_compatible : Warning<
+  "second argument to 'va_arg' is of promotable type %0; this va_arg has "
+  "undefined behavior because arguments will be promoted to %1">;
 
 def warn_return_missing_expr : Warning<
   "non-void %select{function|method}1 %0 should return a value">, DefaultError,
@@ -4312,6 +4473,9 @@ def warn_attribute_method_def : Warning<
 def ext_typecheck_base_super : Warning<
   "method parameter type %0 does not match "
   "super class method parameter type %1">, InGroup<SuperSubClassMismatch>, DefaultIgnore;
+def warn_missing_method_return_type : Warning<
+  "method has no return type specified; defaults to 'id'">,
+  InGroup<MissingMethodReturnType>, DefaultIgnore;
 
 // Spell-checking diagnostics
 def err_unknown_typename_suggest : Error<
@@ -4376,6 +4540,8 @@ def err_unknown_any_addrof : Error<
   "can only be cast to a pointer type">;
 def err_unknown_any_var_function_type : Error<
   "variable %0 with unknown type cannot be given a function type">;
+def err_unknown_any_function : Error<
+  "function %0 with unknown type must be given a function type">;
 
 def err_filter_expression_integral : Error<
   "filter expression type should be an integral value not %0">;

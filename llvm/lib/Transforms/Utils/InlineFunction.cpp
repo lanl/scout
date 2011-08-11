@@ -450,9 +450,7 @@ static bool HandleCallsInBlockInlinedThroughInvoke(BasicBlock *BB,
         NewSelector.push_back(Outer->getArgOperand(i));
 
       CallInst *NewInner =
-        IRBuilder<>(Inner).CreateCall(Inner->getCalledValue(),
-                                      NewSelector.begin(),
-                                      NewSelector.end());
+        IRBuilder<>(Inner).CreateCall(Inner->getCalledValue(), NewSelector);
       // No need to copy attributes, calling convention, etc.
       NewInner->takeName(Inner);
       Inner->replaceAllUsesWith(NewInner);
@@ -488,8 +486,7 @@ static bool HandleCallsInBlockInlinedThroughInvoke(BasicBlock *BB,
     InvokeInst *II =
       InvokeInst::Create(CI->getCalledValue(), Split,
                          Invoke.getOuterUnwindDest(),
-                         InvokeArgs.begin(), InvokeArgs.end(),
-                         CI->getName(), BB);
+                         InvokeArgs, CI->getName(), BB);
     II->setCallingConv(CI->getCallingConv());
     II->setAttributes(CI->getAttributes());
     
@@ -639,7 +636,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
                                   const Function *CalledFunc,
                                   InlineFunctionInfo &IFI,
                                   unsigned ByValAlignment) {
-  const Type *AggTy = cast<PointerType>(Arg->getType())->getElementType();
+  Type *AggTy = cast<PointerType>(Arg->getType())->getElementType();
 
   // If the called function is readonly, then it could not mutate the caller's
   // copy of the byval'd memory.  In this case, it is safe to elide the copy and
@@ -663,7 +660,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
   
   LLVMContext &Context = Arg->getContext();
 
-  const Type *VoidPtrTy = Type::getInt8PtrTy(Context);
+  Type *VoidPtrTy = Type::getInt8PtrTy(Context);
   
   // Create the alloca.  If we have TargetData, use nice alignment.
   unsigned Align = 1;
@@ -680,10 +677,10 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
   Value *NewAlloca = new AllocaInst(AggTy, 0, Align, Arg->getName(), 
                                     &*Caller->begin()->begin());
   // Emit a memcpy.
-  const Type *Tys[3] = {VoidPtrTy, VoidPtrTy, Type::getInt64Ty(Context)};
+  Type *Tys[3] = {VoidPtrTy, VoidPtrTy, Type::getInt64Ty(Context)};
   Function *MemCpyFn = Intrinsic::getDeclaration(Caller->getParent(),
                                                  Intrinsic::memcpy, 
-                                                 Tys, 3);
+                                                 Tys);
   Value *DestCast = new BitCastInst(NewAlloca, VoidPtrTy, "tmp", TheCall);
   Value *SrcCast = new BitCastInst(Arg, VoidPtrTy, "tmp", TheCall);
   
@@ -702,7 +699,7 @@ static Value *HandleByValArgument(Value *Arg, Instruction *TheCall,
     ConstantInt::get(Type::getInt32Ty(Context), 1),
     ConstantInt::getFalse(Context) // isVolatile
   };
-  IRBuilder<>(TheCall).CreateCall(MemCpyFn, CallArgs, CallArgs+5);
+  IRBuilder<>(TheCall).CreateCall(MemCpyFn, CallArgs);
   
   // Uses of the argument in the function should use our new alloca
   // instead.
@@ -729,7 +726,7 @@ static bool isUsedByLifetimeMarker(Value *V) {
 // hasLifetimeMarkers - Check whether the given alloca already has
 // lifetime.start or lifetime.end intrinsics.
 static bool hasLifetimeMarkers(AllocaInst *AI) {
-  const Type *Int8PtrTy = Type::getInt8PtrTy(AI->getType()->getContext());
+  Type *Int8PtrTy = Type::getInt8PtrTy(AI->getType()->getContext());
   if (AI->getType() == Int8PtrTy)
     return isUsedByLifetimeMarker(AI);
 
@@ -773,8 +770,15 @@ static void fixupLineNumbers(Function *Fn, Function::iterator FI,
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end();
          BI != BE; ++BI) {
       DebugLoc DL = BI->getDebugLoc();
-      if (!DL.isUnknown())
+      if (!DL.isUnknown()) {
         BI->setDebugLoc(updateInlinedAtInfo(DL, TheCallDL, BI->getContext()));
+        if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(BI)) {
+          LLVMContext &Ctx = BI->getContext();
+          MDNode *InlinedAt = BI->getDebugLoc().getInlinedAt(Ctx);
+          DVI->setOperand(2, createInlinedVariable(DVI->getVariable(), 
+                                                   InlinedAt, Ctx));
+        }
+      }
     }
   }
 }
@@ -1093,7 +1097,7 @@ bool llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI) {
 
   // Handle all of the return instructions that we just cloned in, and eliminate
   // any users of the original call/invoke instruction.
-  const Type *RTy = CalledFunc->getReturnType();
+  Type *RTy = CalledFunc->getReturnType();
 
   PHINode *PHI = 0;
   if (Returns.size() > 1) {

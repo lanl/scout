@@ -818,7 +818,7 @@ std::string NamedDecl::getQualifiedNameAsString(const PrintingPolicy &P) const {
   if (Ctx->isFunctionOrMethod())
     return getNameAsString();
 
-  typedef llvm::SmallVector<const DeclContext *, 8> ContextsTy;
+  typedef SmallVector<const DeclContext *, 8> ContextsTy;
   ContextsTy Contexts;
 
   // Collect contexts.
@@ -1388,6 +1388,16 @@ ParmVarDecl *ParmVarDecl::Create(ASTContext &C, DeclContext *DC,
                              S, SCAsWritten, DefArg);
 }
 
+SourceRange ParmVarDecl::getSourceRange() const {
+  if (!hasInheritedDefaultArg()) {
+    SourceRange ArgRange = getDefaultArgRange();
+    if (ArgRange.isValid())
+      return SourceRange(getOuterLocStart(), ArgRange.getEnd());
+  }
+
+  return DeclaratorDecl::getSourceRange();
+}
+
 Expr *ParmVarDecl::getDefaultArg() {
   assert(!hasUnparsedDefaultArg() && "Default argument is not yet parsed!");
   assert(!hasUninstantiatedDefaultArg() &&
@@ -1687,11 +1697,6 @@ void FunctionDecl::setParams(ASTContext &C,
     void *Mem = C.Allocate(sizeof(ParmVarDecl*)*NumParams);
     ParamInfo = new (Mem) ParmVarDecl*[NumParams];
     memcpy(ParamInfo, NewParamInfo, sizeof(ParmVarDecl*)*NumParams);
-
-    // Update source range. The check below allows us to set EndRangeLoc before
-    // setting the parameters.
-    if (EndRangeLoc.isInvalid() || EndRangeLoc == getLocation())
-      EndRangeLoc = NewParamInfo[NumParams-1]->getLocEnd();
   }
 }
 
@@ -1759,6 +1764,33 @@ bool FunctionDecl::isInlined() const {
   if (HasPattern && PatternDecl)
     return PatternDecl->isInlined();
   
+  return false;
+}
+
+/// \brief For a function declaration in C or C++, determine whether this
+/// declaration causes the definition to be externally visible.
+///
+/// Determines whether this is the first non-inline redeclaration of an inline
+/// function in a language where "inline" does not normally require an
+/// externally visible definition.
+bool FunctionDecl::doesDeclarationForceExternallyVisibleDefinition() const {
+  assert(!doesThisDeclarationHaveABody() &&
+         "Must have a declaration without a body.");
+
+  ASTContext &Context = getASTContext();
+
+  // In C99 mode, a function may have an inline definition (causing it to
+  // be deferred) then redeclared later.  As a special case, "extern inline"
+  // is not required to produce an external symbol.
+  if (Context.getLangOptions().GNUInline || !Context.getLangOptions().C99 ||
+      Context.getLangOptions().CPlusPlus)
+    return false;
+  if (getLinkage() != ExternalLinkage || isInlineSpecified())
+    return false;
+  const FunctionDecl *Definition = 0;
+  if (hasBody(Definition))
+    return Definition->isInlined() &&
+           Definition->isInlineDefinitionExternallyVisible();
   return false;
 }
 
@@ -2165,8 +2197,8 @@ unsigned FieldDecl::getFieldIndex() const {
 }
 
 SourceRange FieldDecl::getSourceRange() const {
-  if (isBitField())
-    return SourceRange(getInnerLocStart(), getBitWidth()->getLocEnd());
+  if (const Expr *E = InitializerOrBitWidth.getPointer())
+    return SourceRange(getInnerLocStart(), E->getLocEnd());
   return DeclaratorDecl::getSourceRange();
 }
 
@@ -2360,17 +2392,22 @@ void RecordDecl::LoadFieldsFromExternalStorage() const {
   // Notify that we have a RecordDecl doing some initialization.
   ExternalASTSource::Deserializing TheFields(Source);
 
-  llvm::SmallVector<Decl*, 64> Decls;
-  if (Source->FindExternalLexicalDeclsBy<FieldDecl>(this, Decls))
+  SmallVector<Decl*, 64> Decls;
+  LoadedFieldsFromExternalStorage = true;  
+  switch (Source->FindExternalLexicalDeclsBy<FieldDecl>(this, Decls)) {
+  case ELR_Success:
+    break;
+    
+  case ELR_AlreadyLoaded:
+  case ELR_Failure:
     return;
+  }
 
 #ifndef NDEBUG
   // Check that all decls we got were FieldDecls.
   for (unsigned i=0, e=Decls.size(); i != e; ++i)
     assert(isa<FieldDecl>(Decls[i]));
 #endif
-
-  LoadedFieldsFromExternalStorage = true;
 
   if (Decls.empty())
     return;

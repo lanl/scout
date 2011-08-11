@@ -43,7 +43,7 @@ class InlineAsm : public Value {
   bool HasSideEffects;
   bool IsAlignStack;
   
-  InlineAsm(const PointerType *Ty, const std::string &AsmString,
+  InlineAsm(PointerType *Ty, const std::string &AsmString,
             const std::string &Constraints, bool hasSideEffects,
             bool isAlignStack);
   virtual ~InlineAsm();
@@ -55,7 +55,7 @@ public:
 
   /// InlineAsm::get - Return the specified uniqued inline asm string.
   ///
-  static InlineAsm *get(const FunctionType *Ty, StringRef AsmString,
+  static InlineAsm *get(FunctionType *Ty, StringRef AsmString,
                         StringRef Constraints, bool hasSideEffects,
                         bool isAlignStack = false);
   
@@ -64,13 +64,13 @@ public:
   
   /// getType - InlineAsm's are always pointers.
   ///
-  const PointerType *getType() const {
-    return reinterpret_cast<const PointerType*>(Value::getType());
+  PointerType *getType() const {
+    return reinterpret_cast<PointerType*>(Value::getType());
   }
   
   /// getFunctionType - InlineAsm's are always pointers to functions.
   ///
-  const FunctionType *getFunctionType() const;
+  FunctionType *getFunctionType() const;
   
   const std::string &getAsmString() const { return AsmString; }
   const std::string &getConstraintString() const { return Constraints; }
@@ -79,7 +79,7 @@ public:
   /// the specified constraint string is legal for the type.  This returns true
   /// if legal, false if not.
   ///
-  static bool Verify(const FunctionType *Ty, StringRef Constraints);
+  static bool Verify(FunctionType *Ty, StringRef Constraints);
 
   // Constraint String Parsing 
   enum ConstraintPrefix {

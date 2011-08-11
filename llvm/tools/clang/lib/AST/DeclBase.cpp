@@ -151,7 +151,7 @@ bool Decl::isDefinedOutsideFunctionOrMethod() const {
 // PrettyStackTraceDecl Implementation
 //===----------------------------------------------------------------------===//
 
-void PrettyStackTraceDecl::print(llvm::raw_ostream &OS) const {
+void PrettyStackTraceDecl::print(raw_ostream &OS) const {
   SourceLocation TheLoc = Loc;
   if (TheLoc.isInvalid() && TheDecl)
     TheLoc = TheDecl->getLocation();
@@ -268,8 +268,8 @@ bool Decl::isReferenced() const {
 static AvailabilityResult CheckAvailability(ASTContext &Context,
                                             const AvailabilityAttr *A,
                                             std::string *Message) {
-  llvm::StringRef TargetPlatform = Context.Target.getPlatformName();
-  llvm::StringRef PrettyPlatformName
+  StringRef TargetPlatform = Context.Target.getPlatformName();
+  StringRef PrettyPlatformName
     = AvailabilityAttr::getPrettyPlatformName(TargetPlatform);
   if (PrettyPlatformName.empty())
     PrettyPlatformName = TargetPlatform;
@@ -833,7 +833,7 @@ DeclContext *DeclContext::getNextContext() {
 }
 
 std::pair<Decl *, Decl *>
-DeclContext::BuildDeclChain(const llvm::SmallVectorImpl<Decl*> &Decls) {
+DeclContext::BuildDeclChain(const SmallVectorImpl<Decl*> &Decls) {
   // Build up a chain of declarations via the Decl::NextDeclInContext field.
   Decl *FirstNewDecl = 0;
   Decl *PrevDecl = 0;
@@ -860,12 +860,17 @@ DeclContext::LoadLexicalDeclsFromExternalStorage() const {
   // Notify that we have a DeclContext that is initializing.
   ExternalASTSource::Deserializing ADeclContext(Source);
 
-  llvm::SmallVector<Decl*, 64> Decls;
-  if (Source->FindExternalLexicalDecls(this, Decls))
-    return;
-
-  // There is no longer any lexical storage in this context
+  // Load the external declarations, if any.
+  SmallVector<Decl*, 64> Decls;
   ExternalLexicalStorage = false;
+  switch (Source->FindExternalLexicalDecls(this, Decls)) {
+  case ELR_Success:
+    break;
+    
+  case ELR_Failure:
+  case ELR_AlreadyLoaded:
+    return;
+  }
 
   if (Decls.empty())
     return;
@@ -906,7 +911,7 @@ ExternalASTSource::SetNoExternalVisibleDeclsForName(const DeclContext *DC,
 DeclContext::lookup_result
 ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
                                                   DeclarationName Name,
-                                    llvm::SmallVectorImpl<NamedDecl*> &Decls) {
+                                    SmallVectorImpl<NamedDecl*> &Decls) {
   ASTContext &Context = DC->getParentASTContext();;
 
   StoredDeclsMap *Map;
@@ -926,7 +931,7 @@ ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
 
 void ExternalASTSource::MaterializeVisibleDeclsForName(const DeclContext *DC,
                                                        DeclarationName Name,
-                                     llvm::SmallVectorImpl<NamedDecl*> &Decls) {
+                                     SmallVectorImpl<NamedDecl*> &Decls) {
   assert(DC->LookupPtr);
   StoredDeclsMap &Map = *DC->LookupPtr;
 

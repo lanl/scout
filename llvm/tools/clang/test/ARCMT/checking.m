@@ -20,6 +20,7 @@ struct UnsafeS {
 - (oneway void)release;
 - (void)dealloc;
 -(void)test;
+-(id)delegate;
 @end
 
 @implementation A
@@ -34,16 +35,30 @@ struct UnsafeS {
 - (id)retainCount { return self; } // expected-error {{ARC forbids implementation}}
 - (id)autorelease { return self; } // expected-error {{ARC forbids implementation}}
 - (oneway void)release { } // expected-error {{ARC forbids implementation}}
+
+-(id)delegate { return self; }
 @end
 
+id global_foo;
+
 void test1(A *a, BOOL b, struct UnsafeS *unsafeS) {
-  [unsafeS->unsafeObj retain]; // expected-error {{It is not safe to remove 'retain' message on an __unsafe_unretained type}} \
+  [[a delegate] release]; // expected-error {{it is not safe to remove 'retain' message on the result of a 'delegate' message; the object that was passed to 'setDelegate:' may not be properly retained}} \
+                          // expected-error {{ARC forbids explicit message send}}
+  [a.delegate release]; // expected-error {{it is not safe to remove 'retain' message on the result of a 'delegate' message; the object that was passed to 'setDelegate:' may not be properly retained}} \
+                        // expected-error {{ARC forbids explicit message send}}
+  [unsafeS->unsafeObj retain]; // expected-error {{it is not safe to remove 'retain' message on an __unsafe_unretained type}} \
                                // expected-error {{ARC forbids explicit message send}}
+  id foo = [unsafeS->unsafeObj retain]; // no warning.
+  [global_foo retain]; // expected-error {{it is not safe to remove 'retain' message on a global variable}} \
+                       // expected-error {{ARC forbids explicit message send}}
+  [global_foo release]; // expected-error {{it is not safe to remove 'release' message on a global variable}} \
+                        // expected-error {{ARC forbids explicit message send}}
   [a dealloc];
   [a retain];
   [a retainCount]; // expected-error {{ARC forbids explicit message send of 'retainCount'}}
   [a release];
-  [a autorelease];
+  [a autorelease]; // expected-error {{it is not safe to remove an unused 'autorelease' message; its receiver may be destroyed immediately}} \
+                   // expected-error {{ARC forbids explicit message send}}
 
   CFStringRef cfstr;
   NSString *str = (NSString *)cfstr; // expected-error {{cast of C pointer type 'CFStringRef' (aka 'const struct __CFString *') to Objective-C pointer type 'NSString *' requires a bridged cast}} \

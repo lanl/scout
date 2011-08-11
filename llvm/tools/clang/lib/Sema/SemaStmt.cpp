@@ -126,7 +126,7 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
     // a more specific message to make it clear what is happening.
     if (const Decl *FD = CE->getCalleeDecl()) {
       if (FD->getAttr<WarnUnusedResultAttr>()) {
-        Diag(Loc, diag::warn_unused_call) << R1 << R2 << "warn_unused_result";
+        Diag(Loc, diag::warn_unused_result) << R1 << R2;
         return;
       }
       if (FD->getAttr<PureAttr>()) {
@@ -145,7 +145,7 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
     }
     const ObjCMethodDecl *MD = ME->getMethodDecl();
     if (MD && MD->getAttr<WarnUnusedResultAttr>()) {
-      Diag(Loc, diag::warn_unused_call) << R1 << R2 << "warn_unused_result";
+      Diag(Loc, diag::warn_unused_result) << R1 << R2;
       return;
     }
   } else if (isa<ObjCPropertyRefExpr>(E)) {
@@ -410,13 +410,12 @@ static bool EqEnumVals(const std::pair<llvm::APSInt, EnumConstantDecl*>& lhs,
 
 /// GetTypeBeforeIntegralPromotion - Returns the pre-promotion type of
 /// potentially integral-promoted expression @p expr.
-static QualType GetTypeBeforeIntegralPromotion(const Expr* expr) {
-  if (const CastExpr *ImplicitCast = dyn_cast<ImplicitCastExpr>(expr)) {
-    const Expr *ExprBeforePromotion = ImplicitCast->getSubExpr();
-    QualType TypeBeforePromotion = ExprBeforePromotion->getType();
-    if (TypeBeforePromotion->isIntegralOrEnumerationType()) {
-      return TypeBeforePromotion;
-    }
+static QualType GetTypeBeforeIntegralPromotion(Expr *&expr) {
+  if (ExprWithCleanups *cleanups = dyn_cast<ExprWithCleanups>(expr))
+    expr = cleanups->getSubExpr();
+  while (ImplicitCastExpr *impcast = dyn_cast<ImplicitCastExpr>(expr)) {
+    if (impcast->getCastKind() != CK_IntegralCast) break;
+    expr = impcast->getSubExpr();
   }
   return expr->getType();
 }
@@ -449,6 +448,11 @@ Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc, Expr *Cond,
                                    PDiag(diag::err_switch_multiple_conversions),
                                          PDiag(diag::note_switch_conversion),
                                          PDiag(0));
+  if (CondResult.isInvalid()) return StmtError();
+  Cond = CondResult.take();
+
+  // C99 6.8.4.2p5 - Integer promotions are performed on the controlling expr.
+  CondResult = UsualUnaryConversions(Cond);
   if (CondResult.isInvalid()) return StmtError();
   Cond = CondResult.take();
 
@@ -485,21 +489,14 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
   SS->setBody(BodyStmt, SwitchLoc);
   getCurFunction()->SwitchStack.pop_back();
 
-  if (SS->getCond() == 0)
-    return StmtError();
-
   Expr *CondExpr = SS->getCond();
+  if (!CondExpr) return StmtError();
+
+  QualType CondType = CondExpr->getType();
+
   Expr *CondExprBeforePromotion = CondExpr;
   QualType CondTypeBeforePromotion =
-      GetTypeBeforeIntegralPromotion(CondExpr);
-
-  // C99 6.8.4.2p5 - Integer promotions are performed on the controlling expr.
-  ExprResult CondResult = UsualUnaryConversions(CondExpr);
-  if (CondResult.isInvalid())
-    return StmtError();
-  CondExpr = CondResult.take();
-  QualType CondType = CondExpr->getType();
-  SS->setCond(CondExpr);
+      GetTypeBeforeIntegralPromotion(CondExprBeforePromotion);
 
   // C++ 6.4.2.p2:
   // Integral promotions are performed (on the switch condition).
@@ -536,7 +533,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
   // Accumulate all of the case values in a vector so that we can sort them
   // and detect duplicates.  This vector contains the APInt for the case after
   // it has been converted to the condition type.
-  typedef llvm::SmallVector<std::pair<llvm::APSInt, CaseStmt*>, 64> CaseValsTy;
+  typedef SmallVector<std::pair<llvm::APSInt, CaseStmt*>, 64> CaseValsTy;
   CaseValsTy CaseVals;
 
   // Keep track of any GNU case ranges we see.  The APSInt is the low value.
@@ -753,7 +750,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     // If switch has default case, then ignore it.
     if (!CaseListIsErroneous  && !HasConstantCond && ET) {
       const EnumDecl *ED = ET->getDecl();
-      typedef llvm::SmallVector<std::pair<llvm::APSInt, EnumConstantDecl*>, 64>
+      typedef SmallVector<std::pair<llvm::APSInt, EnumConstantDecl*>, 64>
         EnumValsTy;
       EnumValsTy EnumVals;
 
@@ -809,7 +806,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
       CaseRangesTy::const_iterator RI = CaseRanges.begin();
       bool hasCasesNotInSwitch = false;
 
-      llvm::SmallVector<DeclarationName,8> UnhandledNames;
+      SmallVector<DeclarationName,8> UnhandledNames;
 
       for (EnumValsTy::const_iterator EI = EnumVals.begin(); EI != EIend; EI++){
         // Drop unneeded case values
@@ -968,6 +965,76 @@ StmtResult Sema::ActOnForEachLValueExpr(Expr *E) {
   return Owned(static_cast<Stmt*>(Result.get()));
 }
 
+ExprResult
+Sema::ActOnObjCForCollectionOperand(SourceLocation forLoc, Expr *collection) {
+  assert(collection);
+
+  // Bail out early if we've got a type-dependent expression.
+  if (collection->isTypeDependent()) return Owned(collection);
+
+  // Perform normal l-value conversion.
+  ExprResult result = DefaultFunctionArrayLvalueConversion(collection);
+  if (result.isInvalid())
+    return ExprError();
+  collection = result.take();
+
+  // The operand needs to have object-pointer type.
+  // TODO: should we do a contextual conversion?
+  const ObjCObjectPointerType *pointerType =
+    collection->getType()->getAs<ObjCObjectPointerType>();
+  if (!pointerType)
+    return Diag(forLoc, diag::err_collection_expr_type)
+             << collection->getType() << collection->getSourceRange();
+
+  // Check that the operand provides
+  //   - countByEnumeratingWithState:objects:count:
+  const ObjCObjectType *objectType = pointerType->getObjectType();
+  ObjCInterfaceDecl *iface = objectType->getInterface();
+
+  // If we have a forward-declared type, we can't do this check.
+  if (iface && iface->isForwardDecl()) {
+    // This is ill-formed under ARC.
+    if (getLangOptions().ObjCAutoRefCount) {
+      Diag(forLoc, diag::err_arc_collection_forward)
+        << pointerType->getPointeeType() << collection->getSourceRange();
+    }
+
+    // Otherwise, if we have any useful type information, check that
+    // the type declares the appropriate method.
+  } else if (iface || !objectType->qual_empty()) {
+    IdentifierInfo *selectorIdents[] = {
+      &Context.Idents.get("countByEnumeratingWithState"),
+      &Context.Idents.get("objects"),
+      &Context.Idents.get("count")
+    };
+    Selector selector = Context.Selectors.getSelector(3, &selectorIdents[0]);
+
+    ObjCMethodDecl *method = 0;
+
+    // If there's an interface, look in both the public and private APIs.
+    if (iface) {
+      method = iface->lookupInstanceMethod(selector);
+      if (!method) method = LookupPrivateInstanceMethod(selector, iface);
+    }
+
+    // Also check protocol qualifiers.
+    if (!method)
+      method = LookupMethodInQualifiedType(selector, pointerType,
+                                           /*instance*/ true);
+
+    // If we didn't find it anywhere, give up.
+    if (!method) {
+      Diag(forLoc, diag::warn_collection_expr_type)
+        << collection->getType() << selector << collection->getSourceRange();
+    }
+
+    // TODO: check for an incompatible signature?
+  }
+
+  // Wrap up any cleanups in the expression.
+  return Owned(MaybeCreateExprWithCleanups(collection));
+}
+
 StmtResult
 Sema::ActOnObjCForCollectionStmt(SourceLocation ForLoc,
                                  SourceLocation LParenLoc,
@@ -1003,38 +1070,7 @@ Sema::ActOnObjCForCollectionStmt(SourceLocation ForLoc,
         Diag(ForLoc, diag::err_selector_element_type)
           << FirstType << First->getSourceRange();
   }
-  if (Second && !Second->isTypeDependent()) {
-    ExprResult Result = DefaultFunctionArrayLvalueConversion(Second);
-    if (Result.isInvalid())
-      return StmtError();
-    Second = Result.take();
-    QualType SecondType = Second->getType();
-    if (!SecondType->isObjCObjectPointerType())
-      Diag(ForLoc, diag::err_collection_expr_type)
-        << SecondType << Second->getSourceRange();
-    else if (const ObjCObjectPointerType *OPT =
-             SecondType->getAsObjCInterfacePointerType()) {
-      llvm::SmallVector<IdentifierInfo *, 4> KeyIdents;
-      IdentifierInfo* selIdent =
-        &Context.Idents.get("countByEnumeratingWithState");
-      KeyIdents.push_back(selIdent);
-      selIdent = &Context.Idents.get("objects");
-      KeyIdents.push_back(selIdent);
-      selIdent = &Context.Idents.get("count");
-      KeyIdents.push_back(selIdent);
-      Selector CSelector = Context.Selectors.getSelector(3, &KeyIdents[0]);
-      if (ObjCInterfaceDecl *IDecl = OPT->getInterfaceDecl()) {
-        if (!IDecl->isForwardDecl() &&
-            !IDecl->lookupInstanceMethod(CSelector) &&
-            !LookupMethodInQualifiedType(CSelector, OPT, true)) {
-          // Must further look into private implementation methods.
-          if (!LookupPrivateInstanceMethod(CSelector, IDecl))
-            Diag(ForLoc, diag::warn_collection_expr_type)
-              << SecondType << CSelector << Second->getSourceRange();
-        }
-      }
-    }
-  }
+
   return Owned(new (Context) ObjCForCollectionStmt(First, Second, Body,
                                                    ForLoc, RParenLoc));
 }
@@ -1886,7 +1922,7 @@ static bool CheckAsmLValue(const Expr *E, Sema &S) {
 /// isOperandMentioned - Return true if the specified operand # is mentioned
 /// anywhere in the decomposed asm string.
 static bool isOperandMentioned(unsigned OpNo,
-                         llvm::ArrayRef<AsmStmt::AsmStringPiece> AsmStrPieces) {
+                         ArrayRef<AsmStmt::AsmStringPiece> AsmStrPieces) {
   for (unsigned p = 0, e = AsmStrPieces.size(); p != e; ++p) {
     const AsmStmt::AsmStringPiece &Piece = AsmStrPieces[p];
     if (!Piece.isOperand()) continue;
@@ -1913,20 +1949,20 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
   StringLiteral *AsmString = cast<StringLiteral>(asmString);
   StringLiteral **Clobbers = reinterpret_cast<StringLiteral**>(clobbers.get());
 
-  llvm::SmallVector<TargetInfo::ConstraintInfo, 4> OutputConstraintInfos;
+  SmallVector<TargetInfo::ConstraintInfo, 4> OutputConstraintInfos;
 
   // The parser verifies that there is a string literal here.
-  if (AsmString->isWide())
+  if (!AsmString->isAscii())
     return StmtError(Diag(AsmString->getLocStart(),diag::err_asm_wide_character)
       << AsmString->getSourceRange());
 
   for (unsigned i = 0; i != NumOutputs; i++) {
     StringLiteral *Literal = Constraints[i];
-    if (Literal->isWide())
+    if (!Literal->isAscii())
       return StmtError(Diag(Literal->getLocStart(),diag::err_asm_wide_character)
         << Literal->getSourceRange());
 
-    llvm::StringRef OutputName;
+    StringRef OutputName;
     if (Names[i])
       OutputName = Names[i]->getName();
 
@@ -1947,15 +1983,15 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
     OutputConstraintInfos.push_back(Info);
   }
 
-  llvm::SmallVector<TargetInfo::ConstraintInfo, 4> InputConstraintInfos;
+  SmallVector<TargetInfo::ConstraintInfo, 4> InputConstraintInfos;
 
   for (unsigned i = NumOutputs, e = NumOutputs + NumInputs; i != e; i++) {
     StringLiteral *Literal = Constraints[i];
-    if (Literal->isWide())
+    if (!Literal->isAscii())
       return StmtError(Diag(Literal->getLocStart(),diag::err_asm_wide_character)
         << Literal->getSourceRange());
 
-    llvm::StringRef InputName;
+    StringRef InputName;
     if (Names[i])
       InputName = Names[i]->getName();
 
@@ -1998,11 +2034,11 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
   // Check that the clobbers are valid.
   for (unsigned i = 0; i != NumClobbers; i++) {
     StringLiteral *Literal = Clobbers[i];
-    if (Literal->isWide())
+    if (!Literal->isAscii())
       return StmtError(Diag(Literal->getLocStart(),diag::err_asm_wide_character)
         << Literal->getSourceRange());
 
-    llvm::StringRef Clobber = Literal->getString();
+    StringRef Clobber = Literal->getString();
 
     if (!Context.Target.isValidClobber(Clobber))
       return StmtError(Diag(Literal->getLocStart(),
@@ -2015,7 +2051,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
                           AsmString, NumClobbers, Clobbers, RParenLoc);
   // Validate the asm string, ensuring it makes sense given the operands we
   // have.
-  llvm::SmallVector<AsmStmt::AsmStringPiece, 8> Pieces;
+  SmallVector<AsmStmt::AsmStringPiece, 8> Pieces;
   unsigned DiagOffs;
   if (unsigned DiagID = NS->AnalyzeAsmString(Pieces, Context, DiagOffs)) {
     Diag(getLocationOfStringLiteralByte(AsmString, DiagOffs), DiagID)
@@ -2157,6 +2193,7 @@ Sema::ActOnObjCAtTryStmt(SourceLocation AtLoc, Stmt *Try,
 StmtResult Sema::BuildObjCAtThrowStmt(SourceLocation AtLoc,
                                                   Expr *Throw) {
   if (Throw) {
+    Throw = MaybeCreateExprWithCleanups(Throw);
     ExprResult Result = DefaultLvalueConversion(Throw);
     if (Result.isInvalid())
       return StmtError();
@@ -2191,29 +2228,36 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
     if (!AtCatchParent)
       return StmtError(Diag(AtLoc, diag::error_rethrow_used_outside_catch));
   }
-
+  
   return BuildObjCAtThrowStmt(AtLoc, Throw);
+}
+
+ExprResult
+Sema::ActOnObjCAtSynchronizedOperand(SourceLocation atLoc, Expr *operand) {
+  ExprResult result = DefaultLvalueConversion(operand);
+  if (result.isInvalid())
+    return ExprError();
+  operand = result.take();
+
+  // Make sure the expression type is an ObjC pointer or "void *".
+  QualType type = operand->getType();
+  if (!type->isDependentType() &&
+      !type->isObjCObjectPointerType()) {
+    const PointerType *pointerType = type->getAs<PointerType>();
+    if (!pointerType || !pointerType->getPointeeType()->isVoidType())
+      return Diag(atLoc, diag::error_objc_synchronized_expects_object)
+               << type << operand->getSourceRange();
+  }
+
+  // The operand to @synchronized is a full-expression.
+  return MaybeCreateExprWithCleanups(operand);
 }
 
 StmtResult
 Sema::ActOnObjCAtSynchronizedStmt(SourceLocation AtLoc, Expr *SyncExpr,
                                   Stmt *SyncBody) {
+  // We can't jump into or indirect-jump out of a @synchronized block.
   getCurFunction()->setHasBranchProtectedScope();
-
-  ExprResult Result = DefaultLvalueConversion(SyncExpr);
-  if (Result.isInvalid())
-    return StmtError();
-
-  SyncExpr = Result.take();
-  // Make sure the expression type is an ObjC pointer or "void *".
-  if (!SyncExpr->getType()->isDependentType() &&
-      !SyncExpr->getType()->isObjCObjectPointerType()) {
-    const PointerType *PT = SyncExpr->getType()->getAs<PointerType>();
-    if (!PT || !PT->getPointeeType()->isVoidType())
-      return StmtError(Diag(AtLoc, diag::error_objc_synchronized_expects_object)
-                       << SyncExpr->getType() << SyncExpr->getSourceRange());
-  }
-
   return Owned(new (Context) ObjCAtSynchronizedStmt(AtLoc, SyncExpr, SyncBody));
 }
 
@@ -2281,10 +2325,10 @@ Sema::ActOnCXXTryBlock(SourceLocation TryLoc, Stmt *TryBlock,
          "The parser shouldn't call this if there are no handlers.");
   Stmt **Handlers = RawHandlers.get();
 
-  llvm::SmallVector<TypeWithHandler, 8> TypesWithHandlers;
+  SmallVector<TypeWithHandler, 8> TypesWithHandlers;
 
   for (unsigned i = 0; i < NumHandlers; ++i) {
-    CXXCatchStmt *Handler = llvm::cast<CXXCatchStmt>(Handlers[i]);
+    CXXCatchStmt *Handler = cast<CXXCatchStmt>(Handlers[i]);
     if (!Handler->getExceptionDecl()) {
       if (i < NumHandlers - 1)
         return StmtError(Diag(Handler->getLocStart(),

@@ -53,7 +53,7 @@ BasicBlock::BasicBlock(LLVMContext &C, const Twine &Name, Function *NewParent,
   } else if (NewParent) {
     NewParent->getBasicBlockList().push_back(this);
   }
-  
+
   setName(Name);
 }
 
@@ -76,7 +76,7 @@ BasicBlock::~BasicBlock() {
       BA->destroyConstant();
     }
   }
-  
+
   assert(getParent() == 0 && "BasicBlock still linked into the program!");
   dropAllReferences();
   InstList.clear();
@@ -184,8 +184,8 @@ BasicBlock *BasicBlock::getSinglePredecessor() {
 
 /// getUniquePredecessor - If this basic block has a unique predecessor block,
 /// return the block, otherwise return a null pointer.
-/// Note that unique predecessor doesn't mean single edge, there can be 
-/// multiple edges from the unique predecessor to this block (for example 
+/// Note that unique predecessor doesn't mean single edge, there can be
+/// multiple edges from the unique predecessor to this block (for example
 /// a switch statement with multiple cases having the same destination).
 BasicBlock *BasicBlock::getUniquePredecessor() {
   pred_iterator PI = pred_begin(this), E = pred_end(this);
@@ -336,8 +336,12 @@ void BasicBlock::replaceSuccessorsPhiUsesWith(BasicBlock *New) {
     return;
   for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i) {
     BasicBlock *Succ = TI->getSuccessor(i);
-    for (iterator II = Succ->begin(); PHINode *PN = dyn_cast<PHINode>(II);
-         ++II) {
+    // N.B. Succ might not be a complete BasicBlock, so don't assume
+    // that it ends with a non-phi instruction.
+    for (iterator II = Succ->begin(), IE = Succ->end(); II != IE; ++II) {
+      PHINode *PN = dyn_cast<PHINode>(II);
+      if (!PN)
+        break;
       int i;
       while ((i = PN->getBasicBlockIndex(this)) >= 0)
         PN->setIncomingBlock(i, New);

@@ -506,6 +506,15 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(deplibs);
   KEYWORD(datalayout);
   KEYWORD(volatile);
+  KEYWORD(atomic);
+  KEYWORD(unordered);
+  KEYWORD(monotonic);
+  KEYWORD(acquire);
+  KEYWORD(release);
+  KEYWORD(acq_rel);
+  KEYWORD(seq_cst);
+  KEYWORD(singlethread);
+
   KEYWORD(nuw);
   KEYWORD(nsw);
   KEYWORD(exact);
@@ -570,6 +579,9 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(oeq); KEYWORD(one); KEYWORD(olt); KEYWORD(ogt); KEYWORD(ole);
   KEYWORD(oge); KEYWORD(ord); KEYWORD(uno); KEYWORD(ueq); KEYWORD(une);
 
+  KEYWORD(xchg); KEYWORD(nand); KEYWORD(max); KEYWORD(min); KEYWORD(umax);
+  KEYWORD(umin);
+
   KEYWORD(x);
   KEYWORD(blockaddress);
 #undef KEYWORD
@@ -624,12 +636,16 @@ lltok::Kind LLLexer::LexIdentifier() {
   INSTKEYWORD(switch,      Switch);
   INSTKEYWORD(indirectbr,  IndirectBr);
   INSTKEYWORD(invoke,      Invoke);
+  INSTKEYWORD(resume,      Resume);
   INSTKEYWORD(unwind,      Unwind);
   INSTKEYWORD(unreachable, Unreachable);
 
   INSTKEYWORD(alloca,      Alloca);
   INSTKEYWORD(load,        Load);
   INSTKEYWORD(store,       Store);
+  INSTKEYWORD(cmpxchg,     AtomicCmpXchg);
+  INSTKEYWORD(atomicrmw,   AtomicRMW);
+  INSTKEYWORD(fence,       Fence);
   INSTKEYWORD(getelementptr, GetElementPtr);
 
   INSTKEYWORD(extractelement, ExtractElement);
@@ -704,17 +720,17 @@ lltok::Kind LLLexer::Lex0x() {
   case 'K':
     // F80HexFPConstant - x87 long double in hexadecimal format (10 bytes)
     FP80HexToIntPair(TokStart+3, CurPtr, Pair);
-    APFloatVal = APFloat(APInt(80, 2, Pair));
+    APFloatVal = APFloat(APInt(80, Pair));
     return lltok::APFloat;
   case 'L':
     // F128HexFPConstant - IEEE 128-bit in hexadecimal format (16 bytes)
     HexToIntPair(TokStart+3, CurPtr, Pair);
-    APFloatVal = APFloat(APInt(128, 2, Pair), true);
+    APFloatVal = APFloat(APInt(128, Pair), true);
     return lltok::APFloat;
   case 'M':
     // PPC128HexFPConstant - PowerPC 128-bit in hexadecimal format (16 bytes)
     HexToIntPair(TokStart+3, CurPtr, Pair);
-    APFloatVal = APFloat(APInt(128, 2, Pair));
+    APFloatVal = APFloat(APInt(128, Pair));
     return lltok::APFloat;
   }
 }

@@ -82,6 +82,8 @@ CHECKER("unix.API", UnixAPIChecker, UnixAPIChecker.cpp, "Check calls to various 
 CHECKER("deadcode.experimental.UnreachableCode", UnreachableCodeChecker, UnreachableCodeChecker.cpp, "Check unreachable code", -1, true)
 CHECKER("core.VLASize", VLASizeChecker, VLASizeChecker.cpp, "Check for declarations of VLA of undefined or zero size", -1, false)
 CHECKER("osx.cocoa.VariadicMethodTypes", VariadicMethodTypeChecker, BasicObjCFoundationChecks.cpp, "Check for passing non-Objective-C types to variadic methods that expectonly Objective-C types", -1, false)
+CHECKER("osxexperimental.KeychaninAPI", MacOSKeychainAPIChecker, MacOSKeychainAPIChecker.cpp, "Check for proper use of Secure Keychain APIs", -1, false)
+CHECKER("security.experimental.MallocOverflow", MallocOverflowSecurityChecker, MallocOverflowSecurityChecker.cpp, "Check for overflows in the arguments to malloc()", -1, false)
 #endif // GET_CHECKERS
 
 

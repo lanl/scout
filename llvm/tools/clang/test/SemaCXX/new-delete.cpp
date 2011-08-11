@@ -389,3 +389,30 @@ namespace PR7702 {
     new DoesNotExist; // expected-error {{expected a type}}
   }
 }
+
+namespace ArrayNewNeedsDtor {
+  struct A { A(); private: ~A(); }; // expected-note {{declared private here}}
+  struct B { B(); A a; }; // expected-error {{field of type 'ArrayNewNeedsDtor::A' has private destructor}}
+  B *test9() {
+    return new B[5]; // expected-note {{implicit default destructor for 'ArrayNewNeedsDtor::B' first required here}}
+  }
+}
+
+namespace DeleteIncompleteClass {
+  struct A; // expected-note {{forward declaration}}
+  extern A x;
+  void f() { delete x; } // expected-error {{deleting incomplete class type}}
+}
+
+namespace DeleteIncompleteClassPointerError {
+  struct A; // expected-note {{forward declaration}}
+  void f(A *x) { 1+delete x; } // expected-warning {{deleting pointer to incomplete type}} \
+                               // expected-error {{invalid operands to binary expression}}
+}
+
+namespace PR10504 {
+  struct A {
+    virtual void foo() = 0;
+  };
+  void f(A *x) { delete x; } // expected-warning {{delete called on 'PR10504::A' that is abstract but has non-virtual destructor}}
+}

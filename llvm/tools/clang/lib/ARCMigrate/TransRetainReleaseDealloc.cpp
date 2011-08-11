@@ -25,7 +25,6 @@
 using namespace clang;
 using namespace arcmt;
 using namespace trans;
-using llvm::StringRef;
 
 namespace {
 
@@ -37,9 +36,14 @@ class RetainReleaseDeallocRemover :
   ExprSet Removables;
   llvm::OwningPtr<ParentMap> StmtMap;
 
+  Selector DelegateSel;
+
 public:
   RetainReleaseDeallocRemover(MigrationPass &pass)
-    : Body(0), Pass(pass) { }
+    : Body(0), Pass(pass) {
+    DelegateSel =
+        Pass.Ctx.Selectors.getNullarySelector(&Pass.Ctx.Idents.get("delegate"));
+  }
 
   void transformBody(Stmt *body) {
     Body = body;
@@ -52,17 +56,46 @@ public:
     switch (E->getMethodFamily()) {
     default:
       return true;
+    case OMF_autorelease:
+      if (isRemovable(E)) {
+        // An unused autorelease is badness. If we remove it the receiver
+        // will likely die immediately while previously it was kept alive
+        // by the autorelease pool. This is bad practice in general, leave it
+        // and emit an error to force the user to restructure his code.
+        Pass.TA.reportError("it is not safe to remove an unused 'autorelease' "
+            "message; its receiver may be destroyed immediately",
+            E->getLocStart(), E->getSourceRange());
+        return true;
+      }
+      // Pass through.
     case OMF_retain:
     case OMF_release:
-    case OMF_autorelease:
       if (E->getReceiverKind() == ObjCMessageExpr::Instance)
         if (Expr *rec = E->getInstanceReceiver()) {
           rec = rec->IgnoreParenImpCasts();
-          if (rec->getType().getObjCLifetime() == Qualifiers::OCL_ExplicitNone){
-            std::string err = "It is not safe to remove '";
+          if (rec->getType().getObjCLifetime() == Qualifiers::OCL_ExplicitNone &&
+              (E->getMethodFamily() != OMF_retain || isRemovable(E))) {
+            std::string err = "it is not safe to remove '";
             err += E->getSelector().getAsString() + "' message on "
                 "an __unsafe_unretained type";
             Pass.TA.reportError(err, rec->getLocStart());
+            return true;
+          }
+
+          if (isGlobalVar(rec) &&
+              (E->getMethodFamily() != OMF_retain || isRemovable(E))) {
+            std::string err = "it is not safe to remove '";
+            err += E->getSelector().getAsString() + "' message on "
+                "a global variable";
+            Pass.TA.reportError(err, rec->getLocStart());
+            return true;
+          }
+
+          if (E->getMethodFamily() == OMF_release && isDelegateMessage(rec)) {
+            Pass.TA.reportError("it is not safe to remove 'retain' "
+                "message on the result of a 'delegate' message; "
+                "the object that was passed to 'setDelegate:' may not be "
+                "properly retained", rec->getLocStart());
             return true;
           }
         }
@@ -75,10 +108,7 @@ public:
       return true;
     case ObjCMessageExpr::SuperInstance: {
       Transaction Trans(Pass.TA);
-      Pass.TA.clearDiagnostic(diag::err_arc_illegal_explicit_message,
-                              diag::err_unavailable,
-                              diag::err_unavailable_message,
-                              E->getSuperLoc());
+      clearDiagnostics(E->getSuperLoc());
       if (tryRemoving(E))
         return true;
       Pass.TA.replace(E->getSourceRange(), "self");
@@ -92,10 +122,19 @@ public:
     if (!rec) return true;
 
     Transaction Trans(Pass.TA);
-    Pass.TA.clearDiagnostic(diag::err_arc_illegal_explicit_message,
-                            diag::err_unavailable,
-                            diag::err_unavailable_message,
-                            rec->getExprLoc());
+    clearDiagnostics(rec->getExprLoc());
+
+    if (E->getMethodFamily() == OMF_release &&
+        isRemovable(E) && isInAtFinally(E)) {
+      // Change the -release to "receiver = nil" in a finally to avoid a leak
+      // when an exception is thrown.
+      Pass.TA.replace(E->getSourceRange(), rec->getSourceRange());
+      std::string str = " = ";
+      str += getNilString(Pass.Ctx);
+      Pass.TA.insertAfterToken(rec->getLocEnd(), str);
+      return true;
+    }
+
     if (!hasSideEffects(E, Pass.Ctx)) {
       if (tryRemoving(E))
         return true;
@@ -106,6 +145,38 @@ public:
   }
 
 private:
+  void clearDiagnostics(SourceLocation loc) const {
+    Pass.TA.clearDiagnostic(diag::err_arc_illegal_explicit_message,
+                            diag::err_unavailable,
+                            diag::err_unavailable_message,
+                            loc);
+  }
+
+  bool isDelegateMessage(Expr *E) const {
+    if (!E) return false;
+
+    E = E->IgnoreParenCasts();
+    if (ObjCMessageExpr *ME = dyn_cast<ObjCMessageExpr>(E))
+      return (ME->isInstanceMessage() && ME->getSelector() == DelegateSel);
+
+    if (ObjCPropertyRefExpr *propE = dyn_cast<ObjCPropertyRefExpr>(E))
+      return propE->getGetterSelector() == DelegateSel;
+
+    return false;
+  }
+
+  bool isInAtFinally(Expr *E) const {
+    assert(E);
+    Stmt *S = E;
+    while (S) {
+      if (isa<ObjCAtFinallyStmt>(S))
+        return true;
+      S = StmtMap->getParent(S);
+    }
+
+    return false;
+  }
+
   bool isRemovable(Expr *E) const {
     return Removables.count(E);
   }

@@ -71,7 +71,7 @@ static void AnalyzerOptsToArgs(const AnalyzerOptions &Opts,
                                std::vector<std::string> &Res) {
   if (Opts.ShowCheckerHelp)
     Res.push_back("-analyzer-checker-help");
-  if (Opts.AnalysisStoreOpt != BasicStoreModel) {
+  if (Opts.AnalysisStoreOpt != RegionStoreModel) {
     Res.push_back("-analyzer-store");
     Res.push_back(getAnalysisStoreName(Opts.AnalysisStoreOpt));
   }
@@ -443,7 +443,20 @@ static void FrontendOptsToArgs(const FrontendOptions &Opts,
   case FrontendOptions::ARCMT_Modify:
     Res.push_back("-arcmt-modify");
     break;
+  case FrontendOptions::ARCMT_Migrate:
+    Res.push_back("-arcmt-migrate");
+    break;
   }
+  if (!Opts.ARCMTMigrateDir.empty()) {
+    Res.push_back("-arcmt-migrate-directory");
+    Res.push_back(Opts.ARCMTMigrateDir);
+  }
+  if (!Opts.ARCMTMigrateReportOut.empty()) {
+    Res.push_back("-arcmt-migrate-report-output");
+    Res.push_back(Opts.ARCMTMigrateReportOut);
+  }
+  if (Opts.ARCMTMigrateEmitARCErrors)
+    Res.push_back("-arcmt-migrate-emit-errors");
 
   bool NeedLang = false;
   for (unsigned i = 0, e = Opts.Inputs.size(); i != e; ++i)
@@ -519,17 +532,31 @@ static void HeaderSearchOptsToArgs(const HeaderSearchOptions &Opts,
     if (E.IsFramework && (E.Group != frontend::Angled || !E.IsUserSupplied))
       llvm::report_fatal_error("Invalid option set!");
     if (E.IsUserSupplied) {
-      if (E.Group == frontend::After) {
+      switch (E.Group) {
+      case frontend::After:
         Res.push_back("-idirafter");
-      } else if (E.Group == frontend::Quoted) {
+        break;
+        
+      case frontend::Quoted:
         Res.push_back("-iquote");
-      } else if (E.Group == frontend::System) {
+        break;
+        
+      case frontend::System:
         Res.push_back("-isystem");
-      } else if (E.Group == frontend::CXXSystem) {
+        break;
+        
+      case frontend::IndexHeaderMap:
+        Res.push_back("-index-header-map");
+        Res.push_back(E.IsFramework? "-F" : "-I");
+        break;
+        
+      case frontend::CXXSystem:
         Res.push_back("-cxx-isystem");
-      } else {
-        assert(E.Group == frontend::Angled && "Invalid group!");
+        break;
+        
+      case frontend::Angled:
         Res.push_back(E.IsFramework ? "-F" : "-I");
+        break;
       }
     } else {
       if (E.Group != frontend::Angled && E.Group != frontend::System)
@@ -742,6 +769,8 @@ static void LangOptsToArgs(const LangOptions &Opts,
     Res.push_back("-ffake-address-space-map");
   if (Opts.ParseUnknownAnytype)
     Res.push_back("-funknown-anytype");
+  if (Opts.DebuggerSupport)
+    Res.push_back("-fdebugger-support");
   if (Opts.DelayedTemplateParsing)
     Res.push_back("-fdelayed-template-parsing");
   if (Opts.Deprecated)
@@ -757,6 +786,10 @@ static void PreprocessorOptsToArgs(const PreprocessorOptions &Opts,
     // FIXME: We need to avoid reincluding the implicit PCH and PTH includes.
     Res.push_back("-include");
     Res.push_back(Opts.Includes[i]);
+  }
+  for (unsigned i = 0, e = Opts.Modules.size(); i != e; ++i) {
+    Res.push_back("-import_module");
+    Res.push_back(Opts.Modules[i]);
   }
   for (unsigned i = 0, e = Opts.MacroIncludes.size(); i != e; ++i) {
     Res.push_back("-imacros");
@@ -875,7 +908,7 @@ static void ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
   using namespace cc1options;
 
   if (Arg *A = Args.getLastArg(OPT_analyzer_store)) {
-    llvm::StringRef Name = A->getValue(Args);
+    StringRef Name = A->getValue(Args);
     AnalysisStores Value = llvm::StringSwitch<AnalysisStores>(Name)
 #define ANALYSIS_STORE(NAME, CMDFLAG, DESC, CREATFN) \
       .Case(CMDFLAG, NAME##Model)
@@ -890,7 +923,7 @@ static void ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
   }
 
   if (Arg *A = Args.getLastArg(OPT_analyzer_constraints)) {
-    llvm::StringRef Name = A->getValue(Args);
+    StringRef Name = A->getValue(Args);
     AnalysisConstraints Value = llvm::StringSwitch<AnalysisConstraints>(Name)
 #define ANALYSIS_CONSTRAINTS(NAME, CMDFLAG, DESC, CREATFN) \
       .Case(CMDFLAG, NAME##Model)
@@ -905,7 +938,7 @@ static void ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
   }
 
   if (Arg *A = Args.getLastArg(OPT_analyzer_output)) {
-    llvm::StringRef Name = A->getValue(Args);
+    StringRef Name = A->getValue(Args);
     AnalysisDiagClients Value = llvm::StringSwitch<AnalysisDiagClients>(Name)
 #define ANALYSIS_DIAGNOSTICS(NAME, CMDFLAG, DESC, CREATFN, AUTOCREAT) \
       .Case(CMDFLAG, PD_##NAME)
@@ -947,8 +980,8 @@ static void ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
     bool enable = (A->getOption().getID() == OPT_analyzer_checker);
     // We can have a list of comma separated checker names, e.g:
     // '-analyzer-checker=cocoa,unix'
-    llvm::StringRef checkerList = A->getValue(Args);
-    llvm::SmallVector<llvm::StringRef, 4> checkers;
+    StringRef checkerList = A->getValue(Args);
+    SmallVector<StringRef, 4> checkers;
     checkerList.split(checkers, ",");
     for (unsigned i = 0, e = checkers.size(); i != e; ++i)
       Opts.CheckersControlList.push_back(std::make_pair(checkers[i], enable));
@@ -1031,7 +1064,7 @@ static void ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CoverageFile = Args.getLastArgValue(OPT_coverage_file);
 
   if (Arg *A = Args.getLastArg(OPT_fobjc_dispatch_method_EQ)) {
-    llvm::StringRef Name = A->getValue(Args);
+    StringRef Name = A->getValue(Args);
     unsigned Method = llvm::StringSwitch<unsigned>(Name)
       .Case("legacy", CodeGenOptions::Legacy)
       .Case("non-legacy", CodeGenOptions::NonLegacy)
@@ -1053,6 +1086,7 @@ static void ParseDependencyOutputArgs(DependencyOutputOptions &Opts,
   Opts.UsePhonyTargets = Args.hasArg(OPT_MP);
   Opts.ShowHeaderIncludes = Args.hasArg(OPT_H);
   Opts.HeaderIncludeOutputFile = Args.getLastArgValue(OPT_header_include_file);
+  Opts.AddMissingHeaderDeps = Args.hasArg(OPT_MG);
 }
 
 static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
@@ -1080,7 +1114,7 @@ static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
     if (A->getOption().matches(OPT_fdiagnostics_show_note_include_stack))
       Opts.ShowNoteIncludeStack = true;
 
-  llvm::StringRef ShowOverloads =
+  StringRef ShowOverloads =
     Args.getLastArgValue(OPT_fshow_overloads_EQ, "all");
   if (ShowOverloads == "best")
     Opts.ShowOverloads = Diagnostic::Ovl_Best;
@@ -1091,7 +1125,7 @@ static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
       << Args.getLastArg(OPT_fshow_overloads_EQ)->getAsString(Args)
       << ShowOverloads;
 
-  llvm::StringRef ShowCategory =
+  StringRef ShowCategory =
     Args.getLastArgValue(OPT_fdiagnostics_show_category, "none");
   if (ShowCategory == "none")
     Opts.ShowCategories = 0;
@@ -1104,7 +1138,7 @@ static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
       << Args.getLastArg(OPT_fdiagnostics_show_category)->getAsString(Args)
       << ShowCategory;
 
-  llvm::StringRef Format =
+  StringRef Format =
     Args.getLastArgValue(OPT_fdiagnostics_format, "clang");
   if (Format == "clang")
     Opts.Format = DiagnosticOptions::Clang;
@@ -1267,7 +1301,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
 
   Opts.ARCMTAction = FrontendOptions::ARCMT_None;
   if (const Arg *A = Args.getLastArg(OPT_arcmt_check,
-                                     OPT_arcmt_modify)) {
+                                     OPT_arcmt_modify,
+                                     OPT_arcmt_migrate)) {
     switch (A->getOption().getID()) {
     default:
       llvm_unreachable("missed a case");
@@ -1277,8 +1312,16 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     case OPT_arcmt_modify:
       Opts.ARCMTAction = FrontendOptions::ARCMT_Modify;
       break;
+    case OPT_arcmt_migrate:
+      Opts.ARCMTAction = FrontendOptions::ARCMT_Migrate;
+      break;
     }
   }
+  Opts.ARCMTMigrateDir = Args.getLastArgValue(OPT_arcmt_migrate_directory);
+  Opts.ARCMTMigrateReportOut
+    = Args.getLastArgValue(OPT_arcmt_migrate_report_output);
+  Opts.ARCMTMigrateEmitARCErrors
+    = Args.hasArg(OPT_arcmt_migrate_emit_arc_errors);
 
   InputKind DashX = IK_None;
   if (const Arg *A = Args.getLastArg(OPT_x)) {
@@ -1320,7 +1363,7 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     InputKind IK = DashX;
     if (IK == IK_None) {
       IK = FrontendOptions::getInputKindForExtension(
-        llvm::StringRef(Inputs[i]).rsplit('.').second);
+        StringRef(Inputs[i]).rsplit('.').second);
       // FIXME: Remove this hack.
       if (i == 0)
         DashX = IK;
@@ -1359,14 +1402,27 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
     Opts.UseLibcxx = (strcmp(A->getValue(Args), "libc++") == 0);
   Opts.ResourceDir = Args.getLastArgValue(OPT_resource_dir);
 
-  // Add -I... and -F... options in order.
-  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F),
-         ie = Args.filtered_end(); it != ie; ++it)
-    Opts.AddPath((*it)->getValue(Args), frontend::Angled, true,
+  // Add -I..., -F..., and -index-header-map options in order.
+  bool IsIndexHeaderMap = false;
+  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F, 
+                                             OPT_index_header_map),
+       ie = Args.filtered_end(); it != ie; ++it) {
+    if ((*it)->getOption().matches(OPT_index_header_map)) {
+      // -index-header-map applies to the next -I or -F.
+      IsIndexHeaderMap = true;
+      continue;
+    }
+        
+    frontend::IncludeDirGroup Group 
+      = IsIndexHeaderMap? frontend::IndexHeaderMap : frontend::Angled;
+    
+    Opts.AddPath((*it)->getValue(Args), Group, true,
                  /*IsFramework=*/ (*it)->getOption().matches(OPT_F), false);
+    IsIndexHeaderMap = false;
+  }
 
   // Add -iprefix/-iwith-prefix/-iwithprefixbefore options.
-  llvm::StringRef Prefix = ""; // FIXME: This isn't the correct default prefix.
+  StringRef Prefix = ""; // FIXME: This isn't the correct default prefix.
   for (arg_iterator it = Args.filtered_begin(OPT_iprefix, OPT_iwithprefix,
                                              OPT_iwithprefixbefore),
          ie = Args.filtered_end(); it != ie; ++it) {
@@ -1599,7 +1655,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   if (Args.hasArg(OPT_fdelayed_template_parsing))
     Opts.DelayedTemplateParsing = 1;
 
-  llvm::StringRef Vis = Args.getLastArgValue(OPT_fvisibility, "default");
+  StringRef Vis = Args.getLastArgValue(OPT_fvisibility, "default");
   if (Vis == "default")
     Opts.setVisibilityMode(DefaultVisibility);
   else if (Vis == "hidden")
@@ -1685,6 +1741,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.MRTD = Args.hasArg(OPT_mrtd);
   Opts.FakeAddressSpaceMap = Args.hasArg(OPT_ffake_address_space_map);
   Opts.ParseUnknownAnytype = Args.hasArg(OPT_funknown_anytype);
+  Opts.DebuggerSupport = Args.hasArg(OPT_fdebugger_support);
 
   // Record whether the __DEPRECATED define was requested.
   Opts.Deprecated = Args.hasFlag(OPT_fdeprecated_macro,
@@ -1736,12 +1793,12 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
   }
 
   if (const Arg *A = Args.getLastArg(OPT_preamble_bytes_EQ)) {
-    llvm::StringRef Value(A->getValue(Args));
+    StringRef Value(A->getValue(Args));
     size_t Comma = Value.find(',');
     unsigned Bytes = 0;
     unsigned EndOfLine = 0;
 
-    if (Comma == llvm::StringRef::npos ||
+    if (Comma == StringRef::npos ||
         Value.substr(0, Comma).getAsInteger(10, Bytes) ||
         Value.substr(Comma + 1).getAsInteger(10, EndOfLine))
       Diags.Report(diag::err_drv_preamble_format);
@@ -1785,6 +1842,12 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
     Opts.ChainedIncludes.push_back(A->getValue(Args));
   }
 
+  for (arg_iterator it = Args.filtered_begin(OPT_import_module),
+      ie = Args.filtered_end(); it != ie; ++it) {
+    const Arg *A = *it;
+    Opts.Modules.push_back(A->getValue(Args));
+  }
+
   // Include 'altivec.h' if -faltivec option present
   if (Args.hasArg(OPT_faltivec))
     Opts.Includes.push_back("altivec.h");
@@ -1792,8 +1855,8 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
   for (arg_iterator it = Args.filtered_begin(OPT_remap_file),
          ie = Args.filtered_end(); it != ie; ++it) {
     const Arg *A = *it;
-    std::pair<llvm::StringRef,llvm::StringRef> Split =
-      llvm::StringRef(A->getValue(Args)).split(';');
+    std::pair<StringRef,StringRef> Split =
+      StringRef(A->getValue(Args)).split(';');
 
     if (Split.second.empty()) {
       Diags.Report(diag::err_drv_invalid_remap_file) << A->getAsString(Args);
@@ -1804,7 +1867,7 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
   }
   
   if (Arg *A = Args.getLastArg(OPT_fobjc_arc_cxxlib_EQ)) {
-    llvm::StringRef Name = A->getValue(Args);
+    StringRef Name = A->getValue(Args);
     unsigned Library = llvm::StringSwitch<unsigned>(Name)
       .Case("libc++", ARCXX_libcxx)
       .Case("libstdc++", ARCXX_libstdcxx)

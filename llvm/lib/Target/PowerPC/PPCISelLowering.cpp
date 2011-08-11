@@ -14,8 +14,8 @@
 #include "PPCISelLowering.h"
 #include "PPCMachineFunctionInfo.h"
 #include "PPCPerfectShuffle.h"
-#include "PPCPredicates.h"
 #include "PPCTargetMachine.h"
+#include "MCTargetDesc/PPCPredicates.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/VectorExtras.h"
 #include "llvm/CodeGen/CallingConvLower.h"
@@ -401,12 +401,14 @@ PPCTargetLowering::PPCTargetLowering(PPCTargetMachine &TM)
   if (PPCSubTarget.isDarwin())
     setPrefFunctionAlignment(4);
 
+  setInsertFencesForAtomic(true);
+
   computeRegisterProperties();
 }
 
 /// getByValTypeAlignment - Return the desired alignment for ByVal aggregate
 /// function arguments in the caller parameter area.
-unsigned PPCTargetLowering::getByValTypeAlignment(const Type *Ty) const {
+unsigned PPCTargetLowering::getByValTypeAlignment(Type *Ty) const {
   const TargetMachine &TM = getTargetMachine();
   // Darwin passes everything on 4 byte boundary.
   if (TM.getSubtarget<PPCSubtarget>().isDarwin())
@@ -1378,7 +1380,7 @@ SDValue PPCTargetLowering::LowerTRAMPOLINE(SDValue Op,
 
   EVT PtrVT = DAG.getTargetLoweringInfo().getPointerTy();
   bool isPPC64 = (PtrVT == MVT::i64);
-  const Type *IntPtrTy =
+  Type *IntPtrTy =
     DAG.getTargetLoweringInfo().getTargetData()->getIntPtrType(
                                                              *DAG.getContext());
 
@@ -2550,7 +2552,7 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
     if (!DAG.getTarget().getSubtarget<PPCSubtarget>().isJITCodeModel()) {
       unsigned OpFlags = 0;
       if (DAG.getTarget().getRelocationModel() != Reloc::Static &&
-          (!PPCSubTarget.getTargetTriple().isMacOSX() ||
+          (PPCSubTarget.getTargetTriple().isMacOSX() &&
            PPCSubTarget.getTargetTriple().isMacOSXVersionLT(10, 5)) &&
           (G->getGlobal()->isDeclaration() ||
            G->getGlobal()->isWeakForLinker())) {
@@ -2574,7 +2576,7 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
     unsigned char OpFlags = 0;
 
     if (DAG.getTarget().getRelocationModel() != Reloc::Static &&
-        (!PPCSubTarget.getTargetTriple().isMacOSX() ||
+        (PPCSubTarget.getTargetTriple().isMacOSX() &&
          PPCSubTarget.getTargetTriple().isMacOSXVersionLT(10, 5))) {
       // PC-relative references to external symbols should go through $stub,
       // unless we're building with the leopard linker or later, which
@@ -5504,7 +5506,7 @@ PPCTargetLowering::getSingleConstraintMatchWeight(
     // but allow it at the lowest weight.
   if (CallOperandVal == NULL)
     return CW_Default;
-  const Type *type = CallOperandVal->getType();
+  Type *type = CallOperandVal->getType();
   // Look at the constraint type.
   switch (*constraint) {
   default:
@@ -5634,7 +5636,7 @@ void PPCTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
 // isLegalAddressingMode - Return true if the addressing mode represented
 // by AM is legal for this target, for a load/store of the specified type.
 bool PPCTargetLowering::isLegalAddressingMode(const AddrMode &AM,
-                                              const Type *Ty) const {
+                                              Type *Ty) const {
   // FIXME: PPC does not allow r+i addressing modes for vectors!
 
   // PPC allows a sign-extended 16-bit immediate field.
@@ -5670,7 +5672,7 @@ bool PPCTargetLowering::isLegalAddressingMode(const AddrMode &AM,
 /// isLegalAddressImmediate - Return true if the integer value can be used
 /// as the offset of the target addressing mode for load / store of the
 /// given type.
-bool PPCTargetLowering::isLegalAddressImmediate(int64_t V,const Type *Ty) const{
+bool PPCTargetLowering::isLegalAddressImmediate(int64_t V,Type *Ty) const{
   // PPC allows a sign-extended 16-bit immediate field.
   return (V > -(1 << 16) && V < (1 << 16)-1);
 }

@@ -121,6 +121,11 @@ InstrInfoEmitter::GetOperandInfo(const CodeGenInstruction &Inst) {
                     " << 16) | (1 << MCOI::TIED_TO))";
       }
 
+      // Fill in operand type.
+      Res += ", MCOI::";
+      assert(!Inst.Operands[i].OperandType.empty() && "Invalid operand type.");
+      Res += Inst.Operands[i].OperandType;
+
       Result.push_back(Res);
     }
   }
@@ -198,8 +203,7 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
 
   // Emit all of the MCInstrDesc records in their ENUM ordering.
   //
-  OS << "\nstatic const MCInstrDesc " << TargetName
-     << "Insts[] = {\n";
+  OS << "\nMCInstrDesc " << TargetName << "Insts[] = {\n";
   const std::vector<const CodeGenInstruction*> &NumberedInstructions =
     Target.getInstructionsByEnumValue();
 
@@ -235,6 +239,7 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
   OS << "#undef GET_INSTRINFO_CTOR\n";
 
   OS << "namespace llvm {\n";
+  OS << "extern MCInstrDesc " << TargetName << "Insts[];\n";
   OS << ClassName << "::" << ClassName << "(int SO, int DO)\n"
      << "  : TargetInstrInfoImpl(SO, DO) {\n"
      << "  InitMCInstrInfo(" << TargetName << "Insts, "
@@ -257,8 +262,10 @@ void InstrInfoEmitter::emitRecord(const CodeGenInstruction &Inst, unsigned Num,
 
   OS << "  { ";
   OS << Num << ",\t" << MinOperands << ",\t"
-     << Inst.Operands.NumDefs << ",\t" << getItinClassNumber(Inst.TheDef)
-     << ",\t\"" << Inst.TheDef->getName() << "\", 0";
+     << Inst.Operands.NumDefs << ",\t"
+     << getItinClassNumber(Inst.TheDef) << ",\t"
+     << Inst.TheDef->getValueAsInt("Size") << ",\t\""
+     << Inst.TheDef->getName() << "\", 0";
 
   // Emit all of the target indepedent flags...
   if (Inst.isReturn)           OS << "|(1<<MCID::Return)";

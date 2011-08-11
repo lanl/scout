@@ -182,8 +182,10 @@ def QQQQ3 : ARMReg<3, "qqqq3", [QQ6, QQ7]>;
 
 // Current Program Status Register.
 def CPSR    : ARMReg<0, "cpsr">;
-def FPSCR   : ARMReg<1, "fpscr">;
-def ITSTATE : ARMReg<2, "itstate">;
+def APSR    : ARMReg<1, "apsr">;
+def SPSR    : ARMReg<2, "spsr">;
+def FPSCR   : ARMReg<3, "fpscr">;
+def ITSTATE : ARMReg<4, "itstate">;
 
 // Special Registers - only available in privileged mode.
 def FPSID   : ARMReg<0, "fpsid">;
@@ -208,6 +210,16 @@ def GPR : RegisterClass<"ARM", [i32], 32, (add (sequence "R%u", 0, 12),
   // some point, we can go back to using the above allocation orders for the
   // Thumb1 instructions that know how to use hi regs.
   let AltOrders = [(add LR, GPR), (trunc GPR, 8)];
+  let AltOrderSelect = [{
+      return 1 + MF.getTarget().getSubtarget<ARMSubtarget>().isThumb1Only();
+  }];
+}
+
+// GPRs without the PC.  Some ARM instructions do not allow the PC in
+// certain operand slots, particularly as the destination.  Primarily
+// useful for disassembly.
+def GPRnopc : RegisterClass<"ARM", [i32], 32, (sub GPR, PC)> {
+  let AltOrders = [(add LR, GPRnopc), (trunc GPRnopc, 8)];
   let AltOrderSelect = [{
       return 1 + MF.getTarget().getSubtarget<ARMSubtarget>().isThumb1Only();
   }];

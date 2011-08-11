@@ -6,17 +6,19 @@ tablegen(MipsGenAsmWriter.inc -gen-asm-writer)
 tablegen(MipsGenDAGISel.inc -gen-dag-isel)
 tablegen(MipsGenCallingConv.inc -gen-callingconv)
 tablegen(MipsGenSubtargetInfo.inc -gen-subtarget)
+add_public_tablegen_target(MipsCommonTableGen)
 
 add_llvm_target(MipsCodeGen
   MipsAsmPrinter.cpp
+  MipsCodeEmitter.cpp
   MipsDelaySlotFiller.cpp
   MipsEmitGPRestore.cpp
   MipsExpandPseudo.cpp
+  MipsJITInfo.cpp
   MipsInstrInfo.cpp
   MipsISelDAGToDAG.cpp
   MipsISelLowering.cpp
   MipsFrameLowering.cpp
-  MipsMCAsmInfo.cpp
   MipsMCInstLower.cpp
   MipsMCSymbolRefExpr.cpp
   MipsRegisterInfo.cpp
@@ -26,5 +28,19 @@ add_llvm_target(MipsCodeGen
   MipsSelectionDAGInfo.cpp
   )
 
+add_llvm_library_dependencies(LLVMMipsCodeGen
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMMipsAsmPrinter
+  LLVMMipsDesc
+  LLVMMipsInfo
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
+  )
+
 add_subdirectory(InstPrinter)
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)

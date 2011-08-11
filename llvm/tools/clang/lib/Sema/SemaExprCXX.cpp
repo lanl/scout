@@ -1058,7 +1058,7 @@ Sema::BuildCXXNew(SourceLocation StartLoc, bool UseGlobal,
     UsualArrayDeleteWantsSize
       = doesUsualArrayDeleteWantSize(*this, StartLoc, AllocType);
 
-  llvm::SmallVector<Expr *, 8> AllPlaceArgs;
+  SmallVector<Expr *, 8> AllPlaceArgs;
   if (OperatorNew) {
     // Add default arguments, if any.
     const FunctionProtoType *Proto =
@@ -1148,7 +1148,17 @@ Sema::BuildCXXNew(SourceLocation StartLoc, bool UseGlobal,
   if (OperatorDelete)
     MarkDeclarationReferenced(StartLoc, OperatorDelete);
 
-  // FIXME: Also check that the destructor is accessible. (C++ 5.3.4p16)
+  // C++0x [expr.new]p17:
+  //   If the new expression creates an array of objects of class type,
+  //   access and ambiguity control are done for the destructor.
+  if (ArraySize && Constructor) {
+    if (CXXDestructorDecl *dtor = LookupDestructor(Constructor->getParent())) {
+      MarkDeclarationReferenced(StartLoc, dtor);
+      CheckDestructorAccess(StartLoc, dtor, 
+                            PDiag(diag::err_access_dtor)
+                              << Context.getBaseElementType(AllocType));
+    }
+  }
 
   PlacementArgs.release();
   ConstructorArgs.release();
@@ -1236,7 +1246,7 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
   // 3) The first argument is always size_t. Append the arguments from the
   //   placement form.
 
-  llvm::SmallVector<Expr*, 8> AllocArgs(1 + NumPlaceArgs);
+  SmallVector<Expr*, 8> AllocArgs(1 + NumPlaceArgs);
   // We don't care about the actual value of this argument.
   // FIXME: Should the Sema create the expression and embed it in the syntax
   // tree? Or should the consumer just recalculate the value?
@@ -1315,7 +1325,7 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
 
   FoundDelete.suppressDiagnostics();
 
-  llvm::SmallVector<std::pair<DeclAccessPair,FunctionDecl*>, 2> Matches;
+  SmallVector<std::pair<DeclAccessPair,FunctionDecl*>, 2> Matches;
 
   // Whether we're looking for a placement operator delete is dictated
   // by whether we selected a placement operator new, not by whether
@@ -1342,7 +1352,7 @@ bool Sema::FindAllocationFunctions(SourceLocation StartLoc, SourceRange Range,
       const FunctionProtoType *Proto
         = OperatorNew->getType()->getAs<FunctionProtoType>();
 
-      llvm::SmallVector<QualType, 4> ArgTypes;
+      SmallVector<QualType, 4> ArgTypes;
       ArgTypes.push_back(Context.VoidPtrTy);
       for (unsigned I = 1, N = Proto->getNumArgs(); I < N; ++I)
         ArgTypes.push_back(Proto->getArgType(I));
@@ -1681,7 +1691,7 @@ bool Sema::FindDeallocationFunction(SourceLocation StartLoc, CXXRecordDecl *RD,
 
   Found.suppressDiagnostics();
 
-  llvm::SmallVector<DeclAccessPair,4> Matches;
+  SmallVector<DeclAccessPair,4> Matches;
   for (LookupResult::iterator F = Found.begin(), FEnd = Found.end();
        F != FEnd; ++F) {
     NamedDecl *ND = (*F)->getUnderlyingDecl();
@@ -1717,7 +1727,7 @@ bool Sema::FindDeallocationFunction(SourceLocation StartLoc, CXXRecordDecl *RD,
       Diag(StartLoc, diag::err_ambiguous_suitable_delete_member_function_found)
         << Name << RD;
 
-      for (llvm::SmallVectorImpl<DeclAccessPair>::iterator
+      for (SmallVectorImpl<DeclAccessPair>::iterator
              F = Matches.begin(), FEnd = Matches.end(); F != FEnd; ++F)
         Diag((*F)->getUnderlyingDecl()->getLocation(),
              diag::note_member_declared_here) << Name;
@@ -1782,7 +1792,7 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
                               PDiag(diag::err_delete_incomplete_class_type)))
         return ExprError();
 
-      llvm::SmallVector<CXXConversionDecl*, 4> ObjectPtrConversions;
+      SmallVector<CXXConversionDecl*, 4> ObjectPtrConversions;
 
       CXXRecordDecl *RD = cast<CXXRecordDecl>(Record->getDecl());
       const UnresolvedSetImpl *Conversions = RD->getVisibleConversionFunctions();
@@ -1830,24 +1840,32 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
         << Type << Ex.get()->getSourceRange());
 
     QualType Pointee = Type->getAs<PointerType>()->getPointeeType();
+    QualType PointeeElem = Context.getBaseElementType(Pointee);
+
+    if (unsigned AddressSpace = Pointee.getAddressSpace())
+      return Diag(Ex.get()->getLocStart(), 
+                  diag::err_address_space_qualified_delete)
+               << Pointee.getUnqualifiedType() << AddressSpace;
+
+    CXXRecordDecl *PointeeRD = 0;
     if (Pointee->isVoidType() && !isSFINAEContext()) {
       // The C++ standard bans deleting a pointer to a non-object type, which
       // effectively bans deletion of "void*". However, most compilers support
       // this, so we treat it as a warning unless we're in a SFINAE context.
       Diag(StartLoc, diag::ext_delete_void_ptr_operand)
         << Type << Ex.get()->getSourceRange();
-    } else if (Pointee->isFunctionType() || Pointee->isVoidType())
+    } else if (Pointee->isFunctionType() || Pointee->isVoidType()) {
       return ExprError(Diag(StartLoc, diag::err_delete_operand)
         << Type << Ex.get()->getSourceRange());
-    else if (!Pointee->isDependentType() &&
-             RequireCompleteType(StartLoc, Pointee,
-                                 PDiag(diag::warn_delete_incomplete)
-                                   << Ex.get()->getSourceRange()))
-      return ExprError();
-    else if (unsigned AddressSpace = Pointee.getAddressSpace())
-      return Diag(Ex.get()->getLocStart(), 
-                  diag::err_address_space_qualified_delete)
-               << Pointee.getUnqualifiedType() << AddressSpace;
+    } else if (!Pointee->isDependentType()) {
+      if (!RequireCompleteType(StartLoc, Pointee,
+                               PDiag(diag::warn_delete_incomplete)
+                                 << Ex.get()->getSourceRange())) {
+        if (const RecordType *RT = PointeeElem->getAs<RecordType>())
+          PointeeRD = cast<CXXRecordDecl>(RT->getDecl());
+      }
+    }
+
     // C++ [expr.delete]p2:
     //   [Note: a pointer to a const type can be the operand of a
     //   delete-expression; it is not necessary to cast away the constness
@@ -1867,12 +1885,10 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
     DeclarationName DeleteName = Context.DeclarationNames.getCXXOperatorName(
                                       ArrayForm ? OO_Array_Delete : OO_Delete);
 
-    QualType PointeeElem = Context.getBaseElementType(Pointee);
-    if (const RecordType *RT = PointeeElem->getAs<RecordType>()) {
-      CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
-
+    if (PointeeRD) {
       if (!UseGlobal &&
-          FindDeallocationFunction(StartLoc, RD, DeleteName, OperatorDelete))
+          FindDeallocationFunction(StartLoc, PointeeRD, DeleteName,
+                                   OperatorDelete))
         return ExprError();
 
       // If we're allocating an array of records, check whether the
@@ -1890,8 +1906,8 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
           UsualArrayDeleteWantsSize = (OperatorDelete->getNumParams() == 2);
       }
 
-      if (!RD->hasTrivialDestructor())
-        if (CXXDestructorDecl *Dtor = LookupDestructor(RD)) {
+      if (!PointeeRD->hasTrivialDestructor())
+        if (CXXDestructorDecl *Dtor = LookupDestructor(PointeeRD)) {
           MarkDeclarationReferenced(StartLoc,
                                     const_cast<CXXDestructorDecl*>(Dtor));
           DiagnoseUseOfDecl(Dtor, StartLoc);
@@ -1905,10 +1921,20 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
       //   behavior is undefined.
       //
       // Note: a final class cannot be derived from, no issue there
-      if (!ArrayForm && RD->isPolymorphic() && !RD->hasAttr<FinalAttr>()) {
-        CXXDestructorDecl *dtor = RD->getDestructor();
-        if (!dtor || !dtor->isVirtual())
-          Diag(StartLoc, diag::warn_delete_non_virtual_dtor) << PointeeElem;
+      if (PointeeRD->isPolymorphic() && !PointeeRD->hasAttr<FinalAttr>()) {
+        CXXDestructorDecl *dtor = PointeeRD->getDestructor();
+        if (dtor && !dtor->isVirtual()) {
+          if (PointeeRD->isAbstract()) {
+            // If the class is abstract, we warn by default, because we're
+            // sure the code has undefined behavior.
+            Diag(StartLoc, diag::warn_delete_abstract_non_virtual_dtor)
+                << PointeeElem;
+          } else if (!ArrayForm) {
+            // Otherwise, if this is not an array delete, it's a bit suspect,
+            // but not necessarily wrong.
+            Diag(StartLoc, diag::warn_delete_non_virtual_dtor) << PointeeElem;
+          }
+        }
       }
 
     } else if (getLangOptions().ObjCAutoRefCount &&
@@ -1934,9 +1960,8 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
     MarkDeclarationReferenced(StartLoc, OperatorDelete);
     
     // Check access and ambiguity of operator delete and destructor.
-    if (const RecordType *RT = PointeeElem->getAs<RecordType>()) {
-      CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
-      if (CXXDestructorDecl *Dtor = LookupDestructor(RD)) {
+    if (PointeeRD) {
+      if (CXXDestructorDecl *Dtor = LookupDestructor(PointeeRD)) {
           CheckDestructorAccess(Ex.get()->getExprLoc(), Dtor, 
                       PDiag(diag::err_access_dtor) << PointeeElem);
       }
@@ -2016,12 +2041,20 @@ Sema::IsStringLiteralToNonConstPointerConversion(Expr *From, QualType ToType) {
           = ToPtrType->getPointeeType()->getAs<BuiltinType>()) {
         // This conversion is considered only when there is an
         // explicit appropriate pointer target type (C++ 4.2p2).
-        if (!ToPtrType->getPointeeType().hasQualifiers() &&
-            ((StrLit->isWide() && ToPointeeType->isWideCharType()) ||
-             (!StrLit->isWide() &&
-              (ToPointeeType->getKind() == BuiltinType::Char_U ||
-               ToPointeeType->getKind() == BuiltinType::Char_S))))
-          return true;
+        if (!ToPtrType->getPointeeType().hasQualifiers()) {
+          switch (StrLit->getKind()) {
+            case StringLiteral::UTF8:
+            case StringLiteral::UTF16:
+            case StringLiteral::UTF32:
+              // We don't allow UTF literals to be implicitly converted
+              break;
+            case StringLiteral::Ascii:
+              return (ToPointeeType->getKind() == BuiltinType::Char_U ||
+                      ToPointeeType->getKind() == BuiltinType::Char_S);
+            case StringLiteral::Wide:
+              return ToPointeeType->isWideCharType();
+          }
+        }
       }
 
   return false;
@@ -2231,9 +2264,6 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
       if (!From->isGLValue()) break;
     }
 
-    // Check for trivial buffer overflows.
-    CheckArrayAccess(From);
-
     FromType = FromType.getUnqualifiedType();
     From = ImplicitCastExpr::Create(Context, FromType, CK_LValueToRValue,
                                     From, 0, VK_RValue);
@@ -2330,12 +2360,12 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
         Diag(From->getSourceRange().getBegin(),
              diag::ext_typecheck_convert_incompatible_pointer)
           << ToType << From->getType() << Action
-          << From->getSourceRange();
+          << From->getSourceRange() << 0;
       else
         Diag(From->getSourceRange().getBegin(),
              diag::ext_typecheck_convert_incompatible_pointer)
           << From->getType() << ToType << Action
-          << From->getSourceRange();
+          << From->getSourceRange() << 0;
 
       if (From->getType()->isObjCObjectPointerType() &&
           ToType->isObjCObjectPointerType())
@@ -3828,9 +3858,9 @@ QualType Sema::FindCompositePointerType(SourceLocation Loc,
   // conversions in both directions. If only one works, or if the two composite
   // types are the same, we have succeeded.
   // FIXME: extended qualifiers?
-  typedef llvm::SmallVector<unsigned, 4> QualifierVector;
+  typedef SmallVector<unsigned, 4> QualifierVector;
   QualifierVector QualifierUnion;
-  typedef llvm::SmallVector<std::pair<const Type *, const Type *>, 4>
+  typedef SmallVector<std::pair<const Type *, const Type *>, 4>
       ContainingClassVector;
   ContainingClassVector MemberOfClass;
   QualType Composite1 = Context.getCanonicalType(T1),
@@ -4034,21 +4064,24 @@ ExprResult Sema::MaybeBindToTemporary(Expr *E) {
     // actual method.  FIXME: we should infer retention by selector in
     // cases where we don't have an actual method.
     } else {
-      Decl *D = 0;
+      ObjCMethodDecl *D = 0;
       if (ObjCMessageExpr *Send = dyn_cast<ObjCMessageExpr>(E)) {
         D = Send->getMethodDecl();
       } else {
         CastExpr *CE = cast<CastExpr>(E);
-        // FIXME. What other cast kinds to check for?
-        if (CE->getCastKind() == CK_ObjCProduceObject ||
-            CE->getCastKind() == CK_LValueToRValue)
-          return MaybeBindToTemporary(CE->getSubExpr());
         assert(CE->getCastKind() == CK_GetObjCProperty);
         const ObjCPropertyRefExpr *PRE = CE->getSubExpr()->getObjCProperty();
         D = (PRE->isImplicitProperty() ? PRE->getImplicitPropertyGetter() : 0);
       }
 
       ReturnsRetained = (D && D->hasAttr<NSReturnsRetainedAttr>());
+
+      // Don't do reclaims on performSelector calls; despite their
+      // return type, the invoked method doesn't necessarily actually
+      // return an object.
+      if (!ReturnsRetained &&
+          D && D->getMethodFamily() == OMF_performSelector)
+        return Owned(E);
     }
 
     ExprNeedsCleanups = true;
@@ -4162,7 +4195,7 @@ Sema::ActOnStartCXXMemberReference(Scope *S, Expr *Base, SourceLocation OpLoc,
   if (OpKind == tok::arrow) {
     // The set of types we've considered so far.
     llvm::SmallPtrSet<CanQualType,8> CTypes;
-    llvm::SmallVector<SourceLocation, 8> Locations;
+    SmallVector<SourceLocation, 8> Locations;
     CTypes.insert(Context.getCanonicalType(BaseType));
 
     while (BaseType->isRecordType()) {

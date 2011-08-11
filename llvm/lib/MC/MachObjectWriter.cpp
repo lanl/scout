@@ -12,6 +12,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAssembler.h"
+#include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCObjectWriter.h"
@@ -21,7 +22,6 @@
 #include "llvm/MC/MCValue.h"
 #include "llvm/Object/MachOFormat.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Target/TargetAsmBackend.h"
 
 #include <vector>
 using namespace llvm;
@@ -291,7 +291,7 @@ void MachObjectWriter::WriteNlist(MachSymbolData &MSD,
   const MCSymbol &Symbol = Data.getSymbol();
   uint8_t Type = 0;
   uint16_t Flags = Data.getFlags();
-  uint32_t Address = 0;
+  uint64_t Address = 0;
 
   // Set the N_TYPE bits. See <mach-o/nlist.h>.
   //

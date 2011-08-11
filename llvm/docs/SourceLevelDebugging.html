@@ -298,8 +298,8 @@ height="369">
    of tags are loosely bound to the tag values of DWARF information entries.
    However, that does not restrict the use of the information supplied to DWARF
    targets.  To facilitate versioning of debug information, the tag is augmented
-   with the current debug version (LLVMDebugVersion = 8 &lt;&lt; 16 or 0x80000 or
-   524288.)</a></p>
+   with the current debug version (LLVMDebugVersion = 8 &lt;&lt; 16 or
+   0x80000 or 524288.)</a></p>
 
 <p>The details of the various descriptors follow.</p>  
 
@@ -750,7 +750,9 @@ DW_TAG_inheritance      = 28
   metadata, ;; Reference to file where defined
   i32,      ;; 24 bit - Line number where defined
             ;; 8 bit - Argument number. 1 indicates 1st argument.
-  metadata  ;; Type descriptor
+  metadata, ;; Type descriptor
+  i32,      ;; flags
+  metadata  ;; (optional) Reference to inline location
 }
 </pre>
 </div>
@@ -1794,7 +1796,7 @@ enum Trees {
 
   <a href="mailto:sabre@nondot.org">Chris Lattner</a><br>
   <a href="http://llvm.org/">LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2011-05-31 12:06:14 -0600 (Tue, 31 May 2011) $
+  Last modified: $Date: 2011-07-27 12:14:50 -0600 (Wed, 27 Jul 2011) $
 </address>
 
 </body>

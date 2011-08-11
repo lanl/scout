@@ -54,11 +54,11 @@ PragmaNamespace::~PragmaNamespace() {
 /// specified name.  If not, return the handler for the null identifier if it
 /// exists, otherwise return null.  If IgnoreNull is true (the default) then
 /// the null handler isn't returned on failure to match.
-PragmaHandler *PragmaNamespace::FindHandler(llvm::StringRef Name,
+PragmaHandler *PragmaNamespace::FindHandler(StringRef Name,
                                             bool IgnoreNull) const {
   if (PragmaHandler *Handler = Handlers.lookup(Name))
     return Handler;
-  return IgnoreNull ? 0 : Handlers.lookup(llvm::StringRef());
+  return IgnoreNull ? 0 : Handlers.lookup(StringRef());
 }
 
 void PragmaNamespace::AddPragma(PragmaHandler *Handler) {
@@ -85,7 +85,7 @@ void PragmaNamespace::HandlePragma(Preprocessor &PP,
   // Get the handler for this token.  If there is no handler, ignore the pragma.
   PragmaHandler *Handler
     = FindHandler(Tok.getIdentifierInfo() ? Tok.getIdentifierInfo()->getName()
-                                          : llvm::StringRef(),
+                                          : StringRef(),
                   /*IgnoreNull=*/false);
   if (Handler == 0) {
     PP.Diag(Tok, diag::warn_pragma_ignored);
@@ -210,7 +210,7 @@ void Preprocessor::HandleMicrosoft__pragma(Token &Tok) {
   }
 
   // Get the tokens enclosed within the __pragma(), as well as the final ')'.
-  llvm::SmallVector<Token, 32> PragmaToks;
+  SmallVector<Token, 32> PragmaToks;
   int NumParens = 0;
   Lex(Tok);
   while (Tok.isNot(tok::eof)) {
@@ -353,7 +353,7 @@ void Preprocessor::HandlePragmaDependency(Token &DependencyTok) {
   // Reserve a buffer to get the spelling.
   llvm::SmallString<128> FilenameBuffer;
   bool Invalid = false;
-  llvm::StringRef Filename = getSpelling(FilenameTok, FilenameBuffer, &Invalid);
+  StringRef Filename = getSpelling(FilenameTok, FilenameBuffer, &Invalid);
   if (Invalid)
     return;
 
@@ -368,7 +368,7 @@ void Preprocessor::HandlePragmaDependency(Token &DependencyTok) {
   const DirectoryLookup *CurDir;
   const FileEntry *File = LookupFile(Filename, isAngled, 0, CurDir, NULL, NULL);
   if (File == 0) {
-    Diag(FilenameTok, diag::err_pp_file_not_found) << Filename;
+    Diag(FilenameTok, diag::warn_pp_file_not_found) << Filename;
     return;
   }
 
@@ -436,7 +436,7 @@ void Preprocessor::HandlePragmaComment(Token &Tok) {
     // String concatenation allows multiple strings, which can even come from
     // macro expansion.
     // "foo " "bar" "Baz"
-    llvm::SmallVector<Token, 4> StrToks;
+    SmallVector<Token, 4> StrToks;
     while (Tok.is(tok::string_literal)) {
       StrToks.push_back(Tok);
       Lex(Tok);
@@ -444,7 +444,7 @@ void Preprocessor::HandlePragmaComment(Token &Tok) {
 
     // Concatenate and parse the strings.
     StringLiteralParser Literal(&StrToks[0], StrToks.size(), *this);
-    assert(!Literal.AnyWide && "Didn't allow wide strings in");
+    assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return;
     if (Literal.Pascal) {
@@ -512,7 +512,7 @@ void Preprocessor::HandlePragmaMessage(Token &Tok) {
   // String concatenation allows multiple strings, which can even come from
   // macro expansion.
   // "foo " "bar" "Baz"
-  llvm::SmallVector<Token, 4> StrToks;
+  SmallVector<Token, 4> StrToks;
   while (Tok.is(tok::string_literal)) {
     StrToks.push_back(Tok);
     Lex(Tok);
@@ -520,7 +520,7 @@ void Preprocessor::HandlePragmaMessage(Token &Tok) {
 
   // Concatenate and parse the strings.
   StringLiteralParser Literal(&StrToks[0], StrToks.size(), *this);
-  assert(!Literal.AnyWide && "Didn't allow wide strings in");
+  assert(Literal.isAscii() && "Didn't allow wide strings in");
   if (Literal.hadError)
     return;
   if (Literal.Pascal) {
@@ -528,7 +528,7 @@ void Preprocessor::HandlePragmaMessage(Token &Tok) {
     return;
   }
 
-  llvm::StringRef MessageString(Literal.GetString());
+  StringRef MessageString(Literal.GetString());
 
   if (ExpectClosingParen) {
     if (Tok.isNot(tok::r_paren)) {
@@ -662,7 +662,7 @@ void Preprocessor::HandlePragmaPopMacro(Token &PopMacroTok) {
 /// AddPragmaHandler - Add the specified pragma handler to the preprocessor.
 /// If 'Namespace' is non-null, then it is a token required to exist on the
 /// pragma line before the pragma string starts, e.g. "STDC" or "GCC".
-void Preprocessor::AddPragmaHandler(llvm::StringRef Namespace,
+void Preprocessor::AddPragmaHandler(StringRef Namespace,
                                     PragmaHandler *Handler) {
   PragmaNamespace *InsertNS = PragmaHandlers;
 
@@ -693,7 +693,7 @@ void Preprocessor::AddPragmaHandler(llvm::StringRef Namespace,
 /// preprocessor. If \arg Namespace is non-null, then it should be the
 /// namespace that \arg Handler was added to. It is an error to remove
 /// a handler that has not been registered.
-void Preprocessor::RemovePragmaHandler(llvm::StringRef Namespace,
+void Preprocessor::RemovePragmaHandler(StringRef Namespace,
                                        PragmaHandler *Handler) {
   PragmaNamespace *NS = PragmaHandlers;
 
@@ -889,7 +889,7 @@ public:
     // String concatenation allows multiple strings, which can even come from
     // macro expansion.
     // "foo " "bar" "Baz"
-    llvm::SmallVector<Token, 4> StrToks;
+    SmallVector<Token, 4> StrToks;
     while (Tok.is(tok::string_literal)) {
       StrToks.push_back(Tok);
       PP.LexUnexpandedToken(Tok);
@@ -902,7 +902,7 @@ public:
 
     // Concatenate and parse the strings.
     StringLiteralParser Literal(&StrToks[0], StrToks.size(), PP);
-    assert(!Literal.AnyWide && "Didn't allow wide strings in");
+    assert(Literal.isAscii() && "Didn't allow wide strings in");
     if (Literal.hadError)
       return;
     if (Literal.Pascal) {
@@ -910,7 +910,7 @@ public:
       return;
     }
 
-    llvm::StringRef WarningName(Literal.GetString());
+    StringRef WarningName(Literal.GetString());
 
     if (WarningName.size() < 3 || WarningName[0] != '-' ||
         WarningName[1] != 'W') {

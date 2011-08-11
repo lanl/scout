@@ -11,10 +11,10 @@ tablegen(X86GenFastISel.inc -gen-fast-isel)
 tablegen(X86GenCallingConv.inc -gen-callingconv)
 tablegen(X86GenSubtargetInfo.inc -gen-subtarget)
 tablegen(X86GenEDInfo.inc -gen-enhanced-disassembly-info)
+add_public_tablegen_target(X86CommonTableGen)
 
 set(sources
   SSEDomainFix.cpp
-  X86AsmBackend.cpp
   X86AsmPrinter.cpp
   X86COFFMachineModuleInfo.cpp
   X86CodeEmitter.cpp
@@ -26,9 +26,6 @@ set(sources
   X86ISelLowering.cpp
   X86InstrInfo.cpp
   X86JITInfo.cpp
-  X86MachObjectWriter.cpp
-  X86MCAsmInfo.cpp
-  X86MCCodeEmitter.cpp 
   X86MCInstLower.cpp
   X86RegisterInfo.cpp
   X86SelectionDAGInfo.cpp
@@ -53,6 +50,19 @@ if( CMAKE_CL_64 )
 endif()
 
 add_llvm_target(X86CodeGen ${sources})
+
+add_llvm_library_dependencies(LLVMX86CodeGen
+  LLVMAnalysis
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
+  LLVMX86AsmPrinter
+  LLVMX86Desc
+  )
 
 add_subdirectory(AsmParser)
 add_subdirectory(Disassembler)

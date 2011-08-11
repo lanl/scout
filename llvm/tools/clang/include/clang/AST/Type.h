@@ -22,21 +22,20 @@
 #include "clang/Basic/Visibility.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateName.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/type_traits.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
-
-#include <iostream>
+#include "clang/Basic/LLVM.h"
 
 using llvm::isa;
 using llvm::cast;
 using llvm::cast_or_null;
 using llvm::dyn_cast;
 using llvm::dyn_cast_or_null;
+
 namespace clang {
   enum {
     TypeAlignmentInBits = 4,
@@ -515,6 +514,9 @@ public:
 
   const Type *getTypePtrOrNull() const;
 
+  /// Retrieves a pointer to the name of the base type.
+  const IdentifierInfo *getBaseTypeIdentifier() const;
+
   /// Divides a QualType into its unqualified type and a set of local
   /// qualifiers.
   SplitQualType split() const;
@@ -763,6 +765,13 @@ public:
   SplitQualType getSplitDesugaredType() const {
     return getSplitDesugaredType(*this);
   }
+
+  /// \brief Return the specified type with one level of "sugar" removed from
+  /// the type.
+  ///
+  /// This routine takes off the first typedef, typeof, etc. If the outer level
+  /// of the type is already concrete, it returns it unmodified.
+  QualType getSingleStepDesugaredType(const ASTContext &Context) const;
 
   /// IgnoreParens - Returns the specified type after dropping any
   /// outer-level parentheses.
@@ -1373,6 +1382,8 @@ public:
   bool isBooleanType() const;
   bool isCharType() const;
   bool isWideCharType() const;
+  bool isChar16Type() const;
+  bool isChar32Type() const;
   bool isAnyCharacterType() const;
   bool isIntegralType(ASTContext &Ctx) const;
 
@@ -2659,7 +2670,7 @@ public:
     return getResultType().getNonLValueExprType(Context);
   }
 
-  static llvm::StringRef getNameForCallConv(CallingConv CC);
+  static StringRef getNameForCallConv(CallingConv CC);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == FunctionNoProto ||
@@ -2983,7 +2994,7 @@ public:
   QualType desugar() const;
 
   /// \brief Returns whether this type directly provides sugar.
-  bool isSugared() const { return true; }
+  bool isSugared() const;
 
   static bool classof(const Type *T) { return T->getTypeClass() == TypeOfExpr; }
   static bool classof(const TypeOfExprType *) { return true; }
@@ -3002,9 +3013,6 @@ class DependentTypeOfExprType
 public:
   DependentTypeOfExprType(const ASTContext &Context, Expr *E)
     : TypeOfExprType(E), Context(Context) { }
-
-  bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, Context, getUnderlyingExpr());
@@ -3056,10 +3064,10 @@ public:
   QualType getUnderlyingType() const { return UnderlyingType; }
 
   /// \brief Remove a single level of sugar.
-  QualType desugar() const { return getUnderlyingType(); }
+  QualType desugar() const;
 
   /// \brief Returns whether this type directly provides sugar.
-  bool isSugared() const { return !isDependentType(); }
+  bool isSugared() const;
 
   static bool classof(const Type *T) { return T->getTypeClass() == Decltype; }
   static bool classof(const DecltypeType *) { return true; }
@@ -3076,9 +3084,6 @@ class DependentDecltypeType : public DecltypeType, public llvm::FoldingSetNode {
 
 public:
   DependentDecltypeType(const ASTContext &Context, Expr *E);
-
-  bool isSugared() const { return false; }
-  QualType desugar() const { return QualType(this, 0); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
     Profile(ID, Context, getUnderlyingExpr());
@@ -3185,17 +3190,17 @@ public:
     FacesInstance,
     EdgesInstance
   };
-  
+
 private:
-  
+
   MeshDecl* decl;
   InstanceType instanceType;
-  
+
 public:
 
   MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
     : Type(Mesh, QualType(), false, false, false, false),
-  decl(const_cast<MeshDecl*>(D)), instanceType(IT) {} 
+  decl(const_cast<MeshDecl*>(D)), instanceType(IT) {}
 
   MeshDecl* getDecl() const {
     return decl;
@@ -3204,7 +3209,7 @@ public:
   InstanceType getInstanceType() const{
     return instanceType;
   }
-  
+
   bool isBeingDefined() const;
 
   bool isSugared() const { return false; }

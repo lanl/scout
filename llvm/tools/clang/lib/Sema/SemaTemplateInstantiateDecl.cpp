@@ -239,8 +239,6 @@ TemplateDeclInstantiator::VisitTypeAliasTemplateDecl(TypeAliasTemplateDecl *D) {
 /// \brief Instantiate an initializer, breaking it into separate
 /// initialization arguments.
 ///
-/// \param S The semantic analysis object.
-///
 /// \param Init The initializer to instantiate.
 ///
 /// \param TemplateArgs Template arguments to be substituted into the
@@ -249,11 +247,11 @@ TemplateDeclInstantiator::VisitTypeAliasTemplateDecl(TypeAliasTemplateDecl *D) {
 /// \param NewArgs Will be filled in with the instantiation arguments.
 ///
 /// \returns true if an error occurred, false otherwise
-static bool InstantiateInitializer(Sema &S, Expr *Init,
+bool Sema::InstantiateInitializer(Expr *Init,
                             const MultiLevelTemplateArgumentList &TemplateArgs,
-                                   SourceLocation &LParenLoc,
-                                   ASTOwningVector<Expr*> &NewArgs,
-                                   SourceLocation &RParenLoc) {
+                                  SourceLocation &LParenLoc,
+                                  ASTOwningVector<Expr*> &NewArgs,
+                                  SourceLocation &RParenLoc) {
   NewArgs.clear();
   LParenLoc = SourceLocation();
   RParenLoc = SourceLocation();
@@ -273,24 +271,24 @@ static bool InstantiateInitializer(Sema &S, Expr *Init,
   if (ParenListExpr *ParenList = dyn_cast<ParenListExpr>(Init)) {
     LParenLoc = ParenList->getLParenLoc();
     RParenLoc = ParenList->getRParenLoc();
-    return S.SubstExprs(ParenList->getExprs(), ParenList->getNumExprs(),
-                        true, TemplateArgs, NewArgs);
+    return SubstExprs(ParenList->getExprs(), ParenList->getNumExprs(),
+                      true, TemplateArgs, NewArgs);
   }
 
   if (CXXConstructExpr *Construct = dyn_cast<CXXConstructExpr>(Init)) {
     if (!isa<CXXTemporaryObjectExpr>(Construct)) {
-      if (S.SubstExprs(Construct->getArgs(), Construct->getNumArgs(), true,
-                       TemplateArgs, NewArgs))
+      if (SubstExprs(Construct->getArgs(), Construct->getNumArgs(), true,
+                     TemplateArgs, NewArgs))
         return true;
 
       // FIXME: Fake locations!
-      LParenLoc = S.PP.getLocForEndOfToken(Init->getLocStart());
+      LParenLoc = PP.getLocForEndOfToken(Init->getLocStart());
       RParenLoc = LParenLoc;
       return false;
     }
   }
  
-  ExprResult Result = S.SubstExpr(Init, TemplateArgs);
+  ExprResult Result = SubstExpr(Init, TemplateArgs);
   if (Result.isInvalid())
     return true;
 
@@ -386,8 +384,8 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D) {
     // Instantiate the initializer.
     SourceLocation LParenLoc, RParenLoc;
     ASTOwningVector<Expr*> InitArgs(SemaRef);
-    if (!InstantiateInitializer(SemaRef, D->getInit(), TemplateArgs, LParenLoc,
-                                InitArgs, RParenLoc)) {
+    if (!SemaRef.InstantiateInitializer(D->getInit(), TemplateArgs, LParenLoc,
+                                        InitArgs, RParenLoc)) {
       bool TypeMayContainAuto = true;
       // Attach the initializer to the declaration, if we have one.
       if (InitArgs.size() == 0)
@@ -642,7 +640,7 @@ Decl *TemplateDeclInstantiator::VisitEnumDecl(EnumDecl *D) {
   if (D->getDeclContext()->isFunctionOrMethod())
     SemaRef.CurrentInstantiationScope->InstantiatedLocal(D, Enum);
     
-  llvm::SmallVector<Decl*, 4> Enumerators;
+  SmallVector<Decl*, 4> Enumerators;
 
   EnumConstantDecl *LastEnumConst = 0;
   for (EnumDecl::enumerator_iterator EC = D->enumerator_begin(),
@@ -876,7 +874,7 @@ Decl *TemplateDeclInstantiator::VisitClassTemplateDecl(ClassTemplateDecl *D) {
     // Queue up any out-of-line partial specializations of this member
     // class template; the client will force their instantiation once
     // the enclosing class has been instantiated.
-    llvm::SmallVector<ClassTemplatePartialSpecializationDecl *, 4> PartialSpecs;
+    SmallVector<ClassTemplatePartialSpecializationDecl *, 4> PartialSpecs;
     D->getPartialSpecializations(PartialSpecs);
     for (unsigned I = 0, N = PartialSpecs.size(); I != N; ++I)
       if (PartialSpecs[I]->isOutOfLine())
@@ -1042,7 +1040,7 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
       cast<Decl>(Owner)->isDefinedOutsideFunctionOrMethod());
   LocalInstantiationScope Scope(SemaRef, MergeWithParentScope);
 
-  llvm::SmallVector<ParmVarDecl *, 4> Params;
+  SmallVector<ParmVarDecl *, 4> Params;
   TypeSourceInfo *TInfo = D->getTypeSourceInfo();
   TInfo = SubstFunctionType(D, Params);
   if (!TInfo)
@@ -1321,7 +1319,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   LocalInstantiationScope Scope(SemaRef, MergeWithParentScope);
 
   // Instantiate enclosing template arguments for friends.
-  llvm::SmallVector<TemplateParameterList *, 4> TempParamLists;
+  SmallVector<TemplateParameterList *, 4> TempParamLists;
   unsigned NumTempParamLists = 0;
   if (isFriend && (NumTempParamLists = D->getNumTemplateParameterLists())) {
     TempParamLists.set_size(NumTempParamLists);
@@ -1334,7 +1332,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
     }
   }
 
-  llvm::SmallVector<ParmVarDecl *, 4> Params;
+  SmallVector<ParmVarDecl *, 4> Params;
   TypeSourceInfo *TInfo = D->getTypeSourceInfo();
   TInfo = SubstFunctionType(D, Params);
   if (!TInfo)
@@ -1352,7 +1350,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   // synthesized in the method declaration.
   if (!isa<FunctionProtoType>(T.IgnoreParens())) {
     assert(!Params.size() && "Instantiating type could not yield parameters");
-    llvm::SmallVector<QualType, 4> ParamTypes;
+    SmallVector<QualType, 4> ParamTypes;
     if (SemaRef.SubstParmTypes(D->getLocation(), D->param_begin(), 
                                D->getNumParams(), TemplateArgs, ParamTypes, 
                                &Params))
@@ -1573,8 +1571,8 @@ Decl *TemplateDeclInstantiator::VisitNonTypeTemplateParmDecl(
                                                  NonTypeTemplateParmDecl *D) {
   // Substitute into the type of the non-type template parameter.
   TypeLoc TL = D->getTypeSourceInfo()->getTypeLoc();
-  llvm::SmallVector<TypeSourceInfo *, 4> ExpandedParameterPackTypesAsWritten;
-  llvm::SmallVector<QualType, 4> ExpandedParameterPackTypes;
+  SmallVector<TypeSourceInfo *, 4> ExpandedParameterPackTypesAsWritten;
+  SmallVector<QualType, 4> ExpandedParameterPackTypes;
   bool IsExpandedParameterPack = false;
   TypeSourceInfo *DI;  
   QualType T;
@@ -1610,7 +1608,7 @@ Decl *TemplateDeclInstantiator::VisitNonTypeTemplateParmDecl(
     // types.
     PackExpansionTypeLoc Expansion = cast<PackExpansionTypeLoc>(TL);
     TypeLoc Pattern = Expansion.getPatternLoc();
-    llvm::SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+    SmallVector<UnexpandedParameterPack, 2> Unexpanded;
     SemaRef.collectUnexpandedParameterPacks(Pattern, Unexpanded);
     
     // Determine whether the set of unexpanded parameter packs can and should
@@ -1930,7 +1928,7 @@ TemplateDeclInstantiator::SubstTemplateParams(TemplateParameterList *L) {
   bool Invalid = false;
 
   unsigned N = L->size();
-  typedef llvm::SmallVector<NamedDecl *, 8> ParamVector;
+  typedef SmallVector<NamedDecl *, 8> ParamVector;
   ParamVector Params;
   Params.reserve(N);
   for (TemplateParameterList::iterator PI = L->begin(), PE = L->end();
@@ -1988,7 +1986,7 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
   
   // Check that the template argument list is well-formed for this
   // class template.
-  llvm::SmallVector<TemplateArgument, 4> Converted;
+  SmallVector<TemplateArgument, 4> Converted;
   if (SemaRef.CheckTemplateArgumentList(ClassTemplate, 
                                         PartialSpec->getLocation(),
                                         InstTemplateArgs, 
@@ -2078,7 +2076,7 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
 
 TypeSourceInfo*
 TemplateDeclInstantiator::SubstFunctionType(FunctionDecl *D,
-                              llvm::SmallVectorImpl<ParmVarDecl *> &Params) {
+                              SmallVectorImpl<ParmVarDecl *> &Params) {
   TypeSourceInfo *OldTInfo = D->getTypeSourceInfo();
   assert(OldTInfo && "substituting function without type source info");
   assert(Params.empty() && "parameter vector is non-empty at start");
@@ -2184,13 +2182,13 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
   if (Proto->hasExceptionSpec() || Proto->getNoReturnAttr()) {
     // The function has an exception specification or a "noreturn"
     // attribute. Substitute into each of the exception types.
-    llvm::SmallVector<QualType, 4> Exceptions;
+    SmallVector<QualType, 4> Exceptions;
     for (unsigned I = 0, N = Proto->getNumExceptions(); I != N; ++I) {
       // FIXME: Poor location information!
       if (const PackExpansionType *PackExpansion
             = Proto->getExceptionType(I)->getAs<PackExpansionType>()) {
         // We have a pack expansion. Instantiate it.
-        llvm::SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+        SmallVector<UnexpandedParameterPack, 2> Unexpanded;
         SemaRef.collectUnexpandedParameterPacks(PackExpansion->getPattern(),
                                                 Unexpanded);
         assert(!Unexpanded.empty() && 
@@ -2409,7 +2407,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   // If we're performing recursive template instantiation, create our own
   // queue of pending implicit instantiations that we will instantiate later,
   // while we're still within our own instantiation context.
-  llvm::SmallVector<VTableUse, 16> SavedVTableUses;
+  SmallVector<VTableUse, 16> SavedVTableUses;
   std::deque<PendingImplicitInstantiation> SavedPendingInstantiations;
   if (Recursive) {
     VTableUses.swap(SavedVTableUses);
@@ -2591,7 +2589,7 @@ void Sema::InstantiateStaticDataMemberDefinition(
   // If we're performing recursive template instantiation, create our own
   // queue of pending implicit instantiations that we will instantiate later,
   // while we're still within our own instantiation context.
-  llvm::SmallVector<VTableUse, 16> SavedVTableUses;
+  SmallVector<VTableUse, 16> SavedVTableUses;
   std::deque<PendingImplicitInstantiation> SavedPendingInstantiations;
   if (Recursive) {
     VTableUses.swap(SavedVTableUses);
@@ -2644,7 +2642,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
                                  const CXXConstructorDecl *Tmpl,
                            const MultiLevelTemplateArgumentList &TemplateArgs) {
 
-  llvm::SmallVector<MemInitTy*, 4> NewInits;
+  SmallVector<MemInitTy*, 4> NewInits;
   bool AnyErrors = false;
   
   // Instantiate all the initializers.
@@ -2666,7 +2664,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
     if (Init->isPackExpansion()) {
       // This is a pack expansion. We should expand it now.
       TypeLoc BaseTL = Init->getBaseClassInfo()->getTypeLoc();
-      llvm::SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+      SmallVector<UnexpandedParameterPack, 2> Unexpanded;
       collectUnexpandedParameterPacks(BaseTL, Unexpanded);
       bool ShouldExpand = false;
       bool RetainExpansion = false;
@@ -2689,7 +2687,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
         Sema::ArgumentPackSubstitutionIndexRAII SubstIndex(*this, I);
 
         // Instantiate the initializer.
-        if (InstantiateInitializer(*this, Init->getInit(), TemplateArgs, 
+        if (InstantiateInitializer(Init->getInit(), TemplateArgs, 
                                    LParenLoc, NewArgs, RParenLoc)) {
           AnyErrors = true;
           break;
@@ -2727,7 +2725,7 @@ Sema::InstantiateMemInitializers(CXXConstructorDecl *New,
     }
 
     // Instantiate the initializer.
-    if (InstantiateInitializer(*this, Init->getInit(), TemplateArgs, 
+    if (InstantiateInitializer(Init->getInit(), TemplateArgs, 
                                LParenLoc, NewArgs, RParenLoc)) {
       AnyErrors = true;
       continue;
@@ -3231,6 +3229,14 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
 /// \brief Performs template instantiation for all implicit template
 /// instantiations we have seen until this point.
 void Sema::PerformPendingInstantiations(bool LocalOnly) {
+  // Load pending instantiations from the external source.
+  if (!LocalOnly && ExternalSource) {
+    SmallVector<std::pair<ValueDecl *, SourceLocation>, 4> Pending;
+    ExternalSource->ReadPendingInstantiations(Pending);
+    PendingInstantiations.insert(PendingInstantiations.begin(),
+                                 Pending.begin(), Pending.end());
+  }
+  
   while (!PendingLocalImplicitInstantiations.empty() ||
          (!LocalOnly && !PendingInstantiations.empty())) {
     PendingImplicitInstantiation Inst;

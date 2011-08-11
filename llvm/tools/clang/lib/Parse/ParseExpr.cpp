@@ -303,15 +303,15 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
         // Eat the colon.
         ColonLoc = ConsumeToken();
       } else {
-        // Otherwise, we're missing a ':'.  Assume that this was a typo that the
-        // user forgot.  If we're not in a macro instantiation, we can suggest a
-        // fixit hint.  If there were two spaces before the current token,
+        // Otherwise, we're missing a ':'.  Assume that this was a typo that
+        // the user forgot. If we're not in a macro expansion, we can suggest
+        // a fixit hint. If there were two spaces before the current token,
         // suggest inserting the colon in between them, otherwise insert ": ".
         SourceLocation FILoc = Tok.getLocation();
         const char *FIText = ": ";
         const SourceManager &SM = PP.getSourceManager();
-        if (FILoc.isFileID() || PP.isAtStartOfMacroInstantiation(FILoc)) {
-          FILoc = SM.getInstantiationLoc(FILoc);
+        if (FILoc.isFileID() || PP.isAtStartOfMacroExpansion(FILoc)) {
+          FILoc = SM.getExpansionLoc(FILoc);
           bool IsInvalid = false;
           const char *SourcePtr =
             SM.getCharacterData(FILoc.getFileLocWithOffset(-1), &IsInvalid);
@@ -769,6 +769,9 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     break;
   }
   case tok::char_constant:     // constant: character-constant
+  case tok::wide_char_constant:
+  case tok::utf16_char_constant:
+  case tok::utf32_char_constant:
     Res = Actions.ActOnCharacterConstant(Tok);
     ConsumeToken();
     break;
@@ -780,6 +783,9 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     break;
   case tok::string_literal:    // primary-expression: string-literal
   case tok::wide_string_literal:
+  case tok::utf8_string_literal:
+  case tok::utf16_string_literal:
+  case tok::utf32_string_literal:
     Res = ParseStringLiteralExpression();
     break;
   case tok::kw__Generic:   // primary-expression: generic-selection [C1X 6.5.1]
@@ -1134,6 +1140,16 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
                                NotCastExpr, isTypeCast);
   }
   case tok::l_square:
+    if (getLang().CPlusPlus0x) {
+      if (getLang().ObjC1) {
+        Res = TryParseLambdaExpression();
+        if (Res.isInvalid())
+          Res = ParseObjCMessageExpression();
+        break;
+      }
+      Res = ParseLambdaExpression();
+      break;
+    }
     if (getLang().ObjC1) {
       Res = ParseObjCMessageExpression();
       break;
@@ -1632,7 +1648,7 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
     }
 
     // Keep track of the various subcomponents we see.
-    llvm::SmallVector<Sema::OffsetOfComponent, 4> Comps;
+    SmallVector<Sema::OffsetOfComponent, 4> Comps;
 
     Comps.push_back(Sema::OffsetOfComponent());
     Comps.back().isBrackets = false;
@@ -2003,7 +2019,7 @@ ExprResult Parser::ParseStringLiteralExpression() {
 
   // String concat.  Note that keywords like __func__ and __FUNCTION__ are not
   // considered to be strings for concatenation purposes.
-  llvm::SmallVector<Token, 4> StringToks;
+  SmallVector<Token, 4> StringToks;
 
   do {
     StringToks.push_back(Tok);
@@ -2129,8 +2145,8 @@ ExprResult Parser::ParseGenericSelectionExpression() {
 /// [C++0x]   assignment-expression
 /// [C++0x]   braced-init-list
 ///
-bool Parser::ParseExpressionList(llvm::SmallVectorImpl<Expr*> &Exprs,
-                            llvm::SmallVectorImpl<SourceLocation> &CommaLocs,
+bool Parser::ParseExpressionList(SmallVectorImpl<Expr*> &Exprs,
+                            SmallVectorImpl<SourceLocation> &CommaLocs,
                                  void (Sema::*Completer)(Scope *S, 
                                                            Expr *Data,
                                                            Expr **Args,
@@ -2258,6 +2274,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
                                                        SourceLocation(),
                                                        0, 0, 0,
                                                        true, SourceLocation(),
+                                                       SourceLocation(),
                                                        EST_None,
                                                        SourceLocation(),
                                                        0, 0, 0, 0,

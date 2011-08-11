@@ -111,9 +111,17 @@ Function *DIDescriptor::getFunctionField(unsigned Elt) const {
 unsigned DIVariable::getNumAddrElements() const {
   if (getVersion() <= llvm::LLVMDebugVersion8)
     return DbgNode->getNumOperands()-6;
-  return DbgNode->getNumOperands()-7;
+  if (getVersion() == llvm::LLVMDebugVersion9)
+    return DbgNode->getNumOperands()-7;
+  return DbgNode->getNumOperands()-8;
 }
 
+/// getInlinedAt - If this variable is inlined then return inline location.
+MDNode *DIVariable::getInlinedAt() const {
+  if (getVersion() <= llvm::LLVMDebugVersion9)
+    return NULL;
+  return dyn_cast_or_null<MDNode>(DbgNode->getOperand(7));
+}
 
 //===----------------------------------------------------------------------===//
 // Predicates
@@ -666,6 +674,42 @@ void DIGlobalVariable::print(raw_ostream &OS) const {
   OS << "]\n";
 }
 
+static void printDebugLoc(DebugLoc DL, raw_ostream &CommentOS,
+                          const LLVMContext &Ctx) {
+  if (!DL.isUnknown()) {          // Print source line info.
+    DIScope Scope(DL.getScope(Ctx));
+    // Omit the directory, because it's likely to be long and uninteresting.
+    if (Scope.Verify())
+      CommentOS << Scope.getFilename();
+    else
+      CommentOS << "<unknown>";
+    CommentOS << ':' << DL.getLine();
+    if (DL.getCol() != 0)
+      CommentOS << ':' << DL.getCol();
+    DebugLoc InlinedAtDL = DebugLoc::getFromDILocation(DL.getInlinedAt(Ctx));
+    if (!InlinedAtDL.isUnknown()) {
+      CommentOS << " @[ ";
+      printDebugLoc(InlinedAtDL, CommentOS, Ctx);
+      CommentOS << " ]";
+    }
+  }
+}
+
+void DIVariable::printExtendedName(raw_ostream &OS) const {
+  const LLVMContext &Ctx = DbgNode->getContext();
+  StringRef Res = getName();
+  if (!Res.empty())
+    OS << Res << "," << getLineNumber();
+  if (MDNode *InlinedAt = getInlinedAt()) {
+    DebugLoc InlinedAtDL = DebugLoc::getFromDILocation(InlinedAt);
+    if (!InlinedAtDL.isUnknown()) {
+      OS << " @[";
+      printDebugLoc(InlinedAtDL, OS, Ctx);
+      OS << "]";
+    }
+  }
+}
+
 /// print - Print variable.
 void DIVariable::print(raw_ostream &OS) const {
   StringRef Res = getName();
@@ -760,6 +804,30 @@ NamedMDNode *llvm::getOrInsertFnSpecificMDNode(Module &M, StringRef FuncName) {
   return M.getOrInsertNamedMetadata(Name.str());
 }
 
+/// createInlinedVariable - Create a new inlined variable based on current
+/// variable.
+/// @param DV            Current Variable.
+/// @param InlinedScope  Location at current variable is inlined.
+DIVariable llvm::createInlinedVariable(MDNode *DV, MDNode *InlinedScope,
+                                       LLVMContext &VMContext) {
+  SmallVector<Value *, 16> Elts;
+  // Insert inlined scope as 7th element.
+  for (unsigned i = 0, e = DV->getNumOperands(); i != e; ++i)
+    i == 7 ? Elts.push_back(InlinedScope) :
+             Elts.push_back(DV->getOperand(i));
+  return DIVariable(MDNode::get(VMContext, Elts));
+}
+
+/// cleanseInlinedVariable - Remove inlined scope from the variable.
+DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
+  SmallVector<Value *, 16> Elts;
+  // Insert inlined scope as 7th element.
+  for (unsigned i = 0, e = DV->getNumOperands(); i != e; ++i)
+    i == 7 ? 
+      Elts.push_back(llvm::Constant::getNullValue(Type::getInt32Ty(VMContext))):
+      Elts.push_back(DV->getOperand(i));
+  return DIVariable(MDNode::get(VMContext, Elts));
+}
 
 //===----------------------------------------------------------------------===//
 // DebugInfoFinder implementations.

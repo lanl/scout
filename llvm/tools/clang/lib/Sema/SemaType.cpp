@@ -31,32 +31,6 @@
 #include "llvm/Support/ErrorHandling.h"
 using namespace clang;
 
-/// \brief Perform adjustment on the parameter type of a function.
-///
-/// This routine adjusts the given parameter type @p T to the actual
-/// parameter type used by semantic analysis (C99 6.7.5.3p[7,8],
-/// C++ [dcl.fct]p3). The adjusted parameter type is returned.
-QualType Sema::adjustParameterType(QualType T) {
-  // C99 6.7.5.3p7:
-  //   A declaration of a parameter as "array of type" shall be
-  //   adjusted to "qualified pointer to type", where the type
-  //   qualifiers (if any) are those specified within the [ and ] of
-  //   the array type derivation.
-  if (T->isArrayType())
-    return Context.getArrayDecayedType(T);
-  
-  // C99 6.7.5.3p8:
-  //   A declaration of a parameter as "function returning type"
-  //   shall be adjusted to "pointer to function returning type", as
-  //   in 6.3.2.1.
-  if (T->isFunctionType())
-    return Context.getPointerType(T);
-
-  return T;
-}
-
-
-
 /// isOmittedBlockReturnType - Return true if this declarator is missing a
 /// return type because this is a omitted return type on a block literal. 
 static bool isOmittedBlockReturnType(const Declarator &D) {
@@ -78,18 +52,18 @@ static bool isOmittedBlockReturnType(const Declarator &D) {
 /// doesn't apply to the given type.
 static void diagnoseBadTypeAttribute(Sema &S, const AttributeList &attr,
                                      QualType type) {
-  bool useInstantiationLoc = false;
+  bool useExpansionLoc = false;
 
   unsigned diagID = 0;
   switch (attr.getKind()) {
   case AttributeList::AT_objc_gc:
     diagID = diag::warn_pointer_attribute_wrong_type;
-    useInstantiationLoc = true;
+    useExpansionLoc = true;
     break;
 
   case AttributeList::AT_objc_ownership:
     diagID = diag::warn_objc_object_attribute_wrong_type;
-    useInstantiationLoc = true;
+    useExpansionLoc = true;
     break;
 
   default:
@@ -99,10 +73,10 @@ static void diagnoseBadTypeAttribute(Sema &S, const AttributeList &attr,
   }
 
   SourceLocation loc = attr.getLoc();
-  llvm::StringRef name = attr.getName()->getName();
+  StringRef name = attr.getName()->getName();
 
   // The GC attributes are usually written with macros;  special-case them.
-  if (useInstantiationLoc && loc.isMacroID() && attr.getParameterName()) {
+  if (useExpansionLoc && loc.isMacroID() && attr.getParameterName()) {
     if (attr.getParameterName()->isStr("strong")) {
       if (S.findMacroSpelling(loc, "__strong")) name = "__strong";
     } else if (attr.getParameterName()->isStr("weak")) {
@@ -151,11 +125,11 @@ namespace {
     bool hasSavedAttrs;
 
     /// The original set of attributes on the DeclSpec.
-    llvm::SmallVector<AttributeList*, 2> savedAttrs;
+    SmallVector<AttributeList*, 2> savedAttrs;
 
     /// A list of attributes to diagnose the uselessness of when the
     /// processing is complete.
-    llvm::SmallVector<AttributeList*, 2> ignoredTypeAttrs;
+    SmallVector<AttributeList*, 2> ignoredTypeAttrs;
 
   public:
     TypeProcessingState(Sema &sema, Declarator &declarator)
@@ -209,7 +183,7 @@ namespace {
     /// Diagnose all the ignored type attributes, given that the
     /// declarator worked out to the given type.
     void diagnoseIgnoredTypeAttrs(QualType type) const {
-      for (llvm::SmallVectorImpl<AttributeList*>::const_iterator
+      for (SmallVectorImpl<AttributeList*>::const_iterator
              i = ignoredTypeAttrs.begin(), e = ignoredTypeAttrs.end();
            i != e; ++i)
         diagnoseBadTypeAttribute(getSema(), **i, type);
@@ -581,6 +555,7 @@ static void maybeSynthesizeBlockSignature(TypeProcessingState &state,
                              /*args*/ 0, 0,
                              /*type quals*/ 0,
                              /*ref-qualifier*/true, SourceLocation(),
+                             /*mutable qualifier*/SourceLocation(),
                              /*EH*/ EST_None, SourceLocation(), 0, 0, 0, 0,
                              /*parens*/ loc, loc,
                              declarator));
@@ -1516,7 +1491,7 @@ QualType Sema::BuildFunctionType(QualType T,
        
   bool Invalid = false;
   for (unsigned Idx = 0; Idx < NumParamTypes; ++Idx) {
-    QualType ParamType = adjustParameterType(ParamTypes[Idx]);
+    QualType ParamType = Context.getAdjustedParameterType(ParamTypes[Idx]);
     if (ParamType->isVoidType()) {
       Diag(Loc, diag::err_param_with_void_type);
       Invalid = true;
@@ -1796,6 +1771,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
   TagDecl *OwnedTagDecl = 0;
 
   switch (D.getName().getKind()) {
+  case UnqualifiedId::IK_ImplicitSelfParam:
   case UnqualifiedId::IK_OperatorFunctionId:
   case UnqualifiedId::IK_Identifier:
   case UnqualifiedId::IK_LiteralOperatorId:
@@ -2220,10 +2196,10 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         
         // Otherwise, we have a function with an argument list that is
         // potentially variadic.
-        llvm::SmallVector<QualType, 16> ArgTys;
+        SmallVector<QualType, 16> ArgTys;
         ArgTys.reserve(FTI.NumArgs);
 
-        llvm::SmallVector<bool, 16> ConsumedArguments;
+        SmallVector<bool, 16> ConsumedArguments;
         ConsumedArguments.reserve(FTI.NumArgs);
         bool HasAnyConsumedArguments = false;
 
@@ -2233,7 +2209,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           assert(!ArgTy.isNull() && "Couldn't parse type?");
 
           // Adjust the parameter type.
-          assert((ArgTy == S.adjustParameterType(ArgTy)) && "Unadjusted type?");
+          assert((ArgTy == Context.getAdjustedParameterType(ArgTy)) && 
+                 "Unadjusted type?");
 
           // Look for 'void'.  void is allowed only as a single argument to a
           // function with no other parameters (C99 6.7.5.3p10).  We record
@@ -2284,7 +2261,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         if (HasAnyConsumedArguments)
           EPI.ConsumedArguments = ConsumedArguments.data();
 
-        llvm::SmallVector<QualType, 4> Exceptions;
+        SmallVector<QualType, 4> Exceptions;
         EPI.ExceptionSpecType = FTI.getExceptionSpecType();
         if (FTI.getExceptionSpecType() == EST_Dynamic) {
           Exceptions.reserve(FTI.NumExceptions);
@@ -3156,10 +3133,18 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
                                             const AttributeList &Attr, Sema &S){
 
   // If this type is already address space qualified, reject it.
-  // Clause 6.7.3 - Type qualifiers: "No type shall be qualified by qualifiers
-  // for two or more different address spaces."
+  // ISO/IEC TR 18037 S5.3 (amending C99 6.7.3): "No type shall be qualified by
+  // qualifiers for two or more different address spaces."
   if (Type.getAddressSpace()) {
     S.Diag(Attr.getLoc(), diag::err_attribute_address_multiple_qualifiers);
+    Attr.setInvalid();
+    return;
+  }
+
+  // ISO/IEC TR 18037 S5.3 (amending C99 6.7.3): "A function type shall not be
+  // qualified by an address-space qualifier."
+  if (Type->isFunctionType()) {
+    S.Diag(Attr.getLoc(), diag::err_attribute_address_function_type);
     Attr.setInvalid();
     return;
   }
@@ -3375,7 +3360,7 @@ namespace {
 
     QualType Original;
     const FunctionType *Fn;
-    llvm::SmallVector<unsigned char /*WrapKind*/, 8> Stack;
+    SmallVector<unsigned char /*WrapKind*/, 8> Stack;
 
     FunctionTypeUnwrapper(Sema &S, QualType T) : Original(T) {
       while (true) {
@@ -3566,7 +3551,7 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
     return true;
   }
 
-  if (CCOld != CC_Default) {
+  if (CCOld != (S.LangOpts.MRTD ? CC_X86StdCall : CC_Default)) {
     // Should we diagnose reapplications of the same convention?
     S.Diag(attr.getLoc(), diag::err_attributes_are_not_compatible)
       << FunctionType::getNameForCallConv(CC)

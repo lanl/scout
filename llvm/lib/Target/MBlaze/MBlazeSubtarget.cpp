@@ -15,9 +15,8 @@
 #include "MBlaze.h"
 #include "MBlazeRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Target/TargetRegistry.h"
 
-#define GET_SUBTARGETINFO_ENUM
-#define GET_SUBTARGETINFO_MC_DESC
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "MBlazeGenSubtargetInfo.inc"

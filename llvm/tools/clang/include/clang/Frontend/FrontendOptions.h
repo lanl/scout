@@ -75,6 +75,8 @@ public:
   unsigned ShowVersion : 1;                ///< Show the -version text.
   unsigned FixWhatYouCan : 1;              ///< Apply fixes even if there are
                                            /// unfixable errors.
+  unsigned ARCMTMigrateEmitARCErrors : 1;  /// Emit ARC errors even if the
+                                           /// migrator can fix them
 
   // ndm - Scout View AST option
   unsigned ViewAST : 1;
@@ -82,8 +84,12 @@ public:
   enum {
     ARCMT_None,
     ARCMT_Check,
-    ARCMT_Modify
+    ARCMT_Modify,
+    ARCMT_Migrate
   } ARCMTAction;
+
+  std::string ARCMTMigrateDir;
+  std::string ARCMTMigrateReportOut;
 
   /// The input files and their types.
   std::vector<std::pair<InputKind, std::string> > Inputs;
@@ -145,6 +151,7 @@ public:
     ShowTimers = 0;
     ShowVersion = 0;
     ARCMTAction = ARCMT_None;
+    ARCMTMigrateEmitARCErrors = 0;
   }
 
   /// getInputKindForExtension - Return the appropriate input kind for a file
@@ -152,7 +159,7 @@ public:
   ///
   /// \return The input kind for the extension, or IK_None if the extension is
   /// not recognized.
-  static InputKind getInputKindForExtension(llvm::StringRef Extension);
+  static InputKind getInputKindForExtension(StringRef Extension);
 };
 
 }  // end namespace clang

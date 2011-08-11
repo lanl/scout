@@ -20,6 +20,7 @@
 #include "clang/Frontend/MultiplexConsumer.h"
 #include "clang/Parse/ParseAST.h"
 #include "clang/Serialization/ASTDeserializationListener.h"
+#include "clang/Serialization/ASTReader.h"
 #include "clang/Serialization/ChainedIncludesSource.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Timer.h"
@@ -88,7 +89,7 @@ FrontendAction::FrontendAction() : Instance(0) {}
 
 FrontendAction::~FrontendAction() {}
 
-void FrontendAction::setCurrentFile(llvm::StringRef Value, InputKind Kind,
+void FrontendAction::setCurrentFile(StringRef Value, InputKind Kind,
                                     ASTUnit *AST) {
   CurrentFile = Value;
   CurrentFileKind = Kind;
@@ -96,7 +97,7 @@ void FrontendAction::setCurrentFile(llvm::StringRef Value, InputKind Kind,
 }
 
 ASTConsumer* FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
-                                                      llvm::StringRef InFile) {
+                                                      StringRef InFile) {
   ASTConsumer* Consumer = CreateASTConsumer(CI, InFile);
   if (!Consumer)
     return 0;
@@ -129,7 +130,7 @@ ASTConsumer* FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
 }
 
 bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
-                                     llvm::StringRef Filename,
+                                     StringRef Filename,
                                      InputKind InputKind) {
   assert(!Instance && "Already processing a source file!");
   assert(!Filename.empty() && "Unexpected empty filename!");
@@ -239,9 +240,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     } else if (!CI.getPreprocessorOpts().ImplicitPCHInclude.empty()) {
       // Use PCH.
       assert(hasPCHSupport() && "This action does not have PCH support!");
-      ASTDeserializationListener *DeserialListener
-          = CI.getInvocation().getFrontendOpts().ChainedPCH ?
-                  Consumer->GetASTDeserializationListener() : 0;
+      ASTDeserializationListener *DeserialListener =
+          Consumer->GetASTDeserializationListener();
       if (CI.getPreprocessorOpts().DumpDeserializedPCHDecls)
         DeserialListener = new DeserializedDeclsDumper(DeserialListener);
       if (!CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn.empty())
@@ -255,6 +255,30 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
                                 DeserialListener);
       if (!CI.getASTContext().getExternalSource())
         goto failure;
+    } else if (!CI.getPreprocessorOpts().Modules.empty()) {
+      // Use PCH.
+      assert(hasPCHSupport() && "This action does not have PCH support!");
+      ASTDeserializationListener *DeserialListener =
+          Consumer->GetASTDeserializationListener();
+      if (CI.getPreprocessorOpts().DumpDeserializedPCHDecls)
+        DeserialListener = new DeserializedDeclsDumper(DeserialListener);
+      if (!CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn.empty())
+        DeserialListener = new DeserializedDeclsChecker(CI.getASTContext(),
+                         CI.getPreprocessorOpts().DeserializedPCHDeclsToErrorOn,
+                                                        DeserialListener);
+
+      CI.createPCHExternalASTSource(CI.getPreprocessorOpts().Modules[0],
+                                    true, true, DeserialListener);
+
+      for (unsigned I = 1, E = CI.getPreprocessorOpts().Modules.size(); I != E;
+          ++I) {
+
+        ASTReader *ModMgr = CI.getModuleManager();
+        ModMgr->ReadAST(CI.getPreprocessorOpts().Modules[I],
+            serialization::MK_Module);
+      }
+      if (!CI.getASTContext().getExternalSource())
+        goto failure;
     }
 
     CI.setASTConsumer(Consumer.take());
@@ -262,7 +286,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       goto failure;
   }
 
-  // Initialize builtin info as long as we aren't using an external AST
+  // Initialize built-in info as long as we aren't using an external AST
   // source.
   if (!CI.hasASTContext() || !CI.getASTContext().getExternalSource()) {
     Preprocessor &PP = CI.getPreprocessor();
@@ -404,19 +428,19 @@ void ASTFrontendAction::ExecuteAction() {
 
 ASTConsumer *
 PreprocessorFrontendAction::CreateASTConsumer(CompilerInstance &CI,
-                                              llvm::StringRef InFile) {
+                                              StringRef InFile) {
   llvm_unreachable("Invalid CreateASTConsumer on preprocessor action!");
 }
 
 ASTConsumer *WrapperFrontendAction::CreateASTConsumer(CompilerInstance &CI,
-                                                      llvm::StringRef InFile) {
+                                                      StringRef InFile) {
   return WrappedAction->CreateASTConsumer(CI, InFile);
 }
 bool WrapperFrontendAction::BeginInvocation(CompilerInstance &CI) {
   return WrappedAction->BeginInvocation(CI);
 }
 bool WrapperFrontendAction::BeginSourceFileAction(CompilerInstance &CI,
-                                                  llvm::StringRef Filename) {
+                                                  StringRef Filename) {
   WrappedAction->setCurrentFile(getCurrentFile(), getCurrentFileKind());
   WrappedAction->setCompilerInstance(&CI);
   return WrappedAction->BeginSourceFileAction(CI, Filename);

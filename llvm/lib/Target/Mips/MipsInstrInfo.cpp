@@ -15,13 +15,13 @@
 #include "MipsTargetMachine.h"
 #include "MipsMachineFunction.h"
 #include "InstPrinter/MipsInstPrinter.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/ADT/STLExtras.h"
 
 #define GET_INSTRINFO_CTOR
-#define GET_INSTRINFO_MC_DESC
 #include "MipsGenInstrInfo.inc"
 
 using namespace llvm;

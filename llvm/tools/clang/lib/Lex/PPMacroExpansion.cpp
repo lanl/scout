@@ -195,9 +195,9 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
   /// invocation.
   MacroArgs *Args = 0;
 
-  // Remember where the end of the instantiation occurred.  For an object-like
+  // Remember where the end of the expansion occurred.  For an object-like
   // macro, this is the identifier.  For a function-like macro, this is the ')'.
-  SourceLocation InstantiationEnd = Identifier.getLocation();
+  SourceLocation ExpansionEnd = Identifier.getLocation();
 
   // If this is a function-like macro, read the arguments.
   if (MI->isFunctionLike()) {
@@ -210,7 +210,7 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
     // Preprocessor directives used inside macro arguments are not portable, and
     // this enables the warning.
     InMacroArgs = true;
-    Args = ReadFunctionLikeMacroArgs(Identifier, MI, InstantiationEnd);
+    Args = ReadFunctionLikeMacroArgs(Identifier, MI, ExpansionEnd);
 
     // Finished parsing args.
     InMacroArgs = false;
@@ -230,8 +230,8 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
   
   // If we started lexing a macro, enter the macro expansion body.
 
-  // Remember where the token is instantiated.
-  SourceLocation InstantiateLoc = Identifier.getLocation();
+  // Remember where the token is expanded.
+  SourceLocation ExpandLoc = Identifier.getLocation();
 
   // If this macro expands to no tokens, don't bother to push it onto the
   // expansion stack, only to take it right back off.
@@ -255,7 +255,7 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
       if (HadLeadingSpace) Identifier.setFlag(Token::LeadingSpace);
     }
     Identifier.setFlag(Token::LeadingEmptyMacro);
-    LastEmptyMacroInstantiationLoc = InstantiateLoc;
+    LastEmptyMacroExpansionLoc = ExpandLoc;
     ++NumFastMacroExpanded;
     return false;
 
@@ -281,11 +281,11 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
     Identifier.setFlagValue(Token::StartOfLine , isAtStartOfLine);
     Identifier.setFlagValue(Token::LeadingSpace, hasLeadingSpace);
 
-    // Update the tokens location to include both its instantiation and physical
+    // Update the tokens location to include both its expansion and physical
     // locations.
     SourceLocation Loc =
-      SourceMgr.createInstantiationLoc(Identifier.getLocation(), InstantiateLoc,
-                                       InstantiationEnd,Identifier.getLength());
+      SourceMgr.createExpansionLoc(Identifier.getLocation(), ExpandLoc,
+                                   ExpansionEnd,Identifier.getLength());
     Identifier.setLocation(Loc);
 
     // If this is a disabled macro or #define X X, we must mark the result as
@@ -303,7 +303,7 @@ bool Preprocessor::HandleMacroExpandedIdentifier(Token &Identifier,
   }
 
   // Start expanding the macro.
-  EnterMacro(Identifier, InstantiationEnd, Args);
+  EnterMacro(Identifier, ExpansionEnd, Args);
 
   // Now that the macro is at the top of the include stack, ask the
   // preprocessor to read the next token from it.
@@ -333,7 +333,7 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
   // ArgTokens - Build up a list of tokens that make up each argument.  Each
   // argument is separated by an EOF token.  Use a SmallVector so we can avoid
   // heap allocations in the common case.
-  llvm::SmallVector<Token, 64> ArgTokens;
+  SmallVector<Token, 64> ArgTokens;
 
   unsigned NumActuals = 0;
   while (Tok.isNot(tok::r_paren)) {
@@ -497,7 +497,7 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
 /// going to lex in the cache and when it finishes the tokens are removed
 /// from the end of the cache.
 Token *Preprocessor::cacheMacroExpandedTokens(TokenLexer *tokLexer,
-                                              llvm::ArrayRef<Token> tokens) {
+                                              ArrayRef<Token> tokens) {
   assert(tokLexer);
   if (tokens.empty())
     return 0;
@@ -614,6 +614,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("cxx_default_function_template_args", LangOpts.CPlusPlus0x)
            .Case("cxx_delegating_constructors", LangOpts.CPlusPlus0x)
            .Case("cxx_deleted_functions", LangOpts.CPlusPlus0x)
+         //.Case("cxx_generalized_initializers", LangOpts.CPlusPlus0x)
            .Case("cxx_inline_namespaces", LangOpts.CPlusPlus0x)
          //.Case("cxx_lambdas", false)
            .Case("cxx_noexcept", LangOpts.CPlusPlus0x)
@@ -639,16 +640,31 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("is_base_of", LangOpts.CPlusPlus)
            .Case("is_class", LangOpts.CPlusPlus)
            .Case("is_convertible_to", LangOpts.CPlusPlus)
-           .Case("is_empty", LangOpts.CPlusPlus)
+            // __is_empty is available only if the horrible
+            // "struct __is_empty" parsing hack hasn't been needed in this
+            // translation unit. If it has, __is_empty reverts to a normal
+            // identifier and __has_feature(is_empty) evaluates false.
+           .Case("is_empty", 
+                 LangOpts.CPlusPlus && 
+                 PP.getIdentifierInfo("__is_empty")->getTokenID()
+                                                            != tok::identifier)
            .Case("is_enum", LangOpts.CPlusPlus)
            .Case("is_literal", LangOpts.CPlusPlus)
            .Case("is_standard_layout", LangOpts.CPlusPlus)
-           .Case("is_pod", LangOpts.CPlusPlus)
+           // __is_pod is available only if the horrible
+           // "struct __is_pod" parsing hack hasn't been needed in this
+           // translation unit. If it has, __is_pod reverts to a normal
+           // identifier and __has_feature(is_pod) evaluates false.
+           .Case("is_pod", 
+                 LangOpts.CPlusPlus && 
+                 PP.getIdentifierInfo("__is_pod")->getTokenID()
+                                                            != tok::identifier)
            .Case("is_polymorphic", LangOpts.CPlusPlus)
            .Case("is_trivial", LangOpts.CPlusPlus)
            .Case("is_trivially_copyable", LangOpts.CPlusPlus)
            .Case("is_union", LangOpts.CPlusPlus)
            .Case("tls", PP.getTargetInfo().isTLSSupported())
+           .Case("underlying_type", LangOpts.CPlusPlus)
            .Default(false);
 }
 
@@ -714,7 +730,7 @@ static bool EvaluateHasIncludeCommon(Token &Tok,
 
   // Reserve a buffer to get the spelling.
   llvm::SmallString<128> FilenameBuffer;
-  llvm::StringRef Filename;
+  StringRef Filename;
   SourceLocation EndLoc;
   
   switch (Tok.getKind()) {
@@ -833,11 +849,11 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     Loc = AdvanceToTokenCharacter(Loc, 0);
 
     // One wrinkle here is that GCC expands __LINE__ to location of the *end* of
-    // a macro instantiation.  This doesn't matter for object-like macros, but
+    // a macro expansion.  This doesn't matter for object-like macros, but
     // can matter for a function-like macro that expands to contain __LINE__.
-    // Skip down through instantiation points until we find a file loc for the
-    // end of the instantiation history.
-    Loc = SourceMgr.getInstantiationRange(Loc).second;
+    // Skip down through expansion points until we find a file loc for the
+    // end of the expansion history.
+    Loc = SourceMgr.getExpansionRange(Loc).second;
     PresumedLoc PLoc = SourceMgr.getPresumedLoc(Loc);
 
     // __LINE__ expands to a simple numeric value.
@@ -874,18 +890,18 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       ComputeDATE_TIME(DATELoc, TIMELoc, *this);
     Tok.setKind(tok::string_literal);
     Tok.setLength(strlen("\"Mmm dd yyyy\""));
-    Tok.setLocation(SourceMgr.createInstantiationLoc(DATELoc, Tok.getLocation(),
-                                                     Tok.getLocation(),
-                                                     Tok.getLength()));
+    Tok.setLocation(SourceMgr.createExpansionLoc(DATELoc, Tok.getLocation(),
+                                                 Tok.getLocation(),
+                                                 Tok.getLength()));
     return;
   } else if (II == Ident__TIME__) {
     if (!TIMELoc.isValid())
       ComputeDATE_TIME(DATELoc, TIMELoc, *this);
     Tok.setKind(tok::string_literal);
     Tok.setLength(strlen("\"hh:mm:ss\""));
-    Tok.setLocation(SourceMgr.createInstantiationLoc(TIMELoc, Tok.getLocation(),
-                                                     Tok.getLocation(),
-                                                     Tok.getLength()));
+    Tok.setLocation(SourceMgr.createExpansionLoc(TIMELoc, Tok.getLocation(),
+                                                 Tok.getLocation(),
+                                                 Tok.getLength()));
     return;
   } else if (II == Ident__INCLUDE_LEVEL__) {
     // Compute the presumed include depth of this token.  This can be affected
@@ -923,7 +939,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       Result = "??? ??? ?? ??:??:?? ????\n";
     }
     // Surround the string with " and strip the trailing newline.
-    OS << '"' << llvm::StringRef(Result, strlen(Result)-1) << '"';
+    OS << '"' << StringRef(Result, strlen(Result)-1) << '"';
     Tok.setKind(tok::string_literal);
   } else if (II == Ident__COUNTER__) {
     // __COUNTER__ expands to a simple numeric value.

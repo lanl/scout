@@ -42,6 +42,26 @@ bool Qualifiers::isStrictSupersetOf(Qualifiers Other) const {
      (hasObjCLifetime() && !Other.hasObjCLifetime()));
 }
 
+const IdentifierInfo* QualType::getBaseTypeIdentifier() const {
+  const Type* ty = getTypePtr();
+  NamedDecl *ND = NULL;
+  if (ty->isPointerType() || ty->isReferenceType())
+    return ty->getPointeeType().getBaseTypeIdentifier();
+  else if (ty->isRecordType())
+    ND = ty->getAs<RecordType>()->getDecl();
+  else if (ty->isEnumeralType())
+    ND = ty->getAs<EnumType>()->getDecl();
+  else if (ty->getTypeClass() == Type::Typedef)
+    ND = ty->getAs<TypedefType>()->getDecl();
+  else if (ty->isArrayType())
+    return ty->castAsArrayTypeUnsafe()->
+        getElementType().getBaseTypeIdentifier();
+
+  if (ND)
+    return ND->getIdentifier();
+  return NULL;
+}
+
 bool QualType::isConstant(QualType T, ASTContext &Ctx) {
   if (T.isConstQualified())
     return true;
@@ -178,6 +198,26 @@ const Type *Type::getArrayElementTypeNoTypeQual() const {
 QualType QualType::getDesugaredType(QualType T, const ASTContext &Context) {
   SplitQualType split = getSplitDesugaredType(T);
   return Context.getQualifiedType(split.first, split.second);
+}
+
+QualType QualType::getSingleStepDesugaredType(const ASTContext &Context) const {
+  QualifierCollector Qs;
+  
+  const Type *CurTy = Qs.strip(*this);
+  switch (CurTy->getTypeClass()) {
+#define ABSTRACT_TYPE(Class, Parent)
+#define TYPE(Class, Parent) \
+  case Type::Class: { \
+    const Class##Type *Ty = cast<Class##Type>(CurTy); \
+    if (!Ty->isSugared()) \
+      return *this; \
+    return Context.getQualifiedType(Ty->desugar(), Qs); \
+    break; \
+  }
+#include "clang/AST/TypeNodes.def"
+  }
+
+  return *this;
 }
 
 SplitQualType QualType::getSplitDesugaredType(QualType T) {
@@ -615,6 +655,18 @@ bool Type::isWideCharType() const {
   return false;
 }
 
+bool Type::isChar16Type() const {
+  if (const BuiltinType *BT = dyn_cast<BuiltinType>(CanonicalType))
+    return BT->getKind() == BuiltinType::Char16;
+  return false;
+}
+
+bool Type::isChar32Type() const {
+  if (const BuiltinType *BT = dyn_cast<BuiltinType>(CanonicalType))
+    return BT->getKind() == BuiltinType::Char32;
+  return false;
+}
+
 /// \brief Determine whether this type is any of the built-in character
 /// types.
 bool Type::isAnyCharacterType() const {
@@ -895,8 +947,6 @@ bool QualType::isPODType(ASTContext &Context) const {
       return false;
 
     case Qualifiers::OCL_None:
-      if ((*this)->isObjCLifetimeType())
-        return false;
       break;
     }        
   }
@@ -1094,7 +1144,7 @@ bool Type::isLiteralType() const {
       //       constructor or constructor template that is not a copy or move
       //       constructor, and
       if (!ClassDecl->isAggregate() &&
-          !ClassDecl->hasConstExprNonCopyMoveConstructor())
+          !ClassDecl->hasConstexprNonCopyMoveConstructor())
         return false;
       //    -- all non-static data members and base classes of literal types
       if (ClassDecl->hasNonLiteralTypeFieldsOrBases()) return false;
@@ -1486,7 +1536,7 @@ QualType QualType::getNonLValueExprType(ASTContext &Context) const {
   return *this;
 }
 
-llvm::StringRef FunctionType::getNameForCallConv(CallingConv CC) {
+StringRef FunctionType::getNameForCallConv(CallingConv CC) {
   switch (CC) {
   case CC_Default: 
     llvm_unreachable("no name for default cc");
@@ -1668,8 +1718,15 @@ TypeOfExprType::TypeOfExprType(Expr *E, QualType can)
     TOExpr(E) {
 }
 
+bool TypeOfExprType::isSugared() const {
+  return !TOExpr->isTypeDependent();
+}
+
 QualType TypeOfExprType::desugar() const {
-  return getUnderlyingExpr()->getType();
+  if (isSugared())
+    return getUnderlyingExpr()->getType();
+  
+  return QualType(this, 0);
 }
 
 void DependentTypeOfExprType::Profile(llvm::FoldingSetNodeID &ID,
@@ -1684,6 +1741,15 @@ DecltypeType::DecltypeType(Expr *E, QualType underlyingType, QualType can)
          E->containsUnexpandedParameterPack()), 
     E(E),
   UnderlyingType(underlyingType) {
+}
+
+bool DecltypeType::isSugared() const { return !E->isInstantiationDependent(); }
+
+QualType DecltypeType::desugar() const {
+  if (isSugared())
+    return getUnderlyingType();
+  
+  return QualType(this, 0);
 }
 
 DependentDecltypeType::DependentDecltypeType(const ASTContext &Context, Expr *E)
@@ -2003,8 +2069,8 @@ static CachedProperties computeCachedProperties(const Type *T) {
 #define DEPENDENT_TYPE(Class,Base) case Type::Class:
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class,Base) case Type::Class:
 #include "clang/AST/TypeNodes.def"
-    // Treat dependent types as external.
-    assert(T->isDependentType());
+    // Treat instantiation-dependent types as external.
+    assert(T->isInstantiationDependentType());
     return CachedProperties(ExternalLinkage, DefaultVisibility, false);
 
   case Type::Builtin:
@@ -2228,7 +2294,7 @@ QualType::DestructionKind QualType::isDestructedTypeImpl(QualType type) {
   /// with non-trivial destructors.
   const CXXRecordDecl *record =
     type->getBaseElementTypeUnsafe()->getAsCXXRecordDecl();
-  if (record && !record->hasTrivialDestructor())
+  if (record && record->hasDefinition() && !record->hasTrivialDestructor())
     return DK_cxx_destructor;
 
   return DK_none;

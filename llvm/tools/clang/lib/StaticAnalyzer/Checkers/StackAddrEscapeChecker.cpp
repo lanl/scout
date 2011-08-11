@@ -35,12 +35,12 @@ public:
 private:
   void EmitStackError(CheckerContext &C, const MemRegion *R,
                       const Expr *RetE) const;
-  static SourceRange GenName(llvm::raw_ostream &os, const MemRegion *R,
+  static SourceRange GenName(raw_ostream &os, const MemRegion *R,
                              SourceManager &SM);
 };
 }
 
-SourceRange StackAddrEscapeChecker::GenName(llvm::raw_ostream &os,
+SourceRange StackAddrEscapeChecker::GenName(raw_ostream &os,
                                           const MemRegion *R,
                                           SourceManager &SM) {
     // Get the base region, stripping away fields and elements.
@@ -53,7 +53,7 @@ SourceRange StackAddrEscapeChecker::GenName(llvm::raw_ostream &os,
     const CompoundLiteralExpr* CL = CR->getLiteralExpr();
     os << "stack memory associated with a compound literal "
           "declared on line "
-        << SM.getInstantiationLineNumber(CL->getLocStart())
+        << SM.getExpansionLineNumber(CL->getLocStart())
         << " returned to caller";    
     range = CL->getSourceRange();
   }
@@ -62,14 +62,14 @@ SourceRange StackAddrEscapeChecker::GenName(llvm::raw_ostream &os,
     SourceLocation L = ARE->getLocStart();
     range = ARE->getSourceRange();    
     os << "stack memory allocated by call to alloca() on line "
-       << SM.getInstantiationLineNumber(L);
+       << SM.getExpansionLineNumber(L);
   }
   else if (const BlockDataRegion *BR = dyn_cast<BlockDataRegion>(R)) {
     const BlockDecl *BD = BR->getCodeRegion()->getDecl();
     SourceLocation L = BD->getLocStart();
     range = BD->getSourceRange();
     os << "stack-allocated block declared on line "
-       << SM.getInstantiationLineNumber(L);
+       << SM.getExpansionLineNumber(L);
   }
   else if (const VarRegion *VR = dyn_cast<VarRegion>(R)) {
     os << "stack memory associated with local variable '"
@@ -143,7 +143,7 @@ void StackAddrEscapeChecker::checkEndPath(EndOfFunctionNodeBuilder &B,
     ExprEngine &Eng;
     const StackFrameContext *CurSFC;
   public:
-    llvm::SmallVector<std::pair<const MemRegion*, const MemRegion*>, 10> V;
+    SmallVector<std::pair<const MemRegion*, const MemRegion*>, 10> V;
 
     CallBack(ExprEngine &Eng, const LocationContext *LCtx)
       : Eng(Eng), CurSFC(LCtx->getCurrentStackFrame()) {}

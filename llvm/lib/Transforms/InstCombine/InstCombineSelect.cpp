@@ -13,6 +13,7 @@
 
 #include "InstCombine.h"
 #include "llvm/Support/PatternMatch.h"
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 using namespace llvm;
 using namespace PatternMatch;
@@ -325,7 +326,7 @@ static Value *SimplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
     // All operands were constants, fold it.
     if (ConstOps.size() == I->getNumOperands())
       return ConstantFoldInstOperands(I->getOpcode(), I->getType(),
-                                      ConstOps.data(), ConstOps.size(), TD);
+                                      ConstOps, TD);
   }
 
   return 0;
@@ -363,7 +364,7 @@ Instruction *InstCombiner::visitSelectInstWithICmp(SelectInst &SI,
       case ICmpInst::ICMP_UGT:
       case ICmpInst::ICMP_SGT: {
         // These transformations only work for selects over integers.
-        const IntegerType *SelectTy = dyn_cast<IntegerType>(SI.getType());
+        IntegerType *SelectTy = dyn_cast<IntegerType>(SI.getType());
         if (!SelectTy)
           break;
 
@@ -443,7 +444,7 @@ Instruction *InstCombiner::visitSelectInstWithICmp(SelectInst &SI,
   // FIXME: Type and constness constraints could be lifted, but we have to
   //        watch code size carefully. We should consider xor instead of
   //        sub/add when we decide to do that.
-  if (const IntegerType *Ty = dyn_cast<IntegerType>(CmpLHS->getType())) {
+  if (IntegerType *Ty = dyn_cast<IntegerType>(CmpLHS->getType())) {
     if (TrueVal->getType() == Ty) {
       if (ConstantInt *Cmp = dyn_cast<ConstantInt>(CmpRHS)) {
         ConstantInt *C1 = NULL, *C2 = NULL;

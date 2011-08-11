@@ -6,6 +6,7 @@ tablegen(AlphaGenAsmWriter.inc -gen-asm-writer)
 tablegen(AlphaGenDAGISel.inc -gen-dag-isel)
 tablegen(AlphaGenCallingConv.inc -gen-callingconv)
 tablegen(AlphaGenSubtargetInfo.inc -gen-subtarget)
+add_public_tablegen_target(AlphaCommonTableGen)
 
 add_llvm_target(AlphaCodeGen
   AlphaAsmPrinter.cpp
@@ -15,11 +16,23 @@ add_llvm_target(AlphaCodeGen
   AlphaISelLowering.cpp
   AlphaFrameLowering.cpp
   AlphaLLRP.cpp
-  AlphaMCAsmInfo.cpp
   AlphaRegisterInfo.cpp
   AlphaSubtarget.cpp
   AlphaTargetMachine.cpp
   AlphaSelectionDAGInfo.cpp
   )
 
+add_llvm_library_dependencies(LLVMAlphaCodeGen
+  LLVMAlphaDesc
+  LLVMAlphaInfo
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
+  )
+
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)

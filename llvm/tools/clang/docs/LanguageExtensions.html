@@ -45,6 +45,7 @@
     <li><a href="#cxx_default_function_template_args">C++0x default template arguments in function templates</a></li>
     <li><a href="#cxx_delegating_constructor">C++0x delegating constructors</a></li>
     <li><a href="#cxx_deleted_functions">C++0x deleted functions</a></li>
+    <li><a href="#cxx_generalized_initializers">C++0x generalized initializers</a></li>
     <li><a href="#cxx_lambdas">C++0x lambdas</a></li>
     <li><a href="#cxx_nullptr">C++0x nullptr</a></li>
     <li><a href="#cxx_override_control">C++0x override control</a></li>
@@ -87,6 +88,27 @@
   </ul>
 </li>
 <li><a href="#analyzerspecific">Static Analysis-Specific Extensions</a></li>
+<li><a href="#threadsafety">Thread Safety Annotation Checking</a></li>
+    <ul>
+    <li><a href="#ts_noanal"><tt>no_thread_safety_analysis</tt></a></li>   
+    <li><a href="#ts_lockable"><tt>lockable</tt></a></li>  
+    <li><a href="#ts_scopedlockable"><tt>scoped_lockable</tt></a></li>  
+    <li><a href="#ts_guardedvar"><tt>guarded_var</tt></a></li>
+    <li><a href="#ts_ptguardedvar"><tt>pt_guarded_var</tt></a></li>
+    <li><a href="#ts_guardedby"><tt>guarded_by(l)</tt></a></li>
+    <li><a href="#ts_ptguardedby"><tt>pt_guarded_by(l)</tt></a></li>  
+    <li><a href="#ts_acquiredbefore"><tt>acquired_before(...)</tt></a></li>  
+    <li><a href="#ts_acquiredafter"><tt>acquired_after(...)</tt></a></li>    
+    <li><a href="#ts_elf"><tt>exclusive_lock_function(...)</tt></a></li>   
+    <li><a href="#ts_slf"><tt>shared_lock_function(...)</tt></a></li>   
+    <li><a href="#ts_etf"><tt>exclusive_trylock_function(...)</tt></a></li>   
+    <li><a href="#ts_stf"><tt>shared_trylock_function(...)</tt></a></li>   
+    <li><a href="#ts_uf"><tt>unlock_function(...)</tt></a></li>   
+    <li><a href="#ts_lr"><tt>lock_returned(l)</tt></a></li>   
+    <li><a href="#ts_le"><tt>locks_excluded(...)</tt></a></li>   
+    <li><a href="#ts_elr"><tt>exclusive_locks_required(...)</tt></a></li>   
+    <li><a href="#ts_slr"><tt>shared_locks_required(...)</tt></a></li>   
+    </ul>
 </ul>
 
 <!-- ======================================================================= -->
@@ -455,6 +477,13 @@ support for delegating constructors is enabled.</p>
 <tt>__has_extension(cxx_deleted_functions)</tt> to determine if support for
 deleted function definitions (with <tt>= delete</tt>) is enabled.</p>
 
+<h4 id="cxx_generalized_initializers">C++0x generalized initializers</h4>
+
+<p>Use <tt>__has_feature(cxx_generalized_initializers)</tt> to determine if
+support for generalized initializers (using braced lists and
+<tt>std::initializer_list</tt>) is enabled. clang does not currently implement
+this feature.
+
 <h4 id="cxx_lambdas">C++0x lambdas</h4>
 
 <p>Use <tt>__has_feature(cxx_lambdas)</tt> or
@@ -599,6 +628,7 @@ struct is_convertible_to {
   <li><code>__is_polymorphic</code> (GNU, Microsoft)</li>
   <li><code>__is_union</code> (GNU, Microsoft)</li>
   <li><code>__is_literal(type)</code>: Determines whether the given type is a literal type</li>
+  <li><code>__underlying_type(type)</code>: Retrieves the underlying type for a given <code>enum</code> type. This trait is required to implement the C++0x standard library.</li>
 </ul>
 
 <!-- ======================================================================= -->
@@ -1086,6 +1116,149 @@ balance in some way.</p>
 
 <p>Query for these features with <tt>__has_attribute(ns_consumed)</tt>,
 <tt>__has_attribute(ns_returns_retained)</tt>, etc.</p>
+
+
+<!-- ======================================================================= -->
+<h2 id="threadsafety">Thread-Safety Annotation Checking</h2>
+<!-- ======================================================================= -->
+
+<p>Clang supports additional attributes for checking basic locking policies in 
+multithreaded programs.
+Clang currently parses the following list of attributes, although 
+<b>the implementation for these annotations is currently in development.</b> 
+For more details, see the
+<a href="http://gcc.gnu.org/wiki/ThreadSafetyAnnotation">GCC implementation</a>.
+</p>
+
+<h4 id="ts_noanal">no_thread_safety_analysis</h4>
+
+<p>Use <tt>__attribute__((no_thread_safety_analysis))</tt> on a function 
+declaration to specify that the thread safety analysis should not be run on that 
+function. This attribute provides an escape hatch (e.g. for situations when it
+is difficult to annotate the locking policy). </p> 
+
+<h4 id="ts_lockable">lockable</h4>
+
+<p>Use <tt>__attribute__((lockable))</tt> on a class definition to specify 
+that it has a lockable type (e.g. a Mutex class). This annotation is primarily 
+used to check consistency.</p> 
+
+<h4 id="ts_scopedlockable">scoped_lockable</h4>
+
+<p>Use <tt>__attribute__((scoped_lockable))</tt> on a class definition to 
+specify that it has a "scoped" lockable type. Objects of this type will acquire 
+the lock upon construction and release it upon going out of scope.
+ This annotation is primarily used to check 
+consistency.</p> 
+
+<h4 id="ts_guardedvar">guarded_var</h4>
+
+<p>Use <tt>__attribute__((guarded_var))</tt> on a variable declaration to 
+specify that the variable must be accessed while holding some lock.</p>
+
+<h4 id="ts_ptguardedvar">pt_guarded_var</h4>
+
+<p>Use <tt>__attribute__((pt_guarded_var))</tt> on a pointer declaration to 
+specify that the pointer must be dereferenced while holding some lock.</p>
+
+<h4 id="ts_guardedby">guarded_by(l)</h4>
+
+<p>Use <tt>__attribute__((guarded_by(l)))</tt> on a variable declaration to 
+specify that the variable must be accessed while holding lock <tt>l</tt>.</p>
+
+<h4 id="ts_ptguardedby">pt_guarded_by(l)</h4>
+
+<p>Use <tt>__attribute__((pt_guarded_by(l)))</tt> on a pointer declaration to 
+specify that the pointer must be dereferenced while holding lock <tt>l</tt>.</p>
+
+<h4 id="ts_acquiredbefore">acquired_before(...)</h4>
+
+<p>Use <tt>__attribute__((acquired_before(...)))</tt> on a declaration 
+of a lockable variable to specify that the lock must be acquired before all 
+attribute arguments. Arguments must be lockable type, and there must be at 
+least one argument.</p> 
+
+<h4 id="ts_acquiredafter">acquired_after(...)</h4>
+
+<p>Use <tt>__attribute__((acquired_after(...)))</tt> on a declaration 
+of a lockable variable to specify that the lock must be acquired after all 
+attribute arguments. Arguments must be lockable type, and there must be at 
+least one argument.</p> 
+
+<h4 id="ts_elf">exclusive_lock_function(...)</h4>
+
+<p>Use <tt>__attribute__((exclusive_lock_function(...)))</tt> on a function 
+declaration to specify that the function acquires all listed locks 
+exclusively. This attribute takes zero or more arguments: either of lockable 
+type or integers indexing into function parameters of lockable type. If no 
+arguments are given, the acquired lock is implicitly <tt>this</tt> of the 
+enclosing object.</p>
+
+<h4 id="ts_slf">shared_lock_function(...)</h4>
+
+<p>Use <tt>__attribute__((shared_lock_function(...)))</tt> on a function 
+declaration to specify that the function acquires all listed locks, although
+ the locks may be shared (e.g. read locks). This attribute takes zero or more 
+arguments: either of lockable type or integers indexing into function 
+parameters of lockable type. If no arguments are given, the acquired lock is 
+implicitly <tt>this</tt> of the enclosing object.</p>
+
+<h4 id="ts_etf">exclusive_trylock_function(...)</h4>
+
+<p>Use <tt>__attribute__((exclusive_lock_function(...)))</tt> on a function 
+declaration to specify that the function will try (without blocking) to acquire
+all listed locks exclusively. This attribute takes one or more arguments. The 
+first argument is an integer or boolean value specifying the return value of a 
+successful lock acquisition. The remaining arugments are either of lockable type 
+or integers indexing into function parameters of lockable type. If only one 
+argument is given, the acquired lock is implicitly <tt>this</tt> of the 
+enclosing object.</p>
+
+<h4 id="ts_stf">shared_trylock_function(...)</h4>
+
+<p>Use <tt>__attribute__((shared_lock_function(...)))</tt> on a function 
+declaration to specify that the function will try (without blocking) to acquire
+all listed locks, although the locks may be shared (e.g. read locks). This 
+attribute takes one or more arguments. The first argument is an integer or 
+boolean value specifying the return value of a successful lock acquisition. The 
+remaining arugments are either of lockable type or integers indexing into 
+function parameters of lockable type. If only one argument is given, the 
+acquired lock is implicitly <tt>this</tt> of the enclosing object.</p>
+
+<h4 id="ts_uf">unlock_function(...)</h4>
+
+<p>Use <tt>__attribute__((unlock_function(...)))</tt> on a function 
+declaration to specify that the function release all listed locks. This 
+attribute takes zero or more arguments: either of lockable type or integers 
+indexing into function parameters of lockable type. If no arguments are given, 
+the acquired lock is implicitly <tt>this</tt> of the enclosing object.</p>
+
+<h4 id="ts_lr">lock_returned(l)</h4>
+
+<p>Use <tt>__attribute__((lock_returned(l)))</tt> on a function 
+declaration to specify that the function returns lock <tt>l</tt> (<tt>l</tt> 
+must be of lockable type). This annotation is used to aid in resolving lock 
+expressions.</p>
+
+<h4 id="ts_le">locks_excluded(...)</h4>
+
+<p>Use <tt>__attribute__((locks_excluded(...)))</tt> on a function declaration 
+to specify that the function must not be called with the listed locks. Arguments 
+must be lockable type, and there must be at least one argument.</p>
+
+<h4 id="ts_elr">exclusive_locks_required(...)</h4>
+
+<p>Use <tt>__attribute__((exclusive_locks_required(...)))</tt> on a function 
+declaration to specify that the function must be called while holding the listed
+exclusive locks. Arguments must be lockable type, and there must be at 
+least one argument.</p> 
+
+<h4 id="ts_slr">shared_locks_required(...)</h4>
+
+<p>Use <tt>__attribute__((shared_locks_required(...)))</tt> on a function 
+declaration to specify that the function must be called while holding the listed 
+shared locks. Arguments must be lockable type, and there must be at 
+least one argument.</p> 
 
 </div>
 </body>

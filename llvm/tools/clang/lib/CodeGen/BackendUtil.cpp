@@ -15,6 +15,7 @@
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "llvm/Module.h"
 #include "llvm/PassManager.h"
+#include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
@@ -23,14 +24,17 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm/Support/PassManagerBuilder.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Target/TargetRegistry.h"
 #include "llvm/Transforms/Instrumentation.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar.h"
 using namespace clang;
 using namespace llvm;
 
@@ -237,27 +241,18 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
   TargetMachine::setDataSections    (CodeGenOpts.DataSections);
 
   // FIXME: Parse this earlier.
-  if (CodeGenOpts.RelocationModel == "static") {
-    TargetMachine::setRelocationModel(llvm::Reloc::Static);
-  } else if (CodeGenOpts.RelocationModel == "pic") {
-    TargetMachine::setRelocationModel(llvm::Reloc::PIC_);
-  } else {
-    assert(CodeGenOpts.RelocationModel == "dynamic-no-pic" &&
-           "Invalid PIC model!");
-    TargetMachine::setRelocationModel(llvm::Reloc::DynamicNoPIC);
-  }
-  // FIXME: Parse this earlier.
+  llvm::CodeModel::Model CM;
   if (CodeGenOpts.CodeModel == "small") {
-    TargetMachine::setCodeModel(llvm::CodeModel::Small);
+    CM = llvm::CodeModel::Small;
   } else if (CodeGenOpts.CodeModel == "kernel") {
-    TargetMachine::setCodeModel(llvm::CodeModel::Kernel);
+    CM = llvm::CodeModel::Kernel;
   } else if (CodeGenOpts.CodeModel == "medium") {
-    TargetMachine::setCodeModel(llvm::CodeModel::Medium);
+    CM = llvm::CodeModel::Medium;
   } else if (CodeGenOpts.CodeModel == "large") {
-    TargetMachine::setCodeModel(llvm::CodeModel::Large);
+    CM = llvm::CodeModel::Large;
   } else {
     assert(CodeGenOpts.CodeModel.empty() && "Invalid code model!");
-    TargetMachine::setCodeModel(llvm::CodeModel::Default);
+    CM = llvm::CodeModel::Default;
   }
 
   std::vector<const char *> BackendArgs;
@@ -287,8 +282,20 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
       Features.AddFeature(*it);
     FeaturesStr = Features.getString();
   }
+
+  llvm::Reloc::Model RM = llvm::Reloc::Default;
+  if (CodeGenOpts.RelocationModel == "static") {
+    RM = llvm::Reloc::Static;
+  } else if (CodeGenOpts.RelocationModel == "pic") {
+    RM = llvm::Reloc::PIC_;
+  } else {
+    assert(CodeGenOpts.RelocationModel == "dynamic-no-pic" &&
+           "Invalid PIC model!");
+    RM = llvm::Reloc::DynamicNoPIC;
+  }
+
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
-                                                     FeaturesStr);
+                                                     FeaturesStr, RM, CM);
 
   if (CodeGenOpts.RelaxAll)
     TM->setMCRelaxAll(true);

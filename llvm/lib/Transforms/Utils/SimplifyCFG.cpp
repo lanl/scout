@@ -322,7 +322,7 @@ static ConstantInt *GetConstantInt(Value *V, const TargetData *TD) {
 
   // This is some kind of pointer constant. Turn it into a pointer-sized
   // ConstantInt if possible.
-  const IntegerType *PtrTy = TD->getIntPtrType(V->getContext());
+  IntegerType *PtrTy = TD->getIntPtrType(V->getContext());
 
   // Null pointer means 0, see SelectionDAGBuilder::getValue(const Value*).
   if (isa<ConstantPointerNull>(V))
@@ -2211,8 +2211,7 @@ bool SimplifyCFGOpt::SimplifyUnwind(UnwindInst *UI, IRBuilder<> &Builder) {
       SmallVector<Value*,8> Args(II->op_begin(), II->op_end()-3);
       Builder.SetInsertPoint(BI);
       CallInst *CI = Builder.CreateCall(II->getCalledValue(),
-                                        Args.begin(), Args.end(),
-                                        II->getName());
+                                        Args, II->getName());
       CI->setCallingConv(II->getCallingConv());
       CI->setAttributes(II->getAttributes());
       // If the invoke produced a value, the Call now does instead.
@@ -2355,8 +2354,7 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
         SmallVector<Value*, 8> Args(II->op_begin(), II->op_end()-3);
         Builder.SetInsertPoint(BI);
         CallInst *CI = Builder.CreateCall(II->getCalledValue(),
-                                          Args.begin(), Args.end(),
-                                          II->getName());
+                                          Args, II->getName());
         CI->setCallingConv(II->getCallingConv());
         CI->setAttributes(II->getAttributes());
         // If the invoke produced a value, the call does now instead.

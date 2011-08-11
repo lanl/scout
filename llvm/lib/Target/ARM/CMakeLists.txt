@@ -12,10 +12,10 @@ tablegen(ARMGenFastISel.inc -gen-fast-isel)
 tablegen(ARMGenCallingConv.inc -gen-callingconv)
 tablegen(ARMGenSubtargetInfo.inc -gen-subtarget)
 tablegen(ARMGenEDInfo.inc -gen-enhanced-disassembly-info)
-tablegen(ARMGenDecoderTables.inc -gen-arm-decoder)
+tablegen(ARMGenDisassemblerTables.inc -gen-disassembler)
+add_public_tablegen_target(ARMCommonTableGen)
 
 add_llvm_target(ARMCodeGen
-  ARMAsmBackend.cpp
   ARMAsmPrinter.cpp
   ARMBaseInstrInfo.cpp
   ARMBaseRegisterInfo.cpp
@@ -32,11 +32,7 @@ add_llvm_target(ARMCodeGen
   ARMISelLowering.cpp
   ARMInstrInfo.cpp
   ARMJITInfo.cpp
-  ARMMachObjectWriter.cpp
-  ARMMCCodeEmitter.cpp
-  ARMMCExpr.cpp
   ARMLoadStoreOptimizer.cpp
-  ARMMCAsmInfo.cpp
   ARMMCInstLower.cpp
   ARMRegisterInfo.cpp
   ARMSelectionDAGInfo.cpp
@@ -52,6 +48,20 @@ add_llvm_target(ARMCodeGen
   Thumb2InstrInfo.cpp
   Thumb2RegisterInfo.cpp
   Thumb2SizeReduction.cpp
+  )
+
+add_llvm_library_dependencies(LLVMARMCodeGen
+  LLVMARMAsmPrinter
+  LLVMARMDesc
+  LLVMARMInfo
+  LLVMAnalysis
+  LLVMAsmPrinter
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
   )
 
 # workaround for hanging compilation on MSVC10

@@ -328,6 +328,14 @@ CINDEX_LINKAGE CXSourceRange clang_getRange(CXSourceLocation begin,
                                             CXSourceLocation end);
 
 /**
+ * \brief Determine whether two ranges are equivalent.
+ *
+ * \returns non-zero if the ranges are the same, zero if they differ.
+ */
+CINDEX_LINKAGE unsigned clang_equalRanges(CXSourceRange range1,
+                                          CXSourceRange range2);
+
+/**
  * \brief Retrieve the file, line, column, and offset represented by
  * the given source location.
  *
@@ -833,14 +841,24 @@ enum CXTranslationUnit_Flags {
   
   /**
    * \brief Used to indicate that the "detailed" preprocessing record,
-   * if requested, should also contain nested macro instantiations.
+   * if requested, should also contain nested macro expansions.
    *
-   * Nested macro instantiations (i.e., macro instantiations that occur
-   * inside another macro instantiation) can, in some code bases, require
+   * Nested macro expansions (i.e., macro expansions that occur
+   * inside another macro expansion) can, in some code bases, require
    * a large amount of storage to due preprocessor metaprogramming. Moreover,
    * its fairly rare that this information is useful for libclang clients.
    */
-  CXTranslationUnit_NestedMacroInstantiations = 0x40
+  CXTranslationUnit_NestedMacroExpansions = 0x40,
+
+  /**
+   * \brief Legacy name to indicate that the "detailed" preprocessing record,
+   * if requested, should contain nested macro expansions.
+   *
+   * \see CXTranslationUnit_NestedMacroExpansions for the current name for this
+   * value, and its semantics. This is just an alias.
+   */
+  CXTranslationUnit_NestedMacroInstantiations =
+    CXTranslationUnit_NestedMacroExpansions
 };
 
 /**
@@ -1084,12 +1102,14 @@ enum CXTUResourceUsageKind {
   CXTUResourceUsage_ExternalASTSource_Membuffer_MMap = 10, 
   CXTUResourceUsage_Preprocessor = 11,
   CXTUResourceUsage_PreprocessingRecord = 12,
+  CXTUResourceUsage_SourceManager_DataStructures = 13,
+  CXTUResourceUsage_Preprocessor_HeaderSearch = 14,
   CXTUResourceUsage_MEMORY_IN_BYTES_BEGIN = CXTUResourceUsage_AST,
   CXTUResourceUsage_MEMORY_IN_BYTES_END =
-    CXTUResourceUsage_PreprocessingRecord,
+    CXTUResourceUsage_Preprocessor_HeaderSearch,
 
   CXTUResourceUsage_First = CXTUResourceUsage_AST,
-  CXTUResourceUsage_Last = CXTUResourceUsage_PreprocessingRecord
+  CXTUResourceUsage_Last = CXTUResourceUsage_Preprocessor_HeaderSearch
 };
 
 /**
@@ -1421,7 +1441,8 @@ enum CXCursorKind {
   /* Preprocessing */
   CXCursor_PreprocessingDirective        = 500,
   CXCursor_MacroDefinition               = 501,
-  CXCursor_MacroInstantiation            = 502,
+  CXCursor_MacroExpansion                = 502,
+  CXCursor_MacroInstantiation            = CXCursor_MacroExpansion,
   CXCursor_InclusionDirective            = 503,
   CXCursor_FirstPreprocessing            = CXCursor_PreprocessingDirective,
   CXCursor_LastPreprocessing             = CXCursor_InclusionDirective
@@ -2366,6 +2387,54 @@ CINDEX_LINKAGE enum CXCursorKind clang_getTemplateCursorKind(CXCursor C);
  * from which it was instantiated. Otherwise, returns a NULL cursor.
  */
 CINDEX_LINKAGE CXCursor clang_getSpecializedCursorTemplate(CXCursor C);
+
+/**
+ * \brief Given a cursor that references something else, return the source range
+ * covering that reference.
+ *
+ * \param C A cursor pointing to a member reference, a declaration reference, or
+ * an operator call.
+ * \param NameFlags A bitset with three independent flags: 
+ * CXNameRange_WantQualifier, CXNameRange_WantTemplateArgs, and
+ * CXNameRange_WantSinglePiece.
+ * \param PieceIndex For contiguous names or when passing the flag 
+ * CXNameRange_WantSinglePiece, only one piece with index 0 is 
+ * available. When the CXNameRange_WantSinglePiece flag is not passed for a
+ * non-contiguous names, this index can be used to retreive the individual
+ * pieces of the name. See also CXNameRange_WantSinglePiece.
+ *
+ * \returns The piece of the name pointed to by the given cursor. If there is no
+ * name, or if the PieceIndex is out-of-range, a null-cursor will be returned.
+ */
+CINDEX_LINKAGE CXSourceRange clang_getCursorReferenceNameRange(CXCursor C,
+                                                unsigned NameFlags, 
+                                                unsigned PieceIndex);
+
+enum CXNameRefFlags {
+  /**
+   * \brief Include the nested-name-specifier, e.g. Foo:: in x.Foo::y, in the
+   * range.
+   */
+  CXNameRange_WantQualifier = 0x1,
+  
+  /**
+   * \brief Include the explicit template arguments, e.g. <int> in x.f<int>, in 
+   * the range.
+   */
+  CXNameRange_WantTemplateArgs = 0x2,
+
+  /**
+   * \brief If the name is non-contiguous, return the full spanning range.
+   *
+   * Non-contiguous names occur in Objective-C when a selector with two or more
+   * parameters is used, or in C++ when using an operator:
+   * \code
+   * [object doSomething:here withValue:there]; // ObjC
+   * return some_vector[1]; // C++
+   * \endcode
+   */
+  CXNameRange_WantSinglePiece = 0x4
+};
   
 /**
  * @}
@@ -2830,6 +2899,18 @@ CINDEX_LINKAGE enum CXAvailabilityKind
 clang_getCompletionAvailability(CXCompletionString completion_string);
 
 /**
+ * \brief Retrieve a completion string for an arbitrary declaration or macro
+ * definition cursor.
+ *
+ * \param cursor The cursor to query.
+ *
+ * \returns A non-context-sensitive completion string for declaration and macro
+ * definition cursors, or NULL for other kinds of cursors.
+ */
+CINDEX_LINKAGE CXCompletionString
+clang_getCursorCompletionString(CXCursor cursor);
+  
+/**
  * \brief Contains the results of code-completion.
  *
  * This data structure contains the results of code completion, as
@@ -3133,6 +3214,54 @@ CXDiagnostic clang_codeCompleteGetDiagnostic(CXCodeCompleteResults *Results,
 CINDEX_LINKAGE
 unsigned long long clang_codeCompleteGetContexts(
                                                 CXCodeCompleteResults *Results);
+
+/**
+ * \brief Returns the cursor kind for the container for the current code
+ * completion context. The container is only guaranteed to be set for
+ * contexts where a container exists (i.e. member accesses or Objective-C
+ * message sends); if there is not a container, this function will return
+ * CXCursor_InvalidCode.
+ *
+ * \param Results the code completion results to query
+ *
+ * \param IsIncomplete on return, this value will be false if Clang has complete
+ * information about the container. If Clang does not have complete
+ * information, this value will be true.
+ *
+ * \returns the container kind, or CXCursor_InvalidCode if there is not a
+ * container
+ */
+CINDEX_LINKAGE
+enum CXCursorKind clang_codeCompleteGetContainerKind(
+                                                 CXCodeCompleteResults *Results,
+                                                     unsigned *IsIncomplete);
+
+/**
+ * \brief Returns the USR for the container for the current code completion
+ * context. If there is not a container for the current context, this
+ * function will return the empty string.
+ *
+ * \param Results the code completion results to query
+ *
+ * \returns the USR for the container
+ */
+CINDEX_LINKAGE
+CXString clang_codeCompleteGetContainerUSR(CXCodeCompleteResults *Results);
+  
+  
+/**
+ * \brief Returns the currently-entered selector for an Objective-C message
+ * send, formatted like "initWithFoo:bar:". Only guaranteed to return a
+ * non-empty string for CXCompletionContext_ObjCInstanceMessage and
+ * CXCompletionContext_ObjCClassMessage.
+ *
+ * \param Results the code completion results to query
+ *
+ * \returns the selector (or partial selector) that has been entered thus far
+ * for an Objective-C message send.
+ */
+CINDEX_LINKAGE
+CXString clang_codeCompleteGetObjCSelector(CXCodeCompleteResults *Results);
   
 /**
  * @}
@@ -3185,6 +3314,51 @@ typedef void (*CXInclusionVisitor)(CXFile included_file,
 CINDEX_LINKAGE void clang_getInclusions(CXTranslationUnit tu,
                                         CXInclusionVisitor visitor,
                                         CXClientData client_data);
+
+/**
+ * @}
+ */
+
+/** \defgroup CINDEX_REMAPPING Remapping functions
+ *
+ * @{
+ */
+
+/**
+ * \brief A remapping of original source files and their translated files.
+ */
+typedef void *CXRemapping;
+
+/**
+ * \brief Retrieve a remapping.
+ *
+ * \param path the path that contains metadata about remappings.
+ *
+ * \returns the requested remapping. This remapping must be freed
+ * via a call to \c clang_remap_dispose(). Can return NULL if an error occurred.
+ */
+CINDEX_LINKAGE CXRemapping clang_getRemappings(const char *path);
+
+/**
+ * \brief Determine the number of remappings.
+ */
+CINDEX_LINKAGE unsigned clang_remap_getNumFiles(CXRemapping);
+
+/**
+ * \brief Get the original and the associated filename from the remapping.
+ * 
+ * \param original If non-NULL, will be set to the original filename.
+ *
+ * \param transformed If non-NULL, will be set to the filename that the original
+ * is associated with.
+ */
+CINDEX_LINKAGE void clang_remap_getFilenames(CXRemapping, unsigned index,
+                                     CXString *original, CXString *transformed);
+
+/**
+ * \brief Dispose the remapping.
+ */
+CINDEX_LINKAGE void clang_remap_dispose(CXRemapping);
 
 /**
  * @}

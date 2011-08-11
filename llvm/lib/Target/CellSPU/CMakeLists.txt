@@ -7,6 +7,7 @@ tablegen(SPUGenInstrInfo.inc -gen-instr-info)
 tablegen(SPUGenDAGISel.inc -gen-dag-isel)
 tablegen(SPUGenSubtargetInfo.inc -gen-subtarget)
 tablegen(SPUGenCallingConv.inc -gen-callingconv)
+add_public_tablegen_target(CellSPUCommonTableGen)
 
 add_llvm_target(CellSPUCodeGen
   SPUAsmPrinter.cpp
@@ -15,7 +16,6 @@ add_llvm_target(CellSPUCodeGen
   SPUISelDAGToDAG.cpp
   SPUISelLowering.cpp
   SPUFrameLowering.cpp
-  SPUMCAsmInfo.cpp
   SPURegisterInfo.cpp
   SPUSubtarget.cpp
   SPUTargetMachine.cpp
@@ -23,4 +23,17 @@ add_llvm_target(CellSPUCodeGen
   SPUNopFiller.cpp
   )
 
+add_llvm_library_dependencies(LLVMCellSPUCodeGen
+  LLVMAsmPrinter
+  LLVMCellSPUDesc
+  LLVMCellSPUInfo
+  LLVMCodeGen
+  LLVMCore
+  LLVMMC
+  LLVMSelectionDAG
+  LLVMSupport
+  LLVMTarget
+  )
+
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)

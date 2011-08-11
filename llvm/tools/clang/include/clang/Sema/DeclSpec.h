@@ -409,7 +409,7 @@ public:
       TypeAltiVecPixel(false),
       TypeAltiVecBool(false),
       TypeSpecOwned(false),
-      TypeQualifiers(TSS_unspecified),
+      TypeQualifiers(TQ_unspecified),
       FS_inline_specified(false),
       FS_virtual_specified(false),
       FS_explicit_specified(false),
@@ -795,7 +795,9 @@ public:
     /// \brief A destructor name.
     IK_DestructorName,
     /// \brief A template-id, e.g., f<int>.
-    IK_TemplateId
+    IK_TemplateId,
+    /// \brief An implicit 'self' parameter
+    IK_ImplicitSelfParam
   } Kind;
 
   /// \brief Anonymous union that holds extra data associated with the
@@ -848,7 +850,7 @@ public:
   SourceLocation EndLocation;
   
   UnqualifiedId() : Kind(IK_Identifier), Identifier(0) { }
-  
+
   /// \brief Do not use this copy constructor. It is temporary, and only
   /// exists because we are holding FieldDeclarators in a SmallVector when we
   /// don't actually need them.
@@ -875,6 +877,7 @@ public:
   
   /// \brief Determine what kind of name we have.
   IdKind getKind() const { return Kind; }
+  void setKind(IdKind kind) { Kind = kind; } 
   
   /// \brief Specify that this unqualified-id was parsed as an identifier.
   ///
@@ -986,7 +989,7 @@ public:
   
 /// CachedTokens - A set of tokens that has been cached for later
 /// parsing.
-typedef llvm::SmallVector<Token, 4> CachedTokens;
+typedef SmallVector<Token, 4> CachedTokens;
 
 /// DeclaratorChunk - One instance of this struct is used for each type in a
 /// declarator that is parsed.
@@ -1122,6 +1125,10 @@ struct DeclaratorChunk {
     /// If this is an invalid location, there is no ref-qualifier.
     unsigned RefQualifierLoc;
 
+    /// \brief The location of the 'mutable' qualifer in a lambda-declarator, if
+    /// any.
+    unsigned MutableLoc;
+
     /// \brief When ExceptionSpecType isn't EST_None or EST_Delayed, the
     /// location of the keyword introducing the spec.
     unsigned ExceptionSpecLoc;
@@ -1183,9 +1190,18 @@ struct DeclaratorChunk {
       return SourceLocation::getFromRawEncoding(RefQualifierLoc);
     }
 
+    /// \brief Retrieve the location of the 'mutable' qualifier, if any.
+    SourceLocation getMutableLoc() const {
+      return SourceLocation::getFromRawEncoding(MutableLoc);
+    }
+
     /// \brief Determine whether this function declaration contains a 
     /// ref-qualifier.
     bool hasRefQualifier() const { return getRefQualifierLoc().isValid(); }
+
+    /// \brief Determine whether this lambda-declarator contains a 'mutable'
+    /// qualifier.
+    bool hasMutableQualifier() const { return getMutableLoc().isValid(); }
 
     /// \brief Get the type of exception specification this function has.
     ExceptionSpecificationType getExceptionSpecType() const {
@@ -1310,6 +1326,7 @@ struct DeclaratorChunk {
                                      unsigned TypeQuals, 
                                      bool RefQualifierIsLvalueRef,
                                      SourceLocation RefQualifierLoc,
+                                     SourceLocation MutableLoc,
                                      ExceptionSpecificationType ESpecType,
                                      SourceLocation ESpecLoc,
                                      ParsedType *Exceptions,
@@ -1406,7 +1423,7 @@ private:
   /// parsed.  This is pushed from the identifier out, which means that element
   /// #0 will be the most closely bound to the identifier, and
   /// DeclTypeInfo.back() will be the least closely bound.
-  llvm::SmallVector<DeclaratorChunk, 8> DeclTypeInfo;
+  SmallVector<DeclaratorChunk, 8> DeclTypeInfo;
 
   /// InvalidType - Set by Sema::GetTypeForDeclarator().
   bool InvalidType : 1;
@@ -1837,6 +1854,53 @@ private:
 
   SourceLocation VS_overrideLoc, VS_finalLoc;
   SourceLocation LastLocation;
+};
+
+/// LambdaCaptureDefault - The default, if any, capture method for a
+/// lambda expression.
+enum LambdaCaptureDefault {
+  LCD_None,
+  LCD_ByCopy,
+  LCD_ByRef
+};
+
+/// LambdaCaptureKind - The different capture forms in a lambda
+/// introducer: 'this' or a copied or referenced variable.
+enum LambdaCaptureKind {
+  LCK_This,
+  LCK_ByCopy,
+  LCK_ByRef
+};
+
+/// LambdaCapture - An individual capture in a lambda introducer.
+struct LambdaCapture {
+  LambdaCaptureKind Kind;
+  SourceLocation Loc;
+  IdentifierInfo* Id;
+
+  LambdaCapture(LambdaCaptureKind Kind,
+                     SourceLocation Loc,
+                     IdentifierInfo* Id = 0)
+    : Kind(Kind), Loc(Loc), Id(Id)
+  {}
+};
+
+/// LambdaIntroducer - Represents a complete lambda introducer.
+struct LambdaIntroducer {
+  SourceRange Range;
+  LambdaCaptureDefault Default;
+  llvm::SmallVector<LambdaCapture, 4> Captures;
+
+  LambdaIntroducer()
+    : Default(LCD_None) {}
+
+  /// addCapture - Append a capture in a lambda introducer.
+  void addCapture(LambdaCaptureKind Kind,
+                  SourceLocation Loc,
+                  IdentifierInfo* Id = 0) {
+    Captures.push_back(LambdaCapture(Kind, Loc, Id));
+  }
+
 };
 
 } // end namespace clang

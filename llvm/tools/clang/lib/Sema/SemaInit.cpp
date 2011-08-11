@@ -24,6 +24,7 @@
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include <map>
 using namespace clang;
 
@@ -48,20 +49,30 @@ static Expr *IsStringInit(Expr *Init, const ArrayType *AT,
   if (SL == 0) return 0;
 
   QualType ElemTy = Context.getCanonicalType(AT->getElementType());
-  // char array can be initialized with a narrow string.
-  // Only allow char x[] = "foo";  not char x[] = L"foo";
-  if (!SL->isWide())
+
+  switch (SL->getKind()) {
+  case StringLiteral::Ascii:
+  case StringLiteral::UTF8:
+    // char array can be initialized with a narrow string.
+    // Only allow char x[] = "foo";  not char x[] = L"foo";
     return ElemTy->isCharType() ? Init : 0;
+  case StringLiteral::UTF16:
+    return ElemTy->isChar16Type() ? Init : 0;
+  case StringLiteral::UTF32:
+    return ElemTy->isChar32Type() ? Init : 0;
+  case StringLiteral::Wide:
+    // wchar_t array can be initialized with a wide string: C99 6.7.8p15 (with
+    // correction from DR343): "An array with element type compatible with a
+    // qualified or unqualified version of wchar_t may be initialized by a wide
+    // string literal, optionally enclosed in braces."
+    if (Context.typesAreCompatible(Context.getWCharType(),
+                                   ElemTy.getUnqualifiedType()))
+      return Init;
 
-  // wchar_t array can be initialized with a wide string: C99 6.7.8p15 (with
-  // correction from DR343): "An array with element type compatible with a
-  // qualified or unqualified version of wchar_t may be initialized by a wide
-  // string literal, optionally enclosed in braces."
-  if (Context.typesAreCompatible(Context.getWCharType(),
-                                 ElemTy.getUnqualifiedType()))
-    return Init;
+    return 0;
+  }
 
-  return 0;
+  llvm_unreachable("missed a StringLiteral kind?");
 }
 
 static Expr *IsStringInit(Expr *init, QualType declType, ASTContext &Context) {
@@ -769,7 +780,8 @@ void InitListChecker::CheckSubElementType(const InitializedEntity &Entity,
   //   subaggregate, brace elision is assumed and the initializer is
   //   considered for the initialization of the first member of
   //   the subaggregate.
-  if (ElemType->isAggregateType() || ElemType->isVectorType()) {
+  if (!SemaRef.getLangOptions().OpenCL && 
+      (ElemType->isAggregateType() || ElemType->isVectorType())) {
     CheckImplicitInitList(Entity, IList, ElemType, Index, StructuredList,
                           StructuredIndex);
     ++StructuredIndex;
@@ -777,7 +789,8 @@ void InitListChecker::CheckSubElementType(const InitializedEntity &Entity,
     // We cannot initialize this element, so let
     // PerformCopyInitialization produce the appropriate diagnostic.
     SemaRef.PerformCopyInitialization(Entity, SourceLocation(),
-                                      SemaRef.Owned(expr));
+                                      SemaRef.Owned(expr),
+                                      /*TopLevelOfInitList=*/true);
     hadError = true;
     ++Index;
     ++StructuredIndex;
@@ -819,7 +832,8 @@ void InitListChecker::CheckScalarType(const InitializedEntity &Entity,
 
   ExprResult Result =
     SemaRef.PerformCopyInitialization(Entity, expr->getLocStart(),
-                                      SemaRef.Owned(expr));
+                                      SemaRef.Owned(expr),
+                                      /*TopLevelOfInitList=*/true);
 
   Expr *ResultExpr = 0;
 
@@ -858,7 +872,8 @@ void InitListChecker::CheckReferenceType(const InitializedEntity &Entity,
 
     ExprResult Result =
       SemaRef.PerformCopyInitialization(Entity, expr->getLocStart(),
-                                        SemaRef.Owned(expr));
+                                        SemaRef.Owned(expr),
+                                        /*TopLevelOfInitList=*/true);
 
     if (Result.isInvalid())
       hadError = true;
@@ -907,7 +922,8 @@ void InitListChecker::CheckVectorType(const InitializedEntity &Entity,
     if (!isa<InitListExpr>(Init) && Init->getType()->isVectorType()) {
       ExprResult Result =
         SemaRef.PerformCopyInitialization(Entity, Init->getLocStart(),
-                                          SemaRef.Owned(Init));
+                                          SemaRef.Owned(Init),
+                                          /*TopLevelOfInitList=*/true);
 
       Expr *ResultExpr = 0;
       if (Result.isInvalid())
@@ -1268,7 +1284,7 @@ static void ExpandAnonymousFieldDesignator(Sema &SemaRef,
   typedef DesignatedInitExpr::Designator Designator;
 
   // Build the replacement designators.
-  llvm::SmallVector<Designator, 4> Replacements;
+  SmallVector<Designator, 4> Replacements;
   for (IndirectFieldDecl::chain_iterator PI = IndirectField->chain_begin(),
        PE = IndirectField->chain_end(); PI != PE; ++PI) {
     if (PI + 1 == PE)
@@ -1914,8 +1930,8 @@ ExprResult Sema::ActOnDesignatedInitializer(Designation &Desig,
   typedef DesignatedInitExpr::Designator ASTDesignator;
 
   bool Invalid = false;
-  llvm::SmallVector<ASTDesignator, 32> Designators;
-  llvm::SmallVector<Expr *, 32> InitExpressions;
+  SmallVector<ASTDesignator, 32> Designators;
+  SmallVector<Expr *, 32> InitExpressions;
 
   // Build designators and check array designator expressions.
   for (unsigned Idx = 0; Idx < Desig.getNumDesignators(); ++Idx) {
@@ -2155,7 +2171,7 @@ void InitializationSequence::Step::Destroy() {
 }
 
 bool InitializationSequence::isDirectReferenceBinding() const {
-  return getKind() == ReferenceBinding && Steps.back().Kind == SK_BindReference;
+  return !Steps.empty() && Steps.back().Kind == SK_BindReference;
 }
 
 bool InitializationSequence::isAmbiguous() const {
@@ -2194,6 +2210,158 @@ bool InitializationSequence::isAmbiguous() const {
 
 bool InitializationSequence::isConstructorInitialization() const {
   return !Steps.empty() && Steps.back().Kind == SK_ConstructorInitialization;
+}
+
+bool InitializationSequence::endsWithNarrowing(ASTContext &Ctx,
+                                               const Expr *Initializer,
+                                               bool *isInitializerConstant,
+                                               APValue *ConstantValue) const {
+  if (Steps.empty() || Initializer->isValueDependent())
+    return false;
+
+  const Step &LastStep = Steps.back();
+  if (LastStep.Kind != SK_ConversionSequence)
+    return false;
+
+  const ImplicitConversionSequence &ICS = *LastStep.ICS;
+  const StandardConversionSequence *SCS = NULL;
+  switch (ICS.getKind()) {
+  case ImplicitConversionSequence::StandardConversion:
+    SCS = &ICS.Standard;
+    break;
+  case ImplicitConversionSequence::UserDefinedConversion:
+    SCS = &ICS.UserDefined.After;
+    break;
+  case ImplicitConversionSequence::AmbiguousConversion:
+  case ImplicitConversionSequence::EllipsisConversion:
+  case ImplicitConversionSequence::BadConversion:
+    return false;
+  }
+
+  // Check if SCS represents a narrowing conversion, according to C++0x
+  // [dcl.init.list]p7:
+  //
+  // A narrowing conversion is an implicit conversion ...
+  ImplicitConversionKind PossibleNarrowing = SCS->Second;
+  QualType FromType = SCS->getToType(0);
+  QualType ToType = SCS->getToType(1);
+  switch (PossibleNarrowing) {
+  // * from a floating-point type to an integer type, or
+  //
+  // * from an integer type or unscoped enumeration type to a floating-point
+  //   type, except where the source is a constant expression and the actual
+  //   value after conversion will fit into the target type and will produce
+  //   the original value when converted back to the original type, or
+  case ICK_Floating_Integral:
+    if (FromType->isRealFloatingType() && ToType->isIntegralType(Ctx)) {
+      *isInitializerConstant = false;
+      return true;
+    } else if (FromType->isIntegralType(Ctx) && ToType->isRealFloatingType()) {
+      llvm::APSInt IntConstantValue;
+      if (Initializer &&
+          Initializer->isIntegerConstantExpr(IntConstantValue, Ctx)) {
+        // Convert the integer to the floating type.
+        llvm::APFloat Result(Ctx.getFloatTypeSemantics(ToType));
+        Result.convertFromAPInt(IntConstantValue, IntConstantValue.isSigned(),
+                                llvm::APFloat::rmNearestTiesToEven);
+        // And back.
+        llvm::APSInt ConvertedValue = IntConstantValue;
+        bool ignored;
+        Result.convertToInteger(ConvertedValue,
+                                llvm::APFloat::rmTowardZero, &ignored);
+        // If the resulting value is different, this was a narrowing conversion.
+        if (IntConstantValue != ConvertedValue) {
+          *isInitializerConstant = true;
+          *ConstantValue = APValue(IntConstantValue);
+          return true;
+        }
+      } else {
+        // Variables are always narrowings.
+        *isInitializerConstant = false;
+        return true;
+      }
+    }
+    return false;
+
+  // * from long double to double or float, or from double to float, except
+  //   where the source is a constant expression and the actual value after
+  //   conversion is within the range of values that can be represented (even
+  //   if it cannot be represented exactly), or
+  case ICK_Floating_Conversion:
+    if (1 == Ctx.getFloatingTypeOrder(FromType, ToType)) {
+      // FromType is larger than ToType.
+      Expr::EvalResult InitializerValue;
+      // FIXME: Check whether Initializer is a constant expression according
+      // to C++0x [expr.const], rather than just whether it can be folded.
+      if (Initializer->Evaluate(InitializerValue, Ctx) &&
+          !InitializerValue.HasSideEffects && InitializerValue.Val.isFloat()) {
+        // Constant! (Except for FIXME above.)
+        llvm::APFloat FloatVal = InitializerValue.Val.getFloat();
+        // Convert the source value into the target type.
+        bool ignored;
+        llvm::APFloat::opStatus ConvertStatus = FloatVal.convert(
+          Ctx.getFloatTypeSemantics(ToType),
+          llvm::APFloat::rmNearestTiesToEven, &ignored);
+        // If there was no overflow, the source value is within the range of
+        // values that can be represented.
+        if (ConvertStatus & llvm::APFloat::opOverflow) {
+          *isInitializerConstant = true;
+          *ConstantValue = InitializerValue.Val;
+          return true;
+        }
+      } else {
+        *isInitializerConstant = false;
+        return true;
+      }
+    }
+    return false;
+
+  // * from an integer type or unscoped enumeration type to an integer type
+  //   that cannot represent all the values of the original type, except where
+  //   the source is a constant expression and the actual value after
+  //   conversion will fit into the target type and will produce the original
+  //   value when converted back to the original type.
+  case ICK_Integral_Conversion: {
+    assert(FromType->isIntegralOrUnscopedEnumerationType());
+    assert(ToType->isIntegralOrUnscopedEnumerationType());
+    const bool FromSigned = FromType->isSignedIntegerOrEnumerationType();
+    const unsigned FromWidth = Ctx.getIntWidth(FromType);
+    const bool ToSigned = ToType->isSignedIntegerOrEnumerationType();
+    const unsigned ToWidth = Ctx.getIntWidth(ToType);
+
+    if (FromWidth > ToWidth ||
+        (FromWidth == ToWidth && FromSigned != ToSigned)) {
+      // Not all values of FromType can be represented in ToType.
+      llvm::APSInt InitializerValue;
+      if (Initializer->isIntegerConstantExpr(InitializerValue, Ctx)) {
+        *isInitializerConstant = true;
+        *ConstantValue = APValue(InitializerValue);
+
+        // Add a bit to the InitializerValue so we don't have to worry about
+        // signed vs. unsigned comparisons.
+        InitializerValue = InitializerValue.extend(
+          InitializerValue.getBitWidth() + 1);
+        // Convert the initializer to and from the target width and signed-ness.
+        llvm::APSInt ConvertedValue = InitializerValue;
+        ConvertedValue = ConvertedValue.trunc(ToWidth);
+        ConvertedValue.setIsSigned(ToSigned);
+        ConvertedValue = ConvertedValue.extend(InitializerValue.getBitWidth());
+        ConvertedValue.setIsSigned(InitializerValue.isSigned());
+        // If the result is different, this was a narrowing conversion.
+        return ConvertedValue != InitializerValue;
+      } else {
+        // Variables are always narrowings.
+        *isInitializerConstant = false;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  default:
+    // Other kinds of conversions are not narrowings.
+    return false;
+  }
 }
 
 void InitializationSequence::AddAddressOverloadResolutionStep(
@@ -2622,8 +2790,6 @@ static void TryReferenceInitialization(Sema &S,
                                        const InitializationKind &Kind,
                                        Expr *Initializer,
                                        InitializationSequence &Sequence) {
-  Sequence.setSequenceKind(InitializationSequence::ReferenceBinding);
-
   QualType DestType = Entity.getType();
   QualType cv1T1 = DestType->getAs<ReferenceType>()->getPointeeType();
   Qualifiers T1Quals;
@@ -3578,7 +3744,7 @@ InitializationSequence::InitializationSequence(Sema &S,
 }
 
 InitializationSequence::~InitializationSequence() {
-  for (llvm::SmallVectorImpl<Step>::iterator Step = Steps.begin(),
+  for (SmallVectorImpl<Step>::iterator Step = Steps.begin(),
                                           StepEnd = Steps.end();
        Step != StepEnd; ++Step)
     Step->Destroy();
@@ -3892,6 +4058,11 @@ void InitializationSequence::PrintInitLocationNote(Sema &S,
   }
 }
 
+static bool isReferenceBinding(const InitializationSequence::Step &s) {
+  return s.Kind == InitializationSequence::SK_BindReference ||
+         s.Kind == InitializationSequence::SK_BindReferenceToTemporary;
+}
+
 ExprResult
 InitializationSequence::Perform(Sema &S,
                                 const InitializedEntity &Entity,
@@ -4187,8 +4358,7 @@ InitializationSequence::Perform(Sema &S,
         CreatedObject = Conversion->getResultType()->isRecordType();
       }
 
-      bool RequiresCopy = !IsCopy &&
-        getKind() != InitializationSequence::ReferenceBinding;
+      bool RequiresCopy = !IsCopy && !isReferenceBinding(Steps.back());
       if (RequiresCopy || shouldBindAsTemporary(Entity))
         CurInit = S.MaybeBindToTemporary(CurInit.takeAs<Expr>());
       else if (CreatedObject && shouldDestroyTemporary(Entity)) {
@@ -4766,7 +4936,7 @@ bool InitializationSequence::Diagnose(Sema &S,
   return true;
 }
 
-void InitializationSequence::dump(llvm::raw_ostream &OS) const {
+void InitializationSequence::dump(raw_ostream &OS) const {
   switch (SequenceKind) {
   case FailedSequence: {
     OS << "Failed sequence: ";
@@ -4865,10 +5035,6 @@ void InitializationSequence::dump(llvm::raw_ostream &OS) const {
 
   case NormalSequence:
     OS << "Normal sequence: ";
-    break;
-
-  case ReferenceBinding:
-    OS << "Reference binding: ";
     break;
   }
 
@@ -4973,6 +5139,51 @@ void InitializationSequence::dump() const {
   dump(llvm::errs());
 }
 
+static void DiagnoseNarrowingInInitList(
+    Sema& S, QualType EntityType, const Expr *InitE,
+    bool Constant, const APValue &ConstantValue) {
+  if (Constant) {
+    S.Diag(InitE->getLocStart(),
+           S.getLangOptions().CPlusPlus0x
+           ? diag::err_init_list_constant_narrowing
+           : diag::warn_init_list_constant_narrowing)
+      << InitE->getSourceRange()
+      << ConstantValue
+      << EntityType;
+  } else
+    S.Diag(InitE->getLocStart(),
+           S.getLangOptions().CPlusPlus0x
+           ? diag::err_init_list_variable_narrowing
+           : diag::warn_init_list_variable_narrowing)
+      << InitE->getSourceRange()
+      << InitE->getType()
+      << EntityType;
+
+  llvm::SmallString<128> StaticCast;
+  llvm::raw_svector_ostream OS(StaticCast);
+  OS << "static_cast<";
+  if (const TypedefType *TT = EntityType->getAs<TypedefType>()) {
+    // It's important to use the typedef's name if there is one so that the
+    // fixit doesn't break code using types like int64_t.
+    //
+    // FIXME: This will break if the typedef requires qualification.  But
+    // getQualifiedNameAsString() includes non-machine-parsable components.
+    OS << TT->getDecl();
+  } else if (const BuiltinType *BT = EntityType->getAs<BuiltinType>())
+    OS << BT->getName(S.getLangOptions());
+  else {
+    // Oops, we didn't find the actual type of the variable.  Don't emit a fixit
+    // with a broken cast.
+    return;
+  }
+  OS << ">(";
+  S.Diag(InitE->getLocStart(), diag::note_init_list_narrowing_override)
+    << InitE->getSourceRange()
+    << FixItHint::CreateInsertion(InitE->getLocStart(), OS.str())
+    << FixItHint::CreateInsertion(
+      S.getPreprocessor().getLocForEndOfToken(InitE->getLocEnd()), ")");
+}
+
 //===----------------------------------------------------------------------===//
 // Initialization helper functions
 //===----------------------------------------------------------------------===//
@@ -4994,7 +5205,8 @@ Sema::CanPerformCopyInitialization(const InitializedEntity &Entity,
 ExprResult
 Sema::PerformCopyInitialization(const InitializedEntity &Entity,
                                 SourceLocation EqualLoc,
-                                ExprResult Init) {
+                                ExprResult Init,
+                                bool TopLevelOfInitList) {
   if (Init.isInvalid())
     return ExprError();
 
@@ -5008,5 +5220,13 @@ Sema::PerformCopyInitialization(const InitializedEntity &Entity,
                                                            EqualLoc);
   InitializationSequence Seq(*this, Entity, Kind, &InitE, 1);
   Init.release();
+
+  bool Constant = false;
+  APValue Result;
+  if (TopLevelOfInitList &&
+      Seq.endsWithNarrowing(Context, InitE, &Constant, &Result)) {
+    DiagnoseNarrowingInInitList(*this, Entity.getType(), InitE,
+                                Constant, Result);
+  }
   return Seq.Perform(*this, Entity, Kind, MultiExprArg(&InitE, 1));
 }

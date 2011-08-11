@@ -58,17 +58,20 @@ class JumpScopeChecker {
       : ParentScope(parentScope), InDiag(InDiag), OutDiag(OutDiag), Loc(L) {}
   };
 
-  llvm::SmallVector<GotoScope, 48> Scopes;
+  SmallVector<GotoScope, 48> Scopes;
   llvm::DenseMap<Stmt*, unsigned> LabelAndGotoScopes;
-  llvm::SmallVector<Stmt*, 16> Jumps;
+  SmallVector<Stmt*, 16> Jumps;
 
-  llvm::SmallVector<IndirectGotoStmt*, 4> IndirectJumps;
-  llvm::SmallVector<LabelDecl*, 4> IndirectJumpTargets;
+  SmallVector<IndirectGotoStmt*, 4> IndirectJumps;
+  SmallVector<LabelDecl*, 4> IndirectJumpTargets;
 public:
   JumpScopeChecker(Stmt *Body, Sema &S);
 private:
   void BuildScopeInformation(Decl *D, unsigned &ParentScope);
-  void BuildScopeInformation(Stmt *S, unsigned ParentScope);
+  void BuildScopeInformation(VarDecl *D, const BlockDecl *BDecl, 
+                             unsigned &ParentScope);
+  void BuildScopeInformation(Stmt *S, unsigned &origParentScope);
+  
   void VerifyJumps();
   void VerifyIndirectJumps();
   void DiagnoseIndirectJump(IndirectGotoStmt *IG, unsigned IGScope,
@@ -87,7 +90,8 @@ JumpScopeChecker::JumpScopeChecker(Stmt *Body, Sema &s) : S(s) {
 
   // Build information for the top level compound statement, so that we have a
   // defined scope record for every "goto" and label.
-  BuildScopeInformation(Body, 0);
+  unsigned BodyParentScope = 0;
+  BuildScopeInformation(Body, BodyParentScope);
 
   // Check that all jumps we saw are kosher.
   VerifyJumps();
@@ -228,11 +232,55 @@ void JumpScopeChecker::BuildScopeInformation(Decl *D, unsigned &ParentScope) {
       BuildScopeInformation(Init, ParentScope);
 }
 
+/// \brief Build scope information for a captured block literal variables.
+void JumpScopeChecker::BuildScopeInformation(VarDecl *D, 
+                                             const BlockDecl *BDecl, 
+                                             unsigned &ParentScope) {
+  // exclude captured __block variables; there's no destructor
+  // associated with the block literal for them.
+  if (D->hasAttr<BlocksAttr>())
+    return;
+  QualType T = D->getType();
+  QualType::DestructionKind destructKind = T.isDestructedType();
+  if (destructKind != QualType::DK_none) {
+    std::pair<unsigned,unsigned> Diags;
+    switch (destructKind) {
+      case QualType::DK_cxx_destructor:
+        Diags = ScopePair(diag::note_enters_block_captures_cxx_obj,
+                          diag::note_exits_block_captures_cxx_obj);
+        break;
+      case QualType::DK_objc_strong_lifetime:
+        Diags = ScopePair(diag::note_enters_block_captures_strong,
+                          diag::note_exits_block_captures_strong);
+        break;
+      case QualType::DK_objc_weak_lifetime:
+        Diags = ScopePair(diag::note_enters_block_captures_weak,
+                          diag::note_exits_block_captures_weak);
+        break;
+      case QualType::DK_none:
+        llvm_unreachable("no-liftime captured variable");
+    }
+    SourceLocation Loc = D->getLocation();
+    if (Loc.isInvalid())
+      Loc = BDecl->getLocation();
+    Scopes.push_back(GotoScope(ParentScope, 
+                               Diags.first, Diags.second, Loc));
+    ParentScope = Scopes.size()-1;
+  }
+}
+
 /// BuildScopeInformation - The statements from CI to CE are known to form a
 /// coherent VLA scope with a specified parent node.  Walk through the
 /// statements, adding any labels or gotos to LabelAndGotoScopes and recursively
 /// walking the AST as needed.
-void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
+void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned &origParentScope) {
+  // If this is a statement, rather than an expression, scopes within it don't
+  // propagate out into the enclosing scope.  Otherwise we have to worry
+  // about block literals, which have the lifetime of their enclosing statement.
+  unsigned independentParentScope = origParentScope;
+  unsigned &ParentScope = ((isa<Expr>(S) && !isa<StmtExpr>(S)) 
+                            ? origParentScope : independentParentScope);
+
   bool SkipFirstSubStmt = false;
   
   // If we found a label, remember that it is in ParentScope scope.
@@ -314,17 +362,17 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
         BuildScopeInformation(*I, ParentScope);
       continue;
     }
-
     // Disallow jumps into any part of an @try statement by pushing a scope and
     // walking all sub-stmts in that scope.
     if (ObjCAtTryStmt *AT = dyn_cast<ObjCAtTryStmt>(SubStmt)) {
+      unsigned newParentScope;
       // Recursively walk the AST for the @try part.
       Scopes.push_back(GotoScope(ParentScope,
                                  diag::note_protected_by_objc_try,
                                  diag::note_exits_objc_try,
                                  AT->getAtTryLoc()));
       if (Stmt *TryPart = AT->getTryBody())
-        BuildScopeInformation(TryPart, Scopes.size()-1);
+        BuildScopeInformation(TryPart, (newParentScope = Scopes.size()-1));
 
       // Jump from the catch to the finally or try is not valid.
       for (unsigned I = 0, N = AT->getNumCatchStmts(); I != N; ++I) {
@@ -334,7 +382,8 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                    diag::note_exits_objc_catch,
                                    AC->getAtCatchLoc()));
         // @catches are nested and it isn't
-        BuildScopeInformation(AC->getCatchBody(), Scopes.size()-1);
+        BuildScopeInformation(AC->getCatchBody(), 
+                              (newParentScope = Scopes.size()-1));
       }
 
       // Jump from the finally to the try or catch is not valid.
@@ -343,12 +392,13 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                    diag::note_protected_by_objc_finally,
                                    diag::note_exits_objc_finally,
                                    AF->getAtFinallyLoc()));
-        BuildScopeInformation(AF, Scopes.size()-1);
+        BuildScopeInformation(AF, (newParentScope = Scopes.size()-1));
       }
 
       continue;
     }
-
+    
+    unsigned newParentScope;
     // Disallow jumps into the protected statement of an @synchronized, but
     // allow jumps into the object expression it protects.
     if (ObjCAtSynchronizedStmt *AS = dyn_cast<ObjCAtSynchronizedStmt>(SubStmt)){
@@ -362,7 +412,8 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                  diag::note_protected_by_objc_synchronized,
                                  diag::note_exits_objc_synchronized,
                                  AS->getAtSynchronizedLoc()));
-      BuildScopeInformation(AS->getSynchBody(), Scopes.size()-1);
+      BuildScopeInformation(AS->getSynchBody(), 
+                            (newParentScope = Scopes.size()-1));
       continue;
     }
 
@@ -374,7 +425,7 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                  diag::note_exits_cxx_try,
                                  TS->getSourceRange().getBegin()));
       if (Stmt *TryBlock = TS->getTryBlock())
-        BuildScopeInformation(TryBlock, Scopes.size()-1);
+        BuildScopeInformation(TryBlock, (newParentScope = Scopes.size()-1));
 
       // Jump from the catch into the try is not allowed either.
       for (unsigned I = 0, E = TS->getNumHandlers(); I != E; ++I) {
@@ -383,7 +434,8 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                    diag::note_protected_by_cxx_catch,
                                    diag::note_exits_cxx_catch,
                                    CS->getSourceRange().getBegin()));
-        BuildScopeInformation(CS->getHandlerBlock(), Scopes.size()-1);
+        BuildScopeInformation(CS->getHandlerBlock(), 
+                              (newParentScope = Scopes.size()-1));
       }
 
       continue;
@@ -397,10 +449,19 @@ void JumpScopeChecker::BuildScopeInformation(Stmt *S, unsigned ParentScope) {
                                  diag::note_protected_by_objc_autoreleasepool,
                                  diag::note_exits_objc_autoreleasepool,
                                  AS->getAtLoc()));
-      BuildScopeInformation(AS->getSubStmt(), Scopes.size()-1);
+      BuildScopeInformation(AS->getSubStmt(), (newParentScope = Scopes.size()-1));
       continue;
     }
-
+    
+    if (const BlockExpr *BE = dyn_cast<BlockExpr>(SubStmt)) {
+        const BlockDecl *BDecl = BE->getBlockDecl();
+        for (BlockDecl::capture_const_iterator ci = BDecl->capture_begin(),
+             ce = BDecl->capture_end(); ci != ce; ++ci) {
+          VarDecl *variable = ci->getVariable();
+          BuildScopeInformation(variable, BDecl, ParentScope);
+        }
+    }
+    
     // Recursively walk the AST.
     BuildScopeInformation(SubStmt, ParentScope);
   }
@@ -471,10 +532,10 @@ void JumpScopeChecker::VerifyIndirectJumps() {
   // indirect goto.  For most code bases, this substantially cuts
   // down on the number of jump sites we'll have to consider later.
   typedef std::pair<unsigned, IndirectGotoStmt*> JumpScope;
-  llvm::SmallVector<JumpScope, 32> JumpScopes;
+  SmallVector<JumpScope, 32> JumpScopes;
   {
     llvm::DenseMap<unsigned, IndirectGotoStmt*> JumpScopesMap;
-    for (llvm::SmallVectorImpl<IndirectGotoStmt*>::iterator
+    for (SmallVectorImpl<IndirectGotoStmt*>::iterator
            I = IndirectJumps.begin(), E = IndirectJumps.end(); I != E; ++I) {
       IndirectGotoStmt *IG = *I;
       assert(LabelAndGotoScopes.count(IG) &&
@@ -493,7 +554,7 @@ void JumpScopeChecker::VerifyIndirectJumps() {
   // label whose address was taken somewhere in the function.
   // For most code bases, there will be only one such scope.
   llvm::DenseMap<unsigned, LabelDecl*> TargetScopes;
-  for (llvm::SmallVectorImpl<LabelDecl*>::iterator
+  for (SmallVectorImpl<LabelDecl*>::iterator
          I = IndirectJumpTargets.begin(), E = IndirectJumpTargets.end();
        I != E; ++I) {
     LabelDecl *TheLabel = *I;
@@ -538,7 +599,7 @@ void JumpScopeChecker::VerifyIndirectJumps() {
 
     // Walk through all the jump sites, checking that they can trivially
     // reach this label scope.
-    for (llvm::SmallVectorImpl<JumpScope>::iterator
+    for (SmallVectorImpl<JumpScope>::iterator
            I = JumpScopes.begin(), E = JumpScopes.end(); I != E; ++I) {
       unsigned Scope = I->first;
 
@@ -618,7 +679,7 @@ void JumpScopeChecker::CheckJump(Stmt *From, Stmt *To,
   if (CommonScope == ToScope) return;
 
   // Pull out (and reverse) any scopes we might need to diagnose skipping.
-  llvm::SmallVector<unsigned, 10> ToScopes;
+  SmallVector<unsigned, 10> ToScopes;
   for (unsigned I = ToScope; I != CommonScope; I = Scopes[I].ParentScope)
     if (Scopes[I].InDiag)
       ToScopes.push_back(I);

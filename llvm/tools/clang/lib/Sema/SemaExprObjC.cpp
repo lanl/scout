@@ -42,13 +42,13 @@ ExprResult Sema::ParseObjCStringLiteral(SourceLocation *AtLocs,
   if (NumStrings != 1) {
     // Concatenate objc strings.
     llvm::SmallString<128> StrBuf;
-    llvm::SmallVector<SourceLocation, 8> StrLocs;
+    SmallVector<SourceLocation, 8> StrLocs;
 
     for (unsigned i = 0; i != NumStrings; ++i) {
       S = Strings[i];
 
-      // ObjC strings can't be wide.
-      if (S->isWide()) {
+      // ObjC strings can't be wide or UTF.
+      if (!S->isAscii()) {
         Diag(S->getLocStart(), diag::err_cfstring_literal_not_string_constant)
           << S->getSourceRange();
         return true;
@@ -64,7 +64,7 @@ ExprResult Sema::ParseObjCStringLiteral(SourceLocation *AtLocs,
     // Create the aggregate string with the appropriate content and location
     // information.
     S = StringLiteral::Create(Context, StrBuf,
-                              /*Wide=*/false, /*Pascal=*/false,
+                              StringLiteral::Ascii, /*Pascal=*/false,
                               Context.getPointerType(Context.CharTy),
                               &StrLocs[0], StrLocs.size());
   }
@@ -178,11 +178,14 @@ ExprResult Sema::ParseObjCSelectorExpression(Selector Sel,
                                           SourceRange(LParenLoc, RParenLoc));
   if (!Method)
     Diag(SelLoc, diag::warn_undeclared_selector) << Sel;
-
-  llvm::DenseMap<Selector, SourceLocation>::iterator Pos
-    = ReferencedSelectors.find(Sel);
-  if (Pos == ReferencedSelectors.end())
-    ReferencedSelectors.insert(std::make_pair(Sel, SelLoc));
+  
+  if (!Method ||
+      Method->getImplementationControl() != ObjCMethodDecl::Optional) {
+    llvm::DenseMap<Selector, SourceLocation>::iterator Pos
+      = ReferencedSelectors.find(Sel);
+    if (Pos == ReferencedSelectors.end())
+      ReferencedSelectors.insert(std::make_pair(Sel, SelLoc));
+  }
 
   // In ARC, forbid the user from using @selector for 
   // retain/release/autorelease/dealloc/retainCount.
@@ -355,7 +358,14 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
                               : diag::warn_inst_method_not_found;
     Diag(lbrac, DiagID)
       << Sel << isClassMessage << SourceRange(lbrac, rbrac);
-    ReturnType = Context.getObjCIdType();
+
+    // In debuggers, we want to use __unknown_anytype for these
+    // results so that clients can cast them.
+    if (getLangOptions().DebuggerSupport) {
+      ReturnType = Context.UnknownAnyTy;
+    } else {
+      ReturnType = Context.getObjCIdType();
+    }
     VK = VK_RValue;
     return false;
   }

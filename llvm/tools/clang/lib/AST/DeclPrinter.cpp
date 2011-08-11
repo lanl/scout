@@ -24,22 +24,25 @@ using namespace clang;
 
 namespace {
   class DeclPrinter : public DeclVisitor<DeclPrinter> {
-    llvm::raw_ostream &Out;
+    raw_ostream &Out;
     ASTContext &Context;
     PrintingPolicy Policy;
     unsigned Indentation;
+    bool PrintInstantiation;
 
-    llvm::raw_ostream& Indent() { return Indent(Indentation); }
-    llvm::raw_ostream& Indent(unsigned Indentation);
-    void ProcessDeclGroup(llvm::SmallVectorImpl<Decl*>& Decls);
+    raw_ostream& Indent() { return Indent(Indentation); }
+    raw_ostream& Indent(unsigned Indentation);
+    void ProcessDeclGroup(SmallVectorImpl<Decl*>& Decls);
 
     void Print(AccessSpecifier AS);
 
   public:
-    DeclPrinter(llvm::raw_ostream &Out, ASTContext &Context,
+    DeclPrinter(raw_ostream &Out, ASTContext &Context,
                 const PrintingPolicy &Policy,
-                unsigned Indentation = 0)
-      : Out(Out), Context(Context), Policy(Policy), Indentation(Indentation) { }
+                unsigned Indentation = 0,
+                bool PrintInstantiation = false)
+      : Out(Out), Context(Context), Policy(Policy), Indentation(Indentation),
+        PrintInstantiation(PrintInstantiation) { }
 
     void VisitDeclContext(DeclContext *DC, bool Indent = true);
 
@@ -62,6 +65,8 @@ namespace {
     void VisitCXXRecordDecl(CXXRecordDecl *D);
     void VisitLinkageSpecDecl(LinkageSpecDecl *D);
     void VisitTemplateDecl(const TemplateDecl *D);
+    void VisitFunctionTemplateDecl(FunctionTemplateDecl *D);
+    void VisitClassTemplateDecl(ClassTemplateDecl *D);
     void VisitObjCMethodDecl(ObjCMethodDecl *D);
     void VisitObjCClassDecl(ObjCClassDecl *D);
     void VisitObjCImplementationDecl(ObjCImplementationDecl *D);
@@ -77,16 +82,20 @@ namespace {
     void VisitUnresolvedUsingValueDecl(UnresolvedUsingValueDecl *D);
     void VisitUsingDecl(UsingDecl *D);
     void VisitUsingShadowDecl(UsingShadowDecl *D);
+
+    void PrintTemplateParameters(const TemplateParameterList *Params,
+                                 const TemplateArgumentList *Args);
   };
 }
 
-void Decl::print(llvm::raw_ostream &Out, unsigned Indentation) const {
-  print(Out, getASTContext().PrintingPolicy, Indentation);
+void Decl::print(raw_ostream &Out, unsigned Indentation,
+                 bool PrintInstantiation) const {
+  print(Out, getASTContext().PrintingPolicy, Indentation, PrintInstantiation);
 }
 
-void Decl::print(llvm::raw_ostream &Out, const PrintingPolicy &Policy,
-                 unsigned Indentation) const {
-  DeclPrinter Printer(Out, getASTContext(), Policy, Indentation);
+void Decl::print(raw_ostream &Out, const PrintingPolicy &Policy,
+                 unsigned Indentation, bool PrintInstantiation) const {
+  DeclPrinter Printer(Out, getASTContext(), Policy, Indentation, PrintInstantiation);
   Printer.Visit(const_cast<Decl*>(this));
 }
 
@@ -119,7 +128,7 @@ static QualType getDeclType(Decl* D) {
 }
 
 void Decl::printGroup(Decl** Begin, unsigned NumDecls,
-                      llvm::raw_ostream &Out, const PrintingPolicy &Policy,
+                      raw_ostream &Out, const PrintingPolicy &Policy,
                       unsigned Indentation) {
   if (NumDecls == 1) {
     (*Begin)->print(Out, Policy, Indentation);
@@ -167,13 +176,13 @@ void Decl::dump() const {
   print(llvm::errs());
 }
 
-llvm::raw_ostream& DeclPrinter::Indent(unsigned Indentation) {
+raw_ostream& DeclPrinter::Indent(unsigned Indentation) {
   for (unsigned i = 0; i != Indentation; ++i)
     Out << "  ";
   return Out;
 }
 
-void DeclPrinter::ProcessDeclGroup(llvm::SmallVectorImpl<Decl*>& Decls) {
+void DeclPrinter::ProcessDeclGroup(SmallVectorImpl<Decl*>& Decls) {
   this->Indent();
   Decl::printGroup(Decls.data(), Decls.size(), Out, Policy, Indentation);
   Out << ";\n";
@@ -198,7 +207,7 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
   if (Indent)
     Indentation += Policy.Indentation;
 
-  llvm::SmallVector<Decl*, 2> Decls;
+  SmallVector<Decl*, 2> Decls;
   for (DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end();
        D != DEnd; ++D) {
 
@@ -694,10 +703,13 @@ void DeclPrinter::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
     Visit(*D->decls_begin());
 }
 
-void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
+void DeclPrinter::PrintTemplateParameters(
+    const TemplateParameterList *Params, const TemplateArgumentList *Args = 0) {
+  assert(Params);
+  assert(!Args || Params->size() == Args->size());
+
   Out << "template <";
 
-  TemplateParameterList *Params = D->getTemplateParameters();
   for (unsigned i = 0, e = Params->size(); i != e; ++i) {
     if (i != 0)
       Out << ", ";
@@ -716,7 +728,10 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
 
       Out << TTP->getNameAsString();
 
-      if (TTP->hasDefaultArgument()) {
+      if (Args) {
+        Out << " = ";
+        Args->get(i).print(Policy, Out);
+      } else if (TTP->hasDefaultArgument()) {
         Out << " = ";
         Out << TTP->getDefaultArgument().getAsString(Policy);
       };
@@ -732,7 +747,10 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
         Out << Name->getName();
       }
 
-      if (NTTP->hasDefaultArgument()) {
+      if (Args) {
+        Out << " = ";
+        Args->get(i).print(Policy, Out);
+      } else if (NTTP->hasDefaultArgument()) {
         Out << " = ";
         NTTP->getDefaultArgument()->printPretty(Out, Context, 0, Policy,
                                                 Indentation);
@@ -745,6 +763,10 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
   }
 
   Out << "> ";
+}
+
+void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
+  PrintTemplateParameters(D->getTemplateParameters());
 
   if (const TemplateTemplateParmDecl *TTP =
         dyn_cast<TemplateTemplateParmDecl>(D)) {
@@ -755,6 +777,33 @@ void DeclPrinter::VisitTemplateDecl(const TemplateDecl *D) {
   } else {
     Visit(D->getTemplatedDecl());
   }
+}
+
+void DeclPrinter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
+  if (PrintInstantiation) {
+    TemplateParameterList *Params = D->getTemplateParameters();
+    for (FunctionTemplateDecl::spec_iterator I = D->spec_begin(), E = D->spec_end();
+         I != E; ++I) {
+      PrintTemplateParameters(Params, (*I)->getTemplateSpecializationArgs());
+      Visit(*I);
+    }
+  }
+
+  return VisitRedeclarableTemplateDecl(D);
+}
+
+void DeclPrinter::VisitClassTemplateDecl(ClassTemplateDecl *D) {
+  if (PrintInstantiation) {
+    TemplateParameterList *Params = D->getTemplateParameters();
+    for (ClassTemplateDecl::spec_iterator I = D->spec_begin(), E = D->spec_end();
+         I != E; ++I) {
+      PrintTemplateParameters(Params, &(*I)->getTemplateArgs());
+      Visit(*I);
+      Out << '\n';
+    }
+  }
+
+  return VisitRedeclarableTemplateDecl(D);
 }
 
 //----------------------------------------------------------------------------

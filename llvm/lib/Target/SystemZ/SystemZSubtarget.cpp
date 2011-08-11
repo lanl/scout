@@ -15,9 +15,8 @@
 #include "SystemZ.h"
 #include "llvm/GlobalValue.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetRegistry.h"
 
-#define GET_SUBTARGETINFO_ENUM
-#define GET_SUBTARGETINFO_MC_DESC
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
 #include "SystemZGenSubtargetInfo.inc"

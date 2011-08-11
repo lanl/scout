@@ -152,12 +152,15 @@ private:
 
 public:
   enum Kind {             // Please keep this list alphabetized.
+    AT_acquired_after,
+    AT_acquired_before,
     AT_address_space,
     AT_alias,
     AT_aligned,
     AT_always_inline,
     AT_analyzer_noreturn,
     AT_annotate,
+    AT_arc_weakref_unavailable,
     AT_availability,      // Clang-specific
     AT_base_check,
     AT_blocks,
@@ -177,18 +180,26 @@ public:
     AT_device,
     AT_dllexport,
     AT_dllimport,
+    AT_exclusive_lock_function,
+    AT_exclusive_locks_required,
+    AT_exclusive_trylock_function,
     AT_ext_vector_type,
     AT_fastcall,
     AT_format,
     AT_format_arg,
     AT_global,
     AT_gnu_inline,
+    AT_guarded_by,
+    AT_guarded_var,
     AT_host,
     AT_IBAction,          // Clang-specific.
     AT_IBOutlet,          // Clang-specific.
     AT_IBOutletCollection, // Clang-specific.
     AT_init_priority,
     AT_launch_bounds,
+    AT_lock_returned,
+    AT_lockable,
+    AT_locks_excluded,
     AT_malloc,
     AT_may_alias,
     AT_mode,
@@ -197,6 +208,7 @@ public:
     AT_neon_polyvector_type,    // Clang-specific.
     AT_neon_vector_type,        // Clang-specific.
     AT_no_instrument_function,
+    AT_no_thread_safety_analysis,
     AT_nocommon,
     AT_nodebug,
     AT_noinline,
@@ -214,6 +226,7 @@ public:
     AT_objc_method_family,
     AT_objc_ownership,          // Clang-specific.
     AT_objc_precise_lifetime,   // Clang-specific.
+    AT_objc_returns_inner_pointer, // Clang-specific.
     AT_opencl_image_access,     // OpenCL-specific.
     AT_opencl_kernel_function,  // OpenCL-specific.
     AT_overloadable,       // Clang-specific.
@@ -223,16 +236,23 @@ public:
     AT_packed,
     AT_pascal,
     AT_pcs,  // ARM specific
+    AT_pt_guarded_by,
+    AT_pt_guarded_var,
     AT_pure,
     AT_regparm,
     AT_reqd_wg_size,
+    AT_scoped_lockable,
     AT_section,
     AT_sentinel,
     AT_shared,
+    AT_shared_lock_function,
+    AT_shared_locks_required,
+    AT_shared_trylock_function,
     AT_stdcall,
     AT_thiscall,
     AT_transparent_union,
     AT_unavailable,
+    AT_unlock_function,
     AT_unused,
     AT_used,
     AT_uuid,
@@ -243,7 +263,6 @@ public:
     AT_weak,
     AT_weak_import,
     AT_weakref,
-    AT_arc_weakref_unavailable,
     IgnoredAttribute,
     UnknownAttribute
   };
@@ -373,7 +392,7 @@ private:
 
   /// Free lists.  The index is determined by the following formula:
   ///   (size - sizeof(AttributeList)) / sizeof(void*)
-  llvm::SmallVector<AttributeList*, InlineFreeListsCapacity> FreeLists;
+  SmallVector<AttributeList*, InlineFreeListsCapacity> FreeLists;
 
   // The following are the private interface used by AttributePool.
   friend class AttributePool;

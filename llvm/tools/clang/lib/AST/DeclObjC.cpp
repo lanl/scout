@@ -185,7 +185,7 @@ void ObjCInterfaceDecl::mergeClassExtensionProtocolList(
   // Check for duplicate protocol in class's protocol list.
   // This is O(n*m). But it is extremely rare and number of protocols in
   // class or its extension are very few.
-  llvm::SmallVector<ObjCProtocolDecl*, 8> ProtocolRefs;
+  SmallVector<ObjCProtocolDecl*, 8> ProtocolRefs;
   for (unsigned i = 0; i < ExtNum; i++) {
     bool protocolExists = false;
     ObjCProtocolDecl *ProtoInExtension = ExtList[i];
@@ -997,7 +997,7 @@ FindPropertyImplDecl(IdentifierInfo *Id) const {
   return 0;
 }
 
-llvm::raw_ostream &clang::operator<<(llvm::raw_ostream &OS,
+raw_ostream &clang::operator<<(raw_ostream &OS,
                                      const ObjCCategoryImplDecl *CID) {
   OS << CID->getName();
   return OS;
@@ -1015,7 +1015,20 @@ ObjCImplementationDecl::Create(ASTContext &C, DeclContext *DC,
   return new (C) ObjCImplementationDecl(DC, L, ClassInterface, SuperDecl);
 }
 
-llvm::raw_ostream &clang::operator<<(llvm::raw_ostream &OS,
+void ObjCImplementationDecl::setIvarInitializers(ASTContext &C,
+                                             CXXCtorInitializer ** initializers,
+                                                 unsigned numInitializers) {
+  if (numInitializers > 0) {
+    NumIvarInitializers = numInitializers;
+    CXXCtorInitializer **ivarInitializers =
+    new (C) CXXCtorInitializer*[NumIvarInitializers];
+    memcpy(ivarInitializers, initializers,
+           numInitializers * sizeof(CXXCtorInitializer*));
+    IvarInitializers = ivarInitializers;
+  }
+}
+
+raw_ostream &clang::operator<<(raw_ostream &OS,
                                      const ObjCImplementationDecl *ID) {
   OS << ID->getName();
   return OS;

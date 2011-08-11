@@ -37,7 +37,6 @@
 
 namespace llvm {
   struct fltSemantics;
-  class raw_ostream;
 }
 
 namespace clang {
@@ -199,10 +198,6 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
 
-  mutable RecordDecl *NSConstantStringTypeDecl;
-
-  mutable RecordDecl *ObjCFastEnumerationStateTypeDecl;
-
   /// \brief The type for the C FILE type.
   TypeDecl *FILEDecl;
 
@@ -213,9 +208,15 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   TypeDecl *sigjmp_bufDecl;
 
   /// \brief Type for the Block descriptor for Blocks CodeGen.
+  ///
+  /// Since this is only used for generation of debug info, it is not
+  /// serialized.
   mutable RecordDecl *BlockDescriptorType;
 
   /// \brief Type for the Block descriptor for Blocks CodeGen.
+  ///
+  /// Since this is only used for generation of debug info, it is not
+  /// serialized.
   mutable RecordDecl *BlockDescriptorExtendedType;
 
   /// \brief Declaration for the CUDA cudaConfigureCall function.
@@ -413,17 +414,17 @@ public:
   /// BitfieldFollowsBitfield - return 'true" if 'FD' is a
   /// bitfield which follows the bitfield 'LastFD'.
   bool BitfieldFollowsBitfield(const FieldDecl *FD,
-                                   const FieldDecl *LastFD) const;
+                               const FieldDecl *LastFD) const;
   
-  /// NoneBitfieldFollowsBitfield - return 'true" if 'FD' is not a
+  /// NonBitfieldFollowsBitfield - return 'true" if 'FD' is not a
   /// bitfield which follows the bitfield 'LastFD'.
-  bool NoneBitfieldFollowsBitfield(const FieldDecl *FD,
-                                   const FieldDecl *LastFD) const;
+  bool NonBitfieldFollowsBitfield(const FieldDecl *FD,
+                                  const FieldDecl *LastFD) const;
   
-  /// BitfieldFollowsNoneBitfield - return 'true" if 'FD' is a
+  /// BitfieldFollowsNonBitfield - return 'true" if 'FD' is a
   /// bitfield which follows the none bitfield 'LastFD'.
-  bool BitfieldFollowsNoneBitfield(const FieldDecl *FD,
-                                   const FieldDecl *LastFD) const;
+  bool BitfieldFollowsNonBitfield(const FieldDecl *FD,
+                                  const FieldDecl *LastFD) const;
 
   // Access to the set of methods overridden by the given C++ method.
   typedef CXXMethodVector::iterator overridden_cxx_method_iterator;
@@ -592,28 +593,9 @@ public:
   /// blocks.
   QualType getBlockDescriptorType() const;
 
-  // Set the type for a Block descriptor type.
-  void setBlockDescriptorType(QualType T);
-  /// Get the BlockDescriptorType type, or NULL if it hasn't yet been built.
-  QualType getRawBlockdescriptorType() {
-    if (BlockDescriptorType)
-      return getTagDeclType(BlockDescriptorType);
-    return QualType();
-  }
-
   /// This gets the struct used to keep track of the extended descriptor for
   /// pointer to blocks.
   QualType getBlockDescriptorExtendedType() const;
-
-  // Set the type for a Block descriptor extended type.
-  void setBlockDescriptorExtendedType(QualType T);
-  /// Get the BlockDescriptorExtendedType type, or NULL if it hasn't yet been
-  /// built.
-  QualType getRawBlockdescriptorExtendedType() const {
-    if (BlockDescriptorExtendedType)
-      return getTagDeclType(BlockDescriptorExtendedType);
-    return QualType();
-  }
 
   void setcudaConfigureCallDecl(FunctionDecl *FD) {
     cudaConfigureCallDecl = FD;
@@ -623,7 +605,7 @@ public:
   }
 
   /// This builds the struct used for __block variables.
-  QualType BuildByRefType(llvm::StringRef DeclName, QualType Ty) const;
+  QualType BuildByRefType(StringRef DeclName, QualType Ty) const;
 
   /// Returns true iff we need copy/dispose helpers for the given type.
   bool BlockRequiresCopying(QualType Ty) const;
@@ -855,19 +837,6 @@ public:
   // constant CFStrings.
   QualType getCFConstantStringType() const;
 
-  // getNSConstantStringType - Return the C structure type used to represent
-  // constant NSStrings.
-  QualType getNSConstantStringType() const;
-  /// Get the structure type used to representation NSStrings, or NULL
-  /// if it hasn't yet been built.
-  QualType getRawNSConstantStringType() const {
-    if (NSConstantStringTypeDecl)
-      return getTagDeclType(NSConstantStringTypeDecl);
-    return QualType();
-  }
-  void setNSConstantStringType(QualType T);
-
-
   /// Get the structure type used to representation CFStrings, or NULL
   /// if it hasn't yet been built.
   QualType getRawCFConstantStringType() const {
@@ -882,19 +851,6 @@ public:
   QualType getObjCConstantStringInterface() const {
     return ObjCConstantStringType;
   }
-
-  //// This gets the struct used to keep track of fast enumerations.
-  QualType getObjCFastEnumerationStateType() const;
-
-  /// Get the ObjCFastEnumerationState type, or NULL if it hasn't yet
-  /// been built.
-  QualType getRawObjCFastEnumerationStateType() const {
-    if (ObjCFastEnumerationStateTypeDecl)
-      return getTagDeclType(ObjCFastEnumerationStateTypeDecl);
-    return QualType();
-  }
-
-  void setObjCFastEnumerationStateType(QualType T);
 
   /// \brief Set the type for the C FILE type.
   void setFILEDecl(TypeDecl *FILEDecl) { this->FILEDecl = FILEDecl; }
@@ -1176,7 +1132,7 @@ public:
   const ASTRecordLayout &getASTObjCInterfaceLayout(const ObjCInterfaceDecl *D)
     const;
 
-  void DumpRecordLayout(const RecordDecl *RD, llvm::raw_ostream &OS) const;
+  void DumpRecordLayout(const RecordDecl *RD, raw_ostream &OS) const;
 
   /// getASTObjCImplementationLayout - Get or compute information about
   /// the layout of the specified Objective-C implementation. This may
@@ -1195,13 +1151,9 @@ public:
   bool isNearlyEmpty(const CXXRecordDecl *RD) const;
 
   MangleContext *createMangleContext();
-
-  void ShallowCollectObjCIvars(const ObjCInterfaceDecl *OI,
-                               llvm::SmallVectorImpl<ObjCIvarDecl*> &Ivars)
-    const;
   
   void DeepCollectObjCIvars(const ObjCInterfaceDecl *OI, bool leafClass,
-                            llvm::SmallVectorImpl<ObjCIvarDecl*> &Ivars) const;
+                            SmallVectorImpl<const ObjCIvarDecl*> &Ivars) const;
   
   unsigned CountNonClassIvars(const ObjCInterfaceDecl *OI) const;
   void CollectInheritedProtocols(const Decl *CDecl,
@@ -1292,7 +1244,7 @@ public:
   /// \brief Retrieves the canonical representation of the given
   /// calling convention.
   CallingConv getCanonicalCallConv(CallingConv CC) const {
-    if (CC == CC_C)
+    if (!LangOpts.MRTD && CC == CC_C)
       return CC_Default;
     return CC;
   }
@@ -1365,6 +1317,18 @@ public:
   /// getConstantArrayElementCount - Returns number of constant array elements.
   uint64_t getConstantArrayElementCount(const ConstantArrayType *CA) const;
 
+  /// \brief Perform adjustment on the parameter type of a function.
+  ///
+  /// This routine adjusts the given parameter type @p T to the actual
+  /// parameter type used by semantic analysis (C99 6.7.5.3p[7,8],
+  /// C++ [dcl.fct]p3). The adjusted parameter type is returned.
+  QualType getAdjustedParameterType(QualType T);
+  
+  /// \brief Retrieve the parameter type as adjusted for use in the signature
+  /// of a function, decaying array and function types and removing top-level
+  /// cv-qualifiers.
+  QualType getSignatureParameterType(QualType T);
+  
   /// getArrayDecayedType - Return the properly qualified result of decaying the
   /// specified array type to a pointer.  This operation is non-trivial when
   /// handling typedefs etc.  The canonical type of "T" must be an array type,
@@ -1436,6 +1400,7 @@ public:
   bool typesAreCompatible(QualType T1, QualType T2, 
                           bool CompareUnqualified = false); // C99 6.2.7p1
 
+  bool propertyTypesAreCompatible(QualType, QualType); 
   bool typesAreBlockPointerCompatible(QualType, QualType); 
 
   bool isObjCIdType(QualType T) const {
@@ -1662,7 +1627,7 @@ private:
 private:
   /// \brief A set of deallocations that should be performed when the 
   /// ASTContext is destroyed.
-  llvm::SmallVector<std::pair<void (*)(void*), void *>, 16> Deallocations;
+  SmallVector<std::pair<void (*)(void*), void *>, 16> Deallocations;
                                        
   // FIXME: This currently contains the set of StoredDeclMaps used
   // by DeclContext objects.  This probably should not be in ASTContext,
@@ -1678,13 +1643,13 @@ private:
 };
   
 /// @brief Utility function for constructing a nullary selector.
-static inline Selector GetNullarySelector(llvm::StringRef name, ASTContext& Ctx) {
+static inline Selector GetNullarySelector(StringRef name, ASTContext& Ctx) {
   IdentifierInfo* II = &Ctx.Idents.get(name);
   return Ctx.Selectors.getSelector(0, &II);
 }
 
 /// @brief Utility function for constructing an unary selector.
-static inline Selector GetUnarySelector(llvm::StringRef name, ASTContext& Ctx) {
+static inline Selector GetUnarySelector(StringRef name, ASTContext& Ctx) {
   IdentifierInfo* II = &Ctx.Idents.get(name);
   return Ctx.Selectors.getSelector(1, &II);
 }

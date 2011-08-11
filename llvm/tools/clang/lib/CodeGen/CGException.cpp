@@ -29,10 +29,8 @@ using namespace CodeGen;
 static llvm::Constant *getAllocateExceptionFn(CodeGenFunction &CGF) {
   // void *__cxa_allocate_exception(size_t thrown_size);
 
-  const llvm::Type *SizeTy = CGF.ConvertType(CGF.getContext().getSizeType());
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getInt8PtrTy(CGF.getLLVMContext()),
-                            SizeTy, /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.Int8PtrTy, CGF.SizeTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_allocate_exception");
 }
@@ -40,10 +38,8 @@ static llvm::Constant *getAllocateExceptionFn(CodeGenFunction &CGF) {
 static llvm::Constant *getFreeExceptionFn(CodeGenFunction &CGF) {
   // void __cxa_free_exception(void *thrown_exception);
 
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()),
-                            Int8PtrTy, /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, CGF.Int8PtrTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_free_exception");
 }
@@ -52,11 +48,9 @@ static llvm::Constant *getThrowFn(CodeGenFunction &CGF) {
   // void __cxa_throw(void *thrown_exception, std::type_info *tinfo,
   //                  void (*dest) (void *));
 
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::Type *Args[3] = { Int8PtrTy, Int8PtrTy, Int8PtrTy };
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()),
-                            Args, /*IsVarArgs=*/false);
+  llvm::Type *Args[3] = { CGF.Int8PtrTy, CGF.Int8PtrTy, CGF.Int8PtrTy };
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, Args, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_throw");
 }
@@ -64,9 +58,8 @@ static llvm::Constant *getThrowFn(CodeGenFunction &CGF) {
 static llvm::Constant *getReThrowFn(CodeGenFunction &CGF) {
   // void __cxa_rethrow();
 
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()), 
-                            /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_rethrow");
 }
@@ -74,9 +67,8 @@ static llvm::Constant *getReThrowFn(CodeGenFunction &CGF) {
 static llvm::Constant *getGetExceptionPtrFn(CodeGenFunction &CGF) {
   // void *__cxa_get_exception_ptr(void*);
 
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(Int8PtrTy, Int8PtrTy, /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.Int8PtrTy, CGF.Int8PtrTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_get_exception_ptr");
 }
@@ -84,9 +76,8 @@ static llvm::Constant *getGetExceptionPtrFn(CodeGenFunction &CGF) {
 static llvm::Constant *getBeginCatchFn(CodeGenFunction &CGF) {
   // void *__cxa_begin_catch(void*);
 
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(Int8PtrTy, Int8PtrTy, /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.Int8PtrTy, CGF.Int8PtrTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_begin_catch");
 }
@@ -94,9 +85,8 @@ static llvm::Constant *getBeginCatchFn(CodeGenFunction &CGF) {
 static llvm::Constant *getEndCatchFn(CodeGenFunction &CGF) {
   // void __cxa_end_catch();
 
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()), 
-                            /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_end_catch");
 }
@@ -104,16 +94,14 @@ static llvm::Constant *getEndCatchFn(CodeGenFunction &CGF) {
 static llvm::Constant *getUnexpectedFn(CodeGenFunction &CGF) {
   // void __cxa_call_unexepcted(void *thrown_exception);
 
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()),
-                            Int8PtrTy, /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, CGF.Int8PtrTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_call_unexpected");
 }
 
 llvm::Constant *CodeGenFunction::getUnwindResumeFn() {
-  const llvm::FunctionType *FTy =
+  llvm::FunctionType *FTy =
     llvm::FunctionType::get(VoidTy, Int8PtrTy, /*IsVarArgs=*/false);
 
   if (CGM.getLangOptions().SjLjExceptions)
@@ -122,7 +110,7 @@ llvm::Constant *CodeGenFunction::getUnwindResumeFn() {
 }
 
 llvm::Constant *CodeGenFunction::getUnwindResumeOrRethrowFn() {
-  const llvm::FunctionType *FTy =
+  llvm::FunctionType *FTy =
     llvm::FunctionType::get(VoidTy, Int8PtrTy, /*IsVarArgs=*/false);
 
   if (CGM.getLangOptions().SjLjExceptions)
@@ -133,11 +121,10 @@ llvm::Constant *CodeGenFunction::getUnwindResumeOrRethrowFn() {
 static llvm::Constant *getTerminateFn(CodeGenFunction &CGF) {
   // void __terminate();
 
-  const llvm::FunctionType *FTy =
-    llvm::FunctionType::get(llvm::Type::getVoidTy(CGF.getLLVMContext()), 
-                            /*IsVarArgs=*/false);
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, /*IsVarArgs=*/false);
 
-  llvm::StringRef name;
+  StringRef name;
 
   // In C++, use std::terminate().
   if (CGF.getLangOptions().CPlusPlus)
@@ -151,12 +138,9 @@ static llvm::Constant *getTerminateFn(CodeGenFunction &CGF) {
 }
 
 static llvm::Constant *getCatchallRethrowFn(CodeGenFunction &CGF,
-                                            llvm::StringRef Name) {
-  const llvm::Type *Int8PtrTy =
-    llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  const llvm::Type *VoidTy = llvm::Type::getVoidTy(CGF.getLLVMContext());
-  const llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, Int8PtrTy,
-                                                          /*IsVarArgs=*/false);
+                                            StringRef Name) {
+  llvm::FunctionType *FTy =
+    llvm::FunctionType::get(CGF.VoidTy, CGF.Int8PtrTy, /*IsVarArgs=*/false);
 
   return CGF.CGM.CreateRuntimeFunction(FTy, Name);
 }
@@ -331,9 +315,10 @@ static llvm::Constant *getCleanupValue(CodeGenFunction &CGF) {
 namespace {
   /// A cleanup to free the exception object if its initialization
   /// throws.
-  struct FreeException {
-    static void Emit(CodeGenFunction &CGF, bool forEH,
-                     llvm::Value *exn) {
+  struct FreeException : EHScopeStack::Cleanup {
+    llvm::Value *exn;
+    FreeException(llvm::Value *exn) : exn(exn) {}
+    void Emit(CodeGenFunction &CGF, Flags flags) {
       CGF.Builder.CreateCall(getFreeExceptionFn(CGF), exn)
         ->setDoesNotThrow();
     }
@@ -353,7 +338,7 @@ static void EmitAnyExprToExn(CodeGenFunction &CGF, const Expr *e,
 
   // __cxa_allocate_exception returns a void*;  we need to cast this
   // to the appropriate type for the object.
-  const llvm::Type *ty = CGF.ConvertTypeForMem(e->getType())->getPointerTo();
+  llvm::Type *ty = CGF.ConvertTypeForMem(e->getType())->getPointerTo();
   llvm::Value *typedAddr = CGF.Builder.CreateBitCast(addr, ty);
 
   // FIXME: this isn't quite right!  If there's a final unelided call
@@ -404,7 +389,7 @@ void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E) {
   QualType ThrowType = E->getSubExpr()->getType();
 
   // Now allocate the exception object.
-  const llvm::Type *SizeTy = ConvertType(getContext().getSizeType());
+  llvm::Type *SizeTy = ConvertType(getContext().getSizeType());
   uint64_t TypeSize = getContext().getTypeSizeInChars(ThrowType).getQuantity();
 
   llvm::Constant *AllocExceptionFn = getAllocateExceptionFn(*this);
@@ -417,7 +402,6 @@ void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E) {
   EmitAnyExprToExn(*this, E->getSubExpr(), ExceptionPtr);
 
   // Now throw the exception.
-  const llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
   llvm::Constant *TypeInfo = CGM.GetAddrOfRTTIDescriptor(ThrowType, 
                                                          /*ForEH=*/true);
 
@@ -483,6 +467,46 @@ void CodeGenFunction::EmitStartEHSpec(const Decl *D) {
   }
 }
 
+/// Emit the dispatch block for a filter scope if necessary.
+static void emitFilterDispatchBlock(CodeGenFunction &CGF,
+                                    EHFilterScope &filterScope) {
+  llvm::BasicBlock *dispatchBlock = filterScope.getCachedEHDispatchBlock();
+  if (!dispatchBlock) return;
+  if (dispatchBlock->use_empty()) {
+    delete dispatchBlock;
+    return;
+  }
+
+  CGBuilderTy::InsertPoint savedIP = CGF.Builder.saveIP();
+  CGF.EmitBlockAfterUses(dispatchBlock);
+
+  // If this isn't a catch-all filter, we need to check whether we got
+  // here because the filter triggered.
+  if (filterScope.getNumFilters()) {
+    // Load the selector value.
+    llvm::Value *selector =
+      CGF.Builder.CreateLoad(CGF.getEHSelectorSlot(), "selector");
+
+    llvm::BasicBlock *unexpectedBB = CGF.createBasicBlock("ehspec.unexpected");
+
+    llvm::Value *zero = CGF.Builder.getInt32(0);
+    llvm::Value *failsFilter =
+      CGF.Builder.CreateICmpSLT(selector, zero, "ehspec.fails");
+    CGF.Builder.CreateCondBr(failsFilter, unexpectedBB, CGF.getEHResumeBlock());
+
+    CGF.EmitBlock(unexpectedBB);
+  }
+
+  // Call __cxa_call_unexpected.  This doesn't need to be an invoke
+  // because __cxa_call_unexpected magically filters exceptions
+  // according to the last landing pad the exception was thrown
+  // into.  Seriously.
+  llvm::Value *exn = CGF.Builder.CreateLoad(CGF.getExceptionSlot());
+  CGF.Builder.CreateCall(getUnexpectedFn(CGF), exn)
+    ->setDoesNotReturn();
+  CGF.Builder.CreateUnreachable();
+}
+
 void CodeGenFunction::EmitEndEHSpec(const Decl *D) {
   if (!CGM.getLangOptions().CXXExceptions)
     return;
@@ -500,6 +524,8 @@ void CodeGenFunction::EmitEndEHSpec(const Decl *D) {
       EHStack.popTerminate();
     }
   } else if (EST == EST_Dynamic || EST == EST_DynamicNone) {
+    EHFilterScope &filterScope = cast<EHFilterScope>(*EHStack.begin());
+    emitFilterDispatchBlock(*this, filterScope);
     EHStack.popFilter();
   }
 }
@@ -539,6 +565,50 @@ void CodeGenFunction::EnterCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
       CatchScope->setCatchAllHandler(I, Handler);
     }
   }
+}
+
+llvm::BasicBlock *
+CodeGenFunction::getEHDispatchBlock(EHScopeStack::stable_iterator si) {
+  // The dispatch block for the end of the scope chain is a block that
+  // just resumes unwinding.
+  if (si == EHStack.stable_end())
+    return getEHResumeBlock();
+
+  // Otherwise, we should look at the actual scope.
+  EHScope &scope = *EHStack.find(si);
+
+  llvm::BasicBlock *dispatchBlock = scope.getCachedEHDispatchBlock();
+  if (!dispatchBlock) {
+    switch (scope.getKind()) {
+    case EHScope::Catch: {
+      // Apply a special case to a single catch-all.
+      EHCatchScope &catchScope = cast<EHCatchScope>(scope);
+      if (catchScope.getNumHandlers() == 1 &&
+          catchScope.getHandler(0).isCatchAll()) {
+        dispatchBlock = catchScope.getHandler(0).Block;
+
+      // Otherwise, make a dispatch block.
+      } else {
+        dispatchBlock = createBasicBlock("catch.dispatch");
+      }
+      break;
+    }
+
+    case EHScope::Cleanup:
+      dispatchBlock = createBasicBlock("ehcleanup");
+      break;
+
+    case EHScope::Filter:
+      dispatchBlock = createBasicBlock("filter.dispatch");
+      break;
+
+    case EHScope::Terminate:
+      dispatchBlock = getTerminateHandler();
+      break;
+    }
+    scope.setCachedEHDispatchBlock(dispatchBlock);
+  }
+  return dispatchBlock;
 }
 
 /// Check whether this is a non-EH scope, i.e. a scope which doesn't
@@ -637,280 +707,148 @@ const CleanupHackLevel_t CleanupHackLevel = CHL_MandatoryCleanup;
 llvm::BasicBlock *CodeGenFunction::EmitLandingPad() {
   assert(EHStack.requiresLandingPad());
 
-  for (EHScopeStack::iterator ir = EHStack.begin(); ; ) {
-    assert(ir != EHStack.end() &&
-           "stack requiring landing pad is nothing but non-EH scopes?");
+  EHScope &innermostEHScope = *EHStack.find(EHStack.getInnermostEHScope());
+  switch (innermostEHScope.getKind()) {
+  case EHScope::Terminate:
+    return getTerminateLandingPad();
 
-    // If this is a terminate scope, just use the singleton terminate
-    // landing pad.
-    if (isa<EHTerminateScope>(*ir))
-      return getTerminateLandingPad();
-
-    // If this isn't an EH scope, iterate; otherwise break out.
-    if (!isNonEHScope(*ir)) break;
-    ++ir;
-
-    // We haven't checked this scope for a cached landing pad yet.
-    if (llvm::BasicBlock *LP = ir->getCachedLandingPad())
-      return LP;
+  case EHScope::Catch:
+  case EHScope::Cleanup:
+  case EHScope::Filter:
+    if (llvm::BasicBlock *lpad = innermostEHScope.getCachedLandingPad())
+      return lpad;
   }
 
   // Save the current IR generation state.
-  CGBuilderTy::InsertPoint SavedIP = Builder.saveAndClearIP();
+  CGBuilderTy::InsertPoint savedIP = Builder.saveAndClearIP();
 
-  const EHPersonality &Personality = EHPersonality::get(getLangOptions());
+  const EHPersonality &personality = EHPersonality::get(getLangOptions());
 
   // Create and configure the landing pad.
-  llvm::BasicBlock *LP = createBasicBlock("lpad");
-  EmitBlock(LP);
+  llvm::BasicBlock *lpad = createBasicBlock("lpad");
+  EmitBlock(lpad);
 
   // Save the exception pointer.  It's safe to use a single exception
   // pointer per function because EH cleanups can never have nested
   // try/catches.
-  llvm::CallInst *Exn =
+  llvm::CallInst *exn =
     Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::eh_exception), "exn");
-  Exn->setDoesNotThrow();
-  Builder.CreateStore(Exn, getExceptionSlot());
+  exn->setDoesNotThrow();
   
   // Build the selector arguments.
-  llvm::SmallVector<llvm::Value*, 8> EHSelector;
-  EHSelector.push_back(Exn);
-  EHSelector.push_back(getOpaquePersonalityFn(CGM, Personality));
+  SmallVector<llvm::Value*, 8> selector;
+  selector.push_back(exn);
+  selector.push_back(getOpaquePersonalityFn(CGM, personality));
 
   // Accumulate all the handlers in scope.
-  llvm::DenseMap<llvm::Value*, UnwindDest> EHHandlers;
-  UnwindDest CatchAll;
-  bool HasEHCleanup = false;
-  bool HasEHFilter = false;
-  llvm::SmallVector<llvm::Value*, 8> EHFilters;
+  bool hasCatchAll = false;
+  bool hasCleanup = false;
+  bool hasFilter = false;
+  SmallVector<llvm::Value*, 4> filterTypes;
+  llvm::SmallPtrSet<llvm::Value*, 4> catchTypes;
   for (EHScopeStack::iterator I = EHStack.begin(), E = EHStack.end();
          I != E; ++I) {
 
     switch (I->getKind()) {
     case EHScope::Cleanup:
-      if (!HasEHCleanup)
-        HasEHCleanup = cast<EHCleanupScope>(*I).isEHCleanup();
-      // We otherwise don't care about cleanups.
+      // If we have a cleanup, remember that.
+      hasCleanup = (hasCleanup || cast<EHCleanupScope>(*I).isEHCleanup());
       continue;
 
     case EHScope::Filter: {
       assert(I.next() == EHStack.end() && "EH filter is not end of EH stack");
-      assert(!CatchAll.isValid() && "EH filter reached after catch-all");
+      assert(!hasCatchAll && "EH filter reached after catch-all");
 
       // Filter scopes get added to the selector in weird ways.
-      EHFilterScope &Filter = cast<EHFilterScope>(*I);
-      HasEHFilter = true;
+      EHFilterScope &filter = cast<EHFilterScope>(*I);
+      hasFilter = true;
 
       // Add all the filter values which we aren't already explicitly
       // catching.
-      for (unsigned I = 0, E = Filter.getNumFilters(); I != E; ++I) {
-        llvm::Value *FV = Filter.getFilter(I);
-        if (!EHHandlers.count(FV))
-          EHFilters.push_back(FV);
+      for (unsigned i = 0, e = filter.getNumFilters(); i != e; ++i) {
+        llvm::Value *filterType = filter.getFilter(i);
+        if (!catchTypes.count(filterType))
+          filterTypes.push_back(filterType);
       }
       goto done;
     }
 
     case EHScope::Terminate:
       // Terminate scopes are basically catch-alls.
-      assert(!CatchAll.isValid());
-      CatchAll = UnwindDest(getTerminateHandler(),
-                            EHStack.getEnclosingEHCleanup(I),
-                            cast<EHTerminateScope>(*I).getDestIndex());
+      assert(!hasCatchAll);
+      hasCatchAll = true;
       goto done;
 
     case EHScope::Catch:
       break;
     }
 
-    EHCatchScope &Catch = cast<EHCatchScope>(*I);
-    for (unsigned HI = 0, HE = Catch.getNumHandlers(); HI != HE; ++HI) {
-      EHCatchScope::Handler Handler = Catch.getHandler(HI);
+    EHCatchScope &catchScope = cast<EHCatchScope>(*I);
+    for (unsigned hi = 0, he = catchScope.getNumHandlers(); hi != he; ++hi) {
+      EHCatchScope::Handler handler = catchScope.getHandler(hi);
 
-      // Catch-all.  We should only have one of these per catch.
-      if (!Handler.Type) {
-        assert(!CatchAll.isValid());
-        CatchAll = UnwindDest(Handler.Block,
-                              EHStack.getEnclosingEHCleanup(I),
-                              Handler.Index);
-        continue;
+      // If this is a catch-all, register that and abort.
+      if (!handler.Type) {
+        assert(!hasCatchAll);
+        hasCatchAll = true;
+        goto done;
       }
 
       // Check whether we already have a handler for this type.
-      UnwindDest &Dest = EHHandlers[Handler.Type];
-      if (Dest.isValid()) continue;
-
-      EHSelector.push_back(Handler.Type);
-      Dest = UnwindDest(Handler.Block,
-                        EHStack.getEnclosingEHCleanup(I),
-                        Handler.Index);
+      if (catchTypes.insert(handler.Type)) {
+        // If not, add it directly to the selector.
+        selector.push_back(handler.Type);
+      }
     }
-
-    // Stop if we found a catch-all.
-    if (CatchAll.isValid()) break;
   }
 
  done:
-  unsigned LastToEmitInLoop = EHSelector.size();
-
   // If we have a catch-all, add null to the selector.
-  if (CatchAll.isValid()) {
-    EHSelector.push_back(getCatchAllValue(*this));
+  assert(!(hasCatchAll && hasFilter));
+  if (hasCatchAll) {
+    selector.push_back(getCatchAllValue(*this));
 
   // If we have an EH filter, we need to add those handlers in the
   // right place in the selector, which is to say, at the end.
-  } else if (HasEHFilter) {
+  } else if (hasFilter) {
     // Create a filter expression: an integer constant saying how many
     // filters there are (+1 to avoid ambiguity with 0 for cleanup),
     // followed by the filter types.  The personality routine only
     // lands here if the filter doesn't match.
-    EHSelector.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(),
-                                                EHFilters.size() + 1));
-    EHSelector.append(EHFilters.begin(), EHFilters.end());
+    selector.push_back(Builder.getInt32(filterTypes.size() + 1));
+    selector.append(filterTypes.begin(), filterTypes.end());
 
     // Also check whether we need a cleanup.
-    if (CleanupHackLevel == CHL_MandatoryCatchall || HasEHCleanup)
-      EHSelector.push_back(CleanupHackLevel == CHL_MandatoryCatchall
+    if (CleanupHackLevel == CHL_MandatoryCatchall || hasCleanup)
+      selector.push_back(CleanupHackLevel == CHL_MandatoryCatchall
                            ? getCatchAllValue(*this)
                            : getCleanupValue(*this));
 
   // Otherwise, signal that we at least have cleanups.
-  } else if (CleanupHackLevel == CHL_MandatoryCatchall || HasEHCleanup) {
-    EHSelector.push_back(CleanupHackLevel == CHL_MandatoryCatchall
+  } else if (CleanupHackLevel == CHL_MandatoryCatchall || hasCleanup) {
+    selector.push_back(CleanupHackLevel == CHL_MandatoryCatchall
                          ? getCatchAllValue(*this)
                          : getCleanupValue(*this));
-
-  // At the MandatoryCleanup hack level, we don't need to actually
-  // spuriously tell the unwinder that we have cleanups, but we do
-  // need to always be prepared to handle cleanups.
-  } else if (CleanupHackLevel == CHL_MandatoryCleanup) {
-    // Just don't decrement LastToEmitInLoop.
-
-  } else {
-    assert(LastToEmitInLoop > 2);
-    LastToEmitInLoop--;
   }
 
-  assert(EHSelector.size() >= 3 && "selector call has only two arguments!");
+  assert(selector.size() >= 3 && "selector call has only two arguments!");
 
   // Tell the backend how to generate the landing pad.
-  llvm::CallInst *Selection =
+  llvm::CallInst *selectorCall =
     Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::eh_selector),
-                       EHSelector.begin(), EHSelector.end(), "eh.selector");
-  Selection->setDoesNotThrow();
+                       selector, "eh.selector");
+  selectorCall->setDoesNotThrow();
 
-  // Save the selector value in mandatory-cleanup mode.
-  if (CleanupHackLevel == CHL_MandatoryCleanup)
-    Builder.CreateStore(Selection, getEHSelectorSlot());
-  
-  // Select the right handler.
-  llvm::Value *llvm_eh_typeid_for =
-    CGM.getIntrinsic(llvm::Intrinsic::eh_typeid_for);
+  // Save the selector and exception pointer.
+  Builder.CreateStore(exn, getExceptionSlot());
+  Builder.CreateStore(selectorCall, getEHSelectorSlot());
 
-  // The results of llvm_eh_typeid_for aren't reliable --- at least
-  // not locally --- so we basically have to do this as an 'if' chain.
-  // We walk through the first N-1 catch clauses, testing and chaining,
-  // and then fall into the final clause (which is either a cleanup, a
-  // filter (possibly with a cleanup), a catch-all, or another catch).
-  for (unsigned I = 2; I != LastToEmitInLoop; ++I) {
-    llvm::Value *Type = EHSelector[I];
-    UnwindDest Dest = EHHandlers[Type];
-    assert(Dest.isValid() && "no handler entry for value in selector?");
-
-    // Figure out where to branch on a match.  As a debug code-size
-    // optimization, if the scope depth matches the innermost cleanup,
-    // we branch directly to the catch handler.
-    llvm::BasicBlock *Match = Dest.getBlock();
-    bool MatchNeedsCleanup =
-      Dest.getScopeDepth() != EHStack.getInnermostEHCleanup();
-    if (MatchNeedsCleanup)
-      Match = createBasicBlock("eh.match");
-
-    llvm::BasicBlock *Next = createBasicBlock("eh.next");
-
-    // Check whether the exception matches.
-    llvm::CallInst *Id
-      = Builder.CreateCall(llvm_eh_typeid_for,
-                           Builder.CreateBitCast(Type, Int8PtrTy));
-    Id->setDoesNotThrow();
-    Builder.CreateCondBr(Builder.CreateICmpEQ(Selection, Id),
-                         Match, Next);
-    
-    // Emit match code if necessary.
-    if (MatchNeedsCleanup) {
-      EmitBlock(Match);
-      EmitBranchThroughEHCleanup(Dest);
-    }
-
-    // Continue to the next match.
-    EmitBlock(Next);
-  }
-
-  // Emit the final case in the selector.
-  // This might be a catch-all....
-  if (CatchAll.isValid()) {
-    assert(isa<llvm::ConstantPointerNull>(EHSelector.back()));
-    EmitBranchThroughEHCleanup(CatchAll);
-
-  // ...or an EH filter...
-  } else if (HasEHFilter) {
-    llvm::Value *SavedSelection = Selection;
-
-    // First, unwind out to the outermost scope if necessary.
-    if (EHStack.hasEHCleanups()) {
-      // The end here might not dominate the beginning, so we might need to
-      // save the selector if we need it.
-      llvm::AllocaInst *SelectorVar = 0;
-      if (HasEHCleanup) {
-        SelectorVar = CreateTempAlloca(Builder.getInt32Ty(), "selector.var");
-        Builder.CreateStore(Selection, SelectorVar);
-      }
-
-      llvm::BasicBlock *CleanupContBB = createBasicBlock("ehspec.cleanup.cont");
-      EmitBranchThroughEHCleanup(UnwindDest(CleanupContBB, EHStack.stable_end(),
-                                            EHStack.getNextEHDestIndex()));
-      EmitBlock(CleanupContBB);
-
-      if (HasEHCleanup)
-        SavedSelection = Builder.CreateLoad(SelectorVar, "ehspec.saved-selector");
-    }
-
-    // If there was a cleanup, we'll need to actually check whether we
-    // landed here because the filter triggered.
-    if (CleanupHackLevel != CHL_Ideal || HasEHCleanup) {
-      llvm::BasicBlock *UnexpectedBB = createBasicBlock("ehspec.unexpected");
-
-      llvm::Constant *Zero = llvm::ConstantInt::get(Int32Ty, 0);
-      llvm::Value *FailsFilter =
-        Builder.CreateICmpSLT(SavedSelection, Zero, "ehspec.fails");
-      Builder.CreateCondBr(FailsFilter, UnexpectedBB, getRethrowDest().getBlock());
-
-      EmitBlock(UnexpectedBB);
-    }
-
-    // Call __cxa_call_unexpected.  This doesn't need to be an invoke
-    // because __cxa_call_unexpected magically filters exceptions
-    // according to the last landing pad the exception was thrown
-    // into.  Seriously.
-    Builder.CreateCall(getUnexpectedFn(*this),
-                       Builder.CreateLoad(getExceptionSlot()))
-      ->setDoesNotReturn();
-    Builder.CreateUnreachable();
-
-  // ...or a normal catch handler...
-  } else if (CleanupHackLevel == CHL_Ideal && !HasEHCleanup) {
-    llvm::Value *Type = EHSelector.back();
-    EmitBranchThroughEHCleanup(EHHandlers[Type]);
-
-  // ...or a cleanup.
-  } else {
-    EmitBranchThroughEHCleanup(getRethrowDest());
-  }
+  Builder.CreateBr(getEHDispatchBlock(EHStack.getInnermostEHScope()));
 
   // Restore the old IR generation state.
-  Builder.restoreIP(SavedIP);
+  Builder.restoreIP(savedIP);
 
-  return LP;
+  return lpad;
 }
 
 namespace {
@@ -930,13 +868,13 @@ namespace {
     CallEndCatch(bool MightThrow) : MightThrow(MightThrow) {}
     bool MightThrow;
 
-    void Emit(CodeGenFunction &CGF, bool IsForEH) {
+    void Emit(CodeGenFunction &CGF, Flags flags) {
       if (!MightThrow) {
         CGF.Builder.CreateCall(getEndCatchFn(CGF))->setDoesNotThrow();
         return;
       }
 
-      CGF.EmitCallOrInvoke(getEndCatchFn(CGF), 0, 0);
+      CGF.EmitCallOrInvoke(getEndCatchFn(CGF));
     }
   };
 }
@@ -966,7 +904,7 @@ static void InitCatchParam(CodeGenFunction &CGF,
 
   CanQualType CatchType =
     CGF.CGM.getContext().getCanonicalType(CatchParam.getType());
-  const llvm::Type *LLVMCatchTy = CGF.ConvertTypeForMem(CatchType);
+  llvm::Type *LLVMCatchTy = CGF.ConvertTypeForMem(CatchType);
 
   // If we're catching by reference, we can just cast the object
   // pointer to the appropriate pointer.
@@ -1009,7 +947,7 @@ static void InitCatchParam(CodeGenFunction &CGF,
       // pad.  The best solution is to fix the personality function.
       } else {
         // Pull the pointer for the reference type off.
-        const llvm::Type *PtrTy =
+        llvm::Type *PtrTy =
           cast<llvm::PointerType>(LLVMCatchTy)->getElementType();
 
         // Create the temporary and write the adjusted pointer into it.
@@ -1045,7 +983,7 @@ static void InitCatchParam(CodeGenFunction &CGF,
 
     // Otherwise, it returns a pointer into the exception object.
 
-    const llvm::Type *PtrTy = LLVMCatchTy->getPointerTo(0); // addrspace 0 ok
+    llvm::Type *PtrTy = LLVMCatchTy->getPointerTo(0); // addrspace 0 ok
     llvm::Value *Cast = CGF.Builder.CreateBitCast(AdjustedExn, PtrTy);
 
     if (IsComplex) {
@@ -1063,7 +1001,7 @@ static void InitCatchParam(CodeGenFunction &CGF,
 
   assert(isa<RecordType>(CatchType) && "unexpected catch type!");
 
-  const llvm::Type *PtrTy = LLVMCatchTy->getPointerTo(0); // addrspace 0 ok
+  llvm::Type *PtrTy = LLVMCatchTy->getPointerTo(0); // addrspace 0 ok
 
   // Check for a copy expression.  If we don't have a copy expression,
   // that means a trivial copy is okay.
@@ -1148,10 +1086,97 @@ static void BeginCatch(CodeGenFunction &CGF, const CXXCatchStmt *S) {
 
 namespace {
   struct CallRethrow : EHScopeStack::Cleanup {
-    void Emit(CodeGenFunction &CGF, bool IsForEH) {
-      CGF.EmitCallOrInvoke(getReThrowFn(CGF), 0, 0);
+    void Emit(CodeGenFunction &CGF, Flags flags) {
+      CGF.EmitCallOrInvoke(getReThrowFn(CGF));
     }
   };
+}
+
+/// Emit the structure of the dispatch block for the given catch scope.
+/// It is an invariant that the dispatch block already exists.
+static void emitCatchDispatchBlock(CodeGenFunction &CGF,
+                                   EHCatchScope &catchScope) {
+  llvm::BasicBlock *dispatchBlock = catchScope.getCachedEHDispatchBlock();
+  assert(dispatchBlock);
+
+  // If there's only a single catch-all, getEHDispatchBlock returned
+  // that catch-all as the dispatch block.
+  if (catchScope.getNumHandlers() == 1 &&
+      catchScope.getHandler(0).isCatchAll()) {
+    assert(dispatchBlock == catchScope.getHandler(0).Block);
+    return;
+  }
+
+  CGBuilderTy::InsertPoint savedIP = CGF.Builder.saveIP();
+  CGF.EmitBlockAfterUses(dispatchBlock);
+
+  // Select the right handler.
+  llvm::Value *llvm_eh_typeid_for =
+    CGF.CGM.getIntrinsic(llvm::Intrinsic::eh_typeid_for);
+
+  // Load the selector value.
+  llvm::Value *selector =
+    CGF.Builder.CreateLoad(CGF.getEHSelectorSlot(), "selector");
+
+  // Test against each of the exception types we claim to catch.
+  for (unsigned i = 0, e = catchScope.getNumHandlers(); ; ++i) {
+    assert(i < e && "ran off end of handlers!");
+    const EHCatchScope::Handler &handler = catchScope.getHandler(i);
+
+    llvm::Value *typeValue = handler.Type;
+    assert(typeValue && "fell into catch-all case!");
+    typeValue = CGF.Builder.CreateBitCast(typeValue, CGF.Int8PtrTy);
+
+    // Figure out the next block.
+    bool nextIsEnd;
+    llvm::BasicBlock *nextBlock;
+
+    // If this is the last handler, we're at the end, and the next
+    // block is the block for the enclosing EH scope.
+    if (i + 1 == e) {
+      nextBlock = CGF.getEHDispatchBlock(catchScope.getEnclosingEHScope());
+      nextIsEnd = true;
+
+    // If the next handler is a catch-all, we're at the end, and the
+    // next block is that handler.
+    } else if (catchScope.getHandler(i+1).isCatchAll()) {
+      nextBlock = catchScope.getHandler(i+1).Block;
+      nextIsEnd = true;
+
+    // Otherwise, we're not at the end and we need a new block.
+    } else {
+      nextBlock = CGF.createBasicBlock("catch.fallthrough");
+      nextIsEnd = false;
+    }
+
+    // Figure out the catch type's index in the LSDA's type table.
+    llvm::CallInst *typeIndex =
+      CGF.Builder.CreateCall(llvm_eh_typeid_for, typeValue);
+    typeIndex->setDoesNotThrow();
+
+    llvm::Value *matchesTypeIndex =
+      CGF.Builder.CreateICmpEQ(selector, typeIndex, "matches");
+    CGF.Builder.CreateCondBr(matchesTypeIndex, handler.Block, nextBlock);
+
+    // If the next handler is a catch-all, we're completely done.
+    if (nextIsEnd) {
+      CGF.Builder.restoreIP(savedIP);
+      return;
+
+    // Otherwise we need to emit and continue at that block.
+    } else {
+      CGF.EmitBlock(nextBlock);
+    }
+  }
+
+  llvm_unreachable("fell out of loop!");
+}
+
+void CodeGenFunction::popCatchScope() {
+  EHCatchScope &catchScope = cast<EHCatchScope>(*EHStack.begin());
+  if (catchScope.hasEHBranches())
+    emitCatchDispatchBlock(*this, catchScope);
+  EHStack.popCatch();
 }
 
 void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
@@ -1159,11 +1184,21 @@ void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
   EHCatchScope &CatchScope = cast<EHCatchScope>(*EHStack.begin());
   assert(CatchScope.getNumHandlers() == NumHandlers);
 
+  // If the catch was not required, bail out now.
+  if (!CatchScope.hasEHBranches()) {
+    EHStack.popCatch();
+    return;
+  }
+
+  // Emit the structure of the EH dispatch for this catch.
+  emitCatchDispatchBlock(*this, CatchScope);
+
   // Copy the handler blocks off before we pop the EH stack.  Emitting
   // the handlers might scribble on this memory.
-  llvm::SmallVector<EHCatchScope::Handler, 8> Handlers(NumHandlers);
+  SmallVector<EHCatchScope::Handler, 8> Handlers(NumHandlers);
   memcpy(Handlers.data(), CatchScope.begin(),
          NumHandlers * sizeof(EHCatchScope::Handler));
+
   EHStack.popCatch();
 
   // The fall-through block.
@@ -1179,12 +1214,19 @@ void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
     ImplicitRethrow = isa<CXXDestructorDecl>(CurCodeDecl) ||
                       isa<CXXConstructorDecl>(CurCodeDecl);
 
-  for (unsigned I = 0; I != NumHandlers; ++I) {
-    llvm::BasicBlock *CatchBlock = Handlers[I].Block;
-    EmitBlock(CatchBlock);
+  // Perversely, we emit the handlers backwards precisely because we
+  // want them to appear in source order.  In all of these cases, the
+  // catch block will have exactly one predecessor, which will be a
+  // particular block in the catch dispatch.  However, in the case of
+  // a catch-all, one of the dispatch blocks will branch to two
+  // different handlers, and EmitBlockAfterUses will cause the second
+  // handler to be moved before the first.
+  for (unsigned I = NumHandlers; I != 0; --I) {
+    llvm::BasicBlock *CatchBlock = Handlers[I-1].Block;
+    EmitBlockAfterUses(CatchBlock);
 
     // Catch the exception if this isn't a catch-all.
-    const CXXCatchStmt *C = S.getHandler(I);
+    const CXXCatchStmt *C = S.getHandler(I-1);
 
     // Enter a cleanup scope, including the catch variable and the
     // end-catch.
@@ -1220,7 +1262,7 @@ namespace {
     CallEndCatchForFinally(llvm::Value *ForEHVar, llvm::Value *EndCatchFn)
       : ForEHVar(ForEHVar), EndCatchFn(EndCatchFn) {}
 
-    void Emit(CodeGenFunction &CGF, bool IsForEH) {
+    void Emit(CodeGenFunction &CGF, Flags flags) {
       llvm::BasicBlock *EndCatchBB = CGF.createBasicBlock("finally.endcatch");
       llvm::BasicBlock *CleanupContBB =
         CGF.createBasicBlock("finally.cleanup.cont");
@@ -1229,7 +1271,7 @@ namespace {
         CGF.Builder.CreateLoad(ForEHVar, "finally.endcatch");
       CGF.Builder.CreateCondBr(ShouldEndCatch, EndCatchBB, CleanupContBB);
       CGF.EmitBlock(EndCatchBB);
-      CGF.EmitCallOrInvoke(EndCatchFn, 0, 0); // catch-all, so might throw
+      CGF.EmitCallOrInvoke(EndCatchFn); // catch-all, so might throw
       CGF.EmitBlock(CleanupContBB);
     }
   };
@@ -1247,7 +1289,7 @@ namespace {
       : Body(Body), ForEHVar(ForEHVar), EndCatchFn(EndCatchFn),
         RethrowFn(RethrowFn), SavedExnVar(SavedExnVar) {}
 
-    void Emit(CodeGenFunction &CGF, bool IsForEH) {
+    void Emit(CodeGenFunction &CGF, Flags flags) {
       // Enter a cleanup to call the end-catch function if one was provided.
       if (EndCatchFn)
         CGF.EHStack.pushCleanup<CallEndCatchForFinally>(NormalAndEHCleanup,
@@ -1274,10 +1316,9 @@ namespace {
 
         CGF.EmitBlock(RethrowBB);
         if (SavedExnVar) {
-          llvm::Value *Args[] = { CGF.Builder.CreateLoad(SavedExnVar) };
-          CGF.EmitCallOrInvoke(RethrowFn, Args, Args+1);
+          CGF.EmitCallOrInvoke(RethrowFn, CGF.Builder.CreateLoad(SavedExnVar));
         } else {
-          CGF.EmitCallOrInvoke(RethrowFn, 0, 0);
+          CGF.EmitCallOrInvoke(RethrowFn);
         }
         CGF.Builder.CreateUnreachable();
 
@@ -1324,7 +1365,7 @@ void CodeGenFunction::FinallyInfo::enter(CodeGenFunction &CGF,
   // In the latter case we need to pass it the exception object.
   // But we can't use the exception slot because the @finally might
   // have a landing pad (which would overwrite the exception slot).
-  const llvm::FunctionType *rethrowFnTy =
+  llvm::FunctionType *rethrowFnTy =
     cast<llvm::FunctionType>(
       cast<llvm::PointerType>(rethrowFn->getType())->getElementType());
   SavedExnVar = 0;
@@ -1367,7 +1408,8 @@ void CodeGenFunction::FinallyInfo::exit(CodeGenFunction &CGF) {
   // Leave the finally catch-all.
   EHCatchScope &catchScope = cast<EHCatchScope>(*CGF.EHStack.begin());
   llvm::BasicBlock *catchBB = catchScope.getHandler(0).Block;
-  CGF.EHStack.popCatch();
+
+  CGF.popCatchScope();
 
   // If there are any references to the catch-all block, emit it.
   if (catchBB->use_empty()) {
@@ -1425,7 +1467,7 @@ llvm::BasicBlock *CodeGenFunction::getTerminateLandingPad() {
   llvm::Value *Args[3] = { Exn, getOpaquePersonalityFn(CGM, Personality),
                            getCatchAllValue(*this) };
   Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::eh_selector),
-                     Args, Args+3, "eh.selector")
+                     Args, "eh.selector")
     ->setDoesNotThrow();
 
   llvm::CallInst *TerminateCall = Builder.CreateCall(getTerminateFn(*this));
@@ -1460,20 +1502,20 @@ llvm::BasicBlock *CodeGenFunction::getTerminateHandler() {
   return TerminateHandler;
 }
 
-CodeGenFunction::UnwindDest CodeGenFunction::getRethrowDest() {
-  if (RethrowBlock.isValid()) return RethrowBlock;
+llvm::BasicBlock *CodeGenFunction::getEHResumeBlock() {
+  if (EHResumeBlock) return EHResumeBlock;
 
   CGBuilderTy::InsertPoint SavedIP = Builder.saveIP();
 
   // We emit a jump to a notional label at the outermost unwind state.
-  llvm::BasicBlock *Unwind = createBasicBlock("eh.resume");
-  Builder.SetInsertPoint(Unwind);
+  EHResumeBlock = createBasicBlock("eh.resume");
+  Builder.SetInsertPoint(EHResumeBlock);
 
   const EHPersonality &Personality = EHPersonality::get(CGM.getLangOptions());
 
   // This can always be a call because we necessarily didn't find
   // anything on the EH stack which needs our help.
-  llvm::StringRef RethrowName = Personality.getCatchallRethrowFnName();
+  StringRef RethrowName = Personality.getCatchallRethrowFnName();
   if (!RethrowName.empty()) {
     Builder.CreateCall(getCatchallRethrowFn(*this, RethrowName),
                        Builder.CreateLoad(getExceptionSlot()))
@@ -1511,7 +1553,5 @@ CodeGenFunction::UnwindDest CodeGenFunction::getRethrowDest() {
 
   Builder.restoreIP(SavedIP);
 
-  RethrowBlock = UnwindDest(Unwind, EHStack.stable_end(), 0);
-  return RethrowBlock;
+  return EHResumeBlock;
 }
-

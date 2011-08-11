@@ -83,7 +83,7 @@ StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement) {
   // ndm - test
   //DumpLookAheads(20);
-  
+
   const char *SemiError = 0;
   StmtResult Res;
 
@@ -202,19 +202,19 @@ Retry:
         // FIXME: Implement this!
         break;
       }
-      
+
       // ndm - detect the forall shorthand, e.g:
       // m.a[1..width-2][1..height-2] = MAX_TEMP;
-      if(isScoutLang() && isScoutSource(NameLoc) && 
+      if(isScoutLang() && isScoutSource(NameLoc) &&
          GetLookAheadToken(1).is(tok::period) &&
          GetLookAheadToken(2).is(tok::identifier) &&
          GetLookAheadToken(3).is(tok::l_square)){
-        
-        LookupResult 
+
+        LookupResult
         Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
-        
+
         Actions.LookupName(Result, getCurScope());
-        
+
         if(Result.getResultKind() == LookupResult::Found){
           if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
             if(isa<MeshType>(vd->getType().getTypePtr())){
@@ -259,7 +259,7 @@ Retry:
   case tok::semi: {                 // C99 6.8.3p3: expression[opt] ';'
     SourceLocation LeadingEmptyMacroLoc;
     if (Tok.hasLeadingEmptyMacro())
-      LeadingEmptyMacroLoc = PP.getLastEmptyMacroInstantiationLoc();
+      LeadingEmptyMacroLoc = PP.getLastEmptyMacroExpansionLoc();
     return Actions.ActOnNullStmt(ConsumeToken(), LeadingEmptyMacroLoc);
   }
 
@@ -747,9 +747,9 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
                                 Tok.getLocation(),
                                 "in compound statement ('{}')");
   InMessageExpressionRAIIObject InMessage(*this, false);
-  
+
   SourceLocation LBraceLoc = ConsumeBrace(); // eat the '{'.
-  
+
   StmtVector Stmts(Actions);
 
   // "__label__ X, Y, Z;" is the GNU "Local Label" extension.  These are
@@ -758,7 +758,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
     SourceLocation LabelLoc = ConsumeToken();
     Diag(LabelLoc, diag::ext_gnu_local_label);
 
-    llvm::SmallVector<Decl *, 8> DeclsInGroup;
+    SmallVector<Decl *, 8> DeclsInGroup;
     while (1) {
       if (Tok.isNot(tok::identifier)) {
         Diag(Tok, diag::err_expected_ident);
@@ -996,6 +996,9 @@ StmtResult Parser::ParseIfStatement(ParsedAttributes &attrs) {
 
     // Pop the 'else' scope if needed.
     InnerScope.Exit();
+  } else if (Tok.is(tok::code_completion)) {
+    Actions.CodeCompleteAfterIf(getCurScope());
+    ConsumeCodeCompletionToken();
   }
 
   IfScope.Exit();
@@ -1448,12 +1451,21 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
   // statememt before parsing the body, in order to be able to deduce the type
   // of an auto-typed loop variable.
   StmtResult ForRangeStmt;
-  if (ForRange)
+  if (ForRange) {
     ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, LParenLoc,
                                                 FirstPart.take(),
                                                 ForRangeInit.ColonLoc,
                                                 ForRangeInit.RangeExpr.get(),
                                                 RParenLoc);
+
+
+  // Similarly, we need to do the semantic analysis for a for-range
+  // statement immediately in order to close over temporaries correctly.
+  } else if (ForEach) {
+    if (!Collection.isInvalid())
+      Collection =
+        Actions.ActOnObjCForCollectionOperand(ForLoc, Collection.take());
+  }
 
   // C99 6.8.5p5 - In C99, the body of the if statement is a scope, even if
   // there is no compound stmt.  C90 does not have this clause.  We only do this
@@ -1482,8 +1494,6 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   if (ForEach)
-    // FIXME: It isn't clear how to communicate the late destruction of
-    // C++ temporaries used to create the collection.
     return Actions.ActOnObjCForCollectionStmt(ForLoc, LParenLoc,
                                               FirstPart.take(),
                                               Collection.take(), RParenLoc,
@@ -1610,12 +1620,12 @@ StmtResult Parser::FuzzyParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
     // that the rest of the line is an assembly-language statement.
     SourceManager &SrcMgr = PP.getSourceManager();
     SourceLocation TokLoc = Tok.getLocation();
-    unsigned LineNo = SrcMgr.getInstantiationLineNumber(TokLoc);
+    unsigned LineNo = SrcMgr.getExpansionLineNumber(TokLoc);
     do {
       EndLoc = TokLoc;
       ConsumeAnyToken();
       TokLoc = Tok.getLocation();
-    } while ((SrcMgr.getInstantiationLineNumber(TokLoc) == LineNo) &&
+    } while ((SrcMgr.getExpansionLineNumber(TokLoc) == LineNo) &&
              Tok.isNot(tok::r_brace) && Tok.isNot(tok::semi) &&
              Tok.isNot(tok::eof));
   }
@@ -1692,7 +1702,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   if (AsmString.isInvalid())
     return StmtError();
 
-  llvm::SmallVector<IdentifierInfo *, 4> Names;
+  SmallVector<IdentifierInfo *, 4> Names;
   ExprVector Constraints(Actions);
   ExprVector Exprs(Actions);
   ExprVector Clobbers(Actions);
@@ -1785,9 +1795,9 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
 ///
 //
 // FIXME: Avoid unnecessary std::string trashing.
-bool Parser::ParseAsmOperandsOpt(llvm::SmallVectorImpl<IdentifierInfo *> &Names,
-                                 llvm::SmallVectorImpl<ExprTy *> &Constraints,
-                                 llvm::SmallVectorImpl<ExprTy *> &Exprs) {
+bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
+                                 SmallVectorImpl<ExprTy *> &Constraints,
+                                 SmallVectorImpl<ExprTy *> &Exprs) {
   // 'asm-operands' isn't present?
   if (!isTokenStringLiteral() && Tok.isNot(tok::l_square))
     return false;
@@ -1856,26 +1866,26 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
                                       "parsing function body");
 
   // ndm - insert the call to scoutInit(argc, argv) at the top of main
-  if(getLang().Scout){    
+  if(getLang().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
     if(fd->isMain()){
-      assert(Tok.is(tok::l_brace) && 
+      assert(Tok.is(tok::l_brace) &&
              "expected lbrace when inserting scoutInit()");
-      
+
       assert(fd->param_size() == 2 && "expected main with two params");
       FunctionDecl::param_iterator itr = fd->param_begin();
-      
+
       ParmVarDecl* paramArgc = *itr;
       ++itr;
       ParmVarDecl* paramArgv = *itr;
-      
+
       std::string code = "scoutInit(" + paramArgc->getName().str() +
       ", " + paramArgv->getName().str() + ");";
-      
+
       InsertCPPCode(code, LBraceLoc, false);
     }
   }
-  
+
   // Do not enter a scope for the brace, as the arguments are in the same scope
   // (the function body) as the body itself.  Instead, just read the statement
   // list and put it into a CompoundStmt for safe keeping.
@@ -2213,9 +2223,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       ConsumeToken();
       return StmtError();
     }
-    
+
     LParenLoc = ConsumeParen();
-    
+
     ExprResult OpResult = ParseExpression();
     if(OpResult.isInvalid()){
       Diag(Tok, diag::err_invalid_forall_op);
@@ -2223,9 +2233,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       ConsumeToken();
       return StmtError();
     }
-    
+
     Op = OpResult.get();
-    
+
     if(Tok.isNot(tok::r_paren)){
       Diag(Tok, diag::err_expected_rparen);
       SkipUntil(tok::l_brace);
@@ -2239,7 +2249,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   }
 
   SourceLocation BodyLoc = Tok.getLocation();
-  
+
   StmtResult BodyResult = ParseStatement();
   if(BodyResult.isInvalid()){
     if(ForAll)
@@ -2257,7 +2267,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
                                    LParenLoc, Op, RParenLoc, Body);
   else{
     InsertCPPCode("scoutSwapBuffers();", BodyLoc);
-    
+
     return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
                                       LParenLoc, Op, RParenLoc, Body);
   }
@@ -2268,52 +2278,52 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
                                   SourceLocation NameLoc,
                                   VarDecl* VD){
   ConsumeToken();
-  
+
   assert(Tok.is(tok::period) && "expected period");
   ConsumeToken();
-  
+
   assert(Tok.is(tok::identifier) && "expected identifier");
-  
+
   IdentifierInfo* FieldName = Tok.getIdentifierInfo();
   SourceLocation FieldLoc = ConsumeToken();
-    
+
   Expr* XStart = 0;
   Expr* XEnd = 0;
   Expr* YStart = 0;
   Expr* YEnd = 0;
   Expr* ZStart = 0;
   Expr* ZEnd = 0;
-  
+
   Actions.SCLStack.push_back(VD);
-  
+
   for(size_t i = 0; i < 3; ++i){
-    
+
     assert(Tok.is(tok::l_square) && "expected l_square");
     ConsumeBracket();
-    
+
     ExprResult Start = ParseExpression();
     if(Start.isInvalid()){
       SkipUntil(tok::semi);
       Actions.SCLStack.pop_back();
       return StmtError();
     }
-    
+
     if(Tok.isNot(tok::periodperiod)){
       Diag(Tok, diag::err_expected_periodperiod);
       SkipUntil(tok::semi);
       Actions.SCLStack.pop_back();
       return StmtError();
     }
-    
+
     ConsumeToken();
-    
+
     ExprResult End = ParseExpression();
     if(End.isInvalid()){
       SkipUntil(tok::semi);
       Actions.SCLStack.pop_back();
       return StmtError();
     }
-    
+
     switch(i){
       case 0:
       {
@@ -2334,21 +2344,21 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
         break;
       }
     }
-    
+
     if(Tok.isNot(tok::r_square)){
       Diag(Tok, diag::err_expected_rsquare);
       SkipUntil(tok::semi);
       Actions.SCLStack.pop_back();
       return StmtError();
     }
-    
+
     ConsumeBracket();
-    
+
     if(Tok.isNot(tok::l_square)){
       break;
     }
   }
-  
+
   if(Tok.isNot(tok::equal) &&
      Tok.isNot(tok::plusequal) &&
      Tok.isNot(tok::minusequal) &&
@@ -2359,31 +2369,31 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
     Actions.SCLStack.pop_back();
     return StmtError();
   }
-  
+
   std::string code = FieldName->getName().str() + " " + TokToStr(Tok) + " ";
-  
+
   SourceLocation CodeLoc = ConsumeToken();
-  
+
   ExprResult rhs = ParseExpression();
-  
+
   if(rhs.isInvalid()){
     SkipUntil(tok::semi);
     Actions.SCLStack.pop_back();
     return StmtError();
   }
-  
+
   code += ToCPPCode(rhs.get());
 
   InsertCPPCode(code, CodeLoc);
 
   Stmt* Body = ParseStatement().get();
-  
+
   // Lookup the meshtype and store it for the ForAllStmt Constructor.
   LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
   Actions.LookupName(LR, getCurScope());
   const MeshType *MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
-  
-  StmtResult ForAllResult = 
+
+  StmtResult ForAllResult =
   Actions.ActOnForAllStmt(NameLoc,
                           ForAllStmt::Cells,
                           MT,
@@ -2391,15 +2401,15 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
                           Name,
                           NameLoc,
                           0, NameLoc, Body);
-  
-  ForAllStmt* FAS = cast<ForAllStmt>(ForAllResult.get()); 
-  
+
+  ForAllStmt* FAS = cast<ForAllStmt>(ForAllResult.get());
+
   FAS->setXStart(XStart);
   FAS->setXEnd(XEnd);
   FAS->setYStart(YStart);
-  FAS->setYEnd(YEnd);  
+  FAS->setYEnd(YEnd);
   FAS->setZStart(ZStart);
   FAS->setZEnd(ZEnd);
-  
+
   return ForAllResult;
 }

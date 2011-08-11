@@ -92,12 +92,16 @@ void test_ObjCBlockMember_copy_assign(ObjCBlockMember m1, ObjCBlockMember m2) {
 
 // Implicitly-generated copy assignment operator for ObjCBlockMember
 // CHECK:    define linkonce_odr {{%.*}}* @_ZN15ObjCBlockMemberaSERKS_(
-// CHECK:      [[T0:%.*]] = call i8* @objc_retainBlock(
-// CHECK-NEXT: [[T1:%.*]] = bitcast i8* [[T0]] to i32 (i32)*
-// CHECK-NEXT: [[T2:%.*]] = load i32 (i32)** [[SLOT:%.*]],
-// CHECK-NEXT: store i32 (i32)* [[T1]], i32 (i32)** [[SLOT]]
-// CHECK-NEXT: [[T3:%.*]] = bitcast i32 (i32)* [[T2]] to i8*
-// CHECK-NEXT: call void @objc_release(i8* [[T3]])
+// CHECK:      [[T0:%.*]] = getelementptr inbounds [[T:%.*]]* {{%.*}}, i32 0, i32 0
+// CHECK-NEXT: [[T1:%.*]] = load i32 (i32)** [[T0]], align 8
+// CHECK-NEXT: [[T2:%.*]] = bitcast i32 (i32)* [[T1]] to i8*
+// CHECK-NEXT: [[T3:%.*]] = call i8* @objc_retainBlock(i8* [[T2]])
+// CHECK-NEXT: [[T4:%.*]] = bitcast i8* [[T3]] to i32 (i32)*
+// CHECK-NEXT: [[T5:%.*]] = getelementptr inbounds [[T]]* {{%.*}}, i32 0, i32 0
+// CHECK-NEXT: [[T6:%.*]] = load i32 (i32)** [[T5]], align 8
+// CHECK-NEXT: store i32 (i32)* [[T4]], i32 (i32)** [[T5]]
+// CHECK-NEXT: [[T7:%.*]] = bitcast i32 (i32)* [[T6]] to i8*
+// CHECK-NEXT: call void @objc_release(i8* [[T7]])
 // CHECK-NEXT: ret
 
 // Implicitly-generated copy constructor for ObjCBlockMember
@@ -112,7 +116,7 @@ void test_ObjCBlockMember_copy_assign(ObjCBlockMember m1, ObjCBlockMember m2) {
 
 // Implicitly-generated default constructor for ObjCBlockMember
 // CHECK: define linkonce_odr void @_ZN15ObjCBlockMemberC2Ev
-// CHECK: store i32 (i32)* null,
+// CHECK: store {{.*}} null,
 // CHECK-NEXT: ret void
 
 // Implicitly-generated copy constructor for ObjCArrayMember
@@ -124,10 +128,17 @@ void test_ObjCBlockMember_copy_assign(ObjCBlockMember m1, ObjCBlockMember m2) {
 // CHECK: ret
 
 // Implicitly-generated destructor for ObjCArrayMember
-// CHECK: define linkonce_odr void @_ZN15ObjCArrayMemberD2Ev
-// CHECK: call void @objc_release
-// CHECK: br label
-// CHECK: ret
+// CHECK:    define linkonce_odr void @_ZN15ObjCArrayMemberD2Ev
+// CHECK:      [[BEGIN:%.*]] = getelementptr inbounds [2 x [3 x i8*]]*
+// CHECK-NEXT: [[END:%.*]] = getelementptr inbounds i8** [[BEGIN]], i64 6
+// CHECK-NEXT: br label
+// CHECK:      [[PAST:%.*]] = phi i8** [ [[END]], {{%.*}} ], [ [[CUR:%.*]], {{%.*}} ]
+// CHECK-NEXT: [[CUR]] = getelementptr inbounds i8** [[PAST]], i64 -1
+// CHECK-NEXT: [[T0:%.*]] = load i8** [[CUR]]
+// CHECK-NEXT: call void @objc_release(i8* [[T0]])
+// CHECK-NEXT: [[T1:%.*]] = icmp eq i8** [[CUR]], [[BEGIN]]
+// CHECK-NEXT: br i1 [[T1]], 
+// CHECK:      ret void
 
 // Implicitly-generated default constructor for ObjCArrayMember
 // CHECK: define linkonce_odr void @_ZN15ObjCArrayMemberC2Ev

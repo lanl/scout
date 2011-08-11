@@ -265,7 +265,7 @@ Decl *Parser::ParseLinkage(ParsingDeclSpec &DS, unsigned Context) {
   assert(Tok.is(tok::string_literal) && "Not a string literal!");
   llvm::SmallString<8> LangBuffer;
   bool Invalid = false;
-  llvm::StringRef Lang = PP.getSpelling(Tok, LangBuffer, &Invalid);
+  StringRef Lang = PP.getSpelling(Tok, LangBuffer, &Invalid);
   if (Invalid)
     return 0;
 
@@ -904,7 +904,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
        Tok.is(tok::kw___is_signed) ||
        Tok.is(tok::kw___is_unsigned) ||
        Tok.is(tok::kw___is_void))) {
-    // GNU libstdc++ 4.2 and libc++ uaw certain intrinsic names as the
+    // GNU libstdc++ 4.2 and libc++ use certain intrinsic names as the
     // name of struct templates, but some are keywords in GCC >= 4.3
     // and Clang. Therefore, when we see the token sequence "struct
     // X", make X into a normal identifier rather than a keyword, to
@@ -1294,6 +1294,11 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
       break;
     }
 
+    // C++ [temp]p3 In a template-declaration which defines a class, no
+    // declarator is permitted.
+    if (TemplateInfo.Kind)
+      ExpectedSemi = true;
+
     if (ExpectedSemi) {
       ExpectAndConsume(tok::semi, diag::err_expected_semi_after_tagdecl,
                        TagType == DeclSpec::TST_class ? "class"
@@ -1319,7 +1324,7 @@ void Parser::ParseBaseClause(Decl *ClassDecl) {
   ConsumeToken();
 
   // Build up an array of parsed base specifiers.
-  llvm::SmallVector<CXXBaseSpecifier *, 8> BaseInfo;
+  SmallVector<CXXBaseSpecifier *, 8> BaseInfo;
 
   while (true) {
     // Parse a base-specifier.
@@ -1789,7 +1794,7 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
   //   member-declarator
   //   member-declarator-list ',' member-declarator
 
-  llvm::SmallVector<Decl *, 8> DeclsInGroup;
+  SmallVector<Decl *, 8> DeclsInGroup;
   ExprResult BitfieldSize;
 
   while (1) {
@@ -2190,7 +2195,7 @@ void Parser::ParseConstructorInitializer(Decl *ConstructorDecl) {
   PoisonSEHIdentifiersRAIIObject PoisonSEHIdentifiers(*this, true);
   SourceLocation ColonLoc = ConsumeToken();
 
-  llvm::SmallVector<CXXCtorInitializer*, 4> MemInitializers;
+  SmallVector<CXXCtorInitializer*, 4> MemInitializers;
   bool AnyErrors = false;
 
   do {
@@ -2311,8 +2316,8 @@ Parser::MemInitResult Parser::ParseMemInitializer(Decl *ConstructorDecl) {
 ///         'noexcept' '(' constant-expression ')'
 ExceptionSpecificationType
 Parser::MaybeParseExceptionSpecification(SourceRange &SpecificationRange,
-                    llvm::SmallVectorImpl<ParsedType> &DynamicExceptions,
-                    llvm::SmallVectorImpl<SourceRange> &DynamicExceptionRanges,
+                    SmallVectorImpl<ParsedType> &DynamicExceptions,
+                    SmallVectorImpl<SourceRange> &DynamicExceptionRanges,
                     ExprResult &NoexceptExpr) {
   ExceptionSpecificationType Result = EST_None;
 
@@ -2384,8 +2389,8 @@ Parser::MaybeParseExceptionSpecification(SourceRange &SpecificationRange,
 ///
 ExceptionSpecificationType Parser::ParseDynamicExceptionSpecification(
                                   SourceRange &SpecificationRange,
-                                  llvm::SmallVectorImpl<ParsedType> &Exceptions,
-                                  llvm::SmallVectorImpl<SourceRange> &Ranges) {
+                                  SmallVectorImpl<ParsedType> &Exceptions,
+                                  SmallVectorImpl<SourceRange> &Ranges) {
   assert(Tok.is(tok::kw_throw) && "expected throw");
 
   SpecificationRange.setBegin(ConsumeToken());
@@ -2440,7 +2445,7 @@ ExceptionSpecificationType Parser::ParseDynamicExceptionSpecification(
 
 /// ParseTrailingReturnType - Parse a trailing return type on a new-style
 /// function declaration.
-TypeResult Parser::ParseTrailingReturnType() {
+TypeResult Parser::ParseTrailingReturnType(SourceRange &Range) {
   assert(Tok.is(tok::arrow) && "expected arrow");
 
   ConsumeToken();
@@ -2452,8 +2457,6 @@ TypeResult Parser::ParseTrailingReturnType() {
   //
   // struct X is parsed as class definition because of the trailing
   // brace.
-
-  SourceRange Range;
   return ParseTypeName(&Range);
 }
 

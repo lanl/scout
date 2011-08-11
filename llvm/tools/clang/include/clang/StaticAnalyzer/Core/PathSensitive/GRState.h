@@ -14,6 +14,7 @@
 #ifndef LLVM_CLANG_GR_VALUESTATE_H
 #define LLVM_CLANG_GR_VALUESTATE_H
 
+#include "clang/Basic/LLVM.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ConstraintManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/Environment.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/Store.h"
@@ -21,12 +22,10 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/ImmutableMap.h"
-#include "llvm/Support/Casting.h"
 
 namespace llvm {
 class APSInt;
 class BumpPtrAllocator;
-class raw_ostream;
 }
 
 namespace clang {
@@ -347,17 +346,17 @@ public:
   class Printer {
   public:
     virtual ~Printer() {}
-    virtual void Print(llvm::raw_ostream& Out, const GRState* state,
+    virtual void Print(raw_ostream& Out, const GRState* state,
                        const char* nl, const char* sep) = 0;
   };
 
   // Pretty-printing.
-  void print(llvm::raw_ostream& Out, CFG &C, const char *nl = "\n",
+  void print(raw_ostream& Out, CFG &C, const char *nl = "\n",
              const char *sep = "") const;
 
   void printStdErr(CFG &C) const;
 
-  void printDOT(llvm::raw_ostream& Out, CFG &C) const;
+  void printDOT(raw_ostream& Out, CFG &C) const;
 
 private:
   /// Increments the number of times this state is referenced by ExplodeNodes.
@@ -541,7 +540,17 @@ public:
   }
 
   const GRState* getPersistentState(GRState& Impl);
-  
+  const GRState* getPersistentStateWithGDM(const GRState *FromState,
+                                           const GRState *GDMState);
+
+  bool haveEqualEnvironments(const GRState * S1, const GRState * S2) {
+    return S1->Env == S2->Env;
+  }
+
+  bool haveEqualStores(const GRState * S1, const GRState * S2) {
+    return S1->store == S2->store;
+  }
+
   /// Periodically called by ExprEngine to recycle GRStates that were
   /// created but never used for creating an ExplodedNode.
   void recycleUnusedStates();
@@ -691,7 +700,7 @@ inline const llvm::APSInt *GRState::getSymVal(SymbolRef sym) const {
 
 inline SVal GRState::getSVal(const Stmt* Ex, bool useOnlyDirectBindings) const{
   return Env.getSVal(Ex, *getStateManager().svalBuilder,
-		     useOnlyDirectBindings);
+                     useOnlyDirectBindings);
 }
 
 inline SVal GRState::getSValAsScalarOrLoc(const Stmt *S) const {

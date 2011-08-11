@@ -173,6 +173,11 @@ static void deleteIfDeadInstruction(Value *V, ScalarEvolution &SE) {
 bool LoopIdiomRecognize::runOnLoop(Loop *L, LPPassManager &LPM) {
   CurLoop = L;
 
+  // Disable loop idiom recognition if the function's name is a common idiom. 
+  StringRef Name = L->getHeader()->getParent()->getName();
+  if (Name == "memset" || Name == "memcpy")
+    return false;
+
   // The trip count of the loop must be analyzable.
   SE = &getAnalysis<ScalarEvolution>();
   if (!SE->hasLoopInvariantBackedgeTakenCount(L))
@@ -493,7 +498,7 @@ processLoopStridedStore(Value *DestPtr, unsigned StoreSize,
 
   // The # stored bytes is (BECount+1)*Size.  Expand the trip count out to
   // pointer size if it isn't already.
-  const Type *IntPtr = TD->getIntPtrType(DestPtr->getContext());
+  Type *IntPtr = TD->getIntPtrType(DestPtr->getContext());
   BECount = SE->getTruncateOrZeroExtend(BECount, IntPtr);
 
   const SCEV *NumBytesS = SE->getAddExpr(BECount, SE->getConstant(IntPtr, 1),
@@ -599,7 +604,7 @@ processLoopStoreOfLoopLoad(StoreInst *SI, unsigned StoreSize,
 
   // The # stored bytes is (BECount+1)*Size.  Expand the trip count out to
   // pointer size if it isn't already.
-  const Type *IntPtr = TD->getIntPtrType(SI->getContext());
+  Type *IntPtr = TD->getIntPtrType(SI->getContext());
   BECount = SE->getTruncateOrZeroExtend(BECount, IntPtr);
 
   const SCEV *NumBytesS = SE->getAddExpr(BECount, SE->getConstant(IntPtr, 1),

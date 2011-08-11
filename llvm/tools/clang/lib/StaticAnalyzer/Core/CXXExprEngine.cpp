@@ -36,7 +36,7 @@ void ExprEngine::evalArguments(ConstExprIterator AI, ConstExprIterator AE,
                                  bool FstArgAsLValue) {
 
 
-  llvm::SmallVector<CallExprWLItem, 20> WorkList;
+  SmallVector<CallExprWLItem, 20> WorkList;
   WorkList.reserve(AE - AI);
   WorkList.push_back(CallExprWLItem(AI, Pred));
 
@@ -103,23 +103,24 @@ const CXXThisRegion *ExprEngine::getCXXThisRegion(const CXXMethodDecl *decl,
                     getCXXThisRegion(decl->getThisType(getContext()), frameCtx);
 }
 
-void ExprEngine::CreateCXXTemporaryObject(const Expr *Ex, ExplodedNode *Pred,
-                                            ExplodedNodeSet &Dst) {
+void ExprEngine::CreateCXXTemporaryObject(const MaterializeTemporaryExpr *ME,
+                                          ExplodedNode *Pred,
+                                          ExplodedNodeSet &Dst) {
   ExplodedNodeSet Tmp;
-  Visit(Ex, Pred, Tmp);
+  Visit(ME->GetTemporaryExpr(), Pred, Tmp);
   for (ExplodedNodeSet::iterator I = Tmp.begin(), E = Tmp.end(); I != E; ++I) {
-    const GRState *state = GetState(*I);
+    const GRState *state = (*I)->getState();
 
     // Bind the temporary object to the value of the expression. Then bind
     // the expression to the location of the object.
-    SVal V = state->getSVal(Ex);
+    SVal V = state->getSVal(ME->GetTemporaryExpr());
 
     const MemRegion *R =
-      svalBuilder.getRegionManager().getCXXTempObjectRegion(Ex,
+      svalBuilder.getRegionManager().getCXXTempObjectRegion(ME,
                                                    Pred->getLocationContext());
 
     state = state->bindLoc(loc::MemRegionVal(R), V);
-    MakeNode(Dst, Ex, Pred, state->BindExpr(Ex, loc::MemRegionVal(R)));
+    MakeNode(Dst, ME, Pred, state->BindExpr(ME, loc::MemRegionVal(R)));
   }
 }
 
@@ -186,7 +187,7 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
 
     for (ExplodedNodeSet::iterator NI = argsEvaluated.begin(),
                                   NE = argsEvaluated.end(); NI != NE; ++NI) {
-      const GRState *state = GetState(*NI);
+      const GRState *state = (*NI)->getState();
       // Setup 'this' region, so that the ctor is evaluated on the object pointed
       // by 'Dest'.
       state = state->bindLoc(loc::MemRegionVal(ThisR), loc::MemRegionVal(Dest));
@@ -197,7 +198,7 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
 #endif
   
   // Default semantics: invalidate all regions passed as arguments.
-  llvm::SmallVector<const MemRegion*, 10> regionsToInvalidate;
+  SmallVector<const MemRegion*, 10> regionsToInvalidate;
 
   // FIXME: We can have collisions on the conjured symbol if the
   //  expression *I also creates conjured symbols.  We probably want
@@ -215,7 +216,7 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
        i != e; ++i)
   {
     ExplodedNode *Pred = *i;
-    const GRState *state = GetState(Pred);
+    const GRState *state = Pred->getState();
 
     // Accumulate list of regions that are invalidated.
     for (CXXConstructExpr::const_arg_iterator
@@ -279,7 +280,7 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
   if (CNE->isArray()) {
     // FIXME: allocating an array requires simulating the constructors.
     // For now, just return a symbolicated region.
-    const GRState *state = GetState(Pred);
+    const GRState *state = Pred->getState();
     state = state->BindExpr(CNE, loc::MemRegionVal(EleReg));
     MakeNode(Dst, CNE, Pred, state);
     return;
@@ -298,12 +299,12 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
   for (ExplodedNodeSet::iterator I = argsEvaluated.begin(), 
                                  E = argsEvaluated.end(); I != E; ++I) {
 
-    const GRState *state = GetState(*I);
+    const GRState *state = (*I)->getState();
     
     // Accumulate list of regions that are invalidated.
     // FIXME: Eventually we should unify the logic for constructor
     // processing in one place.
-    llvm::SmallVector<const MemRegion*, 10> regionsToInvalidate;
+    SmallVector<const MemRegion*, 10> regionsToInvalidate;
     for (CXXNewExpr::const_arg_iterator
           ai = CNE->constructor_arg_begin(), ae = CNE->constructor_arg_end();
           ai != ae; ++ai)
@@ -351,7 +352,7 @@ void ExprEngine::VisitCXXDeleteExpr(const CXXDeleteExpr *CDE,
   Visit(CDE->getArgument(), Pred, Argevaluated);
   for (ExplodedNodeSet::iterator I = Argevaluated.begin(), 
                                  E = Argevaluated.end(); I != E; ++I) {
-    const GRState *state = GetState(*I);
+    const GRState *state = (*I)->getState();
     MakeNode(Dst, CDE, *I, state);
   }
 }
@@ -364,7 +365,7 @@ void ExprEngine::VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred,
                                   getContext().getCanonicalType(TE->getType()),
                                                Pred->getLocationContext());
 
-  const GRState *state = GetState(Pred);
+  const GRState *state = Pred->getState();
   SVal V = state->getSVal(loc::MemRegionVal(R));
   MakeNode(Dst, TE, Pred, state->BindExpr(TE, V));
 }

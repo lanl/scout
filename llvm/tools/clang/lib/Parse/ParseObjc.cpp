@@ -71,8 +71,8 @@ Decl *Parser::ParseObjCAtDirectives() {
 ///
 Decl *Parser::ParseObjCAtClassDeclaration(SourceLocation atLoc) {
   ConsumeToken(); // the identifier "class"
-  llvm::SmallVector<IdentifierInfo *, 8> ClassNames;
-  llvm::SmallVector<SourceLocation, 8> ClassLocs;
+  SmallVector<IdentifierInfo *, 8> ClassNames;
+  SmallVector<SourceLocation, 8> ClassLocs;
 
 
   while (1) {
@@ -177,8 +177,8 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
     rparenLoc = ConsumeParen();
     // Next, we need to check for any protocol references.
     SourceLocation LAngleLoc, EndProtoLoc;
-    llvm::SmallVector<Decl *, 8> ProtocolRefs;
-    llvm::SmallVector<SourceLocation, 8> ProtocolLocs;
+    SmallVector<Decl *, 8> ProtocolRefs;
+    SmallVector<SourceLocation, 8> ProtocolLocs;
     if (Tok.is(tok::less) &&
         ParseObjCProtocolReferences(ProtocolRefs, ProtocolLocs, true,
                                     LAngleLoc, EndProtoLoc))
@@ -223,8 +223,8 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
     superClassLoc = ConsumeToken();
   }
   // Next, we need to check for any protocol references.
-  llvm::SmallVector<Decl *, 8> ProtocolRefs;
-  llvm::SmallVector<SourceLocation, 8> ProtocolLocs;
+  SmallVector<Decl *, 8> ProtocolRefs;
+  SmallVector<SourceLocation, 8> ProtocolLocs;
   SourceLocation LAngleLoc, EndProtoLoc;
   if (Tok.is(tok::less) &&
       ParseObjCProtocolReferences(ProtocolRefs, ProtocolLocs, true,
@@ -250,13 +250,13 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
 struct Parser::ObjCPropertyCallback : FieldCallback {
   Parser &P;
   Decl *IDecl;
-  llvm::SmallVectorImpl<Decl *> &Props;
+  SmallVectorImpl<Decl *> &Props;
   ObjCDeclSpec &OCDS;
   SourceLocation AtLoc;
   tok::ObjCKeywordKind MethodImplKind;
         
   ObjCPropertyCallback(Parser &P, Decl *IDecl,
-                       llvm::SmallVectorImpl<Decl *> &Props,
+                       SmallVectorImpl<Decl *> &Props,
                        ObjCDeclSpec &OCDS, SourceLocation AtLoc,
                        tok::ObjCKeywordKind MethodImplKind) :
     P(P), IDecl(IDecl), Props(Props), OCDS(OCDS), AtLoc(AtLoc),
@@ -316,9 +316,9 @@ struct Parser::ObjCPropertyCallback : FieldCallback {
 ///
 void Parser::ParseObjCInterfaceDeclList(Decl *interfaceDecl,
                                         tok::ObjCKeywordKind contextKey) {
-  llvm::SmallVector<Decl *, 32> allMethods;
-  llvm::SmallVector<Decl *, 16> allProperties;
-  llvm::SmallVector<DeclGroupPtrTy, 8> allTUVariables;
+  SmallVector<Decl *, 32> allMethods;
+  SmallVector<Decl *, 16> allProperties;
+  SmallVector<DeclGroupPtrTy, 8> allTUVariables;
   tok::ObjCKeywordKind MethodImplKind = tok::objc_not_keyword;
 
   SourceRange AtEnd;
@@ -901,7 +901,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
     return 0;
   }
 
-  llvm::SmallVector<DeclaratorChunk::ParamInfo, 8> CParamInfo;
+  SmallVector<DeclaratorChunk::ParamInfo, 8> CParamInfo;
   if (Tok.isNot(tok::colon)) {
     // If attributes exist after the method, parse them.
     if (getLang().ObjC2)
@@ -919,8 +919,8 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
     return Result;
   }
 
-  llvm::SmallVector<IdentifierInfo *, 12> KeyIdents;
-  llvm::SmallVector<Sema::ObjCArgInfo, 12> ArgInfos;
+  SmallVector<IdentifierInfo *, 12> KeyIdents;
+  SmallVector<Sema::ObjCArgInfo, 12> ArgInfos;
   ParseScope PrototypeScope(this,
                             Scope::FunctionPrototypeScope|Scope::DeclScope);
 
@@ -1052,15 +1052,15 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
 ///     '<' identifier-list '>'
 ///
 bool Parser::
-ParseObjCProtocolReferences(llvm::SmallVectorImpl<Decl *> &Protocols,
-                            llvm::SmallVectorImpl<SourceLocation> &ProtocolLocs,
+ParseObjCProtocolReferences(SmallVectorImpl<Decl *> &Protocols,
+                            SmallVectorImpl<SourceLocation> &ProtocolLocs,
                             bool WarnOnDeclarations,
                             SourceLocation &LAngleLoc, SourceLocation &EndLoc) {
   assert(Tok.is(tok::less) && "expected <");
 
   LAngleLoc = ConsumeToken(); // the "<"
 
-  llvm::SmallVector<IdentifierLocPair, 8> ProtocolIdents;
+  SmallVector<IdentifierLocPair, 8> ProtocolIdents;
 
   while (1) {
     if (Tok.is(tok::code_completion)) {
@@ -1105,8 +1105,8 @@ bool Parser::ParseObjCProtocolQualifiers(DeclSpec &DS) {
   assert(Tok.is(tok::less) && "Protocol qualifiers start with '<'");
   assert(getLang().ObjC1 && "Protocol qualifiers only exist in Objective-C");
   SourceLocation LAngleLoc, EndProtoLoc;
-  llvm::SmallVector<Decl *, 8> ProtocolDecl;
-  llvm::SmallVector<SourceLocation, 8> ProtocolLocs;
+  SmallVector<Decl *, 8> ProtocolDecl;
+  SmallVector<SourceLocation, 8> ProtocolLocs;
   bool Result = ParseObjCProtocolReferences(ProtocolDecl, ProtocolLocs, false,
                                             LAngleLoc, EndProtoLoc);
   DS.setProtocolQualifiers(ProtocolDecl.data(), ProtocolDecl.size(),
@@ -1141,7 +1141,7 @@ void Parser::ParseObjCClassInstanceVariables(Decl *interfaceDecl,
                                              tok::ObjCKeywordKind visibility,
                                              SourceLocation atLoc) {
   assert(Tok.is(tok::l_brace) && "expected {");
-  llvm::SmallVector<Decl *, 32> AllIvarDecls;
+  SmallVector<Decl *, 32> AllIvarDecls;
 
   ParseScope ClassScope(this, Scope::DeclScope|Scope::ClassScope);
 
@@ -1192,10 +1192,10 @@ void Parser::ParseObjCClassInstanceVariables(Decl *interfaceDecl,
       Parser &P;
       Decl *IDecl;
       tok::ObjCKeywordKind visibility;
-      llvm::SmallVectorImpl<Decl *> &AllIvarDecls;
+      SmallVectorImpl<Decl *> &AllIvarDecls;
 
       ObjCIvarCallback(Parser &P, Decl *IDecl, tok::ObjCKeywordKind V,
-                       llvm::SmallVectorImpl<Decl *> &AllIvarDecls) :
+                       SmallVectorImpl<Decl *> &AllIvarDecls) :
         P(P), IDecl(IDecl), visibility(V), AllIvarDecls(AllIvarDecls) {
       }
 
@@ -1276,7 +1276,7 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
   }
 
   if (Tok.is(tok::comma)) { // list of forward declarations.
-    llvm::SmallVector<IdentifierLocPair, 8> ProtocolRefs;
+    SmallVector<IdentifierLocPair, 8> ProtocolRefs;
     ProtocolRefs.push_back(std::make_pair(protocolName, nameLoc));
 
     // Parse the list of forward declarations.
@@ -1307,8 +1307,8 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
   // Last, and definitely not least, parse a protocol declaration.
   SourceLocation LAngleLoc, EndProtoLoc;
 
-  llvm::SmallVector<Decl *, 8> ProtocolRefs;
-  llvm::SmallVector<SourceLocation, 8> ProtocolLocs;
+  SmallVector<Decl *, 8> ProtocolRefs;
+  SmallVector<SourceLocation, 8> ProtocolLocs;
   if (Tok.is(tok::less) &&
       ParseObjCProtocolReferences(ProtocolRefs, ProtocolLocs, false,
                                   LAngleLoc, EndProtoLoc))
@@ -1585,31 +1585,46 @@ Parser::ParseObjCSynchronizedStmt(SourceLocation atLoc) {
     Diag(Tok, diag::err_expected_lparen_after) << "@synchronized";
     return StmtError();
   }
+
+  // The operand is surrounded with parentheses.
   ConsumeParen();  // '('
-  ExprResult Res(ParseExpression());
-  if (Res.isInvalid()) {
-    SkipUntil(tok::semi);
-    return StmtError();
+  ExprResult operand(ParseExpression());
+
+  if (Tok.is(tok::r_paren)) {
+    ConsumeParen();  // ')'
+  } else {
+    if (!operand.isInvalid())
+      Diag(Tok, diag::err_expected_rparen);
+
+    // Skip forward until we see a left brace, but don't consume it.
+    SkipUntil(tok::l_brace, true, true);
   }
-  if (Tok.isNot(tok::r_paren)) {
-    Diag(Tok, diag::err_expected_lbrace);
-    return StmtError();
-  }
-  ConsumeParen();  // ')'
+
+  // Require a compound statement.
   if (Tok.isNot(tok::l_brace)) {
-    Diag(Tok, diag::err_expected_lbrace);
+    if (!operand.isInvalid())
+      Diag(Tok, diag::err_expected_lbrace);
     return StmtError();
   }
-  // Enter a scope to hold everything within the compound stmt.  Compound
-  // statements can always hold declarations.
-  ParseScope BodyScope(this, Scope::DeclScope);
 
-  StmtResult SynchBody(ParseCompoundStatementBody());
+  // Check the @synchronized operand now.
+  if (!operand.isInvalid())
+    operand = Actions.ActOnObjCAtSynchronizedOperand(atLoc, operand.take());
 
-  BodyScope.Exit();
-  if (SynchBody.isInvalid())
-    SynchBody = Actions.ActOnNullStmt(Tok.getLocation());
-  return Actions.ActOnObjCAtSynchronizedStmt(atLoc, Res.take(), SynchBody.take());
+  // Parse the compound statement within a new scope.
+  ParseScope bodyScope(this, Scope::DeclScope);
+  StmtResult body(ParseCompoundStatementBody());
+  bodyScope.Exit();
+
+  // If there was a semantic or parse error earlier with the
+  // operand, fail now.
+  if (operand.isInvalid())
+    return StmtError();
+
+  if (body.isInvalid())
+    body = Actions.ActOnNullStmt(Tok.getLocation());
+
+  return Actions.ActOnObjCAtSynchronizedStmt(atLoc, operand.get(), body.get());
 }
 
 ///  objc-try-catch-statement:
@@ -2150,7 +2165,7 @@ Parser::ParseObjCMessageExpressionBody(SourceLocation LBracLoc,
 
   SourceLocation SelectorLoc = Loc;
 
-  llvm::SmallVector<IdentifierInfo *, 12> KeyIdents;
+  SmallVector<IdentifierInfo *, 12> KeyIdents;
   ExprVector KeyExprs(Actions);
 
   if (Tok.is(tok::colon)) {
@@ -2303,7 +2318,7 @@ ExprResult Parser::ParseObjCStringLiteral(SourceLocation AtLoc) {
   // @"foo" @"bar" is a valid concatenated string.  Eat any subsequent string
   // expressions.  At this point, we know that the only valid thing that starts
   // with '@' is an @"".
-  llvm::SmallVector<SourceLocation, 4> AtLocs;
+  SmallVector<SourceLocation, 4> AtLocs;
   ExprVector AtStrings(Actions);
   AtLocs.push_back(AtLoc);
   AtStrings.push_back(Res.release());
@@ -2381,7 +2396,7 @@ ExprResult Parser::ParseObjCSelectorExpression(SourceLocation AtLoc) {
   if (Tok.isNot(tok::l_paren))
     return ExprError(Diag(Tok, diag::err_expected_lparen_after) << "@selector");
 
-  llvm::SmallVector<IdentifierInfo *, 12> KeyIdents;
+  SmallVector<IdentifierInfo *, 12> KeyIdents;
   SourceLocation LParenLoc = ConsumeParen();
   SourceLocation sLoc;
   

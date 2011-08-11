@@ -183,7 +183,7 @@ unsigned FastISel::materializeRegForValue(const Value *V, MVT VT) {
       (void) Flt.convertToInteger(x, IntBitWidth, /*isSigned=*/true,
                                 APFloat::rmTowardZero, &isExact);
       if (isExact) {
-        APInt IntVal(IntBitWidth, 2, x);
+        APInt IntVal(IntBitWidth, x);
 
         unsigned IntegerReg =
           getRegForValue(ConstantInt::get(V->getContext(), IntVal));
@@ -422,12 +422,12 @@ bool FastISel::SelectGetElementPtr(const User *I) {
 
   bool NIsKill = hasTrivialKill(I->getOperand(0));
 
-  const Type *Ty = I->getOperand(0)->getType();
+  Type *Ty = I->getOperand(0)->getType();
   MVT VT = TLI.getPointerTy();
   for (GetElementPtrInst::const_op_iterator OI = I->op_begin()+1,
        E = I->op_end(); OI != E; ++OI) {
     const Value *Idx = *OI;
-    if (const StructType *StTy = dyn_cast<StructType>(Ty)) {
+    if (StructType *StTy = dyn_cast<StructType>(Ty)) {
       unsigned Field = cast<ConstantInt>(Idx)->getZExtValue();
       if (Field) {
         // N = N + Offset
@@ -839,7 +839,7 @@ FastISel::SelectExtractValue(const User *U) {
     return false;
 
   const Value *Op0 = EVI->getOperand(0);
-  const Type *AggTy = Op0->getType();
+  Type *AggTy = Op0->getType();
 
   // Get the base result register.
   unsigned ResultReg;
@@ -852,7 +852,7 @@ FastISel::SelectExtractValue(const User *U) {
     return false; // fast-isel can't handle aggregate constants at the moment
 
   // Get the actual result register, which is an offset from the base register.
-  unsigned VTIndex = ComputeLinearIndex(AggTy, EVI->idx_begin(), EVI->idx_end());
+  unsigned VTIndex = ComputeLinearIndex(AggTy, EVI->getIndices());
 
   SmallVector<EVT, 4> AggValueVTs;
   ComputeValueVTs(TLI, AggTy, AggValueVTs);
@@ -1074,7 +1074,7 @@ unsigned FastISel::FastEmit_ri_(MVT VT, unsigned Opcode,
   if (MaterialReg == 0) {
     // This is a bit ugly/slow, but failing here means falling out of
     // fast-isel, which would be very slow.
-    const IntegerType *ITy = IntegerType::get(FuncInfo.Fn->getContext(),
+    IntegerType *ITy = IntegerType::get(FuncInfo.Fn->getContext(),
                                               VT.getSizeInBits());
     MaterialReg = getRegForValue(ConstantInt::get(ITy, Imm));
   }

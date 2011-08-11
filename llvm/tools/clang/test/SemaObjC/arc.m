@@ -41,10 +41,10 @@ __weak __strong id x; // expected-error {{the type '__strong id' already has ret
 // rdar://8843638
 
 @interface I
-- (id)retain;
-- (id)autorelease;
-- (oneway void)release;
-- (NSUInteger)retainCount;
+- (id)retain; // expected-note {{method declared here}}
+- (id)autorelease; // expected-note {{method declared here}}
+- (oneway void)release; // expected-note {{method declared here}}
+- (NSUInteger)retainCount; // expected-note {{method declared here}}
 @end
 
 @implementation I
@@ -55,10 +55,14 @@ __weak __strong id x; // expected-error {{the type '__strong id' already has ret
 @end
 
 @implementation I(CAT)
-- (id)retain{return 0;} // expected-error {{ARC forbids implementation of 'retain'}}
-- (id)autorelease{return 0;} // expected-error {{ARC forbids implementation of 'autorelease'}}
-- (oneway void)release{} // expected-error {{ARC forbids implementation of 'release'}}
-- (NSUInteger)retainCount{ return 0; } // expected-error {{ARC forbids implementation of 'retainCount'}}
+- (id)retain{return 0;} // expected-error {{ARC forbids implementation of 'retain'}} \
+                        // expected-warning {{category is implementing a method which will also be implemented by its primary class}}
+- (id)autorelease{return 0;} // expected-error {{ARC forbids implementation of 'autorelease'}} \
+                         // expected-warning {{category is implementing a method which will also be implemented by its primary class}}
+- (oneway void)release{} // expected-error {{ARC forbids implementation of 'release'}} \
+                          // expected-warning {{category is implementing a method which will also be implemented by its primary class}}
+- (NSUInteger)retainCount{ return 0; } // expected-error {{ARC forbids implementation of 'retainCount'}} \
+                          // expected-warning {{category is implementing a method which will also be implemented by its primary class}}
 @end
 
 // rdar://8861761
@@ -483,9 +487,32 @@ void test26(id y) {
 @end
 
 // rdar://9525555
-@interface  Test27
-@property id x; // expected-error {{ARC forbids properties of Objective-C objects with unspecified storage attribute}}
+@interface  Test27 {
+  __weak id _myProp1;
+  id myProp2;
+}
+@property id x; // expected-warning {{no 'assign', 'retain', or 'copy' attribute is specified - 'assign' is assumed}} \
+                // expected-warning {{default property attribute 'assign' not appropriate for non-gc object}} \
+                // expected-note {{declared here}}
+@property (readonly) id ro; // expected-note {{declared here}}
+@property (readonly) id custom_ro;
 @property int y;
+
+@property (readonly) id myProp1;
+@property (readonly) id myProp2;
+@property (readonly) __strong id myProp3;
+@end
+
+@implementation Test27
+@synthesize x; // expected-error {{ARC forbids synthesizing a property of an Objective-C object with unspecified ownership or storage attribute}}
+@synthesize ro; // expected-error {{ARC forbids synthesizing a property of an Objective-C object with unspecified ownership or storage attribute}}
+@synthesize y;
+
+@synthesize myProp1 = _myProp1;
+@synthesize myProp2;
+@synthesize myProp3;
+
+-(id)custom_ro { return 0; }
 @end
 
 // rdar://9569264
@@ -606,4 +633,32 @@ void test35(void) {
   ^{ test36_helper(&y); }();
 
   __strong int non_objc_type; // expected-warning {{'__strong' only applies to objective-c object or block pointer types}} 
+}
+
+void test36(int first, ...) {
+  // <rdar://problem/9758798>
+  __builtin_va_list arglist;
+  __builtin_va_start(arglist, first);
+  id obj = __builtin_va_arg(arglist, id);
+  __builtin_va_end(arglist);
+}
+
+@class Test37;
+void test37(Test37 *c) {
+  for (id y in c) { // expected-error {{collection expression type 'Test37' is a forward declaration}}
+    (void) y;
+  }
+}
+
+// rdar://problem/9887979
+@interface Test38
+@property int value;
+@end
+void test38() {
+  extern Test38 *test38_helper(void);
+  switch (test38_helper().value) {
+  case 0:
+  case 1:
+    ;
+  }
 }

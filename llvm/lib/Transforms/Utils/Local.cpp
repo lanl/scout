@@ -27,7 +27,6 @@
 #include "llvm/Analysis/DebugInfo.h"
 #include "llvm/Analysis/DIBuilder.h"
 #include "llvm/Analysis/Dominators.h"
-#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/ProfileInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -230,10 +229,10 @@ bool llvm::isInstructionTriviallyDead(Instruction *I) {
   // We don't want debug info removed by anything this general, unless
   // debug info is empty.
   if (DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(I)) {
-    if (DDI->getAddress()) 
+    if (DDI->getAddress())
       return false;
     return true;
-  } 
+  }
   if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(I)) {
     if (DVI->getValue())
       return false;
@@ -244,10 +243,16 @@ bool llvm::isInstructionTriviallyDead(Instruction *I) {
 
   // Special case intrinsics that "may have side effects" but can be deleted
   // when dead.
-  if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I))
+  if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
     // Safe to delete llvm.stacksave if dead.
     if (II->getIntrinsicID() == Intrinsic::stacksave)
       return true;
+
+    // Lifetime intrinsics are dead when their right-hand is undef.
+    if (II->getIntrinsicID() == Intrinsic::lifetime_start ||
+        II->getIntrinsicID() == Intrinsic::lifetime_end)
+      return isa<UndefValue>(II->getArgOperand(1));
+  }
   return false;
 }
 

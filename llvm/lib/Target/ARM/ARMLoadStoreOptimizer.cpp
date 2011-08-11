@@ -14,10 +14,10 @@
 
 #define DEBUG_TYPE "arm-ldst-opt"
 #include "ARM.h"
-#include "ARMAddressingModes.h"
 #include "ARMBaseInstrInfo.h"
 #include "ARMMachineFunctionInfo.h"
 #include "ARMRegisterInfo.h"
+#include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -26,6 +26,7 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
@@ -765,7 +766,7 @@ static unsigned getPreIndexedLoadStoreOpcode(unsigned Opc,
   case ARM::LDRi12:
     return ARM::LDR_PRE;
   case ARM::STRi12:
-    return ARM::STR_PRE;
+    return ARM::STR_PRE_IMM;
   case ARM::VLDRS:
     return Mode == ARM_AM::add ? ARM::VLDMSIA_UPD : ARM::VLDMSDB_UPD;
   case ARM::VLDRD:
@@ -789,9 +790,9 @@ static unsigned getPostIndexedLoadStoreOpcode(unsigned Opc,
                                               ARM_AM::AddrOpc Mode) {
   switch (Opc) {
   case ARM::LDRi12:
-    return ARM::LDR_POST;
+    return ARM::LDR_POST_IMM;
   case ARM::STRi12:
-    return ARM::STR_POST;
+    return ARM::STR_POST_IMM;
   case ARM::VLDRS:
     return Mode == ARM_AM::add ? ARM::VLDMSIA_UPD : ARM::VLDMSDB_UPD;
   case ARM::VLDRD:
@@ -893,7 +894,10 @@ bool ARMLoadStoreOpt::MergeBaseUpdateLoadStore(MachineBasicBlock &MBB,
     return false;
 
   unsigned Offset = 0;
-  if (isAM2)
+  // FIXME: Loads still use a combined reg/imm offset operand. When
+  // AM2 refactoring is complete, this can go away and just always use
+  // the raw Offset value.
+  if (isAM2 && isLd)
     Offset = ARM_AM::getAM2Opc(AddSub, Bytes, ARM_AM::no_shift);
   else if (!isAM5)
     Offset = AddSub == ARM_AM::sub ? -Bytes : Bytes;
@@ -923,7 +927,10 @@ bool ARMLoadStoreOpt::MergeBaseUpdateLoadStore(MachineBasicBlock &MBB,
         .addReg(Base).addImm(Offset).addImm(Pred).addReg(PredReg);
   } else {
     MachineOperand &MO = MI->getOperand(0);
-    if (isAM2)
+    // FIXME: post-indexed stores use am2offset_imm, which still encodes
+    // the vestigal zero-reg offset register. When that's fixed, this clause
+    // can be removed entirely.
+    if (isAM2 && NewOpc == ARM::STR_POST_IMM)
       // STR_PRE, STR_POST
       BuildMI(MBB, MBBI, dl, TII->get(NewOpc), Base)
         .addReg(MO.getReg(), getKillRegState(MO.isKill()))

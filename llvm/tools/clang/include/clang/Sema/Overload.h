@@ -21,6 +21,7 @@
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/UnresolvedSet.h"
+#include "clang/Sema/SemaFixItUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -262,7 +263,7 @@ namespace clang {
 
   /// Represents an ambiguous user-defined conversion sequence.
   struct AmbiguousConversionSequence {
-    typedef llvm::SmallVector<FunctionDecl*, 4> ConversionSet;
+    typedef SmallVector<FunctionDecl*, 4> ConversionSet;
 
     void *FromTypePtr;
     void *ToTypePtr;
@@ -554,7 +555,10 @@ namespace clang {
 
     /// Conversions - The conversion sequences used to convert the
     /// function arguments to the function parameters.
-    llvm::SmallVector<ImplicitConversionSequence, 4> Conversions;
+    SmallVector<ImplicitConversionSequence, 4> Conversions;
+
+    /// The FixIt hints which can be used to fix the Bad candidate.
+    ConversionFixItGenerator Fix;
 
     /// Viable - True to indicate that this overload candidate is viable.
     bool Viable;
@@ -624,19 +628,32 @@ namespace clang {
     /// hasAmbiguousConversion - Returns whether this overload
     /// candidate requires an ambiguous conversion or not.
     bool hasAmbiguousConversion() const {
-      for (llvm::SmallVectorImpl<ImplicitConversionSequence>::const_iterator
+      for (SmallVectorImpl<ImplicitConversionSequence>::const_iterator
              I = Conversions.begin(), E = Conversions.end(); I != E; ++I) {
         if (!I->isInitialized()) return false;
         if (I->isAmbiguous()) return true;
       }
       return false;
     }
+
+    bool TryToFixBadConversion(unsigned Idx, Sema &S) {
+      bool CanFix = Fix.tryToFixConversion(
+                      Conversions[Idx].Bad.FromExpr,
+                      Conversions[Idx].Bad.getFromType(),
+                      Conversions[Idx].Bad.getToType(), S);
+
+      // If at least one conversion fails, the candidate cannot be fixed.
+      if (!CanFix)
+        Fix.clear();
+
+      return CanFix;
+    }
   };
 
   /// OverloadCandidateSet - A set of overload candidates, used in C++
   /// overload resolution (C++ 13.3).
-  class OverloadCandidateSet : public llvm::SmallVector<OverloadCandidate, 16> {
-    typedef llvm::SmallVector<OverloadCandidate, 16> inherited;
+  class OverloadCandidateSet : public SmallVector<OverloadCandidate, 16> {
+    typedef SmallVector<OverloadCandidate, 16> inherited;
     llvm::SmallPtrSet<Decl *, 16> Functions;
 
     SourceLocation Loc;    

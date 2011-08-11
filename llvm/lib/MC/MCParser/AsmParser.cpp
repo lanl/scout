@@ -18,22 +18,22 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCParser/AsmCond.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/MC/MCDwarf.h"
+#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetAsmInfo.h"
-#include "llvm/Target/TargetAsmParser.h"
 #include <cctype>
 #include <vector>
 using namespace llvm;
@@ -1117,15 +1117,8 @@ bool AsmParser::ParseStatement() {
 
     if (IDVal == ".globl" || IDVal == ".global")
       return ParseDirectiveSymbolAttribute(MCSA_Global);
-    // ELF only? Should it be here?
-    if (IDVal == ".local")
-      return ParseDirectiveSymbolAttribute(MCSA_Local);
-    if (IDVal == ".hidden")
-      return ParseDirectiveSymbolAttribute(MCSA_Hidden);
     if (IDVal == ".indirect_symbol")
       return ParseDirectiveSymbolAttribute(MCSA_IndirectSymbol);
-    if (IDVal == ".internal")
-      return ParseDirectiveSymbolAttribute(MCSA_Internal);
     if (IDVal == ".lazy_reference")
       return ParseDirectiveSymbolAttribute(MCSA_LazyReference);
     if (IDVal == ".no_dead_strip")
@@ -1134,12 +1127,8 @@ bool AsmParser::ParseStatement() {
       return ParseDirectiveSymbolAttribute(MCSA_SymbolResolver);
     if (IDVal == ".private_extern")
       return ParseDirectiveSymbolAttribute(MCSA_PrivateExtern);
-    if (IDVal == ".protected")
-      return ParseDirectiveSymbolAttribute(MCSA_Protected);
     if (IDVal == ".reference")
       return ParseDirectiveSymbolAttribute(MCSA_Reference);
-    if (IDVal == ".weak")
-      return ParseDirectiveSymbolAttribute(MCSA_Weak);
     if (IDVal == ".weak_definition")
       return ParseDirectiveSymbolAttribute(MCSA_WeakDefinition);
     if (IDVal == ".weak_reference")
@@ -1157,7 +1146,7 @@ bool AsmParser::ParseStatement() {
     if (IDVal == ".include")
       return ParseDirectiveInclude();
 
-    if (IDVal == ".code16" || IDVal == ".code32" || IDVal == ".code64")
+    if (IDVal == ".code16")
       return TokError(Twine(IDVal) + " not supported yet");
 
     // Look up the handler in the handler table.
@@ -1194,7 +1183,7 @@ bool AsmParser::ParseStatement() {
     for (unsigned i = 0; i != ParsedOperands.size(); ++i) {
       if (i != 0)
         OS << ", ";
-      ParsedOperands[i]->dump(OS);
+      ParsedOperands[i]->print(OS);
     }
     OS << "]";
 
@@ -2416,7 +2405,7 @@ bool GenericAsmParser::ParseRegisterOrRegisterNumber(int64_t &Register,
     if (getParser().getTargetParser().ParseRegister(RegNo, DirectiveLoc,
       DirectiveLoc))
       return true;
-    Register = getContext().getTargetAsmInfo().getDwarfRegNum(RegNo, true);
+    Register = getContext().getRegisterInfo().getDwarfRegNum(RegNo, true);
   } else
     return getParser().ParseAbsoluteExpression(Register);
 

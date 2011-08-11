@@ -36,6 +36,7 @@ def vfp_f32imm : Operand<f32>,
       return ARM::getVFPf32Imm(N->getValueAPF()) != -1;
     }]> {
   let PrintMethod = "printVFPf32ImmOperand";
+  let DecoderMethod = "DecodeVFPfpImm";
 }
 
 def vfp_f64imm : Operand<f64>,
@@ -43,6 +44,7 @@ def vfp_f64imm : Operand<f64>,
       return ARM::getVFPf64Imm(N->getValueAPF()) != -1;
     }]> {
   let PrintMethod = "printVFPf64ImmOperand";
+  let DecoderMethod = "DecodeVFPfpImm";
 }
 
 
@@ -990,12 +992,12 @@ def : Pat<(fsub_mlx (fmul_su SPR:$a, SPR:$b), SPR:$dstin),
 
 let neverHasSideEffects = 1 in {
 def VMOVDcc  : ARMPseudoInst<(outs DPR:$Dd), (ins DPR:$Dn, DPR:$Dm, pred:$p),
-                    Size4Bytes, IIC_fpUNA64,
+                    4, IIC_fpUNA64,
                     [/*(set DPR:$Dd, (ARMcmov DPR:$Dn, DPR:$Dm, imm:$cc))*/]>,
                  RegConstraint<"$Dn = $Dd">;
 
 def VMOVScc  : ARMPseudoInst<(outs SPR:$Sd), (ins SPR:$Sn, SPR:$Sm, pred:$p),
-                    Size4Bytes, IIC_fpUNA32,
+                    4, IIC_fpUNA32,
                     [/*(set SPR:$Sd, (ARMcmov SPR:$Sn, SPR:$Sm, imm:$cc))*/]>,
                  RegConstraint<"$Sn = $Sd">;
 } // neverHasSideEffects
@@ -1091,9 +1093,9 @@ def FCONSTD : VFPAI<(outs DPR:$Dd), (ins vfp_f64imm:$imm),
   // Encode instruction operands.
   let Inst{15-12} = Dd{3-0};
   let Inst{22}    = Dd{4};
-  let Inst{19}    = imm{31};
-  let Inst{18-16} = imm{22-20};
-  let Inst{3-0}   = imm{19-16};
+  let Inst{19}    = imm{31};    // The immediate is handled as a float.
+  let Inst{18-16} = imm{25-23};
+  let Inst{3-0}   = imm{22-19};
 
   // Encode remaining instruction bits.
   let Inst{27-23} = 0b11101;
@@ -1114,9 +1116,9 @@ def FCONSTS : VFPAI<(outs SPR:$Sd), (ins vfp_f32imm:$imm),
   // Encode instruction operands.
   let Inst{15-12} = Sd{4-1};
   let Inst{22}    = Sd{0};
-  let Inst{19}    = imm{31};    // The immediate is handled as a double.
-  let Inst{18-16} = imm{22-20};
-  let Inst{3-0}   = imm{19-16};
+  let Inst{19}    = imm{31};    // The immediate is handled as a float.
+  let Inst{18-16} = imm{25-23};
+  let Inst{3-0}   = imm{22-19};
 
   // Encode remaining instruction bits.
   let Inst{27-23} = 0b11101;

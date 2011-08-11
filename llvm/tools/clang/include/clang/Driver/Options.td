@@ -118,6 +118,14 @@ def ccc_arcmt_modify : Flag<"-ccc-arcmt-modify">, CCCDriverOpt,
   HelpText<"Apply modifications to files to conform to ARC">;
 def ccc_arrmt_check : Flag<"-ccc-arrmt-check">, Alias<ccc_arcmt_check>;
 def ccc_arrmt_modify : Flag<"-ccc-arrmt-modify">, Alias<ccc_arcmt_modify>;
+def ccc_arcmt_migrate : Separate<"-ccc-arcmt-migrate">, CCCDriverOpt,
+  HelpText<"Apply modifications and produces temporary files that conform to ARC">;
+def ccc_arcmt_migrate_EQ : Joined<"-ccc-arcmt-migrate=">, CCCDriverOpt,
+  Alias<ccc_arcmt_migrate>;
+def arcmt_migrate_report_output : Separate<"-arcmt-migrate-report-output">,
+  HelpText<"Output path for the plist report">;
+def arcmt_migrate_emit_arc_errors : Flag<"-arcmt-migrate-emit-errors">,
+  HelpText<"Emit ARC errors even if the migrator can fix them">;
 
 // Make sure all other -ccc- options are rejected.
 def ccc_ : Joined<"-ccc-">, Group<ccc_Group>, Flags<[Unsupported]>;
@@ -492,6 +500,7 @@ def gused : Joined<"-gused">, Group<g_Group>;
 def g_Flag : Flag<"-g">, Group<g_Group>;
 def g_Joined : Joined<"-g">, Group<g_Group>;
 def headerpad__max__install__names : Joined<"-headerpad_max_install_names">;
+def index_header_map : Flag<"-index-header-map">;
 def idirafter : JoinedOrSeparate<"-idirafter">, Group<clang_i_Group>;
 def iframework : JoinedOrSeparate<"-iframework">, Group<clang_i_Group>;
 def imacros : JoinedOrSeparate<"-imacros">, Group<clang_i_Group>;

@@ -66,6 +66,16 @@ test4_A test4() {
  return a; // expected-warning{{variable 'a' is uninitialized when used here}}
 }
 
+// Test variables getting invalidated by function calls with reference arguments
+// *AND* there are multiple invalidated arguments.
+void test5_aux(int &, int &);
+
+int test5() {
+  int x, y;
+  test5_aux(x, y);
+  return x + y; // no-warning
+}
+
 // This test previously crashed Sema.
 class Rdar9188004A {
 public: 
@@ -108,4 +118,26 @@ void RDar9251392() {
   }
 }
 
+// Test handling of "no-op" casts.
+void test_noop_cast()
+{
+    int x = 1;
+    int y = (int&)x; // no-warning
+}
+
+void test_noop_cast2() {
+    int x; // expected-note {{declared here}} expected-note {{add initialization}}
+    int y = (int&)x; // expected-warning {{uninitialized when used here}}
+}
+
+// Test handling of bit casts.
+void test_bitcasts() {
+  int x = 1;
+  int y = (float &)x; // no-warning
+}
+
+void test_bitcasts_2() {
+  int x;  // expected-note {{declared here}} expected-note {{add initialization}}
+  int y = (float &)x; // expected-warning {{uninitialized when used here}}
+}
 

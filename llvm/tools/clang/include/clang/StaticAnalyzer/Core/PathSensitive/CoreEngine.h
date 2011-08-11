@@ -172,9 +172,6 @@ public:
   ProgramPoint::Kind PointKind;
   const void *Tag;
 
-  const GRState* CleanedState;
-
-
   typedef llvm::SmallPtrSet<ExplodedNode*,5> DeferredTy;
   DeferredTy Deferred;
 
@@ -190,10 +187,6 @@ public:
 
   // FIXME: This should not be exposed.
   WorkList *getWorkList() { return Eng.WList; }
-
-  void SetCleanedState(const GRState* St) {
-    CleanedState = St;
-  }
 
   BlockCounter getBlockCounter() const { return Eng.WList->getBlockCounter();}
 
@@ -252,13 +245,6 @@ public:
 
   unsigned getIndex() const { return Idx; }
 
-  const GRState* GetState(ExplodedNode* Pred) const {
-    if (Pred == getPredecessor())
-      return CleanedState;
-    else
-      return Pred->getState();
-  }
-
   ExplodedNode* MakeNode(ExplodedNodeSet& Dst, const Stmt* S, 
                          ExplodedNode* Pred, const GRState* St) {
     return MakeNode(Dst, S, Pred, St, PointKind);
@@ -284,7 +270,7 @@ class BranchNodeBuilder {
   const CFGBlock* DstF;
   ExplodedNode* Pred;
 
-  typedef llvm::SmallVector<ExplodedNode*,3> DeferredTy;
+  typedef SmallVector<ExplodedNode*,3> DeferredTy;
   DeferredTy Deferred;
 
   bool GeneratedTrue;
@@ -426,7 +412,7 @@ protected:
   CoreEngine &engine;
   ExplodedNode *pred;
   ProgramPoint pp;
-  llvm::SmallVector<ExplodedNode*, 2> sinksGenerated;  
+  SmallVector<ExplodedNode*, 2> sinksGenerated;  
 
   ExplodedNode *generateNodeImpl(const GRState *state, ExplodedNode *pred,
                                  ProgramPoint programPoint, bool asSink);
@@ -445,7 +431,7 @@ public:
     return engine.WList->getBlockCounter();
   }
   
-  const llvm::SmallVectorImpl<ExplodedNode*> &sinks() const {
+  const SmallVectorImpl<ExplodedNode*> &sinks() const {
     return sinksGenerated;
   }
 };

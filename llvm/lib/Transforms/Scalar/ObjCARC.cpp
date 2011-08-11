@@ -180,7 +180,7 @@ static bool IsPotentialUse(const Value *Op) {
         Arg->hasStructRetAttr())
       return false;
   // Only consider values with pointer types, and not function pointers.
-  const PointerType *Ty = dyn_cast<PointerType>(Op->getType());
+  PointerType *Ty = dyn_cast<PointerType>(Op->getType());
   if (!Ty || isa<FunctionType>(Ty->getElementType()))
     return false;
   // Conservatively assume anything else is a potential use.
@@ -213,8 +213,8 @@ static InstructionClass GetFunctionClass(const Function *F) {
   const Argument *A0 = AI++;
   if (AI == AE)
     // Argument is a pointer.
-    if (const PointerType *PTy = dyn_cast<PointerType>(A0->getType())) {
-      const Type *ETy = PTy->getElementType();
+    if (PointerType *PTy = dyn_cast<PointerType>(A0->getType())) {
+      Type *ETy = PTy->getElementType();
       // Argument is i8*.
       if (ETy->isIntegerTy(8))
         return StringSwitch<InstructionClass>(F->getName())
@@ -234,7 +234,7 @@ static InstructionClass GetFunctionClass(const Function *F) {
           .Default(IC_CallOrUser);
 
       // Argument is i8**
-      if (const PointerType *Pte = dyn_cast<PointerType>(ETy))
+      if (PointerType *Pte = dyn_cast<PointerType>(ETy))
         if (Pte->getElementType()->isIntegerTy(8))
           return StringSwitch<InstructionClass>(F->getName())
             .Case("objc_loadWeakRetained",      IC_LoadWeakRetained)
@@ -246,11 +246,11 @@ static InstructionClass GetFunctionClass(const Function *F) {
   // Two arguments, first is i8**.
   const Argument *A1 = AI++;
   if (AI == AE)
-    if (const PointerType *PTy = dyn_cast<PointerType>(A0->getType()))
-      if (const PointerType *Pte = dyn_cast<PointerType>(PTy->getElementType()))
+    if (PointerType *PTy = dyn_cast<PointerType>(A0->getType()))
+      if (PointerType *Pte = dyn_cast<PointerType>(PTy->getElementType()))
         if (Pte->getElementType()->isIntegerTy(8))
-          if (const PointerType *PTy1 = dyn_cast<PointerType>(A1->getType())) {
-            const Type *ETy1 = PTy1->getElementType();
+          if (PointerType *PTy1 = dyn_cast<PointerType>(A1->getType())) {
+            Type *ETy1 = PTy1->getElementType();
             // Second argument is i8*
             if (ETy1->isIntegerTy(8))
               return StringSwitch<InstructionClass>(F->getName())
@@ -258,7 +258,7 @@ static InstructionClass GetFunctionClass(const Function *F) {
                      .Case("objc_initWeak",              IC_InitWeak)
                      .Default(IC_CallOrUser);
             // Second argument is i8**.
-            if (const PointerType *Pte1 = dyn_cast<PointerType>(ETy1))
+            if (PointerType *Pte1 = dyn_cast<PointerType>(ETy1))
               if (Pte1->getElementType()->isIntegerTy(8))
                 return StringSwitch<InstructionClass>(F->getName())
                        .Case("objc_moveWeak",              IC_MoveWeak)
@@ -1316,7 +1316,7 @@ namespace {
     }
 
     void clearBottomUpPointers() {
-      PerPtrTopDown.clear();
+      PerPtrBottomUp.clear();
     }
 
     void clearTopDownPointers() {
@@ -1406,15 +1406,11 @@ namespace {
     /// Run - A flag indicating whether this optimization pass should run.
     bool Run;
 
-    /// RetainFunc, RelaseFunc - Declarations for objc_retain,
-    /// objc_retainBlock, and objc_release.
-    Function *RetainFunc, *RetainBlockFunc, *RetainRVFunc, *ReleaseFunc;
-
     /// RetainRVCallee, etc. - Declarations for ObjC runtime
     /// functions, for use in creating calls to them. These are initialized
     /// lazily to avoid cluttering up the Module with unused declarations.
     Constant *RetainRVCallee, *AutoreleaseRVCallee, *ReleaseCallee,
-             *RetainCallee, *AutoreleaseCallee;
+             *RetainCallee, *RetainBlockCallee, *AutoreleaseCallee;
 
     /// UsedInThisFunciton - Flags which determine whether each of the
     /// interesting runtine functions is in fact used in the current function.
@@ -1428,6 +1424,7 @@ namespace {
     Constant *getAutoreleaseRVCallee(Module *M);
     Constant *getReleaseCallee(Module *M);
     Constant *getRetainCallee(Module *M);
+    Constant *getRetainBlockCallee(Module *M);
     Constant *getAutoreleaseCallee(Module *M);
 
     void OptimizeRetainCall(Function &F, Instruction *Retain);
@@ -1452,11 +1449,13 @@ namespace {
     void MoveCalls(Value *Arg, RRInfo &RetainsToMove, RRInfo &ReleasesToMove,
                    MapVector<Value *, RRInfo> &Retains,
                    DenseMap<Value *, RRInfo> &Releases,
-                   SmallVectorImpl<Instruction *> &DeadInsts);
+                   SmallVectorImpl<Instruction *> &DeadInsts,
+                   Module *M);
 
     bool PerformCodePlacement(DenseMap<const BasicBlock *, BBState> &BBStates,
                               MapVector<Value *, RRInfo> &Retains,
-                              DenseMap<Value *, RRInfo> &Releases);
+                              DenseMap<Value *, RRInfo> &Releases,
+                              Module *M);
 
     void OptimizeWeakCalls(Function &F);
 
@@ -1498,10 +1497,10 @@ void ObjCARCOpt::getAnalysisUsage(AnalysisUsage &AU) const {
 Constant *ObjCARCOpt::getRetainRVCallee(Module *M) {
   if (!RetainRVCallee) {
     LLVMContext &C = M->getContext();
-    const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-    std::vector<const Type *> Params;
+    Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+    std::vector<Type *> Params;
     Params.push_back(I8X);
-    const FunctionType *FTy =
+    FunctionType *FTy =
       FunctionType::get(I8X, Params, /*isVarArg=*/false);
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -1515,10 +1514,10 @@ Constant *ObjCARCOpt::getRetainRVCallee(Module *M) {
 Constant *ObjCARCOpt::getAutoreleaseRVCallee(Module *M) {
   if (!AutoreleaseRVCallee) {
     LLVMContext &C = M->getContext();
-    const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-    std::vector<const Type *> Params;
+    Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+    std::vector<Type *> Params;
     Params.push_back(I8X);
-    const FunctionType *FTy =
+    FunctionType *FTy =
       FunctionType::get(I8X, Params, /*isVarArg=*/false);
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -1532,7 +1531,7 @@ Constant *ObjCARCOpt::getAutoreleaseRVCallee(Module *M) {
 Constant *ObjCARCOpt::getReleaseCallee(Module *M) {
   if (!ReleaseCallee) {
     LLVMContext &C = M->getContext();
-    std::vector<const Type *> Params;
+    std::vector<Type *> Params;
     Params.push_back(PointerType::getUnqual(Type::getInt8Ty(C)));
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -1548,7 +1547,7 @@ Constant *ObjCARCOpt::getReleaseCallee(Module *M) {
 Constant *ObjCARCOpt::getRetainCallee(Module *M) {
   if (!RetainCallee) {
     LLVMContext &C = M->getContext();
-    std::vector<const Type *> Params;
+    std::vector<Type *> Params;
     Params.push_back(PointerType::getUnqual(Type::getInt8Ty(C)));
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -1561,10 +1560,26 @@ Constant *ObjCARCOpt::getRetainCallee(Module *M) {
   return RetainCallee;
 }
 
+Constant *ObjCARCOpt::getRetainBlockCallee(Module *M) {
+  if (!RetainBlockCallee) {
+    LLVMContext &C = M->getContext();
+    std::vector<Type *> Params;
+    Params.push_back(PointerType::getUnqual(Type::getInt8Ty(C)));
+    AttrListPtr Attributes;
+    Attributes.addAttr(~0u, Attribute::NoUnwind);
+    RetainBlockCallee =
+      M->getOrInsertFunction(
+        "objc_retainBlock",
+        FunctionType::get(Params[0], Params, /*isVarArg=*/false),
+        Attributes);
+  }
+  return RetainBlockCallee;
+}
+
 Constant *ObjCARCOpt::getAutoreleaseCallee(Module *M) {
   if (!AutoreleaseCallee) {
     LLVMContext &C = M->getContext();
-    std::vector<const Type *> Params;
+    std::vector<Type *> Params;
     Params.push_back(PointerType::getUnqual(Type::getInt8Ty(C)));
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -1953,7 +1968,7 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
     case IC_DestroyWeak: {
       CallInst *CI = cast<CallInst>(Inst);
       if (isNullOrUndef(CI->getArgOperand(0))) {
-        const Type *Ty = CI->getArgOperand(0)->getType();
+        Type *Ty = CI->getArgOperand(0)->getType();
         new StoreInst(UndefValue::get(cast<PointerType>(Ty)->getElementType()),
                       Constant::getNullValue(Ty),
                       CI);
@@ -1968,7 +1983,7 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
       CallInst *CI = cast<CallInst>(Inst);
       if (isNullOrUndef(CI->getArgOperand(0)) ||
           isNullOrUndef(CI->getArgOperand(1))) {
-        const Type *Ty = CI->getArgOperand(0)->getType();
+        Type *Ty = CI->getArgOperand(0)->getType();
         new StoreInst(UndefValue::get(cast<PointerType>(Ty)->getElementType()),
                       Constant::getNullValue(Ty),
                       CI);
@@ -2090,7 +2105,7 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
           ++NumPartialNoops;
           // Clone the call into each predecessor that has a non-null value.
           CallInst *CInst = cast<CallInst>(Inst);
-          const Type *ParamTy = CInst->getArgOperand(0)->getType();
+          Type *ParamTy = CInst->getArgOperand(0)->getType();
           for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i) {
             Value *Incoming =
               StripPointerCastsAndObjCCalls(PN->getIncomingValue(i));
@@ -2565,12 +2580,10 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
                            RRInfo &ReleasesToMove,
                            MapVector<Value *, RRInfo> &Retains,
                            DenseMap<Value *, RRInfo> &Releases,
-                           SmallVectorImpl<Instruction *> &DeadInsts) {
-  const Type *ArgTy = Arg->getType();
-  const Type *ParamTy =
-    (RetainRVFunc ? RetainRVFunc :
-     RetainFunc ? RetainFunc :
-     RetainBlockFunc)->arg_begin()->getType();
+                           SmallVectorImpl<Instruction *> &DeadInsts,
+                           Module *M) {
+  Type *ArgTy = Arg->getType();
+  Type *ParamTy = PointerType::getUnqual(Type::getInt8Ty(ArgTy->getContext()));
 
   // Insert the new retain and release calls.
   for (SmallPtrSet<Instruction *, 2>::const_iterator
@@ -2581,7 +2594,7 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
                    new BitCastInst(Arg, ParamTy, "", InsertPt);
     CallInst *Call =
       CallInst::Create(RetainsToMove.IsRetainBlock ?
-                         RetainBlockFunc : RetainFunc,
+                         getRetainBlockCallee(M) : getRetainCallee(M),
                        MyArg, "", InsertPt);
     Call->setDoesNotThrow();
     if (!RetainsToMove.IsRetainBlock)
@@ -2609,7 +2622,8 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
       Instruction *InsertPt = *I;
       Value *MyArg = ArgTy == ParamTy ? Arg :
                      new BitCastInst(Arg, ParamTy, "", InsertPt);
-      CallInst *Call = CallInst::Create(ReleaseFunc, MyArg, "", InsertPt);
+      CallInst *Call = CallInst::Create(getReleaseCallee(M), MyArg,
+                                        "", InsertPt);
       // Attach a clang.imprecise_release metadata tag, if appropriate.
       if (MDNode *M = ReleasesToMove.ReleaseMetadata)
         Call->setMetadata(ImpreciseReleaseMDKind, M);
@@ -2640,7 +2654,8 @@ bool
 ObjCARCOpt::PerformCodePlacement(DenseMap<const BasicBlock *, BBState>
                                    &BBStates,
                                  MapVector<Value *, RRInfo> &Retains,
-                                 DenseMap<Value *, RRInfo> &Releases) {
+                                 DenseMap<Value *, RRInfo> &Releases,
+                                 Module *M) {
   bool AnyPairsCompletelyEliminated = false;
   RRInfo RetainsToMove;
   RRInfo ReleasesToMove;
@@ -2814,7 +2829,8 @@ ObjCARCOpt::PerformCodePlacement(DenseMap<const BasicBlock *, BBState>
     Changed = true;
     AnyPairsCompletelyEliminated = NewCount == 0;
     NumRRs += OldCount - NewCount;
-    MoveCalls(Arg, RetainsToMove, ReleasesToMove, Retains, Releases, DeadInsts);
+    MoveCalls(Arg, RetainsToMove, ReleasesToMove,
+              Retains, Releases, DeadInsts, M);
 
   next_retain:
     NewReleases.clear();
@@ -2993,7 +3009,8 @@ bool ObjCARCOpt::OptimizeSequences(Function &F) {
   bool NestingDetected = Visit(F, BBStates, Retains, Releases);
 
   // Transform.
-  return PerformCodePlacement(BBStates, Retains, Releases) && NestingDetected;
+  return PerformCodePlacement(BBStates, Retains, Releases, F.getParent()) &&
+         NestingDetected;
 }
 
 /// OptimizeReturns - Look for this pattern:
@@ -3117,12 +3134,6 @@ bool ObjCARCOpt::doInitialization(Module &M) {
   ImpreciseReleaseMDKind =
     M.getContext().getMDKindID("clang.imprecise_release");
 
-  // Identify the declarations for objc_retain and friends.
-  RetainFunc = M.getFunction("objc_retain");
-  RetainBlockFunc = M.getFunction("objc_retainBlock");
-  RetainRVFunc = M.getFunction("objc_retainAutoreleasedReturnValue");
-  ReleaseFunc = M.getFunction("objc_release");
-
   // Intuitively, objc_retain and others are nocapture, however in practice
   // they are not, because they return their argument value. And objc_release
   // calls finalizers.
@@ -3132,6 +3143,7 @@ bool ObjCARCOpt::doInitialization(Module &M) {
   AutoreleaseRVCallee = 0;
   ReleaseCallee = 0;
   RetainCallee = 0;
+  RetainBlockCallee = 0;
   AutoreleaseCallee = 0;
 
   return false;
@@ -3269,9 +3281,9 @@ void ObjCARCContract::getAnalysisUsage(AnalysisUsage &AU) const {
 Constant *ObjCARCContract::getStoreStrongCallee(Module *M) {
   if (!StoreStrongCallee) {
     LLVMContext &C = M->getContext();
-    const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-    const Type *I8XX = PointerType::getUnqual(I8X);
-    std::vector<const Type *> Params;
+    Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+    Type *I8XX = PointerType::getUnqual(I8X);
+    std::vector<Type *> Params;
     Params.push_back(I8XX);
     Params.push_back(I8X);
 
@@ -3291,10 +3303,10 @@ Constant *ObjCARCContract::getStoreStrongCallee(Module *M) {
 Constant *ObjCARCContract::getRetainAutoreleaseCallee(Module *M) {
   if (!RetainAutoreleaseCallee) {
     LLVMContext &C = M->getContext();
-    const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-    std::vector<const Type *> Params;
+    Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+    std::vector<Type *> Params;
     Params.push_back(I8X);
-    const FunctionType *FTy =
+    FunctionType *FTy =
       FunctionType::get(I8X, Params, /*isVarArg=*/false);
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -3307,10 +3319,10 @@ Constant *ObjCARCContract::getRetainAutoreleaseCallee(Module *M) {
 Constant *ObjCARCContract::getRetainAutoreleaseRVCallee(Module *M) {
   if (!RetainAutoreleaseRVCallee) {
     LLVMContext &C = M->getContext();
-    const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-    std::vector<const Type *> Params;
+    Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+    std::vector<Type *> Params;
     Params.push_back(I8X);
-    const FunctionType *FTy =
+    FunctionType *FTy =
       FunctionType::get(I8X, Params, /*isVarArg=*/false);
     AttrListPtr Attributes;
     Attributes.addAttr(~0u, Attribute::NoUnwind);
@@ -3411,8 +3423,8 @@ void ObjCARCContract::ContractRelease(Instruction *Release,
   ++NumStoreStrongs;
 
   LLVMContext &C = Release->getContext();
-  const Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
-  const Type *I8XX = PointerType::getUnqual(I8X);
+  Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
+  Type *I8XX = PointerType::getUnqual(I8X);
 
   Value *Args[] = { Load->getPointerOperand(), New };
   if (Args[0]->getType() != I8XX)
@@ -3421,7 +3433,7 @@ void ObjCARCContract::ContractRelease(Instruction *Release,
     Args[1] = new BitCastInst(Args[1], I8X, "", Store);
   CallInst *StoreStrong =
     CallInst::Create(getStoreStrongCallee(BB->getParent()->getParent()),
-                     Args, array_endof(Args), "", Store);
+                     Args, "", Store);
   StoreStrong->setDoesNotThrow();
   StoreStrong->setDebugLoc(Store->getDebugLoc());
 
@@ -3548,7 +3560,7 @@ bool ObjCARCContract::runOnFunction(Function &F) {
           if (Inst != UserInst && DT->dominates(Inst, UserInst)) {
             Changed = true;
             Instruction *Replacement = Inst;
-            const Type *UseTy = U.get()->getType();
+            Type *UseTy = U.get()->getType();
             if (PHINode *PHI = dyn_cast<PHINode>(UserInst)) {
               // For PHI nodes, insert the bitcast in the predecessor block.
               unsigned ValNo =

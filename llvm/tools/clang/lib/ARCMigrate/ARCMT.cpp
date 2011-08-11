@@ -10,6 +10,7 @@
 #include "Internals.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Rewrite/Rewriter.h"
@@ -18,12 +19,10 @@
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/ADT/Triple.h"
-
 using namespace clang;
 using namespace arcmt;
-using llvm::StringRef;
 
-bool CapturedDiagList::clearDiagnostic(llvm::ArrayRef<unsigned> IDs,
+bool CapturedDiagList::clearDiagnostic(ArrayRef<unsigned> IDs,
                                        SourceRange range) {
   if (range.isInvalid())
     return false;
@@ -52,7 +51,7 @@ bool CapturedDiagList::clearDiagnostic(llvm::ArrayRef<unsigned> IDs,
   return cleared;
 }
 
-bool CapturedDiagList::hasDiagnostic(llvm::ArrayRef<unsigned> IDs,
+bool CapturedDiagList::hasDiagnostic(ArrayRef<unsigned> IDs,
                                      SourceRange range) const {
   if (range.isInvalid())
     return false;
@@ -112,7 +111,7 @@ public:
 
 } // end anonymous namespace
 
-static inline llvm::StringRef SimulatorVersionDefineName() {
+static inline StringRef SimulatorVersionDefineName() {
   return "__IPHONE_OS_VERSION_MIN_REQUIRED=";
 }
 
@@ -121,11 +120,11 @@ static inline llvm::StringRef SimulatorVersionDefineName() {
 // and return the grouped values as integers, e.g:
 //   __IPHONE_OS_VERSION_MIN_REQUIRED=40201
 // will return Major=4, Minor=2, Micro=1.
-static bool GetVersionFromSimulatorDefine(llvm::StringRef define,
+static bool GetVersionFromSimulatorDefine(StringRef define,
                                           unsigned &Major, unsigned &Minor,
                                           unsigned &Micro) {
   assert(define.startswith(SimulatorVersionDefineName()));
-  llvm::StringRef name, version;
+  StringRef name, version;
   llvm::tie(name, version) = define.split('=');
   if (version.empty())
     return false;
@@ -177,7 +176,8 @@ static bool HasARCRuntime(CompilerInvocation &origCI) {
   return false;
 }
 
-CompilerInvocation *createInvocationForMigration(CompilerInvocation &origCI) {
+static CompilerInvocation *
+createInvocationForMigration(CompilerInvocation &origCI) {
   llvm::OwningPtr<CompilerInvocation> CInvok;
   CInvok.reset(new CompilerInvocation(origCI));
   CInvok->getPreprocessorOpts().ImplicitPCHInclude = std::string();
@@ -194,13 +194,29 @@ CompilerInvocation *createInvocationForMigration(CompilerInvocation &origCI) {
   return CInvok.take();
 }
 
+static void emitPremigrationErrors(const CapturedDiagList &arcDiags,
+                                   const DiagnosticOptions &diagOpts,
+                                   Preprocessor &PP) {
+  TextDiagnosticPrinter printer(llvm::errs(), diagOpts);
+  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  llvm::IntrusiveRefCntPtr<Diagnostic> Diags(
+                   new Diagnostic(DiagID, &printer, /*ShouldOwnClient=*/false));
+  Diags->setSourceManager(&PP.getSourceManager());
+  
+  printer.BeginSourceFile(PP.getLangOptions(), &PP);
+  arcDiags.reportDiagnostics(*Diags);
+  printer.EndSourceFile();
+}
+
 //===----------------------------------------------------------------------===//
 // checkForManualIssues.
 //===----------------------------------------------------------------------===//
 
 bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
-                                 llvm::StringRef Filename, InputKind Kind,
-                                 DiagnosticClient *DiagClient) {
+                                 StringRef Filename, InputKind Kind,
+                                 DiagnosticClient *DiagClient,
+                                 bool emitPremigrationARCErrors,
+                                 StringRef plistOut) {
   if (!origCI.getLangOpts().ObjC1)
     return false;
 
@@ -241,6 +257,18 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
     return true;
   }
 
+  if (emitPremigrationARCErrors)
+    emitPremigrationErrors(capturedDiags, origCI.getDiagnosticOpts(),
+                           Unit->getPreprocessor());
+  if (!plistOut.empty()) {
+    SmallVector<StoredDiagnostic, 8> arcDiags;
+    for (CapturedDiagList::iterator
+           I = capturedDiags.begin(), E = capturedDiags.end(); I != E; ++I)
+      arcDiags.push_back(*I);
+    writeARCDiagsToPlist(plistOut, arcDiags,
+                         Ctx.getSourceManager(), Ctx.getLangOptions());
+  }
+
   // After parsing of source files ended, we want to reuse the
   // diagnostics objects to emit further diagnostics.
   // We call BeginSourceFile because DiagnosticClient requires that 
@@ -262,29 +290,37 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
 
   DiagClient->EndSourceFile();
 
-  return capturedDiags.hasErrors();
+  // If we are migrating code that gets the '-fobjc-arc' flag, make sure
+  // to remove it so that we don't get errors from normal compilation.
+  origCI.getLangOpts().ObjCAutoRefCount = false;
+
+  return capturedDiags.hasErrors() || testAct.hasReportedErrors();
 }
 
 //===----------------------------------------------------------------------===//
 // applyTransformations.
 //===----------------------------------------------------------------------===//
 
-bool arcmt::applyTransformations(CompilerInvocation &origCI,
-                                 llvm::StringRef Filename, InputKind Kind,
-                                 DiagnosticClient *DiagClient) {
+static bool applyTransforms(CompilerInvocation &origCI,
+                            StringRef Filename, InputKind Kind,
+                            DiagnosticClient *DiagClient,
+                            StringRef outputDir,
+                            bool emitPremigrationARCErrors,
+                            StringRef plistOut) {
   if (!origCI.getLangOpts().ObjC1)
     return false;
 
   // Make sure checking is successful first.
   CompilerInvocation CInvokForCheck(origCI);
-  if (arcmt::checkForManualIssues(CInvokForCheck, Filename, Kind, DiagClient))
+  if (arcmt::checkForManualIssues(CInvokForCheck, Filename, Kind, DiagClient,
+                                  emitPremigrationARCErrors, plistOut))
     return true;
 
   CompilerInvocation CInvok(origCI);
   CInvok.getFrontendOpts().Inputs.clear();
   CInvok.getFrontendOpts().Inputs.push_back(std::make_pair(Kind, Filename));
   
-  MigrationProcess migration(CInvok, DiagClient);
+  MigrationProcess migration(CInvok, DiagClient, outputDir);
 
   std::vector<TransformFn> transforms = arcmt::getAllTransformations();
   assert(!transforms.empty());
@@ -294,12 +330,60 @@ bool arcmt::applyTransformations(CompilerInvocation &origCI,
     if (err) return true;
   }
 
-  origCI.getLangOpts().ObjCAutoRefCount = true;
+  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  llvm::IntrusiveRefCntPtr<Diagnostic> Diags(
+                 new Diagnostic(DiagID, DiagClient, /*ShouldOwnClient=*/false));
+
+  if (outputDir.empty()) {
+    origCI.getLangOpts().ObjCAutoRefCount = true;
+    return migration.getRemapper().overwriteOriginal(*Diags);
+  } else {
+    // If we are migrating code that gets the '-fobjc-arc' flag, make sure
+    // to remove it so that we don't get errors from normal compilation.
+    origCI.getLangOpts().ObjCAutoRefCount = false;
+    return migration.getRemapper().flushToDisk(outputDir, *Diags);
+  }
+}
+
+bool arcmt::applyTransformations(CompilerInvocation &origCI,
+                                 StringRef Filename, InputKind Kind,
+                                 DiagnosticClient *DiagClient) {
+  return applyTransforms(origCI, Filename, Kind, DiagClient,
+                         StringRef(), false, StringRef());
+}
+
+bool arcmt::migrateWithTemporaryFiles(CompilerInvocation &origCI,
+                                      StringRef Filename, InputKind Kind,
+                                      DiagnosticClient *DiagClient,
+                                      StringRef outputDir,
+                                      bool emitPremigrationARCErrors,
+                                      StringRef plistOut) {
+  assert(!outputDir.empty() && "Expected output directory path");
+  return applyTransforms(origCI, Filename, Kind, DiagClient,
+                         outputDir, emitPremigrationARCErrors, plistOut);
+}
+
+bool arcmt::getFileRemappings(std::vector<std::pair<std::string,std::string> > &
+                                  remap,
+                              StringRef outputDir,
+                              DiagnosticClient *DiagClient) {
+  assert(!outputDir.empty());
 
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   llvm::IntrusiveRefCntPtr<Diagnostic> Diags(
                  new Diagnostic(DiagID, DiagClient, /*ShouldOwnClient=*/false));
-  return migration.getRemapper().overwriteOriginal(*Diags);
+
+  FileRemapper remapper;
+  bool err = remapper.initFromDisk(outputDir, *Diags,
+                                   /*ignoreIfFilesChanged=*/true);
+  if (err)
+    return true;
+
+  CompilerInvocation CI;
+  remapper.applyMappings(CI);
+  remap = CI.getPreprocessorOpts().RemappedFiles;
+
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -329,7 +413,7 @@ public:
     : ARCMTMacroLocs(ARCMTMacroLocs) { }
 
   virtual ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
-                                         llvm::StringRef InFile) {
+                                         StringRef InFile) {
     CI.getPreprocessor().addPPCallbacks(
                               new ARCMTMacroTrackerPPCallbacks(ARCMTMacroLocs));
     return new ASTConsumer();
@@ -353,7 +437,7 @@ public:
       Listener->finish();
   }
 
-  virtual void insert(SourceLocation loc, llvm::StringRef text) {
+  virtual void insert(SourceLocation loc, StringRef text) {
     bool err = rewriter.InsertText(loc, text, /*InsertAfter=*/true,
                                    /*indentNewLines=*/true);
     if (!err && Listener)
@@ -381,6 +465,18 @@ public:
 
 /// \brief Anchor for VTable.
 MigrationProcess::RewriteListener::~RewriteListener() { }
+
+MigrationProcess::MigrationProcess(const CompilerInvocation &CI,
+                                   DiagnosticClient *diagClient,
+                                   StringRef outputDir)
+  : OrigCI(CI), DiagClient(diagClient) {
+  if (!outputDir.empty()) {
+    llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+    llvm::IntrusiveRefCntPtr<Diagnostic> Diags(
+                 new Diagnostic(DiagID, DiagClient, /*ShouldOwnClient=*/false));
+    Remapper.initFromDisk(outputDir, *Diags, /*ignoreIfFilesChanges=*/true);
+  }
+}
 
 bool MigrationProcess::applyTransform(TransformFn trans,
                                       RewriteListener *listener) {
@@ -461,7 +557,7 @@ bool MigrationProcess::applyTransform(TransformFn trans,
     buf.write(vecOS);
     vecOS.flush();
     llvm::MemoryBuffer *memBuf = llvm::MemoryBuffer::getMemBufferCopy(
-                   llvm::StringRef(newText.data(), newText.size()), newFname);
+                   StringRef(newText.data(), newText.size()), newFname);
     llvm::SmallString<64> filePath(file->getName());
     Unit->getFileManager().FixupRelativePath(filePath);
     Remapper.remap(filePath.str(), memBuf);

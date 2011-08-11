@@ -22,10 +22,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
 
-namespace llvm {
-  class raw_ostream;
-}
-
 namespace clang {
   
 class CXXBaseSpecifier;
@@ -491,10 +487,7 @@ public:
     DependentSequence,
 
     /// \brief A normal sequence.
-    NormalSequence,
-
-    /// \brief A reference binding.
-    ReferenceBinding // FIXME: Still looks redundant, but complicated.
+    NormalSequence
   };
   
   /// \brief Describes the kind of a particular step in an initialization
@@ -587,7 +580,7 @@ private:
   enum SequenceKind SequenceKind;
   
   /// \brief Steps taken by this initialization.
-  llvm::SmallVector<Step, 4> Steps;
+  SmallVector<Step, 4> Steps;
   
 public:
   /// \brief Describes why initialization failed.
@@ -725,7 +718,7 @@ public:
   /// \brief Determine whether the initialization sequence is invalid.
   bool Failed() const { return SequenceKind == FailedSequence; }
   
-  typedef llvm::SmallVector<Step, 4>::const_iterator step_iterator;
+  typedef SmallVector<Step, 4>::const_iterator step_iterator;
   step_iterator step_begin() const { return Steps.begin(); }
   step_iterator step_end()   const { return Steps.end(); }
 
@@ -739,7 +732,18 @@ public:
   /// \brief Determine whether this initialization is direct call to a 
   /// constructor.
   bool isConstructorInitialization() const;
-  
+
+  // \brief Returns whether the last step in this initialization sequence is a
+  // narrowing conversion, defined by C++0x [dcl.init.list]p7.
+  //
+  // If this function returns true, *isInitializerConstant will be set to
+  // describe whether *Initializer was a constant expression.  If
+  // *isInitializerConstant is set to true, *ConstantValue will be set to the
+  // evaluated value of *Initializer.
+  bool endsWithNarrowing(ASTContext &Ctx, const Expr *Initializer,
+                         bool *isInitializerConstant,
+                         APValue *ConstantValue) const;
+
   /// \brief Add a new step in the initialization that resolves the address
   /// of an overloaded function to a specific function declaration.
   ///
@@ -860,7 +864,7 @@ public:
 
   /// \brief Dump a representation of this initialization sequence to 
   /// the given stream, for debugging purposes.
-  void dump(llvm::raw_ostream &OS) const;
+  void dump(raw_ostream &OS) const;
   
   /// \brief Dump a representation of this initialization sequence to 
   /// standard error, for debugging purposes.

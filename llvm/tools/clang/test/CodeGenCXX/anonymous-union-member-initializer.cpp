@@ -67,6 +67,55 @@ namespace test2 {
   // CHECK: }
 }
 
+namespace PR10512 {
+  struct A {
+    A();
+    A(int);
+    A(long);
+
+    struct {
+      struct {int x;};
+      struct {int y;};
+    };
+  };
+
+  // CHECK: define void @_ZN7PR105121AC2Ev
+  // CHECK: [[THISADDR:%[a-zA-z0-9.]+]] = alloca [[A:%"struct[A-Za-z0-9:.]+"]]
+  // CHECK-NEXT: store [[A]]* [[THIS:%[a-zA-z0-9.]+]], [[A]]** [[THISADDR]]
+  // CHECK-NEXT: [[THIS1:%[a-zA-z0-9.]+]] = load [[A]]** [[THISADDR]]
+  // CHECK-NEXT: ret void
+  A::A() {}
+
+  // CHECK: define void @_ZN7PR105121AC2Ei
+  // CHECK: [[THISADDR:%[a-zA-z0-9.]+]] = alloca [[A:%"struct[A-Za-z0-9:.]+"]]
+  // CHECK-NEXT: [[XADDR:%[a-zA-z0-9.]+]] = alloca i32
+  // CHECK-NEXT: store [[A]]* [[THIS:%[a-zA-z0-9.]+]], [[A]]** [[THISADDR]]
+  // CHECK-NEXT: store i32 [[X:%[a-zA-z0-9.]+]], i32* [[XADDR]]
+  // CHECK-NEXT: [[THIS1:%[a-zA-z0-9.]+]] = load [[A]]** [[THISADDR]]
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 0}}
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 0}}
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 0}}
+  // CHECK-NEXT: [[TMP:%[a-zA-z0-9.]+]] = load i32* [[XADDR]]
+  // CHECK-NEXT: store i32 [[TMP]]
+  // CHECK-NEXT: ret void
+  A::A(int x) : x(x) { }
+
+  // CHECK: define void @_ZN7PR105121AC2El
+  // CHECK: [[THISADDR:%[a-zA-z0-9.]+]] = alloca [[A:%"struct[A-Za-z0-9:.]+"]]
+  // CHECK-NEXT: [[XADDR:%[a-zA-z0-9.]+]] = alloca i64
+  // CHECK-NEXT: store [[A]]* [[THIS:%[a-zA-z0-9.]+]], [[A]]** [[THISADDR]]
+  // CHECK-NEXT: store i64 [[X:%[a-zA-z0-9.]+]], i64* [[XADDR]]
+  // CHECK-NEXT: [[THIS1:%[a-zA-z0-9.]+]] = load [[A]]** [[THISADDR]]
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 0}}
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 1}}
+  // CHECK-NEXT: {{getelementptr inbounds.*i32 0, i32 0}}
+  // CHECK-NEXT: [[TMP:%[a-zA-z0-9.]+]] = load i64* [[XADDR]]
+  // CHECK-NEXT: [[CONV:%[a-zA-z0-9.]+]] = trunc i64 [[TMP]] to i32
+  // CHECK-NEXT: store i32 [[CONV]]
+  // CHECK-NEXT: ret void
+  A::A(long y) : y(y) { }
+}
+
 namespace test3 {
   struct A {
     union {
@@ -86,7 +135,7 @@ namespace test3 {
   // CHECK-NEXT: [[UNION:%.*]] = getelementptr inbounds {{.*}} [[THIS]], i32 0, i32 0
   // CHECK-NEXT: [[STRUCT:%.*]] = bitcast {{.*}}* [[UNION]] to 
   // CHECK-NEXT: [[CALLBACK:%.*]] = getelementptr inbounds {{.*}} [[STRUCT]], i32 0, i32 0
-  // CHECK-NEXT: store void (i8*)* null, void (i8*)** [[CALLBACK]]
+  // CHECK: store 
   // CHECK-NEXT: [[UNION:%.*]] = getelementptr inbounds {{.*}} [[THIS]], i32 0, i32 0
   // CHECK-NEXT: [[STRUCT:%.*]] = bitcast {{.*}}* [[UNION]] to 
   // CHECK-NEXT: [[CVALUE:%.*]] = getelementptr inbounds {{.*}} [[STRUCT]], i32 0, i32 1
@@ -114,3 +163,19 @@ template <typename T> struct Foo {
   };
 };
 Foo<int> f;
+
+namespace PR9683 {
+  struct QueueEntry {
+    union {
+      struct {
+        void* mPtr;
+        union {
+          unsigned mSubmissionTag;
+        };
+      };
+      unsigned mValue;
+    };
+    QueueEntry() {}
+  };
+  QueueEntry QE;
+}

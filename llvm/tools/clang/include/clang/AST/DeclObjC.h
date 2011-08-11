@@ -576,7 +576,7 @@ public:
 
   typedef specific_decl_iterator<ObjCIvarDecl> ivar_iterator;
 
-  ivar_iterator ivar_begin() const { return  ivar_iterator(decls_begin()); }
+  ivar_iterator ivar_begin() const { return ivar_iterator(decls_begin()); }
   ivar_iterator ivar_end() const { return ivar_iterator(decls_end()); }
 
   unsigned ivar_size() const {
@@ -585,7 +585,12 @@ public:
   
   bool ivar_empty() const { return ivar_begin() == ivar_end(); }
   
-  ObjCIvarDecl  *all_declared_ivar_begin();
+  ObjCIvarDecl *all_declared_ivar_begin();
+  const ObjCIvarDecl *all_declared_ivar_begin() const {
+    // Even though this modifies IvarList, it's conceptually const:
+    // the ivar chain is essentially a cached property of ObjCInterfaceDecl.
+    return const_cast<ObjCInterfaceDecl *>(this)->all_declared_ivar_begin();
+  }
   void setIvarList(ObjCIvarDecl *ivar) { IvarList = ivar; }
   
   /// setProtocolList - Set the list of protocols that this interface
@@ -754,6 +759,7 @@ public:
   const ObjCInterfaceDecl *getContainingInterface() const;
   
   ObjCIvarDecl *getNextIvar() { return NextIvar; }
+  const ObjCIvarDecl *getNextIvar() const { return NextIvar; }
   void setNextIvar(ObjCIvarDecl *ivar) { NextIvar = ivar; }
 
   void setAccessControl(AccessControl ac) { DeclAccess = ac; }
@@ -1203,7 +1209,7 @@ public:
   //
   // FIXME: This is a bad API, we are overriding the NamedDecl::getName, to mean
   // something different.
-  llvm::StringRef getName() const {
+  StringRef getName() const {
     return Id ? Id->getNameStart() : "";
   }
 
@@ -1228,7 +1234,7 @@ public:
   static bool classofKind(Kind K) { return K == ObjCCategoryImpl;}
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+raw_ostream &operator<<(raw_ostream &OS,
                               const ObjCCategoryImplDecl *CID);
 
 /// ObjCImplementationDecl - Represents a class definition - this is where
@@ -1320,7 +1326,7 @@ public:
   //
   // FIXME: This is a bad API, we are overriding the NamedDecl::getName, to mean
   // something different.
-  llvm::StringRef getName() const {
+  StringRef getName() const {
     assert(getIdentifier() && "Name is not a simple identifier");
     return getIdentifier()->getName();
   }
@@ -1368,7 +1374,7 @@ public:
   friend class ASTDeclWriter;
 };
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
+raw_ostream &operator<<(raw_ostream &OS,
                               const ObjCImplementationDecl *ID);
 
 /// ObjCCompatibleAliasDecl - Represents alias of a class. This alias is
@@ -1415,6 +1421,12 @@ public:
     OBJC_PR_weak      = 0x200,
     OBJC_PR_strong    = 0x400,
     OBJC_PR_unsafe_unretained = 0x800
+    // Adding a property should change NumPropertyAttrsBits
+  };
+
+  enum {
+    /// \brief Number of bits fitting all the property attributes.
+    NumPropertyAttrsBits = 12
   };
 
   enum SetterKind { Assign, Retain, Copy };
@@ -1422,8 +1434,8 @@ public:
 private:
   SourceLocation AtLoc;   // location of @property
   TypeSourceInfo *DeclType;
-  unsigned PropertyAttributes : 11;
-  unsigned PropertyAttributesAsWritten : 11;
+  unsigned PropertyAttributes : NumPropertyAttrsBits;
+  unsigned PropertyAttributesAsWritten : NumPropertyAttrsBits;
   // @required/@optional
   unsigned PropertyImplementation : 2;
 
@@ -1465,6 +1477,12 @@ public:
 
   PropertyAttributeKind getPropertyAttributesAsWritten() const {
     return PropertyAttributeKind(PropertyAttributesAsWritten);
+  }
+
+  bool hasWrittenStorageAttribute() const {
+    return PropertyAttributesAsWritten & (OBJC_PR_assign | OBJC_PR_copy |
+        OBJC_PR_unsafe_unretained | OBJC_PR_retain | OBJC_PR_strong |
+        OBJC_PR_weak);
   }
   
   void setPropertyAttributesAsWritten(PropertyAttributeKind PRVal) {

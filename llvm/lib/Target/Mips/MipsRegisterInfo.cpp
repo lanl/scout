@@ -24,7 +24,6 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineLocation.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -37,7 +36,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/DebugInfo.h"
 
-#define GET_REGINFO_MC_DESC
 #define GET_REGINFO_TARGET_DESC
 #include "MipsGenRegisterInfo.inc"
 
@@ -45,7 +43,7 @@ using namespace llvm;
 
 MipsRegisterInfo::MipsRegisterInfo(const MipsSubtarget &ST,
                                    const TargetInstrInfo &tii)
-  : MipsGenRegisterInfo(), Subtarget(ST), TII(tii) {}
+  : MipsGenRegisterInfo(Mips::RA), Subtarget(ST), TII(tii) {}
 
 /// getRegisterNumbering - Given the enum value for some register, e.g.
 /// Mips::RA, return the number that it corresponds to (e.g. 31).
@@ -246,11 +244,6 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
 }
 
 unsigned MipsRegisterInfo::
-getRARegister() const {
-  return Mips::RA;
-}
-
-unsigned MipsRegisterInfo::
 getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
 
@@ -267,13 +260,4 @@ unsigned MipsRegisterInfo::
 getEHHandlerRegister() const {
   llvm_unreachable("What is the exception handler register");
   return 0;
-}
-
-int MipsRegisterInfo::
-getDwarfRegNum(unsigned RegNum, bool isEH) const {
-  return MipsGenRegisterInfo::getDwarfRegNumFull(RegNum, 0);
-}
-
-int MipsRegisterInfo::getLLVMRegNum(unsigned DwarfRegNo, bool isEH) const {
-  return MipsGenRegisterInfo::getLLVMRegNumFull(DwarfRegNo,0);
 }
