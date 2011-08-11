@@ -128,6 +128,27 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
 
   // Default to keeping comments if the preprocessor wants them.
   SetCommentRetentionState(PP.getCommentRetentionState());
+      
+  // ndm - enable Scout keywords only when the file being lexed from is 
+  // ".sc", or ".sch" file -- this extra check is necessary because,
+  // for example, we might be including a C++ header from a .sc file
+  // which would otherwise pick up the Scout keyword extensions,
+  // potentiall causing conflicts
+  std::string bufferName = PP.getSourceManager().getBufferName(FileLoc);
+  std::string ext;
+  
+  bool valid = false;
+  for(int i = bufferName.length() - 1; i >= 0; --i){
+    if(bufferName[i] == '.'){
+      valid = true;
+      break;
+    }
+    ext.insert(0, 1, bufferName[i]);
+  }
+  
+  if(!valid || (ext != "sc" && ext != "sch")){
+    Features.Scout = false;
+  }
 }
 
 /// Lexer constructor - Create a new raw lexer object.  This object is only
