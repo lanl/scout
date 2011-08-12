@@ -30,6 +30,9 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
+// ndm
+#include "clang/AST/StmtVisitor.h"
+
 #include <iostream>
 
 using namespace clang;
@@ -2427,6 +2430,79 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                         RParenLoc));
 }
 
+namespace{
+  
+  class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
+  public:
+
+    RenderAllVisitor()
+    : foundColorAssign_(false){
+      
+    }
+    
+    void VisitStmt(Stmt* S){
+      VisitChildren(S);
+    }
+    
+    void VisitIfStmt(IfStmt* S){
+      size_t ic = 0;
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        
+        if(Stmt* child = *I){
+          if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
+            RenderAllVisitor v;
+            v.Visit(child);
+            if(v.foundColorAssign()){
+              foundColorAssign_ = true;
+            }
+            else{
+              foundColorAssign_ = false;
+              break;
+            }            
+          }
+          else{
+            Visit(child);
+          }
+          ++ic;
+        }
+      }
+      if(ic == 2){
+        foundColorAssign_ = false;
+      }
+    }
+    
+    void VisitBinaryOperator(BinaryOperator* S){
+      if(S->getOpcode() == BO_Assign){
+        if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
+          if(dr->getDecl()->getName().str() == "color"){
+            foundColorAssign_ = true;
+          }
+        }
+      }
+      else{
+        VisitChildren(S);
+      }
+    }
+    
+    void VisitChildren(Stmt* S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+    
+    bool foundColorAssign(){
+      return foundColorAssign_;
+    }
+    
+  private:
+    bool foundColorAssign_;
+  };
+  
+} // end namespace
 
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     ForAllStmt::ForAllType Type,
@@ -2439,6 +2515,14 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
 
   SCLStack.pop_back();
 
+  RenderAllVisitor v;
+  v.Visit(Body);
+  
+  if(!v.foundColorAssign()){
+    Diag(RenderAllLoc, diag::err_no_color_assignment_renderall);
+    return StmtError();
+  }
+  
   return Owned(new (Context) RenderAllStmt(Context, Type, MT,
                                            LoopVariableII, MeshII,
                                            Op, Body, RenderAllLoc, LParenLoc,
