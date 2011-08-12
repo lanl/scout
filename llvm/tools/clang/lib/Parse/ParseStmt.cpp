@@ -205,20 +205,21 @@ Retry:
 
       // ndm - detect the forall shorthand, e.g:
       // m.a[1..width-2][1..height-2] = MAX_TEMP;
-      if(isScoutLang() && isScoutSource(NameLoc) &&
-         GetLookAheadToken(1).is(tok::period) &&
-         GetLookAheadToken(2).is(tok::identifier) &&
-         GetLookAheadToken(3).is(tok::l_square)){
+      if(isScoutLang() && isScoutSource(NameLoc)){
+        if(GetLookAheadToken(1).is(tok::period) &&
+           GetLookAheadToken(2).is(tok::identifier) &&
+           GetLookAheadToken(3).is(tok::l_square)){
 
-        LookupResult
-        Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
-
-        Actions.LookupName(Result, getCurScope());
-
-        if(Result.getResultKind() == LookupResult::Found){
-          if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
-            if(isa<MeshType>(vd->getType().getTypePtr())){
-              return ParseForAllShortStatement(Name, NameLoc, vd);
+          LookupResult
+          Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
+          
+          Actions.LookupName(Result, getCurScope());
+          
+          if(Result.getResultKind() == LookupResult::Found){
+            if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
+              if(isa<MeshType>(vd->getType().getTypePtr())){
+                return ParseForAllShortStatement(Name, NameLoc, vd);
+              }
             }
           }
         }
@@ -229,6 +230,13 @@ Retry:
   }
 
   default: {
+    // ndm - vector init statements
+    if(ScoutVectorKeywordDimensions(Tok.getKind()) > 0 &&
+       GetLookAheadToken(1).is(tok::identifier) &&
+       GetLookAheadToken(2).is(tok::equal)){
+      return ParseScoutVectorInit();
+    }
+    
     if ((getLang().CPlusPlus || !OnlyStatement) && isDeclarationStatement()) {
       SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
@@ -2210,6 +2218,48 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Actions.LookupName(LR, getCurScope());
   const MeshType *MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
 
+  size_t FieldCount = 0;
+  const MeshDecl* MD = MT->getDecl();
+  
+  for(MeshDecl::field_iterator FI = MD->field_begin(),
+      FE = MD->field_end(); FI != FE; ++FI){
+    FieldDecl* FD = *FI;
+    switch(Type){
+      case ForAllStmt::Cells:
+        if(!FD->isMeshImplicit() && 
+           FD->meshFieldType() == FieldDecl::FieldCells){
+          ++FieldCount;
+        }
+        break;
+      case ForAllStmt::Edges:
+        if(!FD->isMeshImplicit() &&
+           FD->meshFieldType() == FieldDecl::FieldEdges){
+          ++FieldCount;
+        }
+        break;
+      case ForAllStmt::Vertices:
+        if(!FD->isMeshImplicit() &&
+           FD->meshFieldType() == FieldDecl::FieldVertices){
+          ++FieldCount;
+        }
+        break;
+    }
+  }
+  
+  if(FieldCount == 0){
+    switch(Type){
+      case ForAllStmt::Cells:
+        Diag(ForAllLoc, diag::warn_no_cells_fields_forall);
+        break;
+      case ForAllStmt::Edges:
+        Diag(ForAllLoc, diag::warn_no_edges_fields_forall);
+        break;
+      case ForAllStmt::Vertices:
+        Diag(ForAllLoc, diag::warn_no_vertices_fields_forall);
+        break;
+    }
+  }
+  
   Expr* Op;
 
   SourceLocation LParenLoc;
@@ -2412,4 +2462,40 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
   FAS->setZEnd(ZEnd);
 
   return ForAllResult;
+}
+
+StmtResult
+Parser::ParseScoutVectorInit(){
+  return StmtError();
+  
+  /*
+  // current token is a Scout vector keyword, e.g: float3
+  tok::TokenKind Kind = Tok.getKind();
+  int dim = ScoutVectorKeywordDimensions(Kind);
+  assert(dim > 0 && "expected a vector keyword");
+  
+  ConsumeToken();
+  
+  assert(Tok.is(tok::identifier) && "expected identifier");
+  
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = ConsumeToken();
+ 
+  ConsumeToken();
+  
+  assert(Tok.is(tok::equal) && "expected equal");
+  
+  ConsumeToken();
+  
+  if(Tok.is(tok::numeric_constant)){
+    
+  }
+  else{
+    if(!Tok.is(Kind)){
+      Diag(Tok.getLocation(), diag::err_invalid_scout_vector_init);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+  }
+  */
 }

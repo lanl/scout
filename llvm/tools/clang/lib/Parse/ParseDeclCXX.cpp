@@ -2970,7 +2970,6 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
         ConsumeToken();
       }
     }
-    
   }
   
   // ndm - test - dump fields
@@ -2994,6 +2993,10 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     ++itr;
   }
   */
+  
+  if(FieldDecls.empty()){
+    Diag(LBraceLoc, diag::warn_empty_mesh);
+  }
   
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   MeshScope.Exit();

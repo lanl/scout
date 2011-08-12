@@ -5371,6 +5371,7 @@ namespace {
 /// initialization rather than copy initialization.
 void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
                                 bool DirectInit, bool TypeMayContainAuto) {
+
   // If there is no declaration, there was an error parsing it.  Just ignore
   // the initializer.
   if (RealDecl == 0 || RealDecl->isInvalidDecl())
@@ -9373,7 +9374,7 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
                     &Context.Idents.get("position"), Context.Int4Ty, 0,
                     0, true, false);
   
-  PositionFD->setMeshFieldType(FieldDecl::FieldCells);
+  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
   
   Mesh->addDecl(PositionFD);
 
@@ -9382,7 +9383,7 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
                     &Context.Idents.get("width"), Context.IntTy, 0,
                     0, true, false);
   
-  WidthFD->setMeshFieldType(FieldDecl::FieldAll);
+  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
   
   Mesh->addDecl(WidthFD);
   
@@ -9391,7 +9392,7 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
                     &Context.Idents.get("height"), Context.IntTy, 0,
                     0, true, false);
   
-  HeightFD->setMeshFieldType(FieldDecl::FieldAll);
+  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
   
   Mesh->addDecl(HeightFD);
   
@@ -9400,7 +9401,7 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
                     &Context.Idents.get("depth"), Context.IntTy, 0,
                     0, true, false);
   
-  DepthFD->setMeshFieldType(FieldDecl::FieldAll);
+  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
   
   Mesh->addDecl(DepthFD);
   

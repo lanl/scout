@@ -599,5 +599,12 @@ def err_expected_semi_image_arg : Error<
 def err_expected_periodperiod : Error<"expected '..'">;
 def err_expected_forall_binary_op : Error<"expected binary operator">;
 
+def warn_empty_mesh : Warning<"mesh definition with no fields">;
+def warn_no_cells_fields_forall : Warning<"no cells fields on mesh in forall cells">;
+def warn_no_edges_fields_forall : Warning<"no edges fields on mesh in forall edges">;
+def warn_no_vertices_fields_forall : Warning<"no vertices fields on mesh in forall vertices">;
+
+def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
+
 } // end of Parse Issue category.
 } // end of Parser diagnostics

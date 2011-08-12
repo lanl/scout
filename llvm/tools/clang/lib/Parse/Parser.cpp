@@ -1809,3 +1809,40 @@ bool Parser::isScoutSource(SourceLocation location) const{
   
   return ext == "sc" || ext == "sch";
 }
+
+int Parser::ScoutVectorKeywordDimensions(tok::TokenKind Kind){
+  switch(Kind){
+    case tok::kw_bool2:
+    case tok::kw_char2:
+    case tok::kw_short2:
+    case tok::kw_int2:
+    case tok::kw_long2:
+    case tok::kw_float2:
+    case tok::kw_double2:
+    {
+      return 2;
+    }
+    case tok::kw_bool3:
+    case tok::kw_char3:
+    case tok::kw_short3:
+    case tok::kw_int3:
+    case tok::kw_long3:
+    case tok::kw_float3:
+    case tok::kw_double3:
+    {
+      return 3;
+    }
+    case tok::kw_bool4:
+    case tok::kw_char4:
+    case tok::kw_short4:
+    case tok::kw_int4:
+    case tok::kw_long4:
+    case tok::kw_float4:
+    case tok::kw_double4:
+    {
+      return 4;
+    }
+    default:
+      return 0;
+  }
+}

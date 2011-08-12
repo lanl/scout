@@ -2001,6 +2001,7 @@ private:
 
   // ndm - Scout Mesh
   unsigned FieldType : 2;
+  bool IsMeshImplicit : 1;
   
   /// \brief A pointer to either the in-class initializer for this field (if
   /// the boolean value is false), or the bit width expression for this bit
@@ -2020,6 +2021,7 @@ protected:
     : DeclaratorDecl(DK, DC, IdLoc, Id, T, TInfo, StartLoc),
       Mutable(Mutable), CachedFieldIndex(0),
       FieldType(FieldNone),
+      IsMeshImplicit(false),
       InitializerOrBitWidth(BW, !HasInit){
     assert(!(BW && HasInit) && "got initializer for bitfield");
   }
@@ -2105,8 +2107,13 @@ public:
   SourceRange getSourceRange() const;
 
   // ndm - Scout Mesh
-  void setMeshFieldType(MeshFieldType type){
+  void setMeshFieldType(MeshFieldType type, bool implicit){
     FieldType = type;
+    IsMeshImplicit = implicit;
+  }
+  
+  bool isMeshImplicit() const{
+    return IsMeshImplicit;
   }
   
   MeshFieldType meshFieldType() const{

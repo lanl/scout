@@ -1928,6 +1928,8 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                                        SourceLocation NameLoc,
                                        VarDecl* VD);
   
+  StmtResult ParseScoutVectorInit();
+  
   bool ParseMeshSpecifier(DeclSpec &DS);
   
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
@@ -1935,6 +1937,10 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
   void ParseMeshDeclaration(DeclSpec &DS,
                             FieldCallback &Fields,
                             unsigned FieldType);
+
+  // if token is a Scout vector keyword, e.g: tok::kw_float3, return
+  // the dimensions (3) else return 0;
+  static int ScoutVectorKeywordDimensions(tok::TokenKind Kind); 
   
   StmtResult ParseWindowOrImageDeclaration(bool window,
                                            StmtVector &Stmts,
