@@ -294,7 +294,7 @@ public:
 
   // ndm - convert the Stmt or Expr back into code
   std::string toCPPCode(ASTContext& context);
-  
+
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();
@@ -1628,7 +1628,7 @@ private:
   Expr* ZStart;
   Expr* ZEnd;
   Expr* ZStride;
-  
+
 public:
   ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
              IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
@@ -1705,75 +1705,130 @@ public:
   Expr* getXStart(){
     return XStart;
   }
-  
+
   void setXStart(Expr* XS){
     XStart = XS;
   }
-  
+
   Expr* getXEnd(){
     return XEnd;
   }
-  
+
   void setXEnd(Expr* XE){
     XEnd = XE;
   }
-  
+
   Expr* getXStride(){
     return XStride;
   }
-  
+
   void setXStride(Expr* XS){
     XStride = XS;
   }
-  
+
   Expr* getYStart(){
     return YStart;
   }
-  
+
   void setYStart(Expr* YS){
     YStart = YS;
   }
-  
+
   Expr* getYEnd(){
     return YEnd;
   }
-  
+
   void setYEnd(Expr* YE){
     YEnd = YE;
   }
-  
+
   Expr* getYStride(){
     return YStride;
   }
-  
+
   void setYStride(Expr* YS){
     YStride = YS;
   }
-  
+
   Expr* getZStart(){
     return ZStart;
   }
-  
+
   void setZStart(Expr* ZS){
     ZStart = ZS;
   }
-  
+
   Expr* getZEnd(){
     return ZEnd;
   }
-  
+
   void setZEnd(Expr* ZE){
     ZEnd = ZE;
   }
-  
+
   Expr* getZStride(){
     return ZStride;
   }
-  
+
   void setZStride(Expr* ZS){
     ZStride = ZS;
   }
-    
+
+  Expr *getStart(int axis) const {
+    switch(axis) {
+      case 0: return XStart;
+      case 1: return YStart;
+      case 2: return ZStart;
+      default:
+        const char *s = "Unknown axis in getStart(int axis).\n";
+        assert(false && s);
+    }
+  }
+
+  void setStart(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XStart = E; return;
+      case 1: YStart = E; return;
+      case 2: ZStart = E; return;
+      default:
+        const char *s = "Unknown axis in setStart(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
+  Expr *getEnd(int axis) const {
+    switch(axis) {
+      case 0: return XEnd;
+      case 1: return YEnd;
+      case 2: return ZEnd;
+      default:
+        const char *s = "Unknown axis in getEnd(int axis).\n";
+        assert(false && s);
+    }
+  }
+
+  void setEnd(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XEnd = E; return;
+      case 1: YEnd = E; return;
+      case 2: ZEnd = E; return;
+      default:
+        const char *s = "Unknown axis in setEnd(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
+  void setStride(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XStride = E; return;
+      case 1: YStride = E; return;
+      case 2: ZStride = E; return;
+      default:
+        const char *s = "Unknown axis in setStride(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
   SourceLocation getForAllLoc() const { return ForAllLoc; }
   void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
   SourceLocation getLParenLoc() const { return LParenLoc; }

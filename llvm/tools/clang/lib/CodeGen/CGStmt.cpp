@@ -19,10 +19,14 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/TargetInfo.h"
+
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/Intrinsics.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Transforms/Utils/FunctionUtils.h"
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -131,11 +135,11 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 
   // ndm - Scout Stmts
   case Stmt::ForAllStmtClass:
-      EmitForAllStmt(cast<ForAllStmt>(*S));
-      break;
+    EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
+    break;
   case Stmt::RenderAllStmtClass:
-      EmitRenderAllStmt(cast<RenderAllStmt>(*S));
-      break;
+    EmitRenderAllStmt(cast<RenderAllStmt>(*S));
+    break;
 
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
@@ -263,6 +267,7 @@ void CodeGenFunction::SimplifyForwardingBlocks(llvm::BasicBlock *BB) {
 }
 
 void CodeGenFunction::EmitBlock(llvm::BasicBlock *BB, bool IsFinished) {
+  DEBUG("EmitBlock");
   llvm::BasicBlock *CurBB = Builder.GetInsertBlock();
 
   // Fall out of the current block (if necessary).
@@ -390,6 +395,7 @@ void CodeGenFunction::EmitIndirectGotoStmt(const IndirectGotoStmt &S) {
 }
 
 void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
+  DEBUG("EmitIfStmt");
   // C99 6.8.4.1: The first substatement is executed if the expression compares
   // unequal to 0.  The condition must be a scalar type.
   RunCleanupsScope ConditionScope(*this);
@@ -580,6 +586,53 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 }
 
 // ndm - Scout Stmts
+void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
+  DEBUG("EmitForAllStmtWrapper");
+
+  llvm::BasicBlock *entry = createBasicBlock("forall.entry");
+  Builder.CreateBr(entry);
+  EmitBlock(entry);
+
+  // Generate body of function.
+  EmitForAllStmt(S);
+
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value * zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
+                                                   Builder.GetInsertBlock());
+
+  std::vector< llvm::BasicBlock * > region;
+
+  typedef llvm::Function::iterator BBIterator;
+  BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
+
+  for( ; BB->getName() != entry->getName(); ++BB);
+
+  for( ; BB != BB_end; ++BB) {
+    region.push_back(BB);
+  }
+
+  llvm::DominatorTree DT;
+  DT.runOnFunction(*CurFn);
+  llvm::Function *forallF = ExtractCodeRegion(DT, region);
+  assert(forallF != 0 && "Failed to rip forall statement into a new function.");
+
+  llvm::BasicBlock *continueBB = ret->getParent();
+  ret->eraseFromParent();
+
+  Builder.SetInsertPoint(continueBB);
+}
+
+llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
+  switch(E->getStmtClass()) {
+    case Expr::IntegerLiteralClass:
+    case Expr::BinaryOperatorClass:
+      return EmitScalarExpr(E);
+    default:
+      return Builder.CreateLoad(EmitLValue(E).getAddress());
+  }
+}
+
 void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   DEBUG("EmitForAllStmt");
   // Forall will initially behave exactly like a for loop.
@@ -603,12 +656,15 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   typedef Vector::iterator VecIterator;
   typedef Vector::reverse_iterator VecRevIterator;
 
-  Vector dimsI;
+  llvm::Value *extent = one;
+  std::vector< llvm::Value * > start, end, diff;
 
-  unsigned dim = 1;
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    dimsI.push_back(dims[i]->EvaluateAsInt(getContext()).getSExtValue());
-    dim *= dimsI.back();
+    start.push_back(TranslateExprToValue(S.getStart(i)));
+    end.push_back(TranslateExprToValue(S.getEnd(i)));
+
+    diff.push_back(Builder.CreateSub(end.back(), start.back()));
+    extent = Builder.CreateMul(extent, diff.back());
   }
 
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
@@ -621,44 +677,44 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Initialize the index variables.
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
     llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, name);
-    Builder.CreateStore(zero, lval);
-    ScoutIdxVars.push_back(lval);
-    lval = Builder.CreateAlloca(i32Ty, 0, meshName + "_" + toString(i));
-    Builder.CreateStore(llvm::ConstantInt::get(i32Ty, dimsI[i]), lval);
-    ScoutMeshSizes.push_back(lval);
-  }
 
-  JumpDest LoopExit = getJumpDestInCurrentScope("forall.end");
+    Builder.CreateStore(start[i], lval);
+    ScoutIdxVars.push_back(lval);
+  }
 
   // Start the loop with a block that tests the condition.
   JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
   llvm::BasicBlock *CondBlock = Continue.getBlock();
   EmitBlock(CondBlock);
 
-  llvm::Value *lval = Builder.CreateLoad(indVar);
-  llvm::Value *end = llvm::ConstantInt::get(i32Ty, dim);
+
   // Generate loop condition.
-  llvm::Value *cond = Builder.CreateICmpSLT(lval, end, "cmptmp");
+  llvm::Value *lval = Builder.CreateLoad(indVar);
+  llvm::Value *cond = Builder.CreateICmpSLT(lval, extent, "cmptmp");
 
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
-  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
+  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.end");
   Builder.SetInsertPoint(CondBlock);
   Builder.CreateCondBr(cond, ForallBody, ExitBlock);
 
   // As long as the condition is true, iterate the loop.
+  EmitBlock(ForallBody);
   Builder.SetInsertPoint(ForallBody);
 
   // Set each dimension's index variable from induction variable.
-  for(unsigned i = 0, e = dimsI.size(); i < e; ++i) {
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
     lval = Builder.CreateLoad(indVar);
-    unsigned denom = 1;
-    switch(i) {
-    case 0: break;
-    case 2: denom *= dimsI[1];
-    case 1: denom *= dimsI[0];
-      lval = Builder.CreateUDiv(lval, llvm::ConstantInt::get(i32Ty, denom));
+    llvm::Value *val;
+    if(i > 0) {
+      if(i == 1)
+        val = diff[i - 1];
+      else
+        val = Builder.CreateMul(diff[i], diff[i - 1]);
+      lval = Builder.CreateUDiv(lval, val);
     }
-    lval = Builder.CreateURem(lval, llvm::ConstantInt::get(i32Ty, dimsI[i]));
+
+    lval = Builder.CreateURem(lval, diff[i]);
+    lval = Builder.CreateAdd(lval, start[i]);
     Builder.CreateStore(lval, ScoutIdxVars[i]);
   }
 
@@ -670,7 +726,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
   Builder.CreateBr(CondBlock);
 
-  EmitBlock(ForallBody);
   EmitBlock(ExitBlock);
 }
 
@@ -719,7 +774,8 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
   Builder.SetInsertPoint(BB);
   ScoutColor = alloca;
-  EmitForAllStmt(cast<ForAllStmt>(S));
+
+  EmitForAllStmtWrapper(cast<ForAllStmt>(S));
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {

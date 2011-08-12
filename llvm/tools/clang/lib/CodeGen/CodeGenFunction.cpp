@@ -379,6 +379,7 @@ static void TryMarkNoThrow(llvm::Function *F) {
 
 void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
                                    const CGFunctionInfo &FnInfo) {
+  DEBUG("GenerateCode");
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
 
   // Check if we should generate debug info for this function.

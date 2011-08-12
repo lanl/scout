@@ -2312,15 +2312,38 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   Stmt* Body = BodyResult.get();
 
+  StmtResult ForAllResult;
   if(ForAll)
-    return Actions.ActOnForAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
-                                   LParenLoc, Op, RParenLoc, Body);
-  else{
+    ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, Type, MT,
+                                           LoopVariableII, MeshII, LParenLoc,
+                                           Op, RParenLoc, Body);
+  else {
     InsertCPPCode("scoutSwapBuffers();", BodyLoc);
 
-    return Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT, LoopVariableII, MeshII,
-                                      LParenLoc, Op, RParenLoc, Body);
+    ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
+                                              LoopVariableII, MeshII, LParenLoc,
+                                              Op, RParenLoc, Body);
   }
+
+  ForAllStmt *FAS;
+  if(ForAllResult.get()->getStmtClass() == Stmt::RenderAllStmtClass) {
+    FAS = cast<ForAllStmt>(cast<RenderAllStmt>(ForAllResult.get()));
+  } else {
+    FAS = cast<ForAllStmt>(ForAllResult.get());
+  }
+
+  MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+  ASTContext &C = Actions.getASTContext();
+  Expr *zero = IntegerLiteral::Create(C, llvm::APInt(32, 0),
+                                      C.IntTy, ForAllLoc);
+  Expr *one = IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                                      C.IntTy, ForAllLoc);
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    FAS->setStart(i, zero);
+    FAS->setEnd(i, dims[i]);
+    FAS->setStride(i, one);
+  }
+  return ForAllResult;
 }
 
 StmtResult

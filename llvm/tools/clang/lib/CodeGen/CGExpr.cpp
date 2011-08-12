@@ -1780,28 +1780,27 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   llvm::Value *BaseValue = NULL;
   Qualifiers BaseQuals;
 
-  // Check if this is a Scout '*.position.{x,y,z.w}' intrinsic.
-  if(E->getMemberDecl()->getName() == "position")
-    return MakeAddrLValue(ScoutIdxVars[0], getContext().IntTy);
-
-  // Check if this is a Scout '*.width' instrinsic.
-  if(E->getMemberDecl()->getName() == "width")
-    return MakeAddrLValue(ScoutMeshSizes[0], getContext().IntTy);
-
-  // Check if this is a Scout '*.height' instrinsic.
-  if(E->getMemberDecl()->getName() == "height")
-    return MakeAddrLValue(ScoutMeshSizes[1], getContext().IntTy);
-
-  // Check if this is a Scout '*.depth' instrinsic.
-  if(E->getMemberDecl()->getName() == "depth")
-    return MakeAddrLValue(ScoutMeshSizes[2], getContext().IntTy);
-
   // Check if this is a Scout mesh member expression.
   if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
+
+    llvm::StringRef memberName = E->getMemberDecl()->getName();
     const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
+    llvm::StringRef meshName = ND->getName();
+
+    // Check if this is a Scout '*.width' instrinsic.
+    if(memberName == "width")
+      return MakeAddrLValue(ScoutMeshSizes[meshName][0], getContext().IntTy);
+
+    // Check if this is a Scout '*.height' instrinsic.
+    if(memberName == "height")
+      return MakeAddrLValue(ScoutMeshSizes[meshName][1], getContext().IntTy);
+
+    // Check if this is a Scout '*.depth' instrinsic.
+    if(memberName == "depth")
+      return MakeAddrLValue(ScoutMeshSizes[meshName][2], getContext().IntTy);
+
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
       if(isa<MeshType>(VD->getType())) {
-        llvm::StringRef memberName = E->getMemberDecl()->getName();
         return EmitMeshMemberExpr(VD, memberName);
       }
     }
@@ -2476,6 +2475,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
 
 LValue CodeGenFunction::
 EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
+  DEBUG("EmitPointerToDataMemberBinaryExpr");
   llvm::Value *BaseV;
   if (E->getOpcode() == BO_PtrMemI)
     BaseV = EmitScalarExpr(E->getLHS());
