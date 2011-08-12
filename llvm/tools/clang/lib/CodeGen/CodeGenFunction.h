@@ -28,6 +28,7 @@
 #include "CodeGenModule.h"
 #include "CGBuilder.h"
 #include "CGValue.h"
+#include <map>
 
 namespace llvm {
   class BasicBlock;
@@ -292,7 +293,7 @@ public:
     A1_saved a1_saved;
     A2_saved a2_saved;
     A3_saved a3_saved;
-    
+
     void Emit(CodeGenFunction &CGF, Flags flags) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
@@ -300,7 +301,7 @@ public:
       A3 a3 = DominatingValue<A3>::restore(CGF, a3_saved);
       T(a0, a1, a2, a3).Emit(CGF, flags);
     }
-    
+
   public:
     ConditionalCleanup4(A0_saved a0, A1_saved a1, A2_saved a2, A3_saved a3)
       : a0_saved(a0), a1_saved(a1), a2_saved(a2), a3_saved(a3) {}
@@ -632,12 +633,13 @@ public:
   typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< FieldDecl *, int > FieldPair;
+  typedef std::map< llvm::StringRef, llvm::SmallVector< llvm::Value *, 3 > > Map;
   /// Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
   /// Scout forall implicit induction variables.
   Vector ScoutIdxVars;
   /// Scout mesh dimension sizes.
-  Vector ScoutMeshSizes;
+  Map ScoutMeshSizes;
   /// Scout defined mesh variables.
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
@@ -766,12 +768,12 @@ public:
     if (!isInConditionalBranch()) {
       return EHStack.pushCleanup<T>(kind, a0, a1, a2, a3);
     }
-    
+
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
     typename DominatingValue<A3>::saved_type a3_saved = saveValueInCond(a3);
-    
+
     typedef EHScopeStack::ConditionalCleanup4<T, A0, A1, A2, A3> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved,
                                      a2_saved, a3_saved);
@@ -1858,6 +1860,8 @@ public:
 
   // ndm - Scout Stmts
 
+  void EmitForAllStmtWrapper(const ForAllStmt &S);
+  llvm::Value *TranslateExprToValue(const Expr *E);
   void EmitForAllStmt(const ForAllStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
 
