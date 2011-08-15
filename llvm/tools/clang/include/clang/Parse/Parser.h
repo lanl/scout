@@ -1928,8 +1928,6 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                                        SourceLocation NameLoc,
                                        VarDecl* VD);
   
-  StmtResult ParseScoutVectorInit();
-  
   bool ParseMeshSpecifier(DeclSpec &DS);
   
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
@@ -1972,6 +1970,8 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
   bool isScoutLang() const{
     return getLang().Scout;
   }
+  
+  ExprResult ParseScoutVectorRHS(BuiltinType::Kind kind);
   
 };
 
