@@ -355,9 +355,19 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // ndm - Scout vector binary operator rhs
     if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
       ValueDecl* vd = dr->getDecl();
+      
       BuiltinType::Kind kind;
       if(isScoutVectorValueDecl(vd, kind)){
-        RHS = ParseScoutVectorRHS(kind);
+        ScoutVectorType vectorType;
+        
+        if(vd->getName().str() == "color"){
+          vectorType = ScoutVectorColor;
+        }
+        else{
+          vectorType = ScoutVectorGeneric;
+        }
+        
+        RHS = ParseScoutVectorRHS(kind, vectorType);
         rhsSet = true;
       }
     }
@@ -2324,7 +2334,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
 
 // ndm - Parse the right hand side of a vector expression, e.g:
 // 1.0, or float3(1.0, 1.0, 1.0) 
-ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind){
+ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType vectorType){
   size_t length;
   tok::TokenKind expectKind;
   QualType type;
@@ -2497,6 +2507,24 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind){
     if(ParseExpressionList(Exprs, CommaLocs)){
       return ExprError();
     }
+
+    if(vectorType == ScoutVectorColor){
+      for(size_t i = 0; i < Exprs.size(); ++i){
+        
+        if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(Exprs[i])){
+          double v = fl->getValue().convertToDouble();
+          if(v < 0 || v > 1){
+            Diag(CommaLocs[i], diag::warn_vector_color_clamp);
+          }
+        }
+        else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(Exprs[i])){
+          double v = il->getValue().roundToDouble(true);
+          if(v < 0 || v > 1){
+            Diag(CommaLocs[i], diag::warn_vector_color_clamp);
+          }
+        }
+      }
+    }
     
     if(Exprs.size() != length){
       Diag(Tok, diag::err_invalid_scout_vector_init);
@@ -2523,6 +2551,22 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind){
     SourceLocation Loc = Tok.getLocation();
     
     ExprResult er = ParseExpression();
+    
+    if(vectorType == ScoutVectorColor){
+      if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(er.get())){
+        double v = fl->getValue().convertToDouble();
+        if(v < 0 || v > 1){
+          Diag(Loc, diag::warn_vector_color_clamp);
+        }
+      }
+      else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(er.get())){
+        double v = il->getValue().roundToDouble(true);
+        if(v < 0 || v > 1){
+          Diag(Loc, diag::warn_vector_color_clamp);
+        }
+      }
+    }
+    
     if(er.isInvalid()){
       return ExprError();
     }

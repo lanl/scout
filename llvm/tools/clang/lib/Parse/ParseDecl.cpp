@@ -1120,7 +1120,16 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
       if(VarDecl* vd = dyn_cast<VarDecl>(ThisDecl)){
         BuiltinType::Kind kind;
         if(isScoutVectorValueDecl(vd, kind)){
-          ExprResult rhs = ParseScoutVectorRHS(kind);
+          ScoutVectorType vectorType;
+          
+          if(vd->getName().str() == "color"){
+            vectorType = ScoutVectorColor;
+          }
+          else{
+            vectorType = ScoutVectorGeneric;
+          }
+          
+          ExprResult rhs = ParseScoutVectorRHS(kind, vectorType);
           vd->setInit(rhs.get());
           return ThisDecl;
         }

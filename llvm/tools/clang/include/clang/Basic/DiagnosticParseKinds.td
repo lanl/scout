@@ -606,5 +606,7 @@ def warn_no_vertices_fields_forall : Warning<"no vertices fields on mesh in fora
 
 def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
 
+def warn_vector_color_clamp : Warning<"color vector values will be clamped to [0..1]">;
+
 } // end of Parse Issue category.
 } // end of Parser diagnostics

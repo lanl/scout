@@ -1967,7 +1967,14 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
     return getLang().Scout;
   }
   
-  ExprResult ParseScoutVectorRHS(BuiltinType::Kind kind);
+  enum ScoutVectorType{
+    ScoutVectorGeneric,
+    ScoutVectorColor
+  };
+  
+  ExprResult
+  ParseScoutVectorRHS(BuiltinType::Kind kind,
+                      ScoutVectorType vectorType=ScoutVectorGeneric);
   
   bool isScoutVectorValueDecl(Decl* decl, BuiltinType::Kind &kind) const;
   
