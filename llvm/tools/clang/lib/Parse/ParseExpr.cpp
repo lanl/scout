@@ -263,6 +263,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
   prec::Level NextTokPrec = getBinOpPrecedence(Tok.getKind(),
                                                GreaterThanIsOperator,
                                                getLang().CPlusPlus0x);
+  
   SourceLocation ColonLoc;
 
   while (1) {
@@ -347,12 +348,27 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // Therefore we need some special-casing here.
     // Also note that the third operand of the conditional operator is
     // an assignment-expression in C++.
-    ExprResult RHS;
-    if (getLang().CPlusPlus && NextTokPrec <= prec::Conditional)
-      RHS = ParseAssignmentExpression();
-    else
-      RHS = ParseCastExpression(false);
 
+    ExprResult RHS;
+    bool rhsSet = false;
+    
+    // ndm - Scout vector binary operator rhs
+    if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
+      ValueDecl* vd = dr->getDecl();
+      BuiltinType::Kind kind;
+      if(isScoutVectorValueDecl(vd, kind)){
+        RHS = ParseScoutVectorRHS(kind);
+        rhsSet = true;
+      }
+    }
+    
+    if(!rhsSet){
+      if (getLang().CPlusPlus && NextTokPrec <= prec::Conditional)
+        RHS = ParseAssignmentExpression();
+      else
+        RHS = ParseCastExpression(false);
+    }
+      
     if (RHS.isInvalid())
       LHS = ExprError();
     
@@ -2503,7 +2519,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind){
     
     return le;
   }
-  else{
+  else if(Tok.is(tok::numeric_constant)){
     SourceLocation Loc = Tok.getLocation();
     
     ExprResult er = ParseExpression();
@@ -2526,7 +2542,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind){
         
     return le;
   }
-  
-  return ExprError();
+
+  return ParseExpression();
 }
 

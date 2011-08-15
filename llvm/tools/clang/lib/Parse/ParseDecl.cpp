@@ -1116,42 +1116,13 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
       }
 
       // ndm - handle scout vector initialization here
+      
       if(VarDecl* vd = dyn_cast<VarDecl>(ThisDecl)){
-        if(const BuiltinType* bt = 
-           dyn_cast<BuiltinType>(vd->getType().getTypePtr())){
-          
-          BuiltinType::Kind kind = bt->getKind();
-          
-          switch(kind){
-            case BuiltinType::Bool2:
-            case BuiltinType::Bool3:
-            case BuiltinType::Bool4:
-            case BuiltinType::Char2:
-            case BuiltinType::Char3:
-            case BuiltinType::Char4:
-            case BuiltinType::Short2:
-            case BuiltinType::Short3:
-            case BuiltinType::Short4:
-            case BuiltinType::Int2:
-            case BuiltinType::Int3:
-            case BuiltinType::Int4:
-            case BuiltinType::Long2:
-            case BuiltinType::Long3:
-            case BuiltinType::Long4:
-            case BuiltinType::Float2:
-            case BuiltinType::Float3:
-            case BuiltinType::Float4:
-            case BuiltinType::Double2:
-            case BuiltinType::Double3:
-            case BuiltinType::Double4:
-            {
-              ExprResult rhs = ParseScoutVectorRHS(kind);
-              vd->setInit(rhs.get());
-              return ThisDecl;
-            }
-            default:
-              break;
-          }
+        BuiltinType::Kind kind;
+        if(isScoutVectorValueDecl(vd, kind)){
+          ExprResult rhs = ParseScoutVectorRHS(kind);
+          vd->setInit(rhs.get());
+          return ThisDecl;
         }
       }
       

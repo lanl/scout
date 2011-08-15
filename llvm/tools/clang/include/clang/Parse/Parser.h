@@ -1936,10 +1936,6 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                             FieldCallback &Fields,
                             unsigned FieldType);
 
-  // if token is a Scout vector keyword, e.g: tok::kw_float3, return
-  // the dimensions (3) else return 0;
-  static int ScoutVectorKeywordDimensions(tok::TokenKind Kind); 
-  
   StmtResult ParseWindowOrImageDeclaration(bool window,
                                            StmtVector &Stmts,
                                            bool OnlyStatement);
@@ -1972,6 +1968,8 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
   }
   
   ExprResult ParseScoutVectorRHS(BuiltinType::Kind kind);
+  
+  bool isScoutVectorValueDecl(Decl* decl, BuiltinType::Kind &kind) const;
   
 };
 
