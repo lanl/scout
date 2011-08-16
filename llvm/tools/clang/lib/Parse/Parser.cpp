@@ -1810,39 +1810,43 @@ bool Parser::isScoutSource(SourceLocation location) const{
   return ext == "sc" || ext == "sch";
 }
 
-int Parser::ScoutVectorKeywordDimensions(tok::TokenKind Kind){
-  switch(Kind){
-    case tok::kw_bool2:
-    case tok::kw_char2:
-    case tok::kw_short2:
-    case tok::kw_int2:
-    case tok::kw_long2:
-    case tok::kw_float2:
-    case tok::kw_double2:
-    {
-      return 2;
+bool Parser::isScoutVectorValueDecl(Decl* decl,
+                                    BuiltinType::Kind &kind) const{
+  if(ValueDecl* vd = dyn_cast<ValueDecl>(decl)){
+    if(const BuiltinType* bt = 
+       dyn_cast<BuiltinType>(vd->getType().getTypePtr())){
+      
+      kind = bt->getKind();
+      
+      switch(kind){
+        case BuiltinType::Bool2:
+        case BuiltinType::Bool3:
+        case BuiltinType::Bool4:
+        case BuiltinType::Char2:
+        case BuiltinType::Char3:
+        case BuiltinType::Char4:
+        case BuiltinType::Short2:
+        case BuiltinType::Short3:
+        case BuiltinType::Short4:
+        case BuiltinType::Int2:
+        case BuiltinType::Int3:
+        case BuiltinType::Int4:
+        case BuiltinType::Long2:
+        case BuiltinType::Long3:
+        case BuiltinType::Long4:
+        case BuiltinType::Float2:
+        case BuiltinType::Float3:
+        case BuiltinType::Float4:
+        case BuiltinType::Double2:
+        case BuiltinType::Double3:
+        case BuiltinType::Double4:
+        {
+          return true;
+        }
+        default:
+          break;
+      }
     }
-    case tok::kw_bool3:
-    case tok::kw_char3:
-    case tok::kw_short3:
-    case tok::kw_int3:
-    case tok::kw_long3:
-    case tok::kw_float3:
-    case tok::kw_double3:
-    {
-      return 3;
-    }
-    case tok::kw_bool4:
-    case tok::kw_char4:
-    case tok::kw_short4:
-    case tok::kw_int4:
-    case tok::kw_long4:
-    case tok::kw_float4:
-    case tok::kw_double4:
-    {
-      return 4;
-    }
-    default:
-      return 0;
   }
+  return false;
 }

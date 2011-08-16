@@ -230,13 +230,6 @@ Retry:
   }
 
   default: {
-    // ndm - vector init statements
-    if(ScoutVectorKeywordDimensions(Tok.getKind()) > 0 &&
-       GetLookAheadToken(1).is(tok::identifier) &&
-       GetLookAheadToken(2).is(tok::equal)){
-      return ParseScoutVectorInit();
-    }
-    
     if ((getLang().CPlusPlus || !OnlyStatement) && isDeclarationStatement()) {
       SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
@@ -2487,38 +2480,3 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
   return ForAllResult;
 }
 
-StmtResult
-Parser::ParseScoutVectorInit(){
-  return StmtError();
-  
-  /*
-  // current token is a Scout vector keyword, e.g: float3
-  tok::TokenKind Kind = Tok.getKind();
-  int dim = ScoutVectorKeywordDimensions(Kind);
-  assert(dim > 0 && "expected a vector keyword");
-  
-  ConsumeToken();
-  
-  assert(Tok.is(tok::identifier) && "expected identifier");
-  
-  IdentifierInfo* Name = Tok.getIdentifierInfo();
-  SourceLocation NameLoc = ConsumeToken();
- 
-  ConsumeToken();
-  
-  assert(Tok.is(tok::equal) && "expected equal");
-  
-  ConsumeToken();
-  
-  if(Tok.is(tok::numeric_constant)){
-    
-  }
-  else{
-    if(!Tok.is(Kind)){
-      Diag(Tok.getLocation(), diag::err_invalid_scout_vector_init);
-      SkipUntil(tok::semi);
-      return StmtError();
-    }
-  }
-  */
-}

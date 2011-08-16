@@ -1115,6 +1115,26 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
         return ThisDecl;
       }
 
+      // ndm - handle scout vector initialization here
+      
+      if(VarDecl* vd = dyn_cast<VarDecl>(ThisDecl)){
+        BuiltinType::Kind kind;
+        if(isScoutVectorValueDecl(vd, kind)){
+          ScoutVectorType vectorType;
+          
+          if(vd->getName().str() == "color"){
+            vectorType = ScoutVectorColor;
+          }
+          else{
+            vectorType = ScoutVectorGeneric;
+          }
+          
+          ExprResult rhs = ParseScoutVectorRHS(kind, vectorType);
+          vd->setInit(rhs.get());
+          return ThisDecl;
+        }
+      }
+      
       ExprResult Init(ParseInitializer());
 
       if (getLang().CPlusPlus && D.getCXXScopeSpec().isSet()) {
