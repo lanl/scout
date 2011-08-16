@@ -33,6 +33,7 @@
 // ndm
 #include "clang/AST/StmtVisitor.h"
 
+#include <map>
 #include <iostream>
 
 using namespace clang;
@@ -2412,6 +2413,103 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
 }
 
+// ndm - ForAllVisitor class to check that LHS mesh field assignment
+// operators do not appear as subsequent RHS values.
+
+namespace{
+  
+  class ForAllVisitor : public StmtVisitor<ForAllVisitor> {
+  public:
+    
+    enum NodeType{
+      NodeNone,
+      NodeLHS,
+      NodeRHS
+    };
+    
+    ForAllVisitor(Sema& sema)
+    : sema_(sema),
+    error_(false),
+    nodeType_(NodeNone){
+      
+    }
+    
+    void VisitStmt(Stmt* S){
+      VisitChildren(S);
+    }
+
+    void VisitChildren(Stmt* S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+    
+    void VisitMemberExpr(MemberExpr* E){
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
+        ValueDecl* bd = dr->getDecl();
+        if(isa<MeshType>(bd->getType().getTypePtr())){
+          ValueDecl* md = E->getMemberDecl();
+          
+          std::string ref = bd->getName().str() + "." + 
+          md->getName().str();
+          
+          if(nodeType_ == NodeLHS){
+            refMap_.insert(make_pair(ref, true));
+          }
+          else if(nodeType_ == NodeRHS){
+            RefMap_::iterator itr = refMap_.find(ref);
+            if(itr != refMap_.end()){
+              sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
+              error_ = true;
+            }
+          }
+        }
+      }
+    }
+    
+    void VisitBinaryOperator(BinaryOperator* S){
+      
+      switch(S->getOpcode()){
+        case BO_Assign:
+        case BO_MulAssign:
+        case BO_DivAssign:
+        case BO_RemAssign:
+        case BO_AddAssign:
+        case BO_SubAssign:
+        case BO_ShlAssign:
+        case BO_ShrAssign:
+        case BO_AndAssign:
+        case BO_XorAssign:
+        case BO_OrAssign:
+          nodeType_ = NodeLHS;
+          break;
+        default:
+          break;
+      }
+      
+      Visit(S->getLHS());
+      nodeType_ = NodeRHS;
+      Visit(S->getRHS());
+      nodeType_ = NodeNone;
+    }
+    
+    bool error(){
+      return error_;
+    }
+    
+  private:
+    Sema& sema_;
+    typedef std::map<std::string, bool> RefMap_;
+    RefMap_ refMap_;
+    bool error_;
+    NodeType nodeType_;
+  };
+  
+} // end namespace
+
 // ndm - Scout Stmts
 StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  ForAllStmt::ForAllType Type,
@@ -2424,6 +2522,13 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
 
   SCLStack.pop_back();
 
+  ForAllVisitor v(*this);
+  v.Visit(Body);
+  
+  if(v.error()){
+    return StmtError();
+  }
+  
   return Owned(new (Context) ForAllStmt(Context, Type, MT,
                                         LoopVariableII, MeshII,
                                         Op, Body, ForAllLoc, LParenLoc,
