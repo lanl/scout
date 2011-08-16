@@ -4603,5 +4603,8 @@ def err_invalid_mesh_edges_field : Error<
 def err_no_color_assignment_renderall : Error<
 "color was not assigned in all branches of renderall">;
 
+def err_rhs_after_lhs_forall : Error<
+"mesh field appears on LHS then on subsequent RHS">;
+
 } // end of sema component.
 
