@@ -4606,5 +4606,8 @@ def err_no_color_assignment_renderall : Error<
 def err_rhs_after_lhs_forall : Error<
 "mesh field appears on LHS then on subsequent RHS">;
 
+def err_pointer_field_mesh : Error<
+"mesh field or field indirectly instantiated by a mesh is a pointer">;
+
 } // end of sema component.
 

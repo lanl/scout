@@ -2892,6 +2892,8 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
 }
 
 // ndm - Scout Mesh
+// return true on success
+
 bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
                                       "parsing Scout mesh body");
@@ -3000,7 +3002,10 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   
   SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   MeshScope.Exit();
-  Actions.ActOnMeshFinish(StartLoc, Dec);
   
-  return valid;
+  if(!valid){
+    return false;
+  }
+  
+  return Actions.ActOnMeshFinish(StartLoc, Dec);
 }

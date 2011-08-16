@@ -9365,8 +9365,9 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 }
 
 // ndm - Scout Mesh
+// return true on success
 
-void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
+bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   // ndm - ok to pass null type source info and bit field width? 
   
   FieldDecl *PositionFD = 
@@ -9406,5 +9407,59 @@ void Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   Mesh->addDecl(DepthFD);
   
   PopDeclContext();
+  
+  return IsValidDeclInMesh(Mesh);
+}
+
+bool Sema::IsValidMeshField(FieldDecl* FD){
+  QualType QT = FD->getType();
+  const Type* T = QT.getTypePtr();
+  if(T->isPointerType()){
+    Diag(FD->getSourceRange().getBegin(),
+         diag::err_pointer_field_mesh);
+    
+    return false;
+  }
+  
+  if(const MeshType* MT = dyn_cast<MeshType>(T)){
+    if(!IsValidDeclInMesh(MT->getDecl())){
+      Diag(FD->getSourceRange().getBegin(),
+           diag::err_pointer_field_mesh);
+      return false;
+    }
+  }
+  else if(const RecordType* RT = dyn_cast<RecordType>(T)){
+    if(!IsValidDeclInMesh(RT->getDecl())){
+      Diag(FD->getSourceRange().getBegin(),
+           diag::err_pointer_field_mesh);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+bool Sema::IsValidDeclInMesh(Decl* D){
+  if(MeshDecl* MD = dyn_cast<MeshDecl>(D)){
+    MeshDecl::field_iterator itr = MD->field_begin();
+    for(MeshDecl::field_iterator itr = MD->field_begin(),
+        itrEnd = MD->field_end(); itr != itrEnd; ++itr){
+      FieldDecl* FD = *itr;
+      if(!IsValidMeshField(FD)){
+        return false;
+      }
+    }
+  }
+  else if(RecordDecl* RD = dyn_cast<RecordDecl>(D)){
+    RecordDecl::field_iterator itr = RD->field_begin();
+    for(RecordDecl::field_iterator itr = RD->field_begin(),
+        itrEnd = RD->field_end(); itr != itrEnd; ++itr){
+      FieldDecl* FD = *itr;
+      if(!IsValidMeshField(FD)){
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
