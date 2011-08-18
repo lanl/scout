@@ -6010,32 +6010,32 @@ public:
                             SourceLocation KWLoc,
                             IdentifierInfo* Name,
                             SourceLocation NameLoc);
-  
+
   Decl* ActOnMeshField(Scope *S, Decl *MeshD,
                        SourceLocation DeclStart, Declarator &D);
-  
+
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
-  
+
   bool ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
-  
+
   FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
                              SourceLocation DeclStart, Declarator &D);
-  
-  
+
+
   FieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                 TypeSourceInfo *TInfo,
                                 MeshDecl *Mesh, SourceLocation Loc,
                                 SourceLocation TSSL,
                                 NamedDecl *PrevDecl,
                                 Declarator *D = 0);
-  
+
   bool ActOnForAllLoopVariable(Scope* S,
                                tok::TokenKind VariableType,
                                IdentifierInfo* LoopVariableII,
                                SourceLocation LoopVariableLoc,
                                IdentifierInfo* MeshII,
                                SourceLocation MeshLoc);
-  
+
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
                                   IdentifierInfo* LoopVariableII,
@@ -6051,8 +6051,8 @@ public:
                              SourceLocation LParenLoc,
                              Expr* Op, SourceLocation RParenLoc,
                              Stmt* Body);
-  
-  
+
+
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 ForAllStmt::ForAllType Type,
                                 const MeshType *MT,
@@ -6061,11 +6061,15 @@ public:
                                 SourceLocation LParenLoc,
                                 Expr *Op, SourceLocation RParenLoc,
                                 Stmt* Body);
-  
+
   bool IsValidMeshField(FieldDecl* FD);
-  
+
   bool IsValidDeclInMesh(Decl* D);
-  
+
+  void AddInitializerToScoutVector(VarDecl *vdecl,
+                                   BuiltinType::Kind kind,
+                                   Expr *init);
+
   // support for unqualified variables within a forall / renderall loop
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 
