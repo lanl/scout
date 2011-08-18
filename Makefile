@@ -25,19 +25,25 @@ else
   nprocs := $(shell /bin/cat /proc/cpuinfo | /bin/grep processor | /usr/bin/wc -l)
 endif 
 
-nprocs := $(shell expr $(nprocs) \* 2)
-
 # Since we're likely I/O bound try and sneak in twice as many build
 # threads as we have cores...
+nprocs := $(shell expr $(nprocs) \* 2)
 
-default: $(build_dir)
-	echo "building using $(nprocs) processors."
-	(cd $(build_dir); make -j $(nprocs))
 
-$(build_dir):
+
+all: $(build_dir)/Makefile compile
+.PHONY: all 
+
+$(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
-	(cd $(build_dir); cmake $(cmake_flags) ..)
+	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
+.PHONY: compile
+compile: $(build_dir)/Makefile 
+	@(cd $(build_dir); make -j $(nprocs))
+
+
+.PHONY: clean
 clean:
 	-@/bin/rm -rf $(build_dir)
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
