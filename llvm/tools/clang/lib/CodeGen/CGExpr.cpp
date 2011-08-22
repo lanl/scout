@@ -1350,7 +1350,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   unsigned Alignment = getContext().getDeclAlign(ND).getQuantity();
 
   // Check if this is a Scout 'color' expression.
-  if(ND->getName() == "color") {
+  if(ND->getDeclName().isIdentifier() && ND->getName() == "color") {
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
     llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
