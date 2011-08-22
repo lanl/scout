@@ -1,14 +1,16 @@
 #
 # ----- The Scout Programming Language
-# 
-# This file is distributed under an open source license by Los Alamos
-# National Security, LCC.  See the file LICENSE.txt for details. 
 #
-# See the file docs/build.html for instructions on how to build 
-# Scout with CMake. 
-# 
+# This file is distributed under an open source license by Los Alamos
+# National Security, LCC.  See the file LICENSE.txt for details.
+#
+# See the file docs/build.html for instructions on how to build
+# Scout with CMake.
+#
 
 project(ScoutLibraries)
 
 add_subdirectory(standard)    # Scout's standard library
-add_subdirectory(runtime)     # Scout's runtime library 
+add_subdirectory(runtime)     # Scout's runtime library
+add_subdirectory(driver)      # Scout's driver library (PTX and CUDA)
+add_subdirectory(compiler)    # Scout's LLVM compiler passes

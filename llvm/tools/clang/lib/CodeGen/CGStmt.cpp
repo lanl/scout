@@ -589,7 +589,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG("EmitForAllStmtWrapper");
 
-  llvm::BasicBlock *entry = createBasicBlock("forall.entry");
+  llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
@@ -614,13 +614,48 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
-  llvm::Function *forallF = ExtractCodeRegion(DT, region);
-  assert(forallF != 0 && "Failed to rip forall statement into a new function.");
+  llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
+  assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
+
+  std::string name = ForallFn->getName().str();
+  assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
+
+  // Add metadata for scout kernel function.
+  llvm::NamedMDNode *ScoutMetadata =
+    CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+
+  // Do not add metadata if the ForallFn or a function ForallFn calls
+  // contains a printf.
+  if(!hasCalledFn(ForallFn, "printf")) {
+    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
+  }
 
   llvm::BasicBlock *continueBB = ret->getParent();
   ret->eraseFromParent();
 
   Builder.SetInsertPoint(continueBB);
+}
+
+bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {
+  typedef llvm::Function::iterator BBIterator;
+  BBIterator BB = Fn->begin(), BB_end = Fn->end();
+  typedef llvm::BasicBlock::iterator InstIterator;
+  for( ; BB != BB_end; ++BB) {
+    InstIterator Inst = BB->begin(), Inst_end = BB->end();
+    for( ; Inst != Inst_end; ++Inst) {
+      if(isCalledFn(Inst, name)) return true;
+    }
+  }
+  return false;
+}
+
+bool CodeGenFunction::isCalledFn(llvm::Instruction *Instn, llvm::StringRef name) {
+  if(isa< llvm::CallInst >(Instn)) {
+    llvm::CallInst *call = cast< llvm::CallInst >(Instn);
+    llvm::Function *Fn = call->getCalledFunction();
+    return Fn->getName() == name || hasCalledFn(Fn, name);
+  }
+  return false;
 }
 
 llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
