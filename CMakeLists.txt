@@ -9,10 +9,6 @@
 # 
 project(Scout)
 
-find_package(CUDA)
-find_package(PNG)
-find_package(OpenGL)
-
 cmake_minimum_required(VERSION 2.8.4)
 enable_testing()
 
@@ -35,6 +31,17 @@ set(CMAKE_MODULE_PATH
   "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake"
   "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake/modules"
   )
+
+find_package(CUDA)
+find_package(PNG)
+find_package(OpenGL)
+#find_package(HWLOC)
+#
+#if (NOT ${HWLOC_FOUND}) 
+#  message("The portable hardware locality library (hwloc) was not found on your system.")
+#  message("Please download it from: http://www.open-mpi.org/projects/hwloc/")
+#  message(FATAL_ERROR, "Unable to proceed with configuration.")
+#endif()
 
 set(PACKAGE_NAME scout)
 set(PACKAGE_VERSION 0.10)

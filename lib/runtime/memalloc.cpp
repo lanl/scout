@@ -19,9 +19,9 @@ namespace scout
 
   #define SC_PREFERRED_ALIGNMENT 64
   
-  // ----- __sc_alloc
+  // ----- __sc_aligned_malloc
   // 
-  void* __sc_alloc(size_t size)
+  void* __sc_aligned_malloc(size_t size)
   {
     assert(size != 0);
 
@@ -36,7 +36,7 @@ namespace scout
     
   // ----- __sc_realloc
   //
-  void* __sc_realloc(void* ptr, size_t size)
+  void* __sc_aligned_realloc(void* ptr, size_t size)
   {
     assert(ptr != 0);
     assert(size != 0);
@@ -47,7 +47,7 @@ namespace scout
     
   // ----- __sc_free
   //
-  void __sc_free(void* a_ptr)
+  void __sc_aligned_free(void* a_ptr)
   {
     free(a_ptr);
   }
