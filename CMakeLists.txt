@@ -71,10 +71,10 @@ set(LLVM_TARGETS_TO_BUILD ARM CppBackend PowerPC PTX X86
 # use lib/CMakeLists.txt to add a library vs. adding lib/mylib
 # below. 
 #
-add_subdirectory(llvm)       # scout compiler based on active llvm development. 
-add_subdirectory(lib)        # scout runtime and standard libraries 
-add_subdirectory(sandbox)    # proof-of-concept test codes 
-add_subdirectory(tools)      # various command line tools 
+add_subdirectory(llvm)        # scout compiler based on active llvm development. 
+add_subdirectory(lib)         # scout runtime and standard libraries 
+add_subdirectory(sandbox)     # proof-of-concept test codes 
+add_subdirectory(tools)       # various command line tools 
 
 # Note: For active developers we should always make sure that 
 # regression checks are a standard practice...

@@ -42,6 +42,10 @@ $(build_dir)/Makefile: CMakeLists.txt
 compile: $(build_dir)/Makefile 
 	@(cd $(build_dir); make -j $(nprocs))
 
+.PHONY: xcode
+xcode:;
+	@((test -d xcode) || (mkdir xcode))
+	@(cd xcode; cmake -G Xcode ..)
 
 .PHONY: clean
 clean:
