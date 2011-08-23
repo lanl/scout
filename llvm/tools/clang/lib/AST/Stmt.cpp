@@ -791,7 +791,8 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
 ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
                        const MeshType *MT, IdentifierInfo* LII, 
                        IdentifierInfo* MII, Expr *Op,
-                       Stmt *Body, SourceLocation FL, SourceLocation LP,
+                       Stmt *Body, BlockExpr* Block,
+                       SourceLocation FL, SourceLocation LP,
                        SourceLocation RP)
 : Stmt(SC),
 Type(T),
@@ -814,14 +815,15 @@ ZEnd(0),
 ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
                                C.IntTy, FL))
 {
+  setBlock(Block);
   setOp(Op);
   setBody(Body);
 }
 
 ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
                        IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-                       Stmt *Body, SourceLocation FL, SourceLocation LP,
-                       SourceLocation RP)
+                       Stmt *Body, BlockExpr* Block, SourceLocation FL,
+                       SourceLocation LP, SourceLocation RP)
 : Stmt(ForAllStmtClass),
 Type(T),
 meshType(MT),
@@ -843,14 +845,16 @@ ZEnd(0),
 ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
                                C.IntTy, FL))
 {
+  setBlock(Block);
   setOp(Op);
   setBody(Body);
 }
 
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
-                             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-                             Stmt *Body, SourceLocation RL, SourceLocation RP,
-                             SourceLocation LP)
-  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, Op, Body, RL, RP, LP)
-{
+                             IdentifierInfo* LII, IdentifierInfo* MII,
+                             Expr *Op, Stmt *Body, SourceLocation RL,
+                             SourceLocation RP, SourceLocation LP)
+  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, 
+               Op, Body, 0, RL, RP, LP){
+
 }

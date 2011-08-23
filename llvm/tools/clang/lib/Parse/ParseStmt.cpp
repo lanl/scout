@@ -21,6 +21,7 @@
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Sema/Lookup.h"
+#include "clang/AST/Stmt.h"
 
 #include <iostream>
 
@@ -2306,10 +2307,16 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Stmt* Body = BodyResult.get();
 
   StmtResult ForAllResult;
-  if(ForAll)
+  if(ForAll){
+    InsertCPPCode("^(scout::forall_block_rt b){}", BodyLoc);
+    BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
+    assert(Block && "expected a block expression");
+    Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+    
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, Type, MT,
                                            LoopVariableII, MeshII, LParenLoc,
-                                           Op, RParenLoc, Body);
+                                           Op, RParenLoc, Body, Block);
+  }
   else {
     InsertCPPCode("scoutSwapBuffers();", BodyLoc);
 
@@ -2454,6 +2461,16 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
   Stmt* Body = ParseStatement().get();
 
+  InsertCPPCode("^(scout::forall_block_rt b){}", CodeLoc);
+  BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
+  assert(Block && "expected a block expression");
+  class CompoundStmt* CB = 
+  new (Actions.Context) class CompoundStmt(Actions.Context,
+                                           &Body, 1, CodeLoc, CodeLoc);
+  
+  
+  Block->getBlockDecl()->setBody(CB);
+  
   // Lookup the meshtype and store it for the ForAllStmt Constructor.
   LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
   Actions.LookupName(LR, getCurScope());
@@ -2466,8 +2483,8 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
                           &Actions.Context.Idents.get("c"),
                           Name,
                           NameLoc,
-                          0, NameLoc, Body);
-
+                          0, NameLoc, Body, Block);
+  
   ForAllStmt* FAS = cast<ForAllStmt>(ForAllResult.get());
 
   FAS->setXStart(XStart);

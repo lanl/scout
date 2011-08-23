@@ -1607,7 +1607,7 @@ private:
   // OP is the operation or condition: ... myMesh '(' OP ')' { ...
   // BODY is compound stmts : '{' BODY '}'
 
-  enum {OP, BODY, END_EXPR};
+  enum {OP, BODY, BLOCK, END_EXPR};
 
   ForAllType Type;
   const MeshType *meshType;
@@ -1632,12 +1632,14 @@ private:
 public:
   ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
              IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-             Stmt *Body, SourceLocation FL, SourceLocation LP,
+             Stmt *Body, BlockExpr* Block,
+             SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
 
-  ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type, const MeshType *MT,
-             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-             Stmt *Body, SourceLocation FL, SourceLocation LP,
+  ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type,
+             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII, 
+             Expr *Op, Stmt *Body, BlockExpr* Block, 
+             SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
 
   explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
@@ -1690,6 +1692,18 @@ public:
     SubExprs[OP] = reinterpret_cast<Stmt*>(O);
   }
 
+  BlockExpr* getBlock(){
+    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
+  }
+  
+  const BlockExpr* getBlock() const{
+    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
+  }
+  
+  void setBlock(BlockExpr* B){
+    SubExprs[BLOCK] = reinterpret_cast<Stmt*>(B);
+  }
+  
   Stmt* getBody(){
     return SubExprs[BODY];
   }

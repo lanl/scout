@@ -6050,7 +6050,8 @@ public:
                              IdentifierInfo* MeshII,
                              SourceLocation LParenLoc,
                              Expr* Op, SourceLocation RParenLoc,
-                             Stmt* Body);
+                             Stmt* Body,
+                             BlockExpr* Block);
 
 
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,

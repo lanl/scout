@@ -2518,7 +2518,8 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  IdentifierInfo* MeshII,
                                  SourceLocation LParenLoc,
                                  Expr* Op, SourceLocation RParenLoc,
-                                 Stmt* Body){
+                                 Stmt* Body,
+                                 BlockExpr* Block){
 
   SCLStack.pop_back();
 
@@ -2531,7 +2532,8 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
   
   return Owned(new (Context) ForAllStmt(Context, Type, MT,
                                         LoopVariableII, MeshII,
-                                        Op, Body, ForAllLoc, LParenLoc,
+                                        Op, Body, Block, 
+                                        ForAllLoc, LParenLoc,
                                         RParenLoc));
 }
 

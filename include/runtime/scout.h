@@ -6,6 +6,7 @@
 #include "runtime/framebuffer.h"
 #include "runtime/window.h"
 #include "runtime/image.h"
+#include "runtime/blocks.h"
 
 extern scout::framebuffer_rt* _framebuffer;
 
