@@ -2804,11 +2804,9 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   MeshDecl::MeshDimensionVec dims;
   
-  // parse mesh dimensions
+  // parse mesh dimensions, e.g: [512,512]
   if(Tok.is(tok::l_square)){
     ConsumeBracket();
-    
-    // how should dimensions eventually be represented on the AST?
     
     for(;;){
       
@@ -2892,6 +2890,10 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
 }
 
 // ndm - Scout Mesh
+// parse the body of a defintion of a mesh, e.g:
+// uniform mesh MyMesh [1024,1024] {
+///     <BODY>
+// }
 // return true on success
 
 bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){

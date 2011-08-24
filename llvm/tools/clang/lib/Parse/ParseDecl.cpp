@@ -1116,6 +1116,8 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
       }
 
       // ndm - handle scout vector initialization here
+      // e.g: float3 v1 = 0;
+      //      float4 v2 = float4(0,1,2,3);
 
       if(VarDecl* vd = dyn_cast<VarDecl>(ThisDecl)){
         BuiltinType::Kind kind;
@@ -2096,7 +2098,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
 
-    // ndm
+    // ndm - Mesh definition
 
     case tok::kw_uniform:
     case tok::kw_rectlinear:
@@ -2106,9 +2108,10 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // for now, at least the presence of one of the above keywords is sufficient
       // to denote the beginning of a mesh definition
 
+      // so we know this is the start of:
+      //   uniform mesh MyMesh [512,512] { ...
+      
       ParseMeshSpecifier(DS);
-
-
 
       continue;
     }
@@ -4771,6 +4774,11 @@ bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
 }
 
 // ndm - Scout Mesh
+// this method is used to parse a mesh field declaration, e.g:
+// uniform mesh MyMesh[512,512]{
+//   cells:
+//     float a; // <---- parser is here
+// ... }
 
 void Parser::
 ParseMeshDeclaration(DeclSpec &DS,
@@ -4817,6 +4825,20 @@ ParseMeshDeclaration(DeclSpec &DS,
 // ndm - parse a window or image declaration
 // return true on success
 
+// these look like:
+
+// window win[1024,1024] {
+//   background  = hsv(0.1, 0.2, 0.3);
+//   save_frames = true;
+//   filename    = "heat2d-####.png";
+// };
+
+// image img[1024, 1024]{
+//   background = hsv(0.0f, 0.0f, 0.0f);
+//   filename   = "heat2d-####.png";
+//  };
+
+
 StmtResult
 Parser::ParseWindowOrImageDeclaration(bool window,
                                       StmtVector &Stmts,
@@ -4829,8 +4851,6 @@ Parser::ParseWindowOrImageDeclaration(bool window,
   }
 
   ConsumeToken();
-
-  // ndm - need to indicate error somehow, with return value?
 
   if(Tok.isNot(tok::identifier)){
     Diag(Tok, diag::err_expected_ident);

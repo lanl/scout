@@ -398,7 +398,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_float:       return "float";
   case DeclSpec::TST_double:      return "double";
 
-  // ndm - Scout vector types
+  // ndm - Scout vector types to strings
   
   case DeclSpec::TST_bool2:       return "bool2";
   case DeclSpec::TST_bool3:       return "bool3";

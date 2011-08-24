@@ -2339,6 +2339,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
   tok::TokenKind expectKind;
   QualType type;
   
+  // set the dimensions and types based on the vector keyword
+  
   switch(kind){
     case BuiltinType::Bool2:
     {

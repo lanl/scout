@@ -461,6 +461,10 @@ public:
   CanQualType ObjCBuiltinIdTy, ObjCBuiltinClassTy, ObjCBuiltinSelTy;
 
   // ndm - Scout vector types
+  // essentially, we keep on QualType for each of the vector
+  // types so that we can do such things as equivalence testing
+  // between types, and for space reduction, this keeps with the 
+  // convention of built-in types above
 
   CanQualType Bool2Ty;
   CanQualType Bool3Ty;

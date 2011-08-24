@@ -1547,7 +1547,6 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty,
   case Type::Typedef: return CreateType(cast<TypedefType>(Ty), Unit);
   
   // ndm - Scout Mesh
-  // TODO - fix
   case Type::Mesh:
     return CreateType(cast<MeshType>(Ty));
       

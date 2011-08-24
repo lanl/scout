@@ -1099,7 +1099,7 @@ DeduceTemplateArguments(Sema &S,
     case Type::Record:
       
     // ndm - Scout Mesh
-    // Currently not used a template
+    // Currently meshes are not used as templates
     case Type::Mesh:
       
     case Type::Enum:

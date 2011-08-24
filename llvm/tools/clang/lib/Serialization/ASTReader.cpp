@@ -3878,9 +3878,10 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 }
 
 // ndm - Scout Mesh
-// TODO - implement
+// we are not using AST reader functionality for meshes for now,
+// so this is simply a no-op
 void TypeLocReader::VisitMeshTypeLoc(MeshTypeLoc TL) {
-
+  
 }
 
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {

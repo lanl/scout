@@ -6004,7 +6004,7 @@ public:
   Scope *getCurScope() const { return CurScope; }
 
   // ndm - Scout Sema methods
-  // create the beginning part of a mesh definition
+  // called at the beginning part of a mesh definition
   Decl* ActOnMeshDefinition(Scope* S,
                             tok::TokenKind MeshType,
                             SourceLocation KWLoc,

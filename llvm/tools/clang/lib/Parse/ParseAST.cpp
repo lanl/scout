@@ -96,7 +96,8 @@ void clang::ParseAST(Sema &S, bool PrintStats, ASTViewScout* ASTViewer) {
     if (ADecl){      
       Consumer->HandleTopLevelDecl(ADecl.get());
       
-      // ndm - AST Viewer
+      // ndm - AST Viewer, if the -ast-view front-end option was passed
+      // potentially generate Graphviz output for this decl. group
       if(ASTViewer){
         ASTViewer->outputGraphviz(ADecl.get());
       }

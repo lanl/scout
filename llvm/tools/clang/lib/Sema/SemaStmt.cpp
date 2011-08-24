@@ -2523,6 +2523,8 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
 
   SCLStack.pop_back();
 
+  // check that LHS mesh field assignment
+  // operators do not appear as subsequent RHS values.
   ForAllVisitor v(*this);
   v.Visit(Body);
   

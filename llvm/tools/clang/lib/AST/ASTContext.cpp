@@ -389,7 +389,7 @@ void ASTContext::InitBuiltinTypes() {
   InitBuiltinType(DoubleTy,            BuiltinType::Double);
   InitBuiltinType(LongDoubleTy,        BuiltinType::LongDouble);
 
-  // ndm - Scout vector types
+  // ndm - Scout vector types - initialize the CanQualType's
 
   InitBuiltinType(Bool2Ty,             BuiltinType::Bool2);
   InitBuiltinType(Bool3Ty,             BuiltinType::Bool3);
@@ -1681,7 +1681,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::Record:
 
   // ndm - Scout Mesh
-  // Mesh is not variably-modified
+  // a mesh is not variably-modified
   case Type::Mesh:
 
   case Type::Enum:
@@ -2233,7 +2233,6 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
 }
 
 // ndm - Scout
-// TODO - implement
 
 QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);

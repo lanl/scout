@@ -1843,7 +1843,6 @@ void CXXNameMangler::mangleType(const TagType *T) {
 }
 
 // ndm - Scout Mesh
-// TODO is this correct?
 
 void CXXNameMangler::mangleType(const MeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));

@@ -537,7 +537,7 @@ namespace clang {
       /// \brief The "auto &&" deduction type.
       PREDEF_TYPE_AUTO_RREF_DEDUCT = 32,
 
-      // ndm - Scout vector types
+      // ndm - Scout vector types support
 
       PREDEF_TYPE_BOOL2_ID     = 50,
       PREDEF_TYPE_BOOL3_ID     = 51,

@@ -642,7 +642,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     break;
 
   // ndm - Scout Mesh
-  // TODO - fix
+  // we do not need to test the structural equivalance of meshes
+  // so simply return false
+      
   case Type::Mesh:    
       return false;
       
@@ -1666,7 +1668,6 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
 }
 
 // ndm - Scout Mesh
-// TODO is this correct?
 
 QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
   MeshDecl *ToDecl
@@ -2283,7 +2284,8 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
 }
 
 // ndm - Scout Mesh
-// TODO implement
+// we are not using the AST import functionality for now
+// so simply return null
 
 Decl *ASTNodeImporter::VisitMeshDecl(MeshDecl *D){
   return 0;

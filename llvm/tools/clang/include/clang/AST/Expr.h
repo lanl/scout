@@ -2257,13 +2257,18 @@ public:
   friend class ASTStmtWriter;
 };
 
-// ndm Scout vector types
+// ndm
+// represents indexing a scout vector, e.g:
+// float3 v;
+// v.y;
+// v[0];
 
 class ScoutVectorMemberExpr : public Expr {
   Stmt* Base;
 
   SourceLocation Loc;
 
+  // index is a value [0..3]
   unsigned index;
 
 public:

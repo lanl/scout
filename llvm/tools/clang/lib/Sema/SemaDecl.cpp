@@ -9234,6 +9234,7 @@ void Sema::ActOnPragmaWeakAlias(IdentifierInfo* Name,
 }
 
 // ndm - Scout Mesh
+// called at the begining part of a mesh definition
 Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,
                                 SourceLocation KWLoc,
@@ -9251,7 +9252,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
   return MD;
 }
 
-// ndm - Scout Mesh
+// ndm - Scout Mesh field
 Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
                            Declarator &D) {
   FieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
@@ -9284,8 +9285,6 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
   assert((Previous.empty() || Previous.isOverloadedResult() ||
           Previous.isSingleResult())
          && "Lookup of member name should be either overloaded, single or null");
-
-  // ndm - TODO - can this be taken out?
 
   // If the name is overloaded then get any declaration else get the single result
   NamedDecl *PrevDecl = Previous.isOverloadedResult() ?
@@ -9341,8 +9340,6 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                              AbstractFieldType))
     InvalidDecl = true;
 
-  // ndm - ok to pass null bitwidth?
-
   FieldDecl *NewFD = FieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
                                        0, true, false);
   if (InvalidDecl)
@@ -9354,10 +9351,7 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
     NewFD->setInvalidDecl();
   }
 
-  // FIXME: We need to pass in the attributes given an AST
-  // representation, not a parser representation.
   if (D)
-    // FIXME: What to pass instead of TUScope?
     ProcessDeclAttributes(TUScope, NewFD, *D);
 
   NewFD->setAccess(AS_public);

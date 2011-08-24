@@ -800,7 +800,7 @@ DeclContext *DeclContext::getPrimaryContext() {
       return Tag;
     }
 
-    // ndm - Scout Mesh
+    // ndm - Scout Mesh decl. context
     if(DeclKind == Decl::Mesh){
       MeshDecl *Mesh = cast<MeshDecl>(this);
       

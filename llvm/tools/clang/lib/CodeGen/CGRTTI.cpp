@@ -189,7 +189,6 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Double:
 
     // ndm - Scout vector types
-    // temporary hack to get the AST side working... will revisit later
     
     case BuiltinType::Bool2:
     case BuiltinType::Bool3:
@@ -455,7 +454,6 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     break;
 
   // ndm - Scout Mesh
-  // TODO - fix
       
   case Type::Mesh:
     VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
@@ -653,7 +651,7 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     break;
       
   // ndm - Scout Mesh
-  // TODO - is this correct?    
+  // TODO - fix  
       
   case Type::Mesh:
     // abi::__enum_mesh_info adds no data members to std::type_info.

@@ -220,7 +220,8 @@ void ASTStmtReader::VisitForStmt(ForStmt *S) {
 }
 
 // ndm - Scout Stmts
-// TODO - implement
+// we are not using AST reading functionality for meshes for now
+// so this is simply a no-op
 
 void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
 

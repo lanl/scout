@@ -2152,7 +2152,6 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   ConsumeToken();
 
-  // ndm - TODO - are these all of the flags and just the flags we need?
   unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
   Scope::DeclScope | Scope::ControlScope;
 

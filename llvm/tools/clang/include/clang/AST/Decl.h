@@ -1979,7 +1979,8 @@ public:
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
   // ndm - Scout Mesh fields are instances of FieldDecl, with the appropriate
-  // FieldType of MeshFieldType set
+  // FieldType of MeshFieldType set, a normal FieldDecl from a non-mesh,
+  // e.g: RecordDecl, gets FieldNone
   
 public:
   
@@ -2001,6 +2002,8 @@ private:
 
   // ndm - Scout Mesh
   unsigned FieldType : 2;
+
+  // bit to set whether this is an implicitly added mesh field, e.g: "position"
   bool IsMeshImplicit : 1;
   
   /// \brief A pointer to either the in-class initializer for this field (if
@@ -2106,7 +2109,9 @@ public:
 
   SourceRange getSourceRange() const;
 
-  // ndm - Scout Mesh
+  // ndm - Scout Mesh field methods
+  // pass implicit if this is an implicitly added mesh field such as 
+  // "position", or "color"
   void setMeshFieldType(MeshFieldType type, bool implicit){
     FieldType = type;
     IsMeshImplicit = implicit;
@@ -3049,10 +3054,19 @@ public:
 };
 
 // ndm - Scout Mesh
+// A mesh declaration is similar to a TagDecl/RecordDecl but different
+// enough that a new subclass of TypeDecl was created. It encapsulates
+// a mesh definition such as:
+//    
+//   uniform mesh MyMesh [512,512]{
+//     cells:
+//          float a;
+//   }
   
 class MeshDecl : public TypeDecl, public DeclContext{
 public:
   
+  // dimensions, e.g: [512,512]
   typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
   
 private:
@@ -3124,7 +3138,6 @@ public:
     return field_begin() == field_end();
   }
   
-  // ndm - TODO is this needed? If so, finish implementation.
   NestedNameSpecifierLoc getQualifierLoc() const {
     return NestedNameSpecifierLoc();
   }

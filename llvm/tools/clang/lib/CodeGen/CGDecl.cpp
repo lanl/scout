@@ -75,7 +75,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::Function:  // void X();
 
   // ndm - Scout Mesh
-  // TODO - fix, do not enough information at this point
   case Decl::Mesh:
     return;
 

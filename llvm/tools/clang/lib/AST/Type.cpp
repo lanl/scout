@@ -1492,7 +1492,7 @@ const char *BuiltinType::getName(const LangOptions &LO) const {
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
 
-  // ndm - Scout vector types
+  // ndm - Scout vector types to strings
   case Bool2:             return "bool2";
   case Bool3:             return "bool3";
   case Bool4:             return "bool4";

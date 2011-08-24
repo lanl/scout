@@ -184,6 +184,9 @@ StringLexerStringRef(0){
 }
 
 // ndm - string lexer
+// Allows the lexer to operate from a string
+// Which can be useful when CPP code is to be inserted into the lexer
+// stream used by the parser
 Lexer::Lexer(const std::string& str, Preprocessor& PP)
 : PreprocessorLexer(&PP, FileID()),
 FileLoc(PP.getSourceManager().getLocForStartOfFile(FileID())),
@@ -204,6 +207,8 @@ Features(PP.getLangOptions()){
 
 // ndm - added Dtor
 Lexer::~Lexer(){
+  // if this is a string lexer, clean up after it
+  
   if(StringLexerMemoryBuffer){
     delete StringLexerMemoryBuffer;
   }

@@ -246,7 +246,8 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
 }
 
 // ndm - Scout Mesh
-// TODO implement
+// we are currently not concerned with AST writer functionality
+// for meshes so this is a no-op
 void ASTTypeWriter::VisitMeshType(const MeshType *T) {
 
 }
@@ -521,7 +522,8 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
 }
 
 // ndm - Scout Mesh
-// TODO implement
+// we are currently not concerned with AST writer functionality
+// for meshes so this is a no-op
 
 void TypeLocWriter::VisitMeshTypeLoc(MeshTypeLoc TL) {
 

@@ -197,7 +197,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
 
-  // ndm - include the scout header file if this is a Scout file
+  // ndm - implicity include the Scout headers file if this is a Scout file
   if(CI.getLangOpts().Scout){
     CI.getPreprocessorOpts().Includes.push_back("runtime/scout.h");
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.h");
@@ -415,7 +415,7 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(usesCompleteTranslationUnit(), CompletionConsumer);
 
-  // ndm - use AST viewer if the front-end option -view-ast was passed
+  // ndm - use AST viewer if the front-end option -Xclang -view-ast was passed
   if(CI.getFrontendOpts().ViewAST){
     ASTViewScout ASTViewer(CI.getSema());
     

@@ -18,7 +18,31 @@
 using namespace std;
 using namespace clang;
 
+// Stmt (and Expr) AST nodes can be dumped to text for purposes of debugging.
+
+// When we do this we get output that looks like:
+
+// (CompoundStmt 0x1071d89c8 <forall.sc:14:32, line:23:1>
+// (CallExpr 0x1071d82a0 <line:14:32> 'void'
+//  (ImplicitCastExpr 0x1071d8288 <col:32> 'void (*)(int, char **)' <FunctionToPointerDecay>
+//   (DeclRefExpr 0x1071d8238 <col:32> 'void (int, char **)' 
+//    lvalue Function 0x106b99470 'scoutInit' 'void (int, char **)'))
+//  (ImplicitCastExpr 0x1071d82d8 <col:32> 'int' <LValueToRValue>
+//   (DeclRefExpr 0x1071d81e8 <col:32> 'int' lvalue ParmVar 0x1071d7f90 'argc' 'int'))
+//  (ImplicitCastExpr 0x1071d82f0 <col:32> 'char **' <LValueToRValue>
+// ...
+// (ReturnStmt 0x1071d89a8 <line:22:3, col:10>
+//  (IntegerLiteral 0x1071d8980 <col:10> 'int' 0)))
+
+// This file implements a parser that parses this output, creates the
+// ViewASTNodes, then walks these nodes to generate GraphViz output
+// in order to view the AST graphically.
+
 namespace{
+  
+  // A ViewASTNode has a number of children, a head label, and variable
+  // number of attrs fields. These fields need to be escaped so that they
+  // do not conlfict with Graphviz metacharacters.
   
   class ViewASTNode{
   public:
@@ -59,7 +83,7 @@ namespace{
     }
     
     void addAttr(const string& attr){
-      // to save space, skip pointer values which are always hex values
+      // to save visual space, skip pointer values which are always hex values
       if(attr.size() >= 2 && attr[0] == '0' && attr[1] == 'x'){
         return;
       }
@@ -109,10 +133,19 @@ namespace{
   };
   
   // parse the AST from text and return the top-level node
+  // The following main sections needed to be handled:
+  // head: e.g: CompoundStmt
+  // line/character information: <...> (can contain nested '<'/'>', so
+  // we need to balance these characters
+  // single-quoted sequence, e.g: 'void'
+  // double-quoated sequence, e.g: "..." - which can span multiple lines
+  // and sometimes needs to get recursively parsed
+  
   ViewASTNode* viewASTParse(const string& str){
     typedef vector<ViewASTNode*> ViewASTNodeStack;
     ViewASTNodeStack stack;
     
+    // parse the head
     for(size_t i = 0; i < str.size(); ++i){
       if(str[i] == ' ' || str[i] == '\n'){
         continue;
@@ -136,6 +169,7 @@ namespace{
         
         stack.push_back(n);
       }
+      // parse a single-quoted sequence
       else if(str[i] == '\''){
         string attr;
         char last = 0;
@@ -158,6 +192,8 @@ namespace{
         
         stack.back()->addAttr(attr);
       }
+      // parse a double-quoted sequence and recursively parse
+      // if necessary
       else if(str[i] == '\"'){
         string head;
         char last = 0;
@@ -236,6 +272,7 @@ namespace{
         
         stack.pop_back();
       }
+      // parse a balanced angle-bracket sequence
       else if(str[i] == '<'){
         string attr;
         
@@ -256,6 +293,7 @@ namespace{
         
         stack.back()->addAttr(attr);
       }
+      // other, parse a non-whitespace sequence
       else{
         string attr;
         
@@ -277,11 +315,15 @@ namespace{
     assert(false && "viewASTParse parse error");
   }
 
+  // we recognize certain Scout AST nodes for purposes of 
+  // highlighting/coloring them
   bool isScoutASTNode(const string& name){
     return name == "ForAllStmt" || name == "RenderAllStmt" || 
     name == "ScoutVectorMemberExpr";
   }
   
+  // output the nodes in the GraphViz graph, initially passed
+  // the root node
   void viewASTOutputNodes(ViewASTNode* n, int& id){
     n->setId(id);
     cout << "  node" << id << " [label = \"";
@@ -307,6 +349,8 @@ namespace{
     }
   }
   
+  // output the links in the GraphViz graph, initially passed
+  // the root node
   void viewASTOutputLinks(ViewASTNode* n){
     for(size_t i = 0; i < n->childCount(); ++i){
       ViewASTNode* ni = n->child(i);
@@ -318,6 +362,7 @@ namespace{
     }
   }
   
+  // generate the top-level Graphviz output
   void viewASTOutputGraphviz(ViewASTNode* n){
     cout << "digraph G{" << endl;
     cout << "  node [shape = record];" << endl;
@@ -327,7 +372,7 @@ namespace{
     cout << "}" << endl;
   }
   
-} // end namespac
+} // end namespace
 
 ASTViewScout::ASTViewScout(Sema& sema)
 : sema_(sema){
@@ -338,6 +383,10 @@ ASTViewScout::~ASTViewScout(){
 
 }
 
+// possibly output this DeclGroup in Graphviz
+// currently, only if it is from the main file and the body
+// of a function/method decl, if we outputted everything we would
+// get too much information, i.e: other files included
 void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
 
   for(DeclGroupRef::iterator itr = declGroup.begin(),
@@ -359,7 +408,7 @@ void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
         }
       }
       else{
-        // any other decl types to handle?
+        // any other cases to handle?
       }
     }
   }
