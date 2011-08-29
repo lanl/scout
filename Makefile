@@ -40,6 +40,7 @@ $(build_dir)/Makefile: CMakeLists.txt
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
+	@(cd $(build_dir)/llvm; make -j $(nprocs))
 	@(cd $(build_dir); make -j $(nprocs))
 
 .PHONY: xcode
