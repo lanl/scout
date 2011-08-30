@@ -18,8 +18,12 @@
 
 namespace scout 
 {
+  
+  struct tbq_params_rt{
+    
+  };
 
-  void performIteration(void (^block)(void*,int*,int*,int*,...),
+  void performIteration(void (^block)(void*,int*,int*,int*,tbq_params_rt),
 			int xStart, int xEnd,
 			int yStart=-1, int yEnd=-1,
 			int zStart=-1, int zEnd=-1);

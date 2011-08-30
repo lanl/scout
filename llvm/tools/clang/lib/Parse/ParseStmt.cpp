@@ -2307,7 +2307,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   StmtResult ForAllResult;
   if(ForAll){
-    InsertCPPCode("^(void* mesh, int* i, int* j, int* k, ...){}", BodyLoc);
+    InsertCPPCode("^(void* mesh, int* i, int* j, int* k, tbq_params_rt){}", BodyLoc);
     BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
     assert(Block && "expected a block expression");
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
@@ -2460,7 +2460,7 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
   Stmt* Body = ParseStatement().get();
 
-  InsertCPPCode("^(void* mesh, int* i, int* j, int* k, ...){}", CodeLoc);
+  InsertCPPCode("^(void* mesh, int* i, int* j, int* k, tbq_params_rt){}", CodeLoc);
   BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
   assert(Block && "expected a block expression");
   class CompoundStmt* CB = 

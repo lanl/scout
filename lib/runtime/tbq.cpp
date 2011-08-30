@@ -14,7 +14,7 @@
 using namespace std;
 using namespace scout;
 
-void performIteration(void (^block)(void*,int*,int*,int*,...),
+void performIteration(void (^block)(void*,int*,int*,int*,tbq_params_rt),
 		      int xStart, int xEnd,
 		      int yStart, int yEnd,
 		      int zStart, int zEnd){
