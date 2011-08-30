@@ -19,14 +19,7 @@
 namespace scout 
 {
 
-  struct block_params_rt{
-    void* mesh;
-    int* i;
-    int* j;
-    int* k;
-  };
-  
-  void performIteration((^block)(block_params_rt),
+  void performIteration(void (^block)(void*,int*,int*,int*,...),
 			int xStart, int xEnd,
 			int yStart=-1, int yEnd=-1,
 			int zStart=-1, int zEnd=-1);
