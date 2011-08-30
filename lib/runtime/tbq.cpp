@@ -9,14 +9,14 @@
  * 
  */
 
-#ifndef SCOUT_BLOCKS_H_
-#define SCOUT_BLOCKS_H_
+#include "runtime/tbq.h"
 
-namespace scout 
-{
-  struct forall_block_rt{
-    
-  };
+using namespace std;
+using namespace scout;
+
+void performIteration((^block)(block_params_rt),
+		      int xStart, int xEnd,
+		      int yStart, int yEnd,
+		      int zStart, int zEnd){
+
 }
-
-#endif

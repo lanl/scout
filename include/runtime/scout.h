@@ -1,3 +1,4 @@
+
 #ifndef SCOUT_H
 #define SCOUT_H
 
@@ -6,7 +7,7 @@
 #include "runtime/framebuffer.h"
 #include "runtime/window.h"
 #include "runtime/image.h"
-#include "runtime/blocks.h"
+#include "runtime/tbq.h"
 
 extern scout::framebuffer_rt* _framebuffer;
 
