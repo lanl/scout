@@ -1874,17 +1874,22 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
       assert(Tok.is(tok::l_brace) &&
              "expected lbrace when inserting scoutInit()");
 
-      assert(fd->param_size() == 2 && "expected main with two params");
-      FunctionDecl::param_iterator itr = fd->param_begin();
-
-      ParmVarDecl* paramArgc = *itr;
-      ++itr;
-      ParmVarDecl* paramArgv = *itr;
-
-      std::string code = "scoutInit(" + paramArgc->getName().str() +
-      ", " + paramArgv->getName().str() + ");";
-
-      InsertCPPCode(code, LBraceLoc, false);
+      if(fd->param_size() == 0){
+	InsertCPPCode("scoutInit(0, 0);", LBraceLoc, false);
+      }
+      else{
+	assert(fd->param_size() == 2 && "expected main with two params");
+	FunctionDecl::param_iterator itr = fd->param_begin();
+	
+	ParmVarDecl* paramArgc = *itr;
+	++itr;
+	ParmVarDecl* paramArgv = *itr;
+	
+	std::string code = "scoutInit(" + paramArgc->getName().str() +
+	  ", " + paramArgv->getName().str() + ");";
+	
+	InsertCPPCode(code, LBraceLoc, false);
+      }
     }
   }
 
