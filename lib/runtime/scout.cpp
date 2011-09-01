@@ -6,11 +6,13 @@
 #include "runtime/framebuffer.h"
 #include "runtime/renderall.h"
 #include "runtime/viewport.h"
+#include "runtime/tbq.h"
 
 using namespace std;
 using namespace scout;
 
 framebuffer_rt* _framebuffer;
+tbq_rt* _tbq;
 size_t _frame = 0;
 
 static framebuffer_rt* _outFramebuffer;
@@ -26,6 +28,7 @@ void scoutInit(int argc, char** argv){
   _framebuffer = new framebuffer_rt(IN_WIDTH, IN_HEIGHT);
   _outFramebuffer = new framebuffer_rt(OUT_WIDTH, OUT_HEIGHT);
   _viewport = new viewport_rt(0, 0, OUT_WIDTH, OUT_HEIGHT);
+  _tbq = new tbq_rt;
 }
 
 void scoutSwapBuffers(){

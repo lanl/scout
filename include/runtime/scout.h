@@ -10,6 +10,7 @@
 #include "runtime/tbq.h"
 
 extern scout::framebuffer_rt* _framebuffer;
+extern scout::tbq_rt* _tbq;
 
 double cshift(double a, int dx, int axis);
 float cshift(float a, int dx, int axis);

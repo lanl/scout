@@ -15,18 +15,27 @@
 #include <list>
 
 #include "runtime/types.h"
+#include "runtime/range.h"
 
 namespace scout 
 {
   
   struct tbq_params_rt{
-    
+    void* m;
   };
 
-  void performIteration(void (^block)(void*,int*,int*,int*,tbq_params_rt),
-			int xStart, int xEnd,
-			int yStart=-1, int yEnd=-1,
-			int zStart=-1, int zEnd=-1);
+  class tbq_rt{
+  public:
+    tbq_rt();
+
+    ~tbq_rt();
+
+    void run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
+	     range_t xRange, range_t yRange, range_t zRange);
+    
+  private:
+    class tbq_rt_* x_;
+  };
 }
 
 #endif

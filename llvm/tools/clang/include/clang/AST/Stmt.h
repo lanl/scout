@@ -1867,12 +1867,6 @@ public:
 };
 
 class RenderAllStmt : public ForAllStmt {
-private:
-
-
-  // IND is the induction variable: renderall cells IND ...
-  // MESH is the mesh identifier: renderall cells c of MESH ...
-  // BODY is compound stmts : '{' BODY '}'
 public:
 
   RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,

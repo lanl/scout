@@ -12,7 +12,7 @@
 #ifndef SCOUT_RANGE_H_
 #define SCOUT_RANGE_H_
 
-#include "scout/types.h"
+#include "runtime/types.h"
 
 namespace scout 
 {

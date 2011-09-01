@@ -1941,7 +1941,7 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                                            bool OnlyStatement);
   
   // ndm - insert CPP code into the lexer stream for parsing. 
-  // Inserts a stream of tokens AFTER the current token Tok.
+  // Inserts a stream of tokens before or after the current token Tok.
   // This is a good method for handling cases such as inserting the call
   // to initScout(argc, argv) at the beginning of main(), for other cases
   // it may be necessary to construct the AST manually.
