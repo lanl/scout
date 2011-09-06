@@ -44,9 +44,9 @@ static llvm::Type *getOrInsertType(llvm::Module &module, std::string name, llvm:
     return ty;
 
   if(type == NULL)
-    type = llvm::StructType::createNamed(llvm::getGlobalContext(), name);
+    type = llvm::StructType::create(llvm::getGlobalContext(), name);
   else
-    type = llvm::StructType::createNamed(name, llvm::ArrayRef< llvm::Type * >(type));
+    type = llvm::StructType::create(llvm::ArrayRef< llvm::Type * >(type), name);
 
   return type;
 }

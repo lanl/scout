@@ -456,7 +456,7 @@ void IndVarSimplify::HandleFloatingPointIV(Loop *L, PHINode *PN) {
   // platforms.
   if (WeakPH) {
     Value *Conv = new SIToFPInst(NewPHI, PN->getType(), "indvar.conv",
-                                 PN->getParent()->getFirstNonPHI());
+                                 PN->getParent()->getFirstInsertionPt());
     PN->replaceAllUsesWith(Conv);
     RecursivelyDeleteTriviallyDeadInstructions(PN);
   }
@@ -1703,7 +1703,7 @@ void IndVarSimplify::SinkUnusedInvariants(Loop *L) {
   BasicBlock *Preheader = L->getLoopPreheader();
   if (!Preheader) return;
 
-  Instruction *InsertPt = ExitBlock->getFirstNonPHI();
+  Instruction *InsertPt = ExitBlock->getFirstInsertionPt();
   BasicBlock::iterator I = Preheader->getTerminator();
   while (I != Preheader->begin()) {
     --I;
@@ -1722,6 +1722,10 @@ void IndVarSimplify::SinkUnusedInvariants(Loop *L) {
 
     // Skip debug info intrinsics.
     if (isa<DbgInfoIntrinsic>(I))
+      continue;
+
+    // Skip landingpad instructions.
+    if (isa<LandingPadInst>(I))
       continue;
 
     // Don't sink static AllocaInsts out of the entry block, which would
@@ -1903,7 +1907,7 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
     // the end of the pass.
     while (!OldCannIVs.empty()) {
       PHINode *OldCannIV = OldCannIVs.pop_back_val();
-      OldCannIV->insertBefore(L->getHeader()->getFirstNonPHI());
+      OldCannIV->insertBefore(L->getHeader()->getFirstInsertionPt());
     }
   }
   else if (ExpandBECount && ReuseIVForExit && needsLFTR(L, DT)) {

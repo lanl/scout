@@ -177,6 +177,16 @@ TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   return 0;
 }
 
+void TargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
+                                                   SDNode *Node) const {
+#ifndef NDEBUG
+  dbgs() << "If a target marks an instruction with "
+          "'hasPostISelHook', it must implement "
+          "TargetLowering::AdjustInstrPostInstrSelection!";
+#endif
+  llvm_unreachable(0);
+}
+
 //===----------------------------------------------------------------------===//
 // SelectionDAGISel code
 //===----------------------------------------------------------------------===//
@@ -463,6 +473,7 @@ void SelectionDAGISel::CodeGenAndEmitDAG() {
     GroupName = "Instruction Selection and Scheduling";
   std::string BlockName;
   int BlockNumber = -1;
+  (void)BlockNumber;
 #ifdef NDEBUG
   if (ViewDAGCombine1 || ViewLegalizeTypesDAGs || ViewLegalizeDAGs ||
       ViewDAGCombine2 || ViewDAGCombineLT || ViewISelDAGs || ViewSchedDAGs ||
@@ -807,6 +818,7 @@ static bool isFoldedOrDeadInstruction(const Instruction *I,
   return !I->mayWriteToMemory() && // Side-effecting instructions aren't folded.
          !isa<TerminatorInst>(I) && // Terminators aren't folded.
          !isa<DbgInfoIntrinsic>(I) &&  // Debug instructions aren't folded.
+         !isa<LandingPadInst>(I) &&    // Landingpad instructions aren't folded.
          !FuncInfo->isExportedInst(I); // Exported instrs must be computed.
 }
 

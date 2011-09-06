@@ -1814,6 +1814,45 @@ void SelectionDAGBuilder::visitResume(const ResumeInst &RI) {
   llvm_unreachable("SelectionDAGBuilder shouldn't visit resume instructions!");
 }
 
+void SelectionDAGBuilder::visitLandingPad(const LandingPadInst &LP) {
+  assert(FuncInfo.MBB->isLandingPad() &&
+         "Call to landingpad not in landing pad!");
+
+  MachineBasicBlock *MBB = FuncInfo.MBB;
+  MachineModuleInfo &MMI = DAG.getMachineFunction().getMMI();
+  AddLandingPadInfo(LP, MMI, MBB);
+
+  SmallVector<EVT, 2> ValueVTs;
+  ComputeValueVTs(TLI, LP.getType(), ValueVTs);
+
+  // Insert the EXCEPTIONADDR instruction.
+  assert(FuncInfo.MBB->isLandingPad() &&
+         "Call to eh.exception not in landing pad!");
+  SDVTList VTs = DAG.getVTList(TLI.getPointerTy(), MVT::Other);
+  SDValue Ops[2];
+  Ops[0] = DAG.getRoot();
+  SDValue Op1 = DAG.getNode(ISD::EXCEPTIONADDR, getCurDebugLoc(), VTs, Ops, 1);
+  SDValue Chain = Op1.getValue(1);
+
+  // Insert the EHSELECTION instruction.
+  VTs = DAG.getVTList(TLI.getPointerTy(), MVT::Other);
+  Ops[0] = Op1;
+  Ops[1] = Chain;
+  SDValue Op2 = DAG.getNode(ISD::EHSELECTION, getCurDebugLoc(), VTs, Ops, 2);
+  Chain = Op2.getValue(1);
+  Op2 = DAG.getSExtOrTrunc(Op2, getCurDebugLoc(), MVT::i32);
+
+  Ops[0] = Op1;
+  Ops[1] = Op2;
+  SDValue Res = DAG.getNode(ISD::MERGE_VALUES, getCurDebugLoc(),
+                            DAG.getVTList(&ValueVTs[0], ValueVTs.size()),
+                            &Ops[0], 2);
+
+  std::pair<SDValue, SDValue> RetPair = std::make_pair(Res, Chain);
+  setValue(&LP, RetPair.first);
+  DAG.setRoot(RetPair.second);
+}
+
 /// handleSmallSwitchCaseRange - Emit a series of specific tests (suitable for
 /// small case ranges).
 bool SelectionDAGBuilder::handleSmallSwitchRange(CaseRec& CR,
@@ -3110,6 +3149,9 @@ void SelectionDAGBuilder::visitAlloca(const AllocaInst &I) {
 }
 
 void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
+  if (I.isAtomic())
+    return visitAtomicLoad(I);
+
   const Value *SV = I.getOperand(0);
   SDValue Ptr = getValue(SV);
 
@@ -3187,6 +3229,9 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
 }
 
 void SelectionDAGBuilder::visitStore(const StoreInst &I) {
+  if (I.isAtomic())
+    return visitAtomicStore(I);
+
   const Value *SrcV = I.getOperand(0);
   const Value *PtrV = I.getOperand(1);
 
@@ -3238,12 +3283,13 @@ void SelectionDAGBuilder::visitStore(const StoreInst &I) {
 }
 
 static SDValue InsertFenceForAtomic(SDValue Chain, AtomicOrdering Order,
+                                    SynchronizationScope Scope,
                                     bool Before, DebugLoc dl,
                                     SelectionDAG &DAG,
                                     const TargetLowering &TLI) {
   // Fence, if necessary
   if (Before) {
-    if (Order == AcquireRelease)
+    if (Order == AcquireRelease || Order == SequentiallyConsistent)
       Order = Release;
     else if (Order == Acquire || Order == Monotonic)
       return Chain;
@@ -3255,19 +3301,21 @@ static SDValue InsertFenceForAtomic(SDValue Chain, AtomicOrdering Order,
   }
   SDValue Ops[3];
   Ops[0] = Chain;
-  Ops[1] = DAG.getConstant(SequentiallyConsistent, TLI.getPointerTy());
-  Ops[2] = DAG.getConstant(Order, TLI.getPointerTy());
+  Ops[1] = DAG.getConstant(Order, TLI.getPointerTy());
+  Ops[2] = DAG.getConstant(Scope, TLI.getPointerTy());
   return DAG.getNode(ISD::ATOMIC_FENCE, dl, MVT::Other, Ops, 3);
 }
 
 void SelectionDAGBuilder::visitAtomicCmpXchg(const AtomicCmpXchgInst &I) {
   DebugLoc dl = getCurDebugLoc();
   AtomicOrdering Order = I.getOrdering();
+  SynchronizationScope Scope = I.getSynchScope();
 
   SDValue InChain = getRoot();
 
   if (TLI.getInsertFencesForAtomic())
-    InChain = InsertFenceForAtomic(InChain, Order, true, dl, DAG, TLI);
+    InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
+                                   DAG, TLI);
 
   SDValue L =
     DAG.getAtomic(ISD::ATOMIC_CMP_SWAP, dl,
@@ -3277,12 +3325,14 @@ void SelectionDAGBuilder::visitAtomicCmpXchg(const AtomicCmpXchgInst &I) {
                   getValue(I.getCompareOperand()),
                   getValue(I.getNewValOperand()),
                   MachinePointerInfo(I.getPointerOperand()), 0 /* Alignment */,
-                  I.getOrdering(), I.getSynchScope());
+                  TLI.getInsertFencesForAtomic() ? Monotonic : Order,
+                  Scope);
 
   SDValue OutChain = L.getValue(1);
 
   if (TLI.getInsertFencesForAtomic())
-    OutChain = InsertFenceForAtomic(OutChain, Order, false, dl, DAG, TLI);
+    OutChain = InsertFenceForAtomic(OutChain, Order, Scope, false, dl,
+                                    DAG, TLI);
 
   setValue(&I, L);
   DAG.setRoot(OutChain);
@@ -3306,11 +3356,13 @@ void SelectionDAGBuilder::visitAtomicRMW(const AtomicRMWInst &I) {
   case AtomicRMWInst::UMin: NT = ISD::ATOMIC_LOAD_UMIN; break;
   }
   AtomicOrdering Order = I.getOrdering();
+  SynchronizationScope Scope = I.getSynchScope();
 
   SDValue InChain = getRoot();
 
   if (TLI.getInsertFencesForAtomic())
-    InChain = InsertFenceForAtomic(InChain, Order, true, dl, DAG, TLI);
+    InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
+                                   DAG, TLI);
 
   SDValue L =
     DAG.getAtomic(NT, dl,
@@ -3320,12 +3372,13 @@ void SelectionDAGBuilder::visitAtomicRMW(const AtomicRMWInst &I) {
                   getValue(I.getValOperand()),
                   I.getPointerOperand(), 0 /* Alignment */,
                   TLI.getInsertFencesForAtomic() ? Monotonic : Order,
-                  I.getSynchScope());
+                  Scope);
 
   SDValue OutChain = L.getValue(1);
 
   if (TLI.getInsertFencesForAtomic())
-    OutChain = InsertFenceForAtomic(OutChain, Order, false, dl, DAG, TLI);
+    OutChain = InsertFenceForAtomic(OutChain, Order, Scope, false, dl,
+                                    DAG, TLI);
 
   setValue(&I, L);
   DAG.setRoot(OutChain);
@@ -3338,6 +3391,61 @@ void SelectionDAGBuilder::visitFence(const FenceInst &I) {
   Ops[1] = DAG.getConstant(I.getOrdering(), TLI.getPointerTy());
   Ops[2] = DAG.getConstant(I.getSynchScope(), TLI.getPointerTy());
   DAG.setRoot(DAG.getNode(ISD::ATOMIC_FENCE, dl, MVT::Other, Ops, 3));
+}
+
+void SelectionDAGBuilder::visitAtomicLoad(const LoadInst &I) {
+  DebugLoc dl = getCurDebugLoc();
+  AtomicOrdering Order = I.getOrdering();
+  SynchronizationScope Scope = I.getSynchScope();
+
+  SDValue InChain = getRoot();
+
+  EVT VT = EVT::getEVT(I.getType());
+
+  SDValue L =
+    DAG.getAtomic(ISD::ATOMIC_LOAD, dl, VT, VT, InChain,
+                  getValue(I.getPointerOperand()),
+                  I.getPointerOperand(), I.getAlignment(),
+                  TLI.getInsertFencesForAtomic() ? Monotonic : Order,
+                  Scope);
+
+  SDValue OutChain = L.getValue(1);
+
+  if (TLI.getInsertFencesForAtomic())
+    OutChain = InsertFenceForAtomic(OutChain, Order, Scope, false, dl,
+                                    DAG, TLI);
+
+  setValue(&I, L);
+  DAG.setRoot(OutChain);
+}
+
+void SelectionDAGBuilder::visitAtomicStore(const StoreInst &I) {
+  DebugLoc dl = getCurDebugLoc();
+
+  AtomicOrdering Order = I.getOrdering();
+  SynchronizationScope Scope = I.getSynchScope();
+
+  SDValue InChain = getRoot();
+
+  if (TLI.getInsertFencesForAtomic())
+    InChain = InsertFenceForAtomic(InChain, Order, Scope, true, dl,
+                                   DAG, TLI);
+
+  SDValue OutChain =
+    DAG.getAtomic(ISD::ATOMIC_STORE, dl,
+                  getValue(I.getValueOperand()).getValueType().getSimpleVT(),
+                  InChain,
+                  getValue(I.getPointerOperand()),
+                  getValue(I.getValueOperand()),
+                  I.getPointerOperand(), I.getAlignment(),
+                  TLI.getInsertFencesForAtomic() ? Monotonic : Order,
+                  Scope);
+
+  if (TLI.getInsertFencesForAtomic())
+    OutChain = InsertFenceForAtomic(OutChain, Order, Scope, false, dl,
+                                    DAG, TLI);
+
+  DAG.setRoot(OutChain);
 }
 
 /// visitTargetIntrinsic - Lower a call of a target intrinsic to an INTRINSIC
@@ -4908,12 +5016,15 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     Ops[4] = DAG.getSrcValue(I.getArgOperand(0));
     Ops[5] = DAG.getSrcValue(F);
 
-    Res = DAG.getNode(ISD::TRAMPOLINE, dl,
-                      DAG.getVTList(TLI.getPointerTy(), MVT::Other),
-                      Ops, 6);
+    Res = DAG.getNode(ISD::INIT_TRAMPOLINE, dl, MVT::Other, Ops, 6);
 
-    setValue(&I, Res);
-    DAG.setRoot(Res.getValue(1));
+    DAG.setRoot(Res);
+    return 0;
+  }
+  case Intrinsic::adjust_trampoline: {
+    setValue(&I, DAG.getNode(ISD::ADJUST_TRAMPOLINE, dl,
+                             TLI.getPointerTy(),
+                             getValue(I.getArgOperand(0))));
     return 0;
   }
   case Intrinsic::gcroot:
@@ -5838,9 +5949,11 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
 
       if (OpInfo.ConstraintVT != Input.ConstraintVT) {
 	std::pair<unsigned, const TargetRegisterClass*> MatchRC =
-	  TLI.getRegForInlineAsmConstraint(OpInfo.ConstraintCode, OpInfo.ConstraintVT);
+	  TLI.getRegForInlineAsmConstraint(OpInfo.ConstraintCode,
+                                           OpInfo.ConstraintVT);
 	std::pair<unsigned, const TargetRegisterClass*> InputRC =
-	  TLI.getRegForInlineAsmConstraint(Input.ConstraintCode, Input.ConstraintVT);
+	  TLI.getRegForInlineAsmConstraint(Input.ConstraintCode,
+                                           Input.ConstraintVT);
         if ((OpInfo.ConstraintVT.isInteger() !=
              Input.ConstraintVT.isInteger()) ||
             (MatchRC.second != InputRC.second)) {

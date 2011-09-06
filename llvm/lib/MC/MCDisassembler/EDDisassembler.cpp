@@ -33,8 +33,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetSelect.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 using namespace llvm;
 
 bool EDDisassembler::sInitialized = false;
@@ -239,14 +239,17 @@ EDInst *EDDisassembler::createInst(EDByteReaderCallback byteReader,
   MCInst* inst = new MCInst;
   uint64_t byteSize;
   
-  if (!Disassembler->getInstruction(*inst,
-                                    byteSize,
-                                    memoryObject,
-                                    address,
-                                    ErrorStream)) {
+  MCDisassembler::DecodeStatus S;
+  S = Disassembler->getInstruction(*inst, byteSize, memoryObject, address,
+                                   ErrorStream);
+  switch (S) {
+  case MCDisassembler::Fail:
+  case MCDisassembler::SoftFail:
+    // FIXME: Do something different on soft failure mode?
     delete inst;
     return NULL;
-  } else {
+    
+  case MCDisassembler::Success: {
     const llvm::EDInstInfo *thisInstInfo = NULL;
 
     if (InstInfos) {
@@ -256,6 +259,8 @@ EDInst *EDDisassembler::createInst(EDByteReaderCallback byteReader,
     EDInst* sdInst = new EDInst(inst, byteSize, *this, thisInstInfo);
     return sdInst;
   }
+  }
+  return NULL;
 }
 
 void EDDisassembler::initMaps(const MCRegisterInfo &registerInfo) {
@@ -362,7 +367,7 @@ int EDDisassembler::parseInst(SmallVectorImpl<MCParsedAsmOperand*> &operands,
   sourceMgr.AddNewSourceBuffer(buf, SMLoc()); // ownership of buf handed over
   MCContext context(*AsmInfo, *MRI, NULL);
   OwningPtr<MCStreamer> streamer(createNullStreamer(context));
-  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(*Tgt, sourceMgr,
+  OwningPtr<MCAsmParser> genericParser(createMCAsmParser(sourceMgr,
                                                          context, *streamer,
                                                          *AsmInfo));
 

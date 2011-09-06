@@ -58,7 +58,6 @@ enum {
   FUNCTION_INST_UNREACHABLE_ABBREV
 };
 
-
 static unsigned GetEncodedCastOpcode(unsigned Opcode) {
   switch (Opcode) {
   default: llvm_unreachable("Unknown cast instruction!");
@@ -237,7 +236,6 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed,
                             Log2_32_Ceil(VE.getTypes().size()+1)));
   unsigned StructNamedAbbrev = Stream.EmitAbbrev(Abbv);
-
   
   // Abbrev for TYPE_CODE_ARRAY.
   Abbv = new BitCodeAbbrev();
@@ -305,7 +303,7 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
            E = ST->element_end(); I != E; ++I)
         TypeVals.push_back(VE.getTypeID(*I));
       
-      if (ST->isAnonymous()) {
+      if (ST->isLiteral()) {
         Code = bitc::TYPE_CODE_STRUCT_ANON;
         AbbrevToUse = StructAnonAbbrev;
       } else {
@@ -410,14 +408,15 @@ static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
        GV != E; ++GV) {
     MaxAlignment = std::max(MaxAlignment, GV->getAlignment());
     MaxGlobalType = std::max(MaxGlobalType, VE.getTypeID(GV->getType()));
-
-    if (!GV->hasSection()) continue;
-    // Give section names unique ID's.
-    unsigned &Entry = SectionMap[GV->getSection()];
-    if (Entry != 0) continue;
-    WriteStringRecord(bitc::MODULE_CODE_SECTIONNAME, GV->getSection(),
-                      0/*TODO*/, Stream);
-    Entry = SectionMap.size();
+    if (GV->hasSection()) {
+      // Give section names unique ID's.
+      unsigned &Entry = SectionMap[GV->getSection()];
+      if (!Entry) {
+        WriteStringRecord(bitc::MODULE_CODE_SECTIONNAME, GV->getSection(),
+                          0/*TODO*/, Stream);
+        Entry = SectionMap.size();
+      }
+    }
   }
   for (Module::const_iterator F = M->begin(), E = M->end(); F != E; ++F) {
     MaxAlignment = std::max(MaxAlignment, F->getAlignment());
@@ -1162,6 +1161,23 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
     for (unsigned i = 0, e = PN.getNumIncomingValues(); i != e; ++i) {
       Vals.push_back(VE.getValueID(PN.getIncomingValue(i)));
       Vals.push_back(VE.getValueID(PN.getIncomingBlock(i)));
+    }
+    break;
+  }
+
+  case Instruction::LandingPad: {
+    const LandingPadInst &LP = cast<LandingPadInst>(I);
+    Code = bitc::FUNC_CODE_INST_LANDINGPAD;
+    Vals.push_back(VE.getTypeID(LP.getType()));
+    PushValueAndType(LP.getPersonalityFn(), InstID, Vals, VE);
+    Vals.push_back(LP.isCleanup());
+    Vals.push_back(LP.getNumClauses());
+    for (unsigned I = 0, E = LP.getNumClauses(); I != E; ++I) {
+      if (LP.isCatch(I))
+        Vals.push_back(LandingPadInst::Catch);
+      else
+        Vals.push_back(LandingPadInst::Filter);
+      PushValueAndType(LP.getClause(I), InstID, Vals, VE);
     }
     break;
   }

@@ -266,7 +266,7 @@ static bool PersonalityHasOnlyCXXUses(llvm::Constant *Fn) {
 /// when it really needs it.
 void CodeGenModule::SimplifyPersonality() {
   // For now, this is really a Darwin-specific operation.
-  if (!Context.Target.getTriple().isOSDarwin())
+  if (!Context.getTargetInfo().getTriple().isOSDarwin())
     return;
 
   // If we're not in ObjC++ -fexceptions, there's nothing to do.
@@ -477,7 +477,6 @@ static void emitFilterDispatchBlock(CodeGenFunction &CGF,
     return;
   }
 
-  CGBuilderTy::InsertPoint savedIP = CGF.Builder.saveIP();
   CGF.EmitBlockAfterUses(dispatchBlock);
 
   // If this isn't a catch-all filter, we need to check whether we got
@@ -1032,8 +1031,10 @@ static void InitCatchParam(CodeGenFunction &CGF,
   CGF.EHStack.pushTerminate();
 
   // Perform the copy construction.
-  CGF.EmitAggExpr(copyExpr, AggValueSlot::forAddr(ParamAddr, Qualifiers(), 
-                                                  false));
+  CGF.EmitAggExpr(copyExpr, AggValueSlot::forAddr(ParamAddr, Qualifiers(),
+                                                  AggValueSlot::IsNotDestructed,
+                                          AggValueSlot::DoesNotNeedGCBarriers,
+                                                  AggValueSlot::IsNotAliased));
 
   // Leave the terminate scope.
   CGF.EHStack.popTerminate();

@@ -35,6 +35,7 @@ namespace frontend {
     EmitCodeGenOnly,        ///< Generate machine code, but don't emit anything.
     EmitObj,                ///< Emit a .o file.
     FixIt,                  ///< Parse and apply any fixits to the source.
+    GenerateModule,         ///< Generate pre-compiled module.
     GeneratePCH,            ///< Generate pre-compiled header.
     GeneratePTH,            ///< Generate pre-tokenized header.
     InitOnly,               ///< Only execute frontend initialization.
@@ -58,9 +59,6 @@ public:
   unsigned RelocatablePCH : 1;             ///< When generating PCH files,
                                            /// instruct the AST writer to create
                                            /// relocatable PCH files.
-  unsigned ChainedPCH : 1;                 ///< When generating PCH files,
-                                           /// instruct the AST writer to create
-                                           /// chained PCH files.
   unsigned ShowHelp : 1;                   ///< Show the -help text.
   unsigned ShowMacrosInCodeCompletion : 1; ///< Show macros in code completion
                                            /// results.
@@ -124,9 +122,6 @@ public:
   /// \brief The list of AST files to merge.
   std::vector<std::string> ASTMergeFiles;
 
-  /// \brief The list of modules to import.
-  std::vector<std::string> Modules;
-
   /// \brief A list of arguments to forward to LLVM's option processing; this
   /// should only be used for debugging and experimental features.
   std::vector<std::string> LLVMArgs;
@@ -137,7 +132,6 @@ public:
     ProgramAction = frontend::ParseSyntaxOnly;
     ActionName = "";
     RelocatablePCH = 0;
-    ChainedPCH = 0;
     ShowHelp = 0;
     ShowMacrosInCodeCompletion = 0;
     ShowCodePatternsInCodeCompletion = 0;

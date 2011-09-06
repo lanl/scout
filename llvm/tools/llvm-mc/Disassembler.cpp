@@ -21,14 +21,14 @@
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/MemoryObject.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
 typedef std::vector<std::pair<unsigned char, const char*> > ByteArrayTy;
@@ -65,15 +65,26 @@ static bool PrintInsts(const MCDisassembler &DisAsm,
   for (Index = 0; Index < Bytes.size(); Index += Size) {
     MCInst Inst;
 
-    if (DisAsm.getInstruction(Inst, Size, memoryObject, Index,
-                               /*REMOVE*/ nulls())) {
-      Printer.printInst(&Inst, Out);
-      Out << "\n";
-    } else {
+    MCDisassembler::DecodeStatus S;
+    S = DisAsm.getInstruction(Inst, Size, memoryObject, Index,
+                              /*REMOVE*/ nulls());
+    switch (S) {
+    case MCDisassembler::Fail:
       SM.PrintMessage(SMLoc::getFromPointer(Bytes[Index].second),
                       "invalid instruction encoding", "warning");
       if (Size == 0)
         Size = 1; // skip illegible bytes
+      break;
+
+    case MCDisassembler::SoftFail:
+      SM.PrintMessage(SMLoc::getFromPointer(Bytes[Index].second),
+                      "potentially undefined instruction encoding", "warning");
+      // Fall through
+
+    case MCDisassembler::Success:
+      Printer.printInst(&Inst, Out);
+      Out << "\n";
+      break;
     }
   }
 

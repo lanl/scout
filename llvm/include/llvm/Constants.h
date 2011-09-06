@@ -170,7 +170,7 @@ public:
   /// to true.
   /// @returns true iff this constant's bits are all set to true.
   /// @brief Determine if the value is all ones.
-  bool isAllOnesValue() const { 
+  bool isMinusOne() const { 
     return Val.isAllOnesValue();
   }
 
@@ -203,7 +203,7 @@ public:
   /// value.
   /// @returns true iff this constant is greater or equal to the given number.
   /// @brief Determine if the value is greater or equal to the given number.
-  bool uge(uint64_t Num) {
+  bool uge(uint64_t Num) const {
     return Val.getActiveBits() > 64 || Val.getZExtValue() >= Num;
   }
 
@@ -390,7 +390,7 @@ struct OperandTraits<ConstantArray> :
   public VariadicOperandTraits<ConstantArray> {
 };
 
-DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(ConstantArray, Constant)
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ConstantArray, Constant)
 
 //===----------------------------------------------------------------------===//
 // ConstantStruct - Constant Struct Declarations
@@ -450,7 +450,7 @@ struct OperandTraits<ConstantStruct> :
   public VariadicOperandTraits<ConstantStruct> {
 };
 
-DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(ConstantStruct, Constant)
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ConstantStruct, Constant)
 
 
 //===----------------------------------------------------------------------===//
@@ -501,7 +501,7 @@ struct OperandTraits<ConstantVector> :
   public VariadicOperandTraits<ConstantVector> {
 };
 
-DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(ConstantVector, Constant)
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ConstantVector, Constant)
 
 //===----------------------------------------------------------------------===//
 /// ConstantPointerNull - a constant pointer value that points to null
@@ -575,7 +575,7 @@ struct OperandTraits<BlockAddress> :
   public FixedNumOperandTraits<BlockAddress, 2> {
 };
 
-DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(BlockAddress, Value)
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(BlockAddress, Value)
   
 
 //===----------------------------------------------------------------------===//
@@ -884,7 +884,7 @@ struct OperandTraits<ConstantExpr> :
   public VariadicOperandTraits<ConstantExpr, 1> {
 };
 
-DEFINE_TRANSPARENT_CASTED_OPERAND_ACCESSORS(ConstantExpr, Constant)
+DEFINE_TRANSPARENT_OPERAND_ACCESSORS(ConstantExpr, Constant)
 
 //===----------------------------------------------------------------------===//
 /// UndefValue - 'undef' values are things that do not have specified contents.

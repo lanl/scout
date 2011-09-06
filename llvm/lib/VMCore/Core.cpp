@@ -299,7 +299,7 @@ LLVMTypeRef LLVMStructType(LLVMTypeRef *ElementTypes,
 
 LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef C, const char *Name)
 {
-  return wrap(StructType::createNamed(*unwrap(C), Name));
+  return wrap(StructType::create(*unwrap(C), Name));
 }
 
 void LLVMStructSetBody(LLVMTypeRef StructTy, LLVMTypeRef *ElementTypes,
@@ -1382,6 +1382,10 @@ LLVMValueRef LLVMGetBasicBlockParent(LLVMBasicBlockRef BB) {
   return wrap(unwrap(BB)->getParent());
 }
 
+LLVMValueRef LLVMGetBasicBlockTerminator(LLVMBasicBlockRef BB) {
+  return wrap(unwrap(BB)->getTerminator());
+}
+
 unsigned LLVMCountBasicBlocks(LLVMValueRef FnRef) {
   return unwrap<Function>(FnRef)->size();
 }
@@ -1452,6 +1456,10 @@ LLVMBasicBlockRef LLVMInsertBasicBlock(LLVMBasicBlockRef BBRef,
 
 void LLVMDeleteBasicBlock(LLVMBasicBlockRef BBRef) {
   unwrap(BBRef)->eraseFromParent();
+}
+
+void LLVMRemoveBasicBlockFromParent(LLVMBasicBlockRef BBRef) {
+  unwrap(BBRef)->removeFromParent();
 }
 
 void LLVMMoveBasicBlockBefore(LLVMBasicBlockRef BB, LLVMBasicBlockRef MovePos) {
@@ -1551,6 +1559,12 @@ LLVMBool LLVMIsTailCall(LLVMValueRef Call) {
 
 void LLVMSetTailCall(LLVMValueRef Call, LLVMBool isTailCall) {
   unwrap<CallInst>(Call)->setTailCall(isTailCall);
+}
+
+/*--.. Operations on switch instructions (only) ............................--*/
+
+LLVMBasicBlockRef LLVMGetSwitchDefaultDest(LLVMValueRef Switch) {
+  return wrap(unwrap<SwitchInst>(Switch)->getDefaultDest());
 }
 
 /*--.. Operations on phi nodes .............................................--*/
@@ -1683,6 +1697,14 @@ LLVMValueRef LLVMBuildInvoke(LLVMBuilderRef B, LLVMValueRef Fn,
                                       Name));
 }
 
+LLVMValueRef LLVMBuildLandingPad(LLVMBuilderRef B, LLVMTypeRef Ty,
+                                 LLVMValueRef PersFn, unsigned NumClauses,
+                                 const char *Name) {
+  return wrap(unwrap(B)->CreateLandingPad(unwrap(Ty),
+                                          cast<Function>(unwrap(PersFn)),
+                                          NumClauses, Name));
+}
+
 LLVMValueRef LLVMBuildResume(LLVMBuilderRef B, LLVMValueRef Exn) {
   return wrap(unwrap(B)->CreateResume(unwrap(Exn)));
 }
@@ -1698,6 +1720,15 @@ void LLVMAddCase(LLVMValueRef Switch, LLVMValueRef OnVal,
 
 void LLVMAddDestination(LLVMValueRef IndirectBr, LLVMBasicBlockRef Dest) {
   unwrap<IndirectBrInst>(IndirectBr)->addDestination(unwrap(Dest));
+}
+
+void LLVMAddClause(LLVMValueRef LandingPad, LLVMValueRef ClauseVal) {
+  unwrap<LandingPadInst>(LandingPad)->
+    addClause(cast<Constant>(unwrap(ClauseVal)));
+}
+
+void LLVMSetCleanup(LLVMValueRef LandingPad, LLVMBool Val) {
+  unwrap<LandingPadInst>(LandingPad)->setCleanup(Val);
 }
 
 /*--.. Arithmetic ..........................................................--*/

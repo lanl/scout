@@ -108,6 +108,43 @@ bool InstCombiner::ShouldChangeType(Type *From, Type *To) const {
   return true;
 }
 
+// Return true, if No Signed Wrap should be maintained for I.
+// The No Signed Wrap flag can be kept if the operation "B (I.getOpcode) C",
+// where both B and C should be ConstantInts, results in a constant that does
+// not overflow. This function only handles the Add and Sub opcodes. For
+// all other opcodes, the function conservatively returns false.
+static bool MaintainNoSignedWrap(BinaryOperator &I, Value *B, Value *C) {
+  OverflowingBinaryOperator *OBO = dyn_cast<OverflowingBinaryOperator>(&I);
+  if (!OBO || !OBO->hasNoSignedWrap()) {
+    return false;
+  }
+
+  // We reason about Add and Sub Only.
+  Instruction::BinaryOps Opcode = I.getOpcode();
+  if (Opcode != Instruction::Add && 
+      Opcode != Instruction::Sub) {
+    return false;
+  }
+
+  ConstantInt *CB = dyn_cast<ConstantInt>(B);
+  ConstantInt *CC = dyn_cast<ConstantInt>(C);
+
+  if (!CB || !CC) {
+    return false;
+  }
+
+  const APInt &BVal = CB->getValue();
+  const APInt &CVal = CC->getValue();
+  bool Overflow = false;
+
+  if (Opcode == Instruction::Add) {
+    BVal.sadd_ov(CVal, Overflow);
+  } else {
+    BVal.ssub_ov(CVal, Overflow);
+  }
+
+  return !Overflow;
+}
 
 /// SimplifyAssociativeOrCommutative - This performs a few simplifications for
 /// operators which are associative or commutative:
@@ -159,7 +196,16 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
           I.setOperand(1, V);
           // Conservatively clear the optional flags, since they may not be
           // preserved by the reassociation.
-          I.clearSubclassOptionalData();
+          if (MaintainNoSignedWrap(I, B, C) &&
+	      (!Op0 || (isa<BinaryOperator>(Op0) && Op0->hasNoSignedWrap()))) {
+            // Note: this is only valid because SimplifyBinOp doesn't look at
+            // the operands to Op0.
+            I.clearSubclassOptionalData();
+            I.setHasNoSignedWrap(true);
+          } else {
+            I.clearSubclassOptionalData();
+          }
+            
           Changed = true;
           ++NumReassoc;
           continue;
@@ -241,7 +287,7 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
         Constant *C2 = cast<Constant>(Op1->getOperand(1));
 
         Constant *Folded = ConstantExpr::get(Opcode, C1, C2);
-        Instruction *New = BinaryOperator::Create(Opcode, A, B);
+        BinaryOperator *New = BinaryOperator::Create(Opcode, A, B);
         InsertNewInstWith(New, I);
         New->takeName(Op1);
         I.setOperand(0, New);
@@ -249,6 +295,7 @@ bool InstCombiner::SimplifyAssociativeOrCommutative(BinaryOperator &I) {
         // Conservatively clear the optional flags, since they may not be
         // preserved by the reassociation.
         I.clearSubclassOptionalData();
+
         Changed = true;
         continue;
       }
@@ -1332,7 +1379,7 @@ Instruction *InstCombiner::visitExtractValueInst(ExtractValueInst &EV) {
     // load from a GEP. This reduces the size of the load.
     // FIXME: If a load is used only by extractvalue instructions then this
     //        could be done regardless of having multiple uses.
-    if (!L->isVolatile() && L->hasOneUse()) {
+    if (L->isSimple() && L->hasOneUse()) {
       // extractvalue has integer indices, getelementptr has Value*s. Convert.
       SmallVector<Value*, 4> Indices;
       // Prefix an i32 0 since we need the first element.
@@ -1371,7 +1418,8 @@ static bool TryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
   assert(I->hasOneUse() && "Invariants didn't hold!");
 
   // Cannot move control-flow-involving, volatile loads, vaarg, etc.
-  if (isa<PHINode>(I) || I->mayHaveSideEffects() || isa<TerminatorInst>(I))
+  if (isa<PHINode>(I) || isa<LandingPadInst>(I) || I->mayHaveSideEffects() ||
+      isa<TerminatorInst>(I))
     return false;
 
   // Do not sink alloca instructions out of the entry block.
@@ -1388,8 +1436,7 @@ static bool TryToSinkInstruction(Instruction *I, BasicBlock *DestBlock) {
         return false;
   }
 
-  BasicBlock::iterator InsertPos = DestBlock->getFirstNonPHI();
-
+  BasicBlock::iterator InsertPos = DestBlock->getFirstInsertionPt();
   I->moveBefore(InsertPos);
   ++NumSunkInst;
   return true;
@@ -1524,27 +1571,29 @@ bool InstCombiner::DoOneIteration(Function &F, unsigned Iteration) {
     // Do a quick scan over the function.  If we find any blocks that are
     // unreachable, remove any instructions inside of them.  This prevents
     // the instcombine code from having to deal with some bad special cases.
-    for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
-      if (!Visited.count(BB)) {
-        Instruction *Term = BB->getTerminator();
-        while (Term != BB->begin()) {   // Remove instrs bottom-up
-          BasicBlock::iterator I = Term; --I;
+    for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+      if (Visited.count(BB)) continue;
 
-          DEBUG(errs() << "IC: DCE: " << *I << '\n');
-          // A debug intrinsic shouldn't force another iteration if we weren't
-          // going to do one without it.
-          if (!isa<DbgInfoIntrinsic>(I)) {
-            ++NumDeadInst;
-            MadeIRChange = true;
-          }
-
-          // If I is not void type then replaceAllUsesWith undef.
-          // This allows ValueHandlers and custom metadata to adjust itself.
-          if (!I->getType()->isVoidTy())
-            I->replaceAllUsesWith(UndefValue::get(I->getType()));
-          I->eraseFromParent();
+      // Delete the instructions backwards, as it has a reduced likelihood of
+      // having to update as many def-use and use-def chains.
+      Instruction *EndInst = BB->getTerminator(); // Last not to be deleted.
+      while (EndInst != BB->begin()) {
+        // Delete the next to last instruction.
+        BasicBlock::iterator I = EndInst;
+        Instruction *Inst = --I;
+        if (!Inst->use_empty())
+          Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
+        if (isa<LandingPadInst>(Inst)) {
+          EndInst = Inst;
+          continue;
         }
+        if (!isa<DbgInfoIntrinsic>(Inst)) {
+          ++NumDeadInst;
+          MadeIRChange = true;
+        }
+        Inst->eraseFromParent();
       }
+    }
   }
 
   while (!Worklist.isEmpty()) {

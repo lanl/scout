@@ -48,6 +48,7 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
     N->dump(&DAG); dbgs() << "\n";
 #endif
     llvm_unreachable("Do not know how to promote this operator!");
+  case ISD::MERGE_VALUES:Res = PromoteIntRes_MERGE_VALUES(N); break;
   case ISD::AssertSext:  Res = PromoteIntRes_AssertSext(N); break;
   case ISD::AssertZext:  Res = PromoteIntRes_AssertZext(N); break;
   case ISD::BITCAST:     Res = PromoteIntRes_BITCAST(N); break;
@@ -134,6 +135,11 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   // If the result is null then the sub-method took care of registering it.
   if (Res.getNode())
     SetPromotedInteger(SDValue(N, ResNo), Res);
+}
+
+SDValue DAGTypeLegalizer::PromoteIntRes_MERGE_VALUES(SDNode *N) {
+  SDValue Op = DecomposeMERGE_VALUES(N);
+  return GetPromotedInteger(Op);
 }
 
 SDValue DAGTypeLegalizer::PromoteIntRes_AssertSext(SDNode *N) {
@@ -1057,6 +1063,7 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::UDIV:        ExpandIntRes_UDIV(N, Lo, Hi); break;
   case ISD::UREM:        ExpandIntRes_UREM(N, Lo, Hi); break;
   case ISD::ZERO_EXTEND: ExpandIntRes_ZERO_EXTEND(N, Lo, Hi); break;
+  case ISD::ATOMIC_LOAD: ExpandIntRes_ATOMIC_LOAD(N, Lo, Hi); break;
 
   case ISD::ATOMIC_LOAD_ADD:
   case ISD::ATOMIC_LOAD_SUB:
@@ -1546,6 +1553,12 @@ void DAGTypeLegalizer::ExpandIntRes_ADDSUBE(SDNode *N,
   // Legalized the flag result - switch anything that used the old flag to
   // use the new one.
   ReplaceValueWith(SDValue(N, 1), Hi.getValue(1));
+}
+
+void DAGTypeLegalizer::ExpandIntRes_MERGE_VALUES(SDNode *N, 
+                                                 SDValue &Lo, SDValue &Hi) {
+  SDValue Res = DecomposeMERGE_VALUES(N);
+  SplitInteger(Res, Lo, Hi);
 }
 
 void DAGTypeLegalizer::ExpandIntRes_ANY_EXTEND(SDNode *N,
@@ -2323,6 +2336,20 @@ void DAGTypeLegalizer::ExpandIntRes_ZERO_EXTEND(SDNode *N,
   }
 }
 
+void DAGTypeLegalizer::ExpandIntRes_ATOMIC_LOAD(SDNode *N,
+                                                SDValue &Lo, SDValue &Hi) {
+  DebugLoc dl = N->getDebugLoc();
+  EVT VT = cast<AtomicSDNode>(N)->getMemoryVT();
+  SDValue Zero = DAG.getConstant(0, VT);
+  SDValue Swap = DAG.getAtomic(ISD::ATOMIC_CMP_SWAP, dl, VT,
+                               N->getOperand(0),
+                               N->getOperand(1), Zero, Zero,
+                               cast<AtomicSDNode>(N)->getMemOperand(),
+                               cast<AtomicSDNode>(N)->getOrdering(),
+                               cast<AtomicSDNode>(N)->getSynchScope());
+  ReplaceValueWith(SDValue(N, 0), Swap.getValue(0));
+  ReplaceValueWith(SDValue(N, 1), Swap.getValue(1));
+}
 
 //===----------------------------------------------------------------------===//
 //  Integer Operand Expansion
@@ -2367,6 +2394,8 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
   case ISD::ROTR:              Res = ExpandIntOp_Shift(N); break;
   case ISD::RETURNADDR:
   case ISD::FRAMEADDR:         Res = ExpandIntOp_RETURNADDR(N); break;
+
+  case ISD::ATOMIC_STORE:      Res = ExpandIntOp_ATOMIC_STORE(N); break;
   }
 
   // If the result is null, the sub-method took care of registering results etc.
@@ -2743,6 +2772,19 @@ SDValue DAGTypeLegalizer::ExpandIntOp_UINT_TO_FP(SDNode *N) {
          "Don't know how to expand this UINT_TO_FP!");
   return MakeLibCall(LC, DstVT, &Op, 1, true, dl);
 }
+
+SDValue DAGTypeLegalizer::ExpandIntOp_ATOMIC_STORE(SDNode *N) {
+  DebugLoc dl = N->getDebugLoc();
+  SDValue Swap = DAG.getAtomic(ISD::ATOMIC_SWAP, dl,
+                               cast<AtomicSDNode>(N)->getMemoryVT(),
+                               N->getOperand(0),
+                               N->getOperand(1), N->getOperand(2),
+                               cast<AtomicSDNode>(N)->getMemOperand(),
+                               cast<AtomicSDNode>(N)->getOrdering(),
+                               cast<AtomicSDNode>(N)->getSynchScope());
+  return Swap.getValue(1);
+}
+
 
 SDValue DAGTypeLegalizer::PromoteIntRes_EXTRACT_SUBVECTOR(SDNode *N) {
   SDValue InOp0 = N->getOperand(0);

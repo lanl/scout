@@ -269,16 +269,12 @@ def OSAtomicChecker : Checker<"AtomicCAS">,
   HelpText<"Evaluate calls to OSAtomic functions">,
   DescFile<"OSAtomicChecker.cpp">;
 
-} // end "macosx"
-
-let ParentPackage = OSXExperimental in {
-
-def MacOSKeychainAPIChecker : Checker<"KeychainAPI">,
-  InPackage<OSXExperimental>,
+def MacOSKeychainAPIChecker : Checker<"SecKeychainAPI">,
+  InPackage<OSX>,
   HelpText<"Check for proper uses of Secure Keychain APIs">,
   DescFile<"MacOSKeychainAPIChecker.cpp">;
 
-} // end "osx.experimental"
+} // end "macosx"
 
 let ParentPackage = Cocoa in {
 
@@ -314,6 +310,10 @@ def ObjCUnusedIvarsChecker : Checker<"UnusedIvars">,
 def NSErrorChecker : Checker<"NSError">,
   HelpText<"Check usage of NSError** parameters">,
   DescFile<"NSErrorChecker.cpp">;
+
+def RetainCountChecker : Checker<"RetainCount">,
+  HelpText<"Check for leaks and improper reference count management">,
+  DescFile<"RetainCountChecker.cpp">;
 
 } // end "cocoa"
 

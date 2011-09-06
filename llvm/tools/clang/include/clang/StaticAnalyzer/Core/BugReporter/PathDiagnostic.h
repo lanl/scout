@@ -52,13 +52,19 @@ public:
   
   virtual void HandleDiagnostic(Diagnostic::Level DiagLevel,
                                 const DiagnosticInfo &Info);
-  virtual void HandlePathDiagnostic(const PathDiagnostic* D) = 0;
+  void HandlePathDiagnostic(const PathDiagnostic* D);
 
   enum PathGenerationScheme { Minimal, Extensive };
   virtual PathGenerationScheme getGenerationScheme() const { return Minimal; }
   virtual bool supportsLogicalOpControlFlow() const { return false; }
   virtual bool supportsAllBlockEdges() const { return false; }
   virtual bool useVerboseDescription() const { return true; }
+
+protected:
+  /// The actual logic for handling path diagnostics, as implemented
+  /// by subclasses of PathDiagnosticClient.
+  virtual void HandlePathDiagnosticImpl(const PathDiagnostic* D) = 0;
+
 };
 
 //===----------------------------------------------------------------------===//
@@ -230,7 +236,7 @@ public:
                    : &FixItHints[0] + FixItHints.size();
   }
 
-  static inline bool classof(const PathDiagnosticPiece* P) {
+  static inline bool classof(const PathDiagnosticPiece *P) {
     return true;
   }
   
@@ -266,7 +272,7 @@ public:
 
   ~PathDiagnosticEventPiece();
 
-  static inline bool classof(const PathDiagnosticPiece* P) {
+  static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == Event;
   }
 };
@@ -320,7 +326,7 @@ public:
   const_iterator begin() const { return LPairs.begin(); }
   const_iterator end() const   { return LPairs.end(); }
 
-  static inline bool classof(const PathDiagnosticPiece* P) {
+  static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == ControlFlow;
   }
   
@@ -337,7 +343,7 @@ public:
 
   bool containsEvent() const;
 
-  void push_back(PathDiagnosticPiece* P) { SubPieces.push_back(P); }
+  void push_back(PathDiagnosticPiece *P) { SubPieces.push_back(P); }
 
   typedef std::vector<PathDiagnosticPiece*>::iterator iterator;
   iterator begin() { return SubPieces.begin(); }
@@ -352,7 +358,7 @@ public:
   const_iterator begin() const { return SubPieces.begin(); }
   const_iterator end() const { return SubPieces.end(); }
 
-  static inline bool classof(const PathDiagnosticPiece* P) {
+  static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == Macro;
   }
   
@@ -392,23 +398,23 @@ public:
     return rbegin()->getLocation();
   }
 
-  void push_front(PathDiagnosticPiece* piece) {
+  void push_front(PathDiagnosticPiece *piece) {
     assert(piece);
     path.push_front(piece);
     ++Size;
   }
 
-  void push_back(PathDiagnosticPiece* piece) {
+  void push_back(PathDiagnosticPiece *piece) {
     assert(piece);
     path.push_back(piece);
     ++Size;
   }
 
-  PathDiagnosticPiece* back() {
+  PathDiagnosticPiece *back() {
     return path.back();
   }
 
-  const PathDiagnosticPiece* back() const {
+  const PathDiagnosticPiece *back() const {
     return path.back();
   }
 
@@ -433,14 +439,14 @@ public:
   public:
     iterator(const ImplTy& i) : I(i) {}
 
-    bool operator==(const iterator& X) const { return I == X.I; }
-    bool operator!=(const iterator& X) const { return I != X.I; }
+    bool operator==(const iterator &X) const { return I == X.I; }
+    bool operator!=(const iterator &X) const { return I != X.I; }
 
     PathDiagnosticPiece& operator*() const { return **I; }
-    PathDiagnosticPiece* operator->() const { return *I; }
+    PathDiagnosticPiece *operator->() const { return *I; }
 
-    iterator& operator++() { ++I; return *this; }
-    iterator& operator--() { --I; return *this; }
+    iterator &operator++() { ++I; return *this; }
+    iterator &operator--() { --I; return *this; }
   };
 
   class const_iterator {
@@ -459,14 +465,14 @@ public:
   public:
     const_iterator(const ImplTy& i) : I(i) {}
 
-    bool operator==(const const_iterator& X) const { return I == X.I; }
-    bool operator!=(const const_iterator& X) const { return I != X.I; }
+    bool operator==(const const_iterator &X) const { return I == X.I; }
+    bool operator!=(const const_iterator &X) const { return I != X.I; }
 
     reference operator*() const { return **I; }
     pointer operator->() const { return *I; }
 
-    const_iterator& operator++() { ++I; return *this; }
-    const_iterator& operator--() { --I; return *this; }
+    const_iterator &operator++() { ++I; return *this; }
+    const_iterator &operator--() { --I; return *this; }
   };
 
   typedef std::reverse_iterator<iterator>       reverse_iterator;

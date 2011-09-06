@@ -413,7 +413,7 @@ void ASTFrontendAction::ExecuteAction() {
     CompletionConsumer = &CI.getCodeCompletionConsumer();
 
   if (!CI.hasSema())
-    CI.createSema(usesCompleteTranslationUnit(), CompletionConsumer);
+    CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
   // ndm - use AST viewer if the front-end option -Xclang -view-ast was passed
   if(CI.getFrontendOpts().ViewAST){
@@ -455,8 +455,8 @@ void WrapperFrontendAction::EndSourceFileAction() {
 bool WrapperFrontendAction::usesPreprocessorOnly() const {
   return WrappedAction->usesPreprocessorOnly();
 }
-bool WrapperFrontendAction::usesCompleteTranslationUnit() {
-  return WrappedAction->usesCompleteTranslationUnit();
+TranslationUnitKind WrapperFrontendAction::getTranslationUnitKind() {
+  return WrappedAction->getTranslationUnitKind();
 }
 bool WrapperFrontendAction::hasPCHSupport() const {
   return WrappedAction->hasPCHSupport();

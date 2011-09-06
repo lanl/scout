@@ -138,7 +138,7 @@ void ConstStructBuilder::AppendBitField(const FieldDecl *Field,
     // We need to add padding.
     CharUnits PadSize = Context.toCharUnitsFromBits(
       llvm::RoundUpToAlignment(FieldOffset - NextFieldOffsetInBits, 
-                               Context.Target.getCharAlign()));
+                               Context.getTargetInfo().getCharAlign()));
 
     AppendPadding(PadSize);
   }
@@ -364,7 +364,7 @@ bool ConstStructBuilder::Build(InitListExpr *ILE) {
       continue;
 
     // Don't emit anonymous bitfields, they just affect layout.
-    if (Field->isBitField() && !Field->getIdentifier()) {
+    if (Field->isUnnamedBitfield()) {
       LastFD = (*Field);
       continue;
     }
@@ -789,8 +789,8 @@ public:
 
     if (E->getNumArgs()) {
       assert(E->getNumArgs() == 1 && "trivial ctor with > 1 argument");
-      assert(E->getConstructor()->isCopyConstructor() &&
-             "trivial ctor has argument but isn't a copy ctor");
+      assert(E->getConstructor()->isCopyOrMoveConstructor() &&
+             "trivial ctor has argument but isn't a copy/move ctor");
 
       Expr *Arg = E->getArg(0);
       assert(CGM.getContext().hasSameUnqualifiedType(Ty, Arg->getType()) &&

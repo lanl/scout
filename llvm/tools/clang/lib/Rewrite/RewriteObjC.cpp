@@ -161,8 +161,13 @@ namespace {
 
     // Top Level Driver code.
     virtual void HandleTopLevelDecl(DeclGroupRef D) {
-      for (DeclGroupRef::iterator I = D.begin(), E = D.end(); I != E; ++I)
+      for (DeclGroupRef::iterator I = D.begin(), E = D.end(); I != E; ++I) {
+        if (isa<ObjCClassDecl>((*I))) {
+          RewriteForwardClassDecl(D);
+          break;
+        }
         HandleTopLevelSingleDecl(*I);
+      }
     }
     void HandleTopLevelSingleDecl(Decl *D);
     void HandleDeclInMainFile(Decl *D);
@@ -241,7 +246,11 @@ namespace {
 
     // Syntactic Rewriting.
     void RewriteInclude();
-    void RewriteForwardClassDecl(ObjCClassDecl *Dcl);
+    void RewriteForwardClassDecl(DeclGroupRef D);
+    void RewriteForwardClassDecl(const llvm::SmallVector<Decl*, 8> &DG);
+    void RewriteForwardClassEpilogue(ObjCClassDecl *ClassDecl, 
+                                     const std::string &typedefString);
+      
     void RewritePropertyImplDecl(ObjCPropertyImplDecl *PID,
                                  ObjCImplementationDecl *IMD,
                                  ObjCCategoryImplDecl *CID);
@@ -717,8 +726,23 @@ void RewriteObjC::HandleTopLevelSingleDecl(Decl *D) {
     // Recurse into linkage specifications
     for (DeclContext::decl_iterator DI = LSD->decls_begin(),
                                  DIEnd = LSD->decls_end();
-         DI != DIEnd; ++DI)
+         DI != DIEnd; ) {
+      if (isa<ObjCClassDecl>((*DI))) {
+        SmallVector<Decl *, 8> DG;
+        Decl *D = (*DI);
+        SourceLocation Loc = D->getLocation();
+        while (DI != DIEnd &&
+               isa<ObjCClassDecl>(D) && D->getLocation() == Loc) {
+          DG.push_back(D);
+          ++DI;
+          D = (*DI);
+        }
+        RewriteForwardClassDecl(DG);
+        continue;
+      }
       HandleTopLevelSingleDecl(*DI);
+      ++DI;
+    }
   }
   // If we have a decl in the main file, see if we should rewrite it.
   if (SM->isFromMainFile(Loc))
@@ -886,43 +910,61 @@ void RewriteObjC::RewritePropertyImplDecl(ObjCPropertyImplDecl *PID,
   InsertText(onePastSemiLoc, Setr);
 }
 
-void RewriteObjC::RewriteForwardClassDecl(ObjCClassDecl *ClassDecl) {
-  // Get the start location and compute the semi location.
-  SourceLocation startLoc = ClassDecl->getLocation();
-  const char *startBuf = SM->getCharacterData(startLoc);
-  const char *semiPtr = strchr(startBuf, ';');
+static void RewriteOneForwardClassDecl(ObjCInterfaceDecl *ForwardDecl,
+                                       std::string &typedefString) {
+  typedefString += "#ifndef _REWRITER_typedef_";
+  typedefString += ForwardDecl->getNameAsString();
+  typedefString += "\n";
+  typedefString += "#define _REWRITER_typedef_";
+  typedefString += ForwardDecl->getNameAsString();
+  typedefString += "\n";
+  typedefString += "typedef struct objc_object ";
+  typedefString += ForwardDecl->getNameAsString();
+  typedefString += ";\n#endif\n";
+}
 
-  // Translate to typedef's that forward reference structs with the same name
-  // as the class. As a convenience, we include the original declaration
-  // as a comment.
+void RewriteObjC::RewriteForwardClassEpilogue(ObjCClassDecl *ClassDecl,
+                                              const std::string &typedefString) {
+    SourceLocation startLoc = ClassDecl->getLocation();
+    const char *startBuf = SM->getCharacterData(startLoc);
+    const char *semiPtr = strchr(startBuf, ';'); 
+    // Replace the @class with typedefs corresponding to the classes.
+    ReplaceText(startLoc, semiPtr-startBuf+1, typedefString);  
+}
+
+void RewriteObjC::RewriteForwardClassDecl(DeclGroupRef D) {
   std::string typedefString;
-  typedefString += "// @class ";
-  for (ObjCClassDecl::iterator I = ClassDecl->begin(), E = ClassDecl->end();
-       I != E; ++I) {
-    ObjCInterfaceDecl *ForwardDecl = I->getInterface();
-    typedefString += ForwardDecl->getNameAsString();
-    if (I+1 != E)
-      typedefString += ", ";
-    else
+  for (DeclGroupRef::iterator I = D.begin(), E = D.end(); I != E; ++I) {
+    ObjCClassDecl *ClassDecl = cast<ObjCClassDecl>(*I);
+    ObjCInterfaceDecl *ForwardDecl = ClassDecl->getForwardInterfaceDecl();
+    if (I == D.begin()) {
+      // Translate to typedef's that forward reference structs with the same name
+      // as the class. As a convenience, we include the original declaration
+      // as a comment.
+      typedefString += "// @class ";
+      typedefString += ForwardDecl->getNameAsString();
       typedefString += ";\n";
+    }
+    RewriteOneForwardClassDecl(ForwardDecl, typedefString);
   }
-  
-  for (ObjCClassDecl::iterator I = ClassDecl->begin(), E = ClassDecl->end();
-       I != E; ++I) {
-    ObjCInterfaceDecl *ForwardDecl = I->getInterface();
-    typedefString += "#ifndef _REWRITER_typedef_";
-    typedefString += ForwardDecl->getNameAsString();
-    typedefString += "\n";
-    typedefString += "#define _REWRITER_typedef_";
-    typedefString += ForwardDecl->getNameAsString();
-    typedefString += "\n";
-    typedefString += "typedef struct objc_object ";
-    typedefString += ForwardDecl->getNameAsString();
-    typedefString += ";\n#endif\n";
-  }
+  DeclGroupRef::iterator I = D.begin();
+  RewriteForwardClassEpilogue(cast<ObjCClassDecl>(*I), typedefString);
+}
 
-  // Replace the @class with typedefs corresponding to the classes.
-  ReplaceText(startLoc, semiPtr-startBuf+1, typedefString);
+void RewriteObjC::RewriteForwardClassDecl(
+                                const llvm::SmallVector<Decl*, 8> &D) {
+  std::string typedefString;
+  for (unsigned i = 0; i < D.size(); i++) {
+    ObjCClassDecl *ClassDecl = cast<ObjCClassDecl>(D[i]);
+    ObjCInterfaceDecl *ForwardDecl = ClassDecl->getForwardInterfaceDecl();
+    if (i == 0) {
+      typedefString += "// @class ";
+      typedefString += ForwardDecl->getNameAsString();
+      typedefString += ";\n";
+    }
+    RewriteOneForwardClassDecl(ForwardDecl, typedefString);
+  }
+  RewriteForwardClassEpilogue(cast<ObjCClassDecl>(D[0]), typedefString);
 }
 
 void RewriteObjC::RewriteMethodDeclaration(ObjCMethodDecl *Method) {
@@ -5887,8 +5929,8 @@ void RewriteObjC::HandleDeclInMainFile(Decl *D) {
     ClassImplementation.push_back(CI);
   else if (ObjCCategoryImplDecl *CI = dyn_cast<ObjCCategoryImplDecl>(D))
     CategoryImplementation.push_back(CI);
-  else if (ObjCClassDecl *CD = dyn_cast<ObjCClassDecl>(D))
-    RewriteForwardClassDecl(CD);
+  else if (isa<ObjCClassDecl>(D))
+    assert(false && "RewriteObjC::HandleDeclInMainFile - ObjCClassDecl");
   else if (VarDecl *VD = dyn_cast<VarDecl>(D)) {
     RewriteObjCQualifiedInterfaceTypes(VD);
     if (isTopLevelBlockPointerType(VD->getType()))

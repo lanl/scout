@@ -162,6 +162,7 @@ static bool CheckARCMethodDecl(Sema &S, ObjCMethodDecl *method) {
   switch (family) {
   case OMF_None:
   case OMF_dealloc:
+  case OMF_finalize:
   case OMF_retain:
   case OMF_release:
   case OMF_autorelease:
@@ -213,6 +214,20 @@ static void DiagnoseObjCImplementedDeprecations(Sema &S,
   }
 }
 
+/// AddAnyMethodToGlobalPool - Add any method, instance or factory to global
+/// pool.
+void Sema::AddAnyMethodToGlobalPool(Decl *D) {
+  ObjCMethodDecl *MDecl = dyn_cast_or_null<ObjCMethodDecl>(D);
+    
+  // If we don't have a valid method decl, simply return.
+  if (!MDecl)
+    return;
+  if (MDecl->isInstanceMethod())
+    AddInstanceMethodToGlobalPool(MDecl, true);
+  else
+    AddFactoryMethodToGlobalPool(MDecl, true);
+}
+
 /// ActOnStartOfObjCMethodDef - This routine sets up parameters; invisible
 /// and user declared, in the method definition's AST.
 void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
@@ -223,12 +238,6 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
   if (!MDecl)
     return;
 
-  // Allow the rest of sema to find private method decl implementations.
-  if (MDecl->isInstanceMethod())
-    AddInstanceMethodToGlobalPool(MDecl, true);
-  else
-    AddFactoryMethodToGlobalPool(MDecl, true);
-  
   // Allow all of Sema to see that we are entering a method definition.
   PushDeclContext(FnBodyScope, MDecl);
   PushFunctionScope();
@@ -267,6 +276,7 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
 
     case OMF_None:
     case OMF_dealloc:
+    case OMF_finalize:
     case OMF_alloc:
     case OMF_init:
     case OMF_mutableCopy:
@@ -278,14 +288,28 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
     }
   }
 
-  // Warn on implementating deprecated methods under 
-  // -Wdeprecated-implementations flag.
-  if (ObjCInterfaceDecl *IC = MDecl->getClassInterface())
+  // Warn on deprecated methods under -Wdeprecated-implementations,
+  // and prepare for warning on missing super calls.
+  if (ObjCInterfaceDecl *IC = MDecl->getClassInterface()) {
     if (ObjCMethodDecl *IMD = 
           IC->lookupMethod(MDecl->getSelector(), MDecl->isInstanceMethod()))
       DiagnoseObjCImplementedDeprecations(*this, 
                                           dyn_cast<NamedDecl>(IMD), 
                                           MDecl->getLocation(), 0);
+
+    // If this is "dealloc" or "finalize", set some bit here.
+    // Then in ActOnSuperMessage() (SemaExprObjC), set it back to false.
+    // Finally, in ActOnFinishFunctionBody() (SemaDecl), warn if flag is set.
+    // Only do this if the current class actually has a superclass.
+    if (IC->getSuperClass()) {
+      ObjCShouldCallSuperDealloc = 
+        !Context.getLangOptions().ObjCAutoRefCount &&      
+        MDecl->getMethodFamily() == OMF_dealloc;
+      ObjCShouldCallSuperFinalize =
+        !Context.getLangOptions().ObjCAutoRefCount &&      
+        MDecl->getMethodFamily() == OMF_finalize;
+    }
+  }
 }
 
 Decl *Sema::
@@ -530,6 +554,9 @@ Sema::ActOnStartProtocolInterface(SourceLocation AtProtoInterfaceLoc,
     // Make sure the cached decl gets a valid start location.
     PDecl->setLocation(AtProtoInterfaceLoc);
     PDecl->setForwardDecl(false);
+    // Since this ObjCProtocolDecl was created by a forward declaration,
+    // we now add it to the DeclContext since it wasn't added before
+    PDecl->setLexicalDeclContext(CurContext);
     CurContext->addDecl(PDecl);
     // Repeat in dependent AST files.
     PDecl->setChangedSinceDeserialization(true);
@@ -676,7 +703,7 @@ ActOnStartCategoryInterface(SourceLocation AtInterfaceLoc,
     // the enclosing method declarations.  We mark the decl invalid
     // to make it clear that this isn't a valid AST.
     CDecl = ObjCCategoryDecl::Create(Context, CurContext, AtInterfaceLoc,
-                                     ClassLoc, CategoryLoc, CategoryName);
+                                     ClassLoc, CategoryLoc, CategoryName,IDecl);
     CDecl->setInvalidDecl();
     Diag(ClassLoc, diag::err_undef_interface) << ClassName;
     return CDecl;
@@ -687,19 +714,6 @@ ActOnStartCategoryInterface(SourceLocation AtInterfaceLoc,
     Diag(IDecl->getImplementation()->getLocation(), 
           diag::note_implementation_declared);
   }
-
-  CDecl = ObjCCategoryDecl::Create(Context, CurContext, AtInterfaceLoc,
-                                   ClassLoc, CategoryLoc, CategoryName);
-  // FIXME: PushOnScopeChains?
-  CurContext->addDecl(CDecl);
-
-  CDecl->setClassInterface(IDecl);
-  // Insert class extension to the list of class's categories.
-  if (!CategoryName)
-    CDecl->insertNextClassCategory();
-
-  // If the interface is deprecated, warn about it.
-  (void)DiagnoseUseOfDecl(IDecl, ClassLoc);
 
   if (CategoryName) {
     /// Check for duplicate interface declaration for this category
@@ -714,9 +728,15 @@ ActOnStartCategoryInterface(SourceLocation AtInterfaceLoc,
         break;
       }
     }
-    if (!CDeclChain)
-      CDecl->insertNextClassCategory();
   }
+
+  CDecl = ObjCCategoryDecl::Create(Context, CurContext, AtInterfaceLoc,
+                                   ClassLoc, CategoryLoc, CategoryName, IDecl);
+  // FIXME: PushOnScopeChains?
+  CurContext->addDecl(CDecl);
+
+  // If the interface is deprecated, warn about it.
+  (void)DiagnoseUseOfDecl(IDecl, ClassLoc);
 
   if (NumProtoRefs) {
     CDecl->setProtocolList((ObjCProtocolDecl**)ProtoRefs, NumProtoRefs, 
@@ -747,9 +767,7 @@ Decl *Sema::ActOnStartCategoryImplementation(
       // Create and install one.
       CatIDecl = ObjCCategoryDecl::Create(Context, CurContext, SourceLocation(),
                                           SourceLocation(), SourceLocation(),
-                                          CatName);
-      CatIDecl->setClassInterface(IDecl);
-      CatIDecl->insertNextClassCategory();
+                                          CatName, IDecl);
     }
   }
 
@@ -1243,6 +1261,7 @@ static bool checkMethodFamilyMismatch(Sema &S, ObjCMethodDecl *impl,
   case OMF_release:
   case OMF_autorelease:
   case OMF_dealloc:
+  case OMF_finalize:
   case OMF_retainCount:
   case OMF_self:
   case OMF_performSelector:
@@ -1465,17 +1484,16 @@ void Sema::MatchAllMethodDeclarations(const llvm::DenseSet<Selector> &InsMap,
       continue;
     } else {
       ObjCMethodDecl *ImpMethodDecl =
-      IMPDecl->getInstanceMethod((*I)->getSelector());
-      ObjCMethodDecl *MethodDecl =
-      CDecl->getInstanceMethod((*I)->getSelector());
-      assert(MethodDecl &&
-             "MethodDecl is null in ImplMethodsVsClassMethods");
+        IMPDecl->getInstanceMethod((*I)->getSelector());
+      assert(CDecl->getInstanceMethod((*I)->getSelector()) &&
+             "Expected to find the method through lookup as well");
+      ObjCMethodDecl *MethodDecl = *I;
       // ImpMethodDecl may be null as in a @dynamic property.
       if (ImpMethodDecl) {
         if (!WarnExactMatch)
           WarnConflictingTypedMethods(ImpMethodDecl, MethodDecl,
                                       isa<ObjCProtocolDecl>(CDecl));
-        else
+        else if (!MethodDecl->isSynthesized())
           WarnExactTypedMethods(ImpMethodDecl, MethodDecl,
                                isa<ObjCProtocolDecl>(CDecl));
       }
@@ -1496,8 +1514,9 @@ void Sema::MatchAllMethodDeclarations(const llvm::DenseSet<Selector> &InsMap,
     } else {
       ObjCMethodDecl *ImpMethodDecl =
         IMPDecl->getClassMethod((*I)->getSelector());
-      ObjCMethodDecl *MethodDecl =
-        CDecl->getClassMethod((*I)->getSelector());
+      assert(CDecl->getClassMethod((*I)->getSelector()) &&
+             "Expected to find the method through lookup as well");
+      ObjCMethodDecl *MethodDecl = *I;
       if (!WarnExactMatch)
         WarnConflictingTypedMethods(ImpMethodDecl, MethodDecl, 
                                     isa<ObjCProtocolDecl>(CDecl));
@@ -1644,13 +1663,12 @@ void Sema::ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
 }
 
 /// ActOnForwardClassDeclaration -
-Decl *
+Sema::DeclGroupPtrTy
 Sema::ActOnForwardClassDeclaration(SourceLocation AtClassLoc,
                                    IdentifierInfo **IdentList,
                                    SourceLocation *IdentLocs,
                                    unsigned NumElts) {
-  SmallVector<ObjCInterfaceDecl*, 32> Interfaces;
-
+  SmallVector<Decl *, 8> DeclsInGroup;
   for (unsigned i = 0; i != NumElts; ++i) {
     // Check for another declaration kind with the same name.
     NamedDecl *PrevDecl
@@ -1695,17 +1713,14 @@ Sema::ActOnForwardClassDeclaration(SourceLocation AtClassLoc,
       PushOnScopeChains(IDecl, TUScope, false);
       CurContext->makeDeclVisibleInContext(IDecl, true);
     }
-
-    Interfaces.push_back(IDecl);
+    ObjCClassDecl *CDecl = ObjCClassDecl::Create(Context, CurContext, AtClassLoc,
+                                                 IDecl, IdentLocs[i]);
+    CurContext->addDecl(CDecl);
+    CheckObjCDeclScope(CDecl);
+    DeclsInGroup.push_back(CDecl);
   }
-
-  assert(Interfaces.size() == NumElts);
-  ObjCClassDecl *CDecl = ObjCClassDecl::Create(Context, CurContext, AtClassLoc,
-                                               Interfaces.data(), IdentLocs,
-                                               Interfaces.size());
-  CurContext->addDecl(CDecl);
-  CheckObjCDeclScope(CDecl);
-  return CDecl;
+  
+  return BuildDeclaratorGroup(DeclsInGroup.data(), DeclsInGroup.size(), false);
 }
 
 static bool tryMatchRecordTypes(ASTContext &Context,
@@ -2052,15 +2067,14 @@ void Sema::DiagnoseDuplicateIvars(ObjCInterfaceDecl *ID,
 // Note: For class/category implemenations, allMethods/allProperties is
 // always null.
 void Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
-                      Decl *ClassDecl,
                       Decl **allMethods, unsigned allNum,
                       Decl **allProperties, unsigned pNum,
                       DeclGroupPtrTy *allTUVars, unsigned tuvNum) {
-  // FIXME: If we don't have a ClassDecl, we have an error. We should consider
-  // always passing in a decl. If the decl has an error, isInvalidDecl()
-  // should be true.
-  if (!ClassDecl)
+
+  if (!CurContext->isObjCContainer())
     return;
+  ObjCContainerDecl *OCD = dyn_cast<ObjCContainerDecl>(CurContext);
+  Decl *ClassDecl = cast<Decl>(OCD);
   
   bool isInterfaceDeclKind =
         isa<ObjCInterfaceDecl>(ClassDecl) || isa<ObjCCategoryDecl>(ClassDecl)
@@ -2187,10 +2201,6 @@ void Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
           }        
         }
       }
-      
-      if (LangOpts.ObjCDefaultSynthProperties &&
-          LangOpts.ObjCNonFragileABI2)
-        DefaultSynthesizeProperties(S, IC, IDecl);
       ImplMethodsVsClassMethods(S, IC, IDecl);
       AtomicPropertySetterGetterRules(IC, IDecl);
       DiagnoseOwningPropertyGetterSynthesis(IC);
@@ -2229,6 +2239,7 @@ void Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
         }
     }
   }
+  ActOnObjCContainerFinishDefinition();
 }
 
 
@@ -2427,7 +2438,7 @@ private:
 Decl *Sema::ActOnMethodDeclaration(
     Scope *S,
     SourceLocation MethodLoc, SourceLocation EndLoc,
-    tok::TokenKind MethodType, Decl *ClassDecl,
+    tok::TokenKind MethodType, 
     ObjCDeclSpec &ReturnQT, ParsedType ReturnType,
     SourceLocation SelectorStartLoc,
     Selector Sel,
@@ -2438,10 +2449,12 @@ Decl *Sema::ActOnMethodDeclaration(
     AttributeList *AttrList, tok::ObjCKeywordKind MethodDeclKind,
     bool isVariadic, bool MethodDefinition) {
   // Make sure we can establish a context for the method.
-  if (!ClassDecl) {
+  if (!CurContext->isObjCContainer()) {
     Diag(MethodLoc, diag::error_missing_method_context);
     return 0;
   }
+  ObjCContainerDecl *OCD = dyn_cast<ObjCContainerDecl>(CurContext);
+  Decl *ClassDecl = cast<Decl>(OCD); 
   QualType resultDeclType;
 
   TypeSourceInfo *ResultTInfo = 0;
@@ -2464,9 +2477,10 @@ Decl *Sema::ActOnMethodDeclaration(
   ObjCMethodDecl* ObjCMethod =
     ObjCMethodDecl::Create(Context, MethodLoc, EndLoc, Sel, resultDeclType,
                            ResultTInfo,
-                           cast<DeclContext>(ClassDecl),
+                           CurContext,
                            MethodType == tok::minus, isVariadic,
-                           false, false,
+                           /*isSynthesized=*/false,
+                           /*isImplicitlyDeclared=*/false, /*isDefined=*/false,
                            MethodDeclKind == tok::objc_optional 
                              ? ObjCMethodDecl::Optional
                              : ObjCMethodDecl::Required,
@@ -2626,6 +2640,7 @@ Decl *Sema::ActOnMethodDeclaration(
     case OMF_None:
     case OMF_copy:
     case OMF_dealloc:
+    case OMF_finalize:
     case OMF_mutableCopy:
     case OMF_release:
     case OMF_retainCount:
@@ -2655,7 +2670,12 @@ Decl *Sema::ActOnMethodDeclaration(
 bool Sema::CheckObjCDeclScope(Decl *D) {
   if (isa<TranslationUnitDecl>(CurContext->getRedeclContext()))
     return false;
-
+  // Following is also an error. But it is caused by a missing @end
+  // and diagnostic is issued elsewhere.
+  if (isa<ObjCContainerDecl>(CurContext->getRedeclContext())) {
+    return false;
+  }
+  
   Diag(D->getLocation(), diag::err_objc_decls_may_only_appear_in_global_scope);
   D->setInvalidDecl();
 

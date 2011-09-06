@@ -362,8 +362,8 @@ void LICM::HoistRegion(DomTreeNode *N) {
 bool LICM::canSinkOrHoistInst(Instruction &I) {
   // Loads have extra constraints we have to verify before we can hoist them.
   if (LoadInst *LI = dyn_cast<LoadInst>(&I)) {
-    if (LI->isVolatile())
-      return false;        // Don't hoist volatile loads!
+    if (!LI->isUnordered())
+      return false;        // Don't hoist volatile/atomic loads!
 
     // Loads from constant memory are always safe to move, even if they end up
     // in the same alias set as something that ends up being modified.
@@ -466,7 +466,7 @@ void LICM::sink(Instruction &I) {
     } else {
       // Move the instruction to the start of the exit block, after any PHI
       // nodes in it.
-      I.moveBefore(ExitBlocks[0]->getFirstNonPHI());
+      I.moveBefore(ExitBlocks[0]->getFirstInsertionPt());
 
       // This instruction is no longer in the AST for the current loop, because
       // we just sunk it out of the loop.  If we just sunk it into an outer
@@ -509,7 +509,7 @@ void LICM::sink(Instruction &I) {
       continue;
 
     // Insert the code after the last PHI node.
-    BasicBlock::iterator InsertPt = ExitBlock->getFirstNonPHI();
+    BasicBlock::iterator InsertPt = ExitBlock->getFirstInsertionPt();
 
     // If this is the first exit block processed, just move the original
     // instruction, otherwise clone the original instruction and insert
@@ -644,7 +644,7 @@ namespace {
       for (unsigned i = 0, e = LoopExitBlocks.size(); i != e; ++i) {
         BasicBlock *ExitBlock = LoopExitBlocks[i];
         Value *LiveInValue = SSA.GetValueInMiddleOfBlock(ExitBlock);
-        Instruction *InsertPos = ExitBlock->getFirstNonPHI();
+        Instruction *InsertPos = ExitBlock->getFirstInsertionPt();
         StoreInst *NewSI = new StoreInst(LiveInValue, SomePtr, InsertPos);
         NewSI->setAlignment(Alignment);
         NewSI->setDebugLoc(DL);
@@ -722,15 +722,18 @@ void LICM::PromoteAliasSet(AliasSet &AS) {
 
       // If there is an non-load/store instruction in the loop, we can't promote
       // it.
-      if (isa<LoadInst>(Use)) {
-        assert(!cast<LoadInst>(Use)->isVolatile() && "AST broken");
+      if (LoadInst *load = dyn_cast<LoadInst>(Use)) {
+        assert(!load->isVolatile() && "AST broken");
+        if (!load->isSimple())
+          return;
       } else if (StoreInst *store = dyn_cast<StoreInst>(Use)) {
         // Stores *of* the pointer are not interesting, only stores *to* the
         // pointer.
         if (Use->getOperand(1) != ASIV)
           continue;
-        unsigned InstAlignment = store->getAlignment();
-        assert(!cast<StoreInst>(Use)->isVolatile() && "AST broken");
+        assert(!store->isVolatile() && "AST broken");
+        if (!store->isSimple())
+          return;
 
         // Note that we only check GuaranteedToExecute inside the store case
         // so that we do not introduce stores where they did not exist before
@@ -740,6 +743,7 @@ void LICM::PromoteAliasSet(AliasSet &AS) {
         // restrictive (and performant) alignment and if we are sure this
         // instruction will be executed, update the alignment.
         // Larger is better, with the exception of 0 being the best alignment.
+        unsigned InstAlignment = store->getAlignment();
         if ((InstAlignment > Alignment || InstAlignment == 0)
             && (Alignment != 0))
           if (isGuaranteedToExecute(*Use)) {

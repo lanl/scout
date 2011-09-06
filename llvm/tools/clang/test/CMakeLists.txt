@@ -99,7 +99,8 @@ if(PYTHONINTERP_FOUND)
                 COMMENT "Running Clang and LLVM regression tests")
     add_dependencies(check-all clang-test.deps)
     if ( LLVM_INCLUDE_TESTS )
-      add_dependencies(clang-test.deps check.deps ClangUnitTests)
+      add_dependencies(clang-test.deps ClangUnitTests)
+      add_dependencies(check-all check.deps)
     endif ( LLVM_INCLUDE_TESTS )
     add_dependencies(clang-test.deps
                      llvm-dis llc opt
@@ -110,7 +111,7 @@ if(PYTHONINTERP_FOUND)
 
   add_dependencies(clang-test clang-test.deps)
   add_dependencies(clang-test.deps
-                 clang clang-headers c-index-test arcmt-test c-arcmt-test
+                 clang clang-headers c-index-test diagtool arcmt-test c-arcmt-test
                  )
 
 endif()

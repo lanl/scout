@@ -109,7 +109,7 @@ void ASTStmtReader::VisitStmt(Stmt *S) {
 void ASTStmtReader::VisitNullStmt(NullStmt *S) {
   VisitStmt(S);
   S->setSemiLoc(ReadSourceLocation(Record, Idx));
-  S->LeadingEmptyMacro = ReadSourceLocation(Record, Idx);
+  S->HasLeadingEmptyMacro = Record[Idx++];
 }
 
 void ASTStmtReader::VisitCompoundStmt(CompoundStmt *S) {
@@ -220,14 +220,17 @@ void ASTStmtReader::VisitForStmt(ForStmt *S) {
 }
 
 // ndm - Scout Stmts
-// we are not using AST reading functionality for meshes for now
-// so this is simply a no-op
+// TODO - implement
 
 void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
 
 }
 
 void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
+
+}
+
+void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
 
 }
 
@@ -508,10 +511,6 @@ void ASTStmtReader::VisitMemberExpr(MemberExpr *E) {
   // Don't call VisitExpr, this is fully initialized at creation.
   assert(E->getStmtClass() == Stmt::MemberExprClass &&
          "It's a subclass, we must advance Idx!");
-}
-
-void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
-
 }
 
 void ASTStmtReader::VisitObjCIsaExpr(ObjCIsaExpr *E) {

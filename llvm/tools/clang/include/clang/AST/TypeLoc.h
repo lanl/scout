@@ -538,6 +538,10 @@ class InjectedClassNameTypeLoc :
     public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                      InjectedClassNameTypeLoc,
                                      InjectedClassNameType> {
+public:
+  CXXRecordDecl *getDecl() const {
+    return getTypePtr()->getDecl();
+  }
 };
 
 /// \brief Wrapper for source info for unresolved typename using decls.
@@ -561,6 +565,12 @@ class TagTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                     TagType> {
 public:
   TagDecl *getDecl() const { return getTypePtr()->getDecl(); }
+
+  /// \brief True if the tag was defined in this type specifier. 
+  bool isDefinition() const {
+    return getDecl()->isDefinition() &&
+         (getNameLoc().isInvalid() || getNameLoc() == getDecl()->getLocation());
+  }
 };
 
 /// \brief Wrapper for source info for record types.
@@ -1418,6 +1428,8 @@ public:
 class DecltypeTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
                                                          DecltypeTypeLoc,
                                                          DecltypeType> {
+public:
+  Expr *getUnderlyingExpr() const { return getTypePtr()->getUnderlyingExpr(); }
 };
 
 struct UnaryTransformTypeLocInfo {

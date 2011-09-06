@@ -48,8 +48,18 @@ namespace llvm {
     LLVMContext & VMContext;
     MDNode *TheCU;
 
+    MDNode *TempEnumTypes;
+    MDNode *TempRetainTypes;
+    MDNode *TempSubprograms;
+    MDNode *TempGVs;
+
     Function *DeclareFn;     // llvm.dbg.declare
     Function *ValueFn;       // llvm.dbg.value
+
+    SmallVector<Value *, 4> AllEnumTypes;
+    SmallVector<Value *, 4> AllRetainTypes;
+    SmallVector<Value *, 4> AllSubprograms;
+    SmallVector<Value *, 4> AllGVs;
 
     DIBuilder(const DIBuilder &);       // DO NOT IMPLEMENT
     void operator=(const DIBuilder &);  // DO NOT IMPLEMENT
@@ -58,6 +68,9 @@ namespace llvm {
     explicit DIBuilder(Module &M);
     const MDNode *getCU() { return TheCU; }
     enum ComplexAddrKind { OpPlus=1, OpDeref };
+
+    /// finalize - Construct any deferred debug info descriptors.
+    void finalize();
 
     /// createCompileUnit - A CompileUnit provides an anchor for all debugging
     /// information generated during this instance of compilation.

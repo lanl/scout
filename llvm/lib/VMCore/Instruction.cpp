@@ -162,6 +162,7 @@ const char *Instruction::getOpcodeName(unsigned OpCode) {
   case ShuffleVector:  return "shufflevector";
   case ExtractValue:   return "extractvalue";
   case InsertValue:    return "insertvalue";
+  case LandingPad:     return "landingpad";
 
   default: return "<Invalid operator> ";
   }
@@ -195,10 +196,14 @@ bool Instruction::isIdenticalToWhenDefined(const Instruction *I) const {
   // Check special state that is a part of some instructions.
   if (const LoadInst *LI = dyn_cast<LoadInst>(this))
     return LI->isVolatile() == cast<LoadInst>(I)->isVolatile() &&
-           LI->getAlignment() == cast<LoadInst>(I)->getAlignment();
+           LI->getAlignment() == cast<LoadInst>(I)->getAlignment() &&
+           LI->getOrdering() == cast<LoadInst>(I)->getOrdering() &&
+           LI->getSynchScope() == cast<LoadInst>(I)->getSynchScope();
   if (const StoreInst *SI = dyn_cast<StoreInst>(this))
     return SI->isVolatile() == cast<StoreInst>(I)->isVolatile() &&
-           SI->getAlignment() == cast<StoreInst>(I)->getAlignment();
+           SI->getAlignment() == cast<StoreInst>(I)->getAlignment() &&
+           SI->getOrdering() == cast<StoreInst>(I)->getOrdering() &&
+           SI->getSynchScope() == cast<StoreInst>(I)->getSynchScope();
   if (const CmpInst *CI = dyn_cast<CmpInst>(this))
     return CI->getPredicate() == cast<CmpInst>(I)->getPredicate();
   if (const CallInst *CI = dyn_cast<CallInst>(this))
@@ -246,10 +251,14 @@ bool Instruction::isSameOperationAs(const Instruction *I) const {
   // Check special state that is a part of some instructions.
   if (const LoadInst *LI = dyn_cast<LoadInst>(this))
     return LI->isVolatile() == cast<LoadInst>(I)->isVolatile() &&
-           LI->getAlignment() == cast<LoadInst>(I)->getAlignment();
+           LI->getAlignment() == cast<LoadInst>(I)->getAlignment() &&
+           LI->getOrdering() == cast<LoadInst>(I)->getOrdering() &&
+           LI->getSynchScope() == cast<LoadInst>(I)->getSynchScope();
   if (const StoreInst *SI = dyn_cast<StoreInst>(this))
     return SI->isVolatile() == cast<StoreInst>(I)->isVolatile() &&
-           SI->getAlignment() == cast<StoreInst>(I)->getAlignment();
+           SI->getAlignment() == cast<StoreInst>(I)->getAlignment() &&
+           SI->getOrdering() == cast<StoreInst>(I)->getOrdering() &&
+           SI->getSynchScope() == cast<StoreInst>(I)->getSynchScope();
   if (const CmpInst *CI = dyn_cast<CmpInst>(this))
     return CI->getPredicate() == cast<CmpInst>(I)->getPredicate();
   if (const CallInst *CI = dyn_cast<CallInst>(this))
@@ -317,7 +326,7 @@ bool Instruction::mayReadFromMemory() const {
   case Instruction::Invoke:
     return !cast<InvokeInst>(this)->doesNotAccessMemory();
   case Instruction::Store:
-    return cast<StoreInst>(this)->isVolatile();
+    return !cast<StoreInst>(this)->isUnordered();
   }
 }
 
@@ -337,7 +346,7 @@ bool Instruction::mayWriteToMemory() const {
   case Instruction::Invoke:
     return !cast<InvokeInst>(this)->onlyReadsMemory();
   case Instruction::Load:
-    return cast<LoadInst>(this)->isVolatile();
+    return !cast<LoadInst>(this)->isUnordered();
   }
 }
 
@@ -346,7 +355,7 @@ bool Instruction::mayWriteToMemory() const {
 bool Instruction::mayThrow() const {
   if (const CallInst *CI = dyn_cast<CallInst>(this))
     return !CI->doesNotThrow();
-  return false;
+  return isa<ResumeInst>(this);
 }
 
 /// isAssociative - Return true if the instruction is associative:
@@ -406,7 +415,7 @@ bool Instruction::isSafeToSpeculativelyExecute() const {
   }
   case Load: {
     const LoadInst *LI = cast<LoadInst>(this);
-    if (LI->isVolatile())
+    if (!LI->isUnordered())
       return false;
     return LI->getPointerOperand()->isDereferenceablePointer();
   }
@@ -427,6 +436,10 @@ bool Instruction::isSafeToSpeculativelyExecute() const {
   case Unwind:
   case Unreachable:
   case Fence:
+  case LandingPad:
+  case AtomicRMW:
+  case AtomicCmpXchg:
+  case Resume:
     return false; // Misc instructions which have effects
   }
 }

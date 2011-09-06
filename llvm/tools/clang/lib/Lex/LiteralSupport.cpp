@@ -546,7 +546,7 @@ void NumericLiteralParser::ParseNumberStartingWithZero(SourceLocation TokLoc) {
     }
     // A binary exponent can appear with or with a '.'. If dotted, the
     // binary exponent is required.
-    if ((*s == 'p' || *s == 'P') && !PP.getLangOptions().CPlusPlus0x) {
+    if (*s == 'p' || *s == 'P') {
       const char *Exponent = s;
       s++;
       saw_exponent = true;
@@ -563,9 +563,7 @@ void NumericLiteralParser::ParseNumberStartingWithZero(SourceLocation TokLoc) {
       // In C++0x, we cannot support hexadecmial floating literals because
       // they conflict with user-defined literals, so we warn in previous
       // versions of C++ by default.
-      if (PP.getLangOptions().CPlusPlus)
-        PP.Diag(TokLoc, diag::ext_hexconstant_cplusplus);
-      else if (!PP.getLangOptions().HexFloats)
+      if (!PP.getLangOptions().HexFloats)
         PP.Diag(TokLoc, diag::ext_hexconstant_invalid);
     } else if (saw_period) {
       PP.Diag(PP.AdvanceToTokenCharacter(TokLoc, s-ThisTokBegin),
@@ -731,7 +729,7 @@ NumericLiteralParser::GetFloatValue(llvm::APFloat &Result) {
 ///         octal-escape-sequence
 ///         hexadecimal-escape-sequence
 ///       simple-escape-sequence:
-///         one of \’ \" \? \\ \a \b \f \n \r \t \v
+///         one of \' \" \? \\ \a \b \f \n \r \t \v
 ///       octal-escape-sequence:
 ///         \ octal-digit
 ///         \ octal-digit octal-digit
@@ -786,6 +784,7 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
     if (begin[0] != '\\')     // If this is a normal character, consume it.
       ResultChar = *begin++;
     else {                    // Otherwise, this is an escape character.
+      unsigned CharWidth = getCharWidth(Kind, PP.getTargetInfo());
       // Check for UCN.
       if (begin[1] == 'u' || begin[1] == 'U') {
         uint32_t utf32 = 0;
@@ -796,9 +795,12 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
           HadError = 1;
         }
         ResultChar = utf32;
+        if (CharWidth != 32 && (ResultChar >> CharWidth) != 0) {
+          PP.Diag(Loc, diag::warn_ucn_escape_too_large);
+          ResultChar &= ~0U >> (32-CharWidth);
+        }
       } else {
         // Otherwise, this is a non-UCN escape character.  Process it.
-        unsigned CharWidth = getCharWidth(Kind, PP.getTargetInfo());
         ResultChar = ProcessCharEscape(begin, end, HadError,
                                        FullSourceLoc(Loc,PP.getSourceManager()),
                                        CharWidth, &PP.getDiagnostics());
@@ -842,10 +844,6 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
 
   // Transfer the value from APInt to uint64_t
   Value = LitVal.getZExtValue();
-
-  if (((isWide() && PP.getLangOptions().ShortWChar) || isUTF16()) &&
-      Value > 0xFFFF)
-    PP.Diag(Loc, diag::warn_ucn_escape_too_large);
 
   // If this is a single narrow character, sign extend it (e.g. '\xFF' is "-1")
   // if 'char' is signed for this target (C99 6.4.4.4p10).  Note that multiple
@@ -895,7 +893,7 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
 ///         octal-escape-sequence
 ///         hexadecimal-escape-sequence
 ///       simple-escape-sequence:
-///         one of \’ \" \? \\ \a \b \f \n \r \t \v
+///         one of \' \" \? \\ \a \b \f \n \r \t \v
 ///       octal-escape-sequence:
 ///         \ octal-digit
 ///         \ octal-digit octal-digit

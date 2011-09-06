@@ -171,7 +171,7 @@ void TypePrinting::incorporateTypes(const Module &M) {
     StructType *STy = *I;
     
     // Ignore anonymous types.
-    if (STy->isAnonymous())
+    if (STy->isLiteral())
       continue;
     
     if (STy->getName().empty())
@@ -221,7 +221,7 @@ void TypePrinting::print(Type *Ty, raw_ostream &OS) {
   case Type::StructTyID: {
     StructType *STy = cast<StructType>(Ty);
     
-    if (STy->isAnonymous())
+    if (STy->isLiteral())
       return printStructBody(STy, OS);
 
     if (!STy->getName().empty())
@@ -1658,22 +1658,24 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
     else
       Out << '%' << SlotNum << " = ";
   }
-
-  // If this is an atomic load or store, print out the atomic marker.
-  if ((isa<LoadInst>(I)  && cast<LoadInst>(I).isAtomic()) ||
-      (isa<StoreInst>(I) && cast<StoreInst>(I).isAtomic()))
-    Out << "atomic ";
-
-  // If this is a volatile load or store, print out the volatile marker.
-  if ((isa<LoadInst>(I)  && cast<LoadInst>(I).isVolatile()) ||
-      (isa<StoreInst>(I) && cast<StoreInst>(I).isVolatile()))
-    Out << "volatile ";
   
   if (isa<CallInst>(I) && cast<CallInst>(I).isTailCall())
     Out << "tail ";
 
   // Print out the opcode...
   Out << I.getOpcodeName();
+
+  // If this is an atomic load or store, print out the atomic marker.
+  if ((isa<LoadInst>(I)  && cast<LoadInst>(I).isAtomic()) ||
+      (isa<StoreInst>(I) && cast<StoreInst>(I).isAtomic()))
+    Out << " atomic";
+
+  // If this is a volatile operation, print out the volatile marker.
+  if ((isa<LoadInst>(I)  && cast<LoadInst>(I).isVolatile()) ||
+      (isa<StoreInst>(I) && cast<StoreInst>(I).isVolatile()) ||
+      (isa<AtomicCmpXchgInst>(I) && cast<AtomicCmpXchgInst>(I).isVolatile()) ||
+      (isa<AtomicRMWInst>(I) && cast<AtomicRMWInst>(I).isVolatile()))
+    Out << " volatile";
 
   // Print out optimization information.
   WriteOptimizationInfo(Out, &I);
@@ -1748,6 +1750,24 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
     writeOperand(I.getOperand(1), true);
     for (const unsigned *i = IVI->idx_begin(), *e = IVI->idx_end(); i != e; ++i)
       Out << ", " << *i;
+  } else if (const LandingPadInst *LPI = dyn_cast<LandingPadInst>(&I)) {
+    Out << ' ';
+    TypePrinter.print(I.getType(), Out);
+    Out << " personality ";
+    writeOperand(I.getOperand(0), true); Out << '\n';
+
+    if (LPI->isCleanup())
+      Out << "          cleanup";
+
+    for (unsigned i = 0, e = LPI->getNumClauses(); i != e; ++i) {
+      if (i != 0 || LPI->isCleanup()) Out << "\n";
+      if (LPI->isCatch(i))
+        Out << "          catch ";
+      else
+        Out << "          filter ";
+
+      writeOperand(LPI->getClause(i), true);
+    }
   } else if (isa<ReturnInst>(I) && !Operand) {
     Out << " void";
   } else if (const CallInst *CI = dyn_cast<CallInst>(&I)) {
@@ -2024,7 +2044,7 @@ void Type::print(raw_ostream &OS) const {
   
   // If the type is a named struct type, print the body as well.
   if (StructType *STy = dyn_cast<StructType>(const_cast<Type*>(this)))
-    if (!STy->isAnonymous()) {
+    if (!STy->isLiteral()) {
       OS << " = type ";
       TP.printStructBody(STy, OS);
     }

@@ -410,13 +410,24 @@ BasicBlock *LoopSimplify::RewriteLoopExitBlock(Loop *L, BasicBlock *Exit) {
   }
 
   assert(!LoopBlocks.empty() && "No edges coming in from outside the loop?");
-  BasicBlock *NewBB = SplitBlockPredecessors(Exit, &LoopBlocks[0],
-                                             LoopBlocks.size(), ".loopexit",
-                                             this);
+  BasicBlock *NewExitBB = 0;
+
+  if (Exit->isLandingPad()) {
+    SmallVector<BasicBlock*, 2> NewBBs;
+    SplitLandingPadPredecessors(Exit, ArrayRef<BasicBlock*>(&LoopBlocks[0],
+                                                            LoopBlocks.size()),
+                                ".loopexit", ".nonloopexit",
+                                this, NewBBs);
+    NewExitBB = NewBBs[0];
+  } else {
+    NewExitBB = SplitBlockPredecessors(Exit, &LoopBlocks[0],
+                                       LoopBlocks.size(), ".loopexit",
+                                       this);
+  }
 
   DEBUG(dbgs() << "LoopSimplify: Creating dedicated exit block "
-               << NewBB->getName() << "\n");
-  return NewBB;
+               << NewExitBB->getName() << "\n");
+  return NewExitBB;
 }
 
 /// AddBlockAndPredsToSet - Add the specified block, and all of its
@@ -743,6 +754,7 @@ void LoopSimplify::verifyAnalysis() const {
       }
     assert(HasIndBrPred &&
            "LoopSimplify has no excuse for missing loop header info!");
+    (void)HasIndBrPred;
   }
 
   // Indirectbr can interfere with exit block canonicalization.
@@ -750,12 +762,15 @@ void LoopSimplify::verifyAnalysis() const {
     bool HasIndBrExiting = false;
     SmallVector<BasicBlock*, 8> ExitingBlocks;
     L->getExitingBlocks(ExitingBlocks);
-    for (unsigned i = 0, e = ExitingBlocks.size(); i != e; ++i)
+    for (unsigned i = 0, e = ExitingBlocks.size(); i != e; ++i) {
       if (isa<IndirectBrInst>((ExitingBlocks[i])->getTerminator())) {
         HasIndBrExiting = true;
         break;
       }
+    }
+
     assert(HasIndBrExiting &&
            "LoopSimplify has no excuse for missing exit block info!");
+    (void)HasIndBrExiting;
   }
 }

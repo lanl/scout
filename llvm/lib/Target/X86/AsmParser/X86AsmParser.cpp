@@ -9,7 +9,6 @@
 
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "llvm/MC/MCTargetAsmParser.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
@@ -25,6 +24,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -981,6 +981,7 @@ MatchAndEmitInstruction(SMLoc IDLoc,
 
   // First, try a direct match.
   switch (MatchInstructionImpl(Operands, Inst, OrigErrorInfo)) {
+  default: break;
   case Match_Success:
     Out.EmitInstruction(Inst);
     return false;
@@ -1019,7 +1020,7 @@ MatchAndEmitInstruction(SMLoc IDLoc,
   // Check for the various suffix matches.
   Tmp[Base.size()] = Suffixes[0];
   unsigned ErrorInfoIgnore;
-  MatchResultTy Match1, Match2, Match3, Match4;
+  unsigned Match1, Match2, Match3, Match4;
   
   Match1 = MatchInstructionImpl(Operands, Inst, ErrorInfoIgnore);
   Tmp[Base.size()] = Suffixes[1];

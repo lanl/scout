@@ -94,9 +94,6 @@ def err_exponent_has_no_digits : Error<"exponent has no digits">;
 def ext_imaginary_constant : Extension<"imaginary constants are an extension">;
 def err_hexconstant_requires_exponent : Error<
   "hexadecimal floating constants require an exponent">;
-def ext_hexconstant_cplusplus : Extension<
-  "hexadecimal floating constants are a C99 feature that is incompatible with "
-  "C++0x">, InGroup<CXXHexFloats>;
 def ext_hexconstant_invalid : Extension<
   "hexadecimal floating constants are a C99 feature">;
 def ext_binary_literal : Extension<
@@ -189,7 +186,7 @@ def ext_empty_fnmacro_arg : Extension<
 
 def err_pp_invalid_directive : Error<"invalid preprocessing directive">;
 def err_pp_hash_error : Error<"#error%0">;
-def warn_pp_file_not_found : Warning<"'%0' file not found">, DefaultFatal;
+def err_pp_file_not_found : Error<"'%0' file not found">, DefaultFatal;
 def err_pp_error_opening_file : Error<
   "error opening file '%0': %1">, DefaultFatal;
 def err_pp_empty_filename : Error<"empty filename">;
@@ -326,5 +323,7 @@ def err_pp_linemarker_invalid_pop : Error<
   "invalid line marker flag '2': cannot pop empty include stack">;
 def ext_pp_line_too_big : Extension<
   "C requires #line number to be less than %0, allowed as extension">;
+
+def err_pp_export_non_macro : Error<"no macro named %0 to export">;
 
 }

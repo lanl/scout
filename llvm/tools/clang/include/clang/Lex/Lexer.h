@@ -332,7 +332,8 @@ public:
   /// of the file begins along with a boolean value indicating whether 
   /// the preamble ends at the beginning of a new line.
   static std::pair<unsigned, bool>
-  ComputePreamble(const llvm::MemoryBuffer *Buffer, unsigned MaxLines = 0);
+  ComputePreamble(const llvm::MemoryBuffer *Buffer, const LangOptions &Features,
+                  unsigned MaxLines = 0);
                                         
   //===--------------------------------------------------------------------===//
   // Internal implementation interfaces.
@@ -509,6 +510,9 @@ private:
   
   bool IsStartOfConflictMarker(const char *CurPtr);
   bool HandleEndOfConflictMarker(const char *CurPtr);
+
+  bool isCodeCompletionPoint(const char *CurPtr) const;
+  void cutOffLexing() { BufferPtr = BufferEnd; }
 };
 
 

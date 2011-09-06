@@ -409,25 +409,25 @@ public:
 class NullStmt : public Stmt {
   SourceLocation SemiLoc;
 
-  /// \brief If the null statement was preceded by an empty macro this is
-  /// its instantiation source location, e.g:
+  /// \brief True if the null statement was preceded by an empty macro, e.g:
   /// @code
   ///   #define CALL(x)
   ///   CALL(0);
   /// @endcode
-  SourceLocation LeadingEmptyMacro;
+  bool HasLeadingEmptyMacro;
 public:
-  NullStmt(SourceLocation L, SourceLocation LeadingEmptyMacro =SourceLocation())
-    : Stmt(NullStmtClass), SemiLoc(L), LeadingEmptyMacro(LeadingEmptyMacro) {}
+  NullStmt(SourceLocation L, bool hasLeadingEmptyMacro = false)
+    : Stmt(NullStmtClass), SemiLoc(L),
+      HasLeadingEmptyMacro(hasLeadingEmptyMacro) {}
 
   /// \brief Build an empty null statement.
-  explicit NullStmt(EmptyShell Empty) : Stmt(NullStmtClass, Empty) { }
+  explicit NullStmt(EmptyShell Empty) : Stmt(NullStmtClass, Empty),
+      HasLeadingEmptyMacro(false) { }
 
   SourceLocation getSemiLoc() const { return SemiLoc; }
   void setSemiLoc(SourceLocation L) { SemiLoc = L; }
 
-  bool hasLeadingEmptyMacro() const { return LeadingEmptyMacro.isValid(); }
-  SourceLocation getLeadingEmptyMacroLoc() const { return LeadingEmptyMacro; }
+  bool hasLeadingEmptyMacro() const { return HasLeadingEmptyMacro; }
 
   SourceRange getSourceRange() const { return SourceRange(SemiLoc); }
 
@@ -525,6 +525,10 @@ public:
 
   // Iterators
   child_range children() {
+    return child_range(&Body[0], &Body[0]+CompoundStmtBits.NumStmts);
+  }
+  
+  const_child_range children() const {
     return child_range(&Body[0], &Body[0]+CompoundStmtBits.NumStmts);
   }
 };

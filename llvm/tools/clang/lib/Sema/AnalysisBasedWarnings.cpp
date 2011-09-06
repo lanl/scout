@@ -25,6 +25,7 @@
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/EvaluatedExprVisitor.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/Analysis/AnalysisContext.h"
 #include "clang/Analysis/CFG.h"
 #include "clang/Analysis/Analyses/ReachableCode.h"
@@ -32,7 +33,13 @@
 #include "clang/Analysis/CFGStmtMap.h"
 #include "clang/Analysis/Analyses/UninitializedValues.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/ImmutableMap.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include <algorithm>
+#include <vector>
 
 using namespace clang;
 
@@ -86,7 +93,7 @@ static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
   // The CFG leaves in dead things, and we don't want the dead code paths to
   // confuse us, so we mark all live things first.
   llvm::BitVector live(cfg->getNumBlockIDs());
-  unsigned count = reachable_code::ScanReachableFromBlock(cfg->getEntry(),
+  unsigned count = reachable_code::ScanReachableFromBlock(&cfg->getEntry(),
                                                           live);
 
   bool AddEHEdges = AC.getAddEHEdges();
@@ -101,7 +108,7 @@ static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
           if (b.getTerminator() && isa<CXXTryStmt>(b.getTerminator()))
             // When not adding EH edges from calls, catch clauses
             // can otherwise seem dead.  Avoid noting them as dead.
-            count += reachable_code::ScanReachableFromBlock(b, live);
+            count += reachable_code::ScanReachableFromBlock(&b, live);
           continue;
         }
       }
@@ -163,7 +170,7 @@ static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
     }
 
     CFGStmt CS = cast<CFGStmt>(*ri);
-    Stmt *S = CS.getStmt();
+    const Stmt *S = CS.getStmt();
     if (isa<ReturnStmt>(S)) {
       HasLiveReturn = true;
       continue;
@@ -189,13 +196,13 @@ static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
     }
 
     bool NoReturnEdge = false;
-    if (CallExpr *C = dyn_cast<CallExpr>(S)) {
+    if (const CallExpr *C = dyn_cast<CallExpr>(S)) {
       if (std::find(B.succ_begin(), B.succ_end(), &cfg->getExit())
             == B.succ_end()) {
         HasAbnormalEdge = true;
         continue;
       }
-      Expr *CEE = C->getCallee()->IgnoreParenCasts();
+      const Expr *CEE = C->getCallee()->IgnoreParenCasts();
       QualType calleeType = CEE->getType();
       if (calleeType == AC.getASTContext().BoundMemberTy) {
         calleeType = Expr::findBoundMemberType(CEE);
@@ -204,8 +211,8 @@ static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
       if (getFunctionExtInfo(calleeType).getNoReturn()) {
         NoReturnEdge = true;
         HasFakeEdge = true;
-      } else if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(CEE)) {
-        ValueDecl *VD = DRE->getDecl();
+      } else if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(CEE)) {
+        const ValueDecl *VD = DRE->getDecl();
         if (VD->hasAttr<NoReturnAttr>()) {
           NoReturnEdge = true;
           HasFakeEdge = true;
@@ -369,9 +376,14 @@ static void CheckFallThroughForBody(Sema &S, const Decl *D, const Stmt *Body,
                  CD.diag_AlwaysFallThrough_ReturnsNonVoid);
         break;
       case NeverFallThroughOrReturn:
-        if (ReturnsVoid && !HasNoReturn && CD.diag_NeverFallThroughOrReturn)
-          S.Diag(Compound->getLBracLoc(),
-                 CD.diag_NeverFallThroughOrReturn);
+        if (ReturnsVoid && !HasNoReturn && CD.diag_NeverFallThroughOrReturn) {
+          if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+            S.Diag(Compound->getLBracLoc(), CD.diag_NeverFallThroughOrReturn)
+              << FD;
+          } else {
+            S.Diag(Compound->getLBracLoc(), CD.diag_NeverFallThroughOrReturn);
+          }
+        }
         break;
       case NeverFallThrough:
         break;
@@ -501,8 +513,10 @@ static void SuggestInitializationFixit(Sema &S, const VarDecl *VD) {
   else if (VariableTy->isEnumeralType())
     return;
   else if (VariableTy->isPointerType() || VariableTy->isMemberPointerType()) {
+    if (S.Context.getLangOptions().CPlusPlus0x)
+      initialization = " = nullptr";
     // Check if 'NULL' is defined.
-    if (S.PP.getMacroInfo(&S.getASTContext().Idents.get("NULL")))
+    else if (S.PP.getMacroInfo(&S.getASTContext().Idents.get("NULL")))
       initialization = " = NULL";
     else
       initialization = " = 0";
@@ -585,6 +599,688 @@ public:
 };
 }
 
+
+//===----------------------------------------------------------------------===//
+// -Wthread-safety
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// \brief Implements a set of CFGBlocks using a BitVector.
+///
+/// This class contains a minimal interface, primarily dictated by the SetType
+/// template parameter of the llvm::po_iterator template, as used with external
+/// storage. We also use this set to keep track of which CFGBlocks we visit
+/// during the analysis.
+class CFGBlockSet {
+  llvm::BitVector VisitedBlockIDs;
+
+public:
+  // po_iterator requires this iterator, but the only interface needed is the
+  // value_type typedef.
+  struct iterator {
+    typedef const CFGBlock *value_type;
+  };
+
+  CFGBlockSet() {}
+  CFGBlockSet(const CFG *G) : VisitedBlockIDs(G->getNumBlockIDs(), false) {}
+
+  /// \brief Set the bit associated with a particular CFGBlock.
+  /// This is the important method for the SetType template parameter.
+  bool insert(const CFGBlock *Block) {
+    // Note that insert() is called by po_iterator, which doesn't check to make
+    // sure that Block is non-null.  Moreover, the CFGBlock iterator will
+    // occasionally hand out null pointers for pruned edges, so we catch those
+    // here.
+    if (Block == 0)
+      return false;  // if an edge is trivially false.
+    if (VisitedBlockIDs.test(Block->getBlockID()))
+      return false;
+    VisitedBlockIDs.set(Block->getBlockID());
+    return true;
+  }
+
+  /// \brief Check if the bit for a CFGBlock has been already set.
+  /// This method is for tracking visited blocks in the main threadsafety loop.
+  /// Block must not be null.
+  bool alreadySet(const CFGBlock *Block) {
+    return VisitedBlockIDs.test(Block->getBlockID());
+  }
+};
+
+/// \brief We create a helper class which we use to iterate through CFGBlocks in
+/// the topological order.
+class TopologicallySortedCFG {
+  typedef llvm::po_iterator<const CFG*, CFGBlockSet, true>  po_iterator;
+
+  std::vector<const CFGBlock*> Blocks;
+
+public:
+  typedef std::vector<const CFGBlock*>::reverse_iterator iterator;
+
+  TopologicallySortedCFG(const CFG *CFGraph) {
+    Blocks.reserve(CFGraph->getNumBlockIDs());
+    CFGBlockSet BSet(CFGraph);
+
+    for (po_iterator I = po_iterator::begin(CFGraph, BSet),
+         E = po_iterator::end(CFGraph, BSet); I != E; ++I) {
+      Blocks.push_back(*I);
+    }
+  }
+
+  iterator begin() {
+    return Blocks.rbegin();
+  }
+
+  iterator end() {
+    return Blocks.rend();
+  }
+};
+
+/// \brief A LockID object uniquely identifies a particular lock acquired, and
+/// is built from an Expr* (i.e. calling a lock function).
+///
+/// Thread-safety analysis works by comparing lock expressions.  Within the
+/// body of a function, an expression such as "x->foo->bar.mu" will resolve to
+/// a particular lock object at run-time.  Subsequent occurrences of the same
+/// expression (where "same" means syntactic equality) will refer to the same
+/// run-time object if three conditions hold:
+/// (1) Local variables in the expression, such as "x" have not changed.
+/// (2) Values on the heap that affect the expression have not changed.
+/// (3) The expression involves only pure function calls.
+/// The current implementation assumes, but does not verify, that multiple uses
+/// of the same lock expression satisfies these criteria.
+///
+/// Clang introduces an additional wrinkle, which is that it is difficult to
+/// derive canonical expressions, or compare expressions directly for equality.
+/// Thus, we identify a lock not by an Expr, but by the set of named
+/// declarations that are referenced by the Expr.  In other words,
+/// x->foo->bar.mu will be a four element vector with the Decls for
+/// mu, bar, and foo, and x.  The vector will uniquely identify the expression
+/// for all practical purposes.
+///
+/// Note we will need to perform substitution on "this" and function parameter
+/// names when constructing a lock expression.
+///
+/// For example:
+/// class C { Mutex Mu;  void lock() EXCLUSIVE_LOCK_FUNCTION(this->Mu); };
+/// void myFunc(C *X) { ... X->lock() ... }
+/// The original expression for the lock acquired by myFunc is "this->Mu", but
+/// "X" is substituted for "this" so we get X->Mu();
+///
+/// For another example:
+/// foo(MyList *L) EXCLUSIVE_LOCKS_REQUIRED(L->Mu) { ... }
+/// MyList *MyL;
+/// foo(MyL);  // requires lock MyL->Mu to be held
+///
+/// FIXME: In C++0x Mutexes are the objects that control access to shared
+/// variables, while Locks are the objects that acquire and release Mutexes. We
+/// may want to switch to this new terminology soon, in which case we should
+/// rename this class "Mutex" and rename "LockId" to "MutexId", as well as
+/// making sure that the terms Lock and Mutex throughout this code are
+/// consistent with C++0x
+///
+/// FIXME: We should also pick one and canonicalize all usage of lock vs acquire
+/// and unlock vs release as verbs.
+class LockID {
+  SmallVector<NamedDecl*, 2> DeclSeq;
+ 
+  /// Build a Decl sequence representing the lock from the given expression.
+  /// Recursive function that bottoms out when the final DeclRefExpr is reached.
+  void buildLock(Expr *Exp) {
+    if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Exp)) {
+      NamedDecl *ND = cast<NamedDecl>(DRE->getDecl()->getCanonicalDecl());
+      DeclSeq.push_back(ND);
+    } else if (MemberExpr *ME = dyn_cast<MemberExpr>(Exp)) {
+      NamedDecl *ND = ME->getMemberDecl();
+      DeclSeq.push_back(ND);
+      buildLock(ME->getBase());
+    } else {
+      // FIXME: add diagnostic
+      llvm::report_fatal_error("Expected lock expression!");
+    }
+  }
+
+public:
+  LockID(Expr *LExpr) {
+    buildLock(LExpr);
+    assert(!DeclSeq.empty());
+  }
+
+  bool operator==(const LockID &other) const {
+    return DeclSeq == other.DeclSeq;
+  }
+
+  bool operator!=(const LockID &other) const {
+    return !(*this == other);
+  }
+
+  // SmallVector overloads Operator< to do lexicographic ordering. Note that
+  // we use pointer equality (and <) to compare NamedDecls. This means the order
+  // of LockIDs in a lockset is nondeterministic. In order to output
+  // diagnostics in a deterministic ordering, we must order all diagnostics to
+  // output by SourceLocation when iterating through this lockset.
+  bool operator<(const LockID &other) const {
+    return DeclSeq < other.DeclSeq;
+  }
+
+  /// \brief Returns the name of the first Decl in the list for a given LockID;
+  /// e.g. the lock expression foo.bar() has name "bar".
+  /// The caret will point unambiguously to the lock expression, so using this
+  /// name in diagnostics is a way to get simple, and consistent, lock names.
+  /// We do not want to output the entire expression text for security reasons.
+  StringRef getName() const {
+    return DeclSeq.front()->getName();
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    for (SmallVectorImpl<NamedDecl*>::const_iterator I = DeclSeq.begin(),
+         E = DeclSeq.end(); I != E; ++I) {
+      ID.AddPointer(*I);
+    }
+  }
+};
+
+/// \brief This is a helper class that stores info about the most recent
+/// accquire of a Lock.
+///
+/// The main body of the analysis maps LockIDs to LockDatas.
+struct LockData {
+  SourceLocation AcquireLoc;
+
+  LockData(SourceLocation Loc) : AcquireLoc(Loc) {}
+
+  bool operator==(const LockData &other) const {
+    return AcquireLoc == other.AcquireLoc;
+  }
+
+  bool operator!=(const LockData &other) const {
+    return !(*this == other);
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(AcquireLoc.getRawEncoding());
+  }
+};
+
+/// A Lockset maps each LockID (defined above) to information about how it has
+/// been locked.
+typedef llvm::ImmutableMap<LockID, LockData> Lockset;
+
+/// \brief We use this class to visit different types of expressions in
+/// CFGBlocks, and build up the lockset.
+/// An expression may cause us to add or remove locks from the lockset, or else
+/// output error messages related to missing locks.
+/// FIXME: In future, we may be able to not inherit from a visitor.
+class BuildLockset : public StmtVisitor<BuildLockset> {
+  Sema &S;
+  Lockset LSet;
+  Lockset::Factory &LocksetFactory;
+
+  // Helper functions
+  void removeLock(SourceLocation UnlockLoc, Expr *LockExp);
+  void addLock(SourceLocation LockLoc, Expr *LockExp);
+  const ValueDecl *getValueDecl(Expr *Exp);
+  void checkAccess(Expr *Exp);
+  void checkDereference(Expr *Exp);
+
+public:
+  BuildLockset(Sema &S, Lockset LS, Lockset::Factory &F)
+    : StmtVisitor<BuildLockset>(), S(S), LSet(LS),
+      LocksetFactory(F) {}
+
+  Lockset getLockset() {
+    return LSet;
+  }
+
+  void VisitUnaryOperator(UnaryOperator *UO);
+  void VisitBinaryOperator(BinaryOperator *BO);
+  void VisitCastExpr(CastExpr *CE);
+  void VisitCXXMemberCallExpr(CXXMemberCallExpr *Exp);
+};
+
+/// \brief Add a new lock to the lockset, warning if the lock is already there.
+/// \param LockLoc The source location of the acquire
+/// \param LockExp The lock expression corresponding to the lock to be added
+void BuildLockset::addLock(SourceLocation LockLoc, Expr *LockExp) {
+  LockID Lock(LockExp);
+  LockData NewLockData(LockLoc);
+
+  if (LSet.contains(Lock))
+    S.Diag(LockLoc, diag::warn_double_lock) << Lock.getName();
+
+  LSet = LocksetFactory.add(LSet, Lock, NewLockData);
+}
+
+/// \brief Remove a lock from the lockset, warning if the lock is not there.
+/// \param LockExp The lock expression corresponding to the lock to be removed
+/// \param UnlockLoc The source location of the unlock (only used in error msg)
+void BuildLockset::removeLock(SourceLocation UnlockLoc, Expr *LockExp) {
+  LockID Lock(LockExp);
+
+  Lockset NewLSet = LocksetFactory.remove(LSet, Lock);
+  if(NewLSet == LSet)
+    S.Diag(UnlockLoc, diag::warn_unlock_but_no_acquire) << Lock.getName();
+
+  LSet = NewLSet;
+}
+
+/// \brief Gets the value decl pointer from DeclRefExprs or MemberExprs
+const ValueDecl *BuildLockset::getValueDecl(Expr *Exp) {
+  if (const DeclRefExpr *DR = dyn_cast<DeclRefExpr>(Exp))
+    return DR->getDecl();
+
+  if (const MemberExpr *ME = dyn_cast<MemberExpr>(Exp))
+    return ME->getMemberDecl();
+
+  return 0;
+}
+
+/// \brief This method identifies variable dereferences and checks pt_guarded_by
+/// and pt_guarded_var annotations. Note that we only check these annotations
+/// at the time a pointer is dereferenced.
+/// FIXME: We need to check for other types of pointer dereferences
+/// (e.g. [], ->) and deal with them here.
+/// \param Exp An expression that has been read or written.
+void BuildLockset::checkDereference(Expr *Exp) {
+  UnaryOperator *UO = dyn_cast<UnaryOperator>(Exp);
+  if (!UO || UO->getOpcode() != clang::UO_Deref)
+    return;
+  Exp = UO->getSubExpr()->IgnoreParenCasts();
+
+  const ValueDecl *D = getValueDecl(Exp);
+  if(!D || !D->hasAttrs())
+    return;
+
+  if (D->getAttr<PtGuardedVarAttr>() && LSet.isEmpty())
+    S.Diag(Exp->getExprLoc(), diag::warn_var_deref_requires_any_lock)
+      << D->getName();
+
+  const AttrVec &ArgAttrs = D->getAttrs();
+  for(unsigned i = 0, Size = ArgAttrs.size(); i < Size; ++i) {
+    if (ArgAttrs[i]->getKind() != attr::PtGuardedBy)
+      continue;
+    PtGuardedByAttr *PGBAttr = cast<PtGuardedByAttr>(ArgAttrs[i]);
+    LockID Lock(PGBAttr->getArg());
+    if (!LSet.contains(Lock))
+      S.Diag(Exp->getExprLoc(), diag::warn_var_deref_requires_lock)
+        << D->getName() << Lock.getName();
+  }
+}
+
+/// \brief Checks guarded_by and guarded_var attributes.
+/// Whenever we identify an access (read or write) of a DeclRefExpr or
+/// MemberExpr, we need to check whether there are any guarded_by or
+/// guarded_var attributes, and make sure we hold the appropriate locks.
+void BuildLockset::checkAccess(Expr *Exp) {
+  const ValueDecl *D = getValueDecl(Exp);
+  if(!D || !D->hasAttrs())
+    return;
+
+  if (D->getAttr<GuardedVarAttr>() && LSet.isEmpty())
+    S.Diag(Exp->getExprLoc(), diag::warn_variable_requires_any_lock)
+      << D->getName();
+
+  const AttrVec &ArgAttrs = D->getAttrs();
+  for(unsigned i = 0, Size = ArgAttrs.size(); i < Size; ++i) {
+    if (ArgAttrs[i]->getKind() != attr::GuardedBy)
+      continue;
+    GuardedByAttr *GBAttr = cast<GuardedByAttr>(ArgAttrs[i]);
+    LockID Lock(GBAttr->getArg());
+    if (!LSet.contains(Lock))
+      S.Diag(Exp->getExprLoc(), diag::warn_variable_requires_lock)
+        << D->getName() << Lock.getName();
+  }
+}
+
+/// \brief For unary operations which read and write a variable, we need to
+/// check whether we hold any required locks. Reads are checked in
+/// VisitCastExpr.
+void BuildLockset::VisitUnaryOperator(UnaryOperator *UO) {
+  switch (UO->getOpcode()) {
+    case clang::UO_PostDec:
+    case clang::UO_PostInc:
+    case clang::UO_PreDec:
+    case clang::UO_PreInc: {
+      Expr *SubExp = UO->getSubExpr()->IgnoreParenCasts();
+      checkAccess(SubExp);
+      checkDereference(SubExp);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/// For binary operations which assign to a variable (writes), we need to check
+/// whether we hold any required locks.
+/// FIXME: Deal with non-primitive types.
+void BuildLockset::VisitBinaryOperator(BinaryOperator *BO) {
+  if (!BO->isAssignmentOp())
+    return;
+  Expr *LHSExp = BO->getLHS()->IgnoreParenCasts();
+  checkAccess(LHSExp);
+  checkDereference(LHSExp);
+}
+
+/// Whenever we do an LValue to Rvalue cast, we are reading a variable and
+/// need to ensure we hold any required locks. 
+/// FIXME: Deal with non-primitive types.
+void BuildLockset::VisitCastExpr(CastExpr *CE) {
+  if (CE->getCastKind() != CK_LValueToRValue)
+    return;
+  Expr *SubExp = CE->getSubExpr()->IgnoreParenCasts();
+  checkAccess(SubExp);
+  checkDereference(SubExp);
+}
+
+
+/// \brief When visiting CXXMemberCallExprs we need to examine the attributes on
+/// the method that is being called and add, remove or check locks in the
+/// lockset accordingly.
+/// 
+/// FIXME: For classes annotated with one of the guarded annotations, we need
+/// to treat const method calls as reads and non-const method calls as writes,
+/// and check that the appropriate locks are held. Non-const method calls with 
+/// the same signature as const method calls can be also treated as reads.
+void BuildLockset::VisitCXXMemberCallExpr(CXXMemberCallExpr *Exp) {
+  NamedDecl *D = dyn_cast_or_null<NamedDecl>(Exp->getCalleeDecl());
+
+  SourceLocation ExpLocation = Exp->getExprLoc();
+  Expr *Parent = Exp->getImplicitObjectArgument();
+
+  if(!D || !D->hasAttrs())
+    return;
+
+  AttrVec &ArgAttrs = D->getAttrs();
+  for(unsigned i = 0; i < ArgAttrs.size(); ++i) {
+    Attr *Attr = ArgAttrs[i];
+    switch (Attr->getKind()) {
+      // When we encounter an exclusive lock function, we need to add the lock
+      // to our lockset.
+      case attr::ExclusiveLockFunction: {
+        ExclusiveLockFunctionAttr *ELFAttr =
+          cast<ExclusiveLockFunctionAttr>(Attr);
+
+        if (ELFAttr->args_size() == 0) {// The lock held is the "this" object.
+          addLock(ExpLocation, Parent);
+          break;
+        }
+
+        for (ExclusiveLockFunctionAttr::args_iterator I = ELFAttr->args_begin(),
+             E = ELFAttr->args_end(); I != E; ++I)
+          addLock(ExpLocation, *I);
+        // FIXME: acquired_after/acquired_before annotations
+        break;
+      }
+
+      // When we encounter an unlock function, we need to remove unlocked locks
+      // from the lockset, and flag a warning if they are not there.
+      case attr::UnlockFunction: {
+        UnlockFunctionAttr *UFAttr = cast<UnlockFunctionAttr>(Attr);
+
+        if (UFAttr->args_size() == 0) { // The lock held is the "this" object.
+          removeLock(ExpLocation, Parent);
+          break;
+        }
+
+        for (UnlockFunctionAttr::args_iterator I = UFAttr->args_begin(),
+            E = UFAttr->args_end(); I != E; ++I)
+          removeLock(ExpLocation, *I);
+        break;
+      }
+
+      // Ignore other (non thread-safety) attributes
+      default:
+        break;
+    }
+  }
+}
+
+typedef std::pair<SourceLocation, PartialDiagnostic> DelayedDiag;
+typedef llvm::SmallVector<DelayedDiag, 4> DiagList;
+
+struct SortDiagBySourceLocation {
+  Sema &S;
+
+  SortDiagBySourceLocation(Sema &S) : S(S) {}
+
+  bool operator()(const DelayedDiag &left, const DelayedDiag &right) {
+    // Although this call will be slow, this is only called when outputting
+    // multiple warnings.
+    return S.getSourceManager().isBeforeInTranslationUnit(left.first,
+                                                          right.first);
+  }
+};
+} // end anonymous namespace
+
+/// \brief Emit all buffered diagnostics in order of sourcelocation.
+/// We need to output diagnostics produced while iterating through
+/// the lockset in deterministic order, so this function orders diagnostics
+/// and outputs them.
+static void EmitDiagnostics(Sema &S, DiagList &D) {
+  SortDiagBySourceLocation SortDiagBySL(S);
+  sort(D.begin(), D.end(), SortDiagBySL);
+  for (DiagList::iterator I = D.begin(), E = D.end(); I != E; ++I)
+    S.Diag(I->first, I->second);
+}
+
+/// \brief Compute the intersection of two locksets and issue warnings for any
+/// locks in the symmetric difference.
+///
+/// This function is used at a merge point in the CFG when comparing the lockset
+/// of each branch being merged. For example, given the following sequence:
+/// A; if () then B; else C; D; we need to check that the lockset after B and C
+/// are the same. In the event of a difference, we use the intersection of these
+/// two locksets at the start of D.
+static Lockset intersectAndWarn(Sema &S, Lockset LSet1, Lockset LSet2,
+                                Lockset::Factory &Fact) {
+  Lockset Intersection = LSet1;
+  DiagList Warnings;
+
+  for (Lockset::iterator I = LSet2.begin(), E = LSet2.end(); I != E; ++I) {
+    if (!LSet1.contains(I.getKey())) {
+      const LockID &MissingLock = I.getKey();
+      const LockData &MissingLockData = I.getData();
+      PartialDiagnostic Warning =
+        S.PDiag(diag::warn_lock_not_released_in_scope) << MissingLock.getName();
+      Warnings.push_back(DelayedDiag(MissingLockData.AcquireLoc, Warning));
+    }
+  }
+
+  for (Lockset::iterator I = LSet1.begin(), E = LSet1.end(); I != E; ++I) {
+    if (!LSet2.contains(I.getKey())) {
+      const LockID &MissingLock = I.getKey();
+      const LockData &MissingLockData = I.getData();
+      PartialDiagnostic Warning =
+        S.PDiag(diag::warn_lock_not_released_in_scope) << MissingLock.getName();
+      Warnings.push_back(DelayedDiag(MissingLockData.AcquireLoc, Warning));
+      Intersection = Fact.remove(Intersection, MissingLock);
+    }
+  }
+
+  EmitDiagnostics(S, Warnings);
+  return Intersection;
+}
+
+/// \brief Returns the location of the first Stmt in a Block.
+static SourceLocation getFirstStmtLocation(CFGBlock *Block) {
+  SourceLocation Loc;
+  for (CFGBlock::const_iterator BI = Block->begin(), BE = Block->end();
+       BI != BE; ++BI) {
+    if (const CFGStmt *CfgStmt = dyn_cast<CFGStmt>(&(*BI))) {
+      Loc = CfgStmt->getStmt()->getLocStart();
+      if (Loc.isValid()) return Loc;
+    }
+  }
+  if (Stmt *S = Block->getTerminator().getStmt()) {
+    Loc = S->getLocStart();
+    if (Loc.isValid()) return Loc;
+  }
+  return Loc;
+}
+
+/// \brief Warn about different locksets along backedges of loops.
+/// This function is called when we encounter a back edge. At that point,
+/// we need to verify that the lockset before taking the backedge is the
+/// same as the lockset before entering the loop.
+///
+/// \param LoopEntrySet Locks held before starting the loop
+/// \param LoopReentrySet Locks held in the last CFG block of the loop
+static void warnBackEdgeUnequalLocksets(Sema &S, const Lockset LoopReentrySet,
+                                        const Lockset LoopEntrySet,
+                                        SourceLocation FirstLocInLoop) {
+  assert(FirstLocInLoop.isValid());
+  DiagList Warnings;
+
+  // Warn for locks held at the start of the loop, but not the end.
+  for (Lockset::iterator I = LoopEntrySet.begin(), E = LoopEntrySet.end();
+       I != E; ++I) {
+    if (!LoopReentrySet.contains(I.getKey())) {
+      const LockID &MissingLock = I.getKey();
+      // We report this error at the location of the first statement in a loop
+      PartialDiagnostic Warning =
+        S.PDiag(diag::warn_expecting_lock_held_on_loop)
+          << MissingLock.getName();
+      Warnings.push_back(DelayedDiag(FirstLocInLoop, Warning));
+    }
+  }
+
+  // Warn for locks held at the end of the loop, but not at the start.
+  for (Lockset::iterator I = LoopReentrySet.begin(), E = LoopReentrySet.end();
+       I != E; ++I) {
+    if (!LoopEntrySet.contains(I.getKey())) {
+      const LockID &MissingLock = I.getKey();
+      const LockData &MissingLockData = I.getData();
+      PartialDiagnostic Warning =
+        S.PDiag(diag::warn_lock_not_released_in_scope) << MissingLock.getName();
+      Warnings.push_back(DelayedDiag(MissingLockData.AcquireLoc, Warning));
+    }
+  }
+
+  EmitDiagnostics(S, Warnings);
+}
+
+/// \brief Check a function's CFG for thread-safety violations.
+///
+/// We traverse the blocks in the CFG, compute the set of locks that are held
+/// at the end of each block, and issue warnings for thread safety violations.
+/// Each block in the CFG is traversed exactly once.
+static void checkThreadSafety(Sema &S, AnalysisContext &AC) {
+  CFG *CFGraph = AC.getCFG();
+  if (!CFGraph) return;
+
+  Lockset::Factory LocksetFactory;
+
+  // FIXME: Swith to SmallVector? Otherwise improve performance impact?
+  std::vector<Lockset> EntryLocksets(CFGraph->getNumBlockIDs(),
+                                     LocksetFactory.getEmptyMap());
+  std::vector<Lockset> ExitLocksets(CFGraph->getNumBlockIDs(),
+                                    LocksetFactory.getEmptyMap());
+
+  // We need to explore the CFG via a "topological" ordering.
+  // That way, we will be guaranteed to have information about required
+  // predecessor locksets when exploring a new block.
+  TopologicallySortedCFG SortedGraph(CFGraph);
+  CFGBlockSet VisitedBlocks(CFGraph);
+
+  for (TopologicallySortedCFG::iterator I = SortedGraph.begin(),
+       E = SortedGraph.end(); I!= E; ++I) {
+    const CFGBlock *CurrBlock = *I;
+    int CurrBlockID = CurrBlock->getBlockID();
+
+    VisitedBlocks.insert(CurrBlock);
+
+    // Use the default initial lockset in case there are no predecessors.
+    Lockset &Entryset = EntryLocksets[CurrBlockID];
+    Lockset &Exitset = ExitLocksets[CurrBlockID];
+
+    // Iterate through the predecessor blocks and warn if the lockset for all
+    // predecessors is not the same. We take the entry lockset of the current
+    // block to be the intersection of all previous locksets.
+    // FIXME: By keeping the intersection, we may output more errors in future
+    // for a lock which is not in the intersection, but was in the union. We
+    // may want to also keep the union in future. As an example, let's say
+    // the intersection contains Lock L, and the union contains L and M.
+    // Later we unlock M. At this point, we would output an error because we
+    // never locked M; although the real error is probably that we forgot to
+    // lock M on all code paths. Conversely, let's say that later we lock M.
+    // In this case, we should compare against the intersection instead of the
+    // union because the real error is probably that we forgot to unlock M on
+    // all code paths.
+    bool LocksetInitialized = false;
+    for (CFGBlock::const_pred_iterator PI = CurrBlock->pred_begin(),
+         PE  = CurrBlock->pred_end(); PI != PE; ++PI) {
+
+      // if *PI -> CurrBlock is a back edge
+      if (*PI == 0 || !VisitedBlocks.alreadySet(*PI))
+        continue;
+
+      int PrevBlockID = (*PI)->getBlockID();
+      if (!LocksetInitialized) {
+        Entryset = ExitLocksets[PrevBlockID];
+        LocksetInitialized = true;
+      } else {
+        Entryset = intersectAndWarn(S, Entryset, ExitLocksets[PrevBlockID],
+                                LocksetFactory);
+      }
+    }
+
+    BuildLockset LocksetBuilder(S, Entryset, LocksetFactory);
+    for (CFGBlock::const_iterator BI = CurrBlock->begin(),
+         BE = CurrBlock->end(); BI != BE; ++BI) {
+      if (const CFGStmt *CfgStmt = dyn_cast<CFGStmt>(&*BI))
+        LocksetBuilder.Visit(const_cast<Stmt*>(CfgStmt->getStmt()));
+    }
+    Exitset = LocksetBuilder.getLockset();
+
+    // For every back edge from CurrBlock (the end of the loop) to another block
+    // (FirstLoopBlock) we need to check that the Lockset of Block is equal to
+    // the one held at the beginning of FirstLoopBlock. We can look up the
+    // Lockset held at the beginning of FirstLoopBlock in the EntryLockSets map.
+    for (CFGBlock::const_succ_iterator SI = CurrBlock->succ_begin(),
+         SE  = CurrBlock->succ_end(); SI != SE; ++SI) {
+
+      // if CurrBlock -> *SI is *not* a back edge
+      if (*SI == 0 || !VisitedBlocks.alreadySet(*SI))
+        continue;
+
+      CFGBlock *FirstLoopBlock = *SI;
+      SourceLocation FirstLoopLocation = getFirstStmtLocation(FirstLoopBlock);
+
+      assert(FirstLoopLocation.isValid());
+      // Fail gracefully in release code.
+      if (!FirstLoopLocation.isValid())
+        continue;
+
+      Lockset PreLoop = EntryLocksets[FirstLoopBlock->getBlockID()];
+      Lockset LoopEnd = ExitLocksets[CurrBlockID];
+      warnBackEdgeUnequalLocksets(S, LoopEnd, PreLoop, FirstLoopLocation);
+    }
+  }
+
+  Lockset FinalLockset = ExitLocksets[CFGraph->getExit().getBlockID()];
+  if (!FinalLockset.isEmpty()) {
+    DiagList Warnings;
+    for (Lockset::iterator I=FinalLockset.begin(), E=FinalLockset.end();
+         I != E; ++I) {
+      const LockID &MissingLock = I.getKey();
+      const LockData &MissingLockData = I.getData();
+
+      std::string FunName = "<unknown>";
+      if (const NamedDecl *ContextDecl = dyn_cast<NamedDecl>(AC.getDecl())) {
+        FunName = ContextDecl->getDeclName().getAsString();
+      }
+
+      PartialDiagnostic Warning =
+        S.PDiag(diag::warn_locks_not_released)
+          << MissingLock.getName() << FunName;
+      Warnings.push_back(DelayedDiag(MissingLockData.AcquireLoc, Warning));
+    }
+    EmitDiagnostics(S, Warnings);
+  }
+}
+
+
 //===----------------------------------------------------------------------===//
 // AnalysisBasedWarnings - Worker object used by Sema to execute analysis-based
 //  warnings on a function, method, or block.
@@ -593,6 +1289,7 @@ public:
 clang::sema::AnalysisBasedWarnings::Policy::Policy() {
   enableCheckFallThrough = 1;
   enableCheckUnreachable = 0;
+  enableThreadSafetyAnalysis = 0;
 }
 
 clang::sema::AnalysisBasedWarnings::AnalysisBasedWarnings(Sema &s)
@@ -610,6 +1307,10 @@ clang::sema::AnalysisBasedWarnings::AnalysisBasedWarnings(Sema &s)
   DefaultPolicy.enableCheckUnreachable = (unsigned)
     (D.getDiagnosticLevel(diag::warn_unreachable, SourceLocation()) !=
         Diagnostic::Ignored);
+  DefaultPolicy.enableThreadSafetyAnalysis = (unsigned)
+    (D.getDiagnosticLevel(diag::warn_double_lock, SourceLocation()) !=
+     Diagnostic::Ignored);
+
 }
 
 static void flushDiagnostics(Sema &S, sema::FunctionScopeInfo *fscope) {
@@ -669,13 +1370,19 @@ AnalysisBasedWarnings::IssueWarnings(sema::AnalysisBasedWarnings::Policy P,
   // prototyping, but we need a way for analyses to say what expressions they
   // expect to always be CFGElements and then fill in the BuildOptions
   // appropriately.  This is essentially a layering violation.
-  AC.getCFGBuildOptions()
-    .setAlwaysAdd(Stmt::BinaryOperatorClass)
-    .setAlwaysAdd(Stmt::BlockExprClass)
-    .setAlwaysAdd(Stmt::CStyleCastExprClass)
-    .setAlwaysAdd(Stmt::DeclRefExprClass)
-    .setAlwaysAdd(Stmt::ImplicitCastExprClass)
-    .setAlwaysAdd(Stmt::UnaryOperatorClass);
+  if (P.enableCheckUnreachable) {
+    // Unreachable code analysis requires a linearized CFG.
+    AC.getCFGBuildOptions().setAllAlwaysAdd();
+  }
+  else {
+    AC.getCFGBuildOptions()
+      .setAlwaysAdd(Stmt::BinaryOperatorClass)
+      .setAlwaysAdd(Stmt::BlockExprClass)
+      .setAlwaysAdd(Stmt::CStyleCastExprClass)
+      .setAlwaysAdd(Stmt::DeclRefExprClass)
+      .setAlwaysAdd(Stmt::ImplicitCastExprClass)
+      .setAlwaysAdd(Stmt::UnaryOperatorClass);
+  }
 
   // Construct the analysis context with the specified CFG build options.
   
@@ -735,6 +1442,10 @@ AnalysisBasedWarnings::IssueWarnings(sema::AnalysisBasedWarnings::Policy P,
   if (P.enableCheckUnreachable)
     CheckUnreachable(S, AC);
   
+  // Check for thread safety violations
+  if (P.enableThreadSafetyAnalysis)
+    checkThreadSafety(S, AC);
+
   if (Diags.getDiagnosticLevel(diag::warn_uninit_var, D->getLocStart())
       != Diagnostic::Ignored ||
       Diags.getDiagnosticLevel(diag::warn_maybe_uninit_var, D->getLocStart())

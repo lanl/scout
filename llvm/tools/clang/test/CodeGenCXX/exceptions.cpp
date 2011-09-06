@@ -390,3 +390,20 @@ namespace test7 {
     return new B(A(), new B(A(), 0));
   }
 }
+
+// Just don't crash.
+namespace test8 {
+  struct A {
+    // Having both of these is required to trigger the assert we're
+    // trying to avoid.
+    A(const A&);
+    A&operator=(const A&);
+
+    ~A();
+  };
+
+  A makeA();
+  void test() {
+    throw makeA();
+  }
+}

@@ -167,6 +167,12 @@ Instruction* BasicBlock::getFirstNonPHIOrDbgOrLifetime() {
   return &*i;
 }
 
+BasicBlock::iterator BasicBlock::getFirstInsertionPt() {
+  iterator InsertPt = getFirstNonPHI();
+  if (isa<LandingPadInst>(InsertPt)) ++InsertPt;
+  return InsertPt;
+}
+
 void BasicBlock::dropAllReferences() {
   for(iterator I = begin(), E = end(); I != E; ++I)
     I->dropAllReferences();
@@ -347,4 +353,16 @@ void BasicBlock::replaceSuccessorsPhiUsesWith(BasicBlock *New) {
         PN->setIncomingBlock(i, New);
     }
   }
+}
+
+/// isLandingPad - Return true if this basic block is a landing pad. I.e., it's
+/// the destination of the 'unwind' edge of an invoke instruction.
+bool BasicBlock::isLandingPad() const {
+  return isa<LandingPadInst>(getFirstNonPHI());
+}
+
+/// getLandingPadInst() - Return the landingpad instruction associated with
+/// the landing pad.
+LandingPadInst *BasicBlock::getLandingPadInst() {
+  return dyn_cast<LandingPadInst>(getFirstNonPHI());
 }

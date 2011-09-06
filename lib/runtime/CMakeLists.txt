@@ -63,23 +63,3 @@ endif()
 # We probably want the runtime to dynamic...
 add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${hwloc_srcs})
 
------
-
-#	modified:   Makefile
-#	modified:   include/runtime/range.h
-#	modified:   include/runtime/scout.h
-#	modified:   include/runtime/tbq.h
-#	modified:   lib/compiler/CMakeLists.txt
-#	modified:   lib/runtime/CMakeLists.txt
-#	modified:   lib/runtime/scout.cpp
-#	modified:   lib/runtime/tbq.cpp
-#	modified:   llvm/tools/clang/clang.xcodeproj/project.xcworkspace/xcuserdata/nickm.xcuserdatad/UserInterfaceState.xcuserstate
-#	modified:   llvm/tools/clang/include/clang/AST/Stmt.h
-#	modified:   llvm/tools/clang/include/clang/Parse/Parser.h
-#	modified:   llvm/tools/clang/lib/CodeGen/CGDebugInfo.cpp
-#	modified:   llvm/tools/clang/lib/Parse/ParseStmt.cpp
-#	modified:   llvm/tools/clang/lib/Parse/Parser.cpp
-#	modified:   sandbox/runtime/tbq/multi-queue.cpp
-#	modified:   sandbox/runtime/tbq/multi-queue2.cpp
-#	modified:   test/forall.sc
-

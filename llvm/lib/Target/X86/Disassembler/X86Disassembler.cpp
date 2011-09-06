@@ -21,13 +21,15 @@
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MemoryObject.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define GET_REGINFO_ENUM
 #include "X86GenRegisterInfo.inc"
+#define GET_INSTRINFO_ENUM
+#include "X86GenInstrInfo.inc"
 #include "X86GenEDInfo.inc"
 
 using namespace llvm;
@@ -106,11 +108,12 @@ static void logger(void* arg, const char* log) {
 // Public interface for the disassembler
 //
 
-bool X86GenericDisassembler::getInstruction(MCInst &instr,
-                                            uint64_t &size,
-                                            const MemoryObject &region,
-                                            uint64_t address,
-                                            raw_ostream &vStream) const {
+MCDisassembler::DecodeStatus
+X86GenericDisassembler::getInstruction(MCInst &instr,
+                                       uint64_t &size,
+                                       const MemoryObject &region,
+                                       uint64_t address,
+                                       raw_ostream &vStream) const {
   InternalInstruction internalInstr;
   
   int ret = decodeInstruction(&internalInstr,
@@ -123,11 +126,11 @@ bool X86GenericDisassembler::getInstruction(MCInst &instr,
 
   if (ret) {
     size = internalInstr.readerCursor - address;
-    return false;
+    return Fail;
   }
   else {
     size = internalInstr.length;
-    return !translateInstruction(instr, internalInstr);
+    return (!translateInstruction(instr, internalInstr)) ? Success : Fail;
   }
 }
 
@@ -179,6 +182,38 @@ static void translateImmediate(MCInst &mcInst, uint64_t immediate,
       type = TYPE_MOFFS32;
       break;
     case 8:
+      type = TYPE_MOFFS64;
+      break;
+    }
+  }
+  // By default sign-extend all X86 immediates based on their encoding.
+  else if (type == TYPE_IMM8 || type == TYPE_IMM16 || type == TYPE_IMM32 ||
+           type == TYPE_IMM64) {
+    uint32_t Opcode = mcInst.getOpcode();
+    switch (operand.encoding) {
+    default:
+      break;
+    case ENCODING_IB:
+      // Special case those X86 instructions that use the imm8 as a set of
+      // bits, bit count, etc. and are not sign-extend.
+      if (Opcode != X86::BLENDPSrri && Opcode != X86::BLENDPDrri &&
+	  Opcode != X86::PBLENDWrri && Opcode != X86::MPSADBWrri &&
+	  Opcode != X86::DPPSrri && Opcode != X86::DPPDrri &&
+	  Opcode != X86::INSERTPSrr && Opcode != X86::VBLENDPSYrri &&
+	  Opcode != X86::VBLENDPSYrmi && Opcode != X86::VBLENDPDYrri &&
+	  Opcode != X86::VBLENDPDYrmi && Opcode != X86::VPBLENDWrri &&
+	  Opcode != X86::VMPSADBWrri && Opcode != X86::VDPPSYrri &&
+	  Opcode != X86::VDPPSYrmi && Opcode != X86::VDPPDrri &&
+	  Opcode != X86::VINSERTPSrr)
+	type = TYPE_MOFFS8;
+      break;
+    case ENCODING_IW:
+      type = TYPE_MOFFS16;
+      break;
+    case ENCODING_ID:
+      type = TYPE_MOFFS32;
+      break;
+    case ENCODING_IO:
       type = TYPE_MOFFS64;
       break;
     }

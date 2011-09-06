@@ -17,6 +17,7 @@
 #include "clang/Basic/FileManager.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -38,6 +39,7 @@ using llvm::MemoryBuffer;
 ContentCache::~ContentCache() {
   if (shouldFreeBuffer())
     delete Buffer.getPointer();
+  delete MacroArgsCache;
 }
 
 /// getSizeBytesMapped - Returns the number of bytes actually mapped for this
@@ -403,9 +405,7 @@ void SourceManager::clearIDTables() {
 
   // Use up FileID #0 as an invalid expansion.
   NextLocalOffset = 0;
-  // The highest possible offset is 2^31-1, so CurrentLoadedOffset starts at
-  // 2^31.
-  CurrentLoadedOffset = 1U << 31U;
+  CurrentLoadedOffset = MaxLoadedOffset;
   createExpansionLoc(SourceLocation(),SourceLocation(),SourceLocation(), 1);
 }
 
@@ -834,10 +834,11 @@ SourceManager::getDecomposedSpellingLocSlowCase(const SrcMgr::SLocEntry *E,
   SourceLocation Loc;
   do {
     Loc = E->getExpansion().getSpellingLoc();
+    Loc = Loc.getFileLocWithOffset(Offset);
 
     FID = getFileID(Loc);
     E = &getSLocEntry(FID);
-    Offset += Loc.getOffset()-E->getOffset();
+    Offset = Loc.getOffset()-E->getOffset();
   } while (!Loc.isFileID());
 
   return std::make_pair(FID, Offset);
@@ -1280,6 +1281,25 @@ PresumedLoc SourceManager::getPresumedLoc(SourceLocation Loc) const {
   return PresumedLoc(Filename, LineNo, ColNo, IncludeLoc);
 }
 
+/// \brief The size of the SLocEnty that \arg FID represents.
+unsigned SourceManager::getFileIDSize(FileID FID) const {
+  bool Invalid = false;
+  const SrcMgr::SLocEntry &Entry = getSLocEntry(FID, &Invalid);
+  if (Invalid)
+    return 0;
+
+  int ID = FID.ID;
+  unsigned NextOffset;
+  if ((ID > 0 && unsigned(ID+1) == local_sloc_entry_size()))
+    NextOffset = getNextLocalOffset();
+  else if (ID+1 == -1)
+    NextOffset = MaxLoadedOffset;
+  else
+    NextOffset = getSLocEntry(FileID::get(ID+1)).getOffset();
+
+  return NextOffset - Entry.getOffset() - 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Other miscellaneous methods.
 //===----------------------------------------------------------------------===//
@@ -1303,8 +1323,8 @@ static llvm::Optional<ino_t> getActualFileInode(const FileEntry *File) {
 ///
 /// If the source file is included multiple times, the source location will
 /// be based upon an arbitrary inclusion.
-SourceLocation SourceManager::getLocation(const FileEntry *SourceFile,
-                                          unsigned Line, unsigned Col) {
+SourceLocation SourceManager::translateFileLineCol(const FileEntry *SourceFile,
+                                                  unsigned Line, unsigned Col) {
   assert(SourceFile && "Null source file!");
   assert(Line && Col && "Line and column should start from 1!");
 
@@ -1454,6 +1474,121 @@ SourceLocation SourceManager::getLocation(const FileEntry *SourceFile,
   return getLocForStartOfFile(FirstFID).getFileLocWithOffset(FilePos + Col - 1);
 }
 
+/// \brief Compute a map of macro argument chunks to their expanded source
+/// location. Chunks that are not part of a macro argument will map to an
+/// invalid source location. e.g. if a file contains one macro argument at
+/// offset 100 with length 10, this is how the map will be formed:
+///     0   -> SourceLocation()
+///     100 -> Expanded macro arg location
+///     110 -> SourceLocation()
+void SourceManager::computeMacroArgsCache(ContentCache *Content, FileID FID) {
+  assert(!Content->MacroArgsCache);
+  assert(!FID.isInvalid());
+
+  Content->MacroArgsCache = new ContentCache::MacroArgsMap();
+  ContentCache::MacroArgsMap &MacroArgsCache = *Content->MacroArgsCache;
+  // Initially no macro argument chunk is present.
+  MacroArgsCache.insert(std::make_pair(0, SourceLocation()));
+
+  int ID = FID.ID;
+  while (1) {
+    ++ID;
+    // Stop if there are no more FileIDs to check.
+    if (ID > 0) {
+      if (unsigned(ID) >= local_sloc_entry_size())
+        return;
+    } else if (ID == -1) {
+      return;
+    }
+
+    const SrcMgr::SLocEntry &Entry = getSLocEntryByID(ID);
+    if (Entry.isFile()) {
+      SourceLocation IncludeLoc = Entry.getFile().getIncludeLoc();
+      if (IncludeLoc.isInvalid())
+        continue;
+      if (!isInFileID(IncludeLoc, FID))
+        return; // No more files/macros that may be "contained" in this file.
+
+      // Skip the files/macros of the #include'd file, we only care about macros
+      // that lexed macro arguments from our file.
+      if (Entry.getFile().NumCreatedFIDs)
+        ID += Entry.getFile().NumCreatedFIDs - 1/*because of next ++ID*/;
+      continue;
+    }
+
+    if (!Entry.getExpansion().isMacroArgExpansion())
+      continue;
+ 
+    SourceLocation SpellLoc =
+        getSpellingLoc(Entry.getExpansion().getSpellingLoc());
+    unsigned BeginOffs;
+    if (!isInFileID(SpellLoc, FID, &BeginOffs))
+      return; // No more files/macros that may be "contained" in this file.
+    unsigned EndOffs = BeginOffs + getFileIDSize(FileID::get(ID));
+
+    // Add a new chunk for this macro argument. A previous macro argument chunk
+    // may have been lexed again, so e.g. if the map is
+    //     0   -> SourceLocation()
+    //     100 -> Expanded loc #1
+    //     110 -> SourceLocation()
+    // and we found a new macro FileID that lexed from offet 105 with length 3,
+    // the new map will be:
+    //     0   -> SourceLocation()
+    //     100 -> Expanded loc #1
+    //     105 -> Expanded loc #2
+    //     108 -> Expanded loc #1
+    //     110 -> SourceLocation()
+    //
+    // Since re-lexed macro chunks will always be the same size or less of
+    // previous chunks, we only need to find where the ending of the new macro
+    // chunk is mapped to and update the map with new begin/end mappings.
+
+    ContentCache::MacroArgsMap::iterator I= MacroArgsCache.upper_bound(EndOffs);
+    --I;
+    SourceLocation EndOffsMappedLoc = I->second;
+    MacroArgsCache[BeginOffs] = SourceLocation::getMacroLoc(Entry.getOffset());
+    MacroArgsCache[EndOffs] = EndOffsMappedLoc;
+  }
+}
+
+/// \brief If \arg Loc points inside a function macro argument, the returned
+/// location will be the macro location in which the argument was expanded.
+/// If a macro argument is used multiple times, the expanded location will
+/// be at the first expansion of the argument.
+/// e.g.
+///   MY_MACRO(foo);
+///             ^
+/// Passing a file location pointing at 'foo', will yield a macro location
+/// where 'foo' was expanded into.
+SourceLocation SourceManager::getMacroArgExpandedLocation(SourceLocation Loc) {
+  if (Loc.isInvalid() || !Loc.isFileID())
+    return Loc;
+
+  FileID FID;
+  unsigned Offset;
+  llvm::tie(FID, Offset) = getDecomposedLoc(Loc);
+  if (FID.isInvalid())
+    return Loc;
+
+  ContentCache *Content
+    = const_cast<ContentCache *>(getSLocEntry(FID).getFile().getContentCache());
+  if (!Content->MacroArgsCache)
+    computeMacroArgsCache(Content, FID);
+
+  assert(Content->MacroArgsCache);
+  assert(!Content->MacroArgsCache->empty());
+  ContentCache::MacroArgsMap::iterator
+      I = Content->MacroArgsCache->upper_bound(Offset);
+  --I;
+  
+  unsigned MacroArgBeginOffs = I->first;
+  SourceLocation MacroArgExpandedLoc = I->second;
+  if (MacroArgExpandedLoc.isValid())
+    return MacroArgExpandedLoc.getFileLocWithOffset(Offset - MacroArgBeginOffs);
+
+  return Loc;
+}
+
 /// Given a decomposed source location, move it up the include/expansion stack
 /// to the parent source location.  If this is possible, return the decomposed
 /// version of the parent in Loc and return false.  If Loc is the top-level
@@ -1484,11 +1619,6 @@ bool SourceManager::isBeforeInTranslationUnit(SourceLocation LHS,
   if (LHS == RHS)
     return false;
 
-  // If both locations are macro expansions, the order of their offsets reflect
-  // the order that the tokens, pointed to by these locations, were expanded
-  // (during parsing each token that is expanded by a macro, expands the
-  // SLocEntries).
-
   std::pair<FileID, unsigned> LOffs = getDecomposedLoc(LHS);
   std::pair<FileID, unsigned> ROffs = getDecomposedLoc(RHS);
 
@@ -1502,7 +1632,8 @@ bool SourceManager::isBeforeInTranslationUnit(SourceLocation LHS,
     return IsBeforeInTUCache.getCachedResult(LOffs.second, ROffs.second);
 
   // Okay, we missed in the cache, start updating the cache for this query.
-  IsBeforeInTUCache.setQueryFIDs(LOffs.first, ROffs.first);
+  IsBeforeInTUCache.setQueryFIDs(LOffs.first, ROffs.first,
+                          /*isLFIDBeforeRFID=*/LOffs.first.ID < ROffs.first.ID);
 
   // We need to find the common ancestor. The only way of doing this is to
   // build the complete include chain for one and then walking up the chain
@@ -1534,7 +1665,7 @@ bool SourceManager::isBeforeInTranslationUnit(SourceLocation LHS,
   // This can happen if a location is in a built-ins buffer.
   // But see PR5662.
   // Clear the lookup cache, it depends on a common location.
-  IsBeforeInTUCache.setQueryFIDs(FileID(), FileID());
+  IsBeforeInTUCache.clear();
   bool LIsBuiltins = strcmp("<built-in>",
                             getBuffer(LOffs.first)->getBufferIdentifier()) == 0;
   bool RIsBuiltins = strcmp("<built-in>",
@@ -1561,18 +1692,21 @@ void SourceManager::PrintStats() const {
                << NextLocalOffset << "B of Sloc address space used.\n";
   llvm::errs() << LoadedSLocEntryTable.size()
                << " loaded SLocEntries allocated, "
-               << (1U << 31U) - CurrentLoadedOffset
+               << MaxLoadedOffset - CurrentLoadedOffset
                << "B of Sloc address space used.\n";
   
   unsigned NumLineNumsComputed = 0;
+  unsigned NumMacroArgsComputed = 0;
   unsigned NumFileBytesMapped = 0;
   for (fileinfo_iterator I = fileinfo_begin(), E = fileinfo_end(); I != E; ++I){
     NumLineNumsComputed += I->second->SourceLineCache != 0;
+    NumMacroArgsComputed += I->second->MacroArgsCache != 0;
     NumFileBytesMapped  += I->second->getSizeBytesMapped();
   }
 
   llvm::errs() << NumFileBytesMapped << " bytes of files mapped, "
-               << NumLineNumsComputed << " files with line #'s computed.\n";
+               << NumLineNumsComputed << " files with line #'s computed, "
+               << NumMacroArgsComputed << " files with macro args computed.\n";
   llvm::errs() << "FileID scans: " << NumLinearScans << " linear, "
                << NumBinaryProbes << " binary.\n";
 }

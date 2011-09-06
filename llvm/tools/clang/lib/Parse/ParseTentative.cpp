@@ -552,7 +552,8 @@ Parser::TPResult Parser::TryParseDeclarator(bool mayBeAbstract,
           Tok.is(tok::kw___cdecl) ||
           Tok.is(tok::kw___stdcall) ||
           Tok.is(tok::kw___fastcall) ||
-          Tok.is(tok::kw___thiscall))
+          Tok.is(tok::kw___thiscall) ||
+          Tok.is(tok::kw___unaligned))
         return TPResult::True(); // attributes indicate declaration
       TPResult TPR = TryParseDeclarator(mayBeAbstract, mayHaveIdentifier);
       if (TPR != TPResult::Ambiguous())
@@ -742,6 +743,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw___stdcall:
   case tok::kw___fastcall:
   case tok::kw___thiscall:
+  case tok::kw___unaligned:
   case tok::kw___vector:
   case tok::kw___pixel:
     return TPResult::False();
@@ -933,7 +935,9 @@ Parser::TPResult Parser::isCXXDeclarationSpecifier() {
   case tok::kw___thiscall:
   case tok::kw___w64:
   case tok::kw___ptr64:
+  case tok::kw___ptr32:
   case tok::kw___forceinline:
+  case tok::kw___unaligned:
     return TPResult::True();
 
     // Borland

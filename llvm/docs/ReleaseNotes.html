@@ -583,7 +583,21 @@ it run faster:</p>
 <ul>
   <li>The <code>LowerSetJmp</code> pass wasn't used effectively by any
       target and has been removed.</li>
+  <li>The old <code>TailDup</code> pass was not used in the standard pipeline
+      and was unable to update ssa form, so it has been removed.
+  <li>The syntax of volatile loads and stores in IR has been changed to
+      "<code>load volatile</code>"/"<code>store volatile</code>".  The old
+      syntax ("<code>volatile load</code>"/"<code>volatile store</code>")
+      is still accepted, but is now considered deprecated.</li>
 </ul>
+
+<h4>Windows (32-bit)</h4>
+<div>
+<ul>
+  <li>On Win32(MinGW32 and MSVC), Windows 2000 will not be supported.
+      Windows XP or higher is required.</li>
+</ul>
+</div>
 
 </div>
 
@@ -668,6 +682,10 @@ it run faster:</p>
 
 <li>The <code>LLVMAddLowerSetJmpPass</code> function from the C API was removed
     because the <code>LowerSetJmp</code> pass was removed.</li>
+
+<li>The <code>DIBuilder</code> interface used by front ends to encode debugging 
+    information in the LLVM IR now expects clients to use <code>DIBuilder::finalize()</code>
+    at the end of translation unit to complete debugging information encoding.</li>
 
 </ul>
 </div>
@@ -902,7 +920,7 @@ lists</a>.</p>
   src="http://www.w3.org/Icons/valid-html401-blue" alt="Valid HTML 4.01"></a>
 
   <a href="http://llvm.org/">LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2011-08-04 04:43:43 -0600 (Thu, 04 Aug 2011) $
+  Last modified: $Date: 2011-08-30 17:03:45 -0600 (Tue, 30 Aug 2011) $
 </address>
 
 </body>

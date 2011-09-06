@@ -203,6 +203,7 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
   HasFMA3  = IsIntel && ((ECX >> 12) & 0x1);  ToggleFeature(X86::FeatureFMA3);
   HasPOPCNT = IsIntel && ((ECX >> 23) & 0x1); ToggleFeature(X86::FeaturePOPCNT);
   HasAES   = IsIntel && ((ECX >> 25) & 0x1);  ToggleFeature(X86::FeatureAES);
+  HasCmpxchg16b = ((ECX >> 13) & 0x1); ToggleFeature(X86::FeatureCMPXCHG16B);
 
   if (IsIntel || IsAMD) {
     // Determine if bit test memory instructions are slow.
@@ -254,11 +255,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , IsBTMemSlow(false)
   , IsUAMemFast(false)
   , HasVectorUAMem(false)
+  , HasCmpxchg16b(false)
   , stackAlignment(8)
   // FIXME: this is a known good value for Yonah. How about others?
   , MaxInlineSizeThreshold(128)
   , TargetTriple(TT)
-  , In64BitMode(is64Bit) {
+  , In64BitMode(is64Bit)
+  , InNaClMode(false) {
   // Determine default and user specified characteristics
   if (!FS.empty() || !CPU.empty()) {
     std::string CPUName = CPU;
@@ -303,6 +306,11 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   // target data structure which is shared with MC code emitter, etc.
   if (In64BitMode)
     ToggleFeature(X86::Mode64Bit);
+
+  if (isTargetNaCl()) {
+    InNaClMode = true;
+    ToggleFeature(X86::ModeNaCl);
+  }
 
   if (HasAVX)
     X86SSELevel = NoMMXSSE;

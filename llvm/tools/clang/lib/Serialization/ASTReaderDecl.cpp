@@ -14,6 +14,7 @@
 
 #include "ASTCommon.h"
 #include "clang/Serialization/ASTReader.h"
+#include "clang/Sema/SemaDiagnostic.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclVisitor.h"
@@ -104,6 +105,11 @@ namespace clang {
     void UpdateDecl(Decl *D, Module &Module,
                     const RecordData &Record);
 
+    static void setNextObjCCategory(ObjCCategoryDecl *Cat,
+                                    ObjCCategoryDecl *Next) {
+      Cat->NextClassCategory = Next;
+    }
+
     void VisitDecl(Decl *D);
     void VisitTranslationUnitDecl(TranslationUnitDecl *TU);
     void VisitNamedDecl(NamedDecl *ND);
@@ -123,6 +129,8 @@ namespace clang {
                                             ClassTemplateSpecializationDecl *D);
     void VisitClassTemplatePartialSpecializationDecl(
                                      ClassTemplatePartialSpecializationDecl *D);
+    void VisitClassScopeFunctionSpecializationDecl(
+                                       ClassScopeFunctionSpecializationDecl *D);
     void VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D);
     void VisitValueDecl(ValueDecl *VD);
     void VisitEnumConstantDecl(EnumConstantDecl *ECD);
@@ -243,8 +251,7 @@ void ASTDeclReader::VisitDecl(Decl *D) {
 }
 
 void ASTDeclReader::VisitTranslationUnitDecl(TranslationUnitDecl *TU) {
-  VisitDecl(TU);
-  TU->setAnonymousNamespace(ReadDeclAs<NamespaceDecl>(Record, Idx));
+  llvm_unreachable("Translation units are not serialized");
 }
 
 void ASTDeclReader::VisitNamedDecl(NamedDecl *ND) {
@@ -448,6 +455,7 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
   FD->IsDefaulted = Record[Idx++];
   FD->IsExplicitlyDefaulted = Record[Idx++];
   FD->HasImplicitReturnZero = Record[Idx++];
+  FD->IsConstexpr = Record[Idx++];
   FD->EndRangeLoc = ReadSourceLocation(Record, Idx);
 
   // Read in the parameters.
@@ -571,17 +579,9 @@ void ASTDeclReader::VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *FD) {
 
 void ASTDeclReader::VisitObjCClassDecl(ObjCClassDecl *CD) {
   VisitDecl(CD);
-  unsigned NumClassRefs = Record[Idx++];
-  SmallVector<ObjCInterfaceDecl *, 16> ClassRefs;
-  ClassRefs.reserve(NumClassRefs);
-  for (unsigned I = 0; I != NumClassRefs; ++I)
-    ClassRefs.push_back(ReadDeclAs<ObjCInterfaceDecl>(Record, Idx));
-  SmallVector<SourceLocation, 16> SLocs;
-  SLocs.reserve(NumClassRefs);
-  for (unsigned I = 0; I != NumClassRefs; ++I)
-    SLocs.push_back(ReadSourceLocation(Record, Idx));
-  CD->setClassList(*Reader.getContext(), ClassRefs.data(), SLocs.data(),
-                   NumClassRefs);
+  ObjCInterfaceDecl *ClassRef = ReadDeclAs<ObjCInterfaceDecl>(Record, Idx);
+  SourceLocation SLoc = ReadSourceLocation(Record, Idx);
+  CD->setClass(*Reader.getContext(), ClassRef, SLoc);
 }
 
 void ASTDeclReader::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *FPD) {
@@ -601,7 +601,7 @@ void ASTDeclReader::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *FPD) {
 
 void ASTDeclReader::VisitObjCCategoryDecl(ObjCCategoryDecl *CD) {
   VisitObjCContainerDecl(CD);
-  CD->setClassInterface(ReadDeclAs<ObjCInterfaceDecl>(Record, Idx));
+  CD->ClassInterface = ReadDeclAs<ObjCInterfaceDecl>(Record, Idx);
   unsigned NumProtoRefs = Record[Idx++];
   SmallVector<ObjCProtocolDecl *, 16> ProtoRefs;
   ProtoRefs.reserve(NumProtoRefs);
@@ -613,7 +613,7 @@ void ASTDeclReader::VisitObjCCategoryDecl(ObjCCategoryDecl *CD) {
     ProtoLocs.push_back(ReadSourceLocation(Record, Idx));
   CD->setProtocolList(ProtoRefs.data(), NumProtoRefs, ProtoLocs.data(),
                       *Reader.getContext());
-  CD->setNextClassCategory(ReadDeclAs<ObjCCategoryDecl>(Record, Idx));
+  CD->NextClassCategory = ReadDeclAs<ObjCCategoryDecl>(Record, Idx);
   CD->setHasSynthBitfield(Record[Idx++]);
   CD->setAtLoc(ReadSourceLocation(Record, Idx));
   CD->setCategoryNameLoc(ReadSourceLocation(Record, Idx));
@@ -859,7 +859,9 @@ void ASTDeclReader::ReadCXXDefinitionData(
                                    const RecordData &Record, unsigned &Idx) {
   Data.UserDeclaredConstructor = Record[Idx++];
   Data.UserDeclaredCopyConstructor = Record[Idx++];
+  Data.UserDeclaredMoveConstructor = Record[Idx++];
   Data.UserDeclaredCopyAssignment = Record[Idx++];
+  Data.UserDeclaredMoveAssignment = Record[Idx++];
   Data.UserDeclaredDestructor = Record[Idx++];
   Data.Aggregate = Record[Idx++];
   Data.PlainOldData = Record[Idx++];
@@ -884,8 +886,12 @@ void ASTDeclReader::ReadCXXDefinitionData(
   Data.UserProvidedDefaultConstructor = Record[Idx++];
   Data.DeclaredDefaultConstructor = Record[Idx++];
   Data.DeclaredCopyConstructor = Record[Idx++];
+  Data.DeclaredMoveConstructor = Record[Idx++];
   Data.DeclaredCopyAssignment = Record[Idx++];
+  Data.DeclaredMoveAssignment = Record[Idx++];
   Data.DeclaredDestructor = Record[Idx++];
+  Data.FailedImplicitMoveConstructor = Record[Idx++];
+  Data.FailedImplicitMoveAssignment = Record[Idx++];
 
   Data.NumBases = Record[Idx++];
   if (Data.NumBases)
@@ -1085,14 +1091,8 @@ void ASTDeclReader::VisitRedeclarableTemplateDecl(RedeclarableTemplateDecl *D) {
     ASTReader::FirstLatestDeclIDMap::iterator I
         = Reader.FirstLatestDeclIDs.find(ThisDeclID);
     if (I != Reader.FirstLatestDeclIDs.end()) {
-      Decl *NewLatest = Reader.GetDecl(I->second);
-      assert((LatestDecl->getLocation().isInvalid() ||
-              NewLatest->getLocation().isInvalid()  ||
-              !Reader.SourceMgr.isBeforeInTranslationUnit(
-                                                  NewLatest->getLocation(),
-                                                  LatestDecl->getLocation())) &&
-             "The new latest is supposed to come after the previous latest");
-      LatestDecl = cast<RedeclarableTemplateDecl>(NewLatest);
+      if (Decl *NewLatest = Reader.GetDecl(I->second))
+        LatestDecl = cast<RedeclarableTemplateDecl>(NewLatest);
     }
 
     assert(LatestDecl->getKind() == D->getKind() && "Latest kind mismatch");
@@ -1213,6 +1213,12 @@ void ASTDeclReader::VisitClassTemplatePartialSpecializationDecl(
       ReadDeclAs<ClassTemplatePartialSpecializationDecl>(Record, Idx));
     D->InstantiatedFromMember.setInt(Record[Idx++]);
   }
+}
+
+void ASTDeclReader::VisitClassScopeFunctionSpecializationDecl(
+                                    ClassScopeFunctionSpecializationDecl *D) {
+  VisitDecl(D);
+  D->Specialization = ReadDeclAs<CXXMethodDecl>(Record, Idx);
 }
 
 void ASTDeclReader::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
@@ -1444,7 +1450,7 @@ void ASTReader::loadAndAttachPreviousDecl(Decl *D, serialization::DeclID ID) {
 
 /// \brief Read the declaration at the given offset from the AST file.
 Decl *ASTReader::ReadDeclRecord(DeclID ID) {
-  unsigned Index = ID - 1;
+  unsigned Index = ID - NUM_PREDEF_DECL_IDS;
   RecordLocation Loc = DeclCursorForID(ID);
   llvm::BitstreamCursor &DeclsCursor = Loc.F->DeclsCursor;
   // Keep track of where we are in the stream, then jump back there
@@ -1467,11 +1473,6 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_CONTEXT_LEXICAL:
   case DECL_CONTEXT_VISIBLE:
     assert(false && "Record cannot be de-serialized with ReadDeclRecord");
-    break;
-  case DECL_TRANSLATION_UNIT:
-    assert(Index == Loc.F->BaseDeclID && 
-           "Translation unit must be at first index in file");
-    D = Context->getTranslationUnitDecl();
     break;
   case DECL_TYPEDEF:
     D = TypedefDecl::Create(*Context, 0, SourceLocation(), SourceLocation(),
@@ -1544,7 +1545,7 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_CXX_METHOD:
     D = CXXMethodDecl::Create(*Context, 0, SourceLocation(),
                               DeclarationNameInfo(), QualType(), 0,
-                              false, SC_None, false, SourceLocation());
+                              false, SC_None, false, false, SourceLocation());
     break;
   case DECL_CXX_CONSTRUCTOR:
     D = CXXConstructorDecl::Create(*Context, Decl::EmptyShell());
@@ -1573,6 +1574,10 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_CLASS_TEMPLATE_PARTIAL_SPECIALIZATION:
     D = ClassTemplatePartialSpecializationDecl::Create(*Context,
                                                        Decl::EmptyShell());
+    break;
+  case DECL_CLASS_SCOPE_FUNCTION_SPECIALIZATION:
+    D = ClassScopeFunctionSpecializationDecl::Create(*Context,
+                                                     Decl::EmptyShell());
     break;
   case DECL_FUNCTION_TEMPLATE:
       D = FunctionTemplateDecl::Create(*Context, Decl::EmptyShell());
@@ -1627,8 +1632,7 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
     D = ObjCForwardProtocolDecl::Create(*Context, 0, SourceLocation());
     break;
   case DECL_OBJC_CATEGORY:
-    D = ObjCCategoryDecl::Create(*Context, 0, SourceLocation(), 
-                                 SourceLocation(), SourceLocation(), 0);
+    D = ObjCCategoryDecl::Create(*Context, Decl::EmptyShell());
     break;
   case DECL_OBJC_CATEGORY_IMPL:
     D = ObjCCategoryImplDecl::Create(*Context, 0, SourceLocation(), 0, 0);
@@ -1691,17 +1695,13 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   if (DeclContext *DC = dyn_cast<DeclContext>(D)) {
     std::pair<uint64_t, uint64_t> Offsets = Reader.VisitDeclContext(DC);
     if (Offsets.first || Offsets.second) {
-      DC->setHasExternalLexicalStorage(Offsets.first != 0);
-      DC->setHasExternalVisibleStorage(Offsets.second != 0);
-      DeclContextInfo Info;
-      Info.F = Loc.F;
-      if (ReadDeclContextStorage(DeclsCursor, Offsets, Info))
+      if (Offsets.first != 0)
+        DC->setHasExternalLexicalStorage(true);
+      if (Offsets.second != 0)
+        DC->setHasExternalVisibleStorage(true);
+      if (ReadDeclContextStorage(*Loc.F, DeclsCursor, Offsets, 
+                                 Loc.F->DeclContextInfos[DC]))
         return 0;
-      DeclContextInfos &Infos = DeclContextOffsets[DC];
-      // Reading the TU will happen after reading its lexical update blocks,
-      // so we need to make sure we insert in front. For all other contexts,
-      // the vector is empty here anyway, so there's no loss in efficiency.
-      Infos.insert(Infos.begin(), Info);
     }
 
     // Now add the pending visible updates for this decl context, if it has any.
@@ -1712,21 +1712,32 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
       // storage, even if the original stored version didn't.
       DC->setHasExternalVisibleStorage(true);
       DeclContextVisibleUpdates &U = I->second;
-      DeclContextInfos &Infos = DeclContextOffsets[DC];
-      DeclContextInfo Info;
-      Info.LexicalDecls = 0;
-      Info.NumLexicalDecls = 0;
       for (DeclContextVisibleUpdates::iterator UI = U.begin(), UE = U.end();
            UI != UE; ++UI) {
-        Info.NameLookupTableData = UI->first;
-        Info.F = UI->second;
-        Infos.push_back(Info);
+        UI->second->DeclContextInfos[DC].NameLookupTableData = UI->first;
       }
       PendingVisibleUpdates.erase(I);
     }
   }
   assert(Idx == Record.size());
 
+  // Load any relevant update records.
+  loadDeclUpdateRecords(ID, D);
+  
+  if (ObjCChainedCategoriesInterfaces.count(ID))
+    loadObjCChainedCategories(ID, cast<ObjCInterfaceDecl>(D));
+  
+  // If we have deserialized a declaration that has a definition the
+  // AST consumer might need to know about, queue it.
+  // We don't pass it to the consumer immediately because we may be in recursive
+  // loading, and some declarations may still be initializing.
+  if (isConsumerInterestedIn(D))
+    InterestingDecls.push_back(D);
+
+  return D;
+}
+
+void ASTReader::loadDeclUpdateRecords(serialization::DeclID ID, Decl *D) {
   // The declaration may have been modified by files later in the chain.
   // If this is the case, read the record containing the updates from each file
   // and pass it to ASTDeclReader to make the modifications.
@@ -1734,7 +1745,7 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   if (UpdI != DeclUpdateOffsets.end()) {
     FileOffsetsTy &UpdateOffsets = UpdI->second;
     for (FileOffsetsTy::iterator
-           I = UpdateOffsets.begin(), E = UpdateOffsets.end(); I != E; ++I) {
+         I = UpdateOffsets.begin(), E = UpdateOffsets.end(); I != E; ++I) {
       Module *F = I->first;
       uint64_t Offset = I->second;
       llvm::BitstreamCursor &Cursor = F->DeclsCursor;
@@ -1745,18 +1756,138 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
       unsigned RecCode = Cursor.ReadRecord(Code, Record);
       (void)RecCode;
       assert(RecCode == DECL_UPDATES && "Expected DECL_UPDATES record!");
+      
+      unsigned Idx = 0;
+      ASTDeclReader Reader(*this, *F, Cursor, ID, Record, Idx);
       Reader.UpdateDecl(D, *F, Record);
     }
   }
+}
 
-  // If we have deserialized a declaration that has a definition the
-  // AST consumer might need to know about, queue it.
-  // We don't pass it to the consumer immediately because we may be in recursive
-  // loading, and some declarations may still be initializing.
-  if (isConsumerInterestedIn(D))
-    InterestingDecls.push_back(D);
+namespace {
+  /// \brief Given an ObjC interface, goes through the modules and links to the
+  /// interface all the categories for it.
+  class ObjCChainedCategoriesVisitor {
+    ASTReader &Reader;
+    serialization::GlobalDeclID InterfaceID;
+    ObjCInterfaceDecl *Interface;
+    ObjCCategoryDecl *GlobHeadCat, *GlobTailCat;
+    llvm::DenseMap<DeclarationName, ObjCCategoryDecl *> NameCategoryMap;
 
-  return D;
+  public:
+    ObjCChainedCategoriesVisitor(ASTReader &Reader,
+                                 serialization::GlobalDeclID InterfaceID,
+                                 ObjCInterfaceDecl *Interface)
+      : Reader(Reader), InterfaceID(InterfaceID), Interface(Interface),
+        GlobHeadCat(0), GlobTailCat(0) { }
+
+    static bool visit(Module &M, void *UserData) {
+      return static_cast<ObjCChainedCategoriesVisitor *>(UserData)->visit(M);
+    }
+
+    bool visit(Module &M) {
+      if (Reader.isDeclIDFromModule(InterfaceID, M))
+        return true; // We reached the module where the interface originated
+                    // from. Stop traversing the imported modules.
+
+      Module::ChainedObjCCategoriesMap::iterator
+        I = M.ChainedObjCCategories.find(InterfaceID);
+      if (I == M.ChainedObjCCategories.end())
+        return false;
+
+      ObjCCategoryDecl *
+        HeadCat = Reader.GetLocalDeclAs<ObjCCategoryDecl>(M, I->second.first);
+      ObjCCategoryDecl *
+        TailCat = Reader.GetLocalDeclAs<ObjCCategoryDecl>(M, I->second.second);
+
+      addCategories(HeadCat, TailCat);
+      return false;
+    }
+
+    void addCategories(ObjCCategoryDecl *HeadCat,
+                       ObjCCategoryDecl *TailCat = 0) {
+      if (!HeadCat) {
+        assert(!TailCat);
+        return;
+      }
+
+      if (!TailCat) {
+        TailCat = HeadCat;
+        while (TailCat->getNextClassCategory())
+          TailCat = TailCat->getNextClassCategory();
+      }
+
+      if (!GlobHeadCat) {
+        GlobHeadCat = HeadCat;
+        GlobTailCat = TailCat;
+      } else {
+        ASTDeclReader::setNextObjCCategory(GlobTailCat, HeadCat);
+        GlobTailCat = TailCat;
+      }
+
+      llvm::DenseSet<DeclarationName> Checked;
+      for (ObjCCategoryDecl *Cat = HeadCat,
+                            *CatEnd = TailCat->getNextClassCategory();
+             Cat != CatEnd; Cat = Cat->getNextClassCategory()) {
+        if (Checked.count(Cat->getDeclName()))
+          continue;
+        Checked.insert(Cat->getDeclName());
+        checkForDuplicate(Cat);
+      }
+    }
+
+    /// \brief Warns for duplicate categories that come from different modules.
+    void checkForDuplicate(ObjCCategoryDecl *Cat) {
+      DeclarationName Name = Cat->getDeclName();
+      // Find the top category with the same name. We do not want to warn for
+      // duplicates along the established chain because there were already
+      // warnings for them when the module was created. We only want to warn for
+      // duplicates between non-dependent modules:
+      //
+      //   MT     //
+      //  /  \    //
+      // ML  MR   //
+      //
+      // We want to warn for duplicates between ML and MR,not between ML and MT.
+      //
+      // FIXME: We should not warn for duplicates in diamond:
+      //
+      //   MT     //
+      //  /  \    //
+      // ML  MR   //
+      //  \  /    //
+      //   MB     //
+      //
+      // If there are duplicates in ML/MR, there will be warning when creating
+      // MB *and* when importing MB. We should not warn when importing.
+      for (ObjCCategoryDecl *Next = Cat->getNextClassCategory(); Next;
+             Next = Next->getNextClassCategory()) {
+        if (Next->getDeclName() == Name)
+          Cat = Next;
+      }
+
+      ObjCCategoryDecl *&PrevCat = NameCategoryMap[Name];
+      if (!PrevCat)
+        PrevCat = Cat;
+
+      if (PrevCat != Cat) {
+        Reader.Diag(Cat->getLocation(), diag::warn_dup_category_def)
+          << Interface->getDeclName() << Name;
+        Reader.Diag(PrevCat->getLocation(), diag::note_previous_definition);
+      }
+    }
+
+    ObjCCategoryDecl *getHeadCategory() const { return GlobHeadCat; }
+  };
+}
+
+void ASTReader::loadObjCChainedCategories(serialization::GlobalDeclID ID,
+                                          ObjCInterfaceDecl *D) {
+  ObjCChainedCategoriesVisitor Visitor(*this, ID, D);
+  ModuleMgr.visit(ObjCChainedCategoriesVisitor::visit, &Visitor);
+  // Also add the categories that the interface already links to.
+  Visitor.addCategories(D->getCategoryList());
+  D->setCategoryList(Visitor.getHeadCategory());
 }
 
 void ASTDeclReader::UpdateDecl(Decl *D, Module &Module,

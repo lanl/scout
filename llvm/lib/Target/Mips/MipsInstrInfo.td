@@ -43,6 +43,12 @@ def SDT_MipsDynAlloc    : SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
                                                SDTCisVT<1, iPTR>]>;
 def SDT_Sync             : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
 
+def SDT_Ext : SDTypeProfile<1, 3, [SDTCisVT<0, i32>, SDTCisSameAs<0, 1>,
+                                   SDTCisInt<2>, SDTCisSameAs<2, 3>]>;
+def SDT_Ins : SDTypeProfile<1, 4, [SDTCisVT<0, i32>, SDTCisSameAs<0, 1>,
+                                   SDTCisInt<2>, SDTCisSameAs<2, 3>,
+                                   SDTCisSameAs<0, 4>]>;
+
 // Call
 def MipsJmpLink : SDNode<"MipsISD::JmpLink",SDT_MipsJmpLink,
                          [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
@@ -108,6 +114,9 @@ def MipsDynAlloc  : SDNode<"MipsISD::DynAlloc", SDT_MipsDynAlloc,
                            [SDNPHasChain, SDNPInGlue]>;
 
 def MipsSync : SDNode<"MipsISD::Sync", SDT_Sync, [SDNPHasChain]>;
+
+def MipsExt :  SDNode<"MipsISD::Ext", SDT_Ext>;
+def MipsIns :  SDNode<"MipsISD::Ins", SDT_Ins>;
 
 //===----------------------------------------------------------------------===//
 // Mips Instruction Predicate Definitions.
@@ -396,6 +405,17 @@ class ReadHardware: FR<0x1f, 0x3b, (outs CPURegs:$dst), (ins HWRegs:$src),
   let shamt = 0;
 }
 
+// Ext and Ins
+class ExtIns<bits<6> _funct, string instr_asm, dag outs, dag ins,
+             list<dag> pattern, InstrItinClass itin>:
+  FR<0x1f, _funct, outs, ins, !strconcat(instr_asm, " $rt, $rs, $pos, $sz"),
+     pattern, itin>, Requires<[IsMips32r2]> {
+  bits<5> pos;
+  bits<5> sz;
+  let rd = sz;
+  let shamt = pos;
+}
+
 // Atomic instructions with 2 source operands (ATOMIC_SWAP & ATOMIC_LOAD_*).
 class Atomic2Ops<PatFrag Op, string Opstr> :
   MipsPseudo<(outs CPURegs:$dst), (ins CPURegs:$ptr, CPURegs:$incr),
@@ -474,6 +494,19 @@ let usesCustomInserter = 1 in {
   def ATOMIC_CMP_SWAP_I32  : AtomicCmpSwap<atomic_cmp_swap_32, "32">;
 }
 
+// Unaligned loads and stores.
+// Replaces LW or SW during MCInstLowering if memory access is unaligned.
+def ULW :
+  MipsPseudo<(outs CPURegs:$dst), (ins mem:$addr), "ulw\t$dst, $addr", []>;
+def ULH :
+  MipsPseudo<(outs CPURegs:$dst), (ins mem:$addr), "ulh\t$dst, $addr", []>;
+def ULHu :
+  MipsPseudo<(outs CPURegs:$dst), (ins mem:$addr), "ulhu\t$dst, $addr", []>;
+def USW : 
+  MipsPseudo<(outs), (ins CPURegs:$dst, mem:$addr), "usw\t$dst, $addr", []>;
+def USH : 
+  MipsPseudo<(outs), (ins CPURegs:$dst, mem:$addr), "ush\t$dst, $addr", []>;
+
 //===----------------------------------------------------------------------===//
 // Instruction definition
 //===----------------------------------------------------------------------===//
@@ -547,7 +580,8 @@ let mayStore = 1, Constraints = "$src = $dst" in
 
 /// Jump and Branch Instructions
 def J       : JumpFJ<0x02, "j">;
-def JR      : JumpFR<0x00, 0x08, "jr">;
+let isIndirectBranch = 1 in
+  def JR      : JumpFR<0x00, 0x08, "jr">;
 def JAL     : JumpLink<0x03, "jal">;
 def JALR    : JumpLinkReg<0x00, 0x09, "jalr">;
 def BEQ     : CBranch<0x04, "beq", seteq>;
@@ -652,6 +686,20 @@ def MSUBU : MArithR<5, "msubu", MipsMSubu>;
 def MUL   : ArithR<0x1c, 0x02, "mul", mul, IIImul, 1>, Requires<[IsMips32]>;
 
 def RDHWR : ReadHardware;
+
+def EXT : ExtIns<0, "ext", (outs CPURegs:$rt),
+                 (ins CPURegs:$rs, uimm16:$pos, uimm16:$sz),
+                 [(set CPURegs:$rt,
+                   (MipsExt CPURegs:$rs, immZExt5:$pos, immZExt5:$sz))],
+                 NoItinerary>;
+
+let Constraints = "$src = $rt" in
+def INS : ExtIns<4, "ins", (outs CPURegs:$rt),
+                 (ins CPURegs:$rs, uimm16:$pos, uimm16:$sz, CPURegs:$src),
+                 [(set CPURegs:$rt,
+                   (MipsIns CPURegs:$rs, immZExt5:$pos, immZExt5:$sz,
+                    CPURegs:$src))],
+                 NoItinerary>;
 
 //===----------------------------------------------------------------------===//
 //  Arbitrary patterns that map to one or more instructions

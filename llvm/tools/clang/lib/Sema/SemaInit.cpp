@@ -177,8 +177,7 @@ class InitListChecker {
   void CheckImplicitInitList(const InitializedEntity &Entity,
                              InitListExpr *ParentIList, QualType T,
                              unsigned &Index, InitListExpr *StructuredList,
-                             unsigned &StructuredIndex,
-                             bool TopLevelObject = false);
+                             unsigned &StructuredIndex);
   void CheckExplicitInitList(const InitializedEntity &Entity,
                              InitListExpr *IList, QualType &T,
                              unsigned &Index, InitListExpr *StructuredList,
@@ -250,6 +249,9 @@ class InitListChecker {
                                InitListExpr *ILE, bool &RequiresSecondPass);
   void FillInValueInitializations(const InitializedEntity &Entity,
                                   InitListExpr *ILE, bool &RequiresSecondPass);
+  bool CheckFlexibleArrayInit(const InitializedEntity &Entity,
+                              Expr *InitExpr, FieldDecl *Field,
+                              bool TopLevelObject);
 public:
   InitListChecker(Sema &S, const InitializedEntity &Entity,
                   InitListExpr *IL, QualType &T);
@@ -495,8 +497,7 @@ void InitListChecker::CheckImplicitInitList(const InitializedEntity &Entity,
                                             InitListExpr *ParentIList,
                                             QualType T, unsigned &Index,
                                             InitListExpr *StructuredList,
-                                            unsigned &StructuredIndex,
-                                            bool TopLevelObject) {
+                                            unsigned &StructuredIndex) {
   int maxElements = 0;
 
   if (T->isArrayType())
@@ -529,8 +530,7 @@ void InitListChecker::CheckImplicitInitList(const InitializedEntity &Entity,
   CheckListElementTypes(Entity, ParentIList, T,
                         /*SubobjectIsDesignatorContext=*/false, Index,
                         StructuredSubobjectInitList,
-                        StructuredSubobjectInitIndex,
-                        TopLevelObject);
+                        StructuredSubobjectInitIndex);
   unsigned EndIndex = (Index == StartIndex? StartIndex : Index - 1);
   StructuredSubobjectInitList->setType(T);
 
@@ -1116,6 +1116,43 @@ void InitListChecker::CheckArrayType(const InitializedEntity &Entity,
   }
 }
 
+bool InitListChecker::CheckFlexibleArrayInit(const InitializedEntity &Entity,
+                                             Expr *InitExpr,
+                                             FieldDecl *Field,
+                                             bool TopLevelObject) {
+  // Handle GNU flexible array initializers.
+  unsigned FlexArrayDiag;
+  if (isa<InitListExpr>(InitExpr) &&
+      cast<InitListExpr>(InitExpr)->getNumInits() == 0) {
+    // Empty flexible array init always allowed as an extension
+    FlexArrayDiag = diag::ext_flexible_array_init;
+  } else if (SemaRef.getLangOptions().CPlusPlus) {
+    // Disallow flexible array init in C++; it is not required for gcc
+    // compatibility, and it needs work to IRGen correctly in general.
+    FlexArrayDiag = diag::err_flexible_array_init;
+  } else if (!TopLevelObject) {
+    // Disallow flexible array init on non-top-level object
+    FlexArrayDiag = diag::err_flexible_array_init;
+  } else if (Entity.getKind() != InitializedEntity::EK_Variable) {
+    // Disallow flexible array init on anything which is not a variable.
+    FlexArrayDiag = diag::err_flexible_array_init;
+  } else if (cast<VarDecl>(Entity.getDecl())->hasLocalStorage()) {
+    // Disallow flexible array init on local variables.
+    FlexArrayDiag = diag::err_flexible_array_init;
+  } else {
+    // Allow other cases.
+    FlexArrayDiag = diag::ext_flexible_array_init;
+  }
+  
+  SemaRef.Diag(InitExpr->getSourceRange().getBegin(),
+               FlexArrayDiag)
+    << InitExpr->getSourceRange().getBegin();
+  SemaRef.Diag(Field->getLocation(), diag::note_flexible_array_member)
+    << Field;
+
+  return FlexArrayDiag != diag::ext_flexible_array_init;
+}
+
 void InitListChecker::CheckStructUnionTypes(const InitializedEntity &Entity,
                                             InitListExpr *IList,
                                             QualType DeclType,
@@ -1242,24 +1279,11 @@ void InitListChecker::CheckStructUnionTypes(const InitializedEntity &Entity,
       Index >= IList->getNumInits())
     return;
 
-  // Handle GNU flexible array initializers.
-  if (!TopLevelObject &&
-      (!isa<InitListExpr>(IList->getInit(Index)) ||
-       cast<InitListExpr>(IList->getInit(Index))->getNumInits() > 0)) {
-    SemaRef.Diag(IList->getInit(Index)->getSourceRange().getBegin(),
-                  diag::err_flexible_array_init_nonempty)
-      << IList->getInit(Index)->getSourceRange().getBegin();
-    SemaRef.Diag(Field->getLocation(), diag::note_flexible_array_member)
-      << *Field;
+  if (CheckFlexibleArrayInit(Entity, IList->getInit(Index), *Field,
+                             TopLevelObject)) {
     hadError = true;
     ++Index;
     return;
-  } else {
-    SemaRef.Diag(IList->getInit(Index)->getSourceRange().getBegin(),
-                 diag::ext_flexible_array_init)
-      << IList->getInit(Index)->getSourceRange().getBegin();
-    SemaRef.Diag(Field->getLocation(), diag::note_flexible_array_member)
-      << *Field;
   }
 
   InitializedEntity MemberEntity =
@@ -1570,16 +1594,10 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
         Invalid = true;
       }
 
-      // Handle GNU flexible array initializers.
-      if (!Invalid && !TopLevelObject &&
-          cast<InitListExpr>(DIE->getInit())->getNumInits() > 0) {
-        SemaRef.Diag(DIE->getSourceRange().getBegin(),
-                      diag::err_flexible_array_init_nonempty)
-          << DIE->getSourceRange().getBegin();
-        SemaRef.Diag(Field->getLocation(), diag::note_flexible_array_member)
-          << *Field;
+      // Check GNU flexible array initializer.
+      if (!Invalid && CheckFlexibleArrayInit(Entity, DIE->getInit(), *Field,
+                                             TopLevelObject))
         Invalid = true;
-      }
 
       if (Invalid) {
         ++Index;
@@ -2321,6 +2339,12 @@ bool InitializationSequence::endsWithNarrowing(ASTContext &Ctx,
   //   the source is a constant expression and the actual value after
   //   conversion will fit into the target type and will produce the original
   //   value when converted back to the original type.
+  case ICK_Boolean_Conversion:  // Bools are integers too.
+    if (!FromType->isIntegralOrUnscopedEnumerationType()) {
+      // Boolean conversions can be from pointers and pointers to members
+      // [conv.bool], and those aren't considered narrowing conversions.
+      return false;
+    }  // Otherwise, fall through to the integral case.
   case ICK_Integral_Conversion: {
     assert(FromType->isIntegralOrUnscopedEnumerationType());
     assert(ToType->isIntegralOrUnscopedEnumerationType());
@@ -3054,6 +3078,14 @@ static void TryConstructorInitialization(Sema &S,
                                          Expr **Args, unsigned NumArgs,
                                          QualType DestType,
                                          InitializationSequence &Sequence) {
+  // Check constructor arguments for self reference.
+  if (DeclaratorDecl *DD = Entity.getDecl())
+    // Parameters arguments are occassionially constructed with itself,
+    // for instance, in recursive functions.  Skip them.
+    if (!isa<ParmVarDecl>(DD))
+      for (unsigned i = 0; i < NumArgs; ++i)
+        S.CheckSelfReference(DD, Args[i]);
+
   // Build the candidate set directly in the initialization sequence
   // structure, so that it will persist if we fail.
   OverloadCandidateSet &CandidateSet = Sequence.getFailedCandidateSet();
@@ -5144,20 +5176,20 @@ static void DiagnoseNarrowingInInitList(
     bool Constant, const APValue &ConstantValue) {
   if (Constant) {
     S.Diag(InitE->getLocStart(),
-           S.getLangOptions().CPlusPlus0x
+           S.getLangOptions().CPlusPlus0x && !S.getLangOptions().Microsoft
            ? diag::err_init_list_constant_narrowing
            : diag::warn_init_list_constant_narrowing)
       << InitE->getSourceRange()
       << ConstantValue
-      << EntityType;
+      << EntityType.getLocalUnqualifiedType();
   } else
     S.Diag(InitE->getLocStart(),
-           S.getLangOptions().CPlusPlus0x
+           S.getLangOptions().CPlusPlus0x && !S.getLangOptions().Microsoft
            ? diag::err_init_list_variable_narrowing
            : diag::warn_init_list_variable_narrowing)
       << InitE->getSourceRange()
-      << InitE->getType()
-      << EntityType;
+      << InitE->getType().getLocalUnqualifiedType()
+      << EntityType.getLocalUnqualifiedType();
 
   llvm::SmallString<128> StaticCast;
   llvm::raw_svector_ostream OS(StaticCast);

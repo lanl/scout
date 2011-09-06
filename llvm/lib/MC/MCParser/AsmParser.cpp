@@ -116,7 +116,7 @@ private:
   unsigned HadError : 1;
 
 public:
-  AsmParser(const Target &T, SourceMgr &SM, MCContext &Ctx, MCStreamer &Out,
+  AsmParser(SourceMgr &SM, MCContext &Ctx, MCStreamer &Out,
             const MCAsmInfo &MAI);
   ~AsmParser();
 
@@ -338,7 +338,7 @@ extern MCAsmParserExtension *createCOFFAsmParser();
 
 enum { DEFAULT_ADDRSPACE = 0 };
 
-AsmParser::AsmParser(const Target &T, SourceMgr &_SM, MCContext &_Ctx,
+AsmParser::AsmParser(SourceMgr &_SM, MCContext &_Ctx,
                      MCStreamer &_Out, const MCAsmInfo &_MAI)
   : Lexer(_MAI), Ctx(_Ctx), Out(_Out), MAI(_MAI), SrcMgr(_SM),
     GenericParser(new GenericAsmParser), PlatformParser(0),
@@ -740,9 +740,12 @@ AsmParser::ApplyModifierToExpr(const MCExpr *E,
 
 /// ParseExpression - Parse an expression and return it.
 ///
-///  expr ::= expr +,- expr          -> lowest.
-///  expr ::= expr |,^,&,! expr      -> middle.
-///  expr ::= expr *,/,%,<<,>> expr  -> highest.
+///  expr ::= expr &&,|| expr               -> lowest.
+///  expr ::= expr |,^,&,! expr
+///  expr ::= expr ==,!=,<>,<,<=,>,>= expr
+///  expr ::= expr <<,>> expr
+///  expr ::= expr +,- expr
+///  expr ::= expr *,/,% expr               -> highest.
 ///  expr ::= primaryexpr
 ///
 bool AsmParser::ParseExpression(const MCExpr *&Res, SMLoc &EndLoc) {
@@ -809,7 +812,7 @@ static unsigned getBinOpPrecedence(AsmToken::TokenKind K,
   default:
     return 0;    // not a binop.
 
-    // Lowest Precedence: &&, ||, @
+    // Lowest Precedence: &&, ||
   case AsmToken::AmpAmp:
     Kind = MCBinaryExpr::LAnd;
     return 1;
@@ -852,30 +855,32 @@ static unsigned getBinOpPrecedence(AsmToken::TokenKind K,
     Kind = MCBinaryExpr::GTE;
     return 3;
 
+    // Intermediate Precedence: <<, >>
+  case AsmToken::LessLess:
+    Kind = MCBinaryExpr::Shl;
+    return 4;
+  case AsmToken::GreaterGreater:
+    Kind = MCBinaryExpr::Shr;
+    return 4;
+
     // High Intermediate Precedence: +, -
   case AsmToken::Plus:
     Kind = MCBinaryExpr::Add;
-    return 4;
+    return 5;
   case AsmToken::Minus:
     Kind = MCBinaryExpr::Sub;
-    return 4;
+    return 5;
 
-    // Highest Precedence: *, /, %, <<, >>
+    // Highest Precedence: *, /, %
   case AsmToken::Star:
     Kind = MCBinaryExpr::Mul;
-    return 5;
+    return 6;
   case AsmToken::Slash:
     Kind = MCBinaryExpr::Div;
-    return 5;
+    return 6;
   case AsmToken::Percent:
     Kind = MCBinaryExpr::Mod;
-    return 5;
-  case AsmToken::LessLess:
-    Kind = MCBinaryExpr::Shl;
-    return 5;
-  case AsmToken::GreaterGreater:
-    Kind = MCBinaryExpr::Shr;
-    return 5;
+    return 6;
   }
 }
 
@@ -2713,8 +2718,8 @@ bool GenericAsmParser::ParseDirectiveLEB128(StringRef DirName, SMLoc) {
 
 
 /// \brief Create an MCAsmParser instance.
-MCAsmParser *llvm::createMCAsmParser(const Target &T, SourceMgr &SM,
+MCAsmParser *llvm::createMCAsmParser(SourceMgr &SM,
                                      MCContext &C, MCStreamer &Out,
                                      const MCAsmInfo &MAI) {
-  return new AsmParser(T, SM, C, Out, MAI);
+  return new AsmParser(SM, C, Out, MAI);
 }

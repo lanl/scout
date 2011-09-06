@@ -29,8 +29,6 @@ endif
 # threads as we have cores...
 nprocs := $(shell expr $(nprocs) \* 2)
 
-
-
 all: $(build_dir)/Makefile compile
 .PHONY: all 
 

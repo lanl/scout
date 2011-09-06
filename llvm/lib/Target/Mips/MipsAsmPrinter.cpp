@@ -18,6 +18,7 @@
 #include "MipsInstrInfo.h"
 #include "MipsMachineFunction.h"
 #include "MipsMCInstLower.h"
+#include "MipsMCSymbolRefExpr.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "llvm/BasicBlock.h"
 #include "llvm/Instructions.h"
@@ -25,6 +26,7 @@
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
@@ -33,10 +35,11 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Target/TargetRegistry.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/DebugInfo.h"
 
@@ -52,8 +55,52 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   }
 
   MipsMCInstLower MCInstLowering(Mang, *MF, *this);
+  unsigned Opc = MI->getOpcode();
+
+  // If target is Mips1, expand double precision load/store to two single
+  // precision loads/stores (and delay slot if MI is a load).
+  if (Subtarget->isMips1() && (Opc == Mips::LDC1 || Opc == Mips::SDC1)) {
+    SmallVector<MCInst, 4> MCInsts;
+    const unsigned* SubReg = 
+      TM.getRegisterInfo()->getSubRegisters(MI->getOperand(0).getReg());
+    MCInstLowering.LowerMips1F64LoadStore(MI, Opc, MCInsts,
+                                          Subtarget->isLittle(), SubReg);
+    
+    for (SmallVector<MCInst, 4>::iterator I = MCInsts.begin();
+         I != MCInsts.end(); ++I)
+      OutStreamer.EmitInstruction(*I);
+
+    return;
+  }
+
   MCInst TmpInst0;
   MCInstLowering.Lower(MI, TmpInst0);
+  
+  // Convert aligned loads/stores to their unaligned counterparts.
+  if (!MI->memoperands_empty()) {
+    unsigned NaturalAlignment, UnalignedOpc;
+    
+    switch (Opc) {
+    case Mips::LW:  NaturalAlignment = 4; UnalignedOpc = Mips::ULW;  break;
+    case Mips::SW:  NaturalAlignment = 4; UnalignedOpc = Mips::USW;  break;
+    case Mips::LH:  NaturalAlignment = 2; UnalignedOpc = Mips::ULH;  break;
+    case Mips::LHu: NaturalAlignment = 2; UnalignedOpc = Mips::ULHu; break;
+    case Mips::SH:  NaturalAlignment = 2; UnalignedOpc = Mips::USH;  break;
+    default:        NaturalAlignment = 0;
+    }
+
+    if ((*MI->memoperands_begin())->getAlignment() < NaturalAlignment) {
+      MCInst Directive;
+      Directive.setOpcode(Mips::MACRO);
+      OutStreamer.EmitInstruction(Directive);
+      TmpInst0.setOpcode(UnalignedOpc);
+      OutStreamer.EmitInstruction(TmpInst0);
+      Directive.setOpcode(Mips::NOMACRO);
+      OutStreamer.EmitInstruction(Directive);
+      return;
+    }
+  }
+
   OutStreamer.EmitInstruction(TmpInst0);
 }
 

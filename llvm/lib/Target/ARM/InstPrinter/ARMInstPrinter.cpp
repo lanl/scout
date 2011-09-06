@@ -146,7 +146,7 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
     return;
   }
 
-  if (Opcode == ARM::tLDMIA || Opcode == ARM::tSTMIA) {
+  if (Opcode == ARM::tLDMIA) {
     bool Writeback = true;
     unsigned BaseReg = MI->getOperand(0).getReg();
     for (unsigned i = 3; i < MI->getNumOperands(); ++i) {
@@ -154,18 +154,21 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O) {
         Writeback = false;
     }
 
-    if (Opcode == ARM::tLDMIA)
-      O << "\tldmia";
-    else if (Opcode == ARM::tSTMIA)
-      O << "\tstmia";
-    else
-      llvm_unreachable("Unknown opcode!");
+    O << "\tldm";
 
     printPredicateOperand(MI, 1, O);
     O << '\t' << getRegisterName(BaseReg);
     if (Writeback) O << "!";
     O << ", ";
     printRegisterList(MI, 3, O);
+    return;
+  }
+
+  // Thumb1 NOP
+  if (Opcode == ARM::tMOVr && MI->getOperand(0).getReg() == ARM::R8 &&
+      MI->getOperand(1).getReg() == ARM::R8) {
+    O << "\tnop";
+    printPredicateOperand(MI, 2, O);
     return;
   }
 
@@ -443,7 +446,9 @@ void ARMInstPrinter::printAddrMode5Operand(const MCInst *MI, unsigned OpNum,
 
   O << "[" << getRegisterName(MO1.getReg());
 
-  if (unsigned ImmOffs = ARM_AM::getAM5Offset(MO2.getImm())) {
+  unsigned ImmOffs = ARM_AM::getAM5Offset(MO2.getImm());
+  unsigned Op = ARM_AM::getAM5Op(MO2.getImm());
+  if (ImmOffs || Op == ARM_AM::sub) {
     O << ", #"
       << ARM_AM::getAddrOpcStr(ARM_AM::getAM5Op(MO2.getImm()))
       << ImmOffs * 4;
@@ -639,7 +644,13 @@ void ARMInstPrinter::printPCLabel(const MCInst *MI, unsigned OpNum,
 
 void ARMInstPrinter::printThumbS4ImmOperand(const MCInst *MI, unsigned OpNum,
                                             raw_ostream &O) {
-  O << "#" <<  MI->getOperand(OpNum).getImm() * 4;
+  O << "#" << MI->getOperand(OpNum).getImm() * 4;
+}
+
+void ARMInstPrinter::printThumbSRImm(const MCInst *MI, unsigned OpNum,
+                                     raw_ostream &O) {
+  unsigned Imm = MI->getOperand(OpNum).getImm();
+  O << "#" << (Imm == 0 ? 32 : Imm);
 }
 
 void ARMInstPrinter::printThumbITMask(const MCInst *MI, unsigned OpNum,
@@ -894,8 +905,8 @@ void ARMInstPrinter::printRotImmOperand(const MCInst *MI, unsigned OpNum,
   O << ", ror #";
   switch (Imm) {
   default: assert (0 && "illegal ror immediate!");
-  case 1: O << "8\n"; break;
-  case 2: O << "16\n"; break;
-  case 3: O << "24\n"; break;
+  case 1: O << "8"; break;
+  case 2: O << "16"; break;
+  case 3: O << "24"; break;
   }
 }

@@ -213,7 +213,6 @@ namespace {
     SDValue visitLOAD(SDNode *N);
     SDValue visitSTORE(SDNode *N);
     SDValue visitINSERT_VECTOR_ELT(SDNode *N);
-    SDValue visitINSERT_SUBVECTOR(SDNode *N);
     SDValue visitEXTRACT_VECTOR_ELT(SDNode *N);
     SDValue visitBUILD_VECTOR(SDNode *N);
     SDValue visitCONCAT_VECTORS(SDNode *N);
@@ -1103,7 +1102,6 @@ SDValue DAGCombiner::visit(SDNode *N) {
   case ISD::LOAD:               return visitLOAD(N);
   case ISD::STORE:              return visitSTORE(N);
   case ISD::INSERT_VECTOR_ELT:  return visitINSERT_VECTOR_ELT(N);
-  case ISD::INSERT_SUBVECTOR:  return visitINSERT_SUBVECTOR(N);
   case ISD::EXTRACT_VECTOR_ELT: return visitEXTRACT_VECTOR_ELT(N);
   case ISD::BUILD_VECTOR:       return visitBUILD_VECTOR(N);
   case ISD::CONCAT_VECTORS:     return visitCONCAT_VECTORS(N);
@@ -1527,12 +1525,6 @@ SDValue DAGCombiner::visitADDE(SDNode *N) {
   SDValue CarryIn = N->getOperand(2);
   ConstantSDNode *N0C = dyn_cast<ConstantSDNode>(N0);
   ConstantSDNode *N1C = dyn_cast<ConstantSDNode>(N1);
-
-  // If both operands are null we know that carry out will always be false.
-  if (N0C && N0C->isNullValue() && N0 == N1)
-    DAG.ReplaceAllUsesOfValueWith(SDValue(N, 1), DAG.getNode(ISD::CARRY_FALSE,
-                                                             N->getDebugLoc(),
-                                                             MVT::Glue));
 
   // canonicalize constant to RHS
   if (N0C && !N1C)
@@ -7137,36 +7129,6 @@ SDValue DAGCombiner::visitMEMBARRIER(SDNode* N) {
       return SDValue();
   }
 }
-
-SDValue DAGCombiner::visitINSERT_SUBVECTOR(SDNode* N) {
-  DebugLoc dl = N->getDebugLoc();
-  EVT VT = N->getValueType(0);
-  // When inserting a subvector into a vector, make sure to start
-  // inserting starting the Zero index. This will allow making the
-  // first insertion using a subreg insertion, and save a register.
-  SDValue V = N->getOperand(0);
-  if (V->getOpcode() == ISD::INSERT_SUBVECTOR && V->hasOneUse()) {
-    ConstantSDNode *N_Idx = dyn_cast<ConstantSDNode>(N->getOperand(2));
-    ConstantSDNode *V_Idx = dyn_cast<ConstantSDNode>(V->getOperand(2));
-    uint64_t Nc = N_Idx->getZExtValue();
-    uint64_t Vc = V_Idx->getZExtValue();
-
-    // Reorder insertion to vector
-    if (Nc < Vc) {
-      SDValue NewV = DAG.getNode(ISD::INSERT_SUBVECTOR, dl, VT,
-                                 V->getOperand(0),
-                                 N->getOperand(1),
-                                 N->getOperand(2));
-      return DAG.getNode(ISD::INSERT_SUBVECTOR, dl, VT,
-                         NewV,
-                         V->getOperand(1),
-                         V->getOperand(2));
-    }
-  }
-
-  return SDValue();
-}
-
 
 /// XformToShuffleWithZero - Returns a vector_shuffle if it able to transform
 /// an AND to a vector_shuffle with the destination vector and a zero vector.

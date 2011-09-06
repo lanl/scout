@@ -400,7 +400,7 @@ Type *BitcodeReader::getTypeByID(unsigned ID) {
 
   // If we have a forward reference, the only possible case is when it is to a
   // named struct.  Just create a placeholder for now.
-  return TypeList[ID] = StructType::createNamed(Context, "");
+  return TypeList[ID] = StructType::create(Context);
 }
 
 /// FIXME: Remove in LLVM 3.1, only used by ParseOldTypeTable.
@@ -668,7 +668,7 @@ bool BitcodeReader::ParseTypeTableBody() {
         Res->setName(TypeName);
         TypeList[NumRecords] = 0;
       } else  // Otherwise, create a new struct.
-        Res = StructType::createNamed(Context, TypeName);
+        Res = StructType::create(Context, TypeName);
       TypeName.clear();
       
       SmallVector<Type*, 8> EltTys;
@@ -697,7 +697,7 @@ bool BitcodeReader::ParseTypeTableBody() {
         Res->setName(TypeName);
         TypeList[NumRecords] = 0;
       } else  // Otherwise, create a new struct with no body.
-        Res = StructType::createNamed(Context, TypeName);
+        Res = StructType::create(Context, TypeName);
       TypeName.clear();
       ResultTy = Res;
       break;
@@ -831,7 +831,7 @@ RestartScan:
       break;
     case bitc::TYPE_CODE_OPAQUE:    // OPAQUE
       if (NextTypeID < TypeList.size() && TypeList[NextTypeID] == 0)
-        ResultTy = StructType::createNamed(Context, "");
+        ResultTy = StructType::create(Context);
       break;
     case bitc::TYPE_CODE_STRUCT_OLD: {// STRUCT_OLD
       if (NextTypeID >= TypeList.size()) break;
@@ -842,7 +842,7 @@ RestartScan:
 
       // Set a type.
       if (TypeList[NextTypeID] == 0)
-        TypeList[NextTypeID] = StructType::createNamed(Context, "");
+        TypeList[NextTypeID] = StructType::create(Context);
 
       std::vector<Type*> EltTys;
       for (unsigned i = 1, e = Record.size(); i != e; ++i) {
@@ -961,7 +961,7 @@ bool BitcodeReader::ParseOldTypeSymbolTable() {
 
       // Only apply the type name to a struct type with no name.
       if (StructType *STy = dyn_cast<StructType>(TypeList[TypeID]))
-        if (!STy->isAnonymous() && !STy->hasName())
+        if (!STy->isLiteral() && !STy->hasName())
           STy->setName(TypeName);
       TypeName.clear();
       break;
@@ -2514,6 +2514,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       if (getValueTypePair(Record, Idx, NextValueNo, Val))
         return Error("Invalid RESUME record");
       I = ResumeInst::Create(Val);
+      InstructionList.push_back(I);
       break;
     }
     case bitc::FUNC_CODE_INST_UNWIND: // UNWIND
@@ -2540,6 +2541,45 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
         PN->addIncoming(V, BB);
       }
       I = PN;
+      break;
+    }
+
+    case bitc::FUNC_CODE_INST_LANDINGPAD: {
+      // LANDINGPAD: [ty, val, val, num, (id0,val0 ...)?]
+      unsigned Idx = 0;
+      if (Record.size() < 4)
+        return Error("Invalid LANDINGPAD record");
+      Type *Ty = getTypeByID(Record[Idx++]);
+      if (!Ty) return Error("Invalid LANDINGPAD record");
+      Value *PersFn = 0;
+      if (getValueTypePair(Record, Idx, NextValueNo, PersFn))
+        return Error("Invalid LANDINGPAD record");
+
+      bool IsCleanup = !!Record[Idx++];
+      unsigned NumClauses = Record[Idx++];
+      LandingPadInst *LP = LandingPadInst::Create(Ty, PersFn, NumClauses);
+      LP->setCleanup(IsCleanup);
+      for (unsigned J = 0; J != NumClauses; ++J) {
+        LandingPadInst::ClauseType CT =
+          LandingPadInst::ClauseType(Record[Idx++]); (void)CT;
+        Value *Val;
+
+        if (getValueTypePair(Record, Idx, NextValueNo, Val)) {
+          delete LP;
+          return Error("Invalid LANDINGPAD record");
+        }
+
+        assert((CT != LandingPadInst::Catch ||
+                !isa<ArrayType>(Val->getType())) &&
+               "Catch clause has a invalid type!");
+        assert((CT != LandingPadInst::Filter ||
+                isa<ArrayType>(Val->getType())) &&
+               "Filter clause has invalid type!");
+        LP->addClause(Val);
+      }
+
+      I = LP;
+      InstructionList.push_back(I);
       break;
     }
 
