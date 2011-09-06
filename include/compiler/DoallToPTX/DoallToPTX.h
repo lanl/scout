@@ -23,7 +23,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/FunctionUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 
 #include <string>
 #include <iostream>
