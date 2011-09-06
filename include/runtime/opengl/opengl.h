@@ -20,7 +20,7 @@
 #include <OpenGL/glu.h>
 #include <OpenGL/glext.h>
 
-#else
+#else /* Linux */ 
 
 #ifndef GL_GLEXT_PROTOTYPES
 #define GL_GLEXT_PROTOTYPES
