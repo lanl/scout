@@ -2528,7 +2528,8 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
                                             NameInfo, T, TInfo, 
                                             FromConstructor->isExplicit(),
                                             D->isInlineSpecified(), 
-                                            D->isImplicit());
+                                            D->isImplicit(),
+                                            D->isConstexpr());
   } else if (isa<CXXDestructorDecl>(D)) {
     ToFunction = CXXDestructorDecl::Create(Importer.getToContext(),
                                            cast<CXXRecordDecl>(DC),
@@ -2544,6 +2545,7 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
                                            NameInfo, T, TInfo,
                                            D->isInlineSpecified(),
                                            FromConversion->isExplicit(),
+                                           D->isConstexpr(),
                                            Importer.Import(D->getLocEnd()));
   } else if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(D)) {
     ToFunction = CXXMethodDecl::Create(Importer.getToContext(), 
@@ -2553,6 +2555,7 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
                                        Method->isStatic(),
                                        Method->getStorageClassAsWritten(),
                                        Method->isInlineSpecified(),
+                                       D->isConstexpr(),
                                        Importer.Import(D->getLocEnd()));
   } else {
     ToFunction = FunctionDecl::Create(Importer.getToContext(), DC,
@@ -2560,7 +2563,8 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
                                       NameInfo, T, TInfo, D->getStorageClass(),
                                       D->getStorageClassAsWritten(),
                                       D->isInlineSpecified(),
-                                      D->hasWrittenPrototype());
+                                      D->hasWrittenPrototype(),
+                                      D->isConstexpr());
   }
 
   // Import the qualifier, if any.
@@ -2984,6 +2988,7 @@ Decl *ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
                              D->isInstanceMethod(),
                              D->isVariadic(),
                              D->isSynthesized(),
+                             D->isImplicit(),
                              D->isDefined(),
                              D->getImplementationControl(),
                              D->hasRelatedResultType());
@@ -3041,14 +3046,11 @@ Decl *ASTNodeImporter::VisitObjCCategoryDecl(ObjCCategoryDecl *D) {
                                           Importer.Import(D->getAtLoc()),
                                           Loc, 
                                        Importer.Import(D->getCategoryNameLoc()), 
-                                          Name.getAsIdentifierInfo());
+                                          Name.getAsIdentifierInfo(),
+                                          ToInterface);
     ToCategory->setLexicalDeclContext(LexicalDC);
     LexicalDC->addDecl(ToCategory);
     Importer.Imported(D, ToCategory);
-    
-    // Link this category into its class's category list.
-    ToCategory->setClassInterface(ToInterface);
-    ToCategory->insertNextClassCategory();
     
     // Import protocols
     SmallVector<ObjCProtocolDecl *, 4> Protocols;
@@ -3584,25 +3586,14 @@ Decl *ASTNodeImporter::VisitObjCClassDecl(ObjCClassDecl *D) {
   
   // Import the location of this declaration.
   SourceLocation Loc = Importer.Import(D->getLocation());
-
-  SmallVector<ObjCInterfaceDecl *, 4> Interfaces;
-  SmallVector<SourceLocation, 4> Locations;
-  for (ObjCClassDecl::iterator From = D->begin(), FromEnd = D->end();
-       From != FromEnd; ++From) {
-    ObjCInterfaceDecl *ToIface
-      = cast_or_null<ObjCInterfaceDecl>(Importer.Import(From->getInterface()));
-    if (!ToIface)
-      continue;
-    
-    Interfaces.push_back(ToIface);
-    Locations.push_back(Importer.Import(From->getLocation()));
-  }
-  
+  ObjCClassDecl::ObjCClassRef *From = D->getForwardDecl();
+  ObjCInterfaceDecl *ToIface
+    = cast_or_null<ObjCInterfaceDecl>(Importer.Import(From->getInterface()));
   ObjCClassDecl *ToClass = ObjCClassDecl::Create(Importer.getToContext(), DC,
-                                                 Loc, 
-                                                 Interfaces.data(),
-                                                 Locations.data(),
-                                                 Interfaces.size());
+                                        Loc,
+                                        ToIface,
+                                        Importer.Import(From->getLocation()));
+    
   ToClass->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDecl(ToClass);
   Importer.Imported(D, ToClass);

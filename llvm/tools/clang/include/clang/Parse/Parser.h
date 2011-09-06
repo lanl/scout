@@ -186,6 +186,7 @@ public:
 
   const Token &getCurToken() const { return Tok; }
   Scope *getCurScope() const { return Actions.getCurScope(); }
+  Decl  *getObjCDeclContext() const { return Actions.getObjCDeclContext(); }
 
   // Type forwarding.  All of these are statically 'void*', but they may all be
   // different actual classes based on the actions in place.
@@ -284,11 +285,10 @@ private:
     assert(!isTokenStringLiteral() && !isTokenParen() && !isTokenBracket() &&
            !isTokenBrace() &&
            "Should consume special tokens with Consume*Token");
-    if (Tok.is(tok::code_completion)) {
-      CodeCompletionRecovery();
-      return ConsumeCodeCompletionToken();
-    }
 
+    if (Tok.is(tok::code_completion))
+      return handleUnexpectedCodeCompletionToken();
+    
     PrevTokLocation = Tok.getLocation();
     PP.Lex(Tok);
     return PrevTokLocation;
@@ -373,11 +373,21 @@ private:
     PP.Lex(Tok);
     return PrevTokLocation;
   }
-
-  ///\ brief When we are consuming a code-completion token within having
+  
+  ///\ brief When we are consuming a code-completion token without having
   /// matched specific position in the grammar, provide code-completion results
   /// based on context.
-  void CodeCompletionRecovery();
+  ///
+  /// \returns the source location of the code-completion token.
+  SourceLocation handleUnexpectedCodeCompletionToken();
+
+  /// \brief Abruptly cut off parsing; mainly used when we have reached the
+  /// code-completion point.
+  void cutOffParsing() {
+    PP.setCodeCompletionReached();
+    // Cut off parsing by acting as if we reached the end-of-file.
+    Tok.setKind(tok::eof);
+  }
 
   /// \brief Handle the annotation token produced for #pragma unused(...)
   void HandlePragmaUnused();
@@ -501,6 +511,23 @@ private:
     }
   };
 
+  /// ObjCDeclContextSwitch - An object used to switch context from
+  /// an objective-c decl context to its enclosing decl context and
+  /// back.
+  class ObjCDeclContextSwitch {
+    Parser &P;
+    Decl *DC;
+  public:
+    explicit ObjCDeclContextSwitch(Parser &p) : P(p), 
+               DC(p.getObjCDeclContext()) {
+      if (DC)
+        P.Actions.ActOnObjCContainerFinishDefinition();
+    }
+    ~ObjCDeclContextSwitch() {
+      if (DC)
+        P.Actions.ActOnObjCContainerStartDefinition(DC);
+    }
+  };
 
   SourceLocation MatchRHSPunctuation(tok::TokenKind RHSTok,
                                      SourceLocation LHSLoc);
@@ -1003,6 +1030,7 @@ private:
   void ParseLexedMethodDef(LexedMethod &LM);
   void ParseLexedMemberInitializers(ParsingClass &Class);
   void ParseLexedMemberInitializer(LateParsedMemberInitializer &MI);
+  Decl *ParseLexedObjCMethodDefs(LexedMethod &LM);
   bool ConsumeAndStoreUntil(tok::TokenKind T1,
                             CachedTokens &Toks,
                             bool StopAtSemi = true,
@@ -1041,8 +1069,8 @@ private:
   ExprResult ParseAsmStringLiteral();
 
   // Objective-C External Declarations
-  Decl *ParseObjCAtDirectives();
-  Decl *ParseObjCAtClassDeclaration(SourceLocation atLoc);
+  Parser::DeclGroupPtrTy ParseObjCAtDirectives();
+  Parser::DeclGroupPtrTy ParseObjCAtClassDeclaration(SourceLocation atLoc);
   Decl *ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
                                         ParsedAttributes &prefixAttrs);
   void ParseObjCClassInstanceVariables(Decl *interfaceDecl,
@@ -1054,16 +1082,18 @@ private:
                                    SourceLocation &LAngleLoc,
                                    SourceLocation &EndProtoLoc);
   bool ParseObjCProtocolQualifiers(DeclSpec &DS);
-  void ParseObjCInterfaceDeclList(Decl *interfaceDecl,
-                                  tok::ObjCKeywordKind contextKey);
+  void ParseObjCInterfaceDeclList(tok::ObjCKeywordKind contextKey,
+                                  Decl *CDecl);
   Decl *ParseObjCAtProtocolDeclaration(SourceLocation atLoc,
                                        ParsedAttributes &prefixAttrs);
 
   Decl *ObjCImpDecl;
   SmallVector<Decl *, 4> PendingObjCImpDecl;
+  typedef SmallVector<LexedMethod*, 2> LateParsedObjCMethodContainer;
+  LateParsedObjCMethodContainer LateParsedObjCMethods;
 
   Decl *ParseObjCAtImplementationDeclaration(SourceLocation atLoc);
-  Decl *ParseObjCAtEndDeclaration(SourceRange atEnd);
+  DeclGroupPtrTy ParseObjCAtEndDeclaration(SourceRange atEnd);
   Decl *ParseObjCAtAliasDeclaration(SourceLocation atLoc);
   Decl *ParseObjCPropertySynthesize(SourceLocation atLoc);
   Decl *ParseObjCPropertyDynamic(SourceLocation atLoc);
@@ -1086,14 +1116,13 @@ private:
 
   ParsedType ParseObjCTypeName(ObjCDeclSpec &DS, ObjCTypeNameContext Context);
   void ParseObjCMethodRequirement();
-  Decl *ParseObjCMethodPrototype(Decl *classOrCat,
+  Decl *ParseObjCMethodPrototype(
             tok::ObjCKeywordKind MethodImplKind = tok::objc_not_keyword,
             bool MethodDefinition = true);
   Decl *ParseObjCMethodDecl(SourceLocation mLoc, tok::TokenKind mType,
-                                Decl *classDecl,
             tok::ObjCKeywordKind MethodImplKind = tok::objc_not_keyword,
             bool MethodDefinition=true);
-  void ParseObjCPropertyAttribute(ObjCDeclSpec &DS, Decl *ClassDecl);
+  void ParseObjCPropertyAttribute(ObjCDeclSpec &DS);
 
   Decl *ParseObjCMethodDefinition();
 
@@ -1898,6 +1927,10 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
                                         SourceLocation TemplateLoc,
                                         SourceLocation &DeclEnd);
 
+  //===--------------------------------------------------------------------===//
+  // Modules
+  DeclGroupPtrTy ParseModuleImport();
+  
   //===--------------------------------------------------------------------===//
   // GNU G++: Type Traits [Type-Traits.html in the GCC manual]
   ExprResult ParseUnaryTypeTrait();

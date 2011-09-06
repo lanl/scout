@@ -35,11 +35,18 @@ class AggExprEmitter : public StmtVisitor<AggExprEmitter> {
   AggValueSlot Dest;
   bool IgnoreResult;
 
+  /// We want to use 'dest' as the return slot except under two
+  /// conditions:
+  ///   - The destination slot requires garbage collection, so we
+  ///     need to use the GC API.
+  ///   - The destination slot is potentially aliased.
+  bool shouldUseDestForReturnSlot() const {
+    return !(Dest.requiresGCollection() || Dest.isPotentiallyAliased());
+  }
+
   ReturnValueSlot getReturnValueSlot() const {
-    // If the destination slot requires garbage collection, we can't
-    // use the real return value slot, because we have to use the GC
-    // API.
-    if (Dest.requiresGCollection()) return ReturnValueSlot();
+    if (!shouldUseDestForReturnSlot())
+      return ReturnValueSlot();
 
     return ReturnValueSlot(Dest.getAddr(), Dest.isVolatile());
   }
@@ -69,7 +76,13 @@ public:
   void EmitFinalDestCopy(const Expr *E, LValue Src, bool Ignore = false);
   void EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore = false);
 
-  void EmitGCMove(const Expr *E, RValue Src);
+  void EmitMoveFromReturnSlot(const Expr *E, RValue Src);
+
+  AggValueSlot::NeedsGCBarriers_t needsGC(QualType T) {
+    if (CGF.getLangOptions().getGCMode() && TypeRequiresGCollection(T))
+      return AggValueSlot::NeedsGCBarriers;
+    return AggValueSlot::DoesNotNeedGCBarriers;
+  }
 
   bool TypeRequiresGCollection(QualType T);
 
@@ -173,23 +186,27 @@ bool AggExprEmitter::TypeRequiresGCollection(QualType T) {
   return Record->hasObjectMember();
 }
 
-/// \brief Perform the final move to DestPtr if RequiresGCollection is set.
+/// \brief Perform the final move to DestPtr if for some reason
+/// getReturnValueSlot() didn't use it directly.
 ///
 /// The idea is that you do something like this:
 ///   RValue Result = EmitSomething(..., getReturnValueSlot());
-///   EmitGCMove(E, Result);
-/// If GC doesn't interfere, this will cause the result to be emitted
-/// directly into the return value slot.  If GC does interfere, a final
-/// move will be performed.
-void AggExprEmitter::EmitGCMove(const Expr *E, RValue Src) {
-  if (Dest.requiresGCollection()) {
-    CharUnits size = CGF.getContext().getTypeSizeInChars(E->getType());
-    llvm::Type *SizeTy = CGF.ConvertType(CGF.getContext().getSizeType());
-    llvm::Value *SizeVal = llvm::ConstantInt::get(SizeTy, size.getQuantity());
-    CGF.CGM.getObjCRuntime().EmitGCMemmoveCollectable(CGF, Dest.getAddr(),
-                                                    Src.getAggregateAddr(),
-                                                    SizeVal);
+///   EmitMoveFromReturnSlot(E, Result);
+///
+/// If nothing interferes, this will cause the result to be emitted
+/// directly into the return value slot.  Otherwise, a final move
+/// will be performed.
+void AggExprEmitter::EmitMoveFromReturnSlot(const Expr *E, RValue Src) {
+  if (shouldUseDestForReturnSlot()) {
+    // Logically, Dest.getAddr() should equal Src.getAggregateAddr().
+    // The possibility of undef rvalues complicates that a lot,
+    // though, so we can't really assert.
+    return;
   }
+
+  // Otherwise, do a final copy, 
+  assert(Dest.getAddr() != Src.getAggregateAddr());
+  EmitFinalDestCopy(E, Src, /*Ignore*/ true);
 }
 
 /// EmitFinalDestCopy - Perform the final copy to DestPtr, if desired.
@@ -310,7 +327,7 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
     LValue LV = CGF.EmitLValue(E->getSubExpr());
     assert(LV.isPropertyRef());
     RValue RV = CGF.EmitLoadOfPropertyRefLValue(LV, getReturnValueSlot());
-    EmitGCMove(E, RV);
+    EmitMoveFromReturnSlot(E, RV);
     break;
   }
 
@@ -375,12 +392,12 @@ void AggExprEmitter::VisitCallExpr(const CallExpr *E) {
   }
 
   RValue RV = CGF.EmitCallExpr(E, getReturnValueSlot());
-  EmitGCMove(E, RV);
+  EmitMoveFromReturnSlot(E, RV);
 }
 
 void AggExprEmitter::VisitObjCMessageExpr(ObjCMessageExpr *E) {
   RValue RV = CGF.EmitObjCMessageExpr(E, getReturnValueSlot());
-  EmitGCMove(E, RV);
+  EmitMoveFromReturnSlot(E, RV);
 }
 
 void AggExprEmitter::VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E) {
@@ -426,10 +443,9 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
         // as it may change the 'forwarding' field via call to Block_copy.
         LValue RHS = CGF.EmitLValue(E->getRHS());
         LValue LHS = CGF.EmitLValue(E->getLHS());
-        bool GCollection = false;
-        if (CGF.getContext().getLangOptions().getGCMode())
-          GCollection = TypeRequiresGCollection(E->getLHS()->getType());
-        Dest = AggValueSlot::forLValue(LHS, true, GCollection);
+        Dest = AggValueSlot::forLValue(LHS, AggValueSlot::IsDestructed,
+                                       needsGC(E->getLHS()->getType()),
+                                       AggValueSlot::IsAliased);
         EmitFinalDestCopy(E, RHS, true);
         return;
       }
@@ -451,13 +467,11 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
     }
     CGF.EmitStoreThroughPropertyRefLValue(Src, LHS);
   } else {
-    bool GCollection = false;
-    if (CGF.getContext().getLangOptions().getGCMode())
-      GCollection = TypeRequiresGCollection(E->getLHS()->getType());
-
     // Codegen the RHS so that it stores directly into the LHS.
-    AggValueSlot LHSSlot = AggValueSlot::forLValue(LHS, true, 
-                                                   GCollection);
+    AggValueSlot LHSSlot =
+      AggValueSlot::forLValue(LHS, AggValueSlot::IsDestructed, 
+                              needsGC(E->getLHS()->getType()),
+                              AggValueSlot::IsAliased);
     CGF.EmitAggExpr(E->getRHS(), LHSSlot, false);
     EmitFinalDestCopy(E, LHS, true);
   }
@@ -476,7 +490,7 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   CGF.EmitBranchOnBoolExpr(E->getCond(), LHSBlock, RHSBlock);
 
   // Save whether the destination's lifetime is externally managed.
-  bool DestLifetimeManaged = Dest.isLifetimeExternallyManaged();
+  bool isExternallyDestructed = Dest.isExternallyDestructed();
 
   eval.begin(CGF);
   CGF.EmitBlock(LHSBlock);
@@ -489,8 +503,8 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
   // If the result of an agg expression is unused, then the emission
   // of the LHS might need to create a destination slot.  That's fine
   // with us, and we can safely emit the RHS into the same slot, but
-  // we shouldn't claim that its lifetime is externally managed.
-  Dest.setLifetimeExternallyManaged(DestLifetimeManaged);
+  // we shouldn't claim that it's already being destructed.
+  Dest.setExternallyDestructed(isExternallyDestructed);
 
   eval.begin(CGF);
   CGF.EmitBlock(RHSBlock);
@@ -518,16 +532,17 @@ void AggExprEmitter::VisitVAArgExpr(VAArgExpr *VE) {
 
 void AggExprEmitter::VisitCXXBindTemporaryExpr(CXXBindTemporaryExpr *E) {
   // Ensure that we have a slot, but if we already do, remember
-  // whether its lifetime was externally managed.
-  bool WasManaged = Dest.isLifetimeExternallyManaged();
+  // whether it was externally destructed.
+  bool wasExternallyDestructed = Dest.isExternallyDestructed();
   Dest = EnsureSlot(E->getType());
-  Dest.setLifetimeExternallyManaged();
+
+  // We're going to push a destructor if there isn't already one.
+  Dest.setExternallyDestructed();
 
   Visit(E->getSubExpr());
 
-  // Set up the temporary's destructor if its lifetime wasn't already
-  // being managed.
-  if (!WasManaged)
+  // Push that destructor we promised.
+  if (!wasExternallyDestructed)
     CGF.EmitCXXTemporary(E->getTemporary(), Dest.getAddr());
 }
 
@@ -596,7 +611,10 @@ AggExprEmitter::EmitInitializationToLValue(Expr* E, LValue LV) {
   } else if (type->isAnyComplexType()) {
     CGF.EmitComplexExprIntoAddr(E, LV.getAddress(), false);
   } else if (CGF.hasAggregateLLVMType(type)) {
-    CGF.EmitAggExpr(E, AggValueSlot::forLValue(LV, true, false,
+    CGF.EmitAggExpr(E, AggValueSlot::forLValue(LV,
+                                               AggValueSlot::IsDestructed,
+                                      AggValueSlot::DoesNotNeedGCBarriers,
+                                               AggValueSlot::IsNotAliased,
                                                Dest.isZeroed()));
   } else if (LV.isSimple()) {
     CGF.EmitScalarInit(E, /*D=*/0, LV, /*Captured=*/false);
@@ -948,7 +966,7 @@ static CharUnits GetNumNonZeroBytesInInit(const Expr *E, CodeGenFunction &CGF) {
         // Reference values are always non-null and have the width of a pointer.
         if (Field->getType()->isReferenceType())
           NumNonZeroBytes += CGF.getContext().toCharUnitsFromBits(
-              CGF.getContext().Target.getPointerWidth(0));
+              CGF.getContext().getTargetInfo().getPointerWidth(0));
         else
           NumNonZeroBytes += GetNumNonZeroBytesInInit(E, CGF);
       }
@@ -1036,7 +1054,9 @@ LValue CodeGenFunction::EmitAggExprToLValue(const Expr *E) {
   assert(hasAggregateLLVMType(E->getType()) && "Invalid argument!");
   llvm::Value *Temp = CreateMemTemp(E->getType());
   LValue LV = MakeAddrLValue(Temp, E->getType());
-  EmitAggExpr(E, AggValueSlot::forLValue(LV, false));
+  EmitAggExpr(E, AggValueSlot::forLValue(LV, AggValueSlot::IsNotDestructed,
+                                         AggValueSlot::DoesNotNeedGCBarriers,
+                                         AggValueSlot::IsNotAliased));
   return LV;
 }
 
@@ -1049,7 +1069,9 @@ void CodeGenFunction::EmitAggregateCopy(llvm::Value *DestPtr,
     if (const RecordType *RT = Ty->getAs<RecordType>()) {
       CXXRecordDecl *Record = cast<CXXRecordDecl>(RT->getDecl());
       assert((Record->hasTrivialCopyConstructor() || 
-              Record->hasTrivialCopyAssignment()) &&
+              Record->hasTrivialCopyAssignment() ||
+              Record->hasTrivialMoveConstructor() ||
+              Record->hasTrivialMoveAssignment()) &&
              "Trying to aggregate-copy a type without a trivial copy "
              "constructor or assignment operator");
       // Ignore empty classes in C++.

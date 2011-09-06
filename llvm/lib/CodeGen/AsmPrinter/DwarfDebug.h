@@ -125,9 +125,14 @@ class DbgVariable {
   DIVariable Var;                    // Variable Descriptor.
   DIE *TheDIE;                       // Variable DIE.
   unsigned DotDebugLocOffset;        // Offset in DotDebugLocEntries.
+  DbgVariable *AbsVar;               // Corresponding Abstract variable, if any.
+  const MachineInstr *MInsn;         // DBG_VALUE instruction of the variable.
+  int FrameIndex;
 public:
   // AbsVar may be NULL.
-  DbgVariable(DIVariable V) : Var(V), TheDIE(0), DotDebugLocOffset(~0U) {}
+  DbgVariable(DIVariable V, DbgVariable *AV) 
+    : Var(V), TheDIE(0), DotDebugLocOffset(~0U), AbsVar(AV), MInsn(0),
+      FrameIndex(~0) {}
 
   // Accessors.
   DIVariable getVariable()           const { return Var; }
@@ -136,7 +141,27 @@ public:
   void setDotDebugLocOffset(unsigned O)    { DotDebugLocOffset = O; }
   unsigned getDotDebugLocOffset()    const { return DotDebugLocOffset; }
   StringRef getName()                const { return Var.getName(); }
-  unsigned getTag()                  const { return Var.getTag(); }
+  DbgVariable *getAbstractVariable() const { return AbsVar; }
+  const MachineInstr *getMInsn()     const { return MInsn; }
+  void setMInsn(const MachineInstr *M)     { MInsn = M; }
+  int getFrameIndex()                const { return FrameIndex; }
+  void setFrameIndex(int FI)               { FrameIndex = FI; }
+  // Translate tag to proper Dwarf tag.  
+  unsigned getTag()                  const { 
+    if (Var.getTag() == dwarf::DW_TAG_arg_variable)
+      return dwarf::DW_TAG_formal_parameter;
+    
+    return dwarf::DW_TAG_variable;
+  }
+  /// isArtificial - Return true if DbgVariable is artificial.
+  bool isArtificial()                const {
+    if (Var.isArtificial())
+      return true;
+    if (Var.getTag() == dwarf::DW_TAG_arg_variable
+        && getType().isArtificial())
+      return true;
+    return false;
+  }
   bool variableHasComplexAddress()   const {
     assert(Var.Verify() && "Invalid complex DbgVariable!");
     return Var.hasComplexAddress();
@@ -167,7 +192,12 @@ class DwarfDebug {
   //
 
   CompileUnit *FirstCU;
+
+  /// Maps MDNode with its corresponding CompileUnit.
   DenseMap <const MDNode *, CompileUnit *> CUMap;
+
+  /// Maps subprogram MDNode with its corresponding CompileUnit.
+  DenseMap <const MDNode *, CompileUnit *> SPMap;
 
   /// AbbreviationsSet - Used to uniquely define abbreviations.
   ///
@@ -206,33 +236,12 @@ class DwarfDebug {
   /// AbstractVariables - Collection on abstract variables.
   DenseMap<const MDNode *, DbgVariable *> AbstractVariables;
 
-  /// DbgVariableToFrameIndexMap - Tracks frame index used to find 
-  /// variable's value.
-  DenseMap<const DbgVariable *, int> DbgVariableToFrameIndexMap;
-
-  /// DbgVariableToDbgInstMap - Maps DbgVariable to corresponding DBG_VALUE
-  /// machine instruction.
-  DenseMap<const DbgVariable *, const MachineInstr *> DbgVariableToDbgInstMap;
-
   /// DotDebugLocEntries - Collection of DotDebugLocEntry.
   SmallVector<DotDebugLocEntry, 4> DotDebugLocEntries;
-
-  /// UseDotDebugLocEntry - DW_AT_location attributes for the DIEs in this set
-  /// idetifies corresponding .debug_loc entry offset.
-  SmallPtrSet<const DIE *, 4> UseDotDebugLocEntry;
-
-  /// VarToAbstractVarMap - Maps DbgVariable with corresponding Abstract
-  /// DbgVariable, if any.
-  DenseMap<const DbgVariable *, const DbgVariable *> VarToAbstractVarMap;
 
   /// InliendSubprogramDIEs - Collection of subprgram DIEs that are marked
   /// (at the end of the module) as DW_AT_inline.
   SmallPtrSet<DIE *, 4> InlinedSubprogramDIEs;
-
-  /// ContainingTypeMap - This map is used to keep track of subprogram DIEs that
-  /// need DW_AT_containing_type attribute. This attribute points to a DIE that
-  /// corresponds to the MDNode mapped with the subprogram DIE.
-  DenseMap<DIE *, const MDNode *> ContainingTypeMap;
 
   /// InlineInfo - Keep track of inlined functions and their location.  This
   /// information is used to populate debug_inlined section.
@@ -310,22 +319,22 @@ private:
   /// attach appropriate DW_AT_low_pc and DW_AT_high_pc attributes.
   /// If there are global variables in this scope then create and insert
   /// DIEs for these variables.
-  DIE *updateSubprogramScopeDIE(const MDNode *SPNode);
+  DIE *updateSubprogramScopeDIE(CompileUnit *SPCU, const MDNode *SPNode);
 
   /// constructLexicalScope - Construct new DW_TAG_lexical_block 
   /// for this scope and attach DW_AT_low_pc/DW_AT_high_pc labels.
-  DIE *constructLexicalScopeDIE(LexicalScope *Scope);
+  DIE *constructLexicalScopeDIE(CompileUnit *TheCU, LexicalScope *Scope);
 
   /// constructInlinedScopeDIE - This scope represents inlined body of
   /// a function. Construct DIE to represent this concrete inlined copy
   /// of the function.
-  DIE *constructInlinedScopeDIE(LexicalScope *Scope);
+  DIE *constructInlinedScopeDIE(CompileUnit *TheCU, LexicalScope *Scope);
 
   /// constructVariableDIE - Construct a DIE for the given DbgVariable.
   DIE *constructVariableDIE(DbgVariable *DV, LexicalScope *S);
 
   /// constructScopeDIE - Construct a DIE for this scope.
-  DIE *constructScopeDIE(LexicalScope *Scope);
+  DIE *constructScopeDIE(CompileUnit *TheCU, LexicalScope *Scope);
 
   /// EmitSectionLabels - Emit initial Dwarf sections with a label at
   /// the start of each one.
@@ -406,16 +415,10 @@ private:
 
   /// constructCompileUnit - Create new CompileUnit for the given 
   /// metadata node with tag DW_TAG_compile_unit.
-  void constructCompileUnit(const MDNode *N);
-
-  /// getCompielUnit - Get CompileUnit DIE.
-  CompileUnit *getCompileUnit(const MDNode *N) const;
-
-  /// constructGlobalVariableDIE - Construct global variable DIE.
-  void constructGlobalVariableDIE(const MDNode *N);
+  CompileUnit *constructCompileUnit(const MDNode *N);
 
   /// construct SubprogramDIE - Construct subprogram DIE.
-  void constructSubprogramDIE(const MDNode *N);
+  void constructSubprogramDIE(CompileUnit *TheCU, const MDNode *N);
 
   /// recordSourceLine - Register a source line with debug info. Returns the
   /// unique label that was emitted and which provides correspondence to
@@ -423,13 +426,6 @@ private:
   void recordSourceLine(unsigned Line, unsigned Col, const MDNode *Scope,
                         unsigned Flags);
   
-  /// recordVariableFrameIndex - Record a variable's index.
-  void recordVariableFrameIndex(const DbgVariable *V, int Index);
-
-  /// findVariableFrameIndex - Return true if frame index for the variable
-  /// is found. Update FI to hold value of the index.
-  bool findVariableFrameIndex(const DbgVariable *V, int *FI);
-
   /// identifyScopeMarkers() - Indentify instructions that are marking
   /// beginning of or end of a scope.
   void identifyScopeMarkers();
@@ -470,6 +466,14 @@ public:
   //
   DwarfDebug(AsmPrinter *A, Module *M);
   ~DwarfDebug();
+
+  /// collectInfoFromNamedMDNodes - Collect debug info from named mdnodes such
+  /// as llvm.dbg.enum and llvm.dbg.ty
+  void collectInfoFromNamedMDNodes(Module *M);
+
+  /// collectLegacyDebugInfo - Collect debug info using DebugInfoFinder.
+  /// FIXME - Remove this when dragon-egg and llvm-gcc switch to DIBuilder.
+  bool collectLegacyDebugInfo(Module *M);
 
   /// beginModule - Emit all Dwarf sections that should come prior to the
   /// content.

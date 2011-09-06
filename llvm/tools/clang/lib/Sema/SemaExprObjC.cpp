@@ -203,6 +203,7 @@ ExprResult Sema::ParseObjCSelectorExpression(Selector Sel,
     case OMF_None:
     case OMF_alloc:
     case OMF_copy:
+    case OMF_finalize:
     case OMF_init:
     case OMF_mutableCopy:
     case OMF_new:
@@ -356,8 +357,9 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
     else
       DiagID = isClassMessage ? diag::warn_class_method_not_found
                               : diag::warn_inst_method_not_found;
-    Diag(lbrac, DiagID)
-      << Sel << isClassMessage << SourceRange(lbrac, rbrac);
+    if (!getLangOptions().DebuggerSupport)
+      Diag(lbrac, DiagID)
+        << Sel << isClassMessage << SourceRange(lbrac, rbrac);
 
     // In debuggers, we want to use __unknown_anytype for these
     // results so that clients can cast them.
@@ -975,6 +977,11 @@ ExprResult Sema::ActOnSuperMessage(Scope *S,
   // We are in a method whose class has a superclass, so 'super'
   // is acting as a keyword.
   if (Method->isInstanceMethod()) {
+    if (Sel.getMethodFamily() == OMF_dealloc)
+      ObjCShouldCallSuperDealloc = false;
+    if (Sel.getMethodFamily() == OMF_finalize)
+      ObjCShouldCallSuperFinalize = false;
+
     // Since we are in an instance method, this is an instance
     // message to the superclass instance.
     QualType SuperTy = Context.getObjCInterfaceType(Super);
@@ -1415,6 +1422,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
     case OMF_None:
     case OMF_alloc:
     case OMF_copy:
+    case OMF_finalize:
     case OMF_mutableCopy:
     case OMF_new:
     case OMF_self:
@@ -1817,6 +1825,10 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
                                       SourceLocation BridgeKeywordLoc,
                                       TypeSourceInfo *TSInfo,
                                       Expr *SubExpr) {
+  ExprResult SubResult = UsualUnaryConversions(SubExpr);
+  if (SubResult.isInvalid()) return ExprError();
+  SubExpr = SubResult.take();
+
   QualType T = TSInfo->getType();
   QualType FromType = SubExpr->getType();
 

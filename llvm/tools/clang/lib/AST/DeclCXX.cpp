@@ -42,8 +42,9 @@ CXXRecordDecl::DefinitionData::DefinitionData(CXXRecordDecl *D)
     UserProvidedDefaultConstructor(false), DeclaredDefaultConstructor(false),
     DeclaredCopyConstructor(false), DeclaredMoveConstructor(false),
     DeclaredCopyAssignment(false), DeclaredMoveAssignment(false),
-    DeclaredDestructor(false), NumBases(0), NumVBases(0), Bases(), VBases(),
-    Definition(D), FirstFriend(0) {
+    DeclaredDestructor(false), FailedImplicitMoveConstructor(false),
+    FailedImplicitMoveAssignment(false), NumBases(0), NumVBases(0), Bases(),
+    VBases(), Definition(D), FirstFriend(0) {
 }
 
 CXXRecordDecl::CXXRecordDecl(Kind K, TagKind TK, DeclContext *DC,
@@ -502,18 +503,18 @@ NotASpecialMember:;
     // Note that we have a user-declared constructor.
     data().UserDeclaredConstructor = true;
 
-    // FIXME: Under C++0x, /only/ special member functions may be user-provided.
-    //        This is probably a defect.
-    bool UserProvided = false;
+    // Technically, "user-provided" is only defined for special member
+    // functions, but the intent of the standard is clearly that it should apply
+    // to all functions.
+    bool UserProvided = Constructor->isUserProvided();
 
     // C++0x [class.ctor]p5:
     //   A default constructor is trivial if it is not user-provided [...]
     if (Constructor->isDefaultConstructor()) {
       data().DeclaredDefaultConstructor = true;
-      if (Constructor->isUserProvided()) {
+      if (UserProvided) {
         data().HasTrivialDefaultConstructor = false;
         data().UserProvidedDefaultConstructor = true;
-        UserProvided = true;
       }
     }
 
@@ -527,10 +528,8 @@ NotASpecialMember:;
         // C++0x [class.copy]p13:
         //   A copy/move constructor for class X is trivial if it is not
         //   user-provided [...]
-        if (Constructor->isUserProvided()) {
+        if (UserProvided)
           data().HasTrivialCopyConstructor = false;
-          UserProvided = true;
-        }
       } else if (Constructor->isMoveConstructor()) {
         data().UserDeclaredMoveConstructor = true;
         data().DeclaredMoveConstructor = true;
@@ -538,10 +537,8 @@ NotASpecialMember:;
         // C++0x [class.copy]p13:
         //   A copy/move constructor for class X is trivial if it is not
         //   user-provided [...]
-        if (Constructor->isUserProvided()) {
+        if (UserProvided)
           data().HasTrivialMoveConstructor = false;
-          UserProvided = true;
-        }
       }
     }
     if (Constructor->isConstexpr() && !Constructor->isCopyOrMoveConstructor()) {
@@ -1159,9 +1156,10 @@ CXXMethodDecl::Create(ASTContext &C, CXXRecordDecl *RD,
                       const DeclarationNameInfo &NameInfo,
                       QualType T, TypeSourceInfo *TInfo,
                       bool isStatic, StorageClass SCAsWritten, bool isInline,
-                      SourceLocation EndLocation) {
+                      bool isConstexpr, SourceLocation EndLocation) {
   return new (C) CXXMethodDecl(CXXMethod, RD, StartLoc, NameInfo, T, TInfo,
-                               isStatic, SCAsWritten, isInline, EndLocation);
+                               isStatic, SCAsWritten, isInline, isConstexpr,
+                               EndLocation);
 }
 
 bool CXXMethodDecl::isUsualDeallocationFunction() const {
@@ -1401,7 +1399,7 @@ SourceRange CXXCtorInitializer::getSourceRange() const {
 CXXConstructorDecl *
 CXXConstructorDecl::Create(ASTContext &C, EmptyShell Empty) {
   return new (C) CXXConstructorDecl(0, SourceLocation(), DeclarationNameInfo(),
-                                    QualType(), 0, false, false, false);
+                                    QualType(), 0, false, false, false, false);
 }
 
 CXXConstructorDecl *
@@ -1409,14 +1407,14 @@ CXXConstructorDecl::Create(ASTContext &C, CXXRecordDecl *RD,
                            SourceLocation StartLoc,
                            const DeclarationNameInfo &NameInfo,
                            QualType T, TypeSourceInfo *TInfo,
-                           bool isExplicit,
-                           bool isInline,
-                           bool isImplicitlyDeclared) {
+                           bool isExplicit, bool isInline,
+                           bool isImplicitlyDeclared, bool isConstexpr) {
   assert(NameInfo.getName().getNameKind()
          == DeclarationName::CXXConstructorName &&
          "Name must refer to a constructor");
   return new (C) CXXConstructorDecl(RD, StartLoc, NameInfo, T, TInfo,
-                                    isExplicit, isInline, isImplicitlyDeclared);
+                                    isExplicit, isInline, isImplicitlyDeclared,
+                                    isConstexpr);
 }
 
 bool CXXConstructorDecl::isDefaultConstructor() const {
@@ -1544,8 +1542,7 @@ CXXDestructorDecl::Create(ASTContext &C, CXXRecordDecl *RD,
                           SourceLocation StartLoc,
                           const DeclarationNameInfo &NameInfo,
                           QualType T, TypeSourceInfo *TInfo,
-                          bool isInline,
-                          bool isImplicitlyDeclared) {
+                          bool isInline, bool isImplicitlyDeclared) {
   assert(NameInfo.getName().getNameKind()
          == DeclarationName::CXXDestructorName &&
          "Name must refer to a destructor");
@@ -1556,7 +1553,7 @@ CXXDestructorDecl::Create(ASTContext &C, CXXRecordDecl *RD,
 CXXConversionDecl *
 CXXConversionDecl::Create(ASTContext &C, EmptyShell Empty) {
   return new (C) CXXConversionDecl(0, SourceLocation(), DeclarationNameInfo(),
-                                   QualType(), 0, false, false,
+                                   QualType(), 0, false, false, false,
                                    SourceLocation());
 }
 
@@ -1566,12 +1563,13 @@ CXXConversionDecl::Create(ASTContext &C, CXXRecordDecl *RD,
                           const DeclarationNameInfo &NameInfo,
                           QualType T, TypeSourceInfo *TInfo,
                           bool isInline, bool isExplicit,
-                          SourceLocation EndLocation) {
+                          bool isConstexpr, SourceLocation EndLocation) {
   assert(NameInfo.getName().getNameKind()
          == DeclarationName::CXXConversionFunctionName &&
          "Name must refer to a conversion function");
   return new (C) CXXConversionDecl(RD, StartLoc, NameInfo, T, TInfo,
-                                   isInline, isExplicit, EndLocation);
+                                   isInline, isExplicit, isConstexpr,
+                                   EndLocation);
 }
 
 LinkageSpecDecl *LinkageSpecDecl::Create(ASTContext &C,

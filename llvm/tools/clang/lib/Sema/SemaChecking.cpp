@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Sema/Initialization.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/ScopeInfo.h"
@@ -188,7 +189,7 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   // Since the target specific builtins for each arch overlap, only check those
   // of the arch we are compiling for.
   if (BuiltinID >= Builtin::FirstTSBuiltin) {
-    switch (Context.Target.getTriple().getArch()) {
+    switch (Context.getTargetInfo().getTriple().getArch()) {
       case llvm::Triple::arm:
       case llvm::Triple::thumb:
         if (CheckARMBuiltinFunctionCall(BuiltinID, TheCall))
@@ -319,7 +320,7 @@ bool Sema::CheckFunctionCall(FunctionDecl *FDecl, CallExpr *TheCall) {
                           TheCall->getCallee()->getLocStart());
   }
 
-  // Memset/memcpy/memmove/memcmp handling
+  // Builtin handling
   int CMF = -1;
   switch (FDecl->getBuiltinID()) {
   case Builtin::BI__builtin_memset:
@@ -338,6 +339,11 @@ bool Sema::CheckFunctionCall(FunctionDecl *FDecl, CallExpr *TheCall) {
   case Builtin::BI__builtin___memmove_chk:
   case Builtin::BImemmove:
     CMF = CMF_Memmove;
+    break;
+
+  case Builtin::BIstrlcpy:
+  case Builtin::BIstrlcat:
+    CheckStrlcpycatArguments(TheCall, FnInfo);
     break;
     
   case Builtin::BI__builtin_memcmp:
@@ -359,6 +365,7 @@ bool Sema::CheckFunctionCall(FunctionDecl *FDecl, CallExpr *TheCall) {
     break;
   }
    
+  // Memset/memcpy/memmove handling
   if (CMF != -1)
     CheckMemaccessArguments(TheCall, CheckedMemoryFunction(CMF), FnInfo);
 
@@ -387,6 +394,30 @@ bool Sema::CheckBlockCall(NamedDecl *NDecl, CallExpr *TheCall) {
   CheckPrintfScanfArguments(TheCall, HasVAListArg, Format->getFormatIdx() - 1,
                             HasVAListArg ? 0 : Format->getFirstArg() - 1, !b);
 
+  return false;
+}
+
+/// checkBuiltinArgument - Given a call to a builtin function, perform
+/// normal type-checking on the given argument, updating the call in
+/// place.  This is useful when a builtin function requires custom
+/// type-checking for some of its arguments but not necessarily all of
+/// them.
+///
+/// Returns true on error.
+static bool checkBuiltinArgument(Sema &S, CallExpr *E, unsigned ArgIndex) {
+  FunctionDecl *Fn = E->getDirectCallee();
+  assert(Fn && "builtin call without direct callee!");
+
+  ParmVarDecl *Param = Fn->getParamDecl(ArgIndex);
+  InitializedEntity Entity =
+    InitializedEntity::InitializeParameter(S.Context, Param);
+
+  ExprResult Arg = E->getArg(0);
+  Arg = S.PerformCopyInitialization(Entity, SourceLocation(), Arg);
+  if (Arg.isInvalid())
+    return true;
+
+  E->setArg(ArgIndex, Arg.take());
   return false;
 }
 
@@ -654,6 +685,10 @@ bool Sema::SemaBuiltinVAStart(CallExpr *TheCall) {
       diag::err_typecheck_call_too_few_args_at_least)
       << 0 /*function call*/ << 2 << TheCall->getNumArgs();
   }
+
+  // Type-check the first argument normally.
+  if (checkBuiltinArgument(*this, TheCall, 0))
+    return true;
 
   // Determine whether the current function is variadic or not.
   BlockScopeInfo *CurBlock = getCurBlock();
@@ -1965,21 +2000,24 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
         }
       }
 
-      unsigned DiagID;
-
       // Always complain about dynamic classes.
       if (isDynamicClassType(PointeeTy))
-        DiagID = diag::warn_dyn_class_memaccess;
+        DiagRuntimeBehavior(
+          Dest->getExprLoc(), Dest,
+          PDiag(diag::warn_dyn_class_memaccess)
+            << (CMF == CMF_Memcmp ? ArgIdx + 2 : ArgIdx) << FnName << PointeeTy
+            // "overwritten" if we're warning about the destination for any call
+            // but memcmp; otherwise a verb appropriate to the call.
+            << (ArgIdx == 0 && CMF != CMF_Memcmp ? 0 : (unsigned)CMF)
+            << Call->getCallee()->getSourceRange());
       else if (PointeeTy.hasNonTrivialObjCLifetime() && CMF != CMF_Memset)
-        DiagID = diag::warn_arc_object_memaccess;
+        DiagRuntimeBehavior(
+          Dest->getExprLoc(), Dest,
+          PDiag(diag::warn_arc_object_memaccess)
+            << ArgIdx << FnName << PointeeTy
+            << Call->getCallee()->getSourceRange());
       else
         continue;
-
-      DiagRuntimeBehavior(
-        Dest->getExprLoc(), Dest,
-        PDiag(DiagID)
-          << ArgIdx << FnName << PointeeTy 
-          << Call->getCallee()->getSourceRange());
 
       DiagRuntimeBehavior(
         Dest->getExprLoc(), Dest,
@@ -1988,6 +2026,103 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
       break;
     }
   }
+}
+
+// A little helper routine: ignore addition and subtraction of integer literals.
+// This intentionally does not ignore all integer constant expressions because
+// we don't want to remove sizeof().
+static const Expr *ignoreLiteralAdditions(const Expr *Ex, ASTContext &Ctx) {
+  Ex = Ex->IgnoreParenCasts();
+
+  for (;;) {
+    const BinaryOperator * BO = dyn_cast<BinaryOperator>(Ex);
+    if (!BO || !BO->isAdditiveOp())
+      break;
+
+    const Expr *RHS = BO->getRHS()->IgnoreParenCasts();
+    const Expr *LHS = BO->getLHS()->IgnoreParenCasts();
+    
+    if (isa<IntegerLiteral>(RHS))
+      Ex = LHS;
+    else if (isa<IntegerLiteral>(LHS))
+      Ex = RHS;
+    else
+      break;
+  }
+
+  return Ex;
+}
+
+// Warn if the user has made the 'size' argument to strlcpy or strlcat
+// be the size of the source, instead of the destination.
+void Sema::CheckStrlcpycatArguments(const CallExpr *Call,
+                                    IdentifierInfo *FnName) {
+
+  // Don't crash if the user has the wrong number of arguments
+  if (Call->getNumArgs() != 3)
+    return;
+
+  const Expr *SrcArg = ignoreLiteralAdditions(Call->getArg(1), Context);
+  const Expr *SizeArg = ignoreLiteralAdditions(Call->getArg(2), Context);
+  const Expr *CompareWithSrc = NULL;
+  
+  // Look for 'strlcpy(dst, x, sizeof(x))'
+  if (const Expr *Ex = getSizeOfExprArg(SizeArg))
+    CompareWithSrc = Ex;
+  else {
+    // Look for 'strlcpy(dst, x, strlen(x))'
+    if (const CallExpr *SizeCall = dyn_cast<CallExpr>(SizeArg)) {
+      if (SizeCall->isBuiltinCall(Context) == Builtin::BIstrlen
+          && SizeCall->getNumArgs() == 1)
+        CompareWithSrc = ignoreLiteralAdditions(SizeCall->getArg(0), Context);
+    }
+  }
+
+  if (!CompareWithSrc)
+    return;
+
+  // Determine if the argument to sizeof/strlen is equal to the source
+  // argument.  In principle there's all kinds of things you could do
+  // here, for instance creating an == expression and evaluating it with
+  // EvaluateAsBooleanCondition, but this uses a more direct technique:
+  const DeclRefExpr *SrcArgDRE = dyn_cast<DeclRefExpr>(SrcArg);
+  if (!SrcArgDRE)
+    return;
+  
+  const DeclRefExpr *CompareWithSrcDRE = dyn_cast<DeclRefExpr>(CompareWithSrc);
+  if (!CompareWithSrcDRE || 
+      SrcArgDRE->getDecl() != CompareWithSrcDRE->getDecl())
+    return;
+  
+  const Expr *OriginalSizeArg = Call->getArg(2);
+  Diag(CompareWithSrcDRE->getLocStart(), diag::warn_strlcpycat_wrong_size)
+    << OriginalSizeArg->getSourceRange() << FnName;
+  
+  // Output a FIXIT hint if the destination is an array (rather than a
+  // pointer to an array).  This could be enhanced to handle some
+  // pointers if we know the actual size, like if DstArg is 'array+2'
+  // we could say 'sizeof(array)-2'.
+  const Expr *DstArg = Call->getArg(0)->IgnoreParenImpCasts();
+  QualType DstArgTy = DstArg->getType();
+  
+  // Only handle constant-sized or VLAs, but not flexible members.
+  if (const ConstantArrayType *CAT = Context.getAsConstantArrayType(DstArgTy)) {
+    // Only issue the FIXIT for arrays of size > 1.
+    if (CAT->getSize().getSExtValue() <= 1)
+      return;
+  } else if (!DstArgTy->isVariableArrayType()) {
+    return;
+  }
+
+  llvm::SmallString<128> sizeString;
+  llvm::raw_svector_ostream OS(sizeString);
+  OS << "sizeof(";
+  DstArg->printPretty(OS, Context, 0, Context.PrintingPolicy);
+  OS << ")";
+  
+  Diag(OriginalSizeArg->getLocStart(), diag::note_strlcpycat_wrong_size)
+    << FixItHint::CreateReplacement(OriginalSizeArg->getSourceRange(),
+                                    OS.str());
 }
 
 //===--- CHECK: Return Address of Stack Variable --------------------------===//

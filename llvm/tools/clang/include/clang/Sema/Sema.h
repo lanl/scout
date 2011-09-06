@@ -489,6 +489,14 @@ public:
   /// have been declared.
   bool GlobalNewDeleteDeclared;
 
+
+  /// A flag that is set when parsing a -dealloc method and no [super dealloc]
+  /// call was found yet.
+  bool ObjCShouldCallSuperDealloc;
+  /// A flag that is set when parsing a -finalize method and no [super finalize]
+  /// call was found yet.
+  bool ObjCShouldCallSuperFinalize;
+
   /// \brief The set of declarations that have been referenced within
   /// a potentially evaluated expression.
   typedef SmallVector<std::pair<SourceLocation, Decl *>, 10>
@@ -625,16 +633,14 @@ public:
   /// for C++ records.
   llvm::FoldingSet<SpecialMemberOverloadResult> SpecialMemberCache;
 
-  /// \brief Whether the code handled by Sema should be considered a
-  /// complete translation unit or not.
+  /// \brief The kind of translation unit we are processing.
   ///
-  /// When true (which is generally the case), Sema will perform
+  /// When we're processing a complete translation unit, Sema will perform
   /// end-of-translation-unit semantic tasks (such as creating
   /// initializers for tentative definitions in C) once parsing has
-  /// completed. This flag will be false when building PCH files,
-  /// since a PCH file is by definition not a complete translation
-  /// unit.
-  bool CompleteTranslationUnit;
+  /// completed. Modules and precompiled headers perform different kinds of
+  /// checks.
+  TranslationUnitKind TUKind;
 
   llvm::BumpPtrAllocator BumpAlloc;
 
@@ -680,7 +686,7 @@ public:
   bool isSelfExpr(Expr *RExpr);
 public:
   Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
-       bool CompleteTranslationUnit = true,
+       TranslationUnitKind TUKind = TU_Complete,
        CodeCompleteConsumer *CompletionConsumer = 0);
   ~Sema();
 
@@ -1002,7 +1008,8 @@ public:
                                      LookupResult &Previous,
                                      MultiTemplateParamsArg TemplateParamLists,
                                      bool IsFunctionDefinition,
-                                     bool &Redeclaration);
+                                     bool &Redeclaration,
+                                     bool &AddToScope);
   bool AddOverriddenMethods(CXXRecordDecl *DC, CXXMethodDecl *MD);
   void DiagnoseHiddenVirtualMethods(CXXRecordDecl *DC, CXXMethodDecl *MD);
   void CheckFunctionDeclaration(Scope *S,
@@ -1028,6 +1035,7 @@ public:
   bool SetParamDefaultArgument(ParmVarDecl *Param, Expr *DefaultArg,
                                SourceLocation EqualLoc);
 
+  void CheckSelfReference(Decl *OrigDecl, Expr *E);
   void AddInitializerToDecl(Decl *dcl, Expr *init, bool DirectInit,
                             bool TypeMayContainAuto);
   void ActOnUninitializedDecl(Decl *dcl, bool TypeMayContainAuto);
@@ -1069,6 +1077,17 @@ public:
                               SourceLocation AsmLoc,
                               SourceLocation RParenLoc);
 
+  /// \brief The parser has processed a module import declaration.
+  ///
+  /// \param ImportLoc The location of the '__import_module__' keyword.
+  ///
+  /// \param ModuleName The name of the module.
+  ///
+  /// \param ModuleNameLoc The location of the module name.
+  DeclResult ActOnModuleImport(SourceLocation ImportLoc,
+                               IdentifierInfo &ModuleName,
+                               SourceLocation ModuleNameLoc);
+  
   /// Scope actions.
   void ActOnPopScope(SourceLocation Loc, Scope *S);
   void ActOnTranslationUnitScope(Scope *S);
@@ -1153,9 +1172,11 @@ public:
   bool CheckNontrivialField(FieldDecl *FD);
   void DiagnoseNontrivial(const RecordType* Record, CXXSpecialMember mem);
   CXXSpecialMember getSpecialMember(const CXXMethodDecl *MD);
-  void ActOnLastBitfield(SourceLocation DeclStart, Decl *IntfDecl,
+
+  void ActOnLastBitfield(SourceLocation DeclStart, 
                          SmallVectorImpl<Decl *> &AllIvarDecls);
-  Decl *ActOnIvar(Scope *S, SourceLocation DeclStart, Decl *IntfDecl,
+
+  Decl *ActOnIvar(Scope *S, SourceLocation DeclStart,
                   Declarator &D, Expr *BitfieldWidth,
                   tok::ObjCKeywordKind visibility);
 
@@ -1170,6 +1191,8 @@ public:
   /// struct, or union).
   void ActOnTagStartDefinition(Scope *S, Decl *TagDecl);
 
+  void ActOnObjCContainerStartDefinition(Decl *IDecl);
+
   /// ActOnStartCXXMemberDeclarations - Invoked when we have parsed a
   /// C++ record definition's base-specifiers clause and are starting its
   /// member declarations.
@@ -1181,6 +1204,8 @@ public:
   /// the definition of a tag (enumeration, class, struct, or union).
   void ActOnTagFinishDefinition(Scope *S, Decl *TagDecl,
                                 SourceLocation RBraceLoc);
+
+  void ActOnObjCContainerFinishDefinition();
 
   /// ActOnTagDefinitionError - Invoked when there was an unrecoverable
   /// error parsing the definition of a tag.
@@ -1686,6 +1711,9 @@ public:
   CXXMethodDecl *LookupCopyingAssignment(CXXRecordDecl *Class, unsigned Quals,
                                          bool RValueThis, unsigned ThisQuals,
                                          bool *ConstParam = 0);
+  CXXConstructorDecl *LookupMovingConstructor(CXXRecordDecl *Class);
+  CXXMethodDecl *LookupMovingAssignment(CXXRecordDecl *Class, bool RValueThis,
+                                        unsigned ThisQuals);
   CXXDestructorDecl *LookupDestructor(CXXRecordDecl *Class);
 
   void ArgumentDependentLookup(DeclarationName Name, bool Operator,
@@ -1804,14 +1832,6 @@ public:
                                 ObjCIvarDecl **Fields, unsigned nIvars,
                                 SourceLocation Loc);
 
-  /// \brief Determine whether we can synthesize a provisional ivar for the
-  /// given name.
-  ObjCPropertyDecl *canSynthesizeProvisionalIvar(IdentifierInfo *II);
-
-  /// \brief Determine whether we can synthesize a provisional ivar for the
-  /// given property.
-  bool canSynthesizeProvisionalIvar(ObjCPropertyDecl *Property);
-
   /// ImplMethodsVsClassMethods - This is main routine to warn if any method
   /// remains unimplemented in the class or category @implementation.
   void ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
@@ -1829,6 +1849,8 @@ public:
   void DefaultSynthesizeProperties (Scope *S, ObjCImplDecl* IMPDecl,
                                     ObjCInterfaceDecl *IDecl);
 
+  void DefaultSynthesizeProperties(Scope *S, Decl *D);
+
   /// CollectImmediateProperties - This routine collects all properties in
   /// the class and its conforming protocols; but not those it its super class.
   void CollectImmediateProperties(ObjCContainerDecl *CDecl,
@@ -1844,7 +1866,6 @@ public:
   /// Called by ActOnProperty to handle @property declarations in
   ////  class extensions.
   Decl *HandlePropertyInClassExtension(Scope *S,
-                                       ObjCCategoryDecl *CDecl,
                                        SourceLocation AtLoc,
                                        FieldDeclarator &FD,
                                        Selector GetterSel,
@@ -1934,6 +1955,10 @@ public:
     AddMethodToGlobalPool(Method, impl, /*instance*/false);
   }
 
+  /// AddAnyMethodToGlobalPool - Add any method, instance or factory to global
+  /// pool.
+  void AddAnyMethodToGlobalPool(Decl *D);
+
   /// LookupInstanceMethodInGlobalPool - Returns the method and warns if
   /// there are multiple signatures.
   ObjCMethodDecl *LookupInstanceMethodInGlobalPool(Selector Sel, SourceRange R,
@@ -2000,7 +2025,7 @@ public:
   StmtResult ActOnExprStmt(FullExprArg Expr);
 
   StmtResult ActOnNullStmt(SourceLocation SemiLoc,
-                        SourceLocation LeadingEmptyMacroLoc = SourceLocation());
+                           bool HasLeadingEmptyMacro = false);
   StmtResult ActOnCompoundStmt(SourceLocation L, SourceLocation R,
                                        MultiStmtArg Elts,
                                        bool isStmtExpr);
@@ -2218,10 +2243,6 @@ public:
 
   // Primary Expressions.
   SourceRange getExprRange(Expr *E) const;
-
-  ObjCIvarDecl *SynthesizeProvisionalIvar(LookupResult &Lookup,
-                                          IdentifierInfo *II,
-                                          SourceLocation NameLoc);
 
   ExprResult ActOnIdExpression(Scope *S, CXXScopeSpec &SS, UnqualifiedId &Name,
                                bool HasTrailingLParen, bool IsAddressOfOperand);
@@ -2739,6 +2760,16 @@ public:
   std::pair<ImplicitExceptionSpecification, bool>
   ComputeDefaultedCopyAssignmentExceptionSpecAndConst(CXXRecordDecl *ClassDecl);
 
+  /// \brief Determine what sort of exception specification a defaulted move
+  /// constructor of a class will have.
+  ImplicitExceptionSpecification
+  ComputeDefaultedMoveCtorExceptionSpec(CXXRecordDecl *ClassDecl);
+
+  /// \brief Determine what sort of exception specification a defaulted move
+  /// assignment operator of a class will have.
+  ImplicitExceptionSpecification
+  ComputeDefaultedMoveAssignmentExceptionSpec(CXXRecordDecl *ClassDecl);
+
   /// \brief Determine what sort of exception specification a defaulted
   /// destructor of a class will have.
   ImplicitExceptionSpecification
@@ -2755,6 +2786,13 @@ public:
   /// \brief Determine if a defaulted copy assignment operator ought to be
   /// deleted.
   bool ShouldDeleteCopyAssignmentOperator(CXXMethodDecl *MD);
+
+  /// \brief Determine if a defaulted move constructor ought to be deleted.
+  bool ShouldDeleteMoveConstructor(CXXConstructorDecl *CD);
+
+  /// \brief Determine if a defaulted move assignment operator ought to be
+  /// deleted.
+  bool ShouldDeleteMoveAssignmentOperator(CXXMethodDecl *MD);
 
   /// \brief Determine if a defaulted destructor ought to be deleted.
   bool ShouldDeleteDestructor(CXXDestructorDecl *DD);
@@ -2801,9 +2839,6 @@ public:
 
   /// \brief Declare the implicit copy constructor for the given class.
   ///
-  /// \param S The scope of the class, which may be NULL if this is a
-  /// template instantiation.
-  ///
   /// \param ClassDecl The class declaration into which the implicit
   /// copy constructor will be added.
   ///
@@ -2815,19 +2850,43 @@ public:
   void DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
                                      CXXConstructorDecl *Constructor);
 
+  /// \brief Declare the implicit move constructor for the given class.
+  ///
+  /// \param ClassDecl The Class declaration into which the implicit
+  /// move constructor will be added.
+  ///
+  /// \returns The implicitly-declared move constructor, or NULL if it wasn't
+  /// declared.
+  CXXConstructorDecl *DeclareImplicitMoveConstructor(CXXRecordDecl *ClassDecl);
+                                                     
+  /// DefineImplicitMoveConstructor - Checks for feasibility of
+  /// defining this constructor as the move constructor.
+  void DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
+                                     CXXConstructorDecl *Constructor);
+
   /// \brief Declare the implicit copy assignment operator for the given class.
   ///
-  /// \param S The scope of the class, which may be NULL if this is a
-  /// template instantiation.
-  ///
   /// \param ClassDecl The class declaration into which the implicit
-  /// copy-assignment operator will be added.
+  /// copy assignment operator will be added.
   ///
   /// \returns The implicitly-declared copy assignment operator.
   CXXMethodDecl *DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl);
 
-  /// \brief Defined an implicitly-declared copy assignment operator.
+  /// \brief Defines an implicitly-declared copy assignment operator.
   void DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
+                                    CXXMethodDecl *MethodDecl);
+
+  /// \brief Declare the implicit move assignment operator for the given class.
+  ///
+  /// \param ClassDecl The Class declaration into which the implicit
+  /// move assignment operator will be added.
+  ///
+  /// \returns The implicitly-declared move assignment operator, or NULL if it
+  /// wasn't declared.
+  CXXMethodDecl *DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl);
+  
+  /// \brief Defines an implicitly-declared move assignment operator.
+  void DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
                                     CXXMethodDecl *MethodDecl);
 
   /// \brief Force the declaration of any implicitly-declared members of this
@@ -3455,6 +3514,8 @@ public:
   void CheckExplicitlyDefaultedDefaultConstructor(CXXConstructorDecl *Ctor);
   void CheckExplicitlyDefaultedCopyConstructor(CXXConstructorDecl *Ctor);
   void CheckExplicitlyDefaultedCopyAssignment(CXXMethodDecl *Method);
+  void CheckExplicitlyDefaultedMoveConstructor(CXXConstructorDecl *Ctor);
+  void CheckExplicitlyDefaultedMoveAssignment(CXXMethodDecl *Method);
   void CheckExplicitlyDefaultedDestructor(CXXDestructorDecl *Dtor);
 
   //===--------------------------------------------------------------------===//
@@ -4993,7 +5054,7 @@ public:
                                          IdentifierInfo *CatName,
                                          SourceLocation CatLoc);
 
-  Decl *ActOnForwardClassDeclaration(SourceLocation Loc,
+  DeclGroupPtrTy ActOnForwardClassDeclaration(SourceLocation Loc,
                                      IdentifierInfo **IdentList,
                                      SourceLocation *IdentLocs,
                                      unsigned NumElts);
@@ -5044,7 +5105,7 @@ public:
   void MatchOneProtocolPropertiesInClass(Decl *CDecl,
                                          ObjCProtocolDecl *PDecl);
 
-  void ActOnAtEnd(Scope *S, SourceRange AtEnd, Decl *classDecl,
+  void ActOnAtEnd(Scope *S, SourceRange AtEnd,
                   Decl **allMethods = 0, unsigned allNum = 0,
                   Decl **allProperties = 0, unsigned pNum = 0,
                   DeclGroupPtrTy *allTUVars = 0, unsigned tuvNum = 0);
@@ -5052,7 +5113,6 @@ public:
   Decl *ActOnProperty(Scope *S, SourceLocation AtLoc,
                       FieldDeclarator &FD, ObjCDeclSpec &ODS,
                       Selector GetterSel, Selector SetterSel,
-                      Decl *ClassCategory,
                       bool *OverridingProperty,
                       tok::ObjCKeywordKind MethodImplKind,
                       DeclContext *lexicalDC = 0);
@@ -5060,7 +5120,7 @@ public:
   Decl *ActOnPropertyImplDecl(Scope *S,
                               SourceLocation AtLoc,
                               SourceLocation PropertyLoc,
-                              bool ImplKind,Decl *ClassImplDecl,
+                              bool ImplKind,
                               IdentifierInfo *PropertyId,
                               IdentifierInfo *PropertyIvar,
                               SourceLocation PropertyIvarLoc);
@@ -5091,7 +5151,7 @@ public:
     SourceLocation BeginLoc, // location of the + or -.
     SourceLocation EndLoc,   // location of the ; or {.
     tok::TokenKind MethodType,
-    Decl *ClassDecl, ObjCDeclSpec &ReturnQT, ParsedType ReturnType,
+    ObjCDeclSpec &ReturnQT, ParsedType ReturnType,
     SourceLocation SelectorStartLoc, Selector Sel,
     // optional arguments. The number of types/arguments is obtained
     // from the Sel.getNumArgs().
@@ -5837,14 +5897,13 @@ public:
                                           CXXCtorInitializer** Initializers,
                                           unsigned NumInitializers);
 
-  void CodeCompleteObjCAtDirective(Scope *S, Decl *ObjCImpDecl,
-                                   bool InInterface);
+  void CodeCompleteObjCAtDirective(Scope *S);
   void CodeCompleteObjCAtVisibility(Scope *S);
   void CodeCompleteObjCAtStatement(Scope *S);
   void CodeCompleteObjCAtExpression(Scope *S);
   void CodeCompleteObjCPropertyFlags(Scope *S, ObjCDeclSpec &ODS);
-  void CodeCompleteObjCPropertyGetter(Scope *S, Decl *ClassDecl);
-  void CodeCompleteObjCPropertySetter(Scope *S, Decl *ClassDecl);
+  void CodeCompleteObjCPropertyGetter(Scope *S);
+  void CodeCompleteObjCPropertySetter(Scope *S);
   void CodeCompleteObjCPassingType(Scope *S, ObjCDeclSpec &DS,
                                    bool IsParameter);
   void CodeCompleteObjCMessageReceiver(Scope *S);
@@ -5881,14 +5940,12 @@ public:
   void CodeCompleteObjCImplementationCategory(Scope *S,
                                               IdentifierInfo *ClassName,
                                               SourceLocation ClassNameLoc);
-  void CodeCompleteObjCPropertyDefinition(Scope *S, Decl *ObjCImpDecl);
+  void CodeCompleteObjCPropertyDefinition(Scope *S);
   void CodeCompleteObjCPropertySynthesizeIvar(Scope *S,
-                                              IdentifierInfo *PropertyName,
-                                              Decl *ObjCImpDecl);
+                                              IdentifierInfo *PropertyName);
   void CodeCompleteObjCMethodDecl(Scope *S,
                                   bool IsInstanceMethod,
-                                  ParsedType ReturnType,
-                                  Decl *IDecl);
+                                  ParsedType ReturnType);
   void CodeCompleteObjCMethodDeclSelector(Scope *S,
                                           bool IsInstanceMethod,
                                           bool AtParameterName,
@@ -5973,6 +6030,9 @@ private:
   void CheckMemaccessArguments(const CallExpr *Call, CheckedMemoryFunction CMF,
                                IdentifierInfo *FnName);
 
+  void CheckStrlcpycatArguments(const CallExpr *Call,
+                                IdentifierInfo *FnName);
+
   void CheckReturnStackAddr(Expr *RetValExp, QualType lhsType,
                             SourceLocation ReturnLoc);
   void CheckFloatComparison(SourceLocation loc, Expr* lex, Expr* rex);
@@ -6002,6 +6062,8 @@ public:
   /// itself and in routines directly invoked from the parser and *never* from
   /// template substitution or instantiation.
   Scope *getCurScope() const { return CurScope; }
+
+  Decl *getObjCDeclContext() const;
 
   // ndm - Scout Sema methods
   // called at the beginning part of a mesh definition

@@ -1125,6 +1125,10 @@ DEF_TRAVERSE_DECL(FriendTemplateDecl, {
     }
   })
 
+DEF_TRAVERSE_DECL(ClassScopeFunctionSpecializationDecl, {
+  TRY_TO(TraverseDecl(D->getSpecialization()));
+ })
+
 DEF_TRAVERSE_DECL(LinkageSpecDecl, { })
 
 DEF_TRAVERSE_DECL(ObjCClassDecl, {
@@ -1263,7 +1267,7 @@ bool RecursiveASTVisitor<Derived>::TraverseClassInstantiations(
           = (U.get<ClassTemplatePartialSpecializationDecl*>() == Pattern);
 
       if (ShouldVisit)
-        TRY_TO(TraverseClassTemplateSpecializationDecl(SD));
+        TRY_TO(TraverseDecl(SD));
       break;
     }
 
@@ -1291,7 +1295,7 @@ DEF_TRAVERSE_DECL(ClassTemplateDecl, {
     TRY_TO(TraverseTemplateParameterListHelper(D->getTemplateParameters()));
 
     // By default, we do not traverse the instantiations of
-    // class templates since they do not apprear in the user code. The
+    // class templates since they do not appear in the user code. The
     // following code optionally traverses them.
     if (getDerived().shouldVisitTemplateInstantiations()) {
       // If this is the definition of the primary template, visit

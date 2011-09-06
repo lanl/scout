@@ -152,6 +152,11 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   /// \brief Mapping from __block VarDecls to their copy initialization expr.
   llvm::DenseMap<const VarDecl*, Expr*> BlockVarCopyInits;
     
+  /// \brief Mapping from class scope functions specialization to their
+  ///  template patterns.
+  llvm::DenseMap<const FunctionDecl*, FunctionDecl*>
+    ClassScopeSpecializationPattern;
+
   /// \brief Representation of a "canonical" template template parameter that
   /// is used in canonical template names.
   class CanonicalTemplateTemplateParm : public llvm::FoldingSetNode {
@@ -174,26 +179,34 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   TemplateTemplateParmDecl *
     getCanonicalTemplateTemplateParmDecl(TemplateTemplateParmDecl *TTP) const;
 
-  /// \brief Whether __[u]int128_t identifier is installed.
-  bool IsInt128Installed;
+  /// \brief The typedef for the __int128_t type.
+  mutable TypedefDecl *Int128Decl;
 
+  /// \brief The typedef for the __uint128_t type.
+  mutable TypedefDecl *UInt128Decl;
+  
   /// BuiltinVaListType - built-in va list type.
   /// This is initially null and set by Sema::LazilyCreateBuiltin when
   /// a builtin that takes a valist is encountered.
   QualType BuiltinVaListType;
 
-  /// ObjCIdType - a pseudo built-in typedef type (set by Sema).
-  QualType ObjCIdTypedefType;
+  /// \brief The typedef for the predefined 'id' type.
+  mutable TypedefDecl *ObjCIdDecl;
+  
+  /// \brief The typedef for the predefined 'SEL' type.
+  mutable TypedefDecl *ObjCSelDecl;
 
-  /// ObjCSelType - another pseudo built-in typedef type (set by Sema).
-  QualType ObjCSelTypedefType;
-
-  /// ObjCProtoType - another pseudo built-in typedef type (set by Sema).
   QualType ObjCProtoType;
   const RecordType *ProtoStructType;
 
-  /// ObjCClassType - another pseudo built-in typedef type (set by Sema).
-  QualType ObjCClassTypedefType;
+  /// \brief The typedef for the predefined 'Class' type.
+  mutable TypedefDecl *ObjCClassDecl;
+  
+  // Typedefs which may be provided defining the structure of Objective-C
+  // pseudo-builtins
+  QualType ObjCIdRedefinitionType;
+  QualType ObjCClassRedefinitionType;
+  QualType ObjCSelRedefinitionType;
 
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
@@ -303,7 +316,7 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
 
   /// LangOpts - The language options used to create the AST associated with
   ///  this ASTContext object.
-  LangOptions LangOpts;
+  LangOptions &LangOpts;
 
   /// \brief The allocator used to create AST objects.
   ///
@@ -319,12 +332,14 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   CXXABI *createCXXABI(const TargetInfo &T);
 
   /// \brief The logical -> physical address space map.
-  const LangAS::Map &AddrSpaceMap;
+  const LangAS::Map *AddrSpaceMap;
 
   friend class ASTDeclReader;
-
+  friend class ASTReader;
+  friend class ASTWriter;
+  
+  const TargetInfo *Target;
 public:
-  const TargetInfo &Target;
   IdentifierTable &Idents;
   SelectorTable &Selectors;
   Builtin::Context &BuiltinInfo;
@@ -332,12 +347,6 @@ public:
   llvm::OwningPtr<ExternalASTSource> ExternalSource;
   ASTMutationListener *Listener;
   clang::PrintingPolicy PrintingPolicy;
-
-  // Typedefs which may be provided defining the structure of Objective-C
-  // pseudo-builtins
-  QualType ObjCIdRedefinitionType;
-  QualType ObjCClassRedefinitionType;
-  QualType ObjCSelRedefinitionType;
 
   SourceManager& getSourceManager() { return SourceMgr; }
   const SourceManager& getSourceManager() const { return SourceMgr; }
@@ -358,6 +367,8 @@ public:
     return DiagAllocator;
   }
 
+  const TargetInfo &getTargetInfo() const { return *Target; }
+  
   const LangOptions& getLangOptions() const { return LangOpts; }
 
   Diagnostic &getDiagnostics() const;
@@ -377,6 +388,11 @@ public:
   /// from which it was instantiated.
   MemberSpecializationInfo *getInstantiatedFromStaticDataMember(
                                                            const VarDecl *Var);
+
+  FunctionDecl *getClassScopeSpecializationPattern(const FunctionDecl *FD);
+
+  void setClassScopeSpecializationPattern(FunctionDecl *FD,
+                                          FunctionDecl *Pattern);
 
   /// \brief Note that the static data member \p Inst is an instantiation of
   /// the static data member template \p Tmpl of a class template.
@@ -492,10 +508,11 @@ public:
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
 
-  ASTContext(const LangOptions& LOpts, SourceManager &SM, const TargetInfo &t,
+  ASTContext(LangOptions& LOpts, SourceManager &SM, const TargetInfo *t,
              IdentifierTable &idents, SelectorTable &sels,
              Builtin::Context &builtins,
-             unsigned size_reserve);
+             unsigned size_reserve,
+             bool DelayInitialization = false);
 
   ~ASTContext();
 
@@ -526,6 +543,12 @@ public:
   void PrintStats() const;
   const std::vector<Type*>& getTypes() const { return Types; }
 
+  /// \brief Retrieve the declaration for the 128-bit signed integer type.
+  TypedefDecl *getInt128Decl() const;
+
+  /// \brief Retrieve the declaration for the 128-bit unsigned integer type.
+  TypedefDecl *getUInt128Decl() const;
+  
   //===--------------------------------------------------------------------===//
   //                           Type Constructors
   //===--------------------------------------------------------------------===//
@@ -856,6 +879,46 @@ public:
     return ObjCConstantStringType;
   }
 
+  /// \brief Retrieve the type that 'id' has been defined to, which may be
+  /// different from the built-in 'id' if 'id' has been typedef'd.
+  QualType getObjCIdRedefinitionType() const {
+    if (ObjCIdRedefinitionType.isNull())
+      return getObjCIdType();
+    return ObjCIdRedefinitionType;
+  }
+  
+  /// \brief Set the user-written type that redefines 'id'.
+  void setObjCIdRedefinitionType(QualType RedefType) {
+    ObjCIdRedefinitionType = RedefType;
+  }
+
+  /// \brief Retrieve the type that 'Class' has been defined to, which may be
+  /// different from the built-in 'Class' if 'Class' has been typedef'd.
+  QualType getObjCClassRedefinitionType() const {
+    if (ObjCClassRedefinitionType.isNull())
+      return getObjCClassType();
+    return ObjCClassRedefinitionType;
+  }
+  
+  /// \brief Set the user-written type that redefines 'SEL'.
+  void setObjCClassRedefinitionType(QualType RedefType) {
+    ObjCClassRedefinitionType = RedefType;
+  }
+
+  /// \brief Retrieve the type that 'SEL' has been defined to, which may be
+  /// different from the built-in 'SEL' if 'SEL' has been typedef'd.
+  QualType getObjCSelRedefinitionType() const {
+    if (ObjCSelRedefinitionType.isNull())
+      return getObjCSelType();
+    return ObjCSelRedefinitionType;
+  }
+
+  
+  /// \brief Set the user-written type that redefines 'SEL'.
+  void setObjCSelRedefinitionType(QualType RedefType) {
+    ObjCSelRedefinitionType = RedefType;
+  }
+
   /// \brief Set the type for the C FILE type.
   void setFILEDecl(TypeDecl *FILEDecl) { this->FILEDecl = FILEDecl; }
 
@@ -941,26 +1004,39 @@ public:
   /// purpose in characters.
   CharUnits getObjCEncodingTypeSize(QualType t) const;
 
-  /// \brief Whether __[u]int128_t identifier is installed.
-  bool isInt128Installed() const { return IsInt128Installed; }
-  void setInt128Installed() { IsInt128Installed = true; }
-
+  /// \brief Retrieve the typedef corresponding to the predefined 'id' type
+  /// in Objective-C.
+  TypedefDecl *getObjCIdDecl() const;
+  
   /// This setter/getter represents the ObjC 'id' type. It is setup lazily, by
   /// Sema.  id is always a (typedef for a) pointer type, a pointer to a struct.
-  QualType getObjCIdType() const { return ObjCIdTypedefType; }
-  void setObjCIdType(QualType T);
+  QualType getObjCIdType() const {
+    return getTypeDeclType(getObjCIdDecl());
+  }
 
-  void setObjCSelType(QualType T);
-  QualType getObjCSelType() const { return ObjCSelTypedefType; }
+  /// \brief Retrieve the typedef corresponding to the predefined 'SEL' type
+  /// in Objective-C.
+  TypedefDecl *getObjCSelDecl() const;
+  
+  /// \brief Retrieve the type that corresponds to the predefined Objective-C
+  /// 'SEL' type.
+  QualType getObjCSelType() const { 
+    return getTypeDeclType(getObjCSelDecl());
+  }
 
   void setObjCProtoType(QualType QT);
   QualType getObjCProtoType() const { return ObjCProtoType; }
 
+  /// \brief Retrieve the typedef declaration corresponding to the predefined
+  /// Objective-C 'Class' type.
+  TypedefDecl *getObjCClassDecl() const;
+  
   /// This setter/getter repreents the ObjC 'Class' type. It is setup lazily, by
   /// Sema.  'Class' is always a (typedef for a) pointer type, a pointer to a
   /// struct.
-  QualType getObjCClassType() const { return ObjCClassTypedefType; }
-  void setObjCClassType(QualType T);
+  QualType getObjCClassType() const { 
+    return getTypeDeclType(getObjCClassDecl());
+  }
 
   void setBuiltinVaListType(QualType T);
   QualType getBuiltinVaListType() const { return BuiltinVaListType; }
@@ -1387,7 +1463,7 @@ public:
     if (AS < LangAS::Offset || AS >= LangAS::Offset + LangAS::Count)
       return AS;
     else
-      return AddrSpaceMap[AS - LangAS::Offset];
+      return (*AddrSpaceMap)[AS - LangAS::Offset];
   }
 
 private:
@@ -1408,13 +1484,13 @@ public:
   bool typesAreBlockPointerCompatible(QualType, QualType); 
 
   bool isObjCIdType(QualType T) const {
-    return T == ObjCIdTypedefType;
+    return T == getObjCIdType();
   }
   bool isObjCClassType(QualType T) const {
-    return T == ObjCClassTypedefType;
+    return T == getObjCClassType();
   }
   bool isObjCSelType(QualType T) const {
-    return T == ObjCSelTypedefType;
+    return T == getObjCSelType();
   }
   bool QualifiedIdConformsQualifiedId(QualType LHS, QualType RHS);
   bool ObjCQualifiedIdTypesAreCompatible(QualType LHS, QualType RHS,
@@ -1607,7 +1683,18 @@ private:
   ASTContext(const ASTContext&); // DO NOT IMPLEMENT
   void operator=(const ASTContext&); // DO NOT IMPLEMENT
 
-  void InitBuiltinTypes();
+public:
+  /// \brief Initialize built-in types.
+  ///
+  /// This routine may only be invoked once for a given ASTContext object.
+  /// It is normally invoked by the ASTContext constructor. However, the
+  /// constructor can be asked to delay initialization, which places the burden
+  /// of calling this function on the user of that object.
+  ///
+  /// \param Target The target 
+  void InitBuiltinTypes(const TargetInfo &Target);
+  
+private:
   void InitBuiltinType(CanQualType &R, BuiltinType::Kind K);
 
   // Return the ObjC type encoding for a given type.

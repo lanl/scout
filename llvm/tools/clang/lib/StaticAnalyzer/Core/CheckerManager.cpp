@@ -12,8 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
-#include "clang/StaticAnalyzer/Core/CheckerProvider.h"
+#include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ObjCMessage.h"
 #include "clang/Analysis/ProgramPoint.h"
 #include "clang/AST/DeclBase.h"
 
@@ -293,7 +294,7 @@ void CheckerManager::runCheckersForBranchCondition(const Stmt *condition,
 }
 
 /// \brief Run checkers for live symbols.
-void CheckerManager::runCheckersForLiveSymbols(const GRState *state,
+void CheckerManager::runCheckersForLiveSymbols(const ProgramState *state,
                                                SymbolReaper &SymReaper) {
   for (unsigned i = 0, e = LiveSymbolsCheckers.size(); i != e; ++i)
     LiveSymbolsCheckers[i](state, SymReaper);
@@ -334,7 +335,7 @@ void CheckerManager::runCheckersForDeadSymbols(ExplodedNodeSet &Dst,
 }
 
 /// \brief True if at least one checker wants to check region changes.
-bool CheckerManager::wantsRegionChangeUpdate(const GRState *state) {
+bool CheckerManager::wantsRegionChangeUpdate(const ProgramState *state) {
   for (unsigned i = 0, e = RegionChangesCheckers.size(); i != e; ++i)
     if (RegionChangesCheckers[i].WantUpdateFn(state))
       return true;
@@ -343,24 +344,25 @@ bool CheckerManager::wantsRegionChangeUpdate(const GRState *state) {
 }
 
 /// \brief Run checkers for region changes.
-const GRState *
-CheckerManager::runCheckersForRegionChanges(const GRState *state,
+const ProgramState *
+CheckerManager::runCheckersForRegionChanges(const ProgramState *state,
                             const StoreManager::InvalidatedSymbols *invalidated,
-                                            const MemRegion * const *Begin,
-                                            const MemRegion * const *End) {
+                                    ArrayRef<const MemRegion *> ExplicitRegions,
+                                          ArrayRef<const MemRegion *> Regions) {
   for (unsigned i = 0, e = RegionChangesCheckers.size(); i != e; ++i) {
     // If any checker declares the state infeasible (or if it starts that way),
     // bail out.
     if (!state)
       return NULL;
-    state = RegionChangesCheckers[i].CheckFn(state, invalidated, Begin, End);
+    state = RegionChangesCheckers[i].CheckFn(state, invalidated, 
+                                             ExplicitRegions, Regions);
   }
   return state;
 }
 
 /// \brief Run checkers for handling assumptions on symbolic values.
-const GRState *
-CheckerManager::runCheckersForEvalAssume(const GRState *state,
+const ProgramState *
+CheckerManager::runCheckersForEvalAssume(const ProgramState *state,
                                          SVal Cond, bool Assumption) {
   for (unsigned i = 0, e = EvalAssumeCheckers.size(); i != e; ++i) {
     // If any checker declares the state infeasible (or if it starts that way),
@@ -423,6 +425,14 @@ void CheckerManager::runCheckersOnEndOfTranslationUnit(
                                                   BugReporter &BR) {
   for (unsigned i = 0, e = EndOfTranslationUnitCheckers.size(); i != e; ++i)
     EndOfTranslationUnitCheckers[i](TU, mgr, BR);
+}
+
+void CheckerManager::runCheckersForPrintState(raw_ostream &Out,
+                                              const ProgramState *State,
+                                              const char *NL, const char *Sep) {
+  for (llvm::DenseMap<CheckerTag, CheckerRef>::iterator
+        I = CheckerTags.begin(), E = CheckerTags.end(); I != E; ++I)
+    I->second->printState(Out, State, NL, Sep);
 }
 
 //===----------------------------------------------------------------------===//
@@ -540,9 +550,6 @@ CheckerManager::~CheckerManager() {
   for (unsigned i = 0, e = CheckerDtors.size(); i != e; ++i)
     CheckerDtors[i]();
 }
-
-// Anchor for the vtable.
-CheckerProvider::~CheckerProvider() { }
 
 // Anchor for the vtable.
 GraphExpander::~GraphExpander() { }

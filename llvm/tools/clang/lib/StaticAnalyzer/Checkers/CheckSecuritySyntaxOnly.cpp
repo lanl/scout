@@ -23,7 +23,7 @@ using namespace clang;
 using namespace ento;
 
 static bool isArc4RandomAvailable(const ASTContext &Ctx) {
-  const llvm::Triple &T = Ctx.Target.getTriple();
+  const llvm::Triple &T = Ctx.getTargetInfo().getTriple();
   return T.getVendor() == llvm::Triple::Apple ||
          T.getOS() == llvm::Triple::FreeBSD ||
          T.getOS() == llvm::Triple::NetBSD ||
@@ -52,7 +52,6 @@ public:
   void VisitChildren(Stmt *S);
 
   // Helpers.
-  IdentifierInfo *getIdentifier(IdentifierInfo *& II, const char *str);
   bool checkCall_strCommon(const CallExpr *CE, const FunctionDecl *FD);
 
   typedef void (WalkAST::*FnCheck)(const CallExpr *,
@@ -70,17 +69,6 @@ public:
   void checkUncheckedReturnValue(CallExpr *CE);
 };
 } // end anonymous namespace
-
-//===----------------------------------------------------------------------===//
-// Helper methods.
-//===----------------------------------------------------------------------===//
-
-IdentifierInfo *WalkAST::getIdentifier(IdentifierInfo *& II, const char *str) {
-  if (!II)
-    II = &BR.getContext().Idents.get(str);
-
-  return II;
-}
 
 //===----------------------------------------------------------------------===//
 // AST walking.

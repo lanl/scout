@@ -22,7 +22,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   CheckSecuritySyntaxOnly.cpp
   CheckSizeofPointer.cpp
   ChrootChecker.cpp
-  ClangSACheckerProvider.cpp
+  ClangCheckers.cpp
   DeadStoresChecker.cpp
   DebugCheckers.cpp
   DereferenceChecker.cpp
@@ -45,6 +45,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   PointerArithChecker.cpp
   PointerSubChecker.cpp
   PthreadLockChecker.cpp
+  RetainCountChecker.cpp
   ReturnPointerRangeChecker.cpp
   ReturnUndefChecker.cpp
   StackAddrEscapeChecker.cpp

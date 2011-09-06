@@ -468,6 +468,14 @@ class CXXRecordDecl : public RecordDecl {
     /// \brief Whether we have already declared a destructor within the class.
     bool DeclaredDestructor : 1;
 
+    /// \brief Whether an implicit move constructor was attempted to be declared
+    /// but would have been deleted.
+    bool FailedImplicitMoveConstructor : 1;
+
+    /// \brief Whether an implicit move assignment operator was attempted to be
+    /// declared but would have been deleted.
+    bool FailedImplicitMoveAssignment : 1;
+
     /// NumBases - The number of base class specifiers in Bases.
     unsigned NumBases;
     
@@ -780,6 +788,33 @@ public:
     return data().DeclaredMoveConstructor;
   }
 
+  /// \brief Determine whether implicit move constructor generation for this
+  /// class has failed before.
+  bool hasFailedImplicitMoveConstructor() const {
+    return data().FailedImplicitMoveConstructor;
+  }
+
+  /// \brief Set whether implicit move constructor generation for this class
+  /// has failed before.
+  void setFailedImplicitMoveConstructor(bool Failed = true) {
+    data().FailedImplicitMoveConstructor = Failed;
+  }
+
+  /// \brief Determine whether this class should get an implicit move
+  /// constructor or if any existing special member function inhibits this.
+  ///
+  /// Covers all bullets of C++0x [class.copy]p9 except the last, that the
+  /// constructor wouldn't be deleted, which is only looked up from a cached
+  /// result.
+  bool needsImplicitMoveConstructor() const {
+    return !hasFailedImplicitMoveConstructor() &&
+           !hasDeclaredMoveConstructor() &&
+           !hasUserDeclaredCopyConstructor() &&
+           !hasUserDeclaredCopyAssignment() &&
+           !hasUserDeclaredMoveAssignment() &&
+           !hasUserDeclaredDestructor();
+  }
+
   /// hasUserDeclaredCopyAssignment - Whether this class has a
   /// user-declared copy assignment operator. When false, a copy
   /// assigment operator will be implicitly declared.
@@ -805,6 +840,33 @@ public:
   /// declared move assignment operator.
   bool hasDeclaredMoveAssignment() const {
     return data().DeclaredMoveAssignment;
+  }
+
+  /// \brief Determine whether implicit move assignment generation for this
+  /// class has failed before.
+  bool hasFailedImplicitMoveAssignment() const {
+    return data().FailedImplicitMoveAssignment;
+  }
+
+  /// \brief Set whether implicit move assignment generation for this class
+  /// has failed before.
+  void setFailedImplicitMoveAssignment(bool Failed = true) {
+    data().FailedImplicitMoveAssignment = Failed;
+  }
+
+  /// \brief Determine whether this class should get an implicit move
+  /// assignment operator or if any existing special member function inhibits
+  /// this.
+  ///
+  /// Covers all bullets of C++0x [class.copy]p20 except the last, that the
+  /// constructor wouldn't be deleted.
+  bool needsImplicitMoveAssignment() const {
+    return !hasFailedImplicitMoveAssignment() &&
+           !hasDeclaredMoveAssignment() &&
+           !hasUserDeclaredCopyConstructor() &&
+           !hasUserDeclaredCopyAssignment() &&
+           !hasUserDeclaredMoveConstructor() &&
+           !hasUserDeclaredDestructor();
   }
 
   /// hasUserDeclaredDestructor - Whether this class has a
@@ -890,7 +952,7 @@ public:
   }
 
   // hasConstexprNonCopyMoveConstructor - Whether this class has at least one
-  // constexpr constructor other than the copy or move constructors
+  // constexpr constructor other than the copy or move constructors.
   bool hasConstexprNonCopyMoveConstructor() const {
     return data().HasConstexprNonCopyMoveConstructor;
   }
@@ -1237,10 +1299,10 @@ protected:
                 const DeclarationNameInfo &NameInfo,
                 QualType T, TypeSourceInfo *TInfo,
                 bool isStatic, StorageClass SCAsWritten, bool isInline,
-                SourceLocation EndLocation)
+                bool isConstexpr, SourceLocation EndLocation)
     : FunctionDecl(DK, RD, StartLoc, NameInfo, T, TInfo,
                    (isStatic ? SC_Static : SC_None),
-                   SCAsWritten, isInline) {
+                   SCAsWritten, isInline, isConstexpr) {
       if (EndLocation.isValid())
         setRangeEnd(EndLocation);
     }
@@ -1253,6 +1315,7 @@ public:
                                bool isStatic,
                                StorageClass SCAsWritten,
                                bool isInline,
+                               bool isConstexpr,
                                SourceLocation EndLocation);
 
   bool isStatic() const { return getStorageClass() == SC_Static; }
@@ -1631,9 +1694,9 @@ class CXXConstructorDecl : public CXXMethodDecl {
                      const DeclarationNameInfo &NameInfo,
                      QualType T, TypeSourceInfo *TInfo,
                      bool isExplicitSpecified, bool isInline, 
-                     bool isImplicitlyDeclared)
+                     bool isImplicitlyDeclared, bool isConstexpr)
     : CXXMethodDecl(CXXConstructor, RD, StartLoc, NameInfo, T, TInfo, false,
-                    SC_None, isInline, SourceLocation()),
+                    SC_None, isInline, isConstexpr, SourceLocation()),
       IsExplicitSpecified(isExplicitSpecified), ImplicitlyDefined(false),
       CtorInitializers(0), NumCtorInitializers(0) {
     setImplicit(isImplicitlyDeclared);
@@ -1646,7 +1709,8 @@ public:
                                     const DeclarationNameInfo &NameInfo,
                                     QualType T, TypeSourceInfo *TInfo,
                                     bool isExplicit,
-                                    bool isInline, bool isImplicitlyDeclared);
+                                    bool isInline, bool isImplicitlyDeclared,
+                                    bool isConstexpr);
 
   /// isExplicitSpecified - Whether this constructor declaration has the
   /// 'explicit' keyword specified.
@@ -1854,7 +1918,7 @@ class CXXDestructorDecl : public CXXMethodDecl {
                     QualType T, TypeSourceInfo *TInfo,
                     bool isInline, bool isImplicitlyDeclared)
     : CXXMethodDecl(CXXDestructor, RD, StartLoc, NameInfo, T, TInfo, false,
-                    SC_None, isInline, SourceLocation()),
+                    SC_None, isInline, /*isConstexpr=*/false, SourceLocation()),
       ImplicitlyDefined(false), OperatorDelete(0) {
     setImplicit(isImplicitlyDeclared);
   }
@@ -1917,9 +1981,9 @@ class CXXConversionDecl : public CXXMethodDecl {
                     const DeclarationNameInfo &NameInfo,
                     QualType T, TypeSourceInfo *TInfo,
                     bool isInline, bool isExplicitSpecified,
-                    SourceLocation EndLocation)
+                    bool isConstexpr, SourceLocation EndLocation)
     : CXXMethodDecl(CXXConversion, RD, StartLoc, NameInfo, T, TInfo, false,
-                    SC_None, isInline, EndLocation),
+                    SC_None, isInline, isConstexpr, EndLocation),
       IsExplicitSpecified(isExplicitSpecified) { }
 
 public:
@@ -1929,6 +1993,7 @@ public:
                                    const DeclarationNameInfo &NameInfo,
                                    QualType T, TypeSourceInfo *TInfo,
                                    bool isInline, bool isExplicit,
+                                   bool isConstexpr,
                                    SourceLocation EndLocation);
 
   /// IsExplicitSpecified - Whether this conversion function declaration is 

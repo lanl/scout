@@ -143,7 +143,7 @@ void IdempotentOperationChecker::checkPreStmt(const BinaryOperator *B,
         || containsNonLocalVarDecl(RHS);
   }
 
-  const GRState *state = C.getState();
+  const ProgramState *state = C.getState();
 
   SVal LHSVal = state->getSVal(LHS);
   SVal RHSVal = state->getSVal(RHS);
@@ -407,18 +407,18 @@ void IdempotentOperationChecker::checkEndAnalysis(ExplodedGraph &G,
 
     // Add a report for each ExplodedNode
     for (ExplodedNodeSet::iterator I = ES.begin(), E = ES.end(); I != E; ++I) {
-      EnhancedBugReport *report = new EnhancedBugReport(*BT, os.str(), *I);
+      BugReport *report = new BugReport(*BT, os.str(), *I);
 
       // Add source ranges and visitor hooks
       if (LHSRelevant) {
         const Expr *LHS = i->first->getLHS();
         report->addRange(LHS->getSourceRange());
-        report->addVisitorCreator(bugreporter::registerVarDeclsLastStore, LHS);
+        FindLastStoreBRVisitor::registerStatementVarDecls(*report, LHS);
       }
       if (RHSRelevant) {
         const Expr *RHS = i->first->getRHS();
         report->addRange(i->first->getRHS()->getSourceRange());
-        report->addVisitorCreator(bugreporter::registerVarDeclsLastStore, RHS);
+        FindLastStoreBRVisitor::registerStatementVarDecls(*report, RHS);
       }
 
       BR.EmitReport(report);

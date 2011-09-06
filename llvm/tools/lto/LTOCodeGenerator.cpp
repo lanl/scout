@@ -33,8 +33,6 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetSelect.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -43,6 +41,8 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Config/config.h"
 #include "llvm/Transforms/IPO.h"
@@ -193,7 +193,7 @@ bool LTOCodeGenerator::compile_to_file(const char** name, std::string& errMsg)
   bool genResult = false;
   tool_output_file objFile(uniqueObjPath.c_str(), errMsg);
   if (!errMsg.empty())
-    return NULL;
+    return true;
   genResult = this->generateObjectFile(objFile.os(), errMsg);
   objFile.os().close();
   if (objFile.os().has_error()) {

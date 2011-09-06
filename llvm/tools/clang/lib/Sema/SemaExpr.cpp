@@ -443,6 +443,28 @@ ExprResult Sema::DefaultArgumentPromotion(Expr *E) {
   if (Ty->isSpecificBuiltinType(BuiltinType::Float))
     E = ImpCastExprToType(E, Context.DoubleTy, CK_FloatingCast).take();
 
+  // C++ performs lvalue-to-rvalue conversion as a default argument
+  // promotion, even on class types, but note:
+  //   C++11 [conv.lval]p2:
+  //     When an lvalue-to-rvalue conversion occurs in an unevaluated
+  //     operand or a subexpression thereof the value contained in the
+  //     referenced object is not accessed. Otherwise, if the glvalue
+  //     has a class type, the conversion copy-initializes a temporary
+  //     of type T from the glvalue and the result of the conversion
+  //     is a prvalue for the temporary.
+  // FIXME: add some way to gate this entire thing for correctness in
+  // potentially potentially evaluated contexts.
+  if (getLangOptions().CPlusPlus && E->isGLValue() && 
+      ExprEvalContexts.back().Context != Unevaluated) {
+    ExprResult Temp = PerformCopyInitialization(
+                       InitializedEntity::InitializeTemporary(E->getType()),
+                                                E->getExprLoc(),
+                                                Owned(E));
+    if (Temp.isInvalid())
+      return ExprError();
+    E = Temp.get();
+  }
+
   return Owned(E);
 }
 
@@ -460,19 +482,13 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
     return ExprError();
   E = ExprRes.take();
 
-  // __builtin_va_start takes the second argument as a "varargs" argument, but
-  // it doesn't actually do anything with it.  It doesn't need to be non-pod
-  // etc.
-  if (FDecl && FDecl->getBuiltinID() == Builtin::BI__builtin_va_start)
-    return Owned(E);
-  
   // Don't allow one to pass an Objective-C interface to a vararg.
   if (E->getType()->isObjCObjectType() &&
     DiagRuntimeBehavior(E->getLocStart(), 0,
                         PDiag(diag::err_cannot_pass_objc_interface_to_vararg)
                           << E->getType() << CT))
     return ExprError();
-  
+
   if (!E->getType().isPODType(Context)) {
     // C++0x [expr.call]p7:
     //   Passing a potentially-evaluated argument of class type (Clause 9) 
@@ -517,13 +533,301 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
       ExprResult Comma = ActOnBinOp(TUScope, E->getLocStart(), tok::comma,
                                     Call.get(), E);
       if (Comma.isInvalid())
-        return ExprError();
-      
+        return ExprError();      
       E = Comma.get();
     }
   }
   
   return Owned(E);
+}
+
+/// \brief Converts an integer to complex float type.  Helper function of
+/// UsualArithmeticConversions()
+///
+/// \return false if the integer expression is an integer type and is
+/// successfully converted to the complex type.
+static bool handleIntegerToComplexFloatConversion(Sema &S, ExprResult &intExpr,
+                                                  ExprResult &complexExpr,
+                                                  QualType intTy,
+                                                  QualType complexTy,
+                                                  bool skipCast) {
+  if (intTy->isComplexType() || intTy->isRealFloatingType()) return true;
+  if (skipCast) return false;
+  if (intTy->isIntegerType()) {
+    QualType fpTy = cast<ComplexType>(complexTy)->getElementType();
+    intExpr = S.ImpCastExprToType(intExpr.take(), fpTy, CK_IntegralToFloating);
+    intExpr = S.ImpCastExprToType(intExpr.take(), complexTy,
+                                  CK_FloatingRealToComplex);
+  } else {
+    assert(intTy->isComplexIntegerType());
+    intExpr = S.ImpCastExprToType(intExpr.take(), complexTy,
+                                  CK_IntegralComplexToFloatingComplex);
+  }
+  return false;
+}
+
+/// \brief Takes two complex float types and converts them to the same type.
+/// Helper function of UsualArithmeticConversions()
+static QualType
+handleComplexFloatToComplexFloatConverstion(Sema &S, ExprResult &lhsExpr,
+                                            ExprResult &rhsExpr, QualType lhs,
+                                            QualType rhs, bool isCompAssign) {
+  int order = S.Context.getFloatingTypeOrder(lhs, rhs);
+
+  if (order < 0) {
+    // _Complex float -> _Complex double
+    if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs,
+                                    CK_FloatingComplexCast);
+    return rhs;
+  }
+  if (order > 0)
+    // _Complex float -> _Complex double
+    rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs,
+                                  CK_FloatingComplexCast);
+  return lhs;
+}
+
+/// \brief Converts otherExpr to complex float and promotes complexExpr if
+/// necessary.  Helper function of UsualArithmeticConversions()
+static QualType handleOtherComplexFloatConversion(Sema &S,
+                                                  ExprResult &complexExpr,
+                                                  ExprResult &otherExpr,
+                                                  QualType complexTy,
+                                                  QualType otherTy,
+                                                  bool convertComplexExpr,
+                                                  bool convertOtherExpr) {
+  int order = S.Context.getFloatingTypeOrder(complexTy, otherTy);
+
+  // If just the complexExpr is complex, the otherExpr needs to be converted,
+  // and the complexExpr might need to be promoted.
+  if (order > 0) { // complexExpr is wider
+    // float -> _Complex double
+    if (convertOtherExpr) {
+      QualType fp = cast<ComplexType>(complexTy)->getElementType();
+      otherExpr = S.ImpCastExprToType(otherExpr.take(), fp, CK_FloatingCast);
+      otherExpr = S.ImpCastExprToType(otherExpr.take(), complexTy,
+                                      CK_FloatingRealToComplex);
+    }
+    return complexTy;
+  }
+
+  // otherTy is at least as wide.  Find its corresponding complex type.
+  QualType result = (order == 0 ? complexTy :
+                                  S.Context.getComplexType(otherTy));
+
+  // double -> _Complex double
+  if (convertOtherExpr)
+    otherExpr = S.ImpCastExprToType(otherExpr.take(), result,
+                                    CK_FloatingRealToComplex);
+
+  // _Complex float -> _Complex double
+  if (convertComplexExpr && order < 0)
+    complexExpr = S.ImpCastExprToType(complexExpr.take(), result,
+                                      CK_FloatingComplexCast);
+
+  return result;
+}
+
+/// \brief Handle arithmetic conversion with complex types.  Helper function of
+/// UsualArithmeticConversions()
+static QualType handleComplexFloatConversion(Sema &S, ExprResult &lhsExpr,
+                                             ExprResult &rhsExpr, QualType lhs,
+                                             QualType rhs, bool isCompAssign) {
+  // if we have an integer operand, the result is the complex type.
+  if (!handleIntegerToComplexFloatConversion(S, rhsExpr, lhsExpr, rhs, lhs,
+                                             /*skipCast*/false))
+    return lhs;
+  if (!handleIntegerToComplexFloatConversion(S, lhsExpr, rhsExpr, lhs, rhs,
+                                             /*skipCast*/isCompAssign))
+    return rhs;
+
+  // This handles complex/complex, complex/float, or float/complex.
+  // When both operands are complex, the shorter operand is converted to the
+  // type of the longer, and that is the type of the result. This corresponds
+  // to what is done when combining two real floating-point operands.
+  // The fun begins when size promotion occur across type domains.
+  // From H&S 6.3.4: When one operand is complex and the other is a real
+  // floating-point type, the less precise type is converted, within it's
+  // real or complex domain, to the precision of the other type. For example,
+  // when combining a "long double" with a "double _Complex", the
+  // "double _Complex" is promoted to "long double _Complex".
+
+  bool LHSComplexFloat = lhs->isComplexType();
+  bool RHSComplexFloat = rhs->isComplexType();
+
+  // If both are complex, just cast to the more precise type.
+  if (LHSComplexFloat && RHSComplexFloat)
+    return handleComplexFloatToComplexFloatConverstion(S, lhsExpr, rhsExpr,
+                                                       lhs, rhs, isCompAssign);
+
+  // If only one operand is complex, promote it if necessary and convert the
+  // other operand to complex.
+  if (LHSComplexFloat)
+    return handleOtherComplexFloatConversion(
+        S, lhsExpr, rhsExpr, lhs, rhs, /*convertComplexExpr*/!isCompAssign,
+        /*convertOtherExpr*/ true);
+
+  assert(RHSComplexFloat);
+  return handleOtherComplexFloatConversion(
+      S, rhsExpr, lhsExpr, rhs, lhs, /*convertComplexExpr*/true,
+      /*convertOtherExpr*/ !isCompAssign);
+}
+
+/// \brief Hande arithmetic conversion from integer to float.  Helper function
+/// of UsualArithmeticConversions()
+static QualType handleIntToFloatConversion(Sema &S, ExprResult &floatExpr,
+                                           ExprResult &intExpr,
+                                           QualType floatTy, QualType intTy,
+                                           bool convertFloat, bool convertInt) {
+  if (intTy->isIntegerType()) {
+    if (convertInt)
+      // Convert intExpr to the lhs floating point type.
+      intExpr = S.ImpCastExprToType(intExpr.take(), floatTy,
+                                    CK_IntegralToFloating);
+    return floatTy;
+  }
+     
+  // Convert both sides to the appropriate complex float.
+  assert(intTy->isComplexIntegerType());
+  QualType result = S.Context.getComplexType(floatTy);
+
+  // _Complex int -> _Complex float
+  if (convertInt)
+    intExpr = S.ImpCastExprToType(intExpr.take(), result,
+                                  CK_IntegralComplexToFloatingComplex);
+
+  // float -> _Complex float
+  if (convertFloat)
+    floatExpr = S.ImpCastExprToType(floatExpr.take(), result,
+                                    CK_FloatingRealToComplex);
+
+  return result;
+}
+
+/// \brief Handle arithmethic conversion with floating point types.  Helper
+/// function of UsualArithmeticConversions()
+static QualType handleFloatConversion(Sema &S, ExprResult &lhsExpr,
+                                      ExprResult &rhsExpr, QualType lhs,
+                                      QualType rhs, bool isCompAssign) {
+  bool LHSFloat = lhs->isRealFloatingType();
+  bool RHSFloat = rhs->isRealFloatingType();
+
+  // If we have two real floating types, convert the smaller operand
+  // to the bigger result.
+  if (LHSFloat && RHSFloat) {
+    int order = S.Context.getFloatingTypeOrder(lhs, rhs);
+    if (order > 0) {
+      rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs, CK_FloatingCast);
+      return lhs;
+    }
+
+    assert(order < 0 && "illegal float comparison");
+    if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs, CK_FloatingCast);
+    return rhs;
+  }
+
+  if (LHSFloat)
+    return handleIntToFloatConversion(S, lhsExpr, rhsExpr, lhs, rhs,
+                                      /*convertFloat=*/!isCompAssign,
+                                      /*convertInt=*/ true);
+  assert(RHSFloat);
+  return handleIntToFloatConversion(S, rhsExpr, lhsExpr, rhs, lhs,
+                                    /*convertInt=*/ true,
+                                    /*convertFloat=*/!isCompAssign);
+}
+
+/// \brief Handle conversions with GCC complex int extension.  Helper function
+/// of UsualArithmeticConverions()
+// FIXME: if the operands are (int, _Complex long), we currently
+// don't promote the complex.  Also, signedness?
+static QualType handleComplexIntConvsersion(Sema &S, ExprResult &lhsExpr,
+                                            ExprResult &rhsExpr, QualType lhs,
+                                            QualType rhs, bool isCompAssign) {
+  const ComplexType *lhsComplexInt = lhs->getAsComplexIntegerType();
+  const ComplexType *rhsComplexInt = rhs->getAsComplexIntegerType();
+
+  if (lhsComplexInt && rhsComplexInt) {
+    int order = S.Context.getIntegerTypeOrder(lhsComplexInt->getElementType(),
+                                              rhsComplexInt->getElementType());
+    assert(order && "inequal types with equal element ordering");
+    if (order > 0) {
+      // _Complex int -> _Complex long
+      rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs,
+                                    CK_IntegralComplexCast);
+      return lhs;
+    }
+
+    if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs,
+                                    CK_IntegralComplexCast);
+    return rhs;
+  }
+
+  if (lhsComplexInt) {
+    // int -> _Complex int
+    rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs,
+                                  CK_IntegralRealToComplex);
+    return lhs;
+  }
+
+  assert(rhsComplexInt);
+  // int -> _Complex int
+  if (!isCompAssign)
+    lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs,
+                                  CK_IntegralRealToComplex);
+  return rhs;
+}
+
+/// \brief Handle integer arithmetic conversions.  Helper function of
+/// UsualArithmeticConversions()
+static QualType handleIntegerConversion(Sema &S, ExprResult &lhsExpr,
+                                        ExprResult &rhsExpr, QualType lhs,
+                                        QualType rhs, bool isCompAssign) {
+  // The rules for this case are in C99 6.3.1.8
+  int order = S.Context.getIntegerTypeOrder(lhs, rhs);
+  bool lhsSigned = lhs->hasSignedIntegerRepresentation();
+  bool rhsSigned = rhs->hasSignedIntegerRepresentation();
+  if (lhsSigned == rhsSigned) {
+    // Same signedness; use the higher-ranked type
+    if (order >= 0) {
+      rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
+      return lhs;
+    } else if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
+    return rhs;
+  } else if (order != (lhsSigned ? 1 : -1)) {
+    // The unsigned type has greater than or equal rank to the
+    // signed type, so use the unsigned type
+    if (rhsSigned) {
+      rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
+      return lhs;
+    } else if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
+    return rhs;
+  } else if (S.Context.getIntWidth(lhs) != S.Context.getIntWidth(rhs)) {
+    // The two types are different widths; if we are here, that
+    // means the signed type is larger than the unsigned type, so
+    // use the signed type.
+    if (lhsSigned) {
+      rhsExpr = S.ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
+      return lhs;
+    } else if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
+    return rhs;
+  } else {
+    // The signed type is higher-ranked than the unsigned type,
+    // but isn't actually any bigger (like unsigned int and long
+    // on most 32-bit systems).  Use the unsigned type corresponding
+    // to the signed type.
+    QualType result =
+      S.Context.getCorrespondingUnsignedType(lhsSigned ? lhs : rhs);
+    rhsExpr = S.ImpCastExprToType(rhsExpr.take(), result, CK_IntegralCast);
+    if (!isCompAssign)
+      lhsExpr = S.ImpCastExprToType(lhsExpr.take(), result, CK_IntegralCast);
+    return result;
+  }
 }
 
 /// UsualArithmeticConversions - Performs various conversions that are common to
@@ -578,272 +882,23 @@ QualType Sema::UsualArithmeticConversions(ExprResult &lhsExpr,
   // At this point, we have two different arithmetic types.
 
   // Handle complex types first (C99 6.3.1.8p1).
-  bool LHSComplexFloat = lhs->isComplexType();
-  bool RHSComplexFloat = rhs->isComplexType();
-  if (LHSComplexFloat || RHSComplexFloat) {
-    // if we have an integer operand, the result is the complex type.
-
-    if (!RHSComplexFloat && !rhs->isRealFloatingType()) {
-      if (rhs->isIntegerType()) {
-        QualType fp = cast<ComplexType>(lhs)->getElementType();
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), fp, CK_IntegralToFloating);
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs,
-                                    CK_FloatingRealToComplex);
-      } else {
-        assert(rhs->isComplexIntegerType());
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs,
-                                    CK_IntegralComplexToFloatingComplex);
-      }
-      return lhs;
-    }
-
-    if (!LHSComplexFloat && !lhs->isRealFloatingType()) {
-      if (!isCompAssign) {
-        // int -> float -> _Complex float
-        if (lhs->isIntegerType()) {
-          QualType fp = cast<ComplexType>(rhs)->getElementType();
-          lhsExpr = ImpCastExprToType(lhsExpr.take(), fp,
-                                      CK_IntegralToFloating);
-          lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs,
-                                      CK_FloatingRealToComplex);
-        } else {
-          assert(lhs->isComplexIntegerType());
-          lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs,
-                                      CK_IntegralComplexToFloatingComplex);
-        }
-      }
-      return rhs;
-    }
-
-    // This handles complex/complex, complex/float, or float/complex.
-    // When both operands are complex, the shorter operand is converted to the
-    // type of the longer, and that is the type of the result. This corresponds
-    // to what is done when combining two real floating-point operands.
-    // The fun begins when size promotion occur across type domains.
-    // From H&S 6.3.4: When one operand is complex and the other is a real
-    // floating-point type, the less precise type is converted, within it's
-    // real or complex domain, to the precision of the other type. For example,
-    // when combining a "long double" with a "double _Complex", the
-    // "double _Complex" is promoted to "long double _Complex".
-    int order = Context.getFloatingTypeOrder(lhs, rhs);
-
-    // If both are complex, just cast to the more precise type.
-    if (LHSComplexFloat && RHSComplexFloat) {
-      if (order > 0) {
-        // _Complex float -> _Complex double
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs,
-                                    CK_FloatingComplexCast);
-        return lhs;
-
-      } else if (order < 0) {
-        // _Complex float -> _Complex double
-        if (!isCompAssign)
-          lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs,
-                                      CK_FloatingComplexCast);
-        return rhs;
-      }
-      return lhs;
-    }
-
-    // If just the LHS is complex, the RHS needs to be converted,
-    // and the LHS might need to be promoted.
-    if (LHSComplexFloat) {
-      if (order > 0) { // LHS is wider
-        // float -> _Complex double
-        QualType fp = cast<ComplexType>(lhs)->getElementType();
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), fp, CK_FloatingCast);
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs,
-                                    CK_FloatingRealToComplex);
-        return lhs;        
-      }
-
-      // RHS is at least as wide.  Find its corresponding complex type.
-      QualType result = (order == 0 ? lhs : Context.getComplexType(rhs));
-
-      // double -> _Complex double
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), result,
-                                  CK_FloatingRealToComplex);
-
-      // _Complex float -> _Complex double
-      if (!isCompAssign && order < 0)
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), result,
-                                    CK_FloatingComplexCast);
-
-      return result;
-    }
-
-    // Just the RHS is complex, so the LHS needs to be converted
-    // and the RHS might need to be promoted.
-    assert(RHSComplexFloat);
-
-    if (order < 0) { // RHS is wider
-      // float -> _Complex double
-      if (!isCompAssign) {
-        QualType fp = cast<ComplexType>(rhs)->getElementType();
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), fp, CK_FloatingCast);
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs,
-                                    CK_FloatingRealToComplex);
-      }
-      return rhs;
-    }
-
-    // LHS is at least as wide.  Find its corresponding complex type.
-    QualType result = (order == 0 ? rhs : Context.getComplexType(lhs));
-
-    // double -> _Complex double
-    if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), result,
-                                  CK_FloatingRealToComplex);
-
-    // _Complex float -> _Complex double
-    if (order > 0)
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), result,
-                                  CK_FloatingComplexCast);
-
-    return result;
-  }
+  if (lhs->isComplexType() || rhs->isComplexType())
+    return handleComplexFloatConversion(*this, lhsExpr, rhsExpr, lhs, rhs,
+                                        isCompAssign);
 
   // Now handle "real" floating types (i.e. float, double, long double).
-  bool LHSFloat = lhs->isRealFloatingType();
-  bool RHSFloat = rhs->isRealFloatingType();
-  if (LHSFloat || RHSFloat) {
-    // If we have two real floating types, convert the smaller operand
-    // to the bigger result.
-    if (LHSFloat && RHSFloat) {
-      int order = Context.getFloatingTypeOrder(lhs, rhs);
-      if (order > 0) {
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_FloatingCast);
-        return lhs;
-      }
-
-      assert(order < 0 && "illegal float comparison");
-      if (!isCompAssign)
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_FloatingCast);
-      return rhs;
-    }
-
-    // If we have an integer operand, the result is the real floating type.
-    if (LHSFloat) {
-      if (rhs->isIntegerType()) {
-        // Convert rhs to the lhs floating point type.
-        rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralToFloating);
-        return lhs;
-      }
-
-      // Convert both sides to the appropriate complex float.
-      assert(rhs->isComplexIntegerType());
-      QualType result = Context.getComplexType(lhs);
-
-      // _Complex int -> _Complex float
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), result,
-                                  CK_IntegralComplexToFloatingComplex);
-
-      // float -> _Complex float
-      if (!isCompAssign)
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), result,
-                                    CK_FloatingRealToComplex);
-
-      return result;
-    }
-
-    assert(RHSFloat);
-    if (lhs->isIntegerType()) {
-      // Convert lhs to the rhs floating point type.
-      if (!isCompAssign)
-        lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralToFloating);
-      return rhs;
-    }
-
-    // Convert both sides to the appropriate complex float.
-    assert(lhs->isComplexIntegerType());
-    QualType result = Context.getComplexType(rhs);
-
-    // _Complex int -> _Complex float
-    if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), result,
-                                  CK_IntegralComplexToFloatingComplex);
-
-    // float -> _Complex float
-    rhsExpr = ImpCastExprToType(rhsExpr.take(), result,
-                                CK_FloatingRealToComplex);
-
-    return result;
-  }
+  if (lhs->isRealFloatingType() || rhs->isRealFloatingType())
+    return handleFloatConversion(*this, lhsExpr, rhsExpr, lhs, rhs,
+                                 isCompAssign);
 
   // Handle GCC complex int extension.
-  // FIXME: if the operands are (int, _Complex long), we currently
-  // don't promote the complex.  Also, signedness?
-  const ComplexType *lhsComplexInt = lhs->getAsComplexIntegerType();
-  const ComplexType *rhsComplexInt = rhs->getAsComplexIntegerType();
-  if (lhsComplexInt && rhsComplexInt) {
-    int order = Context.getIntegerTypeOrder(lhsComplexInt->getElementType(),
-                                            rhsComplexInt->getElementType());
-    assert(order && "inequal types with equal element ordering");
-    if (order > 0) {
-      // _Complex int -> _Complex long
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralComplexCast);
-      return lhs;
-    }
-
-    if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralComplexCast);
-    return rhs;
-  } else if (lhsComplexInt) {
-    // int -> _Complex int
-    rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralRealToComplex);
-    return lhs;
-  } else if (rhsComplexInt) {
-    // int -> _Complex int
-    if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs,
-                                  CK_IntegralRealToComplex);
-    return rhs;
-  }
+  if (lhs->isComplexIntegerType() || rhs->isComplexIntegerType())
+    return handleComplexIntConvsersion(*this, lhsExpr, rhsExpr, lhs, rhs,
+                                       isCompAssign);
 
   // Finally, we have two differing integer types.
-  // The rules for this case are in C99 6.3.1.8
-  int compare = Context.getIntegerTypeOrder(lhs, rhs);
-  bool lhsSigned = lhs->hasSignedIntegerRepresentation(),
-       rhsSigned = rhs->hasSignedIntegerRepresentation();
-  if (lhsSigned == rhsSigned) {
-    // Same signedness; use the higher-ranked type
-    if (compare >= 0) {
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
-      return lhs;
-    } else if (!isCompAssign) 
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
-    return rhs;
-  } else if (compare != (lhsSigned ? 1 : -1)) {
-    // The unsigned type has greater than or equal rank to the
-    // signed type, so use the unsigned type
-    if (rhsSigned) {
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
-      return lhs;
-    } else if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
-    return rhs;
-  } else if (Context.getIntWidth(lhs) != Context.getIntWidth(rhs)) {
-    // The two types are different widths; if we are here, that
-    // means the signed type is larger than the unsigned type, so
-    // use the signed type.
-    if (lhsSigned) {
-      rhsExpr = ImpCastExprToType(rhsExpr.take(), lhs, CK_IntegralCast);
-      return lhs;
-    } else if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), rhs, CK_IntegralCast);
-    return rhs;
-  } else {
-    // The signed type is higher-ranked than the unsigned type,
-    // but isn't actually any bigger (like unsigned int and long
-    // on most 32-bit systems).  Use the unsigned type corresponding
-    // to the signed type.
-    QualType result =
-      Context.getCorrespondingUnsignedType(lhsSigned ? lhs : rhs);
-    rhsExpr = ImpCastExprToType(rhsExpr.take(), result, CK_IntegralCast);
-    if (!isCompAssign)
-      lhsExpr = ImpCastExprToType(lhsExpr.take(), result, CK_IntegralCast);
-    return result;
-  }
+  return handleIntegerConversion(*this, lhsExpr, rhsExpr, lhs, rhs,
+                                 isCompAssign);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1420,7 +1475,8 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                 CXXDependentScopeMemberExpr::Create(
                     Context, DepThis, DepThisType, true, SourceLocation(),
                     SS.getWithLocInContext(Context), NULL,
-                    R.getLookupNameInfo(), &TList);
+                    R.getLookupNameInfo(),
+                    ULE->hasExplicitTemplateArgs() ? &TList : 0);
             CallsUndergoingInstantiation.back()->setCallee(DepExpr);
           } else {
             // FIXME: we should be able to handle this case too. It is correct
@@ -1539,90 +1595,6 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
   return true;
 }
 
-ObjCPropertyDecl *Sema::canSynthesizeProvisionalIvar(IdentifierInfo *II) {
-  ObjCMethodDecl *CurMeth = getCurMethodDecl();
-  ObjCInterfaceDecl *IDecl = CurMeth->getClassInterface();
-  if (!IDecl)
-    return 0;
-  ObjCImplementationDecl *ClassImpDecl = IDecl->getImplementation();
-  if (!ClassImpDecl)
-    return 0;
-  ObjCPropertyDecl *property = LookupPropertyDecl(IDecl, II);
-  if (!property)
-    return 0;
-  if (ObjCPropertyImplDecl *PIDecl = ClassImpDecl->FindPropertyImplDecl(II))
-    if (PIDecl->getPropertyImplementation() == ObjCPropertyImplDecl::Dynamic ||
-        PIDecl->getPropertyIvarDecl())
-      return 0;
-  return property;
-}
-
-bool Sema::canSynthesizeProvisionalIvar(ObjCPropertyDecl *Property) {
-  ObjCMethodDecl *CurMeth = getCurMethodDecl();
-  ObjCInterfaceDecl *IDecl = CurMeth->getClassInterface();
-  if (!IDecl)
-    return false;
-  ObjCImplementationDecl *ClassImpDecl = IDecl->getImplementation();
-  if (!ClassImpDecl)
-    return false;
-  if (ObjCPropertyImplDecl *PIDecl
-                = ClassImpDecl->FindPropertyImplDecl(Property->getIdentifier()))
-    if (PIDecl->getPropertyImplementation() == ObjCPropertyImplDecl::Dynamic ||
-        PIDecl->getPropertyIvarDecl())
-      return false;
-  
-  return true;
-}
-
-ObjCIvarDecl *Sema::SynthesizeProvisionalIvar(LookupResult &Lookup,
-                                              IdentifierInfo *II,
-                                              SourceLocation NameLoc) {
-  ObjCMethodDecl *CurMeth = getCurMethodDecl();
-  bool LookForIvars;
-  if (Lookup.empty())
-    LookForIvars = true;
-  else if (CurMeth->isClassMethod())
-    LookForIvars = false;
-  else
-    LookForIvars = (Lookup.isSingleResult() &&
-                    Lookup.getFoundDecl()->isDefinedOutsideFunctionOrMethod() &&
-                    (Lookup.getAsSingle<VarDecl>() != 0));
-  if (!LookForIvars)
-    return 0;
-  
-  ObjCInterfaceDecl *IDecl = CurMeth->getClassInterface();
-  if (!IDecl)
-    return 0;
-  ObjCImplementationDecl *ClassImpDecl = IDecl->getImplementation();
-  if (!ClassImpDecl)
-    return 0;
-  bool DynamicImplSeen = false;
-  ObjCPropertyDecl *property = LookupPropertyDecl(IDecl, II);
-  if (!property)
-    return 0;
-  if (ObjCPropertyImplDecl *PIDecl = ClassImpDecl->FindPropertyImplDecl(II)) {
-    DynamicImplSeen = 
-      (PIDecl->getPropertyImplementation() == ObjCPropertyImplDecl::Dynamic);
-    // property implementation has a designated ivar. No need to assume a new
-    // one.
-    if (!DynamicImplSeen && PIDecl->getPropertyIvarDecl())
-      return 0;
-  }
-  if (!DynamicImplSeen) {
-    QualType PropType = Context.getCanonicalType(property->getType());
-    ObjCIvarDecl *Ivar = ObjCIvarDecl::Create(Context, ClassImpDecl, 
-                                              NameLoc, NameLoc,
-                                              II, PropType, /*Dinfo=*/0,
-                                              ObjCIvarDecl::Private,
-                                              (Expr *)0, true);
-    ClassImpDecl->addDecl(Ivar);
-    IDecl->makeDeclVisibleInContext(Ivar, false);
-    property->setPropertyIvarDecl(Ivar);
-    return Ivar;
-  }
-  return 0;
-}
-
 ExprResult Sema::ActOnIdExpression(Scope *S,
                                    CXXScopeSpec &SS,
                                    UnqualifiedId &Id,
@@ -1712,19 +1684,6 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
       if (Expr *Ex = E.takeAs<Expr>())
         return Owned(Ex);
       
-      // Synthesize ivars lazily.
-      if (getLangOptions().ObjCDefaultSynthProperties &&
-          getLangOptions().ObjCNonFragileABI2) {
-        if (SynthesizeProvisionalIvar(R, II, NameLoc)) {
-          if (const ObjCPropertyDecl *Property = 
-                canSynthesizeProvisionalIvar(II)) {
-            Diag(NameLoc, diag::warn_synthesized_ivar_access) << II;
-            Diag(Property->getLocation(), diag::note_property_declare);
-          }
-          return ActOnIdExpression(S, SS, Id, HasTrailingLParen,
-                                   isAddressOfOperand);
-        }
-      }
       // for further use, this must be set to false if in class method.
       IvarLookupFollowUp = getCurMethodDecl()->isInstanceMethod();
     }
@@ -2583,7 +2542,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
   // cannot have a trigraph, escaped newline, radix prefix, or type suffix.
   if (Tok.getLength() == 1) {
     const char Val = PP.getSpellingOfSingleCharacterNumericConstant(Tok);
-    unsigned IntSize = Context.Target.getIntWidth();
+    unsigned IntSize = Context.getTargetInfo().getIntWidth();
     return Owned(IntegerLiteral::Create(Context, llvm::APInt(IntSize, Val-'0'),
                     Context.IntTy, Tok.getLocation()));
   }
@@ -2663,7 +2622,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
       Diag(Tok.getLocation(), diag::ext_longlong);
 
     // Get the value in the widest-possible width.
-    llvm::APInt ResultVal(Context.Target.getIntMaxTWidth(), 0);
+    llvm::APInt ResultVal(Context.getTargetInfo().getIntMaxTWidth(), 0);
 
     if (Literal.GetIntegerValue(ResultVal)) {
       // If this value didn't fit into uintmax_t, warn and force to ull.
@@ -2683,7 +2642,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
       unsigned Width = 0;
       if (!Literal.isLong && !Literal.isLongLong) {
         // Are int/unsigned possibilities?
-        unsigned IntSize = Context.Target.getIntWidth();
+        unsigned IntSize = Context.getTargetInfo().getIntWidth();
 
         // Does it fit in a unsigned int?
         if (ResultVal.isIntN(IntSize)) {
@@ -2698,7 +2657,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
 
       // Are long/unsigned long possibilities?
       if (Ty.isNull() && !Literal.isLongLong) {
-        unsigned LongSize = Context.Target.getLongWidth();
+        unsigned LongSize = Context.getTargetInfo().getLongWidth();
 
         // Does it fit in a unsigned long?
         if (ResultVal.isIntN(LongSize)) {
@@ -2713,7 +2672,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
 
       // Finally, check long long if needed.
       if (Ty.isNull()) {
-        unsigned LongLongSize = Context.Target.getLongLongWidth();
+        unsigned LongLongSize = Context.getTargetInfo().getLongLongWidth();
 
         // Does it fit in a unsigned long long?
         if (ResultVal.isIntN(LongLongSize)) {
@@ -2734,7 +2693,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok) {
       if (Ty.isNull()) {
         Diag(Tok.getLocation(), diag::warn_integer_too_large_for_signed);
         Ty = Context.UnsignedLongLongTy;
-        Width = Context.Target.getLongLongWidth();
+        Width = Context.getTargetInfo().getLongLongWidth();
       }
 
       if (ResultVal.getBitWidth() != Width)
@@ -4476,7 +4435,8 @@ ExprResult Sema::ActOnParenOrParenListExpr(SourceLocation L,
 }
 
 /// \brief Emit a specialized diagnostic when one expression is a null pointer
-/// constant and the other is not a pointer.
+/// constant and the other is not a pointer.  Returns true if a diagnostic is
+/// emitted.
 bool Sema::DiagnoseConditionalForNull(Expr *LHS, Expr *RHS,
                                       SourceLocation QuestionLoc) {
   Expr *NullExpr = LHS;
@@ -4509,6 +4469,213 @@ bool Sema::DiagnoseConditionalForNull(Expr *LHS, Expr *RHS,
   Diag(QuestionLoc, diag::err_typecheck_cond_incompatible_operands_null)
       << NonPointerExpr->getType() << DiagType
       << NonPointerExpr->getSourceRange();
+  return true;
+}
+
+/// \brief Return false if the condition expression is valid, true otherwise.
+static bool checkCondition(Sema &S, Expr *Cond) {
+  QualType CondTy = Cond->getType();
+
+  // C99 6.5.15p2
+  if (CondTy->isScalarType()) return false;
+
+  // OpenCL: Sec 6.3.i says the condition is allowed to be a vector or scalar.
+  if (S.getLangOptions().OpenCL && CondTy->isVectorType())
+    return false;
+
+  // Emit the proper error message.
+  S.Diag(Cond->getLocStart(), S.getLangOptions().OpenCL ?
+                              diag::err_typecheck_cond_expect_scalar :
+                              diag::err_typecheck_cond_expect_scalar_or_vector)
+    << CondTy;
+  return true;
+}
+
+/// \brief Return false if the two expressions can be converted to a vector,
+/// true otherwise
+static bool checkConditionalConvertScalarsToVectors(Sema &S, ExprResult &LHS,
+                                                    ExprResult &RHS,
+                                                    QualType CondTy) {
+  // Both operands should be of scalar type.
+  if (!LHS.get()->getType()->isScalarType()) {
+    S.Diag(LHS.get()->getLocStart(), diag::err_typecheck_cond_expect_scalar)
+      << CondTy;
+    return true;
+  }
+  if (!RHS.get()->getType()->isScalarType()) {
+    S.Diag(RHS.get()->getLocStart(), diag::err_typecheck_cond_expect_scalar)
+      << CondTy;
+    return true;
+  }
+
+  // Implicity convert these scalars to the type of the condition.
+  LHS = S.ImpCastExprToType(LHS.take(), CondTy, CK_IntegralCast);
+  RHS = S.ImpCastExprToType(RHS.take(), CondTy, CK_IntegralCast);
+  return false;
+}
+
+/// \brief Handle when one or both operands are void type.
+static QualType checkConditionalVoidType(Sema &S, ExprResult &LHS,
+                                         ExprResult &RHS) {
+    Expr *LHSExpr = LHS.get();
+    Expr *RHSExpr = RHS.get();
+
+    if (!LHSExpr->getType()->isVoidType())
+      S.Diag(RHSExpr->getLocStart(), diag::ext_typecheck_cond_one_void)
+        << RHSExpr->getSourceRange();
+    if (!RHSExpr->getType()->isVoidType())
+      S.Diag(LHSExpr->getLocStart(), diag::ext_typecheck_cond_one_void)
+        << LHSExpr->getSourceRange();
+    LHS = S.ImpCastExprToType(LHS.take(), S.Context.VoidTy, CK_ToVoid);
+    RHS = S.ImpCastExprToType(RHS.take(), S.Context.VoidTy, CK_ToVoid);
+    return S.Context.VoidTy;
+}
+
+/// \brief Return false if the NullExpr can be promoted to PointerTy,
+/// true otherwise.
+static bool checkConditionalNullPointer(Sema &S, ExprResult &NullExpr,
+                                        QualType PointerTy) {
+  if ((!PointerTy->isAnyPointerType() && !PointerTy->isBlockPointerType()) ||
+      !NullExpr.get()->isNullPointerConstant(S.Context,
+                                            Expr::NPC_ValueDependentIsNull))
+    return true;
+
+  NullExpr = S.ImpCastExprToType(NullExpr.take(), PointerTy, CK_NullToPointer);
+  return false;
+}
+
+/// \brief Checks compatibility between two pointers and return the resulting
+/// type.
+static QualType checkConditionalPointerCompatibility(Sema &S, ExprResult &LHS,
+                                                     ExprResult &RHS,
+                                                     SourceLocation Loc) {
+  QualType LHSTy = LHS.get()->getType();
+  QualType RHSTy = RHS.get()->getType();
+
+  if (S.Context.hasSameType(LHSTy, RHSTy)) {
+    // Two identical pointers types are always compatible.
+    return LHSTy;
+  }
+
+  QualType lhptee, rhptee;
+
+  // Get the pointee types.
+  if (LHSTy->isBlockPointerType()) {
+    lhptee = LHSTy->getAs<BlockPointerType>()->getPointeeType();
+    rhptee = RHSTy->getAs<BlockPointerType>()->getPointeeType();
+  } else {
+    lhptee = LHSTy->getAs<PointerType>()->getPointeeType();
+    rhptee = RHSTy->getAs<PointerType>()->getPointeeType();
+  }
+
+  if (!S.Context.typesAreCompatible(lhptee.getUnqualifiedType(),
+                                    rhptee.getUnqualifiedType())) {
+    S.Diag(Loc, diag::warn_typecheck_cond_incompatible_pointers)
+      << LHSTy << RHSTy << LHS.get()->getSourceRange()
+      << RHS.get()->getSourceRange();
+    // In this situation, we assume void* type. No especially good
+    // reason, but this is what gcc does, and we do have to pick
+    // to get a consistent AST.
+    QualType incompatTy = S.Context.getPointerType(S.Context.VoidTy);
+    LHS = S.ImpCastExprToType(LHS.take(), incompatTy, CK_BitCast);
+    RHS = S.ImpCastExprToType(RHS.take(), incompatTy, CK_BitCast);
+    return incompatTy;
+  }
+
+  // The pointer types are compatible.
+  // C99 6.5.15p6: If both operands are pointers to compatible types *or* to
+  // differently qualified versions of compatible types, the result type is
+  // a pointer to an appropriately qualified version of the *composite*
+  // type.
+  // FIXME: Need to calculate the composite type.
+  // FIXME: Need to add qualifiers
+
+  LHS = S.ImpCastExprToType(LHS.take(), LHSTy, CK_BitCast);
+  RHS = S.ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
+  return LHSTy;
+}
+
+/// \brief Return the resulting type when the operands are both block pointers.
+static QualType checkConditionalBlockPointerCompatibility(Sema &S,
+                                                          ExprResult &LHS,
+                                                          ExprResult &RHS,
+                                                          SourceLocation Loc) {
+  QualType LHSTy = LHS.get()->getType();
+  QualType RHSTy = RHS.get()->getType();
+
+  if (!LHSTy->isBlockPointerType() || !RHSTy->isBlockPointerType()) {
+    if (LHSTy->isVoidPointerType() || RHSTy->isVoidPointerType()) {
+      QualType destType = S.Context.getPointerType(S.Context.VoidTy);
+      LHS = S.ImpCastExprToType(LHS.take(), destType, CK_BitCast);
+      RHS = S.ImpCastExprToType(RHS.take(), destType, CK_BitCast);
+      return destType;
+    }
+    S.Diag(Loc, diag::err_typecheck_cond_incompatible_operands)
+      << LHSTy << RHSTy << LHS.get()->getSourceRange()
+      << RHS.get()->getSourceRange();
+    return QualType();
+  }
+
+  // We have 2 block pointer types.
+  return checkConditionalPointerCompatibility(S, LHS, RHS, Loc);
+}
+
+/// \brief Return the resulting type when the operands are both pointers.
+static QualType
+checkConditionalObjectPointersCompatibility(Sema &S, ExprResult &LHS,
+                                            ExprResult &RHS,
+                                            SourceLocation Loc) {
+  // get the pointer types
+  QualType LHSTy = LHS.get()->getType();
+  QualType RHSTy = RHS.get()->getType();
+
+  // get the "pointed to" types
+  QualType lhptee = LHSTy->getAs<PointerType>()->getPointeeType();
+  QualType rhptee = RHSTy->getAs<PointerType>()->getPointeeType();
+
+  // ignore qualifiers on void (C99 6.5.15p3, clause 6)
+  if (lhptee->isVoidType() && rhptee->isIncompleteOrObjectType()) {
+    // Figure out necessary qualifiers (C99 6.5.15p6)
+    QualType destPointee
+      = S.Context.getQualifiedType(lhptee, rhptee.getQualifiers());
+    QualType destType = S.Context.getPointerType(destPointee);
+    // Add qualifiers if necessary.
+    LHS = S.ImpCastExprToType(LHS.take(), destType, CK_NoOp);
+    // Promote to void*.
+    RHS = S.ImpCastExprToType(RHS.take(), destType, CK_BitCast);
+    return destType;
+  }
+  if (rhptee->isVoidType() && lhptee->isIncompleteOrObjectType()) {
+    QualType destPointee
+      = S.Context.getQualifiedType(rhptee, lhptee.getQualifiers());
+    QualType destType = S.Context.getPointerType(destPointee);
+    // Add qualifiers if necessary.
+    RHS = S.ImpCastExprToType(RHS.take(), destType, CK_NoOp);
+    // Promote to void*.
+    LHS = S.ImpCastExprToType(LHS.take(), destType, CK_BitCast);
+    return destType;
+  }
+
+  return checkConditionalPointerCompatibility(S, LHS, RHS, Loc);
+}
+
+/// \brief Return false if the first expression is not an integer and the second
+/// expression is not a pointer, true otherwise.
+static bool checkPointerIntegerMismatch(Sema &S, ExprResult &Int,
+                                        Expr* PointerExpr, SourceLocation Loc,
+                                        bool isIntFirstExpr) {
+  if (!PointerExpr->getType()->isPointerType() ||
+      !Int.get()->getType()->isIntegerType())
+    return false;
+
+  Expr *Expr1 = isIntFirstExpr ? Int.get() : PointerExpr;
+  Expr *Expr2 = isIntFirstExpr ? PointerExpr : Int.get();
+
+  S.Diag(Loc, diag::warn_typecheck_cond_pointer_integer_mismatch)
+    << Expr1->getType() << Expr2->getType()
+    << Expr1->getSourceRange() << Expr2->getSourceRange();
+  Int = S.ImpCastExprToType(Int.take(), PointerExpr->getType(),
+                            CK_IntegralToPointer);
   return true;
 }
 
@@ -4550,23 +4717,8 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
   QualType RHSTy = RHS.get()->getType();
 
   // first, check the condition.
-  if (!CondTy->isScalarType()) { // C99 6.5.15p2
-    // OpenCL: Sec 6.3.i says the condition is allowed to be a vector or scalar.
-    // Throw an error if its not either.
-    if (getLangOptions().OpenCL) {
-      if (!CondTy->isVectorType()) {
-        Diag(Cond.get()->getLocStart(), 
-             diag::err_typecheck_cond_expect_scalar_or_vector)
-          << CondTy;
-        return QualType();
-      }
-    }
-    else {
-      Diag(Cond.get()->getLocStart(), diag::err_typecheck_cond_expect_scalar)
-        << CondTy;
-      return QualType();
-    }
-  }
+  if (checkCondition(*this, Cond.get()))
+    return QualType();
 
   // Now check the two expressions.
   if (LHSTy->isVectorType() || RHSTy->isVectorType())
@@ -4575,22 +4727,9 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
   // OpenCL: If the condition is a vector, and both operands are scalar,
   // attempt to implicity convert them to the vector type to act like the
   // built in select.
-  if (getLangOptions().OpenCL && CondTy->isVectorType()) {
-    // Both operands should be of scalar type.
-    if (!LHSTy->isScalarType()) {
-      Diag(LHS.get()->getLocStart(), diag::err_typecheck_cond_expect_scalar)
-        << CondTy;
+  if (getLangOptions().OpenCL && CondTy->isVectorType())
+    if (checkConditionalConvertScalarsToVectors(*this, LHS, RHS, CondTy))
       return QualType();
-    }
-    if (!RHSTy->isScalarType()) {
-      Diag(RHS.get()->getLocStart(), diag::err_typecheck_cond_expect_scalar)
-        << CondTy;
-      return QualType();
-    }
-    // Implicity convert these scalars to the type of the condition.
-    LHS = ImpCastExprToType(LHS.take(), CondTy, CK_IntegralCast);
-    RHS = ImpCastExprToType(RHS.take(), CondTy, CK_IntegralCast);
-  }
   
   // If both operands have arithmetic type, do the usual arithmetic conversions
   // to find a common type: C99 6.5.15p3,5.
@@ -4615,31 +4754,13 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
   // C99 6.5.15p5: "If both operands have void type, the result has void type."
   // The following || allows only one side to be void (a GCC-ism).
   if (LHSTy->isVoidType() || RHSTy->isVoidType()) {
-    if (!LHSTy->isVoidType())
-      Diag(RHS.get()->getLocStart(), diag::ext_typecheck_cond_one_void)
-        << RHS.get()->getSourceRange();
-    if (!RHSTy->isVoidType())
-      Diag(LHS.get()->getLocStart(), diag::ext_typecheck_cond_one_void)
-        << LHS.get()->getSourceRange();
-    LHS = ImpCastExprToType(LHS.take(), Context.VoidTy, CK_ToVoid);
-    RHS = ImpCastExprToType(RHS.take(), Context.VoidTy, CK_ToVoid);
-    return Context.VoidTy;
+    return checkConditionalVoidType(*this, LHS, RHS);
   }
+
   // C99 6.5.15p6 - "if one operand is a null pointer constant, the result has
   // the type of the other operand."
-  if ((LHSTy->isAnyPointerType() || LHSTy->isBlockPointerType()) &&
-      RHS.get()->isNullPointerConstant(Context,
-                                       Expr::NPC_ValueDependentIsNull)) {
-    // promote the null to a pointer.
-    RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_NullToPointer);
-    return LHSTy;
-  }
-  if ((RHSTy->isAnyPointerType() || RHSTy->isBlockPointerType()) &&
-      LHS.get()->isNullPointerConstant(Context,
-                                       Expr::NPC_ValueDependentIsNull)) {
-    LHS = ImpCastExprToType(LHS.take(), RHSTy, CK_NullToPointer);
-    return RHSTy;
-  }
+  if (!checkConditionalNullPointer(*this, RHS, LHSTy)) return LHSTy;
+  if (!checkConditionalNullPointer(*this, LHS, RHSTy)) return RHSTy;
 
   // All objective-c pointer type analysis is done here.
   QualType compositeType = FindCompositeObjCPointerType(LHS, RHS,
@@ -4651,121 +4772,23 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
 
 
   // Handle block pointer types.
-  if (LHSTy->isBlockPointerType() || RHSTy->isBlockPointerType()) {
-    if (!LHSTy->isBlockPointerType() || !RHSTy->isBlockPointerType()) {
-      if (LHSTy->isVoidPointerType() || RHSTy->isVoidPointerType()) {
-        QualType destType = Context.getPointerType(Context.VoidTy);
-        LHS = ImpCastExprToType(LHS.take(), destType, CK_BitCast);
-        RHS = ImpCastExprToType(RHS.take(), destType, CK_BitCast);
-        return destType;
-      }
-      Diag(QuestionLoc, diag::err_typecheck_cond_incompatible_operands)
-        << LHSTy << RHSTy << LHS.get()->getSourceRange()
-        << RHS.get()->getSourceRange();
-      return QualType();
-    }
-    // We have 2 block pointer types.
-    if (Context.getCanonicalType(LHSTy) == Context.getCanonicalType(RHSTy)) {
-      // Two identical block pointer types are always compatible.
-      return LHSTy;
-    }
-    // The block pointer types aren't identical, continue checking.
-    QualType lhptee = LHSTy->getAs<BlockPointerType>()->getPointeeType();
-    QualType rhptee = RHSTy->getAs<BlockPointerType>()->getPointeeType();
-
-    if (!Context.typesAreCompatible(lhptee.getUnqualifiedType(),
-                                    rhptee.getUnqualifiedType())) {
-      Diag(QuestionLoc, diag::warn_typecheck_cond_incompatible_pointers)
-        << LHSTy << RHSTy << LHS.get()->getSourceRange()
-        << RHS.get()->getSourceRange();
-      // In this situation, we assume void* type. No especially good
-      // reason, but this is what gcc does, and we do have to pick
-      // to get a consistent AST.
-      QualType incompatTy = Context.getPointerType(Context.VoidTy);
-      LHS = ImpCastExprToType(LHS.take(), incompatTy, CK_BitCast);
-      RHS = ImpCastExprToType(RHS.take(), incompatTy, CK_BitCast);
-      return incompatTy;
-    }
-    // The block pointer types are compatible.
-    LHS = ImpCastExprToType(LHS.take(), LHSTy, CK_BitCast);
-    RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
-    return LHSTy;
-  }
+  if (LHSTy->isBlockPointerType() || RHSTy->isBlockPointerType())
+    return checkConditionalBlockPointerCompatibility(*this, LHS, RHS,
+                                                     QuestionLoc);
 
   // Check constraints for C object pointers types (C99 6.5.15p3,6).
-  if (LHSTy->isPointerType() && RHSTy->isPointerType()) {
-    // get the "pointed to" types
-    QualType lhptee = LHSTy->getAs<PointerType>()->getPointeeType();
-    QualType rhptee = RHSTy->getAs<PointerType>()->getPointeeType();
-
-    // ignore qualifiers on void (C99 6.5.15p3, clause 6)
-    if (lhptee->isVoidType() && rhptee->isIncompleteOrObjectType()) {
-      // Figure out necessary qualifiers (C99 6.5.15p6)
-      QualType destPointee
-        = Context.getQualifiedType(lhptee, rhptee.getQualifiers());
-      QualType destType = Context.getPointerType(destPointee);
-      // Add qualifiers if necessary.
-      LHS = ImpCastExprToType(LHS.take(), destType, CK_NoOp);
-      // Promote to void*.
-      RHS = ImpCastExprToType(RHS.take(), destType, CK_BitCast);
-      return destType;
-    }
-    if (rhptee->isVoidType() && lhptee->isIncompleteOrObjectType()) {
-      QualType destPointee
-        = Context.getQualifiedType(rhptee, lhptee.getQualifiers());
-      QualType destType = Context.getPointerType(destPointee);
-      // Add qualifiers if necessary.
-      RHS = ImpCastExprToType(RHS.take(), destType, CK_NoOp);
-      // Promote to void*.
-      LHS = ImpCastExprToType(LHS.take(), destType, CK_BitCast);
-      return destType;
-    }
-
-    if (Context.getCanonicalType(LHSTy) == Context.getCanonicalType(RHSTy)) {
-      // Two identical pointer types are always compatible.
-      return LHSTy;
-    }
-    if (!Context.typesAreCompatible(lhptee.getUnqualifiedType(),
-                                    rhptee.getUnqualifiedType())) {
-      Diag(QuestionLoc, diag::warn_typecheck_cond_incompatible_pointers)
-        << LHSTy << RHSTy << LHS.get()->getSourceRange()
-        << RHS.get()->getSourceRange();
-      // In this situation, we assume void* type. No especially good
-      // reason, but this is what gcc does, and we do have to pick
-      // to get a consistent AST.
-      QualType incompatTy = Context.getPointerType(Context.VoidTy);
-      LHS = ImpCastExprToType(LHS.take(), incompatTy, CK_BitCast);
-      RHS = ImpCastExprToType(RHS.take(), incompatTy, CK_BitCast);
-      return incompatTy;
-    }
-    // The pointer types are compatible.
-    // C99 6.5.15p6: If both operands are pointers to compatible types *or* to
-    // differently qualified versions of compatible types, the result type is
-    // a pointer to an appropriately qualified version of the *composite*
-    // type.
-    // FIXME: Need to calculate the composite type.
-    // FIXME: Need to add qualifiers
-    LHS = ImpCastExprToType(LHS.take(), LHSTy, CK_BitCast);
-    RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
-    return LHSTy;
-  }
+  if (LHSTy->isPointerType() && RHSTy->isPointerType())
+    return checkConditionalObjectPointersCompatibility(*this, LHS, RHS,
+                                                       QuestionLoc);
 
   // GCC compatibility: soften pointer/integer mismatch.  Note that
   // null pointers have been filtered out by this point.
-  if (RHSTy->isPointerType() && LHSTy->isIntegerType()) {
-    Diag(QuestionLoc, diag::warn_typecheck_cond_pointer_integer_mismatch)
-      << LHSTy << RHSTy << LHS.get()->getSourceRange()
-      << RHS.get()->getSourceRange();
-    LHS = ImpCastExprToType(LHS.take(), RHSTy, CK_IntegralToPointer);
+  if (checkPointerIntegerMismatch(*this, LHS, RHS.get(), QuestionLoc,
+      /*isIntFirstExpr=*/true))
     return RHSTy;
-  }
-  if (LHSTy->isPointerType() && RHSTy->isIntegerType()) {
-    Diag(QuestionLoc, diag::warn_typecheck_cond_pointer_integer_mismatch)
-      << LHSTy << RHSTy << LHS.get()->getSourceRange()
-      << RHS.get()->getSourceRange();
-    RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_IntegralToPointer);
+  if (checkPointerIntegerMismatch(*this, RHS, LHS.get(), QuestionLoc,
+      /*isIntFirstExpr=*/false))
     return LHSTy;
-  }
 
   // Emit a better diagnostic if one of the expressions is a null pointer
   // constant and the other is not a pointer type. In this case, the user most
@@ -4791,34 +4814,34 @@ QualType Sema::FindCompositeObjCPointerType(ExprResult &LHS, ExprResult &RHS,
   // to the pseudo-builtin, because that will be implicitly cast back to the
   // redefinition type if an attempt is made to access its fields.
   if (LHSTy->isObjCClassType() &&
-      (Context.hasSameType(RHSTy, Context.ObjCClassRedefinitionType))) {
+      (Context.hasSameType(RHSTy, Context.getObjCClassRedefinitionType()))) {
     RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
     return LHSTy;
   }
   if (RHSTy->isObjCClassType() &&
-      (Context.hasSameType(LHSTy, Context.ObjCClassRedefinitionType))) {
+      (Context.hasSameType(LHSTy, Context.getObjCClassRedefinitionType()))) {
     LHS = ImpCastExprToType(LHS.take(), RHSTy, CK_BitCast);
     return RHSTy;
   }
   // And the same for struct objc_object* / id
   if (LHSTy->isObjCIdType() &&
-      (Context.hasSameType(RHSTy, Context.ObjCIdRedefinitionType))) {
+      (Context.hasSameType(RHSTy, Context.getObjCIdRedefinitionType()))) {
     RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
     return LHSTy;
   }
   if (RHSTy->isObjCIdType() &&
-      (Context.hasSameType(LHSTy, Context.ObjCIdRedefinitionType))) {
+      (Context.hasSameType(LHSTy, Context.getObjCIdRedefinitionType()))) {
     LHS = ImpCastExprToType(LHS.take(), RHSTy, CK_BitCast);
     return RHSTy;
   }
   // And the same for struct objc_selector* / SEL
   if (Context.isObjCSelType(LHSTy) &&
-      (Context.hasSameType(RHSTy, Context.ObjCSelRedefinitionType))) {
+      (Context.hasSameType(RHSTy, Context.getObjCSelRedefinitionType()))) {
     RHS = ImpCastExprToType(RHS.take(), LHSTy, CK_BitCast);
     return LHSTy;
   }
   if (Context.isObjCSelType(RHSTy) &&
-      (Context.hasSameType(LHSTy, Context.ObjCSelRedefinitionType))) {
+      (Context.hasSameType(LHSTy, Context.getObjCSelRedefinitionType()))) {
     LHS = ImpCastExprToType(LHS.take(), RHSTy, CK_BitCast);
     return RHSTy;
   }
@@ -5403,7 +5426,8 @@ Sema::CheckAssignmentConstraints(QualType lhsType, ExprResult &rhs,
 
       //  - conversions from 'Class' to the redefinition type
       if (rhsType->isObjCClassType() &&
-          Context.hasSameType(lhsType, Context.ObjCClassRedefinitionType)) {
+          Context.hasSameType(lhsType, 
+                              Context.getObjCClassRedefinitionType())) {
         Kind = CK_BitCast;
         return Compatible;
       }
@@ -5484,7 +5508,8 @@ Sema::CheckAssignmentConstraints(QualType lhsType, ExprResult &rhs,
 
       //  - conversions to 'Class' from its redefinition type
       if (lhsType->isObjCClassType() &&
-          Context.hasSameType(rhsType, Context.ObjCClassRedefinitionType)) {
+          Context.hasSameType(rhsType, 
+                              Context.getObjCClassRedefinitionType())) {
         Kind = CK_BitCast;
         return Compatible;
       }
@@ -5872,6 +5897,24 @@ static void diagnoseArithmeticOnFunctionPointer(Sema &S, SourceLocation Loc,
     << Pointer->getSourceRange();
 }
 
+/// \brief Warn if Operand is incomplete pointer type
+///
+/// \returns True if pointer has incomplete type
+static bool checkArithmeticIncompletePointerType(Sema &S, SourceLocation Loc,
+                                                 Expr *Operand) {
+  if ((Operand->getType()->isPointerType() &&
+       !Operand->getType()->isDependentType()) ||
+      Operand->getType()->isObjCObjectPointerType()) {
+    QualType PointeeTy = Operand->getType()->getPointeeType();
+    if (S.RequireCompleteType(
+          Loc, PointeeTy,
+          S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
+            << PointeeTy << Operand->getSourceRange()))
+      return true;
+  }
+  return false;
+}
+
 /// \brief Check the validity of an arithmetic pointer operand.
 ///
 /// If the operand has pointer type, this code will check for pointer types
@@ -5894,16 +5937,7 @@ static bool checkArithmeticOpPointerOperand(Sema &S, SourceLocation Loc,
     return !S.getLangOptions().CPlusPlus;
   }
 
-  if ((Operand->getType()->isPointerType() &&
-       !Operand->getType()->isDependentType()) ||
-      Operand->getType()->isObjCObjectPointerType()) {
-    QualType PointeeTy = Operand->getType()->getPointeeType();
-    if (S.RequireCompleteType(
-          Loc, PointeeTy,
-          S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
-            << PointeeTy << Operand->getSourceRange()))
-      return false;
-  }
+  if (checkArithmeticIncompletePointerType(S, Loc, Operand)) return false;
 
   return true;
 }
@@ -5948,21 +5982,34 @@ static bool checkArithmeticBinOpPointerOperands(Sema &S, SourceLocation Loc,
     return !S.getLangOptions().CPlusPlus;
   }
 
-  Expr *Operands[] = { LHS, RHS };
-  for (unsigned i = 0; i < 2; ++i) {
-    Expr *Operand = Operands[i];
-    if ((Operand->getType()->isPointerType() &&
-         !Operand->getType()->isDependentType()) ||
-        Operand->getType()->isObjCObjectPointerType()) {
-      QualType PointeeTy = Operand->getType()->getPointeeType();
-      if (S.RequireCompleteType(
-            Loc, PointeeTy,
-            S.PDiag(diag::err_typecheck_arithmetic_incomplete_type)
-              << PointeeTy << Operand->getSourceRange()))
-        return false;
-    }
-  }
+  if (checkArithmeticIncompletePointerType(S, Loc, LHS)) return false;
+  if (checkArithmeticIncompletePointerType(S, Loc, RHS)) return false;
+
   return true;
+}
+
+/// \brief Check bad cases where we step over interface counts.
+static bool checkArithmethicPointerOnNonFragileABI(Sema &S,
+                                                   SourceLocation OpLoc,
+                                                   Expr *Op) {
+  assert(Op->getType()->isAnyPointerType());
+  QualType PointeeTy = Op->getType()->getPointeeType();
+  if (!PointeeTy->isObjCObjectType() || !S.LangOpts.ObjCNonFragileABI)
+    return true;
+
+  S.Diag(OpLoc, diag::err_arithmetic_nonfragile_interface)
+    << PointeeTy << Op->getSourceRange();
+  return false;
+}
+
+/// \brief Warn when two pointers are incompatible.
+static void diagnosePointerIncompatibility(Sema &S, SourceLocation Loc,
+                                           Expr *LHS, Expr *RHS) {
+  assert(LHS->getType()->isAnyPointerType());
+  assert(RHS->getType()->isAnyPointerType());
+  S.Diag(Loc, diag::err_typecheck_sub_ptr_compatible)
+    << LHS->getType() << RHS->getType() << LHS->getSourceRange()
+    << RHS->getSourceRange();
 }
 
 QualType Sema::CheckAdditionOperands( // C99 6.5.6
@@ -5995,14 +6042,9 @@ QualType Sema::CheckAdditionOperands( // C99 6.5.6
       if (!checkArithmeticOpPointerOperand(*this, Loc, PExp))
         return QualType();
 
-      QualType PointeeTy = PExp->getType()->getPointeeType();
-
       // Diagnose bad cases where we step over interface counts.
-      if (PointeeTy->isObjCObjectType() && LangOpts.ObjCNonFragileABI) {
-        Diag(Loc, diag::err_arithmetic_nonfragile_interface)
-          << PointeeTy << PExp->getSourceRange();
+      if (!checkArithmethicPointerOnNonFragileABI(*this, Loc, PExp))
         return QualType();
-      }
 
       // Check array bounds for pointer arithemtic
       CheckArrayAccess(PExp, IExp);
@@ -6052,11 +6094,8 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
     QualType lpointee = lex.get()->getType()->getPointeeType();
 
     // Diagnose bad cases where we step over interface counts.
-    if (lpointee->isObjCObjectType() && LangOpts.ObjCNonFragileABI) {
-      Diag(Loc, diag::err_arithmetic_nonfragile_interface)
-        << lpointee << lex.get()->getSourceRange();
+    if (!checkArithmethicPointerOnNonFragileABI(*this, Loc, lex.get()))
       return QualType();
-    }
 
     // The result type of a pointer-int computation is the pointer type.
     if (rex.get()->getType()->isIntegerType()) {
@@ -6081,19 +6120,14 @@ QualType Sema::CheckSubtractionOperands(ExprResult &lex, ExprResult &rex,
       if (getLangOptions().CPlusPlus) {
         // Pointee types must be the same: C++ [expr.add]
         if (!Context.hasSameUnqualifiedType(lpointee, rpointee)) {
-          Diag(Loc, diag::err_typecheck_sub_ptr_compatible)
-            << lex.get()->getType() << rex.get()->getType()
-            << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-          return QualType();
+          diagnosePointerIncompatibility(*this, Loc, lex.get(), rex.get());
         }
       } else {
         // Pointee types must be compatible C99 6.5.6p3
         if (!Context.typesAreCompatible(
                 Context.getCanonicalType(lpointee).getUnqualifiedType(),
                 Context.getCanonicalType(rpointee).getUnqualifiedType())) {
-          Diag(Loc, diag::err_typecheck_sub_ptr_compatible)
-            << lex.get()->getType() << rex.get()->getType()
-            << lex.get()->getSourceRange() << rex.get()->getSourceRange();
+          diagnosePointerIncompatibility(*this, Loc, lex.get(), rex.get());
           return QualType();
         }
       }
@@ -6235,6 +6269,100 @@ static bool IsWithinTemplateSpecialization(Decl *D) {
   return false;
 }
 
+/// If two different enums are compared, raise a warning.
+static void checkEnumComparison(Sema &S, SourceLocation Loc, ExprResult &lex,
+                                ExprResult &rex) {
+  QualType LHSStrippedType = lex.get()->IgnoreParenImpCasts()->getType();
+  QualType RHSStrippedType = rex.get()->IgnoreParenImpCasts()->getType();
+
+  const EnumType *LHSEnumType = LHSStrippedType->getAs<EnumType>();
+  if (!LHSEnumType)
+    return;
+  const EnumType *RHSEnumType = RHSStrippedType->getAs<EnumType>();
+  if (!RHSEnumType)
+    return;
+
+  // Ignore anonymous enums.
+  if (!LHSEnumType->getDecl()->getIdentifier())
+    return;
+  if (!RHSEnumType->getDecl()->getIdentifier())
+    return;
+
+  if (S.Context.hasSameUnqualifiedType(LHSStrippedType, RHSStrippedType))
+    return;
+
+  S.Diag(Loc, diag::warn_comparison_of_mixed_enum_types)
+      << LHSStrippedType << RHSStrippedType
+      << lex.get()->getSourceRange() << rex.get()->getSourceRange();
+}
+
+/// \brief Diagnose bad pointer comparisons.
+static void diagnoseDistinctPointerComparison(Sema &S, SourceLocation Loc,
+                                              ExprResult &lex, ExprResult &rex,
+                                              bool isError) {
+  S.Diag(Loc, isError ? diag::err_typecheck_comparison_of_distinct_pointers
+                      : diag::ext_typecheck_comparison_of_distinct_pointers)
+    << lex.get()->getType() << rex.get()->getType()
+    << lex.get()->getSourceRange() << rex.get()->getSourceRange();
+}
+
+/// \brief Returns false if the pointers are converted to a composite type,
+/// true otherwise.
+static bool convertPointersToCompositeType(Sema &S, SourceLocation Loc,
+                                           ExprResult &lex, ExprResult &rex) {
+  // C++ [expr.rel]p2:
+  //   [...] Pointer conversions (4.10) and qualification
+  //   conversions (4.4) are performed on pointer operands (or on
+  //   a pointer operand and a null pointer constant) to bring
+  //   them to their composite pointer type. [...]
+  //
+  // C++ [expr.eq]p1 uses the same notion for (in)equality
+  // comparisons of pointers.
+
+  // C++ [expr.eq]p2:
+  //   In addition, pointers to members can be compared, or a pointer to
+  //   member and a null pointer constant. Pointer to member conversions
+  //   (4.11) and qualification conversions (4.4) are performed to bring
+  //   them to a common type. If one operand is a null pointer constant,
+  //   the common type is the type of the other operand. Otherwise, the
+  //   common type is a pointer to member type similar (4.4) to the type
+  //   of one of the operands, with a cv-qualification signature (4.4)
+  //   that is the union of the cv-qualification signatures of the operand
+  //   types.
+
+  QualType lType = lex.get()->getType();
+  QualType rType = rex.get()->getType();
+  assert((lType->isPointerType() && rType->isPointerType()) ||
+         (lType->isMemberPointerType() && rType->isMemberPointerType()));
+
+  bool NonStandardCompositeType = false;
+  bool *BoolPtr = S.isSFINAEContext() ? 0 : &NonStandardCompositeType;
+  QualType T = S.FindCompositePointerType(Loc, lex, rex, BoolPtr);
+  if (T.isNull()) {
+    diagnoseDistinctPointerComparison(S, Loc, lex, rex, /*isError*/true);
+    return true;
+  }
+
+  if (NonStandardCompositeType)
+    S.Diag(Loc, diag::ext_typecheck_comparison_of_distinct_pointers_nonstandard)
+      << lType << rType << T << lex.get()->getSourceRange()
+      << rex.get()->getSourceRange();
+
+  lex = S.ImpCastExprToType(lex.take(), T, CK_BitCast);
+  rex = S.ImpCastExprToType(rex.take(), T, CK_BitCast);
+  return false;
+}
+
+static void diagnoseFunctionPointerToVoidComparison(Sema &S, SourceLocation Loc,
+                                                    ExprResult &lex,
+                                                    ExprResult &rex,
+                                                    bool isError) {
+  S.Diag(Loc,isError ? diag::err_typecheck_comparison_of_fptr_to_void
+                     : diag::ext_typecheck_comparison_of_fptr_to_void)
+    << lex.get()->getType() << rex.get()->getType()
+    << lex.get()->getSourceRange() << rex.get()->getSourceRange();
+}
+
 // C99 6.5.8, C++ [expr.rel]
 QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
                                     SourceLocation Loc, unsigned OpaqueOpc,
@@ -6248,26 +6376,11 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
 
   QualType lType = lex.get()->getType();
   QualType rType = rex.get()->getType();
- 
+
   Expr *LHSStripped = lex.get()->IgnoreParenImpCasts();
   Expr *RHSStripped = rex.get()->IgnoreParenImpCasts();
-  QualType LHSStrippedType = LHSStripped->getType();
-  QualType RHSStrippedType = RHSStripped->getType();
 
-  
-
-  // Two different enums will raise a warning when compared.
-  if (const EnumType *LHSEnumType = LHSStrippedType->getAs<EnumType>()) {
-    if (const EnumType *RHSEnumType = RHSStrippedType->getAs<EnumType>()) {
-      if (LHSEnumType->getDecl()->getIdentifier() &&
-          RHSEnumType->getDecl()->getIdentifier() &&
-          !Context.hasSameUnqualifiedType(LHSStrippedType, RHSStrippedType)) {
-        Diag(Loc, diag::warn_comparison_of_mixed_enum_types)
-          << LHSStrippedType << RHSStrippedType
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      }
-    }
-  }
+  checkEnumComparison(*this, Loc, lex, rex);
 
   if (!lType->hasFloatingRepresentation() &&
       !(lType->isBlockPointerType() && isRelational) &&
@@ -6416,12 +6529,8 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
         // conformance with the C++ standard.
         if ((LCanPointeeTy->isFunctionType() || RCanPointeeTy->isFunctionType())
             && !LHSIsNull && !RHSIsNull) {
-          Diag(Loc, 
-               isSFINAEContext()? 
-                   diag::err_typecheck_comparison_of_fptr_to_void
-                 : diag::ext_typecheck_comparison_of_fptr_to_void)
-            << lType << rType << lex.get()->getSourceRange()
-            << rex.get()->getSourceRange();
+          diagnoseFunctionPointerToVoidComparison(
+              *this, Loc, lex, rex, /*isError*/ isSFINAEContext());
           
           if (isSFINAEContext())
             return QualType();
@@ -6431,32 +6540,10 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
         }
       }
 
-      // C++ [expr.rel]p2:
-      //   [...] Pointer conversions (4.10) and qualification
-      //   conversions (4.4) are performed on pointer operands (or on
-      //   a pointer operand and a null pointer constant) to bring
-      //   them to their composite pointer type. [...]
-      //
-      // C++ [expr.eq]p1 uses the same notion for (in)equality
-      // comparisons of pointers.
-      bool NonStandardCompositeType = false;
-      QualType T = FindCompositePointerType(Loc, lex, rex,
-                              isSFINAEContext()? 0 : &NonStandardCompositeType);
-      if (T.isNull()) {
-        Diag(Loc, diag::err_typecheck_comparison_of_distinct_pointers)
-          << lType << rType << lex.get()->getSourceRange()
-          << rex.get()->getSourceRange();
+      if (convertPointersToCompositeType(*this, Loc, lex, rex))
         return QualType();
-      } else if (NonStandardCompositeType) {
-        Diag(Loc,
-             diag::ext_typecheck_comparison_of_distinct_pointers_nonstandard)
-          << lType << rType << T
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      }
-
-      lex = ImpCastExprToType(lex.take(), T, CK_BitCast);
-      rex = ImpCastExprToType(rex.take(), T, CK_BitCast);
-      return ResultTy;
+      else
+        return ResultTy;
     }
     // C99 6.5.9p2 and C99 6.5.8p2
     if (Context.typesAreCompatible(LCanPointeeTy.getUnqualifiedType(),
@@ -6471,16 +6558,12 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
                (LCanPointeeTy->isVoidType() || RCanPointeeTy->isVoidType())) {
       // Valid unless comparison between non-null pointer and function pointer
       if ((LCanPointeeTy->isFunctionType() || RCanPointeeTy->isFunctionType())
-          && !LHSIsNull && !RHSIsNull) {
-        Diag(Loc, diag::ext_typecheck_comparison_of_fptr_to_void)
-          << lType << rType << lex.get()->getSourceRange()
-          << rex.get()->getSourceRange();
-      }
+          && !LHSIsNull && !RHSIsNull)
+        diagnoseFunctionPointerToVoidComparison(*this, Loc, lex, rex,
+                                                /*isError*/false);
     } else {
       // Invalid
-      Diag(Loc, diag::ext_typecheck_comparison_of_distinct_pointers)
-        << lType << rType << lex.get()->getSourceRange()
-        << rex.get()->getSourceRange();
+      diagnoseDistinctPointerComparison(*this, Loc, lex, rex, /*isError*/false);
     }
     if (LCanPointeeTy != RCanPointeeTy) {
       if (LHSIsNull && !RHSIsNull)
@@ -6522,34 +6605,10 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
     // Comparison of member pointers.
     if (!isRelational &&
         lType->isMemberPointerType() && rType->isMemberPointerType()) {
-      // C++ [expr.eq]p2:
-      //   In addition, pointers to members can be compared, or a pointer to
-      //   member and a null pointer constant. Pointer to member conversions
-      //   (4.11) and qualification conversions (4.4) are performed to bring
-      //   them to a common type. If one operand is a null pointer constant,
-      //   the common type is the type of the other operand. Otherwise, the
-      //   common type is a pointer to member type similar (4.4) to the type
-      //   of one of the operands, with a cv-qualification signature (4.4)
-      //   that is the union of the cv-qualification signatures of the operand
-      //   types.
-      bool NonStandardCompositeType = false;
-      QualType T = FindCompositePointerType(Loc, lex, rex,
-                              isSFINAEContext()? 0 : &NonStandardCompositeType);
-      if (T.isNull()) {
-        Diag(Loc, diag::err_typecheck_comparison_of_distinct_pointers)
-          << lType << rType << lex.get()->getSourceRange()
-          << rex.get()->getSourceRange();
+      if (convertPointersToCompositeType(*this, Loc, lex, rex))
         return QualType();
-      } else if (NonStandardCompositeType) {
-        Diag(Loc,
-             diag::ext_typecheck_comparison_of_distinct_pointers_nonstandard)
-          << lType << rType << T
-          << lex.get()->getSourceRange() << rex.get()->getSourceRange();
-      }
-
-      lex = ImpCastExprToType(lex.take(), T, CK_BitCast);
-      rex = ImpCastExprToType(rex.take(), T, CK_BitCast);
-      return ResultTy;
+      else
+        return ResultTy;
     }
 
     // Handle scoped enumeration types specifically, since they don't promote
@@ -6605,9 +6664,8 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
 
       if (!LPtrToVoid && !RPtrToVoid &&
           !Context.typesAreCompatible(lType, rType)) {
-        Diag(Loc, diag::ext_typecheck_comparison_of_distinct_pointers)
-          << lType << rType << lex.get()->getSourceRange()
-          << rex.get()->getSourceRange();
+        diagnoseDistinctPointerComparison(*this, Loc, lex, rex,
+                                          /*isError*/false);
       }
       if (LHSIsNull && !RHSIsNull)
         lex = ImpCastExprToType(lex.take(), rType, CK_BitCast);
@@ -6617,9 +6675,8 @@ QualType Sema::CheckCompareOperands(ExprResult &lex, ExprResult &rex,
     }
     if (lType->isObjCObjectPointerType() && rType->isObjCObjectPointerType()) {
       if (!Context.areComparableObjCPointerTypes(lType, rType))
-        Diag(Loc, diag::ext_typecheck_comparison_of_distinct_pointers)
-          << lType << rType << lex.get()->getSourceRange()
-          << rex.get()->getSourceRange();
+        diagnoseDistinctPointerComparison(*this, Loc, lex, rex,
+                                          /*isError*/false);
       if (LHSIsNull && !RHSIsNull)
         lex = ImpCastExprToType(lex.take(), rType, CK_BitCast);
       else
@@ -6780,9 +6837,24 @@ inline QualType Sema::CheckLogicalOperands( // C99 6.5.[13,14]
           (Result.Val.getInt() != 0 && Result.Val.getInt() != 1)) {
         Diag(Loc, diag::warn_logical_instead_of_bitwise)
           << rex.get()->getSourceRange()
-          << (Opc == BO_LAnd ? "&&" : "||")
-          << (Opc == BO_LAnd ? "&" : "|");
-    }
+          << (Opc == BO_LAnd ? "&&" : "||");
+        // Suggest replacing the logical operator with the bitwise version
+        Diag(Loc, diag::note_logical_instead_of_bitwise_change_operator)
+            << (Opc == BO_LAnd ? "&" : "|")
+            << FixItHint::CreateReplacement(SourceRange(
+                Loc, Lexer::getLocForEndOfToken(Loc, 0, getSourceManager(),
+                                                getLangOptions())),
+                                            Opc == BO_LAnd ? "&" : "|");
+        if (Opc == BO_LAnd)
+          // Suggest replacing "Foo() && kNonZero" with "Foo()"
+          Diag(Loc, diag::note_logical_instead_of_bitwise_remove_constant)
+              << FixItHint::CreateRemoval(
+                  SourceRange(
+                      Lexer::getLocForEndOfToken(lex.get()->getLocEnd(),
+                                                 0, getSourceManager(),
+                                                 getLangOptions()),
+                      rex.get()->getLocEnd()));
+      }
   }
   
   if (!Context.getLangOptions().CPlusPlus) {
@@ -7129,18 +7201,13 @@ static QualType CheckIncrementDecrementOperand(Sema &S, Expr *Op,
   } else if (ResType->isRealType()) {
     // OK!
   } else if (ResType->isAnyPointerType()) {
-    QualType PointeeTy = ResType->getPointeeType();
-
     // C99 6.5.2.4p2, 6.5.6p2
     if (!checkArithmeticOpPointerOperand(S, OpLoc, Op))
       return QualType();
 
     // Diagnose bad cases where we step over interface counts.
-    else if (PointeeTy->isObjCObjectType() && S.LangOpts.ObjCNonFragileABI) {
-      S.Diag(OpLoc, diag::err_arithmetic_nonfragile_interface)
-        << PointeeTy << Op->getSourceRange();
+    else if (!checkArithmethicPointerOnNonFragileABI(S, OpLoc, Op))
       return QualType();
-    }
   } else if (ResType->isAnyComplexType()) {
     // C99 does not support ++/-- on complex types, we allow as an extension.
     S.Diag(OpLoc, diag::ext_integer_increment_complex)
@@ -7321,6 +7388,15 @@ static ValueDecl *getPrimaryDecl(Expr *E) {
   }
 }
 
+/// \brief Diagnose invalid operand for address of operations.
+///
+/// \param Type The type of operand which cannot have its address taken.
+/// 0:bit-field 1:vector element 2:property expression 3:register variable
+static void diagnoseAddressOfInvalidType(Sema &S, SourceLocation Loc,
+                                         Expr *E, unsigned Type) {
+  S.Diag(Loc, diag::err_typecheck_address_of) << Type << E->getSourceRange();
+}
+
 /// CheckAddressOfOperand - The operand of & must be either a function
 /// designator or an lvalue designating an object. If it is an lvalue, the
 /// object cannot be declared with storage class register or be a bit field.
@@ -7407,18 +7483,15 @@ static QualType CheckAddressOfOperand(Sema &S, Expr *OrigOp,
     }
   } else if (op->getObjectKind() == OK_BitField) { // C99 6.5.3.2p1
     // The operand cannot be a bit-field
-    S.Diag(OpLoc, diag::err_typecheck_address_of)
-      << "bit-field" << op->getSourceRange();
-        return QualType();
+    diagnoseAddressOfInvalidType(S, OpLoc, op, /*bit-field*/ 0);
+    return QualType();
   } else if (op->getObjectKind() == OK_VectorComponent) {
     // The operand cannot be an element of a vector
-    S.Diag(OpLoc, diag::err_typecheck_address_of)
-      << "vector element" << op->getSourceRange();
+    diagnoseAddressOfInvalidType(S, OpLoc, op, /*vector element*/ 1);
     return QualType();
   } else if (op->getObjectKind() == OK_ObjCProperty) {
     // cannot take address of a property expression.
-    S.Diag(OpLoc, diag::err_typecheck_address_of)
-      << "property expression" << op->getSourceRange();
+    diagnoseAddressOfInvalidType(S, OpLoc, op, /*property expression*/ 2);
     return QualType();
   } else if (dcl) { // C99 6.5.3.2p1
     // We have an lvalue with a decl. Make sure the decl is not declared
@@ -7428,8 +7501,7 @@ static QualType CheckAddressOfOperand(Sema &S, Expr *OrigOp,
       // variable (c++03 7.1.1P3)
       if (vd->getStorageClass() == SC_Register &&
           !S.getLangOptions().CPlusPlus) {
-        S.Diag(OpLoc, diag::err_typecheck_address_of)
-          << "register variable" << op->getSourceRange();
+        diagnoseAddressOfInvalidType(S, OpLoc, op, /*register variable*/ 3);
         return QualType();
       }
     } else if (isa<FunctionTemplateDecl>(dcl)) {
@@ -7454,7 +7526,7 @@ static QualType CheckAddressOfOperand(Sema &S, Expr *OrigOp,
                 S.Context.getTypeDeclType(cast<RecordDecl>(Ctx)).getTypePtr());
         }
       }
-    } else if (!isa<FunctionDecl>(dcl))
+    } else if (!isa<FunctionDecl>(dcl) && !isa<NonTypeTemplateParmDecl>(dcl))
       assert(0 && "Unknown/unexpected decl type");
   }
 
@@ -7617,6 +7689,54 @@ static void DiagnoseSelfAssignment(Sema &S, Expr *lhs, Expr *rhs,
       << lhs->getSourceRange() << rhs->getSourceRange();
 }
 
+// checkArithmeticNull - Detect when a NULL constant is used improperly in an
+// expression.  These are mainly cases where the null pointer is used as an
+// integer instead of a pointer.
+static void checkArithmeticNull(Sema &S, ExprResult &lex, ExprResult &rex,
+                                SourceLocation Loc, bool isCompare) {
+  // The canonical way to check for a GNU null is with isNullPointerConstant,
+  // but we use a bit of a hack here for speed; this is a relatively
+  // hot path, and isNullPointerConstant is slow.
+  bool LeftNull = isa<GNUNullExpr>(lex.get()->IgnoreParenImpCasts());
+  bool RightNull = isa<GNUNullExpr>(rex.get()->IgnoreParenImpCasts());
+
+  // Detect when a NULL constant is used improperly in an expression.  These
+  // are mainly cases where the null pointer is used as an integer instead
+  // of a pointer.
+  if (!LeftNull && !RightNull)
+    return;
+
+  QualType LeftType = lex.get()->getType();
+  QualType RightType = rex.get()->getType();
+
+  // Avoid analyzing cases where the result will either be invalid (and
+  // diagnosed as such) or entirely valid and not something to warn about.
+  if (LeftType->isBlockPointerType() || LeftType->isMemberPointerType() ||
+      LeftType->isFunctionType() || RightType->isBlockPointerType() ||
+      RightType->isMemberPointerType() || RightType->isFunctionType())
+    return;
+
+  // Comparison operations would not make sense with a null pointer no matter
+  // what the other expression is.
+  if (!isCompare) {
+    S.Diag(Loc, diag::warn_null_in_arithmetic_operation)
+        << (LeftNull ? lex.get()->getSourceRange() : SourceRange())
+        << (RightNull ? rex.get()->getSourceRange() : SourceRange());
+    return;
+  }
+
+  // The rest of the operations only make sense with a null pointer
+  // if the other expression is a pointer.
+  if (LeftNull == RightNull || LeftType->isAnyPointerType() ||
+      LeftType->canDecayToPointerType() || RightType->isAnyPointerType() ||
+      RightType->canDecayToPointerType())
+    return;
+
+  S.Diag(Loc, diag::warn_null_in_comparison_operation)
+      << LeftNull /* LHS is NULL */
+      << (LeftNull ? rex.get()->getType() : lex.get()->getType())
+      << lex.get()->getSourceRange() << rex.get()->getSourceRange();
+}
 /// CreateBuiltinBinOp - Creates a new built-in binary operation with
 /// operator @p Opc at location @c TokLoc. This routine only supports
 /// built-in operations; ActOnBinOp handles overloaded operators.
@@ -7648,52 +7768,16 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
     rhs = move(resolvedRHS);
   }
 
-  // The canonical way to check for a GNU null is with isNullPointerConstant,
-  // but we use a bit of a hack here for speed; this is a relatively
-  // hot path, and isNullPointerConstant is slow.
-  bool LeftNull = isa<GNUNullExpr>(lhs.get()->IgnoreParenImpCasts());
-  bool RightNull = isa<GNUNullExpr>(rhs.get()->IgnoreParenImpCasts());
-
-  // Detect when a NULL constant is used improperly in an expression.  These
-  // are mainly cases where the null pointer is used as an integer instead
-  // of a pointer.
-  if (LeftNull || RightNull) {
-    // Avoid analyzing cases where the result will either be invalid (and
-    // diagnosed as such) or entirely valid and not something to warn about.
-    QualType LeftType = lhs.get()->getType();
-    QualType RightType = rhs.get()->getType();
-    if (!LeftType->isBlockPointerType() && !LeftType->isMemberPointerType() &&
-        !LeftType->isFunctionType() &&
-        !RightType->isBlockPointerType() &&
-        !RightType->isMemberPointerType() &&
-        !RightType->isFunctionType()) {
-      if (Opc == BO_Mul || Opc == BO_Div || Opc == BO_Rem || Opc == BO_Add ||
-          Opc == BO_Sub || Opc == BO_Shl || Opc == BO_Shr || Opc == BO_And ||
-          Opc == BO_Xor || Opc == BO_Or || Opc == BO_MulAssign ||
-          Opc == BO_DivAssign || Opc == BO_AddAssign || Opc == BO_SubAssign ||
-          Opc == BO_RemAssign || Opc == BO_ShlAssign || Opc == BO_ShrAssign ||
-          Opc == BO_AndAssign || Opc == BO_OrAssign || Opc == BO_XorAssign) {
-        // These are the operations that would not make sense with a null pointer
-        // pointer no matter what the other expression is.
-        Diag(OpLoc, diag::warn_null_in_arithmetic_operation)
-          << (LeftNull ? lhs.get()->getSourceRange() : SourceRange())
-          << (RightNull ? rhs.get()->getSourceRange() : SourceRange());
-      } else if (Opc == BO_LE || Opc == BO_LT || Opc == BO_GE || Opc == BO_GT ||
-                 Opc == BO_EQ || Opc == BO_NE) {
-        // These are the operations that would not make sense with a null pointer
-        // if the other expression the other expression is not a pointer.
-        if (LeftNull != RightNull &&
-            !LeftType->isAnyPointerType() &&
-            !LeftType->canDecayToPointerType() &&
-            !RightType->isAnyPointerType() &&
-            !RightType->canDecayToPointerType()) {
-          Diag(OpLoc, diag::warn_null_in_arithmetic_operation)
-            << (LeftNull ? lhs.get()->getSourceRange()
-                         : rhs.get()->getSourceRange());
-        }
-      }
-    }
-  }
+  if (Opc == BO_Mul || Opc == BO_Div || Opc == BO_Rem || Opc == BO_Add ||
+      Opc == BO_Sub || Opc == BO_Shl || Opc == BO_Shr || Opc == BO_And ||
+      Opc == BO_Xor || Opc == BO_Or || Opc == BO_MulAssign ||
+      Opc == BO_DivAssign || Opc == BO_AddAssign || Opc == BO_SubAssign ||
+      Opc == BO_RemAssign || Opc == BO_ShlAssign || Opc == BO_ShrAssign ||
+      Opc == BO_AndAssign || Opc == BO_OrAssign || Opc == BO_XorAssign)
+    checkArithmeticNull(*this, lhs, rhs, OpLoc, /*isCompare=*/false);
+  else if (Opc == BO_LE || Opc == BO_LT || Opc == BO_GE || Opc == BO_GT ||
+           Opc == BO_EQ || Opc == BO_NE)
+    checkArithmeticNull(*this, lhs, rhs, OpLoc, /*isCompare=*/true);
 
   switch (Opc) {
   case BO_Assign:
@@ -8832,12 +8916,12 @@ ExprResult Sema::ActOnGNUNullExpr(SourceLocation TokenLoc) {
   // The type of __null will be int or long, depending on the size of
   // pointers on the target.
   QualType Ty;
-  unsigned pw = Context.Target.getPointerWidth(0);
-  if (pw == Context.Target.getIntWidth())
+  unsigned pw = Context.getTargetInfo().getPointerWidth(0);
+  if (pw == Context.getTargetInfo().getIntWidth())
     Ty = Context.IntTy;
-  else if (pw == Context.Target.getLongWidth())
+  else if (pw == Context.getTargetInfo().getLongWidth())
     Ty = Context.LongTy;
-  else if (pw == Context.Target.getLongLongWidth())
+  else if (pw == Context.getTargetInfo().getLongLongWidth())
     Ty = Context.LongLongTy;
   else {
     assert(!"I don't know size of pointer!");
@@ -9184,15 +9268,19 @@ void Sema::MarkDeclarationReferenced(SourceLocation Loc, Decl *D) {
 
   // Note that this declaration has been used.
   if (CXXConstructorDecl *Constructor = dyn_cast<CXXConstructorDecl>(D)) {
-    if (Constructor->isDefaulted() && Constructor->isDefaultConstructor()) {
-      if (Constructor->isTrivial())
-        return;
-      if (!Constructor->isUsed(false))
-        DefineImplicitDefaultConstructor(Loc, Constructor);
-    } else if (Constructor->isDefaulted() &&
-               Constructor->isCopyConstructor()) {
-      if (!Constructor->isUsed(false))
-        DefineImplicitCopyConstructor(Loc, Constructor);
+    if (Constructor->isDefaulted()) {
+      if (Constructor->isDefaultConstructor()) {
+        if (Constructor->isTrivial())
+          return;
+        if (!Constructor->isUsed(false))
+          DefineImplicitDefaultConstructor(Loc, Constructor);
+      } else if (Constructor->isCopyConstructor()) {
+        if (!Constructor->isUsed(false))
+          DefineImplicitCopyConstructor(Loc, Constructor);
+      } else if (Constructor->isMoveConstructor()) {
+        if (!Constructor->isUsed(false))
+          DefineImplicitMoveConstructor(Loc, Constructor);
+      }
     }
 
     MarkVTableUsed(Loc, Constructor->getParent());
@@ -9204,8 +9292,12 @@ void Sema::MarkDeclarationReferenced(SourceLocation Loc, Decl *D) {
   } else if (CXXMethodDecl *MethodDecl = dyn_cast<CXXMethodDecl>(D)) {
     if (MethodDecl->isDefaulted() && MethodDecl->isOverloadedOperator() &&
         MethodDecl->getOverloadedOperator() == OO_Equal) {
-      if (!MethodDecl->isUsed(false))
-        DefineImplicitCopyAssignment(Loc, MethodDecl);
+      if (!MethodDecl->isUsed(false)) {
+        if (MethodDecl->isCopyAssignmentOperator())
+          DefineImplicitCopyAssignment(Loc, MethodDecl);
+        else
+          DefineImplicitMoveAssignment(Loc, MethodDecl);
+      }
     } else if (MethodDecl->isVirtual())
       MarkVTableUsed(Loc, MethodDecl->getParent());
   }
@@ -9470,8 +9562,7 @@ void Sema::DiagnoseAssignmentAsCondition(Expr *E) {
   unsigned diagnostic = diag::warn_condition_is_assignment;
   bool IsOrAssign = false;
 
-  if (isa<BinaryOperator>(E)) {
-    BinaryOperator *Op = cast<BinaryOperator>(E);
+  if (BinaryOperator *Op = dyn_cast<BinaryOperator>(E)) {
     if (Op->getOpcode() != BO_Assign && Op->getOpcode() != BO_OrAssign)
       return;
 
@@ -9492,8 +9583,7 @@ void Sema::DiagnoseAssignmentAsCondition(Expr *E) {
     }
 
     Loc = Op->getOperatorLoc();
-  } else if (isa<CXXOperatorCallExpr>(E)) {
-    CXXOperatorCallExpr *Op = cast<CXXOperatorCallExpr>(E);
+  } else if (CXXOperatorCallExpr *Op = dyn_cast<CXXOperatorCallExpr>(E)) {
     if (Op->getOperator() != OO_Equal && Op->getOperator() != OO_PipeEqual)
       return;
 
@@ -9966,7 +10056,12 @@ static ExprResult diagnoseUnknownAnyExpr(Sema &S, Expr *e) {
     diagID = diag::err_uncasted_call_of_unknown_any;
     loc = msg->getSelectorLoc();
     d = msg->getMethodDecl();
-    assert(d && "unknown method returning __unknown_any?");
+    if (!d) {
+      S.Diag(loc, diag::err_uncasted_send_to_unknown_any_method)
+        << static_cast<unsigned>(msg->isClassMessage()) << msg->getSelector()
+        << orig->getSourceRange();
+      return ExprError();
+    }
   } else {
     S.Diag(e->getExprLoc(), diag::err_unsupported_unknown_any_expr)
       << e->getSourceRange();

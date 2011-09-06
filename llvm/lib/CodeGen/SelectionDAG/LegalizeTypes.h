@@ -148,15 +148,22 @@ private:
   SDValue CreateStackStoreLoad(SDValue Op, EVT DestVT);
   bool CustomLowerNode(SDNode *N, EVT VT, bool LegalizeResult);
   bool CustomWidenLowerNode(SDNode *N, EVT VT);
+
+  // DecomposeMERGE_VALUES takes a SDNode and returns the first
+  // illegal value. All other results are replaced with the
+  // corresponding input operand.
+  SDValue DecomposeMERGE_VALUES(SDNode *N);
+
   SDValue GetVectorElementPointer(SDValue VecPtr, EVT EltVT, SDValue Index);
   SDValue JoinIntegers(SDValue Lo, SDValue Hi);
   SDValue LibCallify(RTLIB::Libcall LC, SDNode *N, bool isSigned);
   SDValue MakeLibCall(RTLIB::Libcall LC, EVT RetVT,
                       const SDValue *Ops, unsigned NumOps, bool isSigned,
                       DebugLoc dl);
-	std::pair<SDValue, SDValue> ExpandChainLibCall(RTLIB::Libcall LC,
-									                               SDNode *Node, bool isSigned);
-	std::pair<SDValue, SDValue> ExpandAtomic(SDNode *Node);
+  
+  std::pair<SDValue, SDValue> ExpandChainLibCall(RTLIB::Libcall LC,
+                                                 SDNode *Node, bool isSigned);
+  std::pair<SDValue, SDValue> ExpandAtomic(SDNode *Node);
 
   SDValue PromoteTargetBoolean(SDValue Bool, EVT VT);
   void ReplaceValueWith(SDValue From, SDValue To);
@@ -206,6 +213,7 @@ private:
 
   // Integer Result Promotion.
   void PromoteIntegerResult(SDNode *N, unsigned ResNo);
+  SDValue PromoteIntRes_MERGE_VALUES(SDNode *N);
   SDValue PromoteIntRes_AssertSext(SDNode *N);
   SDValue PromoteIntRes_AssertZext(SDNode *N);
   SDValue PromoteIntRes_Atomic1(AtomicSDNode *N);
@@ -289,6 +297,7 @@ private:
 
   // Integer Result Expansion.
   void ExpandIntegerResult(SDNode *N, unsigned ResNo);
+  void ExpandIntRes_MERGE_VALUES      (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ANY_EXTEND        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_AssertSext        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_AssertZext        (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -320,6 +329,8 @@ private:
   void ExpandIntRes_UADDSUBO          (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_XMULO             (SDNode *N, SDValue &Lo, SDValue &Hi);
 
+  void ExpandIntRes_ATOMIC_LOAD       (SDNode *N, SDValue &Lo, SDValue &Hi);
+
   void ExpandShiftByConstant(SDNode *N, unsigned Amt,
                              SDValue &Lo, SDValue &Hi);
   bool ExpandShiftWithKnownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -339,6 +350,7 @@ private:
   SDValue ExpandIntOp_TRUNCATE(SDNode *N);
   SDValue ExpandIntOp_UINT_TO_FP(SDNode *N);
   SDValue ExpandIntOp_RETURNADDR(SDNode *N);
+  SDValue ExpandIntOp_ATOMIC_STORE(SDNode *N);
 
   void IntegerExpandSetCCOperands(SDValue &NewLHS, SDValue &NewRHS,
                                   ISD::CondCode &CCCode, DebugLoc dl);
@@ -362,6 +374,7 @@ private:
 
   // Result Float to Integer Conversion.
   void SoftenFloatResult(SDNode *N, unsigned OpNo);
+  SDValue SoftenFloatRes_MERGE_VALUES(SDNode *N);
   SDValue SoftenFloatRes_BITCAST(SDNode *N);
   SDValue SoftenFloatRes_BUILD_PAIR(SDNode *N);
   SDValue SoftenFloatRes_ConstantFP(ConstantFPSDNode *N);
@@ -488,6 +501,7 @@ private:
 
   // Vector Result Scalarization: <1 x ty> -> ty.
   void ScalarizeVectorResult(SDNode *N, unsigned OpNo);
+  SDValue ScalarizeVecRes_MERGE_VALUES(SDNode *N);
   SDValue ScalarizeVecRes_BinOp(SDNode *N);
   SDValue ScalarizeVecRes_UnaryOp(SDNode *N);
   SDValue ScalarizeVecRes_InregOp(SDNode *N);
@@ -581,6 +595,7 @@ private:
 
   // Widen Vector Result Promotion.
   void WidenVectorResult(SDNode *N, unsigned ResNo);
+  SDValue WidenVecRes_MERGE_VALUES(SDNode* N);
   SDValue WidenVecRes_BITCAST(SDNode* N);
   SDValue WidenVecRes_BUILD_VECTOR(SDNode* N);
   SDValue WidenVecRes_CONCAT_VECTORS(SDNode* N);
@@ -699,6 +714,7 @@ private:
   }
 
   // Generic Result Expansion.
+  void ExpandRes_MERGE_VALUES      (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandRes_BITCAST           (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandRes_BUILD_PAIR        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandRes_EXTRACT_ELEMENT   (SDNode *N, SDValue &Lo, SDValue &Hi);

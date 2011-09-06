@@ -46,7 +46,9 @@ static void EmitDeclInit(CodeGenFunction &CGF, const VarDecl &D,
   } else if (type->isAnyComplexType()) {
     CGF.EmitComplexExprIntoAddr(Init, DeclPtr, lv.isVolatile());
   } else {
-    CGF.EmitAggExpr(Init, AggValueSlot::forLValue(lv, true));
+    CGF.EmitAggExpr(Init, AggValueSlot::forLValue(lv,AggValueSlot::IsDestructed,
+                                          AggValueSlot::DoesNotNeedGCBarriers,
+                                                  AggValueSlot::IsNotAliased));
   }
 }
 
@@ -174,7 +176,7 @@ CreateGlobalInitOrDestructFunction(CodeGenModule &CGM,
   if (!CGM.getContext().getLangOptions().AppleKext) {
     // Set the section if needed.
     if (const char *Section = 
-          CGM.getContext().Target.getStaticInitSectionSpecifier())
+          CGM.getContext().getTargetInfo().getStaticInitSectionSpecifier())
       Fn->setSection(Section);
   }
 

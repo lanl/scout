@@ -18,6 +18,7 @@
 #define LLVM_CODEGEN_LEXICALSCOPES_H
 
 #include "llvm/Metadata.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -44,7 +45,7 @@ typedef std::pair<const MachineInstr *, const MachineInstr *> InsnRange;
 class LexicalScopes {
 public:
   LexicalScopes() : MF(NULL),  CurrentFnLexicalScope(NULL) { }
-  ~LexicalScopes();
+  virtual ~LexicalScopes();
 
   /// initialize - Scan machine function and constuct lexical scope nest.
   virtual void initialize(const MachineFunction &);
@@ -79,7 +80,7 @@ public:
   LexicalScope *findLexicalScope(DebugLoc DL);
 
   /// getAbstractScopesList - Return a reference to list of abstract scopes.
-  SmallVector<LexicalScope *, 4> &getAbstractScopesList() {
+  ArrayRef<LexicalScope *> getAbstractScopesList() const {
     return AbstractScopesList;
   }
 
@@ -208,7 +209,7 @@ public:
   }
 
   /// dominates - Return true if current scope dominsates given lexical scope.
-  bool dominates(const LexicalScope *S) {
+  bool dominates(const LexicalScope *S) const {
     if (S == this)
       return true;
     if (DFSIn < S->getDFSIn() && DFSOut > S->getDFSOut())

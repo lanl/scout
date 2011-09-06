@@ -43,12 +43,12 @@ using namespace clang;
 // ndm - added ASTViewer param
 void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
-                     bool CompleteTranslationUnit,
+                     TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
                      ASTViewScout* ASTViewer) {
 
   llvm::OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
-                                   CompleteTranslationUnit,
+                                   TUKind,
                                    CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.

@@ -278,6 +278,8 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::EXTRACTPSrr, X86::EXTRACTPSmr, 0, 16 },
     { X86::FsMOVAPDrr,  X86::MOVSDmr | TB_NOT_REVERSABLE , 0, 0 },
     { X86::FsMOVAPSrr,  X86::MOVSSmr | TB_NOT_REVERSABLE , 0, 0 },
+    { X86::FsVMOVAPDrr, X86::VMOVSDmr | TB_NOT_REVERSABLE , 0, 0 },
+    { X86::FsVMOVAPSrr, X86::VMOVSSmr | TB_NOT_REVERSABLE , 0, 0 },
     { X86::IDIV16r,     X86::IDIV16m, 1, 0 },
     { X86::IDIV32r,     X86::IDIV32m, 1, 0 },
     { X86::IDIV64r,     X86::IDIV64m, 1, 0 },
@@ -375,6 +377,8 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::CVTTSS2SIrr,     X86::CVTTSS2SIrm, 0 },
     { X86::FsMOVAPDrr,      X86::MOVSDrm | TB_NOT_REVERSABLE , 0 },
     { X86::FsMOVAPSrr,      X86::MOVSSrm | TB_NOT_REVERSABLE , 0 },
+    { X86::FsVMOVAPDrr,     X86::VMOVSDrm | TB_NOT_REVERSABLE , 0 },
+    { X86::FsVMOVAPSrr,     X86::VMOVSSrm | TB_NOT_REVERSABLE , 0 },
     { X86::IMUL16rri,       X86::IMUL16rmi, 0 },
     { X86::IMUL16rri8,      X86::IMUL16rmi8, 0 },
     { X86::IMUL32rri,       X86::IMUL32rmi, 0 },
@@ -913,6 +917,8 @@ X86InstrInfo::isReallyTriviallyReMaterializable(const MachineInstr *MI,
     case X86::VMOVDQAYrm:
     case X86::MMX_MOVD64rm:
     case X86::MMX_MOVQ64rm:
+    case X86::FsVMOVAPSrm:
+    case X86::FsVMOVAPDrm:
     case X86::FsMOVAPSrm:
     case X86::FsMOVAPDrm: {
       // Loads from constant pools are trivially rematerializable.
@@ -975,15 +981,11 @@ static bool isSafeToClobberEFLAGS(MachineBasicBlock &MBB,
                                   MachineBasicBlock::iterator I) {
   MachineBasicBlock::iterator E = MBB.end();
 
-  // It's always safe to clobber EFLAGS at the end of a block.
-  if (I == E)
-    return true;
-
   // For compile time consideration, if we are not able to determine the
   // safety after visiting 4 instructions in each direction, we will assume
   // it's not safe.
   MachineBasicBlock::iterator Iter = I;
-  for (unsigned i = 0; i < 4; ++i) {
+  for (unsigned i = 0; Iter != E && i < 4; ++i) {
     bool SeenDef = false;
     for (unsigned j = 0, e = Iter->getNumOperands(); j != e; ++j) {
       MachineOperand &MO = Iter->getOperand(j);
@@ -1003,10 +1005,16 @@ static bool isSafeToClobberEFLAGS(MachineBasicBlock &MBB,
     // Skip over DBG_VALUE.
     while (Iter != E && Iter->isDebugValue())
       ++Iter;
+  }
 
-    // If we make it to the end of the block, it's safe to clobber EFLAGS.
-    if (Iter == E)
-      return true;
+  // It is safe to clobber EFLAGS at the end of a block of no successor has it
+  // live in.
+  if (Iter == E) {
+    for (MachineBasicBlock::succ_iterator SI = MBB.succ_begin(),
+           SE = MBB.succ_end(); SI != SE; ++SI)
+      if ((*SI)->isLiveIn(X86::EFLAGS))
+        return false;
+    return true;
   }
 
   MachineBasicBlock::iterator B = MBB.begin();
@@ -1959,7 +1967,8 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     else
       Opc = X86::MOV8rr;
   } else if (X86::VR128RegClass.contains(DestReg, SrcReg))
-    Opc = X86::MOVAPSrr;
+    Opc = TM.getSubtarget<X86Subtarget>().hasAVX() ?
+          X86::VMOVAPSrr : X86::MOVAPSrr;
   else if (X86::VR256RegClass.contains(DestReg, SrcReg))
     Opc = X86::VMOVAPSYrr;
   else if (X86::VR64RegClass.contains(DestReg, SrcReg))
@@ -2044,13 +2053,19 @@ static unsigned getLoadStoreRegOpcode(unsigned Reg,
   case 10:
     assert(X86::RFP80RegClass.hasSubClassEq(RC) && "Unknown 10-byte regclass");
     return load ? X86::LD_Fp80m : X86::ST_FpP80m;
-  case 16:
+  case 16: {
     assert(X86::VR128RegClass.hasSubClassEq(RC) && "Unknown 16-byte regclass");
+    bool HasAVX = TM.getSubtarget<X86Subtarget>().hasAVX();
     // If stack is realigned we can use aligned stores.
     if (isStackAligned)
-      return load ? X86::MOVAPSrm : X86::MOVAPSmr;
+      return load ?
+        (HasAVX ? X86::VMOVAPSrm : X86::MOVAPSrm) :
+        (HasAVX ? X86::VMOVAPSmr : X86::MOVAPSmr);
     else
-      return load ? X86::MOVUPSrm : X86::MOVUPSmr;
+      return load ?
+        (HasAVX ? X86::VMOVUPSrm : X86::MOVUPSrm) :
+        (HasAVX ? X86::VMOVUPSmr : X86::MOVUPSmr);
+  }
   case 32:
     assert(X86::VR256RegClass.hasSubClassEq(RC) && "Unknown 32-byte regclass");
     // If stack is realigned we can use aligned stores.
@@ -2847,6 +2862,8 @@ X86InstrInfo::areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2,
   case X86::MMX_MOVQ64rm:
   case X86::FsMOVAPSrm:
   case X86::FsMOVAPDrm:
+  case X86::FsVMOVAPSrm:
+  case X86::FsVMOVAPDrm:
   case X86::MOVAPSrm:
   case X86::MOVUPSrm:
   case X86::MOVAPDrm:
@@ -2874,6 +2891,8 @@ X86InstrInfo::areLoadsFromSameBasePtr(SDNode *Load1, SDNode *Load2,
   case X86::MMX_MOVQ64rm:
   case X86::FsMOVAPSrm:
   case X86::FsMOVAPDrm:
+  case X86::FsVMOVAPSrm:
+  case X86::FsVMOVAPDrm:
   case X86::MOVAPSrm:
   case X86::MOVUPSrm:
   case X86::MOVAPDrm:

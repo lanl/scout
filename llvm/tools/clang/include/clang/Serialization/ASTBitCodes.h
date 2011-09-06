@@ -64,6 +64,11 @@ namespace clang {
     /// \brief a Decl::Kind/DeclID pair.
     typedef std::pair<uint32_t, DeclID> KindDeclIDPair;
 
+    // FIXME: Turn these into classes so we can have some type safety when
+    // we go from local ID to global and vice-versa.
+    typedef DeclID LocalDeclID;
+    typedef DeclID GlobalDeclID;
+
     /// \brief An ID number that refers to a type in an AST file.
     ///
     /// The ID of a type is partitioned into two parts: the lower
@@ -317,9 +322,9 @@ namespace clang {
       /// \brief Record code for the array of dynamic classes.
       DYNAMIC_CLASSES = 25,
 
-      /// \brief Record code for the chained AST metadata, including the
-      /// AST file version and the name of the PCH this depends on.
-      CHAINED_METADATA = 26,
+      /// \brief Record code for the list of other AST files imported by
+      /// this AST file.
+      IMPORTS = 26,
 
       /// \brief Record code for referenced selector pool.
       REFERENCED_SELECTOR_POOL = 27,
@@ -402,7 +407,11 @@ namespace clang {
 
       /// \brief Record code for the source manager line table information,
       /// which stores information about #line directives.
-      SOURCE_MANAGER_LINE_TABLE = 48
+      SOURCE_MANAGER_LINE_TABLE = 48,
+
+      /// \brief Record code for ObjC categories in a module that are chained to
+      /// an interface.
+      OBJC_CHAINED_CATEGORIES
     };
 
     /// \brief Record types used within a source manager block.
@@ -665,30 +674,22 @@ namespace clang {
     enum SpecialTypeIDs {
       /// \brief __builtin_va_list
       SPECIAL_TYPE_BUILTIN_VA_LIST             = 0,
-      /// \brief Objective-C "id" type
-      SPECIAL_TYPE_OBJC_ID                     = 1,
-      /// \brief Objective-C selector type
-      SPECIAL_TYPE_OBJC_SELECTOR               = 2,
       /// \brief Objective-C Protocol type
-      SPECIAL_TYPE_OBJC_PROTOCOL               = 3,
-      /// \brief Objective-C Class type
-      SPECIAL_TYPE_OBJC_CLASS                  = 4,
+      SPECIAL_TYPE_OBJC_PROTOCOL               = 1,
       /// \brief CFConstantString type
-      SPECIAL_TYPE_CF_CONSTANT_STRING          = 5,
+      SPECIAL_TYPE_CF_CONSTANT_STRING          = 2,
       /// \brief C FILE typedef type
-      SPECIAL_TYPE_FILE                        = 6,
+      SPECIAL_TYPE_FILE                        = 3,
       /// \brief C jmp_buf typedef type
-      SPECIAL_TYPE_jmp_buf                     = 7,
+      SPECIAL_TYPE_jmp_buf                     = 4,
       /// \brief C sigjmp_buf typedef type
-      SPECIAL_TYPE_sigjmp_buf                  = 8,
+      SPECIAL_TYPE_sigjmp_buf                  = 5,
       /// \brief Objective-C "id" redefinition type
-      SPECIAL_TYPE_OBJC_ID_REDEFINITION        = 9,
+      SPECIAL_TYPE_OBJC_ID_REDEFINITION        = 6,
       /// \brief Objective-C "Class" redefinition type
-      SPECIAL_TYPE_OBJC_CLASS_REDEFINITION     = 10,
+      SPECIAL_TYPE_OBJC_CLASS_REDEFINITION     = 7,
       /// \brief Objective-C "SEL" redefinition type
-      SPECIAL_TYPE_OBJC_SEL_REDEFINITION       = 11,
-      /// \brief Whether __[u]int128_t identifier is installed.
-      SPECIAL_TYPE_INT128_INSTALLED            = 12
+      SPECIAL_TYPE_OBJC_SEL_REDEFINITION       = 8
     };
 
     /// \brief Predefined declaration IDs.
@@ -699,14 +700,32 @@ namespace clang {
     /// it is created.
     enum PredefinedDeclIDs {
       /// \brief The NULL declaration.
-      PREDEF_DECL_NULL_ID       = 0
+      PREDEF_DECL_NULL_ID       = 0,
+      
+      /// \brief The translation unit.
+      PREDEF_DECL_TRANSLATION_UNIT_ID = 1,
+      
+      /// \brief The Objective-C 'id' type.
+      PREDEF_DECL_OBJC_ID_ID = 2,
+      
+      /// \brief The Objective-C 'SEL' type.
+      PREDEF_DECL_OBJC_SEL_ID = 3,
+      
+      /// \brief The Objective-C 'Class' type.
+      PREDEF_DECL_OBJC_CLASS_ID = 4,
+      
+      /// \brief The signed 128-bit integer type.
+      PREDEF_DECL_INT_128_ID = 5,
+
+      /// \brief The unsigned 128-bit integer type.
+      PREDEF_DECL_UNSIGNED_INT_128_ID = 6
     };
 
     /// \brief The number of declaration IDs that are predefined.
     ///
     /// For more information about predefined declarations, see the
     /// \c PredefinedDeclIDs type and the PREDEF_DECL_*_ID constants.
-    const unsigned int NUM_PREDEF_DECL_IDS = 1;
+    const unsigned int NUM_PREDEF_DECL_IDS = 7;
 
     /// \brief Record codes for each kind of declaration.
     ///
@@ -715,10 +734,8 @@ namespace clang {
     /// constant describes a record for a specific declaration class
     /// in the AST.
     enum DeclCode {
-      /// \brief A TranslationUnitDecl record.
-      DECL_TRANSLATION_UNIT = 50,
       /// \brief A TypedefDecl record.
-      DECL_TYPEDEF,
+      DECL_TYPEDEF = 51,
       /// \brief A TypeAliasDecl record.
       DECL_TYPEALIAS,
       /// \brief An EnumDecl record.
@@ -843,7 +860,10 @@ namespace clang {
       DECL_INDIRECTFIELD,
       /// \brief A NonTypeTemplateParmDecl record that stores an expanded
       /// non-type template parameter pack.
-      DECL_EXPANDED_NON_TYPE_TEMPLATE_PARM_PACK
+      DECL_EXPANDED_NON_TYPE_TEMPLATE_PARM_PACK,
+      /// \brief A ClassScopeFunctionSpecializationDecl record a class scope
+      /// function specialization. (Microsoft extension).
+      DECL_CLASS_SCOPE_FUNCTION_SPECIALIZATION
     };
 
     /// \brief Record codes for each kind of statement or expression.

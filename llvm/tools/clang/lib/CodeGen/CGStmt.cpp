@@ -1031,7 +1031,10 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
   } else if (RV->getType()->isAnyComplexType()) {
     EmitComplexExprIntoAddr(RV, ReturnValue, false);
   } else {
-    EmitAggExpr(RV, AggValueSlot::forAddr(ReturnValue, Qualifiers(), true));
+    EmitAggExpr(RV, AggValueSlot::forAddr(ReturnValue, Qualifiers(),
+                                          AggValueSlot::IsDestructed,
+                                          AggValueSlot::DoesNotNeedGCBarriers,
+                                          AggValueSlot::IsNotAliased));
   }
 
   EmitBranchThroughCleanup(ReturnBlock);

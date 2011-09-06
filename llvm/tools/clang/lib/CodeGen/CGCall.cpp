@@ -599,11 +599,11 @@ bool CodeGenModule::ReturnTypeUsesFPRet(QualType ResultType) {
     default:
       return false;
     case BuiltinType::Float:
-      return getContext().Target.useObjCFPRetForRealType(TargetInfo::Float);
+      return getContext().getTargetInfo().useObjCFPRetForRealType(TargetInfo::Float);
     case BuiltinType::Double:
-      return getContext().Target.useObjCFPRetForRealType(TargetInfo::Double);
+      return getContext().getTargetInfo().useObjCFPRetForRealType(TargetInfo::Double);
     case BuiltinType::LongDouble:
-      return getContext().Target.useObjCFPRetForRealType(
+      return getContext().getTargetInfo().useObjCFPRetForRealType(
         TargetInfo::LongDouble);
     }
   }
@@ -739,10 +739,15 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
 
     if (TargetDecl->hasAttr<NoReturnAttr>())
       FuncAttrs |= llvm::Attribute::NoReturn;
-    if (TargetDecl->hasAttr<ConstAttr>())
+
+    // 'const' and 'pure' attribute functions are also nounwind.
+    if (TargetDecl->hasAttr<ConstAttr>()) {
       FuncAttrs |= llvm::Attribute::ReadNone;
-    else if (TargetDecl->hasAttr<PureAttr>())
+      FuncAttrs |= llvm::Attribute::NoUnwind;
+    } else if (TargetDecl->hasAttr<PureAttr>()) {
       FuncAttrs |= llvm::Attribute::ReadOnly;
+      FuncAttrs |= llvm::Attribute::NoUnwind;
+    }
     if (TargetDecl->hasAttr<MallocAttr>())
       RetAttrs |= llvm::Attribute::NoAlias;
   }
@@ -791,7 +796,7 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
   else
     RegParm = CodeGenOpts.NumRegisterParameters;
 
-  unsigned PointerWidth = getContext().Target.getPointerWidth(0);
+  unsigned PointerWidth = getContext().getTargetInfo().getPointerWidth(0);
   for (CGFunctionInfo::const_arg_iterator it = FI.arg_begin(),
          ie = FI.arg_end(); it != ie; ++it) {
     QualType ParamType = it->type;
@@ -902,6 +907,7 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
   // Name the struct return argument.
   if (CGM.ReturnTypeUsesSRet(FI)) {
     AI->setName("agg.result");
+    AI->addAttr(llvm::Attribute::NoAlias);
     ++AI;
   }
 
@@ -1425,9 +1431,14 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
     return emitWritebackArg(*this, args, CRE);
   }
 
-  if (type->isReferenceType())
+  assert(type->isReferenceType() == E->isGLValue() &&
+         "reference binding to unmaterialized r-value!");
+
+  if (E->isGLValue()) {
+    assert(E->getObjectKind() == OK_Ordinary);
     return args.add(EmitReferenceBindingToExpr(E, /*InitializedDecl=*/0),
                     type);
+  }
 
   if (hasAggregateLLVMType(type) && !E->getType()->isAnyComplexType() &&
       isa<ImplicitCastExpr>(E) &&

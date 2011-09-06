@@ -138,6 +138,15 @@ void shrink_int() {
   Agg<int> i2 = {0x7FFFFFFFU};  // OK
   Agg<int> i3 = {0x80000000U};  // expected-error {{ cannot be narrowed }} expected-note {{override}}
   Agg<unsigned int> i4 = {-0x80000000L};  // expected-error {{ cannot be narrowed }} expected-note {{override}}
+
+  // Bool is also an integer type, but conversions to it are a different AST
+  // node.
+  Agg<bool> b1 = {0};  // OK
+  Agg<bool> b2 = {1};  // OK
+  Agg<bool> b3 = {-1};  // expected-error {{ cannot be narrowed }} expected-note {{override}}
+
+  // Conversions from pointers to booleans aren't narrowing conversions.
+  Agg<bool> b = {&b1};  // OK
 }
 
 // Be sure that type- and value-dependent expressions in templates get the error
@@ -153,4 +162,14 @@ void maybe_shrink_int(T t) {
 void test_template() {
   maybe_shrink_int<15>((int)3);  // expected-note {{in instantiation}}
   maybe_shrink_int<70000>((char)3);  // expected-note {{in instantiation}}
+}
+
+
+// We don't want qualifiers on the types in the diagnostic.
+
+void test_qualifiers(int i) {
+  const int j = i;
+  struct {const unsigned char c;} c1 = {j};  // expected-error {{from type 'int' to 'unsigned char' in}} expected-note {{override}}
+  // Template arguments make it harder to avoid printing qualifiers:
+  Agg<const unsigned char> c2 = {j};  // expected-error {{from type 'int' to 'const unsigned char' in}} expected-note {{override}}
 }

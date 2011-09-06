@@ -166,6 +166,88 @@ Value *PHINode::hasConstantValue() const {
   return ConstantValue;
 }
 
+//===----------------------------------------------------------------------===//
+//                       LandingPadInst Implementation
+//===----------------------------------------------------------------------===//
+
+LandingPadInst::LandingPadInst(Type *RetTy, Value *PersonalityFn,
+                               unsigned NumReservedValues, const Twine &NameStr,
+                               Instruction *InsertBefore)
+  : Instruction(RetTy, Instruction::LandingPad, 0, 0, InsertBefore) {
+  init(PersonalityFn, 1 + NumReservedValues, NameStr);
+}
+
+LandingPadInst::LandingPadInst(Type *RetTy, Value *PersonalityFn,
+                               unsigned NumReservedValues, const Twine &NameStr,
+                               BasicBlock *InsertAtEnd)
+  : Instruction(RetTy, Instruction::LandingPad, 0, 0, InsertAtEnd) {
+  init(PersonalityFn, 1 + NumReservedValues, NameStr);
+}
+
+LandingPadInst::LandingPadInst(const LandingPadInst &LP)
+  : Instruction(LP.getType(), Instruction::LandingPad,
+                allocHungoffUses(LP.getNumOperands()), LP.getNumOperands()),
+    ReservedSpace(LP.getNumOperands()) {
+  Use *OL = OperandList, *InOL = LP.OperandList;
+  for (unsigned I = 0, E = ReservedSpace; I != E; ++I)
+    OL[I] = InOL[I];
+
+  setCleanup(LP.isCleanup());
+}
+
+LandingPadInst::~LandingPadInst() {
+  dropHungoffUses();
+}
+
+LandingPadInst *LandingPadInst::Create(Type *RetTy, Value *PersonalityFn,
+                                       unsigned NumReservedClauses,
+                                       const Twine &NameStr,
+                                       Instruction *InsertBefore) {
+  return new LandingPadInst(RetTy, PersonalityFn, NumReservedClauses, NameStr,
+                            InsertBefore);
+}
+
+LandingPadInst *LandingPadInst::Create(Type *RetTy, Value *PersonalityFn,
+                                       unsigned NumReservedClauses,
+                                       const Twine &NameStr,
+                                       BasicBlock *InsertAtEnd) {
+  return new LandingPadInst(RetTy, PersonalityFn, NumReservedClauses, NameStr,
+                            InsertAtEnd);
+}
+
+void LandingPadInst::init(Value *PersFn, unsigned NumReservedValues,
+                          const Twine &NameStr) {
+  ReservedSpace = NumReservedValues;
+  NumOperands = 1;
+  OperandList = allocHungoffUses(ReservedSpace);
+  OperandList[0] = PersFn;
+  setName(NameStr);
+  setCleanup(false);
+}
+
+/// growOperands - grow operands - This grows the operand list in response to a
+/// push_back style of operation. This grows the number of ops by 2 times.
+void LandingPadInst::growOperands(unsigned Size) {
+  unsigned e = getNumOperands();
+  if (ReservedSpace >= e + Size) return;
+  ReservedSpace = (e + Size / 2) * 2;
+
+  Use *NewOps = allocHungoffUses(ReservedSpace);
+  Use *OldOps = OperandList;
+  for (unsigned i = 0; i != e; ++i)
+      NewOps[i] = OldOps[i];
+
+  OperandList = NewOps;
+  Use::zap(OldOps, OldOps + e, true);
+}
+
+void LandingPadInst::addClause(Value *Val) {
+  unsigned OpNo = getNumOperands();
+  growOperands(1);
+  assert(OpNo < ReservedSpace && "Growing didn't work!");
+  ++NumOperands;
+  OperandList[OpNo] = Val;
+}
 
 //===----------------------------------------------------------------------===//
 //                        CallInst Implementation
@@ -494,6 +576,9 @@ void InvokeInst::removeAttribute(unsigned i, Attributes attr) {
   setAttributes(PAL);
 }
 
+LandingPadInst *InvokeInst::getLandingPadInst() const {
+  return cast<LandingPadInst>(getUnwindDest()->getFirstNonPHI());
+}
 
 //===----------------------------------------------------------------------===//
 //                        ReturnInst Implementation
@@ -1974,8 +2059,7 @@ bool CastInst::isNoopCast(Type *IntPtrTy) const {
 /// If no such cast is permited, the function returns 0.
 unsigned CastInst::isEliminableCastPair(
   Instruction::CastOps firstOp, Instruction::CastOps secondOp,
-  Type *SrcTy, Type *MidTy, Type *DstTy, Type *IntPtrTy)
-{
+  Type *SrcTy, Type *MidTy, Type *DstTy, Type *IntPtrTy) {
   // Define the 144 possibilities for these two cast instructions. The values
   // in this matrix determine what to do in a given situation and select the
   // case in the switch below.  The rows correspond to firstOp, the columns 
@@ -2028,12 +2112,16 @@ unsigned CastInst::isEliminableCastPair(
   };
   
   // If either of the casts are a bitcast from scalar to vector, disallow the
-  // merging.
-  if ((firstOp == Instruction::BitCast &&
-       isa<VectorType>(SrcTy) != isa<VectorType>(MidTy)) ||
-      (secondOp == Instruction::BitCast &&
-       isa<VectorType>(MidTy) != isa<VectorType>(DstTy)))
-    return 0; // Disallowed
+  // merging. However, bitcast of A->B->A are allowed.
+  bool isFirstBitcast  = (firstOp == Instruction::BitCast);
+  bool isSecondBitcast = (secondOp == Instruction::BitCast);
+  bool chainedBitcast  = (SrcTy == DstTy && isFirstBitcast && isSecondBitcast);
+
+  // Check if any of the bitcasts convert scalars<->vectors.
+  if ((isFirstBitcast  && isa<VectorType>(SrcTy) != isa<VectorType>(MidTy)) ||
+      (isSecondBitcast && isa<VectorType>(MidTy) != isa<VectorType>(DstTy)))
+    // Unless we are bitcasing to the original type, disallow optimizations.
+    if (!chainedBitcast) return 0;
 
   int ElimCase = CastResults[firstOp-Instruction::CastOpsBegin]
                             [secondOp-Instruction::CastOpsBegin];
@@ -3342,6 +3430,10 @@ ShuffleVectorInst *ShuffleVectorInst::clone_impl() const {
 
 PHINode *PHINode::clone_impl() const {
   return new PHINode(*this);
+}
+
+LandingPadInst *LandingPadInst::clone_impl() const {
+  return new LandingPadInst(*this);
 }
 
 ReturnInst *ReturnInst::clone_impl() const {

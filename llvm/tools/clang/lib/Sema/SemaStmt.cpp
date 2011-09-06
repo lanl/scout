@@ -54,8 +54,8 @@ StmtResult Sema::ActOnExprStmt(FullExprArg expr) {
 
 
 StmtResult Sema::ActOnNullStmt(SourceLocation SemiLoc,
-                               SourceLocation LeadingEmptyMacroLoc) {
-  return Owned(new (Context) NullStmt(SemiLoc, LeadingEmptyMacroLoc));
+                               bool HasLeadingEmptyMacro) {
+  return Owned(new (Context) NullStmt(SemiLoc, HasLeadingEmptyMacro));
 }
 
 StmtResult Sema::ActOnDeclStmt(DeclGroupPtrTy dg, SourceLocation StartLoc,
@@ -99,6 +99,56 @@ void Sema::ActOnForEachDeclStmt(DeclGroupPtrTy dg) {
   }
 }
 
+/// \brief Diagnose unused '==' and '!=' as likely typos for '=' or '|='.
+///
+/// Adding a cast to void (or other expression wrappers) will prevent the
+/// warning from firing.
+static bool DiagnoseUnusedComparison(Sema &S, const Expr *E) {
+  SourceLocation Loc;
+  bool IsNotEqual, CanAssign;
+
+  if (const BinaryOperator *Op = dyn_cast<BinaryOperator>(E)) {
+    if (Op->getOpcode() != BO_EQ && Op->getOpcode() != BO_NE)
+      return false;
+
+    Loc = Op->getOperatorLoc();
+    IsNotEqual = Op->getOpcode() == BO_NE;
+    CanAssign = Op->getLHS()->IgnoreParenImpCasts()->isLValue();
+  } else if (const CXXOperatorCallExpr *Op = dyn_cast<CXXOperatorCallExpr>(E)) {
+    if (Op->getOperator() != OO_EqualEqual &&
+        Op->getOperator() != OO_ExclaimEqual)
+      return false;
+
+    Loc = Op->getOperatorLoc();
+    IsNotEqual = Op->getOperator() == OO_ExclaimEqual;
+    CanAssign = Op->getArg(0)->IgnoreParenImpCasts()->isLValue();
+  } else {
+    // Not a typo-prone comparison.
+    return false;
+  }
+
+  // Suppress warnings when the operator, suspicious as it may be, comes from
+  // a macro expansion.
+  if (Loc.isMacroID())
+    return false;
+
+  S.Diag(Loc, diag::warn_unused_comparison)
+    << (unsigned)IsNotEqual << E->getSourceRange();
+
+  // If the LHS is a plausible entity to assign to, provide a fixit hint to
+  // correct common typos.
+  if (CanAssign) {
+    if (IsNotEqual)
+      S.Diag(Loc, diag::note_inequality_comparison_to_or_assign)
+        << FixItHint::CreateReplacement(Loc, "|=");
+    else
+      S.Diag(Loc, diag::note_equality_comparison_to_assign)
+        << FixItHint::CreateReplacement(Loc, "=");
+  }
+
+  return true;
+}
+
 void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
   if (const LabelStmt *Label = dyn_cast_or_null<LabelStmt>(S))
     return DiagnoseUnusedExprResult(Label->getSubStmt());
@@ -120,6 +170,9 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
     E = Temps->getSubExpr();
   if (const CXXBindTemporaryExpr *TempExpr = dyn_cast<CXXBindTemporaryExpr>(E))
     E = TempExpr->getSubExpr();
+
+  if (DiagnoseUnusedComparison(*this, E))
+    return;
 
   E = E->IgnoreParenImpCasts();
   if (const CallExpr *CE = dyn_cast<CallExpr>(E)) {
@@ -245,6 +298,8 @@ Sema::ActOnCaseStmt(SourceLocation CaseLoc, Expr *LHSVal,
 
 /// ActOnCaseStmtBody - This installs a statement as the body of a case.
 void Sema::ActOnCaseStmtBody(Stmt *caseStmt, Stmt *SubStmt) {
+  DiagnoseUnusedExprResult(SubStmt);
+
   CaseStmt *CS = static_cast<CaseStmt*>(caseStmt);
   CS->setSubStmt(SubStmt);
 }
@@ -252,6 +307,8 @@ void Sema::ActOnCaseStmtBody(Stmt *caseStmt, Stmt *SubStmt) {
 StmtResult
 Sema::ActOnDefaultStmt(SourceLocation DefaultLoc, SourceLocation ColonLoc,
                        Stmt *SubStmt, Scope *CurScope) {
+  DiagnoseUnusedExprResult(SubStmt);
+
   if (getCurFunction()->SwitchStack.empty()) {
     Diag(DefaultLoc, diag::err_default_not_in_switch);
     return Owned(SubStmt);
@@ -1694,54 +1751,49 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // Otherwise, verify that this result type matches the previous one.  We are
   // pickier with blocks than for normal functions because we don't have GCC
   // compatibility to worry about here.
-  ReturnStmt *Result = 0;
-  if (CurBlock->ReturnType->isVoidType()) {
-    if (RetValExp && !RetValExp->isTypeDependent() &&
-        (!getLangOptions().CPlusPlus || !RetValExp->getType()->isVoidType())) {
+  const VarDecl *NRVOCandidate = 0;
+  if (FnRetType->isDependentType()) {
+    // Delay processing for now.  TODO: there are lots of dependent
+    // types we can conclusively prove aren't void.
+  } else if (FnRetType->isVoidType()) {
+    if (RetValExp &&
+        !(getLangOptions().CPlusPlus &&
+          (RetValExp->isTypeDependent() ||
+           RetValExp->getType()->isVoidType()))) {
       Diag(ReturnLoc, diag::err_return_block_has_expr);
       RetValExp = 0;
     }
-    Result = new (Context) ReturnStmt(ReturnLoc, RetValExp, 0);
   } else if (!RetValExp) {
-    if (!CurBlock->ReturnType->isDependentType())
-      return StmtError(Diag(ReturnLoc, diag::err_block_return_missing_expr));
+    return StmtError(Diag(ReturnLoc, diag::err_block_return_missing_expr));
+  } else if (!RetValExp->isTypeDependent()) {
+    // we have a non-void block with an expression, continue checking
 
-    Result = new (Context) ReturnStmt(ReturnLoc, 0, 0);
-  } else {
-    const VarDecl *NRVOCandidate = 0;
+    // C99 6.8.6.4p3(136): The return statement is not an assignment. The
+    // overlap restriction of subclause 6.5.16.1 does not apply to the case of
+    // function return.
 
-    if (!FnRetType->isDependentType() && !RetValExp->isTypeDependent()) {
-      // we have a non-void block with an expression, continue checking
-
-      // C99 6.8.6.4p3(136): The return statement is not an assignment. The
-      // overlap restriction of subclause 6.5.16.1 does not apply to the case of
-      // function return.
-
-      // In C++ the return statement is handled via a copy initialization.
-      // the C version of which boils down to CheckSingleAssignmentConstraints.
-      NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
-      InitializedEntity Entity = InitializedEntity::InitializeResult(ReturnLoc,
-                                                                     FnRetType,
+    // In C++ the return statement is handled via a copy initialization.
+    // the C version of which boils down to CheckSingleAssignmentConstraints.
+    NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
+    InitializedEntity Entity = InitializedEntity::InitializeResult(ReturnLoc,
+                                                                   FnRetType,
                                                            NRVOCandidate != 0);
-      ExprResult Res = PerformMoveOrCopyInitialization(Entity, NRVOCandidate,
-                                                       FnRetType, RetValExp);
-      if (Res.isInvalid()) {
-        // FIXME: Cleanup temporaries here, anyway?
-        return StmtError();
-      }
-
-      if (RetValExp) {
-        CheckImplicitConversions(RetValExp, ReturnLoc);
-        RetValExp = MaybeCreateExprWithCleanups(RetValExp);
-      }
-
-      RetValExp = Res.takeAs<Expr>();
-      if (RetValExp)
-        CheckReturnStackAddr(RetValExp, FnRetType, ReturnLoc);
+    ExprResult Res = PerformMoveOrCopyInitialization(Entity, NRVOCandidate,
+                                                     FnRetType, RetValExp);
+    if (Res.isInvalid()) {
+      // FIXME: Cleanup temporaries here, anyway?
+      return StmtError();
     }
-
-    Result = new (Context) ReturnStmt(ReturnLoc, RetValExp, NRVOCandidate);
+    RetValExp = Res.take();
+    CheckReturnStackAddr(RetValExp, FnRetType, ReturnLoc);
   }
+
+  if (RetValExp) {
+    CheckImplicitConversions(RetValExp, ReturnLoc);
+    RetValExp = MaybeCreateExprWithCleanups(RetValExp);
+  }
+  ReturnStmt *Result = new (Context) ReturnStmt(ReturnLoc, RetValExp,
+                                                NRVOCandidate);
 
   // If we need to check for the named return value optimization, save the
   // return statement in our scope for later processing.
@@ -1971,7 +2023,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       OutputName = Names[i]->getName();
 
     TargetInfo::ConstraintInfo Info(Literal->getString(), OutputName);
-    if (!Context.Target.validateOutputConstraint(Info))
+    if (!Context.getTargetInfo().validateOutputConstraint(Info))
       return StmtError(Diag(Literal->getLocStart(),
                             diag::err_asm_invalid_output_constraint)
                        << Info.getConstraintStr());
@@ -2000,7 +2052,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       InputName = Names[i]->getName();
 
     TargetInfo::ConstraintInfo Info(Literal->getString(), InputName);
-    if (!Context.Target.validateInputConstraint(OutputConstraintInfos.data(),
+    if (!Context.getTargetInfo().validateInputConstraint(OutputConstraintInfos.data(),
                                                 NumOutputs, Info)) {
       return StmtError(Diag(Literal->getLocStart(),
                             diag::err_asm_invalid_input_constraint)
@@ -2044,7 +2096,7 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
 
     StringRef Clobber = Literal->getString();
 
-    if (!Context.Target.isValidClobber(Clobber))
+    if (!Context.getTargetInfo().isValidClobber(Clobber))
       return StmtError(Diag(Literal->getLocStart(),
                   diag::err_asm_unknown_register_name) << Clobber);
   }

@@ -50,15 +50,15 @@ void ArrayBoundChecker::checkLocation(SVal l, bool isLoad,
   if (Idx.isZeroConstant())
     return;
 
-  const GRState *state = C.getState();
+  const ProgramState *state = C.getState();
 
   // Get the size of the array.
   DefinedOrUnknownSVal NumElements 
     = C.getStoreManager().getSizeInElements(state, ER->getSuperRegion(), 
                                             ER->getValueType());
 
-  const GRState *StInBound = state->assumeInBound(Idx, NumElements, true);
-  const GRState *StOutBound = state->assumeInBound(Idx, NumElements, false);
+  const ProgramState *StInBound = state->assumeInBound(Idx, NumElements, true);
+  const ProgramState *StOutBound = state->assumeInBound(Idx, NumElements, false);
   if (StOutBound && !StInBound) {
     ExplodedNode *N = C.generateSink(StOutBound);
     if (!N)
@@ -73,8 +73,8 @@ void ArrayBoundChecker::checkLocation(SVal l, bool isLoad,
     // reference is outside the range.
 
     // Generate a report for this bug.
-    RangedBugReport *report = 
-      new RangedBugReport(*BT, BT->getDescription(), N);
+    BugReport *report = 
+      new BugReport(*BT, BT->getDescription(), N);
 
     report->addRange(C.getStmt()->getSourceRange());
     C.EmitReport(report);

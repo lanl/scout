@@ -138,8 +138,6 @@ public:
   unsigned NoBitFieldTypeAlign : 1;
   unsigned ObjCAutoRefCount : 1; // Objective C automated reference counting
   unsigned ObjCRuntimeHasWeak : 1; // The ARC runtime supports __weak
-  unsigned ObjCInferRelatedReturnType : 1; // Infer Objective-C related return
-                                           // types
   unsigned FakeAddressSpaceMap : 1; // Use a fake address space map, for
                                     // testing languages such as OpenCL.
 
@@ -184,7 +182,6 @@ public:
     HexFloats = 0;
     ObjCAutoRefCount = 0;
     ObjCRuntimeHasWeak = 0;
-    ObjCInferRelatedReturnType = 0;
     GC = ObjC1 = ObjC2 = ObjCNonFragileABI = ObjCNonFragileABI2 = 0;
     AppleKext = 0;
     ObjCDefaultSynthProperties = 0;
@@ -304,6 +301,18 @@ public:
   }
 };
 
+/// \brief Describes the kind of translation unit being processed.
+enum TranslationUnitKind {
+  /// \brief The translation unit is a complete translation unit.
+  TU_Complete,
+  /// \brief The translation unit is a prefix to a translation unit, and is
+  /// not complete.
+  TU_Prefix,
+  /// \brief The translation unit is a module.
+  TU_Module
+};
+  
+  /// \brief 
 }  // end namespace clang
 
 #endif

@@ -65,6 +65,8 @@ namespace clang {
                                             ClassTemplateSpecializationDecl *D);
     void VisitClassTemplatePartialSpecializationDecl(
                                      ClassTemplatePartialSpecializationDecl *D);
+    void VisitClassScopeFunctionSpecializationDecl(
+                                       ClassScopeFunctionSpecializationDecl *D);
     void VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D);
     void VisitValueDecl(ValueDecl *D);
     void VisitEnumConstantDecl(EnumConstantDecl *D);
@@ -157,9 +159,7 @@ void ASTDeclWriter::VisitDecl(Decl *D) {
 }
 
 void ASTDeclWriter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
-  VisitDecl(D);
-  Writer.AddDeclRef(D->getAnonymousNamespace(), Record);
-  Code = serialization::DECL_TRANSLATION_UNIT;
+  llvm_unreachable("Translation units aren't directly serialized");
 }
 
 void ASTDeclWriter::VisitNamedDecl(NamedDecl *D) {
@@ -375,6 +375,7 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
   Record.push_back(D->isDefaulted());
   Record.push_back(D->isExplicitlyDefaulted());
   Record.push_back(D->hasImplicitReturnZero());
+  Record.push_back(D->isConstexpr());
   Writer.AddSourceLocation(D->getLocEnd(), Record);
 
   Record.push_back(D->param_size());
@@ -502,11 +503,8 @@ void ASTDeclWriter::VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *D) {
 
 void ASTDeclWriter::VisitObjCClassDecl(ObjCClassDecl *D) {
   VisitDecl(D);
-  Record.push_back(D->size());
-  for (ObjCClassDecl::iterator I = D->begin(), IEnd = D->end(); I != IEnd; ++I)
-    Writer.AddDeclRef(I->getInterface(), Record);
-  for (ObjCClassDecl::iterator I = D->begin(), IEnd = D->end(); I != IEnd; ++I)
-    Writer.AddSourceLocation(I->getLocation(), Record);
+  Writer.AddDeclRef(D->getForwardInterfaceDecl(), Record);
+  Writer.AddSourceLocation(D->getForwardDecl()->getLocation(), Record);
   Code = serialization::DECL_OBJC_CLASS;
 }
 
@@ -819,7 +817,7 @@ void ASTDeclWriter::VisitNamespaceDecl(NamespaceDecl *D) {
     // anonymous namespace.
     Decl *Parent = cast<Decl>(
         D->getParent()->getRedeclContext()->getPrimaryContext());
-    if (Parent->getPCHLevel() > 0) {
+    if (Parent->getPCHLevel() > 0 || isa<TranslationUnitDecl>(Parent)) {
       ASTWriter::UpdateRecord &Record = Writer.DeclUpdates[Parent];
       Record.push_back(UPD_CXX_ADDED_ANONYMOUS_NAMESPACE);
       Writer.AddDeclRef(D, Record);
@@ -1058,16 +1056,12 @@ void ASTDeclWriter::VisitClassTemplateSpecializationDecl(
   llvm::PointerUnion<ClassTemplateDecl *,
                      ClassTemplatePartialSpecializationDecl *> InstFrom
     = D->getSpecializedTemplateOrPartial();
-  Decl *InstFromD;
-  if (InstFrom.is<ClassTemplateDecl *>()) {
-    InstFromD = InstFrom.get<ClassTemplateDecl *>();
+  if (Decl *InstFromD = InstFrom.dyn_cast<ClassTemplateDecl *>()) {
     Writer.AddDeclRef(InstFromD, Record);
   } else {
-    InstFromD = InstFrom.get<ClassTemplatePartialSpecializationDecl *>();
-    Writer.AddDeclRef(InstFromD, Record);
+    Writer.AddDeclRef(InstFrom.get<ClassTemplatePartialSpecializationDecl *>(),
+                      Record);
     Writer.AddTemplateArgumentList(&D->getTemplateInstantiationArgs(), Record);
-    InstFromD = cast<ClassTemplatePartialSpecializationDecl>(InstFromD)->
-                    getSpecializedTemplate();
   }
 
   // Explicit info.
@@ -1109,6 +1103,14 @@ void ASTDeclWriter::VisitClassTemplatePartialSpecializationDecl(
 
   Code = serialization::DECL_CLASS_TEMPLATE_PARTIAL_SPECIALIZATION;
 }
+
+void ASTDeclWriter::VisitClassScopeFunctionSpecializationDecl(
+                                    ClassScopeFunctionSpecializationDecl *D) {
+  VisitDecl(D);
+  Writer.AddDeclRef(D->getSpecialization(), Record);
+  Code = serialization::DECL_CLASS_SCOPE_FUNCTION_SPECIALIZATION;
+}
+
 
 void ASTDeclWriter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   VisitRedeclarableTemplateDecl(D);

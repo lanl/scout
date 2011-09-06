@@ -29,7 +29,7 @@ using namespace CodeGen;
 CodeGenTypes::CodeGenTypes(ASTContext &Ctx, llvm::Module& M,
                            const llvm::TargetData &TD, const ABIInfo &Info,
                            CGCXXABI &CXXABI, const CodeGenOptions &CGO)
-  : Context(Ctx), Target(Ctx.Target), TheModule(M), TheTargetData(TD),
+  : Context(Ctx), Target(Ctx.getTargetInfo()), TheModule(M), TheTargetData(TD),
     TheABIInfo(Info), TheCXXABI(CXXABI), CodeGenOpts(CGO) {
   SkippedLayout = false;
 }
@@ -550,7 +550,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // these.
     llvm::Type *&T = InterfaceTypes[cast<ObjCInterfaceType>(Ty)];
     if (!T)
-      T = llvm::StructType::createNamed(getLLVMContext(), "");
+      T = llvm::StructType::create(getLLVMContext());
     ResultType = T;
     break;
   }
@@ -598,8 +598,10 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     typedef llvm::ArrayRef< llvm::Type * > Array;
     typedef llvm::StructType StructTy;
     // Construct a struct of array's type.
-    StructTy *structTy = StructTy::createNamed(getLLVMContext(), meshName,
-                                               Array(eltTys), false);
+    StructTy *structTy = StructTy::create(getLLVMContext(),
+					  Array(eltTys),
+					  meshName,
+					  false);
 
     return structTy;
   }
@@ -646,7 +648,7 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
 
   // If we don't have a StructType at all yet, create the forward declaration.
   if (Entry == 0) {
-    Entry = llvm::StructType::createNamed(getLLVMContext(), "");
+    Entry = llvm::StructType::create(getLLVMContext());
     addRecordTypeName(RD, Entry, "");
   }
   llvm::StructType *Ty = Entry;

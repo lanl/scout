@@ -55,10 +55,12 @@ Decl *Parser::ParseNamespace(unsigned Context,
                              SourceLocation InlineLoc) {
   assert(Tok.is(tok::kw_namespace) && "Not a namespace!");
   SourceLocation NamespaceLoc = ConsumeToken();  // eat the 'namespace'.
-
+  ObjCDeclContextSwitch ObjCDC(*this);
+    
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteNamespaceDecl(getCurScope());
-    ConsumeCodeCompletionToken();
+    cutOffParsing();
+    return 0;
   }
 
   SourceLocation IdentLoc;
@@ -92,7 +94,6 @@ Decl *Parser::ParseNamespace(unsigned Context,
     if (InlineLoc.isValid())
       Diag(InlineLoc, diag::err_inline_namespace_alias)
           << FixItHint::CreateRemoval(InlineLoc);
-
     return ParseNamespaceAlias(NamespaceLoc, IdentLoc, Ident, DeclEnd);
   }
 
@@ -227,7 +228,8 @@ Decl *Parser::ParseNamespaceAlias(SourceLocation NamespaceLoc,
 
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteNamespaceAliasDecl(getCurScope());
-    ConsumeCodeCompletionToken();
+    cutOffParsing();
+    return 0;
   }
 
   CXXScopeSpec SS;
@@ -320,13 +322,15 @@ Decl *Parser::ParseUsingDirectiveOrDeclaration(unsigned Context,
                                              ParsedAttributesWithRange &attrs,
                                                Decl **OwnedType) {
   assert(Tok.is(tok::kw_using) && "Not using token");
-
+  ObjCDeclContextSwitch ObjCDC(*this);
+  
   // Eat 'using'.
   SourceLocation UsingLoc = ConsumeToken();
 
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteUsing(getCurScope());
-    ConsumeCodeCompletionToken();
+    cutOffParsing();
+    return 0;
   }
 
   // 'using namespace' means this is a using-directive.
@@ -347,7 +351,7 @@ Decl *Parser::ParseUsingDirectiveOrDeclaration(unsigned Context,
   ProhibitAttributes(attrs);
 
   return ParseUsingDeclaration(Context, TemplateInfo, UsingLoc, DeclEnd,
-                               AS_none, OwnedType);
+                                    AS_none, OwnedType);
 }
 
 /// ParseUsingDirective - Parse C++ using-directive, assumes
@@ -371,7 +375,8 @@ Decl *Parser::ParseUsingDirective(unsigned Context,
 
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteUsingDirective(getCurScope());
-    ConsumeCodeCompletionToken();
+    cutOffParsing();
+    return 0;
   }
 
   CXXScopeSpec SS;
@@ -854,7 +859,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
   if (Tok.is(tok::code_completion)) {
     // Code completion for a struct, class, or union name.
     Actions.CodeCompleteTag(getCurScope(), TagType);
-    ConsumeCodeCompletionToken();
+    return cutOffParsing();
   }
 
   // C++03 [temp.explicit] 14.7.2/8:
@@ -1267,7 +1272,8 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     case tok::kw_typedef:         // struct foo {...} typedef   x;
     case tok::kw_register:        // struct foo {...} register  x;
     case tok::kw_auto:            // struct foo {...} auto      x;
-    case tok::kw_mutable:         // struct foo {...} mutable      x;
+    case tok::kw_mutable:         // struct foo {...} mutable   x;
+    case tok::kw_constexpr:       // struct foo {...} constexpr x;
       // As shown above, type qualifiers and storage class specifiers absolutely
       // can occur after class specifiers according to the grammar.  However,
       // almost no one actually writes code like this.  If we see one of these,
@@ -1976,7 +1982,6 @@ ExprResult Parser::ParseCXXMemberInitializer(bool IsFunction,
         return ExprResult();
       }
     } else if (Tok.is(tok::kw_default)) {
-      Diag(ConsumeToken(), diag::err_default_special_members);
       if (IsFunction)
         Diag(Tok, diag::err_default_delete_in_multiple_declaration)
           << 0 /* default */;
@@ -2203,7 +2208,7 @@ void Parser::ParseConstructorInitializer(Decl *ConstructorDecl) {
       Actions.CodeCompleteConstructorInitializer(ConstructorDecl, 
                                                  MemInitializers.data(), 
                                                  MemInitializers.size());
-      ConsumeCodeCompletionToken();
+      return cutOffParsing();
     } else {
       MemInitResult MemInit = ParseMemInitializer(ConstructorDecl);
       if (!MemInit.isInvalid())

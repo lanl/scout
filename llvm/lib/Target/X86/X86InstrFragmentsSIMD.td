@@ -109,6 +109,8 @@ def SDTShuff2OpI : SDTypeProfile<1, 2, [SDTCisVec<0>,
 def SDTShuff3OpI : SDTypeProfile<1, 3, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                  SDTCisSameAs<0,2>, SDTCisInt<3>]>;
 
+def SDTVBroadcast : SDTypeProfile<1, 1, [SDTCisVec<0>]>;
+
 def X86PAlign : SDNode<"X86ISD::PALIGN", SDTShuff3OpI>;
 
 def X86PShufd  : SDNode<"X86ISD::PSHUFD", SDTShuff2OpI>;
@@ -157,6 +159,10 @@ def X86VPermilps  : SDNode<"X86ISD::VPERMILPS", SDTShuff2OpI>;
 def X86VPermilpsy : SDNode<"X86ISD::VPERMILPSY", SDTShuff2OpI>;
 def X86VPermilpd  : SDNode<"X86ISD::VPERMILPD", SDTShuff2OpI>;
 def X86VPermilpdy : SDNode<"X86ISD::VPERMILPDY", SDTShuff2OpI>;
+
+def X86VPerm2f128 : SDNode<"X86ISD::VPERM2F128", SDTShuff3OpI>;
+
+def X86VBroadcast : SDNode<"X86ISD::VBROADCAST", SDTVBroadcast>;
 
 //===----------------------------------------------------------------------===//
 // SSE Complex Patterns

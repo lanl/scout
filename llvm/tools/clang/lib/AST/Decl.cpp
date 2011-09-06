@@ -51,7 +51,7 @@ static llvm::Optional<Visibility> getVisibilityOf(const Decl *D) {
 
   // If we're on Mac OS X, an 'availability' for Mac OS X attribute
   // implies visibility(default).
-  if (D->getASTContext().Target.getTriple().isOSDarwin()) {
+  if (D->getASTContext().getTargetInfo().getTriple().isOSDarwin()) {
     for (specific_attr_iterator<AvailabilityAttr> 
               A = D->specific_attr_begin<AvailabilityAttr>(),
            AEnd = D->specific_attr_end<AvailabilityAttr>();
@@ -1003,8 +1003,7 @@ void DeclaratorDecl::setQualifierInfo(NestedNameSpecifierLoc QualifierLoc) {
     }
     // Set qualifier info.
     getExtInfo()->QualifierLoc = QualifierLoc;
-  }
-  else {
+  } else {
     // Here Qualifier == 0, i.e., we are removing the qualifier (if any).
     if (hasExtInfo()) {
       if (getExtInfo()->NumTemplParamLists == 0) {
@@ -1922,12 +1921,16 @@ bool FunctionDecl::isImplicitlyInstantiable() const {
   
   switch (getTemplateSpecializationKind()) {
   case TSK_Undeclared:
-  case TSK_ExplicitSpecialization:
   case TSK_ExplicitInstantiationDefinition:
     return false;
       
   case TSK_ImplicitInstantiation:
     return true;
+
+  // It is possible to instantiate TSK_ExplicitSpecialization kind
+  // if the FunctionDecl has a class scope specialization pattern.
+  case TSK_ExplicitSpecialization:
+    return getClassScopeSpecializationPattern() != 0;
 
   case TSK_ExplicitInstantiationDeclaration:
     // Handled below.
@@ -1951,6 +1954,10 @@ bool FunctionDecl::isImplicitlyInstantiable() const {
 }                      
    
 FunctionDecl *FunctionDecl::getTemplateInstantiationPattern() const {
+  // Handle class scope explicit specialization special case.
+  if (getTemplateSpecializationKind() == TSK_ExplicitSpecialization)
+    return getClassScopeSpecializationPattern();
+
   if (FunctionTemplateDecl *Primary = getPrimaryTemplate()) {
     while (Primary->getInstantiatedFromMemberTemplate()) {
       // If we have hit a point where the user provided a specialization of
@@ -1974,6 +1981,10 @@ FunctionTemplateDecl *FunctionDecl::getPrimaryTemplate() const {
     return Info->Template.getPointer();
   }
   return 0;
+}
+
+FunctionDecl *FunctionDecl::getClassScopeSpecializationPattern() const {
+    return getASTContext().getClassScopeSpecializationPattern(this);
 }
 
 const TemplateArgumentList *
@@ -2278,8 +2289,7 @@ void TagDecl::setQualifierInfo(NestedNameSpecifierLoc QualifierLoc) {
       TypedefNameDeclOrQualifier = new (getASTContext()) ExtInfo;
     // Set qualifier info.
     getExtInfo()->QualifierLoc = QualifierLoc;
-  }
-  else {
+  } else {
     // Here Qualifier == 0, i.e., we are removing the qualifier (if any).
     if (hasExtInfo()) {
       if (getExtInfo()->NumTemplParamLists == 0) {
@@ -2554,10 +2564,12 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    QualType T, TypeSourceInfo *TInfo,
                                    StorageClass SC, StorageClass SCAsWritten,
                                    bool isInlineSpecified, 
-                                   bool hasWrittenPrototype) {
+                                   bool hasWrittenPrototype,
+                                   bool isConstexprSpecified) {
   FunctionDecl *New = new (C) FunctionDecl(Function, DC, StartLoc, NameInfo,
                                            T, TInfo, SC, SCAsWritten,
-                                           isInlineSpecified);
+                                           isInlineSpecified,
+                                           isConstexprSpecified);
   New->HasWrittenPrototype = hasWrittenPrototype;
   return New;
 }

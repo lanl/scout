@@ -40,6 +40,7 @@ cocoa::NamingConvention cocoa::deriveNamingConvention(Selector S,
   case OMF_None:
   case OMF_autorelease:
   case OMF_dealloc:
+  case OMF_finalize:
   case OMF_release:
   case OMF_retain:
   case OMF_retainCount:
@@ -152,8 +153,7 @@ bool coreFoundation::followsCreateRule(StringRef functionName) {
     }
     else if (suffix.startswith("opy")) {
       it += 3;
-    }
-    else {
+    } else {
       // Keep scanning.
       continue;
     }

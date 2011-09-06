@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=experimental.osx.KeychainAPI %s -verify
+// RUN: %clang_cc1 -analyze -analyzer-checker=osx.SecKeychainAPI %s -verify
 
 // Fake typedefs.
 typedef unsigned int OSStatus;
@@ -71,13 +71,13 @@ OSStatus SecKeychainItemFreeAttributesAndData (
 );
 
 void errRetVal() {
-	unsigned int *ptr = 0;
-	OSStatus st = 0;
-	UInt32 length;
-	void *outData;
-	st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
-	if (st == GenericError) // expected-warning{{Allocated data is not released: missing a call to 'SecKeychainItemFreeContent'.}}
-		SecKeychainItemFreeContent(ptr, outData); // expected-warning{{Trying to free data which has not been allocated.}}
+  unsigned int *ptr = 0;
+  OSStatus st = 0;
+  UInt32 length;
+  void *outData;
+  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
+  if (st == GenericError) // expected-warning{{Allocated data is not released: missing a call to 'SecKeychainItemFreeContent'.}}
+    SecKeychainItemFreeContent(ptr, outData); // expected-warning{{Call to free data when error was returned during allocation.}}
 }
 
 // If null is passed in, the data is not allocated, so no need for the matching free.
@@ -123,7 +123,7 @@ void fooOnlyFreeParam(void *attrList, void* X) {
     SecKeychainItemFreeContent(attrList, X); 
 }// no-warning
 
-// If we are returning the value, no not report.
+// If we are returning the value, do not report.
 void* returnContent() {
   unsigned int *ptr = 0;
   OSStatus st = 0;
@@ -132,6 +132,38 @@ void* returnContent() {
   st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
   return outData;
 } // no-warning
+
+// Password was passed in as an argument and does nt have to be deleted.
+OSStatus getPasswordAndItem(void** password, UInt32* passwordLength) {
+  OSStatus err;
+  SecKeychainItemRef item;
+  err = SecKeychainFindGenericPassword(0, 3, "xx", 3, "xx",
+                                       passwordLength, password, &item);
+  return err;
+} // no-warning
+
+// Make sure we do not report an error if we call free only if password != 0.
+// Also, do not report double allocation if first allocation returned an error.
+OSStatus testSecKeychainFindGenericPassword(UInt32* passwordLength,
+                        CFTypeRef keychainOrArray, SecProtocolType protocol, 
+                        SecAuthenticationType authenticationType) {
+  OSStatus err;
+  SecKeychainItemRef item;
+  void *password;
+  err = SecKeychainFindGenericPassword(0, 3, "xx", 3, "xx",
+                                       passwordLength, &password, &item);
+  if( err == GenericError ) {
+    err = SecKeychainFindInternetPassword(keychainOrArray, 
+                                  16, "server", 16, "domain", 16, "account",
+                                  16, "path", 222, protocol, authenticationType,
+                                  passwordLength, &(password), 0);
+  }
+
+  if (err == noErr && password) {
+    SecKeychainItemFreeContent(0, password);
+  }
+  return err;
+}
 
 int apiMismatch(SecKeychainItemRef itemRef, 
          SecKeychainAttributeInfo *info,
@@ -144,7 +176,7 @@ int apiMismatch(SecKeychainItemRef itemRef,
   st = SecKeychainItemCopyAttributesAndData(itemRef, info, itemClass, 
                                             &attrList, &length, &outData); 
   if (st == noErr)
-    SecKeychainItemFreeContent(attrList, outData); // expected-warning{{Allocator doesn't match the deallocator}}
+    SecKeychainItemFreeContent(attrList, outData); // expected-warning{{Deallocator doesn't match the allocator}}
   return 0;
 }
 
@@ -172,16 +204,120 @@ int ErrorCodesFromDifferentAPISDoNotInterfere(SecKeychainItemRef itemRef,
   return 0; // expected-warning{{Allocated data is not released: missing a call to 'SecKeychainItemFreeAttributesAndData'}}
 }
 
-int foo() {
+int foo(CFTypeRef keychainOrArray, SecProtocolType protocol, 
+        SecAuthenticationType authenticationType, SecKeychainItemRef *itemRef) {
   unsigned int *ptr = 0;
   OSStatus st = 0;
 
   UInt32 length;
-  void *outData;
+  void *outData[5];
 
-  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
-  if (st == noErr)
-    SecKeychainItemFreeContent(ptr, outData);
-
+  st = SecKeychainFindInternetPassword(keychainOrArray, 
+                                       16, "server", 16, "domain", 16, "account",
+                                       16, "path", 222, protocol, authenticationType,
+                                       &length, &(outData[3]), itemRef);
+  if (length == 5) {
+    if (st == noErr)
+      SecKeychainItemFreeContent(ptr, outData[3]);
+  }
+  if (length) { // expected-warning{{Allocated data is not released: missing a call to 'SecKeychainItemFreeContent'.}}
+    length++;
+  }
   return 0;
 }// no-warning
+
+void free(void *ptr);
+void deallocateWithFree() {
+    unsigned int *ptr = 0;
+    OSStatus st = 0;
+    UInt32 length;
+    void *outData;
+    st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
+    if (st == noErr)
+      free(outData); // expected-warning{{Deallocator doesn't match the allocator: 'SecKeychainItemFreeContent' should be used}}
+}
+
+// Typesdefs for CFStringCreateWithBytesNoCopy.
+typedef char uint8_t;
+typedef signed long CFIndex;
+typedef UInt32 CFStringEncoding;
+typedef unsigned Boolean;
+typedef const struct __CFString * CFStringRef;
+typedef const struct __CFAllocator * CFAllocatorRef;
+extern const CFAllocatorRef kCFAllocatorDefault;
+extern const CFAllocatorRef kCFAllocatorSystemDefault;
+extern const CFAllocatorRef kCFAllocatorMalloc;
+extern const CFAllocatorRef kCFAllocatorMallocZone;
+extern const CFAllocatorRef kCFAllocatorNull;
+extern const CFAllocatorRef kCFAllocatorUseContext;
+CFStringRef CFStringCreateWithBytesNoCopy(CFAllocatorRef alloc, const uint8_t *bytes, CFIndex numBytes, CFStringEncoding encoding, Boolean externalFormat, CFAllocatorRef contentsDeallocator);
+extern void CFRelease(CFStringRef cf);
+
+void DellocWithCFStringCreate1(CFAllocatorRef alloc) {
+  unsigned int *ptr = 0;
+  OSStatus st = 0;
+  UInt32 length;
+  void *bytes;
+  char * x;
+  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &bytes);
+  if (st == noErr) {
+    CFStringRef userStr = CFStringCreateWithBytesNoCopy(alloc, bytes, length, 5, 0, kCFAllocatorDefault); // expected-warning{{Deallocator doesn't match the allocator:}} 
+    CFRelease(userStr);
+  }
+}
+
+void DellocWithCFStringCreate2(CFAllocatorRef alloc) {
+  unsigned int *ptr = 0;
+  OSStatus st = 0;
+  UInt32 length;
+  void *bytes;
+  char * x;
+  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &bytes);
+  if (st == noErr) {
+    CFStringRef userStr = CFStringCreateWithBytesNoCopy(alloc, bytes, length, 5, 0, kCFAllocatorNull); // expected-warning{{Allocated data is not released}}
+    CFRelease(userStr);
+  }
+}
+
+void DellocWithCFStringCreate3(CFAllocatorRef alloc) {
+  unsigned int *ptr = 0;
+  OSStatus st = 0;
+  UInt32 length;
+  void *bytes;
+  char * x;
+  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &bytes);
+  if (st == noErr) {
+    CFStringRef userStr = CFStringCreateWithBytesNoCopy(alloc, bytes, length, 5, 0, kCFAllocatorUseContext);
+    CFRelease(userStr);
+  }
+}
+
+void DellocWithCFStringCreate4(CFAllocatorRef alloc) {
+  unsigned int *ptr = 0;
+  OSStatus st = 0;
+  UInt32 length;
+  void *bytes;
+  char * x;
+  st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &bytes);
+  if (st == noErr) {
+    CFStringRef userStr = CFStringCreateWithBytesNoCopy(alloc, bytes, length, 5, 0, 0); // expected-warning{{Deallocator doesn't match the allocator:}} 
+    CFRelease(userStr);
+  }
+}
+
+//Example from bug 10797.
+__inline__ static
+const char *__WBASLLevelString(int level) {
+  return "foo";
+}
+
+static int *bug10798(int *p, int columns, int prevRow) {
+  int *row = 0;
+  row = p + prevRow * columns;
+  prevRow += 2;
+  do {
+    ++prevRow;
+    row+=columns;
+  } while(10 >= row[1]);
+  return row;
+}

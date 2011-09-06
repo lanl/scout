@@ -689,8 +689,8 @@ static Value *CoerceAvailableValueToLoadType(Value *StoredVal,
   // If this is already the right type, just return it.
   Type *StoredValTy = StoredVal->getType();
   
-  uint64_t StoreSize = TD.getTypeStoreSizeInBits(StoredValTy);
-  uint64_t LoadSize = TD.getTypeStoreSizeInBits(LoadedTy);
+  uint64_t StoreSize = TD.getTypeSizeInBits(StoredValTy);
+  uint64_t LoadSize = TD.getTypeSizeInBits(LoadedTy);
   
   // If the store and reload are the same size, we can always reuse it.
   if (StoreSize == LoadSize) {
@@ -982,8 +982,8 @@ static Value *GetLoadValueForLoad(LoadInst *SrcVal, unsigned Offset,
   unsigned SrcValSize = TD.getTypeStoreSize(SrcVal->getType());
   unsigned LoadSize = TD.getTypeStoreSize(LoadTy);
   if (Offset+LoadSize > SrcValSize) {
-    assert(!SrcVal->isVolatile() && "Cannot widen volatile load!");
-    assert(isa<IntegerType>(SrcVal->getType())&&"Can't widen non-integer load");
+    assert(SrcVal->isSimple() && "Cannot widen volatile/atomic load!");
+    assert(SrcVal->getType()->isIntegerTy() && "Can't widen non-integer load");
     // If we have a load/load clobber an DepLI can be widened to cover this
     // load, then we should widen it to the next power of 2 size big enough!
     unsigned NewLoadSize = Offset+LoadSize;
@@ -1446,8 +1446,8 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
   for (unsigned i = 0, e = UnavailableBlocks.size(); i != e; ++i)
     Blockers.insert(UnavailableBlocks[i]);
 
-  // Lets find first basic block with more than one predecessor.  Walk backwards
-  // through predecessors if needed.
+  // Let's find the first basic block with more than one predecessor.  Walk
+  // backwards through predecessors if needed.
   BasicBlock *LoadBB = LI->getParent();
   BasicBlock *TmpBB = LoadBB;
 
@@ -1519,10 +1519,19 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
               << Pred->getName() << "': " << *LI << '\n');
         return false;
       }
+
+      if (LoadBB->isLandingPad()) {
+        DEBUG(dbgs()
+              << "COULD NOT PRE LOAD BECAUSE OF LANDING PAD CRITICAL EDGE '"
+              << Pred->getName() << "': " << *LI << '\n');
+        return false;
+      }
+
       unsigned SuccNum = GetSuccessorNumber(Pred, LoadBB);
       NeedToSplit.push_back(std::make_pair(Pred->getTerminator(), SuccNum));
     }
   }
+
   if (!NeedToSplit.empty()) {
     toSplit.append(NeedToSplit.begin(), NeedToSplit.end());
     return false;
@@ -1660,7 +1669,7 @@ bool GVN::processLoad(LoadInst *L) {
   if (!MD)
     return false;
 
-  if (L->isVolatile())
+  if (!L->isSimple())
     return false;
 
   if (L->use_empty()) {
@@ -2070,6 +2079,9 @@ bool GVN::performPRE(Function &F) {
 
     // Nothing to PRE in the entry block.
     if (CurrentBlock == &F.getEntryBlock()) continue;
+
+    // Don't perform PRE on a landing pad.
+    if (CurrentBlock->isLandingPad()) continue;
 
     for (BasicBlock::iterator BI = CurrentBlock->begin(),
          BE = CurrentBlock->end(); BI != BE; ) {

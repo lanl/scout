@@ -275,6 +275,8 @@ namespace llvm {
       VPERMILPSY,
       VPERMILPD,
       VPERMILPDY,
+      VPERM2F128,
+      VBROADCAST,
 
       // VASTART_SAVE_XMM_REGS - Save xmm argument registers to the stack,
       // according to %al. An operator is needed so that this can be expanded
@@ -283,6 +285,11 @@ namespace llvm {
 
       // WIN_ALLOCA - Windows's _chkstk call to do stack probing.
       WIN_ALLOCA,
+
+      // SEG_ALLOCA - For allocating variable amounts of stack space when using
+      // segmented stacks. Check if the current stacklet has enough space, and
+      // defects to heap allocation if not.
+      SEG_ALLOCA,
 
       // Memory barrier
       MEMBARRIER,
@@ -301,9 +308,10 @@ namespace llvm {
       ATOMNAND64_DAG,
       ATOMSWAP64_DAG,
 
-      // LCMPXCHG_DAG, LCMPXCHG8_DAG - Compare and swap.
+      // LCMPXCHG_DAG, LCMPXCHG8_DAG, LCMPXCHG16_DAG - Compare and swap.
       LCMPXCHG_DAG,
       LCMPXCHG8_DAG,
+      LCMPXCHG16_DAG,
 
       // VZEXT_LOAD - Load, scalar_to_vector, and zero extend.
       VZEXT_LOAD,
@@ -813,11 +821,14 @@ namespace llvm {
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAME_TO_ARGS_OFFSET(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerTRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerINIT_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerADJUST_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFLT_ROUNDS_(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerCTLZ(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerCTTZ(SDValue Op, SelectionDAG &DAG) const;
-    SDValue LowerMUL_V2I64(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerADD(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSUB(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerMUL(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerShift(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerXALUO(SDValue Op, SelectionDAG &DAG) const;
 
@@ -931,6 +942,10 @@ namespace llvm {
 
     MachineBasicBlock *EmitLoweredWinAlloca(MachineInstr *MI,
                                               MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitLoweredSegAlloca(MachineInstr *MI,
+                                            MachineBasicBlock *BB,
+                                            bool Is64Bit) const;
 
     MachineBasicBlock *EmitLoweredTLSCall(MachineInstr *MI,
                                           MachineBasicBlock *BB) const;

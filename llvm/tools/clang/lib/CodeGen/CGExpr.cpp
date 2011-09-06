@@ -140,7 +140,10 @@ void CodeGenFunction::EmitAnyExprToMem(const Expr *E,
   if (E->getType()->isAnyComplexType())
     EmitComplexExprIntoAddr(E, Location, Quals.hasVolatile());
   else if (hasAggregateLLVMType(E->getType()))
-    EmitAggExpr(E, AggValueSlot::forAddr(Location, Quals, IsInit));
+    EmitAggExpr(E, AggValueSlot::forAddr(Location, Quals,
+                                         AggValueSlot::IsDestructed_t(IsInit),
+                                         AggValueSlot::DoesNotNeedGCBarriers,
+                                         AggValueSlot::IsAliased_t(!IsInit)));
   else {
     RValue RV = RValue::get(EmitScalarExpr(E, /*Ignore*/ false));
     LValue LV = MakeAddrLValue(Location, E->getType());
@@ -359,8 +362,12 @@ EmitExprForReferenceBinding(CodeGenFunction &CGF, const Expr *E,
         !E->getType()->isAnyComplexType()) {
       ReferenceTemporary = CreateReferenceTemporary(CGF, E->getType(),
                                                     InitializedDecl);
+      AggValueSlot::IsDestructed_t isDestructed
+        = AggValueSlot::IsDestructed_t(InitializedDecl != 0);
       AggSlot = AggValueSlot::forAddr(ReferenceTemporary, Qualifiers(),
-                                      InitializedDecl != 0);
+                                      isDestructed,
+                                      AggValueSlot::DoesNotNeedGCBarriers,
+                                      AggValueSlot::IsNotAliased);
     }
 
     if (InitializedDecl) {
@@ -2197,8 +2204,7 @@ LValue CodeGenFunction::EmitOpaqueValueLValue(const OpaqueValueExpr *e) {
 
 LValue CodeGenFunction::EmitMaterializeTemporaryExpr(
                                            const MaterializeTemporaryExpr *E) {
-  RValue RV = EmitReferenceBindingToExpr(E->GetTemporaryExpr(),
-                                         /*InitializedDecl=*/0);
+  RValue RV = EmitReferenceBindingToExpr(E, /*InitializedDecl=*/0);
   return MakeAddrLValue(RV.getScalarVal(), E->getType());
 }
 
@@ -2381,7 +2387,7 @@ CodeGenFunction::EmitCXXTypeidLValue(const CXXTypeidExpr *E) {
 LValue
 CodeGenFunction::EmitCXXBindTemporaryLValue(const CXXBindTemporaryExpr *E) {
   AggValueSlot Slot = CreateAggTemp(E->getType(), "temp.lvalue");
-  Slot.setLifetimeExternallyManaged();
+  Slot.setExternallyDestructed();
   EmitAggExpr(E->getSubExpr(), Slot);
   EmitCXXTemporary(E->getTemporary(), Slot.getAddr());
   return MakeAddrLValue(Slot.getAddr(), E->getType());

@@ -27,6 +27,8 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Target/Mangler.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -41,8 +43,6 @@
 #include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetRegistry.h"
-#include "llvm/Target/TargetSelect.h"
 
 using namespace llvm;
 
@@ -581,7 +581,8 @@ namespace {
       markDefined(*Symbol);
     }
     virtual void EmitELFSize(MCSymbol *Symbol, const MCExpr *Value) {}
-    virtual void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size) {}
+    virtual void EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+                                       unsigned ByteAlignment) {}
     virtual void EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                                 uint64_t Size, unsigned ByteAlignment) {}
     virtual void EmitBytes(StringRef Data, unsigned AddrSpace) {}
@@ -619,7 +620,7 @@ bool LTOModule::addAsmGlobalSymbols(MCContext &Context) {
   MemoryBuffer *Buffer = MemoryBuffer::getMemBuffer(inlineAsm);
   SourceMgr SrcMgr;
   SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
-  OwningPtr<MCAsmParser> Parser(createMCAsmParser(_target->getTarget(), SrcMgr,
+  OwningPtr<MCAsmParser> Parser(createMCAsmParser(SrcMgr,
                                                   Context, *Streamer,
                                                   *_target->getMCAsmInfo()));
   OwningPtr<MCSubtargetInfo> STI(_target->getTarget().

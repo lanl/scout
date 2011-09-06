@@ -398,8 +398,11 @@ static void EmitBaseInitializer(CodeGenFunction &CGF,
                                               BaseClassDecl,
                                               isBaseVirtual);
 
-  AggValueSlot AggSlot = AggValueSlot::forAddr(V, Qualifiers(), 
-                                               /*Lifetime*/ true);
+  AggValueSlot AggSlot =
+    AggValueSlot::forAddr(V, Qualifiers(),
+                          AggValueSlot::IsDestructed,
+                          AggValueSlot::DoesNotNeedGCBarriers,
+                          AggValueSlot::IsNotAliased);
 
   CGF.EmitAggExpr(BaseInit->getInit(), AggSlot);
   
@@ -436,8 +439,11 @@ static void EmitAggMemberInitializer(CodeGenFunction &CGF,
       CGF.EmitComplexExprIntoAddr(MemberInit->getInit(), Dest, 
                                   LHS.isVolatileQualified());
     } else {    
-      AggValueSlot Slot = AggValueSlot::forAddr(Dest, LHS.getQuals(),
-                                                /*Lifetime*/ true);
+      AggValueSlot Slot =
+        AggValueSlot::forAddr(Dest, LHS.getQuals(),
+                              AggValueSlot::IsDestructed,
+                              AggValueSlot::DoesNotNeedGCBarriers,
+                              AggValueSlot::IsNotAliased);
       
       CGF.EmitAggExpr(MemberInit->getInit(), Slot);
     }
@@ -521,6 +527,12 @@ namespace {
     }
   };
 }
+
+static bool hasTrivialCopyOrMoveConstructor(const CXXRecordDecl *Record,
+                                            bool Moving) {
+  return Moving ? Record->hasTrivialMoveConstructor() :
+                  Record->hasTrivialCopyConstructor();
+}
   
 static void EmitMemberInitializer(CodeGenFunction &CGF,
                                   const CXXRecordDecl *ClassDecl,
@@ -566,7 +578,7 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
     const ConstantArrayType *Array
       = CGF.getContext().getAsConstantArrayType(FieldType);
     if (Array && Constructor->isImplicit() && 
-        Constructor->isCopyConstructor()) {
+        Constructor->isCopyOrMoveConstructor()) {
       llvm::Type *SizeTy
         = CGF.ConvertType(CGF.getContext().getSizeType());
       
@@ -589,7 +601,8 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
       // constructors, perform a single aggregate copy.
       const CXXRecordDecl *Record = BaseElementTy->getAsCXXRecordDecl();
       if (BaseElementTy.isPODType(CGF.getContext()) ||
-          (Record && Record->hasTrivialCopyConstructor())) {
+          (Record && hasTrivialCopyOrMoveConstructor(Record,
+                         Constructor->isMoveConstructor()))) {
         // Find the source pointer. We knows it's the last argument because
         // we know we're in a copy constructor.
         unsigned SrcArgIndex = Args.size() - 1;
@@ -1195,7 +1208,8 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
     }
 
     assert(ArgBeg + 1 == ArgEnd && "unexpected argcount for trivial ctor");
-    assert(D->isCopyConstructor() && "trivial 1-arg ctor not a copy ctor");
+    assert(D->isCopyOrMoveConstructor() &&
+           "trivial 1-arg ctor not a copy/move ctor");
 
     const Expr *E = (*ArgBeg);
     QualType Ty = E->getType();
@@ -1217,7 +1231,8 @@ CodeGenFunction::EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                                         CallExpr::const_arg_iterator ArgEnd) {
   if (D->isTrivial()) {
     assert(ArgBeg + 1 == ArgEnd && "unexpected argcount for trivial ctor");
-    assert(D->isCopyConstructor() && "trivial 1-arg ctor not a copy ctor");
+    assert(D->isCopyOrMoveConstructor() &&
+           "trivial 1-arg ctor not a copy/move ctor");
     EmitAggregateCopy(This, Src, (*ArgBeg)->getType());
     return;
   }
@@ -1324,7 +1339,10 @@ CodeGenFunction::EmitDelegatingCXXConstructorCall(const CXXConstructorDecl *Ctor
   llvm::Value *ThisPtr = LoadCXXThis();
 
   AggValueSlot AggSlot =
-    AggValueSlot::forAddr(ThisPtr, Qualifiers(), /*Lifetime*/ true);
+    AggValueSlot::forAddr(ThisPtr, Qualifiers(),
+                          AggValueSlot::IsDestructed,
+                          AggValueSlot::DoesNotNeedGCBarriers,
+                          AggValueSlot::IsNotAliased);
 
   EmitAggExpr(Ctor->init_begin()[0]->getInit(), AggSlot);
 

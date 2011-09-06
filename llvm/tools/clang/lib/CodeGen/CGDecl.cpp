@@ -71,6 +71,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::Friend:
   case Decl::FriendTemplate:
   case Decl::Block:
+  case Decl::ClassScopeFunctionSpecialization:
     assert(0 && "Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
 
@@ -905,6 +906,32 @@ static bool isCapturedBy(const VarDecl &var, const Expr *e) {
     return false;
   }
 
+  if (const StmtExpr *SE = dyn_cast<StmtExpr>(e)) {
+    const CompoundStmt *CS = SE->getSubStmt();
+    for (CompoundStmt::const_body_iterator BI = CS->body_begin(),
+	   BE = CS->body_end(); BI != BE; ++BI)
+      if (Expr *E = dyn_cast<Expr>((*BI))) {
+        if (isCapturedBy(var, E))
+            return true;
+      }
+      else if (DeclStmt *DS = dyn_cast<DeclStmt>((*BI))) {
+          // special case declarations
+          for (DeclStmt::decl_iterator I = DS->decl_begin(), E = DS->decl_end();
+               I != E; ++I) {
+              if (VarDecl *VD = dyn_cast<VarDecl>((*I))) {
+                Expr *Init = VD->getInit();
+                if (Init && isCapturedBy(var, Init))
+                  return true;
+              }
+          }
+      }
+      else
+        // FIXME. Make safe assumption assuming arbitrary statements cause capturing.
+        // Later, provide code to poke into statements for capture analysis.
+        return true;
+    return false;
+  }
+
   for (Stmt::const_child_range children = e->children(); children; ++children)
     if (isCapturedBy(var, cast<Expr>(*children)))
       return true;
@@ -1004,7 +1031,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
     std::string Name = GetStaticDeclName(*this, D, ".");
     llvm::GlobalVariable *GV =
       new llvm::GlobalVariable(CGM.getModule(), constant->getType(), true,
-                               llvm::GlobalValue::InternalLinkage,
+                               llvm::GlobalValue::PrivateLinkage,
                                constant, Name, 0, false, 0);
     GV->setAlignment(alignment.getQuantity());
     GV->setUnnamedAddr(true);
@@ -1051,7 +1078,10 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
     StoreComplexToAddr(complex, lvalue.getAddress(), lvalue.isVolatile());
   } else {
     // TODO: how can we delay here if D is captured by its initializer?
-    EmitAggExpr(init, AggValueSlot::forLValue(lvalue, true, false));
+    EmitAggExpr(init, AggValueSlot::forLValue(lvalue,
+                                              AggValueSlot::IsDestructed,
+                                         AggValueSlot::DoesNotNeedGCBarriers,
+                                              AggValueSlot::IsNotAliased));
   }
 }
 

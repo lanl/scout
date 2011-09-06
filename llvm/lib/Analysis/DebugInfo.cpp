@@ -328,6 +328,22 @@ void DIType::replaceAllUsesWith(MDNode *D) {
   }
 }
 
+/// isUnsignedDIType - Return true if type encoding is unsigned.
+bool DIType::isUnsignedDIType() {
+  DIDerivedType DTy(DbgNode);
+  if (DTy.Verify())
+    return DTy.getTypeDerivedFrom().isUnsignedDIType();
+
+  DIBasicType BTy(DbgNode);
+  if (BTy.Verify()) {
+    unsigned Encoding = BTy.getEncoding();
+    if (Encoding == dwarf::DW_ATE_unsigned ||
+        Encoding == dwarf::DW_ATE_unsigned_char)
+      return true;
+  }
+  return false;
+}
+
 /// Verify - Verify that a compile unit is well formed.
 bool DICompileUnit::Verify() const {
   if (!DbgNode)
@@ -343,7 +359,7 @@ bool DICompileUnit::Verify() const {
 bool DIType::Verify() const {
   if (!DbgNode)
     return false;
-  if (!getContext().Verify())
+  if (getContext() && !getContext().Verify())
     return false;
   unsigned Tag = getTag();
   if (!isBasicType() && Tag != dwarf::DW_TAG_const_type &&
@@ -351,6 +367,7 @@ bool DIType::Verify() const {
       Tag != dwarf::DW_TAG_reference_type && Tag != dwarf::DW_TAG_restrict_type 
       && Tag != dwarf::DW_TAG_vector_type && Tag != dwarf::DW_TAG_array_type
       && Tag != dwarf::DW_TAG_enumeration_type 
+      && Tag != dwarf::DW_TAG_subroutine_type
       && getFilename().empty())
     return false;
   return true;
@@ -370,12 +387,9 @@ bool DIDerivedType::Verify() const {
 bool DICompositeType::Verify() const {
   if (!DbgNode)
     return false;
-  if (!getContext().Verify())
+  if (getContext() && !getContext().Verify())
     return false;
 
-  DICompileUnit CU = getCompileUnit();
-  if (!CU.Verify())
-    return false;
   return true;
 }
 
@@ -384,11 +398,7 @@ bool DISubprogram::Verify() const {
   if (!DbgNode)
     return false;
 
-  if (!getContext().Verify())
-    return false;
-
-  DICompileUnit CU = getCompileUnit();
-  if (!CU.Verify())
+  if (getContext() && !getContext().Verify())
     return false;
 
   DICompositeType Ty = getType();
@@ -405,11 +415,7 @@ bool DIGlobalVariable::Verify() const {
   if (getDisplayName().empty())
     return false;
 
-  if (!getContext().Verify())
-    return false;
-
-  DICompileUnit CU = getCompileUnit();
-  if (!CU.Verify())
+  if (getContext() && !getContext().Verify())
     return false;
 
   DIType Ty = getType();
@@ -427,10 +433,7 @@ bool DIVariable::Verify() const {
   if (!DbgNode)
     return false;
 
-  if (!getContext().Verify())
-    return false;
-
-  if (!getCompileUnit().Verify())
+  if (getContext() && !getContext().Verify())
     return false;
 
   DIType Ty = getType();
@@ -453,8 +456,6 @@ bool DINameSpace::Verify() const {
   if (!DbgNode)
     return false;
   if (getName().empty())
-    return false;
-  if (!getCompileUnit().Verify())
     return false;
   return true;
 }
@@ -512,6 +513,23 @@ unsigned DISubprogram::isOptimized() const {
   return 0;
 }
 
+MDNode *DISubprogram::getVariablesNodes() const {
+  if (!DbgNode || DbgNode->getNumOperands() <= 19)
+    return NULL;
+  if (MDNode *Temp = dyn_cast_or_null<MDNode>(DbgNode->getOperand(19)))
+    return dyn_cast_or_null<MDNode>(Temp->getOperand(0));
+  return NULL;
+}
+
+DIArray DISubprogram::getVariables() const {
+  if (!DbgNode || DbgNode->getNumOperands() <= 19)
+    return DIArray();
+  if (MDNode *T = dyn_cast_or_null<MDNode>(DbgNode->getOperand(19)))
+    if (MDNode *A = dyn_cast_or_null<MDNode>(T->getOperand(0)))
+      return DIArray(A);
+  return DIArray();
+}
+
 StringRef DIScope::getFilename() const {
   if (!DbgNode)
     return StringRef();
@@ -550,6 +568,47 @@ StringRef DIScope::getDirectory() const {
   return StringRef();
 }
 
+DIArray DICompileUnit::getEnumTypes() const {
+  if (!DbgNode || DbgNode->getNumOperands() < 14)
+    return DIArray();
+
+  if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(10)))
+    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
+      return DIArray(A);
+  return DIArray();
+}
+
+DIArray DICompileUnit::getRetainedTypes() const {
+  if (!DbgNode || DbgNode->getNumOperands() < 14)
+    return DIArray();
+
+  if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(11)))
+    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
+      return DIArray(A);
+  return DIArray();
+}
+
+DIArray DICompileUnit::getSubprograms() const {
+  if (!DbgNode || DbgNode->getNumOperands() < 14)
+    return DIArray();
+
+  if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(12)))
+    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
+      return DIArray(A);
+  return DIArray();
+}
+
+
+DIArray DICompileUnit::getGlobalVariables() const {
+  if (!DbgNode || DbgNode->getNumOperands() < 14)
+    return DIArray();
+
+  if (MDNode *N = dyn_cast_or_null<MDNode>(DbgNode->getOperand(13)))
+    if (MDNode *A = dyn_cast_or_null<MDNode>(N->getOperand(0)))
+      return DIArray(A);
+  return DIArray();
+}
+
 //===----------------------------------------------------------------------===//
 // DIDescriptor: dump routines for all descriptors.
 //===----------------------------------------------------------------------===//
@@ -581,7 +640,6 @@ void DIType::print(raw_ostream &OS) const {
   OS << " [" << dwarf::TagString(Tag) << "] ";
 
   // TODO : Print context
-  getCompileUnit().print(OS);
   OS << " ["
          << "line " << getLineNumber() << ", "
          << getSizeInBits() << " bits, "
@@ -637,7 +695,6 @@ void DISubprogram::print(raw_ostream &OS) const {
   OS << " [" << dwarf::TagString(Tag) << "] ";
 
   // TODO : Print context
-  getCompileUnit().print(OS);
   OS << " [" << getLineNumber() << "] ";
 
   if (isLocalToUnit())
@@ -660,7 +717,6 @@ void DIGlobalVariable::print(raw_ostream &OS) const {
   OS << " [" << dwarf::TagString(Tag) << "] ";
 
   // TODO : Print context
-  getCompileUnit().print(OS);
   OS << " [" << getLineNumber() << "] ";
 
   if (isLocalToUnit())
@@ -716,7 +772,6 @@ void DIVariable::print(raw_ostream &OS) const {
   if (!Res.empty())
     OS << " [" << Res << "] ";
 
-  getCompileUnit().print(OS);
   OS << " [" << getLineNumber() << "] ";
   getType().print(OS);
   OS << "\n";
@@ -788,19 +843,34 @@ static void fixupObjcLikeName(StringRef Str, SmallVectorImpl<char> &Out) {
 
 /// getFnSpecificMDNode - Return a NameMDNode, if available, that is 
 /// suitable to hold function specific information.
-NamedMDNode *llvm::getFnSpecificMDNode(const Module &M, StringRef FuncName) {
+NamedMDNode *llvm::getFnSpecificMDNode(const Module &M, DISubprogram Fn) {
   SmallString<32> Name = StringRef("llvm.dbg.lv.");
-  fixupObjcLikeName(FuncName, Name);
-
+  StringRef FName = "fn";
+  if (Fn.getFunction())
+    FName = Fn.getFunction()->getName();
+  else
+    FName = Fn.getName();
+  char One = '\1';
+  if (FName.startswith(StringRef(&One, 1)))
+    FName = FName.substr(1);
+  fixupObjcLikeName(FName, Name);
   return M.getNamedMetadata(Name.str());
 }
 
 /// getOrInsertFnSpecificMDNode - Return a NameMDNode that is suitable
 /// to hold function specific information.
-NamedMDNode *llvm::getOrInsertFnSpecificMDNode(Module &M, StringRef FuncName) {
+NamedMDNode *llvm::getOrInsertFnSpecificMDNode(Module &M, DISubprogram Fn) {
   SmallString<32> Name = StringRef("llvm.dbg.lv.");
-  fixupObjcLikeName(FuncName, Name);
-
+  StringRef FName = "fn";
+  if (Fn.getFunction())
+    FName = Fn.getFunction()->getName();
+  else
+    FName = Fn.getName();
+  char One = '\1';
+  if (FName.startswith(StringRef(&One, 1)))
+    FName = FName.substr(1);
+  fixupObjcLikeName(FName, Name);
+  
   return M.getOrInsertNamedMetadata(Name.str());
 }
 
@@ -1014,3 +1084,17 @@ DICompositeType llvm::getDICompositeType(DIType T) {
 
   return DICompositeType();
 }
+
+/// isSubprogramContext - Return true if Context is either a subprogram
+/// or another context nested inside a subprogram.
+bool llvm::isSubprogramContext(const MDNode *Context) {
+  if (!Context)
+    return false;
+  DIDescriptor D(Context);
+  if (D.isSubprogram())
+    return true;
+  if (D.isType())
+    return isSubprogramContext(DIType(Context).getContext());
+  return false;
+}
+

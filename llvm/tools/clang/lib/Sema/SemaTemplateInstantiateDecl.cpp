@@ -1070,11 +1070,15 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
                                          TemplateArgs);
   }
 
+  bool isConstexpr = D->isConstexpr();
+  // FIXME: check whether the instantiation produces a constexpr function.
+
   FunctionDecl *Function =
       FunctionDecl::Create(SemaRef.Context, DC, D->getInnerLocStart(),
                            D->getLocation(), D->getDeclName(), T, TInfo,
                            D->getStorageClass(), D->getStorageClassAsWritten(),
-                           D->isInlineSpecified(), D->hasWrittenPrototype());
+                           D->isInlineSpecified(), D->hasWrittenPrototype(),
+                           isConstexpr);
 
   if (QualifierLoc)
     Function->setQualifierInfo(QualifierLoc);
@@ -1149,9 +1153,13 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
                                                              Innermost.first,
                                                              Innermost.second),
                                                 InsertPos);
-  } else if (isFriend && D->isThisDeclarationADefinition()) {
-    // TODO: should we remember this connection regardless of whether
-    // the friend declaration provided a body?
+  } else if (isFriend) {
+    // Note, we need this connection even if the friend doesn't have a body.
+    // Its body may exist but not have been attached yet due to deferred
+    // parsing.
+    // FIXME: It might be cleaner to set this when attaching the body to the
+    // friend function declaration, however that would require finding all the
+    // instantiations and modifying them.
     Function->setInstantiationOfMemberFunction(D, TSK_ImplicitInstantiation);
   }
     
@@ -1288,7 +1296,8 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
 
 Decl *
 TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
-                                      TemplateParameterList *TemplateParams) {
+                                      TemplateParameterList *TemplateParams,
+                                      bool IsClassScopeSpecialization) {
   FunctionTemplateDecl *FunctionTemplate = D->getDescribedFunctionTemplate();
   void *InsertPos = 0;
   if (FunctionTemplate && !TemplateParams) {
@@ -1382,6 +1391,9 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
     if (!DC) return 0;
   }
 
+  bool isConstexpr = D->isConstexpr();
+  // FIXME: check whether the instantiation produces a constexpr function.
+
   // Build the instantiated method declaration.
   CXXRecordDecl *Record = cast<CXXRecordDecl>(DC);
   CXXMethodDecl *Method = 0;
@@ -1394,7 +1406,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
                                         StartLoc, NameInfo, T, TInfo,
                                         Constructor->isExplicit(),
                                         Constructor->isInlineSpecified(),
-                                        false);
+                                        false, isConstexpr);
   } else if (CXXDestructorDecl *Destructor = dyn_cast<CXXDestructorDecl>(D)) {
     Method = CXXDestructorDecl::Create(SemaRef.Context, Record,
                                        StartLoc, NameInfo, T, TInfo,
@@ -1405,14 +1417,14 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
                                        StartLoc, NameInfo, T, TInfo,
                                        Conversion->isInlineSpecified(),
                                        Conversion->isExplicit(),
-                                       Conversion->getLocEnd());
+                                       isConstexpr, Conversion->getLocEnd());
   } else {
     Method = CXXMethodDecl::Create(SemaRef.Context, Record,
                                    StartLoc, NameInfo, T, TInfo,
                                    D->isStatic(),
                                    D->getStorageClassAsWritten(),
                                    D->isInlineSpecified(),
-                                   D->getLocEnd());
+                                   isConstexpr, D->getLocEnd());
   }
 
   if (QualifierLoc)
@@ -1493,7 +1505,8 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   }
 
   bool Redeclaration = false;
-  SemaRef.CheckFunctionDeclaration(0, Method, Previous, false, Redeclaration);
+  if (!IsClassScopeSpecialization)
+    SemaRef.CheckFunctionDeclaration(0, Method, Previous, false, Redeclaration);
 
   if (D->isPure())
     SemaRef.CheckPureMethod(Method, SourceRange());
@@ -1512,7 +1525,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
                             : Method);
     if (isFriend)
       Record->makeDeclVisibleInContext(DeclToAdd);
-    else
+    else if (!IsClassScopeSpecialization)
       Owner->addDecl(DeclToAdd);
   }
 
@@ -1905,6 +1918,29 @@ Decl * TemplateDeclInstantiator
     SemaRef.Context.setInstantiatedFromUsingDecl(cast<UsingDecl>(UD), D);
 
   return UD;
+}
+
+
+Decl *TemplateDeclInstantiator::VisitClassScopeFunctionSpecializationDecl(
+                                     ClassScopeFunctionSpecializationDecl *Decl) {
+  CXXMethodDecl *OldFD = Decl->getSpecialization();
+  CXXMethodDecl *NewFD = cast<CXXMethodDecl>(VisitCXXMethodDecl(OldFD, 0, true));
+
+  LookupResult Previous(SemaRef, NewFD->getNameInfo(), Sema::LookupOrdinaryName,
+                        Sema::ForRedeclaration);
+
+  SemaRef.LookupQualifiedName(Previous, SemaRef.CurContext);
+  if (SemaRef.CheckFunctionTemplateSpecialization(NewFD, 0, Previous)) {
+    NewFD->setInvalidDecl();
+    return NewFD;
+  }
+
+  // Associate the specialization with the pattern.
+  FunctionDecl *Specialization = cast<FunctionDecl>(Previous.getFoundDecl());
+  assert(Specialization && "Class scope Specialization is null");
+  SemaRef.Context.setClassScopeSpecializationPattern(Specialization, OldFD);
+
+  return NewFD;
 }
 
 Decl *Sema::SubstDecl(Decl *D, DeclContext *Owner,
@@ -2335,8 +2371,10 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   if (Function->isInvalidDecl() || Function->isDefined())
     return;
 
-  // Never instantiate an explicit specialization.
-  if (Function->getTemplateSpecializationKind() == TSK_ExplicitSpecialization)
+  // Never instantiate an explicit specialization except if it is a class scope
+  // explicit specialization.
+  if (Function->getTemplateSpecializationKind() == TSK_ExplicitSpecialization &&
+      !Function->getClassScopeSpecializationPattern())
     return;
 
   // Find the function body that we'll be substituting.

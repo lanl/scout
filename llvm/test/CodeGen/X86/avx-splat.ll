@@ -1,10 +1,8 @@
 ; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7-avx -mattr=+avx | FileCheck %s
 
-; FIXME: use avx versions for punpcklbw, punpckhbw and punpckhwd
 
-; CHECK: vextractf128 $0
-; CHECK-NEXT: punpcklbw
-; CHECK-NEXT: punpckhbw
+; CHECK: vpunpcklbw %xmm
+; CHECK-NEXT: vpunpckhbw %xmm
 ; CHECK-NEXT: vinsertf128 $1
 ; CHECK-NEXT: vpermilps $85
 define <32 x i8> @funcA(<32 x i8> %a) nounwind uwtable readnone ssp {
@@ -13,8 +11,7 @@ entry:
   ret <32 x i8> %shuffle
 }
 
-; CHECK: vextractf128 $0
-; CHECK-NEXT: punpckhwd
+; CHECK: vpunpckhwd %xmm
 ; CHECK-NEXT: vinsertf128 $1
 ; CHECK-NEXT: vpermilps $85
 define <16 x i16> @funcB(<16 x i16> %a) nounwind uwtable readnone ssp {
@@ -24,7 +21,7 @@ entry:
 }
 
 ; CHECK: vmovd
-; CHECK-NEXT: movlhps
+; CHECK-NEXT: vmovlhps %xmm
 ; CHECK-NEXT: vinsertf128 $1
 define <4 x i64> @funcC(i64 %q) nounwind uwtable readnone ssp {
 entry:
@@ -35,7 +32,7 @@ entry:
   ret <4 x i64> %vecinit6.i
 }
 
-; CHECK: vshufpd
+; CHECK: vshufpd $0
 ; CHECK-NEXT: vinsertf128 $1
 define <4 x double> @funcD(double %q) nounwind uwtable readnone ssp {
 entry:
@@ -78,10 +75,9 @@ __load_and_broadcast_32.exit1249:                 ; preds = %load.i1247, %for_ex
   ret <8 x float> %load_broadcast12281250
 }
 
-; CHECK: vpshufd  $0
-; CHECK-NEXT: vinsertf128 $1
-define <8 x float> @funcF(i32* %ptr) nounwind {
-  %val = load i32* %ptr, align 4
+; CHECK: vinsertf128 $1
+; CHECK-NEXT: vpermilps $0
+define <8 x float> @funcF(i32 %val) nounwind {
   %ret6 = insertelement <8 x i32> undef, i32 %val, i32 6
   %ret7 = insertelement <8 x i32> %ret6, i32 %val, i32 7
   %tmp = bitcast <8 x i32> %ret7 to <8 x float>

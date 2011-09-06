@@ -206,16 +206,17 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
         cast<CXXConstructorDecl>(MD)->isDefaultConstructor())
       return RValue::get(0);
 
-    if (MD->isCopyAssignmentOperator()) {
-      // We don't like to generate the trivial copy assignment operator when
-      // it isn't necessary; just produce the proper effect here.
+    if (MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) {
+      // We don't like to generate the trivial copy/move assignment operator
+      // when it isn't necessary; just produce the proper effect here.
       llvm::Value *RHS = EmitLValue(*CE->arg_begin()).getAddress();
       EmitAggregateCopy(This, RHS, CE->getType());
       return RValue::get(This);
     }
     
     if (isa<CXXConstructorDecl>(MD) && 
-        cast<CXXConstructorDecl>(MD)->isCopyConstructor()) {
+        cast<CXXConstructorDecl>(MD)->isCopyOrMoveConstructor()) {
+      // Trivial move and copy ctor are the same.
       llvm::Value *RHS = EmitLValue(*CE->arg_begin()).getAddress();
       EmitSynthesizedCXXCopyCtorCall(cast<CXXConstructorDecl>(MD), This, RHS,
                                      CE->arg_begin(), CE->arg_end());
@@ -333,16 +334,12 @@ CodeGenFunction::EmitCXXOperatorMemberCallExpr(const CXXOperatorCallExpr *E,
   LValue LV = EmitLValue(E->getArg(0));
   llvm::Value *This = LV.getAddress();
 
-  if (MD->isCopyAssignmentOperator()) {
-    const CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(MD->getDeclContext());
-    if (ClassDecl->hasTrivialCopyAssignment()) {
-      assert(!ClassDecl->hasUserDeclaredCopyAssignment() &&
-             "EmitCXXOperatorMemberCallExpr - user declared copy assignment");
-      llvm::Value *Src = EmitLValue(E->getArg(1)).getAddress();
-      QualType Ty = E->getType();
-      EmitAggregateCopy(This, Src, Ty);
-      return RValue::get(This);
-    }
+  if ((MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) &&
+      MD->isTrivial()) {
+    llvm::Value *Src = EmitLValue(E->getArg(1)).getAddress();
+    QualType Ty = E->getType();
+    EmitAggregateCopy(This, Src, Ty);
+    return RValue::get(This);
   }
 
   llvm::Value *Callee = EmitCXXOperatorMemberCallee(E, MD, This);
@@ -703,7 +700,10 @@ static void StoreAnyExprIntoOneUnit(CodeGenFunction &CGF, const CXXNewExpr *E,
                                 AllocType.isVolatileQualified());
   else {
     AggValueSlot Slot
-      = AggValueSlot::forAddr(NewPtr, AllocType.getQualifiers(), true);
+      = AggValueSlot::forAddr(NewPtr, AllocType.getQualifiers(),
+                              AggValueSlot::IsDestructed,
+                              AggValueSlot::DoesNotNeedGCBarriers,
+                              AggValueSlot::IsNotAliased);
     CGF.EmitAggExpr(Init, Slot);
   }
 }

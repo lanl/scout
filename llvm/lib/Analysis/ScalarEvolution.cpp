@@ -652,7 +652,7 @@ static void GroupByComplexity(SmallVectorImpl<const SCEV *> &Ops,
 /// Assume, K > 0.
 static const SCEV *BinomialCoefficient(const SCEV *It, unsigned K,
                                        ScalarEvolution &SE,
-                                       Type* ResultTy) {
+                                       Type *ResultTy) {
   // Handle the simplest case efficiently.
   if (K == 1)
     return SE.getTruncateOrZeroExtend(It, ResultTy);
@@ -1735,7 +1735,7 @@ const SCEV *ScalarEvolution::getAddExpr(SmallVectorImpl<const SCEV *> &Ops,
       // If all of the other operands were loop invariant, we are done.
       if (Ops.size() == 1) return NewRec;
 
-      // Otherwise, add the folded AddRec by the non-liv parts.
+      // Otherwise, add the folded AddRec by the non-invariant parts.
       for (unsigned i = 0;; ++i)
         if (Ops[i] == AddRec) {
           Ops[i] = NewRec;
@@ -1960,7 +1960,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
       // If all of the other operands were loop invariant, we are done.
       if (Ops.size() == 1) return NewRec;
 
-      // Otherwise, multiply the folded AddRec by the non-liv parts.
+      // Otherwise, multiply the folded AddRec by the non-invariant parts.
       for (unsigned i = 0;; ++i)
         if (Ops[i] == AddRec) {
           Ops[i] = NewRec;
@@ -1976,22 +1976,38 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
          OtherIdx < Ops.size() && isa<SCEVAddRecExpr>(Ops[OtherIdx]);
          ++OtherIdx)
       if (AddRecLoop == cast<SCEVAddRecExpr>(Ops[OtherIdx])->getLoop()) {
-        // F * G, where F = {A,+,B}<L> and G = {C,+,D}<L>  -->
-        // {A*C,+,F*D + G*B + B*D}<L>
+        // {A,+,B}<L> * {C,+,D}<L>  -->  {A*C,+,A*D + B*C + B*D,+,2*B*D}<L>
+        //
+        // {A,+,B} * {C,+,D} = A+It*B * C+It*D = A*C + (A*D + B*C)*It + B*D*It^2
+        // Given an equation of the form x + y*It + z*It^2 (above), we want to
+        // express it in terms of {X,+,Y,+,Z}.
+        // {X,+,Y,+,Z} = X + Y*It + Z*(It^2 - It)/2.
+        // Rearranging, X = x, Y = y+z, Z = 2z.
+        //
+        // x = A*C, y = (A*D + B*C), z = B*D.
+        // Therefore X = A*C, Y = (A*D + B*C) + B*D and Z = 2*B*D.
         for (; OtherIdx != Ops.size() && isa<SCEVAddRecExpr>(Ops[OtherIdx]);
              ++OtherIdx)
           if (const SCEVAddRecExpr *OtherAddRec =
                 dyn_cast<SCEVAddRecExpr>(Ops[OtherIdx]))
             if (OtherAddRec->getLoop() == AddRecLoop) {
-              const SCEVAddRecExpr *F = AddRec, *G = OtherAddRec;
-              const SCEV *NewStart = getMulExpr(F->getStart(), G->getStart());
-              const SCEV *B = F->getStepRecurrence(*this);
-              const SCEV *D = G->getStepRecurrence(*this);
-              const SCEV *NewStep = getAddExpr(getMulExpr(F, D),
-                                               getMulExpr(G, B),
-                                               getMulExpr(B, D));
-              const SCEV *NewAddRec = getAddRecExpr(NewStart, NewStep,
-                                                    F->getLoop(),
+              const SCEV *A = AddRec->getStart();
+              const SCEV *B = AddRec->getStepRecurrence(*this);
+              const SCEV *C = OtherAddRec->getStart();
+              const SCEV *D = OtherAddRec->getStepRecurrence(*this);
+              const SCEV *NewStart = getMulExpr(A, C);
+              const SCEV *BD = getMulExpr(B, D);
+              const SCEV *NewStep = getAddExpr(getMulExpr(A, D),
+                                               getMulExpr(B, C), BD);
+              const SCEV *NewSecondOrderStep =
+                  getMulExpr(BD, getConstant(BD->getType(), 2));
+
+              SmallVector<const SCEV *, 3> AddRecOps;
+              AddRecOps.push_back(NewStart);
+              AddRecOps.push_back(NewStep);
+              AddRecOps.push_back(NewSecondOrderStep);
+              const SCEV *NewAddRec = getAddRecExpr(AddRecOps,
+                                                    AddRec->getLoop(),
                                                     SCEV::FlagAnyWrap);
               if (Ops.size() == 2) return NewAddRec;
               Ops[Idx] = AddRec = cast<SCEVAddRecExpr>(NewAddRec);
@@ -3830,6 +3846,63 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
 //                   Iteration Count Computation Code
 //
 
+/// getSmallConstantTripCount - Returns the maximum trip count of this loop as a
+/// normal unsigned value, if possible. Returns 0 if the trip count is unknown
+/// or not constant. Will also return 0 if the maximum trip count is very large
+/// (>= 2^32)
+unsigned ScalarEvolution::getSmallConstantTripCount(Loop *L,
+                                                    BasicBlock *ExitBlock) {
+  const SCEVConstant *ExitCount =
+    dyn_cast<SCEVConstant>(getExitCount(L, ExitBlock));
+  if (!ExitCount)
+    return 0;
+
+  ConstantInt *ExitConst = ExitCount->getValue();
+
+  // Guard against huge trip counts.
+  if (ExitConst->getValue().getActiveBits() > 32)
+    return 0;
+
+  // In case of integer overflow, this returns 0, which is correct.
+  return ((unsigned)ExitConst->getZExtValue()) + 1;
+}
+
+/// getSmallConstantTripMultiple - Returns the largest constant divisor of the
+/// trip count of this loop as a normal unsigned value, if possible. This
+/// means that the actual trip count is always a multiple of the returned
+/// value (don't forget the trip count could very well be zero as well!).
+///
+/// Returns 1 if the trip count is unknown or not guaranteed to be the
+/// multiple of a constant (which is also the case if the trip count is simply
+/// constant, use getSmallConstantTripCount for that case), Will also return 1
+/// if the trip count is very large (>= 2^32).
+unsigned ScalarEvolution::getSmallConstantTripMultiple(Loop *L,
+                                                       BasicBlock *ExitBlock) {
+  const SCEV *ExitCount = getExitCount(L, ExitBlock);
+  if (ExitCount == getCouldNotCompute())
+    return 1;
+
+  // Get the trip count from the BE count by adding 1.
+  const SCEV *TCMul = getAddExpr(ExitCount,
+                                 getConstant(ExitCount->getType(), 1));
+  // FIXME: SCEV distributes multiplication as V1*C1 + V2*C1. We could attempt
+  // to factor simple cases.
+  if (const SCEVMulExpr *Mul = dyn_cast<SCEVMulExpr>(TCMul))
+    TCMul = Mul->getOperand(0);
+
+  const SCEVConstant *MulC = dyn_cast<SCEVConstant>(TCMul);
+  if (!MulC)
+    return 1;
+
+  ConstantInt *Result = MulC->getValue();
+
+  // Guard against huge trip counts.
+  if (!Result || Result->getValue().getActiveBits() > 32)
+    return 1;
+
+  return (unsigned)Result->getZExtValue();
+}
+
 // getExitCount - Get the expression for the number of loop iterations for which
 // this loop is guaranteed not to exit via ExitintBlock. Otherwise return
 // SCEVCouldNotCompute.
@@ -4033,6 +4106,7 @@ ScalarEvolution::BackedgeTakenInfo::getExact(ScalarEvolution *SE) const {
     else
       BECount = SE->getUMinFromMismatchedTypes(BECount, ENT->ExactNotTaken);
   }
+  assert(BECount && "Invalid not taken count for loop exit");
   return BECount;
 }
 

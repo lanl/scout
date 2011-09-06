@@ -97,7 +97,7 @@ static llvm::sys::cas_flag ActiveASTUnitObjects;
 ASTUnit::ASTUnit(bool _MainFileIsAST)
   : OnlyLocalDecls(false), CaptureDiagnostics(false),
     MainFileIsAST(_MainFileIsAST), 
-    CompleteTranslationUnit(true), WantTiming(getenv("LIBCLANG_TIMING")),
+    TUKind(TU_Complete), WantTiming(getenv("LIBCLANG_TIMING")),
     OwnsRemappedFileBuffers(true),
     NumStoredDiagnosticsFromDriver(0),
     ConcurrencyCheckValue(CheckUnlocked), 
@@ -376,28 +376,56 @@ namespace {
 /// \brief Gathers information from ASTReader that will be used to initialize
 /// a Preprocessor.
 class ASTInfoCollector : public ASTReaderListener {
+  Preprocessor &PP;
+  ASTContext &Context;
   LangOptions &LangOpt;
   HeaderSearch &HSI;
-  std::string &TargetTriple;
+  llvm::IntrusiveRefCntPtr<TargetInfo> &Target;
   std::string &Predefines;
   unsigned &Counter;
 
   unsigned NumHeaderInfos;
 
+  bool InitializedLanguage;
 public:
-  ASTInfoCollector(LangOptions &LangOpt, HeaderSearch &HSI,
-                   std::string &TargetTriple, std::string &Predefines,
+  ASTInfoCollector(Preprocessor &PP, ASTContext &Context, LangOptions &LangOpt, 
+                   HeaderSearch &HSI,
+                   llvm::IntrusiveRefCntPtr<TargetInfo> &Target,
+                   std::string &Predefines,
                    unsigned &Counter)
-    : LangOpt(LangOpt), HSI(HSI), TargetTriple(TargetTriple),
-      Predefines(Predefines), Counter(Counter), NumHeaderInfos(0) {}
+    : PP(PP), Context(Context), LangOpt(LangOpt), HSI(HSI), Target(Target),
+      Predefines(Predefines), Counter(Counter), NumHeaderInfos(0),
+      InitializedLanguage(false) {}
 
   virtual bool ReadLanguageOptions(const LangOptions &LangOpts) {
+    if (InitializedLanguage)
+      return false;
+    
     LangOpt = LangOpts;
+    
+    // Initialize the preprocessor.
+    PP.Initialize(*Target);
+    
+    // Initialize the ASTContext
+    Context.InitBuiltinTypes(*Target);
+    
+    InitializedLanguage = true;
     return false;
   }
 
   virtual bool ReadTargetTriple(StringRef Triple) {
-    TargetTriple = Triple;
+    // If we've already initialized the target, don't do it again.
+    if (Target)
+      return false;
+    
+    // FIXME: This is broken, we should store the TargetOptions in the AST file.
+    TargetOptions TargetOpts;
+    TargetOpts.ABI = "";
+    TargetOpts.CXXABI = "";
+    TargetOpts.CPU = "";
+    TargetOpts.Features.clear();
+    TargetOpts.Triple = Triple;
+    Target = TargetInfo::CreateTargetInfo(PP.getDiagnostics(), TargetOpts);
     return false;
   }
 
@@ -471,11 +499,6 @@ void StoredDiagnosticClient::HandleDiagnostic(Diagnostic::Level Level,
 
 const std::string &ASTUnit::getOriginalSourceFileName() {
   return OriginalSourceFile;
-}
-
-const std::string &ASTUnit::getASTFileName() {
-  assert(isMainFileAST() && "Not an ASTUnit from an AST file!");
-  return static_cast<ASTReader *>(Ctx->getExternalSource())->getFileName();
 }
 
 llvm::MemoryBuffer *ASTUnit::getBufferForFile(StringRef Filename,
@@ -577,23 +600,39 @@ ASTUnit *ASTUnit::LoadFromASTFile(const std::string &Filename,
   
   // Gather Info for preprocessor construction later on.
 
-  LangOptions LangInfo;
   HeaderSearch &HeaderInfo = *AST->HeaderInfo.get();
-  std::string TargetTriple;
   std::string Predefines;
   unsigned Counter;
 
   llvm::OwningPtr<ASTReader> Reader;
 
-  Reader.reset(new ASTReader(AST->getSourceManager(), AST->getFileManager(),
-                             AST->getDiagnostics()));
+  AST->PP = new Preprocessor(AST->getDiagnostics(), AST->ASTFileLangOpts, 
+                             /*Target=*/0, AST->getSourceManager(), HeaderInfo, 
+                             *AST, 
+                             /*IILookup=*/0,
+                             /*OwnsHeaderSearch=*/false,
+                             /*DelayInitialization=*/true);
+  Preprocessor &PP = *AST->PP;
+
+  AST->Ctx = new ASTContext(AST->ASTFileLangOpts,
+                            AST->getSourceManager(),
+                            /*Target=*/0,
+                            PP.getIdentifierTable(),
+                            PP.getSelectorTable(),
+                            PP.getBuiltinInfo(),
+                            /* size_reserve = */0,
+                            /*DelayInitialization=*/true);
+  ASTContext &Context = *AST->Ctx;
+
+  Reader.reset(new ASTReader(PP, Context));
   
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<ASTReader>
     ReaderCleanup(Reader.get());
 
-  Reader->setListener(new ASTInfoCollector(LangInfo, HeaderInfo, TargetTriple,
-                                           Predefines, Counter));
+  Reader->setListener(new ASTInfoCollector(*AST->PP, Context,
+                                           AST->ASTFileLangOpts, HeaderInfo, 
+                                           AST->Target, Predefines, Counter));
 
   switch (Reader->ReadAST(Filename, serialization::MK_MainFile)) {
   case ASTReader::Success:
@@ -607,39 +646,8 @@ ASTUnit *ASTUnit::LoadFromASTFile(const std::string &Filename,
 
   AST->OriginalSourceFile = Reader->getOriginalSourceFile();
 
-  // AST file loaded successfully. Now create the preprocessor.
-
-  // Get information about the target being compiled for.
-  //
-  // FIXME: This is broken, we should store the TargetOptions in the AST file.
-  TargetOptions TargetOpts;
-  TargetOpts.ABI = "";
-  TargetOpts.CXXABI = "";
-  TargetOpts.CPU = "";
-  TargetOpts.Features.clear();
-  TargetOpts.Triple = TargetTriple;
-  AST->Target = TargetInfo::CreateTargetInfo(AST->getDiagnostics(),
-                                             TargetOpts);
-  AST->PP = new Preprocessor(AST->getDiagnostics(), LangInfo, *AST->Target,
-                             AST->getSourceManager(), HeaderInfo);
-  Preprocessor &PP = *AST->PP;
-
   PP.setPredefines(Reader->getSuggestedPredefines());
   PP.setCounterValue(Counter);
-  Reader->setPreprocessor(PP);
-
-  // Create and initialize the ASTContext.
-
-  AST->Ctx = new ASTContext(LangInfo,
-                            AST->getSourceManager(),
-                            *AST->Target,
-                            PP.getIdentifierTable(),
-                            PP.getSelectorTable(),
-                            PP.getBuiltinInfo(),
-                            /* size_reserve = */0);
-  ASTContext &Context = *AST->Ctx;
-
-  Reader->InitializeContext(Context);
 
   // Attach the AST reader to the AST context as an external AST
   // source, so that declarations will be deserialized from the
@@ -712,9 +720,7 @@ void AddTopLevelDeclarationToHash(Decl *D, unsigned &Hash) {
   }
   
   if (ObjCClassDecl *Class = dyn_cast<ObjCClassDecl>(D)) {
-    for (ObjCClassDecl::iterator I = Class->begin(), IEnd = Class->end();
-         I != IEnd; ++I)
-      AddTopLevelDeclarationToHash(I->getInterface(), Hash);
+    AddTopLevelDeclarationToHash(Class->getForwardInterfaceDecl(), Hash);
     return;
   }
 }
@@ -764,8 +770,8 @@ public:
   TopLevelDeclTrackerAction(ASTUnit &_Unit) : Unit(_Unit) {}
 
   virtual bool hasCodeCompletionSupport() const { return false; }
-  virtual bool usesCompleteTranslationUnit()  { 
-    return Unit.isCompleteTranslationUnit(); 
+  virtual TranslationUnitKind getTranslationUnitKind()  { 
+    return Unit.getTranslationUnitKind(); 
   }
 };
 
@@ -776,10 +782,9 @@ class PrecompilePreambleConsumer : public PCHGenerator,
   std::vector<Decl *> TopLevelDecls;
                                      
 public:
-  PrecompilePreambleConsumer(ASTUnit &Unit,
-                             const Preprocessor &PP, bool Chaining,
+  PrecompilePreambleConsumer(ASTUnit &Unit, const Preprocessor &PP, 
                              StringRef isysroot, raw_ostream *Out)
-    : PCHGenerator(PP, "", Chaining, isysroot, Out), Unit(Unit),
+    : PCHGenerator(PP, "", /*IsModule=*/false, isysroot, Out), Unit(Unit),
       Hash(Unit.getCurrentTopLevelHashValue()) {
     Hash = 0;
   }
@@ -832,10 +837,9 @@ public:
     std::string Sysroot;
     std::string OutputFile;
     raw_ostream *OS = 0;
-    bool Chaining;
     if (GeneratePCHAction::ComputeASTConsumerArguments(CI, InFile, Sysroot,
                                                        OutputFile,
-                                                       OS, Chaining))
+                                                       OS))
       return 0;
     
     if (!CI.getFrontendOpts().RelocatablePCH)
@@ -843,13 +847,13 @@ public:
 
     CI.getPreprocessor().addPPCallbacks(
      new MacroDefinitionTrackerPPCallbacks(Unit.getCurrentTopLevelHashValue()));
-    return new PrecompilePreambleConsumer(Unit, CI.getPreprocessor(), Chaining,
-                                          Sysroot, OS);
+    return new PrecompilePreambleConsumer(Unit, CI.getPreprocessor(), Sysroot, 
+                                          OS);
   }
 
   virtual bool hasCodeCompletionSupport() const { return false; }
   virtual bool hasASTFileSupport() const { return false; }
-  virtual bool usesCompleteTranslationUnit() { return false; }
+  virtual TranslationUnitKind getTranslationUnitKind() { return TU_Prefix; }
 };
 
 }
@@ -1127,7 +1131,9 @@ ASTUnit::ComputePreamble(CompilerInvocation &Invocation,
     CreatedBuffer = true;
   }
   
-  return std::make_pair(Buffer, Lexer::ComputePreamble(Buffer, MaxLines));
+  return std::make_pair(Buffer, Lexer::ComputePreamble(Buffer,
+                                                       Invocation.getLangOpts(),
+                                                       MaxLines));
 }
 
 static llvm::MemoryBuffer *CreatePaddedMainFileBuffer(llvm::MemoryBuffer *Old,
@@ -1359,7 +1365,6 @@ llvm::MemoryBuffer *ASTUnit::getMainBufferWithPrecompiledPreamble(
   
   // Tell the compiler invocation to generate a temporary precompiled header.
   FrontendOpts.ProgramAction = frontend::GeneratePCH;
-  FrontendOpts.ChainedPCH = true;
   // FIXME: Generate the precompiled header into memory?
   FrontendOpts.OutputFile = PreamblePCHPath;
   PreprocessorOpts.PrecompiledPreambleBytes.first = 0;
@@ -1595,8 +1600,7 @@ ASTUnit *ASTUnit::LoadFromCompilerInvocationAction(CompilerInvocation *CI,
   AST->Diagnostics = Diags;
   AST->OnlyLocalDecls = false;
   AST->CaptureDiagnostics = false;
-  AST->CompleteTranslationUnit = Action ? Action->usesCompleteTranslationUnit()
-                                        : true;
+  AST->TUKind = Action ? Action->getTranslationUnitKind() : TU_Complete;
   AST->ShouldCacheCodeCompletionResults = false;
   AST->Invocation = CI;
 
@@ -1730,7 +1734,7 @@ ASTUnit *ASTUnit::LoadFromCompilerInvocation(CompilerInvocation *CI,
                                              bool OnlyLocalDecls,
                                              bool CaptureDiagnostics,
                                              bool PrecompilePreamble,
-                                             bool CompleteTranslationUnit,
+                                             TranslationUnitKind TUKind,
                                              bool CacheCodeCompletionResults,
                                              bool NestedMacroExpansions) {  
   // Create the AST unit.
@@ -1740,7 +1744,7 @@ ASTUnit *ASTUnit::LoadFromCompilerInvocation(CompilerInvocation *CI,
   AST->Diagnostics = Diags;
   AST->OnlyLocalDecls = OnlyLocalDecls;
   AST->CaptureDiagnostics = CaptureDiagnostics;
-  AST->CompleteTranslationUnit = CompleteTranslationUnit;
+  AST->TUKind = TUKind;
   AST->ShouldCacheCodeCompletionResults = CacheCodeCompletionResults;
   AST->Invocation = CI;
   AST->NestedMacroExpansions = NestedMacroExpansions;
@@ -1765,10 +1769,8 @@ ASTUnit *ASTUnit::LoadFromCommandLine(const char **ArgBegin,
                                       unsigned NumRemappedFiles,
                                       bool RemappedFilesKeepOriginalName,
                                       bool PrecompilePreamble,
-                                      bool CompleteTranslationUnit,
+                                      TranslationUnitKind TUKind,
                                       bool CacheCodeCompletionResults,
-                                      bool CXXPrecompilePreamble,
-                                      bool CXXChainedPCH,
                                       bool NestedMacroExpansions) {
   if (!Diags.getPtr()) {
     // No diagnostics engine was provided, so create our own diagnostics object
@@ -1811,16 +1813,6 @@ ASTUnit *ASTUnit::LoadFromCommandLine(const char **ArgBegin,
   // Override the resources path.
   CI->getHeaderSearchOpts().ResourceDir = ResourceFilesPath;
 
-  // Check whether we should precompile the preamble and/or use chained PCH.
-  // FIXME: This is a temporary hack while we debug C++ chained PCH.
-  if (CI->getLangOpts().CPlusPlus) {
-    PrecompilePreamble = PrecompilePreamble && CXXPrecompilePreamble;
-    
-    if (PrecompilePreamble && !CXXChainedPCH &&
-        !CI->getPreprocessorOpts().ImplicitPCHInclude.empty())
-      PrecompilePreamble = false;
-  }
-  
   // Create the AST unit.
   llvm::OwningPtr<ASTUnit> AST;
   AST.reset(new ASTUnit(false));
@@ -1831,7 +1823,7 @@ ASTUnit *ASTUnit::LoadFromCommandLine(const char **ArgBegin,
   AST->FileMgr = new FileManager(AST->FileSystemOpts);
   AST->OnlyLocalDecls = OnlyLocalDecls;
   AST->CaptureDiagnostics = CaptureDiagnostics;
-  AST->CompleteTranslationUnit = CompleteTranslationUnit;
+  AST->TUKind = TUKind;
   AST->ShouldCacheCodeCompletionResults = CacheCodeCompletionResults;
   AST->NumStoredDiagnosticsFromDriver = StoredDiagnostics.size();
   AST->StoredDiagnostics.swap(StoredDiagnostics);
@@ -2063,8 +2055,7 @@ void AugmentedCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &S,
   bool AddedResult = false;
   unsigned InContexts  
     = (Context.getKind() == CodeCompletionContext::CCC_Recovery? NormalContexts
-                                            : (1 << (Context.getKind() - 1)));
-
+                                        : (1ULL << (Context.getKind() - 1)));
   // Contains the set of names that are hidden by "local" completion results.
   llvm::StringSet<llvm::BumpPtrAllocator> HiddenNames;
   typedef CodeCompletionResult Result;
@@ -2263,7 +2254,8 @@ void ASTUnit::CodeComplete(StringRef File, unsigned Line, unsigned Column,
     llvm::sys::PathWithStatus MainPath(OriginalSourceFile);
     if (const FileStatus *CompleteFileStatus = CompleteFilePath.getFileStatus())
       if (const FileStatus *MainStatus = MainPath.getFileStatus())
-        if (CompleteFileStatus->getUniqueID() == MainStatus->getUniqueID())
+        if (CompleteFileStatus->getUniqueID() == MainStatus->getUniqueID() &&
+            Line > 1)
           OverrideMainBuffer
             = getMainBufferWithPrecompiledPreamble(*CCInvocation, false, 
                                                    Line - 1);
@@ -2346,7 +2338,8 @@ bool ASTUnit::serialize(raw_ostream &OS) {
   std::vector<unsigned char> Buffer;
   llvm::BitstreamWriter Stream(Buffer);
   ASTWriter Writer(Stream);
-  Writer.WriteAST(getSema(), 0, std::string(), "");
+  // FIXME: Handle modules
+  Writer.WriteAST(getSema(), 0, std::string(), /*IsModule=*/false, "");
   
   // Write the generated bitstream to "Out".
   if (!Buffer.empty())

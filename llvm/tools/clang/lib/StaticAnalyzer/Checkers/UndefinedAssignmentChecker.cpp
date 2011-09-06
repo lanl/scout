@@ -53,7 +53,7 @@ void UndefinedAssignmentChecker::checkBind(SVal location, SVal val,
   while (StoreE) {
     if (const BinaryOperator *B = dyn_cast<BinaryOperator>(StoreE)) {
       if (B->isCompoundAssignmentOp()) {
-        const GRState *state = C.getState();
+        const ProgramState *state = C.getState();
         if (state->getSVal(B->getLHS()).isUndef()) {
           str = "The left expression of the compound assignment is an "
                 "uninitialized value. The computed value will also be garbage";
@@ -67,17 +67,17 @@ void UndefinedAssignmentChecker::checkBind(SVal location, SVal val,
     }
 
     if (const DeclStmt *DS = dyn_cast<DeclStmt>(StoreE)) {
-      const VarDecl* VD = dyn_cast<VarDecl>(DS->getSingleDecl());
+      const VarDecl *VD = dyn_cast<VarDecl>(DS->getSingleDecl());
       ex = VD->getInit();
     }
 
     break;
   }
 
-  EnhancedBugReport *R = new EnhancedBugReport(*BT, str, N);
+  BugReport *R = new BugReport(*BT, str, N);
   if (ex) {
     R->addRange(ex->getSourceRange());
-    R->addVisitorCreator(bugreporter::registerTrackNullOrUndefValue, ex);
+    R->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N, ex));
   }
   C.EmitReport(R);
 }

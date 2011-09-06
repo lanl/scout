@@ -18,6 +18,7 @@
 #include "clang/Serialization/ASTBitCodes.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/PreprocessingRecord.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/FileManager.h"
@@ -66,7 +67,7 @@ class GlobalCodeCompletionAllocator
   
 /// \brief Utility class for loading a ASTContext from an AST file.
 ///
-class ASTUnit {
+class ASTUnit : public ModuleLoader {
 public:
   typedef std::map<FileID, std::vector<PreprocessedEntity *> > 
     PreprocessedEntitiesByFileMap;
@@ -112,8 +113,8 @@ private:
   /// \brief Track whether the main file was loaded from an AST or not.
   bool MainFileIsAST;
 
-  /// \brief Whether this AST represents a complete translation unit.
-  bool CompleteTranslationUnit;
+  /// \brief What kind of translation unit this AST represents.
+  TranslationUnitKind TUKind;
 
   /// \brief Whether we should time each operation.
   bool WantTiming;
@@ -248,7 +249,10 @@ private:
   /// \brief Whether we want to include nested macro expansions in the
   /// detailed preprocessing record.
   bool NestedMacroExpansions;
-  
+ 
+  /// \brief The language options used when we load an AST file.
+  LangOptions ASTFileLangOpts;
+
   static void ConfigureDiags(llvm::IntrusiveRefCntPtr<Diagnostic> &Diags,
                              const char **ArgBegin, const char **ArgEnd,
                              ASTUnit &AST, bool CaptureDiagnostics);
@@ -434,7 +438,6 @@ public:
   const FileSystemOptions &getFileSystemOpts() const { return FileSystemOpts; }
 
   const std::string &getOriginalSourceFileName();
-  const std::string &getASTFileName();
 
   /// \brief Add a temporary file that the ASTUnit depends on.
   ///
@@ -549,11 +552,8 @@ public:
   llvm::MemoryBuffer *getBufferForFile(StringRef Filename,
                                        std::string *ErrorStr = 0);
 
-  /// \brief Whether this AST represents a complete translation unit.
-  ///
-  /// If false, this AST is only a partial translation unit, e.g., one
-  /// that might still be used as a precompiled header or preamble.
-  bool isCompleteTranslationUnit() const { return CompleteTranslationUnit; }
+  /// \brief Determine what kind of translation unit this AST represents.
+  TranslationUnitKind getTranslationUnitKind() const { return TUKind; }
 
   typedef llvm::PointerUnion<const char *, const llvm::MemoryBuffer *>
       FilenameOrMemBuf;
@@ -625,7 +625,7 @@ public:
                                              bool OnlyLocalDecls = false,
                                              bool CaptureDiagnostics = false,
                                              bool PrecompilePreamble = false,
-                                          bool CompleteTranslationUnit = true,
+                                      TranslationUnitKind TUKind = TU_Complete,
                                        bool CacheCodeCompletionResults = false,
                                        bool NestedMacroExpansions = true);
 
@@ -653,10 +653,8 @@ public:
                                       unsigned NumRemappedFiles = 0,
                                       bool RemappedFilesKeepOriginalName = true,
                                       bool PrecompilePreamble = false,
-                                      bool CompleteTranslationUnit = true,
+                                      TranslationUnitKind TUKind = TU_Complete,
                                       bool CacheCodeCompletionResults = false,
-                                      bool CXXPrecompilePreamble = false,
-                                      bool CXXChainedPCH = false,
                                       bool NestedMacroExpansions = true);
   
   /// \brief Reparse the source files using the same command-line options that
@@ -702,6 +700,13 @@ public:
   ///
   /// \returns True if an error occurred, false otherwise.
   bool serialize(raw_ostream &OS);
+  
+  virtual ModuleKey loadModule(SourceLocation ImportLoc, 
+                               IdentifierInfo &ModuleName,
+                               SourceLocation ModuleNameLoc) {
+    // ASTUnit doesn't know how to load modules (not that this matters).
+    return 0;
+  }
 };
 
 } // namespace clang

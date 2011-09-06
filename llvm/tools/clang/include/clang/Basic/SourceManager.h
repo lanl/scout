@@ -23,6 +23,7 @@
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include <map>
 #include <vector>
 #include <cassert>
 
@@ -34,6 +35,8 @@ class FileManager;
 class FileEntry;
 class LineTableInfo;
 class LangOptions;
+class ASTWriter;
+class ASTReader;
   
 /// SrcMgr - Public enums and private classes that are part of the
 /// SourceManager implementation.
@@ -84,6 +87,11 @@ namespace SrcMgr {
     /// NumLines - The number of lines in this ContentCache.  This is only valid
     /// if SourceLineCache is non-null.
     unsigned NumLines;
+
+    /// \brief Lazily computed map of macro argument chunks to their expanded
+    /// source location.
+    typedef std::map<unsigned, SourceLocation> MacroArgsMap;
+    MacroArgsMap *MacroArgsCache;
 
     /// getBuffer - Returns the memory buffer for the associated content.
     ///
@@ -142,11 +150,11 @@ namespace SrcMgr {
     
     ContentCache(const FileEntry *Ent = 0)
       : Buffer(0, false), OrigEntry(Ent), ContentsEntry(Ent),
-        SourceLineCache(0), NumLines(0) {}
+        SourceLineCache(0), NumLines(0), MacroArgsCache(0) {}
 
     ContentCache(const FileEntry *Ent, const FileEntry *contentEnt)
       : Buffer(0, false), OrigEntry(Ent), ContentsEntry(contentEnt),
-        SourceLineCache(0), NumLines(0) {}
+        SourceLineCache(0), NumLines(0), MacroArgsCache(0) {}
 
     ~ContentCache();
 
@@ -154,12 +162,13 @@ namespace SrcMgr {
     ///  a non-NULL Buffer or SourceLineCache.  Ownership of allocated memory
     ///  is not transferred, so this is a logical error.
     ContentCache(const ContentCache &RHS) 
-      : Buffer(0, false), SourceLineCache(0) 
+      : Buffer(0, false), SourceLineCache(0), MacroArgsCache(0)
     {
       OrigEntry = RHS.OrigEntry;
       ContentsEntry = RHS.ContentsEntry;
 
-      assert (RHS.Buffer.getPointer() == 0 && RHS.SourceLineCache == 0
+      assert (RHS.Buffer.getPointer() == 0 && RHS.SourceLineCache == 0 &&
+              RHS.MacroArgsCache == 0
               && "Passed ContentCache object cannot own a buffer.");
 
       NumLines = RHS.NumLines;
@@ -184,16 +193,26 @@ namespace SrcMgr {
     /// This is an invalid SLOC for the main file (top of the #include chain).
     unsigned IncludeLoc;  // Really a SourceLocation
 
+    /// \brief Number of FileIDs (files and macros) that were created during
+    /// preprocessing of this #include, including this SLocEntry.
+    /// Zero means the preprocessor didn't provide such info for this SLocEntry.
+    unsigned NumCreatedFIDs;
+
     /// Data - This contains the ContentCache* and the bits indicating the
     /// characteristic of the file and whether it has #line info, all bitmangled
     /// together.
     uintptr_t Data;
+
+    friend class clang::SourceManager;
+    friend class clang::ASTWriter;
+    friend class clang::ASTReader;
   public:
     /// get - Return a FileInfo object.
     static FileInfo get(SourceLocation IL, const ContentCache *Con,
                         CharacteristicKind FileCharacter) {
       FileInfo X;
       X.IncludeLoc = IL.getRawEncoding();
+      X.NumCreatedFIDs = 0;
       X.Data = (uintptr_t)Con;
       assert((X.Data & 7) == 0 &&"ContentCache pointer insufficiently aligned");
       assert((unsigned)FileCharacter < 4 && "invalid file character");
@@ -367,7 +386,11 @@ class IsBeforeInTranslationUnitCache {
   /// L/R QueryFID - These are the FID's of the cached query.  If these match up
   /// with a subsequent query, the result can be reused.
   FileID LQueryFID, RQueryFID;
-  
+
+  /// \brief True if LQueryFID was created before RQueryFID. This is used
+  /// to compare macro expansion locations.
+  bool IsLQFIDBeforeRQFID;
+
   /// CommonFID - This is the file found in common between the two #include
   /// traces.  It is the nearest common ancestor of the #include tree.
   FileID CommonFID;
@@ -392,13 +415,27 @@ public:
     // use the #include loc in the common file.
     if (LQueryFID != CommonFID) LOffset = LCommonOffset;
     if (RQueryFID != CommonFID) ROffset = RCommonOffset;
+
+    // It is common for multiple macro expansions to be "included" from the same
+    // location (expansion location), in which case use the order of the FileIDs
+    // to determine which came first.
+    if (LOffset == ROffset && LQueryFID != CommonFID && RQueryFID != CommonFID)
+      return IsLQFIDBeforeRQFID;
+
     return LOffset < ROffset;
   }
   
   // Set up a new query.
-  void setQueryFIDs(FileID LHS, FileID RHS) {
+  void setQueryFIDs(FileID LHS, FileID RHS, bool isLFIDBeforeRFID) {
+    assert(LHS != RHS);
     LQueryFID = LHS;
     RQueryFID = RHS;
+    IsLQFIDBeforeRQFID = isLFIDBeforeRFID;
+  }
+
+  void clear() {
+    LQueryFID = RQueryFID = FileID();
+    IsLQFIDBeforeRQFID = false;
   }
   
   void setCommonLoc(FileID commonFID, unsigned lCommonOffset,
@@ -470,6 +507,10 @@ class SourceManager : public llvm::RefCountedBase<SourceManager> {
   /// This is LoadedSLocEntryTable.back().Offset, except that that entry might
   /// not have been loaded, so that value would be unknown.
   unsigned CurrentLoadedOffset;
+
+  /// \brief The highest possible offset is 2^31-1, so CurrentLoadedOffset
+  /// starts at 2^31.
+  static const unsigned MaxLoadedOffset = 1U << 31U;
 
   /// \brief A bitmap that indicates whether the entries of LoadedSLocEntryTable
   /// have already been loaded from the external source.
@@ -689,6 +730,28 @@ public:
   /// \param Invalid If non-NULL, will be set true if an error occurred.
   StringRef getBufferData(FileID FID, bool *Invalid = 0) const;
 
+  /// \brief Get the number of FileIDs (files and macros) that were created
+  /// during preprocessing of \arg FID, including it.
+  unsigned getNumCreatedFIDsForFileID(FileID FID) const {
+    bool Invalid = false;
+    const SrcMgr::SLocEntry &Entry = getSLocEntry(FID, &Invalid);
+    if (Invalid || !Entry.isFile())
+      return 0;
+
+    return Entry.getFile().NumCreatedFIDs;
+  }
+
+  /// \brief Set the number of FileIDs (files and macros) that were created
+  /// during preprocessing of \arg FID, including it.
+  void setNumCreatedFIDsForFileID(FileID FID, unsigned NumFIDs) const {
+    bool Invalid = false;
+    const SrcMgr::SLocEntry &Entry = getSLocEntry(FID, &Invalid);
+    if (Invalid || !Entry.isFile())
+      return;
+
+    assert(Entry.getFile().NumCreatedFIDs == 0 && "Already set!");
+    const_cast<SrcMgr::FileInfo &>(Entry.getFile()).NumCreatedFIDs = NumFIDs;
+  }
 
   //===--------------------------------------------------------------------===//
   // SourceLocation manipulation methods.
@@ -719,6 +782,17 @@ public:
     
     unsigned FileOffset = Entry.getOffset();
     return SourceLocation::getFileLoc(FileOffset);
+  }
+
+  /// \brief Returns the include location if \arg FID is a #include'd file
+  /// otherwise it returns an invalid location.
+  SourceLocation getIncludeLoc(FileID FID) const {
+    bool Invalid = false;
+    const SrcMgr::SLocEntry &Entry = getSLocEntry(FID, &Invalid);
+    if (Invalid || !Entry.isFile())
+      return SourceLocation();
+    
+    return Entry.getFile().getIncludeLoc();
   }
 
   /// getExpansionLoc - Given a SourceLocation object, return the expansion
@@ -808,6 +882,49 @@ public:
   /// expanded.
   bool isMacroArgExpansion(SourceLocation Loc) const;
 
+  /// \brief Returns true if \arg Loc is inside the [\arg Start, +\arg Length)
+  /// chunk of the source location address space.
+  /// If it's true and \arg RelativeOffset is non-null, it will be set to the
+  /// relative offset of \arg Loc inside the chunk.
+  bool isInSLocAddrSpace(SourceLocation Loc,
+                         SourceLocation Start, unsigned Length,
+                         unsigned *RelativeOffset = 0) const {
+    assert(((Start.getOffset() < NextLocalOffset &&
+               Start.getOffset()+Length <= NextLocalOffset) ||
+            (Start.getOffset() >= CurrentLoadedOffset &&
+                Start.getOffset()+Length < MaxLoadedOffset)) &&
+           "Chunk is not valid SLoc address space");
+    unsigned LocOffs = Loc.getOffset();
+    unsigned BeginOffs = Start.getOffset();
+    unsigned EndOffs = BeginOffs + Length;
+    if (LocOffs >= BeginOffs && LocOffs < EndOffs) {
+      if (RelativeOffset)
+        *RelativeOffset = LocOffs - BeginOffs;
+      return true;
+    }
+
+    return false;
+  }
+
+  /// \brief Return true if both \arg LHS and \arg RHS are in the local source
+  /// location address space or the loaded one. If it's true and
+  /// \arg RelativeOffset is non-null, it will be set to the offset of \arg RHS
+  /// relative to \arg LHS.
+  bool isInSameSLocAddrSpace(SourceLocation LHS, SourceLocation RHS,
+                             int *RelativeOffset) const {
+    unsigned LHSOffs = LHS.getOffset(), RHSOffs = RHS.getOffset();
+    bool LHSLoaded = LHSOffs >= CurrentLoadedOffset;
+    bool RHSLoaded = RHSOffs >= CurrentLoadedOffset;
+
+    if (LHSLoaded == RHSLoaded) {
+      if (RelativeOffset)
+        *RelativeOffset = RHSOffs - LHSOffs;
+      return true;
+    }
+
+    return false;
+  }
+
   //===--------------------------------------------------------------------===//
   // Queries about the code at a SourceLocation.
   //===--------------------------------------------------------------------===//
@@ -892,35 +1009,18 @@ public:
     return getFileCharacteristic(Loc) == SrcMgr::C_ExternCSystem;
   }
 
-  /// \brief Given a specific chunk of a FileID (FileID with offset+length),
-  /// returns true if \arg Loc is inside that chunk and sets relative offset
-  /// (offset of \arg Loc from beginning of chunk) to \arg relativeOffset.
-  bool isInFileID(SourceLocation Loc,
-                  FileID FID, unsigned offset, unsigned length,
-                  unsigned *relativeOffset = 0) const {
-    assert(!FID.isInvalid());
-    if (Loc.isInvalid())
-      return false;
+  /// \brief The size of the SLocEnty that \arg FID represents.
+  unsigned getFileIDSize(FileID FID) const;
 
-    unsigned start = getSLocEntry(FID).getOffset() + offset;
-    unsigned end = start + length;
-
-#ifndef NDEBUG
-    // Make sure offset/length describe a chunk inside the given FileID.
-    unsigned NextOffset;
-    if (FID.ID == -2)
-      NextOffset = 1U << 31U;
-    else if (FID.ID+1 == (int)LocalSLocEntryTable.size())
-      NextOffset = getNextLocalOffset();
-    else
-      NextOffset = getSLocEntryByID(FID.ID+1).getOffset();
-    assert(start < NextOffset);
-    assert(end   < NextOffset);
-#endif
-
-    if (Loc.getOffset() >= start && Loc.getOffset() < end) {
-      if (relativeOffset)
-        *relativeOffset = Loc.getOffset() - start;
+  /// \brief Given a specific FileID, returns true if \arg Loc is inside that
+  /// FileID chunk and sets relative offset (offset of \arg Loc from beginning
+  /// of FileID) to \arg relativeOffset.
+  bool isInFileID(SourceLocation Loc, FileID FID,
+                  unsigned *RelativeOffset = 0) const {
+    unsigned Offs = Loc.getOffset();
+    if (isOffsetInFileID(FID, Offs)) {
+      if (RelativeOffset)
+        *RelativeOffset = Offs - getSLocEntry(FID).getOffset();
       return true;
     }
 
@@ -983,31 +1083,68 @@ public:
   ///
   /// If the source file is included multiple times, the source location will
   /// be based upon the first inclusion.
+  ///
+  /// If the location points inside a function macro argument, the returned
+  /// location will be the macro location in which the argument was expanded.
+  /// \sa getMacroArgExpandedLocation
   SourceLocation getLocation(const FileEntry *SourceFile,
-                             unsigned Line, unsigned Col);
+                             unsigned Line, unsigned Col) {
+    SourceLocation Loc = translateFileLineCol(SourceFile, Line, Col);
+    return getMacroArgExpandedLocation(Loc);
+  }
+  
+  /// \brief Get the source location for the given file:line:col triplet.
+  ///
+  /// If the source file is included multiple times, the source location will
+  /// be based upon the first inclusion.
+  SourceLocation translateFileLineCol(const FileEntry *SourceFile,
+                                      unsigned Line, unsigned Col);
+
+  /// \brief If \arg Loc points inside a function macro argument, the returned
+  /// location will be the macro location in which the argument was expanded.
+  /// If a macro argument is used multiple times, the expanded location will
+  /// be at the first expansion of the argument.
+  /// e.g.
+  ///   MY_MACRO(foo);
+  ///             ^
+  /// Passing a file location pointing at 'foo', will yield a macro location
+  /// where 'foo' was expanded into.
+  SourceLocation getMacroArgExpandedLocation(SourceLocation Loc);
 
   /// \brief Determines the order of 2 source locations in the translation unit.
   ///
   /// \returns true if LHS source location comes before RHS, false otherwise.
   bool isBeforeInTranslationUnit(SourceLocation LHS, SourceLocation RHS) const;
 
+  /// \brief Comparison function class.
+  class LocBeforeThanCompare : public std::binary_function<SourceLocation,
+                                                         SourceLocation, bool> {
+    SourceManager &SM;
+
+  public:
+    explicit LocBeforeThanCompare(SourceManager &SM) : SM(SM) { }
+
+    bool operator()(SourceLocation LHS, SourceLocation RHS) const {
+      return SM.isBeforeInTranslationUnit(LHS, RHS);
+    }
+  };
+
   /// \brief Determines the order of 2 source locations in the "source location
   /// address space".
-  bool isBeforeInSourceLocationOffset(SourceLocation LHS, 
-                                      SourceLocation RHS) const {
-    return isBeforeInSourceLocationOffset(LHS, RHS.getOffset());
+  bool isBeforeInSLocAddrSpace(SourceLocation LHS, SourceLocation RHS) const {
+    return isBeforeInSLocAddrSpace(LHS, RHS.getOffset());
   }
 
   /// \brief Determines the order of a source location and a source location
   /// offset in the "source location address space".
   ///
   /// Note that we always consider source locations loaded from 
-  bool isBeforeInSourceLocationOffset(SourceLocation LHS, unsigned RHS) const {
+  bool isBeforeInSLocAddrSpace(SourceLocation LHS, unsigned RHS) const {
     unsigned LHSOffset = LHS.getOffset();
     bool LHSLoaded = LHSOffset >= CurrentLoadedOffset;
     bool RHSLoaded = RHS >= CurrentLoadedOffset;
     if (LHSLoaded == RHSLoaded)
-      return LHS.getOffset() < RHS;
+      return LHSOffset < RHS;
     
     return LHSLoaded;
   }
@@ -1139,6 +1276,7 @@ private:
   std::pair<FileID, unsigned>
   getDecomposedSpellingLocSlowCase(const SrcMgr::SLocEntry *E,
                                    unsigned Offset) const;
+  void computeMacroArgsCache(SrcMgr::ContentCache *Content, FileID FID);
 };
 
 

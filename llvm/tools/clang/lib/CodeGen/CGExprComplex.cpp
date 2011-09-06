@@ -119,6 +119,7 @@ public:
 
   // l-values.
   ComplexPairTy VisitDeclRefExpr(const Expr *E) { return EmitLoadOfLValue(E); }
+  ComplexPairTy VisitBlockDeclRefExpr(const Expr *E) { return EmitLoadOfLValue(E); }
   ComplexPairTy VisitObjCIvarRefExpr(ObjCIvarRefExpr *E) {
     return EmitLoadOfLValue(E);
   }
@@ -313,7 +314,7 @@ void ComplexExprEmitter::EmitStoreOfComplex(ComplexPairTy Val, llvm::Value *Ptr,
 ComplexPairTy ComplexExprEmitter::VisitExpr(Expr *E) {
   CGF.ErrorUnsupported(E, "complex expression");
   llvm::Type *EltTy =
-    CGF.ConvertType(E->getType()->getAs<ComplexType>()->getElementType());
+  CGF.ConvertType(E->getType()->getAs<ComplexType>()->getElementType());
   llvm::Value *U = llvm::UndefValue::get(EltTy);
   return ComplexPairTy(U, U);
 }

@@ -35,6 +35,18 @@
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
 
+// If I is a shifted mask, set the size (Size) and the first bit of the 
+// mask (Pos), and return true.
+// For example, if I is 0x003ff800, (Pos, Size) = (11, 11).  
+static bool IsShiftedMask(uint64_t I, uint64_t &Pos, uint64_t &Size) {
+  if (!isUInt<32>(I) || !isShiftedMask_32(I))
+     return false;
+
+  Size = CountPopulation_32(I);
+  Pos = CountTrailingZeros_32(I);
+  return true;
+}
+
 const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
   case MipsISD::JmpLink:           return "MipsISD::JmpLink";
@@ -62,6 +74,8 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case MipsISD::WrapperPIC:        return "MipsISD::WrapperPIC";
   case MipsISD::DynAlloc:          return "MipsISD::DynAlloc";
   case MipsISD::Sync:              return "MipsISD::Sync";
+  case MipsISD::Ext:               return "MipsISD::Ext";
+  case MipsISD::Ins:               return "MipsISD::Ins";
   default:                         return NULL;
   }
 }
@@ -164,6 +178,9 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::MEMBARRIER,        MVT::Other, Custom);
   setOperationAction(ISD::ATOMIC_FENCE,      MVT::Other, Custom);  
 
+  setOperationAction(ISD::ATOMIC_LOAD,       MVT::i32,    Expand);  
+  setOperationAction(ISD::ATOMIC_STORE,      MVT::i32,    Expand);  
+
   setInsertFencesForAtomic(true);
 
   if (Subtarget->isSingleFloat())
@@ -185,6 +202,8 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setTargetDAGCombine(ISD::SDIVREM);
   setTargetDAGCombine(ISD::UDIVREM);
   setTargetDAGCombine(ISD::SETCC);
+  setTargetDAGCombine(ISD::AND);
+  setTargetDAGCombine(ISD::OR);
 
   setMinFunctionAlignment(2);
 
@@ -193,6 +212,11 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   setExceptionPointerRegister(Mips::A0);
   setExceptionSelectorRegister(Mips::A1);
+}
+
+bool MipsTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
+  MVT::SimpleValueType SVT = VT.getSimpleVT().SimpleTy;
+  return SVT == MVT::i32 || SVT == MVT::i16; 
 }
 
 MVT::SimpleValueType MipsTargetLowering::getSetCCResultType(EVT VT) const {
@@ -495,6 +519,101 @@ static SDValue PerformSETCCCombine(SDNode *N, SelectionDAG& DAG,
   return CreateCMovFP(DAG, Cond, True, False, N->getDebugLoc());
 }
 
+static SDValue PerformANDCombine(SDNode *N, SelectionDAG& DAG,
+                                 TargetLowering::DAGCombinerInfo &DCI,
+                                 const MipsSubtarget* Subtarget) {
+  // Pattern match EXT.
+  //  $dst = and ((sra or srl) $src , pos), (2**size - 1)
+  //  => ext $dst, $src, size, pos
+  if (DCI.isBeforeLegalizeOps() || !Subtarget->isMips32r2())
+    return SDValue();
+
+  SDValue ShiftRight = N->getOperand(0), Mask = N->getOperand(1);
+  
+  // Op's first operand must be a shift right.
+  if (ShiftRight.getOpcode() != ISD::SRA && ShiftRight.getOpcode() != ISD::SRL)
+    return SDValue();
+
+  // The second operand of the shift must be an immediate.
+  uint64_t Pos;
+  ConstantSDNode *CN;
+  if (!(CN = dyn_cast<ConstantSDNode>(ShiftRight.getOperand(1))))
+    return SDValue();
+  
+  Pos = CN->getZExtValue();
+
+  uint64_t SMPos, SMSize;
+  // Op's second operand must be a shifted mask.
+  if (!(CN = dyn_cast<ConstantSDNode>(Mask)) ||
+      !IsShiftedMask(CN->getZExtValue(), SMPos, SMSize))
+    return SDValue();
+
+  // Return if the shifted mask does not start at bit 0 or the sum of its size
+  // and Pos exceeds the word's size.
+  if (SMPos != 0 || Pos + SMSize > 32)
+    return SDValue();
+
+  return DAG.getNode(MipsISD::Ext, N->getDebugLoc(), MVT::i32,
+                     ShiftRight.getOperand(0),
+                     DAG.getConstant(Pos, MVT::i32),
+                     DAG.getConstant(SMSize, MVT::i32));
+}
+  
+static SDValue PerformORCombine(SDNode *N, SelectionDAG& DAG,
+                                TargetLowering::DAGCombinerInfo &DCI,
+                                const MipsSubtarget* Subtarget) {
+  // Pattern match INS.
+  //  $dst = or (and $src1 , mask0), (and (shl $src, pos), mask1),
+  //  where mask1 = (2**size - 1) << pos, mask0 = ~mask1 
+  //  => ins $dst, $src, size, pos, $src1
+  if (DCI.isBeforeLegalizeOps() || !Subtarget->isMips32r2())
+    return SDValue();
+
+  SDValue And0 = N->getOperand(0), And1 = N->getOperand(1);
+  uint64_t SMPos0, SMSize0, SMPos1, SMSize1;
+  ConstantSDNode *CN;
+
+  // See if Op's first operand matches (and $src1 , mask0).
+  if (And0.getOpcode() != ISD::AND)
+    return SDValue();
+
+  if (!(CN = dyn_cast<ConstantSDNode>(And0.getOperand(1))) ||
+      !IsShiftedMask(~CN->getSExtValue(), SMPos0, SMSize0))
+    return SDValue();
+
+  // See if Op's second operand matches (and (shl $src, pos), mask1).
+  if (And1.getOpcode() != ISD::AND)
+    return SDValue();
+  
+  if (!(CN = dyn_cast<ConstantSDNode>(And1.getOperand(1))) ||
+      !IsShiftedMask(CN->getZExtValue(), SMPos1, SMSize1))
+    return SDValue();
+
+  // The shift masks must have the same position and size.
+  if (SMPos0 != SMPos1 || SMSize0 != SMSize1)
+    return SDValue();
+
+  SDValue Shl = And1.getOperand(0);
+  if (Shl.getOpcode() != ISD::SHL)
+    return SDValue();
+
+  if (!(CN = dyn_cast<ConstantSDNode>(Shl.getOperand(1))))
+    return SDValue();
+
+  unsigned Shamt = CN->getZExtValue();
+
+  // Return if the shift amount and the first bit position of mask are not the
+  // same.  
+  if (Shamt != SMPos0)
+    return SDValue();
+  
+  return DAG.getNode(MipsISD::Ins, N->getDebugLoc(), MVT::i32,
+                     Shl.getOperand(0),
+                     DAG.getConstant(SMPos0, MVT::i32),
+                     DAG.getConstant(SMSize0, MVT::i32),
+                     And0.getOperand(0));  
+}
+  
 SDValue  MipsTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
   const {
   SelectionDAG &DAG = DCI.DAG;
@@ -511,6 +630,10 @@ SDValue  MipsTargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI)
     return PerformDivRemCombine(N, DAG, DCI, Subtarget);
   case ISD::SETCC:
     return PerformSETCCCombine(N, DAG, DCI, Subtarget);
+  case ISD::AND:
+    return PerformANDCombine(N, DAG, DCI, Subtarget);
+  case ISD::OR:
+    return PerformORCombine(N, DAG, DCI, Subtarget);
   }
 
   return SDValue();
@@ -1680,41 +1803,90 @@ WriteByValArg(SDValue& Chain, DebugLoc dl,
               SmallVector<SDValue, 8>& MemOpChains, int& LastFI,
               MachineFrameInfo *MFI, SelectionDAG &DAG, SDValue Arg,
               const CCValAssign &VA, const ISD::ArgFlagsTy& Flags,
-              MVT PtrType) {
-  unsigned FirstWord = VA.getLocMemOffset() / 4;
-  unsigned NumWords = (Flags.getByValSize() + 3) / 4;
-  unsigned LastWord = FirstWord + NumWords;
-  unsigned CurWord;
+              MVT PtrType, bool isLittle) {
+  unsigned LocMemOffset = VA.getLocMemOffset();
+  unsigned Offset = 0;
+  uint32_t RemainingSize = Flags.getByValSize();
+  unsigned ByValAlign = Flags.getByValAlign();
 
-  // copy the first 4 words of byval arg to registers A0 - A3
-  for (CurWord = FirstWord; CurWord < std::min(LastWord, O32IntRegsSize);
-       ++CurWord) {
+  // Copy the first 4 words of byval arg to registers A0 - A3.
+  // FIXME: Use a stricter alignment if it enables better optimization in passes
+  //        run later.
+  for (; RemainingSize >= 4 && LocMemOffset < 4 * 4;
+       Offset += 4, RemainingSize -= 4, LocMemOffset += 4) {
     SDValue LoadPtr = DAG.getNode(ISD::ADD, dl, MVT::i32, Arg,
-                                  DAG.getConstant((CurWord - FirstWord) * 4,
-                                                  MVT::i32));
+                                  DAG.getConstant(Offset, MVT::i32));
     SDValue LoadVal = DAG.getLoad(MVT::i32, dl, Chain, LoadPtr,
                                   MachinePointerInfo(),
-                                  false, false, 0);
+                                  false, false, std::min(ByValAlign,
+                                                         (unsigned )4));
     MemOpChains.push_back(LoadVal.getValue(1));
-    unsigned DstReg = O32IntRegs[CurWord];
+    unsigned DstReg = O32IntRegs[LocMemOffset / 4];
     RegsToPass.push_back(std::make_pair(DstReg, LoadVal));
   }
 
-  // copy remaining part of byval arg to stack.
-  if (CurWord < LastWord) {
-    unsigned SizeInBytes = (LastWord - CurWord) * 4;
-    SDValue Src = DAG.getNode(ISD::ADD, dl, MVT::i32, Arg,
-                              DAG.getConstant((CurWord - FirstWord) * 4,
-                                              MVT::i32));
-    LastFI = MFI->CreateFixedObject(SizeInBytes, CurWord * 4, true);
-    SDValue Dst = DAG.getFrameIndex(LastFI, PtrType);
-    Chain = DAG.getMemcpy(Chain, dl, Dst, Src,
-                          DAG.getConstant(SizeInBytes, MVT::i32),
-                          /*Align*/4,
-                          /*isVolatile=*/false, /*AlwaysInline=*/false,
-                          MachinePointerInfo(0), MachinePointerInfo(0));
-    MemOpChains.push_back(Chain);
+  if (RemainingSize == 0)
+    return;
+
+  // If there still is a register available for argument passing, write the
+  // remaining part of the structure to it using subword loads and shifts.
+  if (LocMemOffset < 4 * 4) {
+    assert(RemainingSize <= 3 && RemainingSize >= 1 &&
+           "There must be one to three bytes remaining.");
+    unsigned LoadSize = (RemainingSize == 3 ? 2 : RemainingSize);
+    SDValue LoadPtr = DAG.getNode(ISD::ADD, dl, MVT::i32, Arg,
+                                  DAG.getConstant(Offset, MVT::i32));
+    unsigned Alignment = std::min(ByValAlign, (unsigned )4);
+    SDValue LoadVal = DAG.getExtLoad(ISD::ZEXTLOAD, dl, MVT::i32, Chain,
+                                     LoadPtr, MachinePointerInfo(),
+                                     MVT::getIntegerVT(LoadSize * 8), false,
+                                     false, Alignment);
+    MemOpChains.push_back(LoadVal.getValue(1));
+
+    // If target is big endian, shift it to the most significant half-word or
+    // byte.
+    if (!isLittle)
+      LoadVal = DAG.getNode(ISD::SHL, dl, MVT::i32, LoadVal,
+                            DAG.getConstant(32 - LoadSize * 8, MVT::i32));
+
+    Offset += LoadSize;
+    RemainingSize -= LoadSize;
+
+    // Read second subword if necessary.
+    if (RemainingSize != 0)  {
+      assert(RemainingSize == 1 && "There must be one byte remaining.");
+      LoadPtr = DAG.getNode(ISD::ADD, dl, MVT::i32, Arg, 
+                            DAG.getConstant(Offset, MVT::i32));
+      unsigned Alignment = std::min(ByValAlign, (unsigned )2);
+      SDValue Subword = DAG.getExtLoad(ISD::ZEXTLOAD, dl, MVT::i32, Chain,
+                                       LoadPtr, MachinePointerInfo(),
+                                       MVT::i8, false, false, Alignment);
+      MemOpChains.push_back(Subword.getValue(1));
+      // Insert the loaded byte to LoadVal.
+      // FIXME: Use INS if supported by target.
+      unsigned ShiftAmt = isLittle ? 16 : 8;
+      SDValue Shift = DAG.getNode(ISD::SHL, dl, MVT::i32, Subword,
+                                  DAG.getConstant(ShiftAmt, MVT::i32));
+      LoadVal = DAG.getNode(ISD::OR, dl, MVT::i32, LoadVal, Shift);
+    }
+
+    unsigned DstReg = O32IntRegs[LocMemOffset / 4];
+    RegsToPass.push_back(std::make_pair(DstReg, LoadVal));
+    return;
   }
+
+  // Create a fixed object on stack at offset LocMemOffset and copy
+  // remaining part of byval arg to it using memcpy.
+  SDValue Src = DAG.getNode(ISD::ADD, dl, MVT::i32, Arg,
+                            DAG.getConstant(Offset, MVT::i32));
+  LastFI = MFI->CreateFixedObject(RemainingSize, LocMemOffset, true);
+  SDValue Dst = DAG.getFrameIndex(LastFI, PtrType);
+  Chain = DAG.getMemcpy(Chain, dl, Dst, Src,
+                        DAG.getConstant(RemainingSize, MVT::i32),
+                        std::min(ByValAlign, (unsigned)4),
+                        /*isVolatile=*/false, /*AlwaysInline=*/false,
+                        MachinePointerInfo(0), MachinePointerInfo(0));
+  MemOpChains.push_back(Chain);
 }
 
 /// LowerCall - functions arguments are copied from virtual regs to
@@ -1847,7 +2019,7 @@ MipsTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
       assert(Flags.getByValSize() &&
              "ByVal args of size 0 should have been ignored by front-end.");
       WriteByValArg(Chain, dl, RegsToPass, MemOpChains, LastFI, MFI, DAG, Arg,
-                    VA, Flags, getPointerTy());
+                    VA, Flags, getPointerTy(), Subtarget->isLittle());
       continue;
     }
 

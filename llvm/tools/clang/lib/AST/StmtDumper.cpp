@@ -560,7 +560,8 @@ void StmtDumper::VisitCXXThisExpr(CXXThisExpr *Node) {
 
 void StmtDumper::VisitCXXFunctionalCastExpr(CXXFunctionalCastExpr *Node) {
   DumpExpr(Node);
-  OS << " functional cast to " << Node->getTypeAsWritten().getAsString();
+  OS << " functional cast to " << Node->getTypeAsWritten().getAsString()
+     << " <" << Node->getCastKindName() << ">";
 }
 
 void StmtDumper::VisitCXXConstructExpr(CXXConstructExpr *Node) {

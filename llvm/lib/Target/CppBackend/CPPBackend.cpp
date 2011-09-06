@@ -29,7 +29,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/config.h"
 #include <algorithm>
@@ -533,9 +533,9 @@ void CppWriter::printType(Type* Ty) {
   }
   case Type::StructTyID: {
     StructType* ST = cast<StructType>(Ty);
-    if (!ST->isAnonymous()) {
+    if (!ST->isLiteral()) {
       Out << "StructType *" << typeName << " = ";
-      Out << "StructType::createNamed(mod->getContext(), \"";
+      Out << "StructType::create(mod->getContext(), \"";
       printEscapedString(ST->getName());
       Out << "\");";
       nl(Out);
@@ -556,7 +556,7 @@ void CppWriter::printType(Type* Ty) {
       nl(Out);
     }
 
-    if (ST->isAnonymous()) {
+    if (ST->isLiteral()) {
       Out << "StructType *" << typeName << " = ";
       Out << "StructType::get(" << "mod->getContext(), ";
     } else {
@@ -1086,8 +1086,7 @@ void CppWriter::printInstruction(const Instruction *I,
         << getOpName(inv->getCalledFunction()) << ", "
         << getOpName(inv->getNormalDest()) << ", "
         << getOpName(inv->getUnwindDest()) << ", "
-        << iName << "_params.begin(), "
-        << iName << "_params.end(), \"";
+        << iName << "_params, \"";
     printEscapedString(inv->getName());
     Out << "\", " << bbname << ");";
     nl(Out) << iName << "->setCallingConv(";
@@ -1409,7 +1408,7 @@ void CppWriter::printInstruction(const Instruction *I,
     Out << "ExtractValueInst* " << getCppName(evi)
         << " = ExtractValueInst::Create(" << opNames[0]
         << ", "
-        << iName << "_indices.begin(), " << iName << "_indices.end(), \"";
+        << iName << "_indices, \"";
     printEscapedString(evi->getName());
     Out << "\", " << bbname << ");";
     break;
@@ -1426,7 +1425,7 @@ void CppWriter::printInstruction(const Instruction *I,
     Out << "InsertValueInst* " << getCppName(ivi)
         << " = InsertValueInst::Create(" << opNames[0]
         << ", " << opNames[1] << ", "
-        << iName << "_indices.begin(), " << iName << "_indices.end(), \"";
+        << iName << "_indices, \"";
     printEscapedString(ivi->getName());
     Out << "\", " << bbname << ");";
     break;

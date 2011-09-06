@@ -50,7 +50,8 @@ static FrontendAction *CreateFrontendBaseAction(CompilerInstance &CI) {
   case EmitCodeGenOnly:        return new EmitCodeGenOnlyAction();
   case EmitObj:                return new EmitObjAction();
   case FixIt:                  return new FixItAction();
-  case GeneratePCH:            return new GeneratePCHAction();
+  case GenerateModule:         return new GeneratePCHAction(true);
+  case GeneratePCH:            return new GeneratePCHAction(false);
   case GeneratePTH:            return new GeneratePTHAction();
   case InitOnly:               return new InitOnlyAction();
   case ParseSyntaxOnly:        return new SyntaxOnlyAction();
@@ -125,12 +126,6 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
     return 0;
   }
 
-  // Honor -analyzer-checker-help.
-  if (Clang->getAnalyzerOpts().ShowCheckerHelp) {
-    ento::printCheckerHelp(llvm::outs());
-    return 0;
-  }
-
   // Honor -version.
   //
   // FIXME: Use a better -version message?
@@ -160,6 +155,13 @@ bool clang::ExecuteCompilerInvocation(CompilerInstance *Clang) {
     if (llvm::sys::DynamicLibrary::LoadLibraryPermanently(Path.c_str(), &Error))
       Clang->getDiagnostics().Report(diag::err_fe_unable_to_load_plugin)
         << Path << Error;
+  }
+
+  // Honor -analyzer-checker-help.
+  // This should happen AFTER plugins have been loaded!
+  if (Clang->getAnalyzerOpts().ShowCheckerHelp) {
+    ento::printCheckerHelp(llvm::outs(), Clang->getFrontendOpts().Plugins);
+    return 0;
   }
 
   // If there were errors in processing arguments, don't do anything else.

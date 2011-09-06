@@ -566,14 +566,19 @@ namespace ISD {
     // HANDLENODE node - Used as a handle for various purposes.
     HANDLENODE,
 
-    // TRAMPOLINE - This corresponds to the init_trampoline intrinsic.
-    // It takes as input a token chain, the pointer to the trampoline,
-    // the pointer to the nested function, the pointer to pass for the
-    // 'nest' parameter, a SRCVALUE for the trampoline and another for
-    // the nested function (allowing targets to access the original
-    // Function*).  It produces the result of the intrinsic and a token
-    // chain as output.
-    TRAMPOLINE,
+    // INIT_TRAMPOLINE - This corresponds to the init_trampoline intrinsic.  It
+    // takes as input a token chain, the pointer to the trampoline, the pointer
+    // to the nested function, the pointer to pass for the 'nest' parameter, a
+    // SRCVALUE for the trampoline and another for the nested function (allowing
+    // targets to access the original Function*).  It produces a token chain as
+    // output.
+    INIT_TRAMPOLINE,
+
+    // ADJUST_TRAMPOLINE - This corresponds to the adjust_trampoline intrinsic.
+    // It takes a pointer to the trampoline and produces a (possibly) new
+    // pointer to the same trampoline with platform-specific adjustments
+    // applied.  The pointer it returns points to an executable block of code.
+    ADJUST_TRAMPOLINE,
 
     // TRAP - Trapping instruction
     TRAP,
@@ -597,22 +602,22 @@ namespace ISD {
     // two integer constants: an AtomicOrdering and a SynchronizationScope.
     ATOMIC_FENCE,
 
+    // Val, OUTCHAIN = ATOMIC_LOAD(INCHAIN, ptr)
+    // This corresponds to "load atomic" instruction.
+    ATOMIC_LOAD,
+
+    // OUTCHAIN = ATOMIC_LOAD(INCHAIN, ptr, val)
+    // This corresponds to "store atomic" instruction.
+    ATOMIC_STORE,
+
     // Val, OUTCHAIN = ATOMIC_CMP_SWAP(INCHAIN, ptr, cmp, swap)
-    // this corresponds to the atomic.lcs intrinsic.
-    // cmp is compared to *ptr, and if equal, swap is stored in *ptr.
-    // the return is always the original value in *ptr
+    // This corresponds to the cmpxchg instruction.
     ATOMIC_CMP_SWAP,
 
     // Val, OUTCHAIN = ATOMIC_SWAP(INCHAIN, ptr, amt)
-    // this corresponds to the atomic.swap intrinsic.
-    // amt is stored to *ptr atomically.
-    // the return is always the original value in *ptr
-    ATOMIC_SWAP,
-
     // Val, OUTCHAIN = ATOMIC_LOAD_[OpName](INCHAIN, ptr, amt)
-    // this corresponds to the atomic.load.[OpName] intrinsic.
-    // op(*ptr, amt) is stored to *ptr atomically.
-    // the return is always the original value in *ptr
+    // These correspond to the atomicrmw instruction.
+    ATOMIC_SWAP,
     ATOMIC_LOAD_ADD,
     ATOMIC_LOAD_SUB,
     ATOMIC_LOAD_AND,

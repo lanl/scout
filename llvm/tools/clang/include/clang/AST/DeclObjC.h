@@ -172,6 +172,7 @@ private:
                  bool isInstance = true,
                  bool isVariadic = false,
                  bool isSynthesized = false,
+                 bool isImplicitlyDeclared = false,
                  bool isDefined = false,
                  ImplementationControl impControl = None,
                  bool HasRelatedResultType = false,
@@ -184,7 +185,9 @@ private:
     DeclImplementation(impControl), objcDeclQualifier(OBJC_TQ_None),
     RelatedResultType(HasRelatedResultType), NumSelectorArgs(numSelectorArgs), 
     MethodDeclType(T), ResultTInfo(ResultTInfo),
-    EndLoc(endLoc), Body(0), SelfDecl(0), CmdDecl(0) {}
+    EndLoc(endLoc), Body(0), SelfDecl(0), CmdDecl(0) {
+    setImplicit(isImplicitlyDeclared);
+  }
 
   /// \brief A definition will return its interface declaration.
   /// An interface declaration will return its definition.
@@ -201,6 +204,7 @@ public:
                                 bool isInstance = true,
                                 bool isVariadic = false,
                                 bool isSynthesized = false,
+                                bool isImplicitlyDeclared = false,
                                 bool isDefined = false,
                                 ImplementationControl impControl = None,
                                 bool HasRelatedResultType = false,
@@ -914,28 +918,22 @@ public:
     ObjCInterfaceDecl *getInterface() const { return ID; }
   };
 private:
-  ObjCClassRef *ForwardDecls;
-  unsigned NumDecls;
+  ObjCClassRef *ForwardDecl;
 
   ObjCClassDecl(DeclContext *DC, SourceLocation L,
-                ObjCInterfaceDecl *const *Elts, const SourceLocation *Locs,                
-                unsigned nElts, ASTContext &C);
+                ObjCInterfaceDecl *const Elt, const SourceLocation Loc,                
+                ASTContext &C);
 public:
   static ObjCClassDecl *Create(ASTContext &C, DeclContext *DC, SourceLocation L,
-                               ObjCInterfaceDecl *const *Elts = 0,
-                               const SourceLocation *Locs = 0,
-                               unsigned nElts = 0);
+                               ObjCInterfaceDecl *const Elt = 0,
+                               const SourceLocation Locs = SourceLocation());
+    
+  ObjCInterfaceDecl *getForwardInterfaceDecl() { return ForwardDecl->getInterface(); }
+  ObjCClassRef *getForwardDecl() { return ForwardDecl; }
+  void setClass(ASTContext &C, ObjCInterfaceDecl*const Cls,
+                const SourceLocation Locs);
   
   virtual SourceRange getSourceRange() const;
-
-  typedef const ObjCClassRef* iterator;
-  iterator begin() const { return ForwardDecls; }
-  iterator end() const { return ForwardDecls + NumDecls; }
-  unsigned size() const { return NumDecls; }
-
-  /// setClassList - Set the list of forward classes.
-  void setClassList(ASTContext &C, ObjCInterfaceDecl*const*List,
-                    const SourceLocation *Locs, unsigned Num);
 
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const ObjCClassDecl *D) { return true; }
@@ -1028,9 +1026,9 @@ class ObjCCategoryDecl : public ObjCContainerDecl {
 
   ObjCCategoryDecl(DeclContext *DC, SourceLocation AtLoc, 
                    SourceLocation ClassNameLoc, SourceLocation CategoryNameLoc,
-                   IdentifierInfo *Id)
+                   IdentifierInfo *Id, ObjCInterfaceDecl *IDecl)
     : ObjCContainerDecl(ObjCCategory, DC, ClassNameLoc, Id),
-      ClassInterface(0), NextClassCategory(0), HasSynthBitfield(false),
+      ClassInterface(IDecl), NextClassCategory(0), HasSynthBitfield(false),
       AtLoc(AtLoc), CategoryNameLoc(CategoryNameLoc) {
   }
 public:
@@ -1039,11 +1037,12 @@ public:
                                   SourceLocation AtLoc, 
                                   SourceLocation ClassNameLoc,
                                   SourceLocation CategoryNameLoc,
-                                  IdentifierInfo *Id);
+                                  IdentifierInfo *Id,
+                                  ObjCInterfaceDecl *IDecl);
+  static ObjCCategoryDecl *Create(ASTContext &C, EmptyShell Empty);
 
   ObjCInterfaceDecl *getClassInterface() { return ClassInterface; }
   const ObjCInterfaceDecl *getClassInterface() const { return ClassInterface; }
-  void setClassInterface(ObjCInterfaceDecl *IDecl) { ClassInterface = IDecl; }
 
   ObjCCategoryImplDecl *getImplementation() const;
   void setImplementation(ObjCCategoryImplDecl *ImplD);
@@ -1072,14 +1071,6 @@ public:
   }
 
   ObjCCategoryDecl *getNextClassCategory() const { return NextClassCategory; }
-  void setNextClassCategory(ObjCCategoryDecl *Cat) {
-    NextClassCategory = Cat;
-  }
-  void insertNextClassCategory() {
-    NextClassCategory = ClassInterface->getCategoryList();
-    ClassInterface->setCategoryList(this);
-    ClassInterface->setChangedSinceDeserialization(true);
-  }
 
   bool IsClassExtension() const { return getIdentifier() == 0; }
   const ObjCCategoryDecl *getNextClassExtension() const;
@@ -1114,6 +1105,9 @@ public:
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const ObjCCategoryDecl *D) { return true; }
   static bool classofKind(Kind K) { return K == ObjCCategory; }
+
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
 };
 
 class ObjCImplDecl : public ObjCContainerDecl {
@@ -1429,7 +1423,7 @@ public:
     NumPropertyAttrsBits = 12
   };
 
-  enum SetterKind { Assign, Retain, Copy };
+  enum SetterKind { Assign, Retain, Copy, Weak };
   enum PropertyControl { None, Required, Optional };
 private:
   SourceLocation AtLoc;   // location of @property
@@ -1509,6 +1503,8 @@ public:
       return Retain;
     if (PropertyAttributes & OBJC_PR_copy)
       return Copy;
+    if (PropertyAttributes & OBJC_PR_weak)
+      return Weak;
     return Assign;
   }
 

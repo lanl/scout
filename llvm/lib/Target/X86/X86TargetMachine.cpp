@@ -16,9 +16,10 @@
 #include "llvm/PassManager.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Target/TargetRegistry.h"
+#include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 extern "C" void LLVMInitializeX86Target() {
@@ -92,6 +93,14 @@ X86TargetMachine::X86TargetMachine(const Target &T, StringRef TT,
 }
 
 //===----------------------------------------------------------------------===//
+// Command line options for x86
+//===----------------------------------------------------------------------===//
+static cl::opt<bool>
+UseVZeroUpper("x86-use-vzeroupper",
+  cl::desc("Minimize AVX to SSE transition penalty"),
+  cl::init(false));
+
+//===----------------------------------------------------------------------===//
 // Pass Pipeline Configuration
 //===----------------------------------------------------------------------===//
 
@@ -123,6 +132,11 @@ bool X86TargetMachine::addPreEmitPass(PassManagerBase &PM,
                                       CodeGenOpt::Level OptLevel) {
   if (OptLevel != CodeGenOpt::None && Subtarget.hasSSE2()) {
     PM.add(createSSEDomainFixPass());
+    return true;
+  }
+
+  if (Subtarget.hasAVX() && UseVZeroUpper) {
+    PM.add(createX86IssueVZeroUpperPass());
     return true;
   }
   return false;

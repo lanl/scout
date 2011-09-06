@@ -1113,10 +1113,10 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
       return false;
     }
   }
-  // Lvalue-to-rvalue conversion (C++ 4.1):
-  //   An lvalue (3.10) of a non-function, non-array type T can be
-  //   converted to an rvalue.
-  bool argIsLValue = From->isLValue();
+  // Lvalue-to-rvalue conversion (C++11 4.1):
+  //   A glvalue (3.10) of a non-function, non-array type T can
+  //   be converted to a prvalue.
+  bool argIsLValue = From->isGLValue();
   if (argIsLValue &&
       !FromType->isFunctionType() && !FromType->isArrayType() &&
       S.Context.getCanonicalType(FromType) != S.Context.OverloadTy) {
@@ -3609,11 +3609,11 @@ TryReferenceInit(Sema &S, Expr *&Init, QualType DeclType,
     ICS.Standard.ObjCLifetimeConversionBinding = false;
   } else if (ICS.isUserDefined()) {
     ICS.UserDefined.After.ReferenceBinding = true;
-    ICS.Standard.IsLvalueReference = !isRValRef;
-    ICS.Standard.BindsToFunctionLvalue = T2->isFunctionType();
-    ICS.Standard.BindsToRvalue = true;
-    ICS.Standard.BindsImplicitObjectArgumentWithoutRefQualifier = false;
-    ICS.Standard.ObjCLifetimeConversionBinding = false;
+    ICS.UserDefined.After.IsLvalueReference = !isRValRef;
+    ICS.UserDefined.After.BindsToFunctionLvalue = T2->isFunctionType();
+    ICS.UserDefined.After.BindsToRvalue = true;
+    ICS.UserDefined.After.BindsImplicitObjectArgumentWithoutRefQualifier = false;
+    ICS.UserDefined.After.ObjCLifetimeConversionBinding = false;
   }
 
   return ICS;
@@ -8551,8 +8551,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, unsigned OpcIn,
         << UnaryOperator::getOpcodeStr(Opc)
         << Input->getType()
         << Input->getSourceRange();
-    CandidateSet.NoteCandidates(*this, OCD_ViableCandidates,
-                                Args, NumArgs,
+    CandidateSet.NoteCandidates(*this, OCD_ViableCandidates, Args, NumArgs,
                                 UnaryOperator::getOpcodeStr(Opc), OpLoc);
     return ExprError();
 
@@ -8562,7 +8561,8 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, unsigned OpcIn,
       << UnaryOperator::getOpcodeStr(Opc)
       << getDeletedOrUnavailableSuffix(Best->Function)
       << Input->getSourceRange();
-    CandidateSet.NoteCandidates(*this, OCD_AllCandidates, Args, NumArgs);
+    CandidateSet.NoteCandidates(*this, OCD_AllCandidates, Args, NumArgs,
+                                UnaryOperator::getOpcodeStr(Opc), OpLoc);
     return ExprError();
   }
 
@@ -8857,7 +8857,8 @@ Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
         << BinaryOperator::getOpcodeStr(Opc)
         << getDeletedOrUnavailableSuffix(Best->Function)
         << Args[0]->getSourceRange() << Args[1]->getSourceRange();
-      CandidateSet.NoteCandidates(*this, OCD_AllCandidates, Args, 2);
+      CandidateSet.NoteCandidates(*this, OCD_AllCandidates, Args, 2,
+                                  BinaryOperator::getOpcodeStr(Opc), OpLoc);
       return ExprError();
   }
 
