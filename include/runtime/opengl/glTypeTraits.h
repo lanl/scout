@@ -19,7 +19,7 @@
 #define SCOUT_GL_TYPE_TRAITS_H_
 
 #include "opengl.h"
-#include "vec_types.h"
+#include "runtime/vec_types.h"
 
 namespace scout
 {
@@ -35,9 +35,7 @@ namespace scout
   }
 
   DEFINE_GL_TYPE_TRAIT(float,   GL_FLOAT);
-  DEFINE_GL_TYPE_TRAIT(float2v, GL_FLOAT);
-  DEFINE_GL_TYPE_TRAIT(float3v, GL_FLOAT);
-  DEFINE_GL_TYPE_TRAIT(float4v, GL_FLOAT);
+  DEFINE_GL_TYPE_TRAIT(float4,  GL_FLOAT);
 
   // ..... glTextureTraits
   // 
@@ -75,9 +73,7 @@ namespace scout
     };                                                  \
   }
 
-
   DEF_GL_TEXTURE_TRAIT(float, GL_LUMINANCE32F_ARB, GL_LUMINANCE);
-  DEF_GL_TEXTURE_TRAIT(float, GL_LUMINANCE32F_ARB, GL_LUMINANCE);  
 }
 
 #endif

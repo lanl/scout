@@ -16,9 +16,9 @@
  */
 
 #include <cassert>
-#include "glTexture.h"
+#include "runtime/opengl/glTexture.h"
 
-using namespace ogle;
+using namespace scout;
 
 // ---- glTexture
 //

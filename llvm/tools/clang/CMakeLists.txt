@@ -1,5 +1,6 @@
 # If we are not building as a part of LLVM, build Clang as an
 # standalone project, using LLVM as an external library:
+
 if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
   project(Clang)
   cmake_minimum_required(VERSION 2.8)
@@ -211,6 +212,7 @@ endmacro(add_clang_library)
 macro(add_clang_executable name)
   add_llvm_executable( ${name} ${ARGN} )
   set_target_properties(${name} PROPERTIES FOLDER "Clang executables")
+  set(EXECUTABLE_OUTPUT_PATH ${Scout_BINARY_DIR}/bin)
 endmacro(add_clang_executable)
 
 include_directories(BEFORE

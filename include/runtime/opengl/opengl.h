@@ -35,6 +35,12 @@
 namespace scout 
 {
   extern void glErrorCheck(const std::string& file, int line_no);
+
+  #ifdef DEBUG
+    #define OpenGLErrorCheck() scout::glErrorCheck(__FILE__, __LINE__)
+  #else
+    #define OpenGLErrorCheck() /* no-op */
+  #endif
 }
 
 #endif

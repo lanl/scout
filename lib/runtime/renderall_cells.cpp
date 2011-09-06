@@ -9,6 +9,8 @@
  * 
  */
 
+#include <stdlib.h>
+
 #ifndef SCOUT_RENDERALL_CELLS_H_
 #define SCOUT_RENDERALL_CELLS_H_
 
@@ -36,6 +38,7 @@ void free_colors(void* colors_p);
 //
 void renderall_uni_cells_1d(...)
 {
+  /*
   if (mesh->geom_p == 0) {
     mesh->geom_p = alloc_static_geom(sizeof(float) * 2 * 4);
   }
@@ -44,7 +47,7 @@ void renderall_uni_cells_1d(...)
     vbo->alloc(sizeof(float) * 2 * 4, GL_STATIC_DRAW);  // 4 corners, (x,y) coord per corner.
     mesh->geom_p = (void*)vbo;
   }
-  
+  */
   // Steps:
   //
   //    1. Build a pixel buffer object to hold the array of colors

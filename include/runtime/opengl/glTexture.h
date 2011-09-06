@@ -93,7 +93,6 @@ namespace scout
     GLenum             _tex_unit;
   };
 
-  typedef shared_pointer<glTexture> pglTexture;
 }
 
 #endif

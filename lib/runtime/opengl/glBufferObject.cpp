@@ -16,10 +16,10 @@
  */
 #include <iostream>
 #include <cassert>
-#include "glBufferObject.h"
+#include "runtime/opengl/glBufferObject.h"
 
 using namespace std;
-using namespace ogle;
+using namespace scout;
 
 
 // ---- glBufferObject

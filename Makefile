@@ -11,8 +11,8 @@
 
 arch        := $(shell uname -s)
 date        := $(shell /bin/date "+%m-%d-%Y")
-cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG
-build_dir   := build
+build_dir   := $(CURDIR)/build
+cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG  -DCMAKE_INSTALL_PREFIX=$(build_dir)
 
 # Attempt to figure out how many processors are available for a parallel build.
 # Note that this could be fragile across platforms/operating systems.
@@ -26,7 +26,8 @@ else
 endif 
 
 # Since we're likely I/O bound try and sneak in twice as many build
-# threads as we have cores...
+# threads as we have cores...  If you have problems running out of
+# memory you might need to back off on the factor of 2...
 nprocs := $(shell expr $(nprocs) \* 2)
 
 all: $(build_dir)/Makefile compile
@@ -35,10 +36,12 @@ all: $(build_dir)/Makefile compile
 $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+	@(cd packages/hwloc; ./configure --prefix=$(build_dir))
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
-	@(cd $(build_dir)/llvm; make -j $(nprocs))
+	@(cd packages/hwloc; make -j $(nprocs); make install)	
+	@(cd $(build_dir)/llvm; make -j $(nprocs); make install)
 	@(cd $(build_dir); make -j $(nprocs))
 
 .PHONY: xcode
@@ -52,4 +55,5 @@ clean:
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
+	-@((test -f packages/hwloc/Makefile) && (cd packages/hwloc; make distclean > /dev/null))
 

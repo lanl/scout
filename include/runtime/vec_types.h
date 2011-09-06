@@ -16,13 +16,6 @@
 
 namespace scout 
 {
-  // Some basic vector types.
-  typedef float float3v __attribute__ ((vector_size (3 * sizeof(float))));
-  union float3 {
-    float4v     vec;
-    float       components[3];
-  };
-  
   typedef float float4v __attribute__ ((vector_size (4 * sizeof(float))));
   union float4 {
     float4v     vec;
