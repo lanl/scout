@@ -27,9 +27,7 @@ endif
 
 # Since we're likely I/O bound try and sneak in twice as many build
 # threads as we have cores...
-#nprocs := $(shell expr $(nprocs) \* 2)
-nprocs := 12
-
+nprocs := $(shell expr $(nprocs) \* 2)
 
 all: $(build_dir)/Makefile compile
 .PHONY: all 
