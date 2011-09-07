@@ -9,7 +9,13 @@
  * 
  */
 
+
 #include "runtime/tbq.h"
+
+using namespace std;
+using namespace scout;
+
+/*
 
 #include <vector>
 
@@ -319,6 +325,18 @@ namespace scout{
   };
 
 } // end namespace scout
+*/
+
+namespace scout{
+
+class tbq_rt_{
+public:
+  tbq_rt_(tbq_rt* o){
+
+  }
+};
+
+}
 
 tbq_rt::tbq_rt(){
   x_ = new tbq_rt_(this);
@@ -328,8 +346,10 @@ tbq_rt::~tbq_rt(){
   delete x_;
 }
 
+/*
 void tbq_rt::run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
 		 range_t xRange, range_t yRange, range_t zRange){
   x_->run(block, xRange, yRange, zRange);
 }
+*/
 

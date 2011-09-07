@@ -4332,6 +4332,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
+  CmdArgs.push_back("-lBlocksRuntime");
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }

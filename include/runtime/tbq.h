@@ -30,8 +30,8 @@ namespace scout
 
     ~tbq_rt();
 
-    void run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
-	     range_t xRange, range_t yRange, range_t zRange);
+    //void run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
+    //         range_t xRange, range_t yRange, range_t zRange);
     
   private:
     class tbq_rt_* x_;
