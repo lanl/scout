@@ -1790,24 +1790,27 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // Check if this is a Scout mesh member expression.
   if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
 
-    llvm::StringRef memberName = E->getMemberDecl()->getName();
     const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
-    llvm::StringRef meshName = ND->getName();
-
-    // Check if this is a Scout '*.width' instrinsic.
-    if(memberName == "width")
-      return MakeAddrLValue(ScoutMeshSizes[meshName][0], getContext().IntTy);
-
-    // Check if this is a Scout '*.height' instrinsic.
-    if(memberName == "height")
-      return MakeAddrLValue(ScoutMeshSizes[meshName][1], getContext().IntTy);
-
-    // Check if this is a Scout '*.depth' instrinsic.
-    if(memberName == "depth")
-      return MakeAddrLValue(ScoutMeshSizes[meshName][2], getContext().IntTy);
-
+    
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-      if(isa<MeshType>(VD->getType())) {
+      if(isa<MeshType>(VD->getType())){ 
+        
+        llvm::StringRef memberName = E->getMemberDecl()->getName();
+
+        llvm::StringRef meshName = ND->getName();
+
+        // Check if this is a Scout '*.width' instrinsic.
+        if(memberName == "width")
+          return MakeAddrLValue(ScoutMeshSizes[meshName][0], getContext().IntTy);
+        
+        // Check if this is a Scout '*.height' instrinsic.
+        if(memberName == "height")
+          return MakeAddrLValue(ScoutMeshSizes[meshName][1], getContext().IntTy);
+        
+        // Check if this is a Scout '*.depth' instrinsic.
+        if(memberName == "depth")
+          return MakeAddrLValue(ScoutMeshSizes[meshName][2], getContext().IntTy);
+        
         return EmitMeshMemberExpr(VD, memberName);
       }
     }
