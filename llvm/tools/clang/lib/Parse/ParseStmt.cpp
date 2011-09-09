@@ -2535,8 +2535,8 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   IdentifierInfo* InductionVarII = Tok.getIdentifierInfo();
   SourceLocation InductionVarLoc = ConsumeToken();
   
-  if(Tok.isNot(tok::kw_of)){
-    Diag(Tok, diag::err_expected_of_kw);
+  if(Tok.isNot(tok::kw_in)){
+    Diag(Tok, diag::err_expected_in_kw);
     SkipUntil(tok::r_brace);
     ConsumeToken();
     return StmtError();

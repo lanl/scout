@@ -587,6 +587,7 @@ def err_expected_numeric_constant_in_mesh_def : Error<
 def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
 def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
 def err_expected_of_kw: Error<"expected of keyword">;
+def err_expected_in_kw: Error<"expected in keyword">;
 def err_invalid_renderall_body: Error<"Invalid renderall body">;
 def err_invalid_forall_op: Error<"Invalid forall op">;
 def err_invalid_forall_body: Error<"Invalid forall body">;
