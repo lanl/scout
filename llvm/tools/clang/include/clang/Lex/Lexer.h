@@ -16,6 +16,7 @@
 
 #include "clang/Lex/PreprocessorLexer.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 #include <cassert>

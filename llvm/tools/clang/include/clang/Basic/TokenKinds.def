@@ -220,6 +220,8 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //
 
 // ndm - Scout keywords
+// ****** if updating scout keywords, be sure to update Lexer.cpp ******/
+
 KEYWORD(bool2                       , KEYSCOUT)
 KEYWORD(bool3                       , KEYSCOUT)
 KEYWORD(bool4                       , KEYSCOUT)
@@ -251,13 +253,11 @@ KEYWORD(where                       , KEYSCOUT)
 KEYWORD(of                          , KEYSCOUT)
 KEYWORD(cells                       , KEYSCOUT)
 KEYWORD(vertices                    , KEYSCOUT)
-//KEYWORD(in                          , KEYSCOUT)
+KEYWORD(in                          , KEYSCOUT)
 KEYWORD(expr                        , KEYSCOUT)
-//KEYWORD(apply                       , KEYSCOUT)
 KEYWORD(renderall                   , KEYSCOUT)
 KEYWORD(faces                       , KEYSCOUT)
 KEYWORD(edges                       , KEYSCOUT)
-//KEYWORD(color                       , KEYSCOUT)
 KEYWORD(window                      , KEYSCOUT)
 KEYWORD(image                       , KEYSCOUT)
 

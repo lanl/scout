@@ -34,6 +34,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <cstring>
 
+#include <iostream>
+
 using namespace clang;
 
 static void InitCharacterInfo();
@@ -1360,6 +1362,133 @@ FinishIdentifier:
     if (II->isHandleIdentifierCase())
       PP->HandleIdentifier(Result);
     
+    // ndm - if we are lexing from a non-Scout file, then we need
+    // to treat the Scout keywords as ordinary identifiers
+    
+    if(!Features.Scout){
+      IdentifierInfo* NII = 0;
+      
+      switch(Result.getKind()){
+        case tok::kw_bool2:
+          NII = PP->getScoutIdentifier("bool2");
+          break;
+        case tok::kw_bool3:
+          NII = PP->getScoutIdentifier("bool3");
+          break;
+        case tok::kw_bool4:
+          NII = PP->getScoutIdentifier("bool4");
+          break;
+        case tok::kw_char2:
+          NII = PP->getScoutIdentifier("char2");
+          break;
+        case tok::kw_char3:
+          NII = PP->getScoutIdentifier("char3");
+          break;
+        case tok::kw_char4:
+          NII = PP->getScoutIdentifier("char4");
+          break;
+        case tok::kw_short2:
+          NII = PP->getScoutIdentifier("short2");
+          break;
+        case tok::kw_short3:
+          NII = PP->getScoutIdentifier("short3");
+          break;
+        case tok::kw_short4:
+          NII = PP->getScoutIdentifier("short4");
+          break;
+        case tok::kw_int2:
+          NII = PP->getScoutIdentifier("int2");
+          break;
+        case tok::kw_int3:
+          NII = PP->getScoutIdentifier("int3");
+          break;
+        case tok::kw_int4:
+          NII = PP->getScoutIdentifier("int4");
+          break;
+        case tok::kw_long2:
+          NII = PP->getScoutIdentifier("long2");
+          break;
+        case tok::kw_long3:
+          NII = PP->getScoutIdentifier("long3");
+          break;
+        case tok::kw_long4:
+          NII = PP->getScoutIdentifier("long4");
+          break;
+        case tok::kw_float2:
+          NII = PP->getScoutIdentifier("float2");
+          break;
+        case tok::kw_float3:
+          NII = PP->getScoutIdentifier("float3");
+          break;
+        case tok::kw_float4:
+          NII = PP->getScoutIdentifier("float4");
+          break;
+        case tok::kw_double2:
+          NII = PP->getScoutIdentifier("double2");
+          break;
+        case tok::kw_double3:
+          NII = PP->getScoutIdentifier("double3");
+          break;
+        case tok::kw_double4:
+          NII = PP->getScoutIdentifier("double4");
+          break;
+        case tok::kw_forall:
+          NII = PP->getScoutIdentifier("forall");
+          break;
+        case tok::kw_structured:
+          NII = PP->getScoutIdentifier("structured");
+          break;
+        case tok::kw_uniform:
+          NII = PP->getScoutIdentifier("uniform");
+          break;
+        case tok::kw_rectlinear:
+          NII = PP->getScoutIdentifier("rectlinear");
+          break;
+        case tok::kw_unstructured:
+          NII = PP->getScoutIdentifier("unstructured");
+          break;
+        case tok::kw_mesh:
+          NII = PP->getScoutIdentifier("mesh");
+          break;
+        case tok::kw_where:
+          NII = PP->getScoutIdentifier("where");
+          break;
+        case tok::kw_of:
+          NII = PP->getScoutIdentifier("of");
+          break;
+        case tok::kw_cells:
+          NII = PP->getScoutIdentifier("cells");
+          break;
+        case tok::kw_in:
+          NII = PP->getScoutIdentifier("in");
+          break;
+        case tok::kw_expr:
+          NII = PP->getScoutIdentifier("expr");
+          break;
+        case tok::kw_renderall:
+          NII = PP->getScoutIdentifier("renderall");
+          break;
+        case tok::kw_faces:
+          NII = PP->getScoutIdentifier("faces");
+          break;
+        case tok::kw_edges:
+          NII = PP->getScoutIdentifier("edges");
+          break;
+        case tok::kw_window:
+          NII = PP->getScoutIdentifier("window");
+          break;
+        case tok::kw_image:
+          NII = PP->getScoutIdentifier("image");
+        default:
+          break;
+      }
+      
+      if(NII){
+        Result.setIdentifierInfo(NII);
+        Result.setKind(tok::identifier);  
+      }
+    }
+                                       
     return;
   }
 

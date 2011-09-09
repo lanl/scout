@@ -1,8 +1,5 @@
-
-#ifndef SCOUT_H
-#define SCOUT_H
-
-#define SCOUT_TOP_LEVEL
+#ifndef SCOUT_SCH
+#define SCOUT_SCH
 
 #include "runtime/framebuffer.h"
 #include "runtime/window.h"
@@ -19,6 +16,4 @@ float4 hsv(float h, float s, float v);
 void scoutInit(int argc, char** argv);
 void scoutSwapBuffers();
 
-#undef SCOUT_TOP_LEVEL
-
-#endif // SCOUT_H
+#endif // SCOUT_SCH
