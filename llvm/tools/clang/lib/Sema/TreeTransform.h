@@ -5266,6 +5266,14 @@ TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
 
 template<typename Derived>
 StmtResult
+TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+  
+template<typename Derived>
+StmtResult
 TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
   StmtResult R(false);
   R.set(S);

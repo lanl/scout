@@ -278,8 +278,19 @@ Retry:
     return ParseForStatement(attrs);
 
   // ndm - Scout Stmts
-  case tok::kw_forall:
-    return ParseForAllStatement(attrs);
+  case tok::kw_forall: {
+    const Token& t = GetLookAheadToken(1);
+    switch(t.getKind()){
+      case tok::kw_cells:
+      case tok::kw_vertices:
+      case tok::kw_faces:
+      case tok::kw_edges:
+        return ParseForAllStatement(attrs);
+      default:
+        return ParseForAllArrayStatement(attrs);
+    }
+  }
+      
   case tok::kw_renderall:
     return ParseForAllStatement(attrs, false);
   case tok::kw_window:
@@ -2303,7 +2314,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   SourceLocation BodyLoc = Tok.getLocation();
 
-  StmtResult BodyResult = ParseStatement();
+  StmtResult BodyResult(ParseStatement());
   if(BodyResult.isInvalid()){
     if(ForAll)
       Diag(Tok, diag::err_invalid_forall_body);
@@ -2510,3 +2521,95 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
   return ForAllResult;
 }
 
+StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
+  assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
+  
+  SourceLocation ForAllLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::r_brace);
+    return StmtError();
+  }
+  
+  IdentifierInfo* InductionVarII = Tok.getIdentifierInfo();
+  SourceLocation InductionVarLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::kw_of)){
+    Diag(Tok, diag::err_expected_of_kw);
+    SkipUntil(tok::r_brace);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeToken();
+  
+  ExprResult StartResult = ParseAssignmentExpression();
+  if(StartResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_range_forall_array);
+    SkipUntil(tok::r_brace);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  if(Tok.isNot(tok::periodperiod)){
+    Diag(Tok, diag::err_expected_periodperiod);
+    SkipUntil(tok::r_brace);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeToken();
+  
+  ExprResult EndResult = ParseAssignmentExpression();
+  if(EndResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_range_forall_array);
+    SkipUntil(tok::r_brace);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  Expr* Stride;
+  if(Tok.is(tok::colon)){
+    ConsumeToken();
+    ExprResult StrideResult = ParseAssignmentExpression();
+    if(StrideResult.isInvalid()){
+      Diag(Tok, diag::err_invalid_range_forall_array);
+      SkipUntil(tok::r_brace);
+      ConsumeToken();
+      return StmtError();
+    }
+    Stride = StrideResult.get();
+  }
+  else{
+    Stride = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
+                                    Actions.Context.IntTy, ForAllLoc);
+  }
+
+  unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
+  Scope::DeclScope | Scope::ControlScope;
+  
+  ParseScope ForAllScope(this, ScopeFlags);
+  
+  if(!Actions.ActOnForAllArrayInductionVariable(getCurScope(),
+                                                InductionVarII,
+                                                InductionVarLoc)){
+    return StmtError();
+  }
+  
+  StmtResult BodyResult(ParseStatement());
+  if(BodyResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_forall_body);
+    return StmtError();
+  }
+  
+  StmtResult ForAllArrayResult =
+  Actions.ActOnForAllArrayStmt(ForAllLoc,
+                               InductionVarII,
+                               BodyResult.get(),
+                               StartResult.get(),
+                               EndResult.get(),
+                               Stride);
+  
+  return ForAllArrayResult;
+}

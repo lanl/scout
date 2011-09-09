@@ -1747,6 +1747,7 @@ DEF_TRAVERSE_STMT(ForStmt, { })
 // ndm - Scout Stmts
   
 DEF_TRAVERSE_STMT(ForAllStmt, { })
+DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
 DEF_TRAVERSE_STMT(RenderAllStmt, { })  
   
 DEF_TRAVERSE_STMT(GotoStmt, { })

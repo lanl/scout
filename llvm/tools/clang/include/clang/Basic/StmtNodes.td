@@ -20,6 +20,7 @@ def ForStmt : Stmt;
 
 // ndm - Scout Stmts
 def ForAllStmt : Stmt;
+def ForAllArrayStmt : Stmt;
 def RenderAllStmt : Stmt;
 
 def GotoStmt : Stmt;

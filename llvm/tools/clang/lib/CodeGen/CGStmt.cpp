@@ -137,6 +137,9 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ForAllStmtClass:
     EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
     break;
+  case Stmt::ForAllArrayStmtClass:
+    EmitForAllArrayStmtWrapper(cast<ForAllArrayStmt>(*S));
+    break;
   case Stmt::RenderAllStmtClass:
     EmitRenderAllStmt(cast<RenderAllStmt>(*S));
     break;
@@ -634,6 +637,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   ret->eraseFromParent();
 
   Builder.SetInsertPoint(continueBB);
+}
+
+void CodeGenFunction::EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S) {
+  
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

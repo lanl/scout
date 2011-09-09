@@ -130,6 +130,10 @@ void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
   VisitStmt(S);
 }
 
+void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) {
+  VisitStmt(S);
+}
+
 void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
   VisitStmt(S);
 }

@@ -620,5 +620,7 @@ def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
 
 def warn_vector_color_clamp : Warning<"color vector values will be clamped to [0..1]">;
 
+def err_invalid_range_forall_array : Error<"invalid start/end/stride in forall">;
+
 } // end of Parse Issue category.
 } // end of Parser diagnostics

@@ -281,6 +281,10 @@ void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
   
 }
 
+void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) {
+  
+}
+
 void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
   
 }

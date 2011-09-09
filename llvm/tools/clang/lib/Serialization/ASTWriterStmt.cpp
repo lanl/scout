@@ -166,6 +166,10 @@ void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) {
 
 }
 
+void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) {
+  
+}
+
 void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) {
 
 }

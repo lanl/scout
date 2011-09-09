@@ -1863,11 +1863,13 @@ public:
   // ndm - Scout Stmts
 
   void EmitForAllStmtWrapper(const ForAllStmt &S);
+  void EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S);
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
 
   llvm::Value *TranslateExprToValue(const Expr *E);
   void EmitForAllStmt(const ForAllStmt &S);
+  void EmitForAllArrayStmt(const ForAllArrayStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
 
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);

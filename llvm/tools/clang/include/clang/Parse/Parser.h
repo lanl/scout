@@ -1957,6 +1957,8 @@ bool ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
   
   StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
   
+  StmtResult ParseForAllArrayStatement(ParsedAttributes &Attr);
+  
   StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
                                        SourceLocation NameLoc,
                                        VarDecl* VD);

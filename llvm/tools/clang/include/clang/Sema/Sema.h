@@ -6098,6 +6098,10 @@ public:
                                IdentifierInfo* MeshII,
                                SourceLocation MeshLoc);
 
+  bool ActOnForAllArrayInductionVariable(Scope* S,
+                                         IdentifierInfo* InductionVariableII,
+                                         SourceLocation InductionVariableLoc);
+  
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
                                   IdentifierInfo* LoopVariableII,
@@ -6114,8 +6118,20 @@ public:
                              Expr* Op, SourceLocation RParenLoc,
                              Stmt* Body,
                              BlockExpr* Block);
-
-
+    
+  StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
+                             IdentifierInfo* LoopVariableII,
+                             IdentifierInfo* MeshII,
+                             SourceLocation LParenLoc,
+                             Expr* Op, SourceLocation RParenLoc,
+                             Stmt* Body,
+                             BlockExpr* Block);
+  
+  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                  IdentifierInfo* IVII,
+                                  Stmt* Body,
+                                  Expr* SE, Expr* EE, Expr* STE);
+  
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 ForAllStmt::ForAllType Type,
                                 const MeshType *MT,

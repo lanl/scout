@@ -354,22 +354,24 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     bool rhsSet = false;
     
     // ndm - Scout vector binary operator rhs
-    if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
-      ValueDecl* vd = dr->getDecl();
-      
-      BuiltinType::Kind kind;
-      if(isScoutVectorValueDecl(vd, kind)){
-        ScoutVectorType vectorType;
+    if(!LHS.isInvalid()){
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
+        ValueDecl* vd = dr->getDecl();
         
-        if(vd->getName().str() == "color"){
-          vectorType = ScoutVectorColor;
+        BuiltinType::Kind kind;
+        if(isScoutVectorValueDecl(vd, kind)){
+          ScoutVectorType vectorType;
+          
+          if(vd->getName().str() == "color"){
+            vectorType = ScoutVectorColor;
+          }
+          else{
+            vectorType = ScoutVectorGeneric;
+          }
+          
+          RHS = ParseScoutVectorRHS(kind, vectorType);
+          rhsSet = true;
         }
-        else{
-          vectorType = ScoutVectorGeneric;
-        }
-        
-        RHS = ParseScoutVectorRHS(kind, vectorType);
-        rhsSet = true;
       }
     }
     
@@ -379,7 +381,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       else
         RHS = ParseCastExpression(false);
     }
-      
+    
     if (RHS.isInvalid())
       LHS = ExprError();
     

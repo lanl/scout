@@ -226,6 +226,10 @@ void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
 
 }
 
+void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) {
+  
+}
+
 void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
 
 }

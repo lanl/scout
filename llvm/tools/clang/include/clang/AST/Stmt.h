@@ -1597,6 +1597,91 @@ public:
 
 // ndm - Scout Stmts
 
+class ForAllArrayStmt : public Stmt {
+  
+  enum {BODY, END_EXPR};
+  
+  Stmt* SubExprs[END_EXPR];
+  SourceLocation ForAllLoc;
+  IdentifierInfo* InductionVarII;
+  
+  Expr* Start;
+  Expr* End;
+  Expr* Stride;
+  
+public:
+  ForAllArrayStmt(ASTContext &C, IdentifierInfo* IVII, Stmt* Body,
+                  Expr* SE, Expr* EE, Expr* STE, SourceLocation FAL);
+  
+  
+  IdentifierInfo* getInductionVar(){
+    return InductionVarII;
+  }
+  
+  const IdentifierInfo* getIndunctionVar() const{
+    return InductionVarII;
+  }
+  
+  void setInductionVar(IdentifierInfo* IVII){
+    InductionVarII = IVII;
+  }
+  
+  Stmt* getBody(){
+    return SubExprs[BODY];
+  }
+  
+  const Stmt* getBody() const{
+    return SubExprs[BODY];
+  }
+  
+  void setBody(Stmt* B){
+    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+  
+  Expr* getStart(){
+    return Start;
+  }
+  
+  void setStart(Expr* S){
+    Start = S;
+  }
+  
+  Expr* getEnd(){
+    return End;
+  }
+  
+  void setEnd(Expr* E){
+    End = E;
+  }
+  
+  Expr* getStride(){
+    return Stride;
+  }
+  
+  void setStride(Expr* XS){
+    Stride = XS;
+  }
+  
+  SourceLocation getForAllLoc() const { return ForAllLoc; }
+  
+  void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ForAllArrayStmtClass;
+  }
+  
+  static bool classof(const ForAllArrayStmt *) { return true; }
+  
+  SourceRange getSourceRange() const {
+    return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
+  }
+  
+  child_range children() {
+    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
+  }
+  
+};
+  
 class ForAllStmt : public Stmt {
 
 public:

@@ -2591,6 +2591,15 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                         RParenLoc));
 }
 
+StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                      IdentifierInfo* IVII,
+                                      Stmt* Body,
+                                      Expr* SE, Expr* EE, Expr* STE){
+  
+  return Owned(new (Context) ForAllArrayStmt(Context, IVII, Body,
+                                             SE, EE, STE, ForAllLoc));
+}
+
 namespace{
   
   class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
@@ -2768,6 +2777,33 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 
   SCLStack.push_back(D);
 
+  return true;
+}
+
+bool Sema::ActOnForAllArrayInductionVariable(Scope* S,
+                                             IdentifierInfo* InductionVarII,
+                                             SourceLocation InductionVarLoc){
+ 
+  // lookup result below
+  
+  LookupResult LResult(*this, InductionVarII, InductionVarLoc,
+                       LookupOrdinaryName);
+  
+  LookupName(LResult, S);
+  
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) << 
+    InductionVarII;
+    return false;
+  }
+
+  ImplicitParamDecl* IV =
+  ImplicitParamDecl::Create(Context, CurContext,
+                            InductionVarLoc, InductionVarII, 
+                            Context.IntTy);
+  
+  PushOnScopeChains(IV, S, true);
+  
   return true;
 }
 
