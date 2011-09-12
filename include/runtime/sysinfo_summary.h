@@ -13,6 +13,7 @@
 #define SCOUT_SYSINFO_H_
 
 #include <cstdlib>
+#include <string>
 
 namespace scout{
 
@@ -37,6 +38,8 @@ namespace scout{
     size_t memoryPerSocket() const;
   
     size_t memoryPerNumaNode() const;
+
+    std::string treeToString() const;
 
   private:
     class sysinfo_summary_rt_* x_;

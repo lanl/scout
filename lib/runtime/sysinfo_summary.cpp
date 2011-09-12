@@ -1,6 +1,8 @@
 #include "runtime/sysinfo_summary.h"
 
 #include <vector>
+#include <sstream>
+#include <iostream>
 
 #include <hwloc.h>
 
@@ -18,7 +20,7 @@ namespace{
       None,
       Any,
       System,
-      Node,
+      NumaNode,
       Socket,
       Cache,
       Group,
@@ -26,11 +28,10 @@ namespace{
       Bridge,
       PCIDevice,
       OSDevice,
-      NumaNode,
       Machine,
-      Level3,
-      Level2,
-      Level1,
+      L3,
+      L2,
+      L1,
       Core,
       ProcessingUnit
     };
@@ -49,7 +50,7 @@ namespace{
       }
       case HWLOC_OBJ_NODE:
       {
-	kind_ = Node;
+	kind_ = NumaNode;
 	break;
       }
       case HWLOC_OBJ_SOCKET:
@@ -59,7 +60,19 @@ namespace{
       }
       case HWLOC_OBJ_CACHE:
       {
-	kind_ = Cache;
+	switch(obj->attr->cache.depth){
+	  case 1:
+	    kind_ = L1;
+	    break;
+	  case 2:
+	    kind_ = L2;
+	    break;
+	  case 3:
+	    kind_ = L3;
+	    break;
+	  default:
+	    kind_ = Cache;
+	}
 	break;
       }
       case HWLOC_OBJ_CORE:
@@ -105,7 +118,17 @@ namespace{
 	return;
       }
 
-      memory_ = obj->memory.local_memory;
+      switch(kind_){
+        case L1:
+        case L2:
+        case L3:
+        case Cache:
+	  memory_ = obj->attr->cache.size;
+	  break;
+        default:
+	  memory_ = obj->memory.local_memory;
+      }
+      
       totalMemory_ = obj->memory.total_memory;
 
       for(size_t i = 0; i < obj->arity; ++i){
@@ -244,6 +267,65 @@ namespace{
       return memoryPerKind(NumaNode);
     }
 
+    void toStream(const std::string& indent, ostream& ostr){
+      ostr << indent;
+
+      switch(kind_){
+      case Socket:
+	ostr << "Socket";
+	break;
+      case Cache:
+	ostr << "Cache";
+	break;
+      case Group:
+	ostr << "Group";
+	break;
+      case Misc:
+	ostr << "Misc";
+	break;
+      case Bridge:
+	ostr << "Bridge";
+	break;
+      case PCIDevice:
+	ostr << "PCIDevice";
+	break;
+      case OSDevice:
+	ostr << "OSDevice";
+	break;
+      case NumaNode:
+	ostr << "NumaNode";
+	break;
+      case Machine:
+	ostr << "Machine";
+	break;
+      case L3:
+	ostr << "L3";
+	break;
+      case L2:
+	ostr << "L2";
+	break;
+      case L1:
+	ostr << "L1";
+	break;
+      case Core:
+	ostr << "Core";
+	break;
+      case ProcessingUnit:
+	ostr << "ProcessingUnit";
+	break;
+      }
+
+      if(memory_ != 0){
+	ostr << ": " << memory_;
+      }
+
+      ostr << endl;
+
+      for(size_t i = 0; i < childVec_.size(); ++i){
+	childVec_[i]->toStream(indent + "  ", ostr);
+      }
+    }
+
   protected:
     Kind kind_;
     uint64_t memory_;
@@ -307,6 +389,12 @@ namespace scout{
       return root_->memoryPerNumaNode();
     }
 
+    std::string treeToString() const{
+      stringstream ostr;
+      root_->toStream("", ostr);
+      return ostr.str();
+    }
+
   private:
     sysinfo_summary_rt* o_;
     SINode* root_;
@@ -355,4 +443,6 @@ size_t sysinfo_summary_rt::memoryPerNumaNode() const{
   return x_->memoryPerNumaNode();
 }
 
-
+std::string sysinfo_summary_rt::treeToString() const{
+  return x_->treeToString();
+}
