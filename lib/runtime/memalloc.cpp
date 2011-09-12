@@ -53,7 +53,9 @@ namespace scout
     if(failure){
       return 0;
     }
-    
+
+    ((sc_array_header*)a_ptr)->size = size;
+ 
     return (char*)a_ptr + sizeof(sc_array_header);
   }
 
