@@ -36,6 +36,8 @@
 #include "InputInfo.h"
 #include "ToolChains.h"
 
+#include <iostream>
+
 #ifdef __CYGWIN__
 #include <cygwin/version.h>
 #if defined(CYGWIN_VERSION_DLL_MAJOR) && CYGWIN_VERSION_DLL_MAJOR<1007
@@ -3310,6 +3312,20 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
+  // ndm - add Scout library search paths
+  std::string sccPath = C.getDriver().Dir;
+  sccPath = llvm::sys::path::parent_path(sccPath);
+  
+  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
+  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
+  static std::string scHwLocLibOpt = "-L/usr/local/lib";
+  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+
+  CmdArgs.push_back(scRuntimeLibOpt.c_str());
+  CmdArgs.push_back(scStandardLibOpt.c_str());
+  CmdArgs.push_back(scHwLocLibOpt.c_str());
+  CmdArgs.push_back(scLLVMLibOpt.c_str());
+  
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
   // categories.
@@ -3409,7 +3425,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
-  // ndm - add Scout libs
+  // ndm - add Scout libs    
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
@@ -4220,6 +4236,20 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/lib64/ld-linux-x86-64.so.2");
   }
 
+  // ndm - add Scout library search paths
+  std::string sccPath = C.getDriver().Dir;
+  sccPath = llvm::sys::path::parent_path(sccPath);
+  
+  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
+  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
+  static std::string scHwLocLibOpt = "-L/usr/local/lib";
+  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+  
+  CmdArgs.push_back(scRuntimeLibOpt.c_str());
+  CmdArgs.push_back(scStandardLibOpt.c_str());
+  CmdArgs.push_back(scHwLocLibOpt.c_str());
+  CmdArgs.push_back(scLLVMLibOpt.c_str());
+  
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 
@@ -4329,6 +4359,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   // ndm - add Scout libs
+
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
