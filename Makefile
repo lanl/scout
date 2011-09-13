@@ -35,12 +35,12 @@ all: $(build_dir)/Makefile compile
 
 $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
-	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 	@(cd packages/hwloc; ./configure --prefix=$(build_dir))
+	@(cd packages/hwloc; make -j $(nprocs); make install)	
+	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
-	@(cd packages/hwloc; make -j $(nprocs); make install)	
 	@(cd $(build_dir)/llvm; make -j $(nprocs); make install)
 	@(cd $(build_dir); make -j $(nprocs))
 
