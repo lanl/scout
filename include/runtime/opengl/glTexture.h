@@ -9,11 +9,10 @@
  * 
  */
 
-#ifndef SCOUT_GL_TEXTURE_H_
-#define SCOUT_GL_TEXTURE_H_
+#ifndef SCOUT_OPENGL_TEXTURE_H_
+#define SCOUT_OPENGL_TEXTURE_H_
 
-#include "glTypeTraits.h"
-#include "glTextureParamter.h"
+#include "runtime/opengl/glTextureParamter.h"
 
 namespace scout
 {
@@ -56,7 +55,7 @@ namespace scout
       glBindTexture(_target, 0);      
     }
 
-    virtual bool canDownload() = 0;
+    virtual bool canDownload() const = 0;
 
     bool isResident() const;
 

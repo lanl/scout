@@ -18,6 +18,7 @@
 #ifndef SCOUT_GL_BUFFER_OBJECT_H_
 #define SCOUT_GL_BUFFER_OBJECT_H_
 
+#include <cassert>
 #include "opengl.h"
 
 namespace scout

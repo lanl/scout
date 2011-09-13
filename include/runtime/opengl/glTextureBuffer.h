@@ -22,7 +22,7 @@ namespace scout
     
    public:
     glTextureBuffer()
-        : glTextureBuffer(GL_PIXEL_UNPACK_BUFFER)
+        : glBufferObject(GL_PIXEL_UNPACK_BUFFER)
     { /* details handled by glBufferObject... */ }
     
     ~glTextureBuffer()

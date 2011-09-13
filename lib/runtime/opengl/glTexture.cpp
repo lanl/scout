@@ -51,6 +51,8 @@ bool glTexture::isResident() const
   if (glIsTexture(_id)) {
     GLboolean dummy;
     return(glAreTexturesResident(1, &_id, &dummy) == GL_TRUE);
+  } else {
+    return false;
   }
 }
 
