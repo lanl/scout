@@ -19,7 +19,7 @@ using namespace scout;
 
 #include <vector>
 
-#include "runtime/sysinfo_summary.h"
+#include "runtime/system.h"
 
 using namespace std;
 using namespace scout;

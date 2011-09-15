@@ -1,4 +1,4 @@
-#include "runtime/sysinfo_summary.h"
+#include "runtime/system.h"
 
 #include <vector>
 #include <sstream>
@@ -6,10 +6,20 @@
 
 #include <hwloc.h>
 
+#define SC_PREFERRED_ALIGNMENT 64
+
 using namespace std;
 using namespace scout;
 
 namespace{
+
+  struct NumaArrayHeader{
+#if SC_PREFERRED_ALIGNMENT == 64
+    uint64_t size;
+#else
+    uint32_t size;
+#endif
+  };
 
   class SINode{
   public:
@@ -339,22 +349,20 @@ namespace{
 
 namespace scout{
 
-  class sysinfo_summary_rt_{
+  class system_rt_{
   public:
-    sysinfo_summary_rt_(sysinfo_summary_rt* o)
+    system_rt_(system_rt* o)
       : o_(o){
 
-      hwloc_topology_t topology;
-      hwloc_topology_init(&topology);
-      hwloc_topology_load(topology);
+      hwloc_topology_init(&topology_);
+      hwloc_topology_load(topology_);
 
-      root_ = new SINode(hwloc_get_root_obj(topology)); 
-    
-      hwloc_topology_destroy(topology);
+      root_ = new SINode(hwloc_get_root_obj(topology_)); 
     }
 
-    ~sysinfo_summary_rt_(){
+    ~system_rt_(){
       delete root_;
+      hwloc_topology_destroy(topology_);
     }
 
     size_t totalSockets() const{
@@ -395,54 +403,86 @@ namespace scout{
       return ostr.str();
     }
 
+    void* allocArrayOnNumaNode(size_t size, size_t nodeId){
+      hwloc_obj_t obj = 
+	hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
+      
+      if(!obj){
+	return 0;
+      }
+
+      void* m = hwloc_alloc_membind_nodeset(topology_,
+					    size + sizeof(NumaArrayHeader),
+					    obj->nodeset,
+					    HWLOC_MEMBIND_DEFAULT, 0);
+
+      ((NumaArrayHeader*)m)->size = size;
+
+      return (char*)m + sizeof(NumaArrayHeader);
+    }
+    
+    void freeArrayFromNumaNode(void* m){
+      void* ms = (char*)m - sizeof(NumaArrayHeader);
+      hwloc_free(topology_, ms, ((NumaArrayHeader*)m)->size);
+    }
+
   private:
-    sysinfo_summary_rt* o_;
+    system_rt* o_;
     SINode* root_;
+    hwloc_topology_t topology_;
   };
 
 } // end namespace scout
 
 
-sysinfo_summary_rt::sysinfo_summary_rt(){
-  x_ = new sysinfo_summary_rt_(this);
+system_rt::system_rt(){
+  x_ = new system_rt_(this);
 }
 
-sysinfo_summary_rt::~sysinfo_summary_rt(){
+system_rt::~system_rt(){
   delete x_;
 }
 
-size_t sysinfo_summary_rt::totalSockets() const{
+size_t system_rt::totalSockets() const{
   return x_->totalSockets();
 }
 
-size_t sysinfo_summary_rt::totalNumaNodes() const{
+size_t system_rt::totalNumaNodes() const{
   return x_->totalNumaNodes();
 }
 
-size_t sysinfo_summary_rt::totalCores() const{
+size_t system_rt::totalCores() const{
   return x_->totalCores();
 }
 
-size_t sysinfo_summary_rt::totalProcessingUnits() const{
+size_t system_rt::totalProcessingUnits() const{
   return x_->totalProcessingUnits();
 }
 
-size_t sysinfo_summary_rt::processingUnitsPerCore() const{
+size_t system_rt::processingUnitsPerCore() const{
   return x_->processingUnitsPerCore();
 }
 
-size_t sysinfo_summary_rt::numaNodesPerSocket() const{
+size_t system_rt::numaNodesPerSocket() const{
   return x_->numaNodesPerSocket();
 }
 
-size_t sysinfo_summary_rt::memoryPerSocket() const{
+size_t system_rt::memoryPerSocket() const{
   return x_->memoryPerSocket();
 }
 
-size_t sysinfo_summary_rt::memoryPerNumaNode() const{
+size_t system_rt::memoryPerNumaNode() const{
   return x_->memoryPerNumaNode();
 }
 
-std::string sysinfo_summary_rt::treeToString() const{
+std::string system_rt::treeToString() const{
   return x_->treeToString();
+}
+
+void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId){
+  return x_->allocArrayOnNumaNode(size, nodeId);
+}
+
+void system_rt::freeArrayFromNumaNode(void* m){
+  x_->freeArrayFromNumaNode(m);
 }

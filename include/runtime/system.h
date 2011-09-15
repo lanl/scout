@@ -9,19 +9,19 @@
  * 
  */
 
-#ifndef SCOUT_SYSINFO_H_
-#define SCOUT_SYSINFO_H_
+#ifndef SCOUT_SYSTEM_H_
+#define SCOUT_SYSTEM_H_
 
 #include <cstdlib>
 #include <string>
 
 namespace scout{
 
-  class sysinfo_summary_rt{
+  class system_rt{
   public:
-    sysinfo_summary_rt();
+    system_rt();
 
-    ~sysinfo_summary_rt();
+    ~system_rt();
 
     size_t totalSockets() const;
 
@@ -41,10 +41,14 @@ namespace scout{
 
     std::string treeToString() const;
 
+    void* allocArrayOnNumaNode(size_t size, size_t nodeId);
+
+    void freeArrayFromNumaNode(void* m);
+
   private:
-    class sysinfo_summary_rt_* x_;
+    class system_rt_* x_;
   };
 
 } // end namespace scout
 
-#endif // SCOUT_SYSINFO_H_
+#endif // SCOUT_SYSTEM_H_
