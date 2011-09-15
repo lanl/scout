@@ -6127,10 +6127,7 @@ public:
                              Stmt* Body,
                              BlockExpr* Block);
   
-  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
-                                  IdentifierInfo* IVII,
-                                  Stmt* Body,
-                                  Expr* SE, Expr* EE, Expr* STE);
+  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc);
   
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 ForAllStmt::ForAllType Type,

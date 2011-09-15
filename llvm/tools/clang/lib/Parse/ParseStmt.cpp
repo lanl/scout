@@ -2526,14 +2526,33 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   
   SourceLocation ForAllLoc = ConsumeToken();
   
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::r_brace);
-    return StmtError();
-  }
+  IdentifierInfo* IVII[3];
+  IVII[1] = 0;
+  IVII[2] = 0;
   
-  IdentifierInfo* InductionVarII = Tok.getIdentifierInfo();
-  SourceLocation InductionVarLoc = ConsumeToken();
+  SourceLocation IVSL[3];
+  
+  for(size_t i = 0; i < 3; ++i){
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+      SkipUntil(tok::r_brace);
+      return StmtError();
+    }
+    
+    IVII[i] = Tok.getIdentifierInfo();
+    IVSL[i] = ConsumeToken();
+    
+    if(Tok.is(tok::kw_in)){
+      break;
+    }
+    else if(Tok.isNot(tok::comma)){
+      Diag(Tok, diag::err_expected_comma);
+      SkipUntil(tok::r_brace);
+      ConsumeToken();
+      return StmtError();
+    }
+    ConsumeToken();
+  }
   
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_expected_in_kw);
@@ -2544,57 +2563,104 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   
   ConsumeToken();
   
-  ExprResult StartResult = ParseAssignmentExpression();
-  if(StartResult.isInvalid()){
-    Diag(Tok, diag::err_invalid_range_forall_array);
+  if(Tok.isNot(tok::l_square)){
+    Diag(Tok, diag::err_expected_lsquare);
     SkipUntil(tok::r_brace);
     ConsumeToken();
     return StmtError();
   }
   
-  if(Tok.isNot(tok::periodperiod)){
-    Diag(Tok, diag::err_expected_periodperiod);
-    SkipUntil(tok::r_brace);
-    ConsumeToken();
-    return StmtError();
-  }
+  ConsumeBracket();
   
-  ConsumeToken();
+  Expr* Start[3];
+  Start[1] = 0;
+  Start[2] = 0;
   
-  ExprResult EndResult = ParseAssignmentExpression();
-  if(EndResult.isInvalid()){
-    Diag(Tok, diag::err_invalid_range_forall_array);
-    SkipUntil(tok::r_brace);
-    ConsumeToken();
-    return StmtError();
-  }
+  Expr* End[3];
+  End[1] = 0;
+  End[2] = 0;
   
-  Expr* Stride;
-  if(Tok.is(tok::colon)){
-    ConsumeToken();
-    ExprResult StrideResult = ParseAssignmentExpression();
-    if(StrideResult.isInvalid()){
-      Diag(Tok, diag::err_invalid_range_forall_array);
-      SkipUntil(tok::r_brace);
+  Expr* Stride[3];
+  Stride[1] = 0;
+  Stride[2] = 0;
+  
+  for(size_t i = 0; i < 3; ++i){
+    if(Tok.is(tok::colon)){
+      Start[i] = 0;
       ConsumeToken();
-      return StmtError();
     }
-    Stride = StrideResult.get();
-  }
-  else{
-    Stride = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
-                                    Actions.Context.IntTy, ForAllLoc);
-  }
+    else{
+      ExprResult StartResult = ParseAssignmentExpression();
+      if(StartResult.isInvalid()){
+        Diag(Tok, diag::err_invalid_range_forall_array);
+        SkipUntil(tok::r_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+      Start[i] = StartResult.get();
+      ConsumeToken();
+    }
 
+    if(Tok.is(tok::colon)){
+      End[i] = 0;
+      ConsumeToken();
+    }
+    else{
+      ExprResult EndResult = ParseAssignmentExpression();
+      if(EndResult.isInvalid()){
+        Diag(Tok, diag::err_invalid_range_forall_array);
+        SkipUntil(tok::r_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+      End[i] = EndResult.get();
+      ConsumeToken();
+    }
+    
+    if(Tok.is(tok::comma)){
+      Stride[i] = 
+      IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
+                             Actions.Context.IntTy, ForAllLoc);
+    }
+    else{
+      ExprResult StrideResult = ParseAssignmentExpression();
+      if(StrideResult.isInvalid()){
+        Diag(Tok, diag::err_invalid_range_forall_array);
+        SkipUntil(tok::r_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+    }
+    
+    if(Tok.isNot(tok::comma)){
+      break;
+    }
+  }
+  
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_rsquare);
+    SkipUntil(tok::r_square);
+    ConsumeToken();
+    return StmtError();
+  }
+  
+  ConsumeBracket();
+  
   unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
   Scope::DeclScope | Scope::ControlScope;
   
   ParseScope ForAllScope(this, ScopeFlags);
   
-  if(!Actions.ActOnForAllArrayInductionVariable(getCurScope(),
-                                                InductionVarII,
-                                                InductionVarLoc)){
-    return StmtError();
+  for(size_t i = 0; i < 3; ++i){
+    if(!IVII[i]){
+      break;
+    }
+    
+    if(!Actions.ActOnForAllArrayInductionVariable(getCurScope(),
+                                                  IVII[i],
+                                                  IVSL[i])){
+      return StmtError();
+    }
   }
   
   StmtResult BodyResult(ParseStatement());
@@ -2604,12 +2670,19 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   }
   
   StmtResult ForAllArrayResult =
-  Actions.ActOnForAllArrayStmt(ForAllLoc,
-                               InductionVarII,
-                               BodyResult.get(),
-                               StartResult.get(),
-                               EndResult.get(),
-                               Stride);
+  Actions.ActOnForAllArrayStmt(ForAllLoc);
+  
+  ForAllArrayStmt* FA = dyn_cast<ForAllArrayStmt>(ForAllArrayResult.get());
+  
+  for(size_t i = 0; i < 3; ++i){
+    if(!Start[i]){
+      break;
+    }
+    
+    FA->setStart(i, Start[i]);
+    FA->setEnd(i, End[i]);
+    FA->setStride(i, Stride[i]);
+  }
   
   return ForAllArrayResult;
 }

@@ -850,16 +850,22 @@ ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
   setBody(Body);
 }
 
-ForAllArrayStmt::ForAllArrayStmt(ASTContext &C, IdentifierInfo* IVII, 
-                                 Stmt* Body, Expr* SE, Expr* EE, 
-                                 Expr* STE, SourceLocation FAL)
+ForAllArrayStmt::ForAllArrayStmt(ASTContext &C, SourceLocation FAL)
 : Stmt(ForAllArrayStmtClass),
-InductionVarII(IVII),
-Start(SE),
-End(EE),
-Stride(STE),
+XInductionVarII(0),
+YInductionVarII(0),
+ZInductionVarII(0),
+XStart(0),
+XEnd(0),
+XStride(0),
+YStart(0),
+YEnd(0),
+YStride(0),
+ZStart(0),
+ZEnd(0),
+ZStride(0),
 ForAllLoc(FAL){
-  setBody(Body);
+  setBody(0);
 }
 
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,

@@ -1603,27 +1603,36 @@ class ForAllArrayStmt : public Stmt {
   
   Stmt* SubExprs[END_EXPR];
   SourceLocation ForAllLoc;
-  IdentifierInfo* InductionVarII;
+  IdentifierInfo* XInductionVarII;
+  IdentifierInfo* YInductionVarII;
+  IdentifierInfo* ZInductionVarII;
   
-  Expr* Start;
-  Expr* End;
-  Expr* Stride;
+  Expr* XStart;
+  Expr* XEnd;
+  Expr* XStride;
+  Expr* YStart;
+  Expr* YEnd;
+  Expr* YStride;
+  Expr* ZStart;
+  Expr* ZEnd;
+  Expr* ZStride;
   
 public:
-  ForAllArrayStmt(ASTContext &C, IdentifierInfo* IVII, Stmt* Body,
-                  Expr* SE, Expr* EE, Expr* STE, SourceLocation FAL);
+  ForAllArrayStmt(ASTContext &C,
+                  SourceLocation FAL);
   
   
-  IdentifierInfo* getInductionVar(){
-    return InductionVarII;
-  }
-  
-  const IdentifierInfo* getIndunctionVar() const{
-    return InductionVarII;
-  }
-  
-  void setInductionVar(IdentifierInfo* IVII){
-    InductionVarII = IVII;
+  IdentifierInfo* getInductionVar(size_t axis){
+    switch(axis){
+      case 0:
+        return XInductionVarII;
+      case 1:
+        return YInductionVarII;
+      case 2:
+        return ZInductionVarII;
+    }
+    
+    assert(false && "invalid axis");
   }
   
   Stmt* getBody(){
@@ -1638,28 +1647,92 @@ public:
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
   }
   
-  Expr* getStart(){
-    return Start;
+  Expr* getStart(size_t axis){
+    switch(axis){
+      case 0:
+        return XStart;
+      case 1:
+        return YStart;
+      case 2:
+        return ZStart;
+    }
+    
+    assert(false && "invalid axis");
   }
   
-  void setStart(Expr* S){
-    Start = S;
+  void setStart(size_t axis, Expr* S){
+    switch(axis){
+      case 0:
+        XStart = S;
+        break;
+      case 1:
+        YStart = S;
+        break;
+      case 2:
+        ZStart = S;
+        break;
+      default:
+        assert(false && "invalid axis");
+    }
+    
+  }
+
+  Expr* getEnd(size_t axis){
+    switch(axis){
+      case 0:
+        return XEnd;
+      case 1:
+        return YEnd;
+      case 2:
+        return ZEnd;
+    }
+    
+    assert(false && "invalid axis");
   }
   
-  Expr* getEnd(){
-    return End;
+  void setEnd(size_t axis, Expr* S){
+    switch(axis){
+      case 0:
+        XEnd = S;
+        break;
+      case 1:
+        YEnd = S;
+        break;
+      case 2:
+        ZEnd = S;
+        break;
+      default:
+        assert(false && "invalid axis");
+    }
   }
   
-  void setEnd(Expr* E){
-    End = E;
+  Expr* getStride(size_t axis){
+    switch(axis){
+      case 0:
+        return XStride;
+      case 1:
+        return YStride;
+      case 2:
+        return ZStride;
+    }
+    
+    assert(false && "invalid axis");
   }
   
-  Expr* getStride(){
-    return Stride;
-  }
-  
-  void setStride(Expr* XS){
-    Stride = XS;
+  void setStride(size_t axis, Expr* S){
+    switch(axis){
+      case 0:
+        XStride = S;
+        break;
+      case 1:
+        YStride = S;
+        break;
+      case 2:
+        ZStride = S;
+        break;
+      default:
+        assert(false && "invalid axis");
+    }
   }
   
   SourceLocation getForAllLoc() const { return ForAllLoc; }

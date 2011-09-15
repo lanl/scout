@@ -2591,13 +2591,9 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                         RParenLoc));
 }
 
-StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc,
-                                      IdentifierInfo* IVII,
-                                      Stmt* Body,
-                                      Expr* SE, Expr* EE, Expr* STE){
+StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc){
   
-  return Owned(new (Context) ForAllArrayStmt(Context, IVII, Body,
-                                             SE, EE, STE, ForAllLoc));
+  return Owned(new (Context) ForAllArrayStmt(Context, ForAllLoc));
 }
 
 namespace{
