@@ -586,8 +586,8 @@ def err_expected_numeric_constant_in_mesh_def : Error<
 "expected a numeric constant in mesh definition dimensions">;
 def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
 def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
-def err_expected_of_kw: Error<"expected of keyword">;
-def err_expected_in_kw: Error<"expected in keyword">;
+def err_expected_of_kw: Error<"expected 'of' keyword">;
+def err_expected_in_kw: Error<"expected 'in' keyword">;
 def err_invalid_renderall_body: Error<"Invalid renderall body">;
 def err_invalid_forall_op: Error<"Invalid forall op">;
 def err_invalid_forall_body: Error<"Invalid forall body">;
@@ -621,7 +621,14 @@ def err_invalid_scout_vector_init : Error<"invalid vector initialization">;
 
 def warn_vector_color_clamp : Warning<"color vector values will be clamped to [0..1]">;
 
-def err_invalid_range_forall_array : Error<"invalid start/end/stride in forall">;
+def err_invalid_start_forall_array : Error<"invalid start in forall">;
+
+def err_invalid_end_forall_array : Error<"invalid end in forall">;
+
+def err_invalid_stride_forall_array : Error<"invalid stride in forall">;
+
+def err_mismatch_forall_array : Error<
+"start/end/stride groups do not match number of induction variables">;
 
 } // end of Parse Issue category.
 } // end of Parser diagnostics
