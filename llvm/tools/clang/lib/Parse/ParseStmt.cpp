@@ -82,9 +82,11 @@ using namespace clang;
 ///
 StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement) {
-  // ndm - test
-  //DumpLookAheads(20);
-
+  // ndm - test hook into parsing stmts from the main file
+  //if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
+    //DumpLookAheads(20);
+  //}
+  
   const char *SemiError = 0;
   StmtResult Res;
 
