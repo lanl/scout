@@ -251,6 +251,10 @@ namespace{
       return countPerKind(ProcessingUnit, Core);
     }
 
+    size_t processingUnitsPerNumaNode() const{
+      return countPerKind(ProcessingUnit, NumaNode);
+    }
+
     size_t numaNodesPerSocket() const{
       return countPerKind(NumaNode, Socket);
     }
@@ -357,7 +361,17 @@ namespace scout{
       hwloc_topology_init(&topology_);
       hwloc_topology_load(topology_);
 
-      root_ = new SINode(hwloc_get_root_obj(topology_)); 
+      root_ = new SINode(hwloc_get_root_obj(topology_));
+
+      // cache summary information
+      totalSockets_ = root_->totalSockets();
+      totalNumaNodes_ = root_->totalNumaNodes();
+      totalCores_ = root_->totalCores();
+      totalProcessingUnits_ = root_->totalProcessingUnits();
+      numaNodesPerSocket_ = root_->numaNodesPerSocket();
+      memoryPerSocket_ = root_->memoryPerSocket();
+      memoryPerNumaNode_ = root_->memoryPerNumaNode();
+      processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
     }
 
     ~system_rt_(){
@@ -366,35 +380,39 @@ namespace scout{
     }
 
     size_t totalSockets() const{
-      return root_->totalSockets();
+      return totalSockets_;
     }
   
     size_t totalNumaNodes() const{
-      return root_->totalNumaNodes();
+      return totalNumaNodes_;
     }
   
     size_t totalCores() const{
-      return root_->totalCores();
+      return totalCores_;
     }
   
     size_t totalProcessingUnits() const{
-      return root_->totalProcessingUnits();
+      return totalProcessingUnits_;
     }
   
     size_t processingUnitsPerCore() const{
-      return root_->processingUnitsPerCore();
+      return processingUnitsPerCore_;
     }
   
     size_t numaNodesPerSocket() const{
-      return root_->numaNodesPerSocket();
+      return numaNodesPerSocket_;
     }
   
     size_t memoryPerSocket() const{
-      return root_->memoryPerSocket();
+      return memoryPerSocket_;
     }
   
     size_t memoryPerNumaNode() const{
-      return root_->memoryPerNumaNode();
+      return memoryPerNumaNode_;
+    }
+
+    size_t processingUnitsPerNumaNode() const{
+      return processingUnitsPerNumaNode_;
     }
 
     std::string treeToString() const{
@@ -426,10 +444,35 @@ namespace scout{
       hwloc_free(topology_, ms, ((NumaArrayHeader*)m)->size);
     }
 
+    bool bindThreadToNumaNode(size_t nodeId){
+      hwloc_obj_t obj = 
+	hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
+
+      if(!obj){
+	return false;
+      }
+
+      int status = hwloc_set_membind_nodeset(topology_,
+					     obj->nodeset,
+					     HWLOC_MEMBIND_DEFAULT,
+					     HWLOC_MEMBIND_THREAD);
+
+      return status != -1;
+    }
+
   private:
     system_rt* o_;
     SINode* root_;
     hwloc_topology_t topology_;
+    size_t totalSockets_;
+    size_t totalNumaNodes_;
+    size_t totalCores_;
+    size_t totalProcessingUnits_;
+    size_t processingUnitsPerCore_;
+    size_t processingUnitsPerNumaNode_;
+    size_t numaNodesPerSocket_;
+    size_t memoryPerSocket_;
+    size_t memoryPerNumaNode_;
   };
 
 } // end namespace scout
@@ -475,6 +518,10 @@ size_t system_rt::memoryPerNumaNode() const{
   return x_->memoryPerNumaNode();
 }
 
+size_t system_rt::processingUnitsPerNumaNode() const{
+  return x_->processingUnitsPerNumaNode();
+}
+
 std::string system_rt::treeToString() const{
   return x_->treeToString();
 }
@@ -485,4 +532,8 @@ void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId){
 
 void system_rt::freeArrayFromNumaNode(void* m){
   x_->freeArrayFromNumaNode(m);
+}
+
+bool system_rt::bindThreadToNumaNode(size_t nodeId){
+  return x_->bindThreadToNumaNode(nodeId);
 }

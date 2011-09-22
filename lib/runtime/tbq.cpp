@@ -18,6 +18,7 @@ using namespace scout;
 /*
 
 #include <vector>
+#include <cmath>
 
 #include "runtime/system.h"
 
@@ -208,7 +209,7 @@ namespace scout{
       size_t queueSize = queueVec_.size();
       
       index_t xspan = 
-	(xRange.upper_bound - xRange.lower_bound)/queueVec_.size();
+	ceil(float(xRange.upper_bound - xRange.lower_bound)/queueVec_.size());
 
       size_t q = 0;
       if(yRange.stride == 0){
@@ -233,7 +234,7 @@ namespace scout{
       }
       else{
 	index_t yspan = 
-	  (yRange.upper_bound - yRange.lower_bound)/queueVec_.size();
+	  ceil(float(yRange.upper_bound - yRange.lower_bound)/queueVec_.size());
 
 	if(zRange.stride == 0){
 	  for(index_t i = 0; i <= xRange.upper_bound; i += xspan){
@@ -266,7 +267,8 @@ namespace scout{
 	}
 	else{
 	  index_t zspan = 
-	    (zRange.upper_bound - zRange.lower_bound)/queueVec_.size();
+	    ceil(float(zRange.upper_bound - 
+	    zRange.lower_bound)/queueVec_.size());
 
 	  for(index_t i = 0; i <= xRange.upper_bound; i += xspan){
 	    for(index_t j = 0; j <= yRange.upper_bound; j += yspan){

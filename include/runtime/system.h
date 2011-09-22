@@ -39,11 +39,15 @@ namespace scout{
   
     size_t memoryPerNumaNode() const;
 
+    size_t processingUnitsPerNumaNode() const;
+
     std::string treeToString() const;
 
     void* allocArrayOnNumaNode(size_t size, size_t nodeId);
 
     void freeArrayFromNumaNode(void* m);
+
+    bool bindThreadToNumaNode(size_t nodeId);
 
   private:
     class system_rt_* x_;
