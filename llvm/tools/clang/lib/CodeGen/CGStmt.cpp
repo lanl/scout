@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CGBlocks.h"
 #include "CGDebugInfo.h"
 #include "CodeGenModule.h"
 #include "CodeGenFunction.h"
@@ -637,10 +638,18 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   ret->eraseFromParent();
 
   Builder.SetInsertPoint(continueBB);
+
+  typedef llvm::SetVector< llvm::Value * > Values;
+  Values inputs;
+
+  std::string TheName = CurFn->getName();
+  CGBlockInfo blockInfo(S.getBlock(), TheName.c_str());
+
+  EmitScoutBlockLiteral(S.getBlock(), blockInfo, inputs);
 }
 
 void CodeGenFunction::EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S) {
-  
+
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

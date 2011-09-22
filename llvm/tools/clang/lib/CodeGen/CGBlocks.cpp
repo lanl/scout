@@ -19,7 +19,9 @@
 #include "clang/AST/DeclObjC.h"
 #include "llvm/Module.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Transforms/Utils/FunctionUtils.h"
 #include <algorithm>
 
 using namespace clang;
@@ -28,7 +30,7 @@ using namespace CodeGen;
 CGBlockInfo::CGBlockInfo(const BlockExpr *blockExpr, const char *N)
   : Name(N), CXXThisIndex(0), CanBeGlobal(false), NeedsCopyDispose(false),
     HasCXXObject(false), UsesStret(false), StructureType(0), Block(blockExpr) {
-    
+
   // Skip asm prefix, if any.
   if (Name && Name[0] == '\01')
     ++Name;
@@ -88,7 +90,7 @@ static llvm::Constant *buildBlockDescriptor(CodeGenModule &CGM,
     CGM.getContext().getObjCEncodingForBlock(blockInfo.getBlockExpr());
   elements.push_back(llvm::ConstantExpr::getBitCast(
                           CGM.GetAddrOfConstantCString(typeAtEncoding), i8p));
-  
+
   // GC layout.
   if (C.getLangOptions().ObjC1)
     elements.push_back(CGM.getObjCRuntime().BuildGCBlockLayout(CGM, blockInfo));
@@ -347,7 +349,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
 
     // If we have a lifetime qualifier, honor it for capture purposes.
     // That includes *not* copying it if it's __unsafe_unretained.
-    if (Qualifiers::ObjCLifetime lifetime 
+    if (Qualifiers::ObjCLifetime lifetime
           = variable->getType().getObjCLifetime()) {
       switch (lifetime) {
       case Qualifiers::OCL_None: llvm_unreachable("impossible");
@@ -481,6 +483,244 @@ static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
     llvm::StructType::get(CGM.getLLVMContext(), elementTypes, true);
 }
 
+llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
+                                                    CGBlockInfo &blockInfo,
+                                                    llvm::SetVector< llvm::Value * > &inputs) {
+  DEBUG("EmitScoutBlockLiteral");
+
+  // Start generating block function.
+  llvm::BasicBlock *blockEntry = createBasicBlock("block_entry");
+  Builder.CreateBr(blockEntry);
+  EmitBlock(blockEntry);
+
+  // Generate body of function.
+  std::string TheName = CurFn->getName();
+  blockInfo = CGBlockInfo(blockExpr, TheName.c_str());
+
+  // Compute information about the layout, etc., of this block.
+  computeBlockInfo(CGM, blockInfo);
+
+  const BlockDecl *blockDecl = blockInfo.getBlockDecl();
+  EmitStmt(blockDecl->getBody());
+
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value * zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::ReturnInst *ret =
+    llvm::ReturnInst::Create(getLLVMContext(), zero,
+                             Builder.GetInsertBlock());
+
+  llvm::SetVector< llvm::BasicBlock * > region;
+
+  typedef llvm::Function::iterator BBIterator;
+  BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
+  llvm::BasicBlock *split;
+  for( ; BB->getName() != blockEntry->getName(); ++BB) split = BB;
+
+  for( ; BB != BB_end; ++BB) region.insert(BB);
+
+  // Gather inputs to region.
+  for(unsigned i = 0, e = region.size(); i < e; ++i) {
+    llvm::BasicBlock *BB = region[i];
+    for(llvm::BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+      // If a used value is defined outside the region or
+      // used outside the region, it's an input.
+      for(llvm::User::op_iterator O = I->op_begin(), E = I->op_end(); O != E; ++O) {
+        if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*O)) {
+          if(!region.count(Instn->getParent()))
+            inputs.insert(*O);
+        }
+      }
+    }
+  }
+
+  llvm::DominatorTree DT;
+  DT.runOnFunction(*CurFn);
+  llvm::Function *BlockFn = ExtractCodeRegion(DT,
+                                              std::vector< llvm::BasicBlock * >(region.begin(),
+                                                                                region.end()));
+  assert(BlockFn != 0 && "Failed to rip BlockExpr contents into a new function.");
+
+  llvm::BasicBlock *continueBB = ret->getParent();
+  ret->eraseFromParent();
+
+  Builder.SetInsertPoint(continueBB);
+
+  // Remove function call to blockExpr function.
+  llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
+  typedef llvm::BasicBlock::iterator InstIterator;
+  InstIterator I = CallBB->begin(), IE = CallBB->end();
+  for( ; I != IE; ++I) {
+    if(llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
+      call->eraseFromParent();
+      break;
+    }
+  }
+
+  // Add the function arguments to the block descriptor.
+  llvm::StructType *structTy = blockInfo.StructureType;
+  llvm::SmallVector< llvm::Type *, 8 > arrayTy;
+  for(unsigned i = 0, e = structTy->getNumElements(); i < e; ++i) {
+    arrayTy.push_back(structTy->getElementType(i));
+  }
+
+  llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+  for(unsigned i = 0, e = BlockFn->arg_size(); i < e; ++i) {
+    arrayTy.push_back(i8PtrTy);
+  }
+  blockInfo.StructureType = llvm::StructType::get(getLLVMContext(), arrayTy, true);
+  blockInfo.CanBeGlobal = false;
+
+  // Create the new block function signature and insert it into the module.
+  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
+  llvm::FunctionType *NFTy = llvm::FunctionType::get(voidTy,
+                                                     i8PtrTy,
+                                                     false);
+
+  llvm::Function *NewBlockFn = llvm::Function::Create(NFTy, BlockFn->getLinkage());
+  NewBlockFn->getArgumentList().begin()->setName(".block_descriptor");
+
+  BlockFn->getParent()->getFunctionList().insert(BlockFn, NewBlockFn);
+  NewBlockFn->takeName(BlockFn);
+
+  // Slurp the BBs out of BlockFn and into NewBlockFn.
+  NewBlockFn->getBasicBlockList().splice(NewBlockFn->begin(), BlockFn->getBasicBlockList());
+
+  continueBB = Builder.GetInsertBlock();
+
+  Builder.SetInsertPoint(&NewBlockFn->getEntryBlock(),
+                         NewBlockFn->getEntryBlock().begin());
+
+  llvm::Function::arg_iterator block = NewBlockFn->arg_begin();
+  BlockPointer = Builder.CreateBitCast(block,
+                                       blockInfo.StructureType->getPointerTo(),
+                                       "block");
+
+  // Unpack block_descriptor function arguments and connect the them
+  // to their local variable counterparts.
+  for(llvm::Function::arg_iterator I = BlockFn->arg_begin(),
+        E = BlockFn->arg_end(); I != E; ++I) {
+    static int idx = 5;
+
+    llvm::Value *src = Builder.CreateStructGEP(LoadBlockStruct(),
+                                               idx++,
+                                               "block.capture.addr");
+    src = Builder.CreateBitCast(Builder.CreateLoad(src),
+                                I->getType());
+
+    std::vector< llvm::User * > Users(I->use_begin(), I->use_end());
+    for(std::vector< llvm::User * >::iterator use = Users.begin(), useE = Users.end();
+        use != useE; ++use) {
+      if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*use))
+        if(region.count(Instn->getParent()))
+          Instn->replaceUsesOfWith(I, src);
+    }
+  }
+
+  // Delete old BlockFn.
+  BlockFn->dropAllReferences();
+  BlockFn->eraseFromParent();
+
+  // Reset builder insert point.
+  Builder.SetInsertPoint(continueBB);
+
+  return NewBlockFn;
+}
+
+llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
+                                                   const CGBlockInfo &blockInfo,
+                                                   llvm::Value *blockFn,
+                                                   llvm::SetVector< llvm::Value * > &inputs) {
+
+  blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
+                                           VoidPtrTy);
+  llvm::Constant *isa = CGM.getNSConcreteStackBlock();
+  isa = llvm::ConstantExpr::getBitCast(isa, VoidPtrTy);
+
+  // Build the block descriptor.
+  llvm::Constant *descriptor = buildBlockDescriptor(CGM, blockInfo);
+
+  llvm::Type *intTy = ConvertType(getContext().IntTy);
+
+  llvm::AllocaInst *blockAddr =
+    CreateTempAlloca(blockInfo.StructureType, "block");
+  blockAddr->setAlignment(blockInfo.BlockAlign.getQuantity());
+
+  BlockPointer = Builder.CreateBitCast(blockAddr,
+                                       blockInfo.StructureType->getPointerTo(),
+                                       "block");
+
+  // Compute the initial on-stack block flags.
+  BlockFlags flags = BLOCK_HAS_SIGNATURE;
+  if(blockInfo.NeedsCopyDispose) flags |= BLOCK_HAS_COPY_DISPOSE;
+  if(blockInfo.HasCXXObject) flags |= BLOCK_HAS_CXX_OBJ;
+  if(blockInfo.UsesStret) flags |= BLOCK_USE_STRET;
+
+  // Initialize the block literal.
+  Builder.CreateStore(isa, Builder.CreateStructGEP(blockAddr, 0, "block.isa"));
+  Builder.CreateStore(llvm::ConstantInt::get(intTy, flags.getBitMask()),
+                      Builder.CreateStructGEP(blockAddr, 1, "block.flags"));
+  Builder.CreateStore(llvm::ConstantInt::get(intTy, 0),
+                      Builder.CreateStructGEP(blockAddr, 2, "block.reserved"));
+  Builder.CreateStore(blockFn, Builder.CreateStructGEP(blockAddr, 3,
+                                                       "block.invoke"));
+  Builder.CreateStore(descriptor, Builder.CreateStructGEP(blockAddr, 4,
+                                                          "block.descriptor"));
+
+  // Captured variables (i.e. inputs).
+  for(llvm::SetVector< llvm::Value * >::iterator I = inputs.begin(),
+        E = inputs.end(); I != E; ++I) {
+    static int idx = 5;
+
+    // This will be a [[type]]*, except that a byref entry will just be
+    // an i8**.
+    llvm::Value *blockField =
+      Builder.CreateStructGEP(blockAddr, idx++,
+                              "block.captured");
+
+    llvm::Value *var;
+    if(idx > 6) {
+      llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+      var = Builder.CreateAlloca(i32Ty, 0, "bindvar");
+      llvm::Value *one = llvm::ConstantInt::get(i32Ty, 1);
+      Builder.CreateStore(one, var);
+    } else
+      var = *I;
+
+    // Write that void* into the capture field.
+    llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+    Builder.CreateStore(Builder.CreateBitCast(var, i8PtrTy),
+                        blockField);
+  }
+  // Cast to the converted block-pointer type, which happens (somewhat
+  // unfortunately) to be a pointer to function type.
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::FunctionType *funcTy = llvm::FunctionType::get(i32Ty, false);
+  llvm::Type *funcPtrTy = llvm::PointerType::get(funcTy, 0);
+  llvm::Value *blockVal = Builder.CreateBitCast(blockAddr, funcPtrTy);
+
+  // Allocate a block.
+  llvm::Value *blk = Builder.CreateAlloca(funcPtrTy, 0, "blk");
+
+  Builder.CreateStore(blockVal, blk);
+  blk = Builder.CreateLoad(blk);
+
+  llvm::Type *genericBlkTy = llvm::PointerType::getUnqual(CGM.getGenericBlockLiteralType());
+  llvm::Value *genericBlk = Builder.CreateBitCast(blk, genericBlkTy, "block.literal");
+
+  blk = Builder.CreateConstInBoundsGEP2_32(genericBlk, 0, 3);
+  blk = Builder.CreateLoad(blk);
+
+  llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+  funcTy = llvm::FunctionType::get(i32Ty, i8PtrTy, false);
+  funcPtrTy = llvm::PointerType::get(funcTy, 0);
+  blk = Builder.CreateBitCast(blk, funcPtrTy);
+
+  genericBlk = Builder.CreateBitCast(genericBlk, i8PtrTy);
+
+  // Generate a function call to the block function.
+  return Builder.CreateCall(blk, genericBlk);
+}
+
 /// Emit a block literal expression in the current function.
 llvm::Value *CodeGenFunction::EmitBlockLiteral(const BlockExpr *blockExpr) {
   std::string Name = CurFn->getName();
@@ -611,7 +851,7 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const BlockExpr *blockExpr) {
       BlockDeclRefExpr nested(const_cast<VarDecl*>(variable), type,
                               VK_LValue, SourceLocation(), /*byref*/ false);
 
-      Expr *declRef = 
+      Expr *declRef =
         (ci->isNested() ? static_cast<Expr*>(&nested) : &notNested);
 
       ImplicitCastExpr l2r(ImplicitCastExpr::OnStack, type, CK_LValueToRValue,
@@ -711,7 +951,7 @@ llvm::Type *CodeGenModule::getGenericBlockLiteralType() {
 }
 
 
-RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E, 
+RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
                                           ReturnValueSlot ReturnValue) {
   const BlockPointerType *BPT =
     E->getCallee()->getType()->getAs<BlockPointerType>();
@@ -786,7 +1026,7 @@ llvm::Value *CodeGenFunction::GetAddrOfBlockDecl(const VarDecl *variable,
 
     // Cast back to byref* and GEP over to the actual object.
     addr = Builder.CreateBitCast(addr, byrefPointerType);
-    addr = Builder.CreateStructGEP(addr, getByRefValueLLVMField(variable), 
+    addr = Builder.CreateStructGEP(addr, getByRefValueLLVMField(variable),
                                    variable->getNameAsString());
   }
 
@@ -831,7 +1071,7 @@ static llvm::Constant *buildGlobalBlock(CodeGenModule &CGM,
   // __flags
   BlockFlags flags = BLOCK_IS_GLOBAL | BLOCK_HAS_SIGNATURE;
   if (blockInfo.UsesStret) flags |= BLOCK_USE_STRET;
-                                      
+
   fields[1] = llvm::ConstantInt::get(CGM.IntTy, flags.getBitMask());
 
   // Reserved
@@ -916,7 +1156,7 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
   MangleBuffer name;
   CGM.getBlockMangledName(GD, name, blockDecl);
   llvm::Function *fn =
-    llvm::Function::Create(fnLLVMType, llvm::GlobalValue::InternalLinkage, 
+    llvm::Function::Create(fnLLVMType, llvm::GlobalValue::InternalLinkage,
                            name.getString(), &CGM.getModule());
   CGM.SetInternalFunctionAttributes(blockDecl, fn, fnInfo);
 
@@ -926,7 +1166,7 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
   CurFuncDecl = outerFnDecl; // StartFunction sets this to blockDecl
 
   // Okay.  Undo some of what StartFunction did.
-  
+
   // Pull the 'self' reference out of the local decl map.
   llvm::Value *blockAddr = LocalDeclMap[&selfDecl];
   LocalDeclMap.erase(&selfDecl);
@@ -1445,7 +1685,7 @@ generateByrefCopyHelper(CodeGenFunction &CGF,
     srcField = CGF.Builder.CreateStructGEP(srcField, 6, "x");
 
     byrefInfo.emitCopy(CGF, destField, srcField);
-  }  
+  }
 
   CGF.FinishFunction();
 
@@ -1519,7 +1759,7 @@ static llvm::Constant *buildByrefDisposeHelper(CodeGenModule &CGM,
   return generateByrefDisposeHelper(CGF, byrefType, info);
 }
 
-/// 
+///
 template <class T> static T *buildByrefHelpers(CodeGenModule &CGM,
                                                llvm::StructType &byrefTy,
                                                T &byrefInfo) {
@@ -1607,7 +1847,7 @@ CodeGenFunction::buildByrefHelpers(llvm::StructType &byrefType,
   BlockFieldFlags flags;
   if (type->isBlockPointerType()) {
     flags |= BLOCK_FIELD_IS_BLOCK;
-  } else if (CGM.getContext().isObjCNSObjectType(type) || 
+  } else if (CGM.getContext().isObjCNSObjectType(type) ||
              type->isObjCObjectPointerType()) {
     flags |= BLOCK_FIELD_IS_OBJECT;
   } else {
@@ -1623,7 +1863,7 @@ CodeGenFunction::buildByrefHelpers(llvm::StructType &byrefType,
 
 unsigned CodeGenFunction::getByRefValueLLVMField(const ValueDecl *VD) const {
   assert(ByRefValueInfo.count(VD) && "Did not find value!");
-  
+
   return ByRefValueInfo.find(VD)->second.second;
 }
 
@@ -1654,24 +1894,24 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
   std::pair<llvm::Type *, unsigned> &Info = ByRefValueInfo[D];
   if (Info.first)
     return Info.first;
-  
+
   QualType Ty = D->getType();
 
   SmallVector<llvm::Type *, 8> types;
-  
+
   llvm::StructType *ByRefType =
     llvm::StructType::create(getLLVMContext(),
                              "struct.__block_byref_" + D->getNameAsString());
-  
+
   // void *__isa;
   types.push_back(Int8PtrTy);
-  
+
   // void *__forwarding;
   types.push_back(llvm::PointerType::getUnqual(ByRefType));
-  
+
   // int32_t __flags;
   types.push_back(Int32Ty);
-    
+
   // int32_t __size;
   types.push_back(Int32Ty);
 
@@ -1679,7 +1919,7 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
   if (HasCopyAndDispose) {
     /// void *__copy_helper;
     types.push_back(Int8PtrTy);
-    
+
     /// void *__destroy_helper;
     types.push_back(Int8PtrTy);
   }
@@ -1688,18 +1928,18 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
   CharUnits Align = getContext().getDeclAlign(D);
   if (Align > getContext().toCharUnitsFromBits(Target.getPointerAlign(0))) {
     // We have to insert padding.
-    
+
     // The struct above has 2 32-bit integers.
     unsigned CurrentOffsetInBytes = 4 * 2;
-    
+
     // And either 2 or 4 pointers.
     CurrentOffsetInBytes += (HasCopyAndDispose ? 4 : 2) *
       CGM.getTargetData().getTypeAllocSize(Int8PtrTy);
-    
+
     // Align the offset.
-    unsigned AlignedOffsetInBytes = 
+    unsigned AlignedOffsetInBytes =
       llvm::RoundUpToAlignment(CurrentOffsetInBytes, Align.getQuantity());
-    
+
     unsigned NumPaddingBytes = AlignedOffsetInBytes - CurrentOffsetInBytes;
     if (NumPaddingBytes > 0) {
       llvm::Type *Ty = llvm::Type::getInt8Ty(getLLVMContext());
@@ -1707,7 +1947,7 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
       // the maximal stack alignment and the alignment of malloc on the system.
       if (NumPaddingBytes > 1)
         Ty = llvm::ArrayType::get(Ty, NumPaddingBytes);
-    
+
       types.push_back(Ty);
 
       // We want a packed struct.
@@ -1717,13 +1957,13 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
 
   // T x;
   types.push_back(ConvertTypeForMem(Ty));
-  
+
   ByRefType->setBody(types, Packed);
-  
+
   Info.first = ByRefType;
-  
+
   Info.second = types.size() - 1;
-  
+
   return Info.first;
 }
 

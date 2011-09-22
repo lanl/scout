@@ -23,6 +23,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ValueHandle.h"
 #include "CodeGenModule.h"
@@ -1261,6 +1262,13 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
+  llvm::Value *EmitScoutBlockFnCall(CodeGenModule &CGM,
+                                    const CGBlockInfo &blockInfo,
+                                    llvm::Value *TheBlockFn,
+                                    llvm::SetVector< llvm::Value * > &inputs);
+  llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
+                                     CGBlockInfo &blockInfo,
+                                     llvm::SetVector< llvm::Value * > &inputs);
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
   llvm::Constant *BuildDescriptorBlockDecl(const BlockExpr *,
                                            const CGBlockInfo &Info,
