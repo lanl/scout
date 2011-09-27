@@ -445,6 +445,12 @@ namespace scout{
     }
 
     bool bindThreadToNumaNode(size_t nodeId){
+      // the hwloc call below does not work on Apple systems
+      // so we simply return true here
+#ifdef __APPLE__
+      return true;
+#endif
+
       hwloc_obj_t obj = 
 	hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
 
