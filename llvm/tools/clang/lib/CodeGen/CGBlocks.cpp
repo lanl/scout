@@ -500,11 +500,79 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   // Compute information about the layout, etc., of this block.
   computeBlockInfo(CGM, blockInfo);
 
+  // Build a loop around the block declaration to facilitate
+  // the induction variable range information.
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, "blk.indvar");
+  Builder.CreateStore(zero, indVar);
+
+  llvm::Function *Fn = blockEntry->getParent();
+
+  std::vector< std::vector< llvm::Value * > > indVars;
+  std::string prefix[] = { "x", "y", "z" };
+  for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
+    std::vector< llvm::Value * > indVar;
+    indVar.push_back(ScoutIdxVars[i]);
+    Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
+    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, prefix[i] + ".start"));
+    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, prefix[i] + ".end"));
+    Builder.SetInsertPoint(blockEntry);
+    indVar.push_back(Builder.CreateSub(Builder.CreateLoad(indVar[1]),
+                                       Builder.CreateLoad(indVar[2])));
+    indVars.push_back(indVar);
+  }
+
+  llvm::Value *extent = Builder.CreateAlloca(i32Ty, 0, "size");
+
+  llvm::Value *size = llvm::ConstantInt::get(i32Ty, 1);
+  for(int i = 0, e = indVars.size(); i < e; ++i) {
+    size = Builder.CreateMul(size, indVars[i][3]);
+  }
+  Builder.CreateStore(size, extent);
+
+  // Start the loop with a block that tests the condition.
+  JumpDest Continue = getJumpDestInCurrentScope("for.blk.cond");
+  llvm::BasicBlock *CondBlock = Continue.getBlock();
+  EmitBlock(CondBlock);
+  llvm::Value *cond = Builder.CreateICmpSLT(Builder.CreateLoad(indVar),
+                                            Builder.CreateLoad(extent),
+                                            "cmptmp");
+
+  llvm::BasicBlock *ForBody = createBasicBlock("for.blk.body");
+  llvm::BasicBlock *ExitBlock = createBasicBlock("for.blk.end");
+  Builder.CreateCondBr(cond, ForBody, ExitBlock);
+
+  EmitBlock(ForBody);
+  Builder.SetInsertPoint(ForBody);
+
+  llvm::Value *lval;
+  for(unsigned i = 0, e = indVars.size(); i < e; ++i) {
+    lval = Builder.CreateLoad(indVar);
+    llvm::Value *val;
+    if(i > 0) {
+      if(i == 1) {
+        val = indVars[i][3];
+      } else {
+        val = Builder.CreateMul(indVars[i][3], indVars[i - 1][3]);
+      }
+      lval = Builder.CreateUDiv(lval, val);
+    }
+    lval = Builder.CreateURem(lval, indVars[i][3]);
+    lval = Builder.CreateAdd(lval, Builder.CreateLoad(indVars[i][1]));
+    Builder.CreateStore(lval, ScoutIdxVars[i]);
+  }
+
   const BlockDecl *blockDecl = blockInfo.getBlockDecl();
   EmitStmt(blockDecl->getBody());
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value * zero = llvm::ConstantInt::get(i32Ty, 0);
+  lval = Builder.CreateLoad(indVar);
+  llvm::Value *one = llvm::ConstantInt::get(i32Ty, 1);
+  Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
+  Builder.CreateBr(CondBlock);
+
+  EmitBlock(ExitBlock);
+
   llvm::ReturnInst *ret =
     llvm::ReturnInst::Create(getLLVMContext(), zero,
                              Builder.GetInsertBlock());

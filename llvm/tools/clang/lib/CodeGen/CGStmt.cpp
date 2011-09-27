@@ -601,7 +601,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   EmitForAllStmt(S);
 
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value * zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
   llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
                                                    Builder.GetInsertBlock());
 
@@ -711,7 +711,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   std::vector< llvm::Value * > start, end, diff;
 
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    start.push_back(TranslateExprToValue(S.getStart(i)));
+   start.push_back(TranslateExprToValue(S.getStart(i)));
     end.push_back(TranslateExprToValue(S.getEnd(i)));
 
     diff.push_back(Builder.CreateSub(end.back(), start.back()));
@@ -737,7 +737,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
   llvm::BasicBlock *CondBlock = Continue.getBlock();
   EmitBlock(CondBlock);
-
 
   // Generate loop condition.
   llvm::Value *lval = Builder.CreateLoad(indVar);
