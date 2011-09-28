@@ -660,7 +660,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(), blockInfo, inputs);
 
   // Generate a function call to BlockFn.
-  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs);
+  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs, S.getMesh()->getName());
 }
 
 void CodeGenFunction::EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S) {

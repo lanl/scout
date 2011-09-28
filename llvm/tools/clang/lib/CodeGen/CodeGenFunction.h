@@ -1265,7 +1265,8 @@ public:
   llvm::Value *EmitScoutBlockFnCall(CodeGenModule &CGM,
                                     const CGBlockInfo &blockInfo,
                                     llvm::Value *TheBlockFn,
-                                    llvm::SetVector< llvm::Value * > &inputs);
+                                    llvm::SetVector< llvm::Value * > &inputs,
+                                    llvm::StringRef meshName);
   llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
                                      CGBlockInfo &blockInfo,
                                      llvm::SetVector< llvm::Value * > &inputs);

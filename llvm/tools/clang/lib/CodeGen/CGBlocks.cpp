@@ -701,7 +701,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
                                                    const CGBlockInfo &blockInfo,
                                                    llvm::Value *blockFn,
-                                                   llvm::SetVector< llvm::Value * > &inputs) {
+                                                   llvm::SetVector< llvm::Value * > &inputs,
+                                                   llvm::StringRef meshName) {
 
   blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
                                            VoidPtrTy);
@@ -751,11 +752,12 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
     llvm::Value *var = *I;
     llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
     llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-    llvm::Value *five = llvm::ConstantInt::get(i32Ty, 5);
     if((*I)->getName().startswith("start.")) {
       Builder.CreateStore(zero, *I); var = *I;
     } else if((*I)->getName().startswith("end.")) {
-      Builder.CreateStore(five, *I); var = *I;
+      int axis = ((*I)->getName()[4]) - 120;
+      llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
+      Builder.CreateStore(val, *I); var = *I;
     } else if((*I)->getName().startswith("var.")) {
       var = Builder.CreateAlloca(i32Ty, 0, (*I)->getName());
       Builder.CreateStore(zero, var);
