@@ -513,13 +513,15 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   std::string prefix[] = { "x", "y", "z" };
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
     std::vector< llvm::Value * > indVar;
+    ScoutIdxVars[i]->setName("var." + prefix[i]);
     indVar.push_back(ScoutIdxVars[i]);
     Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
-    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, prefix[i] + ".start"));
-    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, prefix[i] + ".end"));
+    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, "start." + prefix[i]));
+    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, "end." + prefix[i]));
     Builder.SetInsertPoint(blockEntry);
-    indVar.push_back(Builder.CreateSub(Builder.CreateLoad(indVar[1]),
-                                       Builder.CreateLoad(indVar[2])));
+    indVar.push_back(Builder.CreateSub(Builder.CreateLoad(indVar[2]),
+                                       Builder.CreateLoad(indVar[1]),
+                                       "diff." + prefix[i]));
     indVars.push_back(indVar);
   }
 
@@ -679,8 +681,10 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     for(std::vector< llvm::User * >::iterator use = Users.begin(), useE = Users.end();
         use != useE; ++use) {
       if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*use))
-        if(region.count(Instn->getParent()))
+        if(region.count(Instn->getParent())) {
           Instn->replaceUsesOfWith(I, src);
+          src->takeName(I);
+        }
     }
   }
 
@@ -737,22 +741,25 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
   // Captured variables (i.e. inputs).
   for(llvm::SetVector< llvm::Value * >::iterator I = inputs.begin(),
         E = inputs.end(); I != E; ++I) {
-    static int idx = 5;
-
+    static unsigned idx = 5;
     // This will be a [[type]]*, except that a byref entry will just be
     // an i8**.
     llvm::Value *blockField =
       Builder.CreateStructGEP(blockAddr, idx++,
                               "block.captured");
 
-    llvm::Value *var;
-    if(idx > 6) {
-      llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-      var = Builder.CreateAlloca(i32Ty, 0, "bindvar");
-      llvm::Value *one = llvm::ConstantInt::get(i32Ty, 1);
-      Builder.CreateStore(one, var);
-    } else
-      var = *I;
+    llvm::Value *var = *I;
+    llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+    llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+    llvm::Value *five = llvm::ConstantInt::get(i32Ty, 5);
+    if((*I)->getName().startswith("start.")) {
+      Builder.CreateStore(zero, *I); var = *I;
+    } else if((*I)->getName().startswith("end.")) {
+      Builder.CreateStore(five, *I); var = *I;
+    } else if((*I)->getName().startswith("var.")) {
+      var = Builder.CreateAlloca(i32Ty, 0, (*I)->getName());
+      Builder.CreateStore(zero, var);
+    }
 
     // Write that void* into the capture field.
     llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());

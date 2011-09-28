@@ -610,7 +610,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   typedef llvm::Function::iterator BBIterator;
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
 
-  for( ; BB->getName() != entry->getName(); ++BB);
+  llvm::BasicBlock *split;
+  for( ; BB->getName() != entry->getName(); ++BB) split = BB;
 
   for( ; BB != BB_end; ++BB) {
     region.push_back(BB);
@@ -634,6 +635,17 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
   }
 
+  // Remove function call to ForallFn function.
+  llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
+  typedef llvm::BasicBlock::iterator InstIterator;
+  InstIterator I = CallBB->begin(), IE = CallBB->end();
+  for( ; I != IE; ++I) {
+    if(llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
+      call->eraseFromParent();
+      break;
+    }
+  }
+
   llvm::BasicBlock *continueBB = ret->getParent();
   ret->eraseFromParent();
 
@@ -645,7 +657,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   std::string TheName = CurFn->getName();
   CGBlockInfo blockInfo(S.getBlock(), TheName.c_str());
 
-  EmitScoutBlockLiteral(S.getBlock(), blockInfo, inputs);
+  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(), blockInfo, inputs);
+
+  // Generate a function call to BlockFn.
+  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs);
 }
 
 void CodeGenFunction::EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S) {
@@ -711,7 +726,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   std::vector< llvm::Value * > start, end, diff;
 
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-   start.push_back(TranslateExprToValue(S.getStart(i)));
+    start.push_back(TranslateExprToValue(S.getStart(i)));
     end.push_back(TranslateExprToValue(S.getEnd(i)));
 
     diff.push_back(Builder.CreateSub(end.back(), start.back()));
