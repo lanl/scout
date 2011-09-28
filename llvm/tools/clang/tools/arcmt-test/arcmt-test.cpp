@@ -10,7 +10,7 @@
 #include "clang/ARCMigrate/ARCMT.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
-#include "clang/Frontend/VerifyDiagnosticsClient.h"
+#include "clang/Frontend/VerifyDiagnosticConsumer.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -105,14 +105,15 @@ public:
 
 static bool checkForMigration(StringRef resourcesPath,
                               ArrayRef<const char *> Args) {
-  DiagnosticClient *DiagClient =
+  DiagnosticConsumer *DiagClient =
     new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-  llvm::IntrusiveRefCntPtr<Diagnostic> Diags(new Diagnostic(DiagID, DiagClient));
+  llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
+      new DiagnosticsEngine(DiagID, DiagClient));
   // Chain in -verify checker, if requested.
-  VerifyDiagnosticsClient *verifyDiag = 0;
+  VerifyDiagnosticConsumer *verifyDiag = 0;
   if (VerifyDiags) {
-    verifyDiag = new VerifyDiagnosticsClient(*Diags, Diags->takeClient());
+    verifyDiag = new VerifyDiagnosticConsumer(*Diags);
     Diags->setClient(verifyDiag);
   }
 
@@ -151,10 +152,11 @@ static bool performTransformations(StringRef resourcesPath,
   if (checkForMigration(resourcesPath, Args))
     return true;
 
-  DiagnosticClient *DiagClient =
+  DiagnosticConsumer *DiagClient =
     new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-  llvm::IntrusiveRefCntPtr<Diagnostic> TopDiags(new Diagnostic(DiagID, DiagClient));
+  llvm::IntrusiveRefCntPtr<DiagnosticsEngine> TopDiags(
+      new DiagnosticsEngine(DiagID, DiagClient));
 
   CompilerInvocation origCI;
   CompilerInvocation::CreateFromArgs(origCI, Args.begin(), Args.end(),

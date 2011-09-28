@@ -46,7 +46,8 @@ add_clang_library(clangAST
   Type.cpp
   TypeLoc.cpp
   TypePrinter.cpp
-
+  VTableBuilder.cpp
+  VTTBuilder.cpp
 # ndm - scout
   ASTViewScout.cpp
   )

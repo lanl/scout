@@ -1070,14 +1070,26 @@ static const SCEV *getPreStartForSignExtend(const SCEVAddRecExpr *AR,
 
   // Check for a simple looking step prior to loop entry.
   const SCEVAddExpr *SA = dyn_cast<SCEVAddExpr>(Start);
-  if (!SA || SA->getNumOperands() != 2 || SA->getOperand(0) != Step)
+  if (!SA)
+    return 0;
+
+  // Create an AddExpr for "PreStart" after subtracting Step. Full SCEV
+  // subtraction is expensive. For this purpose, perform a quick and dirty
+  // difference, by checking for Step in the operand list.
+  SmallVector<const SCEV *, 4> DiffOps;
+  for (SCEVAddExpr::op_iterator I = SA->op_begin(), E = SA->op_end();
+       I != E; ++I) {
+    if (*I != Step)
+      DiffOps.push_back(*I);
+  }
+  if (DiffOps.size() == SA->getNumOperands())
     return 0;
 
   // This is a postinc AR. Check for overflow on the preinc recurrence using the
   // same three conditions that getSignExtendedExpr checks.
 
   // 1. NSW flags on the step increment.
-  const SCEV *PreStart = SA->getOperand(1);
+  const SCEV *PreStart = SE->getAddExpr(DiffOps, SA->getNoWrapFlags());
   const SCEVAddRecExpr *PreAR = dyn_cast<SCEVAddRecExpr>(
     SE->getAddRecExpr(PreStart, Step, L, SCEV::FlagAnyWrap));
 
@@ -1974,7 +1986,8 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
     // multiplied together.  If so, we can fold them.
     for (unsigned OtherIdx = Idx+1;
          OtherIdx < Ops.size() && isa<SCEVAddRecExpr>(Ops[OtherIdx]);
-         ++OtherIdx)
+         ++OtherIdx) {
+      bool Retry = false;
       if (AddRecLoop == cast<SCEVAddRecExpr>(Ops[OtherIdx])->getLoop()) {
         // {A,+,B}<L> * {C,+,D}<L>  -->  {A*C,+,A*D + B*C + B*D,+,2*B*D}<L>
         //
@@ -1985,7 +1998,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
         // Rearranging, X = x, Y = y+z, Z = 2z.
         //
         // x = A*C, y = (A*D + B*C), z = B*D.
-        // Therefore X = A*C, Y = (A*D + B*C) + B*D and Z = 2*B*D.
+        // Therefore X = A*C, Y = A*D + B*C + B*D and Z = 2*B*D.
         for (; OtherIdx != Ops.size() && isa<SCEVAddRecExpr>(Ops[OtherIdx]);
              ++OtherIdx)
           if (const SCEVAddRecExpr *OtherAddRec =
@@ -2002,19 +2015,28 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
               const SCEV *NewSecondOrderStep =
                   getMulExpr(BD, getConstant(BD->getType(), 2));
 
-              SmallVector<const SCEV *, 3> AddRecOps;
-              AddRecOps.push_back(NewStart);
-              AddRecOps.push_back(NewStep);
-              AddRecOps.push_back(NewSecondOrderStep);
-              const SCEV *NewAddRec = getAddRecExpr(AddRecOps,
-                                                    AddRec->getLoop(),
-                                                    SCEV::FlagAnyWrap);
-              if (Ops.size() == 2) return NewAddRec;
-              Ops[Idx] = AddRec = cast<SCEVAddRecExpr>(NewAddRec);
-              Ops.erase(Ops.begin() + OtherIdx); --OtherIdx;
+              // This can happen when AddRec or OtherAddRec have >3 operands.
+              // TODO: support these add-recs.
+              if (isLoopInvariant(NewStart, AddRecLoop) &&
+                  isLoopInvariant(NewStep, AddRecLoop) &&
+                  isLoopInvariant(NewSecondOrderStep, AddRecLoop)) {
+                SmallVector<const SCEV *, 3> AddRecOps;
+                AddRecOps.push_back(NewStart);
+                AddRecOps.push_back(NewStep);
+                AddRecOps.push_back(NewSecondOrderStep);
+                const SCEV *NewAddRec = getAddRecExpr(AddRecOps,
+                                                      AddRec->getLoop(),
+                                                      SCEV::FlagAnyWrap);
+                if (Ops.size() == 2) return NewAddRec;
+                Ops[Idx] = AddRec = cast<SCEVAddRecExpr>(NewAddRec);
+                Ops.erase(Ops.begin() + OtherIdx); --OtherIdx;
+                Retry = true;
+              }
             }
-        return getMulExpr(Ops);
+        if (Retry)
+          return getMulExpr(Ops);
       }
+    }
 
     // Otherwise couldn't fold anything into this recurrence.  Move onto the
     // next one.
@@ -3536,7 +3558,13 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
         AddOps.push_back(Op1);
     }
     AddOps.push_back(getSCEV(U->getOperand(0)));
-    return getAddExpr(AddOps);
+    SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap;
+    OverflowingBinaryOperator *OBO = cast<OverflowingBinaryOperator>(V);
+    if (OBO->hasNoSignedWrap())
+      setFlags(Flags, SCEV::FlagNSW);
+    if (OBO->hasNoUnsignedWrap())
+      setFlags(Flags, SCEV::FlagNUW);
+    return getAddExpr(AddOps, Flags);
   }
   case Instruction::Mul: {
     // See the Add code above.

@@ -97,31 +97,16 @@ if [ "$ARM_HOSTED_BUILD" = yes ]; then
     echo 'exec '$T' "$@"' >> $P || exit 1
     chmod a+x $P || exit 1
   done
-  # Try to use the platform llvm-gcc. Fall back to gcc if it's not available.
-  for prog in gcc g++ ; do
+  # Set up the links for clang.
+  for prog in clang clang++ ; do
     P=$DIR/bin/arm-apple-darwin$DARWIN_VERS-${prog}
-    T=`xcrun -sdk $SDKROOT -find llvm-${prog}`
-    if [ "x$T" = "x" ] ; then
-      T=`xcrun -sdk $SDKROOT -find ${prog}`
-    fi
+    T=`xcrun -sdk $SDKROOT -find ${prog}`
     echo '#!/bin/sh' > $P || exit 1
     echo 'exec '$T' -arch armv7 -isysroot '${SDKROOT}' "$@"' >> $P || exit 1
     chmod a+x $P || exit 1
   done
 
   PATH=$DIR/bin:$PATH
-# otherwise, try to use clang if it's available
-elif [ $DARWIN_VERS -gt 9 ]; then
-  # If the user has set CC or CXX, respect their wishes.  If not,
-  # compile with clang/clang++ if available; if LLVM is not
-  # available, fall back to usual GCC/G++ default.
-  savedPATH=$PATH ; PATH="/Developer/usr/bin:$PATH"
-  XTMPCC=$(which clang)
-  if [ x$CC  = x -a x$XTMPCC != x ] ; then export CC=$XTMPCC  ; fi
-  XTMPCC=$(which clang++)
-  if [ x$CXX = x -a x$XTMPCC != x ] ; then export CXX=$XTMPCC ; fi
-  PATH=$savedPATH
-  unset XTMPCC savedPATH
 fi
 
 if [ "$ARM_HOSTED_BUILD" = yes ]; then
@@ -157,32 +142,15 @@ else
     LLVM_VERSION="$LLVM_SUBMIT_VERSION-$LLVM_SUBMIT_SUBVERSION"
 fi
 
-GCC_VER=`cc --version 2>/dev/null | sed 1q`
-
-if echo "$GCC_VER" | grep GCC > /dev/null; then
-    GCC_VER=`echo $GCC_VER | sed -e 's/.*(GCC) \([0-9.][0-9.]*\).*/\1/'`
-    MAJ_VER=`echo $GCC_VER | sed 's/\..*//'`
-    MIN_VER=`echo $GCC_VER | sed 's/[^.]*\.\([0-9]*\).*/\1/'`
+# Figure out how many make processes to run.
+SYSCTL=`sysctl -n hw.activecpu`
+# sysctl -n hw.* does not work when invoked via B&I chroot /BuildRoot.
+# Builders can default to 2, since even if they are single processor,
+# nothing else is running on the machine.
+if [ -z "$SYSCTL" ]; then
+    SYSCTL=2
 fi
-
-JOBS_FLAG=""
-
-# Note: If compiling with GCC 4.0, don't pass the -jN flag. Building universal
-# already has parallelism and we don't want to make the builders hit swap by
-# firing off too many gccs at the same time.
-if [ "x$MAJ_VER" != "x4" -o "x$MIN_VER" != "x0" ]; then
-    # Figure out how many make processes to run.
-    SYSCTL=`sysctl -n hw.activecpu`
-
-    # sysctl -n hw.* does not work when invoked via B&I chroot /BuildRoot.
-    # Builders can default to 2, since even if they are single processor,
-    # nothing else is running on the machine.
-    if [ -z "$SYSCTL" ]; then
-        SYSCTL=2
-    fi
-
-    JOBS_FLAG="-j $SYSCTL"
-fi
+JOBS_FLAG="-j $SYSCTL"
 
 make $JOBS_FLAG $OPTIMIZE_OPTS UNIVERSAL=1 UNIVERSAL_ARCH="$HOSTS" \
     UNIVERSAL_SDK_PATH=$SDKROOT \

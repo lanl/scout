@@ -137,8 +137,7 @@ DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
 
   switch (NNS->getKind()) {
   case NestedNameSpecifier::Identifier:
-    assert(false && "Dependent nested-name-specifier has no DeclContext");
-    break;
+    llvm_unreachable("Dependent nested-name-specifier has no DeclContext");
 
   case NestedNameSpecifier::Namespace:
     return NNS->getAsNamespace();
@@ -632,7 +631,7 @@ bool Sema::BuildCXXNestedNameSpecifier(Scope *S,
   // public:
   //   void foo() { D::foo2(); }
   // };
-  if (getLangOptions().Microsoft) {
+  if (getLangOptions().MicrosoftExt) {
     DeclContext *DC = LookupCtx ? LookupCtx : CurContext;
     if (DC->isDependentContext() && DC->isFunctionOrMethod()) {
       SS.Extend(Context, &Identifier, IdentifierLoc, CCLoc);

@@ -106,7 +106,7 @@ CXString clang_formatDiagnostic(CXDiagnostic Diagnostic, unsigned Options) {
 
   /* Print warning/error/etc. */
   switch (Severity) {
-  case CXDiagnostic_Ignored: assert(0 && "impossible"); break;
+  case CXDiagnostic_Ignored: llvm_unreachable("impossible");
   case CXDiagnostic_Note: Out << "note: "; break;
   case CXDiagnostic_Warning: Out << "warning: "; break;
   case CXDiagnostic_Error: Out << "error: "; break;
@@ -182,11 +182,11 @@ enum CXDiagnosticSeverity clang_getDiagnosticSeverity(CXDiagnostic Diag) {
     return CXDiagnostic_Ignored;
 
   switch (StoredDiag->Diag.getLevel()) {
-  case Diagnostic::Ignored: return CXDiagnostic_Ignored;
-  case Diagnostic::Note:    return CXDiagnostic_Note;
-  case Diagnostic::Warning: return CXDiagnostic_Warning;
-  case Diagnostic::Error:   return CXDiagnostic_Error;
-  case Diagnostic::Fatal:   return CXDiagnostic_Fatal;
+  case DiagnosticsEngine::Ignored: return CXDiagnostic_Ignored;
+  case DiagnosticsEngine::Note:    return CXDiagnostic_Note;
+  case DiagnosticsEngine::Warning: return CXDiagnostic_Warning;
+  case DiagnosticsEngine::Error:   return CXDiagnostic_Error;
+  case DiagnosticsEngine::Fatal:   return CXDiagnostic_Fatal;
   }
 
   llvm_unreachable("Invalid diagnostic level");

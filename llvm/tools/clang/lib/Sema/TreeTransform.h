@@ -31,6 +31,7 @@
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/Designator.h"
 #include "clang/Lex/Preprocessor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "TypeLocBuilder.h"
 #include <algorithm>
@@ -244,8 +245,7 @@ public:
   /// must be set.
   bool TryExpandParameterPacks(SourceLocation EllipsisLoc,
                                SourceRange PatternRange,
-                               const UnexpandedParameterPack *Unexpanded,
-                               unsigned NumUnexpanded,
+                             llvm::ArrayRef<UnexpandedParameterPack> Unexpanded,
                                bool &ShouldExpand,
                                bool &RetainExpansion,
                                llvm::Optional<unsigned> &NumExpansions) {
@@ -1735,8 +1735,7 @@ public:
                                                    SubExpr, RParenLoc);
 
     default:
-      assert(false && "Invalid C++ named cast");
-      break;
+      llvm_unreachable("Invalid C++ named cast");
     }
 
     return ExprError();
@@ -2474,8 +2473,7 @@ bool TreeTransform<Derived>::TransformExprs(Expr **Inputs,
       llvm::Optional<unsigned> NumExpansions = OrigNumExpansions;
       if (getDerived().TryExpandParameterPacks(Expansion->getEllipsisLoc(),
                                                Pattern->getSourceRange(),
-                                               Unexpanded.data(),
-                                               Unexpanded.size(),
+                                               Unexpanded,
                                                Expand, RetainExpansion,
                                                NumExpansions))
         return true;
@@ -2689,8 +2687,7 @@ TreeTransform<Derived>
   }
   }
 
-  assert(0 && "Unknown name kind.");
-  return DeclarationNameInfo();
+  llvm_unreachable("Unknown name kind.");
 }
 
 template<typename Derived>
@@ -3050,8 +3047,7 @@ bool TreeTransform<Derived>::TransformTemplateArguments(InputIterator First,
       llvm::Optional<unsigned> NumExpansions = OrigNumExpansions;
       if (getDerived().TryExpandParameterPacks(Ellipsis,
                                                Pattern.getSourceRange(),
-                                               Unexpanded.data(),
-                                               Unexpanded.size(),
+                                               Unexpanded,
                                                Expand, 
                                                RetainExpansion,
                                                NumExpansions))
@@ -3861,8 +3857,7 @@ bool TreeTransform<Derived>::
         NumExpansions = OrigNumExpansions;
         if (getDerived().TryExpandParameterPacks(ExpansionTL.getEllipsisLoc(),
                                                  Pattern.getSourceRange(),
-                                                 Unexpanded.data(), 
-                                                 Unexpanded.size(),
+                                                 Unexpanded, 
                                                  ShouldExpand, 
                                                  RetainExpansion,
                                                  NumExpansions)) {
@@ -3951,8 +3946,7 @@ bool TreeTransform<Derived>::
       bool ShouldExpand = false;
       bool RetainExpansion = false;
       if (getDerived().TryExpandParameterPacks(Loc, SourceRange(),
-                                               Unexpanded.data(), 
-                                               Unexpanded.size(),
+                                               Unexpanded, 
                                                ShouldExpand, 
                                                RetainExpansion,
                                                NumExpansions)) {
@@ -7753,7 +7747,7 @@ TreeTransform<Derived>::TransformSizeOfPackExpr(SizeOfPackExpr *E) {
   bool RetainExpansion = false;
   llvm::Optional<unsigned> NumExpansions;
   if (getDerived().TryExpandParameterPacks(E->getOperatorLoc(), E->getPackLoc(), 
-                                           &Unexpanded, 1, 
+                                           Unexpanded,
                                            ShouldExpand, RetainExpansion,
                                            NumExpansions))
     return ExprError();
@@ -8064,7 +8058,7 @@ TreeTransform<Derived>::TransformBlockExpr(BlockExpr *E) {
 
   // Set the parameters on the block decl.
   if (!params.empty())
-    blockScope->TheDecl->setParams(params.data(), params.size());
+    blockScope->TheDecl->setParams(params);
   
   // If the return type wasn't explicitly set, it will have been marked as a 
   // dependent type (DependentTy); clear out the return type setting so 
@@ -8128,8 +8122,7 @@ TreeTransform<Derived>::TransformBlockDeclRefExpr(BlockDeclRefExpr *E) {
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformAsTypeExpr(AsTypeExpr *E) {
-  assert(false && "Cannot transform asType expressions yet");
-  return SemaRef.Owned(E);
+  llvm_unreachable("Cannot transform asType expressions yet");
 }
   
 //===----------------------------------------------------------------------===//

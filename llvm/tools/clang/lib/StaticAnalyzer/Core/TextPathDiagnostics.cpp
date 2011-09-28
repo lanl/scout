@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Core/PathDiagnosticClients.h"
+#include "clang/StaticAnalyzer/Core/PathDiagnosticConsumers.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,12 +23,12 @@ namespace {
 
 /// \brief Simple path diagnostic client used for outputting as diagnostic notes
 /// the sequence of events.
-class TextPathDiagnostics : public PathDiagnosticClient {
+class TextPathDiagnostics : public PathDiagnosticConsumer {
   const std::string OutputFile;
-  Diagnostic &Diag;
+  DiagnosticsEngine &Diag;
 
 public:
-  TextPathDiagnostics(const std::string& output, Diagnostic &diag)
+  TextPathDiagnostics(const std::string& output, DiagnosticsEngine &diag)
     : OutputFile(output), Diag(diag) {}
 
   void HandlePathDiagnosticImpl(const PathDiagnostic* D);
@@ -47,8 +47,8 @@ public:
 
 } // end anonymous namespace
 
-PathDiagnosticClient*
-ento::createTextPathDiagnosticClient(const std::string& out,
+PathDiagnosticConsumer*
+ento::createTextPathDiagnosticConsumer(const std::string& out,
                                      const Preprocessor &PP) {
   return new TextPathDiagnostics(out, PP.getDiagnostics());
 }

@@ -34,6 +34,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/TargetInfo.h"
 using namespace clang;
@@ -53,6 +54,20 @@ void FunctionScopeInfo::Clear() {
 }
 
 BlockScopeInfo::~BlockScopeInfo() { }
+
+PrintingPolicy Sema::getPrintingPolicy() const {
+  PrintingPolicy Policy = Context.getPrintingPolicy();
+  Policy.Bool = getLangOptions().Bool;
+  if (!Policy.Bool) {
+    if (MacroInfo *BoolMacro = PP.getMacroInfo(&Context.Idents.get("bool"))) {
+      Policy.Bool = BoolMacro->isObjectLike() && 
+        BoolMacro->getNumTokens() == 1 &&
+        BoolMacro->getReplacementToken(0).is(tok::kw__Bool);
+    }
+  }
+  
+  return Policy;
+}
 
 void Sema::ActOnTranslationUnitScope(Scope *S) {
   TUScope = S;
@@ -261,7 +276,9 @@ ExprResult Sema::ImpCastExprToType(Expr *E, QualType Ty,
 CastKind Sema::ScalarTypeToBooleanCastKind(QualType ScalarTy) {
   switch (ScalarTy->getScalarTypeKind()) {
   case Type::STK_Bool: return CK_NoOp;
-  case Type::STK_Pointer: return CK_PointerToBoolean;
+  case Type::STK_CPointer: return CK_PointerToBoolean;
+  case Type::STK_BlockPointer: return CK_PointerToBoolean;
+  case Type::STK_ObjCObjectPointer: return CK_PointerToBoolean;
   case Type::STK_MemberPointer: return CK_MemberPointerToBoolean;
   case Type::STK_Integral: return CK_IntegralToBoolean;
   case Type::STK_Floating: return CK_FloatingToBoolean;
@@ -269,12 +286,6 @@ CastKind Sema::ScalarTypeToBooleanCastKind(QualType ScalarTy) {
   case Type::STK_FloatingComplex: return CK_FloatingComplexToBoolean;
   }
   return CK_Invalid;
-}
-
-ExprValueKind Sema::CastCategory(Expr *E) {
-  Expr::Classification Classification = E->Classify(Context);
-  return Classification.isRValue() ? VK_RValue :
-      (Classification.isLValue() ? VK_LValue : VK_XValue);
 }
 
 /// \brief Used to prune the decls of Sema's UnusedFileScopedDecls vector.
@@ -456,6 +467,34 @@ void Sema::ActOnEndOfTranslationUnit() {
   }
 
   if (TUKind == TU_Module) {
+    // Mark any macros from system headers (in /usr/include) as exported, along
+    // with our own Clang headers.
+    // FIXME: This is a gross hack to deal with the fact that system headers
+    // are #include'd in many places within module headers, but are not 
+    // themselves modularized. This doesn't actually work, but it lets us
+    // focus on other issues for the moment.
+    for (Preprocessor::macro_iterator M = PP.macro_begin(false),
+                                   MEnd = PP.macro_end(false);
+         M != MEnd; ++M) {
+      if (M->second && 
+          !M->second->isExported() &&
+          !M->second->isBuiltinMacro()) {
+        SourceLocation Loc = M->second->getDefinitionLoc();
+        if (SourceMgr.isInSystemHeader(Loc)) {
+          const FileEntry *File
+            = SourceMgr.getFileEntryForID(SourceMgr.getFileID(Loc));
+          if (File && 
+              ((StringRef(File->getName()).find("lib/clang") 
+                  != StringRef::npos) ||
+               (StringRef(File->getName()).find("usr/include") 
+                  != StringRef::npos) ||
+               (StringRef(File->getName()).find("usr/local/include") 
+                  != StringRef::npos)))
+            M->second->setExportLocation(Loc);
+        }
+      }
+    }
+          
     // Modules don't need any of the checking below.
     TUScope = 0;
     return;
@@ -514,7 +553,7 @@ void Sema::ActOnEndOfTranslationUnit() {
   if (LangOpts.CPlusPlus0x &&
       Diags.getDiagnosticLevel(diag::warn_delegating_ctor_cycle,
                                SourceLocation())
-        != Diagnostic::Ignored)
+        != DiagnosticsEngine::Ignored)
     CheckDelegatingCtorCycles();
 
   // If there were errors, disable 'unused' warnings since they will mostly be
@@ -638,7 +677,7 @@ Sema::SemaDiagnosticBuilder::~SemaDiagnosticBuilder() {
       // Make a copy of this suppressed diagnostic and store it with the
       // template-deduction information;
       FlushCounts();
-      DiagnosticInfo DiagInfo(&SemaRef.Diags);
+      Diagnostic DiagInfo(&SemaRef.Diags);
         
       if (*Info)
         (*Info)->addSuppressedDiagnostic(DiagInfo.getLocation(),
@@ -652,6 +691,9 @@ Sema::SemaDiagnosticBuilder::~SemaDiagnosticBuilder() {
       return;
     }
   }
+  
+  // Set up the context's printing policy based on our current state.
+  SemaRef.Context.setPrintingPolicy(SemaRef.getPrintingPolicy());
   
   // Emit the diagnostic.
   if (!this->Emit())
@@ -903,7 +945,7 @@ void Sema::NoteOverloads(const UnresolvedSetImpl &Overloads,
     // FIXME: Magic number for max shown overloads stolen from
     // OverloadCandidateSet::NoteCandidates.
     if (ShownOverloads >= 4 &&
-        Diags.getShowOverloads() == Diagnostic::Ovl_Best) {
+        Diags.getShowOverloads() == DiagnosticsEngine::Ovl_Best) {
       ++SuppressedOverloads;
       continue;
     }

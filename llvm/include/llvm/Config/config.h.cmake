@@ -551,6 +551,9 @@
 /* Installation directory for config files */
 #cmakedefine LLVM_ETCDIR "${LLVM_ETCDIR}"
 
+/* Has gcc/MSVC atomic intrinsics */
+#cmakedefine01 LLVM_HAS_ATOMICS
+
 /* Host triple we were built on */
 #cmakedefine LLVM_HOSTTRIPLE "${LLVM_HOSTTRIPLE}"
 
@@ -565,9 +568,6 @@
 
 /* Installation directory for man pages */
 #cmakedefine LLVM_MANDIR "${LLVM_MANDIR}"
-
-/* Build multithreading support into LLVM */
-#cmakedefine LLVM_MULTITHREADED ${LLVM_MULTITHREADED}
 
 /* LLVM architecture name for the native architecture, if available */
 #cmakedefine LLVM_NATIVE_ARCH ${LLVM_NATIVE_ARCH}
@@ -667,9 +667,6 @@
 
 /* Define to 1 if the `S_IS*' macros in <sys/stat.h> do not work properly. */
 #undef STAT_MACROS_BROKEN
-
-/* Define to 1 if you have the ANSI C header files. */
-#undef STDC_HEADERS
 
 /* Define to 1 if you can safely include both <sys/time.h> and <time.h>. */
 #undef TIME_WITH_SYS_TIME

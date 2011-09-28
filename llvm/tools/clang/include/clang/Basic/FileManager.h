@@ -179,13 +179,20 @@ public:
   /// getDirectory - Lookup, cache, and verify the specified directory
   /// (real or virtual).  This returns NULL if the directory doesn't exist.
   ///
-  const DirectoryEntry *getDirectory(StringRef DirName);
+  /// \param CacheFailure If true and the file does not exist, we'll cache
+  /// the failure to find this file.
+  const DirectoryEntry *getDirectory(StringRef DirName,
+                                     bool CacheFailure = true);
 
   /// \brief Lookup, cache, and verify the specified file (real or
   /// virtual).  This returns NULL if the file doesn't exist.
   ///
-  /// \param openFile if true and the file exists, it will be opened.
-  const FileEntry *getFile(StringRef Filename, bool openFile = false);
+  /// \param OpenFile if true and the file exists, it will be opened.
+  ///
+  /// \param CacheFailure If true and the file does not exist, we'll cache
+  /// the failure to find this file.
+  const FileEntry *getFile(StringRef Filename, bool OpenFile = false,
+                           bool CacheFailure = true);
 
   /// \brief Returns the current file system options
   const FileSystemOptions &getFileSystemOptions() { return FileSystemOpts; }

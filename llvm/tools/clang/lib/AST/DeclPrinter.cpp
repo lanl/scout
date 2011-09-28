@@ -90,7 +90,7 @@ namespace {
 
 void Decl::print(raw_ostream &Out, unsigned Indentation,
                  bool PrintInstantiation) const {
-  print(Out, getASTContext().PrintingPolicy, Indentation, PrintInstantiation);
+  print(Out, getASTContext().getPrintingPolicy(), Indentation, PrintInstantiation);
 }
 
 void Decl::print(raw_ostream &Out, const PrintingPolicy &Policy,
@@ -114,7 +114,7 @@ static QualType GetBaseType(QualType T) {
     else if (const VectorType *VTy = BaseType->getAs<VectorType>())
       BaseType = VTy->getElementType();
     else
-      assert(0 && "Unknown declarator!");
+      llvm_unreachable("Unknown declarator!");
   }
   return BaseType;
 }
@@ -168,7 +168,7 @@ void DeclContext::dumpDeclContext() const {
     DC = DC->getParent();
   
   ASTContext &Ctx = cast<TranslationUnitDecl>(DC)->getASTContext();
-  DeclPrinter Printer(llvm::errs(), Ctx, Ctx.PrintingPolicy, 0);
+  DeclPrinter Printer(llvm::errs(), Ctx, Ctx.getPrintingPolicy(), 0);
   Printer.VisitDeclContext(const_cast<DeclContext *>(this), /*Indent=*/false);
 }
 
@@ -192,7 +192,7 @@ void DeclPrinter::ProcessDeclGroup(SmallVectorImpl<Decl*>& Decls) {
 
 void DeclPrinter::Print(AccessSpecifier AS) {
   switch(AS) {
-  case AS_none:      assert(0 && "No access specifier!"); break;
+  case AS_none:      llvm_unreachable("No access specifier!");
   case AS_public:    Out << "public"; break;
   case AS_protected: Out << "protected"; break;
   case AS_private:   Out << "private"; break;
@@ -313,8 +313,12 @@ void DeclPrinter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
 void DeclPrinter::VisitTypedefDecl(TypedefDecl *D) {
   std::string S = D->getNameAsString();
   D->getUnderlyingType().getAsStringInternal(S, Policy);
-  if (!Policy.SuppressSpecifiers)
+  if (!Policy.SuppressSpecifiers) {
     Out << "typedef ";
+    
+    if (D->isModulePrivate())
+      Out << "__module_private__ ";
+  }
   Out << S;
 }
 
@@ -324,6 +328,8 @@ void DeclPrinter::VisitTypeAliasDecl(TypeAliasDecl *D) {
 }
 
 void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
   Out << "enum ";
   if (D->isScoped()) {
     if (D->isScopedUsingClassTag())
@@ -347,6 +353,8 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
 }
 
 void DeclPrinter::VisitRecordDecl(RecordDecl *D) {
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
   Out << D->getKindName();
   if (D->getIdentifier())
     Out << ' ' << D;
@@ -373,11 +381,13 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
     case SC_Extern: Out << "extern "; break;
     case SC_Static: Out << "static "; break;
     case SC_PrivateExtern: Out << "__private_extern__ "; break;
-    case SC_Auto: case SC_Register: llvm_unreachable("invalid for functions");
+    case SC_Auto: case SC_Register: case SC_OpenCLWorkGroupLocal:
+      llvm_unreachable("invalid for functions");
     }
 
-    if (D->isInlineSpecified())           Out << "inline ";
+    if (D->isInlineSpecified())  Out << "inline ";
     if (D->isVirtualAsWritten()) Out << "virtual ";
+    if (D->isModulePrivate())    Out << "__module_private__ ";
   }
 
   PrintingPolicy SubPolicy(Policy);
@@ -558,6 +568,8 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
 void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
   if (!Policy.SuppressSpecifiers && D->isMutable())
     Out << "mutable ";
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
 
   std::string Name = D->getNameAsString();
   D->getType().getAsStringInternal(Name, Policy);
@@ -586,6 +598,8 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
 
   if (!Policy.SuppressSpecifiers && D->isThreadSpecified())
     Out << "__thread ";
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
 
   std::string Name = D->getNameAsString();
   QualType T = D->getType();
@@ -650,6 +664,8 @@ void DeclPrinter::VisitNamespaceAliasDecl(NamespaceAliasDecl *D) {
 }
 
 void DeclPrinter::VisitCXXRecordDecl(CXXRecordDecl *D) {
+  if (!Policy.SuppressSpecifiers && D->isModulePrivate())
+    Out << "__module_private__ ";
   Out << D->getKindName();
   if (D->getIdentifier())
     Out << ' ' << D;

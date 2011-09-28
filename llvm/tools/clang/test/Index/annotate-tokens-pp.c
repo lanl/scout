@@ -28,7 +28,10 @@ void test() {
 #include "pragma-once.h"
 #include "guarded.h"
 
-// RUN: c-index-test -test-annotate-tokens=%s:2:1:30:1 -I%S/Inputs %s | FileCheck %s
+const char *fname = __FILE__;
+
+// RUN: c-index-test -test-annotate-tokens=%s:2:1:32:1 -I%S/Inputs %s | FileCheck %s
+// RUN: env CINDEXTEST_EDITING=1 c-index-test -test-annotate-tokens=%s:2:1:32:1 -I%S/Inputs %s | FileCheck %s
 // CHECK: Punctuation: "#" [2:1 - 2:2] preprocessing directive=
 // CHECK: Identifier: "define" [2:2 - 2:8] preprocessing directive=
 // CHECK: Identifier: "STILL_NOTHING" [2:9 - 2:22] macro definition=STILL_NOTHING
@@ -120,7 +123,8 @@ void test() {
 // CHECK: Identifier: "t" [16:25 - 16:26] DeclRefExpr=t:15:7
 // CHECK: Punctuation: "," [16:26 - 16:27]
 // CHECK: Identifier: "z" [16:27 - 16:28] DeclRefExpr=z:14:7
-// CHECK: Punctuation: ")" [16:28 - 16:29] UnexposedStmt=
+// FIXME: The token below should really be annotated as "macro expansion=REVERSE_MACRO:10:9"
+// CHECK: Punctuation: ")" [16:28 - 16:29] VarDecl=k:16:7 (Definition)
 // CHECK: Punctuation: ";" [16:29 - 16:30] UnexposedStmt=
 // CHECK: Keyword: "int" [17:3 - 17:6] VarDecl=j:17:7 (Definition)
 // CHECK: Identifier: "j" [17:7 - 17:8] VarDecl=j:17:7 (Definition)
@@ -130,7 +134,8 @@ void test() {
 // CHECK: Identifier: "k" [17:23 - 17:24] DeclRefExpr=k:16:7
 // CHECK: Punctuation: "+" [17:25 - 17:26] UnexposedExpr=
 // CHECK: Identifier: "k" [17:27 - 17:28] DeclRefExpr=k:16:7
-// CHECK: Punctuation: ")" [17:28 - 17:29] UnexposedStmt=
+// FIXME: The token below should really be annotated as "macro expansion=TWICE_MACRO:11:9"
+// CHECK: Punctuation: ")" [17:28 - 17:29] VarDecl=j:17:7 (Definition)
 // CHECK: Punctuation: ";" [17:29 - 17:30] UnexposedStmt=
 // CHECK: Keyword: "int" [18:3 - 18:6] VarDecl=w:18:7 (Definition)
 // CHECK: Identifier: "w" [18:7 - 18:8] VarDecl=w:18:7 (Definition)
@@ -189,3 +194,4 @@ void test() {
 // CHECK: Punctuation: "}" [26:1 - 26:2] UnexposedStmt=
 // CHECK: {{28:1.*inclusion directive=pragma-once.h.*multi-include guarded}}
 // CHECK: {{29:1.*inclusion directive=guarded.h.*multi-include guarded}}
+// CHECK: Identifier: "__FILE__" [31:21 - 31:29] macro expansion=__FILE__

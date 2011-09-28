@@ -243,18 +243,22 @@ private:
   /// evaluated context or not, e.g. functions used in uninstantiated templates
   /// are regarded as "referenced" but not "used".
   unsigned Referenced : 1;
-
+  
 protected:
   /// Access - Used by C++ decls for the access specifier.
   // NOTE: VC++ treats enums as signed, avoid using the AccessSpecifier enum
   unsigned Access : 2;
   friend class CXXClassMemberWrapper;
 
-  /// PCHLevel - the "level" of AST file from which this declaration was built.
-  unsigned PCHLevel : 2;
-
+  /// \brief Whether this declaration was loaded from an AST file.
+  unsigned FromASTFile : 1;
+  
   /// ChangedAfterLoad - if this declaration has changed since being loaded
   unsigned ChangedAfterLoad : 1;
+
+  /// \brief Whether this declaration is private to the module in which it was
+  /// defined.
+  unsigned ModulePrivate : 1;
 
   /// IdentifierNamespace - This specifies what IDNS_* namespace this lives in.
   unsigned IdentifierNamespace : 12;
@@ -269,7 +273,9 @@ protected:
   /// This field is only valid for NamedDecls subclasses.
   mutable unsigned CachedLinkage : 2;
   
-  
+  friend class ASTDeclWriter;
+  friend class ASTDeclReader;
+
 private:
   void CheckAccessDeclContext() const;
 
@@ -279,7 +285,8 @@ protected:
     : NextDeclInContext(0), DeclCtx(DC),
       Loc(L), DeclKind(DK), InvalidDecl(0),
       HasAttrs(false), Implicit(false), Used(false), Referenced(false),
-      Access(AS_none), PCHLevel(0), ChangedAfterLoad(false),
+      Access(AS_none), FromASTFile(0), ChangedAfterLoad(false),
+      ModulePrivate(0),
       IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
       HasCachedLinkage(0) 
   {
@@ -289,7 +296,8 @@ protected:
   Decl(Kind DK, EmptyShell Empty)
     : NextDeclInContext(0), DeclKind(DK), InvalidDecl(0),
       HasAttrs(false), Implicit(false), Used(false), Referenced(false),
-      Access(AS_none), PCHLevel(0), ChangedAfterLoad(false),
+      Access(AS_none), FromASTFile(0), ChangedAfterLoad(false),
+      ModulePrivate(0),
       IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
       HasCachedLinkage(0)
   {
@@ -493,25 +501,10 @@ public:
   /// declaration cannot be weak-imported because it has a definition.
   bool canBeWeakImported(bool &IsDefinition) const;
 
-  /// \brief Retrieve the level of precompiled header from which this
-  /// declaration was generated.
-  ///
-  /// The PCH level of a declaration describes where the declaration originated
-  /// from. A PCH level of 0 indicates that the declaration was parsed from
-  /// source. A PCH level of 1 indicates that the declaration was loaded from
-  /// a top-level AST file. A PCH level 2 indicates that the declaration was
-  /// loaded from a PCH file the AST file depends on, and so on.
-  unsigned getPCHLevel() const { return PCHLevel; }
-
-  /// \brief The maximum PCH level that any declaration may have.
-  static const unsigned MaxPCHLevel = 3;
-
-  /// \brief Set the PCH level of this declaration.
-  void setPCHLevel(unsigned Level) { 
-    assert(Level <= MaxPCHLevel && "PCH level exceeds the maximum");
-    PCHLevel = Level;
-  }
-
+  /// \brief Determine whether this declaration came from an AST file (such as
+  /// a precompiled header or module) rather than having been parsed.
+  bool isFromASTFile() const { return FromASTFile; }
+  
   /// \brief Query whether this declaration was changed in a significant way
   /// since being loaded from an AST file.
   ///
@@ -574,7 +567,17 @@ public:
   /// scoped decl is defined outside the current function or method.  This is
   /// roughly global variables and functions, but also handles enums (which
   /// could be defined inside or outside a function etc).
-  bool isDefinedOutsideFunctionOrMethod() const;
+  bool isDefinedOutsideFunctionOrMethod() const {
+    return getParentFunctionOrMethod() == 0;
+  }
+
+  /// \brief If this decl is defined inside a function/method/block it returns
+  /// the corresponding DeclContext, otherwise it returns null.
+  const DeclContext *getParentFunctionOrMethod() const;
+  DeclContext *getParentFunctionOrMethod() {
+    return const_cast<DeclContext*>(
+                    const_cast<const Decl*>(this)->getParentFunctionOrMethod());
+  }
 
   /// \brief Retrieves the "canonical" declaration of the given declaration.
   virtual Decl *getCanonicalDecl() { return this; }
@@ -671,6 +674,9 @@ public:
   /// \brief Whether this declaration is a parameter pack.
   bool isParameterPack() const;
   
+  /// \brief returns true if this declaration is a template
+  bool isTemplateDecl() const;
+
   /// \brief Whether this declaration is a function or function template.
   bool isFunctionOrFunctionTemplate() const;
 

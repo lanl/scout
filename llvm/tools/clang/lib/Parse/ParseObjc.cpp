@@ -164,9 +164,7 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
   SourceLocation nameLoc = ConsumeToken();
   if (Tok.is(tok::l_paren) && 
       !isKnownToBeTypeSpecifier(GetLookAheadToken(1))) { // we have a category.
-    // TODO(dgregor): Use the return value from the next line to provide better
-    // recovery.
-    ConsumeParen();
+    SourceLocation LParenLoc = ConsumeParen();
     SourceLocation categoryLoc, rparenLoc;
     IdentifierInfo *categoryId = 0;
     if (Tok.is(tok::code_completion)) {
@@ -184,12 +182,16 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
       Diag(Tok, diag::err_expected_ident); // missing category name.
       return 0;
     }
-    if (Tok.isNot(tok::r_paren)) {
-      Diag(Tok, diag::err_expected_rparen);
-      SkipUntil(tok::r_paren, false); // don't stop at ';'
+    
+    rparenLoc = MatchRHSPunctuation(tok::r_paren, LParenLoc);
+    if (rparenLoc.isInvalid())
       return 0;
+    
+    if (!attrs.empty()) { // categories don't support attributes.
+      Diag(nameLoc, diag::err_objc_no_attributes_on_category);
+      attrs.clear();
     }
-    rparenLoc = ConsumeParen();
+    
     // Next, we need to check for any protocol references.
     SourceLocation LAngleLoc, EndProtoLoc;
     SmallVector<Decl *, 8> ProtocolRefs;
@@ -198,9 +200,6 @@ Decl *Parser::ParseObjCAtInterfaceDeclaration(SourceLocation atLoc,
         ParseObjCProtocolReferences(ProtocolRefs, ProtocolLocs, true,
                                     LAngleLoc, EndProtoLoc))
       return 0;
-
-    if (!attrs.empty()) // categories don't support attributes.
-      Diag(Tok, diag::err_objc_no_attributes_on_category);
 
     Decl *CategoryType =
     Actions.ActOnStartCategoryInterface(atLoc,
@@ -786,7 +785,7 @@ void Parser::ParseObjCTypeQualifierList(ObjCDeclSpec &DS,
 
       ObjCDeclSpec::ObjCDeclQualifier Qual;
       switch (i) {
-      default: assert(0 && "Unknown decl qualifier");
+      default: llvm_unreachable("Unknown decl qualifier");
       case objc_in:     Qual = ObjCDeclSpec::DQ_In; break;
       case objc_out:    Qual = ObjCDeclSpec::DQ_Out; break;
       case objc_inout:  Qual = ObjCDeclSpec::DQ_Inout; break;
@@ -826,8 +825,16 @@ ParsedType Parser::ParseObjCTypeName(ObjCDeclSpec &DS,
       ParseTypeName(0, Declarator::ObjCPrototypeContext, &DS);
     if (!TypeSpec.isInvalid())
       Ty = TypeSpec.get();
+  } else if (Context == OTN_ResultType && Tok.is(tok::identifier)) {
+    if (!Ident_instancetype)
+      Ident_instancetype = PP.getIdentifierInfo("instancetype");
+    
+    if (Tok.getIdentifierInfo() == Ident_instancetype) {
+      Ty = Actions.ActOnObjCInstanceType(Tok.getLocation());
+      ConsumeToken();
+    }
   }
-  
+
   if (Tok.is(tok::r_paren))
     ConsumeParen();
   else if (Tok.getLocation() == TypeStartLoc) {
@@ -1240,7 +1247,7 @@ void Parser::ParseObjCClassInstanceVariables(Decl *interfaceDecl,
   // Call ActOnFields() even if we don't have any decls. This is useful
   // for code rewriting tools that need to be aware of the empty list.
   Actions.ActOnFields(getCurScope(), atLoc, interfaceDecl,
-                      AllIvarDecls.data(), AllIvarDecls.size(),
+                      AllIvarDecls,
                       LBraceLoc, RBraceLoc, 0);
   return;
 }

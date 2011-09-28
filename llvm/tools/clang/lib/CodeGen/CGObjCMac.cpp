@@ -1060,8 +1060,7 @@ public:
   /// GetClassGlobal - Return the global variable for the Objective-C
   /// class of the given name.
   virtual llvm::GlobalVariable *GetClassGlobal(const std::string &Name) {
-    assert(false && "CGObjCMac::GetClassGlobal");
-    return 0;
+    llvm_unreachable("CGObjCMac::GetClassGlobal");
   }
 };
 
@@ -1549,7 +1548,7 @@ CGObjCCommonMac::EmitMessageSend(CodeGen::CodeGenFunction &CGF,
                                  const ObjCCommonTypesHelper &ObjCTypes) {
   CallArgList ActualArgs;
   if (!IsSuper)
-    Arg0 = CGF.Builder.CreateBitCast(Arg0, ObjCTypes.ObjectPtrTy, "tmp");
+    Arg0 = CGF.Builder.CreateBitCast(Arg0, ObjCTypes.ObjectPtrTy);
   ActualArgs.add(RValue::get(Arg0), Arg0Ty);
   ActualArgs.add(RValue::get(Sel), CGF.getContext().getObjCSelType());
   ActualArgs.addFrom(CallArgs);
@@ -1605,7 +1604,7 @@ llvm::Constant *CGObjCCommonMac::BuildGCBlockLayout(CodeGenModule &CGM,
   llvm::Constant *nullPtr = 
     llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(VMContext));
 
-  if (CGM.getLangOptions().getGCMode() == LangOptions::NonGC &&
+  if (CGM.getLangOptions().getGC() == LangOptions::NonGC &&
       !CGM.getLangOptions().ObjCAutoRefCount)
     return nullPtr;
 
@@ -3117,8 +3116,7 @@ void CGObjCMac::EmitTryOrSynchronizedStmt(CodeGen::CodeGenFunction &CGF,
       // Initialize the catch variable.
       llvm::Value *Tmp =
         CGF.Builder.CreateBitCast(Caught,
-                                  CGF.ConvertType(CatchParam->getType()),
-                                  "tmp");
+                                  CGF.ConvertType(CatchParam->getType()));
       CGF.Builder.CreateStore(Tmp, CGF.GetAddrOfLocalVar(CatchParam));
 
       CGF.EmitStmt(CatchStmt->getCatchBody());
@@ -3208,7 +3206,7 @@ void CGObjCMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
   if (const Expr *ThrowExpr = S.getThrowExpr()) {
     llvm::Value *Exception = CGF.EmitScalarExpr(ThrowExpr);
     ExceptionAsObject =
-      CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy, "tmp");
+      CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy);
   } else {
     assert((!CGF.ObjCEHValueStack.empty() && CGF.ObjCEHValueStack.back()) &&
            "Unexpected rethrow outside @catch block.");
@@ -3384,9 +3382,9 @@ void CGObjCCommonMac::EmitImageInfo() {
   unsigned flags = 0;
 
   // FIXME: Fix and continue?
-  if (CGM.getLangOptions().getGCMode() != LangOptions::NonGC)
+  if (CGM.getLangOptions().getGC() != LangOptions::NonGC)
     flags |= eImageInfo_GarbageCollected;
-  if (CGM.getLangOptions().getGCMode() == LangOptions::GCOnly)
+  if (CGM.getLangOptions().getGC() == LangOptions::GCOnly)
     flags |= eImageInfo_GCOnly;
 
   // We never allow @synthesize of a superclass property.
@@ -3496,7 +3494,7 @@ llvm::Value *CGObjCMac::EmitClassRefFromId(CGBuilderTy &Builder,
                       4, true);
   }
   
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 
 llvm::Value *CGObjCMac::EmitClassRef(CGBuilderTy &Builder,
@@ -3525,7 +3523,7 @@ llvm::Value *CGObjCMac::EmitSelector(CGBuilderTy &Builder, Selector Sel,
 
   if (lvalue)
     return Entry;
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 
 llvm::Constant *CGObjCCommonMac::GetClassName(IdentifierInfo *Ident) {
@@ -3548,13 +3546,6 @@ llvm::Function *CGObjCCommonMac::GetMethodDefinition(const ObjCMethodDecl *MD) {
       I = MethodDefinitions.find(MD);
   if (I != MethodDefinitions.end())
     return I->second;
-
-  if (MD->hasBody() && MD->getPCHLevel() > 0) {
-    // MD isn't emitted yet because it comes from PCH.
-    CGM.EmitTopLevelDecl(const_cast<ObjCMethodDecl*>(MD));
-    assert(MethodDefinitions[MD] && "EmitTopLevelDecl didn't emit the method!");
-    return MethodDefinitions[MD];
-  }
 
   return NULL;
 }
@@ -3897,7 +3888,7 @@ llvm::Constant *CGObjCCommonMac::BuildIvarLayout(
   bool hasUnion = false;
 
   llvm::Type *PtrTy = llvm::Type::getInt8PtrTy(VMContext);
-  if (CGM.getLangOptions().getGCMode() == LangOptions::NonGC &&
+  if (CGM.getLangOptions().getGC() == LangOptions::NonGC &&
       !CGM.getLangOptions().ObjCAutoRefCount)
     return llvm::Constant::getNullValue(PtrTy);
 
@@ -4663,7 +4654,7 @@ bool CGObjCNonFragileABIMac::isVTableDispatchedSelector(Selector Sel) {
 
     // These are vtable-based if GC is disabled.
     // Optimistically use vtable dispatch for hybrid compiles.
-    if (CGM.getLangOptions().getGCMode() != LangOptions::GCOnly) {
+    if (CGM.getLangOptions().getGC() != LangOptions::GCOnly) {
       VTableDispatchMethods.insert(GetNullarySelector("retain"));
       VTableDispatchMethods.insert(GetNullarySelector("release"));
       VTableDispatchMethods.insert(GetNullarySelector("autorelease"));
@@ -4679,7 +4670,7 @@ bool CGObjCNonFragileABIMac::isVTableDispatchedSelector(Selector Sel) {
 
     // These are vtable-based if GC is enabled.
     // Optimistically use vtable dispatch for hybrid compiles.
-    if (CGM.getLangOptions().getGCMode() != LangOptions::NonGC) {
+    if (CGM.getLangOptions().getGC() != LangOptions::NonGC) {
       VTableDispatchMethods.insert(GetNullarySelector("hash"));
       VTableDispatchMethods.insert(GetUnarySelector("addObject"));
     
@@ -5004,7 +4995,7 @@ llvm::Value *CGObjCNonFragileABIMac::GenerateProtocolRef(CGBuilderTy &Builder,
 
   llvm::GlobalVariable *PTGV = CGM.getModule().getGlobalVariable(ProtocolName);
   if (PTGV)
-    return Builder.CreateLoad(PTGV, "tmp");
+    return Builder.CreateLoad(PTGV);
   PTGV = new llvm::GlobalVariable(
     CGM.getModule(),
     Init->getType(), false,
@@ -5014,7 +5005,7 @@ llvm::Value *CGObjCNonFragileABIMac::GenerateProtocolRef(CGBuilderTy &Builder,
   PTGV->setSection("__DATA, __objc_protorefs, coalesced, no_dead_strip");
   PTGV->setVisibility(llvm::GlobalValue::HiddenVisibility);
   CGM.AddUsedGlobal(PTGV);
-  return Builder.CreateLoad(PTGV, "tmp");
+  return Builder.CreateLoad(PTGV);
 }
 
 /// GenerateCategory - Build metadata for a category implementation.
@@ -5698,7 +5689,7 @@ llvm::Value *CGObjCNonFragileABIMac::EmitClassRefFromId(CGBuilderTy &Builder,
     CGM.AddUsedGlobal(Entry);
   }
   
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 
 llvm::Value *CGObjCNonFragileABIMac::EmitClassRef(CGBuilderTy &Builder,
@@ -5732,7 +5723,7 @@ CGObjCNonFragileABIMac::EmitSuperClassRef(CGBuilderTy &Builder,
     CGM.AddUsedGlobal(Entry);
   }
 
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 
 /// EmitMetaClassRef - Return a Value * of the address of _class_t
@@ -5742,7 +5733,7 @@ llvm::Value *CGObjCNonFragileABIMac::EmitMetaClassRef(CGBuilderTy &Builder,
                                                       const ObjCInterfaceDecl *ID) {
   llvm::GlobalVariable * &Entry = MetaClassReferences[ID->getIdentifier()];
   if (Entry)
-    return Builder.CreateLoad(Entry, "tmp");
+    return Builder.CreateLoad(Entry);
 
   std::string MetaClassName(getMetaclassSymbolPrefix() + ID->getNameAsString());
   llvm::GlobalVariable *MetaClassGV = GetClassGlobal(MetaClassName);
@@ -5758,7 +5749,7 @@ llvm::Value *CGObjCNonFragileABIMac::EmitMetaClassRef(CGBuilderTy &Builder,
   Entry->setSection("__DATA, __objc_superrefs, regular, no_dead_strip");
   CGM.AddUsedGlobal(Entry);
 
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 
 /// GetClass - Return a reference to the class for the given interface
@@ -5849,7 +5840,7 @@ llvm::Value *CGObjCNonFragileABIMac::EmitSelector(CGBuilderTy &Builder,
 
   if (lval)
     return Entry;
-  return Builder.CreateLoad(Entry, "tmp");
+  return Builder.CreateLoad(Entry);
 }
 /// EmitObjCIvarAssign - Code gen for assigning to a __strong object.
 /// objc_assign_ivar (id src, id *dst, ptrdiff_t)
@@ -6012,8 +6003,7 @@ void CGObjCNonFragileABIMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
                                            const ObjCAtThrowStmt &S) {
   if (const Expr *ThrowExpr = S.getThrowExpr()) {
     llvm::Value *Exception = CGF.EmitScalarExpr(ThrowExpr);
-    Exception = CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy,
-                                          "tmp");
+    Exception = CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy);
     CGF.EmitCallOrInvoke(ObjCTypes.getExceptionThrowFn(), Exception)
       .setDoesNotReturn();
   } else {

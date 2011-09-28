@@ -450,6 +450,10 @@ public:
   SDValue getVectorShuffle(EVT VT, DebugLoc dl, SDValue N1, SDValue N2,
                            const int *MaskElts);
 
+  /// getAnyExtOrTrunc - Convert Op, which must be of integer type, to the
+  /// integer type VT, by either any-extending or truncating it.
+  SDValue getAnyExtOrTrunc(SDValue Op, DebugLoc DL, EVT VT);
+
   /// getSExtOrTrunc - Convert Op, which must be of integer type, to the
   /// integer type VT, by either sign-extending or truncating it.
   SDValue getSExtOrTrunc(SDValue Op, DebugLoc DL, EVT VT);
@@ -560,15 +564,11 @@ public:
   ///
   SDValue getSetCC(DebugLoc DL, EVT VT, SDValue LHS, SDValue RHS,
                    ISD::CondCode Cond) {
+    assert(LHS.getValueType().isVector() == RHS.getValueType().isVector() &&
+      "Cannot compare scalars to vectors");
+    assert(LHS.getValueType().isVector() == VT.isVector() &&
+      "Cannot compare scalars to vectors");
     return getNode(ISD::SETCC, DL, VT, LHS, RHS, getCondCode(Cond));
-  }
-
-  /// getVSetCC - Helper function to make it easier to build VSetCC's nodes
-  /// if you just have an ISD::CondCode instead of an SDValue.
-  ///
-  SDValue getVSetCC(DebugLoc DL, EVT VT, SDValue LHS, SDValue RHS,
-                    ISD::CondCode Cond) {
-    return getNode(ISD::VSETCC, DL, VT, LHS, RHS, getCondCode(Cond));
   }
 
   /// getSelectCC - Helper function to make it easier to build SelectCC's if you

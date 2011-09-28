@@ -610,6 +610,7 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   IMM("t_adrlabel");
   IMM("t2adrlabel");
   IMM("shift_imm");
+  IMM("t2_shift_imm");
   IMM("neon_vcvt_imm32");
   IMM("shr_imm8");
   IMM("shr_imm16");
@@ -666,11 +667,14 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   MISC("spr_reglist", "kOperandTypeARMSPRRegisterList");          // I, R, ...
   MISC("it_mask", "kOperandTypeThumbITMask");                     // I
   MISC("t2addrmode_reg", "kOperandTypeThumb2AddrModeReg");        // R
+  MISC("t2addrmode_posimm8", "kOperandTypeThumb2AddrModeImm8");   // R, I
+  MISC("t2addrmode_negimm8", "kOperandTypeThumb2AddrModeImm8");   // R, I
   MISC("t2addrmode_imm8", "kOperandTypeThumb2AddrModeImm8");      // R, I
   MISC("t2am_imm8_offset", "kOperandTypeThumb2AddrModeImm8Offset");//I
   MISC("t2addrmode_imm12", "kOperandTypeThumb2AddrModeImm12");    // R, I
   MISC("t2addrmode_so_reg", "kOperandTypeThumb2AddrModeSoReg");   // R, R, I
   MISC("t2addrmode_imm8s4", "kOperandTypeThumb2AddrModeImm8s4");  // R, I
+  MISC("t2addrmode_imm0_1020s4", "kOperandTypeThumb2AddrModeImm8s4");  // R, I
   MISC("t2am_imm8s4_offset", "kOperandTypeThumb2AddrModeImm8s4Offset");
                                                                   // R, I
   MISC("tb_addrmode", "kOperandTypeARMTBAddrMode");               // I
@@ -683,6 +687,8 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   MISC("t_addrmode_rr", "kOperandTypeThumbAddrModeRR");           // R, R
   MISC("t_addrmode_sp", "kOperandTypeThumbAddrModeSP");           // R, I
   MISC("t_addrmode_pc", "kOperandTypeThumbAddrModePC");           // R, I
+  MISC("addrmode_tbb", "kOperandTypeThumbAddrModeRR");            // R, R
+  MISC("addrmode_tbh", "kOperandTypeThumbAddrModeRR");            // R, R
 
   return 1;
 }

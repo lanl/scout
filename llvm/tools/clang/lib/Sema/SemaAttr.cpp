@@ -189,7 +189,7 @@ void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
 }
 
 void Sema::ActOnPragmaPack(PragmaPackKind Kind, IdentifierInfo *Name,
-                           ExprTy *alignment, SourceLocation PragmaLoc,
+                           Expr *alignment, SourceLocation PragmaLoc,
                            SourceLocation LParenLoc, SourceLocation RParenLoc) {
   Expr *Alignment = static_cast<Expr *>(alignment);
 
@@ -265,7 +265,7 @@ void Sema::ActOnPragmaPack(PragmaPackKind Kind, IdentifierInfo *Name,
     break;
 
   default:
-    assert(0 && "Invalid #pragma pack kind.");
+    llvm_unreachable("Invalid #pragma pack kind.");
   }
 }
 

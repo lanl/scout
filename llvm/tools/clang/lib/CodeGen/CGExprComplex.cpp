@@ -103,8 +103,7 @@ public:
     
   ComplexPairTy VisitStmt(Stmt *S) {
     S->dump(CGF.getContext().getSourceManager());
-    assert(0 && "Stmt can't have complex result type!");
-    return ComplexPairTy();
+    llvm_unreachable("Stmt can't have complex result type!");
   }
   ComplexPairTy VisitExpr(Expr *S);
   ComplexPairTy VisitParenExpr(ParenExpr *PE) { return Visit(PE->getSubExpr());}
@@ -403,16 +402,18 @@ ComplexPairTy ComplexExprEmitter::EmitCast(CastExpr::CastKind CK, Expr *Op,
   case CK_FloatingToIntegral:
   case CK_FloatingToBoolean:
   case CK_FloatingCast:
-  case CK_AnyPointerToObjCPointerCast:
+  case CK_CPointerToObjCPointerCast:
+  case CK_BlockPointerToObjCPointerCast:
   case CK_AnyPointerToBlockPointerCast:
   case CK_ObjCObjectLValueCast:
   case CK_FloatingComplexToReal:
   case CK_FloatingComplexToBoolean:
   case CK_IntegralComplexToReal:
   case CK_IntegralComplexToBoolean:
-  case CK_ObjCProduceObject:
-  case CK_ObjCConsumeObject:
-  case CK_ObjCReclaimReturnedObject:
+  case CK_ARCProduceObject:
+  case CK_ARCConsumeObject:
+  case CK_ARCReclaimReturnedObject:
+  case CK_ARCExtendBlockObject:
     llvm_unreachable("invalid cast kind for complex value");
 
   case CK_FloatingRealToComplex:
@@ -525,40 +526,40 @@ ComplexPairTy ComplexExprEmitter::EmitBinDiv(const BinOpInfo &Op) {
   llvm::Value *DSTr, *DSTi;
   if (Op.LHS.first->getType()->isFloatingPointTy()) {
     // (a+ib) / (c+id) = ((ac+bd)/(cc+dd)) + i((bc-ad)/(cc+dd))
-    llvm::Value *Tmp1 = Builder.CreateFMul(LHSr, RHSr, "tmp"); // a*c
-    llvm::Value *Tmp2 = Builder.CreateFMul(LHSi, RHSi, "tmp"); // b*d
-    llvm::Value *Tmp3 = Builder.CreateFAdd(Tmp1, Tmp2, "tmp"); // ac+bd
+    llvm::Value *Tmp1 = Builder.CreateFMul(LHSr, RHSr); // a*c
+    llvm::Value *Tmp2 = Builder.CreateFMul(LHSi, RHSi); // b*d
+    llvm::Value *Tmp3 = Builder.CreateFAdd(Tmp1, Tmp2); // ac+bd
 
-    llvm::Value *Tmp4 = Builder.CreateFMul(RHSr, RHSr, "tmp"); // c*c
-    llvm::Value *Tmp5 = Builder.CreateFMul(RHSi, RHSi, "tmp"); // d*d
-    llvm::Value *Tmp6 = Builder.CreateFAdd(Tmp4, Tmp5, "tmp"); // cc+dd
+    llvm::Value *Tmp4 = Builder.CreateFMul(RHSr, RHSr); // c*c
+    llvm::Value *Tmp5 = Builder.CreateFMul(RHSi, RHSi); // d*d
+    llvm::Value *Tmp6 = Builder.CreateFAdd(Tmp4, Tmp5); // cc+dd
 
-    llvm::Value *Tmp7 = Builder.CreateFMul(LHSi, RHSr, "tmp"); // b*c
-    llvm::Value *Tmp8 = Builder.CreateFMul(LHSr, RHSi, "tmp"); // a*d
-    llvm::Value *Tmp9 = Builder.CreateFSub(Tmp7, Tmp8, "tmp"); // bc-ad
+    llvm::Value *Tmp7 = Builder.CreateFMul(LHSi, RHSr); // b*c
+    llvm::Value *Tmp8 = Builder.CreateFMul(LHSr, RHSi); // a*d
+    llvm::Value *Tmp9 = Builder.CreateFSub(Tmp7, Tmp8); // bc-ad
 
-    DSTr = Builder.CreateFDiv(Tmp3, Tmp6, "tmp");
-    DSTi = Builder.CreateFDiv(Tmp9, Tmp6, "tmp");
+    DSTr = Builder.CreateFDiv(Tmp3, Tmp6);
+    DSTi = Builder.CreateFDiv(Tmp9, Tmp6);
   } else {
     // (a+ib) / (c+id) = ((ac+bd)/(cc+dd)) + i((bc-ad)/(cc+dd))
-    llvm::Value *Tmp1 = Builder.CreateMul(LHSr, RHSr, "tmp"); // a*c
-    llvm::Value *Tmp2 = Builder.CreateMul(LHSi, RHSi, "tmp"); // b*d
-    llvm::Value *Tmp3 = Builder.CreateAdd(Tmp1, Tmp2, "tmp"); // ac+bd
+    llvm::Value *Tmp1 = Builder.CreateMul(LHSr, RHSr); // a*c
+    llvm::Value *Tmp2 = Builder.CreateMul(LHSi, RHSi); // b*d
+    llvm::Value *Tmp3 = Builder.CreateAdd(Tmp1, Tmp2); // ac+bd
 
-    llvm::Value *Tmp4 = Builder.CreateMul(RHSr, RHSr, "tmp"); // c*c
-    llvm::Value *Tmp5 = Builder.CreateMul(RHSi, RHSi, "tmp"); // d*d
-    llvm::Value *Tmp6 = Builder.CreateAdd(Tmp4, Tmp5, "tmp"); // cc+dd
+    llvm::Value *Tmp4 = Builder.CreateMul(RHSr, RHSr); // c*c
+    llvm::Value *Tmp5 = Builder.CreateMul(RHSi, RHSi); // d*d
+    llvm::Value *Tmp6 = Builder.CreateAdd(Tmp4, Tmp5); // cc+dd
 
-    llvm::Value *Tmp7 = Builder.CreateMul(LHSi, RHSr, "tmp"); // b*c
-    llvm::Value *Tmp8 = Builder.CreateMul(LHSr, RHSi, "tmp"); // a*d
-    llvm::Value *Tmp9 = Builder.CreateSub(Tmp7, Tmp8, "tmp"); // bc-ad
+    llvm::Value *Tmp7 = Builder.CreateMul(LHSi, RHSr); // b*c
+    llvm::Value *Tmp8 = Builder.CreateMul(LHSr, RHSi); // a*d
+    llvm::Value *Tmp9 = Builder.CreateSub(Tmp7, Tmp8); // bc-ad
 
     if (Op.Ty->getAs<ComplexType>()->getElementType()->isUnsignedIntegerType()) {
-      DSTr = Builder.CreateUDiv(Tmp3, Tmp6, "tmp");
-      DSTi = Builder.CreateUDiv(Tmp9, Tmp6, "tmp");
+      DSTr = Builder.CreateUDiv(Tmp3, Tmp6);
+      DSTi = Builder.CreateUDiv(Tmp9, Tmp6);
     } else {
-      DSTr = Builder.CreateSDiv(Tmp3, Tmp6, "tmp");
-      DSTi = Builder.CreateSDiv(Tmp9, Tmp6, "tmp");
+      DSTr = Builder.CreateSDiv(Tmp3, Tmp6);
+      DSTi = Builder.CreateSDiv(Tmp9, Tmp6);
     }
   }
 
@@ -736,10 +737,17 @@ ComplexPairTy ComplexExprEmitter::VisitInitListExpr(InitListExpr *E) {
     Ignore = TestAndClearIgnoreImag();
     (void)Ignore;
     assert (Ignore == false && "init list ignored");
-  if (E->getNumInits())
+
+  if (E->getNumInits() == 2) {
+    llvm::Value *Real = CGF.EmitScalarExpr(E->getInit(0));
+    llvm::Value *Imag = CGF.EmitScalarExpr(E->getInit(1));
+    return ComplexPairTy(Real, Imag);
+  } else if (E->getNumInits() == 1) {
     return Visit(E->getInit(0));
+  }
 
   // Empty init list intializes to null
+  assert(E->getNumInits() == 0 && "Unexpected number of inits");
   QualType Ty = E->getType()->getAs<ComplexType>()->getElementType();
   llvm::Type* LTy = CGF.ConvertType(Ty);
   llvm::Value* zeroConstant = llvm::Constant::getNullValue(LTy);

@@ -135,8 +135,8 @@ void CompileUnit::addSourceLine(DIE *Die, DIGlobalVariable G) {
   unsigned Line = G.getLineNumber();
   if (Line == 0)
     return;
-  unsigned FileID = DD->GetOrCreateSourceID(G.getContext().getFilename(),
-                                            G.getContext().getDirectory());
+  unsigned FileID = DD->GetOrCreateSourceID(G.getFilename(),
+                                            G.getDirectory());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -658,13 +658,20 @@ void CompileUnit::addPubTypes(DISubprogram SP) {
 void CompileUnit::constructTypeDIE(DIE &Buffer, DIBasicType BTy) {
   // Get core information.
   StringRef Name = BTy.getName();
-  Buffer.setTag(dwarf::DW_TAG_base_type);
-  addUInt(&Buffer, dwarf::DW_AT_encoding,  dwarf::DW_FORM_data1,
-          BTy.getEncoding());
-
   // Add name if not anonymous or intermediate type.
   if (!Name.empty())
     addString(&Buffer, dwarf::DW_AT_name, dwarf::DW_FORM_string, Name);
+
+  if (BTy.getTag() == dwarf::DW_TAG_unspecified_type) {
+    Buffer.setTag(dwarf::DW_TAG_unspecified_type);
+    // Unspecified types has only name, nothing else.
+    return;
+  }
+
+  Buffer.setTag(dwarf::DW_TAG_base_type);
+  addUInt(&Buffer, dwarf::DW_AT_encoding,  dwarf::DW_FORM_data1,
+	  BTy.getEncoding());
+
   uint64_t Size = BTy.getSizeInBits() >> 3;
   addUInt(&Buffer, dwarf::DW_AT_byte_size, 0, Size);
 }
@@ -1074,7 +1081,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
              Asm->Mang->getSymbol(GV.getGlobal()));
     // Do not create specification DIE if context is either compile unit
     // or a subprogram.
-    if (GV.isDefinition() && !GVContext.isCompileUnit() &&
+    if (GVContext && GV.isDefinition() && !GVContext.isCompileUnit() &&
         !GVContext.isFile() && !isSubprogramContext(GVContext)) {
       // Create specification DIE.
       DIE *VariableSpecDIE = new DIE(dwarf::DW_TAG_variable);

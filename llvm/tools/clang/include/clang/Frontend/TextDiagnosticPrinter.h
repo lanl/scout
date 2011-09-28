@@ -22,7 +22,7 @@ namespace clang {
 class DiagnosticOptions;
 class LangOptions;
 
-class TextDiagnosticPrinter : public DiagnosticClient {
+class TextDiagnosticPrinter : public DiagnosticConsumer {
   raw_ostream &OS;
   const LangOptions *LangOpts;
   const DiagnosticOptions *DiagOpts;
@@ -53,25 +53,17 @@ public:
     LangOpts = 0;
   }
 
-  void PrintIncludeStack(Diagnostic::Level Level, SourceLocation Loc,
+  void PrintIncludeStack(DiagnosticsEngine::Level Level, SourceLocation Loc,
                          const SourceManager &SM);
 
-  void HighlightRange(const CharSourceRange &R,
-                      const SourceManager &SrcMgr,
-                      unsigned LineNo, FileID FID,
-                      std::string &CaretLine,
-                      const std::string &SourceLine);
-
-  virtual void HandleDiagnostic(Diagnostic::Level Level,
-                                const DiagnosticInfo &Info);
+  virtual void HandleDiagnostic(DiagnosticsEngine::Level Level,
+                                const Diagnostic &Info);
 
 private:
-  void EmitCaretDiagnostic(SourceLocation Loc, CharSourceRange *Ranges,
-                           unsigned NumRanges, const SourceManager &SM,
-                           const FixItHint *Hints,
-                           unsigned NumHints, unsigned Columns,
-                           unsigned MacroSkipStart, unsigned MacroSkipEnd);
-  
+  void EmitDiagnosticLoc(DiagnosticsEngine::Level Level,
+                         const Diagnostic &Info,
+                         const SourceManager &SM,
+                         PresumedLoc PLoc);
 };
 
 } // end namespace clang

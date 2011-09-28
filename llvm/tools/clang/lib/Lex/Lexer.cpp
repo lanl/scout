@@ -518,7 +518,7 @@ static SourceLocation getBeginningOfFileToken(SourceLocation Loc,
   }
 
   // Create a lexer starting at the beginning of this token.
-  SourceLocation LexerStartLoc = Loc.getFileLocWithOffset(-LocInfo.second);
+  SourceLocation LexerStartLoc = Loc.getLocWithOffset(-LocInfo.second);
   Lexer TheLexer(LexerStartLoc, LangOpts, BufStart, LexStart, Buffer.end());
   TheLexer.SetCommentRetentionState(true);
 
@@ -559,7 +559,7 @@ SourceLocation Lexer::GetBeginningOfToken(SourceLocation Loc,
  std::pair<FileID, unsigned> BeginFileLocInfo= SM.getDecomposedLoc(BeginFileLoc);
  assert(FileLocInfo.first == BeginFileLocInfo.first &&
         FileLocInfo.second >= BeginFileLocInfo.second);
- return Loc.getFileLocWithOffset(SM.getDecomposedLoc(BeginFileLoc).second -
+ return Loc.getLocWithOffset(SM.getDecomposedLoc(BeginFileLoc).second -
                                  SM.getDecomposedLoc(FileLoc).second);
 }
 
@@ -743,7 +743,7 @@ SourceLocation Lexer::AdvanceToTokenCharacter(SourceLocation TokStart,
   // chars, this method is extremely fast.
   while (Lexer::isObviouslySimpleCharacter(*TokPtr)) {
     if (CharNo == 0)
-      return TokStart.getFileLocWithOffset(PhysOffset);
+      return TokStart.getLocWithOffset(PhysOffset);
     ++TokPtr, --CharNo, ++PhysOffset;
   }
 
@@ -763,7 +763,7 @@ SourceLocation Lexer::AdvanceToTokenCharacter(SourceLocation TokStart,
   if (!Lexer::isObviouslySimpleCharacter(*TokPtr))
     PhysOffset += Lexer::SkipEscapedNewLines(TokPtr)-TokPtr;
 
-  return TokStart.getFileLocWithOffset(PhysOffset);
+  return TokStart.getLocWithOffset(PhysOffset);
 }
 
 /// \brief Computes the source location just past the end of the
@@ -801,7 +801,7 @@ SourceLocation Lexer::getLocForEndOfToken(SourceLocation Loc, unsigned Offset,
   else
     return Loc;
 
-  return Loc.getFileLocWithOffset(Len);
+  return Loc.getLocWithOffset(Len);
 }
 
 /// \brief Returns true if the given MacroID location points at the first
@@ -838,7 +838,7 @@ bool Lexer::isAtEndOfMacroExpansion(SourceLocation loc,
     return false;
 
   FileID FID = SM.getFileID(loc);
-  SourceLocation afterLoc = loc.getFileLocWithOffset(tokLen+1);
+  SourceLocation afterLoc = loc.getLocWithOffset(tokLen+1);
   if (SM.isInFileID(afterLoc, FID))
     return false; // Still in the same FileID, does not point to the last token.
 
@@ -1024,7 +1024,7 @@ static SourceLocation GetMappedTokenLoc(Preprocessor &PP,
   // Create a new SLoc which is expanded from Expansion(FileLoc) but whose
   // characters come from spelling(FileLoc)+Offset.
   SourceLocation SpellingLoc = SM.getSpellingLoc(FileLoc);
-  SpellingLoc = SpellingLoc.getFileLocWithOffset(CharNo);
+  SpellingLoc = SpellingLoc.getLocWithOffset(CharNo);
 
   // Figure out the expansion loc range, which is the range covered by the
   // original _Pragma(...) sequence.
@@ -1045,7 +1045,7 @@ SourceLocation Lexer::getSourceLocation(const char *Loc,
   // the file id from FileLoc with the offset specified.
   unsigned CharNo = Loc-BufferStart;
   if (FileLoc.isFileID())
-    return FileLoc.getFileLocWithOffset(CharNo);
+    return FileLoc.getLocWithOffset(CharNo);
 
   // Otherwise, this is the _Pragma lexer case, which pretends that all of the
   // tokens are lexed from where the _Pragma was defined.
@@ -1196,7 +1196,7 @@ SourceLocation Lexer::findLocationAfterToken(SourceLocation Loc,
       NumWhitespaceChars++;
   }
 
-  return TokenLoc.getFileLocWithOffset(Tok.getLength() + NumWhitespaceChars);
+  return TokenLoc.getLocWithOffset(Tok.getLength() + NumWhitespaceChars);
 }
 
 /// getCharAndSizeSlow - Peek a single 'character' from the specified buffer,
@@ -1456,7 +1456,7 @@ void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   if ((C == '-' || C == '+') && (PrevCh == 'E' || PrevCh == 'e')) {
     // If we are in Microsoft mode, don't continue if the constant is hex.
     // For example, MSVC will accept the following as 3 tokens: 0x1234567e+1
-    if (!Features.Microsoft || !isHexaLiteral(BufferPtr, Features))
+    if (!Features.MicrosoftExt || !isHexaLiteral(BufferPtr, Features))
       return LexNumericConstant(Result, ConsumeChar(CurPtr, Size, Result));
   }
 
@@ -2353,7 +2353,7 @@ bool Lexer::HandleEndOfConflictMarker(const char *CurPtr) {
 
 bool Lexer::isCodeCompletionPoint(const char *CurPtr) const {
   if (PP && PP->isCodeCompletionEnabled()) {
-    SourceLocation Loc = FileLoc.getFileLocWithOffset(CurPtr-BufferStart);
+    SourceLocation Loc = FileLoc.getLocWithOffset(CurPtr-BufferStart);
     return Loc == PP->getCodeCompletionLoc();
   }
 
@@ -2437,7 +2437,7 @@ LexNextToken:
 
   case 26:  // DOS & CP/M EOF: "^Z".
     // If we're in Microsoft extensions mode, treat this as end of file.
-    if (Features.Microsoft) {
+    if (Features.MicrosoftExt) {
       // Read the PP instance variable into an automatic variable, because
       // LexEndOfFile will often delete 'this'.
       Preprocessor *PPCache = PP;
@@ -2833,7 +2833,7 @@ LexNextToken:
         Kind = tok::hashhash;                          // '%:%:' -> '##'
         CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
                              SizeTmp2, Result);
-      } else if (Char == '@' && Features.Microsoft) {  // %:@ -> #@ -> Charize
+      } else if (Char == '@' && Features.MicrosoftExt) {// %:@ -> #@ -> Charize
         CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
         if (!isLexingRawMode())
           Diag(BufferPtr, diag::charize_microsoft_ext);
@@ -3007,7 +3007,7 @@ LexNextToken:
     if (Char == '#') {
       Kind = tok::hashhash;
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
-    } else if (Char == '@' && Features.Microsoft) {  // #@ -> Charize
+    } else if (Char == '@' && Features.MicrosoftExt) {  // #@ -> Charize
       Kind = tok::hashat;
       if (!isLexingRawMode())
         Diag(BufferPtr, diag::charize_microsoft_ext);

@@ -109,15 +109,6 @@ ModulePass *llvm::createGCOVProfilerPass(bool EmitNotes, bool EmitData,
   return new GCOVProfiler(EmitNotes, EmitData, Use402Format);
 }
 
-static DISubprogram findSubprogram(DIScope Scope) {
-  while (!Scope.isSubprogram()) {
-    assert(Scope.isLexicalBlock() &&
-           "Debug location not lexical block or subprogram");
-    Scope = DILexicalBlock(Scope).getContext();
-  }
-  return DISubprogram(Scope);
-}
-
 namespace {
   class GCOVRecord {
    protected:
@@ -176,18 +167,24 @@ namespace {
     }
 
     uint32_t length() {
+      // Here 2 = 1 for string lenght + 1 for '0' id#.
       return lengthOfGCOVString(Filename) + 2 + Lines.size();
     }
 
-   private:
-    friend class GCOVBlock;
+    void writeOut() {
+      write(0);
+      writeGCOVString(Filename);
+      for (int i = 0, e = Lines.size(); i != e; ++i)
+        write(Lines[i]);
+    }
 
-    GCOVLines(std::string Filename, raw_ostream *os)
-        : Filename(Filename) {
+    GCOVLines(StringRef F, raw_ostream *os) 
+      : Filename(F) {
       this->os = os;
     }
 
-    std::string Filename;
+   private:
+    StringRef Filename;
     SmallVector<uint32_t, 32> Lines;
   };
 
@@ -196,7 +193,7 @@ namespace {
   // other blocks.
   class GCOVBlock : public GCOVRecord {
    public:
-    GCOVLines &getFile(std::string Filename) {
+    GCOVLines &getFile(StringRef Filename) {
       GCOVLines *&Lines = LinesByFile[Filename];
       if (!Lines) {
         Lines = new GCOVLines(Filename, os);
@@ -219,13 +216,8 @@ namespace {
       write(Len);
       write(Number);
       for (StringMap<GCOVLines *>::iterator I = LinesByFile.begin(),
-               E = LinesByFile.end(); I != E; ++I) {
-        write(0);
-        writeGCOVString(I->second->Filename);
-        for (int i = 0, e = I->second->Lines.size(); i != e; ++i) {
-          write(I->second->Lines[i]);
-        }
-      }
+               E = LinesByFile.end(); I != E; ++I) 
+        I->second->writeOut();
       write(0);
       write(0);
     }
@@ -403,7 +395,7 @@ void GCOVProfiler::emitGCNO() {
             if (Loc.isUnknown()) continue;
             if (Line == Loc.getLine()) continue;
             Line = Loc.getLine();
-            if (SP != findSubprogram(DIScope(Loc.getScope(*Ctx)))) continue;
+            if (SP != getDISubprogram(Loc.getScope(*Ctx))) continue;
             
             GCOVLines &Lines = Block.getFile(SP.getFilename());
             Lines.addLine(Loc.getLine());

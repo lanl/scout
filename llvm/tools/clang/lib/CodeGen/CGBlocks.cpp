@@ -1044,9 +1044,9 @@ RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
     Builder.CreateBitCast(Callee, BlockLiteralTy, "block.literal");
 
   // Get the function pointer from the literal.
-  llvm::Value *FuncPtr = Builder.CreateStructGEP(BlockLiteral, 3, "tmp");
+  llvm::Value *FuncPtr = Builder.CreateStructGEP(BlockLiteral, 3);
 
-  BlockLiteral = Builder.CreateBitCast(BlockLiteral, VoidPtrTy, "tmp");
+  BlockLiteral = Builder.CreateBitCast(BlockLiteral, VoidPtrTy);
 
   // Add the block literal.
   CallArgList Args;
@@ -1059,7 +1059,7 @@ RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
                E->arg_begin(), E->arg_end());
 
   // Load the function.
-  llvm::Value *Func = Builder.CreateLoad(FuncPtr, "tmp");
+  llvm::Value *Func = Builder.CreateLoad(FuncPtr);
 
   const FunctionType *FuncTy = FnType->castAs<FunctionType>();
   const CGFunctionInfo &FnInfo = CGM.getTypes().getFunctionInfo(Args, FuncTy);
@@ -2121,8 +2121,63 @@ namespace {
 /// to be done externally.
 void CodeGenFunction::enterByrefCleanup(const AutoVarEmission &emission) {
   // We don't enter this cleanup if we're in pure-GC mode.
-  if (CGM.getLangOptions().getGCMode() == LangOptions::GCOnly)
+  if (CGM.getLangOptions().getGC() == LangOptions::GCOnly)
     return;
 
   EHStack.pushCleanup<CallBlockRelease>(NormalAndEHCleanup, emission.Address);
+}
+
+/// Adjust the declaration of something from the blocks API.
+static void configureBlocksRuntimeObject(CodeGenModule &CGM,
+                                         llvm::Constant *C) {
+  if (!CGM.getLangOptions().BlocksRuntimeOptional) return;
+
+  llvm::GlobalValue *GV = cast<llvm::GlobalValue>(C->stripPointerCasts());
+  if (GV->isDeclaration() &&
+      GV->getLinkage() == llvm::GlobalValue::ExternalLinkage)
+    GV->setLinkage(llvm::GlobalValue::ExternalWeakLinkage);
+}
+
+llvm::Constant *CodeGenModule::getBlockObjectDispose() {
+  if (BlockObjectDispose)
+    return BlockObjectDispose;
+
+  llvm::Type *args[] = { Int8PtrTy, Int32Ty };
+  llvm::FunctionType *fty
+    = llvm::FunctionType::get(VoidTy, args, false);
+  BlockObjectDispose = CreateRuntimeFunction(fty, "_Block_object_dispose");
+  configureBlocksRuntimeObject(*this, BlockObjectDispose);
+  return BlockObjectDispose;
+}
+
+llvm::Constant *CodeGenModule::getBlockObjectAssign() {
+  if (BlockObjectAssign)
+    return BlockObjectAssign;
+
+  llvm::Type *args[] = { Int8PtrTy, Int8PtrTy, Int32Ty };
+  llvm::FunctionType *fty
+    = llvm::FunctionType::get(VoidTy, args, false);
+  BlockObjectAssign = CreateRuntimeFunction(fty, "_Block_object_assign");
+  configureBlocksRuntimeObject(*this, BlockObjectAssign);
+  return BlockObjectAssign;
+}
+
+llvm::Constant *CodeGenModule::getNSConcreteGlobalBlock() {
+  if (NSConcreteGlobalBlock)
+    return NSConcreteGlobalBlock;
+
+  NSConcreteGlobalBlock = GetOrCreateLLVMGlobal("_NSConcreteGlobalBlock",
+                                                Int8PtrTy->getPointerTo(), 0);
+  configureBlocksRuntimeObject(*this, NSConcreteGlobalBlock);
+  return NSConcreteGlobalBlock;
+}
+
+llvm::Constant *CodeGenModule::getNSConcreteStackBlock() {
+  if (NSConcreteStackBlock)
+    return NSConcreteStackBlock;
+
+  NSConcreteStackBlock = GetOrCreateLLVMGlobal("_NSConcreteStackBlock",
+                                               Int8PtrTy->getPointerTo(), 0);
+  configureBlocksRuntimeObject(*this, NSConcreteStackBlock);
+  return NSConcreteStackBlock;  
 }

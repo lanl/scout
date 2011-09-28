@@ -23,6 +23,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateName.h"
 #include "llvm/Support/type_traits.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/Optional.h"
@@ -1469,7 +1470,9 @@ public:
   Qualifiers::ObjCLifetime getObjCARCImplicitLifetime() const;
 
   enum ScalarTypeKind {
-    STK_Pointer,
+    STK_CPointer,
+    STK_BlockPointer,
+    STK_ObjCObjectPointer,
     STK_MemberPointer,
     STK_Bool,
     STK_Integral,
@@ -1791,7 +1794,7 @@ public:
   }
 
   Kind getKind() const { return static_cast<Kind>(BuiltinTypeBits.Kind); }
-  const char *getName(const LangOptions &LO) const;
+  const char *getName(const PrintingPolicy &Policy) const;
 
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
@@ -2285,7 +2288,7 @@ public:
   friend class StmtIteratorBase;
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    assert(0 && "Cannot unique VariableArrayTypes.");
+    llvm_unreachable("Cannot unique VariableArrayTypes.");
   }
 };
 
@@ -4837,7 +4840,7 @@ inline const Type *Type::getBaseElementTypeUnsafe() const {
 inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
                                            QualType T) {
   DB.AddTaggedVal(reinterpret_cast<intptr_t>(T.getAsOpaquePtr()),
-                  Diagnostic::ak_qualtype);
+                  DiagnosticsEngine::ak_qualtype);
   return DB;
 }
 
@@ -4846,7 +4849,7 @@ inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,
 inline const PartialDiagnostic &operator<<(const PartialDiagnostic &PD,
                                            QualType T) {
   PD.AddTaggedVal(reinterpret_cast<intptr_t>(T.getAsOpaquePtr()),
-                  Diagnostic::ak_qualtype);
+                  DiagnosticsEngine::ak_qualtype);
   return PD;
 }
 

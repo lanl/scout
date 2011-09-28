@@ -19,3 +19,23 @@ void* test2(void *p) {
   MyFuncTest1 fp = (MyFuncTest1) p;
   return (*fp)();
 }
+
+// <radar://10087620>
+// A cast from int onjective C property reference to int.
+typedef signed char BOOL;
+@protocol NSObject  - (BOOL)isEqual:(id)object; @end
+@interface NSObject <NSObject> {} - (id)init; @end
+typedef enum {
+  EEOne,
+  EETwo
+} RDR10087620Enum;
+@interface RDR10087620 : NSObject {
+  RDR10087620Enum   elem;
+}
+@property (readwrite, nonatomic) RDR10087620Enum elem;
+static void
+adium_media_ready_cb(RDR10087620 *InObj)
+{
+  InObj.elem |= EEOne;
+}
+@end

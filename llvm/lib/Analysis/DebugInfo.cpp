@@ -130,7 +130,14 @@ MDNode *DIVariable::getInlinedAt() const {
 /// isBasicType - Return true if the specified tag is legal for
 /// DIBasicType.
 bool DIDescriptor::isBasicType() const {
-  return DbgNode && getTag() == dwarf::DW_TAG_base_type;
+  if (!DbgNode) return false;
+  switch (getTag()) {
+  case dwarf::DW_TAG_base_type:
+  case dwarf::DW_TAG_unspecified_type:
+    return true;
+  default:
+    return false;
+  }
 }
 
 /// isDerivedType - Return true if the specified tag is legal for DIDerivedType.
@@ -905,6 +912,10 @@ DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
 
 /// processModule - Process entire module and collect debug info.
 void DebugInfoFinder::processModule(Module &M) {
+  if (NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu"))
+    for (unsigned i = 0, e = CU_Nodes->getNumOperands(); i != e; ++i)
+      addCompileUnit(DICompileUnit(CU_Nodes->getOperand(i)));
+
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
     for (Function::iterator FI = (*I).begin(), FE = (*I).end(); FI != FE; ++FI)
       for (BasicBlock::iterator BI = (*FI).begin(), BE = (*FI).end(); BI != BE;
@@ -934,7 +945,8 @@ void DebugInfoFinder::processModule(Module &M) {
     for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i) {
       DIGlobalVariable DIG(cast<MDNode>(NMD->getOperand(i)));
       if (addGlobalVariable(DIG)) {
-        addCompileUnit(DIG.getCompileUnit());
+        if (DIG.getVersion() <= LLVMDebugVersion10)
+          addCompileUnit(DIG.getCompileUnit());
         processType(DIG.getType());
       }
     }
@@ -962,8 +974,8 @@ void DebugInfoFinder::processLocation(DILocation Loc) {
 void DebugInfoFinder::processType(DIType DT) {
   if (!addType(DT))
     return;
-
-  addCompileUnit(DT.getCompileUnit());
+  if (DT.getVersion() <= LLVMDebugVersion10)
+    addCompileUnit(DT.getCompileUnit());
   if (DT.isCompositeType()) {
     DICompositeType DCT(DT);
     processType(DCT.getTypeDerivedFrom());
@@ -994,7 +1006,8 @@ void DebugInfoFinder::processLexicalBlock(DILexicalBlock LB) {
 void DebugInfoFinder::processSubprogram(DISubprogram SP) {
   if (!addSubprogram(SP))
     return;
-  addCompileUnit(SP.getCompileUnit());
+  if (SP.getVersion() <= LLVMDebugVersion10)
+    addCompileUnit(SP.getCompileUnit());
   processType(SP.getType());
 }
 
@@ -1009,8 +1022,8 @@ void DebugInfoFinder::processDeclare(DbgDeclareInst *DDI) {
 
   if (!NodesSeen.insert(DV))
     return;
-
-  addCompileUnit(DIVariable(N).getCompileUnit());
+  if (DIVariable(N).getVersion() <= LLVMDebugVersion10)
+    addCompileUnit(DIVariable(N).getCompileUnit());
   processType(DIVariable(N).getType());
 }
 

@@ -129,6 +129,12 @@ class HeaderSearch {
   unsigned SystemDirIdx;
   bool NoCurDirSearch;
 
+  /// \brief The path to the module cache.
+  std::string ModuleCachePath;
+  
+  /// \brief The name of the module we're building.
+  std::string BuildingModule;
+  
   /// FileInfo - This contains all of the preprocessor-specific data about files
   /// that are included.  The vector is indexed by the FileEntry's UID.
   ///
@@ -193,6 +199,13 @@ public:
     //LookupFileCache.clear();
   }
 
+  /// \brief Set the path to the module cache and the name of the module
+  /// we're building
+  void configureModules(StringRef CachePath, StringRef BuildingModule) {
+    ModuleCachePath = CachePath;
+    this->BuildingModule = BuildingModule;
+  }
+  
   /// ClearFileInfo - Forget everything we know about headers so far.
   void ClearFileInfo() {
     FileInfo.clear();
@@ -232,12 +245,17 @@ public:
   /// \param RelativePath If non-null, will be set to the path relative to
   /// SearchPath at which the file was found. This only differs from the
   /// Filename for framework includes.
+  ///
+  /// \param SuggestedModule If non-null, and the file found is semantically
+  /// part of a known module, this will be set to the name of the module that
+  /// could be imported instead of preprocessing/parsing the file found.
   const FileEntry *LookupFile(StringRef Filename, bool isAngled,
                               const DirectoryLookup *FromDir,
                               const DirectoryLookup *&CurDir,
                               const FileEntry *CurFileEnt,
                               SmallVectorImpl<char> *SearchPath,
-                              SmallVectorImpl<char> *RelativePath);
+                              SmallVectorImpl<char> *RelativePath,
+                              StringRef *SuggestedModule);
 
   /// LookupSubframeworkHeader - Look up a subframework for the specified
   /// #include file.  For example, if #include'ing <HIToolbox/HIToolbox.h> from
@@ -308,6 +326,23 @@ public:
   /// FileEntry, uniquing them through the the 'HeaderMaps' datastructure.
   const HeaderMap *CreateHeaderMap(const FileEntry *FE);
 
+  /// \brief Search in the module cache path for a module with the given
+  /// name.
+  ///
+  /// \param If non-NULL, will be set to the module file name we expected to
+  /// find (regardless of whether it was actually found or not).
+  ///
+  /// \param UmbrellaHeader If non-NULL, and no module was found in the module
+  /// cache, this routine will search in the framework paths to determine
+  /// whether a module can be built from an umbrella header. If so, the pointee
+  /// will be set to the path of the umbrella header.
+  ///
+  /// \returns A file describing the named module, if available, or NULL to
+  /// indicate that the module could not be found.
+  const FileEntry *lookupModule(StringRef ModuleName,
+                                std::string *ModuleFileName = 0,
+                                std::string *UmbrellaHeader = 0);
+  
   void IncrementFrameworkLookupCount() { ++NumFrameworkLookups; }
 
   typedef std::vector<HeaderFileInfo>::const_iterator header_file_iterator;

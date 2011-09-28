@@ -103,8 +103,7 @@ const MemRegion *StoreManager::castRegion(const MemRegion *R, QualType CastToTy)
     case MemRegion::UnknownSpaceRegionKind:
     case MemRegion::NonStaticGlobalSpaceRegionKind:
     case MemRegion::StaticGlobalSpaceRegionKind: {
-      assert(0 && "Invalid region cast");
-      break;
+      llvm_unreachable("Invalid region cast");
     }
 
     case MemRegion::FunctionTextRegionKind:
@@ -203,8 +202,7 @@ const MemRegion *StoreManager::castRegion(const MemRegion *R, QualType CastToTy)
     }
   }
 
-  assert(0 && "unreachable");
-  return 0;
+  llvm_unreachable("unreachable");
 }
 
 
@@ -261,8 +259,7 @@ SVal StoreManager::getLValueFieldOrIvar(const Decl *D, SVal Base) {
     return Base;
 
   default:
-    assert(0 && "Unhandled Base.");
-    return Base;
+    llvm_unreachable("Unhandled Base.");
   }
 
   // NOTE: We must have this check first because ObjCIvarDecl is a subclass

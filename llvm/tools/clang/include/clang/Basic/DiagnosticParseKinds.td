@@ -225,6 +225,9 @@ def err_typename_invalid_storageclass : Error<
   "type name does not allow storage class to be specified">;
 def err_typename_invalid_functionspec : Error<
   "type name does not allow function specifier to be specified">;
+def err_typename_identifiers_only : Error<
+  "typename is allowed for identifiers only">;
+  
 def err_invalid_decl_spec_combination : Error<
   "cannot combine with previous '%0' declaration specifier">;
 def err_invalid_vector_decl_spec_combination : Error<
@@ -575,12 +578,6 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
-// Modules
-def err_module_expected_ident : Error<
-  "expected a module name after '__import_module__'">;
-def err_module_expected_semi : Error<
-  "expected a semicolon name after module name">;
-
 // ndm - Scout specific errors
 def err_expected_numeric_constant_in_mesh_def : Error<
 "expected a numeric constant in mesh definition dimensions">;
@@ -629,6 +626,14 @@ def err_invalid_stride_forall_array : Error<"invalid stride in forall">;
 
 def err_mismatch_forall_array : Error<
 "start/end/stride groups do not match number of induction variables">;
-
+  
 } // end of Parse Issue category.
+
+let CategoryName = "Modules Issue" in {
+def err_module_expected_ident : Error<
+  "expected a module name after '__import_module__'">;
+def err_module_expected_semi : Error<
+  "expected a semicolon name after module name">;
+}
+
 } // end of Parser diagnostics

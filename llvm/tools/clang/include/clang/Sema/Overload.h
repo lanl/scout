@@ -256,7 +256,7 @@ namespace clang {
     /// \brief The declaration that we found via name lookup, which might be
     /// the same as \c ConversionFunction or it might be a using declaration
     /// that refers to \c ConversionFunction.
-    NamedDecl *FoundConversionFunction;
+    DeclAccessPair FoundConversionFunction;
     
     void DebugPrint() const;
   };
@@ -464,6 +464,7 @@ namespace clang {
     bool isEllipsis() const { return getKind() == EllipsisConversion; }
     bool isAmbiguous() const { return getKind() == AmbiguousConversion; }
     bool isUserDefined() const { return getKind() == UserDefinedConversion; }
+    bool isFailure() const { return isBad() || isAmbiguous(); }
 
     /// Determines whether this conversion sequence has been
     /// initialized.  Most operations should never need to query

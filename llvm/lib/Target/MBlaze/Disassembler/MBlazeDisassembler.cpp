@@ -497,7 +497,8 @@ MCDisassembler::DecodeStatus MBlazeDisassembler::getInstruction(MCInst &instr,
                                         uint64_t &size,
                                         const MemoryObject &region,
                                         uint64_t address,
-                                        raw_ostream &vStream) const {
+                                        raw_ostream &vStream,
+                                        raw_ostream &cStream) const {
   // The machine instruction.
   uint32_t insn;
   uint64_t read;
@@ -696,8 +697,9 @@ MCDisassembler::DecodeStatus MBlazeDisassembler::getInstruction(MCInst &instr,
   return Success;
 }
 
-static MCDisassembler *createMBlazeDisassembler(const Target &T) {
-  return new MBlazeDisassembler;
+static MCDisassembler *createMBlazeDisassembler(const Target &T,
+                                                const MCSubtargetInfo &STI) {
+  return new MBlazeDisassembler(STI);
 }
 
 extern "C" void LLVMInitializeMBlazeDisassembler() {

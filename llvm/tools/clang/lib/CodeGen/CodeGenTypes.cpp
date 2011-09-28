@@ -273,8 +273,7 @@ static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
     return llvm::Type::getPPC_FP128Ty(VMContext);
   if (&format == &llvm::APFloat::x87DoubleExtended)
     return llvm::Type::getX86_FP80Ty(VMContext);
-  assert(0 && "Unknown float format!");
-  return 0;
+  llvm_unreachable("Unknown float format!");
 }
 
 /// ConvertType - Convert the specified type to its LLVM form.

@@ -50,8 +50,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   DEBUG("EmitStmt");
   assert(S && "Null statement?");
 
-  // Check if we can handle this without bothering to generate an
-  // insert point or debug info.
+  // These statements have their own debug info handling.
   if (EmitSimpleStmt(S))
     return;
 
@@ -156,11 +155,11 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     EmitObjCAtTryStmt(cast<ObjCAtTryStmt>(*S));
     break;
   case Stmt::ObjCAtCatchStmtClass:
-    assert(0 && "@catch statements should be handled by EmitObjCAtTryStmt");
-    break;
+    llvm_unreachable(
+                    "@catch statements should be handled by EmitObjCAtTryStmt");
   case Stmt::ObjCAtFinallyStmtClass:
-    assert(0 && "@finally statements should be handled by EmitObjCAtTryStmt");
-    break;
+    llvm_unreachable(
+                  "@finally statements should be handled by EmitObjCAtTryStmt");
   case Stmt::ObjCAtThrowStmtClass:
     EmitObjCAtThrowStmt(cast<ObjCAtThrowStmt>(*S));
     break;
@@ -1154,7 +1153,7 @@ void CodeGenFunction::EmitCaseStmtRange(const CaseStmt &S) {
 
   // Emit range check.
   llvm::Value *Diff =
-    Builder.CreateSub(SwitchInsn->getCondition(), Builder.getInt(LHS),  "tmp");
+    Builder.CreateSub(SwitchInsn->getCondition(), Builder.getInt(LHS));
   llvm::Value *Cond =
     Builder.CreateICmpULE(Diff, Builder.getInt(Range), "inbounds");
   Builder.CreateCondBr(Cond, CaseDest, FalseDest);

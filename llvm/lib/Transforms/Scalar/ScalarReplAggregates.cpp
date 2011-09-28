@@ -489,7 +489,7 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset) {
 
     if (LoadInst *LI = dyn_cast<LoadInst>(User)) {
       // Don't break volatile loads.
-      if (LI->isVolatile())
+      if (!LI->isSimple())
         return false;
       // Don't touch MMX operations.
       if (LI->getType()->isX86_MMXTy())
@@ -501,7 +501,7 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset) {
 
     if (StoreInst *SI = dyn_cast<StoreInst>(User)) {
       // Storing the pointer, not into the value?
-      if (SI->getOperand(0) == V || SI->isVolatile()) return false;
+      if (SI->getOperand(0) == V || !SI->isSimple()) return false;
       // Don't touch MMX operations.
       if (SI->getOperand(0)->getType()->isX86_MMXTy())
         return false;
@@ -617,7 +617,7 @@ void ConvertToScalarInfo::ConvertUsesToScalar(Value *Ptr, AllocaInst *NewAI,
 
     if (LoadInst *LI = dyn_cast<LoadInst>(User)) {
       // The load is a bit extract from NewAI shifted right by Offset bits.
-      Value *LoadedVal = Builder.CreateLoad(NewAI, "tmp");
+      Value *LoadedVal = Builder.CreateLoad(NewAI);
       Value *NewLoadVal
         = ConvertScalar_ExtractValue(LoadedVal, LI->getType(), Offset, Builder);
       LI->replaceAllUsesWith(NewLoadVal);
@@ -822,7 +822,7 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
       // a shuffle vector.
       if (FromType->getPrimitiveSizeInBits() ==
           ToType->getPrimitiveSizeInBits())
-        return Builder.CreateBitCast(FromVal, ToType, "tmp");
+        return Builder.CreateBitCast(FromVal, ToType);
       else
         return CreateShuffleVectorCast(FromVal, ToType, Builder);
     }
@@ -838,14 +838,14 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
       LLVMContext &Context = FromVal->getContext();
       Type *CastTy = VectorType::get(CastElementTy,
                                            NumCastVectorElements);
-      Value *Cast = Builder.CreateBitCast(FromVal, CastTy, "tmp");
+      Value *Cast = Builder.CreateBitCast(FromVal, CastTy);
 
       unsigned EltSize = TD.getTypeAllocSizeInBits(CastElementTy);
       unsigned Elt = Offset/EltSize;
       assert(EltSize*Elt == Offset && "Invalid modulus in validity checking");
       Value *Extract = Builder.CreateExtractElement(Cast, ConstantInt::get(
-                                        Type::getInt32Ty(Context), Elt), "tmp");
-      return Builder.CreateBitCast(Extract, ToType, "tmp");
+                                        Type::getInt32Ty(Context), Elt));
+      return Builder.CreateBitCast(Extract, ToType);
     }
 
     // Otherwise it must be an element access.
@@ -856,10 +856,9 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
       assert(EltSize*Elt == Offset && "Invalid modulus in validity checking");
     }
     // Return the element extracted out of it.
-    Value *V = Builder.CreateExtractElement(FromVal, ConstantInt::get(
-                    Type::getInt32Ty(FromVal->getContext()), Elt), "tmp");
+    Value *V = Builder.CreateExtractElement(FromVal, Builder.getInt32(Elt));
     if (V->getType() != ToType)
-      V = Builder.CreateBitCast(V, ToType, "tmp");
+      V = Builder.CreateBitCast(V, ToType);
     return V;
   }
 
@@ -872,7 +871,7 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
       Value *Elt = ConvertScalar_ExtractValue(FromVal, ST->getElementType(i),
                                         Offset+Layout.getElementOffsetInBits(i),
                                               Builder);
-      Res = Builder.CreateInsertValue(Res, Elt, i, "tmp");
+      Res = Builder.CreateInsertValue(Res, Elt, i);
     }
     return Res;
   }
@@ -883,7 +882,7 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
     for (unsigned i = 0, e = AT->getNumElements(); i != e; ++i) {
       Value *Elt = ConvertScalar_ExtractValue(FromVal, AT->getElementType(),
                                               Offset+i*EltSize, Builder);
-      Res = Builder.CreateInsertValue(Res, Elt, i, "tmp");
+      Res = Builder.CreateInsertValue(Res, Elt, i);
     }
     return Res;
   }
@@ -909,33 +908,31 @@ ConvertScalar_ExtractValue(Value *FromVal, Type *ToType,
   // only some bits are used.
   if (ShAmt > 0 && (unsigned)ShAmt < NTy->getBitWidth())
     FromVal = Builder.CreateLShr(FromVal,
-                                 ConstantInt::get(FromVal->getType(),
-                                                           ShAmt), "tmp");
+                                 ConstantInt::get(FromVal->getType(), ShAmt));
   else if (ShAmt < 0 && (unsigned)-ShAmt < NTy->getBitWidth())
     FromVal = Builder.CreateShl(FromVal,
-                                ConstantInt::get(FromVal->getType(),
-                                                          -ShAmt), "tmp");
+                                ConstantInt::get(FromVal->getType(), -ShAmt));
 
   // Finally, unconditionally truncate the integer to the right width.
   unsigned LIBitWidth = TD.getTypeSizeInBits(ToType);
   if (LIBitWidth < NTy->getBitWidth())
     FromVal =
       Builder.CreateTrunc(FromVal, IntegerType::get(FromVal->getContext(),
-                                                    LIBitWidth), "tmp");
+                                                    LIBitWidth));
   else if (LIBitWidth > NTy->getBitWidth())
     FromVal =
        Builder.CreateZExt(FromVal, IntegerType::get(FromVal->getContext(),
-                                                    LIBitWidth), "tmp");
+                                                    LIBitWidth));
 
   // If the result is an integer, this is a trunc or bitcast.
   if (ToType->isIntegerTy()) {
     // Should be done.
   } else if (ToType->isFloatingPointTy() || ToType->isVectorTy()) {
     // Just do a bitcast, we know the sizes match up.
-    FromVal = Builder.CreateBitCast(FromVal, ToType, "tmp");
+    FromVal = Builder.CreateBitCast(FromVal, ToType);
   } else {
     // Otherwise must be a pointer.
-    FromVal = Builder.CreateIntToPtr(FromVal, ToType, "tmp");
+    FromVal = Builder.CreateIntToPtr(FromVal, ToType);
   }
   assert(FromVal->getType() == ToType && "Didn't convert right?");
   return FromVal;
@@ -971,7 +968,7 @@ ConvertScalar_InsertValue(Value *SV, Value *Old,
       // a shuffle vector.
       if (VTy->getPrimitiveSizeInBits() ==
           SV->getType()->getPrimitiveSizeInBits())
-        return Builder.CreateBitCast(SV, AllocaType, "tmp");
+        return Builder.CreateBitCast(SV, AllocaType);
       else
         return CreateShuffleVectorCast(SV, VTy, Builder);
     }
@@ -984,36 +981,31 @@ ConvertScalar_InsertValue(Value *SV, Value *Old,
                                                        ValSize);
       unsigned NumCastVectorElements = VecSize / ValSize;
 
-      LLVMContext &Context = SV->getContext();
-      Type *OldCastTy = VectorType::get(CastElementTy,
-                                              NumCastVectorElements);
-      Value *OldCast = Builder.CreateBitCast(Old, OldCastTy, "tmp");
+      Type *OldCastTy = VectorType::get(CastElementTy, NumCastVectorElements);
+      Value *OldCast = Builder.CreateBitCast(Old, OldCastTy);
 
-      Value *SVCast = Builder.CreateBitCast(SV, CastElementTy, "tmp");
+      Value *SVCast = Builder.CreateBitCast(SV, CastElementTy);
 
       unsigned EltSize = TD.getTypeAllocSizeInBits(CastElementTy);
       unsigned Elt = Offset/EltSize;
       assert(EltSize*Elt == Offset && "Invalid modulus in validity checking");
       Value *Insert =
-        Builder.CreateInsertElement(OldCast, SVCast, ConstantInt::get(
-                                        Type::getInt32Ty(Context), Elt), "tmp");
-      return Builder.CreateBitCast(Insert, AllocaType, "tmp");
+        Builder.CreateInsertElement(OldCast, SVCast, Builder.getInt32(Elt));
+      return Builder.CreateBitCast(Insert, AllocaType);
     }
 
     // Must be an element insertion.
     assert(SV->getType() == VTy->getElementType());
     uint64_t EltSize = TD.getTypeAllocSizeInBits(VTy->getElementType());
     unsigned Elt = Offset/EltSize;
-    return Builder.CreateInsertElement(Old, SV,
-                     ConstantInt::get(Type::getInt32Ty(SV->getContext()), Elt),
-                                     "tmp");
+    return Builder.CreateInsertElement(Old, SV, Builder.getInt32(Elt));
   }
 
   // If SV is a first-class aggregate value, insert each value recursively.
   if (StructType *ST = dyn_cast<StructType>(SV->getType())) {
     const StructLayout &Layout = *TD.getStructLayout(ST);
     for (unsigned i = 0, e = ST->getNumElements(); i != e; ++i) {
-      Value *Elt = Builder.CreateExtractValue(SV, i, "tmp");
+      Value *Elt = Builder.CreateExtractValue(SV, i);
       Old = ConvertScalar_InsertValue(Elt, Old,
                                       Offset+Layout.getElementOffsetInBits(i),
                                       Builder);
@@ -1024,7 +1016,7 @@ ConvertScalar_InsertValue(Value *SV, Value *Old,
   if (ArrayType *AT = dyn_cast<ArrayType>(SV->getType())) {
     uint64_t EltSize = TD.getTypeAllocSizeInBits(AT->getElementType());
     for (unsigned i = 0, e = AT->getNumElements(); i != e; ++i) {
-      Value *Elt = Builder.CreateExtractValue(SV, i, "tmp");
+      Value *Elt = Builder.CreateExtractValue(SV, i);
       Old = ConvertScalar_InsertValue(Elt, Old, Offset+i*EltSize, Builder);
     }
     return Old;
@@ -1037,20 +1029,19 @@ ConvertScalar_InsertValue(Value *SV, Value *Old,
   unsigned SrcStoreWidth = TD.getTypeStoreSizeInBits(SV->getType());
   unsigned DestStoreWidth = TD.getTypeStoreSizeInBits(AllocaType);
   if (SV->getType()->isFloatingPointTy() || SV->getType()->isVectorTy())
-    SV = Builder.CreateBitCast(SV,
-                            IntegerType::get(SV->getContext(),SrcWidth), "tmp");
+    SV = Builder.CreateBitCast(SV, IntegerType::get(SV->getContext(),SrcWidth));
   else if (SV->getType()->isPointerTy())
-    SV = Builder.CreatePtrToInt(SV, TD.getIntPtrType(SV->getContext()), "tmp");
+    SV = Builder.CreatePtrToInt(SV, TD.getIntPtrType(SV->getContext()));
 
   // Zero extend or truncate the value if needed.
   if (SV->getType() != AllocaType) {
     if (SV->getType()->getPrimitiveSizeInBits() <
              AllocaType->getPrimitiveSizeInBits())
-      SV = Builder.CreateZExt(SV, AllocaType, "tmp");
+      SV = Builder.CreateZExt(SV, AllocaType);
     else {
       // Truncation may be needed if storing more than the alloca can hold
       // (undefined behavior).
-      SV = Builder.CreateTrunc(SV, AllocaType, "tmp");
+      SV = Builder.CreateTrunc(SV, AllocaType);
       SrcWidth = DestWidth;
       SrcStoreWidth = DestStoreWidth;
     }
@@ -1073,12 +1064,10 @@ ConvertScalar_InsertValue(Value *SV, Value *Old,
   // only some bits in the structure are set.
   APInt Mask(APInt::getLowBitsSet(DestWidth, SrcWidth));
   if (ShAmt > 0 && (unsigned)ShAmt < DestWidth) {
-    SV = Builder.CreateShl(SV, ConstantInt::get(SV->getType(),
-                           ShAmt), "tmp");
+    SV = Builder.CreateShl(SV, ConstantInt::get(SV->getType(), ShAmt));
     Mask <<= ShAmt;
   } else if (ShAmt < 0 && (unsigned)-ShAmt < DestWidth) {
-    SV = Builder.CreateLShr(SV, ConstantInt::get(SV->getType(),
-                            -ShAmt), "tmp");
+    SV = Builder.CreateLShr(SV, ConstantInt::get(SV->getType(), -ShAmt));
     Mask = Mask.lshr(-ShAmt);
   }
 
@@ -1224,7 +1213,7 @@ static bool isSafeSelectToSpeculate(SelectInst *SI, const TargetData *TD) {
   for (Value::use_iterator UI = SI->use_begin(), UE = SI->use_end();
        UI != UE; ++UI) {
     LoadInst *LI = dyn_cast<LoadInst>(*UI);
-    if (LI == 0 || LI->isVolatile()) return false;
+    if (LI == 0 || !LI->isSimple()) return false;
     
     // Both operands to the select need to be dereferencable, either absolutely
     // (e.g. allocas) or at this point because we can see other accesses to it.
@@ -1265,7 +1254,7 @@ static bool isSafePHIToSpeculate(PHINode *PN, const TargetData *TD) {
   for (Value::use_iterator UI = PN->use_begin(), UE = PN->use_end();
        UI != UE; ++UI) {
     LoadInst *LI = dyn_cast<LoadInst>(*UI);
-    if (LI == 0 || LI->isVolatile()) return false;
+    if (LI == 0 || !LI->isSimple()) return false;
     
     // For now we only allow loads in the same block as the PHI.  This is a
     // common case that happens when instcombine merges two loads through a PHI.
@@ -1286,17 +1275,21 @@ static bool isSafePHIToSpeculate(PHINode *PN, const TargetData *TD) {
   // trapping load in the predecessor if it is a critical edge.
   for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i) {
     BasicBlock *Pred = PN->getIncomingBlock(i);
+    Value *InVal = PN->getIncomingValue(i);
+
+    // If the terminator of the predecessor has side-effects (an invoke),
+    // there is no safe place to put a load in the predecessor.
+    if (Pred->getTerminator()->mayHaveSideEffects())
+      return false;
+
+    // If the value is produced by the terminator of the predecessor
+    // (an invoke), there is no valid place to put a load in the predecessor.
+    if (Pred->getTerminator() == InVal)
+      return false;
 
     // If the predecessor has a single successor, then the edge isn't critical.
     if (Pred->getTerminator()->getNumSuccessors() == 1)
       continue;
-    
-    Value *InVal = PN->getIncomingValue(i);
-    
-    // If the InVal is an invoke in the pred, we can't put a load on the edge.
-    if (InvokeInst *II = dyn_cast<InvokeInst>(InVal))
-      if (II->getParent() == Pred)
-        return false;
 
     // If this pointer is always safe to load, or if we can prove that there is
     // already a load in the block, then we can move the load to the pred block.
@@ -1323,13 +1316,13 @@ static bool tryToMakeAllocaBePromotable(AllocaInst *AI, const TargetData *TD) {
        UI != UE; ++UI) {
     User *U = *UI;
     if (LoadInst *LI = dyn_cast<LoadInst>(U)) {
-      if (LI->isVolatile())
+      if (!LI->isSimple())
         return false;
       continue;
     }
     
     if (StoreInst *SI = dyn_cast<StoreInst>(U)) {
-      if (SI->getOperand(0) == AI || SI->isVolatile())
+      if (SI->getOperand(0) == AI || !SI->isSimple())
         return false;   // Don't allow a store OF the AI, only INTO the AI.
       continue;
     }
@@ -1717,7 +1710,7 @@ void SROA::isSafeForScalarRepl(Instruction *I, uint64_t Offset,
                       UI.getOperandNo() == 0, Info, MI,
                       true /*AllowWholeAccess*/);
     } else if (LoadInst *LI = dyn_cast<LoadInst>(User)) {
-      if (LI->isVolatile())
+      if (!LI->isSimple())
         return MarkUnsafe(Info, User);
       Type *LIType = LI->getType();
       isSafeMemAccess(Offset, TD->getTypeAllocSize(LIType),
@@ -1726,7 +1719,7 @@ void SROA::isSafeForScalarRepl(Instruction *I, uint64_t Offset,
         
     } else if (StoreInst *SI = dyn_cast<StoreInst>(User)) {
       // Store is ok if storing INTO the pointer, not storing the pointer
-      if (SI->isVolatile() || SI->getOperand(0) == I)
+      if (!SI->isSimple() || SI->getOperand(0) == I)
         return MarkUnsafe(Info, User);
         
       Type *SIType = SI->getOperand(0)->getType();
@@ -1776,7 +1769,7 @@ void SROA::isSafePHISelectUseForScalarRepl(Instruction *I, uint64_t Offset,
         return MarkUnsafe(Info, User);
       isSafePHISelectUseForScalarRepl(GEPI, Offset, Info);
     } else if (LoadInst *LI = dyn_cast<LoadInst>(User)) {
-      if (LI->isVolatile())
+      if (!LI->isSimple())
         return MarkUnsafe(Info, User);
       Type *LIType = LI->getType();
       isSafeMemAccess(Offset, TD->getTypeAllocSize(LIType),
@@ -1785,7 +1778,7 @@ void SROA::isSafePHISelectUseForScalarRepl(Instruction *I, uint64_t Offset,
       
     } else if (StoreInst *SI = dyn_cast<StoreInst>(User)) {
       // Store is ok if storing INTO the pointer, not storing the pointer
-      if (SI->isVolatile() || SI->getOperand(0) == I)
+      if (!SI->isSimple() || SI->getOperand(0) == I)
         return MarkUnsafe(Info, User);
       
       Type *SIType = SI->getOperand(0)->getType();
@@ -2688,7 +2681,7 @@ isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
 
     if (LoadInst *LI = dyn_cast<LoadInst>(U)) {
       // Ignore non-volatile loads, they are always ok.
-      if (LI->isVolatile()) return false;
+      if (!LI->isSimple()) return false;
       continue;
     }
 

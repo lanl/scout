@@ -212,8 +212,10 @@ void MallocOverflowSecurityChecker::OutputPossibleOverflows(
        ++i) {
     SourceRange R = i->mulop->getSourceRange();
     BR.EmitBasicReport("MallocOverflowSecurityChecker",
-        "the computation of the size of the memory allocation may overflow",
-        i->mulop->getOperatorLoc(), &R, 1);
+      "the computation of the size of the memory allocation may overflow",
+      PathDiagnosticLocation::createOperatorLoc(i->mulop,
+                                                BR.getSourceManager()),
+      &R, 1);
   }
 }
 
@@ -242,6 +244,8 @@ void MallocOverflowSecurityChecker::checkASTCodeBody(const Decl *D,
 
           // Get the name of the callee. If it's a builtin, strip off the prefix.
           IdentifierInfo *FnInfo = FD->getIdentifier();
+          if (!FnInfo)
+            return;
 
           if (FnInfo->isStr ("malloc") || FnInfo->isStr ("_MALLOC")) {
             if (TheCall->getNumArgs() == 1)

@@ -1167,6 +1167,12 @@ void Verifier::visitCallInst(CallInst &CI) {
 
 void Verifier::visitInvokeInst(InvokeInst &II) {
   VerifyCallSite(&II);
+
+  // Verify that there is a landingpad instruction as the first non-PHI
+  // instruction of the 'unwind' destination.
+  Assert1(II.getUnwindDest()->isLandingPad(),
+          "The unwind destination does not have a landingpad instruction!",&II);
+
   visitTerminatorInst(II);
 }
 
@@ -1442,6 +1448,22 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
     Assert1(LPI.getPersonalityFn() == PersonalityFn,
             "Personality function doesn't match others in function", &LPI);
   PersonalityFn = LPI.getPersonalityFn();
+
+  // All operands must be constants.
+  Assert1(isa<Constant>(PersonalityFn), "Personality function is not constant!",
+          &LPI);
+  for (unsigned i = 0, e = LPI.getNumClauses(); i < e; ++i) {
+    Value *Clause = LPI.getClause(i);
+    Assert1(isa<Constant>(Clause), "Clause is not constant!", &LPI);
+    if (LPI.isCatch(i)) {
+      Assert1(isa<PointerType>(Clause->getType()),
+              "Catch operand does not have pointer type!", &LPI);
+    } else {
+      Assert1(LPI.isFilter(i), "Clause is neither catch nor filter!", &LPI);
+      Assert1(isa<ConstantArray>(Clause) || isa<ConstantAggregateZero>(Clause),
+              "Filter operand is not an array of constants!", &LPI);
+    }
+  }
 
   visitInstruction(LPI);
 }

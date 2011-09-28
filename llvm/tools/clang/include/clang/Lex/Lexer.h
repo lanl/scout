@@ -22,7 +22,7 @@
 #include <cassert>
 
 namespace clang {
-class Diagnostic;
+class DiagnosticsEngine;
 class SourceManager;
 class Preprocessor;
 class DiagnosticBuilder;

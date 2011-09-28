@@ -107,11 +107,10 @@ public:
   // Make vanilla 'new' and 'delete' illegal for Stmts.
 protected:
   void* operator new(size_t bytes) throw() {
-    assert(0 && "Stmts cannot be allocated with regular 'new'.");
-    return 0;
+    llvm_unreachable("Stmts cannot be allocated with regular 'new'.");
   }
   void operator delete(void* data) throw() {
-    assert(0 && "Stmts cannot be released with regular 'delete'.");
+    llvm_unreachable("Stmts cannot be released with regular 'delete'.");
   }
 
   class StmtBitfields {
@@ -298,6 +297,12 @@ public:
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();
+
+  const Stmt *stripLabelLikeStatements() const;
+  Stmt *stripLabelLikeStatements() {
+    return const_cast<Stmt*>(
+      const_cast<const Stmt*>(this)->stripLabelLikeStatements());
+  }
 
   // Implement isa<T> support.
   static bool classof(const Stmt *) { return true; }

@@ -64,21 +64,16 @@ static MCAsmInfo *createMipsMCAsmInfo(const Target &T, StringRef TT) {
 static MCCodeGenInfo *createMipsMCCodeGenInfo(StringRef TT, Reloc::Model RM,
                                               CodeModel::Model CM) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
-  if (RM == Reloc::Default) {
-    // Abicall enables PIC by default
-    if (TT.find("mipsallegrex") != std::string::npos ||
-        TT.find("psp") != std::string::npos)
-      RM = Reloc::Static;
-    else
-      RM = Reloc::PIC_;
-  }
+  if (RM == Reloc::Default)
+    RM = Reloc::PIC_;
   X->InitMCCodeGenInfo(RM, CM);
   return X;
 }
 
 static MCInstPrinter *createMipsMCInstPrinter(const Target &T,
                                               unsigned SyntaxVariant,
-                                              const MCAsmInfo &MAI) {
+                                              const MCAsmInfo &MAI,
+                                              const MCSubtargetInfo &STI) {
   return new MipsInstPrinter(MAI);
 }
 
@@ -86,27 +81,49 @@ extern "C" void LLVMInitializeMipsTargetMC() {
   // Register the MC asm info.
   RegisterMCAsmInfoFn X(TheMipsTarget, createMipsMCAsmInfo);
   RegisterMCAsmInfoFn Y(TheMipselTarget, createMipsMCAsmInfo);
+  RegisterMCAsmInfoFn A(TheMips64Target, createMipsMCAsmInfo);
+  RegisterMCAsmInfoFn B(TheMips64elTarget, createMipsMCAsmInfo);
 
   // Register the MC codegen info.
   TargetRegistry::RegisterMCCodeGenInfo(TheMipsTarget,
                                         createMipsMCCodeGenInfo);
   TargetRegistry::RegisterMCCodeGenInfo(TheMipselTarget,
                                         createMipsMCCodeGenInfo);
+  TargetRegistry::RegisterMCCodeGenInfo(TheMips64Target,
+                                        createMipsMCCodeGenInfo);
+  TargetRegistry::RegisterMCCodeGenInfo(TheMips64elTarget,
+                                        createMipsMCCodeGenInfo);
 
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(TheMipsTarget, createMipsMCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(TheMipselTarget, createMipsMCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(TheMips64Target, createMipsMCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(TheMips64elTarget, createMipsMCInstrInfo);
 
   // Register the MC register info.
   TargetRegistry::RegisterMCRegInfo(TheMipsTarget, createMipsMCRegisterInfo);
   TargetRegistry::RegisterMCRegInfo(TheMipselTarget, createMipsMCRegisterInfo);
+  TargetRegistry::RegisterMCRegInfo(TheMips64Target, createMipsMCRegisterInfo);
+  TargetRegistry::RegisterMCRegInfo(TheMips64elTarget,
+                                    createMipsMCRegisterInfo);
 
   // Register the MC subtarget info.
   TargetRegistry::RegisterMCSubtargetInfo(TheMipsTarget,
+                                          createMipsMCSubtargetInfo);
+  TargetRegistry::RegisterMCSubtargetInfo(TheMipselTarget,
+                                          createMipsMCSubtargetInfo);
+  TargetRegistry::RegisterMCSubtargetInfo(TheMips64Target,
+                                          createMipsMCSubtargetInfo);
+  TargetRegistry::RegisterMCSubtargetInfo(TheMips64elTarget,
                                           createMipsMCSubtargetInfo);
 
   // Register the MCInstPrinter.
   TargetRegistry::RegisterMCInstPrinter(TheMipsTarget,
                                         createMipsMCInstPrinter);
   TargetRegistry::RegisterMCInstPrinter(TheMipselTarget,
+                                        createMipsMCInstPrinter);
+  TargetRegistry::RegisterMCInstPrinter(TheMips64Target,
+                                        createMipsMCInstPrinter);
+  TargetRegistry::RegisterMCInstPrinter(TheMips64elTarget,
                                         createMipsMCInstPrinter);
 }

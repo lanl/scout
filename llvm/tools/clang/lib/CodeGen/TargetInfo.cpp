@@ -98,6 +98,14 @@ unsigned TargetCodeGenInfo::getSizeOfUnwindException() const {
   return 32;
 }
 
+bool TargetCodeGenInfo::isNoProtoCallVariadic(CallingConv CC) const {
+  // The following conventions are known to require this to be false:
+  //   x86_stdcall
+  //   MIPS
+  // For everything else, we just prefer false unless we opt out.
+  return false;
+}
+
 static bool isEmptyRecord(ASTContext &Context, QualType T, bool AllowArrays);
 
 /// isEmptyField - Return true iff a the field is "empty", that is it
@@ -959,6 +967,15 @@ public:
     return X86AdjustInlineAsmType(CGF, Constraint, Ty);
   }
 
+  bool isNoProtoCallVariadic(CallingConv CC) const {
+    // The default CC on x86-64 sets %al to the number of SSA
+    // registers used, and GCC sets this when calling an unprototyped
+    // function, so we override the default behavior.
+    if (CC == CC_Default || CC == CC_C) return true;
+
+    return TargetCodeGenInfo::isNoProtoCallVariadic(CC);
+  }
+
 };
 
 class WinX86_64TargetCodeGenInfo : public TargetCodeGenInfo {
@@ -1689,7 +1706,7 @@ classifyReturnType(QualType RetTy) const {
 
   case SSEUp:
   case X87Up:
-    assert(0 && "Invalid classification for lo word.");
+    llvm_unreachable("Invalid classification for lo word.");
 
     // AMD64-ABI 3.2.3p4: Rule 2. Types of class memory are returned via
     // hidden argument.
@@ -1743,7 +1760,7 @@ classifyReturnType(QualType RetTy) const {
     // never occur as a hi class.
   case Memory:
   case X87:
-    assert(0 && "Invalid classification for hi word.");
+    llvm_unreachable("Invalid classification for hi word.");
 
   case ComplexX87: // Previously handled.
   case NoClass:
@@ -1831,7 +1848,7 @@ ABIArgInfo X86_64ABIInfo::classifyArgumentType(QualType Ty, unsigned &neededInt,
 
   case SSEUp:
   case X87Up:
-    assert(0 && "Invalid classification for lo word.");
+    llvm_unreachable("Invalid classification for lo word.");
 
     // AMD64-ABI 3.2.3p3: Rule 2. If the class is INTEGER, the next
     // available register of the sequence %rdi, %rsi, %rdx, %rcx, %r8
@@ -1875,8 +1892,7 @@ ABIArgInfo X86_64ABIInfo::classifyArgumentType(QualType Ty, unsigned &neededInt,
   case Memory:
   case X87:
   case ComplexX87:
-    assert(0 && "Invalid classification for hi word.");
-    break;
+    llvm_unreachable("Invalid classification for hi word.");
 
   case NoClass: break;
 
@@ -3021,9 +3037,10 @@ public:
 const unsigned MipsABIInfo::MinABIStackAlignInBytes;
 
 class MIPSTargetCodeGenInfo : public TargetCodeGenInfo {
+  unsigned SizeOfUnwindException;
 public:
-  MIPSTargetCodeGenInfo(CodeGenTypes &CGT)
-    : TargetCodeGenInfo(new MipsABIInfo(CGT)) {}
+  MIPSTargetCodeGenInfo(CodeGenTypes &CGT, unsigned SZ)
+    : TargetCodeGenInfo(new MipsABIInfo(CGT)), SizeOfUnwindException(SZ) {}
 
   int getDwarfEHStackPointer(CodeGen::CodeGenModule &CGM) const {
     return 29;
@@ -3033,7 +3050,7 @@ public:
                                llvm::Value *Address) const;
 
   unsigned getSizeOfUnwindException() const {
-    return 24;
+    return SizeOfUnwindException;
   }
 };
 }
@@ -3169,7 +3186,11 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
 
   case llvm::Triple::mips:
   case llvm::Triple::mipsel:
-    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types));
+    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, 24));
+
+  case llvm::Triple::mips64:
+  case llvm::Triple::mips64el:
+    return *(TheTargetCodeGenInfo = new MIPSTargetCodeGenInfo(Types, 32));
 
   case llvm::Triple::arm:
   case llvm::Triple::thumb:

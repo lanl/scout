@@ -46,7 +46,7 @@ static bool StatSwitch = false;
 
 const char *Decl::getDeclKindName() const {
   switch (DeclKind) {
-  default: assert(0 && "Declaration not in DeclNodes.inc!");
+  default: llvm_unreachable("Declaration not in DeclNodes.inc!");
 #define DECL(DERIVED, BASE) case DERIVED: return #DERIVED;
 #define ABSTRACT_DECL(DECL)
 #include "clang/AST/DeclNodes.inc"
@@ -65,7 +65,7 @@ void Decl::setInvalidDecl(bool Invalid) {
 
 const char *DeclContext::getDeclKindName() const {
   switch (DeclKind) {
-  default: assert(0 && "Declaration context not in DeclNodes.inc!");
+  default: llvm_unreachable("Declaration context not in DeclNodes.inc!");
 #define DECL(DERIVED, BASE) case Decl::DERIVED: return #DERIVED;
 #define ABSTRACT_DECL(DECL)
 #include "clang/AST/DeclNodes.inc"
@@ -103,7 +103,7 @@ void Decl::PrintStats() {
 
 void Decl::add(Kind k) {
   switch (k) {
-  default: assert(0 && "Declaration not in DeclNodes.inc!");
+  default: llvm_unreachable("Declaration not in DeclNodes.inc!");
 #define DECL(DERIVED, BASE) case DERIVED: ++n##DERIVED##s; break;
 #define ABSTRACT_DECL(DECL)
 #include "clang/AST/DeclNodes.inc"
@@ -136,14 +136,18 @@ bool Decl::isFunctionOrFunctionTemplate() const {
   return isa<FunctionDecl>(this) || isa<FunctionTemplateDecl>(this);
 }
 
-bool Decl::isDefinedOutsideFunctionOrMethod() const {
-  for (const DeclContext *DC = getDeclContext(); 
-       DC && !DC->isTranslationUnit(); 
+bool Decl::isTemplateDecl() const {
+  return isa<TemplateDecl>(this);
+}
+
+const DeclContext *Decl::getParentFunctionOrMethod() const {
+  for (const DeclContext *DC = getDeclContext();
+       DC && !DC->isTranslationUnit() && !DC->isNamespace(); 
        DC = DC->getParent())
     if (DC->isFunctionOrMethod())
-      return false;
+      return DC;
 
-  return true;
+  return 0;
 }
 
 
@@ -573,8 +577,7 @@ Decl *Decl::castFromDeclContext (const DeclContext *D) {
       if (DK >= first##NAME && DK <= last##NAME) \
         return static_cast<NAME##Decl*>(const_cast<DeclContext*>(D));
 #include "clang/AST/DeclNodes.inc"
-      assert(false && "a decl that inherits DeclContext isn't handled");
-      return 0;
+      llvm_unreachable("a decl that inherits DeclContext isn't handled");
   }
 }
 
@@ -593,8 +596,7 @@ DeclContext *Decl::castToDeclContext(const Decl *D) {
       if (DK >= first##NAME && DK <= last##NAME)                  \
         return static_cast<NAME##Decl*>(const_cast<Decl*>(D));
 #include "clang/AST/DeclNodes.inc"
-      assert(false && "a decl that inherits DeclContext isn't handled");
-      return 0;
+      llvm_unreachable("a decl that inherits DeclContext isn't handled");
   }
 }
 
@@ -921,7 +923,7 @@ ExternalASTSource::SetNoExternalVisibleDeclsForName(const DeclContext *DC,
 DeclContext::lookup_result
 ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
                                                   DeclarationName Name,
-                                    SmallVectorImpl<NamedDecl*> &Decls) {
+                                                  ArrayRef<NamedDecl*> Decls) {
   ASTContext &Context = DC->getParentASTContext();;
 
   StoredDeclsMap *Map;
@@ -929,11 +931,12 @@ ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
     Map = DC->CreateStoredDeclsMap(Context);
 
   StoredDeclsList &List = (*Map)[Name];
-  for (unsigned I = 0, N = Decls.size(); I != N; ++I) {
+  for (ArrayRef<NamedDecl*>::iterator
+         I = Decls.begin(), E = Decls.end(); I != E; ++I) {
     if (List.isNull())
-      List.setOnlyValue(Decls[I]);
+      List.setOnlyValue(*I);
     else
-      List.AddSubsequentDecl(Decls[I]);
+      List.AddSubsequentDecl(*I);
   }
 
   return List.getLookupResult();

@@ -963,6 +963,8 @@ void ARMAsmPrinter::EmitJump2Table(const MachineInstr *MI) {
       MCInst BrInst;
       BrInst.setOpcode(ARM::t2B);
       BrInst.addOperand(MCOperand::CreateExpr(MBBSymbolExpr));
+      BrInst.addOperand(MCOperand::CreateImm(ARMCC::AL));
+      BrInst.addOperand(MCOperand::CreateReg(0));
       OutStreamer.EmitInstruction(BrInst);
       continue;
     }
@@ -1164,6 +1166,9 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   // Do any auto-generated pseudo lowerings.
   if (emitPseudoExpansionLowering(OutStreamer, MI))
     return;
+
+  assert(!convertAddSubFlagsOpcode(MI->getOpcode()) &&
+         "Pseudo flag setting opcode should be expanded early");
 
   // Check for manual lowerings.
   unsigned Opc = MI->getOpcode();
@@ -1677,6 +1682,8 @@ void ARMAsmPrinter::EmitInstruction(const MachineInstr *MI) {
       MCInst TmpInst;
       TmpInst.setOpcode(ARM::tB);
       TmpInst.addOperand(MCOperand::CreateExpr(SymbolExpr));
+      TmpInst.addOperand(MCOperand::CreateImm(ARMCC::AL));
+      TmpInst.addOperand(MCOperand::CreateReg(0));
       OutStreamer.EmitInstruction(TmpInst);
     }
     {

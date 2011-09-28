@@ -29,8 +29,8 @@ class ASTContext;
 class ASTConsumer;
 class ASTReader;
 class CodeCompleteConsumer;
-class Diagnostic;
-class DiagnosticClient;
+class DiagnosticsEngine;
+class DiagnosticConsumer;
 class ExternalASTSource;
 class FileManager;
 class FrontendAction;
@@ -62,7 +62,7 @@ class CompilerInstance : public ModuleLoader {
   llvm::IntrusiveRefCntPtr<CompilerInvocation> Invocation;
 
   /// The diagnostics engine instance.
-  llvm::IntrusiveRefCntPtr<Diagnostic> Diagnostics;
+  llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics;
 
   /// The target being compiled for.
   llvm::IntrusiveRefCntPtr<TargetInfo> Target;
@@ -252,15 +252,15 @@ public:
   bool hasDiagnostics() const { return Diagnostics != 0; }
 
   /// Get the current diagnostics engine.
-  Diagnostic &getDiagnostics() const {
+  DiagnosticsEngine &getDiagnostics() const {
     assert(Diagnostics && "Compiler instance has no diagnostics!");
     return *Diagnostics;
   }
 
   /// setDiagnostics - Replace the current diagnostics engine.
-  void setDiagnostics(Diagnostic *Value);
+  void setDiagnostics(DiagnosticsEngine *Value);
 
-  DiagnosticClient &getDiagnosticClient() const {
+  DiagnosticConsumer &getDiagnosticClient() const {
     assert(Diagnostics && Diagnostics->getClient() && 
            "Compiler instance has no diagnostic client!");
     return *Diagnostics->getClient();
@@ -455,38 +455,43 @@ public:
   /// allocating one if one is not provided.
   ///
   /// \param Client If non-NULL, a diagnostic client that will be
-  /// attached to (and, then, owned by) the Diagnostic inside this AST
+  /// attached to (and, then, owned by) the DiagnosticsEngine inside this AST
   /// unit.
+  ///
+  /// \param ShouldOwnClient If Client is non-NULL, specifies whether 
+  /// the diagnostic object should take ownership of the client.
   void createDiagnostics(int Argc, const char* const *Argv,
-                         DiagnosticClient *Client = 0);
+                         DiagnosticConsumer *Client = 0,
+                         bool ShouldOwnClient = true);
 
-  /// Create a Diagnostic object with a the TextDiagnosticPrinter.
+  /// Create a DiagnosticsEngine object with a the TextDiagnosticPrinter.
   ///
   /// The \arg Argc and \arg Argv arguments are used only for logging purposes,
   /// when the diagnostic options indicate that the compiler should output
   /// logging information.
   ///
   /// If no diagnostic client is provided, this creates a
-  /// DiagnosticClient that is owned by the returned diagnostic
+  /// DiagnosticConsumer that is owned by the returned diagnostic
   /// object, if using directly the caller is responsible for
-  /// releasing the returned Diagnostic's client eventually.
+  /// releasing the returned DiagnosticsEngine's client eventually.
   ///
   /// \param Opts - The diagnostic options; note that the created text
   /// diagnostic object contains a reference to these options and its lifetime
   /// must extend past that of the diagnostic engine.
   ///
   /// \param Client If non-NULL, a diagnostic client that will be
-  /// attached to (and, then, owned by) the returned Diagnostic
+  /// attached to (and, then, owned by) the returned DiagnosticsEngine
   /// object.
   ///
   /// \param CodeGenOpts If non-NULL, the code gen options in use, which may be
   /// used by some diagnostics printers (for logging purposes only).
   ///
   /// \return The new object on success, or null on failure.
-  static llvm::IntrusiveRefCntPtr<Diagnostic> 
+  static llvm::IntrusiveRefCntPtr<DiagnosticsEngine> 
   createDiagnostics(const DiagnosticOptions &Opts, int Argc,
                     const char* const *Argv,
-                    DiagnosticClient *Client = 0,
+                    DiagnosticConsumer *Client = 0,
+                    bool ShouldOwnClient = true,
                     const CodeGenOptions *CodeGenOpts = 0);
 
   /// Create the file manager and replace any existing one with it.
@@ -607,7 +612,7 @@ public:
   ///
   /// \return True on success.
   static bool InitializeSourceManager(StringRef InputFile,
-                                      Diagnostic &Diags,
+                                      DiagnosticsEngine &Diags,
                                       FileManager &FileMgr,
                                       SourceManager &SourceMgr,
                                       const FrontendOptions &Opts);

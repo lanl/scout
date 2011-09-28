@@ -305,10 +305,10 @@ static bool isOpcWithIntImmediate(SDNode *N, unsigned Opc, unsigned& Imm) {
 /// (N * Scale) where (N in [\arg RangeMin, \arg RangeMax).
 ///
 /// \param ScaledConstant [out] - On success, the pre-scaled constant value.
-static bool isScaledConstantInRange(SDValue Node, unsigned Scale,
+static bool isScaledConstantInRange(SDValue Node, int Scale,
                                     int RangeMin, int RangeMax,
                                     int &ScaledConstant) {
-  assert(Scale && "Invalid scale!");
+  assert(Scale > 0 && "Invalid scale!");
 
   // Check that this is a constant.
   const ConstantSDNode *C = dyn_cast<ConstantSDNode>(Node);
@@ -1390,15 +1390,15 @@ SDNode *ARMDAGToDAGISel::SelectARMIndexedLoad(SDNode *N) {
       SDValue Base = LD->getBasePtr();
       SDValue Ops[]= { Base, AMOpc, getAL(CurDAG),
                        CurDAG->getRegister(0, MVT::i32), Chain };
-      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32, MVT::i32,
-                                    MVT::Other, Ops, 5);
+      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32,
+                                    MVT::i32, MVT::Other, Ops, 5);
     } else {
       SDValue Chain = LD->getChain();
       SDValue Base = LD->getBasePtr();
       SDValue Ops[]= { Base, Offset, AMOpc, getAL(CurDAG),
                        CurDAG->getRegister(0, MVT::i32), Chain };
-      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32, MVT::i32,
-                                    MVT::Other, Ops, 6);
+      return CurDAG->getMachineNode(Opcode, N->getDebugLoc(), MVT::i32,
+                                    MVT::i32, MVT::Other, Ops, 6);
     }
   }
 

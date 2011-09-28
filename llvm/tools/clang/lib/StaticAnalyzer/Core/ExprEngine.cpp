@@ -1035,8 +1035,7 @@ void ExprEngine::processIndirectGoto(IndirectGotoNodeBuilder &builder) {
       }
     }
 
-    assert(false && "No block with label.");
-    return;
+    llvm_unreachable("No block with label.");
   }
 
   if (isa<loc::ConcreteInt>(V) || isa<UndefinedVal>(V)) {

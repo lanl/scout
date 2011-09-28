@@ -41,6 +41,8 @@ static CXCursorKind GetCursorKind(const Attr *A) {
     case attr::IBAction: return CXCursor_IBActionAttr;
     case attr::IBOutlet: return CXCursor_IBOutletAttr;
     case attr::IBOutletCollection: return CXCursor_IBOutletCollectionAttr;
+    case attr::Final: return CXCursor_CXXFinalAttr;
+    case attr::Override: return CXCursor_CXXOverrideAttr;
   }
 
   return CXCursor_UnexposedAttr;
@@ -367,10 +369,12 @@ CXCursor cxcursor::MakePreprocessingDirectiveCursor(SourceRange Range,
 
 SourceRange cxcursor::getCursorPreprocessingDirective(CXCursor C) {
   assert(C.kind == CXCursor_PreprocessingDirective);
-  return SourceRange(SourceLocation::getFromRawEncoding(
+  SourceRange Range = SourceRange(SourceLocation::getFromRawEncoding(
                                       reinterpret_cast<uintptr_t> (C.data[0])),
                      SourceLocation::getFromRawEncoding(
                                       reinterpret_cast<uintptr_t> (C.data[1])));
+  ASTUnit *TU = getCursorASTUnit(C);
+  return TU->mapRangeFromPreamble(Range);
 }
 
 CXCursor cxcursor::MakeMacroDefinitionCursor(MacroDefinition *MI,
@@ -518,6 +522,22 @@ bool cxcursor::isFirstInDeclGroup(CXCursor C) {
   assert(clang_isDeclaration(C.kind));
   return ((uintptr_t) (C.data[1])) != 0;
 }
+
+//===----------------------------------------------------------------------===//
+// libclang CXCursor APIs
+//===----------------------------------------------------------------------===//
+
+extern "C" {
+
+int clang_Cursor_isNull(CXCursor cursor) {
+  return clang_equalCursors(cursor, clang_getNullCursor());
+}
+
+CXTranslationUnit clang_Cursor_getTranslationUnit(CXCursor cursor) {
+  return getCursorTU(cursor);
+}
+
+} // end: extern "C"
 
 //===----------------------------------------------------------------------===//
 // CXCursorSet.

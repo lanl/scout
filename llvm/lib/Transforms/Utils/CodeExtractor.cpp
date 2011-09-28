@@ -55,9 +55,9 @@ namespace {
     CodeExtractor(DominatorTree* dt = 0, bool AggArgs = false)
       : DT(dt), AggregateArgs(AggArgs||AggregateArgsOpt), NumExitBlocks(~0U) {}
 
-    Function *ExtractCodeRegion(const std::vector<BasicBlock*> &code);
+    Function *ExtractCodeRegion(ArrayRef<BasicBlock*> code);
 
-    bool isEligible(const std::vector<BasicBlock*> &code);
+    bool isEligible(ArrayRef<BasicBlock*> code);
 
   private:
     /// definedInRegion - Return true if the specified value is defined in the
@@ -191,13 +191,13 @@ void CodeExtractor::splitReturnBlocks() {
         DomTreeNode *OldNode = DT->getNode(*I);
         SmallVector<DomTreeNode*, 8> Children;
         for (DomTreeNode::iterator DI = OldNode->begin(), DE = OldNode->end();
-             DI != DE; ++DI)
+             DI != DE; ++DI) 
           Children.push_back(*DI);
 
         DomTreeNode *NewNode = DT->addNewBlock(New, *I);
 
         for (SmallVector<DomTreeNode*, 8>::iterator I = Children.begin(),
-               E = Children.end(); I != E; ++I)
+               E = Children.end(); I != E; ++I) 
           DT->changeImmediateDominator(*I, NewNode);
       }
     }
@@ -301,7 +301,7 @@ Function *CodeExtractor::constructFunction(const Values &inputs,
   // If the old function is no-throw, so is the new one.
   if (oldFunction->doesNotThrow())
     newFunction->setDoesNotThrow(true);
-
+  
   newFunction->getBasicBlockList().push_back(newRootNode);
 
   // Create an iterator to name all of the arguments we inserted.
@@ -316,7 +316,7 @@ Function *CodeExtractor::constructFunction(const Values &inputs,
       Idx[0] = Constant::getNullValue(Type::getInt32Ty(header->getContext()));
       Idx[1] = ConstantInt::get(Type::getInt32Ty(header->getContext()), i);
       TerminatorInst *TI = newFunction->begin()->getTerminator();
-      GetElementPtrInst *GEP =
+      GetElementPtrInst *GEP = 
         GetElementPtrInst::Create(AI, Idx, "gep_" + inputs[i]->getName(), TI);
       RewriteVal = new LoadInst(GEP, "loadgep_" + inputs[i]->getName(), TI);
     } else
@@ -364,7 +364,7 @@ static BasicBlock* FindPhiPredForUseInBlock(Value* Used, BasicBlock* BB) {
      if (P && P->getParent() == BB)
        return P->getIncomingBlock(UI);
   }
-
+  
   return 0;
 }
 
@@ -377,7 +377,7 @@ emitCallAndSwitchStatement(Function *newFunction, BasicBlock *codeReplacer,
   // Emit a call to the new function, passing in: *pointer to struct (if
   // aggregating parameters), or plan inputs and allocated memory for outputs
   std::vector<Value*> params, StructValues, ReloadOutputs, Reloads;
-
+  
   LLVMContext &Context = newFunction->getContext();
 
   // Add inputs as params, or to be filled into the struct
@@ -542,12 +542,12 @@ emitCallAndSwitchStatement(Function *newFunction, BasicBlock *codeReplacer,
 
             if (DT) {
               DominatesDef = DT->dominates(DefBlock, OldTarget);
-
+              
               // If the output value is used by a phi in the target block,
               // then we need to test for dominance of the phi's predecessor
               // instead.  Unfortunately, this a little complicated since we
               // have already rewritten uses of the value to uses of the reload.
-              BasicBlock* pred = FindPhiPredForUseInBlock(Reloads[out],
+              BasicBlock* pred = FindPhiPredForUseInBlock(Reloads[out], 
                                                           OldTarget);
               if (pred && DT && DT->dominates(DefBlock, pred))
                 DominatesDef = true;
@@ -595,7 +595,7 @@ emitCallAndSwitchStatement(Function *newFunction, BasicBlock *codeReplacer,
     } else {
       // Otherwise we must have code extracted an unwind or something, just
       // return whatever we want.
-      ReturnInst::Create(Context,
+      ReturnInst::Create(Context, 
                          Constant::getNullValue(OldFnRetTy), TheSwitch);
     }
 
@@ -654,7 +654,7 @@ void CodeExtractor::moveCodeToFunction(Function *newFunction) {
 /// computed result back into memory.
 ///
 Function *CodeExtractor::
-ExtractCodeRegion(const std::vector<BasicBlock*> &code) {
+ExtractCodeRegion(ArrayRef<BasicBlock*> code) {
   if (!isEligible(code))
     return 0;
 
@@ -689,13 +689,13 @@ ExtractCodeRegion(const std::vector<BasicBlock*> &code) {
   Function *oldFunction = header->getParent();
 
   // This takes place of the original loop
-  BasicBlock *codeReplacer = BasicBlock::Create(header->getContext(),
+  BasicBlock *codeReplacer = BasicBlock::Create(header->getContext(), 
                                                 "codeRepl", oldFunction,
                                                 header);
 
   // The new function needs a root node because other nodes can branch to the
   // head of the region, but the entry node of a function cannot have preds.
-  BasicBlock *newFuncRoot = BasicBlock::Create(header->getContext(),
+  BasicBlock *newFuncRoot = BasicBlock::Create(header->getContext(), 
                                                "newFuncRoot");
   newFuncRoot->getInstList().push_back(BranchInst::Create(header));
 
@@ -749,27 +749,24 @@ ExtractCodeRegion(const std::vector<BasicBlock*> &code) {
   //  cerr << "OLD FUNCTION: " << *oldFunction;
   //  verifyFunction(*oldFunction);
 
-  DEBUG(if (verifyFunction(*newFunction))
+  DEBUG(if (verifyFunction(*newFunction)) 
         report_fatal_error("verifyFunction failed!"));
   return newFunction;
 }
 
-bool CodeExtractor::isEligible(const std::vector<BasicBlock*> &code) {
+bool CodeExtractor::isEligible(ArrayRef<BasicBlock*> code) {
+  // Deny a single basic block that's a landing pad block.
+  if (code.size() == 1 && code[0]->isLandingPad())
+    return false;
+
   // Deny code region if it contains allocas or vastarts.
-  for (std::vector<BasicBlock*>::const_iterator BB = code.begin(), e=code.end();
+  for (ArrayRef<BasicBlock*>::iterator BB = code.begin(), e=code.end();
        BB != e; ++BB)
     for (BasicBlock::const_iterator I = (*BB)->begin(), Ie = (*BB)->end();
          I != Ie; ++I)
-      if (isa<AllocaInst>(*I)) {
-        // Deny code region if alloca does not perfectly nest within region.
-        typedef Value::const_use_iterator ConstUseIterator;
-        for(ConstUseIterator i = I->use_begin(), e = I->use_end(); i != e; ++i) {
-          const BasicBlock *bb = (dyn_cast< Instruction >(*i))->getParent();
-          if(find(code.begin(), code.end(), bb) == code.end()) {
-            return false;
-          }
-        }
-      } else if (const CallInst *CI = dyn_cast<CallInst>(I))
+      if (isa<AllocaInst>(*I))
+        return false;
+      else if (const CallInst *CI = dyn_cast<CallInst>(I))
         if (const Function *F = CI->getCalledFunction())
           if (F->getIntrinsicID() == Intrinsic::vastart)
             return false;
@@ -777,25 +774,23 @@ bool CodeExtractor::isEligible(const std::vector<BasicBlock*> &code) {
 }
 
 
-/// ExtractCodeRegion - slurp a sequence of basic blocks into a brand new
-/// function
+/// ExtractCodeRegion - Slurp a sequence of basic blocks into a brand new
+/// function.
 ///
 Function* llvm::ExtractCodeRegion(DominatorTree &DT,
-                                  const std::vector<BasicBlock*> &code,
+                                  ArrayRef<BasicBlock*> code,
                                   bool AggregateArgs) {
   return CodeExtractor(&DT, AggregateArgs).ExtractCodeRegion(code);
 }
 
-/// ExtractBasicBlock - slurp a natural loop into a brand new function
+/// ExtractLoop - Slurp a natural loop into a brand new function.
 ///
 Function* llvm::ExtractLoop(DominatorTree &DT, Loop *L, bool AggregateArgs) {
   return CodeExtractor(&DT, AggregateArgs).ExtractCodeRegion(L->getBlocks());
 }
 
-/// ExtractBasicBlock - slurp a basic block into a brand new function
+/// ExtractBasicBlock - Slurp a basic block into a brand new function.
 ///
-Function* llvm::ExtractBasicBlock(BasicBlock *BB, bool AggregateArgs) {
-  std::vector<BasicBlock*> Blocks;
-  Blocks.push_back(BB);
-  return CodeExtractor(0, AggregateArgs).ExtractCodeRegion(Blocks);
+Function* llvm::ExtractBasicBlock(ArrayRef<BasicBlock*> BBs, bool AggregateArgs){
+  return CodeExtractor(0, AggregateArgs).ExtractCodeRegion(BBs);
 }

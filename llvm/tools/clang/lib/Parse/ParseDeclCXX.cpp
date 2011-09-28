@@ -548,6 +548,15 @@ Decl *Parser::ParseUsingDeclaration(unsigned Context,
     return 0;
   }
 
+  // "typename" keyword is allowed for identifiers only,
+  // because it may be a type definition.
+  if (IsTypeName && Name.getKind() != UnqualifiedId::IK_Identifier) {
+    Diag(Name.getSourceRange().getBegin(), diag::err_typename_identifiers_only)
+      << FixItHint::CreateRemoval(SourceRange(TypenameLoc));
+    // Proceed parsing, but reset the IsTypeName flag.
+    IsTypeName = false;
+  }
+
   if (IsAliasDecl) {
     TemplateParameterLists *TemplateParams = TemplateInfo.TemplateParams;
     MultiTemplateParamsArg TemplateParamsArg(Actions,
@@ -1144,7 +1153,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
       // Build the class template specialization.
       TagOrTempResult
         = Actions.ActOnClassTemplateSpecialization(getCurScope(), TagType, TUK,
-                       StartLoc, SS,
+                       StartLoc, DS.getModulePrivateSpecLoc(), SS,
                        TemplateId->Template,
                        TemplateId->TemplateNameLoc,
                        TemplateId->LAngleLoc,
@@ -1196,6 +1205,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     // Declaration or definition of a class type
     TagOrTempResult = Actions.ActOnTag(getCurScope(), TagType, TUK, StartLoc,
                                        SS, Name, NameLoc, attrs.getList(), AS,
+                                       DS.getModulePrivateSpecLoc(),
                                        TParams, Owned, IsDependent, false,
                                        false, clang::TypeResult());
 
@@ -1574,7 +1584,6 @@ bool Parser::isCXX0XFinalKeyword() const {
 ///       virt-specifier:
 ///         override
 ///         final
-///         new
 /// 
 ///       pure-specifier:
 ///         '= 0'
@@ -1710,6 +1719,9 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
   VirtSpecifiers VS;
   ExprResult Init;
 
+  // Hold late-parsed attributes so we can attach a Decl to them later.
+  LateParsedAttrList LateParsedAttrs;
+
   if (Tok.isNot(tok::colon)) {
     // Don't parse FOO:BAR as if it were a typo for FOO::BAR.
     ColonProtectionRAIIObject X(*this);
@@ -1728,11 +1740,11 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     ParseOptionalCXX0XVirtSpecifierSeq(VS);
 
     // If attributes exist after the declarator, but before an '{', parse them.
-    MaybeParseGNUAttributes(DeclaratorInfo);
+    MaybeParseGNUAttributes(DeclaratorInfo, &LateParsedAttrs);
 
     // MSVC permits pure specifier on inline functions declared at class scope.
     // Hence check for =0 before checking for function definition.
-    if (getLang().Microsoft && Tok.is(tok::equal) &&
+    if (getLang().MicrosoftExt && Tok.is(tok::equal) &&
         DeclaratorInfo.isFunctionDeclarator() && 
         NextToken().is(tok::numeric_constant)) {
       ConsumeToken();
@@ -1785,7 +1797,13 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
         return;
       }
 
-      ParseCXXInlineMethodDef(AS, DeclaratorInfo, TemplateInfo, VS, Init);
+      Decl *FunDecl =
+        ParseCXXInlineMethodDef(AS, DeclaratorInfo, TemplateInfo, VS, Init);
+
+      for (unsigned i = 0, ni = LateParsedAttrs.size(); i < ni; ++i) {
+        LateParsedAttrs[i]->setDecl(FunDecl);
+      }
+      LateParsedAttrs.clear();
 
       // Consume the ';' - it's optional unless we have a delete or default
       if (Tok.is(tok::semi)) {
@@ -1827,7 +1845,7 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     }
 
     // If attributes exist after the declarator, parse them.
-    MaybeParseGNUAttributes(DeclaratorInfo);
+    MaybeParseGNUAttributes(DeclaratorInfo, &LateParsedAttrs);
 
     // FIXME: When g++ adds support for this, we'll need to check whether it
     // goes before or after the GNU attributes and __asm__.
@@ -1884,6 +1902,12 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
     }
 
     DeclaratorInfo.complete(ThisDecl);
+
+    // Set the Decl for any late parsed attributes
+    for (unsigned i = 0, ni = LateParsedAttrs.size(); i < ni; ++i) {
+      LateParsedAttrs[i]->setDecl(ThisDecl);
+    }
+    LateParsedAttrs.clear();
 
     if (HasDeferredInitializer) {
       if (!getLang().CPlusPlus0x)
@@ -2097,7 +2121,7 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
     while (Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
       // Each iteration of this loop reads one member-declaration.
 
-      if (getLang().Microsoft && (Tok.is(tok::kw___if_exists) ||
+      if (getLang().MicrosoftExt && (Tok.is(tok::kw___if_exists) ||
           Tok.is(tok::kw___if_not_exists))) {
         ParseMicrosoftIfExistsClassDeclaration((DeclSpec::TST)TagType, CurAS);
         continue;
@@ -2156,8 +2180,10 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
   if (TagDecl && NonNestedClass) {
     // We are not inside a nested class. This class and its nested classes
     // are complete and we can parse the delayed portions of method
-    // declarations and the lexed inline method definitions.
+    // declarations and the lexed inline method definitions, along with any
+    // delayed attributes.
     SourceLocation SavedPrevTokLocation = PrevTokLocation;
+    ParseLexedAttributes(getCurrentClass());
     ParseLexedMethodDeclarations(getCurrentClass());
     ParseLexedMemberInitializers(getCurrentClass());
     ParseLexedMethodDefs(getCurrentClass());
@@ -2278,9 +2304,17 @@ Parser::MemInitResult Parser::ParseMemInitializer(Decl *ConstructorDecl) {
 
   // Parse the '('.
   if (getLang().CPlusPlus0x && Tok.is(tok::l_brace)) {
-    // FIXME: Do something with the braced-init-list.
-    ParseBraceInitializer();
-    return true;
+    ExprResult InitList = ParseBraceInitializer();
+    if (InitList.isInvalid())
+      return true;
+
+    SourceLocation EllipsisLoc;
+    if (Tok.is(tok::ellipsis))
+      EllipsisLoc = ConsumeToken();
+
+    return Actions.ActOnMemInitializer(ConstructorDecl, getCurScope(), SS, II,
+                                       TemplateTypeTy, IdLoc, InitList.take(),
+                                       EllipsisLoc);
   } else if(Tok.is(tok::l_paren)) {
     SourceLocation LParenLoc = ConsumeParen();
 
@@ -2411,7 +2445,7 @@ ExceptionSpecificationType Parser::ParseDynamicExceptionSpecification(
   // can throw anything".
   if (Tok.is(tok::ellipsis)) {
     SourceLocation EllipsisLoc = ConsumeToken();
-    if (!getLang().Microsoft)
+    if (!getLang().MicrosoftExt)
       Diag(EllipsisLoc, diag::ext_ellipsis_exception_spec);
     SourceLocation RParenLoc = MatchRHSPunctuation(tok::r_paren, LParenLoc);
     SpecificationRange.setEnd(RParenLoc);

@@ -425,9 +425,10 @@ static bool IsAlwaysTail(InstructionClass Class) {
 /// IsNoThrow - Test if the given class represents instructions which are always
 /// safe to mark with the nounwind attribute..
 static bool IsNoThrow(InstructionClass Class) {
+  // objc_retainBlock is not nounwind because it calls user copy constructors
+  // which could theoretically throw.
   return Class == IC_Retain ||
          Class == IC_RetainRV ||
-         Class == IC_RetainBlock ||
          Class == IC_Release ||
          Class == IC_Autorelease ||
          Class == IC_AutoreleaseRV ||
@@ -746,7 +747,6 @@ ObjCARCAliasAnalysis::getModRefInfo(ImmutableCallSite CS, const Location &Loc) {
   switch (GetBasicInstructionClass(CS.getInstruction())) {
   case IC_Retain:
   case IC_RetainRV:
-  case IC_RetainBlock:
   case IC_Autorelease:
   case IC_AutoreleaseRV:
   case IC_NoopCast:
@@ -754,6 +754,8 @@ ObjCARCAliasAnalysis::getModRefInfo(ImmutableCallSite CS, const Location &Loc) {
   case IC_FusedRetainAutorelease:
   case IC_FusedRetainAutoreleaseRV:
     // These functions don't access any memory visible to the compiler.
+    // Note that this doesn't include objc_retainBlock, becuase it updates
+    // pointers when it copies block data.
     return NoModRef;
   default:
     break;
@@ -1604,7 +1606,8 @@ Constant *ObjCARCOpt::getRetainBlockCallee(Module *M) {
     std::vector<Type *> Params;
     Params.push_back(PointerType::getUnqual(Type::getInt8Ty(C)));
     AttrListPtr Attributes;
-    Attributes.addAttr(~0u, Attribute::NoUnwind);
+    // objc_retainBlock is not nounwind because it calls user copy constructors
+    // which could theoretically throw.
     RetainBlockCallee =
       M->getOrInsertFunction(
         "objc_retainBlock",
@@ -3474,7 +3477,7 @@ ObjCARCContract::ContractAutorelease(Function &F, Instruction *Autorelease,
 void ObjCARCContract::ContractRelease(Instruction *Release,
                                       inst_iterator &Iter) {
   LoadInst *Load = dyn_cast<LoadInst>(GetObjCArg(Release));
-  if (!Load || Load->isVolatile()) return;
+  if (!Load || !Load->isSimple()) return;
 
   // For now, require everything to be in one basic block.
   BasicBlock *BB = Release->getParent();
@@ -3490,7 +3493,7 @@ void ObjCARCContract::ContractRelease(Instruction *Release,
           !(AA->getModRefInfo(I, Loc) & AliasAnalysis::Mod)))
     ++I;
   StoreInst *Store = dyn_cast<StoreInst>(I);
-  if (!Store || Store->isVolatile()) return;
+  if (!Store || !Store->isSimple()) return;
   if (Store->getPointerOperand() != Loc.Ptr) return;
 
   Value *New = StripPointerCastsAndObjCCalls(Store->getValueOperand());

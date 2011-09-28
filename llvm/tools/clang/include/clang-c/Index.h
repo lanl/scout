@@ -336,6 +336,11 @@ CINDEX_LINKAGE unsigned clang_equalRanges(CXSourceRange range1,
                                           CXSourceRange range2);
 
 /**
+ * \brief Returns non-zero if \arg range is null.
+ */
+int clang_Range_isNull(CXSourceRange range);
+
+/**
  * \brief Retrieve the file, line, column, and offset represented by
  * the given source location.
  *
@@ -362,6 +367,49 @@ CINDEX_LINKAGE void clang_getExpansionLocation(CXSourceLocation location,
                                                unsigned *line,
                                                unsigned *column,
                                                unsigned *offset);
+
+/**
+ * \brief Retrieve the file, line, column, and offset represented by
+ * the given source location, as specified in a # line directive.
+ *
+ * Example: given the following source code in a file somefile.c
+ *
+ * #123 "dummy.c" 1
+ *
+ * static int func(void)
+ * {
+ *     return 0;
+ * }
+ *
+ * the location information returned by this function would be
+ *
+ * File: dummy.c Line: 124 Column: 12
+ *
+ * whereas clang_getExpansionLocation would have returned
+ *
+ * File: somefile.c Line: 3 Column: 12
+ *
+ * \param location the location within a source file that will be decomposed
+ * into its parts.
+ *
+ * \param filename [out] if non-NULL, will be set to the filename of the
+ * source location. Note that filenames returned will be for "virtual" files,
+ * which don't necessarily exist on the machine running clang - e.g. when
+ * parsing preprocessed output obtained from a different environment. If
+ * a non-NULL value is passed in, remember to dispose of the returned value
+ * using \c clang_disposeString() once you've finished with it. For an invalid
+ * source location, an empty string is returned.
+ *
+ * \param line [out] if non-NULL, will be set to the line number of the
+ * source location. For an invalid source location, zero is returned.
+ *
+ * \param column [out] if non-NULL, will be set to the column number of the
+ * source location. For an invalid source location, zero is returned.
+ */
+CINDEX_LINKAGE void clang_getPresumedLocation(CXSourceLocation location,
+                                              CXString *filename,
+                                              unsigned *line,
+                                              unsigned *column);
 
 /**
  * \brief Legacy API to retrieve the file, line, column, and offset represented
@@ -1450,7 +1498,9 @@ enum CXCursorKind {
   CXCursor_IBActionAttr                  = 401,
   CXCursor_IBOutletAttr                  = 402,
   CXCursor_IBOutletCollectionAttr        = 403,
-  CXCursor_LastAttr                      = CXCursor_IBOutletCollectionAttr,
+  CXCursor_CXXFinalAttr                  = 404,
+  CXCursor_CXXOverrideAttr               = 405,
+  CXCursor_LastAttr                      = CXCursor_CXXOverrideAttr,
      
   /* Preprocessing */
   CXCursor_PreprocessingDirective        = 500,
@@ -1508,6 +1558,11 @@ CINDEX_LINKAGE CXCursor clang_getTranslationUnitCursor(CXTranslationUnit);
  * \brief Determine whether two cursors are equivalent.
  */
 CINDEX_LINKAGE unsigned clang_equalCursors(CXCursor, CXCursor);
+
+/**
+ * \brief Returns non-zero if \arg cursor is null.
+ */
+int clang_Cursor_isNull(CXCursor);
 
 /**
  * \brief Compute a hash value for the given cursor.
@@ -1623,6 +1678,11 @@ CINDEX_LINKAGE enum CXLanguageKind {
  * \brief Determine the "language" of the entity referred to by a given cursor.
  */
 CINDEX_LINKAGE enum CXLanguageKind clang_getCursorLanguage(CXCursor cursor);
+
+/**
+ * \brief Returns the translation unit that a cursor originated from.
+ */
+CINDEX_LINKAGE CXTranslationUnit clang_Cursor_getTranslationUnit(CXCursor);
 
 
 /**
@@ -1910,7 +1970,8 @@ enum CXTypeKind {
   CXType_ObjCInterface = 108,
   CXType_ObjCObjectPointer = 109,
   CXType_FunctionNoProto = 110,
-  CXType_FunctionProto = 111
+  CXType_FunctionProto = 111,
+  CXType_ConstantArray = 112
 };
 
 /**
@@ -2000,6 +2061,20 @@ CINDEX_LINKAGE CXType clang_getCursorResultType(CXCursor C);
  *  otherwise.
  */
 CINDEX_LINKAGE unsigned clang_isPODType(CXType T);
+
+/**
+ * \brief Return the element type of an array type.
+ *
+ * If a non-array type is passed in, an invalid type is returned.
+ */
+CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
+
+/**
+ * \brief Return the the array size of a constant array.
+ *
+ * If a non-array type is passed in, -1 is returned.
+ */
+CINDEX_LINKAGE long long clang_getArraySize(CXType T);
 
 /**
  * \brief Returns 1 if the base class specified by the cursor with kind

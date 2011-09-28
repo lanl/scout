@@ -146,10 +146,8 @@ struct AccessTarget : public AccessedEntity {
                MemberNonce _,
                CXXRecordDecl *NamingClass,
                DeclAccessPair FoundDecl,
-               QualType BaseObjectType,
-               bool IsUsingDecl = false)
-    : AccessedEntity(Context, Member, NamingClass, FoundDecl, BaseObjectType),
-      IsUsingDeclaration(IsUsingDecl) {
+               QualType BaseObjectType)
+    : AccessedEntity(Context, Member, NamingClass, FoundDecl, BaseObjectType) {
     initialize();
   }
 
@@ -218,7 +216,6 @@ private:
     DeclaringClass = DeclaringClass->getCanonicalDecl();
   }
 
-  bool IsUsingDeclaration : 1;
   bool HasInstanceContext : 1;
   mutable bool CalculatedInstanceContext : 1;
   mutable const CXXRecordDecl *InstanceContext;
@@ -1273,7 +1270,7 @@ static AccessResult CheckEffectiveAccess(Sema &S,
                                          AccessTarget &Entity) {
   assert(Entity.getAccess() != AS_public && "called for public access!");
 
-  if (S.getLangOptions().Microsoft &&
+  if (S.getLangOptions().MicrosoftMode &&
       IsMicrosoftUsingDeclarationAccessBug(S, Loc, Entity))
     return AR_accessible;
 
@@ -1554,8 +1551,7 @@ Sema::AccessResult Sema::CheckMemberOperatorAccess(SourceLocation OpLoc,
       Found.getAccess() == AS_public)
     return AR_accessible;
 
-  const RecordType *RT = ObjectExpr->getType()->getAs<RecordType>();
-  assert(RT && "found member operator but object expr not of record type");
+  const RecordType *RT = ObjectExpr->getType()->castAs<RecordType>();
   CXXRecordDecl *NamingClass = cast<CXXRecordDecl>(RT->getDecl());
 
   AccessTarget Entity(Context, AccessTarget::Member, NamingClass, Found,
@@ -1638,7 +1634,7 @@ void Sema::CheckLookupAccess(const LookupResult &R) {
     if (I.getAccess() != AS_public) {
       AccessTarget Entity(Context, AccessedEntity::Member,
                           R.getNamingClass(), I.getPair(),
-                          R.getBaseObjectType(), R.isUsingDeclaration());
+                          R.getBaseObjectType());
       Entity.setDiag(diag::err_access);
       CheckAccess(*this, R.getNameLoc(), Entity);
     }

@@ -403,7 +403,7 @@ static void AddNodeIDCustom(FoldingSetNodeID &ID, const SDNode *N) {
     ID.AddInteger(CP->getAlignment());
     ID.AddInteger(CP->getOffset());
     if (CP->isMachineConstantPoolEntry())
-      CP->getMachineCPVal()->AddSelectionDAGCSEId(ID);
+      CP->getMachineCPVal()->addSelectionDAGCSEId(ID);
     else
       ID.AddPointer(CP->getConstVal());
     ID.AddInteger(CP->getTargetFlags());
@@ -771,11 +771,14 @@ static void VerifyNodeCommon(SDNode *N) {
     assert(N->getNumOperands() == N->getValueType(0).getVectorNumElements() &&
            "Wrong number of operands!");
     EVT EltVT = N->getValueType(0).getVectorElementType();
-    for (SDNode::op_iterator I = N->op_begin(), E = N->op_end(); I != E; ++I)
+    for (SDNode::op_iterator I = N->op_begin(), E = N->op_end(); I != E; ++I) {
       assert((I->getValueType() == EltVT ||
              (EltVT.isInteger() && I->getValueType().isInteger() &&
               EltVT.bitsLE(I->getValueType()))) &&
             "Wrong operand type!");
+      assert(I->getValueType() == N->getOperand(0).getValueType() &&
+             "Operands must all have the same type");
+    }
     break;
   }
   }
@@ -878,6 +881,12 @@ void SelectionDAG::clear() {
   DbgInfo->clear();
 }
 
+SDValue SelectionDAG::getAnyExtOrTrunc(SDValue Op, DebugLoc DL, EVT VT) {
+  return VT.bitsGT(Op.getValueType()) ?
+    getNode(ISD::ANY_EXTEND, DL, VT, Op) :
+    getNode(ISD::TRUNCATE, DL, VT, Op);
+}
+
 SDValue SelectionDAG::getSExtOrTrunc(SDValue Op, DebugLoc DL, EVT VT) {
   return VT.bitsGT(Op.getValueType()) ?
     getNode(ISD::SIGN_EXTEND, DL, VT, Op) :
@@ -927,13 +936,25 @@ SDValue SelectionDAG::getConstant(const ConstantInt &Val, EVT VT, bool isT) {
   assert(VT.isInteger() && "Cannot create FP integer constant!");
 
   EVT EltVT = VT.getScalarType();
-  assert(Val.getBitWidth() == EltVT.getSizeInBits() &&
-         "APInt size does not match type size!");
+  const ConstantInt *Elt = &Val;
 
+  // In some cases the vector type is legal but the element type is illegal and
+  // needs to be promoted, for example v8i8 on ARM.  In this case, promote the
+  // inserted value (the type does not need to match the vector element type).
+  // Any extra bits introduced will be truncated away.
+  if (VT.isVector() && TLI.getTypeAction(*getContext(), EltVT) ==
+      TargetLowering::TypePromoteInteger) {
+   EltVT = TLI.getTypeToTransformTo(*getContext(), EltVT);
+   APInt NewVal = Elt->getValue().zext(EltVT.getSizeInBits());
+   Elt = ConstantInt::get(*getContext(), NewVal);
+  }
+
+  assert(Elt->getBitWidth() == EltVT.getSizeInBits() &&
+         "APInt size does not match type size!");
   unsigned Opc = isT ? ISD::TargetConstant : ISD::Constant;
   FoldingSetNodeID ID;
   AddNodeIDNode(ID, Opc, getVTList(EltVT), 0, 0);
-  ID.AddPointer(&Val);
+  ID.AddPointer(Elt);
   void *IP = 0;
   SDNode *N = NULL;
   if ((N = CSEMap.FindNodeOrInsertPos(ID, IP)))
@@ -941,7 +962,7 @@ SDValue SelectionDAG::getConstant(const ConstantInt &Val, EVT VT, bool isT) {
       return SDValue(N, 0);
 
   if (!N) {
-    N = new (NodeAllocator) ConstantSDNode(isT, &Val, EltVT);
+    N = new (NodeAllocator) ConstantSDNode(isT, Elt, EltVT);
     CSEMap.InsertNode(N, IP);
     AllNodes.push_back(N);
   }
@@ -1133,7 +1154,7 @@ SDValue SelectionDAG::getConstantPool(MachineConstantPoolValue *C, EVT VT,
   AddNodeIDNode(ID, Opc, getVTList(VT), 0, 0);
   ID.AddInteger(Alignment);
   ID.AddInteger(Offset);
-  C->AddSelectionDAGCSEId(ID);
+  C->addSelectionDAGCSEId(ID);
   ID.AddInteger(TargetFlags);
   void *IP = 0;
   if (SDNode *E = CSEMap.FindNodeOrInsertPos(ID, IP))
@@ -1720,8 +1741,8 @@ void SelectionDAG::ComputeMaskedBits(SDValue Op, const APInt &Mask,
     // The boolean result conforms to getBooleanContents.  Fall through.
   case ISD::SETCC:
     // If we know the result of a setcc has the top bits zero, use this info.
-    if (TLI.getBooleanContents() == TargetLowering::ZeroOrOneBooleanContent &&
-        BitWidth > 1)
+    if (TLI.getBooleanContents(Op.getValueType().isVector()) ==
+        TargetLowering::ZeroOrOneBooleanContent && BitWidth > 1)
       KnownZero |= APInt::getHighBitsSet(BitWidth, BitWidth - 1);
     return;
   case ISD::SHL:
@@ -2155,7 +2176,7 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, unsigned Depth) const{
     // The boolean result conforms to getBooleanContents.  Fall through.
   case ISD::SETCC:
     // If setcc returns 0/-1, all bits are sign bits.
-    if (TLI.getBooleanContents() ==
+    if (TLI.getBooleanContents(Op.getValueType().isVector()) ==
         TargetLowering::ZeroOrNegativeOneBooleanContent)
       return VTBits;
     break;
@@ -3828,6 +3849,8 @@ SDValue SelectionDAG::getAtomic(unsigned Opcode, DebugLoc dl, EVT MemVT,
   unsigned Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOStore;
 
   // For now, atomics are considered to be volatile always.
+  // FIXME: Volatile isn't really correct; we should keep track of atomic
+  // orderings in the memoperand.
   Flags |= MachineMemOperand::MOVolatile;
 
   MachineMemOperand *MMO =
@@ -3877,9 +3900,16 @@ SDValue SelectionDAG::getAtomic(unsigned Opcode, DebugLoc dl, EVT MemVT,
     Alignment = getEVTAlignment(MemVT);
 
   MachineFunction &MF = getMachineFunction();
-  unsigned Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOStore;
+  // A monotonic store does not load; a release store "loads" in the sense
+  // that other stores cannot be sunk past it.
+  // (An atomicrmw obviously both loads and stores.)
+  unsigned Flags = MachineMemOperand::MOStore;
+  if (Opcode != ISD::ATOMIC_STORE || Ordering > Monotonic)
+    Flags |= MachineMemOperand::MOLoad;
 
   // For now, atomics are considered to be volatile always.
+  // FIXME: Volatile isn't really correct; we should keep track of atomic
+  // orderings in the memoperand.
   Flags |= MachineMemOperand::MOVolatile;
 
   MachineMemOperand *MMO =
@@ -3942,9 +3972,15 @@ SDValue SelectionDAG::getAtomic(unsigned Opcode, DebugLoc dl, EVT MemVT,
     Alignment = getEVTAlignment(MemVT);
 
   MachineFunction &MF = getMachineFunction();
-  unsigned Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOStore;
+  // A monotonic load does not store; an acquire load "stores" in the sense
+  // that other loads cannot be hoisted past it.
+  unsigned Flags = MachineMemOperand::MOLoad;
+  if (Ordering > Monotonic)
+    Flags |= MachineMemOperand::MOStore;
 
   // For now, atomics are considered to be volatile always.
+  // FIXME: Volatile isn't really correct; we should keep track of atomic
+  // orderings in the memoperand.
   Flags |= MachineMemOperand::MOVolatile;
 
   MachineMemOperand *MMO =
@@ -5965,8 +6001,8 @@ std::string SDNode::getOperationName(const SelectionDAG *G) const {
 
   case ISD::FPOWI:  return "fpowi";
   case ISD::SETCC:       return "setcc";
-  case ISD::VSETCC:      return "vsetcc";
   case ISD::SELECT:      return "select";
+  case ISD::VSELECT:     return "vselect";
   case ISD::SELECT_CC:   return "select_cc";
   case ISD::INSERT_VECTOR_ELT:   return "insert_vector_elt";
   case ISD::EXTRACT_VECTOR_ELT:  return "extract_vector_elt";
@@ -6408,6 +6444,10 @@ SDValue SelectionDAG::UnrollVectorOp(SDNode *N, unsigned ResNE) {
     switch (N->getOpcode()) {
     default:
       Scalars.push_back(getNode(N->getOpcode(), dl, EltVT,
+                                &Operands[0], Operands.size()));
+      break;
+    case ISD::VSELECT:
+      Scalars.push_back(getNode(ISD::SELECT, dl, EltVT,
                                 &Operands[0], Operands.size()));
       break;
     case ISD::SHL:

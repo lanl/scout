@@ -743,11 +743,11 @@ CGObjCGNU::CGObjCGNU(CodeGenModule &cgm, unsigned runtimeABIVersion,
               true));
 
   const LangOptions &Opts = CGM.getLangOptions();
-  if ((Opts.getGCMode() != LangOptions::NonGC) || Opts.ObjCAutoRefCount)
+  if ((Opts.getGC() != LangOptions::NonGC) || Opts.ObjCAutoRefCount)
     RuntimeVersion = 10;
 
   // Don't bother initialising the GC stuff unless we're compiling in GC mode
-  if (Opts.getGCMode() != LangOptions::NonGC) {
+  if (Opts.getGC() != LangOptions::NonGC) {
     // This is a bit of an hack.  We should sort this out by having a proper
     // CGObjCGNUstep subclass for GC, but we may want to really support the old
     // ABI and GC added in ObjectiveC2.framework, so we fudge it a bit for now
@@ -970,7 +970,7 @@ CGObjCGNU::GenerateMessageSendSuper(CodeGenFunction &CGF,
                                     const CallArgList &CallArgs,
                                     const ObjCMethodDecl *Method) {
   CGBuilderTy &Builder = CGF.Builder;
-  if (CGM.getLangOptions().getGCMode() == LangOptions::GCOnly) {
+  if (CGM.getLangOptions().getGC() == LangOptions::GCOnly) {
     if (Sel == RetainSel || Sel == AutoreleaseSel) {
       return RValue::get(EnforceType(Builder, Receiver,
                   CGM.getTypes().ConvertType(ResultType)));
@@ -1078,7 +1078,7 @@ CGObjCGNU::GenerateMessageSend(CodeGenFunction &CGF,
   CGBuilderTy &Builder = CGF.Builder;
 
   // Strip out message sends to retain / release in GC mode
-  if (CGM.getLangOptions().getGCMode() == LangOptions::GCOnly) {
+  if (CGM.getLangOptions().getGC() == LangOptions::GCOnly) {
     if (Sel == RetainSel || Sel == AutoreleaseSel) {
       return RValue::get(EnforceType(Builder, Receiver,
                   CGM.getTypes().ConvertType(ResultType)));
@@ -2169,7 +2169,7 @@ llvm::Function *CGObjCGNU::ModuleInitFunction() {
   Elements.push_back(SymTab);
 
   if (RuntimeVersion >= 10)
-    switch (CGM.getLangOptions().getGCMode()) {
+    switch (CGM.getLangOptions().getGC()) {
       case LangOptions::GCOnly:
         Elements.push_back(llvm::ConstantInt::get(IntTy, 2));
         break;
@@ -2284,8 +2284,7 @@ void CGObjCGNU::EmitThrowStmt(CodeGenFunction &CGF,
            "Unexpected rethrow outside @catch block.");
     ExceptionAsObject = CGF.ObjCEHValueStack.back();
   }
-  ExceptionAsObject =
-      CGF.Builder.CreateBitCast(ExceptionAsObject, IdTy, "tmp");
+  ExceptionAsObject = CGF.Builder.CreateBitCast(ExceptionAsObject, IdTy);
 
   // Note: This may have to be an invoke, if we want to support constructs like:
   // @try {
@@ -2333,7 +2332,7 @@ void CGObjCGNU::EmitObjCGlobalAssign(CodeGenFunction &CGF,
     B.CreateCall2(GlobalAssignFn, src, dst);
   else
     // FIXME. Add threadloca assign API
-    assert(false && "EmitObjCGlobalAssign - Threal Local API NYI");
+    llvm_unreachable("EmitObjCGlobalAssign - Threal Local API NYI");
 }
 
 void CGObjCGNU::EmitObjCIvarAssign(CodeGenFunction &CGF,
@@ -2389,7 +2388,8 @@ llvm::GlobalVariable *CGObjCGNU::ObjCIvarOffsetVariable(
       Offset = ComputeIvarBaseOffset(CGM, ID, Ivar);
 
     llvm::ConstantInt *OffsetGuess =
-      llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext), Offset, "ivar");
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext), Offset,
+                             /*isSigned*/true);
     // Don't emit the guess in non-PIC code because the linker will not be able
     // to replace it with the real version for a library.  In non-PIC code you
     // must compile with the fragile ABI if you want to use ivars from a
@@ -2457,7 +2457,7 @@ llvm::Value *CGObjCGNU::EmitIvarOffset(CodeGenFunction &CGF,
     return CGF.Builder.CreateLoad(Offset);
   }
   uint64_t Offset = ComputeIvarBaseOffset(CGF.CGM, Interface, Ivar);
-  return llvm::ConstantInt::get(PtrDiffTy, Offset, "ivar");
+  return llvm::ConstantInt::get(PtrDiffTy, Offset, /*isSigned*/true);
 }
 
 CGObjCRuntime *

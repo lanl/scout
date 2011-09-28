@@ -374,6 +374,7 @@ private:
 
   void autoCreateBlock() { if (!Block) Block = createBlock(); }
   CFGBlock *createBlock(bool add_successor = true);
+  CFGBlock *createNoReturnBlock();
 
   CFGBlock *addStmt(Stmt *S) {
     return Visit(S, AddStmtChoice::AlwaysAdd);
@@ -413,11 +414,10 @@ private:
   void appendTemporaryDtor(CFGBlock *B, CXXBindTemporaryExpr *E) {
     B->appendTemporaryDtor(E, cfg->getBumpVectorContext());
   }
+  void appendAutomaticObjDtor(CFGBlock *B, VarDecl *VD, Stmt *S) {
+    B->appendAutomaticObjDtor(VD, S, cfg->getBumpVectorContext());
+  }
 
-  void insertAutomaticObjDtors(CFGBlock *Blk, CFGBlock::iterator I,
-    LocalScope::const_iterator B, LocalScope::const_iterator E, Stmt *S);
-  void appendAutomaticObjDtors(CFGBlock *Blk, LocalScope::const_iterator B,
-      LocalScope::const_iterator E, Stmt *S);
   void prependAutomaticObjDtorsWithTerminator(CFGBlock *Blk,
       LocalScope::const_iterator B, LocalScope::const_iterator E);
 
@@ -598,6 +598,16 @@ CFGBlock *CFGBuilder::createBlock(bool add_successor) {
   return B;
 }
 
+/// createNoReturnBlock - Used to create a block is a 'noreturn' point in the
+/// CFG. It is *not* connected to the current (global) successor, and instead
+/// directly tied to the exit block in order to be reachable.
+CFGBlock *CFGBuilder::createNoReturnBlock() {
+  CFGBlock *B = createBlock(false);
+  B->setHasNoReturnElement();
+  addSuccessor(B, &cfg->getExit());
+  return B;
+}
+
 /// addInitializer - Add C++ base or member initializer element to CFG.
 CFGBlock *CFGBuilder::addInitializer(CXXCtorInitializer *I) {
   if (!BuildOpts.AddInitializers)
@@ -647,8 +657,34 @@ void CFGBuilder::addAutomaticObjDtors(LocalScope::const_iterator B,
   if (B == E)
     return;
 
-  autoCreateBlock();
-  appendAutomaticObjDtors(Block, B, E, S);
+  CFGBlock::iterator InsertPos;
+
+  // We need to append the destructors in reverse order, but any one of them
+  // may be a no-return destructor which changes the CFG. As a result, buffer
+  // this sequence up and replay them in reverse order when appending onto the
+  // CFGBlock(s).
+  SmallVector<VarDecl*, 10> Decls;
+  Decls.reserve(B.distance(E));
+  for (LocalScope::const_iterator I = B; I != E; ++I)
+    Decls.push_back(*I);
+
+  for (SmallVectorImpl<VarDecl*>::reverse_iterator I = Decls.rbegin(),
+                                                   E = Decls.rend();
+       I != E; ++I) {
+    // If this destructor is marked as a no-return destructor, we need to
+    // create a new block for the destructor which does not have as a successor
+    // anything built thus far: control won't flow out of this block.
+    QualType Ty = (*I)->getType().getNonReferenceType();
+    if (const ArrayType *AT = Context->getAsArrayType(Ty))
+      Ty = AT->getElementType();
+    const CXXDestructorDecl *Dtor = Ty->getAsCXXRecordDecl()->getDestructor();
+    if (cast<FunctionType>(Dtor->getType())->getNoReturnAttr())
+      Block = createNoReturnBlock();
+    else
+      autoCreateBlock();
+
+    appendAutomaticObjDtor(Block, *I, S);
+  }
 }
 
 /// addImplicitDtorsForDestructor - Add implicit destructors generated for
@@ -723,9 +759,7 @@ void CFGBuilder::addLocalScopeForStmt(Stmt *S) {
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(S)) {
     for (CompoundStmt::body_iterator BI = CS->body_begin(), BE = CS->body_end()
         ; BI != BE; ++BI) {
-      Stmt *SI = *BI;
-      if (LabelStmt *LS = dyn_cast<LabelStmt>(SI))
-        SI = LS->getSubStmt();
+      Stmt *SI = (*BI)->stripLabelLikeStatements();
       if (DeclStmt *DS = dyn_cast<DeclStmt>(SI))
         Scope = addLocalScopeForDeclStmt(DS, Scope);
     }
@@ -734,9 +768,7 @@ void CFGBuilder::addLocalScopeForStmt(Stmt *S) {
 
   // For any other statement scope will be implicit and as such will be
   // interesting only for DeclStmt.
-  if (LabelStmt *LS = dyn_cast<LabelStmt>(S))
-    S = LS->getSubStmt();
-  if (DeclStmt *DS = dyn_cast<DeclStmt>(S))
+  if (DeclStmt *DS = dyn_cast<DeclStmt>(S->stripLabelLikeStatements()))
     addLocalScopeForDeclStmt(DS);
 }
 
@@ -811,34 +843,21 @@ void CFGBuilder::addLocalScopeAndDtors(Stmt *S) {
   addAutomaticObjDtors(ScopePos, scopeBeginPos, S);
 }
 
-/// insertAutomaticObjDtors - Insert destructor CFGElements for variables with
-/// automatic storage duration to CFGBlock's elements vector. Insertion will be
-/// performed in place specified with iterator.
-void CFGBuilder::insertAutomaticObjDtors(CFGBlock *Blk, CFGBlock::iterator I,
-    LocalScope::const_iterator B, LocalScope::const_iterator E, Stmt *S) {
-  BumpVectorContext &C = cfg->getBumpVectorContext();
-  I = Blk->beginAutomaticObjDtorsInsert(I, B.distance(E), C);
-  while (B != E)
-    I = Blk->insertAutomaticObjDtor(I, *B++, S);
-}
-
-/// appendAutomaticObjDtors - Append destructor CFGElements for variables with
-/// automatic storage duration to CFGBlock's elements vector. Elements will be
-/// appended to physical end of the vector which happens to be logical
-/// beginning.
-void CFGBuilder::appendAutomaticObjDtors(CFGBlock *Blk,
-    LocalScope::const_iterator B, LocalScope::const_iterator E, Stmt *S) {
-  insertAutomaticObjDtors(Blk, Blk->begin(), B, E, S);
-}
-
 /// prependAutomaticObjDtorsWithTerminator - Prepend destructor CFGElements for
 /// variables with automatic storage duration to CFGBlock's elements vector.
 /// Elements will be prepended to physical beginning of the vector which
 /// happens to be logical end. Use blocks terminator as statement that specifies
 /// destructors call site.
+/// FIXME: This mechanism for adding automatic destructors doesn't handle
+/// no-return destructors properly.
 void CFGBuilder::prependAutomaticObjDtorsWithTerminator(CFGBlock *Blk,
     LocalScope::const_iterator B, LocalScope::const_iterator E) {
-  insertAutomaticObjDtors(Blk, Blk->end(), B, E, Blk->getTerminator());
+  BumpVectorContext &C = cfg->getBumpVectorContext();
+  CFGBlock::iterator InsertPos
+    = Blk->beginAutomaticObjDtorsInsert(Blk->end(), B.distance(E), C);
+  for (LocalScope::const_iterator I = B; I != E; ++I)
+    InsertPos = Blk->insertAutomaticObjDtor(InsertPos, *I,
+                                            Blk->getTerminator());
 }
 
 /// Visit - Walk the subtree of a statement and add extra
@@ -1193,13 +1212,13 @@ CFGBlock *CFGBuilder::VisitCallExpr(CallExpr *C, AddStmtChoice asc) {
       return 0;
   }
 
-  Block = createBlock(!NoReturn);
+  if (NoReturn)
+    Block = createNoReturnBlock();
+  else
+    Block = createBlock();
+
   appendStmt(Block, C);
 
-  if (NoReturn) {
-    // Wire this to the exit block directly.
-    addSuccessor(Block, &cfg->getExit());
-  }
   if (AddEHEdge) {
     // Add exceptional edges.
     if (TryTerminatedBlock)
@@ -2865,7 +2884,16 @@ CFGBlock *CFGBuilder::VisitCXXBindTemporaryExprForTemporaryDtors(
   if (!BindToTemporary) {
     // If lifetime of temporary is not prolonged (by assigning to constant
     // reference) add destructor for it.
-    autoCreateBlock();
+
+    // If the destructor is marked as a no-return destructor, we need to create
+    // a new block for the destructor which does not have as a successor
+    // anything built thus far. Control won't flow out of this block.
+    const CXXDestructorDecl *Dtor = E->getTemporary()->getDestructor();
+    if (cast<FunctionType>(Dtor->getType())->getNoReturnAttr())
+      Block = createNoReturnBlock();
+    else
+      autoCreateBlock();
+
     appendTemporaryDtor(Block, E);
     B = Block;
   }
@@ -3345,7 +3373,7 @@ public:
         OS << " && ...";
         return;
       default:
-        assert(false && "Invalid logical operator.");
+        llvm_unreachable("Invalid logical operator.");
     }
   }
 
@@ -3493,7 +3521,7 @@ static void print_block(raw_ostream &OS, const CFG* cfg,
       OS << ")";
 
     } else
-      assert(false && "Invalid label statement in CFGBlock.");
+      llvm_unreachable("Invalid label statement in CFGBlock.");
 
     OS << ":\n";
   }

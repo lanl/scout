@@ -207,7 +207,11 @@ namespace {
       const { return 0; }
     unsigned getT2AddrModeImm8OpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
+    unsigned getT2Imm8s4OpValue(const MachineInstr &MI, unsigned Op)
+      const { return 0; }
     unsigned getT2AddrModeImm8s4OpValue(const MachineInstr &MI, unsigned Op)
+      const { return 0; }
+    unsigned getT2AddrModeImm0_1020s4OpValue(const MachineInstr &MI,unsigned Op)
       const { return 0; }
     unsigned getT2AddrModeImm8OffsetOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
@@ -230,8 +234,6 @@ namespace {
       const { return 0; }
     unsigned getBitfieldInvertedMaskOpValue(const MachineInstr &MI,
                                             unsigned Op) const { return 0; }
-    unsigned getMsbOpValue(const MachineInstr &MI,
-                           unsigned Op) const { return 0; }
     unsigned getSsatBitPosValue(const MachineInstr &MI,
                                 unsigned Op) const { return 0; }
     uint32_t getLdStmModeOpValue(const MachineInstr &MI, unsigned OpIdx)

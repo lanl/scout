@@ -214,3 +214,24 @@ int test_more() {
   else
     return foo[5]; // expected-warning {{array index of '5' indexes past the end of an array (that contains 5 elements)}}
 }
+
+void test_pr10771() {
+    double foo[4096];  // expected-note {{array 'foo' declared here}}
+
+    ((char*)foo)[sizeof(foo) - 1] = '\0';  // no-warning
+    *(((char*)foo) + sizeof(foo) - 1) = '\0';  // no-warning
+
+    ((char*)foo)[sizeof(foo)] = '\0';  // expected-warning {{array index of '32768' indexes past the end of an array (that contains 32768 elements)}}
+
+    // TODO: This should probably warn, too.
+    *(((char*)foo) + sizeof(foo)) = '\0';  // no-warning
+}
+
+int test_pr11007_aux(const char * restrict, ...);
+  
+// Test checking with varargs.
+void test_pr11007() {
+  double a[5]; // expected-note {{array 'a' declared here}}
+  test_pr11007_aux("foo", a[1000]); // expected-warning {{array index of '1000' indexes past the end of an array}}
+}
+

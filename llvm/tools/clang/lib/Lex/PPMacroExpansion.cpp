@@ -25,6 +25,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Config/config.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cstdio>
 #include <ctime>
 using namespace clang;
@@ -93,7 +94,7 @@ void Preprocessor::RegisterBuiltinMacros() {
   Ident__has_include_next = RegisterBuiltinMacro(*this, "__has_include_next");
 
   // Microsoft Extensions.
-  if (Features.Microsoft) 
+  if (Features.MicrosoftExt) 
     Ident__pragma = RegisterBuiltinMacro(*this, "__pragma");
   else
     Ident__pragma = 0;
@@ -489,8 +490,7 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
     return 0;
   }
 
-  return MacroArgs::create(MI, ArgTokens.data(), ArgTokens.size(),
-                           isVarargsElided, *this);
+  return MacroArgs::create(MI, ArgTokens, isVarargsElided, *this);
 }
 
 /// \brief Keeps macro expanded tokens for TokenLexers.
@@ -599,6 +599,8 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("objc_arc", LangOpts.ObjCAutoRefCount)
            .Case("objc_arc_weak", LangOpts.ObjCAutoRefCount && 
                  LangOpts.ObjCRuntimeHasWeak)
+           .Case("objc_fixed_enum", LangOpts.ObjC2)
+           .Case("objc_instancetype", LangOpts.ObjC2)
            .Case("objc_nonfragile_abi", LangOpts.ObjCNonFragileABI)
            .Case("objc_weak_class", LangOpts.ObjCNonFragileABI)
            .Case("ownership_holds", true)
@@ -688,7 +690,8 @@ static bool HasExtension(const Preprocessor &PP, const IdentifierInfo *II) {
 
   // If the use of an extension results in an error diagnostic, extensions are
   // effectively unavailable, so just return false here.
-  if (PP.getDiagnostics().getExtensionHandlingBehavior()==Diagnostic::Ext_Error)
+  if (PP.getDiagnostics().getExtensionHandlingBehavior() ==
+      DiagnosticsEngine::Ext_Error)
     return false;
 
   const LangOptions &LangOpts = PP.getLangOptions();
@@ -705,6 +708,7 @@ static bool HasExtension(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("cxx_inline_namespaces", LangOpts.CPlusPlus)
            .Case("cxx_nonstatic_member_init", LangOpts.CPlusPlus)
            .Case("cxx_override_control", LangOpts.CPlusPlus)
+           .Case("cxx_range_for", LangOpts.CPlusPlus)
            .Case("cxx_reference_qualified_functions", LangOpts.CPlusPlus)
            .Case("cxx_rvalue_references", LangOpts.CPlusPlus)
            .Default(false);
@@ -782,7 +786,7 @@ static bool EvaluateHasIncludeCommon(Token &Tok,
   // Search include directories.
   const DirectoryLookup *CurDir;
   const FileEntry *File =
-      PP.LookupFile(Filename, isAngled, LookupFrom, CurDir, NULL, NULL);
+      PP.LookupFile(Filename, isAngled, LookupFrom, CurDir, NULL, NULL, NULL);
 
   // Get the result value.  Result = true means the file exists.
   bool Result = File != 0;
@@ -1013,7 +1017,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     OS << (int)Value;
     Tok.setKind(tok::numeric_constant);
   } else {
-    assert(0 && "Unknown identifier!");
+    llvm_unreachable("Unknown identifier!");
   }
   CreateString(OS.str().data(), OS.str().size(), Tok, Tok.getLocation());
 }

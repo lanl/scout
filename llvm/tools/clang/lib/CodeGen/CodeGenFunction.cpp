@@ -120,7 +120,8 @@ void CodeGenFunction::EmitReturnBlock() {
       dyn_cast<llvm::BranchInst>(*ReturnBlock.getBlock()->use_begin());
     if (BI && BI->isUnconditional() &&
         BI->getSuccessor(0) == ReturnBlock.getBlock()) {
-      // Reset insertion point and delete the branch.
+      // Reset insertion point, including debug location, and delete the branch.
+      Builder.SetCurrentDebugLocation(BI->getDebugLoc());
       Builder.SetInsertPoint(BI->getParent());
       BI->eraseFromParent();
       delete ReturnBlock.getBlock();
@@ -371,9 +372,12 @@ static void TryMarkNoThrow(llvm::Function *F) {
   for (llvm::Function::iterator FI = F->begin(), FE = F->end(); FI != FE; ++FI)
     for (llvm::BasicBlock::iterator
            BI = FI->begin(), BE = FI->end(); BI != BE; ++BI)
-      if (llvm::CallInst *Call = dyn_cast<llvm::CallInst>(&*BI))
+      if (llvm::CallInst *Call = dyn_cast<llvm::CallInst>(&*BI)) {
         if (!Call->doesNotThrow())
           return;
+      } else if (isa<llvm::ResumeInst>(&*BI)) {
+        return;
+      }
   F->setDoesNotThrow(true);
 }
 
@@ -700,7 +704,7 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
     cast<llvm::PointerType>(DestPtr->getType())->getAddressSpace();
   llvm::Type *BP = Builder.getInt8PtrTy(DestAS);
   if (DestPtr->getType() != BP)
-    DestPtr = Builder.CreateBitCast(DestPtr, BP, "tmp");
+    DestPtr = Builder.CreateBitCast(DestPtr, BP);
 
   // Get size and alignment info for this aggregate.
   std::pair<CharUnits, CharUnits> TypeInfo =
@@ -1025,4 +1029,51 @@ void CodeGenFunction::unprotectFromPeepholes(PeepholeProtection protection) {
 
   // In theory, we could try to duplicate the peepholes now, but whatever.
   protection.Inst->eraseFromParent();
+}
+
+llvm::Value *CodeGenFunction::EmitAnnotationCall(llvm::Value *AnnotationFn,
+                                                 llvm::Value *AnnotatedVal,
+                                                 llvm::StringRef AnnotationStr,
+                                                 SourceLocation Location) {
+  llvm::Value *Args[4] = {
+    AnnotatedVal,
+    Builder.CreateBitCast(CGM.EmitAnnotationString(AnnotationStr), Int8PtrTy),
+    Builder.CreateBitCast(CGM.EmitAnnotationUnit(Location), Int8PtrTy),
+    CGM.EmitAnnotationLineNo(Location)
+  };
+  return Builder.CreateCall(AnnotationFn, Args);
+}
+
+void CodeGenFunction::EmitVarAnnotations(const VarDecl *D, llvm::Value *V) {
+  assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
+  // FIXME We create a new bitcast for every annotation because that's what
+  // llvm-gcc was doing.
+  for (specific_attr_iterator<AnnotateAttr>
+       ai = D->specific_attr_begin<AnnotateAttr>(),
+       ae = D->specific_attr_end<AnnotateAttr>(); ai != ae; ++ai)
+    EmitAnnotationCall(CGM.getIntrinsic(llvm::Intrinsic::var_annotation),
+                       Builder.CreateBitCast(V, CGM.Int8PtrTy, V->getName()),
+                       (*ai)->getAnnotation(), D->getLocation());
+}
+
+llvm::Value *CodeGenFunction::EmitFieldAnnotations(const FieldDecl *D,
+                                                   llvm::Value *V) {
+  assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
+  llvm::Type *VTy = V->getType();
+  llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::ptr_annotation,
+                                    CGM.Int8PtrTy);
+
+  for (specific_attr_iterator<AnnotateAttr>
+       ai = D->specific_attr_begin<AnnotateAttr>(),
+       ae = D->specific_attr_end<AnnotateAttr>(); ai != ae; ++ai) {
+    // FIXME Always emit the cast inst so we can differentiate between
+    // annotation on the first field of a struct and annotation on the struct
+    // itself.
+    if (VTy != CGM.Int8PtrTy)
+      V = Builder.Insert(new llvm::BitCastInst(V, CGM.Int8PtrTy));
+    V = EmitAnnotationCall(F, V, (*ai)->getAnnotation(), D->getLocation());
+    V = Builder.CreateBitCast(V, VTy);
+  }
+
+  return V;
 }

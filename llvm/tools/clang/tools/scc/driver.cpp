@@ -258,7 +258,7 @@ static void ExpandArgv(int argc, const char **argv,
   }
 }
 
-static void ParseProgName(llvm::SmallVectorImpl<const char *> &ArgVector,
+static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
                           std::set<std::string> &SavedStrings,
                           Driver &TheDriver)
 {
@@ -381,7 +381,7 @@ int main(int argc_, const char **argv_) {
     = new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
   DiagClient->setPrefix(llvm::sys::path::stem(Path.str()));
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-  Diagnostic Diags(DiagID, DiagClient);
+  DiagnosticsEngine Diags(DiagID, DiagClient);
 
 #ifdef CLANG_IS_PRODUCTION
   const bool IsProduction = true;

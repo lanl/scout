@@ -271,6 +271,13 @@ ObjCMethodDecl *Sema::tryCaptureObjCSelf() {
   return method;
 }
 
+static QualType stripObjCInstanceType(ASTContext &Context, QualType T) {
+  if (T == Context.getObjCInstanceType())
+    return Context.getObjCIdType();
+  
+  return T;
+}
+
 QualType Sema::getMessageSendResultType(QualType ReceiverType,
                                         ObjCMethodDecl *Method,
                                     bool isClassMessage, bool isSuperMessage) {
@@ -283,7 +290,7 @@ QualType Sema::getMessageSendResultType(QualType ReceiverType,
   //     was a class message send, T is the declared return type of the method
   //     found
   if (Method->isInstanceMethod() && isClassMessage)
-    return Method->getSendResultType();
+    return stripObjCInstanceType(Context, Method->getSendResultType());
   
   //   - if the receiver is super, T is a pointer to the class of the 
   //     enclosing method definition
@@ -302,7 +309,7 @@ QualType Sema::getMessageSendResultType(QualType ReceiverType,
   //     T is the declared return type of the method.
   if (ReceiverType->isObjCClassType() ||
       ReceiverType->isObjCQualifiedClassType())
-    return  Method->getSendResultType();
+    return stripObjCInstanceType(Context, Method->getSendResultType());
   
   //   - if the receiver is id, qualified id, Class, or qualified Class, T
   //     is the receiver type, otherwise
@@ -326,6 +333,10 @@ void Sema::EmitRelatedResultTypeNote(const Expr *E) {
   if (Context.hasSameUnqualifiedType(Method->getResultType()
                                                         .getNonReferenceType(),
                                      MsgSend->getType()))
+    return;
+  
+  if (!Context.hasSameUnqualifiedType(Method->getResultType(), 
+                                      Context.getObjCInstanceType()))
     return;
   
   Diag(Method->getLocation(), diag::note_related_result_type_inferred)
@@ -1353,7 +1364,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
           << Receiver->getSourceRange();
         if (ReceiverType->isPointerType())
           Receiver = ImpCastExprToType(Receiver, Context.getObjCIdType(), 
-                            CK_BitCast).take();
+                            CK_CPointerToObjCPointerCast).take();
         else {
           // TODO: specialized warning on null receivers?
           bool IsNull = Receiver->isNullPointerConstant(Context,
@@ -1362,17 +1373,12 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                             IsNull ? CK_NullToPointer : CK_IntegralToPointer).take();
         }
         ReceiverType = Receiver->getType();
-      } 
-      else {
+      } else {
         ExprResult ReceiverRes;
         if (getLangOptions().CPlusPlus)
-          ReceiverRes = PerformContextuallyConvertToObjCId(Receiver);
+          ReceiverRes = PerformContextuallyConvertToObjCPointer(Receiver);
         if (ReceiverRes.isUsable()) {
           Receiver = ReceiverRes.take();
-          if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(Receiver)) {
-            Receiver = ICE->getSubExpr();
-            ReceiverType = Receiver->getType();
-          }
           return BuildInstanceMessage(Receiver,
                                       ReceiverType,
                                       SuperLoc,
@@ -1590,7 +1596,8 @@ namespace {
         case CK_NoOp:
         case CK_LValueToRValue:
         case CK_BitCast:
-        case CK_AnyPointerToObjCPointerCast:
+        case CK_CPointerToObjCPointerCast:
+        case CK_BlockPointerToObjCPointerCast:
         case CK_AnyPointerToBlockPointerCast:
           return Visit(e->getSubExpr());
         default:
@@ -1814,7 +1821,7 @@ static Expr *maybeUndoReclaimObject(Expr *e) {
   // value-propagating subexpressions --- we can't reliably rebuild
   // in-place because of expression sharing.
   if (ImplicitCastExpr *ice = dyn_cast<ImplicitCastExpr>(e))
-    if (ice->getCastKind() == CK_ObjCReclaimReturnedObject)
+    if (ice->getCastKind() == CK_ARCReclaimReturnedObject)
       return ice->getSubExpr();
 
   return e;
@@ -1832,11 +1839,16 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
   QualType T = TSInfo->getType();
   QualType FromType = SubExpr->getType();
 
+  CastKind CK;
+
   bool MustConsume = false;
   if (T->isDependentType() || SubExpr->isTypeDependent()) {
     // Okay: we'll build a dependent expression type.
+    CK = CK_Dependent;
   } else if (T->isObjCARCBridgableType() && FromType->isCARCBridgableType()) {
     // Casting CF -> id
+    CK = (T->isBlockPointerType() ? CK_AnyPointerToBlockPointerCast
+                                  : CK_CPointerToObjCPointerCast);
     switch (Kind) {
     case OBC_Bridge:
       break;
@@ -1866,6 +1878,7 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
     }
   } else if (T->isCARCBridgableType() && FromType->isObjCARCBridgableType()) {
     // Okay: id -> CF
+    CK = CK_BitCast;
     switch (Kind) {
     case OBC_Bridge:
       // Reclaiming a value that's going to be __bridge-casted to CF
@@ -1876,7 +1889,7 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
     case OBC_BridgeRetained:        
       // Produce the object before casting it.
       SubExpr = ImplicitCastExpr::Create(Context, FromType,
-                                         CK_ObjCProduceObject,
+                                         CK_ARCProduceObject,
                                          SubExpr, 0, VK_RValue);
       break;
       
@@ -1906,13 +1919,13 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
     return ExprError();
   }
 
-  Expr *Result = new (Context) ObjCBridgedCastExpr(LParenLoc, Kind, 
+  Expr *Result = new (Context) ObjCBridgedCastExpr(LParenLoc, Kind, CK,
                                                    BridgeKeywordLoc,
                                                    TSInfo, SubExpr);
   
   if (MustConsume) {
     ExprNeedsCleanups = true;
-    Result = ImplicitCastExpr::Create(Context, T, CK_ObjCConsumeObject, Result, 
+    Result = ImplicitCastExpr::Create(Context, T, CK_ARCConsumeObject, Result, 
                                       0, VK_RValue);    
   }
   

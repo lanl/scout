@@ -178,7 +178,12 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   if (!AsmInfo)
     return;
 
-  Disassembler.reset(Tgt->createMCDisassembler());
+  STI.reset(Tgt->createMCSubtargetInfo(tripleString, "", ""));
+  
+  if (!STI)
+    return;
+
+  Disassembler.reset(Tgt->createMCDisassembler(*STI));
   
   if (!Disassembler)
     return;
@@ -187,7 +192,7 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   
   InstString.reset(new std::string);
   InstStream.reset(new raw_string_ostream(*InstString));
-  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo));
+  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo, *STI));
   
   if (!InstPrinter)
     return;
@@ -241,7 +246,7 @@ EDInst *EDDisassembler::createInst(EDByteReaderCallback byteReader,
   
   MCDisassembler::DecodeStatus S;
   S = Disassembler->getInstruction(*inst, byteSize, memoryObject, address,
-                                   ErrorStream);
+                                   ErrorStream, nulls());
   switch (S) {
   case MCDisassembler::Fail:
   case MCDisassembler::SoftFail:
@@ -322,7 +327,7 @@ bool EDDisassembler::registerIsProgramCounter(unsigned registerID) {
 int EDDisassembler::printInst(std::string &str, MCInst &inst) {
   PrinterMutex.acquire();
   
-  InstPrinter->printInst(&inst, *InstStream);
+  InstPrinter->printInst(&inst, *InstStream, "");
   InstStream->flush();
   str = *InstString;
   InstString->clear();

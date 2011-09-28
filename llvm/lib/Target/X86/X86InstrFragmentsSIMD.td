@@ -39,6 +39,8 @@ def X86frsqrt  : SDNode<"X86ISD::FRSQRT",    SDTFPUnaryOp>;
 def X86frcp    : SDNode<"X86ISD::FRCP",      SDTFPUnaryOp>;
 def X86fsrl    : SDNode<"X86ISD::FSRL",      SDTX86FPShiftOp>;
 def X86fgetsign: SDNode<"X86ISD::FGETSIGNx86",SDTFPToIntOp>;
+def X86fhadd   : SDNode<"X86ISD::FHADD",     SDTFPBinOp>;
+def X86fhsub   : SDNode<"X86ISD::FHSUB",     SDTFPBinOp>;
 def X86comi    : SDNode<"X86ISD::COMI",      SDTX86CmpTest>;
 def X86ucomi   : SDNode<"X86ISD::UCOMI",     SDTX86CmpTest>;
 def X86cmpss   : SDNode<"X86ISD::FSETCCss",    SDTX86Cmpss>;
@@ -58,9 +60,6 @@ def X86psignw  : SDNode<"X86ISD::PSIGNW",
 def X86psignd  : SDNode<"X86ISD::PSIGND",
                  SDTypeProfile<1, 2, [SDTCisVT<0, v4i32>, SDTCisSameAs<0,1>,
                                       SDTCisSameAs<0,2>]>>;
-def X86pblendv : SDNode<"X86ISD::PBLENDVB",
-                 SDTypeProfile<1, 3, [SDTCisVT<0, v16i8>, SDTCisSameAs<0,1>,
-                                      SDTCisSameAs<0,2>, SDTCisSameAs<0,3>]>>;
 def X86pextrb  : SDNode<"X86ISD::PEXTRB",
                  SDTypeProfile<1, 2, [SDTCisVT<0, i32>, SDTCisPtrTy<2>]>>;
 def X86pextrw  : SDNode<"X86ISD::PEXTRW",
@@ -207,15 +206,26 @@ def loadv4f64    : PatFrag<(ops node:$ptr), (v4f64 (load node:$ptr))>;
 def loadv8i32    : PatFrag<(ops node:$ptr), (v8i32 (load node:$ptr))>;
 def loadv4i64    : PatFrag<(ops node:$ptr), (v4i64 (load node:$ptr))>;
 
-// Like 'store', but always requires vector alignment.
+// Like 'store', but always requires 128-bit vector alignment.
 def alignedstore : PatFrag<(ops node:$val, node:$ptr),
                            (store node:$val, node:$ptr), [{
   return cast<StoreSDNode>(N)->getAlignment() >= 16;
 }]>;
 
-// Like 'load', but always requires vector alignment.
+// Like 'store', but always requires 256-bit vector alignment.
+def alignedstore256 : PatFrag<(ops node:$val, node:$ptr),
+                              (store node:$val, node:$ptr), [{
+  return cast<StoreSDNode>(N)->getAlignment() >= 32;
+}]>;
+
+// Like 'load', but always requires 128-bit vector alignment.
 def alignedload : PatFrag<(ops node:$ptr), (load node:$ptr), [{
   return cast<LoadSDNode>(N)->getAlignment() >= 16;
+}]>;
+
+// Like 'load', but always requires 256-bit vector alignment.
+def alignedload256 : PatFrag<(ops node:$ptr), (load node:$ptr), [{
+  return cast<LoadSDNode>(N)->getAlignment() >= 32;
 }]>;
 
 def alignedloadfsf32 : PatFrag<(ops node:$ptr),
@@ -235,13 +245,13 @@ def alignedloadv2i64 : PatFrag<(ops node:$ptr),
 
 // 256-bit aligned load pattern fragments
 def alignedloadv8f32 : PatFrag<(ops node:$ptr),
-                               (v8f32 (alignedload node:$ptr))>;
+                               (v8f32 (alignedload256 node:$ptr))>;
 def alignedloadv4f64 : PatFrag<(ops node:$ptr),
-                               (v4f64 (alignedload node:$ptr))>;
+                               (v4f64 (alignedload256 node:$ptr))>;
 def alignedloadv8i32 : PatFrag<(ops node:$ptr),
-                               (v8i32 (alignedload node:$ptr))>;
+                               (v8i32 (alignedload256 node:$ptr))>;
 def alignedloadv4i64 : PatFrag<(ops node:$ptr),
-                               (v4i64 (alignedload node:$ptr))>;
+                               (v4i64 (alignedload256 node:$ptr))>;
 
 // Like 'load', but uses special alignment checks suitable for use in
 // memory operands in most SSE instructions, which are required to

@@ -386,9 +386,6 @@ def rewrite_objc : Flag<"-rewrite-objc">,
   HelpText<"Rewrite ObjC into C (code rewriter example)">;
 def rewrite_macros : Flag<"-rewrite-macros">,
   HelpText<"Expand macros without full preprocessing">;
-
-def create_module : Flag<"-create-module">,
-  HelpText<"Create a module definition file">;
 }
 
 def arcmt_check : Flag<"-arcmt-check">,
@@ -450,7 +447,9 @@ def fno_dollars_in_identifiers : Flag<"-fno-dollars-in-identifiers">,
 def femit_all_decls : Flag<"-femit-all-decls">,
   HelpText<"Emit all declarations, even if unused">;
 def fblocks : Flag<"-fblocks">,
-  HelpText<"enable the 'blocks' language feature">;
+  HelpText<"Enable the 'blocks' language feature">;
+def fblocks_runtime_optional : Flag<"-fblocks-runtime-optional">,
+  HelpText<"Weakly link in the blocks runtime">;
 def fheinous_gnu_extensions : Flag<"-fheinous-gnu-extensions">;
 def fexceptions : Flag<"-fexceptions">,
   HelpText<"Enable support for exception handling">;
@@ -473,7 +472,9 @@ def stdlib_EQ : Joined<"-stdlib=">,
 def fmath_errno : Flag<"-fmath-errno">,
   HelpText<"Require math functions to indicate errors by setting errno">;
 def fms_extensions : Flag<"-fms-extensions">,
-  HelpText<"Accept some non-standard constructs used in Microsoft header files ">;
+  HelpText<"Accept some non-standard constructs supported by the Microsoft compiler">;
+def fms_compatibility : Flag<"-fms-compatibility">,
+  HelpText<"Enable Microsoft compatibility mode">;
 def fmsc_version : Joined<"-fmsc-version=">,
   HelpText<"Version of the Microsoft C/C++ compiler to report in _MSC_VER (0 = don't define it (default))">;
 def fborland_extensions : Flag<"-fborland-extensions">,
@@ -603,6 +604,15 @@ def nostdincxx : Flag<"-nostdinc++">,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nobuiltininc : Flag<"-nobuiltininc">,
   HelpText<"Disable builtin #include directories">;
+def fmodule_cache_path : Separate<"-fmodule-cache-path">, 
+  MetaVarName<"<directory>">,
+  HelpText<"Specify the module cache path">;           
+def fdisable_module_hash : Flag<"-fdisable-module-hash">,
+  HelpText<"Disable the module hash">;
+def fauto_module_import : Flag<"-fauto-module-import">,
+  HelpText<"Automatically translate #include/#import into module imports "
+           "when possible">;
+           
 def F : JoinedOrSeparate<"-F">, MetaVarName<"<directory>">,
   HelpText<"Add directory to framework include search path">;
 def I : JoinedOrSeparate<"-I">, MetaVarName<"<directory>">,
@@ -613,8 +623,16 @@ def index_header_map : Flag<"-index-header-map">,
   HelpText<"Make the next included directory (-I or -F) an indexer header map">;
 def iquote : JoinedOrSeparate<"-iquote">, MetaVarName<"<directory>">,
   HelpText<"Add directory to QUOTE include search path">;
+def c_isystem : JoinedOrSeparate<"-c-isystem">, MetaVarName<"<directory>">,
+  HelpText<"Add directory to the C SYSTEM include search path">;
 def cxx_isystem : JoinedOrSeparate<"-cxx-isystem">, MetaVarName<"<directory>">,
   HelpText<"Add directory to the C++ SYSTEM include search path">;
+def objc_isystem : JoinedOrSeparate<"-objc-isystem">,
+  MetaVarName<"<directory>">,
+  HelpText<"Add directory to the ObjC SYSTEM include search path">;
+def objcxx_isystem : JoinedOrSeparate<"-objcxx-isystem">,
+  MetaVarName<"<directory>">,
+  HelpText<"Add directory to the ObjC++ SYSTEM include search path">;
 def isystem : JoinedOrSeparate<"-isystem">, MetaVarName<"<directory>">,
   HelpText<"Add directory to SYSTEM include search path">;
 def iwithsysroot : JoinedOrSeparate<"-iwithsysroot">,MetaVarName<"<directory>">,

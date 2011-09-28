@@ -14,6 +14,7 @@
 #include "CGDebugInfo.h"
 #include "CodeGenFunction.h"
 #include "CodeGenModule.h"
+#include "CGOpenCLRuntime.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Decl.h"
@@ -72,7 +73,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::FriendTemplate:
   case Decl::Block:
   case Decl::ClassScopeFunctionSpecialization:
-    assert(0 && "Declaration should not be in declstmts!");
+    llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
 
   // ndm - Scout Mesh
@@ -138,9 +139,11 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
   case SC_PrivateExtern:
     // Don't emit it now, allow it to be emitted lazily on its first use.
     return;
+  case SC_OpenCLWorkGroupLocal:
+    return CGM.getOpenCLRuntime().EmitWorkGroupLocalVarDecl(*this, D);
   }
 
-  assert(0 && "Unknown storage class");
+  llvm_unreachable("Unknown storage class");
 }
 
 static std::string GetStaticDeclName(CodeGenFunction &CGF, const VarDecl &D,
@@ -162,14 +165,14 @@ static std::string GetStaticDeclName(CodeGenFunction &CGF, const VarDecl &D,
       ContextName = Name.getString();
     }
     else
-      assert(0 && "Unknown context for block static var decl");
+      llvm_unreachable("Unknown context for block static var decl");
   } else if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(CGF.CurFuncDecl)) {
     StringRef Name = CGM.getMangledName(FD);
     ContextName = Name.str();
   } else if (isa<ObjCMethodDecl>(CGF.CurFuncDecl))
     ContextName = CGF.CurFn->getName();
   else
-    assert(0 && "Unknown context for static var decl");
+    llvm_unreachable("Unknown context for static var decl");
 
   return ContextName + Separator + D.getNameAsString();
 }
@@ -279,13 +282,8 @@ void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
 
   GV->setAlignment(getContext().getDeclAlign(&D).getQuantity());
 
-  // FIXME: Merge attribute handling.
-  if (const AnnotateAttr *AA = D.getAttr<AnnotateAttr>()) {
-    SourceManager &SM = CGM.getContext().getSourceManager();
-    llvm::Constant *Ann =
-      CGM.EmitAnnotateAttr(GV, AA, SM.getExpansionLineNumber(D.getLocation()));
-    CGM.AddAnnotation(Ann);
-  }
+  if (D.hasAttr<AnnotateAttr>())
+    CGM.AddGlobalAnnotations(&D, GV);
 
   if (const SectionAttr *SA = D.getAttr<SectionAttr>())
     GV->setSection(SA->getName());
@@ -368,7 +366,7 @@ namespace {
     llvm::Value *Stack;
     CallStackRestore(llvm::Value *Stack) : Stack(Stack) {}
     void Emit(CodeGenFunction &CGF, Flags flags) {
-      llvm::Value *V = CGF.Builder.CreateLoad(Stack, "tmp");
+      llvm::Value *V = CGF.Builder.CreateLoad(Stack);
       llvm::Value *F = CGF.CGM.getIntrinsic(llvm::Intrinsic::stackrestore);
       CGF.Builder.CreateCall(F, V);
     }
@@ -884,6 +882,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
         DI->EmitDeclareOfAutoVariable(&D, DeclPtr, Builder);
     }
 
+  if (D.hasAttr<AnnotateAttr>())
+      EmitVarAnnotations(&D, emission.Address);
+
   return emission;
 }
 
@@ -1013,7 +1014,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
 
   llvm::Type *BP = Int8PtrTy;
   if (Loc->getType() != BP)
-    Loc = Builder.CreateBitCast(Loc, BP, "tmp");
+    Loc = Builder.CreateBitCast(Loc, BP);
 
   // If the initializer is all or mostly zeros, codegen with memset then do
   // a few stores afterward.
@@ -1038,7 +1039,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
 
     llvm::Value *SrcPtr = GV;
     if (SrcPtr->getType() != BP)
-      SrcPtr = Builder.CreateBitCast(SrcPtr, BP, "tmp");
+      SrcPtr = Builder.CreateBitCast(SrcPtr, BP);
 
     Builder.CreateMemCpy(Loc, SrcPtr, SizeVal, alignment.getQuantity(),
                          isVolatile);
@@ -1157,7 +1158,7 @@ void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
     emitAutoVarTypeCleanup(emission, dtorKind);
 
   // In GC mode, honor objc_precise_lifetime.
-  if (getLangOptions().getGCMode() != LangOptions::NonGC &&
+  if (getLangOptions().getGC() != LangOptions::NonGC &&
       D.hasAttr<ObjCPreciseLifetimeAttr>()) {
     EHStack.pushCleanup<ExtendGCLifetime>(NormalCleanup, &D);
   }
@@ -1537,4 +1538,7 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
   // Emit debug info for param declaration.
   if (CGDebugInfo *DI = getDebugInfo())
     DI->EmitDeclareOfArgVariable(&D, DeclPtr, ArgNo, Builder);
+
+  if (D.hasAttr<AnnotateAttr>())
+      EmitVarAnnotations(&D, DeclPtr);
 }

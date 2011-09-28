@@ -57,19 +57,23 @@ LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
   std::string FeaturesStr;
   std::string CPU;
 
+  const MCSubtargetInfo *STI = TheTarget->createMCSubtargetInfo(TripleName, CPU,
+                                                                FeaturesStr);
+  assert(STI && "Unable to create subtarget info!");
+
   // Set up the MCContext for creating symbols and MCExpr's.
   MCContext *Ctx = new MCContext(*MAI, *MRI, 0);
   assert(Ctx && "Unable to create MCContext!");
 
   // Set up disassembler.
-  MCDisassembler *DisAsm = TheTarget->createMCDisassembler();
+  MCDisassembler *DisAsm = TheTarget->createMCDisassembler(*STI);
   assert(DisAsm && "Unable to create disassembler!");
   DisAsm->setupForSymbolicDisassembly(GetOpInfo, DisInfo, Ctx);
 
   // Set up the instruction printer.
   int AsmPrinterVariant = MAI->getAssemblerDialect();
   MCInstPrinter *IP = TheTarget->createMCInstPrinter(AsmPrinterVariant,
-                                                     *MAI);
+                                                     *MAI, *STI);
   assert(IP && "Unable to create instruction printer!");
 
   LLVMDisasmContext *DC = new LLVMDisasmContext(TripleName, DisInfo, TagType,
@@ -77,6 +81,7 @@ LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
                                                 TheTarget, MAI, MRI,
                                                 Ctx, DisAsm, IP);
   assert(DC && "Allocation failure!");
+
   return DC;
 }
 
@@ -137,7 +142,7 @@ size_t LLVMDisasmInstruction(LLVMDisasmContextRef DCR, uint8_t *Bytes,
   MCInstPrinter *IP = DC->getIP();
   MCDisassembler::DecodeStatus S;
   S = DisAsm->getInstruction(Inst, Size, MemoryObject, PC,
-                             /*REMOVE*/ nulls());
+                             /*REMOVE*/ nulls(), DC->CommentStream);
   switch (S) {
   case MCDisassembler::Fail:
   case MCDisassembler::SoftFail:
@@ -145,10 +150,17 @@ size_t LLVMDisasmInstruction(LLVMDisasmContextRef DCR, uint8_t *Bytes,
     return 0;
 
   case MCDisassembler::Success: {
+    DC->CommentStream.flush();
+    StringRef Comments = DC->CommentsToEmit.str();
+
     SmallVector<char, 64> InsnStr;
     raw_svector_ostream OS(InsnStr);
-    IP->printInst(&Inst, OS);
+    IP->printInst(&Inst, OS, Comments);
     OS.flush();
+
+    // Tell the comment stream that the vector changed underneath it.
+    DC->CommentsToEmit.clear();
+    DC->CommentStream.resync();
 
     assert(OutStringSize != 0 && "Output buffer cannot be zero size");
     size_t OutputSize = std::min(OutStringSize-1, InsnStr.size());

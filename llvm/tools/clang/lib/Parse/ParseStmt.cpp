@@ -124,6 +124,11 @@ Retry:
       CXXScopeSpec SS;
       IdentifierInfo *Name = Tok.getIdentifierInfo();
       SourceLocation NameLoc = Tok.getLocation();
+
+      if (getLang().CPlusPlus)
+        CheckForTemplateAndDigraph(Next, ParsedType(),
+                                   /*EnteringContext=*/false, *Name, SS);
+
       Sema::NameClassification Classification
         = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next);
       switch (Classification.getKind()) {
@@ -555,7 +560,7 @@ StmtResult Parser::ParseCaseStatement(ParsedAttributes &attrs, bool MissingCase,
   // DeepestParsedCaseStmt - This is the deepest statement we have parsed, which
   // gets updated each time a new case is parsed, and whose body is unset so
   // far.  When parsing 'case 4', this is the 'case 3' node.
-  StmtTy *DeepestParsedCaseStmt = 0;
+  Stmt *DeepestParsedCaseStmt = 0;
 
   // While we have case statements, eat and stack them.
   SourceLocation ColonLoc;
@@ -804,7 +809,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
       continue;
     }
 
-    if (getLang().Microsoft && (Tok.is(tok::kw___if_exists) ||
+    if (getLang().MicrosoftExt && (Tok.is(tok::kw___if_exists) ||
         Tok.is(tok::kw___if_not_exists))) {
       ParseMicrosoftIfExistsStatement(Stmts);
       continue;
@@ -1695,7 +1700,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   assert(Tok.is(tok::kw_asm) && "Not an asm stmt");
   SourceLocation AsmLoc = ConsumeToken();
 
-  if (getLang().Microsoft && Tok.isNot(tok::l_paren) && !isTypeQualifier()) {
+  if (getLang().MicrosoftExt && Tok.isNot(tok::l_paren) && !isTypeQualifier()) {
     msAsm = true;
     return FuzzyParseMicrosoftAsmStatement(AsmLoc);
   }
@@ -1816,8 +1821,8 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
 //
 // FIXME: Avoid unnecessary std::string trashing.
 bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
-                                 SmallVectorImpl<ExprTy *> &Constraints,
-                                 SmallVectorImpl<ExprTy *> &Exprs) {
+                                 SmallVectorImpl<Expr *> &Constraints,
+                                 SmallVectorImpl<Expr *> &Exprs) {
   // 'asm-operands' isn't present?
   if (!isTokenStringLiteral() && Tok.isNot(tok::l_square))
     return false;
@@ -1940,7 +1945,9 @@ Decl *Parser::ParseFunctionTryBlock(Decl *Decl, ParseScope &BodyScope) {
   // Constructor initializer list?
   if (Tok.is(tok::colon))
     ParseConstructorInitializer(Decl);
-
+  else
+    Actions.ActOnDefaultCtorInitializers(Decl);
+  
   if (PP.isCodeCompletionEnabled()) {
     if (trySkippingFunctionBodyForCodeCompletion()) {
       BodyScope.Exit();

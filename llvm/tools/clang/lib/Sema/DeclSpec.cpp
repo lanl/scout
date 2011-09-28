@@ -27,7 +27,7 @@
 using namespace clang;
 
 
-static DiagnosticBuilder Diag(Diagnostic &D, SourceLocation Loc,
+static DiagnosticBuilder Diag(DiagnosticsEngine &D, SourceLocation Loc,
                               unsigned DiagID) {
   return D.Report(Loc, DiagID);
 }
@@ -699,7 +699,7 @@ bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc, const char *&PrevSpec,
   TypeQualifiers |= T;
 
   switch (T) {
-  default: assert(0 && "Unknown type qualifier!");
+  default: llvm_unreachable("Unknown type qualifier!");
   case TQ_const:    TQ_constLoc = Loc; break;
   case TQ_restrict: TQ_restrictLoc = Loc; break;
   case TQ_volatile: TQ_volatileLoc = Loc; break;
@@ -741,6 +741,18 @@ bool DeclSpec::SetFriendSpec(SourceLocation Loc, const char *&PrevSpec,
 
   Friend_specified = true;
   FriendLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setModulePrivateSpec(SourceLocation Loc, const char *&PrevSpec,
+                                    unsigned &DiagID) {
+  if (isModulePrivateSpecified()) {
+    PrevSpec = "__module_private__";
+    DiagID = diag::ext_duplicate_declspec;
+    return true;
+  }
+  
+  ModulePrivateLoc = Loc;
   return false;
 }
 
@@ -794,7 +806,7 @@ void DeclSpec::SaveStorageSpecifierAsWritten() {
 /// "_Imaginary" (lacking an FP type).  This returns a diagnostic to issue or
 /// diag::NUM_DIAGNOSTICS if there is no error.  After calling this method,
 /// DeclSpec is guaranteed self-consistent, even if an error occurred.
-void DeclSpec::Finish(Diagnostic &D, Preprocessor &PP) {
+void DeclSpec::Finish(DiagnosticsEngine &D, Preprocessor &PP) {
   // Before possibly changing their values, save specs as written.
   SaveWrittenBuiltinSpecs();
   SaveStorageSpecifierAsWritten();
@@ -903,7 +915,7 @@ void DeclSpec::Finish(Diagnostic &D, Preprocessor &PP) {
   // class specifier, then assume this is an attempt to use C++0x's 'auto'
   // type specifier.
   // FIXME: Does Microsoft really support implicit int in C++?
-  if (PP.getLangOptions().CPlusPlus && !PP.getLangOptions().Microsoft &&
+  if (PP.getLangOptions().CPlusPlus && !PP.getLangOptions().MicrosoftExt &&
       TypeSpecType == TST_unspecified && StorageClassSpec == SCS_auto) {
     TypeSpecType = TST_auto;
     StorageClassSpec = StorageClassSpecAsWritten = SCS_unspecified;
@@ -927,7 +939,7 @@ void DeclSpec::Finish(Diagnostic &D, Preprocessor &PP) {
     const char *SpecName = getSpecifierName(SC);
 
     SourceLocation SCLoc = getStorageClassSpecLoc();
-    SourceLocation SCEndLoc = SCLoc.getFileLocWithOffset(strlen(SpecName));
+    SourceLocation SCEndLoc = SCLoc.getLocWithOffset(strlen(SpecName));
 
     Diag(D, SCLoc, diag::err_friend_storage_spec)
       << SpecName
@@ -937,7 +949,7 @@ void DeclSpec::Finish(Diagnostic &D, Preprocessor &PP) {
   }
 
   assert(!TypeSpecOwned || isDeclRep((TST) TypeSpecType));
-
+ 
   // Okay, now we can infer the real type.
 
   // TODO: return "auto function" and other bad things based on the real type.
@@ -985,7 +997,7 @@ bool VirtSpecifiers::SetSpecifier(Specifier VS, SourceLocation Loc,
   Specifiers |= VS;
 
   switch (VS) {
-  default: assert(0 && "Unknown specifier!");
+  default: llvm_unreachable("Unknown specifier!");
   case VS_Override: VS_overrideLoc = Loc; break;
   case VS_Final:    VS_finalLoc = Loc; break;
   }
@@ -995,7 +1007,7 @@ bool VirtSpecifiers::SetSpecifier(Specifier VS, SourceLocation Loc,
 
 const char *VirtSpecifiers::getSpecifierName(Specifier VS) {
   switch (VS) {
-  default: assert(0 && "Unknown specifier");
+  default: llvm_unreachable("Unknown specifier");
   case VS_Override: return "override";
   case VS_Final: return "final";
   }

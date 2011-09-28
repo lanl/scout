@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Core/PathDiagnosticClients.h"
+#include "clang/StaticAnalyzer/Core/PathDiagnosticConsumers.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -35,7 +35,7 @@ using namespace ento;
 
 namespace {
 
-class HTMLDiagnostics : public PathDiagnosticClient {
+class HTMLDiagnostics : public PathDiagnosticConsumer {
   llvm::sys::Path Directory, FilePrefix;
   bool createdDir, noDir;
   const Preprocessor &PP;
@@ -78,8 +78,8 @@ HTMLDiagnostics::HTMLDiagnostics(const std::string& prefix,
   FilePrefix.appendComponent("report");
 }
 
-PathDiagnosticClient*
-ento::createHTMLDiagnosticClient(const std::string& prefix,
+PathDiagnosticConsumer*
+ento::createHTMLDiagnosticConsumer(const std::string& prefix,
                                  const Preprocessor &PP) {
   return new HTMLDiagnostics(prefix, PP);
 }
@@ -474,7 +474,7 @@ void HTMLDiagnostics::HandlePiece(Rewriter& R, FileID BugFileID,
   // Insert the new html.
   unsigned DisplayPos = LineEnd - FileStart;
   SourceLocation Loc =
-    SM.getLocForStartOfFile(LPosInfo.first).getFileLocWithOffset(DisplayPos);
+    SM.getLocForStartOfFile(LPosInfo.first).getLocWithOffset(DisplayPos);
 
   R.InsertTextBefore(Loc, os.str());
 
@@ -575,7 +575,7 @@ void HTMLDiagnostics::HighlightRange(Rewriter& R, FileID BugFileID,
   // selected range.
 
   SourceLocation E =
-    InstantiationEnd.getFileLocWithOffset(EndColNo - OldEndColNo);
+    InstantiationEnd.getLocWithOffset(EndColNo - OldEndColNo);
 
   html::HighlightRange(R, InstantiationStart, E, HighlightStart, HighlightEnd);
 }

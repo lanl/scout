@@ -145,6 +145,16 @@ public:
   uint32_t getT2AddrModeImm8s4OpValue(const MCInst &MI, unsigned OpIdx,
                                    SmallVectorImpl<MCFixup> &Fixups) const;
 
+  /// getT2AddrModeImm0_1020s4OpValue - Return encoding info for 'reg + imm8<<2'
+  /// operand.
+  uint32_t getT2AddrModeImm0_1020s4OpValue(const MCInst &MI, unsigned OpIdx,
+                                   SmallVectorImpl<MCFixup> &Fixups) const;
+
+  /// getT2Imm8s4OpValue - Return encoding info for '+/- imm8<<2'
+  /// operand.
+  uint32_t getT2Imm8s4OpValue(const MCInst &MI, unsigned OpIdx,
+                              SmallVectorImpl<MCFixup> &Fixups) const;
+
 
   /// getLdStSORegOpValue - Return encoding info for 'reg +/- reg shop imm'
   /// operand as needed by load/store instructions.
@@ -272,9 +282,6 @@ public:
 
   unsigned getBitfieldInvertedMaskOpValue(const MCInst &MI, unsigned Op,
                                       SmallVectorImpl<MCFixup> &Fixups) const;
-
-  unsigned getMsbOpValue(const MCInst &MI, unsigned Op,
-                         SmallVectorImpl<MCFixup> &Fixups) const;
 
   unsigned getRegisterListOpValue(const MCInst &MI, unsigned Op,
                                   SmallVectorImpl<MCFixup> &Fixups) const;
@@ -652,7 +659,12 @@ getT2AdrLabelOpValue(const MCInst &MI, unsigned OpIdx,
   if (MO.isExpr())
     return ::getBranchTargetOpValue(MI, OpIdx, ARM::fixup_t2_adr_pcrel_12,
                                     Fixups);
-  return MO.getImm();
+  int32_t Val = MO.getImm();
+  if (Val < 0) {
+    Val *= -1;
+    Val |= 0x1000;
+  }
+  return Val;
 }
 
 /// getAdrLabelOpValue - Return encoding info for 8-bit immediate ADR label
@@ -698,17 +710,26 @@ getAddrModeImm12OpValue(const MCInst &MI, unsigned OpIdx,
     Imm12 = 0;
     isAdd = false ; // 'U' bit is set as part of the fixup.
 
-    assert(MO.isExpr() && "Unexpected machine operand type!");
-    const MCExpr *Expr = MO.getExpr();
+    if (MO.isExpr()) {
+      const MCExpr *Expr = MO.getExpr();
 
-    MCFixupKind Kind;
-    if (isThumb2())
-      Kind = MCFixupKind(ARM::fixup_t2_ldst_pcrel_12);
-    else
-      Kind = MCFixupKind(ARM::fixup_arm_ldst_pcrel_12);
-    Fixups.push_back(MCFixup::Create(0, Expr, Kind));
+      MCFixupKind Kind;
+      if (isThumb2())
+        Kind = MCFixupKind(ARM::fixup_t2_ldst_pcrel_12);
+      else
+        Kind = MCFixupKind(ARM::fixup_arm_ldst_pcrel_12);
+      Fixups.push_back(MCFixup::Create(0, Expr, Kind));
 
-    ++MCNumCPRelocations;
+      ++MCNumCPRelocations;
+    } else {
+      Reg = ARM::PC;
+      int32_t Offset = MO.getImm();
+      if (Offset < 0) {
+        Offset *= -1;
+        isAdd = false;
+      }
+      Imm12 = Offset;
+    }
   } else
     isAdd = EncodeAddrModeOpValues(MI, OpIdx, Reg, Imm12, Fixups);
 
@@ -717,6 +738,37 @@ getAddrModeImm12OpValue(const MCInst &MI, unsigned OpIdx,
   if (isAdd)
     Binary |= (1 << 12);
   Binary |= (Reg << 13);
+  return Binary;
+}
+
+/// getT2Imm8s4OpValue - Return encoding info for
+/// '+/- imm8<<2' operand.
+uint32_t ARMMCCodeEmitter::
+getT2Imm8s4OpValue(const MCInst &MI, unsigned OpIdx,
+                   SmallVectorImpl<MCFixup> &Fixups) const {
+  // FIXME: The immediate operand should have already been encoded like this
+  // before ever getting here. The encoder method should just need to combine
+  // the MI operands for the register and the offset into a single
+  // representation for the complex operand in the .td file. This isn't just
+  // style, unfortunately. As-is, we can't represent the distinct encoding
+  // for #-0.
+
+  // {8}    = (U)nsigned (add == '1', sub == '0')
+  // {7-0}  = imm8
+  int32_t Imm8 = MI.getOperand(OpIdx).getImm();
+  bool isAdd = Imm8 >= 0;
+
+  // Immediate is always encoded as positive. The 'U' bit controls add vs sub.
+  if (Imm8 < 0)
+    Imm8 = -Imm8;
+
+  // Scaled by 4.
+  Imm8 /= 4;
+
+  uint32_t Binary = Imm8 & 0xff;
+  // Immediate is always encoded as positive. The 'U' bit controls add vs sub.
+  if (isAdd)
+    Binary |= (1 << 8);
   return Binary;
 }
 
@@ -746,12 +798,32 @@ getT2AddrModeImm8s4OpValue(const MCInst &MI, unsigned OpIdx,
   } else
     isAdd = EncodeAddrModeOpValues(MI, OpIdx, Reg, Imm8, Fixups);
 
+  // FIXME: The immediate operand should have already been encoded like this
+  // before ever getting here. The encoder method should just need to combine
+  // the MI operands for the register and the offset into a single
+  // representation for the complex operand in the .td file. This isn't just
+  // style, unfortunately. As-is, we can't represent the distinct encoding
+  // for #-0.
   uint32_t Binary = (Imm8 >> 2) & 0xff;
   // Immediate is always encoded as positive. The 'U' bit controls add vs sub.
   if (isAdd)
     Binary |= (1 << 8);
   Binary |= (Reg << 9);
   return Binary;
+}
+
+/// getT2AddrModeImm0_1020s4OpValue - Return encoding info for
+/// 'reg + imm8<<2' operand.
+uint32_t ARMMCCodeEmitter::
+getT2AddrModeImm0_1020s4OpValue(const MCInst &MI, unsigned OpIdx,
+                        SmallVectorImpl<MCFixup> &Fixups) const {
+  // {11-8} = reg
+  // {7-0}  = imm8
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  const MCOperand &MO1 = MI.getOperand(OpIdx + 1);
+  unsigned Reg = getARMRegisterNumbering(MO.getReg());
+  unsigned Imm8 = MO1.getImm();
+  return (Reg << 8) | Imm8;
 }
 
 // FIXME: This routine assumes that a binary
@@ -1205,6 +1277,7 @@ getT2SORegOpValue(const MCInst &MI, unsigned OpIdx,
   case ARM_AM::lsl: SBits = 0x0; break;
   case ARM_AM::lsr: SBits = 0x2; break;
   case ARM_AM::asr: SBits = 0x4; break;
+  case ARM_AM::rrx: // FALLTHROUGH
   case ARM_AM::ror: SBits = 0x6; break;
   }
 
@@ -1227,17 +1300,6 @@ getBitfieldInvertedMaskOpValue(const MCInst &MI, unsigned Op,
   uint32_t msb = (32 - CountLeadingZeros_32 (v)) - 1;
   assert (v != 0 && lsb < 32 && msb < 32 && "Illegal bitfield mask!");
   return lsb | (msb << 5);
-}
-
-unsigned ARMMCCodeEmitter::
-getMsbOpValue(const MCInst &MI, unsigned Op,
-              SmallVectorImpl<MCFixup> &Fixups) const {
-  // MSB - 5 bits.
-  uint32_t lsb = MI.getOperand(Op-1).getImm();
-  uint32_t width = MI.getOperand(Op).getImm();
-  uint32_t msb = lsb+width-1;
-  assert (width != 0 && msb < 32 && "Illegal bit width!");
-  return msb;
 }
 
 unsigned ARMMCCodeEmitter::

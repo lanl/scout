@@ -29,8 +29,7 @@ static int SelectDigraphErrorMessage(tok::TokenKind Kind) {
     case tok::kw_reinterpret_cast: return 3;
     case tok::kw_static_cast:      return 4;
     default:
-      assert(0 && "Unknown type for digraph error message.");
-      return -1;
+      llvm_unreachable("Unknown type for digraph error message.");
   }
 }
 
@@ -38,7 +37,7 @@ static int SelectDigraphErrorMessage(tok::TokenKind Kind) {
 static bool AreTokensAdjacent(Preprocessor &PP, Token &First, Token &Second) {
   SourceManager &SM = PP.getSourceManager();
   SourceLocation FirstLoc = SM.getSpellingLoc(First.getLocation());
-  SourceLocation FirstEnd = FirstLoc.getFileLocWithOffset(First.getLength());
+  SourceLocation FirstEnd = FirstLoc.getLocWithOffset(First.getLength());
   return FirstEnd == SM.getSpellingLoc(Second.getLocation());
 }
 
@@ -59,7 +58,7 @@ static void FixDigraph(Parser &P, Preprocessor &PP, Token &DigraphToken,
 
   // Update token information to reflect their change in token type.
   ColonToken.setKind(tok::coloncolon);
-  ColonToken.setLocation(ColonToken.getLocation().getFileLocWithOffset(-1));
+  ColonToken.setLocation(ColonToken.getLocation().getLocWithOffset(-1));
   ColonToken.setLength(2);
   DigraphToken.setKind(tok::less);
   DigraphToken.setLength(1);
@@ -68,6 +67,31 @@ static void FixDigraph(Parser &P, Preprocessor &PP, Token &DigraphToken,
   PP.EnterToken(ColonToken);
   if (!AtDigraph)
     PP.EnterToken(DigraphToken);
+}
+
+// Check for '<::' which should be '< ::' instead of '[:' when following
+// a template name.
+void Parser::CheckForTemplateAndDigraph(Token &Next, ParsedType ObjectType,
+                                        bool EnteringContext,
+                                        IdentifierInfo &II, CXXScopeSpec &SS) {
+  if (!Next.is(tok::l_square) || Next.getLength() != 2)
+    return;
+
+  Token SecondToken = GetLookAheadToken(2);
+  if (!SecondToken.is(tok::colon) || !AreTokensAdjacent(PP, Next, SecondToken))
+    return;
+
+  TemplateTy Template;
+  UnqualifiedId TemplateName;
+  TemplateName.setIdentifier(&II, Tok.getLocation());
+  bool MemberOfUnknownSpecialization;
+  if (!Actions.isTemplateName(getCurScope(), SS, /*hasTemplateKeyword=*/false,
+                              TemplateName, ObjectType, EnteringContext,
+                              Template, MemberOfUnknownSpecialization))
+    return;
+
+  FixDigraph(*this, PP, Next, SecondToken, tok::kw_template,
+             /*AtDigraph*/false);
 }
 
 /// \brief Parse global scope or nested-name-specifier if present.
@@ -341,28 +365,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
       continue;
     }
 
-    // Check for '<::' which should be '< ::' instead of '[:' when following
-    // a template name.
-    if (Next.is(tok::l_square) && Next.getLength() == 2) {
-      Token SecondToken = GetLookAheadToken(2);
-      if (SecondToken.is(tok::colon) &&
-          AreTokensAdjacent(PP, Next, SecondToken)) {
-        TemplateTy Template;
-        UnqualifiedId TemplateName;
-        TemplateName.setIdentifier(&II, Tok.getLocation());
-        bool MemberOfUnknownSpecialization;
-        if (Actions.isTemplateName(getCurScope(), SS,
-                                   /*hasTemplateKeyword=*/false,
-                                   TemplateName,
-                                   ObjectType,
-                                   EnteringContext,
-                                   Template,
-                                   MemberOfUnknownSpecialization)) {
-          FixDigraph(*this, PP, Next, SecondToken, tok::kw_template,
-                     /*AtDigraph*/false);
-        }
-      }
-    }
+    CheckForTemplateAndDigraph(Next, ObjectType, EnteringContext, II, SS);
 
     // nested-name-specifier:
     //   type-name '<'
@@ -398,7 +401,7 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
         // parse correctly as a template, so suggest the keyword 'template'
         // before 'getAs' and treat this as a dependent template name.
         unsigned DiagID = diag::err_missing_dependent_template_keyword;
-        if (getLang().Microsoft)
+        if (getLang().MicrosoftExt)
           DiagID = diag::warn_missing_dependent_template_keyword;
         
         Diag(Tok.getLocation(), DiagID)
@@ -780,7 +783,7 @@ ExprResult Parser::ParseCXXCasts() {
   const char *CastName = 0;     // For error messages
 
   switch (Kind) {
-  default: assert(0 && "Unknown C++ cast!"); abort();
+  default: llvm_unreachable("Unknown C++ cast!");
   case tok::kw_const_cast:       CastName = "const_cast";       break;
   case tok::kw_dynamic_cast:     CastName = "dynamic_cast";     break;
   case tok::kw_reinterpret_cast: CastName = "reinterpret_cast"; break;
@@ -1310,10 +1313,9 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
   switch (Tok.getKind()) {
   case tok::identifier:   // foo::bar
   case tok::coloncolon:   // ::foo::bar
-    assert(0 && "Annotation token should already be formed!");
+    llvm_unreachable("Annotation token should already be formed!");
   default:
-    assert(0 && "Not a simple-type-specifier token!");
-    abort();
+    llvm_unreachable("Not a simple-type-specifier token!");
 
   // type-name
   case tok::annot_typename: {
@@ -2292,7 +2294,7 @@ Parser::ParseCXXDeleteExpression(bool UseGlobal, SourceLocation Start) {
 
 static UnaryTypeTrait UnaryTypeTraitFromTokKind(tok::TokenKind kind) {
   switch(kind) {
-  default: assert(false && "Not a known unary type trait.");
+  default: llvm_unreachable("Not a known unary type trait.");
   case tok::kw___has_nothrow_assign:      return UTT_HasNothrowAssign;
   case tok::kw___has_nothrow_constructor: return UTT_HasNothrowConstructor;
   case tok::kw___has_nothrow_copy:           return UTT_HasNothrowCopy;
@@ -2360,7 +2362,7 @@ static ArrayTypeTrait ArrayTypeTraitFromTokKind(tok::TokenKind kind) {
 
 static ExpressionTrait ExpressionTraitFromTokKind(tok::TokenKind kind) {
   switch(kind) {
-  default: assert(false && "Not a known unary expression trait.");
+  default: llvm_unreachable("Not a known unary expression trait.");
   case tok::kw___is_lvalue_expr:             return ET_IsLValueExpr;
   case tok::kw___is_rvalue_expr:             return ET_IsRValueExpr;
   }

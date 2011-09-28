@@ -1641,7 +1641,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
       ExprResult NewBase =
           ActOnCallExpr(0, BaseExpr.take(), ParenInsertionLoc,
                         MultiExprArg(*this, 0, 0),
-                        ParenInsertionLoc.getFileLocWithOffset(1));
+                        ParenInsertionLoc.getLocWithOffset(1));
       if (NewBase.isInvalid())
         return ExprError();
       BaseExpr = NewBase;
@@ -1681,7 +1681,7 @@ ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
     return ExprError();
 
   // Warn about the explicit constructor calls Microsoft extension.
-  if (getLangOptions().Microsoft &&
+  if (getLangOptions().MicrosoftExt &&
       Id.getKind() == UnqualifiedId::IK_ConstructorName)
     Diag(Id.getSourceRange().getBegin(),
          diag::ext_ms_explicit_constructor_call);

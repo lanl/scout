@@ -227,17 +227,17 @@ ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
     GlobalNestedNameSpecifier(0), 
     Int128Decl(0), UInt128Decl(0),
     ObjCIdDecl(0), ObjCSelDecl(0), ObjCClassDecl(0),
-    CFConstantStringTypeDecl(0),
+    CFConstantStringTypeDecl(0), ObjCInstanceTypeDecl(0),
     FILEDecl(0), 
     jmp_bufDecl(0), sigjmp_bufDecl(0), BlockDescriptorType(0), 
     BlockDescriptorExtendedType(0), cudaConfigureCallDecl(0),
     NullTypeSourceInfo(QualType()),
     SourceMgr(SM), LangOpts(LOpts), 
-    AddrSpaceMap(0), Target(t),
+    AddrSpaceMap(0), Target(t), PrintingPolicy(LOpts),
     Idents(idents), Selectors(sels),
     BuiltinInfo(builtins),
     DeclarationNames(*this),
-    ExternalSource(0), Listener(0), PrintingPolicy(LOpts),
+    ExternalSource(0), Listener(0),
     LastSDM(0, 0),
     UniqueBlockByRefTypeID(0) 
 {
@@ -511,7 +511,7 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(NullPtrTy,           BuiltinType::NullPtr);
 }
 
-Diagnostic &ASTContext::getDiagnostics() const {
+DiagnosticsEngine &ASTContext::getDiagnostics() const {
   return SourceMgr.getDiagnostics();
 }
 
@@ -708,7 +708,7 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   const BuiltinType *BT = T->getAs<BuiltinType>();
   assert(BT && "Not a floating point type!");
   switch (BT->getKind()) {
-  default: assert(0 && "Not a floating point type!");
+  default: llvm_unreachable("Not a floating point type!");
   case BuiltinType::Float2:
   case BuiltinType::Float3:
   case BuiltinType::Float4:
@@ -881,7 +881,7 @@ ASTContext::getTypeInfo(const Type *T) const {
 
   case Type::Builtin:
     switch (cast<BuiltinType>(T)->getKind()) {
-    default: assert(0 && "Unknown builtin type!");
+    default: llvm_unreachable("Unknown builtin type!");
     case BuiltinType::Void:
       // GCC extension: alignof(void) = 8 bits.
       Width = 0;
@@ -3317,8 +3317,7 @@ ASTContext::getCanonicalTemplateArgument(const TemplateArgument &Arg) const {
   }
 
   // Silence GCC warning
-  assert(false && "Unhandled template argument kind");
-  return TemplateArgument();
+  llvm_unreachable("Unhandled template argument kind");
 }
 
 NestedNameSpecifier *
@@ -3531,7 +3530,7 @@ static FloatingRank getFloatingRank(QualType T) {
 
   assert(T->getAs<BuiltinType>() && "getFloatingRank(): not a floating type");
   switch (T->getAs<BuiltinType>()->getKind()) {
-  default: assert(0 && "getFloatingRank(): not a floating type");
+  default: llvm_unreachable("getFloatingRank(): not a floating type");
   case BuiltinType::Float:      return FloatRank;
   case BuiltinType::Double:     return DoubleRank;
   case BuiltinType::LongDouble: return LongDoubleRank;
@@ -3547,7 +3546,7 @@ QualType ASTContext::getFloatingTypeOfSizeWithinDomain(QualType Size,
   FloatingRank EltRank = getFloatingRank(Size);
   if (Domain->isComplexType()) {
     switch (EltRank) {
-    default: assert(0 && "getFloatingRank(): illegal value for rank");
+    default: llvm_unreachable("getFloatingRank(): illegal value for rank");
     case FloatRank:      return FloatComplexTy;
     case DoubleRank:     return DoubleComplexTy;
     case LongDoubleRank: return LongDoubleComplexTy;
@@ -3556,7 +3555,7 @@ QualType ASTContext::getFloatingTypeOfSizeWithinDomain(QualType Size,
 
   assert(Domain->isRealFloatingType() && "Unknown domain!");
   switch (EltRank) {
-  default: assert(0 && "getFloatingRank(): illegal value for rank");
+  default: llvm_unreachable("getFloatingRank(): illegal value for rank");
   case FloatRank:      return FloatTy;
   case DoubleRank:     return DoubleTy;
   case LongDoubleRank: return LongDoubleTy;
@@ -3597,7 +3596,7 @@ unsigned ASTContext::getIntegerRank(const Type *T) const {
     T = getFromTargetType(Target->getChar32Type()).getTypePtr();
 
   switch (cast<BuiltinType>(T)->getKind()) {
-  default: assert(0 && "getIntegerRank(): not a built-in integer");
+  default: llvm_unreachable("getIntegerRank(): not a built-in integer");
   case BuiltinType::Bool:
     return 1 + (getIntWidth(BoolTy) << 3);
   case BuiltinType::Char_S:
@@ -3943,6 +3942,17 @@ ASTContext::BuildByRefType(StringRef DeclName, QualType Ty) const {
   return getPointerType(getTagDeclType(T));
 }
 
+TypedefDecl *ASTContext::getObjCInstanceTypeDecl() {
+  if (!ObjCInstanceTypeDecl)
+    ObjCInstanceTypeDecl = TypedefDecl::Create(*this, 
+                                               getTranslationUnitDecl(),
+                                               SourceLocation(), 
+                                               SourceLocation(),
+                                               &Idents.get("instancetype"), 
+                                     getTrivialTypeSourceInfo(getObjCIdType()));
+  return ObjCInstanceTypeDecl;
+}
+
 // This returns true if a type has been typedefed to BOOL:
 // typedef <type> BOOL;
 static bool isTypeTypedefedAsBOOL(QualType T) {
@@ -4265,7 +4275,7 @@ void ASTContext::getObjCEncodingForType(QualType T, std::string& S,
 
 static char ObjCEncodingForPrimitiveKind(const ASTContext *C, QualType T) {
     switch (T->getAs<BuiltinType>()->getKind()) {
-    default: assert(0 && "Unhandled builtin type kind");
+    default: llvm_unreachable("Unhandled builtin type kind");
     case BuiltinType::Void:       return 'v';
     case BuiltinType::Bool:       return 'B';
     case BuiltinType::Char_U:
@@ -4292,6 +4302,17 @@ static char ObjCEncodingForPrimitiveKind(const ASTContext *C, QualType T) {
     }
 }
 
+static char ObjCEncodingForEnumType(const ASTContext *C, const EnumType *ET) {
+  EnumDecl *Enum = ET->getDecl();
+  
+  // The encoding of an non-fixed enum type is always 'i', regardless of size.
+  if (!Enum->isFixed())
+    return 'i';
+  
+  // The encoding of a fixed enum type matches its fixed underlying type.
+  return ObjCEncodingForPrimitiveKind(C, Enum->getIntegerType());
+}
+
 static void EncodeBitField(const ASTContext *Ctx, std::string& S,
                            QualType T, const FieldDecl *FD) {
   const Expr *E = FD->getBitWidth();
@@ -4316,8 +4337,8 @@ static void EncodeBitField(const ASTContext *Ctx, std::string& S,
     const RecordDecl *RD = FD->getParent();
     const ASTRecordLayout &RL = Ctx->getASTRecordLayout(RD);
     S += llvm::utostr(RL.getFieldOffset(FD->getFieldIndex()));
-    if (T->isEnumeralType())
-      S += 'i';
+    if (const EnumType *ET = T->getAs<EnumType>())
+      S += ObjCEncodingForEnumType(Ctx, ET);
     else
       S += ObjCEncodingForPrimitiveKind(Ctx, T);
   }
@@ -4463,7 +4484,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
           = TemplateSpecializationType::PrintTemplateArgumentList(
                                             TemplateArgs.data(),
                                             TemplateArgs.size(),
-                                            (*this).PrintingPolicy);
+                                            (*this).getPrintingPolicy());
 
         S += TemplateArgsStr;
       }
@@ -4503,11 +4524,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  if (T->isEnumeralType()) {
+  if (const EnumType *ET = T->getAs<EnumType>()) {
     if (FD && FD->isBitField())
       EncodeBitField(this, S, T, FD);
     else
-      S += 'i';
+      S += ObjCEncodingForEnumType(this, ET);
     return;
   }
 
@@ -4613,7 +4634,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  assert(0 && "@encode for type not implemented!");
+  llvm_unreachable("@encode for type not implemented!");
 }
 
 void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
@@ -4661,8 +4682,9 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
       if (base->isEmpty())
         continue;
       uint64_t offs = layout.getVBaseClassOffsetInBits(base);
-      FieldOrBaseOffsets.insert(FieldOrBaseOffsets.upper_bound(offs),
-                                std::make_pair(offs, base));
+      if (FieldOrBaseOffsets.find(offs) == FieldOrBaseOffsets.end())
+        FieldOrBaseOffsets.insert(FieldOrBaseOffsets.end(),
+                                  std::make_pair(offs, base));
     }
   }
 
@@ -4995,8 +5017,7 @@ CanQualType ASTContext::getFromTargetType(unsigned Type) const {
   case TargetInfo::UnsignedLongLong: return UnsignedLongLongTy;
   }
 
-  assert(false && "Unhandled TargetInfo::IntType value");
-  return CanQualType();
+  llvm_unreachable("Unhandled TargetInfo::IntType value");
 }
 
 //===----------------------------------------------------------------------===//
@@ -5007,7 +5028,7 @@ CanQualType ASTContext::getFromTargetType(unsigned Type) const {
 /// garbage collection attribute.
 ///
 Qualifiers::GC ASTContext::getObjCGCAttrKind(QualType Ty) const {
-  if (getLangOptions().getGCMode() == LangOptions::NonGC)
+  if (getLangOptions().getGC() == LangOptions::NonGC)
     return Qualifiers::GCNone;
 
   assert(getLangOptions().ObjC1);
@@ -5825,22 +5846,19 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
 #define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
 #include "clang/AST/TypeNodes.def"
-    assert(false && "Non-canonical and dependent types shouldn't get here");
-    return QualType();
+    llvm_unreachable("Non-canonical and dependent types shouldn't get here");
 
   case Type::LValueReference:
   case Type::RValueReference:
   case Type::MemberPointer:
-    assert(false && "C++ should never be in mergeTypes");
-    return QualType();
+    llvm_unreachable("C++ should never be in mergeTypes");
 
   case Type::ObjCInterface:
   case Type::IncompleteArray:
   case Type::VariableArray:
   case Type::FunctionProto:
   case Type::ExtVector:
-    assert(false && "Types are eliminated above");
-    return QualType();
+    llvm_unreachable("Types are eliminated above");
 
   case Type::Pointer:
   {
@@ -6095,8 +6113,7 @@ QualType ASTContext::getCorrespondingUnsignedType(QualType T) {
   case BuiltinType::Int128:
     return UnsignedInt128Ty;
   default:
-    assert(0 && "Unexpected signed integer type");
-    return QualType();
+    llvm_unreachable("Unexpected signed integer type");
   }
 }
 
@@ -6153,7 +6170,7 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
 
   // Read the base type.
   switch (*Str++) {
-  default: assert(0 && "Unknown builtin type letter!");
+  default: llvm_unreachable("Unknown builtin type letter!");
   case 'v':
     assert(HowLong == 0 && !Signed && !Unsigned &&
            "Bad modifiers used with 'v'!");
@@ -6508,7 +6525,7 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
       return false;
     return true;
   }
-
+  
   const VarDecl *VD = cast<VarDecl>(D);
   assert(VD->isFileVarDecl() && "Expected file scoped var");
 
@@ -6556,8 +6573,7 @@ MangleContext *ASTContext::createMangleContext() {
   case CXXABI_Microsoft:
     return createMicrosoftMangleContext(*this, getDiagnostics());
   }
-  assert(0 && "Unsupported ABI");
-  return 0;
+  llvm_unreachable("Unsupported ABI");
 }
 
 CXXABI::~CXXABI() {}

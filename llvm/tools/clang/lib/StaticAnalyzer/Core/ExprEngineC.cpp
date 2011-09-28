@@ -74,7 +74,7 @@ void ExprEngine::VisitBinaryOperator(const BinaryOperator* B,
     
     switch (Op) {
       default:
-        assert(0 && "Invalid opcode for compound assignment.");
+        llvm_unreachable("Invalid opcode for compound assignment.");
       case BO_MulAssign: Op = BO_Mul; break;
       case BO_DivAssign: Op = BO_Div; break;
       case BO_RemAssign: Op = BO_Rem; break;
@@ -203,17 +203,18 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
     
     switch (CastE->getCastKind()) {
       case CK_LValueToRValue:
-        assert(false && "LValueToRValue casts handled earlier.");
+        llvm_unreachable("LValueToRValue casts handled earlier.");
       case CK_GetObjCProperty:
-        assert(false && "GetObjCProperty casts handled earlier.");
+        llvm_unreachable("GetObjCProperty casts handled earlier.");
       case CK_ToVoid:
         Dst.Add(Pred);
         continue;
         // The analyzer doesn't do anything special with these casts,
         // since it understands retain/release semantics already.
-      case CK_ObjCProduceObject:
-      case CK_ObjCConsumeObject:
-      case CK_ObjCReclaimReturnedObject: // Fall-through.
+      case CK_ARCProduceObject:
+      case CK_ARCConsumeObject:
+      case CK_ARCReclaimReturnedObject:
+      case CK_ARCExtendBlockObject: // Fall-through.
         // True no-ops.
       case CK_NoOp:
       case CK_FunctionToPointerDecay: {
@@ -248,7 +249,8 @@ void ExprEngine::VisitCast(const CastExpr *CastE, const Expr *Ex,
       case CK_IntegralComplexToBoolean:
       case CK_IntegralComplexCast:
       case CK_IntegralComplexToFloatingComplex:
-      case CK_AnyPointerToObjCPointerCast:
+      case CK_CPointerToObjCPointerCast:
+      case CK_BlockPointerToObjCPointerCast:
       case CK_AnyPointerToBlockPointerCast:  
       case CK_ObjCObjectLValueCast: {
         // Delegate to SValBuilder to process.
@@ -623,8 +625,7 @@ void ExprEngine::VisitUnaryOperator(const UnaryOperator* U,
         
         switch (U->getOpcode()) {
           default:
-            assert(false && "Invalid Opcode.");
-            break;
+            llvm_unreachable("Invalid Opcode.");
             
           case UO_Not:
             // FIXME: Do we need to handle promotions?

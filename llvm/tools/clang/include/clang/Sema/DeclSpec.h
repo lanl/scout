@@ -34,7 +34,7 @@ namespace clang {
   class ASTContext;
   class TypeLoc;
   class LangOptions;
-  class Diagnostic;
+  class DiagnosticsEngine;
   class IdentifierInfo;
   class NamespaceAliasDecl;
   class NamespaceDecl;
@@ -373,7 +373,7 @@ private:
   SourceRange TypeofParensRange;
   SourceLocation TQ_constLoc, TQ_restrictLoc, TQ_volatileLoc;
   SourceLocation FS_inlineLoc, FS_virtualLoc, FS_explicitLoc;
-  SourceLocation FriendLoc, ConstexprLoc;
+  SourceLocation FriendLoc, ModulePrivateLoc, ConstexprLoc;
 
   WrittenBuiltinSpecs writtenBS;
   void SaveWrittenBuiltinSpecs();
@@ -620,13 +620,17 @@ public:
 
   bool SetFriendSpec(SourceLocation Loc, const char *&PrevSpec,
                      unsigned &DiagID);
-
+  bool setModulePrivateSpec(SourceLocation Loc, const char *&PrevSpec,
+                            unsigned &DiagID);
   bool SetConstexprSpec(SourceLocation Loc, const char *&PrevSpec,
                         unsigned &DiagID);
 
   bool isFriendSpecified() const { return Friend_specified; }
   SourceLocation getFriendSpecLoc() const { return FriendLoc; }
 
+  bool isModulePrivateSpecified() const { return ModulePrivateLoc.isValid(); }
+  SourceLocation getModulePrivateSpecLoc() const { return ModulePrivateLoc; }
+  
   bool isConstexprSpecified() const { return Constexpr_specified; }
   SourceLocation getConstexprSpecLoc() const { return ConstexprLoc; }
 
@@ -685,7 +689,7 @@ public:
   /// Finish - This does final analysis of the declspec, issuing diagnostics for
   /// things like "_Imaginary" (lacking an FP type).  After calling this method,
   /// DeclSpec is guaranteed self-consistent, even if an error occurred.
-  void Finish(Diagnostic &D, Preprocessor &PP);
+  void Finish(DiagnosticsEngine &D, Preprocessor &PP);
 
   const WrittenBuiltinSpecs& getWrittenBuiltinSpecs() const {
     return writtenBS;
@@ -1250,7 +1254,7 @@ struct DeclaratorChunk {
 
   void destroy() {
     switch (Kind) {
-    default: assert(0 && "Unknown decl type!");
+    default: llvm_unreachable("Unknown decl type!");
     case DeclaratorChunk::Function:      return Fun.destroy();
     case DeclaratorChunk::Pointer:       return Ptr.destroy();
     case DeclaratorChunk::BlockPointer:  return Cls.destroy();

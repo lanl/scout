@@ -36,7 +36,7 @@ namespace clang {
       : Writer(Writer), Record(Record) { }
 
     void
-    AddExplicitTemplateArgumentList(const ExplicitTemplateArgumentList &Args);
+    AddExplicitTemplateArgumentList(const ASTTemplateArgumentListInfo &Args);
 
     void VisitStmt(Stmt *S);
 #define STMT(Type, Base) \
@@ -46,7 +46,7 @@ namespace clang {
 }
 
 void ASTStmtWriter::
-AddExplicitTemplateArgumentList(const ExplicitTemplateArgumentList &Args) {
+AddExplicitTemplateArgumentList(const ASTTemplateArgumentListInfo &Args) {
   Writer.AddSourceLocation(Args.LAngleLoc, Record);
   Writer.AddSourceLocation(Args.RAngleLoc, Record);
   for (unsigned i=0; i != Args.NumTemplateArgs; ++i)
@@ -1158,7 +1158,7 @@ ASTStmtWriter::VisitCXXDependentScopeMemberExpr(CXXDependentScopeMemberExpr *E){
 
   Record.push_back(E->hasExplicitTemplateArgs());
   if (E->hasExplicitTemplateArgs()) {
-    const ExplicitTemplateArgumentList &Args = E->getExplicitTemplateArgs();
+    const ASTTemplateArgumentListInfo &Args = E->getExplicitTemplateArgs();
     Record.push_back(Args.NumTemplateArgs);
     AddExplicitTemplateArgumentList(Args);
   }
@@ -1184,7 +1184,7 @@ ASTStmtWriter::VisitDependentScopeDeclRefExpr(DependentScopeDeclRefExpr *E) {
   // emitted first.
   Record.push_back(E->hasExplicitTemplateArgs());
   if (E->hasExplicitTemplateArgs()) {
-    const ExplicitTemplateArgumentList &Args = E->getExplicitTemplateArgs();
+    const ASTTemplateArgumentListInfo &Args = E->getExplicitTemplateArgs();
     Record.push_back(Args.NumTemplateArgs);
     AddExplicitTemplateArgumentList(Args);
   }
@@ -1213,7 +1213,7 @@ void ASTStmtWriter::VisitOverloadExpr(OverloadExpr *E) {
   // Don't emit anything here, hasExplicitTemplateArgs() must be emitted first.
   Record.push_back(E->hasExplicitTemplateArgs());
   if (E->hasExplicitTemplateArgs()) {
-    const ExplicitTemplateArgumentList &Args = E->getExplicitTemplateArgs();
+    const ASTTemplateArgumentListInfo &Args = E->getExplicitTemplateArgs();
     Record.push_back(Args.NumTemplateArgs);
     AddExplicitTemplateArgumentList(Args);
   }
@@ -1456,7 +1456,7 @@ void ASTWriter::WriteSubStmt(Stmt *S) {
     SourceManager &SrcMgr
       = DeclIDs.begin()->first->getASTContext().getSourceManager();
     S->dump(SrcMgr);
-    assert(0 && "Unhandled sub statement writing AST file");
+    llvm_unreachable("Unhandled sub statement writing AST file");
   }
 #endif
 

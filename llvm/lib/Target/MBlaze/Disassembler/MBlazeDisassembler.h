@@ -32,8 +32,8 @@ class MBlazeDisassembler : public MCDisassembler {
 public:
   /// Constructor     - Initializes the disassembler.
   ///
-  MBlazeDisassembler() :
-    MCDisassembler() {
+  MBlazeDisassembler(const MCSubtargetInfo &STI) :
+    MCDisassembler(STI) {
   }
 
   ~MBlazeDisassembler() {
@@ -44,7 +44,8 @@ public:
                       uint64_t &size,
                       const MemoryObject &region,
                       uint64_t address,
-                      raw_ostream &vStream) const;
+                      raw_ostream &vStream,
+                      raw_ostream &cStream) const;
 
   /// getEDInfo - See MCDisassembler.
   EDInstInfo *getEDInfo() const;

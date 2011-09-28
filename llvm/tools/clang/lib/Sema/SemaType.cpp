@@ -664,7 +664,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       // each struct declaration and type name."
       // FIXME: Does Microsoft really have the implicit int extension in C++?
       if (S.getLangOptions().CPlusPlus &&
-          !S.getLangOptions().Microsoft) {
+          !S.getLangOptions().MicrosoftExt) {
         S.Diag(DeclLoc, diag::err_missing_type_specifier)
           << DS.getSourceRange();
 
@@ -1105,6 +1105,11 @@ static QualType inferARCLifetimeForPointee(Sema &S, QualType type,
   // retaining.  This currently only triggers for Class (possibly
   // protocol-qualifed, and arrays thereof).
   } else if (type->isObjCARCImplicitlyUnretainedType()) {
+    implicitLifetime = Qualifiers::OCL_ExplicitNone;
+
+  // If we are in an unevaluated context, like sizeof, assume ExplicitNone and
+  // don't give error.
+  } else if (S.ExprEvalContexts.back().Context == Sema::Unevaluated) {
     implicitLifetime = Qualifiers::OCL_ExplicitNone;
 
   // If that failed, give an error and recover using __autoreleasing.
@@ -1814,7 +1819,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
     switch (D.getContext()) {
     case Declarator::KNRTypeListContext:
-      assert(0 && "K&R type lists aren't allowed in C++");
+      llvm_unreachable("K&R type lists aren't allowed in C++");
       break;
     case Declarator::ObjCPrototypeContext:
     case Declarator::PrototypeContext:
@@ -1824,7 +1829,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       if (D.getDeclSpec().getStorageClassSpec() == DeclSpec::SCS_static)
         break;
       switch (cast<TagDecl>(SemaRef.CurContext)->getTagKind()) {
-      case TTK_Enum: assert(0 && "unhandled tag kind"); break;
+      case TTK_Enum: llvm_unreachable("unhandled tag kind");
       case TTK_Struct: Error = 1; /* Struct member */ break;
       case TTK_Union:  Error = 2; /* Union member */ break;
       case TTK_Class:  Error = 3; /* Class member */ break;
@@ -1985,7 +1990,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     state.setCurrentChunkIndex(chunkIndex);
     DeclaratorChunk &DeclType = D.getTypeObject(chunkIndex);
     switch (DeclType.Kind) {
-    default: assert(0 && "Unknown decltype!");
+    default: llvm_unreachable("Unknown decltype!");
     case DeclaratorChunk::Paren:
       T = S.BuildParenType(T);
       break;
@@ -3099,7 +3104,7 @@ ParsedType Sema::CreateParsedType(QualType T, TypeSourceInfo *TInfo) {
 
 void LocInfoType::getAsStringInternal(std::string &Str,
                                       const PrintingPolicy &Policy) const {
-  assert(false && "LocInfoType leaked into the type system; an opaque TypeTy*"
+  llvm_unreachable("LocInfoType leaked into the type system; an opaque TypeTy*"
          " was used directly instead of getting the QualType through"
          " GetTypeFromParser");
 }
@@ -3121,6 +3126,13 @@ TypeResult Sema::ActOnTypeName(Scope *S, Declarator &D) {
 
   return CreateParsedType(T, TInfo);
 }
+
+ParsedType Sema::ActOnObjCInstanceType(SourceLocation Loc) {
+  QualType T = Context.getObjCInstanceType();
+  TypeSourceInfo *TInfo = Context.getTrivialTypeSourceInfo(T, Loc);
+  return CreateParsedType(T, TInfo);
+}
+
 
 //===----------------------------------------------------------------------===//
 // Type Attribute Processing
@@ -3199,15 +3211,18 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
     return false;
 
   Sema &S = state.getSema();
+  SourceLocation AttrLoc = attr.getLoc();
+  if (AttrLoc.isMacroID())
+    AttrLoc = S.getSourceManager().getImmediateExpansionRange(AttrLoc).first;
 
   if (type.getQualifiers().getObjCLifetime()) {
-    S.Diag(attr.getLoc(), diag::err_attr_objc_ownership_redundant)
+    S.Diag(AttrLoc, diag::err_attr_objc_ownership_redundant)
       << type;
     return true;
   }
 
   if (!attr.getParameterName()) {
-    S.Diag(attr.getLoc(), diag::err_attribute_argument_n_not_string)
+    S.Diag(AttrLoc, diag::err_attribute_argument_n_not_string)
       << "objc_ownership" << 1;
     attr.setInvalid();
     return true;
@@ -3223,7 +3238,7 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
   else if (attr.getParameterName()->isStr("autoreleasing"))
     lifetime = Qualifiers::OCL_Autoreleasing;
   else {
-    S.Diag(attr.getLoc(), diag::warn_attribute_type_not_supported)
+    S.Diag(AttrLoc, diag::warn_attribute_type_not_supported)
       << "objc_ownership" << attr.getParameterName();
     attr.setInvalid();
     return true;
@@ -3241,7 +3256,7 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
 
   // If we have a valid source location for the attribute, use an
   // AttributedType instead.
-  if (attr.getLoc().isValid())
+  if (AttrLoc.isValid())
     type = S.Context.getAttributedType(AttributedType::attr_objc_ownership,
                                        origType, type);
 
@@ -3252,10 +3267,11 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
     // Actually, delay this until we know what we're parsing.
     if (S.DelayedDiagnostics.shouldDelayDiagnostics()) {
       S.DelayedDiagnostics.add(
-          sema::DelayedDiagnostic::makeForbiddenType(attr.getLoc(),
+          sema::DelayedDiagnostic::makeForbiddenType(
+              S.getSourceManager().getExpansionLoc(AttrLoc),
               diag::err_arc_weak_no_runtime, type, /*ignored*/ 0));
     } else {
-      S.Diag(attr.getLoc(), diag::err_arc_weak_no_runtime);
+      S.Diag(AttrLoc, diag::err_arc_weak_no_runtime);
     }
 
     attr.setInvalid();
@@ -3271,7 +3287,7 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
     if (const ObjCObjectPointerType *ObjT = T->getAs<ObjCObjectPointerType>()) {
       ObjCInterfaceDecl *Class = ObjT->getInterfaceDecl();
       if (Class->isArcWeakrefUnavailable()) {
-          S.Diag(attr.getLoc(), diag::err_arc_unsupported_weak_class);
+          S.Diag(AttrLoc, diag::err_arc_unsupported_weak_class);
           S.Diag(ObjT->getInterfaceDecl()->getLocation(), 
                  diag::note_class_declared);
       }

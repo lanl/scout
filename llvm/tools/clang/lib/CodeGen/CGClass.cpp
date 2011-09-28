@@ -559,11 +559,7 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
     LHS = CGF.EmitLValueForFieldInitialization(ThisPtr, Field, 0);
   }
 
-  // FIXME: If there's no initializer and the CXXCtorInitializer
-  // was implicitly generated, we shouldn't be zeroing memory.
-  if (FieldType->isArrayType() && !MemberInit->getInit()) {
-    CGF.EmitNullInitialization(LHS.getAddress(), Field->getType());
-  } else if (!CGF.hasAggregateLLVMType(Field->getType())) {
+  if (!CGF.hasAggregateLLVMType(Field->getType())) {
     if (LHS.isSimple()) {
       CGF.EmitExprAsInit(MemberInit->getInit(), Field, LHS, false);
     } else {
@@ -577,7 +573,7 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
     llvm::Value *ArrayIndexVar = 0;
     const ConstantArrayType *Array
       = CGF.getContext().getAsConstantArrayType(FieldType);
-    if (Array && Constructor->isImplicit() && 
+    if (Array && Constructor->isImplicitlyDefined() &&
         Constructor->isCopyOrMoveConstructor()) {
       llvm::Type *SizeTy
         = CGF.ConvertType(CGF.getContext().getSizeType());
@@ -983,6 +979,10 @@ void CodeGenFunction::EnterDtorCleanups(const CXXDestructorDecl *DD,
   }
 
   const CXXRecordDecl *ClassDecl = DD->getParent();
+
+  // Unions have no bases and do not call field destructors.
+  if (ClassDecl->isUnion())
+    return;
 
   // The complete-destructor phase just destructs all the virtual bases.
   if (DtorType == Dtor_Complete) {
@@ -1410,7 +1410,7 @@ CodeGenFunction::GetVirtualBaseClassOffset(llvm::Value *This,
                                            const CXXRecordDecl *BaseClassDecl) {
   llvm::Value *VTablePtr = GetVTablePtr(This, Int8PtrTy);
   CharUnits VBaseOffsetOffset = 
-    CGM.getVTables().getVirtualBaseOffsetOffset(ClassDecl, BaseClassDecl);
+    CGM.getVTableContext().getVirtualBaseOffsetOffset(ClassDecl, BaseClassDecl);
   
   llvm::Value *VBaseOffsetPtr = 
     Builder.CreateConstGEP1_64(VTablePtr, VBaseOffsetOffset.getQuantity(), 
@@ -1452,7 +1452,8 @@ CodeGenFunction::InitializeVTablePointer(BaseSubobject Base,
     // And load the address point from the VTT.
     VTableAddressPoint = Builder.CreateLoad(VTT);
   } else {
-    uint64_t AddressPoint = CGM.getVTables().getAddressPoint(Base, VTableClass);
+    uint64_t AddressPoint =
+      CGM.getVTableContext().getVTableLayout(VTableClass).getAddressPoint(Base);
     VTableAddressPoint =
       Builder.CreateConstInBoundsGEP2_64(VTable, 0, AddressPoint);
   }

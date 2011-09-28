@@ -231,10 +231,15 @@ RecognizableInstr::RecognizableInstr(DisassemblerTables &tables,
   HasVEX_LPrefix   = has256BitOperands() || Rec->getValueAsBit("hasVEX_L");
   
   // Check for 64-bit inst which does not require REX
+  Is32Bit = false;
   Is64Bit = false;
   // FIXME: Is there some better way to check for In64BitMode?
   std::vector<Record*> Predicates = Rec->getValueAsListOfDefs("Predicates");
   for (unsigned i = 0, e = Predicates.size(); i != e; ++i) {
+    if (Predicates[i]->getName().find("32Bit") != Name.npos) {
+      Is32Bit = true;
+      break;
+    }
     if (Predicates[i]->getName().find("64Bit") != Name.npos) {
       Is64Bit = true;
       break;
@@ -325,7 +330,7 @@ InstructionContext RecognizableInstr::insnContext() const {
       insnContext = IC_OPSIZE;
     else if (Prefix == X86Local::XD)
       insnContext = IC_XD;
-    else if (Prefix == X86Local::XS)
+    else if (Prefix == X86Local::XS || Prefix == X86Local::REP)
       insnContext = IC_XS;
     else
       insnContext = IC;
@@ -345,19 +350,12 @@ RecognizableInstr::filter_ret RecognizableInstr::filter() const {
     return FILTER_STRONG;
   
   if (Form == X86Local::Pseudo ||
-      IsCodeGenOnly)
+      (IsCodeGenOnly && Name.find("_REV") == Name.npos))
     return FILTER_STRONG;
   
   if (Form == X86Local::MRMInitReg)
     return FILTER_STRONG;
     
-    
-  // TEMPORARY pending bug fixes
-
-  if (Name.find("VMOVDQU") != Name.npos ||
-      Name.find("VMOVDQA") != Name.npos ||
-      Name.find("VROUND") != Name.npos)
-    return FILTER_STRONG;
     
   // Filter out artificial instructions
     
@@ -882,6 +880,7 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
     }
     opcodeToSet = 0xd8 + (Prefix - X86Local::D8);
     break;
+  case X86Local::REP:
   default:
     opcodeType = ONEBYTE;
     switch (Opcode) {
@@ -953,7 +952,7 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
                               insnContext(), 
                               currentOpcode, 
                               *filter, 
-                              UID);
+                              UID, Is32Bit);
     
       Spec->modifierType = MODIFIER_OPCODE;
       Spec->modifierBase = opcodeToSet;
@@ -963,14 +962,14 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
                             insnContext(), 
                             opcodeToSet, 
                             *filter, 
-                            UID);
+                            UID, Is32Bit);
     }
   } else {
     tables.setTableFields(opcodeType,
                           insnContext(),
                           opcodeToSet,
                           *filter,
-                          UID);
+                          UID, Is32Bit);
     
     Spec->modifierType = MODIFIER_NONE;
     Spec->modifierBase = opcodeToSet;

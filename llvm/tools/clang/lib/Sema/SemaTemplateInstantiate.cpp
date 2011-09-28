@@ -484,7 +484,7 @@ void Sema::PrintInstantiationStack() {
         = TemplateSpecializationType::PrintTemplateArgumentList(
                                                          Active->TemplateArgs,
                                                       Active->NumTemplateArgs,
-                                                      Context.PrintingPolicy);
+                                                      getPrintingPolicy());
       Diags.Report(Active->PointOfInstantiation,
                    diag::note_default_arg_instantiation_here)
         << (Template->getNameAsString() + TemplateArgsStr)
@@ -538,7 +538,7 @@ void Sema::PrintInstantiationStack() {
         = TemplateSpecializationType::PrintTemplateArgumentList(
                                                          Active->TemplateArgs,
                                                       Active->NumTemplateArgs,
-                                                      Context.PrintingPolicy);
+                                                      getPrintingPolicy());
       Diags.Report(Active->PointOfInstantiation,
                    diag::note_default_function_arg_instantiation_here)
         << (FD->getNameAsString() + TemplateArgsStr)
@@ -681,14 +681,12 @@ namespace {
 
     bool TryExpandParameterPacks(SourceLocation EllipsisLoc,
                                  SourceRange PatternRange,
-                                 const UnexpandedParameterPack *Unexpanded,
-                                 unsigned NumUnexpanded,
+                             llvm::ArrayRef<UnexpandedParameterPack> Unexpanded,
                                  bool &ShouldExpand,
                                  bool &RetainExpansion,
                                  llvm::Optional<unsigned> &NumExpansions) {
       return getSema().CheckParameterPacksForExpansion(EllipsisLoc, 
                                                        PatternRange, Unexpanded,
-                                                       NumUnexpanded, 
                                                        TemplateArgs, 
                                                        ShouldExpand,
                                                        RetainExpansion,
@@ -1580,7 +1578,7 @@ Sema::SubstBaseSpecifiers(CXXRecordDecl *Instantiation,
       llvm::Optional<unsigned> NumExpansions;
       if (CheckParameterPacksForExpansion(Base->getEllipsisLoc(), 
                                           Base->getSourceRange(),
-                                          Unexpanded.data(), Unexpanded.size(),
+                                          Unexpanded,
                                           TemplateArgs, ShouldExpand, 
                                           RetainExpansion,
                                           NumExpansions)) {
@@ -1796,9 +1794,8 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
   }
 
   // Finish checking fields.
-  ActOnFields(0, Instantiation->getLocation(), Instantiation,
-              Fields.data(), Fields.size(), SourceLocation(), SourceLocation(),
-              0);
+  ActOnFields(0, Instantiation->getLocation(), Instantiation, Fields, 
+              SourceLocation(), SourceLocation(), 0);
   CheckCompletedCXXClass(Instantiation);
 
   // Attach any in-class member initializers now the class is complete.

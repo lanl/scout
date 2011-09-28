@@ -26,15 +26,15 @@ LogDiagnosticPrinter::~LogDiagnosticPrinter() {
     delete &OS;
 }
 
-static StringRef getLevelName(Diagnostic::Level Level) {
+static StringRef getLevelName(DiagnosticsEngine::Level Level) {
   switch (Level) {
   default:
     return "<unknown>";
-  case Diagnostic::Ignored: return "ignored";
-  case Diagnostic::Note:    return "note";
-  case Diagnostic::Warning: return "warning";
-  case Diagnostic::Error:   return "error";
-  case Diagnostic::Fatal:   return "fatal error";
+  case DiagnosticsEngine::Ignored: return "ignored";
+  case DiagnosticsEngine::Note:    return "note";
+  case DiagnosticsEngine::Warning: return "warning";
+  case DiagnosticsEngine::Error:   return "error";
+  case DiagnosticsEngine::Fatal:   return "fatal error";
   }
 }
 
@@ -42,9 +42,9 @@ void LogDiagnosticPrinter::EndSourceFile() {
   // We emit all the diagnostics in EndSourceFile. However, we don't emit any
   // entry if no diagnostics were present.
   //
-  // Note that DiagnosticClient has no "end-of-compilation" callback, so we will
-  // miss any diagnostics which are emitted after and outside the translation
-  // unit processing.
+  // Note that DiagnosticConsumer has no "end-of-compilation" callback, so we
+  // will miss any diagnostics which are emitted after and outside the
+  // translation unit processing.
   if (Entries.empty())
     return;
 
@@ -93,10 +93,10 @@ void LogDiagnosticPrinter::EndSourceFile() {
   this->OS << OS.str();
 }
 
-void LogDiagnosticPrinter::HandleDiagnostic(Diagnostic::Level Level,
-                                            const DiagnosticInfo &Info) {
+void LogDiagnosticPrinter::HandleDiagnostic(DiagnosticsEngine::Level Level,
+                                            const Diagnostic &Info) {
   // Default implementation (Warnings/errors count).
-  DiagnosticClient::HandleDiagnostic(Level, Info);
+  DiagnosticConsumer::HandleDiagnostic(Level, Info);
 
   // Initialize the main file name, if we haven't already fetched it.
   if (MainFilename.empty() && Info.hasSourceManager()) {

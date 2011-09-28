@@ -1394,8 +1394,7 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
       else {
         // Can't be a DependentSizedArrayType or an IncompleteArrayType since
         // UnqAT is not incomplete and Range is not type-dependent.
-        assert(0 && "Unexpected array type in for-range");
-        return StmtError();
+        llvm_unreachable("Unexpected array type in for-range");
       }
 
       // end-expr is __range + __bound.
@@ -2128,6 +2127,10 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
     unsigned InputOpNo = i+NumOutputs;
     Expr *OutputExpr = Exprs[TiedTo];
     Expr *InputExpr = Exprs[InputOpNo];
+
+    if (OutputExpr->isTypeDependent() || InputExpr->isTypeDependent())
+      continue;
+
     QualType InTy = InputExpr->getType();
     QualType OutTy = OutputExpr->getType();
     if (Context.hasSameType(InTy, OutTy))

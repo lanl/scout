@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Driver/Action.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include <cassert>
 using namespace clang::driver;
@@ -34,8 +35,7 @@ const char *Action::getClassName(ActionClass AC) {
   case VerifyJobClass: return "verify";
   }
 
-  assert(0 && "invalid class");
-  return 0;
+  llvm_unreachable("invalid class");
 }
 
 InputAction::InputAction(const Arg &_Input, types::ID _Type)

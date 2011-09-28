@@ -134,6 +134,9 @@ def ccc_ : Joined<"-ccc-">, Group<ccc_Group>, Flags<[Unsupported]>;
 
 def _HASH_HASH_HASH : Flag<"-###">, Flags<[DriverOption]>,
     HelpText<"Print the commands to run for this compilation">;
+// The '--' option is here for the sake of compatibility with gcc, but is 
+// being ignored by the driver.
+def _DASH_DASH : Flag<"--">, Flags<[DriverOption]>;
 def A : JoinedOrSeparate<"-A">;
 def B : JoinedOrSeparate<"-B">;
 def CC : Flag<"-CC">;
@@ -337,8 +340,14 @@ def fmath_errno : Flag<"-fmath-errno">, Group<f_Group>;
 def fmerge_all_constants : Flag<"-fmerge-all-constants">, Group<f_Group>;
 def fmessage_length_EQ : Joined<"-fmessage-length=">, Group<f_Group>;
 def fms_extensions : Flag<"-fms-extensions">, Group<f_Group>;
+def fms_compatibility : Flag<"-fms-compatibility">, Group<f_Group>;
 def fmsc_version : Joined<"-fmsc-version=">, Group<f_Group>;
 def fdelayed_template_parsing : Flag<"-fdelayed-template-parsing">, Group<f_Group>;
+def fmodule_cache_path : Separate<"-fmodule-cache-path">, Group<i_Group>, 
+  Flags<[NoForward]>;
+def fauto_module_import : Flag <"-fauto-module-import">, Group<f_Group>,
+  Flags<[NoForward]>;
+  
 def fmudflapth : Flag<"-fmudflapth">, Group<f_Group>;
 def fmudflap : Flag<"-fmudflap">, Group<f_Group>;
 def fnested_functions : Flag<"-fnested-functions">, Group<f_Group>;
@@ -374,6 +383,7 @@ def fno_lax_vector_conversions : Flag<"-fno-lax-vector-conversions">, Group<f_Gr
 def fno_math_errno : Flag<"-fno-math-errno">, Group<f_Group>;
 def fno_merge_all_constants : Flag<"-fno-merge-all-constants">, Group<f_Group>;
 def fno_ms_extensions : Flag<"-fno-ms-extensions">, Group<f_Group>;
+def fno_ms_compatibility : Flag<"-fno-ms-compatibility">, Group<f_Group>;
 def fno_delayed_template_parsing : Flag<"-fno-delayed-template-parsing">, Group<f_Group>;
 def fno_objc_default_synthesize_properties 
   : Flag<"-fno-objc-default-synthesize-properties">, Group<f_Group>;
@@ -845,6 +855,8 @@ def _verbose : Flag<"--verbose">, Alias<v>;
 def _version : Flag<"--version">;
 def _warn__EQ : Joined<"--warn-=">, Alias<W_Joined>;
 def _warn_ : Joined<"--warn-">, Alias<W_Joined>;
+def _working_directory : Separate<"--working-directory">,
+    HelpText<"Use the given argument as the effective working directory">;
 def _write_dependencies : Flag<"--write-dependencies">, Alias<MD>;
 def _write_user_dependencies : Flag<"--write-user-dependencies">, Alias<MMD>;
 def _ : Joined<"--">, Flags<[Unsupported]>;

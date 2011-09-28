@@ -289,7 +289,17 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   unsigned Encoding = 0;
   const char *BTName = NULL;
   switch (BT->getKind()) {
-  default:
+  case BuiltinType::Dependent:
+    llvm_unreachable("Unexpected builtin type Dependent");
+  case BuiltinType::Overload:
+    llvm_unreachable("Unexpected builtin type Overload");
+  case BuiltinType::BoundMember:
+    llvm_unreachable("Unexpected builtin type BoundMember");
+  case BuiltinType::UnknownAny:
+    llvm_unreachable("Unexpected builtin type UnknownAny");
+  case BuiltinType::NullPtr:
+    return DBuilder.
+      createNullPtrType(BT->getName(CGM.getContext().getLangOptions()));
   case BuiltinType::Void:
     return llvm::DIType();
   case BuiltinType::ObjCClass:
@@ -334,15 +344,19 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   case BuiltinType::Char_U: Encoding = llvm::dwarf::DW_ATE_unsigned_char; break;
   case BuiltinType::Char_S:
   case BuiltinType::SChar: Encoding = llvm::dwarf::DW_ATE_signed_char; break;
+  case BuiltinType::Char16:
+  case BuiltinType::Char32: Encoding = llvm::dwarf::DW_ATE_UTF; break;
   case BuiltinType::UShort:
   case BuiltinType::UInt:
   case BuiltinType::UInt128:
   case BuiltinType::ULong:
+  case BuiltinType::WChar_U:
   case BuiltinType::ULongLong: Encoding = llvm::dwarf::DW_ATE_unsigned; break;
   case BuiltinType::Short:
   case BuiltinType::Int:
   case BuiltinType::Int128:
   case BuiltinType::Long:
+  case BuiltinType::WChar_S:
   case BuiltinType::LongLong:  Encoding = llvm::dwarf::DW_ATE_signed; break;
   case BuiltinType::Bool:      Encoding = llvm::dwarf::DW_ATE_boolean; break;
   case BuiltinType::Float:
@@ -432,7 +446,7 @@ llvm::DIType CGDebugInfo::CreateType(const PointerType *Ty,
                                Ty->getPointeeType(), Unit);
 }
 
-/// CreatePointeeType - Create PointTee type. If Pointee is a record
+/// CreatePointeeType - Create Pointee type. If Pointee is a record
 /// then emit record's fwd if debug info size reduction is enabled.
 llvm::DIType CGDebugInfo::CreatePointeeType(QualType PointeeTy,
                                             llvm::DIFile Unit) {
@@ -674,7 +688,6 @@ CGDebugInfo::getOrCreateMethodType(const CXXMethodDecl *Method,
                       Unit);
   
   // Add "this" pointer.
-
   llvm::DIArray Args = llvm::DICompositeType(FnTy).getTypeArray();
   assert (Args.getNumElements() && "Invalid number of arguments!");
 
@@ -683,16 +696,15 @@ CGDebugInfo::getOrCreateMethodType(const CXXMethodDecl *Method,
   // First element is always return type. For 'void' functions it is NULL.
   Elts.push_back(Args.getElement(0));
 
-  if (!Method->isStatic())
-  {
-        // "this" pointer is always first argument.
-        QualType ThisPtr = Method->getThisType(CGM.getContext());
-        llvm::DIType ThisPtrType =
-          DBuilder.createArtificialType(getOrCreateType(ThisPtr, Unit));
-
-        TypeCache[ThisPtr.getAsOpaquePtr()] = ThisPtrType;
-        Elts.push_back(ThisPtrType);
-    }
+  if (!Method->isStatic()) {
+    // "this" pointer is always first argument.
+    QualType ThisPtr = Method->getThisType(CGM.getContext());
+    llvm::DIType ThisPtrType =
+      DBuilder.createArtificialType(getOrCreateType(ThisPtr, Unit));
+    
+    TypeCache[ThisPtr.getAsOpaquePtr()] = ThisPtrType;
+    Elts.push_back(ThisPtrType);
+  }
 
   // Copy rest of the arguments.
   for (unsigned i = 1, e = Args.getNumElements(); i != e; ++i)
@@ -750,7 +762,7 @@ CGDebugInfo::CreateCXXMemberFunction(const CXXMethodDecl *Method,
     // It doesn't make sense to give a virtual destructor a vtable index,
     // since a single destructor has two entries in the vtable.
     if (!isa<CXXDestructorDecl>(Method))
-      VIndex = CGM.getVTables().getMethodVTableIndex(Method);
+      VIndex = CGM.getVTableContext().getMethodVTableIndex(Method);
     ContainingType = RecordTy;
   }
 
@@ -843,7 +855,8 @@ CollectCXXBases(const CXXRecordDecl *RD, llvm::DIFile Unit,
       // virtual base offset offset is -ve. The code generator emits dwarf
       // expression where it expects +ve number.
       BaseOffset = 
-        0 - CGM.getVTables().getVirtualBaseOffsetOffset(RD, Base).getQuantity();
+        0 - CGM.getVTableContext()
+               .getVirtualBaseOffsetOffset(RD, Base).getQuantity();
       BFlags = llvm::DIDescriptor::FlagVirtual;
     } else
       BaseOffset = RL.getBaseClassOffsetInBits(Base);
@@ -1184,7 +1197,7 @@ llvm::DIType CGDebugInfo::CreateType(const ObjCInterfaceType *Ty,
   }
 
   const ASTRecordLayout &RL = CGM.getContext().getASTObjCInterfaceLayout(ID);
-
+  ObjCImplementationDecl *ImpD = ID->getImplementation();
   unsigned FieldNo = 0;
   for (ObjCIvarDecl *Field = ID->all_declared_ivar_begin(); Field;
        Field = Field->getNextIvar(), ++FieldNo) {
@@ -1228,13 +1241,17 @@ llvm::DIType CGDebugInfo::CreateType(const ObjCInterfaceType *Ty,
     StringRef PropertyGetter;
     StringRef PropertySetter;
     unsigned PropertyAttributes = 0;
-    if (ObjCPropertyDecl *PD =
-        ID->FindPropertyVisibleInPrimaryClass(Field->getIdentifier())) {
+    ObjCPropertyDecl *PD = NULL;
+    if (ImpD)
+      if (ObjCPropertyImplDecl *PImpD = 
+	  ImpD->FindPropertyImplIvarDecl(Field->getIdentifier()))
+	PD = PImpD->getPropertyDecl();
+    if (PD) {
       PropertyName = PD->getName();
       PropertyGetter = getSelectorName(PD->getGetterName());
       PropertySetter = getSelectorName(PD->getSetterName());
       PropertyAttributes = PD->getPropertyAttributes();
-    }
+    } 
     FieldTy = DBuilder.createObjCIVar(FieldName, FieldDefUnit,
                                       FieldLine, FieldSize, FieldAlign,
                                       FieldOffset, Flags, FieldTy,
@@ -1529,7 +1546,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty,
 #define NON_CANONICAL_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
 #include "clang/AST/TypeNodes.def"
-    assert(false && "Dependent types cannot show up in debug information");
+    llvm_unreachable("Dependent types cannot show up in debug information");
 
   case Type::ExtVector:
   case Type::Vector:
@@ -1585,7 +1602,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty,
   }
   
   assert(Diag && "Fall through without a diagnostic?");
-  unsigned DiagID = CGM.getDiags().getCustomDiagID(Diagnostic::Error,
+  unsigned DiagID = CGM.getDiags().getCustomDiagID(DiagnosticsEngine::Error,
                                "debug information for %0 is not yet supported");
   CGM.getDiags().Report(DiagID)
     << Diag;
@@ -1818,7 +1835,7 @@ void CGDebugInfo::UpdateLineDirectiveRegion(CGBuilderTy &Builder) {
   return;
 }
 /// EmitRegionStart- Constructs the debug code for entering a declarative
-/// region - "llvm.dbg.region.start.".
+/// region - beginning of a DW_TAG_lexical_block.
 void CGDebugInfo::EmitRegionStart(CGBuilderTy &Builder) {
   llvm::DIDescriptor D =
     DBuilder.createLexicalBlock(RegionStack.empty() ? 
@@ -1832,11 +1849,11 @@ void CGDebugInfo::EmitRegionStart(CGBuilderTy &Builder) {
 }
 
 /// EmitRegionEnd - Constructs the debug code for exiting a declarative
-/// region - "llvm.dbg.region.end."
+/// region - end of a DW_TAG_lexical_block.
 void CGDebugInfo::EmitRegionEnd(CGBuilderTy &Builder) {
   assert(!RegionStack.empty() && "Region stack mismatch, stack empty!");
 
-  // Provide an region stop point.
+  // Provide a region stop point.
   EmitStopPoint(Builder);
 
   RegionStack.pop_back();

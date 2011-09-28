@@ -28,6 +28,8 @@
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <algorithm>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -1119,15 +1121,16 @@ QualifierInfo::setTemplateParameterListsInfo(ASTContext &Context,
 
 const char *VarDecl::getStorageClassSpecifierString(StorageClass SC) {
   switch (SC) {
-  case SC_None:          break;
-  case SC_Auto:          return "auto"; break;
-  case SC_Extern:        return "extern"; break;
-  case SC_PrivateExtern: return "__private_extern__"; break;
-  case SC_Register:      return "register"; break;
-  case SC_Static:        return "static"; break;
+  case SC_None:                 break;
+  case SC_Auto:                 return "auto";
+  case SC_Extern:               return "extern";
+  case SC_OpenCLWorkGroupLocal: return "<<work-group-local>>";
+  case SC_PrivateExtern:        return "__private_extern__";
+  case SC_Register:             return "register";
+  case SC_Static:               return "static";
   }
 
-  assert(0 && "Invalid storage class");
+  llvm_unreachable("Invalid storage class");
   return 0;
 }
 
@@ -1687,15 +1690,14 @@ unsigned FunctionDecl::getNumParams() const {
 }
 
 void FunctionDecl::setParams(ASTContext &C,
-                             ParmVarDecl **NewParamInfo, unsigned NumParams) {
+                             llvm::ArrayRef<ParmVarDecl *> NewParamInfo) {
   assert(ParamInfo == 0 && "Already has param info!");
-  assert(NumParams == getNumParams() && "Parameter count mismatch!");
+  assert(NewParamInfo.size() == getNumParams() && "Parameter count mismatch!");
 
   // Zero params -> null pointer.
-  if (NumParams) {
-    void *Mem = C.Allocate(sizeof(ParmVarDecl*)*NumParams);
-    ParamInfo = new (Mem) ParmVarDecl*[NumParams];
-    memcpy(ParamInfo, NewParamInfo, sizeof(ParmVarDecl*)*NumParams);
+  if (!NewParamInfo.empty()) {
+    ParamInfo = new (C) ParmVarDecl*[NewParamInfo.size()];
+    std::copy(NewParamInfo.begin(), NewParamInfo.end(), ParamInfo);
   }
 }
 
@@ -1888,8 +1890,7 @@ FunctionDecl::TemplatedKind FunctionDecl::getTemplatedKind() const {
                                <DependentFunctionTemplateSpecializationInfo*>())
     return TK_DependentFunctionTemplateSpecialization;
 
-  assert(false && "Did we miss a TemplateOrSpecialization type?");
-  return TK_NonTemplate;
+  llvm_unreachable("Did we miss a TemplateOrSpecialization type?");
 }
 
 FunctionDecl *FunctionDecl::getInstantiatedFromMemberFunction() const {
@@ -1997,7 +1998,7 @@ FunctionDecl::getTemplateSpecializationArgs() const {
   return 0;
 }
 
-const TemplateArgumentListInfo *
+const ASTTemplateArgumentListInfo *
 FunctionDecl::getTemplateSpecializationArgsAsWritten() const {
   if (FunctionTemplateSpecializationInfo *Info
         = TemplateOrSpecialization
@@ -2112,7 +2113,7 @@ FunctionDecl::setTemplateSpecializationKind(TemplateSpecializationKind TSK,
         MSInfo->getPointOfInstantiation().isInvalid())
       MSInfo->setPointOfInstantiation(PointOfInstantiation);
   } else
-    assert(false && "Function cannot have a template specialization kind");
+    llvm_unreachable("Function cannot have a template specialization kind");
 }
 
 SourceLocation FunctionDecl::getPointOfInstantiation() const {
@@ -2429,16 +2430,14 @@ void RecordDecl::LoadFieldsFromExternalStorage() const {
 // BlockDecl Implementation
 //===----------------------------------------------------------------------===//
 
-void BlockDecl::setParams(ParmVarDecl **NewParamInfo,
-                          unsigned NParms) {
+void BlockDecl::setParams(llvm::ArrayRef<ParmVarDecl *> NewParamInfo) {
   assert(ParamInfo == 0 && "Already has param info!");
 
   // Zero params -> null pointer.
-  if (NParms) {
-    NumParams = NParms;
-    void *Mem = getASTContext().Allocate(sizeof(ParmVarDecl*)*NumParams);
-    ParamInfo = new (Mem) ParmVarDecl*[NumParams];
-    memcpy(ParamInfo, NewParamInfo, sizeof(ParmVarDecl*)*NumParams);
+  if (!NewParamInfo.empty()) {
+    NumParams = NewParamInfo.size();
+    ParamInfo = new (getASTContext()) ParmVarDecl*[NewParamInfo.size()];
+    std::copy(NewParamInfo.begin(), NewParamInfo.end(), ParamInfo);
   }
 }
 

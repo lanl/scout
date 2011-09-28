@@ -16,6 +16,7 @@
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cctype>
 #include <cstdlib>
 using namespace clang;
@@ -62,6 +63,8 @@ TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
                       "i64:64:64-f32:32:32-f64:64:64-n32";
   UserLabelPrefix = "_";
   MCountName = "mcount";
+  RegParmMax = 0;
+  SSERegParmMax = 0;
   HasAlignMac68kSupport = false;
 
   // Default to no types using fpret.
@@ -85,7 +88,7 @@ TargetInfo::~TargetInfo() {}
 /// For example, SignedShort -> "short".
 const char *TargetInfo::getTypeName(IntType T) {
   switch (T) {
-  default: assert(0 && "not an integer!");
+  default: llvm_unreachable("not an integer!");
   case SignedShort:      return "short";
   case UnsignedShort:    return "unsigned short";
   case SignedInt:        return "int";
@@ -101,7 +104,7 @@ const char *TargetInfo::getTypeName(IntType T) {
 /// integer type enum. For example, SignedLong -> "L".
 const char *TargetInfo::getTypeConstantSuffix(IntType T) {
   switch (T) {
-  default: assert(0 && "not an integer!");
+  default: llvm_unreachable("not an integer!");
   case SignedShort:
   case SignedInt:        return "";
   case SignedLong:       return "L";
@@ -117,7 +120,7 @@ const char *TargetInfo::getTypeConstantSuffix(IntType T) {
 /// enum. For example, SignedInt -> getIntWidth().
 unsigned TargetInfo::getTypeWidth(IntType T) const {
   switch (T) {
-  default: assert(0 && "not an integer!");
+  default: llvm_unreachable("not an integer!");
   case SignedShort:
   case UnsignedShort:    return getShortWidth();
   case SignedInt:
@@ -133,7 +136,7 @@ unsigned TargetInfo::getTypeWidth(IntType T) const {
 /// enum. For example, SignedInt -> getIntAlign().
 unsigned TargetInfo::getTypeAlign(IntType T) const {
   switch (T) {
-  default: assert(0 && "not an integer!");
+  default: llvm_unreachable("not an integer!");
   case SignedShort:
   case UnsignedShort:    return getShortAlign();
   case SignedInt:
@@ -149,7 +152,7 @@ unsigned TargetInfo::getTypeAlign(IntType T) const {
 /// the type is signed; false otherwise.
 bool TargetInfo::isTypeSigned(IntType T) {
   switch (T) {
-  default: assert(0 && "not an integer!");
+  default: llvm_unreachable("not an integer!");
   case SignedShort:
   case SignedInt:
   case SignedLong:

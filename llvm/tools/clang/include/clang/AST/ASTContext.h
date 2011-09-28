@@ -44,7 +44,7 @@ namespace clang {
   class ASTRecordLayout;
   class BlockExpr;
   class CharUnits;
-  class Diagnostic;
+  class DiagnosticsEngine;
   class Expr;
   class ExternalASTSource;
   class ASTMutationListener;
@@ -211,6 +211,9 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
 
+  /// \brief The typedef declaration for the Objective-C "instancetype" type.
+  TypedefDecl *ObjCInstanceTypeDecl;
+  
   /// \brief The type for the C FILE type.
   TypeDecl *FILEDecl;
 
@@ -339,6 +342,8 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   friend class ASTWriter;
   
   const TargetInfo *Target;
+  clang::PrintingPolicy PrintingPolicy;
+  
 public:
   IdentifierTable &Idents;
   SelectorTable &Selectors;
@@ -346,8 +351,13 @@ public:
   mutable DeclarationNameTable DeclarationNames;
   llvm::OwningPtr<ExternalASTSource> ExternalSource;
   ASTMutationListener *Listener;
-  clang::PrintingPolicy PrintingPolicy;
 
+  clang::PrintingPolicy getPrintingPolicy() const { return PrintingPolicy; }
+
+  void setPrintingPolicy(clang::PrintingPolicy Policy) {
+    PrintingPolicy = Policy;
+  }
+  
   SourceManager& getSourceManager() { return SourceMgr; }
   const SourceManager& getSourceManager() const { return SourceMgr; }
   void *Allocate(unsigned Size, unsigned Align = 8) const {
@@ -371,7 +381,7 @@ public:
   
   const LangOptions& getLangOptions() const { return LangOpts; }
 
-  Diagnostic &getDiagnostics() const;
+  DiagnosticsEngine &getDiagnostics() const;
 
   FullSourceLoc getFullLoc(SourceLocation Loc) const {
     return FullSourceLoc(Loc,SourceMgr);
@@ -919,6 +929,16 @@ public:
     ObjCSelRedefinitionType = RedefType;
   }
 
+  /// \brief Retrieve the Objective-C "instancetype" type, if already known;
+  /// otherwise, returns a NULL type;
+  QualType getObjCInstanceType() {
+    return getTypeDeclType(getObjCInstanceTypeDecl());
+  }
+
+  /// \brief Retrieve the typedef declaration corresponding to the Objective-C
+  /// "instancetype" type.
+  TypedefDecl *getObjCInstanceTypeDecl();
+  
   /// \brief Set the type for the C FILE type.
   void setFILEDecl(TypeDecl *FILEDecl) { this->FILEDecl = FILEDecl; }
 

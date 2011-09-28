@@ -20,6 +20,7 @@
 #include "clang/AST/DeclAccessPair.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/ASTVector.h"
+#include "clang/AST/TemplateBase.h"
 #include "clang/AST/UsuallyTinyPtrVector.h"
 #include "clang/Basic/TypeTraits.h"
 #include "llvm/ADT/APSInt.h"
@@ -41,8 +42,6 @@ namespace clang {
   class CXXOperatorCallExpr;
   class CXXMemberCallExpr;
   class ObjCPropertyRefExpr;
-  class TemplateArgumentLoc;
-  class TemplateArgumentListInfo;
   class OpaqueValueExpr;
 
 /// \brief A simple array of base specifiers.
@@ -688,39 +687,6 @@ public:
   static bool classof(const OpaqueValueExpr *) { return true; }
 };
 
-/// \brief Represents an explicit template argument list in C++, e.g.,
-/// the "<int>" in "sort<int>".
-struct ExplicitTemplateArgumentList {
-  /// \brief The source location of the left angle bracket ('<');
-  SourceLocation LAngleLoc;
-
-  /// \brief The source location of the right angle bracket ('>');
-  SourceLocation RAngleLoc;
-
-  /// \brief The number of template arguments in TemplateArgs.
-  /// The actual template arguments (if any) are stored after the
-  /// ExplicitTemplateArgumentList structure.
-  unsigned NumTemplateArgs;
-
-  /// \brief Retrieve the template arguments
-  TemplateArgumentLoc *getTemplateArgs() {
-    return reinterpret_cast<TemplateArgumentLoc *> (this + 1);
-  }
-
-  /// \brief Retrieve the template arguments
-  const TemplateArgumentLoc *getTemplateArgs() const {
-    return reinterpret_cast<const TemplateArgumentLoc *> (this + 1);
-  }
-
-  void initializeFrom(const TemplateArgumentListInfo &List);
-  void initializeFrom(const TemplateArgumentListInfo &List,
-                      bool &Dependent, bool &InstantiationDependent,
-                      bool &ContainsUnexpandedParameterPack);
-  void copyInto(TemplateArgumentListInfo &List) const;
-  static std::size_t sizeFor(unsigned NumTemplateArgs);
-  static std::size_t sizeFor(const TemplateArgumentListInfo &List);
-};
-
 /// \brief A reference to a declared variable, function, enum, etc.
 /// [C99 6.5.1p2]
 ///
@@ -887,29 +853,29 @@ public:
 
   /// \brief Retrieve the explicit template argument list that followed the
   /// member template name.
-  ExplicitTemplateArgumentList &getExplicitTemplateArgs() {
+  ASTTemplateArgumentListInfo &getExplicitTemplateArgs() {
     assert(hasExplicitTemplateArgs());
     if (hasFoundDecl())
-      return *reinterpret_cast<ExplicitTemplateArgumentList *>(
+      return *reinterpret_cast<ASTTemplateArgumentListInfo *>(
         &getInternalFoundDecl() + 1);
 
     if (hasQualifier())
-      return *reinterpret_cast<ExplicitTemplateArgumentList *>(
+      return *reinterpret_cast<ASTTemplateArgumentListInfo *>(
         &getInternalQualifierLoc() + 1);
 
-    return *reinterpret_cast<ExplicitTemplateArgumentList *>(this + 1);
+    return *reinterpret_cast<ASTTemplateArgumentListInfo *>(this + 1);
   }
 
   /// \brief Retrieve the explicit template argument list that followed the
   /// member template name.
-  const ExplicitTemplateArgumentList &getExplicitTemplateArgs() const {
+  const ASTTemplateArgumentListInfo &getExplicitTemplateArgs() const {
     return const_cast<DeclRefExpr *>(this)->getExplicitTemplateArgs();
   }
 
   /// \brief Retrieves the optional explicit template arguments.
   /// This points to the same data as getExplicitTemplateArgs(), but
   /// returns null if there are no explicit template arguments.
-  const ExplicitTemplateArgumentList *getExplicitTemplateArgsOpt() const {
+  const ASTTemplateArgumentListInfo *getExplicitTemplateArgsOpt() const {
     if (!hasExplicitTemplateArgs()) return 0;
     return &getExplicitTemplateArgs();
   }
@@ -2162,26 +2128,26 @@ public:
   /// \brief Retrieve the explicit template argument list that
   /// follow the member template name.  This must only be called on an
   /// expression with explicit template arguments.
-  ExplicitTemplateArgumentList &getExplicitTemplateArgs() {
+  ASTTemplateArgumentListInfo &getExplicitTemplateArgs() {
     assert(HasExplicitTemplateArgumentList);
     if (!HasQualifierOrFoundDecl)
-      return *reinterpret_cast<ExplicitTemplateArgumentList *>(this + 1);
+      return *reinterpret_cast<ASTTemplateArgumentListInfo *>(this + 1);
 
-    return *reinterpret_cast<ExplicitTemplateArgumentList *>(
+    return *reinterpret_cast<ASTTemplateArgumentListInfo *>(
                                                       getMemberQualifier() + 1);
   }
 
   /// \brief Retrieve the explicit template argument list that
   /// followed the member template name.  This must only be called on
   /// an expression with explicit template arguments.
-  const ExplicitTemplateArgumentList &getExplicitTemplateArgs() const {
+  const ASTTemplateArgumentListInfo &getExplicitTemplateArgs() const {
     return const_cast<MemberExpr *>(this)->getExplicitTemplateArgs();
   }
 
   /// \brief Retrieves the optional explicit template arguments.
   /// This points to the same data as getExplicitTemplateArgs(), but
   /// returns null if there are no explicit template arguments.
-  const ExplicitTemplateArgumentList *getOptionalExplicitTemplateArgs() const {
+  const ASTTemplateArgumentListInfo *getOptionalExplicitTemplateArgs() const {
     if (!hasExplicitTemplateArgs()) return 0;
     return &getExplicitTemplateArgs();
   }
@@ -2375,68 +2341,7 @@ public:
 private:
   Stmt *Op;
 
-  void CheckCastConsistency() const {
-#ifndef NDEBUG
-    switch (getCastKind()) {
-    case CK_DerivedToBase:
-    case CK_UncheckedDerivedToBase:
-    case CK_DerivedToBaseMemberPointer:
-    case CK_BaseToDerived:
-    case CK_BaseToDerivedMemberPointer:
-      assert(!path_empty() && "Cast kind should have a base path!");
-      break;
-
-    // These should not have an inheritance path.
-    case CK_BitCast:
-    case CK_Dynamic:
-    case CK_ToUnion:
-    case CK_ArrayToPointerDecay:
-    case CK_FunctionToPointerDecay:
-    case CK_NullToMemberPointer:
-    case CK_NullToPointer:
-    case CK_ConstructorConversion:
-    case CK_IntegralToPointer:
-    case CK_PointerToIntegral:
-    case CK_ToVoid:
-    case CK_VectorSplat:
-    case CK_IntegralCast:
-    case CK_IntegralToFloating:
-    case CK_FloatingToIntegral:
-    case CK_FloatingCast:
-    case CK_AnyPointerToObjCPointerCast:
-    case CK_AnyPointerToBlockPointerCast:
-    case CK_ObjCObjectLValueCast:
-    case CK_FloatingRealToComplex:
-    case CK_FloatingComplexToReal:
-    case CK_FloatingComplexCast:
-    case CK_FloatingComplexToIntegralComplex:
-    case CK_IntegralRealToComplex:
-    case CK_IntegralComplexToReal:
-    case CK_IntegralComplexCast:
-    case CK_IntegralComplexToFloatingComplex:
-    case CK_ObjCProduceObject:
-    case CK_ObjCConsumeObject:
-    case CK_ObjCReclaimReturnedObject:
-      assert(!getType()->isBooleanType() && "unheralded conversion to bool");
-      // fallthrough to check for null base path
-
-    case CK_Dependent:
-    case CK_LValueToRValue:
-    case CK_GetObjCProperty:
-    case CK_NoOp:
-    case CK_PointerToBoolean:
-    case CK_IntegralToBoolean:
-    case CK_FloatingToBoolean:
-    case CK_MemberPointerToBoolean:
-    case CK_FloatingComplexToBoolean:
-    case CK_IntegralComplexToBoolean:
-    case CK_LValueBitCast:            // -> bool&
-    case CK_UserDefinedConversion:    // operator bool()
-      assert(path_empty() && "Cast kind should not have a base path!");
-      break;
-    }
-#endif
-  }
+  void CheckCastConsistency() const;
 
   const CXXBaseSpecifier * const *path_buffer() const {
     return const_cast<CastExpr*>(this)->path_buffer();
@@ -2467,7 +2372,9 @@ protected:
     assert(kind != CK_Invalid && "creating cast with invalid cast kind");
     CastExprBits.Kind = kind;
     setBasePathSize(BasePathSize);
+#ifndef NDEBUG
     CheckCastConsistency();
+#endif
   }
 
   /// \brief Construct an empty cast.

@@ -43,10 +43,10 @@ def SDT_MipsDynAlloc    : SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
                                                SDTCisVT<1, iPTR>]>;
 def SDT_Sync             : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
 
-def SDT_Ext : SDTypeProfile<1, 3, [SDTCisVT<0, i32>, SDTCisSameAs<0, 1>,
-                                   SDTCisInt<2>, SDTCisSameAs<2, 3>]>;
-def SDT_Ins : SDTypeProfile<1, 4, [SDTCisVT<0, i32>, SDTCisSameAs<0, 1>,
-                                   SDTCisInt<2>, SDTCisSameAs<2, 3>,
+def SDT_Ext : SDTypeProfile<1, 3, [SDTCisInt<0>, SDTCisSameAs<0, 1>,
+                                   SDTCisVT<2, i32>, SDTCisSameAs<2, 3>]>;
+def SDT_Ins : SDTypeProfile<1, 4, [SDTCisInt<0>, SDTCisSameAs<0, 1>,
+                                   SDTCisVT<2, i32>, SDTCisSameAs<2, 3>,
                                    SDTCisSameAs<0, 4>]>;
 
 // Call
@@ -125,8 +125,8 @@ def HasSEInReg  : Predicate<"Subtarget.hasSEInReg()">;
 def HasBitCount : Predicate<"Subtarget.hasBitCount()">;
 def HasSwap     : Predicate<"Subtarget.hasSwap()">;
 def HasCondMov  : Predicate<"Subtarget.hasCondMov()">;
-def IsMips32    : Predicate<"Subtarget.isMips32()">;
-def IsMips32r2  : Predicate<"Subtarget.isMips32r2()">;
+def HasMips32    : Predicate<"Subtarget.hasMips32()">;
+def HasMips32r2  : Predicate<"Subtarget.hasMips32r2()">;
 
 //===----------------------------------------------------------------------===//
 // Mips Operand, Complex Patterns and Transformations Definitions.
@@ -252,7 +252,7 @@ class LogicR_shift_rotate_imm<bits<6> func, bits<5> _rs, string instr_asm,
                               SDNode OpNode>:
   FR<0x00, func, (outs CPURegs:$dst), (ins CPURegs:$b, shamt:$c),
      !strconcat(instr_asm, "\t$dst, $b, $c"),
-     [(set CPURegs:$dst, (OpNode CPURegs:$b, immZExt5:$c))], IIAlu> {
+     [(set CPURegs:$dst, (OpNode CPURegs:$b, (i32 immZExt5:$c)))], IIAlu> {
   let rs = _rs;
 }
 
@@ -273,7 +273,7 @@ class LoadUpper<bits<6> op, string instr_asm>:
       [], IIAlu>;
 
 // Memory Load/Store
-let canFoldAsLoad = 1, hasDelaySlot = 1 in
+let canFoldAsLoad = 1 in
 class LoadM<bits<6> op, string instr_asm, PatFrag OpNode>:
   FI<op, (outs CPURegs:$dst), (ins mem:$addr),
      !strconcat(instr_asm, "\t$dst, $addr"),
@@ -289,13 +289,13 @@ let isBranch = 1, isTerminator=1, hasDelaySlot = 1 in {
 class CBranch<bits<6> op, string instr_asm, PatFrag cond_op>:
   FI<op, (outs), (ins CPURegs:$a, CPURegs:$b, brtarget:$offset),
      !strconcat(instr_asm, "\t$a, $b, $offset"),
-     [(brcond (cond_op CPURegs:$a, CPURegs:$b), bb:$offset)],
+     [(brcond (i32 (cond_op CPURegs:$a, CPURegs:$b)), bb:$offset)],
      IIBranch>;
 
 class CBranchZero<bits<6> op, string instr_asm, PatFrag cond_op>:
   FI<op, (outs), (ins CPURegs:$src, brtarget:$offset),
      !strconcat(instr_asm, "\t$src, $offset"),
-     [(brcond (cond_op CPURegs:$src, 0), bb:$offset)],
+     [(brcond (i32 (cond_op CPURegs:$src, 0)), bb:$offset)],
      IIBranch>;
 }
 
@@ -409,7 +409,7 @@ class ReadHardware: FR<0x1f, 0x3b, (outs CPURegs:$dst), (ins HWRegs:$src),
 class ExtIns<bits<6> _funct, string instr_asm, dag outs, dag ins,
              list<dag> pattern, InstrItinClass itin>:
   FR<0x1f, _funct, outs, ins, !strconcat(instr_asm, " $rt, $rs, $pos, $sz"),
-     pattern, itin>, Requires<[IsMips32r2]> {
+     pattern, itin>, Requires<[HasMips32r2]> {
   bits<5> pos;
   bits<5> sz;
   let rd = sz;
@@ -546,7 +546,7 @@ def SRLV    : LogicR_shift_rotate_reg<0x06, 0x00, "srlv", srl>;
 def SRAV    : LogicR_shift_rotate_reg<0x07, 0x00, "srav", sra>;
 
 // Rotate Instructions
-let Predicates = [IsMips32r2] in {
+let Predicates = [HasMips32r2] in {
     def ROTR    : LogicR_shift_rotate_imm<0x02, 0x01, "rotr", rotr>;
     def ROTRV   : LogicR_shift_rotate_reg<0x06, 0x01, "rotrv", rotr>;
 }
@@ -571,7 +571,7 @@ def SYNC : MipsInst<(outs), (ins i32imm:$stype), "sync $stype",
 }
 
 /// Load-linked, Store-conditional
-let mayLoad = 1, hasDelaySlot = 1 in
+let mayLoad = 1 in
   def LL    : FI<0x30, (outs CPURegs:$dst), (ins mem:$addr),
               "ll\t$dst, $addr", [], IILoad>;
 let mayStore = 1, Constraints = "$src = $dst" in
@@ -683,7 +683,7 @@ def MSUBU : MArithR<5, "msubu", MipsMSubu>;
 
 // MUL is a assembly macro in the current used ISAs. In recent ISA's
 // it is a real instruction.
-def MUL   : ArithR<0x1c, 0x02, "mul", mul, IIImul, 1>, Requires<[IsMips32]>;
+def MUL   : ArithR<0x1c, 0x02, "mul", mul, IIImul, 1>, Requires<[HasMips32]>;
 
 def RDHWR : ReadHardware;
 
@@ -734,16 +734,20 @@ def : Pat<(MipsJmpLink (i32 texternalsym:$dst)),
 // hi/lo relocs
 def : Pat<(MipsHi tglobaladdr:$in), (LUi tglobaladdr:$in)>;
 def : Pat<(MipsHi tblockaddress:$in), (LUi tblockaddress:$in)>;
+def : Pat<(MipsLo tglobaladdr:$in), (ADDiu ZERO, tglobaladdr:$in)>;
+def : Pat<(MipsLo tblockaddress:$in), (ADDiu ZERO, tblockaddress:$in)>;
 def : Pat<(add CPURegs:$hi, (MipsLo tglobaladdr:$lo)),
           (ADDiu CPURegs:$hi, tglobaladdr:$lo)>;
 def : Pat<(add CPURegs:$hi, (MipsLo tblockaddress:$lo)),
           (ADDiu CPURegs:$hi, tblockaddress:$lo)>;
 
 def : Pat<(MipsHi tjumptable:$in), (LUi tjumptable:$in)>;
+def : Pat<(MipsLo tjumptable:$in), (ADDiu ZERO, tjumptable:$in)>;
 def : Pat<(add CPURegs:$hi, (MipsLo tjumptable:$lo)),
           (ADDiu CPURegs:$hi, tjumptable:$lo)>;
 
 def : Pat<(MipsHi tconstpool:$in), (LUi tconstpool:$in)>;
+def : Pat<(MipsLo tconstpool:$in), (ADDiu ZERO, tconstpool:$in)>;
 def : Pat<(add CPURegs:$hi, (MipsLo tconstpool:$lo)),
           (ADDiu CPURegs:$hi, tconstpool:$lo)>;
 
@@ -759,6 +763,7 @@ def : Pat<(add CPURegs:$gp, (MipsTlsGd tglobaltlsaddr:$in)),
 
 // tprel hi/lo
 def : Pat<(MipsTprelHi tglobaltlsaddr:$in), (LUi tglobaltlsaddr:$in)>;
+def : Pat<(MipsTprelLo tglobaltlsaddr:$in), (ADDiu ZERO, tglobaltlsaddr:$in)>;
 def : Pat<(add CPURegs:$hi, (MipsTprelLo tglobaltlsaddr:$lo)),
           (ADDiu CPURegs:$hi, tglobaltlsaddr:$lo)>;
 
@@ -786,23 +791,23 @@ def : Pat<(extloadi16 addr:$src), (LHu addr:$src)>;
 def : Pat<(store (i32 0), addr:$dst), (SW ZERO, addr:$dst)>;
 
 // brcond patterns
-def : Pat<(brcond (setne CPURegs:$lhs, 0), bb:$dst),
+def : Pat<(brcond (i32 (setne CPURegs:$lhs, 0)), bb:$dst),
           (BNE CPURegs:$lhs, ZERO, bb:$dst)>;
-def : Pat<(brcond (seteq CPURegs:$lhs, 0), bb:$dst),
+def : Pat<(brcond (i32 (seteq CPURegs:$lhs, 0)), bb:$dst),
           (BEQ CPURegs:$lhs, ZERO, bb:$dst)>;
 
-def : Pat<(brcond (setge CPURegs:$lhs, CPURegs:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setge CPURegs:$lhs, CPURegs:$rhs)), bb:$dst),
           (BEQ (SLT CPURegs:$lhs, CPURegs:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setuge CPURegs:$lhs, CPURegs:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setuge CPURegs:$lhs, CPURegs:$rhs)), bb:$dst),
           (BEQ (SLTu CPURegs:$lhs, CPURegs:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setge CPURegs:$lhs, immSExt16:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setge CPURegs:$lhs, immSExt16:$rhs)), bb:$dst),
           (BEQ (SLTi CPURegs:$lhs, immSExt16:$rhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setuge CPURegs:$lhs, immSExt16:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setuge CPURegs:$lhs, immSExt16:$rhs)), bb:$dst),
           (BEQ (SLTiu CPURegs:$lhs, immSExt16:$rhs), ZERO, bb:$dst)>;
 
-def : Pat<(brcond (setle CPURegs:$lhs, CPURegs:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setle CPURegs:$lhs, CPURegs:$rhs)), bb:$dst),
           (BEQ (SLT CPURegs:$rhs, CPURegs:$lhs), ZERO, bb:$dst)>;
-def : Pat<(brcond (setule CPURegs:$lhs, CPURegs:$rhs), bb:$dst),
+def : Pat<(brcond (i32 (setule CPURegs:$lhs, CPURegs:$rhs)), bb:$dst),
           (BEQ (SLTu CPURegs:$rhs, CPURegs:$lhs), ZERO, bb:$dst)>;
 
 def : Pat<(brcond CPURegs:$cond, bb:$dst),
@@ -810,30 +815,30 @@ def : Pat<(brcond CPURegs:$cond, bb:$dst),
 
 // select patterns
 multiclass MovzPats<RegisterClass RC, Instruction MOVZInst> {
-  def : Pat<(select (setge CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setge CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLT CPURegs:$lhs, CPURegs:$rhs), RC:$F)>;
-  def : Pat<(select (setuge CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setuge CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLTu CPURegs:$lhs, CPURegs:$rhs), RC:$F)>;
-  def : Pat<(select (setge CPURegs:$lhs, immSExt16:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setge CPURegs:$lhs, immSExt16:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLTi CPURegs:$lhs, immSExt16:$rhs), RC:$F)>;
-  def : Pat<(select (setuge CPURegs:$lh, immSExt16:$rh), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setuge CPURegs:$lh, immSExt16:$rh)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLTiu CPURegs:$lh, immSExt16:$rh), RC:$F)>;
-  def : Pat<(select (setle CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setle CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLT CPURegs:$rhs, CPURegs:$lhs), RC:$F)>;
-  def : Pat<(select (setule CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setule CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (SLTu CPURegs:$rhs, CPURegs:$lhs), RC:$F)>;
-  def : Pat<(select (seteq CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (seteq CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVZInst RC:$T, (XOR CPURegs:$lhs, CPURegs:$rhs), RC:$F)>;
-  def : Pat<(select (seteq CPURegs:$lhs, 0), RC:$T, RC:$F),
+  def : Pat<(select (i32 (seteq CPURegs:$lhs, 0)), RC:$T, RC:$F),
             (MOVZInst RC:$T, CPURegs:$lhs, RC:$F)>;
 }
 
 multiclass MovnPats<RegisterClass RC, Instruction MOVNInst> {
-  def : Pat<(select (setne CPURegs:$lhs, CPURegs:$rhs), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setne CPURegs:$lhs, CPURegs:$rhs)), RC:$T, RC:$F),
             (MOVNInst RC:$T, (XOR CPURegs:$lhs, CPURegs:$rhs), RC:$F)>;
   def : Pat<(select CPURegs:$cond, RC:$T, RC:$F),
             (MOVNInst RC:$T, CPURegs:$cond, RC:$F)>;
-  def : Pat<(select (setne CPURegs:$lhs, 0), RC:$T, RC:$F),
+  def : Pat<(select (i32 (setne CPURegs:$lhs, 0)), RC:$T, RC:$F),
             (MOVNInst RC:$T, CPURegs:$lhs, RC:$F)>;
 }
 
@@ -874,4 +879,5 @@ def : Pat<(MipsDynAlloc addr:$f), (DynAlloc addr:$f)>;
 //===----------------------------------------------------------------------===//
 
 include "MipsInstrFPU.td"
+include "Mips64InstrInfo.td"
 

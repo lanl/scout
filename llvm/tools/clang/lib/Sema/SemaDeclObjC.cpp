@@ -106,7 +106,7 @@ bool Sema::checkInitMethod(ObjCMethodDecl *method,
   return true;
 }
 
-bool Sema::CheckObjCMethodOverride(ObjCMethodDecl *NewMethod, 
+void Sema::CheckObjCMethodOverride(ObjCMethodDecl *NewMethod, 
                                    const ObjCMethodDecl *Overridden,
                                    bool IsImplementation) {
   if (Overridden->hasRelatedResultType() && 
@@ -148,11 +148,43 @@ bool Sema::CheckObjCMethodOverride(ObjCMethodDecl *NewMethod,
         << ResultTypeRange;
     }
     
-    Diag(Overridden->getLocation(), diag::note_related_result_type_overridden)
-      << Overridden->getMethodFamily();
+    if (ObjCMethodFamily Family = Overridden->getMethodFamily())
+      Diag(Overridden->getLocation(), 
+           diag::note_related_result_type_overridden_family)
+        << Family;
+    else
+      Diag(Overridden->getLocation(), 
+           diag::note_related_result_type_overridden);
   }
-  
-  return false;
+  if (getLangOptions().ObjCAutoRefCount) {
+    if ((NewMethod->hasAttr<NSReturnsRetainedAttr>() !=
+         Overridden->hasAttr<NSReturnsRetainedAttr>())) {
+        Diag(NewMethod->getLocation(),
+             diag::err_nsreturns_retained_attribute_mismatch) << 1;
+        Diag(Overridden->getLocation(), diag::note_previous_decl) 
+        << "method";
+    }
+    if ((NewMethod->hasAttr<NSReturnsNotRetainedAttr>() !=
+              Overridden->hasAttr<NSReturnsNotRetainedAttr>())) {
+        Diag(NewMethod->getLocation(),
+             diag::err_nsreturns_retained_attribute_mismatch) << 0;
+        Diag(Overridden->getLocation(), diag::note_previous_decl) 
+        << "method";
+    }
+    for (ObjCMethodDecl::param_iterator oi = Overridden->param_begin(),
+         ni = NewMethod->param_begin(), ne = NewMethod->param_end();
+         ni != ne; ++ni, ++oi) {
+      ParmVarDecl *oldDecl = (*oi);
+      ParmVarDecl *newDecl = (*ni);
+      if (newDecl->hasAttr<NSConsumedAttr>() != 
+          oldDecl->hasAttr<NSConsumedAttr>()) {
+        Diag(newDecl->getLocation(),
+             diag::err_nsconsumed_attribute_mismatch);
+        Diag(oldDecl->getLocation(), diag::note_previous_decl) 
+          << "parameter";
+      }
+    }
+  }
 }
 
 /// \brief Check a method declaration for compatibility with the Objective-C
@@ -303,10 +335,11 @@ void Sema::ActOnStartOfObjCMethodDef(Scope *FnBodyScope, Decl *D) {
     // Only do this if the current class actually has a superclass.
     if (IC->getSuperClass()) {
       ObjCShouldCallSuperDealloc = 
-        !Context.getLangOptions().ObjCAutoRefCount &&      
+        !(Context.getLangOptions().ObjCAutoRefCount ||
+          Context.getLangOptions().getGC() == LangOptions::GCOnly) &&
         MDecl->getMethodFamily() == OMF_dealloc;
       ObjCShouldCallSuperFinalize =
-        !Context.getLangOptions().ObjCAutoRefCount &&      
+        Context.getLangOptions().getGC() != LangOptions::NonGC &&
         MDecl->getMethodFamily() == OMF_finalize;
     }
   }
@@ -1425,7 +1458,7 @@ void Sema::CheckProtocolMethodDefs(SourceLocation ImpLoc,
             if (!MethodInClass || !MethodInClass->isSynthesized()) {
               unsigned DIAG = diag::warn_unimplemented_protocol_method;
               if (Diags.getDiagnosticLevel(DIAG, ImpLoc)
-                      != Diagnostic::Ignored) {
+                      != DiagnosticsEngine::Ignored) {
                 WarnUndefinedMethod(ImpLoc, method, IncompleteImpl, DIAG);
                 Diag(method->getLocation(), diag::note_method_declared_at);
                 Diag(CDecl->getLocation(), diag::note_required_for_protocol_at)
@@ -1443,7 +1476,8 @@ void Sema::CheckProtocolMethodDefs(SourceLocation ImpLoc,
         !ClsMap.count(method->getSelector()) &&
         (!Super || !Super->lookupClassMethod(method->getSelector()))) {
       unsigned DIAG = diag::warn_unimplemented_protocol_method;
-      if (Diags.getDiagnosticLevel(DIAG, ImpLoc) != Diagnostic::Ignored) {
+      if (Diags.getDiagnosticLevel(DIAG, ImpLoc) !=
+            DiagnosticsEngine::Ignored) {
         WarnUndefinedMethod(ImpLoc, method, IncompleteImpl, DIAG);
         Diag(method->getLocation(), diag::note_method_declared_at);
         Diag(IDecl->getLocation(), diag::note_required_for_protocol_at) <<
@@ -1659,7 +1693,7 @@ void Sema::ImplMethodsVsClassMethods(Scope *S, ObjCImplDecl* IMPDecl,
       DiagnoseUnimplementedProperties(S, IMPDecl, CDecl, InsMap);      
     } 
   } else
-    assert(false && "invalid ObjCContainerDecl type.");
+    llvm_unreachable("invalid ObjCContainerDecl type.");
 }
 
 /// ActOnForwardClassDeclaration -
@@ -1762,11 +1796,16 @@ static bool matchTypes(ASTContext &Context, Sema::MethodMatchStrategy strategy,
   if (!left->isScalarType() || !right->isScalarType())
     return tryMatchRecordTypes(Context, strategy, left, right);
 
-  // Make scalars agree in kind, except count bools as chars.
+  // Make scalars agree in kind, except count bools as chars, and group
+  // all non-member pointers together.
   Type::ScalarTypeKind leftSK = left->getScalarTypeKind();
   Type::ScalarTypeKind rightSK = right->getScalarTypeKind();
   if (leftSK == Type::STK_Bool) leftSK = Type::STK_Integral;
   if (rightSK == Type::STK_Bool) rightSK = Type::STK_Integral;
+  if (leftSK == Type::STK_CPointer || leftSK == Type::STK_BlockPointer)
+    leftSK = Type::STK_ObjCObjectPointer;
+  if (rightSK == Type::STK_CPointer || rightSK == Type::STK_BlockPointer)
+    rightSK = Type::STK_ObjCObjectPointer;
 
   // Note that data member pointers and function member pointers don't
   // intermix because of the size differences.
@@ -1944,7 +1983,7 @@ ObjCMethodDecl *Sema::LookupMethodInGlobalPool(Selector Sel, SourceRange R,
       (receiverIdOrClass && warn &&
        (Diags.getDiagnosticLevel(diag::warn_strict_multiple_method_decl,
                                  R.getBegin()) != 
-      Diagnostic::Ignored));
+      DiagnosticsEngine::Ignored));
     if (strictSelectorMatch)
       for (ObjCMethodList *Next = MethList.Next; Next; Next = Next->Next) {
         if (!MatchTwoMethodDeclarations(MethList.Method, Next->Method,
@@ -2261,16 +2300,22 @@ bool containsInvalidMethodImplAttribute(const AttrVec &A) {
   return false;
 }
 
+namespace  {
+  /// \brief Describes the compatibility of a result type with its method.
+  enum ResultTypeCompatibilityKind {
+    RTC_Compatible,
+    RTC_Incompatible,
+    RTC_Unknown
+  };
+}
+
 /// \brief Check whether the declared result type of the given Objective-C
 /// method declaration is compatible with the method's class.
 ///
-static bool 
+static ResultTypeCompatibilityKind 
 CheckRelatedResultTypeCompatibility(Sema &S, ObjCMethodDecl *Method,
                                     ObjCInterfaceDecl *CurrentClass) {
   QualType ResultType = Method->getResultType();
-  SourceRange ResultTypeRange;
-  if (const TypeSourceInfo *ResultTypeInfo = Method->getResultTypeSourceInfo())
-    ResultTypeRange = ResultTypeInfo->getTypeLoc().getSourceRange();
   
   // If an Objective-C method inherits its related result type, then its 
   // declared result type must be compatible with its own class type. The
@@ -2280,23 +2325,27 @@ CheckRelatedResultTypeCompatibility(Sema &S, ObjCMethodDecl *Method,
     //   - it is id or qualified id, or
     if (ResultObjectType->isObjCIdType() ||
         ResultObjectType->isObjCQualifiedIdType())
-      return false;
+      return RTC_Compatible;
   
     if (CurrentClass) {
       if (ObjCInterfaceDecl *ResultClass 
                                       = ResultObjectType->getInterfaceDecl()) {
         //   - it is the same as the method's class type, or
         if (CurrentClass == ResultClass)
-          return false;
+          return RTC_Compatible;
         
         //   - it is a superclass of the method's class type
         if (ResultClass->isSuperClassOf(CurrentClass))
-          return false;
+          return RTC_Compatible;
       }      
+    } else {
+      // Any Objective-C pointer type might be acceptable for a protocol
+      // method; we just don't know.
+      return RTC_Unknown;
     }
   }
   
-  return true;
+  return RTC_Incompatible;
 }
 
 namespace {
@@ -2457,6 +2506,7 @@ Decl *Sema::ActOnMethodDeclaration(
   Decl *ClassDecl = cast<Decl>(OCD); 
   QualType resultDeclType;
 
+  bool HasRelatedResultType = false;
   TypeSourceInfo *ResultTInfo = 0;
   if (ReturnType) {
     resultDeclType = GetTypeFromParser(ReturnType, &ResultTInfo);
@@ -2468,6 +2518,8 @@ Decl *Sema::ActOnMethodDeclaration(
         << 0 << resultDeclType;
       return 0;
     }    
+    
+    HasRelatedResultType = (resultDeclType == Context.getObjCInstanceType());
   } else { // get the type for "id".
     resultDeclType = Context.getObjCIdType();
     Diag(MethodLoc, diag::warn_missing_method_return_type)
@@ -2484,7 +2536,7 @@ Decl *Sema::ActOnMethodDeclaration(
                            MethodDeclKind == tok::objc_optional 
                              ? ObjCMethodDecl::Optional
                              : ObjCMethodDecl::Required,
-                           false);
+                           HasRelatedResultType);
 
   SmallVector<ParmVarDecl*, 16> Params;
 
@@ -2604,9 +2656,8 @@ Decl *Sema::ActOnMethodDeclaration(
       CurrentClass = CatImpl->getClassInterface();
   }
 
-  bool isRelatedResultTypeCompatible =
-    (getLangOptions().ObjCInferRelatedResultType &&
-     !CheckRelatedResultTypeCompatibility(*this, ObjCMethod, CurrentClass));
+  ResultTypeCompatibilityKind RTC
+    = CheckRelatedResultTypeCompatibility(*this, ObjCMethod, CurrentClass);
 
   // Search for overridden methods and merge information down from them.
   OverrideSearch overrides(*this, ObjCMethod);
@@ -2615,7 +2666,7 @@ Decl *Sema::ActOnMethodDeclaration(
     ObjCMethodDecl *overridden = *i;
 
     // Propagate down the 'related result type' bit from overridden methods.
-    if (isRelatedResultTypeCompatible && overridden->hasRelatedResultType())
+    if (RTC != RTC_Incompatible && overridden->hasRelatedResultType())
       ObjCMethod->SetRelatedResultType();
 
     // Then merge the declarations.
@@ -2633,8 +2684,10 @@ Decl *Sema::ActOnMethodDeclaration(
   if (getLangOptions().ObjCAutoRefCount)
     ARCError = CheckARCMethodDecl(*this, ObjCMethod);
 
-  if (!ARCError && isRelatedResultTypeCompatible &&
-      !ObjCMethod->hasRelatedResultType()) {
+  // Infer the related result type when possible.
+  if (!ARCError && RTC == RTC_Compatible &&
+      !ObjCMethod->hasRelatedResultType() &&
+      LangOpts.ObjCInferRelatedResultType) {
     bool InferRelatedResultType = false;
     switch (ObjCMethod->getMethodFamily()) {
     case OMF_None:

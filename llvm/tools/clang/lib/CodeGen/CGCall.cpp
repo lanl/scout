@@ -783,7 +783,7 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     break;
 
   case ABIArgInfo::Expand:
-    assert(0 && "Invalid ABI kind for return argument");
+    llvm_unreachable("Invalid ABI kind for return argument");
   }
 
   if (RetAttrs)
@@ -1243,7 +1243,7 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI) {
     break;
 
   case ABIArgInfo::Expand:
-    assert(0 && "Invalid ABI kind for return argument");
+    llvm_unreachable("Invalid ABI kind for return argument");
   }
 
   llvm::Instruction *Ret = RV ? Builder.CreateRet(RV) : Builder.CreateRetVoid();
@@ -1860,11 +1860,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   }
 
   case ABIArgInfo::Expand:
-    assert(0 && "Invalid ABI kind for return argument");
+    llvm_unreachable("Invalid ABI kind for return argument");
   }
 
-  assert(0 && "Unhandled ABIArgInfo::Kind");
-  return RValue::get(0);
+  llvm_unreachable("Unhandled ABIArgInfo::Kind");
 }
 
 /* VarArg handling */

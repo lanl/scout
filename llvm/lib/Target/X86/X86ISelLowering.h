@@ -175,8 +175,14 @@ namespace llvm {
       /// PSIGNB/W/D - Copy integer sign.
       PSIGNB, PSIGNW, PSIGND,
 
-      /// PBLENDVB - Variable blend
-      PBLENDVB,
+      /// BLEND family of opcodes
+      BLENDV,
+
+      /// FHADD - Floating point horizontal add.
+      FHADD,
+
+      /// FHSUB - Floating point horizontal sub.
+      FHSUB,
 
       /// FMAX, FMIN - Floating point max and min.
       ///
@@ -288,7 +294,7 @@ namespace llvm {
 
       // SEG_ALLOCA - For allocating variable amounts of stack space when using
       // segmented stacks. Check if the current stacklet has enough space, and
-      // defects to heap allocation if not.
+      // falls back to heap allocation if not.
       SEG_ALLOCA,
 
       // Memory barrier
@@ -572,8 +578,8 @@ namespace llvm {
     /// DAG node.
     virtual const char *getTargetNodeName(unsigned Opcode) const;
 
-    /// getSetCCResultType - Return the ISD::SETCC ValueType
-    virtual MVT::SimpleValueType getSetCCResultType(EVT VT) const;
+    /// getSetCCResultType - Return the value type to use for ISD::SETCC.
+    virtual EVT getSetCCResultType(EVT VT) const;
 
     /// computeMaskedBitsForTargetNode - Determine which of the bits specified
     /// in Mask are known to be either zero or one and return them in the

@@ -1855,7 +1855,7 @@ ASTNodeImporter::ImportDeclarationNameLoc(const DeclarationNameInfo &From,
     To.setNamedTypeInfo(Importer.Import(FromTInfo));
     return;
   }
-    assert(0 && "Unknown name kind.");
+    llvm_unreachable("Unknown name kind.");
   }
 }
 
@@ -2230,7 +2230,7 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   // We may already have an enum of the same name; try to find and match it.
   if (!DC->isFunctionOrMethod() && SearchName) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
-    for (DeclContext::lookup_result Lookup = DC->lookup(Name);
+    for (DeclContext::lookup_result Lookup = DC->lookup(SearchName);
          Lookup.first != Lookup.second; 
          ++Lookup.first) {
       if (!(*Lookup.first)->isInIdentifierNamespace(IDNS))
@@ -2324,7 +2324,7 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   RecordDecl *AdoptDecl = 0;
   if (!DC->isFunctionOrMethod() && SearchName) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
-    for (DeclContext::lookup_result Lookup = DC->lookup(Name);
+    for (DeclContext::lookup_result Lookup = DC->lookup(SearchName);
          Lookup.first != Lookup.second; 
          ++Lookup.first) {
       if (!(*Lookup.first)->isInIdentifierNamespace(IDNS))
@@ -2581,7 +2581,7 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     Parameters[I]->setOwningFunction(ToFunction);
     ToFunction->addDecl(Parameters[I]);
   }
-  ToFunction->setParams(Parameters.data(), Parameters.size());
+  ToFunction->setParams(Parameters);
 
   // FIXME: Other bits to merge?
 
@@ -4359,7 +4359,7 @@ SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
   std::pair<FileID, unsigned> Decomposed = FromSM.getDecomposedLoc(FromLoc);
   SourceManager &ToSM = ToContext.getSourceManager();
   return ToSM.getLocForStartOfFile(Import(Decomposed.first))
-             .getFileLocWithOffset(Decomposed.second);
+             .getLocWithOffset(Decomposed.second);
 }
 
 SourceRange ASTImporter::Import(SourceRange FromRange) {

@@ -98,6 +98,60 @@ const HeaderMap *HeaderSearch::CreateHeaderMap(const FileEntry *FE) {
   return 0;
 }
 
+const FileEntry *HeaderSearch::lookupModule(StringRef ModuleName,
+                                            std::string *ModuleFileName,
+                                            std::string *UmbrellaHeader) {
+  // If we don't have a module cache path, we can't do anything.
+  if (ModuleCachePath.empty()) {
+    if (ModuleFileName)
+      ModuleFileName->clear();
+    return 0;
+  }
+  
+  // Try to find the module path.
+  llvm::SmallString<256> FileName(ModuleCachePath);
+  llvm::sys::path::append(FileName, ModuleName + ".pcm");
+  if (ModuleFileName)
+    *ModuleFileName = FileName.str();
+    
+  if (const FileEntry *ModuleFile
+        = getFileMgr().getFile(FileName, /*OpenFile=*/false,
+                               /*CacheFailure=*/false))
+    return ModuleFile;
+  
+  // We didn't find the module. If we're not supposed to look for an
+  // umbrella header, this is the end of the road.
+  if (!UmbrellaHeader)
+    return 0;
+  
+  // Look in each of the framework directories for an umbrella header with
+  // the same name as the module.
+  // FIXME: We need a way for non-frameworks to provide umbrella headers.
+  llvm::SmallString<128> UmbrellaHeaderName;
+  UmbrellaHeaderName = ModuleName;
+  UmbrellaHeaderName += '/';
+  UmbrellaHeaderName += ModuleName;
+  UmbrellaHeaderName += ".h";
+  for (unsigned Idx = 0, N = SearchDirs.size(); Idx != N; ++Idx) {
+    // Skip non-framework include paths
+    if (!SearchDirs[Idx].isFramework())
+      continue;
+    
+    // Look for the umbrella header in this directory.
+    if (const FileEntry *HeaderFile
+          = SearchDirs[Idx].LookupFile(UmbrellaHeaderName, *this, 0, 0, 
+                                       StringRef(), 0)) {
+      *UmbrellaHeader = HeaderFile->getName();
+      return 0;
+    }
+  }
+  
+  // We did not find an umbrella header. Clear out the UmbrellaHeader pointee
+  // so our caller knows that we failed.
+  UmbrellaHeader->clear();
+  return 0;
+}
+
 //===----------------------------------------------------------------------===//
 // File lookup within a DirectoryLookup scope
 //===----------------------------------------------------------------------===//
@@ -120,7 +174,9 @@ const FileEntry *DirectoryLookup::LookupFile(
     StringRef Filename,
     HeaderSearch &HS,
     SmallVectorImpl<char> *SearchPath,
-    SmallVectorImpl<char> *RelativePath) const {
+    SmallVectorImpl<char> *RelativePath,
+    StringRef BuildingModule,
+    StringRef *SuggestedModule) const {
   llvm::SmallString<1024> TmpDir;
   if (isNormalDir()) {
     // Concatenate the requested file onto the directory.
@@ -139,7 +195,8 @@ const FileEntry *DirectoryLookup::LookupFile(
   }
 
   if (isFramework())
-    return DoFrameworkLookup(Filename, HS, SearchPath, RelativePath);
+    return DoFrameworkLookup(Filename, HS, SearchPath, RelativePath,
+                             BuildingModule, SuggestedModule);
 
   assert(isHeaderMap() && "Unknown directory lookup");
   const FileEntry * const Result = getHeaderMap()->LookupFile(
@@ -165,7 +222,10 @@ const FileEntry *DirectoryLookup::DoFrameworkLookup(
     StringRef Filename,
     HeaderSearch &HS,
     SmallVectorImpl<char> *SearchPath,
-    SmallVectorImpl<char> *RelativePath) const {
+    SmallVectorImpl<char> *RelativePath,
+    StringRef BuildingModule,
+    StringRef *SuggestedModule) const 
+{
   FileManager &FileMgr = HS.getFileMgr();
 
   // Framework names must have a '/' in the filename.
@@ -227,9 +287,16 @@ const FileEntry *DirectoryLookup::DoFrameworkLookup(
     SearchPath->append(FrameworkName.begin(), FrameworkName.end()-1);
   }
 
+  /// Determine whether this is the module we're building or not.
+  bool AutomaticImport = SuggestedModule &&
+    (BuildingModule != StringRef(Filename.begin(), SlashPos)) &&
+    !Filename.substr(SlashPos + 1).startswith("..");
+  
   FrameworkName.append(Filename.begin()+SlashPos+1, Filename.end());
   if (const FileEntry *FE = FileMgr.getFile(FrameworkName.str(),
-                                            /*openFile=*/true)) {
+                                            /*openFile=*/!AutomaticImport)) {
+    if (AutomaticImport)
+      *SuggestedModule = StringRef(Filename.begin(), SlashPos);
     return FE;
   }
 
@@ -241,7 +308,11 @@ const FileEntry *DirectoryLookup::DoFrameworkLookup(
     SearchPath->insert(SearchPath->begin()+OrigSize, Private,
                        Private+strlen(Private));
 
-  return FileMgr.getFile(FrameworkName.str(), /*openFile=*/true);
+  const FileEntry *FE = FileMgr.getFile(FrameworkName.str(), 
+                                        /*openFile=*/!AutomaticImport);
+  if (FE && AutomaticImport)
+    *SuggestedModule = StringRef(Filename.begin(), SlashPos);
+  return FE;
 }
 
 
@@ -262,7 +333,12 @@ const FileEntry *HeaderSearch::LookupFile(
     const DirectoryLookup *&CurDir,
     const FileEntry *CurFileEnt,
     SmallVectorImpl<char> *SearchPath,
-    SmallVectorImpl<char> *RelativePath) {
+    SmallVectorImpl<char> *RelativePath,
+    StringRef *SuggestedModule) 
+{
+  if (SuggestedModule)
+    *SuggestedModule = StringRef();
+    
   // If 'Filename' is absolute, check to see if it exists and no searching.
   if (llvm::sys::path::is_absolute(Filename)) {
     CurDir = 0;
@@ -347,7 +423,8 @@ const FileEntry *HeaderSearch::LookupFile(
   // Check each directory in sequence to see if it contains this file.
   for (; i != SearchDirs.size(); ++i) {
     const FileEntry *FE =
-      SearchDirs[i].LookupFile(Filename, *this, SearchPath, RelativePath);
+      SearchDirs[i].LookupFile(Filename, *this, SearchPath, RelativePath,
+                               BuildingModule, SuggestedModule);
     if (!FE) continue;
 
     CurDir = &SearchDirs[i];
@@ -386,7 +463,8 @@ const FileEntry *HeaderSearch::LookupFile(
       
       const FileEntry *Result = LookupFile(ScratchFilename, /*isAngled=*/true,
                                            FromDir, CurDir, CurFileEnt, 
-                                           SearchPath, RelativePath);
+                                           SearchPath, RelativePath,
+                                           SuggestedModule);
       std::pair<unsigned, unsigned> &CacheLookup 
         = LookupFileCache.GetOrCreateValue(Filename).getValue();
       CacheLookup.second
@@ -502,7 +580,31 @@ LookupSubframeworkHeader(StringRef Filename,
 // File Info Management.
 //===----------------------------------------------------------------------===//
 
+/// \brief Merge the header file info provided by \p OtherHFI into the current
+/// header file info (\p HFI)
+static void mergeHeaderFileInfo(HeaderFileInfo &HFI, 
+                                const HeaderFileInfo &OtherHFI) {
+  HFI.isImport |= OtherHFI.isImport;
+  HFI.isPragmaOnce |= OtherHFI.isPragmaOnce;
+  HFI.NumIncludes += OtherHFI.NumIncludes;
+  
+  if (!HFI.ControllingMacro && !HFI.ControllingMacroID) {
+    HFI.ControllingMacro = OtherHFI.ControllingMacro;
+    HFI.ControllingMacroID = OtherHFI.ControllingMacroID;
+  }
+  
+  if (OtherHFI.External) {
+    HFI.DirInfo = OtherHFI.DirInfo;
+    HFI.External = OtherHFI.External;
+    HFI.IndexHeaderMapHeader = OtherHFI.IndexHeaderMapHeader;
+  }
 
+  if (HFI.Framework.empty())
+    HFI.Framework = OtherHFI.Framework;
+  
+  HFI.Resolved = true;
+}
+                                
 /// getFileInfo - Return the HeaderFileInfo structure for the specified
 /// FileEntry.
 HeaderFileInfo &HeaderSearch::getFileInfo(const FileEntry *FE) {
@@ -510,10 +612,8 @@ HeaderFileInfo &HeaderSearch::getFileInfo(const FileEntry *FE) {
     FileInfo.resize(FE->getUID()+1);
   
   HeaderFileInfo &HFI = FileInfo[FE->getUID()];
-  if (ExternalSource && !HFI.Resolved) {
-    HFI = ExternalSource->GetHeaderFileInfo(FE);
-    HFI.Resolved = true;
-  }
+  if (ExternalSource && !HFI.Resolved)
+    mergeHeaderFileInfo(HFI, ExternalSource->GetHeaderFileInfo(FE));
   return HFI;
 }
 
@@ -524,10 +624,8 @@ bool HeaderSearch::isFileMultipleIncludeGuarded(const FileEntry *File) {
 
   // Resolve header file info from the external source, if needed.
   HeaderFileInfo &HFI = FileInfo[File->getUID()];
-  if (ExternalSource && !HFI.Resolved) {
-    HFI = ExternalSource->GetHeaderFileInfo(File);
-    HFI.Resolved = true;
-  }
+  if (ExternalSource && !HFI.Resolved)
+    mergeHeaderFileInfo(HFI, ExternalSource->GetHeaderFileInfo(File));
 
   return HFI.isPragmaOnce || HFI.ControllingMacro || HFI.ControllingMacroID;
 }

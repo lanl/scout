@@ -81,6 +81,7 @@ XCoreTargetLowering::XCoreTargetLowering(XCoreTargetMachine &XTM)
 
   // Use i32 for setcc operations results (slt, sgt, ...).
   setBooleanContents(ZeroOrOneBooleanContent);
+  setBooleanVectorContents(ZeroOrOneBooleanContent); // FIXME: Is this correct?
 
   // XCore does not have the NodeTypes below.
   setOperationAction(ISD::BR_CC,     MVT::Other, Expand);
@@ -1414,7 +1415,8 @@ SDValue XCoreTargetLowering::PerformDAGCombine(SDNode *N,
     // operands are constant canonicalize smallest to RHS.
     if ((N0C && !N1C) ||
         (N0C && N1C && N0C->getZExtValue() < N1C->getZExtValue()))
-      return DAG.getNode(XCoreISD::LMUL, dl, DAG.getVTList(VT, VT), N1, N0, N2, N3);
+      return DAG.getNode(XCoreISD::LMUL, dl, DAG.getVTList(VT, VT),
+                         N1, N0, N2, N3);
 
     // lmul(x, 0, a, b)
     if (N1C && N1C->isNullValue()) {

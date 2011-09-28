@@ -404,6 +404,7 @@ ARMBaseInstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
     ? ARM::B : (AFI->isThumb2Function() ? ARM::t2B : ARM::tB);
   int BccOpc = !AFI->isThumbFunction()
     ? ARM::Bcc : (AFI->isThumb2Function() ? ARM::t2Bcc : ARM::tBcc);
+  bool isThumb = AFI->isThumbFunction() || AFI->isThumb2Function();
 
   // Shouldn't be a fall through.
   assert(TBB && "InsertBranch must not be told to insert a fallthrough");
@@ -411,9 +412,12 @@ ARMBaseInstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
          "ARM branch conditions have two components!");
 
   if (FBB == 0) {
-    if (Cond.empty()) // Unconditional branch?
-      BuildMI(&MBB, DL, get(BOpc)).addMBB(TBB);
-    else
+    if (Cond.empty()) { // Unconditional branch?
+      if (isThumb)
+        BuildMI(&MBB, DL, get(BOpc)).addMBB(TBB).addImm(ARMCC::AL).addReg(0);
+      else
+        BuildMI(&MBB, DL, get(BOpc)).addMBB(TBB);
+    } else
       BuildMI(&MBB, DL, get(BccOpc)).addMBB(TBB)
         .addImm(Cond[0].getImm()).addReg(Cond[1].getReg());
     return 1;
@@ -422,7 +426,10 @@ ARMBaseInstrInfo::InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
   // Two-way conditional branch.
   BuildMI(&MBB, DL, get(BccOpc)).addMBB(TBB)
     .addImm(Cond[0].getImm()).addReg(Cond[1].getReg());
-  BuildMI(&MBB, DL, get(BOpc)).addMBB(FBB);
+  if (isThumb)
+    BuildMI(&MBB, DL, get(BOpc)).addMBB(FBB).addImm(ARMCC::AL).addReg(0);
+  else
+    BuildMI(&MBB, DL, get(BOpc)).addMBB(FBB);
   return 2;
 }
 
@@ -686,9 +693,9 @@ void ARMBaseInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
       ARM::QQQQPRRegClass.contains(DestReg, SrcReg)) {
     const TargetRegisterInfo *TRI = &getRegisterInfo();
     assert(ARM::qsub_0 + 3 == ARM::qsub_3 && "Expected contiguous enum.");
-    unsigned EndSubReg = ARM::QQPRRegClass.contains(DestReg, SrcReg) ? 
+    unsigned EndSubReg = ARM::QQPRRegClass.contains(DestReg, SrcReg) ?
       ARM::qsub_1 : ARM::qsub_3;
-    for (unsigned i = ARM::qsub_0, e = EndSubReg + 1; i != e; ++i) { 
+    for (unsigned i = ARM::qsub_0, e = EndSubReg + 1; i != e; ++i) {
       unsigned Dst = TRI->getSubReg(DestReg, i);
       unsigned Src = TRI->getSubReg(SrcReg, i);
       MachineInstrBuilder Mov =
@@ -1362,7 +1369,7 @@ isProfitableToIfCvt(MachineBasicBlock &TMBB,
   // Attempt to estimate the relative costs of predication versus branching.
   unsigned TUnpredCost = Probability.getNumerator() * TCycles;
   TUnpredCost /= Probability.getDenominator();
-    
+
   uint32_t Comp = Probability.getDenominator() - Probability.getNumerator();
   unsigned FUnpredCost = Comp * FCycles;
   FUnpredCost /= Probability.getDenominator();
@@ -1402,6 +1409,57 @@ int llvm::getMatchingCondBranchOpcode(int Opc) {
   return 0;
 }
 
+
+/// Map pseudo instructions that imply an 'S' bit onto real opcodes. Whether the
+/// instruction is encoded with an 'S' bit is determined by the optional CPSR
+/// def operand.
+///
+/// This will go away once we can teach tblgen how to set the optional CPSR def
+/// operand itself.
+struct AddSubFlagsOpcodePair {
+  unsigned PseudoOpc;
+  unsigned MachineOpc;
+};
+
+static AddSubFlagsOpcodePair AddSubFlagsOpcodeMap[] = {
+  {ARM::ADDSri, ARM::ADDri},
+  {ARM::ADDSrr, ARM::ADDrr},
+  {ARM::ADDSrsi, ARM::ADDrsi},
+  {ARM::ADDSrsr, ARM::ADDrsr},
+
+  {ARM::SUBSri, ARM::SUBri},
+  {ARM::SUBSrr, ARM::SUBrr},
+  {ARM::SUBSrsi, ARM::SUBrsi},
+  {ARM::SUBSrsr, ARM::SUBrsr},
+
+  {ARM::RSBSri, ARM::RSBri},
+  {ARM::RSBSrr, ARM::RSBrr},
+  {ARM::RSBSrsi, ARM::RSBrsi},
+  {ARM::RSBSrsr, ARM::RSBrsr},
+
+  {ARM::t2ADDSri, ARM::t2ADDri},
+  {ARM::t2ADDSrr, ARM::t2ADDrr},
+  {ARM::t2ADDSrs, ARM::t2ADDrs},
+
+  {ARM::t2SUBSri, ARM::t2SUBri},
+  {ARM::t2SUBSrr, ARM::t2SUBrr},
+  {ARM::t2SUBSrs, ARM::t2SUBrs},
+
+  {ARM::t2RSBSri, ARM::t2RSBri},
+  {ARM::t2RSBSrs, ARM::t2RSBrs},
+};
+
+unsigned llvm::convertAddSubFlagsOpcode(unsigned OldOpc) {
+  static const int NPairs =
+    sizeof(AddSubFlagsOpcodeMap) / sizeof(AddSubFlagsOpcodePair);
+  for (AddSubFlagsOpcodePair *OpcPair = &AddSubFlagsOpcodeMap[0],
+         *End = &AddSubFlagsOpcodeMap[NPairs]; OpcPair != End; ++OpcPair) {
+    if (OldOpc == OpcPair->PseudoOpc) {
+      return OpcPair->MachineOpc;
+    }
+  }
+  return 0;
+}
 
 void llvm::emitARMRegPlusImmediate(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator &MBBI, DebugLoc dl,
@@ -2638,6 +2696,15 @@ hasLowDefLatency(const InstrItineraryData *ItinData,
   return false;
 }
 
+bool ARMBaseInstrInfo::verifyInstruction(const MachineInstr *MI,
+                                         StringRef &ErrInfo) const {
+  if (convertAddSubFlagsOpcode(MI->getOpcode())) {
+    ErrInfo = "Pseudo flag setting opcodes only exist in Selection DAG";
+    return false;
+  }
+  return true;
+}
+
 bool
 ARMBaseInstrInfo::isFpMLxInstruction(unsigned Opcode, unsigned &MulOpc,
                                      unsigned &AddSubOpc,
@@ -2652,4 +2719,57 @@ ARMBaseInstrInfo::isFpMLxInstruction(unsigned Opcode, unsigned &MulOpc,
   NegAcc = Entry.NegAcc;
   HasLane = Entry.HasLane;
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// Execution domains.
+//===----------------------------------------------------------------------===//
+//
+// Some instructions go down the NEON pipeline, some go down the VFP pipeline,
+// and some can go down both.  The vmov instructions go down the VFP pipeline,
+// but they can be changed to vorr equivalents that are executed by the NEON
+// pipeline.
+//
+// We use the following execution domain numbering:
+//
+//   0: Generic
+//   1: VFP
+//   2: NEON
+//
+// Also see ARMInstrFormats.td and Domain* enums in ARMBaseInfo.h
+//
+std::pair<uint16_t, uint16_t>
+ARMBaseInstrInfo::getExecutionDomain(const MachineInstr *MI) const {
+  // VMOVD is a VFP instruction, but can be changed to NEON if it isn't
+  // predicated.
+  if (MI->getOpcode() == ARM::VMOVD && !isPredicated(MI))
+    return std::make_pair(1, 3);
+
+  // No other instructions can be swizzled, so just determine their domain.
+  unsigned Domain = MI->getDesc().TSFlags & ARMII::DomainMask;
+
+  if (Domain & ARMII::DomainNEON)
+    return std::make_pair(2, 0);
+
+  // Certain instructions can go either way on Cortex-A8.
+  // Treat them as NEON instructions.
+  if ((Domain & ARMII::DomainNEONA8) && Subtarget.isCortexA8())
+    return std::make_pair(2, 0);
+
+  if (Domain & ARMII::DomainVFP)
+    return std::make_pair(1, 0);
+
+  return std::make_pair(0, 0);
+}
+
+void
+ARMBaseInstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
+  // We only know how to change VMOVD into VORR.
+  assert(MI->getOpcode() == ARM::VMOVD && "Can only swizzle VMOVD");
+  if (Domain != 2)
+    return;
+
+  // Change to a VORRd which requires two identical use operands.
+  MI->setDesc(get(ARM::VORRd));
+  MachineInstrBuilder(MI).addReg(MI->getOperand(1).getReg());
 }

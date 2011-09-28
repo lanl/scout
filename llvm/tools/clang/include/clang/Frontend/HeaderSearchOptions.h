@@ -26,7 +26,10 @@ namespace frontend {
     IndexHeaderMap, ///< Like Angled, but marks header maps used when
                        ///  building frameworks.
     System,         ///< Like Angled, but marks system directories.
+    CSystem,        ///< Like System, but only used for C.
     CXXSystem,      ///< Like System, but only used for C++.
+    ObjCSystem,     ///< Like System, but only used for ObjC.
+    ObjCXXSystem,   ///< Like System, but only used for ObjC++.
     After           ///< Like System, but searched after the system directories.
   };
 }
@@ -59,22 +62,19 @@ public:
   /// User specified include entries.
   std::vector<Entry> UserEntries;
 
-  /// A (system-path) delimited list of include paths to be added from the
-  /// environment following the user specified includes (but prior to builtin
-  /// and standard includes). This is parsed in the same manner as the CPATH
-  /// environment variable for gcc.
-  std::string EnvIncPath;
-
-  /// Per-language environmental include paths, see \see EnvIncPath.
-  std::string CEnvIncPath;
-  std::string ObjCEnvIncPath;
-  std::string CXXEnvIncPath;
-  std::string ObjCXXEnvIncPath;
-
   /// The directory which holds the compiler resource files (builtin includes,
   /// etc.).
   std::string ResourceDir;
 
+  /// \brief The directory used for the module cache.
+  std::string ModuleCachePath;
+  
+  /// \brief Whether we should disable the use of the hash string within the
+  /// module cache.
+  ///
+  /// Note: Only used for testing!
+  unsigned DisableModuleHash : 1;
+  
   /// Include the compiler builtin includes.
   unsigned UseBuiltinIncludes : 1;
 
@@ -92,7 +92,7 @@ public:
 
 public:
   HeaderSearchOptions(StringRef _Sysroot = "/")
-    : Sysroot(_Sysroot), UseBuiltinIncludes(true),
+    : Sysroot(_Sysroot), DisableModuleHash(0), UseBuiltinIncludes(true),
       UseStandardIncludes(true), UseStandardCXXIncludes(true), UseLibcxx(false),
       Verbose(false) {}
 

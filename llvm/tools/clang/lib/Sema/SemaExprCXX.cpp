@@ -325,7 +325,7 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
     QualType UnqualT = Context.getUnqualifiedArrayType(T, Quals);
     if (!Context.hasSameType(T, UnqualT)) {
       T = UnqualT;
-      E = ImpCastExprToType(E, UnqualT, CK_NoOp, CastCategory(E)).take();
+      E = ImpCastExprToType(E, UnqualT, CK_NoOp, E->getValueKind()).take();
     }
   }
 
@@ -545,7 +545,7 @@ ExprResult Sema::CheckCXXThrowOperand(SourceLocation ThrowLoc, Expr *E,
   //   or "pointer to function returning T", [...]
   if (E->getType().hasQualifiers())
     E = ImpCastExprToType(E, E->getType().getUnqualifiedType(), CK_NoOp,
-                      CastCategory(E)).take();
+                          E->getValueKind()).take();
 
   ExprResult Res = DefaultFunctionArrayConversion(E);
   if (Res.isInvalid())
@@ -1525,8 +1525,7 @@ bool Sema::FindAllocationOverload(SourceLocation StartLoc, SourceRange Range,
     return true;
   }
   }
-  assert(false && "Unreachable, bad result from BestViableFunction");
-  return true;
+  llvm_unreachable("Unreachable, bad result from BestViableFunction");
 }
 
 
@@ -1671,7 +1670,7 @@ void Sema::DeclareGlobalAllocationFunction(DeclarationName Name,
                                            SourceLocation(), 0,
                                            Argument, /*TInfo=*/0,
                                            SC_None, SC_None, 0);
-  Alloc->setParams(&Param, 1);
+  Alloc->setParams(Param);
 
   // FIXME: Also add this declaration to the IdentifierResolver, but
   // make sure it is at the end of the chain to coincide with the
@@ -2065,10 +2064,10 @@ static ExprResult BuildCXXCastArgument(Sema &S,
                                        QualType Ty,
                                        CastKind Kind,
                                        CXXMethodDecl *Method,
-                                       NamedDecl *FoundDecl,
+                                       DeclAccessPair FoundDecl,
                                        Expr *From) {
   switch (Kind) {
-  default: assert(0 && "Unhandled cast kind!");
+  default: llvm_unreachable("Unhandled cast kind!");
   case CK_ConstructorConversion: {
     ASTOwningVector<Expr*> ConstructorArgs(S);
 
@@ -2095,6 +2094,8 @@ static ExprResult BuildCXXCastArgument(Sema &S,
     ExprResult Result = S.BuildCXXMemberCallExpr(From, FoundDecl, Method);
     if (Result.isInvalid())
       return ExprError();
+
+    S.CheckMemberOperatorAccess(CastLoc, From, /*arg*/ 0, FoundDecl);
 
     return S.MaybeBindToTemporary(Result.get());
   }
@@ -2179,8 +2180,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
      return ExprError();
 
   case ImplicitConversionSequence::EllipsisConversion:
-    assert(false && "Cannot perform an ellipsis conversion");
-    return Owned(From);
+    llvm_unreachable("Cannot perform an ellipsis conversion");
 
   case ImplicitConversionSequence::BadConversion:
     return ExprError();
@@ -2282,8 +2282,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     break;
 
   default:
-    assert(false && "Improper first standard conversion");
-    break;
+    llvm_unreachable("Improper first standard conversion");
   }
 
   // Perform the second implicit conversion
@@ -2374,20 +2373,29 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     else if (getLangOptions().ObjCAutoRefCount &&
              !CheckObjCARCUnavailableWeakConversion(ToType, 
                                                     From->getType())) {
-           if (Action == AA_Initializing)
-             Diag(From->getSourceRange().getBegin(), 
-                  diag::err_arc_weak_unavailable_assign);
-           else
-             Diag(From->getSourceRange().getBegin(),
-                  diag::err_arc_convesion_of_weak_unavailable) 
-                  << (Action == AA_Casting) << From->getType() << ToType 
-                  << From->getSourceRange();
-         }
+      if (Action == AA_Initializing)
+        Diag(From->getSourceRange().getBegin(), 
+             diag::err_arc_weak_unavailable_assign);
+      else
+        Diag(From->getSourceRange().getBegin(),
+             diag::err_arc_convesion_of_weak_unavailable) 
+          << (Action == AA_Casting) << From->getType() << ToType 
+          << From->getSourceRange();
+    }
              
     CastKind Kind = CK_Invalid;
     CXXCastPath BasePath;
     if (CheckPointerConversion(From, ToType, Kind, BasePath, CStyle))
       return ExprError();
+
+    // Make sure we extend blocks if necessary.
+    // FIXME: doing this here is really ugly.
+    if (Kind == CK_BlockPointerToObjCPointerCast) {
+      ExprResult E = From;
+      (void) PrepareCastToObjCObjectPointer(E);
+      From = E.take();
+    }
+
     From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
              .take();
     break;
@@ -2422,7 +2430,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
       return ExprError();
 
     From = ImpCastExprToType(From, ToType.getNonReferenceType(),
-                      CK_DerivedToBase, CastCategory(From),
+                      CK_DerivedToBase, From->getValueKind(),
                       &BasePath, CCK).take();
     break;
   }
@@ -2513,8 +2521,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
   case ICK_Function_To_Pointer:
   case ICK_Qualification:
   case ICK_Num_Conversion_Kinds:
-    assert(false && "Improper second standard conversion");
-    break;
+    llvm_unreachable("Improper second standard conversion");
   }
 
   switch (SCS.Third) {
@@ -2526,7 +2533,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     // The qualification keeps the category of the inner expression, unless the
     // target type isn't a reference.
     ExprValueKind VK = ToType->isReferenceType() ?
-                                  CastCategory(From) : VK_RValue;
+                                  From->getValueKind() : VK_RValue;
     From = ImpCastExprToType(From, ToType.getNonLValueExprType(Context),
                              CK_NoOp, VK, /*BasePath=*/0, CCK).take();
 
@@ -2539,8 +2546,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     }
 
   default:
-    assert(false && "Improper third standard conversion");
-    break;
+    llvm_unreachable("Improper third standard conversion");
   }
 
   return Owned(From);
@@ -3260,34 +3266,34 @@ ExprResult Sema::BuildExpressionTrait(ExpressionTrait ET,
                                                  RParen, Context.BoolTy));
 }
 
-QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
+QualType Sema::CheckPointerToMemberOperands(ExprResult &LHS, ExprResult &RHS,
                                             ExprValueKind &VK,
                                             SourceLocation Loc,
                                             bool isIndirect) {
-  assert(!lex.get()->getType()->isPlaceholderType() &&
-         !rex.get()->getType()->isPlaceholderType() &&
+  assert(!LHS.get()->getType()->isPlaceholderType() &&
+         !RHS.get()->getType()->isPlaceholderType() &&
          "placeholders should have been weeded out by now");
 
   // The LHS undergoes lvalue conversions if this is ->*.
   if (isIndirect) {
-    lex = DefaultLvalueConversion(lex.take());
-    if (lex.isInvalid()) return QualType();
+    LHS = DefaultLvalueConversion(LHS.take());
+    if (LHS.isInvalid()) return QualType();
   }
 
   // The RHS always undergoes lvalue conversions.
-  rex = DefaultLvalueConversion(rex.take());
-  if (rex.isInvalid()) return QualType();
+  RHS = DefaultLvalueConversion(RHS.take());
+  if (RHS.isInvalid()) return QualType();
 
   const char *OpSpelling = isIndirect ? "->*" : ".*";
   // C++ 5.5p2
   //   The binary operator .* [p3: ->*] binds its second operand, which shall
   //   be of type "pointer to member of T" (where T is a completely-defined
   //   class type) [...]
-  QualType RType = rex.get()->getType();
-  const MemberPointerType *MemPtr = RType->getAs<MemberPointerType>();
+  QualType RHSType = RHS.get()->getType();
+  const MemberPointerType *MemPtr = RHSType->getAs<MemberPointerType>();
   if (!MemPtr) {
     Diag(Loc, diag::err_bad_memptr_rhs)
-      << OpSpelling << RType << rex.get()->getSourceRange();
+      << OpSpelling << RHSType << RHS.get()->getSourceRange();
     return QualType();
   }
 
@@ -3303,21 +3309,21 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
   //   [...] to its first operand, which shall be of class T or of a class of
   //   which T is an unambiguous and accessible base class. [p3: a pointer to
   //   such a class]
-  QualType LType = lex.get()->getType();
+  QualType LHSType = LHS.get()->getType();
   if (isIndirect) {
-    if (const PointerType *Ptr = LType->getAs<PointerType>())
-      LType = Ptr->getPointeeType();
+    if (const PointerType *Ptr = LHSType->getAs<PointerType>())
+      LHSType = Ptr->getPointeeType();
     else {
       Diag(Loc, diag::err_bad_memptr_lhs)
-        << OpSpelling << 1 << LType
+        << OpSpelling << 1 << LHSType
         << FixItHint::CreateReplacement(SourceRange(Loc), ".*");
       return QualType();
     }
   }
 
-  if (!Context.hasSameUnqualifiedType(Class, LType)) {
+  if (!Context.hasSameUnqualifiedType(Class, LHSType)) {
     // If we want to check the hierarchy, we need a complete type.
-    if (RequireCompleteType(Loc, LType, PDiag(diag::err_bad_memptr_lhs)
+    if (RequireCompleteType(Loc, LHSType, PDiag(diag::err_bad_memptr_lhs)
         << OpSpelling << (int)isIndirect)) {
       return QualType();
     }
@@ -3325,23 +3331,23 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
                        /*DetectVirtual=*/false);
     // FIXME: Would it be useful to print full ambiguity paths, or is that
     // overkill?
-    if (!IsDerivedFrom(LType, Class, Paths) ||
+    if (!IsDerivedFrom(LHSType, Class, Paths) ||
         Paths.isAmbiguous(Context.getCanonicalType(Class))) {
       Diag(Loc, diag::err_bad_memptr_lhs) << OpSpelling
-        << (int)isIndirect << lex.get()->getType();
+        << (int)isIndirect << LHS.get()->getType();
       return QualType();
     }
     // Cast LHS to type of use.
     QualType UseType = isIndirect ? Context.getPointerType(Class) : Class;
-    ExprValueKind VK =
-        isIndirect ? VK_RValue : CastCategory(lex.get());
+    ExprValueKind VK = isIndirect ? VK_RValue : LHS.get()->getValueKind();
 
     CXXCastPath BasePath;
     BuildBasePathArray(Paths, BasePath);
-    lex = ImpCastExprToType(lex.take(), UseType, CK_DerivedToBase, VK, &BasePath);
+    LHS = ImpCastExprToType(LHS.take(), UseType, CK_DerivedToBase, VK,
+                            &BasePath);
   }
 
-  if (isa<CXXScalarValueInitExpr>(rex.get()->IgnoreParens())) {
+  if (isa<CXXScalarValueInitExpr>(RHS.get()->IgnoreParens())) {
     // Diagnose use of pointer-to-member type which when used as
     // the functional cast in a pointer-to-member expression.
     Diag(Loc, diag::err_pointer_to_member_type) << isIndirect;
@@ -3354,7 +3360,7 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
   // The cv qualifiers are the union of those in the pointer and the left side,
   // in accordance with 5.5p5 and 5.2.5.
   QualType Result = MemPtr->getPointeeType();
-  Result = Context.getCVRQualifiedType(Result, LType.getCVRQualifiers());
+  Result = Context.getCVRQualifiedType(Result, LHSType.getCVRQualifiers());
 
   // C++0x [expr.mptr.oper]p6:
   //   In a .* expression whose object expression is an rvalue, the program is
@@ -3369,15 +3375,15 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
       break;
 
     case RQ_LValue:
-      if (!isIndirect && !lex.get()->Classify(Context).isLValue())
+      if (!isIndirect && !LHS.get()->Classify(Context).isLValue())
         Diag(Loc, diag::err_pointer_to_member_oper_value_classify)
-          << RType << 1 << lex.get()->getSourceRange();
+          << RHSType << 1 << LHS.get()->getSourceRange();
       break;
 
     case RQ_RValue:
-      if (isIndirect || !lex.get()->Classify(Context).isRValue())
+      if (isIndirect || !LHS.get()->Classify(Context).isRValue())
         Diag(Loc, diag::err_pointer_to_member_oper_value_classify)
-          << RType << 0 << lex.get()->getSourceRange();
+          << RHSType << 0 << LHS.get()->getSourceRange();
       break;
     }
   }
@@ -3395,7 +3401,7 @@ QualType Sema::CheckPointerToMemberOperands(ExprResult &lex, ExprResult &rex,
   } else if (isIndirect) {
     VK = VK_LValue;
   } else {
-    VK = lex.get()->getValueKind();
+    VK = LHS.get()->getValueKind();
   }
 
   return Result;
@@ -3548,8 +3554,7 @@ static bool FindConditionalOverload(Sema &Self, ExprResult &LHS, ExprResult &RHS
       break;
 
     case OR_Deleted:
-      assert(false && "Conditional operator has only built-in overloads");
-      break;
+      llvm_unreachable("Conditional operator has only built-in overloads");
   }
   return true;
 }
@@ -4086,8 +4091,8 @@ ExprResult Sema::MaybeBindToTemporary(Expr *E) {
 
     ExprNeedsCleanups = true;
 
-    CastKind ck = (ReturnsRetained ? CK_ObjCConsumeObject
-                                   : CK_ObjCReclaimReturnedObject);
+    CastKind ck = (ReturnsRetained ? CK_ARCConsumeObject
+                                   : CK_ARCReclaimReturnedObject);
     return Owned(ImplicitCastExpr::Create(Context, E->getType(), ck, E, 0,
                                           VK_RValue));
   }
@@ -4631,7 +4636,7 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE) {
   if (FullExpr.isInvalid())
     return ExprError();
 
-  CheckImplicitConversions(FullExpr.get());
+  CheckImplicitConversions(FullExpr.get(), FullExpr.get()->getExprLoc());
   return MaybeCreateExprWithCleanups(FullExpr);
 }
 

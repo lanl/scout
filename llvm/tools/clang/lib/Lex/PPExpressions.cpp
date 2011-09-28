@@ -23,6 +23,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "llvm/ADT/APSInt.h"
+#include "llvm/Support/ErrorHandling.h"
 using namespace clang;
 
 namespace {
@@ -535,7 +536,7 @@ static bool EvaluateDirectiveSubExpr(PPValue &LHS, unsigned MinPrec,
 
     bool Overflow = false;
     switch (Operator) {
-    default: assert(0 && "Unknown operator token!");
+    default: llvm_unreachable("Unknown operator token!");
     case tok::percent:
       if (RHS.Val != 0)
         Res = LHS.Val % RHS.Val;

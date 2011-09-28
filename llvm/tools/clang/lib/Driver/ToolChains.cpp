@@ -109,6 +109,14 @@ void Darwin::configureObjCRuntime(ObjCRuntime &runtime) const {
     runtime.HasTerminate = false;
 }
 
+/// Darwin provides a blocks runtime starting in MacOS X 10.6 and iOS 3.2.
+bool Darwin::hasBlocksRuntime() const {
+  if (isTargetIPhoneOS())
+    return !isIPhoneOSVersionLT(3, 2);
+  else
+    return !isMacosxVersionLT(10, 6);
+}
+
 // FIXME: Can we tablegen this?
 static const char *GetArmArchForMArch(StringRef Value) {
   if (Value == "armv6k")
@@ -181,8 +189,9 @@ Darwin::~Darwin() {
     delete it->second;
 }
 
-std::string Darwin::ComputeEffectiveClangTriple(const ArgList &Args) const {
-  llvm::Triple Triple(ComputeLLVMTriple(Args));
+std::string Darwin::ComputeEffectiveClangTriple(const ArgList &Args,
+                                                types::ID InputType) const {
+  llvm::Triple Triple(ComputeLLVMTriple(Args, InputType));
 
   // If the target isn't initialized (e.g., an unknown Darwin platform, return
   // the default triple).
@@ -234,7 +243,7 @@ Tool &Darwin::SelectTool(const Compilation &C, const JobAction &JA,
     switch (Key) {
     case Action::InputClass:
     case Action::BindArchClass:
-      assert(0 && "Invalid tool kind.");
+      llvm_unreachable("Invalid tool kind.");
     case Action::PreprocessJobClass:
       T = new tools::darwin::Preprocess(*this); break;
     case Action::AnalyzeJobClass:
@@ -267,8 +276,6 @@ Tool &Darwin::SelectTool(const Compilation &C, const JobAction &JA,
 DarwinClang::DarwinClang(const HostInfo &Host, const llvm::Triple& Triple)
   : Darwin(Host, Triple)
 {
-  std::string UsrPrefix = "llvm-gcc-4.2/";
-
   getProgramPaths().push_back(getDriver().getInstalledDir());
   if (getDriver().getInstalledDir() != getDriver().Dir)
     getProgramPaths().push_back(getDriver().Dir);
@@ -281,16 +288,24 @@ DarwinClang::DarwinClang(const HostInfo &Host, const llvm::Triple& Triple)
   // For fallback, we need to know how to find the GCC cc1 executables, so we
   // also add the GCC libexec paths. This is legacy code that can be removed
   // once fallback is no longer useful.
+  AddGCCLibexecPath(DarwinVersion[0]);
+  AddGCCLibexecPath(DarwinVersion[0] - 2);
+  AddGCCLibexecPath(DarwinVersion[0] - 1);
+  AddGCCLibexecPath(DarwinVersion[0] + 1);
+  AddGCCLibexecPath(DarwinVersion[0] + 2);
+}
+
+void DarwinClang::AddGCCLibexecPath(unsigned darwinVersion) {
   std::string ToolChainDir = "i686-apple-darwin";
-  ToolChainDir += llvm::utostr(DarwinVersion[0]);
+  ToolChainDir += llvm::utostr(darwinVersion);
   ToolChainDir += "/4.2.1";
 
   std::string Path = getDriver().Dir;
-  Path += "/../" + UsrPrefix + "libexec/gcc/";
+  Path += "/../llvm-gcc-4.2/libexec/gcc/";
   Path += ToolChainDir;
   getProgramPaths().push_back(Path);
 
-  Path = "/usr/" + UsrPrefix + "libexec/gcc/";
+  Path = "/usr/llvm-gcc-4.2/libexec/gcc/";
   Path += ToolChainDir;
   getProgramPaths().push_back(Path);
 }
@@ -308,7 +323,7 @@ void DarwinClang::AddLinkSearchPathArgs(const ArgList &Args,
   P.appendComponent("gcc");
   switch (getTriple().getArch()) {
   default:
-    assert(0 && "Invalid Darwin arch!");
+    llvm_unreachable("Invalid Darwin arch!");
   case llvm::Triple::x86:
   case llvm::Triple::x86_64:
     P.appendComponent("i686-apple-darwin10");
@@ -548,6 +563,12 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
           iOSTarget = second.substr(0,3);
       }
     }
+
+    // If no OSX or iOS target has been specified and we're compiling for armv7,
+    // go ahead as assume we're targeting iOS.
+    if (OSXTarget.empty() && iOSTarget.empty())
+      if (getDarwinArchName(Args) == "armv7")
+        iOSTarget = "0.0";
 
     // Handle conflicting deployment targets
     //
@@ -950,8 +971,9 @@ bool Darwin::SupportsObjCGC() const {
 }
 
 std::string
-Darwin_Generic_GCC::ComputeEffectiveClangTriple(const ArgList &Args) const {
-  return ComputeLLVMTriple(Args);
+Darwin_Generic_GCC::ComputeEffectiveClangTriple(const ArgList &Args,
+                                                types::ID InputType) const {
+  return ComputeLLVMTriple(Args, InputType);
 }
 
 /// Generic_GCC - A tool chain using the 'gcc' command to perform
@@ -986,7 +1008,7 @@ Tool &Generic_GCC::SelectTool(const Compilation &C,
     switch (Key) {
     case Action::InputClass:
     case Action::BindArchClass:
-      assert(0 && "Invalid tool kind.");
+      llvm_unreachable("Invalid tool kind.");
     case Action::PreprocessJobClass:
       T = new tools::gcc::Preprocess(*this); break;
     case Action::PrecompileJobClass:
@@ -1077,7 +1099,7 @@ Tool &TCEToolChain::SelectTool(const Compilation &C,
     case Action::AnalyzeJobClass:
       T = new tools::Clang(*this); break;
     default:
-     assert(false && "Unsupported action for TCE target.");
+     llvm_unreachable("Unsupported action for TCE target.");
     }
   }
   return *T;
@@ -1461,7 +1483,8 @@ static LinuxDistro DetectLinuxDistro(llvm::Triple::ArchType Arch) {
   return UnknownDistro;
 }
 
-static std::string findGCCBaseLibDir(const std::string &GccTriple) {
+static std::string findGCCBaseLibDir(const Driver &D,
+    const std::string &GccTriple) {
   // FIXME: Using CXX_INCLUDE_ROOT is here is a bit of a hack, but
   // avoids adding yet another option to configure/cmake.
   // It would probably be cleaner to break it in two variables
@@ -1494,17 +1517,34 @@ static std::string findGCCBaseLibDir(const std::string &GccTriple) {
                                       "4.2.4", "4.2.3", "4.2.2", "4.2.1",
                                       "4.2", "4.1.1"};
   bool Exists;
-  for (unsigned i = 0; i < sizeof(GccVersions)/sizeof(char*); ++i) {
-    std::string Suffix = GccTriple + "/" + GccVersions[i];
-    std::string t1 = "/usr/lib/gcc/" + Suffix;
-    if (!llvm::sys::fs::exists(t1 + "/crtbegin.o", Exists) && Exists)
-      return t1;
-    std::string t2 = "/usr/lib64/gcc/" + Suffix;
-    if (!llvm::sys::fs::exists(t2 + "/crtbegin.o", Exists) && Exists)
-      return t2;
-    std::string t3 = "/usr/lib/" + GccTriple + "/gcc/" + Suffix;
-    if (!llvm::sys::fs::exists(t3 + "/crtbegin.o", Exists) && Exists)
-      return t3;
+  llvm::SmallVector<std::string, 8> Paths(D.PrefixDirs.begin(),
+      D.PrefixDirs.end());
+  Paths.push_back("/usr/lib/");
+  const std::string *Triples[] = {&GccTriple, &D.DefaultHostTriple};
+  for (llvm::SmallVector<std::string, 8>::const_iterator it = Paths.begin(),
+       ie = Paths.end(); it != ie; ++it) {
+    for (unsigned i = 0; i < sizeof(GccVersions)/sizeof(char*); ++i) {
+      for (unsigned j = 0; j < sizeof(Triples)/sizeof(Triples[0]); ++j) {
+        std::string Suffix = *Triples[j] + "/" + GccVersions[i];
+        std::string t1 = *it + "gcc/" + Suffix;
+        if (!llvm::sys::fs::exists(t1 + "/crtbegin.o", Exists) && Exists)
+          return t1;
+        std::string t2 = *it + "lib64/gcc/" + Suffix;
+        if (!llvm::sys::fs::exists(t2 + "/crtbegin.o", Exists) && Exists)
+          return t2;
+        std::string t3 = *it + "lib/" + GccTriple + "/gcc/" + Suffix;
+        if (!llvm::sys::fs::exists(t3 + "/crtbegin.o", Exists) && Exists)
+          return t3;
+        if (GccTriple == "i386-linux-gnu") {
+          // Ubuntu 11.04 uses an unusual path.
+          std::string t4 =
+              std::string(*it + "lib/i386-linux-gnu/gcc/i686-linux-gnu/") +
+              GccVersions[i];
+          if (!llvm::sys::fs::exists(t4 + "/crtbegin.o", Exists) && Exists)
+            return t4;
+        }
+      }
+    }
   }
   return "";
 }
@@ -1570,6 +1610,9 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   } else if (Arch == llvm::Triple::x86) {
     if (!llvm::sys::fs::exists("/usr/lib/gcc/i686-linux-gnu", Exists) && Exists)
       GccTriple = "i686-linux-gnu";
+    else if (!llvm::sys::fs::exists("/usr/lib/i386-linux-gnu", Exists) &&
+             Exists)
+      GccTriple = "i386-linux-gnu";
     else if (!llvm::sys::fs::exists("/usr/lib/gcc/i686-pc-linux-gnu", Exists) &&
              Exists)
       GccTriple = "i686-pc-linux-gnu";
@@ -1601,7 +1644,7 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
       GccTriple = "powerpc64-unknown-linux-gnu";
   }
 
-  std::string Base = findGCCBaseLibDir(GccTriple);
+  std::string Base = findGCCBaseLibDir(getDriver(), GccTriple);
   path_list &Paths = getFilePaths();
   bool Is32Bits = (getArch() == llvm::Triple::x86 ||
                    getArch() == llvm::Triple::ppc);
@@ -1669,8 +1712,8 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   // FIXME: This is in here to find crt1.o. It is provided by libc, and
   // libc (like gcc), can be installed in any directory. Once we are
   // fetching this from a config file, we should have a libc prefix.
-  Paths.push_back("/lib/../" + Lib);
-  Paths.push_back("/usr/lib/../" + Lib);
+  Paths.push_back("=/lib/../" + Lib);
+  Paths.push_back("=/usr/lib/../" + Lib);
 
   if (!Suffix.empty())
     Paths.push_back(Base);
@@ -1778,7 +1821,7 @@ Tool &Windows::SelectTool(const Compilation &C, const JobAction &JA,
     case Action::LipoJobClass:
     case Action::DsymutilJobClass:
     case Action::VerifyJobClass:
-      assert(0 && "Invalid tool kind.");
+      llvm_unreachable("Invalid tool kind.");
     case Action::PreprocessJobClass:
     case Action::PrecompileJobClass:
     case Action::AnalyzeJobClass:

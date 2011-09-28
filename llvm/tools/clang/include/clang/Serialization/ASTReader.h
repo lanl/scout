@@ -223,17 +223,17 @@ private:
 
   SourceManager &SourceMgr;
   FileManager &FileMgr;
-  Diagnostic &Diags;
+  DiagnosticsEngine &Diags;
   
   /// \brief The semantic analysis object that will be processing the
   /// AST files and the translation unit that uses it.
   Sema *SemaObj;
 
   /// \brief The preprocessor that will be loading the source file.
-  Preprocessor *PP;
+  Preprocessor &PP;
 
   /// \brief The AST context into which we'll read the AST files.
-  ASTContext *Context;
+  ASTContext &Context;
       
   /// \brief The AST consumer.
   ASTConsumer *Consumer;
@@ -248,6 +248,12 @@ private:
   /// \brief A map of negated SLocEntryIDs to the modules containing them.
   ContinuousRangeMap<unsigned, Module*, 64> GlobalSLocEntryMap;
 
+  typedef ContinuousRangeMap<unsigned, Module*, 64> GlobalSLocOffsetMapType;
+  
+  /// \brief A map of reversed (SourceManager::MaxLoadedOffset - SLocOffset)
+  /// SourceLocation offsets to the modules containing them.
+  GlobalSLocOffsetMapType GlobalSLocOffsetMap;
+  
   /// \brief Types that have already been loaded from the chain.
   ///
   /// When the pointer at index I is non-NULL, the type with
@@ -357,17 +363,6 @@ private:
   /// global selector ID to produce a local ID.
   GlobalSelectorMapType GlobalSelectorMap;
 
-  /// \brief The macro definitions we have already loaded.
-  SmallVector<MacroDefinition *, 16> MacroDefinitionsLoaded;
-
-  typedef ContinuousRangeMap<serialization::MacroID, Module *, 4> 
-    GlobalMacroDefinitionMapType;
-  
-  /// \brief Mapping from global macro definition IDs to the module in which the
-  /// selector resides along with the offset that should be added to the
-  /// global selector ID to produce a local ID.
-  GlobalMacroDefinitionMapType GlobalMacroDefinitionMap;
-
   /// \brief Mapping from identifiers that represent macros whose definitions
   /// have not yet been deserialized to the global offset where the macro
   /// record resides.
@@ -417,7 +412,7 @@ private:
 
   //@}
 
-  /// \name Diagnostic-relevant special data
+  /// \name DiagnosticsEngine-relevant special data
   /// \brief Fields containing data that is used for generating diagnostics
   //@{
 
@@ -691,7 +686,23 @@ private:
   
   RecordLocation getLocalBitOffset(uint64_t GlobalOffset);
   uint64_t getGlobalBitOffset(Module &M, uint32_t LocalOffset);
-  
+
+  /// \brief Returns the first preprocessed entity ID that ends after \arg BLoc.
+  serialization::PreprocessedEntityID
+    findBeginPreprocessedEntity(SourceLocation BLoc) const;
+
+  /// \brief Returns the first preprocessed entity ID that begins after \arg ELoc.
+  serialization::PreprocessedEntityID
+    findEndPreprocessedEntity(SourceLocation ELoc) const;
+
+  /// \brief \arg SLocMapI points at a chunk of a module that contains no
+  /// preprocessed entities or the entities it contains are not the ones we are
+  /// looking for. Find the next module that contains entities and return the ID
+  /// of the first entry.
+  serialization::PreprocessedEntityID
+    findNextPreprocessedEntity(
+                        GlobalSLocOffsetMapType::const_iterator SLocMapI) const;
+
   void PassInterestingDeclsToConsumer();
 
   /// \brief Produce an error diagnostic and return true.
@@ -734,6 +745,8 @@ public:
 
   ~ASTReader();
 
+  SourceManager &getSourceManager() const { return SourceMgr; }
+  
   /// \brief Load the AST file designated by the given file name.
   ASTReadResult ReadAST(const std::string &FileName, ModuleKind Type);
 
@@ -749,11 +762,8 @@ public:
   /// \brief Set the AST deserialization listener.
   void setDeserializationListener(ASTDeserializationListener *Listener);
 
-  /// \brief Set the Preprocessor to use.
-  void setPreprocessor(Preprocessor &pp);
-
-  /// \brief Sets and initializes the given Context.
-  void InitializeContext(ASTContext &Context);
+  /// \brief Initializes the ASTContext
+  void InitializeContext();
 
   /// \brief Add in-memory (virtual file) buffer.
   void addInMemoryBuffer(StringRef &FileName, llvm::MemoryBuffer *Buffer) {
@@ -764,10 +774,7 @@ public:
   ModuleManager &getModuleManager() { return ModuleMgr; }
 
   /// \brief Retrieve the preprocessor.
-  Preprocessor &getPreprocessor() const {
-    assert(PP && "ASTReader does not have a preprocessor");
-    return *PP;
-  }
+  Preprocessor &getPreprocessor() const { return PP; }
   
   /// \brief Retrieve the name of the original source file name
   const std::string &getOriginalSourceFile() { return OriginalFileName; }
@@ -776,23 +783,28 @@ public:
   /// the AST file, without actually loading the AST file.
   static std::string getOriginalSourceFile(const std::string &ASTFileName,
                                            FileManager &FileMgr,
-                                           Diagnostic &Diags);
+                                           DiagnosticsEngine &Diags);
 
   /// \brief Returns the suggested contents of the predefines buffer,
   /// which contains a (typically-empty) subset of the predefines
   /// build prior to including the precompiled header.
   const std::string &getSuggestedPredefines() { return SuggestedPredefines; }
-      
-  /// \brief Read preprocessed entities into the preprocessing record.
-  virtual void ReadPreprocessedEntities();
 
-  /// \brief Read the preprocessed entity at the given offset.
-  virtual PreprocessedEntity *ReadPreprocessedEntityAtOffset(uint64_t Offset);
+  /// \brief Read a preallocated preprocessed entity from the external source.
+  ///
+  /// \returns null if an error occurred that prevented the preprocessed
+  /// entity from being loaded.
+  virtual PreprocessedEntity *ReadPreprocessedEntity(unsigned Index);
+
+  /// \brief Returns a pair of [Begin, End) indices of preallocated
+  /// preprocessed entities that \arg Range encompasses.
+  virtual std::pair<unsigned, unsigned>
+      findPreprocessedEntitiesInRange(SourceRange Range);
 
   /// \brief Read the header file information for the given file entry.
   virtual HeaderFileInfo GetHeaderFileInfo(const FileEntry *FE);
 
-  void ReadPragmaDiagnosticMappings(Diagnostic &Diag);
+  void ReadPragmaDiagnosticMappings(DiagnosticsEngine &Diag);
 
   /// \brief Returns the number of source locations found in the chain.
   unsigned getTotalNumSLocs() const {
@@ -825,15 +837,10 @@ public:
     unsigned Result = 0;
     for (ModuleConstIterator I = ModuleMgr.begin(),
         E = ModuleMgr.end(); I != E; ++I) {
-      Result += (*I)->NumPreallocatedPreprocessingEntities;
+      Result += (*I)->NumPreprocessedEntities;
     }
     
     return Result;
-  }
-  
-  /// \brief Returns the number of macro definitions found in the chain.
-  unsigned getTotalNumMacroDefinitions() const {
-    return static_cast<unsigned>(MacroDefinitionsLoaded.size());
   }
       
   /// \brief Returns the number of C++ base specifiers found in the chain.
@@ -1161,16 +1168,12 @@ public:
                           unsigned &Idx);
 
   /// \brief Read a source location from raw form.
-  SourceLocation ReadSourceLocation(Module &Module, unsigned Raw) {
-    unsigned Flag = Raw & (1U << 31);
-    unsigned Offset = Raw & ~(1U << 31);
-    assert(Module.SLocRemap.find(Offset) != Module.SLocRemap.end() &&
+  SourceLocation ReadSourceLocation(Module &Module, unsigned Raw) const {
+    SourceLocation Loc = SourceLocation::getFromRawEncoding(Raw);
+    assert(Module.SLocRemap.find(Loc.getOffset()) != Module.SLocRemap.end() &&
            "Cannot find offset to remap.");
-    int Remap = Module.SLocRemap.find(Offset)->second;
-    Offset += Remap;
-    assert((Offset & (1U << 31)) == 0 &&
-           "Bad offset in reading source location");
-    return SourceLocation::getFromRawEncoding(Offset | Flag);
+    int Remap = Module.SLocRemap.find(Loc.getOffset())->second;
+    return Loc.getLocWithOffset(Remap);
   }
 
   /// \brief Read a source location.
@@ -1226,15 +1229,11 @@ public:
 
   /// \brief Reads the macro record located at the given offset.
   void ReadMacroRecord(Module &F, uint64_t Offset);
-
-  /// \brief Reads the preprocessed entity located at the current stream
-  /// position.
-  PreprocessedEntity *LoadPreprocessedEntity(Module &F);
       
   /// \brief Determine the global preprocessed entity ID that corresponds to
   /// the given local ID within the given module.
   serialization::PreprocessedEntityID 
-  getGlobalPreprocessedEntityID(Module &M, unsigned LocalID);
+  getGlobalPreprocessedEntityID(Module &M, unsigned LocalID) const;
   
   /// \brief Note that the identifier is a macro whose record will be loaded
   /// from the given AST file at the given (file-local) offset.
@@ -1251,23 +1250,9 @@ public:
   /// into the unread macro record offsets table.
   void LoadMacroDefinition(
                      llvm::DenseMap<IdentifierInfo *, uint64_t>::iterator Pos);
-      
-  /// \brief Retrieve the macro definition with the given ID.
-  MacroDefinition *getMacroDefinition(serialization::MacroID ID);
-
-  /// \brief Retrieve the global macro definition ID that corresponds to the
-  /// local macro definition ID within a given module.
-  serialization::MacroID getGlobalMacroDefinitionID(Module &M, 
-                                                    unsigned LocalID);
-
-  /// \brief Deserialize a macro definition that is local to the given
-  /// module.
-  MacroDefinition *getLocalMacroDefinition(Module &M, unsigned LocalID) {
-    return getMacroDefinition(getGlobalMacroDefinitionID(M, LocalID));
-  }
   
   /// \brief Retrieve the AST context that this AST reader supplements.
-  ASTContext *getContext() { return Context; }
+  ASTContext &getContext() { return Context; }
 
   // \brief Contains declarations that were loaded before we have
   // access to a Sema object.

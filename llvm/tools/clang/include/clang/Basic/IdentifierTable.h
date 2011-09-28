@@ -252,7 +252,7 @@ private:
   void RecomputeNeedsHandleIdentifier() {
     NeedsHandleIdentifier =
       (isPoisoned() | hasMacroDefinition() | isCPlusPlusOperatorKeyword() |
-       isExtensionToken());
+       isExtensionToken() || (getTokenID() == tok::kw___import_module__));
   }
 };
 
@@ -510,7 +510,7 @@ enum { InvalidObjCMethodFamily = (1 << ObjCMethodFamilyBitWidth) - 1 };
 /// selectors that take no arguments and selectors that take 1 argument, which
 /// accounts for 78% of all selectors in Cocoa.h.
 class Selector {
-  friend class DiagnosticInfo;
+  friend class Diagnostic;
 
   enum IdentifierInfoFlag {
     // MultiKeywordSelector = 0.

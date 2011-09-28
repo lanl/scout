@@ -539,7 +539,7 @@ bool TokenLexer::PasteTokens(Token &Tok) {
       if (isInvalid) {
         // Test for the Microsoft extension of /##/ turning into // here on the
         // error path.
-        if (PP.getLangOptions().Microsoft && Tok.is(tok::slash) &&
+        if (PP.getLangOptions().MicrosoftExt && Tok.is(tok::slash) &&
             RHS.is(tok::slash)) {
           HandleMicrosoftCommentPaste(Tok);
           return true;
@@ -556,8 +556,8 @@ bool TokenLexer::PasteTokens(Token &Tok) {
           // error to a warning that defaults to an error.  This allows
           // disabling it.
           PP.Diag(Loc,
-                  PP.getLangOptions().Microsoft ? diag::err_pp_bad_paste_ms 
-                                                : diag::err_pp_bad_paste)
+                  PP.getLangOptions().MicrosoftExt ? diag::err_pp_bad_paste_ms 
+                                                   : diag::err_pp_bad_paste)
             << Buffer.str();
         }
 
@@ -652,7 +652,7 @@ TokenLexer::getExpansionLocForMacroDefLoc(SourceLocation loc) const {
 
   unsigned relativeOffset = 0;
   SM.isInSLocAddrSpace(loc, MacroDefStart, MacroDefLength, &relativeOffset);
-  return MacroExpansionStart.getFileLocWithOffset(relativeOffset);
+  return MacroExpansionStart.getLocWithOffset(relativeOffset);
 }
 
 /// \brief Finds the tokens that are consecutive (from the same FileID)
@@ -713,7 +713,7 @@ static void updateConsecutiveMacroArgTokens(SourceManager &SM,
     Token &Tok = *begin_tokens;
     int RelOffs = 0;
     SM.isInSameSLocAddrSpace(FirstLoc, Tok.getLocation(), &RelOffs);
-    Tok.setLocation(Expansion.getFileLocWithOffset(RelOffs));
+    Tok.setLocation(Expansion.getLocWithOffset(RelOffs));
   }
 }
 

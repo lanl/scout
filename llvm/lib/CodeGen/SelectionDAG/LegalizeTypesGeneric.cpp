@@ -31,9 +31,9 @@ using namespace llvm;
 // These routines assume that the Lo/Hi part is stored first in memory on
 // little/big-endian machines, followed by the Hi/Lo part.  This means that
 // they cannot be used as is on vectors, for which Lo is always stored first.
-void DAGTypeLegalizer::ExpandRes_MERGE_VALUES(SDNode *N, 
+void DAGTypeLegalizer::ExpandRes_MERGE_VALUES(SDNode *N, unsigned ResNo,
                                               SDValue &Lo, SDValue &Hi) {
-  SDValue Op = DecomposeMERGE_VALUES(N);
+  SDValue Op = DisintegrateMERGE_VALUES(N, ResNo);
   GetExpandedOp(Op, Lo, Hi);
 }
 
@@ -431,22 +431,34 @@ SDValue DAGTypeLegalizer::ExpandOp_NormalStore(SDNode *N, unsigned OpNo) {
 // bytes; for integers and floats it is Lo first if and only if the machine is
 // little-endian).
 
-void DAGTypeLegalizer::SplitRes_MERGE_VALUES(SDNode *N,
+void DAGTypeLegalizer::SplitRes_MERGE_VALUES(SDNode *N, unsigned ResNo,
                                              SDValue &Lo, SDValue &Hi) {
-  SDValue Op = DecomposeMERGE_VALUES(N);
+  SDValue Op = DisintegrateMERGE_VALUES(N, ResNo);
   GetSplitOp(Op, Lo, Hi);
 }
 
 void DAGTypeLegalizer::SplitRes_SELECT(SDNode *N, SDValue &Lo,
                                        SDValue &Hi) {
-  SDValue LL, LH, RL, RH;
+  SDValue LL, LH, RL, RH, CL, CH;
   DebugLoc dl = N->getDebugLoc();
   GetSplitOp(N->getOperand(1), LL, LH);
   GetSplitOp(N->getOperand(2), RL, RH);
 
   SDValue Cond = N->getOperand(0);
-  Lo = DAG.getNode(ISD::SELECT, dl, LL.getValueType(), Cond, LL, RL);
-  Hi = DAG.getNode(ISD::SELECT, dl, LH.getValueType(), Cond, LH, RH);
+  CL = CH = Cond;
+  if (Cond.getValueType().isVector()) {
+    assert(Cond.getValueType().getVectorElementType() == MVT::i1 &&
+           "Condition legalized before result?");
+    unsigned NumElements = Cond.getValueType().getVectorNumElements();
+    EVT VCondTy = EVT::getVectorVT(*DAG.getContext(), MVT::i1, NumElements / 2);
+    CL = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VCondTy, Cond,
+                     DAG.getIntPtrConstant(0));
+    CH = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VCondTy, Cond,
+                     DAG.getIntPtrConstant(NumElements / 2));
+  }
+
+  Lo = DAG.getNode(N->getOpcode(), dl, LL.getValueType(), CL, LL, RL);
+  Hi = DAG.getNode(N->getOpcode(), dl, LH.getValueType(), CH, LH, RH);
 }
 
 void DAGTypeLegalizer::SplitRes_SELECT_CC(SDNode *N, SDValue &Lo,

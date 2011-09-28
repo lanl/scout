@@ -366,7 +366,8 @@ void Preprocessor::HandlePragmaDependency(Token &DependencyTok) {
 
   // Search include directories for this file.
   const DirectoryLookup *CurDir;
-  const FileEntry *File = LookupFile(Filename, isAngled, 0, CurDir, NULL, NULL);
+  const FileEntry *File = LookupFile(Filename, isAngled, 0, CurDir, NULL, NULL,
+                                     NULL);
   if (File == 0) {
     if (!SuppressIncludeNotFoundError)
       Diag(FilenameTok, diag::err_pp_file_not_found) << Filename;
@@ -803,7 +804,7 @@ struct PragmaDebugHandler : public PragmaHandler {
     IdentifierInfo *II = Tok.getIdentifierInfo();
 
     if (II->isStr("assert")) {
-      assert(0 && "This is an assertion!");
+      llvm_unreachable("This is an assertion!");
     } else if (II->isStr("crash")) {
       *(volatile int*) 0x11 = 0;
     } else if (II->isStr("llvm_fatal_error")) {
@@ -1033,7 +1034,7 @@ void Preprocessor::RegisterBuiltinPragmas() {
   AddPragmaHandler("STDC", new PragmaSTDC_UnknownHandler());
 
   // MS extensions.
-  if (Features.Microsoft) {
+  if (Features.MicrosoftExt) {
     AddPragmaHandler(new PragmaCommentHandler());
   }
 }

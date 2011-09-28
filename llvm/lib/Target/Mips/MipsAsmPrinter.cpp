@@ -36,7 +36,6 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -56,23 +55,6 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   MipsMCInstLower MCInstLowering(Mang, *MF, *this);
   unsigned Opc = MI->getOpcode();
-
-  // If target is Mips1, expand double precision load/store to two single
-  // precision loads/stores (and delay slot if MI is a load).
-  if (Subtarget->isMips1() && (Opc == Mips::LDC1 || Opc == Mips::SDC1)) {
-    SmallVector<MCInst, 4> MCInsts;
-    const unsigned* SubReg = 
-      TM.getRegisterInfo()->getSubRegisters(MI->getOperand(0).getReg());
-    MCInstLowering.LowerMips1F64LoadStore(MI, Opc, MCInsts,
-                                          Subtarget->isLittle(), SubReg);
-    
-    for (SmallVector<MCInst, 4>::iterator I = MCInsts.begin();
-         I != MCInsts.end(); ++I)
-      OutStreamer.EmitInstruction(*I);
-
-    return;
-  }
-
   MCInst TmpInst0;
   MCInstLowering.Lower(MI, TmpInst0);
   
@@ -227,7 +209,6 @@ void MipsAsmPrinter::emitFrameDirective() {
 const char *MipsAsmPrinter::getCurrentABIString() const {
   switch (Subtarget->getTargetABI()) {
   case MipsSubtarget::O32:  return "abi32";
-  case MipsSubtarget::O64:  return "abiO64";
   case MipsSubtarget::N32:  return "abiN32";
   case MipsSubtarget::N64:  return "abi64";
   case MipsSubtarget::EABI: return "eabi32"; // TODO: handle eabi64
@@ -351,6 +332,11 @@ void MipsAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
   case MipsII::MO_GOTTPREL: O << "%gottprel("; break;
   case MipsII::MO_TPREL_HI: O << "%tprel_hi("; break;
   case MipsII::MO_TPREL_LO: O << "%tprel_lo("; break;
+  case MipsII::MO_GPOFF_HI: O << "%hi(%neg(%gp_rel("; break;
+  case MipsII::MO_GPOFF_LO: O << "%lo(%neg(%gp_rel("; break;
+  case MipsII::MO_GOT_DISP: O << "%got_disp("; break;
+  case MipsII::MO_GOT_PAGE: O << "%got_page("; break;
+  case MipsII::MO_GOT_OFST: O << "%got_ofst("; break;
   }
 
   switch (MO.getType()) {
@@ -474,4 +460,6 @@ void MipsAsmPrinter::PrintDebugValueComment(const MachineInstr *MI,
 extern "C" void LLVMInitializeMipsAsmPrinter() {
   RegisterAsmPrinter<MipsAsmPrinter> X(TheMipsTarget);
   RegisterAsmPrinter<MipsAsmPrinter> Y(TheMipselTarget);
+  RegisterAsmPrinter<MipsAsmPrinter> A(TheMips64Target);
+  RegisterAsmPrinter<MipsAsmPrinter> B(TheMips64elTarget);
 }

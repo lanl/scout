@@ -210,6 +210,12 @@ public:
   int getOperandLatency(const InstrItineraryData *ItinData,
                         SDNode *DefNode, unsigned DefIdx,
                         SDNode *UseNode, unsigned UseIdx) const;
+
+  /// VFP/NEON execution domains.
+  std::pair<uint16_t, uint16_t>
+  getExecutionDomain(const MachineInstr *MI) const;
+  void setExecutionDomain(MachineInstr *MI, unsigned Domain) const;
+
 private:
   int getVLDMDefCycle(const InstrItineraryData *ItinData,
                       const MCInstrDesc &DefMCID,
@@ -245,6 +251,9 @@ private:
                              const MachineInstr *UseMI, unsigned UseIdx) const;
   bool hasLowDefLatency(const InstrItineraryData *ItinData,
                         const MachineInstr *DefMI, unsigned DefIdx) const;
+
+  /// verifyInstruction - Perform target specific instruction verification.
+  bool verifyInstruction(const MachineInstr *MI, StringRef &ErrInfo) const;
 
 private:
   /// Modeling special VFP / NEON fp MLA / MLS hazards.
@@ -327,6 +336,12 @@ bool isIndirectBranchOpcode(int Opc) {
 ARMCC::CondCodes getInstrPredicate(const MachineInstr *MI, unsigned &PredReg);
 
 int getMatchingCondBranchOpcode(int Opc);
+
+
+/// Map pseudo instructions that imply an 'S' bit onto real opcodes. Whether
+/// the instruction is encoded with an 'S' bit is determined by the optional
+/// CPSR def operand.
+unsigned convertAddSubFlagsOpcode(unsigned OldOpc);
 
 /// emitARMRegPlusImmediate / emitT2RegPlusImmediate - Emits a series of
 /// instructions to materializea destreg = basereg + immediate in ARM / Thumb2

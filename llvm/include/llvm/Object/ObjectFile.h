@@ -39,6 +39,52 @@ static bool operator ==(const DataRefImpl &a, const DataRefImpl &b) {
   return std::memcmp(&a, &b, sizeof(DataRefImpl)) == 0;
 }
 
+/// SymbolRef - This is a value type class that represents a single symbol in
+/// the list of symbols in the object file.
+class SymbolRef {
+  friend class SectionRef;
+  DataRefImpl SymbolPimpl;
+  const ObjectFile *OwningObject;
+
+public:
+  SymbolRef() : OwningObject(NULL) {
+    std::memset(&SymbolPimpl, 0, sizeof(SymbolPimpl));
+  }
+
+  enum SymbolType {
+    ST_Function,
+    ST_Data,
+    ST_External,    // Defined in another object file
+    ST_Other
+  };
+
+  SymbolRef(DataRefImpl SymbolP, const ObjectFile *Owner);
+
+  bool operator==(const SymbolRef &Other) const;
+
+  error_code getNext(SymbolRef &Result) const;
+
+  error_code getName(StringRef &Result) const;
+  error_code getAddress(uint64_t &Result) const;
+  error_code getOffset(uint64_t &Result) const;
+  error_code getSize(uint64_t &Result) const;
+  error_code getSymbolType(SymbolRef::SymbolType &Result) const;
+
+  /// Returns the ascii char that should be displayed in a symbol table dump via
+  /// nm for this symbol.
+  error_code getNMTypeChar(char &Result) const;
+
+  /// Returns true for symbols that are internal to the object file format such
+  /// as section symbols.
+  error_code isInternal(bool &Result) const;
+
+  /// Returns true for symbols that can be used in another objects,
+  /// such as library functions
+  error_code isGlobal(bool &Result) const;
+};
+
+/// RelocationRef - This is a value type class that represents a single
+/// relocation in the list of relocations in the object file.
 class RelocationRef {
   DataRefImpl RelocationPimpl;
   const ObjectFile *OwningObject;
@@ -52,38 +98,12 @@ public:
 
   bool operator==(const RelocationRef &Other) const;
 
-  error_code getNext(RelocationRef &Result);
-};
+  error_code getNext(RelocationRef &Result) const;
 
-/// SymbolRef - This is a value type class that represents a single symbol in
-/// the list of symbols in the object file.
-class SymbolRef {
-  friend class SectionRef;
-  DataRefImpl SymbolPimpl;
-  const ObjectFile *OwningObject;
-
-public:
-  SymbolRef() : OwningObject(NULL) {
-    std::memset(&SymbolPimpl, 0, sizeof(SymbolPimpl));
-  }
-
-  SymbolRef(DataRefImpl SymbolP, const ObjectFile *Owner);
-
-  bool operator==(const SymbolRef &Other) const;
-
-  error_code getNext(SymbolRef &Result) const;
-
-  error_code getName(StringRef &Result) const;
   error_code getAddress(uint64_t &Result) const;
-  error_code getSize(uint64_t &Result) const;
-
-  /// Returns the ascii char that should be displayed in a symbol table dump via
-  /// nm for this symbol.
-  error_code getNMTypeChar(char &Result) const;
-
-  /// Returns true for symbols that are internal to the object file format such
-  /// as section symbols.
-  error_code isInternal(bool &Result) const;
+  error_code getSymbol(SymbolRef &Result) const;
+  error_code getType(uint32_t &Result) const;
+  error_code getAdditionalInfo(int64_t &Result) const;
 };
 
 /// SectionRef - This is a value type class that represents a single section in
@@ -144,9 +164,12 @@ protected:
   virtual error_code getSymbolNext(DataRefImpl Symb, SymbolRef &Res) const = 0;
   virtual error_code getSymbolName(DataRefImpl Symb, StringRef &Res) const = 0;
   virtual error_code getSymbolAddress(DataRefImpl Symb, uint64_t &Res) const =0;
+  virtual error_code getSymbolOffset(DataRefImpl Symb, uint64_t &Res) const =0;
   virtual error_code getSymbolSize(DataRefImpl Symb, uint64_t &Res) const = 0;
   virtual error_code getSymbolNMTypeChar(DataRefImpl Symb, char &Res) const = 0;
   virtual error_code isSymbolInternal(DataRefImpl Symb, bool &Res) const = 0;
+  virtual error_code isSymbolGlobal(DataRefImpl Symb, bool &Res) const = 0;
+  virtual error_code getSymbolType(DataRefImpl Symb, SymbolRef::SymbolType &Res) const = 0;
 
   // Same as above for SectionRef.
   friend class SectionRef;
@@ -159,6 +182,19 @@ protected:
   virtual error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
                                            bool &Result) const = 0;
 
+
+  // Same as above for RelocationRef.
+  friend class RelocationRef;
+  virtual error_code getRelocationNext(DataRefImpl Rel,
+                                       RelocationRef &Res) const = 0;
+  virtual error_code getRelocationAddress(DataRefImpl Rel,
+                                          uint64_t &Res) const =0;
+  virtual error_code getRelocationSymbol(DataRefImpl Rel,
+                                         SymbolRef &Res) const = 0;
+  virtual error_code getRelocationType(DataRefImpl Rel,
+                                       uint32_t &Res) const = 0;
+  virtual error_code getRelocationAdditionalInfo(DataRefImpl Rel,
+                                                 int64_t &Res) const = 0;
 
 public:
   template<class content_type>
@@ -196,12 +232,16 @@ public:
 
   typedef content_iterator<SymbolRef> symbol_iterator;
   typedef content_iterator<SectionRef> section_iterator;
+  typedef content_iterator<RelocationRef> relocation_iterator;
 
   virtual symbol_iterator begin_symbols() const = 0;
   virtual symbol_iterator end_symbols() const = 0;
 
   virtual section_iterator begin_sections() const = 0;
   virtual section_iterator end_sections() const = 0;
+
+  virtual relocation_iterator begin_relocations() const = 0;
+  virtual relocation_iterator end_relocations() const = 0;
 
   /// @brief The number of bytes used to represent an address in this object
   ///        file format.
@@ -250,6 +290,10 @@ inline error_code SymbolRef::getAddress(uint64_t &Result) const {
   return OwningObject->getSymbolAddress(SymbolPimpl, Result);
 }
 
+inline error_code SymbolRef::getOffset(uint64_t &Result) const {
+  return OwningObject->getSymbolOffset(SymbolPimpl, Result);
+}
+
 inline error_code SymbolRef::getSize(uint64_t &Result) const {
   return OwningObject->getSymbolSize(SymbolPimpl, Result);
 }
@@ -260,6 +304,14 @@ inline error_code SymbolRef::getNMTypeChar(char &Result) const {
 
 inline error_code SymbolRef::isInternal(bool &Result) const {
   return OwningObject->isSymbolInternal(SymbolPimpl, Result);
+}
+
+inline error_code SymbolRef::isGlobal(bool &Result) const {
+  return OwningObject->isSymbolGlobal(SymbolPimpl, Result);
+}
+
+inline error_code SymbolRef::getSymbolType(SymbolRef::SymbolType &Result) const {
+  return OwningObject->getSymbolType(SymbolPimpl, Result);
 }
 
 
@@ -300,6 +352,37 @@ inline error_code SectionRef::isText(bool &Result) const {
 inline error_code SectionRef::containsSymbol(SymbolRef S, bool &Result) const {
   return OwningObject->sectionContainsSymbol(SectionPimpl, S.SymbolPimpl,
                                              Result);
+}
+
+
+/// RelocationRef
+inline RelocationRef::RelocationRef(DataRefImpl RelocationP,
+                              const ObjectFile *Owner)
+  : RelocationPimpl(RelocationP)
+  , OwningObject(Owner) {}
+
+inline bool RelocationRef::operator==(const RelocationRef &Other) const {
+  return RelocationPimpl == Other.RelocationPimpl;
+}
+
+inline error_code RelocationRef::getNext(RelocationRef &Result) const {
+  return OwningObject->getRelocationNext(RelocationPimpl, Result);
+}
+
+inline error_code RelocationRef::getAddress(uint64_t &Result) const {
+  return OwningObject->getRelocationAddress(RelocationPimpl, Result);
+}
+
+inline error_code RelocationRef::getSymbol(SymbolRef &Result) const {
+  return OwningObject->getRelocationSymbol(RelocationPimpl, Result);
+}
+
+inline error_code RelocationRef::getType(uint32_t &Result) const {
+  return OwningObject->getRelocationType(RelocationPimpl, Result);
+}
+
+inline error_code RelocationRef::getAdditionalInfo(int64_t &Result) const {
+  return OwningObject->getRelocationAdditionalInfo(RelocationPimpl, Result);
 }
 
 } // end namespace object

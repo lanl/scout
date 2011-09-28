@@ -30,7 +30,7 @@ using namespace llvm;
 
 namespace clang {
   class BackendConsumer : public ASTConsumer {
-    Diagnostic &Diags;
+    DiagnosticsEngine &Diags;
     BackendAction Action;
     const CodeGenOptions &CodeGenOpts;
     const TargetOptions &TargetOpts;
@@ -45,7 +45,7 @@ namespace clang {
     llvm::OwningPtr<llvm::Module> TheModule;
 
   public:
-    BackendConsumer(BackendAction action, Diagnostic &_Diags,
+    BackendConsumer(BackendAction action, DiagnosticsEngine &_Diags,
                     const CodeGenOptions &compopts,
                     const TargetOptions &targetopts,
                     const LangOptions &langopts,
@@ -185,7 +185,7 @@ static FullSourceLoc ConvertBackendLocation(const llvm::SMDiagnostic &D,
   // Translate the offset into the file.
   unsigned Offset = D.getLoc().getPointer()  - LBuf->getBufferStart();
   SourceLocation NewLoc =
-  CSM.getLocForStartOfFile(FID).getFileLocWithOffset(Offset);
+  CSM.getLocForStartOfFile(FID).getLocWithOffset(Offset);
   return FullSourceLoc(NewLoc, CSM);
 }
 
@@ -275,8 +275,7 @@ static raw_ostream *GetOutputStream(CompilerInstance &CI,
     return CI.createDefaultOutputFile(true, InFile, "o");
   }
 
-  assert(0 && "Invalid action!");
-  return 0;
+  llvm_unreachable("Invalid action!");
 }
 
 ASTConsumer *CodeGenAction::CreateASTConsumer(CompilerInstance &CI,
@@ -320,7 +319,7 @@ void CodeGenAction::ExecuteAction() {
     TheModule.reset(ParseIR(MainFileCopy, Err, *VMContext));
     if (!TheModule) {
       // Translate from the diagnostic info to the SourceManager location.
-      SourceLocation Loc = SM.getLocation(
+      SourceLocation Loc = SM.translateFileLineCol(
         SM.getFileEntryForID(SM.getMainFileID()), Err.getLineNo(),
         Err.getColumnNo() + 1);
 
@@ -329,8 +328,8 @@ void CodeGenAction::ExecuteAction() {
       StringRef Msg = Err.getMessage();
       if (Msg.startswith("error: "))
         Msg = Msg.substr(7);
-      unsigned DiagID = CI.getDiagnostics().getCustomDiagID(Diagnostic::Error,
-                                                            Msg);
+      unsigned DiagID = CI.getDiagnostics().getCustomDiagID(
+          DiagnosticsEngine::Error, Msg);
 
       CI.getDiagnostics().Report(Loc, DiagID);
       return;
