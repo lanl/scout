@@ -1485,6 +1485,7 @@ static LinuxDistro DetectLinuxDistro(llvm::Triple::ArchType Arch) {
 
 static std::string findGCCBaseLibDir(const Driver &D,
     const std::string &GccTriple) {
+
   // FIXME: Using CXX_INCLUDE_ROOT is here is a bit of a hack, but
   // avoids adding yet another option to configure/cmake.
   // It would probably be cleaner to break it in two variables
@@ -1533,6 +1534,7 @@ static std::string findGCCBaseLibDir(const Driver &D,
         if (!llvm::sys::fs::exists(t2 + "/crtbegin.o", Exists) && Exists)
           return t2;
         std::string t3 = *it + "lib/" + GccTriple + "/gcc/" + Suffix;
+
         if (!llvm::sys::fs::exists(t3 + "/crtbegin.o", Exists) && Exists)
           return t3;
         if (GccTriple == "i386-linux-gnu") {
@@ -1543,6 +1545,15 @@ static std::string findGCCBaseLibDir(const Driver &D,
           if (!llvm::sys::fs::exists(t4 + "/crtbegin.o", Exists) && Exists)
             return t4;
         }
+	// ndm - hack to find the correct path on 64-bit Ubunutu...
+	// hopefully this will be fixed in Clang later
+	else if (GccTriple == "x86_64-linux-gnu") {
+          std::string t5 =
+              std::string(*it + "x86_64-linux-gnu/gcc/x86_64-linux-gnu/") +
+              GccVersions[i];
+          if (!llvm::sys::fs::exists(t5 + "/crtbegin.o", Exists) && Exists)
+            return t5;
+	}
       }
     }
   }
@@ -1645,6 +1656,7 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   }
 
   std::string Base = findGCCBaseLibDir(getDriver(), GccTriple);
+
   path_list &Paths = getFilePaths();
   bool Is32Bits = (getArch() == llvm::Triple::x86 ||
                    getArch() == llvm::Triple::ppc);
