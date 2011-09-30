@@ -15,12 +15,12 @@
  * 
  */
 
-#ifndef OGLE_GL_VERTEX_BUFFER_H_
-#define OGLE_GL_VERTEX_BUFFER_H_
+#ifndef SCOUT_OPENGL_VERTEX_BUFFER_H_
+#define SCOUT_OPENGL_VERTEX_BUFFER_H_
 
-#include "glBufferObject.h"
+#include "runtime/opengl/glBufferObject.h"
 
-namespace ogle
+namespace scout
 {
   
   // ---- glVertexBuffer
@@ -36,8 +36,6 @@ namespace ogle
     { /* no-op */ }
 
   };
-
-  typedef shared_pointer<glVertexBuffer> pglVertexBuffer;
 }
 
 #endif
