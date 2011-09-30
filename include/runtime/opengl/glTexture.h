@@ -59,9 +59,9 @@ namespace scout
 
     bool isResident() const;
 
-    virtual void initialize(void* data_p) = 0;
+    virtual void initialize(const float* data_p) = 0;
     
-    virtual void read(void* dest_p) const = 0;
+    virtual void read(float* dest_p) const = 0;
 
     void addParameter(GLenum name, GLint param)
     {
@@ -77,6 +77,8 @@ namespace scout
 
     GLenum textureUnit() const
     { return _tex_unit; }
+
+    virtual void update(const float *p_data) = 0;
 
   protected:
     void setParameters();

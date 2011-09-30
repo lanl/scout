@@ -15,24 +15,24 @@
  * 
  */
 
-#ifndef SCOUT_OPENGL_VERTEX_BUFFER_H_
-#define SCOUT_OPENGL_VERTEX_BUFFER_H_
+#ifndef SCOUT_OPENGL_TEXCOORD_BUFFER_H_
+#define SCOUT_OPENGL_TEXCOORD_BUFFER_H_
 
 #include "runtime/opengl/glBufferObject.h"
 
 namespace scout
 {
   
-  // ---- glVertexBuffer
+  // ---- glTexCoordBuffer
   //
-  class glVertexBuffer: public glBufferObject {
+  class glTexCoordBuffer: public glBufferObject {
     
    public:
-    glVertexBuffer()
+    glTexCoordBuffer()
         : glBufferObject(GL_ARRAY_BUFFER)
     { /* everything else is handled by glBufferObject... */ }
     
-    ~glVertexBuffer()
+    ~glTexCoordBuffer()
     { /* no-op */ }
 
   };

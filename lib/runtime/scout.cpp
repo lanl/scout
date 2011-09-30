@@ -49,17 +49,18 @@ void scoutSwapBuffers(){
 }
 
 double cshift(double a, int dx, int axis){
-
+  return 0.0;
 }
 
 float cshift(float a, int dx, int axis){
-
+  return 0.0;
 }
 
 int cshift(int a, int dx, int axis){
-
+  return 0.0;
 }
 
 float4 hsv(float h, float s, float v){
-
+  float4 no_op;
+  return no_op;
 }
