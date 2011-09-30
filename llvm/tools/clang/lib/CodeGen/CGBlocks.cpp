@@ -548,7 +548,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   EmitBlock(ForBody);
   Builder.SetInsertPoint(ForBody);
 
-  llvm::Value *lval;
+ llvm::Value *lval;
   for(unsigned i = 0, e = indVars.size(); i < e; ++i) {
     lval = Builder.CreateLoad(indVar);
     llvm::Value *val;
@@ -667,9 +667,9 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   // Unpack block_descriptor function arguments and connect the them
   // to their local variable counterparts.
+  int idx = 5;
   for(llvm::Function::arg_iterator I = BlockFn->arg_begin(),
         E = BlockFn->arg_end(); I != E; ++I) {
-    static int idx = 5;
 
     llvm::Value *src = Builder.CreateStructGEP(LoadBlockStruct(),
                                                idx++,
@@ -703,7 +703,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
                                                    llvm::Value *blockFn,
                                                    llvm::SetVector< llvm::Value * > &inputs,
                                                    llvm::StringRef meshName) {
-
+  DEBUG("EmitScoutBlockFnCall");
   blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
                                            VoidPtrTy);
   llvm::Constant *isa = CGM.getNSConcreteStackBlock();
@@ -740,26 +740,25 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
                                                           "block.descriptor"));
 
   // Captured variables (i.e. inputs).
-  for(llvm::SetVector< llvm::Value * >::iterator I = inputs.begin(),
-        E = inputs.end(); I != E; ++I) {
-    static unsigned idx = 5;
+  for(unsigned i = 0, e = inputs.size(); i < e; ++i) {
     // This will be a [[type]]*, except that a byref entry will just be
     // an i8**.
     llvm::Value *blockField =
-      Builder.CreateStructGEP(blockAddr, idx++,
+      Builder.CreateStructGEP(blockAddr, i + 5,
                               "block.captured");
 
-    llvm::Value *var = *I;
+    llvm::Value *I = inputs[i];
+    llvm::Value *var = I;
     llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
     llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-    if((*I)->getName().startswith("start.")) {
-      Builder.CreateStore(zero, *I); var = *I;
-    } else if((*I)->getName().startswith("end.")) {
-      int axis = ((*I)->getName()[4]) - 120;
+    if(I->getName().startswith("start.")) {
+      Builder.CreateStore(zero, I); var = I;
+    } else if(I->getName().startswith("end.")) {
+      int axis = (I->getName()[4]) - 120;
       llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
-      Builder.CreateStore(val, *I); var = *I;
-    } else if((*I)->getName().startswith("var.")) {
-      var = Builder.CreateAlloca(i32Ty, 0, (*I)->getName());
+      Builder.CreateStore(val, I); var = I;
+    } else if(I->getName().startswith("var.")) {
+      var = Builder.CreateAlloca(i32Ty, 0, I->getName());
       Builder.CreateStore(zero, var);
     }
 
@@ -2179,5 +2178,5 @@ llvm::Constant *CodeGenModule::getNSConcreteStackBlock() {
   NSConcreteStackBlock = GetOrCreateLLVMGlobal("_NSConcreteStackBlock",
                                                Int8PtrTy->getPointerTo(), 0);
   configureBlocksRuntimeObject(*this, NSConcreteStackBlock);
-  return NSConcreteStackBlock;  
+  return NSConcreteStackBlock;
 }
