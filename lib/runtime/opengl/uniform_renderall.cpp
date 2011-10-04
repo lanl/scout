@@ -9,6 +9,8 @@
  * 
  */
 
+#include "runtime/opengl/uniform_renderall.h"
+
 #include "runtime/types.h"
 
 #include "runtime/opengl/glTexture1D.h"
@@ -19,20 +21,16 @@
 
 namespace scout 
 {
-  struct uniform_renderall_t {
-    glVertexBuffer*   vbo;         // vertex buffer for mesh geometry (really a quad)
-    glTexture*        tex;         // texture for storing colors computed by renderall
-    glTextureBuffer*  pbo;         // buffer object for faster data transfers (for texture)    
-    glTexCoordBuffer* tcbo;        // texture coordinate buffer object.
-    unsigned short    ntexcoords;  // dimensions of texture coordinates (1,2,3).
-    unsigned int      nverts;      // number of vertices stored in the vbo. 
-  };
+
+struct uniform_renderall_t {
+  glVertexBuffer*   vbo;         // vertex buffer for mesh geometry (really a quad)
+  glTexture*        tex;         // texture for storing colors computed by renderall
+  glTextureBuffer*  pbo;         // buffer object for faster data transfers (for texture)    
+  glTexCoordBuffer* tcbo;        // texture coordinate buffer object.
+  unsigned short    ntexcoords;  // dimensions of texture coordinates (1,2,3).
+  unsigned int      nverts;      // number of vertices stored in the vbo. 
+};
   
-}
-
-using namespace scout;
-
-
 // ----- __sc_fill_vbo
 //
 static void __sc_fill_vbo(glVertexBuffer* vbo, float x0, float y0, float x1, float y1)
@@ -79,7 +77,6 @@ static void __sc_fill_tcbo(glTexCoordBuffer* tcbo, float x0, float y0, float x1,
 
   tcbo->unmap();
 }
-
 
 // ----- __sc_init_uniform_renderall
 //
@@ -213,3 +210,5 @@ void __sc_exec_uniform_renderall(uniform_renderall_t* info)
 
   info->tex->disable();
 }
+
+} // end namespace scout

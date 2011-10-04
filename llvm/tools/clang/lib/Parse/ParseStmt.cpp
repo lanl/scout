@@ -1896,22 +1896,22 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     if(fd->isMain()){
       assert(Tok.is(tok::l_brace) &&
              "expected lbrace when inserting scoutInit()");
-
+      
       if(fd->param_size() == 0){
-	InsertCPPCode("scoutInit(0, 0);", LBraceLoc, false);
+        InsertCPPCode("scoutInit(0, 0);", LBraceLoc, false);
       }
       else{
-	assert(fd->param_size() == 2 && "expected main with two params");
-	FunctionDecl::param_iterator itr = fd->param_begin();
-	
-	ParmVarDecl* paramArgc = *itr;
-	++itr;
-	ParmVarDecl* paramArgv = *itr;
-	
-	std::string code = "scoutInit(" + paramArgc->getName().str() +
-	  ", " + paramArgv->getName().str() + ");";
-	
-	InsertCPPCode(code, LBraceLoc, false);
+        assert(fd->param_size() == 2 && "expected main with two params");
+        FunctionDecl::param_iterator itr = fd->param_begin();
+        
+        ParmVarDecl* paramArgc = *itr;
+        ++itr;
+        ParmVarDecl* paramArgv = *itr;
+        
+        std::string code = "scoutInit(" + paramArgc->getName().str() +
+        ", " + paramArgv->getName().str() + ");";
+        
+        InsertCPPCode(code, LBraceLoc, false);
       }
     }
   }
@@ -2158,6 +2158,12 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   else
     assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
 
+  if(Tok.is(tok::kw_renderall)){
+    InsertCPPCode("_pixels = scoutBeginRenderAll();",
+                  Tok.getLocation());
+    ParseStatement();
+  }
+  
   SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
 
   tok::TokenKind VariableType = Tok.getKind();
@@ -2349,7 +2355,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
                                            Op, RParenLoc, Body, Block);
   }
   else {
-    InsertCPPCode("scoutSwapBuffers();", BodyLoc);
+    InsertCPPCode("scoutEndRenderAll();", BodyLoc);
 
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
                                               LoopVariableII, MeshII, LParenLoc,

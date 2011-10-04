@@ -3533,6 +3533,8 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lhwloc");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("OpenGL");
   
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
@@ -4461,6 +4463,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   // ndm - add Scout libs
 
   CmdArgs.push_back("-lpng");
+  CmdArgs.push_back("-lGL");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lBlocksRuntime");

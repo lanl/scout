@@ -3,49 +3,31 @@
 
 #define SC_USE_PNG
 
-#include "runtime/framebuffer.h"
-#include "runtime/renderall.h"
-#include "runtime/viewport.h"
+#include "runtime/opengl/uniform_renderall.h"
 #include "runtime/tbq.h"
 
 using namespace std;
 using namespace scout;
 
-framebuffer_rt* _framebuffer;
+uniform_renderall_t* _uniform_renderall;
+float4* _pixels;
 tbq_rt* _tbq;
-size_t _frame = 0;
 
-static framebuffer_rt* _outFramebuffer;
-static viewport_rt* _viewport; 
-
-static const size_t IN_WIDTH = 1024;
-static const size_t IN_HEIGHT = 1;
-
-static const size_t OUT_WIDTH = 1024;
-static const size_t OUT_HEIGHT = 100;
+static const size_t RENDER_WIDTH = 1024;
+static const size_t RENDER_HEIGHT = 1;
 
 void scoutInit(int argc, char** argv){
-  _framebuffer = new framebuffer_rt(IN_WIDTH, IN_HEIGHT);
-  _outFramebuffer = new framebuffer_rt(OUT_WIDTH, OUT_HEIGHT);
-  _viewport = new viewport_rt(0, 0, OUT_WIDTH, OUT_HEIGHT);
+  _uniform_renderall = __sc_init_uniform_renderall(RENDER_WIDTH);
   _tbq = new tbq_rt;
 }
 
-void scoutSwapBuffers(){
-  mapToFrameBuffer(_framebuffer->pixels,
-		   IN_WIDTH,
-		   IN_HEIGHT,
-		   *_outFramebuffer,
-		   *_viewport,
-		   FILTER_NEAREST /*FILTER_LINEAR*/);
+float4* scoutBeginRenderAll(){
+  return __sc_map_uniform_colors(_uniform_renderall);
+}
 
-  stringstream sstr;
-  sstr << "scout-" << _frame << ".png";
-
-  save_framebuffer_as_png(_outFramebuffer, sstr.str().c_str());
-  _framebuffer->clear();
-  
-  ++_frame;
+void scoutEndRenderAll(){
+  __sc_unmap_uniform_colors(_uniform_renderall);
+  __sc_destroy_uniform_renderall(_uniform_renderall);
 }
 
 double cshift(double a, int dx, int axis){

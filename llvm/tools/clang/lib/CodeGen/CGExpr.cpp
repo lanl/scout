@@ -2246,7 +2246,7 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
       return EmitBuiltinExpr(FD, builtinID, E);
     else if(FD->getNameInfo().getAsString() == "cshift")
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    else if(FD->getNameInfo().getAsString() == "scoutSwapBuffers")
+    else if(FD->getNameInfo().getAsString() == "scoutEndRenderAll")
       EmitScoutFrameBuffer();
   }
   
