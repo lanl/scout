@@ -532,7 +532,7 @@ public:
   child_range children() {
     return child_range(&Body[0], &Body[0]+CompoundStmtBits.NumStmts);
   }
-  
+
   const_child_range children() const {
     return child_range(&Body[0], &Body[0]+CompoundStmtBits.NumStmts);
   }
@@ -1603,15 +1603,15 @@ public:
 // ndm - Scout Stmts
 
 class ForAllArrayStmt : public Stmt {
-  
+
   enum {BODY, END_EXPR};
-  
+
   Stmt* SubExprs[END_EXPR];
   SourceLocation ForAllLoc;
   IdentifierInfo* XInductionVarII;
   IdentifierInfo* YInductionVarII;
   IdentifierInfo* ZInductionVarII;
-  
+
   Expr* XStart;
   Expr* XEnd;
   Expr* XStride;
@@ -1621,12 +1621,12 @@ class ForAllArrayStmt : public Stmt {
   Expr* ZStart;
   Expr* ZEnd;
   Expr* ZStride;
-  
+
 public:
   ForAllArrayStmt(ASTContext &C,
                   SourceLocation FAL);
-  
-  
+
+
   IdentifierInfo* getInductionVar(size_t axis){
     switch(axis){
       case 0:
@@ -1636,22 +1636,22 @@ public:
       case 2:
         return ZInductionVarII;
     }
-    
+
     assert(false && "invalid axis");
   }
-  
+
   Stmt* getBody(){
     return SubExprs[BODY];
   }
-  
+
   const Stmt* getBody() const{
     return SubExprs[BODY];
   }
-  
+
   void setBody(Stmt* B){
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
   }
-  
+
   Expr* getStart(size_t axis){
     switch(axis){
       case 0:
@@ -1661,10 +1661,10 @@ public:
       case 2:
         return ZStart;
     }
-    
+
     assert(false && "invalid axis");
   }
-  
+
   void setStart(size_t axis, Expr* S){
     switch(axis){
       case 0:
@@ -1679,7 +1679,7 @@ public:
       default:
         assert(false && "invalid axis");
     }
-    
+
   }
 
   Expr* getEnd(size_t axis){
@@ -1691,10 +1691,10 @@ public:
       case 2:
         return ZEnd;
     }
-    
+
     assert(false && "invalid axis");
   }
-  
+
   void setEnd(size_t axis, Expr* S){
     switch(axis){
       case 0:
@@ -1710,7 +1710,7 @@ public:
         assert(false && "invalid axis");
     }
   }
-  
+
   Expr* getStride(size_t axis){
     switch(axis){
       case 0:
@@ -1720,10 +1720,10 @@ public:
       case 2:
         return ZStride;
     }
-    
+
     assert(false && "invalid axis");
   }
-  
+
   void setStride(size_t axis, Expr* S){
     switch(axis){
       case 0:
@@ -1739,27 +1739,27 @@ public:
         assert(false && "invalid axis");
     }
   }
-  
+
   SourceLocation getForAllLoc() const { return ForAllLoc; }
-  
+
   void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
-  
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForAllArrayStmtClass;
   }
-  
+
   static bool classof(const ForAllArrayStmt *) { return true; }
-  
+
   SourceRange getSourceRange() const {
     return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
   }
-  
+
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
-  
+
 };
-  
+
 class ForAllStmt : public Stmt {
 
 public:
@@ -1804,8 +1804,8 @@ public:
              SourceLocation RP);
 
   ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type,
-             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII, 
-             Expr *Op, Stmt *Body, BlockExpr* Block, 
+             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII,
+             Expr *Op, Stmt *Body, BlockExpr* Block,
              SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
 
@@ -1862,15 +1862,15 @@ public:
   BlockExpr* getBlock(){
     return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
   }
-  
+
   const BlockExpr* getBlock() const{
     return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
   }
-  
+
   void setBlock(BlockExpr* B){
     SubExprs[BLOCK] = reinterpret_cast<Stmt*>(B);
   }
-  
+
   Stmt* getBody(){
     return SubExprs[BODY];
   }
@@ -2038,7 +2038,8 @@ public:
 
   RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
                 IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-                Stmt *Body, SourceLocation RL, SourceLocation LP,
+                Stmt *Body, BlockExpr *Block,
+                SourceLocation RL, SourceLocation LP,
                 SourceLocation RP);
 
   explicit RenderAllStmt(EmptyShell Empty)

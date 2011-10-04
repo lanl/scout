@@ -830,7 +830,7 @@ public:
   /// \brief The parser has parsed the context-sensitive type 'instancetype'
   /// in an Objective-C message declaration. Return the appropriate type.
   ParsedType ActOnObjCInstanceType(SourceLocation Loc);
-  
+
   bool RequireCompleteType(SourceLocation Loc, QualType T,
                            const PartialDiagnostic &PD,
                            std::pair<SourceLocation, PartialDiagnostic> Note);
@@ -1091,13 +1091,13 @@ public:
   DeclResult ActOnModuleImport(SourceLocation ImportLoc,
                                IdentifierInfo &ModuleName,
                                SourceLocation ModuleNameLoc);
-  
+
   /// \brief Diagnose that \p New is a module-private redeclaration of
   /// \p Old.
   void diagnoseModulePrivateRedeclaration(NamedDecl *New, NamedDecl *Old,
                                           SourceLocation ModulePrivateKeyword
                                             = SourceLocation());
-  
+
   /// \brief Retrieve a suitable printing policy.
   PrintingPolicy getPrintingPolicy() const;
 
@@ -1187,7 +1187,7 @@ public:
   void DiagnoseNontrivial(const RecordType* Record, CXXSpecialMember mem);
   CXXSpecialMember getSpecialMember(const CXXMethodDecl *MD);
 
-  void ActOnLastBitfield(SourceLocation DeclStart, 
+  void ActOnLastBitfield(SourceLocation DeclStart,
                          SmallVectorImpl<Decl *> &AllIvarDecls);
 
   Decl *ActOnIvar(Scope *S, SourceLocation DeclStart,
@@ -2880,7 +2880,7 @@ public:
   /// \returns The implicitly-declared move constructor, or NULL if it wasn't
   /// declared.
   CXXConstructorDecl *DeclareImplicitMoveConstructor(CXXRecordDecl *ClassDecl);
-                                                     
+
   /// DefineImplicitMoveConstructor - Checks for feasibility of
   /// defining this constructor as the move constructor.
   void DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
@@ -2906,7 +2906,7 @@ public:
   /// \returns The implicitly-declared move assignment operator, or NULL if it
   /// wasn't declared.
   CXXMethodDecl *DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl);
-  
+
   /// \brief Defines an implicitly-declared move assignment operator.
   void DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
                                     CXXMethodDecl *MethodDecl);
@@ -3806,7 +3806,7 @@ public:
                                 IdentifierInfo *Name, SourceLocation NameLoc,
                                 AttributeList *Attr,
                                 TemplateParameterList *TemplateParams,
-                                AccessSpecifier AS, 
+                                AccessSpecifier AS,
                                 SourceLocation ModulePrivateLoc,
                                 unsigned NumOuterTemplateParamLists,
                             TemplateParameterList **OuterTemplateParamLists);
@@ -4826,7 +4826,7 @@ public:
   };
 
   void PrintInstantiationStack();
-  
+
   /// \brief Determines whether we are currently in a context where
   /// template argument substitution failures are not considered
   /// errors.
@@ -5310,7 +5310,7 @@ public:
   /// \brief Check whether the given new method is a valid override of the
   /// given overridden method, and set any properties that should be inherited.
 
-  void CheckObjCMethodOverride(ObjCMethodDecl *NewMethod, 
+  void CheckObjCMethodOverride(ObjCMethodDecl *NewMethod,
                                const ObjCMethodDecl *Overridden,
                                bool IsImplementation);
 
@@ -5733,8 +5733,8 @@ public:
 
   /// CheckCastTypes - Check type constraints for casting between types under
   /// C semantics, or forward to CXXCheckCStyleCast in C++.
-  ExprResult CheckCastTypes(SourceLocation CastStartLoc, SourceRange TypeRange, 
-                            QualType CastType, Expr *CastExpr, CastKind &Kind, 
+  ExprResult CheckCastTypes(SourceLocation CastStartLoc, SourceRange TypeRange,
+                            QualType CastType, Expr *CastExpr, CastKind &Kind,
                             ExprValueKind &VK, CXXCastPath &BasePath,
                             bool FunctionalStyle = false);
 
@@ -6144,7 +6144,7 @@ public:
   bool ActOnForAllArrayInductionVariable(Scope* S,
                                          IdentifierInfo* InductionVariableII,
                                          SourceLocation InductionVariableLoc);
-  
+
   bool ActOnRenderAllLoopVariable(Scope* S,
                                   tok::TokenKind VariableType,
                                   IdentifierInfo* LoopVariableII,
@@ -6161,7 +6161,7 @@ public:
                              Expr* Op, SourceLocation RParenLoc,
                              Stmt* Body,
                              BlockExpr* Block);
-    
+
   StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
                              IdentifierInfo* LoopVariableII,
                              IdentifierInfo* MeshII,
@@ -6169,9 +6169,9 @@ public:
                              Expr* Op, SourceLocation RParenLoc,
                              Stmt* Body,
                              BlockExpr* Block);
-  
+
   StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc);
-  
+
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 ForAllStmt::ForAllType Type,
                                 const MeshType *MT,
@@ -6179,7 +6179,8 @@ public:
                                 IdentifierInfo* MeshII,
                                 SourceLocation LParenLoc,
                                 Expr *Op, SourceLocation RParenLoc,
-                                Stmt* Body);
+                                Stmt* Body,
+                                BlockExpr *Block);
 
   bool IsValidMeshField(FieldDecl* FD);
 

@@ -596,10 +596,26 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *Undef = llvm::UndefValue::get(i32Ty);
+  llvm::Instruction *ForallAllocaInsertPt =
+    new llvm::BitCastInst(Undef, i32Ty, "", Builder.GetInsertBlock());
+  ForallAllocaInsertPt->setName("forall.allocapt");
+
+  // Save the AllocaInsertPt.
+  llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
+  AllocaInsertPt = ForallAllocaInsertPt;
+
+  DeclMapTy curLocalDeclMap = LocalDeclMap; // Save LocalDeclMap.
+
   // Generate body of function.
   EmitForAllStmt(S);
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  LocalDeclMap = curLocalDeclMap; // Restore LocalDeclMap.
+
+  // Restore the AllocaInsertPtr.
+  AllocaInsertPt = savedAllocaInsertPt;
+
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
   llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
                                                    Builder.GetInsertBlock());

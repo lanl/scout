@@ -2287,7 +2287,7 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
     if (!AtCatchParent)
       return StmtError(Diag(AtLoc, diag::error_rethrow_used_outside_catch));
   }
-  
+
   return BuildObjCAtThrowStmt(AtLoc, Throw);
 }
 
@@ -2472,23 +2472,23 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
 // operators do not appear as subsequent RHS values.
 
 namespace{
-  
+
   class ForAllVisitor : public StmtVisitor<ForAllVisitor> {
   public:
-    
+
     enum NodeType{
       NodeNone,
       NodeLHS,
       NodeRHS
     };
-    
+
     ForAllVisitor(Sema& sema)
     : sema_(sema),
     error_(false),
     nodeType_(NodeNone){
-      
+
     }
-    
+
     void VisitStmt(Stmt* S){
       VisitChildren(S);
     }
@@ -2501,16 +2501,16 @@ namespace{
         }
       }
     }
-    
+
     void VisitMemberExpr(MemberExpr* E){
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
         ValueDecl* bd = dr->getDecl();
         if(isa<MeshType>(bd->getType().getTypePtr())){
           ValueDecl* md = E->getMemberDecl();
-          
-          std::string ref = bd->getName().str() + "." + 
+
+          std::string ref = bd->getName().str() + "." +
           md->getName().str();
-          
+
           if(nodeType_ == NodeLHS){
             refMap_.insert(make_pair(ref, true));
           }
@@ -2524,9 +2524,9 @@ namespace{
         }
       }
     }
-    
+
     void VisitBinaryOperator(BinaryOperator* S){
-      
+
       switch(S->getOpcode()){
         case BO_Assign:
         case BO_MulAssign:
@@ -2544,17 +2544,17 @@ namespace{
         default:
           break;
       }
-      
+
       Visit(S->getLHS());
       nodeType_ = NodeRHS;
       Visit(S->getRHS());
       nodeType_ = NodeNone;
     }
-    
+
     bool error(){
       return error_;
     }
-    
+
   private:
     Sema& sema_;
     typedef std::map<std::string, bool> RefMap_;
@@ -2562,7 +2562,7 @@ namespace{
     bool error_;
     NodeType nodeType_;
   };
-  
+
 } // end namespace
 
 // ndm - Scout Stmts
@@ -2582,42 +2582,42 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
   // operators do not appear as subsequent RHS values.
   ForAllVisitor v(*this);
   v.Visit(Body);
-  
+
   if(v.error()){
     return StmtError();
   }
-  
+
   return Owned(new (Context) ForAllStmt(Context, Type, MT,
                                         LoopVariableII, MeshII,
-                                        Op, Body, Block, 
+                                        Op, Body, Block,
                                         ForAllLoc, LParenLoc,
                                         RParenLoc));
 }
 
 StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc){
-  
+
   return Owned(new (Context) ForAllArrayStmt(Context, ForAllLoc));
 }
 
 namespace{
-  
+
   class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
   public:
 
     RenderAllVisitor()
     : foundColorAssign_(false){
-      
+
     }
-    
+
     void VisitStmt(Stmt* S){
       VisitChildren(S);
     }
-    
+
     void VisitIfStmt(IfStmt* S){
       size_t ic = 0;
       for(Stmt::child_iterator I = S->child_begin(),
           E = S->child_end(); I != E; ++I){
-        
+
         if(Stmt* child = *I){
           if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
             RenderAllVisitor v;
@@ -2628,7 +2628,7 @@ namespace{
             else{
               foundColorAssign_ = false;
               break;
-            }            
+            }
           }
           else{
             Visit(child);
@@ -2640,7 +2640,7 @@ namespace{
         foundColorAssign_ = false;
       }
     }
-    
+
     void VisitBinaryOperator(BinaryOperator* S){
       if(S->getOpcode() == BO_Assign){
         if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
@@ -2653,7 +2653,7 @@ namespace{
         VisitChildren(S);
       }
     }
-    
+
     void VisitChildren(Stmt* S){
       for(Stmt::child_iterator I = S->child_begin(),
           E = S->child_end(); I != E; ++I){
@@ -2662,15 +2662,15 @@ namespace{
         }
       }
     }
-    
+
     bool foundColorAssign(){
       return foundColorAssign_;
     }
-    
+
   private:
     bool foundColorAssign_;
   };
-  
+
 } // end namespace
 
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
@@ -2680,21 +2680,23 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     IdentifierInfo* MeshII,
                                     SourceLocation LParenLoc,
                                     Expr *Op, SourceLocation RParenLoc,
-                                    Stmt* Body){
+                                    Stmt* Body,
+                                    BlockExpr *Block){
 
   SCLStack.pop_back();
 
   RenderAllVisitor v;
   v.Visit(Body);
-  
+
   if(!v.foundColorAssign()){
     Diag(RenderAllLoc, diag::err_no_color_assignment_renderall);
     return StmtError();
   }
-  
+
   return Owned(new (Context) RenderAllStmt(Context, Type, MT,
                                            LoopVariableII, MeshII,
-                                           Op, Body, RenderAllLoc, LParenLoc,
+                                           Op, Body, Block,
+                                           RenderAllLoc, LParenLoc,
                                            RParenLoc));
 }
 
@@ -2782,27 +2784,27 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 bool Sema::ActOnForAllArrayInductionVariable(Scope* S,
                                              IdentifierInfo* InductionVarII,
                                              SourceLocation InductionVarLoc){
- 
+
   // lookup result below
-  
+
   LookupResult LResult(*this, InductionVarII, InductionVarLoc,
                        LookupOrdinaryName);
-  
+
   LookupName(LResult, S);
-  
+
   if(LResult.getResultKind() != LookupResult::NotFound){
-    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) << 
+    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
     InductionVarII;
     return false;
   }
 
   ImplicitParamDecl* IV =
   ImplicitParamDecl::Create(Context, CurContext,
-                            InductionVarLoc, InductionVarII, 
+                            InductionVarLoc, InductionVarII,
                             Context.IntTy);
-  
+
   PushOnScopeChains(IV, S, true);
-  
+
   return true;
 }
 
