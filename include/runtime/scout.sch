@@ -15,8 +15,10 @@ double cshift(double a, int dx, int axis);
 float cshift(float a, int dx, int axis);
 int cshift(int a, int dx, int axis);
 float4 hsv(float h, float s, float v);
-void scoutInit(int argc, char** argv);
-float4* scoutBeginRenderAll();
+void scoutInit(int& argc, char** argv);
+void scoutInit();
+void scoutEnd();
+float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz);
 void scoutEndRenderAll();
 
 

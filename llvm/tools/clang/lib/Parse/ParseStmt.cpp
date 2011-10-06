@@ -817,7 +817,11 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     StmtResult R;
     if (Tok.isNot(tok::kw___extension__)) {
+      // ndm - store the stmt vec so we can insert statements into it
+      // when Stmts is not available as a parameter
+      StmtsStack.push_back(&Stmts);
       R = ParseStatementOrDeclaration(Stmts, false);
+      StmtsStack.pop_back();
     } else {
       // __extension__ can start declarations and it can also be a unary
       // operator for expressions.  Consume multiple __extension__ markers here
@@ -1898,7 +1902,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
              "expected lbrace when inserting scoutInit()");
 
       if(fd->param_size() == 0){
-        InsertCPPCode("scoutInit(0, 0);", LBraceLoc, false);
+        InsertCPPCode("scoutInit();", LBraceLoc, false);
       }
       else{
         assert(fd->param_size() == 2 && "expected main with two params");
@@ -2139,7 +2143,12 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
 
   // Condition is true, parse the statements.
   while (Tok.isNot(tok::r_brace)) {
+    // ndm - store the stmt vec so we can insert statements into it
+    // when Stmts is not available as a parameter
+    StmtsStack.push_back(&Stmts);
     StmtResult R = ParseStatementOrDeclaration(Stmts, false);
+    // ndm
+    StmtsStack.pop_back();
     if (R.isUsable())
       Stmts.push_back(R.release());
   }
@@ -2157,12 +2166,6 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
   else
     assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
-
-  if(Tok.is(tok::kw_renderall)){
-    InsertCPPCode("_pixels = scoutBeginRenderAll();",
-                  Tok.getLocation());
-    ParseStatement();
-  }
 
   SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
 
@@ -2362,6 +2365,35 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     assert(Block && "expected a block expression");
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
 
+    assert(!StmtsStack.empty());
+    
+    MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+    
+    assert(dims.size() >= 1);
+    
+    std::string bc = "_pixels = scoutBeginRenderAll(";
+
+    for(size_t i = 0; i < 3; ++i){
+      if(i > 0){
+        bc += ", ";
+      }
+      
+      if(i >= dims.size()){
+        bc += "0";
+      }
+      else{
+        bc += ToCPPCode(dims[i]);
+      }
+    }
+    
+    bc += ");";
+    
+    InsertCPPCode(bc, Tok.getLocation());
+    
+    StmtResult BR = ParseStatementOrDeclaration(*StmtsStack.back(), true).get();
+    
+    StmtsStack.back()->push_back(BR.get());
+    
     InsertCPPCode("scoutEndRenderAll();", BodyLoc);
 
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
