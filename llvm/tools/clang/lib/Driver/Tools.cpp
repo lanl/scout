@@ -3528,13 +3528,19 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
-  // ndm - add Scout libs    
+  // ndm - add Scout libs and other depedencies    
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lhwloc");
   CmdArgs.push_back("-framework");
+  CmdArgs.push_back("Foundation");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("Cocoa");
+  CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("SDL");
   
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
@@ -4460,14 +4466,15 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(Args.MakeArgString(Plugin));
   }
 
-  // ndm - add Scout libs
+  // ndm - add Scout libs and other dependencies
 
   CmdArgs.push_back("-lpng");
-  CmdArgs.push_back("-lGL");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lBlocksRuntime");
   CmdArgs.push_back("-lhwloc");
+  CmdArgs.push_back("-lGL");
+  CmdArgs.push_back("-lSDL");
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
