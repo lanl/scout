@@ -83,18 +83,20 @@ float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
       exit(1);
     }
 
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
     glClearColor(0.5, 0.55, 0.65, 0.0);
 
     glMatrixMode(GL_PROJECTION);
 
     glLoadIdentity();
-    
-    gluOrtho2D(0, RENDER_WIDTH, 0, RENDER_HEIGHT);
-    
+        
     if(dy == 0){
+      gluOrtho2D(0, dx, 0, dx);
       _uniform_renderall = __sc_init_uniform_renderall(dx);
     }
     else{
+      gluOrtho2D(0, dx, 0, dy);
       _uniform_renderall = __sc_init_uniform_renderall(dx, dy);
     }
   }

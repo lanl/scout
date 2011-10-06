@@ -109,7 +109,7 @@ uniform_renderall_t* __sc_init_uniform_renderall(dim_t xdim)
   info->vbo = new glVertexBuffer;
   info->vbo->bind();
   info->vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad even for 1D meshes...
-  __sc_fill_vbo(info->vbo,   0.0f, 0.0f, float(xdim), 5.0f);
+  __sc_fill_vbo(info->vbo, 0.0f, 0.0f, float(xdim), float(xdim));
   info->vbo->release();
   info->nverts = 4;
 
