@@ -3533,14 +3533,14 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lhwloc");
+  CmdArgs.push_back("-lSDL");
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("Foundation");
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("Cocoa");
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
-  CmdArgs.push_back("-framework");
-  CmdArgs.push_back("SDL");
+
   
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
