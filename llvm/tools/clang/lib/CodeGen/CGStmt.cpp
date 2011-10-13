@@ -650,6 +650,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
   }
 
+  // ndm - temporarily disable blocks, for now just call the forall function
+  llvm::BasicBlock *cbb = ret->getParent();
+  ret->eraseFromParent();
+  
+  Builder.SetInsertPoint(cbb);
+  return;
+  
   // Remove function call to ForallFn function.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
   typedef llvm::BasicBlock::iterator InstIterator;
@@ -803,6 +810,34 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Increment the induction variables.
   lval = Builder.CreateLoad(indVar);
+  
+  // ndm - if this is a renderall, then store the current scout color
+  // into the appropriate __pixels element
+  if(isa<RenderAllStmt>(S)){
+    
+    if(!CGM.getModule().getNamedGlobal("_pixels")) {
+      llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+      llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+      llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+      
+      new llvm::GlobalVariable(CGM.getModule(),
+                               flt4PtrTy,
+                               false,
+                               llvm::GlobalValue::ExternalLinkage,
+                               0,
+                               "_pixels");
+    }
+    
+    llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
+    
+    pixels = Builder.CreateLoad(pixels);
+    llvm::Value* ep = Builder.CreateGEP(pixels, lval);
+    llvm::Value* vc = Builder.CreateLoad(ScoutColor);
+    vc = Builder.CreateLoad(vc);
+    
+    Builder.CreateStore(vc, ep);
+  }
+  
   Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
   Builder.CreateBr(CondBlock);
 

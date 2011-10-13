@@ -1,7 +1,6 @@
-#ifndef SCOUT_SCH
-#define SCOUT_SCH
+#ifndef SCOUT_SCH_
+#define SCOUT_SCH_
 
-//#include "runtime/framebuffer.h"
 #include "runtime/opengl/uniform_renderall.h"
 #include "runtime/window.h"
 #include "runtime/image.h"
@@ -18,8 +17,8 @@ float4 hsv(float h, float s, float v);
 void scoutInit(int& argc, char** argv);
 void scoutInit();
 void scoutEnd();
-float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz);
+void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz);
 void scoutEndRenderAll();
 
 
-#endif // SCOUT_SCH
+#endif // SCOUT_SCH_

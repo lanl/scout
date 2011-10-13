@@ -3,6 +3,7 @@
 
 #ifdef __APPLE__
 
+#include <cmath>
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include "runtime/init_mac.h"
@@ -29,9 +30,6 @@ uniform_renderall_t* _uniform_renderall = 0;
 float4* _pixels;
 tbq_rt* _tbq;
 
-static const size_t RENDER_WIDTH = 1024;
-static const size_t RENDER_HEIGHT = 1024;
-
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
@@ -43,7 +41,7 @@ void scoutInit(){
   _tbq = new tbq_rt;
 }
 
-float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
+void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
   // if this is our first render all, then initialize SDL and
   // the OpenGL runtime
   if(!_uniform_renderall){
@@ -83,7 +81,7 @@ float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
       exit(1);
     }
 
-    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    //glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
     glClearColor(0.5, 0.55, 0.65, 0.0);
 
@@ -99,11 +97,17 @@ float4* scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
       gluOrtho2D(0, dx, 0, dy);
       _uniform_renderall = __sc_init_uniform_renderall(dx, dy);
     }
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    SDL_GL_SwapBuffers();
   }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  return __sc_map_uniform_colors(_uniform_renderall);
+  
+  _pixels = __sc_map_uniform_colors(_uniform_renderall);
 }
 
 void scoutEndRenderAll(){
@@ -129,6 +133,54 @@ int cshift(int a, int dx, int axis){
 }
 
 float4 hsv(float h, float s, float v){
-  float4 no_op;
-  return no_op;
+  float4 r;
+  r.components[3] = 1.0;
+
+  int i;
+  float f, p, q, t;
+  if(s == 0){
+    r.components[0] = r.components[1] = r.components[2] = v;
+    return r;
+  }
+
+  i = floor(h*6);
+  f = h - i;
+  p = v * (1 - s);
+  q = v * (1 - s * f);
+  t = v * (1 - s * ( 1 - f ));
+
+  switch(i) {
+  case 0:
+    r.components[0] = v;
+    r.components[1] = t;
+    r.components[2] = p;
+    break;
+  case 1:
+    r.components[0] = q;
+    r.components[1] = v;
+    r.components[2] = p;
+    break;
+  case 2:
+    r.components[0] = p;
+    r.components[1] = v;
+    r.components[2] = t;
+    break;
+  case 3:
+    r.components[0] = p;
+    r.components[1] = q;
+    r.components[2] = v;
+    break;
+  case 4:
+    r.components[0] = t;
+    r.components[1] = p;
+    r.components[2] = v;
+    break;
+  default:
+    r.components[0] = v;
+    r.components[1] = p;
+    r.components[2] = q;
+    break;
+  }
+
+  return r;
 }

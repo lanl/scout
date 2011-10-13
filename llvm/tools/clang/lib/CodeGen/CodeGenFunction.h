@@ -1891,7 +1891,6 @@ public:
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             int axis = -1, RValue RV = RValue());
-  void EmitScoutFrameBuffer();
 
   void DEBUG(const char *s) {
     //llvm::outs() << "Attempting " << s << ".\n";

@@ -2371,7 +2371,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     
     assert(dims.size() >= 1);
     
-    std::string bc = "_pixels = scoutBeginRenderAll(";
+    std::string bc = "scoutBeginRenderAll(";
 
     for(size_t i = 0; i < 3; ++i){
       if(i > 0){

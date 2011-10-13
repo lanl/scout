@@ -2246,8 +2246,6 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
       return EmitBuiltinExpr(FD, builtinID, E);
     else if(FD->getNameInfo().getAsString() == "cshift")
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    else if(FD->getNameInfo().getAsString() == "scoutEndRenderAll")
-      EmitScoutFrameBuffer();
   }
 
   if (const CXXOperatorCallExpr *CE = dyn_cast<CXXOperatorCallExpr>(E))
@@ -2619,25 +2617,4 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   typedef llvm::ArrayRef< llvm::Value * > Array;
   addr = Builder.CreateInBoundsGEP(addr, Array(args), "arrayidx");
   return MakeAddrLValue(addr, Ty);
-}
-
-void CodeGenFunction::EmitScoutFrameBuffer() {
-  DEBUG("EmitScoutFrameBuffer");
-
-  if(!CGM.getModule().getNamedGlobal("_pixels")) {
-    llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
-    llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
-    llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
-
-    new llvm::GlobalVariable(CGM.getModule(),
-                             flt4PtrTy,
-                             false,
-                             llvm::GlobalValue::ExternalLinkage,
-                             0,
-                             "_pixels");
-  }
-
-  llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
-  llvm::Value *val = Builder.CreateLoad(ScoutColor);
-  Builder.CreateStore(val, pixels);
 }
