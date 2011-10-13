@@ -134,6 +134,16 @@ int cshift(int a, int dx, int axis){
 
 float4 hsv(float h, float s, float v){
   float4 r;
+
+  /*
+  r.components[0] = 0.0f;
+  r.components[1] = 0.0f;
+  r.components[2] = 1.0f;
+  r.components[3] = 1.0f;
+  
+  return r;
+  */
+
   r.components[3] = 1.0;
 
   int i;
@@ -143,7 +153,8 @@ float4 hsv(float h, float s, float v){
     return r;
   }
 
-  i = floor(h*6);
+  h /= 60;
+  i = floor(h);
   f = h - i;
   p = v * (1 - s);
   q = v * (1 - s * f);

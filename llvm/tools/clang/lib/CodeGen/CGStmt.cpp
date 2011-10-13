@@ -637,6 +637,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
+  //ForallFn->dump();
+  
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
@@ -755,6 +757,13 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     extent = Builder.CreateMul(extent, diff.back());
   }
 
+  if(isa<RenderAllStmt>(S)){
+    llvm::Type *ft = llvm::Type::getFloatTy(getLLVMContext());
+    llvm::Type *vt = llvm::VectorType::get(ft, 4);
+    
+    ScoutColor = Builder.CreateAlloca(vt);
+  }
+  
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
   Builder.CreateStore(zero, indVar);
   ForallIndVar = indVar;
@@ -833,8 +842,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     pixels = Builder.CreateLoad(pixels);
     llvm::Value* ep = Builder.CreateGEP(pixels, lval);
     llvm::Value* vc = Builder.CreateLoad(ScoutColor);
-    vc = Builder.CreateLoad(vc);
-    
+
     Builder.CreateStore(vc, ep);
   }
   
@@ -845,6 +853,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
+  /*
   DEBUG("EmitRenderAllStmt");
 
   llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
@@ -870,7 +879,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
 
   if(!CGM.getModule().getFunction("_Znam")) {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, /*isVarArg=*/false);
+    llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, isVarArg=false);
     llvm::Function *namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                                   "_Znam", &CGM.getModule());
     namF->setAttributes(namPAL);
@@ -889,7 +898,13 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
   Builder.SetInsertPoint(BB);
   ScoutColor = alloca;
+  */
 
+  // ndm - skip the above, at least for now, because we are writing to _pixels
+  // which is a preallocated pixel buffer that exists at the time the
+  // renderall loop is started - we write to an offset corresponding
+  // to the induction variable - done in EmitForAllStmt()
+  
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
 }
 

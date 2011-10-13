@@ -1364,6 +1364,10 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
      ND->getName() == "color") {
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
+    // ndm - we are writing into the pixel buffer at the end of each
+    // renderall iteration, so below is disabled
+    
+    /*
     llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
     llvm::Value *val = Builder.CreateLoad(ForallIndVar);
     llvm::Value *arg = Builder.CreateZExt(val, i64Ty);
@@ -1371,6 +1375,9 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     llvm::Value *addr = Builder.CreateLoad(ScoutColor);
     val = Builder.CreateInBoundsGEP(addr, arg, "coloridx");
     return MakeAddrLValue(val, VD->getType(), Alignment);
+    */
+    
+    return MakeAddrLValue(ScoutColor, VD->getType(), Alignment);
   }
 
   if (ND->hasAttr<WeakRefAttr>()) {
