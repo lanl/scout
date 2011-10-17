@@ -1,9 +1,9 @@
+#include <cmath>
 #include <iostream>
 #include <sstream>
 
 #ifdef __APPLE__
 
-#include <cmath>
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include "runtime/init_mac.h"
@@ -59,21 +59,21 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
- 
+
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 32);
- 
+
     SDL_GL_SetAttribute(SDL_GL_ACCUM_RED_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ACCUM_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 8);
- 
+
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
 
     _sdl_surface = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
-				    SDL_HWSURFACE | 
-				    SDL_GL_DOUBLEBUFFER | 
+				    SDL_HWSURFACE |
+				    SDL_GL_DOUBLEBUFFER |
 				    SDL_OPENGL);
 
     if(!_sdl_surface){
@@ -88,7 +88,7 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
     glMatrixMode(GL_PROJECTION);
 
     glLoadIdentity();
-        
+
     if(dy == 0){
       gluOrtho2D(0, dx, 0, dx);
       _uniform_renderall = __sc_init_uniform_renderall(dx);
@@ -106,7 +106,7 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
   }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  
+
   _pixels = __sc_map_uniform_colors(_uniform_renderall);
 }
 
@@ -140,7 +140,7 @@ float4 hsv(float h, float s, float v){
   r.components[1] = 0.0f;
   r.components[2] = 1.0f;
   r.components[3] = 1.0f;
-  
+
   return r;
   */
 
