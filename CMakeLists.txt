@@ -72,7 +72,7 @@ endif()
 # Note: Here we try to override some of the LLVM default
 # configurations such that we can skip building some of
 # backends that we really don't care about...
-set(LLVM_TARGETS_TO_BUILD X86
+set(LLVM_TARGETS_TO_BUILD X86 CppBackend CBackend
   CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
 
 # Note: Please place individual entries within the associated
