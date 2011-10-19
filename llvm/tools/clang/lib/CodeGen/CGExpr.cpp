@@ -1358,26 +1358,32 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   DEBUG("EmitDeclRefLValue");
   const NamedDecl *ND = E->getDecl();
   unsigned Alignment = getContext().getDeclAlign(ND).getQuantity();
-
+  
   // Check if this is a Scout 'color' expression.
   if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) &&
      ND->getName() == "color") {
+    
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
-    // ndm - we are writing into the pixel buffer at the end of each
-    // renderall iteration, so below is disabled
+    if(!CGM.getModule().getNamedGlobal("_pixels")) {
+      llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+      llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+      llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+      
+      new llvm::GlobalVariable(CGM.getModule(),
+                               flt4PtrTy,
+                               false,
+                               llvm::GlobalValue::ExternalLinkage,
+                               0,
+                               "_pixels");
+    }
     
-    /*
-    llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
-    llvm::Value *val = Builder.CreateLoad(ForallIndVar);
-    llvm::Value *arg = Builder.CreateZExt(val, i64Ty);
+    llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
+    pixels = Builder.CreateLoad(pixels);
+    llvm::Value *idx = Builder.CreateLoad(ForallIndVar);
+    llvm::Value* ep = Builder.CreateInBoundsGEP(pixels, idx);
 
-    llvm::Value *addr = Builder.CreateLoad(ScoutColor);
-    val = Builder.CreateInBoundsGEP(addr, arg, "coloridx");
-    return MakeAddrLValue(val, VD->getType(), Alignment);
-    */
-    
-    return MakeAddrLValue(ScoutColor, VD->getType(), Alignment);
+    return MakeAddrLValue(ep, VD->getType(), Alignment);
   }
 
   if (ND->hasAttr<WeakRefAttr>()) {

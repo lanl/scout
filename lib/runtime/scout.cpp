@@ -111,6 +111,19 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 }
 
 void scoutEndRenderAll(){
+  /*
+  float* px = (float*)_pixels;
+
+  for(size_t i = 0; i < 512; ++i){
+    cout << "px[0]: " << px[i*4] << endl;
+    cout << "px[1]: " << px[i*4 + 1] << endl;
+    cout << "px[2]: " << px[i*4 + 2] << endl;
+    cout << "px[3]: " << px[i*4 + 3] << endl;
+    
+    cout << "-----------------------" << endl;
+  }
+  */
+
   __sc_unmap_uniform_colors(_uniform_renderall);
   __sc_exec_uniform_renderall(_uniform_renderall);
   SDL_GL_SwapBuffers();
@@ -136,11 +149,11 @@ float4 hsv(float h, float s, float v){
   float4 r;
 
   /*
-  r.components[0] = 0.0f;
-  r.components[1] = 0.0f;
+  r.components[0] = 0.2f;
+  r.components[1] = 0.3f;
   r.components[2] = 1.0f;
   r.components[3] = 1.0f;
-
+  
   return r;
   */
 
