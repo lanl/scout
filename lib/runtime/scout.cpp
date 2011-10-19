@@ -34,8 +34,6 @@ static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
 void scoutInit(int& argc, char** argv){
-  cout << "t1" << endl;
-  
   _tbq = new tbq_rt;
 }
 
