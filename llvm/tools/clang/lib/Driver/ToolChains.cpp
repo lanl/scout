@@ -551,7 +551,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
     if (char *env = ::getenv("IOS_SIMULATOR_DEPLOYMENT_TARGET"))
       iOSSimTarget = env;
 
-    // If no '-miphoneos-version-min' specified on the command line and 
+    // If no '-miphoneos-version-min' specified on the command line and
     // IPHONEOS_DEPLOYMENT_TARGET is not defined, see if we can set the default
     // based on isysroot.
     if (iOSTarget.empty()) {
@@ -1594,6 +1594,9 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
     if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-linux-gnu", Exists) &&
         Exists)
       GccTriple = "x86_64-linux-gnu";
+    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-redhat-linux",
+             Exists) && Exists)
+      GccTriple = "x86_64-redhat-linux";
     else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-unknown-linux-gnu",
              Exists) && Exists)
       GccTriple = "x86_64-unknown-linux-gnu";
@@ -1603,9 +1606,6 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
     else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-redhat-linux6E",
              Exists) && Exists)
       GccTriple = "x86_64-redhat-linux6E";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-redhat-linux",
-             Exists) && Exists)
-      GccTriple = "x86_64-redhat-linux";
     else if (!llvm::sys::fs::exists("/usr/lib64/gcc/x86_64-suse-linux",
              Exists) && Exists)
       GccTriple = "x86_64-suse-linux";
@@ -1615,7 +1615,7 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
     else if (!llvm::sys::fs::exists("/usr/lib/x86_64-linux-gnu/gcc",
              Exists) && Exists)
       GccTriple = "x86_64-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib64/gcc/x86_64-slackware-linux", 
+    else if (!llvm::sys::fs::exists("/usr/lib64/gcc/x86_64-slackware-linux",
              Exists) && Exists)
       GccTriple = "x86_64-slackware-linux";
   } else if (Arch == llvm::Triple::x86) {

@@ -50,6 +50,11 @@ add_clang_executable(scc
 
 set_target_properties(clang PROPERTIES VERSION ${CLANG_EXECUTABLE_VERSION})
 
+if(${APPLE})
+  find_library(FOUNDATION_FRAMEWORK NAMES Foundation)
+  target_link_libraries(scc ${FOUNDATION_FRAMEWORK})
+endif()
+
 file(COPY scc-ast DESTINATION ${SCOUT_BINARY_DIR}/tools/scc)
 
 install(TARGETS scc RUNTIME DESTINATION bin)

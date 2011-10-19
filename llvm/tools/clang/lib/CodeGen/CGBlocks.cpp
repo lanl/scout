@@ -493,6 +493,16 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   Builder.CreateBr(blockEntry);
   EmitBlock(blockEntry);
 
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *Undef = llvm::UndefValue::get(i32Ty);
+  llvm::Instruction *BlockAllocaInsertPt =
+    new llvm::BitCastInst(Undef, i32Ty, "", Builder.GetInsertBlock());
+  BlockAllocaInsertPt->setName("blk.allocapt");
+
+  // Save the AllocaInsertPt.
+  llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
+  AllocaInsertPt = BlockAllocaInsertPt;
+
   // Generate body of function.
   std::string TheName = CurFn->getName();
   blockInfo = CGBlockInfo(blockExpr, TheName.c_str());
@@ -502,10 +512,10 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   // Build a loop around the block declaration to facilitate
   // the induction variable range information.
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, "blk.indvar");
   Builder.CreateStore(zero, indVar);
+  ForallIndVar = indVar;
 
   llvm::Function *Fn = blockEntry->getParent();
 
@@ -596,7 +606,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
       // used outside the region, it's an input.
       for(llvm::User::op_iterator O = I->op_begin(), E = I->op_end(); O != E; ++O) {
         if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*O)) {
-          if(!region.count(Instn->getParent()))
+          if(!region.count(Instn->getParent()) &&
+             !(*O)->getName().startswith("var."))
             inputs.insert(*O);
         }
       }
@@ -629,14 +640,19 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   // Add the function arguments to the block descriptor.
   llvm::StructType *structTy = blockInfo.StructureType;
   llvm::SmallVector< llvm::Type *, 8 > arrayTy;
-  for(unsigned i = 0, e = structTy->getNumElements(); i < e; ++i) {
+  for(unsigned i = 0, e = structTy->getNumElements(); i < e; ++i)
     arrayTy.push_back(structTy->getElementType(i));
-  }
 
   llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
-  for(unsigned i = 0, e = BlockFn->arg_size(); i < e; ++i) {
-    arrayTy.push_back(i8PtrTy);
-  }
+  typedef llvm::Function::arg_iterator ArgIterator;
+
+  std::vector< llvm::Value * > indvars;
+
+  for(ArgIterator arg = BlockFn->arg_begin(),
+        end = BlockFn->arg_end(); arg != end; ++arg)
+    if(!(arg->getName().startswith("var.")))
+      arrayTy.push_back(i8PtrTy);
+
   blockInfo.StructureType = llvm::StructType::get(getLLVMContext(), arrayTy, true);
   blockInfo.CanBeGlobal = false;
 
@@ -660,8 +676,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   Builder.SetInsertPoint(&NewBlockFn->getEntryBlock(),
                          NewBlockFn->getEntryBlock().begin());
 
-  llvm::Function::arg_iterator block = NewBlockFn->arg_begin();
-  BlockPointer = Builder.CreateBitCast(block,
+  BlockPointer = Builder.CreateBitCast(NewBlockFn->arg_begin(),
                                        blockInfo.StructureType->getPointerTo(),
                                        "block");
 
@@ -671,20 +686,26 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   for(llvm::Function::arg_iterator I = BlockFn->arg_begin(),
         E = BlockFn->arg_end(); I != E; ++I) {
 
-    llvm::Value *src = Builder.CreateStructGEP(LoadBlockStruct(),
-                                               idx++,
-                                               "block.capture.addr");
-    src = Builder.CreateBitCast(Builder.CreateLoad(src),
-                                I->getType());
+    if(I->getName().startswith("var.")) {
+      llvm::Value *indvar = Builder.CreateAlloca(i32Ty, 0);
+      I->replaceAllUsesWith(indvar);
+      indvar->takeName(I);
+    } else {
+      llvm::Value *src = Builder.CreateStructGEP(LoadBlockStruct(),
+                                                 idx++,
+                                                 "block.capture.addr");
+      src = Builder.CreateBitCast(Builder.CreateLoad(src),
+                                  I->getType());
 
-    std::vector< llvm::User * > Users(I->use_begin(), I->use_end());
-    for(std::vector< llvm::User * >::iterator use = Users.begin(), useE = Users.end();
-        use != useE; ++use) {
-      if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*use))
-        if(region.count(Instn->getParent())) {
-          Instn->replaceUsesOfWith(I, src);
-          src->takeName(I);
-        }
+      std::vector< llvm::User * > Users(I->use_begin(), I->use_end());
+      for(std::vector< llvm::User * >::iterator use = Users.begin(), useE = Users.end();
+          use != useE; ++use) {
+        if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*use))
+          if(region.count(Instn->getParent())) {
+            Instn->replaceUsesOfWith(I, src);
+            src->takeName(I);
+          }
+      }
     }
   }
 
@@ -694,6 +715,9 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   // Reset builder insert point.
   Builder.SetInsertPoint(continueBB);
+
+  // Restore the AllocaInsertPtr.
+  AllocaInsertPt = savedAllocaInsertPt;
 
   return NewBlockFn;
 }

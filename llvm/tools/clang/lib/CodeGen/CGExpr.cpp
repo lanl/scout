@@ -1358,19 +1358,32 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   DEBUG("EmitDeclRefLValue");
   const NamedDecl *ND = E->getDecl();
   unsigned Alignment = getContext().getDeclAlign(ND).getQuantity();
-
+  
   // Check if this is a Scout 'color' expression.
-  if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) && 
+  if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) &&
      ND->getName() == "color") {
+    
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
-    llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
-    llvm::Value *val = Builder.CreateLoad(ForallIndVar);
-    llvm::Value *arg = Builder.CreateZExt(val, i64Ty);
+    if(!CGM.getModule().getNamedGlobal("_pixels")) {
+      llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+      llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+      llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+      
+      new llvm::GlobalVariable(CGM.getModule(),
+                               flt4PtrTy,
+                               false,
+                               llvm::GlobalValue::ExternalLinkage,
+                               0,
+                               "_pixels");
+    }
+    
+    llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
+    pixels = Builder.CreateLoad(pixels);
+    llvm::Value *idx = Builder.CreateLoad(ForallIndVar);
+    llvm::Value* ep = Builder.CreateInBoundsGEP(pixels, idx);
 
-    llvm::Value *addr = Builder.CreateLoad(ScoutColor);
-    val = Builder.CreateInBoundsGEP(addr, arg, "coloridx");
-    return MakeAddrLValue(val, VD->getType(), Alignment);
+    return MakeAddrLValue(ep, VD->getType(), Alignment);
   }
 
   if (ND->hasAttr<WeakRefAttr>()) {
@@ -1795,10 +1808,10 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
 
     const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
-    
+
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-      if(isa<MeshType>(VD->getType())){ 
-        
+      if(isa<MeshType>(VD->getType())){
+
         llvm::StringRef memberName = E->getMemberDecl()->getName();
 
         llvm::StringRef meshName = ND->getName();
@@ -1806,15 +1819,15 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
         // Check if this is a Scout '*.width' instrinsic.
         if(memberName == "width")
           return MakeAddrLValue(ScoutMeshSizes[meshName][0], getContext().IntTy);
-        
+
         // Check if this is a Scout '*.height' instrinsic.
         if(memberName == "height")
           return MakeAddrLValue(ScoutMeshSizes[meshName][1], getContext().IntTy);
-        
+
         // Check if this is a Scout '*.depth' instrinsic.
         if(memberName == "depth")
           return MakeAddrLValue(ScoutMeshSizes[meshName][2], getContext().IntTy);
-        
+
         return EmitMeshMemberExpr(VD, memberName);
       }
     }
@@ -2246,10 +2259,8 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
       return EmitBuiltinExpr(FD, builtinID, E);
     else if(FD->getNameInfo().getAsString() == "cshift")
       return EmitCShiftExpr(E->arg_begin(), E->arg_end());
-    else if(FD->getNameInfo().getAsString() == "scoutSwapBuffers")
-      EmitScoutFrameBuffer();
   }
-  
+
   if (const CXXOperatorCallExpr *CE = dyn_cast<CXXOperatorCallExpr>(E))
     if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(TargetDecl))
       return EmitCXXOperatorMemberCallExpr(CE, MD, ReturnValue);
@@ -2619,40 +2630,4 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   typedef llvm::ArrayRef< llvm::Value * > Array;
   addr = Builder.CreateInBoundsGEP(addr, Array(args), "arrayidx");
   return MakeAddrLValue(addr, Ty);
-}
-
-void CodeGenFunction::EmitScoutFrameBuffer() {
-  DEBUG("EmitScoutFrameBuffer");
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-
-  if(!CGM.getModule().getNamedGlobal("_framebuffer")) {
-    llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
-    llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
-    llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
-
-    llvm::Type *args[] = { i32Ty, i32Ty, flt4Ty, flt4PtrTy };
-    typedef llvm::ArrayRef< llvm::Type * > Array;
-    llvm::Type *structTy = llvm::StructType::get(getLLVMContext(),
-                                                Array(args),
-                                                false);
-    llvm::Type *structPtrTy = llvm::PointerType::get(structTy, 0);
-    new llvm::GlobalVariable(CGM.getModule(),
-                             structPtrTy,
-                             false,
-                             llvm::GlobalValue::ExternalLinkage,
-                             0,
-                             "_framebuffer");
-  }
-
-  llvm::Value *FB = CGM.getModule().getNamedGlobal("_framebuffer");
-  FB = Builder.CreateLoad(FB);
-
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-  llvm::Value *three = llvm::ConstantInt::get(i32Ty, 3);
-  llvm::Value *args[] = { zero, three };
-
-  typedef llvm::ArrayRef< llvm::Value * > Array;
-  llvm::Value *var = Builder.CreateInBoundsGEP(FB, Array(args), "pixels");
-  llvm::Value *val = Builder.CreateLoad(ScoutColor);
-  Builder.CreateStore(val, var);
 }

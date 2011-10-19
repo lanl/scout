@@ -596,10 +596,26 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::Value *Undef = llvm::UndefValue::get(i32Ty);
+  llvm::Instruction *ForallAllocaInsertPt =
+    new llvm::BitCastInst(Undef, i32Ty, "", Builder.GetInsertBlock());
+  ForallAllocaInsertPt->setName("forall.allocapt");
+
+  // Save the AllocaInsertPt.
+  llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
+  AllocaInsertPt = ForallAllocaInsertPt;
+
+  DeclMapTy curLocalDeclMap = LocalDeclMap; // Save LocalDeclMap.
+
   // Generate body of function.
   EmitForAllStmt(S);
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  LocalDeclMap = curLocalDeclMap; // Restore LocalDeclMap.
+
+  // Restore the AllocaInsertPtr.
+  AllocaInsertPt = savedAllocaInsertPt;
+
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
   llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
                                                    Builder.GetInsertBlock());
@@ -621,6 +637,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
+  //ForallFn->dump();
+  
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
@@ -634,6 +652,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
   }
 
+  // ndm - temporarily disable blocks, for now just call the forall function
+  llvm::BasicBlock *cbb = ret->getParent();
+  ret->eraseFromParent();
+  
+  Builder.SetInsertPoint(cbb);
+  return;
+  
   // Remove function call to ForallFn function.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
   typedef llvm::BasicBlock::iterator InstIterator;
@@ -794,6 +819,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
+  /*
   DEBUG("EmitRenderAllStmt");
 
   llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
@@ -819,7 +845,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
 
   if(!CGM.getModule().getFunction("_Znam")) {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, /*isVarArg=*/false);
+    llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, isVarArg=false);
     llvm::Function *namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                                   "_Znam", &CGM.getModule());
     namF->setAttributes(namPAL);
@@ -838,7 +864,13 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
   Builder.SetInsertPoint(BB);
   ScoutColor = alloca;
+  */
 
+  // ndm - skip the above, at least for now, because we are writing to _pixels
+  // which is a preallocated pixel buffer that exists at the time the
+  // renderall loop is started - we write to an offset corresponding
+  // to the induction variable - done in EmitForAllStmt()
+  
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
 }
 

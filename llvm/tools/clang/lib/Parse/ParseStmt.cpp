@@ -86,7 +86,7 @@ Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement) {
   //if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
     //DumpLookAheads(20);
   //}
-  
+
   const char *SemiError = 0;
   StmtResult Res;
 
@@ -220,9 +220,9 @@ Retry:
 
           LookupResult
           Result(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
-          
+
           Actions.LookupName(Result, getCurScope());
-          
+
           if(Result.getResultKind() == LookupResult::Found){
             if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
               if(isa<MeshType>(vd->getType().getTypePtr())){
@@ -297,7 +297,7 @@ Retry:
         return ParseForAllArrayStatement(attrs);
     }
   }
-      
+
   case tok::kw_renderall:
     return ParseForAllStatement(attrs, false);
   case tok::kw_window:
@@ -817,7 +817,11 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     StmtResult R;
     if (Tok.isNot(tok::kw___extension__)) {
+      // ndm - store the stmt vec so we can insert statements into it
+      // when Stmts is not available as a parameter
+      StmtsStack.push_back(&Stmts);
       R = ParseStatementOrDeclaration(Stmts, false);
+      StmtsStack.pop_back();
     } else {
       // __extension__ can start declarations and it can also be a unary
       // operator for expressions.  Consume multiple __extension__ markers here
@@ -1898,20 +1902,20 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
              "expected lbrace when inserting scoutInit()");
 
       if(fd->param_size() == 0){
-	InsertCPPCode("scoutInit(0, 0);", LBraceLoc, false);
+        InsertCPPCode("scoutInit();", LBraceLoc, false);
       }
       else{
-	assert(fd->param_size() == 2 && "expected main with two params");
-	FunctionDecl::param_iterator itr = fd->param_begin();
-	
-	ParmVarDecl* paramArgc = *itr;
-	++itr;
-	ParmVarDecl* paramArgv = *itr;
-	
-	std::string code = "scoutInit(" + paramArgc->getName().str() +
-	  ", " + paramArgv->getName().str() + ");";
-	
-	InsertCPPCode(code, LBraceLoc, false);
+        assert(fd->param_size() == 2 && "expected main with two params");
+        FunctionDecl::param_iterator itr = fd->param_begin();
+
+        ParmVarDecl* paramArgc = *itr;
+        ++itr;
+        ParmVarDecl* paramArgv = *itr;
+
+        std::string code = "scoutInit(" + paramArgc->getName().str() +
+        ", " + paramArgv->getName().str() + ");";
+
+        InsertCPPCode(code, LBraceLoc, false);
       }
     }
   }
@@ -1947,7 +1951,7 @@ Decl *Parser::ParseFunctionTryBlock(Decl *Decl, ParseScope &BodyScope) {
     ParseConstructorInitializer(Decl);
   else
     Actions.ActOnDefaultCtorInitializers(Decl);
-  
+
   if (PP.isCodeCompletionEnabled()) {
     if (trySkippingFunctionBodyForCodeCompletion()) {
       BodyScope.Exit();
@@ -2139,7 +2143,12 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
 
   // Condition is true, parse the statements.
   while (Tok.isNot(tok::r_brace)) {
+    // ndm - store the stmt vec so we can insert statements into it
+    // when Stmts is not available as a parameter
+    StmtsStack.push_back(&Stmts);
     StmtResult R = ParseStatementOrDeclaration(Stmts, false);
+    // ndm
+    StmtsStack.pop_back();
     if (R.isUsable())
       Stmts.push_back(R.release());
   }
@@ -2243,13 +2252,13 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   size_t FieldCount = 0;
   const MeshDecl* MD = MT->getDecl();
-  
+
   for(MeshDecl::field_iterator FI = MD->field_begin(),
       FE = MD->field_end(); FI != FE; ++FI){
     FieldDecl* FD = *FI;
     switch(Type){
       case ForAllStmt::Cells:
-        if(!FD->isMeshImplicit() && 
+        if(!FD->isMeshImplicit() &&
            FD->meshFieldType() == FieldDecl::FieldCells){
           ++FieldCount;
         }
@@ -2268,7 +2277,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         break;
     }
   }
-  
+
   if(FieldCount == 0){
     switch(Type){
       case ForAllStmt::Cells:
@@ -2282,7 +2291,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         break;
     }
   }
-  
+
   Expr* Op;
 
   SourceLocation LParenLoc;
@@ -2343,17 +2352,53 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
     assert(Block && "expected a block expression");
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
-    
+
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, Type, MT,
                                            LoopVariableII, MeshII, LParenLoc,
                                            Op, RParenLoc, Body, Block);
   }
   else {
-    InsertCPPCode("scoutSwapBuffers();", BodyLoc);
+    InsertCPPCode("^(void* m, int* i, int* j, int* k, "
+                  "scout::tbq_params_rt p){}", BodyLoc);
+
+    BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
+    assert(Block && "expected a block expression");
+    Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+
+    assert(!StmtsStack.empty());
+    
+    MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+    
+    assert(dims.size() >= 1);
+    
+    std::string bc = "scoutBeginRenderAll(";
+
+    for(size_t i = 0; i < 3; ++i){
+      if(i > 0){
+        bc += ", ";
+      }
+      
+      if(i >= dims.size()){
+        bc += "0";
+      }
+      else{
+        bc += ToCPPCode(dims[i]);
+      }
+    }
+    
+    bc += ");";
+    
+    InsertCPPCode(bc, Tok.getLocation());
+    
+    StmtResult BR = ParseStatementOrDeclaration(*StmtsStack.back(), true).get();
+    
+    StmtsStack.back()->push_back(BR.get());
+    
+    InsertCPPCode("scoutEndRenderAll();", BodyLoc);
 
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
                                               LoopVariableII, MeshII, LParenLoc,
-                                              Op, RParenLoc, Body);
+                                              Op, RParenLoc, Body, Block);
   }
 
   ForAllStmt *FAS;
@@ -2494,16 +2539,16 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
   InsertCPPCode("^(void* m, int* i, int* j, int* k, "
                 "scout::tbq_params_rt p){}", CodeLoc);
-  
+
   BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
   assert(Block && "expected a block expression");
-  class CompoundStmt* CB = 
+  class CompoundStmt* CB =
   new (Actions.Context) class CompoundStmt(Actions.Context,
                                            &Body, 1, CodeLoc, CodeLoc);
-  
-  
+
+
   Block->getBlockDecl()->setBody(CB);
-  
+
   // Lookup the meshtype and store it for the ForAllStmt Constructor.
   LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
   Actions.LookupName(LR, getCurScope());
@@ -2517,7 +2562,7 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
                           Name,
                           NameLoc,
                           0, NameLoc, Body, Block);
-  
+
   ForAllStmt* FAS = cast<ForAllStmt>(ForAllResult.get());
 
   FAS->setXStart(XStart);
@@ -2532,12 +2577,12 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
 StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
-  
+
   SourceLocation ForAllLoc = ConsumeToken();
-  
+
   IdentifierInfo* IVII[3] = {0,0,0};
   SourceLocation IVSL[3];
-  
+
   size_t count;
   for(size_t i = 0; i < 3; ++i){
     if(Tok.isNot(tok::identifier)){
@@ -2546,12 +2591,12 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       ConsumeBrace();
       return StmtError();
     }
-    
+
     IVII[i] = Tok.getIdentifierInfo();
     IVSL[i] = ConsumeToken();
 
     count = i + 1;
-    
+
     if(Tok.is(tok::kw_in)){
       break;
     }
@@ -2563,25 +2608,25 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     }
     ConsumeToken();
   }
-  
+
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_expected_in_kw);
     SkipUntil(tok::r_brace);
     ConsumeBrace();
     return StmtError();
   }
-  
+
   ConsumeToken();
-  
+
   if(Tok.isNot(tok::l_square)){
     Diag(Tok, diag::err_expected_lsquare);
     SkipUntil(tok::r_brace);
     ConsumeBrace();
     return StmtError();
   }
-  
+
   ConsumeBracket();
-  
+
   Expr* Start[3] = {0,0,0};
   Expr* End[3] = {0,0,0};
   Expr* Stride[3] = {0,0,0};
@@ -2593,7 +2638,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     else{
       if(Tok.isNot(tok::colon)){
         ExprResult StartResult = ParseAssignmentExpression();
-        if(StartResult.isInvalid() || 
+        if(StartResult.isInvalid() ||
            (Tok.isNot(tok::colon) && Tok.isNot(tok::coloncolon))){
           Diag(Tok, diag::err_invalid_start_forall_array);
           SkipUntil(tok::r_brace);
@@ -2602,13 +2647,13 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
         }
         Start[i] = StartResult.get();
       }
-      
+
       if(Tok.is(tok::coloncolon)){
         ConsumeToken();
       }
       else{
         ConsumeToken();
-        
+
         if(Tok.isNot(tok::colon)){
           ExprResult EndResult = ParseAssignmentExpression();
           if(EndResult.isInvalid() || Tok.isNot(tok::colon)){
@@ -2622,9 +2667,9 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
         ConsumeToken();
       }
     }
-      
+
     if(Tok.is(tok::comma) || Tok.is(tok::r_square)){
-      Stride[i] = 
+      Stride[i] =
       IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
                              Actions.Context.IntTy, ForAllLoc);
     }
@@ -2638,7 +2683,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       }
       Stride[i] = StrideResult.get();
     }
-        
+
     if(Tok.isNot(tok::comma)){
       if(i != count - 1){
         Diag(Tok, diag::err_mismatch_forall_array);
@@ -2648,56 +2693,56 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       }
       break;
     }
-    
+
     ConsumeToken();
   }
-  
+
   if(Tok.isNot(tok::r_square)){
     Diag(Tok, diag::err_expected_rsquare);
     SkipUntil(tok::r_brace);
     ConsumeBrace();
     return StmtError();
   }
-  
+
   ConsumeBracket();
-  
+
   unsigned ScopeFlags = Scope::BreakScope | Scope::ContinueScope |
   Scope::DeclScope | Scope::ControlScope;
-  
+
   ParseScope ForAllScope(this, ScopeFlags);
-  
+
   for(size_t i = 0; i < count; ++i){
     if(!IVII[i]){
       break;
     }
-    
+
     if(!Actions.ActOnForAllArrayInductionVariable(getCurScope(),
                                                   IVII[i],
                                                   IVSL[i])){
       return StmtError();
     }
   }
-  
+
   StmtResult BodyResult(ParseStatement());
   if(BodyResult.isInvalid()){
     Diag(Tok, diag::err_invalid_forall_body);
     return StmtError();
   }
-  
+
   StmtResult ForAllArrayResult =
   Actions.ActOnForAllArrayStmt(ForAllLoc);
-  
+
   ForAllArrayStmt* FA = dyn_cast<ForAllArrayStmt>(ForAllArrayResult.get());
-  
+
   for(size_t i = 0; i < 3; ++i){
     if(!Stride[i]){
       break;
     }
-    
+
     FA->setStart(i, Start[i]);
     FA->setEnd(i, End[i]);
     FA->setStride(i, Stride[i]);
   }
-  
+
   return ForAllArrayResult;
 }

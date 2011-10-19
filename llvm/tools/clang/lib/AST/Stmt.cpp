@@ -805,7 +805,7 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
 // ndm - Scout Stmts
 
 ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
-                       const MeshType *MT, IdentifierInfo* LII, 
+                       const MeshType *MT, IdentifierInfo* LII,
                        IdentifierInfo* MII, Expr *Op,
                        Stmt *Body, BlockExpr* Block,
                        SourceLocation FL, SourceLocation LP,
@@ -886,9 +886,10 @@ ForAllLoc(FAL){
 
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
                              IdentifierInfo* LII, IdentifierInfo* MII,
-                             Expr *Op, Stmt *Body, SourceLocation RL,
-                             SourceLocation RP, SourceLocation LP)
-  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, 
-               Op, Body, 0, RL, RP, LP){
+                             Expr *Op, Stmt *Body, BlockExpr *Block,
+                             SourceLocation RL, SourceLocation RP,
+                             SourceLocation LP)
+  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII,
+               Op, Body, Block, RL, RP, LP){
 
 }

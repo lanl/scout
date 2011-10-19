@@ -21,7 +21,12 @@ include_directories(
 )
 
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
-file(GLOB rt_srcs *.cpp)
+
+if(${APPLE})
+  file(GLOB rt_srcs *.cpp *.mm)
+else()
+  file(GLOB rt_srcs *.cpp)  
+endif()
 
 if(SCOUT_ENABLE_RT_OPENGL) 
   file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)

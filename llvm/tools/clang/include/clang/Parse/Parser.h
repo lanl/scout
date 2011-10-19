@@ -1378,8 +1378,13 @@ private:
 
   StmtResult ParseStatement() {
     StmtVector Stmts(Actions);
-    return ParseStatementOrDeclaration(Stmts, true);
+    // ndm
+    StmtsStack.push_back(&Stmts);
+    StmtResult R = ParseStatementOrDeclaration(Stmts, true);
+    StmtsStack.pop_back();
+    return R;
   }
+  
   StmtResult ParseStatementOrDeclaration(StmtVector& Stmts,
                                          bool OnlyStatement = false);
   StmtResult ParseExprStatement(ParsedAttributes &Attrs);
@@ -2034,6 +2039,10 @@ private:
   std::string ToCPPCode(Stmt* stmt){
     return stmt->toCPPCode(Actions.Context);
   }
+  
+  typedef std::vector<StmtVector*> StmtVectorVec;
+  
+  StmtVectorVec StmtsStack;
   
   // return whether this source location came from a '.sc' or '.sch' file
   bool isScoutSource(SourceLocation location) const;
