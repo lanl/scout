@@ -136,7 +136,7 @@ uniform_renderall_t* __sc_init_uniform_renderall(dim_t xdim, dim_t ydim)
   info->tex->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   info->tex->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   info->tex->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  info->tex->initialize(0); 
+  //info->tex->initialize(0); 
 
   info->pbo = new glTextureBuffer;
   info->pbo->bind();
@@ -152,7 +152,7 @@ uniform_renderall_t* __sc_init_uniform_renderall(dim_t xdim, dim_t ydim)
 
   info->tcbo = new glTexCoordBuffer;
   info->tcbo->bind();
-  info->tcbo->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
+  info->tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
   __sc_fill_tcbo_2d(info->tcbo, 0.0f, 0.0f, 1.0f, 1.0f); 
   info->tcbo->release();
 
