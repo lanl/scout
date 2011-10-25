@@ -3423,11 +3423,13 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
   static std::string scHwLocLibOpt = "-L/usr/local/lib";
   static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+  static std::string scLibOpt = "-L" + sccPath + "/lib";
 
   CmdArgs.push_back(scRuntimeLibOpt.c_str());
   CmdArgs.push_back(scStandardLibOpt.c_str());
   CmdArgs.push_back(scHwLocLibOpt.c_str());
   CmdArgs.push_back(scLLVMLibOpt.c_str());
+  CmdArgs.push_back(scLibOpt.c_str());
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
