@@ -638,7 +638,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
   //ForallFn->dump();
-  
+
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
@@ -655,10 +655,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // ndm - temporarily disable blocks, for now just call the forall function
   llvm::BasicBlock *cbb = ret->getParent();
   ret->eraseFromParent();
-  
+
   Builder.SetInsertPoint(cbb);
   return;
-  
+
   // Remove function call to ForallFn function.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
   typedef llvm::BasicBlock::iterator InstIterator;
@@ -746,7 +746,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   typedef Vector::iterator VecIterator;
   typedef Vector::reverse_iterator VecRevIterator;
 
-  llvm::Value *extent = one;
+  ForallTripCount = one;
   std::vector< llvm::Value * > start, end, diff;
 
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
@@ -754,7 +754,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     end.push_back(TranslateExprToValue(S.getEnd(i)));
 
     diff.push_back(Builder.CreateSub(end.back(), start.back()));
-    extent = Builder.CreateMul(extent, diff.back());
+    ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
   }
 
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
@@ -779,7 +779,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Generate loop condition.
   llvm::Value *lval = Builder.CreateLoad(indVar);
-  llvm::Value *cond = Builder.CreateICmpSLT(lval, extent, "cmptmp");
+  llvm::Value *cond = Builder.CreateICmpSLT(lval, ForallTripCount, "cmptmp");
 
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.end");
@@ -870,7 +870,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   // which is a preallocated pixel buffer that exists at the time the
   // renderall loop is started - we write to an offset corresponding
   // to the induction variable - done in EmitForAllStmt()
-  
+
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
 }
 

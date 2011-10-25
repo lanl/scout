@@ -10,11 +10,17 @@ extern scout::uniform_renderall_t* _uniform_renderall;
 extern scout::tbq_rt* _tbq;
 extern float4* _pixels;
 
-double cshift(double a, int dx, int axis);
+double cshift(double a, int dx);
+double cshift(double a, int dx, int dy);
+double cshift(double a, int dx, int dy, int dz);
 
-float cshift(float a, int dx, int axis);
+float cshift(float a, int dx);
+float cshift(float a, int dx, int dy);
+float cshift(float a, int dx, int dy, int dz);
 
-int cshift(int a, int dx, int axis);
+int cshift(int a, int dx);
+int cshift(int a, int dx, int dy);
+int cshift(int a, int dx, int dy, int dz);
 
 float4 hsva(float h, float s, float v, float a){
   float4 r;

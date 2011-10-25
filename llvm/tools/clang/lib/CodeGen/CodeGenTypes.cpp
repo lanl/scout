@@ -583,14 +583,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
       if(!(name == "position" || name == "width" || name == "height" || name == "depth")) {
         // Identify the type of each mesh member.
         llvm::Type *ty = ConvertType(it->getType());
-        uint64_t numElts = dims.back()->EvaluateAsInt(Context).getSExtValue();
-        ty = ArrayTy::get(ty, numElts);
-        // Construct an n-dimensional array of that type.
-        for(int i = dims.size() - 2; i >= 0; --i) {
-          numElts = dims[i]->EvaluateAsInt(Context).getSExtValue();
-          ty = ArrayTy::get(ty, numElts);
+        uint64_t numElts = 1;
+        // Construct a pointer for each type.
+        for(int i = 0; i < dims.size(); ++i) {
+          numElts *= dims[i]->EvaluateAsInt(Context).getSExtValue();
         }
-        eltTys.push_back(ty);
+        eltTys.push_back(llvm::PointerType::getUnqual(ty));
       }
     }
 

@@ -644,6 +644,7 @@ public:
   /// Scout defined mesh variables.
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
+  llvm::Value *ForallTripCount;
 
   llvm::StringRef toString(int i) {
     switch(i) {
@@ -1888,7 +1889,37 @@ public:
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
-                            int axis = -1, RValue RV = RValue());
+                            SmallVector< llvm::Value *, 3 >
+                            = SmallVector< llvm::Value *, 3 >());
+
+  llvm::Value *CreateMemAlloc(uint64_t numElts) {
+    llvm::Type *i8Ty = llvm::Type::getInt8Ty(getLLVMContext());
+    llvm::Type *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
+
+    llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
+    llvm::AttrListPtr namPAL;
+    llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
+    llvm::AttributeWithIndex PAWI;
+    PAWI.Index = 0u; PAWI.Attrs = 0 | llvm::Attribute::NoAlias;
+    Attrs.push_back(PAWI);
+    namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
+    llvm::Function *namF;
+
+    if(!CGM.getModule().getFunction("_Znam")) {
+      llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, /*isVarArg=*/false);
+      namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
+                                    "_Znam", &CGM.getModule());
+      namF->setAttributes(namPAL);
+    } else {
+      namF = CGM.getModule().getFunction("_Znam");
+    }
+
+    llvm::CallInst *call =
+      Builder.CreateCall(namF, llvm::ConstantInt::get(i64Ty, 4 * numElts));
+    call->setAttributes(namPAL);
+
+    return call;
+  }
 
   void DEBUG(const char *s) {
     //llvm::outs() << "Attempting " << s << ".\n";

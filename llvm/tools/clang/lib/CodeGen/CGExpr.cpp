@@ -1358,18 +1358,18 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   DEBUG("EmitDeclRefLValue");
   const NamedDecl *ND = E->getDecl();
   unsigned Alignment = getContext().getDeclAlign(ND).getQuantity();
-  
+
   // Check if this is a Scout 'color' expression.
   if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) &&
      ND->getName() == "color") {
-    
+
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
     if(!CGM.getModule().getNamedGlobal("_pixels")) {
       llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
       llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
       llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
-      
+
       new llvm::GlobalVariable(CGM.getModule(),
                                flt4PtrTy,
                                false,
@@ -1377,7 +1377,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
                                0,
                                "_pixels");
     }
-    
+
     llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
     pixels = Builder.CreateLoad(pixels);
     llvm::Value *idx = Builder.CreateLoad(ForallIndVar);
@@ -2574,16 +2574,25 @@ std::pair< FieldDecl *, int > CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm:
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   DEBUG("EmitCShiftExpr");
-  if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*ArgBeg)) {
+
+  if(const ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(*(ArgBeg))) {
     if(const MemberExpr *ME = dyn_cast<MemberExpr>(CE->getSubExpr())) {
       Expr *BaseExpr = ME->getBase();
       const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
       const VarDecl *VD = dyn_cast<VarDecl>(ND);
-
-      RValue RV = EmitAnyExpr(*(++ArgBeg));
-      int axis = cast<IntegerLiteral>(*(++ArgBeg))->getValue().getSExtValue();
       llvm::StringRef memberName = ME->getMemberDecl()->getName();
-      LValue LV = EmitMeshMemberExpr(VD, memberName, axis, RV);
+
+      SmallVector< llvm::Value *, 3 > vals;
+      while(++ArgBeg != ArgEnd) {
+        RValue RV = EmitAnyExpr(*(ArgBeg));
+        if(RV.isAggregate()) {
+          vals.push_back(RV.getAggregateAddr());
+        } else {
+          vals.push_back(RV.getScalarVal());
+        }
+      }
+
+      LValue LV = EmitMeshMemberExpr(VD, memberName, vals);
       return RValue::get(Builder.CreateLoad(LV.getAddress()));
     }
   }
@@ -2591,7 +2600,7 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
 }
 
 LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
-                                           int axis, RValue RV) {
+                                           SmallVector< llvm::Value *, 3 > vals) {
   DEBUG("EmitMeshMemberExpr");
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshDecl *MD = MT->getDecl();
@@ -2609,25 +2618,32 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
 
-  std::vector< llvm::Value * > args(1, zero);
+  std::vector< llvm::Value * > args;
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
     args.push_back(Builder.CreateLoad(ScoutIdxVars[i]));
-    if(axis == i) {
+    if(!vals.empty()) {
       // Add shift to current idx.
-      llvm::Value *shift;
-      if(RV.isAggregate()) {
-        shift = Builder.CreateLoad(RV.getAggregateAddr());
-      } else {
-        shift = RV.getScalarVal();
-      }
-      shift = Builder.CreateAdd(args[i + 1], shift);
+      llvm::Value *shift = Builder.CreateAdd(vals[i], args[i]);
+      // Identify and correct for shift < 0.
+      llvm::Value *pred = Builder.CreateICmpSLT(shift, zero);
       unsigned dim = dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+      shift = Builder.CreateSelect(pred, llvm::ConstantInt::get(i32Ty, dim - 1),
+                                   shift);
       // Circular shift; require idx in range [0..dim - 1].
-      args[i + 1] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
+      args[i] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
     }
   }
 
-  typedef llvm::ArrayRef< llvm::Value * > Array;
-  addr = Builder.CreateInBoundsGEP(addr, Array(args), "arrayidx");
+  llvm::Value *arg = args[0];
+  for(unsigned i = 1, e = args.size(); i < e; ++i) {
+    unsigned dim = 1;
+    for(unsigned j = 0; j < i; ++j) {
+      dim *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+    }
+    arg = Builder.CreateAdd(arg, Builder.CreateMul(args[i],
+                                                   llvm::ConstantInt::get(i32Ty, dim)));
+  }
+
+  addr = Builder.CreateInBoundsGEP(Builder.CreateLoad(addr), arg, "arrayidx");
   return MakeAddrLValue(addr, Ty);
 }

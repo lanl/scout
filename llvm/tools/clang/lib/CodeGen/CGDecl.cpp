@@ -810,16 +810,32 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
         QualType T = D.getType();
         const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
+
         if(Ty.getTypeClass() == Type::Mesh) {
-          // Variable has Scout mesh type. Save it for
-          //  use when implicitly used in forall stmt.
+          // Variable has Scout mesh type. Each member becomes a pointer.
+          MeshDecl::MeshDimensionVec dims = cast<MeshType>(Ty).getDecl()->dimensions();
+
+          uint64_t numElts = 1;
+          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+            numElts *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+          }
+
+          llvm::Type *structTy = Alloc->getType()->getContainedType(0);
+          for(unsigned i = 0, e = structTy->getNumContainedTypes(); i < e; ++i) {
+            // Dynamically allocate memory.
+            llvm::Value *val = CreateMemAlloc(numElts);
+            val = Builder.CreateBitCast(val, structTy->getContainedType(i));
+            llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            Builder.CreateStore(val, field);
+          }
+
+          // Save type info for use when implicitly used in forall stmt.
           ScoutMeshVars.push_back(DeclPtr);
 
           llvm::StringRef meshName = DeclPtr->getName();
           llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
 
           llvm::SmallVector< llvm::Value *, 3 > sizes;
-          MeshDecl::MeshDimensionVec dims = cast<MeshType>(Ty).getDecl()->dimensions();
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {
             llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, meshName + "_" + toString(i));
             Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
