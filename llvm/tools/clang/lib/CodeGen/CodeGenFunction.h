@@ -1886,11 +1886,15 @@ public:
   void EmitForAllArrayStmt(const ForAllArrayStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
 
+  typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
+
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
-                            SmallVector< llvm::Value *, 3 >
-                            = SmallVector< llvm::Value *, 3 >());
+                            MySmallVector foo = MySmallVector());
+  
+//                            llvm::SmallVector<llvm::Value*, 3> foo
+//                            = llvm::SmallVector<llvm::Value*, 3>());
 
   llvm::Value *CreateMemAlloc(uint64_t numElts) {
     llvm::Type *i8Ty = llvm::Type::getInt8Ty(getLLVMContext());
