@@ -652,6 +652,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
   }
 
+  // ndm - temporarily disable blocks, for now just call the forall function
+  llvm::BasicBlock *cbb = ret->getParent();
+  ret->eraseFromParent();
+
+  Builder.SetInsertPoint(cbb);
+  return;
+
   // Remove function call to ForallFn function.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
   typedef llvm::BasicBlock::iterator InstIterator;
