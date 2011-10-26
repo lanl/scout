@@ -162,6 +162,7 @@ void scoutEndRenderAll(){
 	  break;
 	}
       }
+      break;
     } 
     case SDL_VIDEORESIZE:
     {
