@@ -73,6 +73,7 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 
     _sdl_surface = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
 				    SDL_HWSURFACE |
+				    /*SDL_RESIZABLE |*/
 				    SDL_GL_DOUBLEBUFFER |
 				    SDL_OPENGL);
 
@@ -124,19 +125,6 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 }
 
 void scoutEndRenderAll(){
-  /*
-  float* px = (float*)_pixels;
-
-  for(size_t i = 0; i < 512; ++i){
-    cout << "px[0]: " << px[i*4] << endl;
-    cout << "px[1]: " << px[i*4 + 1] << endl;
-    cout << "px[2]: " << px[i*4 + 2] << endl;
-    cout << "px[3]: " << px[i*4 + 3] << endl;
-    
-    cout << "-----------------------" << endl;
-  }
-  */
-
   __sc_unmap_uniform_colors(_uniform_renderall);
   __sc_exec_uniform_renderall(_uniform_renderall);
   SDL_GL_SwapBuffers();
@@ -149,6 +137,31 @@ void scoutEndRenderAll(){
       exit(0);
       break;
     }
+    case SDL_KEYDOWN:
+    {
+      switch(evt.key.keysym.sym){
+        case SDLK_ESCAPE:
+	{
+	  exit(0);
+	  break;
+	}
+        default:
+	{
+	  break;
+	}
+      }
+    } 
+    /*
+    case SDL_VIDEORESIZE:
+    {
+      _sdl_surface = SDL_SetVideoMode(evt.resize.w, evt.resize.h, 32,
+				      SDL_HWSURFACE |
+				      SDL_RESIZABLE |
+				      SDL_GL_DOUBLEBUFFER |
+				      SDL_OPENGL);
+      break;
+    }
+    */
   }
 }
 
