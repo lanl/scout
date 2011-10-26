@@ -30,6 +30,10 @@ uniform_renderall_t* _uniform_renderall = 0;
 float4* _pixels;
 tbq_rt* _tbq;
 
+static size_t _dx;
+static size_t _dy;
+static size_t _dz;
+
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
@@ -41,7 +45,47 @@ void scoutInit(){
   _tbq = new tbq_rt;
 }
 
+static void _initViewport(){
+  glMatrixMode(GL_PROJECTION);
+
+  glLoadIdentity();
+  
+  static const float pad = 0.05;
+  
+  if(_dy == 0){
+    float px = pad * _dx;
+    gluOrtho2D(-px, _dx + px, -px, _dx + px);
+    _uniform_renderall = __sc_init_uniform_renderall(_dx);
+  }
+  else{
+    if(_dx >= _dy){
+      float px = pad * _dx;
+      float py = (1 - float(_dy)/_dx) * _dx * 0.50; 
+      gluOrtho2D(-px, _dx + px, -py - px, _dx - py + px);
+    }
+    else{
+      float py = pad * _dy;
+      float px = (1 - float(_dx)/_dy) * _dy * 0.50;
+      gluOrtho2D(-px - py, _dx + px + py, -py, _dy + py);
+    }
+    
+    _uniform_renderall = __sc_init_uniform_renderall(_dx, _dy);
+  }
+  
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+
+  glClearColor(0.5, 0.55, 0.65, 0.0);
+  
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  SDL_GL_SwapBuffers();
+}
+
 void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
+  _dx = dx;
+  _dy = dy;
+  _dz = dz;
+
   // if this is our first render all, then initialize SDL and
   // the OpenGL runtime
   if(!_uniform_renderall){
@@ -73,7 +117,7 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 
     _sdl_surface = SDL_SetVideoMode(WINDOW_WIDTH, WINDOW_HEIGHT, 32,
 				    SDL_HWSURFACE |
-				    /*SDL_RESIZABLE |*/
+				    SDL_RESIZABLE |
 				    SDL_GL_DOUBLEBUFFER |
 				    SDL_OPENGL);
 
@@ -82,41 +126,7 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
       exit(1);
     }
 
-    //glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-
-    glClearColor(0.5, 0.55, 0.65, 0.0);
-
-    glMatrixMode(GL_PROJECTION);
-
-    glLoadIdentity();
-
-    static const float pad = 0.05;
-
-    if(dy == 0){
-      float px = pad * dx;
-      gluOrtho2D(-px, dx + px, -px, dx + px);
-      _uniform_renderall = __sc_init_uniform_renderall(dx);
-    }
-    else{
-      if(dx >= dy){
-	float px = pad * dx;
-	float py = (1 - float(dy)/dx) * dx * 0.50; 
-	gluOrtho2D(-px, dx + px, -py - px, dx - py + px);
-      }
-      else{
-	float py = pad * dy;
-	float px = (1 - float(dx)/dy) * dy * 0.50;
-	gluOrtho2D(-px - py, dx + px + py, -py, dy + py);
-      }
-
-      _uniform_renderall = __sc_init_uniform_renderall(dx, dy);
-    }
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    SDL_GL_SwapBuffers();
+    _initViewport();
   }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -127,10 +137,12 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 void scoutEndRenderAll(){
   __sc_unmap_uniform_colors(_uniform_renderall);
   __sc_exec_uniform_renderall(_uniform_renderall);
+
   SDL_GL_SwapBuffers();
 
   SDL_Event evt;
   SDL_PollEvent(&evt);
+
   switch(evt.type){
     case SDL_QUIT:
     {
@@ -151,17 +163,24 @@ void scoutEndRenderAll(){
 	}
       }
     } 
-    /*
     case SDL_VIDEORESIZE:
     {
-      _sdl_surface = SDL_SetVideoMode(evt.resize.w, evt.resize.h, 32,
+
+      size_t width = evt.resize.w;
+      size_t height = evt.resize.h;
+
+      SDL_FreeSurface(_sdl_surface);
+
+      _sdl_surface = SDL_SetVideoMode(width, height, 32,
 				      SDL_HWSURFACE |
 				      SDL_RESIZABLE |
 				      SDL_GL_DOUBLEBUFFER |
 				      SDL_OPENGL);
+      
+      _initViewport();
+
       break;
     }
-    */
   }
 }
 
