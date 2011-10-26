@@ -97,16 +97,15 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
       _uniform_renderall = __sc_init_uniform_renderall(dx);
     }
     else{
-
       if(dx >= dy){
 	float px = pad * dx;
 	float py = (1 - float(dy)/dx) * dx * 0.50; 
 	gluOrtho2D(-px, dx + px, -py - px, dx - py + px);
       }
       else{
-	float py = pad * dx;
-	float px = (1 - float(dx)/dy) * dy * 0.50;  
-	gluOrtho2D(-px -py, dy - px + py, -py, dy + py);
+	float py = pad * dy;
+	float px = (1 - float(dx)/dy) * dy * 0.50;
+	gluOrtho2D(-px - py, dx + px + py, -py, dy + py);
       }
 
       _uniform_renderall = __sc_init_uniform_renderall(dx, dy);
