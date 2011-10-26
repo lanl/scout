@@ -2638,7 +2638,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   for(unsigned i = 1, e = args.size(); i < e; ++i) {
     unsigned dim = 1;
     for(unsigned j = 0; j < i; ++j) {
-      dim *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+      dim *= dims[i - 1]->EvaluateAsInt(getContext()).getSExtValue();
     }
     arg = Builder.CreateAdd(arg, Builder.CreateMul(args[i],
                                                    llvm::ConstantInt::get(i32Ty, dim)));

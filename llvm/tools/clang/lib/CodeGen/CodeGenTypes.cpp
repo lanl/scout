@@ -585,7 +585,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
         llvm::Type *ty = ConvertType(it->getType());
         uint64_t numElts = 1;
         // Construct a pointer for each type.
-        for(int i = 0; i < dims.size(); ++i) {
+        for(unsigned i = 0; i < dims.size(); ++i) {
           numElts *= dims[i]->EvaluateAsInt(Context).getSExtValue();
         }
         eltTys.push_back(llvm::PointerType::getUnqual(ty));
