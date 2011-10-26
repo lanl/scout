@@ -4808,6 +4808,12 @@ def err_no_color_assignment_renderall : Error<
 def err_rhs_after_lhs_forall : Error<
 "mesh field appears on LHS then on subsequent RHS">;
 
+def err_cshift_args : Error<
+"number of cshift args does not correspond to mesh dimensions">;
+
+def err_cshift_field : Error<
+"first argument to cshift must be a mesh field">;
+
 def err_pointer_field_mesh : Error<
 "mesh field or field indirectly instantiated by a mesh is a pointer">;
 }

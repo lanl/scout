@@ -2469,7 +2469,8 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
 }
 
 // ndm - ForAllVisitor class to check that LHS mesh field assignment
-// operators do not appear as subsequent RHS values.
+// operators do not appear as subsequent RHS values, and various other
+// semantic checks
 
 namespace{
 
@@ -2482,8 +2483,9 @@ namespace{
       NodeRHS
     };
 
-    ForAllVisitor(Sema& sema)
+    ForAllVisitor(Sema& sema, ForAllStmt* fs)
     : sema_(sema),
+    fs_(fs),
     error_(false),
     nodeType_(NodeNone){
 
@@ -2493,6 +2495,46 @@ namespace{
       VisitChildren(S);
     }
 
+    void VisitCallExpr(CallExpr* E){
+      FunctionDecl* fd = E->getDirectCallee();
+      if(fd){
+        std::string name = fd->getName();
+        if(name == "cshift"){
+          unsigned args = E->getNumArgs();
+          
+          const MeshType* mt = fs_->getMeshType();
+          MeshDecl* md = mt->getDecl();
+          
+          if(args != md->dimensions().size() + 1){
+            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+            error_ = true;            
+          }
+          else{
+            Expr* fe = E->getArg(0);
+            if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
+              fe = ce->getSubExpr();
+            }
+            
+            if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
+              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
+                ValueDecl* bd = dr->getDecl();
+                if(!isa<MeshType>(bd->getType().getTypePtr())){
+                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  error_ = true; 
+                }
+              }
+            }
+            else{
+              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              error_ = true; 
+            }
+          }
+        }
+      }
+      
+      VisitChildren(E);
+    }
+    
     void VisitChildren(Stmt* S){
       for(Stmt::child_iterator I = S->child_begin(),
           E = S->child_end(); I != E; ++I){
@@ -2557,6 +2599,7 @@ namespace{
 
   private:
     Sema& sema_;
+    ForAllStmt* fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
     bool error_;
@@ -2578,20 +2621,23 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
 
   SCLStack.pop_back();
 
-  // check that LHS mesh field assignment
-  // operators do not appear as subsequent RHS values.
-  ForAllVisitor v(*this);
-  v.Visit(Body);
+  ForAllStmt* FS = new (Context) ForAllStmt(Context, Type, MT,
+                                            LoopVariableII, MeshII,
+                                            Op, Body, Block,
+                                            ForAllLoc, LParenLoc,
+                                            RParenLoc);
 
+  // check that LHS mesh field assignment
+  // operators do not appear as subsequent RHS values, and
+  // perform other semantic checks
+  ForAllVisitor v(*this, FS);
+  v.Visit(Body);
+  
   if(v.error()){
     return StmtError();
   }
-
-  return Owned(new (Context) ForAllStmt(Context, Type, MT,
-                                        LoopVariableII, MeshII,
-                                        Op, Body, Block,
-                                        ForAllLoc, LParenLoc,
-                                        RParenLoc));
+  
+  return Owned(FS);
 }
 
 StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc){
