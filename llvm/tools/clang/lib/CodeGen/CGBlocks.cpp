@@ -564,7 +564,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     llvm::Value *val;
     if(i > 0) {
       if(i == 1) {
-        val = indVars[i][3];
+        val = indVars[i - 1][3];
       } else {
         val = Builder.CreateMul(indVars[i][3], indVars[i - 1][3]);
       }
