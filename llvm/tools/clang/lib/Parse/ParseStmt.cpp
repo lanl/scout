@@ -2356,6 +2356,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, Type, MT,
                                            LoopVariableII, MeshII, LParenLoc,
                                            Op, RParenLoc, Body, Block);
+    if(!ForAllResult.isUsable())
+      return StmtError();
   }
   else {
     InsertCPPCode("^(void* m, int* i, int* j, int* k, "
@@ -2366,18 +2368,18 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
 
     assert(!StmtsStack.empty());
-    
+
     MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
-    
+
     assert(dims.size() >= 1);
-    
+
     std::string bc = "scoutBeginRenderAll(";
 
     for(size_t i = 0; i < 3; ++i){
       if(i > 0){
         bc += ", ";
       }
-      
+
       if(i >= dims.size()){
         bc += "0";
       }
@@ -2385,15 +2387,15 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         bc += ToCPPCode(dims[i]);
       }
     }
-    
+
     bc += ");";
-    
+
     InsertCPPCode(bc, Tok.getLocation());
-    
+
     StmtResult BR = ParseStatementOrDeclaration(*StmtsStack.back(), true).get();
-    
+
     StmtsStack.back()->push_back(BR.get());
-    
+
     InsertCPPCode("scoutEndRenderAll();", BodyLoc);
 
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
