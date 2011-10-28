@@ -1,3 +1,10 @@
+The Scout Programming Language
+==============================
+
+Until we managed to get a bug tracking system in place please
+use this file to track known bugs you encounter within the 
+code.  
+
 
 -- Semantic checks of following need to be added:
 
