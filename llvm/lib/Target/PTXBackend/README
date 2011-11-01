@@ -1,0 +1,164 @@
+/**
+ * @file   README
+ * @date   21.04.2010
+ * @author Ralf Karrenberg, Helge Rhodin
+ *
+ *
+ * Copyright (C) 2009, 2010 Saarland University
+ *
+ * This file is part of llvmptxbackend.
+ *
+ * llvmptxbackend is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * llvmptxbackend is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with llvmptxbackend.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+[ DISCLAIMER: This file is just a draft and not complete yet. ]
+
+
+0. AUTHOR
+
+llvmptxbackend was written by Helge Rhodin.
+
+Contact: helge.rhodin@alice-dsl.net
+
+
+1. ABOUT
+
+The PTX backend for LLVM was developed as part of a bachelor's thesis in the
+programming languages group of Sebastian Hack at Saarland University.
+
+The backend is similar to the C-backend and therefore does not use LLVM's
+backend infrastructure but emits .ptx files directly from the IR.
+
+The backend was originally written for the integration of the shading system
+AnySL (<http://www.prog.uni-saarland.de/projects/anysl/>) into a deferred-
+shading module for the open-source rasterizer OGRE (<http://www.ogre3d.org>).
+
+The backend already supports most of the PTX features:
+ * simple arithmetic (add, mul, ...)
+ * control flow
+ * structs and arrays
+ * simple function calls (no recursion, no struct returns)
+ * global, shared, constant, and texture memory acces
+ * mathematical functions (e.g. sin, cos, sqrt, pow, ...)
+ * special registers (e.g. thread_id)
+
+There are no LLVM intrinsics for PTX-specific functionality like
+texture fetches, they are currently only accessed via external
+functions. Atomic and synchronization instructions are not yet
+implemented but should work the same way.
+
+The bachelor's thesis focused on correct code generation, so performance has
+not yet been optimized to a larger degree. Register pressure lowering
+optimizations are necessary for more performant code.
+
+If you should find errors of any kind please write a bug-report to
+helge.rhodin@alice-dsl.net or at
+https://sourceforge.net/projects/llvmptxbackend/
+
+Code contributions to the backend are also very welcome! :)
+
+
+2. IMPORTANT
+
+Please keep in mind that there are quite some code-constructs the backend
+is not able to compile (yet).
+
+PTX/GPU specific limitations:
+ * recursive and indirect (function pointer) function calls
+ * dynamic memory allocation ("new" and "malloc")
+
+Not implemented yet:
+ * functions with struct return
+ * atomic and sync intrinsics
+ * local memory
+ * possibly some other constructs :)
+
+Not tested:
+The test suite is quite limited, a lot of features are not tested yet!
+ * vector types
+ * rounding conventions
+ * ...
+
+Assumptions made by the backend:
+ * All called functions are considered to be kernel functions (.fun),
+   all other functions are entry functions (.entry).
+
+ * All global variables reside in the global memory space, except for
+   variables containing the following keywords:
+     __ptx_shared => shared memory
+     __ptx_local  => local memory
+     __ptx_const  => constant memory 
+	 
+   As an example, an int in shared memory could be declared as
+   "int __ptx_shared_myInteger".
+   A better solution is to use the numbered address space of the
+   LLVM PointerType and GlobalVariables, we will change this in
+   the near future.
+
+ * Special registers are also represented by global variables with
+   special key words. We decided to go this way for simplicity,
+   intrinsics are probably more elegant.
+   Thus, the thread ID per dimension is represented by a global,
+   e.g. "unsigned short __ptx_sreg_tid_x;".
+
+ * All pointers are assumed to have a precision of 32 bit.
+
+3. INSTALLATION
+
+3.0 Install llvm (revision 98723)
+
+3.1 Copy the source tree ("src") into your llvm source directory ("llvm").
+
+3.2 Modify llvm/configure:
+
+- Append 'PTXBackend" to TARGETS_TO_BUILD="..." where appropriate
+  (e.g. for target 'all' or a new target 'ptx')
+
+3.3 For a new target 'ptx' for llc, modify llvm/tools/llc/llc.cpp:
+
+- In 'GetOutputStream()', add the following lines to the switch case
+  'TargetMachine::CGFT_AssemblyFile':
+
+  else if (TargetName[0] == 'p' && TargetName[1] == 't' && TargetName[2] == 'x')
+      OutputFilename += ".ptx";
+
+3.4 Compile LLVM.
+
+
+4. HOW TO USE THE PTX BACKEND
+
+The small test suite that comes with the code (located at ./test/) is
+probably a good starting point:
+
+4.1 Compile the test functions to LLVM bitcode:
+
+  llvm-gcc -m32 -msse -emit-llvm -c PTXTestFunctions.cpp -o PTXTestFunctions.bc
+
+4.2 Use the PTX Backend to compile the tests to PTX files:
+
+  llc -march=ptx -f PTXTestFunctions.bc
+
+4.3 Compile the host code and run the tool (requires CUDA):
+
+  g++ -lcuda PTXBackendTestSuite.cpp -o backendTestSuite
+  ./backendTestSuite
+
+
+Hopefully all test functions have passed the test at that point :).
+You can see test cases for most of the supported features
+(PTXBackendTestSuite.cpp). Feel free to play around and submit new
+test cases. All unsupported cases should result in an assertion
+during compilation.
+
