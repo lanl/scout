@@ -907,7 +907,7 @@ static void printDiagnosticLevel(raw_ostream &OS,
   case DiagnosticsEngine::Ignored: llvm_unreachable("Invalid diagnostic type");
   case DiagnosticsEngine::Note:    OS << "note: "; break;
   case DiagnosticsEngine::Warning: OS << "warning: "; break;
-  case DiagnosticsEngine::Error:   OS << "error: "; break;
+    case DiagnosticsEngine::Error:   OS << "error: "; break;
   case DiagnosticsEngine::Fatal:   OS << "fatal error: "; break;
   }
 

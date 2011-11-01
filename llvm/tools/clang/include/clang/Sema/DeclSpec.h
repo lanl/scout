@@ -248,6 +248,7 @@ public:
 
   // ndm - Scout vector types
   
+  static const TST TST_mesh = clang::TST_mesh;
   static const TST TST_bool2 = clang::TST_bool2;
   static const TST TST_bool3 = clang::TST_bool3;
   static const TST TST_bool4 = clang::TST_bool4;
@@ -389,8 +390,9 @@ private:
     return (T == TST_typeofExpr || T == TST_decltype);
   }
   static bool isDeclRep(TST T) {
+    // ndm - added mesh TST
     return (T == TST_enum || T == TST_struct ||
-            T == TST_union || T == TST_class);
+            T == TST_union || T == TST_class || T == TST_mesh);
   }
 
   DeclSpec(const DeclSpec&);       // DO NOT IMPLEMENT

@@ -159,12 +159,104 @@ Retry:
         break;
 
       case Sema::NC_Type:
+      {
+        // ndm - parse a mesh declaration - this is handled as a special
+        // case because the square brackets look like an array specification
+        // when Clang normally parses a declaration
+        
+        if(isScoutLang() && isScoutSource(Tok.getLocation())){
+          QualType qt = Sema::GetTypeFromParser(Classification.getType());
+          
+          if(qt.getAsString() == "mesh" && 
+             GetLookAheadToken(1).is(tok::identifier)){
+            
+            if(GetLookAheadToken(2).is(tok::l_square)){
+              
+              std::string meshType = TokToStr(Tok);
+              ConsumeToken();
+              std::string meshName = TokToStr(Tok);
+              ConsumeToken();
+              
+              // parse mesh dimensions, e.g: [512,512]
+              
+              MeshType::MeshDimensionVec dims;
+              
+              ConsumeBracket();
+              
+              for(;;){
+                
+                if(Tok.isNot(tok::numeric_constant)){
+                  Diag(Tok, diag::err_expected_numeric_constant_in_mesh_def);
+                  SkipUntil(tok::r_square);
+                  SkipUntil(tok::semi);
+                  return StmtError();
+                }
+                
+                dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+                
+                ConsumeToken();
+                
+                if(Tok.is(tok::r_square)){
+                  break;
+                }
+                
+                if(Tok.is(tok::eof)){
+                  Diag(Tok, diag::err_expected_lsquare);
+                  return StmtError();
+                }
+                
+                if(Tok.isNot(tok::comma)){
+                  Diag(Tok, diag::err_expected_comma);
+                  SkipUntil(tok::r_square);
+                  SkipUntil(tok::semi);
+                  return StmtError();
+                }
+                
+                ConsumeToken();
+              }
+              
+              ConsumeBracket();
+              
+              InsertCPPCode(meshType + " " + meshName, NameLoc);
+
+              DeclaringMesh = true;
+              StmtResult result = ParseStatementOrDeclaration(Stmts, OnlyStatement);
+              
+              DeclaringMesh = false;
+              
+              DeclStmt* ds = dyn_cast<DeclStmt>(result.get());
+              assert(ds->isSingleDecl());
+              
+              VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
+              assert(vd);
+              
+              const MeshType* mt = dyn_cast<MeshType>(vd->getType().getTypePtr());
+              assert(mt);
+              
+              MeshType* mdt = new MeshType(mt->getDecl());
+              mdt->setDimensions(dims);
+              vd->setType(QualType(mdt, 0));
+              
+              return result;
+            }
+            else if(!DeclaringMesh){
+              Diag(Tok, diag::err_expected_lsquare);
+              
+              SkipUntil(tok::r_square);
+              SkipUntil(tok::semi);
+              return StmtError();
+            }
+          }
+        }
+        
         Tok.setKind(tok::annot_typename);
         setTypeAnnotation(Tok, Classification.getType());
         Tok.setAnnotationEndLoc(NameLoc);
         PP.AnnotateCachedTokens(Tok);
+        
         break;
-
+      }
+          
       case Sema::NC_Expression:
         Tok.setKind(tok::annot_primary_expr);
         setExprAnnotation(Tok, Classification.getExpression());
@@ -2367,7 +2459,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     assert(!StmtsStack.empty());
     
-    MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+    MeshType::MeshDimensionVec dims = MT->dimensions();
     
     assert(dims.size() >= 1);
     
@@ -2408,7 +2500,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     FAS = cast<ForAllStmt>(ForAllResult.get());
   }
 
-  MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
   ASTContext &C = Actions.getASTContext();
   Expr *zero = IntegerLiteral::Create(C, llvm::APInt(32, 0),
                                       C.IntTy, ForAllLoc);

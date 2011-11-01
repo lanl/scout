@@ -1457,6 +1457,10 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagName="struct"; FixitTagName = "struct ";TagKind=tok::kw_struct;break;
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
+      
+      // ndm - added TST mesh
+      case DeclSpec::TST_mesh:
+        TagName="mesh" ; FixitTagName = "mesh " ;TagKind=tok::kw_mesh ;break;
     }
 
     if (TagName) {
@@ -2233,8 +2237,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // to denote the beginning of a mesh definition
 
       // so we know this is the start of:
-      //   uniform mesh MyMesh [512,512] { ...
-      
+      //   uniform mesh MyMesh { ...
+            
       ParseMeshSpecifier(DS);
 
       continue;
@@ -2645,7 +2649,7 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
 
     // for now, at least the presence of one of the above keywords is sufficient
     // to denote the beginning of a mesh definition
-
+    
     ParseMeshSpecifier(DS);
 
     return true;

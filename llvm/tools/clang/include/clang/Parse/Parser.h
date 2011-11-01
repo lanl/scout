@@ -2044,6 +2044,8 @@ private:
   
   StmtVectorVec StmtsStack;
   
+  bool DeclaringMesh;
+  
   // return whether this source location came from a '.sc' or '.sch' file
   bool isScoutSource(SourceLocation location) const;
   
