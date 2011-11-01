@@ -400,6 +400,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
 
   // ndm - Scout vector types to strings
   
+  case DeclSpec::TST_mesh:        return "mesh";
   case DeclSpec::TST_bool2:       return "bool2";
   case DeclSpec::TST_bool3:       return "bool3";
   case DeclSpec::TST_bool4:       return "bool4";

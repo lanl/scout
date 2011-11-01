@@ -57,7 +57,8 @@ namespace clang {
     TST_underlyingType, // __underlying_type for C++0x
     TST_auto,         // C++0x auto
 
-    // ndm - Scout vector types
+    // ndm - Scout types
+    TST_mesh,
     TST_bool2,
     TST_bool3,
     TST_bool4,

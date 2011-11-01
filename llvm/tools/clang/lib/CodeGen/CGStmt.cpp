@@ -740,7 +740,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
-  MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
 
   typedef std::vector< unsigned > Vector;
   typedef Vector::iterator VecIterator;
@@ -826,7 +826,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   llvm::Type *Ty = llvm::PointerType::get(llvm::VectorType::get(fltTy, 4), 0);
 
   const MeshType *MT = S.getMeshType();
-  MeshDecl::MeshDimensionVec dims = MT->getDecl()->dimensions();
+  MeshDecl::MeshDimensionVec dims = MT->dimensions();
 
   unsigned dim = 1;
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {

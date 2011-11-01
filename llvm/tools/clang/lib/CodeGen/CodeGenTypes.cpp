@@ -278,6 +278,7 @@ static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
 
 /// ConvertType - Convert the specified type to its LLVM form.
 llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+  QualType OT = T;
   T = Context.getCanonicalType(T);
 
   typedef llvm::VectorType VectorTy;
@@ -568,7 +569,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   case Type::Mesh: {
     // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
-    MeshDecl::MeshDimensionVec dims = mesh->dimensions();
+    MeshType::MeshDimensionVec dims = cast<MeshType>(OT.getTypePtr())->dimensions();
     llvm::StringRef meshName = mesh->getName();
 
     typedef llvm::ArrayType ArrayTy;

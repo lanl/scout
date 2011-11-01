@@ -2505,7 +2505,7 @@ namespace{
           const MeshType* mt = fs_->getMeshType();
           MeshDecl* md = mt->getDecl();
           
-          if(args != md->dimensions().size() + 1){
+          if(args != mt->dimensions().size() + 1){
             sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
             error_ = true;            
           }
@@ -2814,7 +2814,8 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 
 
   MeshType* MT = new MeshType(MD, IT);
-
+  MT->setDimensions(cast<MeshType>(T)->dimensions());
+  
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
                             LoopVariableII, QualType(MT, 0));
@@ -2920,6 +2921,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   }
 
   MeshType* MT = new MeshType(MD, IT);
+  MT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,

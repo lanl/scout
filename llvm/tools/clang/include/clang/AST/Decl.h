@@ -3092,17 +3092,11 @@ public:
 //   }
   
 class MeshDecl : public TypeDecl, public DeclContext{
-public:
-  
-  // dimensions, e.g: [512,512]
-  typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
-  
 private:
   
   bool IsDefinition : 1;
   bool IsBeingDefined : 1;
   SourceLocation RBraceLoc;
-  MeshDimensionVec Dimensions;
   
 protected:
   MeshDecl(Kind DK, DeclContext* DC,
@@ -3120,13 +3114,7 @@ public:
                           SourceLocation StartLoc, SourceLocation IdLoc, 
                           IdentifierInfo* Id, MeshDecl* PrevDecl);
   
-  const MeshDimensionVec& dimensions() const{
-    return Dimensions;
-  }
-  
-  void setDimensions(const MeshDimensionVec& dimensions){
-    Dimensions = dimensions;
-  }
+
   
   void completeDefinition();
   

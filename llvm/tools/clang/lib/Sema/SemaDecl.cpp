@@ -2315,7 +2315,8 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     if ((Record && Record->getDeclName() && !Record->isDefinition()) ||
         (DS.getTypeSpecType() == DeclSpec::TST_typename &&
          DS.getRepAsType().get()->isStructureType())) {
-      Diag(DS.getSourceRange().getBegin(), diag::ext_ms_anonymous_struct)
+      
+        Diag(DS.getSourceRange().getBegin(), diag::ext_ms_anonymous_struct)
         << DS.getSourceRange();
       return BuildMicrosoftCAnonymousStruct(S, DS, Record);
     }
@@ -2326,6 +2327,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     if (EnumDecl *Enum = dyn_cast_or_null<EnumDecl>(Tag))
       if (Enum->enumerator_begin() == Enum->enumerator_end() &&
           !Enum->getIdentifier() && !Enum->isInvalidDecl()) {
+        
         Diag(Enum->getLocation(), diag::ext_no_declarators)
           << DS.getSourceRange();
         emittedWarning = true;
@@ -2344,9 +2346,12 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       return Tag;
     }
 
-    Diag(DS.getSourceRange().getBegin(), diag::ext_no_declarators)
+    // ndm - do not emit empty declaration warning if this is a mesh
+    if(DS.getTypeSpecType() != DeclSpec::TST_mesh){
+      Diag(DS.getSourceRange().getBegin(), diag::ext_no_declarators)
       << DS.getSourceRange();
-    emittedWarning = true;
+      emittedWarning = true;
+    }
   }
 
   // We're going to complain about a bunch of spurious specifiers;

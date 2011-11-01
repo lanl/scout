@@ -2839,59 +2839,6 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
     return false;
   }
   
-  
-  
-  MeshDecl::MeshDimensionVec dims;
-  
-  // parse mesh dimensions, e.g: [512,512]
-  if(Tok.is(tok::l_square)){
-    ConsumeBracket();
-    
-    for(;;){
-      
-      if(Tok.isNot(tok::numeric_constant)){
-        Diag(Tok, diag::err_expected_numeric_constant_in_mesh_def);
-        
-        DS.SetTypeSpecError();
-        SkipUntil(tok::r_brace);
-        SkipUntil(tok::semi);
-        return false;
-      }
-      
-      dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-      
-      ConsumeToken();
-      
-      if(Tok.is(tok::r_square)){
-        break;
-      }
-      
-      if(Tok.is(tok::eof)){
-        Diag(Tok, diag::err_expected_lsquare);
-        return false;
-      }
-      
-      if(Tok.isNot(tok::comma)){
-        Diag(Tok, diag::err_expected_comma);
-        DS.SetTypeSpecError();
-        SkipUntil(tok::r_brace);
-        SkipUntil(tok::semi);
-      }
-      
-      ConsumeToken();
-    }
-  }
-  else{
-    Diag(Tok, diag::err_expected_lsquare);
-    
-    DS.SetTypeSpecError();
-    SkipUntil(tok::r_square);
-    SkipUntil(tok::semi);
-    return false;
-  }
-  
-  ConsumeBracket();
-  
   if(Tok.isNot(tok::l_brace)){
     Diag(Tok, diag::err_expected_lbrace);
     
@@ -2900,7 +2847,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
     SkipUntil(tok::semi);
     return false;
   }
-  
+    
   MeshDecl* Dec = 
   static_cast<MeshDecl*>( 
                          Actions.ActOnMeshDefinition(getCurScope(),
@@ -2909,19 +2856,16 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
                                                      Name,
                                                      NameLoc)); 
   
-  Dec->setDimensions(dims);
-  
   bool valid = ParseMeshBody(MeshLocation, Dec);
-  
-  if(Tok.is(tok::semi)){
-    ConsumeToken();
-  }
-  else{
-    Diag(Tok, diag::err_expected_semi_mesh_declaration);
-  }
   
   if(valid){
     Dec->completeDefinition();
+    
+    unsigned DiagID;
+    const char* PrevSpec;
+    DS.SetTypeSpecType(DeclSpec::TST_mesh, MeshLocation, PrevSpec,
+                       DiagID, Dec, true);
+
     return true;
   }
   

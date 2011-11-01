@@ -813,7 +813,8 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
         if(Ty.getTypeClass() == Type::Mesh) {
           // Variable has Scout mesh type. Each member becomes a pointer.
-          MeshDecl::MeshDimensionVec dims = cast<MeshType>(Ty).getDecl()->dimensions();
+          MeshType::MeshDimensionVec dims = 
+          cast<MeshType>(T.getTypePtr())->dimensions();
 
           uint64_t numElts = 1;
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {

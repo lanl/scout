@@ -2604,7 +2604,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   DEBUG("EmitMeshMemberExpr");
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshDecl *MD = MT->getDecl();
-  MeshDecl::MeshDimensionVec dims = MD->dimensions();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
 
   std::pair< FieldDecl *, int > field;
   field = FindFieldDecl(MD, memberName);
@@ -2633,7 +2633,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
       args[i] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
     }
   }
-
+  
   llvm::Value *arg = args[0];
   for(unsigned i = 1, e = args.size(); i < e; ++i) {
     unsigned dim = 1;

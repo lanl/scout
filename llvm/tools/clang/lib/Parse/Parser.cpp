@@ -71,6 +71,9 @@ Parser::Parser(Preprocessor &pp, Sema &actions)
   }
       
   PP.setCodeCompletionHandler(*this);
+  
+  // ndm
+  DeclaringMesh = false;
 }
 
 /// If a crash happens while the parser is active, print out a line indicating

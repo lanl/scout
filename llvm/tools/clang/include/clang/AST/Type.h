@@ -3187,6 +3187,9 @@ public:
 
 class MeshType : public Type{
 public:
+  // dimensions, e.g: [512,512]
+  typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
+  
   enum InstanceType{
     MeshInstance,
     CellsInstance,
@@ -3199,6 +3202,7 @@ private:
 
   MeshDecl* decl;
   InstanceType instanceType;
+  MeshDimensionVec dims;
 
 public:
 
@@ -3214,6 +3218,14 @@ public:
     return instanceType;
   }
 
+  const MeshDimensionVec& dimensions() const{
+    return dims;
+  }
+  
+  void setDimensions(const MeshDimensionVec& dv){
+    dims = dv;
+  }
+  
   bool isBeingDefined() const;
 
   bool isSugared() const { return false; }
