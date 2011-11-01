@@ -76,6 +76,7 @@ set(LLVM_ALL_TARGETS
   MSP430
   PowerPC
   PTX
+  PTXBackend
   Sparc
   SystemZ
   X86
@@ -89,7 +90,7 @@ if( MSVC )
   set(LLVM_TARGETS_TO_BUILD X86
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 else( MSVC )
-  if (NOT LLVM_TARGETS_TO_BUILD) 
+  if (NOT LLVM_TARGETS_TO_BUILD)
     set(LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS}
       CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
   endif()
