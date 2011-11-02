@@ -134,7 +134,7 @@ def ccc_ : Joined<"-ccc-">, Group<ccc_Group>, Flags<[Unsupported]>;
 
 def _HASH_HASH_HASH : Flag<"-###">, Flags<[DriverOption]>,
     HelpText<"Print the commands to run for this compilation">;
-// The '--' option is here for the sake of compatibility with gcc, but is 
+// The '--' option is here for the sake of compatibility with gcc, but is
 // being ignored by the driver.
 def _DASH_DASH : Flag<"--">, Flags<[DriverOption]>;
 def A : JoinedOrSeparate<"-A">;
@@ -343,11 +343,11 @@ def fms_extensions : Flag<"-fms-extensions">, Group<f_Group>;
 def fms_compatibility : Flag<"-fms-compatibility">, Group<f_Group>;
 def fmsc_version : Joined<"-fmsc-version=">, Group<f_Group>;
 def fdelayed_template_parsing : Flag<"-fdelayed-template-parsing">, Group<f_Group>;
-def fmodule_cache_path : Separate<"-fmodule-cache-path">, Group<i_Group>, 
+def fmodule_cache_path : Separate<"-fmodule-cache-path">, Group<i_Group>,
   Flags<[NoForward]>;
 def fauto_module_import : Flag <"-fauto-module-import">, Group<f_Group>,
   Flags<[NoForward]>;
-  
+
 def fmudflapth : Flag<"-fmudflapth">, Group<f_Group>;
 def fmudflap : Flag<"-fmudflap">, Group<f_Group>;
 def fnested_functions : Flag<"-fnested-functions">, Group<f_Group>;
@@ -385,7 +385,7 @@ def fno_merge_all_constants : Flag<"-fno-merge-all-constants">, Group<f_Group>;
 def fno_ms_extensions : Flag<"-fno-ms-extensions">, Group<f_Group>;
 def fno_ms_compatibility : Flag<"-fno-ms-compatibility">, Group<f_Group>;
 def fno_delayed_template_parsing : Flag<"-fno-delayed-template-parsing">, Group<f_Group>;
-def fno_objc_default_synthesize_properties 
+def fno_objc_default_synthesize_properties
   : Flag<"-fno-objc-default-synthesize-properties">, Group<f_Group>;
 def fno_objc_exceptions: Flag<"-fno-objc-exceptions">, Group<f_Group>;
 def fno_objc_legacy_dispatch : Flag<"-fno-objc-legacy-dispatch">, Group<f_Group>;
@@ -413,7 +413,7 @@ def fobjc_arc_exceptions : Flag<"-fobjc-arc-exceptions">, Group<f_Group>;
 def fno_objc_arc_exceptions : Flag<"-fno-objc-arc-exceptions">, Group<f_Group>;
 def fobjc_atdefs : Flag<"-fobjc-atdefs">, Group<clang_ignored_f_Group>;
 def fobjc_call_cxx_cdtors : Flag<"-fobjc-call-cxx-cdtors">, Group<clang_ignored_f_Group>;
-def fobjc_default_synthesize_properties : 
+def fobjc_default_synthesize_properties :
   Flag<"-fobjc-default-synthesize-properties">, Group<f_Group>;
 def fobjc_exceptions: Flag<"-fobjc-exceptions">, Group<f_Group>;
 
@@ -421,7 +421,7 @@ def fobjc_gc_only : Flag<"-fobjc-gc-only">, Group<f_Group>;
 def fobjc_gc : Flag<"-fobjc-gc">, Group<f_Group>;
 def fobjc_legacy_dispatch : Flag<"-fobjc-legacy-dispatch">, Group<f_Group>;
 def fobjc_new_property : Flag<"-fobjc-new-property">, Group<clang_ignored_f_Group>;
-def fobjc_infer_related_result_type : Flag<"-fobjc-infer-related-result-type">, 
+def fobjc_infer_related_result_type : Flag<"-fobjc-infer-related-result-type">,
                                       Group<f_Group>;
 def fno_objc_infer_related_result_type : Flag<
   "-fno-objc-infer-related-result-type">, Group<f_Group>;
@@ -874,3 +874,9 @@ def Z_reserved_lib_stdcxx : Flag<"-Z-reserved-lib-stdc++">,
     Flags<[LinkerInput, NoArgumentUnused, Unsupported]>, Group<reserved_lib_Group>;
 def Z_reserved_lib_cckext : Flag<"-Z-reserved-lib-cckext">,
     Flags<[LinkerInput, NoArgumentUnused, Unsupported]>, Group<reserved_lib_Group>;
+
+//===----------------------------------------------------------------------===//
+// Scout Options
+//===----------------------------------------------------------------------===//
+def gpu : Flag<"-gpu">,
+HelpText<"Enable NVIDIA GPU support.">;

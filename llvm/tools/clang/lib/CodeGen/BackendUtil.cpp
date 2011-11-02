@@ -125,7 +125,7 @@ void EmitAssemblyHelper::CreatePasses() {
     OptLevel = 0;
     Inlining = CodeGenOpts.NoInlining;
   }
-  
+
   PassManagerBuilder PMBuilder;
   PMBuilder.OptLevel = OptLevel;
   PMBuilder.SizeLevel = CodeGenOpts.OptimizeSize;
@@ -141,13 +141,13 @@ void EmitAssemblyHelper::CreatePasses() {
     PMBuilder.addExtension(PassManagerBuilder::EP_ScalarOptimizerLate,
                            addObjCARCOptPass);
   }
-  
+
   // Figure out TargetLibraryInfo.
   Triple TargetTriple(TheModule->getTargetTriple());
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-  
+
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {
@@ -168,7 +168,7 @@ void EmitAssemblyHelper::CreatePasses() {
     break;
   }
 
- 
+
   // Set up the per-function pass manager.
   FunctionPassManager *FPM = getPerFunctionPasses();
   if (CodeGenOpts.VerifyModule)
@@ -186,8 +186,13 @@ void EmitAssemblyHelper::CreatePasses() {
     if (!CodeGenOpts.DebugInfo)
       MPM->add(createStripSymbolsPass(true));
   }
-  
-  
+
+  // Check whether to enable Scout NVIDIA GPU support.
+  if(CodeGenOpts.ScoutNvidiaGPU) {
+    llvm::errs() << ">>>>> Scout NVIDIA GPU Support NOT IMPLEMENTED; "
+                 << "defaulting to CPU-only execution. <<<<<\n";
+  }
+
   PMBuilder.populateModulePassManager(*MPM);
 }
 
