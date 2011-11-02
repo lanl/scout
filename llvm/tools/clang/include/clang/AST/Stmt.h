@@ -47,6 +47,9 @@ namespace clang {
 
   class Stmt;
   class Expr;
+  
+  // ndm
+  class MemberExpr;
 
   class ExprIterator {
     Stmt** I;
@@ -1766,7 +1769,8 @@ public:
   enum ForAllType{
     Cells,
     Vertices,
-    Edges
+    Edges,
+    ElementSpheres
   };
 
 private:
@@ -2055,6 +2059,35 @@ public:
   }
 
   static bool classof(const RenderAllStmt *) { return true; }
+  
+  void setElementColor(Expr* e){
+    ElementColor = e;
+  }
+
+  Expr* getElementColor(){
+    return ElementColor;
+  }
+  
+  void setElementRadius(Expr* e){
+    ElementRadius = e;
+  }
+  
+  Expr* getElementRadius(){
+    return ElementRadius;
+  }
+  
+  void setElementMember(MemberExpr* e){
+    ElementMember = e;
+  }
+  
+  MemberExpr* getElementMember(){
+    return ElementMember;
+  }
+  
+private:
+  MemberExpr* ElementMember;
+  Expr* ElementColor;
+  Expr* ElementRadius;
 };
 
 }  // end namespace clang

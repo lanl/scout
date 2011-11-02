@@ -85,6 +85,7 @@ namespace clang {
 // ndm
 
   class MeshDecl;
+  class MemberExpr;
 
   class RecordDecl;
   class CXXRecordDecl;
@@ -3195,7 +3196,8 @@ public:
     CellsInstance,
     VerticesInstance,
     FacesInstance,
-    EdgesInstance
+    EdgesInstance,
+    ElementsInstance
   };
 
 private:
@@ -3203,12 +3205,14 @@ private:
   MeshDecl* decl;
   InstanceType instanceType;
   MeshDimensionVec dims;
-
+  MemberExpr* elementsMember;
+  
 public:
 
   MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
     : Type(Mesh, QualType(), false, false, false, false),
-  decl(const_cast<MeshDecl*>(D)), instanceType(IT) {}
+  decl(const_cast<MeshDecl*>(D)), instanceType(IT),
+  elementsMember(0) {}
 
   MeshDecl* getDecl() const {
     return decl;
@@ -3237,6 +3241,14 @@ public:
     return T->getTypeClass() == Mesh;
   }
 
+  MemberExpr* getElementsMember(){
+    return elementsMember;
+  }
+  
+  void setElementsMember(MemberExpr* me){
+    elementsMember = me;
+  }
+  
 };
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast

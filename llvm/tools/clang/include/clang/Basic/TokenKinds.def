@@ -262,7 +262,9 @@ SCOUT_KEYWORD(faces)
 SCOUT_KEYWORD(edges)
 SCOUT_KEYWORD(window)
 SCOUT_KEYWORD(image)
-
+SCOUT_KEYWORD(as)
+SCOUT_KEYWORD(elements)
+SCOUT_KEYWORD(spheres)
 
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)

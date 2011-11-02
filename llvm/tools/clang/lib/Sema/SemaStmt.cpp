@@ -2942,3 +2942,55 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   return true;
 }
 
+const MeshType* 
+Sema::ActOnRenderAllElementsVariable(Scope* S,
+                                     MemberExpr* ME,
+                                     tok::TokenKind VariableType,
+                                     IdentifierInfo* ElementsVariableII,
+                                     SourceLocation ElementsVariableLoc){
+ 
+  LookupResult LResult(*this, ElementsVariableII, ElementsVariableLoc,
+                       LookupOrdinaryName);
+  
+  LookupName(LResult, S);
+  
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(ElementsVariableLoc, 
+         diag::err_elements_variable_shadows_renderall) << ElementsVariableII;
+    
+    return 0;
+  }
+  
+  if(SCLStack.empty()){
+    Diag(ElementsVariableLoc, diag::err_elements_not_in_forall_renderall);
+    return 0;
+  }
+    
+  MeshType::InstanceType IT;
+                              
+  switch(VariableType){
+    case tok::kw_elements:
+      IT = MeshType::ElementsInstance;
+      break;
+    default:
+      assert(false && "invalid elements variable type");
+  }
+  
+  VarDecl* MD = SCLStack.back();
+  const MeshType* T = dyn_cast<MeshType>(MD->getType().getTypePtr());
+  
+  MeshType* MT = new MeshType(T->getDecl(), IT);
+  MT->setDimensions(T->dimensions());
+  MT->setElementsMember(ME);
+  
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, ElementsVariableLoc,
+                            ElementsVariableII, QualType(MT, 0));
+  
+  PushOnScopeChains(D, S, true);
+  
+  SCLStack.push_back(D);
+  
+  return MT;
+}
+
