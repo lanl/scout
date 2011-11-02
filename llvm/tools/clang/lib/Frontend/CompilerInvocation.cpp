@@ -293,11 +293,11 @@ static void DiagnosticOptsToArgs(const DiagnosticOptions &Opts,
   else if (Opts.ShowCategories == 2)
     Res.push_back("-fdiagnostics-show-category=name");
   switch (Opts.Format) {
-  case DiagnosticOptions::Clang: 
+  case DiagnosticOptions::Clang:
     Res.push_back("-fdiagnostics-format=clang"); break;
-  case DiagnosticOptions::Msvc:  
+  case DiagnosticOptions::Msvc:
     Res.push_back("-fdiagnostics-format=msvc");  break;
-  case DiagnosticOptions::Vi:    
+  case DiagnosticOptions::Vi:
     Res.push_back("-fdiagnostics-format=vi");    break;
   }
   if (Opts.ErrorLimit) {
@@ -427,7 +427,7 @@ static void FrontendOptsToArgs(const FrontendOptions &Opts,
   // ndm - View AST flag
   if (Opts.ViewAST)
     Res.push_back("-view-ast");
-  
+
   if (Opts.ShowTimers)
     Res.push_back("-ftime-report");
   if (Opts.ShowVersion)
@@ -532,20 +532,20 @@ static void HeaderSearchOptsToArgs(const HeaderSearchOptions &Opts,
       case frontend::After:
         Res.push_back("-idirafter");
         break;
-        
+
       case frontend::Quoted:
         Res.push_back("-iquote");
         break;
-        
+
       case frontend::System:
         Res.push_back("-isystem");
         break;
-        
+
       case frontend::IndexHeaderMap:
         Res.push_back("-index-header-map");
         Res.push_back(E.IsFramework? "-F" : "-I");
         break;
-        
+
       case frontend::CSystem:
         Res.push_back("-c-isystem");
         break;
@@ -561,7 +561,7 @@ static void HeaderSearchOptsToArgs(const HeaderSearchOptions &Opts,
       case frontend::ObjCXXSystem:
         Res.push_back("-objcxx-isystem");
         break;
-        
+
       case frontend::Angled:
         Res.push_back(E.IsFramework ? "-F" : "-I");
         break;
@@ -730,10 +730,10 @@ static void LangOptsToArgs(const LangOptions &Opts,
     Res.push_back("-fobjc-runtime-has-weak");
   if (!Opts.ObjCInferRelatedResultType)
     Res.push_back("-fno-objc-infer-related-result-type");
-  
+
   if (Opts.AppleKext)
     Res.push_back("-fapple-kext");
-  
+
   if (Opts.getVisibilityMode() != DefaultVisibility) {
     Res.push_back("-fvisibility");
     if (Opts.getVisibilityMode() == HiddenVisibility) {
@@ -993,6 +993,9 @@ static void ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.Inlining = (Opts.OptimizationLevel > 1) ? CodeGenOptions::NormalInlining
     : CodeGenOptions::OnlyAlwaysInlining;
 
+  // Enable Scout NVIDIA GPU support if OPT_gpu is present.
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+
   Opts.DebugInfo = Args.hasArg(OPT_g);
   Opts.LimitDebugInfo = Args.hasArg(OPT_flimit_debug_info);
   Opts.DisableLLVMOpts = Args.hasArg(OPT_disable_llvm_optzns);
@@ -1133,15 +1136,15 @@ static void ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
     Args.getLastArgValue(OPT_fdiagnostics_format, "clang");
   if (Format == "clang")
     Opts.Format = DiagnosticOptions::Clang;
-  else if (Format == "msvc") 
+  else if (Format == "msvc")
     Opts.Format = DiagnosticOptions::Msvc;
-  else if (Format == "vi") 
+  else if (Format == "vi")
     Opts.Format = DiagnosticOptions::Vi;
-  else 
+  else
     Diags.Report(diag::err_drv_invalid_value)
       << Args.getLastArg(OPT_fdiagnostics_format)->getAsString(Args)
       << Format;
-  
+
   Opts.ShowSourceRanges = Args.hasArg(OPT_fdiagnostics_print_source_range_info);
   Opts.ShowParseableFixits = Args.hasArg(OPT_fdiagnostics_parseable_fixits);
   Opts.VerifyDiagnostics = Args.hasArg(OPT_verify);
@@ -1278,10 +1281,10 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.ShowGlobalSymbolsInCodeCompletion
     = !Args.hasArg(OPT_no_code_completion_globals);
   Opts.ShowStats = Args.hasArg(OPT_print_stats);
-  
+
   // ndm - Scout View AST flag
   Opts.ViewAST = Args.hasArg(OPT_view_ast);
-  
+
   Opts.ShowTimers = Args.hasArg(OPT_ftime_report);
   Opts.ShowVersion = Args.hasArg(OPT_version);
   Opts.ASTMergeFiles = Args.getAllArgValues(OPT_ast_merge);
@@ -1394,10 +1397,10 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   Opts.ResourceDir = Args.getLastArgValue(OPT_resource_dir);
   Opts.ModuleCachePath = Args.getLastArgValue(OPT_fmodule_cache_path);
   Opts.DisableModuleHash = Args.hasArg(OPT_fdisable_module_hash);
-  
+
   // Add -I..., -F..., and -index-header-map options in order.
   bool IsIndexHeaderMap = false;
-  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F, 
+  for (arg_iterator it = Args.filtered_begin(OPT_I, OPT_F,
                                              OPT_index_header_map),
        ie = Args.filtered_end(); it != ie; ++it) {
     if ((*it)->getOption().matches(OPT_index_header_map)) {
@@ -1405,10 +1408,10 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
       IsIndexHeaderMap = true;
       continue;
     }
-        
-    frontend::IncludeDirGroup Group 
+
+    frontend::IncludeDirGroup Group
       = IsIndexHeaderMap? frontend::IndexHeaderMap : frontend::Angled;
-    
+
     Opts.AddPath((*it)->getValue(Args), Group, true,
                  /*IsFramework=*/ (*it)->getOption().matches(OPT_F), false);
     IsIndexHeaderMap = false;
@@ -1558,7 +1561,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(Args) << A->getValue(Args);
     else {
-      // Valid standard, check to make sure language and standard are compatable.    
+      // Valid standard, check to make sure language and standard are compatable.
       const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);
       switch (IK) {
       case IK_C:
@@ -1634,7 +1637,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     if (Args.hasArg(OPT_fno_objc_infer_related_result_type))
       Opts.ObjCInferRelatedResultType = 0;
   }
-    
+
   if (Args.hasArg(OPT_fgnu89_inline))
     Opts.GNUInline = 1;
 
@@ -1866,7 +1869,7 @@ static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
 
     Opts.addRemappedFile(Split.first, Split.second);
   }
-  
+
   if (Arg *A = Args.getLastArg(OPT_fobjc_arc_cxxlib_EQ)) {
     StringRef Name = A->getValue(Args);
     unsigned Library = llvm::StringSwitch<unsigned>(Name)
@@ -1942,7 +1945,7 @@ void CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   }
   // FIXME: ParsePreprocessorArgs uses the FileManager to read the contents of
   // PCH file and find the original header name. Remove the need to do that in
-  // ParsePreprocessorArgs and remove the FileManager 
+  // ParsePreprocessorArgs and remove the FileManager
   // parameters from the function and the "FileManager.h" #include.
   FileManager FileMgr(Res.getFileSystemOpts());
   ParsePreprocessorArgs(Res.getPreprocessorOpts(), *Args, FileMgr, Diags);
@@ -1956,14 +1959,14 @@ namespace {
     llvm::SmallVector<uint64_t, 16> Data;
     unsigned CurBit;
     uint64_t CurValue;
-    
+
   public:
     ModuleSignature() : CurBit(0), CurValue(0) { }
-    
+
     void add(uint64_t Value, unsigned Bits);
     void add(StringRef Value);
     void flush();
-    
+
     llvm::APInt getAsInteger() const;
   };
 }
@@ -1974,10 +1977,10 @@ void ModuleSignature::add(uint64_t Value, unsigned int NumBits) {
     CurBit += NumBits;
     return;
   }
-  
+
   // Add the current word.
   Data.push_back(CurValue);
-  
+
   if (CurBit)
     CurValue = Value >> (64-CurBit);
   else
@@ -1988,7 +1991,7 @@ void ModuleSignature::add(uint64_t Value, unsigned int NumBits) {
 void ModuleSignature::flush() {
   if (CurBit == 0)
     return;
-  
+
   Data.push_back(CurValue);
   CurBit = 0;
   CurValue = 0;
@@ -2005,10 +2008,10 @@ llvm::APInt ModuleSignature::getAsInteger() const {
 
 std::string CompilerInvocation::getModuleHash() const {
   ModuleSignature Signature;
-  
+
   // Start the signature with the compiler version.
   Signature.add(getClangFullRepositoryVersion());
-  
+
   // Extend the signature with the language options
 #define LANGOPT(Name, Bits, Default, Description) \
   Signature.add(LangOpts.Name, Bits);
@@ -2017,7 +2020,7 @@ std::string CompilerInvocation::getModuleHash() const {
 #define BENIGN_LANGOPT(Name, Bits, Default, Description)
 #define BENIGN_ENUM_LANGOPT(Name, Type, Bits, Default, Description)
 #include "clang/Basic/LangOptions.def"
-  
+
   // Extend the signature with the target triple
   llvm::Triple T(TargetOpts.Triple);
   Signature.add((unsigned)T.getArch(), 5);
@@ -2028,7 +2031,7 @@ std::string CompilerInvocation::getModuleHash() const {
   // Extend the signature with preprocessor options.
   Signature.add(getPreprocessorOpts().UsePredefines, 1);
   Signature.add(getPreprocessorOpts().DetailedRecord, 1);
-  
+
   // We've generated the signature. Treat it as one large APInt that we'll
   // encode in base-36 and return.
   Signature.flush();

@@ -604,22 +604,22 @@ def nostdincxx : Flag<"-nostdinc++">,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nobuiltininc : Flag<"-nobuiltininc">,
   HelpText<"Disable builtin #include directories">;
-def fmodule_cache_path : Separate<"-fmodule-cache-path">, 
+def fmodule_cache_path : Separate<"-fmodule-cache-path">,
   MetaVarName<"<directory>">,
-  HelpText<"Specify the module cache path">;           
+  HelpText<"Specify the module cache path">;
 def fdisable_module_hash : Flag<"-fdisable-module-hash">,
   HelpText<"Disable the module hash">;
 def fauto_module_import : Flag<"-fauto-module-import">,
   HelpText<"Automatically translate #include/#import into module imports "
            "when possible">;
-           
+
 def F : JoinedOrSeparate<"-F">, MetaVarName<"<directory>">,
   HelpText<"Add directory to framework include search path">;
 def I : JoinedOrSeparate<"-I">, MetaVarName<"<directory>">,
   HelpText<"Add directory to include search path">;
 def idirafter : JoinedOrSeparate<"-idirafter">, MetaVarName<"<directory>">,
   HelpText<"Add directory to AFTER include search path">;
-def index_header_map : Flag<"-index-header-map">, 
+def index_header_map : Flag<"-index-header-map">,
   HelpText<"Make the next included directory (-I or -F) an indexer header map">;
 def iquote : JoinedOrSeparate<"-iquote">, MetaVarName<"<directory>">,
   HelpText<"Add directory to QUOTE include search path">;
@@ -716,3 +716,5 @@ def cl_std_EQ : Joined<"-cl-std=">,
 //===----------------------------------------------------------------------===//
 def view_ast : Flag<"-view-ast">,
 HelpText<"View the AST of a parsed file with GraphViz">;
+def gpu : Flag<"-gpu">,
+HelpText<"Enable NVIDIA GPU support.">;
