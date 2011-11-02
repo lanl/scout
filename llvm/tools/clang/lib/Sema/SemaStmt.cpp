@@ -2501,40 +2501,39 @@ namespace{
         std::string name = fd->getName();
         if(name == "cshift"){
           unsigned args = E->getNumArgs();
-          
+
           const MeshType* mt = fs_->getMeshType();
-          MeshDecl* md = mt->getDecl();
-          
+
           if(args != mt->dimensions().size() + 1){
             sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
-            error_ = true;            
+            error_ = true;
           }
           else{
             Expr* fe = E->getArg(0);
             if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
               fe = ce->getSubExpr();
             }
-            
+
             if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
               if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
                 ValueDecl* bd = dr->getDecl();
                 if(!isa<MeshType>(bd->getType().getTypePtr())){
                   sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-                  error_ = true; 
+                  error_ = true;
                 }
               }
             }
             else{
               sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
-              error_ = true; 
+              error_ = true;
             }
           }
         }
       }
-      
+
       VisitChildren(E);
     }
-    
+
     void VisitChildren(Stmt* S){
       for(Stmt::child_iterator I = S->child_begin(),
           E = S->child_end(); I != E; ++I){
@@ -2632,11 +2631,11 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
   // perform other semantic checks
   ForAllVisitor v(*this, FS);
   v.Visit(Body);
-  
+
   if(v.error()){
     return StmtError();
   }
-  
+
   return Owned(FS);
 }
 
@@ -2815,7 +2814,7 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 
   MeshType* MT = new MeshType(MD, IT);
   MT->setDimensions(cast<MeshType>(T)->dimensions());
-  
+
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
                             LoopVariableII, QualType(MT, 0));
