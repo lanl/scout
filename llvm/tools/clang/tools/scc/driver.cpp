@@ -468,11 +468,15 @@ int main(int argc_, const char **argv_) {
   ScoutArgs.push_back(SaveStringInSet(SavedStrings, "-fblocks"));
 
   std::string sccPath = TheDriver.Dir;
-  
+
   sccPath = llvm::sys::path::parent_path(sccPath);
   std::string scIncludeOpt = "-I" + sccPath + "/../include";
 
+  // Scout: Add Cuda include directory.
+  std::string scCudaInclude = "-I/usr/local/cuda/include/";
+
   ScoutArgs.push_back(SaveStringInSet(SavedStrings, scIncludeOpt.c_str()));
+  ScoutArgs.push_back(SaveStringInSet(SavedStrings, scCudaInclude.c_str()));
 
   argv.insert(&argv[argv.size() - 1], ScoutArgs.begin(), ScoutArgs.end());
 

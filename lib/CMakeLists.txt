@@ -12,5 +12,5 @@ project(ScoutLibraries)
 
 add_subdirectory(standard)    # Scout's standard library
 add_subdirectory(runtime)     # Scout's runtime library
-add_subdirectory(driver)      # Scout's driver library (PTX and CUDA)
-add_subdirectory(compiler)    # Scout's LLVM compiler passes
+#add_subdirectory(driver)      # Scout's driver library (PTX and CUDA)
+#add_subdirectory(compiler)    # Scout's LLVM compiler passes
