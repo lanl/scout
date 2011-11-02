@@ -2259,21 +2259,29 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   else
     assert(Tok.is(tok::kw_renderall) && "Not a renderall stmt!");
 
-  SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall'.
+  SourceLocation ForAllLoc = ConsumeToken();  // eat the 'forall' / 'renderall'
 
   tok::TokenKind VariableType = Tok.getKind();
 
-  ForAllStmt::ForAllType Type;
+  bool elements = false;
+  
+  ForAllStmt::ForAllType FT;
   switch(VariableType) {
     case tok::kw_cells:
-      Type = ForAllStmt::Cells;
+      FT = ForAllStmt::Cells;
       break;
     case tok::kw_edges:
-      Type = ForAllStmt::Edges;
+      FT = ForAllStmt::Edges;
       break;
     case tok::kw_vertices:
-      Type = ForAllStmt::Vertices;
+      FT = ForAllStmt::Vertices;
       break;
+    case tok::kw_elements:
+      if(!ForAll){
+        elements = true;
+        break;
+      }
+      // fall through if this is a forall
     default: {
       Diag(Tok, diag::err_expected_vertices_cells);
       SkipUntil(tok::semi);
@@ -2299,129 +2307,283 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   ConsumeToken();
 
-  if(Tok.isNot(tok::kw_of)){
-    Diag(Tok, diag::err_expected_of_kw);
-    SkipUntil(tok::semi);
-    return StmtError();
+  if(elements){
+    if(Tok.isNot(tok::kw_in)){
+      Diag(Tok, diag::err_expected_in_kw);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }  
   }
-
+  else{
+    if(Tok.isNot(tok::kw_of)){
+      Diag(Tok, diag::err_expected_of_kw);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }    
+  }
+  
   ConsumeToken();
 
-  if(Tok.isNot(tok::identifier)){
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::semi);
-    return StmtError();
+  IdentifierInfo* MeshII = 0;
+  SourceLocation MeshLoc;
+  
+  MemberExpr* ElementMember = 0;
+  Expr* ElementColor = 0;
+  Expr* ElementRadius = 0;
+  
+  const MeshType *MT;
+  
+  if(elements){
+    if(MemberExpr* me = dyn_cast<MemberExpr>(ParseExpression().get())){
+      if(FieldDecl* fd = dyn_cast<FieldDecl>(me->getMemberDecl())){
+        
+        if(const ArrayType* at = 
+           dyn_cast<ArrayType>(fd->getType().getTypePtr())){
+        }
+        else{
+          Diag(Tok, diag::err_not_array_renderall_elements);
+          SkipUntil(tok::semi);
+          return StmtError();
+        }
+
+        if(fd->meshFieldType() == FieldDecl::FieldCells){
+          ElementMember = me;
+        }
+      }
+    }
+
+    if(!ElementMember){
+      Diag(Tok, diag::err_expected_mesh_field);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+    
+    if(Tok.isNot(tok::kw_as)){
+      Diag(Tok, diag::err_expected_as_kw);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+
+    ConsumeToken();
+    
+    if(Tok.isNot(tok::kw_spheres)){
+      Diag(Tok, diag::err_expected_spheres_kw);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+    
+    ConsumeToken();
+    
+    FT = ForAllStmt::ElementSpheres;
+    
+    if(Tok.isNot(tok::l_paren)){
+      Diag(Tok, diag::err_expected_lparen);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+    
+    ConsumeParen();
+    
+    for(unsigned i = 0; i < 2; ++i){
+      if(Tok.is(tok::r_paren)){
+        break;
+      }
+      
+      if(Tok.is(tok::identifier)){
+        IdentifierInfo* II = Tok.getIdentifierInfo();
+        SourceLocation IILoc = Tok.getLocation();
+        
+        ConsumeToken();
+        
+        if(Tok.isNot(tok::equal)){
+          Diag(Tok, diag::err_expected_equal_after_element_default);
+          SkipUntil(tok::semi);
+          return StmtError();
+        }
+        
+        ConsumeToken();
+        
+        ExprResult result = ParseAssignmentExpression();
+        
+        if(result.isInvalid()){
+          return StmtError();
+        }
+        
+        if(II->getName() == "radius"){
+          if(ElementRadius){
+            Diag(IILoc, diag::err_duplicate_radius_default);
+            SkipUntil(tok::semi);
+            return StmtError();
+          }
+          
+          ElementRadius = result.get();
+        }
+        else if(II->getName() == "color"){
+          if(ElementColor){
+            Diag(Tok, diag::err_duplicate_color_default);
+            SkipUntil(tok::semi);
+            return StmtError();
+          }
+          
+          ElementColor = result.get();
+        }
+        else{
+          Diag(IILoc, diag::err_invalid_default_element);
+          SkipUntil(tok::semi);
+          return StmtError();
+        }
+      }
+    }
+    
+    if(Tok.isNot(tok::r_paren)){
+      Diag(Tok, diag::err_expected_rparen);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+    
+    ConsumeParen();
   }
-
-  IdentifierInfo* MeshII = Tok.getIdentifierInfo();
-  SourceLocation MeshLoc = Tok.getLocation();
-
-  ConsumeToken();
+  else{
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+    
+    MeshII = Tok.getIdentifierInfo();
+    MeshLoc = Tok.getLocation();
+    
+    ConsumeToken();    
+  }
 
   bool success = false;
-  if(ForAll)
+  if(ForAll){
     success = Actions.ActOnForAllLoopVariable(getCurScope(),
                                               VariableType,
                                               LoopVariableII,
                                               LoopVariableLoc,
                                               MeshII,
                                               MeshLoc);
-   else
-     success = Actions.ActOnRenderAllLoopVariable(getCurScope(),
+  }
+  else{
+    if(elements){
+      
+      MT = Actions.ActOnRenderAllElementsVariable(getCurScope(),
+                                                  ElementMember,
                                                   VariableType,
                                                   LoopVariableII,
-                                                  LoopVariableLoc,
-                                                  MeshII,
-                                                  MeshLoc);
+                                                  LoopVariableLoc);
+      
+      if(MT){
+        success = true;
+      }
+      
+    }
+    else{
+    
+      success = Actions.ActOnRenderAllLoopVariable(getCurScope(),
+                                                   VariableType,
+                                                   LoopVariableII,
+                                                   LoopVariableLoc,
+                                                   MeshII,
+                                                   MeshLoc);
+    }
+  }
+  
   if(!success) {
     return StmtError();
   }
 
-  // Lookup the meshtype and store it for the ForAllStmt Constructor.
-  LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
-  Actions.LookupName(LR, getCurScope());
-  const MeshType *MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
-
-  size_t FieldCount = 0;
-  const MeshDecl* MD = MT->getDecl();
-
-  for(MeshDecl::field_iterator FI = MD->field_begin(),
-      FE = MD->field_end(); FI != FE; ++FI){
-    FieldDecl* FD = *FI;
-    switch(Type){
-      case ForAllStmt::Cells:
-        if(!FD->isMeshImplicit() &&
-           FD->meshFieldType() == FieldDecl::FieldCells){
-          ++FieldCount;
-        }
-        break;
-      case ForAllStmt::Edges:
-        if(!FD->isMeshImplicit() &&
-           FD->meshFieldType() == FieldDecl::FieldEdges){
-          ++FieldCount;
-        }
-        break;
-      case ForAllStmt::Vertices:
-        if(!FD->isMeshImplicit() &&
-           FD->meshFieldType() == FieldDecl::FieldVertices){
-          ++FieldCount;
-        }
-        break;
-    }
-  }
-
-  if(FieldCount == 0){
-    switch(Type){
-      case ForAllStmt::Cells:
-        Diag(ForAllLoc, diag::warn_no_cells_fields_forall);
-        break;
-      case ForAllStmt::Edges:
-        Diag(ForAllLoc, diag::warn_no_edges_fields_forall);
-        break;
-      case ForAllStmt::Vertices:
-        Diag(ForAllLoc, diag::warn_no_vertices_fields_forall);
-        break;
-    }
-  }
-
+  
   Expr* Op;
-
   SourceLocation LParenLoc;
   SourceLocation RParenLoc;
-
-  if(Tok.is(tok::kw_where)){
-    ConsumeToken();
-    if(Tok.isNot(tok::l_paren)){
-      Diag(Tok, diag::err_invalid_forall_op);
-      SkipUntil(tok::l_brace);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    LParenLoc = ConsumeParen();
-
-    ExprResult OpResult = ParseExpression();
-    if(OpResult.isInvalid()){
-      Diag(Tok, diag::err_invalid_forall_op);
-      SkipUntil(tok::l_brace);
-      ConsumeToken();
-      return StmtError();
-    }
-
-    Op = OpResult.get();
-
-    if(Tok.isNot(tok::r_paren)){
-      Diag(Tok, diag::err_expected_rparen);
-      SkipUntil(tok::l_brace);
-      ConsumeToken();
-      return StmtError();
-    }
-    RParenLoc = ConsumeParen();
-  }
-  else{
+  
+  if(!elements){
     Op = 0;
-  }
+    
+    // Lookup the meshtype and store it for the ForAllStmt Constructor.
+    LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
+    Actions.LookupName(LR, getCurScope());
+    MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
+    
+    size_t FieldCount = 0;
+    const MeshDecl* MD = MT->getDecl();
+    
+    for(MeshDecl::field_iterator FI = MD->field_begin(),
+        FE = MD->field_end(); FI != FE; ++FI){
+      FieldDecl* FD = *FI;
+      switch(FT){
+        case ForAllStmt::Cells:
+          if(!FD->isMeshImplicit() &&
+             FD->meshFieldType() == FieldDecl::FieldCells){
+            ++FieldCount;
+          }
+          break;
+        case ForAllStmt::Edges:
+          if(!FD->isMeshImplicit() &&
+             FD->meshFieldType() == FieldDecl::FieldEdges){
+            ++FieldCount;
+          }
+          break;
+        case ForAllStmt::Vertices:
+          if(!FD->isMeshImplicit() &&
+             FD->meshFieldType() == FieldDecl::FieldVertices){
+            ++FieldCount;
+          }
+          break;
+      }
+    }
+    
+    if(FieldCount == 0){
+      switch(FT){
+        case ForAllStmt::Cells:
+          Diag(ForAllLoc, diag::warn_no_cells_fields_forall);
+          break;
+        case ForAllStmt::Edges:
+          Diag(ForAllLoc, diag::warn_no_edges_fields_forall);
+          break;
+        case ForAllStmt::Vertices:
+          Diag(ForAllLoc, diag::warn_no_vertices_fields_forall);
+          break;
+      }
+    }
+        
+    if(Tok.is(tok::kw_where)){
+      ConsumeToken();
+      if(Tok.isNot(tok::l_paren)){
+        Diag(Tok, diag::err_invalid_forall_op);
+        SkipUntil(tok::l_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+      
+      LParenLoc = ConsumeParen();
+      
+      ExprResult OpResult = ParseExpression();
+      if(OpResult.isInvalid()){
+        Diag(Tok, diag::err_invalid_forall_op);
+        SkipUntil(tok::l_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+      
+      Op = OpResult.get();
+      
+      if(Tok.isNot(tok::r_paren)){
+        Diag(Tok, diag::err_expected_rparen);
+        SkipUntil(tok::l_brace);
+        ConsumeToken();
+        return StmtError();
+      }
+      RParenLoc = ConsumeParen();
+    }
+    else{
+      Op = 0;
+    }
 
+  }
+    
   SourceLocation BodyLoc = Tok.getLocation();
 
   StmtResult BodyResult(ParseStatement());
@@ -2445,7 +2607,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     assert(Block && "expected a block expression");
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
 
-    ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, Type, MT,
+    ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT,
                                            LoopVariableII, MeshII, LParenLoc,
                                            Op, RParenLoc, Body, Block);
     if(!ForAllResult.isUsable())
@@ -2465,8 +2627,15 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     assert(dims.size() >= 1);
 
-    std::string bc = "scoutBeginRenderAll(";
-
+    std::string bc;
+    
+    if(elements){
+      bc = "scoutBeginRenderAllElements(";
+    }
+    else{
+      bc = "scoutBeginRenderAll(";
+    }
+    
     for(size_t i = 0; i < 3; ++i){
       if(i > 0){
         bc += ", ";
@@ -2488,16 +2657,29 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     StmtsStack.back()->push_back(BR.get());
 
-    InsertCPPCode("scoutEndRenderAll();", BodyLoc);
+    if(elements){
+      InsertCPPCode("scoutEndRenderAllElements();", BodyLoc);
+    }
+    else{
+      InsertCPPCode("scoutEndRenderAll();", BodyLoc);      
+    }
 
-    ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, Type, MT,
+    ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT,
                                               LoopVariableII, MeshII, LParenLoc,
                                               Op, RParenLoc, Body, Block);
   }
 
   ForAllStmt *FAS;
   if(ForAllResult.get()->getStmtClass() == Stmt::RenderAllStmtClass) {
-    FAS = cast<ForAllStmt>(cast<RenderAllStmt>(ForAllResult.get()));
+    RenderAllStmt* RAS = cast<RenderAllStmt>(ForAllResult.get());
+    
+    if(elements){
+      RAS->setElementMember(ElementMember);
+      RAS->setElementColor(ElementColor);
+      RAS->setElementRadius(ElementRadius);
+    }
+    
+    FAS = cast<ForAllStmt>(RAS);
   } else {
     FAS = cast<ForAllStmt>(ForAllResult.get());
   }

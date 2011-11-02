@@ -22,6 +22,8 @@ namespace clang {
   class DiagnosticsEngine;
   class SourceLocation;
 
+  // ndm - changed parse space enums to 400
+  
   // Import the diagnostic enums themselves.
   namespace diag {
     // Start position for diagnostics.
@@ -30,7 +32,7 @@ namespace clang {
       DIAG_START_FRONTEND = DIAG_START_DRIVER   +  100,
       DIAG_START_LEX      = DIAG_START_FRONTEND +  120,
       DIAG_START_PARSE    = DIAG_START_LEX      +  300,
-      DIAG_START_AST      = DIAG_START_PARSE    +  300,
+      DIAG_START_AST      = DIAG_START_PARSE    +  400,
       DIAG_START_SEMA     = DIAG_START_AST      +  100,
       DIAG_START_ANALYSIS = DIAG_START_SEMA     + 3000,
       DIAG_UPPER_LIMIT    = DIAG_START_ANALYSIS +  100

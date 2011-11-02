@@ -4776,6 +4776,8 @@ def err_loop_variable_shadows_forall : Error<
 "forall loop variable %0 shadows an existing identifier">;
 def err_loop_variable_shadows_renderall : Error<
 "renderall loop variable %0 shadows an existing identifier">;
+def err_elements_variable_shadows_renderall : Error<
+"renderall elements variable %0 shadows an existing identifier">;
 
 def err_unknown_mesh_variable_renderall : Error<
 "unknown mesh variable %0 while parsing renderall statement">;
@@ -4817,6 +4819,9 @@ def err_cshift_field : Error<
 def err_pointer_field_mesh : Error<
 "mesh field element must be non-pointer type">;
 }
+
+def err_elements_not_in_forall_renderall : Error<
+"renderall elements must appear within a forall loop">;
 
 let CategoryName = "Modules Issue" in {
 def err_module_private_follows_public : Error<

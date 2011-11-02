@@ -585,6 +585,8 @@ def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keywo
 def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
 def err_expected_of_kw: Error<"expected 'of' keyword">;
 def err_expected_in_kw: Error<"expected 'in' keyword">;
+def err_expected_as_kw: Error<"expected 'as' keyword">;
+def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
 def err_invalid_renderall_body: Error<"Invalid renderall body">;
 def err_invalid_forall_op: Error<"Invalid forall op">;
 def err_invalid_forall_body: Error<"Invalid forall body">;
@@ -623,6 +625,22 @@ def err_invalid_start_forall_array : Error<"invalid start in forall">;
 def err_invalid_end_forall_array : Error<"invalid end in forall">;
 
 def err_invalid_stride_forall_array : Error<"invalid stride in forall">;
+
+def err_expected_mesh_field : Error<"expected a mesh field">;
+
+def err_expected_equal_after_element_default : Error<
+"expected '=' after mesh element default">;
+
+def err_unknown_element_field : Error<"unknown element field">;
+
+def err_duplicate_radius_default : Error<"duplicate default given for radius">;
+
+def err_duplicate_color_default : Error<"duplicate default given for color">;
+
+def err_invalid_default_element : Error<
+"invalid default element, expected 'color' or 'radius'">;
+
+def err_not_array_renderall_elements: Error<"mesh field is not an array type">;
 
 def err_mismatch_forall_array : Error<
 "start/end/stride groups do not match number of induction variables">;

@@ -93,4 +93,8 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz);
 
 void scoutEndRenderAll();
 
+void scoutBeginRenderAllElements(size_t dx, size_t dy, size_t dz);
+
+void scoutEndRenderAllElements();
+
 #endif // SCOUT_SCH_

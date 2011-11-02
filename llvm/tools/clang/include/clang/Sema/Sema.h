@@ -6152,6 +6152,13 @@ public:
                                   IdentifierInfo* MeshII,
                                   SourceLocation MeshLoc);
 
+  const MeshType* 
+  ActOnRenderAllElementsVariable(Scope* S,
+                                 MemberExpr* ME,
+                                 tok::TokenKind VariableType,
+                                 IdentifierInfo* ElementsVariableII,
+                                 SourceLocation ElementsVariableLoc);
+  
   StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
                              ForAllStmt::ForAllType Type,
                              const MeshType *MT,

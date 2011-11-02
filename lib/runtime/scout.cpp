@@ -185,6 +185,16 @@ void scoutEndRenderAll(){
   }
 }
 
+void scoutBeginRenderAllElements(size_t dx, size_t dy, size_t dz){
+  _dx = dx;
+  _dy = dy;
+  _dz = dz;
+}
+
+void scoutEndRenderAllElements(){
+  
+}
+
 void scoutEnd(){
   __sc_destroy_uniform_renderall(_uniform_renderall);
 }
