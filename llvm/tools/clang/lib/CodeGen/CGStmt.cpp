@@ -615,7 +615,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
-      MeshMembers[name] = std::make_pair(var, Ty);
+      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var), Ty);
     }
   }
 

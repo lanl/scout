@@ -2635,6 +2635,6 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   }
   llvm::Value *var = MeshMembers[memberName].first;
   QualType Ty = MeshMembers[memberName].second;
-  llvm::Value *addr = Builder.CreateInBoundsGEP(Builder.CreateLoad(var), arg, "arrayidx");
+  llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");
   return MakeAddrLValue(addr, Ty);
 }
