@@ -80,7 +80,8 @@ set(LLVM_TARGETS_TO_BUILD X86 CppBackend CBackend PTXBackend
 # use lib/CMakeLists.txt to add a library vs. adding lib/mylib
 # below.
 #
-add_subdirectory(llvm)        # scout compiler based on active llvm development.
+add_subdirectory(utils)       # some helpful utilities we use during the build process
+add_subdirectory(llvm)        # scout compiler based on active llvm development
 add_subdirectory(lib)         # scout runtime and standard libraries
 add_subdirectory(sandbox)     # proof-of-concept test codes
 add_subdirectory(tools)       # various command line tools

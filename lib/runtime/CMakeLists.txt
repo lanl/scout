@@ -29,18 +29,58 @@ else()
 endif()
 
 if(SCOUT_ENABLE_RT_OPENGL) 
+  # Add OpenGL source files to the build...
   file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
+
+  # Add supporting opengl shaders to the build dependencies.  In this
+  # case we actually package up the shaders into the library source by
+  # converting them into C/C++ constant char strings that are included
+  # into the build process...  See the toplevel utils/glsl2cstr for
+  # details...
+  file(GLOB gl_shaders opengl/glsl/*.glsl)
+  foreach(shader ${gl_shaders}) 
+
+    set(GLSL2CSTR ${SCOUT_BINARY_DIR}/bin/glsl2cstr)
+    get_filename_component(name ${shader} NAME_WE) # file name w/out extension
+
+    add_custom_command(
+      OUTPUT ${SCOUT_BINARY_DIR}/include/${name}.h
+      COMMAND ${GLSL2CSTR} 
+        --in ${shader} 
+	--out ${SCOUT_BINARY_DIR}/include/${name}.h 
+        --name ${name}
+      DEPENDS ${GLSL2CSTR} ${shader}
+      )
+
+    add_custom_target(generate_${name}
+      ALL
+      DEPENDS ${SCOUT_BINARY_DIR}/include/${name}.h ${GLSL2CSTR}
+      )
+  endforeach()
+
+  # Update the include path to include the generated include files that
+  # hold the individual shaders... 
+  include_directories(${SCOUT_BINARY_DIR}/include)
+
 endif()
 
+# Check to see if we should add PNG support... 
 if(SCOUT_ENABLE_PNG_SUPPORT) 
   file(GLOB png_srcs png/*.cpp)
 endif()
+
 
 if (SCOUT_ENABLE_RT_THREADS) 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-# We probably want the runtime to eventually be a dynamic library...
+
+# Finally add the library and dependencies...  Note that if we
+# are running w/out PNG/OpenGL support the associated variables
+# are empty....  This is the best way (to date) that I've found
+# to deal with the cruft of handling multiple configurations of
+# the runtime...
 add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs})
+
 
