@@ -599,6 +599,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   SetImplicitMeshVariable(meshName);
 
   const MeshType *MT = S.getMeshType();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
 
   typedef MeshDecl::field_iterator MeshFieldIterator;
@@ -673,7 +674,15 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
   if(!hasCalledFn(ForallFn, "printf")) {
-    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
+    SmallVector< llvm::Value *, 3 > args;
+    args.push_back(ForallFn);
+    // Add dimension information to kernel.
+    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+      args.push_back(TranslateExprToValue(S.getStart(i)));
+      args.push_back(TranslateExprToValue(S.getEnd(i)));
+    }
+    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
+                                                ArrayRef< llvm::Value * >(args)));
   }
 
   // ndm - temporarily disable blocks, for now just call the forall function
