@@ -592,6 +592,32 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG("EmitForAllStmtWrapper");
 
+  // Clear stale mesh elements.
+  MeshMembers.clear();
+  const IdentifierInfo *MeshII = S.getMesh();
+  llvm::StringRef meshName = MeshII->getName();
+  SetImplicitMeshVariable(meshName);
+
+  const MeshType *MT = S.getMeshType();
+  MeshDecl *MD = MT->getDecl();
+
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  for(unsigned i = 0; it != it_end; ++it, ++i) {
+
+    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
+    llvm::Value *baseAddr = GetImplicitMeshVariable();
+    if(!(name.equals("position") || name.equals("width") ||
+         name.equals("height") || name.equals("depth"))) {
+      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
+      addr = Builder.CreateLoad(addr);
+      llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
+      Builder.CreateStore(addr, var);
+      MeshMembers[name] = std::make_pair(var, Ty);
+    }
+  }
+
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -636,8 +662,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DT.runOnFunction(*CurFn);
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
-
-  //ForallFn->dump();
 
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
@@ -720,7 +744,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
       return EmitScalarExpr(E);
     default:
       return Builder.CreateLoad(EmitLValue(E).getAddress());
-  }
+ }
 }
 
 void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {

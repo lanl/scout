@@ -2603,18 +2603,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
                                            SmallVector< llvm::Value *, 3 > vals) {
   DEBUG("EmitMeshMemberExpr");
   const MeshType *MT = cast<MeshType>(VD->getType());
-  MeshDecl *MD = MT->getDecl();
   MeshType::MeshDimensionVec dims = MT->dimensions();
 
-  std::pair< FieldDecl *, int > field;
-  field = FindFieldDecl(MD, memberName);
-  int idx = field.second;
-  assert(idx != -1 && "Could not find field in Scout mesh!");
-
-  llvm::Value *baseAddr = GetImplicitMeshVariable();
-  llvm::StringRef name = field.first->getName();
-  llvm::Value *addr = Builder.CreateStructGEP(baseAddr, idx, name);
-  const QualType Ty = field.first->getType();
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
 
@@ -2633,7 +2623,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
       args[i] = Builder.CreateURem(shift, llvm::ConstantInt::get(i32Ty, dim));
     }
   }
-  
+
   llvm::Value *arg = args[0];
   for(unsigned i = 1, e = args.size(); i < e; ++i) {
     unsigned dim = 1;
@@ -2643,7 +2633,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
     arg = Builder.CreateAdd(arg, Builder.CreateMul(args[i],
                                                    llvm::ConstantInt::get(i32Ty, dim)));
   }
-
-  addr = Builder.CreateInBoundsGEP(Builder.CreateLoad(addr), arg, "arrayidx");
+  llvm::Value *var = MeshMembers[memberName].first;
+  QualType Ty = MeshMembers[memberName].second;
+  llvm::Value *addr = Builder.CreateInBoundsGEP(Builder.CreateLoad(var), arg, "arrayidx");
   return MakeAddrLValue(addr, Ty);
 }
