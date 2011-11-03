@@ -648,6 +648,17 @@ public:
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
 
+  bool isMeshMember(llvm::Argument *arg) {
+    typedef MemberMap::iterator MemberIterator;
+    for(MemberIterator it = MeshMembers.begin(),
+          end = MeshMembers.end(); it != end; ++it) {
+      if(arg->getName().startswith(it->first)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   llvm::StringRef toString(int i) {
     switch(i) {
     case 0: return "width";

@@ -615,7 +615,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
-      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var), Ty);
+      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
+      MeshMembers[name].first->setName(var->getName());
     }
   }
 
@@ -674,15 +675,30 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
   if(!hasCalledFn(ForallFn, "printf")) {
+    SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
+    // For each function argument, a bit to indicate whether it is
+    // a mesh member.
     SmallVector< llvm::Value *, 3 > args;
-    args.push_back(ForallFn);
-    // Add dimension information to kernel.
+    typedef llvm::Function::arg_iterator ArgIterator;
+    for(ArgIterator it = ForallFn->arg_begin(),
+          end = ForallFn->arg_end(); it != end; ++it) {
+      if(isMeshMember(it))
+        args.push_back(llvm::ConstantInt::get(i32Ty, 1));
+      else
+        args.push_back(llvm::ConstantInt::get(i32Ty, 0));
+    }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+
+    args.clear();
+    // Add dimension information.
     for(unsigned i = 0, e = dims.size(); i < e; ++i) {
       args.push_back(TranslateExprToValue(S.getStart(i)));
       args.push_back(TranslateExprToValue(S.getEnd(i)));
     }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
-                                                ArrayRef< llvm::Value * >(args)));
+                                                ArrayRef< llvm::Value * >(KMD)));
   }
 
   // ndm - temporarily disable blocks, for now just call the forall function
