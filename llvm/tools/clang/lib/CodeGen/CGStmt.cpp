@@ -592,6 +592,34 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG("EmitForAllStmtWrapper");
 
+  // Clear stale mesh elements.
+  MeshMembers.clear();
+  const IdentifierInfo *MeshII = S.getMesh();
+  llvm::StringRef meshName = MeshII->getName();
+  SetImplicitMeshVariable(meshName);
+
+  const MeshType *MT = S.getMeshType();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
+  MeshDecl *MD = MT->getDecl();
+
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  for(unsigned i = 0; it != it_end; ++it, ++i) {
+
+    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
+    llvm::Value *baseAddr = GetImplicitMeshVariable();
+    if(!(name.equals("position") || name.equals("width") ||
+         name.equals("height") || name.equals("depth"))) {
+      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
+      addr = Builder.CreateLoad(addr);
+      llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
+      Builder.CreateStore(addr, var);
+      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
+      MeshMembers[name].first->setName(var->getName());
+    }
+  }
+
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -637,8 +665,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
-  //ForallFn->dump();
-
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
@@ -649,7 +675,30 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
   if(!hasCalledFn(ForallFn, "printf")) {
-    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ForallFn));
+    SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
+    // For each function argument, a bit to indicate whether it is
+    // a mesh member.
+    SmallVector< llvm::Value *, 3 > args;
+    typedef llvm::Function::arg_iterator ArgIterator;
+    for(ArgIterator it = ForallFn->arg_begin(),
+          end = ForallFn->arg_end(); it != end; ++it) {
+      if(isMeshMember(it))
+        args.push_back(llvm::ConstantInt::get(i32Ty, 1));
+      else
+        args.push_back(llvm::ConstantInt::get(i32Ty, 0));
+    }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+
+    args.clear();
+    // Add dimension information.
+    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+      args.push_back(TranslateExprToValue(S.getStart(i)));
+      args.push_back(TranslateExprToValue(S.getEnd(i)));
+    }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
+                                                ArrayRef< llvm::Value * >(KMD)));
   }
 
   // ndm - temporarily disable blocks, for now just call the forall function
@@ -720,7 +769,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
       return EmitScalarExpr(E);
     default:
       return Builder.CreateLoad(EmitLValue(E).getAddress());
-  }
+ }
 }
 
 void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {

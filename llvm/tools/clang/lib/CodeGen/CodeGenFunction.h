@@ -635,6 +635,7 @@ public:
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< FieldDecl *, int > FieldPair;
   typedef std::map< llvm::StringRef, llvm::SmallVector< llvm::Value *, 3 > > Map;
+  typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   /// Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
   /// Scout forall implicit induction variables.
@@ -645,6 +646,18 @@ public:
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
+  MemberMap MeshMembers;
+
+  bool isMeshMember(llvm::Argument *arg) {
+    typedef MemberMap::iterator MemberIterator;
+    for(MemberIterator it = MeshMembers.begin(),
+          end = MeshMembers.end(); it != end; ++it) {
+      if(arg->getName().startswith(it->first)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   llvm::StringRef toString(int i) {
     switch(i) {
@@ -1892,7 +1905,7 @@ public:
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());
-  
+
 //                            llvm::SmallVector<llvm::Value*, 3> foo
 //                            = llvm::SmallVector<llvm::Value*, 3>());
 
