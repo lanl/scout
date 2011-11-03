@@ -18,6 +18,8 @@
 #ifndef SCOUT_GL_PROGRAM_H_
 #define SCOUT_GL_PROGRAM_H_
 
+#include <assert.h>
+
 #include <iostream>
 #include <string>
 #include <list>
