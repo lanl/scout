@@ -1,0 +1,19 @@
+#
+# ----- The Scout Programming Language
+#
+# This file is distributed under an open source license by Los Alamos
+# National Security, LCC.  See the file LICENSE.txt for details.
+#
+# See the file docs/build.html for instructions on how to build
+# Scout with CMake.
+#
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
+
+add_llvm_library(LLVMdoallToPTX
+  DoallToPTX.cpp
+)
+
+add_llvm_library_dependencies(LLVMdoallToPTX
+  scDriver
+)
