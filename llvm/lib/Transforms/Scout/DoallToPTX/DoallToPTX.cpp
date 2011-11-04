@@ -9,7 +9,7 @@
  *
  */
 
-#include "compiler/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
 using namespace llvm;
 
@@ -236,15 +236,30 @@ Module *DoallToPTX::CloneModule(const Module *M, ValueToValueMapTy &VMap) {
 
 bool DoallToPTX::runOnModule(Module &M) {
   // Interface to CUDA Driver API
-  IRBuilder<> Builder(getGlobalContext());
+  IRBuilder<> Builder(M.getContext());
   CudaDriver cuda(M, Builder, true);
 
   cuda.initialize();
-  cuda.finalize();
 
   NamedMDNode *NMDN = M.getNamedMetadata("scout.kernels");
-  for(unsigned i = 0, e = NMDN->getNumOperands(); i < e; ++i) {
-    Function *Fn = cast< Function >(NMDN->getOperand(i)->getOperand(0));
+  for(unsigned i = 0, e = NMDN->getNumOperands(); i < e; i+=1) {
+
+    MDNode *node = cast< MDNode >(NMDN->getOperand(i)->getOperand(0));
+    Function *Fn = cast< Function >(node->getOperand(0));
+
+    llvm::SmallVector< llvm::ConstantInt *, 3 > args;
+    node = cast< MDNode >(NMDN->getOperand(i)->getOperand(1));
+    for(unsigned j = 0, f = node->getNumOperands(); j < f; ++j) {
+      args.push_back(cast< ConstantInt >(node->getOperand(j)));
+    }
+    cuda.setFnArgAttributes(args);
+
+    args.clear();
+    node = cast< MDNode >(NMDN->getOperand(i)->getOperand(2));
+    for(unsigned j = 0, f = node->getNumOperands(); j < f; ++j) {
+      args.push_back(cast< ConstantInt >(node->getOperand(j)));
+    }
+    cuda.setDimensions(args);
 
     // Clone module.
     ValueToValueMapTy valueMap;

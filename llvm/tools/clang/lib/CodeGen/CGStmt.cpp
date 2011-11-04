@@ -674,7 +674,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
-  if(!hasCalledFn(ForallFn, "printf")) {
+  if(!hasCalledFn(ForallFn, "printf") && !isa< RenderAllStmt >(S)) {
     SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is

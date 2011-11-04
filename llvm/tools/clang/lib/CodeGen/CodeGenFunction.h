@@ -649,6 +649,10 @@ public:
   MemberMap MeshMembers;
 
   bool isMeshMember(llvm::Argument *arg) {
+    if(arg->getName().endswith("height")) return false;
+    if(arg->getName().endswith("width")) return false;
+    if(arg->getName().endswith("depth")) return false;
+
     typedef MemberMap::iterator MemberIterator;
     for(MemberIterator it = MeshMembers.begin(),
           end = MeshMembers.end(); it != end; ++it) {

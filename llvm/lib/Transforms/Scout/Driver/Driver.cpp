@@ -9,12 +9,21 @@
  *
  */
 
-#include "driver/Driver.h"
+#include "llvm/Transforms/Scout/Driver/Driver.h"
 
 using namespace llvm;
 
 Driver::Driver(Module &module, IRBuilder<> &builder, bool debug)
-  : _module(module), _builder(builder), _debug(debug)
+  : _module(module), _builder(builder), _debug(debug),
+    i8Ty((Type::getInt8Ty(_builder.getContext()))),
+    i8PtrTy(Type::getInt8PtrTy(_builder.getContext())),
+    i8DblPtrTy(PointerType::getUnqual(i8PtrTy)),
+    i16Ty(Type::getInt16Ty(_builder.getContext())),
+    i32Ty(Type::getInt32Ty(_builder.getContext())),
+    i32PtrTy(Type::getInt32PtrTy(_builder.getContext())),
+    i64Ty(Type::getInt64Ty(_builder.getContext())),
+    fltTy(Type::getFloatTy(_builder.getContext())),
+    voidTy(Type::getVoidTy(_builder.getContext()))
 {
 }
 
@@ -58,6 +67,11 @@ Function *Driver::declareFunction(Type *result,
 
 Value *Driver::insertCall(StringRef name) {
   return _builder.CreateCall(_module.getFunction(name));
+}
+
+Value *Driver::insertCall(StringRef name,
+                          ArrayRef< Value * > args) {
+  return _builder.CreateCall(_module.getFunction(name), args);
 }
 
 Value *Driver::insertCall(StringRef name,

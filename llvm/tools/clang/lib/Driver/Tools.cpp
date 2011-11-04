@@ -3548,6 +3548,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
   CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
 
 
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
@@ -4487,6 +4488,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lGLU");
   CmdArgs.push_back("-lSDL");
   CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }

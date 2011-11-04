@@ -35,6 +35,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 using namespace clang;
 using namespace llvm;
 
@@ -189,8 +190,8 @@ void EmitAssemblyHelper::CreatePasses() {
 
   // Check whether to enable Scout NVIDIA GPU support.
   if(CodeGenOpts.ScoutNvidiaGPU) {
-    llvm::errs() << ">>>>> Scout NVIDIA GPU Support NOT IMPLEMENTED; "
-                 << "defaulting to CPU-only execution. <<<<<\n";
+    llvm::errs() << ">>>>> Debug (slow!) version of Scout NVIDIA GPU Support. <<<<<\n";
+    MPM->add(createDoallToPTXPass());
   }
 
   PMBuilder.populateModulePassManager(*MPM);
