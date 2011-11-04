@@ -18,9 +18,6 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 
-//#include "llvm/Function.h"
-//#include "llvm/Constants.h"
-
 static unsigned getSizeInBytes(llvm::Type *type) {
   if(type->isSingleValueType() && !type->isPointerTy()) {
     return type->getPrimitiveSizeInBits() / 8;
@@ -75,6 +72,8 @@ public:
   llvm::Value *insertCall(llvm::StringRef name,
                     llvm::Value **begin,
                     llvm::Value **end);
+  llvm::Value *insertCall(llvm::StringRef name,
+                          llvm::ArrayRef< llvm::Value * > args);
 
   llvm::Value *insertGet(llvm::StringRef name);
 
@@ -87,6 +86,15 @@ public:
   llvm::Module &_module;
   llvm::IRBuilder<> &_builder;
   bool _debug;
+  llvm::Type *i8Ty;
+  llvm::Type *i8PtrTy;
+  llvm::Type *i8DblPtrTy;
+  llvm::Type *i16Ty;
+  llvm::Type *i32Ty;
+  llvm::Type *i32PtrTy;
+  llvm::Type *i64Ty;
+  llvm::Type *fltTy;
+  llvm::Type *voidTy;
 };
 
 #endif

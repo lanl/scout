@@ -44,11 +44,12 @@ class CudaDriver: public Driver {
   llvm::Type *getCUfunctionTy();
   llvm::Type *getCUdeviceptrTy();
 
-  void setStart(unsigned axis, llvm::Value *val);
-  void setStop(unsigned axis, llvm::Value *val);
+  void setFnArgAttributes(llvm::SmallVector< llvm::ConstantInt *, 3 > args);
+  void setDimensions(llvm::SmallVector< llvm::ConstantInt *, 3 > args);
 
-  llvm::Value *getStart(unsigned axis);
-  llvm::Value *getStop(unsigned axis);
+  int getLinearizedMeshSize();
+
+  bool isMeshMember(unsigned i);
 
   void create(llvm::Function *func, llvm::GlobalValue *ptxAsm);
   void initialize();
@@ -209,6 +210,9 @@ class CudaDriver: public Driver {
 
   llvm::SmallVector< llvm::Constant *, 3 > _gridSize;
   llvm::SmallVector< llvm::Constant *, 3 > _blockSize;
+
+  llvm::SmallVector< llvm::ConstantInt *, 3 > fnArgAttrs;
+  llvm::SmallVector< llvm::ConstantInt *, 3 > dimensions;
 
   llvm::Value *startX;
   llvm::Value *startY;
