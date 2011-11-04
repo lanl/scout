@@ -8,6 +8,8 @@
 # Scout with CMake.
 #
 
+SET(CMAKE_CXX_FLAGS "-std=c99")
+
 add_llvm_library(scCudaError
   CheckCudaError.cpp
 )
