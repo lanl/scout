@@ -11,3 +11,7 @@
 add_llvm_library(scCudaError
   CheckCudaError.cpp
 )
+
+INCLUDE_DIRECTORIES(
+  ${CUDA_INCLUDE_DIRS}
+)

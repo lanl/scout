@@ -8,21 +8,9 @@
 # Scout with CMake.
 #
 
-project(scDriver)
-include(scout-llvm-defs)
-
-include_directories(
-  ${LLVM_INCLUDE_DIRS}
-  ${SCOUT_INCLUDE_DIR}
+add_llvm_library(scDriver
+  Driver.cpp
+  CudaDriver.cpp
+  PTXDriver.cpp
 )
-
-file(GLOB driver_srcs *.cpp)
-
-SET(CMAKE_CXX_FLAGS "-fPIC")
-
-if (SCOUT_ENABLE_RT_THREADS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-endif()
-
-add_library(scDriver STATIC ${driver_srcs})
 
