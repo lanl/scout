@@ -647,6 +647,7 @@ public:
   llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
+  bool RenderAll;
 
   bool isMeshMember(llvm::Argument *arg) {
     if(arg->getName().endswith("height")) return false;

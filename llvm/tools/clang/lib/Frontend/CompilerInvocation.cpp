@@ -995,6 +995,8 @@ static void ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   // Enable Scout NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  // Explicitly define a flag for sequential Scout.
+  Opts.ScoutSequential = !Args.hasArg(OPT_gpu);
 
   Opts.DebugInfo = Args.hasArg(OPT_g);
   Opts.LimitDebugInfo = Args.hasArg(OPT_flimit_debug_info);
