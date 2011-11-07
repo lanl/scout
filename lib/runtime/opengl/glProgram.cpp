@@ -27,6 +27,7 @@ using namespace scout;
 // ----- glProgram
 //
 glProgram::glProgram()
+	:_frag_shader(0), _vert_shader(0), _geom_shader(0)
 {
   _prog_id = glCreateProgram();
   assert(glIsProgram(_prog_id));

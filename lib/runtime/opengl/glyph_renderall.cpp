@@ -35,16 +35,19 @@ namespace scout
     glFragmentShader* fshader;   // fragment shader.   
     glColorBuffer*    cbo;       // color buffer for glyph colors
     glVertexBuffer*   vbo;       // vertex buffer for glyph locations (points)
+    float   					radius;    // radius (all same initially)
+		// should have a camera probably, but do this for now
+		float   					win_width; // 
+		float   					near;    // 
+		float   					far;    // 
     unsigned int      npoints;   // number of vertices stored in the vbo. 
   };
-}
 
 using namespace std;
-using namespace scout;
 
 // ----- __sc_init_glyph_renderall
 //
-glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
+glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
 {
   glyph_renderall_t* info = new glyph_renderall_t;
   info->npoints = nglyphs;
@@ -66,7 +69,7 @@ glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
 
   
   info->fshader = new glFragmentShader;
-  info->fshader->setSource(sphere_cast_vs);
+  info->fshader->setSource(sphere_cast_fs);
   if (info->fshader->compile() == false) {
     cerr << "scout: internal runtime error -- failed to compile glyph fragment shader!\n";
     abort();
@@ -76,8 +79,18 @@ glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
     // For now, we'll slap ourselves around for letting back
     // code sneak into the runtime...    
   }
+
   info->prog->attachShader(info->fshader);
 
+	info->radius = .25;
+	info->near = 1.0;
+	info->far = 20.0;
+	info->win_width = 20.0;
+	info->prog->bindUniformValue("radius", &info->radius);
+	info->prog->bindUniformValue("windowWidth", &info->win_width);
+	info->prog->bindUniformValue("near", &info->near);
+	info->prog->bindUniformValue("far", &info->far);
+	
 
   info->cbo = new glColorBuffer;
   info->cbo->bind();
@@ -130,6 +143,24 @@ void __sc_unmap_glyph_colors(glyph_renderall_t* info)
 // TODO: need to map/unmap glyph positions...
 // positions are a float3 on the scout language side.
 
+// ----- __sc_map_glyph_positions
+//
+float* __sc_map_glyph_positions(glyph_renderall_t* info)
+{ 
+	if (info)
+		return (float*)info->vbo->mapForWrite();
+	else
+		return 0;
+}
+
+// ----- __sc_unmap_glyph_positions
+//
+void __sc_unmap_glyph_positions(glyph_renderall_t* info)
+{
+  if (info)
+    info->vbo->unmap();
+}
+
 
 // TODO: need to map/unmap glyph radius...
 // radius is a single float on the scout language side.
@@ -137,7 +168,7 @@ void __sc_unmap_glyph_colors(glyph_renderall_t* info)
 
 // ----- __sc_exec_glyph_renderall
 //
-void __sc_exec_glphy_renderall(glyph_renderall_t* info)
+void __sc_exec_glyph_renderall(glyph_renderall_t* info)
 {
   info->prog->enable();
   
@@ -160,4 +191,6 @@ void __sc_exec_glphy_renderall(glyph_renderall_t* info)
   info->vbo->release();
 
   info->prog->disable();
+}
+
 }

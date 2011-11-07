@@ -25,6 +25,10 @@ namespace scout
 
   void __sc_unmap_glyph_colors(glyph_renderall_t* info);
 
+  float* __sc_map_glyph_positions(glyph_renderall_t* info);
+
+  void __sc_unmap_glyph_positions(glyph_renderall_t* info);
+
   void __sc_exec_glyph_renderall(glyph_renderall_t* info);
 
   void __sc_destroy_glyph_renderall(glyph_renderall_t* info);
