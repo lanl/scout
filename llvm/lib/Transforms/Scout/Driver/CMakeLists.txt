@@ -8,9 +8,18 @@
 # Scout with CMake.
 #
 
-add_llvm_library(scDriver
-  Driver.cpp
+SET(CMAKE_CXX_FLAGS "-fPIC")
+add_llvm_library(scDriver 
   CudaDriver.cpp
-  PTXDriver.cpp
-)
+  Driver.cpp
+  PTXDriver.cpp)
+
+add_llvm_library_dependencies(scDriver
+  LLVMAnalysis
+  LLVMCore
+  LLVMInstCombine
+  LLVMSupport
+  LLVMTarget
+  LLVMTransformUtils
+  )
 

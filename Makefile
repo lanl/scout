@@ -37,12 +37,13 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@(cd packages/hwloc; ./configure --prefix=$(build_dir))
 	@(cd packages/hwloc; make -j $(nprocs); make install)	
+	@(cd packages/libpng-1.5.4; ./configure --prefix=$(build_dir))
+	@(cd packages/libpng-1.5.4; make -j $(nprocs); make install)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
-	@(cd $(build_dir)/llvm; make -j $(nprocs); make install)
-	@(cd $(build_dir); make -j $(nprocs))
+	@(cd $(build_dir); make -j $(nprocs); make install)
 
 .PHONY: xcode
 xcode:;
@@ -56,4 +57,5 @@ clean:
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
 	-@((test -f packages/hwloc/Makefile) && (cd packages/hwloc; make distclean > /dev/null))
+	-@((test -f packages/libpng-1.5.4/Makefile) && (cd packages/libpng-1.5.4; make distclean > /dev/null))
 

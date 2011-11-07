@@ -10,8 +10,8 @@
 project(scStandard)
 enable_testing()
 
-set(CMAKE_C_COMPILER ${SCOUT_BINARY_DIR}/bin/scc)
-set(CMAKE_CXX_COMPILER ${SCOUT_BINARY_DIR}/bin/scc)
+set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
+set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
@@ -28,3 +28,5 @@ endif()
 
 
 add_library(scStandard STATIC ${std_srcs})
+add_dependencies(scStandard scc)
+
