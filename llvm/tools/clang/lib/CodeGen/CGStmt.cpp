@@ -708,7 +708,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Builder.SetInsertPoint(cbb);
   return;
 
-  // Remove function call to ForallFn function.
+  // Remove function call to ForallFn.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
   typedef llvm::BasicBlock::iterator InstIterator;
   InstIterator I = CallBB->begin(), IE = CallBB->end();
@@ -807,7 +807,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   }
 
   llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
-  Builder.CreateStore(zero, indVar);
+  if(CGM.getCodeGenOpts().ScoutSequential)
+    Builder.CreateStore(zero, indVar);
   ForallIndVar = indVar;
 
   // Clear the list of stale ScoutIdxVars.
@@ -815,56 +816,73 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Initialize the index variables.
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, name);
+    if(CGM.getCodeGenOpts().ScoutSequential) {
 
-    Builder.CreateStore(start[i], lval);
-    ScoutIdxVars.push_back(lval);
+      llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, name);
+      Builder.CreateStore(start[i], lval);
+      ScoutIdxVars.push_back(lval);
+    } else
+      ScoutIdxVars.push_back(indVar);
   }
 
-  // Start the loop with a block that tests the condition.
-  JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
-  llvm::BasicBlock *CondBlock = Continue.getBlock();
-  EmitBlock(CondBlock);
 
-  // Generate loop condition.
-  llvm::Value *lval = Builder.CreateLoad(indVar);
-  llvm::Value *cond = Builder.CreateICmpSLT(lval, ForallTripCount, "cmptmp");
+  llvm::Value *lval;
+  llvm::Value *cond;
+  llvm::BasicBlock *CondBlock;
+  if(CGM.getCodeGenOpts().ScoutSequential) {
+    // Start the loop with a block that tests the condition.
+    JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
+    CondBlock = Continue.getBlock();
+    EmitBlock(CondBlock);
+
+    // Generate loop condition.
+    lval = Builder.CreateLoad(indVar);
+    cond = Builder.CreateICmpSLT(lval, ForallTripCount, "cmptmp");
+  }
 
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
-  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.end");
-  Builder.SetInsertPoint(CondBlock);
-  Builder.CreateCondBr(cond, ForallBody, ExitBlock);
+
+  llvm::BasicBlock *ExitBlock;
+  if(CGM.getCodeGenOpts().ScoutSequential) {
+    ExitBlock = createBasicBlock("forall.end");
+    Builder.SetInsertPoint(CondBlock);
+    Builder.CreateCondBr(cond, ForallBody, ExitBlock);
+  }
 
   // As long as the condition is true, iterate the loop.
   EmitBlock(ForallBody);
   Builder.SetInsertPoint(ForallBody);
 
-  // Set each dimension's index variable from induction variable.
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    lval = Builder.CreateLoad(indVar);
-    llvm::Value *val;
-    if(i > 0) {
-      if(i == 1)
-        val = diff[i - 1];
-      else
-        val = Builder.CreateMul(diff[i], diff[i - 1]);
-      lval = Builder.CreateUDiv(lval, val);
-    }
+  if(CGM.getCodeGenOpts().ScoutSequential) {
+    // Set each dimension's index variable from induction variable.
+    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+      lval = Builder.CreateLoad(indVar);
+      llvm::Value *val;
+      if(i > 0) {
+        if(i == 1)
+          val = diff[i - 1];
+        else
+          val = Builder.CreateMul(diff[i], diff[i - 1]);
+        lval = Builder.CreateUDiv(lval, val);
+      }
 
-    lval = Builder.CreateURem(lval, diff[i]);
-    lval = Builder.CreateAdd(lval, start[i]);
-    Builder.CreateStore(lval, ScoutIdxVars[i]);
+      lval = Builder.CreateURem(lval, diff[i]);
+      lval = Builder.CreateAdd(lval, start[i]);
+      Builder.CreateStore(lval, ScoutIdxVars[i]);
+    }
   }
 
   // Generate the statements in the body of the forall.
   EmitStmt(S.getBody());
 
-  // Increment the induction variables.
-  lval = Builder.CreateLoad(indVar);
-  Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
-  Builder.CreateBr(CondBlock);
+  if(CGM.getCodeGenOpts().ScoutSequential) {
+    // Increment the induction variables.
+    lval = Builder.CreateLoad(indVar);
+    Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
+    Builder.CreateBr(CondBlock);
 
-  EmitBlock(ExitBlock);
+    EmitBlock(ExitBlock);
+  }
 }
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
@@ -920,7 +938,9 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   // renderall loop is started - we write to an offset corresponding
   // to the induction variable - done in EmitForAllStmt()
 
+  RenderAll = 1;
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
+  RenderAll = 0;
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
