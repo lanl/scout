@@ -1,32 +1,28 @@
 /*
- *  PointSphere.frag
- *  PointSpheres
+ * -----  Scout Programming Language -----
  *
- *  Created by Patrick McCormick on 2/6/10.
- *  Copyright 2010 Los Alamos National Laboratory. All rights reserved.
- *
- *
- *   The goal of this shader is to experiment with converting point sprites 
- *   into shaded spheres for reducing the amount of geometry data that is 
- *   sent over the bus.  
- *
- *   The basic idea is to use the quad produced by the sprite into a set of
- *   rays that are then used for simple ray-sphere interesections.  The 
- *   intersection points are then used to modify the depth of each fragment
- *   to produce a correct z-buffer rendition of the sphere. 
- *     
+ * This file is distributed under an open source license by Los Alamos
+ * National Security, LCC.  See the file License.txt (located in the
+ * top level of the source distribution) for details.
+ * 
+ *-----
+ * 
  */
+
+#version 120  // We need this to make the Mac happy... 
 
 uniform float near, far;
 
 varying vec3 WSc;
-varying vec4 center, surfColor;
+varying vec4 center;
 varying float WSr;
 varying float pointSize;
 varying float cameraDepth;
 
 void main()
 {
+  vec4 surfColor;
+    
   if (pointSize == 0.0) {
     discard;
   } else {
@@ -71,7 +67,7 @@ void main()
     
     intensity = Ka;
     intensity += Kd * clamp(dot(L.xyz, Sn), 0.0, 1.0);
-    surfColor *= intensity;
+    surfColor = gl_Color * intensity;
 
     if (pointSize > 4.0) {
       vec4 halfV = normalize(L / 2.0);

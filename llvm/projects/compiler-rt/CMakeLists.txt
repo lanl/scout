@@ -52,4 +52,4 @@ ADD_SUBDIRECTORY( lib )
 
 # Enable Test Suit:
 INCLUDE( MacroAddCheckTest )
-ADD_SUBDIRECTORY( test )
+#ADD_SUBDIRECTORY( test )

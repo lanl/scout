@@ -13,7 +13,7 @@ uniform float windowWidth;
 uniform float near, far;
 
 varying vec3 WSc;
-varying vec4 center, surfColor;
+varying vec4 center;
 varying float WSr; 
 varying float pointSize;
 varying float cameraDepth;

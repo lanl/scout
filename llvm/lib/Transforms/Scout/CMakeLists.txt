@@ -8,6 +8,6 @@
 # Scout with CMake.
 #
 
-add_subdirectory(CudaError)
 add_subdirectory(Driver)
+add_subdirectory(CudaError)
 add_subdirectory(DoallToPTX)

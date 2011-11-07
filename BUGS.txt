@@ -12,3 +12,8 @@ code.
      statements.  For example, accessing c.height (or 
      c.position.y) for a 1D mesh should result in an error.  
 
+-- Mesh types as function parameters. 
+
+   * It appears that we can't pass a mesh instance to functions. 
+
+

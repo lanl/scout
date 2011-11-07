@@ -8,6 +8,12 @@
 # Scout with CMake.
 #
 
+include_directories(
+  ${CUDA_INCLUDE_DIRS}
+  )
+
+set(CXXFLAGS "${CFLAGS} -std=c++98 -pedantic")
+
 add_llvm_library(scCudaError
   CheckCudaError.cpp
 )
