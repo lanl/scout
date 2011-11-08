@@ -166,6 +166,7 @@ void scoutEndRenderAll(){
     } 
     case SDL_VIDEORESIZE:
     {
+      break;
 
       size_t width = evt.resize.w;
       size_t height = evt.resize.h;
@@ -177,7 +178,7 @@ void scoutEndRenderAll(){
 				      SDL_RESIZABLE |
 				      SDL_GL_DOUBLEBUFFER |
 				      SDL_OPENGL);
-      
+
       _initViewport();
 
       break;
