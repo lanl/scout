@@ -2605,40 +2605,45 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
 
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
-  assert(exprDims.size() && "Address calculation only works for 1 and 2D!");
 
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
 
-  SmallVector< llvm::Value *, 3 > dims;
-  for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
-    unsigned dim = exprDims[i]->EvaluateAsInt(getContext()).getSExtValue();
-    dims.push_back(llvm::ConstantInt::get(i32Ty, dim));
+  llvm::Value *arg = getGlobalIdx();
+
+  if(!vals.empty()) {
+    SmallVector< llvm::Value *, 3 > dims;
+    for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
+      unsigned dim = exprDims[i]->EvaluateAsInt(getContext()).getSExtValue();
+      dims.push_back(llvm::ConstantInt::get(i32Ty, dim));
+    }
+
+    for(unsigned i = dims.size(); i < 3; ++i) {
+      dims.push_back(llvm::ConstantInt::get(i32Ty, 1));
+    }
+
+    for(unsigned i = vals.size(); i < 3; ++i) {
+      vals.push_back(llvm::ConstantInt::get(i32Ty, 0));
+    }
+
+    llvm::Value *idx   = getGlobalIdx();
+    llvm::Value *add   = Builder.CreateAdd(idx, vals[0]);
+    llvm::Value *rem   = Builder.CreateURem(add, dims[0]);
+    llvm::Value *div   = Builder.CreateUDiv(idx, dims[0]);
+    llvm::Value *rem1  = Builder.CreateURem(div, dims[1]);
+    llvm::Value *add2  = Builder.CreateAdd(rem1, vals[1]);
+    llvm::Value *rem3  = Builder.CreateURem(add2, dims[1]);
+    llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
+    llvm::Value *div4  = Builder.CreateUDiv(idx, mul);
+    llvm::Value *rem5  = Builder.CreateURem(div4, dims[2]);
+    llvm::Value *fac   = Builder.CreateShl(vals[2], llvm::ConstantInt::get(i32Ty, 1));
+    llvm::Value *add7  = Builder.CreateAdd(fac, rem5);
+    llvm::Value *rem8  = Builder.CreateURem(add7, dims[2]);
+    llvm::Value *mul12 = Builder.CreateMul(rem8, dims[1]);
+    llvm::Value *tmp   = Builder.CreateAdd(mul12, rem3);
+    llvm::Value *tmp1  = Builder.CreateMul(tmp, dims[0]);
+    arg = Builder.CreateAdd(tmp1, rem);
   }
-
-  for(unsigned i = dims.size(); i < 2; ++i) {
-    dims.push_back(llvm::ConstantInt::get(i32Ty, 1));
-  }
-
-  for(unsigned i = vals.size(); i < 2; ++i) {
-    vals.push_back(llvm::ConstantInt::get(i32Ty, 0));
-  }
-
-  llvm::Value *pred = Builder.CreateICmpSLT(vals[0], zero);
-  vals[0] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[0], dims[0]), vals[0]);
-
-  pred = Builder.CreateICmpSLT(vals[1], zero);
-  vals[1] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[1], dims[1]), vals[1]);
-
-  llvm::Value *indvar = Builder.CreateLoad(ForallIndVar);
-
-  llvm::Value *sum1 = Builder.CreateURem(Builder.CreateAdd(indvar, vals[0]), dims[0]);
-  llvm::Value *sum2 = Builder.CreateMul(Builder.CreateSDiv(indvar, dims[0]), dims[0]);
-  llvm::Value *sum3 = Builder.CreateMul(vals[1], dims[0]);
-  llvm::Value *sum = Builder.CreateAdd(sum1, sum2);
-  sum = Builder.CreateAdd(sum, sum3);
-
-  llvm::Value *arg = Builder.CreateURem(sum, Builder.CreateMul(dims[0], dims[1]));
   llvm::Value *var = MeshMembers[memberName].first;
   QualType Ty = MeshMembers[memberName].second;
   llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");

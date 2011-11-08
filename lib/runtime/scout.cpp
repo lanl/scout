@@ -141,7 +141,9 @@ void scoutEndRenderAll(){
   SDL_GL_SwapBuffers();
 
   SDL_Event evt;
-  SDL_PollEvent(&evt);
+  if(!SDL_PollEvent(&evt)){
+    return;
+  }
 
   switch(evt.type){
     case SDL_QUIT:
@@ -166,18 +168,18 @@ void scoutEndRenderAll(){
     } 
     case SDL_VIDEORESIZE:
     {
-
       size_t width = evt.resize.w;
       size_t height = evt.resize.h;
 
       SDL_FreeSurface(_sdl_surface);
+
 
       _sdl_surface = SDL_SetVideoMode(width, height, 32,
 				      SDL_HWSURFACE |
 				      SDL_RESIZABLE |
 				      SDL_GL_DOUBLEBUFFER |
 				      SDL_OPENGL);
-      
+
       _initViewport();
 
       break;

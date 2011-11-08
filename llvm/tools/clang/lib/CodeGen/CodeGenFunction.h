@@ -637,6 +637,7 @@ public:
   typedef std::map< llvm::StringRef, llvm::SmallVector< llvm::Value *, 3 > > Map;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   /// Scout forall explicit induction variable.
+  llvm::Value *ForallIndVal;
   llvm::Value *ForallIndVar;
   /// Scout forall implicit induction variables.
   Vector ScoutIdxVars;
@@ -648,6 +649,15 @@ public:
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
   bool RenderAll;
+  bool CallsPrintf;
+
+  llvm::Value *getGlobalIdx() {
+    return isSequential() ? Builder.CreateLoad(ForallIndVar) : ForallIndVal;
+  }
+
+  bool isSequential() {
+    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || RenderAll || CallsPrintf;
+  }
 
   bool isMeshMember(llvm::Argument *arg) {
     if(arg->getName().endswith("height")) return false;
@@ -686,6 +696,34 @@ public:
 
   llvm::Value *GetImplicitMeshVariable() {
     return ImplicitMeshVar;
+  }
+
+  bool hasPrintfEdge(Stmt *S) {
+    typedef Stmt::child_iterator ChildIterator;
+    int sum = 0;
+    for(ChildIterator it = S->child_begin(), end = S->child_end(); it != end; ++it) {
+      sum += hasPrintfNode(*it);
+    }
+    return sum;
+  }
+
+  bool hasPrintfNode(Stmt *S) {
+    if(S == NULL) return false;
+
+    if(S->getStmtClass() == Expr::CallExprClass) {
+      const Decl *TD = cast< CallExpr >(S)->getCalleeDecl();
+      const FunctionDecl *FD = cast< FunctionDecl >(TD);
+      llvm::StringRef fname(FD->getNameInfo().getAsString());
+      return fname.startswith("printf");
+    } else if(S->getStmtClass() == Stmt::NullStmtClass) {
+      return false;
+    }
+
+    return hasPrintfEdge(S);
+  }
+
+  bool callsPrintf(Stmt *S) {
+    return hasPrintfNode(S);
   }
 
   template <class T>

@@ -121,6 +121,74 @@ void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap,
   pm.run(module);
 }
 
+void DoallToPTX::translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform) {
+  llvm::BasicBlock *BB = inst->getParent();
+  llvm::Function *FN = BB->getParent();
+  llvm::Module *module = FN->getParent();
+  IRBuilder<> Builder(module->getContext());
+  PTXDriver ptx(*module, Builder);
+
+  ptx.setInsertPoint(BB, BB->begin());
+
+  llvm::Type *i32Ty = llvm::Type::getInt32Ty(module->getContext());
+
+  llvm::Value *row = ptx.insertGetGlobalThreadIdx(PTXDriver::X);
+  llvm::Value *col = ptx.insertGetGlobalThreadIdx(PTXDriver::Y);
+  llvm::Value *blockDimX  = Builder.CreateZExt(ptx.insertGetGridDim(PTXDriver::X), i32Ty);
+  llvm::Value *threadDimX = Builder.CreateZExt(ptx.insertGetBlockDim(PTXDriver::X), i32Ty);
+  col = Builder.CreateMul(col, Builder.CreateMul(blockDimX, threadDimX));
+  llvm::Value *tid = Builder.CreateAdd(row, col, "threadidx");
+
+  std::vector< Instruction * > uses;
+  typedef llvm::Value::use_iterator UseIterator;
+  for(UseIterator use = inst->use_begin(), end = inst->use_end(); use != end; ++use) {
+    uses.push_back(dyn_cast< Instruction >(*use));
+  }
+
+  for(unsigned i = 0, e = uses.size(); i < e; ++i) {
+    uses[i]->replaceAllUsesWith(tid);
+    uses[i]->eraseFromParent();
+  }
+
+  if(!uniform) {
+    llvm::Value *total = llvm::ConstantInt::get(i32Ty, cuda.getLinearizedMeshSize());
+    llvm::Value *cond = Builder.CreateICmpUGE(tid, total, "cmp");
+
+    llvm::Instruction *inst = cast< llvm::Instruction >(cond);
+    llvm::BasicBlock *parent = inst->getParent();
+
+    typedef llvm::BasicBlock::iterator BBIterator;
+    BBIterator it = parent->begin(), end = parent->end();
+    for( ; it != end; ++it)
+      if(it->getName() == inst->getName())
+        break;
+    ++it;
+
+    llvm::BasicBlock *child  = parent->splitBasicBlock(*it, "continue");
+    llvm::BasicBlock *exit = llvm::BasicBlock::Create(module->getContext(),
+                                                      "thread_guard", FN, child);
+    parent = child->getSinglePredecessor();
+    parent->getTerminator()->eraseFromParent();
+
+    Builder.SetInsertPoint(parent);
+    Builder.CreateCondBr(cond, exit, child);
+    Builder.SetInsertPoint(exit);
+    Builder.CreateRetVoid();
+  }
+}
+
+void DoallToPTX::setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform) {
+  llvm::SmallVector< llvm::Value *, 3 > indvars;
+  typedef llvm::Function::iterator BasicBlockIterator;
+  typedef llvm::BasicBlock::iterator InstIterator;
+  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB)
+    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst)
+      if(isa< AllocaInst >(inst) && inst->getName().startswith("indvar")) {
+        translateVarToTid(cuda, inst, uniform);
+        return;
+      }
+}
+
 void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
                                     std::string name, GlobalValue *ptxAsm) {
   Function *ptxHandler = module.getFunction(name);
@@ -245,7 +313,7 @@ bool DoallToPTX::runOnModule(Module &M) {
   for(unsigned i = 0, e = NMDN->getNumOperands(); i < e; i+=1) {
 
     MDNode *node = cast< MDNode >(NMDN->getOperand(i)->getOperand(0));
-    Function *Fn = cast< Function >(node->getOperand(0));
+    Function *FN = cast< Function >(node->getOperand(0));
 
     llvm::SmallVector< llvm::ConstantInt *, 3 > args;
     node = cast< MDNode >(NMDN->getOperand(i)->getOperand(1));
@@ -265,14 +333,20 @@ bool DoallToPTX::runOnModule(Module &M) {
     ValueToValueMapTy valueMap;
     Module *ptxModule(CloneModule(&M, valueMap));
 
-    // Remove instructions unrelated to Fn.
-    pruneModule(*ptxModule, valueMap, *Fn);
+    // Remove instructions unrelated to FN.
+    pruneModule(*ptxModule, valueMap, *FN);
+
+    // set # threads, return # threads == # elements.
+    bool uniform = cuda.setGridAndBlockSizes();
+
+    // Substitute PTX thread id's for induction variables.
+    setGPUThreading(cuda, ptxModule->getFunction(FN->getName()), uniform);
 
     // Embed ptx string in module.
     GlobalValue *ptxAsm = embedPTX(*ptxModule, M);
 
     // Insert CUDA API calls.
-    generatePTXHandler(cuda, M, Fn->getName().str(), ptxAsm);
+    generatePTXHandler(cuda, M, FN->getName().str(), ptxAsm);
   }
   return true;
 }

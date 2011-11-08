@@ -152,6 +152,36 @@ Value *CudaDriver::insertCheckedCall(StringRef name,
   }
 }
 
+bool CudaDriver::setGridAndBlockSizes() {
+  _blockSize[0] = llvm::ConstantInt::get(i32Ty, 16);
+  _blockSize[1] = llvm::ConstantInt::get(i32Ty, 16);
+
+  if(getLinearizedMeshSize() < 256) {
+    return false;
+  }
+
+  int gridDims = getLinearizedMeshSize() / 256;
+
+  if(gridDims < 65535)
+    if(getLinearizedMeshSize() % 256 == 0) {
+      _gridSize[0] = llvm::ConstantInt::get(i32Ty, gridDims);
+      return true;
+    } else {
+      _gridSize[0] = llvm::ConstantInt::get(i32Ty, gridDims + 1);
+      return false;
+    }
+
+  int half = gridDims / 2;
+  if(gridDims % 2 == 0) {
+    _gridSize[0] = _gridSize[1] = llvm::ConstantInt::get(i32Ty, half);
+    return true;
+  } else {
+    _gridSize[0] = llvm::ConstantInt::get(i32Ty, half);
+    _gridSize[1] = llvm::ConstantInt::get(i32Ty, half + 1);
+    return false;
+  }
+}
+
 void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   setInsertPoint(&func->getEntryBlock());
 
@@ -169,7 +199,7 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   insertModuleGetFunction(cuFunction, _builder.CreateLoad(cuModule), kernelName);
 
   int offset = 0;
-  std::vector< Memcpy > memcpyList;
+  llvm::SmallVector< Memcpy, 3 > memcpyList;
 
   int meshSize = getLinearizedMeshSize();
 
@@ -336,6 +366,10 @@ Value *CudaDriver::insertInit() {
 
 void CudaDriver::setFnArgAttributes(SmallVector< llvm::ConstantInt *, 3 > args) {
   fnArgAttrs = args;
+}
+
+llvm::Value *CudaDriver::getDimension(int dim) {
+  return dimensions[dim];
 }
 
 void CudaDriver::setDimensions(SmallVector< llvm::ConstantInt *, 3 > args) {
