@@ -2605,7 +2605,6 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
 
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
-  assert(exprDims.size() && "Address calculation only works for 1 and 2D!");
 
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
