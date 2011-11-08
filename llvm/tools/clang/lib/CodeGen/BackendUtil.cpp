@@ -190,7 +190,6 @@ void EmitAssemblyHelper::CreatePasses() {
 
   // Check whether to enable Scout NVIDIA GPU support.
   if(CodeGenOpts.ScoutNvidiaGPU) {
-    llvm::errs() << ">>>>> Debug (slow!) version of Scout NVIDIA GPU Support. <<<<<\n";
     MPM->add(createDoallToPTXPass());
   }
 

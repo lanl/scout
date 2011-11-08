@@ -2610,35 +2610,38 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
   llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
 
-  SmallVector< llvm::Value *, 3 > dims;
-  for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
-    unsigned dim = exprDims[i]->EvaluateAsInt(getContext()).getSExtValue();
-    dims.push_back(llvm::ConstantInt::get(i32Ty, dim));
+  llvm::Value *arg = getGlobalIdx();
+
+  if(!vals.empty()) {
+    SmallVector< llvm::Value *, 3 > dims;
+    for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
+      unsigned dim = exprDims[i]->EvaluateAsInt(getContext()).getSExtValue();
+      dims.push_back(llvm::ConstantInt::get(i32Ty, dim));
+    }
+
+    for(unsigned i = dims.size(); i < 2; ++i) {
+      dims.push_back(llvm::ConstantInt::get(i32Ty, 1));
+    }
+
+    for(unsigned i = vals.size(); i < 2; ++i) {
+      vals.push_back(llvm::ConstantInt::get(i32Ty, 0));
+    }
+
+    llvm::Value *pred = Builder.CreateICmpSLT(vals[0], zero);
+    vals[0] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[0], dims[0]), vals[0]);
+
+    pred = Builder.CreateICmpSLT(vals[1], zero);
+    vals[1] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[1], dims[1]), vals[1]);
+
+    llvm::Value *indvar = getGlobalIdx();
+    llvm::Value *sum1 = Builder.CreateURem(Builder.CreateAdd(indvar, vals[0]), dims[0]);
+    llvm::Value *sum2 = Builder.CreateMul(Builder.CreateSDiv(indvar, dims[0]), dims[0]);
+    llvm::Value *sum3 = Builder.CreateMul(vals[1], dims[0]);
+    llvm::Value *sum = Builder.CreateAdd(sum1, sum2);
+    sum = Builder.CreateAdd(sum, sum3);
+
+    arg = Builder.CreateURem(sum, Builder.CreateMul(dims[0], dims[1]));
   }
-
-  for(unsigned i = dims.size(); i < 2; ++i) {
-    dims.push_back(llvm::ConstantInt::get(i32Ty, 1));
-  }
-
-  for(unsigned i = vals.size(); i < 2; ++i) {
-    vals.push_back(llvm::ConstantInt::get(i32Ty, 0));
-  }
-
-  llvm::Value *pred = Builder.CreateICmpSLT(vals[0], zero);
-  vals[0] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[0], dims[0]), vals[0]);
-
-  pred = Builder.CreateICmpSLT(vals[1], zero);
-  vals[1] = Builder.CreateSelect(pred, Builder.CreateAdd(vals[1], dims[1]), vals[1]);
-
-  llvm::Value *indvar = Builder.CreateLoad(ForallIndVar);
-
-  llvm::Value *sum1 = Builder.CreateURem(Builder.CreateAdd(indvar, vals[0]), dims[0]);
-  llvm::Value *sum2 = Builder.CreateMul(Builder.CreateSDiv(indvar, dims[0]), dims[0]);
-  llvm::Value *sum3 = Builder.CreateMul(vals[1], dims[0]);
-  llvm::Value *sum = Builder.CreateAdd(sum1, sum2);
-  sum = Builder.CreateAdd(sum, sum3);
-
-  llvm::Value *arg = Builder.CreateURem(sum, Builder.CreateMul(dims[0], dims[1]));
   llvm::Value *var = MeshMembers[memberName].first;
   QualType Ty = MeshMembers[memberName].second;
   llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");

@@ -48,6 +48,9 @@ class DoallToPTX : public llvm::ModulePass {
   llvm::Module *CloneModule(const llvm::Module *M, llvm::ValueToValueMapTy &VMap);
   void pruneModule(llvm::Module &module, llvm::ValueToValueMapTy &valueMap,
                    llvm::Function &func);
+
+  void setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform);
+  void translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform);
 };
 
 llvm::ModulePass *createDoallToPTXPass();
