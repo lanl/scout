@@ -56,6 +56,9 @@ class CudaDriver: public Driver {
   void finalize();
   void destroy();
 
+  llvm::Value *getDimension(int dim);
+  bool setGridAndBlockSizes();
+
   void setGridSize(llvm::SmallVector< llvm::Constant *, 3 > &size);
   void setBlockSize(llvm::SmallVector< llvm::Constant *, 3 > &size);
 

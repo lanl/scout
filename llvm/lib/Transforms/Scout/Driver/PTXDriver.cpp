@@ -79,8 +79,8 @@ void PTXDriver::setBlocksInY(const unsigned blocksInY) {
 llvm::Value *PTXDriver::insertGetGlobalThreadIdx(int dim) {
   llvm::Value *blockIdx;
   llvm::Value *blockIdx32;
-  Type *i32Ty = Type::getInt32Ty(getGlobalContext());
-  Type *i64Ty = Type::getInt64Ty(getGlobalContext());
+  Type *i32Ty = Type::getInt32Ty(_module.getContext());
+  Type *i64Ty = Type::getInt64Ty(_module.getContext());
   if(_blocksInY) {
     blockIdx   = insertGetBlockIdx(Y);
     blockIdx32 = _builder.CreateZExt(blockIdx, i32Ty);
@@ -99,5 +99,5 @@ llvm::Value *PTXDriver::insertGetGlobalThreadIdx(int dim) {
   llvm::Value *threadIdx32 = _builder.CreateZExt(threadIdx, i32Ty);
 
   llvm::Value *globalThreadIdx = _builder.CreateAdd(threadIdx32, blockStart, "Tid");
-  return _builder.CreateZExt(globalThreadIdx, i64Ty);
+  return globalThreadIdx;
 }
