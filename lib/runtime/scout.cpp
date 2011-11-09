@@ -30,6 +30,7 @@ uniform_renderall_t* _uniform_renderall = 0;
 float4* _pixels;
 tbq_rt* _tbq;
 
+static bool _gpu;
 static size_t _dx;
 static size_t _dy;
 static size_t _dz;
@@ -37,12 +38,14 @@ static size_t _dz;
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
-void scoutInit(int& argc, char** argv){
+void scoutInit(int& argc, char** argv, bool gpu){
   _tbq = new tbq_rt;
+  _gpu = gpu;
 }
 
-void scoutInit(){
+void scoutInit(bool gpu){
   _tbq = new tbq_rt;
+  _gpu = gpu;
 }
 
 static void _initViewport(){
