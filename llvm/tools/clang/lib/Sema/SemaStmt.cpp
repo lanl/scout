@@ -2579,6 +2579,21 @@ namespace{
       }
     }
 
+    void VisitDeclStmt(DeclStmt* S){
+      DeclGroupRef declGroup = S->getDeclGroup();
+      
+      for(DeclGroupRef::iterator itr = declGroup.begin(),
+          itrEnd = declGroup.end(); itr != itrEnd; ++itr){
+        Decl* decl = *itr;
+        
+        if(NamedDecl* nd = dyn_cast<NamedDecl>(decl)){
+          localMap_.insert(make_pair(nd->getName().str(), true));
+        }
+      }
+      
+      VisitChildren(S);
+    }
+    
     void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
       if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
         if(ME->getMemberDecl()->getName() == "position"){
@@ -2611,6 +2626,15 @@ namespace{
         case BO_AndAssign:
         case BO_XorAssign:
         case BO_OrAssign:
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+            RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
+            if(itr == localMap_.end()){
+
+              sema_.Diag(DR->getLocation(),
+                         diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
+            }
+          }
+          
           nodeType_ = NodeLHS;
           break;
         default:
@@ -2632,6 +2656,7 @@ namespace{
     ForAllStmt* fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
+    RefMap_ localMap_;
     bool error_;
     NodeType nodeType_;
   };

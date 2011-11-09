@@ -4831,6 +4831,8 @@ def err_invalid_height_mesh : Error<
 def err_invalid_depth_mesh : Error<
 "invalid use of depth field: number of mesh dimensions < 3">;
 
+def warn_lhs_outside_forall : Warning<
+  "LHS variable '%0' was declared outside forall">;
 }
 
 let CategoryName = "Modules Issue" in {
