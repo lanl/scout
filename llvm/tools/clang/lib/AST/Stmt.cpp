@@ -890,6 +890,8 @@ RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
                              SourceLocation RL, SourceLocation RP,
                              SourceLocation LP)
   : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII,
-               Op, Body, Block, RL, RP, LP){
-
+               Op, Body, Block, RL, RP, LP),
+ElementColor(0),
+ElementRadius(0){
+  
 }

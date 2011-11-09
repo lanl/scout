@@ -493,10 +493,9 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   Builder.CreateBr(blockEntry);
   EmitBlock(blockEntry);
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *Undef = llvm::UndefValue::get(i32Ty);
+  llvm::Value *Undef = llvm::UndefValue::get(Int32Ty);
   llvm::Instruction *BlockAllocaInsertPt =
-    new llvm::BitCastInst(Undef, i32Ty, "", Builder.GetInsertBlock());
+    new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
   BlockAllocaInsertPt->setName("blk.allocapt");
 
   // Save the AllocaInsertPt.
@@ -512,8 +511,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   // Build a loop around the block declaration to facilitate
   // the induction variable range information.
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-  llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, "blk.indvar");
+  llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, "blk.indvar");
   Builder.CreateStore(zero, indVar);
   ForallIndVar = indVar;
 
@@ -526,8 +525,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     ScoutIdxVars[i]->setName("var." + prefix[i]);
     indVar.push_back(ScoutIdxVars[i]);
     Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
-    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, "start." + prefix[i]));
-    indVar.push_back(Builder.CreateAlloca(i32Ty, 0, "end." + prefix[i]));
+    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + prefix[i]));
+    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + prefix[i]));
     Builder.SetInsertPoint(blockEntry);
     indVar.push_back(Builder.CreateSub(Builder.CreateLoad(indVar[2]),
                                        Builder.CreateLoad(indVar[1]),
@@ -535,9 +534,9 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     indVars.push_back(indVar);
   }
 
-  llvm::Value *extent = Builder.CreateAlloca(i32Ty, 0, "size");
+  llvm::Value *extent = Builder.CreateAlloca(Int32Ty, 0, "size");
 
-  llvm::Value *size = llvm::ConstantInt::get(i32Ty, 1);
+  llvm::Value *size = llvm::ConstantInt::get(Int32Ty, 1);
   for(int i = 0, e = indVars.size(); i < e; ++i) {
     size = Builder.CreateMul(size, indVars[i][3]);
   }
@@ -579,7 +578,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   EmitStmt(blockDecl->getBody());
 
   lval = Builder.CreateLoad(indVar);
-  llvm::Value *one = llvm::ConstantInt::get(i32Ty, 1);
+  llvm::Value *one = llvm::ConstantInt::get(Int32Ty, 1);
   Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
   Builder.CreateBr(CondBlock);
 
@@ -643,7 +642,6 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   for(unsigned i = 0, e = structTy->getNumElements(); i < e; ++i)
     arrayTy.push_back(structTy->getElementType(i));
 
-  llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
   typedef llvm::Function::arg_iterator ArgIterator;
 
   std::vector< llvm::Value * > indvars;
@@ -651,15 +649,14 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   for(ArgIterator arg = BlockFn->arg_begin(),
         end = BlockFn->arg_end(); arg != end; ++arg)
     if(!(arg->getName().startswith("var.")))
-      arrayTy.push_back(i8PtrTy);
+      arrayTy.push_back(Int8PtrTy);
 
   blockInfo.StructureType = llvm::StructType::get(getLLVMContext(), arrayTy, true);
   blockInfo.CanBeGlobal = false;
 
   // Create the new block function signature and insert it into the module.
-  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
-  llvm::FunctionType *NFTy = llvm::FunctionType::get(voidTy,
-                                                     i8PtrTy,
+  llvm::FunctionType *NFTy = llvm::FunctionType::get(VoidTy,
+                                                     Int8PtrTy,
                                                      false);
 
   llvm::Function *NewBlockFn = llvm::Function::Create(NFTy, BlockFn->getLinkage());
@@ -687,7 +684,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
         E = BlockFn->arg_end(); I != E; ++I) {
 
     if(I->getName().startswith("var.")) {
-      llvm::Value *indvar = Builder.CreateAlloca(i32Ty, 0);
+      llvm::Value *indvar = Builder.CreateAlloca(Int32Ty, 0);
       I->replaceAllUsesWith(indvar);
       indvar->takeName(I);
     } else {
@@ -773,8 +770,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
 
     llvm::Value *I = inputs[i];
     llvm::Value *var = I;
-    llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-    llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+    llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
     if(I->getName().startswith("start.")) {
       Builder.CreateStore(zero, I); var = I;
     } else if(I->getName().startswith("end.")) {
@@ -782,19 +778,17 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
       llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
       Builder.CreateStore(val, I); var = I;
     } else if(I->getName().startswith("var.")) {
-      var = Builder.CreateAlloca(i32Ty, 0, I->getName());
+      var = Builder.CreateAlloca(Int32Ty, 0, I->getName());
       Builder.CreateStore(zero, var);
     }
 
     // Write that void* into the capture field.
-    llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
-    Builder.CreateStore(Builder.CreateBitCast(var, i8PtrTy),
+    Builder.CreateStore(Builder.CreateBitCast(var, Int8PtrTy),
                         blockField);
   }
   // Cast to the converted block-pointer type, which happens (somewhat
   // unfortunately) to be a pointer to function type.
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::FunctionType *funcTy = llvm::FunctionType::get(i32Ty, false);
+  llvm::FunctionType *funcTy = llvm::FunctionType::get(Int32Ty, false);
   llvm::Type *funcPtrTy = llvm::PointerType::get(funcTy, 0);
   llvm::Value *blockVal = Builder.CreateBitCast(blockAddr, funcPtrTy);
 
@@ -810,12 +804,11 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
   blk = Builder.CreateConstInBoundsGEP2_32(genericBlk, 0, 3);
   blk = Builder.CreateLoad(blk);
 
-  llvm::Type *i8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
-  funcTy = llvm::FunctionType::get(i32Ty, i8PtrTy, false);
+  funcTy = llvm::FunctionType::get(Int32Ty, Int8PtrTy, false);
   funcPtrTy = llvm::PointerType::get(funcTy, 0);
   blk = Builder.CreateBitCast(blk, funcPtrTy);
 
-  genericBlk = Builder.CreateBitCast(genericBlk, i8PtrTy);
+  genericBlk = Builder.CreateBitCast(genericBlk, Int8PtrTy);
 
   // Generate a function call to the block function.
   return Builder.CreateCall(blk, genericBlk);

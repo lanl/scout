@@ -6195,7 +6195,6 @@ TreeTransform<Derived>::TransformMemberExpr(MemberExpr *E) {
 }
 
 // ndm - support for Scout vector member referencing
-// TODO - implement  
   
 template<typename Derived>
 ExprResult

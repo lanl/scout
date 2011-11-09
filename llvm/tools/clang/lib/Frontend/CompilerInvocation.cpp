@@ -1757,6 +1757,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  OPT_fno_deprecated_macro,
                                  Opts.Deprecated);
 
+  // ndm - detect Scout -gpu flag
+  Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags);
   Opts.Optimize = Opt != 0;

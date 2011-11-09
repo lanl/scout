@@ -624,10 +624,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *Undef = llvm::UndefValue::get(i32Ty);
+  llvm::Value *Undef = llvm::UndefValue::get(Int32Ty);
   llvm::Instruction *ForallAllocaInsertPt =
-    new llvm::BitCastInst(Undef, i32Ty, "", Builder.GetInsertBlock());
+    new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
   ForallAllocaInsertPt->setName("forall.allocapt");
 
   // Save the AllocaInsertPt.
@@ -635,7 +634,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   AllocaInsertPt = ForallAllocaInsertPt;
 
   DeclMapTy curLocalDeclMap = LocalDeclMap; // Save LocalDeclMap.
-
 
   CallsPrintf = callsPrintf(&cast< Stmt >(S));
 
@@ -647,7 +645,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Restore the AllocaInsertPtr.
   AllocaInsertPt = savedAllocaInsertPt;
 
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
+  llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
                                                    Builder.GetInsertBlock());
 
@@ -671,13 +669,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
-  // Add metadata for scout kernel function.
-  llvm::NamedMDNode *ScoutMetadata =
-    CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
-
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
-  if(!hasCalledFn(ForallFn, "printf") && !isa< RenderAllStmt >(S)) {
+  if(!isSequential()) {
+    // Add metadata for scout kernel function.
+    llvm::NamedMDNode *ScoutMetadata =
+      CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+
     SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is
@@ -687,9 +685,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     for(ArgIterator it = ForallFn->arg_begin(),
           end = ForallFn->arg_end(); it != end; ++it) {
       if(isMeshMember(it))
-        args.push_back(llvm::ConstantInt::get(i32Ty, 1));
+        args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
       else
-        args.push_back(llvm::ConstantInt::get(i32Ty, 0));
+        args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
 
@@ -781,9 +779,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   RunCleanupsScope Forallscope(*this);
 
   llvm::StringRef name = "indvar";
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-  llvm::Value *one = llvm::ConstantInt::get(i32Ty, 1);
+  llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *one = llvm::ConstantInt::get(Int32Ty, 1);
 
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
@@ -809,7 +806,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
   }
 
-  llvm::Value *indVar = Builder.CreateAlloca(i32Ty, 0, name);
+  llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   if(isSequential())
     Builder.CreateStore(zero, indVar);
   ForallIndVar = indVar;
@@ -820,7 +817,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Initialize the index variables.
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0);
+    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0);
     Builder.CreateStore(start[i], lval);
     ScoutIdxVars.push_back(lval);
   }
@@ -897,10 +894,6 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
     dim *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
   }
 
-  llvm::Type *i8Ty = llvm::Type::getInt8Ty(getLLVMContext());
-  llvm::Type *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
-
-  llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
   llvm::AttrListPtr namPAL;
   llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
   llvm::AttributeWithIndex PAWI;
@@ -909,7 +902,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
 
   if(!CGM.getModule().getFunction("_Znam")) {
-    llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, isVarArg=false);
+    llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, isVarArg=false);
     llvm::Function *namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                                   "_Znam", &CGM.getModule());
     namF->setAttributes(namPAL);
@@ -920,7 +913,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
   llvm::Constant *nam = CGM.getModule().getFunction("_Znam");
 
-  llvm::CallInst *call = Builder.CreateCall(nam, llvm::ConstantInt::get(i64Ty, 16 * dim));
+  llvm::CallInst *call = Builder.CreateCall(nam, llvm::ConstantInt::get(Int64Ty, 16 * dim));
   call->setAttributes(namPAL);
   llvm::Value *val = Builder.CreateBitCast(call, Ty);
   llvm::Value *alloca = Builder.CreateAlloca(Ty, 0, "color");
