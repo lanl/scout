@@ -2607,7 +2607,6 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
 
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
 
   llvm::Value *arg = getGlobalIdx();
 
