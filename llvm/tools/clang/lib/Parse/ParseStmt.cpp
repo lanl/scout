@@ -1986,15 +1986,25 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
-  // ndm - insert the call to scoutInit(argc, argv) at the top of main
+  // ndm - insert the call to scoutInit(argc, argv, gpu) at the top of main
   if(getLang().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
+    
+    std::string args;
+    
+    if(getLang().ScoutNvidiaGPU){
+      args = "true";
+    }
+    else{
+      args = "false";
+    }
+    
     if(fd->isMain()){
       assert(Tok.is(tok::l_brace) &&
              "expected lbrace when inserting scoutInit()");
 
       if(fd->param_size() == 0){
-        InsertCPPCode("scoutInit();", LBraceLoc, false);
+        InsertCPPCode("scoutInit(" + args + ");", LBraceLoc, false);
       }
       else{
         assert(fd->param_size() == 2 && "expected main with two params");
@@ -2005,7 +2015,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
         ParmVarDecl* paramArgv = *itr;
 
         std::string code = "scoutInit(" + paramArgc->getName().str() +
-        ", " + paramArgv->getName().str() + ");";
+        ", " + paramArgv->getName().str() + ", " + args + ");";
 
         InsertCPPCode(code, LBraceLoc, false);
       }

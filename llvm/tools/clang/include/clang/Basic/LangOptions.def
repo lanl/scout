@@ -43,6 +43,7 @@
 
 // ndm - Scout language option
 LANGOPT(Scout               , 1, 0, "Scout")
+LANGOPT(ScoutNvidiaGPU      , 1, 0, "ScoutNvidiaGPU")
 
 LANGOPT(C99               , 1, 0, "C99")
 LANGOPT(C1X               , 1, 0, "C1X")

@@ -83,9 +83,9 @@ float4 hsv(float h, float s, float v){
   return hsva(h, s, v, 1.0);
 }
 
-void scoutInit(int& argc, char** argv);
+void scoutInit(int& argc, char** argv, bool gpu);
 
-void scoutInit();
+void scoutInit(bool gpu);
 
 void scoutEnd();
 
