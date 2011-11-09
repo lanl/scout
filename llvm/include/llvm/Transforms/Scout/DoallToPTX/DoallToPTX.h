@@ -33,7 +33,7 @@
 
 class DoallToPTX : public llvm::ModulePass {
  public:
-  typedef llvm::DenseSet< const llvm::Value * > ValueSet;
+  typedef std::set< llvm::StringRef > FnSet;
 
   static char ID;
   DoallToPTX();
@@ -46,8 +46,10 @@ class DoallToPTX : public llvm::ModulePass {
   void generatePTXHandler(CudaDriver &cuda, llvm::Module &module,
                           std::string funcName, llvm::GlobalValue *ptxAsm);
   llvm::Module *CloneModule(const llvm::Module *M, llvm::ValueToValueMapTy &VMap);
+
+  void identifyDependentFns(FnSet &fnSet, llvm::Function *FN);
   void pruneModule(llvm::Module &module, llvm::ValueToValueMapTy &valueMap,
-                   llvm::Function &func);
+                   llvm::Function &FN);
 
   void setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform);
   void translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform);

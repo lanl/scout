@@ -671,13 +671,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
-  // Add metadata for scout kernel function.
-  llvm::NamedMDNode *ScoutMetadata =
-    CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
-
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
-  if(!hasCalledFn(ForallFn, "printf") && !isa< RenderAllStmt >(S)) {
+  if(!isSequential()) {
+    // Add metadata for scout kernel function.
+    llvm::NamedMDNode *ScoutMetadata =
+      CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+
     SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is
