@@ -2653,8 +2653,7 @@ Value *ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
     assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
   } else {
     Value *Base = Visit(E->getBase());
-    llvm::Type *i32Ty = llvm::Type::getInt32Ty(VMContext);
-    Value *Idx = llvm::ConstantInt::get(i32Ty, E->getIdx());
+    Value *Idx = llvm::ConstantInt::get(CGF.Int32Ty, E->getIdx());
     return Builder.CreateExtractElement(Base, Idx, "scvecext");
   }
 }

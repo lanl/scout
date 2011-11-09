@@ -2267,6 +2267,10 @@ public:
     return SourceRange(Loc, Loc);
   }
 
+  SourceLocation getLocation(){
+    return Loc;
+  }
+  
   friend class ASTReader;
   friend class ASTStmtWriter;
 };

@@ -2554,8 +2554,7 @@ EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
     assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
   } else {
     LValue LHS = EmitLValue(E->getBase());
-    llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-    llvm::Value *Idx = llvm::ConstantInt::get(i32Ty, E->getIdx());
+    llvm::Value *Idx = llvm::ConstantInt::get(Int32Ty, E->getIdx());
     return LValue::MakeVectorElt(LHS.getAddress(), Idx,
                                  E->getBase()->getType());
   }
@@ -2606,24 +2605,21 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   const MeshType *MT = cast<MeshType>(VD->getType());
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
 
-  llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *zero = llvm::ConstantInt::get(i32Ty, 0);
-
   llvm::Value *arg = getGlobalIdx();
 
   if(!vals.empty()) {
     SmallVector< llvm::Value *, 3 > dims;
     for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
       unsigned dim = exprDims[i]->EvaluateAsInt(getContext()).getSExtValue();
-      dims.push_back(llvm::ConstantInt::get(i32Ty, dim));
+      dims.push_back(llvm::ConstantInt::get(Int32Ty, dim));
     }
 
     for(unsigned i = dims.size(); i < 3; ++i) {
-      dims.push_back(llvm::ConstantInt::get(i32Ty, 1));
+      dims.push_back(llvm::ConstantInt::get(Int32Ty, 1));
     }
 
     for(unsigned i = vals.size(); i < 3; ++i) {
-      vals.push_back(llvm::ConstantInt::get(i32Ty, 0));
+      vals.push_back(llvm::ConstantInt::get(Int32Ty, 0));
     }
 
     llvm::Value *idx   = getGlobalIdx();
@@ -2636,7 +2632,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
     llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
     llvm::Value *div4  = Builder.CreateUDiv(idx, mul);
     llvm::Value *rem5  = Builder.CreateURem(div4, dims[2]);
-    llvm::Value *fac   = Builder.CreateShl(vals[2], llvm::ConstantInt::get(i32Ty, 1));
+    llvm::Value *fac   = Builder.CreateShl(vals[2], llvm::ConstantInt::get(Int32Ty, 1));
     llvm::Value *add7  = Builder.CreateAdd(fac, rem5);
     llvm::Value *rem8  = Builder.CreateURem(add7, dims[2]);
     llvm::Value *mul12 = Builder.CreateMul(rem8, dims[1]);

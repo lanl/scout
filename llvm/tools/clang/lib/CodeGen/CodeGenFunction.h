@@ -1953,10 +1953,6 @@ public:
 //                            = llvm::SmallVector<llvm::Value*, 3>());
 
   llvm::Value *CreateMemAlloc(uint64_t numElts) {
-    llvm::Type *i8Ty = llvm::Type::getInt8Ty(getLLVMContext());
-    llvm::Type *i8PtrTy = llvm::PointerType::get(i8Ty, 0);
-
-    llvm::Type *i64Ty = llvm::Type::getInt64Ty(getLLVMContext());
     llvm::AttrListPtr namPAL;
     llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
     llvm::AttributeWithIndex PAWI;
@@ -1966,7 +1962,7 @@ public:
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("_Znam")) {
-      llvm::FunctionType *FTy = llvm::FunctionType::get(i8PtrTy, i64Ty, /*isVarArg=*/false);
+      llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                     "_Znam", &CGM.getModule());
       namF->setAttributes(namPAL);
@@ -1975,7 +1971,7 @@ public:
     }
 
     llvm::CallInst *call =
-      Builder.CreateCall(namF, llvm::ConstantInt::get(i64Ty, 4 * numElts));
+      Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
     call->setAttributes(namPAL);
 
     return call;

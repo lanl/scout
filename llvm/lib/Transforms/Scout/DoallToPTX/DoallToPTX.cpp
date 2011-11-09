@@ -86,32 +86,36 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
                             ptxStrName);
 }
 
-void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap,
-                             Function &func) {
-  PassManager pm;
 
-  ValueSet users;
-  users.insert(valueMap.find(&func)->second);
-
+void DoallToPTX::identifyDependentFns(FnSet &fnSet, llvm::Function *FN) {
   typedef llvm::Function::iterator BasicBlockIterator;
   typedef llvm::BasicBlock::iterator InstIterator;
-  BasicBlockIterator BB = func.begin(), BB_end = func.end();
-  for(; BB != BB_end; ++BB) {
+  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB)
+    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst)
+      if(isa< llvm::CallInst >(inst)) {
+        llvm::Function *new_FN = cast< llvm::CallInst >(inst)->getCalledFunction();
+        if(!fnSet.count(new_FN->getName())) {
+          fnSet.insert(new_FN->getName());
+          identifyDependentFns(fnSet, new_FN);
+        }
+      }
+}
 
-    InstIterator inst = BB->begin(), inst_end = BB->end();
-    for(; inst != inst_end; ++inst) {
-      users.insert(&*inst);
-    }
-  }
+void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap,
+                             Function &FN) {
+  PassManager pm;
+
+  FnSet fnSet;
+  fnSet.insert(FN.getName());
+  identifyDependentFns(fnSet, &FN);
 
   typedef llvm::Module::FunctionListType FuncList;
   typedef FuncList::iterator FuncListIterator;
-  FuncList &funcs = module.getFunctionList();
-  FuncListIterator it = funcs.begin(), it_end = funcs.end();
-  for( ; it != it_end; ) {
+  FuncList &FNs = module.getFunctionList();
+  for(FuncListIterator it = FNs.begin(), it_end = FNs.end(); it != it_end; ) {
     FuncListIterator curr = it++;
     curr->setLinkage(GlobalValue::ExternalLinkage);
-    if(!users.count(&*curr)) {
+    if(!fnSet.count(curr->getName())) {
       curr->replaceAllUsesWith(UndefValue::get(curr->getType()));
       curr->eraseFromParent();
     }

@@ -2546,9 +2546,22 @@ namespace{
     void VisitMemberExpr(MemberExpr* E){
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
         ValueDecl* bd = dr->getDecl();
-        if(isa<MeshType>(bd->getType().getTypePtr())){
+        if(const MeshType* MT = 
+           dyn_cast<MeshType>(bd->getType().getTypePtr())){
+          
           ValueDecl* md = E->getMemberDecl();
 
+          unsigned ND = MT->dimensions().size();
+          
+          if(md->getName() == "height" && ND < 2){
+            sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
+            error_ = true;
+          }
+          else if(md->getName() == "depth" && ND < 3){
+            sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
+            error_ = true;
+          }
+          
           std::string ref = bd->getName().str() + "." +
           md->getName().str();
 
@@ -2566,6 +2579,39 @@ namespace{
       }
     }
 
+    void VisitDeclStmt(DeclStmt* S){
+      DeclGroupRef declGroup = S->getDeclGroup();
+      
+      for(DeclGroupRef::iterator itr = declGroup.begin(),
+          itrEnd = declGroup.end(); itr != itrEnd; ++itr){
+        Decl* decl = *itr;
+        
+        if(NamedDecl* nd = dyn_cast<NamedDecl>(decl)){
+          localMap_.insert(make_pair(nd->getName().str(), true));
+        }
+      }
+      
+      VisitChildren(S);
+    }
+    
+    void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
+      if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
+        if(ME->getMemberDecl()->getName() == "position"){
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(ME->getBase())){
+            if(const MeshType* MT = 
+               dyn_cast<MeshType>(DR->getDecl()->getType().getTypePtr())){
+              if(E->getIdx() >= MT->dimensions().size()){
+                sema_.Diag(E->getLocation(), diag::err_invalid_position_ref);
+                error_ = true;
+              }
+            }
+          }
+        }
+      }
+      
+      VisitChildren(E);
+    }
+    
     void VisitBinaryOperator(BinaryOperator* S){
 
       switch(S->getOpcode()){
@@ -2580,6 +2626,15 @@ namespace{
         case BO_AndAssign:
         case BO_XorAssign:
         case BO_OrAssign:
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+            RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
+            if(itr == localMap_.end()){
+
+              sema_.Diag(DR->getLocation(),
+                         diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
+            }
+          }
+          
           nodeType_ = NodeLHS;
           break;
         default:
@@ -2601,6 +2656,7 @@ namespace{
     ForAllStmt* fs_;
     typedef std::map<std::string, bool> RefMap_;
     RefMap_ refMap_;
+    RefMap_ localMap_;
     bool error_;
     NodeType nodeType_;
   };
