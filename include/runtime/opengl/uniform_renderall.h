@@ -32,4 +32,4 @@ namespace scout
   void __sc_destroy_uniform_renderall(uniform_renderall_t* info);
 }
 
-#endif // SCOUT_UNIFORM_RENDERALL_H_
+#endif
