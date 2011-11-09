@@ -82,24 +82,31 @@ glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
 
   info->prog->attachShader(info->fshader);
 
-	info->radius = .25;
+	if (info->prog->link() == false) {
+		cerr << "scout: internal runtime error -- failed to link -- " << info->prog->linkLog() << endl;
+	}
+
+
+	info->radius = 10;
 	info->near = 1.0;
-	info->far = 20.0;
-	info->win_width = 20.0;
+	info->far = 2000.0;
+	info->win_width = 1000.0;
 	info->prog->bindUniformValue("radius", &info->radius);
 	info->prog->bindUniformValue("windowWidth", &info->win_width);
 	info->prog->bindUniformValue("near", &info->near);
 	info->prog->bindUniformValue("far", &info->far);
-	
 
+	// cout << "glyph: num uniforms: " << info->prog->numberOfUniformValues() << endl;
   info->cbo = new glColorBuffer;
   info->cbo->bind();
-  info->cbo->alloc(sizeof(float) * 4 * nglyphs, GL_STREAM_DRAW_ARB);
+  //info->cbo->alloc(sizeof(float) * 4 * nglyphs, GL_STREAM_DRAW_ARB);
+  info->cbo->alloc(sizeof(float) * 4 * nglyphs, GL_STATIC_DRAW);
   info->cbo->release();
 
   info->vbo = new glVertexBuffer;
   info->vbo->bind();
-  info->vbo->alloc(sizeof(float) * 3 * nglyphs, GL_STREAM_DRAW_ARB);
+  //info->vbo->alloc(sizeof(float) * 3 * nglyphs, GL_STREAM_DRAW_ARB);
+  info->vbo->alloc(sizeof(float) * 3 * nglyphs, GL_STATIC_DRAW);
   info->vbo->release();
 
   OpenGLErrorCheck();
@@ -114,7 +121,6 @@ void __sc_destroy_glyph_renderall(glyph_renderall_t* info)
 {
   delete info->prog;
   delete info->fshader;
-  delete info->prog;
   delete info->cbo;  
   delete info->vbo;
 }
@@ -184,9 +190,10 @@ void __sc_exec_glyph_renderall(glyph_renderall_t* info)
   info->cbo->bind();
   glColorPointer(4, GL_FLOAT, 0, 0);
 
-  glDrawArrays(GL_POINT, 0, info->npoints);
+  glDrawArrays(GL_POINTS, 0, info->npoints);
 
   glDisableClientState(GL_VERTEX_ARRAY);
+  glDisableClientState(GL_COLOR_ARRAY);
   info->cbo->release();
   info->vbo->release();
 
