@@ -813,7 +813,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
         if(Ty.getTypeClass() == Type::Mesh) {
           // Variable has Scout mesh type. Each member becomes a pointer.
-          MeshType::MeshDimensionVec dims = 
+          MeshType::MeshDimensionVec dims =
           cast<MeshType>(T.getTypePtr())->dimensions();
 
           uint64_t numElts = 1;
@@ -834,11 +834,10 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           ScoutMeshVars.push_back(DeclPtr);
 
           llvm::StringRef meshName = DeclPtr->getName();
-          llvm::Type *i32Ty = llvm::Type::getInt32Ty(getLLVMContext());
 
           llvm::SmallVector< llvm::Value *, 3 > sizes;
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-            llvm::Value *lval = Builder.CreateAlloca(i32Ty, 0, meshName + "_" + toString(i));
+            llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
             Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
             sizes.push_back(lval);
           }
