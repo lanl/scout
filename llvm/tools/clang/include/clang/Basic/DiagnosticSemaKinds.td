@@ -4818,10 +4818,20 @@ def err_cshift_field : Error<
 
 def err_pointer_field_mesh : Error<
 "mesh field element must be non-pointer type">;
-}
 
 def err_elements_not_in_forall_renderall : Error<
 "renderall elements must appear within a forall loop">;
+
+def err_invalid_position_ref : Error<
+"mesh position component exceeds number of dimensions">;
+
+def err_invalid_height_mesh : Error<
+"invalid use of height field: number of mesh dimensions < 2">;
+
+def err_invalid_depth_mesh : Error<
+"invalid use of depth field: number of mesh dimensions < 3">;
+
+}
 
 let CategoryName = "Modules Issue" in {
 def err_module_private_follows_public : Error<
