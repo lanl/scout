@@ -1,6 +1,7 @@
+#include <cassert>
 #include "runtime/scout_gpu.h"
 
-#incude <cassert>
+using namespace std;
 
 bool _scout_gpu = false;
 
@@ -10,7 +11,8 @@ CUgraphicsResource _scout_device_resource;
 CUstream _scout_device_stream;
 CUdeviceptr _scout_device_pixels;
 
-void scout_init_cuda(){
+void scout_init_cuda()
+{
   _scout_gpu = true;
 
   assert(cuDeviceGet(&_scout_device, 0) == CUDA_SUCCESS);

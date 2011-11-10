@@ -1,6 +1,8 @@
 #ifndef SCOUT_GPU_H_
 #define SCOUT_GPU_H_
 
+#include "runtime/opengl/opengl.h"
+
 #include <cuda.h>
 #include <cudaGL.h>
 
