@@ -13,6 +13,7 @@
 #include "runtime/types.h"
 #include "runtime/opengl/uniform_renderall.h"
 #include "runtime/opengl/uniform_renderall_private.h"
+#include "runtime/scout_gpu.h"
 
 namespace scout 
 {
@@ -79,6 +80,23 @@ namespace scout
     tcbo->unmap();
   }
 
+  static void _map_gpu_pbo(GLuint pbo){
+    assert(cuStreamCreate(&_scout_device_stream, 0) == CUDA_SUCCESS);
+    
+    assert(cuGraphicsMapResources(1, &_scout_device_resource, 
+				  _scout_device_stream) == CUDA_SUCCESS);
+    
+    assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo, 0) ==
+	   CUDA_SUCCESS);
+    
+    size_t size;
+    assert(
+	   cuGraphicsResourceGetMappedPointer(&_scout_device_pixels, 
+					      &size, 
+					      _scout_device_resource) ==
+	   CUDA_SUCCESS);
+  }
+
   // ----- __sc_init_uniform_renderall
   //
   uniform_renderall_t* __sc_init_uniform_renderall(dim_t xdim)
@@ -111,10 +129,10 @@ namespace scout
 
     OpenGLErrorCheck();
 
-    //
-    // TODO; need to add cuda interop support here...
-    //
-  
+    if(_scout_gpu){
+      _map_gpu_pbo(info->pbo->id());
+    }
+
     return info;
   }
 
@@ -152,9 +170,9 @@ namespace scout
 
     OpenGLErrorCheck();
 
-    //
-    // TODO; need to add cuda interop support here...
-    //    
+    if(_scout_gpu){
+      _map_gpu_pbo(info->pbo->id());
+    }
   
     return info;
   }
@@ -238,8 +256,4 @@ namespace scout
     info->tex->disable();
   }
   
-  GLuint __sc_get_pixel_buffer(uniform_renderall_t* info){
-    return info->pbo->id();
-  }
-
 } // end namespace scout
