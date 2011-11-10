@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <sstream>
+#include <cassert>
 
 #ifdef __APPLE__
 
@@ -19,6 +20,10 @@
 
 #define SC_USE_PNG
 
+#include <cuda.h>
+#include <cudaGL.h>
+#include "runtime/cuda/cuda.h"
+
 #include "runtime/opengl/uniform_renderall.h"
 #include "runtime/tbq.h"
 
@@ -27,10 +32,10 @@ using namespace scout;
 
 SDL_Surface* _sdl_surface;
 uniform_renderall_t* _uniform_renderall = 0;
-float4* _pixels;
+scout::float4* _pixels;
 tbq_rt* _tbq;
 
-static bool _gpu;
+static bool _gpu = false;
 static size_t _dx;
 static size_t _dy;
 static size_t _dz;
@@ -38,14 +43,33 @@ static size_t _dz;
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
+CUdevice _device;
+CUcontext _deviceContext;
+CUgraphicsResource _deviceResource;
+CUstream _deviceStream;
+CUdeviceptr _devicePixels;
+
+static void _initCUDA(){
+  _gpu = true;
+
+  assert(cuDeviceGet(&_device, 0) == CUDA_SUCCESS);
+  assert(cuGLCtxCreate(&_deviceContext, 0, _device) == CUDA_SUCCESS);
+}
+
 void scoutInit(int& argc, char** argv, bool gpu){
   _tbq = new tbq_rt;
-  _gpu = gpu;
+
+  if(gpu){
+    _initCUDA();
+  }
 }
 
 void scoutInit(bool gpu){
   _tbq = new tbq_rt;
-  _gpu = gpu;
+
+  if(gpu){
+    _initCUDA();
+  }
 }
 
 static void _initViewport(){
@@ -130,11 +154,32 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
     }
 
     _initViewport();
+
+    if(_gpu){
+      GLuint pbo = __sc_get_pixel_buffer(_uniform_renderall);
+
+      assert(cuStreamCreate(&_deviceStream, 0) == CUDA_SUCCESS);
+
+      assert(cuGraphicsMapResources(1, &_deviceResource, _deviceStream) ==
+	     CUDA_SUCCESS);
+
+      assert(cuGraphicsGLRegisterBuffer(&_deviceResource, pbo, 0) ==
+	     CUDA_SUCCESS);
+
+      size_t size;
+      assert(
+	     cuGraphicsResourceGetMappedPointer(&_devicePixels, 
+						&size, 
+						_deviceResource) ==
+	     CUDA_SUCCESS);
+    }
   }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  _pixels = __sc_map_uniform_colors(_uniform_renderall);
+  if(!_gpu){
+    _pixels = __sc_map_uniform_colors(_uniform_renderall);
+  }
 }
 
 void scoutEndRenderAll(){

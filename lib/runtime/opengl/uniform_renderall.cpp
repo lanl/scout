@@ -237,5 +237,9 @@ namespace scout
 
     info->tex->disable();
   }
+  
+  GLuint __sc_get_pixel_buffer(uniform_renderall_t* info){
+    return info->pbo->id();
+  }
 
 } // end namespace scout

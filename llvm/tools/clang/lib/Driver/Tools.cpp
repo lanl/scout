@@ -3429,7 +3429,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scLibOpt = "-L" + sccPath + "/lib";
 
   static std::string scCudaLib;
-  if(Args.hasArg(options::OPT_gpu))
+  //if(Args.hasArg(options::OPT_gpu))
     scCudaLib = "-L/usr/local/cuda/lib";
 
   CmdArgs.push_back(scRuntimeLibOpt.c_str());
@@ -3438,7 +3438,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLLVMLibOpt.c_str());
   CmdArgs.push_back(scLibOpt.c_str());
 
-  if(Args.hasArg(options::OPT_gpu))
+  //if(Args.hasArg(options::OPT_gpu))
     CmdArgs.push_back(scCudaLib.c_str());
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
@@ -3553,10 +3553,10 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
 
-  if(Args.hasArg(options::OPT_gpu)) {
+  //if(Args.hasArg(options::OPT_gpu)) {
     CmdArgs.push_back("-lcuda");
     CmdArgs.push_back("-lscCudaError");
-  }
+  //}
 
 
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
@@ -4371,7 +4371,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
 
   static std::string scCudaLib;
-  if(Args.hasArg(options::OPT_gpu))
+  //if(Args.hasArg(options::OPT_gpu))
     scCudaLib = "-L/usr/local/cuda/lib64";
 
   CmdArgs.push_back(scRuntimeLibOpt.c_str());
@@ -4379,7 +4379,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scHwLocLibOpt.c_str());
   CmdArgs.push_back(scLLVMLibOpt.c_str());
 
-  if(Args.hasArg(options::OPT_gpu))
+  //if(Args.hasArg(options::OPT_gpu))
     CmdArgs.push_back(scCudaLib.c_str());
 
   CmdArgs.push_back("-o");
@@ -4501,10 +4501,10 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lGLU");
   CmdArgs.push_back("-lSDL");
 
-  if(Args.hasArg(options::OPT_gpu)) {
+  //if(Args.hasArg(options::OPT_gpu)) {
     CmdArgs.push_back("-lcuda");
     CmdArgs.push_back("-lscCudaError");
-  }
+  //}
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }

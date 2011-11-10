@@ -12,6 +12,16 @@
 #ifndef SCOUT_UNIFORM_RENDERALL_H_
 #define SCOUT_UNIFORM_RENDERALL_H_
 
+#ifdef __APPLE__
+
+#include <OpenGL/gl.h>
+
+#else /* Linux */ 
+
+#include <GL/gl.h>
+
+#endif
+
 #include "runtime/base_types.h"
 #include "runtime/vec_types.h"
 
@@ -24,6 +34,8 @@ namespace scout
   uniform_renderall_t* __sc_init_uniform_renderall(dim_t xdim, dim_t ydim);
 
   float4* __sc_map_uniform_colors(uniform_renderall_t* info);
+
+  GLuint __sc_get_pixel_buffer(uniform_renderall_t* info);
 
   void __sc_unmap_uniform_colors(uniform_renderall_t* info);
 
