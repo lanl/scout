@@ -20,8 +20,7 @@
 
 #define SC_USE_PNG
 
-#include <cuda.h>
-#include <cudaGL.h>
+#include "runtime/scout_gpu.h"
 #include "runtime/cuda/cuda.h"
 
 #include "runtime/opengl/uniform_renderall.h"
@@ -43,24 +42,11 @@ static size_t _dz;
 static const size_t WINDOW_WIDTH = 1024;
 static const size_t WINDOW_HEIGHT = 1024;
 
-CUdevice _device;
-CUcontext _deviceContext;
-CUgraphicsResource _deviceResource;
-CUstream _deviceStream;
-CUdeviceptr _devicePixels;
-
-static void _initCUDA(){
-  _gpu = true;
-
-  assert(cuDeviceGet(&_device, 0) == CUDA_SUCCESS);
-  assert(cuGLCtxCreate(&_deviceContext, 0, _device) == CUDA_SUCCESS);
-}
-
 void scoutInit(int& argc, char** argv, bool gpu){
   _tbq = new tbq_rt;
 
   if(gpu){
-    _initCUDA();
+    scout_init_cuda();
   }
 }
 
@@ -68,7 +54,7 @@ void scoutInit(bool gpu){
   _tbq = new tbq_rt;
 
   if(gpu){
-    _initCUDA();
+    scout_init_cuda();
   }
 }
 
@@ -154,36 +140,20 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
     }
 
     _initViewport();
-
-    if(_gpu){
-      GLuint pbo = __sc_get_pixel_buffer(_uniform_renderall);
-
-      assert(cuStreamCreate(&_deviceStream, 0) == CUDA_SUCCESS);
-
-      assert(cuGraphicsMapResources(1, &_deviceResource, _deviceStream) ==
-	     CUDA_SUCCESS);
-
-      assert(cuGraphicsGLRegisterBuffer(&_deviceResource, pbo, 0) ==
-	     CUDA_SUCCESS);
-
-      size_t size;
-      assert(
-	     cuGraphicsResourceGetMappedPointer(&_devicePixels, 
-						&size, 
-						_deviceResource) ==
-	     CUDA_SUCCESS);
-    }
   }
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  if(!_gpu){
+  if(!_scout_gpu){
     _pixels = __sc_map_uniform_colors(_uniform_renderall);
   }
 }
 
 void scoutEndRenderAll(){
-  __sc_unmap_uniform_colors(_uniform_renderall);
+  if(!_scout_gpu){
+    __sc_unmap_uniform_colors(_uniform_renderall);
+  }
+
   __sc_exec_uniform_renderall(_uniform_renderall);
 
   SDL_GL_SwapBuffers();
