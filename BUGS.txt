@@ -16,4 +16,16 @@ code.
 
    * It appears that we can't pass a mesh instance to functions. 
 
+-- hwloc not being found on some systems (likely those that do not 
+   have an already installed version) 
+
+   * We should make sure scc knows to find hwloc in the build/install
+     directory structure.
+  
+-- PNG builds broken on some Linux systems. 
+
+   * Apparent API differences within libpng versions are a stumbling
+     block for building on some platforms -- we've currently disabled
+     PNG support until we can address this (currently a lower priority
+     concern).
 

@@ -25,7 +25,6 @@ endif()
 # Add paths for custom cmake modules.  Note that we add some of our
 # own module paths as well as pick up llvm's (does this end up being
 # redundant since we're already including llvm within the project?).
-#
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
@@ -35,10 +34,19 @@ set(CMAKE_MODULE_PATH
   )
 
 find_package(CUDA)
-find_package(PNG)
+# Disable PNG for now -- some Linux systems are having a hard time 
+# with matching the API we've used an we haven't had time to fully
+# investigate.  Putting it on the backburner for now...
+#find_package(PNG)
 find_package(OpenGL)
 find_package(HWLOC)
 
+if (${CUDA_FOUND}) 
+  add_definitions(-DSC_ENABLE_CUDA) 
+endif()
+
+# TODO - we now build hwloc as part of the distribution so this can 
+# go away...
 if (NOT ${HWLOC_FOUND})
   message("The portable hardware locality library (hwloc) was not found on your system.")
   message("Please download it from: http://www.open-mpi.org/projects/hwloc/")
@@ -61,7 +69,7 @@ set(SCOUT_ENABLE_RT_THREADS  OFF CACHE BOOL "Enable threads in scout's runtime l
 
 if (OPENGL_FOUND)
   set(SCOUT_ENABLE_RT_OPENGL   ON  CACHE BOOL "Enable OpenGL in scout's runtime libraries.")
-  add_definitions(-DSC_ENABLE_OPENGL ${PNG_DEFINITIONS})
+  add_definitions(-DSC_ENABLE_OPENGL)
 endif()
 
 if (PNG_FOUND)
