@@ -87,9 +87,9 @@ glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
 	}
 
 
-	info->radius = 10;
+	info->radius = 15.0;
 	info->near = 1.0;
-	info->far = 2000.0;
+	info->far = -8000.0;
 	info->win_width = 1000.0;
 	info->prog->bindUniformValue("radius", &info->radius);
 	info->prog->bindUniformValue("windowWidth", &info->win_width);

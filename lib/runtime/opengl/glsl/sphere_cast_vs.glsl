@@ -38,4 +38,5 @@ void main()
   } else {
     gl_PointSize = 0.0;
   }
+	gl_FrontColor = gl_Color;
 }
