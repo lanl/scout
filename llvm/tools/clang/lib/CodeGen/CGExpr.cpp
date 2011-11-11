@@ -1365,22 +1365,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
-    if(!CGM.getModule().getNamedGlobal("_pixels")) {
-      llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
-      llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
-      llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
-
-      new llvm::GlobalVariable(CGM.getModule(),
-                               flt4PtrTy,
-                               false,
-                               llvm::GlobalValue::ExternalLinkage,
-                               0,
-                               "_pixels");
-    }
-
-    llvm::Value *pixels = CGM.getModule().getNamedGlobal("_pixels");
-    pixels = Builder.CreateLoad(pixels);
-    llvm::Value *idx = Builder.CreateLoad(ForallIndVar);
+    llvm::Value *pixels = Builder.CreateLoad(Pixels);
+    llvm::Value *idx = getGlobalIdx();
     llvm::Value* ep = Builder.CreateInBoundsGEP(pixels, idx);
 
     return MakeAddrLValue(ep, VD->getType(), Alignment);

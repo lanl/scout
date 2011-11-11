@@ -650,6 +650,7 @@ public:
   MemberMap MeshMembers;
   bool RenderAll;
   bool CallsPrintf;
+  llvm::Value *Pixels;
 
   llvm::Value *getGlobalIdx() {
     return isSequential() ? Builder.CreateLoad(ForallIndVar) : ForallIndVal;
