@@ -18,8 +18,9 @@ void scout_init_cuda()
 {
   _scout_gpu = true;
 
+  assert(cuInit(0) == CUDA_SUCCESS);
   assert(cuDeviceGet(&_scout_device, 0) == CUDA_SUCCESS);
 
-  assert(cuGLCtxCreate(&_scout_device_context, 0, _scout_device) == 
+  assert(cuGLCtxCreate(&_scout_device_context, 0, _scout_device) ==
 	 CUDA_SUCCESS);
 }
