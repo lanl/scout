@@ -1365,9 +1365,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     const ValueDecl *VD = cast<ValueDecl>(ND);
 
-    llvm::Value *pixels = Builder.CreateLoad(Pixels);
     llvm::Value *idx = getGlobalIdx();
-    llvm::Value* ep = Builder.CreateInBoundsGEP(pixels, idx);
+    llvm::Value* ep = Builder.CreateInBoundsGEP(Pixels, idx);
 
     return MakeAddrLValue(ep, VD->getType(), Alignment);
   }

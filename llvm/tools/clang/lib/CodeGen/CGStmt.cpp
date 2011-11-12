@@ -639,7 +639,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::Value *local_pixels  = Builder.CreateAlloca(flt4PtrTy, 0, "pixels");
     llvm::Value *global_pixels = CGM.getModule().getNamedGlobal("_pixels");
     Builder.CreateStore(Builder.CreateLoad(global_pixels), local_pixels);
-    Pixels = local_pixels;
+    Pixels = Builder.CreateLoad(local_pixels, "pixels");
   }
 
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
