@@ -657,7 +657,7 @@ public:
   }
 
   bool isSequential() {
-    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || RenderAll || CallsPrintf;
+    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || CallsPrintf;
   }
 
   bool isMeshMember(llvm::Argument *arg) {

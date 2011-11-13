@@ -4369,6 +4369,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
   static std::string scHwLocLibOpt = "-L/usr/local/lib";
   static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+  static std::string scLibOpt = "-L" + sccPath + "/lib";
 
   static std::string scCudaLib;
   //if(Args.hasArg(options::OPT_gpu))
@@ -4378,6 +4379,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scStandardLibOpt.c_str());
   CmdArgs.push_back(scHwLocLibOpt.c_str());
   CmdArgs.push_back(scLLVMLibOpt.c_str());
+  CmdArgs.push_back(scLibOpt.c_str());
 
   //if(Args.hasArg(options::OPT_gpu))
     CmdArgs.push_back(scCudaLib.c_str());

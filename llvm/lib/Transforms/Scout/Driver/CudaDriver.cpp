@@ -185,9 +185,27 @@ bool CudaDriver::setGridAndBlockSizes() {
 void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   setInsertPoint(&func->getEntryBlock());
 
+  // Calculate the total number of mesh elements.
+  int meshSize = getLinearizedMeshSize();
+
   // Load module, add memcpy's, and launch kernel.
+  llvm::Value *cuModule = _builder.CreateAlloca(getPtrTy(getCUmoduleTy()), 0, "cuModule");
+
   insertModuleLoadData(cuModule,
                        _builder.CreateConstInBoundsGEP2_32(ptxAsm, 0, 0));
+
+  Value *pixels;
+  if(func->getName().startswith("renderall")) {
+    if(!_module.getNamedGlobal("_scout_device_pixels")) {
+      pixels = new GlobalVariable(_module,
+                                  getCUdeviceptrTy(),
+                                  false,
+                                  GlobalValue::ExternalLinkage,
+                                  0,
+                                  "_scout_device_pixels");
+
+    }
+  }
 
  // Create variable of type CUFunctionTy.
   Value *cuFunction = _builder.CreateAlloca(getPtrTy(getCUfunctionTy()),
@@ -201,31 +219,35 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   int offset = 0;
   llvm::SmallVector< Memcpy, 3 > memcpyList;
 
-  int meshSize = getLinearizedMeshSize();
-
   typedef llvm::Function::arg_iterator FuncArgIterator;
   FuncArgIterator arg = func->arg_begin(), end = func->arg_end();
   for(unsigned i = 0; arg != end; ++arg, ++i) {
     Type *type = arg->getType();
     if(type->isPointerTy()) {
 
-      int numElements = getSizeInBytes(type);
-      if(isMeshMember(i))
-        numElements *= meshSize;
+      Value *d_arg;
+      if(arg->getName().startswith("pixels"))
+        d_arg = pixels;
+      else {
+        int numElements = getSizeInBytes(type);
 
-      Value *size = ConstantInt::get(i64Ty, numElements);
-      Value *d_arg = _builder.CreateAlloca(getCUdeviceptrTy(), 0, "d_" + arg->getName());
+        if(isMeshMember(i))
+          numElements *= meshSize;
 
-      // Allocate memory for variable on GPU.
-      insertMemAlloc(d_arg, size);
+        Value *size = ConstantInt::get(i64Ty, numElements);
+        d_arg = _builder.CreateAlloca(getCUdeviceptrTy(), 0, "d_" + arg->getName());
 
-      // Copy variable from CPU to GPU.
-      insertMemcpyHtoD(_builder.CreateLoad(d_arg),
-                       _builder.CreateBitCast(arg, i8PtrTy),
-                       size);
+        // Allocate memory for variable on GPU.
+        insertMemAlloc(d_arg, size);
 
-      // Add variable to list of memcpy's.
-      memcpyList.push_back(Memcpy(arg, d_arg, size));
+        // Copy variable from CPU to GPU.
+        insertMemcpyHtoD(_builder.CreateLoad(d_arg),
+                         _builder.CreateBitCast(arg, i8PtrTy),
+                         size);
+
+        // Add variable to list of memcpy's.
+        memcpyList.push_back(Memcpy(arg, d_arg, size));
+      }
 
       // Set pointer variable as parameter to kernel.
       insertParamSetv(_builder.CreateLoad(cuFunction),
@@ -263,6 +285,9 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
     // Free GPU memory.
     insertMemFree(_builder.CreateLoad(memcpyList[i].device));
   }
+
+  // Unload cuda module.
+  insertModuleUnload(_builder.CreateLoad(cuModule));
 }
 
 void CudaDriver::initialize() {
@@ -474,7 +499,7 @@ Value *CudaDriver::insertModuleGetFunction(Value *a, Value *b, Value *c) {
 
 Value *CudaDriver::insertModuleGetGlobal(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
-  return insertCheckedCall("cuModuleGetGlobal", ArrayRef< Value * >(args));
+  return insertCheckedCall("cuModuleGetGlobal_v2", ArrayRef< Value * >(args));
 }
 
 Value *CudaDriver::insertModuleGetTexRef(Value *a, Value *b, Value *c) {

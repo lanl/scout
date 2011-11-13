@@ -76,7 +76,7 @@ void scoutInit(int& argc, char** argv, bool gpu){
 
   if(gpu){
     initSDLWindow(); // CUDA requires an active OpenGL context.
-    scout_init_cuda();
+    __sc_init_cuda();
   }
 }
 
@@ -90,7 +90,7 @@ void scoutInit(bool gpu){
 
   if(gpu){
     initSDLWindow(); // CUDA requires an active OpenGL context.
-    scout_init_cuda();
+    __sc_init_cuda();
   }
 }
 
@@ -155,15 +155,17 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  if(!_scout_gpu){
+  if(_scout_gpu)
+    _map_gpu_resources();
+  else
     _pixels = __sc_map_uniform_colors(_uniform_renderall);
-  }
 }
 
 void scoutEndRenderAll(){
-  if(!_scout_gpu){
+  if(_scout_gpu)
+    _unmap_gpu_resources(_uniform_renderall);
+  else
     __sc_unmap_uniform_colors(_uniform_renderall);
-  }
 
   __sc_exec_uniform_renderall(_uniform_renderall);
 
@@ -178,7 +180,6 @@ void scoutEndRenderAll(){
     case SDL_QUIT:
     {
       exit(0);
-      break;
     }
     case SDL_KEYDOWN:
     {
@@ -186,7 +187,6 @@ void scoutEndRenderAll(){
         case SDLK_ESCAPE:
 	{
 	  exit(0);
-	  break;
 	}
         default:
 	{
