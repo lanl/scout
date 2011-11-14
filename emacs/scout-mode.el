@@ -52,31 +52,21 @@ is the appropriate place for that."
 
 
 (c-lang-defconst c-protection-kwds
-  "Scout mesh location (topological) keywords."
-  scout
-  (append
-   '("cells" "vertices" "edges" "faces")
-   (append
-    (c-lang-const c-protection-kwds)
-    nil)))
+  "Scout topological keywords in meshes."
+  t nil 
+  scout  (append '("cells" "vertices" "edges" "faces")
+		 (append  (c-lang-const c-protection-kwds)
+			  nil)))
 
-;;(c-lang-defconst c-class-decl-kwds
-;;  "Keywords introducing declarations where the following
-;;block (if any) contains another declaration level that should be
-;;considered a class.
-;;
-;;If any are also on the `c-type-list-kwds', `c-ref-list-kwds', 
-;;`c-colon-type-list-kwds', `c-paren-nontype-kwds', `c-paren-type-kwds',
-;;`c-<>-type-kwds', or `c-<>-arglist-kwds' then the associated clauses
-;;will be handled.
-;;
-;;
-;;Note that presence on this list does not automatically treat the
-;;following identifier as a type; the keyword must also be present on
-;;`c-type-prefix-kwds' or `c-type-list-kwds' to accomplish that."
-;;  t   nil
-;;  scout (append '("uniform mesh")))
+(c-lang-defconst c-type-prefix-kwds
+  t    nil
+  scout  (append '("mesh")
+		 (c-lang-const c-type-prefix-kwds c++)))
 
+(c-lang-defconst c-block-decls-with-vars 
+  t nil
+  scout (append '("mesh")
+		(c-lang-const c-block-decls-with-vars c++)))
 
 (c-lang-defconst c-block-stmt-2-kwds
   "keywords followed by substatements."
@@ -84,10 +74,8 @@ is the appropriate place for that."
 
 (c-lang-defconst c-type-modifier-kwds
   "Mesh type modifier keywords."
-  scout 
-  (append 
-   '("uniform" "rectilinear" "structured" "unstructured")
-   (c-lang-const c-type-modifier-kwds)
+  scout  (append '("uniform" "rectilinear" "structured" "unstructured")
+   (c-lang-const c-modifier-kwds)
    nil))
 
 (c-lang-defconst c-primary-expr-kwds
@@ -99,6 +87,10 @@ is the appropriate place for that."
 does not contain type identifiers."
   scout (append '("of" "in")))
 
+
+(c-lang-defconst c-class-decl-kwds 
+  "class declaration related keywords"
+  scout (append '("mesh")))
 
 (defcustom scout-font-lock-etra-types nil
   "*List of extra types (aside from keywords) to recognize in scout-mode.

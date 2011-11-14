@@ -39,8 +39,8 @@ static size_t _dx;
 static size_t _dy;
 static size_t _dz;
 
-static const size_t WINDOW_WIDTH = 1024;
-static const size_t WINDOW_HEIGHT = 1024;
+static const size_t WINDOW_WIDTH  = 768;
+static const size_t WINDOW_HEIGHT = 768;
 
 void initSDLWindow() {
   SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
