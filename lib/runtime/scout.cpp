@@ -67,6 +67,10 @@ void initSDLWindow() {
 }
 
 void scoutInit(int& argc, char** argv, bool gpu){
+#ifdef __APPLE__
+    scoutInitMac();
+#endif
+
   if(SDL_Init(SDL_INIT_VIDEO) < 0){
     cerr << "Error: failed to initialize SDL." << endl;
     exit(1);
@@ -81,6 +85,10 @@ void scoutInit(int& argc, char** argv, bool gpu){
 }
 
 void scoutInit(bool gpu){
+#ifdef __APPLE__
+      scoutInitMac();
+#endif
+
   if(SDL_Init(SDL_INIT_VIDEO) != 0){
     cerr << "Error: failed to initialize SDL." << endl;
     exit(1);
@@ -139,11 +147,14 @@ void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz){
   // the OpenGL runtime
   if(!_uniform_renderall){
 
-#ifdef __APPLE__
-    scoutInitMac();
-#endif
+    if(!_sdl_surface){
 
-    initSDLWindow();
+#ifdef __APPLE__
+      scoutInitMac();
+#endif
+    
+      initSDLWindow();
+    }
 
     if(!_sdl_surface){
       cerr << "Error: failed to initialize SDL surface." << endl;
