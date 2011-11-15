@@ -82,7 +82,7 @@ Value *Driver::insertCall(StringRef name,
 }
 
 Value *Driver::insertGet(StringRef name) {
-  _builder.CreateLoad(_module.getNamedGlobal(name));
+  return _builder.CreateLoad(_module.getNamedGlobal(name));
 }
 
 bool Driver::getDebug() {
