@@ -311,8 +311,6 @@ bool DoallToPTX::runOnModule(Module &M) {
   IRBuilder<> Builder(M.getContext());
   CudaDriver cuda(M, Builder, true);
 
-  cuda.initialize();
-
   NamedMDNode *NMDN = M.getNamedMetadata("scout.kernels");
   for(unsigned i = 0, e = NMDN->getNumOperands(); i < e; i+=1) {
 

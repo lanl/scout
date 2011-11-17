@@ -4,9 +4,9 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
- * 
+ *
  */
 
 
@@ -15,30 +15,30 @@
 #include "runtime/opengl/uniform_renderall_private.h"
 #include "runtime/scout_gpu.h"
 
-namespace scout 
+namespace scout
 {
-  
+
   // ----- __sc_fill_vbo
   //
   static void __sc_fill_vbo(glVertexBuffer* vbo, float x0, float y0, float x1, float y1)
   {
     float* verts = (float*)vbo->mapForWrite();
 
-    verts[0] = x0;   
+    verts[0] = x0;
     verts[1] = y0;
     verts[2] = 0.0f;
 
-    verts[3] = x1;  
+    verts[3] = x1;
     verts[4] = y0;
     verts[5] = 0.f;
 
-    verts[6] = x1;  
+    verts[6] = x1;
     verts[7] = y1;
     verts[8] = 0.0f;
 
-    verts[9] = x0;       
+    verts[9] = x0;
     verts[10] = y1;
-    verts[11] = 0.0f;  
+    verts[11] = 0.0f;
 
     vbo->unmap();
   }
@@ -50,51 +50,57 @@ namespace scout
   {
     float* coords = (float*)tcbo->mapForWrite();
 
-    coords[0] = x0;   
+    coords[0] = x0;
     coords[1] = y0;
 
-    coords[2] = x1;  
+    coords[2] = x1;
     coords[3] = y0;
 
-    coords[4] = x1;  
+    coords[4] = x1;
     coords[5] = y1;
 
-    coords[6] = x0;       
+    coords[6] = x0;
     coords[7] = y1;
 
     tcbo->unmap();
   }
 
-  
+
   // ----- __sc_fill_tcbo_1d
   //
   static void __sc_fill_tcbo_1d(glTexCoordBuffer* tcbo, float start, float end)
   {
     float* coords = (float*)tcbo->mapForWrite();
-  
+
     coords[0] = start;
     coords[1] = end;
     coords[2] = end;
     coords[3] = start;
-  
+
     tcbo->unmap();
   }
 
-  static void _map_gpu_pbo(GLuint pbo){
-    assert(cuStreamCreate(&_scout_device_stream, 0) == CUDA_SUCCESS);
-    
-    assert(cuGraphicsMapResources(1, &_scout_device_resource, 
-				  _scout_device_stream) == CUDA_SUCCESS);
-    
-    assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo, 0) ==
-	   CUDA_SUCCESS);
-    
-    size_t size;
-    assert(
-	   cuGraphicsResourceGetMappedPointer(&_scout_device_pixels, 
-					      &size, 
-					      _scout_device_resource) ==
-	   CUDA_SUCCESS);
+  void _map_gpu_resources() {
+    assert(cuGraphicsMapResources(1, &_scout_device_resource, 0) == CUDA_SUCCESS);
+
+    size_t bytes;
+    assert(cuGraphicsResourceGetMappedPointer(&_scout_device_pixels, &bytes, _scout_device_resource) == CUDA_SUCCESS);
+  }
+
+  void _unmap_gpu_resources(uniform_renderall_t *info) {
+    assert(cuGraphicsUnmapResources(1, &_scout_device_resource, 0) == CUDA_SUCCESS);
+
+    if(!info) return;
+
+    info->pbo->bind();
+    info->tex->initialize(0);
+    info->pbo->release();
+  }
+
+  static void _register_gpu_pbo(GLuint pbo){
+    assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo,
+                                      CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
+           CUDA_SUCCESS);
   }
 
   // ----- __sc_init_uniform_renderall
@@ -124,14 +130,13 @@ namespace scout
     info->tcbo = new glTexCoordBuffer;
     info->tcbo->bind();
     info->tcbo->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
-    __sc_fill_tcbo_1d(info->tcbo, 0.0f, 1.0f); 
+    __sc_fill_tcbo_1d(info->tcbo, 0.0f, 1.0f);
     info->tcbo->release();
 
     OpenGLErrorCheck();
 
-    if(_scout_gpu){
-      _map_gpu_pbo(info->pbo->id());
-    }
+    if(_scout_gpu)
+      _register_gpu_pbo(info->pbo->id());
 
     return info;
   }
@@ -148,7 +153,7 @@ namespace scout
     info->tex->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     info->tex->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     info->tex->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    //info->tex->initialize(0); 
+    //info->tex->initialize(0);
 
     info->pbo = new glTextureBuffer;
     info->pbo->bind();
@@ -157,23 +162,22 @@ namespace scout
 
     info->vbo = new glVertexBuffer;
     info->vbo->bind();
-    info->vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB); 
+    info->vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
     __sc_fill_vbo(info->vbo, 0.0f, 0.0f, float(xdim), float(ydim));
     info->vbo->release();
-    info->nverts = 4;  
+    info->nverts = 4;
 
     info->tcbo = new glTexCoordBuffer;
     info->tcbo->bind();
     info->tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-    __sc_fill_tcbo_2d(info->tcbo, 0.0f, 0.0f, 1.0f, 1.0f); 
+    __sc_fill_tcbo_2d(info->tcbo, 0.0f, 0.0f, 1.0f, 1.0f);
     info->tcbo->release();
 
     OpenGLErrorCheck();
 
-    if(_scout_gpu){
-      _map_gpu_pbo(info->pbo->id());
-    }
-  
+    if(_scout_gpu)
+      _register_gpu_pbo(info->pbo->id());
+
     return info;
   }
 
@@ -185,8 +189,8 @@ namespace scout
 
     //
     // TODO; need to add cuda interop support here...
-    //    
-    
+    //
+
     delete info->pbo;
     delete info->vbo;
     delete info->tcbo;
@@ -202,8 +206,8 @@ namespace scout
     //
     // TODO; need to add cuda interop support here...
     //
-    
-    if (info) 
+
+    if (info)
       return (float4*)info->pbo->mapForWrite();
     else
       return 0;
@@ -217,7 +221,7 @@ namespace scout
     //
     // TODO; need to add cuda interop support here...
     //
-    
+
     if (info){
       info->pbo->unmap();
       info->pbo->bind();
@@ -238,22 +242,22 @@ namespace scout
     info->pbo->release();
 
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    info->tcbo->bind();    
+    info->tcbo->bind();
     glTexCoordPointer(info->ntexcoords, GL_FLOAT, 0, 0);
 
     glEnableClientState(GL_VERTEX_ARRAY);
-    info->vbo->bind();  
+    info->vbo->bind();
     glVertexPointer(3, GL_FLOAT, 0, 0);
 
     glDrawArrays(GL_POLYGON, 0, info->nverts);
 
     glDisableClientState(GL_VERTEX_ARRAY);
     info->vbo->release();
-  
+
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     info->tcbo->release();
 
     info->tex->disable();
   }
-  
+
 } // end namespace scout
