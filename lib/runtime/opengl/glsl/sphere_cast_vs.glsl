@@ -8,9 +8,10 @@
  *-----
  * 
  */
-uniform float radius;
 uniform float windowWidth; 
 uniform float near, far;
+
+attribute float radius;
 
 varying vec3 WSc;
 varying vec4 center;
