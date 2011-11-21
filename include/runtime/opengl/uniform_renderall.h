@@ -4,9 +4,9 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
- * 
+ *
  */
 
 #ifndef SCOUT_UNIFORM_RENDERALL_H_
@@ -15,7 +15,7 @@
 #include "runtime/base_types.h"
 #include "runtime/vec_types.h"
 
-namespace scout 
+namespace scout
 {
   struct uniform_renderall_t;
 
@@ -30,6 +30,10 @@ namespace scout
   void __sc_exec_uniform_renderall(uniform_renderall_t* info);
 
   void __sc_destroy_uniform_renderall(uniform_renderall_t* info);
+
+  void _map_gpu_resources();
+
+  void _unmap_gpu_resources(uniform_renderall_t *info);
 }
 
-#endif // SCOUT_UNIFORM_RENDERALL_H_
+#endif

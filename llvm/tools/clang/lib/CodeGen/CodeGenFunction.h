@@ -650,13 +650,14 @@ public:
   MemberMap MeshMembers;
   bool RenderAll;
   bool CallsPrintf;
+  llvm::Value *Pixels;
 
   llvm::Value *getGlobalIdx() {
     return isSequential() ? Builder.CreateLoad(ForallIndVar) : ForallIndVal;
   }
 
   bool isSequential() {
-    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || RenderAll || CallsPrintf;
+    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || CallsPrintf;
   }
 
   bool isMeshMember(llvm::Argument *arg) {

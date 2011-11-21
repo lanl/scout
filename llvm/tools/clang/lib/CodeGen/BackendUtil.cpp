@@ -35,6 +35,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 using namespace clang;
 using namespace llvm;
@@ -117,6 +118,14 @@ static void addObjCARCOptPass(const PassManagerBuilder &Builder, PassManagerBase
 }
 
 void EmitAssemblyHelper::CreatePasses() {
+
+  // Check whether to enable Scout NVIDIA GPU support.
+  if(CodeGenOpts.ScoutNvidiaGPU) {
+    PassManager MPM;
+    MPM.add(createDoallToPTXPass());
+    MPM.run(*TheModule);
+  }
+
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.Inlining;
 
@@ -186,11 +195,6 @@ void EmitAssemblyHelper::CreatePasses() {
 
     if (!CodeGenOpts.DebugInfo)
       MPM->add(createStripSymbolsPass(true));
-  }
-
-  // Check whether to enable Scout NVIDIA GPU support.
-  if(CodeGenOpts.ScoutNvidiaGPU) {
-    MPM->add(createDoallToPTXPass());
   }
 
   PMBuilder.populateModulePassManager(*MPM);

@@ -83,7 +83,7 @@ declareFunction(CUresultTy, "cuCtxSynchronize");
 
 // Module Management
 declareFunction(CUresultTy, "cuModuleGetFunction", CUfunctionDblPtrTy, CUmodulePtrTy, i8PtrTy);
-declareFunction(CUresultTy, "cuModuleGetGlobal", CUdevicePtrTy, i32PtrTy, CUmodulePtrTy, i8PtrTy);
+declareFunction(CUresultTy, "cuModuleGetGlobal_v2", CUdeviceptrTy, i32PtrTy, CUmodulePtrTy, i8PtrTy);
 declareFunction(CUresultTy, "cuModuleGetTexRef", CUtexrefPtrTy, CUmodulePtrTy, i8PtrTy);
 declareFunction(CUresultTy, "cuModuleLoad", CUmoduleDblPtrTy, i8PtrTy);
 declareFunction(CUresultTy, "cuModuleLoadData", CUmoduleDblPtrTy, i8PtrTy);

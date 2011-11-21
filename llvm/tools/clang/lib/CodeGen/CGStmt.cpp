@@ -620,6 +620,28 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     }
   }
 
+  // Acquire a local copy of pixels buffer.
+  if(isa< RenderAllStmt >(S)) {
+    llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
+    llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
+    llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
+
+    if(!CGM.getModule().getNamedGlobal("_pixels")) {
+
+      new llvm::GlobalVariable(CGM.getModule(),
+                               flt4PtrTy,
+                               false,
+                               llvm::GlobalValue::ExternalLinkage,
+                               0,
+                               "_pixels");
+    }
+
+    llvm::Value *local_pixels  = Builder.CreateAlloca(flt4PtrTy, 0, "pixels");
+    llvm::Value *global_pixels = CGM.getModule().getNamedGlobal("_pixels");
+    Builder.CreateStore(Builder.CreateLoad(global_pixels), local_pixels);
+    Pixels = Builder.CreateLoad(local_pixels, "pixels");
+  }
+
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -665,6 +687,11 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DT.runOnFunction(*CurFn);
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
+
+  if(isa< RenderAllStmt >(S))
+    ForallFn->setName("renderall");
+  else
+    ForallFn->setName("forall");
 
   std::string name = ForallFn->getName().str();
   assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
