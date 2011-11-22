@@ -12,11 +12,13 @@
 #include <stdlib.h>
 
 #include "runtime/opengl/glyph_renderall.h"
+#include "runtime/opengl/uniform_renderall.h"
 #include "runtime/types.h"
 #include "runtime/opengl/glProgram.h"
 #include "runtime/opengl/glVertexShader.h"
 #include "runtime/opengl/glFragmentShader.h"
 #include "runtime/opengl/glAttributeBuffer.h"
+#include "runtime/scout_gpu.h"
 
 namespace scout 
 {
@@ -34,10 +36,10 @@ namespace scout
     glFragmentShader* fshader;   // fragment shader.   
     glAttributeBuffer*   abo;    // attribute buffer 
 
-		// should have a camera probably, but do this for now
-		float   					win_width; // 
-		float   					near;    // 
-		float   					far;    // 
+    // should have a camera probably, but do this for now
+    float             win_width; // 
+    float             near;    // 
+    float             far;    // 
     unsigned int      npoints;   // number of vertices stored in the vbo. 
   };
 
@@ -80,18 +82,18 @@ glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
 
   info->prog->attachShader(info->fshader);
 
-	if (info->prog->link() == false) {
-		cerr << "scout: internal runtime error -- failed to link -- " << info->prog->linkLog() << endl;
-	}
+  if (info->prog->link() == false) {
+    cerr << "scout: internal runtime error -- failed to link -- " << info->prog->linkLog() << endl;
+  }
 
 
-	info->near = 1.0;
-	info->far = 3000.0;
-	info->win_width = 1000.0;
-	info->prog->bindUniformValue("windowWidth", &info->win_width);
-	info->prog->bindUniformValue("near", &info->near);
-	info->prog->bindUniformValue("far", &info->far);
-	glBindAttribLocation(info->prog->id(), 1, "radius");
+  info->near = 1.0;
+  info->far = 3000.0;
+  info->win_width = 1000.0;
+  info->prog->bindUniformValue("windowWidth", &info->win_width);
+  info->prog->bindUniformValue("near", &info->near);
+  info->prog->bindUniformValue("far", &info->far);
+  glBindAttribLocation(info->prog->id(), 1, "radius");
 
   info->abo = new glAttributeBuffer;
   info->abo->bind();
@@ -99,6 +101,11 @@ glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
   info->abo->release();
 
   OpenGLErrorCheck();
+
+  // not sure this is right place for this
+  if(_scout_gpu) {
+    _register_gpu_pbo(info->abo->id(), CU_GRAPHICS_REGISTER_FLAGS_NONE);
+  } 
 
   return info;
 }
@@ -147,25 +154,27 @@ void __sc_exec_glyph_renderall(glyph_renderall_t* info)
   glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
   glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_LOWER_LEFT);
 
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
   info->abo->bind();
 
 
-	// vertices
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
-		BUFFER_OFFSET(0));
+  // vertices
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(0));
 
-	// radiuses
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
-		BUFFER_OFFSET(sizeof(float) * 3));
+  // radiuses
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(sizeof(float) * 3));
 
-	// colors
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
-		BUFFER_OFFSET(sizeof(float) * 4));
+  // colors
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(sizeof(float) * 4));
 
-//	glPointSize(30.0); // for debugging
+//  glPointSize(30.0); // for debugging
   glDrawArrays(GL_POINTS, 0, info->npoints);
 
   info->abo->release();

@@ -97,9 +97,8 @@ namespace scout
     info->pbo->release();
   }
 
-  static void _register_gpu_pbo(GLuint pbo){
-    assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo,
-                                      CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
+  void _register_gpu_pbo(GLuint pbo, unsigned int flags){
+    assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo, flags) ==
            CUDA_SUCCESS);
   }
 
@@ -136,7 +135,8 @@ namespace scout
     OpenGLErrorCheck();
 
     if(_scout_gpu)
-      _register_gpu_pbo(info->pbo->id());
+      _register_gpu_pbo(info->pbo->id(),
+        CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
 
     return info;
   }
@@ -176,7 +176,8 @@ namespace scout
     OpenGLErrorCheck();
 
     if(_scout_gpu)
-      _register_gpu_pbo(info->pbo->id());
+      _register_gpu_pbo(info->pbo->id(), 
+        CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
 
     return info;
   }
