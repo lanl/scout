@@ -15,10 +15,9 @@
 using namespace std;
 using namespace scout;
 
-/*
-
 #include <vector>
 #include <cmath>
+#include <iostream>
 
 #include "runtime/system.h"
 
@@ -26,6 +25,22 @@ using namespace std;
 using namespace scout;
 
 namespace{
+
+struct BlockLiteral{
+  void* isa;
+  int flags;
+  int reserved; 
+  void (*invoke)(void*, ...);
+  struct BlockDescriptor{
+    unsigned long int reserved;
+    unsigned long int size;
+    void (*copy_helper)(void* dst, void* src);
+    void (*dispose_helper)(void* src);
+    const char* signature;
+  }*descriptor;
+  
+  // ... void* fields
+};
 
 void* _runThread(void* t);
 
@@ -62,12 +77,7 @@ void* _runThread(void* t){
 };
 
 struct Item{
-  void (^block)(index_t*,index_t*,index_t*,tbq_params_rt);
-  range_t xRange;
-  range_t yRange;
-  range_t zRange;
-  void* mesh;
-  tbq_params_rt params;
+  BlockLiteral* blockLiteral;
 };
 
 class Queue{
@@ -119,41 +129,8 @@ public:
     for(;;){
       Item item;
       if(queueVec_[currentId_ % queueSize_]->get(item)){
-	index_t xStart = item.xRange.lower_bound;
-	index_t xEnd = item.xRange.upper_bound;
-	index_t xStride = item.xRange.stride;
-
-	if(item.yRange.stride == 0){
-	  for(index_t i = xStart; i < xEnd; i += xStride){
-	    item.block(&i, 0, 0, item.params); 
-	  }
-	}
-	else{
-	  index_t yStart = item.yRange.lower_bound;
-	  index_t yEnd = item.yRange.upper_bound;
-	  index_t yStride = item.yRange.stride;
-	
-	  if(item.zRange.stride == 0){
-	    for(index_t i = xStart; i < xEnd; i += xStride){
-	      for(index_t j = yStart; j < yEnd; j += yStride){
-		item.block(&i, &j, 0, item.params);
-	      } 
-	    }
-	  }
-	  else{
-	    index_t zStart = item.zRange.lower_bound;
-	    index_t zEnd = item.zRange.upper_bound;
-	    index_t zStride = item.zRange.stride;
-	    
-	    for(index_t i = xStart; i < xEnd; i += xStride){
-	      for(index_t j = yStart; j < yEnd; j += yStride){
-		for(index_t k = zStart; k < zEnd; k += zStride){
-		  item.block(&i, &j, &k, item.params);
-		}
-	      } 
-	    }
-	  }
-	}
+	item.blockLiteral->invoke(item.blockLiteral);
+	free(item.blockLiteral);
       }
       else{
 	++currentId_;
@@ -180,8 +157,10 @@ namespace scout{
   class tbq_rt_{
   public:
     tbq_rt_(tbq_rt* o)
-      : o_(o){
-      sysinfo_summary_rt sysinfo;
+      : o_(o),
+	q_(0){
+      
+      system_rt sysinfo;
 
       size_t n = sysinfo.totalProcessingUnits();
 
@@ -193,6 +172,8 @@ namespace scout{
 	MeshThread* ti = new MeshThread(queueVec_, i);
 	threadVec_.push_back(ti);
       }
+
+      queueSize_ = n;
     }
 
     ~tbq_rt_(){
@@ -203,119 +184,30 @@ namespace scout{
       }
     }
 
-    void run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
-	     range_t xRange, range_t yRange, range_t zRange){
-
-      size_t queueSize = queueVec_.size();
+    void queue(void* blockLiteral, int numFields){
+      void* bp = malloc(sizeof(BlockLiteral) + numFields*sizeof(void*));
+      BlockLiteral* bl = (BlockLiteral*)blockLiteral;
       
-      index_t xspan = 
-	ceil(float(xRange.upper_bound - xRange.lower_bound)/queueVec_.size());
-
-      size_t q = 0;
-      if(yRange.stride == 0){
-	for(index_t i = 0; i <= xRange.upper_bound; i += xspan){
-	  Item item;
-	  item.xRange.lower_bound = i;
-  
-	  index_t end = i + xspan;
-	  if(end > xRange.upper_bound){
-	    end = xRange.upper_bound;
-	  }
-
-	  item.xRange.upper_bound = end;
-
-	  item.xRange.stride = xRange.stride;
-	  item.yRange.stride = 0;
-	  item.zRange.stride = 0;
-
-	  queueVec_[q % queueSize]->add(item);
-	  ++q;
-	}
+      *(BlockLiteral*)bp = *bl;
+      for(size_t i = 0; i < numFields; ++i){
+	size_t offset = bl->descriptor->size + i * sizeof(void*);
+	*(void**)((char*)bp + offset) = *(void**)((char*)bl + offset);
       }
-      else{
-	index_t yspan = 
-	  ceil(float(yRange.upper_bound - yRange.lower_bound)/queueVec_.size());
+      
+      Item item;
+      item.blockLiteral = (BlockLiteral*)bp;
+      queueVec_[q_ % queueSize_]->add(item);
+      ++q_;
+    }
 
-	if(zRange.stride == 0){
-	  for(index_t i = 0; i <= xRange.upper_bound; i += xspan){
-	    for(index_t j = 0; j <= yRange.upper_bound; j += yspan){
-	      Item item;
-	      item.xRange.lower_bound = i;
-	      item.yRange.lower_bound = j;
-
-	      index_t end = i + xspan;
-	      if(end > xRange.upper_bound){
-		end = xRange.upper_bound;
-	      }
-	      item.xRange.upper_bound = end;
-
-	      end = j + yspan;
-	      if(end > yRange.upper_bound){
-		end = yRange.upper_bound;
-	      }
-
-	      item.yRange.upper_bound = end;
-	    
-	      item.xRange.stride = xRange.stride;
-	      item.yRange.stride = yRange.stride;
-	      item.zRange.stride = 0;
-	    
-	      queueVec_[q % queueSize]->add(item);
-	      ++q;
-	    }
-	  }
-	}
-	else{
-	  index_t zspan = 
-	    ceil(float(zRange.upper_bound - 
-	    zRange.lower_bound)/queueVec_.size());
-
-	  for(index_t i = 0; i <= xRange.upper_bound; i += xspan){
-	    for(index_t j = 0; j <= yRange.upper_bound; j += yspan){
-	      for(index_t k = 0; k <= zRange.upper_bound; k += zspan){
-		Item item;
-		item.xRange.lower_bound = i;
-		item.yRange.lower_bound = j;
-		item.yRange.lower_bound = k;
-
-		index_t end = i + xspan;
-		if(end > xRange.upper_bound){
-		  end = xRange.upper_bound;
-		}
-		item.xRange.upper_bound = end;
-
-		end = j + yspan;
-		if(end > yRange.upper_bound){
-		  end = yRange.upper_bound;
-		}
-		item.yRange.upper_bound = end;
-
-		end = k + zspan;
-		if(end > zRange.upper_bound){
-		  end = zRange.upper_bound;
-		}
-
-		item.zRange.upper_bound = end;
-	    
-		item.xRange.stride = xRange.stride;
-		item.yRange.stride = yRange.stride;
-		item.zRange.stride = zRange.stride;
-	    
-		queueVec_[q % queueSize]->add(item);
-		++q;
-	      }
-	    }
-	  }
-	}
-      }
-
-      for(size_t i = 0; i < queueSize; ++i){
+    void run(){
+      for(size_t i = 0; i < queueSize_; ++i){
 	threadVec_[i]->start();
       }
-
+      
       // run ...
 
-      for(size_t i = 0; i < queueSize; ++i){
+      for(size_t i = 0; i < queueSize_; ++i){
 	threadVec_[i]->await();
       }
     }
@@ -324,21 +216,11 @@ namespace scout{
     tbq_rt* o_;
     QueueVec queueVec_;
     ThreadVec threadVec_;
+    size_t q_;
+    size_t queueSize_;
   };
 
 } // end namespace scout
-*/
-
-namespace scout{
-
-class tbq_rt_{
-public:
-  tbq_rt_(tbq_rt* o){
-
-  }
-};
-
-}
 
 tbq_rt::tbq_rt(){
   x_ = new tbq_rt_(this);
@@ -348,10 +230,10 @@ tbq_rt::~tbq_rt(){
   delete x_;
 }
 
-/*
-void tbq_rt::run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
-		 range_t xRange, range_t yRange, range_t zRange){
-  x_->run(block, xRange, yRange, zRange);
+void tbq_rt::queue(void* blockLiteral, int numFields){
+  x_->queue(blockLiteral, numFields);
 }
-*/
 
+void tbq_rt::run(){
+  x_->run();
+}

@@ -34,6 +34,12 @@ uniform_renderall_t* _uniform_renderall = 0;
 scout::float4* _pixels;
 tbq_rt* _tbq;
 
+extern "C"
+void __sc_queue_block(void* blockLiteral, int numFields){
+  _tbq->queue(blockLiteral, numFields);
+  _tbq->run();
+}
+
 static bool _gpu = false;
 static size_t _dx;
 static size_t _dy;
@@ -68,7 +74,7 @@ void initSDLWindow() {
 
 void scoutInit(int& argc, char** argv, bool gpu){
 #ifdef __APPLE__
-    scoutInitMac();
+  scoutInitMac();
 #endif
 
   if(SDL_Init(SDL_INIT_VIDEO) < 0){
@@ -86,7 +92,7 @@ void scoutInit(int& argc, char** argv, bool gpu){
 
 void scoutInit(bool gpu){
 #ifdef __APPLE__
-      scoutInitMac();
+  scoutInitMac();
 #endif
 
   if(SDL_Init(SDL_INIT_VIDEO) != 0){

@@ -730,11 +730,11 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   }
 
   // ndm - temporarily disable blocks, for now just call the forall function
-  llvm::BasicBlock *cbb = ret->getParent();
-  ret->eraseFromParent();
+  //llvm::BasicBlock *cbb = ret->getParent();
+  //ret->eraseFromParent();
 
-  Builder.SetInsertPoint(cbb);
-  return;
+  //Builder.SetInsertPoint(cbb);
+  //return;
 
   // Remove function call to ForallFn.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);

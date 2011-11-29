@@ -810,8 +810,36 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
 
   genericBlk = Builder.CreateBitCast(genericBlk, Int8PtrTy);
 
+  
+  llvm::Function* queueBlockFunc = 
+  CGM.getModule().getFunction("__sc_queue_block");
+  
+  if(!queueBlockFunc){
+    llvm::PointerType* p1 = 
+    llvm::PointerType::get(llvm::Type::getInt8Ty(getLLVMContext()), 0);
+
+    llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());
+    
+    std::vector<llvm::Type*> args;
+    
+    args.push_back(p1);
+    args.push_back(p2);
+
+    llvm::FunctionType* ft = 
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
+                            args, false);
+    
+    queueBlockFunc = 
+    llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                           "__sc_queue_block", &CGM.getModule());
+  }
+
+  llvm::Value* numInputs = llvm::ConstantInt::get(Int32Ty, inputs.size());
+  
+  return Builder.CreateCall2(queueBlockFunc, genericBlk, numInputs);
+  
   // Generate a function call to the block function.
-  return Builder.CreateCall(blk, genericBlk);
+  //return Builder.CreateCall(blk, genericBlk);
 }
 
 /// Emit a block literal expression in the current function.
