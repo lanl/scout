@@ -2610,8 +2610,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   StmtResult ForAllResult;
   if(ForAll){
-    InsertCPPCode("^(void* m, int* i, int* j, int* k, "
-                  "scout::tbq_params_rt p){}", BodyLoc);
+    InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
 
     BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
     assert(Block && "expected a block expression");
@@ -2624,8 +2623,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       return StmtError();
   }
   else {
-    InsertCPPCode("^(void* m, int* i, int* j, int* k, "
-                  "scout::tbq_params_rt p){}", BodyLoc);
+    InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
 
     BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
     assert(Block && "expected a block expression");

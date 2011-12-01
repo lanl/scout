@@ -20,19 +20,16 @@
 namespace scout 
 {
   
-  struct tbq_params_rt{
-    void* m;
-  };
-
   class tbq_rt{
   public:
     tbq_rt();
 
     ~tbq_rt();
 
-    //void run(void (^block)(index_t*,index_t*,index_t*,tbq_params_rt),
-    //         range_t xRange, range_t yRange, range_t zRange);
-    
+    void queue(void* blockLiteral, int numDimensions, int numFields);
+
+    void run();
+
   private:
     class tbq_rt_* x_;
   };
