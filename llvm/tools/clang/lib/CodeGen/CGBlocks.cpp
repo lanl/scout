@@ -760,6 +760,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
   Builder.CreateStore(descriptor, Builder.CreateStructGEP(blockAddr, 4,
                                                           "block.descriptor"));
 
+  size_t numDimensions = 0;
+  
   // Captured variables (i.e. inputs).
   for(unsigned i = 0, e = inputs.size(); i < e; ++i) {
     // This will be a [[type]]*, except that a byref entry will just be
@@ -767,8 +769,9 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
     llvm::Value *blockField =
       Builder.CreateStructGEP(blockAddr, i + 5,
                               "block.captured");
-
+    
     llvm::Value *I = inputs[i];
+    
     llvm::Value *var = I;
     llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
     if(I->getName().startswith("start.")) {
@@ -777,6 +780,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
       int axis = (I->getName()[4]) - 120;
       llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
       Builder.CreateStore(val, I); var = I;
+      ++numDimensions;
     } else if(I->getName().startswith("var.")) {
       var = Builder.CreateAlloca(Int32Ty, 0, I->getName());
       Builder.CreateStore(zero, var);
@@ -819,11 +823,13 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
     llvm::PointerType::get(llvm::Type::getInt8Ty(getLLVMContext()), 0);
 
     llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());
+    llvm::Type* p3 = llvm::Type::getInt32Ty(getLLVMContext());
     
     std::vector<llvm::Type*> args;
     
     args.push_back(p1);
     args.push_back(p2);
+    args.push_back(p3);
 
     llvm::FunctionType* ft = 
     llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
@@ -834,12 +840,14 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
                            "__sc_queue_block", &CGM.getModule());
   }
 
+  llvm::Value* numDims = llvm::ConstantInt::get(Int32Ty, numDimensions);
   llvm::Value* numInputs = llvm::ConstantInt::get(Int32Ty, inputs.size());
   
-  return Builder.CreateCall2(queueBlockFunc, genericBlk, numInputs);
+  // ndm - to enable block queueing
+  //return Builder.CreateCall3(queueBlockFunc, genericBlk, numDims, numInputs);
   
-  // Generate a function call to the block function.
-  //return Builder.CreateCall(blk, genericBlk);
+  // ndm - to call the block directly
+  return Builder.CreateCall(blk, genericBlk);
 }
 
 /// Emit a block literal expression in the current function.

@@ -26,7 +26,7 @@ namespace scout
 
     ~tbq_rt();
 
-    void queue(void* blockLiteral, int numFields);
+    void queue(void* blockLiteral, int numDimensions, int numFields);
 
     void run();
 

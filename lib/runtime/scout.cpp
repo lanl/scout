@@ -35,8 +35,8 @@ scout::float4* _pixels;
 tbq_rt* _tbq;
 
 extern "C"
-void __sc_queue_block(void* blockLiteral, int numFields){
-  _tbq->queue(blockLiteral, numFields);
+void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
+  _tbq->queue(blockLiteral, numDimensions, numFields);
   _tbq->run();
 }
 

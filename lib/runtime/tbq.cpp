@@ -38,8 +38,17 @@ struct BlockLiteral{
     void (*dispose_helper)(void* src);
     const char* signature;
   }*descriptor;
+
+  // some of these fields may not actually be present depending
+  // on the mesh dimensions
+  uint32_t* xStart;
+  uint32_t* xEnd;
+  uint32_t* yStart;
+  uint32_t* yEnd;
+  uint32_t* zStart;
+  uint32_t* zEnd;
   
-  // ... void* fields
+  // ... void* captured fields
 };
 
 void* _runThread(void* t);
@@ -70,6 +79,36 @@ private:
   pthread_t thread_;
 };
 
+class Mutex{
+public:
+  Mutex(){
+    pthread_mutex_init(&mutex_, 0);
+  }
+
+  ~Mutex(){
+    pthread_mutex_destroy(&mutex_);
+  }
+
+  void lock(){
+    pthread_mutex_lock(&mutex_);
+  }
+
+  bool tryLock(){
+    return pthread_mutex_trylock(&mutex_) == 0;
+  }
+
+  void unlock(){
+    pthread_mutex_unlock(&mutex_);
+  }
+
+  pthread_mutex_t& mutex(){
+    return mutex_;
+  }
+
+private:
+  pthread_mutex_t mutex_;
+};
+
 void* _runThread(void* t){
   Thread* thread = static_cast<Thread*>(t);
   thread->run();
@@ -77,40 +116,40 @@ void* _runThread(void* t){
 };
 
 struct Item{
-  BlockLiteral* blockLiteral;
+  void* blockLiteral;
 };
 
 class Queue{
 public:
   Queue(){
-    queue_.push_back(Item());
-    head_ = queue_.begin();
-    tail_ = queue_.end();
+    
   }
   
   void add(const Item& item){
+    mutex_.lock();
     queue_.push_back(item);
-    tail_ = queue_.end();
-    queue_.erase(queue_.begin(), head_);
+    mutex_.unlock();
   }
 
   bool get(Item& item){
-    Queue_::iterator next = head_;
-    ++next;
-    if(next != tail_){
-      head_ = next;
-      item = *head_;
-      return true;
+    mutex_.lock();
+    if(queue_.empty()){
+      mutex_.unlock();
+      return false;
     }
-    return false;
+
+    item = queue_.front();
+    queue_.pop_front();
+    mutex_.unlock();
+
+    return true;
   }
 
 private:
   typedef list<Item> Queue_;
 
+  Mutex mutex_;
   Queue_ queue_;
-  Queue_::iterator head_;
-  Queue_::iterator tail_;
 };
 
 typedef vector<Queue*> QueueVec;
@@ -129,7 +168,7 @@ public:
     for(;;){
       Item item;
       if(queueVec_[currentId_ % queueSize_]->get(item)){
-	item.blockLiteral->invoke(item.blockLiteral);
+	((BlockLiteral*)item.blockLiteral)->invoke(item.blockLiteral);
 	free(item.blockLiteral);
       }
       else{
@@ -184,20 +223,178 @@ namespace scout{
       }
     }
 
-    void queue(void* blockLiteral, int numFields){
-      void* bp = malloc(sizeof(BlockLiteral) + numFields*sizeof(void*));
-      BlockLiteral* bl = (BlockLiteral*)blockLiteral;
+    void* createSubBlock(BlockLiteral* bl,
+			 size_t numDimensions,
+			 size_t numFields,
+			 uint32_t xStart,
+			 uint32_t xEnd,
+			 uint32_t yStart=0,
+			 uint32_t yEnd=0,
+			 uint32_t zStart=0,
+			 uint32_t zEnd=0){
       
-      *(BlockLiteral*)bp = *bl;
-      for(size_t i = 0; i < numFields; ++i){
-	size_t offset = bl->descriptor->size + i * sizeof(void*);
+      void* bp = malloc(sizeof(BlockLiteral) - 6*sizeof(void*)
+			+ numFields*sizeof(void*));
+
+      BlockLiteral* b = (BlockLiteral*)bp;
+      b->isa = bl->isa;
+      b->flags = bl->flags;
+      b->reserved = bl->reserved;
+      b->invoke = bl->invoke;
+      b->descriptor = bl->descriptor;
+
+      for(size_t i = 0; i < numDimensions; ++i){
+	uint32_t* start = (uint32_t*)malloc(sizeof(uint32_t));
+	uint32_t* end = (uint32_t*)malloc(sizeof(uint32_t));
+
+	switch(i){
+	  case 0:
+	    *start = xStart;
+	    *end = xEnd;
+	    b->xStart = start;
+	    b->xEnd = end;
+	    break;
+	  case 1:
+	    *start = yStart;
+	    *end = yEnd;
+	    b->yStart = start;
+	    b->yEnd = end;
+	    break;
+	  case 2:
+	    *start = zStart;
+	    *end = zEnd;
+	    b->zStart = start;
+	    b->zEnd = end;
+	    break;
+	}
+      }
+
+      for(size_t i = 2*numDimensions; i < numFields; ++i){
+	size_t offset = bl->descriptor->size + i*sizeof(void*);
 	*(void**)((char*)bp + offset) = *(void**)((char*)bl + offset);
       }
       
-      Item item;
-      item.blockLiteral = (BlockLiteral*)bp;
-      queueVec_[q_ % queueSize_]->add(item);
-      ++q_;
+      return bp;
+    }
+
+    void queue(void* blockLiteral, int numDimensions, int numFields){
+      BlockLiteral* bl = (BlockLiteral*)blockLiteral;
+
+      uint32_t xStart = *bl->xStart;
+      uint32_t xEnd = *bl->xEnd;
+
+      uint32_t yStart;
+      uint32_t yEnd;
+
+      uint32_t zStart;
+      uint32_t zEnd;
+
+      if(numDimensions > 1){
+	yStart = *bl->yStart;
+	yEnd = *bl->yEnd;
+
+	if(numDimensions > 2){
+	  zStart = *bl->zStart;
+	  zEnd = *bl->zEnd;
+	}
+	else{
+	  zStart = 0;
+	  zEnd = 0;
+	}
+      }
+      else{	
+	yStart = 0;
+	yEnd = 0;
+	zStart = 0;
+	zEnd = 0;
+      }
+      
+      size_t xSpan = (xEnd - xStart)/queueSize_ + 1; 
+
+      if(yEnd == 0){
+	for(size_t i = 0; i < xEnd; i += xSpan){
+
+	  uint32_t iEnd = i + xSpan;
+
+	  if(iEnd > xEnd){
+	    iEnd = xEnd;
+	  }
+
+	  Item item;
+	  item.blockLiteral = createSubBlock(bl, numDimensions,
+					     numFields, i, iEnd); 
+
+	  queueVec_[q_++ % queueSize_]->add(item);
+	}
+      }
+      else{
+	size_t ySpan = (yEnd - yStart)/queueSize_ + 1;
+	
+	if(zEnd == 0){
+	  for(size_t i = 0; i < xEnd; i += xSpan){
+	    for(size_t j = 0; j < yEnd; j += ySpan){
+
+	      uint32_t iEnd = i + xSpan;
+	      
+	      if(iEnd > xEnd){
+		iEnd = xEnd;
+	      }
+
+	      uint32_t jEnd = j + ySpan;
+	      
+	      if(jEnd > yEnd){
+		jEnd = yEnd;
+	      }
+	      
+	      Item item;
+	      item.blockLiteral = createSubBlock(bl, numDimensions, 
+						 numFields,
+						 i, iEnd,
+						 j, jEnd); 
+
+	      queueVec_[q_++ % queueSize_]->add(item);
+	    }
+	  }
+	}
+	else{
+	  size_t zSpan = (zEnd - zStart)/queueSize_ + 1;
+
+	  for(size_t i = 0; i < xEnd; i += xSpan){
+	    for(size_t j = 0; j < yEnd; j += ySpan){
+	      for(size_t k = 0; k < zEnd; k += zSpan){
+
+		uint32_t iEnd = i + xSpan;
+		
+		if(iEnd > xEnd){
+		  iEnd = xEnd;
+		}
+
+		uint32_t jEnd = j + ySpan;
+		
+		if(jEnd > yEnd){
+		  jEnd = yEnd;
+		}
+		
+		uint32_t kEnd = k + zSpan;
+		
+		if(kEnd > zEnd){
+		  kEnd = zEnd;
+		}
+
+		Item item;
+		item.blockLiteral = createSubBlock(bl, 
+						   numDimensions,
+						   numFields,
+						   i, iEnd,
+						   j, jEnd,
+						   k, kEnd); 
+		
+		queueVec_[q_++ % queueSize_]->add(item);
+	      }
+	    }
+	  }
+	}
+      }
     }
 
     void run(){
@@ -230,8 +427,8 @@ tbq_rt::~tbq_rt(){
   delete x_;
 }
 
-void tbq_rt::queue(void* blockLiteral, int numFields){
-  x_->queue(blockLiteral, numFields);
+void tbq_rt::queue(void* blockLiteral, int numDimensions, int numFields){
+  x_->queue(blockLiteral, numDimensions, numFields);
 }
 
 void tbq_rt::run(){
