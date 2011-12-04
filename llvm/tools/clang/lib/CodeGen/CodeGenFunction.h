@@ -653,11 +653,19 @@ public:
   llvm::Value *Pixels;
 
   llvm::Value *getGlobalIdx() {
-    return isSequential() ? Builder.CreateLoad(ForallIndVar) : ForallIndVal;
+    return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
+  }
+
+  bool isGPU() {
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU && !CallsPrintf;
+  }
+
+  bool isCPU() {
+    return CGM.getCodeGenOpts().ScoutCPUThreads;
   }
 
   bool isSequential() {
-    return !CGM.getCodeGenOpts().ScoutNvidiaGPU || CallsPrintf;
+    return !isCPU() && !isGPU();
   }
 
   bool isMeshMember(llvm::Argument *arg) {
@@ -1330,6 +1338,7 @@ public:
                                     llvm::SetVector< llvm::Value * > &inputs,
                                     llvm::StringRef meshName);
   llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
+                                     llvm::StringRef meshName,
                                      CGBlockInfo &blockInfo,
                                      llvm::SetVector< llvm::Value * > &inputs);
   llvm::Value *EmitBlockLiteral(const BlockExpr *);

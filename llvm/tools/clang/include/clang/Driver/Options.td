@@ -879,4 +879,6 @@ def Z_reserved_lib_cckext : Flag<"-Z-reserved-lib-cckext">,
 // Scout Options
 //===----------------------------------------------------------------------===//
 def gpu : Flag<"-gpu">,
-HelpText<"Enable NVIDIA GPU support.">;
+    HelpText<"Enable NVIDIA GPU support.">;
+def cpuThreads : Flag<"-mt">,
+    HelpText<"Enable CPU multithreading support.">;

@@ -1586,6 +1586,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_pedantic_errors);
   Args.AddLastArg(CmdArgs, options::OPT_w);
 
+  // Scout cpu multithreading support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
+
   // Scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
@@ -3429,8 +3432,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scLibOpt = "-L" + sccPath + "/lib";
 
   static std::string scCudaLib;
-  //if(Args.hasArg(options::OPT_gpu))
-    scCudaLib = "-L/usr/local/cuda/lib";
+  scCudaLib = "-L/usr/local/cuda/lib";
 
   CmdArgs.push_back(scRuntimeLibOpt.c_str());
   CmdArgs.push_back(scStandardLibOpt.c_str());
@@ -3438,8 +3440,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLLVMLibOpt.c_str());
   CmdArgs.push_back(scLibOpt.c_str());
 
-  //if(Args.hasArg(options::OPT_gpu))
-    CmdArgs.push_back(scCudaLib.c_str());
+  CmdArgs.push_back(scCudaLib.c_str());
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
@@ -3553,11 +3554,8 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
 
-  //if(Args.hasArg(options::OPT_gpu)) {
-    CmdArgs.push_back("-lcuda");
-    CmdArgs.push_back("-lscCudaError");
-  //}
-
+  CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
 
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
@@ -4372,8 +4370,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   static std::string scLibOpt = "-L" + sccPath + "/lib";
 
   static std::string scCudaLib;
-  //if(Args.hasArg(options::OPT_gpu))
-    scCudaLib = "-L/usr/local/cuda/lib64";
+  scCudaLib = "-L/usr/local/cuda/lib64";
 
   CmdArgs.push_back(scRuntimeLibOpt.c_str());
   CmdArgs.push_back(scStandardLibOpt.c_str());
@@ -4381,8 +4378,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLLVMLibOpt.c_str());
   CmdArgs.push_back(scLibOpt.c_str());
 
-  //if(Args.hasArg(options::OPT_gpu))
-    CmdArgs.push_back(scCudaLib.c_str());
+  CmdArgs.push_back(scCudaLib.c_str());
 
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
@@ -4503,10 +4499,8 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lGLU");
   CmdArgs.push_back("-lSDL");
 
-  //if(Args.hasArg(options::OPT_gpu)) {
-    CmdArgs.push_back("-lcuda");
-    CmdArgs.push_back("-lscCudaError");
-  //}
+  CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
