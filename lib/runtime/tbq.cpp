@@ -4,9 +4,9 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  *-----
- * 
+ *
  */
 
 
@@ -18,6 +18,7 @@ using namespace scout;
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <cstring>
 
 #include "runtime/system.h"
 
@@ -29,7 +30,7 @@ namespace{
 struct BlockLiteral{
   void* isa;
   int flags;
-  int reserved; 
+  int reserved;
   void (*invoke)(void*, ...);
   struct BlockDescriptor{
     unsigned long int reserved;
@@ -47,7 +48,7 @@ struct BlockLiteral{
   uint32_t* yEnd;
   uint32_t* zStart;
   uint32_t* zEnd;
-  
+
   // ... void* captured fields
 };
 
@@ -117,27 +118,27 @@ void* _runThread(void* t){
 
 class Condition{
 public:
-  Condition(Mutex& mutex) 
+  Condition(Mutex& mutex)
     : mutex_(mutex){
     pthread_cond_init(&condition_, 0);
   }
-    
+
   ~Condition(){
     pthread_cond_destroy(&condition_);
   }
-    
+
   void await(){
     pthread_cond_wait(&condition_, &mutex_.mutex());
   }
-    
+
   void signal(){
     pthread_cond_signal(&condition_);
   }
-    
+
   void broadcast(){
     pthread_cond_broadcast(&condition_);
   }
-    
+
   pthread_cond_t& condition(){
     return condition_;
   }
@@ -153,16 +154,16 @@ public:
     : count_(count),
       maxCount_(0),
       condition_(mutex_){
-    
+
   }
 
-  VSem(int count, int maxCount) 
+  VSem(int count, int maxCount)
   : count_(count),
     maxCount_(maxCount),
     condition_(mutex_){
-    
+
   }
-  
+
   void acquire(){
     mutex_.lock();
     while(count_ <= 0){
@@ -191,7 +192,7 @@ public:
     condition_.signal();
     mutex_.unlock();
   }
-  
+
 private:
   Mutex mutex_;
   Condition condition_;
@@ -206,9 +207,9 @@ struct Item{
 class Queue{
 public:
   Queue(){
-    
+
   }
-  
+
   void add(const Item& item){
     mutex_.lock();
     queue_.push_back(item);
@@ -247,7 +248,7 @@ public:
       queueSize_(queueVec_.size()),
       beginSem_(0),
       finishSem_(0){
-    
+
   }
 
   void begin(){
@@ -282,7 +283,7 @@ public:
       finishSem_.release();
     }
   }
-  
+
 private:
   QueueVec& queueVec_;
   size_t id_;
@@ -303,7 +304,7 @@ namespace scout{
     tbq_rt_(tbq_rt* o)
       : o_(o),
 	q_(0){
-      
+
       system_rt sysinfo;
 
       size_t n = sysinfo.totalProcessingUnits();
@@ -340,7 +341,7 @@ namespace scout{
 			 uint32_t yEnd=0,
 			 uint32_t zStart=0,
 			 uint32_t zEnd=0){
-      
+
       void* bp = malloc(sizeof(BlockLiteral) - 6*sizeof(void*)
 			+ numFields*sizeof(void*));
 
@@ -410,14 +411,14 @@ namespace scout{
 	  zEnd = 0;
 	}
       }
-      else{	
+      else{
 	yStart = 0;
 	yEnd = 0;
 	zStart = 0;
 	zEnd = 0;
       }
-      
-      size_t xSpan = (xEnd - xStart)/queueSize_ + 1; 
+
+      size_t xSpan = (xEnd - xStart)/queueSize_ + 1;
 
       if(yEnd == 0){
 	for(size_t i = 0; i < xEnd; i += xSpan){
@@ -430,35 +431,35 @@ namespace scout{
 
 	  Item item;
 	  item.blockLiteral = createSubBlock(bl, numDimensions,
-					     numFields, i, iEnd); 
+					     numFields, i, iEnd);
 
 	  queueVec_[q_++ % queueSize_]->add(item);
 	}
       }
       else{
 	size_t ySpan = (yEnd - yStart)/queueSize_ + 1;
-	
+
 	if(zEnd == 0){
 	  for(size_t i = 0; i < xEnd; i += xSpan){
 	    for(size_t j = 0; j < yEnd; j += ySpan){
 
 	      uint32_t iEnd = i + xSpan;
-	      
+
 	      if(iEnd > xEnd){
 		iEnd = xEnd;
 	      }
 
 	      uint32_t jEnd = j + ySpan;
-	      
+
 	      if(jEnd > yEnd){
 		jEnd = yEnd;
 	      }
-	      
+
 	      Item item;
-	      item.blockLiteral = createSubBlock(bl, numDimensions, 
+	      item.blockLiteral = createSubBlock(bl, numDimensions,
 						 numFields,
 						 i, iEnd,
-						 j, jEnd); 
+						 j, jEnd);
 
 	      queueVec_[q_++ % queueSize_]->add(item);
 	    }
@@ -472,31 +473,31 @@ namespace scout{
 	      for(size_t k = 0; k < zEnd; k += zSpan){
 
 		uint32_t iEnd = i + xSpan;
-		
+
 		if(iEnd > xEnd){
 		  iEnd = xEnd;
 		}
 
 		uint32_t jEnd = j + ySpan;
-		
+
 		if(jEnd > yEnd){
 		  jEnd = yEnd;
 		}
-		
+
 		uint32_t kEnd = k + zSpan;
-		
+
 		if(kEnd > zEnd){
 		  kEnd = zEnd;
 		}
 
 		Item item;
-		item.blockLiteral = createSubBlock(bl, 
+		item.blockLiteral = createSubBlock(bl,
 						   numDimensions,
 						   numFields,
 						   i, iEnd,
 						   j, jEnd,
-						   k, kEnd); 
-		
+						   k, kEnd);
+
 		queueVec_[q_++ % queueSize_]->add(item);
 	      }
 	    }
@@ -509,7 +510,7 @@ namespace scout{
       for(size_t i = 0; i < queueSize_; ++i){
 	threadVec_[i]->begin();
       }
-      
+
       // run ...
 
       for(size_t i = 0; i < queueSize_; ++i){
