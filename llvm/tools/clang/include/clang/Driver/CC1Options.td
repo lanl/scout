@@ -715,6 +715,8 @@ def cl_std_EQ : Joined<"-cl-std=">,
 // ndm - Scout Options
 //===----------------------------------------------------------------------===//
 def view_ast : Flag<"-view-ast">,
-HelpText<"View the AST of a parsed file with GraphViz">;
+  HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<"-gpu">,
-HelpText<"Enable NVIDIA GPU support.">;
+  HelpText<"Enable NVIDIA GPU support.">;
+def cpuThreads : Flag<"-mt">,
+  HelpText<"Enable CPU multithreading support.">;

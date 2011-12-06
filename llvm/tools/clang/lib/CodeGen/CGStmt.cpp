@@ -698,7 +698,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
-  if(!isSequential()) {
+  if(isGPU()) {
     // Add metadata for scout kernel function.
     llvm::NamedMDNode *ScoutMetadata =
       CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
@@ -729,12 +729,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                                                 ArrayRef< llvm::Value * >(KMD)));
   }
 
-  // ndm - temporarily disable blocks, for now just call the forall function
-  llvm::BasicBlock *cbb = ret->getParent();
-  ret->eraseFromParent();
+  if(isSequential() || isGPU()){
+    llvm::BasicBlock *cbb = ret->getParent();
+    ret->eraseFromParent();
 
-  Builder.SetInsertPoint(cbb);
-  return;
+    Builder.SetInsertPoint(cbb);
+    return;
+  }
 
   // Remove function call to ForallFn.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
@@ -758,7 +759,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   std::string TheName = CurFn->getName();
   CGBlockInfo blockInfo(S.getBlock(), TheName.c_str());
 
-  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(), blockInfo, inputs);
+  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
+                                               S.getMesh()->getName(),
+                                               blockInfo, inputs);
 
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs, S.getMesh()->getName());
@@ -834,7 +837,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   }
 
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
-  if(isSequential())
+  if(isSequential() || isCPU())
     Builder.CreateStore(zero, indVar);
   ForallIndVar = indVar;
   ForallIndVal = Builder.CreateLoad(indVar);
@@ -852,7 +855,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::Value *lval;
   llvm::Value *cond;
   llvm::BasicBlock *CondBlock;
-  if(isSequential()) {
+  if(isSequential() || isCPU()) {
     // Start the loop with a block that tests the condition.
     JumpDest Continue = getJumpDestInCurrentScope("forall.cond");
     CondBlock = Continue.getBlock();
@@ -866,7 +869,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::BasicBlock *ForallBody = createBasicBlock("forall.body");
 
   llvm::BasicBlock *ExitBlock;
-  if(isSequential()) {
+  if(isSequential() || isCPU()) {
     ExitBlock = createBasicBlock("forall.end");
     Builder.SetInsertPoint(CondBlock);
     Builder.CreateCondBr(cond, ForallBody, ExitBlock);
@@ -896,7 +899,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Generate the statements in the body of the forall.
   EmitStmt(S.getBody());
 
-  if(isSequential()) {
+  if(isSequential() || isCPU()) {
     // Increment the induction variables.
     lval = getGlobalIdx();
     Builder.CreateStore(Builder.CreateAdd(lval, one), ForallIndVar);

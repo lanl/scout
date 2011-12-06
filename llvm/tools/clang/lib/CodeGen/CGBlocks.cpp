@@ -484,6 +484,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
 }
 
 llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
+                                                    llvm::StringRef meshName,
                                                     CGBlockInfo &blockInfo,
                                                     llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG("EmitScoutBlockLiteral");
@@ -511,11 +512,6 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   // Build a loop around the block declaration to facilitate
   // the induction variable range information.
-  llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, "blk.indvar");
-  Builder.CreateStore(zero, indVar);
-  ForallIndVar = indVar;
-
   llvm::Function *Fn = blockEntry->getParent();
 
   std::vector< std::vector< llvm::Value * > > indVars;
@@ -523,23 +519,40 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
     std::vector< llvm::Value * > indVar;
     ScoutIdxVars[i]->setName("var." + prefix[i]);
-    indVar.push_back(ScoutIdxVars[i]);
     Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
     indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + prefix[i]));
     indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + prefix[i]));
     Builder.SetInsertPoint(blockEntry);
-    indVar.push_back(Builder.CreateSub(Builder.CreateLoad(indVar[2]),
-                                       Builder.CreateLoad(indVar[1]),
-                                       "diff." + prefix[i]));
     indVars.push_back(indVar);
   }
 
-  llvm::Value *extent = Builder.CreateAlloca(Int32Ty, 0, "size");
-
-  llvm::Value *size = llvm::ConstantInt::get(Int32Ty, 1);
-  for(int i = 0, e = indVars.size(); i < e; ++i) {
-    size = Builder.CreateMul(size, indVars[i][3]);
+  // (start, end) pairs must start the function argument list.
+  for(unsigned i = 0, e = indVars.size(); i < e; ++i) {
+    Builder.CreateLoad(indVars[i][0]);
+    Builder.CreateLoad(indVars[i][1]);
   }
+
+  llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, "blk.indvar");
+  llvm::Value *start  = Builder.CreateLoad(indVars[0][0]);
+
+  llvm::Value *extent = Builder.CreateAlloca(Int32Ty, 0, "size");
+  llvm::Value *size = Builder.CreateLoad(indVars[0][1]);
+
+  for(int i = 1, e = indVars.size(); i < e; ++i) {
+    llvm::Value *dim = Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]);
+
+    llvm::Value *end = Builder.CreateSub(Builder.CreateLoad(indVars[i][1]),
+                                         llvm::ConstantInt::get(Int32Ty, 1));
+    size = Builder.CreateAdd(size, Builder.CreateMul(dim, end));
+
+    if(i == 2)
+      dim = Builder.CreateMul(dim, ScoutMeshSizes[meshName][i - 2]);
+    start = Builder.CreateAdd(start, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][0])));
+  }
+
+  Builder.CreateStore(start, indVar);
+  ForallIndVar = indVar;
+
   Builder.CreateStore(size, extent);
 
   // Start the loop with a block that tests the condition.
@@ -562,15 +575,14 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     lval = Builder.CreateLoad(indVar);
     llvm::Value *val;
     if(i > 0) {
-      if(i == 1) {
-        val = indVars[i - 1][3];
-      } else {
-        val = Builder.CreateMul(indVars[i][3], indVars[i - 1][3]);
-      }
+      if(i == 1)
+        val = Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]);
+      else
+        val = Builder.CreateMul(Builder.CreateLoad(ScoutMeshSizes[meshName][i]),
+                                Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]));
       lval = Builder.CreateUDiv(lval, val);
     }
-    lval = Builder.CreateURem(lval, indVars[i][3]);
-    lval = Builder.CreateAdd(lval, Builder.CreateLoad(indVars[i][1]));
+    lval = Builder.CreateURem(lval, Builder.CreateLoad(ScoutMeshSizes[meshName][i]));
     Builder.CreateStore(lval, ScoutIdxVars[i]);
   }
 
@@ -585,7 +597,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   EmitBlock(ExitBlock);
 
   llvm::ReturnInst *ret =
-    llvm::ReturnInst::Create(getLLVMContext(), zero,
+    llvm::ReturnInst::Create(getLLVMContext(),
+                             llvm::ConstantInt::get(Int32Ty, 0),
                              Builder.GetInsertBlock());
 
   llvm::SetVector< llvm::BasicBlock * > region;
@@ -677,7 +690,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
                                        blockInfo.StructureType->getPointerTo(),
                                        "block");
 
-  // Unpack block_descriptor function arguments and connect the them
+  // Unpack block_descriptor function arguments and connect them
   // to their local variable counterparts.
   int idx = 5;
   for(llvm::Function::arg_iterator I = BlockFn->arg_begin(),
@@ -696,13 +709,12 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
       std::vector< llvm::User * > Users(I->use_begin(), I->use_end());
       for(std::vector< llvm::User * >::iterator use = Users.begin(), useE = Users.end();
-          use != useE; ++use) {
+          use != useE; ++use)
         if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*use))
           if(region.count(Instn->getParent())) {
             Instn->replaceUsesOfWith(I, src);
             src->takeName(I);
           }
-      }
     }
   }
 
@@ -760,6 +772,8 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
   Builder.CreateStore(descriptor, Builder.CreateStructGEP(blockAddr, 4,
                                                           "block.descriptor"));
 
+  size_t numDimensions = 0;
+
   // Captured variables (i.e. inputs).
   for(unsigned i = 0, e = inputs.size(); i < e; ++i) {
     // This will be a [[type]]*, except that a byref entry will just be
@@ -769,6 +783,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
                               "block.captured");
 
     llvm::Value *I = inputs[i];
+
     llvm::Value *var = I;
     llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
     if(I->getName().startswith("start.")) {
@@ -777,6 +792,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
       int axis = (I->getName()[4]) - 120;
       llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
       Builder.CreateStore(val, I); var = I;
+      ++numDimensions;
     } else if(I->getName().startswith("var.")) {
       var = Builder.CreateAlloca(Int32Ty, 0, I->getName());
       Builder.CreateStore(zero, var);
@@ -810,8 +826,40 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
 
   genericBlk = Builder.CreateBitCast(genericBlk, Int8PtrTy);
 
-  // Generate a function call to the block function.
-  return Builder.CreateCall(blk, genericBlk);
+
+  llvm::Function* queueBlockFunc =
+  CGM.getModule().getFunction("__sc_queue_block");
+
+  if(!queueBlockFunc){
+    llvm::PointerType* p1 =
+    llvm::PointerType::get(llvm::Type::getInt8Ty(getLLVMContext()), 0);
+
+    llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());
+    llvm::Type* p3 = llvm::Type::getInt32Ty(getLLVMContext());
+
+    std::vector<llvm::Type*> args;
+
+    args.push_back(p1);
+    args.push_back(p2);
+    args.push_back(p3);
+
+    llvm::FunctionType* ft =
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
+                            args, false);
+
+    queueBlockFunc =
+    llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                           "__sc_queue_block", &CGM.getModule());
+  }
+
+  llvm::Value* numDims = llvm::ConstantInt::get(Int32Ty, numDimensions);
+  llvm::Value* numInputs = llvm::ConstantInt::get(Int32Ty, inputs.size());
+
+  // ndm - to enable block queueing
+  return Builder.CreateCall3(queueBlockFunc, genericBlk, numDims, numInputs);
+
+  // ndm - to call the block directly
+  //Builder.CreateCall(blk, genericBlk);
 }
 
 /// Emit a block literal expression in the current function.
