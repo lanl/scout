@@ -115,6 +115,90 @@ void* _runThread(void* t){
   return 0;
 };
 
+class Condition{
+public:
+  Condition(Mutex& mutex) 
+    : mutex_(mutex){
+    pthread_cond_init(&condition_, 0);
+  }
+    
+  ~Condition(){
+    pthread_cond_destroy(&condition_);
+  }
+    
+  void await(){
+    pthread_cond_wait(&condition_, &mutex_.mutex());
+  }
+    
+  void signal(){
+    pthread_cond_signal(&condition_);
+  }
+    
+  void broadcast(){
+    pthread_cond_broadcast(&condition_);
+  }
+    
+  pthread_cond_t& condition(){
+    return condition_;
+  }
+
+private:
+  Mutex& mutex_;
+  pthread_cond_t condition_;
+};
+
+class VSem{
+public:
+  VSem(int count)
+    : count_(count),
+      maxCount_(0),
+      condition_(mutex_){
+    
+  }
+
+  VSem(int count, int maxCount) 
+  : count_(count),
+    maxCount_(maxCount),
+    condition_(mutex_){
+    
+  }
+  
+  void acquire(){
+    mutex_.lock();
+    while(count_ <= 0){
+      condition_.await();
+    }
+    --count_;
+    mutex_.unlock();
+  }
+
+  bool tryAcquire(){
+    mutex_.lock();
+    if(count_ > 0){
+      --count_;
+      mutex_.unlock();
+      return true;
+    }
+    mutex_.unlock();
+    return false;
+  }
+
+  void release(){
+    mutex_.lock();
+    if(maxCount_ == 0 || count_ < maxCount_){
+      ++count_;
+    }
+    condition_.signal();
+    mutex_.unlock();
+  }
+  
+private:
+  Mutex mutex_;
+  Condition condition_;
+  int count_;
+  int maxCount_;
+};
+
 struct Item{
   void* blockLiteral;
 };
@@ -160,23 +244,42 @@ public:
     : queueVec_(queueVec),
       id_(id),
       currentId_(id),
-      queueSize_(queueVec_.size()){
+      queueSize_(queueVec_.size()),
+      beginSem_(0),
+      finishSem_(0){
     
+  }
+
+  void begin(){
+    beginSem_.release();
+  }
+
+  void finish(){
+    finishSem_.acquire();
   }
 
   void run(){
     for(;;){
-      Item item;
-      if(queueVec_[currentId_ % queueSize_]->get(item)){
-	((BlockLiteral*)item.blockLiteral)->invoke(item.blockLiteral);
-	free(item.blockLiteral);
-      }
-      else{
-	++currentId_;
-	if(currentId_ - id_ > queueSize_){
-	  return;
+      beginSem_.acquire();
+
+      size_t i = 0;
+
+      for(;;){
+	Item item;
+	if(queueVec_[currentId_ % queueSize_]->get(item)){
+	  ((BlockLiteral*)item.blockLiteral)->invoke(item.blockLiteral);
+	  free(item.blockLiteral);
+	  ++i;
+	}
+	else{
+	  ++currentId_;
+	  if(currentId_ - id_ > queueSize_){
+	    break;
+	  }
 	}
       }
+
+      finishSem_.release();
     }
   }
   
@@ -185,6 +288,8 @@ private:
   size_t id_;
   size_t currentId_;
   size_t queueSize_;
+  VSem beginSem_;
+  VSem finishSem_;
 };
 
 typedef vector<MeshThread*> ThreadVec;
@@ -203,12 +308,15 @@ namespace scout{
 
       size_t n = sysinfo.totalProcessingUnits();
 
+      //size_t n = 1;
+
       for(size_t i = 0; i < n; ++i){
 	queueVec_.push_back(new Queue);
       }
 
       for(size_t i = 0; i < n; ++i){
 	MeshThread* ti = new MeshThread(queueVec_, i);
+	ti->start();
 	threadVec_.push_back(ti);
       }
 
@@ -269,11 +377,11 @@ namespace scout{
 	}
       }
 
-      for(size_t i = 2*numDimensions; i < numFields; ++i){
-	size_t offset = bl->descriptor->size + i*sizeof(void*);
-	*(void**)((char*)bp + offset) = *(void**)((char*)bl + offset);
-      }
-      
+      size_t offset = bl->descriptor->size + 2*numDimensions*sizeof(void*);
+
+      memcpy((char*)bp + offset, (char*)bl + offset,
+	     (numFields - 2*numDimensions)*sizeof(void*));
+
       return bp;
     }
 
@@ -399,13 +507,13 @@ namespace scout{
 
     void run(){
       for(size_t i = 0; i < queueSize_; ++i){
-	threadVec_[i]->start();
+	threadVec_[i]->begin();
       }
       
       // run ...
 
       for(size_t i = 0; i < queueSize_; ++i){
-	threadVec_[i]->await();
+	threadVec_[i]->finish();
       }
     }
 
