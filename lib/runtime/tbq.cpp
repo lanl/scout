@@ -69,9 +69,7 @@ public:
     pthread_create(&thread_, 0, _runThread, (void*)this);
   }
 
-  virtual void run(){
-
-  }
+  virtual void run() = 0;
 
   void await(){
     pthread_join(thread_, 0);
@@ -212,9 +210,7 @@ public:
   }
 
   void add(const Item& item){
-    mutex_.lock();
     queue_.push_back(item);
-    mutex_.unlock();
   }
 
   bool get(Item& item){
@@ -242,11 +238,8 @@ typedef vector<Queue*> QueueVec;
 
 class MeshThread : public Thread{
 public:
-  MeshThread(QueueVec& queueVec, size_t id)
-    : queueVec_(queueVec),
-      id_(id),
-      currentId_(id),
-      queueSize_(queueVec_.size()),
+  MeshThread(Queue& queue)
+    : queue_(queue),
       beginSem_(0),
       finishSem_(0){
 
@@ -264,20 +257,14 @@ public:
     for(;;){
       beginSem_.acquire();
 
-      size_t i = 0;
-
       for(;;){
 	Item item;
-	if(queueVec_[currentId_ % queueSize_]->get(item)){
+	if(queue_.get(item)){
 	  ((BlockLiteral*)item.blockLiteral)->invoke(item.blockLiteral);
 	  free(item.blockLiteral);
-	  ++i;
 	}
 	else{
-	  ++currentId_;
-	  if(currentId_ - id_ > queueSize_){
-	    break;
-	  }
+	  break;
 	}
       }
 
@@ -286,10 +273,7 @@ public:
   }
 
 private:
-  QueueVec& queueVec_;
-  size_t id_;
-  size_t currentId_;
-  size_t queueSize_;
+  Queue& queue_;
   VSem beginSem_;
   VSem finishSem_;
 };
@@ -303,30 +287,22 @@ namespace scout{
   class tbq_rt_{
   public:
     tbq_rt_(tbq_rt* o)
-      : o_(o),
-	q_(0){
+      : o_(o){
 
       system_rt sysinfo;
 
       size_t n = sysinfo.totalProcessingUnits();
 
       for(size_t i = 0; i < n; ++i){
-	queueVec_.push_back(new Queue);
-      }
-
-      for(size_t i = 0; i < n; ++i){
-	MeshThread* ti = new MeshThread(queueVec_, i);
+	MeshThread* ti = new MeshThread(queue_);
 	ti->start();
 	threadVec_.push_back(ti);
       }
-
-      queueSize_ = n;
     }
 
     ~tbq_rt_(){
-      size_t n = queueVec_.size();
+      size_t n = threadVec_.size();
       for(size_t i = 0; i < n; ++i){
-	delete queueVec_[i];
 	delete threadVec_[i];
       }
     }
@@ -397,7 +373,7 @@ namespace scout{
         case 1:
         {
 	  extent = *bl->xEnd - *bl->xStart;
-	  chunk = extent/(queueSize_*10) + 1;
+	  chunk = extent/(threadVec_.size()) + 1;
 
 	  for(uint32_t i = 0; i < extent; i += chunk){
 	    end = i + chunk;
@@ -410,7 +386,7 @@ namespace scout{
 					       numFields,
 					       i, end);
 
-	    queueVec_[q_++ % queueSize_]->add(item);
+	    queue_.add(item);
 	  }
 	  return;
 	}
@@ -420,7 +396,11 @@ namespace scout{
 	  uint32_t y = *bl->yEnd - *bl->yStart;
 
 	  extent = y * x;
-          chunk = x;
+          chunk = extent / (threadVec_.size() * 2);
+
+	  if(chunk == 0){
+	    chunk = 1;
+	  }
 
 	  for(uint32_t i = 0; i < extent; i += chunk){
 	    end = i + chunk - 1;
@@ -434,7 +414,7 @@ namespace scout{
 					       i % x, (end % x) + 1,
 					       (i / x) % y, ((end / x) % y) + 1);
 
-	    queueVec_[q_++ % queueSize_]->add(item);
+	    queue_.add(item);
 	  }
 	  return;
 	}
@@ -447,23 +427,23 @@ namespace scout{
     }
 
     void run(){
-      for(size_t i = 0; i < queueSize_; ++i){
+      size_t n = threadVec_.size();
+      
+      for(size_t i = 0; i < n; ++i){
 	threadVec_[i]->begin();
       }
 
       // run ...
 
-      for(size_t i = 0; i < queueSize_; ++i){
+      for(size_t i = 0; i < n; ++i){
 	threadVec_[i]->finish();
       }
     }
 
   private:
     tbq_rt* o_;
-    QueueVec queueVec_;
+    Queue queue_;
     ThreadVec threadVec_;
-    size_t q_;
-    size_t queueSize_;
   };
 
 } // end namespace scout
