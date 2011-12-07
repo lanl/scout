@@ -18,6 +18,7 @@ using namespace scout;
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <cassert>
 #include <cstring>
 
 #include "runtime/system.h"
@@ -309,8 +310,6 @@ namespace scout{
 
       size_t n = sysinfo.totalProcessingUnits();
 
-      //size_t n = 1;
-
       for(size_t i = 0; i < n; ++i){
 	queueVec_.push_back(new Queue);
       }
@@ -389,119 +388,60 @@ namespace scout{
     void queue(void* blockLiteral, int numDimensions, int numFields){
       BlockLiteral* bl = (BlockLiteral*)blockLiteral;
 
-      uint32_t xStart = *bl->xStart;
-      uint32_t xEnd = *bl->xEnd;
+      Item item;
+      uint32_t extent;
+      uint32_t chunk;
+      uint32_t end;
 
-      uint32_t yStart;
-      uint32_t yEnd;
+      switch(numDimensions){
+        case 1:
+        {
+	  extent = *bl->xEnd - *bl->xStart;
+	  chunk = extent/(queueSize_*10) + 1;
 
-      uint32_t zStart;
-      uint32_t zEnd;
+	  for(uint32_t i = 0; i < extent; i += chunk){
+	    end = i + chunk;
 
-      if(numDimensions > 1){
-	yStart = *bl->yStart;
-	yEnd = *bl->yEnd;
-
-	if(numDimensions > 2){
-	  zStart = *bl->zStart;
-	  zEnd = *bl->zEnd;
-	}
-	else{
-	  zStart = 0;
-	  zEnd = 0;
-	}
-      }
-      else{
-	yStart = 0;
-	yEnd = 0;
-	zStart = 0;
-	zEnd = 0;
-      }
-
-      size_t xSpan = (xEnd - xStart)/queueSize_ + 1;
-
-      if(yEnd == 0){
-	for(size_t i = 0; i < xEnd; i += xSpan){
-
-	  uint32_t iEnd = i + xSpan;
-
-	  if(iEnd > xEnd){
-	    iEnd = xEnd;
-	  }
-
-	  Item item;
-	  item.blockLiteral = createSubBlock(bl, numDimensions,
-					     numFields, i, iEnd);
-
-	  queueVec_[q_++ % queueSize_]->add(item);
-	}
-      }
-      else{
-	size_t ySpan = (yEnd - yStart)/queueSize_ + 1;
-
-	if(zEnd == 0){
-	  for(size_t i = 0; i < xEnd; i += xSpan){
-	    for(size_t j = 0; j < yEnd; j += ySpan){
-
-	      uint32_t iEnd = i + xSpan;
-
-	      if(iEnd > xEnd){
-		iEnd = xEnd;
-	      }
-
-	      uint32_t jEnd = j + ySpan;
-
-	      if(jEnd > yEnd){
-		jEnd = yEnd;
-	      }
-
-	      Item item;
-	      item.blockLiteral = createSubBlock(bl, numDimensions,
-						 numFields,
-						 i, iEnd,
-						 j, jEnd);
-
-	      queueVec_[q_++ % queueSize_]->add(item);
+	    if(end > extent){
+	      end = extent;
 	    }
+
+	    item.blockLiteral = createSubBlock(bl, numDimensions,
+					       numFields,
+					       i, end);
+
+	    queueVec_[q_++ % queueSize_]->add(item);
 	  }
+	  return;
 	}
-	else{
-	  size_t zSpan = (zEnd - zStart)/queueSize_ + 1;
+        case 2:
+	{
+	  uint32_t x = *bl->xEnd - *bl->xStart;
+	  uint32_t y = *bl->yEnd - *bl->yStart;
 
-	  for(size_t i = 0; i < xEnd; i += xSpan){
-	    for(size_t j = 0; j < yEnd; j += ySpan){
-	      for(size_t k = 0; k < zEnd; k += zSpan){
+	  extent = y * x;
+          chunk = x;
 
-		uint32_t iEnd = i + xSpan;
+	  for(uint32_t i = 0; i < extent; i += chunk){
+	    end = i + chunk - 1;
 
-		if(iEnd > xEnd){
-		  iEnd = xEnd;
-		}
-
-		uint32_t jEnd = j + ySpan;
-
-		if(jEnd > yEnd){
-		  jEnd = yEnd;
-		}
-
-		uint32_t kEnd = k + zSpan;
-
-		if(kEnd > zEnd){
-		  kEnd = zEnd;
-		}
-
-		Item item;
-		item.blockLiteral = createSubBlock(bl,
-						   numDimensions,
-						   numFields,
-						   i, iEnd,
-						   j, jEnd,
-						   k, kEnd);
-
-		queueVec_[q_++ % queueSize_]->add(item);
-	      }
+	    if(end > extent){
+	      end = extent;
 	    }
+
+	    item.blockLiteral = createSubBlock(bl, numDimensions,
+					       numFields,
+					       i % x, (end % x) + 1,
+					       (i / x) % y, ((end / x) % y) + 1);
+
+	    queueVec_[q_++ % queueSize_]->add(item);
 	  }
+	  return;
+	}
+        case 3:
+        {
+	  assert(false && "runtime/tbq.cpp 3d case not yet implemented");
+	  return;
 	}
       }
     }
