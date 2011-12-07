@@ -36,8 +36,7 @@ tbq_rt* _tbq;
 
 extern "C"
 void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
-  _tbq->queue(blockLiteral, numDimensions, numFields);
-  _tbq->run();
+  _tbq->run(blockLiteral, numDimensions, numFields);
 }
 
 static bool _gpu = false;

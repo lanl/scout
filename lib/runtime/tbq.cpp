@@ -20,6 +20,7 @@ using namespace scout;
 #include <iostream>
 #include <cassert>
 #include <cstring>
+#include <map>
 
 #include "runtime/system.h"
 
@@ -201,51 +202,65 @@ private:
 
 struct Item{
   void* blockLiteral;
+  uint32_t dimensions;
+  uint32_t xStart;
+  uint32_t xEnd;
+  uint32_t yStart;
+  uint32_t yEnd;
+  uint32_t zStart;
+  uint32_t zEnd;
 };
 
 class Queue{
 public:
-  Queue(){
+  Queue()
+    : i_(0){
 
   }
 
-  void add(const Item& item){
+  void reset(){
+    i_ = 0;
+  }
+
+  void add(Item* item){
     queue_.push_back(item);
   }
 
-  bool get(Item& item){
+  Item* get(){
     mutex_.lock();
-    if(queue_.empty()){
-      mutex_.unlock();
-      return false;
-    }
 
-    item = queue_.front();
-    queue_.pop_front();
+    if(i_ >= queue_.size()){
+      mutex_.unlock();
+      return 0;
+    }
+    
+    Item* item = queue_[i_++];
     mutex_.unlock();
 
-    return true;
+    return item;
   }
 
 private:
-  typedef list<Item> Queue_;
+  typedef vector<Item*> Queue_;
 
   Mutex mutex_;
   Queue_ queue_;
+  size_t i_;
 };
 
 typedef vector<Queue*> QueueVec;
 
 class MeshThread : public Thread{
 public:
-  MeshThread(Queue& queue)
-    : queue_(queue),
-      beginSem_(0),
-      finishSem_(0){
+  MeshThread()
+    : beginSem_(0),
+      finishSem_(0),
+      queue_(0){
 
   }
 
-  void begin(){
+  void begin(Queue* queue){
+    queue_ = queue;
     beginSem_.release();
   }
 
@@ -258,14 +273,33 @@ public:
       beginSem_.acquire();
 
       for(;;){
-	Item item;
-	if(queue_.get(item)){
-	  ((BlockLiteral*)item.blockLiteral)->invoke(item.blockLiteral);
-	  free(item.blockLiteral);
-	}
-	else{
+	Item* item = queue_->get();
+
+	if(!item){
 	  break;
 	}
+
+	BlockLiteral* bl = (BlockLiteral*)item->blockLiteral;
+
+	switch(item->dimensions){
+	  case 3:
+	    bl->zStart = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->zStart = item->zStart;
+	    bl->zEnd = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->zEnd = item->zEnd;
+	  case 2:
+	    bl->yStart = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->yStart = item->yStart;
+	    bl->yEnd = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->yEnd = item->yEnd;
+	  case 1:
+	    bl->xStart = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->xStart = item->xStart;
+	    bl->xEnd = (uint32_t*)malloc(sizeof(uint32_t));
+	    *bl->xEnd = item->xEnd;
+	}
+
+	bl->invoke(bl);
       }
 
       finishSem_.release();
@@ -273,7 +307,7 @@ public:
   }
 
 private:
-  Queue& queue_;
+  Queue* queue_;
   VSem beginSem_;
   VSem finishSem_;
 };
@@ -294,7 +328,7 @@ namespace scout{
       size_t n = sysinfo.totalProcessingUnits();
 
       for(size_t i = 0; i < n; ++i){
-	MeshThread* ti = new MeshThread(queue_);
+	MeshThread* ti = new MeshThread;
 	ti->start();
 	threadVec_.push_back(ti);
       }
@@ -302,20 +336,20 @@ namespace scout{
 
     ~tbq_rt_(){
       size_t n = threadVec_.size();
+
       for(size_t i = 0; i < n; ++i){
 	delete threadVec_[i];
+      }
+
+      for(QueueMap_::iterator itr = queueMap_.begin(),
+	    itrEnd = queueMap_.end(); itr != itrEnd; ++itr){
+	delete itr->second;
       }
     }
 
     void* createSubBlock(BlockLiteral* bl,
 			 size_t numDimensions,
-			 size_t numFields,
-			 uint32_t xStart,
-			 uint32_t xEnd,
-			 uint32_t yStart=0,
-			 uint32_t yEnd=0,
-			 uint32_t zStart=0,
-			 uint32_t zEnd=0){
+			 size_t numFields){
 
       void* bp = malloc(sizeof(BlockLiteral) - 6*sizeof(void*)
 			+ numFields*sizeof(void*));
@@ -327,32 +361,6 @@ namespace scout{
       b->invoke = bl->invoke;
       b->descriptor = bl->descriptor;
 
-      for(size_t i = 0; i < numDimensions; ++i){
-	uint32_t* start = (uint32_t*)malloc(sizeof(uint32_t));
-	uint32_t* end = (uint32_t*)malloc(sizeof(uint32_t));
-
-	switch(i){
-	  case 0:
-	    *start = xStart;
-	    *end = xEnd;
-	    b->xStart = start;
-	    b->xEnd = end;
-	    break;
-	  case 1:
-	    *start = yStart;
-	    *end = yEnd;
-	    b->yStart = start;
-	    b->yEnd = end;
-	    break;
-	  case 2:
-	    *start = zStart;
-	    *end = zEnd;
-	    b->zStart = start;
-	    b->zEnd = end;
-	    break;
-	}
-      }
-
       size_t offset = bl->descriptor->size + 2*numDimensions*sizeof(void*);
 
       memcpy((char*)bp + offset, (char*)bl + offset,
@@ -361,10 +369,17 @@ namespace scout{
       return bp;
     }
 
-    void queue(void* blockLiteral, int numDimensions, int numFields){
+    Queue* queue_(void* blockLiteral, int numDimensions, int numFields){
       BlockLiteral* bl = (BlockLiteral*)blockLiteral;
+      
+      QueueMap_::iterator itr = queueMap_.find((void*)bl->invoke);
+      if(itr != queueMap_.end()){
+	return itr->second;
+      }
 
-      Item item;
+      Queue* queue = new Queue;
+
+      Item* item;
       uint32_t extent;
       uint32_t chunk;
       uint32_t end;
@@ -382,13 +397,18 @@ namespace scout{
 	      end = extent;
 	    }
 
-	    item.blockLiteral = createSubBlock(bl, numDimensions,
-					       numFields,
-					       i, end);
+	    item = new Item;
 
-	    queue_.add(item);
+	    item->blockLiteral = createSubBlock(bl, numDimensions,
+						numFields);
+
+	    item->dimensions = 1;
+	    item->xStart = i;
+	    item->xEnd = end;
+
+	    queue->add(item);
 	  }
-	  return;
+	  break;
 	}
         case 2:
 	{
@@ -409,28 +429,41 @@ namespace scout{
 	      end = extent;
 	    }
 
-	    item.blockLiteral = createSubBlock(bl, numDimensions,
-					       numFields,
-					       i % x, (end % x) + 1,
-					       (i / x) % y, ((end / x) % y) + 1);
+	    item = new Item;
 
-	    queue_.add(item);
+	    item->blockLiteral = createSubBlock(bl, numDimensions,
+						numFields);
+
+	    item->dimensions = 2;
+	    item->xStart = i % x;
+	    item->xEnd = (end % x) + 1;
+	    item->yStart = (i / x) % y;
+	    item->yEnd = ((end / x) % y) + 1;
+	  
+	    queue->add(item);
 	  }
-	  return;
+	  break;
 	}
         case 3:
         {
 	  assert(false && "runtime/tbq.cpp 3d case not yet implemented");
-	  return;
+	  break;
 	}
       }
+
+      queueMap_[(void*)bl->invoke] = queue;
+      
+      return queue;
     }
 
-    void run(){
+    void run(void* blockLiteral, int numDimensions, int numFields){
+      Queue* queue = queue_(blockLiteral, numDimensions, numFields);
+      queue->reset();
+
       size_t n = threadVec_.size();
       
       for(size_t i = 0; i < n; ++i){
-	threadVec_[i]->begin();
+	threadVec_[i]->begin(queue);
       }
 
       // run ...
@@ -441,8 +474,10 @@ namespace scout{
     }
 
   private:
+    typedef map<void*, Queue*> QueueMap_;
+
     tbq_rt* o_;
-    Queue queue_;
+    QueueMap_ queueMap_;
     ThreadVec threadVec_;
   };
 
@@ -456,10 +491,6 @@ tbq_rt::~tbq_rt(){
   delete x_;
 }
 
-void tbq_rt::queue(void* blockLiteral, int numDimensions, int numFields){
-  x_->queue(blockLiteral, numDimensions, numFields);
-}
-
-void tbq_rt::run(){
-  x_->run();
+void tbq_rt::run(void* blockLiteral, int numDimensions, int numFields){
+  x_->run(blockLiteral, numDimensions, numFields);
 }
