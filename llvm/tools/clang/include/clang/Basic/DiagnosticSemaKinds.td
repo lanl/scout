@@ -4819,7 +4819,7 @@ def err_invalid_mesh_edges_field : Error<
 "%0 is not an edges field on the mesh">;
 
 def err_no_color_assignment_renderall : Error<
-"color was not assigned in all branches of renderall">;
+"color or color components {r,g,b,a} were not assigned in all branches of renderall">;
 
 def err_rhs_after_lhs_forall : Error<
 "mesh field appears on LHS then on subsequent RHS">;
