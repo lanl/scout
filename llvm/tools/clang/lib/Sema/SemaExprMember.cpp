@@ -858,7 +858,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                const CXXScopeSpec &SS,
                                NamedDecl *FirstQualifierInScope,
                                LookupResult &R,
-                         const TemplateArgumentListInfo *TemplateArgs,
+                               const TemplateArgumentListInfo *TemplateArgs,
                                bool SuppressQualifierCheck) {
   QualType BaseType = BaseExprType;
   if (IsArrow) {
@@ -950,22 +950,35 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     }
     
     if(isScoutVector){
+      bool isColor = false;
+      
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(BaseExpr)){
+        if(dr->getDecl()->getName().str() == "color"){
+          isColor = true;
+        }
+      }
+      
       std::string mn = MemberName.getAsString();
       unsigned index;
-      if(mn == "x"){
+      if(mn == "x" || isColor && mn == "r"){
         index = 0;
       }
-      else if(mn == "y"){
+      else if(mn == "y" || isColor && mn == "g"){
         index = 1;
       }
-      else if(mn == "z"){
+      else if(mn == "z" || isColor && mn == "b"){
         index = 2;
       }
-      else if(mn == "w"){
+      else if(mn == "w" || isColor && mn == "a"){
         index = 3;
       }
       else{
-        assert(false && "expected index = 0-3 while indexing Scout vector");
+        if(isColor){
+          Diag(MemberLoc, diag::err_invalid_scout_color_component);
+        }
+        else{
+          Diag(MemberLoc, diag::err_invalid_scout_vector_component);
+        }
       }
       
       return Owned(BuildScoutVectorMemberExpr(Context, BaseExpr, OpLoc,
@@ -1282,7 +1295,8 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
       case BuiltinType::Float4:
       case BuiltinType::Double4: {
         std::string ms = MemberName.getAsString();
-        if(ms == "x" || ms == "y" || ms == "z" || ms == "w"){
+        if(ms == "x" || ms == "y" || ms == "z" || ms == "w" ||
+           ms == "r" || ms == "g" || ms == "b" || ms == "a"){
           return Owned((Expr*) 0);
         }
         break;

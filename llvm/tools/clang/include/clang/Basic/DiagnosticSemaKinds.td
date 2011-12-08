@@ -4769,6 +4769,20 @@ def note_related_result_type_inferred : Note<
 
 }
 
+let CategoryName = "Modules Issue" in {
+def err_module_private_follows_public : Error<
+  "__module_private__ declaration of %0 follows public declaration">;
+def err_module_private_specialization : Error<
+  "%select{template|partial|member}0 specialization cannot be "
+  "declared __module_private__">;
+def err_module_private_local : Error<
+  "%select{local variable|parameter|typedef}0 %1 cannot be declared "
+  "__module_private__">;
+def err_module_private_local_class : Error<
+  "local %select{struct|union|class|enum}0 cannot be declared "
+  "__module_private__">;
+}
+
 // ndm - Scout
 
 let CategoryName = "Scout Issue" in {
@@ -4835,19 +4849,11 @@ def warn_lhs_outside_forall : Warning<
   "non-mesh variable '%0' from outside scope appears on LHS within parallel (forall) construct">;
 }
 
-let CategoryName = "Modules Issue" in {
-def err_module_private_follows_public : Error<
-  "__module_private__ declaration of %0 follows public declaration">;
-def err_module_private_specialization : Error<
-  "%select{template|partial|member}0 specialization cannot be "
-  "declared __module_private__">;
-def err_module_private_local : Error<
-  "%select{local variable|parameter|typedef}0 %1 cannot be declared "
-  "__module_private__">;
-def err_module_private_local_class : Error<
-  "local %select{struct|union|class|enum}0 cannot be declared "
-  "__module_private__">;
-}
+def err_invalid_scout_vector_component : Error<
+"invalid vector component, expected [x,y,z,w]">;
+
+def err_invalid_scout_color_component : Error<
+"invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
 
 } // end of sema component.
 
