@@ -388,7 +388,7 @@ namespace scout{
         case 1:
         {
 	  extent = *bl->xEnd - *bl->xStart;
-	  chunk = extent/(threadVec_.size()) + 1;
+	  chunk = extent / (threadVec_.size() * 2);
 
 	  for(uint32_t i = 0; i < extent; i += chunk){
 	    end = i + chunk;
@@ -436,9 +436,9 @@ namespace scout{
 
 	    item->dimensions = 2;
 	    item->xStart = i % x;
-	    item->xEnd = (end % x) + 1;
-	    item->yStart = (i / x) % y;
-	    item->yEnd = ((end / x) % y) + 1;
+	    item->xEnd = end % x + 1;
+	    item->yStart = i / x % y;
+	    item->yEnd = end / x % y + 1;
 	  
 	    queue->add(item);
 	  }
