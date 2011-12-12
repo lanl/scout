@@ -996,6 +996,13 @@ static void ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // Enable Scout NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
+  // Enable Scout CPU multithreading support if OPT_cpuThreads is present.
+  Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
+
+  // OPT_gpu and OPT_cpuThreads operate exclusively.
+  if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
+    Diags.Report(diag::err_scout_cpu_gpu_combo);
+
   Opts.DebugInfo = Args.hasArg(OPT_g);
   Opts.LimitDebugInfo = Args.hasArg(OPT_flimit_debug_info);
   Opts.DisableLLVMOpts = Args.hasArg(OPT_disable_llvm_optzns);
@@ -1759,7 +1766,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // ndm - detect Scout -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-  
+
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags);
   Opts.Optimize = Opt != 0;

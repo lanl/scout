@@ -18,12 +18,17 @@
 namespace scout 
 {
   struct glyph_renderall_t;
+  struct glyph_vertex {
+    float x, y, z;
+    float radius;
+    float r, g, b, a;
+  };
 
   glyph_renderall_t* __sc_init_glyph_renderall(dim_t n_glyphs);
 
-  float4* __sc_map_glyph_colors(glyph_renderall_t* info);
+  glyph_vertex* __sc_map_glyph_attributes(glyph_renderall_t* info);
 
-  void __sc_unmap_glyph_colors(glyph_renderall_t* info);
+  void __sc_unmap_glyph_attributes(glyph_renderall_t* info);
 
   void __sc_exec_glyph_renderall(glyph_renderall_t* info);
 

@@ -2708,6 +2708,10 @@ namespace{
     RenderAllVisitor()
     : foundColorAssign_(false){
 
+      for(size_t i = 0; i < 4; ++i){
+        foundComponentAssign_[i] = false;
+      }
+      
     }
 
     void VisitStmt(Stmt* S){
@@ -2749,6 +2753,15 @@ namespace{
             foundColorAssign_ = true;
           }
         }
+        else if(ScoutVectorMemberExpr* vm = 
+                dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
+          
+          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
+            if(dr->getDecl()->getName().str() == "color"){
+              foundComponentAssign_[vm->getIdx()] = true;
+            }
+          }
+        }
       }
       else{
         VisitChildren(S);
@@ -2765,11 +2778,22 @@ namespace{
     }
 
     bool foundColorAssign(){
-      return foundColorAssign_;
+      if(foundColorAssign_){
+        return true;
+      }
+      
+      for(size_t i = 0; i < 4; ++i){
+        if(!foundComponentAssign_[i]){
+          return false;
+        }
+      }
+
+      return true;
     }
 
   private:
     bool foundColorAssign_;
+    bool foundComponentAssign_[4];
   };
 
 } // end namespace

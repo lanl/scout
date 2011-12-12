@@ -11,13 +11,14 @@
 #include <iostream>
 #include <stdlib.h>
 
+#include "runtime/opengl/glyph_renderall.h"
 #include "runtime/opengl/uniform_renderall.h"
 #include "runtime/types.h"
 #include "runtime/opengl/glProgram.h"
 #include "runtime/opengl/glVertexShader.h"
 #include "runtime/opengl/glFragmentShader.h"
-#include "runtime/opengl/glColorBuffer.h"
-#include "runtime/opengl/glVertexBuffer.h"
+#include "runtime/opengl/glAttributeBuffer.h"
+#include "runtime/scout_gpu.h"
 
 namespace scout 
 {
@@ -33,18 +34,20 @@ namespace scout
     glProgram*        prog;      // shader program. 
     glVertexShader*   vshader;   // vertex shader.
     glFragmentShader* fshader;   // fragment shader.   
-    glColorBuffer*    cbo;       // color buffer for glyph colors
-    glVertexBuffer*   vbo;       // vertex buffer for glyph locations (points)
+    glAttributeBuffer*   abo;    // attribute buffer 
+
+    // should have a camera probably, but do this for now
+    float             win_width; // 
+    float             near;    // 
+    float             far;    // 
     unsigned int      npoints;   // number of vertices stored in the vbo. 
   };
-}
 
 using namespace std;
-using namespace scout;
 
 // ----- __sc_init_glyph_renderall
 //
-glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
+glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
 {
   glyph_renderall_t* info = new glyph_renderall_t;
   info->npoints = nglyphs;
@@ -66,7 +69,7 @@ glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
 
   
   info->fshader = new glFragmentShader;
-  info->fshader->setSource(sphere_cast_vs);
+  info->fshader->setSource(sphere_cast_fs);
   if (info->fshader->compile() == false) {
     cerr << "scout: internal runtime error -- failed to compile glyph fragment shader!\n";
     abort();
@@ -76,20 +79,33 @@ glyph_renderall_t* __sc_init_glyph_renderall(int nglyphs)
     // For now, we'll slap ourselves around for letting back
     // code sneak into the runtime...    
   }
+
   info->prog->attachShader(info->fshader);
 
+  if (info->prog->link() == false) {
+    cerr << "scout: internal runtime error -- failed to link -- " << info->prog->linkLog() << endl;
+  }
 
-  info->cbo = new glColorBuffer;
-  info->cbo->bind();
-  info->cbo->alloc(sizeof(float) * 4 * nglyphs, GL_STREAM_DRAW_ARB);
-  info->cbo->release();
 
-  info->vbo = new glVertexBuffer;
-  info->vbo->bind();
-  info->vbo->alloc(sizeof(float) * 3 * nglyphs, GL_STREAM_DRAW_ARB);
-  info->vbo->release();
+  info->near = 1.0;
+  info->far = 3000.0;
+  info->win_width = 1000.0;
+  info->prog->bindUniformValue("windowWidth", &info->win_width);
+  info->prog->bindUniformValue("near", &info->near);
+  info->prog->bindUniformValue("far", &info->far);
+  glBindAttribLocation(info->prog->id(), 1, "radius");
+
+  info->abo = new glAttributeBuffer;
+  info->abo->bind();
+  info->abo->alloc(sizeof(glyph_vertex) * nglyphs, GL_STREAM_DRAW_ARB);
+  info->abo->release();
 
   OpenGLErrorCheck();
+
+  // not sure this is right place for this
+  if(_scout_gpu) {
+    _register_gpu_pbo(info->abo->id(), CU_GRAPHICS_REGISTER_FLAGS_NONE);
+  } 
 
   return info;
 }
@@ -101,63 +117,68 @@ void __sc_destroy_glyph_renderall(glyph_renderall_t* info)
 {
   delete info->prog;
   delete info->fshader;
-  delete info->prog;
-  delete info->cbo;  
-  delete info->vbo;
+  delete info->abo;
 }
 
 
-// ----- __sc_map_glyph_colors
+// ----- __sc_map_glyph_attributes
 //
-float4* __sc_map_glyph_colors(glyph_renderall_t* info)
+glyph_vertex* __sc_map_glyph_attributes(glyph_renderall_t* info)
 {
   if (info)
-    return (float4*)info->cbo->mapForWrite();
+    return (glyph_vertex*)info->abo->mapForWrite();
   else
     return 0;
 }
 
 
-// ----- __sc_unmap_glyph_colors
+// ----- __sc_unmap_glyph_attributes
 //
-void __sc_unmap_glyph_colors(glyph_renderall_t* info)
+void __sc_unmap_glyph_attributes(glyph_renderall_t* info)
 {
   if (info)
-    info->cbo->unmap();
+    info->abo->unmap();
 }
 
 
-// TODO: need to map/unmap glyph positions...
-// positions are a float3 on the scout language side.
-
-
-// TODO: need to map/unmap glyph radius...
-// radius is a single float on the scout language side.
-
+#define BUFFER_OFFSET(i) ((char *)NULL + (i))
 
 // ----- __sc_exec_glyph_renderall
 //
-void __sc_exec_glphy_renderall(glyph_renderall_t* info)
+void __sc_exec_glyph_renderall(glyph_renderall_t* info)
 {
+
   info->prog->enable();
-  
+ 
   glEnable(GL_POINT_SPRITE);
   glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
   glPointParameteri(GL_POINT_SPRITE_COORD_ORIGIN, GL_LOWER_LEFT);
 
-  glEnableClientState(GL_VERTEX_ARRAY);
-  info->vbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  glEnableClientState(GL_COLOR_ARRAY);
-  info->cbo->bind();
-  glColorPointer(4, GL_FLOAT, 0, 0);
+  info->abo->bind();
 
-  glDrawArrays(GL_POINT, 0, info->npoints);
 
-  glDisableClientState(GL_VERTEX_ARRAY);
-  info->cbo->release();
-  info->vbo->release();
+  // vertices
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(0));
 
+  // radiuses
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(sizeof(float) * 3));
+
+  // colors
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (glyph_vertex), 
+    BUFFER_OFFSET(sizeof(float) * 4));
+
+//  glPointSize(30.0); // for debugging
+  glDrawArrays(GL_POINTS, 0, info->npoints);
+
+  info->abo->release();
   info->prog->disable();
+}
+
 }

@@ -126,4 +126,6 @@ def warn_drv_pch_not_first_include : Warning<
 def note_drv_command_failed_diag_msg : Note<
   "diagnostic msg: %0">;
 
+def err_scout_cpu_gpu_combo : Error<"-gpu and -mt operate exclusively.">;
+
 }

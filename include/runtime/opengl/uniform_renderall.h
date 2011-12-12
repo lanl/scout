@@ -14,6 +14,7 @@
 
 #include "runtime/base_types.h"
 #include "runtime/vec_types.h"
+#include "runtime/opengl/opengl.h"
 
 namespace scout
 {
@@ -34,6 +35,8 @@ namespace scout
   void _map_gpu_resources();
 
   void _unmap_gpu_resources(uniform_renderall_t *info);
+
+  void _register_gpu_pbo(GLuint pbo, unsigned int flags);
 }
 
 #endif
