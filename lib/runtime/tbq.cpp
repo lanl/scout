@@ -5,7 +5,7 @@
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
  *
- *-----
+ * -----
  *
  */
 
@@ -423,7 +423,7 @@ namespace scout{
 	  }
 
 	  for(uint32_t i = 0; i < extent; i += chunk){
-	    end = i + chunk - 1;
+	    end = i + chunk;
 
 	    if(end > extent){
 	      end = extent;
@@ -436,10 +436,10 @@ namespace scout{
 
 	    item->dimensions = 2;
 	    item->xStart = i % x;
-	    item->xEnd = end % x + 1;
-	    item->yStart = i / x % y;
-	    item->yEnd = end / x % y + 1;
-	  
+	    item->xEnd = end % x;
+	    item->yStart = i / x;
+	    item->yEnd = end / x + 1;
+
 	    queue->add(item);
 	  }
 	  break;
