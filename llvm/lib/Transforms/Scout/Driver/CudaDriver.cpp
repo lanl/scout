@@ -226,8 +226,9 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
     if(type->isPointerTy()) {
 
       Value *d_arg;
-      if(arg->getName().startswith("pixels"))
+      if(arg->getName().startswith("pixels")){
         d_arg = pixels;
+      }
       else {
         int numElements = getSizeInBytes(type);
 

@@ -620,7 +620,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     }
   }
 
-  // Acquire a local copy of pixels buffer.
+  // Acquire a local copy of colors buffer.
   if(isa< RenderAllStmt >(S)) {
     llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
@@ -636,10 +636,12 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                                "_pixels");
     }
 
-    llvm::Value *local_pixels  = Builder.CreateAlloca(flt4PtrTy, 0, "pixels");
-    llvm::Value *global_pixels = CGM.getModule().getNamedGlobal("_pixels");
-    Builder.CreateStore(Builder.CreateLoad(global_pixels), local_pixels);
-    Pixels = Builder.CreateLoad(local_pixels, "pixels");
+    llvm::Value *local_colors  = Builder.CreateAlloca(flt4PtrTy, 0, "colors");
+    llvm::Value *global_colors = 
+    CGM.getModule().getNamedGlobal("_pixels");
+    
+    Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
+    Colors = Builder.CreateLoad(local_colors, "pixels");
   }
 
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
@@ -953,7 +955,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   ScoutColor = alloca;
   */
 
-  // ndm - skip the above, at least for now, because we are writing to _pixels
+  // ndm - skip the above, at least for now, because we are writing to colors 
   // which is a preallocated pixel buffer that exists at the time the
   // renderall loop is started - we write to an offset corresponding
   // to the induction variable - done in EmitForAllStmt()

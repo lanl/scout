@@ -650,7 +650,7 @@ public:
   MemberMap MeshMembers;
   bool RenderAll;
   bool CallsPrintf;
-  llvm::Value *Pixels;
+  llvm::Value *Colors;
 
   llvm::Value *getGlobalIdx() {
     return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
