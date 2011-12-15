@@ -8,12 +8,10 @@
 
 extern bool __sc_gpu;
 
-extern CUdevice _scout_device;
-extern CUcontext _scout_device_context;
-extern CUgraphicsResource _scout_device_resource;
-extern CUstream _scout_device_stream;
-
-extern CUdeviceptr _scout_device_pixels;
+extern CUdevice __sc_device;
+extern CUcontext __sc_device_context;
+extern CUgraphicsResource __sc_device_resource;
+extern CUstream __sc_device_stream;
 
 void __sc_init_cuda();
 

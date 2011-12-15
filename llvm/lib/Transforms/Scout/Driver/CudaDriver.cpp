@@ -196,13 +196,13 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
 
   Value *pixels;
   if(func->getName().startswith("renderall")) {
-    if(!_module.getNamedGlobal("_scout_device_pixels")) {
+    if(!_module.getNamedGlobal("__sc_device_renderall_uniform_colors")) {
       pixels = new GlobalVariable(_module,
                                   getCUdeviceptrTy(),
                                   false,
                                   GlobalValue::ExternalLinkage,
                                   0,
-                                  "_scout_device_pixels");
+                                  "__sc_device_renderall_uniform_colors");
 
     }
   }

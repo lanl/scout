@@ -42,6 +42,7 @@ using namespace scout;
 // ------  LLVM - globals written to by LLVM
 
 float4* _pixels;
+CUdeviceptr __sc_device_renderall_uniform_colors;
 
 // -------------
 
@@ -236,14 +237,14 @@ namespace scout{
     }
 
     void map_gpu_resources(){
-      assert(cuGraphicsMapResources(1, &_scout_device_resource, 0) == CUDA_SUCCESS);
+      assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
       size_t bytes;
-      assert(cuGraphicsResourceGetMappedPointer(&_scout_device_pixels, &bytes, _scout_device_resource) == CUDA_SUCCESS);
+      assert(cuGraphicsResourceGetMappedPointer(&__sc_device_renderall_uniform_colors, &bytes, __sc_device_resource) == CUDA_SUCCESS);
     }
 
     void unmap_gpu_resources(){
-      assert(cuGraphicsUnmapResources(1, &_scout_device_resource, 0) == CUDA_SUCCESS);
+      assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
       pbo_->bind();
       tex_->initialize(0);
@@ -251,7 +252,7 @@ namespace scout{
     }
 
     void register_gpu_pbo(GLuint pbo, unsigned int flags){
-      assert(cuGraphicsGLRegisterBuffer(&_scout_device_resource, pbo, flags) ==
+      assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, pbo, flags) ==
 	     CUDA_SUCCESS);
     }
 
