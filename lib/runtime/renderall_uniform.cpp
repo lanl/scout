@@ -4,9 +4,9 @@
  * This file is distributed under an open source license by Los Alamos
  * National Security, LCC.  See the file License.txt (located in the
  * top level of the source distribution) for details.
- * 
+ *
  * -----
- * 
+ *
  */
 
 #include "runtime/renderall_uniform.h"
@@ -18,8 +18,13 @@
 
 #else
 
+#ifndef GL_GLEXT_PROTOTYPES
+#define GL_GLEXT_PROTOTYPES
+#endif
+
 #include <GL/gl.h>
 #include <GL/glu.h>
+#include <GL/glext.h>
 
 #endif
 
@@ -39,7 +44,7 @@
 using namespace std;
 using namespace scout;
 
-// ------  LLVM - globals accessed by LLVM / CUDA driver 
+// ------  LLVM - globals accessed by LLVM / CUDA driver
 
 float4* __sc_renderall_uniform_colors;
 CUdeviceptr __sc_device_renderall_uniform_colors;
@@ -60,7 +65,7 @@ namespace scout{
     : o_(o){
 
       if(!__sc_sdl_surface){
-	__sc_init_sdl(__sc_initial_width, __sc_initial_height); 
+	__sc_init_sdl(__sc_initial_width, __sc_initial_height);
       }
 
       init();
@@ -72,15 +77,15 @@ namespace scout{
 
     void init(){
       glMatrixMode(GL_PROJECTION);
-    
+
       glLoadIdentity();
 
       size_t width = o_->width();
       size_t height = o_->height();
       size_t depth = o_->depth();
-      
+
       static const float pad = 0.05;
-    
+
       if(height == 0){
 	float px = pad * width;
 	gluOrtho2D(-px, width + px, -px, width + px);
@@ -174,7 +179,7 @@ namespace scout{
       OpenGLErrorCheck();
 
       if(__sc_gpu){
-	register_gpu_pbo(pbo_->id(), 
+	register_gpu_pbo(pbo_->id(),
 			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
       }
     }
@@ -229,7 +234,7 @@ namespace scout{
         case SDL_VIDEORESIZE:
 	{
 	  __sc_init_sdl(evt.resize.w, evt.resize.h);
-	  
+
 	  destroy();
 	  init();
 	  break;
@@ -241,25 +246,25 @@ namespace scout{
 		  float y0,
 		  float x1,
 		  float y1){
-  
+
       float* verts = (float*)vbo_->mapForWrite();
 
       verts[0] = x0;
       verts[1] = y0;
       verts[2] = 0.0f;
-  
+
       verts[3] = x1;
       verts[4] = y0;
       verts[5] = 0.f;
-  
+
       verts[6] = x1;
       verts[7] = y1;
       verts[8] = 0.0f;
-  
+
       verts[9] = x0;
       verts[10] = y1;
       verts[11] = 0.0f;
-  
+
       vbo_->unmap();
     }
 
@@ -272,23 +277,23 @@ namespace scout{
 
       coords[0] = x0;
       coords[1] = y0;
-  
+
       coords[2] = x1;
       coords[3] = y0;
-  
+
       coords[4] = x1;
       coords[5] = y1;
-  
+
       coords[6] = x0;
       coords[7] = y1;
-  
+
       tcbo_->unmap();
 
     }
 
     void fill_tcbo_1d(float start, float end){
       float* coords = (float*)tcbo_->mapForWrite();
-  
+
       coords[0] = start;
       coords[1] = end;
       coords[2] = end;
@@ -340,23 +345,23 @@ namespace scout{
       tex_->enable();
       tex_->update(0);
       pbo_->release();
-  
+
       glEnableClientState(GL_TEXTURE_COORD_ARRAY);
       tcbo_->bind();
       glTexCoordPointer(ntexcoords_, GL_FLOAT, 0, 0);
-  
+
       glEnableClientState(GL_VERTEX_ARRAY);
       vbo_->bind();
       glVertexPointer(3, GL_FLOAT, 0, 0);
-  
+
       glDrawArrays(GL_POLYGON, 0, nverts_);
-  
+
       glDisableClientState(GL_VERTEX_ARRAY);
       vbo_->release();
-  
+
       glDisableClientState(GL_TEXTURE_COORD_ARRAY);
       tcbo_->release();
-  
+
       tex_->disable();
     }
 
@@ -377,9 +382,9 @@ renderall_uniform_rt::renderall_uniform_rt(size_t width,
 					   size_t height,
 					   size_t depth)
   : renderall_base_rt(width, height, depth){
-  
+
   x_ = new renderall_uniform_rt_(this);
-  
+
 }
 
 renderall_uniform_rt::~renderall_uniform_rt(){
@@ -400,7 +405,7 @@ void __sc_begin_uniform_renderall(size_t width,
   if(!__sc_renderall){
       __sc_renderall = new renderall_uniform_rt(width, height, depth);
   }
-  
+
   __sc_renderall->begin();
-  
+
 }
