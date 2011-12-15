@@ -39,7 +39,7 @@
 using namespace std;
 using namespace scout;
 
-// ------  LLVM - globals written to by LLVM
+// ------  LLVM - globals accessed by LLVM / CUDA driver 
 
 float4* __sc_renderall_uniform_colors;
 CUdeviceptr __sc_device_renderall_uniform_colors;
@@ -49,14 +49,8 @@ CUdeviceptr __sc_device_renderall_uniform_colors;
 extern SDL_Surface* __sc_sdl_surface;
 extern size_t __sc_initial_width;
 extern size_t __sc_initial_height;
+
 void __sc_init_sdl(size_t width, size_t height);
-
-namespace{
-  
-  const size_t WINDOW_WIDTH  = 768;
-  const size_t WINDOW_HEIGHT = 768;
-
-} // end namespace
 
 namespace scout{
 
@@ -109,6 +103,7 @@ namespace scout{
       }
 
       glMatrixMode(GL_MODELVIEW);
+
       glLoadIdentity();
 
       glClearColor(0.5, 0.55, 0.65, 0.0);
@@ -116,6 +111,72 @@ namespace scout{
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
       SDL_GL_SwapBuffers();
+    }
+
+    void init(dim_t xdim){
+      ntexcoords_ = 1;
+      tex_ = new glTexture1D(xdim);
+      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+      pbo_ = new glTextureBuffer;
+      pbo_->bind();
+      pbo_->alloc(sizeof(float) * 4 * xdim, GL_STREAM_DRAW_ARB);
+      pbo_->release();
+
+      vbo_ = new glVertexBuffer;
+      vbo_->bind();
+      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad for 1D meshes...
+      fill_vbo(0.0f, 0.0f, float(xdim), float(xdim));
+      vbo_->release();
+      nverts_ = 4;
+
+      tcbo_ = new glTexCoordBuffer;
+      tcbo_->bind();
+      tcbo_->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
+      fill_tcbo_1d(0.0f, 1.0f);
+      tcbo_->release();
+
+      OpenGLErrorCheck();
+
+      if(__sc_gpu){
+	register_gpu_pbo(pbo_->id(),
+			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
+      }
+    }
+
+    void init(dim_t xdim, dim_t ydim){
+      ntexcoords_ = 2;
+      tex_ = new glTexture2D(xdim, ydim);
+      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+      pbo_ = new glTextureBuffer;
+      pbo_->bind();
+      pbo_->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
+      pbo_->release();
+
+      vbo_ = new glVertexBuffer;
+      vbo_->bind();
+      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
+      fill_vbo(0.0f, 0.0f, float(xdim), float(ydim));
+      vbo_->release();
+      nverts_ = 4;
+
+      tcbo_ = new glTexCoordBuffer;
+      tcbo_->bind();
+      tcbo_->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
+      fill_tcbo_2d(0.0f, 0.0f, 1.0f, 1.0f);
+      tcbo_->release();
+
+      OpenGLErrorCheck();
+
+      if(__sc_gpu){
+	register_gpu_pbo(pbo_->id(), 
+			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
+      }
     }
 
     void begin(){
@@ -254,73 +315,6 @@ namespace scout{
     void register_gpu_pbo(GLuint pbo, unsigned int flags){
       assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, pbo, flags) ==
 	     CUDA_SUCCESS);
-    }
-
-    void init(dim_t xdim){
-      ntexcoords_ = 1;
-      tex_ = new glTexture1D(xdim);
-      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-      pbo_ = new glTextureBuffer;
-      pbo_->bind();
-      pbo_->alloc(sizeof(float) * 4 * xdim, GL_STREAM_DRAW_ARB);
-      pbo_->release();
-
-      vbo_ = new glVertexBuffer;
-      vbo_->bind();
-      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad for 1D meshes...
-      fill_vbo(0.0f, 0.0f, float(xdim), float(xdim));
-      vbo_->release();
-      nverts_ = 4;
-
-      tcbo_ = new glTexCoordBuffer;
-      tcbo_->bind();
-      tcbo_->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
-      fill_tcbo_1d(0.0f, 1.0f);
-      tcbo_->release();
-
-      OpenGLErrorCheck();
-
-      if(__sc_gpu){
-	register_gpu_pbo(pbo_->id(),
-			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
-      }
-    }
-
-    void init(dim_t xdim, dim_t ydim){
-      ntexcoords_ = 2;
-      tex_ = new glTexture2D(xdim, ydim);
-      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      //tex_->initialize(0);
-
-      pbo_ = new glTextureBuffer;
-      pbo_->bind();
-      pbo_->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
-      pbo_->release();
-
-      vbo_ = new glVertexBuffer;
-      vbo_->bind();
-      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-      fill_vbo(0.0f, 0.0f, float(xdim), float(ydim));
-      vbo_->release();
-      nverts_ = 4;
-
-      tcbo_ = new glTexCoordBuffer;
-      tcbo_->bind();
-      tcbo_->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-      fill_tcbo_2d(0.0f, 0.0f, 1.0f, 1.0f);
-      tcbo_->release();
-
-      OpenGLErrorCheck();
-
-      if(__sc_gpu){
-	register_gpu_pbo(pbo_->id(), 
-			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
-      }
     }
 
     void destroy(){
