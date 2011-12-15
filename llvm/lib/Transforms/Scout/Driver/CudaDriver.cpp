@@ -194,10 +194,10 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   insertModuleLoadData(cuModule,
                        _builder.CreateConstInBoundsGEP2_32(ptxAsm, 0, 0));
 
-  Value *pixels;
+  Value *colors;
   if(func->getName().startswith("renderall")) {
     if(!_module.getNamedGlobal("__sc_device_renderall_uniform_colors")) {
-      pixels = new GlobalVariable(_module,
+      colors = new GlobalVariable(_module,
                                   getCUdeviceptrTy(),
                                   false,
                                   GlobalValue::ExternalLinkage,
@@ -226,8 +226,8 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
     if(type->isPointerTy()) {
 
       Value *d_arg;
-      if(arg->getName().startswith("pixels")){
-        d_arg = pixels;
+      if(arg->getName().startswith("colors")){
+        d_arg = colors;
       }
       else {
         int numElements = getSizeInBytes(type);

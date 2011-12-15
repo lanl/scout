@@ -626,22 +626,22 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
     llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
 
-    if(!CGM.getModule().getNamedGlobal("_pixels")) {
+    if(!CGM.getModule().getNamedGlobal("__sc_renderall_uniform_colors")) {
 
       new llvm::GlobalVariable(CGM.getModule(),
                                flt4PtrTy,
                                false,
                                llvm::GlobalValue::ExternalLinkage,
                                0,
-                               "_pixels");
+                               "__sc_renderall_uniform_colors");
     }
 
     llvm::Value *local_colors  = Builder.CreateAlloca(flt4PtrTy, 0, "colors");
     llvm::Value *global_colors = 
-    CGM.getModule().getNamedGlobal("_pixels");
+    CGM.getModule().getNamedGlobal("__sc_renderall_uniform_colors");
     
     Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
-    Colors = Builder.CreateLoad(local_colors, "pixels");
+    Colors = Builder.CreateLoad(local_colors, "colors");
   }
 
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");

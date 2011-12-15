@@ -17,10 +17,6 @@
 #include "runtime/renderall_base.h"
 #include "runtime/vec_types.h"
 
-// globals for interface with LLVM
-
-extern scout::float4* _pixels;
-
 namespace scout{
 
   class renderall_uniform_rt : public renderall_base_rt {

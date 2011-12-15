@@ -41,7 +41,7 @@ using namespace scout;
 
 // ------  LLVM - globals written to by LLVM
 
-float4* _pixels;
+float4* __sc_renderall_uniform_colors;
 CUdeviceptr __sc_device_renderall_uniform_colors;
 
 // -------------
@@ -331,7 +331,7 @@ namespace scout{
     }
 
     void map_colors(){
-      _pixels = (float4*)pbo_->mapForWrite();
+      __sc_renderall_uniform_colors = (float4*)pbo_->mapForWrite();
     }
 
     void unmap_colors(){
