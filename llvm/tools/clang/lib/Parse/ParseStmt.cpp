@@ -1986,7 +1986,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
-  // ndm - insert the call to scoutInit(argc, argv, gpu) at the top of main
+  // ndm - insert the call to __sc_init(argc, argv, gpu) at the top of main
   if(getLang().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
     
@@ -2001,10 +2001,10 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     
     if(fd->isMain()){
       assert(Tok.is(tok::l_brace) &&
-             "expected lbrace when inserting scoutInit()");
+             "expected lbrace when inserting __sc_init()");
 
       if(fd->param_size() == 0){
-        InsertCPPCode("scoutInit(" + args + ");", LBraceLoc, false);
+        InsertCPPCode("__sc_init(" + args + ");", LBraceLoc, false);
       }
       else{
         assert(fd->param_size() == 2 && "expected main with two params");
@@ -2014,7 +2014,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
         ++itr;
         ParmVarDecl* paramArgv = *itr;
 
-        std::string code = "scoutInit(" + paramArgc->getName().str() +
+        std::string code = "__sc_init(" + paramArgc->getName().str() +
         ", " + paramArgv->getName().str() + ", " + args + ");";
 
         InsertCPPCode(code, LBraceLoc, false);
@@ -2641,7 +2641,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       bc = "scoutBeginRenderAllElements(";
     }
     else{
-      bc = "scoutBeginRenderAll(";
+      bc = "__sc_begin_uniform_renderall(";
     }
     
     for(size_t i = 0; i < 3; ++i){
@@ -2666,10 +2666,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     StmtsStack.back()->push_back(BR.get());
 
     if(elements){
-      InsertCPPCode("scoutEndRenderAllElements();", BodyLoc);
+      InsertCPPCode("__sc_end_renderall();", BodyLoc);
     }
     else{
-      InsertCPPCode("scoutEndRenderAll();", BodyLoc);      
+      InsertCPPCode("__sc_end_renderall();", BodyLoc);      
     }
 
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT,

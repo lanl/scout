@@ -12,7 +12,6 @@
 #include <stdlib.h>
 
 #include "runtime/opengl/glyph_renderall.h"
-#include "runtime/opengl/uniform_renderall.h"
 #include "runtime/types.h"
 #include "runtime/opengl/glProgram.h"
 #include "runtime/opengl/glVertexShader.h"
@@ -103,8 +102,8 @@ glyph_renderall_t* __sc_init_glyph_renderall(dim_t nglyphs)
   OpenGLErrorCheck();
 
   // not sure this is right place for this
-  if(_scout_gpu) {
-    _register_gpu_pbo(info->abo->id(), CU_GRAPHICS_REGISTER_FLAGS_NONE);
+  if(__sc_gpu) {
+    __sc_register_gpu_pbo(info->abo->id(), CU_GRAPHICS_REGISTER_FLAGS_NONE);
   } 
 
   return info;

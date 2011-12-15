@@ -1,14 +1,23 @@
 #ifndef SCOUT_SCH_
 #define SCOUT_SCH_
 
-#include "runtime/opengl/uniform_renderall.h"
+#include "runtime/renderall_uniform.h"
 #include "runtime/window.h"
 #include "runtime/image.h"
 #include "runtime/tbq.h"
 
-extern scout::uniform_renderall_t* _uniform_renderall;
-extern scout::tbq_rt* _tbq;
-extern float4* _pixels;
+extern scout::tbq_rt* __sc_tbq;
+
+extern const size_t __sc_initial_width;
+extern const size_t __sc_initial_height;
+
+void __sc_init_sdl(size_t width, size_t height);
+
+void __sc_init(int argc, char** argv, bool gpu);
+
+void __sc_init(bool gpu);
+
+void __sc_end();
 
 double cshift(double a, int dx);
 double cshift(double a, int dx, int dy);
@@ -88,23 +97,8 @@ float4 hsva(float h, float s, float v, float a)
   return r;
 }
 
-float4 hsv(float h, float s, float v)
-{
+float4 hsv(float h, float s, float v){
   return hsva(h, s, v, 1.0f);
 }
-
-void scoutInit(int& argc, char** argv, bool gpu);
-
-void scoutInit(bool gpu);
-
-void scoutEnd();
-
-void scoutBeginRenderAll(size_t dx, size_t dy, size_t dz);
-
-void scoutEndRenderAll();
-
-void scoutBeginRenderAllElements(size_t dx, size_t dy, size_t dz);
-
-void scoutEndRenderAllElements();
 
 #endif // SCOUT_SCH_

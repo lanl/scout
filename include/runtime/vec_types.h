@@ -21,7 +21,7 @@ namespace scout
     float4v     vec;
     float       components[4];
   };
-  
+
   typedef int   int4v   __attribute__ ((vector_size (4 * sizeof(int))));
   union int4 {
     int4v      vec;
