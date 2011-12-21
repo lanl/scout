@@ -19,7 +19,7 @@ for.body153:                                      ; preds = %for.body153, %for.b
 
 ; CHECK: add nsw i64 %indvars.iv, 1
 for.body170:                                      ; preds = %for.body170, %for.body153
-  %i2.19 = phi i32 [ %add249, %for.body170 ], [ undef, %for.body153 ]
+  %i2.19 = phi i32 [ %add249, %for.body170 ], [ 0, %for.body153 ]
   %add219 = add nsw i32 %i2.19, 1
   %idxprom220 = sext i32 %add219 to i64
   %add249 = add nsw i32 %i2.19, %shl132

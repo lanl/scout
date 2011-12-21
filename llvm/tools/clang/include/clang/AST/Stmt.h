@@ -39,11 +39,11 @@ namespace clang {
   class StringLiteral;
   class SwitchStmt;
 
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
   // ExprIterator - Iterators for iterating over Stmt* arrays that contain
   //  only Expr*.  This is needed because AST nodes use Stmt* arrays to store
   //  references to children (to be compatible with StmtIterator).
-  //===----------------------------------------------------------------------===//
+  //===--------------------------------------------------------------------===//
 
   class Stmt;
   class Expr;
@@ -149,6 +149,8 @@ protected:
     friend class CXXUnresolvedConstructExpr; // ctor
     friend class CXXDependentScopeMemberExpr; // ctor
     friend class OverloadExpr; // ctor
+    friend class PseudoObjectExpr; // ctor
+    friend class AtomicExpr; // ctor
     unsigned : NumStmtBits;
 
     unsigned ValueKind : 2;
@@ -168,6 +170,7 @@ protected:
     unsigned HasQualifier : 1;
     unsigned HasExplicitTemplateArgs : 1;
     unsigned HasFoundDecl : 1;
+    unsigned HadMultipleCandidates : 1;
   };
 
   class CastExprBitfields {
@@ -183,6 +186,27 @@ protected:
     unsigned : NumExprBits;
 
     unsigned NumPreArgs : 1;
+  };
+
+  class ExprWithCleanupsBitfields {
+    friend class ExprWithCleanups;
+    friend class ASTStmtReader; // deserialization
+
+    unsigned : NumExprBits;
+
+    unsigned NumObjects : 32 - NumExprBits;
+  };
+
+  class PseudoObjectExprBitfields {
+    friend class PseudoObjectExpr;
+    friend class ASTStmtReader; // deserialization
+
+    unsigned : NumExprBits;
+
+    // These don't need to be particularly wide, because they're
+    // strictly limited by the forms of expressions we permit.
+    unsigned NumSubExprs : 8;
+    unsigned ResultIndex : 32 - 8 - NumExprBits;
   };
 
   class ObjCIndirectCopyRestoreExprBitfields {
@@ -202,6 +226,8 @@ protected:
     DeclRefExprBitfields DeclRefExprBits;
     CastExprBitfields CastExprBits;
     CallExprBitfields CallExprBits;
+    ExprWithCleanupsBitfields ExprWithCleanupsBits;
+    PseudoObjectExprBitfields PseudoObjectExprBits;
     ObjCIndirectCopyRestoreExprBitfields ObjCIndirectCopyRestoreExprBits;
   };
 
@@ -836,7 +862,8 @@ public:
     SwitchLoc = SL;
   }
   void addSwitchCase(SwitchCase *SC) {
-    assert(!SC->getNextSwitchCase() && "case/default already added to a switch");
+    assert(!SC->getNextSwitchCase()
+           && "case/default already added to a switch");
     SC->setNextSwitchCase(FirstCase);
     FirstCase = SC;
   }
@@ -1501,8 +1528,13 @@ public:
   SourceLocation getExceptLoc() const { return Loc; }
   SourceLocation getEndLoc() const { return getBlock()->getLocEnd(); }
 
-  Expr *getFilterExpr() const { return reinterpret_cast<Expr*>(Children[FILTER_EXPR]); }
-  CompoundStmt *getBlock() const { return llvm::cast<CompoundStmt>(Children[BLOCK]); }
+  Expr *getFilterExpr() const {
+    return reinterpret_cast<Expr*>(Children[FILTER_EXPR]);
+  }
+
+  CompoundStmt *getBlock() const {
+    return llvm::cast<CompoundStmt>(Children[BLOCK]);
+  }
 
   child_range children() {
     return child_range(Children,Children+2);
@@ -1584,7 +1616,11 @@ public:
   SourceLocation getEndLoc() const { return Children[HANDLER]->getLocEnd(); }
 
   bool getIsCXXTry() const { return IsCXXTry; }
-  CompoundStmt* getTryBlock() const { return llvm::cast<CompoundStmt>(Children[TRY]); }
+
+  CompoundStmt* getTryBlock() const {
+    return llvm::cast<CompoundStmt>(Children[TRY]);
+  }
+
   Stmt *getHandler() const { return Children[HANDLER]; }
 
   /// Returns 0 if not defined
@@ -1600,7 +1636,6 @@ public:
   }
 
   static bool classof(SEHTryStmt *) { return true; }
-
 };
 
 // ndm - Scout Stmts

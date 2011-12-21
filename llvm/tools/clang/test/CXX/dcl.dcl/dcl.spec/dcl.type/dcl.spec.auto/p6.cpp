@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++0x
-// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++98 -Wno-c++0x-extensions
+// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++11
+// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++98 -Wno-c++11-extensions
 
 template<typename T>
 struct only {
@@ -92,7 +92,8 @@ namespace PR10939 {
   template<typename T> T g(T);
 
   void f(X *x) {
-    auto value = x->method; // expected-error{{variable 'value' with type 'auto' has incompatible initializer of type '<bound member function type>'}}
+    // FIXME: we should really only get the first diagnostic here.
+    auto value = x->method; // expected-error {{reference to non-static member function must be called}} expected-error{{variable 'value' with type 'auto' has incompatible initializer of type '<bound member function type>'}}
     if (value) { }
 
     auto funcptr = &g<int>;

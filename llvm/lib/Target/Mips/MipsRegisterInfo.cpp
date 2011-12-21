@@ -125,6 +125,7 @@ getRegisterNumbering(unsigned RegEnum)
   case Mips::D14:
     return 28;
   case Mips::SP: case Mips::SP_64: case Mips::F29: case Mips::D29_64:
+  case Mips::HWR29:
     return 29;
   case Mips::FP: case Mips::FP_64: case Mips::F30: case Mips::D30_64:
   case Mips::D15: 
@@ -191,23 +192,23 @@ BitVector MipsRegisterInfo::
 getReservedRegs(const MachineFunction &MF) const {
   static const unsigned ReservedCPURegs[] = {
     Mips::ZERO, Mips::AT, Mips::K0, Mips::K1, 
-    Mips::GP, Mips::SP, Mips::FP, Mips::RA, 0
+    Mips::GP, Mips::SP, Mips::FP, Mips::RA
   };
 
   static const unsigned ReservedCPU64Regs[] = {
     Mips::ZERO_64, Mips::AT_64, Mips::K0_64, Mips::K1_64, 
-    Mips::GP_64, Mips::SP_64, Mips::FP_64, Mips::RA_64, 0
+    Mips::GP_64, Mips::SP_64, Mips::FP_64, Mips::RA_64
   };
 
   BitVector Reserved(getNumRegs());
   typedef TargetRegisterClass::iterator RegIter;
 
-  for (const unsigned *Reg = ReservedCPURegs; *Reg; ++Reg)
-    Reserved.set(*Reg);
+  for (unsigned I = 0; I < array_lengthof(ReservedCPURegs); ++I)
+    Reserved.set(ReservedCPURegs[I]);
 
   if (Subtarget.hasMips64()) {
-    for (const unsigned *Reg = ReservedCPU64Regs; *Reg; ++Reg)
-      Reserved.set(*Reg);
+    for (unsigned I = 0; I < array_lengthof(ReservedCPU64Regs); ++I)
+      Reserved.set(ReservedCPU64Regs[I]);
 
     // Reserve all registers in AFGR64.
     for (RegIter Reg = Mips::AFGR64RegisterClass->begin();
@@ -285,7 +286,7 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
 
   if (MipsFI->isOutArgFI(FrameIndex) || MipsFI->isDynAllocFI(FrameIndex) ||
       (FrameIndex >= MinCSFI && FrameIndex <= MaxCSFI))
-    FrameReg = Mips::SP;
+    FrameReg = Subtarget.isABI_N64() ? Mips::SP_64 : Mips::SP;
   else
     FrameReg = getFrameRegister(MF); 
   
@@ -334,8 +335,10 @@ eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
 unsigned MipsRegisterInfo::
 getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
+  bool IsN64 = Subtarget.isABI_N64();
 
-  return TFI->hasFP(MF) ? Mips::FP : Mips::SP;
+  return TFI->hasFP(MF) ? (IsN64 ? Mips::FP_64 : Mips::FP) :
+                          (IsN64 ? Mips::SP_64 : Mips::SP);
 }
 
 unsigned MipsRegisterInfo::

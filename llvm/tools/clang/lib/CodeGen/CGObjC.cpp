@@ -313,7 +313,7 @@ void CodeGenFunction::StartObjCMethod(const ObjCMethodDecl *OMD,
   args.push_back(OMD->getSelfDecl());
   args.push_back(OMD->getCmdDecl());
 
-  for (ObjCMethodDecl::param_iterator PI = OMD->param_begin(),
+  for (ObjCMethodDecl::param_const_iterator PI = OMD->param_begin(),
        E = OMD->param_end(); PI != E; ++PI)
     args.push_back(*PI);
 
@@ -1087,117 +1087,6 @@ QualType CodeGenFunction::TypeOfSelfObject() {
   return PTy->getPointeeType();
 }
 
-LValue
-CodeGenFunction::EmitObjCPropertyRefLValue(const ObjCPropertyRefExpr *E) {
-  // This is a special l-value that just issues sends when we load or
-  // store through it.
-
-  // For certain base kinds, we need to emit the base immediately.
-  llvm::Value *Base;
-  if (E->isSuperReceiver())
-    Base = LoadObjCSelf();
-  else if (E->isClassReceiver())
-    Base = CGM.getObjCRuntime().GetClass(Builder, E->getClassReceiver());
-  else
-    Base = EmitScalarExpr(E->getBase());
-  return LValue::MakePropertyRef(E, Base);
-}
-
-static RValue GenerateMessageSendSuper(CodeGenFunction &CGF,
-                                       ReturnValueSlot Return,
-                                       QualType ResultType,
-                                       Selector S,
-                                       llvm::Value *Receiver,
-                                       const CallArgList &CallArgs) {
-  const ObjCMethodDecl *OMD = cast<ObjCMethodDecl>(CGF.CurFuncDecl);
-  bool isClassMessage = OMD->isClassMethod();
-  bool isCategoryImpl = isa<ObjCCategoryImplDecl>(OMD->getDeclContext());
-  return CGF.CGM.getObjCRuntime()
-                .GenerateMessageSendSuper(CGF, Return, ResultType,
-                                          S, OMD->getClassInterface(),
-                                          isCategoryImpl, Receiver,
-                                          isClassMessage, CallArgs);
-}
-
-RValue CodeGenFunction::EmitLoadOfPropertyRefLValue(LValue LV,
-                                                    ReturnValueSlot Return) {
-  const ObjCPropertyRefExpr *E = LV.getPropertyRefExpr();
-  QualType ResultType = E->getGetterResultType();
-  Selector S;
-  const ObjCMethodDecl *method;
-  if (E->isExplicitProperty()) {
-    const ObjCPropertyDecl *Property = E->getExplicitProperty();
-    S = Property->getGetterName();
-    method = Property->getGetterMethodDecl();
-  } else {
-    method = E->getImplicitPropertyGetter();
-    S = method->getSelector();
-  }
-
-  llvm::Value *Receiver = LV.getPropertyRefBaseAddr();
-
-  if (CGM.getLangOptions().ObjCAutoRefCount) {
-    QualType receiverType;
-    if (E->isSuperReceiver())
-      receiverType = E->getSuperReceiverType();
-    else if (E->isClassReceiver())
-      receiverType = getContext().getObjCClassType();
-    else
-      receiverType = E->getBase()->getType();
-  }
-
-  // Accesses to 'super' follow a different code path.
-  if (E->isSuperReceiver())
-    return AdjustRelatedResultType(*this, E, method,
-                                   GenerateMessageSendSuper(*this, Return, 
-                                                            ResultType,
-                                                            S, Receiver, 
-                                                            CallArgList()));
-  const ObjCInterfaceDecl *ReceiverClass
-    = (E->isClassReceiver() ? E->getClassReceiver() : 0);
-  return AdjustRelatedResultType(*this, E, method,
-          CGM.getObjCRuntime().
-             GenerateMessageSend(*this, Return, ResultType, S,
-                                 Receiver, CallArgList(), ReceiverClass));
-}
-
-void CodeGenFunction::EmitStoreThroughPropertyRefLValue(RValue Src,
-                                                        LValue Dst) {
-  const ObjCPropertyRefExpr *E = Dst.getPropertyRefExpr();
-  Selector S = E->getSetterSelector();
-  QualType ArgType = E->getSetterArgType();
-  
-  // FIXME. Other than scalars, AST is not adequate for setter and
-  // getter type mismatches which require conversion.
-  if (Src.isScalar()) {
-    llvm::Value *SrcVal = Src.getScalarVal();
-    QualType DstType = getContext().getCanonicalType(ArgType);
-    llvm::Type *DstTy = ConvertType(DstType);
-    if (SrcVal->getType() != DstTy)
-      Src = 
-        RValue::get(EmitScalarConversion(SrcVal, E->getType(), DstType));
-  }
-  
-  CallArgList Args;
-  Args.add(Src, ArgType);
-
-  llvm::Value *Receiver = Dst.getPropertyRefBaseAddr();
-  QualType ResultType = getContext().VoidTy;
-
-  if (E->isSuperReceiver()) {
-    GenerateMessageSendSuper(*this, ReturnValueSlot(),
-                             ResultType, S, Receiver, Args);
-    return;
-  }
-
-  const ObjCInterfaceDecl *ReceiverClass
-    = (E->isClassReceiver() ? E->getClassReceiver() : 0);
-
-  CGM.getObjCRuntime().GenerateMessageSend(*this, ReturnValueSlot(),
-                                           ResultType, S, Receiver, Args,
-                                           ReceiverClass);
-}
-
 void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   llvm::Constant *EnumerationMutationFn =
     CGM.getObjCRuntime().EnumerationMutationFunction();
@@ -1208,10 +1097,8 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
   }
 
   CGDebugInfo *DI = getDebugInfo();
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getBegin());
-    DI->EmitRegionStart(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
   // The local variable comes into scope immediately.
   AutoVarEmission variable = AutoVarEmission::invalid();
@@ -1465,10 +1352,8 @@ void CodeGenFunction::EmitObjCForCollectionStmt(const ObjCForCollectionStmt &S){
     EmitStoreThroughLValue(RValue::get(null), elementLValue);
   }
 
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getEnd());
-    DI->EmitRegionEnd(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   // Leave the cleanup we entered in ARC.
   if (getLangOptions().ObjCAutoRefCount)
@@ -1608,9 +1493,7 @@ static llvm::Value *emitARCStoreOperation(CodeGenFunction &CGF,
            == value->getType());
 
   if (!fn) {
-    std::vector<llvm::Type*> argTypes(2);
-    argTypes[0] = CGF.Int8PtrPtrTy;
-    argTypes[1] = CGF.Int8PtrTy;
+    llvm::Type *argTypes[] = { CGF.Int8PtrPtrTy, CGF.Int8PtrTy };
 
     llvm::FunctionType *fnType
       = llvm::FunctionType::get(CGF.Int8PtrTy, argTypes, false);
@@ -1658,7 +1541,7 @@ static void emitARCCopyOperation(CodeGenFunction &CGF,
 ///   call i8* @objc_retainBlock(i8* %value)
 llvm::Value *CodeGenFunction::EmitARCRetain(QualType type, llvm::Value *value) {
   if (type->isBlockPointerType())
-    return EmitARCRetainBlock(value);
+    return EmitARCRetainBlock(value, /*mandatory*/ false);
   else
     return EmitARCRetainNonBlock(value);
 }
@@ -1673,10 +1556,32 @@ llvm::Value *CodeGenFunction::EmitARCRetainNonBlock(llvm::Value *value) {
 
 /// Retain the given block, with _Block_copy semantics.
 ///   call i8* @objc_retainBlock(i8* %value)
-llvm::Value *CodeGenFunction::EmitARCRetainBlock(llvm::Value *value) {
-  return emitARCValueOperation(*this, value,
-                               CGM.getARCEntrypoints().objc_retainBlock,
-                               "objc_retainBlock");
+///
+/// \param mandatory - If false, emit the call with metadata
+/// indicating that it's okay for the optimizer to eliminate this call
+/// if it can prove that the block never escapes except down the stack.
+llvm::Value *CodeGenFunction::EmitARCRetainBlock(llvm::Value *value,
+                                                 bool mandatory) {
+  llvm::Value *result
+    = emitARCValueOperation(*this, value,
+                            CGM.getARCEntrypoints().objc_retainBlock,
+                            "objc_retainBlock");
+
+  // If the copy isn't mandatory, add !clang.arc.copy_on_escape to
+  // tell the optimizer that it doesn't need to do this copy if the
+  // block doesn't escape, where being passed as an argument doesn't
+  // count as escaping.
+  if (!mandatory && isa<llvm::Instruction>(result)) {
+    llvm::CallInst *call
+      = cast<llvm::CallInst>(result->stripPointerCasts());
+    assert(call->getCalledValue() == CGM.getARCEntrypoints().objc_retainBlock);
+
+    SmallVector<llvm::Value*,1> args;
+    call->setMetadata("clang.arc.copy_on_escape",
+                      llvm::MDNode::get(Builder.getContext(), args));
+  }
+
+  return result;
 }
 
 /// Retain the given object which is the result of a function call.
@@ -1795,7 +1700,8 @@ llvm::Value *CodeGenFunction::EmitARCStoreStrong(LValue dst,
   // lvalue is inadequately aligned.
   if (shouldUseFusedARCCalls() &&
       !isBlock &&
-      !(dst.getAlignment() && dst.getAlignment() < PointerAlignInBytes)) {
+      (dst.getAlignment().isZero() ||
+       dst.getAlignment() >= CharUnits::fromQuantity(PointerAlignInBytes))) {
     return EmitARCStoreStrongCall(dst.getAddress(), newValue, ignored);
   }
 
@@ -1857,7 +1763,7 @@ llvm::Value *CodeGenFunction::EmitARCRetainAutorelease(QualType type,
 
   llvm::Type *origType = value->getType();
   value = Builder.CreateBitCast(value, Int8PtrTy);
-  value = EmitARCRetainBlock(value);
+  value = EmitARCRetainBlock(value, /*mandatory*/ true);
   value = EmitARCAutorelease(value);
   return Builder.CreateBitCast(value, origType);
 }
@@ -2215,10 +2121,64 @@ static bool shouldEmitSeparateBlockRetain(const Expr *e) {
   return true;
 }
 
+/// Try to emit a PseudoObjectExpr at +1.
+///
+/// This massively duplicates emitPseudoObjectRValue.
+static TryEmitResult tryEmitARCRetainPseudoObject(CodeGenFunction &CGF,
+                                                  const PseudoObjectExpr *E) {
+  llvm::SmallVector<CodeGenFunction::OpaqueValueMappingData, 4> opaques;
+
+  // Find the result expression.
+  const Expr *resultExpr = E->getResultExpr();
+  assert(resultExpr);
+  TryEmitResult result;
+
+  for (PseudoObjectExpr::const_semantics_iterator
+         i = E->semantics_begin(), e = E->semantics_end(); i != e; ++i) {
+    const Expr *semantic = *i;
+
+    // If this semantic expression is an opaque value, bind it
+    // to the result of its source expression.
+    if (const OpaqueValueExpr *ov = dyn_cast<OpaqueValueExpr>(semantic)) {
+      typedef CodeGenFunction::OpaqueValueMappingData OVMA;
+      OVMA opaqueData;
+
+      // If this semantic is the result of the pseudo-object
+      // expression, try to evaluate the source as +1.
+      if (ov == resultExpr) {
+        assert(!OVMA::shouldBindAsLValue(ov));
+        result = tryEmitARCRetainScalarExpr(CGF, ov->getSourceExpr());
+        opaqueData = OVMA::bind(CGF, ov, RValue::get(result.getPointer()));
+
+      // Otherwise, just bind it.
+      } else {
+        opaqueData = OVMA::bind(CGF, ov, ov->getSourceExpr());
+      }
+      opaques.push_back(opaqueData);
+
+    // Otherwise, if the expression is the result, evaluate it
+    // and remember the result.
+    } else if (semantic == resultExpr) {
+      result = tryEmitARCRetainScalarExpr(CGF, semantic);
+
+    // Otherwise, evaluate the expression in an ignored context.
+    } else {
+      CGF.EmitIgnoredExpr(semantic);
+    }
+  }
+
+  // Unbind all the opaques now.
+  for (unsigned i = 0, e = opaques.size(); i != e; ++i)
+    opaques[i].unbind(CGF);
+
+  return result;
+}
+
 static TryEmitResult
 tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
   // Look through cleanups.
   if (const ExprWithCleanups *cleanups = dyn_cast<ExprWithCleanups>(e)) {
+    CGF.enterFullExpression(cleanups);
     CodeGenFunction::RunCleanupsScope scope(CGF);
     return tryEmitARCRetainScalarExpr(CGF, cleanups->getSubExpr());
   }
@@ -2300,7 +2260,7 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
         }
 
         // Retain the object as a block, then cast down.
-        result = CGF.EmitARCRetainBlock(result);
+        result = CGF.EmitARCRetainBlock(result, /*mandatory*/ true);
         if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
         return TryEmitResult(result, true);
       }
@@ -2309,12 +2269,6 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
       // skip the consumption.
       case CK_ARCReclaimReturnedObject: {
         llvm::Value *result = emitARCRetainCall(CGF, ce->getSubExpr());
-        if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
-        return TryEmitResult(result, true);
-      }
-
-      case CK_GetObjCProperty: {
-        llvm::Value *result = emitARCRetainCall(CGF, ce);
         if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
         return TryEmitResult(result, true);
       }
@@ -2340,6 +2294,17 @@ tryEmitARCRetainScalarExpr(CodeGenFunction &CGF, const Expr *e) {
       llvm::Value *result = emitARCRetainCall(CGF, e);
       if (resultType) result = CGF.Builder.CreateBitCast(result, resultType);
       return TryEmitResult(result, true);
+
+    // Look through pseudo-object expressions.
+    } else if (const PseudoObjectExpr *pseudo = dyn_cast<PseudoObjectExpr>(e)) {
+      TryEmitResult result
+        = tryEmitARCRetainPseudoObject(CGF, pseudo);
+      if (resultType) {
+        llvm::Value *value = result.getPointer();
+        value = CGF.Builder.CreateBitCast(value, resultType);
+        result.setPointer(value);
+      }
+      return result;
     }
 
     // Conservatively halt the search at any other expression kind.
@@ -2386,6 +2351,50 @@ CodeGenFunction::EmitARCRetainAutoreleaseScalarExpr(const Expr *e) {
   return value;
 }
 
+llvm::Value *CodeGenFunction::EmitARCExtendBlockObject(const Expr *e) {
+  llvm::Value *result;
+  bool doRetain;
+
+  if (shouldEmitSeparateBlockRetain(e)) {
+    result = EmitScalarExpr(e);
+    doRetain = true;
+  } else {
+    TryEmitResult subresult = tryEmitARCRetainScalarExpr(*this, e);
+    result = subresult.getPointer();
+    doRetain = !subresult.getInt();
+  }
+
+  if (doRetain)
+    result = EmitARCRetainBlock(result, /*mandatory*/ true);
+  return EmitObjCConsumeObject(e->getType(), result);
+}
+
+llvm::Value *CodeGenFunction::EmitObjCThrowOperand(const Expr *expr) {
+  // In ARC, retain and autorelease the expression.
+  if (getLangOptions().ObjCAutoRefCount) {
+    // Do so before running any cleanups for the full-expression.
+    // tryEmitARCRetainScalarExpr does make an effort to do things
+    // inside cleanups, but there are crazy cases like
+    //   @throw A().foo;
+    // where a full retain+autorelease is required and would
+    // otherwise happen after the destructor for the temporary.
+    if (const ExprWithCleanups *ewc = dyn_cast<ExprWithCleanups>(expr)) {
+      enterFullExpression(ewc);
+      expr = ewc->getSubExpr();
+    }
+
+    CodeGenFunction::RunCleanupsScope cleanups(*this);
+    return EmitARCRetainAutoreleaseScalarExpr(expr);
+  }
+
+  // Otherwise, use the normal scalar-expression emission.  The
+  // exception machinery doesn't do anything special with the
+  // exception like retaining it, so there's no safety associated with
+  // only running cleanups after the throw has started, and when it
+  // matters it tends to be substantially inferior code.
+  return EmitScalarExpr(expr);
+}
+
 std::pair<LValue,llvm::Value*>
 CodeGenFunction::EmitARCStoreStrong(const BinaryOperator *e,
                                     bool ignored) {
@@ -2399,7 +2408,7 @@ CodeGenFunction::EmitARCStoreStrong(const BinaryOperator *e,
   // type, then we need to emit the block-retain immediately in case
   // it invalidates the l-value.
   if (!hasImmediateRetain && e->getType()->isBlockPointerType()) {
-    value = EmitARCRetainBlock(value);
+    value = EmitARCRetainBlock(value, /*mandatory*/ false);
     hasImmediateRetain = true;
   }
 
@@ -2408,12 +2417,8 @@ CodeGenFunction::EmitARCStoreStrong(const BinaryOperator *e,
   // If the RHS was emitted retained, expand this.
   if (hasImmediateRetain) {
     llvm::Value *oldValue =
-      EmitLoadOfScalar(lvalue.getAddress(), lvalue.isVolatileQualified(),
-                       lvalue.getAlignment(), e->getType(),
-                       lvalue.getTBAAInfo());
-    EmitStoreOfScalar(value, lvalue.getAddress(),
-                      lvalue.isVolatileQualified(), lvalue.getAlignment(),
-                      e->getType(), lvalue.getTBAAInfo());
+      EmitLoadOfScalar(lvalue);
+    EmitStoreOfScalar(value, lvalue);
     EmitARCRelease(oldValue, /*precise*/ false);
   } else {
     value = EmitARCStoreStrong(lvalue, value, ignored);
@@ -2427,9 +2432,7 @@ CodeGenFunction::EmitARCStoreAutoreleasing(const BinaryOperator *e) {
   llvm::Value *value = EmitARCRetainAutoreleaseScalarExpr(e->getRHS());
   LValue lvalue = EmitLValue(e->getLHS());
 
-  EmitStoreOfScalar(value, lvalue.getAddress(),
-                    lvalue.isVolatileQualified(), lvalue.getAlignment(),
-                    e->getType(), lvalue.getTBAAInfo());
+  EmitStoreOfScalar(value, lvalue);
 
   return std::pair<LValue,llvm::Value*>(lvalue, value);
 }
@@ -2440,10 +2443,8 @@ void CodeGenFunction::EmitObjCAutoreleasePoolStmt(
   const CompoundStmt &S = cast<CompoundStmt>(*subStmt);
 
   CGDebugInfo *DI = getDebugInfo();
-  if (DI) {
-    DI->setLocation(S.getLBracLoc());
-    DI->EmitRegionStart(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getLBracLoc());
 
   // Keep track of the current cleanup stack depth.
   RunCleanupsScope Scope(*this);
@@ -2459,10 +2460,8 @@ void CodeGenFunction::EmitObjCAutoreleasePoolStmt(
        E = S.body_end(); I != E; ++I)
     EmitStmt(*I);
 
-  if (DI) {
-    DI->setLocation(S.getRBracLoc());
-    DI->EmitRegionEnd(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
 }
 
 /// EmitExtendGCLifetime - Given a pointer to an Objective-C object,

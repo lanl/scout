@@ -18,7 +18,6 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -27,8 +26,7 @@ using namespace llvm;
 
 /// translateShiftImm - Convert shift immediate from 0-31 to 1-32 for printing.
 ///
-/// getSORegOffset returns an integer from 0-31, but '0' should actually be printed
-/// 32 as the immediate shouldbe within the range 1-32.
+/// getSORegOffset returns an integer from 0-31, representing '32' as 0.
 static unsigned translateShiftImm(unsigned imm) {
   if (imm == 0)
     return 32;
@@ -102,7 +100,9 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
 
   // A8.6.123 PUSH
   if ((Opcode == ARM::STMDB_UPD || Opcode == ARM::t2STMDB_UPD) &&
-      MI->getOperand(0).getReg() == ARM::SP) {
+      MI->getOperand(0).getReg() == ARM::SP &&
+      MI->getNumOperands() > 5) {
+    // Should only print PUSH if there are at least two registers in the list.
     O << '\t' << "push";
     printPredicateOperand(MI, 2, O);
     if (Opcode == ARM::t2STMDB_UPD)
@@ -123,7 +123,9 @@ void ARMInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
 
   // A8.6.122 POP
   if ((Opcode == ARM::LDMIA_UPD || Opcode == ARM::t2LDMIA_UPD) &&
-      MI->getOperand(0).getReg() == ARM::SP) {
+      MI->getOperand(0).getReg() == ARM::SP &&
+      MI->getNumOperands() > 5) {
+    // Should only print POP if there are at least two registers in the list.
     O << '\t' << "pop";
     printPredicateOperand(MI, 2, O);
     if (Opcode == ARM::t2LDMIA_UPD)
@@ -207,7 +209,18 @@ void ARMInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
     O << '#' << Op.getImm();
   } else {
     assert(Op.isExpr() && "unknown operand kind in printOperand");
-    O << *Op.getExpr();
+    // If a symbolic branch target was added as a constant expression then print
+    // that address in hex.
+    const MCConstantExpr *BranchTarget = dyn_cast<MCConstantExpr>(Op.getExpr());
+    int64_t Address;
+    if (BranchTarget && BranchTarget->EvaluateAsAbsolute(Address)) {
+      O << "0x";
+      O.write_hex(Address);
+    }
+    else {
+      // Otherwise, just print the expression.
+      O << *Op.getExpr();
+    }
   }
 }
 
@@ -240,7 +253,7 @@ void ARMInstPrinter::printSORegRegOperand(const MCInst *MI, unsigned OpNum,
   O << ", " << ARM_AM::getShiftOpcStr(ShOpc);
   if (ShOpc == ARM_AM::rrx)
     return;
-  
+
   O << ' ' << getRegisterName(MO2.getReg());
   assert(ARM_AM::getSORegOffset(MO3.getImm()) == 0);
 }
@@ -423,6 +436,12 @@ void ARMInstPrinter::printAM3PreOrOffsetIndexOp(const MCInst *MI, unsigned Op,
 
 void ARMInstPrinter::printAddrMode3Operand(const MCInst *MI, unsigned Op,
                                            raw_ostream &O) {
+  const MCOperand &MO1 = MI->getOperand(Op);
+  if (!MO1.isReg()) {   //  For label symbolic references.
+    printOperand(MI, Op, O);
+    return;
+  }
+
   const MCOperand &MO3 = MI->getOperand(Op+2);
   unsigned IdxMode = ARM_AM::getAM3IdxMode(MO3.getImm());
 
@@ -613,6 +632,9 @@ void ARMInstPrinter::printCPSIFlag(const MCInst *MI, unsigned OpNum,
   for (int i=2; i >= 0; --i)
     if (IFlags & (1 << i))
       O << ARM_PROC::IFlagsToString(1 << i);
+
+  if (IFlags == 0)
+    O << "none";
 }
 
 void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
@@ -697,13 +719,18 @@ void ARMInstPrinter::printNoHashImmediate(const MCInst *MI, unsigned OpNum,
 }
 
 void ARMInstPrinter::printPImmediate(const MCInst *MI, unsigned OpNum,
-                                          raw_ostream &O) {
+                                     raw_ostream &O) {
   O << "p" << MI->getOperand(OpNum).getImm();
 }
 
 void ARMInstPrinter::printCImmediate(const MCInst *MI, unsigned OpNum,
-                                          raw_ostream &O) {
+                                     raw_ostream &O) {
   O << "c" << MI->getOperand(OpNum).getImm();
+}
+
+void ARMInstPrinter::printCoprocOptionImm(const MCInst *MI, unsigned OpNum,
+                                          raw_ostream &O) {
+  O << "{" << MI->getOperand(OpNum).getImm() << "}";
 }
 
 void ARMInstPrinter::printPCLabel(const MCInst *MI, unsigned OpNum,
@@ -864,6 +891,11 @@ void ARMInstPrinter::printT2AddrModeImm8s4Operand(const MCInst *MI,
   const MCOperand &MO1 = MI->getOperand(OpNum);
   const MCOperand &MO2 = MI->getOperand(OpNum+1);
 
+  if (!MO1.isReg()) {   //  For label symbolic references.
+    printOperand(MI, OpNum, O);
+    return;
+  }
+
   O << "[" << getRegisterName(MO1.getReg());
 
   int32_t OffImm = (int32_t)MO2.getImm() / 4;
@@ -934,39 +966,10 @@ void ARMInstPrinter::printT2AddrModeSoRegOperand(const MCInst *MI,
   O << "]";
 }
 
-void ARMInstPrinter::printVFPf32ImmOperand(const MCInst *MI, unsigned OpNum,
-                                           raw_ostream &O) {
+void ARMInstPrinter::printFPImmOperand(const MCInst *MI, unsigned OpNum,
+                                       raw_ostream &O) {
   const MCOperand &MO = MI->getOperand(OpNum);
-  O << '#';
-  if (MO.isFPImm()) {
-    O << (float)MO.getFPImm();
-  } else {
-    union {
-      uint32_t I;
-      float F;
-    } FPUnion;
-
-    FPUnion.I = MO.getImm();
-    O << FPUnion.F;
-  }
-}
-
-void ARMInstPrinter::printVFPf64ImmOperand(const MCInst *MI, unsigned OpNum,
-                                           raw_ostream &O) {
-  const MCOperand &MO = MI->getOperand(OpNum);
-  O << '#';
-  if (MO.isFPImm()) {
-    O << MO.getFPImm();
-  } else {
-    // We expect the binary encoding of a floating point number here.
-    union {
-      uint64_t I;
-      double D;
-    } FPUnion;
-
-    FPUnion.I = MO.getImm();
-    O << FPUnion.D;
-  }
+  O << '#' << ARM_AM::getFPImmFloat(MO.getImm());
 }
 
 void ARMInstPrinter::printNEONModImmOperand(const MCInst *MI, unsigned OpNum,
@@ -974,7 +977,8 @@ void ARMInstPrinter::printNEONModImmOperand(const MCInst *MI, unsigned OpNum,
   unsigned EncodedImm = MI->getOperand(OpNum).getImm();
   unsigned EltBits;
   uint64_t Val = ARM_AM::decodeNEONModImm(EncodedImm, EltBits);
-  O << "#0x" << utohexstr(Val);
+  O << "#0x";
+  O.write_hex(Val);
 }
 
 void ARMInstPrinter::printImmPlusOneOperand(const MCInst *MI, unsigned OpNum,
@@ -996,3 +1000,79 @@ void ARMInstPrinter::printRotImmOperand(const MCInst *MI, unsigned OpNum,
   case 3: O << "24"; break;
   }
 }
+
+void ARMInstPrinter::printVectorIndex(const MCInst *MI, unsigned OpNum,
+                                      raw_ostream &O) {
+  O << "[" << MI->getOperand(OpNum).getImm() << "]";
+}
+
+void ARMInstPrinter::printVectorListOne(const MCInst *MI, unsigned OpNum,
+                                        raw_ostream &O) {
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "}";
+}
+
+void ARMInstPrinter::printVectorListTwo(const MCInst *MI, unsigned OpNum,
+                                        raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "}";
+}
+
+void ARMInstPrinter::printVectorListThree(const MCInst *MI, unsigned OpNum,
+                                          raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "}";
+}
+
+void ARMInstPrinter::printVectorListFour(const MCInst *MI, unsigned OpNum,
+                                         raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 3) << "}";
+}
+
+void ARMInstPrinter::printVectorListOneAllLanes(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListTwoAllLanes(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListTwoSpaced(const MCInst *MI, unsigned OpNum,
+                                              raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "}";
+}
+
+void ARMInstPrinter::printVectorListTwoSpacedAllLanes(const MCInst *MI,
+                                                      unsigned OpNum,
+                                                      raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[]}";
+}
+

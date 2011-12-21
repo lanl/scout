@@ -17,8 +17,8 @@
 
 #include "AsmWriterInst.h"
 #include "CodeGenTarget.h"
-#include "Record.h"
 
+#include "llvm/TableGen/Record.h"
 #include "llvm/MC/EDInstInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
@@ -256,12 +256,15 @@ static int X86TypeFromOpName(LiteralConstantEmitter *type,
   REG("GR8");
   REG("GR8_NOREX");
   REG("GR16");
+  REG("GR16_NOAX");
   REG("GR32");
+  REG("GR32_NOAX");
   REG("GR32_NOREX");
   REG("GR32_TC");
   REG("FR32");
   REG("RFP32");
   REG("GR64");
+  REG("GR64_NOAX");
   REG("GR64_TC");
   REG("FR64");
   REG("VR64");
@@ -568,6 +571,14 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   REG("QPR");
   REG("QQPR");
   REG("QQQQPR");
+  REG("VecListOneD");
+  REG("VecListTwoD");
+  REG("VecListThreeD");
+  REG("VecListFourD");
+  REG("VecListTwoQ");
+  REG("VecListOneDAllLanes");
+  REG("VecListTwoDAllLanes");
+  REG("VecListTwoQAllLanes");
 
   IMM("i32imm");
   IMM("i32imm_hilo16");
@@ -578,6 +589,7 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   IMM("nohash_imm");
   IMM("p_imm");
   IMM("c_imm");
+  IMM("coproc_option_imm");
   IMM("imod_op");
   IMM("iflags_op");
   IMM("cpinst_operand");
@@ -593,6 +605,20 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   IMM("imm1_16");
   IMM("imm1_32");
   IMM("nModImm");
+  IMM("nImmSplatI8");
+  IMM("nImmSplatI16");
+  IMM("nImmSplatI32");
+  IMM("nImmSplatI64");
+  IMM("nImmVMOVI32");
+  IMM("nImmVMOVF32");
+  IMM("imm8");
+  IMM("imm16");
+  IMM("imm32");
+  IMM("imm1_7");
+  IMM("imm1_15");
+  IMM("imm1_31");
+  IMM("imm0_1");
+  IMM("imm0_3");
   IMM("imm0_7");
   IMM("imm0_15");
   IMM("imm0_255");
@@ -621,6 +647,9 @@ static int ARMFlagFromOpName(LiteralConstantEmitter *type,
   IMM("postidx_imm8s4");
   IMM("imm_sr");
   IMM("imm1_31");
+  IMM("VectorIndex8");
+  IMM("VectorIndex16");
+  IMM("VectorIndex32");
 
   MISC("brtarget", "kOperandTypeARMBranchTarget");                // ?
   MISC("uncondbrtarget", "kOperandTypeARMBranchTarget");           // ?
@@ -728,7 +757,7 @@ static void ARMPopulateOperands(
       errs() << "Operand type: " << rec.getName() << '\n';
       errs() << "Operand name: " << operandInfo.Name << '\n';
       errs() << "Instruction name: " << inst.TheDef->getName() << '\n';
-      llvm_unreachable("Unhandled type");
+      throw("Unhandled type in EDEmitter");
     }
   }
 }
@@ -796,11 +825,6 @@ static void populateInstInfo(CompoundConstantEmitter &infoArray,
   for (index = 0; index < numInstructions; ++index) {
     const CodeGenInstruction& inst = *numberedInstructions[index];
 
-    // We don't need to do anything for pseudo-instructions, as we'll never
-    // see them here. We'll only see real instructions.
-    if (inst.isPseudo)
-      continue;
-
     CompoundConstantEmitter *infoStruct = new CompoundConstantEmitter;
     infoArray.addEntry(infoStruct);
 
@@ -833,15 +857,20 @@ static void populateInstInfo(CompoundConstantEmitter &infoArray,
 
     unsigned numSyntaxes = 0;
 
-    if (target.getName() == "X86") {
-      X86PopulateOperands(operandTypes, inst);
-      X86ExtractSemantics(*instType, operandFlags, inst);
-      numSyntaxes = 2;
-    }
-    else if (target.getName() == "ARM") {
-      ARMPopulateOperands(operandTypes, inst);
-      ARMExtractSemantics(*instType, operandTypes, operandFlags, inst);
-      numSyntaxes = 1;
+    // We don't need to do anything for pseudo-instructions, as we'll never
+    // see them here. We'll only see real instructions.
+    // We still need to emit null initializers for everything.
+    if (!inst.isPseudo) {
+      if (target.getName() == "X86") {
+        X86PopulateOperands(operandTypes, inst);
+        X86ExtractSemantics(*instType, operandFlags, inst);
+        numSyntaxes = 2;
+      }
+      else if (target.getName() == "ARM") {
+        ARMPopulateOperands(operandTypes, inst);
+        ARMExtractSemantics(*instType, operandTypes, operandFlags, inst);
+        numSyntaxes = 1;
+      }
     }
 
     CompoundConstantEmitter *operandOrderArray = new CompoundConstantEmitter;

@@ -35,8 +35,9 @@ def RetCC_MipsO32 : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CC_MipsN : CallingConv<[
-  // FIXME: Handle byval, complex and float double parameters.
-
+   // Handles byval parameters.
+  CCIfByVal<CCCustom<"CC_Mips64Byval">>,
+ 
   // Promote i8/i16/i32 arguments to i64.
   CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
 
@@ -57,6 +58,25 @@ def CC_MipsN : CallingConv<[
                                            D16_64, D17_64, D18_64, D19_64],
                                           [A0_64, A1_64, A2_64, A3_64,
                                            T0_64, T1_64, T2_64, T3_64]>>,
+
+  // All stack parameter slots become 64-bit doublewords and are 8-byte aligned.
+  CCIfType<[i64, f64], CCAssignToStack<8, 8>>,
+  CCIfType<[f32], CCAssignToStack<4, 8>>
+]>;
+
+// N32/64 variable arguments.
+// All arguments are passed in integer registers.
+def CC_MipsN_VarArg : CallingConv<[
+   // Handles byval parameters.
+  CCIfByVal<CCCustom<"CC_Mips64Byval">>,
+ 
+  // Promote i8/i16/i32 arguments to i64.
+  CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
+
+  CCIfType<[i64, f64], CCAssignToReg<[A0_64, A1_64, A2_64, A3_64,
+                                      T0_64, T1_64, T2_64, T3_64]>>,
+
+  CCIfType<[f32], CCAssignToReg<[A0, A1, A2, A3, T0, T1, T2, T3]>>,
 
   // All stack parameter slots become 64-bit doublewords and are 8-byte aligned.
   CCIfType<[i64, f64], CCAssignToStack<8, 8>>,

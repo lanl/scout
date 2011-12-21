@@ -89,14 +89,6 @@ std::string ARM_MC::ParseARMTriple(StringRef TT) {
       ARMArchFeature += ",+thumb-mode";
   }
 
-  Triple TheTriple(TT);
-  if (TheTriple.getOS() == Triple::NativeClient) {
-    if (ARMArchFeature.empty())
-      ARMArchFeature = "+nacl-mode";
-    else
-      ARMArchFeature += ",+nacl-mode";
-  }
-
   return ARMArchFeature;
 }
 
@@ -137,11 +129,15 @@ static MCAsmInfo *createARMMCAsmInfo(const Target &T, StringRef TT) {
 }
 
 static MCCodeGenInfo *createARMMCCodeGenInfo(StringRef TT, Reloc::Model RM,
-                                             CodeModel::Model CM) {
+                                             CodeModel::Model CM,
+                                             CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
-  if (RM == Reloc::Default)
-    RM = Reloc::DynamicNoPIC;
-  X->InitMCCodeGenInfo(RM, CM);
+  if (RM == Reloc::Default) {
+    Triple TheTriple(TT);
+    // Default relocation model on Darwin is PIC, not DynamicNoPIC.
+    RM = TheTriple.isOSDarwin() ? Reloc::PIC_ : Reloc::DynamicNoPIC;
+  }
+  X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 

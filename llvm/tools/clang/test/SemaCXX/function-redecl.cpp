@@ -44,7 +44,7 @@ namespace test0 {
 
 
 class B {
- void typocorrection(const int); // expected-note {{type of 1st parameter of member declaration does not match definition}}
+ void typocorrection(const int); // expected-note {{'typocorrection' declared here}}
  void typocorrection(double);
 };
 
@@ -62,7 +62,7 @@ struct Foo {
 }
 
 class Bar {
-  void f(test1::Foo::Inner foo) const; // expected-note {{member declaration nearly matches}}
+  void f(test1::Foo::Inner foo) const; // expected-note {{member declaration does not match because it is const qualified}}
 };
 
 using test1::Foo;
@@ -79,3 +79,19 @@ class Crash {
 void Crash::cart(int count) const {} // expected-error {{out-of-line definition of 'cart' does not match any declaration in 'Crash'}}
 // ...while this one crashed clang
 void Crash::chart(int count) const {} // expected-error {{out-of-line definition of 'chart' does not match any declaration in 'Crash'}}
+
+class TestConst {
+ public:
+  int getit() const; // expected-note {{member declaration does not match because it is const qualified}}
+  void setit(int); // expected-note {{member declaration does not match because it is not const qualified}}
+};
+
+int TestConst::getit() { // expected-error {{out-of-line definition of 'getit' does not match any declaration in 'TestConst'}}
+  return 1;
+}
+
+void TestConst::setit(int) const { // expected-error {{out-of-line definition of 'setit' does not match any declaration in 'TestConst'}}
+}
+
+struct J { int typo() const; };
+int J::typo_() { return 3; } // expected-error {{out-of-line definition of 'typo_' does not match any declaration in 'J'}}

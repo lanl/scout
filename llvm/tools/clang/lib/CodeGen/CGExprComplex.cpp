@@ -64,11 +64,8 @@ public:
   }
 
   ComplexPairTy EmitLoadOfLValue(LValue LV) {
-    if (LV.isSimple())
-      return EmitLoadOfComplex(LV.getAddress(), LV.isVolatileQualified());
-
-    assert(LV.isPropertyRef() && "Unknown LValue type!");
-    return CGF.EmitLoadOfPropertyRefLValue(LV).getComplexVal();
+    assert(LV.isSimple() && "complex l-value must be simple");
+    return EmitLoadOfComplex(LV.getAddress(), LV.isVolatileQualified());
   }
 
   /// EmitLoadOfComplex - Given a pointer to a complex value, emit code to load
@@ -78,11 +75,8 @@ public:
   /// EmitStoreThroughLValue - Given an l-value of complex type, store
   /// a complex number into it.
   void EmitStoreThroughLValue(ComplexPairTy Val, LValue LV) {
-    if (LV.isSimple())
-      return EmitStoreOfComplex(Val, LV.getAddress(), LV.isVolatileQualified());
-
-    assert(LV.isPropertyRef() && "Unknown LValue type!");
-    CGF.EmitStoreThroughPropertyRefLValue(RValue::getComplex(Val), LV);
+    assert(LV.isSimple() && "complex l-value must be simple");
+    return EmitStoreOfComplex(Val, LV.getAddress(), LV.isVolatileQualified());
   }
 
   /// EmitStoreOfComplex - Store the specified real/imag parts into the
@@ -122,10 +116,6 @@ public:
   ComplexPairTy VisitObjCIvarRefExpr(ObjCIvarRefExpr *E) {
     return EmitLoadOfLValue(E);
   }
-  ComplexPairTy VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E) {
-    assert(E->getObjectKind() == OK_Ordinary);
-    return EmitLoadOfLValue(E);
-  }
   ComplexPairTy VisitObjCMessageExpr(ObjCMessageExpr *E) {
     return CGF.EmitObjCMessageExpr(E).getComplexVal();
   }
@@ -135,6 +125,10 @@ public:
     if (E->isGLValue())
       return EmitLoadOfLValue(CGF.getOpaqueLValueMapping(E));
     return CGF.getOpaqueRValueMapping(E).getComplexVal();
+  }
+
+  ComplexPairTy VisitPseudoObjectExpr(PseudoObjectExpr *E) {
+    return CGF.EmitPseudoObjectRValue(E).getComplexVal();
   }
 
   // FIXME: CompoundLiteralExpr
@@ -185,7 +179,9 @@ public:
     return Visit(DAE->getExpr());
   }
   ComplexPairTy VisitExprWithCleanups(ExprWithCleanups *E) {
-    return CGF.EmitExprWithCleanups(E).getComplexVal();
+    CGF.enterFullExpression(E);
+    CodeGenFunction::RunCleanupsScope Scope(CGF);
+    return Visit(E->getSubExpr());
   }
   ComplexPairTy VisitCXXScalarValueInitExpr(CXXScalarValueInitExpr *E) {
     assert(E->getType()->isAnyComplexType() && "Expected complex type!");
@@ -266,6 +262,10 @@ public:
   ComplexPairTy VisitInitListExpr(InitListExpr *E);
 
   ComplexPairTy VisitVAArgExpr(VAArgExpr *E);
+
+  ComplexPairTy VisitAtomicExpr(AtomicExpr *E) {
+    return CGF.EmitAtomicExpr(E).getComplexVal();
+  }
 };
 }  // end anonymous namespace.
 
@@ -357,12 +357,6 @@ ComplexPairTy ComplexExprEmitter::EmitCast(CastExpr::CastKind CK, Expr *Op,
                                            QualType DestTy) {
   switch (CK) {
   case CK_Dependent: llvm_unreachable("dependent cast kind in IR gen!");
-
-  case CK_GetObjCProperty: {
-    LValue LV = CGF.EmitLValue(Op);
-    assert(LV.isPropertyRef() && "Unknown LValue type!");
-    return CGF.EmitLoadOfPropertyRefLValue(LV).getComplexVal();
-  }
 
   case CK_NoOp:
   case CK_LValueToRValue:
@@ -630,10 +624,6 @@ EmitCompoundAssign(const CompoundAssignOperator *E,
   if (!CGF.getContext().getLangOptions().CPlusPlus)
     return Val;
 
-  // Objective-C property assignment never reloads the value following a store.
-  if (LV.isPropertyRef())
-    return Val;
-
   // If the lvalue is non-volatile, return the computed value of the assignment.
   if (!LV.isVolatileQualified())
     return Val;
@@ -667,10 +657,6 @@ ComplexPairTy ComplexExprEmitter::VisitBinAssign(const BinaryOperator *E) {
 
   // The result of an assignment in C is the assigned r-value.
   if (!CGF.getContext().getLangOptions().CPlusPlus)
-    return Val;
-
-  // Objective-C property assignment never reloads the value following a store.
-  if (LV.isPropertyRef())
     return Val;
 
   // If the lvalue is non-volatile, return the computed value of the assignment.

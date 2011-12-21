@@ -16,6 +16,7 @@
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/LexDiagnostic.h"
+#include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/MemoryBuffer.h"
 using namespace clang;
@@ -216,6 +217,17 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
     }
   }
 
+  // Complain about reaching a true EOF within arc_cf_code_audited.
+  // We don't want to complain about reaching the end of a macro
+  // instantiation or a _Pragma.
+  if (PragmaARCCFCodeAuditedLoc.isValid() &&
+      !isEndOfMacro && !(CurLexer && CurLexer->Is_PragmaLexer)) {
+    Diag(PragmaARCCFCodeAuditedLoc, diag::err_pp_eof_in_arc_cf_code_audited);
+
+    // Recover by leaving immediately.
+    PragmaARCCFCodeAuditedLoc = SourceLocation();
+  }
+
   // If this is a #include'd file, pop it off the include stack and continue
   // lexing the #includer file.
   if (!IncludeMacroStack.empty()) {
@@ -248,6 +260,10 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
       SourceMgr.setNumCreatedFIDsForFileID(CurPPLexer->getFileID(), NumFIDs);
     }
 
+    FileID ExitedFID;
+    if (Callbacks && !isEndOfMacro && CurPPLexer)
+      ExitedFID = CurPPLexer->getFileID();
+    
     // We're done with the #included file.
     RemoveTopOfLexerStack();
 
@@ -256,7 +272,7 @@ bool Preprocessor::HandleEndOfFile(Token &Result, bool isEndOfMacro) {
       SrcMgr::CharacteristicKind FileType =
         SourceMgr.getFileCharacteristic(CurPPLexer->getSourceLocation());
       Callbacks->FileChanged(CurPPLexer->getSourceLocation(),
-                             PPCallbacks::ExitFile, FileType);
+                             PPCallbacks::ExitFile, FileType, ExitedFID);
     }
 
     // Client should lex another token.

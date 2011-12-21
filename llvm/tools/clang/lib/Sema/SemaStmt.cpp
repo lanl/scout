@@ -18,6 +18,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/AST/APValue.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
@@ -205,7 +206,7 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
       Diag(Loc, diag::warn_unused_result) << R1 << R2;
       return;
     }
-  } else if (isa<ObjCPropertyRefExpr>(E)) {
+  } else if (isa<PseudoObjectExpr>(E)) {
     DiagID = diag::warn_unused_property_expr;
   } else if (const CXXFunctionalCastExpr *FC
                                        = dyn_cast<CXXFunctionalCastExpr>(E)) {
@@ -499,8 +500,12 @@ Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc, Expr *Cond,
   if (!Cond)
     return StmtError();
 
+  CondResult = CheckPlaceholderExpr(Cond);
+  if (CondResult.isInvalid())
+    return StmtError();
+
   CondResult
-    = ConvertToIntegralOrEnumerationType(SwitchLoc, Cond,
+    = ConvertToIntegralOrEnumerationType(SwitchLoc, CondResult.take(),
                           PDiag(diag::err_typecheck_statement_requires_integer),
                                    PDiag(diag::err_switch_incomplete_class_type)
                                      << Cond->getSourceRange(),
@@ -633,7 +638,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
         break;
       }
 
-      llvm::APSInt LoVal = Lo->EvaluateAsInt(Context);
+      llvm::APSInt LoVal = Lo->EvaluateKnownConstInt(Context);
 
       // Convert the value to the same width/sign as the condition.
       ConvertIntegerToTypeWarnOnOverflow(LoVal, CondWidth, CondIsSigned,
@@ -642,6 +647,9 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
       // If the LHS is not the same type as the condition, insert an implicit
       // cast.
+      // FIXME: In C++11, the value is a converted constant expression of the
+      // promoted type of the switch condition.
+      Lo = DefaultLvalueConversion(Lo).take();
       Lo = ImpCastExprToType(Lo, CondType, CK_IntegralCast).take();
       CS->setLHS(Lo);
 
@@ -666,7 +674,8 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     bool ShouldCheckConstantCond = false;
     if (!HasDependentValue && !TheDefaultStmt) {
       Expr::EvalResult Result;
-      HasConstantCond = CondExprBeforePromotion->Evaluate(Result, Context);
+      HasConstantCond
+        = CondExprBeforePromotion->EvaluateAsRValue(Result, Context);
       if (HasConstantCond) {
         assert(Result.Val.isInt() && "switch condition evaluated to non-int");
         ConstantCondValue = Result.Val.getInt();
@@ -712,15 +721,18 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
         llvm::APSInt &LoVal = CaseRanges[i].first;
         CaseStmt *CR = CaseRanges[i].second;
         Expr *Hi = CR->getRHS();
-        llvm::APSInt HiVal = Hi->EvaluateAsInt(Context);
+        llvm::APSInt HiVal = Hi->EvaluateKnownConstInt(Context);
 
         // Convert the value to the same width/sign as the condition.
         ConvertIntegerToTypeWarnOnOverflow(HiVal, CondWidth, CondIsSigned,
                                            Hi->getLocStart(),
                                            diag::warn_case_value_overflow);
 
-        // If the LHS is not the same type as the condition, insert an implicit
+        // If the RHS is not the same type as the condition, insert an implicit
         // cast.
+        // FIXME: In C++11, the value is a converted constant expression of the
+        // promoted type of the switch condition.
+        Hi = DefaultLvalueConversion(Hi).take();
         Hi = ImpCastExprToType(Hi, CondType, CK_IntegralCast).take();
         CR->setRHS(Hi);
 
@@ -852,7 +864,8 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
               << ED->getDeclName();
           }
 
-          llvm::APSInt Hi = RI->second->getRHS()->EvaluateAsInt(Context);
+          llvm::APSInt Hi = 
+            RI->second->getRHS()->EvaluateKnownConstInt(Context);
           AdjustAPSInt(Hi, CondWidth, CondIsSigned);
           while (EI != EIend && EI->first < Hi)
             EI++;
@@ -880,7 +893,8 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
 
         // Drop unneeded case ranges
         for (; RI != CaseRanges.end(); RI++) {
-          llvm::APSInt Hi = RI->second->getRHS()->EvaluateAsInt(Context);
+          llvm::APSInt Hi =
+            RI->second->getRHS()->EvaluateKnownConstInt(Context);
           AdjustAPSInt(Hi, CondWidth, CondIsSigned);
           if (EI->first <= Hi)
             break;
@@ -1053,13 +1067,13 @@ Sema::ActOnObjCForCollectionOperand(SourceLocation forLoc, Expr *collection) {
   ObjCInterfaceDecl *iface = objectType->getInterface();
 
   // If we have a forward-declared type, we can't do this check.
-  if (iface && iface->isForwardDecl()) {
-    // This is ill-formed under ARC.
-    if (getLangOptions().ObjCAutoRefCount) {
-      Diag(forLoc, diag::err_arc_collection_forward)
-        << pointerType->getPointeeType() << collection->getSourceRange();
-    }
-
+  // Under ARC, it is an error not to have a forward-declared class.
+  if (iface && 
+      RequireCompleteType(forLoc, QualType(objectType, 0),
+                          getLangOptions().ObjCAutoRefCount
+                            ? PDiag(diag::err_arc_collection_forward)
+                                << collection->getSourceRange()
+                          : PDiag(0))) {
     // Otherwise, if we have any useful type information, check that
     // the type declares the appropriate method.
   } else if (iface || !objectType->qual_empty()) {
@@ -1344,10 +1358,16 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
   if (!BeginEndDecl.get() && !RangeVarType->isDependentType()) {
     SourceLocation RangeLoc = RangeVar->getLocation();
 
-    ExprResult RangeRef = BuildDeclRefExpr(RangeVar,
-                                           RangeVarType.getNonReferenceType(),
-                                           VK_LValue, ColonLoc);
-    if (RangeRef.isInvalid())
+    const QualType RangeVarNonRefType = RangeVarType.getNonReferenceType();
+
+    ExprResult BeginRangeRef = BuildDeclRefExpr(RangeVar, RangeVarNonRefType,
+                                                VK_LValue, ColonLoc);
+    if (BeginRangeRef.isInvalid())
+      return StmtError();
+
+    ExprResult EndRangeRef = BuildDeclRefExpr(RangeVar, RangeVarNonRefType,
+                                              VK_LValue, ColonLoc);
+    if (EndRangeRef.isInvalid())
       return StmtError();
 
     QualType AutoType = Context.getAutoDeductType();
@@ -1375,8 +1395,8 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
       //   the program is ill-formed;
 
       // begin-expr is __range.
-      BeginExpr = RangeRef;
-      if (FinishForRangeVarDecl(*this, BeginVar, RangeRef.get(), ColonLoc,
+      BeginExpr = BeginRangeRef;
+      if (FinishForRangeVarDecl(*this, BeginVar, BeginRangeRef.get(), ColonLoc,
                                 diag::err_for_range_iter_deduction_failure)) {
         NoteForRangeBeginEndFunction(*this, BeginExpr.get(), BEF_begin);
         return StmtError();
@@ -1398,7 +1418,7 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
       }
 
       // end-expr is __range + __bound.
-      EndExpr = ActOnBinOp(S, ColonLoc, tok::plus, RangeRef.get(),
+      EndExpr = ActOnBinOp(S, ColonLoc, tok::plus, EndRangeRef.get(),
                            BoundExpr.get());
       if (EndExpr.isInvalid())
         return StmtError();
@@ -1439,13 +1459,14 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
 
       BeginExpr = BuildForRangeBeginEndCall(*this, S, ColonLoc, BeginVar,
                                             BEF_begin, BeginNameInfo,
-                                            BeginMemberLookup, RangeRef.get());
+                                            BeginMemberLookup,
+                                            BeginRangeRef.get());
       if (BeginExpr.isInvalid())
         return StmtError();
 
       EndExpr = BuildForRangeBeginEndCall(*this, S, ColonLoc, EndVar,
                                           BEF_end, EndNameInfo,
-                                          EndMemberLookup, RangeRef.get());
+                                          EndMemberLookup, EndRangeRef.get());
       if (EndExpr.isInvalid())
         return StmtError();
     }
@@ -1465,11 +1486,16 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
       BuildDeclaratorGroup(BeginEndDecls, 2, /*TypeMayContainAuto=*/false);
     BeginEndDecl = ActOnDeclStmt(BeginEndGroup, ColonLoc, ColonLoc);
 
-    ExprResult BeginRef = BuildDeclRefExpr(BeginVar,
-                                           BeginType.getNonReferenceType(),
+    const QualType BeginRefNonRefType = BeginType.getNonReferenceType();
+    ExprResult BeginRef = BuildDeclRefExpr(BeginVar, BeginRefNonRefType,
                                            VK_LValue, ColonLoc);
+    if (BeginRef.isInvalid())
+      return StmtError();
+
     ExprResult EndRef = BuildDeclRefExpr(EndVar, EndType.getNonReferenceType(),
                                          VK_LValue, ColonLoc);
+    if (EndRef.isInvalid())
+      return StmtError();
 
     // Build and check __begin != __end expression.
     NotEqExpr = ActOnBinOp(S, ColonLoc, tok::exclaimequal,
@@ -1484,6 +1510,11 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
     }
 
     // Build and check ++__begin expression.
+    BeginRef = BuildDeclRefExpr(BeginVar, BeginRefNonRefType,
+                                VK_LValue, ColonLoc);
+    if (BeginRef.isInvalid())
+      return StmtError();
+
     IncrExpr = ActOnUnaryOp(S, ColonLoc, tok::plusplus, BeginRef.get());
     IncrExpr = ActOnFinishFullExpr(IncrExpr.get());
     if (IncrExpr.isInvalid()) {
@@ -1492,6 +1523,11 @@ Sema::BuildCXXForRangeStmt(SourceLocation ForLoc, SourceLocation ColonLoc,
     }
 
     // Build and check *__begin  expression.
+    BeginRef = BuildDeclRefExpr(BeginVar, BeginRefNonRefType,
+                                VK_LValue, ColonLoc);
+    if (BeginRef.isInvalid())
+      return StmtError();
+
     ExprResult DerefExpr = ActOnUnaryOp(S, ColonLoc, tok::star, BeginRef.get());
     if (DerefExpr.isInvalid()) {
       NoteForRangeBeginEndFunction(*this, BeginExpr.get(), BEF_begin);
@@ -1622,14 +1658,29 @@ const VarDecl *Sema::getCopyElisionCandidate(QualType ReturnType,
   if (!VD)
     return 0;
 
-  if (VD->hasLocalStorage() && !VD->isExceptionVariable() &&
-      !VD->getType()->isReferenceType() && !VD->hasAttr<BlocksAttr>() &&
-      !VD->getType().isVolatileQualified() &&
-      ((VD->getKind() == Decl::Var) ||
-       (AllowFunctionParameter && VD->getKind() == Decl::ParmVar)))
-    return VD;
+  // ...object (other than a function or catch-clause parameter)...
+  if (VD->getKind() != Decl::Var &&
+      !(AllowFunctionParameter && VD->getKind() == Decl::ParmVar))
+    return 0;
+  if (VD->isExceptionVariable()) return 0;
 
-  return 0;
+  // ...automatic...
+  if (!VD->hasLocalStorage()) return 0;
+
+  // ...non-volatile...
+  if (VD->getType().isVolatileQualified()) return 0;
+  if (VD->getType()->isReferenceType()) return 0;
+
+  // __block variables can't be allocated in a way that permits NRVO.
+  if (VD->hasAttr<BlocksAttr>()) return 0;
+
+  // Variables with higher required alignment than their type's ABI
+  // alignment cannot use NRVO.
+  if (VD->hasAttr<AlignedAttr>() &&
+      Context.getDeclAlign(VD) > Context.getTypeAlignInChars(VD->getType()))
+    return 0;
+
+  return VD;
 }
 
 /// \brief Perform the initialization of a potentially-movable value, which
@@ -1716,7 +1767,8 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // If this is the first return we've seen in the block, infer the type of
   // the block from it.
   BlockScopeInfo *CurBlock = getCurBlock();
-  if (CurBlock->ReturnType.isNull()) {
+  if (CurBlock->TheDecl->blockMissingReturnType()) {
+    QualType BlockReturnT;
     if (RetValExp) {
       // Don't call UsualUnaryConversions(), since we don't want to do
       // integer promotions here.
@@ -1726,7 +1778,7 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
       RetValExp = Result.take();
 
       if (!RetValExp->isTypeDependent()) {
-        CurBlock->ReturnType = RetValExp->getType();
+        BlockReturnT = RetValExp->getType();
         if (BlockDeclRefExpr *CDRE = dyn_cast<BlockDeclRefExpr>(RetValExp)) {
           // We have to remove a 'const' added to copied-in variable which was
           // part of the implementation spec. and not the actual qualifier for
@@ -1735,9 +1787,19 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
             CurBlock->ReturnType.removeLocalConst(); // FIXME: local???
         }
       } else
-        CurBlock->ReturnType = Context.DependentTy;
+        BlockReturnT = Context.DependentTy;
     } else
-      CurBlock->ReturnType = Context.VoidTy;
+        BlockReturnT = Context.VoidTy;
+    if (!CurBlock->ReturnType.isNull() && !CurBlock->ReturnType->isDependentType()
+        && !BlockReturnT->isDependentType() 
+        // when block's return type is not specified, all return types
+        // must strictly match.
+        && !Context.hasSameType(BlockReturnT, CurBlock->ReturnType)) { 
+        Diag(ReturnLoc, diag::err_typecheck_missing_return_type_incompatible) 
+            << BlockReturnT << CurBlock->ReturnType;
+        return StmtError();
+    }
+    CurBlock->ReturnType = BlockReturnT;
   }
   QualType FnRetType = CurBlock->ReturnType;
 
@@ -1776,7 +1838,7 @@ Sema::ActOnBlockReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     NRVOCandidate = getCopyElisionCandidate(FnRetType, RetValExp, false);
     InitializedEntity Entity = InitializedEntity::InitializeResult(ReturnLoc,
                                                                    FnRetType,
-                                                           NRVOCandidate != 0);
+                                                          NRVOCandidate != 0);
     ExprResult Res = PerformMoveOrCopyInitialization(Entity, NRVOCandidate,
                                                      FnRetType, RetValExp);
     if (Res.isInvalid()) {
@@ -3073,3 +3135,25 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   return MT;
 }
 
+StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,
+                                            bool IsIfExists,
+                                            NestedNameSpecifierLoc QualifierLoc,
+                                            DeclarationNameInfo NameInfo,
+                                            Stmt *Nested)
+{
+  return new (Context) MSDependentExistsStmt(KeywordLoc, IsIfExists,
+                                             QualifierLoc, NameInfo, 
+                                             cast<CompoundStmt>(Nested));
+}
+
+
+StmtResult Sema::ActOnMSDependentExistsStmt(SourceLocation KeywordLoc, 
+                                            bool IsIfExists,
+                                            CXXScopeSpec &SS, 
+                                            UnqualifiedId &Name,
+                                            Stmt *Nested) {
+  return BuildMSDependentExistsStmt(KeywordLoc, IsIfExists, 
+                                    SS.getWithLocInContext(Context),
+                                    GetNameFromUnqualifiedId(Name),
+                                    Nested);
+}

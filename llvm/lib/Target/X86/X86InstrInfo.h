@@ -247,6 +247,9 @@ public:
                                MachineInstr::mmo_iterator MMOBegin,
                                MachineInstr::mmo_iterator MMOEnd,
                                SmallVectorImpl<MachineInstr*> &NewMIs) const;
+
+  virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
+
   virtual
   MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF,
                                          int FrameIx, uint64_t Offset,
@@ -341,6 +344,11 @@ public:
   getExecutionDomain(const MachineInstr *MI) const;
 
   void setExecutionDomain(MachineInstr *MI, unsigned Domain) const;
+
+  unsigned getPartialRegUpdateClearance(const MachineInstr *MI, unsigned OpNum,
+                                        const TargetRegisterInfo *TRI) const;
+  void breakPartialRegDependency(MachineBasicBlock::iterator MI, unsigned OpNum,
+                                 const TargetRegisterInfo *TRI) const;
 
   MachineInstr* foldMemoryOperandImpl(MachineFunction &MF,
                                       MachineInstr* MI,

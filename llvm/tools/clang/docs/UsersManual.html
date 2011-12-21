@@ -56,6 +56,11 @@ td {
   <li><a href="#c_ms">Microsoft extensions</a></li>
   </ul>
 </li>
+<li><a href="#cxx">C++ Language Features</a>
+  <ul>
+  <li><a href="#cxx_implimits">Controlling implementation limits</a></li>
+  </ul>
+</li>
 <li><a href="#target_features">Target-Specific Features and Limitations</a>
   <ul>
   <li><a href="#target_arch">CPU Architectures Features and Limitations</a>
@@ -106,7 +111,7 @@ corresponding language specific section:</p>
     (C89+AMD1), ISO C99 (+TC1, TC2, TC3). </li>
 <li><a href="#objc">Objective-C Language</a>: ObjC 1, ObjC 2, ObjC 2.1, plus
     variants depending on base language.</li>
-<li><a href="#cxx">C++ Language Features</a></li>
+<li><a href="#cxx">C++ Language</a></li>
 <li><a href="#objcxx">Objective C++ Language</a></li>
 </ul>
 
@@ -480,7 +485,7 @@ constructor.  For example:
   };
   void foo(const NonCopyable&);
   void bar() {
-    foo(NonCopyable());  // Disallowed in C++98; allowed in C++0x.
+    foo(NonCopyable());  // Disallowed in C++98; allowed in C++11.
   }
 </pre>
 <pre>
@@ -490,7 +495,7 @@ constructor.  For example:
   };
   void foo(const NonCopyable2&);
   void bar() {
-    foo(NonCopyable2());  // Disallowed in C++98; allowed in C++0x.
+    foo(NonCopyable2());  // Disallowed in C++98; allowed in C++11.
   }
 </pre>
 
@@ -669,7 +674,7 @@ In general, this usage is discouraged. Instead, we prefer that users file bugs
 against the analyzer when it flags false positives. There is also active
 discussion of allowing users in the future to selectively silence specific
 analyzer warnings (some of which can already be done using <a
-href="analyzer_annotations">annotations</a>).</li>
+href="#analyzer_annotations">annotations</a>).</li>
 
 </ul>
 
@@ -951,10 +956,6 @@ a structure).</li>
 clang doesn't accept some constructs gcc might accept in contexts where a
 constant expression is required, like "x-x" where x is a variable.</li>
 
-<li>clang does not support multiple alternative constraints in inline asm; this
-is an extremely obscure feature which would be complicated to implement
-correctly.</li>
-
 <li>clang does not support __builtin_apply and friends; this extension is
 extremely obscure and difficult to implement reliably.</li>
 
@@ -986,6 +987,25 @@ controlling record layout. GCC also contains support for this feature,
 however where MSVC and GCC are incompatible clang follows the MSVC
 definition.</li>
 </ul>
+
+<!-- ======================================================================= -->
+<h2 id="cxx">C++ Language Features</h2>
+<!-- ======================================================================= -->
+
+<p>clang fully implements all of standard C++98 except for exported templates
+(which were removed in C++11), and
+<a href="http://clang.llvm.org/cxx_status.html">many C++11 features</a> are also
+implemented.</p>
+
+<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+<h3 id="cxx_implimits">Controlling implementation limits</h3>
+<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+
+<p><b>-fconstexpr-depth=N</b>: Sets the limit for recursive constexpr function
+invocations to N. The default is 512.</p>
+
+<p><b>-ftemplate-depth=N</b>: Sets the limit for recursively nested template
+instantiations to N. The default is 1024.</p>
 
 <!-- ======================================================================= -->
 <h2 id="target_features">Target-Specific Features and Limitations</h2>
@@ -1066,7 +1086,7 @@ Clang assumes directories as below;</p>
 <li><tt>C:/mingw/lib/gcc/mingw32/4.[3-5].0/include/c++</tt></li>
 </ul>
 
-<p>On MSYS, a few tests might fail. It is due to <a href="http://llvm.org/bugs/show_bug.cgi?id=8520">Bug 8520</a> and is fixed in <a href="http://lists.cs.uiuc.edu/pipermail/llvm-commits/Week-of-Mon-20110314/118106.html">LLVM's r127724</a>.</p>
+<p>On MSYS, a few tests might fail.</p>
 
 <h5>MinGW-w64</h5>
 

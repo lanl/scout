@@ -16,6 +16,7 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/ConvertUTF.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace clang;
@@ -252,31 +253,32 @@ static void EncodeUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
   assert((UcnLen== 4 || UcnLen== 8) && "only ucn length of 4 or 8 supported");
 
   if (CharByteWidth == 4) {
-    // Note: our internal rep of wide char tokens is always little-endian.
-    *ResultBuf++ = (UcnVal & 0x000000FF);
-    *ResultBuf++ = (UcnVal & 0x0000FF00) >> 8;
-    *ResultBuf++ = (UcnVal & 0x00FF0000) >> 16;
-    *ResultBuf++ = (UcnVal & 0xFF000000) >> 24;
+    // FIXME: Make the type of the result buffer correct instead of
+    // using reinterpret_cast.
+    UTF32 *ResultPtr = reinterpret_cast<UTF32*>(ResultBuf);
+    *ResultPtr = UcnVal;
+    ResultBuf += 4;
     return;
   }
 
   if (CharByteWidth == 2) {
-    // Convert to UTF16.
+    // FIXME: Make the type of the result buffer correct instead of
+    // using reinterpret_cast.
+    UTF16 *ResultPtr = reinterpret_cast<UTF16*>(ResultBuf);
+
     if (UcnVal < (UTF32)0xFFFF) {
-      *ResultBuf++ = (UcnVal & 0x000000FF);
-      *ResultBuf++ = (UcnVal & 0x0000FF00) >> 8;
+      *ResultPtr = UcnVal;
+      ResultBuf += 2;
       return;
     }
+    // FIXME: We shouldn't print a diagnostic for UTF-16 mode.
     if (Diags) Diags->Report(Loc, diag::warn_ucn_escape_too_large);
 
-    typedef uint16_t UTF16;
+    // Convert to UTF16.
     UcnVal -= 0x10000;
-    UTF16 surrogate1 = 0xD800 + (UcnVal >> 10);
-    UTF16 surrogate2 = 0xDC00 + (UcnVal & 0x3FF);
-    *ResultBuf++ = (surrogate1 & 0x000000FF);
-    *ResultBuf++ = (surrogate1 & 0x0000FF00) >> 8;
-    *ResultBuf++ = (surrogate2 & 0x000000FF);
-    *ResultBuf++ = (surrogate2 & 0x0000FF00) >> 8;
+    *ResultPtr     = 0xD800 + (UcnVal >> 10);
+    *(ResultPtr+1) = 0xDC00 + (UcnVal & 0x3FF);
+    ResultBuf += 4;
     return;
   }
 
@@ -562,9 +564,6 @@ void NumericLiteralParser::ParseNumberStartingWithZero(SourceLocation TokLoc) {
       }
       s = first_non_digit;
 
-      // In C++0x, we cannot support hexadecmial floating literals because
-      // they conflict with user-defined literals, so we warn in previous
-      // versions of C++ by default.
       if (!PP.getLangOptions().HexFloats)
         PP.Diag(TokLoc, diag::ext_hexconstant_invalid);
     } else if (saw_period) {
@@ -1036,7 +1035,14 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
         ThisTokEnd -= (ThisTokBuf - Prefix);
 
       // Copy the string over
-      CopyStringFragment(StringRef(ThisTokBuf, ThisTokEnd - ThisTokBuf));
+      if (CopyStringFragment(StringRef(ThisTokBuf,ThisTokEnd-ThisTokBuf)))
+      {
+        if (Diags)
+          Diags->Report(FullSourceLoc(StringToks[i].getLocation(), SM),
+                        diag::err_bad_string_encoding);
+        hadError = true;
+      }
+
     } else {
       assert(ThisTokBuf[0] == '"' && "Expected quote, lexer broken?");
       ++ThisTokBuf; // skip "
@@ -1063,7 +1069,13 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
           } while (ThisTokBuf != ThisTokEnd && ThisTokBuf[0] != '\\');
 
           // Copy the character span over.
-          CopyStringFragment(StringRef(InStart, ThisTokBuf - InStart));
+          if (CopyStringFragment(StringRef(InStart,ThisTokBuf-InStart)))
+          {
+            if (Diags)
+              Diags->Report(FullSourceLoc(StringToks[i].getLocation(), SM),
+                            diag::err_bad_string_encoding);
+            hadError = true;
+          }
           continue;
         }
         // Is this a Universal Character Name escape?
@@ -1079,18 +1091,41 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
                             FullSourceLoc(StringToks[i].getLocation(), SM),
                             CharByteWidth*8, Diags);
 
-        // Note: our internal rep of wide char tokens is always little-endian.
-        *ResultPtr++ = ResultChar & 0xFF;
-
-        for (unsigned i = 1, e = CharByteWidth; i != e; ++i)
-          *ResultPtr++ = ResultChar >> i*8;
+        if (CharByteWidth == 4) {
+          // FIXME: Make the type of the result buffer correct instead of
+          // using reinterpret_cast.
+          UTF32 *ResultWidePtr = reinterpret_cast<UTF32*>(ResultPtr);
+          *ResultWidePtr = ResultChar;
+          ResultPtr += 4;
+        } else if (CharByteWidth == 2) {
+          // FIXME: Make the type of the result buffer correct instead of
+          // using reinterpret_cast.
+          UTF16 *ResultWidePtr = reinterpret_cast<UTF16*>(ResultPtr);
+          *ResultWidePtr = ResultChar & 0xFFFF;
+          ResultPtr += 2;
+        } else {
+          assert(CharByteWidth == 1 && "Unexpected char width");
+          *ResultPtr++ = ResultChar & 0xFF;
+        }
       }
     }
   }
 
   if (Pascal) {
-    ResultBuf[0] = ResultPtr-&ResultBuf[0]-1;
-    ResultBuf[0] /= CharByteWidth;
+    if (CharByteWidth == 4) {
+      // FIXME: Make the type of the result buffer correct instead of
+      // using reinterpret_cast.
+      UTF32 *ResultWidePtr = reinterpret_cast<UTF32*>(ResultBuf.data());
+      ResultWidePtr[0] = GetNumStringChars() - 1;
+    } else if (CharByteWidth == 2) {
+      // FIXME: Make the type of the result buffer correct instead of
+      // using reinterpret_cast.
+      UTF16 *ResultWidePtr = reinterpret_cast<UTF16*>(ResultBuf.data());
+      ResultWidePtr[0] = GetNumStringChars() - 1;
+    } else {
+      assert(CharByteWidth == 1 && "Unexpected char width");
+      ResultBuf[0] = GetNumStringChars() - 1;
+    }
 
     // Verify that pascal strings aren't too large.
     if (GetStringLength() > 256) {
@@ -1119,20 +1154,39 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
 
 /// copyStringFragment - This function copies from Start to End into ResultPtr.
 /// Performs widening for multi-byte characters.
-void StringLiteralParser::CopyStringFragment(StringRef Fragment) {
+bool StringLiteralParser::CopyStringFragment(StringRef Fragment) {
+  assert(CharByteWidth==1 || CharByteWidth==2 || CharByteWidth==4);
+  ConversionResult result = conversionOK;
   // Copy the character span over.
   if (CharByteWidth == 1) {
     memcpy(ResultPtr, Fragment.data(), Fragment.size());
     ResultPtr += Fragment.size();
-  } else {
-    // Note: our internal rep of wide char tokens is always little-endian.
-    for (StringRef::iterator I=Fragment.begin(), E=Fragment.end(); I!=E; ++I) {
-      *ResultPtr++ = *I;
-      // Add zeros at the end.
-      for (unsigned i = 1, e = CharByteWidth; i != e; ++i)
-        *ResultPtr++ = 0;
-    }
+  } else if (CharByteWidth == 2) {
+    UTF8 const *sourceStart = (UTF8 const *)Fragment.data();
+    // FIXME: Make the type of the result buffer correct instead of
+    // using reinterpret_cast.
+    UTF16 *targetStart = reinterpret_cast<UTF16*>(ResultPtr);
+    ConversionFlags flags = lenientConversion;
+    result = ConvertUTF8toUTF16(
+	    &sourceStart,sourceStart + Fragment.size(),
+        &targetStart,targetStart + 2*Fragment.size(),flags);
+    if (result==conversionOK)
+      ResultPtr = reinterpret_cast<char*>(targetStart);
+  } else if (CharByteWidth == 4) {
+    UTF8 const *sourceStart = (UTF8 const *)Fragment.data();
+    // FIXME: Make the type of the result buffer correct instead of
+    // using reinterpret_cast.
+    UTF32 *targetStart = reinterpret_cast<UTF32*>(ResultPtr);
+    ConversionFlags flags = lenientConversion;
+    result = ConvertUTF8toUTF32(
+        &sourceStart,sourceStart + Fragment.size(),
+        &targetStart,targetStart + 4*Fragment.size(),flags);
+    if (result==conversionOK)
+      ResultPtr = reinterpret_cast<char*>(targetStart);
   }
+  assert((result != targetExhausted)
+         && "ConvertUTF8toUTFXX exhausted target buffer");
+  return result != conversionOK;
 }
 
 

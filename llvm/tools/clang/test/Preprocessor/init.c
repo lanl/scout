@@ -9,7 +9,7 @@
 // BLOCKS:#define __block __attribute__((__blocks__(byref)))
 //
 // 
-// RUN: %clang_cc1 -x c++ -std=c++0x -E -dM < /dev/null | FileCheck -check-prefix CXX0X %s
+// RUN: %clang_cc1 -x c++ -std=c++11 -E -dM < /dev/null | FileCheck -check-prefix CXX0X %s
 //
 // CXX0X:#define __GNUG__
 // CXX0X:#define __GXX_EXPERIMENTAL_CXX0X__ 1
@@ -76,7 +76,7 @@
 // C94:#define __STDC_VERSION__ 199409L
 //
 // 
-// RUN: %clang_cc1 -fms-extensions -triple i686-pc-win32 -E -dM < /dev/null | FileCheck -check-prefix MSEXT %s
+// RUN: %clang_cc1 -fms-extensions -triple i686-pc-win32 -fobjc-fragile-abi -E -dM < /dev/null | FileCheck -check-prefix MSEXT %s
 //
 // MSEXT-NOT:#define __STDC__
 // MSEXT:#define _INTEGRAL_MAX_BITS 64
@@ -94,7 +94,7 @@
 // OBJCGC:#define __OBJC_GC__ 1
 //
 // 
-// RUN: %clang_cc1 -x objective-c -fobjc-exceptions -fobjc-nonfragile-abi -E -dM < /dev/null | FileCheck -check-prefix NONFRAGILE %s
+// RUN: %clang_cc1 -x objective-c -fobjc-exceptions -E -dM < /dev/null | FileCheck -check-prefix NONFRAGILE %s
 //
 // NONFRAGILE:#define OBJC_ZEROCOST_EXCEPTIONS 1
 // NONFRAGILE:#define __OBJC2__ 1
@@ -212,110 +212,13 @@
 // ARM:#define __THUMB_INTERWORK__ 1
 // ARM:#define __UINTMAX_TYPE__ long long unsigned int
 // ARM:#define __USER_LABEL_PREFIX__ _
-// ARM:#define __WCHAR_MAX__ 2147483647
-// ARM:#define __WCHAR_TYPE__ int
+// ARM:#define __WCHAR_MAX__ 4294967295U
+// ARM:#define __WCHAR_TYPE__ unsigned int
 // ARM:#define __WCHAR_WIDTH__ 32
 // ARM:#define __WINT_TYPE__ int
 // ARM:#define __WINT_WIDTH__ 32
 // ARM:#define __arm 1
 // ARM:#define __arm__ 1
-//
-// RUN: %clang_cc1 -E -dM -ffreestanding -triple=bfin-none-none < /dev/null | FileCheck -check-prefix BFIN %s
-//
-// BFIN:#define BFIN 1
-// BFIN:#define __ADSPBLACKFIN__ 1
-// BFIN:#define __ADSPLPBLACKFIN__ 1
-// BFIN:#define __BFIN 1
-// BFIN:#define __BFIN__ 1
-// BFIN:#define __CHAR16_TYPE__ unsigned short
-// BFIN:#define __CHAR32_TYPE__ unsigned int
-// BFIN:#define __CHAR_BIT__ 8
-// BFIN:#define __DBL_DENORM_MIN__ 4.9406564584124654e-324
-// BFIN:#define __DBL_DIG__ 15
-// BFIN:#define __DBL_EPSILON__ 2.2204460492503131e-16
-// BFIN:#define __DBL_HAS_DENORM__ 1
-// BFIN:#define __DBL_HAS_INFINITY__ 1
-// BFIN:#define __DBL_HAS_QUIET_NAN__ 1
-// BFIN:#define __DBL_MANT_DIG__ 53
-// BFIN:#define __DBL_MAX_10_EXP__ 308
-// BFIN:#define __DBL_MAX_EXP__ 1024
-// BFIN:#define __DBL_MAX__ 1.7976931348623157e+308
-// BFIN:#define __DBL_MIN_10_EXP__ (-307)
-// BFIN:#define __DBL_MIN_EXP__ (-1021)
-// BFIN:#define __DBL_MIN__ 2.2250738585072014e-308
-// BFIN:#define __DECIMAL_DIG__ 17
-// BFIN:#define __FLT_DENORM_MIN__ 1.40129846e-45F
-// BFIN:#define __FLT_DIG__ 6
-// BFIN:#define __FLT_EPSILON__ 1.19209290e-7F
-// BFIN:#define __FLT_EVAL_METHOD__ 0
-// BFIN:#define __FLT_HAS_DENORM__ 1
-// BFIN:#define __FLT_HAS_INFINITY__ 1
-// BFIN:#define __FLT_HAS_QUIET_NAN__ 1
-// BFIN:#define __FLT_MANT_DIG__ 24
-// BFIN:#define __FLT_MAX_10_EXP__ 38
-// BFIN:#define __FLT_MAX_EXP__ 128
-// BFIN:#define __FLT_MAX__ 3.40282347e+38F
-// BFIN:#define __FLT_MIN_10_EXP__ (-37)
-// BFIN:#define __FLT_MIN_EXP__ (-125)
-// BFIN:#define __FLT_MIN__ 1.17549435e-38F
-// BFIN:#define __FLT_RADIX__ 2
-// BFIN:#define __INT16_TYPE__ short
-// BFIN:#define __INT32_TYPE__ int
-// BFIN:#define __INT64_C_SUFFIX__ LL
-// BFIN:#define __INT64_TYPE__ long long int
-// BFIN:#define __INT8_TYPE__ char
-// BFIN:#define __INTMAX_MAX__ 9223372036854775807LL
-// BFIN:#define __INTMAX_TYPE__ long long int
-// BFIN:#define __INTMAX_WIDTH__ 64
-// BFIN:#define __INTPTR_TYPE__ long int
-// BFIN:#define __INTPTR_WIDTH__ 32
-// BFIN:#define __INT_MAX__ 2147483647
-// BFIN:#define __LDBL_DENORM_MIN__ 4.9406564584124654e-324
-// BFIN:#define __LDBL_DIG__ 15
-// BFIN:#define __LDBL_EPSILON__ 2.2204460492503131e-16
-// BFIN:#define __LDBL_HAS_DENORM__ 1
-// BFIN:#define __LDBL_HAS_INFINITY__ 1
-// BFIN:#define __LDBL_HAS_QUIET_NAN__ 1
-// BFIN:#define __LDBL_MANT_DIG__ 53
-// BFIN:#define __LDBL_MAX_10_EXP__ 308
-// BFIN:#define __LDBL_MAX_EXP__ 1024
-// BFIN:#define __LDBL_MAX__ 1.7976931348623157e+308
-// BFIN:#define __LDBL_MIN_10_EXP__ (-307)
-// BFIN:#define __LDBL_MIN_EXP__ (-1021)
-// BFIN:#define __LDBL_MIN__ 2.2250738585072014e-308
-// BFIN:#define __LONG_LONG_MAX__ 9223372036854775807LL
-// BFIN:#define __LONG_MAX__ 2147483647L
-// BFIN:#define __NO_INLINE__ 1
-// BFIN:#define __POINTER_WIDTH__ 32
-// BFIN:#define __PTRDIFF_TYPE__ long int
-// BFIN:#define __PTRDIFF_WIDTH__ 32
-// BFIN:#define __SCHAR_MAX__ 127
-// BFIN:#define __SHRT_MAX__ 32767
-// BFIN:#define __SIG_ATOMIC_WIDTH__ 32
-// BFIN:#define __SIZEOF_DOUBLE__ 8
-// BFIN:#define __SIZEOF_FLOAT__ 4
-// BFIN:#define __SIZEOF_INT__ 4
-// BFIN:#define __SIZEOF_LONG_DOUBLE__ 8
-// BFIN:#define __SIZEOF_LONG_LONG__ 8
-// BFIN:#define __SIZEOF_LONG__ 4
-// BFIN:#define __SIZEOF_POINTER__ 4
-// BFIN:#define __SIZEOF_PTRDIFF_T__ 4
-// BFIN:#define __SIZEOF_SHORT__ 2
-// BFIN:#define __SIZEOF_SIZE_T__ 4
-// BFIN:#define __SIZEOF_WCHAR_T__ 4
-// BFIN:#define __SIZEOF_WINT_T__ 4
-// BFIN:#define __SIZE_TYPE__ long unsigned int
-// BFIN:#define __SIZE_WIDTH__ 32
-// BFIN:#define __UINTMAX_TYPE__ long long unsigned int
-// BFIN:#define __USER_LABEL_PREFIX__ _
-// BFIN:#define __WCHAR_MAX__ 2147483647
-// BFIN:#define __WCHAR_TYPE__ int
-// BFIN:#define __WCHAR_WIDTH__ 32
-// BFIN:#define __WINT_TYPE__ int
-// BFIN:#define __WINT_WIDTH__ 32
-// BFIN:#define __bfin 1
-// BFIN:#define __bfin__ 1
-// BFIN:#define bfin 1
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=i386-none-none < /dev/null | FileCheck -check-prefix I386 %s
 //
@@ -798,98 +701,6 @@
 // PPC:#define __WINT_WIDTH__ 32
 // PPC:#define __ppc__ 1
 //
-// RUN: %clang_cc1 -E -dM -ffreestanding -triple=s390x-none-none -fno-signed-char < /dev/null | FileCheck -check-prefix S390X %s
-//
-// S390X:#define __CHAR16_TYPE__ unsigned short
-// S390X:#define __CHAR32_TYPE__ unsigned int
-// S390X:#define __CHAR_BIT__ 8
-// S390X:#define __CHAR_UNSIGNED__ 1
-// S390X:#define __DBL_DENORM_MIN__ 4.9406564584124654e-324
-// S390X:#define __DBL_DIG__ 15
-// S390X:#define __DBL_EPSILON__ 2.2204460492503131e-16
-// S390X:#define __DBL_HAS_DENORM__ 1
-// S390X:#define __DBL_HAS_INFINITY__ 1
-// S390X:#define __DBL_HAS_QUIET_NAN__ 1
-// S390X:#define __DBL_MANT_DIG__ 53
-// S390X:#define __DBL_MAX_10_EXP__ 308
-// S390X:#define __DBL_MAX_EXP__ 1024
-// S390X:#define __DBL_MAX__ 1.7976931348623157e+308
-// S390X:#define __DBL_MIN_10_EXP__ (-307)
-// S390X:#define __DBL_MIN_EXP__ (-1021)
-// S390X:#define __DBL_MIN__ 2.2250738585072014e-308
-// S390X:#define __DECIMAL_DIG__ 17
-// S390X:#define __FLT_DENORM_MIN__ 1.40129846e-45F
-// S390X:#define __FLT_DIG__ 6
-// S390X:#define __FLT_EPSILON__ 1.19209290e-7F
-// S390X:#define __FLT_EVAL_METHOD__ 0
-// S390X:#define __FLT_HAS_DENORM__ 1
-// S390X:#define __FLT_HAS_INFINITY__ 1
-// S390X:#define __FLT_HAS_QUIET_NAN__ 1
-// S390X:#define __FLT_MANT_DIG__ 24
-// S390X:#define __FLT_MAX_10_EXP__ 38
-// S390X:#define __FLT_MAX_EXP__ 128
-// S390X:#define __FLT_MAX__ 3.40282347e+38F
-// S390X:#define __FLT_MIN_10_EXP__ (-37)
-// S390X:#define __FLT_MIN_EXP__ (-125)
-// S390X:#define __FLT_MIN__ 1.17549435e-38F
-// S390X:#define __FLT_RADIX__ 2
-// S390X:#define __INT16_TYPE__ short
-// S390X:#define __INT32_TYPE__ int
-// S390X:#define __INT64_C_SUFFIX__ L
-// S390X:#define __INT64_TYPE__ long long int
-// S390X:#define __INT8_TYPE__ char
-// S390X:#define __INTMAX_MAX__ 9223372036854775807LL
-// S390X:#define __INTMAX_TYPE__ long long int
-// S390X:#define __INTMAX_WIDTH__ 64
-// S390X:#define __INTPTR_TYPE__ long int
-// S390X:#define __INTPTR_WIDTH__ 64
-// S390X:#define __INT_MAX__ 2147483647
-// S390X:#define __LDBL_DENORM_MIN__ 4.9406564584124654e-324
-// S390X:#define __LDBL_DIG__ 15
-// S390X:#define __LDBL_EPSILON__ 2.2204460492503131e-16
-// S390X:#define __LDBL_HAS_DENORM__ 1
-// S390X:#define __LDBL_HAS_INFINITY__ 1
-// S390X:#define __LDBL_HAS_QUIET_NAN__ 1
-// S390X:#define __LDBL_MANT_DIG__ 53
-// S390X:#define __LDBL_MAX_10_EXP__ 308
-// S390X:#define __LDBL_MAX_EXP__ 1024
-// S390X:#define __LDBL_MAX__ 1.7976931348623157e+308
-// S390X:#define __LDBL_MIN_10_EXP__ (-307)
-// S390X:#define __LDBL_MIN_EXP__ (-1021)
-// S390X:#define __LDBL_MIN__ 2.2250738585072014e-308
-// S390X:#define __LONG_LONG_MAX__ 9223372036854775807LL
-// S390X:#define __LONG_MAX__ 9223372036854775807L
-// S390X:#define __NO_INLINE__ 1
-// S390X:#define __POINTER_WIDTH__ 64
-// S390X:#define __PTRDIFF_TYPE__ long int
-// S390X:#define __PTRDIFF_WIDTH__ 64
-// S390X:#define __SCHAR_MAX__ 127
-// S390X:#define __SHRT_MAX__ 32767
-// S390X:#define __SIG_ATOMIC_WIDTH__ 32
-// S390X:#define __SIZEOF_DOUBLE__ 8
-// S390X:#define __SIZEOF_FLOAT__ 4
-// S390X:#define __SIZEOF_INT__ 4
-// S390X:#define __SIZEOF_LONG_DOUBLE__ 8
-// S390X:#define __SIZEOF_LONG_LONG__ 8
-// S390X:#define __SIZEOF_LONG__ 8
-// S390X:#define __SIZEOF_POINTER__ 8
-// S390X:#define __SIZEOF_PTRDIFF_T__ 8
-// S390X:#define __SIZEOF_SHORT__ 2
-// S390X:#define __SIZEOF_SIZE_T__ 8
-// S390X:#define __SIZEOF_WCHAR_T__ 4
-// S390X:#define __SIZEOF_WINT_T__ 4
-// S390X:#define __SIZE_TYPE__ long unsigned int
-// S390X:#define __SIZE_WIDTH__ 64
-// S390X:#define __UINTMAX_TYPE__ long long unsigned int
-// S390X:#define __USER_LABEL_PREFIX__ _
-// S390X:#define __WCHAR_MAX__ 2147483647
-// S390X:#define __WCHAR_TYPE__ int
-// S390X:#define __WCHAR_WIDTH__ 32
-// S390X:#define __WINT_TYPE__ int
-// S390X:#define __WINT_WIDTH__ 32
-// S390X:#define __s390__ 1
-// S390X:#define __s390x__ 1
-//
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=sparc-none-none < /dev/null | FileCheck -check-prefix SPARC %s
 //
 // SPARC:#define __CHAR16_TYPE__ unsigned short
@@ -1283,7 +1094,7 @@
 // X86_64-LINUX:#define __x86_64 1
 // X86_64-LINUX:#define __x86_64__ 1
 //
-// RUN: %clang_cc1 -x c++ -triple i686-pc-linux-gnu -E -dM < /dev/null | FileCheck -check-prefix GNUSOURCE %s
+// RUN: %clang_cc1 -x c++ -triple i686-pc-linux-gnu -fobjc-fragile-abi -E -dM < /dev/null | FileCheck -check-prefix GNUSOURCE %s
 // GNUSOURCE:#define _GNU_SOURCE 1
 // 
 // RUN: %clang_cc1 -x c++ -std=c++98 -fno-rtti -E -dM < /dev/null | FileCheck -check-prefix NORTTI %s

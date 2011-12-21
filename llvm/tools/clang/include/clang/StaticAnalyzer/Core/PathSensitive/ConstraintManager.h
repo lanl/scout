@@ -39,8 +39,11 @@ public:
   std::pair<const ProgramState*, const ProgramState*>
     assumeDual(const ProgramState *state, DefinedSVal Cond)
   {
-    return std::make_pair(assume(state, Cond, true),
-                          assume(state, Cond, false));
+    std::pair<const ProgramState*, const ProgramState*> res =
+      std::make_pair(assume(state, Cond, true), assume(state, Cond, false));
+
+    assert(!(!res.first && !res.second) && "System is over constrained.");
+    return res;
   }
 
   virtual const llvm::APSInt* getSymVal(const ProgramState *state,
@@ -60,6 +63,7 @@ public:
 
   virtual void EndPath(const ProgramState *state) {}
 
+protected:
   /// canReasonAbout - Not all ConstraintManagers can accurately reason about
   ///  all SVal values.  This method returns true if the ConstraintManager can
   ///  reasonably handle a given SVal value.  This is typically queried by

@@ -75,7 +75,7 @@ public:
 
   bool evalCall(const CallExpr *CE, CheckerContext &C) const;
   void checkDeadSymbols(SymbolReaper &SymReaper, CheckerContext &C) const;
-  void checkEndPath(EndOfFunctionNodeBuilder &B, ExprEngine &Eng) const;
+  void checkEndPath(CheckerContext &Ctx) const;
   void checkPreStmt(const ReturnStmt *S, CheckerContext &C) const;
 
 private:
@@ -115,10 +115,7 @@ namespace ento {
 }
 
 bool StreamChecker::evalCall(const CallExpr *CE, CheckerContext &C) const {
-  const ProgramState *state = C.getState();
-  const Expr *Callee = CE->getCallee();
-  SVal L = state->getSVal(Callee);
-  const FunctionDecl *FD = L.getAsFunctionDecl();
+  const FunctionDecl *FD = C.getCalleeDecl(CE);
   if (!FD)
     return false;
 
@@ -222,7 +219,7 @@ void StreamChecker::Tmpfile(CheckerContext &C, const CallExpr *CE) const {
 
 void StreamChecker::OpenFileAux(CheckerContext &C, const CallExpr *CE) const {
   const ProgramState *state = C.getState();
-  unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+  unsigned Count = C.getCurrentBlockCount();
   SValBuilder &svalBuilder = C.getSValBuilder();
   DefinedSVal RetVal =
     cast<DefinedSVal>(svalBuilder.getConjuredSymbolVal(0, CE, Count));
@@ -279,7 +276,7 @@ void StreamChecker::Fseek(CheckerContext &C, const CallExpr *CE) const {
   if (x >= 0 && x <= 2)
     return;
 
-  if (ExplodedNode *N = C.generateNode(state)) {
+  if (ExplodedNode *N = C.addTransition(state)) {
     if (!BT_illegalwhence)
       BT_illegalwhence.reset(new BuiltinBug("Illegal whence argument",
 					"The whence argument to fseek() should be "
@@ -418,23 +415,22 @@ void StreamChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   }
 }
 
-void StreamChecker::checkEndPath(EndOfFunctionNodeBuilder &B,
-                                 ExprEngine &Eng) const {
-  const ProgramState *state = B.getState();
+void StreamChecker::checkEndPath(CheckerContext &Ctx) const {
+  const ProgramState *state = Ctx.getState();
   typedef llvm::ImmutableMap<SymbolRef, StreamState> SymMap;
   SymMap M = state->get<StreamState>();
   
   for (SymMap::iterator I = M.begin(), E = M.end(); I != E; ++I) {
     StreamState SS = I->second;
     if (SS.isOpened()) {
-      ExplodedNode *N = B.generateNode(state);
+      ExplodedNode *N = Ctx.addTransition(state);
       if (N) {
         if (!BT_ResourceLeak)
           BT_ResourceLeak.reset(new BuiltinBug("Resource Leak", 
                          "Opened File never closed. Potential Resource leak."));
         BugReport *R = new BugReport(*BT_ResourceLeak, 
                                      BT_ResourceLeak->getDescription(), N);
-        Eng.getBugReporter().EmitReport(R);
+        Ctx.EmitReport(R);
       }
     }
   }

@@ -72,8 +72,8 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     0
   };
 
-  static const unsigned DarwinCalleeSavedRegs[] = {
-    // Darwin ABI deviates from ARM standard ABI. R9 is not a callee-saved
+  static const unsigned iOSCalleeSavedRegs[] = {
+    // iOS ABI deviates from ARM standard ABI. R9 is not a callee-saved
     // register.
     ARM::LR,  ARM::R7,  ARM::R6, ARM::R5, ARM::R4,
     ARM::R11, ARM::R10, ARM::R8,
@@ -82,7 +82,7 @@ ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
     ARM::D11, ARM::D10, ARM::D9,  ARM::D8,
     0
   };
-  return STI.isTargetDarwin() ? DarwinCalleeSavedRegs : CalleeSavedRegs;
+  return (STI.isTargetIOS()) ? iOSCalleeSavedRegs : CalleeSavedRegs;
 }
 
 BitVector ARMBaseRegisterInfo::
@@ -133,104 +133,6 @@ bool ARMBaseRegisterInfo::isReservedReg(const MachineFunction &MF,
   }
 
   return false;
-}
-
-const TargetRegisterClass *
-ARMBaseRegisterInfo::getMatchingSuperRegClass(const TargetRegisterClass *A,
-                                              const TargetRegisterClass *B,
-                                              unsigned SubIdx) const {
-  switch (SubIdx) {
-  default: return 0;
-  case ARM::ssub_0:
-  case ARM::ssub_1:
-  case ARM::ssub_2:
-  case ARM::ssub_3: {
-    // S sub-registers.
-    if (A->getSize() == 8) {
-      if (B == &ARM::SPR_8RegClass)
-        return &ARM::DPR_8RegClass;
-      assert(B == &ARM::SPRRegClass && "Expecting SPR register class!");
-      if (A == &ARM::DPR_8RegClass)
-        return A;
-      return &ARM::DPR_VFP2RegClass;
-    }
-
-    if (A->getSize() == 16) {
-      if (B == &ARM::SPR_8RegClass)
-        return &ARM::QPR_8RegClass;
-      return &ARM::QPR_VFP2RegClass;
-    }
-
-    if (A->getSize() == 32) {
-      if (B == &ARM::SPR_8RegClass)
-        return 0;  // Do not allow coalescing!
-      return &ARM::QQPR_VFP2RegClass;
-    }
-
-    assert(A->getSize() == 64 && "Expecting a QQQQ register class!");
-    return 0;  // Do not allow coalescing!
-  }
-  case ARM::dsub_0:
-  case ARM::dsub_1:
-  case ARM::dsub_2:
-  case ARM::dsub_3: {
-    // D sub-registers.
-    if (A->getSize() == 16) {
-      if (B == &ARM::DPR_VFP2RegClass)
-        return &ARM::QPR_VFP2RegClass;
-      if (B == &ARM::DPR_8RegClass)
-        return 0;  // Do not allow coalescing!
-      return A;
-    }
-
-    if (A->getSize() == 32) {
-      if (B == &ARM::DPR_VFP2RegClass)
-        return &ARM::QQPR_VFP2RegClass;
-      if (B == &ARM::DPR_8RegClass)
-        return 0;  // Do not allow coalescing!
-      return A;
-    }
-
-    assert(A->getSize() == 64 && "Expecting a QQQQ register class!");
-    if (B != &ARM::DPRRegClass)
-      return 0;  // Do not allow coalescing!
-    return A;
-  }
-  case ARM::dsub_4:
-  case ARM::dsub_5:
-  case ARM::dsub_6:
-  case ARM::dsub_7: {
-    // D sub-registers of QQQQ registers.
-    if (A->getSize() == 64 && B == &ARM::DPRRegClass)
-      return A;
-    return 0;  // Do not allow coalescing!
-  }
-
-  case ARM::qsub_0:
-  case ARM::qsub_1: {
-    // Q sub-registers.
-    if (A->getSize() == 32) {
-      if (B == &ARM::QPR_VFP2RegClass)
-        return &ARM::QQPR_VFP2RegClass;
-      if (B == &ARM::QPR_8RegClass)
-        return 0;  // Do not allow coalescing!
-      return A;
-    }
-
-    assert(A->getSize() == 64 && "Expecting a QQQQ register class!");
-    if (B == &ARM::QPRRegClass)
-      return A;
-    return 0;  // Do not allow coalescing!
-  }
-  case ARM::qsub_2:
-  case ARM::qsub_3: {
-    // Q sub-registers of QQQQ registers.
-    if (A->getSize() == 64 && B == &ARM::QPRRegClass)
-      return A;
-    return 0;  // Do not allow coalescing!
-  }
-  }
-  return 0;
 }
 
 bool
@@ -353,7 +255,7 @@ const TargetRegisterClass*
 ARMBaseRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC)
                                                                          const {
   const TargetRegisterClass *Super = RC;
-  TargetRegisterClass::sc_iterator I = RC->superclasses_begin();
+  TargetRegisterClass::sc_iterator I = RC->getSuperClasses();
   do {
     switch (Super->getID()) {
     case ARM::GPRRegClassID:
@@ -631,7 +533,7 @@ bool ARMBaseRegisterInfo::canRealignStack(const MachineFunction &MF) const {
   // 1. Dynamic stack realignment is explicitly disabled,
   // 2. This is a Thumb1 function (it's not useful, so we don't bother), or
   // 3. There are VLAs in the function and the base pointer is disabled.
-  return (RealignStack && !AFI->isThumb1OnlyFunction() &&
+  return (MF.getTarget().Options.RealignStack && !AFI->isThumb1OnlyFunction() &&
           (!MFI->hasVarSizedObjects() || EnableBasePointer));
 }
 
@@ -640,7 +542,7 @@ needsStackRealignment(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   const Function *F = MF.getFunction();
   unsigned StackAlign = MF.getTarget().getFrameLowering()->getStackAlignment();
-  bool requiresRealignment = ((MFI->getLocalFrameMaxAlign() > StackAlign) ||
+  bool requiresRealignment = ((MFI->getMaxAlignment() > StackAlign) ||
                                F->hasFnAttr(Attribute::StackAlignment));
 
   return requiresRealignment && canRealignStack(MF);
@@ -649,7 +551,7 @@ needsStackRealignment(const MachineFunction &MF) const {
 bool ARMBaseRegisterInfo::
 cannotEliminateFrame(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
-  if (DisableFramePointerElim(MF) && MFI->adjustsStack())
+  if (MF.getTarget().Options.DisableFramePointerElim(MF) && MFI->adjustsStack())
     return true;
   return MFI->hasVarSizedObjects() || MFI->isFrameAddressTaken()
     || needsStackRealignment(MF);

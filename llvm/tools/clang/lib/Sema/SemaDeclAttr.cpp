@@ -22,6 +22,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/DelayedDiagnostic.h"
+#include "clang/Sema/Lookup.h"
 #include "llvm/ADT/StringExtras.h"
 using namespace clang;
 using namespace sema;
@@ -753,19 +754,41 @@ static void handleIBAction(Sema &S, Decl *D, const AttributeList &Attr) {
   S.Diag(Attr.getLoc(), diag::warn_attribute_ibaction) << Attr.getName();
 }
 
+static bool checkIBOutletCommon(Sema &S, Decl *D, const AttributeList &Attr) {
+  // The IBOutlet/IBOutletCollection attributes only apply to instance
+  // variables or properties of Objective-C classes.  The outlet must also
+  // have an object reference type.
+  if (const ObjCIvarDecl *VD = dyn_cast<ObjCIvarDecl>(D)) {
+    if (!VD->getType()->getAs<ObjCObjectPointerType>()) {
+      S.Diag(Attr.getLoc(), diag::warn_iboutlet_object_type)
+        << Attr.getName() << VD->getType() << 0;
+      return false;
+    }
+  }
+  else if (const ObjCPropertyDecl *PD = dyn_cast<ObjCPropertyDecl>(D)) {
+    if (!PD->getType()->getAs<ObjCObjectPointerType>()) {
+      S.Diag(Attr.getLoc(), diag::warn_iboutlet_object_type) 
+        << Attr.getName() << PD->getType() << 1;
+      return false;
+    }
+  }
+  else {
+    S.Diag(Attr.getLoc(), diag::warn_attribute_iboutlet) << Attr.getName();
+    return false;
+  }
+  
+  return true;
+}
+
 static void handleIBOutlet(Sema &S, Decl *D, const AttributeList &Attr) {
   // check the attribute arguments.
   if (!checkAttributeNumArgs(S, Attr, 0))
     return;
-
-  // The IBOutlet attributes only apply to instance variables of
-  // Objective-C classes.
-  if (isa<ObjCIvarDecl>(D) || isa<ObjCPropertyDecl>(D)) {
-    D->addAttr(::new (S.Context) IBOutletAttr(Attr.getRange(), S.Context));
+  
+  if (!checkIBOutletCommon(S, D, Attr))
     return;
-  }
 
-  S.Diag(Attr.getLoc(), diag::warn_attribute_iboutlet) << Attr.getName();
+  D->addAttr(::new (S.Context) IBOutletAttr(Attr.getRange(), S.Context));
 }
 
 static void handleIBOutletCollection(Sema &S, Decl *D,
@@ -777,28 +800,12 @@ static void handleIBOutletCollection(Sema &S, Decl *D,
     return;
   }
 
-  // The IBOutletCollection attributes only apply to instance variables of
-  // Objective-C classes.
-  if (!(isa<ObjCIvarDecl>(D) || isa<ObjCPropertyDecl>(D))) {
-    S.Diag(Attr.getLoc(), diag::warn_attribute_iboutlet) << Attr.getName();
+  if (!checkIBOutletCommon(S, D, Attr))
     return;
-  }
-  if (const ValueDecl *VD = dyn_cast<ValueDecl>(D))
-    if (!VD->getType()->getAs<ObjCObjectPointerType>()) {
-      S.Diag(Attr.getLoc(), diag::err_iboutletcollection_object_type) 
-        << VD->getType() << 0;
-      return;
-    }
-  if (const ObjCPropertyDecl *PD = dyn_cast<ObjCPropertyDecl>(D))
-    if (!PD->getType()->getAs<ObjCObjectPointerType>()) {
-      S.Diag(Attr.getLoc(), diag::err_iboutletcollection_object_type) 
-        << PD->getType() << 1;
-      return;
-    }
-  
+
   IdentifierInfo *II = Attr.getParameterName();
   if (!II)
-    II = &S.Context.Idents.get("id");
+    II = &S.Context.Idents.get("NSObject");
   
   ParsedType TypeRep = S.getTypeName(*II, Attr.getLoc(), 
                         S.getScopeForContext(D->getDeclContext()->getParent()));
@@ -811,8 +818,7 @@ static void handleIBOutletCollection(Sema &S, Decl *D,
   // FIXME. Gnu attribute extension ignores use of builtin types in
   // attributes. So, __attribute__((iboutletcollection(char))) will be
   // treated as __attribute__((iboutletcollection())).
-  if (!QT->isObjCIdType() && !QT->isObjCClassType() &&
-      !QT->isObjCObjectType()) {
+  if (!QT->isObjCIdType() && !QT->isObjCObjectType()) {
     S.Diag(Attr.getLoc(), diag::err_iboutletcollection_type) << II;
     return;
   }
@@ -1420,6 +1426,23 @@ static void handleUnusedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   D->addAttr(::new (S.Context) UnusedAttr(Attr.getRange(), S.Context));
 }
 
+static void handleReturnsTwiceAttr(Sema &S, Decl *D,
+                                   const AttributeList &Attr) {
+  // check the attribute arguments.
+  if (Attr.hasParameterOrArguments()) {
+    S.Diag(Attr.getLoc(), diag::err_attribute_wrong_number_arguments) << 0;
+    return;
+  }
+
+  if (!isa<FunctionDecl>(D)) {
+    S.Diag(Attr.getLoc(), diag::warn_attribute_wrong_decl_type)
+      << Attr.getName() << ExpectedFunction;
+    return;
+  }
+
+  D->addAttr(::new (S.Context) ReturnsTwiceAttr(Attr.getRange(), S.Context));
+}
+
 static void handleUsedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   // check the attribute arguments.
   if (Attr.hasParameterOrArguments()) {
@@ -1601,12 +1624,19 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
     return;
   }
 
+  StringRef Str;
+  const StringLiteral *SE = 
+    dyn_cast_or_null<const StringLiteral>(Attr.getMessageExpr());
+  if (SE)
+    Str = SE->getString();
+  
   D->addAttr(::new (S.Context) AvailabilityAttr(Attr.getRange(), S.Context,
                                                 Platform,
                                                 Introduced.Version,
                                                 Deprecated.Version,
                                                 Obsoleted.Version,
-                                                IsUnavailable));
+                                                IsUnavailable, 
+                                                Str));
 }
 
 static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
@@ -1723,6 +1753,8 @@ static void handleObjCNSObject(Sema &S, Decl *D, const AttributeList &Attr) {
       return;
     }
   }
+  else 
+    S.Diag(D->getLocation(), diag::warn_nsobject_attribute);
   D->addAttr(::new (S.Context) ObjCNSObjectAttr(Attr.getRange(), S.Context));
 }
 
@@ -1891,6 +1923,10 @@ static void handleWeakAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   }
 
   if (!isa<VarDecl>(D) && !isa<FunctionDecl>(D)) {
+    if (isa<CXXRecordDecl>(D)) {
+      D->addAttr(::new (S.Context) WeakAttr(Attr.getRange(), S.Context));
+      return;
+    }
     S.Diag(Attr.getLoc(), diag::warn_attribute_wrong_decl_type)
       << Attr.getName() << ExpectedVariableOrFunction;
     return;
@@ -1922,7 +1958,7 @@ static void handleWeakImportAttr(Sema &S, Decl *D, const AttributeList &Attr) {
         << "weak_import" << 2 /*variable and function*/;
     else if (isa<ObjCPropertyDecl>(D) || isa<ObjCMethodDecl>(D) ||
              (S.Context.getTargetInfo().getTriple().isOSDarwin() &&
-              isa<ObjCInterfaceDecl>(D))) {
+              (isa<ObjCInterfaceDecl>(D) || isa<EnumDecl>(D)))) {
       // Nothing to warn about here.
     } else
       S.Diag(Attr.getLoc(), diag::warn_attribute_wrong_decl_type)
@@ -2425,7 +2461,7 @@ static void handleTransparentUnionAttr(Sema &S, Decl *D,
     return;
   }
 
-  if (!RD->isDefinition()) {
+  if (!RD->isCompleteDefinition()) {
     S.Diag(Attr.getLoc(),
         diag::warn_transparent_union_attribute_not_definition);
     return;
@@ -2517,6 +2553,10 @@ static void handleAlignedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 }
 
 void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E) {
+  // FIXME: Handle pack-expansions here.
+  if (DiagnoseUnexpandedParameterPack(E))
+    return;
+
   if (E->isTypeDependent() || E->isValueDependent()) {
     // Save dependent expressions in the AST to be instantiated.
     D->addAttr(::new (Context) AlignedAttr(AttrRange, Context, true, E));
@@ -3112,10 +3152,14 @@ static void handleLaunchBoundsAttr(Sema &S, Decl *D, const AttributeList &Attr){
 //===----------------------------------------------------------------------===//
 
 static bool isValidSubjectOfNSAttribute(Sema &S, QualType type) {
-  return type->isObjCObjectPointerType() || S.Context.isObjCNSObjectType(type);
+  return type->isDependentType() || 
+         type->isObjCObjectPointerType() || 
+         S.Context.isObjCNSObjectType(type);
 }
 static bool isValidSubjectOfCFAttribute(Sema &S, QualType type) {
-  return type->isPointerType() || isValidSubjectOfNSAttribute(S, type);
+  return type->isDependentType() || 
+         type->isPointerType() || 
+         isValidSubjectOfNSAttribute(S, type);
 }
 
 static void handleNSConsumedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
@@ -3243,7 +3287,9 @@ static void handleObjCReturnsInnerPointerAttr(Sema &S, Decl *D,
 
   // Check that the method returns a normal pointer.
   QualType resultType = method->getResultType();
-  if (!resultType->isPointerType() || resultType->isObjCRetainableType()) {
+    
+  if (!resultType->isReferenceType() &&
+      (!resultType->isPointerType() || resultType->isObjCRetainableType())) {
     S.Diag(method->getLocStart(), diag::warn_ns_attribute_wrong_return_type)
       << SourceRange(loc)
       << attr.getName() << /*method*/ 1 << /*non-retainable pointer*/ 2;
@@ -3254,6 +3300,71 @@ static void handleObjCReturnsInnerPointerAttr(Sema &S, Decl *D,
 
   method->addAttr(
     ::new (S.Context) ObjCReturnsInnerPointerAttr(attr.getRange(), S.Context));
+}
+
+/// Handle cf_audited_transfer and cf_unknown_transfer.
+static void handleCFTransferAttr(Sema &S, Decl *D, const AttributeList &A) {
+  if (!isa<FunctionDecl>(D)) {
+    S.Diag(D->getLocStart(), diag::err_attribute_wrong_decl_type)
+      << A.getRange() << A.getName() << 0 /*function*/;
+    return;
+  }
+
+  bool IsAudited = (A.getKind() == AttributeList::AT_cf_audited_transfer);
+
+  // Check whether there's a conflicting attribute already present.
+  Attr *Existing;
+  if (IsAudited) {
+    Existing = D->getAttr<CFUnknownTransferAttr>();
+  } else {
+    Existing = D->getAttr<CFAuditedTransferAttr>();
+  }
+  if (Existing) {
+    S.Diag(D->getLocStart(), diag::err_attributes_are_not_compatible)
+      << A.getName()
+      << (IsAudited ? "cf_unknown_transfer" : "cf_audited_transfer")
+      << A.getRange() << Existing->getRange();
+    return;
+  }
+
+  // All clear;  add the attribute.
+  if (IsAudited) {
+    D->addAttr(
+      ::new (S.Context) CFAuditedTransferAttr(A.getRange(), S.Context));
+  } else {
+    D->addAttr(
+      ::new (S.Context) CFUnknownTransferAttr(A.getRange(), S.Context));
+  }
+}
+
+static void handleNSBridgedAttr(Sema &S, Scope *Sc, Decl *D,
+                                const AttributeList &Attr) {
+  RecordDecl *RD = dyn_cast<RecordDecl>(D);
+  if (!RD || RD->isUnion()) {
+    S.Diag(D->getLocStart(), diag::err_attribute_wrong_decl_type)
+      << Attr.getRange() << Attr.getName() << 14 /*struct */;
+  }
+
+  IdentifierInfo *ParmName = Attr.getParameterName();
+
+  // In Objective-C, verify that the type names an Objective-C type.
+  // We don't want to check this outside of ObjC because people sometimes
+  // do crazy C declarations of Objective-C types.
+  if (ParmName && S.getLangOptions().ObjC1) {
+    // Check for an existing type with this name.
+    LookupResult R(S, DeclarationName(ParmName), Attr.getParameterLoc(),
+                   Sema::LookupOrdinaryName);
+    if (S.LookupName(R, Sc)) {
+      NamedDecl *Target = R.getFoundDecl();
+      if (Target && !isa<ObjCInterfaceDecl>(Target)) {
+        S.Diag(D->getLocStart(), diag::err_ns_bridged_not_interface);
+        S.Diag(Target->getLocStart(), diag::note_declared_at);
+      }
+    }
+  }
+
+  D->addAttr(::new (S.Context) NSBridgedAttr(Attr.getRange(), S.Context,
+                                             ParmName));
 }
 
 static void handleObjCOwnershipAttr(Sema &S, Decl *D,
@@ -3459,6 +3570,13 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_objc_returns_inner_pointer:
     handleObjCReturnsInnerPointerAttr(S, D, Attr); break;
 
+  case AttributeList::AT_ns_bridged:
+    handleNSBridgedAttr(S, scope, D, Attr); break;
+
+  case AttributeList::AT_cf_audited_transfer:
+  case AttributeList::AT_cf_unknown_transfer:
+    handleCFTransferAttr(S, D, Attr); break;
+
   // Checker-specific.
   case AttributeList::AT_cf_consumed:
   case AttributeList::AT_ns_consumed: handleNSConsumedAttr  (S, D, Attr); break;
@@ -3486,6 +3604,9 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
     handleArcWeakrefUnavailableAttr (S, D, Attr); 
     break;
   case AttributeList::AT_unused:      handleUnusedAttr      (S, D, Attr); break;
+  case AttributeList::AT_returns_twice:
+    handleReturnsTwiceAttr(S, D, Attr);
+    break;
   case AttributeList::AT_used:        handleUsedAttr        (S, D, Attr); break;
   case AttributeList::AT_visibility:  handleVisibilityAttr  (S, D, Attr); break;
   case AttributeList::AT_warn_unused_result: handleWarnUnusedResult(S, D, Attr);
@@ -3638,6 +3759,50 @@ void Sema::ProcessDeclAttributeList(Scope *S, Decl *D,
   }
 }
 
+// Annotation attributes are the only attributes allowed after an access
+// specifier.
+bool Sema::ProcessAccessDeclAttributeList(AccessSpecDecl *ASDecl,
+                                          const AttributeList *AttrList) {
+  for (const AttributeList* l = AttrList; l; l = l->getNext()) {
+    if (l->getKind() == AttributeList::AT_annotate) {
+      handleAnnotateAttr(*this, ASDecl, *l);
+    } else {
+      Diag(l->getLoc(), diag::err_only_annotate_after_access_spec);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/// checkUnusedDeclAttributes - Check a list of attributes to see if it
+/// contains any decl attributes that we should warn about.
+static void checkUnusedDeclAttributes(Sema &S, const AttributeList *A) {
+  for ( ; A; A = A->getNext()) {
+    // Only warn if the attribute is an unignored, non-type attribute.
+    if (A->isUsedAsTypeAttr()) continue;
+    if (A->getKind() == AttributeList::IgnoredAttribute) continue;
+
+    if (A->getKind() == AttributeList::UnknownAttribute) {
+      S.Diag(A->getLoc(), diag::warn_unknown_attribute_ignored)
+        << A->getName() << A->getRange();
+    } else {
+      S.Diag(A->getLoc(), diag::warn_attribute_not_on_decl)
+        << A->getName() << A->getRange();
+    }
+  }
+}
+
+/// checkUnusedDeclAttributes - Given a declarator which is not being
+/// used to build a declaration, complain about any decl attributes
+/// which might be lying around on it.
+void Sema::checkUnusedDeclAttributes(Declarator &D) {
+  ::checkUnusedDeclAttributes(*this, D.getDeclSpec().getAttributes().getList());
+  ::checkUnusedDeclAttributes(*this, D.getAttributes());
+  for (unsigned i = 0, e = D.getNumTypeObjects(); i != e; ++i)
+    ::checkUnusedDeclAttributes(*this, D.getTypeObject(i).getAttrs());
+}
+
 /// DeclClonePragmaWeak - clone existing decl (maybe definition),
 /// #pragma weak needs a non-definition decl and source may not have one
 NamedDecl * Sema::DeclClonePragmaWeak(NamedDecl *ND, IdentifierInfo *II,
@@ -3775,6 +3940,17 @@ static void handleDelayedForbiddenType(Sema &S, DelayedDiagnostic &diag,
                         "this system declaration uses an unsupported type"));
     return;
   }
+  if (S.getLangOptions().ObjCAutoRefCount)
+    if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(decl)) {
+      // FIXME. we may want to supress diagnostics for all
+      // kind of forbidden type messages on unavailable functions. 
+      if (FD->hasAttr<UnavailableAttr>() &&
+          diag.getForbiddenTypeDiagnostic() == 
+          diag::err_arc_array_param_no_ownership) {
+        diag.Triggered = true;
+        return;
+      }
+    }
 
   S.Diag(diag.Loc, diag.getForbiddenTypeDiagnostic())
     << diag.getForbiddenTypeOperand() << diag.getForbiddenTypeArgument();
@@ -3862,6 +4038,9 @@ static bool isDeclDeprecated(Decl *D) {
   do {
     if (D->isDeprecated())
       return true;
+    // A category implicitly has the availability of the interface.
+    if (const ObjCCategoryDecl *CatD = dyn_cast<ObjCCategoryDecl>(D))
+      return CatD->getClassInterface()->isDeprecated();
   } while ((D = cast_or_null<Decl>(D->getDeclContext())));
   return false;
 }
@@ -3891,7 +4070,7 @@ void Sema::EmitDeprecationWarning(NamedDecl *D, StringRef Message,
   }
 
   // Otherwise, don't warn if our current context is deprecated.
-  if (isDeclDeprecated(cast<Decl>(CurContext)))
+  if (isDeclDeprecated(cast<Decl>(getCurLexicalContext())))
     return;
   if (!Message.empty())
     Diag(Loc, diag::warn_deprecated_message) << D->getDeclName() 

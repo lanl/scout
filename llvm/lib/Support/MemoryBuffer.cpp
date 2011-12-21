@@ -14,6 +14,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Config/config.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/Path.h"
@@ -29,7 +30,6 @@
 #include <sys/stat.h>
 #if !defined(_MSC_VER) && !defined(__MINGW32__)
 #include <unistd.h>
-#include <sys/uio.h>
 #else
 #include <io.h>
 #endif
@@ -321,23 +321,24 @@ error_code MemoryBuffer::getOpenFile(int FD, const char *Filename,
   char *BufPtr = const_cast<char*>(SB->getBufferStart());
 
   size_t BytesLeft = MapSize;
+#ifndef HAVE_PREAD
   if (lseek(FD, Offset, SEEK_SET) == -1)
     return error_code(errno, posix_category());
+#endif
 
   while (BytesLeft) {
+#ifdef HAVE_PREAD
+    ssize_t NumRead = ::pread(FD, BufPtr, BytesLeft, MapSize-BytesLeft+Offset);
+#else
     ssize_t NumRead = ::read(FD, BufPtr, BytesLeft);
+#endif
     if (NumRead == -1) {
       if (errno == EINTR)
         continue;
       // Error while reading.
       return error_code(errno, posix_category());
-    } else if (NumRead == 0) {
-      // We hit EOF early, truncate and terminate buffer.
-      Buf->BufferEnd = BufPtr;
-      *BufPtr = 0;
-      result.swap(SB);
-      return success;
     }
+    assert(NumRead != 0 && "fstat reported an invalid file size.");
     BytesLeft -= NumRead;
     BufPtr += NumRead;
   }

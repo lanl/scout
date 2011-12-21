@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/ObjCMessage.h"
+#include "clang/AST/DeclCXX.h"
 
 using namespace clang;
 using namespace ento;
@@ -148,7 +149,13 @@ SVal CallOrObjCMessage::getCXXCallee() const {
   const CallExpr *ActualCall = CallE.get<const CallExpr *>();
   const Expr *callee =
     cast<CXXMemberCallExpr>(ActualCall)->getImplicitObjectArgument();
-  return State->getSVal(callee);  
+  
+  // FIXME: Will eventually need to cope with member pointers.  This is
+  // a limitation in getImplicitObjectArgument().
+  if (!callee)
+    return UnknownVal();
+  
+  return State->getSVal(callee);
 }
 
 SVal
@@ -156,3 +163,21 @@ CallOrObjCMessage::getInstanceMessageReceiver(const LocationContext *LC) const {
   assert(isObjCMessage());
   return Msg.getInstanceReceiverSVal(State, LC);
 }
+
+const Decl *CallOrObjCMessage::getDecl() const {
+  if (isCXXCall()) {
+    const CXXMemberCallExpr *CE =
+        cast<CXXMemberCallExpr>(CallE.dyn_cast<const CallExpr *>());
+    assert(CE);
+    return CE->getMethodDecl();
+  } else if (isObjCMessage()) {
+    return Msg.getMethodDecl();
+  } else if (isFunctionCall()) {
+    // In case of a C style call, use the path sensitive information to find
+    // the function declaration.
+    SVal CalleeVal = getFunctionCallee();
+    return CalleeVal.getAsFunctionDecl();
+  }
+  return 0;
+}
+

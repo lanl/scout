@@ -882,16 +882,14 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
 
   const MemRegion *MR = cast<loc::MemRegionVal>(L).getRegion();
 
-  if (isa<AllocaRegion>(MR) || isa<SymbolicRegion>(MR)) {
+  if (isa<AllocaRegion>(MR) ||
+      isa<SymbolicRegion>(MR) ||
+      isa<CodeTextRegion>(MR)) {
     if (T.isNull()) {
       const SymbolicRegion *SR = cast<SymbolicRegion>(MR);
       T = SR->getSymbol()->getType(Ctx);
     }
     MR = GetElementZeroRegion(MR, T);
-  }
-
-  if (isa<CodeTextRegion>(MR)) {
-    llvm_unreachable("Why load from a code text region?");
   }
 
   // FIXME: Perhaps this method should just take a 'const MemRegion*' argument
@@ -1046,12 +1044,12 @@ SVal RegionStoreManager::RetrieveElement(Store store,
       // clients of RetrieveElement().
       if (i < 0)
         return UndefinedVal();
-      int64_t byteLength = Str->getByteLength();
-      // Technically, only i == byteLength is guaranteed to be null.
+      int64_t length = Str->getLength();
+      // Technically, only i == length is guaranteed to be null.
       // However, such overflows should be caught before reaching this point;
       // the only time such an access would be made is if a string literal was
       // used to initialize a larger array.
-      char c = (i >= byteLength) ? '\0' : Str->getString()[i];
+      char c = (i >= length) ? '\0' : Str->getCodeUnit(i);
       return svalBuilder.makeIntVal(c, T);
     }
   }
@@ -1485,7 +1483,7 @@ StoreRef RegionStoreManager::BindStruct(Store store, const TypedValueRegion* R,
   const RecordType* RT = T->getAs<RecordType>();
   RecordDecl *RD = RT->getDecl();
 
-  if (!RD->isDefinition())
+  if (!RD->isCompleteDefinition())
     return StoreRef(store, *this);
 
   // Handle lazy compound values.
@@ -1506,10 +1504,14 @@ StoreRef RegionStoreManager::BindStruct(Store store, const TypedValueRegion* R,
   RecordDecl::field_iterator FI, FE;
   StoreRef newStore(store, *this);
   
-  for (FI = RD->field_begin(), FE = RD->field_end(); FI != FE; ++FI, ++VI) {
+  for (FI = RD->field_begin(), FE = RD->field_end(); FI != FE; ++FI) {
 
     if (VI == VE)
       break;
+
+    // Skip any unnamed bitfields to stay in sync with the initializers.
+    if ((*FI)->isUnnamedBitfield())
+      continue;
 
     QualType FTy = (*FI)->getType();
     const FieldRegion* FR = MRMgr.getFieldRegion(*FI, R);
@@ -1520,6 +1522,7 @@ StoreRef RegionStoreManager::BindStruct(Store store, const TypedValueRegion* R,
       newStore = BindStruct(newStore.getStore(), FR, *VI);
     else
       newStore = Bind(newStore.getStore(), svalBuilder.makeLoc(FR), *VI);
+    ++VI;
   }
 
   // There may be fewer values in the initialize list than the fields of struct.
@@ -1717,9 +1720,9 @@ void removeDeadBindingsWorker::VisitBinding(SVal V) {
   if (const MemRegion *R = V.getAsRegion())
     AddToWorkList(R);
 
-    // Update the set of live symbols.
-  for (SVal::symbol_iterator SI=V.symbol_begin(), SE=V.symbol_end();
-       SI!=SE;++SI)
+  // Update the set of live symbols.
+  for (SymExpr::symbol_iterator SI = V.symbol_begin(), SE = V.symbol_end();
+       SI!=SE; ++SI)
     SymReaper.markLive(*SI);
 }
 
@@ -1807,7 +1810,7 @@ StoreRef RegionStoreManager::removeDeadBindings(Store store,
       SymReaper.maybeDead(SymR->getSymbol());
 
     SVal X = I.getData();
-    SVal::symbol_iterator SI = X.symbol_begin(), SE = X.symbol_end();
+    SymExpr::symbol_iterator SI = X.symbol_begin(), SE = X.symbol_end();
     for (; SI != SE; ++SI)
       SymReaper.maybeDead(*SI);
   }

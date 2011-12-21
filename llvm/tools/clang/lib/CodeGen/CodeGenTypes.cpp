@@ -263,6 +263,8 @@ void CodeGenTypes::UpdateCompletedType(const TagDecl *TD) {
 
 static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
                                     const llvm::fltSemantics &format) {
+  if (&format == &llvm::APFloat::IEEEhalf)
+    return llvm::Type::getInt16Ty(VMContext);
   if (&format == &llvm::APFloat::IEEEsingle)
     return llvm::Type::getFloatTy(VMContext);
   if (&format == &llvm::APFloat::IEEEdouble)
@@ -382,6 +384,14 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     case BuiltinType::Double4:
       return VectorTy::get(getTypeForFormat(getLLVMContext(),
         Context.getFloatTypeSemantics(T)), 4);
+    case BuiltinType::Half:
+      // Half is special: it might be lowered to i16 (and will be storage-only
+      // type),. or can be represented as a set of native operations.
+
+      // FIXME: Ask target which kind of half FP it prefers (storage only vs
+      // native).
+      ResultType = llvm::Type::getInt16Ty(getLLVMContext());
+      break;
     case BuiltinType::Float:
     case BuiltinType::Double:
     case BuiltinType::LongDouble:
@@ -399,10 +409,11 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
       ResultType = llvm::IntegerType::get(getLLVMContext(), 128);
       break;
 
-    case BuiltinType::Overload:
     case BuiltinType::Dependent:
-    case BuiltinType::BoundMember:
-    case BuiltinType::UnknownAny:
+#define BUILTIN_TYPE(Id, SingletonId)
+#define PLACEHOLDER_TYPE(Id, SingletonId) \
+    case BuiltinType::Id:
+#include "clang/AST/BuiltinTypes.def"
       llvm_unreachable("Unexpected placeholder builtin type!");
       break;
     }
@@ -587,7 +598,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
         uint64_t numElts = 1;
         // Construct a pointer for each type.
         for(unsigned i = 0; i < dims.size(); ++i) {
-          numElts *= dims[i]->EvaluateAsInt(Context).getSExtValue();
+          llvm::APSInt result;
+          dims[i]->EvaluateAsInt(result, Context);
+          numElts *= result.getSExtValue();
         }
         eltTys.push_back(llvm::PointerType::getUnqual(ty));
       }
@@ -606,7 +619,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
   case Type::Enum: {
     const EnumDecl *ED = cast<EnumType>(Ty)->getDecl();
-    if (ED->isDefinition() || ED->isFixed())
+    if (ED->isCompleteDefinition() || ED->isFixed())
       return ConvertType(ED->getIntegerType());
     // Return a placeholder 'i32' type.  This can be changed later when the
     // type is defined (see UpdateCompletedType), but is likely to be the
@@ -628,8 +641,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
       getCXXABI().ConvertMemberPointerType(cast<MemberPointerType>(Ty));
     break;
   }
-  }
 
+  case Type::Atomic: {
+    ResultType = ConvertTypeForMem(cast<AtomicType>(Ty)->getValueType());
+    break;
+  }
+  }
   assert(ResultType && "Didn't convert a type?");
 
   TypeCache[Ty] = ResultType;
@@ -654,7 +671,7 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
   // If this is still a forward declaration, or the LLVM type is already
   // complete, there's nothing more to do.
   RD = RD->getDefinition();
-  if (RD == 0 || !Ty->isOpaque())
+  if (RD == 0 || !RD->isCompleteDefinition() || !Ty->isOpaque())
     return Ty;
 
   // If converting this type would cause us to infinitely loop, don't do it!

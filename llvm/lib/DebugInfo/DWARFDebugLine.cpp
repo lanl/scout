@@ -41,8 +41,9 @@ void DWARFDebugLine::Prologue::dump(raw_ostream &OS) const {
           "----------------\n";
     for (uint32_t i = 0; i < FileNames.size(); ++i) {
       const FileNameEntry& fileEntry = FileNames[i];
-      OS << format("file_names[%3u] %4u ", i+1, fileEntry.DirIdx)
-         << format("0x%8.8x 0x%8.8x ", fileEntry.ModTime, fileEntry.Length)
+      OS << format("file_names[%3u] %4" PRIu64 " ", i+1, fileEntry.DirIdx)
+         << format("0x%8.8" PRIx64 " 0x%8.8" PRIx64 " ",
+                   fileEntry.ModTime, fileEntry.Length)
          << fileEntry.Name << '\n';
     }
   }
@@ -68,7 +69,7 @@ void DWARFDebugLine::Row::reset(bool default_is_stmt) {
 }
 
 void DWARFDebugLine::Row::dump(raw_ostream &OS) const {
-  OS << format("0x%16.16llx %6u %6u", Address, Line, Column)
+  OS << format("0x%16.16" PRIx64 " %6u %6u", Address, Line, Column)
      << format(" %6u %3u ", File, Isa)
      << (IsStmt ? " is_stmt" : "")
      << (BasicBlock ? " basic_block" : "")
@@ -177,7 +178,7 @@ DWARFDebugLine::parsePrologue(DataExtractor debug_line_data,
 
   if (*offset_ptr != end_prologue_offset) {
     fprintf(stderr, "warning: parsing line table prologue at 0x%8.8x should"
-                    " have ended at 0x%8.8x but it ended ad 0x%8.8x\n", 
+                    " have ended at 0x%8.8x but it ended ad 0x%8.8x\n",
             prologue_offset, end_prologue_offset, *offset_ptr);
   }
   return end_prologue_offset;
@@ -393,8 +394,8 @@ DWARFDebugLine::parseStatementTable(DataExtractor debug_line_data,
       // field in the header, plus the value of the line_range field,
       // minus 1 (line base + line range - 1). If the desired line
       // increment is greater than the maximum line increment, a standard
-      // opcode must be used instead of a special opcode. The “address
-      // advance” is calculated by dividing the desired address increment
+      // opcode must be used instead of a special opcode. The "address
+      // advance" is calculated by dividing the desired address increment
       // by the minimum_instruction_length field from the header. The
       // special opcode is then calculated using the following formula:
       //

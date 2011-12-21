@@ -10,6 +10,11 @@
 
 int printf(char const *, ...);
 
+typedef __SIZE_TYPE__ size_t;
+typedef __INTMAX_TYPE__ intmax_t;
+typedef __UINTMAX_TYPE__ uintmax_t;
+typedef __PTRDIFF_TYPE__ ptrdiff_t;
+
 void test() {
   // Basic types
   printf("%s", (int) 123);
@@ -42,10 +47,64 @@ void test() {
   // Bad length modifiers
   printf("%hhs", "foo");
   printf("%1$zp", (void *)0);
-  
+
   // Perserve the original formatting for unsigned integers.
   unsigned long val = 42;
   printf("%X", val);
+
+  // size_t, etc.
+  printf("%f", (size_t) 42);
+  printf("%f", (intmax_t) 42);
+  printf("%f", (uintmax_t) 42);
+  printf("%f", (ptrdiff_t) 42);
+
+  // string
+  printf("%ld", "foo");
+}
+
+int scanf(char const *, ...);
+
+void test2() {
+  char str[100];
+  short shortVar;
+  unsigned short uShortVar;
+  int intVar;
+  unsigned uIntVar;
+  float floatVar;
+  double doubleVar;
+  long double longDoubleVar;
+  long longVar;
+  unsigned long uLongVar;
+  long long longLongVar;
+  unsigned long long uLongLongVar;
+  size_t sizeVar;
+  intmax_t intmaxVar;
+  uintmax_t uIntmaxVar;
+  ptrdiff_t ptrdiffVar;
+
+  scanf("%lf", str);
+  scanf("%f", &shortVar);
+  scanf("%f", &uShortVar);
+  scanf("%p", &intVar);
+  scanf("%Lf", &uIntVar);
+  scanf("%ld", &floatVar);
+  scanf("%f", &doubleVar);
+  scanf("%d", &longDoubleVar);
+  scanf("%f", &longVar);
+  scanf("%f", &uLongVar);
+  scanf("%f", &longLongVar);
+  scanf("%f", &uLongLongVar);
+
+  // Some named ints.
+  scanf("%f", &sizeVar);
+  scanf("%f", &intmaxVar);
+  scanf("%f", &uIntmaxVar);
+  scanf("%f", &ptrdiffVar);
+
+  // Perserve the original formatting for unsigned integers.
+  scanf("%o", &uLongVar);
+  scanf("%x", &uLongVar);
+  scanf("%X", &uLongVar);
 }
 
 // Validate the fixes...
@@ -68,3 +127,28 @@ void test() {
 // CHECK: printf("%s", "foo");
 // CHECK: printf("%1$p", (void *)0);
 // CHECK: printf("%lX", val);
+// CHECK: printf("%zu", (size_t) 42);
+// CHECK: printf("%jd", (intmax_t) 42);
+// CHECK: printf("%ju", (uintmax_t) 42);
+// CHECK: printf("%td", (ptrdiff_t) 42);
+// CHECK: printf("%s", "foo");
+
+// CHECK: scanf("%s", str);
+// CHECK: scanf("%hd", &shortVar);
+// CHECK: scanf("%hu", &uShortVar);
+// CHECK: scanf("%d", &intVar);
+// CHECK: scanf("%u", &uIntVar);
+// CHECK: scanf("%f", &floatVar);
+// CHECK: scanf("%lf", &doubleVar);
+// CHECK: scanf("%Lf", &longDoubleVar);
+// CHECK: scanf("%ld", &longVar);
+// CHECK: scanf("%lu", &uLongVar);
+// CHECK: scanf("%lld", &longLongVar);
+// CHECK: scanf("%llu", &uLongLongVar);
+// CHECK: scanf("%zu", &sizeVar);
+// CHECK: scanf("%jd", &intmaxVar);
+// CHECK: scanf("%ju", &uIntmaxVar);
+// CHECK: scanf("%td", &ptrdiffVar);
+// CHECK: scanf("%lo", &uLongVar);
+// CHECK: scanf("%lx", &uLongVar);
+// CHECK: scanf("%lX", &uLongVar);

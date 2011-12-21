@@ -1,0 +1,14 @@
+framework module DependsOnModule {
+  umbrella header "DependsOnModule.h"
+  header "other.h"
+  module * {
+    export *
+  }
+  explicit framework module SubFramework {
+    umbrella header "SubFramework.h"
+
+    module * {
+      export *
+    }
+  }
+}

@@ -43,10 +43,9 @@ public:
   enum ArchType {
     UnknownArch,
 
-    alpha,   // Alpha: alpha
     arm,     // ARM; arm, armv.*, xscale
-    bfin,    // Blackfin: bfin
     cellspu, // CellSPU: spu, cellspu
+    hexagon, // Hexagon: hexagon
     mips,    // MIPS: mips, mipsallegrex
     mipsel,  // MIPSEL: mipsel, mipsallegrexel, psp
     mips64,  // MIPS64: mips64
@@ -56,7 +55,6 @@ public:
     ppc64,   // PPC64: powerpc64, ppu
     sparc,   // Sparc: sparc
     sparcv9, // Sparcv9: Sparcv9
-    systemz, // SystemZ: s390x
     tce,     // TCE (http://tce.cs.tut.fi/): tce
     thumb,   // Thumb: thumb, thumbv.*
     x86,     // X86: i[3-9]86

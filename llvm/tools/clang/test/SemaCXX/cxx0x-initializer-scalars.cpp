@@ -1,4 +1,7 @@
-// RUN: %clang_cc1 -std=c++0x -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s
+
+struct one { char c[1]; };
+struct two { char c[2]; };
 
 namespace integral {
 
@@ -30,5 +33,27 @@ namespace integral {
     int i;
     A() : i{1} {}
   };
+
+  void function_call() {
+    void takes_int(int);
+    takes_int({1});
+  }
+
+  void overloaded_call() {
+    one overloaded(int);
+    two overloaded(double);
+
+    static_assert(sizeof(overloaded({0})) == sizeof(one), "bad overload");
+    static_assert(sizeof(overloaded({0.0})) == sizeof(two), "bad overload");
+
+    void ambiguous(int, double); // expected-note {{candidate}}
+    void ambiguous(double, int); // expected-note {{candidate}}
+    ambiguous({0}, {0}); // expected-error {{ambiguous}}
+
+    void emptylist(int);
+    void emptylist(int, int, int);
+    emptylist({});
+    emptylist({}, {}, {});
+  }
 
 }

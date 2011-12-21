@@ -31,8 +31,6 @@ public:
   // Common implementation for the interface provided by ConstraintManager.
   //===------------------------------------------------------------------===//
 
-  bool canReasonAbout(SVal X) const;
-
   const ProgramState *assume(const ProgramState *state, DefinedSVal Cond,
                         bool Assumption);
 
@@ -81,9 +79,19 @@ protected:
   // Internal implementation.
   //===------------------------------------------------------------------===//
 
-  const ProgramState *assumeAux(const ProgramState *state, Loc Cond,bool Assumption);
+  bool canReasonAbout(SVal X) const;
 
-  const ProgramState *assumeAux(const ProgramState *state, NonLoc Cond, bool Assumption);
+  const ProgramState *assumeAux(const ProgramState *state,
+                                Loc Cond,
+                                bool Assumption);
+
+  const ProgramState *assumeAux(const ProgramState *state,
+                                NonLoc Cond,
+                                bool Assumption);
+
+  const ProgramState *assumeAuxForSymbol(const ProgramState *State,
+                                         SymbolRef Sym,
+                                         bool Assumption);
 };
 
 } // end GR namespace

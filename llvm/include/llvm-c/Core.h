@@ -115,7 +115,10 @@ typedef enum {
     LLVMNoImplicitFloatAttribute = 1<<23,
     LLVMNakedAttribute      = 1<<24,
     LLVMInlineHintAttribute = 1<<25,
-    LLVMStackAlignment = 7<<26
+    LLVMStackAlignment = 7<<26,
+    LLVMReturnsTwice = 1 << 29,
+    LLVMUWTable = 1 << 30,
+    LLVMNonLazyBind = 1 << 31
 } LLVMAttribute;
 
 typedef enum {
@@ -176,8 +179,8 @@ typedef enum {
   LLVMPHI            = 44,
   LLVMCall           = 45,
   LLVMSelect         = 46,
-  /* UserOp1 */
-  /* UserOp2 */
+  LLVMUserOp1        = 47,
+  LLVMUserOp2        = 48,
   LLVMVAArg          = 49,
   LLVMExtractElement = 50,
   LLVMInsertElement  = 51,
@@ -192,12 +195,15 @@ typedef enum {
 
   /* Exception Handling Operators */
   LLVMResume         = 58,
-  LLVMLandingPad     = 59
+  LLVMLandingPad     = 59,
+  LLVMUnwind         = 60
+
 
 } LLVMOpcode;
 
 typedef enum {
   LLVMVoidTypeKind,        /**< type with no size */
+  LLVMHalfTypeKind,        /**< 16 bit floating point type */
   LLVMFloatTypeKind,       /**< 32 bit floating point type */
   LLVMDoubleTypeKind,      /**< 64 bit floating point type */
   LLVMX86_FP80TypeKind,    /**< 80 bit floating point type (X87) */
@@ -355,6 +361,7 @@ LLVMContextRef LLVMGetModuleContext(LLVMModuleRef M);
 
 /** See llvm::LLVMTypeKind::getTypeID. */
 LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty);
+LLVMBool LLVMTypeIsSized(LLVMTypeRef Ty);
 
 /** See llvm::LLVMType::getContext. */
 LLVMContextRef LLVMGetTypeContext(LLVMTypeRef Ty);
@@ -376,12 +383,14 @@ LLVMTypeRef LLVMIntType(unsigned NumBits);
 unsigned LLVMGetIntTypeWidth(LLVMTypeRef IntegerTy);
 
 /* Operations on real types */
+LLVMTypeRef LLVMHalfTypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMFloatTypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMDoubleTypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMX86FP80TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMFP128TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMPPCFP128TypeInContext(LLVMContextRef C);
 
+LLVMTypeRef LLVMHalfType(void);
 LLVMTypeRef LLVMFloatType(void);
 LLVMTypeRef LLVMDoubleType(void);
 LLVMTypeRef LLVMX86FP80Type(void);
@@ -403,6 +412,7 @@ LLVMTypeRef LLVMStructTypeInContext(LLVMContextRef C, LLVMTypeRef *ElementTypes,
 LLVMTypeRef LLVMStructType(LLVMTypeRef *ElementTypes, unsigned ElementCount,
                            LLVMBool Packed);
 LLVMTypeRef LLVMStructCreateNamed(LLVMContextRef C, const char *Name);
+const char *LLVMGetStructName(LLVMTypeRef Ty);
 void LLVMStructSetBody(LLVMTypeRef StructTy, LLVMTypeRef *ElementTypes,
                        unsigned ElementCount, LLVMBool Packed);
 
@@ -442,8 +452,11 @@ LLVMTypeRef LLVMX86MMXType(void);
   macro(Argument)                           \
   macro(BasicBlock)                         \
   macro(InlineAsm)                          \
+  macro(MDNode)                             \
+  macro(MDString)                           \
   macro(User)                               \
     macro(Constant)                         \
+      macro(BlockAddress)                   \
       macro(ConstantAggregateZero)          \
       macro(ConstantArray)                  \
       macro(ConstantExpr)                   \
@@ -463,14 +476,15 @@ LLVMTypeRef LLVMX86MMXType(void);
         macro(IntrinsicInst)                \
           macro(DbgInfoIntrinsic)           \
             macro(DbgDeclareInst)           \
+          macro(EHExceptionInst)            \
           macro(EHSelectorInst)             \
           macro(MemIntrinsic)               \
             macro(MemCpyInst)               \
             macro(MemMoveInst)              \
             macro(MemSetInst)               \
       macro(CmpInst)                        \
-      macro(FCmpInst)                       \
-      macro(ICmpInst)                       \
+        macro(FCmpInst)                     \
+        macro(ICmpInst)                     \
       macro(ExtractElementInst)             \
       macro(GetElementPtrInst)              \
       macro(InsertElementInst)              \
@@ -482,6 +496,7 @@ LLVMTypeRef LLVMX86MMXType(void);
       macro(StoreInst)                      \
       macro(TerminatorInst)                 \
         macro(BranchInst)                   \
+        macro(IndirectBrInst)               \
         macro(InvokeInst)                   \
         macro(ReturnInst)                   \
         macro(SwitchInst)                   \
@@ -528,7 +543,7 @@ LLVMUseRef LLVMGetNextUse(LLVMUseRef U);
 LLVMValueRef LLVMGetUser(LLVMUseRef U);
 LLVMValueRef LLVMGetUsedValue(LLVMUseRef U);
 
-/* Operations on Users */
+/* Operations on Users and metadata */
 LLVMValueRef LLVMGetOperand(LLVMValueRef Val, unsigned Index);
 void LLVMSetOperand(LLVMValueRef User, unsigned Index, LLVMValueRef Val);
 int LLVMGetNumOperands(LLVMValueRef Val);
@@ -549,6 +564,11 @@ LLVMValueRef LLVMMDString(const char *Str, unsigned SLen);
 LLVMValueRef LLVMMDNodeInContext(LLVMContextRef C, LLVMValueRef *Vals,
                                  unsigned Count);
 LLVMValueRef LLVMMDNode(LLVMValueRef *Vals, unsigned Count);
+const char  *LLVMGetMDString(LLVMValueRef V, unsigned* Len);
+unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char* name);
+void LLVMGetNamedMetadataOperands(LLVMModuleRef M, const char* name, LLVMValueRef *Dest);
+void LLVMAddNamedMetadataOperand(LLVMModuleRef M, const char* name,
+                                 LLVMValueRef Val);
 
 /* Operations on scalar constants */
 LLVMValueRef LLVMConstInt(LLVMTypeRef IntTy, unsigned long long N,
@@ -776,6 +796,9 @@ LLVMValueRef LLVMGetLastInstruction(LLVMBasicBlockRef BB);
 LLVMBasicBlockRef LLVMGetInstructionParent(LLVMValueRef Inst);
 LLVMValueRef LLVMGetNextInstruction(LLVMValueRef Inst);
 LLVMValueRef LLVMGetPreviousInstruction(LLVMValueRef Inst);
+void LLVMInstructionEraseFromParent(LLVMValueRef Inst);
+LLVMOpcode   LLVMGetInstructionOpcode(LLVMValueRef Inst);
+LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst);
 
 /* Operations on call sites */
 void LLVMSetInstructionCallConv(LLVMValueRef Instr, unsigned CC);

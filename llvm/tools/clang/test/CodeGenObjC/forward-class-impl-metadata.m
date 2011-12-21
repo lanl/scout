@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fobjc-nonfragile-abi -emit-llvm -o %t %s
+// RUN: %clang_cc1 -emit-llvm -o %t %s
 
 @interface BASE  {
 @private
@@ -38,4 +38,10 @@ int f0(A *a) {
 
 @implementation A
 @synthesize p0 = _p0;
+@end
+
+@interface B
+@end
+@class B;
+@implementation B
 @end

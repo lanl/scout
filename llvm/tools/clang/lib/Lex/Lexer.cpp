@@ -62,6 +62,8 @@ tok::ObjCKeywordKind Token::getObjCKeywordID() const {
 // Lexer Class Implementation
 //===----------------------------------------------------------------------===//
 
+void Lexer::anchor() { }
+
 void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
                       const char *BufEnd) {
   InitCharacterInfo();
@@ -89,7 +91,7 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
   }
 
   Is_PragmaLexer = false;
-  IsInConflictMarker = false;
+  CurrentConflictMarkerState = CMK_None;
 
   // Start of the file is a start of line.
   IsAtStartOfLine = true;
@@ -1461,8 +1463,7 @@ void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   }
 
   // If we have a hex FP constant, continue.
-  if ((C == '-' || C == '+') && (PrevCh == 'P' || PrevCh == 'p') &&
-      !Features.CPlusPlus0x)
+  if ((C == '-' || C == '+') && (PrevCh == 'P' || PrevCh == 'p'))
     return LexNumericConstant(Result, ConsumeChar(CurPtr, Size, Result));
 
   // Update the location of token as well as BufferPtr.
@@ -1476,6 +1477,12 @@ void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
 void Lexer::LexStringLiteral(Token &Result, const char *CurPtr,
                              tok::TokenKind Kind) {
   const char *NulCharacter = 0; // Does this string contain the \0 character?
+
+  if (!isLexingRawMode() &&
+      (Kind == tok::utf8_string_literal ||
+       Kind == tok::utf16_string_literal ||
+       Kind == tok::utf32_string_literal))
+    Diag(BufferPtr, diag::warn_cxx98_compat_unicode_literal);
 
   char C = getAndAdvanceChar(CurPtr, Result);
   while (C != '"') {
@@ -1522,6 +1529,9 @@ void Lexer::LexRawStringLiteral(Token &Result, const char *CurPtr,
   //  Between the initial and final double quote characters of the raw string,
   //  any transformations performed in phases 1 and 2 (trigraphs,
   //  universal-character-names, and line splicing) are reverted.
+
+  if (!isLexingRawMode())
+    Diag(BufferPtr, diag::warn_cxx98_compat_raw_string_literal);
 
   unsigned PrefixLen = 0;
 
@@ -1626,6 +1636,10 @@ void Lexer::LexAngledStringLiteral(Token &Result, const char *CurPtr) {
 void Lexer::LexCharConstant(Token &Result, const char *CurPtr,
                             tok::TokenKind Kind) {
   const char *NulCharacter = 0; // Does this character contain the \0 character?
+
+  if (!isLexingRawMode() &&
+      (Kind == tok::utf16_char_constant || Kind == tok::utf32_char_constant))
+    Diag(BufferPtr, diag::warn_cxx98_compat_unicode_literal);
 
   char C = getAndAdvanceChar(CurPtr, Result);
   if (C == '\'') {
@@ -1879,7 +1893,7 @@ bool Lexer::SaveBCPLComment(Token &Result, const char *CurPtr) {
 
   Result.setKind(tok::comment);
   PP->CreateString(&Spelling[0], Spelling.size(), Result,
-                   Result.getLocation());
+                   Result.getLocation(), Result.getLocation());
   return true;
 }
 
@@ -2007,11 +2021,18 @@ bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr) {
       if (C == '/') goto FoundSlash;
 
 #ifdef __SSE2__
-      __m128i Slashes = _mm_set_epi8('/', '/', '/', '/', '/', '/', '/', '/',
-                                     '/', '/', '/', '/', '/', '/', '/', '/');
-      while (CurPtr+16 <= BufferEnd &&
-             _mm_movemask_epi8(_mm_cmpeq_epi8(*(__m128i*)CurPtr, Slashes)) == 0)
+      __m128i Slashes = _mm_set1_epi8('/');
+      while (CurPtr+16 <= BufferEnd) {
+        int cmp = _mm_movemask_epi8(_mm_cmpeq_epi8(*(__m128i*)CurPtr, Slashes));
+        if (cmp != 0) {
+          // Adjust the pointer to point directly after the first slash. It's
+          // not necessary to set C here, it will be overwritten at the end of
+          // the outer loop.
+          CurPtr += llvm::CountTrailingZeros_32(cmp) + 1;
+          goto FoundSlash;
+        }
         CurPtr += 16;
+      }
 #elif __ALTIVEC__
       __vector unsigned char Slashes = {
         '/', '/', '/', '/',  '/', '/', '/', '/',
@@ -2039,8 +2060,8 @@ bool Lexer::SkipBlockComment(Token &Result, const char *CurPtr) {
     while (C != '/' && C != '\0')
       C = *CurPtr++;
 
-  FoundSlash:
     if (C == '/') {
+  FoundSlash:
       if (CurPtr[-2] == '*')  // We found the final */.  We're done!
         break;
 
@@ -2252,15 +2273,18 @@ unsigned Lexer::isNextPPTokenLParen() {
 }
 
 /// FindConflictEnd - Find the end of a version control conflict marker.
-static const char *FindConflictEnd(const char *CurPtr, const char *BufferEnd) {
-  StringRef RestOfBuffer(CurPtr+7, BufferEnd-CurPtr-7);
-  size_t Pos = RestOfBuffer.find(">>>>>>>");
+static const char *FindConflictEnd(const char *CurPtr, const char *BufferEnd,
+                                   ConflictMarkerKind CMK) {
+  const char *Terminator = CMK == CMK_Perforce ? "<<<<\n" : ">>>>>>>";
+  size_t TermLen = CMK == CMK_Perforce ? 5 : 7;
+  StringRef RestOfBuffer(CurPtr+TermLen, BufferEnd-CurPtr-TermLen);
+  size_t Pos = RestOfBuffer.find(Terminator);
   while (Pos != StringRef::npos) {
     // Must occur at start of line.
     if (RestOfBuffer[Pos-1] != '\r' &&
         RestOfBuffer[Pos-1] != '\n') {
-      RestOfBuffer = RestOfBuffer.substr(Pos+7);
-      Pos = RestOfBuffer.find(">>>>>>>");
+      RestOfBuffer = RestOfBuffer.substr(Pos+TermLen);
+      Pos = RestOfBuffer.find(Terminator);
       continue;
     }
     return RestOfBuffer.data()+Pos;
@@ -2278,23 +2302,25 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
       CurPtr[-1] != '\n' && CurPtr[-1] != '\r')
     return false;
 
-  // Check to see if we have <<<<<<<.
-  if (BufferEnd-CurPtr < 8 ||
-      StringRef(CurPtr, 7) != "<<<<<<<")
+  // Check to see if we have <<<<<<< or >>>>.
+  if ((BufferEnd-CurPtr < 8 || StringRef(CurPtr, 7) != "<<<<<<<") &&
+      (BufferEnd-CurPtr < 6 || StringRef(CurPtr, 5) != ">>>> "))
     return false;
 
   // If we have a situation where we don't care about conflict markers, ignore
   // it.
-  if (IsInConflictMarker || isLexingRawMode())
+  if (CurrentConflictMarkerState || isLexingRawMode())
     return false;
 
-  // Check to see if there is a >>>>>>> somewhere in the buffer at the start of
-  // a line to terminate this conflict marker.
-  if (FindConflictEnd(CurPtr, BufferEnd)) {
+  ConflictMarkerKind Kind = *CurPtr == '<' ? CMK_Normal : CMK_Perforce;
+
+  // Check to see if there is an ending marker somewhere in the buffer at the
+  // start of a line to terminate this conflict marker.
+  if (FindConflictEnd(CurPtr, BufferEnd, Kind)) {
     // We found a match.  We are really in a conflict marker.
     // Diagnose this, and ignore to the end of line.
     Diag(CurPtr, diag::err_conflict_marker);
-    IsInConflictMarker = true;
+    CurrentConflictMarkerState = Kind;
 
     // Skip ahead to the end of line.  We know this exists because the
     // end-of-conflict marker starts with \r or \n.
@@ -2311,10 +2337,10 @@ bool Lexer::IsStartOfConflictMarker(const char *CurPtr) {
 }
 
 
-/// HandleEndOfConflictMarker - If this is a '=======' or '|||||||' or '>>>>>>>'
-/// marker, then it is the end of a conflict marker.  Handle it by ignoring up
-/// until the end of the line.  This returns true if it is a conflict marker and
-/// false if not.
+/// HandleEndOfConflictMarker - If this is a '====' or '||||' or '>>>>', or if
+/// it is '<<<<' and the conflict marker started with a '>>>>' marker, then it
+/// is the end of a conflict marker.  Handle it by ignoring up until the end of
+/// the line.  This returns true if it is a conflict marker and false if not.
 bool Lexer::HandleEndOfConflictMarker(const char *CurPtr) {
   // Only a conflict marker if it starts at the beginning of a line.
   if (CurPtr != BufferStart &&
@@ -2323,18 +2349,19 @@ bool Lexer::HandleEndOfConflictMarker(const char *CurPtr) {
 
   // If we have a situation where we don't care about conflict markers, ignore
   // it.
-  if (!IsInConflictMarker || isLexingRawMode())
+  if (!CurrentConflictMarkerState || isLexingRawMode())
     return false;
 
-  // Check to see if we have the marker (7 characters in a row).
-  for (unsigned i = 1; i != 7; ++i)
+  // Check to see if we have the marker (4 characters in a row).
+  for (unsigned i = 1; i != 4; ++i)
     if (CurPtr[i] != CurPtr[0])
       return false;
 
   // If we do have it, search for the end of the conflict marker.  This could
   // fail if it got skipped with a '#if 0' or something.  Note that CurPtr might
   // be the end of conflict marker.
-  if (const char *End = FindConflictEnd(CurPtr, BufferEnd)) {
+  if (const char *End = FindConflictEnd(CurPtr, BufferEnd,
+                                        CurrentConflictMarkerState)) {
     CurPtr = End;
 
     // Skip ahead to the end of line.
@@ -2344,7 +2371,7 @@ bool Lexer::HandleEndOfConflictMarker(const char *CurPtr) {
     BufferPtr = CurPtr;
 
     // No longer in the conflict marker.
-    IsInConflictMarker = false;
+    CurrentConflictMarkerState = CMK_None;
     return true;
   }
 
@@ -2836,7 +2863,7 @@ LexNextToken:
       } else if (Char == '@' && Features.MicrosoftExt) {// %:@ -> #@ -> Charize
         CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
         if (!isLexingRawMode())
-          Diag(BufferPtr, diag::charize_microsoft_ext);
+          Diag(BufferPtr, diag::ext_charize_microsoft);
         Kind = tok::hashat;
       } else {                                         // '%:' -> '#'
         // We parsed a # character.  If this occurs at the start of the line,
@@ -2884,6 +2911,10 @@ LexNextToken:
         // If this is actually a '<<<<<<<' version control conflict marker,
         // recognize it as such and recover nicely.
         goto LexNextToken;
+      } else if (After == '<' && HandleEndOfConflictMarker(CurPtr-1)) {
+        // If this is '<<<<' and we're in a Perforce-style conflict marker,
+        // ignore it.
+        goto LexNextToken;
       } else if (Features.CUDA && After == '<') {
         Kind = tok::lesslessless;
         CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
@@ -2907,6 +2938,8 @@ LexNextToken:
         char After = getCharAndSize(CurPtr + SizeTmp + SizeTmp2, SizeTmp3);
         if (After != ':' && After != '>') {
           Kind = tok::less;
+          if (!isLexingRawMode())
+            Diag(BufferPtr, diag::warn_cxx98_compat_less_colon_colon);
           break;
         }
       }
@@ -2931,6 +2964,10 @@ LexNextToken:
         CurPtr = ConsumeChar(ConsumeChar(CurPtr, SizeTmp, Result),
                              SizeTmp2, Result);
         Kind = tok::greatergreaterequal;
+      } else if (After == '>' && IsStartOfConflictMarker(CurPtr-1)) {
+        // If this is actually a '>>>>' conflict marker, recognize it as such
+        // and recover nicely.
+        goto LexNextToken;
       } else if (After == '>' && HandleEndOfConflictMarker(CurPtr-1)) {
         // If this is '>>>>>>>' and we're in a conflict marker, ignore it.
         goto LexNextToken;
@@ -2989,7 +3026,7 @@ LexNextToken:
   case '=':
     Char = getCharAndSize(CurPtr, SizeTmp);
     if (Char == '=') {
-      // If this is '=======' and we're in a conflict marker, ignore it.
+      // If this is '====' and we're in a conflict marker, ignore it.
       if (CurPtr[1] == '=' && HandleEndOfConflictMarker(CurPtr-1))
         goto LexNextToken;
 
@@ -3010,7 +3047,7 @@ LexNextToken:
     } else if (Char == '@' && Features.MicrosoftExt) {  // #@ -> Charize
       Kind = tok::hashat;
       if (!isLexingRawMode())
-        Diag(BufferPtr, diag::charize_microsoft_ext);
+        Diag(BufferPtr, diag::ext_charize_microsoft);
       CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
     } else {
       // We parsed a # character.  If this occurs at the start of the line,

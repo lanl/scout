@@ -74,7 +74,8 @@ public:
 
   /// EmitFinalDestCopy - Perform the final copy to DestPtr, if desired.
   void EmitFinalDestCopy(const Expr *E, LValue Src, bool Ignore = false);
-  void EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore = false);
+  void EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore = false,
+                         unsigned Alignment = 0);
 
   void EmitMoveFromReturnSlot(const Expr *E, RValue Src);
 
@@ -131,7 +132,6 @@ public:
   void VisitObjCIvarRefExpr(ObjCIvarRefExpr *E) {
     EmitAggLoadOfLValue(E);
   }
-  void VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E);
 
   void VisitAbstractConditionalOperator(const AbstractConditionalOperator *CO);
   void VisitChooseExpr(const ChooseExpr *CE);
@@ -148,12 +148,24 @@ public:
   void VisitMaterializeTemporaryExpr(MaterializeTemporaryExpr *E);
   void VisitOpaqueValueExpr(OpaqueValueExpr *E);
 
+  void VisitPseudoObjectExpr(PseudoObjectExpr *E) {
+    if (E->isGLValue()) {
+      LValue LV = CGF.EmitPseudoObjectLValue(E);
+      return EmitFinalDestCopy(E, LV);
+    }
+
+    CGF.EmitPseudoObjectRValue(E, EnsureSlot(E->getType()));
+  }
+
   void VisitVAArgExpr(VAArgExpr *E);
 
   void EmitInitializationToLValue(Expr *E, LValue Address);
   void EmitNullInitializationToLValue(LValue Address);
   //  case Expr::ChooseExprClass:
   void VisitCXXThrowExpr(const CXXThrowExpr *E) { CGF.EmitCXXThrowExpr(E); }
+  void VisitAtomicExpr(AtomicExpr *E) {
+    CGF.EmitAtomicExpr(E, EnsureSlot(E->getType()).getAddr());
+  }
 };
 }  // end anonymous namespace.
 
@@ -210,7 +222,8 @@ void AggExprEmitter::EmitMoveFromReturnSlot(const Expr *E, RValue Src) {
 }
 
 /// EmitFinalDestCopy - Perform the final copy to DestPtr, if desired.
-void AggExprEmitter::EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore) {
+void AggExprEmitter::EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore,
+                                       unsigned Alignment) {
   assert(Src.isAggregate() && "value must be aggregate value!");
 
   // If Dest is ignored, then we're evaluating an aggregate expression
@@ -245,16 +258,16 @@ void AggExprEmitter::EmitFinalDestCopy(const Expr *E, RValue Src, bool Ignore) {
   // from the source as well, as we can't eliminate it if either operand
   // is volatile, unless copy has volatile for both source and destination..
   CGF.EmitAggregateCopy(Dest.getAddr(), Src.getAggregateAddr(), E->getType(),
-                        Dest.isVolatile()|Src.isVolatileQualified());
+                        Dest.isVolatile()|Src.isVolatileQualified(),
+                        Alignment);
 }
 
 /// EmitFinalDestCopy - Perform the final copy to DestPtr, if desired.
 void AggExprEmitter::EmitFinalDestCopy(const Expr *E, LValue Src, bool Ignore) {
   assert(Src.isSimple() && "Can't have aggregate bitfield, vector, etc");
 
-  EmitFinalDestCopy(E, RValue::getAggregate(Src.getAddress(),
-                                            Src.isVolatileQualified()),
-                    Ignore);
+  CharUnits Alignment = std::min(Src.getAlignment(), Dest.getAlignment());
+  EmitFinalDestCopy(E, Src.asAggregateRValue(), Ignore, Alignment.getQuantity());
 }
 
 //===----------------------------------------------------------------------===//
@@ -320,14 +333,6 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
   case CK_UncheckedDerivedToBase: {
     llvm_unreachable("cannot perform hierarchy conversion in EmitAggExpr: "
                 "should have been unpacked before we got here");
-  }
-
-  case CK_GetObjCProperty: {
-    LValue LV = CGF.EmitLValue(E->getSubExpr());
-    assert(LV.isPropertyRef());
-    RValue RV = CGF.EmitLoadOfPropertyRefLValue(LV, getReturnValueSlot());
-    EmitMoveFromReturnSlot(E, RV);
-    break;
   }
 
   case CK_LValueToRValue: // hope for downstream optimization
@@ -401,11 +406,6 @@ void AggExprEmitter::VisitObjCMessageExpr(ObjCMessageExpr *E) {
   EmitMoveFromReturnSlot(E, RV);
 }
 
-void AggExprEmitter::VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E) {
-  llvm_unreachable("direct property access not surrounded by "
-                   "lvalue-to-rvalue cast");
-}
-
 void AggExprEmitter::VisitBinComma(const BinaryOperator *E) {
   CGF.EmitIgnoredExpr(E->getLHS());
   Visit(E->getRHS());
@@ -453,29 +453,13 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
   
   LValue LHS = CGF.EmitLValue(E->getLHS());
 
-  // We have to special case property setters, otherwise we must have
-  // a simple lvalue (no aggregates inside vectors, bitfields).
-  if (LHS.isPropertyRef()) {
-    const ObjCPropertyRefExpr *RE = LHS.getPropertyRefExpr();
-    QualType ArgType = RE->getSetterArgType();
-    RValue Src;
-    if (ArgType->isReferenceType())
-      Src = CGF.EmitReferenceBindingToExpr(E->getRHS(), 0);
-    else {
-      AggValueSlot Slot = EnsureSlot(E->getRHS()->getType());
-      CGF.EmitAggExpr(E->getRHS(), Slot);
-      Src = Slot.asRValue();
-    }
-    CGF.EmitStoreThroughPropertyRefLValue(Src, LHS);
-  } else {
-    // Codegen the RHS so that it stores directly into the LHS.
-    AggValueSlot LHSSlot =
-      AggValueSlot::forLValue(LHS, AggValueSlot::IsDestructed, 
-                              needsGC(E->getLHS()->getType()),
-                              AggValueSlot::IsAliased);
-    CGF.EmitAggExpr(E->getRHS(), LHSSlot, false);
-    EmitFinalDestCopy(E, LHS, true);
-  }
+  // Codegen the RHS so that it stores directly into the LHS.
+  AggValueSlot LHSSlot =
+    AggValueSlot::forLValue(LHS, AggValueSlot::IsDestructed, 
+                            needsGC(E->getLHS()->getType()),
+                            AggValueSlot::IsAliased);
+  CGF.EmitAggExpr(E->getRHS(), LHSSlot, false);
+  EmitFinalDestCopy(E, LHS, true);
 }
 
 void AggExprEmitter::
@@ -544,7 +528,7 @@ void AggExprEmitter::VisitCXXBindTemporaryExpr(CXXBindTemporaryExpr *E) {
 
   // Push that destructor we promised.
   if (!wasExternallyDestructed)
-    CGF.EmitCXXTemporary(E->getTemporary(), Dest.getAddr());
+    CGF.EmitCXXTemporary(E->getTemporary(), E->getType(), Dest.getAddr());
 }
 
 void
@@ -554,7 +538,9 @@ AggExprEmitter::VisitCXXConstructExpr(const CXXConstructExpr *E) {
 }
 
 void AggExprEmitter::VisitExprWithCleanups(ExprWithCleanups *E) {
-  CGF.EmitExprWithCleanups(E, Dest);
+  CGF.enterFullExpression(E);
+  CodeGenFunction::RunCleanupsScope cleanups(CGF);
+  Visit(E->getSubExpr());
 }
 
 void AggExprEmitter::VisitCXXScalarValueInitExpr(CXXScalarValueInitExpr *E) {
@@ -703,6 +689,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
     QualType::DestructionKind dtorKind = elementType.isDestructedType();
     llvm::AllocaInst *endOfInit = 0;
     EHScopeStack::stable_iterator cleanup;
+    llvm::Instruction *cleanupDominator = 0;
     if (CGF.needsEHCleanup(dtorKind)) {
       // In principle we could tell the cleanup where we are more
       // directly, but the control flow can get so varied here that it
@@ -710,7 +697,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
       // alloca.
       endOfInit = CGF.CreateTempAlloca(begin->getType(),
                                        "arrayinit.endOfInit");
-      Builder.CreateStore(begin, endOfInit);
+      cleanupDominator = Builder.CreateStore(begin, endOfInit);
       CGF.pushIrregularPartialArrayCleanup(begin, endOfInit, elementType,
                                            CGF.getDestroyer(dtorKind));
       cleanup = CGF.EHStack.stable_begin();
@@ -810,7 +797,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
     }
 
     // Leave the partial-array cleanup if we entered one.
-    if (dtorKind) CGF.DeactivateCleanupBlock(cleanup);
+    if (dtorKind) CGF.DeactivateCleanupBlock(cleanup, cleanupDominator);
 
     return;
   }
@@ -859,6 +846,7 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
   // We'll need to enter cleanup scopes in case any of the member
   // initializers throw an exception.
   SmallVector<EHScopeStack::stable_iterator, 16> cleanups;
+  llvm::Instruction *cleanupDominator = 0;
 
   // Here we iterate over the fields; this makes it simpler to both
   // default-initialize fields and skip over unnamed fields.
@@ -902,6 +890,9 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
           = field->getType().isDestructedType()) {
       assert(LV.isSimple());
       if (CGF.needsEHCleanup(dtorKind)) {
+        if (!cleanupDominator)
+          cleanupDominator = CGF.Builder.CreateUnreachable(); // placeholder
+
         CGF.pushDestroy(EHCleanup, LV.getAddress(), field->getType(),
                         CGF.getDestroyer(dtorKind), false);
         cleanups.push_back(CGF.EHStack.stable_begin());
@@ -921,7 +912,11 @@ void AggExprEmitter::VisitInitListExpr(InitListExpr *E) {
   // Deactivate all the partial cleanups in reverse order, which
   // generally means popping them.
   for (unsigned i = cleanups.size(); i != 0; --i)
-    CGF.DeactivateCleanupBlock(cleanups[i-1]);
+    CGF.DeactivateCleanupBlock(cleanups[i-1], cleanupDominator);
+
+  // Destroy the placeholder if we made one.
+  if (cleanupDominator)
+    cleanupDominator->eraseFromParent();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1063,7 +1058,7 @@ LValue CodeGenFunction::EmitAggExprToLValue(const Expr *E) {
 
 void CodeGenFunction::EmitAggregateCopy(llvm::Value *DestPtr,
                                         llvm::Value *SrcPtr, QualType Ty,
-                                        bool isVolatile) {
+                                        bool isVolatile, unsigned Alignment) {
   assert(!Ty->isAnyComplexType() && "Shouldn't happen for complex");
 
   if (getContext().getLangOptions().CPlusPlus) {
@@ -1095,6 +1090,9 @@ void CodeGenFunction::EmitAggregateCopy(llvm::Value *DestPtr,
   // Get size and alignment info for this aggregate.
   std::pair<CharUnits, CharUnits> TypeInfo = 
     getContext().getTypeInfoInChars(Ty);
+
+  if (!Alignment)
+    Alignment = TypeInfo.second.getQuantity();
 
   // FIXME: Handle variable sized types.
 
@@ -1152,5 +1150,5 @@ void CodeGenFunction::EmitAggregateCopy(llvm::Value *DestPtr,
   Builder.CreateMemCpy(DestPtr, SrcPtr,
                        llvm::ConstantInt::get(IntPtrTy, 
                                               TypeInfo.first.getQuantity()),
-                       TypeInfo.second.getQuantity(), isVolatile);
+                       Alignment, isVolatile);
 }

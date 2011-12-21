@@ -117,6 +117,10 @@ static bool EvaluateDefined(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     PP.markMacroAsUsed(Macro);
   }
 
+  // Invoke the 'defined' callback.
+  if (PPCallbacks *Callbacks = PP.getPPCallbacks())
+    Callbacks->Defined(PeekTok);
+
   // If we are in parens, ensure we have a trailing ).
   if (LParenLoc.isValid()) {
     // Consume identifier.
@@ -212,9 +216,9 @@ static bool EvaluateValue(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     assert(Literal.isIntegerLiteral() && "Unknown ppnumber");
 
     // long long is a C99 feature.
-    if (!PP.getLangOptions().C99 && !PP.getLangOptions().CPlusPlus0x
-        && Literal.isLongLong)
-      PP.Diag(PeekTok, diag::ext_longlong);
+    if (!PP.getLangOptions().C99 && Literal.isLongLong)
+      PP.Diag(PeekTok, PP.getLangOptions().CPlusPlus0x ?
+              diag::warn_cxx98_compat_longlong : diag::ext_longlong);
 
     // Parse the integer literal into Result.
     if (Literal.GetIntegerValue(Result.Val)) {
@@ -774,4 +778,3 @@ EvaluateDirectiveExpression(IdentifierInfo *&IfNDefMacro) {
   DisableMacroExpansion = DisableMacroExpansionAtStartOfDirective;
   return ResVal.Val != 0;
 }
-

@@ -16,6 +16,7 @@
 #define LLVM_CLANG_GR_ANALYSISMANAGER_H
 
 #include "clang/Analysis/AnalysisContext.h"
+#include "clang/Frontend/AnalyzerOptions.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 
@@ -30,8 +31,8 @@ namespace ento {
   class CheckerManager;
 
 class AnalysisManager : public BugReporterData {
-  AnalysisContextManager AnaCtxMgr;
-  LocationContextManager LocCtxMgr;
+  virtual void anchor();
+  AnalysisDeclContextManager AnaCtxMgr;
 
   ASTContext &Ctx;
   DiagnosticsEngine &Diags;
@@ -60,7 +61,7 @@ class AnalysisManager : public BugReporterData {
 
   bool VisualizeEGDot;
   bool VisualizeEGUbi;
-  bool PurgeDead;
+  AnalysisPurgeMode PurgeDead;
 
   /// EargerlyAssume - A flag indicating how the engine should handle
   //   expressions such as: 'x = (y != 0)'.  When this flag is true then
@@ -82,19 +83,24 @@ public:
                   CheckerManager *checkerMgr,
                   idx::Indexer *idxer,
                   unsigned maxnodes, unsigned maxvisit,
-                  bool vizdot, bool vizubi, bool purge, bool eager, bool trim,
+                  bool vizdot, bool vizubi, AnalysisPurgeMode purge,
+                  bool eager, bool trim,
                   bool inlinecall, bool useUnoptimizedCFG,
                   bool addImplicitDtors, bool addInitializers,
                   bool eagerlyTrimEGraph);
 
+  /// Construct a clone of the given AnalysisManager with the given ASTContext
+  /// and DiagnosticsEngine.
+  AnalysisManager(ASTContext &ctx, DiagnosticsEngine &diags,
+                  AnalysisManager &ParentAM);
+
   ~AnalysisManager() { FlushDiagnostics(); }
   
   void ClearContexts() {
-    LocCtxMgr.clear();
     AnaCtxMgr.clear();
   }
   
-  AnalysisContextManager& getAnalysisContextManager() {
+  AnalysisDeclContextManager& getAnalysisDeclContextManager() {
     return AnaCtxMgr;
   }
 
@@ -151,7 +157,7 @@ public:
 
   bool shouldTrimGraph() const { return TrimGraph; }
 
-  bool shouldPurgeDead() const { return PurgeDead; }
+  AnalysisPurgeMode getPurgeMode() const { return PurgeDead; }
 
   bool shouldEagerlyAssume() const { return EagerlyAssume; }
 
@@ -159,52 +165,32 @@ public:
 
   bool hasIndexer() const { return Idxer != 0; }
 
-  AnalysisContext *getAnalysisContextInAnotherTU(const Decl *D);
+  AnalysisDeclContext *getAnalysisDeclContextInAnotherTU(const Decl *D);
 
   CFG *getCFG(Decl const *D) {
     return AnaCtxMgr.getContext(D)->getCFG();
   }
 
-  LiveVariables *getLiveVariables(Decl const *D) {
-    return AnaCtxMgr.getContext(D)->getLiveVariables();
+  template <typename T>
+  T *getAnalysis(Decl const *D) {
+    return AnaCtxMgr.getContext(D)->getAnalysis<T>();
   }
 
   ParentMap &getParentMap(Decl const *D) {
     return AnaCtxMgr.getContext(D)->getParentMap();
   }
 
-  AnalysisContext *getAnalysisContext(const Decl *D) {
+  AnalysisDeclContext *getAnalysisDeclContext(const Decl *D) {
     return AnaCtxMgr.getContext(D);
   }
 
-  AnalysisContext *getAnalysisContext(const Decl *D, idx::TranslationUnit *TU) {
+  AnalysisDeclContext *getAnalysisDeclContext(const Decl *D, idx::TranslationUnit *TU) {
     return AnaCtxMgr.getContext(D, TU);
   }
 
-  const StackFrameContext *getStackFrame(AnalysisContext *Ctx,
-                                         LocationContext const *Parent,
-                                         const Stmt *S,
-                                         const CFGBlock *Blk, unsigned Idx) {
-    return LocCtxMgr.getStackFrame(Ctx, Parent, S, Blk, Idx);
-  }
-
-  // Get the top level stack frame.
-  const StackFrameContext *getStackFrame(Decl const *D, 
-                                         idx::TranslationUnit *TU) {
-    return LocCtxMgr.getStackFrame(AnaCtxMgr.getContext(D, TU), 0, 0, 0, 0);
-  }
-
-  // Get a stack frame with parent.
-  StackFrameContext const *getStackFrame(const Decl *D, 
-                                         LocationContext const *Parent,
-                                         const Stmt *S,
-                                         const CFGBlock *Blk, unsigned Idx) {
-    return LocCtxMgr.getStackFrame(AnaCtxMgr.getContext(D), Parent, S,
-                                   Blk,Idx);
-  }
 };
 
-} // end GR namespace
+} // enAnaCtxMgrspace
 
 } // end clang namespace
 

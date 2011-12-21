@@ -359,7 +359,7 @@ static void EmitAnyExprToExn(CodeGenFunction &CGF, const Expr *e,
                        /*IsInit*/ true);
 
   // Deactivate the cleanup block.
-  CGF.DeactivateCleanupBlock(cleanup);
+  CGF.DeactivateCleanupBlock(cleanup, cast<llvm::Instruction>(typedAddr));
 }
 
 llvm::Value *CodeGenFunction::getExceptionSlot() {
@@ -1039,10 +1039,12 @@ static void InitCatchParam(CodeGenFunction &CGF,
   CGF.EHStack.pushTerminate();
 
   // Perform the copy construction.
-  CGF.EmitAggExpr(copyExpr, AggValueSlot::forAddr(ParamAddr, Qualifiers(),
-                                                  AggValueSlot::IsNotDestructed,
-                                          AggValueSlot::DoesNotNeedGCBarriers,
-                                                  AggValueSlot::IsNotAliased));
+  CharUnits Alignment = CGF.getContext().getDeclAlign(&CatchParam);
+  CGF.EmitAggExpr(copyExpr,
+                  AggValueSlot::forAddr(ParamAddr, Alignment, Qualifiers(),
+                                        AggValueSlot::IsNotDestructed,
+                                        AggValueSlot::DoesNotNeedGCBarriers,
+                                        AggValueSlot::IsNotAliased));
 
   // Leave the terminate scope.
   CGF.EHStack.popTerminate();
@@ -1521,14 +1523,13 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock() {
                        getExceptionFromSlot())
       ->setDoesNotReturn();
   } else {
-    llvm::Value *Exn = getExceptionFromSlot();
-
     switch (CleanupHackLevel) {
     case CHL_MandatoryCatchall:
       // In mandatory-catchall mode, we need to use
       // _Unwind_Resume_or_Rethrow, or whatever the personality's
       // equivalent is.
-      Builder.CreateCall(getUnwindResumeOrRethrowFn(), Exn)
+      Builder.CreateCall(getUnwindResumeOrRethrowFn(),
+                         getExceptionFromSlot())
         ->setDoesNotReturn();
       break;
     case CHL_MandatoryCleanup: {
@@ -1552,7 +1553,7 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock() {
       // In an idealized mode where we don't have to worry about the
       // optimizer combining landing pads, we should just use
       // _Unwind_Resume (or the personality's equivalent).
-      Builder.CreateCall(getUnwindResumeFn(), Exn)
+      Builder.CreateCall(getUnwindResumeFn(), getExceptionFromSlot())
         ->setDoesNotReturn();
       break;
     }

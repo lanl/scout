@@ -46,11 +46,6 @@ class Stmt;
 class TargetInfo;
 class FrontendOptions;
 
-/// Normalize \arg File for use in a user defined #include directive (in the
-/// predefines buffer).
-std::string NormalizeDashIncludePath(StringRef File,
-                                     FileManager &FileMgr);
-
 /// Apply the header search options to get given HeaderSearch object.
 void ApplyHeaderSearchOptions(HeaderSearch &HS,
                               const HeaderSearchOptions &HSOpts,
@@ -66,7 +61,8 @@ void InitializePreprocessor(Preprocessor &PP,
 
 /// ProcessWarningOptions - Initialize the diagnostic client and process the
 /// warning options specified on the command line.
-void ProcessWarningOptions(DiagnosticsEngine &Diags, const DiagnosticOptions &Opts);
+void ProcessWarningOptions(DiagnosticsEngine &Diags,
+                           const DiagnosticOptions &Opts);
 
 /// DoPrintPreprocessedInput - Implement -E mode.
 void DoPrintPreprocessedInput(Preprocessor &PP, raw_ostream* OS,

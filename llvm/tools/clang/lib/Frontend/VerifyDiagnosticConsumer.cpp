@@ -18,6 +18,8 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
+#include <climits>
+
 using namespace clang;
 
 VerifyDiagnosticConsumer::VerifyDiagnosticConsumer(DiagnosticsEngine &_Diags)
@@ -82,6 +84,9 @@ public:
   static Directive* Create(bool RegexKind, const SourceLocation &Location,
                            const std::string &Text, unsigned Count);
 public:
+  /// Constant representing one or more matches aka regex "+".
+  static const unsigned OneOrMoreCount =  UINT_MAX;
+
   SourceLocation Location;
   const std::string Text;
   unsigned Count;
@@ -119,8 +124,7 @@ public:
   }
 
   virtual bool Match(const std::string &S) {
-    return S.find(Text) != std::string::npos ||
-           Text.find(S) != std::string::npos;
+    return S.find(Text) != std::string::npos;
   }
 };
 
@@ -277,10 +281,14 @@ static void ParseDirective(const char *CommentStart, unsigned CommentLen,
     // skip optional whitespace
     PH.SkipWhitespace();
 
-    // next optional token: positive integer
+    // next optional token: positive integer or a '+'.
     unsigned Count = 1;
     if (PH.Next(Count))
       PH.Advance();
+    else if (PH.Next("+")) {
+      Count = Directive::OneOrMoreCount;
+      PH.Advance();
+    }
 
     // skip optional whitespace
     PH.SkipWhitespace();
@@ -421,6 +429,7 @@ static unsigned CheckLists(DiagnosticsEngine &Diags, SourceManager &SourceMgr,
   for (DirectiveList::iterator I = Left.begin(), E = Left.end(); I != E; ++I) {
     Directive& D = **I;
     unsigned LineNo1 = SourceMgr.getPresumedLineNumber(D.Location);
+    bool FoundOnce = false;
 
     for (unsigned i = 0; i < D.Count; ++i) {
       DiagList::iterator II, IE;
@@ -434,19 +443,26 @@ static unsigned CheckLists(DiagnosticsEngine &Diags, SourceManager &SourceMgr,
           break;
       }
       if (II == IE) {
+        if (D.Count == D.OneOrMoreCount) {
+          if (!FoundOnce)
+            LeftOnly.push_back(*I);
+          // We are only interested in at least one match, so exit the loop.
+          break;
+        }
         // Not found.
         LeftOnly.push_back(*I);
       } else {
         // Found. The same cannot be found twice.
         Right.erase(II);
+        FoundOnce = true;
       }
     }
   }
   // Now all that's left in Right are those that were not matched.
-
-  return (PrintProblem(Diags, &SourceMgr, LeftOnly, Label, true) +
-          PrintProblem(Diags, &SourceMgr, Right.begin(), Right.end(),
-                       Label, false));
+  unsigned num = PrintProblem(Diags, &SourceMgr, LeftOnly, Label, true);
+  num += PrintProblem(Diags, &SourceMgr, Right.begin(), Right.end(),
+                      Label, false);
+  return num;
 }
 
 /// CheckResults - This compares the expected results to those that
@@ -523,6 +539,14 @@ void VerifyDiagnosticConsumer::CheckDiagnostics() {
 
   // Reset the buffer, we have processed all the diagnostics in it.
   Buffer.reset(new TextDiagnosticBuffer());
+}
+
+DiagnosticConsumer *
+VerifyDiagnosticConsumer::clone(DiagnosticsEngine &Diags) const {
+  if (!Diags.getClient())
+    Diags.setClient(PrimaryClient->clone(Diags));
+  
+  return new VerifyDiagnosticConsumer(Diags);
 }
 
 Directive* Directive::Create(bool RegexKind, const SourceLocation &Location,

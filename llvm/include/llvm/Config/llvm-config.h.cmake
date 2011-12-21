@@ -25,17 +25,20 @@
 /* Installation directory for data files */
 #cmakedefine LLVM_DATADIR "${LLVM_DATADIR}"
 
+/* Target triple LLVM will generate code for by default */
+#cmakedefine LLVM_DEFAULT_TARGET_TRIPLE "${LLVM_DEFAULT_TARGET_TRIPLE}"
+
 /* Installation directory for documentation */
 #cmakedefine LLVM_DOCSDIR "${LLVM_DOCSDIR}"
+
+/* Define if threads enabled */
+#cmakedefine01 LLVM_ENABLE_THREADS
 
 /* Installation directory for config files */
 #cmakedefine LLVM_ETCDIR "${LLVM_ETCDIR}"
 
 /* Has gcc/MSVC atomic intrinsics */
 #cmakedefine01 LLVM_HAS_ATOMICS
-
-/* Host triple we were built on */
-#cmakedefine LLVM_HOSTTRIPLE "${LLVM_HOSTTRIPLE}"
 
 /* Installation directory for include files */
 #cmakedefine LLVM_INCLUDEDIR "${LLVM_INCLUDEDIR}"

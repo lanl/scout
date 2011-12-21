@@ -31,7 +31,7 @@ using namespace CodeGen;
 
 
 void CodeGenFunction::EmitDecl(const Decl &D) {
-  DEBUG("EmitDecl");
+  DEBUG_OUT("EmitDecl");
   switch (D.getKind()) {
   case Decl::TranslationUnit:
   case Decl::Namespace:
@@ -90,6 +90,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::NamespaceAlias:
   case Decl::StaticAssert: // static_assert(X, ""); [C++0x]
   case Decl::Label:        // __label__ x;
+  case Decl::Import:
     // None of these decls require codegen support.
     return;
 
@@ -114,7 +115,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
 /// EmitVarDecl - This method handles emission of any variable declaration
 /// inside a function, including static vars etc.
 void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
-  DEBUG("EmitVarDecl");
+  DEBUG_OUT("EmitVarDecl");
   switch (D.getStorageClass()) {
   case SC_None:
   case SC_Auto:
@@ -184,7 +185,12 @@ CodeGenFunction::CreateStaticVarDecl(const VarDecl &D,
   QualType Ty = D.getType();
   assert(Ty->isConstantSizeType() && "VLAs can't be static");
 
-  std::string Name = GetStaticDeclName(*this, D, Separator);
+  // Use the label if the variable is renamed with the asm-label extension.
+  std::string Name;
+  if (D.hasAttr<AsmLabelAttr>())
+    Name = CGM.getMangledName(&D);
+  else
+    Name = GetStaticDeclName(*this, D, Separator);
 
   llvm::Type *LTy = CGM.getTypes().ConvertTypeForMem(Ty);
   llvm::GlobalVariable *GV =
@@ -256,7 +262,7 @@ CodeGenFunction::AddInitializerToStaticVarDecl(const VarDecl &D,
 
 void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
                                       llvm::GlobalValue::LinkageTypes Linkage) {
-  DEBUG("EmitStaticVarDecl");
+  DEBUG_OUT("EmitStaticVarDecl");
   llvm::Value *&DMEntry = LocalDeclMap[&D];
   assert(DMEntry == 0 && "Decl already exists in localdeclmap!");
 
@@ -493,7 +499,7 @@ void CodeGenFunction::EmitScalarInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
-  DEBUG("EmitScalarInit");
+  DEBUG_OUT("EmitScalarInit");
   Qualifiers::ObjCLifetime lifetime = lvalue.getObjCLifetime();
   if (!lifetime) {
     llvm::Value *value = EmitScalarExpr(init);
@@ -505,9 +511,11 @@ void CodeGenFunction::EmitScalarInit(const Expr *init,
 
   // If we're emitting a value with lifetime, we have to do the
   // initialization *before* we leave the cleanup scopes.
-  CodeGenFunction::RunCleanupsScope Scope(*this);
-  if (const ExprWithCleanups *ewc = dyn_cast<ExprWithCleanups>(init))
+  if (const ExprWithCleanups *ewc = dyn_cast<ExprWithCleanups>(init)) {
+    enterFullExpression(ewc);
     init = ewc->getSubExpr();
+  }
+  CodeGenFunction::RunCleanupsScope Scope(*this);
 
   // We have to maintain the illusion that the variable is
   // zero-initialized.  If the variable might be accessed in its
@@ -711,7 +719,7 @@ static bool shouldUseMemSetPlusStoresToInitialize(llvm::Constant *Init,
 /// variable declaration with auto, register, or no storage class specifier.
 /// These turn into simple stack objects, or GlobalValues depending on target.
 void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
-  DEBUG("EmitAutoVarDecl");
+  DEBUG_OUT("EmitAutoVarDecl");
   AutoVarEmission emission = EmitAutoVarAlloca(D);
   EmitAutoVarInit(emission);
   EmitAutoVarCleanups(emission);
@@ -721,7 +729,7 @@ void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
 /// local variable.  Does not emit initalization or destruction.
 CodeGenFunction::AutoVarEmission
 CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
-  DEBUG("EmitAutoVarAlloca");
+  DEBUG_OUT("EmitAutoVarAlloca");
   QualType Ty = D.getType();
 
   AutoVarEmission emission(D);
@@ -743,11 +751,13 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
                   D.isNRVOVariable();
 
       // If this value is a POD array or struct with a statically
-      // determinable constant initializer, there are optimizations we
-      // can do.
-      // TODO: we can potentially constant-evaluate non-POD structs and
-      // arrays as long as the initialization is trivial (e.g. if they
-      // have a non-trivial destructor, but not a non-trivial constructor).
+      // determinable constant initializer, there are optimizations we can do.
+      //
+      // TODO: we should constant-evaluate any variable of literal type
+      // as long as it is initialized by a constant expression. Currently,
+      // isConstantInitializer produces wrong answers for structs with
+      // reference or bitfield members, and a few other cases, and checking
+      // for POD-ness protects us from some of these.
       if (D.getInit() &&
           (Ty->isArrayType() || Ty->isRecordType()) &&
           (Ty.isPODType(getContext()) ||
@@ -755,9 +765,10 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           D.getInit()->isConstantInitializer(getContext(), false)) {
 
         // If the variable's a const type, and it's neither an NRVO
-        // candidate nor a __block variable, emit it as a global instead.
+        // candidate nor a __block variable and has no mutable members,
+        // emit it as a global instead.
         if (CGM.getCodeGenOpts().MergeAllConstants && Ty.isConstQualified() &&
-            !NRVO && !isByRef) {
+            !NRVO && !isByRef && Ty->isLiteralType()) {
           EmitStaticVarDecl(D, llvm::GlobalValue::InternalLinkage);
 
           emission.Address = 0; // signal this condition to later callbacks
@@ -799,7 +810,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           LTy = BuildByRefType(&D);
 
         llvm::AllocaInst *Alloc = CreateTempAlloca(LTy);
-        Alloc->setName(D.getNameAsString());
+        Alloc->setName(D.getName());
 
         CharUnits allocaAlignment = alignment;
         if (isByRef)
@@ -818,7 +829,10 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
           uint64_t numElts = 1;
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-            numElts *= dims[i]->EvaluateAsInt(getContext()).getSExtValue();
+	    // ndm - MERGE
+	    llvm::APSInt result;
+	    dims[i]->EvaluateAsInt(result, getContext());	    
+	    numElts *= result.getSExtValue();
           }
 
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
@@ -972,7 +986,7 @@ static bool isTrivialInitializer(const Expr *Init) {
   return false;
 }
 void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
-  DEBUG("EmitAutoVarInit");
+  DEBUG_OUT("EmitAutoVarInit");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.
@@ -1010,7 +1024,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
     capturedByInit ? emission.Address : emission.getObjectAddress(*this);
 
   if (!emission.IsConstantAggregate) {
-    LValue lv = MakeAddrLValue(Loc, type, alignment.getQuantity());
+    LValue lv = MakeAddrLValue(Loc, type, alignment);
     lv.setNonGC(true);
     return EmitExprAsInit(Init, &D, lv, capturedByInit);
   }
@@ -1078,7 +1092,7 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
-  DEBUG("EmitExprAsInt");
+  DEBUG_OUT("EmitExprAsInt");
   QualType type = D->getType();
 
   if (type->isReferenceType()) {
@@ -1161,7 +1175,7 @@ void CodeGenFunction::emitAutoVarTypeCleanup(
 }
 
 void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
-  DEBUG("EmitAutoVarCleanups");
+  DEBUG_OUT("EmitAutoVarCleanups");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.
@@ -1493,7 +1507,10 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
     DeclPtr = Arg;
   } else {
     // Otherwise, create a temporary to hold the value.
-    DeclPtr = CreateMemTemp(Ty, D.getName() + ".addr");
+    llvm::AllocaInst *Alloc = CreateTempAlloca(ConvertTypeForMem(Ty),
+                                               D.getName() + ".addr");
+    Alloc->setAlignment(getContext().getDeclAlign(&D).getQuantity());
+    DeclPtr = Alloc;
 
     bool doStore = true;
 
@@ -1542,7 +1559,7 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, llvm::Value *Arg,
     // Store the initial value into the alloca.
     if (doStore) {
       LValue lv = MakeAddrLValue(DeclPtr, Ty,
-                                 getContext().getDeclAlign(&D).getQuantity());
+                                 getContext().getDeclAlign(&D));
       EmitStoreOfScalar(Arg, lv);
     }
   }

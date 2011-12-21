@@ -37,7 +37,8 @@ bool ARMFrameLowering::hasFP(const MachineFunction &MF) const {
 
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   // Always eliminate non-leaf frame pointers.
-  return ((DisableFramePointerElim(MF) && MFI->hasCalls()) ||
+  return ((MF.getTarget().Options.DisableFramePointerElim(MF) &&
+           MFI->hasCalls()) ||
           RegInfo->needsStackRealignment(MF) ||
           MFI->hasVarSizedObjects() ||
           MFI->isFrameAddressTaken());
@@ -309,8 +310,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF) const {
 void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
-  assert(MBBI->getDesc().isReturn() &&
-         "Can only insert epilog into returning blocks");
+  assert(MBBI->isReturn() && "Can only insert epilog into returning blocks");
   unsigned RetOpcode = MBBI->getOpcode();
   DebugLoc dl = MBBI->getDebugLoc();
   MachineFrameInfo *MFI = MF.getFrameInfo();

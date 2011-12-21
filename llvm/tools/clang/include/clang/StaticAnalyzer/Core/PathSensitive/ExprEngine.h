@@ -28,8 +28,9 @@
 
 namespace clang {
 
+class AnalysisDeclContextManager;
 class ObjCForCollectionStmt;
-
+  
 namespace ento {
 
 class AnalysisManager;
@@ -38,15 +39,13 @@ class ObjCMessage;
 
 class ExprEngine : public SubEngine {
   AnalysisManager &AMgr;
+  
+  AnalysisDeclContextManager &AnalysisDeclContexts;
 
   CoreEngine Engine;
 
   /// G - the simulation graph.
   ExplodedGraph& G;
-
-  /// Builder - The current StmtNodeBuilder which is used when building the
-  ///  nodes for a given statement.
-  StmtNodeBuilder* Builder;
 
   /// StateMgr - Object that manages the data for all created states.
   ProgramStateManager StateMgr;
@@ -66,6 +65,8 @@ class ExprEngine : public SubEngine {
 
   /// currentStmt - The current block-level statement.
   const Stmt *currentStmt;
+  unsigned int currentStmtIdx;
+  const NodeBuilderContext *currentBuilderContext;
 
   /// Obj-C Class Identifiers.
   IdentifierInfo* NSExceptionII;
@@ -113,9 +114,18 @@ public:
 
   BugReporter& getBugReporter() { return BR; }
 
-  StmtNodeBuilder &getBuilder() { assert(Builder); return *Builder; }
+  const NodeBuilderContext &getBuilderContext() {
+    assert(currentBuilderContext);
+    return *currentBuilderContext;
+  }
 
   bool isObjCGCEnabled() { return ObjCGCEnabled; }
+
+  const Stmt *getStmt() const;
+
+  void GenerateAutoTransition(ExplodedNode *N);
+  void enqueueEndOfPath(ExplodedNodeSet &S);
+  void GenerateCallExitNode(ExplodedNode *N);
 
   /// ViewGraph - Visualize the ExplodedGraph created by executing the
   ///  simulation.
@@ -132,29 +142,35 @@ public:
 
   /// processCFGElement - Called by CoreEngine. Used to generate new successor
   ///  nodes by processing the 'effects' of a CFG element.
-  void processCFGElement(const CFGElement E, StmtNodeBuilder& builder);
+  void processCFGElement(const CFGElement E, ExplodedNode *Pred,
+                         unsigned StmtIdx, NodeBuilderContext *Ctx);
 
-  void ProcessStmt(const CFGStmt S, StmtNodeBuilder &builder);
+  void ProcessStmt(const CFGStmt S, ExplodedNode *Pred);
 
-  void ProcessInitializer(const CFGInitializer I, StmtNodeBuilder &builder);
+  void ProcessInitializer(const CFGInitializer I, ExplodedNode *Pred);
 
-  void ProcessImplicitDtor(const CFGImplicitDtor D, StmtNodeBuilder &builder);
+  void ProcessImplicitDtor(const CFGImplicitDtor D, ExplodedNode *Pred);
 
   void ProcessAutomaticObjDtor(const CFGAutomaticObjDtor D, 
-                            StmtNodeBuilder &builder);
-  void ProcessBaseDtor(const CFGBaseDtor D, StmtNodeBuilder &builder);
-  void ProcessMemberDtor(const CFGMemberDtor D, StmtNodeBuilder &builder);
+                               ExplodedNode *Pred, ExplodedNodeSet &Dst);
+  void ProcessBaseDtor(const CFGBaseDtor D,
+                       ExplodedNode *Pred, ExplodedNodeSet &Dst);
+  void ProcessMemberDtor(const CFGMemberDtor D,
+                         ExplodedNode *Pred, ExplodedNodeSet &Dst);
   void ProcessTemporaryDtor(const CFGTemporaryDtor D, 
-                            StmtNodeBuilder &builder);
+                            ExplodedNode *Pred, ExplodedNodeSet &Dst);
 
   /// Called by CoreEngine when processing the entrance of a CFGBlock.
-  virtual void processCFGBlockEntrance(ExplodedNodeSet &dstNodes,
-                                GenericNodeBuilder<BlockEntrance> &nodeBuilder);
+  virtual void processCFGBlockEntrance(NodeBuilderWithSinks &nodeBuilder);
   
   /// ProcessBranch - Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a branch condition.
   void processBranch(const Stmt *Condition, const Stmt *Term, 
-                     BranchNodeBuilder& builder);
+                     NodeBuilderContext& BuilderCtx,
+                     ExplodedNode *Pred,
+                     ExplodedNodeSet &Dst,
+                     const CFGBlock *DstT,
+                     const CFGBlock *DstF);
 
   /// processIndirectGoto - Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a computed goto jump.
@@ -166,7 +182,7 @@ public:
 
   /// ProcessEndPath - Called by CoreEngine.  Used to generate end-of-path
   ///  nodes when the control reaches the end of a function.
-  void processEndOfFunction(EndOfFunctionNodeBuilder& builder);
+  void processEndOfFunction(NodeBuilderContext& BC);
 
   /// Generate the entry node of the callee.
   void processCallEnter(CallEnterNodeBuilder &builder);
@@ -225,11 +241,6 @@ public:
   const CoreEngine &getCoreEngine() const { return Engine; }
 
 public:
-  ExplodedNode *MakeNode(ExplodedNodeSet &Dst, const Stmt *S, 
-                         ExplodedNode *Pred, const ProgramState *St,
-                         ProgramPoint::Kind K = ProgramPoint::PostStmtKind,
-                         const ProgramPointTag *tag = 0);
-
   /// Visit - Transfer function logic for all statements.  Dispatches to
   ///  other functions that handle specific kinds of statements.
   void Visit(const Stmt *S, ExplodedNode *Pred, ExplodedNodeSet &Dst);
@@ -328,6 +339,11 @@ public:
   void VisitUnaryOperator(const UnaryOperator* B, ExplodedNode *Pred, 
                           ExplodedNodeSet &Dst);
 
+  /// Handle ++ and -- (both pre- and post-increment).
+  void VisitIncrementDecrementOperator(const UnaryOperator* U,
+                                       ExplodedNode *Pred,
+                                       ExplodedNodeSet &Dst);
+
   void VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred, 
                         ExplodedNodeSet & Dst);
 
@@ -409,8 +425,9 @@ public:
   }
   
 protected:
-  void evalObjCMessage(ExplodedNodeSet &Dst, const ObjCMessage &msg, 
-                       ExplodedNode *Pred, const ProgramState *state);
+  void evalObjCMessage(StmtNodeBuilder &Bldr, const ObjCMessage &msg,
+                       ExplodedNode *Pred, const ProgramState *state,
+                       bool GenSink);
 
   const ProgramState *invalidateArguments(const ProgramState *State,
                                           const CallOrObjCMessage &Call,
@@ -422,7 +439,8 @@ protected:
   /// evalBind - Handle the semantics of binding a value to a specific location.
   ///  This method is used by evalStore, VisitDeclStmt, and others.
   void evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE, ExplodedNode *Pred,
-                SVal location, SVal Val, bool atDeclInit = false);
+                SVal location, SVal Val, bool atDeclInit = false,
+                ProgramPoint::Kind PP = ProgramPoint::PostStmtKind);
 
 public:
   // FIXME: 'tag' should be removed, and a LocationContext should be used

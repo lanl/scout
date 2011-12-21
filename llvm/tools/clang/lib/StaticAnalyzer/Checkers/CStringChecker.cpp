@@ -1,4 +1,4 @@
-//= CStringChecker.h - Checks calls to C string functions ----------*- C++ -*-//
+//= CStringChecker.cpp - Checks calls to C string functions --------*- C++ -*-//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -532,10 +532,11 @@ const ProgramState *CStringChecker::checkAdditionOverflow(CheckerContext &C,
   const llvm::APSInt &maxValInt = BVF.getMaxValue(sizeTy);
   NonLoc maxVal = svalBuilder.makeIntVal(maxValInt);
 
-  SVal maxMinusRight = svalBuilder.evalBinOpNN(state, BO_Sub, maxVal, right,
-                                               sizeTy);
-
-  if (maxMinusRight.isUnknownOrUndef()) {
+  SVal maxMinusRight;
+  if (isa<nonloc::ConcreteInt>(right)) {
+    maxMinusRight = svalBuilder.evalBinOpNN(state, BO_Sub, maxVal, right,
+                                                 sizeTy);
+  } else {
     // Try switching the operands. (The order of these two assignments is
     // important!)
     maxMinusRight = svalBuilder.evalBinOpNN(state, BO_Sub, maxVal, left, 
@@ -638,7 +639,7 @@ SVal CStringChecker::getCStringLengthForRegion(CheckerContext &C,
   }
   
   // Otherwise, get a new symbol and update the state.
-  unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+  unsigned Count = C.getCurrentBlockCount();
   SValBuilder &svalBuilder = C.getSValBuilder();
   QualType sizeTy = svalBuilder.getContext().getSizeType();
   SVal strLength = svalBuilder.getMetadataSymbolVal(CStringChecker::getTag(),
@@ -659,7 +660,7 @@ SVal CStringChecker::getCStringLength(CheckerContext &C, const ProgramState *&st
     // C string. In the context of locations, the only time we can issue such
     // a warning is for labels.
     if (loc::GotoLabel *Label = dyn_cast<loc::GotoLabel>(&Buf)) {
-      if (ExplodedNode *N = C.generateNode(state)) {
+      if (ExplodedNode *N = C.addTransition(state)) {
         if (!BT_NotCString)
           BT_NotCString.reset(new BuiltinBug("API",
             "Argument is not a null-terminated string."));
@@ -716,7 +717,7 @@ SVal CStringChecker::getCStringLength(CheckerContext &C, const ProgramState *&st
     // Other regions (mostly non-data) can't have a reliable C string length.
     // In this case, an error is emitted and UndefinedVal is returned.
     // The caller should always be prepared to handle this case.
-    if (ExplodedNode *N = C.generateNode(state)) {
+    if (ExplodedNode *N = C.addTransition(state)) {
       if (!BT_NotCString)
         BT_NotCString.reset(new BuiltinBug("API",
           "Argument is not a null-terminated string."));
@@ -785,7 +786,7 @@ const ProgramState *CStringChecker::InvalidateBuffer(CheckerContext &C,
     }
 
     // Invalidate this region.
-    unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+    unsigned Count = C.getCurrentBlockCount();
     return state->invalidateRegions(R, E, Count);
   }
 
@@ -803,7 +804,7 @@ bool CStringChecker::SummarizeRegion(raw_ostream &os, ASTContext &Ctx,
   case MemRegion::FunctionTextRegionKind: {
     const FunctionDecl *FD = cast<FunctionTextRegion>(MR)->getDecl();
     if (FD)
-      os << "the address of the function '" << FD << "'";
+      os << "the address of the function '" << *FD << '\'';
     else
       os << "the address of a function";
     return true;
@@ -913,7 +914,7 @@ void CStringChecker::evalCopyCommon(CheckerContext &C,
       } else {
         // If we don't know how much we copied, we can at least
         // conjure a return value for later.
-        unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+        unsigned Count = C.getCurrentBlockCount();
         SVal result =
           C.getSValBuilder().getConjuredSymbolVal(NULL, CE, Count);
         state = state->BindExpr(CE, result);
@@ -1017,7 +1018,7 @@ void CStringChecker::evalMemcmp(CheckerContext &C, const CallExpr *CE) const {
       state = CheckBufferAccess(C, state, Size, Left);
       if (state) {
         state = StSameBuf->BindExpr(CE, svalBuilder.makeZeroVal(CE->getType()));
-        C.addTransition(state); 
+        C.addTransition(state);
       }
     }
 
@@ -1028,7 +1029,7 @@ void CStringChecker::evalMemcmp(CheckerContext &C, const CallExpr *CE) const {
       state = CheckBufferAccess(C, state, Size, Left, Right);
       if (state) {
         // The return value is the comparison result, which we don't know.
-        unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+        unsigned Count = C.getCurrentBlockCount();
         SVal CmpV = svalBuilder.getConjuredSymbolVal(NULL, CE, Count);
         state = state->BindExpr(CE, CmpV);
         C.addTransition(state);
@@ -1134,7 +1135,7 @@ void CStringChecker::evalstrLengthCommon(CheckerContext &C, const CallExpr *CE,
       // no guarantee the full string length will actually be returned.
       // All we know is the return value is the min of the string length
       // and the limit. This is better than nothing.
-      unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+      unsigned Count = C.getCurrentBlockCount();
       result = C.getSValBuilder().getConjuredSymbolVal(NULL, CE, Count);
       NonLoc *resultNL = cast<NonLoc>(&result);
 
@@ -1162,7 +1163,7 @@ void CStringChecker::evalstrLengthCommon(CheckerContext &C, const CallExpr *CE,
     // If we don't know the length of the string, conjure a return
     // value, so it can be used in constraints, at least.
     if (result.isUnknown()) {
-      unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+      unsigned Count = C.getCurrentBlockCount();
       result = C.getSValBuilder().getConjuredSymbolVal(NULL, CE, Count);
     }
   }
@@ -1506,7 +1507,7 @@ void CStringChecker::evalStrcpyCommon(CheckerContext &C, const CallExpr *CE,
   // If this is a stpcpy-style copy, but we were unable to check for a buffer
   // overflow, we still need a result. Conjure a return value.
   if (returnEnd && Result.isUnknown()) {
-    unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+    unsigned Count = C.getCurrentBlockCount();
     Result = svalBuilder.getConjuredSymbolVal(NULL, CE, Count);
   }
 
@@ -1650,7 +1651,7 @@ void CStringChecker::evalStrcmpCommon(CheckerContext &C, const CallExpr *CE,
 
   if (!canComputeResult) {
     // Conjure a symbolic value. It's the best we can do.
-    unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+    unsigned Count = C.getCurrentBlockCount();
     SVal resultVal = svalBuilder.getConjuredSymbolVal(NULL, CE, Count);
     state = state->BindExpr(CE, resultVal);
   }
@@ -1664,20 +1665,9 @@ void CStringChecker::evalStrcmpCommon(CheckerContext &C, const CallExpr *CE,
 //===----------------------------------------------------------------------===//
 
 bool CStringChecker::evalCall(const CallExpr *CE, CheckerContext &C) const {
-  // Get the callee.  All the functions we care about are C functions
-  // with simple identifiers.
-  const ProgramState *state = C.getState();
-  const Expr *Callee = CE->getCallee();
-  const FunctionDecl *FD = state->getSVal(Callee).getAsFunctionDecl();
-
-  if (!FD)
+  StringRef Name = C.getCalleeName(CE);
+  if (Name.empty())
     return false;
-
-  // Get the name of the callee. If it's a builtin, strip off the prefix.
-  IdentifierInfo *II = FD->getIdentifier();
-  if (!II)   // if no identifier, not a simple C function
-    return false;
-  StringRef Name = II->getName();
   if (Name.startswith("__builtin_"))
     Name = Name.substr(10);
 
@@ -1733,7 +1723,7 @@ void CStringChecker::checkPreStmt(const DeclStmt *DS, CheckerContext &C) const {
     if (!isa<StringLiteral>(Init))
       continue;
 
-    Loc VarLoc = state->getLValue(D, C.getPredecessor()->getLocationContext());
+    Loc VarLoc = state->getLValue(D, C.getLocationContext());
     const MemRegion *MR = VarLoc.getAsRegion();
     if (!MR)
       continue;
@@ -1815,8 +1805,8 @@ void CStringChecker::checkLiveSymbols(const ProgramState *state,
        I != E; ++I) {
     SVal Len = I.getData();
 
-    for (SVal::symbol_iterator si = Len.symbol_begin(), se = Len.symbol_end();
-         si != se; ++si)
+    for (SymExpr::symbol_iterator si = Len.symbol_begin(),
+                                  se = Len.symbol_end(); si != se; ++si)
       SR.markInUse(*si);
   }
 }
@@ -1842,7 +1832,7 @@ void CStringChecker::checkDeadSymbols(SymbolReaper &SR,
   }
 
   state = state->set<CStringLength>(Entries);
-  C.generateNode(state);
+  C.addTransition(state);
 }
 
 void ento::registerCStringChecker(CheckerManager &mgr) {

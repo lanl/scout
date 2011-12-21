@@ -77,7 +77,8 @@ public:
   void checkPreStmt(const ReturnStmt *S, CheckerContext &C) const;
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
   void checkPostStmt(const CallExpr *CE, CheckerContext &C) const;
-  void checkLocation(SVal location, bool isLoad, CheckerContext &C) const;
+  void checkLocation(SVal location, bool isLoad, const Stmt *S,
+                     CheckerContext &C) const;
 };
 } // end anonymous namespace
 
@@ -193,7 +194,7 @@ void ObjCSelfInitChecker::checkPostObjCMessage(ObjCMessage msg,
 
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisContext()->getDecl())))
+                                     C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   if (isInitMessage(msg)) {
@@ -220,7 +221,7 @@ void ObjCSelfInitChecker::checkPostStmt(const ObjCIvarRefExpr *E,
                                         CheckerContext &C) const {
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisContext()->getDecl())))
+                                     C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   checkForInvalidSelf(E->getBase(), C,
@@ -232,7 +233,7 @@ void ObjCSelfInitChecker::checkPreStmt(const ReturnStmt *S,
                                        CheckerContext &C) const {
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisContext()->getDecl())))
+                                     C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   checkForInvalidSelf(S->getRetValue(), C,
@@ -295,6 +296,7 @@ void ObjCSelfInitChecker::checkPostStmt(const CallExpr *CE,
 }
 
 void ObjCSelfInitChecker::checkLocation(SVal location, bool isLoad,
+                                        const Stmt *S,
                                         CheckerContext &C) const {
   // Tag the result of a load from 'self' so that we can easily know that the
   // value is the object that 'self' points to.
@@ -333,7 +335,7 @@ static bool shouldRunOnFunctionOrMethod(const NamedDecl *ND) {
 
 /// \brief Returns true if the location is 'self'.
 static bool isSelfVar(SVal location, CheckerContext &C) {
-  AnalysisContext *analCtx = C.getCurrentAnalysisContext(); 
+  AnalysisDeclContext *analCtx = C.getCurrentAnalysisDeclContext(); 
   if (!analCtx->getSelfDecl())
     return false;
   if (!isa<loc::MemRegionVal>(location))

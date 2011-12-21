@@ -18,3 +18,21 @@ int no_generic_selections();
 
 // CHECK-1X: has_generic_selections
 // CHECK-NO-1X: no_generic_selections
+
+#if __has_feature(c_alignas)
+int has_alignas();
+#else
+int no_alignas();
+#endif
+
+// CHECK-1X: has_alignas
+// CHECK-NO-1X: no_alignas
+
+#if __STDC_VERSION__ > 199901L
+int is_c1x();
+#else
+int is_not_c1x();
+#endif
+
+// CHECK-1X: is_c1x
+// CHECK-NO-1X: is_not_c1x

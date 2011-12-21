@@ -15,6 +15,8 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/LocInfoType.h"
 #include "clang/Sema/ParsedTemplate.h"
+#include "clang/Sema/SemaDiagnostic.h"
+#include "clang/Sema/Sema.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/NestedNameSpecifier.h"
@@ -149,6 +151,9 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto, bool isVariadic,
                                              unsigned TypeQuals,
                                              bool RefQualifierIsLvalueRef,
                                              SourceLocation RefQualifierLoc,
+                                             SourceLocation ConstQualifierLoc,
+                                             SourceLocation
+                                                 VolatileQualifierLoc,
                                              SourceLocation MutableLoc,
                                              ExceptionSpecificationType
                                                  ESpecType,
@@ -175,6 +180,8 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto, bool isVariadic,
   I.Fun.ArgInfo                 = 0;
   I.Fun.RefQualifierIsLValueRef = RefQualifierIsLvalueRef;
   I.Fun.RefQualifierLoc         = RefQualifierLoc.getRawEncoding();
+  I.Fun.ConstQualifierLoc       = ConstQualifierLoc.getRawEncoding();
+  I.Fun.VolatileQualifierLoc    = VolatileQualifierLoc.getRawEncoding();
   I.Fun.MutableLoc              = MutableLoc.getRawEncoding();
   I.Fun.ExceptionSpecType       = ESpecType;
   I.Fun.ExceptionSpecLoc        = ESpecLoc.getRawEncoding();
@@ -242,6 +249,7 @@ bool Declarator::isDeclarationOfFunction() const {
   }
   
   switch (DS.getTypeSpecType()) {
+    case TST_atomic:
     case TST_auto:
     case TST_bool:
     case TST_char:
@@ -279,6 +287,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_double4:
       
     case TST_float:
+    case TST_half:
     case TST_int:
     case TST_struct:
     case TST_union:
@@ -395,6 +404,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_char16:      return "char16_t";
   case DeclSpec::TST_char32:      return "char32_t";
   case DeclSpec::TST_int:         return "int";
+  case DeclSpec::TST_half:        return "half";
   case DeclSpec::TST_float:       return "float";
   case DeclSpec::TST_double:      return "double";
 
@@ -438,6 +448,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_decltype:    return "(decltype)";
   case DeclSpec::TST_underlyingType: return "__underlying_type";
   case DeclSpec::TST_unknown_anytype: return "__unknown_anytype";
+  case DeclSpec::TST_atomic: return "_Atomic";
   case DeclSpec::TST_error:       return "(error)";
   }
   llvm_unreachable("Unknown typespec!");
@@ -453,21 +464,24 @@ const char *DeclSpec::getSpecifierName(TQ T) {
   llvm_unreachable("Unknown typespec!");
 }
 
-bool DeclSpec::SetStorageClassSpec(SCS S, SourceLocation Loc,
+bool DeclSpec::SetStorageClassSpec(Sema &S, SCS SC, SourceLocation Loc,
                                    const char *&PrevSpec,
-                                   unsigned &DiagID,
-                                   const LangOptions &Lang) {
-  // OpenCL prohibits extern, auto, register, and static
+                                   unsigned &DiagID) {
+  // OpenCL 1.1 6.8g: "The extern, static, auto and register storage-class
+  // specifiers are not supported."
   // It seems sensible to prohibit private_extern too
-  if (Lang.OpenCL) {
-    switch (S) {
+  // The cl_clang_storage_class_specifiers extension enables support for
+  // these storage-class specifiers.
+  if (S.getLangOptions().OpenCL &&
+      !S.getOpenCLOptions().cl_clang_storage_class_specifiers) {
+    switch (SC) {
     case SCS_extern:
     case SCS_private_extern:
     case SCS_auto:
     case SCS_register:
     case SCS_static:
       DiagID   = diag::err_not_opencl_storage_class_specifier;
-      PrevSpec = getSpecifierName(S);
+      PrevSpec = getSpecifierName(SC);
       return true;
     default:
       break;
@@ -477,8 +491,8 @@ bool DeclSpec::SetStorageClassSpec(SCS S, SourceLocation Loc,
   if (StorageClassSpec != SCS_unspecified) {
     // Maybe this is an attempt to use C++0x 'auto' outside of C++0x mode.
     bool isInvalid = true;
-    if (TypeSpecType == TST_unspecified && Lang.CPlusPlus) {
-      if (S == SCS_auto)
+    if (TypeSpecType == TST_unspecified && S.getLangOptions().CPlusPlus) {
+      if (SC == SCS_auto)
         return SetTypeSpecType(TST_auto, Loc, PrevSpec, DiagID);
       if (StorageClassSpec == SCS_auto) {
         isInvalid = SetTypeSpecType(TST_auto, StorageClassSpecLoc,
@@ -493,12 +507,12 @@ bool DeclSpec::SetStorageClassSpec(SCS S, SourceLocation Loc,
     if (isInvalid &&
         !(SCS_extern_in_linkage_spec &&
           StorageClassSpec == SCS_extern &&
-          S == SCS_typedef))
-      return BadSpecifier(S, (SCS)StorageClassSpec, PrevSpec, DiagID);
+          SC == SCS_typedef))
+      return BadSpecifier(SC, (SCS)StorageClassSpec, PrevSpec, DiagID);
   }
-  StorageClassSpec = S;
+  StorageClassSpec = SC;
   StorageClassSpecLoc = Loc;
-  assert((unsigned)S == StorageClassSpec && "SCS constants overflow bitfield");
+  assert((unsigned)SC == StorageClassSpec && "SCS constants overflow bitfield");
   return false;
 }
 
@@ -931,6 +945,13 @@ void DeclSpec::Finish(DiagnosticsEngine &D, Preprocessor &PP) {
       StorageClassSpec == SCS_auto)
     Diag(D, StorageClassSpecLoc, diag::warn_auto_storage_class)
       << FixItHint::CreateRemoval(StorageClassSpecLoc);
+  if (TypeSpecType == TST_char16 || TypeSpecType == TST_char32)
+    Diag(D, TSTLoc, diag::warn_cxx98_compat_unicode_type)
+      << (TypeSpecType == TST_char16 ? "char16_t" : "char32_t");
+  if (TypeSpecType == TST_decltype)
+    Diag(D, TSTLoc, diag::warn_cxx98_compat_decltype);
+  if (Constexpr_specified)
+    Diag(D, ConstexprLoc, diag::warn_cxx98_compat_constexpr);
 
   // C++ [class.friend]p6:
   //   No storage-class-specifier shall appear in the decl-specifier-seq

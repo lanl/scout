@@ -54,10 +54,11 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
                                               BugReporter &B,
                                               ExprEngine &Eng) const {
   CFGBlocksSet reachable, visited;
-
+  
   if (Eng.hasWorkRemaining())
     return;
 
+  const Decl *D = 0;
   CFG *C = 0;
   ParentMap *PM = 0;
   const LocationContext *LC = 0;
@@ -67,9 +68,11 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
     const ProgramPoint &P = I->getLocation();
     LC = P.getLocationContext();
 
+    if (!D)
+      D = LC->getAnalysisDeclContext()->getDecl();
     // Save the CFG if we don't have it already
     if (!C)
-      C = LC->getAnalysisContext()->getUnoptimizedCFG();
+      C = LC->getAnalysisDeclContext()->getUnoptimizedCFG();
     if (!PM)
       PM = &LC->getParentMap();
 
@@ -80,10 +83,15 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
   }
 
   // Bail out if we didn't get the CFG or the ParentMap.
-  if (!C || !PM)
+  if (!D || !C || !PM)
     return;
-
-  ASTContext &Ctx = B.getContext();
+  
+  // Don't do anything for template instantiations.  Proving that code
+  // in a template instantiation is unreachable means proving that it is
+  // unreachable in all instantiations.
+  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
+    if (FD->isTemplateInstantiation())
+      return;
 
   // Find CFGBlocks that were not covered by any node
   for (CFG::const_iterator I = C->begin(), E = C->end(); I != E; ++I) {
@@ -117,7 +125,7 @@ void UnreachableCodeChecker::checkEndAnalysis(ExplodedGraph &G,
            ci != ce; ++ci) {
         if (const CFGStmt *S = (*ci).getAs<CFGStmt>())
           if (const CallExpr *CE = dyn_cast<CallExpr>(S->getStmt())) {
-            if (CE->isBuiltinCall(Ctx) == Builtin::BI__builtin_unreachable) {
+            if (CE->isBuiltinCall() == Builtin::BI__builtin_unreachable) {
               foundUnreachable = true;
               break;
             }

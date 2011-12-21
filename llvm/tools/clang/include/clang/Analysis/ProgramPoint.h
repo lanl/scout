@@ -28,7 +28,7 @@
 
 namespace clang {
 
-class AnalysisContext;
+class AnalysisDeclContext;
 class FunctionDecl;
 class LocationContext;
 class ProgramPointTag;
@@ -78,6 +78,12 @@ protected:
   const void *getData2() const { return Data.second; }
 
 public:
+  /// Create a new ProgramPoint object that is the same as the original
+  /// except for using the specified tag value.
+  ProgramPoint withTag(const ProgramPointTag *tag) const {
+    return ProgramPoint(Data.first, Data.second, K, L, tag);
+  }
+
   Kind getKind() const { return K; }
 
   const ProgramPointTag *getTag() const { return Tag; }
@@ -108,13 +114,20 @@ public:
     ID.AddPointer(L);
     ID.AddPointer(Tag);
   }
+
+  static ProgramPoint getProgramPoint(const Stmt *S, ProgramPoint::Kind K,
+                                      const LocationContext *LC,
+                                      const ProgramPointTag *tag);
+
 };
 
 class BlockEntrance : public ProgramPoint {
 public:
   BlockEntrance(const CFGBlock *B, const LocationContext *L,
                 const ProgramPointTag *tag = 0)
-    : ProgramPoint(B, BlockEntranceKind, L, tag) {}
+    : ProgramPoint(B, BlockEntranceKind, L, tag) {    
+    assert(B && "BlockEntrance requires non-null block");
+  }
 
   const CFGBlock *getBlock() const {
     return reinterpret_cast<const CFGBlock*>(getData1());
@@ -123,12 +136,6 @@ public:
   const CFGElement getFirstElement() const {
     const CFGBlock *B = getBlock();
     return B->empty() ? CFGElement() : B->front();
-  }
-  
-  /// Create a new BlockEntrance object that is the same as the original
-  /// except for using the specified tag value.
-  BlockEntrance withTag(const ProgramPointTag *tag) {
-    return BlockEntrance(getBlock(), getLocationContext(), tag);
   }
   
   static bool classof(const ProgramPoint* Location) {
@@ -299,7 +306,10 @@ public:
 class BlockEdge : public ProgramPoint {
 public:
   BlockEdge(const CFGBlock *B1, const CFGBlock *B2, const LocationContext *L)
-    : ProgramPoint(B1, B2, BlockEdgeKind, L) {}
+    : ProgramPoint(B1, B2, BlockEdgeKind, L) {
+    assert(B1 && "BlockEdge: source block must be non-null");
+    assert(B2 && "BlockEdge: destination block must be non-null");    
+  }
 
   const CFGBlock *getSrc() const {
     return static_cast<const CFGBlock*>(getData1());

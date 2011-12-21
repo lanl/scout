@@ -87,6 +87,8 @@ private:
   MCStreamer &Out;
   const MCAsmInfo &MAI;
   SourceMgr &SrcMgr;
+  SourceMgr::DiagHandlerTy SavedDiagHandler;
+  void *SavedDiagContext;
   MCAsmParserExtension *GenericParser;
   MCAsmParserExtension *PlatformParser;
 
@@ -115,6 +117,11 @@ private:
   /// Flag tracking whether any errors have been encountered.
   unsigned HadError : 1;
 
+  /// The values from the last parsed cpp hash file line comment if any.
+  StringRef CppHashFilename;
+  int64_t CppHashLineNumber;
+  SMLoc CppHashLoc;
+
 public:
   AsmParser(SourceMgr &SM, MCContext &Ctx, MCStreamer &Out,
             const MCAsmInfo &MAI);
@@ -137,8 +144,10 @@ public:
   virtual MCContext &getContext() { return Ctx; }
   virtual MCStreamer &getStreamer() { return Out; }
 
-  virtual bool Warning(SMLoc L, const Twine &Msg);
-  virtual bool Error(SMLoc L, const Twine &Msg);
+  virtual bool Warning(SMLoc L, const Twine &Msg,
+                       ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
+  virtual bool Error(SMLoc L, const Twine &Msg,
+                     ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
 
   const AsmToken &Lex();
 
@@ -164,13 +173,17 @@ private:
   void HandleMacroExit();
 
   void PrintMacroInstantiations();
-  void PrintMessage(SMLoc Loc, const Twine &Msg, const char *Type,
-                    bool ShowLine = true) const {
-    SrcMgr.PrintMessage(Loc, Msg, Type, ShowLine);
+  void PrintMessage(SMLoc Loc, SourceMgr::DiagKind Kind, const Twine &Msg,
+                    ArrayRef<SMRange> Ranges = ArrayRef<SMRange>()) const {
+    SrcMgr.PrintMessage(Loc, Kind, Msg, Ranges);
   }
+  static void DiagHandler(const SMDiagnostic &Diag, void *Context);
 
   /// EnterIncludeFile - Enter the specified file. This returns true on failure.
   bool EnterIncludeFile(const std::string &Filename);
+  /// ProcessIncbinFile - Process the specified file for the .incbin directive.
+  /// This returns true on failure.
+  bool ProcessIncbinFile(const std::string &Filename);
 
   /// \brief Reset the current lexer position to that given by \arg Loc. The
   /// current token is not set; clients should ensure Lex() is called
@@ -217,6 +230,7 @@ private:
 
   bool ParseDirectiveAbort(); // ".abort"
   bool ParseDirectiveInclude(); // ".include"
+  bool ParseDirectiveIncbin(); // ".incbin"
 
   bool ParseDirectiveIf(SMLoc DirectiveLoc); // ".if"
   // ".ifdef" or ".ifndef", depending on expect_defined
@@ -344,7 +358,12 @@ AsmParser::AsmParser(SourceMgr &_SM, MCContext &_Ctx,
                      MCStreamer &_Out, const MCAsmInfo &_MAI)
   : Lexer(_MAI), Ctx(_Ctx), Out(_Out), MAI(_MAI), SrcMgr(_SM),
     GenericParser(new GenericAsmParser), PlatformParser(0),
-    CurBuffer(0), MacrosEnabled(true) {
+    CurBuffer(0), MacrosEnabled(true), CppHashLineNumber(0) {
+  // Save the old handler.
+  SavedDiagHandler = SrcMgr.getDiagHandler();
+  SavedDiagContext = SrcMgr.getDiagContext();
+  // Set our own handler which calls the saved handler.
+  SrcMgr.setDiagHandler(DiagHandler, this);
   Lexer.setBuffer(SrcMgr.getMemoryBuffer(CurBuffer));
 
   // Initialize the generic parser.
@@ -382,21 +401,21 @@ void AsmParser::PrintMacroInstantiations() {
   // Print the active macro instantiation stack.
   for (std::vector<MacroInstantiation*>::const_reverse_iterator
          it = ActiveMacros.rbegin(), ie = ActiveMacros.rend(); it != ie; ++it)
-    PrintMessage((*it)->InstantiationLoc, "while in macro instantiation",
-                 "note");
+    PrintMessage((*it)->InstantiationLoc, SourceMgr::DK_Note,
+                 "while in macro instantiation");
 }
 
-bool AsmParser::Warning(SMLoc L, const Twine &Msg) {
+bool AsmParser::Warning(SMLoc L, const Twine &Msg, ArrayRef<SMRange> Ranges) {
   if (FatalAssemblerWarnings)
-    return Error(L, Msg);
-  PrintMessage(L, Msg, "warning");
+    return Error(L, Msg, Ranges);
+  PrintMessage(L, SourceMgr::DK_Warning, Msg, Ranges);
   PrintMacroInstantiations();
   return false;
 }
 
-bool AsmParser::Error(SMLoc L, const Twine &Msg) {
+bool AsmParser::Error(SMLoc L, const Twine &Msg, ArrayRef<SMRange> Ranges) {
   HadError = true;
-  PrintMessage(L, Msg, "error");
+  PrintMessage(L, SourceMgr::DK_Error, Msg, Ranges);
   PrintMacroInstantiations();
   return true;
 }
@@ -411,6 +430,21 @@ bool AsmParser::EnterIncludeFile(const std::string &Filename) {
 
   Lexer.setBuffer(SrcMgr.getMemoryBuffer(CurBuffer));
 
+  return false;
+}
+
+/// Process the specified .incbin file by seaching for it in the include paths
+/// then just emiting the byte contents of the file to the streamer. This 
+/// returns true on failure.
+bool AsmParser::ProcessIncbinFile(const std::string &Filename) {
+  std::string IncludedFile;
+  int NewBuf = SrcMgr.AddIncludeFile(Filename, Lexer.getLoc(), IncludedFile);
+  if (NewBuf == -1)
+    return true;
+
+  // Pick up the bytes from the file and emit them.
+  getStreamer().EmitBytes(SrcMgr.getMemoryBuffer(NewBuf)->getBuffer(),
+                          DEFAULT_ADDRSPACE);
   return false;
 }
 
@@ -448,6 +482,17 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
 
   HadError = false;
   AsmCond StartingCondState = TheCondState;
+
+  // If we are generating dwarf for assembly source files save the initial text
+  // section and generate a .file directive.
+  if (getContext().getGenDwarfForAssembly()) {
+    getContext().setGenDwarfSection(getStreamer().getCurrentSection());
+    MCSymbol *SectionStartSym = getContext().CreateTempSymbol();
+    getStreamer().EmitLabel(SectionStartSym);
+    getContext().setGenDwarfSectionStartSym(SectionStartSym);
+    getStreamer().EmitDwarfFileDirective(getContext().nextGenDwarfFileNumber(),
+      StringRef(), SrcMgr.getMemoryBuffer(CurBuffer)->getBufferIdentifier());
+  }
 
   // While we have input, parse each statement.
   while (Lexer.isNot(AsmToken::Eof)) {
@@ -488,8 +533,9 @@ bool AsmParser::Run(bool NoInitialTextSection, bool NoFinalize) {
         // FIXME: We would really like to refer back to where the symbol was
         // first referenced for a source location. We need to add something
         // to track that. Currently, we just point to the end of the file.
-        PrintMessage(getLexer().getLoc(), "assembler local symbol '" +
-                     Sym->getName() + "' not defined", "error", false);
+        PrintMessage(getLexer().getLoc(), SourceMgr::DK_Error,
+                     "assembler local symbol '" + Sym->getName() +
+                     "' not defined");
     }
   }
 
@@ -1023,6 +1069,12 @@ bool AsmParser::ParseStatement() {
     // Emit the label.
     Out.EmitLabel(Sym);
 
+    // If we are generating dwarf for assembly source files then gather the
+    // info to make a dwarf subprogram entry for this label if needed.
+    if (getContext().getGenDwarfForAssembly())
+      MCGenDwarfSubprogramEntry::Make(Sym, &getStreamer(), getSourceManager(),
+                                      IDLoc);
+
     // Consume any end of statement token, if present, to avoid spurious
     // AddBlankLine calls().
     if (Lexer.is(AsmToken::EndOfStatement)) {
@@ -1150,6 +1202,8 @@ bool AsmParser::ParseStatement() {
       return ParseDirectiveAbort();
     if (IDVal == ".include")
       return ParseDirectiveInclude();
+    if (IDVal == ".incbin")
+      return ParseDirectiveIncbin();
 
     if (IDVal == ".code16")
       return TokError(Twine(IDVal) + " not supported yet");
@@ -1192,7 +1246,19 @@ bool AsmParser::ParseStatement() {
     }
     OS << "]";
 
-    PrintMessage(IDLoc, OS.str(), "note");
+    PrintMessage(IDLoc, SourceMgr::DK_Note, OS.str());
+  }
+
+  // If we are generating dwarf for assembly source files and the current
+  // section is the initial text section then generate a .loc directive for
+  // the instruction.
+  if (!HadError && getContext().getGenDwarfForAssembly() &&
+      getContext().getGenDwarfSection() == getStreamer().getCurrentSection() ) {
+    getStreamer().EmitDwarfLocDirective(getContext().getGenDwarfFileNumber(),
+                                        SrcMgr.FindLineNumber(IDLoc, CurBuffer),
+                                        0, DWARF2_LINE_DEFAULT_IS_STMT ?
+                                        DWARF2_FLAG_IS_STMT : 0, 0, 0,
+                                        StringRef());
   }
 
   // If parsing succeeded, match the instruction.
@@ -1212,7 +1278,8 @@ bool AsmParser::ParseStatement() {
 /// EatToEndOfLine uses the Lexer to eat the characters to the end of the line
 /// since they may not be able to be tokenized to get to the end of line token.
 void AsmParser::EatToEndOfLine() {
- Lexer.LexUntilEndOfLine();
+  if (!Lexer.is(AsmToken::EndOfStatement))
+    Lexer.LexUntilEndOfLine();
  // Eat EOL.
  Lex();
 }
@@ -1231,8 +1298,6 @@ bool AsmParser::ParseCppHashLineFilenameComment(const SMLoc &L) {
   }
 
   int64_t LineNumber = getTok().getIntVal();
-  // FIXME: remember to remove this line that is silencing a warning for now.
-  (void) LineNumber;
   Lex();
 
   if (getLexer().isNot(AsmToken::String)) {
@@ -1244,12 +1309,68 @@ bool AsmParser::ParseCppHashLineFilenameComment(const SMLoc &L) {
   // Get rid of the enclosing quotes.
   Filename = Filename.substr(1, Filename.size()-2);
 
-  // TODO: Now with the Filename, LineNumber set up a mapping to the SMLoc for
-  // later use by diagnostics.
+  // Save the SMLoc, Filename and LineNumber for later use by diagnostics.
+  CppHashLoc = L;
+  CppHashFilename = Filename;
+  CppHashLineNumber = LineNumber;
 
   // Ignore any trailing characters, they're just comment.
   EatToEndOfLine();
   return false;
+}
+
+/// DiagHandler - will use the the last parsed cpp hash line filename comment
+/// for the Filename and LineNo if any in the diagnostic.
+void AsmParser::DiagHandler(const SMDiagnostic &Diag, void *Context) {
+  const AsmParser *Parser = static_cast<const AsmParser*>(Context);
+  raw_ostream &OS = errs();
+
+  const SourceMgr &DiagSrcMgr = *Diag.getSourceMgr();
+  const SMLoc &DiagLoc = Diag.getLoc();
+  int DiagBuf = DiagSrcMgr.FindBufferContainingLoc(DiagLoc);
+  int CppHashBuf = Parser->SrcMgr.FindBufferContainingLoc(Parser->CppHashLoc);
+
+  // Like SourceMgr::PrintMessage() we need to print the include stack if any
+  // before printing the message.
+  int DiagCurBuffer = DiagSrcMgr.FindBufferContainingLoc(DiagLoc);
+  if (!Parser->SavedDiagHandler && DiagCurBuffer > 0) {
+     SMLoc ParentIncludeLoc = DiagSrcMgr.getParentIncludeLoc(DiagCurBuffer);
+     DiagSrcMgr.PrintIncludeStack(ParentIncludeLoc, OS);
+  }
+
+  // If we have not parsed a cpp hash line filename comment or the source 
+  // manager changed or buffer changed (like in a nested include) then just
+  // print the normal diagnostic using its Filename and LineNo.
+  if (!Parser->CppHashLineNumber ||
+      &DiagSrcMgr != &Parser->SrcMgr ||
+      DiagBuf != CppHashBuf) {
+    if (Parser->SavedDiagHandler)
+      Parser->SavedDiagHandler(Diag, Parser->SavedDiagContext);
+    else
+      Diag.print(0, OS);
+    return;
+  }
+
+  // Use the CppHashFilename and calculate a line number based on the 
+  // CppHashLoc and CppHashLineNumber relative to this Diag's SMLoc for
+  // the diagnostic.
+  const std::string Filename = Parser->CppHashFilename;
+
+  int DiagLocLineNo = DiagSrcMgr.FindLineNumber(DiagLoc, DiagBuf);
+  int CppHashLocLineNo =
+      Parser->SrcMgr.FindLineNumber(Parser->CppHashLoc, CppHashBuf);
+  int LineNo = Parser->CppHashLineNumber - 1 +
+               (DiagLocLineNo - CppHashLocLineNo);
+
+  SMDiagnostic NewDiag(*Diag.getSourceMgr(), Diag.getLoc(),
+                       Filename, LineNo, Diag.getColumnNo(),
+                       Diag.getKind(), Diag.getMessage(),
+                       Diag.getLineContents(), Diag.getRanges());
+
+  if (Parser->SavedDiagHandler)
+    Parser->SavedDiagHandler(NewDiag, Parser->SavedDiagContext);
+  else
+    NewDiag.print(0, OS);
 }
 
 bool AsmParser::expandMacro(SmallString<256> &Buf, StringRef Body,
@@ -2106,6 +2227,31 @@ bool AsmParser::ParseDirectiveInclude() {
   return false;
 }
 
+/// ParseDirectiveIncbin
+///  ::= .incbin "filename"
+bool AsmParser::ParseDirectiveIncbin() {
+  if (getLexer().isNot(AsmToken::String))
+    return TokError("expected string in '.incbin' directive");
+
+  std::string Filename = getTok().getString();
+  SMLoc IncbinLoc = getLexer().getLoc();
+  Lex();
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.incbin' directive");
+
+  // Strip the quotes.
+  Filename = Filename.substr(1, Filename.size()-2);
+
+  // Attempt to process the included file.
+  if (ProcessIncbinFile(Filename)) {
+    Error(IncbinLoc, "Could not find incbin file '" + Filename + "'");
+    return true;
+  }
+
+  return false;
+}
+
 /// ParseDirectiveIf
 /// ::= .if expression
 bool AsmParser::ParseDirectiveIf(SMLoc DirectiveLoc) {
@@ -2233,7 +2379,8 @@ bool AsmParser::ParseDirectiveEndIf(SMLoc DirectiveLoc) {
 }
 
 /// ParseDirectiveFile
-/// ::= .file [number] string
+/// ::= .file [number] filename
+/// ::= .file number directory filename
 bool GenericAsmParser::ParseDirectiveFile(StringRef, SMLoc DirectiveLoc) {
   // FIXME: I'm not sure what this is.
   int64_t FileNumber = -1;
@@ -2249,17 +2396,35 @@ bool GenericAsmParser::ParseDirectiveFile(StringRef, SMLoc DirectiveLoc) {
   if (getLexer().isNot(AsmToken::String))
     return TokError("unexpected token in '.file' directive");
 
-  StringRef Filename = getTok().getString();
-  Filename = Filename.substr(1, Filename.size()-2);
+  // Usually the directory and filename together, otherwise just the directory.
+  StringRef Path = getTok().getString();
+  Path = Path.substr(1, Path.size()-2);
   Lex();
+
+  StringRef Directory;
+  StringRef Filename;
+  if (getLexer().is(AsmToken::String)) {
+    if (FileNumber == -1)
+      return TokError("explicit path specified, but no file number");
+    Filename = getTok().getString();
+    Filename = Filename.substr(1, Filename.size()-2);
+    Directory = Path;
+    Lex();
+  } else {
+    Filename = Path;
+  }
 
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in '.file' directive");
 
+  if (getContext().getGenDwarfForAssembly() == true)
+    Error(DirectiveLoc, "input can't have .file dwarf directives when -g is "
+                        "used to generate dwarf debug info for assembly code");
+
   if (FileNumber == -1)
     getStreamer().EmitFileDirective(Filename);
   else {
-    if (getStreamer().EmitDwarfFileDirective(FileNumber, Filename))
+    if (getStreamer().EmitDwarfFileDirective(FileNumber, Directory, Filename))
       Error(FileNumberLoc, "file number already allocated");
   }
 

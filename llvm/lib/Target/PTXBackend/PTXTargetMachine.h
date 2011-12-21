@@ -36,8 +36,12 @@ struct SimplePTXTargetMachine : public TargetMachine {
 
  SimplePTXTargetMachine(const Target &T, StringRef TT,
                         StringRef CPU, StringRef FS,
-                        Reloc::Model&, CodeModel::Model&)
-   : TargetMachine(T, TT, CPU, FS) {}
+                        const TargetOptions &Options,
+			Reloc::Model& RM, CodeModel::Model& CM,
+			CodeGenOpt::Level OL)
+   // ndm - MERGE
+   // : TargetMachine(T, TT, CPU, FS) {}
+   : TargetMachine(T, TT, CPU, FS, Options) {}
 
   //const Module &M, const std::string &FS)
   //  : DataLayout(&M) {}

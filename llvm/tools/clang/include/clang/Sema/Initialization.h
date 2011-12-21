@@ -530,6 +530,10 @@ public:
     SK_ListInitialization,
     /// \brief Perform list-initialization with a constructor.
     SK_ListConstructorCall,
+    /// \brief Unwrap the single-element initializer list for a reference.
+    SK_UnwrapInitList,
+    /// \brief Rewrap the single-element initializer list for a reference.
+    SK_RewrapInitList,
     /// \brief Perform initialization via a constructor.
     SK_ConstructorInitialization,
     /// \brief Zero-initialize the object
@@ -568,17 +572,23 @@ public:
       /// When Kind == SK_ConstructorInitialization or SK_ListConstruction,
       /// the constructor to be called.
       ///
-      /// Always a FunctionDecl.
+      /// Always a FunctionDecl, plus a Boolean flag telling if it was
+      /// selected from an overloaded set having size greater than 1.
       /// For conversion decls, the naming class is the source type.
       /// For construct decls, the naming class is the target type.
       struct {
+        bool HadMultipleCandidates;
         FunctionDecl *Function;
         DeclAccessPair FoundDecl;
       } Function;
 
       /// \brief When Kind = SK_ConversionSequence, the implicit conversion
-      /// sequence 
+      /// sequence.
       ImplicitConversionSequence *ICS;
+
+      /// \brief When Kind = SK_RewrapInitList, the syntactic form of the
+      /// wrapping list.
+      InitListExpr *WrappingSyntacticList;
     };
 
     void Destroy();
@@ -640,7 +650,10 @@ public:
     /// \brief Initialization of an incomplete type.
     FK_Incomplete,
     /// \brief List initialization failed at some point.
-    FK_ListInitializationFailed
+    FK_ListInitializationFailed,
+    /// \brief Initializer has a placeholder type which cannot be
+    /// resolved by initialization.
+    FK_PlaceholderType
   };
   
 private:
@@ -761,8 +774,9 @@ public:
   /// \param Function the function to which the overloaded function reference
   /// resolves.
   void AddAddressOverloadResolutionStep(FunctionDecl *Function,
-                                        DeclAccessPair Found);
-  
+                                        DeclAccessPair Found,
+                                        bool HadMultipleCandidates);
+
   /// \brief Add a new step in the initialization that performs a derived-to-
   /// base cast.
   ///
@@ -799,8 +813,9 @@ public:
   /// a constructor or a conversion function.
   void AddUserConversionStep(FunctionDecl *Function,
                              DeclAccessPair FoundDecl,
-                             QualType T);
-  
+                             QualType T,
+                             bool HadMultipleCandidates);
+
   /// \brief Add a new step that performs a qualification conversion to the
   /// given type.
   void AddQualificationConversionStep(QualType Ty,
@@ -816,7 +831,8 @@ public:
   /// \brief Add a constructor-initialization step.
   void AddConstructorInitializationStep(CXXConstructorDecl *Constructor,
                                         AccessSpecifier Access,
-                                        QualType T);
+                                        QualType T,
+                                        bool HadMultipleCandidates);
 
   /// \brief Add a zero-initialization step.
   void AddZeroInitializationStep(QualType T);
@@ -844,6 +860,10 @@ public:
   /// \brief Add a step to "produce" an Objective-C object (by
   /// retaining it).
   void AddProduceObjCObjectStep(QualType T);
+
+  /// \brief Add steps to unwrap a initializer list for a reference around a
+  /// single element and rewrap it at the end.
+  void RewrapReferenceInitList(QualType T, InitListExpr *Syntactic);
 
   /// \brief Note that this initialization sequence failed.
   void SetFailed(FailureKind Failure) {

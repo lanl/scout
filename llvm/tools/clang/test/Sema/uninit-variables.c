@@ -44,6 +44,15 @@ int test7(int y) {
   return x; // expected-warning{{variable 'x' may be uninitialized when used here}}
 }
 
+int test7b(int y) {
+  int x = x; // expected-note{{variable 'x' is declared here}}
+  if (y)
+    x = 1;
+  // Warn with "may be uninitialized" here (not "is uninitialized"), since the
+  // self-initialization is intended to suppress a -Wuninitialized warning.
+  return x; // expected-warning{{variable 'x' may be uninitialized when used here}}
+}
+
 int test8(int y) {
   int x;
   if (y)
@@ -94,10 +103,15 @@ void test14() {
   for (;;) {}
 }
 
-int test15() {
-  int x = x; // no-warning: signals intended lack of initialization. \
-             // expected-note{{variable 'x' is declared here}}
-  return x; // expected-warning{{variable 'x' is uninitialized when used here}}
+void test15() {
+  int x = x; // no-warning: signals intended lack of initialization.
+}
+
+int test15b() {
+  // Warn here with the self-init, since it does result in a use of
+  // an unintialized variable and this is the root cause.
+  int x = x; // expected-warning {{variable 'x' is uninitialized when used within its own initialization}}
+  return x;
 }
 
 // Don't warn in the following example; shows dataflow confluence.
@@ -391,3 +405,22 @@ int test_block_and_dead_code() {
   return x; // no-warning
 }
 
+// This previously triggered an infinite loop in the analysis.
+void PR11069(int a, int b) {
+  unsigned long flags;
+  for (;;) {
+    if (a && !b)
+      break;
+  }
+  for (;;) {
+    // This does not trigger a warning because it isn't a real use.
+    (void)(flags); // no-warning
+  }
+}
+
+// Test uninitialized value used in loop condition.
+void rdar9432305(float *P) {
+  int i; // expected-note {{initialize the variable 'i' to silence this warning}}
+  for (; i < 10000; ++i) // expected-warning {{variable 'i' is uninitialized when used here}}
+    P[i] = 0.0f;
+}

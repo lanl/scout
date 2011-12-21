@@ -335,10 +335,12 @@ MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
       llvm_unreachable("Can't mangle Objective-C selector names here!");
       
     case DeclarationName::CXXConstructorName:
-      llvm_unreachable("Can't mangle constructors yet!");
+      Out << "?0";
+      break;
       
     case DeclarationName::CXXDestructorName:
-      llvm_unreachable("Can't mangle destructors yet!");
+      Out << "?1";
+      break;
       
     case DeclarationName::CXXConversionFunctionName:
       // <operator-name> ::= ?B # (cast)
@@ -701,43 +703,22 @@ void MicrosoftCXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::WChar_S:
   case BuiltinType::WChar_U: Out << "_W"; break;
 
-  // ndm - Scout vector types
-  case BuiltinType::Bool2: Out << "b2"; break;
-  case BuiltinType::Bool3: Out << "b3"; break;
-  case BuiltinType::Bool4: Out << "b4"; break;
-  case BuiltinType::Char2: Out << "c2"; break;
-  case BuiltinType::Char3: Out << "c3"; break;
-  case BuiltinType::Char4: Out << "c4"; break;
-  case BuiltinType::Short2: Out << "s2"; break;
-  case BuiltinType::Short3: Out << "s3"; break;
-  case BuiltinType::Short4: Out << "s4"; break;
-  case BuiltinType::Int2: Out << "i2"; break;
-  case BuiltinType::Int3: Out << "i3"; break;
-  case BuiltinType::Int4: Out << "i4"; break;
-  case BuiltinType::Long2: Out << "l2"; break;
-  case BuiltinType::Long3: Out << "l3"; break;
-  case BuiltinType::Long4: Out << "l4"; break;
-  case BuiltinType::Float2: Out << "f2"; break;
-  case BuiltinType::Float3: Out << "f3"; break;
-  case BuiltinType::Float4: Out << "f4"; break;
-  case BuiltinType::Double2: Out << "d2"; break;
-  case BuiltinType::Double3: Out << "d3"; break;
-  case BuiltinType::Double4: Out << "d4"; break;
-
-  case BuiltinType::Overload:
+#define BUILTIN_TYPE(Id, SingletonId)
+#define PLACEHOLDER_TYPE(Id, SingletonId) \
+  case BuiltinType::Id:
+#include "clang/AST/BuiltinTypes.def"
   case BuiltinType::Dependent:
-  case BuiltinType::UnknownAny:
-  case BuiltinType::BoundMember:
-    llvm_unreachable(
-           "Overloaded and dependent types shouldn't get to name mangling");
+    llvm_unreachable("placeholder types shouldn't get to name mangling");
+
   case BuiltinType::ObjCId: Out << "PAUobjc_object@@"; break;
   case BuiltinType::ObjCClass: Out << "PAUobjc_class@@"; break;
   case BuiltinType::ObjCSel: Out << "PAUobjc_selector@@"; break;
 
   case BuiltinType::Char16:
   case BuiltinType::Char32:
+  case BuiltinType::Half:
   case BuiltinType::NullPtr:
-    llvm_unreachable("Don't know how to mangle this type");
+    assert(0 && "Don't know how to mangle this type yet");
   }
 }
 
@@ -1144,6 +1125,10 @@ void MicrosoftCXXNameMangler::mangleType(const AutoType *T) {
   llvm_unreachable("Don't know how to mangle AutoTypes yet!");
 }
 
+void MicrosoftCXXNameMangler::mangleType(const AtomicType *T) {
+  llvm_unreachable("Don't know how to mangle AtomicTypes yet!");
+}
+
 void MicrosoftMangleContext::mangleName(const NamedDecl *D,
                                         raw_ostream &Out) {
   assert((isa<FunctionDecl>(D) || isa<VarDecl>(D)) &&
@@ -1193,13 +1178,15 @@ void MicrosoftMangleContext::mangleCXXRTTIName(QualType T,
 }
 void MicrosoftMangleContext::mangleCXXCtor(const CXXConstructorDecl *D,
                                            CXXCtorType Type,
-                                           raw_ostream &) {
-  llvm_unreachable("Can't yet mangle constructors!");
+                                           raw_ostream & Out) {
+  MicrosoftCXXNameMangler mangler(*this, Out);
+  mangler.mangle(D);
 }
 void MicrosoftMangleContext::mangleCXXDtor(const CXXDestructorDecl *D,
                                            CXXDtorType Type,
-                                           raw_ostream &) {
-  llvm_unreachable("Can't yet mangle destructors!");
+                                           raw_ostream & Out) {
+  MicrosoftCXXNameMangler mangler(*this, Out);
+  mangler.mangle(D);
 }
 void MicrosoftMangleContext::mangleReferenceTemporary(const clang::VarDecl *,
                                                       raw_ostream &) {

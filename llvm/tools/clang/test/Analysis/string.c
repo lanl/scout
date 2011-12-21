@@ -1,7 +1,7 @@
 // RUN: %clang_cc1 -analyze -analyzer-checker=core,experimental.unix.CString,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
 // RUN: %clang_cc1 -analyze -DUSE_BUILTINS -analyzer-checker=core,experimental.unix.CString,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
 // RUN: %clang_cc1 -analyze -DVARIANT -analyzer-checker=core,experimental.unix.CString,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=core,experimental.unix.CString,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=experimental.security.taint,core,experimental.unix.CString,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
 
 //===----------------------------------------------------------------------===
 // Declarations
@@ -26,6 +26,7 @@
 
 #define NULL 0
 typedef typeof(sizeof(int)) size_t;
+int scanf(const char *restrict format, ...);
 
 //===----------------------------------------------------------------------===
 // strlen()
@@ -126,6 +127,18 @@ void strlen_indirect(char *x) {
 
   extern void use_string_ptr(char*const*);
   use_string_ptr(p2);
+
+  size_t c = strlen(x);
+  if (a == 0 && c != 0)
+    (void)*(char*)0; // expected-warning{{null}}
+}
+
+void strlen_indirect2(char *x) {
+  size_t a = strlen(x);
+  char *p = x;
+  char **p2 = &p;
+  extern void use_string_ptr2(char**);
+  use_string_ptr2(p2);
 
   size_t c = strlen(x);
   if (a == 0 && c != 0)
@@ -434,6 +447,13 @@ void strcat_symbolic_src_length(char *src) {
 	strcat(dst, src);
 	if (strlen(dst) < 4)
 		(void)*(char*)0; // no-warning
+}
+
+void strcat_symbolic_dst_length_taint(char *dst) {
+  scanf("%s", dst); // Taint data.
+  strcat(dst, "1234");
+  if (strlen(dst) < 4)
+    (void)*(char*)0; // no-warning
 }
 
 void strcat_unknown_src_length(char *src, int offset) {

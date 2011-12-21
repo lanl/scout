@@ -344,6 +344,7 @@ private:
   CFGBlock *VisitObjCAtTryStmt(ObjCAtTryStmt *S);
   CFGBlock *VisitObjCForCollectionStmt(ObjCForCollectionStmt *S);
   CFGBlock *VisitReturnStmt(ReturnStmt *R);
+  CFGBlock *VisitPseudoObjectExpr(PseudoObjectExpr *E);
   CFGBlock *VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E,
                                           AddStmtChoice asc);
   CFGBlock *VisitStmtExpr(StmtExpr *S, AddStmtChoice asc);
@@ -431,26 +432,18 @@ private:
       return false;
     return !S->isTypeDependent() && 
            !S->isValueDependent() &&
-           S->Evaluate(outResult, *Context);
+           S->EvaluateAsRValue(outResult, *Context);
   }
 
   /// tryEvaluateBool - Try and evaluate the Stmt and return 0 or 1
   /// if we can evaluate to a known value, otherwise return -1.
   TryResult tryEvaluateBool(Expr *S) {
-    Expr::EvalResult Result;
-    if (!tryEvaluate(S, Result))
+    bool Result;
+    if (!BuildOpts.PruneTriviallyFalseEdges ||
+        S->isTypeDependent() || S->isValueDependent() ||
+        !S->EvaluateAsBooleanCondition(Result, *Context))
       return TryResult();
-    
-    if (Result.Val.isInt())
-      return Result.Val.getInt().getBoolValue();
-
-    if (Result.Val.isLValue()) {
-      const Expr *e = Result.Val.getLValueBase();
-      const CharUnits &c = Result.Val.getLValueOffset();        
-      if (!e && c.isZero())
-        return false;        
-    }
-    return TryResult();
+    return Result;
   }
   
 };
@@ -646,6 +639,52 @@ CFGBlock *CFGBuilder::addInitializer(CXXCtorInitializer *I) {
   return Block;
 }
 
+/// \brief Retrieve the type of the temporary object whose lifetime was 
+/// extended by a local reference with the given initializer.
+static QualType getReferenceInitTemporaryType(ASTContext &Context,
+                                              const Expr *Init) {
+  while (true) {
+    // Skip parentheses.
+    Init = Init->IgnoreParens();
+    
+    // Skip through cleanups.
+    if (const ExprWithCleanups *EWC = dyn_cast<ExprWithCleanups>(Init)) {
+      Init = EWC->getSubExpr();
+      continue;
+    }
+    
+    // Skip through the temporary-materialization expression.
+    if (const MaterializeTemporaryExpr *MTE
+          = dyn_cast<MaterializeTemporaryExpr>(Init)) {
+      Init = MTE->GetTemporaryExpr();
+      continue;
+    }
+    
+    // Skip derived-to-base and no-op casts.
+    if (const CastExpr *CE = dyn_cast<CastExpr>(Init)) {
+      if ((CE->getCastKind() == CK_DerivedToBase ||
+           CE->getCastKind() == CK_UncheckedDerivedToBase ||
+           CE->getCastKind() == CK_NoOp) &&
+          Init->getType()->isRecordType()) {
+        Init = CE->getSubExpr();
+        continue;
+      }
+    }
+    
+    // Skip member accesses into rvalues.
+    if (const MemberExpr *ME = dyn_cast<MemberExpr>(Init)) {
+      if (!ME->isArrow() && ME->getBase()->isRValue()) {
+        Init = ME->getBase();
+        continue;
+      }
+    }
+    
+    break;
+  }
+
+  return Init->getType();
+}
+  
 /// addAutomaticObjDtors - Add to current block automatic objects destructors
 /// for objects in range of local scope positions. Use S as trigger statement
 /// for destructors.
@@ -674,9 +713,13 @@ void CFGBuilder::addAutomaticObjDtors(LocalScope::const_iterator B,
     // If this destructor is marked as a no-return destructor, we need to
     // create a new block for the destructor which does not have as a successor
     // anything built thus far: control won't flow out of this block.
-    QualType Ty = (*I)->getType().getNonReferenceType();
-    if (const ArrayType *AT = Context->getAsArrayType(Ty))
-      Ty = AT->getElementType();
+    QualType Ty;
+    if ((*I)->getType()->isReferenceType()) {
+      Ty = getReferenceInitTemporaryType(*Context, (*I)->getInit());
+    } else {
+      Ty = Context->getBaseElementType((*I)->getType());
+    }
+    
     const CXXDestructorDecl *Dtor = Ty->getAsCXXRecordDecl()->getDestructor();
     if (cast<FunctionType>(Dtor->getType())->getNoReturnAttr())
       Block = createNoReturnBlock();
@@ -806,16 +849,15 @@ LocalScope* CFGBuilder::addLocalScopeForVarDecl(VarDecl *VD,
 
   // Check for const references bound to temporary. Set type to pointee.
   QualType QT = VD->getType();
-  if (const ReferenceType* RT = QT.getTypePtr()->getAs<ReferenceType>()) {
-    QT = RT->getPointeeType();
-    if (!QT.isConstQualified())
-      return Scope;
+  if (QT.getTypePtr()->isReferenceType()) {
     if (!VD->extendsLifetimeOfTemporary())
       return Scope;
+
+    QT = getReferenceInitTemporaryType(*Context, VD->getInit());
   }
 
   // Check for constant size array. Set type to array element type.
-  if (const ConstantArrayType *AT = Context->getAsConstantArrayType(QT)) {
+  while (const ConstantArrayType *AT = Context->getAsConstantArrayType(QT)) {
     if (AT->getSize() == 0)
       return Scope;
     QT = AT->getElementType();
@@ -968,6 +1010,9 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
     case Stmt::MemberExprClass:
       return VisitMemberExpr(cast<MemberExpr>(S), asc);
 
+    case Stmt::NullStmtClass:
+      return Block;
+
     case Stmt::ObjCAtCatchStmtClass:
       return VisitObjCAtCatchStmt(cast<ObjCAtCatchStmt>(S));
 
@@ -983,8 +1028,11 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
     case Stmt::ObjCForCollectionStmtClass:
       return VisitObjCForCollectionStmt(cast<ObjCForCollectionStmt>(S));
 
-    case Stmt::NullStmtClass:
+    case Stmt::OpaqueValueExprClass:
       return Block;
+
+    case Stmt::PseudoObjectExprClass:
+      return VisitPseudoObjectExpr(cast<PseudoObjectExpr>(S));
 
     case Stmt::ReturnStmtClass:
       return VisitReturnStmt(cast<ReturnStmt>(S));
@@ -1912,6 +1960,31 @@ CFGBlock *CFGBuilder::VisitObjCAtTryStmt(ObjCAtTryStmt *S) {
   return NYS();
 }
 
+CFGBlock *CFGBuilder::VisitPseudoObjectExpr(PseudoObjectExpr *E) {
+  autoCreateBlock();
+
+  // Add the PseudoObject as the last thing.
+  appendStmt(Block, E);
+
+  CFGBlock *lastBlock = Block;  
+
+  // Before that, evaluate all of the semantics in order.  In
+  // CFG-land, that means appending them in reverse order.
+  for (unsigned i = E->getNumSemanticExprs(); i != 0; ) {
+    Expr *Semantic = E->getSemanticExpr(--i);
+
+    // If the semantic is an opaque value, we're being asked to bind
+    // it to its source expression.
+    if (OpaqueValueExpr *OVE = dyn_cast<OpaqueValueExpr>(Semantic))
+      Semantic = OVE->getSourceExpr();
+
+    if (CFGBlock *B = Visit(Semantic))
+      lastBlock = B;
+  }
+
+  return lastBlock;
+}
+
 CFGBlock *CFGBuilder::VisitWhileStmt(WhileStmt *W) {
   CFGBlock *LoopSuccessor = NULL;
 
@@ -2343,11 +2416,8 @@ static bool shouldAddCase(bool &switchExclusivelyCovered,
   if (!switchExclusivelyCovered) {
     if (switchCond->Val.isInt()) {
       // Evaluate the LHS of the case value.
-      Expr::EvalResult V1;
-      CS->getLHS()->Evaluate(V1, Ctx);
-      assert(V1.Val.isInt());
+      const llvm::APSInt &lhsInt = CS->getLHS()->EvaluateKnownConstInt(Ctx);
       const llvm::APSInt &condInt = switchCond->Val.getInt();
-      const llvm::APSInt &lhsInt = V1.Val.getInt();
       
       if (condInt == lhsInt) {
         addCase = true;
@@ -2356,10 +2426,8 @@ static bool shouldAddCase(bool &switchExclusivelyCovered,
       else if (condInt < lhsInt) {
         if (const Expr *RHS = CS->getRHS()) {
           // Evaluate the RHS of the case value.
-          Expr::EvalResult V2;
-          RHS->Evaluate(V2, Ctx);
-          assert(V2.Val.isInt());
-          if (V2.Val.getInt() <= condInt) {
+          const llvm::APSInt &V2 = RHS->EvaluateKnownConstInt(Ctx);
+          if (V2 <= condInt) {
             addCase = true;
             switchExclusivelyCovered = true;
           }
@@ -2971,7 +3039,7 @@ CFGBlock *CFG::createBlock() {
 
   // Create the block.
   CFGBlock *Mem = getAllocator().Allocate<CFGBlock>();
-  new (Mem) CFGBlock(NumBlockIDs++, BlkBVC);
+  new (Mem) CFGBlock(NumBlockIDs++, BlkBVC, this);
   Blocks.push_back(Mem, BlkBVC);
 
   // If this is the first block, set it as the Entry and Exit.

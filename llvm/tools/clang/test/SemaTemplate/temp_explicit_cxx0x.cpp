@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -std=c++0x -verify %s
+// RUN: %clang_cc1 -fsyntax-only -std=c++11 -verify %s
 namespace N1 {
 
   template<typename T> struct X0 { }; // expected-note{{here}}
@@ -18,7 +18,7 @@ template struct ::N1::Inner::X1<float>;
 namespace N2 {
   using namespace N1;
 
-  template struct X0<double>; // expected-error{{not in a namespace enclosing}}
+  template struct X0<double>; // expected-error{{must occur in namespace 'N1'}}
 
   template struct X2<float>; // expected-error{{at global scope}}
 }

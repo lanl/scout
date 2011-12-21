@@ -53,7 +53,7 @@ class ExplodedGraph;
 class ExplodedNode : public llvm::FoldingSetNode {
   friend class ExplodedGraph;
   friend class CoreEngine;
-  friend class StmtNodeBuilder;
+  friend class NodeBuilder;
   friend class BranchNodeBuilder;
   friend class IndirectGotoNodeBuilder;
   friend class SwitchNodeBuilder;
@@ -116,9 +116,12 @@ class ExplodedNode : public llvm::FoldingSetNode {
 
 public:
 
-  explicit ExplodedNode(const ProgramPoint &loc, const ProgramState *state)
+  explicit ExplodedNode(const ProgramPoint &loc, const ProgramState *state,
+                        bool IsSink)
     : Location(loc), State(state) {
     const_cast<ProgramState*>(State)->incrementReferenceCount();
+    if (IsSink)
+      Succs.setFlag();
   }
   
   ~ExplodedNode() {
@@ -138,8 +141,9 @@ public:
 
   ParentMap &getParentMap() const {return getLocationContext()->getParentMap();}
 
-  LiveVariables &getLiveVariables() const { 
-    return *getLocationContext()->getLiveVariables(); 
+  template <typename T>
+  T &getAnalysis() const {
+    return *getLocationContext()->getAnalysis<T>();
   }
 
   const ProgramState *getState() const { return State; }
@@ -148,13 +152,16 @@ public:
   const T* getLocationAs() const { return llvm::dyn_cast<T>(&Location); }
 
   static void Profile(llvm::FoldingSetNodeID &ID,
-                      const ProgramPoint &Loc, const ProgramState *state) {
+                      const ProgramPoint &Loc,
+                      const ProgramState *state,
+                      bool IsSink) {
     ID.Add(Loc);
     ID.AddPointer(state);
+    ID.AddBoolean(IsSink);
   }
 
   void Profile(llvm::FoldingSetNodeID& ID) const {
-    Profile(ID, getLocation(), getState());
+    Profile(ID, getLocation(), getState(), isSink());
   }
 
   /// addPredeccessor - Adds a predecessor to the current node, and
@@ -167,7 +174,6 @@ public:
   bool pred_empty() const { return Preds.empty(); }
 
   bool isSink() const { return Succs.getFlag(); }
-  void markAsSink() { Succs.setFlag(); }
 
   ExplodedNode *getFirstPred() {
     return pred_empty() ? NULL : *(pred_begin());
@@ -222,6 +228,7 @@ private:
 
 // FIXME: Is this class necessary?
 class InterExplodedGraphMap {
+  virtual void anchor();
   llvm::DenseMap<const ExplodedNode*, ExplodedNode*> M;
   friend class ExplodedGraph;
 
@@ -270,12 +277,13 @@ protected:
   bool reclaimNodes;
 
 public:
-  /// getNode - Retrieve the node associated with a (Location,State) pair,
-  ///  where the 'Location' is a ProgramPoint in the CFG.  If no node for
-  ///  this pair exists, it is created.  IsNew is set to true if
-  ///  the node was freshly created.
 
+  /// \brief Retrieve the node associated with a (Location,State) pair,
+  ///  where the 'Location' is a ProgramPoint in the CFG.  If no node for
+  ///  this pair exists, it is created. IsNew is set to true if
+  ///  the node was freshly created.
   ExplodedNode *getNode(const ProgramPoint &L, const ProgramState *State,
+                        bool IsSink = false,
                         bool* IsNew = 0);
 
   ExplodedGraph* MakeEmptyGraph() const {
@@ -379,19 +387,16 @@ public:
     if (N && !static_cast<ExplodedNode*>(N)->isSink()) Impl.insert(N);
   }
 
-  ExplodedNodeSet &operator=(const ExplodedNodeSet &X) {
-    Impl = X.Impl;
-    return *this;
-  }
-
   typedef ImplTy::iterator       iterator;
   typedef ImplTy::const_iterator const_iterator;
 
   unsigned size() const { return Impl.size();  }
   bool empty()    const { return Impl.empty(); }
+  bool erase(ExplodedNode *N) { return Impl.erase(N); }
 
   void clear() { Impl.clear(); }
   void insert(const ExplodedNodeSet &S) {
+    assert(&S != this);
     if (empty())
       Impl = S.Impl;
     else

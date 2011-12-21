@@ -9,7 +9,7 @@
 
 @implementation A
 + (void)F __attribute__((deprecated))
-{	// expected-warning {{method attribute can only be specified on method declarations}}
+{
   [self F]; // no warning, since the caller is also deprecated.
 }
 
@@ -53,7 +53,7 @@ void t1(A *a)
 
 void t2(id a)
 {
-  [a f];
+  [a f]; // expected-warning {{'f' is deprecated}}
 }
 
 void t3(A<P>* a)
@@ -77,23 +77,32 @@ void t4(Class c)
 
 int t5() {
   Bar *f;
-  f.FooBar = 1;	   // expected-warning {{warning: 'FooBar' is deprecated}}
-  return f.FooBar; // expected-warning {{warning: 'FooBar' is deprecated}}
+  f.FooBar = 1;	   // expected-warning {{'FooBar' is deprecated}}
+  return f.FooBar; // expected-warning {{'FooBar' is deprecated}}
 }
 
 
 __attribute ((deprecated))  
 @interface DEPRECATED {
   @public int ivar; 
+  DEPRECATED *ivar2; // no warning.
 } 
 - (int) instancemethod;
+- (DEPRECATED *) meth; // no warning.
 @property  int prop; 
 @end
 
-@interface DEPRECATED (Category) // expected-warning {{warning: 'DEPRECATED' is deprecated}}
+@interface DEPRECATED (Category) // no warning.
+- (DEPRECATED *) meth2; // no warning.
 @end
 
-@interface NS : DEPRECATED  // expected-warning {{warning: 'DEPRECATED' is deprecated}}
+@interface DEPRECATED (Category2) // no warning.
+@end
+
+@implementation DEPRECATED (Category2) // expected-warning {{'DEPRECATED' is deprecated}}
+@end
+
+@interface NS : DEPRECATED  // expected-warning {{'DEPRECATED' is deprecated}}
 @end
 
 
@@ -111,4 +120,21 @@ void test(Test2 *foo) {
 
 __attribute__((deprecated))
 @interface A(Blah) // expected-error{{attributes may not be specified on a category}}
+@end
+
+// rdar://10459930
+
+@class NSString;
+@interface NSDocumentController
+{
+  id iv;
+}
+- (void)fileExtensionsFromType:(NSString *)typeName __attribute__((deprecated));
+@end
+
+@implementation NSDocumentController
+- (void) Meth {
+  [iv fileExtensionsFromType:@"public.text"]; // expected-warning {{'fileExtensionsFromType:' is deprecated}}
+}
+- (void)fileExtensionsFromType:(NSString *)typeName {}
 @end

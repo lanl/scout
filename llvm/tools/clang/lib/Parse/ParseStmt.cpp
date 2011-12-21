@@ -256,7 +256,7 @@ Retry:
         
         break;
       }
-          
+
       case Sema::NC_Expression:
         Tok.setKind(tok::annot_primary_expr);
         setExprAnnotation(Tok, Classification.getExpression());
@@ -505,7 +505,8 @@ StmtResult Parser::ParseSEHTryBlockCommon(SourceLocation TryLoc) {
     return move(TryBlock);
 
   StmtResult Handler;
-  if(Tok.is(tok::kw___except)) {
+  if (Tok.is(tok::identifier) && 
+      Tok.getIdentifierInfo() == getSEHExceptKeyword()) {
     SourceLocation Loc = ConsumeToken();
     Handler = ParseSEHExceptBlock(Loc);
   } else if (Tok.is(tok::kw___finally)) {
@@ -858,8 +859,9 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
                                 Tok.getLocation(),
                                 "in compound statement ('{}')");
   InMessageExpressionRAIIObject InMessage(*this, false);
-
-  SourceLocation LBraceLoc = ConsumeBrace(); // eat the '{'.
+  BalancedDelimiterTracker T(*this, tok::l_brace);
+  if (T.consumeOpen())
+    return StmtError();
 
   StmtVector Stmts(Actions);
 
@@ -961,13 +963,15 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   // We broke out of the while loop because we found a '}' or EOF.
   if (Tok.isNot(tok::r_brace)) {
     Diag(Tok, diag::err_expected_rbrace);
-    Diag(LBraceLoc, diag::note_matching) << "{";
+    Diag(T.getOpenLocation(), diag::note_matching) << "{";
     return StmtError();
   }
 
-  SourceLocation RBraceLoc = ConsumeBrace();
-  return Actions.ActOnCompoundStmt(LBraceLoc, RBraceLoc, move_arg(Stmts),
-                                   isStmtExpr);
+  if (T.consumeClose())
+    return StmtError();
+
+  return Actions.ActOnCompoundStmt(T.getOpenLocation(), T.getCloseLocation(),
+                                   move_arg(Stmts), isStmtExpr);
 }
 
 /// ParseParenExprOrCondition:
@@ -985,7 +989,9 @@ bool Parser::ParseParenExprOrCondition(ExprResult &ExprResult,
                                        Decl *&DeclResult,
                                        SourceLocation Loc,
                                        bool ConvertToBoolean) {
-  SourceLocation LParenLoc = ConsumeParen();
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+
   if (getLang().CPlusPlus)
     ParseCXXCondition(ExprResult, DeclResult, Loc, ConvertToBoolean);
   else {
@@ -1010,7 +1016,7 @@ bool Parser::ParseParenExprOrCondition(ExprResult &ExprResult,
   }
 
   // Otherwise the condition is valid or the rparen is present.
-  MatchRHSPunctuation(tok::r_paren, LParenLoc);
+  T.consumeClose();
   return false;
 }
 
@@ -1358,16 +1364,17 @@ StmtResult Parser::ParseDoStatement(ParsedAttributes &attrs) {
   }
 
   // Parse the parenthesized condition.
-  SourceLocation LPLoc = ConsumeParen();
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
   ExprResult Cond = ParseExpression();
-  SourceLocation RPLoc = MatchRHSPunctuation(tok::r_paren, LPLoc);
+  T.consumeClose();
   DoScope.Exit();
 
   if (Cond.isInvalid() || Body.isInvalid())
     return StmtError();
 
-  return Actions.ActOnDoStmt(DoLoc, Body.get(), WhileLoc, LPLoc,
-                             Cond.get(), RPLoc);
+  return Actions.ActOnDoStmt(DoLoc, Body.get(), WhileLoc, T.getOpenLocation(),
+                             Cond.get(), T.getCloseLocation());
 }
 
 /// ParseForStatement
@@ -1427,7 +1434,9 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
 
   ParseScope ForScope(this, ScopeFlags);
 
-  SourceLocation LParenLoc = ConsumeParen();
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
+
   ExprResult Value;
 
   bool ForEach = false, ForRange = false;
@@ -1451,7 +1460,7 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
   if (Tok.is(tok::semi)) {  // for (;
     // no first part, eat the ';'.
     ConsumeToken();
-  } else if (isSimpleDeclaration()) {  // for (int X = 4;
+  } else if (isForInitDeclaration()) {  // for (int X = 4;
     // Parse declaration, which eats the ';'.
     if (!C99orCXXorObjC)   // Use of C99-style for loops in C90 mode?
       Diag(Tok, diag::ext_c99_variable_decl_in_for_loop);
@@ -1472,8 +1481,8 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
     FirstPart = Actions.ActOnDeclStmt(DG, DeclStart, Tok.getLocation());
 
     if (ForRangeInit.ParsedForRangeDecl()) {
-      if (!getLang().CPlusPlus0x)
-        Diag(ForRangeInit.ColonLoc, diag::ext_for_range);
+      Diag(ForRangeInit.ColonLoc, getLang().CPlusPlus0x ?
+           diag::warn_cxx98_compat_for_range : diag::ext_for_range);
 
       ForRange = true;
     } else if (Tok.is(tok::semi)) {  // for (int x = 4;
@@ -1516,6 +1525,14 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
         return StmtError();
       }
       Collection = ParseExpression();
+    } else if (getLang().CPlusPlus0x && Tok.is(tok::colon) &&
+               !FirstPart.isInvalid()) {
+      // User tried to write the reasonable, but ill-formed, for-range-statement
+      //   for (expr : expr) { ... }
+      Diag(Tok, diag::err_for_range_expected_decl)
+        << FirstPart.get()->getSourceRange();
+      SkipUntil(tok::r_paren, false, true);
+      SecondPartIsInvalid = true;
     } else {
       if (!Value.isInvalid()) {
         Diag(Tok, diag::err_expected_semi_for);
@@ -1567,18 +1584,18 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
     }
   }
   // Match the ')'.
-  SourceLocation RParenLoc = MatchRHSPunctuation(tok::r_paren, LParenLoc);
+  T.consumeClose();
 
   // We need to perform most of the semantic analysis for a C++0x for-range
   // statememt before parsing the body, in order to be able to deduce the type
   // of an auto-typed loop variable.
   StmtResult ForRangeStmt;
   if (ForRange) {
-    ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, LParenLoc,
+    ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, T.getOpenLocation(),
                                                 FirstPart.take(),
                                                 ForRangeInit.ColonLoc,
                                                 ForRangeInit.RangeExpr.get(),
-                                                RParenLoc);
+                                                T.getCloseLocation());
 
 
   // Similarly, we need to do the semantic analysis for a for-range
@@ -1616,16 +1633,18 @@ StmtResult Parser::ParseForStatement(ParsedAttributes &attrs) {
     return StmtError();
 
   if (ForEach)
-    return Actions.ActOnObjCForCollectionStmt(ForLoc, LParenLoc,
-                                              FirstPart.take(),
-                                              Collection.take(), RParenLoc,
-                                              Body.take());
+   return Actions.ActOnObjCForCollectionStmt(ForLoc, T.getOpenLocation(),
+                                             FirstPart.take(),
+                                             Collection.take(), 
+                                             T.getCloseLocation(),
+                                             Body.take());
 
   if (ForRange)
     return Actions.FinishCXXForRangeStmt(ForRangeStmt.take(), Body.take());
 
-  return Actions.ActOnForStmt(ForLoc, LParenLoc, FirstPart.take(), SecondPart,
-                              SecondVar, ThirdPart, RParenLoc, Body.take());
+  return Actions.ActOnForStmt(ForLoc, T.getOpenLocation(), FirstPart.take(),
+                              SecondPart, SecondVar, ThirdPart,
+                              T.getCloseLocation(), Body.take());
 }
 
 /// ParseGotoStatement
@@ -1713,8 +1732,10 @@ StmtResult Parser::ParseReturnStatement(ParsedAttributes &attrs) {
     // parse libstdc++ 4.5's headers.
     if (Tok.is(tok::l_brace) && getLang().CPlusPlus) {
       R = ParseInitializer();
-      if (R.isUsable() && !getLang().CPlusPlus0x)
-        Diag(R.get()->getLocStart(), diag::ext_generalized_initializer_lists)
+      if (R.isUsable())
+        Diag(R.get()->getLocStart(), getLang().CPlusPlus0x ?
+             diag::warn_cxx98_compat_generalized_initializer_lists :
+             diag::ext_generalized_initializer_lists)
           << R.get()->getSourceRange();
     } else
         R = ParseExpression();
@@ -1726,30 +1747,105 @@ StmtResult Parser::ParseReturnStatement(ParsedAttributes &attrs) {
   return Actions.ActOnReturnStmt(ReturnLoc, R.take());
 }
 
-/// FuzzyParseMicrosoftAsmStatement. When -fms-extensions is enabled, this
-/// routine is called to skip/ignore tokens that comprise the MS asm statement.
-StmtResult Parser::FuzzyParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
-  SourceLocation EndLoc;
-  if (Tok.is(tok::l_brace)) {
-    unsigned short savedBraceCount = BraceCount;
-    do {
-      EndLoc = Tok.getLocation();
-      ConsumeAnyToken();
-    } while (BraceCount > savedBraceCount && Tok.isNot(tok::eof));
-  } else {
-    // From the MS website: If used without braces, the __asm keyword means
-    // that the rest of the line is an assembly-language statement.
-    SourceManager &SrcMgr = PP.getSourceManager();
+/// ParseMicrosoftAsmStatement. When -fms-extensions/-fasm-blocks is enabled,
+/// this routine is called to collect the tokens for an MS asm statement.
+StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
+  SourceManager &SrcMgr = PP.getSourceManager();
+  SourceLocation EndLoc = AsmLoc;
+  do {
+    bool InBraces = false;
+    unsigned short savedBraceCount = 0;
+    bool InAsmComment = false;
+    FileID FID;
+    unsigned LineNo = 0;
+    unsigned NumTokensRead = 0;
+    SourceLocation LBraceLoc;
+
+    if (Tok.is(tok::l_brace)) {
+      // Braced inline asm: consume the opening brace.
+      InBraces = true;
+      savedBraceCount = BraceCount;
+      EndLoc = LBraceLoc = ConsumeBrace();
+      ++NumTokensRead;
+    } else {
+      // Single-line inline asm; compute which line it is on.
+      std::pair<FileID, unsigned> ExpAsmLoc =
+          SrcMgr.getDecomposedExpansionLoc(EndLoc);
+      FID = ExpAsmLoc.first;
+      LineNo = SrcMgr.getLineNumber(FID, ExpAsmLoc.second);
+    }
+
     SourceLocation TokLoc = Tok.getLocation();
-    unsigned LineNo = SrcMgr.getExpansionLineNumber(TokLoc);
     do {
+      // If we hit EOF, we're done, period.
+      if (Tok.is(tok::eof))
+        break;
+      // When we consume the closing brace, we're done.
+      if (InBraces && BraceCount == savedBraceCount)
+        break;
+
+      if (!InAsmComment && Tok.is(tok::semi)) {
+        // A semicolon in an asm is the start of a comment.
+        InAsmComment = true;
+        if (InBraces) {
+          // Compute which line the comment is on.
+          std::pair<FileID, unsigned> ExpSemiLoc =
+              SrcMgr.getDecomposedExpansionLoc(TokLoc);
+          FID = ExpSemiLoc.first;
+          LineNo = SrcMgr.getLineNumber(FID, ExpSemiLoc.second);
+        }
+      } else if (!InBraces || InAsmComment) {
+        // If end-of-line is significant, check whether this token is on a
+        // new line.
+        std::pair<FileID, unsigned> ExpLoc =
+            SrcMgr.getDecomposedExpansionLoc(TokLoc);
+        if (ExpLoc.first != FID ||
+            SrcMgr.getLineNumber(ExpLoc.first, ExpLoc.second) != LineNo) {
+          // If this is a single-line __asm, we're done.
+          if (!InBraces)
+            break;
+          // We're no longer in a comment.
+          InAsmComment = false;
+        } else if (!InAsmComment && Tok.is(tok::r_brace)) {
+          // Single-line asm always ends when a closing brace is seen.
+          // FIXME: This is compatible with Apple gcc's -fasm-blocks; what
+          // does MSVC do here?
+          break;
+        }
+      }
+
+      // Consume the next token; make sure we don't modify the brace count etc.
+      // if we are in a comment.
       EndLoc = TokLoc;
-      ConsumeAnyToken();
+      if (InAsmComment)
+        PP.Lex(Tok);
+      else
+        ConsumeAnyToken();
       TokLoc = Tok.getLocation();
-    } while ((SrcMgr.getExpansionLineNumber(TokLoc) == LineNo) &&
-             Tok.isNot(tok::r_brace) && Tok.isNot(tok::semi) &&
-             Tok.isNot(tok::eof));
-  }
+      ++NumTokensRead;
+    } while (1);
+
+    if (InBraces && BraceCount != savedBraceCount) {
+      // __asm without closing brace (this can happen at EOF).
+      Diag(Tok, diag::err_expected_rbrace);
+      Diag(LBraceLoc, diag::note_matching) << "{";
+      return StmtError();
+    } else if (NumTokensRead == 0) {
+      // Empty __asm.
+      Diag(Tok, diag::err_expected_lbrace);
+      return StmtError();
+    }
+    // Multiple adjacent asm's form together into a single asm statement
+    // in the AST.
+    if (!Tok.is(tok::kw_asm))
+      break;
+    EndLoc = ConsumeToken();
+  } while (1);
+  // FIXME: Need to actually grab the data and pass it on to Sema.  Ideally,
+  // what Sema wants is a string of the entire inline asm, with one instruction
+  // per line and all the __asm keywords stripped out, and a way of mapping
+  // from any character of that string to its location in the original source
+  // code. I'm not entirely sure how to go about that, though.
   Token t;
   t.setKind(tok::string_literal);
   t.setLiteralData("\"/*FIXME: not done*/\"");
@@ -1785,12 +1881,16 @@ StmtResult Parser::FuzzyParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
 ///         asm-clobbers ',' asm-string-literal
 ///
 /// [MS]  ms-asm-statement:
-///         '__asm' assembly-instruction ';'[opt]
-///         '__asm' '{' assembly-instruction-list '}' ';'[opt]
+///         ms-asm-block
+///         ms-asm-block ms-asm-statement
 ///
-/// [MS]  assembly-instruction-list:
-///         assembly-instruction ';'[opt]
-///         assembly-instruction-list ';' assembly-instruction ';'[opt]
+/// [MS]  ms-asm-block:
+///         '__asm' ms-asm-line '\n'
+///         '__asm' '{' ms-asm-instruction-block[opt] '}' ';'[opt]
+///
+/// [MS]  ms-asm-instruction-block
+///         ms-asm-line
+///         ms-asm-line '\n' ms-asm-instruction-block
 ///
 StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   assert(Tok.is(tok::kw_asm) && "Not an asm stmt");
@@ -1798,7 +1898,7 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
 
   if (getLang().MicrosoftExt && Tok.isNot(tok::l_paren) && !isTypeQualifier()) {
     msAsm = true;
-    return FuzzyParseMicrosoftAsmStatement(AsmLoc);
+    return ParseMicrosoftAsmStatement(AsmLoc);
   }
   DeclSpec DS(AttrFactory);
   SourceLocation Loc = Tok.getLocation();
@@ -1817,11 +1917,17 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
     SkipUntil(tok::r_paren);
     return StmtError();
   }
-  Loc = ConsumeParen();
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  T.consumeOpen();
 
   ExprResult AsmString(ParseAsmStringLiteral());
-  if (AsmString.isInvalid())
+  if (AsmString.isInvalid()) {
+    // If the reason we are recovering is because of an improper string
+    // literal, it makes the most sense just to consume to the ')'.
+    if (isTokenStringLiteral())
+      T.skipToEnd();
     return StmtError();
+  }
 
   SmallVector<IdentifierInfo *, 4> Names;
   ExprVector Constraints(Actions);
@@ -1830,12 +1936,12 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
 
   if (Tok.is(tok::r_paren)) {
     // We have a simple asm expression like 'asm("foo")'.
-    SourceLocation RParenLoc = ConsumeParen();
+    T.consumeClose();
     return Actions.ActOnAsmStmt(AsmLoc, /*isSimple*/ true, isVolatile,
                                 /*NumOutputs*/ 0, /*NumInputs*/ 0, 0,
                                 move_arg(Constraints), move_arg(Exprs),
                                 AsmString.take(), move_arg(Clobbers),
-                                RParenLoc);
+                                T.getCloseLocation());
   }
 
   // Parse Outputs, if present.
@@ -1895,12 +2001,12 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
     }
   }
 
-  SourceLocation RParenLoc = MatchRHSPunctuation(tok::r_paren, Loc);
+  T.consumeClose();
   return Actions.ActOnAsmStmt(AsmLoc, false, isVolatile,
                               NumOutputs, NumInputs, Names.data(),
                               move_arg(Constraints), move_arg(Exprs),
                               AsmString.take(), move_arg(Clobbers),
-                              RParenLoc);
+                              T.getCloseLocation());
 }
 
 /// ParseAsmOperands - Parse the asm-operands production as used by
@@ -1926,7 +2032,8 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
   while (1) {
     // Read the [id] if present.
     if (Tok.is(tok::l_square)) {
-      SourceLocation Loc = ConsumeBracket();
+      BalancedDelimiterTracker T(*this, tok::l_square);
+      T.consumeOpen();
 
       if (Tok.isNot(tok::identifier)) {
         Diag(Tok, diag::err_expected_ident);
@@ -1938,7 +2045,7 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
       ConsumeToken();
 
       Names.push_back(II);
-      MatchRHSPunctuation(tok::r_square, Loc);
+      T.consumeClose();
     } else
       Names.push_back(0);
 
@@ -1956,9 +2063,10 @@ bool Parser::ParseAsmOperandsOpt(SmallVectorImpl<IdentifierInfo *> &Names,
     }
 
     // Read the parenthesized expression.
-    SourceLocation OpenLoc = ConsumeParen();
+    BalancedDelimiterTracker T(*this, tok::l_paren);
+    T.consumeOpen();
     ExprResult Res(ParseExpression());
-    MatchRHSPunctuation(tok::r_paren, OpenLoc);
+    T.consumeClose();
     if (Res.isInvalid()) {
       SkipUntil(tok::r_paren);
       return true;
@@ -2133,10 +2241,13 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc) {
     return move(TryBlock);
 
   // Borland allows SEH-handlers with 'try'
-  if(Tok.is(tok::kw___except) || Tok.is(tok::kw___finally)) {
+  
+  if((Tok.is(tok::identifier) && 
+      Tok.getIdentifierInfo() == getSEHExceptKeyword()) || 
+     Tok.is(tok::kw___finally)) {
     // TODO: Factor into common return ParseSEHHandlerCommon(...)
     StmtResult Handler;
-    if(Tok.is(tok::kw___except)) {
+    if(Tok.getIdentifierInfo() == getSEHExceptKeyword()) {
       SourceLocation Loc = ConsumeToken();
       Handler = ParseSEHExceptBlock(Loc);
     }
@@ -2189,8 +2300,8 @@ StmtResult Parser::ParseCXXCatchBlock() {
 
   SourceLocation CatchLoc = ConsumeToken();
 
-  SourceLocation LParenLoc = Tok.getLocation();
-  if (ExpectAndConsume(tok::l_paren, diag::err_expected_lparen))
+  BalancedDelimiterTracker T(*this, tok::l_paren);
+  if (T.expectAndConsume(diag::err_expected_lparen))
     return StmtError();
 
   // C++ 3.3.2p3:
@@ -2211,7 +2322,8 @@ StmtResult Parser::ParseCXXCatchBlock() {
   } else
     ConsumeToken();
 
-  if (MatchRHSPunctuation(tok::r_paren, LParenLoc).isInvalid())
+  T.consumeClose();
+  if (T.getCloseLocation().isInvalid())
     return StmtError();
 
   if (Tok.isNot(tok::l_brace))
@@ -2227,19 +2339,52 @@ StmtResult Parser::ParseCXXCatchBlock() {
 }
 
 void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
-  bool Result;
+  IfExistsCondition Result;
   if (ParseMicrosoftIfExistsCondition(Result))
     return;
 
-  if (Tok.isNot(tok::l_brace)) {
+  // Handle dependent statements by parsing the braces as a compound statement.
+  // This is not the same behavior as Visual C++, which don't treat this as a
+  // compound statement, but for Clang's type checking we can't have anything
+  // inside these braces escaping to the surrounding code.
+  if (Result.Behavior == IEB_Dependent) {
+    if (!Tok.is(tok::l_brace)) {
+      Diag(Tok, diag::err_expected_lbrace);
+      return;      
+    }
+    
+    ParsedAttributes Attrs(AttrFactory);
+    StmtResult Compound = ParseCompoundStatement(Attrs);
+    if (Compound.isInvalid())
+      return;
+    
+    StmtResult DepResult = Actions.ActOnMSDependentExistsStmt(Result.KeywordLoc,
+                                                              Result.IsIfExists,
+                                                              Result.SS, 
+                                                              Result.Name,
+                                                              Compound.get());
+    if (DepResult.isUsable())
+      Stmts.push_back(DepResult.get());
+    return;
+  }
+
+  BalancedDelimiterTracker Braces(*this, tok::l_brace);
+  if (Braces.consumeOpen()) {
     Diag(Tok, diag::err_expected_lbrace);
     return;
   }
-  ConsumeBrace();
 
-  // Condition is false skip all inside the {}.
-  if (!Result) {
-    SkipUntil(tok::r_brace, false);
+  switch (Result.Behavior) {
+  case IEB_Parse:
+    // Parse the statements below.
+    break;
+      
+  case IEB_Dependent:
+    llvm_unreachable("Dependent case handled above");
+    break;
+      
+  case IEB_Skip:
+    Braces.skipToEnd();
     return;
   }
 
@@ -2254,12 +2399,7 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
     if (R.isUsable())
       Stmts.push_back(R.release());
   }
-
-  if (Tok.isNot(tok::r_brace)) {
-    Diag(Tok, diag::err_expected_rbrace);
-    return;
-  }
-  ConsumeBrace();
+  Braces.consumeClose();
 }
 
 // ndm - Scout Stmts

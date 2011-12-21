@@ -686,7 +686,7 @@ int slf_function_bad_7() __attribute__((shared_lock_function(0))); // \
 // plus an optional list of locks (vars/fields)
 
 void etf_function() __attribute__((exclusive_trylock_function));  // \
-  // expected-error {{attribute takes attribute takes at least 1 argument arguments}}
+  // expected-error {{attribute takes at least 1 argument}}
 
 void etf_function_args() __attribute__((exclusive_trylock_function(1, mu2)));
 
@@ -1251,5 +1251,14 @@ public:
   int c __attribute__((guarded_by(this->mu)));
 
   Mu mu;
+};
+
+//-------------------------
+// Empty argument lists
+//-------------------------
+
+class __attribute__((lockable)) EmptyArgListsTest {
+  void lock() __attribute__((exclusive_lock_function())) { }
+  void unlock() __attribute__((unlock_function())) { }
 };
 

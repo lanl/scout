@@ -20,7 +20,6 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemStatCache.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -106,8 +105,8 @@ public:
   FileEntry &getFile(const char *Name, const struct stat & /*StatBuf*/) {
     std::string FullPath(GetFullPath(Name));
 
-    // LowercaseString because Windows filesystem is case insensitive.
-    FullPath = llvm::LowercaseString(FullPath);
+    // Lowercase string because Windows filesystem is case insensitive.
+    FullPath = StringRef(FullPath).lower();
     return UniqueFiles.GetOrCreateValue(FullPath).getValue();
   }
 
@@ -266,6 +265,12 @@ void FileManager::addAncestorsAsVirtualDirs(StringRef Path) {
 ///
 const DirectoryEntry *FileManager::getDirectory(StringRef DirName,
                                                 bool CacheFailure) {
+  // stat doesn't like trailing separators.
+  // At least, on Win32 MSVCRT, stat() cannot strip trailing '/'.
+  // (though it can strip '\\')
+  if (DirName.size() > 1 && llvm::sys::path::is_separator(DirName.back()))
+    DirName = DirName.substr(0, DirName.size()-1);
+
   ++NumDirLookups;
   llvm::StringMapEntry<DirectoryEntry *> &NamedDirEnt =
     SeenDirEntries.GetOrCreateValue(DirName);

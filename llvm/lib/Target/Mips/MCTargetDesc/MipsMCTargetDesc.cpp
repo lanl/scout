@@ -11,13 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MipsMCTargetDesc.h"
 #include "MipsMCAsmInfo.h"
+#include "MipsMCTargetDesc.h"
 #include "InstPrinter/MipsInstPrinter.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 
@@ -62,11 +63,12 @@ static MCAsmInfo *createMipsMCAsmInfo(const Target &T, StringRef TT) {
 }
 
 static MCCodeGenInfo *createMipsMCCodeGenInfo(StringRef TT, Reloc::Model RM,
-                                              CodeModel::Model CM) {
+                                              CodeModel::Model CM,
+                                              CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
   if (RM == Reloc::Default)
     RM = Reloc::PIC_;
-  X->InitMCCodeGenInfo(RM, CM);
+  X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 
@@ -75,6 +77,17 @@ static MCInstPrinter *createMipsMCInstPrinter(const Target &T,
                                               const MCAsmInfo &MAI,
                                               const MCSubtargetInfo &STI) {
   return new MipsInstPrinter(MAI);
+}
+
+static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
+                                    MCContext &Ctx, MCAsmBackend &MAB,
+                                    raw_ostream &_OS,
+                                    MCCodeEmitter *_Emitter,
+                                    bool RelaxAll,
+                                    bool NoExecStack) {
+  Triple TheTriple(TT);
+
+  return createELFStreamer(Ctx, MAB, _OS, _Emitter, RelaxAll, NoExecStack);
 }
 
 extern "C" void LLVMInitializeMipsTargetMC() {
@@ -106,6 +119,31 @@ extern "C" void LLVMInitializeMipsTargetMC() {
   TargetRegistry::RegisterMCRegInfo(TheMips64Target, createMipsMCRegisterInfo);
   TargetRegistry::RegisterMCRegInfo(TheMips64elTarget,
                                     createMipsMCRegisterInfo);
+
+  // Register the MC Code Emitter
+  TargetRegistry::RegisterMCCodeEmitter(TheMipsTarget, createMipsMCCodeEmitter);
+  TargetRegistry::RegisterMCCodeEmitter(TheMipselTarget,
+                                        createMipsMCCodeEmitter);
+  TargetRegistry::RegisterMCCodeEmitter(TheMips64Target,
+                                        createMipsMCCodeEmitter);
+  TargetRegistry::RegisterMCCodeEmitter(TheMips64elTarget,
+                                        createMipsMCCodeEmitter);
+
+  // Register the object streamer.
+  TargetRegistry::RegisterMCObjectStreamer(TheMipsTarget, createMCStreamer);
+  TargetRegistry::RegisterMCObjectStreamer(TheMipselTarget, createMCStreamer);
+  TargetRegistry::RegisterMCObjectStreamer(TheMips64Target, createMCStreamer);
+  TargetRegistry::RegisterMCObjectStreamer(TheMips64elTarget, createMCStreamer);
+
+  // Register the asm backend.
+  TargetRegistry::RegisterMCAsmBackend(TheMipsTarget, createMipsAsmBackend);
+  TargetRegistry::RegisterMCAsmBackend(TheMipselTarget, createMipsAsmBackend);
+  TargetRegistry::RegisterMCAsmBackend(TheMips64Target, createMipsAsmBackend);
+  TargetRegistry::RegisterMCAsmBackend(TheMips64elTarget, createMipsAsmBackend);
+
+  TargetRegistry::RegisterMCCodeEmitter(TheMipsTarget, createMipsMCCodeEmitter);
+  TargetRegistry::RegisterMCCodeEmitter(TheMipselTarget,
+                                        createMipsMCCodeEmitter);
 
   // Register the MC subtarget info.
   TargetRegistry::RegisterMCSubtargetInfo(TheMipsTarget,

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++0x
+// RUN: %clang_cc1 -fsyntax-only -verify %s -std=c++11
 
 struct DefaultedDefCtor1 {};
 struct DefaultedDefCtor2 { DefaultedDefCtor2() = default; };
@@ -23,10 +23,6 @@ int n;
 // default constructor,
 union Deleted1a { UserProvidedDefCtor u; }; // expected-note {{deleted here}}
 Deleted1a d1a; // expected-error {{deleted constructor}}
-// FIXME: treating this as having a deleted default constructor is probably a
-// bug in the standard.
-union Deleted1b { UserProvidedDefCtor u = UserProvidedDefCtor(); }; // expected-note {{deleted here}}
-Deleted1b d1b; // expected-error {{deleted constructor}}
 union NotDeleted1a { DefaultedDefCtor1 nu; };
 NotDeleted1a nd1a;
 // FIXME: clang implements the pre-FDIS rule, under which DefaultedDefCtor2's
@@ -52,10 +48,8 @@ class Deleted3a { const int a; }; // expected-note {{here}} \
 Deleted3a d3a; // expected-error {{deleted constructor}}
 class Deleted3b { const DefaultedDefCtor1 a[42]; }; // expected-note {{here}}
 Deleted3b d3b; // expected-error {{deleted constructor}}
-// FIXME: clang implements the pre-FDIS rule, under which DefaultedDefCtor2's
-// default constructor is user-provided.
-class Deleted3c { const DefaultedDefCtor2 a; }; // desired-note {{here}}
-Deleted3c d3c; // desired-error {{deleted constructor}}
+class Deleted3c { const DefaultedDefCtor2 a; }; // expected-note {{deleted}}
+Deleted3c d3c; // expected-error {{deleted constructor}}
 class NotDeleted3a { const int a = 0; };
 NotDeleted3a nd3a;
 class NotDeleted3b { const DefaultedDefCtor1 a[42] = {}; };
@@ -163,11 +157,14 @@ static_assert(!__has_trivial_constructor(NonTrivialDefCtor6), "NonTrivialDefCtor
 
 // Otherwise, the default constructor is non-trivial.
 class Trivial2 { Trivial2() = delete; };
-//static_assert(__has_trivial_constructor(Trivial2), "NonTrivialDefCtor2 is trivial");
-// FIXME: clang implements the pre-FDIS rule, under which this class is non-trivial.
-static_assert(!__has_trivial_constructor(Trivial2), "NonTrivialDefCtor2 is trivial");
+static_assert(__has_trivial_constructor(Trivial2), "Trivial2 is trivial");
 
 class Trivial3 { Trivial3() = default; };
-//static_assert(__has_trivial_constructor(Trivial3), "NonTrivialDefCtor3 is trivial");
-// FIXME: clang implements the pre-FDIS rule, under which this class is non-trivial.
-static_assert(!__has_trivial_constructor(Trivial3), "NonTrivialDefCtor3 is trivial");
+static_assert(__has_trivial_constructor(Trivial3), "Trivial3 is trivial");
+
+template<typename T> class Trivial4 { Trivial4() = default; };
+static_assert(__has_trivial_constructor(Trivial4<int>), "Trivial4 is trivial");
+
+template<typename T> class Trivial5 { Trivial5() = delete; };
+static_assert(__has_trivial_constructor(Trivial5<int>), "Trivial5 is trivial");
+

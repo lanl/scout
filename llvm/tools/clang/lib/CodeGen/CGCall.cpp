@@ -184,7 +184,7 @@ const CGFunctionInfo &CodeGenTypes::getFunctionInfo(const ObjCMethodDecl *MD) {
   ArgTys.push_back(Context.getCanonicalParamType(MD->getSelfDecl()->getType()));
   ArgTys.push_back(Context.getCanonicalParamType(Context.getObjCSelType()));
   // FIXME: Kill copy?
-  for (ObjCMethodDecl::param_iterator i = MD->param_begin(),
+  for (ObjCMethodDecl::param_const_iterator i = MD->param_begin(),
          e = MD->param_end(); i != e; ++i) {
     ArgTys.push_back(Context.getCanonicalParamType((*i)->getType()));
   }
@@ -366,7 +366,7 @@ CodeGenFunction::ExpandTypeFromArgs(QualType Ty, LValue LV,
     QualType EltTy = CT->getElementType();
     llvm::Value *RealAddr = Builder.CreateStructGEP(Addr, 0, "real");
     EmitStoreThroughLValue(RValue::get(AI++), MakeAddrLValue(RealAddr, EltTy));
-    llvm::Value *ImagAddr = Builder.CreateStructGEP(Addr, 0, "imag");
+    llvm::Value *ImagAddr = Builder.CreateStructGEP(Addr, 1, "imag");
     EmitStoreThroughLValue(RValue::get(AI++), MakeAddrLValue(ImagAddr, EltTy));
   } else {
     EmitStoreThroughLValue(RValue::get(AI), LV);
@@ -611,6 +611,17 @@ bool CodeGenModule::ReturnTypeUsesFPRet(QualType ResultType) {
   return false;
 }
 
+bool CodeGenModule::ReturnTypeUsesFP2Ret(QualType ResultType) {
+  if (const ComplexType *CT = ResultType->getAs<ComplexType>()) {
+    if (const BuiltinType *BT = CT->getElementType()->getAs<BuiltinType>()) {
+      if (BT->getKind() == BuiltinType::LongDouble)
+        return getContext().getTargetInfo().useObjCFP2RetForComplexLongDouble();
+    }
+  }
+
+  return false;
+}
+
 llvm::FunctionType *CodeGenTypes::GetFunctionType(GlobalDecl GD) {
   const CGFunctionInfo &FI = getFunctionInfo(GD);
 
@@ -729,6 +740,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
 
   // FIXME: handle sseregparm someday...
   if (TargetDecl) {
+    if (TargetDecl->hasAttr<ReturnsTwiceAttr>())
+      FuncAttrs |= llvm::Attribute::ReturnsTwice;
     if (TargetDecl->hasAttr<NoThrowAttr>())
       FuncAttrs |= llvm::Attribute::NoUnwind;
     else if (const FunctionDecl *Fn = dyn_cast<FunctionDecl>(TargetDecl)) {
@@ -739,6 +752,9 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
 
     if (TargetDecl->hasAttr<NoReturnAttr>())
       FuncAttrs |= llvm::Attribute::NoReturn;
+
+    if (TargetDecl->hasAttr<ReturnsTwiceAttr>())
+      FuncAttrs |= llvm::Attribute::ReturnsTwice;
 
     // 'const' and 'pure' attribute functions are also nounwind.
     if (TargetDecl->hasAttr<ConstAttr>()) {
@@ -815,7 +831,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
       // FALL THROUGH
     case ABIArgInfo::Direct:
       if (RegParm > 0 &&
-          (ParamType->isIntegerType() || ParamType->isPointerType())) {
+          (ParamType->isIntegerType() || ParamType->isPointerType() ||
+           ParamType->isReferenceType())) {
         RegParm -=
         (Context.getTypeSize(ParamType) + PointerWidth - 1) / PointerWidth;
         if (RegParm >= 0)
@@ -1042,10 +1059,12 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
       // If this structure was expanded into multiple arguments then
       // we need to create a temporary and reconstruct it from the
       // arguments.
-      llvm::Value *Temp = CreateMemTemp(Ty, Arg->getName() + ".addr");
-      llvm::Function::arg_iterator End =
-        ExpandTypeFromArgs(Ty, MakeAddrLValue(Temp, Ty), AI);
-      EmitParmDecl(*Arg, Temp, ArgNo);
+      llvm::AllocaInst *Alloca = CreateMemTemp(Ty);
+      CharUnits Align = getContext().getDeclAlign(Arg);
+      Alloca->setAlignment(Align.getQuantity());
+      LValue LV = MakeAddrLValue(Alloca, Ty, Align);
+      llvm::Function::arg_iterator End = ExpandTypeFromArgs(Ty, LV, AI);
+      EmitParmDecl(*Arg, Alloca, ArgNo);
 
       // Name the arguments used in expansion and increment AI.
       unsigned Index = 0;
@@ -1445,8 +1464,7 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
       cast<CastExpr>(E)->getCastKind() == CK_LValueToRValue) {
     LValue L = EmitLValue(cast<CastExpr>(E)->getSubExpr());
     assert(L.isSimple());
-    args.add(RValue::getAggregate(L.getAddress(), L.isVolatileQualified()),
-             type, /*NeedsCopy*/true);
+    args.add(L.asAggregateRValue(), type, /*NeedsCopy*/true);
     return;
   }
 
@@ -1496,8 +1514,11 @@ void CodeGenFunction::ExpandTypeToArgs(QualType Ty, RValue RV,
       llvm::Value *EltAddr = Builder.CreateConstGEP2_32(Addr, 0, Elt);
       LValue LV = MakeAddrLValue(EltAddr, EltTy);
       RValue EltRV;
-      if (CodeGenFunction::hasAggregateLLVMType(EltTy))
-        EltRV = RValue::getAggregate(LV.getAddress());
+      if (EltTy->isAnyComplexType())
+        // FIXME: Volatile?
+        EltRV = RValue::getComplex(LoadComplexFromAddr(LV.getAddress(), false));
+      else if (CodeGenFunction::hasAggregateLLVMType(EltTy))
+        EltRV = LV.asAggregateRValue();
       else
         EltRV = EmitLoadOfLValue(LV);
       ExpandTypeToArgs(EltTy, EltRV, Args, IRFuncTy);
@@ -1514,13 +1535,16 @@ void CodeGenFunction::ExpandTypeToArgs(QualType Ty, RValue RV,
       // FIXME: What are the right qualifiers here?
       LValue LV = EmitLValueForField(Addr, FD, 0);
       RValue FldRV;
-      if (CodeGenFunction::hasAggregateLLVMType(FT))
-        FldRV = RValue::getAggregate(LV.getAddress());
+      if (FT->isAnyComplexType())
+        // FIXME: Volatile?
+        FldRV = RValue::getComplex(LoadComplexFromAddr(LV.getAddress(), false));
+      else if (CodeGenFunction::hasAggregateLLVMType(FT))
+        FldRV = LV.asAggregateRValue();
       else
         FldRV = EmitLoadOfLValue(LV);
       ExpandTypeToArgs(FT, FldRV, Args, IRFuncTy);
     }
-  } else if (isa<ComplexType>(Ty)) {
+  } else if (Ty->isAnyComplexType()) {
     ComplexPairTy CV = RV.getComplexVal();
     Args.push_back(CV.first);
     Args.push_back(CV.second);

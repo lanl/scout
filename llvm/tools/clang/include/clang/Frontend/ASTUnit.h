@@ -20,6 +20,7 @@
 #include "clang/Sema/CodeCompleteConsumer.h"
 #include "clang/Lex/ModuleLoader.h"
 #include "clang/Lex/PreprocessingRecord.h"
+#include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/FileSystemOptions.h"
@@ -69,6 +70,7 @@ class GlobalCodeCompletionAllocator
 ///
 class ASTUnit : public ModuleLoader {
 private:
+  llvm::IntrusiveRefCntPtr<LangOptions>       LangOpts;
   llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics;
   llvm::IntrusiveRefCntPtr<FileManager>       FileMgr;
   llvm::IntrusiveRefCntPtr<SourceManager>     SourceMgr;
@@ -76,6 +78,7 @@ private:
   llvm::IntrusiveRefCntPtr<TargetInfo>        Target;
   llvm::IntrusiveRefCntPtr<Preprocessor>      PP;
   llvm::IntrusiveRefCntPtr<ASTContext>        Ctx;
+  ASTReader *Reader;
 
   FileSystemOptions FileSystemOpts;
 
@@ -126,6 +129,14 @@ private:
   // source. In the long term we should make the Index library use efficient and
   // more scalable search mechanisms.
   std::vector<Decl*> TopLevelDecls;
+
+  /// \brief Sorted (by file offset) vector of pairs of file offset/Decl.
+  typedef SmallVector<std::pair<unsigned, Decl *>, 64> LocDeclsTy;
+  typedef llvm::DenseMap<FileID, LocDeclsTy *> FileDeclsTy;
+
+  /// \brief Map from FileID to the file-level declarations that it contains.
+  /// The files and decls are only local (and non-preamble) ones.
+  FileDeclsTy FileDecls;
   
   /// The name of the original source file used to generate this ASTUnit.
   std::string OriginalSourceFile;
@@ -147,20 +158,6 @@ private:
   /// the next.
   unsigned NumStoredDiagnosticsFromDriver;
   
-  /// \brief Temporary files that should be removed when the ASTUnit is 
-  /// destroyed.
-  SmallVector<llvm::sys::Path, 4> TemporaryFiles;
-  
-  /// \brief Simple hack to allow us to assert that ASTUnit is not being
-  /// used concurrently, which is not supported.
-  ///
-  /// Clients should create instances of the ConcurrencyCheck class whenever
-  /// using the ASTUnit in a way that isn't intended to be concurrent, which is
-  /// just about any usage.
-  unsigned int ConcurrencyCheckValue;
-  static const unsigned int CheckLocked = 28573289;
-  static const unsigned int CheckUnlocked = 9803453;
-
   /// \brief Counter that determines when we want to try building a
   /// precompiled preamble.
   ///
@@ -171,10 +168,7 @@ private:
   /// building the precompiled preamble fails, we won't try again for
   /// some number of calls.
   unsigned PreambleRebuildCounter;
-  
-  /// \brief The file in which the precompiled preamble is stored.
-  std::string PreambleFile;
-  
+
 public:
   class PreambleData {
     const FileEntry *File;
@@ -280,6 +274,8 @@ private:
                                   SourceManager &SrcMan,
                       const SmallVectorImpl<StoredDiagnostic> &Diags,
                             SmallVectorImpl<StoredDiagnostic> &Out);
+
+  void clearFileLevelDecls();
 
 public:
   /// \brief A cached code-completion result, which may be introduced in one of
@@ -406,21 +402,37 @@ private:
                                                         unsigned MaxLines = 0);
   void RealizeTopLevelDeclsFromPreamble();
   
+  /// \brief Allows us to assert that ASTUnit is not being used concurrently,
+  /// which is not supported.
+  ///
+  /// Clients should create instances of the ConcurrencyCheck class whenever
+  /// using the ASTUnit in a way that isn't intended to be concurrent, which is
+  /// just about any usage.
+  /// Becomes a noop in release mode; only useful for debug mode checking.
+  class ConcurrencyState {
+    void *Mutex; // a llvm::sys::MutexImpl in debug;
+
+  public:
+    ConcurrencyState();
+    ~ConcurrencyState();
+
+    void start();
+    void finish();
+  };
+  ConcurrencyState ConcurrencyCheckValue;
+
 public:
   class ConcurrencyCheck {
-    volatile ASTUnit &Self;
+    ASTUnit &Self;
     
   public:
     explicit ConcurrencyCheck(ASTUnit &Self)
       : Self(Self) 
     { 
-      assert(Self.ConcurrencyCheckValue == CheckUnlocked && 
-             "Concurrent access to ASTUnit!");
-      Self.ConcurrencyCheckValue = CheckLocked;
+      Self.ConcurrencyCheckValue.start();
     }
-    
     ~ConcurrencyCheck() {
-      Self.ConcurrencyCheckValue = CheckUnlocked;
+      Self.ConcurrencyCheckValue.finish();
     }
   };
   friend class ConcurrencyCheck;
@@ -444,6 +456,8 @@ public:
   const ASTContext &getASTContext() const { return *Ctx; }
         ASTContext &getASTContext()       { return *Ctx; }
 
+  void setASTContext(ASTContext *ctx) { Ctx = ctx; }
+
   bool hasSema() const { return TheSema; }
   Sema &getSema() const { 
     assert(TheSema && "ASTUnit does not have a Sema object!");
@@ -460,9 +474,7 @@ public:
   /// \brief Add a temporary file that the ASTUnit depends on.
   ///
   /// This file will be erased when the ASTUnit is destroyed.
-  void addTemporaryFile(const llvm::sys::Path &TempFile) {
-    TemporaryFiles.push_back(TempFile);
-  }
+  void addTemporaryFile(const llvm::sys::Path &TempFile);
                         
   bool getOnlyLocalDecls() const { return OnlyLocalDecls; }
 
@@ -506,6 +518,15 @@ public:
     TopLevelDecls.push_back(D);
   }
 
+  /// \brief Add a new local file-level declaration.
+  void addFileLevelDecl(Decl *D);
+
+  /// \brief Get the decls that are contained in a file in the Offset/Length
+  /// range. \arg Length can be 0 to indicate a point at \arg Offset instead of
+  /// a range. 
+  void findFileRegionDecls(FileID File, unsigned Offset, unsigned Length,
+                           SmallVectorImpl<Decl *> &Decls);
+
   /// \brief Add a new top-level declaration, identified by its ID in
   /// the precompiled preamble.
   void addTopLevelDeclFromPreamble(serialization::DeclID D) {
@@ -538,6 +559,11 @@ public:
   /// preamble, otherwise it returns \arg Loc.
   SourceLocation mapLocationToPreamble(SourceLocation Loc);
 
+  bool isInPreambleFileID(SourceLocation Loc);
+  bool isInMainFileID(SourceLocation Loc);
+  SourceLocation getStartOfMainFileID();
+  SourceLocation getEndOfPreambleFileID();
+
   /// \brief \see mapLocationFromPreamble.
   SourceRange mapRangeFromPreamble(SourceRange R) {
     return SourceRange(mapLocationFromPreamble(R.getBegin()),
@@ -551,17 +577,26 @@ public:
   }
   
   // Retrieve the diagnostics associated with this AST
-  typedef const StoredDiagnostic *stored_diag_iterator;
-  stored_diag_iterator stored_diag_begin() const { 
+  typedef StoredDiagnostic *stored_diag_iterator;
+  typedef const StoredDiagnostic *stored_diag_const_iterator;
+  stored_diag_const_iterator stored_diag_begin() const { 
     return StoredDiagnostics.begin(); 
   }
-  stored_diag_iterator stored_diag_end() const { 
+  stored_diag_iterator stored_diag_begin() { 
+    return StoredDiagnostics.begin(); 
+  }
+  stored_diag_const_iterator stored_diag_end() const { 
+    return StoredDiagnostics.end(); 
+  }
+  stored_diag_iterator stored_diag_end() { 
     return StoredDiagnostics.end(); 
   }
   unsigned stored_diag_size() const { return StoredDiagnostics.size(); }
-  
-  SmallVector<StoredDiagnostic, 4> &getStoredDiagnostics() { 
-    return StoredDiagnostics; 
+
+  stored_diag_iterator stored_diag_afterDriver_begin() {
+    if (NumStoredDiagnosticsFromDriver > StoredDiagnostics.size())
+      NumStoredDiagnosticsFromDriver = 0;
+    return StoredDiagnostics.begin() + NumStoredDiagnosticsFromDriver; 
   }
 
   typedef std::vector<CachedCodeCompletionResult>::iterator
@@ -593,7 +628,8 @@ public:
 
   /// \brief Create a ASTUnit. Gets ownership of the passed CompilerInvocation. 
   static ASTUnit *create(CompilerInvocation *CI,
-                         llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags);
+                         llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags,
+                         bool CaptureDiagnostics = false);
 
   /// \brief Create a ASTUnit from an AST file.
   ///
@@ -635,9 +671,23 @@ public:
   ///
   /// \param Action - The ASTFrontendAction to invoke. Its ownership is not
   /// transfered.
+  ///
+  /// \param Unit - optionally an already created ASTUnit. Its ownership is not
+  /// transfered.
+  ///
+  /// \param Persistent - if true the returned ASTUnit will be complete.
+  /// false means the caller is only interested in getting info through the
+  /// provided \see Action.
   static ASTUnit *LoadFromCompilerInvocationAction(CompilerInvocation *CI,
                               llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags,
-                                             ASTFrontendAction *Action = 0);
+                                             ASTFrontendAction *Action = 0,
+                                             ASTUnit *Unit = 0,
+                                             bool Persistent = true,
+                                      StringRef ResourceFilesPath = StringRef(),
+                                             bool OnlyLocalDecls = false,
+                                             bool CaptureDiagnostics = false,
+                                             bool PrecompilePreamble = false,
+                                       bool CacheCodeCompletionResults = false);
 
   /// LoadFromCompilerInvocation - Create an ASTUnit from a source file, via a
   /// CompilerInvocation object.
@@ -731,9 +781,9 @@ public:
   /// \returns True if an error occurred, false otherwise.
   bool serialize(raw_ostream &OS);
   
-  virtual ModuleKey loadModule(SourceLocation ImportLoc, 
-                               IdentifierInfo &ModuleName,
-                               SourceLocation ModuleNameLoc) {
+  virtual Module *loadModule(SourceLocation ImportLoc, ModuleIdPath Path,
+                             Module::NameVisibilityKind Visibility,
+                             bool IsInclusionDirective) {
     // ASTUnit doesn't know how to load modules (not that this matters).
     return 0;
   }

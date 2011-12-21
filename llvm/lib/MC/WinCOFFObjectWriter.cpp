@@ -281,6 +281,7 @@ StringTable::StringTable() {
   // The string table data begins with the length of the entire string table
   // including the length header. Allocate space for this header.
   Data.resize(4);
+  update_length();
 }
 
 size_t StringTable::size() const {
@@ -715,6 +716,10 @@ void WinCOFFObjectWriter::RecordRelocation(const MCAssembler &Asm,
     else
       llvm_unreachable("unsupported relocation type");
     break;
+  case X86::reloc_coff_secrel32:
+    Reloc.Data.Type = Is64Bit ? COFF::IMAGE_REL_AMD64_SREL32
+                              : COFF::IMAGE_REL_I386_SECREL;
+    break;
   default:
     llvm_unreachable("unsupported relocation type");
   }
@@ -849,7 +854,7 @@ void WinCOFFObjectWriter::WriteObject(MCAssembler &Asm,
         assert(OS.tell() == (*i)->Header.PointerToRawData &&
                "Section::PointerToRawData is insane!");
 
-        Asm.WriteSectionData(j, Layout);
+        Asm.writeSectionData(j, Layout);
       }
 
       if ((*i)->Relocations.size() > 0) {

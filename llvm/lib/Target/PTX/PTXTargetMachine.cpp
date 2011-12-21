@@ -46,7 +46,7 @@ using namespace llvm;
 namespace llvm {
   MCStreamer *createPTXAsmStreamer(MCContext &Ctx, formatted_raw_ostream &OS,
                                    bool isVerboseAsm, bool useLoc,
-                                   bool useCFI,
+                                   bool useCFI, bool useDwarfDirectory,
                                    MCInstPrinter *InstPrint,
                                    MCCodeEmitter *CE,
                                    MCAsmBackend *MAB,
@@ -67,29 +67,16 @@ namespace {
     "e-p:32:32-i64:32:32-f64:32:32-v128:32:128-v64:32:64-n32:64";
   const char* DataLayout64 =
     "e-p:64:64-i64:32:32-f64:32:32-v128:32:128-v64:32:64-n32:64";
-
-  // Copied from LLVMTargetMachine.cpp
-  void printNoVerify(PassManagerBase &PM, const char *Banner) {
-    if (PrintMachineCode)
-      PM.add(createMachineFunctionPrinterPass(dbgs(), Banner));
-  }
-
-  void printAndVerify(PassManagerBase &PM,
-                      const char *Banner) {
-    if (PrintMachineCode)
-      PM.add(createMachineFunctionPrinterPass(dbgs(), Banner));
-
-    //if (VerifyMachineCode)
-    //  PM.add(createMachineVerifierPass(Banner));
-  }
 }
 
 // DataLayout and FrameLowering are filled with dummy data
 PTXTargetMachine::PTXTargetMachine(const Target &T,
                                    StringRef TT, StringRef CPU, StringRef FS,
+                                   const TargetOptions &Options,
                                    Reloc::Model RM, CodeModel::Model CM,
+                                   CodeGenOpt::Level OL,
                                    bool is64Bit)
-  : LLVMTargetMachine(T, TT, CPU, FS, RM, CM),
+  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
     DataLayout(is64Bit ? DataLayout64 : DataLayout32),
     Subtarget(TT, CPU, FS, is64Bit),
     FrameLowering(Subtarget),
@@ -98,41 +85,46 @@ PTXTargetMachine::PTXTargetMachine(const Target &T,
     TLInfo(*this) {
 }
 
+void PTX32TargetMachine::anchor() { }
+
 PTX32TargetMachine::PTX32TargetMachine(const Target &T, StringRef TT,
                                        StringRef CPU, StringRef FS,
-                                       Reloc::Model RM, CodeModel::Model CM)
-  : PTXTargetMachine(T, TT, CPU, FS, RM, CM, false) {
+                                       const TargetOptions &Options,
+                                       Reloc::Model RM, CodeModel::Model CM,
+                                       CodeGenOpt::Level OL)
+  : PTXTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {
 }
+
+void PTX64TargetMachine::anchor() { }
 
 PTX64TargetMachine::PTX64TargetMachine(const Target &T, StringRef TT,
                                        StringRef CPU, StringRef FS,
-                                       Reloc::Model RM, CodeModel::Model CM)
-  : PTXTargetMachine(T, TT, CPU, FS, RM, CM, true) {
+                                       const TargetOptions &Options,
+                                       Reloc::Model RM, CodeModel::Model CM,
+                                       CodeGenOpt::Level OL)
+  : PTXTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {
 }
 
-bool PTXTargetMachine::addInstSelector(PassManagerBase &PM,
-                                       CodeGenOpt::Level OptLevel) {
-  PM.add(createPTXISelDag(*this, OptLevel));
+bool PTXTargetMachine::addInstSelector(PassManagerBase &PM) {
+  PM.add(createPTXISelDag(*this, getOptLevel()));
   return false;
 }
 
-bool PTXTargetMachine::addPostRegAlloc(PassManagerBase &PM,
-                                       CodeGenOpt::Level OptLevel) {
+bool PTXTargetMachine::addPostRegAlloc(PassManagerBase &PM) {
   // PTXMFInfoExtract must after register allocation!
-  //PM.add(createPTXMFInfoExtract(*this, OptLevel));
+  //PM.add(createPTXMFInfoExtract(*this));
   return false;
 }
 
 bool PTXTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                            formatted_raw_ostream &Out,
                                            CodeGenFileType FileType,
-                                           CodeGenOpt::Level OptLevel,
                                            bool DisableVerify) {
   // This is mostly based on LLVMTargetMachine::addPassesToEmitFile
 
   // Add common CodeGen passes.
   MCContext *Context = 0;
-  if (addCommonCodeGenPasses(PM, OptLevel, DisableVerify, Context))
+  if (addCommonCodeGenPasses(PM, DisableVerify, Context))
     return true;
   assert(Context != 0 && "Failed to get MCContext");
 
@@ -157,6 +149,7 @@ bool PTXTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                                   true, /* verbose asm */
                                                   hasMCUseLoc(),
                                                   hasMCUseCFI(),
+                                                  hasMCUseDwarfDirectory(),
                                                   InstPrinter,
                                                   MCE, MAB,
                                                   false /* show MC encoding */);
@@ -191,7 +184,6 @@ bool PTXTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
 }
 
 bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
-                                              CodeGenOpt::Level OptLevel,
                                               bool DisableVerify,
                                               MCContext *&OutContext) {
   // Add standard LLVM codegen passes.
@@ -213,7 +205,7 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
     PM.add(createVerifierPass());
 
   // Run loop strength reduction before anything else.
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     PM.add(createLoopStrengthReducePass(getTargetLowering()));
     //PM.add(createPrintFunctionPass("\n\n*** Code after LSR ***\n", &dbgs()));
   }
@@ -227,12 +219,12 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   // The lower invoke pass may create unreachable code. Remove it.
   PM.add(createUnreachableBlockEliminationPass());
 
-  if (OptLevel != CodeGenOpt::None)
+  if (getOptLevel() != CodeGenOpt::None)
     PM.add(createCodeGenPreparePass(getTargetLowering()));
 
   PM.add(createStackProtectorPass(getTargetLowering()));
 
-  addPreISel(PM, OptLevel);
+  addPreISel(PM);
 
   //PM.add(createPrintFunctionPass("\n\n"
   //                               "*** Final LLVM Code input to ISel ***\n",
@@ -254,10 +246,10 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   OutContext = &MMI->getContext(); // Return the MCContext specifically by-ref.
 
   // Set up a MachineFunction for the rest of CodeGen to work on.
-  PM.add(new MachineFunctionAnalysis(*this, OptLevel));
+  PM.add(new MachineFunctionAnalysis(*this));
 
   // Ask the target for an isel.
-  if (addInstSelector(PM, OptLevel))
+  if (addInstSelector(PM))
     return true;
 
   // Print the instruction selected machine code...
@@ -267,21 +259,21 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   PM.add(createExpandISelPseudosPass());
 
   // Pre-ra tail duplication.
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     PM.add(createTailDuplicatePass(true));
     printAndVerify(PM, "After Pre-RegAlloc TailDuplicate");
   }
 
   // Optimize PHIs before DCE: removing dead PHI cycles may make more
   // instructions dead.
-  if (OptLevel != CodeGenOpt::None)
+  if (getOptLevel() != CodeGenOpt::None)
     PM.add(createOptimizePHIsPass());
 
   // If the target requests it, assign local variables to stack slots relative
   // to one another and simplify frame index references where possible.
   PM.add(createLocalStackSlotAllocationPass());
 
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     // With optimization, dead code should already be eliminated. However
     // there is one known exception: lowered code for arguments that are only
     // used by tail calls, where the tail calls reuse the incoming stack
@@ -299,7 +291,7 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   }
 
   // Run pre-ra passes.
-  if (addPreRegAlloc(PM, OptLevel))
+  if (addPreRegAlloc(PM))
     printAndVerify(PM, "After PreRegAlloc passes");
 
   // Perform register allocation.
@@ -307,7 +299,7 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   printAndVerify(PM, "After Register Allocation");
 
   // Perform stack slot coloring and post-ra machine LICM.
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     // FIXME: Re-enable coloring with register when it's capable of adding
     // kill markers.
     PM.add(createStackSlotColoringPass(false));
@@ -321,7 +313,7 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   }
 
   // Run post-ra passes.
-  if (addPostRegAlloc(PM, OptLevel))
+  if (addPostRegAlloc(PM))
     printAndVerify(PM, "After PostRegAlloc passes");
 
   PM.add(createExpandPostRAPseudosPass());
@@ -332,23 +324,23 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   printAndVerify(PM, "After PrologEpilogCodeInserter");
 
   // Run pre-sched2 passes.
-  if (addPreSched2(PM, OptLevel))
+  if (addPreSched2(PM))
     printAndVerify(PM, "After PreSched2 passes");
 
   // Second pass scheduler.
-  if (OptLevel != CodeGenOpt::None) {
-    PM.add(createPostRAScheduler(OptLevel));
+  if (getOptLevel() != CodeGenOpt::None) {
+    PM.add(createPostRAScheduler(getOptLevel()));
     printAndVerify(PM, "After PostRAScheduler");
   }
 
   // Branch folding must be run after regalloc and prolog/epilog insertion.
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     PM.add(createBranchFoldingPass(getEnableTailMergeDefault()));
     printNoVerify(PM, "After BranchFolding");
   }
 
   // Tail duplication.
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     PM.add(createTailDuplicatePass(false));
     printNoVerify(PM, "After TailDuplicate");
   }
@@ -358,15 +350,16 @@ bool PTXTargetMachine::addCommonCodeGenPasses(PassManagerBase &PM,
   //if (PrintGCInfo)
   //  PM.add(createGCInfoPrinter(dbgs()));
 
-  if (OptLevel != CodeGenOpt::None) {
+  if (getOptLevel() != CodeGenOpt::None) {
     PM.add(createCodePlacementOptPass());
     printNoVerify(PM, "After CodePlacementOpt");
   }
 
-  if (addPreEmitPass(PM, OptLevel))
+  if (addPreEmitPass(PM))
     printNoVerify(PM, "After PreEmit passes");
 
-  PM.add(createPTXMFInfoExtract(*this, OptLevel));
+  PM.add(createPTXMFInfoExtract(*this, getOptLevel()));
+  PM.add(createPTXFPRoundingModePass(*this, getOptLevel()));
 
   return false;
 }

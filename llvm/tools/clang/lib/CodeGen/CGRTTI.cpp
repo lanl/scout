@@ -185,6 +185,7 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::ULong:
     case BuiltinType::LongLong:
     case BuiltinType::ULongLong:
+    case BuiltinType::Half:
     case BuiltinType::Float:
     case BuiltinType::Double:
 
@@ -219,10 +220,11 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::UInt128:
       return true;
       
-    case BuiltinType::Overload:
     case BuiltinType::Dependent:
-    case BuiltinType::BoundMember:
-    case BuiltinType::UnknownAny:
+#define BUILTIN_TYPE(Id, SingletonId)
+#define PLACEHOLDER_TYPE(Id, SingletonId) \
+    case BuiltinType::Id:
+#include "clang/AST/BuiltinTypes.def"
       llvm_unreachable("asking for RRTI for a placeholder type!");
       
     case BuiltinType::ObjCId:
@@ -292,7 +294,7 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM, QualType Ty) {
 
 /// IsIncompleteClassType - Returns whether the given record type is incomplete.
 static bool IsIncompleteClassType(const RecordType *RecordTy) {
-  return !RecordTy->getDecl()->isDefinition();
+  return !RecordTy->getDecl()->isCompleteDefinition();
 }  
 
 /// ContainsIncompleteClassType - Returns whether the given type contains an
@@ -359,6 +361,8 @@ getTypeInfoLinkage(CodeGenModule &CGM, QualType Ty) {
 
     if (const RecordType *Record = dyn_cast<RecordType>(Ty)) {
       const CXXRecordDecl *RD = cast<CXXRecordDecl>(Record->getDecl());
+      if (RD->hasAttr<WeakAttr>())
+        return llvm::GlobalValue::WeakODRLinkage;
       if (RD->isDynamicClass())
         return CGM.getVTableLinkage(RD);
     }
@@ -429,6 +433,7 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
   case Type::Vector:
   case Type::ExtVector:
   case Type::Complex:
+  case Type::Atomic:
   // FIXME: GCC treats block pointers as fundamental types?!
   case Type::BlockPointer:
     // abi::__fundamental_type_info.
@@ -693,6 +698,10 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
 
   case Type::MemberPointer:
     BuildPointerToMemberTypeInfo(cast<MemberPointerType>(Ty));
+    break;
+
+  case Type::Atomic:
+    // No fields, at least for the moment.
     break;
   }
 

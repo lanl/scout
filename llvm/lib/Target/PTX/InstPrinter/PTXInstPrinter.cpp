@@ -13,12 +13,13 @@
 
 #define DEBUG_TYPE "asm-printer"
 #include "PTXInstPrinter.h"
-#include "PTXMachineFunctionInfo.h"
+#include "MCTargetDesc/PTXBaseInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -37,7 +38,50 @@ StringRef PTXInstPrinter::getOpcodeName(unsigned Opcode) const {
 }
 
 void PTXInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
-  OS << getRegisterName(RegNo);
+  // Decode the register number into type and offset
+  unsigned RegSpace  = RegNo & 0x7;
+  unsigned RegType   = (RegNo >> 3) & 0x7;
+  unsigned RegOffset = RegNo >> 6;
+
+  // Print the register
+  OS << "%";
+
+  switch (RegSpace) {
+  default:
+    llvm_unreachable("Unknown register space!");
+  case PTXRegisterSpace::Reg:
+    switch (RegType) {
+    default:
+      llvm_unreachable("Unknown register type!");
+    case PTXRegisterType::Pred:
+      OS << "p";
+      break;
+    case PTXRegisterType::B16:
+      OS << "rh";
+      break;
+    case PTXRegisterType::B32:
+      OS << "r";
+      break;
+    case PTXRegisterType::B64:
+      OS << "rd";
+      break;
+    case PTXRegisterType::F32:
+      OS << "f";
+      break;
+    case PTXRegisterType::F64:
+      OS << "fd";
+      break;
+    }
+    break;
+  case PTXRegisterSpace::Return:
+    OS << "ret";
+    break;
+  case PTXRegisterSpace::Argument:
+    OS << "arg";
+    break;
+  }
+
+  OS << RegOffset;
 }
 
 void PTXInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
@@ -68,14 +112,15 @@ void PTXInstPrinter::printPredicate(const MCInst *MI, raw_ostream &O) {
   }
 
   int PredOp = MI->getOperand(OpIndex).getImm();
-  if (PredOp != PTX::PRED_NONE) {
-    if (PredOp == PTX::PRED_NEGATE) {
-      O << '!';
-    } else {
-      O << '@';
-    }
-    printOperand(MI, RegIndex, O);
-  }
+  if (PredOp == PTXPredicate::None)
+    return;
+
+  if (PredOp == PTXPredicate::Negate)
+    O << '!';
+  else
+    O << '@';
+
+  printOperand(MI, RegIndex, O);
 }
 
 void PTXInstPrinter::printCall(const MCInst *MI, raw_ostream &O) {
@@ -83,29 +128,41 @@ void PTXInstPrinter::printCall(const MCInst *MI, raw_ostream &O) {
   // The first two operands are the predicate slot
   unsigned Index = 2;
   unsigned NumRets = MI->getOperand(Index++).getImm();
-  for (unsigned i = 0; i < NumRets; ++i) {
-    if (i == 0) {
-      O << "(";
-    } else {
-      O << ", ";
-    }
-    printOperand(MI, Index++, O);
-  }
 
   if (NumRets > 0) {
+    O << "(";
+    printOperand(MI, Index++, O);
+    for (unsigned i = 1; i < NumRets; ++i) {
+      O << ", ";
+      printOperand(MI, Index++, O);
+    }
     O << "), ";
   }
 
-  O << *(MI->getOperand(Index++).getExpr()) << ", (";
-
+  const MCExpr* Expr = MI->getOperand(Index++).getExpr();
   unsigned NumArgs = MI->getOperand(Index++).getImm();
-  for (unsigned i = 0; i < NumArgs; ++i) {
+  
+  // if the function call is to printf or puts, change to vprintf
+  if (const MCSymbolRefExpr *SymRefExpr = dyn_cast<MCSymbolRefExpr>(Expr)) {
+    const MCSymbol &Sym = SymRefExpr->getSymbol();
+    if (Sym.getName() == "printf" || Sym.getName() == "puts") {
+      O << "vprintf";
+    } else {
+      O << Sym.getName();
+    }
+  } else {
+    O << *Expr;
+  }
+  
+  O << ", (";
+
+  if (NumArgs > 0) {
     printOperand(MI, Index++, O);
-    if (i < NumArgs-1) {
+    for (unsigned i = 1; i < NumArgs; ++i) {
       O << ", ";
+      printOperand(MI, Index++, O);
     }
   }
-
   O << ")";
 }
 
@@ -125,6 +182,8 @@ void PTXInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
     } else {
       O << "0000000000000000";
     }
+  } else if (Op.isReg()) {
+    printRegName(O, Op.getReg());
   } else {
     assert(Op.isExpr() && "unknown operand kind in printOperand");
     const MCExpr *Expr = Op.getExpr();
@@ -139,11 +198,54 @@ void PTXInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
 
 void PTXInstPrinter::printMemOperand(const MCInst *MI, unsigned OpNo,
                                      raw_ostream &O) {
+  // By definition, operand OpNo+1 is an i32imm
+  const MCOperand &Op2 = MI->getOperand(OpNo+1);
   printOperand(MI, OpNo, O);
-  if (MI->getOperand(OpNo+1).isImm() && MI->getOperand(OpNo+1).getImm() == 0)
+  if (Op2.getImm() == 0)
     return; // don't print "+0"
-  O << "+";
-  printOperand(MI, OpNo+1, O);
+  O << "+" << Op2.getImm();
 }
 
+void PTXInstPrinter::printRoundingMode(const MCInst *MI, unsigned OpNo,
+                                       raw_ostream &O) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+  assert (Op.isImm() && "Rounding modes must be immediate values");
+  switch (Op.getImm()) {
+  default:
+    llvm_unreachable("Unknown rounding mode!");
+  case PTXRoundingMode::RndDefault:
+    llvm_unreachable("FP rounding-mode pass did not handle instruction!");
+    break;
+  case PTXRoundingMode::RndNone:
+    // Do not print anything.
+    break;
+  case PTXRoundingMode::RndNearestEven:
+    O << ".rn";
+    break;
+  case PTXRoundingMode::RndTowardsZero:
+    O << ".rz";
+    break;
+  case PTXRoundingMode::RndNegInf:
+    O << ".rm";
+    break;
+  case PTXRoundingMode::RndPosInf:
+    O << ".rp";
+    break;
+  case PTXRoundingMode::RndApprox:
+    O << ".approx";
+    break;
+  case PTXRoundingMode::RndNearestEvenInt:
+    O << ".rni";
+    break;
+  case PTXRoundingMode::RndTowardsZeroInt:
+    O << ".rzi";
+    break;
+  case PTXRoundingMode::RndNegInfInt:
+    O << ".rmi";
+    break;
+  case PTXRoundingMode::RndPosInfInt:
+    O << ".rpi";
+    break;
+  }
+}
 

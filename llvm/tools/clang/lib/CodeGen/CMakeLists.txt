@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
   instrumentation
   ipo
   doallToPTX
+  linker
   )
 
 set(LLVM_USED_LIBS clangBasic clangAST clangFrontend)
@@ -15,6 +16,8 @@ add_clang_library(clangCodeGen
   CGBuiltin.cpp
   CGCall.cpp
   CGClass.cpp
+  CGCUDANV.cpp
+  CGCUDARuntime.cpp
   CGCXX.cpp
   CGCXXABI.cpp
   CGCleanup.cpp
@@ -36,7 +39,6 @@ add_clang_library(clangCodeGen
   CGRecordLayoutBuilder.cpp
   CGRTTI.cpp
   CGStmt.cpp
-  CGTemporaries.cpp
   CGVTables.cpp
   CGVTT.cpp
   CodeGenAction.cpp

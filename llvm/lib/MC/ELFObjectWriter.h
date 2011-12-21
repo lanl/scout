@@ -240,33 +240,38 @@ class ELFObjectWriter : public MCObjectWriter {
       F.getContents() += StringRef(buf, 8);
     }
 
-    virtual void WriteHeader(uint64_t SectionDataSize, unsigned NumberOfSections);
+    virtual void WriteHeader(uint64_t SectionDataSize,
+                             unsigned NumberOfSections);
 
     /// Default e_flags = 0
     virtual void WriteEFlags() { Write32(0); }
 
-    virtual void WriteSymbolEntry(MCDataFragment *SymtabF, MCDataFragment *ShndxF,
-                          uint64_t name, uint8_t info,
-                          uint64_t value, uint64_t size,
-                          uint8_t other, uint32_t shndx,
-                          bool Reserved);
+    virtual void WriteSymbolEntry(MCDataFragment *SymtabF,
+                                  MCDataFragment *ShndxF,
+                                  uint64_t name, uint8_t info,
+                                  uint64_t value, uint64_t size,
+                                  uint8_t other, uint32_t shndx,
+                                  bool Reserved);
 
     virtual void WriteSymbol(MCDataFragment *SymtabF,  MCDataFragment *ShndxF,
                      ELFSymbolData &MSD,
                      const MCAsmLayout &Layout);
 
     typedef DenseMap<const MCSectionELF*, uint32_t> SectionIndexMapTy;
-    virtual void WriteSymbolTable(MCDataFragment *SymtabF, MCDataFragment *ShndxF,
-                          const MCAssembler &Asm,
-                          const MCAsmLayout &Layout,
-                          const SectionIndexMapTy &SectionIndexMap);
+    virtual void WriteSymbolTable(MCDataFragment *SymtabF,
+                                  MCDataFragment *ShndxF,
+                                  const MCAssembler &Asm,
+                                  const MCAsmLayout &Layout,
+                                  const SectionIndexMapTy &SectionIndexMap);
 
-    virtual void RecordRelocation(const MCAssembler &Asm, const MCAsmLayout &Layout,
-                                  const MCFragment *Fragment, const MCFixup &Fixup,
+    virtual void RecordRelocation(const MCAssembler &Asm,
+                                  const MCAsmLayout &Layout,
+                                  const MCFragment *Fragment,
+                                  const MCFixup &Fixup,
                                   MCValue Target, uint64_t &FixedValue);
 
     virtual uint64_t getSymbolIndexInSymbolTable(const MCAssembler &Asm,
-                                         const MCSymbol *S);
+                                                 const MCSymbol *S);
 
     // Map from a group section to the signature symbol
     typedef DenseMap<const MCSectionELF*, const MCSymbol*> GroupMapTy;
@@ -346,25 +351,10 @@ class ELFObjectWriter : public MCObjectWriter {
   protected:
     virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                                   bool IsPCRel, bool IsRelocWithSymbol,
-                                  int64_t Addend) = 0;
-    virtual void adjustFixupOffset(const MCFixup &Fixup, uint64_t &RelocOffset) { }
+                                  int64_t Addend) const;
+    virtual void adjustFixupOffset(const MCFixup &Fixup,
+                                   uint64_t &RelocOffset) {}
   };
-
-  //===- X86ELFObjectWriter -------------------------------------------===//
-
-  class X86ELFObjectWriter : public ELFObjectWriter {
-  public:
-    X86ELFObjectWriter(MCELFObjectTargetWriter *MOTW,
-                       raw_ostream &_OS,
-                       bool IsLittleEndian);
-
-    virtual ~X86ELFObjectWriter();
-  protected:
-    virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
-                                  bool IsPCRel, bool IsRelocWithSymbol,
-                                  int64_t Addend);
-  };
-
 
   //===- ARMELFObjectWriter -------------------------------------------===//
 
@@ -389,11 +379,10 @@ class ELFObjectWriter : public MCObjectWriter {
 
     virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                                   bool IsPCRel, bool IsRelocWithSymbol,
-                                  int64_t Addend);
+                                  int64_t Addend) const;
   private:
     unsigned GetRelocTypeInner(const MCValue &Target,
                                const MCFixup &Fixup, bool IsPCRel) const;
-    
   };
 
   //===- PPCELFObjectWriter -------------------------------------------===//
@@ -408,7 +397,7 @@ class ELFObjectWriter : public MCObjectWriter {
   protected:
     virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                                   bool IsPCRel, bool IsRelocWithSymbol,
-                                  int64_t Addend);
+                                  int64_t Addend) const;
     virtual void adjustFixupOffset(const MCFixup &Fixup, uint64_t &RelocOffset);
   };
 
@@ -424,7 +413,30 @@ class ELFObjectWriter : public MCObjectWriter {
   protected:
     virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
                                   bool IsPCRel, bool IsRelocWithSymbol,
-                                  int64_t Addend);
+                                  int64_t Addend) const;
+  };
+
+  //===- MipsELFObjectWriter -------------------------------------------===//
+
+  class MipsELFObjectWriter : public ELFObjectWriter {
+  public:
+    MipsELFObjectWriter(MCELFObjectTargetWriter *MOTW,
+                        raw_ostream &_OS,
+                        bool IsLittleEndian);
+
+    virtual ~MipsELFObjectWriter();
+    virtual void WriteEFlags();
+
+  protected:
+    virtual const MCSymbol *ExplicitRelSym(const MCAssembler &Asm,
+                                           const MCValue &Target,
+                                           const MCFragment &F,
+                                           const MCFixup &Fixup,
+                                           bool IsPCRel) const;
+
+    virtual unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
+                                  bool IsPCRel, bool IsRelocWithSymbol,
+                                  int64_t Addend) const;
   };
 }
 

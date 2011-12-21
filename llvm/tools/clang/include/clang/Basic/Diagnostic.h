@@ -158,6 +158,8 @@ private:
   unsigned ErrorLimit;           // Cap of # errors emitted, 0 -> no limit.
   unsigned TemplateBacktraceLimit; // Cap on depth of template backtrace stack,
                                    // 0 -> no limit.
+  unsigned ConstexprBacktraceLimit; // Cap on depth of constexpr evaluation
+                                    // backtrace stack, 0 -> no limit.
   ExtensionHandling ExtBehavior; // Map extensions onto warnings or errors?
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> Diags;
   DiagnosticConsumer *Client;
@@ -175,22 +177,22 @@ private:
   /// the state so that we know what is the diagnostic state at any given
   /// source location.
   class DiagState {
-    llvm::DenseMap<unsigned, unsigned> DiagMap;
+    llvm::DenseMap<unsigned, DiagnosticMappingInfo> DiagMap;
 
   public:
-    typedef llvm::DenseMap<unsigned, unsigned>::const_iterator iterator;
+    typedef llvm::DenseMap<unsigned, DiagnosticMappingInfo>::iterator
+      iterator;
+    typedef llvm::DenseMap<unsigned, DiagnosticMappingInfo>::const_iterator
+      const_iterator;
 
-    void setMapping(diag::kind Diag, unsigned Map) { DiagMap[Diag] = Map; }
-
-    diag::Mapping getMapping(diag::kind Diag) const {
-      iterator I = DiagMap.find(Diag);
-      if (I != DiagMap.end())
-        return (diag::Mapping)I->second;
-      return diag::Mapping();
+    void setMappingInfo(diag::kind Diag, DiagnosticMappingInfo Info) {
+      DiagMap[Diag] = Info;
     }
 
-    iterator begin() const { return DiagMap.begin(); }
-    iterator end() const { return DiagMap.end(); }
+    DiagnosticMappingInfo &getOrAddMappingInfo(diag::kind Diag);
+
+    const_iterator begin() const { return DiagMap.begin(); }
+    const_iterator end() const { return DiagMap.end(); }
   };
 
   /// \brief Keeps and automatically disposes all DiagStates that we create.
@@ -363,13 +365,25 @@ public:
   void setTemplateBacktraceLimit(unsigned Limit) {
     TemplateBacktraceLimit = Limit;
   }
-  
+
   /// \brief Retrieve the maximum number of template instantiation
-  /// nodes to emit along with a given diagnostic.
+  /// notes to emit along with a given diagnostic.
   unsigned getTemplateBacktraceLimit() const {
     return TemplateBacktraceLimit;
   }
-  
+
+  /// \brief Specify the maximum number of constexpr evaluation
+  /// notes to emit along with a given diagnostic.
+  void setConstexprBacktraceLimit(unsigned Limit) {
+    ConstexprBacktraceLimit = Limit;
+  }
+
+  /// \brief Retrieve the maximum number of constexpr evaluation
+  /// notes to emit along with a given diagnostic.
+  unsigned getConstexprBacktraceLimit() const {
+    return ConstexprBacktraceLimit;
+  }
+
   /// setIgnoreAllWarnings - When set to true, any unmapped warnings are
   /// ignored.  If this and WarningsAsErrors are both set, then this one wins.
   void setIgnoreAllWarnings(bool Val) { IgnoreAllWarnings = Val; }
@@ -448,9 +462,19 @@ public:
   /// 'Loc' is the source location that this change of diagnostic state should
   /// take affect. It can be null if we are setting the state from command-line.
   bool setDiagnosticGroupMapping(StringRef Group, diag::Mapping Map,
-                                 SourceLocation Loc = SourceLocation()) {
-    return Diags->setDiagnosticGroupMapping(Group, Map, Loc, *this);
-  }
+                                 SourceLocation Loc = SourceLocation());
+
+  /// \brief Set the warning-as-error flag for the given diagnostic group. This
+  /// function always only operates on the current diagnostic state.
+  ///
+  /// \returns True if the given group is unknown, false otherwise.
+  bool setDiagnosticGroupWarningAsError(StringRef Group, bool Enabled);
+
+  /// \brief Set the error-as-fatal flag for the given diagnostic group. This
+  /// function always only operates on the current diagnostic state.
+  ///
+  /// \returns True if the given group is unknown, false otherwise.
+  bool setDiagnosticGroupErrorAsFatal(StringRef Group, bool Enabled);
 
   bool hasErrorOccurred() const { return ErrorOccurred; }
   bool hasFatalErrorOccurred() const { return FatalErrorOccurred; }
@@ -505,9 +529,8 @@ public:
   ///
   /// \param Loc The source location we are interested in finding out the
   /// diagnostic state. Can be null in order to query the latest state.
-  Level getDiagnosticLevel(unsigned DiagID, SourceLocation Loc,
-                           diag::Mapping *mapping = 0) const {
-    return (Level)Diags->getDiagnosticLevel(DiagID, Loc, *this, mapping);
+  Level getDiagnosticLevel(unsigned DiagID, SourceLocation Loc) const {
+    return (Level)Diags->getDiagnosticLevel(DiagID, Loc, *this);
   }
 
   /// Report - Issue the message to the client.  @c DiagID is a member of the
@@ -553,23 +576,6 @@ public:
 private:
   /// \brief Report the delayed diagnostic.
   void ReportDelayed();
-
-
-  /// getDiagnosticMappingInfo - Return the mapping info currently set for the
-  /// specified builtin diagnostic.  This returns the high bit encoding, or zero
-  /// if the field is completely uninitialized.
-  diag::Mapping getDiagnosticMappingInfo(diag::kind Diag,
-                                         DiagState *State) const {
-    return State->getMapping(Diag);
-  }
-
-  void setDiagnosticMappingInternal(unsigned DiagId, unsigned Map,
-                                    DiagState *State,
-                                    bool isUser, bool isPragma) const {
-    if (isUser) Map |= 8;  // Set the high bit for user mappings.
-    if (isPragma) Map |= 0x10;  // Set the bit for diagnostic pragma mappings.
-    State->setMapping((diag::kind)DiagId, Map);
-  }
 
   // This is private state used by DiagnosticBuilder.  We put it here instead of
   // in DiagnosticBuilder in order to keep DiagnosticBuilder a small lightweight
@@ -631,6 +637,21 @@ private:
   /// FixItHints - If valid, provides a hint with some code
   /// to insert, remove, or modify at a particular position.
   FixItHint FixItHints[MaxFixItHints];
+
+  DiagnosticMappingInfo makeMappingInfo(diag::Mapping Map, SourceLocation L) {
+    bool isPragma = L.isValid();
+    DiagnosticMappingInfo MappingInfo = DiagnosticMappingInfo::Make(
+      Map, /*IsUser=*/true, isPragma);
+
+    // If this is a pragma mapping, then set the diagnostic mapping flags so
+    // that we override command line options.
+    if (isPragma) {
+      MappingInfo.setNoWarningAsError(true);
+      MappingInfo.setNoErrorAsFatal(true);
+    }
+
+    return MappingInfo;
+  }
 
   /// ProcessDiag - This is the method used to report a diagnostic that is
   /// finally fully formed.
@@ -748,6 +769,11 @@ public:
     assert(isActive() && "DiagnosticsEngine is inactive");
     return DiagObj->CurDiagID;
   }
+
+  /// \brief Retrieve the active diagnostic's location.
+  ///
+  /// \pre \c isActive()
+  SourceLocation getLocation() const { return DiagObj->CurDiagLoc; }
   
   /// \brief Clear out the current diagnostic.
   void Clear() { DiagObj = 0; }
@@ -786,6 +812,8 @@ public:
   void AddFixItHint(const FixItHint &Hint) const {
     assert(NumFixItHints < DiagnosticsEngine::MaxFixItHints &&
            "Too many fix-it hints!");
+    if (NumFixItHints >= DiagnosticsEngine::MaxFixItHints)
+      return;  // Don't crash in release builds
     if (DiagObj)
       DiagObj->FixItHints[NumFixItHints++] = Hint;
   }
@@ -957,6 +985,11 @@ public:
     return DiagObj->DiagRanges[Idx];
   }
 
+  /// \brief Return an array reference for this diagnostic's ranges.
+  ArrayRef<CharSourceRange> getRanges() const {
+    return llvm::makeArrayRef(DiagObj->DiagRanges, DiagObj->NumDiagRanges);
+  }
+
   unsigned getNumFixItHints() const {
     return DiagObj->NumFixItHints;
   }
@@ -1059,6 +1092,10 @@ public:
   /// objects made available via \see BeginSourceFile() are inaccessible.
   virtual void EndSourceFile() {}
 
+  /// \brief Callback to inform the diagnostic client that processing of all
+  /// source files has ended.
+  virtual void finish() {}
+
   /// IncludeInDiagnosticCounts - This method (whose default implementation
   /// returns true) indicates whether the diagnostics handled by this
   /// DiagnosticConsumer should be included in the number of diagnostics
@@ -1072,6 +1109,23 @@ public:
   /// and errors.
   virtual void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
                                 const Diagnostic &Info);
+  
+  /// \brief Clone the diagnostic consumer, producing an equivalent consumer
+  /// that can be used in a different context.
+  virtual DiagnosticConsumer *clone(DiagnosticsEngine &Diags) const = 0;
+};
+
+/// IgnoringDiagConsumer - This is a diagnostic client that just ignores all
+/// diags.
+class IgnoringDiagConsumer : public DiagnosticConsumer {
+  virtual void anchor();
+  void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
+                        const Diagnostic &Info) {
+    // Just ignore it.
+  }
+  DiagnosticConsumer *clone(DiagnosticsEngine &Diags) const {
+    return new IgnoringDiagConsumer();
+  }
 };
 
 }  // end namespace clang

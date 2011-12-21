@@ -34,7 +34,8 @@ class ArrayBoundCheckerV2 :
                  OOB_Kind kind) const;
       
 public:
-  void checkLocation(SVal l, bool isLoad, CheckerContext &C) const;
+  void checkLocation(SVal l, bool isLoad, const Stmt*S,
+                     CheckerContext &C) const;
 };
 
 // FIXME: Eventually replace RegionRawOffset with this class.
@@ -79,6 +80,7 @@ static SVal computeExtentBegin(SValBuilder &svalBuilder,
 }
 
 void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
+                                        const Stmt* LoadS,
                                         CheckerContext &checkerContext) const {
 
   // NOTE: Instead of using ProgramState::assumeInBound(), we are prototyping
@@ -151,9 +153,17 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
     const ProgramState *state_exceedsUpperBound, *state_withinUpperBound;
     llvm::tie(state_exceedsUpperBound, state_withinUpperBound) =
       state->assume(*upperboundToCheck);
+
+    // If we are under constrained and the index variables are tainted, report.
+    if (state_exceedsUpperBound && state_withinUpperBound) {
+      if (state->isTainted(rawOffset.getByteOffset()))
+        reportOOB(checkerContext, state_exceedsUpperBound, OOB_Excedes);
+        return;
+    }
   
-    // Are we constrained enough to definitely exceed the upper bound?
-    if (state_exceedsUpperBound && !state_withinUpperBound) {
+    // If we are constrained enough to definitely exceed the upper bound, report.
+    if (state_exceedsUpperBound) {
+      assert(!state_withinUpperBound);
       reportOOB(checkerContext, state_exceedsUpperBound, OOB_Excedes);
       return;
     }
@@ -164,7 +174,7 @@ void ArrayBoundCheckerV2::checkLocation(SVal location, bool isLoad,
   while (false);
   
   if (state != originalState)
-    checkerContext.generateNode(state);
+    checkerContext.addTransition(state);
 }
 
 void ArrayBoundCheckerV2::reportOOB(CheckerContext &checkerContext,
@@ -275,9 +285,9 @@ RegionRawOffsetV2 RegionRawOffsetV2::computeOffset(const ProgramState *state,
         offset = addValue(state,
                           getValue(offset, svalBuilder),
                           scaleValue(state,
-                                     cast<NonLoc>(index),
-                                     astContext.getTypeSizeInChars(elemType),
-                                     svalBuilder),
+                          cast<NonLoc>(index),
+                          astContext.getTypeSizeInChars(elemType),
+                          svalBuilder),
                           svalBuilder);
 
         if (offset.isUnknownOrUndef())

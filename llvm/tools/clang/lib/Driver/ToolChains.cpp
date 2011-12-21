@@ -27,6 +27,7 @@
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
@@ -47,7 +48,8 @@ using namespace clang;
 
 Darwin::Darwin(const HostInfo &Host, const llvm::Triple& Triple)
   : ToolChain(Host, Triple), TargetInitialized(false),
-    ARCRuntimeForSimulator(ARCSimulator_None)
+    ARCRuntimeForSimulator(ARCSimulator_None),
+    LibCXXForSimulator(LibCXXSimulator_None)
 {
   // Compute the initial Darwin version based on the host.
   bool HadExtra;
@@ -117,49 +119,29 @@ bool Darwin::hasBlocksRuntime() const {
     return !isMacosxVersionLT(10, 6);
 }
 
-// FIXME: Can we tablegen this?
 static const char *GetArmArchForMArch(StringRef Value) {
-  if (Value == "armv6k")
-    return "armv6";
-
-  if (Value == "armv5tej")
-    return "armv5";
-
-  if (Value == "xscale")
-    return "xscale";
-
-  if (Value == "armv4t")
-    return "armv4t";
-
-  if (Value == "armv7" || Value == "armv7-a" || Value == "armv7-r" ||
-      Value == "armv7-m" || Value == "armv7a" || Value == "armv7r" ||
-      Value == "armv7m")
-    return "armv7";
-
-  return 0;
+  return llvm::StringSwitch<const char*>(Value)
+    .Case("armv6k", "armv6")
+    .Case("armv5tej", "armv5")
+    .Case("xscale", "xscale")
+    .Case("armv4t", "armv4t")
+    .Case("armv7", "armv7")
+    .Cases("armv7a", "armv7-a", "armv7")
+    .Cases("armv7r", "armv7-r", "armv7")
+    .Cases("armv7m", "armv7-m", "armv7")
+    .Default(0);
 }
 
-// FIXME: Can we tablegen this?
 static const char *GetArmArchForMCpu(StringRef Value) {
-  if (Value == "arm10tdmi" || Value == "arm1020t" || Value == "arm9e" ||
-      Value == "arm946e-s" || Value == "arm966e-s" ||
-      Value == "arm968e-s" || Value == "arm10e" ||
-      Value == "arm1020e" || Value == "arm1022e" || Value == "arm926ej-s" ||
-      Value == "arm1026ej-s")
-    return "armv5";
-
-  if (Value == "xscale")
-    return "xscale";
-
-  if (Value == "arm1136j-s" || Value == "arm1136jf-s" ||
-      Value == "arm1176jz-s" || Value == "arm1176jzf-s" ||
-      Value == "cortex-m0" )
-    return "armv6";
-
-  if (Value == "cortex-a8" || Value == "cortex-r4" || Value == "cortex-m3")
-    return "armv7";
-
-  return 0;
+  return llvm::StringSwitch<const char *>(Value)
+    .Cases("arm9e", "arm946e-s", "arm966e-s", "arm968e-s", "arm926ej-s","armv5")
+    .Cases("arm10e", "arm10tdmi", "armv5")
+    .Cases("arm1020t", "arm1020e", "arm1022e", "arm1026ej-s", "armv5")
+    .Case("xscale", "xscale")
+    .Cases("arm1136j-s", "arm1136jf-s", "arm1176jz-s",
+           "arm1176jzf-s", "cortex-m0", "armv6")
+    .Cases("cortex-a8", "cortex-r4", "cortex-m3", "cortex-a9", "armv7")
+    .Default(0);
 }
 
 StringRef Darwin::getDarwinArchName(const ArgList &Args) const {
@@ -210,6 +192,8 @@ std::string Darwin::ComputeEffectiveClangTriple(const ArgList &Args,
   return Triple.getTriple();
 }
 
+void Generic_ELF::anchor() {}
+
 Tool &Darwin::SelectTool(const Compilation &C, const JobAction &JA,
                          const ActionList &Inputs) const {
   Action::ActionClass Key;
@@ -218,7 +202,7 @@ Tool &Darwin::SelectTool(const Compilation &C, const JobAction &JA,
     // Fallback to llvm-gcc for i386 kext compiles, we don't support that ABI.
     if (Inputs.size() == 1 &&
         types::isCXX(Inputs[0]->getType()) &&
-        getTriple().getOS() == llvm::Triple::Darwin &&
+        getTriple().isOSDarwin() &&
         getTriple().getArch() == llvm::Triple::x86 &&
         (C.getArgs().getLastArg(options::OPT_fapple_kext) ||
          C.getArgs().getLastArg(options::OPT_mkernel)))
@@ -228,15 +212,9 @@ Tool &Darwin::SelectTool(const Compilation &C, const JobAction &JA,
   } else
     Key = JA.getKind();
 
-  // FIXME: This doesn't belong here, but ideally we will support static soon
-  // anyway.
-  bool HasStatic = (C.getArgs().hasArg(options::OPT_mkernel) ||
-                    C.getArgs().hasArg(options::OPT_static) ||
-                    C.getArgs().hasArg(options::OPT_fapple_kext));
-  bool IsIADefault = IsIntegratedAssemblerDefault() && !HasStatic;
   bool UseIntegratedAs = C.getArgs().hasFlag(options::OPT_integrated_as,
                                              options::OPT_no_integrated_as,
-                                             IsIADefault);
+                                             IsIntegratedAssemblerDefault());
 
   Tool *&T = Tools[Key];
   if (!T) {
@@ -317,8 +295,11 @@ void DarwinClang::AddLinkSearchPathArgs(const ArgList &Args,
   // Unfortunately, we still might depend on a few of the libraries that are
   // only available in the gcc library directory (in particular
   // libstdc++.dylib). For now, hardcode the path to the known install location.
+  // FIXME: This should get ripped out someday.  However, when building on
+  // 10.6 (darwin10), we're still relying on this to find libstdc++.dylib.
   llvm::sys::Path P(getDriver().Dir);
   P.eraseComponent(); // .../usr/bin -> ../usr
+  P.appendComponent("llvm-gcc-4.2");
   P.appendComponent("lib");
   P.appendComponent("gcc");
   switch (getTriple().getArch()) {
@@ -389,9 +370,11 @@ void DarwinClang::AddLinkARCArgs(const ArgList &Args,
   P.appendComponent("libarclite_");
   std::string s = P.str();
   // Mash in the platform.
-  if (isTargetIPhoneOS())
+  if (isTargetIOSSimulator())
+    s += "iphonesimulator";
+  else if (isTargetIPhoneOS())
     s += "iphoneos";
-  // FIXME: isTargetIphoneOSSimulator() is not returning true.
+  // FIXME: Remove this once we depend fully on -mios-simulator-version-min.
   else if (ARCRuntimeForSimulator != ARCSimulator_None)
     s += "iphonesimulator";
   else
@@ -418,6 +401,16 @@ void DarwinClang::AddLinkRuntimeLib(const ArgList &Args,
 
 void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
                                         ArgStringList &CmdArgs) const {
+  // Darwin only supports the compiler-rt based runtime libraries.
+  switch (GetRuntimeLibType(Args)) {
+  case ToolChain::RLT_CompilerRT:
+    break;
+  default:
+    getDriver().Diag(diag::err_drv_unsupported_rtlib_for_platform)
+      << Args.getLastArg(options::OPT_rtlib_EQ)->getValue(Args) << "darwin";
+    return;
+  }
+
   // Darwin doesn't support real static executables, don't link any runtime
   // libraries with -static.
   if (Args.hasArg(options::OPT_static))
@@ -432,6 +425,38 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
     return;
   }
 
+  // If we are building profile support, link that library in.
+  if (Args.hasArg(options::OPT_fprofile_arcs) ||
+      Args.hasArg(options::OPT_fprofile_generate) ||
+      Args.hasArg(options::OPT_fcreate_profile) ||
+      Args.hasArg(options::OPT_coverage)) {
+    // Select the appropriate runtime library for the target.
+    if (isTargetIPhoneOS()) {
+      AddLinkRuntimeLib(Args, CmdArgs, "libclang_rt.profile_ios.a");
+    } else {
+      AddLinkRuntimeLib(Args, CmdArgs, "libclang_rt.profile_osx.a");
+    }
+  }
+
+  // Add ASAN runtime library, if required. Dynamic libraries and bundles
+  // should not be linked with the runtime library.
+  if (Args.hasFlag(options::OPT_faddress_sanitizer,
+                   options::OPT_fno_address_sanitizer, false)) {
+    if (Args.hasArg(options::OPT_dynamiclib) ||
+        Args.hasArg(options::OPT_bundle)) return;
+    if (isTargetIPhoneOS()) {
+      getDriver().Diag(diag::err_drv_clang_unsupported_per_platform)
+        << "-faddress-sanitizer";
+    } else {
+      AddLinkRuntimeLib(Args, CmdArgs, "libclang_rt.asan_osx.a");
+
+      // The ASAN runtime library requires C++ and CoreFoundation.
+      AddCXXStdlibLibArgs(Args, CmdArgs);
+      CmdArgs.push_back("-framework");
+      CmdArgs.push_back("CoreFoundation");
+    }
+  }
+
   // Otherwise link libSystem, then the dynamic runtime library, and finally any
   // target specific static runtime library.
   CmdArgs.push_back("-lSystem");
@@ -440,8 +465,9 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
   if (isTargetIPhoneOS()) {
     // If we are compiling as iOS / simulator, don't attempt to link libgcc_s.1,
     // it never went into the SDK.
-    if (!isTargetIOSSimulator())
-        CmdArgs.push_back("-lgcc_s.1");
+    // Linking against libgcc_s.1 isn't needed for iOS 5.0+
+    if (isIPhoneOSVersionLT(5, 0) && !isTargetIOSSimulator())
+      CmdArgs.push_back("-lgcc_s.1");
 
     // We currently always need a static runtime library for iOS.
     AddLinkRuntimeLib(Args, CmdArgs, "libclang_rt.ios.a");
@@ -512,7 +538,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
   // '-miphoneos-version-min' to help us know whether there is an ARC runtime
   // or not; try to parse a __IPHONE_OS_VERSION_MIN_REQUIRED
   // define passed in command-line.
-  if (!iOSVersion) {
+  if (!iOSVersion && !iOSSimVersion) {
     for (arg_iterator it = Args.filtered_begin(options::OPT_D),
            ie = Args.filtered_end(); it != ie; ++it) {
       StringRef define = (*it)->getValue(Args);
@@ -522,6 +548,8 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
             Major < 10 && Minor < 100 && Micro < 100) {
           ARCRuntimeForSimulator = Major < 5 ? ARCSimulator_NoARCRuntime
                                              : ARCSimulator_HasARCRuntime;
+          LibCXXForSimulator = Major < 5 ? LibCXXSimulator_NotAvailable
+                                         : LibCXXSimulator_Available;
         }
         break;
       }
@@ -687,6 +715,8 @@ void DarwinClang::AddCXXStdlibLibArgs(const ArgList &Args,
     }
 
     // Otherwise, look in the root.
+    // FIXME: This should be removed someday when we don't have to care about
+    // 10.6 and earlier, where /usr/lib/libstdc++.dylib does not exist.
     if ((llvm::sys::fs::exists("/usr/lib/libstdc++.dylib", Exists) || !Exists)&&
       (!llvm::sys::fs::exists("/usr/lib/libstdc++.6.dylib", Exists) && Exists)){
       CmdArgs.push_back("/usr/lib/libstdc++.6.dylib");
@@ -929,6 +959,28 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
   // argument.
   AddDeploymentTarget(*DAL);
 
+  // Validate the C++ standard library choice.
+  CXXStdlibType Type = GetCXXStdlibType(*DAL);
+  if (Type == ToolChain::CST_Libcxx) {
+    switch (LibCXXForSimulator) {
+    case LibCXXSimulator_None:
+      // Handle non-simulator cases.
+      if (isTargetIPhoneOS()) {
+        if (isIPhoneOSVersionLT(5, 0)) {
+          getDriver().Diag(clang::diag::err_drv_invalid_libcxx_deployment)
+            << "iOS 5.0";
+        }
+      }
+      break;
+    case LibCXXSimulator_NotAvailable:
+      getDriver().Diag(clang::diag::err_drv_invalid_libcxx_deployment)
+        << "iOS 5.0";
+      break;
+    case LibCXXSimulator_Available:
+      break;
+    }
+  }
+
   return DAL;
 }
 
@@ -980,8 +1032,274 @@ Darwin_Generic_GCC::ComputeEffectiveClangTriple(const ArgList &Args,
 /// all subcommands; this relies on gcc translating the majority of
 /// command line options.
 
+/// \brief Parse a GCCVersion object out of a string of text.
+///
+/// This is the primary means of forming GCCVersion objects.
+/*static*/
+Generic_GCC::GCCVersion Linux::GCCVersion::Parse(StringRef VersionText) {
+  const GCCVersion BadVersion = { VersionText.str(), -1, -1, -1, "" };
+  std::pair<StringRef, StringRef> First = VersionText.split('.');
+  std::pair<StringRef, StringRef> Second = First.second.split('.');
+
+  GCCVersion GoodVersion = { VersionText.str(), -1, -1, -1, "" };
+  if (First.first.getAsInteger(10, GoodVersion.Major) ||
+      GoodVersion.Major < 0)
+    return BadVersion;
+  if (Second.first.getAsInteger(10, GoodVersion.Minor) ||
+      GoodVersion.Minor < 0)
+    return BadVersion;
+
+  // First look for a number prefix and parse that if present. Otherwise just
+  // stash the entire patch string in the suffix, and leave the number
+  // unspecified. This covers versions strings such as:
+  //   4.4
+  //   4.4.0
+  //   4.4.x
+  //   4.4.2-rc4
+  //   4.4.x-patched
+  // And retains any patch number it finds.
+  StringRef PatchText = GoodVersion.PatchSuffix = Second.second.str();
+  if (!PatchText.empty()) {
+    if (unsigned EndNumber = PatchText.find_first_not_of("0123456789")) {
+      // Try to parse the number and any suffix.
+      if (PatchText.slice(0, EndNumber).getAsInteger(10, GoodVersion.Patch) ||
+          GoodVersion.Patch < 0)
+        return BadVersion;
+      GoodVersion.PatchSuffix = PatchText.substr(EndNumber).str();
+    }
+  }
+
+  return GoodVersion;
+}
+
+/// \brief Less-than for GCCVersion, implementing a Strict Weak Ordering.
+bool Generic_GCC::GCCVersion::operator<(const GCCVersion &RHS) const {
+  if (Major < RHS.Major) return true; if (Major > RHS.Major) return false;
+  if (Minor < RHS.Minor) return true; if (Minor > RHS.Minor) return false;
+
+  // Note that we rank versions with *no* patch specified is better than ones
+  // hard-coding a patch version. Thus if the RHS has no patch, it always
+  // wins, and the LHS only wins if it has no patch and the RHS does have
+  // a patch.
+  if (RHS.Patch == -1) return true;   if (Patch == -1) return false;
+  if (Patch < RHS.Patch) return true; if (Patch > RHS.Patch) return false;
+
+  // Finally, between completely tied version numbers, the version with the
+  // suffix loses as we prefer full releases.
+  if (RHS.PatchSuffix.empty()) return true;
+  return false;
+}
+
+/// \brief Construct a GCCInstallationDetector from the driver.
+///
+/// This performs all of the autodetection and sets up the various paths.
+/// Once constructed, a GCCInstallation is esentially immutable.
+Generic_GCC::GCCInstallationDetector::GCCInstallationDetector(const Driver &D)
+  : IsValid(false),
+    GccTriple(D.DefaultHostTriple) {
+  // FIXME: Using CXX_INCLUDE_ROOT is here is a bit of a hack, but
+  // avoids adding yet another option to configure/cmake.
+  // It would probably be cleaner to break it in two variables
+  // CXX_GCC_ROOT with just /foo/bar
+  // CXX_GCC_VER with 4.5.2
+  // Then we would have
+  // CXX_INCLUDE_ROOT = CXX_GCC_ROOT/include/c++/CXX_GCC_VER
+  // and this function would return
+  // CXX_GCC_ROOT/lib/gcc/CXX_INCLUDE_ARCH/CXX_GCC_VER
+  llvm::SmallString<128> CxxIncludeRoot(CXX_INCLUDE_ROOT);
+  if (CxxIncludeRoot != "") {
+    // This is of the form /foo/bar/include/c++/4.5.2/
+    if (CxxIncludeRoot.back() == '/')
+      llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the /
+    StringRef Version = llvm::sys::path::filename(CxxIncludeRoot);
+    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the version
+    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the c++
+    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the include
+    GccInstallPath = CxxIncludeRoot.str();
+    GccInstallPath.append("/lib/gcc/");
+    GccInstallPath.append(CXX_INCLUDE_ARCH);
+    GccInstallPath.append("/");
+    GccInstallPath.append(Version);
+    GccParentLibPath = GccInstallPath + "/../../..";
+    IsValid = true;
+    return;
+  }
+
+  llvm::Triple::ArchType HostArch = llvm::Triple(GccTriple).getArch();
+  // The library directories which may contain GCC installations.
+  SmallVector<StringRef, 4> CandidateLibDirs;
+  // The compatible GCC triples for this particular architecture.
+  SmallVector<StringRef, 10> CandidateTriples;
+  CollectLibDirsAndTriples(HostArch, CandidateLibDirs, CandidateTriples);
+
+  // Always include the default host triple as the final fallback if no
+  // specific triple is detected.
+  CandidateTriples.push_back(D.DefaultHostTriple);
+
+  // Compute the set of prefixes for our search.
+  SmallVector<std::string, 8> Prefixes(D.PrefixDirs.begin(),
+                                       D.PrefixDirs.end());
+  Prefixes.push_back(D.SysRoot);
+  Prefixes.push_back(D.SysRoot + "/usr");
+  Prefixes.push_back(D.InstalledDir + "/..");
+
+  // Loop over the various components which exist and select the best GCC
+  // installation available. GCC installs are ranked by version number.
+  Version = GCCVersion::Parse("0.0.0");
+  for (unsigned i = 0, ie = Prefixes.size(); i < ie; ++i) {
+    if (!llvm::sys::fs::exists(Prefixes[i]))
+      continue;
+    for (unsigned j = 0, je = CandidateLibDirs.size(); j < je; ++j) {
+      const std::string LibDir = Prefixes[i] + CandidateLibDirs[j].str();
+      if (!llvm::sys::fs::exists(LibDir))
+        continue;
+      for (unsigned k = 0, ke = CandidateTriples.size(); k < ke; ++k)
+        ScanLibDirForGCCTriple(HostArch, LibDir, CandidateTriples[k]);
+    }
+  }
+}
+
+/*static*/ void Generic_GCC::GCCInstallationDetector::CollectLibDirsAndTriples(
+    llvm::Triple::ArchType HostArch, SmallVectorImpl<StringRef> &LibDirs,
+    SmallVectorImpl<StringRef> &Triples) {
+  if (HostArch == llvm::Triple::arm || HostArch == llvm::Triple::thumb) {
+    static const char *const ARMLibDirs[] = { "/lib" };
+    static const char *const ARMTriples[] = { "arm-linux-gnueabi" };
+    LibDirs.append(ARMLibDirs, ARMLibDirs + llvm::array_lengthof(ARMLibDirs));
+    Triples.append(ARMTriples, ARMTriples + llvm::array_lengthof(ARMTriples));
+  } else if (HostArch == llvm::Triple::x86_64) {
+    static const char *const X86_64LibDirs[] = { "/lib64", "/lib" };
+    static const char *const X86_64Triples[] = {
+      "x86_64-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-linux-gnu",
+      "x86_64-redhat-linux6E",
+      "x86_64-redhat-linux",
+      "x86_64-suse-linux",
+      "x86_64-manbo-linux-gnu",
+      "x86_64-linux-gnu",
+      "x86_64-slackware-linux"
+    };
+    LibDirs.append(X86_64LibDirs,
+                   X86_64LibDirs + llvm::array_lengthof(X86_64LibDirs));
+    Triples.append(X86_64Triples,
+                   X86_64Triples + llvm::array_lengthof(X86_64Triples));
+  } else if (HostArch == llvm::Triple::x86) {
+    static const char *const X86LibDirs[] = { "/lib32", "/lib" };
+    static const char *const X86Triples[] = {
+      "i686-linux-gnu",
+      "i686-pc-linux-gnu",
+      "i486-linux-gnu",
+      "i386-linux-gnu",
+      "i686-redhat-linux",
+      "i586-redhat-linux",
+      "i386-redhat-linux",
+      "i586-suse-linux",
+      "i486-slackware-linux"
+    };
+    LibDirs.append(X86LibDirs, X86LibDirs + llvm::array_lengthof(X86LibDirs));
+    Triples.append(X86Triples, X86Triples + llvm::array_lengthof(X86Triples));
+  } else if (HostArch == llvm::Triple::mips) {
+    static const char *const MIPSLibDirs[] = { "/lib" };
+    static const char *const MIPSTriples[] = { "mips-linux-gnu" };
+    LibDirs.append(MIPSLibDirs,
+                   MIPSLibDirs + llvm::array_lengthof(MIPSLibDirs));
+    Triples.append(MIPSTriples,
+                   MIPSTriples + llvm::array_lengthof(MIPSTriples));
+  } else if (HostArch == llvm::Triple::mipsel) {
+    static const char *const MIPSELLibDirs[] = { "/lib" };
+    static const char *const MIPSELTriples[] = { "mipsel-linux-gnu" };
+    LibDirs.append(MIPSELLibDirs,
+                   MIPSELLibDirs + llvm::array_lengthof(MIPSELLibDirs));
+    Triples.append(MIPSELTriples,
+                   MIPSELTriples + llvm::array_lengthof(MIPSELTriples));
+  } else if (HostArch == llvm::Triple::ppc) {
+    static const char *const PPCLibDirs[] = { "/lib32", "/lib" };
+    static const char *const PPCTriples[] = {
+      "powerpc-linux-gnu",
+      "powerpc-unknown-linux-gnu",
+      "powerpc-suse-linux"
+    };
+    LibDirs.append(PPCLibDirs, PPCLibDirs + llvm::array_lengthof(PPCLibDirs));
+    Triples.append(PPCTriples, PPCTriples + llvm::array_lengthof(PPCTriples));
+  } else if (HostArch == llvm::Triple::ppc64) {
+    static const char *const PPC64LibDirs[] = { "/lib64", "/lib" };
+    static const char *const PPC64Triples[] = {
+      "powerpc64-unknown-linux-gnu",
+      "powerpc64-suse-linux",
+      "ppc64-redhat-linux"
+    };
+    LibDirs.append(PPC64LibDirs,
+                   PPC64LibDirs + llvm::array_lengthof(PPC64LibDirs));
+    Triples.append(PPC64Triples,
+                   PPC64Triples + llvm::array_lengthof(PPC64Triples));
+  }
+}
+
+void Generic_GCC::GCCInstallationDetector::ScanLibDirForGCCTriple(
+    llvm::Triple::ArchType HostArch, const std::string &LibDir,
+    StringRef CandidateTriple) {
+  // There are various different suffixes involving the triple we
+  // check for. We also record what is necessary to walk from each back
+  // up to the lib directory.
+  const std::string Suffixes[] = {
+    "/gcc/" + CandidateTriple.str(),
+    "/" + CandidateTriple.str() + "/gcc/" + CandidateTriple.str(),
+
+    // Ubuntu has a strange mis-matched pair of triples that this happens to
+    // match.
+    // FIXME: It may be worthwhile to generalize this and look for a second
+    // triple.
+    "/i386-linux-gnu/gcc/" + CandidateTriple.str()
+  };
+  const std::string InstallSuffixes[] = {
+    "/../../..",
+    "/../../../..",
+    "/../../../.."
+  };
+  // Only look at the final, weird Ubuntu suffix for i386-linux-gnu.
+  const unsigned NumSuffixes = (llvm::array_lengthof(Suffixes) -
+                                (HostArch != llvm::Triple::x86));
+  for (unsigned i = 0; i < NumSuffixes; ++i) {
+    StringRef Suffix = Suffixes[i];
+    llvm::error_code EC;
+    for (llvm::sys::fs::directory_iterator LI(LibDir + Suffix, EC), LE;
+         !EC && LI != LE; LI = LI.increment(EC)) {
+      StringRef VersionText = llvm::sys::path::filename(LI->path());
+      GCCVersion CandidateVersion = GCCVersion::Parse(VersionText);
+      static const GCCVersion MinVersion = { "4.1.1", 4, 1, 1, "" };
+      if (CandidateVersion < MinVersion)
+        continue;
+      if (CandidateVersion <= Version)
+        continue;
+
+      // Some versions of SUSE and Fedora on ppc64 put 32-bit libs
+      // in what would normally be GccInstallPath and put the 64-bit
+      // libs in a subdirectory named 64. We need the 64-bit libs
+      // for linking.
+      bool UseSlash64 = false;
+      if (HostArch == llvm::Triple::ppc64 &&
+            llvm::sys::fs::exists(LI->path() + "/64/crtbegin.o"))
+        UseSlash64 = true;
+
+      if (!llvm::sys::fs::exists(LI->path() + "/crtbegin.o"))
+        continue;
+
+      Version = CandidateVersion;
+      GccTriple = CandidateTriple.str();
+      // FIXME: We hack together the directory name here instead of
+      // using LI to ensure stable path separators across Windows and
+      // Linux.
+      GccInstallPath = LibDir + Suffixes[i] + "/" + VersionText.str();
+      GccParentLibPath = GccInstallPath + InstallSuffixes[i];
+      if (UseSlash64) GccInstallPath = GccInstallPath + "/64";
+      IsValid = true;
+    }
+  }
+}
+
 Generic_GCC::Generic_GCC(const HostInfo &Host, const llvm::Triple& Triple)
-  : ToolChain(Host, Triple) {
+  : ToolChain(Host, Triple), GCCInstallation(getDriver()) {
   getProgramPaths().push_back(getDriver().getInstalledDir());
   if (getDriver().getInstalledDir() != getDriver().Dir)
     getProgramPaths().push_back(getDriver().Dir);
@@ -1049,6 +1367,73 @@ const char *Generic_GCC::GetDefaultRelocationModel() const {
 const char *Generic_GCC::GetForcedPicModel() const {
   return 0;
 }
+/// Hexagon Toolchain
+
+Hexagon_TC::Hexagon_TC(const HostInfo &Host, const llvm::Triple& Triple)
+  : ToolChain(Host, Triple) {
+  getProgramPaths().push_back(getDriver().getInstalledDir());
+  if (getDriver().getInstalledDir() != getDriver().Dir.c_str())
+    getProgramPaths().push_back(getDriver().Dir);
+}
+
+Hexagon_TC::~Hexagon_TC() {
+  // Free tool implementations.
+  for (llvm::DenseMap<unsigned, Tool*>::iterator
+         it = Tools.begin(), ie = Tools.end(); it != ie; ++it)
+    delete it->second;
+}
+
+Tool &Hexagon_TC::SelectTool(const Compilation &C,
+                             const JobAction &JA,
+                             const ActionList &Inputs) const {
+  Action::ActionClass Key;
+  //   if (JA.getKind () == Action::CompileJobClass)
+  //     Key = JA.getKind ();
+  //     else
+
+  if (getDriver().ShouldUseClangCompiler(C, JA, getTriple()))
+    Key = Action::AnalyzeJobClass;
+  else
+    Key = JA.getKind();
+  //   if ((JA.getKind () == Action::CompileJobClass)
+  //     && (JA.getType () != types::TY_LTO_BC)) {
+  //     Key = JA.getKind ();
+  //   }
+
+  Tool *&T = Tools[Key];
+  if (!T) {
+    switch (Key) {
+    case Action::InputClass:
+    case Action::BindArchClass:
+      assert(0 && "Invalid tool kind.");
+    case Action::AnalyzeJobClass:
+      T = new tools::Clang(*this); break;
+    case Action::AssembleJobClass:
+      T = new tools::hexagon::Assemble(*this); break;
+    case Action::LinkJobClass:
+      T = new tools::hexagon::Link(*this); break;
+    default:
+      assert(false && "Unsupported action for Hexagon target.");
+    }
+  }
+
+  return *T;
+}
+
+bool Hexagon_TC::IsUnwindTablesDefault() const {
+  // FIXME: Gross; we should probably have some separate target
+  // definition, possibly even reusing the one in clang.
+  return getArchName() == "x86_64";
+}
+
+const char *Hexagon_TC::GetDefaultRelocationModel() const {
+  return "static";
+}
+
+const char *Hexagon_TC::GetForcedPicModel() const {
+  return 0;
+} // End Hexagon
+
 
 /// TCEToolChain - A tool chain using the llvm bitcode tools to perform
 /// all subcommands. See http://tce.cs.tut.fi for our peculiar target.
@@ -1255,11 +1640,9 @@ Tool &NetBSD::SelectTool(const Compilation &C, const JobAction &JA,
 /// Minix - Minix tool chain which can call as(1) and ld(1) directly.
 
 Minix::Minix(const HostInfo &Host, const llvm::Triple& Triple)
-  : Generic_GCC(Host, Triple) {
+  : Generic_ELF(Host, Triple) {
   getFilePaths().push_back(getDriver().Dir + "/../lib");
   getFilePaths().push_back("/usr/lib");
-  getFilePaths().push_back("/usr/gnu/lib");
-  getFilePaths().push_back("/usr/gnu/lib/gcc/i686-pc-minix/4.4.3");
 }
 
 Tool &Minix::SelectTool(const Compilation &C, const JobAction &JA,
@@ -1378,27 +1761,6 @@ static bool IsUbuntu(enum LinuxDistro Distro) {
          Distro == UbuntuNatty  || Distro == UbuntuOneiric;
 }
 
-static bool IsDebianBased(enum LinuxDistro Distro) {
-  return IsDebian(Distro) || IsUbuntu(Distro);
-}
-
-static bool HasMultilib(llvm::Triple::ArchType Arch, enum LinuxDistro Distro) {
-  if (Arch == llvm::Triple::x86_64) {
-    bool Exists;
-    if (Distro == Exherbo &&
-        (llvm::sys::fs::exists("/usr/lib32/libc.so", Exists) || !Exists))
-      return false;
-
-    return true;
-  }
-  if (Arch == llvm::Triple::ppc64)
-    return true;
-  if ((Arch == llvm::Triple::x86 || Arch == llvm::Triple::ppc) &&
-      IsDebianBased(Distro))
-    return true;
-  return false;
-}
-
 static LinuxDistro DetectLinuxDistro(llvm::Triple::ArchType Arch) {
   llvm::OwningPtr<llvm::MemoryBuffer> File;
   if (!llvm::MemoryBuffer::getFile("/etc/lsb-release", File)) {
@@ -1483,199 +1845,58 @@ static LinuxDistro DetectLinuxDistro(llvm::Triple::ArchType Arch) {
   return UnknownDistro;
 }
 
-static std::string findGCCBaseLibDir(const Driver &D,
-    const std::string &GccTriple) {
+static void addPathIfExists(Twine Path, ToolChain::path_list &Paths) {
+  if (llvm::sys::fs::exists(Path)) Paths.push_back(Path.str());
+}
 
-  // FIXME: Using CXX_INCLUDE_ROOT is here is a bit of a hack, but
-  // avoids adding yet another option to configure/cmake.
-  // It would probably be cleaner to break it in two variables
-  // CXX_GCC_ROOT with just /foo/bar
-  // CXX_GCC_VER with 4.5.2
-  // Then we would have
-  // CXX_INCLUDE_ROOT = CXX_GCC_ROOT/include/c++/CXX_GCC_VER
-  // and this function would return
-  // CXX_GCC_ROOT/lib/gcc/CXX_INCLUDE_ARCH/CXX_GCC_VER
-  llvm::SmallString<128> CxxIncludeRoot(CXX_INCLUDE_ROOT);
-  if (CxxIncludeRoot != "") {
-    // This is of the form /foo/bar/include/c++/4.5.2/
-    if (CxxIncludeRoot.back() == '/')
-      llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the /
-    StringRef Version = llvm::sys::path::filename(CxxIncludeRoot);
-    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the version
-    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the c++
-    llvm::sys::path::remove_filename(CxxIncludeRoot); // remove the include
-    std::string ret(CxxIncludeRoot.c_str());
-    ret.append("/lib/gcc/");
-    ret.append(CXX_INCLUDE_ARCH);
-    ret.append("/");
-    ret.append(Version);
-    return ret;
-  }
-  static const char* GccVersions[] = {"4.6.1", "4.6.0", "4.6",
-                                      "4.5.3", "4.5.2", "4.5.1", "4.5",
-                                      "4.4.6", "4.4.5", "4.4.4", "4.4.3", "4.4",
-                                      "4.3.4", "4.3.3", "4.3.2", "4.3",
-                                      "4.2.4", "4.2.3", "4.2.2", "4.2.1",
-                                      "4.2", "4.1.1"};
-  bool Exists;
-  llvm::SmallVector<std::string, 8> Paths(D.PrefixDirs.begin(),
-      D.PrefixDirs.end());
-  Paths.push_back("/usr/lib/");
-  const std::string *Triples[] = {&GccTriple, &D.DefaultHostTriple};
-  for (llvm::SmallVector<std::string, 8>::const_iterator it = Paths.begin(),
-       ie = Paths.end(); it != ie; ++it) {
-    for (unsigned i = 0; i < sizeof(GccVersions)/sizeof(char*); ++i) {
-      for (unsigned j = 0; j < sizeof(Triples)/sizeof(Triples[0]); ++j) {
-        std::string Suffix = *Triples[j] + "/" + GccVersions[i];
-        std::string t1 = *it + "gcc/" + Suffix;
-        if (!llvm::sys::fs::exists(t1 + "/crtbegin.o", Exists) && Exists)
-          return t1;
-        std::string t2 = *it + "lib64/gcc/" + Suffix;
-        if (!llvm::sys::fs::exists(t2 + "/crtbegin.o", Exists) && Exists)
-          return t2;
-        std::string t3 = *it + "lib/" + GccTriple + "/gcc/" + Suffix;
+/// \brief Get our best guess at the multiarch triple for a target.
+///
+/// Debian-based systems are starting to use a multiarch setup where they use
+/// a target-triple directory in the library and header search paths.
+/// Unfortunately, this triple does not align with the vanilla target triple,
+/// so we provide a rough mapping here.
+static std::string getMultiarchTriple(const llvm::Triple TargetTriple,
+                                      StringRef SysRoot) {
+  // For most architectures, just use whatever we have rather than trying to be
+  // clever.
+  switch (TargetTriple.getArch()) {
+  default:
+    return TargetTriple.str();
 
-        if (!llvm::sys::fs::exists(t3 + "/crtbegin.o", Exists) && Exists)
-          return t3;
-        if (GccTriple == "i386-linux-gnu") {
-          // Ubuntu 11.04 uses an unusual path.
-          std::string t4 =
-              std::string(*it + "lib/i386-linux-gnu/gcc/i686-linux-gnu/") +
-              GccVersions[i];
-          if (!llvm::sys::fs::exists(t4 + "/crtbegin.o", Exists) && Exists)
-            return t4;
-        }
-	// ndm - hack to find the correct path on 64-bit Ubunutu...
-	// hopefully this will be fixed in Clang later
-	else if (GccTriple == "x86_64-linux-gnu") {
-          std::string t5 =
-              std::string(*it + "x86_64-linux-gnu/gcc/x86_64-linux-gnu/") +
-              GccVersions[i];
-          if (!llvm::sys::fs::exists(t5 + "/crtbegin.o", Exists) && Exists)
-            return t5;
-	}
-      }
-    }
+    // We use the existence of '/lib/<triple>' as a directory to detect some
+    // common linux triples that don't quite match the Clang triple for both
+    // 32-bit and 64-bit targets. Multiarch fixes its install triples to these
+    // regardless of what the actual target triple is.
+  case llvm::Triple::x86:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/i386-linux-gnu"))
+      return "i386-linux-gnu";
+    return TargetTriple.str();
+  case llvm::Triple::x86_64:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/x86_64-linux-gnu"))
+      return "x86_64-linux-gnu";
+    return TargetTriple.str();
+  case llvm::Triple::mips:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mips-linux-gnu"))
+      return "mips-linux-gnu";
+    return TargetTriple.str();
+  case llvm::Triple::mipsel:
+    if (llvm::sys::fs::exists(SysRoot + "/lib/mipsel-linux-gnu"))
+      return "mipsel-linux-gnu";
+    return TargetTriple.str();
   }
-  return "";
 }
 
 Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   : Generic_ELF(Host, Triple) {
   llvm::Triple::ArchType Arch =
     llvm::Triple(getDriver().DefaultHostTriple).getArch();
-
-  std::string Suffix32  = "";
-  if (Arch == llvm::Triple::x86_64)
-    Suffix32 = "/32";
-
-  std::string Suffix64  = "";
-  if (Arch == llvm::Triple::x86 || Arch == llvm::Triple::ppc)
-    Suffix64 = "/64";
-
-  std::string Lib32 = "lib";
-
-  bool Exists;
-  if (!llvm::sys::fs::exists("/lib32", Exists) && Exists)
-    Lib32 = "lib32";
-
-  std::string Lib64 = "lib";
-  bool Symlink;
-  if (!llvm::sys::fs::exists("/lib64", Exists) && Exists &&
-      (llvm::sys::fs::is_symlink("/lib64", Symlink) || !Symlink))
-    Lib64 = "lib64";
-
-  std::string GccTriple = "";
-  if (Arch == llvm::Triple::arm || Arch == llvm::Triple::thumb) {
-    if (!llvm::sys::fs::exists("/usr/lib/gcc/arm-linux-gnueabi", Exists) &&
-        Exists)
-      GccTriple = "arm-linux-gnueabi";
-  } else if (Arch == llvm::Triple::x86_64) {
-    if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-linux-gnu", Exists) &&
-        Exists)
-      GccTriple = "x86_64-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-redhat-linux",
-             Exists) && Exists)
-      GccTriple = "x86_64-redhat-linux";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-unknown-linux-gnu",
-             Exists) && Exists)
-      GccTriple = "x86_64-unknown-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-pc-linux-gnu",
-             Exists) && Exists)
-      GccTriple = "x86_64-pc-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-redhat-linux6E",
-             Exists) && Exists)
-      GccTriple = "x86_64-redhat-linux6E";
-    else if (!llvm::sys::fs::exists("/usr/lib64/gcc/x86_64-suse-linux",
-             Exists) && Exists)
-      GccTriple = "x86_64-suse-linux";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/x86_64-manbo-linux-gnu",
-             Exists) && Exists)
-      GccTriple = "x86_64-manbo-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/x86_64-linux-gnu/gcc",
-             Exists) && Exists)
-      GccTriple = "x86_64-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib64/gcc/x86_64-slackware-linux",
-             Exists) && Exists)
-      GccTriple = "x86_64-slackware-linux";
-  } else if (Arch == llvm::Triple::x86) {
-    if (!llvm::sys::fs::exists("/usr/lib/gcc/i686-linux-gnu", Exists) && Exists)
-      GccTriple = "i686-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/i386-linux-gnu", Exists) &&
-             Exists)
-      GccTriple = "i386-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/i686-pc-linux-gnu", Exists) &&
-             Exists)
-      GccTriple = "i686-pc-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/i486-linux-gnu", Exists) &&
-             Exists)
-      GccTriple = "i486-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/i686-redhat-linux", Exists) &&
-             Exists)
-      GccTriple = "i686-redhat-linux";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/i586-suse-linux", Exists) &&
-             Exists)
-      GccTriple = "i586-suse-linux";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/i486-slackware-linux", Exists)
-            && Exists)
-      GccTriple = "i486-slackware-linux";
-  } else if (Arch == llvm::Triple::ppc) {
-    if (!llvm::sys::fs::exists("/usr/lib/powerpc-linux-gnu", Exists) && Exists)
-      GccTriple = "powerpc-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib/gcc/powerpc-unknown-linux-gnu",
-                                    Exists) && Exists)
-      GccTriple = "powerpc-unknown-linux-gnu";
-  } else if (Arch == llvm::Triple::ppc64) {
-    if (!llvm::sys::fs::exists("/usr/lib/gcc/powerpc64-unknown-linux-gnu",
-                               Exists) && Exists)
-      GccTriple = "powerpc64-unknown-linux-gnu";
-    else if (!llvm::sys::fs::exists("/usr/lib64/gcc/"
-                                    "powerpc64-unknown-linux-gnu", Exists) &&
-             Exists)
-      GccTriple = "powerpc64-unknown-linux-gnu";
-  }
-
-  std::string Base = findGCCBaseLibDir(getDriver(), GccTriple);
-
-  path_list &Paths = getFilePaths();
-  bool Is32Bits = (getArch() == llvm::Triple::x86 ||
-                   getArch() == llvm::Triple::ppc);
-
-  std::string Suffix;
-  std::string Lib;
-
-  if (Is32Bits) {
-    Suffix = Suffix32;
-    Lib = Lib32;
-  } else {
-    Suffix = Suffix64;
-    Lib = Lib64;
-  }
+  const std::string &SysRoot = getDriver().SysRoot;
 
   // OpenSuse stores the linker with the compiler, add that to the search
   // path.
   ToolChain::path_list &PPaths = getProgramPaths();
-  PPaths.push_back(Base + "/../../../../" + GccTriple + "/bin");
+  PPaths.push_back(Twine(GCCInstallation.getParentLibPath() + "/../" +
+                         GCCInstallation.getTriple() + "/bin").str());
 
   Linker = GetProgramPath("ld");
 
@@ -1689,13 +1910,24 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   if (Arch == llvm::Triple::arm || Arch == llvm::Triple::thumb)
     ExtraOpts.push_back("-X");
 
-  if (IsRedhat(Distro) || IsOpenSuse(Distro) || Distro == UbuntuMaverick ||
-      Distro == UbuntuNatty || Distro == UbuntuOneiric)
-    ExtraOpts.push_back("--hash-style=gnu");
+  const bool IsMips = Arch == llvm::Triple::mips ||
+                      Arch == llvm::Triple::mipsel ||
+                      Arch == llvm::Triple::mips64 ||
+                      Arch == llvm::Triple::mips64el;
 
-  if (IsDebian(Distro) || IsOpenSuse(Distro) || Distro == UbuntuLucid ||
-      Distro == UbuntuJaunty || Distro == UbuntuKarmic)
-    ExtraOpts.push_back("--hash-style=both");
+  // Do not use 'gnu' hash style for Mips targets because .gnu.hash
+  // and the MIPS ABI require .dynsym to be sorted in different ways.
+  // .gnu.hash needs symbols to be grouped by hash code whereas the MIPS
+  // ABI requires a mapping between the GOT and the symbol table.
+  if (!IsMips) {
+    if (IsRedhat(Distro) || IsOpenSuse(Distro) || Distro == UbuntuMaverick ||
+        Distro == UbuntuNatty || Distro == UbuntuOneiric)
+      ExtraOpts.push_back("--hash-style=gnu");
+
+    if (IsDebian(Distro) || IsOpenSuse(Distro) || Distro == UbuntuLucid ||
+        Distro == UbuntuJaunty || Distro == UbuntuKarmic)
+      ExtraOpts.push_back("--hash-style=both");
+  }
 
   if (IsRedhat(Distro))
     ExtraOpts.push_back("--no-add-needed");
@@ -1711,29 +1943,62 @@ Linux::Linux(const HostInfo &Host, const llvm::Triple &Triple)
   if (IsOpenSuse(Distro))
     ExtraOpts.push_back("--enable-new-dtags");
 
-  if (Distro == ArchLinux)
-    Lib = "lib";
+  // The selection of paths to try here is designed to match the patterns which
+  // the GCC driver itself uses, as this is part of the GCC-compatible driver.
+  // This was determined by running GCC in a fake filesystem, creating all
+  // possible permutations of these directories, and seeing which ones it added
+  // to the link paths.
+  path_list &Paths = getFilePaths();
+  const bool Is32Bits = (getArch() == llvm::Triple::x86 ||
+                         getArch() == llvm::Triple::mips ||
+                         getArch() == llvm::Triple::mipsel ||
+                         getArch() == llvm::Triple::ppc);
 
-  Paths.push_back(Base + Suffix);
-  if (HasMultilib(Arch, Distro)) {
-    if (IsOpenSuse(Distro) && Is32Bits)
-      Paths.push_back(Base + "/../../../../" + GccTriple + "/lib/../lib");
-    Paths.push_back(Base + "/../../../../" + Lib);
+  StringRef Suffix32;
+  StringRef Suffix64;
+  if (Arch == llvm::Triple::x86_64 || Arch == llvm::Triple::ppc64) {
+    Suffix32 = "/32";
+    Suffix64 = "";
+  } else {
+    Suffix32 = "";
+    Suffix64 = "/64";
   }
+  const std::string Suffix = Is32Bits ? Suffix32 : Suffix64;
+  const std::string Multilib = Is32Bits ? "lib32" : "lib64";
+  const std::string MultiarchTriple = getMultiarchTriple(Triple, SysRoot);
 
-  // FIXME: This is in here to find crt1.o. It is provided by libc, and
-  // libc (like gcc), can be installed in any directory. Once we are
-  // fetching this from a config file, we should have a libc prefix.
-  Paths.push_back("=/lib/../" + Lib);
-  Paths.push_back("=/usr/lib/../" + Lib);
+  // Add the multilib suffixed paths where they are available.
+  if (GCCInstallation.isValid()) {
+    const std::string &LibPath = GCCInstallation.getParentLibPath();
+    const std::string &GccTriple = GCCInstallation.getTriple();
+    addPathIfExists(GCCInstallation.getInstallPath() + Suffix, Paths);
+    addPathIfExists(LibPath + "/../" + GccTriple + "/lib/../" + Multilib,
+                    Paths);
+    addPathIfExists(LibPath + "/" + MultiarchTriple, Paths);
+    addPathIfExists(LibPath + "/../" + Multilib, Paths);
+  }
+  addPathIfExists(SysRoot + "/lib/" + MultiarchTriple, Paths);
+  addPathIfExists(SysRoot + "/lib/../" + Multilib, Paths);
+  addPathIfExists(SysRoot + "/usr/lib/" + MultiarchTriple, Paths);
+  addPathIfExists(SysRoot + "/usr/lib/../" + Multilib, Paths);
 
-  if (!Suffix.empty())
-    Paths.push_back(Base);
-  if (IsOpenSuse(Distro))
-    Paths.push_back(Base + "/../../../../" + GccTriple + "/lib");
-  Paths.push_back(Base + "/../../..");
-  if (Arch == getArch() && IsUbuntu(Distro))
-    Paths.push_back("/usr/lib/" + GccTriple);
+  // Try walking via the GCC triple path in case of multiarch GCC
+  // installations with strange symlinks.
+  if (GCCInstallation.isValid())
+    addPathIfExists(SysRoot + "/usr/lib/" + GCCInstallation.getTriple() +
+                    "/../../" + Multilib, Paths);
+
+  // Add the non-multilib suffixed paths (if potentially different).
+  if (GCCInstallation.isValid()) {
+    const std::string &LibPath = GCCInstallation.getParentLibPath();
+    const std::string &GccTriple = GCCInstallation.getTriple();
+    if (!Suffix.empty())
+      addPathIfExists(GCCInstallation.getInstallPath(), Paths);
+    addPathIfExists(LibPath + "/../" + GccTriple + "/lib", Paths);
+    addPathIfExists(LibPath, Paths);
+  }
+  addPathIfExists(SysRoot + "/lib", Paths);
+  addPathIfExists(SysRoot + "/usr/lib", Paths);
 }
 
 bool Linux::HasNativeLLVMSupport() const {
@@ -1769,6 +2034,175 @@ Tool &Linux::SelectTool(const Compilation &C, const JobAction &JA,
   }
 
   return *T;
+}
+
+void Linux::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
+                                      ArgStringList &CC1Args) const {
+  const Driver &D = getDriver();
+
+  if (DriverArgs.hasArg(options::OPT_nostdinc))
+    return;
+
+  if (!DriverArgs.hasArg(options::OPT_nostdlibinc))
+    addSystemInclude(DriverArgs, CC1Args, D.SysRoot + "/usr/local/include");
+
+  if (!DriverArgs.hasArg(options::OPT_nobuiltininc)) {
+    llvm::sys::Path P(D.ResourceDir);
+    P.appendComponent("include");
+    addSystemInclude(DriverArgs, CC1Args, P.str());
+  }
+
+  if (DriverArgs.hasArg(options::OPT_nostdlibinc))
+    return;
+
+  // Check for configure-time C include directories.
+  StringRef CIncludeDirs(C_INCLUDE_DIRS);
+  if (CIncludeDirs != "") {
+    SmallVector<StringRef, 5> dirs;
+    CIncludeDirs.split(dirs, ":");
+    for (SmallVectorImpl<StringRef>::iterator I = dirs.begin(), E = dirs.end();
+         I != E; ++I) {
+      StringRef Prefix = llvm::sys::path::is_absolute(*I) ? D.SysRoot : "";
+      addExternCSystemInclude(DriverArgs, CC1Args, Prefix + *I);
+    }
+    return;
+  }
+
+  // Lacking those, try to detect the correct set of system includes for the
+  // target triple.
+
+  // Implement generic Debian multiarch support.
+  const StringRef X86_64MultiarchIncludeDirs[] = {
+    "/usr/include/x86_64-linux-gnu",
+
+    // FIXME: These are older forms of multiarch. It's not clear that they're
+    // in use in any released version of Debian, so we should consider
+    // removing them.
+    "/usr/include/i686-linux-gnu/64",
+    "/usr/include/i486-linux-gnu/64"
+  };
+  const StringRef X86MultiarchIncludeDirs[] = {
+    "/usr/include/i386-linux-gnu",
+
+    // FIXME: These are older forms of multiarch. It's not clear that they're
+    // in use in any released version of Debian, so we should consider
+    // removing them.
+    "/usr/include/x86_64-linux-gnu/32",
+    "/usr/include/i686-linux-gnu",
+    "/usr/include/i486-linux-gnu"
+  };
+  const StringRef ARMMultiarchIncludeDirs[] = {
+    "/usr/include/arm-linux-gnueabi"
+  };
+  const StringRef MIPSMultiarchIncludeDirs[] = {
+    "/usr/include/mips-linux-gnu"
+  };
+  const StringRef MIPSELMultiarchIncludeDirs[] = {
+    "/usr/include/mipsel-linux-gnu"
+  };
+  ArrayRef<StringRef> MultiarchIncludeDirs;
+  if (getTriple().getArch() == llvm::Triple::x86_64) {
+    MultiarchIncludeDirs = X86_64MultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::x86) {
+    MultiarchIncludeDirs = X86MultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::arm) {
+    MultiarchIncludeDirs = ARMMultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::mips) {
+    MultiarchIncludeDirs = MIPSMultiarchIncludeDirs;
+  } else if (getTriple().getArch() == llvm::Triple::mipsel) {
+    MultiarchIncludeDirs = MIPSELMultiarchIncludeDirs;
+  }
+  for (ArrayRef<StringRef>::iterator I = MultiarchIncludeDirs.begin(),
+                                     E = MultiarchIncludeDirs.end();
+       I != E; ++I) {
+    if (llvm::sys::fs::exists(D.SysRoot + *I)) {
+      addExternCSystemInclude(DriverArgs, CC1Args, D.SysRoot + *I);
+      break;
+    }
+  }
+
+  if (getTriple().getOS() == llvm::Triple::RTEMS)
+    return;
+
+  // Add an include of '/include' directly. This isn't provided by default by
+  // system GCCs, but is often used with cross-compiling GCCs, and harmless to
+  // add even when Clang is acting as-if it were a system compiler.
+  addExternCSystemInclude(DriverArgs, CC1Args, D.SysRoot + "/include");
+
+  addExternCSystemInclude(DriverArgs, CC1Args, D.SysRoot + "/usr/include");
+}
+
+/// \brief Helper to add the thre variant paths for a libstdc++ installation.
+/*static*/ bool Linux::addLibStdCXXIncludePaths(Twine Base, Twine TargetArchDir,
+                                                const ArgList &DriverArgs,
+                                                ArgStringList &CC1Args) {
+  if (!llvm::sys::fs::exists(Base))
+    return false;
+  addSystemInclude(DriverArgs, CC1Args, Base);
+  addSystemInclude(DriverArgs, CC1Args, Base + "/" + TargetArchDir);
+  addSystemInclude(DriverArgs, CC1Args, Base + "/backward");
+  return true;
+}
+
+void Linux::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
+                                         ArgStringList &CC1Args) const {
+  if (DriverArgs.hasArg(options::OPT_nostdlibinc) ||
+      DriverArgs.hasArg(options::OPT_nostdincxx))
+    return;
+
+  // Check if libc++ has been enabled and provide its include paths if so.
+  if (GetCXXStdlibType(DriverArgs) == ToolChain::CST_Libcxx) {
+    // libc++ is always installed at a fixed path on Linux currently.
+    addSystemInclude(DriverArgs, CC1Args,
+                     getDriver().SysRoot + "/usr/include/c++/v1");
+    return;
+  }
+
+  const llvm::Triple &TargetTriple = getTriple();
+
+  StringRef CxxIncludeRoot(CXX_INCLUDE_ROOT);
+  if (!CxxIncludeRoot.empty()) {
+    StringRef CxxIncludeArch(CXX_INCLUDE_ARCH);
+    if (CxxIncludeArch.empty())
+      CxxIncludeArch = TargetTriple.str();
+
+    addLibStdCXXIncludePaths(
+      CxxIncludeRoot,
+      CxxIncludeArch + (isTarget64Bit() ? CXX_INCLUDE_64BIT_DIR
+                                        : CXX_INCLUDE_32BIT_DIR),
+      DriverArgs, CC1Args);
+    return;
+  }
+
+  // Check if the target architecture specific dirs need a suffix. Note that we
+  // only support the suffix-based bi-arch-like header scheme for host/target
+  // mismatches of just bit width.
+  llvm::Triple::ArchType HostArch =
+    llvm::Triple(getDriver().DefaultHostTriple).getArch();
+  llvm::Triple::ArchType TargetArch = TargetTriple.getArch();
+  StringRef Suffix;
+  if ((HostArch == llvm::Triple::x86 && TargetArch == llvm::Triple::x86_64) ||
+      (HostArch == llvm::Triple::ppc && TargetArch == llvm::Triple::ppc64))
+    Suffix = "/64";
+  if ((HostArch == llvm::Triple::x86_64 && TargetArch == llvm::Triple::x86) ||
+      (HostArch == llvm::Triple::ppc64 && TargetArch == llvm::Triple::ppc))
+    Suffix = "/32";
+
+  // By default, look for the C++ headers in an include directory adjacent to
+  // the lib directory of the GCC installation. Note that this is expect to be
+  // equivalent to '/usr/include/c++/X.Y' in almost all cases.
+  StringRef LibDir = GCCInstallation.getParentLibPath();
+  StringRef InstallDir = GCCInstallation.getInstallPath();
+  StringRef Version = GCCInstallation.getVersion();
+  if (!addLibStdCXXIncludePaths(LibDir + "/../include/c++/" + Version,
+                                GCCInstallation.getTriple() + Suffix,
+                                DriverArgs, CC1Args)) {
+    // Gentoo is weird and places its headers inside the GCC install, so if the
+    // first attempt to find the headers fails, try this pattern.
+    addLibStdCXXIncludePaths(InstallDir + "/include/g++-v4",
+                             GCCInstallation.getTriple() + Suffix,
+                             DriverArgs, CC1Args);
+  }
 }
 
 /// DragonFly - DragonFly tool chain which can call as(1) and ld(1) directly.
@@ -1807,68 +2241,4 @@ Tool &DragonFly::SelectTool(const Compilation &C, const JobAction &JA,
   }
 
   return *T;
-}
-
-Windows::Windows(const HostInfo &Host, const llvm::Triple& Triple)
-  : ToolChain(Host, Triple) {
-}
-
-Tool &Windows::SelectTool(const Compilation &C, const JobAction &JA,
-                          const ActionList &Inputs) const {
-  Action::ActionClass Key;
-  if (getDriver().ShouldUseClangCompiler(C, JA, getTriple()))
-    Key = Action::AnalyzeJobClass;
-  else
-    Key = JA.getKind();
-
-  bool UseIntegratedAs = C.getArgs().hasFlag(options::OPT_integrated_as,
-                                             options::OPT_no_integrated_as,
-                                             IsIntegratedAssemblerDefault());
-
-  Tool *&T = Tools[Key];
-  if (!T) {
-    switch (Key) {
-    case Action::InputClass:
-    case Action::BindArchClass:
-    case Action::LipoJobClass:
-    case Action::DsymutilJobClass:
-    case Action::VerifyJobClass:
-      llvm_unreachable("Invalid tool kind.");
-    case Action::PreprocessJobClass:
-    case Action::PrecompileJobClass:
-    case Action::AnalyzeJobClass:
-    case Action::CompileJobClass:
-      T = new tools::Clang(*this); break;
-    case Action::AssembleJobClass:
-      if (!UseIntegratedAs && getTriple().getEnvironment() == llvm::Triple::MachO)
-        T = new tools::darwin::Assemble(*this);
-      else
-        T = new tools::ClangAs(*this);
-      break;
-    case Action::LinkJobClass:
-      T = new tools::visualstudio::Link(*this); break;
-    }
-  }
-
-  return *T;
-}
-
-bool Windows::IsIntegratedAssemblerDefault() const {
-  return true;
-}
-
-bool Windows::IsUnwindTablesDefault() const {
-  // FIXME: Gross; we should probably have some separate target
-  // definition, possibly even reusing the one in clang.
-  return getArchName() == "x86_64";
-}
-
-const char *Windows::GetDefaultRelocationModel() const {
-  return "static";
-}
-
-const char *Windows::GetForcedPicModel() const {
-  if (getArchName() == "x86_64")
-    return "pic";
-  return 0;
 }

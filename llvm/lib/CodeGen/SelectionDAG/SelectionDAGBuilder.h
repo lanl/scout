@@ -67,6 +67,7 @@ class SIToFPInst;
 class StoreInst;
 class SwitchInst;
 class TargetData;
+class TargetLibraryInfo;
 class TargetLowering;
 class TruncInst;
 class UIToFPInst;
@@ -294,6 +295,7 @@ public:
   SelectionDAG &DAG;
   const TargetData *TD;
   AliasAnalysis *AA;
+  const TargetLibraryInfo *LibInfo;
 
   /// SwitchCases - Vector of CaseBlock structures used to communicate
   /// SwitchInst code generation information.
@@ -320,6 +322,9 @@ public:
   /// GFI - Garbage collection metadata for the function.
   GCFunctionInfo *GFI;
 
+  /// LPadToCallSiteMap - Map a landing pad to the call site indexes.
+  DenseMap<MachineBasicBlock*, SmallVector<unsigned, 4> > LPadToCallSiteMap;
+
   /// HasTailCall - This is set to true if a call in the current
   /// block has been translated as a tail call. In this case,
   /// no subsequent DAG nodes should be created.
@@ -335,7 +340,8 @@ public:
       HasTailCall(false), Context(dag.getContext()) {
   }
 
-  void init(GCFunctionInfo *gfi, AliasAnalysis &aa);
+  void init(GCFunctionInfo *gfi, AliasAnalysis &aa,
+            const TargetLibraryInfo *li);
 
   /// clear - Clear out the current SelectionDAG and the associated
   /// state and prepare this SelectionDAGBuilder object to be used
@@ -448,7 +454,8 @@ private:
                                 MachineBasicBlock* Default,
                                 MachineBasicBlock *SwitchBB);
 
-  uint32_t getEdgeWeight(MachineBasicBlock *Src, MachineBasicBlock *Dst);
+  uint32_t getEdgeWeight(const MachineBasicBlock *Src,
+                         const MachineBasicBlock *Dst) const;
   void addSuccessorWithWeight(MachineBasicBlock *Src, MachineBasicBlock *Dst,
                               uint32_t Weight = 0);
 public:
@@ -552,7 +559,6 @@ private:
     llvm_unreachable("UserOp2 should not exist at instruction selection time!");
   }
   
-  const char *implVisitBinaryAtomic(const CallInst& I, ISD::NodeType Op);
   const char *implVisitAluOverflow(const CallInst &I, ISD::NodeType Op);
 
   void HandlePHINodesInSuccessorBlocks(const BasicBlock *LLVMBB);

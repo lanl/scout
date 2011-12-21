@@ -19,6 +19,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclFriend.h"
+#include "clang/AST/DeclObjC.h"
 #include "clang/AST/DependentDiagnostic.h"
 #include "clang/AST/ExprCXX.h"
 
@@ -103,7 +104,11 @@ struct EffectiveContext {
       } else if (isa<FunctionDecl>(DC)) {
         FunctionDecl *Function = cast<FunctionDecl>(DC)->getCanonicalDecl();
         Functions.push_back(Function);
-        DC = Function->getDeclContext();
+        
+        if (Function->getFriendObjectKind())
+          DC = Function->getLexicalDeclContext();
+        else
+          DC = Function->getDeclContext();
       } else if (DC->isFileContext()) {
         break;
       } else {
@@ -260,6 +265,9 @@ static AccessResult IsDerivedFromInclusive(const CXXRecordDecl *Derived,
   SmallVector<const CXXRecordDecl*, 8> Queue; // actually a stack
 
   while (true) {
+    if (Derived->isDependentContext() && !Derived->hasDefinition())
+      return AR_dependent;
+    
     for (CXXRecordDecl::base_class_const_iterator
            I = Derived->bases_begin(), E = Derived->bases_end(); I != E; ++I) {
 
@@ -1639,6 +1647,71 @@ void Sema::CheckLookupAccess(const LookupResult &R) {
       CheckAccess(*this, R.getNameLoc(), Entity);
     }
   }
+}
+
+/// Checks access to Decl from the given class. The check will take access
+/// specifiers into account, but no member access expressions and such.
+///
+/// \param Decl the declaration to check if it can be accessed
+/// \param Class the class/context from which to start the search
+/// \return true if the Decl is accessible from the Class, false otherwise.
+bool Sema::IsSimplyAccessible(NamedDecl *Decl, DeclContext *Ctx) {
+  if (CXXRecordDecl *Class = dyn_cast<CXXRecordDecl>(Ctx)) {
+    if (!Decl->isCXXClassMember())
+      return true;
+
+    QualType qType = Class->getTypeForDecl()->getCanonicalTypeInternal();
+    AccessTarget Entity(Context, AccessedEntity::Member, Class,
+                        DeclAccessPair::make(Decl, Decl->getAccess()),
+                        qType);
+    if (Entity.getAccess() == AS_public)
+      return true;
+
+    EffectiveContext EC(CurContext);
+    return ::IsAccessible(*this, EC, Entity) != ::AR_inaccessible;
+  }
+  
+  if (ObjCIvarDecl *Ivar = dyn_cast<ObjCIvarDecl>(Decl)) {
+    // @public and @package ivars are always accessible.
+    if (Ivar->getCanonicalAccessControl() == ObjCIvarDecl::Public ||
+        Ivar->getCanonicalAccessControl() == ObjCIvarDecl::Package)
+      return true;
+    
+    
+    
+    // If we are inside a class or category implementation, determine the
+    // interface we're in.
+    ObjCInterfaceDecl *ClassOfMethodDecl = 0;
+    if (ObjCMethodDecl *MD = getCurMethodDecl())
+      ClassOfMethodDecl =  MD->getClassInterface();
+    else if (FunctionDecl *FD = getCurFunctionDecl()) {
+      if (ObjCImplDecl *Impl 
+            = dyn_cast<ObjCImplDecl>(FD->getLexicalDeclContext())) {
+        if (ObjCImplementationDecl *IMPD
+              = dyn_cast<ObjCImplementationDecl>(Impl))
+          ClassOfMethodDecl = IMPD->getClassInterface();
+        else if (ObjCCategoryImplDecl* CatImplClass
+                   = dyn_cast<ObjCCategoryImplDecl>(Impl))
+          ClassOfMethodDecl = CatImplClass->getClassInterface();
+      }
+    }
+    
+    // If we're not in an interface, this ivar is inaccessible.
+    if (!ClassOfMethodDecl)
+      return false;
+    
+    // If we're inside the same interface that owns the ivar, we're fine.
+    if (declaresSameEntity(ClassOfMethodDecl, Ivar->getContainingInterface()))
+      return true;
+    
+    // If the ivar is private, it's inaccessible.
+    if (Ivar->getCanonicalAccessControl() == ObjCIvarDecl::Private)
+      return false;
+    
+    return Ivar->getContainingInterface()->isSuperClassOf(ClassOfMethodDecl);
+  }
+  
+  return true;
 }
 
 void Sema::ActOnStartSuppressingAccessChecks() {

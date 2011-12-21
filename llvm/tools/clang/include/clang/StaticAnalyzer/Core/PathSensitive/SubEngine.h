@@ -26,23 +26,24 @@ class Stmt;
 
 namespace ento {
   
-template <typename PP> class GenericNodeBuilder;
+struct NodeBuilderContext;
 class AnalysisManager;
 class ExplodedNodeSet;
 class ExplodedNode;
 class ProgramState;
 class ProgramStateManager;
 class BlockCounter;
-class StmtNodeBuilder;
 class BranchNodeBuilder;
 class IndirectGotoNodeBuilder;
 class SwitchNodeBuilder;
 class EndOfFunctionNodeBuilder;
 class CallEnterNodeBuilder;
 class CallExitNodeBuilder;
+class NodeBuilderWithSinks;
 class MemRegion;
 
 class SubEngine {
+  virtual void anchor();
 public:
   virtual ~SubEngine() {}
 
@@ -54,18 +55,22 @@ public:
 
   /// Called by CoreEngine. Used to generate new successor
   /// nodes by processing the 'effects' of a block-level statement.
-  virtual void processCFGElement(const CFGElement E, StmtNodeBuilder& builder)=0;
+  virtual void processCFGElement(const CFGElement E, ExplodedNode* Pred,
+                                 unsigned StmtIdx, NodeBuilderContext *Ctx)=0;
 
   /// Called by CoreEngine when it starts processing a CFGBlock.  The
   /// SubEngine is expected to populate dstNodes with new nodes representing
   /// updated analysis state, or generate no nodes at all if it doesn't.
-  virtual void processCFGBlockEntrance(ExplodedNodeSet &dstNodes,
-                            GenericNodeBuilder<BlockEntrance> &nodeBuilder) = 0;
+  virtual void processCFGBlockEntrance(NodeBuilderWithSinks &nodeBuilder) = 0;
 
   /// Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a branch condition.
   virtual void processBranch(const Stmt *Condition, const Stmt *Term,
-                             BranchNodeBuilder& builder) = 0;
+                             NodeBuilderContext& BuilderCtx,
+                             ExplodedNode *Pred,
+                             ExplodedNodeSet &Dst,
+                             const CFGBlock *DstT,
+                             const CFGBlock *DstF) = 0;
 
   /// Called by CoreEngine.  Used to generate successor
   /// nodes by processing the 'effects' of a computed goto jump.
@@ -77,7 +82,7 @@ public:
 
   /// Called by CoreEngine.  Used to generate end-of-path
   /// nodes when the control reaches the end of a function.
-  virtual void processEndOfFunction(EndOfFunctionNodeBuilder& builder) = 0;
+  virtual void processEndOfFunction(NodeBuilderContext& BC) = 0;
 
   // Generate the entry node of the callee.
   virtual void processCallEnter(CallEnterNodeBuilder &builder) = 0;

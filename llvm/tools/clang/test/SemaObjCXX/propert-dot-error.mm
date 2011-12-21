@@ -20,7 +20,7 @@ struct X {
 @end
 
 void f(A* a) {
-  a.x = X(); // expected-error {{setter method is needed to assign to object using property assignment syntax}}
+  a.x = X(); // expected-error {{no setter method 'setX:' for assignment to property}}
 }
 
 struct Y : X { };
@@ -50,3 +50,20 @@ void g(B *b) {
   b->operator+ = 17; // expected-error{{'B' does not have a member named 'operator+'}}
 }
 @end
+
+// PR9759
+class Forward;
+@interface D {
+@public
+  int ivar;
+}
+
+@property int property;
+@end
+
+void testD(D *d) {
+  d.Forward::property = 17; // expected-error{{property access cannot be qualified with 'Forward::'}}
+  d->Forward::ivar = 12; // expected-error{{ivar access cannot be qualified with 'Forward::'}}
+  d.D::property = 17; // expected-error{{expected a class or namespace}}
+  d->D::ivar = 12; // expected-error{{expected a class or namespace}}
+}

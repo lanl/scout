@@ -172,7 +172,7 @@ PathDiagnosticPiece *FindLastStoreBRVisitor::VisitNode(const ExplodedNode *N,
     if (const DeclStmt *DS = PS->getStmtAs<DeclStmt>()) {
 
       if (const VarRegion *VR = dyn_cast<VarRegion>(R)) {
-        os << "Variable '" << VR->getDecl() << "' ";
+        os << "Variable '" << *VR->getDecl() << "' ";
       }
       else
         return NULL;
@@ -232,7 +232,7 @@ PathDiagnosticPiece *FindLastStoreBRVisitor::VisitNode(const ExplodedNode *N,
       return NULL;
 
     if (const VarRegion *VR = dyn_cast<VarRegion>(R)) {
-      os << '\'' << VR->getDecl() << '\'';
+      os << '\'' << *VR->getDecl() << '\'';
     }
     else
       return NULL;
@@ -315,7 +315,7 @@ bugreporter::getTrackNullOrUndefValueVisitor(const ExplodedNode *N,
       if (ps->getStmt() == S)
         break;
     }
-    N = *N->pred_begin();
+    N = N->getFirstPred();
   }
 
   if (!N)
@@ -637,7 +637,7 @@ ConditionBRVisitor::VisitTrueTest(const Expr *Cond,
         return 0;
     }
   
-  switch (BExpr->getOpcode()) {
+  switch (Op) {
     case BO_EQ:
       Out << "equal to ";
       break;

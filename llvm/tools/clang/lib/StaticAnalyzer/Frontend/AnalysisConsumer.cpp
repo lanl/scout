@@ -128,7 +128,7 @@ public:
 
       if (isa<FunctionDecl>(D) || isa<ObjCMethodDecl>(D)) {
         const NamedDecl *ND = cast<NamedDecl>(D);
-        llvm::errs() << ' ' << ND << '\n';
+        llvm::errs() << ' ' << *ND << '\n';
       }
       else if (isa<BlockDecl>(D)) {
         llvm::errs() << ' ' << "block(line:" << Loc.getLine() << ",col:"
@@ -152,7 +152,7 @@ public:
                                   /* Indexer */ 0, 
                                   Opts.MaxNodes, Opts.MaxLoop,
                                   Opts.VisualizeEGDot, Opts.VisualizeEGUbi,
-                                  Opts.PurgeDead, Opts.EagerlyAssume,
+                                  Opts.AnalysisPurgeOpt, Opts.EagerlyAssume,
                                   Opts.TrimGraph, Opts.InlineCall,
                                   Opts.UnoptimizedCFG, Opts.CFGAddImplicitDtors,
                                   Opts.CFGAddInitializers,
@@ -278,7 +278,7 @@ void AnalysisConsumer::HandleCode(Decl *D) {
   if (!Opts.AnalyzeAll && !SM.isFromMainFile(SL))
     return;
 
-  // Clear the AnalysisManager of old AnalysisContexts.
+  // Clear the AnalysisManager of old AnalysisDeclContexts.
   Mgr->ClearContexts();
 
   // Dispatch on the actions.
@@ -304,10 +304,9 @@ void AnalysisConsumer::HandleCode(Decl *D) {
 
 static void ActionExprEngine(AnalysisConsumer &C, AnalysisManager &mgr,
                              Decl *D, bool ObjCGCEnabled) {
-  // Construct the analysis engine.  We first query for the LiveVariables
-  // information to see if the CFG is valid.
+  // Construct the analysis engine.  First check if the CFG is valid.
   // FIXME: Inter-procedural analysis will need to handle invalid CFGs.
-  if (!mgr.getLiveVariables(D))
+  if (!mgr.getCFG(D))
     return;
   ExprEngine Eng(mgr, ObjCGCEnabled);
 
@@ -319,7 +318,8 @@ static void ActionExprEngine(AnalysisConsumer &C, AnalysisManager &mgr,
   }
 
   // Execute the worklist algorithm.
-  Eng.ExecuteWorkList(mgr.getStackFrame(D, 0), mgr.getMaxNodes());
+  Eng.ExecuteWorkList(mgr.getAnalysisDeclContextManager().getStackFrame(D, 0),
+                      mgr.getMaxNodes());
 
   // Release the auditor (if any) so that it doesn't monitor the graph
   // created BugReporter.

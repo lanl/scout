@@ -1,6 +1,7 @@
+// RUN: %clang_cc1 -pedantic -Wall -Wno-comment -verify -fcxx-exceptions -x c++ %s
 // RUN: cp %s %t
-// RUN: not %clang_cc1 -pedantic -Wall -fixit -x c++ %t
-// RUN: %clang_cc1 -fsyntax-only -pedantic -Wall -Werror -x c++ %t
+// RUN: not %clang_cc1 -pedantic -Wall -Wno-comment -fcxx-exceptions -fixit -x c++ %t
+// RUN: %clang_cc1 -fsyntax-only -pedantic -Wall -Werror -Wno-comment -fcxx-exceptions -x c++ %t
 
 /* This is a test of the various code modification hints that are
    provided as part of warning or extension diagnostics. All of the
@@ -28,7 +29,7 @@ public:
 
 struct CT<0> { }; // expected-error{{'template<>'}}
 
-template<> class CT<1> { }; // expected-error{{tag type}}
+template<> union CT<1> { }; // expected-error{{tag type}}
 
 // Access declarations
 class A {
@@ -40,7 +41,7 @@ class B : public A {
   A::foo; // expected-warning{{access declarations are deprecated}}
 };
 
-void f() throw();
+void f() throw(); // expected-note{{previous}}
 void f(); // expected-warning{{missing exception specification}}
 
 namespace rdar7853795 {
@@ -63,7 +64,7 @@ namespace rdar7796492 {
 
 // extra qualification on member
 class C {
-  int C::foo();
+  int C::foo(); // expected-warning {{extra qualification}}
 };
 
 namespace rdar8488464 {
@@ -104,7 +105,30 @@ void test (BD &br) {
   AD* aPtr;
   BD b;
   aPtr = b; // expected-error {{assigning to 'AD *' from incompatible type 'BD'; take the address with &}}
-  aPtr = br; // expected-error {{assigning to 'A *' from incompatible type 'B'; take the address with &}}
+  aPtr = br; // expected-error {{assigning to 'AD *' from incompatible type 'BD'; take the address with &}}
 }
 
+void foo1() const {} // expected-error {{type qualifier is not allowed on this function}}
+void foo2() volatile {} // expected-error {{type qualifier is not allowed on this function}}
+void foo3() const volatile {} // expected-error {{type qualifier is not allowed on this function}}
 
+struct S { void f(int, char); };
+int itsAComma,
+itsAComma2 = 0,
+oopsAComma(42), // expected-error {{expected ';' at end of declaration}}
+AD oopsMoreCommas() {
+  static int n = 0, // expected-error {{expected ';' at end of declaration}}
+  static char c,
+  &d = c, // expected-error {{expected ';' at end of declaration}}
+  S s, // expected-error {{expected ';' at end of declaration}}
+  s.f(n, d);
+  AD ad, // expected-error {{expected ';' at end of declaration}}
+  return ad;
+}
+
+template<class T> struct Mystery;
+template<class T> typedef Mystery<T>::type getMysteriousThing() { // \
+  expected-error {{function definition declared 'typedef'}} \
+  expected-error {{missing 'typename' prior to dependent}}
+  return Mystery<T>::get();
+}

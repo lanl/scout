@@ -394,9 +394,8 @@ int main(int argc_, const char **argv_) {
   const bool IsProduction = false;
   const bool CXXIsProduction = false;
 #endif
-  Driver TheDriver(Path.str(), llvm::sys::getHostTriple(),
-                   "a.out", IsProduction, CXXIsProduction,
-                   Diags);
+  Driver TheDriver(Path.str(), llvm::sys::getDefaultTargetTriple(),
+                   "a.out", IsProduction, Diags);
 
   // Attempt to find the original path used to invoke the driver, to determine
   // the installed path. We do this manually, because we want to support that

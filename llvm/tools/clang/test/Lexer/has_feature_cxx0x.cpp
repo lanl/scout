@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -E -std=c++0x %s -o - | FileCheck --check-prefix=CHECK-0X %s
+// RUN: %clang_cc1 -E -std=c++11 %s -o - | FileCheck --check-prefix=CHECK-0X %s
 // RUN: %clang_cc1 -E %s -o - | FileCheck --check-prefix=CHECK-NO-0X %s
 
 #if __has_feature(cxx_lambdas)
@@ -79,6 +79,14 @@ int no_deleted_functions();
 // CHECK-0X: has_deleted_functions
 // CHECK-NO-0X: no_deleted_functions
 
+#if __has_feature(cxx_defaulted_functions)
+int has_defaulted_functions();
+#else
+int no_defaulted_functions();
+#endif
+
+// CHECK-0X: has_defaulted_functions
+// CHECK-NO-0X: no_defaulted_functions
 
 #if __has_feature(cxx_rvalue_references)
 int has_rvalue_references();
@@ -173,3 +181,30 @@ int no_implicit_moves();
 
 // CHECK-0X: has_implicit_moves
 // CHECK-NO-0X: no_implicit_moves
+
+#if __has_feature(cxx_alignas)
+int has_alignas();
+#else
+int no_alignas();
+#endif
+
+// CHECK-0X: has_alignas
+// CHECK-NO-0X: no_alignas
+
+#if __has_feature(cxx_raw_string_literals)
+int has_raw_string_literals();
+#else
+int no_raw_string_literals();
+#endif
+
+// CHECK-0X: has_raw_string_literals
+// CHECK-NO-0X: no_raw_string_literals
+
+#if __has_feature(cxx_unicode_literals)
+int has_unicode_literals();
+#else
+int no_unicode_literals();
+#endif
+
+// CHECK-0X: has_unicode_literals
+// CHECK-NO-0X: no_unicode_literals

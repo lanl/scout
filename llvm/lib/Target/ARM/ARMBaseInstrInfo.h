@@ -69,10 +69,7 @@ public:
   bool ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const;
 
   // Predication support.
-  bool isPredicated(const MachineInstr *MI) const {
-    int PIdx = MI->findFirstPredOperandIdx();
-    return PIdx != -1 && MI->getOperand(PIdx).getImm() != ARMCC::AL;
-  }
+  bool isPredicated(const MachineInstr *MI) const;
 
   ARMCC::CondCodes getPredicate(const MachineInstr *MI) const {
     int PIdx = MI->findFirstPredOperandIdx();
@@ -122,6 +119,8 @@ public:
                                     unsigned DestReg, int FrameIndex,
                                     const TargetRegisterClass *RC,
                                     const TargetRegisterInfo *TRI) const;
+
+  virtual bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const;
 
   virtual MachineInstr *emitFrameIndexDebugValue(MachineFunction &MF,
                                                  int FrameIx,
@@ -211,12 +210,18 @@ public:
                         SDNode *DefNode, unsigned DefIdx,
                         SDNode *UseNode, unsigned UseIdx) const;
 
+  virtual unsigned getOutputLatency(const InstrItineraryData *ItinData,
+                                    const MachineInstr *DefMI, unsigned DefIdx,
+                                    const MachineInstr *DepMI) const;
+
   /// VFP/NEON execution domains.
   std::pair<uint16_t, uint16_t>
   getExecutionDomain(const MachineInstr *MI) const;
   void setExecutionDomain(MachineInstr *MI, unsigned Domain) const;
 
 private:
+  unsigned getInstBundleLength(const MachineInstr *MI) const;
+
   int getVLDMDefCycle(const InstrItineraryData *ItinData,
                       const MCInstrDesc &DefMCID,
                       unsigned DefClass,

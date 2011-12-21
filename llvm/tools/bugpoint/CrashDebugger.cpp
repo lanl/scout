@@ -169,7 +169,7 @@ ReduceCrashingGlobalVariables::TestGlobalVariables(
   return false;
 }
 
-namespace llvm {
+namespace {
   /// ReduceCrashingFunctions reducer - This works by removing functions and
   /// seeing if the program still crashes. If it does, then keep the newer,
   /// smaller program.
@@ -401,7 +401,8 @@ bool ReduceCrashingInstructions::TestInsts(std::vector<const Instruction*>
     for (Function::iterator FI = MI->begin(), FE = MI->end(); FI != FE; ++FI)
       for (BasicBlock::iterator I = FI->begin(), E = FI->end(); I != E;) {
         Instruction *Inst = I++;
-        if (!Instructions.count(Inst) && !isa<TerminatorInst>(Inst)) {
+        if (!Instructions.count(Inst) && !isa<TerminatorInst>(Inst) &&
+            !isa<LandingPadInst>(Inst)) {
           if (!Inst->getType()->isVoidTy())
             Inst->replaceAllUsesWith(UndefValue::get(Inst->getType()));
           Inst->eraseFromParent();
@@ -573,6 +574,9 @@ static bool DebugACrash(BugDriver &BD,
               --InstructionsToSkipBeforeDeleting;
             } else {
               if (BugpointIsInterrupted) goto ExitLoops;
+
+              if (isa<LandingPadInst>(I))
+                continue;
 
               outs() << "Checking instruction: " << *I;
               Module *M = BD.deleteInstructionFromProgram(I, Simplification);

@@ -17,9 +17,18 @@ add_clang_library(clangDriver
   Tool.cpp
   ToolChain.cpp
   ToolChains.cpp
+  WindowsToolChain.cpp
   Tools.cpp
   Types.cpp
   )
+
+IF(MSVC)
+  get_target_property(NON_ANSI_COMPILE_FLAGS clangDriver COMPILE_FLAGS)
+  string(REPLACE /Za
+    "" NON_ANSI_COMPILE_FLAGS
+    ${NON_ANSI_COMPILE_FLAGS})
+  set_target_properties(clangDriver PROPERTIES COMPILE_FLAGS ${NON_ANSI_COMPILE_FLAGS})
+ENDIF(MSVC)
 
 add_dependencies(clangDriver ClangAttrList ClangDiagnosticDriver
                  ClangDriverOptions ClangCC1Options ClangCC1AsOptions)

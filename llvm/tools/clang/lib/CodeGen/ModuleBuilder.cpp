@@ -59,10 +59,11 @@ namespace {
                                                *M, *TD, Diags));
     }
 
-    virtual void HandleTopLevelDecl(DeclGroupRef DG) {
+    virtual bool HandleTopLevelDecl(DeclGroupRef DG) {
       // Make sure to emit all elements of a Decl.
       for (DeclGroupRef::iterator I = DG.begin(), E = DG.end(); I != E; ++I)
         Builder->EmitTopLevelDecl(*I);
+      return true;
     }
 
     /// HandleTagDeclDefinition - This callback is invoked each time a TagDecl
@@ -111,6 +112,8 @@ namespace {
     }
   };
 }
+
+void CodeGenerator::anchor() { }
 
 CodeGenerator *clang::CreateLLVMCodeGen(DiagnosticsEngine &Diags,
                                         const std::string& ModuleName,

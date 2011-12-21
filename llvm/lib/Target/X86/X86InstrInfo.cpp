@@ -25,7 +25,6 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/LiveVariables.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -456,6 +455,9 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::MOVZX64rr16,     X86::MOVZX64rm16,         0 },
     { X86::MOVZX64rr32,     X86::MOVZX64rm32,         0 },
     { X86::MOVZX64rr8,      X86::MOVZX64rm8,          0 },
+    { X86::PABSBrr128,      X86::PABSBrm128,          TB_ALIGN_16 },
+    { X86::PABSDrr128,      X86::PABSDrm128,          TB_ALIGN_16 },
+    { X86::PABSWrr128,      X86::PABSWrm128,          TB_ALIGN_16 },
     { X86::PSHUFDri,        X86::PSHUFDmi,            TB_ALIGN_16 },
     { X86::PSHUFHWri,       X86::PSHUFHWmi,           TB_ALIGN_16 },
     { X86::PSHUFLWri,       X86::PSHUFLWmi,           TB_ALIGN_16 },
@@ -508,6 +510,9 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VMOVZDI2PDIrr,   X86::VMOVZDI2PDIrm,       0 },
     { X86::VMOVZQI2PQIrr,   X86::VMOVZQI2PQIrm,       0 },
     { X86::VMOVZPQILo2PQIrr,X86::VMOVZPQILo2PQIrm,    TB_ALIGN_16 },
+    { X86::VPABSBrr128,     X86::VPABSBrm128,         TB_ALIGN_16 },
+    { X86::VPABSDrr128,     X86::VPABSDrm128,         TB_ALIGN_16 },
+    { X86::VPABSWrr128,     X86::VPABSWrm128,         TB_ALIGN_16 },
     { X86::VPSHUFDri,       X86::VPSHUFDmi,           TB_ALIGN_16 },
     { X86::VPSHUFHWri,      X86::VPSHUFHWmi,          TB_ALIGN_16 },
     { X86::VPSHUFLWri,      X86::VPSHUFLWmi,          TB_ALIGN_16 },
@@ -526,7 +531,14 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VMOVAPSYrr,      X86::VMOVAPSYrm,          TB_ALIGN_32 },
     { X86::VMOVDQAYrr,      X86::VMOVDQAYrm,          TB_ALIGN_16 },
     { X86::VMOVUPDYrr,      X86::VMOVUPDYrm,          0 },
-    { X86::VMOVUPSYrr,      X86::VMOVUPSYrm,          0 }
+    { X86::VMOVUPSYrr,      X86::VMOVUPSYrm,          0 },
+    // AVX2 foldable instructions
+    { X86::VPABSBrr256,     X86::VPABSBrm256,         TB_ALIGN_16 },
+    { X86::VPABSDrr256,     X86::VPABSDrm256,         TB_ALIGN_16 },
+    { X86::VPABSWrr256,     X86::VPABSWrm256,         TB_ALIGN_16 },
+    { X86::VPSHUFDYri,      X86::VPSHUFDYmi,          TB_ALIGN_16 },
+    { X86::VPSHUFHWYri,     X86::VPSHUFHWYmi,         TB_ALIGN_16 },
+    { X86::VPSHUFLWYri,     X86::VPSHUFLWYmi,         TB_ALIGN_16 }
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl1); i != e; ++i) {
@@ -652,6 +664,7 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::MINSDrr_Int,     X86::MINSDrm_Int,   0 },
     { X86::MINSSrr,         X86::MINSSrm,       0 },
     { X86::MINSSrr_Int,     X86::MINSSrm_Int,   0 },
+    { X86::MPSADBWrri,      X86::MPSADBWrmi,    TB_ALIGN_16 },
     { X86::MULPDrr,         X86::MULPDrm,       TB_ALIGN_16 },
     { X86::MULPSrr,         X86::MULPSrm,       TB_ALIGN_16 },
     { X86::MULSDrr,         X86::MULSDrm,       0 },
@@ -664,30 +677,44 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::ORPSrr,          X86::ORPSrm,        TB_ALIGN_16 },
     { X86::PACKSSDWrr,      X86::PACKSSDWrm,    TB_ALIGN_16 },
     { X86::PACKSSWBrr,      X86::PACKSSWBrm,    TB_ALIGN_16 },
+    { X86::PACKUSDWrr,      X86::PACKUSDWrm,    TB_ALIGN_16 },
     { X86::PACKUSWBrr,      X86::PACKUSWBrm,    TB_ALIGN_16 },
     { X86::PADDBrr,         X86::PADDBrm,       TB_ALIGN_16 },
     { X86::PADDDrr,         X86::PADDDrm,       TB_ALIGN_16 },
     { X86::PADDQrr,         X86::PADDQrm,       TB_ALIGN_16 },
     { X86::PADDSBrr,        X86::PADDSBrm,      TB_ALIGN_16 },
     { X86::PADDSWrr,        X86::PADDSWrm,      TB_ALIGN_16 },
+    { X86::PADDUSBrr,       X86::PADDUSBrm,     TB_ALIGN_16 },
+    { X86::PADDUSWrr,       X86::PADDUSWrm,     TB_ALIGN_16 },
     { X86::PADDWrr,         X86::PADDWrm,       TB_ALIGN_16 },
+    { X86::PALIGNR128rr,    X86::PALIGNR128rm,  TB_ALIGN_16 },
     { X86::PANDNrr,         X86::PANDNrm,       TB_ALIGN_16 },
     { X86::PANDrr,          X86::PANDrm,        TB_ALIGN_16 },
     { X86::PAVGBrr,         X86::PAVGBrm,       TB_ALIGN_16 },
     { X86::PAVGWrr,         X86::PAVGWrm,       TB_ALIGN_16 },
     { X86::PCMPEQBrr,       X86::PCMPEQBrm,     TB_ALIGN_16 },
     { X86::PCMPEQDrr,       X86::PCMPEQDrm,     TB_ALIGN_16 },
+    { X86::PCMPEQQrr,       X86::PCMPEQQrm,     TB_ALIGN_16 },
     { X86::PCMPEQWrr,       X86::PCMPEQWrm,     TB_ALIGN_16 },
     { X86::PCMPGTBrr,       X86::PCMPGTBrm,     TB_ALIGN_16 },
     { X86::PCMPGTDrr,       X86::PCMPGTDrm,     TB_ALIGN_16 },
+    { X86::PCMPGTQrr,       X86::PCMPGTQrm,     TB_ALIGN_16 },
     { X86::PCMPGTWrr,       X86::PCMPGTWrm,     TB_ALIGN_16 },
+    { X86::PHADDDrr128,     X86::PHADDDrm128,   TB_ALIGN_16 },
+    { X86::PHADDWrr128,     X86::PHADDWrm128,   TB_ALIGN_16 },
+    { X86::PHADDSWrr128,    X86::PHADDSWrm128,  TB_ALIGN_16 },
+    { X86::PHSUBDrr128,     X86::PHSUBDrm128,   TB_ALIGN_16 },
+    { X86::PHSUBSWrr128,    X86::PHSUBSWrm128,  TB_ALIGN_16 },
+    { X86::PHSUBWrr128,     X86::PHSUBWrm128,   TB_ALIGN_16 },
     { X86::PINSRWrri,       X86::PINSRWrmi,     TB_ALIGN_16 },
+    { X86::PMADDUBSWrr128,  X86::PMADDUBSWrm128, TB_ALIGN_16 },
     { X86::PMADDWDrr,       X86::PMADDWDrm,     TB_ALIGN_16 },
     { X86::PMAXSWrr,        X86::PMAXSWrm,      TB_ALIGN_16 },
     { X86::PMAXUBrr,        X86::PMAXUBrm,      TB_ALIGN_16 },
     { X86::PMINSWrr,        X86::PMINSWrm,      TB_ALIGN_16 },
     { X86::PMINUBrr,        X86::PMINUBrm,      TB_ALIGN_16 },
     { X86::PMULDQrr,        X86::PMULDQrm,      TB_ALIGN_16 },
+    { X86::PMULHRSWrr128,   X86::PMULHRSWrm128, TB_ALIGN_16 },
     { X86::PMULHUWrr,       X86::PMULHUWrm,     TB_ALIGN_16 },
     { X86::PMULHWrr,        X86::PMULHWrm,      TB_ALIGN_16 },
     { X86::PMULLDrr,        X86::PMULLDrm,      TB_ALIGN_16 },
@@ -695,6 +722,10 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::PMULUDQrr,       X86::PMULUDQrm,     TB_ALIGN_16 },
     { X86::PORrr,           X86::PORrm,         TB_ALIGN_16 },
     { X86::PSADBWrr,        X86::PSADBWrm,      TB_ALIGN_16 },
+    { X86::PSHUFBrr128,     X86::PSHUFBrm128,   TB_ALIGN_16 },
+    { X86::PSIGNBrr128,     X86::PSIGNBrm128,   TB_ALIGN_16 },
+    { X86::PSIGNWrr128,     X86::PSIGNWrm128,   TB_ALIGN_16 },
+    { X86::PSIGNDrr128,     X86::PSIGNDrm128,   TB_ALIGN_16 },
     { X86::PSLLDrr,         X86::PSLLDrm,       TB_ALIGN_16 },
     { X86::PSLLQrr,         X86::PSLLQrm,       TB_ALIGN_16 },
     { X86::PSLLWrr,         X86::PSLLWrm,       TB_ALIGN_16 },
@@ -816,6 +847,7 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VMINSDrr_Int,      X86::VMINSDrm_Int,       0 },
     { X86::VMINSSrr,          X86::VMINSSrm,           0 },
     { X86::VMINSSrr_Int,      X86::VMINSSrm_Int,       0 },
+    { X86::VMPSADBWrri,       X86::VMPSADBWrmi,        TB_ALIGN_16 },
     { X86::VMULPDrr,          X86::VMULPDrm,           TB_ALIGN_16 },
     { X86::VMULPSrr,          X86::VMULPSrm,           TB_ALIGN_16 },
     { X86::VMULSDrr,          X86::VMULSDrm,           0 },
@@ -824,28 +856,44 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VORPSrr,           X86::VORPSrm,            TB_ALIGN_16 },
     { X86::VPACKSSDWrr,       X86::VPACKSSDWrm,        TB_ALIGN_16 },
     { X86::VPACKSSWBrr,       X86::VPACKSSWBrm,        TB_ALIGN_16 },
+    { X86::VPACKUSDWrr,       X86::VPACKUSDWrm,        TB_ALIGN_16 },
     { X86::VPACKUSWBrr,       X86::VPACKUSWBrm,        TB_ALIGN_16 },
     { X86::VPADDBrr,          X86::VPADDBrm,           TB_ALIGN_16 },
     { X86::VPADDDrr,          X86::VPADDDrm,           TB_ALIGN_16 },
     { X86::VPADDQrr,          X86::VPADDQrm,           TB_ALIGN_16 },
     { X86::VPADDSBrr,         X86::VPADDSBrm,          TB_ALIGN_16 },
     { X86::VPADDSWrr,         X86::VPADDSWrm,          TB_ALIGN_16 },
+    { X86::VPADDUSBrr,        X86::VPADDUSBrm,         TB_ALIGN_16 },
+    { X86::VPADDUSWrr,        X86::VPADDUSWrm,         TB_ALIGN_16 },
     { X86::VPADDWrr,          X86::VPADDWrm,           TB_ALIGN_16 },
+    { X86::VPALIGNR128rr,     X86::VPALIGNR128rm,      TB_ALIGN_16 },
     { X86::VPANDNrr,          X86::VPANDNrm,           TB_ALIGN_16 },
     { X86::VPANDrr,           X86::VPANDrm,            TB_ALIGN_16 },
+    { X86::VPAVGBrr,          X86::VPAVGBrm,           TB_ALIGN_16 },
+    { X86::VPAVGWrr,          X86::VPAVGWrm,           TB_ALIGN_16 },
     { X86::VPCMPEQBrr,        X86::VPCMPEQBrm,         TB_ALIGN_16 },
     { X86::VPCMPEQDrr,        X86::VPCMPEQDrm,         TB_ALIGN_16 },
+    { X86::VPCMPEQQrr,        X86::VPCMPEQQrm,         TB_ALIGN_16 },
     { X86::VPCMPEQWrr,        X86::VPCMPEQWrm,         TB_ALIGN_16 },
     { X86::VPCMPGTBrr,        X86::VPCMPGTBrm,         TB_ALIGN_16 },
     { X86::VPCMPGTDrr,        X86::VPCMPGTDrm,         TB_ALIGN_16 },
+    { X86::VPCMPGTQrr,        X86::VPCMPGTQrm,         TB_ALIGN_16 },
     { X86::VPCMPGTWrr,        X86::VPCMPGTWrm,         TB_ALIGN_16 },
+    { X86::VPHADDDrr128,      X86::VPHADDDrm128,       TB_ALIGN_16 },
+    { X86::VPHADDSWrr128,     X86::VPHADDSWrm128,      TB_ALIGN_16 },
+    { X86::VPHADDWrr128,      X86::VPHADDWrm128,       TB_ALIGN_16 },
+    { X86::VPHSUBDrr128,      X86::VPHSUBDrm128,       TB_ALIGN_16 },
+    { X86::VPHSUBSWrr128,     X86::VPHSUBSWrm128,      TB_ALIGN_16 },
+    { X86::VPHSUBWrr128,      X86::VPHSUBWrm128,       TB_ALIGN_16 },
     { X86::VPINSRWrri,        X86::VPINSRWrmi,         TB_ALIGN_16 },
+    { X86::VPMADDUBSWrr128,   X86::VPMADDUBSWrm128,    TB_ALIGN_16 },
     { X86::VPMADDWDrr,        X86::VPMADDWDrm,         TB_ALIGN_16 },
     { X86::VPMAXSWrr,         X86::VPMAXSWrm,          TB_ALIGN_16 },
     { X86::VPMAXUBrr,         X86::VPMAXUBrm,          TB_ALIGN_16 },
     { X86::VPMINSWrr,         X86::VPMINSWrm,          TB_ALIGN_16 },
     { X86::VPMINUBrr,         X86::VPMINUBrm,          TB_ALIGN_16 },
     { X86::VPMULDQrr,         X86::VPMULDQrm,          TB_ALIGN_16 },
+    { X86::VPMULHRSWrr128,    X86::VPMULHRSWrm128,     TB_ALIGN_16 },
     { X86::VPMULHUWrr,        X86::VPMULHUWrm,         TB_ALIGN_16 },
     { X86::VPMULHWrr,         X86::VPMULHWrm,          TB_ALIGN_16 },
     { X86::VPMULLDrr,         X86::VPMULLDrm,          TB_ALIGN_16 },
@@ -853,6 +901,10 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VPMULUDQrr,        X86::VPMULUDQrm,         TB_ALIGN_16 },
     { X86::VPORrr,            X86::VPORrm,             TB_ALIGN_16 },
     { X86::VPSADBWrr,         X86::VPSADBWrm,          TB_ALIGN_16 },
+    { X86::VPSHUFBrr128,      X86::VPSHUFBrm128,       TB_ALIGN_16 },
+    { X86::VPSIGNBrr128,      X86::VPSIGNBrm128,       TB_ALIGN_16 },
+    { X86::VPSIGNWrr128,      X86::VPSIGNWrm128,       TB_ALIGN_16 },
+    { X86::VPSIGNDrr128,      X86::VPSIGNDrm128,       TB_ALIGN_16 },
     { X86::VPSLLDrr,          X86::VPSLLDrm,           TB_ALIGN_16 },
     { X86::VPSLLQrr,          X86::VPSLLQrm,           TB_ALIGN_16 },
     { X86::VPSLLWrr,          X86::VPSLLWrm,           TB_ALIGN_16 },
@@ -886,7 +938,91 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VUNPCKLPDrr,       X86::VUNPCKLPDrm,        TB_ALIGN_16 },
     { X86::VUNPCKLPSrr,       X86::VUNPCKLPSrm,        TB_ALIGN_16 },
     { X86::VXORPDrr,          X86::VXORPDrm,           TB_ALIGN_16 },
-    { X86::VXORPSrr,          X86::VXORPSrm,           TB_ALIGN_16 }
+    { X86::VXORPSrr,          X86::VXORPSrm,           TB_ALIGN_16 },
+    // AVX2 foldable instructions
+    { X86::VPACKSSDWYrr,      X86::VPACKSSDWYrm,       TB_ALIGN_16 },
+    { X86::VPACKSSWBYrr,      X86::VPACKSSWBYrm,       TB_ALIGN_16 },
+    { X86::VPACKUSDWYrr,      X86::VPACKUSDWYrm,       TB_ALIGN_16 },
+    { X86::VPACKUSWBYrr,      X86::VPACKUSWBYrm,       TB_ALIGN_16 },
+    { X86::VPADDBYrr,         X86::VPADDBYrm,          TB_ALIGN_16 },
+    { X86::VPADDDYrr,         X86::VPADDDYrm,          TB_ALIGN_16 },
+    { X86::VPADDQYrr,         X86::VPADDQYrm,          TB_ALIGN_16 },
+    { X86::VPADDSBYrr,        X86::VPADDSBYrm,         TB_ALIGN_16 },
+    { X86::VPADDSWYrr,        X86::VPADDSWYrm,         TB_ALIGN_16 },
+    { X86::VPADDUSBYrr,       X86::VPADDUSBYrm,        TB_ALIGN_16 },
+    { X86::VPADDUSWYrr,       X86::VPADDUSWYrm,        TB_ALIGN_16 },
+    { X86::VPADDWYrr,         X86::VPADDWYrm,          TB_ALIGN_16 },
+    { X86::VPALIGNR256rr,     X86::VPALIGNR256rm,      TB_ALIGN_16 },
+    { X86::VPANDNYrr,         X86::VPANDNYrm,          TB_ALIGN_16 },
+    { X86::VPANDYrr,          X86::VPANDYrm,           TB_ALIGN_16 },
+    { X86::VPAVGBYrr,         X86::VPAVGBYrm,          TB_ALIGN_16 },
+    { X86::VPAVGWYrr,         X86::VPAVGWYrm,          TB_ALIGN_16 },
+    { X86::VPCMPEQBYrr,       X86::VPCMPEQBYrm,        TB_ALIGN_16 },
+    { X86::VPCMPEQDYrr,       X86::VPCMPEQDYrm,        TB_ALIGN_16 },
+    { X86::VPCMPEQQYrr,       X86::VPCMPEQQYrm,        TB_ALIGN_16 },
+    { X86::VPCMPEQWYrr,       X86::VPCMPEQWYrm,        TB_ALIGN_16 },
+    { X86::VPCMPGTBYrr,       X86::VPCMPGTBYrm,        TB_ALIGN_16 },
+    { X86::VPCMPGTDYrr,       X86::VPCMPGTDYrm,        TB_ALIGN_16 },
+    { X86::VPCMPGTQYrr,       X86::VPCMPGTQYrm,        TB_ALIGN_16 },
+    { X86::VPCMPGTWYrr,       X86::VPCMPGTWYrm,        TB_ALIGN_16 },
+    { X86::VPHADDDrr256,      X86::VPHADDDrm256,       TB_ALIGN_16 },
+    { X86::VPHADDSWrr256,     X86::VPHADDSWrm256,      TB_ALIGN_16 },
+    { X86::VPHADDWrr256,      X86::VPHADDWrm256,       TB_ALIGN_16 },
+    { X86::VPHSUBDrr256,      X86::VPHSUBDrm256,       TB_ALIGN_16 },
+    { X86::VPHSUBSWrr256,     X86::VPHSUBSWrm256,      TB_ALIGN_16 },
+    { X86::VPHSUBWrr256,      X86::VPHSUBWrm256,       TB_ALIGN_16 },
+    { X86::VPMADDUBSWrr256,   X86::VPMADDUBSWrm256,    TB_ALIGN_16 },
+    { X86::VPMADDWDYrr,       X86::VPMADDWDYrm,        TB_ALIGN_16 },
+    { X86::VPMAXSWYrr,        X86::VPMAXSWYrm,         TB_ALIGN_16 },
+    { X86::VPMAXUBYrr,        X86::VPMAXUBYrm,         TB_ALIGN_16 },
+    { X86::VPMINSWYrr,        X86::VPMINSWYrm,         TB_ALIGN_16 },
+    { X86::VPMINUBYrr,        X86::VPMINUBYrm,         TB_ALIGN_16 },
+    { X86::VMPSADBWYrri,      X86::VMPSADBWYrmi,       TB_ALIGN_16 },
+    { X86::VPMULDQYrr,        X86::VPMULDQYrm,         TB_ALIGN_16 },
+    { X86::VPMULHRSWrr256,    X86::VPMULHRSWrm256,     TB_ALIGN_16 },
+    { X86::VPMULHUWYrr,       X86::VPMULHUWYrm,        TB_ALIGN_16 },
+    { X86::VPMULHWYrr,        X86::VPMULHWYrm,         TB_ALIGN_16 },
+    { X86::VPMULLDYrr,        X86::VPMULLDYrm,         TB_ALIGN_16 },
+    { X86::VPMULLWYrr,        X86::VPMULLWYrm,         TB_ALIGN_16 },
+    { X86::VPMULUDQYrr,       X86::VPMULUDQYrm,        TB_ALIGN_16 },
+    { X86::VPORYrr,           X86::VPORYrm,            TB_ALIGN_16 },
+    { X86::VPSADBWYrr,        X86::VPSADBWYrm,         TB_ALIGN_16 },
+    { X86::VPSHUFBrr256,      X86::VPSHUFBrm256,       TB_ALIGN_16 },
+    { X86::VPSIGNBrr256,      X86::VPSIGNBrm256,       TB_ALIGN_16 },
+    { X86::VPSIGNWrr256,      X86::VPSIGNWrm256,       TB_ALIGN_16 },
+    { X86::VPSIGNDrr256,      X86::VPSIGNDrm256,       TB_ALIGN_16 },
+    { X86::VPSLLDYrr,         X86::VPSLLDYrm,          TB_ALIGN_16 },
+    { X86::VPSLLQYrr,         X86::VPSLLQYrm,          TB_ALIGN_16 },
+    { X86::VPSLLWYrr,         X86::VPSLLWYrm,          TB_ALIGN_16 },
+    { X86::VPSLLVDrr,         X86::VPSLLVDrm,          TB_ALIGN_16 },
+    { X86::VPSLLVDYrr,        X86::VPSLLVDYrm,         TB_ALIGN_16 },
+    { X86::VPSLLVQrr,         X86::VPSLLVQrm,          TB_ALIGN_16 },
+    { X86::VPSLLVQYrr,        X86::VPSLLVQYrm,         TB_ALIGN_16 },
+    { X86::VPSRADYrr,         X86::VPSRADYrm,          TB_ALIGN_16 },
+    { X86::VPSRAWYrr,         X86::VPSRAWYrm,          TB_ALIGN_16 },
+    { X86::VPSRAVDrr,         X86::VPSRAVDrm,          TB_ALIGN_16 },
+    { X86::VPSRAVDYrr,        X86::VPSRAVDYrm,         TB_ALIGN_16 },
+    { X86::VPSRLDYrr,         X86::VPSRLDYrm,          TB_ALIGN_16 },
+    { X86::VPSRLQYrr,         X86::VPSRLQYrm,          TB_ALIGN_16 },
+    { X86::VPSRLWYrr,         X86::VPSRLWYrm,          TB_ALIGN_16 },
+    { X86::VPSRLVDrr,         X86::VPSRLVDrm,          TB_ALIGN_16 },
+    { X86::VPSRLVDYrr,        X86::VPSRLVDYrm,         TB_ALIGN_16 },
+    { X86::VPSRLVQrr,         X86::VPSRLVQrm,          TB_ALIGN_16 },
+    { X86::VPSRLVQYrr,        X86::VPSRLVQYrm,         TB_ALIGN_16 },
+    { X86::VPSUBBYrr,         X86::VPSUBBYrm,          TB_ALIGN_16 },
+    { X86::VPSUBDYrr,         X86::VPSUBDYrm,          TB_ALIGN_16 },
+    { X86::VPSUBSBYrr,        X86::VPSUBSBYrm,         TB_ALIGN_16 },
+    { X86::VPSUBSWYrr,        X86::VPSUBSWYrm,         TB_ALIGN_16 },
+    { X86::VPSUBWYrr,         X86::VPSUBWYrm,          TB_ALIGN_16 },
+    { X86::VPUNPCKHBWYrr,     X86::VPUNPCKHBWYrm,      TB_ALIGN_16 },
+    { X86::VPUNPCKHDQYrr,     X86::VPUNPCKHDQYrm,      TB_ALIGN_16 },
+    { X86::VPUNPCKHQDQYrr,    X86::VPUNPCKHQDQYrm,     TB_ALIGN_16 },
+    { X86::VPUNPCKHWDYrr,     X86::VPUNPCKHWDYrm,      TB_ALIGN_16 },
+    { X86::VPUNPCKLBWYrr,     X86::VPUNPCKLBWYrm,      TB_ALIGN_16 },
+    { X86::VPUNPCKLDQYrr,     X86::VPUNPCKLDQYrm,      TB_ALIGN_16 },
+    { X86::VPUNPCKLQDQYrr,    X86::VPUNPCKLQDQYrm,     TB_ALIGN_16 },
+    { X86::VPUNPCKLWDYrr,     X86::VPUNPCKLWDYrm,      TB_ALIGN_16 },
+    { X86::VPXORYrr,          X86::VPXORYrm,           TB_ALIGN_16 },
     // FIXME: add AVX 256-bit foldable instructions
   };
 
@@ -1392,9 +1528,9 @@ X86InstrInfo::convertToThreeAddressWithLEA(unsigned MIOpc,
       leaInReg2 = RegInfo.createVirtualRegister(&X86::GR32_NOSPRegClass);
       // Build and insert into an implicit UNDEF value. This is OK because
       // well be shifting and then extracting the lower 16-bits.
-      BuildMI(*MFI, MIB, MI->getDebugLoc(), get(X86::IMPLICIT_DEF), leaInReg2);
+      BuildMI(*MFI, &*MIB, MI->getDebugLoc(), get(X86::IMPLICIT_DEF),leaInReg2);
       InsMI2 =
-        BuildMI(*MFI, MIB, MI->getDebugLoc(), get(TargetOpcode::COPY))
+        BuildMI(*MFI, &*MIB, MI->getDebugLoc(), get(TargetOpcode::COPY))
         .addReg(leaInReg2, RegState::Define, X86::sub_16bit)
         .addReg(Src2, getKillRegState(isKill2));
       addRegReg(MIB, leaInReg, true, leaInReg2, true);
@@ -1904,13 +2040,12 @@ X86::CondCode X86::GetOppositeBranchCondition(X86::CondCode CC) {
 }
 
 bool X86InstrInfo::isUnpredicatedTerminator(const MachineInstr *MI) const {
-  const MCInstrDesc &MCID = MI->getDesc();
-  if (!MCID.isTerminator()) return false;
+  if (!MI->isTerminator()) return false;
 
   // Conditional branch is a special case.
-  if (MCID.isBranch() && !MCID.isBarrier())
+  if (MI->isBranch() && !MI->isBarrier())
     return true;
-  if (!MCID.isPredicable())
+  if (!MI->isPredicable())
     return true;
   return !isPredicated(MI);
 }
@@ -1936,7 +2071,7 @@ bool X86InstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
 
     // A terminator that isn't a branch can't easily be handled by this
     // analysis.
-    if (!I->getDesc().isBranch())
+    if (!I->isBranch())
       return true;
 
     // Handle unconditional branches.
@@ -2189,9 +2324,12 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     // Copying to or from a physical H register on x86-64 requires a NOREX
     // move.  Otherwise use a normal move.
     if ((isHReg(DestReg) || isHReg(SrcReg)) &&
-        TM.getSubtarget<X86Subtarget>().is64Bit())
+        TM.getSubtarget<X86Subtarget>().is64Bit()) {
       Opc = X86::MOV8rr_NOREX;
-    else
+      // Both operands must be encodable without an REX prefix.
+      assert(X86::GR8_NOREXRegClass.contains(SrcReg, DestReg) &&
+             "8-bit H register can not be copied outside GR8_NOREX");
+    } else
       Opc = X86::MOV8rr;
   } else if (X86::VR128RegClass.contains(DestReg, SrcReg))
     Opc = HasAVX ? X86::VMOVAPSrr : X86::MOVAPSrr;
@@ -2391,6 +2529,42 @@ void X86InstrInfo::loadRegFromAddr(MachineFunction &MF, unsigned DestReg,
   NewMIs.push_back(MIB);
 }
 
+/// Expand2AddrUndef - Expand a single-def pseudo instruction to a two-addr
+/// instruction with two undef reads of the register being defined.  This is
+/// used for mapping:
+///   %xmm4 = V_SET0
+/// to:
+///   %xmm4 = PXORrr %xmm4<undef>, %xmm4<undef>
+///
+static bool Expand2AddrUndef(MachineInstr *MI, const MCInstrDesc &Desc) {
+  assert(Desc.getNumOperands() == 3 && "Expected two-addr instruction.");
+  unsigned Reg = MI->getOperand(0).getReg();
+  MI->setDesc(Desc);
+
+  // MachineInstr::addOperand() will insert explicit operands before any
+  // implicit operands.
+  MachineInstrBuilder(MI).addReg(Reg, RegState::Undef)
+                         .addReg(Reg, RegState::Undef);
+  // But we don't trust that.
+  assert(MI->getOperand(1).getReg() == Reg &&
+         MI->getOperand(2).getReg() == Reg && "Misplaced operand");
+  return true;
+}
+
+bool X86InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
+  bool HasAVX = TM.getSubtarget<X86Subtarget>().hasAVX();
+  switch (MI->getOpcode()) {
+  case X86::V_SET0:
+  case X86::FsFLD0SS:
+  case X86::FsFLD0SD:
+    return Expand2AddrUndef(MI, get(HasAVX ? X86::VXORPSrr : X86::XORPSrr));
+  case X86::TEST8ri_NOREX:
+    MI->setDesc(get(X86::TEST8ri));
+    return true;
+  }
+  return false;
+}
+
 MachineInstr*
 X86InstrInfo::emitFrameIndexDebugValue(MachineFunction &MF,
                                        int FrameIx, uint64_t Offset,
@@ -2587,6 +2761,10 @@ X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
 ///
 static bool hasPartialRegUpdate(unsigned Opcode) {
   switch (Opcode) {
+  case X86::CVTSI2SSrr:
+  case X86::CVTSI2SS64rr:
+  case X86::CVTSI2SDrr:
+  case X86::CVTSI2SD64rr:
   case X86::CVTSD2SSrr:
   case X86::Int_CVTSD2SSrr:
   case X86::CVTSS2SDrr:
@@ -2594,7 +2772,9 @@ static bool hasPartialRegUpdate(unsigned Opcode) {
   case X86::RCPSSr:
   case X86::RCPSSr_Int:
   case X86::ROUNDSDr:
+  case X86::ROUNDSDr_Int:
   case X86::ROUNDSSr:
+  case X86::ROUNDSSr_Int:
   case X86::RSQRTSSr:
   case X86::RSQRTSSr_Int:
   case X86::SQRTSSr:
@@ -2606,13 +2786,63 @@ static bool hasPartialRegUpdate(unsigned Opcode) {
   case X86::Int_VCVTSS2SDrr:
   case X86::VRCPSSr:
   case X86::VROUNDSDr:
+  case X86::VROUNDSDr_Int:
   case X86::VROUNDSSr:
+  case X86::VROUNDSSr_Int:
   case X86::VRSQRTSSr:
   case X86::VSQRTSSr:
     return true;
   }
 
   return false;
+}
+
+/// getPartialRegUpdateClearance - Inform the ExeDepsFix pass how many idle
+/// instructions we would like before a partial register update.
+unsigned X86InstrInfo::
+getPartialRegUpdateClearance(const MachineInstr *MI, unsigned OpNum,
+                             const TargetRegisterInfo *TRI) const {
+  if (OpNum != 0 || !hasPartialRegUpdate(MI->getOpcode()))
+    return 0;
+
+  // If MI is marked as reading Reg, the partial register update is wanted.
+  const MachineOperand &MO = MI->getOperand(0);
+  unsigned Reg = MO.getReg();
+  if (TargetRegisterInfo::isVirtualRegister(Reg)) {
+    if (MO.readsReg() || MI->readsVirtualRegister(Reg))
+      return 0;
+  } else {
+    if (MI->readsRegister(Reg, TRI))
+      return 0;
+  }
+
+  // If any of the preceding 16 instructions are reading Reg, insert a
+  // dependency breaking instruction.  The magic number is based on a few
+  // Nehalem experiments.
+  return 16;
+}
+
+void X86InstrInfo::
+breakPartialRegDependency(MachineBasicBlock::iterator MI, unsigned OpNum,
+                          const TargetRegisterInfo *TRI) const {
+  unsigned Reg = MI->getOperand(OpNum).getReg();
+  if (X86::VR128RegClass.contains(Reg)) {
+    // These instructions are all floating point domain, so xorps is the best
+    // choice.
+    bool HasAVX = TM.getSubtarget<X86Subtarget>().hasAVX();
+    unsigned Opc = HasAVX ? X86::VXORPSrr : X86::XORPSrr;
+    BuildMI(*MI->getParent(), MI, MI->getDebugLoc(), get(Opc), Reg)
+      .addReg(Reg, RegState::Undef).addReg(Reg, RegState::Undef);
+  } else if (X86::VR256RegClass.contains(Reg)) {
+    // Use vxorps to clear the full ymm register.
+    // It wants to read and write the xmm sub-register.
+    unsigned XReg = TRI->getSubReg(Reg, X86::sub_xmm);
+    BuildMI(*MI->getParent(), MI, MI->getDebugLoc(), get(X86::VXORPSrr), XReg)
+      .addReg(XReg, RegState::Undef).addReg(XReg, RegState::Undef)
+      .addReg(Reg, RegState::ImplicitDefine);
+  } else
+    return;
+  MI->addRegisterKilled(Reg, TRI, true);
 }
 
 MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
@@ -2677,24 +2907,18 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
     switch (LoadMI->getOpcode()) {
     case X86::AVX_SET0PSY:
     case X86::AVX_SET0PDY:
+    case X86::AVX2_SETALLONES:
       Alignment = 32;
       break;
-    case X86::V_SET0PS:
-    case X86::V_SET0PD:
-    case X86::V_SET0PI:
+    case X86::V_SET0:
     case X86::V_SETALLONES:
-    case X86::AVX_SET0PS:
-    case X86::AVX_SET0PD:
-    case X86::AVX_SET0PI:
     case X86::AVX_SETALLONES:
       Alignment = 16;
       break;
     case X86::FsFLD0SD:
-    case X86::VFsFLD0SD:
       Alignment = 8;
       break;
     case X86::FsFLD0SS:
-    case X86::VFsFLD0SS:
       Alignment = 4;
       break;
     default:
@@ -2722,21 +2946,15 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
 
   SmallVector<MachineOperand,X86::AddrNumOperands> MOs;
   switch (LoadMI->getOpcode()) {
-  case X86::V_SET0PS:
-  case X86::V_SET0PD:
-  case X86::V_SET0PI:
+  case X86::V_SET0:
   case X86::V_SETALLONES:
-  case X86::AVX_SET0PS:
-  case X86::AVX_SET0PD:
-  case X86::AVX_SET0PI:
   case X86::AVX_SET0PSY:
   case X86::AVX_SET0PDY:
   case X86::AVX_SETALLONES:
+  case X86::AVX2_SETALLONES:
   case X86::FsFLD0SD:
-  case X86::FsFLD0SS:
-  case X86::VFsFLD0SD:
-  case X86::VFsFLD0SS: {
-    // Folding a V_SET0P? or V_SETALLONES as a load, to ease register pressure.
+  case X86::FsFLD0SS: {
+    // Folding a V_SET0 or V_SETALLONES as a load, to ease register pressure.
     // Create a constant-pool entry and operands to load from it.
 
     // Medium and large mode can't fold loads this way.
@@ -2761,16 +2979,17 @@ MachineInstr* X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
     MachineConstantPool &MCP = *MF.getConstantPool();
     Type *Ty;
     unsigned Opc = LoadMI->getOpcode();
-    if (Opc == X86::FsFLD0SS || Opc == X86::VFsFLD0SS)
+    if (Opc == X86::FsFLD0SS)
       Ty = Type::getFloatTy(MF.getFunction()->getContext());
-    else if (Opc == X86::FsFLD0SD || Opc == X86::VFsFLD0SD)
+    else if (Opc == X86::FsFLD0SD)
       Ty = Type::getDoubleTy(MF.getFunction()->getContext());
     else if (Opc == X86::AVX_SET0PSY || Opc == X86::AVX_SET0PDY)
       Ty = VectorType::get(Type::getFloatTy(MF.getFunction()->getContext()), 8);
     else
       Ty = VectorType::get(Type::getInt32Ty(MF.getFunction()->getContext()), 4);
 
-    bool IsAllOnes = (Opc == X86::V_SETALLONES || Opc == X86::AVX_SETALLONES);
+    bool IsAllOnes = (Opc == X86::V_SETALLONES || Opc == X86::AVX_SETALLONES ||
+                      Opc == X86::AVX2_SETALLONES);
     const Constant *C = IsAllOnes ? Constant::getAllOnesValue(Ty) :
                                     Constant::getNullValue(Ty);
     unsigned CPI = MCP.getConstantPoolIndex(C, Alignment);
@@ -3316,7 +3535,6 @@ static const unsigned ReplaceableInstrs[][3] = {
   { X86::ANDPSrr,    X86::ANDPDrr,   X86::PANDrr    },
   { X86::ORPSrm,     X86::ORPDrm,    X86::PORrm     },
   { X86::ORPSrr,     X86::ORPDrr,    X86::PORrr     },
-  { X86::V_SET0PS,   X86::V_SET0PD,  X86::V_SET0PI  },
   { X86::XORPSrm,    X86::XORPDrm,   X86::PXORrm    },
   { X86::XORPSrr,    X86::XORPDrr,   X86::PXORrr    },
   // AVX 128-bit support
@@ -3332,7 +3550,6 @@ static const unsigned ReplaceableInstrs[][3] = {
   { X86::VANDPSrr,   X86::VANDPDrr,   X86::VPANDrr    },
   { X86::VORPSrm,    X86::VORPDrm,    X86::VPORrm     },
   { X86::VORPSrr,    X86::VORPDrr,    X86::VPORrr     },
-  { X86::AVX_SET0PS, X86::AVX_SET0PD, X86::AVX_SET0PI },
   { X86::VXORPSrm,   X86::VXORPDrm,   X86::VPXORrm    },
   { X86::VXORPSrr,   X86::VXORPDrr,   X86::VPXORrr    },
   // AVX 256-bit support
@@ -3341,7 +3558,25 @@ static const unsigned ReplaceableInstrs[][3] = {
   { X86::VMOVAPSYrr,   X86::VMOVAPDYrr,   X86::VMOVDQAYrr  },
   { X86::VMOVUPSYmr,   X86::VMOVUPDYmr,   X86::VMOVDQUYmr  },
   { X86::VMOVUPSYrm,   X86::VMOVUPDYrm,   X86::VMOVDQUYrm  },
-  { X86::VMOVNTPSYmr,  X86::VMOVNTPDYmr,  X86::VMOVNTDQYmr },
+  { X86::VMOVNTPSYmr,  X86::VMOVNTPDYmr,  X86::VMOVNTDQYmr }
+};
+
+static const unsigned ReplaceableInstrsAVX2[][3] = {
+  //PackedSingle       PackedDouble       PackedInt
+  { X86::VANDNPSYrm,   X86::VANDNPDYrm,   X86::VPANDNYrm   },
+  { X86::VANDNPSYrr,   X86::VANDNPDYrr,   X86::VPANDNYrr   },
+  { X86::VANDPSYrm,    X86::VANDPDYrm,    X86::VPANDYrm    },
+  { X86::VANDPSYrr,    X86::VANDPDYrr,    X86::VPANDYrr    },
+  { X86::VORPSYrm,     X86::VORPDYrm,     X86::VPORYrm     },
+  { X86::VORPSYrr,     X86::VORPDYrr,     X86::VPORYrr     },
+  { X86::VXORPSYrm,    X86::VXORPDYrm,    X86::VPXORYrm    },
+  { X86::VXORPSYrr,    X86::VXORPDYrr,    X86::VPXORYrr    },
+  { X86::VEXTRACTF128mr, X86::VEXTRACTF128mr, X86::VEXTRACTI128mr },
+  { X86::VEXTRACTF128rr, X86::VEXTRACTF128rr, X86::VEXTRACTI128rr },
+  { X86::VINSERTF128rm,  X86::VINSERTF128rm,  X86::VINSERTI128rm },
+  { X86::VINSERTF128rr,  X86::VINSERTF128rr,  X86::VINSERTI128rr },
+  { X86::VPERM2F128rm,   X86::VPERM2F128rm,   X86::VPERM2I128rm },
+  { X86::VPERM2F128rr,   X86::VPERM2F128rr,   X86::VPERM2I128rr }
 };
 
 // FIXME: Some shuffle and unpack instructions have equivalents in different
@@ -3354,11 +3589,23 @@ static const unsigned *lookup(unsigned opcode, unsigned domain) {
   return 0;
 }
 
+static const unsigned *lookupAVX2(unsigned opcode, unsigned domain) {
+  for (unsigned i = 0, e = array_lengthof(ReplaceableInstrsAVX2); i != e; ++i)
+    if (ReplaceableInstrsAVX2[i][domain-1] == opcode)
+      return ReplaceableInstrsAVX2[i];
+  return 0;
+}
+
 std::pair<uint16_t, uint16_t>
 X86InstrInfo::getExecutionDomain(const MachineInstr *MI) const {
   uint16_t domain = (MI->getDesc().TSFlags >> X86II::SSEDomainShift) & 3;
-  return std::make_pair(domain,
-                        domain && lookup(MI->getOpcode(), domain) ? 0xe : 0);
+  bool hasAVX2 = TM.getSubtarget<X86Subtarget>().hasAVX2();
+  uint16_t validDomains = 0;
+  if (domain && lookup(MI->getOpcode(), domain))
+    validDomains = 0xe;
+  else if (domain && lookupAVX2(MI->getOpcode(), domain))
+    validDomains = hasAVX2 ? 0xe : 0x6;
+  return std::make_pair(domain, validDomains);
 }
 
 void X86InstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
@@ -3366,6 +3613,11 @@ void X86InstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
   uint16_t dom = (MI->getDesc().TSFlags >> X86II::SSEDomainShift) & 3;
   assert(dom && "Not an SSE instruction");
   const unsigned *table = lookup(MI->getOpcode(), dom);
+  if (!table) { // try the other table
+    assert((TM.getSubtarget<X86Subtarget>().hasAVX2() || Domain < 3) &&
+           "256-bit vector operations only available in AVX2");
+    table = lookupAVX2(MI->getOpcode(), dom);
+  }
   assert(table && "Cannot change domain");
   MI->setDesc(get(table[Domain-1]));
 }

@@ -14,6 +14,7 @@
 #include "InstCombine.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Support/PatternMatch.h"
 using namespace llvm;
 using namespace PatternMatch;
@@ -147,8 +148,6 @@ Instruction *InstCombiner::PromoteCastOfAllocation(BitCastInst &CI,
   return ReplaceInstUsesWith(CI, New);
 }
 
-
-
 /// EvaluateInDifferentType - Given an expression that 
 /// CanEvaluateTruncated or CanEvaluateSExtd returns true for, actually
 /// insert the code to evaluate the expression.
@@ -158,7 +157,7 @@ Value *InstCombiner::EvaluateInDifferentType(Value *V, Type *Ty,
     C = ConstantExpr::getIntegerCast(C, Ty, isSigned /*Sext or ZExt*/);
     // If we got a constantexpr back, try to simplify it with TD info.
     if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C))
-      C = ConstantFoldConstantExpression(CE, TD);
+      C = ConstantFoldConstantExpression(CE, TD, TLI);
     return C;
   }
 
@@ -528,9 +527,7 @@ Instruction *InstCombiner::transformZExtICmp(ICmpInst *ICI, Instruction &CI,
 
       return ReplaceInstUsesWith(CI, In);
     }
-      
-      
-      
+
     // zext (X == 0) to i32 --> X^1      iff X has only the low bit set.
     // zext (X == 0) to i32 --> (X>>1)^1 iff X has only the 2nd bit set.
     // zext (X == 1) to i32 --> X        iff X has only the low bit set.
@@ -1163,6 +1160,9 @@ static Value *LookThroughFPExtensions(Value *V) {
   if (ConstantFP *CFP = dyn_cast<ConstantFP>(V)) {
     if (CFP->getType() == Type::getPPC_FP128Ty(V->getContext()))
       return V;  // No constant folding of this.
+    // See if the value can be truncated to half and then reextended.
+    if (Value *V = FitsInFPType(CFP, APFloat::IEEEhalf))
+      return V;
     // See if the value can be truncated to float and then reextended.
     if (Value *V = FitsInFPType(CFP, APFloat::IEEEsingle))
       return V;
@@ -1213,10 +1213,9 @@ Instruction *InstCombiner::visitFPTrunc(FPTruncInst &CI) {
   }
   
   // Fold (fptrunc (sqrt (fpext x))) -> (sqrtf x)
-  // NOTE: This should be disabled by -fno-builtin-sqrt if we ever support it.
   CallInst *Call = dyn_cast<CallInst>(CI.getOperand(0));
-  if (Call && Call->getCalledFunction() &&
-      Call->getCalledFunction()->getName() == "sqrt" &&
+  if (Call && Call->getCalledFunction() && TLI->has(LibFunc::sqrtf) &&
+      Call->getCalledFunction()->getName() == TLI->getName(LibFunc::sqrt) &&
       Call->getNumArgOperands() == 1 &&
       Call->hasOneUse()) {
     CastInst *Arg = dyn_cast<CastInst>(Call->getArgOperand(0));

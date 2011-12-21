@@ -107,22 +107,20 @@ const CXXThisRegion *ExprEngine::getCXXThisRegion(const CXXMethodDecl *decl,
 void ExprEngine::CreateCXXTemporaryObject(const MaterializeTemporaryExpr *ME,
                                           ExplodedNode *Pred,
                                           ExplodedNodeSet &Dst) {
-  ExplodedNodeSet Tmp;
-  Visit(ME->GetTemporaryExpr(), Pred, Tmp);
-  for (ExplodedNodeSet::iterator I = Tmp.begin(), E = Tmp.end(); I != E; ++I) {
-    const ProgramState *state = (*I)->getState();
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
+  const Expr *tempExpr = ME->GetTemporaryExpr()->IgnoreParens();
+  const ProgramState *state = Pred->getState();
 
-    // Bind the temporary object to the value of the expression. Then bind
-    // the expression to the location of the object.
-    SVal V = state->getSVal(ME->GetTemporaryExpr());
+  // Bind the temporary object to the value of the expression. Then bind
+  // the expression to the location of the object.
+  SVal V = state->getSVal(tempExpr);
 
-    const MemRegion *R =
-      svalBuilder.getRegionManager().getCXXTempObjectRegion(ME,
-                                                   Pred->getLocationContext());
+  const MemRegion *R =
+    svalBuilder.getRegionManager().getCXXTempObjectRegion(ME,
+                                                 Pred->getLocationContext());
 
-    state = state->bindLoc(loc::MemRegionVal(R), V);
-    MakeNode(Dst, ME, Pred, state->BindExpr(ME, loc::MemRegionVal(R)));
-  }
+  state = state->bindLoc(loc::MemRegionVal(R), V);
+  Bldr.generateNode(ME, Pred, state->BindExpr(ME, loc::MemRegionVal(R)));
 }
 
 void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E, 
@@ -177,7 +175,8 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
     // parameter region.
     const StackFrameContext *SFC = 
       AMgr.getStackFrame(CD, Pred->getLocationContext(),
-                         E, Builder->getBlock(), Builder->getIndex());
+                         E, currentBuilderContext->getBlock(),
+                         currentStmtIdx);
 
     // Create the 'this' region.
     const CXXThisRegion *ThisR =
@@ -185,34 +184,34 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
 
     CallEnter Loc(E, SFC, Pred->getLocationContext());
 
-
+    StmtNodeBuilder Bldr(argsEvaluated, destNodes, *currentBuilderContext);
     for (ExplodedNodeSet::iterator NI = argsEvaluated.begin(),
                                   NE = argsEvaluated.end(); NI != NE; ++NI) {
       const ProgramState *state = (*NI)->getState();
       // Setup 'this' region, so that the ctor is evaluated on the object pointed
       // by 'Dest'.
       state = state->bindLoc(loc::MemRegionVal(ThisR), loc::MemRegionVal(Dest));
-      if (ExplodedNode *N = Builder->generateNode(Loc, state, *NI))
-        destNodes.Add(N);
+      Bldr.generateNode(Loc, *NI, state);
     }
   }
 #endif
   
   // Default semantics: invalidate all regions passed as arguments.
   ExplodedNodeSet destCall;
-
-  for (ExplodedNodeSet::iterator
-        i = destPreVisit.begin(), e = destPreVisit.end();
-       i != e; ++i)
   {
-    ExplodedNode *Pred = *i;
-    const LocationContext *LC = Pred->getLocationContext();
-    const ProgramState *state = Pred->getState();
+    StmtNodeBuilder Bldr(destPreVisit, destCall, *currentBuilderContext);
+    for (ExplodedNodeSet::iterator
+        i = destPreVisit.begin(), e = destPreVisit.end();
+        i != e; ++i)
+    {
+      ExplodedNode *Pred = *i;
+      const LocationContext *LC = Pred->getLocationContext();
+      const ProgramState *state = Pred->getState();
 
-    state = invalidateArguments(state, CallOrObjCMessage(E, state), LC);
-    Builder->MakeNode(destCall, E, Pred, state);
+      state = invalidateArguments(state, CallOrObjCMessage(E, state), LC);
+      Bldr.generateNode(E, Pred, state);
+    }
   }
-  
   // Do the post visit.
   getCheckerManager().runCheckersForPostStmt(destNodes, destCall, E, *this);  
 }
@@ -222,13 +221,15 @@ void ExprEngine::VisitCXXDestructor(const CXXDestructorDecl *DD,
                                       const Stmt *S,
                                       ExplodedNode *Pred, 
                                       ExplodedNodeSet &Dst) {
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
   if (!(DD->doesThisDeclarationHaveABody() && AMgr.shouldInlineCall()))
     return;
+
   // Create the context for 'this' region.
-  const StackFrameContext *SFC = AMgr.getStackFrame(DD,
-                                                    Pred->getLocationContext(),
-                                                    S, Builder->getBlock(),
-                                                    Builder->getIndex());
+  const StackFrameContext *SFC =
+    AnalysisDeclContexts.getContext(DD)->
+      getStackFrame(Pred->getLocationContext(), S,
+      currentBuilderContext->getBlock(), currentStmtIdx);
 
   const CXXThisRegion *ThisR = getCXXThisRegion(DD->getParent(), SFC);
 
@@ -236,15 +237,14 @@ void ExprEngine::VisitCXXDestructor(const CXXDestructorDecl *DD,
 
   const ProgramState *state = Pred->getState();
   state = state->bindLoc(loc::MemRegionVal(ThisR), loc::MemRegionVal(Dest));
-  ExplodedNode *N = Builder->generateNode(PP, state, Pred);
-  if (N)
-    Dst.Add(N);
+  Bldr.generateNode(PP, Pred, state);
 }
 
 void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
                                    ExplodedNodeSet &Dst) {
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
   
-  unsigned blockCount = Builder->getCurrentBlockCount();
+  unsigned blockCount = currentBuilderContext->getCurrentBlockCount();
   DefinedOrUnknownSVal symVal =
     svalBuilder.getConjuredSymbolVal(NULL, CNE, CNE->getType(), blockCount);
   const MemRegion *NewReg = cast<loc::MemRegionVal>(symVal).getRegion();  
@@ -257,7 +257,7 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
     // For now, just return a symbolicated region.
     const ProgramState *state = Pred->getState();
     state = state->BindExpr(CNE, loc::MemRegionVal(EleReg));
-    MakeNode(Dst, CNE, Pred, state);
+    Bldr.generateNode(CNE, Pred, state);
     return;
   }
 
@@ -267,8 +267,10 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
   if (CD)
     FnType = CD->getType()->getAs<FunctionProtoType>();
   ExplodedNodeSet argsEvaluated;
+  Bldr.takeNodes(Pred);
   evalArguments(CNE->constructor_arg_begin(), CNE->constructor_arg_end(),
                 FnType, Pred, argsEvaluated);
+  Bldr.addNodes(argsEvaluated);
 
   // Initialize the object region and bind the 'new' expression.
   for (ExplodedNodeSet::iterator I = argsEvaluated.begin(), 
@@ -312,24 +314,27 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
       }
     }
     state = state->BindExpr(CNE, loc::MemRegionVal(EleReg));
-    MakeNode(Dst, CNE, *I, state);
+    Bldr.generateNode(CNE, *I, state);
   }
 }
 
 void ExprEngine::VisitCXXDeleteExpr(const CXXDeleteExpr *CDE, 
-                                      ExplodedNode *Pred,ExplodedNodeSet &Dst) {
+                                    ExplodedNode *Pred, ExplodedNodeSet &Dst) {
   // Should do more checking.
   ExplodedNodeSet Argevaluated;
   Visit(CDE->getArgument(), Pred, Argevaluated);
+  StmtNodeBuilder Bldr(Argevaluated, Dst, *currentBuilderContext);
   for (ExplodedNodeSet::iterator I = Argevaluated.begin(), 
                                  E = Argevaluated.end(); I != E; ++I) {
     const ProgramState *state = (*I)->getState();
-    MakeNode(Dst, CDE, *I, state);
+    Bldr.generateNode(CDE, *I, state);
   }
 }
 
 void ExprEngine::VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred,
                                     ExplodedNodeSet &Dst) {
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
+
   // Get the this object region from StoreManager.
   const MemRegion *R =
     svalBuilder.getRegionManager().getCXXThisRegion(
@@ -338,5 +343,5 @@ void ExprEngine::VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred,
 
   const ProgramState *state = Pred->getState();
   SVal V = state->getSVal(loc::MemRegionVal(R));
-  MakeNode(Dst, TE, Pred, state->BindExpr(TE, V));
+  Bldr.generateNode(TE, Pred, state->BindExpr(TE, V));
 }

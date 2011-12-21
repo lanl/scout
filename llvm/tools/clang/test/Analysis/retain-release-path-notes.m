@@ -1,5 +1,9 @@
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -analyzer-output=text -verify %s
 
+// This actually still works after the pseudo-object refactor, it just
+// uses messages that say 'method' instead of 'property'.  Ted wanted
+// this xfailed and filed as a bug.  rdar://problem/10402993
+
 /***
 This file is for testing the path-sensitive notes for retain/release errors.
 Its goal is to have simple branch coverage of any path-based diagnostics,
@@ -100,12 +104,12 @@ void makeCollectableIgnored () {
 }
 
 CFTypeRef CFCopyRuleViolation () {
-  CFTypeRef object = CFGetSomething(); // expected-note{{Call to function 'CFGetSomething' returns a Core Foundation object with a +0 retain counte}}
+  CFTypeRef object = CFGetSomething(); // expected-note{{Call to function 'CFGetSomething' returns a Core Foundation object with a +0 retain count}}
   return object; // expected-warning{{Object with a +0 retain count returned to caller where a +1 (owning) retain count is expected}} expected-note{{Object returned to caller with a +0 retain count}} expected-note{{Object with a +0 retain count returned to caller where a +1 (owning) retain count is expected}}
 }
 
 CFTypeRef CFGetRuleViolation () {
-  CFTypeRef object = CFCreateSomething(); // expected-warning{{leak}} expected-note{{Call to function 'CFCreateSomething' returns a Core Foundation object with a +1 retain counte}}
+  CFTypeRef object = CFCreateSomething(); // expected-warning{{leak}} expected-note{{Call to function 'CFCreateSomething' returns a Core Foundation object with a +1 retain count}}
   return object; // expected-note{{Object returned to caller as an owning reference (single retain count transferred to caller)}} expected-note{{Object leaked: object allocated and stored into 'object' is return from a function whose name ('CFGetRuleViolation') does not contain 'Copy' or 'Create'.  This violates the naming convention rules given the Memory Management Guide for Core Foundation}}
 }
 

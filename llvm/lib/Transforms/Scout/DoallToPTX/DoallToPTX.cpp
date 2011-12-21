@@ -50,7 +50,10 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   raw_string_ostream StringOut(AssemblyCode);
   formatted_raw_ostream PTXOut(StringOut);
 
-  std::string target_triple = sys::getHostTriple();
+  // ndm - MERGED
+  //std::string target_triple = sys::getHostTriple();
+  std::string target_triple = sys::getDefaultTargetTriple();
+  
   Triple TargetTriple = Triple(target_triple);
   TargetTriple.setArch(Triple::x86);
 
@@ -59,7 +62,8 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   TargetMachine *TheTarget =
     PTXTarget->createTargetMachine(TargetTriple.getTriple(),
                                    CPU,
-                                   featuresStr);
+                                   featuresStr,
+				   TargetOptions());
 
   std::auto_ptr< TargetMachine > Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
@@ -68,7 +72,9 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
   const bool DisableVerify = false;
 
-  Target->addPassesToEmitFile(pm, PTXOut, FileType, Lvl, DisableVerify);
+  // ndm - MERGED
+  //Target->addPassesToEmitFile(pm, PTXOut, FileType, Lvl, DisableVerify);
+  Target->addPassesToEmitFile(pm, PTXOut, FileType, DisableVerify);
 
   pm.add(createVerifierPass());
   pm.run(ptxModule);

@@ -52,9 +52,10 @@ static MCSubtargetInfo *createPTXMCSubtargetInfo(StringRef TT, StringRef CPU,
 }
 
 static MCCodeGenInfo *createPTXMCCodeGenInfo(StringRef TT, Reloc::Model RM,
-                                             CodeModel::Model CM) {
+                                             CodeModel::Model CM,
+                                             CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
-  X->InitMCCodeGenInfo(RM, CM);
+  X->InitMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 
@@ -62,9 +63,8 @@ static MCInstPrinter *createPTXMCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
                                              const MCSubtargetInfo &STI) {
-  if (SyntaxVariant == 0)
-    return new PTXInstPrinter(MAI, STI);
-  return 0;
+  assert(SyntaxVariant == 0 && "We only have one syntax variant");
+  return new PTXInstPrinter(MAI, STI);
 }
 
 extern "C" void LLVMInitializePTXTargetMC() {

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s
 
 int i = delete; // expected-error{{only functions}}
 int j = default; // expected-error{{special member functions}}
@@ -13,3 +13,7 @@ struct foo {
 };
 
 void baz() = delete;
+
+struct quux {
+  int quux() = default; // expected-error{{constructor cannot have a return type}} expected-error {{member 'quux' has the same name as its class}}
+};

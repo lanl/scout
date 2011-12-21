@@ -74,3 +74,26 @@ def test_a_struct():
 
     else:
         assert False, "Didn't find teststruct??"
+
+
+constarrayInput="""
+struct teststruct {
+  void *A[2];
+};
+"""
+def testConstantArray():
+    index = Index.create()
+    tu = index.parse('t.c', unsaved_files = [('t.c',constarrayInput)])
+
+    for n in tu.cursor.get_children():
+        if n.spelling == 'teststruct':
+            fields = list(n.get_children())
+            assert fields[0].spelling == 'A'
+            assert fields[0].type.kind == TypeKind.CONSTANTARRAY
+            assert fields[0].type.get_array_element_type() is not None
+            assert fields[0].type.get_array_element_type().kind == TypeKind.POINTER
+            assert fields[0].type.get_array_size() == 2
+
+            break
+    else:
+        assert False, "Didn't find teststruct??"

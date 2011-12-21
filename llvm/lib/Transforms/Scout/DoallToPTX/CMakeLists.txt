@@ -13,7 +13,3 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 add_llvm_library(LLVMdoallToPTX
   DoallToPTX.cpp
 )
-
-add_llvm_library_dependencies(LLVMdoallToPTX
-  scDriver
-)

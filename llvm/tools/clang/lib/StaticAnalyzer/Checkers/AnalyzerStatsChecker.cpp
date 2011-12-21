@@ -54,7 +54,7 @@ void AnalyzerStatsChecker::checkEndAnalysis(ExplodedGraph &G,
 
   // Get the CFG and the Decl of this block
   C = LC->getCFG();
-  D = LC->getAnalysisContext()->getDecl();
+  D = LC->getAnalysisDeclContext()->getDecl();
 
   unsigned total = 0, unreachable = 0;
 
@@ -80,7 +80,7 @@ void AnalyzerStatsChecker::checkEndAnalysis(ExplodedGraph &G,
 
     if (isa<FunctionDecl>(D) || isa<ObjCMethodDecl>(D)) {
       const NamedDecl *ND = cast<NamedDecl>(D);
-      output << ND;
+      output << *ND;
     }
     else if (isa<BlockDecl>(D)) {
       output << "block(line:" << Loc.getLine() << ":col:" << Loc.getColumn();

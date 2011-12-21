@@ -30,6 +30,12 @@
 #include "llvm/Support/MathExtras.h"
 using namespace llvm;
 
+/// MinRCSize - Smallest register class we allow when constraining virtual
+/// registers.  If satisfying all register class constraints would require
+/// using a smaller register class, emit a COPY to a new virtual register
+/// instead.
+const unsigned MinRCSize = 4;
+
 /// CountResults - The results of target nodes have register or immediate
 /// operands first, then an optional chain, and optional glue operands (which do
 /// not go into the resulting MachineInstr).
@@ -113,7 +119,8 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
             if (!UseRC)
               UseRC = RC;
             else if (RC) {
-              const TargetRegisterClass *ComRC = getCommonSubClass(UseRC, RC);
+              const TargetRegisterClass *ComRC =
+                TRI->getCommonSubClass(UseRC, RC);
               // If multiple uses expect disjoint register classes, we emit
               // copies in AddRegisterOperand.
               if (ComRC)
@@ -283,12 +290,11 @@ InstrEmitter::AddRegisterOperand(MachineInstr *MI, SDValue Op,
   // a new virtual register and copy the value into it, but first attempt to
   // shrink VReg's register class within reason.  For example, if VReg == GR32
   // and II requires a GR32_NOSP, just constrain VReg to GR32_NOSP.
-  const unsigned MinRCSize = 4;
   if (II) {
     const TargetRegisterClass *DstRC = 0;
     if (IIOpNum < II->getNumOperands())
       DstRC = TII->getRegClass(*II, IIOpNum, TRI);
-    assert((DstRC || (MCID.isVariadic() && IIOpNum >= MCID.getNumOperands())) &&
+    assert((DstRC || (MI->isVariadic() && IIOpNum >= MCID.getNumOperands())) &&
            "Don't have operand info for this instruction!");
     if (DstRC && !MRI->constrainRegClass(VReg, DstRC, MinRCSize)) {
       unsigned NewVReg = MRI->createVirtualRegister(DstRC);
@@ -391,19 +397,28 @@ void InstrEmitter::AddOperand(MachineInstr *MI, SDValue Op,
   }
 }
 
-/// getSuperRegisterRegClass - Returns the register class of a superreg A whose
-/// "SubIdx"'th sub-register class is the specified register class and whose
-/// type matches the specified type.
-static const TargetRegisterClass*
-getSuperRegisterRegClass(const TargetRegisterClass *TRC,
-                         unsigned SubIdx, EVT VT) {
-  // Pick the register class of the superegister for this type
-  for (TargetRegisterInfo::regclass_iterator I = TRC->superregclasses_begin(),
-         E = TRC->superregclasses_end(); I != E; ++I)
-    if ((*I)->hasType(VT) && (*I)->getSubRegisterRegClass(SubIdx) == TRC)
-      return *I;
-  assert(false && "Couldn't find the register class");
-  return 0;
+unsigned InstrEmitter::ConstrainForSubReg(unsigned VReg, unsigned SubIdx,
+                                          EVT VT, DebugLoc DL) {
+  const TargetRegisterClass *VRC = MRI->getRegClass(VReg);
+  const TargetRegisterClass *RC = TRI->getSubClassWithSubReg(VRC, SubIdx);
+
+  // RC is a sub-class of VRC that supports SubIdx.  Try to constrain VReg
+  // within reason.
+  if (RC && RC != VRC)
+    RC = MRI->constrainRegClass(VReg, RC, MinRCSize);
+
+  // VReg has been adjusted.  It can be used with SubIdx operands now.
+  if (RC)
+    return VReg;
+
+  // VReg couldn't be reasonably constrained.  Emit a COPY to a new virtual
+  // register instead.
+  RC = TRI->getSubClassWithSubReg(TLI->getRegClassFor(VT), SubIdx);
+  assert(RC && "No legal register class for VT supports that SubIdx");
+  unsigned NewReg = MRI->createVirtualRegister(RC);
+  BuildMI(*MBB, InsertPos, DL, TII->get(TargetOpcode::COPY), NewReg)
+    .addReg(VReg);
+  return NewReg;
 }
 
 /// EmitSubregNode - Generate machine code for subreg nodes.
@@ -430,10 +445,12 @@ void InstrEmitter::EmitSubregNode(SDNode *Node,
   }
 
   if (Opc == TargetOpcode::EXTRACT_SUBREG) {
-    // EXTRACT_SUBREG is lowered as %dst = COPY %src:sub
+    // EXTRACT_SUBREG is lowered as %dst = COPY %src:sub.  There are no
+    // constraints on the %dst register, COPY can target all legal register
+    // classes.
     unsigned SubIdx = cast<ConstantSDNode>(Node->getOperand(1))->getZExtValue();
+    const TargetRegisterClass *TRC = TLI->getRegClassFor(Node->getValueType(0));
 
-    // Figure out the register class to create for the destreg.
     unsigned VReg = getVR(Node->getOperand(0), VRBaseMap);
     MachineInstr *DefMI = MRI->getVRegDef(VReg);
     unsigned SrcReg, DstReg, DefSubIdx;
@@ -445,57 +462,52 @@ void InstrEmitter::EmitSubregNode(SDNode *Node,
       // r1026 = extract_subreg r1025, 4
       // to a copy
       // r1026 = copy r1024
-      const TargetRegisterClass *TRC = MRI->getRegClass(SrcReg);
       VRBase = MRI->createVirtualRegister(TRC);
       BuildMI(*MBB, InsertPos, Node->getDebugLoc(),
               TII->get(TargetOpcode::COPY), VRBase).addReg(SrcReg);
     } else {
-      const TargetRegisterClass *TRC = MRI->getRegClass(VReg);
-      const TargetRegisterClass *SRC = TRC->getSubRegisterRegClass(SubIdx);
-      assert(SRC && "Invalid subregister index in EXTRACT_SUBREG");
+      // VReg may not support a SubIdx sub-register, and we may need to
+      // constrain its register class or issue a COPY to a compatible register
+      // class.
+      VReg = ConstrainForSubReg(VReg, SubIdx,
+                                Node->getOperand(0).getValueType(),
+                                Node->getDebugLoc());
 
-      // Figure out the register class to create for the destreg.
-      // Note that if we're going to directly use an existing register,
-      // it must be precisely the required class, and not a subclass
-      // thereof.
-      if (VRBase == 0 || SRC != MRI->getRegClass(VRBase)) {
-        // Create the reg
-        assert(SRC && "Couldn't find source register class");
-        VRBase = MRI->createVirtualRegister(SRC);
-      }
+      // Create the destreg if it is missing.
+      if (VRBase == 0)
+        VRBase = MRI->createVirtualRegister(TRC);
 
       // Create the extract_subreg machine instruction.
-      MachineInstr *MI = BuildMI(*MF, Node->getDebugLoc(),
-                                 TII->get(TargetOpcode::COPY), VRBase);
-
-      // Add source, and subreg index
-      AddOperand(MI, Node->getOperand(0), 0, 0, VRBaseMap, /*IsDebug=*/false,
-                 IsClone, IsCloned);
-      assert(TargetRegisterInfo::isVirtualRegister(MI->getOperand(1).getReg())&&
-             "Cannot yet extract from physregs");
-      MI->getOperand(1).setSubReg(SubIdx);
-      MBB->insert(InsertPos, MI);
+      BuildMI(*MBB, InsertPos, Node->getDebugLoc(),
+              TII->get(TargetOpcode::COPY), VRBase).addReg(VReg, 0, SubIdx);
     }
   } else if (Opc == TargetOpcode::INSERT_SUBREG ||
              Opc == TargetOpcode::SUBREG_TO_REG) {
     SDValue N0 = Node->getOperand(0);
     SDValue N1 = Node->getOperand(1);
     SDValue N2 = Node->getOperand(2);
-    unsigned SubReg = getVR(N1, VRBaseMap);
     unsigned SubIdx = cast<ConstantSDNode>(N2)->getZExtValue();
-    const TargetRegisterClass *TRC = MRI->getRegClass(SubReg);
-    const TargetRegisterClass *SRC =
-      getSuperRegisterRegClass(TRC, SubIdx, Node->getValueType(0));
 
-    // Figure out the register class to create for the destreg.
-    // Note that if we're going to directly use an existing register,
-    // it must be precisely the required class, and not a subclass
-    // thereof.
-    if (VRBase == 0 || SRC != MRI->getRegClass(VRBase)) {
-      // Create the reg
-      assert(SRC && "Couldn't find source register class");
+    // Figure out the register class to create for the destreg.  It should be
+    // the largest legal register class supporting SubIdx sub-registers.
+    // RegisterCoalescer will constrain it further if it decides to eliminate
+    // the INSERT_SUBREG instruction.
+    //
+    //   %dst = INSERT_SUBREG %src, %sub, SubIdx
+    //
+    // is lowered by TwoAddressInstructionPass to:
+    //
+    //   %dst = COPY %src
+    //   %dst:SubIdx = COPY %sub
+    //
+    // There is no constraint on the %src register class.
+    //
+    const TargetRegisterClass *SRC = TLI->getRegClassFor(Node->getValueType(0));
+    SRC = TRI->getSubClassWithSubReg(SRC, SubIdx);
+    assert(SRC && "No register class supports VT and SubIdx for INSERT_SUBREG");
+
+    if (VRBase == 0 || !SRC->hasSubClassEq(MRI->getRegClass(VRBase)))
       VRBase = MRI->createVirtualRegister(SRC);
-    }
 
     // Create the insert_subreg or subreg_to_reg machine instruction.
     MachineInstr *MI = BuildMI(*MF, Node->getDebugLoc(), TII->get(Opc));

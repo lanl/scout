@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
 
 typedef unsigned long NSUInteger;
 
@@ -189,13 +189,13 @@ void test7_unsafe(void) {
 - (id) init50 { return 0; }
 
 - (void) init01 {} // expected-error {{method was declared as an 'init' method, but its implementation doesn't match because its result type is not an object pointer}} \
-                   // expected-warning{{ method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
+                   // expected-warning{{method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
 - (void) init11 {}
 - (void) init21 {} // expected-error {{method was declared as an 'init' method, but its implementation doesn't match because its result type is not an object pointer}}
 - (void) init31 {} // expected-error {{method was declared as an 'init' method, but its implementation doesn't match because its result type is not an object pointer}} \
-                   // expected-warning{{ method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
+                   // expected-warning{{method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
 - (void) init41 {} // expected-error {{method was declared as an 'init' method, but its implementation doesn't match because its result type is not an object pointer}} \
-                   // expected-warning{{ method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
+                   // expected-warning{{method is expected to return an instance of its class type 'Test8', but is declared to return 'void'}}
 - (void) init51 {}
 
 - (Test8_incomplete*) init02 { return 0; } // expected-error {{init methods must return a type related to the receiver type}} \
@@ -263,8 +263,8 @@ void test11(id op, void *vp) {
   b = (vp == nil);
   b = (nil == vp);
 
-  b = (vp == op); // expected-error {{implicit conversion of an Objective-C pointer to 'void *'}}
-  b = (op == vp); // expected-error {{implicit conversion of a non-Objective-C pointer type 'void *' to 'id'}}
+  b = (vp == op); // expected-error {{implicit conversion of Objective-C pointer type 'id' to C pointer type 'void *' requires a bridged cast}} expected-note {{use __bridge}} expected-note {{use __bridge_retained}}
+  b = (op == vp); // expected-error {{implicit conversion of C pointer type 'void *' to Objective-C pointer type 'id' requires a bridged cast}} expected-note {{use __bridge}} expected-note {{use __bridge_transfer}}
 }
 
 void test12(id collection) {
@@ -291,6 +291,16 @@ void test12(id collection) {
 }
 - (void) noninit {
   self = 0; // expected-error {{cannot assign to 'self' outside of a method in the init family}}
+}
+@end
+
+// <rdar://problem/10274056>
+@interface Test13_B
+- (id) consumesSelf __attribute__((ns_consumes_self));
+@end
+@implementation Test13_B
+- (id) consumesSelf {
+  self = 0; // no-warning
 }
 @end
 
@@ -368,7 +378,7 @@ void test16(void) {
   [v test16_6: 0];
 }
 
-@class Test17;
+@class Test17; // expected-note 2{{forward declaration of class here}}
 @protocol Test17p
 - (void) test17;
 + (void) test17;
@@ -393,7 +403,7 @@ struct Test19 *const test19b = 0;
 void test19(void) {
   id x;
   x = (id) test19a; // expected-error {{bridged cast}} \
-  // expected-note{{use __bridge to convert directly (no change in ownership))}} \
+  // expected-note{{use __bridge to convert directly (no change in ownership)}} \
   // expected-note{{use __bridge_transfer to transfer ownership of a +1 'struct Test19 *' into ARC}}
   x = (id) test19b; // expected-error {{bridged cast}} \
   // expected-note{{use __bridge to convert directly (no change in ownership)}} \
@@ -492,18 +502,18 @@ void test26(id y) {
   id myProp2;
 }
 @property id x;
-@property (readonly) id ro; // expected-note {{declared here}}
+@property (readonly) id ro;
 @property (readonly) id custom_ro;
 @property int y;
 
-@property (readonly) id myProp1;
+@property (readonly) __weak id myProp1;
 @property (readonly) id myProp2;
 @property (readonly) __strong id myProp3;
 @end
 
 @implementation Test27
 @synthesize x;
-@synthesize ro; // expected-error {{ARC forbids synthesizing a property of an Objective-C object with unspecified ownership or storage attribute}}
+@synthesize ro;
 @synthesize y;
 
 @synthesize myProp1 = _myProp1;
@@ -641,7 +651,7 @@ void test36(int first, ...) {
   __builtin_va_end(arglist);
 }
 
-@class Test37;
+@class Test37; // expected-note{{forward declaration of class here}}
 void test37(Test37 *c) {
   for (id y in c) { // expected-error {{collection expression type 'Test37' is a forward declaration}}
     (void) y;
@@ -662,3 +672,26 @@ void test38() {
     ;
   }
 }
+
+// rdar://10186536
+@class NSColor;
+void _NSCalc(NSColor* color, NSColor* bezelColors[]) __attribute__((unavailable("not available in automatic reference counting mode")));
+
+void _NSCalcBeze(NSColor* color, NSColor* bezelColors[]); // expected-error {{must explicitly describe intended ownership of an object array parameter}}
+
+// rdar://9970739
+@interface RestaurantTableViewCell
+- (void) restaurantLocation;
+@end
+
+@interface Radar9970739
+- (void) Meth;
+@end
+
+@implementation Radar9970739
+- (void) Meth { 
+  RestaurantTableViewCell *cell;
+  [cell restaurantLocatoin]; // expected-error {{no visible @interface for 'RestaurantTableViewCell' declares the selector 'restaurantLocatoin'}}
+}
+@end
+

@@ -57,6 +57,10 @@ def analyzer_output : Separate<"-analyzer-output">,
 def analyzer_output_EQ : Joined<"-analyzer-output=">,
   Alias<analyzer_output>;
 
+def analyzer_purge : Separate<"-analyzer-purge">,
+  HelpText<"Source Code Analysis - Dead Symbol Removal Frequency">;
+def analyzer_purge_EQ : Joined<"-analyzer-purge=">, Alias<analyzer_purge>;
+
 def analyzer_opt_analyze_headers : Flag<"-analyzer-opt-analyze-headers">,
   HelpText<"Force the static analyzer to analyze functions defined in header files">;
 def analyzer_opt_analyze_nested_blocks : Flag<"-analyzer-opt-analyze-nested-blocks">,
@@ -68,8 +72,6 @@ def analyze_function : Separate<"-analyze-function">,
 def analyze_function_EQ : Joined<"-analyze-function=">, Alias<analyze_function>;
 def analyzer_eagerly_assume : Flag<"-analyzer-eagerly-assume">,
   HelpText<"Eagerly assume the truth/falseness of some symbolic constraints">;
-def analyzer_no_purge_dead : Flag<"-analyzer-no-purge-dead">,
-  HelpText<"Don't remove dead symbols, bindings, and constraints before processing a statement">;
 def analyzer_no_eagerly_trim_egraph : Flag<"-analyzer-no-eagerly-trim-egraph">,
   HelpText<"Don't eagerly remove uninteresting ExplodedNodes from the ExplodedGraph">;
 def trim_egraph : Flag<"-trim-egraph">,
@@ -108,13 +110,19 @@ def disable_llvm_verifier : Flag<"-disable-llvm-verifier">,
   HelpText<"Don't run the LLVM IR verifier pass">;
 def disable_red_zone : Flag<"-disable-red-zone">,
   HelpText<"Do not emit code that uses the red zone.">;
+def fdebug_compilation_dir : Separate<"-fdebug-compilation-dir">,
+  HelpText<"The compilation directory to embed in the debug info.">;
 def dwarf_debug_flags : Separate<"-dwarf-debug-flags">,
   HelpText<"The string to embed in the Dwarf debug flags record.">;
+def faddress_sanitizer: Flag<"-faddress-sanitizer">,
+  HelpText<"Enable AddressSanitizer instrumentation (memory error detection)">;
 def fforbid_guard_variables : Flag<"-fforbid-guard-variables">,
   HelpText<"Emit an error if a C++ static local initializer would need a guard variable">;
 def g : Flag<"-g">, HelpText<"Generate source level debug information">;
 def fno_dwarf2_cfi_asm : Flag<"-fno-dwarf2-cfi-asm">,
   HelpText<"Don't use the cfi directives">;
+def fno_dwarf_directory_asm : Flag<"-fno-dwarf-directory-asm">,
+  HelpText<"Don't separate directory and filename in .file directives">;
 def fcatch_undefined_behavior : Flag<"-fcatch-undefined-behavior">,
   HelpText<"Generate runtime checks for undefined behavior.">;
 def flimit_debug_info : Flag<"-flimit-debug-info">,
@@ -125,6 +133,8 @@ def no_implicit_float : Flag<"-no-implicit-float">,
   HelpText<"Don't generate implicit floating point instructions (x86-only)">;
 def finstrument_functions : Flag<"-finstrument-functions">,
   HelpText<"Generate calls to instrument function entry and exit">;
+def fno_limit_debug_info : Flag<"-fno-limit-debug-info">,
+  HelpText<"Do not limit debug information produced to reduce size of debug binary">;
 def fno_merge_all_constants : Flag<"-fno-merge-all-constants">,
   HelpText<"Disallow merging of constants.">;
 def fno_threadsafe_statics : Flag<"-fno-threadsafe-statics">,
@@ -156,6 +166,10 @@ def mdebug_pass : Separate<"-mdebug-pass">,
   HelpText<"Enable additional debug output">;
 def mdisable_fp_elim : Flag<"-mdisable-fp-elim">,
   HelpText<"Disable frame pointer elimination optimization">;
+def menable_no_infinities : Flag<"-menable-no-infs">,
+  HelpText<"Allow optimization to assume there are no infinities.">;
+def menable_no_nans : Flag<"-menable-no-nans">,
+  HelpText<"Allow optimization to assume there are no NaNs.">;
 def mfloat_abi : Separate<"-mfloat-abi">,
   HelpText<"The float ABI to use">;
 def mno_global_merge : Flag<"-mno-global-merge">,
@@ -190,6 +204,10 @@ def mms_bitfields : Flag<"-mms-bitfields">,
   HelpText<"Set the default structure layout to be compatible with the Microsoft compiler standard.">;
 def mstackrealign : Flag<"-mstackrealign">,
   HelpText<"Force realign the stack at entry to every function.">;
+def mstack_alignment : Joined<"-mstack-alignment=">,
+  HelpText<"Set the stack alignment">;
+def mlink_bitcode_file : Separate<"-mlink-bitcode-file">,
+  HelpText<"Link the given bitcode file before performing optimizations.">;
 def O : Joined<"-O">, HelpText<"Optimization level">;
 def Os : Flag<"-Os">, HelpText<"Optimize for size">;
 def Oz : Flag<"-Oz">, HelpText<"Optimize for size, regardless of performance">;
@@ -222,6 +240,9 @@ def dump_build_information : Separate<"-dump-build-information">,
   HelpText<"output a dump of some build information to a file">;
 def diagnostic_log_file : Separate<"-diagnostic-log-file">,
   HelpText<"Filename (or -) to log diagnostics to">;
+def diagnostic_serialized_file : Separate<"-serialize-diagnostic-file">,
+  MetaVarName<"<filename>">,
+  HelpText<"File for serializing diagnostics in a binary format">;
 def fno_show_column : Flag<"-fno-show-column">,
   HelpText<"Do not include column number on diagnostics">;
 def fshow_column : Flag<"-fshow-column">,
@@ -270,6 +291,8 @@ def fmacro_backtrace_limit : Separate<"-fmacro-backtrace-limit">, MetaVarName<"<
   HelpText<"Set the maximum number of entries to print in a macro expansion backtrace (0 = no limit).">;
 def ftemplate_backtrace_limit : Separate<"-ftemplate-backtrace-limit">, MetaVarName<"<N>">,
   HelpText<"Set the maximum number of entries to print in a template instantiation backtrace (0 = no limit).">;
+def fconstexpr_backtrace_limit : Separate<"-fconstexpr-backtrace-limit">, MetaVarName<"<N>">,
+  HelpText<"Set the maximum number of entries to print in a constexpr evaluation backtrace (0 = no limit).">;
 def fmessage_length : Separate<"-fmessage-length">, MetaVarName<"<N>">,
   HelpText<"Format message diagnostics so that they fit within N columns or fewer, when possible.">;
 def fcolor_diagnostics : Flag<"-fcolor-diagnostics">,
@@ -363,7 +386,7 @@ def ast_view : Flag<"-ast-view">,
 def print_decl_contexts : Flag<"-print-decl-contexts">,
   HelpText<"Print DeclContexts and their Decls">;
 def emit_module : Flag<"-emit-module">,
-  HelpText<"Generate pre-compiled module file">;
+  HelpText<"Generate pre-compiled module file from a module map">;
 def emit_pth : Flag<"-emit-pth">,
   HelpText<"Generate pre-tokenized header file">;
 def emit_pch : Flag<"-emit-pch">,
@@ -522,8 +545,8 @@ def fobjc_default_synthesize_properties : Flag<"-fobjc-default-synthesize-proper
   HelpText<"enable the default synthesis of Objective-C properties">;
 def print_ivar_layout : Flag<"-print-ivar-layout">,
   HelpText<"Enable Objective-C Ivar layout bitmap print trace">;
-def fobjc_nonfragile_abi : Flag<"-fobjc-nonfragile-abi">,
-  HelpText<"enable objective-c's nonfragile abi">;
+def fobjc_fragile_abi : Flag<"-fobjc-fragile-abi">,
+  HelpText<"Use Objective-C's fragile ABI">;
 def fno_objc_infer_related_result_type : Flag<
     "-fno-objc-infer-related-result-type">,
   HelpText<
@@ -539,6 +562,8 @@ def pic_level : Separate<"-pic-level">,
   HelpText<"Value for __PIC__">;
 def pthread : Flag<"-pthread">,
   HelpText<"Support POSIX threads in generated code">;
+def fpack_struct : Separate<"-fpack-struct">,
+  HelpText<"Specify the default maximum struct packing alignment">;
 def fpascal_strings : Flag<"-fpascal-strings">,
   HelpText<"Recognize and construct Pascal-style string literals">;
 def fno_rtti : Flag<"-fno-rtti">,
@@ -549,6 +574,8 @@ def dump_deserialized_pch_decls : Flag<"-dump-deserialized-decls">,
   HelpText<"Dump declarations that are deserialized from PCH, for testing">;
 def error_on_deserialized_pch_decl : Separate<"-error-on-deserialized-decl">,
   HelpText<"Emit error if a specific declaration is deserialized from PCH, for testing">;
+def error_on_deserialized_pch_decl_EQ : Joined<"-error-on-deserialized-decl=">,
+  Alias<error_on_deserialized_pch_decl>;
 def fshort_wchar : Flag<"-fshort-wchar">,
   HelpText<"Force wchar_t to be a short unsigned int">;
 def fshort_enums : Flag<"-fshort-enums">,
@@ -563,6 +590,8 @@ def fvisibility_inlines_hidden : Flag<"-fvisibility-inlines-hidden">,
   HelpText<"Give inline C++ member functions default visibility by default">;
 def ftemplate_depth : Separate<"-ftemplate-depth">,
   HelpText<"Maximum depth of recursive template instantiation">;
+def fconstexpr_depth : Separate<"-fconstexpr-depth">,
+  HelpText<"Maximum depth of recursive constexpr function calls">;
 def Wlarge_by_value_copy : Separate<"-Wlarge-by-value-copy">,
   HelpText<"Warn if a function definition returns or accepts an object larger "
            "in bytes that a given value">;
@@ -593,13 +622,15 @@ def fdeprecated_macro : Flag<"-fdeprecated-macro">,
   HelpText<"Defines the __DEPRECATED macro">;
 def fno_deprecated_macro : Flag<"-fno-deprecated-macro">,
   HelpText<"Undefines the __DEPRECATED macro">;
+def fapple_pragma_pack : Flag<"-fapple-pragma-pack">,
+  HelpText<"Enable Apple gcc-compatible #pragma pack handling">;
 
 //===----------------------------------------------------------------------===//
 // Header Search Options
 //===----------------------------------------------------------------------===//
 
-def nostdinc : Flag<"-nostdinc">,
-  HelpText<"Disable standard #include directories">;
+def nostdsysteminc : Flag<"-nostdsysteminc">,
+  HelpText<"Disable standard system #include directories">;
 def nostdincxx : Flag<"-nostdinc++">,
   HelpText<"Disable standard #include directories for the C++ standard library">;
 def nobuiltininc : Flag<"-nobuiltininc">,
@@ -607,6 +638,9 @@ def nobuiltininc : Flag<"-nobuiltininc">,
 def fmodule_cache_path : Separate<"-fmodule-cache-path">,
   MetaVarName<"<directory>">,
   HelpText<"Specify the module cache path">;
+def fmodule_name : Joined<"-fmodule-name=">, 
+  MetaVarName<"<name>">,
+  HelpText<"Specify the name of the module to build">;           
 def fdisable_module_hash : Flag<"-fdisable-module-hash">,
   HelpText<"Disable the module hash">;
 def fauto_module_import : Flag<"-fauto-module-import">,
@@ -633,11 +667,24 @@ def objc_isystem : JoinedOrSeparate<"-objc-isystem">,
 def objcxx_isystem : JoinedOrSeparate<"-objcxx-isystem">,
   MetaVarName<"<directory>">,
   HelpText<"Add directory to the ObjC++ SYSTEM include search path">;
+def iframework : JoinedOrSeparate<"-iframework">, MetaVarName<"<directory>">,
+  HelpText<"Add directory to SYSTEM framework search path">;
 def isystem : JoinedOrSeparate<"-isystem">, MetaVarName<"<directory>">,
   HelpText<"Add directory to SYSTEM include search path">;
 def iwithsysroot : JoinedOrSeparate<"-iwithsysroot">,MetaVarName<"<directory>">,
   HelpText<"Add directory to SYSTEM include search path, "
            "absolute paths are relative to -isysroot">;
+def internal_isystem : JoinedOrSeparate<"-internal-isystem">,
+  MetaVarName<"<directory>">,
+  HelpText<"Add directory to the internal system include search path; these "
+           "are assumed to not be user-provided and are used to model system "
+           "and standard headers' paths.">;
+def internal_externc_isystem : JoinedOrSeparate<"-internal-externc-isystem">,
+  MetaVarName<"<directory>">,
+  HelpText<"Add directory to the internal system include search path with "
+           "implicit extern \"C\" semantics; these are assumed to not be "
+           "user-provided and are used to model system and standard headers' "
+           "paths.">;
 def iprefix : JoinedOrSeparate<"-iprefix">, MetaVarName<"<prefix>">,
   HelpText<"Set the -iwithprefix/-iwithprefixbefore prefix">;
 def iwithprefix : JoinedOrSeparate<"-iwithprefix">, MetaVarName<"<dir>">,
@@ -676,6 +723,8 @@ def undef : Flag<"-undef">, MetaVarName<"<macro>">,
   HelpText<"undef all system defines">;
 def detailed_preprocessing_record : Flag<"-detailed-preprocessing-record">,
   HelpText<"include a detailed record of preprocessing actions">;
+def mqdsp6_compat : Flag<"-mqdsp6-compat">,
+  HelpText<"Enable hexagon-qdsp6 backward compatibility">;
 
 //===----------------------------------------------------------------------===//
 // Preprocessed Output Options
@@ -720,3 +769,10 @@ def gpu : Flag<"-gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
 def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
+
+//===----------------------------------------------------------------------===//
+// CUDA Options
+//===----------------------------------------------------------------------===//
+
+def fcuda_is_device : Flag<"-fcuda-is-device">,
+  HelpText<"Generate code for CUDA device">;

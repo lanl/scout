@@ -591,11 +591,11 @@ static bool translateInstruction(MCInst &mcInst,
 }
 
 static MCDisassembler *createX86_32Disassembler(const Target &T, const MCSubtargetInfo &STI) {
-  return new X86Disassembler::X86_32Disassembler(STI);
+  return new X86Disassembler::X86GenericDisassembler(STI, MODE_32BIT);
 }
 
 static MCDisassembler *createX86_64Disassembler(const Target &T, const MCSubtargetInfo &STI) {
-  return new X86Disassembler::X86_64Disassembler(STI);
+  return new X86Disassembler::X86GenericDisassembler(STI, MODE_64BIT);
 }
 
 extern "C" void LLVMInitializeX86Disassembler() { 

@@ -71,7 +71,11 @@ unsigned ContentCache::getSize() const {
 
 void ContentCache::replaceBuffer(const llvm::MemoryBuffer *B,
                                  bool DoNotFree) {
-  assert(B != Buffer.getPointer());
+  if (B == Buffer.getPointer()) {
+    assert(0 && "Replacing with the same buffer");
+    Buffer.setInt(DoNotFree? DoNotFreeFlag : 0);
+    return;
+  }
   
   if (shouldFreeBuffer())
     delete Buffer.getPointer();
@@ -378,13 +382,17 @@ SourceManager::~SourceManager() {
   // content cache objects are bump pointer allocated, we just have to run the
   // dtors, but we call the deallocate method for completeness.
   for (unsigned i = 0, e = MemBufferInfos.size(); i != e; ++i) {
-    MemBufferInfos[i]->~ContentCache();
-    ContentCacheAlloc.Deallocate(MemBufferInfos[i]);
+    if (MemBufferInfos[i]) {
+      MemBufferInfos[i]->~ContentCache();
+      ContentCacheAlloc.Deallocate(MemBufferInfos[i]);
+    }
   }
   for (llvm::DenseMap<const FileEntry*, SrcMgr::ContentCache*>::iterator
        I = FileInfos.begin(), E = FileInfos.end(); I != E; ++I) {
-    I->second->~ContentCache();
-    ContentCacheAlloc.Deallocate(I->second);
+    if (I->second) {
+      I->second->~ContentCache();
+      ContentCacheAlloc.Deallocate(I->second);
+    }
   }
   
   delete FakeBufferForRecovery;
@@ -580,6 +588,7 @@ void SourceManager::overrideFileContents(const FileEntry *SourceFile,
   assert(IR && "getOrCreateContentCache() cannot return NULL");
 
   const_cast<SrcMgr::ContentCache *>(IR)->replaceBuffer(Buffer, DoNotFree);
+  const_cast<SrcMgr::ContentCache *>(IR)->BufferOverridden = true;
 }
 
 void SourceManager::overrideFileContents(const FileEntry *SourceFile,
@@ -730,7 +739,11 @@ FileID SourceManager::getFileIDLocal(unsigned SLocOffset) const {
 /// This function knows that the SourceLocation is in a loaded buffer, not a
 /// local one.
 FileID SourceManager::getFileIDLoaded(unsigned SLocOffset) const {
-  assert(SLocOffset >= CurrentLoadedOffset && "Bad function choice");
+  // Sanity checking, otherwise a bug may lead to hanging in release build.
+  if (SLocOffset < CurrentLoadedOffset) {
+    assert(0 && "Invalid SLocOffset or bad function choice");
+    return FileID();
+  }
 
   // Essentially the same as the local case, but the loaded array is sorted
   // in the other direction.
@@ -807,6 +820,16 @@ SourceLocation SourceManager::getSpellingLocSlowCase(SourceLocation Loc) const {
     std::pair<FileID, unsigned> LocInfo = getDecomposedLoc(Loc);
     Loc = getSLocEntry(LocInfo.first).getExpansion().getSpellingLoc();
     Loc = Loc.getLocWithOffset(LocInfo.second);
+  } while (!Loc.isFileID());
+  return Loc;
+}
+
+SourceLocation SourceManager::getFileLocSlowCase(SourceLocation Loc) const {
+  do {
+    if (isMacroArgExpansion(Loc))
+      Loc = getImmediateSpellingLoc(Loc);
+    else
+      Loc = getImmediateExpansionRange(Loc).first;
   } while (!Loc.isFileID());
   return Loc;
 }
@@ -932,13 +955,20 @@ const char *SourceManager::getCharacterData(SourceLocation SL,
 unsigned SourceManager::getColumnNumber(FileID FID, unsigned FilePos,
                                         bool *Invalid) const {
   bool MyInvalid = false;
-  const char *Buf = getBuffer(FID, &MyInvalid)->getBufferStart();
+  const llvm::MemoryBuffer *MemBuf = getBuffer(FID, &MyInvalid);
   if (Invalid)
     *Invalid = MyInvalid;
 
   if (MyInvalid)
     return 1;
 
+  if (FilePos >= MemBuf->getBufferSize()) {
+    if (Invalid)
+      *Invalid = MyInvalid;
+    return 1;
+  }
+
+  const char *Buf = MemBuf->getBufferStart();
   unsigned LineStart = FilePos;
   while (LineStart && Buf[LineStart-1] != '\n' && Buf[LineStart-1] != '\r')
     --LineStart;
@@ -1494,9 +1524,10 @@ SourceLocation SourceManager::translateLineCol(FileID FID,
     return FileLoc.getLocWithOffset(Size);
   }
 
+  const llvm::MemoryBuffer *Buffer = Content->getBuffer(Diag, *this);
   unsigned FilePos = Content->SourceLineCache[Line - 1];
-  const char *Buf = Content->getBuffer(Diag, *this)->getBufferStart() + FilePos;
-  unsigned BufLength = Content->getBuffer(Diag, *this)->getBufferEnd() - Buf;
+  const char *Buf = Buffer->getBufferStart() + FilePos;
+  unsigned BufLength = Buffer->getBufferSize() - FilePos;
   if (BufLength == 0)
     return FileLoc.getLocWithOffset(FilePos);
 
@@ -1554,14 +1585,31 @@ void SourceManager::computeMacroArgsCache(MacroArgsMap *&CachePtr,
       continue;
     }
 
-    if (!Entry.getExpansion().isMacroArgExpansion())
+    const ExpansionInfo &ExpInfo = Entry.getExpansion();
+
+    if (ExpInfo.getExpansionLocStart().isFileID()) {
+      if (!isInFileID(ExpInfo.getExpansionLocStart(), FID))
+        return; // No more files/macros that may be "contained" in this file.
+    }
+
+    if (!ExpInfo.isMacroArgExpansion())
       continue;
- 
-    SourceLocation SpellLoc =
-        getSpellingLoc(Entry.getExpansion().getSpellingLoc());
+
+    SourceLocation SpellLoc = ExpInfo.getSpellingLoc();
+    while (!SpellLoc.isFileID()) {
+      std::pair<FileID, unsigned> LocInfo = getDecomposedLoc(SpellLoc);
+      const ExpansionInfo &Info = getSLocEntry(LocInfo.first).getExpansion();
+      if (!Info.isMacroArgExpansion())
+        break;
+      SpellLoc = Info.getSpellingLoc().getLocWithOffset(LocInfo.second);
+    }
+    if (!SpellLoc.isFileID())
+      continue;
+    
     unsigned BeginOffs;
     if (!isInFileID(SpellLoc, FID, &BeginOffs))
-      return; // No more files/macros that may be "contained" in this file.
+      continue;
+
     unsigned EndOffs = BeginOffs + getFileIDSize(FileID::get(ID));
 
     // Add a new chunk for this macro argument. A previous macro argument chunk
@@ -1634,7 +1682,7 @@ static bool MoveUpIncludeHierarchy(std::pair<FileID, unsigned> &Loc,
   SourceLocation UpperLoc;
   const SrcMgr::SLocEntry &Entry = SM.getSLocEntry(Loc.first);
   if (Entry.isExpansion())
-    UpperLoc = Entry.getExpansion().getExpansionLocEnd();
+    UpperLoc = Entry.getExpansion().getExpansionLocStart();
   else
     UpperLoc = Entry.getFile().getIncludeLoc();
   

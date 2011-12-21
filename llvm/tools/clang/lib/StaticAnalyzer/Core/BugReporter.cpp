@@ -34,6 +34,8 @@ using namespace ento;
 
 BugReporterVisitor::~BugReporterVisitor() {}
 
+void BugReporterContext::anchor() {}
+
 //===----------------------------------------------------------------------===//
 // Helper routines for walking the ExplodedGraph and fetching statements.
 //===----------------------------------------------------------------------===//
@@ -438,7 +440,7 @@ public:
     if (Loc::isLocType(VD->getType())) {
       llvm::SmallString<64> buf;
       llvm::raw_svector_ostream os(buf);
-      os << '\'' << VD << "' now aliases '" << MostRecent << '\'';
+      os << '\'' << *VD << "' now aliases '" << *MostRecent << '\'';
       PathDiagnosticLocation L =
         PathDiagnosticLocation::createBegin(S, BR.getSourceManager(),
                                                    Pred->getLocationContext());
@@ -594,12 +596,12 @@ static void GenerateMinimalPathDiagnostic(PathDiagnostic& PD,
 
                   if (D) {
                     GetRawInt = false;
-                    os << D;
+                    os << *D;
                   }
                 }
 
                 if (GetRawInt)
-                  os << LHS->EvaluateAsInt(PDB.getASTContext());
+                  os << LHS->EvaluateKnownConstInt(PDB.getASTContext());
 
                 os << ":'  at line "
                 << End.asLocation().getExpansionLineNumber();
@@ -1204,9 +1206,13 @@ BugType::~BugType() { }
 
 void BugType::FlushReports(BugReporter &BR) {}
 
+void BuiltinBug::anchor() {}
+
 //===----------------------------------------------------------------------===//
 // Methods for BugReport and subclasses.
 //===----------------------------------------------------------------------===//
+
+void BugReport::NodeResolver::anchor() {}
 
 void BugReport::addVisitor(BugReporterVisitor* visitor) {
   if (!visitor)

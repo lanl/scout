@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-nonfragile-abi -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify %s
 // rdar://9340606
 
 @interface Foo {
@@ -110,3 +110,18 @@
 @synthesize isAutosaving = _isAutosaving;
 @end
 
+// rdar://10239594
+// Test for 'Class' properties being unretained.
+@interface MyClass {
+@private
+    Class _controllerClass;
+    id _controllerId;
+}
+@property (copy) Class controllerClass;
+@property (copy) id controllerId;
+@end
+
+@implementation MyClass
+@synthesize controllerClass = _controllerClass;
+@synthesize controllerId = _controllerId;
+@end

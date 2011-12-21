@@ -36,14 +36,14 @@ static bool isArc4RandomAvailable(const ASTContext &Ctx) {
 namespace {
 class WalkAST : public StmtVisitor<WalkAST> {
   BugReporter &BR;
-  AnalysisContext* AC;
+  AnalysisDeclContext* AC;
   enum { num_setids = 6 };
   IdentifierInfo *II_setid[num_setids];
 
   const bool CheckRand;
 
 public:
-  WalkAST(BugReporter &br, AnalysisContext* ac)
+  WalkAST(BugReporter &br, AnalysisDeclContext* ac)
   : BR(br), AC(ac), II_setid(),
     CheckRand(isArc4RandomAvailable(BR.getContext())) {}
 
@@ -70,6 +70,7 @@ public:
   void checkCall_strcat(const CallExpr *CE, const FunctionDecl *FD);
   void checkCall_rand(const CallExpr *CE, const FunctionDecl *FD);
   void checkCall_random(const CallExpr *CE, const FunctionDecl *FD);
+  void checkCall_vfork(const CallExpr *CE, const FunctionDecl *FD);
   void checkUncheckedReturnValue(CallExpr *CE);
 };
 } // end anonymous namespace
@@ -116,6 +117,7 @@ void WalkAST::VisitCallExpr(CallExpr *CE) {
     .Case("rand", &WalkAST::checkCall_rand)
     .Case("rand_r", &WalkAST::checkCall_rand)
     .Case("random", &WalkAST::checkCall_random)
+    .Case("vfork", &WalkAST::checkCall_vfork)
     .Default(NULL);
 
   // If the callee isn't defined, it is not of security concern.
@@ -475,11 +477,11 @@ void WalkAST::checkCall_rand(const CallExpr *CE, const FunctionDecl *FD) {
   // Issue a warning.
   llvm::SmallString<256> buf1;
   llvm::raw_svector_ostream os1(buf1);
-  os1 << '\'' << FD << "' is a poor random number generator";
+  os1 << '\'' << *FD << "' is a poor random number generator";
 
   llvm::SmallString<256> buf2;
   llvm::raw_svector_ostream os2(buf2);
-  os2 << "Function '" << FD
+  os2 << "Function '" << *FD
       << "' is obsolete because it implements a poor random number generator."
       << "  Use 'arc4random' instead";
 
@@ -516,6 +518,26 @@ void WalkAST::checkCall_random(const CallExpr *CE, const FunctionDecl *FD) {
                      "The 'random' function produces a sequence of values that "
                      "an adversary may be able to predict.  Use 'arc4random' "
                      "instead", CELoc, &R, 1);
+}
+
+//===----------------------------------------------------------------------===//
+// Check: 'vfork' should not be used.
+// POS33-C: Do not use vfork().
+//===----------------------------------------------------------------------===//
+
+void WalkAST::checkCall_vfork(const CallExpr *CE, const FunctionDecl *FD) {
+  // All calls to vfork() are insecure, issue a warning.
+  SourceRange R = CE->getCallee()->getSourceRange();
+  PathDiagnosticLocation CELoc =
+    PathDiagnosticLocation::createBegin(CE, BR.getSourceManager(), AC);
+  BR.EmitBasicReport("Potential insecure implementation-specific behavior in "
+                     "call 'vfork'",
+                     "Security",
+                     "Call to function 'vfork' is insecure as it can lead to "
+                     "denial of service situations in the parent process. "
+                     "Replace calls to vfork with calls to the safer "
+                     "'posix_spawn' function",
+                     CELoc, &R, 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -566,12 +588,12 @@ void WalkAST::checkUncheckedReturnValue(CallExpr *CE) {
   // Issue a warning.
   llvm::SmallString<256> buf1;
   llvm::raw_svector_ostream os1(buf1);
-  os1 << "Return value is not checked in call to '" << FD << '\'';
+  os1 << "Return value is not checked in call to '" << *FD << '\'';
 
   llvm::SmallString<256> buf2;
   llvm::raw_svector_ostream os2(buf2);
-  os2 << "The return value from the call to '" << FD
-      << "' is not checked.  If an error occurs in '" << FD
+  os2 << "The return value from the call to '" << *FD
+      << "' is not checked.  If an error occurs in '" << *FD
       << "', the following code may execute with unexpected privileges";
 
   SourceRange R = CE->getCallee()->getSourceRange();
@@ -589,7 +611,7 @@ class SecuritySyntaxChecker : public Checker<check::ASTCodeBody> {
 public:
   void checkASTCodeBody(const Decl *D, AnalysisManager& mgr,
                         BugReporter &BR) const {
-    WalkAST walker(BR, mgr.getAnalysisContext(D));
+    WalkAST walker(BR, mgr.getAnalysisDeclContext(D));
     walker.Visit(D->getBody());
   }
 };

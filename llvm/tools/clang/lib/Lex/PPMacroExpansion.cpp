@@ -21,6 +21,7 @@
 #include "clang/Lex/LexDiagnostic.h"
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/ExternalPreprocessorSource.h"
+#include "clang/Lex/LiteralSupport.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Config/config.h"
@@ -50,9 +51,13 @@ void Preprocessor::setMacroInfo(IdentifierInfo *II, MacroInfo *MI) {
   if (MI) {
     Macros[II] = MI;
     II->setHasMacroDefinition(true);
+    if (II->isFromAST())
+      II->setChangedSinceDeserialization();
   } else if (II->hasMacroDefinition()) {
     Macros.erase(II);
     II->setHasMacroDefinition(false);
+    if (II->isFromAST())
+      II->setChangedSinceDeserialization();
   }
 }
 
@@ -92,6 +97,7 @@ void Preprocessor::RegisterBuiltinMacros() {
   Ident__has_attribute    = RegisterBuiltinMacro(*this, "__has_attribute");
   Ident__has_include      = RegisterBuiltinMacro(*this, "__has_include");
   Ident__has_include_next = RegisterBuiltinMacro(*this, "__has_include_next");
+  Ident__has_warning      = RegisterBuiltinMacro(*this, "__has_warning");
 
   // Microsoft Extensions.
   if (Features.MicrosoftExt) 
@@ -109,6 +115,11 @@ static bool isTrivialSingleTokenExpansion(const MacroInfo *MI,
 
   // If the token isn't an identifier, it's always literally expanded.
   if (II == 0) return true;
+
+  // If the information about this identifier is out of date, update it from
+  // the external source.
+  if (II->isOutOfDate())
+    PP.getExternalSource()->updateOutOfDateIdentifier(*II);
 
   // If the identifier is a macro, and if that macro is enabled, it may be
   // expanded so it's not a trivial expansion.
@@ -419,8 +430,10 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
 
     // Empty arguments are standard in C99 and C++0x, and are supported as an extension in
     // other modes.
-    if (ArgTokens.size() == ArgTokenStart && !Features.C99 && !Features.CPlusPlus0x)
-      Diag(Tok, diag::ext_empty_fnmacro_arg);
+    if (ArgTokens.size() == ArgTokenStart && !Features.C99)
+      Diag(Tok, Features.CPlusPlus0x ?
+           diag::warn_cxx98_compat_empty_fnmacro_arg :
+           diag::ext_empty_fnmacro_arg);
 
     // Add a marker EOF token to the end of the token list for this argument.
     Token EOFTok;
@@ -575,6 +588,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
   const LangOptions &LangOpts = PP.getLangOptions();
 
   return llvm::StringSwitch<bool>(II->getName())
+           .Case("address_sanitizer", LangOpts.AddressSanitizer)
            .Case("attribute_analyzer_noreturn", true)
            .Case("attribute_availability", true)
            .Case("attribute_cf_returns_not_retained", true)
@@ -606,17 +620,21 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("ownership_holds", true)
            .Case("ownership_returns", true)
            .Case("ownership_takes", true)
+           .Case("arc_cf_code_audited", true)
            // C1X features
+           .Case("c_alignas", LangOpts.C1X)
            .Case("c_generic_selections", LangOpts.C1X)
            .Case("c_static_assert", LangOpts.C1X)
            // C++0x features
            .Case("cxx_access_control_sfinae", LangOpts.CPlusPlus0x)
            .Case("cxx_alias_templates", LangOpts.CPlusPlus0x)
+           .Case("cxx_alignas", LangOpts.CPlusPlus0x)
            .Case("cxx_attributes", LangOpts.CPlusPlus0x)
            .Case("cxx_auto_type", LangOpts.CPlusPlus0x)
          //.Case("cxx_constexpr", false);
            .Case("cxx_decltype", LangOpts.CPlusPlus0x)
            .Case("cxx_default_function_template_args", LangOpts.CPlusPlus0x)
+           .Case("cxx_defaulted_functions", LangOpts.CPlusPlus0x)
            .Case("cxx_delegating_constructors", LangOpts.CPlusPlus0x)
            .Case("cxx_deleted_functions", LangOpts.CPlusPlus0x)
            .Case("cxx_explicit_conversions", LangOpts.CPlusPlus0x)
@@ -630,13 +648,13 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("cxx_nullptr", LangOpts.CPlusPlus0x)
            .Case("cxx_override_control", LangOpts.CPlusPlus0x)
            .Case("cxx_range_for", LangOpts.CPlusPlus0x)
-         //.Case("cxx_raw_string_literals", false)
+           .Case("cxx_raw_string_literals", LangOpts.CPlusPlus0x)
            .Case("cxx_reference_qualified_functions", LangOpts.CPlusPlus0x)
            .Case("cxx_rvalue_references", LangOpts.CPlusPlus0x)
            .Case("cxx_strong_enums", LangOpts.CPlusPlus0x)
            .Case("cxx_static_assert", LangOpts.CPlusPlus0x)
            .Case("cxx_trailing_return", LangOpts.CPlusPlus0x)
-         //.Case("cxx_unicode_literals", false)
+           .Case("cxx_unicode_literals", LangOpts.CPlusPlus0x)
          //.Case("cxx_unrestricted_unions", false)
          //.Case("cxx_user_literals", false)
            .Case("cxx_variadic_templates", LangOpts.CPlusPlus0x)
@@ -662,6 +680,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
                  PP.getIdentifierInfo("__is_empty")->getTokenID()
                                                             != tok::identifier)
            .Case("is_enum", LangOpts.CPlusPlus)
+           .Case("is_final", LangOpts.CPlusPlus)
            .Case("is_literal", LangOpts.CPlusPlus)
            .Case("is_standard_layout", LangOpts.CPlusPlus)
            // __is_pod is available only if the horrible
@@ -700,6 +719,7 @@ static bool HasExtension(const Preprocessor &PP, const IdentifierInfo *II) {
   // must be less restrictive than HasFeature's.
   return llvm::StringSwitch<bool>(II->getName())
            // C1X features supported by other languages as extensions.
+           .Case("c_alignas", true)
            .Case("c_generic_selections", true)
            .Case("c_static_assert", true)
            // C++0x features supported by other languages as extensions.
@@ -1016,10 +1036,78 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       Value = EvaluateHasIncludeNext(Tok, II, *this);
     OS << (int)Value;
     Tok.setKind(tok::numeric_constant);
+  } else if (II == Ident__has_warning) {
+    // The argument should be a parenthesized string literal.
+    // The argument to these builtins should be a parenthesized identifier.
+    SourceLocation StartLoc = Tok.getLocation();    
+    bool IsValid = false;
+    bool Value = false;
+    // Read the '('.
+    Lex(Tok);
+    do {
+      if (Tok.is(tok::l_paren)) {      
+        // Read the string.
+        Lex(Tok);
+      
+        // We need at least one string literal.
+        if (!Tok.is(tok::string_literal)) {
+          StartLoc = Tok.getLocation();
+          IsValid = false;
+          // Eat tokens until ')'.
+          do Lex(Tok); while (!(Tok.is(tok::r_paren) || Tok.is(tok::eod)));
+          break;
+        }
+        
+        // String concatenation allows multiple strings, which can even come
+        // from macro expansion.
+        SmallVector<Token, 4> StrToks;
+        while (Tok.is(tok::string_literal)) {
+          StrToks.push_back(Tok);
+          LexUnexpandedToken(Tok);
+        }
+        
+        // Is the end a ')'?
+        if (!(IsValid = Tok.is(tok::r_paren)))
+          break;
+        
+        // Concatenate and parse the strings.
+        StringLiteralParser Literal(&StrToks[0], StrToks.size(), *this);
+        assert(Literal.isAscii() && "Didn't allow wide strings in");
+        if (Literal.hadError)
+          break;
+        if (Literal.Pascal) {
+          Diag(Tok, diag::warn_pragma_diagnostic_invalid);
+          break;
+        }
+        
+        StringRef WarningName(Literal.GetString());
+        
+        if (WarningName.size() < 3 || WarningName[0] != '-' ||
+            WarningName[1] != 'W') {
+          Diag(StrToks[0].getLocation(), diag::warn_has_warning_invalid_option);
+          break;
+        }
+        
+        // Finally, check if the warning flags maps to a diagnostic group.
+        // We construct a SmallVector here to talk to getDiagnosticIDs().
+        // Although we don't use the result, this isn't a hot path, and not
+        // worth special casing.
+        llvm::SmallVector<diag::kind, 10> Diags;
+        Value = !getDiagnostics().getDiagnosticIDs()->
+          getDiagnosticsInGroup(WarningName.substr(2), Diags);
+      }
+    } while (false);
+    
+    if (!IsValid)
+      Diag(StartLoc, diag::err_warning_check_malformed);
+
+    OS << (int)Value;
+    Tok.setKind(tok::numeric_constant);
   } else {
     llvm_unreachable("Unknown identifier!");
   }
-  CreateString(OS.str().data(), OS.str().size(), Tok, Tok.getLocation());
+  CreateString(OS.str().data(), OS.str().size(), Tok,
+               Tok.getLocation(), Tok.getLocation());
 }
 
 void Preprocessor::markMacroAsUsed(MacroInfo *MI) {

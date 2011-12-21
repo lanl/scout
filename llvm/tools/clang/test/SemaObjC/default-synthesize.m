@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -fobjc-nonfragile-abi -fobjc-default-synthesize-properties -verify %s
+// RUN: %clang_cc1 -fsyntax-only -fobjc-default-synthesize-properties -verify %s
 
 @interface NSString @end
 
@@ -115,3 +115,16 @@
 @synthesize PROP=IVAR;
 @end
 
+// rdar://10567333
+@protocol MyProtocol 
+@property (nonatomic, strong) NSString *requiredString; // expected-note {{property declared here}}
+
+@optional
+@property (nonatomic, strong) NSString *optionalString;
+@end
+ 
+@interface MyClass <MyProtocol> 
+@end
+ 
+@implementation MyClass // expected-warning {{auto property synthesis will not synthesize property declared in a protocol}}
+@end

@@ -130,6 +130,7 @@ void TypePrinter::print(const Type *T, Qualifiers Quals, std::string &buffer) {
     case Type::DependentTemplateSpecialization:
     case Type::ObjCObject:
     case Type::ObjCInterface:
+    case Type::Atomic:
       CanPrefixQualifiers = true;
       break;
       
@@ -588,6 +589,16 @@ void TypePrinter::printAuto(const AutoType *T, std::string &S) {
   }
 }
 
+void TypePrinter::printAtomic(const AtomicType *T, std::string &S) {
+  if (!S.empty())
+    S = ' ' + S;
+  std::string Str;
+  IncludeStrongLifetimeRAII Strong(Policy);
+  print(T->getValueType(), Str);
+
+  S = "_Atomic(" + Str + ")" + S;
+}
+
 /// Appends the given scope to the end of a string.
 void TypePrinter::AppendScope(DeclContext *DC, std::string &Buffer) {
   if (DC->isTranslationUnit()) return;
@@ -596,6 +607,9 @@ void TypePrinter::AppendScope(DeclContext *DC, std::string &Buffer) {
   unsigned OldSize = Buffer.size();
 
   if (NamespaceDecl *NS = dyn_cast<NamespaceDecl>(DC)) {
+    if (Policy.SuppressUnwrittenScope && 
+        (NS->isAnonymousNamespace() || NS->isInline()))
+      return;
     if (NS->getIdentifier())
       Buffer += NS->getNameAsString();
     else
@@ -616,6 +630,8 @@ void TypePrinter::AppendScope(DeclContext *DC, std::string &Buffer) {
       Buffer += Typedef->getIdentifier()->getName();
     else if (Tag->getIdentifier())
       Buffer += Tag->getIdentifier()->getName();
+    else
+      return;
   }
 
   if (Buffer.size() != OldSize)
@@ -1159,9 +1175,21 @@ void Qualifiers::getAsStringInternal(std::string &S,
   AppendTypeQualList(S, getCVRQualifiers());
   if (unsigned addrspace = getAddressSpace()) {
     if (!S.empty()) S += ' ';
-    S += "__attribute__((address_space(";
-    S += llvm::utostr_32(addrspace);
-    S += ")))";
+    switch (addrspace) {
+      case LangAS::opencl_global:
+        S += "__global";
+        break;
+      case LangAS::opencl_local:
+        S += "__local";
+        break;
+      case LangAS::opencl_constant:
+        S += "__constant";
+        break;
+      default:
+        S += "__attribute__((address_space(";
+        S += llvm::utostr_32(addrspace);
+        S += ")))";
+    }
   }
   if (Qualifiers::GC gc = getObjCGCAttr()) {
     if (!S.empty()) S += ' ';

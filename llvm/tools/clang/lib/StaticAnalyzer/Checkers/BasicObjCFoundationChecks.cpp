@@ -249,11 +249,8 @@ static const char* GetCFNumberTypeStr(uint64_t i) {
 
 void CFNumberCreateChecker::checkPreStmt(const CallExpr *CE,
                                          CheckerContext &C) const {
-  const Expr *Callee = CE->getCallee();
   const ProgramState *state = C.getState();
-  SVal CallV = state->getSVal(Callee);
-  const FunctionDecl *FD = CallV.getAsFunctionDecl();
-
+  const FunctionDecl *FD = C.getCalleeDecl(CE);
   if (!FD)
     return;
   
@@ -316,7 +313,7 @@ void CFNumberCreateChecker::checkPreStmt(const CallExpr *CE,
   //  the bits initialized to the provided values.
   //
   if (ExplodedNode *N = SourceSize < TargetSize ? C.generateSink() 
-                                                : C.generateNode()) {
+                                                : C.addTransition()) {
     llvm::SmallString<128> sbuf;
     llvm::raw_svector_ostream os(sbuf);
     
@@ -363,11 +360,8 @@ void CFRetainReleaseChecker::checkPreStmt(const CallExpr *CE,
   if (CE->getNumArgs() != 1)
     return;
 
-  // Get the function declaration of the callee.
   const ProgramState *state = C.getState();
-  SVal X = state->getSVal(CE->getCallee());
-  const FunctionDecl *FD = X.getAsFunctionDecl();
-
+  const FunctionDecl *FD = C.getCalleeDecl(CE);
   if (!FD)
     return;
   
@@ -464,7 +458,7 @@ void ClassReleaseChecker::checkPreObjCMessage(ObjCMessage msg,
   if (!(S == releaseS || S == retainS || S == autoreleaseS || S == drainS))
     return;
   
-  if (ExplodedNode *N = C.generateNode()) {
+  if (ExplodedNode *N = C.addTransition()) {
     llvm::SmallString<200> buf;
     llvm::raw_svector_ostream os(buf);
 
@@ -612,7 +606,7 @@ void VariadicMethodTypeChecker::checkPreObjCMessage(ObjCMessage msg,
 
     // Generate only one error node to use for all bug reports.
     if (!errorNode.hasValue()) {
-      errorNode = C.generateNode();
+      errorNode = C.addTransition();
     }
 
     if (!errorNode.getValue())

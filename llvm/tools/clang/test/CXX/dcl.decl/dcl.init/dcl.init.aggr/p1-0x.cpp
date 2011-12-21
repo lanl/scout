@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -std=c++0x %s
+// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 %s
 
 // An aggregate is an array or a class...
 struct Aggr {
@@ -53,6 +53,10 @@ NonAggr4 na4 = { 42 }; // expected-error {{non-aggregate type 'NonAggr4'}}
 struct NonAggr5 : Aggr {
 };
 NonAggr5 na5 = { b }; // expected-error {{non-aggregate type 'NonAggr5'}}
+template<typename...BaseList>
+struct MaybeAggr5a : BaseList... {};
+MaybeAggr5a<> ma5a0 = {}; // ok
+MaybeAggr5a<Aggr> ma5a1 = {}; // expected-error {{non-aggregate type 'MaybeAggr5a<Aggr>'}}
 
 // and no virtual functions.
 struct NonAggr6 {
@@ -60,3 +64,15 @@ struct NonAggr6 {
   int n;
 };
 NonAggr6 na6 = { 42 }; // expected-error {{non-aggregate type 'NonAggr6'}}
+
+struct DefaultedAggr {
+  int n;
+
+  DefaultedAggr() = default;
+  DefaultedAggr(const DefaultedAggr &) = default;
+  DefaultedAggr(DefaultedAggr &&) = default;
+  DefaultedAggr &operator=(const DefaultedAggr &) = default;
+  DefaultedAggr &operator=(DefaultedAggr &) = default;
+  ~DefaultedAggr() = default;
+};
+DefaultedAggr da = { 42 } ;

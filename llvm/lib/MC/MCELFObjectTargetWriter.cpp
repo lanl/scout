@@ -12,11 +12,19 @@
 using namespace llvm;
 
 MCELFObjectTargetWriter::MCELFObjectTargetWriter(bool Is64Bit_,
-                                                 Triple::OSType OSType_,
+                                                 uint8_t OSABI_,
                                                  uint16_t EMachine_,
                                                  bool HasRelocationAddend_)
-  : OSType(OSType_), EMachine(EMachine_),
+  : OSABI(OSABI_), EMachine(EMachine_),
     HasRelocationAddend(HasRelocationAddend_), Is64Bit(Is64Bit_) {
+}
+
+unsigned MCELFObjectTargetWriter::GetRelocType(const MCValue &Target,
+                                               const MCFixup &Fixup,
+                                               bool IsPCRel,
+                                               bool IsRelocWithSymbol,
+                                               int64_t Addend) const {
+  return 0;
 }
 
 MCELFObjectTargetWriter::~MCELFObjectTargetWriter() {

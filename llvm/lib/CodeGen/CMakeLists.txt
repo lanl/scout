@@ -9,6 +9,7 @@ add_llvm_library(LLVMCodeGen
   CodePlacementOpt.cpp
   CriticalAntiDepBreaker.cpp
   DeadMachineInstructionElim.cpp
+  DFAPacketizer.cpp
   DwarfEHPrepare.cpp
   EdgeBundles.cpp
   ELFCodeEmitter.cpp
@@ -23,6 +24,7 @@ add_llvm_library(LLVMCodeGen
   InlineSpiller.cpp
   InterferenceCache.cpp
   IntrinsicLowering.cpp
+  JITCodeEmitter.cpp
   LLVMTargetMachine.cpp
   LatencyPriorityQueue.cpp
   LexicalScopes.cpp
@@ -37,7 +39,9 @@ add_llvm_library(LLVMCodeGen
   LocalStackSlotAllocation.cpp
   MachineBasicBlock.cpp
   MachineBlockFrequencyInfo.cpp
+  MachineBlockPlacement.cpp
   MachineBranchProbabilityInfo.cpp
+  MachineCodeEmitter.cpp
   MachineCSE.cpp
   MachineDominators.cpp
   MachineFunction.cpp
@@ -45,6 +49,7 @@ add_llvm_library(LLVMCodeGen
   MachineFunctionPass.cpp
   MachineFunctionPrinterPass.cpp
   MachineInstr.cpp
+  MachineInstrBundle.cpp
   MachineLICM.cpp
   MachineLoopInfo.cpp
   MachineLoopRanges.cpp
@@ -69,7 +74,6 @@ add_llvm_library(LLVMCodeGen
   RegAllocBasic.cpp
   RegAllocFast.cpp
   RegAllocGreedy.cpp
-  RegAllocLinearScan.cpp
   RegAllocPBQP.cpp
   RegisterClassInfo.cpp
   RegisterCoalescer.cpp
@@ -87,27 +91,17 @@ add_llvm_library(LLVMCodeGen
   Spiller.cpp
   SpillPlacement.cpp
   SplitKit.cpp
-  Splitter.cpp
   StackProtector.cpp
   StackSlotColoring.cpp
   StrongPHIElimination.cpp
   TailDuplication.cpp
+  TargetFrameLoweringImpl.cpp
   TargetInstrInfoImpl.cpp
   TargetLoweringObjectFileImpl.cpp
+  TargetOptionsImpl.cpp
   TwoAddressInstructionPass.cpp
   UnreachableBlockElim.cpp
   VirtRegMap.cpp
-  VirtRegRewriter.cpp
-  )
-
-add_llvm_library_dependencies(LLVMCodeGen
-  LLVMAnalysis
-  LLVMCore
-  LLVMMC
-  LLVMScalarOpts
-  LLVMSupport
-  LLVMTarget
-  LLVMTransformUtils
   )
 
 add_subdirectory(SelectionDAG)

@@ -60,7 +60,7 @@ void NSErrorMethodChecker::checkASTDecl(const ObjCMethodDecl *D,
     II = &D->getASTContext().Idents.get("NSError"); 
 
   bool hasNSError = false;
-  for (ObjCMethodDecl::param_iterator
+  for (ObjCMethodDecl::param_const_iterator
          I = D->param_begin(), E = D->param_end(); I != E; ++I)  {
     if (IsNSError((*I)->getType(), II)) {
       hasNSError = true;
@@ -157,7 +157,8 @@ public:
   NSOrCFErrorDerefChecker() : NSErrorII(0), CFErrorII(0),
                               ShouldCheckNSError(0), ShouldCheckCFError(0) { }
 
-  void checkLocation(SVal loc, bool isLoad, CheckerContext &C) const;
+  void checkLocation(SVal loc, bool isLoad, const Stmt *S,
+                     CheckerContext &C) const;
   void checkEvent(ImplicitNullDerefEvent event) const;
 };
 }
@@ -197,7 +198,7 @@ static void setFlag(const ProgramState *state, SVal val, CheckerContext &C) {
 
 static QualType parameterTypeFromSVal(SVal val, CheckerContext &C) {
   const StackFrameContext *
-    SFC = C.getPredecessor()->getLocationContext()->getCurrentStackFrame();
+    SFC = C.getLocationContext()->getCurrentStackFrame();
   if (const loc::MemRegionVal* X = dyn_cast<loc::MemRegionVal>(&val)) {
     const MemRegion* R = X->getRegion();
     if (const VarRegion *VR = R->getAs<VarRegion>())
@@ -211,6 +212,7 @@ static QualType parameterTypeFromSVal(SVal val, CheckerContext &C) {
 }
 
 void NSOrCFErrorDerefChecker::checkLocation(SVal loc, bool isLoad,
+                                            const Stmt *S,
                                             CheckerContext &C) const {
   if (!isLoad)
     return;

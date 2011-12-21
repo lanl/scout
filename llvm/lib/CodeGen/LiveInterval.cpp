@@ -680,15 +680,14 @@ unsigned ConnectedVNInfoEqClasses::Classify(const LiveInterval *LI) {
       // Connect to values live out of predecessors.
       for (MachineBasicBlock::const_pred_iterator PI = MBB->pred_begin(),
            PE = MBB->pred_end(); PI != PE; ++PI)
-        if (const VNInfo *PVNI =
-              LI->getVNInfoAt(LIS.getMBBEndIdx(*PI).getPrevSlot()))
+        if (const VNInfo *PVNI = LI->getVNInfoBefore(LIS.getMBBEndIdx(*PI)))
           EqClass.join(VNI->id, PVNI->id);
     } else {
       // Normal value defined by an instruction. Check for two-addr redef.
       // FIXME: This could be coincidental. Should we really check for a tied
       // operand constraint?
       // Note that VNI->def may be a use slot for an early clobber def.
-      if (const VNInfo *UVNI = LI->getVNInfoAt(VNI->def.getPrevSlot()))
+      if (const VNInfo *UVNI = LI->getVNInfoBefore(VNI->def))
         EqClass.join(VNI->id, UVNI->id);
     }
   }
@@ -716,7 +715,7 @@ void ConnectedVNInfoEqClasses::Distribute(LiveInterval *LIV[],
       continue;
     // DBG_VALUE instructions should have been eliminated earlier.
     SlotIndex Idx = LIS.getInstructionIndex(MI);
-    Idx = MO.isUse() ? Idx.getUseIndex() : Idx.getDefIndex();
+    Idx = Idx.getRegSlot(MO.isUse());
     const VNInfo *VNI = LI.getVNInfoAt(Idx);
     assert(VNI && "Interval not live at use.");
     MO.setReg(LIV[getEqClass(VNI)]->reg);

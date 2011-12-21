@@ -29,6 +29,8 @@ set( LLVM_USED_LIBS
   clangStaticAnalyzerFrontend
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
+  LLVMdoallToPTX
+  scDriver
   )
 
 set( LLVM_LINK_COMPONENTS

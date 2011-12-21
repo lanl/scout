@@ -889,7 +889,7 @@ SDValue DAGTypeLegalizer::CreateStackStoreLoad(SDValue Op,
                                MachinePointerInfo(), false, false, 0);
   // Result is a load from the stack slot.
   return DAG.getLoad(DestVT, dl, Store, StackPtr, MachinePointerInfo(),
-                     false, false, 0);
+                     false, false, false, 0);
 }
 
 /// CustomLowerNode - Replace the node's results with custom code provided
@@ -1084,7 +1084,6 @@ DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC,
   SDValue Callee = DAG.getExternalSymbol(TLI.getLibcallName(LC),
                                          TLI.getPointerTy());
 
-  // Splice the libcall in wherever FindInputOutputChains tells us to.
   Type *RetTy = Node->getValueType(0).getTypeForEVT(*DAG.getContext());
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(InChain, RetTy, isSigned, !isSigned, false, false,

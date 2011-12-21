@@ -26,7 +26,6 @@
 #include "llvm/Module.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ValueHandle.h"
 
@@ -76,6 +75,7 @@ namespace CodeGen {
   class CGDebugInfo;
   class CGObjCRuntime;
   class CGOpenCLRuntime;
+  class CGCUDARuntime;
   class BlockFieldFlags;
   class FunctionArgList;
   
@@ -228,6 +228,7 @@ class CodeGenModule : public CodeGenTypeCache {
 
   CGObjCRuntime* ObjCRuntime;
   CGOpenCLRuntime* OpenCLRuntime;
+  CGCUDARuntime* CUDARuntime;
   CGDebugInfo* DebugInfo;
   ARCEntrypoints *ARCData;
   RREntrypoints *RRData;
@@ -320,7 +321,10 @@ class CodeGenModule : public CodeGenTypeCache {
   void createObjCRuntime();
 
   void createOpenCLRuntime();
+  void createCUDARuntime();
 
+  bool isTriviallyRecursive(const FunctionDecl *F);
+  bool shouldEmitFunction(const FunctionDecl *F);
   llvm::LLVMContext &VMContext;
 
   /// @name Cache for Blocks Runtime Globals
@@ -361,10 +365,16 @@ public:
   /// been configured.
   bool hasObjCRuntime() { return !!ObjCRuntime; }
 
-  /// getObjCRuntime() - Return a reference to the configured OpenCL runtime.
+  /// getOpenCLRuntime() - Return a reference to the configured OpenCL runtime.
   CGOpenCLRuntime &getOpenCLRuntime() {
     assert(OpenCLRuntime != 0);
     return *OpenCLRuntime;
+  }
+
+  /// getCUDARuntime() - Return a reference to the configured CUDA runtime.
+  CGCUDARuntime &getCUDARuntime() {
+    assert(CUDARuntime != 0);
+    return *CUDARuntime;
   }
 
   /// getCXXABI() - Return a reference to the configured C++ ABI.
@@ -554,6 +564,10 @@ public:
   /// -fconstant-string-class=class_name option.
   llvm::Constant *GetAddrOfConstantString(const StringLiteral *Literal);
 
+  /// GetConstantArrayFromStringLiteral - Return a constant array for the given
+  /// string.
+  llvm::Constant *GetConstantArrayFromStringLiteral(const StringLiteral *E);
+
   /// GetAddrOfConstantStringFromLiteral - Return a pointer to a constant array
   /// for the given string literal.
   llvm::Constant *GetAddrOfConstantStringFromLiteral(const StringLiteral *S);
@@ -585,6 +599,10 @@ public:
   llvm::Constant *GetAddrOfConstantCString(const std::string &str,
                                            const char *GlobalName=0,
                                            unsigned Alignment=1);
+
+  /// GetAddrOfConstantCompoundLiteral - Returns a pointer to a constant global
+  /// variable for the given file-scope compound literal expression.
+  llvm::Constant *GetAddrOfConstantCompoundLiteral(const CompoundLiteralExpr*E);
   
   /// \brief Retrieve the record type that describes the state of an
   /// Objective-C fast enumeration loop (for..in).
@@ -661,6 +679,11 @@ public:
   /// but not always, an LLVM null constant.
   llvm::Constant *EmitNullConstant(QualType T);
 
+  /// EmitNullConstantForBase - Return a null constant appropriate for 
+  /// zero-initializing a base class with the given type.  This is usually,
+  /// but not always, an LLVM null constant.
+  llvm::Constant *EmitNullConstantForBase(const CXXRecordDecl *Record);
+
   /// Error - Emit a general error that something can't be done.
   void Error(SourceLocation loc, StringRef error);
 
@@ -699,9 +722,13 @@ public:
   /// as a return type.
   bool ReturnTypeUsesSRet(const CGFunctionInfo &FI);
 
-  /// ReturnTypeUsesSret - Return true iff the given type uses 'fpret' when used
-  /// as a return type.
+  /// ReturnTypeUsesFPRet - Return true iff the given type uses 'fpret' when
+  /// used as a return type.
   bool ReturnTypeUsesFPRet(QualType ResultType);
+
+  /// ReturnTypeUsesFP2Ret - Return true iff the given type uses 'fp2ret' when
+  /// used as a return type.
+  bool ReturnTypeUsesFP2Ret(QualType ResultType);
 
   /// ConstructAttributeList - Get the LLVM attributes and calling convention to
   /// use for a particular function type.

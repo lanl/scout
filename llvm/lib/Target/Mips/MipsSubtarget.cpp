@@ -21,6 +21,8 @@
 
 using namespace llvm;
 
+void MipsSubtarget::anchor() { }
+
 MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
                              const std::string &FS, bool little) :
   MipsGenSubtargetInfo(TT, CPU, FS),
@@ -31,7 +33,7 @@ MipsSubtarget::MipsSubtarget(const std::string &TT, const std::string &CPU,
 {
   std::string CPUName = CPU;
   if (CPUName.empty())
-    CPUName = "mips32r1";
+    CPUName = "mips32";
 
   // Parse features string.
   ParseSubtargetFeatures(CPUName, FS);

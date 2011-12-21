@@ -1,8 +1,9 @@
-// RUN: %clang_cc1 -fobjc-arc -fobjc-nonfragile-abi -verify %s
+// RUN: %clang_cc1 -fobjc-arc -verify %s
 
 // rdar://problem/9150784
 void test(void) {
   __weak id x; // expected-error {{the current deployment target does not support automated __weak references}}
+  __weak void *v; // expected-warning {{'__weak' only applies to objective-c object or block pointer types}}
 }
 
 @interface A

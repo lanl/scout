@@ -78,12 +78,14 @@ public:
 
   bool evalCall(const CallExpr *CE, CheckerContext &C) const;
   void checkDeadSymbols(SymbolReaper &SymReaper, CheckerContext &C) const;
-  void checkEndPath(EndOfFunctionNodeBuilder &B, ExprEngine &Eng) const;
+  void checkEndPath(CheckerContext &C) const;
   void checkPreStmt(const ReturnStmt *S, CheckerContext &C) const;
   const ProgramState *evalAssume(const ProgramState *state, SVal Cond,
                             bool Assumption) const;
-  void checkLocation(SVal l, bool isLoad, CheckerContext &C) const;
-  void checkBind(SVal location, SVal val, CheckerContext &C) const;
+  void checkLocation(SVal l, bool isLoad, const Stmt *S,
+                     CheckerContext &C) const;
+  void checkBind(SVal location, SVal val, const Stmt*S,
+                 CheckerContext &C) const;
 
 private:
   static void MallocMem(CheckerContext &C, const CallExpr *CE);
@@ -126,11 +128,7 @@ namespace ento {
 }
 
 bool MallocChecker::evalCall(const CallExpr *CE, CheckerContext &C) const {
-  const ProgramState *state = C.getState();
-  const Expr *Callee = CE->getCallee();
-  SVal L = state->getSVal(Callee);
-
-  const FunctionDecl *FD = L.getAsFunctionDecl();
+  const FunctionDecl *FD = C.getCalleeDecl(CE);
   if (!FD)
     return false;
 
@@ -219,7 +217,7 @@ const ProgramState *MallocChecker::MallocMemAux(CheckerContext &C,
                                            const CallExpr *CE,
                                            SVal Size, SVal Init,
                                            const ProgramState *state) {
-  unsigned Count = C.getNodeBuilder().getCurrentBlockCount();
+  unsigned Count = C.getCurrentBlockCount();
   SValBuilder &svalBuilder = C.getSValBuilder();
 
   // Set the return value.
@@ -383,7 +381,7 @@ bool MallocChecker::SummarizeRegion(raw_ostream &os,
   case MemRegion::FunctionTextRegionKind: {
     const FunctionDecl *FD = cast<FunctionTextRegion>(MR)->getDecl();
     if (FD)
-      os << "the address of the function '" << FD << "'";
+      os << "the address of the function '" << *FD << '\'';
     else
       os << "the address of a function";
     return true;
@@ -588,7 +586,7 @@ void MallocChecker::checkDeadSymbols(SymbolReaper &SymReaper,
     }
   }
   
-  ExplodedNode *N = C.generateNode(state->set<RegionState>(RS));
+  ExplodedNode *N = C.addTransition(state->set<RegionState>(RS));
 
   // FIXME: This does not handle when we have multiple leaks at a single
   // place.
@@ -602,21 +600,20 @@ void MallocChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   }
 }
 
-void MallocChecker::checkEndPath(EndOfFunctionNodeBuilder &B,
-                                 ExprEngine &Eng) const {
-  const ProgramState *state = B.getState();
+void MallocChecker::checkEndPath(CheckerContext &Ctx) const {
+  const ProgramState *state = Ctx.getState();
   RegionStateTy M = state->get<RegionState>();
 
   for (RegionStateTy::iterator I = M.begin(), E = M.end(); I != E; ++I) {
     RefState RS = I->second;
     if (RS.isAllocated()) {
-      ExplodedNode *N = B.generateNode(state);
+      ExplodedNode *N = Ctx.addTransition(state);
       if (N) {
         if (!BT_Leak)
           BT_Leak.reset(new BuiltinBug("Memory leak",
                     "Allocated memory never released. Potential memory leak."));
         BugReport *R = new BugReport(*BT_Leak, BT_Leak->getDescription(), N);
-        Eng.getBugReporter().EmitReport(R);
+        Ctx.EmitReport(R);
       }
     }
   }
@@ -661,12 +658,13 @@ const ProgramState *MallocChecker::evalAssume(const ProgramState *state, SVal Co
 }
 
 // Check if the location is a freed symbolic region.
-void MallocChecker::checkLocation(SVal l, bool isLoad,CheckerContext &C) const {
+void MallocChecker::checkLocation(SVal l, bool isLoad, const Stmt *S,
+                                  CheckerContext &C) const {
   SymbolRef Sym = l.getLocSymbolInBase();
   if (Sym) {
     const RefState *RS = C.getState()->get<RegionState>(Sym);
     if (RS && RS->isReleased()) {
-      if (ExplodedNode *N = C.generateNode()) {
+      if (ExplodedNode *N = C.addTransition()) {
         if (!BT_UseFree)
           BT_UseFree.reset(new BuiltinBug("Use dynamically allocated memory "
                                           "after it is freed."));
@@ -679,7 +677,8 @@ void MallocChecker::checkLocation(SVal l, bool isLoad,CheckerContext &C) const {
   }
 }
 
-void MallocChecker::checkBind(SVal location, SVal val,CheckerContext &C) const {
+void MallocChecker::checkBind(SVal location, SVal val,
+                              const Stmt *BindS, CheckerContext &C) const {
   // The PreVisitBind implements the same algorithm as already used by the 
   // Objective C ownership checker: if the pointer escaped from this scope by 
   // assignment, let it go.  However, assigning to fields of a stack-storage 
@@ -728,7 +727,7 @@ void MallocChecker::checkBind(SVal location, SVal val,CheckerContext &C) const {
           // We no longer own this pointer.
           notNullState =
             notNullState->set<RegionState>(Sym,
-                                        RefState::getRelinquished(C.getStmt()));
+                                        RefState::getRelinquished(BindS));
         }
         while (false);
       }

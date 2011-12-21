@@ -23,7 +23,7 @@ namespace ms_protected_scope {
 
   int jump_over_variable_init(bool b) {
     if (b)
-      goto foo; // expected-warning {{illegal goto into protected scope}}
+      goto foo; // expected-warning {{goto into protected scope}}
     C c; // expected-note {{jump bypasses variable initialization}}
   foo:
     return 1;
@@ -35,7 +35,7 @@ struct Y {
 
 void jump_over_var_with_dtor() {
   goto end; // expected-warning{{goto into protected scope}}
-  Y y; // expected-note {{jump bypasses variable initialization}}
+  Y y; // expected-note {{jump bypasses variable with a non-trivial destructor}}
  end:
     ;
 }
@@ -51,7 +51,7 @@ void jump_over_var_with_dtor() {
 
  
 void exception_jump() {
-  goto l2; // expected-error {{illegal goto into protected scope}}
+  goto l2; // expected-error {{goto into protected scope}}
   try { // expected-note {{jump bypasses initialization of try block}}
      l2: ;
   } catch(int) {
@@ -126,33 +126,14 @@ public:
 };
 
 template <class T>
-void function_missing_typename()
+void function_missing_typename(const T::Type param)// expected-warning {{missing 'typename' prior to dependent type name}}
 {
     const T::Type var = 2; // expected-warning {{missing 'typename' prior to dependent type name}}
 }
 
-template void function_missing_typename<D>();
+template void function_missing_typename<D>(const D::Type param);
 
 }
 
 
 
-namespace lookup_dependent_bases_id_expr {
-
-template<class T> class A {
-public:
-  int var;
-};
-
-
-template<class T>
-class B : public A<T> {
-public:
-  void f() {
-    var = 3;
-  }
-};
-
-template class B<int>;
-
-}

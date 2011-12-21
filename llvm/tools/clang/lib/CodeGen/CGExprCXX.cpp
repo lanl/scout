@@ -13,6 +13,7 @@
 
 #include "clang/Frontend/CodeGenOptions.h"
 #include "CodeGenFunction.h"
+#include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
 #include "CGObjCRuntime.h"
 #include "CGDebugInfo.h"
@@ -347,6 +348,54 @@ CodeGenFunction::EmitCXXOperatorMemberCallExpr(const CXXOperatorCallExpr *E,
                            E->arg_begin() + 1, E->arg_end());
 }
 
+RValue CodeGenFunction::EmitCUDAKernelCallExpr(const CUDAKernelCallExpr *E,
+                                               ReturnValueSlot ReturnValue) {
+  return CGM.getCUDARuntime().EmitCUDAKernelCallExpr(*this, E, ReturnValue);
+}
+
+static void EmitNullBaseClassInitialization(CodeGenFunction &CGF,
+                                            llvm::Value *DestPtr,
+                                            const CXXRecordDecl *Base) {
+  if (Base->isEmpty())
+    return;
+
+  DestPtr = CGF.EmitCastToVoidPtr(DestPtr);
+
+  const ASTRecordLayout &Layout = CGF.getContext().getASTRecordLayout(Base);
+  CharUnits Size = Layout.getNonVirtualSize();
+  CharUnits Align = Layout.getNonVirtualAlign();
+
+  llvm::Value *SizeVal = CGF.CGM.getSize(Size);
+
+  // If the type contains a pointer to data member we can't memset it to zero.
+  // Instead, create a null constant and copy it to the destination.
+  // TODO: there are other patterns besides zero that we can usefully memset,
+  // like -1, which happens to be the pattern used by member-pointers.
+  // TODO: isZeroInitializable can be over-conservative in the case where a
+  // virtual base contains a member pointer.
+  if (!CGF.CGM.getTypes().isZeroInitializable(Base)) {
+    llvm::Constant *NullConstant = CGF.CGM.EmitNullConstantForBase(Base);
+
+    llvm::GlobalVariable *NullVariable = 
+      new llvm::GlobalVariable(CGF.CGM.getModule(), NullConstant->getType(),
+                               /*isConstant=*/true, 
+                               llvm::GlobalVariable::PrivateLinkage,
+                               NullConstant, Twine());
+    NullVariable->setAlignment(Align.getQuantity());
+    llvm::Value *SrcPtr = CGF.EmitCastToVoidPtr(NullVariable);
+
+    // Get and call the appropriate llvm.memcpy overload.
+    CGF.Builder.CreateMemCpy(DestPtr, SrcPtr, SizeVal, Align.getQuantity());
+    return;
+  } 
+  
+  // Otherwise, just memset the whole thing to zero.  This is legal
+  // because in LLVM, all default initializers (other than the ones we just
+  // handled above) are guaranteed to have a bit pattern of all zeros.
+  CGF.Builder.CreateMemSet(DestPtr, CGF.Builder.getInt8(0), SizeVal,
+                           Align.getQuantity());
+}
+
 void
 CodeGenFunction::EmitCXXConstructExpr(const CXXConstructExpr *E,
                                       AggValueSlot Dest) {
@@ -357,8 +406,19 @@ CodeGenFunction::EmitCXXConstructExpr(const CXXConstructExpr *E,
   // constructor, as can be the case with a non-user-provided default
   // constructor, emit the zero initialization now, unless destination is
   // already zeroed.
-  if (E->requiresZeroInitialization() && !Dest.isZeroed())
-    EmitNullInitialization(Dest.getAddr(), E->getType());
+  if (E->requiresZeroInitialization() && !Dest.isZeroed()) {
+    switch (E->getConstructionKind()) {
+    case CXXConstructExpr::CK_Delegating:
+      assert(0 && "Delegating constructor should not need zeroing");
+    case CXXConstructExpr::CK_Complete:
+      EmitNullInitialization(Dest.getAddr(), E->getType());
+      break;
+    case CXXConstructExpr::CK_VirtualBase:
+    case CXXConstructExpr::CK_NonVirtualBase:
+      EmitNullBaseClassInitialization(*this, Dest.getAddr(), CD->getParent());
+      break;
+    }
+  }
   
   // If this is a call to a trivial default constructor, do nothing.
   if (CD->isTrivial() && CD->isDefaultConstructor())
@@ -690,17 +750,17 @@ static void StoreAnyExprIntoOneUnit(CodeGenFunction &CGF, const CXXNewExpr *E,
   const Expr *Init = E->getConstructorArg(0);
   QualType AllocType = E->getAllocatedType();
 
-  unsigned Alignment =
-    CGF.getContext().getTypeAlignInChars(AllocType).getQuantity();
+  CharUnits Alignment = CGF.getContext().getTypeAlignInChars(AllocType);
   if (!CGF.hasAggregateLLVMType(AllocType))
-    CGF.EmitScalarInit(Init, 0, CGF.MakeAddrLValue(NewPtr, AllocType, Alignment),
+    CGF.EmitScalarInit(Init, 0, CGF.MakeAddrLValue(NewPtr, AllocType,
+                                                   Alignment),
                        false);
   else if (AllocType->isAnyComplexType())
     CGF.EmitComplexExprIntoAddr(Init, NewPtr, 
                                 AllocType.isVolatileQualified());
   else {
     AggValueSlot Slot
-      = AggValueSlot::forAddr(NewPtr, AllocType.getQualifiers(),
+      = AggValueSlot::forAddr(NewPtr, Alignment, AllocType.getQualifiers(),
                               AggValueSlot::IsDestructed,
                               AggValueSlot::DoesNotNeedGCBarriers,
                               AggValueSlot::IsNotAliased);
@@ -756,18 +816,22 @@ CodeGenFunction::EmitNewArrayInitializer(const CXXNewExpr *E,
   // Enter a partial-destruction cleanup if necessary.
   QualType::DestructionKind dtorKind = elementType.isDestructedType();
   EHScopeStack::stable_iterator cleanup;
+  llvm::Instruction *cleanupDominator = 0;
   if (needsEHCleanup(dtorKind)) {
     pushRegularPartialArrayCleanup(beginPtr, curPtr, elementType,
                                    getDestroyer(dtorKind));
     cleanup = EHStack.stable_begin();
+    cleanupDominator = Builder.CreateUnreachable();
   }
 
   // Emit the initializer into this element.
   StoreAnyExprIntoOneUnit(*this, E, curPtr);
 
   // Leave the cleanup if we entered one.
-  if (cleanup != EHStack.stable_end())
-    DeactivateCleanupBlock(cleanup);
+  if (cleanupDominator) {
+    DeactivateCleanupBlock(cleanup, cleanupDominator);
+    cleanupDominator->eraseFromParent();
+  }
 
   // Advance to the next element.
   llvm::Value *nextPtr = Builder.CreateConstGEP1_32(curPtr, 1, "array.next");
@@ -819,7 +883,8 @@ static void EmitNewInitializer(CodeGenFunction &CGF, const CXXNewExpr *E,
                                      RequiresZeroInitialization);
       return;
     } else if (E->getNumConstructorArgs() == 1 &&
-               isa<ImplicitValueInitExpr>(E->getConstructorArg(0))) {
+               isa<ImplicitValueInitExpr>(E->getConstructorArg(0)) &&
+               CGF.CGM.getTypes().isZeroInitializable(ElementType)) {
       // Optimization: since zero initialization will just set the memory
       // to all zeroes, generate a single memset to do it in one shot.
       EmitZeroMemSet(CGF, ElementType, NewPtr, AllocSizeWithoutCookie);
@@ -997,7 +1062,7 @@ static void EnterNewDeleteCleanup(CodeGenFunction &CGF,
     DominatingValue<RValue>::save(CGF, RValue::get(AllocSize));
 
   CallDeleteDuringConditionalNew *Cleanup = CGF.EHStack
-    .pushCleanupWithExtra<CallDeleteDuringConditionalNew>(InactiveEHCleanup,
+    .pushCleanupWithExtra<CallDeleteDuringConditionalNew>(EHCleanup,
                                                  E->getNumPlacementArgs(),
                                                  E->getOperatorDelete(),
                                                  SavedNewPtr,
@@ -1006,7 +1071,7 @@ static void EnterNewDeleteCleanup(CodeGenFunction &CGF,
     Cleanup->setPlacementArg(I,
                      DominatingValue<RValue>::save(CGF, NewArgs[I+1].RV));
 
-  CGF.ActivateCleanupBlock(CGF.EHStack.stable_begin());
+  CGF.initFullExprCleanup();
 }
 
 llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
@@ -1108,10 +1173,12 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
   // If there's an operator delete, enter a cleanup to call it if an
   // exception is thrown.
   EHScopeStack::stable_iterator operatorDeleteCleanup;
+  llvm::Instruction *cleanupDominator = 0;
   if (E->getOperatorDelete() &&
       !E->getOperatorDelete()->isReservedGlobalPlacementOperator()) {
     EnterNewDeleteCleanup(*this, E, allocation, allocSize, allocatorArgs);
     operatorDeleteCleanup = EHStack.stable_begin();
+    cleanupDominator = Builder.CreateUnreachable();
   }
 
   assert((allocSize == allocSizeWithoutCookie) ==
@@ -1140,8 +1207,10 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
 
   // Deactivate the 'operator delete' cleanup if we finished
   // initialization.
-  if (operatorDeleteCleanup.isValid())
-    DeactivateCleanupBlock(operatorDeleteCleanup);
+  if (operatorDeleteCleanup.isValid()) {
+    DeactivateCleanupBlock(operatorDeleteCleanup, cleanupDominator);
+    cleanupDominator->eraseFromParent();
+  }
   
   if (nullCheck) {
     conditional.end(*this);

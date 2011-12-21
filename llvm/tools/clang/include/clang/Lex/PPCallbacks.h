@@ -42,8 +42,11 @@ public:
   /// EnteringFile indicates whether this is because we are entering a new
   /// #include'd file (when true) or whether we're exiting one because we ran
   /// off the end (when false).
+  ///
+  /// \param PrevFID the file that was exited if \arg Reason is ExitFile. 
   virtual void FileChanged(SourceLocation Loc, FileChangeReason Reason,
-                           SrcMgr::CharacteristicKind FileType) {
+                           SrcMgr::CharacteristicKind FileType,
+                           FileID PrevFID = FileID()) {
   }
 
   /// FileSkipped - This callback is invoked whenever a source file is
@@ -53,6 +56,23 @@ public:
   virtual void FileSkipped(const FileEntry &ParentFile,
                            const Token &FilenameTok,
                            SrcMgr::CharacteristicKind FileType) {
+  }
+
+  /// FileNotFound - This callback is invoked whenever an inclusion directive
+  /// results in a file-not-found error.
+  ///
+  /// \param FileName The name of the file being included, as written in the 
+  /// source code.
+  ///
+  /// \param RecoveryPath If this client indicates that it can recover from 
+  /// this missing file, the client should set this as an additional header
+  /// search patch.
+  ///
+  /// \returns true to indicate that the preprocessor should attempt to recover
+  /// by adding \p RecoveryPath as a header search path.
+  virtual bool FileNotFound(StringRef FileName,
+                            SmallVectorImpl<char> &RecoveryPath) {
+    return false;
   }
 
   /// \brief This callback is invoked whenever an inclusion directive of
@@ -159,6 +179,10 @@ public:
   virtual void MacroUndefined(const Token &MacroNameTok, const MacroInfo *MI) {
   }
   
+  /// Defined - This hook is called whenever the 'defined' operator is seen.
+  virtual void Defined(const Token &MacroNameTok) {
+  }
+  
   /// SourceRangeSkipped - This hook is called when a source range is skipped.
   /// \param Range The SourceRange that was skipped. The range begins at the
   /// #if/#else directive and ends after the #endif/#else directive.
@@ -200,6 +224,7 @@ public:
 
 /// PPChainedCallbacks - Simple wrapper class for chaining callbacks.
 class PPChainedCallbacks : public PPCallbacks {
+  virtual void anchor();
   PPCallbacks *First, *Second;
 
 public:
@@ -211,9 +236,10 @@ public:
   }
 
   virtual void FileChanged(SourceLocation Loc, FileChangeReason Reason,
-                           SrcMgr::CharacteristicKind FileType) {
-    First->FileChanged(Loc, Reason, FileType);
-    Second->FileChanged(Loc, Reason, FileType);
+                           SrcMgr::CharacteristicKind FileType,
+                           FileID PrevFID) {
+    First->FileChanged(Loc, Reason, FileType, PrevFID);
+    Second->FileChanged(Loc, Reason, FileType, PrevFID);
   }
 
   virtual void FileSkipped(const FileEntry &ParentFile,
@@ -221,6 +247,12 @@ public:
                            SrcMgr::CharacteristicKind FileType) {
     First->FileSkipped(ParentFile, FilenameTok, FileType);
     Second->FileSkipped(ParentFile, FilenameTok, FileType);
+  }
+
+  virtual bool FileNotFound(StringRef FileName,
+                            SmallVectorImpl<char> &RecoveryPath) {
+    return First->FileNotFound(FileName, RecoveryPath) ||
+           Second->FileNotFound(FileName, RecoveryPath);
   }
 
   virtual void InclusionDirective(SourceLocation HashLoc,
@@ -290,6 +322,11 @@ public:
   virtual void MacroUndefined(const Token &MacroNameTok, const MacroInfo *MI) {
     First->MacroUndefined(MacroNameTok, MI);
     Second->MacroUndefined(MacroNameTok, MI);
+  }
+
+  virtual void Defined(const Token &MacroNameTok) {
+    First->Defined(MacroNameTok);
+    Second->Defined(MacroNameTok);
   }
 
   virtual void SourceRangeSkipped(SourceRange Range) {

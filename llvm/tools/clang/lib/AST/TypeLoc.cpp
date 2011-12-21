@@ -210,7 +210,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
     case BuiltinType::Char_S:
       return TST_char;
     case BuiltinType::Char16:
-      return TST_char16;        
+      return TST_char16;
     case BuiltinType::Char32:
       return TST_char32;
     case BuiltinType::WChar_S:
@@ -229,6 +229,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
     case BuiltinType::Long:
     case BuiltinType::LongLong:
     case BuiltinType::Int128:
+    case BuiltinType::Half:
     case BuiltinType::Float:
     case BuiltinType::Double:
     case BuiltinType::LongDouble:
@@ -264,6 +265,8 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
     case BuiltinType::Dependent:
     case BuiltinType::BoundMember:
     case BuiltinType::UnknownAny:
+    case BuiltinType::ARCUnbridgedCast:
+    case BuiltinType::PseudoObject:
     case BuiltinType::ObjCId:
     case BuiltinType::ObjCClass:
     case BuiltinType::ObjCSel:
@@ -329,8 +332,7 @@ void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
     case TemplateArgument::Integral:
     case TemplateArgument::Pack:
     case TemplateArgument::Expression:
-      // FIXME: Can we do better for declarations and integral values?
-      ArgInfos[i] = TemplateArgumentLocInfo();
+      ArgInfos[i] = TemplateArgumentLocInfo(Args[i].getAsExpr());
       break;
       
     case TemplateArgument::Type:
@@ -359,4 +361,3 @@ void TemplateSpecializationTypeLoc::initializeArgLocs(ASTContext &Context,
     }
   }
 }
-

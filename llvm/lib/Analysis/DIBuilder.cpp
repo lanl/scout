@@ -189,7 +189,7 @@ DIType DIBuilder::createBasicType(StringRef Name, uint64_t SizeInBits,
   return DIType(MDNode::get(VMContext, Elts));
 }
 
-/// createQaulifiedType - Create debugging information entry for a qualified
+/// createQualifiedType - Create debugging information entry for a qualified
 /// type, e.g. 'const int'.
 DIType DIBuilder::createQualifiedType(unsigned Tag, DIType FromTy) {
   // Qualified types are encoded in DIDerivedType format.
@@ -440,7 +440,7 @@ DIType DIBuilder::createStructType(DIDescriptor Context, StringRef Name,
     ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
+    NULL,
     Elements,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
@@ -465,7 +465,7 @@ DIType DIBuilder::createUnionType(DIDescriptor Scope, StringRef Name,
     ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
     ConstantInt::get(Type::getInt64Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
+    NULL,
     Elements,
     ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
@@ -484,9 +484,9 @@ DIType DIBuilder::createSubroutineType(DIFile File, DIArray ParameterTypes) {
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt64Ty(VMContext), 0),
     ConstantInt::get(Type::getInt64Ty(VMContext), 0),
+    ConstantInt::get(Type::getInt64Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
+    NULL,
     ParameterTypes,
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
@@ -512,7 +512,7 @@ DIType DIBuilder::createEnumerationType(DIDescriptor Scope, StringRef Name,
     ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
+    NULL,
     Elements,
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
@@ -777,7 +777,7 @@ DISubprogram DIBuilder::createFunction(DIDescriptor Context,
     ConstantInt::get(Type::getInt1Ty(VMContext), isDefinition),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
+    NULL,
     ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
     ConstantInt::get(Type::getInt1Ty(VMContext), isOptimized),
     Fn,
@@ -849,6 +849,18 @@ DINameSpace DIBuilder::createNameSpace(DIDescriptor Scope, StringRef Name,
     ConstantInt::get(Type::getInt32Ty(VMContext), LineNo)
   };
   return DINameSpace(MDNode::get(VMContext, Elts));
+}
+
+/// createLexicalBlockFile - This creates a new MDNode that encapsulates
+/// an existing scope with a new filename.
+DILexicalBlockFile DIBuilder::createLexicalBlockFile(DIDescriptor Scope,
+						     DIFile File) {
+  Value *Elts[] = {
+    GetTagConstant(VMContext, dwarf::DW_TAG_lexical_block),
+    Scope,
+    File
+  };
+  return DILexicalBlockFile(MDNode::get(VMContext, Elts));
 }
 
 DILexicalBlock DIBuilder::createLexicalBlock(DIDescriptor Scope, DIFile File,

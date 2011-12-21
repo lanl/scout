@@ -47,6 +47,7 @@ static unsigned getFixupKindLog2Size(unsigned Kind) {
   case X86::reloc_riprel_4byte_movq_load:
   case X86::reloc_signed_4byte:
   case X86::reloc_global_offset_table:
+  case X86::reloc_coff_secrel32:
   case FK_Data_4: return 2;
   case FK_PCRel_8:
   case FK_Data_8: return 3;
@@ -57,9 +58,9 @@ namespace {
 
 class X86ELFObjectWriter : public MCELFObjectTargetWriter {
 public:
-  X86ELFObjectWriter(bool is64Bit, Triple::OSType OSType, uint16_t EMachine,
-                     bool HasRelocationAddend)
-    : MCELFObjectTargetWriter(is64Bit, OSType, EMachine, HasRelocationAddend) {}
+  X86ELFObjectWriter(bool is64Bit, uint8_t OSABI, uint16_t EMachine,
+                     bool HasRelocationAddend, bool foobar)
+    : MCELFObjectTargetWriter(is64Bit, OSABI, EMachine, HasRelocationAddend) {}
 };
 
 class X86AsmBackend : public MCAsmBackend {
@@ -76,7 +77,8 @@ public:
       { "reloc_riprel_4byte", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel },
       { "reloc_riprel_4byte_movq_load", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel},
       { "reloc_signed_4byte", 0, 4 * 8, 0},
-      { "reloc_global_offset_table", 0, 4 * 8, 0}
+      { "reloc_global_offset_table", 0, 4 * 8, 0},
+      { "reloc_coff_secrel32", 0, 4 * 8, 0}
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -98,14 +100,7 @@ public:
     // Specifically ignore overflow/underflow as long as the leakage is
     // limited to the lower bits. This is to remain compatible with
     // other assemblers.
-
-    const uint64_t Mask = ~0ULL;
-    const uint64_t UpperV = (Value >> (Size * 8));
-    const uint64_t MaskF = (Mask >> (Size * 8));
-    (void)UpperV;
-    (void)MaskF;
-    assert(((Size == 8) ||
-            ((UpperV & MaskF) == 0ULL) || ((UpperV & MaskF) == MaskF)) &&
+    assert(isIntN(Size * 8 + 1, Value) &&
            "Value does not fit in the Fixup field");
 
     for (unsigned i = 0; i != Size; ++i)
@@ -113,6 +108,11 @@ public:
   }
 
   bool MayNeedRelaxation(const MCInst &Inst) const;
+
+  bool fixupNeedsRelaxation(const MCFixup &Fixup,
+                            uint64_t Value,
+                            const MCInstFragment *DF,
+                            const MCAsmLayout &Layout) const;
 
   void RelaxInstruction(const MCInst &Inst, MCInst &Res) const;
 
@@ -251,6 +251,14 @@ bool X86AsmBackend::MayNeedRelaxation(const MCInst &Inst) const {
   return hasExp && !hasRIP;
 }
 
+bool X86AsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup,
+                                         uint64_t Value,
+                                         const MCInstFragment *DF,
+                                         const MCAsmLayout &Layout) const {
+  // Relax if the value is too big for a (signed) i8.
+  return int64_t(Value) != int64_t(int8_t(Value));
+}
+
 // FIXME: Can tblgen help at all here to verify there aren't other instructions
 // we can relax?
 void X86AsmBackend::RelaxInstruction(const MCInst &Inst, MCInst &Res) const {
@@ -317,9 +325,9 @@ bool X86AsmBackend::WriteNopData(uint64_t Count, MCObjectWriter *OW) const {
 namespace {
 class ELFX86AsmBackend : public X86AsmBackend {
 public:
-  Triple::OSType OSType;
-  ELFX86AsmBackend(const Target &T, Triple::OSType _OSType)
-    : X86AsmBackend(T), OSType(_OSType) {
+  uint8_t OSABI;
+  ELFX86AsmBackend(const Target &T, uint8_t _OSABI)
+    : X86AsmBackend(T), OSABI(_OSABI) {
     HasReliableSymbolDifference = true;
   }
 
@@ -331,31 +339,21 @@ public:
 
 class ELFX86_32AsmBackend : public ELFX86AsmBackend {
 public:
-  ELFX86_32AsmBackend(const Target &T, Triple::OSType OSType)
-    : ELFX86AsmBackend(T, OSType) {}
+  ELFX86_32AsmBackend(const Target &T, uint8_t OSABI)
+    : ELFX86AsmBackend(T, OSABI) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createELFObjectWriter(createELFObjectTargetWriter(),
-                                 OS, /*IsLittleEndian*/ true);
-  }
-
-  MCELFObjectTargetWriter *createELFObjectTargetWriter() const {
-    return new X86ELFObjectWriter(false, OSType, ELF::EM_386, false);
+    return createX86ELFObjectWriter(OS, /*Is64Bit*/ false, OSABI);
   }
 };
 
 class ELFX86_64AsmBackend : public ELFX86AsmBackend {
 public:
-  ELFX86_64AsmBackend(const Target &T, Triple::OSType OSType)
-    : ELFX86AsmBackend(T, OSType) {}
+  ELFX86_64AsmBackend(const Target &T, uint8_t OSABI)
+    : ELFX86AsmBackend(T, OSABI) {}
 
   MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
-    return createELFObjectWriter(createELFObjectTargetWriter(),
-                                 OS, /*IsLittleEndian*/ true);
-  }
-
-  MCELFObjectTargetWriter *createELFObjectTargetWriter() const {
-    return new X86ELFObjectWriter(true, OSType, ELF::EM_X86_64, true);
+    return createX86ELFObjectWriter(OS, /*Is64Bit*/ true, OSABI);
   }
 };
 
@@ -449,7 +447,8 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T, StringRef TT) {
   if (TheTriple.isOSWindows())
     return new WindowsX86AsmBackend(T, false);
 
-  return new ELFX86_32AsmBackend(T, TheTriple.getOS());
+  uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
+  return new ELFX86_32AsmBackend(T, OSABI);
 }
 
 MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT) {
@@ -461,5 +460,6 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T, StringRef TT) {
   if (TheTriple.isOSWindows())
     return new WindowsX86AsmBackend(T, true);
 
-  return new ELFX86_64AsmBackend(T, TheTriple.getOS());
+  uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
+  return new ELFX86_64AsmBackend(T, OSABI);
 }

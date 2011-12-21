@@ -28,7 +28,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringSwitch.h"
 
-#include "../Target/X86/MCTargetDesc/X86FixupKinds.h"
+#include "../Target/Mips/MCTargetDesc/MipsFixupKinds.h"
 #include "../Target/ARM/MCTargetDesc/ARMFixupKinds.h"
 #include "../Target/PowerPC/MCTargetDesc/PPCFixupKinds.h"
 
@@ -92,11 +92,7 @@ void ELFObjectWriter::WriteHeader(uint64_t SectionDataSize,
 
   Write8(ELF::EV_CURRENT);        // e_ident[EI_VERSION]
   // e_ident[EI_OSABI]
-  switch (TargetObjectWriter->getOSType()) {
-    case Triple::FreeBSD:  Write8(ELF::ELFOSABI_FREEBSD); break;
-    case Triple::Linux:    Write8(ELF::ELFOSABI_LINUX); break;
-    default:               Write8(ELF::ELFOSABI_NONE); break;
-  }
+  Write8(TargetObjectWriter->getOSABI());
   Write8(0);                  // e_ident[EI_ABIVERSION]
 
   WriteZeros(ELF::EI_NIDENT - ELF::EI_PAD);
@@ -125,12 +121,12 @@ void ELFObjectWriter::WriteHeader(uint64_t SectionDataSize,
 
   // e_shnum     = # of section header ents
   if (NumberOfSections >= ELF::SHN_LORESERVE)
-    Write16(0);
+    Write16(ELF::SHN_UNDEF);
   else
     Write16(NumberOfSections);
 
   // e_shstrndx  = Section # of '.shstrtab'
-  if (NumberOfSections >= ELF::SHN_LORESERVE)
+  if (ShstrtabIndex >= ELF::SHN_LORESERVE)
     Write16(ELF::SHN_XINDEX);
   else
     Write16(ShstrtabIndex);
@@ -181,7 +177,7 @@ uint64_t ELFObjectWriter::SymbolValue(MCSymbolData &Data,
     if (const MCExpr *Value = Symbol.getVariableValue()) {
       int64_t IntValue;
       if (Value->EvaluateAsAbsolute(IntValue, Layout))
-	return (uint64_t)IntValue;
+        return (uint64_t)IntValue;
     }
   }
 
@@ -277,7 +273,7 @@ void ELFObjectWriter::WriteSymbolTable(MCDataFragment *SymtabF,
                                        MCDataFragment *ShndxF,
                                        const MCAssembler &Asm,
                                        const MCAsmLayout &Layout,
-                                     const SectionIndexMapTy &SectionIndexMap) {
+                                    const SectionIndexMapTy &SectionIndexMap) {
   // The string table must be emitted first because we need the index
   // into the string table for all the symbol names.
   assert(StringTable.size() && "Missing string table");
@@ -302,10 +298,12 @@ void ELFObjectWriter::WriteSymbolTable(MCDataFragment *SymtabF,
     if (Section.getType() == ELF::SHT_RELA ||
         Section.getType() == ELF::SHT_REL ||
         Section.getType() == ELF::SHT_STRTAB ||
-        Section.getType() == ELF::SHT_SYMTAB)
+        Section.getType() == ELF::SHT_SYMTAB ||
+        Section.getType() == ELF::SHT_SYMTAB_SHNDX)
       continue;
     WriteSymbolEntry(SymtabF, ShndxF, 0, ELF::STT_SECTION, 0, 0,
-                     ELF::STV_DEFAULT, SectionIndexMap.lookup(&Section), false);
+                     ELF::STV_DEFAULT, SectionIndexMap.lookup(&Section),
+                     false);
     LastLocalSymbolIndex++;
   }
 
@@ -415,7 +413,7 @@ void ELFObjectWriter::RecordRelocation(const MCAssembler &Asm,
       // Offset of the symbol in the section
       int64_t a = Layout.getSymbolOffset(&SDB);
 
-      // Ofeset of the relocation in the section
+      // Offset of the relocation in the section
       int64_t b = Layout.getFragmentOffset(Fragment) + Fixup.getOffset();
       Value += b - a;
     }
@@ -444,6 +442,10 @@ void ELFObjectWriter::RecordRelocation(const MCAssembler &Asm,
   FixedValue = Value;
   unsigned Type = GetRelocType(Target, Fixup, IsPCRel,
                                (RelocSymbol != 0), Addend);
+  MCSymbolRefExpr::VariantKind Modifier = Target.isAbsolute() ?
+    MCSymbolRefExpr::VK_None : Target.getSymA()->getKind();
+  if (RelocNeedsGOT(Modifier))
+    NeedsGOT = true;
 
   uint64_t RelocOffset = Layout.getFragmentOffset(Fragment) +
     Fixup.getOffset();
@@ -665,6 +667,9 @@ void ELFObjectWriter::ComputeSymbolTable(MCAssembler &Asm,
     ExternalSymbolData[i].SymbolData->setIndex(Index++);
   for (unsigned i = 0, e = UndefinedSymbolData.size(); i != e; ++i)
     UndefinedSymbolData[i].SymbolData->setIndex(Index++);
+
+  if (NumRegularSections > ELF::SHN_LORESERVE)
+    NeedsSymtabShndx = true;
 }
 
 void ELFObjectWriter::CreateRelocationSections(MCAssembler &Asm,
@@ -1001,11 +1006,10 @@ void ELFObjectWriter::WriteSection(MCAssembler &Asm,
     // Nothing to do.
     break;
 
-  case ELF::SHT_GROUP: {
+  case ELF::SHT_GROUP:
     sh_link = SymbolTableIndex;
     sh_info = GroupSymbolIndex;
     break;
-  }
 
   default:
     assert(0 && "FIXME: sh_type value not supported!");
@@ -1067,7 +1071,7 @@ void ELFObjectWriter::WriteDataSectionData(MCAssembler &Asm,
       WriteBytes(cast<MCDataFragment>(F).getContents().str());
     }
   } else {
-    Asm.WriteSectionData(&SD, Layout);
+    Asm.writeSectionData(&SD, Layout);
   }
 }
 
@@ -1233,7 +1237,7 @@ void ELFObjectWriter::WriteObject(MCAssembler &Asm,
 
   FileOff = OS.tell();
 
-  // ... and then the remainting sections ...
+  // ... and then the remaining sections ...
   for (unsigned i = NumRegularSections + 1; i < NumSections; ++i)
     WriteDataSectionData(Asm, Layout, *Sections[i]);
 }
@@ -1256,7 +1260,7 @@ MCObjectWriter *llvm::createELFObjectWriter(MCELFObjectTargetWriter *MOTW,
   switch (MOTW->getEMachine()) {
     case ELF::EM_386:
     case ELF::EM_X86_64:
-      return new X86ELFObjectWriter(MOTW, OS, IsLittleEndian); break;
+      return new ELFObjectWriter(MOTW, OS, IsLittleEndian); break;
     case ELF::EM_ARM:
       return new ARMELFObjectWriter(MOTW, OS, IsLittleEndian); break;
     case ELF::EM_MBLAZE:
@@ -1264,10 +1268,20 @@ MCObjectWriter *llvm::createELFObjectWriter(MCELFObjectTargetWriter *MOTW,
     case ELF::EM_PPC:
     case ELF::EM_PPC64:
       return new PPCELFObjectWriter(MOTW, OS, IsLittleEndian); break;
+    case ELF::EM_MIPS:
+      return new MipsELFObjectWriter(MOTW, OS, IsLittleEndian); break;
     default: llvm_unreachable("Unsupported architecture"); break;
   }
 }
 
+unsigned ELFObjectWriter::GetRelocType(const MCValue &Target,
+                                       const MCFixup &Fixup,
+                                       bool IsPCRel,
+                                       bool IsRelocWithSymbol,
+                                       int64_t Addend) const {
+  return TargetObjectWriter->GetRelocType(Target, Fixup, IsPCRel,
+                                          IsRelocWithSymbol, Addend);
+}
 
 /// START OF SUBCLASSES for ELFObjectWriter
 //===- ARMELFObjectWriter -------------------------------------------===//
@@ -1379,16 +1393,8 @@ unsigned ARMELFObjectWriter::GetRelocType(const MCValue &Target,
                                           const MCFixup &Fixup,
                                           bool IsPCRel,
                                           bool IsRelocWithSymbol,
-                                          int64_t Addend) {
-  MCSymbolRefExpr::VariantKind Modifier = Target.isAbsolute() ?
-    MCSymbolRefExpr::VK_None : Target.getSymA()->getKind();
-
-  unsigned Type = GetRelocTypeInner(Target, Fixup, IsPCRel);
-
-  if (RelocNeedsGOT(Modifier))
-    NeedsGOT = true;
-  
-  return Type;
+                                          int64_t Addend) const {
+  return GetRelocTypeInner(Target, Fixup, IsPCRel);
 }
 
 unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
@@ -1530,7 +1536,7 @@ unsigned PPCELFObjectWriter::GetRelocType(const MCValue &Target,
                                              const MCFixup &Fixup,
                                              bool IsPCRel,
                                              bool IsRelocWithSymbol,
-                                             int64_t Addend) {
+                                             int64_t Addend) const {
   // determine the type of the relocation
   unsigned Type;
   if (IsPCRel) {
@@ -1573,8 +1579,8 @@ unsigned PPCELFObjectWriter::GetRelocType(const MCValue &Target,
   return Type;
 }
 
-void
-PPCELFObjectWriter::adjustFixupOffset(const MCFixup &Fixup, uint64_t &RelocOffset) {
+void PPCELFObjectWriter::
+adjustFixupOffset(const MCFixup &Fixup, uint64_t &RelocOffset) {
   switch ((unsigned)Fixup.getKind()) {
     case PPC::fixup_ppc_ha16:
     case PPC::fixup_ppc_lo16:
@@ -1600,7 +1606,7 @@ unsigned MBlazeELFObjectWriter::GetRelocType(const MCValue &Target,
                                              const MCFixup &Fixup,
                                              bool IsPCRel,
                                              bool IsRelocWithSymbol,
-                                             int64_t Addend) {
+                                             int64_t Addend) const {
   // determine the type of the relocation
   unsigned Type;
   if (IsPCRel) {
@@ -1630,182 +1636,90 @@ unsigned MBlazeELFObjectWriter::GetRelocType(const MCValue &Target,
   return Type;
 }
 
-//===- X86ELFObjectWriter -------------------------------------------===//
+//===- MipsELFObjectWriter -------------------------------------------===//
 
+MipsELFObjectWriter::MipsELFObjectWriter(MCELFObjectTargetWriter *MOTW,
+                                         raw_ostream &_OS,
+                                         bool IsLittleEndian)
+  : ELFObjectWriter(MOTW, _OS, IsLittleEndian) {}
 
-X86ELFObjectWriter::X86ELFObjectWriter(MCELFObjectTargetWriter *MOTW,
-                                       raw_ostream &_OS,
-                                       bool IsLittleEndian)
-  : ELFObjectWriter(MOTW, _OS, IsLittleEndian)
-{}
+MipsELFObjectWriter::~MipsELFObjectWriter() {}
 
-X86ELFObjectWriter::~X86ELFObjectWriter()
-{}
+// FIXME: get the real EABI Version from the Triple.
+void MipsELFObjectWriter::WriteEFlags() {
+  Write32(ELF::EF_MIPS_NOREORDER |
+          ELF::EF_MIPS_ARCH_32R2);
+}
 
-unsigned X86ELFObjectWriter::GetRelocType(const MCValue &Target,
-                                          const MCFixup &Fixup,
-                                          bool IsPCRel,
-                                          bool IsRelocWithSymbol,
-                                          int64_t Addend) {
+const MCSymbol *MipsELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
+                                                    const MCValue &Target,
+                                                    const MCFragment &F,
+                                                    const MCFixup &Fixup,
+                                                    bool IsPCRel) const {
+  assert(Target.getSymA() && "SymA cannot be 0.");
+  const MCSymbol &Sym = Target.getSymA()->getSymbol();
+  
+  if (Sym.getSection().getKind().isMergeableCString() ||
+      Sym.getSection().getKind().isMergeableConst())
+    return &Sym;
+
+  return NULL;
+}
+
+unsigned MipsELFObjectWriter::GetRelocType(const MCValue &Target,
+                                           const MCFixup &Fixup,
+                                           bool IsPCRel,
+                                           bool IsRelocWithSymbol,
+                                           int64_t Addend) const {
   // determine the type of the relocation
+  unsigned Type = (unsigned)ELF::R_MIPS_NONE;
+  unsigned Kind = (unsigned)Fixup.getKind();
 
-  MCSymbolRefExpr::VariantKind Modifier = Target.isAbsolute() ?
-    MCSymbolRefExpr::VK_None : Target.getSymA()->getKind();
-  unsigned Type;
-  if (is64Bit()) {
-    if (IsPCRel) {
-      switch ((unsigned)Fixup.getKind()) {
-      default: llvm_unreachable("invalid fixup kind!");
-
-      case FK_Data_8: Type = ELF::R_X86_64_PC64; break;
-      case FK_Data_4: Type = ELF::R_X86_64_PC32; break;
-      case FK_Data_2: Type = ELF::R_X86_64_PC16; break;
-
-      case FK_PCRel_8:
-        assert(Modifier == MCSymbolRefExpr::VK_None);
-        Type = ELF::R_X86_64_PC64;
-        break;
-      case X86::reloc_signed_4byte:
-      case X86::reloc_riprel_4byte_movq_load:
-      case X86::reloc_riprel_4byte:
-      case FK_PCRel_4:
-        switch (Modifier) {
-        default:
-          llvm_unreachable("Unimplemented");
-        case MCSymbolRefExpr::VK_None:
-          Type = ELF::R_X86_64_PC32;
-          break;
-        case MCSymbolRefExpr::VK_PLT:
-          Type = ELF::R_X86_64_PLT32;
-          break;
-        case MCSymbolRefExpr::VK_GOTPCREL:
-          Type = ELF::R_X86_64_GOTPCREL;
-          break;
-        case MCSymbolRefExpr::VK_GOTTPOFF:
-          Type = ELF::R_X86_64_GOTTPOFF;
-        break;
-        case MCSymbolRefExpr::VK_TLSGD:
-          Type = ELF::R_X86_64_TLSGD;
-          break;
-        case MCSymbolRefExpr::VK_TLSLD:
-          Type = ELF::R_X86_64_TLSLD;
-          break;
-        }
-        break;
-      case FK_PCRel_2:
-        assert(Modifier == MCSymbolRefExpr::VK_None);
-        Type = ELF::R_X86_64_PC16;
-        break;
-      case FK_PCRel_1:
-        assert(Modifier == MCSymbolRefExpr::VK_None);
-        Type = ELF::R_X86_64_PC8;
-        break;
-      }
-    } else {
-      switch ((unsigned)Fixup.getKind()) {
-      default: llvm_unreachable("invalid fixup kind!");
-      case FK_Data_8: Type = ELF::R_X86_64_64; break;
-      case X86::reloc_signed_4byte:
-        switch (Modifier) {
-        default:
-          llvm_unreachable("Unimplemented");
-        case MCSymbolRefExpr::VK_None:
-          Type = ELF::R_X86_64_32S;
-          break;
-        case MCSymbolRefExpr::VK_GOT:
-          Type = ELF::R_X86_64_GOT32;
-          break;
-        case MCSymbolRefExpr::VK_GOTPCREL:
-          Type = ELF::R_X86_64_GOTPCREL;
-          break;
-        case MCSymbolRefExpr::VK_TPOFF:
-          Type = ELF::R_X86_64_TPOFF32;
-          break;
-        case MCSymbolRefExpr::VK_DTPOFF:
-          Type = ELF::R_X86_64_DTPOFF32;
-          break;
-        }
-        break;
-      case FK_Data_4:
-        Type = ELF::R_X86_64_32;
-        break;
-      case FK_Data_2: Type = ELF::R_X86_64_16; break;
-      case FK_PCRel_1:
-      case FK_Data_1: Type = ELF::R_X86_64_8; break;
-      }
-    }
-  } else {
-    if (IsPCRel) {
-      switch (Modifier) {
-      default:
-        llvm_unreachable("Unimplemented");
-      case MCSymbolRefExpr::VK_None:
-        Type = ELF::R_386_PC32;
-        break;
-      case MCSymbolRefExpr::VK_PLT:
-        Type = ELF::R_386_PLT32;
-        break;
-      }
-    } else {
-      switch ((unsigned)Fixup.getKind()) {
-      default: llvm_unreachable("invalid fixup kind!");
-
-      case X86::reloc_global_offset_table:
-        Type = ELF::R_386_GOTPC;
-        break;
-
-      // FIXME: Should we avoid selecting reloc_signed_4byte in 32 bit mode
-      // instead?
-      case X86::reloc_signed_4byte:
-      case FK_PCRel_4:
-      case FK_Data_4:
-        switch (Modifier) {
-        default:
-          llvm_unreachable("Unimplemented");
-        case MCSymbolRefExpr::VK_None:
-          Type = ELF::R_386_32;
-          break;
-        case MCSymbolRefExpr::VK_GOT:
-          Type = ELF::R_386_GOT32;
-          break;
-        case MCSymbolRefExpr::VK_GOTOFF:
-          Type = ELF::R_386_GOTOFF;
-          break;
-        case MCSymbolRefExpr::VK_TLSGD:
-          Type = ELF::R_386_TLS_GD;
-          break;
-        case MCSymbolRefExpr::VK_TPOFF:
-          Type = ELF::R_386_TLS_LE_32;
-          break;
-        case MCSymbolRefExpr::VK_INDNTPOFF:
-          Type = ELF::R_386_TLS_IE;
-          break;
-        case MCSymbolRefExpr::VK_NTPOFF:
-          Type = ELF::R_386_TLS_LE;
-          break;
-        case MCSymbolRefExpr::VK_GOTNTPOFF:
-          Type = ELF::R_386_TLS_GOTIE;
-          break;
-        case MCSymbolRefExpr::VK_TLSLDM:
-          Type = ELF::R_386_TLS_LDM;
-          break;
-        case MCSymbolRefExpr::VK_DTPOFF:
-          Type = ELF::R_386_TLS_LDO_32;
-          break;
-        case MCSymbolRefExpr::VK_GOTTPOFF:
-          Type = ELF::R_386_TLS_IE_32;
-          break;
-        }
-        break;
-      case FK_Data_2: Type = ELF::R_386_16; break;
-      case FK_PCRel_1:
-      case FK_Data_1: Type = ELF::R_386_8; break;
-      }
-    }
+  switch (Kind) {
+  default:
+    llvm_unreachable("invalid fixup kind!");
+  case FK_Data_4:
+    Type = ELF::R_MIPS_32;
+    break;
+  case FK_GPRel_4:
+    Type = ELF::R_MIPS_GPREL32;
+    break;
+  case Mips::fixup_Mips_GPREL16:
+    Type = ELF::R_MIPS_GPREL16;
+    break;
+  case Mips::fixup_Mips_26:
+    Type = ELF::R_MIPS_26;
+    break;
+  case Mips::fixup_Mips_CALL16:
+    Type = ELF::R_MIPS_CALL16;
+    break;
+  case Mips::fixup_Mips_GOT_Global:
+  case Mips::fixup_Mips_GOT_Local:
+    Type = ELF::R_MIPS_GOT16;
+    break;
+  case Mips::fixup_Mips_HI16:
+    Type = ELF::R_MIPS_HI16;
+    break;
+  case Mips::fixup_Mips_LO16:
+    Type = ELF::R_MIPS_LO16;
+    break;
+  case Mips::fixup_Mips_TLSGD:
+    Type = ELF::R_MIPS_TLS_GD;
+    break;
+  case Mips::fixup_Mips_GOTTPREL:
+    Type = ELF::R_MIPS_TLS_GOTTPREL;
+    break;
+  case Mips::fixup_Mips_TPREL_HI:
+    Type = ELF::R_MIPS_TLS_TPREL_HI16;
+    break;
+  case Mips::fixup_Mips_TPREL_LO:
+    Type = ELF::R_MIPS_TLS_TPREL_LO16;
+    break;
+  case Mips::fixup_Mips_Branch_PCRel:
+  case Mips::fixup_Mips_PC16:
+    Type = ELF::R_MIPS_PC16;
+    break;
   }
-
-  if (RelocNeedsGOT(Modifier))
-    NeedsGOT = true;
 
   return Type;
 }

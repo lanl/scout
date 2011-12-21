@@ -14,6 +14,7 @@
 #ifndef LLVM_CLANG_LIVEVARIABLES_H
 #define LLVM_CLANG_LIVEVARIABLES_H
 
+#include "clang/Analysis/AnalysisContext.h"
 #include "clang/AST/Decl.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ImmutableSet.h"
@@ -25,9 +26,8 @@ class CFGBlock;
 class Stmt;
 class DeclRefExpr;
 class SourceManager;
-class AnalysisContext;
   
-class LiveVariables {
+class LiveVariables : public ManagedAnalysis {
 public:
   class LivenessValues {
   public:
@@ -52,7 +52,9 @@ public:
     friend class LiveVariables;    
   };
   
-  struct Observer {
+  class Observer {
+    virtual void anchor();
+  public:
     virtual ~Observer() {}
     
     /// A callback invoked right before invoking the
@@ -67,11 +69,11 @@ public:
   };    
 
 
-  ~LiveVariables();
+  virtual ~LiveVariables();
   
   /// Compute the liveness information for a given CFG.
-  static LiveVariables *computeLiveness(AnalysisContext &analysisContext,
-                                          bool killAtAssign = true);
+  static LiveVariables *computeLiveness(AnalysisDeclContext &analysisContext,
+                                        bool killAtAssign);
   
   /// Return true if a variable is live at the end of a
   /// specified block.
@@ -92,10 +94,25 @@ public:
   void dumpBlockLiveness(const SourceManager& M);
 
   void runOnAllBlocks(Observer &obs);
-
+  
+  static LiveVariables *create(AnalysisDeclContext &analysisContext) {
+    return computeLiveness(analysisContext, true);
+  }
+  
+  static const void *getTag();
+  
 private:
   LiveVariables(void *impl);
   void *impl;
+};
+  
+class RelaxedLiveVariables : public LiveVariables {
+public:
+  static LiveVariables *create(AnalysisDeclContext &analysisContext) {
+    return computeLiveness(analysisContext, false);
+  }
+  
+  static const void *getTag();
 };
   
 } // end namespace clang

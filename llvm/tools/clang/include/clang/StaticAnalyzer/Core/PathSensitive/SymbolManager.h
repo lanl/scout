@@ -40,13 +40,16 @@ namespace ento {
   class TypedValueRegion;
   class VarRegion;
 
+/// \brief Symbolic value. These values used to capture symbolic execution of
+/// the program.
 class SymExpr : public llvm::FoldingSetNode {
+  virtual void anchor();
 public:
   enum Kind { RegionValueKind, ConjuredKind, DerivedKind, ExtentKind,
               MetadataKind,
               BEGIN_SYMBOLS = RegionValueKind,
               END_SYMBOLS = MetadataKind,
-              SymIntKind, SymSymKind };
+              SymIntKind, IntSymKind, SymSymKind, CastSymbolKind };
 private:
   Kind K;
 
@@ -67,12 +70,40 @@ public:
 
   // Implement isa<T> support.
   static inline bool classof(const SymExpr*) { return true; }
+
+  /// \brief Iterator over symbols that the current symbol depends on.
+  ///
+  /// For SymbolData, it's the symbol itself; for expressions, it's the
+  /// expression symbol and all the operands in it. Note, SymbolDerived is
+  /// treated as SymbolData - the iterator will NOT visit the parent region.
+  class symbol_iterator {
+    SmallVector<const SymExpr*, 5> itr;
+    void expand();
+  public:
+    symbol_iterator() {}
+    symbol_iterator(const SymExpr *SE);
+
+    symbol_iterator &operator++();
+    const SymExpr* operator*();
+
+    bool operator==(const symbol_iterator &X) const;
+    bool operator!=(const symbol_iterator &X) const;
+  };
+
+  symbol_iterator symbol_begin() const {
+    return symbol_iterator(this);
+  }
+  static symbol_iterator symbol_end() { return symbol_iterator(); }
 };
 
-typedef unsigned SymbolID;
+typedef const SymExpr* SymbolRef;
+typedef llvm::SmallVector<SymbolRef, 2> SymbolRefSmallVectorTy;
 
+typedef unsigned SymbolID;
+/// \brief A symbol representing data which can be stored in a memory location
+/// (region).
 class SymbolData : public SymExpr {
-private:
+  virtual void anchor();
   const SymbolID Sym;
 
 protected:
@@ -90,10 +121,7 @@ public:
   }
 };
 
-typedef const SymbolData* SymbolRef;
-typedef llvm::SmallVector<SymbolRef, 2> SymbolRefSmallVectorTy;
-
-/// A symbol representing the value of a MemRegion.
+///\brief A symbol representing the value stored at a MemRegion.
 class SymbolRegionValue : public SymbolData {
   const TypedValueRegion *R;
 
@@ -122,7 +150,8 @@ public:
   }
 };
 
-/// A symbol representing the result of an expression.
+/// A symbol representing the result of an expression in the case when we do
+/// not know anything about what the expression is.
 class SymbolConjured : public SymbolData {
   const Stmt *S;
   QualType T;
@@ -272,6 +301,42 @@ public:
   }
 };
 
+/// \brief Represents a cast expression.
+class SymbolCast : public SymExpr {
+  const SymExpr *Operand;
+  /// Type of the operand.
+  QualType FromTy;
+  /// The type of the result.
+  QualType ToTy;
+
+public:
+  SymbolCast(const SymExpr *In, QualType From, QualType To) :
+    SymExpr(CastSymbolKind), Operand(In), FromTy(From), ToTy(To) { }
+
+  QualType getType(ASTContext &C) const { return ToTy; }
+
+  const SymExpr *getOperand() const { return Operand; };
+
+  void dumpToStream(raw_ostream &os) const;
+
+  static void Profile(llvm::FoldingSetNodeID& ID,
+                      const SymExpr *In, QualType From, QualType To) {
+    ID.AddInteger((unsigned) CastSymbolKind);
+    ID.AddPointer(In);
+    ID.Add(From);
+    ID.Add(To);
+  }
+
+  void Profile(llvm::FoldingSetNodeID& ID) {
+    Profile(ID, Operand, FromTy, ToTy);
+  }
+
+  // Implement isa<T> support.
+  static inline bool classof(const SymExpr *SE) {
+    return SE->getKind() == CastSymbolKind;
+  }
+};
+
 /// SymIntExpr - Represents symbolic expression like 'x' + 3.
 class SymIntExpr : public SymExpr {
   const SymExpr *LHS;
@@ -312,6 +377,47 @@ public:
   // Implement isa<T> support.
   static inline bool classof(const SymExpr *SE) {
     return SE->getKind() == SymIntKind;
+  }
+};
+
+/// IntSymExpr - Represents symbolic expression like 3 - 'x'.
+class IntSymExpr : public SymExpr {
+  const llvm::APSInt& LHS;
+  BinaryOperator::Opcode Op;
+  const SymExpr *RHS;
+  QualType T;
+
+public:
+  IntSymExpr(const llvm::APSInt& lhs, BinaryOperator::Opcode op,
+             const SymExpr *rhs, QualType t)
+    : SymExpr(IntSymKind), LHS(lhs), Op(op), RHS(rhs), T(t) {}
+
+  QualType getType(ASTContext &C) const { return T; }
+
+  BinaryOperator::Opcode getOpcode() const { return Op; }
+
+  void dumpToStream(raw_ostream &os) const;
+
+  const SymExpr *getRHS() const { return RHS; }
+  const llvm::APSInt &getLHS() const { return LHS; }
+
+  static void Profile(llvm::FoldingSetNodeID& ID, const llvm::APSInt& lhs,
+                      BinaryOperator::Opcode op, const SymExpr *rhs,
+                      QualType t) {
+    ID.AddInteger((unsigned) IntSymKind);
+    ID.AddPointer(&lhs);
+    ID.AddInteger(op);
+    ID.AddPointer(rhs);
+    ID.Add(t);
+  }
+
+  void Profile(llvm::FoldingSetNodeID& ID) {
+    Profile(ID, LHS, Op, RHS, T);
+  }
+
+  // Implement isa<T> support.
+  static inline bool classof(const SymExpr *SE) {
+    return SE->getKind() == IntSymKind;
   }
 };
 
@@ -404,6 +510,9 @@ public:
                                           QualType T, unsigned VisitCount,
                                           const void *SymbolTag = 0);
 
+  const SymbolCast* getCastSymbol(const SymExpr *Operand,
+                                  QualType From, QualType To);
+
   const SymIntExpr *getSymIntExpr(const SymExpr *lhs, BinaryOperator::Opcode op,
                                   const llvm::APSInt& rhs, QualType t);
 
@@ -411,6 +520,10 @@ public:
                                   const llvm::APSInt& rhs, QualType t) {
     return getSymIntExpr(&lhs, op, rhs, t);
   }
+
+  const IntSymExpr *getIntSymExpr(const llvm::APSInt& lhs,
+                                  BinaryOperator::Opcode op,
+                                  const SymExpr *rhs, QualType t);
 
   const SymSymExpr *getSymSymExpr(const SymExpr *lhs, BinaryOperator::Opcode op,
                                   const SymExpr *rhs, QualType t);

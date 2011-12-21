@@ -791,7 +791,7 @@ getT2AddrModeImm8s4OpValue(const MCInst &MI, unsigned OpIdx,
 
     assert(MO.isExpr() && "Unexpected machine operand type!");
     const MCExpr *Expr = MO.getExpr();
-    MCFixupKind Kind = MCFixupKind(ARM::fixup_arm_pcrel_10);
+    MCFixupKind Kind = MCFixupKind(ARM::fixup_t2_pcrel_10);
     Fixups.push_back(MCFixup::Create(0, Expr, Kind));
 
     ++MCNumCPRelocations;
@@ -993,6 +993,19 @@ getAddrMode3OpValue(const MCInst &MI, unsigned OpIdx,
   const MCOperand &MO = MI.getOperand(OpIdx);
   const MCOperand &MO1 = MI.getOperand(OpIdx+1);
   const MCOperand &MO2 = MI.getOperand(OpIdx+2);
+
+  // If The first operand isn't a register, we have a label reference.
+  if (!MO.isReg()) {
+    unsigned Rn = getARMRegisterNumbering(ARM::PC);   // Rn is PC.
+
+    assert(MO.isExpr() && "Unexpected machine operand type!");
+    const MCExpr *Expr = MO.getExpr();
+    MCFixupKind Kind = MCFixupKind(ARM::fixup_arm_pcrel_10_unscaled);
+    Fixups.push_back(MCFixup::Create(0, Expr, Kind));
+
+    ++MCNumCPRelocations;
+    return (Rn << 9) | (1 << 13);
+  }
   unsigned Rn = getARMRegisterNumbering(MO.getReg());
   unsigned Imm = MO2.getImm();
   bool isAdd = ARM_AM::getAM3Op(Imm) == ARM_AM::add;
@@ -1372,11 +1385,11 @@ getAddrMode6OneLane32AddressOpValue(const MCInst &MI, unsigned Op,
 
   switch (Imm.getImm()) {
   default: break;
-  case 2:
-  case 4:
   case 8:
-  case 16: Align = 0x00; break;
-  case 32: Align = 0x03; break;
+  case 16:
+  case 32: // Default '0' value for invalid alignments of 8, 16, 32 bytes.
+  case 2: Align = 0x00; break;
+  case 4: Align = 0x03; break;
   }
 
   return RegNo | (Align << 4);
@@ -1412,7 +1425,7 @@ getAddrMode6OffsetOpValue(const MCInst &MI, unsigned Op,
                           SmallVectorImpl<MCFixup> &Fixups) const {
   const MCOperand &MO = MI.getOperand(Op);
   if (MO.getReg() == 0) return 0x0D;
-  return MO.getReg();
+  return getARMRegisterNumbering(MO.getReg());
 }
 
 unsigned ARMMCCodeEmitter::

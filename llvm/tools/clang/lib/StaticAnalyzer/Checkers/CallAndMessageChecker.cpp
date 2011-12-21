@@ -159,7 +159,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
         os << "Passed-by-value struct argument contains uninitialized data";
 
         if (F.FieldChain.size() == 1)
-          os << " (e.g., field: '" << F.FieldChain[0] << "')";
+          os << " (e.g., field: '" << *F.FieldChain[0] << "')";
         else {
           os << " (e.g., via the field chain: '";
           bool first = true;
@@ -169,7 +169,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
               first = false;
             else
               os << '.';
-            os << *DI;
+            os << **DI;
           }
           os << "')";
         }
@@ -297,28 +297,18 @@ void CallAndMessageChecker::HandleNilReceiver(CheckerContext &C,
   // Check the return type of the message expression.  A message to nil will
   // return different values depending on the return type and the architecture.
   QualType RetTy = msg.getType(Ctx);
-
   CanQualType CanRetTy = Ctx.getCanonicalType(RetTy);
 
   if (CanRetTy->isStructureOrClassType()) {
-    // FIXME: At some point we shouldn't rely on isConsumedExpr(), but instead
-    // have the "use of undefined value" be smarter about where the
-    // undefined value came from.
-    if (C.getPredecessor()->getParentMap().isConsumedExpr(msg.getOriginExpr())){
-      if (ExplodedNode *N = C.generateSink(state))
-        emitNilReceiverBug(C, msg, N);
-      return;
-    }
-
-    // The result is not consumed by a surrounding expression.  Just propagate
-    // the current state.
-    C.addTransition(state);
+    // Structure returns are safe since the compiler zeroes them out.
+    SVal V = C.getSValBuilder().makeZeroVal(msg.getType(Ctx));
+    C.addTransition(state->BindExpr(msg.getOriginExpr(), V));
     return;
   }
 
-  // Other cases: check if the return type is smaller than void*.
-  if (CanRetTy != Ctx.VoidTy &&
-      C.getPredecessor()->getParentMap().isConsumedExpr(msg.getOriginExpr())) {
+  // Other cases: check if sizeof(return type) > sizeof(void*)
+  if (CanRetTy != Ctx.VoidTy && C.getLocationContext()->getParentMap()
+                                  .isConsumedExpr(msg.getOriginExpr())) {
     // Compute: sizeof(void *) and sizeof(return type)
     const uint64_t voidPtrSize = Ctx.getTypeSize(Ctx.VoidPtrTy);
     const uint64_t returnTypeSize = Ctx.getTypeSize(CanRetTy);
@@ -349,7 +339,7 @@ void CallAndMessageChecker::HandleNilReceiver(CheckerContext &C,
     // of this case unless we have *a lot* more knowledge.
     //
     SVal V = C.getSValBuilder().makeZeroVal(msg.getType(Ctx));
-    C.generateNode(state->BindExpr(msg.getOriginExpr(), V));
+    C.addTransition(state->BindExpr(msg.getOriginExpr(), V));
     return;
   }
 

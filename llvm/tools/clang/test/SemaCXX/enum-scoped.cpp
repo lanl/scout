@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -pedantic -std=c++0x -verify -triple x86_64-apple-darwin %s
+// RUN: %clang_cc1 -fsyntax-only -pedantic -std=c++11 -verify -triple x86_64-apple-darwin %s
 
 enum class E1 {
   Val1 = 1L
@@ -141,4 +141,9 @@ namespace test6 {
   void test() {
     (void) A::e; // expected-error {{incomplete type 'test6::A' named in nested name specifier}}
   }
+}
+
+namespace PR11484 {
+  const int val = 104;
+  enum class test1 { owner_dead = val, };
 }

@@ -24,6 +24,7 @@
 #include "clang/AST/ASTMutationListener.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/IdentifierTable.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -623,6 +624,8 @@ static void clearLinkageForClass(const CXXRecordDecl *record) {
   }
 }
 
+void NamedDecl::anchor() { }
+
 void NamedDecl::ClearLinkageCache() {
   // Note that we can't skip clearing the linkage of children just
   // because the parent doesn't have cached linkage:  we don't cache
@@ -721,6 +724,8 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags Flags) {
   switch (D->getKind()) {
     default:
       break;
+    case Decl::ParmVar:
+      return LinkageInfo::none();
     case Decl::TemplateTemplateParm: // count these as external
     case Decl::NonTypeTemplateParm:
     case Decl::ObjCAtDefsField:
@@ -847,18 +852,18 @@ std::string NamedDecl::getQualifiedNameAsString(const PrintingPolicy &P) const {
       if (ND->isAnonymousNamespace())
         OS << "<anonymous namespace>";
       else
-        OS << ND;
+        OS << *ND;
     } else if (const RecordDecl *RD = dyn_cast<RecordDecl>(*I)) {
       if (!RD->getIdentifier())
         OS << "<anonymous " << RD->getKindName() << '>';
       else
-        OS << RD;
+        OS << *RD;
     } else if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(*I)) {
       const FunctionProtoType *FT = 0;
       if (FD->hasWrittenPrototype())
         FT = dyn_cast<FunctionProtoType>(FD->getType()->getAs<FunctionType>());
 
-      OS << FD << '(';
+      OS << *FD << '(';
       if (FT) {
         unsigned NumParams = FD->getNumParams();
         for (unsigned i = 0; i < NumParams; ++i) {
@@ -877,13 +882,13 @@ std::string NamedDecl::getQualifiedNameAsString(const PrintingPolicy &P) const {
       }
       OS << ')';
     } else {
-      OS << cast<NamedDecl>(*I);
+      OS << *cast<NamedDecl>(*I);
     }
     OS << "::";
   }
 
   if (getDeclName())
-    OS << this;
+    OS << *this;
   else
     OS << "<anonymous>";
 
@@ -1334,6 +1339,114 @@ void VarDecl::setInit(Expr *I) {
   Init = I;
 }
 
+bool VarDecl::isUsableInConstantExpressions() const {
+  const LangOptions &Lang = getASTContext().getLangOptions();
+
+  // Only const variables can be used in constant expressions in C++. C++98 does
+  // not require the variable to be non-volatile, but we consider this to be a
+  // defect.
+  if (!Lang.CPlusPlus ||
+      !getType().isConstQualified() || getType().isVolatileQualified())
+    return false;
+
+  // In C++, const, non-volatile variables of integral or enumeration types
+  // can be used in constant expressions.
+  if (getType()->isIntegralOrEnumerationType())
+    return true;
+
+  // Additionally, in C++11, non-volatile constexpr variables and references can
+  // be used in constant expressions.
+  return Lang.CPlusPlus0x && (isConstexpr() || getType()->isReferenceType());
+}
+
+/// Convert the initializer for this declaration to the elaborated EvaluatedStmt
+/// form, which contains extra information on the evaluated value of the
+/// initializer.
+EvaluatedStmt *VarDecl::ensureEvaluatedStmt() const {
+  EvaluatedStmt *Eval = Init.dyn_cast<EvaluatedStmt *>();
+  if (!Eval) {
+    Stmt *S = Init.get<Stmt *>();
+    Eval = new (getASTContext()) EvaluatedStmt;
+    Eval->Value = S;
+    Init = Eval;
+  }
+  return Eval;
+}
+
+bool VarDecl::evaluateValue(
+                      llvm::SmallVectorImpl<PartialDiagnosticAt> &Notes) const {
+  EvaluatedStmt *Eval = ensureEvaluatedStmt();
+
+  // We only produce notes indicating why an initializer is non-constant the
+  // first time it is evaluated. FIXME: The notes won't always be emitted the
+  // first time we try evaluation, so might not be produced at all.
+  if (Eval->WasEvaluated)
+    return !Eval->Evaluated.isUninit();
+
+  const Expr *Init = cast<Expr>(Eval->Value);
+  assert(!Init->isValueDependent());
+
+  if (Eval->IsEvaluating) {
+    // FIXME: Produce a diagnostic for self-initialization.
+    Eval->CheckedICE = true;
+    Eval->IsICE = false;
+    return false;
+  }
+
+  Eval->IsEvaluating = true;
+
+  bool Result = Init->EvaluateAsInitializer(Eval->Evaluated, getASTContext(),
+                                            this, Notes);
+
+  // Ensure the result is an uninitialized APValue if evaluation fails.
+  if (!Result)
+    Eval->Evaluated = APValue();
+
+  Eval->IsEvaluating = false;
+  Eval->WasEvaluated = true;
+
+  // In C++11, we have determined whether the initializer was a constant
+  // expression as a side-effect.
+  if (getASTContext().getLangOptions().CPlusPlus0x && !Eval->CheckedICE) {
+    Eval->CheckedICE = true;
+    Eval->IsICE = Notes.empty();
+  }
+
+  return Result;
+}
+
+bool VarDecl::checkInitIsICE() const {
+  EvaluatedStmt *Eval = ensureEvaluatedStmt();
+  if (Eval->CheckedICE)
+    // We have already checked whether this subexpression is an
+    // integral constant expression.
+    return Eval->IsICE;
+
+  const Expr *Init = cast<Expr>(Eval->Value);
+  assert(!Init->isValueDependent());
+
+  // In C++11, evaluate the initializer to check whether it's a constant
+  // expression.
+  if (getASTContext().getLangOptions().CPlusPlus0x) {
+    llvm::SmallVector<PartialDiagnosticAt, 8> Notes;
+    evaluateValue(Notes);
+    return Eval->IsICE;
+  }
+
+  // It's an ICE whether or not the definition we found is
+  // out-of-line.  See DR 721 and the discussion in Clang PR
+  // 6206 for details.
+
+  if (Eval->CheckingICE)
+    return false;
+  Eval->CheckingICE = true;
+
+  Eval->IsICE = Init->isIntegerConstantExpr(getASTContext());
+  Eval->CheckingICE = false;
+  Eval->CheckedICE = true;
+  return Eval->IsICE;
+}
+
 bool VarDecl::extendsLifetimeOfTemporary() const {
   assert(getType()->isReferenceType() &&"Non-references never extend lifetime");
   
@@ -1412,21 +1525,6 @@ Expr *ParmVarDecl::getDefaultArg() {
   return Arg;
 }
 
-unsigned ParmVarDecl::getNumDefaultArgTemporaries() const {
-  if (const ExprWithCleanups *E = dyn_cast<ExprWithCleanups>(getInit()))
-    return E->getNumTemporaries();
-
-  return 0;
-}
-
-CXXTemporary *ParmVarDecl::getDefaultArgTemporary(unsigned i) {
-  assert(getNumDefaultArgTemporaries() && 
-         "Default arguments does not have any temporaries!");
-
-  ExprWithCleanups *E = cast<ExprWithCleanups>(getInit());
-  return E->getTemporary(i);
-}
-
 SourceRange ParmVarDecl::getDefaultArgRange() const {
   if (const Expr *E = getInit())
     return E->getSourceRange();
@@ -1439,6 +1537,15 @@ SourceRange ParmVarDecl::getDefaultArgRange() const {
 
 bool ParmVarDecl::isParameterPack() const {
   return isa<PackExpansionType>(getType());
+}
+
+void ParmVarDecl::setParameterIndexLarge(unsigned parameterIndex) {
+  getASTContext().setParameterIndex(this, parameterIndex);
+  ParmVarDeclBits.ParameterIndex = ParameterIndexSentinel;
+}
+
+unsigned ParmVarDecl::getParameterIndexLarge() const {
+  return getASTContext().getParameterIndex(this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1613,7 +1720,7 @@ FunctionDecl::setPreviousDeclaration(FunctionDecl *PrevDecl) {
     FunTmpl->setPreviousDeclaration(PrevFunTmpl);
   }
   
-  if (PrevDecl->IsInline)
+  if (PrevDecl && PrevDecl->IsInline)
     IsInline = true;
 }
 
@@ -1847,7 +1954,12 @@ bool FunctionDecl::isInlineDefinitionExternallyVisible() const {
     // Only consider file-scope declarations in this test.
     if (!Redecl->getLexicalDeclContext()->isTranslationUnit())
       continue;
-    
+
+    // Only consider explicit declarations; the presence of a builtin for a
+    // libcall shouldn't affect whether a definition is externally visible.
+    if (Redecl->isImplicit())
+      continue;
+
     if (!Redecl->isInlineSpecified() || Redecl->getStorageClass() == SC_Extern) 
       return true; // Not an inline definition
   }
@@ -1952,7 +2064,20 @@ bool FunctionDecl::isImplicitlyInstantiable() const {
     return true;
 
   return PatternDecl->isInlined();
-}                      
+}
+
+bool FunctionDecl::isTemplateInstantiation() const {
+  switch (getTemplateSpecializationKind()) {
+    case TSK_Undeclared:
+    case TSK_ExplicitSpecialization:
+      return false;      
+    case TSK_ImplicitInstantiation:
+    case TSK_ExplicitInstantiationDeclaration:
+    case TSK_ExplicitInstantiationDefinition:
+      return true;
+  }
+  llvm_unreachable("All TSK values handled.");
+}
    
 FunctionDecl *FunctionDecl::getTemplateInstantiationPattern() const {
   // Handle class scope explicit specialization special case.
@@ -2178,34 +2303,36 @@ bool FieldDecl::isAnonymousStructOrUnion() const {
   return false;
 }
 
+unsigned FieldDecl::getBitWidthValue(const ASTContext &Ctx) const {
+  assert(isBitField() && "not a bitfield");
+  Expr *BitWidth = InitializerOrBitWidth.getPointer();
+  return BitWidth->EvaluateKnownConstInt(Ctx).getZExtValue();
+}
+
 unsigned FieldDecl::getFieldIndex() const {
   if (CachedFieldIndex) return CachedFieldIndex - 1;
 
-  unsigned index = 0;
+  unsigned Index = 0;
   const RecordDecl *RD = getParent();
   const FieldDecl *LastFD = 0;
   bool IsMsStruct = RD->hasAttr<MsStructAttr>();
-  
-  RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
-  while (true) {
-    assert(i != e && "failed to find field in parent!");
-    if (*i == this)
-      break;
+
+  for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
+       I != E; ++I, ++Index) {
+    (*I)->CachedFieldIndex = Index + 1;
 
     if (IsMsStruct) {
       // Zero-length bitfields following non-bitfield members are ignored.
-      if (getASTContext().ZeroBitfieldFollowsNonBitfield((*i), LastFD)) {
-        ++i;
+      if (getASTContext().ZeroBitfieldFollowsNonBitfield((*I), LastFD)) {
+        --Index;
         continue;
       }
-      LastFD = (*i);
+      LastFD = (*I);
     }
-    ++i;
-    ++index;
   }
 
-  CachedFieldIndex = index + 1;
-  return index;
+  assert(CachedFieldIndex && "failed to find field in parent");
+  return CachedFieldIndex - 1;
 }
 
 SourceRange FieldDecl::getSourceRange() const {
@@ -2262,22 +2389,22 @@ void TagDecl::completeDefinition() {
           cast<CXXRecordDecl>(this)->hasDefinition()) &&
          "definition completed but not started");
 
-  IsDefinition = true;
+  IsCompleteDefinition = true;
   IsBeingDefined = false;
 
   if (ASTMutationListener *L = getASTMutationListener())
     L->CompletedTagDefinition(this);
 }
 
-TagDecl* TagDecl::getDefinition() const {
-  if (isDefinition())
+TagDecl *TagDecl::getDefinition() const {
+  if (isCompleteDefinition())
     return const_cast<TagDecl *>(this);
   if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(this))
     return CXXRD->getDefinition();
 
   for (redecl_iterator R = redecls_begin(), REnd = redecls_end();
        R != REnd; ++R)
-    if (R->isDefinition())
+    if (R->isCompleteDefinition())
       return *R;
 
   return 0;
@@ -2319,6 +2446,8 @@ void TagDecl::setTemplateParameterListsInfo(ASTContext &Context,
 // EnumDecl Implementation
 //===----------------------------------------------------------------------===//
 
+void EnumDecl::anchor() { }
+
 EnumDecl *EnumDecl::Create(ASTContext &C, DeclContext *DC,
                            SourceLocation StartLoc, SourceLocation IdLoc,
                            IdentifierInfo *Id,
@@ -2339,7 +2468,7 @@ void EnumDecl::completeDefinition(QualType NewType,
                                   QualType NewPromotionType,
                                   unsigned NumPositiveBits,
                                   unsigned NumNegativeBits) {
-  assert(!isDefinition() && "Cannot redefine enums!");
+  assert(!isCompleteDefinition() && "Cannot redefine enums!");
   if (!IntegerType)
     IntegerType = NewType.getTypePtr();
   PromotionType = NewPromotionType;
@@ -2392,7 +2521,7 @@ RecordDecl::field_iterator RecordDecl::field_begin() const {
 /// completeDefinition - Notes that the definition of this type is now
 /// complete.
 void RecordDecl::completeDefinition() {
-  assert(!isDefinition() && "Cannot redefine record!");
+  assert(!isCompleteDefinition() && "Cannot redefine record!");
   TagDecl::completeDefinition();
 }
 
@@ -2423,7 +2552,8 @@ void RecordDecl::LoadFieldsFromExternalStorage() const {
   if (Decls.empty())
     return;
 
-  llvm::tie(FirstDecl, LastDecl) = BuildDeclChain(Decls);
+  llvm::tie(FirstDecl, LastDecl) = BuildDeclChain(Decls,
+                                                 /*FieldsAlreadyLoaded=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2522,9 +2652,13 @@ MeshDecl::field_iterator MeshDecl::field_begin() const{
 // Other Decl Allocation/Deallocation Method Implementations
 //===----------------------------------------------------------------------===//
 
+void TranslationUnitDecl::anchor() { }
+
 TranslationUnitDecl *TranslationUnitDecl::Create(ASTContext &C) {
   return new (C) TranslationUnitDecl(C);
 }
+
+void LabelDecl::anchor() { }
 
 LabelDecl *LabelDecl::Create(ASTContext &C, DeclContext *DC,
                              SourceLocation IdentL, IdentifierInfo *II) {
@@ -2538,6 +2672,7 @@ LabelDecl *LabelDecl::Create(ASTContext &C, DeclContext *DC,
   return new (C) LabelDecl(DC, IdentL, II, 0, GnuLabelL);
 }
 
+void NamespaceDecl::anchor() { }
 
 NamespaceDecl *NamespaceDecl::Create(ASTContext &C, DeclContext *DC,
                                      SourceLocation StartLoc,
@@ -2549,6 +2684,10 @@ NamespaceDecl *NamespaceDecl::getNextNamespace() {
   return dyn_cast_or_null<NamespaceDecl>(
                        NextNamespace.get(getASTContext().getExternalSource()));
 }
+
+void ValueDecl::anchor() { }
+
+void ImplicitParamDecl::anchor() { }
 
 ImplicitParamDecl *ImplicitParamDecl::Create(ASTContext &C, DeclContext *DC,
                                              SourceLocation IdLoc,
@@ -2584,6 +2723,8 @@ EnumConstantDecl *EnumConstantDecl::Create(ASTContext &C, EnumDecl *CD,
   return new (C) EnumConstantDecl(CD, L, Id, T, E, V);
 }
 
+void IndirectFieldDecl::anchor() { }
+
 IndirectFieldDecl *
 IndirectFieldDecl::Create(ASTContext &C, DeclContext *DC, SourceLocation L,
                           IdentifierInfo *Id, QualType T, NamedDecl **CH,
@@ -2598,11 +2739,15 @@ SourceRange EnumConstantDecl::getSourceRange() const {
   return SourceRange(getLocation(), End);
 }
 
+void TypeDecl::anchor() { }
+
 TypedefDecl *TypedefDecl::Create(ASTContext &C, DeclContext *DC,
                                  SourceLocation StartLoc, SourceLocation IdLoc,
                                  IdentifierInfo *Id, TypeSourceInfo *TInfo) {
   return new (C) TypedefDecl(DC, StartLoc, IdLoc, Id, TInfo);
 }
+
+void TypedefNameDecl::anchor() { }
 
 TypeAliasDecl *TypeAliasDecl::Create(ASTContext &C, DeclContext *DC,
                                      SourceLocation StartLoc,
@@ -2627,9 +2772,88 @@ SourceRange TypeAliasDecl::getSourceRange() const {
   return SourceRange(getLocStart(), RangeEnd);
 }
 
+void FileScopeAsmDecl::anchor() { }
+
 FileScopeAsmDecl *FileScopeAsmDecl::Create(ASTContext &C, DeclContext *DC,
                                            StringLiteral *Str,
                                            SourceLocation AsmLoc,
                                            SourceLocation RParenLoc) {
   return new (C) FileScopeAsmDecl(DC, Str, AsmLoc, RParenLoc);
+}
+
+//===----------------------------------------------------------------------===//
+// ImportDecl Implementation
+//===----------------------------------------------------------------------===//
+
+/// \brief Retrieve the number of module identifiers needed to name the given
+/// module.
+static unsigned getNumModuleIdentifiers(Module *Mod) {
+  unsigned Result = 1;
+  while (Mod->Parent) {
+    Mod = Mod->Parent;
+    ++Result;
+  }
+  return Result;
+}
+
+ImportDecl::ImportDecl(DeclContext *DC, SourceLocation ImportLoc, 
+                       Module *Imported,
+                       ArrayRef<SourceLocation> IdentifierLocs)
+  : Decl(Import, DC, ImportLoc), ImportedAndComplete(Imported, true),
+    NextLocalImport()
+{
+  assert(getNumModuleIdentifiers(Imported) == IdentifierLocs.size());
+  SourceLocation *StoredLocs = reinterpret_cast<SourceLocation *>(this + 1);
+  memcpy(StoredLocs, IdentifierLocs.data(), 
+         IdentifierLocs.size() * sizeof(SourceLocation));
+}
+
+ImportDecl::ImportDecl(DeclContext *DC, SourceLocation ImportLoc, 
+                       Module *Imported, SourceLocation EndLoc)
+  : Decl(Import, DC, ImportLoc), ImportedAndComplete(Imported, false),
+    NextLocalImport()
+{
+  *reinterpret_cast<SourceLocation *>(this + 1) = EndLoc;
+}
+
+ImportDecl *ImportDecl::Create(ASTContext &C, DeclContext *DC, 
+                               SourceLocation ImportLoc, Module *Imported,
+                               ArrayRef<SourceLocation> IdentifierLocs) {
+  void *Mem = C.Allocate(sizeof(ImportDecl) + 
+                         IdentifierLocs.size() * sizeof(SourceLocation));
+  return new (Mem) ImportDecl(DC, ImportLoc, Imported, IdentifierLocs);
+}
+
+ImportDecl *ImportDecl::CreateImplicit(ASTContext &C, DeclContext *DC, 
+                                       SourceLocation ImportLoc,
+                                       Module *Imported, 
+                                       SourceLocation EndLoc) {
+  void *Mem = C.Allocate(sizeof(ImportDecl) + sizeof(SourceLocation));
+  ImportDecl *Import = new (Mem) ImportDecl(DC, ImportLoc, Imported, EndLoc);
+  Import->setImplicit();
+  return Import;
+}
+
+ImportDecl *ImportDecl::CreateEmpty(ASTContext &C, unsigned NumLocations) {
+  void *Mem = C.Allocate(sizeof(ImportDecl) + 
+                         NumLocations * sizeof(SourceLocation));
+  return new (Mem) ImportDecl(EmptyShell());  
+}
+
+ArrayRef<SourceLocation> ImportDecl::getIdentifierLocs() const {
+  if (!ImportedAndComplete.getInt())
+    return ArrayRef<SourceLocation>();
+
+  const SourceLocation *StoredLocs
+    = reinterpret_cast<const SourceLocation *>(this + 1);
+  return ArrayRef<SourceLocation>(StoredLocs, 
+                                  getNumModuleIdentifiers(getImportedModule()));
+}
+
+SourceRange ImportDecl::getSourceRange() const {
+  if (!ImportedAndComplete.getInt())
+    return SourceRange(getLocation(), 
+                       *reinterpret_cast<const SourceLocation *>(this + 1));
+  
+  return SourceRange(getLocation(), getIdentifierLocs().back());
 }

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s
 
 namespace std {
   template<typename T>
@@ -100,8 +100,7 @@ void g() {
   for (extern int a : A()) {} // expected-error {{loop variable 'a' may not be declared 'extern'}}
   for (static int a : A()) {} // expected-error {{loop variable 'a' may not be declared 'static'}}
   for (register int a : A()) {} // expected-error {{loop variable 'a' may not be declared 'register'}}
-  // FIXME: when clang supports constexpr, this should be rejected.
-  for (constexpr int a : A()) {} // desired-error {{loop variable 'a' may not be declared 'constexpr'}}
+  for (constexpr int a : A()) {} // expected-error {{loop variable 'a' may not be declared 'constexpr'}}
 
   struct NoBeginADL {
     null_t alt_end();
@@ -129,7 +128,7 @@ void g() {
     void *begin(); // expected-note {{selected 'begin' function with iterator type 'void *'}}
     void *end();
   };
-  for (auto u : NoIncr()) { // expected-error {{arithmetic on a pointer to void type}}
+  for (auto u : NoIncr()) { // expected-error {{arithmetic on a pointer to void}}
   }
 
   struct NoNotEq {

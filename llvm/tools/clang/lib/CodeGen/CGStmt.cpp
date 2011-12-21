@@ -37,17 +37,17 @@ using namespace CodeGen;
 
 void CodeGenFunction::EmitStopPoint(const Stmt *S) {
   if (CGDebugInfo *DI = getDebugInfo()) {
+    SourceLocation Loc;
     if (isa<DeclStmt>(S))
-      DI->setLocation(S->getLocEnd());
+      Loc = S->getLocEnd();
     else
-      DI->setLocation(S->getLocStart());
-    DI->UpdateLineDirectiveRegion(Builder);
-    DI->EmitStopPoint(Builder);
+      Loc = S->getLocStart();
+    DI->EmitLocation(Builder, Loc);
   }
 }
 
 void CodeGenFunction::EmitStmt(const Stmt *S) {
-  DEBUG("EmitStmt");
+  DEBUG_OUT("EmitStmt");
   assert(S && "Null statement?");
 
   // These statements have their own debug info handling.
@@ -80,6 +80,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::CXXCatchStmtClass:
   case Stmt::SEHExceptStmtClass:
   case Stmt::SEHFinallyStmtClass:
+  case Stmt::MSDependentExistsStmtClass:
     llvm_unreachable("invalid statement class to emit generically");
   case Stmt::NullStmtClass:
   case Stmt::CompoundStmtClass:
@@ -185,7 +186,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 }
 
 bool CodeGenFunction::EmitSimpleStmt(const Stmt *S) {
-  DEBUG("EmitSimpleStmt");
+  DEBUG_OUT("EmitSimpleStmt");
   switch (S->getStmtClass()) {
   default: return false;
   case Stmt::NullStmtClass: break;
@@ -207,15 +208,13 @@ bool CodeGenFunction::EmitSimpleStmt(const Stmt *S) {
 /// (for use by the statement expression extension).
 RValue CodeGenFunction::EmitCompoundStmt(const CompoundStmt &S, bool GetLast,
                                          AggValueSlot AggSlot) {
-  DEBUG("EmitCompoundStmt");
+  DEBUG_OUT("EmitCompoundStmt");
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
                              "LLVM IR generation of compound statement ('{}')");
 
   CGDebugInfo *DI = getDebugInfo();
-  if (DI) {
-    DI->setLocation(S.getLBracLoc());
-    DI->EmitRegionStart(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getLBracLoc());
 
   // Keep track of the current cleanup stack depth.
   RunCleanupsScope Scope(*this);
@@ -224,10 +223,8 @@ RValue CodeGenFunction::EmitCompoundStmt(const CompoundStmt &S, bool GetLast,
        E = S.body_end()-GetLast; I != E; ++I)
     EmitStmt(*I);
 
-  if (DI) {
-    DI->setLocation(S.getRBracLoc());
-    DI->EmitRegionEnd(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
 
   RValue RV;
   if (!GetLast)
@@ -270,7 +267,7 @@ void CodeGenFunction::SimplifyForwardingBlocks(llvm::BasicBlock *BB) {
 }
 
 void CodeGenFunction::EmitBlock(llvm::BasicBlock *BB, bool IsFinished) {
-  DEBUG("EmitBlock");
+  DEBUG_OUT("EmitBlock");
   llvm::BasicBlock *CurBB = Builder.GetInsertBlock();
 
   // Fall out of the current block (if necessary).
@@ -398,7 +395,7 @@ void CodeGenFunction::EmitIndirectGotoStmt(const IndirectGotoStmt &S) {
 }
 
 void CodeGenFunction::EmitIfStmt(const IfStmt &S) {
-  DEBUG("EmitIfStmt");
+  DEBUG_OUT("EmitIfStmt");
   // C99 6.8.4.1: The first substatement is executed if the expression compares
   // unequal to 0.  The condition must be a scalar type.
   RunCleanupsScope ConditionScope(*this);
@@ -590,7 +587,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 
 // ndm - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
-  DEBUG("EmitForAllStmtWrapper");
+  DEBUG_OUT("EmitForAllStmtWrapper");
 
   // Clear stale mesh elements.
   MeshMembers.clear();
@@ -759,7 +756,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   Values inputs;
 
   std::string TheName = CurFn->getName();
-  CGBlockInfo blockInfo(S.getBlock(), TheName.c_str());
+
+  CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
 
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
                                                S.getMesh()->getName(),
@@ -806,7 +804,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 }
 
 void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
-  DEBUG("EmitForAllStmt");
+  DEBUG_OUT("EmitForAllStmt");
   // Forall will initially behave exactly like a for loop.
   RunCleanupsScope Forallscope(*this);
 
@@ -913,7 +911,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
 void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   /*
-  DEBUG("EmitRenderAllStmt");
+  DEBUG_OUT("EmitRenderAllStmt");
 
   llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
   llvm::Type *Ty = llvm::PointerType::get(llvm::VectorType::get(fltTy, 4), 0);
@@ -971,10 +969,8 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   RunCleanupsScope ForScope(*this);
 
   CGDebugInfo *DI = getDebugInfo();
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getBegin());
-    DI->EmitRegionStart(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
   // Evaluate the first part before the loop.
   if (S.getInit())
@@ -1053,10 +1049,8 @@ void CodeGenFunction::EmitForStmt(const ForStmt &S) {
 
   ForScope.ForceCleanup();
 
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getEnd());
-    DI->EmitRegionEnd(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   // Emit the fall-through block.
   EmitBlock(LoopExit.getBlock(), true);
@@ -1068,10 +1062,8 @@ void CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S) {
   RunCleanupsScope ForScope(*this);
 
   CGDebugInfo *DI = getDebugInfo();
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getBegin());
-    DI->EmitRegionStart(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
 
   // Evaluate the first pieces before the loop.
   EmitStmt(S.getRangeStmt());
@@ -1127,10 +1119,8 @@ void CodeGenFunction::EmitCXXForRangeStmt(const CXXForRangeStmt &S) {
 
   ForScope.ForceCleanup();
 
-  if (DI) {
-    DI->setLocation(S.getSourceRange().getEnd());
-    DI->EmitRegionEnd(Builder);
-  }
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   // Emit the fall-through block.
   EmitBlock(LoopExit.getBlock(), true);
@@ -1183,7 +1173,8 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
   } else if (RV->getType()->isAnyComplexType()) {
     EmitComplexExprIntoAddr(RV, ReturnValue, false);
   } else {
-    EmitAggExpr(RV, AggValueSlot::forAddr(ReturnValue, Qualifiers(),
+    CharUnits Alignment = getContext().getTypeAlignInChars(RV->getType());
+    EmitAggExpr(RV, AggValueSlot::forAddr(ReturnValue, Alignment, Qualifiers(),
                                           AggValueSlot::IsDestructed,
                                           AggValueSlot::DoesNotNeedGCBarriers,
                                           AggValueSlot::IsNotAliased));
@@ -1193,7 +1184,7 @@ void CodeGenFunction::EmitReturnStmt(const ReturnStmt &S) {
 }
 
 void CodeGenFunction::EmitDeclStmt(const DeclStmt &S) {
-  DEBUG("EmitDeclStmt");
+  DEBUG_OUT("EmitDeclStmt");
   // As long as debug info is modeled with instructions, we have to ensure we
   // have a place to insert here and write the stop point here.
   if (getDebugInfo() && HaveInsertPoint())
@@ -1236,8 +1227,8 @@ void CodeGenFunction::EmitContinueStmt(const ContinueStmt &S) {
 void CodeGenFunction::EmitCaseStmtRange(const CaseStmt &S) {
   assert(S.getRHS() && "Expected RHS value in CaseStmt");
 
-  llvm::APSInt LHS = S.getLHS()->EvaluateAsInt(getContext());
-  llvm::APSInt RHS = S.getRHS()->EvaluateAsInt(getContext());
+  llvm::APSInt LHS = S.getLHS()->EvaluateKnownConstInt(getContext());
+  llvm::APSInt RHS = S.getRHS()->EvaluateKnownConstInt(getContext());
 
   // Emit the code for this case. We do this first to make sure it is
   // properly chained from our predecessor before generating the
@@ -1296,7 +1287,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   }
 
   llvm::ConstantInt *CaseVal =
-    Builder.getInt(S.getLHS()->EvaluateAsInt(getContext()));
+    Builder.getInt(S.getLHS()->EvaluateKnownConstInt(getContext()));
 
   // If the body of the case is just a 'break', and if there was no fallthrough,
   // try to not emit an empty block.
@@ -1337,7 +1328,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
   while (NextCase && NextCase->getRHS() == 0) {
     CurCase = NextCase;
     llvm::ConstantInt *CaseVal =
-      Builder.getInt(CurCase->getLHS()->EvaluateAsInt(getContext()));
+      Builder.getInt(CurCase->getLHS()->EvaluateKnownConstInt(getContext()));
     SwitchInsn->addCase(CaseVal, CaseDest);
     NextCase = dyn_cast<CaseStmt>(CurCase->getSubStmt());
   }
@@ -1527,7 +1518,7 @@ static bool FindCaseStatementsForValue(const SwitchStmt &S,
     if (CS->getRHS()) return false;
 
     // If we found our case, remember it as 'case'.
-    if (CS->getLHS()->EvaluateAsInt(C) == ConstantCondValue)
+    if (CS->getLHS()->EvaluateKnownConstInt(C) == ConstantCondValue)
       break;
   }
 

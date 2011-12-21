@@ -29,14 +29,16 @@ using namespace clang;
 Decl *
 Parser::ParseDeclarationStartingWithTemplate(unsigned Context,
                                              SourceLocation &DeclEnd,
-                                             AccessSpecifier AS) {
+                                             AccessSpecifier AS,
+                                             AttributeList *AccessAttrs) {
   ObjCDeclContextSwitch ObjCDC(*this);
   
   if (Tok.is(tok::kw_template) && NextToken().isNot(tok::less)) {
     return ParseExplicitInstantiation(SourceLocation(), ConsumeToken(),
                                            DeclEnd);
   }
-  return ParseTemplateDeclarationOrSpecialization(Context, DeclEnd, AS);
+  return ParseTemplateDeclarationOrSpecialization(Context, DeclEnd, AS,
+                                                  AccessAttrs);
 }
 
 /// \brief RAII class that manages the template parameter depth.
@@ -80,7 +82,8 @@ namespace {
 Decl *
 Parser::ParseTemplateDeclarationOrSpecialization(unsigned Context,
                                                  SourceLocation &DeclEnd,
-                                                 AccessSpecifier AS) {
+                                                 AccessSpecifier AS,
+                                                 AttributeList *AccessAttrs) {
   assert((Tok.is(tok::kw_export) || Tok.is(tok::kw_template)) &&
          "Token does not start a template declaration.");
 
@@ -164,7 +167,7 @@ Parser::ParseTemplateDeclarationOrSpecialization(unsigned Context,
                                                              isSpecialization,
                                                          LastParamListWasEmpty),
                                              ParsingTemplateParams,
-                                             DeclEnd, AS);
+                                             DeclEnd, AS, AccessAttrs);
 }
 
 /// \brief Parse a single declaration that declares a template,
@@ -193,13 +196,15 @@ Parser::ParseSingleDeclarationAfterTemplate(
                                        const ParsedTemplateInfo &TemplateInfo,
                                        ParsingDeclRAIIObject &DiagsFromTParams,
                                        SourceLocation &DeclEnd,
-                                       AccessSpecifier AS) {
+                                       AccessSpecifier AS,
+                                       AttributeList *AccessAttrs) {
   assert(TemplateInfo.Kind != ParsedTemplateInfo::NonTemplate &&
          "Template information required");
 
   if (Context == Declarator::MemberContext) {
     // We are parsing a member template.
-    ParseCXXClassMemberDeclaration(AS, TemplateInfo, &DiagsFromTParams);
+    ParseCXXClassMemberDeclaration(AS, AccessAttrs, TemplateInfo,
+                                   &DiagsFromTParams);
     return 0;
   }
 
@@ -260,18 +265,12 @@ Parser::ParseSingleDeclarationAfterTemplate(
   if (DeclaratorInfo.isFunctionDeclarator() &&
       isStartOfFunctionDefinition(DeclaratorInfo)) {
     if (DS.getStorageClassSpec() == DeclSpec::SCS_typedef) {
-      Diag(Tok, diag::err_function_declared_typedef);
-
-      if (Tok.is(tok::l_brace)) {
-        // This recovery skips the entire function body. It would be nice
-        // to simply call ParseFunctionDefinition() below, however Sema
-        // assumes the declarator represents a function, not a typedef.
-        ConsumeBrace();
-        SkipUntil(tok::r_brace, true);
-      } else {
-        SkipUntil(tok::semi);
-      }
-      return 0;
+      // Recover by ignoring the 'typedef'. This was probably supposed to be
+      // the 'typename' keyword, which we should have already suggested adding
+      // if it's appropriate.
+      Diag(DS.getStorageClassSpecLoc(), diag::err_function_declared_typedef)
+        << FixItHint::CreateRemoval(DS.getStorageClassSpecLoc());
+      DS.ClearStorageClassSpecs();
     }
     return ParseFunctionDefinition(DeclaratorInfo, TemplateInfo);
   }
@@ -473,8 +472,10 @@ Decl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
     Ellipsis = true;
     EllipsisLoc = ConsumeToken();
 
-    if (!getLang().CPlusPlus0x)
-      Diag(EllipsisLoc, diag::ext_variadic_templates);
+    Diag(EllipsisLoc,
+         getLang().CPlusPlus0x
+           ? diag::warn_cxx98_compat_variadic_templates
+           : diag::ext_variadic_templates);
   }
 
   // Grab the template parameter name (if given)
@@ -545,8 +546,10 @@ Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
   if (Tok.is(tok::ellipsis)) {
     EllipsisLoc = ConsumeToken();
     
-    if (!getLang().CPlusPlus0x)
-      Diag(EllipsisLoc, diag::ext_variadic_templates);
+    Diag(EllipsisLoc,
+         getLang().CPlusPlus0x
+           ? diag::warn_cxx98_compat_variadic_templates
+           : diag::ext_variadic_templates);
   }
       
   // Get the identifier, if given.
@@ -703,15 +706,15 @@ Parser::ParseTemplateIdAfterTemplateName(TemplateTy Template,
   RAngleLoc = Tok.getLocation();
 
   if (Tok.is(tok::greatergreater)) {
-    if (!getLang().CPlusPlus0x) {
-      const char *ReplaceStr = "> >";
-      if (NextToken().is(tok::greater) || NextToken().is(tok::greatergreater))
-        ReplaceStr = "> > ";
+    const char *ReplaceStr = "> >";
+    if (NextToken().is(tok::greater) || NextToken().is(tok::greatergreater))
+      ReplaceStr = "> > ";
 
-      Diag(Tok.getLocation(), diag::err_two_right_angle_brackets_need_space)
-        << FixItHint::CreateReplacement(
-                                 SourceRange(Tok.getLocation()), ReplaceStr);
-    }
+    Diag(Tok.getLocation(), getLang().CPlusPlus0x ?
+         diag::warn_cxx98_compat_two_right_angle_brackets :
+         diag::err_two_right_angle_brackets_need_space)
+      << FixItHint::CreateReplacement(SourceRange(Tok.getLocation()),
+                                      ReplaceStr);
 
     Tok.setKind(tok::greater);
     if (!ConsumeLastToken) {
@@ -1253,15 +1256,10 @@ void Parser::ParseLateTemplatedFuncDef(LateParsedTemplatedFunction &LMT) {
 /// \brief Lex a delayed template function for late parsing.
 void Parser::LexTemplateFunctionForLateParsing(CachedTokens &Toks) {
   tok::TokenKind kind = Tok.getKind();
-  // We may have a constructor initializer or function-try-block here.
-  if (kind == tok::colon || kind == tok::kw_try)
-    ConsumeAndStoreTryAndInitializers(Toks);
-  else {
-    Toks.push_back(Tok);
-    ConsumeBrace();
+  if (!ConsumeAndStoreFunctionPrologue(Toks)) {
+    // Consume everything up to (and including) the matching right brace.
+    ConsumeAndStoreUntil(tok::r_brace, Toks, /*StopAtSemi=*/false);
   }
-  // Consume everything up to (and including) the matching right brace.
-  ConsumeAndStoreUntil(tok::r_brace, Toks, /*StopAtSemi=*/false);
 
   // If we're in a function-try-block, we need to store all the catch blocks.
   if (kind == tok::kw_try) {

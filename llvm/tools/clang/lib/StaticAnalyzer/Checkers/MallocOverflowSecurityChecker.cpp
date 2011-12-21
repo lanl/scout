@@ -118,9 +118,12 @@ private:
     ASTContext &Context;
 
     bool isIntZeroExpr(const Expr *E) const {
-      return (E->getType()->isIntegralOrEnumerationType()
-              && E->isEvaluatable(Context)
-              && E->EvaluateAsInt(Context) == 0);
+      if (!E->getType()->isIntegralOrEnumerationType())
+        return false;
+      llvm::APSInt Result;
+      if (E->EvaluateAsInt(Result, Context))
+        return Result == 0;
+      return false;
     }
 
     void CheckExpr(const Expr *E_p) {
@@ -202,7 +205,7 @@ void MallocOverflowSecurityChecker::OutputPossibleOverflows(
 
   // Delete any possible overflows which have a comparison.
   CheckOverflowOps c(PossibleMallocOverflows, BR.getContext());
-  c.Visit(mgr.getAnalysisContext(D)->getBody());
+  c.Visit(mgr.getAnalysisDeclContext(D)->getBody());
 
   // Output warnings for all overflows that are left.
   for (CheckOverflowOps::theVecType::iterator
@@ -263,4 +266,3 @@ void MallocOverflowSecurityChecker::checkASTCodeBody(const Decl *D,
 void ento::registerMallocOverflowSecurityChecker(CheckerManager &mgr) {
   mgr.registerChecker<MallocOverflowSecurityChecker>();
 }
-

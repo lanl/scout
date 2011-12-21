@@ -22,11 +22,10 @@ extern cl::opt<std::string> ArchName;
 
 // Various helper functions.
 void DumpBytes(StringRef bytes);
-void DisassembleInputLibObject(StringRef Filename);
 void DisassembleInputMachO(StringRef Filename);
 
 class StringRefMemoryObject : public MemoryObject {
-private:
+  virtual void anchor();
   StringRef Bytes;
 public:
   StringRefMemoryObject(StringRef bytes) : Bytes(bytes) {}

@@ -18,7 +18,6 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/Support/TargetSelect.h"
 
 namespace llvm {
 class Target;
@@ -35,12 +34,6 @@ using namespace llvm;
 LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
                                       int TagType, LLVMOpInfoCallback GetOpInfo,
                                       LLVMSymbolLookupCallback SymbolLookUp) {
-  // Initialize targets and assembly printers/parsers.
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllDisassemblers();
-
   // Get the target.
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, Error);
@@ -68,7 +61,7 @@ LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
   // Set up disassembler.
   MCDisassembler *DisAsm = TheTarget->createMCDisassembler(*STI);
   assert(DisAsm && "Unable to create disassembler!");
-  DisAsm->setupForSymbolicDisassembly(GetOpInfo, DisInfo, Ctx);
+  DisAsm->setupForSymbolicDisassembly(GetOpInfo, SymbolLookUp, DisInfo, Ctx);
 
   // Set up the instruction printer.
   int AsmPrinterVariant = MAI->getAssemblerDialect();

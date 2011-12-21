@@ -32,9 +32,6 @@
 /* Define if position independent code is enabled */
 #cmakedefine ENABLE_PIC
 
-/* Define if threads enabled */
-#cmakedefine ENABLE_THREADS ${ENABLE_THREADS}
-
 /* Define if timestamp information (e.g., __DATE___) is allowed */
 #cmakedefine ENABLE_TIMESTAMPS ${ENABLE_TIMESTAMPS}
 
@@ -297,6 +294,9 @@
 /* Define to 1 if you have the `powf' function. */
 #cmakedefine HAVE_POWF ${HAVE_POWF}
 
+/* Define to 1 if you have the `pread' function. */
+#cmakedefine HAVE_PREAD ${HAVE_PREAD}
+
 /* Define if libtool can extract symbol lists from object files. */
 #undef HAVE_PRELOADED_SYMBOLS
 
@@ -545,17 +545,20 @@
 /* Installation directory for data files */
 #cmakedefine LLVM_DATADIR "${LLVM_DATADIR}"
 
+/* Target triple LLVM will generate code for by default */
+#cmakedefine LLVM_DEFAULT_TARGET_TRIPLE "${LLVM_DEFAULT_TARGET_TRIPLE}"
+
 /* Installation directory for documentation */
 #cmakedefine LLVM_DOCSDIR "${LLVM_DOCSDIR}"
+
+/* Define if threads enabled */
+#cmakedefine01 LLVM_ENABLE_THREADS
 
 /* Installation directory for config files */
 #cmakedefine LLVM_ETCDIR "${LLVM_ETCDIR}"
 
 /* Has gcc/MSVC atomic intrinsics */
 #cmakedefine01 LLVM_HAS_ATOMICS
-
-/* Host triple we were built on */
-#cmakedefine LLVM_HOSTTRIPLE "${LLVM_HOSTTRIPLE}"
 
 /* Installation directory for include files */
 #cmakedefine LLVM_INCLUDEDIR "${LLVM_INCLUDEDIR}"
@@ -667,6 +670,9 @@
 
 /* Define to 1 if the `S_IS*' macros in <sys/stat.h> do not work properly. */
 #undef STAT_MACROS_BROKEN
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
 
 /* Define to 1 if you can safely include both <sys/time.h> and <time.h>. */
 #undef TIME_WITH_SYS_TIME
