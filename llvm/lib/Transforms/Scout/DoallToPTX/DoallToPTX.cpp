@@ -59,17 +59,22 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
   const std::string CPU = "";
   const std::string featuresStr = "";
+  const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
+
   TargetMachine *TheTarget =
     PTXTarget->createTargetMachine(TargetTriple.getTriple(),
                                    CPU,
                                    featuresStr,
-				   TargetOptions());
+				   TargetOptions(),
+				   Reloc::Default,
+				   CodeModel::Default,
+				   Lvl);
 
   std::auto_ptr< TargetMachine > Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
 
   const TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_AssemblyFile;
-  const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
+
   const bool DisableVerify = false;
 
   // ndm - MERGED
@@ -84,6 +89,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
   Constant *AssemblyCodeArray =
     ConstantArray::get(cpuModule.getContext(), AssemblyCode);
+  
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),
                             true,

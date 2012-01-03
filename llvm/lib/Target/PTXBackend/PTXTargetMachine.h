@@ -29,6 +29,8 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetData.h"
 
+#include <iostream>
+
 namespace llvm {
 
 struct SimplePTXTargetMachine : public TargetMachine {
@@ -41,7 +43,8 @@ struct SimplePTXTargetMachine : public TargetMachine {
 			CodeGenOpt::Level OL)
    // ndm - MERGE
    // : TargetMachine(T, TT, CPU, FS) {}
-   : TargetMachine(T, TT, CPU, FS, Options) {}
+   : TargetMachine(T, TT, CPU, FS, Options) {
+ }
 
   //const Module &M, const std::string &FS)
   //  : DataLayout(&M) {}
@@ -50,7 +53,6 @@ struct SimplePTXTargetMachine : public TargetMachine {
   virtual bool addPassesToEmitFile(PassManagerBase &PM,
 				   formatted_raw_ostream &Out,
 				   CodeGenFileType FileType,
-				   CodeGenOpt::Level OptLevel,
 				   bool DisableVerify);
 
   // This class always works, but shouldn't be the default in most cases.
