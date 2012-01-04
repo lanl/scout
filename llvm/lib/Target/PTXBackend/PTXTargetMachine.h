@@ -29,8 +29,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetData.h"
 
-#include <iostream>
-
 namespace llvm {
 
 struct SimplePTXTargetMachine : public TargetMachine {
