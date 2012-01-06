@@ -28,6 +28,8 @@
 #include "llvm/Target/TargetData.h"
 #include "llvm/Transforms/Utils/FunctionUtils.h"
 
+#include <map>
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -588,7 +590,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 // ndm - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
-
+  
   // Clear stale mesh elements.
   MeshMembers.clear();
   const IdentifierInfo *MeshII = S.getMesh();
@@ -599,11 +601,16 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
 
+  typedef std::map<std::string, bool> MeshFieldMap;
+  MeshFieldMap meshFieldMap;
+  
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
 
     llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    meshFieldMap[name.str()] = true;
+    
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     llvm::Value *baseAddr = GetImplicitMeshVariable();
     if(!(name.equals("position") || name.equals("width") ||
@@ -685,6 +692,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
   llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
+  
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
   if(isa< RenderAllStmt >(S))
@@ -702,18 +710,35 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::NamedMDNode *ScoutMetadata =
       CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
 
-    SmallVector< llvm::Value *, 3 > KMD; // Kernel MetaData
+    SmallVector< llvm::Value *, 4 > KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is
     // a mesh member.
     SmallVector< llvm::Value *, 3 > args;
+    SmallVector< llvm::Value *, 3 > meshArgs;
     typedef llvm::Function::arg_iterator ArgIterator;
     for(ArgIterator it = ForallFn->arg_begin(),
           end = ForallFn->arg_end(); it != end; ++it) {
-      if(isMeshMember(it))
+      if(isMeshMember(it)){
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
-      else
+
+        // Convert mesh field arguments to the function which
+        // have been uniqued by ExtractCodeRegion() back into mesh field names
+        std::string ns = (*it).getName().str();
+        while(!ns.empty()){
+          if(meshFieldMap.find(ns) != meshFieldMap.end()){
+            meshArgs.push_back(Builder.CreateGlobalStringPtr(ns));
+            break;
+          }
+          ns.erase(ns.length() - 1, 1);
+        }
+        
+        assert(!ns.empty() && "failed to convert uniqued mesh field name");
+      }
+      else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+        meshArgs.push_back(Builder.CreateGlobalStringPtr(""));
+      }
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
 
@@ -724,8 +749,20 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       args.push_back(TranslateExprToValue(S.getEnd(i)));
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    
+    args.clear();
+    args.push_back(Builder.CreateGlobalStringPtr(meshName));
+    
+    //llvm::Constant* MeshNameArray =
+    //llvm::ConstantArray::get(getLLVMContext(), meshName);
+    //args.push_back(MeshNameArray);
+    
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(meshArgs)));
+    
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
                                                 ArrayRef< llvm::Value * >(KMD)));
+    
   }
 
   if(isSequential() || isGPU()){

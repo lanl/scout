@@ -50,8 +50,6 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   raw_string_ostream StringOut(AssemblyCode);
   formatted_raw_ostream PTXOut(StringOut);
 
-  // ndm - MERGED
-  //std::string target_triple = sys::getHostTriple();
   std::string target_triple = sys::getDefaultTargetTriple();
   
   Triple TargetTriple = Triple(target_triple);
@@ -77,8 +75,6 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
   const bool DisableVerify = false;
 
-  // ndm - MERGED
-  //Target->addPassesToEmitFile(pm, PTXOut, FileType, Lvl, DisableVerify);
   Target->addPassesToEmitFile(pm, PTXOut, FileType, DisableVerify);
 
   pm.add(createVerifierPass());
@@ -206,7 +202,8 @@ void DoallToPTX::setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool unif
 }
 
 void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
-                                    std::string name, GlobalValue *ptxAsm) {
+                                    std::string name, GlobalValue *ptxAsm,
+				    Value* meshName) {
   Function *ptxHandler = module.getFunction(name);
 
   // Remove the body of function.
@@ -217,9 +214,9 @@ void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
   BasicBlock *entryBB = BasicBlock::Create(module.getContext(), "entry", ptxHandler);
   cuda.setInsertPoint(entryBB);
 
-  cuda.create(ptxHandler, ptxAsm);
+  cuda.create(ptxHandler, ptxAsm, meshName);
 
-  ReturnInst::Create(module.getContext(), entryBB);
+  //ReturnInst::Create(module.getContext(), entryBB);
 }
 
 // Copied from llvm/lib/Transforms/Utils/CloneModule.cpp.
@@ -343,6 +340,17 @@ bool DoallToPTX::runOnModule(Module &M) {
     }
     cuda.setDimensions(args);
 
+    node = cast< MDNode >(NMDN->getOperand(i)->getOperand(3));
+
+    Value* meshName = node->getOperand(0);
+
+    llvm::SmallVector< llvm::Value *, 3 > meshFieldArgs;
+    node = cast< MDNode >(NMDN->getOperand(i)->getOperand(4));
+    for(unsigned j = 0, f = node->getNumOperands(); j < f; ++j) {
+      meshFieldArgs.push_back(cast< llvm::Value >(node->getOperand(j)));
+    }
+    cuda.setMeshFieldNames(meshFieldArgs);
+
     // Clone module.
     ValueToValueMapTy valueMap;
     Module *ptxModule(CloneModule(&M, valueMap));
@@ -360,7 +368,7 @@ bool DoallToPTX::runOnModule(Module &M) {
     GlobalValue *ptxAsm = embedPTX(*ptxModule, M);
 
     // Insert CUDA API calls.
-    generatePTXHandler(cuda, M, FN->getName().str(), ptxAsm);
+    generatePTXHandler(cuda, M, FN->getName().str(), ptxAsm, meshName);
   }
   return true;
 }

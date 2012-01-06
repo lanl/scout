@@ -39,8 +39,6 @@ struct SimplePTXTargetMachine : public TargetMachine {
                         const TargetOptions &Options,
 			Reloc::Model& RM, CodeModel::Model& CM,
 			CodeGenOpt::Level OL)
-   // ndm - MERGE
-   // : TargetMachine(T, TT, CPU, FS) {}
    : TargetMachine(T, TT, CPU, FS, Options) {
  }
 

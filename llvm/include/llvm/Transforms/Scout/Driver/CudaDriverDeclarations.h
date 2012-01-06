@@ -177,3 +177,8 @@ declareFunction(CUresultTy, "cuTexRefSetFormat", CUtexrefPtrTy, CUarray_formatTy
 
 // Scout-CUDA error checking
 declareFunction(voidTy, "CheckCudaError", i8PtrTy, CUresultTy);
+
+// Scout GPU runtime calls
+declareFunction(CUresultTy, "__sc_get_gpu_module", CUmoduleDblPtrTy, i8PtrTy);
+declareFunction(CUdeviceptrTy, "__sc_get_gpu_device_ptr", i8PtrTy, i8PtrTy);
+declareFunction(voidTy, "__sc_put_gpu_device_ptr", i8PtrTy, i8PtrTy, CUdeviceptrTy);

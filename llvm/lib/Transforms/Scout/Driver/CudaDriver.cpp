@@ -20,7 +20,7 @@ CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
     CUarray_formatTy(i32Ty),
     CUcontextTy(getOrInsertType(module, "struct.CUctx_st")),
     CUdeviceTy(i32Ty),
-    CUdeviceptrTy(IntegerType::get(getGlobalContext(), sizeof(uintptr_t) * 8)),
+    CUdeviceptrTy(IntegerType::get(module.getContext(), sizeof(uintptr_t) * 8)),
     CUdevice_attributeTy(i32Ty),
     CUeventTy(getOrInsertType(module, "struct.CUevent_st")),
     CUfilter_modeTy(i32Ty),
@@ -34,6 +34,7 @@ CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
     _gridSize(SmallVector< Constant *, 3 >(3, ConstantInt::get(i32Ty, 1))),
     _blockSize(SmallVector< Constant *, 3 >(3, ConstantInt::get(i32Ty, 1))),
     fnArgAttrs(SmallVector< ConstantInt *, 3 >()),
+    meshFieldNames(SmallVector< Value *, 3 >()),
     dimensions(SmallVector< ConstantInt *, 3 >())
 {
   setCUDA_ARRAY_DESCRIPTORTy(module);
@@ -56,7 +57,7 @@ void CudaDriver::setBlockSize(SmallVector< Constant *, 3 > &size) {
 void CudaDriver::setCUDA_ARRAY_DESCRIPTORTy(Module &module) {
   //%struct.CUDA_ARRAY_DESCRIPTOR = type { i32, i32, i32, i32 }
   std::vector< Type * > params(4, i32Ty);
-  Type *structType = StructType::get(getGlobalContext(), params);
+  Type *structType = StructType::get(module.getContext(), params);
   CUDA_ARRAY_DESCRIPTORTy = getOrInsertType(module,
                                             "struct.CUDA_ARRAY_DESCRIPTOR",
                                             structType);
@@ -65,7 +66,7 @@ void CudaDriver::setCUDA_ARRAY_DESCRIPTORTy(Module &module) {
 void CudaDriver::setCUDA_ARRAY3D_DESCRIPTORTy(Module &module) {
   //%struct.CUDA_ARRAY3D_DESCRIPTOR = type { i32, i32, i32, i32, i32, i32 }
   std::vector< Type * > params(6, i32Ty);
-  Type *structType = StructType::get(getGlobalContext(), params);
+  Type *structType = StructType::get(module.getContext(), params);
   CUDA_ARRAY3D_DESCRIPTORTy = getOrInsertType(module,
                                           "struct.CUDA_ARRAY3D_DESCRIPTOR",
                                           structType);
@@ -75,7 +76,7 @@ void CudaDriver::setCUdevpropTy(Module &module) {
   //%struct.CUdevprop = type { i32, [3 x i32], [3 x i32], i32, i32, i32, i32, i32, i32, i32 }
   std::vector< Type * > params(10, i32Ty);
   params[1] = params[2] = ArrayType::get(i32Ty, 3);
-  Type *structType = StructType::get(getGlobalContext(), params);
+  Type *structType = StructType::get(module.getContext(), params);
   CUdevpropTy = getOrInsertType(module, "struct.CUdevprop", structType);
 }
 
@@ -88,7 +89,7 @@ void CudaDriver::setCUDA_MEMCPY2DTy(Module &module) {
   std::vector< Type * > params(16, i32Ty);
   params[3] = params[10] = i8PtrTy;
   params[5] = params[12] = getPtrTy(CUarrayTy);
-  Type *structType = StructType::get(getGlobalContext(), params);
+  Type *structType = StructType::get(module.getContext(), params);
   CUDA_MEMCPY2DTy = getOrInsertType(module, "struct.CUDA_MEMCPY2D", structType);
 }
 
@@ -101,7 +102,7 @@ void CudaDriver::setCUDA_MEMCPY3DTy(Module &module) {
   std::vector< Type * > params(25, i32Ty);
   params[3] = params[8] = params[16]= params[19] = i8PtrTy;
   params[7] = params[18] = getPtrTy(CUarrayTy);
-  Type *structType = StructType::get(getGlobalContext(), params);
+  Type *structType = StructType::get(module.getContext(), params);
   CUDA_MEMCPY3DTy = getOrInsertType(module, "struct.CUDA_MEMCPY3D", structType);
 }
 
@@ -182,17 +183,22 @@ bool CudaDriver::setGridAndBlockSizes() {
   }
 }
 
-void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
+void CudaDriver::create(Function *func,
+			GlobalValue *ptxAsm,
+			Value* meshName) {
   setInsertPoint(&func->getEntryBlock());
 
   // Calculate the total number of mesh elements.
   int meshSize = getLinearizedMeshSize();
 
+  Value* image = _builder.CreateConstInBoundsGEP2_32(ptxAsm, 0, 0);
+
   // Load module, add memcpy's, and launch kernel.
   llvm::Value *cuModule = _builder.CreateAlloca(getPtrTy(getCUmoduleTy()), 0, "cuModule");
 
-  insertModuleLoadData(cuModule,
-                       _builder.CreateConstInBoundsGEP2_32(ptxAsm, 0, 0));
+  //insertModuleLoadData(cuModule, image);
+
+  insertScoutGetModule(cuModule, image);
 
   Value *colors;
   if(func->getName().startswith("renderall")) {
@@ -207,7 +213,7 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
     }
   }
 
- // Create variable of type CUFunctionTy.
+  // Create variable of type CUFunctionTy.
   Value *cuFunction = _builder.CreateAlloca(getPtrTy(getCUfunctionTy()),
                                              0,
                                              "cuFunction");
@@ -237,17 +243,62 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
 
         Value *size = ConstantInt::get(i64Ty, numElements);
         d_arg = _builder.CreateAlloca(getCUdeviceptrTy(), 0, "d_" + arg->getName());
+	
+	Value* name =
+	  _builder.CreateGlobalStringPtr(arg->getName());
 
-        // Allocate memory for variable on GPU.
-        insertMemAlloc(d_arg, size);
+	if(isMeshMember(i)){
+	  Value* args[] = {meshName, meshFieldName(i)}; 
+	  Value* dp = insertCall("__sc_get_gpu_device_ptr", args, args+2);
+	  
+	  Value* np = _builder.CreateIsNull(dp);
+	  
+	  BasicBlock* tb = BasicBlock::Create(_module.getContext(), "then");
+	  BasicBlock* eb = BasicBlock::Create(_module.getContext(), "else");
+	  BasicBlock* mb = BasicBlock::Create(_module.getContext(), "merge");
+	  
+	  func->getBasicBlockList().push_back(tb);
+	  func->getBasicBlockList().push_back(eb);
+	  func->getBasicBlockList().push_back(mb);
+	  
+	  _builder.CreateCondBr(np, tb, eb);
+	  _builder.SetInsertPoint(tb);
 
-        // Copy variable from CPU to GPU.
-        insertMemcpyHtoD(_builder.CreateLoad(d_arg),
-                         _builder.CreateBitCast(arg, i8PtrTy),
-                         size);
+	  // Allocate memory for variable on GPU.
+	  insertMemAlloc(d_arg, size);
 
-        // Add variable to list of memcpy's.
-        memcpyList.push_back(Memcpy(arg, d_arg, size));
+	  Value* ld = _builder.CreateLoad(d_arg);
+	  
+	  // Copy variable from CPU to GPU.
+	  insertMemcpyHtoD(ld,
+			   _builder.CreateBitCast(arg, i8PtrTy),
+			   size);
+	  
+	  Value* args2[] = {meshName, meshFieldName(i), ld}; 
+	  insertCall("__sc_put_gpu_device_ptr", args2, args2+3);
+	  
+	  _builder.CreateBr(mb);
+	  
+	  _builder.SetInsertPoint(eb);
+	  _builder.CreateStore(dp, d_arg);
+	  _builder.CreateBr(mb);
+	  
+	  _builder.SetInsertPoint(mb);
+	}
+	else{
+	  insertMemAlloc(d_arg, size);
+
+	  Value* ld = _builder.CreateLoad(d_arg);
+	  
+	  // Copy variable from CPU to GPU.
+	  insertMemcpyHtoD(ld,
+			   _builder.CreateBitCast(arg, i8PtrTy),
+			   size);
+
+	  	
+	  // Add variable to list of memcpy's.
+	  memcpyList.push_back(Memcpy(arg, d_arg, size));
+	}
       }
 
       // Set pointer variable as parameter to kernel.
@@ -288,7 +339,9 @@ void CudaDriver::create(Function *func, GlobalValue *ptxAsm) {
   }
 
   // Unload cuda module.
-  insertModuleUnload(_builder.CreateLoad(cuModule));
+  //insertModuleUnload(_builder.CreateLoad(cuModule));
+
+  _builder.CreateRetVoid();
 }
 
 void CudaDriver::initialize() {
@@ -394,6 +447,10 @@ void CudaDriver::setFnArgAttributes(SmallVector< llvm::ConstantInt *, 3 > args) 
   fnArgAttrs = args;
 }
 
+void CudaDriver::setMeshFieldNames(SmallVector< llvm::Value *, 3 > args) {
+  meshFieldNames = args;
+}
+
 llvm::Value *CudaDriver::getDimension(int dim) {
   return dimensions[dim];
 }
@@ -412,6 +469,10 @@ int CudaDriver::getLinearizedMeshSize() {
 
 bool CudaDriver::isMeshMember(unsigned i) {
   return fnArgAttrs[i]->getSExtValue();
+}
+
+Value* CudaDriver::meshFieldName(unsigned i) {
+  return meshFieldNames[i];
 }
 
 Value *CudaDriver::insertDeviceComputeCapability(Value *a, Value *b) {
@@ -516,6 +577,11 @@ Value *CudaDriver::insertModuleLoad(Value *a, Value *b) {
 Value *CudaDriver::insertModuleLoadData(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuModuleLoadData", ArrayRef< Value * >(args));
+}
+
+Value *CudaDriver::insertScoutGetModule(Value *a, Value *b) {
+  Value *args[] = { a, b };
+  return insertCheckedCall("__sc_get_gpu_module", ArrayRef< Value * >(args));
 }
 
 Value *CudaDriver::insertModuleLoadDataEx(Value *a, Value *b, Value *c, Value *d, Value *e) {

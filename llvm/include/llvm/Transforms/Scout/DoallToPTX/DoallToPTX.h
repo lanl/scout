@@ -44,7 +44,8 @@ class DoallToPTX : public llvm::ModulePass {
 
   llvm::GlobalValue *embedPTX(llvm::Module &ptxModule, llvm::Module &cpuModule);
   void generatePTXHandler(CudaDriver &cuda, llvm::Module &module,
-                          std::string funcName, llvm::GlobalValue *ptxAsm);
+                          std::string funcName, llvm::GlobalValue *ptxAsm,
+			  llvm::Value* meshName);
   llvm::Module *CloneModule(const llvm::Module *M, llvm::ValueToValueMapTy &VMap);
 
   void identifyDependentFns(FnSet &fnSet, llvm::Function *FN);

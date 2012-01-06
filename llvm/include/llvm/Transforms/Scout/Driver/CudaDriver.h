@@ -45,13 +45,17 @@ class CudaDriver: public Driver {
   llvm::Type *getCUdeviceptrTy();
 
   void setFnArgAttributes(llvm::SmallVector< llvm::ConstantInt *, 3 > args);
+  void setMeshFieldNames(llvm::SmallVector< llvm::Value *, 3 > args);  
   void setDimensions(llvm::SmallVector< llvm::ConstantInt *, 3 > args);
 
   int getLinearizedMeshSize();
 
   bool isMeshMember(unsigned i);
 
-  void create(llvm::Function *func, llvm::GlobalValue *ptxAsm);
+  llvm::Value* meshFieldName(unsigned i);
+
+  void create(llvm::Function *func, llvm::GlobalValue *ptxAsm,
+	      llvm::Value *meshName);
   void initialize();
   void finalize();
   void destroy();
@@ -184,6 +188,9 @@ class CudaDriver: public Driver {
   llvm::Value *insertTexRefSetFlags(llvm::Value *a, llvm::Value *b);
   llvm::Value *insertTexRefSetFormat(llvm::Value *a, llvm::Value *b, llvm::Value *c);
 
+  // Scout GPU Runtime
+  llvm::Value *insertScoutGetModule(llvm::Value *a, llvm::Value *b);
+
  private:
   llvm::Type *CUaddress_modeTy;
   llvm::Type *CUarrayTy;
@@ -216,6 +223,7 @@ class CudaDriver: public Driver {
 
   llvm::SmallVector< llvm::ConstantInt *, 3 > fnArgAttrs;
   llvm::SmallVector< llvm::ConstantInt *, 3 > dimensions;
+  llvm::SmallVector< llvm::Value *, 3 > meshFieldNames;
 
   llvm::Value *startX;
   llvm::Value *startY;
