@@ -9,37 +9,13 @@
  *
  */
 
-#include "runtime/renderall_uniform.h"
-
-#ifdef __APPLE__
-
-#include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
-
-#else
-
-#ifndef GL_GLEXT_PROTOTYPES
-#define GL_GLEXT_PROTOTYPES
-#endif
-
-#include <GL/gl.h>
-#include <GL/glu.h>
-#include <GL/glext.h>
-
-#endif
 
 #include <iostream>
-
-#include <SDL/SDL.h>
-
+#include "runtime/renderall_uniform.h"
 #include "runtime/scout_gpu.h"
-
 #include "runtime/base_types.h"
-#include "runtime/opengl/glTexture1D.h"
-#include "runtime/opengl/glTexture2D.h"
-#include "runtime/opengl/glTextureBuffer.h"
-#include "runtime/opengl/glTexCoordBuffer.h"
-#include "runtime/opengl/glVertexBuffer.h"
+#include "runtime/opengl/glSDL.h"
+#include "runtime/opengl/glQuadRenderableVA.h"
 
 using namespace std;
 using namespace scout;
@@ -51,7 +27,7 @@ CUdeviceptr __sc_device_renderall_uniform_colors;
 
 // -------------
 
-extern SDL_Surface* __sc_sdl_surface;
+extern glSDL* __sc_glsdl;
 extern size_t __sc_initial_width;
 extern size_t __sc_initial_height;
 
@@ -60,328 +36,104 @@ void __sc_init_sdl(size_t width, size_t height);
 namespace scout{
 
   class renderall_uniform_rt_{
-  public:
-    renderall_uniform_rt_(renderall_uniform_rt* o)
-    : o_(o){
+    public:
+      renderall_uniform_rt_(renderall_uniform_rt* o)
+        : o_(o){
 
-      if(!__sc_sdl_surface){
-	__sc_init_sdl(__sc_initial_width, __sc_initial_height);
+
+          if(!__sc_glsdl){
+            __sc_init_sdl(__sc_initial_width, __sc_initial_height);
+          }
+
+          init();
+        }
+
+      ~renderall_uniform_rt_(){
+        if (_renderable != NULL) delete _renderable;
       }
 
-      init();
-    }
+      void init(){
+        _renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
+          glfloat3(o_->width(), o_->height(), 0.0));
 
-    ~renderall_uniform_rt_(){
-      destroy();
-    }
+        if(__sc_gpu){
+          //register_gpu_pbo(pbo_->id();
+          register_gpu_pbo(_renderable->get_colors(),
+              CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
+        }
 
-    void init(){
-      glMatrixMode(GL_PROJECTION);
+        _renderable->initialize(NULL);
 
-      glLoadIdentity();
-
-      size_t width = o_->width();
-      size_t height = o_->height();
-      size_t depth = o_->depth();
-
-      static const float pad = 0.05;
-
-      if(height == 0){
-	float px = pad * width;
-	gluOrtho2D(-px, width + px, -px, width + px);
-
-	init(width);
-      }
-      else{
-	if(width >= height){
-	  float px = pad * width;
-	  float py = (1 - float(height)/width) * width * 0.50;
-	  gluOrtho2D(-px, width + px, -py - px, width - py + px);
-	}
-	else{
-	  float py = pad * height;
-	  float px = (1 - float(width)/height) * height * 0.50;
-	  gluOrtho2D(-px - py, width + px + py, -py, height + py);
-	}
-
-	init(width, height);
+        // show empty buffer
+        __sc_glsdl->swapBuffers();
       }
 
-      glMatrixMode(GL_MODELVIEW);
-
-      glLoadIdentity();
-
-      glClearColor(0.5, 0.55, 0.65, 0.0);
-
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-      SDL_GL_SwapBuffers();
-    }
-
-    void init(dim_t xdim){
-      ntexcoords_ = 1;
-      tex_ = new glTexture1D(xdim);
-      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-      pbo_ = new glTextureBuffer;
-      pbo_->bind();
-      pbo_->alloc(sizeof(float) * 4 * xdim, GL_STREAM_DRAW_ARB);
-      pbo_->release();
-
-      vbo_ = new glVertexBuffer;
-      vbo_->bind();
-      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad for 1D meshes...
-      fill_vbo(0.0f, 0.0f, float(xdim), float(xdim));
-      vbo_->release();
-      nverts_ = 4;
-
-      tcbo_ = new glTexCoordBuffer;
-      tcbo_->bind();
-      tcbo_->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
-      fill_tcbo_1d(0.0f, 1.0f);
-      tcbo_->release();
-
-      OpenGLErrorCheck();
-
-      if(__sc_gpu){
-	register_gpu_pbo(pbo_->id(),
-			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
-      }
-    }
-
-    void init(dim_t xdim, dim_t ydim){
-      ntexcoords_ = 2;
-      tex_ = new glTexture2D(xdim, ydim);
-      tex_->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      tex_->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-      tex_->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-      pbo_ = new glTextureBuffer;
-      pbo_->bind();
-      pbo_->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
-      pbo_->release();
-
-      vbo_ = new glVertexBuffer;
-      vbo_->bind();
-      vbo_->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-      fill_vbo(0.0f, 0.0f, float(xdim), float(ydim));
-      vbo_->release();
-      nverts_ = 4;
-
-      tcbo_ = new glTexCoordBuffer;
-      tcbo_->bind();
-      tcbo_->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-      fill_tcbo_2d(0.0f, 0.0f, 1.0f, 1.0f);
-      tcbo_->release();
-
-      OpenGLErrorCheck();
-
-      if(__sc_gpu){
-	register_gpu_pbo(pbo_->id(),
-			 CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
-      }
-    }
-
-    void begin(){
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-      if(__sc_gpu){
-	map_gpu_resources();
-      }
-      else{
-	map_colors();
-      }
-    }
-
-    void end(){
-      if(__sc_gpu){
-	unmap_gpu_resources();
-      }
-      else{
-	unmap_colors();
+      void begin(){
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        if(__sc_gpu){
+          map_gpu_resources();
+        }
+        else{
+         __sc_renderall_uniform_colors =_renderable->map_colors();
+        }
       }
 
-      exec();
+      void end(){
+        if(__sc_gpu){
+          unmap_gpu_resources();
+        }
+        else{
+          _renderable->unmap_colors();
+        }
 
-      SDL_GL_SwapBuffers();
+        exec();
 
-      SDL_Event evt;
-      if(!SDL_PollEvent(&evt)){
-	return;
+        // show what we just drew
+        __sc_glsdl->swapBuffers();
+
+        bool done = __sc_glsdl->processEvent();
+
+        if (done) exit(0);
+
       }
 
-      switch(evt.type){
-        case SDL_QUIT:
-	{
-	  exit(0);
-	}
-        case SDL_KEYDOWN:
-	{
-	  switch(evt.key.keysym.sym){
-	    case SDLK_ESCAPE:
-	    {
-	      exit(0);
-	    }
-	    default:
-	    {
-	      break;
-	    }
-	  }
-	  break;
-	}
-        case SDL_VIDEORESIZE:
-	{
-	  __sc_init_sdl(evt.resize.w, evt.resize.h);
+      void map_gpu_resources(){
+        // map one graphics resource for access by CUDA
+        assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
-	  destroy();
-	  init();
-	  break;
-	}
+        size_t bytes;
+        // return a pointer by which the mapped graphics resource may be accessed.
+        assert(cuGraphicsResourceGetMappedPointer(&__sc_device_renderall_uniform_colors, &bytes, __sc_device_resource) == CUDA_SUCCESS);
       }
-    }
 
-    void fill_vbo(float x0,
-		  float y0,
-		  float x1,
-		  float y1){
+      void unmap_gpu_resources(){
+        assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
-      float* verts = (float*)vbo_->mapForWrite();
+        _renderable->alloc_texture();
+      }
 
-      verts[0] = x0;
-      verts[1] = y0;
-      verts[2] = 0.0f;
+      // register pbo for access by CUDA, return handle 
+      void register_gpu_pbo(GLuint pbo, unsigned int flags){
+        assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, pbo, flags) ==
+            CUDA_SUCCESS);
+      }
 
-      verts[3] = x1;
-      verts[4] = y0;
-      verts[5] = 0.f;
 
-      verts[6] = x1;
-      verts[7] = y1;
-      verts[8] = 0.0f;
+      void exec(){
+        _renderable->draw(NULL);
+      }
 
-      verts[9] = x0;
-      verts[10] = y1;
-      verts[11] = 0.0f;
-
-      vbo_->unmap();
-    }
-
-    void fill_tcbo_2d(float x0,
-		      float y0,
-		      float x1,
-		      float y1){
-
-      float* coords = (float*)tcbo_->mapForWrite();
-
-      coords[0] = x0;
-      coords[1] = y0;
-
-      coords[2] = x1;
-      coords[3] = y0;
-
-      coords[4] = x1;
-      coords[5] = y1;
-
-      coords[6] = x0;
-      coords[7] = y1;
-
-      tcbo_->unmap();
-
-    }
-
-    void fill_tcbo_1d(float start, float end){
-      float* coords = (float*)tcbo_->mapForWrite();
-
-      coords[0] = start;
-      coords[1] = end;
-      coords[2] = end;
-      coords[3] = start;
-
-      tcbo_->unmap();
-    }
-
-    void map_gpu_resources(){
-      assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
-
-      size_t bytes;
-      assert(cuGraphicsResourceGetMappedPointer(&__sc_device_renderall_uniform_colors, &bytes, __sc_device_resource) == CUDA_SUCCESS);
-    }
-
-    void unmap_gpu_resources(){
-      assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
-
-      pbo_->bind();
-      tex_->initialize(0);
-      pbo_->release();
-    }
-
-    void register_gpu_pbo(GLuint pbo, unsigned int flags){
-      assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, pbo, flags) ==
-	     CUDA_SUCCESS);
-    }
-
-    void destroy(){
-      delete pbo_;
-      delete vbo_;
-      delete tcbo_;
-      delete tex_;
-    }
-
-    void map_colors(){
-      __sc_renderall_uniform_colors = (float4*)pbo_->mapForWrite();
-    }
-
-    void unmap_colors(){
-      pbo_->unmap();
-      pbo_->bind();
-      tex_->initialize(0);
-      pbo_->release();
-    }
-
-    void exec(){
-      pbo_->bind();
-      tex_->enable();
-      tex_->update(0);
-      pbo_->release();
-
-      glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-      tcbo_->bind();
-      glTexCoordPointer(ntexcoords_, GL_FLOAT, 0, 0);
-
-      glEnableClientState(GL_VERTEX_ARRAY);
-      vbo_->bind();
-      glVertexPointer(3, GL_FLOAT, 0, 0);
-
-      glDrawArrays(GL_POLYGON, 0, nverts_);
-
-      glDisableClientState(GL_VERTEX_ARRAY);
-      vbo_->release();
-
-      glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-      tcbo_->release();
-
-      tex_->disable();
-    }
-
-  private:
-    renderall_uniform_rt* o_;
-
-    glVertexBuffer* vbo_;
-    glTexture* tex_;
-    glTextureBuffer* pbo_;
-    glTexCoordBuffer* tcbo_;
-    unsigned short ntexcoords_;
-    unsigned int nverts_;
+    private:
+      renderall_uniform_rt* o_;
+      glQuadRenderableVA* _renderable;
   };
 
 } // end namespace scout
 
 renderall_uniform_rt::renderall_uniform_rt(size_t width,
-					   size_t height,
-					   size_t depth)
-  : renderall_base_rt(width, height, depth){
+    size_t height,
+    size_t depth)
+: renderall_base_rt(width, height, depth){
 
   x_ = new renderall_uniform_rt_(this);
 
@@ -400,10 +152,10 @@ void renderall_uniform_rt::end(){
 }
 
 void __sc_begin_uniform_renderall(size_t width,
-				  size_t height,
-				  size_t depth){
+    size_t height,
+    size_t depth){
   if(!__sc_renderall){
-      __sc_renderall = new renderall_uniform_rt(width, height, depth);
+    __sc_renderall = new renderall_uniform_rt(width, height, depth);
   }
 
   __sc_renderall->begin();
