@@ -8,7 +8,6 @@
 # Scout with CMake.
 #
 
-SET(CMAKE_CXX_FLAGS "-fPIC")
 add_llvm_library(scDriver 
   CudaDriver.cpp
   Driver.cpp

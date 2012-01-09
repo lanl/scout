@@ -12,13 +12,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-common -Woverloaded-virtual -
 set(CLANG_ARGS -g -S -emit-ast -x c++ -fno-rtti) 
 
 set( LLVM_USED_LIBS
+  clangFrontendTool
   clangAST
   clangAnalysis
   clangBasic
   clangCodeGen
   clangDriver
   clangFrontend
-  clangFrontendTool
   clangIndex
   clangLex
   clangParse
@@ -41,6 +41,7 @@ set( LLVM_LINK_COMPONENTS
   codegen
   instrumentation
   ipo
+  linker
   selectiondag
   )
 
