@@ -18,6 +18,12 @@
 #include "runtime/opengl/glSDL.h"
 #include "runtime/opengl/vectors.h"
 
+#ifdef __APPLE__
+
+#include "runtime/init_mac.h"
+
+#endif
+
 using namespace std;
 using namespace scout;
 
