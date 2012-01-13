@@ -18,3 +18,34 @@ void *sel_registerName(const char *);
 @end
 
 // CHECK: call %struct.objc_class* @class_getSuperclass
+
+@class NSZone;
+
+@interface NSObject {
+}
+
++ (id)allocWithZone:(NSZone *)zone;
+@end
+
+
+@interface NSArray : NSObject
+@end
+
+@implementation NSArray
++ (id)allocWithZone:(NSZone *)zone {
+    return [super allocWithZone:zone];
+}
+@end
+
+@interface XNSArray
+{
+  Class isa;
+}
+@end
+
+@class XNSArray;
+
+@interface __NSArray0 : XNSArray
+@end
+
+@implementation __NSArray0 @end

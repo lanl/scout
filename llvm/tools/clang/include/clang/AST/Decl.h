@@ -185,16 +185,12 @@ public:
   /// \brief Determine whether this declaration has linkage.
   bool hasLinkage() const;
 
-  /// \brief Whether this declaration was marked as being private to the
-  /// module in which it was defined.
-  bool isModulePrivate() const { return ModulePrivate; }
-
-  /// \brief Specify whether this declaration was marked as being private
-  /// to the module in which it was defined.
-  void setModulePrivate(bool MP = true) {
-    ModulePrivate = MP;
-  }
-
+  using Decl::isModulePrivate;
+  using Decl::setModulePrivate;
+  
+  /// \brief Determine whether this declaration is hidden from name lookup.
+  bool isHidden() const { return Hidden; }
+  
   /// \brief Determine whether this declaration is a C++ class member.
   bool isCXXClassMember() const {
     const DeclContext *DC = getDeclContext();
@@ -252,13 +248,10 @@ public:
       setLinkage(minLinkage(linkage(), L));
     }
     void mergeLinkage(LinkageInfo Other) {
-      setLinkage(minLinkage(linkage(), Other.linkage()));
+      mergeLinkage(Other.linkage());
     }
 
-    void mergeVisibility(Visibility V) {
-      setVisibility(minVisibility(visibility(), V));
-    }
-    void mergeVisibility(Visibility V, bool E) {
+    void mergeVisibility(Visibility V, bool E = false) {
       setVisibility(minVisibility(visibility(), V), visibilityExplicit() || E);
     }
     void mergeVisibility(LinkageInfo Other) {
@@ -339,7 +332,8 @@ public:
   static LabelDecl *Create(ASTContext &C, DeclContext *DC,
                            SourceLocation IdentL, IdentifierInfo *II,
                            SourceLocation GnuLabelL);
-
+  static LabelDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   LabelStmt *getStmt() const { return TheStmt; }
   void setStmt(LabelStmt *T) { TheStmt = T; }
 
@@ -357,9 +351,10 @@ public:
 };
 
 /// NamespaceDecl - Represent a C++ namespace.
-class NamespaceDecl : public NamedDecl, public DeclContext {
+class NamespaceDecl : public NamedDecl, public DeclContext, 
+                      public Redeclarable<NamespaceDecl> 
+{
   virtual void anchor();
-  bool IsInline : 1;
 
   /// LocStart - The starting location of the source range, pointing
   /// to either the namespace or the inline keyword.
@@ -367,41 +362,36 @@ class NamespaceDecl : public NamedDecl, public DeclContext {
   /// RBraceLoc - The ending location of the source range.
   SourceLocation RBraceLoc;
 
-  // For extended namespace definitions:
-  //
-  // namespace A { int x; }
-  // namespace A { int y; }
-  //
-  // there will be one NamespaceDecl for each declaration.
-  // NextNamespace points to the next extended declaration.
-  // OrigNamespace points to the original namespace declaration.
-  // OrigNamespace of the first namespace decl points to its anonymous namespace
-  LazyDeclPtr NextNamespace;
+  /// \brief A pointer to either the anonymous namespace that lives just inside
+  /// this namespace or to the first namespace in the chain (the latter case
+  /// only when this is not the first in the chain), along with a 
+  /// boolean value indicating whether this is an inline namespace.
+  llvm::PointerIntPair<NamespaceDecl *, 1, bool> AnonOrFirstNamespaceAndInline;
 
-  /// \brief A pointer to either the original namespace definition for
-  /// this namespace (if the boolean value is false) or the anonymous
-  /// namespace that lives just inside this namespace (if the boolean
-  /// value is true).
-  ///
-  /// We can combine these two notions because the anonymous namespace
-  /// must only be stored in one of the namespace declarations (so all
-  /// of the namespace declarations can find it). We therefore choose
-  /// the original namespace declaration, since all of the namespace
-  /// declarations have a link directly to it; the original namespace
-  /// declaration itself only needs to know that it is the original
-  /// namespace declaration (which the boolean indicates).
-  llvm::PointerIntPair<NamespaceDecl *, 1, bool> OrigOrAnonNamespace;
-
-  NamespaceDecl(DeclContext *DC, SourceLocation StartLoc,
-                SourceLocation IdLoc, IdentifierInfo *Id)
-    : NamedDecl(Namespace, DC, IdLoc, Id), DeclContext(Namespace),
-      IsInline(false), LocStart(StartLoc), RBraceLoc(),
-      NextNamespace(), OrigOrAnonNamespace(0, true) { }
+  NamespaceDecl(DeclContext *DC, bool Inline, SourceLocation StartLoc,
+                SourceLocation IdLoc, IdentifierInfo *Id,
+                NamespaceDecl *PrevDecl);
+  
+  typedef Redeclarable<NamespaceDecl> redeclarable_base;
+  virtual NamespaceDecl *getNextRedeclaration() {
+    return RedeclLink.getNext();
+  }
 
 public:
   static NamespaceDecl *Create(ASTContext &C, DeclContext *DC,
-                               SourceLocation StartLoc,
-                               SourceLocation IdLoc, IdentifierInfo *Id);
+                               bool Inline, SourceLocation StartLoc,
+                               SourceLocation IdLoc, IdentifierInfo *Id,
+                               NamespaceDecl *PrevDecl);
+
+  static NamespaceDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
+  typedef redeclarable_base::redecl_iterator redecl_iterator;
+  redecl_iterator redecls_begin() const {
+    return redeclarable_base::redecls_begin();
+  }
+  redecl_iterator redecls_end() const {
+    return redeclarable_base::redecls_end();
+  }
 
   /// \brief Returns true if this is an anonymous namespace declaration.
   ///
@@ -418,62 +408,55 @@ public:
 
   /// \brief Returns true if this is an inline namespace declaration.
   bool isInline() const {
-    return IsInline;
+    return AnonOrFirstNamespaceAndInline.getInt();
   }
 
   /// \brief Set whether this is an inline namespace declaration.
   void setInline(bool Inline) {
-    IsInline = Inline;
+    AnonOrFirstNamespaceAndInline.setInt(Inline);
   }
-
-  /// \brief Return the next extended namespace declaration or null if there
-  /// is none.
-  NamespaceDecl *getNextNamespace();
-  const NamespaceDecl *getNextNamespace() const {
-    return const_cast<NamespaceDecl *>(this)->getNextNamespace();
-  }
-
-  /// \brief Set the next extended namespace declaration.
-  void setNextNamespace(NamespaceDecl *ND) { NextNamespace = ND; }
 
   /// \brief Get the original (first) namespace declaration.
-  NamespaceDecl *getOriginalNamespace() const {
-    if (OrigOrAnonNamespace.getInt())
-      return const_cast<NamespaceDecl *>(this);
+  NamespaceDecl *getOriginalNamespace() {
+    return getCanonicalDecl();
+  }
 
-    return OrigOrAnonNamespace.getPointer();
+  /// \brief Get the original (first) namespace declaration.
+  const NamespaceDecl *getOriginalNamespace() const {
+    return getCanonicalDecl();
   }
 
   /// \brief Return true if this declaration is an original (first) declaration
   /// of the namespace. This is false for non-original (subsequent) namespace
   /// declarations and anonymous namespaces.
   bool isOriginalNamespace() const {
-    return getOriginalNamespace() == this;
+    return isFirstDeclaration();
   }
 
-  /// \brief Set the original (first) namespace declaration.
-  void setOriginalNamespace(NamespaceDecl *ND) {
-    if (ND != this) {
-      OrigOrAnonNamespace.setPointer(ND);
-      OrigOrAnonNamespace.setInt(false);
-    }
-  }
-
+  /// \brief Retrieve the anonymous namespace nested inside this namespace,
+  /// if any.
   NamespaceDecl *getAnonymousNamespace() const {
-    return getOriginalNamespace()->OrigOrAnonNamespace.getPointer();
+    return getOriginalNamespace()->AnonOrFirstNamespaceAndInline.getPointer();
   }
 
   void setAnonymousNamespace(NamespaceDecl *D) {
-    assert(!D || D->isAnonymousNamespace());
-    assert(!D || D->getParent()->getRedeclContext() == this);
-    getOriginalNamespace()->OrigOrAnonNamespace.setPointer(D);
+    getOriginalNamespace()->AnonOrFirstNamespaceAndInline.setPointer(D);
   }
 
-  virtual NamespaceDecl *getCanonicalDecl() { return getOriginalNamespace(); }
+  /// Retrieves the canonical declaration of this namespace.
+  NamespaceDecl *getCanonicalDecl() {
+    if (isFirstDeclaration())
+      return this;
+    
+    return AnonOrFirstNamespaceAndInline.getPointer();
+  }
   const NamespaceDecl *getCanonicalDecl() const {
-    return getOriginalNamespace();
+    if (isFirstDeclaration())
+      return this;
+    
+    return AnonOrFirstNamespaceAndInline.getPointer();
   }
-
+  
   virtual SourceRange getSourceRange() const {
     return SourceRange(LocStart, RBraceLoc);
   }
@@ -808,6 +791,8 @@ public:
                          IdentifierInfo *Id, QualType T, TypeSourceInfo *TInfo,
                          StorageClass S, StorageClass SCAsWritten);
 
+  static VarDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   virtual SourceRange getSourceRange() const;
 
   StorageClass getStorageClass() const {
@@ -1154,6 +1139,8 @@ public:
                                    SourceLocation IdLoc, IdentifierInfo *Id,
                                    QualType T);
 
+  static ImplicitParamDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   ImplicitParamDecl(DeclContext *DC, SourceLocation IdLoc,
                     IdentifierInfo *Id, QualType Type)
     : VarDecl(ImplicitParam, DC, IdLoc, IdLoc, Id, Type,
@@ -1193,6 +1180,8 @@ public:
                              StorageClass S, StorageClass SCAsWritten,
                              Expr *DefArg);
 
+  static ParmVarDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   virtual SourceRange getSourceRange() const;
 
   void setObjCMethodScopeInfo(unsigned parameterIndex) {
@@ -1530,6 +1519,8 @@ public:
                               bool hasWrittenPrototype = true,
                               bool isConstexprSpecified = false);
 
+  static FunctionDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+                       
   DeclarationNameInfo getNameInfo() const {
     return DeclarationNameInfo(getDeclName(), getLocation(), DNLoc);
   }
@@ -1977,6 +1968,27 @@ public:
   /// definition of a member function.
   virtual bool isOutOfLine() const;
 
+  /// \brief Enumeration used to identify memory setting or copying functions
+  /// identified by getMemoryFunctionKind().
+  enum MemoryFunctionKind {
+    MFK_Memset,
+    MFK_Memcpy,
+    MFK_Memmove,
+    MFK_Memcmp,
+    MFK_Strncpy,
+    MFK_Strncmp,
+    MFK_Strncasecmp,
+    MFK_Strncat,
+    MFK_Strndup,
+    MFK_Strlcpy,
+    MFK_Strlcat,
+    MFK_Invalid
+  };
+
+  /// \brief If the given function is a memory copy or setting function, return
+  /// it's kind. If the function is not a memory function, returns MFK_Invalid.
+  MemoryFunctionKind getMemoryFunctionKind();
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const FunctionDecl *D) { return true; }
@@ -2056,6 +2068,8 @@ public:
                            TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
                            bool HasInit);
 
+  static FieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   /// getFieldIndex - Returns the index of this field within its record,
   /// as appropriate for passing to ASTRecordLayout::getFieldOffset.
   unsigned getFieldIndex() const;
@@ -2172,7 +2186,8 @@ public:
                                   SourceLocation L, IdentifierInfo *Id,
                                   QualType T, Expr *E,
                                   const llvm::APSInt &V);
-
+  static EnumConstantDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   const Expr *getInitExpr() const { return (const Expr*) Init; }
   Expr *getInitExpr() { return (Expr*) Init; }
   const llvm::APSInt &getInitVal() const { return Val; }
@@ -2208,6 +2223,8 @@ public:
                                    SourceLocation L, IdentifierInfo *Id,
                                    QualType T, NamedDecl **CH, unsigned CHS);
 
+  static IndirectFieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   typedef NamedDecl * const *chain_iterator;
   chain_iterator chain_begin() const { return Chaining; }
   chain_iterator chain_end() const  { return Chaining+ChainingSize; }
@@ -2338,7 +2355,8 @@ public:
   static TypedefDecl *Create(ASTContext &C, DeclContext *DC,
                              SourceLocation StartLoc, SourceLocation IdLoc,
                              IdentifierInfo *Id, TypeSourceInfo *TInfo);
-
+  static TypedefDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   SourceRange getSourceRange() const;
 
   // Implement isa/cast/dyncast/etc.
@@ -2358,6 +2376,7 @@ public:
   static TypeAliasDecl *Create(ASTContext &C, DeclContext *DC,
                                SourceLocation StartLoc, SourceLocation IdLoc,
                                IdentifierInfo *Id, TypeSourceInfo *TInfo);
+  static TypeAliasDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
   SourceRange getSourceRange() const;
 
@@ -2673,7 +2692,7 @@ public:
                           IdentifierInfo *Id, EnumDecl *PrevDecl,
                           bool IsScoped, bool IsScopedUsingClassTag,
                           bool IsFixed);
-  static EnumDecl *Create(ASTContext &C, EmptyShell Empty);
+  static EnumDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
   /// completeDefinition - When created, the EnumDecl corresponds to a
   /// forward-declared enum. This method is used to mark the
@@ -2832,7 +2851,7 @@ public:
   static RecordDecl *Create(const ASTContext &C, TagKind TK, DeclContext *DC,
                             SourceLocation StartLoc, SourceLocation IdLoc,
                             IdentifierInfo *Id, RecordDecl* PrevDecl = 0);
-  static RecordDecl *Create(const ASTContext &C, EmptyShell Empty);
+  static RecordDecl *CreateDeserialized(const ASTContext &C, unsigned ID);
 
   const RecordDecl *getPreviousDeclaration() const {
     return cast_or_null<RecordDecl>(TagDecl::getPreviousDeclaration());
@@ -2935,6 +2954,8 @@ public:
                                   StringLiteral *Str, SourceLocation AsmLoc,
                                   SourceLocation RParenLoc);
 
+  static FileScopeAsmDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   SourceLocation getAsmLoc() const { return getLocation(); }
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
@@ -3021,8 +3042,9 @@ protected:
       SignatureAsWritten(0), Captures(0), NumCaptures(0) {}
 
 public:
-  static BlockDecl *Create(ASTContext &C, DeclContext *DC, SourceLocation L);
-
+  static BlockDecl *Create(ASTContext &C, DeclContext *DC, SourceLocation L); 
+  static BlockDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+  
   SourceLocation getCaretLocation() const { return getLocation(); }
 
   bool isVariadic() const { return IsVariadic; }
@@ -3192,7 +3214,7 @@ public:
 ///
 /// An import declaration imports the named module (or submodule). For example:
 /// \code
-///   __import_module__ std.vector;
+///   @import std.vector;
 /// \endcode
 ///
 /// Import declarations can also be implicitly generated from #include/#import 
@@ -3214,10 +3236,10 @@ class ImportDecl : public Decl {
   friend class ASTDeclReader;
   friend class ASTContext;
   
-  ImportDecl(DeclContext *DC, SourceLocation ImportLoc, Module *Imported,
+  ImportDecl(DeclContext *DC, SourceLocation StartLoc, Module *Imported,
              ArrayRef<SourceLocation> IdentifierLocs);
 
-  ImportDecl(DeclContext *DC, SourceLocation ImportLoc, Module *Imported,
+  ImportDecl(DeclContext *DC, SourceLocation StartLoc, Module *Imported,
              SourceLocation EndLoc);
 
   ImportDecl(EmptyShell Empty) : Decl(Import, Empty), NextLocalImport() { }
@@ -3225,17 +3247,18 @@ class ImportDecl : public Decl {
 public:
   /// \brief Create a new module import declaration.
   static ImportDecl *Create(ASTContext &C, DeclContext *DC, 
-                            SourceLocation ImportLoc, Module *Imported,
+                            SourceLocation StartLoc, Module *Imported,
                             ArrayRef<SourceLocation> IdentifierLocs);
   
   /// \brief Create a new module import declaration for an implicitly-generated
   /// import.
   static ImportDecl *CreateImplicit(ASTContext &C, DeclContext *DC, 
-                                    SourceLocation ImportLoc, Module *Imported, 
+                                    SourceLocation StartLoc, Module *Imported, 
                                     SourceLocation EndLoc);
   
-  /// \brief Create a new module import declaration.
-  static ImportDecl *CreateEmpty(ASTContext &C, unsigned NumLocations);
+  /// \brief Create a new, deserialized module import declaration.
+  static ImportDecl *CreateDeserialized(ASTContext &C, unsigned ID, 
+                                        unsigned NumLocations);
   
   /// \brief Retrieve the module that was imported by the import declaration.
   Module *getImportedModule() const { return ImportedAndComplete.getPointer(); }

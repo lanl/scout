@@ -397,8 +397,6 @@ void Clang::AddPreprocessingOptions(Compilation &C,
     CmdArgs.push_back(Args.MakeArgString(DefaultModuleCache));
   }
 
-  Args.AddAllArgs(CmdArgs, options::OPT_fauto_module_import);
-
   // Parse additional include paths from environment variables.
   // FIXME: We should probably sink the logic for handling these from the
   // frontend into the driver. It will allow deleting 4 otherwise unused flags.
@@ -521,6 +519,7 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
   } else {
     // Select the default based on the platform.
     switch(Triple.getEnvironment()) {
+    case llvm::Triple::ANDROIDEABI:
     case llvm::Triple::GNUEABI:
       ABIName = "aapcs-linux";
       break;
@@ -593,6 +592,15 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
         // EABI is always AAPCS, and if it was not marked 'hard', it's softfp
         FloatABI = "softfp";
         break;
+      case llvm::Triple::ANDROIDEABI: {
+        StringRef ArchName =
+          getLLVMArchSuffixForARM(getARMTargetCPU(Args, Triple));
+        if (ArchName.startswith("v7"))
+          FloatABI = "softfp";
+        else
+          FloatABI = "soft";
+        break;
+      }
       default:
         // Assume "soft", but warn the user we are guessing.
         FloatABI = "soft";
@@ -654,12 +662,23 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
       CmdArgs.push_back("-vfp3");
       CmdArgs.push_back("-target-feature");
       CmdArgs.push_back("-neon");
+    } else if (FPU == "vfp3-d16" || FPU == "vfpv3-d16") {
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back("+vfp3");
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back("+d16");
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back("-neon");
     } else if (FPU == "vfp") {
       CmdArgs.push_back("-target-feature");
       CmdArgs.push_back("+vfp2");
-    } else if (FPU == "vfp3") {
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back("-neon");
+    } else if (FPU == "vfp3" || FPU == "vfpv3") {
       CmdArgs.push_back("-target-feature");
       CmdArgs.push_back("+vfp3");
+      CmdArgs.push_back("-target-feature");
+      CmdArgs.push_back("-neon");
     } else if (FPU == "neon") {
       CmdArgs.push_back("-target-feature");
       CmdArgs.push_back("+neon");
@@ -802,9 +821,8 @@ void Clang::AddSparcTargetArgs(const ArgList &Args,
   const Driver &D = getToolChain().getDriver();
 
   if (const Arg *A = Args.getLastArg(options::OPT_march_EQ)) {
-    StringRef MArch = A->getValue(Args);
     CmdArgs.push_back("-target-cpu");
-    CmdArgs.push_back(MArch.str().c_str());
+    CmdArgs.push_back(A->getValue(Args));
   }
 
   // Select the float ABI as determined by -msoft-float, -mhard-float, and
@@ -950,49 +968,39 @@ static Arg* getLastHexagonArchArg (const ArgList &Args)
 {
   Arg * A = NULL;
 
-  for (ArgList::const_iterator it = Args.begin(), ie = Args.end(); it != ie; ++it) {
-    if ((*it)->getOption().matches(options::OPT_mv2) ||
-        (*it)->getOption().matches(options::OPT_mv3) ||
-        (*it)->getOption().matches(options::OPT_mv4) ||
-        (*it)->getOption().matches(options::OPT_march_EQ) ||
+  for (ArgList::const_iterator it = Args.begin(), ie = Args.end();
+       it != ie; ++it) {
+    if ((*it)->getOption().matches(options::OPT_march_EQ) ||
         (*it)->getOption().matches(options::OPT_mcpu_EQ)) {
       A = *it;
       A->claim();
+    }
+    else if ((*it)->getOption().matches(options::OPT_m_Joined)){
+      StringRef Value = (*it)->getValue(Args,0);
+      if (Value.startswith("v")) {
+        A = *it;
+        A->claim();
+      }
     }
   }
   return A;
 }
 
-static const char *getHexagonTargetCPU(const ArgList &Args)
+static StringRef getHexagonTargetCPU(const ArgList &Args)
 {
   Arg *A;
   llvm::StringRef WhichHexagon;
 
+  // Select the default CPU (v4) if none was given or detection failed.
   if ((A = getLastHexagonArchArg (Args))) {
-    if ((A->getOption().matches(options::OPT_march_EQ)) ||
-        (A->getOption().matches(options::OPT_mcpu_EQ))) {
-      WhichHexagon = A->getValue(Args);
-      if (WhichHexagon == "v2")
-        return "hexagonv2";
-      else if (WhichHexagon == "v3")
-        return "hexagonv3";
-      else if (WhichHexagon == "v4")
-        return "hexagonv4";
-      else
-        assert (0 && "Unknown -march or -mcpu value");
-    }
-    else {
-      if (A->getOption().matches(options::OPT_mv2))
-        return "hexagonv2";
-      else if (A->getOption().matches(options::OPT_mv3))
-        return "hexagonv3";
-      else if (A->getOption().matches(options::OPT_mv4))
-        return "hexagonv4";
-      else
-        assert(0 && "Unknown -m argument.");
-    }
+    WhichHexagon = A->getValue(Args);
+    if (WhichHexagon == "")
+      return "v4";
+    else
+      return WhichHexagon;
   }
-  return "hexagonv2";
+  else
+    return "v4";
 }
 
 void Clang::AddHexagonTargetArgs(const ArgList &Args,
@@ -1000,7 +1008,7 @@ void Clang::AddHexagonTargetArgs(const ArgList &Args,
   llvm::Triple Triple = getToolChain().getTriple();
 
   CmdArgs.push_back("-target-cpu");
-  CmdArgs.push_back(getHexagonTargetCPU(Args));
+  CmdArgs.push_back(Args.MakeArgString("hexagon" + getHexagonTargetCPU(Args)));
   CmdArgs.push_back("-fno-signed-char");
   CmdArgs.push_back("-nobuiltininc");
 
@@ -1344,8 +1352,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Add default argument set.
     if (!Args.hasArg(options::OPT__analyzer_no_default_checks)) {
       CmdArgs.push_back("-analyzer-checker=core");
-      CmdArgs.push_back("-analyzer-checker=deadcode");
-      CmdArgs.push_back("-analyzer-checker=security");
 
       if (getToolChain().getTriple().getOS() != llvm::Triple::Win32)
         CmdArgs.push_back("-analyzer-checker=unix");
@@ -1427,7 +1433,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasFlag(options::OPT_mrtd, options::OPT_mno_rtd, false))
     CmdArgs.push_back("-mrtd");
 
-  // FIXME: Set --enable-unsafe-fp-math.
   if (shouldUseFramePointer(Args, getToolChain().getTriple()))
     CmdArgs.push_back("-mdisable-fp-elim");
   if (!Args.hasFlag(options::OPT_fzero_initialized_in_bss,
@@ -1438,18 +1443,90 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     getToolChain().IsStrictAliasingDefault()))
     CmdArgs.push_back("-relaxed-aliasing");
 
-  // Handle -f{no-}honor-infinities, -f{no-}honor-nans, and -ffinite-math-only.
-  bool HonorInfinities = Args.hasFlag(options::OPT_fhonor_infinities,
-                                      options::OPT_fno_honor_infinities);
-  bool HonorNaNs = Args.hasFlag(options::OPT_fhonor_nans,
-                                options::OPT_fno_honor_nans);
-  if (Args.hasArg(options::OPT_ffinite_math_only))
-    HonorInfinities = HonorNaNs = false;
-  if (!HonorInfinities)
-    CmdArgs.push_back("-menable-no-infs");
-  if (!HonorNaNs)
-    CmdArgs.push_back("-menable-no-nans");
-    
+  // Handle various floating point optimization flags, mapping them to the
+  // appropriate LLVM code generation flags. The pattern for all of these is to
+  // default off the codegen optimizations, and if any flag enables them and no
+  // flag disables them after the flag enabling them, enable the codegen
+  // optimization. This is complicated by several "umbrella" flags.
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_ffinite_math_only,
+                               options::OPT_fno_finite_math_only,
+                               options::OPT_fhonor_infinities,
+                               options::OPT_fno_honor_infinities))
+    if (A->getOption().getID() != options::OPT_fno_finite_math_only &&
+        A->getOption().getID() != options::OPT_fhonor_infinities)
+      CmdArgs.push_back("-menable-no-infs");
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_ffinite_math_only,
+                               options::OPT_fno_finite_math_only,
+                               options::OPT_fhonor_nans,
+                               options::OPT_fno_honor_nans))
+    if (A->getOption().getID() != options::OPT_fno_finite_math_only &&
+        A->getOption().getID() != options::OPT_fhonor_nans)
+      CmdArgs.push_back("-menable-no-nans");
+
+  // -fno-math-errno is default.
+  bool MathErrno = false;
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_fmath_errno,
+                               options::OPT_fno_math_errno)) {
+    if (A->getOption().getID() == options::OPT_fmath_errno) {
+      CmdArgs.push_back("-fmath-errno");
+      MathErrno = true;
+    }
+  }
+
+  // There are several flags which require disabling very specific
+  // optimizations. Any of these being disabled forces us to turn off the
+  // entire set of LLVM optimizations, so collect them through all the flag
+  // madness.
+  bool AssociativeMath = false;
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_funsafe_math_optimizations,
+                               options::OPT_fno_unsafe_math_optimizations,
+                               options::OPT_fassociative_math,
+                               options::OPT_fno_associative_math))
+    if (A->getOption().getID() != options::OPT_fno_unsafe_math_optimizations &&
+        A->getOption().getID() != options::OPT_fno_associative_math)
+      AssociativeMath = true;
+  bool ReciprocalMath = false;
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_funsafe_math_optimizations,
+                               options::OPT_fno_unsafe_math_optimizations,
+                               options::OPT_freciprocal_math,
+                               options::OPT_fno_reciprocal_math))
+    if (A->getOption().getID() != options::OPT_fno_unsafe_math_optimizations &&
+        A->getOption().getID() != options::OPT_fno_reciprocal_math)
+      ReciprocalMath = true;
+  bool SignedZeros = true;
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_funsafe_math_optimizations,
+                               options::OPT_fno_unsafe_math_optimizations,
+                               options::OPT_fsigned_zeros,
+                               options::OPT_fno_signed_zeros))
+    if (A->getOption().getID() != options::OPT_fno_unsafe_math_optimizations &&
+        A->getOption().getID() != options::OPT_fsigned_zeros)
+      SignedZeros = false;
+  bool TrappingMath = true;
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math,
+                               options::OPT_funsafe_math_optimizations,
+                               options::OPT_fno_unsafe_math_optimizations,
+                               options::OPT_ftrapping_math,
+                               options::OPT_fno_trapping_math))
+    if (A->getOption().getID() != options::OPT_fno_unsafe_math_optimizations &&
+        A->getOption().getID() != options::OPT_ftrapping_math)
+      TrappingMath = false;
+  if (!MathErrno && AssociativeMath && ReciprocalMath && !SignedZeros &&
+      !TrappingMath)
+    CmdArgs.push_back("-menable-unsafe-fp-math");
+
+  // We separately look for the '-ffast-math' flag, and if we find it, tell the
+  // frontend to provide the appropriate preprocessor macros. This is distinct
+  // from enabling any optimizations as it induces a language change which must
+  // survive serialization and deserialization, etc.
+  if (Args.hasArg(options::OPT_ffast_math))
+    CmdArgs.push_back("-ffast-math");
+
   // Decide whether to use verbose asm. Verbose assembly is the default on
   // toolchains which have the integrated assembler on by default.
   bool IsVerboseAsmDefault = getToolChain().IsIntegratedAssemblerDefault();
@@ -1550,12 +1627,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_mno_omit_leaf_frame_pointer,
                    !getToolChain().getTriple().isOSDarwin()))
     CmdArgs.push_back("-momit-leaf-frame-pointer");
-
-  // -fno-math-errno is default.
-  if (Args.hasFlag(options::OPT_fmath_errno,
-                   options::OPT_fno_math_errno,
-                   false))
-    CmdArgs.push_back("-fmath-errno");
 
   // Explicitly error on some things we know we don't support and can't just
   // ignore.
@@ -1852,6 +1923,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_flimit_debug_info);
   Args.AddLastArg(CmdArgs, options::OPT_fno_limit_debug_info);
   Args.AddLastArg(CmdArgs, options::OPT_fno_operator_names);
+  Args.AddLastArg(CmdArgs, options::OPT_faltivec);
   if (getToolChain().SupportsProfiling())
     Args.AddLastArg(CmdArgs, options::OPT_pg);
 
@@ -1964,6 +2036,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         !getToolChain().hasBlocksRuntime())
       CmdArgs.push_back("-fblocks-runtime-optional");
   }
+
+  if (Args.hasFlag(options::OPT_fmodules, options::OPT_fno_modules, false))
+    CmdArgs.push_back("-fmodules");
 
   // -faccess-control is default.
   if (Args.hasFlag(options::OPT_fno_access_control,
@@ -2509,7 +2584,40 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
   // Ignore explicit -force_cpusubtype_ALL option.
   (void) Args.hasArg(options::OPT_force__cpusubtype__ALL);
 
-  // FIXME: Add -g support, once we have it.
+  // Determine the original source input.
+  const Action *SourceAction = &JA;
+  while (SourceAction->getKind() != Action::InputClass) {
+    assert(!SourceAction->getInputs().empty() && "unexpected root action!");
+    SourceAction = SourceAction->getInputs()[0];
+  }
+
+  // Forward -g, assuming we are dealing with an actual assembly file.
+  if (SourceAction->getType() == types::TY_Asm ||
+      SourceAction->getType() == types::TY_PP_Asm) {
+    Args.ClaimAllArgs(options::OPT_g_Group);
+    if (Arg *A = Args.getLastArg(options::OPT_g_Group))
+      if (!A->getOption().matches(options::OPT_g0))
+        CmdArgs.push_back("-g");
+  }
+
+  // Optionally embed the -cc1as level arguments into the debug info, for build
+  // analysis.
+  if (getToolChain().UseDwarfDebugFlags()) {
+    ArgStringList OriginalArgs;
+    for (ArgList::const_iterator it = Args.begin(),
+           ie = Args.end(); it != ie; ++it)
+      (*it)->render(Args, OriginalArgs);
+
+    llvm::SmallString<256> Flags;
+    const char *Exec = getToolChain().getDriver().getClangProgramPath();
+    Flags += Exec;
+    for (unsigned i = 0, e = OriginalArgs.size(); i != e; ++i) {
+      Flags += " ";
+      Flags += OriginalArgs[i];
+    }
+    CmdArgs.push_back("-dwarf-debug-flags");
+    CmdArgs.push_back(Args.MakeArgString(Flags.str()));
+  }
 
   // FIXME: Add -static support, once we have it.
 
@@ -2788,29 +2896,16 @@ void hexagon::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add Arch Information
   Arg *A;
-  if ((A = getLastHexagonArchArg (Args))) {
-    if ((A->getOption().matches(options::OPT_march_EQ)) ||
-        (A->getOption().matches(options::OPT_mcpu_EQ))) {
-    llvm::StringRef WhichHexagon = A->getValue(Args);
-    if (WhichHexagon == "v2")
-      CmdArgs.push_back("-mv2");
-    else if (WhichHexagon == "v3")
-      CmdArgs.push_back ("-mv3");
-    else if (WhichHexagon == "v4")
-      CmdArgs.push_back ("-mv4");
+  if ((A = getLastHexagonArchArg(Args))) {
+    if (A->getOption().matches(options::OPT_m_Joined))
+      A->render(Args, CmdArgs);
     else
-      assert (0 && "Unknown -march or -mcpu value");
-    }
-    else {
-      if (A->getOption().matches(options::OPT_mv2) ||
-          A->getOption().matches(options::OPT_mv3) ||
-          A->getOption().matches(options::OPT_mv4))
-        A->render(Args, CmdArgs);
-      else
-        assert(0 && "Unknown -m argument.");
-    }
-
+      CmdArgs.push_back (Args.MakeArgString("-m" + getHexagonTargetCPU(Args)));
   }
+  else {
+    CmdArgs.push_back (Args.MakeArgString("-m" + getHexagonTargetCPU(Args)));
+  }
+
   CmdArgs.push_back("-mqdsp6-compat");
 
   const char *GCCName;
@@ -3552,13 +3647,7 @@ void darwin::Link::AddLinkArgs(Compilation &C,
 
   // Newer linkers support -demangle, pass it if supported and not disabled by
   // the user.
-  //
-  // FIXME: We temporarily avoid passing -demangle to any iOS linker, because
-  // unfortunately we can't be guaranteed that the linker version used there
-  // will match the linker version detected at configure time. We need the
-  // universal driver.
-  if (Version[0] >= 100 && !Args.hasArg(options::OPT_Z_Xlinker__no_demangle) &&
-      !DarwinTC.isTargetIPhoneOS()) {
+  if (Version[0] >= 100 && !Args.hasArg(options::OPT_Z_Xlinker__no_demangle)) {
     // Don't pass -demangle to ld_classic.
     //
     // FIXME: This is a temporary workaround, ld should be handling this.

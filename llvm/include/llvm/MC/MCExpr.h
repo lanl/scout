@@ -176,7 +176,6 @@ public:
     VK_PPC_GAS_HA16,     // symbol@ha
     VK_PPC_GAS_LO16,      // symbol@l
 
-    VK_Mips_None,
     VK_Mips_GPREL,
     VK_Mips_GOT_CALL,
     VK_Mips_GOT16,
@@ -205,7 +204,9 @@ private:
   const VariantKind Kind;
 
   explicit MCSymbolRefExpr(const MCSymbol *_Symbol, VariantKind _Kind)
-    : MCExpr(MCExpr::SymbolRef), Symbol(_Symbol), Kind(_Kind) {}
+    : MCExpr(MCExpr::SymbolRef), Symbol(_Symbol), Kind(_Kind) {
+    assert(Symbol);
+  }
 
 public:
   /// @name Construction

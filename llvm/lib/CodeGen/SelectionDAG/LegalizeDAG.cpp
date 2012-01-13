@@ -2795,15 +2795,58 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
                                               Node->getOperand(2), dl));
     break;
   case ISD::VECTOR_SHUFFLE: {
-    SmallVector<int, 8> Mask;
+    SmallVector<int, 32> Mask;
     cast<ShuffleVectorSDNode>(Node)->getMask(Mask);
 
     EVT VT = Node->getValueType(0);
     EVT EltVT = VT.getVectorElementType();
-    if (!TLI.isTypeLegal(EltVT))
-      EltVT = TLI.getTypeToTransformTo(*DAG.getContext(), EltVT);
+    SDValue Op0 = Node->getOperand(0);
+    SDValue Op1 = Node->getOperand(1);
+    if (!TLI.isTypeLegal(EltVT)) {
+
+      EVT NewEltVT = TLI.getTypeToTransformTo(*DAG.getContext(), EltVT);
+
+      // BUILD_VECTOR operands are allowed to be wider than the element type.
+      // But if NewEltVT is smaller that EltVT the BUILD_VECTOR does not accept it
+      if (NewEltVT.bitsLT(EltVT)) {
+
+        // Convert shuffle node.
+        // If original node was v4i64 and the new EltVT is i32,
+        // cast operands to v8i32 and re-build the mask.
+
+        // Calculate new VT, the size of the new VT should be equal to original.
+        EVT NewVT = EVT::getVectorVT(*DAG.getContext(), NewEltVT, 
+                                      VT.getSizeInBits()/NewEltVT.getSizeInBits());
+        assert(NewVT.bitsEq(VT));
+
+        // cast operands to new VT
+        Op0 = DAG.getNode(ISD::BITCAST, dl, NewVT, Op0);
+        Op1 = DAG.getNode(ISD::BITCAST, dl, NewVT, Op1);
+
+        // Convert the shuffle mask
+        unsigned int factor = NewVT.getVectorNumElements()/VT.getVectorNumElements();
+
+        // EltVT gets smaller
+        assert(factor > 0);
+        SmallVector<int, 32> NewMask;
+
+        for (unsigned i = 0; i < VT.getVectorNumElements(); ++i) {
+          if (Mask[i] < 0) {
+            for (unsigned fi = 0; fi < factor; ++fi)
+              NewMask.push_back(Mask[i]);
+          }
+          else {
+            for (unsigned fi = 0; fi < factor; ++fi)
+              NewMask.push_back(Mask[i]*factor+fi);
+          }
+        }
+        Mask = NewMask;
+        VT = NewVT;
+      }
+      EltVT = NewEltVT;
+    }
     unsigned NumElems = VT.getVectorNumElements();
-    SmallVector<SDValue, 8> Ops;
+    SmallVector<SDValue, 16> Ops;
     for (unsigned i = 0; i != NumElems; ++i) {
       if (Mask[i] < 0) {
         Ops.push_back(DAG.getUNDEF(EltVT));
@@ -2812,14 +2855,17 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
       unsigned Idx = Mask[i];
       if (Idx < NumElems)
         Ops.push_back(DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, EltVT,
-                                  Node->getOperand(0),
+                                  Op0,
                                   DAG.getIntPtrConstant(Idx)));
       else
         Ops.push_back(DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, EltVT,
-                                  Node->getOperand(1),
+                                  Op1,
                                   DAG.getIntPtrConstant(Idx - NumElems)));
     }
+
     Tmp1 = DAG.getNode(ISD::BUILD_VECTOR, dl, VT, &Ops[0], Ops.size());
+    // We may have changed the BUILD_VECTOR type. Cast it back to the Node type.
+    Tmp1 = DAG.getNode(ISD::BITCAST, dl, Node->getValueType(0), Tmp1);
     Results.push_back(Tmp1);
     break;
   }
@@ -3544,6 +3590,24 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
     Tmp2 = DAG.getNode(ExtOp, dl, NVT, Node->getOperand(1));
     Results.push_back(DAG.getNode(ISD::SETCC, dl, Node->getValueType(0),
                                   Tmp1, Tmp2, Node->getOperand(2)));
+    break;
+  }
+  case ISD::FPOW: {
+    Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
+    Tmp2 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(1));
+    Tmp3 = DAG.getNode(ISD::FPOW, dl, NVT, Tmp1, Tmp2);
+    Results.push_back(DAG.getNode(ISD::FP_ROUND, dl, OVT,
+                                  Tmp3, DAG.getIntPtrConstant(0)));
+    break;
+  }
+  case ISD::FLOG2:
+  case ISD::FEXP2:
+  case ISD::FLOG:
+  case ISD::FEXP: {
+    Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
+    Tmp2 = DAG.getNode(Node->getOpcode(), dl, NVT, Tmp1);
+    Results.push_back(DAG.getNode(ISD::FP_ROUND, dl, OVT,
+                                  Tmp2, DAG.getIntPtrConstant(0)));
     break;
   }
   }

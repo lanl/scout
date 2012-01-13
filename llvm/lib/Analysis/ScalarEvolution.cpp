@@ -284,6 +284,20 @@ bool SCEV::isAllOnesValue() const {
   return false;
 }
 
+/// isNonConstantNegative - Return true if the specified scev is negated, but
+/// not a constant.
+bool SCEV::isNonConstantNegative() const {
+  const SCEVMulExpr *Mul = dyn_cast<SCEVMulExpr>(this);
+  if (!Mul) return false;
+
+  // If there is a constant factor, it will be first.
+  const SCEVConstant *SC = dyn_cast<SCEVConstant>(Mul->getOperand(0));
+  if (!SC) return false;
+
+  // Return true if the value is negative, this matches things like (-42 * V).
+  return SC->getValue()->getValue().isNegative();
+}
+
 SCEVCouldNotCompute::SCEVCouldNotCompute() :
   SCEV(FoldingSetNodeIDRef(), scCouldNotCompute) {}
 
@@ -3925,13 +3939,19 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
 //
 
 /// getSmallConstantTripCount - Returns the maximum trip count of this loop as a
-/// normal unsigned value, if possible. Returns 0 if the trip count is unknown
-/// or not constant. Will also return 0 if the maximum trip count is very large
-/// (>= 2^32)
-unsigned ScalarEvolution::getSmallConstantTripCount(Loop *L,
-                                                    BasicBlock *ExitBlock) {
+/// normal unsigned value. Returns 0 if the trip count is unknown or not
+/// constant. Will also return 0 if the maximum trip count is very large (>=
+/// 2^32).
+///
+/// This "trip count" assumes that control exits via ExitingBlock. More
+/// precisely, it is the number of times that control may reach ExitingBlock
+/// before taking the branch. For loops with multiple exits, it may not be the
+/// number times that the loop header executes because the loop may exit
+/// prematurely via another branch.
+unsigned ScalarEvolution::
+getSmallConstantTripCount(Loop *L, BasicBlock *ExitingBlock) {
   const SCEVConstant *ExitCount =
-    dyn_cast<SCEVConstant>(getExitCount(L, ExitBlock));
+    dyn_cast<SCEVConstant>(getExitCount(L, ExitingBlock));
   if (!ExitCount)
     return 0;
 
@@ -3954,9 +3974,12 @@ unsigned ScalarEvolution::getSmallConstantTripCount(Loop *L,
 /// multiple of a constant (which is also the case if the trip count is simply
 /// constant, use getSmallConstantTripCount for that case), Will also return 1
 /// if the trip count is very large (>= 2^32).
-unsigned ScalarEvolution::getSmallConstantTripMultiple(Loop *L,
-                                                       BasicBlock *ExitBlock) {
-  const SCEV *ExitCount = getExitCount(L, ExitBlock);
+///
+/// As explained in the comments for getSmallConstantTripCount, this assumes
+/// that control exits the loop via ExitingBlock.
+unsigned ScalarEvolution::
+getSmallConstantTripMultiple(Loop *L, BasicBlock *ExitingBlock) {
+  const SCEV *ExitCount = getExitCount(L, ExitingBlock);
   if (ExitCount == getCouldNotCompute())
     return 1;
 

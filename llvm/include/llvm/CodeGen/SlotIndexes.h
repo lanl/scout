@@ -208,6 +208,12 @@ namespace llvm {
       return A.lie.getPointer() == B.lie.getPointer();
     }
 
+    /// isEarlierInstr - Return true if A refers to an instruction earlier than
+    /// B. This is equivalent to A < B && !isSameInstr(A, B).
+    static bool isEarlierInstr(SlotIndex A, SlotIndex B) {
+      return A.entry().getIndex() < B.entry().getIndex();
+    }
+
     /// Return the distance from this index to the given one.
     int distance(SlotIndex other) const {
       return other.getIndex() - getIndex();
@@ -488,7 +494,7 @@ namespace llvm {
     /// Returns true if the given machine instr is mapped to an index,
     /// otherwise returns false.
     bool hasIndex(const MachineInstr *instr) const {
-      return (mi2iMap.find(instr) != mi2iMap.end());
+      return mi2iMap.count(instr);
     }
 
     /// Returns the base index for the given instruction.

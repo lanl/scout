@@ -63,8 +63,22 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
 
     // Special handling for calls.
     if (isa<CallInst>(II) || isa<InvokeInst>(II)) {
-      if (isa<IntrinsicInst>(II))
-        continue;  // Intrinsics have no argument setup and can't be inlined.
+      if (const IntrinsicInst *IntrinsicI = dyn_cast<IntrinsicInst>(II)) {
+        switch (IntrinsicI->getIntrinsicID()) {
+        default: break;
+        case Intrinsic::dbg_declare:
+        case Intrinsic::dbg_value:
+        case Intrinsic::invariant_start:
+        case Intrinsic::invariant_end:
+        case Intrinsic::lifetime_start:
+        case Intrinsic::lifetime_end:
+        case Intrinsic::objectsize:
+        case Intrinsic::ptr_annotation:
+        case Intrinsic::var_annotation:
+          // These intrinsics don't count as size.
+          continue;
+        }
+      }
 
       ImmutableCallSite CS(cast<Instruction>(II));
 
@@ -83,7 +97,7 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
           isRecursive = true;
       }
 
-      if (!callIsSmall(CS.getCalledFunction())) {
+      if (!isa<IntrinsicInst>(II) && !callIsSmall(CS.getCalledFunction())) {
         // Each argument to a call takes on average one instruction to set up.
         NumInsts += CS.arg_size();
 
@@ -138,7 +152,7 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
   // FIXME: This logic isn't really right; we can safely inline functions
   // with indirectbr's as long as no other function or global references the
   // blockaddress of a block within the current function.  And as a QOI issue,
-  // if someone is using a blockaddress wihtout an indirectbr, and that
+  // if someone is using a blockaddress without an indirectbr, and that
   // reference somehow ends up in another function or global, we probably
   // don't want to inline this function.
   if (isa<IndirectBrInst>(BB->getTerminator()))
@@ -422,7 +436,7 @@ int InlineCostAnalyzer::getInlineSize(CallSite CS, Function *Callee) {
   InlineCost += CalleeFI->Metrics.NumCalls * InlineConstants::CallPenalty;
 
   // Look at the size of the callee. Each instruction counts as 5.
-  InlineCost += CalleeFI->Metrics.NumInsts*InlineConstants::InstrCost;
+  InlineCost += CalleeFI->Metrics.NumInsts * InlineConstants::InstrCost;
 
   return InlineCost;
 }

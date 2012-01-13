@@ -34,6 +34,10 @@ namespace llvm {
   /// wth earlier copy coalescing.
   extern bool StrongPHIElim;
 
+  /// EnableMachineSched - temporary flag to enable the machine scheduling pass
+  /// until we complete the register allocation pass configuration cleanup.
+  extern bool EnableMachineSched;
+
   class TargetOptions {
   public:
     TargetOptions()
@@ -114,7 +118,7 @@ namespace llvm {
     /// assume that the rounding mode may dynamically change.
     unsigned HonorSignDependentRoundingFPMathOption : 1;
     bool HonorSignDependentRoundingFPMath() const;
-  
+
     /// UseSoftFloat - This flag is enabled when the -soft-float flag is
     /// specified on the command line.  When this flag is on, the code generator
     /// will generate libcalls to the software floating point library instead of
@@ -154,7 +158,7 @@ namespace llvm {
     /// automatically realigned, if needed.
     unsigned RealignStack : 1;
 
-    /// DisableJumpTables - This flag indicates jump tables should not be 
+    /// DisableJumpTables - This flag indicates jump tables should not be
     /// generated.
     unsigned DisableJumpTables : 1;
 
@@ -162,7 +166,7 @@ namespace llvm {
     /// which trades away generated code quality in favor of reducing
     /// compile time.
     unsigned EnableFastISel : 1;
-  
+
     unsigned EnableSegmentedStacks : 1;
 
     /// getTrapFunctionName - If this returns a non-empty string, this means

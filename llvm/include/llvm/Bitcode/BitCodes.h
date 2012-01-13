@@ -20,6 +20,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 
 namespace llvm {
@@ -114,7 +115,6 @@ public:
   bool hasEncodingData() const { return hasEncodingData(getEncoding()); }
   static bool hasEncodingData(Encoding E) {
     switch (E) {
-    default: assert(0 && "Unknown encoding");
     case Fixed:
     case VBR:
       return true;
@@ -123,6 +123,7 @@ public:
     case Blob:
       return false;
     }
+    llvm_unreachable("Invalid encoding");
   }
 
   /// isChar6 - Return true if this character is legal in the Char6 encoding.

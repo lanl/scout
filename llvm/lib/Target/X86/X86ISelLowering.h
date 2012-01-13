@@ -258,8 +258,7 @@ namespace llvm {
       PSHUFLW,
       PSHUFHW_LD,
       PSHUFLW_LD,
-      SHUFPD,
-      SHUFPS,
+      SHUFP,
       MOVDDUP,
       MOVSHDUP,
       MOVSLDUP,
@@ -823,6 +822,7 @@ namespace llvm {
     SDValue LowerADJUST_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFLT_ROUNDS_(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerCTLZ(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerCTLZ_ZERO_UNDEF(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerCTTZ(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerADD(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSUB(SDValue Op, SelectionDAG &DAG) const;

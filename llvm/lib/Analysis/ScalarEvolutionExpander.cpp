@@ -19,6 +19,7 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Target/TargetData.h"
+#include "llvm/Target/TargetLowering.h"
 #include "llvm/ADT/STLExtras.h"
 
 using namespace llvm;
@@ -593,20 +594,6 @@ Value *SCEVExpander::expandAddToGEP(const SCEV *const *op_begin,
   return expand(SE.getAddExpr(Ops));
 }
 
-/// isNonConstantNegative - Return true if the specified scev is negated, but
-/// not a constant.
-static bool isNonConstantNegative(const SCEV *F) {
-  const SCEVMulExpr *Mul = dyn_cast<SCEVMulExpr>(F);
-  if (!Mul) return false;
-
-  // If there is a constant factor, it will be first.
-  const SCEVConstant *SC = dyn_cast<SCEVConstant>(Mul->getOperand(0));
-  if (!SC) return false;
-
-  // Return true if the value is negative, this matches things like (-42 * V).
-  return SC->getValue()->getValue().isNegative();
-}
-
 /// PickMostRelevantLoop - Given two loops pick the one that's most relevant for
 /// SCEV expansion. If they are nested, this is the most nested. If they are
 /// neighboring, pick the later.
@@ -685,10 +672,10 @@ public:
     // If one operand is a non-constant negative and the other is not,
     // put the non-constant negative on the right so that a sub can
     // be used instead of a negate and add.
-    if (isNonConstantNegative(LHS.second)) {
-      if (!isNonConstantNegative(RHS.second))
+    if (LHS.second->isNonConstantNegative()) {
+      if (!RHS.second->isNonConstantNegative())
         return false;
-    } else if (isNonConstantNegative(RHS.second))
+    } else if (RHS.second->isNonConstantNegative())
       return true;
 
     // Otherwise they are equivalent according to this comparison.
@@ -749,7 +736,7 @@ Value *SCEVExpander::visitAddExpr(const SCEVAddExpr *S) {
       for (++I; I != E && I->first == CurLoop; ++I)
         NewOps.push_back(I->second);
       Sum = expandAddToGEP(NewOps.begin(), NewOps.end(), PTy, Ty, expand(Op));
-    } else if (isNonConstantNegative(Op)) {
+    } else if (Op->isNonConstantNegative()) {
       // Instead of doing a negate and add, just do a subtract.
       Value *W = expandCodeFor(SE.getNegativeSCEV(Op), Ty);
       Sum = InsertNoopCastOfTo(Sum, Ty);
@@ -887,6 +874,9 @@ bool SCEVExpander::isNormalAddRecExprPHI(PHINode *PN, Instruction *IncV,
 /// expandAddtoGEP.
 bool SCEVExpander::isExpandedAddRecExprPHI(PHINode *PN, Instruction *IncV,
                                            const Loop *L) {
+  if (ChainedPhis.count(PN))
+    return true;
+
   switch (IncV->getOpcode()) {
   // Check for a simple Add/Sub or GEP of a loop invariant step.
   case Instruction::Add:
@@ -1044,7 +1034,7 @@ SCEVExpander::getAddRecExprPHILiterally(const SCEVAddRecExpr *Normalized,
   // If the stride is negative, insert a sub instead of an add for the increment
   // (unless it's a constant, because subtracts of constants are canonicalized
   // to adds).
-  bool useSubtract = !ExpandTy->isPointerTy() && isNonConstantNegative(Step);
+  bool useSubtract = !ExpandTy->isPointerTy() && Step->isNonConstantNegative();
   if (useSubtract)
     Step = SE.getNegativeSCEV(Step);
   // Expand the step somewhere that dominates the loop header.
@@ -1167,7 +1157,7 @@ Value *SCEVExpander::expandAddRecExprLiterally(const SCEVAddRecExpr *S) {
       // inserting an extra IV increment. StepV might fold into PostLoopOffset,
       // but hopefully expandCodeFor handles that.
       bool useSubtract =
-        !ExpandTy->isPointerTy() && isNonConstantNegative(Step);
+        !ExpandTy->isPointerTy() && Step->isNonConstantNegative();
       if (useSubtract)
         Step = SE.getNegativeSCEV(Step);
       // Expand the step somewhere that dominates the loop header.
@@ -1443,6 +1433,12 @@ Value *SCEVExpander::expand(const SCEV *S) {
       if (!L) break;
       if (BasicBlock *Preheader = L->getLoopPreheader())
         InsertPt = Preheader->getTerminator();
+      else {
+        // LSR sets the insertion point for AddRec start/step values to the
+        // block start to simplify value reuse, even though it's an invalid
+        // position. SCEVExpander must correct for this in all cases.
+        InsertPt = L->getHeader()->getFirstInsertionPt();
+      }
     } else {
       // If the SCEV is computable at this level, insert it into the header
       // after the PHIs (and after any other instructions that we've inserted
@@ -1558,11 +1554,20 @@ bool SCEVExpander::hoistStep(Instruction *IncV, Instruction *InsertPos,
   for (User::op_iterator OI = IncV->op_begin(), OE = IncV->op_end();
        OI != OE; ++OI) {
     Instruction *OInst = dyn_cast<Instruction>(OI);
-    if (OInst && !DT->dominates(OInst, InsertPos))
+    if (OInst && (OInst == InsertPos || !DT->dominates(OInst, InsertPos)))
       return false;
   }
   IncV->moveBefore(InsertPos);
   return true;
+}
+
+/// Sort values by integer width for replaceCongruentIVs.
+static bool width_descending(Value *lhs, Value *rhs) {
+  // Put pointers at the back and make sure pointer < pointer = false.
+  if (!lhs->getType()->isIntegerTy() || !rhs->getType()->isIntegerTy())
+    return rhs->getType()->isIntegerTy() && !lhs->getType()->isIntegerTy();
+  return rhs->getType()->getPrimitiveSizeInBits()
+    < lhs->getType()->getPrimitiveSizeInBits();
 }
 
 /// replaceCongruentIVs - Check for congruent phis in this loop header and
@@ -1572,23 +1577,45 @@ bool SCEVExpander::hoistStep(Instruction *IncV, Instruction *InsertPos,
 /// This does not depend on any SCEVExpander state but should be used in
 /// the same context that SCEVExpander is used.
 unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
-                                           SmallVectorImpl<WeakVH> &DeadInsts) {
+                                           SmallVectorImpl<WeakVH> &DeadInsts,
+                                           const TargetLowering *TLI) {
+  // Find integer phis in order of increasing width.
+  SmallVector<PHINode*, 8> Phis;
+  for (BasicBlock::iterator I = L->getHeader()->begin();
+       PHINode *Phi = dyn_cast<PHINode>(I); ++I) {
+    Phis.push_back(Phi);
+  }
+  if (TLI)
+    std::sort(Phis.begin(), Phis.end(), width_descending);
+
   unsigned NumElim = 0;
   DenseMap<const SCEV *, PHINode *> ExprToIVMap;
-  for (BasicBlock::iterator I = L->getHeader()->begin(); isa<PHINode>(I); ++I) {
-    PHINode *Phi = cast<PHINode>(I);
+  // Process phis from wide to narrow. Mapping wide phis to the their truncation
+  // so narrow phis can reuse them.
+  for (SmallVectorImpl<PHINode*>::const_iterator PIter = Phis.begin(),
+         PEnd = Phis.end(); PIter != PEnd; ++PIter) {
+    PHINode *Phi = *PIter;
+
     if (!SE.isSCEVable(Phi->getType()))
       continue;
 
     PHINode *&OrigPhiRef = ExprToIVMap[SE.getSCEV(Phi)];
     if (!OrigPhiRef) {
       OrigPhiRef = Phi;
+      if (Phi->getType()->isIntegerTy() && TLI
+          && TLI->isTruncateFree(Phi->getType(), Phis.back()->getType())) {
+        // This phi can be freely truncated to the narrowest phi type. Map the
+        // truncated expression to it so it will be reused for narrow types.
+        const SCEV *TruncExpr =
+          SE.getTruncateExpr(SE.getSCEV(Phi), Phis.back()->getType());
+        ExprToIVMap[TruncExpr] = Phi;
+      }
       continue;
     }
 
-    // If one phi derives from the other via GEPs, types may differ.
-    // We could consider adding a bitcast here to handle it.
-    if (OrigPhiRef->getType() != Phi->getType())
+    // Replacing a pointer phi with an integer phi or vice-versa doesn't make
+    // sense.
+    if (OrigPhiRef->getType()->isPointerTy() != Phi->getType()->isPointerTy())
       continue;
 
     if (BasicBlock *LatchBlock = L->getLoopLatch()) {
@@ -1597,8 +1624,10 @@ unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
       Instruction *IsomorphicInc =
         cast<Instruction>(Phi->getIncomingValueForBlock(LatchBlock));
 
-      // If this phi is more canonical, swap it with the original.
-      if (!isExpandedAddRecExprPHI(OrigPhiRef, OrigInc, L)
+      // If this phi has the same width but is more canonical, replace the
+      // original with it.
+      if (OrigPhiRef->getType() == Phi->getType()
+          && !isExpandedAddRecExprPHI(OrigPhiRef, OrigInc, L)
           && isExpandedAddRecExprPHI(Phi, IsomorphicInc, L)) {
         std::swap(OrigPhiRef, Phi);
         std::swap(OrigInc, IsomorphicInc);
@@ -1606,23 +1635,38 @@ unsigned SCEVExpander::replaceCongruentIVs(Loop *L, const DominatorTree *DT,
       // Replacing the congruent phi is sufficient because acyclic redundancy
       // elimination, CSE/GVN, should handle the rest. However, once SCEV proves
       // that a phi is congruent, it's often the head of an IV user cycle that
-      // is isomorphic with the original phi. So it's worth eagerly cleaning up
-      // the common case of a single IV increment.
-      if (OrigInc != IsomorphicInc &&
-          OrigInc->getType() == IsomorphicInc->getType() &&
-          SE.getSCEV(OrigInc) == SE.getSCEV(IsomorphicInc) &&
-          hoistStep(OrigInc, IsomorphicInc, DT)) {
+      // is isomorphic with the original phi. It's worth eagerly cleaning up the
+      // common case of a single IV increment so that DeleteDeadPHIs can remove
+      // cycles that had postinc uses.
+      const SCEV *TruncExpr = SE.getTruncateOrNoop(SE.getSCEV(OrigInc),
+                                                   IsomorphicInc->getType());
+      if (OrigInc != IsomorphicInc
+          && TruncExpr == SE.getSCEV(IsomorphicInc)
+          && hoistStep(OrigInc, IsomorphicInc, DT)) {
         DEBUG_WITH_TYPE(DebugType, dbgs()
                         << "INDVARS: Eliminated congruent iv.inc: "
                         << *IsomorphicInc << '\n');
-        IsomorphicInc->replaceAllUsesWith(OrigInc);
+        Value *NewInc = OrigInc;
+        if (OrigInc->getType() != IsomorphicInc->getType()) {
+          IRBuilder<> Builder(OrigInc->getNextNode());
+          Builder.SetCurrentDebugLocation(IsomorphicInc->getDebugLoc());
+          NewInc = Builder.
+            CreateTruncOrBitCast(OrigInc, IsomorphicInc->getType(), IVName);
+        }
+        IsomorphicInc->replaceAllUsesWith(NewInc);
         DeadInsts.push_back(IsomorphicInc);
       }
     }
     DEBUG_WITH_TYPE(DebugType, dbgs()
                     << "INDVARS: Eliminated congruent iv: " << *Phi << '\n');
     ++NumElim;
-    Phi->replaceAllUsesWith(OrigPhiRef);
+    Value *NewIV = OrigPhiRef;
+    if (OrigPhiRef->getType() != Phi->getType()) {
+      IRBuilder<> Builder(L->getHeader()->getFirstInsertionPt());
+      Builder.SetCurrentDebugLocation(Phi->getDebugLoc());
+      NewIV = Builder.CreateTruncOrBitCast(OrigPhiRef, Phi->getType(), IVName);
+    }
+    Phi->replaceAllUsesWith(NewIV);
     DeadInsts.push_back(Phi);
   }
   return NumElim;

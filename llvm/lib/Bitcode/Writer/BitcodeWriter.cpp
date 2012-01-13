@@ -126,7 +126,6 @@ static unsigned GetEncodedRMWOperation(AtomicRMWInst::BinOp Op) {
 
 static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
   switch (Ordering) {
-  default: llvm_unreachable("Unknown atomic ordering");
   case NotAtomic: return bitc::ORDERING_NOTATOMIC;
   case Unordered: return bitc::ORDERING_UNORDERED;
   case Monotonic: return bitc::ORDERING_MONOTONIC;
@@ -135,14 +134,15 @@ static unsigned GetEncodedOrdering(AtomicOrdering Ordering) {
   case AcquireRelease: return bitc::ORDERING_ACQREL;
   case SequentiallyConsistent: return bitc::ORDERING_SEQCST;
   }
+  llvm_unreachable("Invalid ordering");
 }
 
 static unsigned GetEncodedSynchScope(SynchronizationScope SynchScope) {
   switch (SynchScope) {
-  default: llvm_unreachable("Unknown synchronization scope");
   case SingleThread: return bitc::SYNCHSCOPE_SINGLETHREAD;
   case CrossThread: return bitc::SYNCHSCOPE_CROSSTHREAD;
   }
+  llvm_unreachable("Invalid synch scope");
 }
 
 static void WriteStringRecord(unsigned Code, StringRef Str,
@@ -357,7 +357,6 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
 
 static unsigned getEncodedLinkage(const GlobalValue *GV) {
   switch (GV->getLinkage()) {
-  default: llvm_unreachable("Invalid linkage!");
   case GlobalValue::ExternalLinkage:                 return 0;
   case GlobalValue::WeakAnyLinkage:                  return 1;
   case GlobalValue::AppendingLinkage:                return 2;
@@ -375,15 +374,16 @@ static unsigned getEncodedLinkage(const GlobalValue *GV) {
   case GlobalValue::LinkerPrivateWeakLinkage:        return 14;
   case GlobalValue::LinkerPrivateWeakDefAutoLinkage: return 15;
   }
+  llvm_unreachable("Invalid linkage");
 }
 
 static unsigned getEncodedVisibility(const GlobalValue *GV) {
   switch (GV->getVisibility()) {
-  default: llvm_unreachable("Invalid visibility!");
   case GlobalValue::DefaultVisibility:   return 0;
   case GlobalValue::HiddenVisibility:    return 1;
   case GlobalValue::ProtectedVisibility: return 2;
   }
+  llvm_unreachable("Invalid visibility");
 }
 
 // Emit top-level description of module, including target triple, inline asm,

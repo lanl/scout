@@ -136,13 +136,8 @@ static const Value *getUnderlyingObjectForInstr(const MachineInstr *MI,
 void ScheduleDAGInstrs::StartBlock(MachineBasicBlock *BB) {
   LoopRegs.Deps.clear();
   if (MachineLoop *ML = MLI.getLoopFor(BB))
-    if (BB == ML->getLoopLatch()) {
-      MachineBasicBlock *Header = ML->getHeader();
-      for (MachineBasicBlock::livein_iterator I = Header->livein_begin(),
-           E = Header->livein_end(); I != E; ++I)
-        LoopLiveInRegs.insert(*I);
+    if (BB == ML->getLoopLatch())
       LoopRegs.VisitLoop(ML);
-    }
 }
 
 /// AddSchedBarrierDeps - Add dependencies from instructions in the current
@@ -260,9 +255,6 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
 
       assert(TRI->isPhysicalRegister(Reg) && "Virtual register encountered!");
 
-      std::vector<SUnit *> &UseList = Uses[Reg];
-      // Defs are push in the order they are visited and never reordered.
-      std::vector<SUnit *> &DefList = Defs[Reg];
       // Optionally add output and anti dependencies. For anti
       // dependencies we use a latency of 0 because for a multi-issue
       // target we want to allow the defining instruction to issue
@@ -270,37 +262,33 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
       // TODO: Using a latency of 1 here for output dependencies assumes
       //       there's no cost for reusing registers.
       SDep::Kind Kind = MO.isUse() ? SDep::Anti : SDep::Output;
-      unsigned AOLatency = (Kind == SDep::Anti) ? 0 : 1;
-      for (unsigned i = 0, e = DefList.size(); i != e; ++i) {
-        SUnit *DefSU = DefList[i];
-        if (DefSU == &ExitSU)
-          continue;
-        if (DefSU != SU &&
-            (Kind != SDep::Output || !MO.isDead() ||
-             !DefSU->getInstr()->registerDefIsDead(Reg))) {
-          if (Kind == SDep::Anti)
-            DefSU->addPred(SDep(SU, Kind, 0, /*Reg=*/Reg));
-          else {
-            unsigned AOLat = TII->getOutputLatency(InstrItins, MI, j,
-                                                   DefSU->getInstr());
-            DefSU->addPred(SDep(SU, Kind, AOLat, /*Reg=*/Reg));
-          }
-        }
-      }
-      for (const unsigned *Alias = TRI->getAliasSet(Reg); *Alias; ++Alias) {
-        std::vector<SUnit *> &MemDefList = Defs[*Alias];
-        for (unsigned i = 0, e = MemDefList.size(); i != e; ++i) {
-          SUnit *DefSU = MemDefList[i];
+      for (const unsigned *Alias = TRI->getOverlaps(Reg); *Alias; ++Alias) {
+        std::vector<SUnit *> &DefList = Defs[*Alias];
+        for (unsigned i = 0, e = DefList.size(); i != e; ++i) {
+          SUnit *DefSU = DefList[i];
           if (DefSU == &ExitSU)
             continue;
           if (DefSU != SU &&
               (Kind != SDep::Output || !MO.isDead() ||
-               !DefSU->getInstr()->registerDefIsDead(*Alias)))
-            DefSU->addPred(SDep(SU, Kind, AOLatency, /*Reg=*/ *Alias));
+               !DefSU->getInstr()->registerDefIsDead(*Alias))) {
+            if (Kind == SDep::Anti)
+              DefSU->addPred(SDep(SU, Kind, 0, /*Reg=*/*Alias));
+            else {
+              unsigned AOLat = TII->getOutputLatency(InstrItins, MI, j,
+                                                     DefSU->getInstr());
+              DefSU->addPred(SDep(SU, Kind, AOLat, /*Reg=*/*Alias));
+            }
+          }
         }
       }
 
+      // Retrieve the UseList to add data dependencies and update uses.
+      std::vector<SUnit *> &UseList = Uses[Reg];
       if (MO.isDef()) {
+        // Update DefList. Defs are pushed in the order they are visited and
+        // never reordered.
+        std::vector<SUnit *> &DefList = Defs[Reg];
+
         // Add any data dependencies.
         unsigned DataLatency = SU->Latency;
         for (unsigned i = 0, e = UseList.size(); i != e; ++i) {

@@ -89,7 +89,7 @@ public:
     //report_fatal_error("unsupported directive: '.file'");
   }
 
-  virtual void Finish();
+  virtual void FinishImpl();
 
   /// @}
 };
@@ -150,8 +150,6 @@ void MCMachOStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
   case MCAF_SubsectionsViaSymbols:
     getAssembler().setSubsectionsViaSymbols(true);
     return;
-  default:
-    llvm_unreachable("invalid assembler flag!");
   }
 }
 
@@ -375,7 +373,7 @@ void MCMachOStreamer::EmitInstToData(const MCInst &Inst) {
   DF->getContents().append(Code.begin(), Code.end());
 }
 
-void MCMachOStreamer::Finish() {
+void MCMachOStreamer::FinishImpl() {
   EmitFrames(true);
 
   // We have to set the fragment atom associations so we can relax properly for
@@ -407,7 +405,7 @@ void MCMachOStreamer::Finish() {
     }
   }
 
-  this->MCObjectStreamer::Finish();
+  this->MCObjectStreamer::FinishImpl();
 }
 
 MCStreamer *llvm::createMachOStreamer(MCContext &Context, MCAsmBackend &MAB,

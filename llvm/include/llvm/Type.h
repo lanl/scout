@@ -16,6 +16,7 @@
 #define LLVM_TYPE_H
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/DataTypes.h"
 
 namespace llvm {
 
@@ -47,7 +48,7 @@ public:
   enum TypeID {
     // PrimitiveTypes - make sure LastPrimitiveTyID stays up to date.
     VoidTyID = 0,    ///<  0: type with no size
-    HalfTyID,        ///<  1: 32-bit floating point type
+    HalfTyID,        ///<  1: 16-bit floating point type
     FloatTyID,       ///<  2: 32-bit floating point type
     DoubleTyID,      ///<  3: 64-bit floating point type
     X86_FP80TyID,    ///<  4: 80-bit floating point type (X87)
@@ -75,21 +76,32 @@ private:
   /// Context - This refers to the LLVMContext in which this type was uniqued.
   LLVMContext &Context;
 
-  TypeID   ID : 8;            // The current base type of this type.
-  unsigned SubclassData : 24; // Space for subclasses to store data
+  // Due to Ubuntu GCC bug 910363:
+  // https://bugs.launchpad.net/ubuntu/+source/gcc-4.5/+bug/910363
+  // Bitpack ID and SubclassData manually.
+  // Note: TypeID : low 8 bit; SubclassData : high 24 bit.
+  uint32_t IDAndSubclassData;
 
 protected:
   friend class LLVMContextImpl;
   explicit Type(LLVMContext &C, TypeID tid)
-    : Context(C), ID(tid), SubclassData(0),
-      NumContainedTys(0), ContainedTys(0) {}
+    : Context(C), IDAndSubclassData(0),
+      NumContainedTys(0), ContainedTys(0) {
+    setTypeID(tid);
+  }
   ~Type() {}
-
-  unsigned getSubclassData() const { return SubclassData; }
+  
+  void setTypeID(TypeID ID) {
+    IDAndSubclassData = (ID & 0xFF) | (IDAndSubclassData & 0xFFFFFF00);
+    assert(getTypeID() == ID && "TypeID data too large for field");
+  }
+  
+  unsigned getSubclassData() const { return IDAndSubclassData >> 8; }
+  
   void setSubclassData(unsigned val) {
-    SubclassData = val;
+    IDAndSubclassData = (IDAndSubclassData & 0xFF) | (val << 8);
     // Ensure we don't have any accidental truncation.
-    assert(SubclassData == val && "Subclass data too large for field");
+    assert(getSubclassData() == val && "Subclass data too large for field");
   }
 
   /// NumContainedTys - Keeps track of how many Type*'s there are in the
@@ -117,52 +129,54 @@ public:
   /// getTypeID - Return the type id for the type.  This will return one
   /// of the TypeID enum elements defined above.
   ///
-  TypeID getTypeID() const { return ID; }
+  TypeID getTypeID() const { return (TypeID)(IDAndSubclassData & 0xFF); }
 
   /// isVoidTy - Return true if this is 'void'.
-  bool isVoidTy() const { return ID == VoidTyID; }
+  bool isVoidTy() const { return getTypeID() == VoidTyID; }
 
   /// isHalfTy - Return true if this is 'half', a 16-bit IEEE fp type.
-  bool isHalfTy() const { return ID == HalfTyID; }
+  bool isHalfTy() const { return getTypeID() == HalfTyID; }
 
   /// isFloatTy - Return true if this is 'float', a 32-bit IEEE fp type.
-  bool isFloatTy() const { return ID == FloatTyID; }
+  bool isFloatTy() const { return getTypeID() == FloatTyID; }
   
   /// isDoubleTy - Return true if this is 'double', a 64-bit IEEE fp type.
-  bool isDoubleTy() const { return ID == DoubleTyID; }
+  bool isDoubleTy() const { return getTypeID() == DoubleTyID; }
 
   /// isX86_FP80Ty - Return true if this is x86 long double.
-  bool isX86_FP80Ty() const { return ID == X86_FP80TyID; }
+  bool isX86_FP80Ty() const { return getTypeID() == X86_FP80TyID; }
 
   /// isFP128Ty - Return true if this is 'fp128'.
-  bool isFP128Ty() const { return ID == FP128TyID; }
+  bool isFP128Ty() const { return getTypeID() == FP128TyID; }
 
   /// isPPC_FP128Ty - Return true if this is powerpc long double.
-  bool isPPC_FP128Ty() const { return ID == PPC_FP128TyID; }
+  bool isPPC_FP128Ty() const { return getTypeID() == PPC_FP128TyID; }
 
   /// isFloatingPointTy - Return true if this is one of the five floating point
   /// types
   bool isFloatingPointTy() const {
-    return ID == HalfTyID || ID == FloatTyID || ID == DoubleTyID ||
-      ID == X86_FP80TyID || ID == FP128TyID || ID == PPC_FP128TyID;
+    return getTypeID() == HalfTyID || getTypeID() == FloatTyID ||
+           getTypeID() == DoubleTyID ||
+           getTypeID() == X86_FP80TyID || getTypeID() == FP128TyID ||
+           getTypeID() == PPC_FP128TyID;
   }
 
   /// isX86_MMXTy - Return true if this is X86 MMX.
-  bool isX86_MMXTy() const { return ID == X86_MMXTyID; }
+  bool isX86_MMXTy() const { return getTypeID() == X86_MMXTyID; }
 
   /// isFPOrFPVectorTy - Return true if this is a FP type or a vector of FP.
   ///
   bool isFPOrFPVectorTy() const;
  
   /// isLabelTy - Return true if this is 'label'.
-  bool isLabelTy() const { return ID == LabelTyID; }
+  bool isLabelTy() const { return getTypeID() == LabelTyID; }
 
   /// isMetadataTy - Return true if this is 'metadata'.
-  bool isMetadataTy() const { return ID == MetadataTyID; }
+  bool isMetadataTy() const { return getTypeID() == MetadataTyID; }
 
   /// isIntegerTy - True if this is an instance of IntegerType.
   ///
-  bool isIntegerTy() const { return ID == IntegerTyID; } 
+  bool isIntegerTy() const { return getTypeID() == IntegerTyID; } 
 
   /// isIntegerTy - Return true if this is an IntegerType of the given width.
   bool isIntegerTy(unsigned Bitwidth) const;
@@ -174,23 +188,23 @@ public:
   
   /// isFunctionTy - True if this is an instance of FunctionType.
   ///
-  bool isFunctionTy() const { return ID == FunctionTyID; }
+  bool isFunctionTy() const { return getTypeID() == FunctionTyID; }
 
   /// isStructTy - True if this is an instance of StructType.
   ///
-  bool isStructTy() const { return ID == StructTyID; }
+  bool isStructTy() const { return getTypeID() == StructTyID; }
 
   /// isArrayTy - True if this is an instance of ArrayType.
   ///
-  bool isArrayTy() const { return ID == ArrayTyID; }
+  bool isArrayTy() const { return getTypeID() == ArrayTyID; }
 
   /// isPointerTy - True if this is an instance of PointerType.
   ///
-  bool isPointerTy() const { return ID == PointerTyID; }
+  bool isPointerTy() const { return getTypeID() == PointerTyID; }
 
   /// isVectorTy - True if this is an instance of VectorType.
   ///
-  bool isVectorTy() const { return ID == VectorTyID; }
+  bool isVectorTy() const { return getTypeID() == VectorTyID; }
 
   /// canLosslesslyBitCastTo - Return true if this type could be converted 
   /// with a lossless BitCast to type 'Ty'. For example, i8* to i32*. BitCasts 
@@ -206,14 +220,14 @@ public:
   /// Here are some useful little methods to query what type derived types are
   /// Note that all other types can just compare to see if this == Type::xxxTy;
   ///
-  bool isPrimitiveType() const { return ID <= LastPrimitiveTyID; }
-  bool isDerivedType()   const { return ID >= FirstDerivedTyID; }
+  bool isPrimitiveType() const { return getTypeID() <= LastPrimitiveTyID; }
+  bool isDerivedType()   const { return getTypeID() >= FirstDerivedTyID; }
 
   /// isFirstClassType - Return true if the type is "first class", meaning it
   /// is a valid type for a Value.
   ///
   bool isFirstClassType() const {
-    return ID != FunctionTyID && ID != VoidTyID;
+    return getTypeID() != FunctionTyID && getTypeID() != VoidTyID;
   }
 
   /// isSingleValueType - Return true if the type is a valid type for a
@@ -221,8 +235,9 @@ public:
   /// and array types.
   ///
   bool isSingleValueType() const {
-    return (ID != VoidTyID && isPrimitiveType()) ||
-            ID == IntegerTyID || ID == PointerTyID || ID == VectorTyID;
+    return (getTypeID() != VoidTyID && isPrimitiveType()) ||
+            getTypeID() == IntegerTyID || getTypeID() == PointerTyID ||
+            getTypeID() == VectorTyID;
   }
 
   /// isAggregateType - Return true if the type is an aggregate type. This
@@ -231,7 +246,7 @@ public:
   /// does not include vector types.
   ///
   bool isAggregateType() const {
-    return ID == StructTyID || ID == ArrayTyID;
+    return getTypeID() == StructTyID || getTypeID() == ArrayTyID;
   }
 
   /// isSized - Return true if it makes sense to take the size of this type.  To
@@ -240,12 +255,14 @@ public:
   ///
   bool isSized() const {
     // If it's a primitive, it is always sized.
-    if (ID == IntegerTyID || isFloatingPointTy() || ID == PointerTyID ||
-        ID == X86_MMXTyID)
+    if (getTypeID() == IntegerTyID || isFloatingPointTy() ||
+        getTypeID() == PointerTyID ||
+        getTypeID() == X86_MMXTyID)
       return true;
     // If it is not something that can have a size (e.g. a function or label),
     // it doesn't have a size.
-    if (ID != StructTyID && ID != ArrayTyID && ID != VectorTyID)
+    if (getTypeID() != StructTyID && getTypeID() != ArrayTyID &&
+        getTypeID() != VectorTyID)
       return false;
     // Otherwise we have to try harder to decide.
     return isSizedDerivedType();

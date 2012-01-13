@@ -567,9 +567,20 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
                                LHSKnownZero, LHSKnownOne, Depth+1))
         return I;
     }
+
     // Otherwise just hand the sub off to ComputeMaskedBits to fill in
     // the known zeros and ones.
     ComputeMaskedBits(V, DemandedMask, KnownZero, KnownOne, Depth);
+
+    // Turn this into a xor if LHS is 2^n-1 and the remaining bits are known
+    // zero.
+    if (ConstantInt *C0 = dyn_cast<ConstantInt>(I->getOperand(0))) {
+      APInt I0 = C0->getValue();
+      if ((I0 + 1).isPowerOf2() && (I0 | KnownZero).isAllOnesValue()) {
+        Instruction *Xor = BinaryOperator::CreateXor(I->getOperand(1), C0);
+        return InsertNewInstWith(Xor, *I);
+      }
+    }
     break;
   case Instruction::Shl:
     if (ConstantInt *SA = dyn_cast<ConstantInt>(I->getOperand(1))) {
@@ -671,8 +682,9 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
       if (BitWidth <= ShiftAmt || KnownZero[BitWidth-ShiftAmt-1] || 
           (HighBits & ~DemandedMask) == HighBits) {
         // Perform the logical shift right.
-        Instruction *NewVal = BinaryOperator::CreateLShr(
-                          I->getOperand(0), SA, I->getName());
+        BinaryOperator *NewVal = BinaryOperator::CreateLShr(I->getOperand(0),
+                                                            SA, I->getName());
+        NewVal->setIsExact(cast<BinaryOperator>(I)->isExact());
         return InsertNewInstWith(NewVal, *I);
       } else if ((KnownOne & SignBit) != 0) { // New bits are known one.
         KnownOne |= HighBits;

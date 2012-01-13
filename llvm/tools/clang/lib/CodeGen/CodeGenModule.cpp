@@ -1848,24 +1848,20 @@ CodeGenModule::GetAddrOfConstantCFString(const StringLiteral *Literal) {
   llvm::Constant *C = llvm::ConstantArray::get(VMContext, Entry.getKey().str());
 
   llvm::GlobalValue::LinkageTypes Linkage;
-  bool isConstant;
-  if (isUTF16) {
+  if (isUTF16)
     // FIXME: why do utf strings get "_" labels instead of "L" labels?
     Linkage = llvm::GlobalValue::InternalLinkage;
-    // Note: -fwritable-strings doesn't make unicode CFStrings writable, but
-    // does make plain ascii ones writable.
-    isConstant = true;
-  } else {
+  else
     // FIXME: With OS X ld 123.2 (xcode 4) and LTO we would get a linker error
     // when using private linkage. It is not clear if this is a bug in ld
     // or a reasonable new restriction.
     Linkage = llvm::GlobalValue::LinkerPrivateLinkage;
-    isConstant = !Features.WritableStrings;
-  }
   
+  // Note: -fwritable-strings doesn't make the backing store strings of
+  // CFStrings writable. (See <rdar://problem/10657500>)
   llvm::GlobalVariable *GV =
-    new llvm::GlobalVariable(getModule(), C->getType(), isConstant, Linkage, C,
-                             ".str");
+    new llvm::GlobalVariable(getModule(), C->getType(), /*isConstant=*/true,
+                             Linkage, C, ".str");
   GV->setUnnamedAddr(true);
   if (isUTF16) {
     CharUnits Align = getContext().getTypeAlignInChars(getContext().ShortTy);
@@ -2375,8 +2371,6 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   // Objective-C Decls
 
   // Forward declarations, no (immediate) code generation.
-  case Decl::ObjCClass:
-  case Decl::ObjCForwardProtocol:
   case Decl::ObjCInterface:
     break;
   
@@ -2387,10 +2381,13 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     break;
   }
 
-  case Decl::ObjCProtocol:
-    ObjCRuntime->GenerateProtocol(cast<ObjCProtocolDecl>(D));
+  case Decl::ObjCProtocol: {
+    ObjCProtocolDecl *Proto = cast<ObjCProtocolDecl>(D);
+    if (Proto->isThisDeclarationADefinition())
+      ObjCRuntime->GenerateProtocol(Proto);
     break;
-
+  }
+      
   case Decl::ObjCCategoryImpl:
     // Categories have properties but don't support synthesize so we
     // can ignore them here.

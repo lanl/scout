@@ -319,9 +319,9 @@ ifeq ($(ENABLE_PROFILING),1)
   KEEP_SYMBOLS := 1
 endif
 
-#ifeq ($(ENABLE_VISIBILITY_INLINES_HIDDEN),1)
-#    CXX.Flags += -fvisibility-inlines-hidden
-#endif
+ifeq ($(ENABLE_VISIBILITY_INLINES_HIDDEN),1)
+    CXX.Flags += -fvisibility-inlines-hidden
+endif
 
 ifdef ENABLE_EXPENSIVE_CHECKS
   # GNU libstdc++ uses RTTI if you define _GLIBCXX_DEBUG, which we did above.

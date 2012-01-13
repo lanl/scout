@@ -83,6 +83,7 @@ std::string llvm::getEnumName(MVT::SimpleValueType T) {
   case MVT::v2i64:    return "MVT::v2i64";
   case MVT::v4i64:    return "MVT::v4i64";
   case MVT::v8i64:    return "MVT::v8i64";
+  case MVT::v2f16:    return "MVT::v2f16";
   case MVT::v2f32:    return "MVT::v2f32";
   case MVT::v4f32:    return "MVT::v4f32";
   case MVT::v8f32:    return "MVT::v8f32";
@@ -148,6 +149,26 @@ Record *CodeGenTarget::getAsmParser() const {
   if (AsmParserNum >= LI.size())
     throw "Target does not have an AsmParser #" + utostr(AsmParserNum) + "!";
   return LI[AsmParserNum];
+}
+
+/// getAsmParserVariant - Return the AssmblyParserVariant definition for
+/// this target.
+///
+Record *CodeGenTarget::getAsmParserVariant(unsigned i) const {
+  std::vector<Record*> LI = 
+    TargetRec->getValueAsListOfDefs("AssemblyParserVariants");
+  if (i >= LI.size())
+    throw "Target does not have an AsmParserVariant #" + utostr(i) + "!";
+  return LI[i];
+}
+
+/// getAsmParserVariantCount - Return the AssmblyParserVariant definition 
+/// available for this target.
+///
+unsigned CodeGenTarget::getAsmParserVariantCount() const {
+  std::vector<Record*> LI = 
+    TargetRec->getValueAsListOfDefs("AssemblyParserVariants");
+  return LI.size();
 }
 
 /// getAsmWriter - Return the AssemblyWriter definition for this target.

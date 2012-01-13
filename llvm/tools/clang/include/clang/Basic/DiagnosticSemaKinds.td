@@ -35,8 +35,7 @@ def warn_double_const_requires_fp64 : Warning<
   "double precision constant requires cl_khr_fp64, casting to single precision">;
 
 // C99 variable-length arrays
-def ext_vla : Extension<
-  "variable length arrays are a C99 feature, accepted as an extension">,
+def ext_vla : Extension<"variable length arrays are a C99 feature">,
   InGroup<VLA>;
 def err_vla_non_pod : Error<"variable length array of non-POD element type %0">;
 def err_vla_in_sfinae : Error<
@@ -63,8 +62,6 @@ def err_variably_modified_new_type : Error<
 // C99 Designated Initializers
 def ext_designated_init : Extension<
   "designated initializers are a C99 feature">;
-def ext_designated_init_cxx : Extension<
-  "designated initializers are a C99 feature, accepted in C++ as an extension">;
 def err_array_designator_negative : Error<
   "array designator value '%0' is negative">;
 def err_array_designator_empty_range : Error<
@@ -115,6 +112,15 @@ def warn_unused_exception_param : Warning<"unused exception parameter %0">,
   InGroup<UnusedExceptionParameter>, DefaultIgnore;
 def warn_decl_in_param_list : Warning<
   "declaration of %0 will not be visible outside of this function">;
+def warn_empty_parens_are_function_decl : Warning<
+  "empty parentheses interpreted as a function declaration">,
+  InGroup<VexingParse>;
+def note_empty_parens_function_call : Note<
+  "change this ',' to a ';' to call %0">;
+def note_empty_parens_default_ctor : Note<
+  "remove parentheses to declare a variable">;
+def note_empty_parens_zero_initialize : Note<
+  "replace parentheses with an initializer to declare a variable">;
 def warn_unused_function : Warning<"unused function %0">,
   InGroup<UnusedFunction>, DefaultIgnore;
 def warn_unused_member_function : Warning<"unused member function %0">,
@@ -273,7 +279,8 @@ def warn_redecl_library_builtin : Warning<
 def err_builtin_definition : Error<"definition of builtin function %0">;
 def err_types_compatible_p_in_cplusplus : Error<
   "__builtin_types_compatible_p is not valid in C++">;
-def err_builtin_unknown : Error<"use of unknown builtin %0">;
+def warn_builtin_unknown : Warning<"use of unknown builtin %0">,
+  InGroup<ImplicitFunctionDeclare>, DefaultError;
 def warn_dyn_class_memaccess : Warning<
   "%select{destination for|source of|first operand of|second operand of}0 this "
   "%1 call is a pointer to dynamic class %2; vtable pointer will be "
@@ -382,6 +389,8 @@ def note_implementation_declared : Note<
   "class implementation is declared here">;
 def note_class_declared : Note<
   "class is declared here">;
+def note_suppressed_class_declare : Note<
+  "class with specified objc_requires_property_definitions attribute is declared here">;
 def warn_dup_category_def : Warning<
   "duplicate definition of category %1 on interface %0">;
 def err_conflicting_super_class : Error<"conflicting super class name %0">;
@@ -521,9 +530,9 @@ def warn_atomic_property_rule : Warning<
   InGroup<DiagGroup<"atomic-property-with-user-defined-accessor">>;
 def note_atomic_property_fixup_suggest : Note<"setter and getter must both be "
   "synthesized, or both be user defined,or the property must be nonatomic">;
-def warn_atomic_property_nontrivial_assign_op : Warning<
-  "atomic property of type %0 synthesizing setter using non-trivial assignment"
-  " operator">, InGroup<DiagGroup<"objc-property-atomic-setter-synthesis">>;
+def err_atomic_property_nontrivial_assign_op : Error<
+  "atomic property of reference type %0 cannot have non-trivial assignment"
+  " operator">;
 def warn_owning_getter_rule : Warning<
   "property's synthesized getter follows Cocoa naming"
   " convention for returning 'owned' objects">,
@@ -653,8 +662,8 @@ def warn_cxx98_compat_friend_is_member : Warning<
   "friend declaration naming a member of the declaring class is incompatible "
   "with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
 def ext_unelaborated_friend_type : ExtWarn<
-  "specify '%select{struct|union|class|enum}0' to befriend %1; accepted "
-  "as a C++11 extension">, InGroup<CXX11>;
+  "unelaborated friend declaration is a C++11 extension; specify "
+  "'%select{struct|union|class|enum}0' to befriend %1">, InGroup<CXX11>;
 def warn_cxx98_compat_unelaborated_friend_type : Warning<
   "befriending %1 without '%select{struct|union|class|enum}0' keyword is "
   "incompatible with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
@@ -750,9 +759,9 @@ def err_class_redeclared_with_different_access : Error<
   "%0 redeclared with '%1' access">;
 def err_access : Error<
   "%1 is a %select{private|protected}0 member of %3">, AccessControl;
-def war_ms_using_declaration_inaccessible : ExtWarn<
-  "using declaration refers to inaccessible member '%0', which refers "
-  "to accessible member '%1', accepted for Microsoft compatibility">,
+def ext_ms_using_declaration_inaccessible : ExtWarn<
+  "using declaration referring to inaccessible member '%0' (which refers "
+  "to accessible member '%1') is a Microsoft compatibility extension">,
     AccessControl, InGroup<Microsoft>;
 def err_access_ctor : Error<
   "calling a %select{private|protected}0 constructor of class %2">,
@@ -1176,6 +1185,8 @@ def err_auto_var_requires_init : Error<
   "declaration of variable %0 with type %1 requires an initializer">;
 def err_auto_new_requires_ctor_arg : Error<
   "new expression for type %0 requires a constructor argument">;
+def err_auto_var_init_no_expression : Error<
+  "initializer for variable %0 with type %1 is empty">;
 def err_auto_var_init_multiple_expressions : Error<
   "initializer for variable %0 with type %1 contains multiple expressions">;
 def err_auto_new_ctor_multiple_expressions : Error<
@@ -1226,6 +1237,9 @@ def err_enum_redeclare_fixed_mismatch : Error<
   "enumeration previously declared with %select{non|}0fixed underlying type">;
 def err_enum_redeclare_scoped_mismatch : Error<
   "enumeration previously declared as %select{un|}0scoped">;
+def err_enum_class_reference : Error<
+  "reference to %select{|scoped }0enumeration must use 'enum' "
+  "not 'enum class'">;
 def err_only_enums_have_underlying_types : Error<
   "only enumeration types have underlying types">;
 def err_incomplete_type_no_underlying_type : Error<
@@ -1298,11 +1312,13 @@ def note_constexpr_redecl_mismatch : Note<
 def err_constexpr_virtual : Error<"virtual function cannot be constexpr">;
 def note_constexpr_tmpl_virtual : Note<"function template instantiation is not "
   "constexpr because it is virtual">;
-def err_constexpr_virtual_base : Error<"constexpr constructor not allowed in "
-  "%select{class|struct}0 with virtual base %plural{1:class|:classes}1">;
-def note_constexpr_tmpl_virtual_base : Note<"constructor template instantiation is "
-  "not constexpr because %select{class|struct}0 has virtual base "
-  "%plural{1:class|:classes}1">;
+def err_constexpr_virtual_base : Error<
+  "constexpr %select{member function|constructor}0 not allowed in "
+  "%select{class|struct}1 with virtual base %plural{1:class|:classes}2">;
+def note_constexpr_tmpl_virtual_base : Note<
+  "%select{function|constructor}0 template instantiation is "
+  "not constexpr because %select{class|struct}1 has virtual base "
+  "%plural{1:class|:classes}2">;
 def note_non_literal_virtual_base : Note<"%select{class|struct}0 with virtual "
   "base %plural{1:class|:classes}1 is not a literal type">;
 def note_constexpr_virtual_base_here : Note<"virtual base class declared here">;
@@ -1376,6 +1392,9 @@ def err_attribute_wrong_number_arguments : Error<
   ":requires exactly %0 arguments}0">;
 def err_attribute_too_many_arguments : Error<
   "attribute takes no more than %0 argument%s0">;
+def err_suppress_autosynthesis : Error<
+  "objc_requires_property_definitions attribute may only be specified on a class"
+  "to a class declaration">;
 def err_attribute_too_few_arguments : Error<
   "attribute takes at least %0 argument%s0">;
 def err_attribute_missing_parameter_name : Error<
@@ -2319,9 +2338,9 @@ def err_template_spec_decl_out_of_scope : Error<
   "function|static data member|member class}0 specialization of %1 must "
   "originally be declared in namespace %2">;
 def ext_template_spec_decl_out_of_scope : ExtWarn<
-  "%select{class template|class template partial|function template|member "
-  "function|static data member|member class}0 specialization of %1 must "
-  "originally be declared in namespace %2; accepted as a C++11 extension">,
+  "first declaration of %select{class template|class template partial|"
+  "function template|member function|static data member|member class}0 "
+  "specialization of %1 outside namespace %2 is a C++11 extension">,
   InGroup<CXX11>;
 def warn_cxx98_compat_template_spec_decl_out_of_scope : Warning<
   "%select{class template|class template partial|function template|member "
@@ -2745,9 +2764,11 @@ def warn_undefined_internal : Warning<
   DiagGroup<"undefined-internal">;
 def note_used_here : Note<"used here">;
 
-def warn_redefinition_of_typedef : Warning<
-  "redefinition of typedef %0 is invalid in C">,
-  InGroup<DiagGroup<"typedef-redefinition"> >, DefaultError;
+def warn_redefinition_of_typedef : ExtWarn<
+  "redefinition of typedef %0 is a C11 feature">,
+  InGroup<DiagGroup<"typedef-redefinition"> >;
+def err_redefinition_variably_modified_typedef : Error<
+  "redefinition of %select{typedef|type alias}0 for variably-modified type %1">;
 
 def err_inline_declaration_block_scope : Error<
   "inline declaration of %0 not allowed in block scope">;
@@ -3428,7 +3449,7 @@ def err_typecheck_member_reference_unknown : Error<
   "cannot refer to member %0 in %1 with '%select{.|->}2'">;
 def err_member_reference_needs_call : Error<
   "base of member reference is a function; perhaps you meant to call "
-  "it%select{| with no arguments}?">;
+  "it%select{| with no arguments}0?">;
 def warn_subscript_is_char : Warning<"array subscript is of type 'char'">,
   InGroup<CharSubscript>, DefaultIgnore;
 
@@ -3989,6 +4010,22 @@ def err_throw_incomplete_ptr : Error<
 def err_return_in_constructor_handler : Error<
   "return in the catch of a function try block of a constructor is illegal">;
 
+def err_lambda_unsupported : Error<"lambda expressions are not supported yet">;
+def err_capture_more_than_once : Error<
+  "%0 can appear only once in a capture list">;
+def err_reference_capture_with_reference_default : Error<
+  "'&' cannot precede a capture when the capture default is '&'">;
+def err_this_capture_with_copy_default : Error<
+  "'this' cannot appear in a capture list when the capture default is '='">;
+def err_copy_capture_with_copy_default : Error<
+  "'&' must precede a capture when the capture default is '='">;
+def err_capture_does_not_name_variable : Error<
+  "%0 in capture list does not name a variable">;
+def err_capture_non_automatic_variable : Error<
+  "%0 cannot be captured because it does not have automatic storage duration">;
+def err_implicit_this_capture : Error<
+  "'this' cannot be implicitly captured in this context">;
+
 def err_operator_arrow_circular : Error<
   "circular pointer delegation detected">;
 def err_pseudo_dtor_base_not_scalar : Error<
@@ -4334,8 +4371,8 @@ def warn_typecheck_cond_pointer_integer_mismatch : ExtWarn<
   InGroup<DiagGroup<"conditional-type-mismatch">>;
 def err_typecheck_choose_expr_requires_constant : Error<
   "'__builtin_choose_expr' requires a constant expression">;
-def ext_typecheck_expression_not_constant_but_accepted : Extension<
-  "expression is not a constant, but is accepted as one by GNU extensions">,
+def ext_typecheck_expression_not_constant : Extension<
+  "expression is not a constant; folding it to one is a GNU extension">,
   InGroup<GNU>;
 def warn_unused_expr : Warning<"expression result unused">,
   InGroup<UnusedValue>;
@@ -4452,10 +4489,11 @@ def err_in_class_initializer_literal_type : Error<
   "in-class initializer for static data member of type %0 requires "
   "'constexpr' specifier">;
 def err_in_class_initializer_non_constant : Error<
-  "in-class initializer is not a constant expression">;
+  "in-class initializer for static data member is not a constant expression">;
 
 def ext_in_class_initializer_non_constant : Extension<
- "in-class initializer is not a constant expression, accepted as an extension">;
+  "in-class initializer for static data member is not a constant expression; "
+  "folding it to a constant is a GNU extension">;
 
 // C++ anonymous unions and GNU anonymous structs/unions
 def ext_anonymous_union : Extension<
@@ -4690,6 +4728,9 @@ def err_incorrect_defaulted_exception_spec : Error<
   "copy constructor|move constructor|copy assignment operator|move assignment "
   "operator|destructor}0 does not match the "
   "calculated one">;
+def err_incorrect_defaulted_constexpr : Error<
+  "defaulted definition of %select{default constructor|copy constructor|"
+  "move constructor}0 is not constexpr">;
 def err_out_of_line_default_deletes : Error<
   "defaulting this %select{default constructor|copy constructor|move "
   "constructor|copy assignment operator|move assignment operator|destructor}0 "
@@ -5023,9 +5064,11 @@ def err_missing_param_declspec : Error<
 def err_objc_array_of_interfaces : Error<
   "array of interface %0 is invalid (probably should be an array of pointers)">;
 def ext_c99_array_usage : Extension<
-  "use of C99-specific array features, accepted as an extension">, InGroup<C99>;
+  "%select{qualifier in |static |}0array size %select{||'[*] '}0is a C99 "
+  "feature">, InGroup<C99>;
 def err_c99_array_usage_cxx : Error<
-  "C99-specific array features are not permitted in C++">;
+  "%select{qualifier in |static |}0array size %select{||'[*] '}0is a C99 "
+  "feature, not permitted in C++">;
 def err_double_requires_fp64 : Error<
   "use of type 'double' requires cl_khr_fp64 extension to be enabled">;
 def err_nsconsumed_attribute_mismatch : Error<
@@ -5169,6 +5212,8 @@ def err_module_private_local : Error<
 def err_module_private_local_class : Error<
   "local %select{struct|union|class|enum}0 cannot be declared "
   "__module_private__">;
+def err_module_private_definition : Error<
+  "definition of %0 must be imported before it is required">;
 }
 
 // ndm - Scout

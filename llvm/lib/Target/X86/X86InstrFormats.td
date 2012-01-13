@@ -120,7 +120,7 @@ class VEX_I8IMM { bit hasVEX_i8ImmReg = 1; }
 class VEX_L  { bit hasVEX_L = 1; }
 class VEX_LIG { bit ignoresVEX_L = 1; }
 class Has3DNow0F0FOpcode  { bit has3DNow0F0FOpcode = 1; }
-class XOP_W { bit hasXOP_WPrefix = 1; }
+class MemOp4 { bit hasMemOp4Prefix = 1; }
 class XOP { bit hasXOP_Prefix = 1; }
 class X86Inst<bits<8> opcod, Format f, ImmType i, dag outs, dag ins,
               string AsmStr, Domain d = GenericDomain>
@@ -161,7 +161,7 @@ class X86Inst<bits<8> opcod, Format f, ImmType i, dag outs, dag ins,
   bit hasVEX_L = 0;         // Does this inst use large (256-bit) registers?
   bit ignoresVEX_L = 0;     // Does this instruction ignore the L-bit
   bit has3DNow0F0FOpcode =0;// Wacky 3dNow! encoding?
-  bit hasXOP_WPrefix = 0;   // Same bit as VEX_W, but used for swapping operands
+  bit hasMemOp4Prefix = 0;  // Same bit as VEX_W, but used for swapping operands
   bit hasXOP_Prefix = 0;    // Does this inst require an XOP prefix?
 
   // TSFlags layout should be kept in sync with X86InstrInfo.h.
@@ -184,7 +184,7 @@ class X86Inst<bits<8> opcod, Format f, ImmType i, dag outs, dag ins,
   let TSFlags{38}    = hasVEX_L;
   let TSFlags{39}    = ignoresVEX_L;
   let TSFlags{40}    = has3DNow0F0FOpcode;
-  let TSFlags{41}    = hasXOP_WPrefix;
+  let TSFlags{41}    = hasMemOp4Prefix;
   let TSFlags{42}    = hasXOP_Prefix;
 }
 
@@ -339,10 +339,6 @@ class VPSI<bits<8> o, Format F, dag outs, dag ins, string asm,
            list<dag> pattern>
       : I<o, F, outs, ins, !strconcat("v", asm), pattern, SSEPackedSingle>, TB,
         Requires<[HasAVX]>;
-class VoPSI<bits<8> o, Format F, dag outs, dag ins, string asm,
-            list<dag> pattern>
-      : I<o, F, outs, ins, asm, pattern, SSEPackedSingle>, TB,
-        Requires<[HasXMM]>;
 
 // SSE2 Instruction Templates:
 // 
@@ -403,12 +399,12 @@ class S3I<bits<8> o, Format F, dag outs, dag ins, string asm, list<dag> pattern>
 //   SS3AI - SSSE3 instructions with TA prefix.
 //
 // Note: SSSE3 instructions have 64-bit and 128-bit versions. The 64-bit version
-// uses the MMX registers. We put those instructions here because they better
-// fit into the SSSE3 instruction category rather than the MMX category.
+// uses the MMX registers. The 64-bit versions are grouped with the MMX
+// classes. They need to be enabled even if AVX is enabled.
 
 class SS38I<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern>
-      : Ii8<o, F, outs, ins, asm, pattern, SSEPackedInt>, T8,
+      : I<o, F, outs, ins, asm, pattern, SSEPackedInt>, T8,
         Requires<[HasSSSE3]>;
 class SS3AI<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern>
@@ -441,7 +437,7 @@ class SS428I<bits<8> o, Format F, dag outs, dag ins, string asm,
 class SS42FI<bits<8> o, Format F, dag outs, dag ins, string asm,
               list<dag> pattern>
       : I<o, F, outs, ins, asm, pattern>, T8XD, Requires<[HasSSE42]>;
-      
+
 //   SS42AI = SSE 4.2 instructions with TA prefix
 class SS42AI<bits<8> o, Format F, dag outs, dag ins, string asm,
              list<dag> pattern>
@@ -483,18 +479,18 @@ class AVX2AIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
 class AES8I<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag>pattern>
       : I<o, F, outs, ins, asm, pattern, SSEPackedInt>, T8,
-        Requires<[HasAES]>;
+        Requires<[HasSSE2, HasAES]>;
 
 class AESAI<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern>
       : Ii8<o, F, outs, ins, asm, pattern, SSEPackedInt>, TA,
-        Requires<[HasAES]>;
+        Requires<[HasSSE2, HasAES]>;
 
 // CLMUL Instruction Templates
 class CLMULIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
                list<dag>pattern>
       : Ii8<o, F, outs, ins, asm, pattern, SSEPackedInt>, TA,
-        OpSize, Requires<[HasCLMUL]>;
+        OpSize, Requires<[HasSSE2, HasCLMUL]>;
 
 class AVXCLMULIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
                   list<dag>pattern>
@@ -504,7 +500,7 @@ class AVXCLMULIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
 // FMA3 Instruction Templates
 class FMA3<bits<8> o, Format F, dag outs, dag ins, string asm,
            list<dag>pattern>
-      : I<o, F, outs, ins, asm, pattern, SSEPackedInt>, T8,
+      : I<o, F, outs, ins, asm, pattern>, T8,
         OpSize, VEX_4V, Requires<[HasFMA3]>;
 
 // FMA4 Instruction Templates

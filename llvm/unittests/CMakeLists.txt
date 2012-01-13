@@ -122,6 +122,10 @@ endif()
 
 add_llvm_unittest(VMCore ${VMCoreSources})
 
+add_llvm_unittest(Bitcode
+  Bitcode/BitReaderTest.cpp
+  )
+
 set(LLVM_LINK_COMPONENTS
   Support
   Core

@@ -265,8 +265,7 @@ ObjCMethodDecl *Sema::tryCaptureObjCSelf() {
     if (captureIndex) break;
 
     bool nested = isa<BlockScopeInfo>(FunctionScopes[idx-1]);
-    blockScope->Captures.push_back(
-              BlockDecl::Capture(self, /*byref*/ false, nested, /*copy*/ 0));
+    blockScope->AddCapture(self, /*byref*/ false, nested, /*copy*/ 0);
     captureIndex = blockScope->Captures.size(); // +1
   }
 
@@ -704,11 +703,12 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
   }
 
   // Attempt to correct for typos in property names.
-  TypoCorrection Corrected = CorrectTypo(
+  DeclFilterCCC<ObjCPropertyDecl> Validator;
+  if (TypoCorrection Corrected = CorrectTypo(
       DeclarationNameInfo(MemberName, MemberLoc), LookupOrdinaryName, NULL,
-      NULL, IFace, false, CTC_NoKeywords, OPT);
-  if (ObjCPropertyDecl *Property =
-      Corrected.getCorrectionDeclAs<ObjCPropertyDecl>()) {
+      NULL, &Validator, IFace, false, OPT)) {
+    ObjCPropertyDecl *Property =
+        Corrected.getCorrectionDeclAs<ObjCPropertyDecl>();
     DeclarationName TypoResult = Corrected.getCorrection();
     Diag(MemberLoc, diag::err_property_not_found_suggest)
       << MemberName << QualType(OPT, 0) << TypoResult
@@ -848,6 +848,24 @@ ActOnClassPropertyRefExpr(IdentifierInfo &receiverName,
                      << &propertyName << Context.getObjCInterfaceType(IFace));
 }
 
+namespace {
+
+class ObjCInterfaceOrSuperCCC : public CorrectionCandidateCallback {
+ public:
+  ObjCInterfaceOrSuperCCC(ObjCMethodDecl *Method) {
+    // Determine whether "super" is acceptable in the current context.
+    if (Method && Method->getClassInterface())
+      WantObjCSuper = Method->getClassInterface()->getSuperClass();
+  }
+
+  virtual bool ValidateCandidate(const TypoCorrection &candidate) {
+    return candidate.getCorrectionDeclAs<ObjCInterfaceDecl>() ||
+        candidate.isKeyword("super");
+  }
+};
+
+}
+
 Sema::ObjCMessageKind Sema::getObjCMessageKind(Scope *S,
                                                IdentifierInfo *Name,
                                                SourceLocation NameLoc,
@@ -917,39 +935,32 @@ Sema::ObjCMessageKind Sema::getObjCMessageKind(Scope *S,
   }
   }
 
-  // Determine our typo-correction context.
-  CorrectTypoContext CTC = CTC_Expression;
-  if (ObjCMethodDecl *Method = getCurMethodDecl())
-    if (Method->getClassInterface() &&
-        Method->getClassInterface()->getSuperClass())
-      CTC = CTC_ObjCMessageReceiver;
-      
+  ObjCInterfaceOrSuperCCC Validator(getCurMethodDecl());
   if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                              Result.getLookupKind(), S, NULL,
-                                             NULL, false, CTC)) {
-    if (NamedDecl *ND = Corrected.getCorrectionDecl()) {
-      // If we found a declaration, correct when it refers to an Objective-C
-      // class.
-      if (ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(ND)) {
-        Diag(NameLoc, diag::err_unknown_receiver_suggest)
-          << Name << Corrected.getCorrection()
-          << FixItHint::CreateReplacement(SourceRange(NameLoc),
-                                          ND->getNameAsString());
-        Diag(ND->getLocation(), diag::note_previous_decl)
-          << Corrected.getCorrection();
-
-        QualType T = Context.getObjCInterfaceType(Class);
-        TypeSourceInfo *TSInfo = Context.getTrivialTypeSourceInfo(T, NameLoc);
-        ReceiverType = CreateParsedType(T, TSInfo);
-        return ObjCClassMessage;
-      }
-    } else if (Corrected.isKeyword() &&
-               Corrected.getCorrectionAsIdentifierInfo()->isStr("super")) {
-      // If we've found the keyword "super", this is a send to super.
+                                             &Validator)) {
+    if (Corrected.isKeyword()) {
+      // If we've found the keyword "super" (the only keyword that would be
+      // returned by CorrectTypo), this is a send to super.
       Diag(NameLoc, diag::err_unknown_receiver_suggest)
         << Name << Corrected.getCorrection()
         << FixItHint::CreateReplacement(SourceRange(NameLoc), "super");
       return ObjCSuperMessage;
+    } else if (ObjCInterfaceDecl *Class =
+               Corrected.getCorrectionDeclAs<ObjCInterfaceDecl>()) {
+      // If we found a declaration, correct when it refers to an Objective-C
+      // class.
+      Diag(NameLoc, diag::err_unknown_receiver_suggest)
+        << Name << Corrected.getCorrection()
+        << FixItHint::CreateReplacement(SourceRange(NameLoc),
+                                        Class->getNameAsString());
+      Diag(Class->getLocation(), diag::note_previous_decl)
+        << Corrected.getCorrection();
+
+      QualType T = Context.getObjCInterfaceType(Class);
+      TypeSourceInfo *TSInfo = Context.getTrivialTypeSourceInfo(T, NameLoc);
+      ReceiverType = CreateParsedType(T, TSInfo);
+      return ObjCClassMessage;
     }
   }
   
@@ -1011,6 +1022,24 @@ ExprResult Sema::ActOnSuperMessage(Scope *S,
                            LBracLoc, SelectorLocs, RBracLoc, move(Args));
 }
 
+
+ExprResult Sema::BuildClassMessageImplicit(QualType ReceiverType,
+                                           bool isSuperReceiver,
+                                           SourceLocation Loc,
+                                           Selector Sel,
+                                           ObjCMethodDecl *Method,
+                                           MultiExprArg Args) {
+  TypeSourceInfo *receiverTypeInfo = 0;
+  if (!ReceiverType.isNull())
+    receiverTypeInfo = Context.getTrivialTypeSourceInfo(ReceiverType);
+
+  return BuildClassMessage(receiverTypeInfo, ReceiverType,
+                          /*SuperLoc=*/isSuperReceiver ? Loc : SourceLocation(),
+                           Sel, Method, Loc, Loc, Loc, Args,
+                           /*isImplicit=*/true);
+
+}
+
 /// \brief Build an Objective-C class message expression.
 ///
 /// This routine takes care of both normal class messages and
@@ -1047,7 +1076,8 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
                                    SourceLocation LBracLoc, 
                                    ArrayRef<SourceLocation> SelectorLocs,
                                    SourceLocation RBracLoc,
-                                   MultiExprArg ArgsIn) {
+                                   MultiExprArg ArgsIn,
+                                   bool isImplicit) {
   SourceLocation Loc = SuperLoc.isValid()? SuperLoc
     : ReceiverTypeInfo->getTypeLoc().getSourceRange().getBegin();
   if (LBracLoc.isInvalid()) {
@@ -1065,7 +1095,8 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
     return Owned(ObjCMessageExpr::Create(Context, ReceiverType,
                                          VK_RValue, LBracLoc, ReceiverTypeInfo,
                                          Sel, SelectorLocs, /*Method=*/0,
-                                         makeArrayRef(Args, NumArgs),RBracLoc));
+                                         makeArrayRef(Args, NumArgs),RBracLoc,
+                                         isImplicit));
   }
   
   // Find the class to which we are sending this message.
@@ -1131,12 +1162,12 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
                                      SuperLoc, /*IsInstanceSuper=*/false, 
                                      ReceiverType, Sel, SelectorLocs,
                                      Method, makeArrayRef(Args, NumArgs),
-                                     RBracLoc);
+                                     RBracLoc, isImplicit);
   else
     Result = ObjCMessageExpr::Create(Context, ReturnType, VK, LBracLoc, 
                                      ReceiverTypeInfo, Sel, SelectorLocs,
                                      Method, makeArrayRef(Args, NumArgs),
-                                     RBracLoc);
+                                     RBracLoc, isImplicit);
   return MaybeBindToTemporary(Result);
 }
 
@@ -1162,6 +1193,18 @@ ExprResult Sema::ActOnClassMessage(Scope *S,
   return BuildClassMessage(ReceiverTypeInfo, ReceiverType, 
                            /*SuperLoc=*/SourceLocation(), Sel, /*Method=*/0,
                            LBracLoc, SelectorLocs, RBracLoc, move(Args));
+}
+
+ExprResult Sema::BuildInstanceMessageImplicit(Expr *Receiver,
+                                              QualType ReceiverType,
+                                              SourceLocation Loc,
+                                              Selector Sel,
+                                              ObjCMethodDecl *Method,
+                                              MultiExprArg Args) {
+  return BuildInstanceMessage(Receiver, ReceiverType,
+                              /*SuperLoc=*/!Receiver ? Loc : SourceLocation(),
+                              Sel, Method, Loc, Loc, Loc, Args,
+                              /*isImplicit=*/true);
 }
 
 /// \brief Build an Objective-C instance message expression.
@@ -1200,7 +1243,8 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                                       SourceLocation LBracLoc, 
                                       ArrayRef<SourceLocation> SelectorLocs,
                                       SourceLocation RBracLoc,
-                                      MultiExprArg ArgsIn) {
+                                      MultiExprArg ArgsIn,
+                                      bool isImplicit) {
   // The location of the receiver.
   SourceLocation Loc = SuperLoc.isValid()? SuperLoc : Receiver->getLocStart();
   
@@ -1233,7 +1277,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                                            VK_RValue, LBracLoc, Receiver, Sel, 
                                            SelectorLocs, /*Method=*/0,
                                            makeArrayRef(Args, NumArgs),
-                                           RBracLoc));
+                                           RBracLoc, isImplicit));
     }
 
     // If necessary, apply function/array conversion to the receiver.
@@ -1523,11 +1567,13 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
     Result = ObjCMessageExpr::Create(Context, ReturnType, VK, LBracLoc,
                                      SuperLoc,  /*IsInstanceSuper=*/true,
                                      ReceiverType, Sel, SelectorLocs, Method, 
-                                     makeArrayRef(Args, NumArgs), RBracLoc);
+                                     makeArrayRef(Args, NumArgs), RBracLoc,
+                                     isImplicit);
   else
     Result = ObjCMessageExpr::Create(Context, ReturnType, VK, LBracLoc,
                                      Receiver, Sel, SelectorLocs, Method,
-                                     makeArrayRef(Args, NumArgs), RBracLoc);
+                                     makeArrayRef(Args, NumArgs), RBracLoc,
+                                     isImplicit);
 
   if (getLangOptions().ObjCAutoRefCount) {
     // In ARC, annotate delegate init calls.

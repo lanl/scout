@@ -20,6 +20,7 @@
 #include "clang/Analysis/Analyses/LiveVariables.h"
 #include "clang/Analysis/AnalysisContext.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ObjCMessage.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
@@ -235,11 +236,16 @@ public:
   //===-------------------------------------------------------------------===//
   // Binding values to regions.
   //===-------------------------------------------------------------------===//
+  RegionBindings invalidateGlobalRegion(MemRegion::Kind K,
+                                        const Expr *Ex,
+                                        unsigned Count,
+                                        RegionBindings B,
+                                        InvalidatedRegions *Invalidated);
 
   StoreRef invalidateRegions(Store store, ArrayRef<const MemRegion *> Regions,
                              const Expr *E, unsigned Count,
                              InvalidatedSymbols &IS,
-                             bool invalidateGlobals,
+                             const CallOrObjCMessage *Call,
                              InvalidatedRegions *Invalidated);
 
 public:   // Made public for helper classes.
@@ -273,7 +279,8 @@ public: // Part of public interface to class.
     RegionBindings B = GetRegionBindings(store);
     assert(!lookup(B, R, BindingKey::Default));
     assert(!lookup(B, R, BindingKey::Direct));
-    return StoreRef(addBinding(B, R, BindingKey::Default, V).getRootWithoutRetain(), *this);
+    return StoreRef(addBinding(B, R, BindingKey::Default, V)
+                      .getRootWithoutRetain(), *this);
   }
 
   StoreRef BindCompoundLiteral(Store store, const CompoundLiteralExpr *CL,
@@ -308,12 +315,10 @@ public: // Part of public interface to class.
   
   bool includedInBindings(Store store, const MemRegion *region) const;
 
-  //===------------------------------------------------------------------===//
-  // Loading values from regions.
-  //===------------------------------------------------------------------===//
-
+  /// \brief Return the value bound to specified location in a given state.
+  ///
   /// The high level logic for this method is this:
-  /// Retrieve (L)
+  /// getBinding (L)
   ///   if L has binding
   ///     return L's binding
   ///   else if L is in killset
@@ -323,39 +328,39 @@ public: // Part of public interface to class.
   ///       return undefined
   ///     else
   ///       return symbolic
-  SVal Retrieve(Store store, Loc L, QualType T = QualType());
+  SVal getBinding(Store store, Loc L, QualType T = QualType());
 
-  SVal RetrieveElement(Store store, const ElementRegion *R);
+  SVal getBindingForElement(Store store, const ElementRegion *R);
 
-  SVal RetrieveField(Store store, const FieldRegion *R);
+  SVal getBindingForField(Store store, const FieldRegion *R);
 
-  SVal RetrieveObjCIvar(Store store, const ObjCIvarRegion *R);
+  SVal getBindingForObjCIvar(Store store, const ObjCIvarRegion *R);
 
-  SVal RetrieveVar(Store store, const VarRegion *R);
+  SVal getBindingForVar(Store store, const VarRegion *R);
 
-  SVal RetrieveLazySymbol(const TypedValueRegion *R);
+  SVal getBindingForLazySymbol(const TypedValueRegion *R);
 
-  SVal RetrieveFieldOrElementCommon(Store store, const TypedValueRegion *R,
-                                    QualType Ty, const MemRegion *superR);
+  SVal getBindingForFieldOrElementCommon(Store store, const TypedValueRegion *R,
+                                         QualType Ty, const MemRegion *superR);
   
-  SVal RetrieveLazyBinding(const MemRegion *lazyBindingRegion,
-                           Store lazyBindingStore);
+  SVal getLazyBinding(const MemRegion *lazyBindingRegion,
+                      Store lazyBindingStore);
 
-  /// Retrieve the values in a struct and return a CompoundVal, used when doing
-  /// struct copy:
+  /// Get bindings for the values in a struct and return a CompoundVal, used
+  /// when doing struct copy:
   /// struct s x, y;
   /// x = y;
   /// y's value is retrieved by this method.
-  SVal RetrieveStruct(Store store, const TypedValueRegion* R);
+  SVal getBindingForStruct(Store store, const TypedValueRegion* R);
 
-  SVal RetrieveArray(Store store, const TypedValueRegion* R);
+  SVal getBindingForArray(Store store, const TypedValueRegion* R);
 
   /// Used to lazily generate derived symbols for bindings that are defined
   ///  implicitly by default bindings in a super region.
-  Optional<SVal> RetrieveDerivedDefaultValue(RegionBindings B,
-                                             const MemRegion *superR,
-                                             const TypedValueRegion *R, 
-                                             QualType Ty);
+  Optional<SVal> getBindingForDerivedDefaultValue(RegionBindings B,
+                                                  const MemRegion *superR,
+                                                  const TypedValueRegion *R,
+                                                  QualType Ty);
 
   /// Get the state and region whose binding this region R corresponds to.
   std::pair<Store, const MemRegion*>
@@ -375,7 +380,8 @@ public: // Part of public interface to class.
                               SymbolReaper& SymReaper);
 
   StoreRef enterStackFrame(const ProgramState *state,
-                           const StackFrameContext *frame);
+                           const LocationContext *callerCtx,
+                           const StackFrameContext *calleeCtx);
 
   //===------------------------------------------------------------------===//
   // Region "extents".
@@ -422,7 +428,8 @@ StoreManager *ento::CreateRegionStoreManager(ProgramStateManager& StMgr) {
   return new RegionStoreManager(StMgr, F);
 }
 
-StoreManager *ento::CreateFieldsOnlyRegionStoreManager(ProgramStateManager &StMgr) {
+StoreManager *
+ento::CreateFieldsOnlyRegionStoreManager(ProgramStateManager &StMgr) {
   RegionStoreFeatures F = minimal_features_tag();
   F.enableFields(true);
   return new RegionStoreManager(StMgr, F);
@@ -713,20 +720,44 @@ void invalidateRegionsWorker::VisitBaseRegion(const MemRegion *baseR) {
   }
   
 
-  DefinedOrUnknownSVal V = svalBuilder.getConjuredSymbolVal(baseR, Ex, T, Count);
+  DefinedOrUnknownSVal V = svalBuilder.getConjuredSymbolVal(baseR, Ex, T,Count);
   assert(SymbolManager::canSymbolicate(T) || V.isUnknown());
   B = RM.addBinding(B, baseR, BindingKey::Direct, V);
+}
+
+RegionBindings RegionStoreManager::invalidateGlobalRegion(MemRegion::Kind K,
+                                                          const Expr *Ex,
+                                                          unsigned Count,
+                                                          RegionBindings B,
+                                            InvalidatedRegions *Invalidated) {
+  // Bind the globals memory space to a new symbol that we will use to derive
+  // the bindings for all globals.
+  const GlobalsSpaceRegion *GS = MRMgr.getGlobalsRegion(K);
+  SVal V =
+      svalBuilder.getConjuredSymbolVal(/* SymbolTag = */ (void*) GS, Ex,
+          /* symbol type, doesn't matter */ Ctx.IntTy,
+          Count);
+
+  B = removeBinding(B, GS);
+  B = addBinding(B, BindingKey::Make(GS, BindingKey::Default), V);
+
+  // Even if there are no bindings in the global scope, we still need to
+  // record that we touched it.
+  if (Invalidated)
+    Invalidated->push_back(GS);
+
+  return B;
 }
 
 StoreRef RegionStoreManager::invalidateRegions(Store store,
                                             ArrayRef<const MemRegion *> Regions,
                                                const Expr *Ex, unsigned Count,
                                                InvalidatedSymbols &IS,
-                                               bool invalidateGlobals,
+                                               const CallOrObjCMessage *Call,
                                               InvalidatedRegions *Invalidated) {
   invalidateRegionsWorker W(*this, StateMgr,
                             RegionStoreManager::GetRegionBindings(store),
-                            Ex, Count, IS, Invalidated, invalidateGlobals);
+                            Ex, Count, IS, Invalidated, false);
 
   // Scan the bindings and generate the clusters.
   W.GenerateClusters();
@@ -741,20 +772,20 @@ StoreRef RegionStoreManager::invalidateRegions(Store store,
   // Return the new bindings.
   RegionBindings B = W.getRegionBindings();
 
-  if (invalidateGlobals) {
-    // Bind the non-static globals memory space to a new symbol that we will
-    // use to derive the bindings for all non-static globals.
-    const GlobalsSpaceRegion *GS = MRMgr.getGlobalsRegion();
-    SVal V =
-      svalBuilder.getConjuredSymbolVal(/* SymbolTag = */ (void*) GS, Ex,
-                                  /* symbol type, doesn't matter */ Ctx.IntTy,
-                                  Count);
-    B = addBinding(B, BindingKey::Make(GS, BindingKey::Default), V);
-
-    // Even if there are no bindings in the global scope, we still need to
-    // record that we touched it.
-    if (Invalidated)
-      Invalidated->push_back(GS);
+  // For all globals which are not static nor immutable: determine which global
+  // regions should be invalidated and invalidate them.
+  // TODO: This could possibly be more precise with modules.
+  //
+  // System calls invalidate only system globals.
+  if (Call && Call->isInSystemHeader()) {
+    B = invalidateGlobalRegion(MemRegion::GlobalSystemSpaceRegionKind,
+                               Ex, Count, B, Invalidated);
+  // Internal calls might invalidate both system and internal globals.
+  } else {
+    B = invalidateGlobalRegion(MemRegion::GlobalSystemSpaceRegionKind,
+                               Ex, Count, B, Invalidated);
+    B = invalidateGlobalRegion(MemRegion::GlobalInternalSpaceRegionKind,
+                               Ex, Count, B, Invalidated);
   }
 
   return StoreRef(B.getRootWithoutRetain(), *this);
@@ -764,9 +795,10 @@ StoreRef RegionStoreManager::invalidateRegions(Store store,
 // Extents for regions.
 //===----------------------------------------------------------------------===//
 
-DefinedOrUnknownSVal RegionStoreManager::getSizeInElements(const ProgramState *state,
-                                                           const MemRegion *R,
-                                                           QualType EleTy) {
+DefinedOrUnknownSVal
+RegionStoreManager::getSizeInElements(const ProgramState *state,
+                                      const MemRegion *R,
+                                      QualType EleTy) {
   SVal Size = cast<SubRegion>(R)->getExtent(svalBuilder);
   const llvm::APSInt *SizeInt = svalBuilder.getKnownValue(state, Size);
   if (!SizeInt)
@@ -863,7 +895,7 @@ Optional<SVal> RegionStoreManager::getDefaultBinding(RegionBindings B,
   return Optional<SVal>();
 }
 
-SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
+SVal RegionStoreManager::getBinding(Store store, Loc L, QualType T) {
   assert(!isa<UnknownVal>(L) && "location unknown");
   assert(!isa<UndefinedVal>(L) && "location undefined");
 
@@ -886,8 +918,12 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
       isa<SymbolicRegion>(MR) ||
       isa<CodeTextRegion>(MR)) {
     if (T.isNull()) {
-      const SymbolicRegion *SR = cast<SymbolicRegion>(MR);
-      T = SR->getSymbol()->getType(Ctx);
+      if (const TypedRegion *TR = dyn_cast<TypedRegion>(MR))
+        T = TR->getLocationType();
+      else {
+        const SymbolicRegion *SR = cast<SymbolicRegion>(MR);
+        T = SR->getSymbol()->getType(Ctx);
+      }
     }
     MR = GetElementZeroRegion(MR, T);
   }
@@ -907,21 +943,21 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
   // Such funny addressing will occur due to layering of regions.
 
   if (RTy->isStructureOrClassType())
-    return RetrieveStruct(store, R);
+    return getBindingForStruct(store, R);
 
   // FIXME: Handle unions.
   if (RTy->isUnionType())
     return UnknownVal();
 
   if (RTy->isArrayType())
-    return RetrieveArray(store, R);
+    return getBindingForArray(store, R);
 
   // FIXME: handle Vector types.
   if (RTy->isVectorType())
     return UnknownVal();
 
   if (const FieldRegion* FR = dyn_cast<FieldRegion>(R))
-    return CastRetrievedVal(RetrieveField(store, FR), FR, T, false);
+    return CastRetrievedVal(getBindingForField(store, FR), FR, T, false);
 
   if (const ElementRegion* ER = dyn_cast<ElementRegion>(R)) {
     // FIXME: Here we actually perform an implicit conversion from the loaded
@@ -929,7 +965,7 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
     // more intelligently.  For example, an 'element' can encompass multiple
     // bound regions (e.g., several bound bytes), or could be a subset of
     // a larger value.
-    return CastRetrievedVal(RetrieveElement(store, ER), ER, T, false);
+    return CastRetrievedVal(getBindingForElement(store, ER), ER, T, false);
   }
 
   if (const ObjCIvarRegion *IVR = dyn_cast<ObjCIvarRegion>(R)) {
@@ -939,7 +975,7 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
     // reinterpretted, it is possible we stored a different value that could
     // fit within the ivar.  Either we need to cast these when storing them
     // or reinterpret them lazily (as we do here).
-    return CastRetrievedVal(RetrieveObjCIvar(store, IVR), IVR, T, false);
+    return CastRetrievedVal(getBindingForObjCIvar(store, IVR), IVR, T, false);
   }
 
   if (const VarRegion *VR = dyn_cast<VarRegion>(R)) {
@@ -949,7 +985,7 @@ SVal RegionStoreManager::Retrieve(Store store, Loc L, QualType T) {
     // variable is reinterpretted, it is possible we stored a different value
     // that could fit within the variable.  Either we need to cast these when
     // storing them or reinterpret them lazily (as we do here).
-    return CastRetrievedVal(RetrieveVar(store, VR), VR, T, false);
+    return CastRetrievedVal(getBindingForVar(store, VR), VR, T, false);
   }
 
   RegionBindings B = GetRegionBindings(store);
@@ -1019,7 +1055,7 @@ RegionStoreManager::GetLazyBinding(RegionBindings B, const MemRegion *R,
   return std::make_pair((Store) 0, (const MemRegion *) 0);
 }
 
-SVal RegionStoreManager::RetrieveElement(Store store,
+SVal RegionStoreManager::getBindingForElement(Store store,
                                          const ElementRegion* R) {
   // Check if the region has a binding.
   RegionBindings B = GetRegionBindings(store);
@@ -1041,7 +1077,7 @@ SVal RegionStoreManager::RetrieveElement(Store store,
     if (nonloc::ConcreteInt *CI = dyn_cast<nonloc::ConcreteInt>(&Idx)) {
       int64_t i = CI->getValue().getSExtValue();
       // Abort on string underrun.  This can be possible by arbitrary
-      // clients of RetrieveElement().
+      // clients of getBindingForElement().
       if (i < 0)
         return UndefinedVal();
       int64_t length = Str->getLength();
@@ -1091,10 +1127,11 @@ SVal RegionStoreManager::RetrieveElement(Store store,
       }
     }
   }
-  return RetrieveFieldOrElementCommon(store, R, R->getElementType(), superR);
+  return getBindingForFieldOrElementCommon(store, R, R->getElementType(),
+                                           superR);
 }
 
-SVal RegionStoreManager::RetrieveField(Store store,
+SVal RegionStoreManager::getBindingForField(Store store,
                                        const FieldRegion* R) {
 
   // Check if the region has a binding.
@@ -1103,14 +1140,14 @@ SVal RegionStoreManager::RetrieveField(Store store,
     return *V;
 
   QualType Ty = R->getValueType();
-  return RetrieveFieldOrElementCommon(store, R, Ty, R->getSuperRegion());
+  return getBindingForFieldOrElementCommon(store, R, Ty, R->getSuperRegion());
 }
 
 Optional<SVal>
-RegionStoreManager::RetrieveDerivedDefaultValue(RegionBindings B,
-                                                const MemRegion *superR,
-                                                const TypedValueRegion *R,
-                                                QualType Ty) {
+RegionStoreManager::getBindingForDerivedDefaultValue(RegionBindings B,
+                                                     const MemRegion *superR,
+                                                     const TypedValueRegion *R,
+                                                     QualType Ty) {
 
   if (const Optional<SVal> &D = getDefaultBinding(B, superR)) {
     const SVal &val = D.getValue();
@@ -1133,28 +1170,28 @@ RegionStoreManager::RetrieveDerivedDefaultValue(RegionBindings B,
   return Optional<SVal>();
 }
 
-SVal RegionStoreManager::RetrieveLazyBinding(const MemRegion *lazyBindingRegion,
+SVal RegionStoreManager::getLazyBinding(const MemRegion *lazyBindingRegion,
                                              Store lazyBindingStore) {
   if (const ElementRegion *ER = dyn_cast<ElementRegion>(lazyBindingRegion))
-    return RetrieveElement(lazyBindingStore, ER);
+    return getBindingForElement(lazyBindingStore, ER);
   
-  return RetrieveField(lazyBindingStore,
-                       cast<FieldRegion>(lazyBindingRegion));
+  return getBindingForField(lazyBindingStore,
+                            cast<FieldRegion>(lazyBindingRegion));
 }
                                         
-SVal RegionStoreManager::RetrieveFieldOrElementCommon(Store store,
+SVal RegionStoreManager::getBindingForFieldOrElementCommon(Store store,
                                                       const TypedValueRegion *R,
                                                       QualType Ty,
                                                       const MemRegion *superR) {
 
-  // At this point we have already checked in either RetrieveElement or
-  // RetrieveField if 'R' has a direct binding.
+  // At this point we have already checked in either getBindingForElement or
+  // getBindingForField if 'R' has a direct binding.
 
   RegionBindings B = GetRegionBindings(store);
 
   while (superR) {
     if (const Optional<SVal> &D =
-        RetrieveDerivedDefaultValue(B, superR, R, Ty))
+        getBindingForDerivedDefaultValue(B, superR, R, Ty))
       return *D;
 
     // If our super region is a field or element itself, walk up the region
@@ -1172,7 +1209,7 @@ SVal RegionStoreManager::RetrieveFieldOrElementCommon(Store store,
   llvm::tie(lazyBindingStore, lazyBindingRegion) = GetLazyBinding(B, R, R);
 
   if (lazyBindingRegion)
-    return RetrieveLazyBinding(lazyBindingRegion, lazyBindingStore);
+    return getLazyBinding(lazyBindingRegion, lazyBindingStore);
 
   if (R->hasStackNonParametersStorage()) {
     if (const ElementRegion *ER = dyn_cast<ElementRegion>(R)) {
@@ -1197,7 +1234,8 @@ SVal RegionStoreManager::RetrieveFieldOrElementCommon(Store store,
   return svalBuilder.getRegionValueSymbolVal(R);
 }
 
-SVal RegionStoreManager::RetrieveObjCIvar(Store store, const ObjCIvarRegion* R){
+SVal RegionStoreManager::getBindingForObjCIvar(Store store,
+                                               const ObjCIvarRegion* R) {
 
     // Check if the region has a binding.
   RegionBindings B = GetRegionBindings(store);
@@ -1216,10 +1254,10 @@ SVal RegionStoreManager::RetrieveObjCIvar(Store store, const ObjCIvarRegion* R){
     return UnknownVal();
   }
 
-  return RetrieveLazySymbol(R);
+  return getBindingForLazySymbol(R);
 }
 
-SVal RegionStoreManager::RetrieveVar(Store store, const VarRegion *R) {
+SVal RegionStoreManager::getBindingForVar(Store store, const VarRegion *R) {
 
   // Check if the region has a binding.
   RegionBindings B = GetRegionBindings(store);
@@ -1251,7 +1289,8 @@ SVal RegionStoreManager::RetrieveVar(Store store, const VarRegion *R) {
           }
       }
 
-      if (const Optional<SVal> &V = RetrieveDerivedDefaultValue(B, MS, R, CT))
+      if (const Optional<SVal> &V
+            = getBindingForDerivedDefaultValue(B, MS, R, CT))
         return V.getValue();
 
       return svalBuilder.getRegionValueSymbolVal(R);
@@ -1268,19 +1307,19 @@ SVal RegionStoreManager::RetrieveVar(Store store, const VarRegion *R) {
   return UndefinedVal();
 }
 
-SVal RegionStoreManager::RetrieveLazySymbol(const TypedValueRegion *R) {
+SVal RegionStoreManager::getBindingForLazySymbol(const TypedValueRegion *R) {
   // All other values are symbolic.
   return svalBuilder.getRegionValueSymbolVal(R);
 }
 
-SVal RegionStoreManager::RetrieveStruct(Store store, 
+SVal RegionStoreManager::getBindingForStruct(Store store, 
                                         const TypedValueRegion* R) {
   QualType T = R->getValueType();
   assert(T->isStructureOrClassType());
   return svalBuilder.makeLazyCompoundVal(StoreRef(store, *this), R);
 }
 
-SVal RegionStoreManager::RetrieveArray(Store store, 
+SVal RegionStoreManager::getBindingForArray(Store store, 
                                        const TypedValueRegion * R) {
   assert(Ctx.getAsConstantArrayType(R->getValueType()));
   return svalBuilder.makeLazyCompoundVal(StoreRef(store, *this), R);
@@ -1644,7 +1683,8 @@ class removeDeadBindingsWorker :
   const StackFrameContext *CurrentLCtx;
 
 public:
-  removeDeadBindingsWorker(RegionStoreManager &rm, ProgramStateManager &stateMgr,
+  removeDeadBindingsWorker(RegionStoreManager &rm,
+                           ProgramStateManager &stateMgr,
                            RegionBindings b, SymbolReaper &symReaper,
                            const StackFrameContext *LCtx)
     : ClusterAnalysis<removeDeadBindingsWorker>(rm, stateMgr, b,
@@ -1820,36 +1860,40 @@ StoreRef RegionStoreManager::removeDeadBindings(Store store,
 
 
 StoreRef RegionStoreManager::enterStackFrame(const ProgramState *state,
-                                             const StackFrameContext *frame) {
-  FunctionDecl const *FD = cast<FunctionDecl>(frame->getDecl());
+                                             const LocationContext *callerCtx,
+                                             const StackFrameContext *calleeCtx)
+{
+  FunctionDecl const *FD = cast<FunctionDecl>(calleeCtx->getDecl());
   FunctionDecl::param_const_iterator PI = FD->param_begin(), 
                                      PE = FD->param_end();
   StoreRef store = StoreRef(state->getStore(), *this);
 
-  if (CallExpr const *CE = dyn_cast<CallExpr>(frame->getCallSite())) {
+  if (CallExpr const *CE = dyn_cast<CallExpr>(calleeCtx->getCallSite())) {
     CallExpr::const_arg_iterator AI = CE->arg_begin(), AE = CE->arg_end();
 
     // Copy the arg expression value to the arg variables.  We check that
     // PI != PE because the actual number of arguments may be different than
     // the function declaration.
     for (; AI != AE && PI != PE; ++AI, ++PI) {
-      SVal ArgVal = state->getSVal(*AI);
+      SVal ArgVal = state->getSVal(*AI, callerCtx);
       store = Bind(store.getStore(),
-                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, frame)), ArgVal);
+                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
+                   ArgVal);
     }
   } else if (const CXXConstructExpr *CE =
-               dyn_cast<CXXConstructExpr>(frame->getCallSite())) {
+               dyn_cast<CXXConstructExpr>(calleeCtx->getCallSite())) {
     CXXConstructExpr::const_arg_iterator AI = CE->arg_begin(),
       AE = CE->arg_end();
 
     // Copy the arg expression value to the arg variables.
     for (; AI != AE; ++AI, ++PI) {
-      SVal ArgVal = state->getSVal(*AI);
+      SVal ArgVal = state->getSVal(*AI, callerCtx);
       store = Bind(store.getStore(),
-                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI,frame)), ArgVal);
+                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
+                   ArgVal);
     }
   } else
-    assert(isa<CXXDestructorDecl>(frame->getDecl()));
+    assert(isa<CXXDestructorDecl>(calleeCtx->getDecl()));
 
   return store;
 }

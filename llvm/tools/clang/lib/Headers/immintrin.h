@@ -48,7 +48,7 @@
 #include <smmintrin.h>
 #endif
 
-#if defined (__AES__) || defined (__PCLMUL__)
+#if defined (__AES__)
 #include <wmmintrin.h>
 #endif
 
@@ -58,6 +58,18 @@
 
 #ifdef __AVX2__
 #include <avx2intrin.h>
+#endif
+
+#ifdef __BMI__
+#include <bmiintrin.h>
+#endif
+
+#ifdef __BMI2__
+#include <bmi2intrin.h>
+#endif
+
+#ifdef __LZCNT__
+#include <lzcntintrin.h>
 #endif
 
 #endif /* __IMMINTRIN_H */

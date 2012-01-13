@@ -18,7 +18,6 @@
 #include "CGDebugInfo.h"
 #include "CGException.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/AST/APValue.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -528,15 +527,14 @@ bool CodeGenFunction::
 ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APInt &ResultInt) {
   // FIXME: Rename and handle conversion of other evaluatable things
   // to bool.
-  Expr::EvalResult Result;
-  if (!Cond->EvaluateAsRValue(Result, getContext()) || !Result.Val.isInt() ||
-      Result.HasSideEffects)
+  llvm::APSInt Int;
+  if (!Cond->EvaluateAsInt(Int, getContext()))
     return false;  // Not foldable, not integer or not fully evaluatable.
 
   if (CodeGenFunction::ContainsLabel(Cond))
     return false;  // Contains a label.
 
-  ResultInt = Result.Val.getInt();
+  ResultInt = Int;
   return true;
 }
 
@@ -939,19 +937,19 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 
   // We're going to walk down into the type and look for VLA
   // expressions.
-  type = type.getCanonicalType();
   do {
     assert(type->isVariablyModifiedType());
 
     const Type *ty = type.getTypePtr();
     switch (ty->getTypeClass()) {
+
 #define TYPE(Class, Base)
 #define ABSTRACT_TYPE(Class, Base)
-#define NON_CANONICAL_TYPE(Class, Base) case Type::Class:
+#define NON_CANONICAL_TYPE(Class, Base)
 #define DEPENDENT_TYPE(Class, Base) case Type::Class:
-#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
+#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-      llvm_unreachable("unexpected dependent or non-canonical type!");
+      llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
     case Type::Mesh:
@@ -961,6 +959,8 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::ExtVector:
     case Type::Record:
     case Type::Enum:
+    case Type::Elaborated:
+    case Type::TemplateSpecialization:
     case Type::ObjCObject:
     case Type::ObjCInterface:
     case Type::ObjCObjectPointer:
@@ -1014,6 +1014,26 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::FunctionNoProto:
       type = cast<FunctionType>(ty)->getResultType();
       break;
+
+    case Type::Paren:
+    case Type::TypeOf:
+    case Type::UnaryTransform:
+    case Type::Attributed:
+    case Type::SubstTemplateTypeParm:
+      // Keep walking after single level desugaring.
+      type = type.getSingleStepDesugaredType(getContext());
+      break;
+
+    case Type::Typedef:
+    case Type::Decltype:
+    case Type::Auto:
+      // Stop walking: nothing to do.
+      return;
+
+    case Type::TypeOfExpr:
+      // Stop walking: emit typeof expression.
+      EmitIgnoredExpr(cast<TypeOfExprType>(ty)->getUnderlyingExpr());
+      return;
 
     case Type::Atomic:
       type = cast<AtomicType>(ty)->getValueType();

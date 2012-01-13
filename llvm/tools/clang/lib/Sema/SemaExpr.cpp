@@ -1015,7 +1015,7 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
       if (Types[i]->getType()->isDependentType()) {
         IsResultDependent = true;
       } else {
-        // C1X 6.5.1.1p2 "The type name in a generic association shall specify a
+        // C11 6.5.1.1p2 "The type name in a generic association shall specify a
         // complete object type other than a variably modified type."
         unsigned D = 0;
         if (Types[i]->getType()->isIncompleteType())
@@ -1032,7 +1032,7 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
           TypeErrorFound = true;
         }
 
-        // C1X 6.5.1.1p2 "No two generic associations in the same generic
+        // C11 6.5.1.1p2 "No two generic associations in the same generic
         // selection shall specify compatible types."
         for (unsigned j = i+1; j < NumAssocs; ++j)
           if (Types[j] && !Types[j]->getType()->isDependentType() &&
@@ -1073,7 +1073,7 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
       CompatIndices.push_back(i);
   }
 
-  // C1X 6.5.1.1p2 "The controlling expression of a generic selection shall have
+  // C11 6.5.1.1p2 "The controlling expression of a generic selection shall have
   // type compatible with at most one of the types named in its generic
   // association list."
   if (CompatIndices.size() > 1) {
@@ -1093,7 +1093,7 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
     return ExprError();
   }
 
-  // C1X 6.5.1.1p2 "If a generic selection has no default generic association,
+  // C11 6.5.1.1p2 "If a generic selection has no default generic association,
   // its controlling expression shall have type compatible with exactly one of
   // the types named in its generic association list."
   if (DefaultIndex == -1U && CompatIndices.size() == 0) {
@@ -1105,7 +1105,7 @@ Sema::CreateGenericSelectionExpr(SourceLocation KeyLoc,
     return ExprError();
   }
 
-  // C1X 6.5.1.1p3 "If a generic selection has a generic association with a
+  // C11 6.5.1.1p3 "If a generic selection has a generic association with a
   // type name that is compatible with the type of the controlling expression,
   // then the result expression of the generic selection is the expression
   // in that generic association. Otherwise, the result expression of the
@@ -1248,20 +1248,16 @@ diagnoseUncapturableValueReference(Sema &S, SourceLocation loc,
 /// There is a well-formed capture at a particular scope level;
 /// propagate it through all the nested blocks.
 static CaptureResult propagateCapture(Sema &S, unsigned ValidScopeIndex,
-                                      const BlockDecl::Capture &Capture) {
-  VarDecl *var = Capture.getVariable();
-
+                                      const CapturingScopeInfo::Capture &Cap) {
   // Update all the inner blocks with the capture information.
   for (unsigned i = ValidScopeIndex + 1, e = S.FunctionScopes.size();
          i != e; ++i) {
     BlockScopeInfo *innerBlock = cast<BlockScopeInfo>(S.FunctionScopes[i]);
-    innerBlock->Captures.push_back(
-      BlockDecl::Capture(Capture.getVariable(), Capture.isByRef(),
-                         /*nested*/ true, Capture.getCopyExpr()));
-    innerBlock->CaptureMap[var] = innerBlock->Captures.size(); // +1
+    innerBlock->AddCapture(Cap.getVariable(), Cap.isReferenceCapture(),
+                           /*nested*/ true, Cap.getCopyExpr());
   }
 
-  return Capture.isByRef() ? CR_CaptureByRef : CR_Capture;
+  return Cap.isReferenceCapture() ? CR_CaptureByRef : CR_Capture;
 }
 
 /// shouldCaptureValueReference - Determine if a reference to the
@@ -1372,9 +1368,7 @@ static CaptureResult shouldCaptureValueReference(Sema &S, SourceLocation loc,
     cast<BlockScopeInfo>(S.FunctionScopes[functionScopesIndex]);
 
   // Build a valid capture in this scope.
-  blockScope->Captures.push_back(
-                 BlockDecl::Capture(var, byRef, /*nested*/ false, copyExpr));
-  blockScope->CaptureMap[var] = blockScope->Captures.size(); // +1
+  blockScope->AddCapture(var, byRef, /*nested*/ false, copyExpr);
 
   // Propagate that to inner captures if necessary.
   return propagateCapture(S, functionScopesIndex,
@@ -1545,6 +1539,7 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
             Diag(R.getNameLoc(), diagnostic) << Name
               << FixItHint::CreateInsertion(R.getNameLoc(), "this->");
             QualType DepThisType = DepMethod->getThisType(Context);
+            CheckCXXThisCapture(R.getNameLoc());
             CXXThisExpr *DepThis = new (Context) CXXThisExpr(
                                        R.getNameLoc(), DepThisType, false);
             TemplateArgumentListInfo TList;
@@ -5370,7 +5365,9 @@ checkObjCPointerTypesForAssignment(Sema &S, QualType LHSType,
   QualType lhptee = LHSType->getAs<ObjCObjectPointerType>()->getPointeeType();
   QualType rhptee = RHSType->getAs<ObjCObjectPointerType>()->getPointeeType();
 
-  if (!lhptee.isAtLeastAsQualifiedAs(rhptee))
+  if (!lhptee.isAtLeastAsQualifiedAs(rhptee) &&
+      // make an exception for id<P>
+      !LHSType->isObjCQualifiedIdType())
     return Sema::CompatiblePointerDiscardsQualifiers;
 
   if (S.Context.typesAreCompatible(LHSType, RHSType))
@@ -8867,12 +8864,6 @@ void Sema::ActOnBlockArguments(Declarator &ParamInfo, Scope *CurScope) {
   // Finally we can process decl attributes.
   ProcessDeclAttributes(CurScope, CurBlock->TheDecl, ParamInfo);
 
-  if (!isVariadic && CurBlock->TheDecl->getAttr<SentinelAttr>()) {
-    Diag(ParamInfo.getAttributes()->getLoc(),
-         diag::warn_attribute_sentinel_not_variadic) << 1;
-    // FIXME: remove the attribute.
-  }
-
   // Put the parameter variables in scope.  We can bail out immediately
   // if we don't have any.
   if (Params.empty())
@@ -8900,7 +8891,7 @@ void Sema::ActOnBlockError(SourceLocation CaretLoc, Scope *CurScope) {
 
   // Pop off CurBlock, handle nested blocks.
   PopDeclContext();
-  PopFunctionOrBlockScope();
+  PopFunctionScopeInfo();
 }
 
 /// ActOnBlockStmtExpr - This is called when the body of a block statement
@@ -8927,8 +8918,18 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   QualType BlockTy;
 
   // Set the captured variables on the block.
-  BSI->TheDecl->setCaptures(Context, BSI->Captures.begin(), BSI->Captures.end(),
-                            BSI->CapturesCXXThis);
+  // FIXME: Share capture structure between BlockDecl and CapturingScopeInfo!
+  SmallVector<BlockDecl::Capture, 4> Captures;
+  for (unsigned i = 0, e = BSI->Captures.size(); i != e; i++) {
+    CapturingScopeInfo::Capture &Cap = BSI->Captures[i];
+    if (Cap.isThisCapture())
+      continue;
+    BlockDecl::Capture NewCap(Cap.getVariable(), Cap.isReferenceCapture(),
+                              Cap.isNested(), Cap.getCopyExpr());
+    Captures.push_back(NewCap);
+  }
+  BSI->TheDecl->setCaptures(Context, Captures.begin(), Captures.end(),
+                            BSI->CXXThisCaptureIndex != 0);
 
   // If the user wrote a function type in some form, try to use that.
   if (!BSI->FunctionType.isNull()) {
@@ -8992,7 +8993,7 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   
   BlockExpr *Result = new (Context) BlockExpr(BSI->TheDecl, BlockTy);
   const AnalysisBasedWarnings::Policy &WP = AnalysisWarnings.getDefaultPolicy();
-  PopFunctionOrBlockScope(&WP, Result->getBlockDecl(), Result);
+  PopFunctionScopeInfo(&WP, Result->getBlockDecl(), Result);
 
   // If the block isn't obviously global, i.e. it captures anything at
   // all, mark this full-expression as needing a cleanup.

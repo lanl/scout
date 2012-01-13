@@ -746,7 +746,7 @@ ASTDeclContextNameLookupTrait::ReadData(internal_key_type,
                                       unsigned DataLen) {
   using namespace clang::io;
   unsigned NumDecls = ReadUnalignedLE16(d);
-  DeclID *Start = (DeclID *)d;
+  LE32DeclID *Start = (LE32DeclID *)d;
   return std::make_pair(Start, Start + NumDecls);
 }
 
@@ -2406,6 +2406,16 @@ ASTReader::ReadASTBlock(ModuleFile &F) {
       F.RedeclarationsInfo = (const LocalRedeclarationsInfo *)BlobStart;
       break;
     }
+        
+    case MERGED_DECLARATIONS: {
+      for (unsigned Idx = 0; Idx < Record.size(); /* increment in loop */) {
+        GlobalDeclID CanonID = getGlobalDeclID(F, Record[Idx++]);
+        SmallVectorImpl<GlobalDeclID> &Decls = StoredMergedDecls[CanonID];
+        for (unsigned N = Record[Idx++]; N > 0; --N)
+          Decls.push_back(getGlobalDeclID(F, Record[Idx++]));
+      }
+      break;
+    }
     }
   }
   Error("premature end of bitstream in AST file");
@@ -2486,7 +2496,7 @@ ASTReader::ASTReadResult ASTReader::validateFileEntries(ModuleFile &M) {
 void ASTReader::makeNamesVisible(const HiddenNames &Names) {
   for (unsigned I = 0, N = Names.size(); I != N; ++I) {
     if (Decl *D = Names[I].dyn_cast<Decl *>())
-      D->ModulePrivate = false;
+      D->Hidden = false;
     else {
       IdentifierInfo *II = Names[I].get<IdentifierInfo *>();
       if (!II->hasMacroDefinition()) {
@@ -2513,6 +2523,11 @@ void ASTReader::makeModuleVisible(Module *Mod,
       continue;
     }
     
+    if (!Mod->isAvailable()) {
+      // Modules that aren't available cannot be made visible.
+      continue;
+    }
+
     // Update the module's name visibility.
     Mod->NameVisibility = NameVisibility;
     
@@ -2526,11 +2541,11 @@ void ASTReader::makeModuleVisible(Module *Mod,
     
     // Push any non-explicit submodules onto the stack to be marked as
     // visible.
-    for (llvm::StringMap<Module *>::iterator Sub = Mod->SubModules.begin(),
-                                          SubEnd = Mod->SubModules.end();
+    for (Module::submodule_iterator Sub = Mod->submodule_begin(),
+                                 SubEnd = Mod->submodule_end();
          Sub != SubEnd; ++Sub) {
-      if (!Sub->getValue()->IsExplicit && Visited.insert(Sub->getValue()))
-        Stack.push_back(Sub->getValue());
+      if (!(*Sub)->IsExplicit && Visited.insert(*Sub))
+        Stack.push_back(*Sub);
     }
     
     // Push any exported modules onto the stack to be marked as visible.
@@ -2641,14 +2656,17 @@ ASTReader::ASTReadResult ASTReader::ReadAST(const std::string &FileName,
   if (DeserializationListener)
     DeserializationListener->ReaderInitialized(this);
 
-  // If this AST file is a precompiled preamble, then set the preamble file ID
-  // of the source manager to the file source file from which the preamble was
-  // built.
-  if (Type == MK_Preamble) {
-    if (!OriginalFileID.isInvalid()) {
-      OriginalFileID = FileID::get(ModuleMgr.getPrimaryModule().SLocEntryBaseID
-                                        + OriginalFileID.getOpaqueValue() - 1);
+  if (!OriginalFileID.isInvalid()) {
+    OriginalFileID = FileID::get(ModuleMgr.getPrimaryModule().SLocEntryBaseID
+                                      + OriginalFileID.getOpaqueValue() - 1);
+
+    // If this AST file is a precompiled preamble, then set the preamble file ID
+    // of the source manager to the file source file from which the preamble was
+    // built.
+    if (Type == MK_Preamble) {
       SourceMgr.setPreambleFileID(OriginalFileID);
+    } else if (Type == MK_MainFile) {
+      SourceMgr.setMainFileID(OriginalFileID);
     }
   }
 
@@ -3234,6 +3252,19 @@ ASTReader::ASTReadResult ASTReader::ReadSubmoduleBlock(ModuleFile &F) {
       // Once we've loaded the set of exports, there's no reason to keep 
       // the parsed, unresolved exports around.
       CurrentModule->UnresolvedExports.clear();
+      break;
+    }
+    case SUBMODULE_REQUIRES: {
+      if (First) {
+        Error("missing submodule metadata record at beginning of block");
+        return Failure;
+      }
+
+      if (!CurrentModule)
+        break;
+
+      CurrentModule->addRequirement(StringRef(BlobStart, BlobLen), 
+                                    Context.getLangOptions());
       break;
     }
     }
@@ -4805,15 +4836,17 @@ namespace {
   /// declaration context.
   class DeclContextNameLookupVisitor {
     ASTReader &Reader;
+    llvm::SmallVectorImpl<const DeclContext *> &Contexts;
     const DeclContext *DC;
     DeclarationName Name;
     SmallVectorImpl<NamedDecl *> &Decls;
 
   public:
     DeclContextNameLookupVisitor(ASTReader &Reader, 
-                                 const DeclContext *DC, DeclarationName Name,
+                                 SmallVectorImpl<const DeclContext *> &Contexts, 
+                                 DeclarationName Name,
                                  SmallVectorImpl<NamedDecl *> &Decls)
-      : Reader(Reader), DC(DC), Name(Name), Decls(Decls) { }
+      : Reader(Reader), Contexts(Contexts), Name(Name), Decls(Decls) { }
 
     static bool visit(ModuleFile &M, void *UserData) {
       DeclContextNameLookupVisitor *This
@@ -4821,11 +4854,20 @@ namespace {
 
       // Check whether we have any visible declaration information for
       // this context in this module.
-      ModuleFile::DeclContextInfosMap::iterator Info
-        = M.DeclContextInfos.find(This->DC);
-      if (Info == M.DeclContextInfos.end() || !Info->second.NameLookupTableData)
-        return false;
+      ModuleFile::DeclContextInfosMap::iterator Info;
+      bool FoundInfo = false;
+      for (unsigned I = 0, N = This->Contexts.size(); I != N; ++I) {
+        Info = M.DeclContextInfos.find(This->Contexts[I]);
+        if (Info != M.DeclContextInfos.end() && 
+            Info->second.NameLookupTableData) {
+          FoundInfo = true;
+          break;
+        }
+      }
 
+      if (!FoundInfo)
+        return false;
+      
       // Look for this name within this module.
       ASTDeclContextNameLookupTable *LookupTable =
         (ASTDeclContextNameLookupTable*)Info->second.NameLookupTableData;
@@ -4867,8 +4909,25 @@ ASTReader::FindExternalVisibleDeclsByName(const DeclContext *DC,
                                       DeclContext::lookup_iterator(0));
 
   SmallVector<NamedDecl *, 64> Decls;
+  
+  // Compute the declaration contexts we need to look into. Multiple such
+  // declaration contexts occur when two declaration contexts from disjoint
+  // modules get merged, e.g., when two namespaces with the same name are 
+  // independently defined in separate modules.
+  SmallVector<const DeclContext *, 2> Contexts;
+  Contexts.push_back(DC);
+  
+  if (DC->isNamespace()) {
+    MergedDeclsMap::iterator Merged
+      = MergedDecls.find(const_cast<Decl *>(cast<Decl>(DC)));
+    if (Merged != MergedDecls.end()) {
+      for (unsigned I = 0, N = Merged->second.size(); I != N; ++I)
+        Contexts.push_back(cast<DeclContext>(GetDecl(Merged->second[I])));
+    }
+  }
+  
+  DeclContextNameLookupVisitor Visitor(*this, Contexts, Name, Decls);
 
-  DeclContextNameLookupVisitor Visitor(*this, DC, Name, Decls);
   ModuleMgr.visit(&DeclContextNameLookupVisitor::visit, &Visitor);
   ++NumVisibleDeclContextsRead;
   SetExternalVisibleDeclsForName(DC, Name, Decls);
@@ -6112,7 +6171,7 @@ void ASTReader::finishPendingActions() {
       loadPendingDeclChain(PendingDeclChains[I]);
     }
     PendingDeclChains.clear();
-
+    
     for (std::vector<std::pair<ObjCInterfaceDecl *,
                                serialization::DeclID> >::iterator
            I = PendingChainedObjCCategories.begin(),
@@ -6122,9 +6181,10 @@ void ASTReader::finishPendingActions() {
     PendingChainedObjCCategories.clear();
   }
   
-  // If we deserialized any C++ or Objective-C class definitions, make sure
-  // that all redeclarations point to the definitions. Note that this can only 
-  // happen now, after the redeclaration chains have been fully wired.
+  // If we deserialized any C++ or Objective-C class definitions or any
+  // Objective-C protocol definitions, make sure that all redeclarations point 
+  // to the definitions. Note that this can only happen now, after the 
+  // redeclaration chains have been fully wired.
   for (llvm::SmallPtrSet<Decl *, 4>::iterator D = PendingDefinitions.begin(),
                                            DEnd = PendingDefinitions.end();
        D != DEnd; ++D) {
@@ -6137,11 +6197,20 @@ void ASTReader::finishPendingActions() {
       continue;
     }
     
-    ObjCInterfaceDecl *ID = cast<ObjCInterfaceDecl>(*D);
-    for (ObjCInterfaceDecl::redecl_iterator R = ID->redecls_begin(),
-                                         REnd = ID->redecls_end();
+    if (ObjCInterfaceDecl *ID = dyn_cast<ObjCInterfaceDecl>(*D)) {
+      for (ObjCInterfaceDecl::redecl_iterator R = ID->redecls_begin(),
+                                           REnd = ID->redecls_end();
+           R != REnd; ++R)
+        R->Data = ID->Data;
+      
+      continue;
+    }
+    
+    ObjCProtocolDecl *PD = cast<ObjCProtocolDecl>(*D);
+    for (ObjCProtocolDecl::redecl_iterator R = PD->redecls_begin(),
+                                        REnd = PD->redecls_end();
          R != REnd; ++R)
-      R->Data = ID->Data;
+      R->Data = PD->Data;
   }
   PendingDefinitions.clear();
 }

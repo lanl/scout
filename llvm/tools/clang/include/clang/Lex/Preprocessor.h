@@ -107,7 +107,6 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   bool KeepComments : 1;
   bool KeepMacroComments : 1;
   bool SuppressIncludeNotFoundError : 1;
-  bool AutoModuleImport : 1;
 
   // State that changes while the preprocessor runs:
   bool InMacroArgs : 1;            // True if parsing fn macro invocation args.
@@ -166,7 +165,7 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   /// for preprocessing.
   SourceLocation CodeCompletionFileLoc;
 
-  /// \brief The source location of the __import_module__ keyword we just
+  /// \brief The source location of the 'import' contextual keyword we just 
   /// lexed, if any.
   SourceLocation ModuleImportLoc;
 
@@ -398,11 +397,6 @@ public:
 
   bool GetSuppressIncludeNotFoundError() {
     return SuppressIncludeNotFoundError;
-  }
-
-  /// \brief Specify whether automatic module imports are enabled.
-  void setAutoModuleImport(bool AutoModuleImport = true) {
-    this->AutoModuleImport = AutoModuleImport;
   }
 
   /// isCurrentLexer - Return true if we are lexing directly from the specified
@@ -692,6 +686,10 @@ public:
       CachedTokens[CachedLexPos-1] = Tok;
   }
 
+  /// \brief Recompute the current lexer kind based on the CurLexer/CurPTHLexer/
+  /// CurTokenLexer pointers.
+  void recomputeCurLexerKind();
+  
   /// \brief Specify the point at which code-completion will be performed.
   ///
   /// \param File the file in which code completion should occur. If
@@ -1211,7 +1209,7 @@ private:
   void HandleDigitDirective(Token &Tok);
   void HandleUserDiagnosticDirective(Token &Tok, bool isWarning);
   void HandleIdentSCCSDirective(Token &Tok);
-  void HandleMacroExportDirective(Token &Tok);
+  void HandleMacroPublicDirective(Token &Tok);
   void HandleMacroPrivateDirective(Token &Tok);
 
   // File inclusion.

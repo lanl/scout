@@ -27,6 +27,7 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/DelayedDiagnostic.h"
+#include "clang/Sema/Lookup.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace clang;
@@ -639,7 +640,10 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     
     // If this is a missing declspec in a block literal return context, then it
     // is inferred from the return statements inside the block.
-    if (isOmittedBlockReturnType(declarator)) {
+    // The declspec is always missing in a lambda expr context; it is either
+    // specified with a trailing return type or inferred.
+    if (declarator.getContext() == Declarator::LambdaExprContext ||
+        isOmittedBlockReturnType(declarator)) {
       Result = Context.DependentTy;
       break;
     }
@@ -1249,13 +1253,9 @@ static bool isArraySizeVLA(Expr *ArraySize, llvm::APSInt &SizeVal, Sema &S) {
     
   // If we're in a GNU mode (like gnu99, but not c99) accept any evaluatable
   // value as an extension.
-  Expr::EvalResult Result;
-  if (S.LangOpts.GNUMode && ArraySize->EvaluateAsRValue(Result, S.Context)) {
-    if (!Result.hasSideEffects() && Result.Val.isInt()) {
-      SizeVal = Result.Val.getInt();
-      S.Diag(ArraySize->getLocStart(), diag::ext_vla_folded_to_constant);
-      return false;
-    }
+  if (S.LangOpts.GNUMode && ArraySize->EvaluateAsInt(SizeVal, S.Context)) {
+    S.Diag(ArraySize->getLocStart(), diag::ext_vla_folded_to_constant);
+    return false;
   }
 
   return true;
@@ -1334,6 +1334,13 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
   } else if (T->isObjCObjectType()) {
     Diag(Loc, diag::err_objc_array_of_interfaces) << T;
     return QualType();
+  }
+
+  // Do placeholder conversions on the array size expression.
+  if (ArraySize && ArraySize->hasPlaceholderType()) {
+    ExprResult Result = CheckPlaceholderExpr(ArraySize);
+    if (Result.isInvalid()) return QualType();
+    ArraySize = Result.take();
   }
 
   // Do lvalue-to-rvalue conversions on the array size expression.
@@ -1430,9 +1437,9 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
       else
         Diag(Loc, diag::ext_vla);
     } else if (ASM != ArrayType::Normal || Quals != 0)
-      Diag(Loc, 
+      Diag(Loc,
            getLangOptions().CPlusPlus? diag::err_c99_array_usage_cxx
-                                     : diag::ext_c99_array_usage);
+                                     : diag::ext_c99_array_usage) << ASM;
   }
 
   return T;
@@ -1857,6 +1864,9 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case Declarator::KNRTypeListContext:
       llvm_unreachable("K&R type lists aren't allowed in C++");
       break;
+    case Declarator::LambdaExprContext:
+      llvm_unreachable("Can't specify a type specifier in lambda grammar");
+      break;
     case Declarator::ObjCParameterContext:
     case Declarator::ObjCResultContext:
     case Declarator::PrototypeContext:
@@ -1947,6 +1957,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     case Declarator::BlockContext:
     case Declarator::ForContext:
     case Declarator::BlockLiteralContext:
+    case Declarator::LambdaExprContext:
       // C++0x [dcl.type]p3:
       //   A type-specifier-seq shall not define a class or enumeration unless
       //   it appears in the type-id of an alias-declaration (7.1.3) that is not
@@ -2130,7 +2141,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                  diag::err_trailing_return_in_parens)
               << T << D.getDeclSpec().getSourceRange();
             D.setInvalidType(true);
-          } else if (T.hasQualifiers() || !isa<AutoType>(T)) {
+          } else if (D.getContext() != Declarator::LambdaExprContext &&
+                     (T.hasQualifiers() || !isa<AutoType>(T))) {
             S.Diag(D.getDeclSpec().getTypeSpecTypeLoc(),
                  diag::err_trailing_return_without_auto)
               << T << D.getDeclSpec().getSourceRange();
@@ -2442,7 +2454,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     // top-level template type arguments.
     bool FreeFunction;
     if (!D.getCXXScopeSpec().isSet()) {
-      FreeFunction = (D.getContext() != Declarator::MemberContext ||
+      FreeFunction = ((D.getContext() != Declarator::MemberContext &&
+                       D.getContext() != Declarator::LambdaExprContext) ||
                       D.getDeclSpec().isFriendSpecified());
     } else {
       DeclContext *DC = S.computeDeclContext(D.getCXXScopeSpec());
@@ -2650,6 +2663,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case Declarator::CXXCatchContext:
     case Declarator::ObjCCatchContext:
     case Declarator::BlockLiteralContext:
+    case Declarator::LambdaExprContext:
     case Declarator::TemplateTypeArgContext:
       // FIXME: We may want to allow parameter packs in block-literal contexts
       // in the future.
@@ -4132,8 +4146,23 @@ bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
   //         "Can't ask whether a dependent type is complete");
 
   // If we have a complete type, we're done.
-  if (!T->isIncompleteType())
+  NamedDecl *Def = 0;
+  if (!T->isIncompleteType(&Def)) {
+    // If we know about the definition but it is not visible, complain.
+    if (diag != 0 && Def && !LookupResult::isVisible(Def)) {
+      // Suppress this error outside of a SFINAE context if we've already
+      // emitted the error once for this type. There's no usefulness in 
+      // repeating the diagnostic.
+      // FIXME: Add a Fix-It that imports the corresponding module or includes
+      // the header.
+      if (isSFINAEContext() || HiddenDefinitions.insert(Def)) {
+        Diag(Loc, diag::err_module_private_definition) << T;
+        Diag(Def->getLocation(), diag::note_previous_definition);
+      }
+    }
+    
     return false;
+  }
 
   const TagType *Tag = T->getAs<TagType>();
   const ObjCInterfaceType *IFace = 0;

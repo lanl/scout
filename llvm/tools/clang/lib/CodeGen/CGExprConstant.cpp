@@ -500,27 +500,6 @@ public:
     return 0;
   }
     
-  llvm::Constant *VisitBinSub(BinaryOperator *E) {
-    // This must be a pointer/pointer subtraction.  This only happens for
-    // address of label.
-    if (!isa<AddrLabelExpr>(E->getLHS()->IgnoreParenNoopCasts(CGM.getContext())) ||
-       !isa<AddrLabelExpr>(E->getRHS()->IgnoreParenNoopCasts(CGM.getContext())))
-      return 0;
-    
-    llvm::Constant *LHS = CGM.EmitConstantExpr(E->getLHS(),
-                                               E->getLHS()->getType(), CGF);
-    llvm::Constant *RHS = CGM.EmitConstantExpr(E->getRHS(),
-                                               E->getRHS()->getType(), CGF);
-
-    llvm::Type *ResultType = ConvertType(E->getType());
-    LHS = llvm::ConstantExpr::getPtrToInt(LHS, ResultType);
-    RHS = llvm::ConstantExpr::getPtrToInt(RHS, ResultType);
-        
-    // No need to divide by element size, since addr of label is always void*,
-    // which has size 1 in GNUish.
-    return llvm::ConstantExpr::getSub(LHS, RHS);
-  }
-    
   llvm::Constant *VisitCastExpr(CastExpr* E) {
     Expr *subExpr = E->getSubExpr();
     llvm::Constant *C = CGM.EmitConstantExpr(subExpr, subExpr->getType(), CGF);
@@ -570,13 +549,6 @@ public:
     case CK_NoOp:
       return C;
 
-    case CK_CPointerToObjCPointerCast:
-    case CK_BlockPointerToObjCPointerCast:
-    case CK_AnyPointerToBlockPointerCast:
-    case CK_BitCast:
-      if (C->getType() == destType) return C;
-      return llvm::ConstantExpr::getBitCast(C, destType);
-
     case CK_Dependent: llvm_unreachable("saw dependent cast!");
 
     // These will never be supported.
@@ -595,7 +567,12 @@ public:
     case CK_ConstructorConversion:
       return 0;
 
-    // These should eventually be supported.
+    // These don't need to be handled here because Evaluate knows how to
+    // evaluate all scalar expressions which can be constant-evaluated.
+    case CK_CPointerToObjCPointerCast:
+    case CK_BlockPointerToObjCPointerCast:
+    case CK_AnyPointerToBlockPointerCast:
+    case CK_BitCast:
     case CK_ArrayToPointerDecay:
     case CK_FunctionToPointerDecay:
     case CK_BaseToDerived:
@@ -613,53 +590,17 @@ public:
     case CK_IntegralComplexToBoolean:
     case CK_IntegralComplexCast:
     case CK_IntegralComplexToFloatingComplex:
-      return 0;
-
     case CK_PointerToIntegral:
-      if (!E->getType()->isBooleanType())
-        return llvm::ConstantExpr::getPtrToInt(C, destType);
-      // fallthrough
-
     case CK_PointerToBoolean:
-      return llvm::ConstantExpr::getICmp(llvm::CmpInst::ICMP_EQ, C,
-        llvm::ConstantPointerNull::get(cast<llvm::PointerType>(C->getType())));
-
     case CK_NullToPointer:
-      return llvm::ConstantPointerNull::get(cast<llvm::PointerType>(destType));
-
-    case CK_IntegralCast: {
-      bool isSigned = subExpr->getType()->isSignedIntegerOrEnumerationType();
-      return llvm::ConstantExpr::getIntegerCast(C, destType, isSigned);
-    }
-
-    case CK_IntegralToPointer: {
-      bool isSigned = subExpr->getType()->isSignedIntegerOrEnumerationType();
-      C = llvm::ConstantExpr::getIntegerCast(C, CGM.IntPtrTy, isSigned);
-      return llvm::ConstantExpr::getIntToPtr(C, destType);
-    }
-
+    case CK_IntegralCast:
+    case CK_IntegralToPointer:
     case CK_IntegralToBoolean:
-      return llvm::ConstantExpr::getICmp(llvm::CmpInst::ICMP_EQ, C,
-                             llvm::Constant::getNullValue(C->getType()));
-
     case CK_IntegralToFloating:
-      if (subExpr->getType()->isSignedIntegerOrEnumerationType())
-        return llvm::ConstantExpr::getSIToFP(C, destType);
-      else
-        return llvm::ConstantExpr::getUIToFP(C, destType);
-
     case CK_FloatingToIntegral:
-      if (E->getType()->isSignedIntegerOrEnumerationType())
-        return llvm::ConstantExpr::getFPToSI(C, destType);
-      else
-        return llvm::ConstantExpr::getFPToUI(C, destType);
-
     case CK_FloatingToBoolean:
-      return llvm::ConstantExpr::getFCmp(llvm::CmpInst::FCMP_UNE, C,
-                             llvm::Constant::getNullValue(C->getType()));
-
     case CK_FloatingCast:
-      return llvm::ConstantExpr::getFPCast(C, destType);
+      return 0;
     }
     llvm_unreachable("Invalid CastKind");
   }
@@ -740,31 +681,6 @@ public:
   }
 
   llvm::Constant *VisitInitListExpr(InitListExpr *ILE) {
-    if (ILE->getType()->isAnyComplexType() && ILE->getNumInits() == 2) {
-      // Complex type with element initializers
-      Expr *Real = ILE->getInit(0);
-      Expr *Imag = ILE->getInit(1);
-      llvm::Constant *Complex[2];
-      Complex[0] = CGM.EmitConstantExpr(Real, Real->getType(), CGF);
-      if (!Complex[0])
-        return 0;
-      Complex[1] = CGM.EmitConstantExpr(Imag, Imag->getType(), CGF);
-      if (!Complex[1])
-        return 0;
-      llvm::StructType *STy =
-          cast<llvm::StructType>(ConvertType(ILE->getType()));
-      return llvm::ConstantStruct::get(STy, Complex);
-    }
-
-    if (ILE->getType()->isScalarType()) {
-      // We have a scalar in braces. Just use the first element.
-      if (ILE->getNumInits() > 0) {
-        Expr *Init = ILE->getInit(0);
-        return CGM.EmitConstantExpr(Init, Init->getType(), CGF);
-      }
-      return CGM.EmitNullConstant(ILE->getType());
-    }
-
     if (ILE->getType()->isArrayType())
       return EmitArrayInitialization(ILE);
 
@@ -774,11 +690,7 @@ public:
     if (ILE->getType()->isUnionType())
       return EmitUnionInitialization(ILE);
 
-    // If ILE was a constant vector, we would have handled it already.
-    if (ILE->getType()->isVectorType())
-      return 0;
-
-    llvm_unreachable("Unable to handle InitListExpr");
+    return 0;
   }
 
   llvm::Constant *VisitCXXConstructExpr(CXXConstructExpr *E) {
@@ -870,7 +782,8 @@ public:
       // Note that due to the nature of compound literals, this is guaranteed
       // to be the only use of the variable, so we just generate it here.
       CompoundLiteralExpr *CLE = cast<CompoundLiteralExpr>(E);
-      llvm::Constant* C = Visit(CLE->getInitializer());
+      llvm::Constant* C = CGM.EmitConstantExpr(CLE->getInitializer(),
+                                               CLE->getType(), CGF);
       // FIXME: "Leaked" on failure.
       if (C)
         C = new llvm::GlobalVariable(CGM.getModule(), C->getType(),
@@ -932,6 +845,15 @@ public:
         FunctionName = "global";
 
       return CGM.GetAddrOfGlobalBlock(cast<BlockExpr>(E), FunctionName.c_str());
+    }
+    case Expr::CXXTypeidExprClass: {
+      CXXTypeidExpr *Typeid = cast<CXXTypeidExpr>(E);
+      QualType T;
+      if (Typeid->isTypeOperand())
+        T = Typeid->getTypeOperand();
+      else
+        T = Typeid->getExprOperand()->getType();
+      return CGM.GetAddrOfRTTIDescriptor(T);
     }
     }
 
@@ -1070,6 +992,23 @@ llvm::Constant *CodeGenModule::EmitConstantExpr(const Expr *E,
         }
       }
       return llvm::ConstantVector::get(Inits);
+    }
+    case APValue::AddrLabelDiff: {
+      const AddrLabelExpr *LHSExpr = Result.Val.getAddrLabelDiffLHS();
+      const AddrLabelExpr *RHSExpr = Result.Val.getAddrLabelDiffRHS();
+      llvm::Constant *LHS = EmitConstantExpr(LHSExpr, LHSExpr->getType(), CGF);
+      llvm::Constant *RHS = EmitConstantExpr(RHSExpr, RHSExpr->getType(), CGF);
+
+      // Compute difference
+      llvm::Type *ResultType = getTypes().ConvertType(E->getType());
+      LHS = llvm::ConstantExpr::getPtrToInt(LHS, IntPtrTy);
+      RHS = llvm::ConstantExpr::getPtrToInt(RHS, IntPtrTy);
+      llvm::Constant *AddrLabelDiff = llvm::ConstantExpr::getSub(LHS, RHS);
+
+      // LLVM is a bit sensitive about the exact format of the
+      // address-of-label difference; make sure to truncate after
+      // the subtraction.
+      return llvm::ConstantExpr::getTruncOrBitCast(AddrLabelDiff, ResultType);
     }
     case APValue::Array:
     case APValue::Struct:

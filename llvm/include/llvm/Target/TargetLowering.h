@@ -53,6 +53,16 @@ namespace llvm {
   class TargetLoweringObjectFile;
   class Value;
 
+  namespace Sched {
+    enum Preference {
+      None,             // No preference
+      Source,           // Follow source order.
+      RegPressure,      // Scheduling for lowest register pressure.
+      Hybrid,           // Scheduling for both latency and register pressure.
+      ILP               // Scheduling for ILP in low register pressure mode.
+    };
+  }
+
   // FIXME: should this be here?
   namespace TLSModel {
     enum Model {
@@ -107,8 +117,6 @@ public:
 
   static ISD::NodeType getExtendForContent(BooleanContent Content) {
     switch (Content) {
-    default:
-      assert(false && "Unknown BooleanContent!");
     case UndefinedBooleanContent:
       // Extend by adding rubbish bits.
       return ISD::ANY_EXTEND;
@@ -119,6 +127,7 @@ public:
       // Extend by copying the sign bit.
       return ISD::SIGN_EXTEND;
     }
+    llvm_unreachable("Invalid content kind");
   }
 
   /// NOTE: The constructor takes ownership of TLOF.

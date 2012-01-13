@@ -339,7 +339,7 @@ bugreporter::getTrackNullOrUndefValueVisitor(const ExplodedNode *N,
     }
   }
 
-  SVal V = state->getSValAsScalarOrLoc(S);
+  SVal V = state->getSValAsScalarOrLoc(S, N->getLocationContext());
 
   // Uncomment this to find cases where we aren't properly getting the
   // base value that was dereferenced.
@@ -389,7 +389,7 @@ PathDiagnosticPiece *NilReceiverBRVisitor::VisitNode(const ExplodedNode *N,
   if (!Receiver)
     return 0;
   const ProgramState *state = N->getState();
-  const SVal &V = state->getSVal(Receiver);
+  const SVal &V = state->getSVal(Receiver, N->getLocationContext());
   const DefinedOrUnknownSVal *DV = dyn_cast<DefinedOrUnknownSVal>(&V);
   if (!DV)
     return 0;
@@ -428,7 +428,7 @@ void FindLastStoreBRVisitor::registerStatementVarDecls(BugReport &BR,
         StateMgr.getRegionManager().getVarRegion(VD, N->getLocationContext());
 
         // What did we load?
-        SVal V = state->getSVal(S);
+        SVal V = state->getSVal(S, N->getLocationContext());
 
         if (isa<loc::ConcreteInt>(V) || isa<nonloc::ConcreteInt>(V)) {
           // Register a new visitor with the BugReport.
@@ -604,18 +604,26 @@ ConditionBRVisitor::VisitTrueTest(const Expr *Cond,
     shouldInvert = !isVarLHS && isVarRHS;    
   }
   
+  BinaryOperator::Opcode Op = BExpr->getOpcode();
+
+  if (BinaryOperator::isAssignmentOp(Op)) {
+    // For assignment operators, all that we care about is that the LHS
+    // evaluates to "true" or "false".
+    return VisitConditionVariable(LhsString, BExpr->getLHS(), tookTrue,
+                                  BRC, LC);
+  }
+
+  // For non-assignment operations, we require that we can understand
+  // both the LHS and RHS.
   if (LhsString.empty() || RhsString.empty())
     return 0;
-
-  // Should we invert the strings if the LHS is not a variable name?
   
+  // Should we invert the strings if the LHS is not a variable name?
   llvm::SmallString<256> buf;
   llvm::raw_svector_ostream Out(buf);
   Out << "Assuming " << (shouldInvert ? RhsString : LhsString) << " is ";
 
   // Do we need to invert the opcode?
-  BinaryOperator::Opcode Op = BExpr->getOpcode();
-    
   if (shouldInvert)
     switch (Op) {
       default: break;
@@ -652,6 +660,33 @@ ConditionBRVisitor::VisitTrueTest(const Expr *Cond,
   Out << (shouldInvert ? LhsString : RhsString);
 
   PathDiagnosticLocation Loc(Cond, BRC.getSourceManager(), LC);
+  return new PathDiagnosticEventPiece(Loc, Out.str());
+}
+
+PathDiagnosticPiece *
+ConditionBRVisitor::VisitConditionVariable(StringRef LhsString,
+                                           const Expr *CondVarExpr,
+                                           const bool tookTrue,
+                                           BugReporterContext &BRC,
+                                           const LocationContext *LC) {
+  llvm::SmallString<256> buf;
+  llvm::raw_svector_ostream Out(buf);
+  Out << "Assuming " << LhsString << " is ";
+  
+  QualType Ty = CondVarExpr->getType();
+
+  if (Ty->isPointerType())
+    Out << (tookTrue ? "not null" : "null");
+  else if (Ty->isObjCObjectPointerType())
+    Out << (tookTrue ? "not nil" : "nil");
+  else if (Ty->isBooleanType())
+    Out << (tookTrue ? "true" : "false");
+  else if (Ty->isIntegerType())
+    Out << (tookTrue ? "non-zero" : "zero");
+  else
+    return 0;
+
+  PathDiagnosticLocation Loc(CondVarExpr, BRC.getSourceManager(), LC);
   return new PathDiagnosticEventPiece(Loc, Out.str());
 }
   

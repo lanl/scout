@@ -93,8 +93,8 @@ PPKEYWORD(assert)
 PPKEYWORD(unassert)
 
 // Clang extensions
-PPKEYWORD(__export_macro__)
-PPKEYWORD(__private_macro__)
+PPKEYWORD(__public_macro)
+PPKEYWORD(__private_macro)
 
 //===----------------------------------------------------------------------===//
 // Language keywords.
@@ -210,7 +210,7 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //              is a keyword in the implementation namespace that should
 //              always be treated as a keyword
 //   KEYC99   - This is a keyword introduced to C in C99
-//   KEYC1X   - This is a keyword introduced to C in C1X
+//   KEYC11   - This is a keyword introduced to C in C11
 //   KEYCXX   - This is a C++ keyword, or a C++-specific keyword in the
 //              implementation namespace
 //   KEYNOCXX - This is a keyword in every non-C++ dialect.
@@ -456,7 +456,6 @@ KEYWORD(__array_extent              , KEYCXX)
 
 // Apple Extension.
 KEYWORD(__private_extern__          , KEYALL)
-KEYWORD(__import_module__           , KEYALL)
 KEYWORD(__module_private__          , KEYALL)
 
 // Microsoft Extension.
@@ -599,6 +598,7 @@ OBJC2_AT_KEYWORD(required)
 OBJC2_AT_KEYWORD(optional)
 OBJC2_AT_KEYWORD(synthesize)
 OBJC2_AT_KEYWORD(dynamic)
+OBJC2_AT_KEYWORD(import)
 
 // TODO: What to do about context-sensitive keywords like:
 //       bycopy/byref/in/inout/oneway/out?

@@ -136,7 +136,6 @@ bool PTXTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   OwningPtr<MCStreamer> AsmStreamer;
 
   switch (FileType) {
-  default: return true;
   case CGFT_AssemblyFile: {
     MCInstPrinter *InstPrinter =
       getTarget().createMCInstPrinter(MAI.getAssemblerDialect(), MAI, STI);
@@ -165,9 +164,6 @@ bool PTXTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
     AsmStreamer.reset(createNullStreamer(*Context));
     break;
   }
-
-  // MC Logging
-  //AsmStreamer.reset(createLoggingStreamer(AsmStreamer.take(), errs()));
 
   // Create the AsmPrinter, which takes ownership of AsmStreamer if successful.
   FunctionPass *Printer = getTarget().createAsmPrinter(*this, *AsmStreamer);

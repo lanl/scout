@@ -106,9 +106,6 @@ static InstrUID decode(OpcodeType type,
   const struct ModRMDecision* dec;
   
   switch (type) {
-  default:
-    debug("Unknown opcode type");
-    return 0;
   case ONEBYTE:
     dec = &ONEBYTE_SYM.opcodeDecisions[insnContext].modRMDecisions[opcode];
     break;
@@ -1472,6 +1469,7 @@ static int readVVVV(struct InternalInstruction* insn) {
 static int readOperands(struct InternalInstruction* insn) {
   int index;
   int hasVVVV, needVVVV;
+  int sawRegImm = 0;
   
   dbgprintf(insn, "readOperands()");
 
@@ -1500,11 +1498,22 @@ static int readOperands(struct InternalInstruction* insn) {
       dbgprintf(insn, "We currently don't hande code-offset encodings");
       return -1;
     case ENCODING_IB:
+      if (sawRegImm) {
+        /* Saw a register immediate so don't read again and instead split the
+           previous immediate.  FIXME: This is a hack. */
+        insn->immediates[insn->numImmediatesConsumed] =
+          insn->immediates[insn->numImmediatesConsumed - 1] & 0xf;
+        ++insn->numImmediatesConsumed;
+        break;
+      }
       if (readImmediate(insn, 1))
         return -1;
       if (insn->spec->operands[index].type == TYPE_IMM3 &&
           insn->immediates[insn->numImmediatesConsumed - 1] > 7)
         return -1;
+      if (insn->spec->operands[index].type == TYPE_XMM128 ||
+          insn->spec->operands[index].type == TYPE_XMM256)
+        sawRegImm = 1;
       break;
     case ENCODING_IW:
       if (readImmediate(insn, 2))

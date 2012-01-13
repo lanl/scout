@@ -271,3 +271,43 @@
 
 @ CHECK: vmovne	s25, s26, r2, r5
         vmovne	s25, s26, r2, r5        @ encoding: [0x39,0x2a,0x45,0x1c]
+
+@ VMOV w/ optional data type suffix.
+	vmov.32 s1, r8
+        vmov.s16 s2, r4
+        vmov.16 s3, r6
+        vmov.u32 s4, r1
+        vmov.p8 s5, r2
+        vmov.8 s6, r3
+
+        vmov.32 r1, s8
+        vmov.s16 r2, s4
+        vmov.16 r3, s6
+        vmov.u32 r4, s1
+        vmov.p8 r5, s2
+        vmov.8 r6, s3
+
+@ CHECK: vmov	s1, r8                  @ encoding: [0x90,0x8a,0x00,0xee]
+@ CHECK: vmov	s2, r4                  @ encoding: [0x10,0x4a,0x01,0xee]
+@ CHECK: vmov	s3, r6                  @ encoding: [0x90,0x6a,0x01,0xee]
+@ CHECK: vmov	s4, r1                  @ encoding: [0x10,0x1a,0x02,0xee]
+@ CHECK: vmov	s5, r2                  @ encoding: [0x90,0x2a,0x02,0xee]
+@ CHECK: vmov	s6, r3                  @ encoding: [0x10,0x3a,0x03,0xee]
+@ CHECK: vmov	r1, s8                  @ encoding: [0x10,0x1a,0x14,0xee]
+@ CHECK: vmov	r2, s4                  @ encoding: [0x10,0x2a,0x12,0xee]
+@ CHECK: vmov	r3, s6                  @ encoding: [0x10,0x3a,0x13,0xee]
+@ CHECK: vmov	r4, s1                  @ encoding: [0x90,0x4a,0x10,0xee]
+@ CHECK: vmov	r5, s2                  @ encoding: [0x10,0x5a,0x11,0xee]
+@ CHECK: vmov	r6, s3                  @ encoding: [0x90,0x6a,0x11,0xee]
+
+
+@ VCVT (between floating-point and fixed-point)
+	vcvt.f32.u32 s0, s0, #20
+        vcvt.f64.s32 d0, d0, #32
+        vcvt.f32.u16 s0, s0, #1
+        vcvt.f64.s16 d0, d0, #16
+
+@ CHECK: vcvt.f32.u32	s0, s0, #20     @ encoding: [0xc6,0x0a,0xbb,0xee]
+@ CHECK: vcvt.f64.s32	d0, d0, #32     @ encoding: [0xc0,0x0b,0xba,0xee]
+@ CHECK: vcvt.f32.u16	s0, s0, #1      @ encoding: [0x67,0x0a,0xbb,0xee]
+@ CHECK: vcvt.f64.s16	d0, d0, #16     @ encoding: [0x40,0x0b,0xba,0xee]

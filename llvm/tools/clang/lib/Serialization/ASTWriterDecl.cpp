@@ -114,8 +114,6 @@ namespace clang {
     void VisitObjCIvarDecl(ObjCIvarDecl *D);
     void VisitObjCProtocolDecl(ObjCProtocolDecl *D);
     void VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *D);
-    void VisitObjCClassDecl(ObjCClassDecl *D);
-    void VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D);
     void VisitObjCCategoryDecl(ObjCCategoryDecl *D);
     void VisitObjCImplDecl(ObjCImplDecl *D);
     void VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *D);
@@ -156,9 +154,9 @@ void ASTDeclWriter::VisitDecl(Decl *D) {
   Record.push_back(D->isImplicit());
   Record.push_back(D->isUsed(false));
   Record.push_back(D->isReferenced());
-  Record.push_back(D->TopLevelDeclInObjCContainer);
+  Record.push_back(D->isTopLevelDeclInObjCContainer());
   Record.push_back(D->getAccess());
-  Record.push_back(D->ModulePrivate);
+  Record.push_back(D->isModulePrivate());
   Record.push_back(Writer.inferSubmoduleIDFromLocation(D->getLocation()));
 }
 
@@ -304,6 +302,26 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
 
   Writer.AddDeclarationNameLoc(D->DNLoc, D->getDeclName(), Record);
   Record.push_back(D->getIdentifierNamespace());
+  
+  // FunctionDecl's body is handled last at ASTWriterDecl::Visit,
+  // after everything else is written.
+  
+  Record.push_back(D->getStorageClass()); // FIXME: stable encoding
+  Record.push_back(D->getStorageClassAsWritten());
+  Record.push_back(D->IsInline);
+  Record.push_back(D->isInlineSpecified());
+  Record.push_back(D->isVirtualAsWritten());
+  Record.push_back(D->isPure());
+  Record.push_back(D->hasInheritedPrototype());
+  Record.push_back(D->hasWrittenPrototype());
+  Record.push_back(D->isDeletedAsWritten());
+  Record.push_back(D->isTrivial());
+  Record.push_back(D->isDefaulted());
+  Record.push_back(D->isExplicitlyDefaulted());
+  Record.push_back(D->hasImplicitReturnZero());
+  Record.push_back(D->isConstexpr());
+  Writer.AddSourceLocation(D->getLocEnd(), Record);
+
   Record.push_back(D->getTemplatedKind());
   switch (D->getTemplatedKind()) {
   default: llvm_unreachable("Unhandled TemplatedKind!");
@@ -369,25 +387,6 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
     break;
   }
   }
-
-  // FunctionDecl's body is handled last at ASTWriterDecl::Visit,
-  // after everything else is written.
-
-  Record.push_back(D->getStorageClass()); // FIXME: stable encoding
-  Record.push_back(D->getStorageClassAsWritten());
-  Record.push_back(D->IsInline);
-  Record.push_back(D->isInlineSpecified());
-  Record.push_back(D->isVirtualAsWritten());
-  Record.push_back(D->isPure());
-  Record.push_back(D->hasInheritedPrototype());
-  Record.push_back(D->hasWrittenPrototype());
-  Record.push_back(D->isDeletedAsWritten());
-  Record.push_back(D->isTrivial());
-  Record.push_back(D->isDefaulted());
-  Record.push_back(D->isExplicitlyDefaulted());
-  Record.push_back(D->hasImplicitReturnZero());
-  Record.push_back(D->isConstexpr());
-  Writer.AddSourceLocation(D->getLocEnd(), Record);
 
   Record.push_back(D->param_size());
   for (FunctionDecl::param_iterator P = D->param_begin(), PEnd = D->param_end();
@@ -518,44 +517,29 @@ void ASTDeclWriter::VisitObjCIvarDecl(ObjCIvarDecl *D) {
 }
 
 void ASTDeclWriter::VisitObjCProtocolDecl(ObjCProtocolDecl *D) {
+  VisitRedeclarable(D);
   VisitObjCContainerDecl(D);
-  Record.push_back(D->isInitiallyForwardDecl());
-  Record.push_back(D->isForwardDecl());
-  Writer.AddSourceLocation(D->getLocEnd(), Record);
-  Record.push_back(D->protocol_size());
-  for (ObjCProtocolDecl::protocol_iterator
-       I = D->protocol_begin(), IEnd = D->protocol_end(); I != IEnd; ++I)
-    Writer.AddDeclRef(*I, Record);
-  for (ObjCProtocolDecl::protocol_loc_iterator PL = D->protocol_loc_begin(),
-         PLEnd = D->protocol_loc_end();
-       PL != PLEnd; ++PL)
-    Writer.AddSourceLocation(*PL, Record);
+  
+  ObjCProtocolDecl *Def = D->getDefinition();
+  Writer.AddDeclRef(Def, Record);
+
+  if (D == Def) {
+    Record.push_back(D->protocol_size());
+    for (ObjCProtocolDecl::protocol_iterator
+         I = D->protocol_begin(), IEnd = D->protocol_end(); I != IEnd; ++I)
+      Writer.AddDeclRef(*I, Record);
+    for (ObjCProtocolDecl::protocol_loc_iterator PL = D->protocol_loc_begin(),
+           PLEnd = D->protocol_loc_end();
+         PL != PLEnd; ++PL)
+      Writer.AddSourceLocation(*PL, Record);
+  }
+  
   Code = serialization::DECL_OBJC_PROTOCOL;
 }
 
 void ASTDeclWriter::VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *D) {
   VisitFieldDecl(D);
   Code = serialization::DECL_OBJC_AT_DEFS_FIELD;
-}
-
-void ASTDeclWriter::VisitObjCClassDecl(ObjCClassDecl *D) {
-  VisitDecl(D);
-  Writer.AddDeclRef(D->Interface, Record);
-  Writer.AddSourceLocation(D->InterfaceLoc, Record);
-  Code = serialization::DECL_OBJC_CLASS;
-}
-
-void ASTDeclWriter::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D) {
-  VisitDecl(D);
-  Record.push_back(D->protocol_size());
-  for (ObjCForwardProtocolDecl::protocol_iterator
-       I = D->protocol_begin(), IEnd = D->protocol_end(); I != IEnd; ++I)
-    Writer.AddDeclRef(*I, Record);
-  for (ObjCForwardProtocolDecl::protocol_loc_iterator 
-         PL = D->protocol_loc_begin(), PLEnd = D->protocol_loc_end();
-       PL != PLEnd; ++PL)
-    Writer.AddSourceLocation(*PL, Record);
-  Code = serialization::DECL_OBJC_FORWARD_PROTOCOL;
 }
 
 void ASTDeclWriter::VisitObjCCategoryDecl(ObjCCategoryDecl *D) {
@@ -818,18 +802,14 @@ void ASTDeclWriter::VisitLabelDecl(LabelDecl *D) {
 
 
 void ASTDeclWriter::VisitNamespaceDecl(NamespaceDecl *D) {
+  VisitRedeclarable(D);
   VisitNamedDecl(D);
   Record.push_back(D->isInline());
   Writer.AddSourceLocation(D->getLocStart(), Record);
   Writer.AddSourceLocation(D->getRBraceLoc(), Record);
-  Writer.AddDeclRef(D->getNextNamespace(), Record);
 
-  // Only write one reference--original or anonymous
-  Record.push_back(D->isOriginalNamespace());
   if (D->isOriginalNamespace())
     Writer.AddDeclRef(D->getAnonymousNamespace(), Record);
-  else
-    Writer.AddDeclRef(D->getOriginalNamespace(), Record);
   Code = serialization::DECL_NAMESPACE;
 
   if (Writer.hasChain() && !D->isOriginalNamespace() &&
@@ -852,7 +832,8 @@ void ASTDeclWriter::VisitNamespaceDecl(NamespaceDecl *D) {
     }
   }
 
-  if (Writer.hasChain() && D->isAnonymousNamespace() && !D->getNextNamespace()){
+  if (Writer.hasChain() && D->isAnonymousNamespace() && 
+      D == D->getMostRecentDeclaration()) {
     // This is a most recent reopening of the anonymous namespace. If its parent
     // is in a previous PCH (or is the TU), mark that parent for update, because
     // the original namespace always points to the latest re-opening of its
@@ -881,7 +862,7 @@ void ASTDeclWriter::VisitUsingDecl(UsingDecl *D) {
   Writer.AddSourceLocation(D->getUsingLocation(), Record);
   Writer.AddNestedNameSpecifierLoc(D->getQualifierLoc(), Record);
   Writer.AddDeclarationNameLoc(D->DNLoc, D->getDeclName(), Record);
-  Writer.AddDeclRef(D->FirstUsingShadow, Record);
+  Writer.AddDeclRef(D->FirstUsingShadow.getPointer(), Record);
   Record.push_back(D->isTypeName());
   Writer.AddDeclRef(Context.getInstantiatedFromUsingDecl(D), Record);
   Code = serialization::DECL_USING;
@@ -1695,12 +1676,18 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
     VisibleOffset = WriteDeclContextVisibleBlock(Context, DC);
   }
 
-  // Determine the ID for this declaration
-  serialization::DeclID &IDR = DeclIDs[D];
-  if (IDR == 0)
-    IDR = NextDeclID++;
-  serialization::DeclID ID = IDR;
-
+  // Determine the ID for this declaration.
+  serialization::DeclID ID;
+  if (D->isFromASTFile())
+    ID = getDeclID(D);
+  else {
+    serialization::DeclID &IDR = DeclIDs[D];
+    if (IDR == 0)
+      IDR = NextDeclID++;
+    
+    ID= IDR;
+  }
+  
   if (ID < FirstDeclID) {
     // We're replacing a decl in a previous file.
     ReplacedDecls.push_back(ReplacedDeclInfo(ID, Stream.GetCurrentBitNo(),

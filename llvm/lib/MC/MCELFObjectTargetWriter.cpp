@@ -19,13 +19,20 @@ MCELFObjectTargetWriter::MCELFObjectTargetWriter(bool Is64Bit_,
     HasRelocationAddend(HasRelocationAddend_), Is64Bit(Is64Bit_) {
 }
 
-unsigned MCELFObjectTargetWriter::GetRelocType(const MCValue &Target,
-                                               const MCFixup &Fixup,
-                                               bool IsPCRel,
-                                               bool IsRelocWithSymbol,
-                                               int64_t Addend) const {
+/// Default e_flags = 0
+unsigned MCELFObjectTargetWriter::getEFlags() const {
   return 0;
 }
 
-MCELFObjectTargetWriter::~MCELFObjectTargetWriter() {
+const MCSymbol *MCELFObjectTargetWriter::ExplicitRelSym(const MCAssembler &Asm,
+                                                        const MCValue &Target,
+                                                        const MCFragment &F,
+                                                        const MCFixup &Fixup,
+                                                        bool IsPCRel) const {
+  return NULL;
+}
+
+
+void MCELFObjectTargetWriter::adjustFixupOffset(const MCFixup &Fixup,
+                                                uint64_t &RelocOffset) {
 }

@@ -607,7 +607,7 @@ CursorKind.ADDR_LABEL_EXPR = CursorKind(120)
 # This is the GNU Statement Expression extension: ({int X=4; X;})
 CursorKind.StmtExpr = CursorKind(121)
 
-# Represents a C1X generic selection.
+# Represents a C11 generic selection.
 CursorKind.GENERIC_SELECTION_EXPR = CursorKind(122)
 
 # Implements the GNU __null extension, which is a name for a null
@@ -815,6 +815,11 @@ CursorKind.UNEXPOSED_ATTR = CursorKind(400)
 CursorKind.IB_ACTION_ATTR = CursorKind(401)
 CursorKind.IB_OUTLET_ATTR = CursorKind(402)
 CursorKind.IB_OUTLET_COLLECTION_ATTR = CursorKind(403)
+
+CursorKind.CXX_FINAL_ATTR = CursorKind(404)
+CursorKind.CXX_OVERRIDE_ATTR = CursorKind(405)
+CursorKind.ANNOTATE_ATTR = CursorKind(406)
+CursorKind.ASM_LABEL_ATTR = CursorKind(407)
 
 ###
 # Preprocessing

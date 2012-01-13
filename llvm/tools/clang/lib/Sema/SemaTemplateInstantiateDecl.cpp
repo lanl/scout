@@ -169,7 +169,12 @@ Decl *TemplateDeclInstantiator::InstantiateTypedefNameDecl(TypedefNameDecl *D,
     if (!InstPrev)
       return 0;
 
-    Typedef->setPreviousDeclaration(cast<TypedefNameDecl>(InstPrev));
+    TypedefNameDecl *InstPrevTypedef = cast<TypedefNameDecl>(InstPrev);
+
+    // If the typedef types are not identical, reject them.
+    SemaRef.isIncompatibleTypedef(InstPrevTypedef, Typedef);
+
+    Typedef->setPreviousDeclaration(InstPrevTypedef);
   }
 
   SemaRef.InstantiateAttrs(TemplateArgs, D, Typedef);
@@ -388,16 +393,15 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D) {
     if (!SemaRef.InstantiateInitializer(D->getInit(), TemplateArgs, LParenLoc,
                                         InitArgs, RParenLoc)) {
       bool TypeMayContainAuto = true;
-      // Attach the initializer to the declaration, if we have one.
-      if (InitArgs.size() == 0)
-        SemaRef.ActOnUninitializedDecl(Var, TypeMayContainAuto);
-      else if (D->hasCXXDirectInitializer()) {
+      if (D->hasCXXDirectInitializer()) {
         // Add the direct initializer to the declaration.
         SemaRef.AddCXXDirectInitializerToDecl(Var,
                                               LParenLoc,
                                               move_arg(InitArgs),
                                               RParenLoc,
                                               TypeMayContainAuto);
+      } else if (InitArgs.size() == 0) {
+        SemaRef.ActOnUninitializedDecl(Var, TypeMayContainAuto);
       } else {
         assert(InitArgs.size() == 1);
         Expr *Init = InitArgs.take()[0];

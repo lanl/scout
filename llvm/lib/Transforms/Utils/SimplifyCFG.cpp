@@ -14,16 +14,20 @@
 #define DEBUG_TYPE "simplifycfg"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Constants.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Type.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/GlobalVariable.h"
+#include "llvm/Instructions.h"
+#include "llvm/IntrinsicInst.h"
+#include "llvm/LLVMContext.h"
+#include "llvm/Metadata.h"
+#include "llvm/Operator.h"
+#include "llvm/Type.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
@@ -205,6 +209,42 @@ static Value *GetIfCondition(BasicBlock *BB, BasicBlock *&IfTrue,
   return BI->getCondition();
 }
 
+/// ComputeSpeculuationCost - Compute an abstract "cost" of speculating the
+/// given instruction, which is assumed to be safe to speculate. 1 means
+/// cheap, 2 means less cheap, and UINT_MAX means prohibitively expensive.
+static unsigned ComputeSpeculationCost(const User *I) {
+  assert(isSafeToSpeculativelyExecute(I) &&
+         "Instruction is not safe to speculatively execute!");
+  switch (Operator::getOpcode(I)) {
+  default:
+    // In doubt, be conservative.
+    return UINT_MAX;
+  case Instruction::GetElementPtr:
+    // GEPs are cheap if all indices are constant.
+    if (!cast<GEPOperator>(I)->hasAllConstantIndices())
+      return UINT_MAX;
+    return 1;
+  case Instruction::Load:
+  case Instruction::Add:
+  case Instruction::Sub:
+  case Instruction::And:
+  case Instruction::Or:
+  case Instruction::Xor:
+  case Instruction::Shl:
+  case Instruction::LShr:
+  case Instruction::AShr:
+  case Instruction::ICmp:
+  case Instruction::Trunc:
+  case Instruction::ZExt:
+  case Instruction::SExt:
+    return 1; // These are all cheap.
+
+  case Instruction::Call:
+  case Instruction::Select:
+    return 2;
+  }
+}
+
 /// DominatesMergePoint - If we have a merge point of an "if condition" as
 /// accepted above, return true if the specified value dominates the block.  We
 /// don't handle the true generality of domination here, just a special case
@@ -260,44 +300,7 @@ static bool DominatesMergePoint(Value *V, BasicBlock *BB,
   if (!isSafeToSpeculativelyExecute(I))
     return false;
 
-  unsigned Cost = 0;
-
-  switch (I->getOpcode()) {
-  default: return false;  // Cannot hoist this out safely.
-  case Instruction::Load:
-    // We have to check to make sure there are no instructions before the
-    // load in its basic block, as we are going to hoist the load out to its
-    // predecessor.
-    if (PBB->getFirstNonPHIOrDbg() != I)
-      return false;
-    Cost = 1;
-    break;
-  case Instruction::GetElementPtr:
-    // GEPs are cheap if all indices are constant.
-    if (!cast<GetElementPtrInst>(I)->hasAllConstantIndices())
-      return false;
-    Cost = 1;
-    break;
-  case Instruction::Add:
-  case Instruction::Sub:
-  case Instruction::And:
-  case Instruction::Or:
-  case Instruction::Xor:
-  case Instruction::Shl:
-  case Instruction::LShr:
-  case Instruction::AShr:
-  case Instruction::ICmp:
-  case Instruction::Trunc:
-  case Instruction::ZExt:
-  case Instruction::SExt:
-    Cost = 1;
-    break;   // These are all cheap and non-trapping instructions.
-
-  case Instruction::Call:
-  case Instruction::Select:
-    Cost = 2;
-    break;
-  }
+  unsigned Cost = ComputeSpeculationCost(I);
 
   if (Cost > CostRemaining)
     return false;
@@ -431,9 +434,9 @@ GatherConstantCompares(Value *V, std::vector<ConstantInt*> &Vals, Value *&Extra,
   
   return 0;
 }
-      
+
 static void EraseTerminatorInstAndDCECond(TerminatorInst *TI) {
-  Instruction* Cond = 0;
+  Instruction *Cond = 0;
   if (SwitchInst *SI = dyn_cast<SwitchInst>(TI)) {
     Cond = dyn_cast<Instruction>(SI->getCondition());
   } else if (BranchInst *BI = dyn_cast<BranchInst>(TI)) {
@@ -952,6 +955,20 @@ HoistTerminator:
 /// and an BB2 and the only successor of BB1 is BB2, hoist simple code
 /// (for now, restricted to a single instruction that's side effect free) from
 /// the BB1 into the branch block to speculatively execute it.
+///
+/// Turn
+/// BB:
+///     %t1 = icmp
+///     br i1 %t1, label %BB1, label %BB2
+/// BB1:
+///     %t3 = add %t2, c
+///     br label BB2
+/// BB2:
+/// =>
+/// BB:
+///     %t1 = icmp
+///     %t4 = add %t2, c
+///     %t3 = select i1 %t1, %t2, %t3
 static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *BB1) {
   // Only speculatively execution a single instruction (not counting the
   // terminator) for now.
@@ -968,8 +985,29 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *BB1) {
       return false;
     HInst = I;
   }
-  if (!HInst)
-    return false;
+
+  BasicBlock *BIParent = BI->getParent();
+
+  // Check the instruction to be hoisted, if there is one.
+  if (HInst) {
+    // Don't hoist the instruction if it's unsafe or expensive.
+    if (!isSafeToSpeculativelyExecute(HInst))
+      return false;
+    if (ComputeSpeculationCost(HInst) > PHINodeFoldingThreshold)
+      return false;
+
+    // Do not hoist the instruction if any of its operands are defined but not
+    // used in this BB. The transformation will prevent the operand from
+    // being sunk into the use block.
+    for (User::op_iterator i = HInst->op_begin(), e = HInst->op_end(); 
+         i != e; ++i) {
+      Instruction *OpI = dyn_cast<Instruction>(*i);
+      if (OpI && OpI->getParent() == BIParent &&
+          !OpI->mayHaveSideEffects() &&
+          !OpI->isUsedInBasicBlock(BIParent))
+        return false;
+    }
+  }
 
   // Be conservative for now. FP select instruction can often be expensive.
   Value *BrCond = BI->getCondition();
@@ -984,130 +1022,78 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *BB1) {
     Invert = true;
   }
 
-  // Turn
-  // BB:
-  //     %t1 = icmp
-  //     br i1 %t1, label %BB1, label %BB2
-  // BB1:
-  //     %t3 = add %t2, c
-  //     br label BB2
-  // BB2:
-  // =>
-  // BB:
-  //     %t1 = icmp
-  //     %t4 = add %t2, c
-  //     %t3 = select i1 %t1, %t2, %t3
-  switch (HInst->getOpcode()) {
-  default: return false;  // Not safe / profitable to hoist.
-  case Instruction::Add:
-  case Instruction::Sub:
-    // Not worth doing for vector ops.
-    if (HInst->getType()->isVectorTy())
-      return false;
-    break;
-  case Instruction::And:
-  case Instruction::Or:
-  case Instruction::Xor:
-  case Instruction::Shl:
-  case Instruction::LShr:
-  case Instruction::AShr:
-    // Don't mess with vector operations.
-    if (HInst->getType()->isVectorTy())
-      return false;
-    break;   // These are all cheap and non-trapping instructions.
-  }
-  
-  // If the instruction is obviously dead, don't try to predicate it.
-  if (HInst->use_empty()) {
-    HInst->eraseFromParent();
-    return true;
-  }
-
-  // Can we speculatively execute the instruction? And what is the value 
-  // if the condition is false? Consider the phi uses, if the incoming value
-  // from the "if" block are all the same V, then V is the value of the
-  // select if the condition is false.
-  BasicBlock *BIParent = BI->getParent();
-  SmallVector<PHINode*, 4> PHIUses;
-  Value *FalseV = NULL;
-  
+  // Collect interesting PHIs, and scan for hazards.
+  SmallSetVector<std::pair<Value *, Value *>, 4> PHIs;
   BasicBlock *BB2 = BB1->getTerminator()->getSuccessor(0);
-  for (Value::use_iterator UI = HInst->use_begin(), E = HInst->use_end();
-       UI != E; ++UI) {
-    // Ignore any user that is not a PHI node in BB2.  These can only occur in
-    // unreachable blocks, because they would not be dominated by the instr.
-    PHINode *PN = dyn_cast<PHINode>(*UI);
-    if (!PN || PN->getParent() != BB2)
-      return false;
-    PHIUses.push_back(PN);
-    
-    Value *PHIV = PN->getIncomingValueForBlock(BIParent);
-    if (!FalseV)
-      FalseV = PHIV;
-    else if (FalseV != PHIV)
-      return false;  // Inconsistent value when condition is false.
-  }
-  
-  assert(FalseV && "Must have at least one user, and it must be a PHI");
+  for (BasicBlock::iterator I = BB2->begin();
+       PHINode *PN = dyn_cast<PHINode>(I); ++I) {
+    Value *BB1V = PN->getIncomingValueForBlock(BB1);
+    Value *BIParentV = PN->getIncomingValueForBlock(BIParent);
 
-  // Do not hoist the instruction if any of its operands are defined but not
-  // used in this BB. The transformation will prevent the operand from
-  // being sunk into the use block.
-  for (User::op_iterator i = HInst->op_begin(), e = HInst->op_end(); 
-       i != e; ++i) {
-    Instruction *OpI = dyn_cast<Instruction>(*i);
-    if (OpI && OpI->getParent() == BIParent &&
-        !OpI->isUsedInBasicBlock(BIParent))
-      return false;
-  }
+    // Skip PHIs which are trivial.
+    if (BB1V == BIParentV)
+      continue;
 
-  // If we get here, we can hoist the instruction. Try to place it
-  // before the icmp instruction preceding the conditional branch.
-  BasicBlock::iterator InsertPos = BI;
-  if (InsertPos != BIParent->begin())
-    --InsertPos;
-  // Skip debug info between condition and branch.
-  while (InsertPos != BIParent->begin() && isa<DbgInfoIntrinsic>(InsertPos))
-    --InsertPos;
-  if (InsertPos == BrCond && !isa<PHINode>(BrCond)) {
-    SmallPtrSet<Instruction *, 4> BB1Insns;
-    for(BasicBlock::iterator BB1I = BB1->begin(), BB1E = BB1->end(); 
-        BB1I != BB1E; ++BB1I) 
-      BB1Insns.insert(BB1I);
-    for(Value::use_iterator UI = BrCond->use_begin(), UE = BrCond->use_end();
-        UI != UE; ++UI) {
-      Instruction *Use = cast<Instruction>(*UI);
-      if (!BB1Insns.count(Use)) continue;
-      
-      // If BrCond uses the instruction that place it just before
-      // branch instruction.
-      InsertPos = BI;
-      break;
+    // Check for saftey.
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(BB1V)) {
+      // An unfolded ConstantExpr could end up getting expanded into
+      // Instructions. Don't speculate this and another instruction at
+      // the same time.
+      if (HInst)
+        return false;
+      if (!isSafeToSpeculativelyExecute(CE))
+        return false;
+      if (ComputeSpeculationCost(CE) > PHINodeFoldingThreshold)
+        return false;
     }
-  } else
-    InsertPos = BI;
-  BIParent->getInstList().splice(InsertPos, BB1->getInstList(), HInst);
 
-  // Create a select whose true value is the speculatively executed value and
-  // false value is the previously determined FalseV.
+    // Ok, we may insert a select for this PHI.
+    PHIs.insert(std::make_pair(BB1V, BIParentV));
+  }
+
+  // If there are no PHIs to process, bail early. This helps ensure idempotence
+  // as well.
+  if (PHIs.empty())
+    return false;
+  
+  // If we get here, we can hoist the instruction and if-convert.
+  DEBUG(dbgs() << "SPECULATIVELY EXECUTING BB" << *BB1 << "\n";);
+
+  // Hoist the instruction.
+  if (HInst)
+    BIParent->getInstList().splice(BI, BB1->getInstList(), HInst);
+
+  // Insert selects and rewrite the PHI operands.
   IRBuilder<true, NoFolder> Builder(BI);
-  SelectInst *SI;
-  if (Invert)
-    SI = cast<SelectInst>
-      (Builder.CreateSelect(BrCond, FalseV, HInst,
-                            FalseV->getName() + "." + HInst->getName()));
-  else
-    SI = cast<SelectInst>
-      (Builder.CreateSelect(BrCond, HInst, FalseV,
-                            HInst->getName() + "." + FalseV->getName()));
+  for (unsigned i = 0, e = PHIs.size(); i != e; ++i) {
+    Value *TrueV = PHIs[i].first;
+    Value *FalseV = PHIs[i].second;
 
-  // Make the PHI node use the select for all incoming values for "then" and
-  // "if" blocks.
-  for (unsigned i = 0, e = PHIUses.size(); i != e; ++i) {
-    PHINode *PN = PHIUses[i];
-    for (unsigned j = 0, ee = PN->getNumIncomingValues(); j != ee; ++j)
-      if (PN->getIncomingBlock(j) == BB1 || PN->getIncomingBlock(j) == BIParent)
-        PN->setIncomingValue(j, SI);
+    // Create a select whose true value is the speculatively executed value and
+    // false value is the previously determined FalseV.
+    SelectInst *SI;
+    if (Invert)
+      SI = cast<SelectInst>
+        (Builder.CreateSelect(BrCond, FalseV, TrueV,
+                              FalseV->getName() + "." + TrueV->getName()));
+    else
+      SI = cast<SelectInst>
+        (Builder.CreateSelect(BrCond, TrueV, FalseV,
+                              TrueV->getName() + "." + FalseV->getName()));
+
+    // Make the PHI node use the select for all incoming values for "then" and
+    // "if" blocks.
+    for (BasicBlock::iterator I = BB2->begin();
+         PHINode *PN = dyn_cast<PHINode>(I); ++I) {
+      unsigned BB1I = PN->getBasicBlockIndex(BB1);
+      unsigned BIParentI = PN->getBasicBlockIndex(BIParent);
+      Value *BB1V = PN->getIncomingValue(BB1I);
+      Value *BIParentV = PN->getIncomingValue(BIParentI);
+      if (TrueV == BB1V && FalseV == BIParentV) {
+        PN->setIncomingValue(BB1I, SI);
+        PN->setIncomingValue(BIParentI, SI);
+      }
+    }
   }
 
   ++NumSpeculations;
@@ -1462,6 +1448,26 @@ static bool SimplifyCondBranchToTwoReturns(BranchInst *BI,
   return true;
 }
 
+/// ExtractBranchMetadata - Given a conditional BranchInstruction, retrieve the
+/// probabilities of the branch taking each edge. Fills in the two APInt
+/// parameters and return true, or returns false if no or invalid metadata was
+/// found.
+static bool ExtractBranchMetadata(BranchInst *BI,
+                                  APInt &ProbTrue, APInt &ProbFalse) {
+  assert(BI->isConditional() &&
+         "Looking for probabilities on unconditional branch?");
+  MDNode *ProfileData = BI->getMetadata(LLVMContext::MD_prof);
+  if (!ProfileData || ProfileData->getNumOperands() != 3) return false;
+  ConstantInt *CITrue = dyn_cast<ConstantInt>(ProfileData->getOperand(1));
+  ConstantInt *CIFalse = dyn_cast<ConstantInt>(ProfileData->getOperand(2));
+  if (!CITrue || !CIFalse) return false;
+  ProbTrue = CITrue->getValue();
+  ProbFalse = CIFalse->getValue();
+  assert(ProbTrue.getBitWidth() == 32 && ProbFalse.getBitWidth() == 32 &&
+         "Branch probability metadata must be 32-bit integers");
+  return true;
+}
+
 /// FoldBranchToCommonDest - If this basic block is simple enough, and if a
 /// predecessor branches to us and one of our successors, fold the block into
 /// the predecessor and use logical operations to pick the right destination.
@@ -1480,7 +1486,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
 
   // Ignore dbg intrinsics.
   while (isa<DbgInfoIntrinsic>(FrontIt)) ++FrontIt;
-    
+
   // Allow a single instruction to be hoisted in addition to the compare
   // that feeds the branch.  We later ensure that any values that _it_ uses
   // were also live in the predecessor, so that we don't unnecessarily create
@@ -1558,7 +1564,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
       SmallPtrSet<Value*, 4> UsedValues;
       for (Instruction::op_iterator OI = BonusInst->op_begin(),
            OE = BonusInst->op_end(); OI != OE; ++OI) {
-        Value* V = *OI;
+        Value *V = *OI;
         if (!isa<Constant>(V))
           UsedValues.insert(V);
       }
@@ -1603,10 +1609,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
       }
       
       PBI->setCondition(NewCond);
-      BasicBlock *OldTrue = PBI->getSuccessor(0);
-      BasicBlock *OldFalse = PBI->getSuccessor(1);
-      PBI->setSuccessor(0, OldFalse);
-      PBI->setSuccessor(1, OldTrue);
+      PBI->swapSuccessors();
     }
     
     // If we have a bonus inst, clone it into the predecessor block.
@@ -1637,6 +1640,62 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
     if (PBI->getSuccessor(1) == BB) {
       AddPredecessorToBlock(FalseDest, PredBlock, BB);
       PBI->setSuccessor(1, FalseDest);
+    }
+
+    // TODO: If BB is reachable from all paths through PredBlock, then we
+    // could replace PBI's branch probabilities with BI's.
+
+    // Merge probability data into PredBlock's branch.
+    APInt A, B, C, D;
+    if (ExtractBranchMetadata(PBI, C, D) && ExtractBranchMetadata(BI, A, B)) {
+      // Given IR which does:
+      //   bbA:
+      //     br i1 %x, label %bbB, label %bbC
+      //   bbB:
+      //     br i1 %y, label %bbD, label %bbC
+      // Let's call the probability that we take the edge from %bbA to %bbB
+      // 'a', from %bbA to %bbC, 'b', from %bbB to %bbD 'c' and from %bbB to
+      // %bbC probability 'd'.
+      //
+      // We transform the IR into:
+      //   bbA:
+      //     br i1 %z, label %bbD, label %bbC
+      // where the probability of going to %bbD is (a*c) and going to bbC is
+      // (b+a*d).
+      //
+      // Probabilities aren't stored as ratios directly. Using branch weights,
+      // we get:
+      // (a*c)% = A*C, (b+(a*d))% = A*D+B*C+B*D.
+
+      bool Overflow1 = false, Overflow2 = false, Overflow3 = false;
+      bool Overflow4 = false, Overflow5 = false, Overflow6 = false;
+      APInt ProbTrue = A.umul_ov(C, Overflow1);
+
+      APInt Tmp1 = A.umul_ov(D, Overflow2);
+      APInt Tmp2 = B.umul_ov(C, Overflow3);
+      APInt Tmp3 = B.umul_ov(D, Overflow4);
+      APInt Tmp4 = Tmp1.uadd_ov(Tmp2, Overflow5);
+      APInt ProbFalse = Tmp4.uadd_ov(Tmp3, Overflow6);
+
+      APInt GCD = APIntOps::GreatestCommonDivisor(ProbTrue, ProbFalse);
+      ProbTrue = ProbTrue.udiv(GCD);
+      ProbFalse = ProbFalse.udiv(GCD);
+
+      if (Overflow1 || Overflow2 || Overflow3 || Overflow4 || Overflow5 ||
+          Overflow6) {
+        DEBUG(dbgs() << "Overflow recomputing branch weight on: " << *PBI
+                     << "when merging with: " << *BI);
+        PBI->setMetadata(LLVMContext::MD_prof, NULL);
+      } else {
+        LLVMContext &Context = BI->getContext();
+        Value *Ops[3];
+        Ops[0] = BI->getMetadata(LLVMContext::MD_prof)->getOperand(0);
+        Ops[1] = ConstantInt::get(Context, ProbTrue);
+        Ops[2] = ConstantInt::get(Context, ProbFalse);
+        PBI->setMetadata(LLVMContext::MD_prof, MDNode::get(Context, Ops));
+      }
+    } else {
+      PBI->setMetadata(LLVMContext::MD_prof, NULL);
     }
 
     // Copy any debug value intrinsics into the end of PredBlock.
@@ -2365,7 +2424,7 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
       if (SI->getSuccessor(0) == BB) {
         std::map<BasicBlock*, std::pair<unsigned, unsigned> > Popularity;
         for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i) {
-          std::pair<unsigned, unsigned>& entry =
+          std::pair<unsigned, unsigned> &entry =
               Popularity[SI->getSuccessor(i)];
           if (entry.first == 0) {
             entry.first = 1;
@@ -2677,8 +2736,8 @@ bool SimplifyCFGOpt::SimplifyUncondBranch(BranchInst *BI, IRBuilder<> &Builder){
     if (ICI->isEquality() && isa<ConstantInt>(ICI->getOperand(1))) {
       for (++I; isa<DbgInfoIntrinsic>(I); ++I)
         ;
-      if (I->isTerminator() 
-          && TryToSimplifyUncondBranchWithICmpInIt(ICI, TD, Builder))
+      if (I->isTerminator() &&
+          TryToSimplifyUncondBranchWithICmpInIt(ICI, TD, Builder))
         return true;
     }
   
@@ -2721,6 +2780,12 @@ bool SimplifyCFGOpt::SimplifyCondBranch(BranchInst *BI, IRBuilder<> &Builder) {
   if (SimplifyBranchOnICmpChain(BI, TD, Builder))
     return true;
   
+  // If this basic block is ONLY a compare and a branch, and if a predecessor
+  // branches to us and one of our successors, fold the comparison into the
+  // predecessor and use logical operations to pick the right destination.
+  if (FoldBranchToCommonDest(BI))
+    return SimplifyCFG(BB) | true;
+  
   // We have a conditional branch to two blocks that are only reachable
   // from BI.  We know that the condbr dominates the two blocks, so see if
   // there is any identical code in the "then" and "else" blocks.  If so, we
@@ -2754,12 +2819,6 @@ bool SimplifyCFGOpt::SimplifyCondBranch(BranchInst *BI, IRBuilder<> &Builder) {
     if (PN->getParent() == BI->getParent())
       if (FoldCondBranchOnPHI(BI, TD))
         return SimplifyCFG(BB) | true;
-  
-  // If this basic block is ONLY a setcc and a branch, and if a predecessor
-  // branches to us and one of our successors, fold the setcc into the
-  // predecessor and use logical operations to pick the right destination.
-  if (FoldBranchToCommonDest(BI))
-    return SimplifyCFG(BB) | true;
   
   // Scan predecessor blocks for conditional branches.
   for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI)
@@ -2810,7 +2869,7 @@ static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I) {
 }
 
 /// If BB has an incoming value that will always trigger undefined behavior
-/// (eg. null pointer derefence), remove the branch leading here.
+/// (eg. null pointer dereference), remove the branch leading here.
 static bool removeUndefIntroducingPredecessor(BasicBlock *BB) {
   for (BasicBlock::iterator i = BB->begin();
        PHINode *PHI = dyn_cast<PHINode>(i); ++i)

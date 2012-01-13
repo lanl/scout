@@ -66,8 +66,6 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::AccessSpec:
   case Decl::LinkageSpec:
   case Decl::ObjCPropertyImpl:
-  case Decl::ObjCClass:
-  case Decl::ObjCForwardProtocol:
   case Decl::FileScopeAsm:
   case Decl::Friend:
   case Decl::FriendTemplate:
@@ -1023,7 +1021,13 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
   llvm::Value *Loc =
     capturedByInit ? emission.Address : emission.getObjectAddress(*this);
 
-  if (!emission.IsConstantAggregate) {
+  llvm::Constant *constant = 0;
+  if (emission.IsConstantAggregate) {
+    assert(!capturedByInit && "constant init contains a capturing block?");
+    constant = CGM.EmitConstantExpr(D.getInit(), type, this);
+  }
+
+  if (!constant) {
     LValue lv = MakeAddrLValue(Loc, type, alignment);
     lv.setNonGC(true);
     return EmitExprAsInit(Init, &D, lv, capturedByInit);
@@ -1031,12 +1035,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
 
   // If this is a simple aggregate initialization, we can optimize it
   // in various ways.
-  assert(!capturedByInit && "constant init contains a capturing block?");
-
   bool isVolatile = type.isVolatileQualified();
-
-  llvm::Constant *constant = CGM.EmitConstantExpr(D.getInit(), type, this);
-  assert(constant != 0 && "Wasn't a simple constant init?");
 
   llvm::Value *SizeVal =
     llvm::ConstantInt::get(IntPtrTy,

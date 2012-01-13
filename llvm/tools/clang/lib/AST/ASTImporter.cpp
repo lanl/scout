@@ -136,8 +136,6 @@ namespace clang {
     Decl *VisitObjCImplementationDecl(ObjCImplementationDecl *D);
     Decl *VisitObjCPropertyDecl(ObjCPropertyDecl *D);
     Decl *VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *D);
-    Decl *VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D);
-    Decl *VisitObjCClassDecl(ObjCClassDecl *D);
     Decl *VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D);
     Decl *VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
     Decl *VisitTemplateTemplateParmDecl(TemplateTemplateParmDecl *D);
@@ -2113,8 +2111,10 @@ Decl *ASTNodeImporter::VisitNamespaceDecl(NamespaceDecl *D) {
   NamespaceDecl *ToNamespace = MergeWithNamespace;
   if (!ToNamespace) {
     ToNamespace = NamespaceDecl::Create(Importer.getToContext(), DC,
+                                        D->isInline(),
                                         Importer.Import(D->getLocStart()),
-                                        Loc, Name.getAsIdentifierInfo());
+                                        Loc, Name.getAsIdentifierInfo(),
+                                        /*PrevDecl=*/0);
     ToNamespace->setLexicalDeclContext(LexicalDC);
     LexicalDC->addDeclInternal(ToNamespace);
     
@@ -3156,17 +3156,18 @@ Decl *ASTNodeImporter::VisitObjCProtocolDecl(ObjCProtocolDecl *D) {
   }
   
   ObjCProtocolDecl *ToProto = MergeWithProtocol;
-  if (!ToProto || ToProto->isForwardDecl()) {
+  if (!ToProto || !ToProto->hasDefinition()) {
     if (!ToProto) {
       ToProto = ObjCProtocolDecl::Create(Importer.getToContext(), DC,
                                          Name.getAsIdentifierInfo(), Loc,
                                          Importer.Import(D->getAtStartLoc()),
-                                         D->isInitiallyForwardDecl());
+                                         /*PrevDecl=*/0);
       ToProto->setLexicalDeclContext(LexicalDC);
       LexicalDC->addDeclInternal(ToProto);
-      if (D->isInitiallyForwardDecl() && !D->isForwardDecl())
-        ToProto->completedForwardDecl();
     }
+    if (!ToProto->hasDefinition())
+      ToProto->startDefinition();
+    
     Importer.Imported(D, ToProto);
 
     // Import protocols
@@ -3595,79 +3596,6 @@ Decl *ASTNodeImporter::VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *D) {
   }
   
   return ToImpl;
-}
-
-Decl *
-ASTNodeImporter::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D) {
-  // Import the context of this declaration.
-  DeclContext *DC = Importer.ImportContext(D->getDeclContext());
-  if (!DC)
-    return 0;
-  
-  DeclContext *LexicalDC = DC;
-  if (D->getDeclContext() != D->getLexicalDeclContext()) {
-    LexicalDC = Importer.ImportContext(D->getLexicalDeclContext());
-    if (!LexicalDC)
-      return 0;
-  }
-  
-  // Import the location of this declaration.
-  SourceLocation Loc = Importer.Import(D->getLocation());
-  
-  SmallVector<ObjCProtocolDecl *, 4> Protocols;
-  SmallVector<SourceLocation, 4> Locations;
-  ObjCForwardProtocolDecl::protocol_loc_iterator FromProtoLoc
-    = D->protocol_loc_begin();
-  for (ObjCForwardProtocolDecl::protocol_iterator FromProto
-         = D->protocol_begin(), FromProtoEnd = D->protocol_end();
-       FromProto != FromProtoEnd; 
-       ++FromProto, ++FromProtoLoc) {
-    ObjCProtocolDecl *ToProto
-      = cast_or_null<ObjCProtocolDecl>(Importer.Import(*FromProto));
-    if (!ToProto)
-      continue;
-    
-    Protocols.push_back(ToProto);
-    Locations.push_back(Importer.Import(*FromProtoLoc));
-  }
-  
-  ObjCForwardProtocolDecl *ToForward
-    = ObjCForwardProtocolDecl::Create(Importer.getToContext(), DC, Loc, 
-                                      Protocols.data(), Protocols.size(),
-                                      Locations.data());
-  ToForward->setLexicalDeclContext(LexicalDC);
-  LexicalDC->addDeclInternal(ToForward);
-  Importer.Imported(D, ToForward);
-  return ToForward;
-}
-
-Decl *ASTNodeImporter::VisitObjCClassDecl(ObjCClassDecl *D) {
-  // Import the context of this declaration.
-  DeclContext *DC = Importer.ImportContext(D->getDeclContext());
-  if (!DC)
-    return 0;
-  
-  DeclContext *LexicalDC = DC;
-  if (D->getDeclContext() != D->getLexicalDeclContext()) {
-    LexicalDC = Importer.ImportContext(D->getLexicalDeclContext());
-    if (!LexicalDC)
-      return 0;
-  }
-  
-  // Import the location of this declaration.
-  SourceLocation Loc = Importer.Import(D->getLocation());
-  ObjCInterfaceDecl *ToIface
-    = cast_or_null<ObjCInterfaceDecl>(
-        Importer.Import(D->getForwardInterfaceDecl()));
-  ObjCClassDecl *ToClass = ObjCClassDecl::Create(Importer.getToContext(), DC,
-                             Loc,
-                             ToIface,
-                             Importer.Import(D->getNameLoc()));
-    
-  ToClass->setLexicalDeclContext(LexicalDC);
-  LexicalDC->addDeclInternal(ToClass);
-  Importer.Imported(D, ToClass);
-  return ToClass;
 }
 
 Decl *ASTNodeImporter::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {

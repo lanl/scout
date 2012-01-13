@@ -72,6 +72,8 @@ struct AssemblerInvocation {
   std::vector<std::string> IncludePaths;
   unsigned NoInitialTextSection : 1;
   unsigned SaveTemporaryLabels : 1;
+  unsigned GenDwarfForAssembly : 1;
+  std::string DwarfDebugFlags;
 
   /// @}
   /// @name Frontend Options
@@ -120,17 +122,19 @@ public:
     NoExecStack = 0;
   }
 
-  static void CreateFromArgs(AssemblerInvocation &Res, const char **ArgBegin,
+  static bool CreateFromArgs(AssemblerInvocation &Res, const char **ArgBegin,
                              const char **ArgEnd, DiagnosticsEngine &Diags);
 };
 
 }
 
-void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
+bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
                                          const char **ArgBegin,
                                          const char **ArgEnd,
                                          DiagnosticsEngine &Diags) {
   using namespace clang::driver::cc1asoptions;
+  bool Success = true;
+
   // Parse the arguments.
   OwningPtr<OptTable> OptTbl(createCC1AsOptTable());
   unsigned MissingArgIndex, MissingArgCount;
@@ -138,14 +142,18 @@ void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
     OptTbl->ParseArgs(ArgBegin, ArgEnd,MissingArgIndex, MissingArgCount));
 
   // Check for missing argument error.
-  if (MissingArgCount)
+  if (MissingArgCount) {
     Diags.Report(diag::err_drv_missing_argument)
       << Args->getArgString(MissingArgIndex) << MissingArgCount;
+    Success = false;
+  }
 
   // Issue errors on unknown arguments.
   for (arg_iterator it = Args->filtered_begin(cc1asoptions::OPT_UNKNOWN),
-         ie = Args->filtered_end(); it != ie; ++it)
+         ie = Args->filtered_end(); it != ie; ++it) {
     Diags.Report(diag::err_drv_unknown_argument) << (*it) ->getAsString(*Args);
+    Success = false;
+  }
 
   // Construct the invocation.
 
@@ -158,6 +166,8 @@ void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
   Opts.IncludePaths = Args->getAllArgValues(OPT_I);
   Opts.NoInitialTextSection = Args->hasArg(OPT_n);
   Opts.SaveTemporaryLabels = Args->hasArg(OPT_L);
+  Opts.GenDwarfForAssembly = Args->hasArg(OPT_g);
+  Opts.DwarfDebugFlags = Args->getLastArgValue(OPT_dwarf_debug_flags);
 
   // Frontend Options
   if (Args->hasArg(OPT_INPUT)) {
@@ -167,8 +177,10 @@ void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
       const Arg *A = it;
       if (First)
         Opts.InputFile = A->getValue(*Args);
-      else
+      else {
         Diags.Report(diag::err_drv_unknown_argument) << A->getAsString(*Args);
+        Success = false;
+      }
     }
   }
   Opts.LLVMArgs = Args->getAllArgValues(OPT_mllvm);
@@ -182,10 +194,11 @@ void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
       .Case("null", FT_Null)
       .Case("obj", FT_Obj)
       .Default(~0U);
-    if (OutputType == ~0U)
+    if (OutputType == ~0U) {
       Diags.Report(diag::err_drv_invalid_value)
         << A->getAsString(*Args) << Name;
-    else
+      Success = false;
+    } else
       Opts.OutputType = FileType(OutputType);
   }
   Opts.ShowHelp = Args->hasArg(OPT_help);
@@ -200,6 +213,8 @@ void AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
   // Assemble Options
   Opts.RelaxAll = Args->hasArg(OPT_relax_all);
   Opts.NoExecStack =  Args->hasArg(OPT_no_exec_stack);
+
+  return Success;
 }
 
 static formatted_raw_ostream *GetOutputStream(AssemblerInvocation &Opts,
@@ -273,6 +288,10 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
                              Reloc::Default, CodeModel::Default, Ctx);
   if (Opts.SaveTemporaryLabels)
     Ctx.setAllowTemporaryLabels(false);
+  if (Opts.GenDwarfForAssembly)
+    Ctx.setGenDwarfForAssembly(true);
+  if (!Opts.DwarfDebugFlags.empty())
+    Ctx.setDwarfDebugFlags(StringRef(Opts.DwarfDebugFlags));
 
   OwningPtr<MCStreamer> Str;
 
@@ -366,7 +385,8 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
 
   // Parse the arguments.
   AssemblerInvocation Asm;
-  AssemblerInvocation::CreateFromArgs(Asm, ArgBegin, ArgEnd, Diags);
+  if (!AssemblerInvocation::CreateFromArgs(Asm, ArgBegin, ArgEnd, Diags))
+    return 1;
 
   // Honor -help.
   if (Asm.ShowHelp) {

@@ -31,7 +31,7 @@ using namespace llvm;
 namespace {
 struct X86Operand;
 
-class X86ATTAsmParser : public MCTargetAsmParser {
+class X86AsmParser : public MCTargetAsmParser {
   MCSubtargetInfo &STI;
   MCAsmParser &Parser;
 
@@ -46,6 +46,8 @@ private:
   }
 
   X86Operand *ParseOperand();
+  X86Operand *ParseATTOperand();
+  X86Operand *ParseIntelOperand();
   X86Operand *ParseMemOperand(unsigned SegReg, SMLoc StartLoc);
 
   bool ParseDirectiveWord(unsigned Size, SMLoc L);
@@ -81,7 +83,7 @@ private:
   /// }
 
 public:
-  X86ATTAsmParser(MCSubtargetInfo &sti, MCAsmParser &parser)
+  X86AsmParser(MCSubtargetInfo &sti, MCAsmParser &parser)
     : MCTargetAsmParser(), STI(sti), Parser(parser) {
 
     // Initialize the set of available features.
@@ -137,6 +139,7 @@ struct X86Operand : public MCParsedAsmOperand {
       unsigned BaseReg;
       unsigned IndexReg;
       unsigned Scale;
+      unsigned Size;
     } Mem;
   };
 
@@ -280,6 +283,27 @@ struct X86Operand : public MCParsedAsmOperand {
   }
 
   bool isMem() const { return Kind == Memory; }
+  bool isMem8() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 8);
+  }
+  bool isMem16() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 16);
+  }
+  bool isMem32() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 32);
+  }
+  bool isMem64() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 64);
+  }
+  bool isMem80() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 80);
+  }
+  bool isMem128() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 128);
+  }
+  bool isMem256() const { 
+    return Kind == Memory && (!Mem.Size || Mem.Size == 256);
+  }
 
   bool isAbsMem() const {
     return Kind == Memory && !getMemSegReg() && !getMemBaseReg() &&
@@ -304,6 +328,28 @@ struct X86Operand : public MCParsedAsmOperand {
   void addImmOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     addExpr(Inst, getImm());
+  }
+
+  void addMem8Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem16Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem32Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem64Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem80Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem128Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
+  }
+  void addMem256Operands(MCInst &Inst, unsigned N) const { 
+    addMemOperands(Inst, N); 
   }
 
   void addMemOperands(MCInst &Inst, unsigned N) const {
@@ -342,20 +388,22 @@ struct X86Operand : public MCParsedAsmOperand {
 
   /// Create an absolute memory operand.
   static X86Operand *CreateMem(const MCExpr *Disp, SMLoc StartLoc,
-                               SMLoc EndLoc) {
+                               SMLoc EndLoc, unsigned Size = 0) {
     X86Operand *Res = new X86Operand(Memory, StartLoc, EndLoc);
     Res->Mem.SegReg   = 0;
     Res->Mem.Disp     = Disp;
     Res->Mem.BaseReg  = 0;
     Res->Mem.IndexReg = 0;
     Res->Mem.Scale    = 1;
+    Res->Mem.Size     = Size;
     return Res;
   }
 
   /// Create a generalized memory operand.
   static X86Operand *CreateMem(unsigned SegReg, const MCExpr *Disp,
                                unsigned BaseReg, unsigned IndexReg,
-                               unsigned Scale, SMLoc StartLoc, SMLoc EndLoc) {
+                               unsigned Scale, SMLoc StartLoc, SMLoc EndLoc,
+                               unsigned Size = 0) {
     // We should never just have a displacement, that should be parsed as an
     // absolute memory operand.
     assert((SegReg || BaseReg || IndexReg) && "Invalid memory operand!");
@@ -369,13 +417,14 @@ struct X86Operand : public MCParsedAsmOperand {
     Res->Mem.BaseReg  = BaseReg;
     Res->Mem.IndexReg = IndexReg;
     Res->Mem.Scale    = Scale;
+    Res->Mem.Size     = Size;
     return Res;
   }
 };
 
 } // end anonymous namespace.
 
-bool X86ATTAsmParser::isSrcOp(X86Operand &Op) {
+bool X86AsmParser::isSrcOp(X86Operand &Op) {
   unsigned basereg = is64BitMode() ? X86::RSI : X86::ESI;
 
   return (Op.isMem() &&
@@ -385,7 +434,7 @@ bool X86ATTAsmParser::isSrcOp(X86Operand &Op) {
     Op.Mem.BaseReg == basereg && Op.Mem.IndexReg == 0);
 }
 
-bool X86ATTAsmParser::isDstOp(X86Operand &Op) {
+bool X86AsmParser::isDstOp(X86Operand &Op) {
   unsigned basereg = is64BitMode() ? X86::RDI : X86::EDI;
 
   return Op.isMem() && Op.Mem.SegReg == X86::ES &&
@@ -394,8 +443,8 @@ bool X86ATTAsmParser::isDstOp(X86Operand &Op) {
     Op.Mem.BaseReg == basereg && Op.Mem.IndexReg == 0;
 }
 
-bool X86ATTAsmParser::ParseRegister(unsigned &RegNo,
-                                    SMLoc &StartLoc, SMLoc &EndLoc) {
+bool X86AsmParser::ParseRegister(unsigned &RegNo,
+                                 SMLoc &StartLoc, SMLoc &EndLoc) {
   RegNo = 0;
   const AsmToken &TokPercent = Parser.getTok();
   assert(TokPercent.is(AsmToken::Percent) && "Invalid token kind!");
@@ -494,7 +543,100 @@ bool X86ATTAsmParser::ParseRegister(unsigned &RegNo,
   return false;
 }
 
-X86Operand *X86ATTAsmParser::ParseOperand() {
+X86Operand *X86AsmParser::ParseOperand() {
+  if (getParser().getAssemblerDialect())
+    return ParseIntelOperand();
+  return ParseATTOperand();
+}
+
+/// getIntelRegister - If this is an intel register operand
+/// then return register number, otherwise return 0;
+static unsigned getIntelRegisterOperand(StringRef Str) {
+  unsigned RegNo = MatchRegisterName(Str);
+  // If the match failed, try the register name as lowercase.
+  if (RegNo == 0)
+    RegNo = MatchRegisterName(Str.lower());
+  return RegNo;
+}
+
+/// isIntelMemOperand - If this is an intel memory operand
+/// then return true.
+static bool isIntelMemOperand(StringRef OpStr, unsigned &Size) {
+  Size = 0;
+  if (OpStr == "BYTE") Size = 8;
+  if (OpStr == "WORD") Size = 16;
+  if (OpStr == "DWORD") Size = 32;
+  if (OpStr == "QWORD") Size = 64;
+  if (OpStr == "XWORD") Size = 80;
+  if (OpStr == "XMMWORD") Size = 128;
+  if (OpStr == "YMMWORD") Size = 256;
+  return Size != 0;
+}
+
+X86Operand *X86AsmParser::ParseIntelOperand() {
+
+  const AsmToken &Tok = Parser.getTok();
+  SMLoc Start = Parser.getTok().getLoc(), End;
+
+  // register
+  if(unsigned RegNo = getIntelRegisterOperand(Tok.getString())) {
+    Parser.Lex();
+    End = Parser.getTok().getLoc();
+    return X86Operand::CreateReg(RegNo, Start, End);
+  }
+
+  // mem operand
+  unsigned SegReg = 0, BaseReg = 0, IndexReg = 0, Scale = 1;
+  StringRef OpStr = Tok.getString();
+  unsigned Size = 0;
+  if (isIntelMemOperand(OpStr, Size)) {
+    Parser.Lex();
+    if (Tok.getString() == "PTR")
+      Parser.Lex();
+    else {
+      Error(Start, "unexpected token!");
+      return 0;
+    }
+
+    if (Tok.getString() == "[")
+      Parser.Lex();
+    else {
+      Error(Start, "unexpected token!");
+      return 0;
+    }
+
+    SMLoc LParenLoc = Parser.getTok().getLoc();
+    BaseReg = getIntelRegisterOperand(Tok.getString());
+    if (BaseReg == 0) {
+      Error(LParenLoc, "unexpected token!");
+      return 0;
+    }
+    Parser.Lex();
+    const MCExpr *Disp = MCConstantExpr::Create(0, getParser().getContext());
+    SMLoc ExprEnd;
+    if (getParser().ParseExpression(Disp, ExprEnd)) return 0;
+    End = Parser.getTok().getLoc();
+    if (Tok.getString() == "]")
+      Parser.Lex();
+    if (BaseReg == 0) {
+      Error(End, "unexpected token!");
+      return 0;
+    }
+    return X86Operand::CreateMem(SegReg, Disp, BaseReg, IndexReg, Scale,
+                                 Start, End, Size);
+  }
+
+  // immediate.
+  const MCExpr *Val;
+  if (!getParser().ParseExpression(Val, End)) {
+    End = Parser.getTok().getLoc();
+    return X86Operand::CreateImm(Val, Start, End);
+  }
+
+  return 0;
+}
+
+X86Operand *X86AsmParser::ParseATTOperand() {
   switch (getLexer().getKind()) {
   default:
     // Parse a memory operand with no segment register.
@@ -533,7 +675,7 @@ X86Operand *X86ATTAsmParser::ParseOperand() {
 
 /// ParseMemOperand: segment: disp(basereg, indexreg, scale).  The '%ds:' prefix
 /// has already been parsed if present.
-X86Operand *X86ATTAsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
+X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
 
   // We have to disambiguate a parenthesized expression "(4+5)" from the start
   // of a memory operand with a missing displacement "(%ebx)" or "(,%eax)".  The
@@ -664,7 +806,7 @@ X86Operand *X86ATTAsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
                                MemStart, MemEnd);
 }
 
-bool X86ATTAsmParser::
+bool X86AsmParser::
 ParseInstruction(StringRef Name, SMLoc NameLoc,
                  SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   StringRef PatchedName = Name;
@@ -949,7 +1091,7 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
   return false;
 }
 
-bool X86ATTAsmParser::
+bool X86AsmParser::
 MatchAndEmitInstruction(SMLoc IDLoc,
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                         MCStreamer &Out) {
@@ -990,7 +1132,8 @@ MatchAndEmitInstruction(SMLoc IDLoc,
   MCInst Inst;
 
   // First, try a direct match.
-  switch (MatchInstructionImpl(Operands, Inst, OrigErrorInfo)) {
+  switch (MatchInstructionImpl(Operands, Inst, OrigErrorInfo, 
+                               getParser().getAssemblerDialect())) {
   default: break;
   case Match_Success:
     Out.EmitInstruction(Inst);
@@ -1130,7 +1273,7 @@ MatchAndEmitInstruction(SMLoc IDLoc,
 }
 
 
-bool X86ATTAsmParser::ParseDirective(AsmToken DirectiveID) {
+bool X86AsmParser::ParseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getIdentifier();
   if (IDVal == ".word")
     return ParseDirectiveWord(2, DirectiveID.getLoc());
@@ -1141,7 +1284,7 @@ bool X86ATTAsmParser::ParseDirective(AsmToken DirectiveID) {
 
 /// ParseDirectiveWord
 ///  ::= .word [ expression (, expression)* ]
-bool X86ATTAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
+bool X86AsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       const MCExpr *Value;
@@ -1166,7 +1309,7 @@ bool X86ATTAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
 
 /// ParseDirectiveCode
 ///  ::= .code32 | .code64
-bool X86ATTAsmParser::ParseDirectiveCode(StringRef IDVal, SMLoc L) {
+bool X86AsmParser::ParseDirectiveCode(StringRef IDVal, SMLoc L) {
   if (IDVal == ".code32") {
     Parser.Lex();
     if (is64BitMode()) {
@@ -1191,8 +1334,8 @@ extern "C" void LLVMInitializeX86AsmLexer();
 
 // Force static initialization.
 extern "C" void LLVMInitializeX86AsmParser() {
-  RegisterMCAsmParser<X86ATTAsmParser> X(TheX86_32Target);
-  RegisterMCAsmParser<X86ATTAsmParser> Y(TheX86_64Target);
+  RegisterMCAsmParser<X86AsmParser> X(TheX86_32Target);
+  RegisterMCAsmParser<X86AsmParser> Y(TheX86_64Target);
   LLVMInitializeX86AsmLexer();
 }
 

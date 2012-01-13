@@ -17,6 +17,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -70,7 +71,6 @@ void MCExpr::print(raw_ostream &OS) const {
   case MCExpr::Unary: {
     const MCUnaryExpr &UE = cast<MCUnaryExpr>(*this);
     switch (UE.getOpcode()) {
-    default: assert(0 && "Invalid opcode!");
     case MCUnaryExpr::LNot:  OS << '!'; break;
     case MCUnaryExpr::Minus: OS << '-'; break;
     case MCUnaryExpr::Not:   OS << '~'; break;
@@ -91,7 +91,6 @@ void MCExpr::print(raw_ostream &OS) const {
     }
 
     switch (BE.getOpcode()) {
-    default: assert(0 && "Invalid opcode!");
     case MCBinaryExpr::Add:
       // Print "X-42" instead of "X+-42".
       if (const MCConstantExpr *RHSC = dyn_cast<MCConstantExpr>(BE.getRHS())) {
@@ -171,7 +170,6 @@ const MCSymbolRefExpr *MCSymbolRefExpr::Create(StringRef Name, VariantKind Kind,
 
 StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
   switch (Kind) {
-  default:
   case VK_Invalid: return "<<invalid>>";
   case VK_None: return "<<none>>";
 
@@ -200,7 +198,26 @@ StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
   case VK_PPC_DARWIN_LO16: return "lo16";
   case VK_PPC_GAS_HA16: return "ha";
   case VK_PPC_GAS_LO16: return "l";
+  case VK_Mips_GPREL: return "GPREL";
+  case VK_Mips_GOT_CALL: return "GOT_CALL";
+  case VK_Mips_GOT16: return "GOT16";
+  case VK_Mips_GOT: return "GOT";
+  case VK_Mips_ABS_HI: return "ABS_HI";
+  case VK_Mips_ABS_LO: return "ABS_LO";
+  case VK_Mips_TLSGD: return "TLSGD";
+  case VK_Mips_TLSLDM: return "TLSLDM";
+  case VK_Mips_DTPREL_HI: return "DTPREL_HI";
+  case VK_Mips_DTPREL_LO: return "DTPREL_LO";
+  case VK_Mips_GOTTPREL: return "GOTTPREL";
+  case VK_Mips_TPREL_HI: return "TPREL_HI";
+  case VK_Mips_TPREL_LO: return "TPREL_LO";
+  case VK_Mips_GPOFF_HI: return "GPOFF_HI";
+  case VK_Mips_GPOFF_LO: return "GPOFF_LO";
+  case VK_Mips_GOT_DISP: return "GOT_DISP";
+  case VK_Mips_GOT_PAGE: return "GOT_PAGE";
+  case VK_Mips_GOT_OFST: return "GOT_OFST";
   }
+  llvm_unreachable("Invalid variant kind");
 }
 
 MCSymbolRefExpr::VariantKind

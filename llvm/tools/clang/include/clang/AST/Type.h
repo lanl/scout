@@ -1336,7 +1336,11 @@ public:
   /// A type that can describe objects, but which lacks information needed to
   /// determine its size (e.g. void, or a fwd declared struct). Clients of this
   /// routine will need to determine if the size is actually required.
-  bool isIncompleteType() const;
+  ///
+  /// \brief Def If non-NULL, and the type refers to some kind of declaration
+  /// that can be completed (such as a C struct, C++ class, or Objective-C
+  /// class), will be set to the declaration.
+  bool isIncompleteType(NamedDecl **Def = 0) const;
 
   /// isIncompleteOrObjectType - Return true if this is an incomplete or object
   /// type, in other words, not a function type.
@@ -1467,7 +1471,7 @@ public:
   bool isCARCBridgableType() const;
   bool isTemplateTypeParmType() const;          // C++ template type parameter
   bool isNullPtrType() const;                   // C++0x nullptr_t
-  bool isAtomicType() const;                    // C1X _Atomic()
+  bool isAtomicType() const;                    // C11 _Atomic()
 
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather

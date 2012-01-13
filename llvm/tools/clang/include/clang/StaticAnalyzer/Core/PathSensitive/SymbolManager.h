@@ -315,7 +315,7 @@ public:
 
   QualType getType(ASTContext &C) const { return ToTy; }
 
-  const SymExpr *getOperand() const { return Operand; };
+  const SymExpr *getOperand() const { return Operand; }
 
   void dumpToStream(raw_ostream &os) const;
 
@@ -577,7 +577,7 @@ public:
 
   bool isLive(SymbolRef sym);
   bool isLiveRegion(const MemRegion *region);
-  bool isLive(const Stmt *ExprVal) const;
+  bool isLive(const Stmt *ExprVal, const LocationContext *LCtx) const;
   bool isLive(const VarRegion *VR, bool includeStoreBindings = false) const;
 
   /// \brief Unconditionally marks a symbol as live.

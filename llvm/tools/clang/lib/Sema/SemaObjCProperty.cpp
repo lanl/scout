@@ -518,6 +518,33 @@ static void checkARCPropertyImpl(Sema &S, SourceLocation propertyImplLoc,
   S.Diag(property->getLocation(), diag::note_property_declare);
 }
 
+/// setImpliedPropertyAttributeForReadOnlyProperty -
+/// This routine evaludates life-time attributes for a 'readonly'
+/// property with no known lifetime of its own, using backing
+/// 'ivar's attribute, if any. If no backing 'ivar', property's
+/// life-time is assumed 'strong'.
+static void setImpliedPropertyAttributeForReadOnlyProperty(
+              ObjCPropertyDecl *property, ObjCIvarDecl *ivar) {
+  Qualifiers::ObjCLifetime propertyLifetime = 
+    getImpliedARCOwnership(property->getPropertyAttributes(),
+                           property->getType());
+  if (propertyLifetime != Qualifiers::OCL_None)
+    return;
+  
+  if (!ivar) {
+    // if no backing ivar, make property 'strong'.
+    property->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_strong);
+    return;
+  }
+  // property assumes owenership of backing ivar.
+  QualType ivarType = ivar->getType();
+  Qualifiers::ObjCLifetime ivarLifetime = ivarType.getObjCLifetime();
+  if (ivarLifetime == Qualifiers::OCL_Strong)
+    property->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_strong);
+  else if (ivarLifetime == Qualifiers::OCL_Weak)
+    property->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_weak);
+  return;
+}
 
 /// ActOnPropertyImplDecl - This routine performs semantic checks and
 /// builds the AST node for a property implementation declaration; declared
@@ -608,11 +635,21 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     // @synthesize
     if (!PropertyIvar)
       PropertyIvar = PropertyId;
+    // Check that this is a previously declared 'ivar' in 'IDecl' interface
+    ObjCInterfaceDecl *ClassDeclared;
+    Ivar = IDecl->lookupInstanceVariable(PropertyIvar, ClassDeclared);
+    QualType PropType = property->getType();
+    QualType PropertyIvarType = PropType.getNonReferenceType();
+    
+    if (getLangOptions().ObjCAutoRefCount &&
+        (property->getPropertyAttributesAsWritten() &
+         ObjCPropertyDecl::OBJC_PR_readonly) &&
+        PropertyIvarType->isObjCRetainableType()) {
+      setImpliedPropertyAttributeForReadOnlyProperty(property, Ivar);    
+    }
+    
     ObjCPropertyDecl::PropertyAttributeKind kind 
       = property->getPropertyAttributes();
-    QualType PropType = property->getType();
-
-    QualType PropertyIvarType = PropType.getNonReferenceType();
 
     // Add GC __weak to the ivar type if the property is weak.
     if ((kind & ObjCPropertyDecl::OBJC_PR_weak) && 
@@ -627,9 +664,6 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
       }
     }
 
-    // Check that this is a previously declared 'ivar' in 'IDecl' interface
-    ObjCInterfaceDecl *ClassDeclared;
-    Ivar = IDecl->lookupInstanceVariable(PropertyIvar, ClassDeclared);
     if (!Ivar) {
       // In ARC, give the ivar a lifetime qualifier based on the
       // property attributes.
@@ -830,9 +864,13 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
               dyn_cast_or_null<CXXOperatorCallExpr>(callExpr))
           if (const FunctionDecl *FuncDecl = CXXCE->getDirectCallee())
             if (!FuncDecl->isTrivial())
-              Diag(PropertyLoc, 
-                   diag::warn_atomic_property_nontrivial_assign_op) 
+              if (property->getType()->isReferenceType()) {
+                Diag(PropertyLoc, 
+                     diag::err_atomic_property_nontrivial_assign_op)
                     << property->getType();
+                Diag(FuncDecl->getLocStart(), 
+                     diag::note_callee_decl) << FuncDecl;
+              }
       }
       PIDecl->setSetterCXXAssignment(Res.takeAs<Expr>());
     }
@@ -856,7 +894,8 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     }
     IC->addPropertyImplementation(PIDecl);
     if (getLangOptions().ObjCDefaultSynthProperties &&
-        getLangOptions().ObjCNonFragileABI2) {
+        getLangOptions().ObjCNonFragileABI2 &&
+        !IDecl->isObjCRequiresPropertyDefs()) {
       // Diagnose if an ivar was lazily synthesdized due to a previous
       // use and if 1) property is @dynamic or 2) property is synthesized
       // but it requires an ivar of different name.
@@ -1355,7 +1394,8 @@ void Sema::DefaultSynthesizeProperties(Scope *S, Decl *D) {
   if (!IC)
     return;
   if (ObjCInterfaceDecl* IDecl = IC->getClassInterface())
-    DefaultSynthesizeProperties(S, IC, IDecl);
+    if (!IDecl->isObjCRequiresPropertyDefs())
+      DefaultSynthesizeProperties(S, IC, IDecl);
 }
 
 void Sema::DiagnoseUnimplementedProperties(Scope *S, ObjCImplDecl* IMPDecl,
@@ -1392,6 +1432,11 @@ void Sema::DiagnoseUnimplementedProperties(Scope *S, ObjCImplDecl* IMPDecl,
       << Prop->getDeclName() << Prop->getGetterName();
       Diag(Prop->getLocation(),
            diag::note_property_declare);
+      if (LangOpts.ObjCDefaultSynthProperties && LangOpts.ObjCNonFragileABI2)
+        if (ObjCInterfaceDecl *ID = dyn_cast<ObjCInterfaceDecl>(CDecl))
+          if (const ObjCInterfaceDecl *RID = ID->isObjCRequiresPropertyDefs())
+            Diag(RID->getLocation(), diag::note_suppressed_class_declare);
+            
     }
 
     if (!Prop->isReadOnly() && !InsMap.count(Prop->getSetterName())) {
@@ -1402,6 +1447,10 @@ void Sema::DiagnoseUnimplementedProperties(Scope *S, ObjCImplDecl* IMPDecl,
       << Prop->getDeclName() << Prop->getSetterName();
       Diag(Prop->getLocation(),
            diag::note_property_declare);
+      if (LangOpts.ObjCDefaultSynthProperties && LangOpts.ObjCNonFragileABI2)
+        if (ObjCInterfaceDecl *ID = dyn_cast<ObjCInterfaceDecl>(CDecl))
+          if (const ObjCInterfaceDecl *RID = ID->isObjCRequiresPropertyDefs())
+            Diag(RID->getLocation(), diag::note_suppressed_class_declare);
     }
   }
 }
@@ -1666,6 +1715,21 @@ void Sema::CheckObjCPropertyAttributes(Decl *PDecl,
   ObjCPropertyDecl *PropertyDecl = cast<ObjCPropertyDecl>(PDecl);
   QualType PropertyTy = PropertyDecl->getType(); 
 
+  if (getLangOptions().ObjCAutoRefCount &&
+      (Attributes & ObjCDeclSpec::DQ_PR_readonly) &&
+      PropertyTy->isObjCRetainableType()) {
+    // 'readonly' property with no obvious lifetime.
+    // its life time will be determined by its backing ivar.
+    unsigned rel = (ObjCDeclSpec::DQ_PR_unsafe_unretained |
+                    ObjCDeclSpec::DQ_PR_copy |
+                    ObjCDeclSpec::DQ_PR_retain |
+                    ObjCDeclSpec::DQ_PR_strong |
+                    ObjCDeclSpec::DQ_PR_weak |
+                    ObjCDeclSpec::DQ_PR_assign);
+    if ((Attributes & rel) == 0)
+      return;
+  }
+  
   // readonly and readwrite/assign/retain/copy conflict.
   if ((Attributes & ObjCDeclSpec::DQ_PR_readonly) &&
       (Attributes & (ObjCDeclSpec::DQ_PR_readwrite |
@@ -1795,6 +1859,14 @@ void Sema::CheckObjCPropertyAttributes(Decl *PDecl,
         // not specified; including when property is 'readonly'.
         PropertyDecl->setPropertyAttributes(ObjCPropertyDecl::OBJC_PR_strong);
       else if (!(Attributes & ObjCDeclSpec::DQ_PR_readonly)) {
+        bool isAnyClassTy = 
+          (PropertyTy->isObjCClassType() || 
+           PropertyTy->isObjCQualifiedClassType());
+        // In non-gc, non-arc mode, 'Class' is treated as a 'void *' no need to
+        // issue any warning.
+        if (isAnyClassTy && getLangOptions().getGC() == LangOptions::NonGC)
+          ;
+        else {
           // Skip this warning in gc-only mode.
           if (getLangOptions().getGC() != LangOptions::GCOnly)
             Diag(Loc, diag::warn_objc_property_no_assignment_attribute);
@@ -1802,6 +1874,7 @@ void Sema::CheckObjCPropertyAttributes(Decl *PDecl,
           // If non-gc code warn that this is likely inappropriate.
           if (getLangOptions().getGC() == LangOptions::NonGC)
             Diag(Loc, diag::warn_objc_property_default_assign_on_object);
+        }
       }
 
     // FIXME: Implement warning dependent on NSCopying being

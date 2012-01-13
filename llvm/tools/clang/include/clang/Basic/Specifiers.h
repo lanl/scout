@@ -83,7 +83,7 @@ namespace clang {
     TST_double4,
 
     TST_unknown_anytype, // __unknown_anytype extension
-    TST_atomic,       // C1X _Atomic
+    TST_atomic,       // C11 _Atomic
     TST_error         // erroneous type
   };
   

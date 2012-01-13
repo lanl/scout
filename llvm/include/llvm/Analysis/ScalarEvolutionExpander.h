@@ -22,6 +22,8 @@
 #include <set>
 
 namespace llvm {
+  class TargetLowering;
+
   /// SCEVExpander - This class uses information about analyze scalars to
   /// rewrite expressions in canonical form.
   ///
@@ -57,6 +59,9 @@ namespace llvm {
     /// IVIncInsertPos - When expanding addrecs in the IVIncInsertLoop loop,
     /// insert the IV increment at this position.
     Instruction *IVIncInsertPos;
+
+    /// Phis that complete an IV chain. Reuse
+    std::set<AssertingVH<PHINode> > ChainedPhis;
 
     /// CanonicalMode - When true, expressions are expanded in "canonical"
     /// form. In particular, addrecs are expanded as arithmetic based on
@@ -100,6 +105,7 @@ namespace llvm {
       InsertedExpressions.clear();
       InsertedValues.clear();
       InsertedPostIncValues.clear();
+      ChainedPhis.clear();
     }
 
     /// getOrInsertCanonicalInductionVariable - This method returns the
@@ -115,7 +121,8 @@ namespace llvm {
     /// replaceCongruentIVs - replace congruent phis with their most canonical
     /// representative. Return the number of phis eliminated.
     unsigned replaceCongruentIVs(Loop *L, const DominatorTree *DT,
-                                 SmallVectorImpl<WeakVH> &DeadInsts);
+                                 SmallVectorImpl<WeakVH> &DeadInsts,
+                                 const TargetLowering *TLI = NULL);
 
     /// expandCodeFor - Insert code to directly compute the specified SCEV
     /// expression into the program.  The inserted code is inserted into the
@@ -161,6 +168,9 @@ namespace llvm {
     void clearInsertPoint() {
       Builder.ClearInsertionPoint();
     }
+
+    void setChainedPhi(PHINode *PN) { ChainedPhis.insert(PN); }
+
   private:
     LLVMContext &getContext() const { return SE.getContext(); }
 

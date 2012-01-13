@@ -267,11 +267,8 @@ static void InitializeStandardPredefinedMacros(const TargetInfo &TI,
     Builder.defineMacro("__STDC_HOSTED__");
 
   if (!LangOpts.CPlusPlus) {
-    // FIXME: C1x doesn't have a defined version number yet, so pick something
-    // that is the minimum possible according to their placeholder scheme
-    // 201ymmL.
-    if (LangOpts.C1X)
-      Builder.defineMacro("__STDC_VERSION__", "201001L");
+    if (LangOpts.C11)
+      Builder.defineMacro("__STDC_VERSION__", "201112L");
     else if (LangOpts.C99)
       Builder.defineMacro("__STDC_VERSION__", "199901L");
     else if (!LangOpts.GNUMode && LangOpts.Digraphs)
@@ -416,6 +413,9 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   if (LangOpts.OptimizeSize)
     Builder.defineMacro("__OPTIMIZE_SIZE__");
 
+  if (LangOpts.FastMath)
+    Builder.defineMacro("__FAST_MATH__");
+
   // Initialize target-specific preprocessor defines.
 
   // Define type sizing macros based on the target properties.
@@ -518,7 +518,7 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   }
 
   // Macros to control C99 numerics and <float.h>
-  Builder.defineMacro("__FLT_EVAL_METHOD__", "0");
+  Builder.defineMacro("__FLT_EVAL_METHOD__", Twine(TI.getFloatEvalMethod()));
   Builder.defineMacro("__FLT_RADIX__", "2");
   int Dig = PickFP(&TI.getLongDoubleFormat(), -1/*FIXME*/, 17, 21, 33, 36);
   Builder.defineMacro("__DECIMAL_DIG__", Twine(Dig));
@@ -628,10 +628,6 @@ void clang::InitializePreprocessor(Preprocessor &PP,
 
   InitializeFileRemapping(PP.getDiagnostics(), PP.getSourceManager(),
                           PP.getFileManager(), InitOpts);
-
-  // Specify whether the preprocessor should replace #include/#import with
-  // module imports when plausible.
-  PP.setAutoModuleImport(InitOpts.AutoModuleImport);
 
   // Emit line markers for various builtin sections of the file.  We don't do
   // this in asm preprocessor mode, because "# 4" is not a line marker directive
