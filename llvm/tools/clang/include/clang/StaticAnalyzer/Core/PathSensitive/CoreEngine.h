@@ -16,6 +16,7 @@
 #define LLVM_CLANG_GR_COREENGINE
 
 #include "clang/AST/Expr.h"
+#include "clang/Analysis/AnalysisContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/WorkList.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/BlockCounter.h"
@@ -45,9 +46,6 @@ class CoreEngine {
   friend class IndirectGotoNodeBuilder;
   friend class SwitchNodeBuilder;
   friend class EndOfFunctionNodeBuilder;
-  friend class CallEnterNodeBuilder;
-  friend class CallExitNodeBuilder;
-
 public:
   typedef std::vector<std::pair<BlockEdge, const ExplodedNode*> >
             BlocksExhausted;
@@ -91,9 +89,6 @@ private:
 
   void HandleBranch(const Stmt *Cond, const Stmt *Term, const CFGBlock *B,
                     ExplodedNode *Pred);
-  void HandleCallEnter(const CallEnter &L, const CFGBlock *Block,
-                       unsigned Index, ExplodedNode *Pred);
-  void HandleCallExit(const CallExit &L, ExplodedNode *Pred);
 
 private:
   CoreEngine(const CoreEngine&); // Do not implement.
@@ -469,6 +464,10 @@ public:
   const Expr *getTarget() const { return E; }
 
   const ProgramState *getState() const { return Pred->State; }
+  
+  const LocationContext *getLocationContext() const {
+    return Pred->getLocationContext();
+  }
 };
 
 class SwitchNodeBuilder {
@@ -518,66 +517,13 @@ public:
   const Expr *getCondition() const { return Condition; }
 
   const ProgramState *getState() const { return Pred->State; }
-};
-
-class CallEnterNodeBuilder {
-  CoreEngine &Eng;
-
-  const ExplodedNode *Pred;
-
-  // The call site. For implicit automatic object dtor, this is the trigger 
-  // statement.
-  const Stmt *CE;
-
-  // The context of the callee.
-  const StackFrameContext *CalleeCtx;
-
-  // The parent block of the CallExpr.
-  const CFGBlock *Block;
-
-  // The CFGBlock index of the CallExpr.
-  unsigned Index;
-
-public:
-  CallEnterNodeBuilder(CoreEngine &eng, const ExplodedNode *pred, 
-                         const Stmt *s, const StackFrameContext *callee, 
-                         const CFGBlock *blk, unsigned idx)
-    : Eng(eng), Pred(pred), CE(s), CalleeCtx(callee), Block(blk), Index(idx) {}
-
-  const ProgramState *getState() const { return Pred->getState(); }
-
-  const LocationContext *getLocationContext() const { 
+  
+  const LocationContext *getLocationContext() const {
     return Pred->getLocationContext();
   }
-
-  const Stmt *getCallExpr() const { return CE; }
-
-  const StackFrameContext *getCalleeContext() const { return CalleeCtx; }
-
-  const CFGBlock *getBlock() const { return Block; }
-
-  unsigned getIndex() const { return Index; }
-
-  void generateNode(const ProgramState *state);
 };
 
-class CallExitNodeBuilder {
-  CoreEngine &Eng;
-  const ExplodedNode *Pred;
-
-public:
-  CallExitNodeBuilder(CoreEngine &eng, const ExplodedNode *pred)
-    : Eng(eng), Pred(pred) {}
-
-  const ExplodedNode *getPredecessor() const { return Pred; }
-
-  const ProgramState *getState() const { return Pred->getState(); }
-
-  void generateNode(const ProgramState *state);
-}; 
-
-} // end GR namespace
-
+} // end ento namespace
 } // end clang namespace
 
 #endif

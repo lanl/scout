@@ -59,10 +59,10 @@ std::string PTXSubtarget::getTargetString() const {
 
 std::string PTXSubtarget::getPTXVersionString() const {
   switch(PTXVersion) {
-    default: llvm_unreachable("Unknown PTX version");
     case PTX_VERSION_2_0: return "2.0";
     case PTX_VERSION_2_1: return "2.1";
     case PTX_VERSION_2_2: return "2.2";
     case PTX_VERSION_2_3: return "2.3";
   }
+  llvm_unreachable("Invalid PTX version");
 }

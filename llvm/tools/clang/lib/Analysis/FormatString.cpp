@@ -200,7 +200,7 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
     case 'L': lmKind = LengthModifier::AsLongDouble; ++I; break;
     case 'q': lmKind = LengthModifier::AsLongLong;   ++I; break;
     case 'a':
-      if (IsScanf && !LO.C99 && !LO.CPlusPlus) {
+      if (IsScanf && !LO.C99 && !LO.CPlusPlus0x) {
         // For scanf in C90, look at the next character to see if this should
         // be parsed as the GNU extension 'a' length modifier. If not, this
         // will be parsed as a conversion specifier.
@@ -210,6 +210,13 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
           break;
         }
         --I;
+      }
+      return false;
+    case 'm':
+      if (IsScanf) {
+        lmKind = LengthModifier::AsMAllocate;
+        ++I;
+        break;
       }
       return false;
   }
@@ -409,6 +416,8 @@ analyze_format_string::LengthModifier::toString() const {
     return "L";
   case AsAllocate:
     return "a";
+  case AsMAllocate:
+    return "m";
   case None:
     return "";
   }
@@ -550,6 +559,19 @@ bool FormatSpecifier::hasValidLengthModifier() const {
       switch (CS.getKind()) {
         case ConversionSpecifier::sArg:
         case ConversionSpecifier::SArg:
+        case ConversionSpecifier::ScanListArg:
+          return true;
+        default:
+          return false;
+      }
+
+    case LengthModifier::AsMAllocate:
+      switch (CS.getKind()) {
+        case ConversionSpecifier::cArg:
+        case ConversionSpecifier::CArg:
+        case ConversionSpecifier::sArg:
+        case ConversionSpecifier::SArg:
+        case ConversionSpecifier::ScanListArg:
           return true;
         default:
           return false;

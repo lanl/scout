@@ -50,15 +50,13 @@ Parser::DeclGroupPtrTy Parser::ParseObjCAtDirectives() {
   }
   case tok::objc_protocol: {
     ParsedAttributes attrs(AttrFactory);
-    SingleDecl = ParseObjCAtProtocolDeclaration(AtLoc, attrs);
-    break;
+    return ParseObjCAtProtocolDeclaration(AtLoc, attrs);
   }
   case tok::objc_implementation:
     SingleDecl = ParseObjCAtImplementationDeclaration(AtLoc);
     break;
   case tok::objc_end:
     return ParseObjCAtEndDeclaration(AtLoc);
-    break;
   case tok::objc_compatibility_alias:
     SingleDecl = ParseObjCAtAliasDeclaration(AtLoc);
     break;
@@ -68,6 +66,12 @@ Parser::DeclGroupPtrTy Parser::ParseObjCAtDirectives() {
   case tok::objc_dynamic:
     SingleDecl = ParseObjCPropertyDynamic(AtLoc);
     break;
+  case tok::objc_import:
+    if (getLang().Modules)
+      return ParseModuleImport(AtLoc);
+      
+    // Fall through
+      
   default:
     Diag(AtLoc, diag::err_unexpected_at);
     SkipUntil(tok::semi);
@@ -1374,8 +1378,9 @@ void Parser::ParseObjCClassInstanceVariables(Decl *interfaceDecl,
 ///   "@protocol identifier ;" should be resolved as "@protocol
 ///   identifier-list ;": objc-interface-decl-list may not start with a
 ///   semicolon in the first alternative if objc-protocol-refs are omitted.
-Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
-                                             ParsedAttributes &attrs) {
+Parser::DeclGroupPtrTy 
+Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
+                                       ParsedAttributes &attrs) {
   assert(Tok.isObjCAtKeyword(tok::objc_protocol) &&
          "ParseObjCAtProtocolDeclaration(): Expected @protocol");
   ConsumeToken(); // the "protocol" identifier
@@ -1383,12 +1388,12 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
   if (Tok.is(tok::code_completion)) {
     Actions.CodeCompleteObjCProtocolDecl(getCurScope());
     cutOffParsing();
-    return 0;
+    return DeclGroupPtrTy();
   }
 
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident); // missing protocol name.
-    return 0;
+    return DeclGroupPtrTy();
   }
   // Save the protocol name, then consume it.
   IdentifierInfo *protocolName = Tok.getIdentifierInfo();
@@ -1413,7 +1418,7 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
       if (Tok.isNot(tok::identifier)) {
         Diag(Tok, diag::err_expected_ident);
         SkipUntil(tok::semi);
-        return 0;
+        return DeclGroupPtrTy();
       }
       ProtocolRefs.push_back(IdentifierLocPair(Tok.getIdentifierInfo(),
                                                Tok.getLocation()));
@@ -1424,7 +1429,7 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
     }
     // Consume the ';'.
     if (ExpectAndConsume(tok::semi, diag::err_expected_semi_after, "@protocol"))
-      return 0;
+      return DeclGroupPtrTy();
 
     return Actions.ActOnForwardProtocolDeclaration(AtLoc,
                                                    &ProtocolRefs[0],
@@ -1440,7 +1445,7 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
   if (Tok.is(tok::less) &&
       ParseObjCProtocolReferences(ProtocolRefs, ProtocolLocs, false,
                                   LAngleLoc, EndProtoLoc))
-    return 0;
+    return DeclGroupPtrTy();
 
   Decl *ProtoType =
     Actions.ActOnStartProtocolInterface(AtLoc, protocolName, nameLoc,
@@ -1450,7 +1455,7 @@ Decl *Parser::ParseObjCAtProtocolDeclaration(SourceLocation AtLoc,
                                         EndProtoLoc, attrs.getList());
 
   ParseObjCInterfaceDeclList(tok::objc_protocol, ProtoType);
-  return ProtoType;
+  return Actions.ConvertDeclToDeclGroup(ProtoType);
 }
 
 ///   objc-implementation:

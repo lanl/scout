@@ -38,9 +38,10 @@ def ext_integer_complex : Extension<
   "complex integer types are an extension">;
 def ext_thread_before : Extension<"'__thread' before 'static'">;
 
-def ext_empty_struct_union : Extension<"empty %select{struct|union}0 "
-  "(accepted as an extension) has size 0 in C, size 1 in C++">, 
-  InGroup<CXXCompat>;
+def ext_empty_struct_union : Extension<
+  "empty %select{struct|union}0 is a GNU extension">, InGroup<GNU>;
+def warn_empty_struct_union_compat : Warning<"empty %select{struct|union}0 "
+  "has size 0 in C, size 1 in C++">, InGroup<CXXCompat>, DefaultIgnore;
 def error_empty_enum : Error<"use of empty enum">;
 def err_invalid_sign_spec : Error<"'%0' cannot be signed or unsigned">;
 def err_invalid_short_spec : Error<"'short %0' is invalid">;
@@ -79,15 +80,15 @@ def warn_microsoft_dependent_exists : Warning<
   "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">, 
   InGroup<DiagGroup<"microsoft-exists">>;
 
-def ext_c1x_generic_selection : Extension<
-  "generic selections are a C1X-specific feature">, InGroup<C1X>;
+def ext_c11_generic_selection : Extension<
+  "generic selections are a C11-specific feature">, InGroup<C11>;
 def err_duplicate_default_assoc : Error<
   "duplicate default generic association">;
 def note_previous_default_assoc : Note<
   "previous default generic association is here">;
 
-def ext_c1x_alignas : Extension<
-  "_Alignas is a C1X-specific feature">, InGroup<C1X>;
+def ext_c11_alignas : Extension<
+  "_Alignas is a C11-specific feature">, InGroup<C11>;
 
 def ext_gnu_indirect_goto : Extension<
   "use of GNU indirect-goto extension">, InGroup<GNU>;
@@ -304,8 +305,8 @@ def err_unexected_colon_in_nested_name_spec : Error<
   "unexpected ':' in nested name specifier">;
 def err_bool_redeclaration : Error<
   "redeclaration of C++ built-in type 'bool'">;
-def ext_c1x_static_assert : Extension<
-  "_Static_assert is a C1X-specific feature">, InGroup<C1X>;
+def ext_c11_static_assert : Extension<
+  "_Static_assert is a C11-specific feature">, InGroup<C11>;
 def warn_cxx98_compat_static_assert : Warning<
   "static_assert declarations are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
@@ -386,7 +387,11 @@ def err_expected_lparen_after_type : Error<
 def err_expected_equal_after_declarator : Error<
   "expected '=' after declarator">;
 def warn_parens_disambiguated_as_function_decl : Warning<
-  "parentheses were disambiguated as a function declarator">;
+  "parentheses were disambiguated as a function declarator">,
+  InGroup<VexingParse>;
+def warn_dangling_else : Warning<
+  "add explicit braces to avoid dangling else">,
+  InGroup<DanglingElse>;
 def err_expected_member_or_base_name : Error<
   "expected class member or base class name">;
 def err_expected_lbrace_after_base_specifiers : Error<
@@ -530,28 +535,27 @@ def err_ctor_init_missing_comma : Error<
   "missing ',' between base or member initializers">;
 
 // C++ declarations
-def err_friend_decl_defines_class : Error<
+def err_friend_decl_defines_type : Error<
   "cannot define a type in a friend declaration">;
 def err_missing_whitespace_digraph : Error<
   "found '<::' after a "
   "%select{template name|const_cast|dynamic_cast|reinterpret_cast|static_cast}0"
   " which forms the digraph '<:' (aka '[') and a ':', did you mean '< ::'?">;
 
-def warn_deleted_function_accepted_as_extension: ExtWarn<
-  "deleted function definition accepted as a C++11 extension">, InGroup<CXX11>;
+def ext_deleted_function : ExtWarn<
+  "deleted function definitions are a C++11 extension">, InGroup<CXX11>;
 def warn_cxx98_compat_deleted_function : Warning<
   "deleted function definitions are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
-def warn_defaulted_function_accepted_as_extension: ExtWarn<
-  "defaulted function definition accepted as a C++11 extension">,
-  InGroup<CXX11>;
+def ext_defaulted_function : ExtWarn<
+  "defaulted function definitions are a C++11 extension">, InGroup<CXX11>;
 def warn_cxx98_compat_defaulted_function : Warning<
   "defaulted function definitions are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 
 // C++11 in-class member initialization
 def ext_nonstatic_member_init : ExtWarn<
-  "in-class initialization of non-static data member accepted as a C++11 extension">,
+  "in-class initialization of non-static data member is a C++11 extension">,
   InGroup<CXX11>;
 def warn_cxx98_compat_nonstatic_member_init : Warning<
   "in-class initialization of non-static data members is incompatible with C++98">,
@@ -563,7 +567,7 @@ def err_incomplete_array_member_init: Error<
 
 // C++11 alias-declaration
 def ext_alias_declaration : ExtWarn<
-  "alias declarations accepted as a C++11 extension">, InGroup<CXX11>;
+  "alias declarations are a C++11 extension">, InGroup<CXX11>;
 def warn_cxx98_compat_alias_declaration : Warning<
   "alias declarations are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
@@ -574,7 +578,7 @@ def err_alias_declaration_specialization : Error<
     
 // C++11 override control
 def ext_override_control_keyword : ExtWarn<
-  "'%0' keyword accepted as a C++11 extension">, InGroup<CXX11>;
+  "'%0' keyword is a C++11 extension">, InGroup<CXX11>;
 def warn_cxx98_compat_override_control_keyword : Warning<
   "'%0' keyword is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
@@ -753,7 +757,7 @@ def err_mismatch_forall_array : Error<
 
 let CategoryName = "Modules Issue" in {
 def err_module_expected_ident : Error<
-  "expected a module name after '__import_module__'">;
+  "expected a module name after module import">;
 def err_module_expected_semi : Error<
   "expected a semicolon name after module name">;
 }

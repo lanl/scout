@@ -43,7 +43,6 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/ADT/VectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CommandLine.h"
@@ -2167,7 +2166,8 @@ SDValue ARMTargetLowering::LowerGlobalAddressDarwin(SDValue Op,
   MachineFunction &MF = DAG.getMachineFunction();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
 
-  // FIXME: Enable this for static codegen when tool issues are fixed.
+  // FIXME: Enable this for static codegen when tool issues are fixed.  Also
+  // update ARMFastISel::ARMMaterializeGV.
   if (Subtarget->useMovt() && RelocM != Reloc::Static) {
     ++NumMovwMovt;
     // FIXME: Once remat is capable of dealing with instructions with register
@@ -5792,7 +5792,12 @@ EmitSjLjDispatchBlock(MachineInstr *MI, MachineBasicBlock *MBB) const {
                              MachineMemOperand::MOLoad |
                              MachineMemOperand::MOVolatile, 4, 4);
 
-  BuildMI(DispatchBB, dl, TII->get(ARM::eh_sjlj_dispatchsetup));
+  if (AFI->isThumb1OnlyFunction())
+    BuildMI(DispatchBB, dl, TII->get(ARM::tInt_eh_sjlj_dispatchsetup));
+  else if (!Subtarget->hasVFP2())
+    BuildMI(DispatchBB, dl, TII->get(ARM::Int_eh_sjlj_dispatchsetup_nofp));
+  else 
+    BuildMI(DispatchBB, dl, TII->get(ARM::Int_eh_sjlj_dispatchsetup));
 
   unsigned NumLPads = LPadList.size();
   if (Subtarget->isThumb2()) {

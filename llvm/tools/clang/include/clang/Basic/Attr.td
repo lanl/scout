@@ -524,6 +524,10 @@ def ArcWeakrefUnavailable : InheritableAttr {
   let Spellings = ["objc_arc_weak_reference_unavailable"];
 }
 
+def ObjCRequiresPropertyDefs : InheritableAttr {
+  let Spellings = ["objc_requires_property_definitions"];
+}
+
 def Unused : InheritableAttr {
   let Spellings = ["unused"];
 }

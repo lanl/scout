@@ -94,6 +94,10 @@ namespace llvm {
 
     const MCExpr *ForceExpAbs(const MCExpr* Expr);
 
+    void RecordProcStart(MCDwarfFrameInfo &Frame);
+    virtual void EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame);
+    void RecordProcEnd(MCDwarfFrameInfo &Frame);
+    virtual void EmitCFIEndProcImpl(MCDwarfFrameInfo &CurFrame);
     void EmitFrames(bool usingCFI);
 
     MCWin64EHUnwindInfo *getCurrentW64UnwindInfo(){return CurrentW64UnwindInfo;}
@@ -536,8 +540,8 @@ namespace llvm {
 
     virtual void EmitCompactUnwindEncoding(uint32_t CompactUnwindEncoding);
     virtual void EmitCFISections(bool EH, bool Debug);
-    virtual void EmitCFIStartProc();
-    virtual void EmitCFIEndProc();
+    void EmitCFIStartProc();
+    void EmitCFIEndProc();
     virtual void EmitCFIDefCfa(int64_t Register, int64_t Offset);
     virtual void EmitCFIDefCfaOffset(int64_t Offset);
     virtual void EmitCFIDefCfaRegister(int64_t Register);
@@ -547,8 +551,10 @@ namespace llvm {
     virtual void EmitCFIRememberState();
     virtual void EmitCFIRestoreState();
     virtual void EmitCFISameValue(int64_t Register);
+    virtual void EmitCFIRestore(int64_t Register);
     virtual void EmitCFIRelOffset(int64_t Register, int64_t Offset);
     virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
+    virtual void EmitCFIEscape(StringRef Values);
 
     virtual void EmitWin64EHStartProc(const MCSymbol *Symbol);
     virtual void EmitWin64EHEndProc();
@@ -588,8 +594,10 @@ namespace llvm {
     virtual void EmitRegSave(const SmallVectorImpl<unsigned> &RegList,
                              bool isVector);
 
+    /// FinishImpl - Streamer specific finalization.
+    virtual void FinishImpl() = 0;
     /// Finish - Finish emission of machine code.
-    virtual void Finish() = 0;
+    void Finish();
   };
 
   /// createNullStreamer - Create a dummy machine code streamer, which does
@@ -648,12 +656,6 @@ namespace llvm {
   MCStreamer *createELFStreamer(MCContext &Ctx, MCAsmBackend &TAB,
                                 raw_ostream &OS, MCCodeEmitter *CE,
                                 bool RelaxAll, bool NoExecStack);
-
-  /// createLoggingStreamer - Create a machine code streamer which just logs the
-  /// API calls and then dispatches to another streamer.
-  ///
-  /// The new streamer takes ownership of the \arg Child.
-  MCStreamer *createLoggingStreamer(MCStreamer *Child, raw_ostream &OS);
 
   /// createPureStreamer - Create a machine code streamer which will generate
   /// "pure" MC object files, for use with MC-JIT and testing tools.

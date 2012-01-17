@@ -297,12 +297,6 @@ void CursorVisitor::visitDeclsFromFileRegion(FileID File,
 
     CurDC = dyn_cast<DeclContext>(D);
 
-    // We handle forward decls via ObjCClassDecl.
-    if (ObjCInterfaceDecl *InterD = dyn_cast<ObjCInterfaceDecl>(D)) {
-      if (!InterD->isThisDeclarationADefinition())
-        continue;
-    }
-
     if (TagDecl *TD = dyn_cast<TagDecl>(D))
       if (!TD->isFreeStanding())
         continue;
@@ -957,6 +951,9 @@ bool CursorVisitor::VisitObjCCategoryDecl(ObjCCategoryDecl *ND) {
 }
 
 bool CursorVisitor::VisitObjCProtocolDecl(ObjCProtocolDecl *PID) {
+  if (!PID->isThisDeclarationADefinition())
+    return Visit(MakeCursorObjCProtocolRef(PID, PID->getLocation(), TU));
+  
   ObjCProtocolDecl::protocol_loc_iterator PL = PID->protocol_loc_begin();
   for (ObjCProtocolDecl::protocol_iterator I = PID->protocol_begin(),
        E = PID->protocol_end(); I != E; ++I, ++PL)
@@ -1004,6 +1001,11 @@ bool CursorVisitor::VisitObjCPropertyDecl(ObjCPropertyDecl *PD) {
 }
 
 bool CursorVisitor::VisitObjCInterfaceDecl(ObjCInterfaceDecl *D) {
+  if (!D->isThisDeclarationADefinition()) {
+    // Forward declaration is treated like a reference.
+    return Visit(MakeCursorObjCClassRef(D, D->getLocation(), TU));
+  }
+
   // Issue callbacks for super class.
   if (D->getSuperClass() &&
       Visit(MakeCursorObjCSuperClassRef(D->getSuperClass(),
@@ -1045,24 +1047,6 @@ bool CursorVisitor::VisitObjCImplementationDecl(ObjCImplementationDecl *D) {
 #endif
 
   return VisitObjCImplDecl(D);
-}
-
-bool CursorVisitor::VisitObjCForwardProtocolDecl(ObjCForwardProtocolDecl *D) {
-  ObjCForwardProtocolDecl::protocol_loc_iterator PL = D->protocol_loc_begin();
-  for (ObjCForwardProtocolDecl::protocol_iterator I = D->protocol_begin(),
-                                                  E = D->protocol_end();
-       I != E; ++I, ++PL)
-    if (Visit(MakeCursorObjCProtocolRef(*I, *PL, TU)))
-      return true;
-
-  return false;
-}
-
-bool CursorVisitor::VisitObjCClassDecl(ObjCClassDecl *D) {
-  if (Visit(MakeCursorObjCClassRef(D->getForwardInterfaceDecl(), 
-                                   D->getNameLoc(), TU)))
-      return true;
-  return false;
 }
 
 bool CursorVisitor::VisitObjCPropertyImplDecl(ObjCPropertyImplDecl *PD) {
@@ -3918,11 +3902,6 @@ CXCursor clang_getCursorReferenced(CXCursor C) {
       return clang_getNullCursor();
     if (UsingDecl *Using = dyn_cast<UsingDecl>(D))
       return MakeCursorOverloadedDeclRef(Using, D->getLocation(), tu);
-    if (ObjCClassDecl *Classes = dyn_cast<ObjCClassDecl>(D))
-      return MakeCursorOverloadedDeclRef(Classes, D->getLocation(), tu);
-    if (ObjCForwardProtocolDecl *Protocols
-                                        = dyn_cast<ObjCForwardProtocolDecl>(D))
-      return MakeCursorOverloadedDeclRef(Protocols, D->getLocation(), tu);
     if (ObjCPropertyImplDecl *PropImpl =dyn_cast<ObjCPropertyImplDecl>(D))
       if (ObjCPropertyDecl *Property = PropImpl->getPropertyDecl())
         return MakeCXCursor(Property, tu);
@@ -4165,23 +4144,24 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
     return clang_getNullCursor();
 
   case Decl::ObjCProtocol:
-    if (!cast<ObjCProtocolDecl>(D)->isForwardDecl())
-      return C;
+    if (ObjCProtocolDecl *Def = cast<ObjCProtocolDecl>(D)->getDefinition())
+      return MakeCXCursor(Def, TU);
     return clang_getNullCursor();
 
-  case Decl::ObjCInterface:
+  case Decl::ObjCInterface: {
     // There are two notions of a "definition" for an Objective-C
     // class: the interface and its implementation. When we resolved a
     // reference to an Objective-C class, produce the @interface as
     // the definition; when we were provided with the interface,
     // produce the @implementation as the definition.
+    ObjCInterfaceDecl *IFace = cast<ObjCInterfaceDecl>(D);
     if (WasReference) {
-      if (ObjCInterfaceDecl *Def = cast<ObjCInterfaceDecl>(D)->getDefinition())
+      if (ObjCInterfaceDecl *Def = IFace->getDefinition())
         return MakeCXCursor(Def, TU);
-    } else if (ObjCImplementationDecl *Impl
-                              = cast<ObjCInterfaceDecl>(D)->getImplementation())
+    } else if (ObjCImplementationDecl *Impl = IFace->getImplementation())
       return MakeCXCursor(Impl, TU);
     return clang_getNullCursor();
+  }
 
   case Decl::ObjCProperty:
     // FIXME: We don't really know where to find the
@@ -4195,14 +4175,6 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
         return MakeCXCursor(Def, TU);
 
     return clang_getNullCursor();
-
-  case Decl::ObjCForwardProtocol:
-    return MakeCursorOverloadedDeclRef(cast<ObjCForwardProtocolDecl>(D), 
-                                       D->getLocation(), TU);
-
-  case Decl::ObjCClass:
-    return MakeCursorOverloadedDeclRef(cast<ObjCClassDecl>(D), D->getLocation(),
-                                       TU);
 
   case Decl::Friend:
     if (NamedDecl *Friend = cast<FriendDecl>(D)->getFriendDecl())
@@ -4259,10 +4231,6 @@ unsigned clang_getNumOverloadedDecls(CXCursor C) {
   Decl *D = Storage.get<Decl*>();
   if (UsingDecl *Using = dyn_cast<UsingDecl>(D))
     return Using->shadow_size();
-  if (isa<ObjCClassDecl>(D))
-    return 1;
-  if (ObjCForwardProtocolDecl *Protocols =dyn_cast<ObjCForwardProtocolDecl>(D))
-    return Protocols->protocol_size();
   
   return 0;
 }
@@ -4290,10 +4258,6 @@ CXCursor clang_getOverloadedDecl(CXCursor cursor, unsigned index) {
     std::advance(Pos, index);
     return MakeCXCursor(cast<UsingShadowDecl>(*Pos)->getTargetDecl(), TU);
   }
-  if (ObjCClassDecl *Classes = dyn_cast<ObjCClassDecl>(D))
-    return MakeCXCursor(Classes->getForwardInterfaceDecl(), TU);
-  if (ObjCForwardProtocolDecl *Protocols = dyn_cast<ObjCForwardProtocolDecl>(D))
-    return MakeCXCursor(Protocols->protocol_begin()[index], TU);
   
   return clang_getNullCursor();
 }
@@ -5220,9 +5184,7 @@ static CXLanguageKind getDeclLanguage(const Decl *D) {
     case Decl::ObjCAtDefsField:
     case Decl::ObjCCategory:
     case Decl::ObjCCategoryImpl:
-    case Decl::ObjCClass:
     case Decl::ObjCCompatibleAlias:
-    case Decl::ObjCForwardProtocol:
     case Decl::ObjCImplementation:
     case Decl::ObjCInterface:
     case Decl::ObjCIvar:

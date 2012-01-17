@@ -276,8 +276,17 @@ void MCStreamer::EmitCFIStartProc() {
     report_fatal_error("Starting a frame before finishing the previous one!");
 
   MCDwarfFrameInfo Frame;
-  Frame.Function = LastSymbol;
+  EmitCFIStartProcImpl(Frame);
 
+  FrameInfos.push_back(Frame);
+  RegionIndicator = Code;
+}
+
+void MCStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
+}
+
+void MCStreamer::RecordProcStart(MCDwarfFrameInfo &Frame) {
+  Frame.Function = LastSymbol;
   // If the function is externally visible, we need to create a local
   // symbol to avoid relocations.
   StringRef Prefix = getContext().getAsmInfo().getPrivateGlobalPrefix();
@@ -287,16 +296,20 @@ void MCStreamer::EmitCFIStartProc() {
     Frame.Begin = getContext().CreateTempSymbol();
     EmitLabel(Frame.Begin);
   }
-
-  FrameInfos.push_back(Frame);
-  RegionIndicator = Code;
 }
 
 void MCStreamer::EmitCFIEndProc() {
   EnsureValidFrame();
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
-  CurFrame->End = getContext().CreateTempSymbol();
-  EmitLabel(CurFrame->End);
+  EmitCFIEndProcImpl(*CurFrame);
+}
+
+void MCStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
+}
+
+void MCStreamer::RecordProcEnd(MCDwarfFrameInfo &Frame) {
+  Frame.End = getContext().CreateTempSymbol();
+  EmitLabel(Frame.End);
 }
 
 void MCStreamer::EmitCFIDefCfa(int64_t Register, int64_t Offset) {
@@ -385,7 +398,7 @@ void MCStreamer::EmitCFIRememberState() {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   MCSymbol *Label = getContext().CreateTempSymbol();
   EmitLabel(Label);
-  MCCFIInstruction Instruction(MCCFIInstruction::Remember, Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::RememberState, Label);
   CurFrame->Instructions.push_back(Instruction);
 }
 
@@ -395,7 +408,7 @@ void MCStreamer::EmitCFIRestoreState() {
   MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
   MCSymbol *Label = getContext().CreateTempSymbol();
   EmitLabel(Label);
-  MCCFIInstruction Instruction(MCCFIInstruction::Restore, Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::RestoreState, Label);
   CurFrame->Instructions.push_back(Instruction);
 }
 
@@ -405,6 +418,24 @@ void MCStreamer::EmitCFISameValue(int64_t Register) {
   MCSymbol *Label = getContext().CreateTempSymbol();
   EmitLabel(Label);
   MCCFIInstruction Instruction(MCCFIInstruction::SameValue, Label, Register);
+  CurFrame->Instructions.push_back(Instruction);
+}
+
+void MCStreamer::EmitCFIRestore(int64_t Register) {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  MCSymbol *Label = getContext().CreateTempSymbol();
+  EmitLabel(Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::Restore, Label, Register);
+  CurFrame->Instructions.push_back(Instruction);
+}
+
+void MCStreamer::EmitCFIEscape(StringRef Values) {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  MCSymbol *Label = getContext().CreateTempSymbol();
+  EmitLabel(Label);
+  MCCFIInstruction Instruction(MCCFIInstruction::Escape, Label, Values);
   CurFrame->Instructions.push_back(Instruction);
 }
 
@@ -633,4 +664,11 @@ void MCStreamer::EmitW64Tables() {
     return;
 
   MCWin64EHUnwindEmitter::Emit(*this);
+}
+
+void MCStreamer::Finish() {
+  if (!FrameInfos.empty() && !FrameInfos.back().End)
+    report_fatal_error("Unfinished frame!");
+
+  FinishImpl();
 }

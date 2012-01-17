@@ -624,6 +624,12 @@ public:
     return MainFileID;
   }
 
+  /// \brief Set the file ID for the main source file.
+  void setMainFileID(FileID FID) {
+    assert(MainFileID.isInvalid() && "MainFileID already set!");
+    MainFileID = FID;
+  }
+
   /// \brief Set the file ID for the precompiled preamble.
   void setPreambleFileID(FileID Preamble) {
     assert(PreambleFileID.isInvalid() && "PreambleFileID already set!");
@@ -750,13 +756,19 @@ public:
     if (MyInvalid || !Entry.isFile())
       return 0;
 
-    return Entry.getFile().getContentCache()->OrigEntry;
+    const SrcMgr::ContentCache *Content = Entry.getFile().getContentCache();
+    if (!Content)
+      return 0;
+    return Content->OrigEntry;
   }
 
   /// Returns the FileEntry record for the provided SLocEntry.
   const FileEntry *getFileEntryForSLocEntry(const SrcMgr::SLocEntry &sloc) const
   {
-    return sloc.getFile().getContentCache()->OrigEntry;
+    const SrcMgr::ContentCache *Content = sloc.getFile().getContentCache();
+    if (!Content)
+      return 0;
+    return Content->OrigEntry;
   }
 
   /// getBufferData - Return a StringRef to the source buffer data for the
@@ -1073,6 +1085,11 @@ public:
   /// system header.
   bool isInExternCSystemHeader(SourceLocation Loc) const {
     return getFileCharacteristic(Loc) == SrcMgr::C_ExternCSystem;
+  }
+
+  /// \brief Returns whether \p Loc is expanded from a macro in a system header.
+  bool isInSystemMacro(SourceLocation loc) {
+    return loc.isMacroID() && isInSystemHeader(getSpellingLoc(loc));
   }
 
   /// \brief The size of the SLocEnty that \p FID represents.

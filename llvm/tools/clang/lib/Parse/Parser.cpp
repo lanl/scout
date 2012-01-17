@@ -662,7 +662,8 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
              diag::ext_extern_template) << SourceRange(ExternLoc, TemplateLoc);
       SourceLocation DeclEnd;
       return Actions.ConvertDeclToDeclGroup(
-                  ParseExplicitInstantiation(ExternLoc, TemplateLoc, DeclEnd));
+                  ParseExplicitInstantiation(Declarator::FileContext,
+                                             ExternLoc, TemplateLoc, DeclEnd));
     }
     // FIXME: Detect C++ linkage specifications here?
     goto dont_know;
@@ -671,9 +672,6 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
   case tok::kw___if_not_exists:
     ParseMicrosoftIfExistsExternalDeclaration();
     return DeclGroupPtrTy();
-
-  case tok::kw___import_module__:
-    return ParseModuleImport();
       
   default:
   dont_know:
@@ -781,12 +779,11 @@ Parser::ParseDeclarationOrFunctionDefinition(ParsingDeclSpec &DS,
     if (DS.SetTypeSpecType(DeclSpec::TST_unspecified, AtLoc, PrevSpec, DiagID))
       Diag(AtLoc, DiagID) << PrevSpec;
 
-    Decl *TheDecl = 0;
     if (Tok.isObjCAtKeyword(tok::objc_protocol))
-      TheDecl = ParseObjCAtProtocolDeclaration(AtLoc, DS.getAttributes());
-    else
-      TheDecl = ParseObjCAtInterfaceDeclaration(AtLoc, DS.getAttributes());
-    return Actions.ConvertDeclToDeclGroup(TheDecl);
+      return ParseObjCAtProtocolDeclaration(AtLoc, DS.getAttributes());
+
+    return Actions.ConvertDeclToDeclGroup(
+            ParseObjCAtInterfaceDeclaration(AtLoc, DS.getAttributes()));
   }
 
   // If the declspec consisted only of 'extern' and we have a string
@@ -938,7 +935,7 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
     if (Tok.is(tok::kw_delete)) {
       Diag(Tok, getLang().CPlusPlus0x ?
            diag::warn_cxx98_compat_deleted_function :
-           diag::warn_deleted_function_accepted_as_extension);
+           diag::ext_deleted_function);
 
       KWLoc = ConsumeToken();
       Actions.SetDeclDeleted(Res, KWLoc);
@@ -946,7 +943,7 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
     } else if (Tok.is(tok::kw_default)) {
       Diag(Tok, getLang().CPlusPlus0x ?
            diag::warn_cxx98_compat_defaulted_function :
-           diag::warn_defaulted_function_accepted_as_extension);
+           diag::ext_defaulted_function);
 
       KWLoc = ConsumeToken();
       Actions.SetDeclDefaulted(Res, KWLoc);
@@ -1076,11 +1073,12 @@ void Parser::ParseKNRParamDeclarations(Declarator &D) {
       if (Tok.isNot(tok::comma))
         break;
 
+      ParmDeclarator.clear();
+
       // Consume the comma.
-      ConsumeToken();
+      ParmDeclarator.setCommaLoc(ConsumeToken());
 
       // Parse the next declarator.
-      ParmDeclarator.clear();
       ParseDeclarator(ParmDeclarator);
     }
 
@@ -1575,8 +1573,8 @@ void Parser::ParseMicrosoftIfExistsExternalDeclaration() {
   Braces.consumeClose();
 }
 
-Parser::DeclGroupPtrTy Parser::ParseModuleImport() {
-  assert(Tok.is(tok::kw___import_module__) && 
+Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
+  assert(Tok.isObjCAtKeyword(tok::objc_import) && 
          "Improper start to module import");
   SourceLocation ImportLoc = ConsumeToken();
   
@@ -1602,7 +1600,7 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport() {
     break;
   } while (true);
   
-  DeclResult Import = Actions.ActOnModuleImport(ImportLoc, Path);
+  DeclResult Import = Actions.ActOnModuleImport(AtLoc, ImportLoc, Path);
   ExpectAndConsumeSemi(diag::err_module_expected_semi);
   if (Import.isInvalid())
     return DeclGroupPtrTy();

@@ -105,6 +105,14 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
+void MCObjectStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
+  RecordProcStart(Frame);
+}
+
+void MCObjectStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
+  RecordProcEnd(Frame);
+}
+
 void MCObjectStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
@@ -255,7 +263,7 @@ void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
   DF->getContents().resize(DF->getContents().size() + 4, 0);
 }
 
-void MCObjectStreamer::Finish() {
+void MCObjectStreamer::FinishImpl() {
   // Dump out the dwarf file & directory tables and line tables.
   if (getContext().hasDwarfFiles())
     MCDwarfFileTable::Emit(this);

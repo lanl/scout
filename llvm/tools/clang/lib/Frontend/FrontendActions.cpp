@@ -134,8 +134,14 @@ ASTConsumer *GenerateModuleAction::CreateASTConsumer(CompilerInstance &CI,
 /// \param Includes Will be augmented with the set of #includes or #imports
 /// needed to load all of the named headers.
 static void collectModuleHeaderIncludes(const LangOptions &LangOpts,
+                                        FileManager &FileMgr,
+                                        ModuleMap &ModMap,
                                         clang::Module *Module,
                                         llvm::SmallString<256> &Includes) {
+  // Don't collect any headers for unavailable modules.
+  if (!Module->isAvailable())
+    return;
+
   // Add includes for each of these headers.
   for (unsigned I = 0, N = Module->Headers.size(); I != N; ++I) {
     if (LangOpts.ObjC1)
@@ -157,7 +163,7 @@ static void collectModuleHeaderIncludes(const LangOptions &LangOpts,
       Includes += "\"\n";
     }
   } else if (const DirectoryEntry *UmbrellaDir = Module->getUmbrellaDir()) {
-    // Add all of the headers we find in this subdirectory (FIXME: recursively!).
+    // Add all of the headers we find in this subdirectory.
     llvm::error_code EC;
     llvm::SmallString<128> DirNative;
     llvm::sys::path::native(UmbrellaDir->getName(), DirNative);
@@ -171,6 +177,12 @@ static void collectModuleHeaderIncludes(const LangOptions &LangOpts,
           .Default(false))
         continue;
       
+      // If this header is marked 'unavailable' in this module, don't include 
+      // it.
+      if (const FileEntry *Header = FileMgr.getFile(Dir->path()))
+        if (ModMap.isHeaderInUnavailableModule(Header))
+          continue;
+      
       // Include this header umbrella header for submodules.
       if (LangOpts.ObjC1)
         Includes += "#import \"";
@@ -182,11 +194,10 @@ static void collectModuleHeaderIncludes(const LangOptions &LangOpts,
   }
   
   // Recurse into submodules.
-  for (llvm::StringMap<clang::Module *>::iterator
-            Sub = Module->SubModules.begin(),
-         SubEnd = Module->SubModules.end();
+  for (clang::Module::submodule_iterator Sub = Module->submodule_begin(),
+                                      SubEnd = Module->submodule_end();
        Sub != SubEnd; ++Sub)
-    collectModuleHeaderIncludes(LangOpts, Sub->getValue(), Includes);
+    collectModuleHeaderIncludes(LangOpts, FileMgr, ModMap, *Sub, Includes);
 }
 
 bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI, 
@@ -222,13 +233,25 @@ bool GenerateModuleAction::BeginSourceFileAction(CompilerInstance &CI,
     
     return false;
   }
-  
+
+  // Check whether we can build this module at all.
+  StringRef Feature;
+  if (!Module->isAvailable(CI.getLangOpts(), Feature)) {
+    CI.getDiagnostics().Report(diag::err_module_unavailable)
+      << Module->getFullModuleName()
+      << Feature;
+
+    return false;
+  }
+
   // Do we have an umbrella header for this module?
   const FileEntry *UmbrellaHeader = Module->getUmbrellaHeader();
   
   // Collect the set of #includes we need to build the module.
   llvm::SmallString<256> HeaderContents;
-  collectModuleHeaderIncludes(CI.getLangOpts(), Module, HeaderContents);
+  collectModuleHeaderIncludes(CI.getLangOpts(), CI.getFileManager(),
+    CI.getPreprocessor().getHeaderSearchInfo().getModuleMap(),
+    Module, HeaderContents);
   if (UmbrellaHeader && HeaderContents.empty()) {
     // Simple case: we have an umbrella header and there are no additional
     // includes, we can just parse the umbrella header directly.

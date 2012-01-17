@@ -102,9 +102,6 @@ X86TargetMachine::X86TargetMachine(const Target &T, StringRef TT,
   // default to hard float ABI
   if (Options.FloatABIType == FloatABI::Default)
     this->Options.FloatABIType = FloatABI::Hard;   
-
-  if (Options.EnableSegmentedStacks && !Subtarget.isTargetELF())
-    report_fatal_error("Segmented stacks are only implemented on ELF.");
 }
 
 //===----------------------------------------------------------------------===//
@@ -142,7 +139,7 @@ bool X86TargetMachine::addPostRegAlloc(PassManagerBase &PM) {
 
 bool X86TargetMachine::addPreEmitPass(PassManagerBase &PM) {
   bool ShouldPrint = false;
-  if (getOptLevel() != CodeGenOpt::None && Subtarget.hasXMMInt()) {
+  if (getOptLevel() != CodeGenOpt::None && Subtarget.hasSSE2()) {
     PM.add(createExecutionDependencyFixPass(&X86::VR128RegClass));
     ShouldPrint = true;
   }

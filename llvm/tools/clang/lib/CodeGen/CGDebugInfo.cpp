@@ -863,7 +863,7 @@ CGDebugInfo::CreateCXXMemberFunction(const CXXMethodDecl *Method,
 }
 
 /// CollectCXXMemberFunctions - A helper function to collect debug info for
-/// C++ member functions.This is used while creating debug info entry for 
+/// C++ member functions. This is used while creating debug info entry for 
 /// a Record.
 void CGDebugInfo::
 CollectCXXMemberFunctions(const CXXRecordDecl *RD, llvm::DIFile Unit,
@@ -887,7 +887,7 @@ void CGDebugInfo::
 CollectCXXFriends(const CXXRecordDecl *RD, llvm::DIFile Unit,
                 SmallVectorImpl<llvm::Value *> &EltTys,
                 llvm::DIType RecordTy) {
-  for (CXXRecordDecl::friend_iterator BI =  RD->friend_begin(),
+  for (CXXRecordDecl::friend_iterator BI = RD->friend_begin(),
          BE = RD->friend_end(); BI != BE; ++BI) {
     if ((*BI)->isUnsupportedFriend())
       continue;
@@ -1113,18 +1113,18 @@ llvm::DIType CGDebugInfo::CreateType(const RecordType *Ty) {
     CollectCXXBases(CXXDecl, Unit, EltTys, FwdDecl);
     CollectVTableInfo(CXXDecl, Unit, EltTys);
   }
-  
+
   // Collect static variables with initializers.
   for (RecordDecl::decl_iterator I = RD->decls_begin(), E = RD->decls_end();
        I != E; ++I)
     if (const VarDecl *V = dyn_cast<VarDecl>(*I)) {
-      if (const Expr *Init = V->getInit()) {
-        Expr::EvalResult Result;
-        if (Init->EvaluateAsRValue(Result, CGM.getContext()) &&
-            Result.Val.isInt()) {
-          llvm::ConstantInt *CI 
-            = llvm::ConstantInt::get(CGM.getLLVMContext(), Result.Val.getInt());
-          
+      llvm::SmallVector<PartialDiagnosticAt, 8> Notes;
+      if (V->getInit() && V->evaluateValue(Notes)) {
+        APValue *Value = V->getEvaluatedValue();
+        if (Value && Value->isInt()) {
+          llvm::ConstantInt *CI
+            = llvm::ConstantInt::get(CGM.getLLVMContext(), Value->getInt());
+
           // Create the descriptor for static variable.
           llvm::DIFile VUnit = getOrCreateFile(V->getLocation());
           StringRef VName = V->getName();

@@ -31,7 +31,7 @@ namespace scout
 
    public:
   
-    glToolkit();
+    glToolkit(glCamera* camera = NULL);
 
     void addRenderable(glRenderable *r) 
     { _renderables.push_back(r); }

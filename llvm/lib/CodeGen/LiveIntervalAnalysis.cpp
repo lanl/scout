@@ -15,7 +15,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "liveintervals"
+#define DEBUG_TYPE "regalloc"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "VirtRegMap.h"
 #include "llvm/Value.h"
@@ -646,7 +646,7 @@ bool LiveIntervals::shrinkToUses(LiveInterval *li,
                                  SmallVectorImpl<MachineInstr*> *dead) {
   DEBUG(dbgs() << "Shrink: " << *li << '\n');
   assert(TargetRegisterInfo::isVirtualRegister(li->reg)
-         && "Can't only shrink physical registers");
+         && "Can only shrink virtual registers");
   // Find all the values used, including PHI kills.
   SmallVector<std::pair<SlotIndex, VNInfo*>, 16> WorkList;
 
@@ -778,28 +778,6 @@ bool LiveIntervals::shrinkToUses(LiveInterval *li,
 //===----------------------------------------------------------------------===//
 // Register allocator hooks.
 //
-
-MachineBasicBlock::iterator
-LiveIntervals::getLastSplitPoint(const LiveInterval &li,
-                                 MachineBasicBlock *mbb) const {
-  const MachineBasicBlock *lpad = mbb->getLandingPadSuccessor();
-
-  // If li is not live into a landing pad, we can insert spill code before the
-  // first terminator.
-  if (!lpad || !isLiveInToMBB(li, lpad))
-    return mbb->getFirstTerminator();
-
-  // When there is a landing pad, spill code must go before the call instruction
-  // that can throw.
-  MachineBasicBlock::iterator I = mbb->end(), B = mbb->begin();
-  while (I != B) {
-    --I;
-    if (I->isCall())
-      return I;
-  }
-  // The block contains no calls that can throw, so use the first terminator.
-  return mbb->getFirstTerminator();
-}
 
 void LiveIntervals::addKillFlags() {
   for (iterator I = begin(), E = end(); I != E; ++I) {

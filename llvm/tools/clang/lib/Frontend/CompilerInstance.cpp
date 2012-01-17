@@ -252,7 +252,8 @@ void CompilerInstance::createPreprocessor() {
 
   // Create the Preprocessor.
   HeaderSearch *HeaderInfo = new HeaderSearch(getFileManager(), 
-                                              getDiagnostics());
+                                              getDiagnostics(),
+                                              getLangOpts());
   PP = new Preprocessor(getDiagnostics(), getLangOpts(), &getTarget(),
                         getSourceManager(), *HeaderInfo, *this, PTHMgr,
                         /*OwnsHeaderSearch=*/true);
@@ -1221,25 +1222,26 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
   if (Path.size() > 1) {
     for (unsigned I = 1, N = Path.size(); I != N; ++I) {
       StringRef Name = Path[I].first->getName();
-      llvm::StringMap<clang::Module *>::iterator Pos
-        = Module->SubModules.find(Name);
+      clang::Module *Sub = Module->findSubmodule(Name);
       
-      if (Pos == Module->SubModules.end()) {
+      if (!Sub) {
         // Attempt to perform typo correction to find a module name that works.
         llvm::SmallVector<StringRef, 2> Best;
         unsigned BestEditDistance = (std::numeric_limits<unsigned>::max)();
         
-        for (llvm::StringMap<clang::Module *>::iterator
-                  J = Module->SubModules.begin(), 
-               JEnd = Module->SubModules.end();
+        for (clang::Module::submodule_iterator J = Module->submodule_begin(), 
+                                            JEnd = Module->submodule_end();
              J != JEnd; ++J) {
-          unsigned ED = Name.edit_distance(J->getValue()->Name,
+          unsigned ED = Name.edit_distance((*J)->Name,
                                            /*AllowReplacements=*/true,
                                            BestEditDistance);
           if (ED <= BestEditDistance) {
-            if (ED < BestEditDistance)
+            if (ED < BestEditDistance) {
               Best.clear();
-            Best.push_back(J->getValue()->Name);
+              BestEditDistance = ED;
+            }
+            
+            Best.push_back((*J)->Name);
           }
         }
         
@@ -1251,11 +1253,12 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
             << SourceRange(Path[0].second, Path[I-1].second)
             << FixItHint::CreateReplacement(SourceRange(Path[I].second),
                                             Best[0]);
-          Pos = Module->SubModules.find(Best[0]);
+          
+          Sub = Module->findSubmodule(Best[0]);
         }
       }
       
-      if (Pos == Module->SubModules.end()) {
+      if (!Sub) {
         // No submodule by this name. Complain, and don't look for further
         // submodules.
         getDiagnostics().Report(Path[I].second, diag::err_no_submodule)
@@ -1264,7 +1267,7 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
         break;
       }
       
-      Module = Pos->getValue();
+      Module = Sub;
     }
   }
   
@@ -1284,6 +1287,19 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
       
       return 0;
     }
+
+    // Check whether this module is available.
+    StringRef Feature;
+    if (!Module->isAvailable(getLangOpts(), Feature)) {
+      getDiagnostics().Report(ImportLoc, diag::err_module_unavailable)
+        << Module->getFullModuleName()
+        << Feature
+        << SourceRange(Path.front().second, Path.back().second);
+      LastModuleImportLoc = ImportLoc;
+      LastModuleImportResult = 0;
+      return 0;
+    }
+
     ModuleManager->makeModuleVisible(Module, Visibility);
   }
   

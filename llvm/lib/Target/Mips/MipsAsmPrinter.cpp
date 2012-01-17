@@ -49,7 +49,14 @@ static bool isUnalignedLoadStore(unsigned Opc) {
   return Opc == Mips::ULW    || Opc == Mips::ULH    || Opc == Mips::ULHu ||
          Opc == Mips::USW    || Opc == Mips::USH    ||
          Opc == Mips::ULW_P8 || Opc == Mips::ULH_P8 || Opc == Mips::ULHu_P8 ||
-         Opc == Mips::USW_P8 || Opc == Mips::USH_P8;
+         Opc == Mips::USW_P8 || Opc == Mips::USH_P8 ||
+         Opc == Mips::ULD    || Opc == Mips::ULW64  || Opc == Mips::ULH64 ||
+         Opc == Mips::ULHu64 || Opc == Mips::USD    || Opc == Mips::USW64 ||
+         Opc == Mips::USH64  ||
+         Opc == Mips::ULD_P8    || Opc == Mips::ULW64_P8  ||
+         Opc == Mips::ULH64_P8  || Opc == Mips::ULHu64_P8 || 
+         Opc == Mips::USD_P8    || Opc == Mips::USW64_P8  ||
+         Opc == Mips::USH64_P8;
 }
 
 static bool isDirective(unsigned Opc) {
@@ -59,10 +66,10 @@ static bool isDirective(unsigned Opc) {
 }
 
 void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
-  SmallString<128> Str;
-  raw_svector_ostream OS(Str);
-
   if (MI->isDebugValue()) {
+    SmallString<128> Str;
+    raw_svector_ostream OS(Str);
+
     PrintDebugValueComment(MI, OS);
     return;
   }
@@ -171,7 +178,7 @@ void MipsAsmPrinter::printSavedRegsBitmask(raw_ostream &O) {
     if (Mips::CPURegsRegisterClass->contains(Reg))
       break;
 
-    unsigned RegNum = MipsRegisterInfo::getRegisterNumbering(Reg);
+    unsigned RegNum = getMipsRegisterNumbering(Reg);
     if (Mips::AFGR64RegisterClass->contains(Reg)) {
       FPUBitmask |= (3 << RegNum);
       CSFPRegsSize += AFGR64RegSize;
@@ -186,7 +193,7 @@ void MipsAsmPrinter::printSavedRegsBitmask(raw_ostream &O) {
   // Set CPU Bitmask.
   for (; i != e; ++i) {
     unsigned Reg = CSI[i].getReg();
-    unsigned RegNum = MipsRegisterInfo::getRegisterNumbering(Reg);
+    unsigned RegNum = getMipsRegisterNumbering(Reg);
     CPUBitmask |= (1 << RegNum);
   }
 

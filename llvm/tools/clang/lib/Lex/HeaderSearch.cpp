@@ -38,9 +38,10 @@ HeaderFileInfo::getControllingMacro(ExternalIdentifierLookup *External) {
 
 ExternalHeaderFileInfoSource::~ExternalHeaderFileInfoSource() {}
 
-HeaderSearch::HeaderSearch(FileManager &FM, DiagnosticsEngine &Diags)
+HeaderSearch::HeaderSearch(FileManager &FM, DiagnosticsEngine &Diags,
+                           const LangOptions &LangOpts)
   : FileMgr(FM), Diags(Diags), FrameworkMap(64), 
-    ModMap(FileMgr, *Diags.getClient()) 
+    ModMap(FileMgr, *Diags.getClient(), LangOpts) 
 {
   AngledDirIdx = 0;
   SystemDirIdx = 0;
@@ -803,8 +804,8 @@ bool HeaderSearch::hasModuleMap(StringRef FileName,
 }
 
 Module *HeaderSearch::findModuleForHeader(const FileEntry *File) {
-  if (Module *Module = ModMap.findModuleForHeader(File))
-    return Module;
+  if (Module *Mod = ModMap.findModuleForHeader(File))
+    return Mod;
   
   return 0;
 }
@@ -859,7 +860,7 @@ Module *HeaderSearch::getModule(StringRef Name, bool AllowSearch) {
 }
   
 Module *HeaderSearch::getFrameworkModule(StringRef Name, 
-                                                    const DirectoryEntry *Dir) {
+                                         const DirectoryEntry *Dir) {
   if (Module *Module = ModMap.findModule(Name))
     return Module;
   
@@ -875,9 +876,50 @@ Module *HeaderSearch::getFrameworkModule(StringRef Name,
   case LMM_NewlyLoaded:
     return ModMap.findModule(Name);
   }
+
+  // The top-level framework directory, from which we'll infer a framework
+  // module.
+  const DirectoryEntry *TopFrameworkDir = Dir;
   
-  // Try to infer a module map.
-  return ModMap.inferFrameworkModule(Name, Dir, /*Parent=*/0);
+  // The path from the module we're actually looking for back to the top-level
+  // framework name.
+  llvm::SmallVector<StringRef, 2> SubmodulePath;
+  SubmodulePath.push_back(Name);
+  
+  // Walk the directory structure to find any enclosing frameworks.
+  StringRef DirName = Dir->getName();
+  do {
+    // Get the parent directory name.
+    DirName = llvm::sys::path::parent_path(DirName);
+    if (DirName.empty())
+      break;
+    
+    // Determine whether this directory exists.
+    Dir = FileMgr.getDirectory(DirName);
+    if (!Dir)
+      break;
+    
+    // If this is a framework directory, then we're a subframework of this
+    // framework.
+    if (llvm::sys::path::extension(DirName) == ".framework") {
+      SubmodulePath.push_back(llvm::sys::path::stem(DirName));
+      TopFrameworkDir = Dir;
+    }
+  } while (true);
+  
+  // Try to infer a module map from the top-level framework directory.
+  Module *Result = ModMap.inferFrameworkModule(SubmodulePath.back(), 
+                                               TopFrameworkDir, 
+                                               /*Parent=*/0);
+  
+  // Follow the submodule path to find the requested (sub)framework module
+  // within the top-level framework module.
+  SubmodulePath.pop_back();
+  while (!SubmodulePath.empty() && Result) {
+    Result = ModMap.lookupModuleQualified(SubmodulePath.back(), Result);
+    SubmodulePath.pop_back();
+  }
+  return Result;
 }
 
 

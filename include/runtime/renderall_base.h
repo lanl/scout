@@ -48,7 +48,9 @@ namespace scout{
 
 extern scout::renderall_base_rt* __sc_renderall;
 
+extern void __sc_begin_renderall();
 extern void __sc_end_renderall();
+extern void __sc_delete_renderall();
 
 #endif // SCOUT_RENDERALL_BASE_H_
 

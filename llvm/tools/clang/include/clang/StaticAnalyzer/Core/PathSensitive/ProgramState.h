@@ -34,8 +34,8 @@ class ASTContext;
 
 namespace ento {
 
+class CallOrObjCMessage;
 class ProgramStateManager;
-
 typedef ConstraintManager* (*ConstraintManagerCreator)(ProgramStateManager&,
                                                        SubEngine&);
 typedef StoreManager* (*StoreManagerCreator)(ProgramStateManager&);
@@ -196,12 +196,14 @@ public:
 
   /// Create a new state by binding the value 'V' to the statement 'S' in the
   /// state's environment.
-  const ProgramState *BindExpr(const Stmt *S, SVal V, bool Invalidate = true) const;
+  const ProgramState *BindExpr(const Stmt *S, const LocationContext *LCtx,
+                               SVal V, bool Invalidate = true) const;
 
   /// Create a new state by binding the value 'V' and location 'locaton' to the
   /// statement 'S' in the state's environment.
-  const ProgramState *bindExprAndLocation(const Stmt *S, SVal location, SVal V)
-    const;
+  const ProgramState *bindExprAndLocation(const Stmt *S,
+                                          const LocationContext *LCtx,
+                                          SVal location, SVal V) const;
   
   const ProgramState *bindDecl(const VarRegion *VR, SVal V) const;
 
@@ -219,13 +221,14 @@ public:
   ///  cleared from the store. The regions are provided as a continuous array
   ///  from Begin to End. Optionally invalidates global regions as well.
   const ProgramState *invalidateRegions(ArrayRef<const MemRegion *> Regions,
-                                   const Expr *E, unsigned BlockCount,
-                                   StoreManager::InvalidatedSymbols *IS = 0,
-                                   bool invalidateGlobals = false) const;
+                               const Expr *E, unsigned BlockCount,
+                               StoreManager::InvalidatedSymbols *IS = 0,
+                               const CallOrObjCMessage *Call = 0) const;
 
   /// enterStackFrame - Returns the state for entry to the given stack frame,
   ///  preserving the current state.
-  const ProgramState *enterStackFrame(const StackFrameContext *frame) const;
+  const ProgramState *enterStackFrame(const LocationContext *callerCtx,
+                                      const StackFrameContext *calleeCtx) const;
 
   /// Get the lvalue for a variable reference.
   Loc getLValue(const VarDecl *D, const LocationContext *LC) const;
@@ -248,9 +251,10 @@ public:
   const llvm::APSInt *getSymVal(SymbolRef sym) const;
 
   /// Returns the SVal bound to the statement 'S' in the state's environment.
-  SVal getSVal(const Stmt *S, bool useOnlyDirectBindings = false) const;
+  SVal getSVal(const Stmt *S, const LocationContext *LCtx,
+               bool useOnlyDirectBindings = false) const;
   
-  SVal getSValAsScalarOrLoc(const Stmt *Ex) const;
+  SVal getSValAsScalarOrLoc(const Stmt *Ex, const LocationContext *LCtx) const;
 
   SVal getSVal(Loc LV, QualType T = QualType()) const;
 
@@ -290,7 +294,7 @@ public:
                        const MemRegion * const *end) const;
 
   /// Create a new state in which the statement is marked as tainted.
-  const ProgramState* addTaint(const Stmt *S,
+  const ProgramState* addTaint(const Stmt *S, const LocationContext *LCtx,
                                TaintTagType Kind = TaintTagGeneric) const;
 
   /// Create a new state in which the symbol is marked as tainted.
@@ -302,9 +306,10 @@ public:
                                TaintTagType Kind = TaintTagGeneric) const;
 
   /// Check if the statement is tainted in the current state.
-  bool isTainted(const Stmt *S, TaintTagType Kind = TaintTagGeneric) const;
+  bool isTainted(const Stmt *S, const LocationContext *LCtx,
+                 TaintTagType Kind = TaintTagGeneric) const;
   bool isTainted(SVal V, TaintTagType Kind = TaintTagGeneric) const;
-  bool isTainted(const SymExpr* Sym, TaintTagType Kind = TaintTagGeneric) const;
+  bool isTainted(SymbolRef Sym, TaintTagType Kind = TaintTagGeneric) const;
   bool isTainted(const MemRegion *Reg, TaintTagType Kind=TaintTagGeneric) const;
 
   //==---------------------------------------------------------------------==//
@@ -361,12 +366,10 @@ public:
   }
 
   // Pretty-printing.
-  void print(raw_ostream &Out, CFG *C, const char *nl = "\n",
+  void print(raw_ostream &Out, const char *nl = "\n",
              const char *sep = "") const;
 
-  void dump(CFG &C) const;
-
-  void printDOT(raw_ostream &Out, CFG &C) const;
+  void printDOT(raw_ostream &Out) const;
 
   void dump() const;
 
@@ -384,7 +387,7 @@ private:
   invalidateRegionsImpl(ArrayRef<const MemRegion *> Regions,
                         const Expr *E, unsigned BlockCount,
                         StoreManager::InvalidatedSymbols &IS,
-                        bool invalidateGlobals) const;
+                        const CallOrObjCMessage *Call) const;
 };
 
 class ProgramStateSet {
@@ -647,7 +650,8 @@ public:
 //===----------------------------------------------------------------------===//
 
 inline const VarRegion* ProgramState::getRegion(const VarDecl *D,
-                                           const LocationContext *LC) const {
+                                                const LocationContext *LC) const 
+{
   return getStateManager().getRegionManager().getVarRegion(D, LC);
 }
 
@@ -705,27 +709,32 @@ inline const llvm::APSInt *ProgramState::getSymVal(SymbolRef sym) const {
   return getStateManager().getSymVal(this, sym);
 }
 
-inline SVal ProgramState::getSVal(const Stmt *Ex, bool useOnlyDirectBindings) const{
-  return Env.getSVal(Ex, *getStateManager().svalBuilder,
+inline SVal ProgramState::getSVal(const Stmt *Ex, const LocationContext *LCtx,
+                                  bool useOnlyDirectBindings) const{
+  return Env.getSVal(EnvironmentEntry(Ex, LCtx),
+                     *getStateManager().svalBuilder,
                      useOnlyDirectBindings);
 }
 
-inline SVal ProgramState::getSValAsScalarOrLoc(const Stmt *S) const {
+inline SVal
+ProgramState::getSValAsScalarOrLoc(const Stmt *S,
+                                   const LocationContext *LCtx) const {
   if (const Expr *Ex = dyn_cast<Expr>(S)) {
     QualType T = Ex->getType();
     if (Ex->isLValue() || Loc::isLocType(T) || T->isIntegerType())
-      return getSVal(S);
+      return getSVal(S, LCtx);
   }
 
   return UnknownVal();
 }
 
 inline SVal ProgramState::getRawSVal(Loc LV, QualType T) const {
-  return getStateManager().StoreMgr->Retrieve(getStore(), LV, T);
+  return getStateManager().StoreMgr->getBinding(getStore(), LV, T);
 }
 
 inline SVal ProgramState::getSVal(const MemRegion* R) const {
-  return getStateManager().StoreMgr->Retrieve(getStore(), loc::MemRegionVal(R));
+  return getStateManager().StoreMgr->getBinding(getStore(),
+                                                loc::MemRegionVal(R));
 }
 
 inline BasicValueFactory &ProgramState::getBasicVals() const {

@@ -54,30 +54,6 @@ class shift_rotate_imm64<bits<6> func, bits<5> isRotate, string instr_asm,
   shift_rotate_imm<func, isRotate, instr_asm, OpNode, immZExt6, shamt,
                    CPU64Regs>;
 
-// Jump and Link (Call)
-let isCall=1, hasDelaySlot=1,
-  // All calls clobber the non-callee saved registers...
-  Defs = [AT, V0, V1, A0, A1, A2, A3, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9,
-          K0, K1, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9], Uses = [GP] in {
-  class JumpLink64<bits<6> op, string instr_asm>:
-    FJ<op, (outs), (ins calltarget64:$target, variable_ops),
-       !strconcat(instr_asm, "\t$target"), [(MipsJmpLink imm:$target)],
-       IIBranch>;
-
-  class JumpLinkReg64<bits<6> op, bits<6> func, string instr_asm>:
-    FR<op, func, (outs), (ins CPU64Regs:$rs, variable_ops),
-       !strconcat(instr_asm, "\t$rs"),
-       [(MipsJmpLink CPU64Regs:$rs)], IIBranch> {
-    let rt = 0;
-    let rd = 31;
-    let shamt = 0;
-  }
-
-  class BranchLink64<string instr_asm>:
-    FI<0x1, (outs), (ins CPU64Regs:$rs, brtarget:$imm16, variable_ops),
-       !strconcat(instr_asm, "\t$rs, $imm16"), [], IIBranch>;
-}
-
 // Mul, Div
 class Mult64<bits<6> func, string instr_asm, InstrItinClass itin>:
   Mult<func, instr_asm, itin, CPU64Regs, [HI64, LO64]>;
@@ -175,14 +151,21 @@ def SCD_P8 : SCBase<0x3c, "scd", CPU64Regs, mem64>, Requires<[IsN64]>;
 
 /// Jump and Branch Instructions
 def JR64   : JumpFR<0x00, 0x08, "jr", CPU64Regs>;
-def JAL64  : JumpLink64<0x03, "jal">;
-def JALR64 : JumpLinkReg64<0x00, 0x09, "jalr">;
 def BEQ64  : CBranch<0x04, "beq", seteq, CPU64Regs>;
 def BNE64  : CBranch<0x05, "bne", setne, CPU64Regs>;
 def BGEZ64 : CBranchZero<0x01, 1, "bgez", setge, CPU64Regs>;
 def BGTZ64 : CBranchZero<0x07, 0, "bgtz", setgt, CPU64Regs>;
 def BLEZ64 : CBranchZero<0x07, 0, "blez", setle, CPU64Regs>;
 def BLTZ64 : CBranchZero<0x01, 0, "bltz", setlt, CPU64Regs>;
+
+// NOTE: These registers are N64's temporary registers. N32 has a different
+//       set of temporary registers.
+let Defs = [AT_64, V0_64, V1_64, A0_64, A1_64, A2_64, A3_64, T0_64, T1_64,
+            T2_64, T3_64, T4_64, T5_64, T6_64, T7_64, T8_64, T9_64, K0_64,
+            K1_64, D0_64, D1_64, D2_64, D3_64, D4_64, D5_64, D6_64, D7_64,
+            D8_64, D9_64, D10_64, D11_64, D12_64, D13_64, D14_64, D15_64,
+            D16_64, D17_64, D18_64, D19_64, D20_64, D21_64, D22_64, D23_64] in
+def JALR64 : JumpLinkReg<0x00, 0x09, "jalr", CPU64Regs>;
 
 /// Multiply and Divide Instructions.
 def DMULT    : Mult64<0x1c, "dmult", IIImul>;
@@ -203,7 +186,7 @@ def DCLO : CountLeading1<0x25, "dclo", CPU64Regs>;
 def DSBH : SubwordSwap<0x24, 0x2, "dsbh", CPU64Regs>;
 def DSHD : SubwordSwap<0x24, 0x5, "dshd", CPU64Regs>;
 
-def LEA_ADDiu64 : EffectiveAddress<"addiu\t$rt, $addr", CPU64Regs, mem_ea_64>;
+def LEA_ADDiu64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>;
 
 let Uses = [SP_64] in
 def DynAlloc64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>,
@@ -231,7 +214,7 @@ def : Pat<(i64 immSExt16:$in),
           (DADDiu ZERO_64, imm:$in)>;
 def : Pat<(i64 immZExt16:$in),
           (ORi64 ZERO_64, imm:$in)>;
-def : Pat<(i64 immLUiOpnd:$in),
+def : Pat<(i64 immLow16Zero:$in),
           (LUi64 (HI16 imm:$in))>;
 
 // 32-bit immediates

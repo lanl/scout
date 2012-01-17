@@ -1,7 +1,7 @@
 // other file: expected-note{{'no_umbrella_A_private' declared here}}
 
 // RUN: rm -rf %t
-// RUN: %clang_cc1 -Wauto-import -fmodule-cache-path %t -fauto-module-import -F %S/Inputs %s -verify
+// RUN: %clang_cc1 -Wauto-import -fmodule-cache-path %t -fmodules -F %S/Inputs %s -verify
 
 #include <DependsOnModule/DependsOnModule.h> // expected-warning{{treating #include as an import of module 'DependsOnModule'}}
 
@@ -54,7 +54,7 @@ void testModuleSubFrameworkAgain() {
 
 int getDependsOnModulePrivate() { return depends_on_module_private; }
 
-#include <Module/ModulePrivate.h> // expected-warning{{treating #include as an import of module 'Module.Private.ModulePrivate'}}
+#include <Module/ModulePrivate.h> // includes the header
 
 int getModulePrivate() { return module_private; }
 

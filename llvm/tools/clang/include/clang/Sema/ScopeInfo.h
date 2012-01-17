@@ -45,11 +45,17 @@ public:
 /// \brief Retains information about a function, method, or block that is
 /// currently being parsed.
 class FunctionScopeInfo {
+protected:
+  enum ScopeKind {
+    SK_Function,
+    SK_Block,
+    SK_Lambda
+  };
+  
 public:
-
-  /// \brief Whether this scope information structure defined information for
-  /// a block.
-  bool IsBlockInfo;
+  /// \brief What kind of scope we are describing.
+  ///
+  ScopeKind Kind;
 
   /// \brief Whether this function contains a VLA, @try, try, C++
   /// initializer, or anything else that can't be jumped past.
@@ -96,7 +102,7 @@ public:
   }
   
   FunctionScopeInfo(DiagnosticsEngine &Diag)
-    : IsBlockInfo(false),
+    : Kind(SK_Function),
       HasBranchProtectedScope(false),
       HasBranchIntoScope(false),
       HasIndirectGoto(false),
@@ -111,8 +117,86 @@ public:
   static bool classof(const FunctionScopeInfo *FSI) { return true; }
 };
 
+class CapturingScopeInfo : public FunctionScopeInfo {
+public:
+  enum ImplicitCaptureStyle {
+    ImpCap_None, ImpCap_LambdaByval, ImpCap_LambdaByref, ImpCap_Block
+  };
+
+  ImplicitCaptureStyle ImpCaptureStyle;
+
+  class Capture {
+    enum CaptureKind {
+      Cap_This, Cap_ByVal, Cap_ByRef
+    };
+
+    // The variable being captured (if we are not capturing 'this'),
+    // and misc bits descibing the capture.
+    llvm::PointerIntPair<VarDecl*, 2, CaptureKind> VarAndKind;
+
+    // Expression to initialize a field of the given type, and whether this
+    // is a nested capture; the expression is only required if we are
+    // capturing ByVal and the variable's type has a non-trivial
+    // copy constructor.
+    llvm::PointerIntPair<Expr*, 1, bool> CopyExprAndNested;
+
+  public:
+    Capture(VarDecl *Var, bool isByref, bool isNested, Expr *Cpy)
+      : VarAndKind(Var, isByref ? Cap_ByRef : Cap_ByVal),
+        CopyExprAndNested(Cpy, isNested) {}
+
+    enum IsThisCapture { ThisCapture };
+    Capture(IsThisCapture, bool isNested)
+      : VarAndKind(0, Cap_This),
+        CopyExprAndNested(0, isNested) {
+    }
+
+    bool isThisCapture() const { return VarAndKind.getInt() == Cap_This; }
+    bool isVariableCapture() const { return !isThisCapture(); }
+    bool isCopyCapture() const { return VarAndKind.getInt() == Cap_ByVal; }
+    bool isReferenceCapture() const { return VarAndKind.getInt() == Cap_ByRef; }
+    bool isNested() { return CopyExprAndNested.getInt(); }
+
+    VarDecl *getVariable() const {
+      return VarAndKind.getPointer();
+    }
+    Expr *getCopyExpr() const {
+      return CopyExprAndNested.getPointer();
+    }
+  };
+
+  CapturingScopeInfo(DiagnosticsEngine &Diag, ImplicitCaptureStyle Style)
+    : FunctionScopeInfo(Diag), ImpCaptureStyle(Style), CXXThisCaptureIndex(0)
+     {}
+
+  /// CaptureMap - A map of captured variables to (index+1) into Captures.
+  llvm::DenseMap<VarDecl*, unsigned> CaptureMap;
+
+  /// CXXThisCaptureIndex - The (index+1) of the capture of 'this';
+  /// zero if 'this' is not captured.
+  unsigned CXXThisCaptureIndex;
+
+  /// Captures - The captures.
+  SmallVector<Capture, 4> Captures;
+
+  void AddCapture(VarDecl *Var, bool isByref, bool isNested, Expr *Cpy) {
+    Captures.push_back(Capture(Var, isByref, isNested, Cpy));
+    CaptureMap[Var] = Captures.size();
+  }
+
+  void AddThisCapture(bool isNested) {
+    Captures.push_back(Capture(Capture::ThisCapture, isNested));
+    CXXThisCaptureIndex = Captures.size();
+  }
+
+  static bool classof(const FunctionScopeInfo *FSI) { 
+    return FSI->Kind == SK_Block || FSI->Kind == SK_Lambda; 
+  }
+  static bool classof(const CapturingScopeInfo *BSI) { return true; }
+};
+
 /// \brief Retains information about a block that is currently being parsed.
-class BlockScopeInfo : public FunctionScopeInfo {
+class BlockScopeInfo : public CapturingScopeInfo {
 public:
   BlockDecl *TheDecl;
   
@@ -128,26 +212,50 @@ public:
   /// Its return type may be BuiltinType::Dependent.
   QualType FunctionType;
 
-  /// CaptureMap - A map of captured variables to (index+1) into Captures.
-  llvm::DenseMap<VarDecl*, unsigned> CaptureMap;
-
-  /// Captures - The captured variables.
-  SmallVector<BlockDecl::Capture, 4> Captures;
-
-  /// CapturesCXXThis - Whether this block captures 'this'.
-  bool CapturesCXXThis;
-
   BlockScopeInfo(DiagnosticsEngine &Diag, Scope *BlockScope, BlockDecl *Block)
-    : FunctionScopeInfo(Diag), TheDecl(Block), TheScope(BlockScope),
-      CapturesCXXThis(false)
+    : CapturingScopeInfo(Diag, ImpCap_Block), TheDecl(Block),
+      TheScope(BlockScope)
   {
-    IsBlockInfo = true;
+    Kind = SK_Block;
   }
 
   virtual ~BlockScopeInfo();
 
-  static bool classof(const FunctionScopeInfo *FSI) { return FSI->IsBlockInfo; }
+  static bool classof(const FunctionScopeInfo *FSI) { 
+    return FSI->Kind == SK_Block; 
+  }
   static bool classof(const BlockScopeInfo *BSI) { return true; }
+};
+
+class LambdaScopeInfo : public CapturingScopeInfo {
+public:
+  /// \brief The class that describes the lambda.
+  CXXRecordDecl *Lambda;
+  
+  /// \brief The number of captures in the \c Captures list that are 
+  /// explicit captures.
+  unsigned NumExplicitCaptures;
+
+  /// \brief - Whether the return type of the lambda is implicit
+  bool HasImplicitReturnType;
+
+  /// ReturnType - The return type of the lambda, or null if unknown.
+  QualType ReturnType;
+
+  LambdaScopeInfo(DiagnosticsEngine &Diag, CXXRecordDecl *Lambda)
+    : CapturingScopeInfo(Diag, ImpCap_None), Lambda(Lambda),
+      NumExplicitCaptures(0), HasImplicitReturnType(false)
+  {
+    Kind = SK_Lambda;
+  }
+
+  virtual ~LambdaScopeInfo();
+
+  static bool classof(const FunctionScopeInfo *FSI) { 
+    return FSI->Kind == SK_Lambda; 
+  }
+  static bool classof(const LambdaScopeInfo *BSI) { return true; }
+
 };
 
 }

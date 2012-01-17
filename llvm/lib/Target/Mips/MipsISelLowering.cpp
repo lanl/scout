@@ -92,17 +92,20 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   // Set up the register classes
   addRegisterClass(MVT::i32, Mips::CPURegsRegisterClass);
-  addRegisterClass(MVT::f32, Mips::FGR32RegisterClass);
 
   if (HasMips64)
     addRegisterClass(MVT::i64, Mips::CPU64RegsRegisterClass);
 
-  // When dealing with single precision only, use libcalls
-  if (!Subtarget->isSingleFloat()) {
-    if (HasMips64)
-      addRegisterClass(MVT::f64, Mips::FGR64RegisterClass);
-    else
-      addRegisterClass(MVT::f64, Mips::AFGR64RegisterClass);
+  if (!TM.Options.UseSoftFloat) {
+    addRegisterClass(MVT::f32, Mips::FGR32RegisterClass);
+
+    // When dealing with single precision only, use libcalls
+    if (!Subtarget->isSingleFloat()) {
+      if (HasMips64)
+        addRegisterClass(MVT::f64, Mips::FGR64RegisterClass);
+      else
+        addRegisterClass(MVT::f64, Mips::AFGR64RegisterClass);
+    }
   }
 
   // Load extented operations for i1 types must be promoted
@@ -2871,14 +2874,19 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const
     case 'd': // Address register. Same as 'r' unless generating MIPS16 code.
     case 'y': // Same as 'r'. Exists for compatibility.
     case 'r':
-      return std::make_pair(0U, Mips::CPURegsRegisterClass);
+      if (VT == MVT::i32)
+        return std::make_pair(0U, Mips::CPURegsRegisterClass);
+      assert(VT == MVT::i64 && "Unexpected type.");
+      return std::make_pair(0U, Mips::CPU64RegsRegisterClass);
     case 'f':
       if (VT == MVT::f32)
         return std::make_pair(0U, Mips::FGR32RegisterClass);
-      if (VT == MVT::f64)
-        if ((!Subtarget->isSingleFloat()) && (!Subtarget->isFP64bit()))
+      if ((VT == MVT::f64) && (!Subtarget->isSingleFloat())) {
+        if (Subtarget->isFP64bit())
+          return std::make_pair(0U, Mips::FGR64RegisterClass);
+        else
           return std::make_pair(0U, Mips::AFGR64RegisterClass);
-      break;
+      }
     }
   }
   return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);

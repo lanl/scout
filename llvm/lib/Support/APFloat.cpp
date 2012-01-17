@@ -1150,9 +1150,6 @@ APFloat::roundAwayFromZero(roundingMode rounding_mode,
   assert(lost_fraction != lfExactlyZero);
 
   switch (rounding_mode) {
-  default:
-    llvm_unreachable(0);
-
   case rmNearestTiesToAway:
     return lost_fraction == lfExactlyHalf || lost_fraction == lfMoreThanHalf;
 
@@ -1175,6 +1172,7 @@ APFloat::roundAwayFromZero(roundingMode rounding_mode,
   case rmTowardNegative:
     return sign == true;
   }
+  llvm_unreachable("Invalid rounding mode found");
 }
 
 APFloat::opStatus

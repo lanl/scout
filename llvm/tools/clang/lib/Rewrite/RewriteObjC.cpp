@@ -165,10 +165,20 @@ namespace {
     // Top Level Driver code.
     virtual bool HandleTopLevelDecl(DeclGroupRef D) {
       for (DeclGroupRef::iterator I = D.begin(), E = D.end(); I != E; ++I) {
-        if (isa<ObjCClassDecl>((*I))) {
-          RewriteForwardClassDecl(D);
-          break;
+        if (ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(*I)) {
+          if (!Class->isThisDeclarationADefinition()) {
+            RewriteForwardClassDecl(D);
+            break;
+          }
         }
+
+        if (ObjCProtocolDecl *Proto = dyn_cast<ObjCProtocolDecl>(*I)) {
+          if (!Proto->isThisDeclarationADefinition()) {
+            RewriteForwardProtocolDecl(D);
+            break;
+          }
+        }
+
         HandleTopLevelSingleDecl(*I);
       }
       return true;
@@ -256,7 +266,7 @@ namespace {
     void RewriteInclude();
     void RewriteForwardClassDecl(DeclGroupRef D);
     void RewriteForwardClassDecl(const llvm::SmallVector<Decl*, 8> &DG);
-    void RewriteForwardClassEpilogue(ObjCClassDecl *ClassDecl, 
+    void RewriteForwardClassEpilogue(ObjCInterfaceDecl *ClassDecl, 
                                      const std::string &typedefString);
     void RewriteImplementations();
     void RewritePropertyImplDecl(ObjCPropertyImplDecl *PID,
@@ -272,7 +282,8 @@ namespace {
                             ValueDecl *VD, bool def=false);
     void RewriteCategoryDecl(ObjCCategoryDecl *Dcl);
     void RewriteProtocolDecl(ObjCProtocolDecl *Dcl);
-    void RewriteForwardProtocolDecl(ObjCForwardProtocolDecl *Dcl);
+    void RewriteForwardProtocolDecl(DeclGroupRef D);
+    void RewriteForwardProtocolDecl(const llvm::SmallVector<Decl*, 8> &DG);
     void RewriteMethodDeclaration(ObjCMethodDecl *Method);
     void RewriteProperty(ObjCPropertyDecl *prop);
     void RewriteFunctionDecl(FunctionDecl *FD);
@@ -659,37 +670,51 @@ void RewriteObjC::HandleTopLevelSingleDecl(Decl *D) {
   } else if (ObjCCategoryDecl *CD = dyn_cast<ObjCCategoryDecl>(D)) {
     RewriteCategoryDecl(CD);
   } else if (ObjCProtocolDecl *PD = dyn_cast<ObjCProtocolDecl>(D)) {
-    RewriteProtocolDecl(PD);
-  } else if (ObjCForwardProtocolDecl *FP =
-             dyn_cast<ObjCForwardProtocolDecl>(D)){
-    RewriteForwardProtocolDecl(FP);
+    if (PD->isThisDeclarationADefinition())
+      RewriteProtocolDecl(PD);
   } else if (LinkageSpecDecl *LSD = dyn_cast<LinkageSpecDecl>(D)) {
     // Recurse into linkage specifications
     for (DeclContext::decl_iterator DI = LSD->decls_begin(),
                                  DIEnd = LSD->decls_end();
          DI != DIEnd; ) {
-      if (isa<ObjCClassDecl>((*DI))) {
-        SmallVector<Decl *, 8> DG;
-        Decl *D = (*DI);
-        SourceLocation Loc = D->getLocation();
-        while (DI != DIEnd &&
-               isa<ObjCClassDecl>(D) && D->getLocation() == Loc) {
-          ObjCClassDecl *Class = cast<ObjCClassDecl>(D);
-          DG.push_back(D);
-          ++DI;
-          D = (*DI);
-
-          // Following the ObjCClassDecl, we should have the corresponding
-          // ObjCInterfaceDecl. Skip over it.
-          if (DI != DIEnd && isa<ObjCInterfaceDecl>(D) && 
-              Class->getForwardInterfaceDecl() == D) {
+      if (ObjCInterfaceDecl *IFace = dyn_cast<ObjCInterfaceDecl>((*DI))) {
+        if (!IFace->isThisDeclarationADefinition()) {
+          SmallVector<Decl *, 8> DG;
+          SourceLocation StartLoc = IFace->getLocStart();
+          do {
+            if (isa<ObjCInterfaceDecl>(*DI) &&
+                !cast<ObjCInterfaceDecl>(*DI)->isThisDeclarationADefinition() &&
+                StartLoc == (*DI)->getLocStart())
+              DG.push_back(*DI);
+            else
+              break;
+            
             ++DI;
-            D = (*DI);
-          }
+          } while (DI != DIEnd);
+          RewriteForwardClassDecl(DG);
+          continue;
         }
-        RewriteForwardClassDecl(DG);
-        continue;
       }
+
+      if (ObjCProtocolDecl *Proto = dyn_cast<ObjCProtocolDecl>((*DI))) {
+        if (!Proto->isThisDeclarationADefinition()) {
+          SmallVector<Decl *, 8> DG;
+          SourceLocation StartLoc = Proto->getLocStart();
+          do {
+            if (isa<ObjCProtocolDecl>(*DI) &&
+                !cast<ObjCProtocolDecl>(*DI)->isThisDeclarationADefinition() &&
+                StartLoc == (*DI)->getLocStart())
+              DG.push_back(*DI);
+            else
+              break;
+            
+            ++DI;
+          } while (DI != DIEnd);
+          RewriteForwardProtocolDecl(DG);
+          continue;
+        }
+      }
+      
       HandleTopLevelSingleDecl(*DI);
       ++DI;
     }
@@ -873,9 +898,9 @@ static void RewriteOneForwardClassDecl(ObjCInterfaceDecl *ForwardDecl,
   typedefString += ";\n#endif\n";
 }
 
-void RewriteObjC::RewriteForwardClassEpilogue(ObjCClassDecl *ClassDecl,
+void RewriteObjC::RewriteForwardClassEpilogue(ObjCInterfaceDecl *ClassDecl,
                                               const std::string &typedefString) {
-    SourceLocation startLoc = ClassDecl->getLocation();
+    SourceLocation startLoc = ClassDecl->getLocStart();
     const char *startBuf = SM->getCharacterData(startLoc);
     const char *semiPtr = strchr(startBuf, ';'); 
     // Replace the @class with typedefs corresponding to the classes.
@@ -885,8 +910,7 @@ void RewriteObjC::RewriteForwardClassEpilogue(ObjCClassDecl *ClassDecl,
 void RewriteObjC::RewriteForwardClassDecl(DeclGroupRef D) {
   std::string typedefString;
   for (DeclGroupRef::iterator I = D.begin(), E = D.end(); I != E; ++I) {
-    ObjCClassDecl *ClassDecl = cast<ObjCClassDecl>(*I);
-    ObjCInterfaceDecl *ForwardDecl = ClassDecl->getForwardInterfaceDecl();
+    ObjCInterfaceDecl *ForwardDecl = cast<ObjCInterfaceDecl>(*I);
     if (I == D.begin()) {
       // Translate to typedef's that forward reference structs with the same name
       // as the class. As a convenience, we include the original declaration
@@ -898,15 +922,14 @@ void RewriteObjC::RewriteForwardClassDecl(DeclGroupRef D) {
     RewriteOneForwardClassDecl(ForwardDecl, typedefString);
   }
   DeclGroupRef::iterator I = D.begin();
-  RewriteForwardClassEpilogue(cast<ObjCClassDecl>(*I), typedefString);
+  RewriteForwardClassEpilogue(cast<ObjCInterfaceDecl>(*I), typedefString);
 }
 
 void RewriteObjC::RewriteForwardClassDecl(
                                 const llvm::SmallVector<Decl*, 8> &D) {
   std::string typedefString;
   for (unsigned i = 0; i < D.size(); i++) {
-    ObjCClassDecl *ClassDecl = cast<ObjCClassDecl>(D[i]);
-    ObjCInterfaceDecl *ForwardDecl = ClassDecl->getForwardInterfaceDecl();
+    ObjCInterfaceDecl *ForwardDecl = cast<ObjCInterfaceDecl>(D[i]);
     if (i == 0) {
       typedefString += "// @class ";
       typedefString += ForwardDecl->getNameAsString();
@@ -914,7 +937,7 @@ void RewriteObjC::RewriteForwardClassDecl(
     }
     RewriteOneForwardClassDecl(ForwardDecl, typedefString);
   }
-  RewriteForwardClassEpilogue(cast<ObjCClassDecl>(D[0]), typedefString);
+  RewriteForwardClassEpilogue(cast<ObjCInterfaceDecl>(D[0]), typedefString);
 }
 
 void RewriteObjC::RewriteMethodDeclaration(ObjCMethodDecl *Method) {
@@ -967,7 +990,8 @@ void RewriteObjC::RewriteCategoryDecl(ObjCCategoryDecl *CatDecl) {
 
 void RewriteObjC::RewriteProtocolDecl(ObjCProtocolDecl *PDecl) {
   SourceLocation LocStart = PDecl->getLocStart();
-
+  assert(PDecl->isThisDeclarationADefinition());
+  
   // FIXME: handle protocol headers that are declared across multiple lines.
   ReplaceText(LocStart, 0, "// ");
 
@@ -1005,8 +1029,17 @@ void RewriteObjC::RewriteProtocolDecl(ObjCProtocolDecl *PDecl) {
   }
 }
 
-void RewriteObjC::RewriteForwardProtocolDecl(ObjCForwardProtocolDecl *PDecl) {
-  SourceLocation LocStart = PDecl->getLocation();
+void RewriteObjC::RewriteForwardProtocolDecl(DeclGroupRef D) {
+  SourceLocation LocStart = (*D.begin())->getLocStart();
+  if (LocStart.isInvalid())
+    llvm_unreachable("Invalid SourceLocation");
+  // FIXME: handle forward protocol that are declared across multiple lines.
+  ReplaceText(LocStart, 0, "// ");
+}
+
+void 
+RewriteObjC::RewriteForwardProtocolDecl(const llvm::SmallVector<Decl*, 8> &DG) {
+  SourceLocation LocStart = DG[0]->getLocStart();
   if (LocStart.isInvalid())
     llvm_unreachable("Invalid SourceLocation");
   // FIXME: handle forward protocol that are declared across multiple lines.
@@ -1255,7 +1288,7 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitSetter(PseudoObjectExpr *PseudoOp) {
   SmallVector<SourceLocation, 1> SelLocs;
   OldMsg->getSelectorLocs(SelLocs);
 
-  ObjCMessageExpr *NewMsg;
+  ObjCMessageExpr *NewMsg = 0;
   switch (OldMsg->getReceiverKind()) {
   case ObjCMessageExpr::Class:
     NewMsg = ObjCMessageExpr::Create(*Context, OldMsg->getType(),
@@ -1266,7 +1299,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitSetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      RHS,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
 
   case ObjCMessageExpr::Instance:
@@ -1278,7 +1312,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitSetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      RHS,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
 
   case ObjCMessageExpr::SuperClass:
@@ -1293,7 +1328,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitSetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      RHS,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
   }
 
@@ -1328,7 +1364,7 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitGetter(PseudoObjectExpr *PseudoOp) {
   SmallVector<SourceLocation, 1> SelLocs;
   SmallVector<Expr*, 1> Args;
 
-  ObjCMessageExpr *NewMsg;
+  ObjCMessageExpr *NewMsg = 0;
   switch (OldMsg->getReceiverKind()) {
   case ObjCMessageExpr::Class:
     NewMsg = ObjCMessageExpr::Create(*Context, OldMsg->getType(),
@@ -1339,7 +1375,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitGetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      Args,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
 
   case ObjCMessageExpr::Instance:
@@ -1351,7 +1388,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitGetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      Args,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
 
   case ObjCMessageExpr::SuperClass:
@@ -1366,7 +1404,8 @@ Stmt *RewriteObjC::RewritePropertyOrImplicitGetter(PseudoObjectExpr *PseudoOp) {
                                      SelLocs,
                                      OldMsg->getMethodDecl(),
                                      Args,
-                                     OldMsg->getRightLoc());
+                                     OldMsg->getRightLoc(),
+                                     OldMsg->isImplicit());
     break;
   }
 
@@ -2478,7 +2517,7 @@ void RewriteObjC::SynthGetSuperClassFunctionDecl() {
                                                    false);
 }
 
-// SynthGetMetaClassFunctionDecl - id objc_getClass(const char *name);
+// SynthGetMetaClassFunctionDecl - id objc_getMetaClass(const char *name);
 void RewriteObjC::SynthGetMetaClassFunctionDecl() {
   IdentifierInfo *getClassIdent = &Context->Idents.get("objc_getMetaClass");
   SmallVector<QualType, 16> ArgTys;
@@ -2673,7 +2712,7 @@ Stmt *RewriteObjC::SynthMessageExpr(ObjCMessageExpr *Exp,
     // (Class)objc_getClass("CurrentClass")
     CastExpr *ArgExpr = NoTypeInfoCStyleCastExpr(Context,
                                              Context->getObjCClassType(),
-                                             CK_CPointerToObjCPointerCast, Cls);
+                                             CK_BitCast, Cls);
     ClsExprs.clear();
     ClsExprs.push_back(ArgExpr);
     Cls = SynthesizeCallToFunctionDecl(GetSuperClassFunctionDecl,
@@ -3088,7 +3127,7 @@ Stmt *RewriteObjC::RewriteObjCProtocolExpr(ObjCProtocolExpr *Exp) {
                                                 CK_BitCast,
                                                 DerefExpr);
   ReplaceStmt(Exp, castExpr);
-  ProtocolExprDecls.insert(Exp->getProtocol());
+  ProtocolExprDecls.insert(Exp->getProtocol()->getCanonicalDecl());
   // delete Exp; leak for now, see RewritePropertyOrImplicitSetter() usage for more info.
   return castExpr;
 
@@ -4990,10 +5029,6 @@ void RewriteObjC::HandleDeclInMainFile(Decl *D) {
         RewriteRecordBody(RD);
       break;
     }
-    case Decl::ObjCClass: {
-      llvm_unreachable("RewriteObjC::HandleDeclInMainFile - ObjCClassDecl");
-      break;
-    }
     default:
       break;
   }
@@ -5178,7 +5213,7 @@ void RewriteObjCFragileABI::RewriteObjCProtocolMetaData(
   static bool objc_protocol_methods = false;
   
   // Output struct protocol_methods holder of method selector and type.
-  if (!objc_protocol_methods && !PDecl->isForwardDecl()) {
+  if (!objc_protocol_methods && PDecl->hasDefinition()) {
     /* struct protocol_methods {
      SEL _cmd;
      char *method_types;
@@ -5192,8 +5227,11 @@ void RewriteObjCFragileABI::RewriteObjCProtocolMetaData(
     objc_protocol_methods = true;
   }
   // Do not synthesize the protocol more than once.
-  if (ObjCSynthesizedProtocols.count(PDecl))
+  if (ObjCSynthesizedProtocols.count(PDecl->getCanonicalDecl()))
     return;
+  
+  if (ObjCProtocolDecl *Def = PDecl->getDefinition())
+    PDecl = Def;
   
   if (PDecl->instmeth_begin() != PDecl->instmeth_end()) {
     unsigned NumMethods = std::distance(PDecl->instmeth_begin(),
@@ -5314,7 +5352,7 @@ void RewriteObjCFragileABI::RewriteObjCProtocolMetaData(
   Result += "};\n";
   
   // Mark this protocol as having been generated.
-  if (!ObjCSynthesizedProtocols.insert(PDecl))
+  if (!ObjCSynthesizedProtocols.insert(PDecl->getCanonicalDecl()))
     llvm_unreachable("protocol already synthesized");
   
 }

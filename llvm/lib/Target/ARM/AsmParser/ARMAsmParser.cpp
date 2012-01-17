@@ -509,7 +509,7 @@ public:
   }
 
   const MCExpr *getImm() const {
-    assert(Kind == k_Immediate && "Invalid access!");
+    assert(isImm() && "Invalid access!");
     return Imm.Val;
   }
 
@@ -547,201 +547,190 @@ public:
   bool isITCondCode() const { return Kind == k_CondCode; }
   bool isImm() const { return Kind == k_Immediate; }
   bool isFPImm() const { return Kind == k_FPImmediate; }
+  bool isFBits16() const {
+    if (!isImm()) return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= 0 && Value <= 16;
+  }
+  bool isFBits32() const {
+    if (!isImm()) return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= 1 && Value <= 32;
+  }
   bool isImm8s4() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ((Value & 3) == 0) && Value >= -1020 && Value <= 1020;
   }
   bool isImm0_1020s4() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ((Value & 3) == 0) && Value >= 0 && Value <= 1020;
   }
   bool isImm0_508s4() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ((Value & 3) == 0) && Value >= 0 && Value <= 508;
   }
   bool isImm0_255() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 256;
   }
   bool isImm0_1() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 2;
   }
   bool isImm0_3() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 4;
   }
   bool isImm0_7() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 8;
   }
   bool isImm0_15() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 16;
   }
   bool isImm0_31() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 32;
   }
   bool isImm0_63() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 64;
   }
   bool isImm8() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value == 8;
   }
   bool isImm16() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value == 16;
   }
   bool isImm32() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value == 32;
   }
   bool isShrImm8() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value <= 8;
   }
   bool isShrImm16() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value <= 16;
   }
   bool isShrImm32() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value <= 32;
   }
   bool isShrImm64() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value <= 64;
   }
   bool isImm1_7() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 8;
   }
   bool isImm1_15() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 16;
   }
   bool isImm1_31() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 32;
   }
   bool isImm1_16() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 17;
   }
   bool isImm1_32() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 33;
   }
   bool isImm0_32() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 33;
   }
   bool isImm0_65535() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 65536;
   }
   bool isImm0_65535Expr() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // If it's not a constant expression, it'll generate a fixup and be
     // handled later.
@@ -750,88 +739,77 @@ public:
     return Value >= 0 && Value < 65536;
   }
   bool isImm24bit() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value <= 0xffffff;
   }
   bool isImmThumbSR() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value < 33;
   }
   bool isPKHLSLImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value >= 0 && Value < 32;
   }
   bool isPKHASRImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return Value > 0 && Value <= 32;
   }
   bool isARMSOImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getSOImmVal(Value) != -1;
   }
   bool isARMSOImmNot() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getSOImmVal(~Value) != -1;
   }
   bool isARMSOImmNeg() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getSOImmVal(-Value) != -1;
   }
   bool isT2SOImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getT2SOImmVal(Value) != -1;
   }
   bool isT2SOImmNot() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getT2SOImmVal(~Value) != -1;
   }
   bool isT2SOImmNeg() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
     return ARM_AM::getT2SOImmVal(-Value) != -1;
   }
   bool isSetEndImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Value = CE->getValue();
@@ -873,8 +851,7 @@ public:
     return Val > -4096 && Val < 4096;
   }
   bool isAM2OffsetImm() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     // Immediate offset in range [-4095, 4095].
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
@@ -885,7 +862,7 @@ public:
     // If we have an immediate that's not a constant, treat it as a label
     // reference needing a fixup. If it is a constant, it's something else
     // and we reject it.
-    if (Kind == k_Immediate && !isa<MCConstantExpr>(getImm()))
+    if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
     if (!isMemory() || Memory.Alignment != 0) return false;
     // No shifts are legal for AM3.
@@ -913,7 +890,7 @@ public:
     // If we have an immediate that's not a constant, treat it as a label
     // reference needing a fixup. If it is a constant, it's something else
     // and we reject it.
-    if (Kind == k_Immediate && !isa<MCConstantExpr>(getImm()))
+    if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
     if (!isMemory() || Memory.Alignment != 0) return false;
     // Check for register offset.
@@ -1002,7 +979,7 @@ public:
     // If we have an immediate that's not a constant, treat it as a label
     // reference needing a fixup. If it is a constant, it's something else
     // and we reject it.
-    if (Kind == k_Immediate && !isa<MCConstantExpr>(getImm()))
+    if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
     if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
@@ -1055,7 +1032,7 @@ public:
     // If we have an immediate that's not a constant, treat it as a label
     // reference needing a fixup. If it is a constant, it's something else
     // and we reject it.
-    if (Kind == k_Immediate && !isa<MCConstantExpr>(getImm()))
+    if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
 
     if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
@@ -1066,16 +1043,14 @@ public:
     return (Val > -4096 && Val < 4096) || (Val == INT32_MIN);
   }
   bool isPostIdxImm8() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Val = CE->getValue();
     return (Val > -256 && Val < 256) || (Val == INT32_MIN);
   }
   bool isPostIdxImm8s4() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) return false;
     int64_t Val = CE->getValue();
@@ -1199,8 +1174,7 @@ public:
   }
 
   bool isNEONi8splat() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1211,8 +1185,7 @@ public:
   }
 
   bool isNEONi16splat() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1222,8 +1195,7 @@ public:
   }
 
   bool isNEONi32splat() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1236,8 +1208,7 @@ public:
   }
 
   bool isNEONi32vmov() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1252,8 +1223,7 @@ public:
       (Value >= 0x01ffff && Value <= 0xffffff && (Value & 0xffff) == 0xffff);
   }
   bool isNEONi32vmovNeg() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1269,8 +1239,7 @@ public:
   }
 
   bool isNEONi64splat() const {
-    if (Kind != k_Immediate)
-      return false;
+    if (!isImm()) return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
     // Must be a constant.
     if (!CE) return false;
@@ -1394,6 +1363,18 @@ public:
   void addImmOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     addExpr(Inst, getImm());
+  }
+
+  void addFBits16Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    Inst.addOperand(MCOperand::CreateImm(16 - CE->getValue()));
+  }
+
+  void addFBits32Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    Inst.addOperand(MCOperand::CreateImm(32 - CE->getValue()));
   }
 
   void addFPImmOperands(MCInst &Inst, unsigned N) const {
@@ -1656,7 +1637,7 @@ public:
   void addMemUImm12OffsetOperands(MCInst &Inst, unsigned N) const {
     assert(N == 2 && "Invalid number of operands!");
     // If this is an immediate, it's a label reference.
-    if (Kind == k_Immediate) {
+    if (isImm()) {
       addExpr(Inst, getImm());
       Inst.addOperand(MCOperand::CreateImm(0));
       return;
@@ -1671,7 +1652,7 @@ public:
   void addMemImm12OffsetOperands(MCInst &Inst, unsigned N) const {
     assert(N == 2 && "Invalid number of operands!");
     // If this is an immediate, it's a label reference.
-    if (Kind == k_Immediate) {
+    if (isImm()) {
       addExpr(Inst, getImm());
       Inst.addOperand(MCOperand::CreateImm(0));
       return;
@@ -2421,6 +2402,10 @@ int ARMAsmParser::tryParseShiftRegister(
         Error(ImmLoc, "immediate shift value out of range");
         return -1;
       }
+      // shift by zero is a nop. Always send it through as lsl.
+      // ('as' compatibility)
+      if (Imm == 0)
+        ShiftTy = ARM_AM::lsl;
     } else if (Parser.getTok().is(AsmToken::Identifier)) {
       ShiftReg = tryParseRegister();
       SMLoc L = Parser.getTok().getLoc();
@@ -3189,14 +3174,14 @@ parseMSRMaskOperand(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
       .Case("faultmask", 19)
       .Case("control", 20)
       .Default(~0U);
-    
+
     if (FlagsVal == ~0U)
       return MatchOperand_NoMatch;
 
     if (!hasV7Ops() && FlagsVal >= 17 && FlagsVal <= 19)
       // basepri, basepri_max and faultmask only valid for V7m.
       return MatchOperand_NoMatch;
-    
+
     Parser.Lex(); // Eat identifier token.
     Operands.push_back(ARMOperand::CreateMSRMask(FlagsVal, S));
     return MatchOperand_Success;
@@ -4504,7 +4489,7 @@ StringRef ARMAsmParser::splitMnemonic(StringRef Mnemonic,
         Mnemonic == "vrsqrts" || Mnemonic == "srs" || Mnemonic == "flds" ||
         Mnemonic == "fmrs" || Mnemonic == "fsqrts" || Mnemonic == "fsubs" ||
         Mnemonic == "fsts" || Mnemonic == "fcpys" || Mnemonic == "fdivs" ||
-        Mnemonic == "fmuls" ||
+        Mnemonic == "fmuls" || Mnemonic == "fcmps" ||
         (Mnemonic == "movs" && isThumb()))) {
     Mnemonic = Mnemonic.slice(0, Mnemonic.size() - 1);
     CarrySetting = true;
@@ -5748,6 +5733,42 @@ processInstruction(MCInst &Inst,
     return true;
   }
   // Handle the Thumb2 mode MOV complex aliases.
+  case ARM::t2MOVsr:
+  case ARM::t2MOVSsr: {
+    // Which instruction to expand to depends on the CCOut operand and
+    // whether we're in an IT block if the register operands are low
+    // registers.
+    bool isNarrow = false;
+    if (isARMLowRegister(Inst.getOperand(0).getReg()) &&
+        isARMLowRegister(Inst.getOperand(1).getReg()) &&
+        isARMLowRegister(Inst.getOperand(2).getReg()) &&
+        Inst.getOperand(0).getReg() == Inst.getOperand(1).getReg() &&
+        inITBlock() == (Inst.getOpcode() == ARM::t2MOVsr))
+      isNarrow = true;
+    MCInst TmpInst;
+    unsigned newOpc;
+    switch(ARM_AM::getSORegShOp(Inst.getOperand(3).getImm())) {
+    default: llvm_unreachable("unexpected opcode!");
+    case ARM_AM::asr: newOpc = isNarrow ? ARM::tASRrr : ARM::t2ASRrr; break;
+    case ARM_AM::lsr: newOpc = isNarrow ? ARM::tLSRrr : ARM::t2LSRrr; break;
+    case ARM_AM::lsl: newOpc = isNarrow ? ARM::tLSLrr : ARM::t2LSLrr; break;
+    case ARM_AM::ror: newOpc = isNarrow ? ARM::tROR   : ARM::t2RORrr; break;
+    }
+    TmpInst.setOpcode(newOpc);
+    TmpInst.addOperand(Inst.getOperand(0)); // Rd
+    if (isNarrow)
+      TmpInst.addOperand(MCOperand::CreateReg(
+          Inst.getOpcode() == ARM::t2MOVSsr ? ARM::CPSR : 0));
+    TmpInst.addOperand(Inst.getOperand(1)); // Rn
+    TmpInst.addOperand(Inst.getOperand(2)); // Rm
+    TmpInst.addOperand(Inst.getOperand(4)); // CondCode
+    TmpInst.addOperand(Inst.getOperand(5));
+    if (!isNarrow)
+      TmpInst.addOperand(MCOperand::CreateReg(
+          Inst.getOpcode() == ARM::t2MOVSsr ? ARM::CPSR : 0));
+    Inst = TmpInst;
+    return true;
+  }
   case ARM::t2MOVsi:
   case ARM::t2MOVSsi: {
     // Which instruction to expand to depends on the CCOut operand and
@@ -5766,6 +5787,7 @@ processInstruction(MCInst &Inst,
     case ARM_AM::lsr: newOpc = isNarrow ? ARM::tLSRri : ARM::t2LSRri; break;
     case ARM_AM::lsl: newOpc = isNarrow ? ARM::tLSLri : ARM::t2LSLri; break;
     case ARM_AM::ror: newOpc = ARM::t2RORri; isNarrow = false; break;
+    case ARM_AM::rrx: isNarrow = false; newOpc = ARM::t2RRX; break;
     }
     unsigned Ammount = ARM_AM::getSORegOffset(Inst.getOperand(2).getImm());
     if (Ammount == 32) Ammount = 0;
@@ -5775,7 +5797,8 @@ processInstruction(MCInst &Inst,
       TmpInst.addOperand(MCOperand::CreateReg(
           Inst.getOpcode() == ARM::t2MOVSsi ? ARM::CPSR : 0));
     TmpInst.addOperand(Inst.getOperand(1)); // Rn
-    TmpInst.addOperand(MCOperand::CreateImm(Ammount));
+    if (newOpc != ARM::t2RRX)
+      TmpInst.addOperand(MCOperand::CreateImm(Ammount));
     TmpInst.addOperand(Inst.getOperand(3)); // CondCode
     TmpInst.addOperand(Inst.getOperand(4));
     if (!isNarrow)
@@ -5797,7 +5820,6 @@ processInstruction(MCInst &Inst,
     case ARM::LSLr: ShiftTy = ARM_AM::lsl; break;
     case ARM::RORr: ShiftTy = ARM_AM::ror; break;
     }
-    // A shift by zero is a plain MOVr, not a MOVsi.
     unsigned Shifter = ARM_AM::getSORegOpc(ShiftTy, 0);
     MCInst TmpInst;
     TmpInst.setOpcode(ARM::MOVsr);
@@ -6160,6 +6182,39 @@ processInstruction(MCInst &Inst,
     }
     return false;
   }
+  case ARM::ANDrsi:
+  case ARM::ORRrsi:
+  case ARM::EORrsi:
+  case ARM::BICrsi:
+  case ARM::SUBrsi:
+  case ARM::ADDrsi: {
+    unsigned newOpc;
+    ARM_AM::ShiftOpc SOpc = ARM_AM::getSORegShOp(Inst.getOperand(3).getImm());
+    if (SOpc == ARM_AM::rrx) return false;
+    switch (Inst.getOpcode()) {
+    default: assert(0 && "unexpected opcode!");
+    case ARM::ANDrsi: newOpc = ARM::ANDrr; break;
+    case ARM::ORRrsi: newOpc = ARM::ORRrr; break;
+    case ARM::EORrsi: newOpc = ARM::EORrr; break;
+    case ARM::BICrsi: newOpc = ARM::BICrr; break;
+    case ARM::SUBrsi: newOpc = ARM::SUBrr; break;
+    case ARM::ADDrsi: newOpc = ARM::ADDrr; break;
+    }
+    // If the shift is by zero, use the non-shifted instruction definition.
+    if (ARM_AM::getSORegOffset(Inst.getOperand(3).getImm()) == 0) {
+      MCInst TmpInst;
+      TmpInst.setOpcode(newOpc);
+      TmpInst.addOperand(Inst.getOperand(0));
+      TmpInst.addOperand(Inst.getOperand(1));
+      TmpInst.addOperand(Inst.getOperand(2));
+      TmpInst.addOperand(Inst.getOperand(4));
+      TmpInst.addOperand(Inst.getOperand(5));
+      TmpInst.addOperand(Inst.getOperand(6));
+      Inst = TmpInst;
+      return true;
+    }
+    return false;
+  }
   case ARM::t2IT: {
     // The mask bits for all but the first condition are represented as
     // the low bit of the condition code value implies 't'. We currently
@@ -6383,23 +6438,32 @@ bool ARMAsmParser::parseDirectiveThumbFunc(SMLoc L) {
   const MCAsmInfo &MAI = getParser().getStreamer().getContext().getAsmInfo();
   bool isMachO = MAI.hasSubsectionsViaSymbols();
   StringRef Name;
+  bool needFuncName = true;
 
-  // Darwin asm has function name after .thumb_func direction
+  // Darwin asm has (optionally) function name after .thumb_func direction
   // ELF doesn't
   if (isMachO) {
     const AsmToken &Tok = Parser.getTok();
-    if (Tok.isNot(AsmToken::Identifier) && Tok.isNot(AsmToken::String))
-      return Error(L, "unexpected token in .thumb_func directive");
-    Name = Tok.getIdentifier();
-    Parser.Lex(); // Consume the identifier token.
+    if (Tok.isNot(AsmToken::EndOfStatement)) {
+      if (Tok.isNot(AsmToken::Identifier) && Tok.isNot(AsmToken::String))
+        return Error(L, "unexpected token in .thumb_func directive");
+      Name = Tok.getIdentifier();
+      Parser.Lex(); // Consume the identifier token.
+      needFuncName = false;
+    }
   }
 
- if (getLexer().isNot(AsmToken::EndOfStatement))
+  if (getLexer().isNot(AsmToken::EndOfStatement))
     return Error(L, "unexpected token in directive");
-  Parser.Lex();
+
+  // Eat the end of statement and any blank lines that follow.
+  while (getLexer().is(AsmToken::EndOfStatement))
+    Parser.Lex();
 
   // FIXME: assuming function name will be the line following .thumb_func
-  if (!isMachO) {
+  // We really should be checking the next symbol definition even if there's
+  // stuff in between.
+  if (needFuncName) {
     Name = Parser.getTok().getIdentifier();
   }
 

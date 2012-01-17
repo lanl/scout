@@ -454,3 +454,30 @@ namespace test22 {
   // CHECK-HIDDEN: declare void @_ZN6test221BINS_2A2EE3fooEv()
   // CHECK-HIDDEN: define linkonce_odr hidden void @_ZN6test221BINS_2A2EE3barEv()
 }
+
+namespace PR10113 {
+  namespace foo DEFAULT {
+    template<typename T>
+      class bar {
+      void zed() {}
+    };
+  }
+  template class foo::bar<char>;
+  // CHECK: define weak_odr void @_ZN7PR101133foo3barIcE3zedEv
+  // CHECK-HIDDEN: define weak_odr void @_ZN7PR101133foo3barIcE3zedEv
+}
+
+namespace PR11690 {
+  template<class T> struct Class {
+    void size() const {
+    }
+  };
+  template class DEFAULT Class<char>;
+  // CHECK: define weak_odr void @_ZNK7PR116905ClassIcE4sizeEv
+  // CHECK-HIDDEN: define weak_odr void @_ZNK7PR116905ClassIcE4sizeEv
+
+  template<class T> void Method() {}
+  template  __attribute__((visibility("default"))) void Method<char>();
+  // CHECK: define weak_odr void @_ZN7PR116906MethodIcEEvv
+  // CHECK-HIDDEN: define weak_odr void @_ZN7PR116906MethodIcEEvv
+}

@@ -714,9 +714,16 @@ void llvm::ComputeMaskedBits(Value *V, const APInt &Mask,
     if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
       switch (II->getIntrinsicID()) {
       default: break;
-      case Intrinsic::ctpop:
       case Intrinsic::ctlz:
       case Intrinsic::cttz: {
+        unsigned LowBits = Log2_32(BitWidth)+1;
+        // If this call is undefined for 0, the result will be less than 2^n.
+        if (II->getArgOperand(1) == ConstantInt::getTrue(II->getContext()))
+          LowBits -= 1;
+        KnownZero = APInt::getHighBitsSet(BitWidth, BitWidth - LowBits);
+        break;
+      }
+      case Intrinsic::ctpop: {
         unsigned LowBits = Log2_32(BitWidth)+1;
         KnownZero = APInt::getHighBitsSet(BitWidth, BitWidth - LowBits);
         break;
@@ -804,11 +811,9 @@ bool llvm::isPowerOfTwo(Value *V, const TargetData *TD, bool OrZero,
   // An exact divide or right shift can only shift off zero bits, so the result
   // is a power of two only if the first operand is a power of two and not
   // copying a sign bit (sdiv int_min, 2).
-  if (match(V, m_LShr(m_Value(), m_Value())) ||
-      match(V, m_UDiv(m_Value(), m_Value()))) {
-    PossiblyExactOperator *PEO = cast<PossiblyExactOperator>(V);
-    if (PEO->isExact())
-      return isPowerOfTwo(PEO->getOperand(0), TD, OrZero, Depth);
+  if (match(V, m_Exact(m_LShr(m_Value(), m_Value()))) ||
+      match(V, m_Exact(m_UDiv(m_Value(), m_Value())))) {
+    return isPowerOfTwo(cast<Operator>(V)->getOperand(0), TD, OrZero, Depth);
   }
 
   return false;
@@ -872,10 +877,8 @@ bool llvm::isKnownNonZero(Value *V, const TargetData *TD, unsigned Depth) {
       return true;
   }
   // div exact can only produce a zero if the dividend is zero.
-  else if (match(V, m_IDiv(m_Value(X), m_Value()))) {
-    PossiblyExactOperator *BO = cast<PossiblyExactOperator>(V);
-    if (BO->isExact())
-      return isKnownNonZero(X, TD, Depth);
+  else if (match(V, m_Exact(m_IDiv(m_Value(X), m_Value())))) {
+    return isKnownNonZero(X, TD, Depth);
   }
   // X + Y.
   else if (match(V, m_Add(m_Value(X), m_Value(Y)))) {
@@ -1876,8 +1879,12 @@ bool llvm::onlyUsedByLifetimeMarkers(const Value *V) {
   return true;
 }
 
-bool llvm::isSafeToSpeculativelyExecute(const Instruction *Inst,
+bool llvm::isSafeToSpeculativelyExecute(const Value *V,
                                         const TargetData *TD) {
+  const Operator *Inst = dyn_cast<Operator>(V);
+  if (!Inst)
+    return false;
+
   for (unsigned i = 0, e = Inst->getNumOperands(); i != e; ++i)
     if (Constant *C = dyn_cast<Constant>(Inst->getOperand(i)))
       if (C->canTrap())

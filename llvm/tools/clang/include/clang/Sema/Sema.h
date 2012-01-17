@@ -164,6 +164,7 @@ namespace sema {
   class BlockScopeInfo;
   class DelayedDiagnostic;
   class FunctionScopeInfo;
+  class LambdaScopeInfo;
   class TemplateDeductionInfo;
 }
 
@@ -247,6 +248,12 @@ public:
   /// This is only necessary for issuing pretty diagnostics.
   ExtVectorDeclsType ExtVectorDecls;
 
+  /// \brief The set of types for which we have already complained about the
+  /// definitions being hidden.
+  ///
+  /// This set is used to suppress redundant diagnostics.
+  llvm::SmallPtrSet<NamedDecl *, 4> HiddenDefinitions;
+  
   /// FieldCollector - Collects CXXFieldDecls during parsing of C++ classes.
   llvm::OwningPtr<CXXFieldCollector> FieldCollector;
 
@@ -749,6 +756,9 @@ public:
 
   bool findMacroSpelling(SourceLocation &loc, StringRef name);
 
+  /// \brief Get a string to suggest for zero-initialization of a type.
+  const char *getFixItZeroInitializerForType(QualType T) const;
+
   ExprResult Owned(Expr* E) { return E; }
   ExprResult Owned(ExprResult R) { return R; }
   StmtResult Owned(Stmt* S) { return S; }
@@ -761,8 +771,9 @@ public:
 
   void PushFunctionScope();
   void PushBlockScope(Scope *BlockScope, BlockDecl *Block);
-  void PopFunctionOrBlockScope(const sema::AnalysisBasedWarnings::Policy *WP =0,
-                               const Decl *D = 0, const BlockExpr *blkExpr = 0);
+  void PushLambdaScope(CXXRecordDecl *Lambda);
+  void PopFunctionScopeInfo(const sema::AnalysisBasedWarnings::Policy *WP =0,
+                            const Decl *D = 0, const BlockExpr *blkExpr = 0);
 
   sema::FunctionScopeInfo *getCurFunction() const {
     return FunctionScopes.back();
@@ -772,6 +783,9 @@ public:
 
   /// \brief Retrieve the current block, if any.
   sema::BlockScopeInfo *getCurBlock();
+
+  /// \brief Retrieve the current lambda expression, if any.
+  sema::LambdaScopeInfo *getCurLambda();
 
   /// WeakTopLevelDeclDecls - access to #pragma weak-generated Decls
   SmallVector<Decl*,2> &WeakTopLevelDecls() { return WeakTopLevelDecl; }
@@ -1114,10 +1128,13 @@ public:
 
   /// \brief The parser has processed a module import declaration.
   ///
-  /// \param ImportLoc The location of the '__import_module__' keyword.
+  /// \param AtLoc The location of the '@' symbol, if any.
+  ///
+  /// \param ImportLoc The location of the 'import' keyword.
   ///
   /// \param Path The module access path.
-  DeclResult ActOnModuleImport(SourceLocation ImportLoc, ModuleIdPath Path);
+  DeclResult ActOnModuleImport(SourceLocation AtLoc, SourceLocation ImportLoc, 
+                               ModuleIdPath Path);
 
   /// \brief Retrieve a suitable printing policy.
   PrintingPolicy getPrintingPolicy() const;
@@ -1131,8 +1148,6 @@ public:
   Decl *ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
                                    DeclSpec &DS,
                                    MultiTemplateParamsArg TemplateParams);
-
-  StmtResult ActOnVlaStmt(const DeclSpec &DS);
 
   Decl *BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
                                     AccessSpecifier AS,
@@ -1159,7 +1174,8 @@ public:
                  AttributeList *Attr, AccessSpecifier AS,
                  SourceLocation ModulePrivateLoc,
                  MultiTemplateParamsArg TemplateParameterLists,
-                 bool &OwnedDecl, bool &IsDependent, bool ScopedEnum,
+                 bool &OwnedDecl, bool &IsDependent,
+                 SourceLocation ScopedEnumKWLoc,
                  bool ScopedEnumUsesClassTag, TypeResult UnderlyingType);
 
   Decl *ActOnTemplatedFriendTag(Scope *S, SourceLocation FriendLoc,
@@ -1328,10 +1344,12 @@ public:
   /// Subroutines of ActOnDeclarator().
   TypedefDecl *ParseTypedefDecl(Scope *S, Declarator &D, QualType T,
                                 TypeSourceInfo *TInfo);
+  bool isIncompatibleTypedef(TypeDecl *Old, TypedefNameDecl *New);
+  void mergeDeclAttributes(Decl *New, Decl *Old, bool MergeDeprecation = true);
   void MergeTypedefNameDecl(TypedefNameDecl *New, LookupResult &OldDecls);
   bool MergeFunctionDecl(FunctionDecl *New, Decl *Old);
   bool MergeCompatibleFunctionDecls(FunctionDecl *New, FunctionDecl *Old);
-  void mergeObjCMethodDecls(ObjCMethodDecl *New, const ObjCMethodDecl *Old);
+  void mergeObjCMethodDecls(ObjCMethodDecl *New, ObjCMethodDecl *Old);
   void MergeVarDecl(VarDecl *New, LookupResult &OldDecls);
   void MergeVarDeclTypes(VarDecl *New, VarDecl *Old);
   void MergeVarDeclExceptionSpecs(VarDecl *New, VarDecl *Old);
@@ -1757,7 +1775,9 @@ public:
   bool LookupParsedName(LookupResult &R, Scope *S, CXXScopeSpec *SS,
                         bool AllowBuiltinCreation = false,
                         bool EnteringContext = false);
-  ObjCProtocolDecl *LookupProtocol(IdentifierInfo *II, SourceLocation IdLoc);
+  ObjCProtocolDecl *LookupProtocol(IdentifierInfo *II, SourceLocation IdLoc,
+                                   RedeclarationKind Redecl
+                                     = NotForRedeclaration);
 
   void LookupOverloadedOperatorName(OverloadedOperatorKind Op, Scope *S,
                                     QualType T1, QualType T2,
@@ -1821,10 +1841,18 @@ public:
   TypoCorrection CorrectTypo(const DeclarationNameInfo &Typo,
                              Sema::LookupNameKind LookupKind,
                              Scope *S, CXXScopeSpec *SS,
-                             DeclContext *MemberContext = NULL,
+                             DeclContext *MemberContext = 0,
                              bool EnteringContext = false,
                              CorrectTypoContext CTC = CTC_Unknown,
-                             const ObjCObjectPointerType *OPT = NULL);
+                             const ObjCObjectPointerType *OPT = 0);
+
+  TypoCorrection CorrectTypo(const DeclarationNameInfo &Typo,
+                             Sema::LookupNameKind LookupKind,
+                             Scope *S, CXXScopeSpec *SS,
+                             CorrectionCandidateCallback *CCC,
+                             DeclContext *MemberContext = 0,
+                             bool EnteringContext = false,
+                             const ObjCObjectPointerType *OPT = 0);
 
   void FindAssociatedClassesAndNamespaces(Expr **Args, unsigned NumArgs,
                                    AssociatedNamespaceSet &AssociatedNamespaces,
@@ -3087,7 +3115,12 @@ public:
   /// \param Capture If true, capture 'this' in this context.
   ///
   /// \returns The type of 'this', if possible. Otherwise, returns a NULL type.
-  QualType getCurrentThisType(bool Capture = true);
+  QualType getCurrentThisType();
+
+  /// \brief Make sure the value of 'this' is actually available in the current
+  /// context, if it is a potentially evaluated context. This check can be
+  /// delayed in PotentiallyPotentiallyEvaluated contexts.
+  void CheckCXXThisCapture(SourceLocation Loc);
 
   /// ActOnCXXBoolLiteral - Parse {true,false} literals.
   ExprResult ActOnCXXBoolLiteral(SourceLocation OpLoc, tok::TokenKind Kind);
@@ -3441,6 +3474,22 @@ public:
   /// ActOnCXXExitDeclInitializer - Invoked after we are finished parsing an
   /// initializer for the declaration 'Dcl'.
   void ActOnCXXExitDeclInitializer(Scope *S, Decl *Dcl);
+
+  /// ActOnStartOfLambdaDefinition - This is called just before we start
+  /// parsing the body of a lambda; it analyzes the explicit captures and 
+  /// arguments, and sets up various data-structures for the body of the
+  /// lambda.
+  void ActOnStartOfLambdaDefinition(LambdaIntroducer &Intro,
+                                    Declarator &ParamInfo, Scope *CurScope);
+
+  /// ActOnLambdaError - If there is an error parsing a lambda, this callback
+  /// is invoked to pop the information about the lambda.
+  void ActOnLambdaError(SourceLocation StartLoc, Scope *CurScope);
+
+  /// ActOnLambdaExpr - This is called when the body of a lambda expression
+  /// was successfully completed.
+  ExprResult ActOnLambdaExpr(SourceLocation StartLoc, Stmt *Body,
+                             Scope *CurScope);
 
   // ParseObjCStringLiteral - Parse Objective-C string literals.
   ExprResult ParseObjCStringLiteral(SourceLocation *AtLocs,
@@ -5257,7 +5306,7 @@ public:
                                      SourceLocation *IdentLocs,
                                      unsigned NumElts);
 
-  Decl *ActOnForwardProtocolDeclaration(SourceLocation AtProtoclLoc,
+  DeclGroupPtrTy ActOnForwardProtocolDeclaration(SourceLocation AtProtoclLoc,
                                         const IdentifierLocPair *IdentList,
                                         unsigned NumElts,
                                         AttributeList *attrList);
@@ -5425,7 +5474,15 @@ public:
                                SourceLocation LBracLoc,
                                ArrayRef<SourceLocation> SelectorLocs,
                                SourceLocation RBracLoc,
-                               MultiExprArg Args);
+                               MultiExprArg Args,
+                               bool isImplicit = false);
+
+  ExprResult BuildClassMessageImplicit(QualType ReceiverType,
+                                       bool isSuperReceiver,
+                                       SourceLocation Loc,
+                                       Selector Sel,
+                                       ObjCMethodDecl *Method,
+                                       MultiExprArg Args);
 
   ExprResult ActOnClassMessage(Scope *S,
                                ParsedType Receiver,
@@ -5443,7 +5500,15 @@ public:
                                   SourceLocation LBracLoc,
                                   ArrayRef<SourceLocation> SelectorLocs,
                                   SourceLocation RBracLoc,
-                                  MultiExprArg Args);
+                                  MultiExprArg Args,
+                                  bool isImplicit = false);
+
+  ExprResult BuildInstanceMessageImplicit(Expr *Receiver,
+                                          QualType ReceiverType,
+                                          SourceLocation Loc,
+                                          Selector Sel,
+                                          ObjCMethodDecl *Method,
+                                          MultiExprArg Args);
 
   ExprResult ActOnInstanceMessage(Scope *S,
                                   Expr *Receiver,
@@ -6252,21 +6317,8 @@ private:
                                  unsigned format_idx, unsigned firstDataArg,
                                  bool isPrintf);
 
-  /// \brief Enumeration used to describe which of the memory setting or copying
-  /// functions is being checked by \c CheckMemaccessArguments().
-  enum CheckedMemoryFunction {
-    CMF_Memset,
-    CMF_Memcpy,
-    CMF_Memmove,
-    CMF_Memcmp,
-    CMF_Strncpy,
-    CMF_Strncmp,
-    CMF_Strncasecmp,
-    CMF_Strncat,
-    CMF_Strndup
-  };
-
-  void CheckMemaccessArguments(const CallExpr *Call, CheckedMemoryFunction CMF,
+  void CheckMemaccessArguments(const CallExpr *Call,
+                               FunctionDecl::MemoryFunctionKind CMF,
                                IdentifierInfo *FnName);
 
   void CheckStrlcpycatArguments(const CallExpr *Call,

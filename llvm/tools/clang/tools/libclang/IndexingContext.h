@@ -17,7 +17,6 @@
 namespace clang {
   class FileEntry;
   class ObjCPropertyDecl;
-  class ObjCClassDecl;
   class ClassTemplateDecl;
   class FunctionTemplateDecl;
   class TypeAliasTemplateDecl;
@@ -143,7 +142,7 @@ struct ObjCProtocolDeclInfo : public ObjCContainerDeclInfo {
   ObjCProtocolDeclInfo(const ObjCProtocolDecl *D)
     : ObjCContainerDeclInfo(Info_ObjCProtocol,
                             /*isForwardRef=*/false,
-                            /*isRedeclaration=*/D->isInitiallyForwardDecl(),
+                            /*isRedeclaration=*/D->getPreviousDeclaration(),
                             /*isImplementation=*/false) { }
 
   static bool classof(const DeclInfo *D) {
@@ -370,13 +369,8 @@ public:
   
   bool handleTypedefName(const TypedefNameDecl *D);
 
-  bool handleObjCClass(const ObjCClassDecl *D);
   bool handleObjCInterface(const ObjCInterfaceDecl *D);
   bool handleObjCImplementation(const ObjCImplementationDecl *D);
-
-  bool handleObjCForwardProtocol(const ObjCProtocolDecl *D,
-                                 SourceLocation Loc,
-                                 bool isRedeclaration);
 
   bool handleObjCProtocol(const ObjCProtocolDecl *D);
 

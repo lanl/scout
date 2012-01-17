@@ -29,6 +29,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/IRBuilder.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -350,6 +351,8 @@ void SjLjEHPass::lowerAcrossUnwindEdges(Function &F,
       for (unsigned i = 0, e = Invokes.size(); i != e; ++i) {
         BasicBlock *UnwindBlock = Invokes[i]->getUnwindDest();
         if (UnwindBlock != BB && LiveBBs.count(UnwindBlock)) {
+          DEBUG(dbgs() << "SJLJ Spill: " << *Inst << " around "
+                << UnwindBlock->getName() << "\n");
           NeedsSpill = true;
           break;
         }

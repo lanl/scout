@@ -273,6 +273,25 @@ public:
     return CGM.CreateRuntimeFunction(FTy, "objc_copyStruct");
   }
   
+  /// This routine declares and returns address of:
+  /// void objc_copyCppObjectAtomic(
+  ///         void *dest, const void *src, 
+  ///         void (*copyHelper) (void *dest, const void *source));
+  llvm::Constant *getCppAtomicObjectFunction() {
+    CodeGen::CodeGenTypes &Types = CGM.getTypes();
+    ASTContext &Ctx = CGM.getContext();
+    /// void objc_copyCppObjectAtomic(void *dest, const void *src, void *helper);
+    SmallVector<CanQualType,3> Params;
+    Params.push_back(Ctx.VoidPtrTy);
+    Params.push_back(Ctx.VoidPtrTy);
+    Params.push_back(Ctx.VoidPtrTy);
+    llvm::FunctionType *FTy =
+    Types.GetFunctionType(Types.getFunctionInfo(Ctx.VoidTy, Params,
+                                                FunctionType::ExtInfo()),
+                          false);
+    return CGM.CreateRuntimeFunction(FTy, "objc_copyCppObjectAtomic");
+  }
+  
   llvm::Constant *getEnumerationMutationFn() {
     CodeGen::CodeGenTypes &Types = CGM.getTypes();
     ASTContext &Ctx = CGM.getContext();
@@ -1056,6 +1075,7 @@ public:
   virtual llvm::Constant *GetPropertySetFunction();
   virtual llvm::Constant *GetGetStructFunction();
   virtual llvm::Constant *GetSetStructFunction();
+  virtual llvm::Constant *GetCppAtomicObjectFunction();
   virtual llvm::Constant *EnumerationMutationFunction();
 
   virtual void EmitTryStmt(CodeGen::CodeGenFunction &CGF,
@@ -1317,6 +1337,9 @@ public:
   }
   virtual llvm::Constant *GetGetStructFunction() {
     return ObjCTypes.getCopyStructFn();
+  }
+  virtual llvm::Constant *GetCppAtomicObjectFunction() {
+    return ObjCTypes.getCppAtomicObjectFunction();
   }
   
   virtual llvm::Constant *EnumerationMutationFunction() {
@@ -1786,6 +1809,10 @@ llvm::Constant *CGObjCMac::GetOrEmitProtocol(const ObjCProtocolDecl *PD) {
   // Early exit if a defining object has already been generated.
   if (Entry && Entry->hasInitializer())
     return Entry;
+
+  // Use the protocol definition, if there is one.
+  if (const ObjCProtocolDecl *Def = PD->getDefinition())
+    PD = Def;
 
   // FIXME: I don't understand why gcc generates this, or where it is
   // resolved. Investigate. Its also wasteful to look this up over and over.
@@ -2635,6 +2662,10 @@ llvm::Constant *CGObjCMac::GetGetStructFunction() {
 }
 llvm::Constant *CGObjCMac::GetSetStructFunction() {
   return ObjCTypes.getCopyStructFn();
+}
+
+llvm::Constant *CGObjCMac::GetCppAtomicObjectFunction() {
+  return ObjCTypes.getCppAtomicObjectFunction();
 }
 
 llvm::Constant *CGObjCMac::EnumerationMutationFunction() {
@@ -5413,6 +5444,10 @@ llvm::Constant *CGObjCNonFragileABIMac::GetOrEmitProtocol(
   if (Entry && Entry->hasInitializer())
     return Entry;
 
+  // Use the protocol definition, if there is one.
+  if (const ObjCProtocolDecl *Def = PD->getDefinition())
+    PD = Def;
+  
   // Construct method lists.
   std::vector<llvm::Constant*> InstanceMethods, ClassMethods;
   std::vector<llvm::Constant*> OptInstanceMethods, OptClassMethods;

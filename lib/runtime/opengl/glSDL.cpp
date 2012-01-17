@@ -37,8 +37,8 @@ glSDL::glSDL()
   glSDL(500, 500);
 }
 
-glSDL::glSDL(size_t width, size_t height)
-  :_surface(NULL), glToolkit()
+glSDL::glSDL(size_t width, size_t height, glCamera* camera)
+  :_surface(NULL), glToolkit(camera)
 {
 
 
@@ -108,7 +108,6 @@ void glSDL::paintMono()
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   if (_camera != 0) {
-
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(_camera->fov, _camera->aspect, _camera->near, _camera->far);

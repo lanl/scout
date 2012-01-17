@@ -33,7 +33,6 @@ glRenderable::glRenderable()
 //
 void glRenderable::baseInitialize()
 {
-  cout << "in baseInitialize" << endl;
   shader_prog = new glProgram();
 }
 

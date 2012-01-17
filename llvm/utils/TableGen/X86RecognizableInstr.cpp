@@ -221,6 +221,7 @@ RecognizableInstr::RecognizableInstr(DisassemblerTables &tables,
   HasVEX_4VPrefix  = Rec->getValueAsBit("hasVEX_4VPrefix");
   HasVEX_4VOp3Prefix = Rec->getValueAsBit("hasVEX_4VOp3Prefix");
   HasVEX_WPrefix   = Rec->getValueAsBit("hasVEX_WPrefix");
+  HasMemOp4Prefix  = Rec->getValueAsBit("hasMemOp4Prefix");
   IgnoresVEX_L     = Rec->getValueAsBit("ignoresVEX_L");
   HasLockPrefix    = Rec->getValueAsBit("hasLockPrefix");
   IsCodeGenOnly    = Rec->getValueAsBit("isCodeGenOnly");
@@ -558,7 +559,7 @@ void RecognizableInstr::emitInstructionSpecifier(DisassemblerTables &tables) {
   
   bool hasFROperands = false;
   
-  assert(numOperands < X86_MAX_OPERANDS && "X86_MAX_OPERANDS is not large enough");
+  assert(numOperands <= X86_MAX_OPERANDS && "X86_MAX_OPERANDS is not large enough");
   
   for (operandIndex = 0; operandIndex < numOperands; ++operandIndex) {
     if (OperandList[operandIndex].Constraints.size()) {
@@ -677,7 +678,7 @@ void RecognizableInstr::emitInstructionSpecifier(DisassemblerTables &tables) {
     // Operand 3 (optional) is an immediate.
 
     if (HasVEX_4VPrefix || HasVEX_4VOp3Prefix)
-      assert(numPhysicalOperands >= 3 && numPhysicalOperands <= 4 &&
+      assert(numPhysicalOperands >= 3 && numPhysicalOperands <= 5 &&
              "Unexpected number of operands for MRMSrcRegFrm with VEX_4V"); 
     else
       assert(numPhysicalOperands >= 2 && numPhysicalOperands <= 3 &&
@@ -690,12 +691,17 @@ void RecognizableInstr::emitInstructionSpecifier(DisassemblerTables &tables) {
       // in ModRMVEX and the one above the one in the VEX.VVVV field
       HANDLE_OPERAND(vvvvRegister)
 
+    if (HasMemOp4Prefix)
+      HANDLE_OPERAND(immediate)
+
     HANDLE_OPERAND(rmRegister)
 
     if (HasVEX_4VOp3Prefix)
       HANDLE_OPERAND(vvvvRegister)
 
-    HANDLE_OPTIONAL(immediate)
+    if (!HasMemOp4Prefix)
+      HANDLE_OPTIONAL(immediate)
+    HANDLE_OPTIONAL(immediate) // above might be a register in 7:4
     break;
   case X86Local::MRMSrcMem:
     // Operand 1 is a register operand in the Reg/Opcode field.
@@ -704,7 +710,7 @@ void RecognizableInstr::emitInstructionSpecifier(DisassemblerTables &tables) {
     // Operand 3 (optional) is an immediate.
 
     if (HasVEX_4VPrefix || HasVEX_4VOp3Prefix)
-      assert(numPhysicalOperands >= 3 && numPhysicalOperands <= 4 &&
+      assert(numPhysicalOperands >= 3 && numPhysicalOperands <= 5 &&
              "Unexpected number of operands for MRMSrcMemFrm with VEX_4V"); 
     else
       assert(numPhysicalOperands >= 2 && numPhysicalOperands <= 3 &&
@@ -717,12 +723,17 @@ void RecognizableInstr::emitInstructionSpecifier(DisassemblerTables &tables) {
       // in ModRMVEX and the one above the one in the VEX.VVVV field
       HANDLE_OPERAND(vvvvRegister)
 
+    if (HasMemOp4Prefix)
+      HANDLE_OPERAND(immediate)
+
     HANDLE_OPERAND(memory)
 
     if (HasVEX_4VOp3Prefix)
       HANDLE_OPERAND(vvvvRegister)
 
-    HANDLE_OPTIONAL(immediate)
+    if (!HasMemOp4Prefix)
+      HANDLE_OPTIONAL(immediate)
+    HANDLE_OPTIONAL(immediate) // above might be a register in 7:4
     break;
   case X86Local::MRM0r:
   case X86Local::MRM1r:

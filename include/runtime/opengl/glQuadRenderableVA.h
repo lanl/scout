@@ -36,7 +36,7 @@ namespace scout
     ~glQuadRenderableVA();
 
     void initialize(glCamera* camera);
-    GLuint get_colors();
+    GLuint get_buffer_object_id();
     float4* map_colors();
     void alloc_texture();
     void unmap_colors();

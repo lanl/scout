@@ -56,3 +56,23 @@ int writeToMutable() {
   const MutableMember MM = { 0 };
   return ++MM.n;
 }
+
+// Make sure we don't try to fold this in the frontend; the backend can't
+// handle it.
+// CHECK: @PR11705 = global i128 0
+__int128_t PR11705 = (__int128_t)&PR11705;
+
+// Make sure we don't try to fold this either.
+// CHECK: @_ZZ23UnfoldableAddrLabelDiffvE1x = internal global i128 0
+void UnfoldableAddrLabelDiff() { static __int128_t x = (long)&&a-(long)&&b; a:b:return;}
+
+// But make sure we do fold this.
+// CHECK: @_ZZ21FoldableAddrLabelDiffvE1x = internal global i64 sub (i64 ptrtoint (i8* blockaddress(@_Z21FoldableAddrLabelDiffv
+void FoldableAddrLabelDiff() { static long x = (long)&&a-(long)&&b; a:b:return;}
+
+// CHECK: @i = constant i32* bitcast (float* @PR9558 to i32*)
+int &i = reinterpret_cast<int&>(PR9558);
+
+int arr[2];
+// CHECK: @pastEnd = constant i32* bitcast (i8* getelementptr (i8* bitcast ([2 x i32]* @arr to i8*), i64 8) to i32*)
+int &pastEnd = arr[2];

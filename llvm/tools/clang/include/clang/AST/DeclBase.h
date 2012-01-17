@@ -180,12 +180,28 @@ public:
     OBJC_TQ_Oneway = 0x20
   };
 
-private:
-  /// NextDeclInContext - The next declaration within the same lexical
+protected:
+  // Enumeration values used in the bits stored in NextInContextAndBits.
+  enum {
+    /// \brief Whether this declaration is a top-level declaration (function,
+    /// global variable, etc.) that is lexically inside an objc container
+    /// definition.
+    TopLevelDeclInObjCContainerFlag = 0x01,
+    
+    /// \brief Whether this declaration is private to the module in which it was
+    /// defined.
+    ModulePrivateFlag = 0x02
+  };
+  
+  /// \brief The next declaration within the same lexical
   /// DeclContext. These pointers form the linked list that is
   /// traversed via DeclContext's decls_begin()/decls_end().
-  Decl *NextDeclInContext;
+  ///
+  /// The extra two bits are used for the TopLevelDeclInObjCContainer and
+  /// ModulePrivate bits.
+  llvm::PointerIntPair<Decl *, 2, unsigned> NextInContextAndBits;
 
+private:
   friend class DeclContext;
 
   struct MultipleDC {
@@ -244,12 +260,6 @@ private:
   /// are regarded as "referenced" but not "used".
   unsigned Referenced : 1;
 
-  /// \brief Whether this declaration is a top-level declaration (function,
-  /// global variable, etc.) that is lexically inside an objc container
-  /// definition.
-  /// FIXME: Consider setting the lexical context to the objc container.
-  unsigned TopLevelDeclInObjCContainer : 1;
-
 protected:
   /// Access - Used by C++ decls for the access specifier.
   // NOTE: VC++ treats enums as signed, avoid using the AccessSpecifier enum
@@ -259,10 +269,11 @@ protected:
   /// \brief Whether this declaration was loaded from an AST file.
   unsigned FromASTFile : 1;
 
-  /// \brief Whether this declaration is private to the module in which it was
-  /// defined.
-  unsigned ModulePrivate : 1;
-
+  /// \brief Whether this declaration is hidden from normal name lookup, e.g.,
+  /// because it is was loaded from an AST file is either module-private or
+  /// because its submodule has not been made visible.
+  unsigned Hidden : 1;
+  
   /// IdentifierNamespace - This specifies what IDNS_* namespace this lives in.
   unsigned IdentifierNamespace : 12;
 
@@ -286,11 +297,10 @@ private:
 protected:
 
   Decl(Kind DK, DeclContext *DC, SourceLocation L)
-    : NextDeclInContext(0), DeclCtx(DC),
+    : NextInContextAndBits(), DeclCtx(DC),
       Loc(L), DeclKind(DK), InvalidDecl(0),
       HasAttrs(false), Implicit(false), Used(false), Referenced(false),
-      TopLevelDeclInObjCContainer(false), Access(AS_none), FromASTFile(0),
-      ModulePrivate(0),
+      Access(AS_none), FromASTFile(0), Hidden(0),
       IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
       HasCachedLinkage(0)
   {
@@ -298,10 +308,9 @@ protected:
   }
 
   Decl(Kind DK, EmptyShell Empty)
-    : NextDeclInContext(0), DeclKind(DK), InvalidDecl(0),
+    : NextInContextAndBits(), DeclKind(DK), InvalidDecl(0),
       HasAttrs(false), Implicit(false), Used(false), Referenced(false),
-      TopLevelDeclInObjCContainer(false), Access(AS_none), FromASTFile(0),
-      ModulePrivate(0),
+      Access(AS_none), FromASTFile(0), Hidden(0),
       IdentifierNamespace(getIdentifierNamespaceForKind(DK)),
       HasCachedLinkage(0)
   {
@@ -310,6 +319,18 @@ protected:
 
   virtual ~Decl();
 
+  /// \brief Allocate memory for a deserialized declaration.
+  ///
+  /// This routine must be used to allocate memory for any declaration that is
+  /// deserialized from a module file.
+  ///
+  /// \param Context The context in which we will allocate memory.
+  /// \param ID The global ID of the deserialized declaration.
+  /// \param Size The size of the allocated object.
+  static void *AllocateDeserializedDecl(const ASTContext &Context,
+                                        unsigned ID,
+                                        unsigned Size);
+  
 public:
 
   /// \brief Source range that this declaration covers.
@@ -325,8 +346,8 @@ public:
   Kind getKind() const { return static_cast<Kind>(DeclKind); }
   const char *getDeclKindName() const;
 
-  Decl *getNextDeclInContext() { return NextDeclInContext; }
-  const Decl *getNextDeclInContext() const { return NextDeclInContext; }
+  Decl *getNextDeclInContext() { return NextInContextAndBits.getPointer(); }
+  const Decl *getNextDeclInContext() const {return NextInContextAndBits.getPointer();}
 
   DeclContext *getDeclContext() {
     if (isInSemaDC())
@@ -463,13 +484,44 @@ public:
   /// global variable, etc.) that is lexically inside an objc container
   /// definition.
   bool isTopLevelDeclInObjCContainer() const {
-    return TopLevelDeclInObjCContainer;
+    return NextInContextAndBits.getInt() & TopLevelDeclInObjCContainerFlag;
   }
 
   void setTopLevelDeclInObjCContainer(bool V = true) {
-    TopLevelDeclInObjCContainer = V;
+    unsigned Bits = NextInContextAndBits.getInt();
+    if (V)
+      Bits |= TopLevelDeclInObjCContainerFlag;
+    else
+      Bits &= ~TopLevelDeclInObjCContainerFlag;
+    NextInContextAndBits.setInt(Bits);
   }
 
+protected:
+  /// \brief Whether this declaration was marked as being private to the
+  /// module in which it was defined.
+  bool isModulePrivate() const { 
+    return NextInContextAndBits.getInt() & ModulePrivateFlag;
+  }
+  
+  /// \brief Specify whether this declaration was marked as being private
+  /// to the module in which it was defined.
+  void setModulePrivate(bool MP = true) {
+    unsigned Bits = NextInContextAndBits.getInt();
+    if (MP)
+      Bits |= ModulePrivateFlag;
+    else
+      Bits &= ~ModulePrivateFlag;
+    NextInContextAndBits.setInt(Bits);
+  }
+
+  /// \brief Set the owning module ID.
+  void setOwningModuleID(unsigned ID) {
+    assert(isFromASTFile() && "Only works on a deserialized declaration");
+    *((unsigned*)this - 2) = ID;
+  }
+  
+public:
+  
   /// \brief Determine the availability of the given declaration.
   ///
   /// This routine will determine the most restrictive availability of
@@ -520,6 +572,23 @@ public:
   /// a precompiled header or module) rather than having been parsed.
   bool isFromASTFile() const { return FromASTFile; }
 
+  /// \brief Retrieve the global declaration ID associated with this 
+  /// declaration, which specifies where in the 
+  unsigned getGlobalID() const { 
+    if (isFromASTFile())
+      return *((const unsigned*)this - 1);
+    return 0;
+  }
+  
+  /// \brief Retrieve the global ID of the module that owns this particular
+  /// declaration.
+  unsigned getOwningModuleID() const {
+    if (isFromASTFile())
+      return *((const unsigned*)this - 2);
+    
+    return 0;
+  }
+  
   unsigned getIdentifierNamespace() const {
     return IdentifierNamespace;
   }
@@ -1028,24 +1097,30 @@ public:
   /// inline, its enclosing namespace, recursively.
   bool InEnclosingNamespaceSetOf(const DeclContext *NS) const;
 
-  /// getNextContext - If this is a DeclContext that may have other
-  /// DeclContexts that are semantically connected but syntactically
-  /// different, such as C++ namespaces, this routine retrieves the
-  /// next DeclContext in the link. Iteration through the chain of
-  /// DeclContexts should begin at the primary DeclContext and
-  /// continue until this function returns NULL. For example, given:
-  /// @code
+  /// \\brief Collects all of the declaration contexts that are semantically
+  /// connected to this declaration context.
+  ///
+  /// For declaration contexts that have multiple semantically connected but
+  /// syntactically distinct contexts, such as C++ namespaces, this routine 
+  /// retrieves the complete set of such declaration contexts in source order.
+  /// For example, given:
+  ///
+  /// \code
   /// namespace N {
   ///   int x;
   /// }
   /// namespace N {
   ///   int y;
   /// }
-  /// @endcode
-  /// The first occurrence of namespace N will be the primary
-  /// DeclContext. Its getNextContext will return the second
-  /// occurrence of namespace N.
-  DeclContext *getNextContext();
+  /// \endcode
+  ///
+  /// The \c Contexts parameter will contain both definitions of N.
+  ///
+  /// \param Contexts Will be cleared and set to the set of declaration
+  /// contexts that are semanticaly connected to this declaration context,
+  /// in source order, including this context (which may be the only result,
+  /// for non-namespace contexts).
+  void collectAllContexts(llvm::SmallVectorImpl<DeclContext *> &Contexts);
 
   /// decl_iterator - Iterates through the declarations stored
   /// within this context.
@@ -1371,7 +1446,8 @@ public:
   /// \brief Determine whether the given declaration is stored in the list of
   /// declarations lexically within this context.
   bool isDeclInLexicalTraversal(const Decl *D) const {
-    return D && (D->NextDeclInContext || D == FirstDecl || D == LastDecl);
+    return D && (D->NextInContextAndBits.getPointer() || D == FirstDecl || 
+                 D == LastDecl);
   }
 
   static bool classof(const Decl *D);

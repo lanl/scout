@@ -33,8 +33,6 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "../Target/X86/MCTargetDesc/X86FixupKinds.h"
-
 using namespace llvm;
 
 namespace {
@@ -81,7 +79,7 @@ public:
   virtual void EmitFileDirective(StringRef Filename);
   virtual void EmitInstruction(const MCInst &Instruction);
   virtual void EmitWin64EHHandlerData();
-  virtual void Finish();
+  virtual void FinishImpl();
 
 private:
   virtual void EmitInstToFragment(const MCInst &Inst) {
@@ -303,7 +301,7 @@ void WinCOFFStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol)
 
   DF->addFixup(MCFixup::Create(DF->getContents().size(),
                                MCSymbolRefExpr::Create (Symbol, getContext ()),
-                               (MCFixupKind)X86::reloc_coff_secrel32));
+                               FK_SecRel_4));
   DF->getContents().resize(DF->getContents().size() + 4, 0);
 }
 
@@ -403,9 +401,9 @@ void WinCOFFStreamer::EmitWin64EHHandlerData() {
   MCWin64EHUnwindEmitter::EmitUnwindInfo(*this, getCurrentW64UnwindInfo());
 }
 
-void WinCOFFStreamer::Finish() {
+void WinCOFFStreamer::FinishImpl() {
   EmitW64Tables();
-  MCObjectStreamer::Finish();
+  MCObjectStreamer::FinishImpl();
 }
 
 namespace llvm

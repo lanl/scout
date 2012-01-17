@@ -2778,12 +2778,13 @@ void SelectionDAGBuilder::visitExtractElement(const User &I) {
                            TLI.getValueType(I.getType()), InVec, InIdx));
 }
 
-// Utility for visitShuffleVector - Returns true if the mask is mask starting
-// from SIndx and increasing to the element length (undefs are allowed).
-static bool SequentialMask(SmallVectorImpl<int> &Mask, unsigned SIndx) {
-  unsigned MaskNumElts = Mask.size();
-  for (unsigned i = 0; i != MaskNumElts; ++i)
-    if ((Mask[i] >= 0) && (Mask[i] != (int)(i + SIndx)))
+// Utility for visitShuffleVector - Return true if every element in Mask,
+// begining // from position Pos and ending in Pos+Size, falls within the
+// specified sequential range [L, L+Pos). or is undef.
+static bool isSequentialInRange(const SmallVectorImpl<int> &Mask,
+                                int Pos, int Size, int Low) {
+  for (int i = Pos, e = Pos+Size; i != e; ++i, ++Low)
+    if (Mask[i] >= 0 && Mask[i] != Low)
       return false;
   return true;
 }
@@ -2820,11 +2821,23 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
     // Mask is longer than the source vectors and is a multiple of the source
     // vectors.  We can use concatenate vector to make the mask and vectors
     // lengths match.
-    if (SrcNumElts*2 == MaskNumElts && SequentialMask(Mask, 0)) {
-      // The shuffle is concatenating two vectors together.
-      setValue(&I, DAG.getNode(ISD::CONCAT_VECTORS, getCurDebugLoc(),
-                               VT, Src1, Src2));
-      return;
+    if (SrcNumElts*2 == MaskNumElts) {
+      // First check for Src1 in low and Src2 in high
+      if (isSequentialInRange(Mask, 0, SrcNumElts, 0) &&
+          isSequentialInRange(Mask, SrcNumElts, SrcNumElts, SrcNumElts)) {
+        // The shuffle is concatenating two vectors together.
+        setValue(&I, DAG.getNode(ISD::CONCAT_VECTORS, getCurDebugLoc(),
+                                 VT, Src1, Src2));
+        return;
+      }
+      // Then check for Src2 in low and Src1 in high
+      if (isSequentialInRange(Mask, 0, SrcNumElts, SrcNumElts) &&
+          isSequentialInRange(Mask, SrcNumElts, SrcNumElts, 0)) {
+        // The shuffle is concatenating two vectors together.
+        setValue(&I, DAG.getNode(ISD::CONCAT_VECTORS, getCurDebugLoc(),
+                                 VT, Src2, Src1));
+        return;
+      }
     }
 
     // Pad both vectors with undefs to make them the same length as the mask.
@@ -3508,19 +3521,11 @@ void SelectionDAGBuilder::visitTargetIntrinsic(const CallInst &I,
   // Add all operands of the call to the operand list.
   for (unsigned i = 0, e = I.getNumArgOperands(); i != e; ++i) {
     SDValue Op = getValue(I.getArgOperand(i));
-    assert(TLI.isTypeLegal(Op.getValueType()) &&
-           "Intrinsic uses a non-legal type?");
     Ops.push_back(Op);
   }
 
   SmallVector<EVT, 4> ValueVTs;
   ComputeValueVTs(TLI, I.getType(), ValueVTs);
-#ifndef NDEBUG
-  for (unsigned Val = 0, E = ValueVTs.size(); Val != E; ++Val) {
-    assert(TLI.isTypeLegal(ValueVTs[Val]) &&
-           "Intrinsic uses a non-legal type?");
-  }
-#endif // NDEBUG
 
   if (HasChain)
     ValueVTs.push_back(MVT::Other);
@@ -6146,9 +6151,13 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
 
       // Copy the output from the appropriate register.  Find a register that
       // we can use.
-      if (OpInfo.AssignedRegs.Regs.empty())
-        report_fatal_error("Couldn't allocate output reg for constraint '" +
-                           Twine(OpInfo.ConstraintCode) + "'!");
+      if (OpInfo.AssignedRegs.Regs.empty()) {
+        LLVMContext &Ctx = *DAG.getContext();
+        Ctx.emitError(CS.getInstruction(),  
+                      "couldn't allocate output register for constraint '" +
+                           Twine(OpInfo.ConstraintCode) + "'");
+        break;
+      }
 
       // If this is an indirect operand, store through the pointer after the
       // asm.
@@ -6248,9 +6257,13 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
         std::vector<SDValue> Ops;
         TLI.LowerAsmOperandForConstraint(InOperandVal, OpInfo.ConstraintCode,
                                          Ops, DAG);
-        if (Ops.empty())
-          report_fatal_error("Invalid operand for inline asm constraint '" +
-                             Twine(OpInfo.ConstraintCode) + "'!");
+        if (Ops.empty()) {
+          LLVMContext &Ctx = *DAG.getContext();
+          Ctx.emitError(CS.getInstruction(),
+                        "invalid operand for inline asm constraint '" +
+                        Twine(OpInfo.ConstraintCode) + "'");
+          break;
+        }
 
         // Add information to the INLINEASM node to know about this input.
         unsigned ResOpType =
@@ -6281,9 +6294,13 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
              "Don't know how to handle indirect register inputs yet!");
 
       // Copy the input into the appropriate registers.
-      if (OpInfo.AssignedRegs.Regs.empty())
-        report_fatal_error("Couldn't allocate input reg for constraint '" +
-                           Twine(OpInfo.ConstraintCode) + "'!");
+      if (OpInfo.AssignedRegs.Regs.empty()) {
+        LLVMContext &Ctx = *DAG.getContext();
+        Ctx.emitError(CS.getInstruction(), 
+                      "couldn't allocate input reg for constraint '" +
+                           Twine(OpInfo.ConstraintCode) + "'");
+        break;
+      }
 
       OpInfo.AssignedRegs.getCopyToRegs(InOperandVal, DAG, getCurDebugLoc(),
                                         Chain, &Flag);

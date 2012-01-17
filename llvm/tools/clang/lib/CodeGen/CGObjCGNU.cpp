@@ -473,6 +473,7 @@ public:
   virtual llvm::Constant *GetPropertyGetFunction();
   virtual llvm::Constant *GetPropertySetFunction();
   virtual llvm::Constant *GetSetStructFunction();
+  virtual llvm::Constant *GetCppAtomicObjectFunction();
   virtual llvm::Constant *GetGetStructFunction();
   virtual llvm::Constant *EnumerationMutationFunction();
 
@@ -970,12 +971,27 @@ llvm::Constant *CGObjCGNU::GenerateConstantString(const StringLiteral *SL) {
   if (old != ObjCStrings.end())
     return old->getValue();
 
+  StringRef StringClass = CGM.getLangOptions().ObjCConstantStringClass;
+
+  if (StringClass.empty()) StringClass = "NXConstantString";
+
+  std::string Sym = "_OBJC_CLASS_";
+  Sym += StringClass;
+
+  llvm::Constant *isa = TheModule.getNamedGlobal(Sym);
+
+  if (!isa)
+    isa = new llvm::GlobalVariable(TheModule, IdTy, /* isConstant */false,
+            llvm::GlobalValue::ExternalWeakLinkage, 0, Sym);
+  else if (isa->getType() != PtrToIdTy)
+    isa = llvm::ConstantExpr::getBitCast(isa, PtrToIdTy);
+
   std::vector<llvm::Constant*> Ivars;
-  Ivars.push_back(NULLPtr);
+  Ivars.push_back(isa);
   Ivars.push_back(MakeConstantString(Str));
   Ivars.push_back(llvm::ConstantInt::get(IntTy, Str.size()));
   llvm::Constant *ObjCStr = MakeGlobal(
-    llvm::StructType::get(PtrToInt8Ty, PtrToInt8Ty, IntTy, NULL),
+    llvm::StructType::get(PtrToIdTy, PtrToInt8Ty, IntTy, NULL),
     Ivars, ".objc_str");
   ObjCStr = llvm::ConstantExpr::getBitCast(ObjCStr, PtrToInt8Ty);
   ObjCStrings[Str] = ObjCStr;
@@ -1368,7 +1384,7 @@ llvm::Constant *CGObjCGNU::GenerateClassStructure(
   // anyway; the classes will still work with the GNU runtime, they will just
   // be ignored.
   llvm::StructType *ClassTy = llvm::StructType::get(
-      PtrToInt8Ty,        // class_pointer
+      PtrToInt8Ty,        // isa 
       PtrToInt8Ty,        // super_class
       PtrToInt8Ty,        // name
       LongTy,             // version
@@ -1419,9 +1435,20 @@ llvm::Constant *CGObjCGNU::GenerateClassStructure(
   Elements.push_back(WeakIvarBitmap);
   // Create an instance of the structure
   // This is now an externally visible symbol, so that we can speed up class
-  // messages in the next ABI.
-  return MakeGlobal(ClassTy, Elements, (isMeta ? "_OBJC_METACLASS_":
-      "_OBJC_CLASS_") + std::string(Name), llvm::GlobalValue::ExternalLinkage);
+  // messages in the next ABI.  We may already have some weak references to
+  // this, so check and fix them properly.
+  std::string ClassSym((isMeta ? "_OBJC_METACLASS_": "_OBJC_CLASS_") +
+          std::string(Name));
+  llvm::GlobalVariable *ClassRef = TheModule.getNamedGlobal(ClassSym);
+  llvm::Constant *Class = MakeGlobal(ClassTy, Elements, ClassSym,
+          llvm::GlobalValue::ExternalLinkage);
+  if (ClassRef) {
+      ClassRef->replaceAllUsesWith(llvm::ConstantExpr::getBitCast(Class,
+                  ClassRef->getType()));
+      ClassRef->removeFromParent();
+      Class->setName(ClassSym);
+  }
+  return Class;
 }
 
 llvm::Constant *CGObjCGNU::GenerateProtocolMethodList(
@@ -1529,6 +1556,11 @@ llvm::Constant *CGObjCGNU::GenerateEmptyProtocol(
 void CGObjCGNU::GenerateProtocol(const ObjCProtocolDecl *PD) {
   ASTContext &Context = CGM.getContext();
   std::string ProtocolName = PD->getNameAsString();
+  
+  // Use the protocol definition, if there is one.
+  if (const ObjCProtocolDecl *Def = PD->getDefinition())
+    PD = Def;
+
   SmallVector<std::string, 16> Protocols;
   for (ObjCProtocolDecl::protocol_iterator PI = PD->protocol_begin(),
        E = PD->protocol_end(); PI != E; ++PI)
@@ -2360,6 +2392,9 @@ llvm::Constant *CGObjCGNU::GetGetStructFunction() {
 }
 llvm::Constant *CGObjCGNU::GetSetStructFunction() {
   return SetStructPropertyFn;
+}
+llvm::Constant *CGObjCGNU::GetCppAtomicObjectFunction() {
+  return 0;
 }
 
 llvm::Constant *CGObjCGNU::EnumerationMutationFunction() {

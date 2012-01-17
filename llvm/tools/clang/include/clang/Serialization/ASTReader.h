@@ -34,6 +34,8 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/DenseSet.h"
@@ -673,6 +675,34 @@ private:
   /// \brief Keeps track of the elements added to PendingDeclChains.
   llvm::SmallSet<serialization::DeclID, 16> PendingDeclChainsKnown;
 
+  typedef llvm::DenseMap<Decl *, llvm::SmallVector<serialization::DeclID, 2> >
+    MergedDeclsMap;
+    
+  /// \brief A mapping from canonical declarations to the set of additional
+  /// (global, previously-canonical) declaration IDs that have been merged with
+  /// that canonical declaration.
+  MergedDeclsMap MergedDecls;
+  
+  typedef llvm::DenseMap<serialization::GlobalDeclID, 
+                         llvm::SmallVector<serialization::DeclID, 2> >
+    StoredMergedDeclsMap;
+  
+  /// \brief A mapping from canonical declaration IDs to the set of additional
+  /// declaration IDs that have been merged with that canonical declaration.
+  ///
+  /// This is the deserialized representation of the entries in MergedDecls.
+  /// When we query entries in MergedDecls, they will be augmented with entries
+  /// from StoredMergedDecls.
+  StoredMergedDeclsMap StoredMergedDecls;
+  
+  /// \brief Combine the stored merged declarations for the given canonical
+  /// declaration into the set of merged declarations.
+  ///
+  /// \returns An iterator into MergedDecls that corresponds to the position of
+  /// the given canonical declaration.
+  MergedDeclsMap::iterator
+  combineStoredMergedDecls(Decl *Canon, serialization::GlobalDeclID CanonID);
+  
   /// \brief We delay loading the chain of objc categories after recursive
   /// loading of declarations is finished.
   std::vector<std::pair<ObjCInterfaceDecl *, serialization::DeclID> >

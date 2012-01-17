@@ -167,6 +167,9 @@ def pp_out_of_date_dependency : Warning<
 def pp_undef_builtin_macro : Warning<"undefining builtin macro">;
 def pp_redef_builtin_macro : Warning<"redefining builtin macro">,
   InGroup<DiagGroup<"builtin-macro-redefined">>;
+def pp_disabled_macro_expansion : Warning<
+  "disabled expansion of recursive macro">, DefaultIgnore,
+  InGroup<DiagGroup<"disabled-macro-expansion">>;
 def pp_macro_not_used : Warning<"macro is not used">, DefaultIgnore,
   InGroup<DiagGroup<"unused-macros">>;
 def warn_pp_undef_identifier : Warning<
@@ -421,9 +424,12 @@ def err_mmap_explicit_top_level : Error<
   "'explicit' is not permitted on top-level modules">;
 def err_mmap_nested_submodule_id : Error<
   "qualified module name can only be used to define modules at the top level">;
-  
+def err_mmap_expected_feature : Error<"expected a feature name">;
+
 def warn_auto_module_import : Warning<
   "treating #%select{include|import|include_next|__include_macros}0 as an "
   "import of module '%1'">, InGroup<AutoImport>, DefaultIgnore;
+def warn_uncovered_module_header : Warning<
+  "umbrella header does not include header '%0'">, InGroup<IncompleteUmbrella>;
 
 }

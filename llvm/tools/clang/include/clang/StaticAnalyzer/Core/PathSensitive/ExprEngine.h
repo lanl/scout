@@ -185,10 +185,10 @@ public:
   void processEndOfFunction(NodeBuilderContext& BC);
 
   /// Generate the entry node of the callee.
-  void processCallEnter(CallEnterNodeBuilder &builder);
+  void processCallEnter(CallEnter CE, ExplodedNode *Pred);
 
   /// Generate the first post callsite node.
-  void processCallExit(CallExitNodeBuilder &builder);
+  void processCallExit(ExplodedNode *Pred);
 
   /// Called by CoreEngine when the analysis worklist has terminated.
   void processEndWorklist(bool hasWorkRemaining);
@@ -433,8 +433,10 @@ protected:
                                           const CallOrObjCMessage &Call,
                                           const LocationContext *LC);
 
-  const ProgramState *MarkBranch(const ProgramState *St, const Stmt *Terminator,
-                            bool branchTaken);
+  const ProgramState *MarkBranch(const ProgramState *state,
+                                 const Stmt *Terminator,
+                                 const LocationContext *LCtx,
+                                 bool branchTaken);
 
   /// evalBind - Handle the semantics of binding a value to a specific location.
   ///  This method is used by evalStore, VisitDeclStmt, and others.
@@ -470,13 +472,6 @@ private:
                     const ProgramPointTag *tag, bool isLoad);
 
   bool InlineCall(ExplodedNodeSet &Dst, const CallExpr *CE, ExplodedNode *Pred);
-  
-  
-public:
-  /// Returns true if calling the specific function or method would possibly
-  /// cause global variables to be invalidated.
-  bool doesInvalidateGlobals(const CallOrObjCMessage &callOrMessage) const;
-  
 };
 
 } // end ento namespace

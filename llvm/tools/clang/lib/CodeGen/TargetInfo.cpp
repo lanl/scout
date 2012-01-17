@@ -2374,7 +2374,7 @@ public:
 
   bool isEABI() const {
     StringRef Env = getContext().getTargetInfo().getTriple().getEnvironmentName();
-    return (Env == "gnueabi" || Env == "eabi");
+    return (Env == "gnueabi" || Env == "eabi" || Env == "androideabi");
   }
 
 private:
@@ -3040,13 +3040,15 @@ namespace {
 class MipsABIInfo : public ABIInfo {
   bool IsO32;
   unsigned MinABIStackAlignInBytes;
-  llvm::Type* HandleStructTy(QualType Ty) const;
+  llvm::Type* HandleAggregates(QualType Ty) const;
+  llvm::Type* returnAggregateInRegs(QualType RetTy, uint64_t Size) const;
+  llvm::Type* getPaddingType(uint64_t Align, uint64_t Offset) const;
 public:
   MipsABIInfo(CodeGenTypes &CGT, bool _IsO32) :
     ABIInfo(CGT), IsO32(_IsO32), MinABIStackAlignInBytes(IsO32 ? 4 : 8) {}
 
   ABIArgInfo classifyReturnType(QualType RetTy) const;
-  ABIArgInfo classifyArgumentType(QualType RetTy) const;
+  ABIArgInfo classifyArgumentType(QualType RetTy, uint64_t &Offset) const;
   virtual void computeInfo(CGFunctionInfo &FI) const;
   virtual llvm::Value *EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
                                  CodeGenFunction &CGF) const;
@@ -3074,9 +3076,12 @@ public:
 
 // In N32/64, an aligned double precision floating point field is passed in
 // a register.
-llvm::Type* MipsABIInfo::HandleStructTy(QualType Ty) const {
+llvm::Type* MipsABIInfo::HandleAggregates(QualType Ty) const {
   if (IsO32)
     return 0;
+
+  if (Ty->isComplexType())
+    return CGT.ConvertType(Ty);
 
   const RecordType *RT = Ty->getAsStructureType();
 
@@ -3088,10 +3093,10 @@ llvm::Type* MipsABIInfo::HandleStructTy(QualType Ty) const {
   uint64_t StructSize = getContext().getTypeSize(Ty);
   assert(!(StructSize % 8) && "Size of structure must be multiple of 8.");
   
-  SmallVector<llvm::Type*, 8> ArgList;
   uint64_t LastOffset = 0;
   unsigned idx = 0;
   llvm::IntegerType *I64 = llvm::IntegerType::get(getVMContext(), 64);
+  SmallVector<llvm::Type*, 8> ArgList;
 
   for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
        i != e; ++i, ++idx) {
@@ -3131,30 +3136,90 @@ llvm::Type* MipsABIInfo::HandleStructTy(QualType Ty) const {
   return llvm::StructType::get(getVMContext(), ArgList);
 }
 
-ABIArgInfo MipsABIInfo::classifyArgumentType(QualType Ty) const {
+llvm::Type *MipsABIInfo::getPaddingType(uint64_t Align, uint64_t Offset) const {
+  // Padding is inserted only for N32/64.
+  if (IsO32)
+    return 0;
+
+  assert(Align <= 16 && "Alignment larger than 16 not handled.");
+  return (Align == 16 && Offset & 0xf) ?
+    llvm::IntegerType::get(getVMContext(), 64) : 0;
+}
+
+ABIArgInfo
+MipsABIInfo::classifyArgumentType(QualType Ty, uint64_t &Offset) const {
+  uint64_t OrigOffset = Offset;
+  uint64_t TySize =
+    llvm::RoundUpToAlignment(getContext().getTypeSize(Ty), 64) / 8;
+  uint64_t Align = getContext().getTypeAlign(Ty) / 8;
+  Offset = llvm::RoundUpToAlignment(Offset, std::max(Align, (uint64_t)8));
+  Offset += TySize;
+
   if (isAggregateTypeForABI(Ty)) {
     // Ignore empty aggregates.
-    if (getContext().getTypeSize(Ty) == 0)
+    if (TySize == 0)
       return ABIArgInfo::getIgnore();
 
     // Records with non trivial destructors/constructors should not be passed
     // by value.
-    if (isRecordWithNonTrivialDestructorOrCopyConstructor(Ty))
+    if (isRecordWithNonTrivialDestructorOrCopyConstructor(Ty)) {
+      Offset = OrigOffset + 8;
       return ABIArgInfo::getIndirect(0, /*ByVal=*/false);
+    }
 
-    llvm::Type *ResType;
-    if ((ResType = HandleStructTy(Ty)))
-      return ABIArgInfo::getDirect(ResType);
+    // If we have reached here, aggregates are passed either indirectly via a
+    // byval pointer or directly by coercing to another structure type. In the
+    // latter case, padding is inserted if the offset of the aggregate is
+    // unaligned.
+    llvm::Type *ResType = HandleAggregates(Ty);
 
-    return ABIArgInfo::getIndirect(0);
+    if (!ResType)
+      return ABIArgInfo::getIndirect(0);
+
+    return ABIArgInfo::getDirect(ResType, 0, getPaddingType(Align, OrigOffset));
   }
 
   // Treat an enum type as its underlying type.
   if (const EnumType *EnumTy = Ty->getAs<EnumType>())
     Ty = EnumTy->getDecl()->getIntegerType();
 
-  return (Ty->isPromotableIntegerType() ?
-          ABIArgInfo::getExtend() : ABIArgInfo::getDirect());
+  if (Ty->isPromotableIntegerType())
+    return ABIArgInfo::getExtend();
+
+  return ABIArgInfo::getDirect(0, 0, getPaddingType(Align, OrigOffset));
+}
+
+llvm::Type*
+MipsABIInfo::returnAggregateInRegs(QualType RetTy, uint64_t Size) const {
+  const RecordType *RT = RetTy->getAsStructureType();
+  SmallVector<llvm::Type*, 2> RTList;
+
+  if (RT) {
+    const RecordDecl *RD = RT->getDecl();
+    RecordDecl::field_iterator b = RD->field_begin(), e = RD->field_end(), i;
+
+    for (i = b; (i != e) && (std::distance(b, i) < 2); ++i) {
+      const BuiltinType *BT = (*i)->getType()->getAs<BuiltinType>();
+
+      if (!BT || !BT->isFloatingPoint())
+        break;
+
+      RTList.push_back(CGT.ConvertType((*i)->getType()));
+    }
+
+    if (i == e)
+      return llvm::StructType::get(getVMContext(), RTList,
+                                   RD->hasAttr<PackedAttr>());
+
+    RTList.clear();
+  }
+
+  RTList.push_back(llvm::IntegerType::get(getVMContext(),
+                                          std::min(Size, (uint64_t)64)));
+  if (Size > 64)
+    RTList.push_back(llvm::IntegerType::get(getVMContext(), Size - 64));
+
+  return llvm::StructType::get(getVMContext(), RTList);
 }
 
 ABIArgInfo MipsABIInfo::classifyReturnType(QualType RetTy) const {
@@ -3162,9 +3227,14 @@ ABIArgInfo MipsABIInfo::classifyReturnType(QualType RetTy) const {
     return ABIArgInfo::getIgnore();
 
   if (isAggregateTypeForABI(RetTy)) {
-    if ((IsO32 && RetTy->isAnyComplexType()) ||
-        (!IsO32 && (getContext().getTypeSize(RetTy) <= 128)))
-      return ABIArgInfo::getDirect();
+    uint64_t Size = getContext().getTypeSize(RetTy);
+    if (Size <= 128) {
+      if (RetTy->isAnyComplexType())
+        return ABIArgInfo::getDirect();
+
+      if (!IsO32)
+        return ABIArgInfo::getDirect(returnAggregateInRegs(RetTy, Size));
+    }
 
     return ABIArgInfo::getIndirect(0);
   }
@@ -3178,10 +3248,15 @@ ABIArgInfo MipsABIInfo::classifyReturnType(QualType RetTy) const {
 }
 
 void MipsABIInfo::computeInfo(CGFunctionInfo &FI) const {
-  FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
+  ABIArgInfo &RetInfo = FI.getReturnInfo();
+  RetInfo = classifyReturnType(FI.getReturnType());
+
+  // Check if a pointer to an aggregate is passed as a hidden argument.  
+  uint64_t Offset = RetInfo.isIndirect() ? 8 : 0;
+
   for (CGFunctionInfo::arg_iterator it = FI.arg_begin(), ie = FI.arg_end();
        it != ie; ++it)
-    it->info = classifyArgumentType(it->type);
+    it->info = classifyArgumentType(it->type, Offset);
 }
 
 llvm::Value* MipsABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
@@ -3523,7 +3598,6 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     case llvm::Triple::DragonFly:
     case llvm::Triple::FreeBSD:
     case llvm::Triple::OpenBSD:
-    case llvm::Triple::NetBSD:
       return *(TheTargetCodeGenInfo =
                new X86_32TargetCodeGenInfo(Types, false, true, DisableMMX));
 

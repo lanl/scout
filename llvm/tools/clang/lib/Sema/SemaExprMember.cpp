@@ -509,6 +509,20 @@ bool Sema::CheckQualifiedMemberReference(Expr *BaseExpr,
   return true;
 }
 
+namespace {
+
+// Callback to only accept typo corrections that are either a ValueDecl or a
+// FunctionTemplateDecl.
+class RecordMemberExprValidatorCCC : public CorrectionCandidateCallback {
+ public:
+  virtual bool ValidateCandidate(const TypoCorrection &candidate) {
+    NamedDecl *ND = candidate.getCorrectionDecl();
+    return ND && (isa<ValueDecl>(ND) || isa<FunctionTemplateDecl>(ND));
+  }
+};
+
+}
+
 static bool
 LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
                          SourceRange BaseRange, const RecordType *RTy,
@@ -559,13 +573,12 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   // We didn't find anything with the given name, so try to correct
   // for typos.
   DeclarationName Name = R.getLookupName();
+  RecordMemberExprValidatorCCC Validator;
   TypoCorrection Corrected = SemaRef.CorrectTypo(R.getLookupNameInfo(),
                                                  R.getLookupKind(), NULL,
-                                                 &SS, DC, false,
-                                                 Sema::CTC_MemberLookup);
-  NamedDecl *ND = Corrected.getCorrectionDecl();
+                                                 &SS, &Validator, DC);
   R.clear();
-  if (ND && (isa<ValueDecl>(ND) || isa<FunctionTemplateDecl>(ND))) {
+  if (NamedDecl *ND = Corrected.getCorrectionDecl()) {
     std::string CorrectedStr(
         Corrected.getAsString(SemaRef.getLangOptions()));
     std::string CorrectedQuotedStr(
@@ -784,6 +797,7 @@ Sema::BuildAnonymousStructUnionMemberReference(const CXXScopeSpec &SS,
     }
     
     // Our base object expression is "this".
+    CheckCXXThisCapture(loc);
     baseObjectExpr 
       = new (Context) CXXThisExpr(loc, ThisTy, /*isImplicit=*/ true);
     baseObjectIsPointer = true;
@@ -1055,6 +1069,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     SourceLocation Loc = R.getNameLoc();
     if (SS.getRange().isValid())
       Loc = SS.getRange().getBegin();
+    CheckCXXThisCapture(Loc);
     BaseExpr = new (Context) CXXThisExpr(Loc, BaseExprType,/*isImplicit=*/true);
   }
 
@@ -1175,12 +1190,10 @@ static bool isPointerToRecordType(QualType T) {
 /// Perform conversions on the LHS of a member access expression.
 ExprResult
 Sema::PerformMemberExprBaseConversion(Expr *Base, bool IsArrow) {
-  ExprResult BaseResult = DefaultFunctionArrayConversion(Base);
+  if (IsArrow && !Base->getType()->isFunctionType())
+    return DefaultFunctionArrayLvalueConversion(Base);
 
-  if (!BaseResult.isInvalid() && IsArrow)
-    BaseResult = DefaultLvalueConversion(BaseResult.take());
-
-  return BaseResult;
+  return CheckPlaceholderExpr(Base);
 }
 
 /// Look up the given member of the given non-type-dependent
@@ -1233,7 +1246,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
         << BaseType << int(IsArrow) << BaseExpr.get()->getSourceRange()
         << FixItHint::CreateReplacement(OpLoc, ".");
       IsArrow = false;
-    } else if (BaseType == Context.BoundMemberTy) {
+    } else if (BaseType->isFunctionType()) {
       goto fail;
     } else {
       Diag(MemberLoc, diag::err_typecheck_member_reference_arrow)
@@ -1347,17 +1360,22 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
       goto fail;
     }
 
+    if (RequireCompleteType(OpLoc, BaseType, 
+                            PDiag(diag::err_typecheck_incomplete_tag)
+                              << BaseExpr.get()->getSourceRange()))
+      return ExprError();
+    
     ObjCInterfaceDecl *ClassDeclared;
     ObjCIvarDecl *IV = IDecl->lookupInstanceVariable(Member, ClassDeclared);
 
     if (!IV) {
       // Attempt to correct for typos in ivar names.
-      LookupResult Res(*this, R.getLookupName(), R.getNameLoc(),
-                       LookupMemberName);
-      TypoCorrection Corrected = CorrectTypo(
-          R.getLookupNameInfo(), LookupMemberName, NULL, NULL, IDecl, false,
-          IsArrow ? CTC_ObjCIvarLookup : CTC_ObjCPropertyLookup);
-      if ((IV = Corrected.getCorrectionDeclAs<ObjCIvarDecl>())) {
+      DeclFilterCCC<ObjCIvarDecl> Validator;
+      Validator.IsObjCIvarLookup = IsArrow;
+      if (TypoCorrection Corrected = CorrectTypo(R.getLookupNameInfo(),
+                                                 LookupMemberName, NULL, NULL,
+                                                 &Validator, IDecl)) {
+        IV = Corrected.getCorrectionDeclAs<ObjCIvarDecl>();
         Diag(R.getNameLoc(),
              diag::err_typecheck_member_reference_ivar_suggest)
           << IDecl->getDeclName() << MemberName << IV->getDeclName()
@@ -1373,8 +1391,6 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
           << FixItHint::CreateReplacement(OpLoc, ".");
           return ExprError();
         }
-        Res.clear();
-        Res.setLookupName(Member);
 
         Diag(MemberLoc, diag::err_typecheck_member_reference_ivar)
           << IDecl->getDeclName() << MemberName
@@ -1621,7 +1637,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
   if (tryToRecoverWithCall(BaseExpr,
                            PDiag(diag::err_member_reference_needs_call),
                            /*complain*/ false,
-                           IsArrow ? &isRecordType : &isPointerToRecordType)) {
+                           IsArrow ? &isPointerToRecordType : &isRecordType)) {
     if (BaseExpr.isInvalid())
       return ExprError();
     BaseExpr = DefaultFunctionArrayConversion(BaseExpr.take());
@@ -1814,6 +1830,7 @@ Sema::BuildImplicitMemberExpr(const CXXScopeSpec &SS,
     SourceLocation Loc = R.getNameLoc();
     if (SS.getRange().isValid())
       Loc = SS.getRange().getBegin();
+    CheckCXXThisCapture(Loc);
     baseExpr = new (Context) CXXThisExpr(loc, ThisTy, /*isImplicit=*/true);
   }
   

@@ -55,6 +55,7 @@ void FunctionScopeInfo::Clear() {
 }
 
 BlockScopeInfo::~BlockScopeInfo() { }
+LambdaScopeInfo::~LambdaScopeInfo() { }
 
 PrintingPolicy Sema::getPrintingPolicy() const {
   PrintingPolicy Policy = Context.getPrintingPolicy();
@@ -503,10 +504,10 @@ void Sema::ActOnEndOfTranslationUnit() {
         ModMap.resolveExports(Mod, /*Complain=*/false);
         
         // Queue the submodules, so their exports will also be resolved.
-        for (llvm::StringMap<Module *>::iterator Sub = Mod->SubModules.begin(),
-             SubEnd = Mod->SubModules.end();
+        for (Module::submodule_iterator Sub = Mod->submodule_begin(),
+                                     SubEnd = Mod->submodule_end();
              Sub != SubEnd; ++Sub) {
-          Stack.push_back(Sub->getValue());
+          Stack.push_back(*Sub);
         }
       }
     }
@@ -635,8 +636,15 @@ void Sema::ActOnEndOfTranslationUnit() {
 DeclContext *Sema::getFunctionLevelDeclContext() {
   DeclContext *DC = CurContext;
 
-  while (isa<BlockDecl>(DC) || isa<EnumDecl>(DC))
-    DC = DC->getParent();
+  while (true) {
+    if (isa<BlockDecl>(DC) || isa<EnumDecl>(DC)) {
+      DC = DC->getParent();
+    } else if (isa<CXXMethodDecl>(DC) &&
+               cast<CXXRecordDecl>(DC->getParent())->isLambda()) {
+      DC = DC->getParent()->getParent();
+    }
+    else break;
+  }
 
   return DC;
 }
@@ -828,8 +836,12 @@ void Sema::PushBlockScope(Scope *BlockScope, BlockDecl *Block) {
                                               BlockScope, Block));
 }
 
-void Sema::PopFunctionOrBlockScope(const AnalysisBasedWarnings::Policy *WP,
-                                   const Decl *D, const BlockExpr *blkExpr) {
+void Sema::PushLambdaScope(CXXRecordDecl *Lambda) {
+  FunctionScopes.push_back(new LambdaScopeInfo(getDiagnostics(), Lambda));
+}
+
+void Sema::PopFunctionScopeInfo(const AnalysisBasedWarnings::Policy *WP,
+                                const Decl *D, const BlockExpr *blkExpr) {
   FunctionScopeInfo *Scope = FunctionScopes.pop_back_val();  
   assert(!FunctionScopes.empty() && "mismatched push/pop!");
   
@@ -862,6 +874,13 @@ BlockScopeInfo *Sema::getCurBlock() {
     return 0;
   
   return dyn_cast<BlockScopeInfo>(FunctionScopes.back());  
+}
+
+LambdaScopeInfo *Sema::getCurLambda() {
+  if (FunctionScopes.empty())
+    return 0;
+  
+  return dyn_cast<LambdaScopeInfo>(FunctionScopes.back());  
 }
 
 // Pin this vtable to this file.

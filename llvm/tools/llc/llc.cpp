@@ -21,7 +21,6 @@
 #include "llvm/Support/IRReader.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
-#include "llvm/Config/config.h"
 #include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -297,7 +296,6 @@ static tool_output_file *GetOutputStream(const char *TargetName,
       OutputFilename = GetFileNameRoot(InputFilename);
 
       switch (FileType) {
-      default: assert(0 && "Unknown file type");
       case TargetMachine::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0)
@@ -325,7 +323,6 @@ static tool_output_file *GetOutputStream(const char *TargetName,
   // Decide if we need "binary" output.
   bool Binary = false;
   switch (FileType) {
-  default: assert(0 && "Unknown file type");
   case TargetMachine::CGFT_AssemblyFile:
     break;
   case TargetMachine::CGFT_ObjectFile:

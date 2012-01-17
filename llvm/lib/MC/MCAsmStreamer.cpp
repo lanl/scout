@@ -61,6 +61,8 @@ private:
   bool needsSet(const MCExpr *Value);
 
   void EmitRegisterName(int64_t Register);
+  virtual void EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame);
+  virtual void EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame);
 
 public:
   MCAsmStreamer(MCContext &Context, formatted_raw_ostream &os,
@@ -209,8 +211,6 @@ public:
                                      StringRef FileName);
 
   virtual void EmitCFISections(bool EH, bool Debug);
-  virtual void EmitCFIStartProc();
-  virtual void EmitCFIEndProc();
   virtual void EmitCFIDefCfa(int64_t Register, int64_t Offset);
   virtual void EmitCFIDefCfaOffset(int64_t Offset);
   virtual void EmitCFIDefCfaRegister(int64_t Register);
@@ -255,7 +255,7 @@ public:
   /// indicated by the hasRawTextSupport() predicate.
   virtual void EmitRawText(StringRef String);
 
-  virtual void Finish();
+  virtual void FinishImpl();
 
   /// @}
 };
@@ -340,7 +340,6 @@ void MCAsmStreamer::EmitLabel(MCSymbol *Symbol) {
 
 void MCAsmStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
   switch (Flag) {
-  default: assert(0 && "Invalid flag!");
   case MCAF_SyntaxUnified:         OS << "\t.syntax unified"; break;
   case MCAF_SubsectionsViaSymbols: OS << ".subsections_via_symbols"; break;
   case MCAF_Code16:                OS << '\t'<< MAI.getCode16Directive(); break;
@@ -841,21 +840,25 @@ void MCAsmStreamer::EmitCFISections(bool EH, bool Debug) {
   EmitEOL();
 }
 
-void MCAsmStreamer::EmitCFIStartProc() {
-  MCStreamer::EmitCFIStartProc();
-
-  if (!UseCFI)
+void MCAsmStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
+  if (!UseCFI) {
+    RecordProcStart(Frame);
     return;
+  }
 
   OS << "\t.cfi_startproc";
   EmitEOL();
 }
 
-void MCAsmStreamer::EmitCFIEndProc() {
-  MCStreamer::EmitCFIEndProc();
-
-  if (!UseCFI)
+void MCAsmStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
+  if (!UseCFI) {
+    RecordProcEnd(Frame);
     return;
+  }
+
+  // Put a dummy non-null value in Frame.End to mark that this frame has been
+  // closed.
+  Frame.End = (MCSymbol *) 1;
 
   OS << "\t.cfi_endproc";
   EmitEOL();
@@ -1285,7 +1288,7 @@ void MCAsmStreamer::EmitRawText(StringRef String) {
   EmitEOL();
 }
 
-void MCAsmStreamer::Finish() {
+void MCAsmStreamer::FinishImpl() {
   // Dump out the dwarf file & directory tables and line tables.
   if (getContext().hasDwarfFiles() && !UseLoc)
     MCDwarfFileTable::Emit(this);

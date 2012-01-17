@@ -682,10 +682,15 @@ TryAgain:
       //isExtension = true;  // FIXME: implement #unassert
       break;
         
-    case tok::pp___export_macro__:
-      return HandleMacroExportDirective(Result);
-    case tok::pp___private_macro__:
-      return HandleMacroPrivateDirective(Result);
+    case tok::pp___public_macro:
+      if (getLangOptions().Modules)
+        return HandleMacroPublicDirective(Result);
+      break;
+        
+    case tok::pp___private_macro:
+      if (getLangOptions().Modules)
+        return HandleMacroPrivateDirective(Result);
+      break;
     }
     break;
   }
@@ -1038,8 +1043,8 @@ void Preprocessor::HandleIdentSCCSDirective(Token &Tok) {
   }
 }
 
-/// \brief Handle a #__export_macro__ directive.
-void Preprocessor::HandleMacroExportDirective(Token &Tok) {
+/// \brief Handle a #public directive.
+void Preprocessor::HandleMacroPublicDirective(Token &Tok) {
   Token MacroNameTok;
   ReadMacroName(MacroNameTok, 2);
   
@@ -1047,8 +1052,8 @@ void Preprocessor::HandleMacroExportDirective(Token &Tok) {
   if (MacroNameTok.is(tok::eod))
     return;
 
-  // Check to see if this is the last token on the #__export_macro__ line.
-  CheckEndOfDirective("__export_macro__");
+  // Check to see if this is the last token on the #__public_macro line.
+  CheckEndOfDirective("__public_macro");
 
   // Okay, we finally have a valid identifier to undef.
   MacroInfo *MI = getMacroInfo(MacroNameTok.getIdentifierInfo());
@@ -1069,7 +1074,7 @@ void Preprocessor::HandleMacroExportDirective(Token &Tok) {
     MI->setChangedAfterLoad();
 }
 
-/// \brief Handle a #__private_macro__ directive.
+/// \brief Handle a #private directive.
 void Preprocessor::HandleMacroPrivateDirective(Token &Tok) {
   Token MacroNameTok;
   ReadMacroName(MacroNameTok, 2);
@@ -1078,8 +1083,8 @@ void Preprocessor::HandleMacroPrivateDirective(Token &Tok) {
   if (MacroNameTok.is(tok::eod))
     return;
   
-  // Check to see if this is the last token on the #__private_macro__ line.
-  CheckEndOfDirective("__private_macro__");
+  // Check to see if this is the last token on the #__private_macro line.
+  CheckEndOfDirective("__private_macro");
   
   // Okay, we finally have a valid identifier to undef.
   MacroInfo *MI = getMacroInfo(MacroNameTok.getIdentifierInfo());
@@ -1294,7 +1299,7 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
   const FileEntry *File = LookupFile(
       Filename, isAngled, LookupFrom, CurDir,
       Callbacks ? &SearchPath : NULL, Callbacks ? &RelativePath : NULL,
-      AutoModuleImport? &SuggestedModule : 0);
+      getLangOptions().Modules? &SuggestedModule : 0);
 
   if (Callbacks) {
     if (!File) {
@@ -1308,7 +1313,7 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
           
           // Try the lookup again, skipping the cache.
           File = LookupFile(Filename, isAngled, LookupFrom, CurDir, 0, 0,
-                            AutoModuleImport ? &SuggestedModule : 0,
+                            getLangOptions().Modules? &SuggestedModule : 0,
                             /*SkipCache*/true);
         }
       }
@@ -1373,15 +1378,16 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
     bool BuildingImportedModule
       = Path[0].first->getName() == getLangOptions().CurrentModule;
     
-    if (!BuildingImportedModule) {
+    if (!BuildingImportedModule && getLangOptions().ObjC2) {
       // If we're not building the imported module, warn that we're going
       // to automatically turn this inclusion directive into a module import.
+      // We only do this in Objective-C, where we have a module-import syntax.
       CharSourceRange ReplaceRange(SourceRange(HashLoc, CharEnd), 
                                    /*IsTokenRange=*/false);
       Diag(HashLoc, diag::warn_auto_module_import)
         << IncludeKind << PathString 
         << FixItHint::CreateReplacement(ReplaceRange,
-             "__import_module__ " + PathString.str().str() + ";");
+             "@import " + PathString.str().str() + ";");
     }
     
     // Load the module.

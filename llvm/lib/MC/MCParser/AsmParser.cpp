@@ -143,6 +143,7 @@ public:
   virtual MCAsmLexer &getLexer() { return Lexer; }
   virtual MCContext &getContext() { return Ctx; }
   virtual MCStreamer &getStreamer() { return Out; }
+  virtual unsigned getAssemblerDialect() { return MAI.getAssemblerDialect(); }
 
   virtual bool Warning(SMLoc L, const Twine &Msg,
                        ArrayRef<SMRange> Ranges = ArrayRef<SMRange>());
@@ -301,6 +302,10 @@ public:
       &GenericAsmParser::ParseDirectiveCFIRestoreState>(".cfi_restore_state");
     AddDirectiveHandler<
       &GenericAsmParser::ParseDirectiveCFISameValue>(".cfi_same_value");
+    AddDirectiveHandler<
+      &GenericAsmParser::ParseDirectiveCFIRestore>(".cfi_restore");
+    AddDirectiveHandler<
+      &GenericAsmParser::ParseDirectiveCFIEscape>(".cfi_escape");
 
     // Macro directives.
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveMacrosOnOff>(
@@ -334,6 +339,8 @@ public:
   bool ParseDirectiveCFIRememberState(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveCFIRestoreState(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveCFISameValue(StringRef, SMLoc DirectiveLoc);
+  bool ParseDirectiveCFIRestore(StringRef, SMLoc DirectiveLoc);
+  bool ParseDirectiveCFIEscape(StringRef, SMLoc DirectiveLoc);
 
   bool ParseDirectiveMacrosOnOff(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveMacro(StringRef, SMLoc DirectiveLoc);
@@ -1070,10 +1077,10 @@ bool AsmParser::ParseStatement() {
     Out.EmitLabel(Sym);
 
     // If we are generating dwarf for assembly source files then gather the
-    // info to make a dwarf subprogram entry for this label if needed.
+    // info to make a dwarf label entry for this label if needed.
     if (getContext().getGenDwarfForAssembly())
-      MCGenDwarfSubprogramEntry::Make(Sym, &getStreamer(), getSourceManager(),
-                                      IDLoc);
+      MCGenDwarfLabelEntry::Make(Sym, &getStreamer(), getSourceManager(),
+                                 IDLoc);
 
     // Consume any end of statement token, if present, to avoid spurious
     // AddBlankLine calls().
@@ -2417,13 +2424,13 @@ bool GenericAsmParser::ParseDirectiveFile(StringRef, SMLoc DirectiveLoc) {
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in '.file' directive");
 
-  if (getContext().getGenDwarfForAssembly() == true)
-    Error(DirectiveLoc, "input can't have .file dwarf directives when -g is "
-                        "used to generate dwarf debug info for assembly code");
-
   if (FileNumber == -1)
     getStreamer().EmitFileDirective(Filename);
   else {
+    if (getContext().getGenDwarfForAssembly() == true)
+      Error(DirectiveLoc, "input can't have .file dwarf directives when -g is "
+                        "used to generate dwarf debug info for assembly code");
+
     if (getStreamer().EmitDwarfFileDirective(FileNumber, Directory, Filename))
       Error(FileNumberLoc, "file number already allocated");
   }
@@ -2809,6 +2816,43 @@ bool GenericAsmParser::ParseDirectiveCFISameValue(StringRef IDVal,
 
   getStreamer().EmitCFISameValue(Register);
 
+  return false;
+}
+
+/// ParseDirectiveCFIRestore
+/// ::= .cfi_restore register
+bool GenericAsmParser::ParseDirectiveCFIRestore(StringRef IDVal,
+						SMLoc DirectiveLoc) {
+  int64_t Register = 0;
+  if (ParseRegisterOrRegisterNumber(Register, DirectiveLoc))
+    return true;
+
+  getStreamer().EmitCFIRestore(Register);
+
+  return false;
+}
+
+/// ParseDirectiveCFIEscape
+/// ::= .cfi_escape expression[,...]
+bool GenericAsmParser::ParseDirectiveCFIEscape(StringRef IDVal,
+					       SMLoc DirectiveLoc) {
+  std::string Values;
+  int64_t CurrValue;
+  if (getParser().ParseAbsoluteExpression(CurrValue))
+    return true;
+
+  Values.push_back((uint8_t)CurrValue);
+
+  while (getLexer().is(AsmToken::Comma)) {
+    Lex();
+
+    if (getParser().ParseAbsoluteExpression(CurrValue))
+      return true;
+
+    Values.push_back((uint8_t)CurrValue);
+  }
+
+  getStreamer().EmitCFIEscape(Values);
   return false;
 }
 
