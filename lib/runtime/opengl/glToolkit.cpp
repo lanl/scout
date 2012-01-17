@@ -21,13 +21,13 @@
 using namespace scout;
 using namespace std;
 
-glToolkit::glToolkit() 
+glToolkit::glToolkit(glCamera* camera) 
 {
   _img_seq_num    = 0;
   _save_frames    = false;
   _stereo_mode    = false;
   _ignore_events  = false;
-  _camera  =  NULL;
+  _camera  =  camera;
   _manipulator = NULL;
 }
 

@@ -237,7 +237,7 @@ void glQuadRenderableVA::alloc_texture()
 }
 
 
-GLuint glQuadRenderableVA::get_colors()
+GLuint glQuadRenderableVA::get_buffer_object_id()
 {
   return _pbo->id();
 }

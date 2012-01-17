@@ -13,6 +13,8 @@
 
 uniform float near, far;
 
+varying vec4 varycolor;
+
 varying vec3 WSc;
 varying vec4 center;
 varying float WSr;
@@ -67,7 +69,8 @@ void main()
     
     intensity = Ka;
     intensity += Kd * clamp(dot(L.xyz, Sn), 0.0, 1.0);
-    surfColor = gl_Color * intensity;
+    //surfColor = gl_Color * intensity;
+    surfColor = varycolor * intensity;
 
     if (pointSize > 4.0) {
       vec4 halfV = normalize(L / 2.0);

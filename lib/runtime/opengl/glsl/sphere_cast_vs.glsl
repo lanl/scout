@@ -8,16 +8,20 @@
  *-----
  * 
  */
+#version 120
+
 uniform float windowWidth; 
 uniform float near, far;
 
 attribute float radius;
+attribute vec4 color;
 
 varying vec3 WSc;
 varying vec4 center;
 varying float WSr; 
 varying float pointSize;
 varying float cameraDepth;
+varying vec4 varycolor;
 
 void main()
 {
@@ -39,5 +43,6 @@ void main()
   } else {
     gl_PointSize = 0.0;
   }
-	gl_FrontColor = gl_Color;
+	gl_FrontColor = color;
+  varycolor = color;
 }

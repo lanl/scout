@@ -25,12 +25,12 @@ void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
   __sc_tbq->run(blockLiteral, numDimensions, numFields);
 }
 
-void __sc_init_sdl(size_t width, size_t height){
+void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
 
   if (__sc_glsdl) {
     __sc_glsdl->resize(width, height);
   } else {
-    __sc_glsdl = new glSDL(width, height);
+    __sc_glsdl = new glSDL(width, height, camera);
   }
 }
 

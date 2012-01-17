@@ -29,7 +29,7 @@ namespace scout
 
    public:
     glSDL();
-    glSDL(size_t width, size_t height);
+    glSDL(size_t width, size_t height, glCamera* camera = NULL);
     ~glSDL();
 
    public:

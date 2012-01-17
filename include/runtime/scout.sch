@@ -5,13 +5,14 @@
 #include "runtime/window.h"
 #include "runtime/image.h"
 #include "runtime/tbq.h"
+#include "runtime/opengl/glCamera.h"
 
 extern scout::tbq_rt* __sc_tbq;
 
 extern const size_t __sc_initial_width;
 extern const size_t __sc_initial_height;
 
-void __sc_init_sdl(size_t width, size_t height);
+void __sc_init_sdl(size_t width, size_t height, scout::glCamera* camera = NULL);
 
 void __sc_init(int argc, char** argv, bool gpu);
 

@@ -29,6 +29,20 @@ renderall_base_rt::~renderall_base_rt(){
     
 }
 
+void __sc_begin_renderall(){
+  __sc_renderall->begin();
+}
+
 void __sc_end_renderall(){
   __sc_renderall->end();
 }
+
+void __sc_delete_renderall(){
+  if (__sc_renderall != NULL) {
+    delete __sc_renderall;
+    __sc_renderall = NULL;
+  }
+}
+
+
+

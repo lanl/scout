@@ -31,7 +31,7 @@ extern glSDL* __sc_glsdl;
 extern size_t __sc_initial_width;
 extern size_t __sc_initial_height;
 
-void __sc_init_sdl(size_t width, size_t height);
+void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout{
 
@@ -58,7 +58,7 @@ namespace scout{
 
         if(__sc_gpu){
           //register_gpu_pbo(pbo_->id();
-          register_gpu_pbo(_renderable->get_colors(),
+          register_gpu_pbo(_renderable->get_buffer_object_id(),
               CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
         }
 
