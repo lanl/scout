@@ -11,6 +11,10 @@
 
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
+#include "llvm/Support/InstVisitor.h"
+
+#include <map>
+
 using namespace llvm;
 
 DoallToPTX::DoallToPTX()
@@ -214,7 +218,9 @@ void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
   BasicBlock *entryBB = BasicBlock::Create(module.getContext(), "entry", ptxHandler);
   cuda.setInsertPoint(entryBB);
 
-  cuda.create(ptxHandler, ptxAsm, meshName);
+  FunctionMDMap::iterator itr = functionMDMap.find(name);
+  assert(itr != functionMDMap.end());
+  cuda.create(ptxHandler, ptxAsm, meshName, itr->second);
 
   //ReturnInst::Create(module.getContext(), entryBB);
 }
@@ -315,10 +321,88 @@ Module *DoallToPTX::CloneModule(const Module *M, ValueToValueMapTy &VMap) {
   return New;
 }
 
+namespace{
+
+  class ForAllVisitor : public InstVisitor<ForAllVisitor>{
+  public:
+    ForAllVisitor(Module& module, DoallToPTX::FunctionMDMap& functionMDMap)
+      : module(module),
+	functionMDMap(functionMDMap){
+
+    }
+
+    void visitCallInst(CallInst& I){
+      Function* f = I.getCalledFunction();
+
+      if(f->getName().startswith("llvm.memcpy")){
+	Value* v = I.getArgOperand(0);
+	std::string vs = v->getName().str();
+	if(!vs.empty()){
+	  symbolMap[vs] = true;
+	}
+	else{
+	  ValueMap::iterator itr = valueMap.find(v);
+	  if(itr != valueMap.end()){
+	    symbolMap[itr->second] = true;
+	  }
+	}
+      }
+      else if(f->getName().startswith("forall") ||
+	 f->getName().startswith("renderall")){
+	SmallVector< llvm::Value *, 3 > args;
+	unsigned numArgs = I.getNumArgOperands();
+	for(unsigned i = 0; i < numArgs; ++i){
+	  Value* arg = I.getArgOperand(i);
+	  std::string s = arg->getName().str();
+	  
+	  SymbolMap::iterator itr = symbolMap.find(s);
+	  if(itr != symbolMap.end()){
+	    args.push_back(arg);
+	    symbolMap.erase(itr);
+	  }
+	}
+
+	functionMDMap[f->getName().str()] = 
+	  MDNode::get(module.getContext(), args);
+      }
+    }
+    
+    void visitStoreInst(StoreInst& I){
+      std::string s = I.getPointerOperand()->getName().str();
+      if(!s.empty()){
+	symbolMap[s] = true;
+      }
+    }
+
+    void visitBitCastInst(BitCastInst& I){
+      std::string vs = I.getOperand(0)->getName().str();
+      if(!vs.empty()){
+	valueMap[&I] = vs;
+      }
+    }
+
+    typedef std::map<std::string, bool> SymbolMap;
+    typedef std::map<Value*, std::string> ValueMap;
+
+    SymbolMap symbolMap;
+    ValueMap valueMap;
+    Module& module;
+    DoallToPTX::FunctionMDMap& functionMDMap;
+  };
+
+} // end namespace
+
 bool DoallToPTX::runOnModule(Module &M) {
   // Interface to CUDA Driver API
   IRBuilder<> Builder(M.getContext());
   CudaDriver cuda(M, Builder, true);
+
+  for(Module::iterator itr = M.begin(), itrEnd = M.end(); 
+      itr != itrEnd; ++itr){
+    Function& f = *itr;
+    ForAllVisitor visitor(M, functionMDMap);
+    visitor.visit(f);
+  }
 
   NamedMDNode *NMDN = M.getNamedMetadata("scout.kernels");
   for(unsigned i = 0, e = NMDN->getNumOperands(); i < e; i+=1) {

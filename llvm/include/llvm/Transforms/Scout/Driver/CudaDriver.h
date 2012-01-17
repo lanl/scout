@@ -55,7 +55,7 @@ class CudaDriver: public Driver {
   llvm::Value* meshFieldName(unsigned i);
 
   void create(llvm::Function *func, llvm::GlobalValue *ptxAsm,
-	      llvm::Value *meshName);
+	      llvm::Value *meshName, llvm::MDNode* mdn);
   void initialize();
   void finalize();
   void destroy();

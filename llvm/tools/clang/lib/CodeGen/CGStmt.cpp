@@ -737,7 +737,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-        meshArgs.push_back(Builder.CreateGlobalStringPtr(""));
+        meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
       }
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));

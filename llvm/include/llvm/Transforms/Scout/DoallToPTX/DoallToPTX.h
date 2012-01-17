@@ -27,6 +27,7 @@
 
 #include <string>
 #include <iostream>
+#include <map>
 
 #include <llvm/Transforms/Scout/Driver/CudaDriver.h>
 #include <llvm/Transforms/Scout/Driver/PTXDriver.h>
@@ -34,6 +35,7 @@
 class DoallToPTX : public llvm::ModulePass {
  public:
   typedef std::set< llvm::StringRef > FnSet;
+  typedef std::map< std::string, llvm::MDNode*> FunctionMDMap;
 
   static char ID;
   DoallToPTX();
@@ -54,6 +56,9 @@ class DoallToPTX : public llvm::ModulePass {
 
   void setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform);
   void translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform);
+  
+private:
+  FunctionMDMap functionMDMap;
 };
 
 llvm::ModulePass *createDoallToPTXPass();

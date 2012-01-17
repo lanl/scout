@@ -185,7 +185,8 @@ bool CudaDriver::setGridAndBlockSizes() {
 
 void CudaDriver::create(Function *func,
 			GlobalValue *ptxAsm,
-			Value* meshName) {
+			Value* meshName,
+			MDNode* mdn) {
   setInsertPoint(&func->getEntryBlock());
 
   // Calculate the total number of mesh elements.
@@ -247,58 +248,65 @@ void CudaDriver::create(Function *func,
 	Value* name =
 	  _builder.CreateGlobalStringPtr(arg->getName());
 
-	if(isMeshMember(i)){
-	  Value* args[] = {meshName, meshFieldName(i)}; 
-	  Value* dp = insertCall("__sc_get_gpu_device_ptr", args, args+2);
+	Value* args[] = {meshName, meshFieldName(i)}; 
+	Value* dp = insertCall("__sc_get_gpu_device_ptr", args, args+2);
 	  
-	  Value* np = _builder.CreateIsNull(dp);
+	Value* np = _builder.CreateIsNull(dp);
 	  
-	  BasicBlock* tb = BasicBlock::Create(_module.getContext(), "then");
-	  BasicBlock* eb = BasicBlock::Create(_module.getContext(), "else");
-	  BasicBlock* mb = BasicBlock::Create(_module.getContext(), "merge");
+	BasicBlock* tb = BasicBlock::Create(_module.getContext(), "then");
+	BasicBlock* eb = BasicBlock::Create(_module.getContext(), "else");
+	BasicBlock* mb = BasicBlock::Create(_module.getContext(), "merge");
 	  
-	  func->getBasicBlockList().push_back(tb);
-	  func->getBasicBlockList().push_back(eb);
-	  func->getBasicBlockList().push_back(mb);
+	func->getBasicBlockList().push_back(tb);
+	func->getBasicBlockList().push_back(eb);
+	func->getBasicBlockList().push_back(mb);
 	  
-	  _builder.CreateCondBr(np, tb, eb);
-	  _builder.SetInsertPoint(tb);
+	_builder.CreateCondBr(np, tb, eb);
+	_builder.SetInsertPoint(tb);
 
-	  // Allocate memory for variable on GPU.
-	  insertMemAlloc(d_arg, size);
+	// Allocate memory for variable on GPU.
+	insertMemAlloc(d_arg, size);
 
-	  Value* ld = _builder.CreateLoad(d_arg);
+	Value* ld = _builder.CreateLoad(d_arg);
 	  
-	  // Copy variable from CPU to GPU.
-	  insertMemcpyHtoD(ld,
-			   _builder.CreateBitCast(arg, i8PtrTy),
-			   size);
+	// Copy variable from CPU to GPU.
+	insertMemcpyHtoD(ld,
+			 _builder.CreateBitCast(arg, i8PtrTy),
+			 size);
 	  
-	  Value* args2[] = {meshName, meshFieldName(i), ld}; 
-	  insertCall("__sc_put_gpu_device_ptr", args2, args2+3);
+	Value* args2[] = {meshName, meshFieldName(i), ld}; 
+	insertCall("__sc_put_gpu_device_ptr", args2, args2+3);
 	  
-	  _builder.CreateBr(mb);
+	_builder.CreateBr(mb);
 	  
-	  _builder.SetInsertPoint(eb);
-	  _builder.CreateStore(dp, d_arg);
-	  _builder.CreateBr(mb);
+	_builder.SetInsertPoint(eb);
+
+	_builder.CreateStore(dp, d_arg);
+
+	if(!isMeshMember(i)){
+	  unsigned numOperands = mdn->getNumOperands();
+	  bool found = false;
+	  for(unsigned i = 0; i < numOperands; ++i){
+	    Value* v = mdn->getOperand(i);
+	    std::string s = v->getName().str();
+	    std::string a = arg->getName().str();
+
+	    if(s == a){
+	      found = true;
+	      break;
+	    }
+	  }
 	  
-	  _builder.SetInsertPoint(mb);
+	  if(found){
+	    Value* ld = _builder.CreateLoad(d_arg);
+	    insertMemcpyHtoD(ld,
+			     _builder.CreateBitCast(arg, i8PtrTy),
+			     size);
+	  }
 	}
-	else{
-	  insertMemAlloc(d_arg, size);
-
-	  Value* ld = _builder.CreateLoad(d_arg);
-	  
-	  // Copy variable from CPU to GPU.
-	  insertMemcpyHtoD(ld,
-			   _builder.CreateBitCast(arg, i8PtrTy),
-			   size);
-
-	  	
-	  // Add variable to list of memcpy's.
-	  memcpyList.push_back(Memcpy(arg, d_arg, size));
-	}
+	
+	_builder.CreateBr(mb);
+	_builder.SetInsertPoint(mb);
       }
 
       // Set pointer variable as parameter to kernel.
@@ -328,6 +336,7 @@ void CudaDriver::create(Function *func,
 
   if(_debug) insertCtxSynchronize();
 
+  /*
   for(unsigned i = 0, e = memcpyList.size(); i < e; ++i) {
     // Copy results from GPU to CPU.
     insertMemcpyDtoH(_builder.CreateBitCast(memcpyList[i].host, i8PtrTy),
@@ -337,6 +346,7 @@ void CudaDriver::create(Function *func,
     // Free GPU memory.
     insertMemFree(_builder.CreateLoad(memcpyList[i].device));
   }
+  */
 
   // Unload cuda module.
   //insertModuleUnload(_builder.CreateLoad(cuModule));
