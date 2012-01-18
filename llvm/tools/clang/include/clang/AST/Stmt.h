@@ -1640,164 +1640,6 @@ public:
 
 // ndm - Scout Stmts
 
-class ForAllArrayStmt : public Stmt {
-
-  enum {BODY, END_EXPR};
-
-  Stmt* SubExprs[END_EXPR];
-  SourceLocation ForAllLoc;
-  IdentifierInfo* XInductionVarII;
-  IdentifierInfo* YInductionVarII;
-  IdentifierInfo* ZInductionVarII;
-
-  Expr* XStart;
-  Expr* XEnd;
-  Expr* XStride;
-  Expr* YStart;
-  Expr* YEnd;
-  Expr* YStride;
-  Expr* ZStart;
-  Expr* ZEnd;
-  Expr* ZStride;
-
-public:
-  ForAllArrayStmt(ASTContext &C,
-                  SourceLocation FAL);
-
-
-  IdentifierInfo* getInductionVar(size_t axis){
-    switch(axis){
-      case 0:
-        return XInductionVarII;
-      case 1:
-        return YInductionVarII;
-      case 2:
-        return ZInductionVarII;
-    }
-
-    assert(false && "invalid axis");
-  }
-
-  Stmt* getBody(){
-    return SubExprs[BODY];
-  }
-
-  const Stmt* getBody() const{
-    return SubExprs[BODY];
-  }
-
-  void setBody(Stmt* B){
-    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
-  }
-
-  Expr* getStart(size_t axis){
-    switch(axis){
-      case 0:
-        return XStart;
-      case 1:
-        return YStart;
-      case 2:
-        return ZStart;
-    }
-
-    assert(false && "invalid axis");
-  }
-
-  void setStart(size_t axis, Expr* S){
-    switch(axis){
-      case 0:
-        XStart = S;
-        break;
-      case 1:
-        YStart = S;
-        break;
-      case 2:
-        ZStart = S;
-        break;
-      default:
-        assert(false && "invalid axis");
-    }
-
-  }
-
-  Expr* getEnd(size_t axis){
-    switch(axis){
-      case 0:
-        return XEnd;
-      case 1:
-        return YEnd;
-      case 2:
-        return ZEnd;
-    }
-
-    assert(false && "invalid axis");
-  }
-
-  void setEnd(size_t axis, Expr* S){
-    switch(axis){
-      case 0:
-        XEnd = S;
-        break;
-      case 1:
-        YEnd = S;
-        break;
-      case 2:
-        ZEnd = S;
-        break;
-      default:
-        assert(false && "invalid axis");
-    }
-  }
-
-  Expr* getStride(size_t axis){
-    switch(axis){
-      case 0:
-        return XStride;
-      case 1:
-        return YStride;
-      case 2:
-        return ZStride;
-    }
-
-    assert(false && "invalid axis");
-  }
-
-  void setStride(size_t axis, Expr* S){
-    switch(axis){
-      case 0:
-        XStride = S;
-        break;
-      case 1:
-        YStride = S;
-        break;
-      case 2:
-        ZStride = S;
-        break;
-      default:
-        assert(false && "invalid axis");
-    }
-  }
-
-  SourceLocation getForAllLoc() const { return ForAllLoc; }
-
-  void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
-
-  static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ForAllArrayStmtClass;
-  }
-
-  static bool classof(const ForAllArrayStmt *) { return true; }
-
-  SourceRange getSourceRange() const {
-    return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
-  }
-
-  child_range children() {
-    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
-  }
-
-};
-
 class ForAllStmt : public Stmt {
 
 public:
@@ -1805,7 +1647,8 @@ public:
     Cells,
     Vertices,
     Edges,
-    ElementSpheres
+    ElementSpheres,
+    Array
   };
 
 private:
@@ -2038,6 +1881,17 @@ public:
     }
   }
 
+  Expr *getStride(int axis) const {
+    switch(axis) {
+      case 0: return XStride;
+      case 1: return YStride;
+      case 2: return ZStride;
+      default:
+        const char *s = "Unknown axis in getStride(int axis).\n";
+        assert(false && s);
+    }
+  }
+  
   void setStride(int axis, Expr *E) {
     switch(axis) {
       case 0: XStride = E; return;
@@ -2057,7 +1911,9 @@ public:
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ForAllStmtClass;
+    return T->getStmtClass() == ForAllStmtClass ||
+    T->getStmtClass() == RenderAllStmtClass ||
+    T->getStmtClass() == ForAllArrayStmtClass;
   }
 
   static bool classof(const ForAllStmt *) { return true; }
@@ -2125,6 +1981,53 @@ private:
   Expr* ElementRadius;
 };
 
+class ForAllArrayStmt : public ForAllStmt {
+  IdentifierInfo* XInductionVarII;
+  IdentifierInfo* YInductionVarII;
+  IdentifierInfo* ZInductionVarII;
+    
+public:
+  ForAllArrayStmt(ASTContext &C,
+                  SourceLocation FAL,
+                  Stmt *Body,
+                  BlockExpr* Block);
+  
+  
+  explicit ForAllArrayStmt(EmptyShell Empty) : 
+  ForAllStmt(Empty) { }
+  
+  IdentifierInfo* getInductionVar(size_t axis){
+    switch(axis){
+      case 0:
+        return XInductionVarII;
+      case 1:
+        return YInductionVarII;
+      case 2:
+        return ZInductionVarII;
+    }
+    
+    assert(false && "invalid axis");
+  }
+  
+  void setInductionVar(size_t axis, IdentifierInfo *II) {
+    switch(axis) {
+      case 0: XInductionVarII = II; return;
+      case 1: YInductionVarII = II; return;
+      case 2: ZInductionVarII = II; return;
+      default:
+        assert(false && "invalid axis.");
+    }
+  }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ForAllArrayStmtClass;
+  }
+  
+  static bool classof(const ForAllArrayStmt *) { return true; }
+    
+};
+
+  
 }  // end namespace clang
 
 #endif

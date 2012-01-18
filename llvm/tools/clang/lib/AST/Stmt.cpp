@@ -866,22 +866,16 @@ ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
   setBody(Body);
 }
 
-ForAllArrayStmt::ForAllArrayStmt(ASTContext &C, SourceLocation FAL)
-: Stmt(ForAllArrayStmtClass),
-XInductionVarII(0),
+ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
+                                 SourceLocation FAL,
+                                 Stmt* Body,
+                                 BlockExpr* Block)
+: XInductionVarII(0),
 YInductionVarII(0),
 ZInductionVarII(0),
-XStart(0),
-XEnd(0),
-XStride(0),
-YStart(0),
-YEnd(0),
-YStride(0),
-ZStart(0),
-ZEnd(0),
-ZStride(0),
-ForAllLoc(FAL){
-  setBody(0);
+ForAllStmt(ForAllArrayStmtClass, C, ForAllStmt::Array, 0, 0, 0, 0, Body, Block, FAL,
+           SourceLocation(), SourceLocation()){
+  setBody(Body);
 }
 
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,

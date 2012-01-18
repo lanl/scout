@@ -2751,9 +2751,14 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
   return Owned(FS);
 }
 
-StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc){
-
-  return Owned(new (Context) ForAllArrayStmt(Context, ForAllLoc));
+StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                      Stmt* Body,
+                                      BlockExpr* Block){
+  
+  ForAllArrayStmt* FS = 
+  new (Context) ForAllArrayStmt(Context, ForAllLoc, Body, Block);
+  
+  return Owned(FS);
 }
 
 namespace{

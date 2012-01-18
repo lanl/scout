@@ -2973,9 +2973,8 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
   Stmt* Body = ParseStatement().get();
 
-  InsertCPPCode("^(void* m, int* i, int* j, int* k, "
-                "scout::tbq_params_rt p){}", CodeLoc);
-
+  InsertCPPCode("^(void* m, int* i, int* j, int* k){}", CodeLoc);
+  
   BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
   assert(Block && "expected a block expression");
   class CompoundStmt* CB =
@@ -3165,10 +3164,20 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     return StmtError();
   }
 
+  Stmt* Body = BodyResult.get();
+  
+  InsertCPPCode("^(void* m, int* i, int* j, int* k){}", ForAllLoc);
+  
+  BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
+  assert(Block && "expected a block expression");
+  Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+  
   StmtResult ForAllArrayResult =
-  Actions.ActOnForAllArrayStmt(ForAllLoc);
+  Actions.ActOnForAllArrayStmt(ForAllLoc, Body, Block);
 
-  ForAllArrayStmt* FA = dyn_cast<ForAllArrayStmt>(ForAllArrayResult.get());
+  Stmt* stmt = ForAllArrayResult.get();
+
+  ForAllArrayStmt* FA = dyn_cast<ForAllArrayStmt>(stmt);
 
   for(size_t i = 0; i < 3; ++i){
     if(!Stride[i]){

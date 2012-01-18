@@ -6425,7 +6425,9 @@ public:
                              Stmt* Body,
                              BlockExpr* Block);
 
-  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc);
+  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                  Stmt* Body,
+                                  BlockExpr* Block);
 
   StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                 ForAllStmt::ForAllType Type,
