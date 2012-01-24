@@ -827,10 +827,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
           uint64_t numElts = 1;
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-	    // ndm - MERGE
-	    llvm::APSInt result;
-	    dims[i]->EvaluateAsInt(result, getContext());	    
-	    numElts *= result.getSExtValue();
+            llvm::APSInt result;
+            dims[i]->EvaluateAsInt(result, getContext());	    
+            numElts *= result.getSExtValue();
           }
 
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);

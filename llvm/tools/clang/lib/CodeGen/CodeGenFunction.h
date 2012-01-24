@@ -651,7 +651,8 @@ public:
   bool RenderAll;
   bool CallsPrintf;
   llvm::Value *Colors;
-
+  const ForAllArrayStmt* CurrentForAllArrayStmt;
+  
   llvm::Value *getGlobalIdx() {
     return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
   }
@@ -2055,7 +2056,6 @@ public:
   // ndm - Scout Stmts
 
   void EmitForAllStmtWrapper(const ForAllStmt &S);
-  void EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S);
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
   bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
 

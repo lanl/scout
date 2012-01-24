@@ -3187,6 +3187,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     FA->setStart(i, Start[i]);
     FA->setEnd(i, End[i]);
     FA->setStride(i, Stride[i]);
+    FA->setInductionVar(i, IVII[i]);
   }
 
   return ForAllArrayResult;

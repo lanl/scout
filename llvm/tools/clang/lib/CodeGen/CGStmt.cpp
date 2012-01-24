@@ -141,7 +141,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
     break;
   case Stmt::ForAllArrayStmtClass:
-    EmitForAllArrayStmtWrapper(cast<ForAllArrayStmt>(*S));
+    EmitForAllArrayStmt(cast<ForAllArrayStmt>(*S));
     break;
   case Stmt::RenderAllStmtClass:
     EmitRenderAllStmt(cast<RenderAllStmt>(*S));
@@ -804,8 +804,105 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs, S.getMesh()->getName());
 }
 
-void CodeGenFunction::EmitForAllArrayStmtWrapper(const ForAllArrayStmt &S) {
+void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
+  llvm::BasicBlock* entry = createBasicBlock("faa.entry");
+  EmitBlock(entry);
+  
+  llvm::BasicBlock* End[4] = {0,0,0,0};
+  
+  End[0] = createBasicBlock("faa.end");
 
+  llvm::BasicBlock* body = createBasicBlock("faa.body");
+
+  llvm::Value* Undef = llvm::UndefValue::get(Int32Ty);
+  llvm::Instruction* ForallArrayAllocaInsertPt =
+  new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
+  ForallArrayAllocaInsertPt->setName("faa.allocapt");
+  
+  llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
+  AllocaInsertPt = ForallArrayAllocaInsertPt;
+    
+  ScoutIdxVars.clear();
+  
+  for(unsigned i = 0; i < 3; ++i){
+    const IdentifierInfo* ii = S.getInductionVar(i);
+    if(!ii){
+      break;
+    }
+    
+    llvm::Value* ivar = Builder.CreateAlloca(Int32Ty, 0, ii->getName());
+    Builder.CreateStore(TranslateExprToValue(S.getStart(i)), ivar);
+    ScoutIdxVars.push_back(ivar);
+  }
+  
+  llvm::BasicBlock::iterator entryPt = Builder.GetInsertPoint();
+  
+  for(unsigned i = 0; i < ScoutIdxVars.size(); ++i){
+    End[i+1] = createBasicBlock("faa.loopend");
+    CurFn->getBasicBlockList().push_back(End[i+1]);
+    Builder.SetInsertPoint(End[i+1]);
+    
+    if(i < ScoutIdxVars.size() - 1){
+      Builder.CreateStore(TranslateExprToValue(S.getStart(i + 1)), ScoutIdxVars[i + 1]);
+    }
+    
+    llvm::Value* ivar = ScoutIdxVars[i];
+    
+    llvm::Value* iv = Builder.CreateLoad(ivar);
+    Builder.CreateStore(Builder.CreateAdd(iv, TranslateExprToValue(S.getStride(i))), ivar);
+    llvm::Value* cond = 
+    Builder.CreateICmpSLT(Builder.CreateLoad(ivar), TranslateExprToValue(S.getEnd(i)), "faa.cmp");
+    
+    Builder.CreateCondBr(cond, body, End[i]);
+  }
+
+  Builder.SetInsertPoint(entry, entryPt);
+  
+  EmitBlock(body);  
+  
+  DeclMapTy curLocalDeclMap = LocalDeclMap;
+  CallsPrintf = callsPrintf(&cast< Stmt >(S));
+
+  CurrentForAllArrayStmt = &S;
+  EmitStmt(S.getBody());
+  CurrentForAllArrayStmt = 0;
+ 
+  Builder.CreateBr(End[ScoutIdxVars.size()]);
+
+  EmitBlock(End[0]);
+  
+  llvm::Value *zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::ReturnInst *ret = llvm::ReturnInst::Create(getLLVMContext(), zero,
+                                                   Builder.GetInsertBlock());
+  
+  LocalDeclMap = curLocalDeclMap;
+  AllocaInsertPt = savedAllocaInsertPt;
+    
+  std::vector< llvm::BasicBlock * > region;
+  
+  typedef llvm::Function::iterator BBIterator;
+  BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
+  
+  llvm::BasicBlock *split;
+  for( ; BB->getName() != entry->getName(); ++BB) split = BB;
+  
+  for( ; BB != BB_end; ++BB) {
+    region.push_back(BB);
+  }
+  
+  llvm::DominatorTree DT;
+  DT.runOnFunction(*CurFn);
+  llvm::Function *ForallArrayFn = ExtractCodeRegion(DT, region);
+  
+  ForallArrayFn->setName("forall_array");
+
+  if(isSequential()){
+    llvm::BasicBlock *cbb = ret->getParent();
+    ret->eraseFromParent();
+    
+    Builder.SetInsertPoint(cbb);
+    return;
+  }
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

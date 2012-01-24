@@ -1386,17 +1386,34 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   const NamedDecl *ND = E->getDecl();
   CharUnits Alignment = getContext().getDeclAlign(ND);
   QualType T = E->getType();
-
+  
+  // ndm
   // Check if this is a Scout 'color' expression.
-  if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) &&
-     ND->getName() == "color") {
+  if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) ) {
 
-    const ValueDecl *VD = cast<ValueDecl>(ND);
-
-    llvm::Value *idx = getGlobalIdx();
-    llvm::Value* ep = Builder.CreateInBoundsGEP(Colors, idx);
-
-    return MakeAddrLValue(ep, VD->getType(), Alignment);
+    if(ND->getName() == "color"){
+      
+      const ValueDecl *VD = cast<ValueDecl>(ND);
+      
+      llvm::Value *idx = getGlobalIdx();
+      llvm::Value* ep = Builder.CreateInBoundsGEP(Colors, idx);
+      
+      return MakeAddrLValue(ep, VD->getType(), Alignment);
+    }
+    else if(CurrentForAllArrayStmt){
+      for(unsigned i = 0; i < 3; ++i){
+        const IdentifierInfo* ii = CurrentForAllArrayStmt->getInductionVar(i);
+        if(!ii){
+          break;
+        }
+        
+        if(ii->getName().equals(ND->getName())){
+          const ValueDecl *VD = cast<ValueDecl>(ND);
+          
+          return MakeAddrLValue(ScoutIdxVars[i], VD->getType(), Alignment);
+        }
+      }
+    }
   }
 
   if (ND->hasAttr<WeakRefAttr>()) {
@@ -1418,6 +1435,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     llvm::Value *V = LocalDeclMap[VD];
     if (!V && VD->isStaticLocal())
       V = CGM.getStaticLocalDeclAddress(VD);
+    
     assert(V && "DeclRefExpr not entered in LocalDeclMap?");
 
     if (VD->hasAttr<BlocksAttr>())

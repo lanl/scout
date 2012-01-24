@@ -1996,7 +1996,7 @@ public:
   explicit ForAllArrayStmt(EmptyShell Empty) : 
   ForAllStmt(Empty) { }
   
-  IdentifierInfo* getInductionVar(size_t axis){
+  const IdentifierInfo* getInductionVar(size_t axis) const{
     switch(axis){
       case 0:
         return XInductionVarII;
