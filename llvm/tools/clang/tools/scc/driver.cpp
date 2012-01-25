@@ -476,6 +476,7 @@ int main(int argc_, const char **argv_) {
 
   ScoutArgs.push_back(SaveStringInSet(SavedStrings, scIncludeOpt.c_str()));
   ScoutArgs.push_back(SaveStringInSet(SavedStrings, scCudaInclude.c_str()));
+  ScoutArgs.push_back(SaveStringInSet(SavedStrings, "-pthread"));
 
   argv.insert(&argv[argv.size() - 1], ScoutArgs.begin(), ScoutArgs.end());
 
