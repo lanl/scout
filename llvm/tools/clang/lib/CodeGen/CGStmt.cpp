@@ -797,14 +797,31 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
 
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
-                                               S.getMesh()->getName(),
-                                               blockInfo, inputs);
+                                               blockInfo,
+                                               ScoutMeshSizes[S.getMesh()->getName()],
+                                               inputs);
 
   // Generate a function call to BlockFn.
-  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, inputs, S.getMesh()->getName());
+  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
+                       ScoutMeshSizes[S.getMesh()->getName()], inputs);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
+  llvm::SmallVector< llvm::Value *, 3 > ranges;
+  for(size_t i = 0; i < 3; ++i){
+    Expr* end = S.getEnd(i);
+    
+    if(!end){
+      break;
+    }
+    
+    llvm::Value* ri = Builder.CreateAlloca(Int32Ty);
+    
+    ranges.push_back(ri);
+    
+    Builder.CreateStore(TranslateExprToValue(end), ri);
+  }
+  
   llvm::BasicBlock* entry = createBasicBlock("faa.entry");
   EmitBlock(entry);
   
@@ -895,14 +912,53 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   llvm::Function *ForallArrayFn = ExtractCodeRegion(DT, region);
   
   ForallArrayFn->setName("forall_array");
-
-  if(isSequential()){
+  
+  if(isGPU()){
+    // ...
+  }
+  
+  if(isSequential() || isGPU()){
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
     
     Builder.SetInsertPoint(cbb);
     return;
   }
+
+  // Remove function call to ForallFn.
+  llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
+  typedef llvm::BasicBlock::iterator InstIterator;
+  InstIterator I = CallBB->begin(), IE = CallBB->end();
+  for( ; I != IE; ++I) {
+    if(llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
+      call->eraseFromParent();
+      break;
+    }
+  }
+  
+  llvm::BasicBlock *continueBB = ret->getParent();
+  ret->eraseFromParent();
+  
+  Builder.SetInsertPoint(continueBB);
+  
+  typedef llvm::SetVector< llvm::Value * > Values;
+  Values inputs;
+  
+  std::string TheName = CurFn->getName();
+  
+  CGBlockInfo blockInfo(S.getBlock()->getBlockDecl(), TheName.c_str());
+  
+  CurrentForAllArrayStmt = &S;
+  
+  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
+                                               blockInfo,
+                                               ranges,
+                                               inputs);
+  
+  CurrentForAllArrayStmt = 0;
+  
+  // Generate a function call to BlockFn.
+  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, ranges, inputs);
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

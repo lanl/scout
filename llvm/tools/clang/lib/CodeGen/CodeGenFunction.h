@@ -1430,13 +1430,16 @@ public:
   llvm::Value *EmitScoutBlockFnCall(CodeGenModule &CGM,
                                     const CGBlockInfo &blockInfo,
                                     llvm::Value *TheBlockFn,
-                                    llvm::SetVector< llvm::Value * > &inputs,
-                                    llvm::StringRef meshName);
+                                    const llvm::SmallVector< llvm::Value *, 3 >& ranges,
+                                    llvm::SetVector< llvm::Value * > &inputs);
+  
   llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
-                                     llvm::StringRef meshName,
                                      CGBlockInfo &blockInfo,
+                                     const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                      llvm::SetVector< llvm::Value * > &inputs);
+  
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
+  
   llvm::Value *EmitBlockLiteral(const CGBlockInfo &Info);
   static void destroyBlockInfos(CGBlockInfo *info);
   llvm::Constant *BuildDescriptorBlockDecl(const BlockExpr *,

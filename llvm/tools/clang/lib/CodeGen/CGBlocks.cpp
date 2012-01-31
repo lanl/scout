@@ -487,10 +487,11 @@ static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
     llvm::StructType::get(CGM.getLLVMContext(), elementTypes, true);
 }
 
-llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
-                                                    llvm::StringRef meshName,
-                                                    CGBlockInfo &blockInfo,
-                                                    llvm::SetVector< llvm::Value * > &inputs) {
+llvm::Value 
+*CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
+                                        CGBlockInfo &blockInfo,
+                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges, 
+                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockLiteral");
 
   // Start generating block function.
@@ -546,14 +547,14 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   llvm::Value *size = Builder.CreateLoad(indVars[0][1]);
 
   for(int i = 1, e = indVars.size(); i < e; ++i) {
-    llvm::Value *dim = Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]);
+    llvm::Value *dim = Builder.CreateLoad(ranges[i - 1]);
 
     llvm::Value *end = Builder.CreateSub(Builder.CreateLoad(indVars[i][1]),
                                          llvm::ConstantInt::get(Int32Ty, 1));
     size = Builder.CreateAdd(size, Builder.CreateMul(dim, end));
 
     if(i == 2)
-      dim = Builder.CreateMul(dim, ScoutMeshSizes[meshName][i - 2]);
+      dim = Builder.CreateMul(dim, ranges[i - 2]);
     start = Builder.CreateAdd(start, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][0])));
   }
 
@@ -583,13 +584,14 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     llvm::Value *val;
     if(i > 0) {
       if(i == 1)
-        val = Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]);
+        val = Builder.CreateLoad(ranges[i - 1]);
       else
-        val = Builder.CreateMul(Builder.CreateLoad(ScoutMeshSizes[meshName][i]),
-                                Builder.CreateLoad(ScoutMeshSizes[meshName][i - 1]));
+        val = Builder.CreateMul(Builder.CreateLoad(ranges[i]),
+                                Builder.CreateLoad(ranges[i - 1]));
       lval = Builder.CreateUDiv(lval, val);
     }
-    lval = Builder.CreateURem(lval, Builder.CreateLoad(ScoutMeshSizes[meshName][i]));
+    
+    lval = Builder.CreateURem(lval, Builder.CreateLoad(ranges[i]));
     Builder.CreateStore(lval, ScoutIdxVars[i]);
   }
   
@@ -738,11 +740,12 @@ llvm::Value *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   return NewBlockFn;
 }
 
-llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
-                                                   const CGBlockInfo &blockInfo,
-                                                   llvm::Value *blockFn,
-                                                   llvm::SetVector< llvm::Value * > &inputs,
-                                                   llvm::StringRef meshName) {
+llvm::Value 
+*CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
+                                       const CGBlockInfo &blockInfo,
+                                       llvm::Value *blockFn,
+                                       const llvm::SmallVector< llvm::Value *, 3 >& ranges,
+                                       llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockFnCall");
   blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
                                            VoidPtrTy);
@@ -797,7 +800,7 @@ llvm::Value *CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
       Builder.CreateStore(zero, I); var = I;
     } else if(I->getName().startswith("end.")) {
       int axis = (I->getName()[4]) - 120;
-      llvm::Value *val = Builder.CreateLoad(ScoutMeshSizes[meshName][axis]);
+      llvm::Value *val = Builder.CreateLoad(ranges[axis]);
       Builder.CreateStore(val, I); var = I;
       ++numDimensions;
     } else if(I->getName().startswith("var.")) {
