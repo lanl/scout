@@ -47,16 +47,17 @@ MacroInfo *Preprocessor::getInfoForMacro(IdentifierInfo *II) const {
 
 /// setMacroInfo - Specify a macro for this identifier.
 ///
-void Preprocessor::setMacroInfo(IdentifierInfo *II, MacroInfo *MI) {
+void Preprocessor::setMacroInfo(IdentifierInfo *II, MacroInfo *MI,
+                                bool LoadedFromAST) {
   if (MI) {
     Macros[II] = MI;
     II->setHasMacroDefinition(true);
-    if (II->isFromAST())
+    if (II->isFromAST() && !LoadedFromAST)
       II->setChangedSinceDeserialization();
   } else if (II->hasMacroDefinition()) {
     Macros.erase(II);
     II->setHasMacroDefinition(false);
-    if (II->isFromAST())
+    if (II->isFromAST() && !LoadedFromAST)
       II->setChangedSinceDeserialization();
   }
 }
@@ -615,6 +616,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("objc_arc", LangOpts.ObjCAutoRefCount)
            .Case("objc_arc_weak", LangOpts.ObjCAutoRefCount && 
                  LangOpts.ObjCRuntimeHasWeak)
+           .Case("objc_default_synthesize_properties", LangOpts.ObjC2)
            .Case("objc_fixed_enum", LangOpts.ObjC2)
            .Case("objc_instancetype", LangOpts.ObjC2)
            .Case("objc_modules", LangOpts.ObjC2 && LangOpts.Modules)
@@ -626,12 +628,14 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("arc_cf_code_audited", true)
            // C11 features
            .Case("c_alignas", LangOpts.C11)
+           .Case("c_atomic", LangOpts.C11)
            .Case("c_generic_selections", LangOpts.C11)
            .Case("c_static_assert", LangOpts.C11)
            // C++0x features
            .Case("cxx_access_control_sfinae", LangOpts.CPlusPlus0x)
            .Case("cxx_alias_templates", LangOpts.CPlusPlus0x)
            .Case("cxx_alignas", LangOpts.CPlusPlus0x)
+           .Case("cxx_atomic", LangOpts.CPlusPlus0x)
            .Case("cxx_attributes", LangOpts.CPlusPlus0x)
            .Case("cxx_auto_type", LangOpts.CPlusPlus0x)
          //.Case("cxx_constexpr", false);
@@ -724,9 +728,11 @@ static bool HasExtension(const Preprocessor &PP, const IdentifierInfo *II) {
   return llvm::StringSwitch<bool>(II->getName())
            // C11 features supported by other languages as extensions.
            .Case("c_alignas", true)
+           .Case("c_atomic", true)
            .Case("c_generic_selections", true)
            .Case("c_static_assert", true)
            // C++0x features supported by other languages as extensions.
+           .Case("cxx_atomic", LangOpts.CPlusPlus)
            .Case("cxx_deleted_functions", LangOpts.CPlusPlus)
            .Case("cxx_explicit_conversions", LangOpts.CPlusPlus)
            .Case("cxx_inline_namespaces", LangOpts.CPlusPlus)
@@ -770,7 +776,7 @@ static bool EvaluateHasIncludeCommon(Token &Tok,
   PP.getCurrentLexer()->LexIncludeFilename(Tok);
 
   // Reserve a buffer to get the spelling.
-  llvm::SmallString<128> FilenameBuffer;
+  SmallString<128> FilenameBuffer;
   StringRef Filename;
   SourceLocation EndLoc;
   
@@ -872,7 +878,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
 
   ++NumBuiltinMacroExpanded;
 
-  llvm::SmallString<128> TmpBuffer;
+  SmallString<128> TmpBuffer;
   llvm::raw_svector_ostream OS(TmpBuffer);
 
   // Set up the return result.
@@ -919,7 +925,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     }
 
     // Escape this filename.  Turn '\' -> '\\' '"' -> '\"'
-    llvm::SmallString<128> FN;
+    SmallString<128> FN;
     if (PLoc.isValid()) {
       FN += PLoc.getFilename();
       Lexer::Stringify(FN);
@@ -1027,7 +1033,8 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
     }
 
     OS << (int)Value;
-    Tok.setKind(tok::numeric_constant);
+    if (IsValid)
+      Tok.setKind(tok::numeric_constant);
   } else if (II == Ident__has_include ||
              II == Ident__has_include_next) {
     // The argument to these two builtins should be a parenthesized

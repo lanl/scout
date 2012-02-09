@@ -20,6 +20,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/Basic/TargetInfo.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 using namespace ento;
@@ -27,12 +28,12 @@ using namespace ento;
 namespace {
 class CallAndMessageChecker
   : public Checker< check::PreStmt<CallExpr>, check::PreObjCMessage > {
-  mutable llvm::OwningPtr<BugType> BT_call_null;
-  mutable llvm::OwningPtr<BugType> BT_call_undef;
-  mutable llvm::OwningPtr<BugType> BT_call_arg;
-  mutable llvm::OwningPtr<BugType> BT_msg_undef;
-  mutable llvm::OwningPtr<BugType> BT_msg_arg;
-  mutable llvm::OwningPtr<BugType> BT_msg_ret;
+  mutable OwningPtr<BugType> BT_call_null;
+  mutable OwningPtr<BugType> BT_call_undef;
+  mutable OwningPtr<BugType> BT_call_arg;
+  mutable OwningPtr<BugType> BT_msg_undef;
+  mutable OwningPtr<BugType> BT_msg_arg;
+  mutable OwningPtr<BugType> BT_msg_ret;
 public:
 
   void checkPreStmt(const CallExpr *CE, CheckerContext &C) const;
@@ -40,19 +41,19 @@ public:
 
 private:
   static void PreVisitProcessArgs(CheckerContext &C,CallOrObjCMessage callOrMsg,
-                             const char *BT_desc, llvm::OwningPtr<BugType> &BT);
+                             const char *BT_desc, OwningPtr<BugType> &BT);
   static bool PreVisitProcessArg(CheckerContext &C, SVal V,SourceRange argRange,
-          const Expr *argEx, const char *BT_desc, llvm::OwningPtr<BugType> &BT);
+          const Expr *argEx, const char *BT_desc, OwningPtr<BugType> &BT);
 
   static void EmitBadCall(BugType *BT, CheckerContext &C, const CallExpr *CE);
   void emitNilReceiverBug(CheckerContext &C, const ObjCMessage &msg,
                           ExplodedNode *N) const;
 
   void HandleNilReceiver(CheckerContext &C,
-                         const ProgramState *state,
+                         ProgramStateRef state,
                          ObjCMessage msg) const;
 
-  static void LazyInit_BT(const char *desc, llvm::OwningPtr<BugType> &BT) {
+  static void LazyInit_BT(const char *desc, OwningPtr<BugType> &BT) {
     if (!BT)
       BT.reset(new BuiltinBug(desc));
   }
@@ -74,7 +75,7 @@ void CallAndMessageChecker::EmitBadCall(BugType *BT, CheckerContext &C,
 void CallAndMessageChecker::PreVisitProcessArgs(CheckerContext &C,
                                                 CallOrObjCMessage callOrMsg,
                                                 const char *BT_desc,
-                                                llvm::OwningPtr<BugType> &BT) {
+                                                OwningPtr<BugType> &BT) {
   for (unsigned i = 0, e = callOrMsg.getNumArgs(); i != e; ++i)
     if (PreVisitProcessArg(C, callOrMsg.getArgSVal(i),
                            callOrMsg.getArgSourceRange(i), callOrMsg.getArg(i),
@@ -86,7 +87,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
                                                SVal V, SourceRange argRange,
                                                const Expr *argEx,
                                                const char *BT_desc,
-                                               llvm::OwningPtr<BugType> &BT) {
+                                               OwningPtr<BugType> &BT) {
 
   if (V.isUndef()) {
     if (ExplodedNode *N = C.generateSink()) {
@@ -154,7 +155,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
     if (F.Find(D->getRegion())) {
       if (ExplodedNode *N = C.generateSink()) {
         LazyInit_BT(BT_desc, BT);
-        llvm::SmallString<512> Str;
+        SmallString<512> Str;
         llvm::raw_svector_ostream os(Str);
         os << "Passed-by-value struct argument contains uninitialized data";
 
@@ -219,7 +220,7 @@ void CallAndMessageChecker::checkPreStmt(const CallExpr *CE,
 void CallAndMessageChecker::checkPreObjCMessage(ObjCMessage msg,
                                                 CheckerContext &C) const {
 
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   const LocationContext *LCtx = C.getLocationContext();
 
   // FIXME: Handle 'super'?
@@ -242,7 +243,7 @@ void CallAndMessageChecker::checkPreObjCMessage(ObjCMessage msg,
       // Bifurcate the state into nil and non-nil ones.
       DefinedOrUnknownSVal receiverVal = cast<DefinedOrUnknownSVal>(recVal);
   
-      const ProgramState *notNilState, *nilState;
+      ProgramStateRef notNilState, nilState;
       llvm::tie(notNilState, nilState) = state->assume(receiverVal);
   
       // Handle receiver must be nil.
@@ -270,7 +271,7 @@ void CallAndMessageChecker::emitNilReceiverBug(CheckerContext &C,
       new BuiltinBug("Receiver in message expression is "
                      "'nil' and returns a garbage value"));
 
-  llvm::SmallString<200> buf;
+  SmallString<200> buf;
   llvm::raw_svector_ostream os(buf);
   os << "The receiver of message '" << msg.getSelector().getAsString()
      << "' is nil and returns a value of type '"
@@ -286,14 +287,13 @@ void CallAndMessageChecker::emitNilReceiverBug(CheckerContext &C,
 }
 
 static bool supportsNilWithFloatRet(const llvm::Triple &triple) {
-  return triple.getVendor() == llvm::Triple::Apple &&
-         (!triple.isMacOSXVersionLT(10,5) ||
-          triple.getArch() == llvm::Triple::arm || 
-          triple.getArch() == llvm::Triple::thumb);
+  return (triple.getVendor() == llvm::Triple::Apple &&
+          (triple.getOS() == llvm::Triple::IOS ||
+           !triple.isMacOSXVersionLT(10,5)));
 }
 
 void CallAndMessageChecker::HandleNilReceiver(CheckerContext &C,
-                                              const ProgramState *state,
+                                              ProgramStateRef state,
                                               ObjCMessage msg) const {
   ASTContext &Ctx = C.getASTContext();
 

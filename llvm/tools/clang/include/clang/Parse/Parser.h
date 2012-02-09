@@ -155,15 +155,15 @@ class Parser : public CodeCompletionHandler {
   mutable IdentifierInfo *Ident_final;
   mutable IdentifierInfo *Ident_override;
 
-  llvm::OwningPtr<PragmaHandler> AlignHandler;
-  llvm::OwningPtr<PragmaHandler> GCCVisibilityHandler;
-  llvm::OwningPtr<PragmaHandler> OptionsHandler;
-  llvm::OwningPtr<PragmaHandler> PackHandler;
-  llvm::OwningPtr<PragmaHandler> MSStructHandler;
-  llvm::OwningPtr<PragmaHandler> UnusedHandler;
-  llvm::OwningPtr<PragmaHandler> WeakHandler;
-  llvm::OwningPtr<PragmaHandler> FPContractHandler;
-  llvm::OwningPtr<PragmaHandler> OpenCLExtensionHandler;
+  OwningPtr<PragmaHandler> AlignHandler;
+  OwningPtr<PragmaHandler> GCCVisibilityHandler;
+  OwningPtr<PragmaHandler> OptionsHandler;
+  OwningPtr<PragmaHandler> PackHandler;
+  OwningPtr<PragmaHandler> MSStructHandler;
+  OwningPtr<PragmaHandler> UnusedHandler;
+  OwningPtr<PragmaHandler> WeakHandler;
+  OwningPtr<PragmaHandler> FPContractHandler;
+  OwningPtr<PragmaHandler> OpenCLExtensionHandler;
 
   /// Whether the '>' token acts as an operator or not. This will be
   /// true except when we are parsing an expression within a C++
@@ -257,8 +257,6 @@ public:
   /// the EOF was encountered.
   bool ParseTopLevelDecl(DeclGroupPtrTy &Result);
 
-  DeclGroupPtrTy FinishPendingObjCActions();
-
 private:
   //===--------------------------------------------------------------------===//
   // Low-Level token peeking and consumption methods.
@@ -287,10 +285,9 @@ private:
            Tok.getKind() == tok::utf32_string_literal;
   }
 
-  /// \brief Returns true if the current token is a '=' or '==' and
-  /// false otherwise. If it's '==', we assume that it's a typo and we emit
-  /// DiagID and a fixit hint to turn '==' -> '='.
-  bool isTokenEqualOrMistypedEqualEqual(unsigned DiagID);
+  /// \brief Returns true if the current token is '=' or is a type of '='.
+  /// For typos, give a fixit to '='
+  bool isTokenEqualOrEqualTypo();
 
   /// ConsumeToken - Consume the current 'peek token' and lex the next one.
   /// This does not work with all kinds of tokens: strings and specific other
@@ -404,11 +401,12 @@ private:
     Tok.setKind(tok::eof);
   }
 
-  /// \brief Clear and free the cached objc methods.
-  void clearLateParsedObjCMethods();
-
   /// \brief Handle the annotation token produced for #pragma unused(...)
   void HandlePragmaUnused();
+
+  /// \brief Handle the annotation token produced for
+  /// #pragma GCC visibility...
+  void HandlePragmaVisibility();
 
   /// GetLookAheadToken - This peeks ahead N tokens and returns that token
   /// without consuming any tokens.  LookAhead(0) returns 'Tok', LookAhead(1)
@@ -1223,12 +1221,28 @@ private:
   DeclGroupPtrTy ParseObjCAtProtocolDeclaration(SourceLocation atLoc,
                                                 ParsedAttributes &prefixAttrs);
 
-  Decl *ObjCImpDecl;
-  SmallVector<Decl *, 4> PendingObjCImpDecl;
-  typedef SmallVector<LexedMethod*, 2> LateParsedObjCMethodContainer;
-  LateParsedObjCMethodContainer LateParsedObjCMethods;
+  struct ObjCImplParsingDataRAII {
+    Parser &P;
+    Decl *Dcl;
+    typedef SmallVector<LexedMethod*, 8> LateParsedObjCMethodContainer;
+    LateParsedObjCMethodContainer LateParsedObjCMethods;
 
-  Decl *ParseObjCAtImplementationDeclaration(SourceLocation AtLoc);
+    ObjCImplParsingDataRAII(Parser &parser, Decl *D)
+      : P(parser), Dcl(D) {
+      P.CurParsedObjCImpl = this;
+      Finished = false;
+    }
+    ~ObjCImplParsingDataRAII();
+
+    void finish(SourceRange AtEnd);
+    bool isFinished() const { return Finished; }
+
+  private:
+    bool Finished;
+  };
+  ObjCImplParsingDataRAII *CurParsedObjCImpl;
+
+  DeclGroupPtrTy ParseObjCAtImplementationDeclaration(SourceLocation AtLoc);
   DeclGroupPtrTy ParseObjCAtEndDeclaration(SourceRange atEnd);
   Decl *ParseObjCAtAliasDeclaration(SourceLocation atLoc);
   Decl *ParseObjCPropertySynthesize(SourceLocation atLoc);
@@ -1261,10 +1275,17 @@ private:
   //===--------------------------------------------------------------------===//
   // C99 6.5: Expressions.
 
-  ExprResult ParseExpression();
+  /// TypeCastState - State whether an expression is or may be a type cast.
+  enum TypeCastState {
+    NotTypeCast = 0,
+    MaybeTypeCast,
+    IsTypeCast
+  };
+
+  ExprResult ParseExpression(TypeCastState isTypeCast = NotTypeCast);
   ExprResult ParseConstantExpression();
   // Expr that doesn't include commas.
-  ExprResult ParseAssignmentExpression();
+  ExprResult ParseAssignmentExpression(TypeCastState isTypeCast = NotTypeCast);
 
   ExprResult ParseExpressionWithLeadingAt(SourceLocation AtLoc);
 
@@ -1275,10 +1296,10 @@ private:
   ExprResult ParseCastExpression(bool isUnaryExpression,
                                  bool isAddressOfOperand,
                                  bool &NotCastExpr,
-                                 bool isTypeCast);
+                                 TypeCastState isTypeCast);
   ExprResult ParseCastExpression(bool isUnaryExpression,
                                  bool isAddressOfOperand = false,
-                                 bool isTypeCast = false);
+                                 TypeCastState isTypeCast = NotTypeCast);
 
   /// Returns true if the next token would start a postfix-expression
   /// suffix.
@@ -2063,13 +2084,13 @@ private:
   AccessSpecifier getAccessSpecifierIfPresent() const;
 
   bool ParseUnqualifiedIdTemplateId(CXXScopeSpec &SS,
+                                    SourceLocation TemplateKWLoc,
                                     IdentifierInfo *Name,
                                     SourceLocation NameLoc,
                                     bool EnteringContext,
                                     ParsedType ObjectType,
                                     UnqualifiedId &Id,
-                                    bool AssumeTemplateId,
-                                    SourceLocation TemplateKWLoc);
+                                    bool AssumeTemplateId);
   bool ParseUnqualifiedIdOperator(CXXScopeSpec &SS, bool EnteringContext,
                                   ParsedType ObjectType,
                                   UnqualifiedId &Result);
@@ -2077,6 +2098,7 @@ private:
                           bool AllowDestructorName,
                           bool AllowConstructorName,
                           ParsedType ObjectType,
+                          SourceLocation& TemplateKWLoc,
                           UnqualifiedId &Result);
 
   //===--------------------------------------------------------------------===//
@@ -2122,8 +2144,8 @@ private:
 
   bool AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
                                CXXScopeSpec &SS,
+                               SourceLocation TemplateKWLoc,
                                UnqualifiedId &TemplateName,
-                               SourceLocation TemplateKWLoc = SourceLocation(),
                                bool AllowTypeAnnotation = true);
   void AnnotateTemplateIdTokenAsType();
   bool IsTemplateArgumentList(unsigned Skip = 0);

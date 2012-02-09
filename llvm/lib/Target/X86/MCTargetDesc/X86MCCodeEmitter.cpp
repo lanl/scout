@@ -85,7 +85,7 @@ public:
     }
   }
 
-  void EmitImmediate(const MCOperand &Disp,
+  void EmitImmediate(const MCOperand &Disp, SMLoc Loc,
                      unsigned ImmSize, MCFixupKind FixupKind,
                      unsigned &CurByte, raw_ostream &OS,
                      SmallVectorImpl<MCFixup> &Fixups,
@@ -202,8 +202,8 @@ StartsWithGlobalOffsetTable(const MCExpr *Expr) {
 }
 
 void X86MCCodeEmitter::
-EmitImmediate(const MCOperand &DispOp, unsigned Size, MCFixupKind FixupKind,
-              unsigned &CurByte, raw_ostream &OS,
+EmitImmediate(const MCOperand &DispOp, SMLoc Loc, unsigned Size,
+              MCFixupKind FixupKind, unsigned &CurByte, raw_ostream &OS,
               SmallVectorImpl<MCFixup> &Fixups, int ImmOffset) const {
   const MCExpr *Expr = NULL;
   if (DispOp.isImm()) {
@@ -249,7 +249,7 @@ EmitImmediate(const MCOperand &DispOp, unsigned Size, MCFixupKind FixupKind,
                                    Ctx);
 
   // Emit a symbolic constant as a fixup and 4 zeros.
-  Fixups.push_back(MCFixup::Create(CurByte, Expr, FixupKind));
+  Fixups.push_back(MCFixup::Create(CurByte, Expr, FixupKind, Loc));
   EmitConstant(0, Size, CurByte, OS);
 }
 
@@ -285,7 +285,7 @@ void X86MCCodeEmitter::EmitMemModRMByte(const MCInst &MI, unsigned Op,
     // expression to emit.
     int ImmSize = X86II::hasImm(TSFlags) ? X86II::getSizeOfImm(TSFlags) : 0;
 
-    EmitImmediate(Disp, 4, MCFixupKind(FixupKind),
+    EmitImmediate(Disp, MI.getLoc(), 4, MCFixupKind(FixupKind),
                   CurByte, OS, Fixups, -ImmSize);
     return;
   }
@@ -309,7 +309,7 @@ void X86MCCodeEmitter::EmitMemModRMByte(const MCInst &MI, unsigned Op,
 
     if (BaseReg == 0) {          // [disp32]     in X86-32 mode
       EmitByte(ModRMByte(0, RegOpcodeField, 5), CurByte, OS);
-      EmitImmediate(Disp, 4, FK_Data_4, CurByte, OS, Fixups);
+      EmitImmediate(Disp, MI.getLoc(), 4, FK_Data_4, CurByte, OS, Fixups);
       return;
     }
 
@@ -325,13 +325,13 @@ void X86MCCodeEmitter::EmitMemModRMByte(const MCInst &MI, unsigned Op,
     // Otherwise, if the displacement fits in a byte, encode as [REG+disp8].
     if (Disp.isImm() && isDisp8(Disp.getImm())) {
       EmitByte(ModRMByte(1, RegOpcodeField, BaseRegNo), CurByte, OS);
-      EmitImmediate(Disp, 1, FK_Data_1, CurByte, OS, Fixups);
+      EmitImmediate(Disp, MI.getLoc(), 1, FK_Data_1, CurByte, OS, Fixups);
       return;
     }
 
     // Otherwise, emit the most general non-SIB encoding: [REG+disp32]
     EmitByte(ModRMByte(2, RegOpcodeField, BaseRegNo), CurByte, OS);
-    EmitImmediate(Disp, 4, MCFixupKind(X86::reloc_signed_4byte), CurByte, OS,
+    EmitImmediate(Disp, MI.getLoc(), 4, MCFixupKind(X86::reloc_signed_4byte), CurByte, OS,
                   Fixups);
     return;
   }
@@ -390,10 +390,10 @@ void X86MCCodeEmitter::EmitMemModRMByte(const MCInst &MI, unsigned Op,
 
   // Do we need to output a displacement?
   if (ForceDisp8)
-    EmitImmediate(Disp, 1, FK_Data_1, CurByte, OS, Fixups);
+    EmitImmediate(Disp, MI.getLoc(), 1, FK_Data_1, CurByte, OS, Fixups);
   else if (ForceDisp32 || Disp.getImm() != 0)
-    EmitImmediate(Disp, 4, MCFixupKind(X86::reloc_signed_4byte), CurByte, OS,
-                  Fixups);
+    EmitImmediate(Disp, MI.getLoc(), 4, MCFixupKind(X86::reloc_signed_4byte),
+                  CurByte, OS, Fixups);
 }
 
 /// EmitVEXOpcodePrefix - AVX instructions are encoded using a opcode prefix
@@ -480,7 +480,7 @@ void X86MCCodeEmitter::EmitVEXOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
     VEX_L = 1;
 
   switch (TSFlags & X86II::Op0Mask) {
-  default: assert(0 && "Invalid prefix!");
+  default: llvm_unreachable("Invalid prefix!");
   case X86II::T8:  // 0F 38
     VEX_5M = 0x2;
     break;
@@ -531,7 +531,7 @@ void X86MCCodeEmitter::EmitVEXOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
   // Classify VEX_B, VEX_4V, VEX_R, VEX_X
   unsigned CurOp = 0;
   switch (TSFlags & X86II::FormMask) {
-  case X86II::MRMInitReg: assert(0 && "FIXME: Remove this!");
+  case X86II::MRMInitReg: llvm_unreachable("FIXME: Remove this!");
   case X86II::MRMDestMem: {
     // MRMDestMem instructions forms:
     //  MemAddr, src1(ModR/M)
@@ -695,7 +695,7 @@ static unsigned DetermineREXPrefix(const MCInst &MI, uint64_t TSFlags,
   }
 
   switch (TSFlags & X86II::FormMask) {
-  case X86II::MRMInitReg: assert(0 && "FIXME: Remove this!");
+  case X86II::MRMInitReg: llvm_unreachable("FIXME: Remove this!");
   case X86II::MRMSrcReg:
     if (MI.getOperand(0).isReg() &&
         X86II::isX86_64ExtendedReg(MI.getOperand(0).getReg()))
@@ -765,12 +765,12 @@ void X86MCCodeEmitter::EmitSegmentOverridePrefix(uint64_t TSFlags,
                                         const MCInst &MI,
                                         raw_ostream &OS) const {
   switch (TSFlags & X86II::SegOvrMask) {
-  default: assert(0 && "Invalid segment!");
+  default: llvm_unreachable("Invalid segment!");
   case 0:
     // No segment override, check for explicit one on memory operand.
     if (MemOperand != -1) {   // If the instruction has a memory operand.
       switch (MI.getOperand(MemOperand+X86::AddrSegmentReg).getReg()) {
-      default: assert(0 && "Unknown segment register!");
+      default: llvm_unreachable("Unknown segment register!");
       case 0: break;
       case X86::CS: EmitByte(0x2E, CurByte, OS); break;
       case X86::SS: EmitByte(0x36, CurByte, OS); break;
@@ -821,7 +821,7 @@ void X86MCCodeEmitter::EmitOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
 
   bool Need0FPrefix = false;
   switch (TSFlags & X86II::Op0Mask) {
-  default: assert(0 && "Invalid prefix!");
+  default: llvm_unreachable("Invalid prefix!");
   case 0: break;  // No prefix!
   case X86II::REP: break; // already handled.
   case X86II::TB:  // Two-byte opcode prefix
@@ -942,27 +942,29 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
   unsigned SrcRegNum = 0;
   switch (TSFlags & X86II::FormMask) {
   case X86II::MRMInitReg:
-    assert(0 && "FIXME: Remove this form when the JIT moves to MCCodeEmitter!");
+    llvm_unreachable("FIXME: Remove this form when the JIT moves to MCCodeEmitter!");
   default: errs() << "FORM: " << (TSFlags & X86II::FormMask) << "\n";
-    assert(0 && "Unknown FormMask value in X86MCCodeEmitter!");
+    llvm_unreachable("Unknown FormMask value in X86MCCodeEmitter!");
   case X86II::Pseudo:
-    assert(0 && "Pseudo instruction shouldn't be emitted");
+    llvm_unreachable("Pseudo instruction shouldn't be emitted");
   case X86II::RawFrm:
     EmitByte(BaseOpcode, CurByte, OS);
     break;
   case X86II::RawFrmImm8:
     EmitByte(BaseOpcode, CurByte, OS);
-    EmitImmediate(MI.getOperand(CurOp++),
+    EmitImmediate(MI.getOperand(CurOp++), MI.getLoc(),
                   X86II::getSizeOfImm(TSFlags), getImmFixupKind(TSFlags),
                   CurByte, OS, Fixups);
-    EmitImmediate(MI.getOperand(CurOp++), 1, FK_Data_1, CurByte, OS, Fixups);
+    EmitImmediate(MI.getOperand(CurOp++), MI.getLoc(), 1, FK_Data_1, CurByte,
+                  OS, Fixups);
     break;
   case X86II::RawFrmImm16:
     EmitByte(BaseOpcode, CurByte, OS);
-    EmitImmediate(MI.getOperand(CurOp++),
+    EmitImmediate(MI.getOperand(CurOp++), MI.getLoc(),
                   X86II::getSizeOfImm(TSFlags), getImmFixupKind(TSFlags),
                   CurByte, OS, Fixups);
-    EmitImmediate(MI.getOperand(CurOp++), 2, FK_Data_2, CurByte, OS, Fixups);
+    EmitImmediate(MI.getOperand(CurOp++), MI.getLoc(), 2, FK_Data_2, CurByte,
+                  OS, Fixups);
     break;
 
   case X86II::AddRegFrm:
@@ -1122,8 +1124,8 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
           RegNum |= Val;
         }
       }
-      EmitImmediate(MCOperand::CreateImm(RegNum), 1, FK_Data_1, CurByte, OS,
-                    Fixups);
+      EmitImmediate(MCOperand::CreateImm(RegNum), MI.getLoc(), 1, FK_Data_1,
+                    CurByte, OS, Fixups);
     } else {
       unsigned FixupKind;
       // FIXME: Is there a better way to know that we need a signed relocation?
@@ -1134,7 +1136,7 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
         FixupKind = X86::reloc_signed_4byte;
       else
         FixupKind = getImmFixupKind(TSFlags);
-      EmitImmediate(MI.getOperand(CurOp++),
+      EmitImmediate(MI.getOperand(CurOp++), MI.getLoc(),
                     X86II::getSizeOfImm(TSFlags), MCFixupKind(FixupKind),
                     CurByte, OS, Fixups);
     }

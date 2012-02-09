@@ -40,7 +40,7 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Capacity.h"
@@ -171,7 +171,9 @@ void Preprocessor::Initialize(const TargetInfo &Target) {
     Ident__exception_info = Ident__exception_code = Ident__abnormal_termination = 0;
     Ident___exception_info = Ident___exception_code = Ident___abnormal_termination = 0;
     Ident_GetExceptionInfo = Ident_GetExceptionCode = Ident_AbnormalTermination = 0;
-  } 
+  }
+  
+  HeaderInfo.setTarget(Target);
 }
 
 void Preprocessor::setPTHManager(PTHManager* pm) {
@@ -387,7 +389,7 @@ Module *Preprocessor::getCurrentModule() {
   if (getLangOptions().CurrentModule.empty())
     return 0;
   
-  return getHeaderSearchInfo().getModule(getLangOptions().CurrentModule);
+  return getHeaderSearchInfo().lookupModule(getLangOptions().CurrentModule);
 }
 
 //===----------------------------------------------------------------------===//
@@ -457,7 +459,7 @@ IdentifierInfo *Preprocessor::LookUpIdentifierInfo(Token &Identifier) const {
                                            Identifier.getLength()));
   } else {
     // Cleaning needed, alloca a buffer, clean into it, then use the buffer.
-    llvm::SmallString<64> IdentifierBuffer;
+    SmallString<64> IdentifierBuffer;
     StringRef CleanedStr = getSpelling(Identifier, IdentifierBuffer);
     II = getIdentifierInfo(CleanedStr);
   }

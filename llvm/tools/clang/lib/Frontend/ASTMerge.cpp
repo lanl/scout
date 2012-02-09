@@ -26,8 +26,7 @@ bool ASTMergeAction::BeginSourceFileAction(CompilerInstance &CI,
   // FIXME: This is a hack. We need a better way to communicate the
   // AST file, compiler instance, and file name than member variables
   // of FrontendAction.
-  AdaptedAction->setCurrentFile(getCurrentFile(), getCurrentFileKind(),
-                                takeCurrentASTUnit());
+  AdaptedAction->setCurrentInput(getCurrentInput(), takeCurrentASTUnit());
   AdaptedAction->setCompilerInstance(&CI);
   return AdaptedAction->BeginSourceFileAction(CI, Filename);
 }
@@ -80,8 +79,8 @@ void ASTMergeAction::EndSourceFileAction() {
 }
 
 ASTMergeAction::ASTMergeAction(FrontendAction *AdaptedAction,
-                               std::string *ASTFiles, unsigned NumASTFiles)
-  : AdaptedAction(AdaptedAction), ASTFiles(ASTFiles, ASTFiles + NumASTFiles) {
+                               ArrayRef<std::string> ASTFiles)
+  : AdaptedAction(AdaptedAction), ASTFiles(ASTFiles.begin(), ASTFiles.end()) {
   assert(AdaptedAction && "ASTMergeAction needs an action to adapt");
 }
 

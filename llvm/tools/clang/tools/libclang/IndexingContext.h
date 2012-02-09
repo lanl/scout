@@ -127,7 +127,7 @@ struct ObjCInterfaceDeclInfo : public ObjCContainerDeclInfo {
   ObjCInterfaceDeclInfo(const ObjCInterfaceDecl *D)
     : ObjCContainerDeclInfo(Info_ObjCInterface,
                             /*isForwardRef=*/false,
-                          /*isRedeclaration=*/D->getPreviousDeclaration() != 0,
+                          /*isRedeclaration=*/D->getPreviousDecl() != 0,
                             /*isImplementation=*/false) { }
 
   static bool classof(const DeclInfo *D) {
@@ -142,7 +142,7 @@ struct ObjCProtocolDeclInfo : public ObjCContainerDeclInfo {
   ObjCProtocolDeclInfo(const ObjCProtocolDecl *D)
     : ObjCContainerDeclInfo(Info_ObjCProtocol,
                             /*isForwardRef=*/false,
-                            /*isRedeclaration=*/D->getPreviousDeclaration(),
+                            /*isRedeclaration=*/D->getPreviousDecl(),
                             /*isImplementation=*/false) { }
 
   static bool classof(const DeclInfo *D) {
@@ -319,9 +319,14 @@ public:
   ASTContext &getASTContext() const { return *Ctx; }
 
   void setASTContext(ASTContext &ctx);
+  void setPreprocessor(Preprocessor &PP);
 
   bool suppressRefs() const {
     return IndexOptions & CXIndexOpt_SuppressRedundantRefs;
+  }
+
+  bool indexFunctionLocalSymbols() const {
+    return IndexOptions & CXIndexOpt_IndexFunctionLocalSymbols;
   }
 
   bool shouldAbort();
@@ -454,7 +459,7 @@ private:
 
   CXCursor getRefCursor(const NamedDecl *D, SourceLocation Loc);
 
-  static bool shouldIgnoreIfImplicit(const NamedDecl *D);
+  static bool shouldIgnoreIfImplicit(const Decl *D);
 };
 
 class ScratchAlloc {

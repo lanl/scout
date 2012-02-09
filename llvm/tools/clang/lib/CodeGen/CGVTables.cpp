@@ -63,7 +63,7 @@ llvm::Constant *CodeGenModule::GetAddrOfThunk(GlobalDecl GD,
   const CXXMethodDecl *MD = cast<CXXMethodDecl>(GD.getDecl());
 
   // Compute the mangled name.
-  llvm::SmallString<256> Name;
+  SmallString<256> Name;
   llvm::raw_svector_ostream Out(Name);
   if (const CXXDestructorDecl* DD = dyn_cast<CXXDestructorDecl>(MD))
     getCXXABI().getMangleContext().mangleCXXDtorThunk(DD, GD.getDtorType(),
@@ -83,9 +83,7 @@ static llvm::Value *PerformTypeAdjustment(CodeGenFunction &CGF,
   if (!NonVirtualAdjustment && !VirtualAdjustment)
     return Ptr;
 
-  llvm::Type *Int8PtrTy = 
-    llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  
+  llvm::Type *Int8PtrTy = CGF.Int8PtrTy;
   llvm::Value *V = CGF.Builder.CreateBitCast(Ptr, Int8PtrTy);
 
   if (NonVirtualAdjustment) {
@@ -511,7 +509,7 @@ CodeGenVTables::CreateVTableInitializer(const CXXRecordDecl *RD,
                                         unsigned NumVTableThunks) {
   SmallVector<llvm::Constant *, 64> Inits;
 
-  llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGM.getLLVMContext());
+  llvm::Type *Int8PtrTy = CGM.Int8PtrTy;
   
   llvm::Type *PtrDiffTy = 
     CGM.getTypes().ConvertType(CGM.getContext().getPointerDiffType());
@@ -571,8 +569,7 @@ CodeGenVTables::CreateVTableInitializer(const CXXRecordDecl *RD,
         // We have a pure virtual member function.
         if (!PureVirtualFn) {
           llvm::FunctionType *Ty = 
-            llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), 
-                                    /*isVarArg=*/false);
+            llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
           PureVirtualFn = 
             CGM.CreateRuntimeFunction(Ty, "__cxa_pure_virtual");
           PureVirtualFn = llvm::ConstantExpr::getBitCast(PureVirtualFn, 
@@ -622,15 +619,14 @@ llvm::GlobalVariable *CodeGenVTables::GetAddrOfVTable(const CXXRecordDecl *RD) {
   if (ShouldEmitVTableInThisTU(RD))
     CGM.DeferredVTables.push_back(RD);
 
-  llvm::SmallString<256> OutName;
+  SmallString<256> OutName;
   llvm::raw_svector_ostream Out(OutName);
   CGM.getCXXABI().getMangleContext().mangleCXXVTable(RD, Out);
   Out.flush();
   StringRef Name = OutName.str();
 
-  llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGM.getLLVMContext());
   llvm::ArrayType *ArrayType = 
-    llvm::ArrayType::get(Int8PtrTy,
+    llvm::ArrayType::get(CGM.Int8PtrTy,
                         VTContext.getVTableLayout(RD).getNumVTableComponents());
 
   VTable =
@@ -668,7 +664,7 @@ CodeGenVTables::GenerateConstructionVTable(const CXXRecordDecl *RD,
                                       bool BaseIsVirtual, 
                                    llvm::GlobalVariable::LinkageTypes Linkage,
                                       VTableAddressPointsMapTy& AddressPoints) {
-  llvm::OwningPtr<VTableLayout> VTLayout(
+  OwningPtr<VTableLayout> VTLayout(
     VTContext.createConstructionVTableLayout(Base.getBase(),
                                              Base.getBaseOffset(),
                                              BaseIsVirtual, RD));
@@ -677,7 +673,7 @@ CodeGenVTables::GenerateConstructionVTable(const CXXRecordDecl *RD,
   AddressPoints = VTLayout->getAddressPoints();
 
   // Get the mangled construction vtable name.
-  llvm::SmallString<256> OutName;
+  SmallString<256> OutName;
   llvm::raw_svector_ostream Out(OutName);
   CGM.getCXXABI().getMangleContext().
     mangleCXXCtorVTable(RD, Base.getBaseOffset().getQuantity(), Base.getBase(), 
@@ -685,9 +681,8 @@ CodeGenVTables::GenerateConstructionVTable(const CXXRecordDecl *RD,
   Out.flush();
   StringRef Name = OutName.str();
 
-  llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGM.getLLVMContext());
   llvm::ArrayType *ArrayType = 
-    llvm::ArrayType::get(Int8PtrTy, VTLayout->getNumVTableComponents());
+    llvm::ArrayType::get(CGM.Int8PtrTy, VTLayout->getNumVTableComponents());
 
   // Create the variable that will hold the construction vtable.
   llvm::GlobalVariable *VTable = 

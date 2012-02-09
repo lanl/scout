@@ -6,6 +6,7 @@ set(LLVM_LINK_COMPONENTS
   ipo
   doallToPTX
   linker
+  vectorize
   )
 
 set(LLVM_USED_LIBS clangBasic clangAST clangFrontend)

@@ -169,10 +169,6 @@ namespace {
     /// it as well.
     bool RemoveDeadDef(LiveInterval &li, MachineInstr *DefMI);
 
-    /// RemoveCopyFlag - If DstReg is no longer defined by CopyMI, clear the
-    /// VNInfo copy flag for DstReg and all aliases.
-    void RemoveCopyFlag(unsigned DstReg, const MachineInstr *CopyMI);
-
     /// markAsJoined - Remember that CopyMI has already been joined.
     void markAsJoined(MachineInstr *CopyMI);
 
@@ -434,8 +430,7 @@ bool RegisterCoalescer::AdjustCopiesBackFrom(const CoalescerPair &CP,
   // Get the location that B is defined at.  Two options: either this value has
   // an unknown definition point or it is defined at CopyIdx.  If unknown, we
   // can't process it.
-  if (!BValNo->isDefByCopy()) return false;
-  assert(BValNo->def == CopyIdx && "Copy doesn't define the value?");
+  if (BValNo->def != CopyIdx) return false;
 
   // AValNo is the value number in A that defines the copy, A3 in the example.
   SlotIndex CopyUseIdx = CopyIdx.getRegSlot(true);
@@ -443,31 +438,11 @@ bool RegisterCoalescer::AdjustCopiesBackFrom(const CoalescerPair &CP,
   // The live range might not exist after fun with physreg coalescing.
   if (ALR == IntA.end()) return false;
   VNInfo *AValNo = ALR->valno;
-  // If it's re-defined by an early clobber somewhere in the live range, then
-  // it's not safe to eliminate the copy. FIXME: This is a temporary workaround.
-  // See PR3149:
-  // 172     %ECX<def> = MOV32rr %reg1039<kill>
-  // 180     INLINEASM <es:subl $5,$1
-  //         sbbl $3,$0>, 10, %EAX<def>, 14, %ECX<earlyclobber,def>, 9,
-  //         %EAX<kill>,
-  // 36, <fi#0>, 1, %reg0, 0, 9, %ECX<kill>, 36, <fi#1>, 1, %reg0, 0
-  // 188     %EAX<def> = MOV32rr %EAX<kill>
-  // 196     %ECX<def> = MOV32rr %ECX<kill>
-  // 204     %ECX<def> = MOV32rr %ECX<kill>
-  // 212     %EAX<def> = MOV32rr %EAX<kill>
-  // 220     %EAX<def> = MOV32rr %EAX
-  // 228     %reg1039<def> = MOV32rr %ECX<kill>
-  // The early clobber operand ties ECX input to the ECX def.
-  //
-  // The live interval of ECX is represented as this:
-  // %reg20,inf = [46,47:1)[174,230:0)  0@174-(230) 1@46-(47)
-  // The coalescer has no idea there was a def in the middle of [174,230].
-  if (AValNo->hasRedefByEC())
-    return false;
 
   // If AValNo is defined as a copy from IntB, we can potentially process this.
   // Get the instruction that defines this value number.
-  if (!CP.isCoalescable(AValNo->getCopy()))
+  MachineInstr *ACopyMI = LIS->getInstructionFromIndex(AValNo->def);
+  if (!CP.isCoalescable(ACopyMI))
     return false;
 
   // Get the LiveRange in IntB that this value number starts with.
@@ -511,8 +486,7 @@ bool RegisterCoalescer::AdjustCopiesBackFrom(const CoalescerPair &CP,
   // We are about to delete CopyMI, so need to remove it as the 'instruction
   // that defines this value #'. Update the valnum with the new defining
   // instruction #.
-  BValNo->def  = FillerStart;
-  BValNo->setCopy(0);
+  BValNo->def = FillerStart;
 
   // Okay, we can merge them.  We need to insert a new liverange:
   // [ValLR.end, BLR.begin) of either value number, then we merge the
@@ -527,7 +501,7 @@ bool RegisterCoalescer::AdjustCopiesBackFrom(const CoalescerPair &CP,
         continue;
       LiveInterval &SRLI = LIS->getInterval(*SR);
       SRLI.addRange(LiveRange(FillerStart, FillerEnd,
-                              SRLI.getNextValue(FillerStart, 0,
+                              SRLI.getNextValue(FillerStart,
                                                 LIS->getVNInfoAllocator())));
     }
   }
@@ -553,10 +527,12 @@ bool RegisterCoalescer::AdjustCopiesBackFrom(const CoalescerPair &CP,
   if (UIdx != -1) {
     ValLREndInst->getOperand(UIdx).setIsKill(false);
   }
-
-  // If the copy instruction was killing the destination register before the
-  // merge, find the last use and trim the live range. That will also add the
-  // isKill marker.
+  
+  // Rewrite the copy. If the copy instruction was killing the destination
+  // register before the merge, find the last use and trim the live range. That
+  // will also add the isKill marker.
+  CopyMI->substituteRegister(IntA.reg, IntB.reg, CP.getSubIdx(),
+                             *TRI);
   if (ALR->end == CopyIdx)
     LIS->shrinkToUses(&IntA);
 
@@ -635,7 +611,7 @@ bool RegisterCoalescer::RemoveCopyByCommutingDef(const CoalescerPair &CP,
   // BValNo is a value number in B that is defined by a copy from A. 'B3' in
   // the example above.
   VNInfo *BValNo = IntB.getVNInfoAt(CopyIdx);
-  if (!BValNo || !BValNo->isDefByCopy())
+  if (!BValNo || BValNo->def != CopyIdx)
     return false;
 
   assert(BValNo->def == CopyIdx && "Copy doesn't define the value?");
@@ -779,7 +755,6 @@ bool RegisterCoalescer::RemoveCopyByCommutingDef(const CoalescerPair &CP,
   // is updated.
   VNInfo *ValNo = BValNo;
   ValNo->def = AValNo->def;
-  ValNo->setCopy(0);
   for (LiveInterval::iterator AI = IntA.begin(), AE = IntA.end();
        AI != AE; ++AI) {
     if (AI->valno != AValNo) continue;
@@ -831,13 +806,24 @@ bool RegisterCoalescer::ReMaterializeTrivialDef(LiveInterval &SrcInt,
       return false;
   }
 
-  RemoveCopyFlag(DstReg, CopyMI);
-
   MachineBasicBlock *MBB = CopyMI->getParent();
   MachineBasicBlock::iterator MII =
     llvm::next(MachineBasicBlock::iterator(CopyMI));
   TII->reMaterialize(*MBB, MII, DstReg, 0, DefMI, *TRI);
   MachineInstr *NewMI = prior(MII);
+
+  // NewMI may have dead implicit defs (E.g. EFLAGS for MOV<bits>r0 on X86).
+  // We need to remember these so we can add intervals once we insert
+  // NewMI into SlotIndexes.
+  SmallVector<unsigned, 4> NewMIImplDefs;
+  for (unsigned i = NewMI->getDesc().getNumOperands(),
+         e = NewMI->getNumOperands(); i != e; ++i) {
+    MachineOperand &MO = NewMI->getOperand(i);
+    if (MO.isReg()) {
+      assert(MO.isDef() && MO.isImplicit() && MO.isDead());
+      NewMIImplDefs.push_back(MO.getReg());
+    }
+  }
 
   // CopyMI may have implicit operands, transfer them over to the newly
   // rematerialized instruction. And update implicit def interval valnos.
@@ -846,12 +832,21 @@ bool RegisterCoalescer::ReMaterializeTrivialDef(LiveInterval &SrcInt,
     MachineOperand &MO = CopyMI->getOperand(i);
     if (MO.isReg() && MO.isImplicit())
       NewMI->addOperand(MO);
-    if (MO.isDef())
-      RemoveCopyFlag(MO.getReg(), CopyMI);
+  }
+
+  LIS->ReplaceMachineInstrInMaps(CopyMI, NewMI);
+
+  SlotIndex NewMIIdx = LIS->getInstructionIndex(NewMI);
+  for (unsigned i = 0, e = NewMIImplDefs.size(); i != e; ++i) {
+    unsigned reg = NewMIImplDefs[i];
+    LiveInterval &li = LIS->getInterval(reg);
+    VNInfo *DeadDefVN = li.getNextValue(NewMIIdx.getRegSlot(),
+                                        LIS->getVNInfoAllocator());
+    LiveRange lr(NewMIIdx.getRegSlot(), NewMIIdx.getDeadSlot(), DeadDefVN);
+    li.addRange(lr);
   }
 
   NewMI->copyImplicitOps(CopyMI);
-  LIS->ReplaceMachineInstrInMaps(CopyMI, NewMI);
   CopyMI->eraseFromParent();
   ReMatCopies.insert(CopyMI);
   ReMatDefs.insert(DefMI);
@@ -1019,27 +1014,6 @@ bool RegisterCoalescer::RemoveDeadDef(LiveInterval &li,
     return false;
   li.removeValNo(MLR->valno);
   return removeIntervalIfEmpty(li, LIS, TRI);
-}
-
-void RegisterCoalescer::RemoveCopyFlag(unsigned DstReg,
-                                              const MachineInstr *CopyMI) {
-  SlotIndex DefIdx = LIS->getInstructionIndex(CopyMI).getRegSlot();
-  if (LIS->hasInterval(DstReg)) {
-    LiveInterval &LI = LIS->getInterval(DstReg);
-    if (const LiveRange *LR = LI.getLiveRangeContaining(DefIdx))
-      if (LR->valno->def == DefIdx)
-        LR->valno->setCopy(0);
-  }
-  if (!TargetRegisterInfo::isPhysicalRegister(DstReg))
-    return;
-  for (const unsigned* AS = TRI->getAliasSet(DstReg); *AS; ++AS) {
-    if (!LIS->hasInterval(*AS))
-      continue;
-    LiveInterval &LI = LIS->getInterval(*AS);
-    if (const LiveRange *LR = LI.getLiveRangeContaining(DefIdx))
-      if (LR->valno->def == DefIdx)
-        LR->valno->setCopy(0);
-  }
 }
 
 /// shouldJoinPhys - Return true if a copy involving a physreg should be joined.
@@ -1279,7 +1253,7 @@ bool RegisterCoalescer::JoinCopy(MachineInstr *CopyMI, bool &Again) {
     }
   }
 
-  // SrcReg is guarateed to be the register whose live interval that is
+  // SrcReg is guaranteed to be the register whose live interval that is
   // being merged.
   LIS->removeInterval(CP.getSrcReg());
 
@@ -1368,9 +1342,9 @@ static bool RegistersDefinedFromSameValue(LiveIntervals &li,
   // FIXME: This is very conservative. For example, we don't handle
   // physical registers.
 
-  MachineInstr *MI = VNI->getCopy();
+  MachineInstr *MI = li.getInstructionFromIndex(VNI->def);
 
-  if (!MI->isFullCopy() || CP.isPartial() || CP.isPhys())
+  if (!MI || !MI->isFullCopy() || CP.isPartial() || CP.isPhys())
     return false;
 
   unsigned Dst = MI->getOperand(0).getReg();
@@ -1388,11 +1362,9 @@ static bool RegistersDefinedFromSameValue(LiveIntervals &li,
   assert(Dst == A);
 
   VNInfo *Other = LR->valno;
-  if (!Other->isDefByCopy())
-    return false;
-  const MachineInstr *OtherMI = Other->getCopy();
+  const MachineInstr *OtherMI = li.getInstructionFromIndex(Other->def);
 
-  if (!OtherMI->isFullCopy())
+  if (!OtherMI || !OtherMI->isFullCopy())
     return false;
 
   unsigned OtherDst = OtherMI->getOperand(0).getReg();
@@ -1442,8 +1414,12 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
       // Deny any overlapping intervals.  This depends on all the reserved
       // register live ranges to look like dead defs.
       for (const unsigned *AS = TRI->getOverlaps(CP.getDstReg()); *AS; ++AS) {
-        if (!LIS->hasInterval(*AS))
+        if (!LIS->hasInterval(*AS)) {
+          // Make sure at least DstReg itself exists before attempting a join.
+          if (*AS == CP.getDstReg())
+            LIS->getOrCreateInterval(CP.getDstReg());
           continue;
+        }
         if (RHS.overlaps(LIS->getInterval(*AS))) {
           DEBUG(dbgs() << "\t\tInterference: " << PrintReg(*AS, TRI) << '\n');
           return false;
@@ -1510,12 +1486,12 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
   for (LiveInterval::vni_iterator i = LHS.vni_begin(), e = LHS.vni_end();
        i != e; ++i) {
     VNInfo *VNI = *i;
-    if (VNI->isUnused() || !VNI->isDefByCopy())  // Src not defined by a copy?
+    if (VNI->isUnused() || VNI->isPHIDef())
       continue;
-
-    // Never join with a register that has EarlyClobber redefs.
-    if (VNI->hasRedefByEC())
-      return false;
+    MachineInstr *MI = LIS->getInstructionFromIndex(VNI->def);
+    assert(MI && "Missing def");
+    if (!MI->isCopyLike())  // Src not defined by a copy?
+      continue;
 
     // Figure out the value # from the RHS.
     LiveRange *lr = RHS.getLiveRangeContaining(VNI->def.getPrevSlot());
@@ -1524,7 +1500,6 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
 
     // DstReg is known to be a register in the LHS interval.  If the src is
     // from the RHS interval, we can use its value #.
-    MachineInstr *MI = VNI->getCopy();
     if (!CP.isCoalescable(MI) &&
         !RegistersDefinedFromSameValue(*LIS, *TRI, CP, VNI, lr, DupCopies))
       continue;
@@ -1537,12 +1512,12 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
   for (LiveInterval::vni_iterator i = RHS.vni_begin(), e = RHS.vni_end();
        i != e; ++i) {
     VNInfo *VNI = *i;
-    if (VNI->isUnused() || !VNI->isDefByCopy())  // Src not defined by a copy?
+    if (VNI->isUnused() || VNI->isPHIDef())
       continue;
-
-    // Never join with a register that has EarlyClobber redefs.
-    if (VNI->hasRedefByEC())
-      return false;
+    MachineInstr *MI = LIS->getInstructionFromIndex(VNI->def);
+    assert(MI && "Missing def");
+    if (!MI->isCopyLike())  // Src not defined by a copy?
+      continue;
 
     // Figure out the value # from the LHS.
     LiveRange *lr = LHS.getLiveRangeContaining(VNI->def.getPrevSlot());
@@ -1551,7 +1526,6 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
 
     // DstReg is known to be a register in the RHS interval.  If the src is
     // from the LHS interval, we can use its value #.
-    MachineInstr *MI = VNI->getCopy();
     if (!CP.isCoalescable(MI) &&
         !RegistersDefinedFromSameValue(*LIS, *TRI, CP, VNI, lr, DupCopies))
         continue;
@@ -1624,10 +1598,6 @@ bool RegisterCoalescer::JoinIntervals(CoalescerPair &CP) {
       // result liverange, we can still coalesce them.  If not, we can't.
       if (LHSValNoAssignments[I->valno->id] !=
           RHSValNoAssignments[J->valno->id])
-        return false;
-      // If it's re-defined by an early clobber somewhere in the live range,
-      // then conservatively abort coalescing.
-      if (NewVNInfo[LHSValNoAssignments[I->valno->id]]->hasRedefByEC())
         return false;
     }
 
@@ -1930,8 +1900,8 @@ bool RegisterCoalescer::runOnMachineFunction(MachineFunction &fn) {
           unsigned Reg = MO.getReg();
           if (!Reg)
             continue;
+          DeadDefs.push_back(Reg);
           if (TargetRegisterInfo::isVirtualRegister(Reg)) {
-            DeadDefs.push_back(Reg);
             // Remat may also enable register class inflation.
             if (RegClassInfo.isProperSubClass(MRI->getRegClass(Reg)))
               InflateRegs.push_back(Reg);

@@ -535,13 +535,10 @@ bool MachineBasicBlock::canFallThrough() {
   if (TII->AnalyzeBranch(*this, TBB, FBB, Cond)) {
     // If we couldn't analyze the branch, examine the last instruction.
     // If the block doesn't end in a known control barrier, assume fallthrough
-    // is possible. The isPredicable check is needed because this code can be
+    // is possible. The isPredicated check is needed because this code can be
     // called during IfConversion, where an instruction which is normally a
-    // Barrier is predicated and thus no longer an actual control barrier. This
-    // is over-conservative though, because if an instruction isn't actually
-    // predicated we could still treat it like a barrier.
-    return empty() || !back().isBarrier() ||
-           back().isPredicable();
+    // Barrier is predicated and thus no longer an actual control barrier.
+    return empty() || !back().isBarrier() || TII->isPredicated(&back());
   }
 
   // If there is no branch, control always falls through.
@@ -605,10 +602,11 @@ MachineBasicBlock::SplitCriticalEdge(MachineBasicBlock *Succ, Pass *P) {
       MachineInstr *MI = I;
       for (MachineInstr::mop_iterator OI = MI->operands_begin(),
            OE = MI->operands_end(); OI != OE; ++OI) {
-        if (!OI->isReg() || !OI->isUse() || !OI->isKill() || OI->isUndef())
+        if (!OI->isReg() || OI->getReg() == 0 ||
+            !OI->isUse() || !OI->isKill() || OI->isUndef())
           continue;
         unsigned Reg = OI->getReg();
-        if (TargetRegisterInfo::isVirtualRegister(Reg) &&
+        if (TargetRegisterInfo::isPhysicalRegister(Reg) ||
             LV->getVarInfo(Reg).removeKill(MI)) {
           KilledRegs.push_back(Reg);
           DEBUG(dbgs() << "Removing terminator kill: " << *MI);
@@ -641,14 +639,16 @@ MachineBasicBlock::SplitCriticalEdge(MachineBasicBlock *Succ, Pass *P) {
     NMBB->addLiveIn(*I);
 
   // Update LiveVariables.
+  const TargetRegisterInfo *TRI = MF->getTarget().getRegisterInfo();
   if (LV) {
     // Restore kills of virtual registers that were killed by the terminators.
     while (!KilledRegs.empty()) {
       unsigned Reg = KilledRegs.pop_back_val();
       for (instr_iterator I = instr_end(), E = instr_begin(); I != E;) {
-        if (!(--I)->addRegisterKilled(Reg, NULL, /* addIfNotFound= */ false))
+        if (!(--I)->addRegisterKilled(Reg, TRI, /* addIfNotFound= */ false))
           continue;
-        LV->getVarInfo(Reg).Kills.push_back(I);
+        if (TargetRegisterInfo::isVirtualRegister(Reg))
+          LV->getVarInfo(Reg).Kills.push_back(I);
         DEBUG(dbgs() << "Restored terminator kill: " << *I);
         break;
       }

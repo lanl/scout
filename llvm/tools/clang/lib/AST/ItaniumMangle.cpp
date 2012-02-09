@@ -610,17 +610,41 @@ void CXXNameMangler::mangleFloat(const llvm::APFloat &f) {
   //   representation (IEEE on Itanium), high-order bytes first,
   //   without leading zeroes. For example: "Lf bf800000 E" is -1.0f
   //   on Itanium.
-  // APInt::toString uses uppercase hexadecimal, and it's not really
-  // worth embellishing that interface for this use case, so we just
-  // do a second pass to lowercase things.
-  typedef llvm::SmallString<20> buffer_t;
-  buffer_t buffer;
-  f.bitcastToAPInt().toString(buffer, 16, false);
+  // The 'without leading zeroes' thing seems to be an editorial
+  // mistake; see the discussion on cxx-abi-dev beginning on
+  // 2012-01-16.
 
-  for (buffer_t::iterator i = buffer.begin(), e = buffer.end(); i != e; ++i)
-    if (isupper(*i)) *i = tolower(*i);
+  // Our requirements here are just barely wierd enough to justify
+  // using a custom algorithm instead of post-processing APInt::toString().
 
-  Out.write(buffer.data(), buffer.size());
+  llvm::APInt valueBits = f.bitcastToAPInt();
+  unsigned numCharacters = (valueBits.getBitWidth() + 3) / 4;
+  assert(numCharacters != 0);
+
+  // Allocate a buffer of the right number of characters.
+  llvm::SmallVector<char, 20> buffer;
+  buffer.set_size(numCharacters);
+
+  // Fill the buffer left-to-right.
+  for (unsigned stringIndex = 0; stringIndex != numCharacters; ++stringIndex) {
+    // The bit-index of the next hex digit.
+    unsigned digitBitIndex = 4 * (numCharacters - stringIndex - 1);
+
+    // Project out 4 bits starting at 'digitIndex'.
+    llvm::integerPart hexDigit
+      = valueBits.getRawData()[digitBitIndex / llvm::integerPartWidth];
+    hexDigit >>= (digitBitIndex % llvm::integerPartWidth);
+    hexDigit &= 0xF;
+
+    // Map that over to a lowercase hex digit.
+    static const char charForHex[16] = {
+      '0', '1', '2', '3', '4', '5', '6', '7',
+      '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+    };
+    buffer[stringIndex] = charForHex[hexDigit];
+  }
+
+  Out.write(buffer.data(), numCharacters);
 }
 
 void CXXNameMangler::mangleNumber(const llvm::APSInt &Value) {
@@ -1062,7 +1086,7 @@ void CXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
     // Mangle it as a source name in the form
     // [n] $_<id>
     // where n is the length of the string.
-    llvm::SmallString<8> Str;
+    SmallString<8> Str;
     Str += "$_";
     Str += llvm::utostr(AnonStructId);
 
@@ -1270,7 +1294,7 @@ void CXXNameMangler::manglePrefix(const DeclContext *DC, bool NoFunction) {
 
   if (const BlockDecl *Block = dyn_cast<BlockDecl>(DC)) {
     manglePrefix(DC->getParent(), NoFunction);    
-    llvm::SmallString<64> Name;
+    SmallString<64> Name;
     llvm::raw_svector_ostream NameStream(Name);
     Context.mangleBlock(Block, NameStream);
     NameStream.flush();
@@ -1374,7 +1398,6 @@ void CXXNameMangler::mangleType(TemplateName TN) {
 
   case TemplateName::OverloadedTemplate:
     llvm_unreachable("can't mangle an overloaded template name as a <type>");
-    break;
 
   case TemplateName::DependentTemplate: {
     const DependentTemplateName *Dependent = TN.getAsDependentTemplateName();
@@ -1535,7 +1558,7 @@ void CXXNameMangler::mangleQualifiers(Qualifiers Quals) {
     // 
     // where <address-space-number> is a source name consisting of 'AS' 
     // followed by the address space <number>.
-    llvm::SmallString<64> ASString;
+    SmallString<64> ASString;
     ASString = "AS" + llvm::utostr_32(Quals.getAddressSpace());
     Out << 'U' << ASString.size() << ASString;
   }
@@ -1636,8 +1659,8 @@ void CXXNameMangler::mangleType(QualType T) {
     } while (true);
   }
   SplitQualType split = T.split();
-  Qualifiers quals = split.second;
-  const Type *ty = split.first;
+  Qualifiers quals = split.Quals;
+  const Type *ty = split.Ty;
 
   bool isSubstitutable = quals || !isa<BuiltinType>(T);
   if (isSubstitutable && mangleSubstitution(T))
@@ -1769,7 +1792,6 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
 #include "clang/AST/BuiltinTypes.def"
   case BuiltinType::Dependent:
     llvm_unreachable("mangling a placeholder type");
-    break;
   case BuiltinType::ObjCId: Out << "11objc_object"; break;
   case BuiltinType::ObjCClass: Out << "10objc_class"; break;
   case BuiltinType::ObjCSel: Out << "13objc_selector"; break;
@@ -2258,9 +2280,8 @@ recurse:
   case Expr::ImplicitValueInitExprClass:
   case Expr::InitListExprClass:
   case Expr::ParenListExprClass:
-  case Expr::CXXScalarValueInitExprClass:
+  case Expr::LambdaExprClass:
     llvm_unreachable("unexpected statement kind");
-    break;
 
   // FIXME: invent manglings for all these.
   case Expr::BlockExprClass:
@@ -2438,6 +2459,12 @@ recurse:
     if (N != 1) Out << 'E';
     break;
   }
+
+  case Expr::CXXScalarValueInitExprClass:
+    Out <<"cv";
+    mangleType(E->getType());
+    Out <<"_E";
+    break;
 
   case Expr::UnaryExprOrTypeTraitExprClass: {
     const UnaryExprOrTypeTraitExpr *SAE = cast<UnaryExprOrTypeTraitExpr>(E);

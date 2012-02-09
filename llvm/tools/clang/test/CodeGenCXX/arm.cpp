@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -triple=thumbv7-apple-darwin3.0.0-iphoneos -fno-use-cxa-atexit -target-abi apcs-gnu -emit-llvm -o - -fexceptions | FileCheck %s
+// RUN: %clang_cc1 %s -triple=thumbv7-apple-ios3.0 -fno-use-cxa-atexit -target-abi apcs-gnu -emit-llvm -o - -fexceptions | FileCheck %s
 
 // CHECK: @_ZZN5test74testEvE1x = internal global i32 0, align 4
 // CHECK: @_ZGVZN5test74testEvE1x = internal global i32 0
@@ -45,24 +45,18 @@ namespace test1 {
   }
 
   // CHECK: define linkonce_odr [[A]]* @_ZN5test11AC1Ei([[A]]* %this, i32 %i) unnamed_addr
-  // CHECK:   [[RET:%.*]] = alloca [[A]]*, align 4
   // CHECK:   [[THIS:%.*]] = alloca [[A]]*, align 4
   // CHECK:   store [[A]]* {{.*}}, [[A]]** [[THIS]]
   // CHECK:   [[THIS1:%.*]] = load [[A]]** [[THIS]]
-  // CHECK:   store [[A]]* [[THIS1]], [[A]]** [[RET]]
   // CHECK:   call [[A]]* @_ZN5test11AC2Ei(
-  // CHECK:   [[THIS2:%.*]] = load [[A]]** [[RET]]
-  // CHECK:   ret [[A]]* [[THIS2]]
+  // CHECK:   ret [[A]]* [[THIS1]]
 
   // CHECK: define linkonce_odr [[A]]* @_ZN5test11AD1Ev([[A]]* %this) unnamed_addr
-  // CHECK:   [[RET:%.*]] = alloca [[A]]*, align 4
   // CHECK:   [[THIS:%.*]] = alloca [[A]]*, align 4
   // CHECK:   store [[A]]* {{.*}}, [[A]]** [[THIS]]
   // CHECK:   [[THIS1:%.*]] = load [[A]]** [[THIS]]
-  // CHECK:   store [[A]]* [[THIS1]], [[A]]** [[RET]]
   // CHECK:   call [[A]]* @_ZN5test11AD2Ev(
-  // CHECK:   [[THIS2:%.*]] = load [[A]]** [[RET]]
-  // CHECK:   ret [[A]]* [[THIS2]]
+  // CHECK:   ret [[A]]* [[THIS1]]
 }
 
 // Awkward virtual cases.

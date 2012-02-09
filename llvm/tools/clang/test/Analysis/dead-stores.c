@@ -1,6 +1,6 @@
-// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,deadcode.IdempotentOperations -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
-// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,deadcode.IdempotentOperations -analyzer-store=region -analyzer-constraints=basic -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
-// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,deadcode.IdempotentOperations -analyzer-store=region -analyzer-constraints=range -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,experimental.deadcode.IdempotentOperations -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,experimental.deadcode.IdempotentOperations -analyzer-store=region -analyzer-constraints=basic -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -Wunused-variable -analyze -analyzer-checker=core,deadcode.DeadStores,experimental.deadcode.IdempotentOperations -analyzer-store=region -analyzer-constraints=range -fblocks -verify -Wno-unreachable-code -analyzer-opt-analyze-nested-blocks %s
 
 void f1() {
   int k, y; // expected-warning{{unused variable 'k'}} expected-warning{{unused variable 'y'}}
@@ -11,7 +11,7 @@ void f1() {
 void f2(void *b) {
  char *c = (char*)b; // no-warning
  char *d = b+1; // expected-warning {{never read}} expected-warning{{unused variable 'd'}}
- printf("%s", c); // expected-warning{{implicitly declaring C library function 'printf' with type 'int (const char *, ...)'}} \
+ printf("%s", c); // expected-warning{{implicitly declaring library function 'printf' with type 'int (const char *, ...)'}} \
  // expected-note{{please include the header <stdio.h> or explicitly provide a declaration for 'printf'}}
 }
 

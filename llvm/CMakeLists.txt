@@ -99,6 +99,9 @@ endif()
 
 endif( MSVC )
 
+option(BUILD_SHARED_LIBS
+  "Build all libraries as shared libraries instead of static" OFF)
+
 option(LLVM_ENABLE_CBE_PRINTF_A "Set to ON if CBE is enabled for printf %a output" ON)
 if(LLVM_ENABLE_CBE_PRINTF_A)
   set(ENABLE_CBE_PRINTF_A 1)
@@ -413,8 +416,8 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
 # TODO: make and install documentation.
 
 set(CPACK_PACKAGE_VENDOR "LLVM")
-set(CPACK_PACKAGE_VERSION_MAJOR 2)
-set(CPACK_PACKAGE_VERSION_MINOR 9)
+set(CPACK_PACKAGE_VERSION_MAJOR 3)
+set(CPACK_PACKAGE_VERSION_MINOR 1)
 add_version_info_from_vcs(CPACK_PACKAGE_VERSION_PATCH)
 include(CPack)
 

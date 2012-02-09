@@ -225,6 +225,7 @@ install(DIRECTORY include/
   FILES_MATCHING
   PATTERN "*.def"
   PATTERN "*.h"
+  PATTERN "config.h" EXCLUDE
   PATTERN ".svn" EXCLUDE
   )
 
@@ -248,10 +249,8 @@ mark_as_advanced(CLANG_EXECUTABLE_VERSION LIBCLANG_LIBRARY_VERSION)
 
 add_subdirectory(utils/TableGen)
 
-option(CLANG_BUILD_EXAMPLES "Build CLANG example programs." OFF)
-if(CLANG_BUILD_EXAMPLES)
-  add_subdirectory(examples)
-endif ()
+option(CLANG_BUILD_EXAMPLES "Build CLANG example programs by default." OFF)
+add_subdirectory(examples)
 
 add_subdirectory(include)
 add_subdirectory(lib)

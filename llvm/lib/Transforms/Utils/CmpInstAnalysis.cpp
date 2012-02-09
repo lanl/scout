@@ -59,7 +59,6 @@ unsigned llvm::getICmpCode(const ICmpInst *ICI, bool InvertPred) {
       // True -> 7
     default:
       llvm_unreachable("Invalid ICmp predicate!");
-      return 0;
   }
 }
 
@@ -73,7 +72,7 @@ unsigned llvm::getICmpCode(const ICmpInst *ICI, bool InvertPred) {
 Value *llvm::getICmpValue(bool Sign, unsigned Code, Value *LHS, Value *RHS,
                           CmpInst::Predicate &NewICmpPred) {
   switch (Code) {
-    default: assert(0 && "Illegal ICmp code!");
+    default: llvm_unreachable("Illegal ICmp code!");
     case 0: // False.
       return ConstantInt::get(CmpInst::makeCmpResultType(LHS->getType()), 0);
     case 1: NewICmpPred = Sign ? ICmpInst::ICMP_SGT : ICmpInst::ICMP_UGT; break;

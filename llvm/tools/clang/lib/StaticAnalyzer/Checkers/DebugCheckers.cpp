@@ -39,15 +39,8 @@ public:
 };
 }
 
-// ndm - MERGE
-namespace clang{
-namespace ento{
-
-void registerDominatorsTreeDumper(CheckerManager &mgr) {
+void ento::registerDominatorsTreeDumper(CheckerManager &mgr) {
   mgr.registerChecker<DominatorsTreeDumper>();
-}
-
-}
 }
 
 //===----------------------------------------------------------------------===//

@@ -19,6 +19,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 using namespace ento;
@@ -29,7 +30,7 @@ class MacOSKeychainAPIChecker : public Checker<check::PreStmt<CallExpr>,
                                                check::PostStmt<CallExpr>,
                                                check::EndPath,
                                                check::DeadSymbols> {
-  mutable llvm::OwningPtr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
 
 public:
   /// AllocationState is a part of the checker specific state together with the
@@ -105,13 +106,13 @@ private:
 
   /// Check if RetSym evaluates to an error value in the current state.
   bool definitelyReturnedError(SymbolRef RetSym,
-                               const ProgramState *State,
+                               ProgramStateRef State,
                                SValBuilder &Builder,
                                bool noError = false) const;
 
   /// Check if RetSym evaluates to a NoErr value in the current state.
   bool definitelyDidnotReturnError(SymbolRef RetSym,
-                                   const ProgramState *State,
+                                   ProgramStateRef State,
                                    SValBuilder &Builder) const {
     return definitelyReturnedError(RetSym, State, Builder, true);
   }
@@ -219,7 +220,7 @@ static bool isBadDeallocationArgument(const MemRegion *Arg) {
 /// that value is itself an address, and return the corresponding symbol.
 static SymbolRef getAsPointeeSymbol(const Expr *Expr,
                                     CheckerContext &C) {
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
   SVal ArgV = State->getSVal(Expr, C.getLocationContext());
 
   if (const loc::MemRegionVal *X = dyn_cast<loc::MemRegionVal>(&ArgV)) {
@@ -238,14 +239,14 @@ static SymbolRef getAsPointeeSymbol(const Expr *Expr,
 // If noError, returns true iff (1).
 // If !noError, returns true iff (2).
 bool MacOSKeychainAPIChecker::definitelyReturnedError(SymbolRef RetSym,
-                                                      const ProgramState *State,
+                                                      ProgramStateRef State,
                                                       SValBuilder &Builder,
                                                       bool noError) const {
   DefinedOrUnknownSVal NoErrVal = Builder.makeIntVal(NoErr,
     Builder.getSymbolManager().getType(RetSym));
   DefinedOrUnknownSVal NoErr = Builder.evalEQ(State, NoErrVal,
                                                      nonloc::SymbolVal(RetSym));
-  const ProgramState *ErrState = State->assume(NoErr, noError);
+  ProgramStateRef ErrState = State->assume(NoErr, noError);
   if (ErrState == State) {
     return true;
   }
@@ -259,14 +260,14 @@ void MacOSKeychainAPIChecker::
   generateDeallocatorMismatchReport(const AllocationPair &AP,
                                     const Expr *ArgExpr,
                                     CheckerContext &C) const {
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
   State = State->remove<AllocatedData>(AP.first);
   ExplodedNode *N = C.addTransition(State);
 
   if (!N)
     return;
   initBugType();
-  llvm::SmallString<80> sbuf;
+  SmallString<80> sbuf;
   llvm::raw_svector_ostream os(sbuf);
   unsigned int PDeallocIdx =
                FunctionsToTrack[AP.second->AllocatorIdx].DeallocatorIdx;
@@ -282,7 +283,7 @@ void MacOSKeychainAPIChecker::
 void MacOSKeychainAPIChecker::checkPreStmt(const CallExpr *CE,
                                            CheckerContext &C) const {
   unsigned idx = InvalidIdx;
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
 
   StringRef funName = C.getCalleeName(CE);
   if (funName.empty())
@@ -302,7 +303,7 @@ void MacOSKeychainAPIChecker::checkPreStmt(const CallExpr *CE,
           if (!N)
             return;
           initBugType();
-          llvm::SmallString<128> sbuf;
+          SmallString<128> sbuf;
           llvm::raw_svector_ostream os(sbuf);
           unsigned int DIdx = FunctionsToTrack[AS->AllocatorIdx].DeallocatorIdx;
           os << "Allocated data should be released before another call to "
@@ -435,7 +436,7 @@ void MacOSKeychainAPIChecker::checkPreStmt(const CallExpr *CE,
 
 void MacOSKeychainAPIChecker::checkPostStmt(const CallExpr *CE,
                                             CheckerContext &C) const {
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
   StringRef funName = C.getCalleeName(CE);
 
   // If a value has been allocated, add it to the set for tracking.
@@ -481,7 +482,7 @@ void MacOSKeychainAPIChecker::checkPreStmt(const ReturnStmt *S,
     return;
 
   // Check  if the value is escaping through the return.
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   const MemRegion *V =
     state->getSVal(retExpr, C.getLocationContext()).getAsRegion();
   if (!V)
@@ -497,7 +498,7 @@ BugReport *MacOSKeychainAPIChecker::
                                          ExplodedNode *N) const {
   const ADFunctionInfo &FI = FunctionsToTrack[AP.second->AllocatorIdx];
   initBugType();
-  llvm::SmallString<70> sbuf;
+  SmallString<70> sbuf;
   llvm::raw_svector_ostream os(sbuf);
 
   os << "Allocated data is not released: missing a call to '"
@@ -510,7 +511,7 @@ BugReport *MacOSKeychainAPIChecker::
 
 void MacOSKeychainAPIChecker::checkDeadSymbols(SymbolReaper &SR,
                                                CheckerContext &C) const {
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
   AllocatedSetTy ASet = State->get<AllocatedData>();
   if (ASet.isEmpty())
     return;
@@ -547,7 +548,7 @@ void MacOSKeychainAPIChecker::checkDeadSymbols(SymbolReaper &SR,
 
 // TODO: Remove this after we ensure that checkDeadSymbols are always called.
 void MacOSKeychainAPIChecker::checkEndPath(CheckerContext &Ctx) const {
-  const ProgramState *state = Ctx.getState();
+  ProgramStateRef state = Ctx.getState();
   AllocatedSetTy AS = state->get<AllocatedData>();
   if (AS.isEmpty())
     return;

@@ -129,9 +129,7 @@ static bool checkForMigration(StringRef resourcesPath,
   if (!CI.getLangOpts()->ObjC1)
     return false;
 
-  arcmt::checkForManualIssues(CI,
-                              CI.getFrontendOpts().Inputs[0].second,
-                              CI.getFrontendOpts().Inputs[0].first,
+  arcmt::checkForManualIssues(CI, CI.getFrontendOpts().Inputs[0], 
                               Diags->getClient());
   return Diags->getClient()->getNumErrors() > 0;
 }
@@ -175,7 +173,8 @@ static bool performTransformations(StringRef resourcesPath,
   MigrationProcess migration(origCI, DiagClient);
 
   std::vector<TransformFn>
-    transforms = arcmt::getAllTransformations(origCI.getLangOpts()->getGC());
+    transforms = arcmt::getAllTransformations(origCI.getLangOpts()->getGC(),
+                                 origCI.getMigratorOpts().NoFinalizeRemoval);
   assert(!transforms.empty());
 
   llvm::OwningPtr<PrintTransforms> transformPrinter;
@@ -354,7 +353,7 @@ int main(int argc, const char **argv) {
     if (StringRef(argv[optargc]) == "--args")
       break;
   }
-  llvm::cl::ParseCommandLineOptions(optargc, const_cast<char **>(argv), "arcmt-test");
+  llvm::cl::ParseCommandLineOptions(optargc, argv, "arcmt-test");
 
   if (VerifyTransformedFiles) {
     if (ResultFiles.empty()) {

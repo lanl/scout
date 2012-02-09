@@ -73,6 +73,9 @@ class CGDebugInfo {
   llvm::DenseMap<const FunctionDecl *, llvm::WeakVH> SPCache;
   llvm::DenseMap<const NamespaceDecl *, llvm::WeakVH> NameSpaceCache;
 
+  /// Helper functions for getOrCreateLimitedType.
+  llvm::DIType CreateLimitedType(const RecordType *Ty);
+  
   /// Helper functions for getOrCreateType.
   llvm::DIType CreateType(const BuiltinType *Ty);
   llvm::DIType CreateType(const ComplexType *Ty);
@@ -143,6 +146,7 @@ class CGDebugInfo {
                                AccessSpecifier AS, uint64_t offsetInBits,
                                llvm::DIFile tunit,
                                llvm::DIDescriptor scope);
+  void CollectRecordStaticVars(const RecordDecl *, llvm::DIType);
   void CollectRecordFields(const RecordDecl *Decl, llvm::DIFile F,
                            SmallVectorImpl<llvm::Value *> &E,
                            llvm::DIType RecordTy);
@@ -236,6 +240,13 @@ private:
   /// getContextDescriptor - Get context info for the decl.
   llvm::DIDescriptor getContextDescriptor(const Decl *Decl);
 
+  /// createRecordFwdDecl - Create a forward decl for a RecordType in a given
+  /// context.
+  llvm::DIType createRecordFwdDecl(const RecordDecl *, llvm::DIDescriptor);
+  
+  /// createContextChain - Create a set of decls for the context chain.
+  llvm::DIDescriptor createContextChain(const Decl *Decl);
+
   /// getCurrentDirname - Return current directory name.
   StringRef getCurrentDirname();
 
@@ -253,8 +264,16 @@ private:
   /// necessary.
   llvm::DIType getOrCreateType(QualType Ty, llvm::DIFile F);
 
+  /// getOrCreateLimitedType - Get the type from the cache or create a flat
+  /// limited type.
+  llvm::DIType getOrCreateLimitedType(QualType Ty, llvm::DIFile F);
+
   /// CreateTypeNode - Create type metadata for a source language type.
   llvm::DIType CreateTypeNode(QualType Ty, llvm::DIFile F);
+
+  /// CreateLimitedTypeNode - Create type metadata for a source language type,
+  /// but create as little as possible.
+  llvm::DIType CreateLimitedTypeNode(QualType Ty, llvm::DIFile F);
 
   /// CreateMemberType - Create new member and increase Offset by FType's size.
   llvm::DIType CreateMemberType(llvm::DIFile Unit, QualType FType,
@@ -278,7 +297,7 @@ private:
   StringRef getSelectorName(Selector S);
 
   /// getClassName - Get class name including template argument list.
-  StringRef getClassName(RecordDecl *RD);
+  StringRef getClassName(const RecordDecl *RD);
 
   /// getVTableName - Get vtable name for the given Class.
   StringRef getVTableName(const CXXRecordDecl *Decl);

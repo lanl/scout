@@ -33,6 +33,10 @@
 #include "llvm/Support/Allocator.h"
 #include <vector>
 
+namespace llvm {
+  template<unsigned InternalLen> class SmallString;
+}
+
 namespace clang {
 
 class SourceManager;
@@ -72,7 +76,7 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
 
   /// PTH - An optional PTHManager object used for getting tokens from
   ///  a token cache rather than lexing the original source file.
-  llvm::OwningPtr<PTHManager> PTH;
+  OwningPtr<PTHManager> PTH;
 
   /// BP - A BumpPtrAllocator object used to quickly allocate and release
   ///  objects internal to the Preprocessor.
@@ -193,12 +197,12 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   /// CurLexer - This is the current top of the stack that we're lexing from if
   /// not expanding a macro and we are lexing directly from source code.
   ///  Only one of CurLexer, CurPTHLexer, or CurTokenLexer will be non-null.
-  llvm::OwningPtr<Lexer> CurLexer;
+  OwningPtr<Lexer> CurLexer;
 
   /// CurPTHLexer - This is the current top of stack that we're lexing from if
   ///  not expanding from a macro and we are lexing from a PTH cache.
   ///  Only one of CurLexer, CurPTHLexer, or CurTokenLexer will be non-null.
-  llvm::OwningPtr<PTHLexer> CurPTHLexer;
+  OwningPtr<PTHLexer> CurPTHLexer;
 
   /// CurPPLexer - This is the current top of the stack what we're lexing from
   ///  if not expanding a macro.  This is an alias for either CurLexer or
@@ -212,7 +216,7 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
 
   /// CurTokenLexer - This is the current macro we are expanding, if we are
   /// expanding a macro.  One of CurLexer and CurTokenLexer must be null.
-  llvm::OwningPtr<TokenLexer> CurTokenLexer;
+  OwningPtr<TokenLexer> CurTokenLexer;
 
   /// \brief The kind of lexer we're currently working with.
   enum CurLexerKind {
@@ -436,7 +440,8 @@ public:
 
   /// setMacroInfo - Specify a macro for this identifier.
   ///
-  void setMacroInfo(IdentifierInfo *II, MacroInfo *MI);
+  void setMacroInfo(IdentifierInfo *II, MacroInfo *MI,
+                    bool LoadedFromAST = false);
 
   /// macro_iterator/macro_begin/macro_end - This allows you to walk the current
   /// state of the macro table.  This visits every currently-defined macro.
@@ -833,6 +838,17 @@ public:
     return *SourceMgr.getCharacterData(Tok.getLocation(), Invalid);
   }
 
+  /// \brief Retrieve the name of the immediate macro expansion.
+  ///
+  /// This routine starts from a source location, and finds the name of the macro
+  /// responsible for its immediate expansion. It looks through any intervening
+  /// macro argument expansions to compute this. It returns a StringRef which
+  /// refers to the SourceManager-owned buffer of the source where that macro
+  /// name is spelled. Thus, the result shouldn't out-live the SourceManager.
+  StringRef getImmediateMacroName(SourceLocation Loc) {
+    return Lexer::getImmediateMacroName(Loc, SourceMgr, getLangOptions());
+  }
+
   /// CreateString - Plop the specified string into a scratch buffer and set the
   /// specified token's location and length to it.  If specified, the source
   /// location provides a location of the expansion point of the token.
@@ -861,14 +877,23 @@ public:
 
   /// \brief Returns true if the given MacroID location points at the first
   /// token of the macro expansion.
-  bool isAtStartOfMacroExpansion(SourceLocation loc) const {
-    return Lexer::isAtStartOfMacroExpansion(loc, SourceMgr, Features);
+  ///
+  /// \param MacroBegin If non-null and function returns true, it is set to
+  /// begin location of the macro.
+  bool isAtStartOfMacroExpansion(SourceLocation loc,
+                                 SourceLocation *MacroBegin = 0) const {
+    return Lexer::isAtStartOfMacroExpansion(loc, SourceMgr, Features,
+                                            MacroBegin);
   }
 
   /// \brief Returns true if the given MacroID location points at the last
   /// token of the macro expansion.
-  bool isAtEndOfMacroExpansion(SourceLocation loc) const {
-    return Lexer::isAtEndOfMacroExpansion(loc, SourceMgr, Features);
+  ///
+  /// \param MacroBegin If non-null and function returns true, it is set to
+  /// end location of the macro.
+  bool isAtEndOfMacroExpansion(SourceLocation loc,
+                               SourceLocation *MacroEnd = 0) const {
+    return Lexer::isAtEndOfMacroExpansion(loc, SourceMgr, Features, MacroEnd);
   }
 
   /// DumpToken - Print the token to stderr, used for debugging.
@@ -1047,7 +1072,7 @@ public:
   /// This code concatenates and consumes tokens up to the '>' token.  It
   /// returns false if the > was found, otherwise it returns true if it finds
   /// and consumes the EOD marker.
-  bool ConcatenateIncludeName(llvm::SmallString<128> &FilenameBuffer,
+  bool ConcatenateIncludeName(SmallString<128> &FilenameBuffer,
                               SourceLocation &End);
 
   /// LexOnOffSwitch - Lex an on-off-switch (C99 6.10.6p2) and verify that it is

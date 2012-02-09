@@ -157,14 +157,16 @@ class ARMFastISel : public FastISel {
     bool SelectLoad(const Instruction *I);
     bool SelectStore(const Instruction *I);
     bool SelectBranch(const Instruction *I);
+    bool SelectIndirectBr(const Instruction *I);
     bool SelectCmp(const Instruction *I);
     bool SelectFPExt(const Instruction *I);
     bool SelectFPTrunc(const Instruction *I);
-    bool SelectBinaryOp(const Instruction *I, unsigned ISDOpcode);
-    bool SelectSIToFP(const Instruction *I);
-    bool SelectFPToSI(const Instruction *I);
-    bool SelectSDiv(const Instruction *I);
-    bool SelectSRem(const Instruction *I);
+    bool SelectBinaryIntOp(const Instruction *I, unsigned ISDOpcode);
+    bool SelectBinaryFPOp(const Instruction *I, unsigned ISDOpcode);
+    bool SelectIToFP(const Instruction *I, bool isSigned);
+    bool SelectFPToI(const Instruction *I, bool isSigned);
+    bool SelectDiv(const Instruction *I, bool isSigned);
+    bool SelectRem(const Instruction *I, bool isSigned);
     bool SelectCall(const Instruction *I, const char *IntrMemName);
     bool SelectIntrinsicCall(const IntrinsicInst &I);
     bool SelectSelect(const Instruction *I);
@@ -880,9 +882,7 @@ void ARMFastISel::ARMSimplifyAddress(Address &Addr, EVT VT, bool useAM3) {
 
   bool needsLowering = false;
   switch (VT.getSimpleVT().SimpleTy) {
-    default:
-      assert(false && "Unhandled load/store type!");
-      break;
+    default: llvm_unreachable("Unhandled load/store type!");
     case MVT::i1:
     case MVT::i8:
     case MVT::i16:
@@ -1351,6 +1351,16 @@ bool ARMFastISel::SelectBranch(const Instruction *I) {
   return true;
 }
 
+bool ARMFastISel::SelectIndirectBr(const Instruction *I) {
+  unsigned AddrReg = getRegForValue(I->getOperand(0));
+  if (AddrReg == 0) return false;
+
+  unsigned Opc = isThumb2 ? ARM::tBRIND : ARM::BX;
+  AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc))
+                  .addReg(AddrReg));
+  return true;  
+}
+
 bool ARMFastISel::ARMEmitCmp(const Value *Src1Value, const Value *Src2Value,
                              bool isZExt) {
   Type *Ty = Src1Value->getType();
@@ -1535,7 +1545,7 @@ bool ARMFastISel::SelectFPTrunc(const Instruction *I) {
   return true;
 }
 
-bool ARMFastISel::SelectSIToFP(const Instruction *I) {
+bool ARMFastISel::SelectIToFP(const Instruction *I, bool isSigned) {
   // Make sure we have VFP.
   if (!Subtarget->hasVFP2()) return false;
 
@@ -1555,7 +1565,8 @@ bool ARMFastISel::SelectSIToFP(const Instruction *I) {
   // Handle sign-extension.
   if (SrcVT == MVT::i16 || SrcVT == MVT::i8) {
     EVT DestVT = MVT::i32;
-    unsigned ResultReg = ARMEmitIntExt(SrcVT, SrcReg, DestVT, /*isZExt*/ false);
+    unsigned ResultReg = ARMEmitIntExt(SrcVT, SrcReg, DestVT,
+                                       /*isZExt*/!isSigned);
     if (ResultReg == 0) return false;
     SrcReg = ResultReg;
   }
@@ -1566,8 +1577,8 @@ bool ARMFastISel::SelectSIToFP(const Instruction *I) {
   if (FP == 0) return false;
 
   unsigned Opc;
-  if (Ty->isFloatTy()) Opc = ARM::VSITOS;
-  else if (Ty->isDoubleTy()) Opc = ARM::VSITOD;
+  if (Ty->isFloatTy()) Opc = isSigned ? ARM::VSITOS : ARM::VUITOS;
+  else if (Ty->isDoubleTy()) Opc = isSigned ? ARM::VSITOD : ARM::VUITOD;
   else return false;
 
   unsigned ResultReg = createResultReg(TLI.getRegClassFor(DstVT));
@@ -1578,7 +1589,7 @@ bool ARMFastISel::SelectSIToFP(const Instruction *I) {
   return true;
 }
 
-bool ARMFastISel::SelectFPToSI(const Instruction *I) {
+bool ARMFastISel::SelectFPToI(const Instruction *I, bool isSigned) {
   // Make sure we have VFP.
   if (!Subtarget->hasVFP2()) return false;
 
@@ -1592,11 +1603,11 @@ bool ARMFastISel::SelectFPToSI(const Instruction *I) {
 
   unsigned Opc;
   Type *OpTy = I->getOperand(0)->getType();
-  if (OpTy->isFloatTy()) Opc = ARM::VTOSIZS;
-  else if (OpTy->isDoubleTy()) Opc = ARM::VTOSIZD;
+  if (OpTy->isFloatTy()) Opc = isSigned ? ARM::VTOSIZS : ARM::VTOUIZS;
+  else if (OpTy->isDoubleTy()) Opc = isSigned ? ARM::VTOSIZD : ARM::VTOUIZD;
   else return false;
 
-  // f64->s32 or f32->s32 both need an intermediate f32 reg.
+  // f64->s32/u32 or f32->s32/u32 both need an intermediate f32 reg.
   unsigned ResultReg = createResultReg(TLI.getRegClassFor(MVT::f32));
   AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc),
                           ResultReg)
@@ -1671,7 +1682,7 @@ bool ARMFastISel::SelectSelect(const Instruction *I) {
   return true;
 }
 
-bool ARMFastISel::SelectSDiv(const Instruction *I) {
+bool ARMFastISel::SelectDiv(const Instruction *I, bool isSigned) {
   MVT VT;
   Type *Ty = I->getType();
   if (!isTypeLegal(Ty, VT))
@@ -1685,21 +1696,21 @@ bool ARMFastISel::SelectSDiv(const Instruction *I) {
   // Otherwise emit a libcall.
   RTLIB::Libcall LC = RTLIB::UNKNOWN_LIBCALL;
   if (VT == MVT::i8)
-    LC = RTLIB::SDIV_I8;
+    LC = isSigned ? RTLIB::SDIV_I8 : RTLIB::UDIV_I8;
   else if (VT == MVT::i16)
-    LC = RTLIB::SDIV_I16;
+    LC = isSigned ? RTLIB::SDIV_I16 : RTLIB::UDIV_I16;
   else if (VT == MVT::i32)
-    LC = RTLIB::SDIV_I32;
+    LC = isSigned ? RTLIB::SDIV_I32 : RTLIB::UDIV_I32;
   else if (VT == MVT::i64)
-    LC = RTLIB::SDIV_I64;
+    LC = isSigned ? RTLIB::SDIV_I64 : RTLIB::UDIV_I64;
   else if (VT == MVT::i128)
-    LC = RTLIB::SDIV_I128;
+    LC = isSigned ? RTLIB::SDIV_I128 : RTLIB::UDIV_I128;
   assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unsupported SDIV!");
 
   return ARMEmitLibcall(I, LC);
 }
 
-bool ARMFastISel::SelectSRem(const Instruction *I) {
+bool ARMFastISel::SelectRem(const Instruction *I, bool isSigned) {
   MVT VT;
   Type *Ty = I->getType();
   if (!isTypeLegal(Ty, VT))
@@ -1707,21 +1718,59 @@ bool ARMFastISel::SelectSRem(const Instruction *I) {
 
   RTLIB::Libcall LC = RTLIB::UNKNOWN_LIBCALL;
   if (VT == MVT::i8)
-    LC = RTLIB::SREM_I8;
+    LC = isSigned ? RTLIB::SREM_I8 : RTLIB::UREM_I8;
   else if (VT == MVT::i16)
-    LC = RTLIB::SREM_I16;
+    LC = isSigned ? RTLIB::SREM_I16 : RTLIB::UREM_I16;
   else if (VT == MVT::i32)
-    LC = RTLIB::SREM_I32;
+    LC = isSigned ? RTLIB::SREM_I32 : RTLIB::UREM_I32;
   else if (VT == MVT::i64)
-    LC = RTLIB::SREM_I64;
+    LC = isSigned ? RTLIB::SREM_I64 : RTLIB::UREM_I64;
   else if (VT == MVT::i128)
-    LC = RTLIB::SREM_I128;
+    LC = isSigned ? RTLIB::SREM_I128 : RTLIB::UREM_I128;
   assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unsupported SREM!");
 
   return ARMEmitLibcall(I, LC);
 }
 
-bool ARMFastISel::SelectBinaryOp(const Instruction *I, unsigned ISDOpcode) {
+bool ARMFastISel::SelectBinaryIntOp(const Instruction *I, unsigned ISDOpcode) {
+  EVT DestVT  = TLI.getValueType(I->getType(), true);
+
+  // We can get here in the case when we have a binary operation on a non-legal
+  // type and the target independent selector doesn't know how to handle it.
+  if (DestVT != MVT::i16 && DestVT != MVT::i8 && DestVT != MVT::i1)
+    return false;
+  
+  unsigned Opc;
+  switch (ISDOpcode) {
+    default: return false;
+    case ISD::ADD:
+      Opc = isThumb2 ? ARM::t2ADDrr : ARM::ADDrr;
+      break;
+    case ISD::OR:
+      Opc = isThumb2 ? ARM::t2ORRrr : ARM::ORRrr;
+      break;
+    case ISD::SUB:
+      Opc = isThumb2 ? ARM::t2SUBrr : ARM::SUBrr;
+      break;
+  }
+
+  unsigned SrcReg1 = getRegForValue(I->getOperand(0));
+  if (SrcReg1 == 0) return false;
+
+  // TODO: Often the 2nd operand is an immediate, which can be encoded directly
+  // in the instruction, rather then materializing the value in a register.
+  unsigned SrcReg2 = getRegForValue(I->getOperand(1));
+  if (SrcReg2 == 0) return false;
+
+  unsigned ResultReg = createResultReg(TLI.getRegClassFor(MVT::i32));
+  AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
+                          TII.get(Opc), ResultReg)
+                  .addReg(SrcReg1).addReg(SrcReg2));
+  UpdateValueMap(I, ResultReg);
+  return true;
+}
+
+bool ARMFastISel::SelectBinaryFPOp(const Instruction *I, unsigned ISDOpcode) {
   EVT VT  = TLI.getValueType(I->getType(), true);
 
   // We can get here in the case when we want to use NEON for our fp
@@ -2278,6 +2327,7 @@ bool ARMFastISel::ARMTryEmitSmallMemCpy(Address Dest, Address Src, uint64_t Len)
     assert (RV == true && "Should be able to handle this load.");
     RV = ARMEmitStore(VT, ResultReg, Dest);
     assert (RV == true && "Should be able to handle this store.");
+    (void)RV;
 
     unsigned Size = VT.getSizeInBits()/8;
     Len -= Size;
@@ -2340,7 +2390,6 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
     return SelectCall(&I, "memset");
   }
   }
-  return false;    
 }
 
 bool ARMFastISel::SelectTrunc(const Instruction *I) {
@@ -2442,6 +2491,8 @@ bool ARMFastISel::TargetSelectInstruction(const Instruction *I) {
       return SelectStore(I);
     case Instruction::Br:
       return SelectBranch(I);
+    case Instruction::IndirectBr:
+      return SelectIndirectBr(I);
     case Instruction::ICmp:
     case Instruction::FCmp:
       return SelectCmp(I);
@@ -2450,19 +2501,33 @@ bool ARMFastISel::TargetSelectInstruction(const Instruction *I) {
     case Instruction::FPTrunc:
       return SelectFPTrunc(I);
     case Instruction::SIToFP:
-      return SelectSIToFP(I);
+      return SelectIToFP(I, /*isSigned*/ true);
+    case Instruction::UIToFP:
+      return SelectIToFP(I, /*isSigned*/ false);
     case Instruction::FPToSI:
-      return SelectFPToSI(I);
+      return SelectFPToI(I, /*isSigned*/ true);
+    case Instruction::FPToUI:
+      return SelectFPToI(I, /*isSigned*/ false);
+    case Instruction::Add:
+      return SelectBinaryIntOp(I, ISD::ADD);
+    case Instruction::Or:
+      return SelectBinaryIntOp(I, ISD::OR);
+    case Instruction::Sub:
+      return SelectBinaryIntOp(I, ISD::SUB);
     case Instruction::FAdd:
-      return SelectBinaryOp(I, ISD::FADD);
+      return SelectBinaryFPOp(I, ISD::FADD);
     case Instruction::FSub:
-      return SelectBinaryOp(I, ISD::FSUB);
+      return SelectBinaryFPOp(I, ISD::FSUB);
     case Instruction::FMul:
-      return SelectBinaryOp(I, ISD::FMUL);
+      return SelectBinaryFPOp(I, ISD::FMUL);
     case Instruction::SDiv:
-      return SelectSDiv(I);
+      return SelectDiv(I, /*isSigned*/ true);
+    case Instruction::UDiv:
+      return SelectDiv(I, /*isSigned*/ false);
     case Instruction::SRem:
-      return SelectSRem(I);
+      return SelectRem(I, /*isSigned*/ true);
+    case Instruction::URem:
+      return SelectRem(I, /*isSigned*/ false);
     case Instruction::Call:
       if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I))
         return SelectIntrinsicCall(*II);

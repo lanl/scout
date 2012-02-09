@@ -197,7 +197,9 @@ MipsTargetLowering(MipsTargetMachine &TM)
   setOperationAction(ISD::FMA,               MVT::f64,   Expand);
 
   setOperationAction(ISD::EXCEPTIONADDR,     MVT::i32, Expand);
+  setOperationAction(ISD::EXCEPTIONADDR,     MVT::i64, Expand);
   setOperationAction(ISD::EHSELECTION,       MVT::i32, Expand);
+  setOperationAction(ISD::EHSELECTION,       MVT::i64, Expand);
 
   setOperationAction(ISD::VAARG,             MVT::Other, Expand);
   setOperationAction(ISD::VACOPY,            MVT::Other, Expand);
@@ -245,11 +247,11 @@ MipsTargetLowering(MipsTargetMachine &TM)
 
   setMinFunctionAlignment(2);
 
-  setStackPointerRegisterToSaveRestore(HasMips64 ? Mips::SP_64 : Mips::SP);
+  setStackPointerRegisterToSaveRestore(IsN64 ? Mips::SP_64 : Mips::SP);
   computeRegisterProperties();
 
-  setExceptionPointerRegister(Mips::A0);
-  setExceptionSelectorRegister(Mips::A1);
+  setExceptionPointerRegister(IsN64 ? Mips::A0_64 : Mips::A0);
+  setExceptionSelectorRegister(IsN64 ? Mips::A1_64 : Mips::A1);
 }
 
 bool MipsTargetLowering::allowsUnalignedMemoryAccesses(EVT VT) const {
@@ -808,9 +810,7 @@ MachineBasicBlock *
 MipsTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                 MachineBasicBlock *BB) const {
   switch (MI->getOpcode()) {
-  default:
-    assert(false && "Unexpected instr type to insert");
-    return NULL;
+  default: llvm_unreachable("Unexpected instr type to insert");
   case Mips::ATOMIC_LOAD_ADD_I8:
   case Mips::ATOMIC_LOAD_ADD_I8_P8:
     return EmitAtomicBinaryPartword(MI, BB, 1, Mips::ADDu);
@@ -1946,7 +1946,7 @@ static bool CC_Mips64Byval(unsigned ValNo, MVT ValVT, MVT LocVT,
 #include "MipsGenCallingConv.inc"
 
 static void
-AnalyzeMips64CallOperands(CCState CCInfo,
+AnalyzeMips64CallOperands(CCState &CCInfo,
                           const SmallVectorImpl<ISD::OutputArg> &Outs) {
   unsigned NumOps = Outs.size();
   for (unsigned i = 0; i != NumOps; ++i) {
@@ -2299,7 +2299,10 @@ MipsTargetLowering::LowerCall(SDValue InChain, SDValue Callee,
       Arg = DAG.getNode(ISD::ZERO_EXTEND, dl, LocVT, Arg);
       break;
     case CCValAssign::AExt:
-      Arg = DAG.getNode(ISD::ANY_EXTEND, dl, LocVT, Arg);
+      if (ValVT == MVT::i32)
+        Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, LocVT, Arg);
+      else
+        Arg = DAG.getNode(ISD::ANY_EXTEND, dl, LocVT, Arg);
       break;
     }
 
@@ -2826,7 +2829,6 @@ getConstraintType(const std::string &Constraint) const
       case 'y':
       case 'f':
         return C_RegisterClass;
-        break;
     }
   }
   return TargetLowering::getConstraintType(Constraint);
@@ -2904,4 +2906,11 @@ bool MipsTargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT) const {
   if (Imm.isNegZero())
     return false;
   return Imm.isZero();
+}
+
+unsigned MipsTargetLowering::getJumpTableEncoding() const {
+  if (IsN64)
+    return MachineJumpTableInfo::EK_GPRel64BlockAddress;
+  
+  return TargetLowering::getJumpTableEncoding();
 }

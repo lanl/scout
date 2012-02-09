@@ -48,7 +48,7 @@ CodeGenTypes::~CodeGenTypes() {
 void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
                                      llvm::StructType *Ty,
                                      StringRef suffix) {
-  llvm::SmallString<256> TypeName;
+  SmallString<256> TypeName;
   llvm::raw_svector_ostream OS(TypeName);
   OS << RD->getKindName() << '.';
 
@@ -309,7 +309,6 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 #define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(Class, Base) case Type::Class:
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("Non-canonical or dependent types aren't possible.");
-    break;
 
   case Type::Builtin: {
     switch (cast<BuiltinType>(Ty)->getKind()) {
@@ -415,7 +414,6 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     case BuiltinType::Id:
 #include "clang/AST/BuiltinTypes.def"
       llvm_unreachable("Unexpected placeholder builtin type!");
-      break;
     }
     break;
   }

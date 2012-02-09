@@ -16,7 +16,6 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Job.h"
-#include "clang/Driver/HostInfo.h"
 #include "clang/Driver/ObjCRuntime.h"
 #include "clang/Driver/Option.h"
 #include "clang/Driver/Options.h"
@@ -35,15 +34,6 @@
 
 #include "InputInfo.h"
 #include "ToolChains.h"
-
-#include <iostream>
-
-#ifdef __CYGWIN__
-#include <cygwin/version.h>
-#if defined(CYGWIN_VERSION_DLL_MAJOR) && CYGWIN_VERSION_DLL_MAJOR<1007
-#define IS_CYGWIN15 1
-#endif
-#endif
 
 using namespace clang::driver;
 using namespace clang::driver::tools;
@@ -244,13 +234,13 @@ void Clang::AddPreprocessingOptions(Compilation &C,
         // Otherwise derive from the base input.
         //
         // FIXME: This should use the computed output file location.
-        llvm::SmallString<128> P(Inputs[0].getBaseInput());
+        SmallString<128> P(Inputs[0].getBaseInput());
         llvm::sys::path::replace_extension(P, "o");
         DepTarget = Args.MakeArgString(llvm::sys::path::filename(P));
       }
 
       CmdArgs.push_back("-MT");
-      llvm::SmallString<128> Quoted;
+      SmallString<128> Quoted;
       QuoteTarget(DepTarget, Quoted);
       CmdArgs.push_back(Args.MakeArgString(Quoted));
     }
@@ -278,7 +268,7 @@ void Clang::AddPreprocessingOptions(Compilation &C,
 
     if (A->getOption().matches(options::OPT_MQ)) {
       CmdArgs.push_back("-MT");
-      llvm::SmallString<128> Quoted;
+      SmallString<128> Quoted;
       QuoteTarget(A->getValue(Args), Quoted);
       CmdArgs.push_back(Args.MakeArgString(Quoted));
 
@@ -389,7 +379,7 @@ void Clang::AddPreprocessingOptions(Compilation &C,
     A->claim();
     A->render(Args, CmdArgs);
   } else {
-    llvm::SmallString<128> DefaultModuleCache;
+    SmallString<128> DefaultModuleCache;
     llvm::sys::path::system_temp_directory(/*erasedOnReboot=*/false,
                                            DefaultModuleCache);
     llvm::sys::path::append(DefaultModuleCache, "clang-module-cache");
@@ -1195,7 +1185,7 @@ static void addAsanRTLinux(const ToolChain &TC, const ArgList &Args,
 
   // LibAsan is "libclang_rt.asan-<ArchName>.a" in the Linux library resource
   // directory.
-  llvm::SmallString<128> LibAsan(TC.getDriver().ResourceDir);
+  SmallString<128> LibAsan(TC.getDriver().ResourceDir);
   llvm::sys::path::append(LibAsan, "lib", "linux",
                           (Twine("libclang_rt.asan-") +
                            TC.getArchName() + ".a"));
@@ -1358,6 +1348,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
       if (getToolChain().getTriple().getVendor() == llvm::Triple::Apple)
         CmdArgs.push_back("-analyzer-checker=osx");
+      
+      CmdArgs.push_back("-analyzer-checker=deadcode");
+      
+      // Enable the following experimental checkers for testing. 
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.UncheckedReturn");
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.getpw");
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.gets");
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.mktemp");      
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.mkstemp");
+      CmdArgs.push_back("-analyzer-checker=security.insecureAPI.vfork");
     }
 
     // Set the output format. The default is plist, for (lame) historical
@@ -1442,6 +1442,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     options::OPT_fno_strict_aliasing,
                     getToolChain().IsStrictAliasingDefault()))
     CmdArgs.push_back("-relaxed-aliasing");
+  if (!Args.hasFlag(options::OPT_foptimize_sibling_calls,
+                    options::OPT_fno_optimize_sibling_calls))
+    CmdArgs.push_back("-mdisable-tail-calls");
 
   // Handle various floating point optimization flags, mapping them to the
   // appropriate LLVM code generation flags. The pattern for all of these is to
@@ -1950,12 +1953,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(A->getValue(Args));
   }
 
-  // Forward -ftrap_function= options to the backend.
-  if (Arg *A = Args.getLastArg(options::OPT_ftrap_function_EQ)) {
-    StringRef FuncName = A->getValue(Args);
-    CmdArgs.push_back("-backend-option");
-    CmdArgs.push_back(Args.MakeArgString("-trap-func=" + FuncName));
-  }
+  Args.AddLastArg(CmdArgs, options::OPT_ftrap_function_EQ);
 
   // -fno-strict-overflow implies -fwrapv if it isn't disabled, but
   // -fstrict-overflow won't turn off an explicitly enabled -fwrapv.
@@ -2037,8 +2035,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-fblocks-runtime-optional");
   }
 
-  if (Args.hasFlag(options::OPT_fmodules, options::OPT_fno_modules, false))
-    CmdArgs.push_back("-fmodules");
+  // -fmodules enables modules (off by default). However, for C++/Objective-C++,
+  // users must also pass -fcxx-modules. The latter flag will disappear once the
+  // modules implementation is solid for C++/Objective-C++ programs as well.
+  if (Args.hasFlag(options::OPT_fmodules, options::OPT_fno_modules, false)) {
+    bool AllowedInCXX = Args.hasFlag(options::OPT_fcxx_modules, 
+                                     options::OPT_fno_cxx_modules, 
+                                     false);
+    if (AllowedInCXX || !types::isCXX(InputType))
+      CmdArgs.push_back("-fmodules");
+  }
 
   // -faccess-control is default.
   if (Args.hasFlag(options::OPT_fno_access_control,
@@ -2511,7 +2517,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
            ie = Args.end(); it != ie; ++it)
       (*it)->render(Args, OriginalArgs);
 
-    llvm::SmallString<256> Flags;
+    SmallString<256> Flags;
     Flags += Exec;
     for (unsigned i = 0, e = OriginalArgs.size(); i != e; ++i) {
       Flags += " ";
@@ -2608,7 +2614,7 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
            ie = Args.end(); it != ie; ++it)
       (*it)->render(Args, OriginalArgs);
 
-    llvm::SmallString<256> Flags;
+    SmallString<256> Flags;
     const char *Exec = getToolChain().getDriver().getClangProgramPath();
     Flags += Exec;
     for (unsigned i = 0, e = OriginalArgs.size(); i != e; ++i) {
@@ -2746,12 +2752,7 @@ void gcc::Common::ConstructJob(Compilation &C, const JobAction &JA,
   if (!customGCCName.empty())
     GCCName = customGCCName.c_str();
   else if (D.CCCIsCXX) {
-#ifdef IS_CYGWIN15
-    // FIXME: Detect the version of Cygwin at runtime?
-    GCCName = "g++-4";
-#else
     GCCName = "g++";
-#endif
   } else
     GCCName = "gcc";
 
@@ -3008,11 +3009,25 @@ void darwin::CC1::RemoveCC1UnsupportedArgs(ArgStringList &CmdArgs) const {
     StringRef Option = *it;
     bool RemoveOption = false;
 
-    // Remove -faltivec
-    if (Option.equals("-faltivec")) {
-      it = CmdArgs.erase(it);
+    // Erase both -fmodule-cache-path and its argument.
+    if (Option.equals("-fmodule-cache-path") && it+2 != ie) {
+      it = CmdArgs.erase(it, it+2);
       ie = CmdArgs.end();
       continue;
+    }
+
+    // Remove unsupported -f options.
+    if (Option.startswith("-f")) {
+      // Remove -f/-fno- to reduce the number of cases.
+      if (Option.startswith("-fno-"))
+        Option = Option.substr(5);
+      else
+        Option = Option.substr(2);
+      RemoveOption = llvm::StringSwitch<bool>(Option)
+        .Case("altivec", true)
+        .Case("modules", true)
+        .Case("diagnostics-show-note-include-stack", true)
+        .Default(false);
     }
 
     // Handle machine specific options.
@@ -4121,6 +4136,9 @@ void darwin::VerifyDebug::ConstructJob(Compilation &C, const JobAction &JA,
 				       const char *LinkingOutput) const {
   ArgStringList CmdArgs;
   CmdArgs.push_back("--verify");
+  CmdArgs.push_back("--debug-info");
+  CmdArgs.push_back("--eh-frame");
+  CmdArgs.push_back("--quiet");
 
   assert(Inputs.size() == 1 && "Unable to handle multiple inputs.");
   const InputInfo &Input = Inputs[0];
@@ -4576,8 +4594,7 @@ void netbsd::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
 
   // When building 32-bit code on NetBSD/amd64, we have to explicitly
   // instruct as in the base system to assemble 32-bit code.
-  if (ToolTriple.getArch() == llvm::Triple::x86_64 &&
-      getToolChain().getArch() == llvm::Triple::x86)
+  if (getToolChain().getArch() == llvm::Triple::x86)
     CmdArgs.push_back("--32");
 
 
@@ -4630,8 +4647,7 @@ void netbsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   // When building 32-bit code on NetBSD/amd64, we have to explicitly
   // instruct ld in the base system to link 32-bit code.
-  if (ToolTriple.getArch() == llvm::Triple::x86_64 &&
-      getToolChain().getArch() == llvm::Triple::x86) {
+  if (getToolChain().getArch() == llvm::Triple::x86) {
     CmdArgs.push_back("-m");
     CmdArgs.push_back("elf_i386");
   }

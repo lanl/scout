@@ -198,6 +198,10 @@ def CC_X86_Win64_C : CallingConv<[
   // 128 bit vectors are passed by pointer
   CCIfType<[v16i8, v8i16, v4i32, v2i64, v4f32, v2f64], CCPassIndirect<i64>>,
 
+
+  // 256 bit vectors are passed by pointer
+  CCIfType<[v32i8, v16i16, v8i32, v4i64, v8f32, v4f64], CCPassIndirect<i64>>,
+
   // The first 4 MMX vector arguments are passed in GPRs.
   CCIfType<[x86mmx], CCBitConvertToType<i64>>,
 
@@ -404,3 +408,18 @@ def CC_X86 : CallingConv<[
   CCIfSubtarget<"is64Bit()", CCDelegateTo<CC_X86_64>>,
   CCDelegateTo<CC_X86_32>
 ]>;
+
+//===----------------------------------------------------------------------===//
+// Callee-saved Registers.
+//===----------------------------------------------------------------------===//
+
+def CSR_Ghc : CalleeSavedRegs<(add)>;
+
+def CSR_32 : CalleeSavedRegs<(add ESI, EDI, EBX, EBP)>;
+def CSR_64 : CalleeSavedRegs<(add RBX, R12, R13, R14, R15, RBP)>;
+
+def CSR_32EHRet : CalleeSavedRegs<(add EAX, EDX, CSR_32)>;
+def CSR_64EHRet : CalleeSavedRegs<(add RAX, RDX, CSR_64)>;
+
+def CSR_Win64 : CalleeSavedRegs<(add RBX, RBP, RDI, RSI, R12, R13, R14, R15,
+                                     (sequence "XMM%u", 6, 15))>;

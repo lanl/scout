@@ -1126,13 +1126,14 @@ static QualType inferARCLifetimeForPointee(Sema &S, QualType type,
   } else if (type->isObjCARCImplicitlyUnretainedType()) {
     implicitLifetime = Qualifiers::OCL_ExplicitNone;
 
-  // If we are in an unevaluated context, like sizeof, assume ExplicitNone and
-  // don't give error.
-  } else if (S.ExprEvalContexts.back().Context == Sema::Unevaluated ||
-             S.ExprEvalContexts.back().Context == Sema::ConstantEvaluated) {
-    implicitLifetime = Qualifiers::OCL_ExplicitNone;
+  // If we are in an unevaluated context, like sizeof, skip adding a
+  // qualification.
+  } else if (S.ExprEvalContexts.back().Context == Sema::Unevaluated) {
+    return type;
 
-  // If that failed, give an error and recover using __autoreleasing.
+  // If that failed, give an error and recover using __strong.  __strong
+  // is the option most likely to prevent spurious second-order diagnostics,
+  // like when binding a reference to a field.
   } else {
     // These types can show up in private ivars in system headers, so
     // we need this to not be an error in those cases.  Instead we
@@ -1144,7 +1145,7 @@ static QualType inferARCLifetimeForPointee(Sema &S, QualType type,
     } else {
       S.Diag(loc, diag::err_arc_indirect_no_ownership) << type << isReference;
     }
-    implicitLifetime = Qualifiers::OCL_Autoreleasing;
+    implicitLifetime = Qualifiers::OCL_Strong;
   }
   assert(implicitLifetime && "didn't infer any lifetime!");
 
@@ -1246,19 +1247,12 @@ QualType Sema::BuildReferenceType(QualType T, bool SpelledAsLValue,
 
 /// Check whether the specified array size makes the array type a VLA.  If so,
 /// return true, if not, return the size of the array in SizeVal.
-static bool isArraySizeVLA(Expr *ArraySize, llvm::APSInt &SizeVal, Sema &S) {
-  // If the size is an ICE, it certainly isn't a VLA.
-  if (ArraySize->isIntegerConstantExpr(SizeVal, S.Context))
-    return false;
-    
-  // If we're in a GNU mode (like gnu99, but not c99) accept any evaluatable
-  // value as an extension.
-  if (S.LangOpts.GNUMode && ArraySize->EvaluateAsInt(SizeVal, S.Context)) {
-    S.Diag(ArraySize->getLocStart(), diag::ext_vla_folded_to_constant);
-    return false;
-  }
-
-  return true;
+static bool isArraySizeVLA(Sema &S, Expr *ArraySize, llvm::APSInt &SizeVal) {
+  // If the size is an ICE, it certainly isn't a VLA. If we're in a GNU mode
+  // (like gnu99, but not c99) accept any evaluatable value as an extension.
+  return S.VerifyIntegerConstantExpression(
+      ArraySize, &SizeVal, S.PDiag(), S.LangOpts.GNUMode,
+      S.PDiag(diag::ext_vla_folded_to_constant)).isInvalid();
 }
 
 
@@ -1353,14 +1347,15 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
   }
 
   // C99 6.7.5.2p1: The size expression shall have integer type.
-  // TODO: in theory, if we were insane, we could allow contextual
-  // conversions to integer type here.
-  if (ArraySize && !ArraySize->isTypeDependent() &&
+  // C++11 allows contextual conversions to such types.
+  if (!getLangOptions().CPlusPlus0x &&
+      ArraySize && !ArraySize->isTypeDependent() &&
       !ArraySize->getType()->isIntegralOrUnscopedEnumerationType()) {
     Diag(ArraySize->getLocStart(), diag::err_array_size_non_int)
       << ArraySize->getType() << ArraySize->getSourceRange();
     return QualType();
   }
+
   llvm::APSInt ConstVal(Context.getTypeSize(Context.getSizeType()));
   if (!ArraySize) {
     if (ASM == ArrayType::Star)
@@ -1369,11 +1364,19 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
       T = Context.getIncompleteArrayType(T, ASM, Quals);
   } else if (ArraySize->isTypeDependent() || ArraySize->isValueDependent()) {
     T = Context.getDependentSizedArrayType(T, ArraySize, ASM, Quals, Brackets);
-  } else if (!T->isDependentType() && !T->isIncompleteType() &&
-             !T->isConstantSizeType()) {
+  } else if ((!T->isDependentType() && !T->isIncompleteType() &&
+              !T->isConstantSizeType()) ||
+             isArraySizeVLA(*this, ArraySize, ConstVal)) {
+    // Even in C++11, don't allow contextual conversions in the array bound
+    // of a VLA.
+    if (getLangOptions().CPlusPlus0x &&
+        !ArraySize->getType()->isIntegralOrUnscopedEnumerationType()) {
+      Diag(ArraySize->getLocStart(), diag::err_array_size_non_int)
+        << ArraySize->getType() << ArraySize->getSourceRange();
+      return QualType();
+    }
+
     // C99: an array with an element type that has a non-constant-size is a VLA.
-    T = Context.getVariableArrayType(T, ArraySize, ASM, Quals, Brackets);
-  } else if (isArraySizeVLA(ArraySize, ConstVal, *this)) {
     // C99: an array with a non-ICE size is a VLA.  We accept any expression
     // that we can fold to a non-zero positive value as an extension.
     T = Context.getVariableArrayType(T, ArraySize, ASM, Quals, Brackets);
@@ -1863,10 +1866,8 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
     switch (D.getContext()) {
     case Declarator::KNRTypeListContext:
       llvm_unreachable("K&R type lists aren't allowed in C++");
-      break;
     case Declarator::LambdaExprContext:
       llvm_unreachable("Can't specify a type specifier in lambda grammar");
-      break;
     case Declarator::ObjCParameterContext:
     case Declarator::ObjCResultContext:
     case Declarator::PrototypeContext:
@@ -2041,7 +2042,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     state.setCurrentChunkIndex(chunkIndex);
     DeclaratorChunk &DeclType = D.getTypeObject(chunkIndex);
     switch (DeclType.Kind) {
-    default: llvm_unreachable("Unknown decltype!");
     case DeclaratorChunk::Paren:
       T = S.BuildParenType(T);
       break;
@@ -2354,15 +2354,11 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                     NoexceptExpr->getType()->getCanonicalTypeUnqualified() ==
                         Context.BoolTy) &&
                  "Parser should have made sure that the expression is boolean");
-            SourceLocation ErrLoc;
-            llvm::APSInt Dummy;
-            if (!NoexceptExpr->isValueDependent() &&
-                !NoexceptExpr->isIntegerConstantExpr(Dummy, Context, &ErrLoc,
-                                                     /*evaluated*/false))
-              S.Diag(ErrLoc, diag::err_noexcept_needs_constant_expression)
-                  << NoexceptExpr->getSourceRange();
-            else
-              EPI.NoexceptExpr = NoexceptExpr;
+            if (!NoexceptExpr->isValueDependent())
+              NoexceptExpr = S.VerifyIntegerConstantExpression(NoexceptExpr, 0,
+                S.PDiag(diag::err_noexcept_needs_constant_expression),
+                /*AllowFold*/ false).take();
+            EPI.NoexceptExpr = NoexceptExpr;
           }
         } else if (FTI.getExceptionSpecType() == EST_None &&
                    ImplicitlyNoexcept && chunkIndex == 0) {
@@ -2397,7 +2393,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case NestedNameSpecifier::NamespaceAlias:
         case NestedNameSpecifier::Global:
           llvm_unreachable("Nested-name-specifier must name a type");
-          break;
 
         case NestedNameSpecifier::TypeSpec:
         case NestedNameSpecifier::TypeSpecWithTemplate:
@@ -2729,7 +2724,7 @@ static void transferARCOwnershipToDeclaratorChunk(TypeProcessingState &state,
 
   const char *attrStr = 0;
   switch (ownership) {
-  case Qualifiers::OCL_None: llvm_unreachable("no ownership!"); break;
+  case Qualifiers::OCL_None: llvm_unreachable("no ownership!");
   case Qualifiers::OCL_ExplicitNone: attrStr = "none"; break;
   case Qualifiers::OCL_Strong: attrStr = "strong"; break;
   case Qualifiers::OCL_Weak: attrStr = "weak"; break;
@@ -2850,7 +2845,6 @@ static AttributeList::Kind getAttrListKind(AttributedType::Kind kind) {
     return AttributeList::AT_pcs;
   }
   llvm_unreachable("unexpected attribute kind!");
-  return AttributeList::Kind();
 }
 
 static void fillAttributedTypeLoc(AttributedTypeLoc TL,
@@ -2996,51 +2990,28 @@ namespace {
           return;
         }
       }
-      TL.setKeywordLoc(Keyword != ETK_None
-                       ? DS.getTypeSpecTypeLoc()
-                       : SourceLocation());
+      TL.setElaboratedKeywordLoc(Keyword != ETK_None
+                                 ? DS.getTypeSpecTypeLoc()
+                                 : SourceLocation());
       const CXXScopeSpec& SS = DS.getTypeSpecScope();
       TL.setQualifierLoc(SS.getWithLocInContext(Context));
       Visit(TL.getNextTypeLoc().getUnqualifiedLoc());
     }
     void VisitDependentNameTypeLoc(DependentNameTypeLoc TL) {
-      ElaboratedTypeKeyword Keyword
-        = TypeWithKeyword::getKeywordForTypeSpec(DS.getTypeSpecType());
-      if (DS.getTypeSpecType() == TST_typename) {
-        TypeSourceInfo *TInfo = 0;
-        Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
-        if (TInfo) {
-          TL.copy(cast<DependentNameTypeLoc>(TInfo->getTypeLoc()));
-          return;
-        }
-      }
-      TL.setKeywordLoc(Keyword != ETK_None
-                       ? DS.getTypeSpecTypeLoc()
-                       : SourceLocation());
-      const CXXScopeSpec& SS = DS.getTypeSpecScope();
-      TL.setQualifierLoc(SS.getWithLocInContext(Context));
-      TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
+      assert(DS.getTypeSpecType() == TST_typename);
+      TypeSourceInfo *TInfo = 0;
+      Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
+      assert(TInfo);
+      TL.copy(cast<DependentNameTypeLoc>(TInfo->getTypeLoc()));
     }
     void VisitDependentTemplateSpecializationTypeLoc(
                                  DependentTemplateSpecializationTypeLoc TL) {
-      ElaboratedTypeKeyword Keyword
-        = TypeWithKeyword::getKeywordForTypeSpec(DS.getTypeSpecType());
-      if (Keyword == ETK_Typename) {
-        TypeSourceInfo *TInfo = 0;
-        Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
-        if (TInfo) {
-          TL.copy(cast<DependentTemplateSpecializationTypeLoc>(
-                    TInfo->getTypeLoc()));
-          return;
-        }
-      }
-      TL.initializeLocal(Context, SourceLocation());
-      TL.setKeywordLoc(Keyword != ETK_None
-                       ? DS.getTypeSpecTypeLoc()
-                       : SourceLocation());
-      const CXXScopeSpec& SS = DS.getTypeSpecScope();
-      TL.setQualifierLoc(SS.getWithLocInContext(Context));
-      TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
+      assert(DS.getTypeSpecType() == TST_typename);
+      TypeSourceInfo *TInfo = 0;
+      Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
+      assert(TInfo);
+      TL.copy(cast<DependentTemplateSpecializationTypeLoc>(
+                TInfo->getTypeLoc()));
     }
     void VisitTagTypeLoc(TagTypeLoc TL) {
       TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
@@ -3102,7 +3073,7 @@ namespace {
         assert(isa<DependentNameType>(ClsTy) && "Unexpected TypeLoc");
         {
           DependentNameTypeLoc DNTLoc = cast<DependentNameTypeLoc>(ClsTL);
-          DNTLoc.setKeywordLoc(SourceLocation());
+          DNTLoc.setElaboratedKeywordLoc(SourceLocation());
           DNTLoc.setQualifierLoc(NNSLoc.getPrefix());
           DNTLoc.setNameLoc(NNSLoc.getLocalBeginLoc());
         }
@@ -3112,7 +3083,7 @@ namespace {
       case NestedNameSpecifier::TypeSpecWithTemplate:
         if (isa<ElaboratedType>(ClsTy)) {
           ElaboratedTypeLoc ETLoc = *cast<ElaboratedTypeLoc>(&ClsTL);
-          ETLoc.setKeywordLoc(SourceLocation());
+          ETLoc.setElaboratedKeywordLoc(SourceLocation());
           ETLoc.setQualifierLoc(NNSLoc.getPrefix());
           TypeLoc NamedTL = ETLoc.getNamedTypeLoc();
           NamedTL.initializeFullCopy(NNSLoc.getTypeLoc());
@@ -3125,7 +3096,6 @@ namespace {
       case NestedNameSpecifier::NamespaceAlias:
       case NestedNameSpecifier::Global:
         llvm_unreachable("Nested-name-specifier must name a type");
-        break;
       }
 
       // Finally fill in MemberPointerLocInfo fields.
@@ -3335,6 +3305,36 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
   Type = S.Context.getAddrSpaceQualType(Type, ASIdx);
 }
 
+/// Does this type have a "direct" ownership qualifier?  That is,
+/// is it written like "__strong id", as opposed to something like
+/// "typeof(foo)", where that happens to be strong?
+static bool hasDirectOwnershipQualifier(QualType type) {
+  // Fast path: no qualifier at all.
+  assert(type.getQualifiers().hasObjCLifetime());
+
+  while (true) {
+    // __strong id
+    if (const AttributedType *attr = dyn_cast<AttributedType>(type)) {
+      if (attr->getAttrKind() == AttributedType::attr_objc_ownership)
+        return true;
+
+      type = attr->getModifiedType();
+
+    // X *__strong (...)
+    } else if (const ParenType *paren = dyn_cast<ParenType>(type)) {
+      type = paren->getInnerType();
+   
+    // That's it for things we want to complain about.  In particular,
+    // we do not want to look through typedefs, typeof(expr),
+    // typeof(type), or any other way that the type is somehow
+    // abstracted.
+    } else {
+      
+      return false;
+    }
+  }
+}
+
 /// handleObjCOwnershipTypeAttr - Process an objc_ownership
 /// attribute on the specified type.
 ///
@@ -3363,18 +3363,17 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
   if (AttrLoc.isMacroID())
     AttrLoc = S.getSourceManager().getImmediateExpansionRange(AttrLoc).first;
 
-  if (type.getQualifiers().getObjCLifetime()) {
-    S.Diag(AttrLoc, diag::err_attr_objc_ownership_redundant)
-      << type;
-    return true;
-  }
-
   if (!attr.getParameterName()) {
     S.Diag(AttrLoc, diag::err_attribute_argument_n_not_string)
       << "objc_ownership" << 1;
     attr.setInvalid();
     return true;
   }
+
+  // Consume lifetime attributes without further comment outside of
+  // ARC mode.
+  if (!S.getLangOptions().ObjCAutoRefCount)
+    return true;
 
   Qualifiers::ObjCLifetime lifetime;
   if (attr.getParameterName()->isStr("none"))
@@ -3392,10 +3391,31 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
     return true;
   }
 
-  // Consume lifetime attributes without further comment outside of
-  // ARC mode.
-  if (!S.getLangOptions().ObjCAutoRefCount)
-    return true;
+  SplitQualType underlyingType = type.split();
+
+  // Check for redundant/conflicting ownership qualifiers.
+  if (Qualifiers::ObjCLifetime previousLifetime
+        = type.getQualifiers().getObjCLifetime()) {
+    // If it's written directly, that's an error.
+    if (hasDirectOwnershipQualifier(type)) {
+      S.Diag(AttrLoc, diag::err_attr_objc_ownership_redundant)
+        << type;
+      return true;
+    }
+
+    // Otherwise, if the qualifiers actually conflict, pull sugar off
+    // until we reach a type that is directly qualified.
+    if (previousLifetime != lifetime) {
+      // This should always terminate: the canonical type is
+      // qualified, so some bit of sugar must be hiding it.
+      while (!underlyingType.Quals.hasObjCLifetime()) {
+        underlyingType = underlyingType.getSingleStepDesugaredType();
+      }
+      underlyingType.Quals.removeObjCLifetime();
+    }
+  }
+
+  underlyingType.Quals.addObjCLifetime(lifetime);
 
   if (NonObjCPointer) {
     StringRef name = attr.getName()->getName();
@@ -3411,11 +3431,9 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
       << name << type;
   }
 
-  Qualifiers qs;
-  qs.setObjCLifetime(lifetime);
   QualType origType = type;
   if (!NonObjCPointer)
-    type = S.Context.getQualifiedType(type, qs);
+    type = S.Context.getQualifiedType(underlyingType);
 
   // If we have a valid source location for the attribute, use an
   // AttributedType instead.
@@ -3596,9 +3614,9 @@ namespace {
       SplitQualType SplitOld = Old.split();
 
       // As a special case, tail-recurse if there are no qualifiers.
-      if (SplitOld.second.empty())
-        return wrap(C, SplitOld.first, I);
-      return C.getQualifiedType(wrap(C, SplitOld.first, I), SplitOld.second);
+      if (SplitOld.Quals.empty())
+        return wrap(C, SplitOld.Ty, I);
+      return C.getQualifiedType(wrap(C, SplitOld.Ty, I), SplitOld.Quals);
     }
 
     QualType wrap(ASTContext &C, const Type *Old, unsigned I) {
@@ -3642,7 +3660,6 @@ namespace {
       }
 
       llvm_unreachable("unknown wrapping kind");
-      return QualType();
     }
   };
 }
@@ -3870,11 +3887,12 @@ static void HandleExtVectorTypeAttr(QualType &CurType,
   // Special case where the argument is a template id.
   if (Attr.getParameterName()) {
     CXXScopeSpec SS;
+    SourceLocation TemplateKWLoc;
     UnqualifiedId id;
     id.setIdentifier(Attr.getParameterName(), Attr.getLoc());
-    
-    ExprResult Size = S.ActOnIdExpression(S.getCurScope(), SS, id, false, 
-                                          false);
+
+    ExprResult Size = S.ActOnIdExpression(S.getCurScope(), SS, TemplateKWLoc,
+                                          id, false, false);
     if (Size.isInvalid())
       return;
     
@@ -4286,7 +4304,8 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
   assert(!T->isDependentType() && "type should not be dependent");
 
   bool Incomplete = RequireCompleteType(Loc, T, 0);
-  if (T->isLiteralType() || (AllowIncompleteType && Incomplete))
+  if (T->isLiteralType() ||
+      (AllowIncompleteType && Incomplete && !T->isVoidType()))
     return false;
 
   if (PD.getDiagID() == 0)
@@ -4351,9 +4370,6 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
       if (!(*I)->getType()->isLiteralType()) {
         Diag((*I)->getLocation(), diag::note_non_literal_field)
           << RD << (*I) << (*I)->getType();
-        return true;
-      } else if ((*I)->isMutable()) {
-        Diag((*I)->getLocation(), diag::note_non_literal_mutable_field) << RD;
         return true;
       }
     }

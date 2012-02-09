@@ -101,8 +101,6 @@ def ccc_pch_is_pth : Flag<"-ccc-pch-is-pth">, CCCDriverOpt,
   HelpText<"Use pretokenized headers for precompiled headers">;
 
 class CCCDebugOpt : Group<ccc_debug_Group>, Flags<[DriverOption, HelpHidden]>;
-def ccc_host_triple : Separate<"-ccc-host-triple">, CCCDebugOpt,
-  HelpText<"Simulate running on the given target">;
 def ccc_install_dir : Separate<"-ccc-install-dir">, CCCDebugOpt,
   HelpText<"Simulate installation in the given directory">;
 def ccc_print_options : Flag<"-ccc-print-options">, CCCDebugOpt,
@@ -296,6 +294,7 @@ def fconstexpr_backtrace_limit_EQ : Joined<"-fconstexpr-backtrace-limit=">,
                                     Group<f_Group>;
 def fcreate_profile : Flag<"-fcreate-profile">, Group<f_Group>;
 def fcxx_exceptions: Flag<"-fcxx-exceptions">, Group<f_Group>;
+def fcxx_modules : Flag <"-fcxx-modules">, Group<f_Group>, Flags<[NoForward]>;
 def fdebug_pass_arguments : Flag<"-fdebug-pass-arguments">, Group<f_Group>;
 def fdebug_pass_structure : Flag<"-fdebug-pass-structure">, Group<f_Group>;
 def fdiagnostics_fixit_info : Flag<"-fdiagnostics-fixit-info">, Group<f_clang_Group>;
@@ -401,6 +400,7 @@ def fno_color_diagnostics : Flag<"-fno-color-diagnostics">, Group<f_Group>;
 def fno_common : Flag<"-fno-common">, Group<f_Group>;
 def fno_constant_cfstrings : Flag<"-fno-constant-cfstrings">, Group<f_Group>;
 def fno_cxx_exceptions: Flag<"-fno-cxx-exceptions">, Group<f_Group>;
+def fno_cxx_modules : Flag <"-fno-cxx-modules">, Group<f_Group>, Flags<[NoForward]>;
 def fno_diagnostics_fixit_info : Flag<"-fno-diagnostics-fixit-info">, Group<f_Group>;
 def fno_diagnostics_show_name : Flag<"-fno-diagnostics-show-name">, Group<f_Group>;
 def fno_diagnostics_show_option : Flag<"-fno-diagnostics-show-option">, Group<f_Group>;
@@ -473,6 +473,8 @@ def fobjc_sender_dependent_dispatch : Flag<"-fobjc-sender-dependent-dispatch">, 
 def fobjc : Flag<"-fobjc">, Group<f_Group>;
 def fomit_frame_pointer : Flag<"-fomit-frame-pointer">, Group<f_Group>;
 def fopenmp : Flag<"-fopenmp">, Group<f_Group>;
+def fno_optimize_sibling_calls : Flag<"-fno-optimize-sibling-calls">, Group<f_Group>;
+def foptimize_sibling_calls : Flag<"-foptimize-sibling-calls">, Group<f_Group>;
 def force__cpusubtype__ALL : Flag<"-force_cpusubtype_ALL">;
 def force__flat__namespace : Flag<"-force_flat_namespace">;
 def force__load : Separate<"-force_load">;
@@ -754,6 +756,10 @@ def stdlib_EQ : Joined<"-stdlib=">;
 def sub__library : JoinedOrSeparate<"-sub_library">;
 def sub__umbrella : JoinedOrSeparate<"-sub_umbrella">;
 def s : Flag<"-s">;
+def target : Separate<"-target">, Flags<[DriverOption]>,
+  HelpText<"Generate code for the given target">;
+// We should deprecate the use of -ccc-host-triple, and then remove.
+def ccc_host_triple : Separate<"-ccc-host-triple">, Alias<target>;
 def time : Flag<"-time">,
   HelpText<"Time individual commands">;
 def traditional_cpp : Flag<"-traditional-cpp">;

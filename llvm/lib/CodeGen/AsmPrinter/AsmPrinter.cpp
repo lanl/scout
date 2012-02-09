@@ -1136,7 +1136,7 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
   const MCExpr *Value = 0;
   switch (MJTI->getEntryKind()) {
   case MachineJumpTableInfo::EK_Inline:
-    llvm_unreachable("Cannot emit EK_Inline jump table entry"); break;
+    llvm_unreachable("Cannot emit EK_Inline jump table entry");
   case MachineJumpTableInfo::EK_Custom32:
     Value = TM.getTargetLowering()->LowerCustomJumpTableEntry(MJTI, MBB, UID,
                                                               OutContext);
@@ -1152,6 +1152,15 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
     //     .gprel32 LBB123
     MCSymbol *MBBSym = MBB->getSymbol();
     OutStreamer.EmitGPRel32Value(MCSymbolRefExpr::Create(MBBSym, OutContext));
+    return;
+  }
+
+  case MachineJumpTableInfo::EK_GPRel64BlockAddress: {
+    // EK_GPRel64BlockAddress - Each entry is an address of block, encoded
+    // with a relocation as gp-relative, e.g.:
+    //     .gpdword LBB123
+    MCSymbol *MBBSym = MBB->getSymbol();
+    OutStreamer.EmitGPRel64Value(MCSymbolRefExpr::Create(MBBSym, OutContext));
     return;
   }
 
@@ -1207,12 +1216,8 @@ bool AsmPrinter::EmitSpecialLLVMGlobal(const GlobalVariable *GV) {
 
   assert(GV->hasInitializer() && "Not a special LLVM global!");
 
-  const TargetData *TD = TM.getTargetData();
-  unsigned Align = Log2_32(TD->getPointerPrefAlignment());
   if (GV->getName() == "llvm.global_ctors") {
-    OutStreamer.SwitchSection(getObjFileLowering().getStaticCtorSection());
-    EmitAlignment(Align);
-    EmitXXStructorList(GV->getInitializer());
+    EmitXXStructorList(GV->getInitializer(), /* isCtor */ true);
 
     if (TM.getRelocationModel() == Reloc::Static &&
         MAI->hasStaticCtorDtorReferenceInStaticMode()) {
@@ -1224,9 +1229,7 @@ bool AsmPrinter::EmitSpecialLLVMGlobal(const GlobalVariable *GV) {
   }
 
   if (GV->getName() == "llvm.global_dtors") {
-    OutStreamer.SwitchSection(getObjFileLowering().getStaticDtorSection());
-    EmitAlignment(Align);
-    EmitXXStructorList(GV->getInitializer());
+    EmitXXStructorList(GV->getInitializer(), /* isCtor */ false);
 
     if (TM.getRelocationModel() == Reloc::Static &&
         MAI->hasStaticCtorDtorReferenceInStaticMode()) {
@@ -1256,7 +1259,7 @@ void AsmPrinter::EmitLLVMUsedList(const Constant *List) {
   }
 }
 
-typedef std::pair<int, Constant*> Structor;
+typedef std::pair<unsigned, Constant*> Structor;
 
 static bool priority_order(const Structor& lhs, const Structor& rhs) {
   return lhs.first < rhs.first;
@@ -1264,7 +1267,7 @@ static bool priority_order(const Structor& lhs, const Structor& rhs) {
 
 /// EmitXXStructorList - Emit the ctor or dtor list taking into account the init
 /// priority.
-void AsmPrinter::EmitXXStructorList(const Constant *List) {
+void AsmPrinter::EmitXXStructorList(const Constant *List, bool isCtor) {
   // Should be an array of '{ int, void ()* }' structs.  The first value is the
   // init priority.
   if (!isa<ConstantArray>(List)) return;
@@ -1290,19 +1293,20 @@ void AsmPrinter::EmitXXStructorList(const Constant *List) {
                                        CS->getOperand(1)));
   }
 
-  // Emit the function pointers in reverse priority order.
-  switch (getObjFileLowering().getStructorOutputOrder()) {
-  case Structors::None:
-    break;
-  case Structors::PriorityOrder:
-    std::sort(Structors.begin(), Structors.end(), priority_order);
-    break;
-  case Structors::ReversePriorityOrder:
-    std::sort(Structors.rbegin(), Structors.rend(), priority_order);
-    break;
+  // Emit the function pointers in the target-specific order
+  const TargetData *TD = TM.getTargetData();
+  unsigned Align = Log2_32(TD->getPointerPrefAlignment());
+  std::stable_sort(Structors.begin(), Structors.end(), priority_order);
+  for (unsigned i = 0, e = Structors.size(); i != e; ++i) {
+    const MCSection *OutputSection =
+      (isCtor ?
+       getObjFileLowering().getStaticCtorSection(Structors[i].first) :
+       getObjFileLowering().getStaticDtorSection(Structors[i].first));
+    OutStreamer.SwitchSection(OutputSection);
+    if (OutStreamer.getCurrentSection() != OutStreamer.getPreviousSection())
+      EmitAlignment(Align);
+    EmitXXStructor(Structors[i].second);
   }
-  for (unsigned i = 0, e = Structors.size(); i != e; ++i)
-    EmitGlobalConstant(Structors[i].second);
 }
 
 //===--------------------------------------------------------------------===//
@@ -1439,7 +1443,6 @@ static const MCExpr *LowerConstant(const Constant *CV, AsmPrinter &AP) {
   const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV);
   if (CE == 0) {
     llvm_unreachable("Unknown constant value to lower!");
-    return MCConstantExpr::Create(0, Ctx);
   }
 
   switch (CE->getOpcode()) {
@@ -1461,7 +1464,6 @@ static const MCExpr *LowerConstant(const Constant *CV, AsmPrinter &AP) {
                      !AP.MF ? 0 : AP.MF->getFunction()->getParent());
       report_fatal_error(OS.str());
     }
-    return MCConstantExpr::Create(0, Ctx);
   case Instruction::GetElementPtr: {
     const TargetData &TD = *AP.TM.getTargetData();
     // Generate a symbolic expression for the byte address
@@ -1559,6 +1561,19 @@ static void EmitGlobalConstantImpl(const Constant *C, unsigned AddrSpace,
 /// isRepeatedByteSequence - Determine whether the given value is
 /// composed of a repeated sequence of identical bytes and return the
 /// byte value.  If it is not a repeated sequence, return -1.
+static int isRepeatedByteSequence(const ConstantDataSequential *V) {
+  StringRef Data = V->getRawDataValues();
+  assert(!Data.empty() && "Empty aggregates should be CAZ node");
+  char C = Data[0];
+  for (unsigned i = 1, e = Data.size(); i != e; ++i)
+    if (Data[i] != C) return -1;
+  return static_cast<uint8_t>(C); // Ensure 255 is not returned as -1.
+}
+
+
+/// isRepeatedByteSequence - Determine whether the given value is
+/// composed of a repeated sequence of identical bytes and return the
+/// byte value.  If it is not a repeated sequence, return -1.
 static int isRepeatedByteSequence(const Value *V, TargetMachine &TM) {
 
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(V)) {
@@ -1584,8 +1599,7 @@ static int isRepeatedByteSequence(const Value *V, TargetMachine &TM) {
   if (const ConstantArray *CA = dyn_cast<ConstantArray>(V)) {
     // Make sure all array elements are sequences of the same repeated
     // byte.
-    if (CA->getNumOperands() == 0) return -1;
-
+    assert(CA->getNumOperands() != 0 && "Should be a CAZ");
     int Byte = isRepeatedByteSequence(CA->getOperand(0), TM);
     if (Byte == -1) return -1;
 
@@ -1596,37 +1610,92 @@ static int isRepeatedByteSequence(const Value *V, TargetMachine &TM) {
     }
     return Byte;
   }
+  
+  if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(V))
+    return isRepeatedByteSequence(CDS);
 
   return -1;
 }
 
-static void EmitGlobalConstantArray(const ConstantArray *CA, unsigned AddrSpace,
-                                    AsmPrinter &AP) {
-  if (AddrSpace != 0 || !CA->isString()) {
-    // Not a string.  Print the values in successive locations.
+static void EmitGlobalConstantDataSequential(const ConstantDataSequential *CDS,
+                                             unsigned AddrSpace,AsmPrinter &AP){
+  
+  // See if we can aggregate this into a .fill, if so, emit it as such.
+  int Value = isRepeatedByteSequence(CDS, AP.TM);
+  if (Value != -1) {
+    uint64_t Bytes = AP.TM.getTargetData()->getTypeAllocSize(CDS->getType());
+    // Don't emit a 1-byte object as a .fill.
+    if (Bytes > 1)
+      return AP.OutStreamer.EmitFill(Bytes, Value, AddrSpace);
+  }
+  
+  // If this can be emitted with .ascii/.asciz, emit it as such.
+  if (CDS->isString())
+    return AP.OutStreamer.EmitBytes(CDS->getAsString(), AddrSpace);
 
-    // See if we can aggregate some values.  Make sure it can be
-    // represented as a series of bytes of the constant value.
-    int Value = isRepeatedByteSequence(CA, AP.TM);
-
-    if (Value != -1) {
-      uint64_t Bytes = AP.TM.getTargetData()->getTypeAllocSize(CA->getType());
-      AP.OutStreamer.EmitFill(Bytes, Value, AddrSpace);
+  // Otherwise, emit the values in successive locations.
+  unsigned ElementByteSize = CDS->getElementByteSize();
+  if (isa<IntegerType>(CDS->getElementType())) {
+    for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
+      if (AP.isVerbose())
+        AP.OutStreamer.GetCommentOS() << format("0x%" PRIx64 "\n",
+                                                CDS->getElementAsInteger(i));
+      AP.OutStreamer.EmitIntValue(CDS->getElementAsInteger(i),
+                                  ElementByteSize, AddrSpace);
     }
-    else {
-      for (unsigned i = 0, e = CA->getNumOperands(); i != e; ++i)
-        EmitGlobalConstantImpl(CA->getOperand(i), AddrSpace, AP);
+  } else if (ElementByteSize == 4) {
+    // FP Constants are printed as integer constants to avoid losing
+    // precision.
+    assert(CDS->getElementType()->isFloatTy());
+    for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
+      union {
+        float F;
+        uint32_t I;
+      };
+      
+      F = CDS->getElementAsFloat(i);
+      if (AP.isVerbose())
+        AP.OutStreamer.GetCommentOS() << "float " << F << '\n';
+      AP.OutStreamer.EmitIntValue(I, 4, AddrSpace);
     }
-    return;
+  } else {
+    assert(CDS->getElementType()->isDoubleTy());
+    for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
+      union {
+        double F;
+        uint64_t I;
+      };
+      
+      F = CDS->getElementAsDouble(i);
+      if (AP.isVerbose())
+        AP.OutStreamer.GetCommentOS() << "double " << F << '\n';
+      AP.OutStreamer.EmitIntValue(I, 8, AddrSpace);
+    }
   }
 
-  // Otherwise, it can be emitted as .ascii.
-  SmallVector<char, 128> TmpVec;
-  TmpVec.reserve(CA->getNumOperands());
-  for (unsigned i = 0, e = CA->getNumOperands(); i != e; ++i)
-    TmpVec.push_back(cast<ConstantInt>(CA->getOperand(i))->getZExtValue());
+  const TargetData &TD = *AP.TM.getTargetData();
+  unsigned Size = TD.getTypeAllocSize(CDS->getType());
+  unsigned EmittedSize = TD.getTypeAllocSize(CDS->getType()->getElementType()) *
+                        CDS->getNumElements();
+  if (unsigned Padding = Size - EmittedSize)
+    AP.OutStreamer.EmitZeros(Padding, AddrSpace);
 
-  AP.OutStreamer.EmitBytes(StringRef(TmpVec.data(), TmpVec.size()), AddrSpace);
+}
+
+static void EmitGlobalConstantArray(const ConstantArray *CA, unsigned AddrSpace,
+                                    AsmPrinter &AP) {
+  // See if we can aggregate some values.  Make sure it can be
+  // represented as a series of bytes of the constant value.
+  int Value = isRepeatedByteSequence(CA, AP.TM);
+
+  if (Value != -1) {
+    uint64_t Bytes = AP.TM.getTargetData()->getTypeAllocSize(CA->getType());
+    AP.OutStreamer.EmitFill(Bytes, Value, AddrSpace);
+  }
+  else {
+    for (unsigned i = 0, e = CA->getNumOperands(); i != e; ++i)
+      EmitGlobalConstantImpl(CA->getOperand(i), AddrSpace, AP);
+  }
 }
 
 static void EmitGlobalConstantVector(const ConstantVector *CV,
@@ -1640,28 +1709,6 @@ static void EmitGlobalConstantVector(const ConstantVector *CV,
                          CV->getType()->getNumElements();
   if (unsigned Padding = Size - EmittedSize)
     AP.OutStreamer.EmitZeros(Padding, AddrSpace);
-}
-
-static void LowerVectorConstant(const Constant *CV, unsigned AddrSpace,
-                                AsmPrinter &AP) {
-  // Look through bitcasts
-  if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV))
-    if (CE->getOpcode() == Instruction::BitCast)
-      CV = CE->getOperand(0);
-
-  if (const ConstantVector *V = dyn_cast<ConstantVector>(CV))
-    return EmitGlobalConstantVector(V, AddrSpace, AP);
-
-  // If we get here, we're stuck; report the problem to the user.
-  // FIXME: Are there any other useful tricks for vectors?
-  {
-    std::string S;
-    raw_string_ostream OS(S);
-    OS << "Unsupported vector expression in static initializer: ";
-    WriteAsOperand(OS, CV, /*PrintType=*/false,
-                   !AP.MF ? 0 : AP.MF->getFunction()->getParent());
-    report_fatal_error(OS.str());
-  }
 }
 
 static void EmitGlobalConstantStruct(const ConstantStruct *CS,
@@ -1814,12 +1861,6 @@ static void EmitGlobalConstantImpl(const Constant *CV, unsigned AddrSpace,
     }
   }
 
-  if (const ConstantArray *CVA = dyn_cast<ConstantArray>(CV))
-    return EmitGlobalConstantArray(CVA, AddrSpace, AP);
-
-  if (const ConstantStruct *CVS = dyn_cast<ConstantStruct>(CV))
-    return EmitGlobalConstantStruct(CVS, AddrSpace, AP);
-
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(CV))
     return EmitGlobalConstantFP(CFP, AddrSpace, AP);
 
@@ -1829,9 +1870,24 @@ static void EmitGlobalConstantImpl(const Constant *CV, unsigned AddrSpace,
     return;
   }
 
-  if (CV->getType()->isVectorTy())
-    return LowerVectorConstant(CV, AddrSpace, AP);
+  if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(CV))
+    return EmitGlobalConstantDataSequential(CDS, AddrSpace, AP);
+  
+  if (const ConstantArray *CVA = dyn_cast<ConstantArray>(CV))
+    return EmitGlobalConstantArray(CVA, AddrSpace, AP);
 
+  if (const ConstantStruct *CVS = dyn_cast<ConstantStruct>(CV))
+    return EmitGlobalConstantStruct(CVS, AddrSpace, AP);
+
+  // Look through bitcasts, which might not be able to be MCExpr'ized (e.g. of
+  // vectors).
+  if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV))
+    if (CE->getOpcode() == Instruction::BitCast)
+      return EmitGlobalConstantImpl(CE->getOperand(0), AddrSpace, AP);
+  
+  if (const ConstantVector *V = dyn_cast<ConstantVector>(CV))
+    return EmitGlobalConstantVector(V, AddrSpace, AP);
+    
   // Otherwise, it must be a ConstantExpr.  Lower it to an MCExpr, then emit it
   // thread the streamer with EmitValue.
   AP.OutStreamer.EmitValue(LowerConstant(CV, AP),
@@ -2140,5 +2196,4 @@ GCMetadataPrinter *AsmPrinter::GetOrCreateGCPrinter(GCStrategy *S) {
     }
 
   report_fatal_error("no GCMetadataPrinter registered for GC: " + Twine(Name));
-  return 0;
 }

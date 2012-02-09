@@ -42,7 +42,7 @@ Parser::Parser(Preprocessor &pp, Sema &actions)
   Actions.CurScope = 0;
   NumCachedScopes = 0;
   ParenCount = BracketCount = BraceCount = 0;
-  ObjCImpDecl = 0;
+  CurParsedObjCImpl = 0;
 
   // Add #pragma handlers. These are removed and destroyed in the
   // destructor.
@@ -373,8 +373,6 @@ Parser::~Parser() {
       it != LateParsedTemplateMap.end(); ++it)
     delete it->second;
 
-  clearLateParsedObjCMethods();
-
   // Remove the pragma handlers we installed.
   PP.RemovePragmaHandler(AlignHandler.get());
   AlignHandler.reset();
@@ -549,6 +547,9 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
 
   Decl *SingleDecl = 0;
   switch (Tok.getKind()) {
+  case tok::annot_pragma_vis:
+    HandlePragmaVisibility();
+    return DeclGroupPtrTy();
   case tok::semi:
     Diag(Tok, getLang().CPlusPlus0x ?
          diag::warn_cxx98_compat_top_level_semi : diag::ext_top_level_semi)
@@ -558,7 +559,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     // TODO: Invoke action for top-level semicolon.
     return DeclGroupPtrTy();
   case tok::r_brace:
-    Diag(Tok, diag::err_expected_external_declaration);
+    Diag(Tok, diag::err_extraneous_closing_brace);
     ConsumeBrace();
     return DeclGroupPtrTy();
   case tok::eof:
@@ -587,7 +588,6 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
   }
   case tok::at:
     return ParseObjCAtDirectives();
-    break;
   case tok::minus:
   case tok::plus:
     if (!getLang().ObjC1) {
@@ -599,7 +599,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     break;
   case tok::code_completion:
       Actions.CodeCompleteOrdinaryName(getCurScope(), 
-                                   ObjCImpDecl? Sema::PCC_ObjCImplementation
+                             CurParsedObjCImpl? Sema::PCC_ObjCImplementation
                                               : Sema::PCC_Namespace);
     cutOffParsing();
     return DeclGroupPtrTy();
@@ -1244,13 +1244,13 @@ bool Parser::TryAnnotateTypeOrScopeToken(bool EnteringContext, bool NeedType) {
       ASTTemplateArgsPtr TemplateArgsPtr(Actions,
                                          TemplateId->getTemplateArgs(),
                                          TemplateId->NumArgs);
-      
+
       Ty = Actions.ActOnTypenameType(getCurScope(), TypenameLoc, SS,
-                                     /*FIXME:*/SourceLocation(),
+                                     TemplateId->TemplateKWLoc,
                                      TemplateId->Template,
                                      TemplateId->TemplateNameLoc,
                                      TemplateId->LAngleLoc,
-                                     TemplateArgsPtr, 
+                                     TemplateArgsPtr,
                                      TemplateId->RAngleLoc);
     } else {
       Diag(Tok, diag::err_expected_type_name_after_typename)
@@ -1283,6 +1283,7 @@ bool Parser::TryAnnotateTypeOrScopeToken(bool EnteringContext, bool NeedType) {
                                             &SS, false, 
                                             NextToken().is(tok::period),
                                             ParsedType(),
+                                            /*IsCtorOrDtorName=*/false,
                                             /*NonTrivialTypeSourceInfo*/true,
                                             NeedType ? &CorrectedII : NULL)) {
       // A FixIt was applied as a result of typo correction
@@ -1323,7 +1324,8 @@ bool Parser::TryAnnotateTypeOrScopeToken(bool EnteringContext, bool NeedType) {
                                    Template, MemberOfUnknownSpecialization)) {
         // Consume the identifier.
         ConsumeToken();
-        if (AnnotateTemplateIdToken(Template, TNK, SS, TemplateName)) {
+        if (AnnotateTemplateIdToken(Template, TNK, SS, SourceLocation(),
+                                    TemplateName)) {
           // If an unrecoverable error occurred, we need to return true here,
           // because the token stream is in a damaged state.  We may not return
           // a valid identifier.
@@ -1408,18 +1410,31 @@ bool Parser::TryAnnotateCXXScopeToken(bool EnteringContext) {
   return false;
 }
 
-bool Parser::isTokenEqualOrMistypedEqualEqual(unsigned DiagID) {
-  if (Tok.is(tok::equalequal)) {
-    // We have '==' in a context that we would expect a '='.
-    // The user probably made a typo, intending to type '='. Emit diagnostic,
-    // fixit hint to turn '==' -> '=' and continue as if the user typed '='.
-    Diag(Tok, DiagID)
-      << FixItHint::CreateReplacement(SourceRange(Tok.getLocation()),
-                                      getTokenSimpleSpelling(tok::equal));
+bool Parser::isTokenEqualOrEqualTypo() {
+  tok::TokenKind Kind = Tok.getKind();
+  switch (Kind) {
+  default:
+    return false;
+  case tok::ampequal:            // &=
+  case tok::starequal:           // *=
+  case tok::plusequal:           // +=
+  case tok::minusequal:          // -=
+  case tok::exclaimequal:        // !=
+  case tok::slashequal:          // /=
+  case tok::percentequal:        // %=
+  case tok::lessequal:           // <=
+  case tok::lesslessequal:       // <<=
+  case tok::greaterequal:        // >=
+  case tok::greatergreaterequal: // >>=
+  case tok::caretequal:          // ^=
+  case tok::pipeequal:           // |=
+  case tok::equalequal:          // ==
+    Diag(Tok, diag::err_invalid_token_after_declarator_suggest_equal)
+      << getTokenSimpleSpelling(Kind)
+      << FixItHint::CreateReplacement(SourceRange(Tok.getLocation()), "=");
+  case tok::equal:
     return true;
   }
-
-  return Tok.is(tok::equal);
 }
 
 SourceLocation Parser::handleUnexpectedCodeCompletionToken() {
@@ -1504,9 +1519,10 @@ bool Parser::ParseMicrosoftIfExistsCondition(IfExistsCondition& Result) {
     return true;
   }
 
-  // Parse the unqualified-id. 
-  if (ParseUnqualifiedId(Result.SS, false, true, true, ParsedType(), 
-                         Result.Name)) {
+  // Parse the unqualified-id.
+  SourceLocation TemplateKWLoc; // FIXME: parsed, but unused.
+  if (ParseUnqualifiedId(Result.SS, false, true, true, ParsedType(),
+                         TemplateKWLoc, Result.Name)) {
     T.skipToEnd();
     return true;
   }
@@ -1583,6 +1599,13 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
   // Parse the module path.
   do {
     if (!Tok.is(tok::identifier)) {
+      if (Tok.is(tok::code_completion)) {
+        Actions.CodeCompleteModuleImport(ImportLoc, Path);
+        ConsumeCodeCompletionToken();
+        SkipUntil(tok::semi);
+        return DeclGroupPtrTy();
+      }
+      
       Diag(Tok, diag::err_module_expected_ident);
       SkipUntil(tok::semi);
       return DeclGroupPtrTy();

@@ -42,7 +42,7 @@ namespace CodeGen {
 class CGCXXABI {
 protected:
   CodeGenModule &CGM;
-  llvm::OwningPtr<MangleContext> MangleCtx;
+  OwningPtr<MangleContext> MangleCtx;
 
   CGCXXABI(CodeGenModule &CGM)
     : CGM(CGM), MangleCtx(CGM.getContext().createMangleContext()) {}
@@ -106,11 +106,6 @@ public:
                                                    const CastExpr *E,
                                                    llvm::Value *Src);
 
-  /// Perform a derived-to-base or base-to-derived member pointer
-  /// conversion on a constant member pointer.
-  virtual llvm::Constant *EmitMemberPointerConversion(llvm::Constant *C,
-                                                      const CastExpr *E);
-
   /// Return true if the given member pointer can be zero-initialized
   /// (in the C++ sense) with an LLVM zeroinitializer.
   virtual bool isZeroInitializable(const MemberPointerType *MPT);
@@ -124,6 +119,9 @@ public:
   /// Create a member pointer for the given field.
   virtual llvm::Constant *EmitMemberDataPointer(const MemberPointerType *MPT,
                                                 CharUnits offset);
+
+  /// Create a member pointer for the given member pointer constant.
+  virtual llvm::Constant *EmitMemberPointer(const APValue &MP, QualType MPT);
 
   /// Emit a comparison between two member pointers.  Returns an i1.
   virtual llvm::Value *

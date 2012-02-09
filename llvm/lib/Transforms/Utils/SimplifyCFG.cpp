@@ -67,9 +67,8 @@ class SimplifyCFGOpt {
   bool FoldValueComparisonIntoPredecessors(TerminatorInst *TI,
                                            IRBuilder<> &Builder);
 
-  bool SimplifyResume(ResumeInst *RI, IRBuilder<> &Builder);
   bool SimplifyReturn(ReturnInst *RI, IRBuilder<> &Builder);
-  bool SimplifyUnwind(UnwindInst *UI, IRBuilder<> &Builder);
+  bool SimplifyResume(ResumeInst *RI, IRBuilder<> &Builder);
   bool SimplifyUnreachable(UnreachableInst *UI);
   bool SimplifySwitch(SwitchInst *SI, IRBuilder<> &Builder);
   bool SimplifyIndirectBr(IndirectBrInst *IBI);
@@ -377,9 +376,7 @@ GatherConstantCompares(Value *V, std::vector<ConstantInt*> &Vals, Value *&Extra,
         Span = Span.inverse();
       
       // If there are a ton of values, we don't want to make a ginormous switch.
-      if (Span.getSetSize().ugt(8) || Span.isEmptySet() ||
-          // We don't handle wrapped sets yet.
-          Span.isWrappedSet())
+      if (Span.getSetSize().ugt(8) || Span.isEmptySet())
         return 0;
       
       for (APInt Tmp = Span.getLower(); Tmp != Span.getUpper(); ++Tmp)
@@ -483,8 +480,9 @@ GetValueEqualityComparisonCases(TerminatorInst *TI,
                                                       BasicBlock*> > &Cases) {
   if (SwitchInst *SI = dyn_cast<SwitchInst>(TI)) {
     Cases.reserve(SI->getNumCases());
-    for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i)
-      Cases.push_back(std::make_pair(SI->getCaseValue(i), SI->getSuccessor(i)));
+    for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i)
+      Cases.push_back(std::make_pair(SI->getCaseValue(i),
+                                     SI->getCaseSuccessor(i)));
     return SI->getDefaultDest();
   }
 
@@ -607,11 +605,13 @@ SimplifyEqualityComparisonWithOnlyPredecessor(TerminatorInst *TI,
     DEBUG(dbgs() << "Threading pred instr: " << *Pred->getTerminator()
                  << "Through successor TI: " << *TI);
 
-    for (unsigned i = SI->getNumCases()-1; i != 0; --i)
+    for (unsigned i = SI->getNumCases(); i != 0;) {
+      --i;
       if (DeadCases.count(SI->getCaseValue(i))) {
-        SI->getSuccessor(i)->removePredecessor(TI->getParent());
+        SI->getCaseSuccessor(i)->removePredecessor(TI->getParent());
         SI->removeCase(i);
       }
+    }
 
     DEBUG(dbgs() << "Leaving: " << *TI << "\n");
     return true;
@@ -1468,6 +1468,29 @@ static bool ExtractBranchMetadata(BranchInst *BI,
   return true;
 }
 
+/// MultiplyAndLosePrecision - Multiplies A and B, then returns the result. In
+/// the event of overflow, logically-shifts all four inputs right until the
+/// multiply fits.
+static APInt MultiplyAndLosePrecision(APInt &A, APInt &B, APInt &C, APInt &D,
+                                      unsigned &BitsLost) {
+  BitsLost = 0;
+  bool Overflow = false;
+  APInt Result = A.umul_ov(B, Overflow);
+  if (Overflow) {
+    APInt MaxB = APInt::getMaxValue(A.getBitWidth()).udiv(A);
+    do {
+      B = B.lshr(1);
+      ++BitsLost;
+    } while (B.ugt(MaxB));
+    A = A.lshr(BitsLost);
+    C = C.lshr(BitsLost);
+    D = D.lshr(BitsLost);
+    Result = A * B;
+  }
+  return Result;
+}
+
+
 /// FoldBranchToCommonDest - If this basic block is simple enough, and if a
 /// predecessor branches to us and one of our successors, fold the block into
 /// the predecessor and use logical operations to pick the right destination.
@@ -1667,32 +1690,64 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI) {
       // we get:
       // (a*c)% = A*C, (b+(a*d))% = A*D+B*C+B*D.
 
-      bool Overflow1 = false, Overflow2 = false, Overflow3 = false;
-      bool Overflow4 = false, Overflow5 = false, Overflow6 = false;
-      APInt ProbTrue = A.umul_ov(C, Overflow1);
+      // In the event of overflow, we want to drop the LSB of the input
+      // probabilities.
+      unsigned BitsLost;
 
-      APInt Tmp1 = A.umul_ov(D, Overflow2);
-      APInt Tmp2 = B.umul_ov(C, Overflow3);
-      APInt Tmp3 = B.umul_ov(D, Overflow4);
-      APInt Tmp4 = Tmp1.uadd_ov(Tmp2, Overflow5);
-      APInt ProbFalse = Tmp4.uadd_ov(Tmp3, Overflow6);
+      // Ignore overflow result on ProbTrue.
+      APInt ProbTrue = MultiplyAndLosePrecision(A, C, B, D, BitsLost);
 
-      APInt GCD = APIntOps::GreatestCommonDivisor(ProbTrue, ProbFalse);
-      ProbTrue = ProbTrue.udiv(GCD);
-      ProbFalse = ProbFalse.udiv(GCD);
+      APInt Tmp1 = MultiplyAndLosePrecision(B, D, A, C, BitsLost);
+      if (BitsLost) {
+        ProbTrue = ProbTrue.lshr(BitsLost*2);
+      }
 
-      if (Overflow1 || Overflow2 || Overflow3 || Overflow4 || Overflow5 ||
-          Overflow6) {
-        DEBUG(dbgs() << "Overflow recomputing branch weight on: " << *PBI
-                     << "when merging with: " << *BI);
-        PBI->setMetadata(LLVMContext::MD_prof, NULL);
-      } else {
+      APInt Tmp2 = MultiplyAndLosePrecision(A, D, C, B, BitsLost);
+      if (BitsLost) {
+        ProbTrue = ProbTrue.lshr(BitsLost*2);
+        Tmp1 = Tmp1.lshr(BitsLost*2);
+      }
+
+      APInt Tmp3 = MultiplyAndLosePrecision(B, C, A, D, BitsLost);
+      if (BitsLost) {
+        ProbTrue = ProbTrue.lshr(BitsLost*2);
+        Tmp1 = Tmp1.lshr(BitsLost*2);
+        Tmp2 = Tmp2.lshr(BitsLost*2);
+      }
+
+      bool Overflow1 = false, Overflow2 = false;
+      APInt Tmp4 = Tmp2.uadd_ov(Tmp3, Overflow1);
+      APInt ProbFalse = Tmp4.uadd_ov(Tmp1, Overflow2);
+
+      if (Overflow1 || Overflow2) {
+        ProbTrue = ProbTrue.lshr(1);
+        Tmp1 = Tmp1.lshr(1);
+        Tmp2 = Tmp2.lshr(1);
+        Tmp3 = Tmp3.lshr(1);
+        Tmp4 = Tmp2 + Tmp3;
+        ProbFalse = Tmp4 + Tmp1;
+      }
+
+      // The sum of branch weights must fit in 32-bits.
+      if (ProbTrue.isNegative() && ProbFalse.isNegative()) {
+        ProbTrue = ProbTrue.lshr(1);
+        ProbFalse = ProbFalse.lshr(1);
+      }
+
+      if (ProbTrue != ProbFalse) {
+        // Normalize the result.
+        APInt GCD = APIntOps::GreatestCommonDivisor(ProbTrue, ProbFalse);
+        ProbTrue = ProbTrue.udiv(GCD);
+        ProbFalse = ProbFalse.udiv(GCD);
+
         LLVMContext &Context = BI->getContext();
         Value *Ops[3];
         Ops[0] = BI->getMetadata(LLVMContext::MD_prof)->getOperand(0);
         Ops[1] = ConstantInt::get(Context, ProbTrue);
         Ops[2] = ConstantInt::get(Context, ProbFalse);
         PBI->setMetadata(LLVMContext::MD_prof, MDNode::get(Context, Ops));
+      } else {
+        PBI->setMetadata(LLVMContext::MD_prof, NULL);
       }
     } else {
       PBI->setMetadata(LLVMContext::MD_prof, NULL);
@@ -1954,8 +2009,10 @@ static bool SimplifySwitchOnSelect(SwitchInst *SI, SelectInst *Select) {
 
   // Find the relevant condition and destinations.
   Value *Condition = Select->getCondition();
-  BasicBlock *TrueBB = SI->getSuccessor(SI->findCaseValue(TrueVal));
-  BasicBlock *FalseBB = SI->getSuccessor(SI->findCaseValue(FalseVal));
+  unsigned TrueCase = SI->findCaseValue(TrueVal);
+  unsigned FalseCase = SI->findCaseValue(FalseVal);
+  BasicBlock *TrueBB = SI->getSuccessor(SI->resolveSuccessorIndex(TrueCase));
+  BasicBlock *FalseBB = SI->getSuccessor(SI->resolveSuccessorIndex(FalseCase));
 
   // Perform the actual simplification.
   return SimplifyTerminatorOnSelect(SI, Condition, TrueBB, FalseBB);
@@ -2039,7 +2096,7 @@ static bool TryToSimplifyUncondBranchWithICmpInIt(ICmpInst *ICI,
   // Ok, the block is reachable from the default dest.  If the constant we're
   // comparing exists in one of the other edges, then we can constant fold ICI
   // and zap it.
-  if (SI->findCaseValue(Cst) != 0) {
+  if (SI->findCaseValue(Cst) != SwitchInst::ErrorIndex) {
     Value *V;
     if (ICI->getPredicate() == ICmpInst::ICMP_EQ)
       V = ConstantInt::getFalse(BB->getContext());
@@ -2295,52 +2352,6 @@ bool SimplifyCFGOpt::SimplifyReturn(ReturnInst *RI, IRBuilder<> &Builder) {
   return false;
 }
 
-bool SimplifyCFGOpt::SimplifyUnwind(UnwindInst *UI, IRBuilder<> &Builder) {
-  // Check to see if the first instruction in this block is just an unwind.
-  // If so, replace any invoke instructions which use this as an exception
-  // destination with call instructions.
-  BasicBlock *BB = UI->getParent();
-  if (!BB->getFirstNonPHIOrDbg()->isTerminator()) return false;
-
-  bool Changed = false;
-  SmallVector<BasicBlock*, 8> Preds(pred_begin(BB), pred_end(BB));
-  while (!Preds.empty()) {
-    BasicBlock *Pred = Preds.back();
-    InvokeInst *II = dyn_cast<InvokeInst>(Pred->getTerminator());
-    if (II && II->getUnwindDest() == BB) {
-      // Insert a new branch instruction before the invoke, because this
-      // is now a fall through.
-      Builder.SetInsertPoint(II);
-      BranchInst *BI = Builder.CreateBr(II->getNormalDest());
-      Pred->getInstList().remove(II);   // Take out of symbol table
-      
-      // Insert the call now.
-      SmallVector<Value*,8> Args(II->op_begin(), II->op_end()-3);
-      Builder.SetInsertPoint(BI);
-      CallInst *CI = Builder.CreateCall(II->getCalledValue(),
-                                        Args, II->getName());
-      CI->setCallingConv(II->getCallingConv());
-      CI->setAttributes(II->getAttributes());
-      // If the invoke produced a value, the Call now does instead.
-      II->replaceAllUsesWith(CI);
-      delete II;
-      Changed = true;
-    }
-    
-    Preds.pop_back();
-  }
-  
-  // If this block is now dead (and isn't the entry block), remove it.
-  if (pred_begin(BB) == pred_end(BB) &&
-      BB != &BB->getParent()->getEntryBlock()) {
-    // We know there are no successors, so just nuke the block.
-    BB->eraseFromParent();
-    return true;
-  }
-  
-  return Changed;  
-}
-
 bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
   BasicBlock *BB = UI->getParent();
   
@@ -2412,8 +2423,8 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
         }
       }
     } else if (SwitchInst *SI = dyn_cast<SwitchInst>(TI)) {
-      for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i)
-        if (SI->getSuccessor(i) == BB) {
+      for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i)
+        if (SI->getCaseSuccessor(i) == BB) {
           BB->removePredecessor(SI->getParent());
           SI->removeCase(i);
           --i; --e;
@@ -2421,11 +2432,11 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
         }
       // If the default value is unreachable, figure out the most popular
       // destination and make it the default.
-      if (SI->getSuccessor(0) == BB) {
+      if (SI->getDefaultDest() == BB) {
         std::map<BasicBlock*, std::pair<unsigned, unsigned> > Popularity;
-        for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i) {
+        for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i) {
           std::pair<unsigned, unsigned> &entry =
-              Popularity[SI->getSuccessor(i)];
+              Popularity[SI->getCaseSuccessor(i)];
           if (entry.first == 0) {
             entry.first = 1;
             entry.second = i;
@@ -2450,7 +2461,7 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
         if (MaxBlock) {
           // Make this the new default, allowing us to delete any explicit
           // edges to it.
-          SI->setSuccessor(0, MaxBlock);
+          SI->setDefaultDest(MaxBlock);
           Changed = true;
           
           // If MaxBlock has phinodes in it, remove MaxPop-1 entries from
@@ -2459,8 +2470,8 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
             for (unsigned i = 0; i != MaxPop-1; ++i)
               MaxBlock->removePredecessor(SI->getParent());
           
-          for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i)
-            if (SI->getSuccessor(i) == MaxBlock) {
+          for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i)
+            if (SI->getCaseSuccessor(i) == MaxBlock) {
               SI->removeCase(i);
               --i; --e;
             }
@@ -2502,17 +2513,17 @@ bool SimplifyCFGOpt::SimplifyUnreachable(UnreachableInst *UI) {
 /// TurnSwitchRangeIntoICmp - Turns a switch with that contains only a
 /// integer range comparison into a sub, an icmp and a branch.
 static bool TurnSwitchRangeIntoICmp(SwitchInst *SI, IRBuilder<> &Builder) {
-  assert(SI->getNumCases() > 2 && "Degenerate switch?");
+  assert(SI->getNumCases() > 1 && "Degenerate switch?");
 
   // Make sure all cases point to the same destination and gather the values.
   SmallVector<ConstantInt *, 16> Cases;
-  Cases.push_back(SI->getCaseValue(1));
-  for (unsigned I = 2, E = SI->getNumCases(); I != E; ++I) {
-    if (SI->getSuccessor(I-1) != SI->getSuccessor(I))
+  Cases.push_back(SI->getCaseValue(0));
+  for (unsigned I = 1, E = SI->getNumCases(); I != E; ++I) {
+    if (SI->getCaseSuccessor(I-1) != SI->getCaseSuccessor(I))
       return false;
     Cases.push_back(SI->getCaseValue(I));
   }
-  assert(Cases.size() == SI->getNumCases()-1 && "Not all cases gathered");
+  assert(Cases.size() == SI->getNumCases() && "Not all cases gathered");
 
   // Sort the case values, then check if they form a range we can transform.
   array_pod_sort(Cases.begin(), Cases.end(), ConstantIntSortPredicate);
@@ -2522,18 +2533,18 @@ static bool TurnSwitchRangeIntoICmp(SwitchInst *SI, IRBuilder<> &Builder) {
   }
 
   Constant *Offset = ConstantExpr::getNeg(Cases.back());
-  Constant *NumCases = ConstantInt::get(Offset->getType(), SI->getNumCases()-1);
+  Constant *NumCases = ConstantInt::get(Offset->getType(), SI->getNumCases());
 
   Value *Sub = SI->getCondition();
   if (!Offset->isNullValue())
     Sub = Builder.CreateAdd(Sub, Offset, Sub->getName()+".off");
   Value *Cmp = Builder.CreateICmpULT(Sub, NumCases, "switch");
-  Builder.CreateCondBr(Cmp, SI->getSuccessor(1), SI->getDefaultDest());
+  Builder.CreateCondBr(Cmp, SI->getCaseSuccessor(0), SI->getDefaultDest());
 
   // Prune obsolete incoming values off the successor's PHI nodes.
-  for (BasicBlock::iterator BBI = SI->getSuccessor(1)->begin();
+  for (BasicBlock::iterator BBI = SI->getCaseSuccessor(0)->begin();
        isa<PHINode>(BBI); ++BBI) {
-    for (unsigned I = 0, E = SI->getNumCases()-2; I != E; ++I)
+    for (unsigned I = 0, E = SI->getNumCases()-1; I != E; ++I)
       cast<PHINode>(BBI)->removeIncomingValue(SI->getParent());
   }
   SI->eraseFromParent();
@@ -2551,7 +2562,7 @@ static bool EliminateDeadSwitchCases(SwitchInst *SI) {
 
   // Gather dead cases.
   SmallVector<ConstantInt*, 8> DeadCases;
-  for (unsigned I = 1, E = SI->getNumCases(); I != E; ++I) {
+  for (unsigned I = 0, E = SI->getNumCases(); I != E; ++I) {
     if ((SI->getCaseValue(I)->getValue() & KnownZero) != 0 ||
         (SI->getCaseValue(I)->getValue() & KnownOne) != KnownOne) {
       DeadCases.push_back(SI->getCaseValue(I));
@@ -2563,8 +2574,10 @@ static bool EliminateDeadSwitchCases(SwitchInst *SI) {
   // Remove dead cases from the switch.
   for (unsigned I = 0, E = DeadCases.size(); I != E; ++I) {
     unsigned Case = SI->findCaseValue(DeadCases[I]);
+    assert(Case != SwitchInst::ErrorIndex &&
+           "Case was not found. Probably mistake in DeadCases forming.");
     // Prune unused values from PHI nodes.
-    SI->getSuccessor(Case)->removePredecessor(SI->getParent());
+    SI->getCaseSuccessor(Case)->removePredecessor(SI->getParent());
     SI->removeCase(Case);
   }
 
@@ -2613,9 +2626,9 @@ static bool ForwardSwitchConditionToPHI(SwitchInst *SI) {
   typedef DenseMap<PHINode*, SmallVector<int,4> > ForwardingNodesMap;
   ForwardingNodesMap ForwardingNodes;
 
-  for (unsigned I = 1; I < SI->getNumCases(); ++I) { // 0 is the default case.
+  for (unsigned I = 0; I < SI->getNumCases(); ++I) { // 0 is the default case.
     ConstantInt *CaseValue = SI->getCaseValue(I);
-    BasicBlock *CaseDest = SI->getSuccessor(I);
+    BasicBlock *CaseDest = SI->getCaseSuccessor(I);
 
     int PhiIndex;
     PHINode *PHI = FindPHIForConditionForwarding(CaseValue, CaseDest,
@@ -2943,17 +2956,15 @@ bool SimplifyCFGOpt::run(BasicBlock *BB) {
     } else {
       if (SimplifyCondBranch(BI, Builder)) return true;
     }
-  } else if (ResumeInst *RI = dyn_cast<ResumeInst>(BB->getTerminator())) {
-    if (SimplifyResume(RI, Builder)) return true;
   } else if (ReturnInst *RI = dyn_cast<ReturnInst>(BB->getTerminator())) {
     if (SimplifyReturn(RI, Builder)) return true;
+  } else if (ResumeInst *RI = dyn_cast<ResumeInst>(BB->getTerminator())) {
+    if (SimplifyResume(RI, Builder)) return true;
   } else if (SwitchInst *SI = dyn_cast<SwitchInst>(BB->getTerminator())) {
     if (SimplifySwitch(SI, Builder)) return true;
   } else if (UnreachableInst *UI =
                dyn_cast<UnreachableInst>(BB->getTerminator())) {
     if (SimplifyUnreachable(UI)) return true;
-  } else if (UnwindInst *UI = dyn_cast<UnwindInst>(BB->getTerminator())) {
-    if (SimplifyUnwind(UI, Builder)) return true;
   } else if (IndirectBrInst *IBI =
                dyn_cast<IndirectBrInst>(BB->getTerminator())) {
     if (SimplifyIndirectBr(IBI)) return true;

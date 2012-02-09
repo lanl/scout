@@ -1318,7 +1318,7 @@ static bool isLegalUse(const TargetLowering::AddrMode &AM,
     return AM.Scale == 0 || AM.Scale == -1;
   }
 
-  return false;
+  llvm_unreachable("Invalid LSRUse Kind!");
 }
 
 static bool isLegalUse(TargetLowering::AddrMode AM,
@@ -1573,9 +1573,11 @@ class LSRInstance {
   BasicBlock::iterator
     HoistInsertPosition(BasicBlock::iterator IP,
                         const SmallVectorImpl<Instruction *> &Inputs) const;
-  BasicBlock::iterator AdjustInsertPositionForExpand(BasicBlock::iterator IP,
-                                                     const LSRFixup &LF,
-                                                     const LSRUse &LU) const;
+  BasicBlock::iterator
+    AdjustInsertPositionForExpand(BasicBlock::iterator IP,
+                                  const LSRFixup &LF,
+                                  const LSRUse &LU,
+                                  SCEVExpander &Rewriter) const;
 
   Value *Expand(const LSRFixup &LF,
                 const Formula &F,
@@ -2482,11 +2484,15 @@ void LSRInstance::ChainInstruction(Instruction *UserInst, Instruction *IVOper,
       DEBUG(dbgs() << "IV Chain Limit\n");
       return;
     }
+    LastIncExpr = SE.getSCEV(NextIV);
+    // IVUsers may have skipped over sign/zero extensions. We don't currently
+    // attempt to form chains involving extensions unless they can be hoisted
+    // into this loop's AddRec.
+    if (!isa<SCEVAddRecExpr>(LastIncExpr))
+      return;
     ++NChains;
     IVChainVec.resize(NChains);
     ChainUsersVec.resize(NChains);
-    LastIncExpr = SE.getSCEV(NextIV);
-    assert(isa<SCEVAddRecExpr>(LastIncExpr) && "expect recurrence at IV user");
     DEBUG(dbgs() << "IV Head: (" << *UserInst << ") IV=" << *LastIncExpr
           << "\n");
   }
@@ -4131,9 +4137,10 @@ LSRInstance::HoistInsertPosition(BasicBlock::iterator IP,
 /// AdjustInsertPositionForExpand - Determine an input position which will be
 /// dominated by the operands and which will dominate the result.
 BasicBlock::iterator
-LSRInstance::AdjustInsertPositionForExpand(BasicBlock::iterator IP,
+LSRInstance::AdjustInsertPositionForExpand(BasicBlock::iterator LowestIP,
                                            const LSRFixup &LF,
-                                           const LSRUse &LU) const {
+                                           const LSRUse &LU,
+                                           SCEVExpander &Rewriter) const {
   // Collect some instructions which must be dominated by the
   // expanding replacement. These must be dominated by any operands that
   // will be required in the expansion.
@@ -4168,9 +4175,13 @@ LSRInstance::AdjustInsertPositionForExpand(BasicBlock::iterator IP,
     }
   }
 
+  assert(!isa<PHINode>(LowestIP) && !isa<LandingPadInst>(LowestIP)
+         && !isa<DbgInfoIntrinsic>(LowestIP) &&
+         "Insertion point must be a normal instruction");
+
   // Then, climb up the immediate dominator tree as far as we can go while
   // still being dominated by the input positions.
-  IP = HoistInsertPosition(IP, Inputs);
+  BasicBlock::iterator IP = HoistInsertPosition(LowestIP, Inputs);
 
   // Don't insert instructions before PHI nodes.
   while (isa<PHINode>(IP)) ++IP;
@@ -4180,6 +4191,11 @@ LSRInstance::AdjustInsertPositionForExpand(BasicBlock::iterator IP,
 
   // Ignore debug intrinsics.
   while (isa<DbgInfoIntrinsic>(IP)) ++IP;
+
+  // Set IP below instructions recently inserted by SCEVExpander. This keeps the
+  // IP consistent across expansions and allows the previously inserted
+  // instructions to be reused by subsequent expansion.
+  while (Rewriter.isInsertedInstruction(IP) && IP != LowestIP) ++IP;
 
   return IP;
 }
@@ -4195,7 +4211,7 @@ Value *LSRInstance::Expand(const LSRFixup &LF,
 
   // Determine an input position which will be dominated by the operands and
   // which will dominate the result.
-  IP = AdjustInsertPositionForExpand(IP, LF, LU);
+  IP = AdjustInsertPositionForExpand(IP, LF, LU, Rewriter);
 
   // Inform the Rewriter if we have a post-increment use, so that it can
   // perform an advantageous expansion.
@@ -4518,11 +4534,19 @@ LSRInstance::LSRInstance(const TargetLowering *tli, Loop *l, Pass *P)
   if (!L->isLoopSimplifyForm())
     return;
 
-  // All outer loops must have preheaders, or SCEVExpander may not be able to
-  // materialize an AddRecExpr whose Start is an outer AddRecExpr.
-  for (const Loop *OuterLoop = L; (OuterLoop = OuterLoop->getParentLoop());) {
-    if (!OuterLoop->getLoopPreheader())
-      return;
+  // All dominating loops must have preheaders, or SCEVExpander may not be able
+  // to materialize an AddRecExpr whose Start is an outer AddRecExpr.
+  //
+  // FIXME: This is a little absurd. I think LoopSimplify should be taught
+  // to create a preheader under any circumstance.
+  for (DomTreeNode *Rung = DT.getNode(L->getLoopPreheader());
+       Rung; Rung = Rung->getIDom()) {
+    BasicBlock *BB = Rung->getBlock();
+    const Loop *DomLoop = LI.getLoopFor(BB);
+    if (DomLoop && DomLoop->getHeader() == BB) {
+      if (!DomLoop->getLoopPreheader())
+        return;
+    }
   }
   // If there's no interesting work to be done, bail early.
   if (IU.empty()) return;

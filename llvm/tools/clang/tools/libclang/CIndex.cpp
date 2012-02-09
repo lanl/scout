@@ -181,7 +181,7 @@ bool CursorVisitor::Visit(CXCursor Cursor, bool CheckedRegionOfInterest) {
     return VisitChildren(Cursor);
   }
 
-  return false;
+  llvm_unreachable("Invalid CXChildVisitResult!");
 }
 
 static bool visitPreprocessedEntitiesInRange(SourceRange R,
@@ -560,6 +560,20 @@ bool CursorVisitor::VisitDeclContext(DeclContext *DC) {
     if (D->getLexicalDeclContext() != DC)
       continue;
     CXCursor Cursor = MakeCXCursor(D, TU, RegionOfInterest);
+
+    // FIXME: ObjCClassRef/ObjCProtocolRef for forward class/protocol
+    // declarations is a mismatch with the compiler semantics.
+    if (Cursor.kind == CXCursor_ObjCInterfaceDecl) {
+      ObjCInterfaceDecl *ID = cast<ObjCInterfaceDecl>(D);
+      if (!ID->isThisDeclarationADefinition())
+        Cursor = MakeCursorObjCClassRef(ID, ID->getLocation(), TU);
+
+    } else if (Cursor.kind == CXCursor_ObjCProtocolDecl) {
+      ObjCProtocolDecl *PD = cast<ObjCProtocolDecl>(D);
+      if (!PD->isThisDeclarationADefinition())
+        Cursor = MakeCursorObjCProtocolRef(PD, PD->getLocation(), TU);
+    }
+
     const llvm::Optional<bool> &V = shouldVisitCursor(Cursor);
     if (!V.hasValue())
       continue;
@@ -573,7 +587,6 @@ bool CursorVisitor::VisitDeclContext(DeclContext *DC) {
 
 bool CursorVisitor::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
   llvm_unreachable("Translation units are visited directly by Visit()");
-  return false;
 }
 
 bool CursorVisitor::VisitTypeAliasDecl(TypeAliasDecl *D) {
@@ -1134,8 +1147,8 @@ bool CursorVisitor::VisitDeclarationNameInfo(DeclarationNameInfo Name) {
     // FIXME: Per-identifier location info?
     return false;
   }
-  
-  return false;
+
+  llvm_unreachable("Invalid DeclarationName::Kind!");
 }
 
 bool CursorVisitor::VisitNestedNameSpecifier(NestedNameSpecifier *NNS, 
@@ -1273,8 +1286,8 @@ bool CursorVisitor::VisitTemplateName(TemplateName Name, SourceLocation Loc) {
                   Name.getAsSubstTemplateTemplateParmPack()->getParameterPack(),
                                        Loc, TU));
   }
-                 
-  return false;
+
+  llvm_unreachable("Invalid TemplateName::Kind!");
 }
 
 bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
@@ -1307,8 +1320,8 @@ bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
     return VisitTemplateName(TAL.getArgument().getAsTemplateOrTemplatePattern(), 
                              TAL.getTemplateNameLoc());
   }
-  
-  return false;
+
+  llvm_unreachable("Invalid TemplateArgument::Kind!");
 }
 
 bool CursorVisitor::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
@@ -3057,7 +3070,7 @@ CXString clang_getCursorDisplayName(CXCursor C) {
   if (FunctionDecl *Function = dyn_cast<FunctionDecl>(D)) {
     llvm::SmallString<64> Str;
     llvm::raw_svector_ostream OS(Str);
-    OS << Function->getNameAsString();
+    OS << *Function;
     if (Function->getPrimaryTemplate())
       OS << "<>";
     OS << "(";
@@ -3079,7 +3092,7 @@ CXString clang_getCursorDisplayName(CXCursor C) {
   if (ClassTemplateDecl *ClassTemplate = dyn_cast<ClassTemplateDecl>(D)) {
     llvm::SmallString<64> Str;
     llvm::raw_svector_ostream OS(Str);
-    OS << ClassTemplate->getNameAsString();
+    OS << *ClassTemplate;
     OS << "<";
     TemplateParameterList *Params = ClassTemplate->getTemplateParameters();
     for (unsigned I = 0, N = Params->size(); I != N; ++I) {
@@ -3115,7 +3128,7 @@ CXString clang_getCursorDisplayName(CXCursor C) {
     
     llvm::SmallString<64> Str;
     llvm::raw_svector_ostream OS(Str);
-    OS << ClassSpec->getNameAsString();
+    OS << *ClassSpec;
     OS << TemplateSpecializationType::PrintTemplateArgumentList(
                                       ClassSpec->getTemplateArgs().data(),
                                       ClassSpec->getTemplateArgs().size(),
@@ -3413,7 +3426,6 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   }
 
   llvm_unreachable("Unhandled CXCursorKind");
-  return createCXString((const char*) 0);
 }
 
 struct GetCursorData {
@@ -3948,7 +3960,12 @@ CXCursor clang_getCursorReferenced(CXCursor C) {
       return MakeCXCursor(getCursorObjCSuperClassRef(C).first, tu);
 
     case CXCursor_ObjCProtocolRef: {
-      return MakeCXCursor(getCursorObjCProtocolRef(C).first, tu);
+      ObjCProtocolDecl *Prot = getCursorObjCProtocolRef(C).first;
+      if (ObjCProtocolDecl *Def = Prot->getDefinition())
+        return MakeCXCursor(Def, tu);
+
+      return MakeCXCursor(Prot, tu);
+    }
 
     case CXCursor_ObjCClassRef: {
       ObjCInterfaceDecl *Class = getCursorObjCClassRef(C).first;
@@ -3990,11 +4007,7 @@ CXCursor clang_getCursorReferenced(CXCursor C) {
     default:
       // We would prefer to enumerate all non-reference cursor kinds here.
       llvm_unreachable("Unhandled reference cursor kind");
-      break;
-    }
   }
-
-  return clang_getNullCursor();
 }
 
 CXCursor clang_getCursorDefinition(CXCursor C) {
@@ -4299,7 +4312,7 @@ CXSourceRange clang_getCursorReferenceNameRange(CXCursor C, unsigned NameFlags,
     if (DeclRefExpr *E = dyn_cast<DeclRefExpr>(getCursorExpr(C)))
       Pieces = buildPieces(NameFlags, false, E->getNameInfo(), 
                            E->getQualifierLoc().getSourceRange(),
-                           E->getExplicitTemplateArgsOpt());
+                           E->getOptionalExplicitTemplateArgs());
     break;
     
   case CXCursor_CallExpr:

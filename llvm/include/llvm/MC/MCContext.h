@@ -15,6 +15,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/raw_ostream.h"
 #include <vector> // FIXME: Shouldn't be needed.
 
@@ -43,6 +45,8 @@ namespace llvm {
   public:
     typedef StringMap<MCSymbol*, BumpPtrAllocator&> SymbolTable;
   private:
+    /// The SourceMgr for this object, if any.
+    const SourceMgr *SrcMgr;
 
     /// The MCAsmInfo for this target.
     const MCAsmInfo &MAI;
@@ -137,8 +141,10 @@ namespace llvm {
 
   public:
     explicit MCContext(const MCAsmInfo &MAI, const MCRegisterInfo &MRI,
-                       const MCObjectFileInfo *MOFI);
+                       const MCObjectFileInfo *MOFI, const SourceMgr *Mgr = 0);
     ~MCContext();
+
+    const SourceMgr *getSourceManager() const { return SrcMgr; }
 
     const MCAsmInfo &getAsmInfo() const { return MAI; }
 
@@ -315,6 +321,11 @@ namespace llvm {
     }
     void Deallocate(void *Ptr) {
     }
+
+    // Unrecoverable error has occured. Display the best diagnostic we can
+    // and bail via exit(1). For now, most MC backend errors are unrecoverable.
+    // FIXME: We should really do something about that.
+    LLVM_ATTRIBUTE_NORETURN void FatalError(SMLoc L, const Twine &Msg);
   };
 
 } // end namespace llvm

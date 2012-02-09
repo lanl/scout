@@ -70,8 +70,8 @@ ModuleMap::resolveExport(Module *Mod,
 }
 
 ModuleMap::ModuleMap(FileManager &FileMgr, const DiagnosticConsumer &DC,
-                     const LangOptions &LangOpts)
-  : LangOpts(LangOpts)
+                     const LangOptions &LangOpts, const TargetInfo *Target)
+  : LangOpts(LangOpts), Target(Target), BuiltinIncludeDir(0)
 {
   llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagIDs(new DiagnosticIDs);
   Diags = llvm::IntrusiveRefCntPtr<DiagnosticsEngine>(
@@ -88,6 +88,12 @@ ModuleMap::~ModuleMap() {
   }
   
   delete SourceMgr;
+}
+
+void ModuleMap::setTarget(const TargetInfo &Target) {
+  assert((!this->Target || this->Target == &Target) && 
+         "Improper target override");
+  this->Target = &Target;
 }
 
 Module *ModuleMap::findModuleForHeader(const FileEntry *File) {
@@ -284,6 +290,7 @@ ModuleMap::findOrCreateModule(StringRef Name, Module *Parent, bool IsFramework,
 Module *
 ModuleMap::inferFrameworkModule(StringRef ModuleName, 
                                 const DirectoryEntry *FrameworkDir,
+                                bool IsSystem,
                                 Module *Parent) {
   // Check whether we've already found this module.
   if (Module *Mod = lookupModuleQualified(ModuleName, Parent))
@@ -292,7 +299,7 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
   FileManager &FileMgr = SourceMgr->getFileManager();
   
   // Look for an umbrella header.
-  llvm::SmallString<128> UmbrellaName = StringRef(FrameworkDir->getName());
+  SmallString<128> UmbrellaName = StringRef(FrameworkDir->getName());
   llvm::sys::path::append(UmbrellaName, "Headers");
   llvm::sys::path::append(UmbrellaName, ModuleName + ".h");
   const FileEntry *UmbrellaHeader = FileMgr.getFile(UmbrellaName);
@@ -305,6 +312,9 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
   
   Module *Result = new Module(ModuleName, SourceLocation(), Parent,
                               /*IsFramework=*/true, /*IsExplicit=*/false);
+  if (IsSystem)
+    Result->IsSystem = IsSystem;
+  
   if (!Parent)
     Modules[ModuleName] = Result;
   
@@ -322,10 +332,10 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
   
   // Look for subframeworks.
   llvm::error_code EC;
-  llvm::SmallString<128> SubframeworksDirName
+  SmallString<128> SubframeworksDirName
     = StringRef(FrameworkDir->getName());
   llvm::sys::path::append(SubframeworksDirName, "Frameworks");
-  llvm::SmallString<128> SubframeworksDirNameNative;
+  SmallString<128> SubframeworksDirNameNative;
   llvm::sys::path::native(SubframeworksDirName.str(),
                           SubframeworksDirNameNative);
   for (llvm::sys::fs::directory_iterator 
@@ -338,7 +348,7 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
           = FileMgr.getDirectory(Dir->path())) {
       // FIXME: Do we want to warn about subframeworks without umbrella headers?
       inferFrameworkModule(llvm::sys::path::stem(Dir->path()), SubframeworkDir,
-                           Result);
+                           IsSystem, Result);
     }
   }
 
@@ -454,7 +464,9 @@ namespace clang {
       Star,
       StringLiteral,
       LBrace,
-      RBrace
+      RBrace,
+      LSquare,
+      RSquare
     } Kind;
     
     unsigned Location;
@@ -487,7 +499,10 @@ namespace clang {
     
     /// \brief The directory that this module map resides in.
     const DirectoryEntry *Directory;
-    
+
+    /// \brief The directory containing Clang-supplied headers.
+    const DirectoryEntry *BuiltinIncludeDir;
+
     /// \brief Whether an error occurred.
     bool HadError;
     
@@ -528,9 +543,11 @@ namespace clang {
     explicit ModuleMapParser(Lexer &L, SourceManager &SourceMgr, 
                              DiagnosticsEngine &Diags,
                              ModuleMap &Map,
-                             const DirectoryEntry *Directory)
+                             const DirectoryEntry *Directory,
+                             const DirectoryEntry *BuiltinIncludeDir)
       : L(L), SourceMgr(SourceMgr), Diags(Diags), Map(Map), 
-        Directory(Directory), HadError(false), ActiveModule(0)
+        Directory(Directory), BuiltinIncludeDir(BuiltinIncludeDir), 
+        HadError(false), ActiveModule(0)
     {
       TargetOptions TargetOpts;
       TargetOpts.Triple = llvm::sys::getDefaultTargetTriple();
@@ -579,12 +596,20 @@ retry:
     Tok.Kind = MMToken::LBrace;
     break;
 
+  case tok::l_square:
+    Tok.Kind = MMToken::LSquare;
+    break;
+      
   case tok::period:
     Tok.Kind = MMToken::Period;
     break;
       
   case tok::r_brace:
     Tok.Kind = MMToken::RBrace;
+    break;
+      
+  case tok::r_square:
+    Tok.Kind = MMToken::RSquare;
     break;
       
   case tok::star:
@@ -625,27 +650,42 @@ retry:
 
 void ModuleMapParser::skipUntil(MMToken::TokenKind K) {
   unsigned braceDepth = 0;
+  unsigned squareDepth = 0;
   do {
     switch (Tok.Kind) {
     case MMToken::EndOfFile:
       return;
 
     case MMToken::LBrace:
-      if (Tok.is(K) && braceDepth == 0)
+      if (Tok.is(K) && braceDepth == 0 && squareDepth == 0)
         return;
         
       ++braceDepth;
       break;
-    
+
+    case MMToken::LSquare:
+      if (Tok.is(K) && braceDepth == 0 && squareDepth == 0)
+        return;
+      
+      ++squareDepth;
+      break;
+
     case MMToken::RBrace:
       if (braceDepth > 0)
         --braceDepth;
       else if (Tok.is(K))
         return;
       break;
-        
+
+    case MMToken::RSquare:
+      if (squareDepth > 0)
+        --squareDepth;
+      else if (Tok.is(K))
+        return;
+      break;
+
     default:
-      if (braceDepth == 0 && Tok.is(K))
+      if (braceDepth == 0 && squareDepth == 0 && Tok.is(K))
         return;
       break;
     }
@@ -681,10 +721,28 @@ bool ModuleMapParser::parseModuleId(ModuleId &Id) {
   return false;
 }
 
+namespace {
+  /// \brief Enumerates the known attributes.
+  enum AttributeKind {
+    /// \brief An unknown attribute.
+    AT_unknown,
+    /// \brief The 'system' attribute.
+    AT_system
+  };
+}
+
 /// \brief Parse a module declaration.
 ///
 ///   module-declaration:
-///     'explicit'[opt] 'framework'[opt] 'module' module-id { module-member* }
+///     'explicit'[opt] 'framework'[opt] 'module' module-id attributes[opt] 
+///       { module-member* }
+///
+///   attributes:
+///     attribute attributes
+///     attribute
+///
+///   attribute:
+///     [ identifier ]
 ///
 ///   module-member:
 ///     requires-declaration
@@ -777,6 +835,49 @@ void ModuleMapParser::parseModuleDecl() {
   StringRef ModuleName = Id.back().first;
   SourceLocation ModuleNameLoc = Id.back().second;
   
+  // Parse the optional attribute list.
+  bool IsSystem = false;
+  while (Tok.is(MMToken::LSquare)) {
+    // Consume the '['.
+    SourceLocation LSquareLoc = consumeToken();
+    
+    // Check whether we have an attribute name here.
+    if (!Tok.is(MMToken::Identifier)) {
+      Diags.Report(Tok.getLocation(), diag::err_mmap_expected_attribute);
+      skipUntil(MMToken::RSquare);
+      if (Tok.is(MMToken::RSquare))
+        consumeToken();
+      continue;
+    }
+    
+    // Decode the attribute name.
+    AttributeKind Attribute 
+      = llvm::StringSwitch<AttributeKind>(Tok.getString())
+        .Case("system", AT_system)
+        .Default(AT_unknown);
+    switch (Attribute) {
+    case AT_unknown:
+      Diags.Report(Tok.getLocation(), diag::warn_mmap_unknown_attribute)
+        << Tok.getString();
+      break;
+        
+    case AT_system:
+      IsSystem = true;
+      break;
+    }
+    consumeToken();
+    
+    // Consume the ']'.
+    if (!Tok.is(MMToken::RSquare)) {
+      Diags.Report(Tok.getLocation(), diag::err_mmap_expected_rsquare);
+      Diags.Report(LSquareLoc, diag::note_mmap_lsquare_match);
+      skipUntil(MMToken::RSquare);
+    }
+
+    if (Tok.is(MMToken::RSquare))
+      consumeToken();
+  }
+  
   // Parse the opening brace.
   if (!Tok.is(MMToken::LBrace)) {
     Diags.Report(Tok.getLocation(), diag::err_mmap_expected_lbrace)
@@ -818,6 +919,8 @@ void ModuleMapParser::parseModuleDecl() {
   ActiveModule = Map.findOrCreateModule(ModuleName, ActiveModule, Framework,
                                         Explicit).first;
   ActiveModule->DefinitionLoc = ModuleNameLoc;
+  if (IsSystem)
+    ActiveModule->IsSystem = true;
   
   bool Done = false;
   do {
@@ -900,7 +1003,7 @@ void ModuleMapParser::parseRequiresDecl() {
     consumeToken();
 
     // Add this feature.
-    ActiveModule->addRequirement(Feature, Map.LangOpts);
+    ActiveModule->addRequirement(Feature, Map.LangOpts, *Map.Target);
 
     if (!Tok.is(MMToken::Comma))
       break;
@@ -912,7 +1015,8 @@ void ModuleMapParser::parseRequiresDecl() {
 
 /// \brief Append to \p Paths the set of paths needed to get to the 
 /// subframework in which the given module lives.
-void appendSubframeworkPaths(Module *Mod, llvm::SmallVectorImpl<char> &Path) {
+static void appendSubframeworkPaths(Module *Mod,
+                                    llvm::SmallVectorImpl<char> &Path) {
   // Collect the framework names from the given module to the top-level module.
   llvm::SmallVector<StringRef, 2> Paths;
   for (; Mod; Mod = Mod->Parent) {
@@ -928,6 +1032,24 @@ void appendSubframeworkPaths(Module *Mod, llvm::SmallVectorImpl<char> &Path) {
     llvm::sys::path::append(Path, "Frameworks");
     llvm::sys::path::append(Path, Paths[I-1] + ".framework");
   }
+}
+
+/// \brief Determine whether the given file name is the name of a builtin
+/// header, supplied by Clang to replace, override, or augment existing system
+/// headers.
+static bool isBuiltinHeader(StringRef FileName) {
+  return llvm::StringSwitch<bool>(FileName)
+      .Case("float.h", true)
+      .Case("iso646.h", true)
+      .Case("limits.h", true)
+      .Case("stdalign.h", true)
+      .Case("stdarg.h", true)
+      .Case("stdbool.h", true)
+      .Case("stddef.h", true)
+      .Case("stdint.h", true)
+      .Case("tgmath.h", true)
+      .Case("unwind.h", true)
+      .Default(false);
 }
 
 /// \brief Parse a header declaration.
@@ -960,7 +1082,8 @@ void ModuleMapParser::parseHeaderDecl(SourceLocation UmbrellaLoc) {
 
   // Look for this file.
   const FileEntry *File = 0;
-  llvm::SmallString<128> PathName;
+  const FileEntry *BuiltinFile = 0;
+  SmallString<128> PathName;
   if (llvm::sys::path::is_absolute(FileName)) {
     PathName = FileName;
     File = SourceMgr.getFileManager().getFile(PathName);
@@ -992,6 +1115,24 @@ void ModuleMapParser::parseHeaderDecl(SourceLocation UmbrellaLoc) {
       // Lookup for normal headers.
       llvm::sys::path::append(PathName, FileName);
       File = SourceMgr.getFileManager().getFile(PathName);
+      
+      // If this is a system module with a top-level header, this header
+      // may have a counterpart (or replacement) in the set of headers
+      // supplied by Clang. Find that builtin header.
+      if (ActiveModule->IsSystem && !Umbrella && BuiltinIncludeDir &&
+          BuiltinIncludeDir != Directory && isBuiltinHeader(FileName)) {
+        SmallString<128> BuiltinPathName(BuiltinIncludeDir->getName());
+        llvm::sys::path::append(BuiltinPathName, FileName);
+        BuiltinFile = SourceMgr.getFileManager().getFile(BuiltinPathName);
+        
+        // If Clang supplies this header but the underlying system does not,
+        // just silently swap in our builtin version. Otherwise, we'll end
+        // up adding both (later).
+        if (!File && BuiltinFile) {
+          File = BuiltinFile;
+          BuiltinFile = 0;
+        }
+      }
     }
   }
   
@@ -1015,6 +1156,10 @@ void ModuleMapParser::parseHeaderDecl(SourceLocation UmbrellaLoc) {
     } else {
       // Record this header.
       Map.addHeader(ActiveModule, File);
+      
+      // If there is a builtin counterpart to this file, add it now.
+      if (BuiltinFile)
+        Map.addHeader(ActiveModule, BuiltinFile);
     }
   } else {
     Diags.Report(FileNameLoc, diag::err_mmap_header_not_found)
@@ -1052,7 +1197,7 @@ void ModuleMapParser::parseUmbrellaDirDecl(SourceLocation UmbrellaLoc) {
   if (llvm::sys::path::is_absolute(DirName))
     Dir = SourceMgr.getFileManager().getDirectory(DirName);
   else {
-    llvm::SmallString<128> PathName;
+    SmallString<128> PathName;
     PathName = Directory->getName();
     llvm::sys::path::append(PathName, DirName);
     Dir = SourceMgr.getFileManager().getDirectory(PathName);
@@ -1251,8 +1396,10 @@ bool ModuleMapParser::parseModuleMapFile() {
     case MMToken::HeaderKeyword:
     case MMToken::Identifier:
     case MMToken::LBrace:
+    case MMToken::LSquare:
     case MMToken::Period:
     case MMToken::RBrace:
+    case MMToken::RSquare:
     case MMToken::RequiresKeyword:
     case MMToken::Star:
     case MMToken::StringLiteral:
@@ -1263,11 +1410,10 @@ bool ModuleMapParser::parseModuleMapFile() {
       break;
     }
   } while (true);
-  
-  return HadError;
 }
 
 bool ModuleMap::parseModuleMapFile(const FileEntry *File) {
+  assert(Target != 0 && "Missing target information");
   FileID ID = SourceMgr->createFileID(File, SourceLocation(), SrcMgr::C_User);
   const llvm::MemoryBuffer *Buffer = SourceMgr->getBuffer(ID);
   if (!Buffer)
@@ -1276,7 +1422,8 @@ bool ModuleMap::parseModuleMapFile(const FileEntry *File) {
   // Parse this module map file.
   Lexer L(ID, SourceMgr->getBuffer(ID), *SourceMgr, MMapLangOpts);
   Diags->getClient()->BeginSourceFile(MMapLangOpts);
-  ModuleMapParser Parser(L, *SourceMgr, *Diags, *this, File->getDir());
+  ModuleMapParser Parser(L, *SourceMgr, *Diags, *this, File->getDir(),
+                         BuiltinIncludeDir);
   bool Result = Parser.parseModuleMapFile();
   Diags->getClient()->EndSourceFile();
   

@@ -797,7 +797,6 @@ static AccessResult HasAccess(Sema &S,
 
   // Silence bogus warnings
   llvm_unreachable("impossible friendship kind");
-  return OnFailure;
 }
 
 /// Finds the best path from the naming class to the declaring class,
@@ -1000,8 +999,6 @@ static void DiagnoseAccessPath(Sema &S,
                                const EffectiveContext &EC,
                                AccessTarget &Entity) {
   AccessSpecifier Access = Entity.getAccess();
-  const CXXRecordDecl *NamingClass = Entity.getNamingClass();
-  NamingClass = NamingClass->getCanonicalDecl();
 
   NamedDecl *D = (Entity.isMemberAccess() ? Entity.getTargetDecl() : 0);
   const CXXRecordDecl *DeclaringClass = Entity.getDeclaringClass();
@@ -1020,15 +1017,15 @@ static void DiagnoseAccessPath(Sema &S,
       while (D->isOutOfLine()) {
         NamedDecl *PrevDecl = 0;
         if (VarDecl *VD = dyn_cast<VarDecl>(D))
-          PrevDecl = VD->getPreviousDeclaration();
+          PrevDecl = VD->getPreviousDecl();
         else if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
-          PrevDecl = FD->getPreviousDeclaration();
+          PrevDecl = FD->getPreviousDecl();
         else if (TypedefNameDecl *TND = dyn_cast<TypedefNameDecl>(D))
-          PrevDecl = TND->getPreviousDeclaration();
+          PrevDecl = TND->getPreviousDecl();
         else if (TagDecl *TD = dyn_cast<TagDecl>(D)) {
           if (isa<RecordDecl>(D) && cast<RecordDecl>(D)->isInjectedClassName())
             break;
-          PrevDecl = TD->getPreviousDeclaration();
+          PrevDecl = TD->getPreviousDecl();
         }
         if (!PrevDecl) break;
         D = PrevDecl;
@@ -1068,7 +1065,6 @@ static void DiagnoseAccessPath(Sema &S,
 
     case AR_dependent:
       llvm_unreachable("can't diagnose dependent access failures");
-      return;
     }
   }
 
@@ -1298,7 +1294,6 @@ static AccessResult CheckEffectiveAccess(Sema &S,
 
   // silence unnecessary warning
   llvm_unreachable("invalid access result");
-  return AR_accessible;
 }
 
 static Sema::AccessResult CheckAccess(Sema &S, SourceLocation Loc,
@@ -1333,7 +1328,6 @@ static Sema::AccessResult CheckAccess(Sema &S, SourceLocation Loc,
   case AR_dependent: return Sema::AR_dependent;
   }
   llvm_unreachable("falling off end");
-  return Sema::AR_accessible;
 }
 
 void Sema::HandleDelayedAccessCheck(DelayedDiagnostic &DD, Decl *decl) {

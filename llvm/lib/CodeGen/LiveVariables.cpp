@@ -90,7 +90,7 @@ void LiveVariables::MarkVirtRegAliveInBlock(VarInfo& VRInfo,
                                             MachineBasicBlock *MBB,
                                     std::vector<MachineBasicBlock*> &WorkList) {
   unsigned BBNum = MBB->getNumber();
-  
+
   // Check to see if this basic block is one of the killing blocks.  If so,
   // remove it.
   for (unsigned i = 0, e = VRInfo.Kills.size(); i != e; ++i)
@@ -98,7 +98,7 @@ void LiveVariables::MarkVirtRegAliveInBlock(VarInfo& VRInfo,
       VRInfo.Kills.erase(VRInfo.Kills.begin()+i);  // Erase entry
       break;
     }
-  
+
   if (MBB == DefBlock) return;  // Terminate recursion
 
   if (VRInfo.AliveBlocks.test(BBNum))
@@ -130,7 +130,6 @@ void LiveVariables::HandleVirtRegUse(unsigned reg, MachineBasicBlock *MBB,
   unsigned BBNum = MBB->getNumber();
 
   VarInfo& VRInfo = getVarInfo(reg);
-  VRInfo.NumUses++;
 
   // Check to see if this basic block is already a kill block.
   if (!VRInfo.Kills.empty() && VRInfo.Kills.back()->getParent() == MBB) {
@@ -261,12 +260,11 @@ void LiveVariables::HandlePhysRegUse(unsigned Reg, MachineInstr *MI) {
           Processed.insert(*SS);
       }
     }
-  }
-  else if (LastDef && !PhysRegUse[Reg] &&
-           !LastDef->findRegisterDefOperand(Reg))
+  } else if (LastDef && !PhysRegUse[Reg] &&
+             !LastDef->findRegisterDefOperand(Reg))
     // Last def defines the super register, add an implicit def of reg.
-    LastDef->addOperand(MachineOperand::CreateReg(Reg,
-                                                 true/*IsDef*/, true/*IsImp*/));
+    LastDef->addOperand(MachineOperand::CreateReg(Reg, true/*IsDef*/,
+                                                  true/*IsImp*/));
 
   // Remember this use.
   PhysRegUse[Reg]  = MI;
@@ -331,7 +329,7 @@ bool LiveVariables::HandlePhysRegKill(unsigned Reg, MachineInstr *MI) {
   // Or whole register is defined, but only partly used.
   // AX<dead> = AL<imp-def>
   //    = AL<kill>
-  // AX = 
+  // AX =
   MachineInstr *LastPartDef = 0;
   unsigned LastPartDefDist = 0;
   SmallSet<unsigned, 8> PartUses;
@@ -417,6 +415,27 @@ bool LiveVariables::HandlePhysRegKill(unsigned Reg, MachineInstr *MI) {
   } else
     LastRefOrPartRef->addRegisterKilled(Reg, TRI, true);
   return true;
+}
+
+void LiveVariables::HandleRegMask(const MachineOperand &MO) {
+  // Call HandlePhysRegKill() for all live registers clobbered by Mask.
+  // Clobbered registers are always dead, sp there is no need to use
+  // HandlePhysRegDef().
+  for (unsigned Reg = 1, NumRegs = TRI->getNumRegs(); Reg != NumRegs; ++Reg) {
+    // Skip dead regs.
+    if (!PhysRegDef[Reg] && !PhysRegUse[Reg])
+      continue;
+    // Skip mask-preserved regs.
+    if (!MO.clobbersPhysReg(Reg))
+      continue;
+    // Kill the largest clobbered super-register.
+    // This avoids needless implicit operands.
+    unsigned Super = Reg;
+    for (const unsigned *SR = TRI->getSuperRegisters(Reg); *SR; ++SR)
+      if ((PhysRegDef[*SR] || PhysRegUse[*SR]) && MO.clobbersPhysReg(*SR))
+        Super = *SR;
+    HandlePhysRegKill(Super, 0);
+  }
 }
 
 void LiveVariables::HandlePhysRegDef(unsigned Reg, MachineInstr *MI,
@@ -536,8 +555,13 @@ bool LiveVariables::runOnMachineFunction(MachineFunction &mf) {
       // Clear kill and dead markers. LV will recompute them.
       SmallVector<unsigned, 4> UseRegs;
       SmallVector<unsigned, 4> DefRegs;
+      SmallVector<unsigned, 1> RegMasks;
       for (unsigned i = 0; i != NumOperandsToProcess; ++i) {
         MachineOperand &MO = MI->getOperand(i);
+        if (MO.isRegMask()) {
+          RegMasks.push_back(i);
+          continue;
+        }
         if (!MO.isReg() || MO.getReg() == 0)
           continue;
         unsigned MOReg = MO.getReg();
@@ -558,6 +582,10 @@ bool LiveVariables::runOnMachineFunction(MachineFunction &mf) {
         else if (!ReservedRegisters[MOReg])
           HandlePhysRegUse(MOReg, MI);
       }
+
+      // Process all masked registers. (Call clobbers).
+      for (unsigned i = 0, e = RegMasks.size(); i != e; ++i)
+        HandleRegMask(MI->getOperand(RegMasks[i]));
 
       // Process all defs.
       for (unsigned i = 0, e = DefRegs.size(); i != e; ++i) {
@@ -607,10 +635,27 @@ bool LiveVariables::runOnMachineFunction(MachineFunction &mf) {
       }
     }
 
+    // MachineCSE may CSE instructions which write to non-allocatable physical
+    // registers across MBBs. Remember if any reserved register is liveout.
+    SmallSet<unsigned, 4> LiveOuts;
+    for (MachineBasicBlock::const_succ_iterator SI = MBB->succ_begin(),
+           SE = MBB->succ_end(); SI != SE; ++SI) {
+      MachineBasicBlock *SuccMBB = *SI;
+      if (SuccMBB->isLandingPad())
+        continue;
+      for (MachineBasicBlock::livein_iterator LI = SuccMBB->livein_begin(),
+             LE = SuccMBB->livein_end(); LI != LE; ++LI) {
+        unsigned LReg = *LI;
+        if (!TRI->isInAllocatableClass(LReg))
+          // Ignore other live-ins, e.g. those that are live into landing pads.
+          LiveOuts.insert(LReg);
+      }
+    }
+
     // Loop over PhysRegDef / PhysRegUse, killing any registers that are
     // available at the end of the basic block.
     for (unsigned i = 0; i != NumRegs; ++i)
-      if (PhysRegDef[i] || PhysRegUse[i])
+      if ((PhysRegDef[i] || PhysRegUse[i]) && !LiveOuts.count(i))
         HandlePhysRegDef(i, 0, Defs);
 
     std::fill(PhysRegDef,  PhysRegDef  + NumRegs, (MachineInstr*)0);

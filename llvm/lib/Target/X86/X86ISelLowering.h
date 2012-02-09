@@ -219,16 +219,26 @@ namespace llvm {
       // VZEXT_MOVL - Vector move low and zero extend.
       VZEXT_MOVL,
 
-      // VSHL, VSRL - Vector logical left / right shift.
-      VSHL, VSRL,
+      // VSEXT_MOVL - Vector move low and sign extend.
+      VSEXT_MOVL,
 
-      // CMPPD, CMPPS - Vector double/float comparison.
-      // CMPPD, CMPPS - Vector double/float comparison.
-      CMPPD, CMPPS,
+      // VSHL, VSRL - 128-bit vector logical left / right shift
+      VSHLDQ, VSRLDQ,
+
+      // VSHL, VSRL, VSRA - Vector shift elements
+      VSHL, VSRL, VSRA,
+
+      // VSHLI, VSRLI, VSRAI - Vector shift elements by immediate
+      VSHLI, VSRLI, VSRAI,
+
+      // CMPP - Vector packed double/float comparison.
+      CMPP,
 
       // PCMP* - Vector integer comparisons.
-      PCMPEQB, PCMPEQW, PCMPEQD, PCMPEQQ,
-      PCMPGTB, PCMPGTW, PCMPGTD, PCMPGTQ,
+      PCMPEQ, PCMPGT,
+
+      // VPCOM, VPCOMU - XOP Vector integer comparisons.
+      VPCOM, VPCOMU,
 
       // ADD, SUB, SMUL, etc. - Arithmetic operations with FLAGS results.
       ADD, SUB, ADC, SBB, SMUL,
@@ -256,14 +266,10 @@ namespace llvm {
       PSHUFD,
       PSHUFHW,
       PSHUFLW,
-      PSHUFHW_LD,
-      PSHUFLW_LD,
       SHUFP,
       MOVDDUP,
       MOVSHDUP,
       MOVSLDUP,
-      MOVSHDUP_LD,
-      MOVSLDUP_LD,
       MOVLHPS,
       MOVLHPD,
       MOVHLPS,
@@ -276,6 +282,9 @@ namespace llvm {
       VPERMILP,
       VPERM2X128,
       VBROADCAST,
+
+      // PMULUDQ - Vector multiply packed unsigned doubleword integers
+      PMULUDQ,
 
       // VASTART_SAVE_XMM_REGS - Save xmm argument registers to the stack,
       // according to %al. An operator is needed so that this can be expanded
@@ -373,7 +382,7 @@ namespace llvm {
 
     /// isSHUFPMask - Return true if the specified VECTOR_SHUFFLE operand
     /// specifies a shuffle of elements that is suitable for input to SHUFP*.
-    bool isSHUFPMask(ShuffleVectorSDNode *N);
+    bool isSHUFPMask(ShuffleVectorSDNode *N, bool HasAVX);
 
     /// isMOVHLPSMask - Return true if the specified VECTOR_SHUFFLE operand
     /// specifies a shuffle of elements that is suitable for input to MOVHLPS.
@@ -442,8 +451,8 @@ namespace llvm {
 
     /// getShuffleSHUFImmediate - Return the appropriate immediate to shuffle
     /// the specified isShuffleMask VECTOR_SHUFFLE mask with PSHUF* and SHUFP*
-    /// instructions.
-    unsigned getShuffleSHUFImmediate(SDNode *N);
+    /// instructions. Handles 128-bit and 256-bit.
+    unsigned getShuffleSHUFImmediate(ShuffleVectorSDNode *N);
 
     /// getShufflePSHUFHWImmediate - Return the appropriate immediate to shuffle
     /// the specified VECTOR_SHUFFLE mask with PSHUFHW instruction.
@@ -836,6 +845,7 @@ namespace llvm {
     SDValue LowerMEMBARRIER(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSIGN_EXTEND_INREG(SDValue Op, SelectionDAG &DAG) const;
+    SDValue PerformTruncateCombine(SDNode* N, SelectionDAG &DAG, DAGCombinerInfo &DCI) const;
 
     // Utility functions to help LowerVECTOR_SHUFFLE
     SDValue LowerVECTOR_SHUFFLEv8i16(SDValue Op, SelectionDAG &DAG) const;

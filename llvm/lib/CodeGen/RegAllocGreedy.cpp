@@ -51,6 +51,13 @@ STATISTIC(NumGlobalSplits, "Number of split global live ranges");
 STATISTIC(NumLocalSplits,  "Number of split local live ranges");
 STATISTIC(NumEvicted,      "Number of interferences evicted");
 
+/// EnableMachineSched - temporary flag to enable the machine scheduling pass
+/// until we complete the register allocation pass configuration cleanup.
+static cl::opt<bool>
+EnableMachineSched("enable-misched",
+                   cl::desc("Enable the machine instruction scheduling pass."),
+                   cl::init(false), cl::Hidden);
+
 static cl::opt<SplitEditor::ComplementSpillMode>
 SplitSpillMode("split-spill-mode", cl::Hidden,
   cl::desc("Spill mode for splitting live ranges"),
@@ -309,7 +316,7 @@ RAGreedy::RAGreedy(): MachineFunctionPass(ID) {
   initializeSlotIndexesPass(*PassRegistry::getPassRegistry());
   initializeStrongPHIEliminationPass(*PassRegistry::getPassRegistry());
   initializeRegisterCoalescerPass(*PassRegistry::getPassRegistry());
-  initializeMachineSchedulerPassPass(*PassRegistry::getPassRegistry());
+  initializeMachineSchedulerPass(*PassRegistry::getPassRegistry());
   initializeCalculateSpillWeightsPass(*PassRegistry::getPassRegistry());
   initializeLiveStacksPass(*PassRegistry::getPassRegistry());
   initializeMachineDominatorTreePass(*PassRegistry::getPassRegistry());
@@ -332,7 +339,7 @@ void RAGreedy::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequiredID(StrongPHIEliminationID);
   AU.addRequiredTransitiveID(RegisterCoalescerPassID);
   if (EnableMachineSched)
-    AU.addRequiredID(MachineSchedulerPassID);
+    AU.addRequiredID(MachineSchedulerID);
   AU.addRequired<CalculateSpillWeights>();
   AU.addRequired<LiveStacks>();
   AU.addPreserved<LiveStacks>();

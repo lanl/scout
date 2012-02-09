@@ -1984,7 +1984,7 @@ CINDEX_LINKAGE unsigned clang_equalCursors(CXCursor, CXCursor);
 /**
  * \brief Returns non-zero if \arg cursor is null.
  */
-int clang_Cursor_isNull(CXCursor);
+CINDEX_LINKAGE int clang_Cursor_isNull(CXCursor);
 
 /**
  * \brief Compute a hash value for the given cursor.
@@ -4455,7 +4455,13 @@ typedef enum {
    * for only one reference of an entity per source file that does not also
    * include a declaration/definition of the entity.
    */
-  CXIndexOpt_SuppressRedundantRefs = 0x1
+  CXIndexOpt_SuppressRedundantRefs = 0x1,
+
+  /**
+   * \brief Function-local symbols should be indexed. If this is not set
+   * function-local symbols will be ignored.
+   */
+  CXIndexOpt_IndexFunctionLocalSymbols = 0x2
 } CXIndexOptFlags;
 
 /**

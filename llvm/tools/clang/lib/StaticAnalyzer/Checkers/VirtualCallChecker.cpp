@@ -19,6 +19,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 using namespace ento;
@@ -159,23 +160,23 @@ void WalkAST::VisitCXXMemberCallExpr(CallExpr *CE) {
 }
 
 void WalkAST::ReportVirtualCall(const CallExpr *CE, bool isPure) {
-  llvm::SmallString<100> buf;
+  SmallString<100> buf;
   llvm::raw_svector_ostream os(buf);
   
   os << "Call Path : ";
   // Name of current visiting CallExpr.
-  os << CE->getDirectCallee()->getNameAsString();
+  os << *CE->getDirectCallee();
 
   // Name of the CallExpr whose body is current walking.
   if (visitingCallExpr)
-    os << " <-- " << visitingCallExpr->getDirectCallee()->getNameAsString();
+    os << " <-- " << *visitingCallExpr->getDirectCallee();
   // Names of FunctionDecls in worklist with state PostVisited.
   for (SmallVectorImpl<const CallExpr *>::iterator I = WList.end(),
          E = WList.begin(); I != E; --I) {
     const FunctionDecl *FD = (*(I-1))->getDirectCallee();
     assert(FD);
     if (VisitedFunctions[FD] == PostVisited)
-      os << " <-- " << FD->getNameAsString();
+      os << " <-- " << *FD;
   }
 
   PathDiagnosticLocation CELoc =
@@ -233,12 +234,6 @@ public:
 };
 }
 
-namespace clang{
-namespace ento{
-
-void registerVirtualCallChecker(CheckerManager &mgr) {
+void ento::registerVirtualCallChecker(CheckerManager &mgr) {
   mgr.registerChecker<VirtualCallChecker>();
-}
-
-}
 }

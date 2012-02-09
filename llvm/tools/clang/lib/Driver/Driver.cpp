@@ -7,10 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef HAVE_CLANG_CONFIG_H
-# include "clang/Config/config.h"
-#endif
-
 #include "clang/Driver/Driver.h"
 
 #include "clang/Driver/Action.h"
@@ -18,7 +14,6 @@
 #include "clang/Driver/ArgList.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/DriverDiagnostic.h"
-#include "clang/Driver/HostInfo.h"
 #include "clang/Driver/Job.h"
 #include "clang/Driver/OptTable.h"
 #include "clang/Driver/Option.h"
@@ -28,7 +23,6 @@
 
 #include "clang/Basic/Version.h"
 
-#include "llvm/Config/config.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/OwningPtr.h"
@@ -40,6 +34,12 @@
 #include "llvm/Support/Program.h"
 
 #include "InputInfo.h"
+#include "ToolChains.h"
+
+#ifdef HAVE_CLANG_CONFIG_H
+# include "clang/Config/config.h"
+#endif
+#include "llvm/Config/config.h"
 
 #include <map>
 
@@ -53,9 +53,9 @@ Driver::Driver(StringRef ClangExecutable,
                DiagnosticsEngine &Diags)
   : Opts(createDriverOptTable()), Diags(Diags),
     ClangExecutable(ClangExecutable), UseStdLib(true),
-    DefaultTargetTriple(DefaultTargetTriple), DefaultImageName(DefaultImageName),
+    DefaultTargetTriple(DefaultTargetTriple), 
+    DefaultImageName(DefaultImageName),
     DriverTitle("clang \"gcc-compatible\" driver"),
-    Host(0),
     CCPrintOptionsFilename(0), CCPrintHeadersFilename(0),
     CCLogDiagnosticsFilename(0), CCCIsCXX(false),
     CCCIsCPP(false),CCCEcho(false), CCCPrintBindings(false),
@@ -65,7 +65,7 @@ Driver::Driver(StringRef ClangExecutable,
     CCCUsePCH(true), SuppressMissingInputWarning(false) {
   if (IsProduction) {
     // In a "production" build, only use clang on architectures we expect to
-    // work, and don't use clang C++.
+    // work.
     //
     // During development its more convenient to always have the driver use
     // clang, but we don't want users to be confused when things don't work, or
@@ -80,7 +80,7 @@ Driver::Driver(StringRef ClangExecutable,
 
   // Compute the path to the resource directory.
   StringRef ClangResourceDir(CLANG_RESOURCE_DIR);
-  llvm::SmallString<128> P(Dir);
+  SmallString<128> P(Dir);
   if (ClangResourceDir != "")
     llvm::sys::path::append(P, ClangResourceDir);
   else
@@ -90,7 +90,11 @@ Driver::Driver(StringRef ClangExecutable,
 
 Driver::~Driver() {
   delete Opts;
-  delete Host;
+
+  for (llvm::StringMap<ToolChain *>::iterator I = ToolChains.begin(),
+                                              E = ToolChains.end();
+       I != E; ++I)
+    delete I->second;
 }
 
 InputArgList *Driver::ParseArgStrings(ArrayRef<const char *> ArgList) {
@@ -303,10 +307,6 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
       Cur = Split.second;
     }
   }
-  // FIXME: We shouldn't overwrite the default host triple here, but we have
-  // nowhere else to put this currently.
-  if (const Arg *A = Args->getLastArg(options::OPT_ccc_host_triple))
-    DefaultTargetTriple = A->getValue(*Args);
   if (const Arg *A = Args->getLastArg(options::OPT_ccc_install_dir))
     Dir = InstalledDir = A->getValue(*Args);
   for (arg_iterator it = Args->filtered_begin(options::OPT_B),
@@ -320,14 +320,14 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   if (Args->hasArg(options::OPT_nostdlib))
     UseStdLib = false;
 
-  Host = GetHostInfo(DefaultTargetTriple.c_str());
-
   // Perform the default argument translations.
   DerivedArgList *TranslatedArgs = TranslateInputArgs(*Args);
 
+  // Owned by the host.
+  const ToolChain &TC = getToolChain(*Args);
+
   // The compilation takes ownership of Args.
-  Compilation *C = new Compilation(*this, *Host->CreateToolChain(*Args), Args,
-                                   TranslatedArgs);
+  Compilation *C = new Compilation(*this, TC, Args, TranslatedArgs);
 
   // FIXME: This behavior shouldn't be here.
   if (CCCPrintOptions) {
@@ -342,8 +342,9 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   InputList Inputs;
   BuildInputs(C->getDefaultToolChain(), C->getArgs(), Inputs);
 
-  // Construct the list of abstract actions to perform for this compilation.
-  if (Host->useDriverDriver())
+  // Construct the list of abstract actions to perform for this compilation. On
+  // Darwin target OSes this uses the driver-driver and universal actions.
+  if (TC.getTriple().isOSDarwin())
     BuildUniversalActions(C->getDefaultToolChain(), C->getArgs(),
                           Inputs, C->getActions());
   else
@@ -431,13 +432,13 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
     return;
   }
 
-  // Construct the list of abstract actions to perform for this compilation.
-  if (Host->useDriverDriver())
-    BuildUniversalActions(C.getDefaultToolChain(), C.getArgs(),
-                          Inputs, C.getActions());
+  // Construct the list of abstract actions to perform for this compilation. On
+  // Darwin OSes this uses the driver-driver and builds universal actions.
+  const ToolChain &TC = C.getDefaultToolChain();
+  if (TC.getTriple().isOSDarwin())
+    BuildUniversalActions(TC, C.getArgs(), Inputs, C.getActions());
   else
-    BuildActions(C.getDefaultToolChain(), C.getArgs(), Inputs,
-                 C.getActions());
+    BuildActions(TC, C.getArgs(), Inputs, C.getActions());
 
   BuildJobs(C);
 
@@ -852,35 +853,32 @@ void Driver::BuildUniversalActions(const ToolChain &TC,
     else
       Actions.push_back(new LipoJobAction(Inputs, Act->getType()));
 
-    // Add a 'dsymutil' step if necessary, when debug info is enabled and we
-    // have a compile input. We need to run 'dsymutil' ourselves in such cases
-    // because the debug info will refer to a temporary object file which is
-    // will be removed at the end of the compilation process.
-    if (Act->getType() == types::TY_Image) {
-      Arg *A = Args.getLastArg(options::OPT_g_Group);
+    // Handle debug info queries.
+    Arg *A = Args.getLastArg(options::OPT_g_Group);
       if (A && !A->getOption().matches(options::OPT_g0) &&
           !A->getOption().matches(options::OPT_gstabs) &&
           ContainsCompileOrAssembleAction(Actions.back())) {
-        ActionList Inputs;
-        Inputs.push_back(Actions.back());
-        Actions.pop_back();
+   
+        // Add a 'dsymutil' step if necessary, when debug info is enabled and we
+        // have a compile input. We need to run 'dsymutil' ourselves in such cases
+        // because the debug info will refer to a temporary object file which is
+        // will be removed at the end of the compilation process.
+        if (Act->getType() == types::TY_Image) {
+          ActionList Inputs;
+          Inputs.push_back(Actions.back());
+          Actions.pop_back();
+          Actions.push_back(new DsymutilJobAction(Inputs, types::TY_dSYM));
+        }
 
-        Actions.push_back(new DsymutilJobAction(Inputs, types::TY_dSYM));
-
-	// Verify the debug output if we're in assert mode.
-	// TODO: The verifier is noisy by default so put this under an
-	// option for now.
-	#ifndef NDEBUG
-	if (Args.hasArg(options::OPT_verify)) {
-	  ActionList VerifyInputs;
+        // Verify the output (debug information only) if we passed '-verify'.
+        if (Args.hasArg(options::OPT_verify)) {
+          ActionList VerifyInputs;
 	  VerifyInputs.push_back(Actions.back());
 	  Actions.pop_back();
 	  Actions.push_back(new VerifyJobAction(VerifyInputs,
 						types::TY_Nothing));
 	}
-        #endif
       }
-    }
   }
 }
 
@@ -963,7 +961,7 @@ void Driver::BuildInputs(const ToolChain &TC, const DerivedArgList &Args,
 
       // Check that the file exists, if enabled.
       if (CheckInputsExist && memcmp(Value, "-", 2) != 0) {
-        llvm::SmallString<64> Path(Value);
+        SmallString<64> Path(Value);
         if (Arg *WorkDir = Args.getLastArg(options::OPT_working_directory))
           if (llvm::sys::path::is_absolute(Path.str())) {
             Path = WorkDir->getValue(Args);
@@ -1060,7 +1058,7 @@ void Driver::BuildActions(const ToolChain &TC, const DerivedArgList &Args,
     }
 
     // Build the pipeline for this file.
-    llvm::OwningPtr<Action> Current(new InputAction(*InputArg, InputType));
+    OwningPtr<Action> Current(new InputAction(*InputArg, InputType));
     for (unsigned i = 0; i != NumSteps; ++i) {
       phases::ID Phase = types::getCompilationPhase(InputType, i);
 
@@ -1314,9 +1312,8 @@ void Driver::BuildJobsForAction(Compilation &C,
   if (const BindArchAction *BAA = dyn_cast<BindArchAction>(A)) {
     const ToolChain *TC = &C.getDefaultToolChain();
 
-    std::string Arch;
     if (BAA->getArchName())
-      TC = Host->CreateToolChain(C.getArgs(), BAA->getArchName());
+      TC = &getToolChain(C.getArgs(), BAA->getArchName());
 
     BuildJobsForAction(C, *BAA->begin(), TC, BAA->getArchName(),
                        AtTopLevel, LinkingOutput, Result);
@@ -1408,7 +1405,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C,
     return C.addTempFile(C.getArgs().MakeArgString(TmpName.c_str()));
   }
 
-  llvm::SmallString<128> BasePath(BaseInput);
+  SmallString<128> BasePath(BaseInput);
   StringRef BaseName;
 
   // Dsymutil actions should use the full path.
@@ -1570,40 +1567,121 @@ std::string Driver::GetTemporaryPath(StringRef Prefix, const char *Suffix)
   return P.str();
 }
 
-const HostInfo *Driver::GetHostInfo(const char *TripleStr) const {
-  llvm::PrettyStackTraceString CrashInfo("Constructing host");
-  llvm::Triple Triple(llvm::Triple::normalize(TripleStr).c_str());
+/// \brief Compute target triple from args.
+///
+/// This routine provides the logic to compute a target triple from various
+/// args passed to the driver and the default triple string.
+static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
+                                        const ArgList &Args,
+                                        StringRef DarwinArchName) {
+  if (const Arg *A = Args.getLastArg(options::OPT_target))
+    DefaultTargetTriple = A->getValue(Args);
 
-  // TCE is an osless target
-  if (Triple.getArchName() == "tce")
-    return createTCEHostInfo(*this, Triple);
+  llvm::Triple Target(llvm::Triple::normalize(DefaultTargetTriple));
 
-  switch (Triple.getOS()) {
-  case llvm::Triple::AuroraUX:
-    return createAuroraUXHostInfo(*this, Triple);
-  case llvm::Triple::Darwin:
-  case llvm::Triple::MacOSX:
-  case llvm::Triple::IOS:
-    return createDarwinHostInfo(*this, Triple);
-  case llvm::Triple::DragonFly:
-    return createDragonFlyHostInfo(*this, Triple);
-  case llvm::Triple::OpenBSD:
-    return createOpenBSDHostInfo(*this, Triple);
-  case llvm::Triple::NetBSD:
-    return createNetBSDHostInfo(*this, Triple);
-  case llvm::Triple::FreeBSD:
-    return createFreeBSDHostInfo(*this, Triple);
-  case llvm::Triple::Minix:
-    return createMinixHostInfo(*this, Triple);
-  case llvm::Triple::Linux:
-    return createLinuxHostInfo(*this, Triple);
-  case llvm::Triple::Win32:
-    return createWindowsHostInfo(*this, Triple);
-  case llvm::Triple::MinGW32:
-    return createMinGWHostInfo(*this, Triple);
-  default:
-    return createUnknownHostInfo(*this, Triple);
+  // Handle Darwin-specific options available here.
+  if (Target.isOSDarwin()) {
+    // If an explict Darwin arch name is given, that trumps all.
+    if (!DarwinArchName.empty()) {
+      Target.setArch(
+        llvm::Triple::getArchTypeForDarwinArchName(DarwinArchName));
+      return Target;
+    }
+
+    // Handle the Darwin '-arch' flag.
+    if (Arg *A = Args.getLastArg(options::OPT_arch)) {
+      llvm::Triple::ArchType DarwinArch
+        = llvm::Triple::getArchTypeForDarwinArchName(A->getValue(Args));
+      if (DarwinArch != llvm::Triple::UnknownArch)
+        Target.setArch(DarwinArch);
+    }
   }
+
+  // Skip further flag support on OSes which don't support '-m32' or '-m64'.
+  if (Target.getArchName() == "tce" ||
+      Target.getOS() == llvm::Triple::AuroraUX ||
+      Target.getOS() == llvm::Triple::Minix)
+    return Target;
+
+  // Handle pseudo-target flags '-m32' and '-m64'.
+  // FIXME: Should this information be in llvm::Triple?
+  if (Arg *A = Args.getLastArg(options::OPT_m32, options::OPT_m64)) {
+    if (A->getOption().matches(options::OPT_m32)) {
+      if (Target.getArch() == llvm::Triple::x86_64)
+        Target.setArch(llvm::Triple::x86);
+      if (Target.getArch() == llvm::Triple::ppc64)
+        Target.setArch(llvm::Triple::ppc);
+    } else {
+      if (Target.getArch() == llvm::Triple::x86)
+        Target.setArch(llvm::Triple::x86_64);
+      if (Target.getArch() == llvm::Triple::ppc)
+        Target.setArch(llvm::Triple::ppc64);
+    }
+  }
+
+  return Target;
+}
+
+const ToolChain &Driver::getToolChain(const ArgList &Args,
+                                      StringRef DarwinArchName) const {
+  llvm::Triple Target = computeTargetTriple(DefaultTargetTriple, Args,
+                                            DarwinArchName);
+
+  ToolChain *&TC = ToolChains[Target.str()];
+  if (!TC) {
+    switch (Target.getOS()) {
+    case llvm::Triple::AuroraUX:
+      TC = new toolchains::AuroraUX(*this, Target);
+      break;
+    case llvm::Triple::Darwin:
+    case llvm::Triple::MacOSX:
+    case llvm::Triple::IOS:
+      if (Target.getArch() == llvm::Triple::x86 ||
+          Target.getArch() == llvm::Triple::x86_64 ||
+          Target.getArch() == llvm::Triple::arm ||
+          Target.getArch() == llvm::Triple::thumb)
+        TC = new toolchains::DarwinClang(*this, Target);
+      else
+        TC = new toolchains::Darwin_Generic_GCC(*this, Target);
+      break;
+    case llvm::Triple::DragonFly:
+      TC = new toolchains::DragonFly(*this, Target);
+      break;
+    case llvm::Triple::OpenBSD:
+      TC = new toolchains::OpenBSD(*this, Target);
+      break;
+    case llvm::Triple::NetBSD:
+      TC = new toolchains::NetBSD(*this, Target);
+      break;
+    case llvm::Triple::FreeBSD:
+      TC = new toolchains::FreeBSD(*this, Target);
+      break;
+    case llvm::Triple::Minix:
+      TC = new toolchains::Minix(*this, Target);
+      break;
+    case llvm::Triple::Linux:
+      if (Target.getArch() == llvm::Triple::hexagon)
+        TC = new toolchains::Hexagon_TC(*this, Target);
+      else
+        TC = new toolchains::Linux(*this, Target);
+      break;
+    case llvm::Triple::Win32:
+      TC = new toolchains::Windows(*this, Target);
+      break;
+    case llvm::Triple::MinGW32:
+      // FIXME: We need a MinGW toolchain. Fallthrough for now.
+    default:
+      // TCE is an OSless target
+      if (Target.getArchName() == "tce") {
+        TC = new toolchains::TCEToolChain(*this, Target);
+        break;
+      }
+
+      TC = new toolchains::Generic_GCC(*this, Target);
+      break;
+    }
+  }
+  return *TC;
 }
 
 bool Driver::ShouldUseClangCompiler(const Compilation &C, const JobAction &JA,

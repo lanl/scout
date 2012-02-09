@@ -620,9 +620,15 @@ class ObjCInterfaceDecl : public ObjCContainerDecl
   virtual ObjCInterfaceDecl *getNextRedeclaration() { 
     return RedeclLink.getNext(); 
   }
+  virtual ObjCInterfaceDecl *getPreviousDeclImpl() {
+    return getPreviousDecl();
+  }
+  virtual ObjCInterfaceDecl *getMostRecentDeclImpl() {
+    return getMostRecentDecl();
+  }
 
 public:
-  static ObjCInterfaceDecl *Create(ASTContext &C, DeclContext *DC,
+  static ObjCInterfaceDecl *Create(const ASTContext &C, DeclContext *DC,
                                    SourceLocation atLoc,
                                    IdentifierInfo *Id,
                                    ObjCInterfaceDecl *PrevDecl,
@@ -931,12 +937,10 @@ public:
                                bool RHSIsQualifiedID = false);
 
   typedef redeclarable_base::redecl_iterator redecl_iterator;
-  redecl_iterator redecls_begin() const {
-    return redeclarable_base::redecls_begin();
-  }
-  redecl_iterator redecls_end() const {
-    return redeclarable_base::redecls_end();
-  }
+  using redeclarable_base::redecls_begin;
+  using redeclarable_base::redecls_end;
+  using redeclarable_base::getPreviousDecl;
+  using redeclarable_base::getMostRecentDecl;
 
   /// Retrieves the canonical declaration of this Objective-C class.
   ObjCInterfaceDecl *getCanonicalDecl() {
@@ -1115,6 +1119,12 @@ class ObjCProtocolDecl : public ObjCContainerDecl,
   virtual ObjCProtocolDecl *getNextRedeclaration() { 
     return RedeclLink.getNext(); 
   }
+  virtual ObjCProtocolDecl *getPreviousDeclImpl() {
+    return getPreviousDecl();
+  }
+  virtual ObjCProtocolDecl *getMostRecentDeclImpl() {
+    return getMostRecentDecl();
+  }
                            
 public:
   static ObjCProtocolDecl *Create(ASTContext &C, DeclContext *DC,
@@ -1210,15 +1220,13 @@ public:
    
     return SourceRange(getAtStartLoc(), getLocation());
   }
-                           
+   
   typedef redeclarable_base::redecl_iterator redecl_iterator;
-  redecl_iterator redecls_begin() const {
-    return redeclarable_base::redecls_begin();
-  }
-  redecl_iterator redecls_end() const {
-    return redeclarable_base::redecls_end();
-  }
-                           
+  using redeclarable_base::redecls_begin;
+  using redeclarable_base::redecls_end;
+  using redeclarable_base::getPreviousDecl;
+  using redeclarable_base::getMostRecentDecl;
+
   /// Retrieves the canonical declaration of this Objective-C protocol.
   ObjCProtocolDecl *getCanonicalDecl() {
     return getFirstDeclaration();
@@ -1490,8 +1498,7 @@ public:
   friend class ASTDeclWriter;
 };
 
-raw_ostream &operator<<(raw_ostream &OS,
-                              const ObjCCategoryImplDecl *CID);
+raw_ostream &operator<<(raw_ostream &OS, const ObjCCategoryImplDecl &CID);
 
 /// ObjCImplementationDecl - Represents a class definition - this is where
 /// method definitions are specified. For example:
@@ -1635,8 +1642,7 @@ public:
   friend class ASTDeclWriter;
 };
 
-raw_ostream &operator<<(raw_ostream &OS,
-                              const ObjCImplementationDecl *ID);
+raw_ostream &operator<<(raw_ostream &OS, const ObjCImplementationDecl &ID);
 
 /// ObjCCompatibleAliasDecl - Represents alias of a class. This alias is
 /// declared as @compatibility_alias alias class.

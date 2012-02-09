@@ -267,7 +267,7 @@ Type *TypeMapTy::getImpl(Type *Ty) {
     
     // Otherwise, rebuild a modified type.
     switch (Ty->getTypeID()) {
-    default: assert(0 && "unknown derived type to remap");
+    default: llvm_unreachable("unknown derived type to remap");
     case Type::ArrayTyID:
       return *Entry = ArrayType::get(ElementTypes[0],
                                      cast<ArrayType>(Ty)->getNumElements());
@@ -843,29 +843,21 @@ bool ModuleLinker::linkAliasProto(GlobalAlias *SGA) {
   return false;
 }
 
+static void getArrayElements(Constant *C, SmallVectorImpl<Constant*> &Dest) {
+  unsigned NumElements = cast<ArrayType>(C->getType())->getNumElements();
+
+  for (unsigned i = 0; i != NumElements; ++i)
+    Dest.push_back(C->getAggregateElement(i));
+}
+                             
 void ModuleLinker::linkAppendingVarInit(const AppendingVarInfo &AVI) {
   // Merge the initializer.
   SmallVector<Constant*, 16> Elements;
-  if (ConstantArray *I = dyn_cast<ConstantArray>(AVI.DstInit)) {
-    for (unsigned i = 0, e = I->getNumOperands(); i != e; ++i)
-      Elements.push_back(I->getOperand(i));
-  } else {
-    assert(isa<ConstantAggregateZero>(AVI.DstInit));
-    ArrayType *DstAT = cast<ArrayType>(AVI.DstInit->getType());
-    Type *EltTy = DstAT->getElementType();
-    Elements.append(DstAT->getNumElements(), Constant::getNullValue(EltTy));
-  }
+  getArrayElements(AVI.DstInit, Elements);
   
   Constant *SrcInit = MapValue(AVI.SrcInit, ValueMap, RF_None, &TypeMap);
-  if (const ConstantArray *I = dyn_cast<ConstantArray>(SrcInit)) {
-    for (unsigned i = 0, e = I->getNumOperands(); i != e; ++i)
-      Elements.push_back(I->getOperand(i));
-  } else {
-    assert(isa<ConstantAggregateZero>(SrcInit));
-    ArrayType *SrcAT = cast<ArrayType>(SrcInit->getType());
-    Type *EltTy = SrcAT->getElementType();
-    Elements.append(SrcAT->getNumElements(), Constant::getNullValue(EltTy));
-  }
+  getArrayElements(SrcInit, Elements);
+  
   ArrayType *NewType = cast<ArrayType>(AVI.NewGV->getType()->getElementType());
   AVI.NewGV->setInitializer(ConstantArray::get(NewType, Elements));
 }

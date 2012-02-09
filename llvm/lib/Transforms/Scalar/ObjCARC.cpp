@@ -375,7 +375,7 @@ static InstructionClass GetBasicInstructionClass(const Value *V) {
   }
 
   // Otherwise, be conservative.
-  return IC_User;
+  return isa<InvokeInst>(V) ? IC_CallOrUser : IC_User;
 }
 
 /// IsRetain - Test if the the given class is objc_retain or
@@ -616,7 +616,7 @@ static bool DoesObjCBlockEscape(const Value *BlockPtr) {
       const User *UUser = *UI;
       // Special - Use by a call (callee or argument) is not considered
       // to be an escape.
-      if (ImmutableCallSite CS = cast<Value>(UUser))
+      if (isa<CallInst>(UUser) || isa<InvokeInst>(UUser))
         continue;
       if (isa<BitCastInst>(UUser) || isa<GetElementPtrInst>(UUser) ||
           isa<PHINode>(UUser) || isa<SelectInst>(UUser)) {
@@ -878,6 +878,139 @@ bool ObjCARCExpand::runOnFunction(Function &F) {
     default:
       break;
     }
+  }
+
+  return Changed;
+}
+
+//===----------------------------------------------------------------------===//
+// ARC autorelease pool elimination.
+//===----------------------------------------------------------------------===//
+
+#include "llvm/Constants.h"
+
+namespace {
+  /// ObjCARCAPElim - Autorelease pool elimination.
+  class ObjCARCAPElim : public ModulePass {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    virtual bool runOnModule(Module &M);
+
+    bool MayAutorelease(CallSite CS, unsigned Depth = 0);
+    bool OptimizeBB(BasicBlock *BB);
+
+  public:
+    static char ID;
+    ObjCARCAPElim() : ModulePass(ID) {
+      initializeObjCARCAPElimPass(*PassRegistry::getPassRegistry());
+    }
+  };
+}
+
+char ObjCARCAPElim::ID = 0;
+INITIALIZE_PASS(ObjCARCAPElim,
+                "objc-arc-apelim",
+                "ObjC ARC autorelease pool elimination",
+                false, false)
+
+Pass *llvm::createObjCARCAPElimPass() {
+  return new ObjCARCAPElim();
+}
+
+void ObjCARCAPElim::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.setPreservesCFG();
+}
+
+/// MayAutorelease - Interprocedurally determine if calls made by the
+/// given call site can possibly produce autoreleases.
+bool ObjCARCAPElim::MayAutorelease(CallSite CS, unsigned Depth) {
+  if (Function *Callee = CS.getCalledFunction()) {
+    if (Callee->isDeclaration() || Callee->mayBeOverridden())
+      return true;
+    for (Function::iterator I = Callee->begin(), E = Callee->end();
+         I != E; ++I) {
+      BasicBlock *BB = I;
+      for (BasicBlock::iterator J = BB->begin(), F = BB->end(); J != F; ++J)
+        if (CallSite JCS = CallSite(J))
+          // This recursion depth limit is arbitrary. It's just great
+          // enough to cover known interesting testcases.
+          if (Depth < 3 &&
+              !JCS.onlyReadsMemory() &&
+              MayAutorelease(JCS, Depth + 1))
+            return true;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool ObjCARCAPElim::OptimizeBB(BasicBlock *BB) {
+  bool Changed = false;
+
+  Instruction *Push = 0;
+  for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ) {
+    Instruction *Inst = I++;
+    switch (GetBasicInstructionClass(Inst)) {
+    case IC_AutoreleasepoolPush:
+      Push = Inst;
+      break;
+    case IC_AutoreleasepoolPop:
+      // If this pop matches a push and nothing in between can autorelease,
+      // zap the pair.
+      if (Push && cast<CallInst>(Inst)->getArgOperand(0) == Push) {
+        Changed = true;
+        Inst->eraseFromParent();
+        Push->eraseFromParent();
+      }
+      Push = 0;
+      break;
+    case IC_CallOrUser:
+      if (MayAutorelease(CallSite(Inst)))
+        Push = 0;
+      break;
+    default:
+      break;
+    }
+  }
+
+  return Changed;
+}
+
+bool ObjCARCAPElim::runOnModule(Module &M) {
+  if (!EnableARCOpts)
+    return false;
+
+  // If nothing in the Module uses ARC, don't do anything.
+  if (!ModuleHasARC(M))
+    return false;
+
+  // Find the llvm.global_ctors variable, as the first step in
+  // identifying the global constructors.
+  GlobalVariable *GV = M.getGlobalVariable("llvm.global_ctors");
+  if (!GV)
+    return false;
+
+  assert(GV->hasDefinitiveInitializer() &&
+         "llvm.global_ctors is uncooperative!");
+
+  bool Changed = false;
+
+  // Dig the constructor functions out of GV's initializer.
+  ConstantArray *Init = cast<ConstantArray>(GV->getInitializer());
+  for (User::op_iterator OI = Init->op_begin(), OE = Init->op_end();
+       OI != OE; ++OI) {
+    Value *Op = *OI;
+    // llvm.global_ctors is an array of pairs where the second members
+    // are constructor functions.
+    Function *F = cast<Function>(cast<ConstantStruct>(Op)->getOperand(1));
+    // Only look at function definitions.
+    if (F->isDeclaration())
+      continue;
+    // Only look at functions with one basic block.
+    if (llvm::next(F->begin()) != F->end())
+      continue;
+    // Ok, a single-block constructor function definition. Try to optimize it.
+    Changed |= OptimizeBB(F->begin());
   }
 
   return Changed;
@@ -1864,7 +1997,6 @@ Depends(DependenceKind Flavor, Instruction *Inst, const Value *Arg,
       // Nothing else matters for objc_retainAutorelease formation.
       return false;
     }
-    break;
 
   case RetainAutoreleaseRVDep: {
     InstructionClass Class = GetBasicInstructionClass(Inst);
@@ -1878,7 +2010,6 @@ Depends(DependenceKind Flavor, Instruction *Inst, const Value *Arg,
       // retainAutoreleaseReturnValue formation.
       return CanInterruptRV(Class);
     }
-    break;
   }
 
   case RetainRVDep:
@@ -1886,7 +2017,6 @@ Depends(DependenceKind Flavor, Instruction *Inst, const Value *Arg,
   }
 
   llvm_unreachable("Invalid dependence flavor");
-  return true;
 }
 
 /// FindDependencies - Walk up the CFG from StartPos (which is in StartBB) and
@@ -3468,6 +3598,11 @@ namespace {
     /// RetainRV calls to make the optimization work on targets which need it.
     const MDString *RetainRVMarker;
 
+    /// StoreStrongCalls - The set of inserted objc_storeStrong calls. If
+    /// at the end of walking the function we have found no alloca
+    /// instructions, these calls can be marked "tail".
+    DenseSet<CallInst *> StoreStrongCalls;
+
     Constant *getStoreStrongCallee(Module *M);
     Constant *getRetainAutoreleaseCallee(Module *M);
     Constant *getRetainAutoreleaseRVCallee(Module *M);
@@ -3671,6 +3806,11 @@ void ObjCARCContract::ContractRelease(Instruction *Release,
   StoreStrong->setDoesNotThrow();
   StoreStrong->setDebugLoc(Store->getDebugLoc());
 
+  // We can't set the tail flag yet, because we haven't yet determined
+  // whether there are any escaping allocas. Remember this call, so that
+  // we can set the tail flag once we know it's safe.
+  StoreStrongCalls.insert(StoreStrong);
+
   if (&*Iter == Store) ++Iter;
   Store->eraseFromParent();
   Release->eraseFromParent();
@@ -3716,6 +3856,13 @@ bool ObjCARCContract::runOnFunction(Function &F) {
   DT = &getAnalysis<DominatorTree>();
 
   PA.setAA(&getAnalysis<AliasAnalysis>());
+
+  // Track whether it's ok to mark objc_storeStrong calls with the "tail"
+  // keyword. Be conservative if the function has variadic arguments.
+  // It seems that functions which "return twice" are also unsafe for the
+  // "tail" argument, because they are setjmp, which could need to
+  // return to an earlier stack state.
+  bool TailOkForStoreStrongs = !F.isVarArg() && !F.callsFunctionThatReturnsTwice();
 
   // For ObjC library calls which return their argument, replace uses of the
   // argument with uses of the call return value, if it dominates the use. This
@@ -3772,6 +3919,13 @@ bool ObjCARCContract::runOnFunction(Function &F) {
     }
     case IC_Release:
       ContractRelease(Inst, I);
+      continue;
+    case IC_User:
+      // Be conservative if the function has any alloca instructions.
+      // Technically we only care about escaping alloca instructions,
+      // but this is sufficient to handle some interesting cases.
+      if (isa<AllocaInst>(Inst))
+        TailOkForStoreStrongs = false;
       continue;
     default:
       continue;
@@ -3836,6 +3990,14 @@ bool ObjCARCContract::runOnFunction(Function &F) {
         break;
     }
   }
+
+  // If this function has no escaping allocas or suspicious vararg usage,
+  // objc_storeStrong calls can be marked with the "tail" keyword.
+  if (TailOkForStoreStrongs)
+    for (DenseSet<CallInst *>::iterator I = StoreStrongCalls.begin(),
+         E = StoreStrongCalls.end(); I != E; ++I)
+      (*I)->setTailCall();
+  StoreStrongCalls.clear();
 
   return Changed;
 }

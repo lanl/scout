@@ -1523,10 +1523,7 @@ void CodeGenFunction::EmitCXXDeleteExpr(const CXXDeleteExpr *E) {
 
 static llvm::Constant *getBadTypeidFn(CodeGenFunction &CGF) {
   // void __cxa_bad_typeid();
-  
-  llvm::Type *VoidTy = llvm::Type::getVoidTy(CGF.getLLVMContext());
-  llvm::FunctionType *FTy =
-  llvm::FunctionType::get(VoidTy, false);
+  llvm::FunctionType *FTy = llvm::FunctionType::get(CGF.VoidTy, false);
   
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_bad_typeid");
 }
@@ -1607,7 +1604,7 @@ static llvm::Constant *getDynamicCastFn(CodeGenFunction &CGF) {
   //                      const abi::__class_type_info *dst,
   //                      std::ptrdiff_t src2dst_offset);
   
-  llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
+  llvm::Type *Int8PtrTy = CGF.Int8PtrTy;
   llvm::Type *PtrDiffTy = 
     CGF.ConvertType(CGF.getContext().getPointerDiffType());
 
@@ -1621,11 +1618,7 @@ static llvm::Constant *getDynamicCastFn(CodeGenFunction &CGF) {
 
 static llvm::Constant *getBadCastFn(CodeGenFunction &CGF) {
   // void __cxa_bad_cast();
-  
-  llvm::Type *VoidTy = llvm::Type::getVoidTy(CGF.getLLVMContext());
-  llvm::FunctionType *FTy =
-    llvm::FunctionType::get(VoidTy, false);
-  
+  llvm::FunctionType *FTy = llvm::FunctionType::get(CGF.VoidTy, false);
   return CGF.CGM.CreateRuntimeFunction(FTy, "__cxa_bad_cast");
 }
 
@@ -1770,4 +1763,51 @@ llvm::Value *CodeGenFunction::EmitDynamicCast(llvm::Value *Value,
   }
 
   return Value;
+}
+
+namespace {
+  struct CallLambdaMemberDtor : EHScopeStack::Cleanup {
+    FieldDecl *Field;
+    CXXDestructorDecl *Dtor;
+    llvm::Value *Lambda;
+
+    CallLambdaMemberDtor(FieldDecl *Field, CXXDestructorDecl *Dtor,
+                         llvm::Value *Lambda)
+      : Field(Field), Dtor(Dtor), Lambda(Lambda) {}
+
+    void Emit(CodeGenFunction &CGF, Flags flags) {
+      LValue LHS = CGF.EmitLValueForField(Lambda, Field, 0);
+      CGF.EmitCXXDestructorCall(Dtor, Dtor_Complete, /*ForVirtualBase=*/false,
+                                LHS.getAddress());
+    }
+  };
+}
+
+void CodeGenFunction::EmitLambdaExpr(const LambdaExpr *E, AggValueSlot Slot) {
+  RunCleanupsScope Scope(*this);
+
+  CXXRecordDecl::field_iterator CurField = E->getLambdaClass()->field_begin();
+  for (LambdaExpr::capture_init_iterator i = E->capture_init_begin(),
+                                         e = E->capture_init_end();
+      i != e; ++i, ++CurField) {
+    // FIXME: Add array handling
+    // FIXME: Try to refactor with CodeGenFunction::EmitCtorPrologue
+
+    // Emit initialization
+    LValue LV = EmitLValueForFieldInitialization(Slot.getAddr(), *CurField, 0);
+    EmitExprAsInit(*i, *CurField, LV, false);
+
+    // Add temporary cleanup to handle the case where a later initialization
+    // throws.
+    if (!CGM.getLangOptions().Exceptions)
+      continue;
+    const RecordType *RT = CurField->getType()->getAs<RecordType>();
+    if (!RT)
+      continue;
+    CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+    if (!RD->hasTrivialDestructor())
+      EHStack.pushCleanup<CallLambdaMemberDtor>(EHCleanup, *CurField,
+                                                RD->getDestructor(),
+                                                Slot.getAddr());
+  }
 }

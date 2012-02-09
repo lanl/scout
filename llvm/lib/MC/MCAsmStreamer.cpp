@@ -186,6 +186,8 @@ public:
 
   virtual void EmitSLEB128Value(const MCExpr *Value);
 
+  virtual void EmitGPRel64Value(const MCExpr *Value);
+
   virtual void EmitGPRel32Value(const MCExpr *Value);
 
 
@@ -199,7 +201,7 @@ public:
   virtual void EmitCodeAlignment(unsigned ByteAlignment,
                                  unsigned MaxBytesToEmit = 0);
 
-  virtual void EmitValueToOffset(const MCExpr *Offset,
+  virtual bool EmitValueToOffset(const MCExpr *Offset,
                                  unsigned char Value = 0);
 
   virtual void EmitFileDirective(StringRef Filename);
@@ -222,6 +224,7 @@ public:
   virtual void EmitCFISameValue(int64_t Register);
   virtual void EmitCFIRelOffset(int64_t Register, int64_t Offset);
   virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
+  virtual void EmitCFISignalFrame();
 
   virtual void EmitWin64EHStartProc(const MCSymbol *Symbol);
   virtual void EmitWin64EHEndProc();
@@ -391,7 +394,7 @@ void MCAsmStreamer::EmitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
 void MCAsmStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
                                         MCSymbolAttr Attribute) {
   switch (Attribute) {
-  case MCSA_Invalid: assert(0 && "Invalid symbol attribute");
+  case MCSA_Invalid: llvm_unreachable("Invalid symbol attribute");
   case MCSA_ELF_TypeFunction:    /// .type _foo, STT_FUNC  # aka @function
   case MCSA_ELF_TypeIndFunction: /// .type _foo, STT_GNU_IFUNC
   case MCSA_ELF_TypeObject:      /// .type _foo, STT_OBJECT  # aka @object
@@ -403,7 +406,7 @@ void MCAsmStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
     OS << "\t.type\t" << *Symbol << ','
        << ((MAI.getCommentString()[0] != '@') ? '@' : '%');
     switch (Attribute) {
-    default: assert(0 && "Unknown ELF .type");
+    default: llvm_unreachable("Unknown ELF .type");
     case MCSA_ELF_TypeFunction:    OS << "function"; break;
     case MCSA_ELF_TypeIndFunction: OS << "gnu_indirect_function"; break;
     case MCSA_ELF_TypeObject:      OS << "object"; break;
@@ -662,6 +665,12 @@ void MCAsmStreamer::EmitSLEB128Value(const MCExpr *Value) {
   EmitEOL();
 }
 
+void MCAsmStreamer::EmitGPRel64Value(const MCExpr *Value) {
+  assert(MAI.getGPRel64Directive() != 0);
+  OS << MAI.getGPRel64Directive() << *Value;
+  EmitEOL();
+}
+
 void MCAsmStreamer::EmitGPRel32Value(const MCExpr *Value) {
   assert(MAI.getGPRel32Directive() != 0);
   OS << MAI.getGPRel32Directive() << *Value;
@@ -743,11 +752,12 @@ void MCAsmStreamer::EmitCodeAlignment(unsigned ByteAlignment,
                        1, MaxBytesToEmit);
 }
 
-void MCAsmStreamer::EmitValueToOffset(const MCExpr *Offset,
+bool MCAsmStreamer::EmitValueToOffset(const MCExpr *Offset,
                                       unsigned char Value) {
   // FIXME: Verify that Offset is associated with the current section.
   OS << ".org " << *Offset << ", " << (unsigned) Value;
   EmitEOL();
+  return false;
 }
 
 
@@ -990,6 +1000,16 @@ void MCAsmStreamer::EmitCFIAdjustCfaOffset(int64_t Adjustment) {
     return;
 
   OS << "\t.cfi_adjust_cfa_offset " << Adjustment;
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitCFISignalFrame() {
+  MCStreamer::EmitCFISignalFrame();
+
+  if (!UseCFI)
+    return;
+
+  OS << "\t.cif_signal_frame";
   EmitEOL();
 }
 

@@ -112,42 +112,34 @@ static void AdoptTemplateParameterList(TemplateParameterList *Params,
 //===----------------------------------------------------------------------===//
 
 RedeclarableTemplateDecl::CommonBase *RedeclarableTemplateDecl::getCommonPtr() {
-  // Find the first declaration of this function template.
-  RedeclarableTemplateDecl *First = getCanonicalDecl();
+  if (!Common) {
+    // Walk the previous-declaration chain until we either find a declaration
+    // with a common pointer or we run out of previous declarations.
+    llvm::SmallVector<RedeclarableTemplateDecl *, 2> PrevDecls;
+    for (RedeclarableTemplateDecl *Prev = getPreviousDecl(); Prev;
+         Prev = Prev->getPreviousDecl()) {
+      if (Prev->Common) {
+        Common = Prev->Common;
+        break;
+      }
+      
+      PrevDecls.push_back(Prev);
+    }
 
-  if (First->CommonOrPrev.isNull()) {
-    CommonBase *CommonPtr = First->newCommon(getASTContext());
-    First->CommonOrPrev = CommonPtr;
-    CommonPtr->Latest = First;
+    // If we never found a common pointer, allocate one now.
+    if (!Common) {
+      // FIXME: If any of the declarations is from an AST file, we probably
+      // need an update record to add the common data.
+      
+      Common = newCommon(getASTContext());
+    }
+    
+    // Update any previous declarations we saw with the common pointer.
+    for (unsigned I = 0, N = PrevDecls.size(); I != N; ++I)
+      PrevDecls[I]->Common = Common;
   }
-  return First->CommonOrPrev.get<CommonBase*>();
-}
 
-
-RedeclarableTemplateDecl *RedeclarableTemplateDecl::getCanonicalDeclImpl() {
-  RedeclarableTemplateDecl *Tmpl = this;
-  while (Tmpl->getPreviousDeclaration())
-    Tmpl = Tmpl->getPreviousDeclaration();
-  return Tmpl;
-}
-
-void RedeclarableTemplateDecl::setPreviousDeclarationImpl(
-                                               RedeclarableTemplateDecl *Prev) {
-  if (Prev) {
-    CommonBase *Common = Prev->getCommonPtr();
-    Prev = Common->Latest;
-    Common->Latest = this;
-    CommonOrPrev = Prev;
-  } else {
-    assert(CommonOrPrev.is<CommonBase*>() && "Cannot reset TemplateDecl Prev");
-  }
-}
-
-RedeclarableTemplateDecl *RedeclarableTemplateDecl::getNextRedeclaration() {
-  if (CommonOrPrev.is<RedeclarableTemplateDecl*>())
-    return CommonOrPrev.get<RedeclarableTemplateDecl*>();
-  CommonBase *Common = CommonOrPrev.get<CommonBase*>();
-  return Common ? Common->Latest : this;
+  return Common;
 }
 
 template <class EntryType>
@@ -160,7 +152,7 @@ RedeclarableTemplateDecl::findSpecializationImpl(
   llvm::FoldingSetNodeID ID;
   EntryType::Profile(ID,Args,NumArgs, getASTContext());
   EntryType *Entry = Specs.FindNodeOrInsertPos(ID, InsertPos);
-  return Entry ? SETraits::getMostRecentDeclaration(Entry) : 0;
+  return Entry ? SETraits::getMostRecentDecl(Entry) : 0;
 }
 
 /// \brief Generate the injected template arguments for the given template
@@ -361,7 +353,7 @@ void ClassTemplateDecl::getPartialSpecializations(
        P = PartialSpecs.begin(), PEnd = PartialSpecs.end();
        P != PEnd; ++P) {
     assert(!PS[P->getSequenceNumber()]);
-    PS[P->getSequenceNumber()] = P->getMostRecentDeclaration();
+    PS[P->getSequenceNumber()] = P->getMostRecentDecl();
   }
 }
 
@@ -374,7 +366,7 @@ ClassTemplateDecl::findPartialSpecialization(QualType T) {
                           PEnd = getPartialSpecializations().end();
        P != PEnd; ++P) {
     if (Context.hasSameType(P->getInjectedSpecializationType(), T))
-      return P->getMostRecentDeclaration();
+      return P->getMostRecentDecl();
   }
 
   return 0;
@@ -389,7 +381,7 @@ ClassTemplateDecl::findPartialSpecInstantiatedFromMember(
          PEnd = getPartialSpecializations().end();
        P != PEnd; ++P) {
     if (P->getInstantiatedFromMember()->getCanonicalDecl() == DCanon)
-      return P->getMostRecentDeclaration();
+      return P->getMostRecentDecl();
   }
 
   return 0;

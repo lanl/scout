@@ -696,7 +696,7 @@ void CompileUnit::constructTypeDIE(DIE &Buffer, DIBasicType BTy) {
 
   Buffer.setTag(dwarf::DW_TAG_base_type);
   addUInt(&Buffer, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
-	  BTy.getEncoding());
+          BTy.getEncoding());
 
   uint64_t Size = BTy.getSizeInBits() >> 3;
   addUInt(&Buffer, dwarf::DW_AT_byte_size, 0, Size);
@@ -824,7 +824,40 @@ void CompileUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
         addSourceLine(ElemDie, DV);
       } else if (Element.isDerivedType())
         ElemDie = createMemberDIE(DIDerivedType(Element));
-      else
+      else if (Element.isObjCProperty()) {
+        DIObjCProperty Property(Element);
+        ElemDie = new DIE(Property.getTag());
+        StringRef PropertyName = Property.getObjCPropertyName();
+        addString(ElemDie, dwarf::DW_AT_APPLE_property_name, PropertyName);
+        StringRef GetterName = Property.getObjCPropertyGetterName();
+        if (!GetterName.empty())
+          addString(ElemDie, dwarf::DW_AT_APPLE_property_getter, GetterName);
+        StringRef SetterName = Property.getObjCPropertySetterName();
+        if (!SetterName.empty())
+          addString(ElemDie, dwarf::DW_AT_APPLE_property_setter, SetterName);
+        unsigned PropertyAttributes = 0;
+        if (Property.isReadOnlyObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_readonly;
+        if (Property.isReadWriteObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_readwrite;
+        if (Property.isAssignObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_assign;
+        if (Property.isRetainObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_retain;
+        if (Property.isCopyObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_copy;
+        if (Property.isNonAtomicObjCProperty())
+          PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_nonatomic;
+        if (PropertyAttributes)
+          addUInt(ElemDie, dwarf::DW_AT_APPLE_property_attribute, 0, 
+                 PropertyAttributes);
+
+        DIEEntry *Entry = getDIEEntry(Element);
+        if (!Entry) {
+          Entry = createDIEEntry(ElemDie);
+          insertDIEEntry(Element, Entry);
+        }
+      } else
         continue;
       Buffer.addChild(ElemDie);
     }
@@ -1428,6 +1461,12 @@ DIE *CompileUnit::createMemberDIE(DIDerivedType DT) {
             dwarf::DW_VIRTUALITY_virtual);
 
   // Objective-C properties.
+  if (MDNode *PNode = DT.getObjCProperty())
+    if (DIEEntry *PropertyDie = getDIEEntry(PNode))
+      MemberDie->addValue(dwarf::DW_AT_APPLE_property, dwarf::DW_FORM_ref4, 
+                          PropertyDie);
+
+  // This is only for backward compatibility.
   StringRef PropertyName = DT.getObjCPropertyName();
   if (!PropertyName.empty()) {
     addString(MemberDie, dwarf::DW_AT_APPLE_property_name, PropertyName);

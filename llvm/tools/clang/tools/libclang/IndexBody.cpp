@@ -34,6 +34,11 @@ public:
     return true;
   }
 
+  bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS) {
+    IndexCtx.indexNestedNameSpecifierLoc(NNS, Parent, ParentDC);
+    return true;
+  }
+
   bool VisitDeclRefExpr(DeclRefExpr *E) {
     IndexCtx.handleReference(E->getDecl(), E->getLocation(),
                              Parent, ParentDC, E);
@@ -82,6 +87,18 @@ public:
   bool VisitCXXConstructExpr(CXXConstructExpr *E) {
     IndexCtx.handleReference(E->getConstructor(), E->getLocation(),
                              Parent, ParentDC, E);
+    return true;
+  }
+
+  bool TraverseCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
+    if (E->getOperatorLoc().isInvalid())
+      return true; // implicit.
+    return base::TraverseCXXOperatorCallExpr(E);
+  }
+
+  bool VisitDeclStmt(DeclStmt *S) {
+    if (IndexCtx.indexFunctionLocalSymbols())
+      IndexCtx.indexDeclGroupRef(S->getDeclGroup());
     return true;
   }
 };

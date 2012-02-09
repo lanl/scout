@@ -39,15 +39,13 @@ class HTMLDiagnostics : public PathDiagnosticConsumer {
   llvm::sys::Path Directory, FilePrefix;
   bool createdDir, noDir;
   const Preprocessor &PP;
-  std::vector<const PathDiagnostic*> BatchedDiags;
 public:
   HTMLDiagnostics(const std::string& prefix, const Preprocessor &pp);
 
   virtual ~HTMLDiagnostics() { FlushDiagnostics(NULL); }
 
-  virtual void FlushDiagnostics(SmallVectorImpl<std::string> *FilesMade);
-
-  virtual void HandlePathDiagnosticImpl(const PathDiagnostic* D);
+  virtual void FlushDiagnosticsImpl(std::vector<const PathDiagnostic *> &Diags,
+                                    SmallVectorImpl<std::string> *FilesMade);
 
   virtual StringRef getName() const {
     return "HTMLDiagnostics";
@@ -88,30 +86,13 @@ ento::createHTMLDiagnosticConsumer(const std::string& prefix,
 // Report processing.
 //===----------------------------------------------------------------------===//
 
-void HTMLDiagnostics::HandlePathDiagnosticImpl(const PathDiagnostic* D) {
-  if (!D)
-    return;
-
-  if (D->empty()) {
-    delete D;
-    return;
+void HTMLDiagnostics::FlushDiagnosticsImpl(
+  std::vector<const PathDiagnostic *> &Diags,
+  SmallVectorImpl<std::string> *FilesMade) {
+  for (std::vector<const PathDiagnostic *>::iterator it = Diags.begin(),
+       et = Diags.end(); it != et; ++it) {
+    ReportDiag(**it, FilesMade);
   }
-
-  const_cast<PathDiagnostic*>(D)->flattenLocations();
-  BatchedDiags.push_back(D);
-}
-
-void
-HTMLDiagnostics::FlushDiagnostics(SmallVectorImpl<std::string> *FilesMade)
-{
-  while (!BatchedDiags.empty()) {
-    const PathDiagnostic* D = BatchedDiags.back();
-    BatchedDiags.pop_back();
-    ReportDiag(*D, FilesMade);
-    delete D;
-  }
-
-  BatchedDiags.clear();
 }
 
 void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
@@ -138,12 +119,13 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
   if (noDir)
     return;
 
-  const SourceManager &SMgr = D.begin()->getLocation().getManager();
+  const SourceManager &SMgr = (*D.path.begin())->getLocation().getManager();
   FileID FID;
 
   // Verify that the entire path is from the same FileID.
-  for (PathDiagnostic::const_iterator I = D.begin(), E = D.end(); I != E; ++I) {
-    FullSourceLoc L = I->getLocation().asLocation().getExpansionLoc();
+  for (PathPieces::const_iterator I = D.path.begin(), E = D.path.end();
+       I != E; ++I) {
+    FullSourceLoc L = (*I)->getLocation().asLocation().getExpansionLoc();
 
     if (FID.isInvalid()) {
       FID = SMgr.getFileID(L);
@@ -151,16 +133,13 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
       return; // FIXME: Emit a warning?
 
     // Check the source ranges.
-    for (PathDiagnosticPiece::range_iterator RI=I->ranges_begin(),
-                                             RE=I->ranges_end(); RI!=RE; ++RI) {
-
+    for (PathDiagnosticPiece::range_iterator RI = (*I)->ranges_begin(),
+                                             RE = (*I)->ranges_end();
+                                             RI != RE; ++RI) {
       SourceLocation L = SMgr.getExpansionLoc(RI->getBegin());
-
       if (!L.isFileID() || SMgr.getFileID(L) != FID)
         return; // FIXME: Emit a warning?
-
       L = SMgr.getExpansionLoc(RI->getEnd());
-
       if (!L.isFileID() || SMgr.getFileID(L) != FID)
         return; // FIXME: Emit a warning?
     }
@@ -173,12 +152,12 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
   Rewriter R(const_cast<SourceManager&>(SMgr), PP.getLangOptions());
 
   // Process the path.
-  unsigned n = D.size();
+  unsigned n = D.path.size();
   unsigned max = n;
 
-  for (PathDiagnostic::const_reverse_iterator I=D.rbegin(), E=D.rend();
-        I!=E; ++I, --n)
-    HandlePiece(R, FID, *I, n, max);
+  for (PathPieces::const_reverse_iterator I = D.path.rbegin(), E=D.path.rend();
+        I != E; ++I, --n)
+    HandlePiece(R, FID, **I, n, max);
 
   // Add line numbers, header, footer, etc.
 
@@ -221,9 +200,9 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
       << html::EscapeText(Entry->getName())
       << "</td></tr>\n<tr><td class=\"rowname\">Location:</td><td>"
          "<a href=\"#EndPath\">line "
-      << (*D.rbegin()).getLocation().asLocation().getExpansionLineNumber()
+      << (*D.path.rbegin())->getLocation().asLocation().getExpansionLineNumber()
       << ", column "
-      << (*D.rbegin()).getLocation().asLocation().getExpansionColumnNumber()
+      << (*D.path.rbegin())->getLocation().asLocation().getExpansionColumnNumber()
       << "</a></td></tr>\n"
          "<tr><td class=\"rowname\">Description:</td><td>"
       << D.getDescription() << "</td></tr>\n";
@@ -261,10 +240,10 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
     os << "\n<!-- BUGFILE " << DirName << Entry->getName() << " -->\n";
 
     os << "\n<!-- BUGLINE "
-       << D.back()->getLocation().asLocation().getExpansionLineNumber()
+       << D.path.back()->getLocation().asLocation().getExpansionLineNumber()
        << " -->\n";
 
-    os << "\n<!-- BUGPATHLENGTH " << D.size() << " -->\n";
+    os << "\n<!-- BUGPATHLENGTH " << D.path.size() << " -->\n";
 
     // Mark the end of the tags.
     os << "\n<!-- BUGMETAEND -->\n";
@@ -353,6 +332,8 @@ void HTMLDiagnostics::HandlePiece(Rewriter& R, FileID BugFileID,
 
   const char *Kind = 0;
   switch (P.getKind()) {
+  case PathDiagnosticPiece::CallEnter:
+  case PathDiagnosticPiece::CallExit:
   case PathDiagnosticPiece::Event:  Kind = "Event"; break;
   case PathDiagnosticPiece::ControlFlow: Kind = "Control"; break;
     // Setting Kind to "Control" is intentional.
@@ -518,7 +499,7 @@ unsigned HTMLDiagnostics::ProcessMacroPiece(raw_ostream &os,
                                             const PathDiagnosticMacroPiece& P,
                                             unsigned num) {
 
-  for (PathDiagnosticMacroPiece::const_iterator I=P.begin(), E=P.end();
+  for (PathPieces::const_iterator I = P.subPieces.begin(), E=P.subPieces.end();
         I!=E; ++I) {
 
     if (const PathDiagnosticMacroPiece *MP =

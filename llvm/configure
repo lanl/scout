@@ -1442,12 +1442,7 @@ Optional Packages:
                           resource files
   --with-c-include-dirs   Colon separated list of directories clang will
                           search for headers
-  --with-cxx-include-root Directory with the libstdc++ headers.
-  --with-cxx-include-arch Architecture of the libstdc++ headers.
-  --with-cxx-include-32bit-dir
-                          32 bit multilib dir.
-  --with-cxx-include-64bit-dir
-                          64 bit multilib directory.
+  --with-gcc-toolchain    Directory where gcc is installed.
   --with-binutils-include Specify path to binutils/include/ containing
                           plugin-api.h file for gold plugin.
   --with-bug-report-url   Specify the URL where bug reports should be
@@ -3903,7 +3898,6 @@ if test "$llvm_cv_target_arch" = "Unknown" ; then
 echo "$as_me: WARNING: Configuring LLVM for an unknown target archicture" >&2;}
 fi
 
-# Determine the LLVM native architecture for the target
 case "$llvm_cv_target_arch" in
     x86)     LLVM_NATIVE_ARCH="X86" ;;
     x86_64)  LLVM_NATIVE_ARCH="X86" ;;
@@ -5345,8 +5339,6 @@ esac
 TARGETS_TO_BUILD=$TARGETS_TO_BUILD
 
 
-# Determine whether we are building LLVM support for the native architecture.
-# If so, define LLVM_NATIVE_ARCH to that LLVM target.
 for a_target in $TARGETS_TO_BUILD; do
   if test "$a_target" = "$LLVM_NATIVE_ARCH"; then
 
@@ -5391,8 +5383,6 @@ _ACEOF
   fi
 done
 
-# Build the LLVM_TARGET and LLVM_... macros for Targets.def and the individual
-# target feature def files.
 LLVM_ENUM_TARGETS=""
 LLVM_ENUM_ASM_PRINTERS=""
 LLVM_ENUM_ASM_PARSERS=""
@@ -5575,59 +5565,20 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+# Clang normally uses the system c++ headers and libraries. With this option,
+# clang will use the ones provided by a gcc installation instead. This option should
+# be passed the same value that was used with --prefix when configuring gcc.
 
-# Check whether --with-cxx-include-root was given.
-if test "${with_cxx_include_root+set}" = set; then
-  withval=$with_cxx_include_root;
+# Check whether --with-gcc-toolchain was given.
+if test "${with_gcc_toolchain+set}" = set; then
+  withval=$with_gcc_toolchain;
 else
   withval=""
 fi
 
 
 cat >>confdefs.h <<_ACEOF
-#define CXX_INCLUDE_ROOT "$withval"
-_ACEOF
-
-
-
-# Check whether --with-cxx-include-arch was given.
-if test "${with_cxx_include_arch+set}" = set; then
-  withval=$with_cxx_include_arch;
-else
-  withval=""
-fi
-
-
-cat >>confdefs.h <<_ACEOF
-#define CXX_INCLUDE_ARCH "$withval"
-_ACEOF
-
-
-
-# Check whether --with-cxx-include-32bit-dir was given.
-if test "${with_cxx_include_32bit_dir+set}" = set; then
-  withval=$with_cxx_include_32bit_dir;
-else
-  withval=""
-fi
-
-
-cat >>confdefs.h <<_ACEOF
-#define CXX_INCLUDE_32BIT_DIR "$withval"
-_ACEOF
-
-
-
-# Check whether --with-cxx-include-64bit-dir was given.
-if test "${with_cxx_include_64bit_dir+set}" = set; then
-  withval=$with_cxx_include_64bit_dir;
-else
-  withval=""
-fi
-
-
-cat >>confdefs.h <<_ACEOF
-#define CXX_INCLUDE_64BIT_DIR "$withval"
+#define GCC_INSTALL_PREFIX "$withval"
 _ACEOF
 
 
@@ -10502,7 +10453,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<EOF
-#line 10505 "configure"
+#line 10456 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -20832,9 +20783,6 @@ SHLIBEXT=$libltdl_cv_shlibext
 SHLIBPATH_VAR=$libltdl_cv_shlibpath_var
 
 
-# Translate the various configuration directories and other basic
-# information into substitutions that will end up in Makefile.config.in
-# that these configured values can be used by the makefiles
 if test "${prefix}" = "NONE" ; then
   prefix="/usr/local"
 fi
@@ -20859,8 +20807,6 @@ LLVM_CONFIGTIME=`date`
 
 
 
-# Place the various directores into the config.h file as #defines so that we
-# can know about the installation paths within LLVM.
 
 cat >>confdefs.h <<_ACEOF
 #define LLVM_PREFIX "$LLVM_PREFIX"
@@ -20917,7 +20863,6 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-# Determine which bindings to build.
 if test "$BINDINGS_TO_BUILD" = auto ; then
   BINDINGS_TO_BUILD=""
   if test "x$OCAMLC" != x -a "x$OCAMLDEP" != x ; then
@@ -20927,12 +20872,9 @@ fi
 BINDINGS_TO_BUILD=$BINDINGS_TO_BUILD
 
 
-# This isn't really configurey, but it avoids having to repeat the list in
-# other files.
 ALL_BINDINGS=ocaml
 
 
-# Do any work necessary to ensure that bindings have what they need.
 binding_prereqs_failed=0
 for a_binding in $BINDINGS_TO_BUILD ; do
   case "$a_binding" in
@@ -21108,8 +21050,16 @@ ac_config_files="$ac_config_files llvm.spec"
 
 ac_config_files="$ac_config_files docs/doxygen.cfg"
 
-if test -f ${srcdir}/tools/clang/README.txt; then
-  ac_config_files="$ac_config_files tools/clang/docs/doxygen.cfg"
+
+if test "${clang_src_root}" = ""; then
+  clang_src_root="$srcdir/tools/clang"
+fi
+if test -f ${clang_src_root}/README.txt; then
+    configh="include/clang/Config/config.h"
+  doxy="docs/doxygen.cfg"
+  ac_config_headers="$ac_config_headers tools/clang/${configh}:${clang_src_root}/${configh}.in"
+
+  ac_config_files="$ac_config_files tools/clang/${doxy}:${clang_src_root}/${doxy}.in"
 
 fi
 
@@ -21731,7 +21681,8 @@ do
     "Makefile.config") CONFIG_FILES="$CONFIG_FILES Makefile.config" ;;
     "llvm.spec") CONFIG_FILES="$CONFIG_FILES llvm.spec" ;;
     "docs/doxygen.cfg") CONFIG_FILES="$CONFIG_FILES docs/doxygen.cfg" ;;
-    "tools/clang/docs/doxygen.cfg") CONFIG_FILES="$CONFIG_FILES tools/clang/docs/doxygen.cfg" ;;
+    "tools/clang/${configh}") CONFIG_HEADERS="$CONFIG_HEADERS tools/clang/${configh}:${clang_src_root}/${configh}.in" ;;
+    "tools/clang/${doxy}") CONFIG_FILES="$CONFIG_FILES tools/clang/${doxy}:${clang_src_root}/${doxy}.in" ;;
     "bindings/ocaml/llvm/META.llvm") CONFIG_FILES="$CONFIG_FILES bindings/ocaml/llvm/META.llvm" ;;
     "setup") CONFIG_COMMANDS="$CONFIG_COMMANDS setup" ;;
     "Makefile") CONFIG_COMMANDS="$CONFIG_COMMANDS Makefile" ;;

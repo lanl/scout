@@ -259,11 +259,9 @@ Type *SCEV::getType() const {
     return cast<SCEVUnknown>(this)->getType();
   case scCouldNotCompute:
     llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-    return 0;
-  default: break;
+  default:
+    llvm_unreachable("Unknown SCEV kind!");
   }
-  llvm_unreachable("Unknown SCEV kind!");
-  return 0;
 }
 
 bool SCEV::isZero() const {
@@ -611,11 +609,8 @@ namespace {
       }
 
       default:
-        break;
+        llvm_unreachable("Unknown SCEV kind!");
       }
-
-      llvm_unreachable("Unknown SCEV kind!");
-      return 0;
     }
   };
 }
@@ -4585,40 +4580,6 @@ EvaluateConstantChrecAtConstant(const SCEVAddRecExpr *AddRec, ConstantInt *C,
   return cast<SCEVConstant>(Val)->getValue();
 }
 
-/// GetAddressedElementFromGlobal - Given a global variable with an initializer
-/// and a GEP expression (missing the pointer index) indexing into it, return
-/// the addressed element of the initializer or null if the index expression is
-/// invalid.
-static Constant *
-GetAddressedElementFromGlobal(GlobalVariable *GV,
-                              const std::vector<ConstantInt*> &Indices) {
-  Constant *Init = GV->getInitializer();
-  for (unsigned i = 0, e = Indices.size(); i != e; ++i) {
-    uint64_t Idx = Indices[i]->getZExtValue();
-    if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Init)) {
-      assert(Idx < CS->getNumOperands() && "Bad struct index!");
-      Init = cast<Constant>(CS->getOperand(Idx));
-    } else if (ConstantArray *CA = dyn_cast<ConstantArray>(Init)) {
-      if (Idx >= CA->getNumOperands()) return 0;  // Bogus program
-      Init = cast<Constant>(CA->getOperand(Idx));
-    } else if (isa<ConstantAggregateZero>(Init)) {
-      if (StructType *STy = dyn_cast<StructType>(Init->getType())) {
-        assert(Idx < STy->getNumElements() && "Bad struct index!");
-        Init = Constant::getNullValue(STy->getElementType(Idx));
-      } else if (ArrayType *ATy = dyn_cast<ArrayType>(Init->getType())) {
-        if (Idx >= ATy->getNumElements()) return 0;  // Bogus program
-        Init = Constant::getNullValue(ATy->getElementType());
-      } else {
-        llvm_unreachable("Unknown constant aggregate type!");
-      }
-      return 0;
-    } else {
-      return 0; // Unknown initializer type
-    }
-  }
-  return Init;
-}
-
 /// ComputeLoadConstantCompareExitLimit - Given an exit condition of
 /// 'icmp op load X, cst', try to see if we can compute the backedge
 /// execution count.
@@ -4646,7 +4607,7 @@ ScalarEvolution::ComputeLoadConstantCompareExitLimit(
 
   // Okay, we allow one non-constant index into the GEP instruction.
   Value *VarIdx = 0;
-  std::vector<ConstantInt*> Indexes;
+  std::vector<Constant*> Indexes;
   unsigned VarIdxNum = 0;
   for (unsigned i = 2, e = GEP->getNumOperands(); i != e; ++i)
     if (ConstantInt *CI = dyn_cast<ConstantInt>(GEP->getOperand(i))) {
@@ -4680,7 +4641,8 @@ ScalarEvolution::ComputeLoadConstantCompareExitLimit(
     // Form the GEP offset.
     Indexes[VarIdxNum] = Val;
 
-    Constant *Result = GetAddressedElementFromGlobal(GV, Indexes);
+    Constant *Result = ConstantFoldLoadThroughGEPIndices(GV->getInitializer(),
+                                                         Indexes);
     if (Result == 0) break;  // Cannot compute!
 
     // Evaluate the condition for this iteration.
@@ -5320,7 +5282,6 @@ const SCEV *ScalarEvolution::computeSCEVAtScope(const SCEV *V, const Loop *L) {
   }
 
   llvm_unreachable("Unknown SCEV type!");
-  return 0;
 }
 
 /// getSCEVAtScope - This is a convenience function which does
@@ -5951,7 +5912,6 @@ ScalarEvolution::isKnownPredicateWithRanges(ICmpInst::Predicate Pred,
   switch (Pred) {
   default:
     llvm_unreachable("Unexpected ICmpInst::Predicate value!");
-    break;
   case ICmpInst::ICMP_SGT:
     Pred = ICmpInst::ICMP_SLT;
     std::swap(LHS, RHS);
@@ -6802,11 +6762,8 @@ ScalarEvolution::computeLoopDisposition(const SCEV *S, const Loop *L) {
     return LoopInvariant;
   case scCouldNotCompute:
     llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-    return LoopVariant;
-  default: break;
+  default: llvm_unreachable("Unknown SCEV kind!");
   }
-  llvm_unreachable("Unknown SCEV kind!");
-  return LoopVariant;
 }
 
 bool ScalarEvolution::isLoopInvariant(const SCEV *S, const Loop *L) {
@@ -6888,11 +6845,9 @@ ScalarEvolution::computeBlockDisposition(const SCEV *S, const BasicBlock *BB) {
     return ProperlyDominatesBlock;
   case scCouldNotCompute:
     llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-    return DoesNotDominateBlock;
-  default: break;
+  default: 
+    llvm_unreachable("Unknown SCEV kind!");
   }
-  llvm_unreachable("Unknown SCEV kind!");
-  return DoesNotDominateBlock;
 }
 
 bool ScalarEvolution::dominates(const SCEV *S, const BasicBlock *BB) {
@@ -6938,11 +6893,9 @@ bool ScalarEvolution::hasOperand(const SCEV *S, const SCEV *Op) const {
     return false;
   case scCouldNotCompute:
     llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-    return false;
-  default: break;
+  default:
+    llvm_unreachable("Unknown SCEV kind!");
   }
-  llvm_unreachable("Unknown SCEV kind!");
-  return false;
 }
 
 void ScalarEvolution::forgetMemoizedResults(const SCEV *S) {

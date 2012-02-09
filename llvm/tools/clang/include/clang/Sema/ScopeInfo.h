@@ -18,7 +18,6 @@
 #include "clang/Basic/PartialDiagnostic.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SetVector.h"
 
 namespace clang {
 
@@ -126,8 +125,15 @@ public:
   ImplicitCaptureStyle ImpCaptureStyle;
 
   class Capture {
+    // There are two categories of capture: capturing 'this', and capturing
+    // local variables.  There are three ways to capture a local variable:
+    // capture by copy in the C++11 sense, capture by reference
+    // in the C++11 sense, and __block capture.  Lambdas explicitly specify
+    // capture by copy or capture by reference.  For blocks, __block capture
+    // applies to variables with that annotation, variables of reference type
+    // are captured by reference, and other variables are captured by copy.
     enum CaptureKind {
-      Cap_This, Cap_ByVal, Cap_ByRef
+      Cap_This, Cap_ByCopy, Cap_ByRef, Cap_Block
     };
 
     // The variable being captured (if we are not capturing 'this'),
@@ -140,33 +146,42 @@ public:
     // copy constructor.
     llvm::PointerIntPair<Expr*, 1, bool> CopyExprAndNested;
 
+    /// \brief The source location at which the first capture occurred..
+    SourceLocation Loc;
+    
   public:
-    Capture(VarDecl *Var, bool isByref, bool isNested, Expr *Cpy)
-      : VarAndKind(Var, isByref ? Cap_ByRef : Cap_ByVal),
+    Capture(VarDecl *Var, bool block, bool byRef, bool isNested, 
+            SourceLocation Loc, Expr *Cpy)
+      : VarAndKind(Var, block ? Cap_Block : byRef ? Cap_ByRef : Cap_ByCopy),
         CopyExprAndNested(Cpy, isNested) {}
 
     enum IsThisCapture { ThisCapture };
-    Capture(IsThisCapture, bool isNested)
-      : VarAndKind(0, Cap_This),
-        CopyExprAndNested(0, isNested) {
+    Capture(IsThisCapture, bool isNested, SourceLocation Loc)
+      : VarAndKind(0, Cap_This), CopyExprAndNested(0, isNested), Loc(Loc) {
     }
 
     bool isThisCapture() const { return VarAndKind.getInt() == Cap_This; }
     bool isVariableCapture() const { return !isThisCapture(); }
-    bool isCopyCapture() const { return VarAndKind.getInt() == Cap_ByVal; }
+    bool isCopyCapture() const { return VarAndKind.getInt() == Cap_ByCopy; }
     bool isReferenceCapture() const { return VarAndKind.getInt() == Cap_ByRef; }
+    bool isBlockCapture() const { return VarAndKind.getInt() == Cap_Block; }
     bool isNested() { return CopyExprAndNested.getInt(); }
 
     VarDecl *getVariable() const {
       return VarAndKind.getPointer();
     }
+    
+    /// \brief Retrieve the location at which this variable was captured.
+    SourceLocation getLocation() const { return Loc; }
+    
     Expr *getCopyExpr() const {
       return CopyExprAndNested.getPointer();
     }
   };
 
   CapturingScopeInfo(DiagnosticsEngine &Diag, ImplicitCaptureStyle Style)
-    : FunctionScopeInfo(Diag), ImpCaptureStyle(Style), CXXThisCaptureIndex(0)
+    : FunctionScopeInfo(Diag), ImpCaptureStyle(Style), CXXThisCaptureIndex(0),
+      HasImplicitReturnType(false)
      {}
 
   /// CaptureMap - A map of captured variables to (index+1) into Captures.
@@ -179,14 +194,51 @@ public:
   /// Captures - The captures.
   SmallVector<Capture, 4> Captures;
 
-  void AddCapture(VarDecl *Var, bool isByref, bool isNested, Expr *Cpy) {
-    Captures.push_back(Capture(Var, isByref, isNested, Cpy));
+  /// \brief - Whether the target type of return statements in this context
+  /// is deduced (e.g. a lambda or block with omitted return type).
+  bool HasImplicitReturnType;
+
+  /// ReturnType - The target type of return statements in this context,
+  /// or null if unknown.
+  QualType ReturnType;
+
+  void AddCapture(VarDecl *Var, bool isBlock, bool isByref, bool isNested,
+                  SourceLocation Loc, Expr *Cpy) {
+    Captures.push_back(Capture(Var, isBlock, isByref, isNested, Loc, Cpy));
     CaptureMap[Var] = Captures.size();
   }
 
-  void AddThisCapture(bool isNested) {
-    Captures.push_back(Capture(Capture::ThisCapture, isNested));
+  void AddThisCapture(bool isNested, SourceLocation Loc) {
+    Captures.push_back(Capture(Capture::ThisCapture, isNested, Loc));
     CXXThisCaptureIndex = Captures.size();
+  }
+
+  /// \brief Determine whether the C++ 'this' is captured.
+  bool isCXXThisCaptured() const { return CXXThisCaptureIndex != 0; }
+  
+  /// \brief Retrieve the capture of C++ 'this', if it has been captured.
+  Capture &getCXXThisCapture() {
+    assert(isCXXThisCaptured() && "this has not been captured");
+    return Captures[CXXThisCaptureIndex - 1];
+  }
+  
+  /// \brief Determine whether the given variable has been captured.
+  bool isCaptured(VarDecl *Var) const {
+    return CaptureMap.count(Var);
+  }
+  
+  /// \brief Retrieve the capture of the given variable, if it has been
+  /// captured already.
+  Capture &getCapture(VarDecl *Var) {
+    assert(isCaptured(Var) && "Variable has not been captured");
+    return Captures[CaptureMap[Var] - 1];
+  }
+
+  const Capture &getCapture(VarDecl *Var) const {
+    llvm::DenseMap<VarDecl*, unsigned>::const_iterator Known
+      = CaptureMap.find(Var);
+    assert(Known != CaptureMap.end() && "Variable has not been captured");
+    return Captures[Known->second - 1];
   }
 
   static bool classof(const FunctionScopeInfo *FSI) { 
@@ -203,10 +255,6 @@ public:
   /// TheScope - This is the scope for the block itself, which contains
   /// arguments etc.
   Scope *TheScope;
-
-  /// ReturnType - The return type of the block, or null if the block
-  /// signature didn't provide an explicit return type.
-  QualType ReturnType;
 
   /// BlockType - The function type of the block, if one was given.
   /// Its return type may be BuiltinType::Dependent.
@@ -231,26 +279,42 @@ class LambdaScopeInfo : public CapturingScopeInfo {
 public:
   /// \brief The class that describes the lambda.
   CXXRecordDecl *Lambda;
-  
+
+  /// \brief The class that describes the lambda.
+  CXXMethodDecl *CallOperator;
+
+  /// \brief Source range covering the lambda introducer [...].
+  SourceRange IntroducerRange;
+
   /// \brief The number of captures in the \c Captures list that are 
   /// explicit captures.
   unsigned NumExplicitCaptures;
 
-  /// \brief - Whether the return type of the lambda is implicit
-  bool HasImplicitReturnType;
+  /// \brief Whether this is a mutable lambda.
+  bool Mutable;
+  
+  /// \brief Whether the (empty) parameter list is explicit.
+  bool ExplicitParams;
 
-  /// ReturnType - The return type of the lambda, or null if unknown.
-  QualType ReturnType;
+  /// \brief Whether any of the capture expressions requires cleanups.
+  bool ExprNeedsCleanups;
 
-  LambdaScopeInfo(DiagnosticsEngine &Diag, CXXRecordDecl *Lambda)
+  LambdaScopeInfo(DiagnosticsEngine &Diag, CXXRecordDecl *Lambda,
+                  CXXMethodDecl *CallOperator)
     : CapturingScopeInfo(Diag, ImpCap_None), Lambda(Lambda),
-      NumExplicitCaptures(0), HasImplicitReturnType(false)
+      CallOperator(CallOperator), NumExplicitCaptures(0), Mutable(false),
+      ExprNeedsCleanups(false)
   {
     Kind = SK_Lambda;
   }
 
   virtual ~LambdaScopeInfo();
 
+  /// \brief Note when 
+  void finishedExplicitCaptures() {
+    NumExplicitCaptures = Captures.size();
+  }
+  
   static bool classof(const FunctionScopeInfo *FSI) { 
     return FSI->Kind == SK_Lambda; 
   }

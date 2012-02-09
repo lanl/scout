@@ -246,11 +246,18 @@ void X86Subtarget::AutoDetectSubtargetFeatures() {
       IsBTMemSlow = true;
       ToggleFeature(X86::FeatureSlowBTMem);
     }
+
     // If it's Nehalem, unaligned memory access is fast.
     // FIXME: Nehalem is family 6. Also include Westmere and later processors?
     if (Family == 15 && Model == 26) {
       IsUAMemFast = true;
       ToggleFeature(X86::FeatureFastUAMem);
+    }
+
+    // Set processor type. Currently only Atom is detected.
+    if (Family == 6 && Model == 28) {
+      X86ProcFamily = IntelAtom;
+      ToggleFeature(X86::FeatureLeaForSP);
     }
 
     unsigned MaxExtLevel;
@@ -310,6 +317,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
                            const std::string &FS, 
                            unsigned StackAlignOverride, bool is64Bit)
   : X86GenSubtargetInfo(TT, CPU, FS)
+  , X86ProcFamily(Others)
   , PICStyle(PICStyles::None)
   , X86SSELevel(NoMMXSSE)
   , X863DNowLevel(NoThreeDNow)
@@ -333,16 +341,19 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   , IsUAMemFast(false)
   , HasVectorUAMem(false)
   , HasCmpxchg16b(false)
+  , UseLeaForSP(false)
+  , PostRAScheduler(false)
   , stackAlignment(4)
   // FIXME: this is a known good value for Yonah. How about others?
   , MaxInlineSizeThreshold(128)
   , TargetTriple(TT)
   , In64BitMode(is64Bit) {
   // Determine default and user specified characteristics
+  std::string CPUName = CPU;
   if (!FS.empty() || !CPU.empty()) {
-    std::string CPUName = CPU;
     if (CPUName.empty()) {
-#if defined (__x86_64__) || defined(__i386__)
+#if defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)\
+    || defined(__x86_64__) || defined(_M_AMD64) || defined (_M_X64)
       CPUName = sys::getHostCPUName();
 #else
       CPUName = "generic";
@@ -362,6 +373,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
     // If feature string is not empty, parse features string.
     ParseSubtargetFeatures(CPUName, FullFS);
   } else {
+    if (CPUName.empty()) {
+#if defined (__x86_64__) || defined(__i386__)
+      CPUName = sys::getHostCPUName();
+#else
+      CPUName = "generic";
+#endif
+    }
     // Otherwise, use CPUID to auto-detect feature set.
     AutoDetectSubtargetFeatures();
 
@@ -376,6 +394,11 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
         ToggleFeature(X86::FeatureSSE2);
       }
     }
+  }
+
+  if (X86ProcFamily == IntelAtom) {
+    PostRAScheduler = true;
+    InstrItins = getInstrItineraryForCPU(CPUName);
   }
 
   // It's important to keep the MCSubtargetInfo feature bits in sync with
@@ -396,4 +419,13 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
   else if (isTargetDarwin() || isTargetFreeBSD() || isTargetLinux() ||
            isTargetSolaris() || In64BitMode)
     stackAlignment = 16;
+}
+
+bool X86Subtarget::enablePostRAScheduler(
+           CodeGenOpt::Level OptLevel,
+           TargetSubtargetInfo::AntiDepBreakMode& Mode,
+           RegClassVector& CriticalPathRCs) const {
+  Mode = TargetSubtargetInfo::ANTIDEP_CRITICAL;
+  CriticalPathRCs.clear();
+  return PostRAScheduler && OptLevel >= CodeGenOpt::Default;
 }

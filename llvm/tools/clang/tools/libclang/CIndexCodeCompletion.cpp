@@ -104,8 +104,7 @@ clang_getCompletionChunkKind(CXCompletionString completion_string,
     return CXCompletionChunk_VerticalSpace;
   }
 
-  // Should be unreachable, but let's be careful.
-  return CXCompletionChunk_Text;
+  llvm_unreachable("Invalid CompletionKind!");
 }
 
 CXString clang_getCompletionChunkText(CXCompletionString completion_string,
@@ -142,8 +141,7 @@ CXString clang_getCompletionChunkText(CXCompletionString completion_string,
     return createCXString("");
   }
 
-  // Should be unreachable, but let's be careful.
-  return createCXString((const char*)0);
+  llvm_unreachable("Invalid CodeCompletionString Kind!");
 }
 
 
@@ -182,8 +180,7 @@ clang_getCompletionChunkCompletionString(CXCompletionString completion_string,
     return (*CCStr)[chunk_number].Optional;
   }
 
-  // Should be unreachable, but let's be careful.
-  return 0;
+  llvm_unreachable("Invalid CompletionKind!");
 }
 
 unsigned clang_getNumCompletionChunks(CXCompletionString completion_string) {

@@ -11,6 +11,7 @@
 #define LLVM_CLANG_FRONTEND_COMPILERINSTANCE_H_
 
 #include "clang/Frontend/CompilerInvocation.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Lex/ModuleLoader.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -85,16 +86,16 @@ class CompilerInstance : public ModuleLoader {
   llvm::IntrusiveRefCntPtr<ASTContext> Context;
 
   /// The AST consumer.
-  llvm::OwningPtr<ASTConsumer> Consumer;
+  OwningPtr<ASTConsumer> Consumer;
 
   /// The code completion consumer.
-  llvm::OwningPtr<CodeCompleteConsumer> CompletionConsumer;
+  OwningPtr<CodeCompleteConsumer> CompletionConsumer;
 
   /// \brief The semantic analysis object.
-  llvm::OwningPtr<Sema> TheSema;
+  OwningPtr<Sema> TheSema;
   
   /// \brief The frontend timer
-  llvm::OwningPtr<llvm::Timer> FrontendTimer;
+  OwningPtr<llvm::Timer> FrontendTimer;
 
   /// \brief Non-owning reference to the ASTReader, if one exists.
   ASTReader *ModuleManager;
@@ -627,17 +628,19 @@ public:
   /// as the main file.
   ///
   /// \return True on success.
-  bool InitializeSourceManager(StringRef InputFile);
+  bool InitializeSourceManager(StringRef InputFile,
+         SrcMgr::CharacteristicKind Kind = SrcMgr::C_User);
 
   /// InitializeSourceManager - Initialize the source manager to set InputFile
   /// as the main file.
   ///
   /// \return True on success.
   static bool InitializeSourceManager(StringRef InputFile,
-                                      DiagnosticsEngine &Diags,
-                                      FileManager &FileMgr,
-                                      SourceManager &SourceMgr,
-                                      const FrontendOptions &Opts);
+                SrcMgr::CharacteristicKind Kind,
+                DiagnosticsEngine &Diags,
+                FileManager &FileMgr,
+                SourceManager &SourceMgr,
+                const FrontendOptions &Opts);
 
   /// }
   

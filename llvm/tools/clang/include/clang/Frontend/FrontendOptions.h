@@ -11,7 +11,6 @@
 #define LLVM_CLANG_FRONTEND_FRONTENDOPTIONS_H
 
 #include "clang/Frontend/CommandLineSourceLoc.h"
-#include "clang/Frontend/FrontendAction.h"
 #include "llvm/ADT/StringRef.h"
 #include <string>
 #include <vector>
@@ -51,6 +50,42 @@ namespace frontend {
   };
 }
 
+enum InputKind {
+  IK_None,
+  IK_Asm,
+  IK_C,
+  IK_CXX,
+  IK_ObjC,
+  IK_ObjCXX,
+  IK_PreprocessedC,
+  IK_PreprocessedCXX,
+  IK_PreprocessedObjC,
+  IK_PreprocessedObjCXX,
+  IK_OpenCL,
+  IK_CUDA,
+  IK_AST,
+  IK_LLVM_IR,
+  // ndm - Scout input kind
+  IK_Scout
+};
+
+  
+/// \brief An input file for the front end.
+struct FrontendInputFile {
+  /// \brief The file name, or "-" to read from standard input.
+  std::string File;
+
+  /// \brief The kind of input, e.g., C source, AST file, LLVM IR.
+  InputKind Kind;
+
+  /// \brief Whether we're dealing with a 'system' input (vs. a 'user' input).
+  bool IsSystem;
+  
+  FrontendInputFile() : Kind(IK_None) { }
+  FrontendInputFile(StringRef File, InputKind Kind, bool IsSystem = false)
+    : File(File.str()), Kind(Kind), IsSystem(IsSystem) { }
+};
+  
 /// FrontendOptions - Options for controlling the behavior of the frontend.
 class FrontendOptions {
 public:
@@ -72,6 +107,9 @@ public:
   unsigned ShowVersion : 1;                ///< Show the -version text.
   unsigned FixWhatYouCan : 1;              ///< Apply fixes even if there are
                                            /// unfixable errors.
+  unsigned FixOnlyWarnings : 1;            ///< Apply fixes only for warnings.
+  unsigned FixAndRecompile : 1;            ///< Apply fixes and recompile.
+  unsigned FixToTemporaries : 1;           ///< Apply fixes to temporary files.
   unsigned ARCMTMigrateEmitARCErrors : 1;  /// Emit ARC errors even if the
                                            /// migrator can fix them
 
@@ -89,7 +127,7 @@ public:
   std::string ARCMTMigrateReportOut;
 
   /// The input files and their types.
-  std::vector<std::pair<InputKind, std::string> > Inputs;
+  std::vector<FrontendInputFile> Inputs;
 
   /// The output file, if any.
   std::string OutputFile;
@@ -125,6 +163,10 @@ public:
   /// should only be used for debugging and experimental features.
   std::vector<std::string> LLVMArgs;
 
+  /// \brief File name of the file that will provide record layouts
+  /// (in the format produced by -fdump-record-layouts).
+  std::string OverrideRecordLayoutsFile;
+  
 public:
   FrontendOptions() {
     DisableFree = 0;

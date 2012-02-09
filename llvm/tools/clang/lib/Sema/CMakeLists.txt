@@ -29,6 +29,7 @@ add_clang_library(clangSema
   SemaExprObjC.cpp
   SemaFixItUtils.cpp
   SemaInit.cpp
+  SemaLambda.cpp
   SemaLookup.cpp
   SemaObjCProperty.cpp
   SemaOverload.cpp
@@ -44,4 +45,5 @@ add_clang_library(clangSema
   )
 
 add_dependencies(clangSema ClangARMNeon ClangAttrClasses ClangAttrList 
-                 ClangDiagnosticSema ClangDeclNodes ClangStmtNodes)
+                 ClangDiagnosticSema ClangDeclNodes ClangStmtNodes 
+                 ClangAttrTemplateInstantiate)

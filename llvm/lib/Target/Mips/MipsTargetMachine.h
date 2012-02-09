@@ -68,10 +68,7 @@ namespace llvm {
     }
 
     // Pass Pipeline Configuration
-    virtual bool addInstSelector(PassManagerBase &PM);
-    virtual bool addPreEmitPass(PassManagerBase &PM);
-    virtual bool addPreRegAlloc(PassManagerBase &PM);
-    virtual bool addPostRegAlloc(PassManagerBase &);
+    virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
     virtual bool addCodeEmitter(PassManagerBase &PM,
 				 JITCodeEmitter &JCE);
 

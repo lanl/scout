@@ -1,4 +1,4 @@
-//=- HexagonInstrInfo.cpp - Hexagon Instruction Information -------*- C++ -*-=//
+//===- HexagonInstrInfo.cpp - Hexagon Instruction Information -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,19 +15,18 @@
 #include "HexagonInstrInfo.h"
 #include "HexagonSubtarget.h"
 #include "Hexagon.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/CodeGen/DFAPacketizer.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/Support/MathExtras.h"
 #define GET_INSTRINFO_CTOR
 #include "HexagonGenInstrInfo.inc"
-
-#include <iostream>
-
+#include "HexagonGenDFAPacketizer.inc"
 
 using namespace llvm;
 
@@ -384,7 +383,7 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
           .addFrameIndex(FI).addImm(0)
           .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
   } else {
-    assert(0 && "Unimplemented");
+    llvm_unreachable("Unimplemented");
   }
 }
 
@@ -396,8 +395,7 @@ void HexagonInstrInfo::storeRegToAddr(
                                  const TargetRegisterClass *RC,
                                  SmallVectorImpl<MachineInstr*> &NewMIs) const
 {
-  assert(0 && "Unimplemented");
-  return;
+  llvm_unreachable("Unimplemented");
 }
 
 
@@ -428,7 +426,7 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
     BuildMI(MBB, I, DL, get(Hexagon::LDriw_pred), DestReg)
           .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
   } else {
-    assert(0 && "Can't store this register to stack slot");
+    llvm_unreachable("Can't store this register to stack slot");
   }
 }
 
@@ -437,7 +435,7 @@ void HexagonInstrInfo::loadRegFromAddr(MachineFunction &MF, unsigned DestReg,
                                         SmallVectorImpl<MachineOperand> &Addr,
                                         const TargetRegisterClass *RC,
                                  SmallVectorImpl<MachineInstr*> &NewMIs) const {
-  assert(0 && "Unimplemented");
+  llvm_unreachable("Unimplemented");
 }
 
 
@@ -467,6 +465,7 @@ unsigned HexagonInstrInfo::createVR(MachineFunction* MF, MVT VT) const {
   unsigned NewReg = RegInfo.createVirtualRegister(TRC);
   return NewReg;
 }
+
 
 
 bool HexagonInstrInfo::isPredicable(MachineInstr *MI) const {
@@ -557,6 +556,7 @@ bool HexagonInstrInfo::isPredicable(MachineInstr *MI) const {
 
   return true;
 }
+
 
 
 int HexagonInstrInfo::
@@ -822,7 +822,7 @@ PredicateInstruction(MachineInstr *MI,
     } else if (MO.isImm()) {
       MI->getOperand(oper+1).ChangeToImmediate(MO.getImm());
     } else {
-      assert(false && "Unexpected operand type");
+      llvm_unreachable("Unexpected operand type");
     }
   }
 
@@ -861,213 +861,9 @@ isProfitableToIfCvt(MachineBasicBlock &TMBB,
 
 
 bool HexagonInstrInfo::isPredicated(const MachineInstr *MI) const {
-  switch (MI->getOpcode()) {
-  case Hexagon::TFR_cPt:
-  case Hexagon::TFR_cNotPt:
-  case Hexagon::TFRI_cPt:
-  case Hexagon::TFRI_cNotPt:
-  case Hexagon::TFR_cdnPt:
-  case Hexagon::TFR_cdnNotPt:
-  case Hexagon::TFRI_cdnPt:
-  case Hexagon::TFRI_cdnNotPt:
-    return true;
+  const uint64_t F = MI->getDesc().TSFlags;
 
-  case Hexagon::JMP_Pred:
-  case Hexagon::JMP_PredNot:
-  case Hexagon::BRCOND:
-  case Hexagon::JMP_PredPt:
-  case Hexagon::JMP_PredNotPt:
-  case Hexagon::JMP_PredPnt:
-  case Hexagon::JMP_PredNotPnt:
-    return true;
-
-  case Hexagon::LDrid_indexed_cPt_V4 :
-  case Hexagon::LDrid_indexed_cdnPt_V4 :
-  case Hexagon::LDrid_indexed_cNotPt_V4 :
-  case Hexagon::LDrid_indexed_cdnNotPt_V4 :
-  case Hexagon::LDrid_indexed_shl_cPt_V4 :
-  case Hexagon::LDrid_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrid_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDrid_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDrib_indexed_cPt_V4 :
-  case Hexagon::LDrib_indexed_cdnPt_V4 :
-  case Hexagon::LDrib_indexed_cNotPt_V4 :
-  case Hexagon::LDrib_indexed_cdnNotPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDrib_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriub_indexed_cPt_V4 :
-  case Hexagon::LDriub_indexed_cdnPt_V4 :
-  case Hexagon::LDriub_indexed_cNotPt_V4 :
-  case Hexagon::LDriub_indexed_cdnNotPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDriub_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDrih_indexed_cPt_V4 :
-  case Hexagon::LDrih_indexed_cdnPt_V4 :
-  case Hexagon::LDrih_indexed_cNotPt_V4 :
-  case Hexagon::LDrih_indexed_cdnNotPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDrih_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriuh_indexed_cPt_V4 :
-  case Hexagon::LDriuh_indexed_cdnPt_V4 :
-  case Hexagon::LDriuh_indexed_cNotPt_V4 :
-  case Hexagon::LDriuh_indexed_cdnNotPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDriuh_indexed_shl_cdnNotPt_V4 :
-  case Hexagon::LDriw_indexed_cPt_V4 :
-  case Hexagon::LDriw_indexed_cdnPt_V4 :
-  case Hexagon::LDriw_indexed_cNotPt_V4 :
-  case Hexagon::LDriw_indexed_cdnNotPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cdnPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cNotPt_V4 :
-  case Hexagon::LDriw_indexed_shl_cdnNotPt_V4 :
-    return true;
-
-  case Hexagon::LDrid_cPt :
-  case Hexagon::LDrid_cNotPt :
-  case Hexagon::LDrid_indexed_cPt :
-  case Hexagon::LDrid_indexed_cNotPt :
-  case Hexagon::POST_LDrid_cPt :
-  case Hexagon::POST_LDrid_cNotPt :
-  case Hexagon::LDriw_cPt :
-  case Hexagon::LDriw_cNotPt :
-  case Hexagon::LDriw_indexed_cPt :
-  case Hexagon::LDriw_indexed_cNotPt :
-  case Hexagon::POST_LDriw_cPt :
-  case Hexagon::POST_LDriw_cNotPt :
-  case Hexagon::LDrih_cPt :
-  case Hexagon::LDrih_cNotPt :
-  case Hexagon::LDrih_indexed_cPt :
-  case Hexagon::LDrih_indexed_cNotPt :
-  case Hexagon::POST_LDrih_cPt :
-  case Hexagon::POST_LDrih_cNotPt :
-  case Hexagon::LDrib_cPt :
-  case Hexagon::LDrib_cNotPt :
-  case Hexagon::LDrib_indexed_cPt :
-  case Hexagon::LDrib_indexed_cNotPt :
-  case Hexagon::POST_LDrib_cPt :
-  case Hexagon::POST_LDrib_cNotPt :
-  case Hexagon::LDriuh_cPt :
-  case Hexagon::LDriuh_cNotPt :
-  case Hexagon::LDriuh_indexed_cPt :
-  case Hexagon::LDriuh_indexed_cNotPt :
-  case Hexagon::POST_LDriuh_cPt :
-  case Hexagon::POST_LDriuh_cNotPt :
-  case Hexagon::LDriub_cPt :
-  case Hexagon::LDriub_cNotPt :
-  case Hexagon::LDriub_indexed_cPt :
-  case Hexagon::LDriub_indexed_cNotPt :
-  case Hexagon::POST_LDriub_cPt :
-  case Hexagon::POST_LDriub_cNotPt :
-    return true;
-
-  case Hexagon::LDrid_cdnPt :
-  case Hexagon::LDrid_cdnNotPt :
-  case Hexagon::LDrid_indexed_cdnPt :
-  case Hexagon::LDrid_indexed_cdnNotPt :
-  case Hexagon::POST_LDrid_cdnPt_V4 :
-  case Hexagon::POST_LDrid_cdnNotPt_V4 :
-  case Hexagon::LDriw_cdnPt :
-  case Hexagon::LDriw_cdnNotPt :
-  case Hexagon::LDriw_indexed_cdnPt :
-  case Hexagon::LDriw_indexed_cdnNotPt :
-  case Hexagon::POST_LDriw_cdnPt_V4 :
-  case Hexagon::POST_LDriw_cdnNotPt_V4 :
-  case Hexagon::LDrih_cdnPt :
-  case Hexagon::LDrih_cdnNotPt :
-  case Hexagon::LDrih_indexed_cdnPt :
-  case Hexagon::LDrih_indexed_cdnNotPt :
-  case Hexagon::POST_LDrih_cdnPt_V4 :
-  case Hexagon::POST_LDrih_cdnNotPt_V4 :
-  case Hexagon::LDrib_cdnPt :
-  case Hexagon::LDrib_cdnNotPt :
-  case Hexagon::LDrib_indexed_cdnPt :
-  case Hexagon::LDrib_indexed_cdnNotPt :
-  case Hexagon::POST_LDrib_cdnPt_V4 :
-  case Hexagon::POST_LDrib_cdnNotPt_V4 :
-  case Hexagon::LDriuh_cdnPt :
-  case Hexagon::LDriuh_cdnNotPt :
-  case Hexagon::LDriuh_indexed_cdnPt :
-  case Hexagon::LDriuh_indexed_cdnNotPt :
-  case Hexagon::POST_LDriuh_cdnPt_V4 :
-  case Hexagon::POST_LDriuh_cdnNotPt_V4 :
-  case Hexagon::LDriub_cdnPt :
-  case Hexagon::LDriub_cdnNotPt :
-  case Hexagon::LDriub_indexed_cdnPt :
-  case Hexagon::LDriub_indexed_cdnNotPt :
-  case Hexagon::POST_LDriub_cdnPt_V4 :
-  case Hexagon::POST_LDriub_cdnNotPt_V4 :
-    return true;
-
-  case Hexagon::ADD_ri_cPt:
-  case Hexagon::ADD_ri_cNotPt:
-  case Hexagon::ADD_ri_cdnPt:
-  case Hexagon::ADD_ri_cdnNotPt:
-  case Hexagon::ADD_rr_cPt:
-  case Hexagon::ADD_rr_cNotPt:
-  case Hexagon::ADD_rr_cdnPt:
-  case Hexagon::ADD_rr_cdnNotPt:
-  case Hexagon::XOR_rr_cPt:
-  case Hexagon::XOR_rr_cNotPt:
-  case Hexagon::XOR_rr_cdnPt:
-  case Hexagon::XOR_rr_cdnNotPt:
-  case Hexagon::AND_rr_cPt:
-  case Hexagon::AND_rr_cNotPt:
-  case Hexagon::AND_rr_cdnPt:
-  case Hexagon::AND_rr_cdnNotPt:
-  case Hexagon::OR_rr_cPt:
-  case Hexagon::OR_rr_cNotPt:
-  case Hexagon::OR_rr_cdnPt:
-  case Hexagon::OR_rr_cdnNotPt:
-  case Hexagon::SUB_rr_cPt:
-  case Hexagon::SUB_rr_cNotPt:
-  case Hexagon::SUB_rr_cdnPt:
-  case Hexagon::SUB_rr_cdnNotPt:
-  case Hexagon::COMBINE_rr_cPt:
-  case Hexagon::COMBINE_rr_cNotPt:
-  case Hexagon::COMBINE_rr_cdnPt:
-  case Hexagon::COMBINE_rr_cdnNotPt:
-    return true;
-
-  case Hexagon::ASLH_cPt_V4:
-  case Hexagon::ASLH_cNotPt_V4:
-  case Hexagon::ASRH_cPt_V4:
-  case Hexagon::ASRH_cNotPt_V4:
-  case Hexagon::SXTB_cPt_V4:
-  case Hexagon::SXTB_cNotPt_V4:
-  case Hexagon::SXTH_cPt_V4:
-  case Hexagon::SXTH_cNotPt_V4:
-  case Hexagon::ZXTB_cPt_V4:
-  case Hexagon::ZXTB_cNotPt_V4:
-  case Hexagon::ZXTH_cPt_V4:
-  case Hexagon::ZXTH_cNotPt_V4:
-    return true;
-
-  case Hexagon::ASLH_cdnPt_V4:
-  case Hexagon::ASLH_cdnNotPt_V4:
-  case Hexagon::ASRH_cdnPt_V4:
-  case Hexagon::ASRH_cdnNotPt_V4:
-  case Hexagon::SXTB_cdnPt_V4:
-  case Hexagon::SXTB_cdnNotPt_V4:
-  case Hexagon::SXTH_cdnPt_V4:
-  case Hexagon::SXTH_cdnNotPt_V4:
-  case Hexagon::ZXTB_cdnPt_V4:
-  case Hexagon::ZXTB_cdnNotPt_V4:
-  case Hexagon::ZXTH_cdnPt_V4:
-  case Hexagon::ZXTH_cdnNotPt_V4:
-    return true;
-
-  default:
-    return false;
-  }
+  return ((F >> HexagonII::PredicatedPos) & HexagonII::PredicatedMask);
 }
 
 
@@ -1268,10 +1064,8 @@ isValidAutoIncImm(const EVT VT, const int Offset) const {
       return (Offset >= Hexagon_MEMB_AUTOINC_MIN &&
               Offset <= Hexagon_MEMB_AUTOINC_MAX);
   }
-  
-  assert(0 && "Not an auto-inc opc!");
 
-  return false;
+  llvm_unreachable("Not an auto-inc opc!");
 }
 
 
@@ -1375,7 +1169,6 @@ bool HexagonInstrInfo::isConditionalALU32 (const MachineInstr* MI) const {
     default:
       return false;
   }
-  return false;
 }
 
 
@@ -1450,5 +1243,30 @@ isConditionalLoad (const MachineInstr* MI) const {
     default:
       return false;
   }
+}
+
+DFAPacketizer *HexagonInstrInfo::
+CreateTargetScheduleState(const TargetMachine *TM,
+                           const ScheduleDAG *DAG) const {
+  const InstrItineraryData *II = TM->getInstrItineraryData();
+  return TM->getSubtarget<HexagonGenSubtargetInfo>().createDFAPacketizer(II);
+}
+
+bool HexagonInstrInfo::isSchedulingBoundary(const MachineInstr *MI,
+                                            const MachineBasicBlock *MBB,
+                                            const MachineFunction &MF) const {
+  // Debug info is never a scheduling boundary. It's necessary to be explicit
+  // due to the special treatment of IT instructions below, otherwise a
+  // dbg_value followed by an IT will result in the IT instruction being
+  // considered a scheduling hazard, which is wrong. It should be the actual
+  // instruction preceding the dbg_value instruction(s), just like it is
+  // when debug info is not present.
+  if (MI->isDebugValue())
+    return false;
+
+  // Terminators and labels can't be scheduled around.
+  if (MI->getDesc().isTerminator() || MI->isLabel() || MI->isInlineAsm())
+    return true;
+
   return false;
 }

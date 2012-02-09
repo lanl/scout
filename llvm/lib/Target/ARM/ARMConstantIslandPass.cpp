@@ -730,7 +730,6 @@ InitialFunctionScan(const std::vector<MachineInstr*> &CPEMIs) {
           switch (Opc) {
           default:
             llvm_unreachable("Unknown addressing mode for CP reference!");
-            break;
 
           // Taking the address of a CP entry.
           case ARM::LEApcrel:
@@ -830,11 +829,11 @@ unsigned ARMConstantIslands::GetOffsetOf(MachineInstr *MI) const {
   unsigned Offset = BBInfo[MBB->getNumber()].Offset;
 
   // Sum instructions before MI in MBB.
-  for (MachineBasicBlock::iterator I = MBB->begin(); ; ++I) {
+  for (MachineBasicBlock::iterator I = MBB->begin(); &*I != MI; ++I) {
     assert(I != MBB->end() && "Didn't find MI in its own basic block?");
-    if (&*I == MI) return Offset;
     Offset += TII->GetInstSizeInBytes(I);
   }
+  return Offset;
 }
 
 /// CompareMBBNumbers - Little predicate function to sort the WaterList by MBB
@@ -1789,6 +1788,11 @@ bool ARMConstantIslands::OptimizeThumb2Branches() {
 
     Opcode = Br.MI->getOpcode();
     if (Opcode != ARM::tBcc)
+      continue;
+
+    // If the conditional branch doesn't kill CPSR, then CPSR can be liveout
+    // so this transformation is not safe.
+    if (!Br.MI->killsRegister(ARM::CPSR))
       continue;
 
     NewOpc = 0;

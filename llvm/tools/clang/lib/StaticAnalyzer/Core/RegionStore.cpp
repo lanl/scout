@@ -379,7 +379,7 @@ public: // Part of public interface to class.
   StoreRef removeDeadBindings(Store store, const StackFrameContext *LCtx,
                               SymbolReaper& SymReaper);
 
-  StoreRef enterStackFrame(const ProgramState *state,
+  StoreRef enterStackFrame(ProgramStateRef state,
                            const LocationContext *callerCtx,
                            const StackFrameContext *calleeCtx);
 
@@ -388,7 +388,7 @@ public: // Part of public interface to class.
   //===------------------------------------------------------------------===//
 
   // FIXME: This method will soon be eliminated; see the note in Store.h.
-  DefinedOrUnknownSVal getSizeInElements(const ProgramState *state,
+  DefinedOrUnknownSVal getSizeInElements(ProgramStateRef state,
                                          const MemRegion* R, QualType EleTy);
 
   //===------------------------------------------------------------------===//
@@ -796,7 +796,7 @@ StoreRef RegionStoreManager::invalidateRegions(Store store,
 //===----------------------------------------------------------------------===//
 
 DefinedOrUnknownSVal
-RegionStoreManager::getSizeInElements(const ProgramState *state,
+RegionStoreManager::getSizeInElements(ProgramStateRef state,
                                       const MemRegion *R,
                                       QualType EleTy) {
   SVal Size = cast<SubRegion>(R)->getExtent(svalBuilder);
@@ -1314,8 +1314,7 @@ SVal RegionStoreManager::getBindingForLazySymbol(const TypedValueRegion *R) {
 
 SVal RegionStoreManager::getBindingForStruct(Store store, 
                                         const TypedValueRegion* R) {
-  QualType T = R->getValueType();
-  assert(T->isStructureOrClassType());
+  assert(R->getValueType()->isStructureOrClassType());
   return svalBuilder.makeLazyCompoundVal(StoreRef(store, *this), R);
 }
 
@@ -1598,7 +1597,7 @@ StoreRef RegionStoreManager::KillStruct(Store store, const TypedRegion* R,
   // Remove the old bindings, using 'subReg' as the root of all regions
   // we will invalidate.
   RegionBindings B = GetRegionBindings(store);
-  llvm::OwningPtr<RegionStoreSubRegionMap>
+  OwningPtr<RegionStoreSubRegionMap>
     SubRegions(getRegionStoreSubRegionMap(store));
   RemoveSubRegionBindings(B, subReg, *SubRegions);
 
@@ -1616,7 +1615,7 @@ StoreRef RegionStoreManager::CopyLazyBindings(nonloc::LazyCompoundVal V,
   // Nuke the old bindings stemming from R.
   RegionBindings B = GetRegionBindings(store);
 
-  llvm::OwningPtr<RegionStoreSubRegionMap>
+  OwningPtr<RegionStoreSubRegionMap>
     SubRegions(getRegionStoreSubRegionMap(store));
 
   // B and DVM are updated after the call to RemoveSubRegionBindings.
@@ -1859,7 +1858,7 @@ StoreRef RegionStoreManager::removeDeadBindings(Store store,
 }
 
 
-StoreRef RegionStoreManager::enterStackFrame(const ProgramState *state,
+StoreRef RegionStoreManager::enterStackFrame(ProgramStateRef state,
                                              const LocationContext *callerCtx,
                                              const StackFrameContext *calleeCtx)
 {

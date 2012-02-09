@@ -645,7 +645,7 @@ void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
 
   if (getAvailableFeatures() & ARM::FeatureMClass) {
     switch (Op.getImm()) {
-    default: assert(0 && "Unexpected mask value!");
+    default: llvm_unreachable("Unexpected mask value!");
     case 0: O << "apsr"; return;
     case 1: O << "iapsr"; return;
     case 2: O << "eapsr"; return;
@@ -668,7 +668,7 @@ void ARMInstPrinter::printMSRMaskOperand(const MCInst *MI, unsigned OpNum,
   if (!SpecRegRBit && (Mask == 8 || Mask == 4 || Mask == 12)) {
     O << "APSR_";
     switch (Mask) {
-    default: assert(0);
+    default: llvm_unreachable("Unexpected mask value!");
     case 4:  O << "g"; return;
     case 8:  O << "nzcvq"; return;
     case 12: O << "nzcvqg"; return;
@@ -1067,6 +1067,29 @@ void ARMInstPrinter::printVectorListTwoAllLanes(const MCInst *MI,
     << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "[]}";
 }
 
+void ARMInstPrinter::printVectorListThreeAllLanes(const MCInst *MI,
+                                                  unsigned OpNum,
+                                                  raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListFourAllLanes(const MCInst *MI,
+                                                  unsigned OpNum,
+                                                  raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 1) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 3) << "[]}";
+}
+
 void ARMInstPrinter::printVectorListTwoSpaced(const MCInst *MI, unsigned OpNum,
                                               raw_ostream &O) {
   // Normally, it's not safe to use register enum values directly with
@@ -1086,3 +1109,48 @@ void ARMInstPrinter::printVectorListTwoSpacedAllLanes(const MCInst *MI,
     << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[]}";
 }
 
+void ARMInstPrinter::printVectorListThreeSpacedAllLanes(const MCInst *MI,
+                                                        unsigned OpNum,
+                                                        raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 4) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListFourSpacedAllLanes(const MCInst *MI,
+                                                       unsigned OpNum,
+                                                       raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 4) << "[], "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 6) << "[]}";
+}
+
+void ARMInstPrinter::printVectorListThreeSpaced(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 4) << "}";
+}
+
+void ARMInstPrinter::printVectorListFourSpaced(const MCInst *MI,
+                                                unsigned OpNum,
+                                                raw_ostream &O) {
+  // Normally, it's not safe to use register enum values directly with
+  // addition to get the next register, but for VFP registers, the
+  // sort order is guaranteed because they're all of the form D<n>.
+  O << "{" << getRegisterName(MI->getOperand(OpNum).getReg()) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 2) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 4) << ", "
+    << getRegisterName(MI->getOperand(OpNum).getReg() + 6) << "}";
+}

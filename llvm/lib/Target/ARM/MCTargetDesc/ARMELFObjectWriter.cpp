@@ -69,7 +69,7 @@ const MCSymbol *ARMELFObjectWriter::ExplicitRelSym(const MCAssembler &Asm,
                                                    const MCFragment &F,
                                                    const MCFixup &Fixup,
                                                    bool IsPCRel) const {
-  const MCSymbol &Symbol = Target.getSymA()->getSymbol();
+  const MCSymbol &Symbol = Target.getSymA()->getSymbol().AliasedSymbol();
   bool EmitThisSym = false;
 
   const MCSectionELF &Section =
@@ -163,7 +163,7 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
   unsigned Type = 0;
   if (IsPCRel) {
     switch ((unsigned)Fixup.getKind()) {
-    default: assert(0 && "Unimplemented");
+    default: llvm_unreachable("Unimplemented");
     case FK_Data_4:
       switch (Modifier) {
       default: llvm_unreachable("Unsupported Modifier");
@@ -171,8 +171,7 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
         Type = ELF::R_ARM_REL32;
         break;
       case MCSymbolRefExpr::VK_ARM_TLSGD:
-        assert(0 && "unimplemented");
-        break;
+        llvm_unreachable("unimplemented");
       case MCSymbolRefExpr::VK_ARM_GOTTPOFF:
         Type = ELF::R_ARM_TLS_IE32;
         break;
@@ -217,7 +216,7 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     default: llvm_unreachable("invalid fixup kind!");
     case FK_Data_4:
       switch (Modifier) {
-      default: llvm_unreachable("Unsupported Modifier"); break;
+      default: llvm_unreachable("Unsupported Modifier");
       case MCSymbolRefExpr::VK_ARM_GOT:
         Type = ELF::R_ARM_GOT_BREL;
         break;
@@ -236,7 +235,10 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
       case MCSymbolRefExpr::VK_ARM_GOTOFF:
         Type = ELF::R_ARM_GOTOFF32;
         break;
-      }
+      case MCSymbolRefExpr::VK_ARM_TARGET1:
+        Type = ELF::R_ARM_TARGET1;
+        break;
+      } 
       break;
     case ARM::fixup_arm_ldst_pcrel_12:
     case ARM::fixup_arm_pcrel_10:
@@ -245,8 +247,7 @@ unsigned ARMELFObjectWriter::GetRelocTypeInner(const MCValue &Target,
     case ARM::fixup_arm_thumb_cb:
     case ARM::fixup_arm_thumb_cp:
     case ARM::fixup_arm_thumb_br:
-      assert(0 && "Unimplemented");
-      break;
+      llvm_unreachable("Unimplemented");
     case ARM::fixup_arm_uncondbranch:
       Type = ELF::R_ARM_CALL;
       break;

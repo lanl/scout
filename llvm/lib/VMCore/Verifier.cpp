@@ -547,7 +547,7 @@ void Verifier::VerifyParameterAttrs(Attributes Attrs, Type *Ty,
   for (unsigned i = 0;
        i < array_lengthof(Attribute::MutuallyIncompatible); ++i) {
     Attributes MutI = Attrs & Attribute::MutuallyIncompatible[i];
-    Assert1(!(MutI & (MutI - 1)), "Attributes " +
+    Assert1(MutI.isEmptyOrSingleton(), "Attributes " +
             Attribute::getAsString(MutI) + " are incompatible!", V);
   }
 
@@ -607,7 +607,7 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT,
   for (unsigned i = 0;
        i < array_lengthof(Attribute::MutuallyIncompatible); ++i) {
     Attributes MutI = FAttrs & Attribute::MutuallyIncompatible[i];
-    Assert1(!(MutI & (MutI - 1)), "Attributes " +
+    Assert1(MutI.isEmptyOrSingleton(), "Attributes " +
             Attribute::getAsString(MutI) + " are incompatible!", V);
   }
 }
@@ -812,7 +812,7 @@ void Verifier::visitSwitchInst(SwitchInst &SI) {
   // have the same type as the switched-on value.
   Type *SwitchTy = SI.getCondition()->getType();
   SmallPtrSet<ConstantInt*, 32> Constants;
-  for (unsigned i = 1, e = SI.getNumCases(); i != e; ++i) {
+  for (unsigned i = 0, e = SI.getNumCases(); i != e; ++i) {
     Assert1(SI.getCaseValue(i)->getType() == SwitchTy,
             "Switch constants must all be same type as switch value!", &SI);
     Assert2(Constants.insert(SI.getCaseValue(i)),
@@ -1315,11 +1315,9 @@ void Verifier::visitShuffleVectorInst(ShuffleVectorInst &SV) {
 }
 
 void Verifier::visitGetElementPtrInst(GetElementPtrInst &GEP) {
-  Type *TargetTy = GEP.getPointerOperandType();
-  if (VectorType *VTy = dyn_cast<VectorType>(TargetTy))
-    TargetTy = VTy->getElementType();
+  Type *TargetTy = GEP.getPointerOperandType()->getScalarType();
 
-  Assert1(dyn_cast<PointerType>(TargetTy),
+  Assert1(isa<PointerType>(TargetTy),
     "GEP base pointer is not a vector or a vector of pointers", &GEP);
   Assert1(cast<PointerType>(TargetTy)->getElementType()->isSized(),
           "GEP into unsized type!", &GEP);

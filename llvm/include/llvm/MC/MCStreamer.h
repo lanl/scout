@@ -441,6 +441,13 @@ namespace llvm {
     void EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
                          unsigned AddrSpace = 0);
 
+    /// EmitGPRel64Value - Emit the expression @p Value into the output as a
+    /// gprel64 (64-bit GP relative) value.
+    ///
+    /// This is used to implement assembler directives such as .gpdword on
+    /// targets that support them.
+    virtual void EmitGPRel64Value(const MCExpr *Value);
+
     /// EmitGPRel32Value - Emit the expression @p Value into the output as a
     /// gprel32 (32-bit GP relative) value.
     ///
@@ -503,7 +510,8 @@ namespace llvm {
     /// @param Offset - The offset to reach. This may be an expression, but the
     /// expression must be associated with the current section.
     /// @param Value - The value to use when filling bytes.
-    virtual void EmitValueToOffset(const MCExpr *Offset,
+    /// @return false on success, true if the offset was invalid.
+    virtual bool EmitValueToOffset(const MCExpr *Offset,
                                    unsigned char Value = 0) = 0;
 
     /// @}
@@ -555,6 +563,7 @@ namespace llvm {
     virtual void EmitCFIRelOffset(int64_t Register, int64_t Offset);
     virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
     virtual void EmitCFIEscape(StringRef Values);
+    virtual void EmitCFISignalFrame();
 
     virtual void EmitWin64EHStartProc(const MCSymbol *Symbol);
     virtual void EmitWin64EHEndProc();

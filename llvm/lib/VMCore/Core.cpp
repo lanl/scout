@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm-c/Core.h"
+#include "llvm/Attributes.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
@@ -132,8 +133,7 @@ LLVMContextRef LLVMGetModuleContext(LLVMModuleRef M) {
 
 LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef Ty) {
   switch (unwrap(Ty)->getTypeID()) {
-  default:
-    assert(false && "Unhandled TypeID.");
+  default: llvm_unreachable("Unhandled TypeID.");
   case Type::VoidTyID:
     return LLVMVoidTypeKind;
   case Type::HalfTyID:
@@ -633,8 +633,8 @@ LLVMValueRef LLVMConstStringInContext(LLVMContextRef C, const char *Str,
                                       LLVMBool DontNullTerminate) {
   /* Inverted the sense of AddNull because ', 0)' is a
      better mnemonic for null termination than ', 1)'. */
-  return wrap(ConstantArray::get(*unwrap(C), StringRef(Str, Length),
-                                 DontNullTerminate == 0));
+  return wrap(ConstantDataArray::getString(*unwrap(C), StringRef(Str, Length),
+                                           DontNullTerminate == 0));
 }
 LLVMValueRef LLVMConstStructInContext(LLVMContextRef C, 
                                       LLVMValueRef *ConstantVals,
@@ -679,8 +679,7 @@ LLVMValueRef LLVMConstVector(LLVMValueRef *ScalarConstantVals, unsigned Size) {
 static LLVMOpcode map_to_llvmopcode(int opcode)
 {
     switch (opcode) {
-      default:
-        assert(0 && "Unhandled Opcode.");
+      default: llvm_unreachable("Unhandled Opcode.");
 #define HANDLE_INST(num, opc, clas) case num: return LLVM##opc;
 #include "llvm/Instruction.def"
 #undef HANDLE_INST
@@ -690,12 +689,11 @@ static LLVMOpcode map_to_llvmopcode(int opcode)
 static int map_from_llvmopcode(LLVMOpcode code)
 {
     switch (code) {
-      default:
-        assert(0 && "Unhandled Opcode.");
 #define HANDLE_INST(num, opc, clas) case LLVM##opc: return num;
 #include "llvm/Instruction.def"
 #undef HANDLE_INST
     }
+    llvm_unreachable("Unhandled Opcode.");
 }
 
 /*--.. Constant expressions ................................................--*/
@@ -1093,8 +1091,7 @@ LLVMLinkage LLVMGetLinkage(LLVMValueRef Global) {
     return LLVMCommonLinkage;
   }
 
-  // Should never get here.
-  return static_cast<LLVMLinkage>(0);
+  llvm_unreachable("Invalid GlobalValue linkage!");
 }
 
 void LLVMSetLinkage(LLVMValueRef Global, LLVMLinkage Linkage) {
@@ -1352,14 +1349,14 @@ void LLVMSetGC(LLVMValueRef Fn, const char *GC) {
 void LLVMAddFunctionAttr(LLVMValueRef Fn, LLVMAttribute PA) {
   Function *Func = unwrap<Function>(Fn);
   const AttrListPtr PAL = Func->getAttributes();
-  const AttrListPtr PALnew = PAL.addAttr(~0U, PA);
+  const AttrListPtr PALnew = PAL.addAttr(~0U, Attributes(PA));
   Func->setAttributes(PALnew);
 }
 
 void LLVMRemoveFunctionAttr(LLVMValueRef Fn, LLVMAttribute PA) {
   Function *Func = unwrap<Function>(Fn);
   const AttrListPtr PAL = Func->getAttributes();
-  const AttrListPtr PALnew = PAL.removeAttr(~0U, PA);
+  const AttrListPtr PALnew = PAL.removeAttr(~0U, Attributes(PA));
   Func->setAttributes(PALnew);
 }
 
@@ -1367,7 +1364,7 @@ LLVMAttribute LLVMGetFunctionAttr(LLVMValueRef Fn) {
   Function *Func = unwrap<Function>(Fn);
   const AttrListPtr PAL = Func->getAttributes();
   Attributes attr = PAL.getFnAttributes();
-  return (LLVMAttribute)attr;
+  return (LLVMAttribute)attr.Raw();
 }
 
 /*--.. Operations on parameters ............................................--*/
@@ -1429,18 +1426,18 @@ LLVMValueRef LLVMGetPreviousParam(LLVMValueRef Arg) {
 }
 
 void LLVMAddAttribute(LLVMValueRef Arg, LLVMAttribute PA) {
-  unwrap<Argument>(Arg)->addAttr(PA);
+  unwrap<Argument>(Arg)->addAttr(Attributes(PA));
 }
 
 void LLVMRemoveAttribute(LLVMValueRef Arg, LLVMAttribute PA) {
-  unwrap<Argument>(Arg)->removeAttr(PA);
+  unwrap<Argument>(Arg)->removeAttr(Attributes(PA));
 }
 
 LLVMAttribute LLVMGetAttribute(LLVMValueRef Arg) {
   Argument *A = unwrap<Argument>(Arg);
   Attributes attr = A->getParent()->getAttributes().getParamAttributes(
     A->getArgNo()+1);
-  return (LLVMAttribute)attr;
+  return (LLVMAttribute)attr.Raw();
 }
   
 
@@ -1618,10 +1615,9 @@ unsigned LLVMGetInstructionCallConv(LLVMValueRef Instr) {
   Value *V = unwrap(Instr);
   if (CallInst *CI = dyn_cast<CallInst>(V))
     return CI->getCallingConv();
-  else if (InvokeInst *II = dyn_cast<InvokeInst>(V))
+  if (InvokeInst *II = dyn_cast<InvokeInst>(V))
     return II->getCallingConv();
   llvm_unreachable("LLVMGetInstructionCallConv applies only to call and invoke!");
-  return 0;
 }
 
 void LLVMSetInstructionCallConv(LLVMValueRef Instr, unsigned CC) {
@@ -1637,14 +1633,14 @@ void LLVMAddInstrAttribute(LLVMValueRef Instr, unsigned index,
                            LLVMAttribute PA) {
   CallSite Call = CallSite(unwrap<Instruction>(Instr));
   Call.setAttributes(
-    Call.getAttributes().addAttr(index, PA));
+    Call.getAttributes().addAttr(index, Attributes(PA)));
 }
 
 void LLVMRemoveInstrAttribute(LLVMValueRef Instr, unsigned index, 
                               LLVMAttribute PA) {
   CallSite Call = CallSite(unwrap<Instruction>(Instr));
   Call.setAttributes(
-    Call.getAttributes().removeAttr(index, PA));
+    Call.getAttributes().removeAttr(index, Attributes(PA)));
 }
 
 void LLVMSetInstrParamAlignment(LLVMValueRef Instr, unsigned index, 

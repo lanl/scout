@@ -121,8 +121,8 @@ define i1 @test12(i1 %A) {
   %B = icmp ne i64 bitcast (<2 x i32> <i32 1, i32 -1> to i64), %S
   ret i1 %B
 ; CHECK: @test12
-; CHECK-NEXT: %B = select i1
-; CHECK-NEXT: ret i1 %B
+; CHECK-NEXT: = xor i1 %A, true
+; CHECK-NEXT: ret i1
 }
 
 ; PR6481
@@ -580,3 +580,12 @@ define zeroext i1 @cmpabs2(i64 %val) {
   %tobool = icmp ne i64 %sub.val, 0
   ret i1 %tobool
 }
+
+; CHECK: @test58
+; CHECK-NEXT: call i32 @test58_d(i64 36029346783166592)
+define void @test58() nounwind {
+  %cast = bitcast <1 x i64> <i64 36029346783166592> to i64
+  %call = call i32 @test58_d( i64 %cast) nounwind
+  ret void
+}
+declare i32 @test58_d(i64)

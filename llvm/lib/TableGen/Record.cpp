@@ -727,7 +727,6 @@ UnOpInit *UnOpInit::get(UnaryOp opc, Init *lhs, RecTy *Type) {
 
 Init *UnOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
   switch (getOpcode()) {
-  default: assert(0 && "Unknown unop");
   case CAST: {
     if (getType()->getAsString() == "string") {
       StringInit *LHSs = dynamic_cast<StringInit*>(LHS);
@@ -738,6 +737,11 @@ Init *UnOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
       DefInit *LHSd = dynamic_cast<DefInit*>(LHS);
       if (LHSd) {
         return StringInit::get(LHSd->getDef()->getName());
+      }
+
+      IntInit *LHSi = dynamic_cast<IntInit*>(LHS);
+      if (LHSi) {
+        return StringInit::get(LHSi->getAsString());
       }
     } else {
       StringInit *LHSs = dynamic_cast<StringInit*>(LHS);
@@ -880,7 +884,6 @@ BinOpInit *BinOpInit::get(BinaryOp opc, Init *lhs,
 
 Init *BinOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
   switch (getOpcode()) {
-  default: assert(0 && "Unknown binop");
   case CONCAT: {
     DagInit *LHSs = dynamic_cast<DagInit*>(LHS);
     DagInit *RHSs = dynamic_cast<DagInit*>(RHS);
@@ -939,7 +942,7 @@ Init *BinOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
       int64_t LHSv = LHSi->getValue(), RHSv = RHSi->getValue();
       int64_t Result;
       switch (getOpcode()) {
-      default: assert(0 && "Bad opcode!");
+      default: llvm_unreachable("Bad opcode!");
       case SHL: Result = LHSv << RHSv; break;
       case SRA: Result = LHSv >> RHSv; break;
       case SRL: Result = (uint64_t)LHSv >> (uint64_t)RHSv; break;
@@ -1129,7 +1132,6 @@ static Init *ForeachHelper(Init *LHS, Init *MHS, Init *RHS, RecTy *Type,
 
 Init *TernOpInit::Fold(Record *CurRec, MultiClass *CurMultiClass) const {
   switch (getOpcode()) {
-  default: assert(0 && "Unknown binop");
   case SUBST: {
     DefInit *LHSd = dynamic_cast<DefInit*>(LHS);
     VarInit *LHSv = dynamic_cast<VarInit*>(LHS);

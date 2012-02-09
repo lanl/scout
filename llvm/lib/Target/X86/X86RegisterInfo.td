@@ -70,7 +70,7 @@ let Namespace = "X86" in {
   def BH : Register<"bh">;
 
   // 16-bit registers
-  let SubRegIndices = [sub_8bit, sub_8bit_hi] in {
+  let SubRegIndices = [sub_8bit, sub_8bit_hi], CoveredBySubRegs = 1 in {
   def AX : RegisterWithSubRegs<"ax", [AL,AH]>;
   def DX : RegisterWithSubRegs<"dx", [DL,DH]>;
   def CX : RegisterWithSubRegs<"cx", [CL,CH]>;
@@ -204,6 +204,13 @@ let Namespace = "X86" in {
   def YMM13: RegisterWithSubRegs<"ymm13", [XMM13]>, DwarfRegAlias<XMM13>;
   def YMM14: RegisterWithSubRegs<"ymm14", [XMM14]>, DwarfRegAlias<XMM14>;
   def YMM15: RegisterWithSubRegs<"ymm15", [XMM15]>, DwarfRegAlias<XMM15>;
+  }
+
+  // Pseudo-register that aliases the high part of ymm6-ymm15 that is clobbered
+  // by win64 calls.  Doesn't alias the callee-saved xmm6-xmm15.
+  def YMM_HI_6_15 : Register<"ymmhi-6-15"> {
+    let Aliases = [YMM6, YMM7, YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14,
+                   YMM15];
   }
 
   class STRegister<string Name, list<Register> A> : Register<Name> {

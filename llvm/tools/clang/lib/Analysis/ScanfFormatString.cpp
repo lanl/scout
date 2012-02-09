@@ -218,7 +218,9 @@ ScanfArgTypeResult ScanfSpecifier::getArgType(ASTContext &Ctx) const {
           return ScanfArgTypeResult();
         case LengthModifier::AsPtrDiff:
           return ScanfArgTypeResult(Ctx.getPointerDiffType(), "ptrdiff_t *");
-        case LengthModifier::AsLongDouble: return ScanfArgTypeResult::Invalid();
+        case LengthModifier::AsLongDouble:
+          // GNU extension.
+          return ArgTypeResult(Ctx.LongLongTy);
         case LengthModifier::AsAllocate: return ScanfArgTypeResult::Invalid();
         case LengthModifier::AsMAllocate: return ScanfArgTypeResult::Invalid();
       }
@@ -242,7 +244,9 @@ ScanfArgTypeResult ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::AsPtrDiff:
           // FIXME: Unsigned version of ptrdiff_t?
           return ScanfArgTypeResult();
-        case LengthModifier::AsLongDouble: return ScanfArgTypeResult::Invalid();
+        case LengthModifier::AsLongDouble:
+          // GNU extension.
+          return ArgTypeResult(Ctx.UnsignedLongLongTy);
         case LengthModifier::AsAllocate: return ScanfArgTypeResult::Invalid();
         case LengthModifier::AsMAllocate: return ScanfArgTypeResult::Invalid();
       }
@@ -462,7 +466,7 @@ bool ScanfArgTypeResult::matchesType(ASTContext& C, QualType argTy) const {
     }
   }
 
-  return false; // Unreachable, but we still get a warning.
+  llvm_unreachable("Invalid ScanfArgTypeResult Kind!");
 }
 
 QualType ScanfArgTypeResult::getRepresentativeType(ASTContext &C) const {
@@ -479,7 +483,7 @@ QualType ScanfArgTypeResult::getRepresentativeType(ASTContext &C) const {
       return C.getPointerType(A.getRepresentativeType(C));
   }
 
-  return QualType(); // Not reachable.
+  llvm_unreachable("Invalid ScanfArgTypeResult Kind!");
 }
 
 std::string ScanfArgTypeResult::getRepresentativeTypeName(ASTContext& C) const {

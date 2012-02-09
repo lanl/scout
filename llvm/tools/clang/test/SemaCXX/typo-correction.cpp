@@ -41,6 +41,8 @@ struct Derived : public BaseType { // expected-note {{base class 'BaseType' spec
   Derived() : basetype() {} // expected-error{{initializer 'basetype' does not name a non-static data member or base class; did you mean the base class 'BaseType'?}}
 };
 
+// Test the improvement from passing a callback object to CorrectTypo in
+// the helper function LookupMemberExprInRecord.
 int get_type(struct Derived *st) {
   return st->Base_Type; // expected-error{{no member named 'Base_Type' in 'Derived'; did you mean 'base_type'?}}
 }
@@ -64,10 +66,94 @@ struct st {
 };
 st var = { .fielda = 0.0 }; // expected-error{{field designator 'fielda' does not refer to any field in type 'st'; did you mean 'FieldA'?}}
 
-// Test the improvement from passing a  callback object to CorrectTypo in
-// Sema::BuildCXXNestedNameSpecifier.
-typedef char* another_str;
+// Test the improvement from passing a callback object to CorrectTypo in
+// Sema::BuildCXXNestedNameSpecifier. And also for the improvement by doing
+// so in Sema::getTypeName.
+typedef char* another_str; // expected-note{{'another_str' declared here}}
 namespace AnotherStd { // expected-note{{'AnotherStd' declared here}}
   class string {};
 }
 another_std::string str; // expected-error{{use of undeclared identifier 'another_std'; did you mean 'AnotherStd'?}}
+another_str *cstr = new AnotherStr; // expected-error{{unknown type name 'AnotherStr'; did you mean 'another_str'?}}
+
+// Test the improvement from passing a callback object to CorrectTypo in
+// Sema::ActOnSizeofParameterPackExpr.
+char* TireNames;
+template<typename ...TypeNames> struct count { // expected-note{{parameter pack 'TypeNames' declared here}}
+  static const unsigned value = sizeof...(TyreNames); // expected-error{{'TyreNames' does not refer to the name of a parameter pack; did you mean 'TypeNames'?}}
+};
+
+// Test the typo-correction callback in Sema::DiagnoseUnknownTypeName.
+namespace unknown_type_test {
+  class StreamOut {}; // expected-note 2 {{'StreamOut' declared here}}
+  long stream_count; // expected-note 2 {{'stream_count' declared here}}
+};
+unknown_type_test::stream_out out; // expected-error{{no type named 'stream_out' in namespace 'unknown_type_test'; did you mean 'StreamOut'?}}
+
+// Demonstrate a case where using only the cached value returns the wrong thing
+// when the cached value was the result of a previous callback object that only
+// accepts a subset of the current callback object.
+namespace {
+using namespace unknown_type_test;
+void bar(long i);
+void before_caching_classname() {
+  bar((stream_out)); // expected-error{{use of undeclared identifier 'stream_out'; did you mean 'stream_count'?}}
+}
+stream_out out; // expected-error{{unknown type name 'stream_out'; did you mean 'StreamOut'?}}
+void after_caching_classname() {
+  bar((stream_out)); // expected-error{{use of undeclared identifier 'stream_out'; did you mean 'stream_count'?}}
+}
+}
+
+// Test the typo-correction callback in Sema::DiagnoseInvalidRedeclaration.
+struct BaseDecl {
+  void add_in(int i);
+};
+struct TestRedecl : public BaseDecl {
+  void add_it(int i); // expected-note{{'add_it' declared here}}
+};
+void TestRedecl::add_in(int i) {} // expected-error{{out-of-line definition of 'add_in' does not match any declaration in 'TestRedecl'; did you mean 'add_it'?}}
+
+// Test the improved typo correction for the Parser::ParseCastExpr =>
+// Sema::ActOnIdExpression => Sema::DiagnoseEmptyLookup call path.
+class SomeNetMessage;
+class Message {};
+void foo(Message&);
+void foo(SomeNetMessage&);
+void doit(void *data) {
+  Message somenetmsg; // expected-note{{'somenetmsg' declared here}}
+  foo(somenetmessage); // expected-error{{use of undeclared identifier 'somenetmessage'; did you mean 'somenetmsg'?}}
+  foo((somenetmessage)data); // expected-error{{use of undeclared identifier 'somenetmessage'; did you mean 'SomeNetMessage'?}}
+}
+
+// Test the typo-correction callback in BuildRecoveryCallExpr.
+// Solves the main issue in PR 9320 of suggesting corrections that take the
+// wrong number of arguments.
+void revoke(const char*); // expected-note 2{{'revoke' declared here}}
+void Test() {
+  Invoke(); // expected-error{{use of undeclared identifier 'Invoke'}}
+  Invoke("foo"); // expected-error{{use of undeclared identifier 'Invoke'; did you mean 'revoke'?}}
+  Invoke("foo", "bar"); // expected-error{{use of undeclared identifier 'Invoke'}}
+}
+void Test2(void (*invoke)(const char *, int)) { // expected-note{{'invoke' declared here}}
+  Invoke(); // expected-error{{use of undeclared identifier 'Invoke'}}
+  Invoke("foo"); // expected-error{{use of undeclared identifier 'Invoke'; did you mean 'revoke'?}}
+  Invoke("foo", 7); // expected-error{{use of undeclared identifier 'Invoke'; did you mean 'invoke'?}}
+  Invoke("foo", 7, 22); // expected-error{{use of undeclared identifier 'Invoke'}}
+}
+
+void provoke(const char *x, bool y=false) {} // expected-note 2{{'provoke' declared here}}
+void Test3() {
+  Provoke(); // expected-error{{use of undeclared identifier 'Provoke'}}
+  Provoke("foo"); // expected-error{{use of undeclared identifier 'Provoke'; did you mean 'provoke'?}}
+  Provoke("foo", true); // expected-error{{use of undeclared identifier 'Provoke'; did you mean 'provoke'?}}
+  Provoke("foo", 7, 22); // expected-error{{use of undeclared identifier 'Provoke'}}
+}
+
+// PR 11737 - Don't try to typo-correct the implicit 'begin' and 'end' in a
+// C++11 for-range statement.
+struct R {};
+bool begun(R);
+void RangeTest() {
+  for (auto b : R()) {} // expected-error {{use of undeclared identifier 'begin'}} expected-note {{range has type}}
+}

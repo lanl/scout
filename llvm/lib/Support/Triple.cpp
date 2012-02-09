@@ -10,6 +10,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cstring>
 using namespace llvm;
 
@@ -42,7 +43,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case amdil:   return "amdil";
   }
 
-  return "<invalid>";
+  llvm_unreachable("Invalid ArchType!");
 }
 
 const char *Triple::getArchTypePrefix(ArchType Kind) {
@@ -86,7 +87,7 @@ const char *Triple::getVendorTypeName(VendorType Kind) {
   case SCEI: return "scei";
   }
 
-  return "<invalid>";
+  llvm_unreachable("Invalid VendorType!");
 }
 
 const char *Triple::getOSTypeName(OSType Kind) {
@@ -115,20 +116,21 @@ const char *Triple::getOSTypeName(OSType Kind) {
   case NativeClient: return "nacl";
   }
 
-  return "<invalid>";
+  llvm_unreachable("Invalid OSType");
 }
 
 const char *Triple::getEnvironmentTypeName(EnvironmentType Kind) {
   switch (Kind) {
   case UnknownEnvironment: return "unknown";
   case GNU: return "gnu";
+  case GNUEABIHF: return "gnueabihf";
   case GNUEABI: return "gnueabi";
   case EABI: return "eabi";
   case MachO: return "macho";
   case ANDROIDEABI: return "androideabi";
   }
 
-  return "<invalid>";
+  llvm_unreachable("Invalid EnvironmentType!");
 }
 
 Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
@@ -382,6 +384,8 @@ Triple::OSType Triple::ParseOS(StringRef OSName) {
 Triple::EnvironmentType Triple::ParseEnvironment(StringRef EnvironmentName) {
   if (EnvironmentName.startswith("eabi"))
     return EABI;
+  else if (EnvironmentName.startswith("gnueabihf"))
+    return GNUEABIHF;
   else if (EnvironmentName.startswith("gnueabi"))
     return GNUEABI;
   else if (EnvironmentName.startswith("gnu"))
@@ -455,8 +459,7 @@ std::string Triple::normalize(StringRef Str) {
       bool Valid = false;
       StringRef Comp = Components[Idx];
       switch (Pos) {
-      default:
-        assert(false && "unexpected component type!");
+      default: llvm_unreachable("unexpected component type!");
       case 0:
         Arch = ParseArch(Comp);
         Valid = Arch != UnknownArch;
@@ -609,6 +612,45 @@ void Triple::getOSVersion(unsigned &Major, unsigned &Minor,
   }
 }
 
+bool Triple::getMacOSXVersion(unsigned &Major, unsigned &Minor,
+                              unsigned &Micro) const {
+  getOSVersion(Major, Minor, Micro);
+
+  switch (getOS()) {
+  default: llvm_unreachable("unexpected OS for Darwin triple");
+  case Darwin:
+    // Default to darwin8, i.e., MacOSX 10.4.
+    if (Major == 0)
+      Major = 8;
+    // Darwin version numbers are skewed from OS X versions.
+    if (Major < 4)
+      return false;
+    Micro = 0;
+    Minor = Major - 4;
+    Major = 10;
+    break;
+  case MacOSX:
+    // Default to 10.4.
+    if (Major == 0) {
+      Major = 10;
+      Minor = 4;
+    }
+    if (Major != 10)
+      return false;
+    break;
+  case IOS:
+    // Ignore the version from the triple.  This is only handled because the
+    // the clang driver combines OS X and IOS support into a common Darwin
+    // toolchain that wants to know the OS X version number even when targeting
+    // IOS.
+    Major = 10;
+    Minor = 4;
+    Micro = 0;
+    break;
+  }
+  return true;
+}
+
 void Triple::setTriple(const Twine &Str) {
   Data = Str.str();
   Arch = InvalidArch;
@@ -660,4 +702,127 @@ void Triple::setEnvironmentName(StringRef Str) {
 
 void Triple::setOSAndEnvironmentName(StringRef Str) {
   setTriple(getArchName() + "-" + getVendorName() + "-" + Str);
+}
+
+static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
+  switch (Arch) {
+  case llvm::Triple::UnknownArch:
+  case llvm::Triple::InvalidArch:
+    return 0;
+
+  case llvm::Triple::msp430:
+    return 16;
+
+  case llvm::Triple::amdil:
+  case llvm::Triple::arm:
+  case llvm::Triple::cellspu:
+  case llvm::Triple::hexagon:
+  case llvm::Triple::le32:
+  case llvm::Triple::mblaze:
+  case llvm::Triple::mips:
+  case llvm::Triple::mipsel:
+  case llvm::Triple::ppc:
+  case llvm::Triple::ptx32:
+  case llvm::Triple::sparc:
+  case llvm::Triple::tce:
+  case llvm::Triple::thumb:
+  case llvm::Triple::x86:
+  case llvm::Triple::xcore:
+    return 32;
+
+  case llvm::Triple::mips64:
+  case llvm::Triple::mips64el:
+  case llvm::Triple::ppc64:
+  case llvm::Triple::ptx64:
+  case llvm::Triple::sparcv9:
+  case llvm::Triple::x86_64:
+    return 64;
+  }
+  llvm_unreachable("Invalid architecture value");
+}
+
+bool Triple::isArch64Bit() const {
+  return getArchPointerBitWidth(getArch()) == 64;
+}
+
+bool Triple::isArch32Bit() const {
+  return getArchPointerBitWidth(getArch()) == 32;
+}
+
+bool Triple::isArch16Bit() const {
+  return getArchPointerBitWidth(getArch()) == 16;
+}
+
+Triple Triple::get32BitArchVariant() const {
+  Triple T(*this);
+  switch (getArch()) {
+  case Triple::UnknownArch:
+  case Triple::InvalidArch:
+  case Triple::msp430:
+    T.setArch(UnknownArch);
+    break;
+
+  case Triple::amdil:
+  case Triple::arm:
+  case Triple::cellspu:
+  case Triple::hexagon:
+  case Triple::le32:
+  case Triple::mblaze:
+  case Triple::mips:
+  case Triple::mipsel:
+  case Triple::ppc:
+  case Triple::ptx32:
+  case Triple::sparc:
+  case Triple::tce:
+  case Triple::thumb:
+  case Triple::x86:
+  case Triple::xcore:
+    // Already 32-bit.
+    break;
+
+  case Triple::mips64:    T.setArch(Triple::mips);    break;
+  case Triple::mips64el:  T.setArch(Triple::mipsel);  break;
+  case Triple::ppc64:     T.setArch(Triple::ppc);   break;
+  case Triple::ptx64:     T.setArch(Triple::ptx32);   break;
+  case Triple::sparcv9:   T.setArch(Triple::sparc);   break;
+  case Triple::x86_64:    T.setArch(Triple::x86);     break;
+  }
+  return T;
+}
+
+Triple Triple::get64BitArchVariant() const {
+  Triple T(*this);
+  switch (getArch()) {
+  case Triple::InvalidArch:
+  case Triple::UnknownArch:
+  case Triple::amdil:
+  case Triple::arm:
+  case Triple::cellspu:
+  case Triple::hexagon:
+  case Triple::le32:
+  case Triple::mblaze:
+  case Triple::msp430:
+  case Triple::tce:
+  case Triple::thumb:
+  case Triple::xcore:
+    T.setArch(UnknownArch);
+    break;
+
+  case Triple::mips64:
+  case Triple::mips64el:
+  case Triple::ppc64:
+  case Triple::ptx64:
+  case Triple::sparcv9:
+  case Triple::x86_64:
+    // Already 64-bit.
+    break;
+
+  case Triple::mips:    T.setArch(Triple::mips64);    break;
+  case Triple::mipsel:  T.setArch(Triple::mips64el);  break;
+  case Triple::ppc:     T.setArch(Triple::ppc64);     break;
+  case Triple::ptx32:   T.setArch(Triple::ptx64);     break;
+  case Triple::sparc:   T.setArch(Triple::sparcv9);   break;
+  case Triple::x86:     T.setArch(Triple::x86_64);    break;
+  }
+  return T;
 }

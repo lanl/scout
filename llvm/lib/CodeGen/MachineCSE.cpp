@@ -50,7 +50,7 @@ namespace {
     }
 
     virtual bool runOnMachineFunction(MachineFunction &MF);
-    
+
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
@@ -103,14 +103,13 @@ namespace {
 } // end anonymous namespace
 
 char MachineCSE::ID = 0;
+char &llvm::MachineCSEID = MachineCSE::ID;
 INITIALIZE_PASS_BEGIN(MachineCSE, "machine-cse",
                 "Machine Common Subexpression Elimination", false, false)
 INITIALIZE_PASS_DEPENDENCY(MachineDominatorTree)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(MachineCSE, "machine-cse",
                 "Machine Common Subexpression Elimination", false, false)
-
-FunctionPass *llvm::createMachineCSEPass() { return new MachineCSE(); }
 
 bool MachineCSE::PerformTrivialCoalescing(MachineInstr *MI,
                                           MachineBasicBlock *MBB) {
@@ -177,7 +176,7 @@ MachineCSE::isPhysDefTriviallyDead(unsigned Reg,
       SeenDef = true;
     }
     if (SeenDef)
-      // See a def of Reg (or an alias) before encountering any use, it's 
+      // See a def of Reg (or an alias) before encountering any use, it's
       // trivially dead.
       return true;
 
@@ -255,6 +254,7 @@ bool MachineCSE::PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
 
     if (I == EE) {
       assert(CrossMBB && "Reaching end-of-MBB without finding MI?");
+      (void)CrossMBB;
       CrossMBB = false;
       NonLocal = true;
       I = MBB->begin();

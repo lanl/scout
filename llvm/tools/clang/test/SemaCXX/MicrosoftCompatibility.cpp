@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -triple i686-pc-win32 -fsyntax-only -Wmicrosoft -verify -fms-compatibility -fexceptions -fcxx-exceptions
+// RUN: %clang_cc1 %s -triple i686-pc-win32 -fsyntax-only -std=c++11 -Wmicrosoft -verify -fms-compatibility -fexceptions -fcxx-exceptions
 
 
 
@@ -68,7 +68,28 @@ int jump_over_indirect_goto() {
   
 }
 
+namespace PR11826 {
+  struct pair {
+    pair(int v) { }
+    void operator=(pair&& rhs) { }
+  };
+  void f() {
+    pair p0(3);
+    pair p = p0;
+  }
+}
 
+namespace PR11826_for_symmetry {
+  struct pair {
+    pair(int v) { }
+    pair(pair&& rhs) { }
+  };
+  void f() {
+    pair p0(3);
+    pair p(4);
+    p = p0;
+  }
+}
 
 namespace ms_using_declaration_bug {
 
@@ -135,5 +156,21 @@ template void function_missing_typename<D>(const D::Type param);
 
 }
 
+enum ENUM2 {
+	ENUM2_a = (enum ENUM2) 4,
+	ENUM2_b = 0x9FFFFFFF, // expected-warning {{enumerator value is not representable in the underlying type 'int'}}
+	ENUM2_c = 0x100000000 // expected-warning {{enumerator value is not representable in the underlying type 'int'}}
+};
 
 
+namespace PR11791 {
+  template<class _Ty>
+  void del(_Ty *_Ptr) {
+    _Ptr->~_Ty();  // expected-warning {{pseudo-destructors on type void are a Microsoft extension}}
+  }
+
+  void f() {
+    int* a = 0;
+    del((void*)a);  // expected-note {{in instantiation of function template specialization}}
+  }
+}

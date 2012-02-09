@@ -148,18 +148,31 @@ struct GlobalStatus {
   /// HasPHIUser - Set to true if this global has a user that is a PHI node.
   bool HasPHIUser;
 
+  /// AtomicOrdering - Set to the strongest atomic ordering requirement.
+  AtomicOrdering Ordering;
+
   GlobalStatus() : isCompared(false), isLoaded(false), StoredType(NotStored),
                    StoredOnceValue(0), AccessingFunction(0),
-                   HasMultipleAccessingFunctions(false), HasNonInstructionUser(false),
-                   HasPHIUser(false) {}
+                   HasMultipleAccessingFunctions(false),
+                   HasNonInstructionUser(false), HasPHIUser(false),
+                   Ordering(NotAtomic) {}
 };
 
 }
 
-// SafeToDestroyConstant - It is safe to destroy a constant iff it is only used
-// by constants itself.  Note that constants cannot be cyclic, so this test is
-// pretty easy to implement recursively.
-//
+/// StrongerOrdering - Return the stronger of the two ordering. If the two
+/// orderings are acquire and release, then return AcquireRelease.
+///
+static AtomicOrdering StrongerOrdering(AtomicOrdering X, AtomicOrdering Y) {
+  if (X == Acquire && Y == Release) return AcquireRelease;
+  if (Y == Acquire && X == Release) return AcquireRelease;
+  return (AtomicOrdering)std::max(X, Y);
+}
+
+/// SafeToDestroyConstant - It is safe to destroy a constant iff it is only used
+/// by constants itself.  Note that constants cannot be cyclic, so this test is
+/// pretty easy to implement recursively.
+///
 static bool SafeToDestroyConstant(const Constant *C) {
   if (isa<GlobalValue>(C)) return false;
 
@@ -200,14 +213,16 @@ static bool AnalyzeGlobal(const Value *V, GlobalStatus &GS,
       }
       if (const LoadInst *LI = dyn_cast<LoadInst>(I)) {
         GS.isLoaded = true;
-        // Don't hack on volatile/atomic loads.
-        if (!LI->isSimple()) return true;
+        // Don't hack on volatile loads.
+        if (LI->isVolatile()) return true;
+        GS.Ordering = StrongerOrdering(GS.Ordering, LI->getOrdering());
       } else if (const StoreInst *SI = dyn_cast<StoreInst>(I)) {
         // Don't allow a store OF the address, only stores TO the address.
         if (SI->getOperand(0) == V) return true;
 
-        // Don't hack on volatile/atomic stores.
-        if (!SI->isSimple()) return true;
+        // Don't hack on volatile stores.
+        if (SI->isVolatile()) return true;
+        GS.Ordering = StrongerOrdering(GS.Ordering, SI->getOrdering());
 
         // If this is a direct store to the global (i.e., the global is a scalar
         // value, not an aggregate), keep more specific information about
@@ -275,38 +290,6 @@ static bool AnalyzeGlobal(const Value *V, GlobalStatus &GS,
 
   return false;
 }
-
-static Constant *getAggregateConstantElement(Constant *Agg, Constant *Idx) {
-  ConstantInt *CI = dyn_cast<ConstantInt>(Idx);
-  if (!CI) return 0;
-  unsigned IdxV = CI->getZExtValue();
-
-  if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Agg)) {
-    if (IdxV < CS->getNumOperands()) return CS->getOperand(IdxV);
-  } else if (ConstantArray *CA = dyn_cast<ConstantArray>(Agg)) {
-    if (IdxV < CA->getNumOperands()) return CA->getOperand(IdxV);
-  } else if (ConstantVector *CP = dyn_cast<ConstantVector>(Agg)) {
-    if (IdxV < CP->getNumOperands()) return CP->getOperand(IdxV);
-  } else if (isa<ConstantAggregateZero>(Agg)) {
-    if (StructType *STy = dyn_cast<StructType>(Agg->getType())) {
-      if (IdxV < STy->getNumElements())
-        return Constant::getNullValue(STy->getElementType(IdxV));
-    } else if (SequentialType *STy =
-               dyn_cast<SequentialType>(Agg->getType())) {
-      return Constant::getNullValue(STy->getElementType());
-    }
-  } else if (isa<UndefValue>(Agg)) {
-    if (StructType *STy = dyn_cast<StructType>(Agg->getType())) {
-      if (IdxV < STy->getNumElements())
-        return UndefValue::get(STy->getElementType(IdxV));
-    } else if (SequentialType *STy =
-               dyn_cast<SequentialType>(Agg->getType())) {
-      return UndefValue::get(STy->getElementType());
-    }
-  }
-  return 0;
-}
-
 
 /// CleanupConstantGlobalUsers - We just marked GV constant.  Loop over all
 /// users of the global, cleaning up the obvious ones.  This is largely just a
@@ -520,8 +503,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const TargetData &TD) {
     NewGlobals.reserve(STy->getNumElements());
     const StructLayout &Layout = *TD.getStructLayout(STy);
     for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i) {
-      Constant *In = getAggregateConstantElement(Init,
-                    ConstantInt::get(Type::getInt32Ty(STy->getContext()), i));
+      Constant *In = Init->getAggregateElement(i);
       assert(In && "Couldn't get element of initializer?");
       GlobalVariable *NGV = new GlobalVariable(STy->getElementType(i), false,
                                                GlobalVariable::InternalLinkage,
@@ -553,8 +535,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const TargetData &TD) {
     uint64_t EltSize = TD.getTypeAllocSize(STy->getElementType());
     unsigned EltAlign = TD.getABITypeAlignment(STy->getElementType());
     for (unsigned i = 0, e = NumElements; i != e; ++i) {
-      Constant *In = getAggregateConstantElement(Init,
-                    ConstantInt::get(Type::getInt32Ty(Init->getContext()), i));
+      Constant *In = Init->getAggregateElement(i);
       assert(In && "Couldn't get element of initializer?");
 
       GlobalVariable *NGV = new GlobalVariable(STy->getElementType(), false,
@@ -855,7 +836,7 @@ static GlobalVariable *OptimizeGlobalAddressOfMalloc(GlobalVariable *GV,
                                                      CallInst *CI,
                                                      Type *AllocTy,
                                                      ConstantInt *NElements,
-                                                     TargetData* TD) {
+                                                     TargetData *TD) {
   DEBUG(errs() << "PROMOTING GLOBAL: " << *GV << "  CALL = " << *CI << '\n');
 
   Type *GlobalType;
@@ -913,7 +894,8 @@ static GlobalVariable *OptimizeGlobalAddressOfMalloc(GlobalVariable *GV,
   while (!GV->use_empty()) {
     if (StoreInst *SI = dyn_cast<StoreInst>(GV->use_back())) {
       // The global is initialized when the store to it occurs.
-      new StoreInst(ConstantInt::getTrue(GV->getContext()), InitBool, SI);
+      new StoreInst(ConstantInt::getTrue(GV->getContext()), InitBool, false, 0,
+                    SI->getOrdering(), SI->getSynchScope(), SI);
       SI->eraseFromParent();
       continue;
     }
@@ -928,7 +910,10 @@ static GlobalVariable *OptimizeGlobalAddressOfMalloc(GlobalVariable *GV,
 
       ICmpInst *ICI = cast<ICmpInst>(LoadUse.getUser());
       // Replace the cmp X, 0 with a use of the bool value.
-      Value *LV = new LoadInst(InitBool, InitBool->getName()+".val", ICI);
+      // Sink the load to where the compare was, if atomic rules allow us to.
+      Value *LV = new LoadInst(InitBool, InitBool->getName()+".val", false, 0,
+                               LI->getOrdering(), LI->getSynchScope(),
+                               LI->isUnordered() ? (Instruction*)ICI : LI);
       InitBoolUsed = true;
       switch (ICI->getPredicate()) {
       default: llvm_unreachable("Unknown ICmp Predicate!");
@@ -1210,7 +1195,6 @@ static Value *GetHeapSROAValue(Value *V, unsigned FieldNo,
     PHIsToRewrite.push_back(std::make_pair(PN, FieldNo));
   } else {
     llvm_unreachable("Unknown usable value");
-    Result = 0;
   }
 
   return FieldVals[FieldNo] = Result;
@@ -1300,9 +1284,9 @@ static void RewriteUsesOfLoadForHeapSRoA(LoadInst *Load,
 /// PerformHeapAllocSRoA - CI is an allocation of an array of structures.  Break
 /// it up into multiple allocations of arrays of the fields.
 static GlobalVariable *PerformHeapAllocSRoA(GlobalVariable *GV, CallInst *CI,
-                                            Value* NElems, TargetData *TD) {
+                                            Value *NElems, TargetData *TD) {
   DEBUG(dbgs() << "SROA HEAP ALLOC: " << *GV << "  MALLOC = " << *CI << '\n');
-  Type* MAT = getMallocAllocatedType(CI);
+  Type *MAT = getMallocAllocatedType(CI);
   StructType *STy = cast<StructType>(MAT);
 
   // There is guaranteed to be at least one use of the malloc (storing
@@ -1489,6 +1473,7 @@ static GlobalVariable *PerformHeapAllocSRoA(GlobalVariable *GV, CallInst *CI,
 static bool TryToOptimizeStoreOfMallocToGlobal(GlobalVariable *GV,
                                                CallInst *CI,
                                                Type *AllocTy,
+                                               AtomicOrdering Ordering,
                                                Module::global_iterator &GVI,
                                                TargetData *TD) {
   if (!TD)
@@ -1509,7 +1494,7 @@ static bool TryToOptimizeStoreOfMallocToGlobal(GlobalVariable *GV,
 
   // We can't optimize this if the malloc itself is used in a complex way,
   // for example, being stored into multiple globals.  This allows the
-  // malloc to be stored into the specified global, loaded setcc'd, and
+  // malloc to be stored into the specified global, loaded icmp'd, and
   // GEP'd.  These are all things we could transform to using the global
   // for.
   SmallPtrSet<const PHINode*, 8> PHIs;
@@ -1537,6 +1522,9 @@ static bool TryToOptimizeStoreOfMallocToGlobal(GlobalVariable *GV,
   // If the allocation is an array of structures, consider transforming this
   // into multiple malloc'd arrays, one for each field.  This is basically
   // SRoA for malloc'd memory.
+
+  if (Ordering != NotAtomic)
+    return false;
 
   // If this is an allocation of a fixed size array of structs, analyze as a
   // variable size array.  malloc [100 x struct],1 -> malloc struct, 100
@@ -1570,7 +1558,7 @@ static bool TryToOptimizeStoreOfMallocToGlobal(GlobalVariable *GV,
         extractMallocCallFromBitCast(Malloc) : cast<CallInst>(Malloc);
     }
 
-    GVI = PerformHeapAllocSRoA(GV, CI, getMallocArraySize(CI, TD, true),TD);
+    GVI = PerformHeapAllocSRoA(GV, CI, getMallocArraySize(CI, TD, true), TD);
     return true;
   }
 
@@ -1580,6 +1568,7 @@ static bool TryToOptimizeStoreOfMallocToGlobal(GlobalVariable *GV,
 // OptimizeOnceStoredGlobal - Try to optimize globals based on the knowledge
 // that only one value (besides its initializer) is ever stored to the global.
 static bool OptimizeOnceStoredGlobal(GlobalVariable *GV, Value *StoredOnceVal,
+                                     AtomicOrdering Ordering,
                                      Module::global_iterator &GVI,
                                      TargetData *TD) {
   // Ignore no-op GEPs and bitcasts.
@@ -1599,9 +1588,9 @@ static bool OptimizeOnceStoredGlobal(GlobalVariable *GV, Value *StoredOnceVal,
       if (OptimizeAwayTrappingUsesOfLoads(GV, SOVC))
         return true;
     } else if (CallInst *CI = extractMallocCall(StoredOnceVal)) {
-      Type* MallocType = getMallocAllocatedType(CI);
+      Type *MallocType = getMallocAllocatedType(CI);
       if (MallocType && TryToOptimizeStoreOfMallocToGlobal(GV, CI, MallocType,
-                                                           GVI, TD))
+                                                           Ordering, GVI, TD))
         return true;
     }
   }
@@ -1677,7 +1666,8 @@ static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
         if (LoadInst *LI = dyn_cast<LoadInst>(StoredVal)) {
           assert(LI->getOperand(0) == GV && "Not a copy!");
           // Insert a new load, to preserve the saved value.
-          StoreVal = new LoadInst(NewGV, LI->getName()+".b", LI);
+          StoreVal = new LoadInst(NewGV, LI->getName()+".b", false, 0,
+                                  LI->getOrdering(), LI->getSynchScope(), LI);
         } else {
           assert((isa<CastInst>(StoredVal) || isa<SelectInst>(StoredVal)) &&
                  "This is not a form that we understand!");
@@ -1685,11 +1675,13 @@ static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
           assert(isa<LoadInst>(StoreVal) && "Not a load of NewGV!");
         }
       }
-      new StoreInst(StoreVal, NewGV, SI);
+      new StoreInst(StoreVal, NewGV, false, 0,
+                    SI->getOrdering(), SI->getSynchScope(), SI);
     } else {
       // Change the load into a load of bool then a select.
       LoadInst *LI = cast<LoadInst>(UI);
-      LoadInst *NLI = new LoadInst(NewGV, LI->getName()+".b", LI);
+      LoadInst *NLI = new LoadInst(NewGV, LI->getName()+".b", false, 0,
+                                   LI->getOrdering(), LI->getSynchScope(), LI);
       Value *NSI;
       if (IsOneZero)
         NSI = new ZExtInst(NLI, LI->getType(), "", LI);
@@ -1762,11 +1754,11 @@ bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
       GS.AccessingFunction->hasExternalLinkage() &&
       GV->getType()->getAddressSpace() == 0) {
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV);
-    Instruction& FirstI = const_cast<Instruction&>(*GS.AccessingFunction
+    Instruction &FirstI = const_cast<Instruction&>(*GS.AccessingFunction
                                                    ->getEntryBlock().begin());
-    Type* ElemTy = GV->getType()->getElementType();
+    Type *ElemTy = GV->getType()->getElementType();
     // FIXME: Pass Global's alignment when globals have alignment
-    AllocaInst* Alloca = new AllocaInst(ElemTy, NULL, GV->getName(), &FirstI);
+    AllocaInst *Alloca = new AllocaInst(ElemTy, NULL, GV->getName(), &FirstI);
     if (!isa<UndefValue>(GV->getInitializer()))
       new StoreInst(GV->getInitializer(), Alloca, &FirstI);
 
@@ -1843,7 +1835,7 @@ bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
 
     // Try to optimize globals based on the knowledge that only one value
     // (besides its initializer) is ever stored to the global.
-    if (OptimizeOnceStoredGlobal(GV, GS.StoredOnceValue, GVI,
+    if (OptimizeOnceStoredGlobal(GV, GS.StoredOnceValue, GS.Ordering, GVI,
                                  getAnalysisIfAvailable<TargetData>()))
       return true;
 
@@ -2209,23 +2201,11 @@ static Constant *EvaluateStoreInto(Constant *Init, Constant *Val,
     return Val;
   }
 
-  std::vector<Constant*> Elts;
+  SmallVector<Constant*, 32> Elts;
   if (StructType *STy = dyn_cast<StructType>(Init->getType())) {
-
     // Break up the constant into its elements.
-    if (ConstantStruct *CS = dyn_cast<ConstantStruct>(Init)) {
-      for (User::op_iterator i = CS->op_begin(), e = CS->op_end(); i != e; ++i)
-        Elts.push_back(cast<Constant>(*i));
-    } else if (isa<ConstantAggregateZero>(Init)) {
-      for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i)
-        Elts.push_back(Constant::getNullValue(STy->getElementType(i)));
-    } else if (isa<UndefValue>(Init)) {
-      for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i)
-        Elts.push_back(UndefValue::get(STy->getElementType(i)));
-    } else {
-      llvm_unreachable("This code is out of sync with "
-             " ConstantFoldLoadThroughGEPConstantExpr");
-    }
+    for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i)
+      Elts.push_back(Init->getAggregateElement(i));
 
     // Replace the element that we are supposed to.
     ConstantInt *CU = cast<ConstantInt>(Addr->getOperand(OpNo));
@@ -2244,22 +2224,11 @@ static Constant *EvaluateStoreInto(Constant *Init, Constant *Val,
   if (ArrayType *ATy = dyn_cast<ArrayType>(InitTy))
     NumElts = ATy->getNumElements();
   else
-    NumElts = cast<VectorType>(InitTy)->getNumElements();
+    NumElts = InitTy->getVectorNumElements();
 
   // Break up the array into elements.
-  if (ConstantArray *CA = dyn_cast<ConstantArray>(Init)) {
-    for (User::op_iterator i = CA->op_begin(), e = CA->op_end(); i != e; ++i)
-      Elts.push_back(cast<Constant>(*i));
-  } else if (ConstantVector *CV = dyn_cast<ConstantVector>(Init)) {
-    for (User::op_iterator i = CV->op_begin(), e = CV->op_end(); i != e; ++i)
-      Elts.push_back(cast<Constant>(*i));
-  } else if (isa<ConstantAggregateZero>(Init)) {
-    Elts.assign(NumElts, Constant::getNullValue(InitTy->getElementType()));
-  } else {
-    assert(isa<UndefValue>(Init) && "This code is out of sync with "
-           " ConstantFoldLoadThroughGEPConstantExpr");
-    Elts.assign(NumElts, UndefValue::get(InitTy->getElementType()));
-  }
+  for (uint64_t i = 0, e = NumElts; i != e; ++i)
+    Elts.push_back(Init->getAggregateElement(i));
 
   assert(CI->getZExtValue() < NumElts);
   Elts[CI->getZExtValue()] =
@@ -2313,9 +2282,6 @@ static Constant *ComputeLoadResult(Constant *P,
   return 0;  // don't know how to evaluate.
 }
 
-/// EvaluateFunction - Evaluate a call to function F, returning true if
-/// successful, false if we can't evaluate it.  ActualArgs contains the formal
-/// arguments for the function.
 static bool EvaluateFunction(Function *F, Constant *&RetVal,
                              const SmallVectorImpl<Constant*> &ActualArgs,
                              std::vector<Function*> &CallStack,
@@ -2323,30 +2289,21 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
                              std::vector<GlobalVariable*> &AllocaTmps,
                              SmallPtrSet<Constant*, 8> &SimpleConstants,
                              const TargetData *TD,
-                             const TargetLibraryInfo *TLI) {
-  // Check to see if this function is already executing (recursion).  If so,
-  // bail out.  TODO: we might want to accept limited recursion.
-  if (std::find(CallStack.begin(), CallStack.end(), F) != CallStack.end())
-    return false;
+                             const TargetLibraryInfo *TLI);
 
-  CallStack.push_back(F);
-
-  /// Values - As we compute SSA register values, we store their contents here.
-  DenseMap<Value*, Constant*> Values;
-
-  // Initialize arguments to the incoming values specified.
-  unsigned ArgNo = 0;
-  for (Function::arg_iterator AI = F->arg_begin(), E = F->arg_end(); AI != E;
-       ++AI, ++ArgNo)
-    Values[AI] = ActualArgs[ArgNo];
-
-  /// ExecutedBlocks - We only handle non-looping, non-recursive code.  As such,
-  /// we can only evaluate any one basic block at most once.  This set keeps
-  /// track of what we have executed so we can detect recursive cases etc.
-  SmallPtrSet<BasicBlock*, 32> ExecutedBlocks;
-
+/// EvaluateBlock - Evaluate all instructions in block BB, returning true if
+/// successful, false if we can't evaluate it.  NewBB returns the next BB that
+/// control flows into, or null upon return.
+static bool EvaluateBlock(BasicBlock *BB, BasicBlock *&NextBB,
+                          std::vector<Function*> &CallStack,
+                          DenseMap<Value*, Constant*> &Values,
+                          DenseMap<Constant*, Constant*> &MutatedMemory,
+                          std::vector<GlobalVariable*> &AllocaTmps,
+                          SmallPtrSet<Constant*, 8> &SimpleConstants,
+                          const TargetData *TD,
+                          const TargetLibraryInfo *TLI) {
   // CurInst - The current instruction we're evaluating.
-  BasicBlock::iterator CurInst = F->begin()->begin();
+  BasicBlock::iterator CurInst = BB->getFirstNonPHI();
 
   // This is the main evaluation loop.
   while (1) {
@@ -2373,7 +2330,7 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
           // stored value.
           Ptr = CE->getOperand(0);
           
-          Type *NewTy=cast<PointerType>(Ptr->getType())->getElementType();
+          Type *NewTy = cast<PointerType>(Ptr->getType())->getElementType();
           
           // In order to push the bitcast onto the stored value, a bitcast
           // from NewTy to Val's type must be legal.  If it's not, we can try
@@ -2385,7 +2342,7 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
             if (StructType *STy = dyn_cast<StructType>(NewTy)) {
               NewTy = STy->getTypeAtIndex(0U);
 
-              IntegerType *IdxTy =IntegerType::get(NewTy->getContext(), 32);
+              IntegerType *IdxTy = IntegerType::get(NewTy->getContext(), 32);
               Constant *IdxZero = ConstantInt::get(IdxTy, 0, false);
               Constant * const IdxList[] = {IdxZero, IdxZero};
 
@@ -2394,7 +2351,7 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
             // If we can't improve the situation by introspecting NewTy,
             // we have to give up.
             } else {
-              return 0;
+              return false;
             }
           }
           
@@ -2498,56 +2455,37 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
         InstResult = RetVal;
       }
     } else if (isa<TerminatorInst>(CurInst)) {
-      BasicBlock *NewBB = 0;
       if (BranchInst *BI = dyn_cast<BranchInst>(CurInst)) {
         if (BI->isUnconditional()) {
-          NewBB = BI->getSuccessor(0);
+          NextBB = BI->getSuccessor(0);
         } else {
           ConstantInt *Cond =
             dyn_cast<ConstantInt>(getVal(Values, BI->getCondition()));
           if (!Cond) return false;  // Cannot determine.
 
-          NewBB = BI->getSuccessor(!Cond->getZExtValue());
+          NextBB = BI->getSuccessor(!Cond->getZExtValue());
         }
       } else if (SwitchInst *SI = dyn_cast<SwitchInst>(CurInst)) {
         ConstantInt *Val =
           dyn_cast<ConstantInt>(getVal(Values, SI->getCondition()));
         if (!Val) return false;  // Cannot determine.
-        NewBB = SI->getSuccessor(SI->findCaseValue(Val));
+        unsigned ValTISucc = SI->resolveSuccessorIndex(SI->findCaseValue(Val));
+        NextBB = SI->getSuccessor(ValTISucc);
       } else if (IndirectBrInst *IBI = dyn_cast<IndirectBrInst>(CurInst)) {
         Value *Val = getVal(Values, IBI->getAddress())->stripPointerCasts();
         if (BlockAddress *BA = dyn_cast<BlockAddress>(Val))
-          NewBB = BA->getBasicBlock();
+          NextBB = BA->getBasicBlock();
         else
           return false;  // Cannot determine.
-      } else if (ReturnInst *RI = dyn_cast<ReturnInst>(CurInst)) {
-        if (RI->getNumOperands())
-          RetVal = getVal(Values, RI->getOperand(0));
-
-        CallStack.pop_back();  // return from fn.
-        return true;  // We succeeded at evaluating this ctor!
+      } else if (isa<ReturnInst>(CurInst)) {
+        NextBB = 0;
       } else {
         // invoke, unwind, resume, unreachable.
         return false;  // Cannot handle this terminator.
       }
 
-      // Okay, we succeeded in evaluating this control flow.  See if we have
-      // executed the new block before.  If so, we have a looping function,
-      // which we cannot evaluate in reasonable time.
-      if (!ExecutedBlocks.insert(NewBB))
-        return false;  // looped!
-
-      // Okay, we have never been in this block before.  Check to see if there
-      // are any PHI nodes.  If so, evaluate them with information about where
-      // we came from.
-      BasicBlock *OldBB = CurInst->getParent();
-      CurInst = NewBB->begin();
-      PHINode *PN;
-      for (; (PN = dyn_cast<PHINode>(CurInst)); ++CurInst)
-        Values[PN] = getVal(Values, PN->getIncomingValueForBlock(OldBB));
-
-      // Do NOT increment CurInst.  We know that the terminator had no value.
-      continue;
+      // We succeeded at evaluating this block!
+      return true;
     } else {
       // Did not know how to evaluate this!
       return false;
@@ -2562,6 +2500,76 @@ static bool EvaluateFunction(Function *F, Constant *&RetVal,
 
     // Advance program counter.
     ++CurInst;
+  }
+}
+
+/// EvaluateFunction - Evaluate a call to function F, returning true if
+/// successful, false if we can't evaluate it.  ActualArgs contains the formal
+/// arguments for the function.
+static bool EvaluateFunction(Function *F, Constant *&RetVal,
+                             const SmallVectorImpl<Constant*> &ActualArgs,
+                             std::vector<Function*> &CallStack,
+                             DenseMap<Constant*, Constant*> &MutatedMemory,
+                             std::vector<GlobalVariable*> &AllocaTmps,
+                             SmallPtrSet<Constant*, 8> &SimpleConstants,
+                             const TargetData *TD,
+                             const TargetLibraryInfo *TLI) {
+  // Check to see if this function is already executing (recursion).  If so,
+  // bail out.  TODO: we might want to accept limited recursion.
+  if (std::find(CallStack.begin(), CallStack.end(), F) != CallStack.end())
+    return false;
+
+  CallStack.push_back(F);
+
+  /// Values - As we compute SSA register values, we store their contents here.
+  DenseMap<Value*, Constant*> Values;
+
+  // Initialize arguments to the incoming values specified.
+  unsigned ArgNo = 0;
+  for (Function::arg_iterator AI = F->arg_begin(), E = F->arg_end(); AI != E;
+       ++AI, ++ArgNo)
+    Values[AI] = ActualArgs[ArgNo];
+
+  // ExecutedBlocks - We only handle non-looping, non-recursive code.  As such,
+  // we can only evaluate any one basic block at most once.  This set keeps
+  // track of what we have executed so we can detect recursive cases etc.
+  SmallPtrSet<BasicBlock*, 32> ExecutedBlocks;
+
+  // CurBB - The current basic block we're evaluating.
+  BasicBlock *CurBB = F->begin();
+
+  while (1) {
+    BasicBlock *NextBB;
+    if (!EvaluateBlock(CurBB, NextBB, CallStack, Values, MutatedMemory,
+                       AllocaTmps, SimpleConstants, TD, TLI))
+      return false;
+
+    if (NextBB == 0) {
+      // Successfully running until there's no next block means that we found
+      // the return.  Fill it the return value and pop the call stack.
+      ReturnInst *RI = cast<ReturnInst>(CurBB->getTerminator());
+      if (RI->getNumOperands())
+        RetVal = getVal(Values, RI->getOperand(0));
+      CallStack.pop_back();
+      return true;
+    }
+
+    // Okay, we succeeded in evaluating this control flow.  See if we have
+    // executed the new block before.  If so, we have a looping function,
+    // which we cannot evaluate in reasonable time.
+    if (!ExecutedBlocks.insert(NextBB))
+      return false;  // looped!
+
+    // Okay, we have never been in this block before.  Check to see if there
+    // are any PHI nodes.  If so, evaluate them with information about where
+    // we came from.
+    PHINode *PN = 0;
+    for (BasicBlock::iterator Inst = NextBB->begin();
+         (PN = dyn_cast<PHINode>(Inst)); ++Inst)
+      Values[PN] = getVal(Values, PN->getIncomingValueForBlock(CurBB));
+
+    // Advance to the next block.
+    CurBB = NextBB;
   }
 }
 
@@ -2745,7 +2753,8 @@ static Function *FindCXAAtExit(Module &M) {
 /// destructor and can therefore be eliminated.
 /// Note that we assume that other optimization passes have already simplified
 /// the code so we only look for a function with a single basic block, where
-/// the only allowed instructions are 'ret' or 'call' to empty C++ dtor.
+/// the only allowed instructions are 'ret', 'call' to an empty C++ dtor and
+/// other side-effect free instructions.
 static bool cxxDtorIsEmpty(const Function &Fn,
                            SmallPtrSet<const Function *, 8> &CalledFunctions) {
   // FIXME: We could eliminate C++ destructors if they're readonly/readnone and
@@ -2778,9 +2787,9 @@ static bool cxxDtorIsEmpty(const Function &Fn,
       if (!cxxDtorIsEmpty(*CalledFn, NewCalledFunctions))
         return false;
     } else if (isa<ReturnInst>(*I))
-      return true;
-    else
-      return false;
+      return true; // We're done.
+    else if (I->mayHaveSideEffects())
+      return false; // Destructor with side effects, bail.
   }
 
   return false;
