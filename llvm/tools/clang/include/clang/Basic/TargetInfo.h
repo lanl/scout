@@ -357,6 +357,13 @@ public:
   virtual void getTargetBuiltins(const Builtin::Info *&Records,
                                  unsigned &NumRecords) const = 0;
 
+  /// isCLZForZeroUndef - The __builtin_clz* and __builtin_ctz* built-in
+  /// functions are specified to have undefined results for zero inputs, but
+  /// on targets that support these operations in a way that provides
+  /// well-defined results for zero without loss of performance, it is a good
+  /// idea to avoid optimizing based on that undef behavior.
+  virtual bool isCLZForZeroUndef() const { return true; }
+
   /// getVAListDeclaration - Return the declaration to use for
   /// __builtin_va_list, which is target-specific.
   virtual const char *getVAListDeclaration() const = 0;
@@ -472,6 +479,19 @@ public:
     const unsigned RegNum;
   };
 
+  /// hasProtectedVisibility - Does this target support "protected"
+  /// visibility?
+  ///
+  /// Any target which dynamic libraries will naturally support
+  /// something like "default" (meaning that the symbol is visible
+  /// outside this shared object) and "hidden" (meaning that it isn't)
+  /// visibilities, but "protected" is really an ELF-specific concept
+  /// with wierd semantics designed around the convenience of dynamic
+  /// linker implementations.  Which is not to suggest that there's
+  /// consistent target-independent semantics for "default" visibility
+  /// either; the entire thing is pretty badly mangled.
+  virtual bool hasProtectedVisibility() const { return true; }
+
   virtual bool useGlobalsForAutomaticVariables() const { return false; }
 
   /// getCFStringSection - Return the section to use for CFString
@@ -581,6 +601,11 @@ public:
   virtual void HandleTargetFeatures(std::vector<std::string> &Features) {
   }
 
+  /// \brief Determine whether the given target has the given feature.
+  virtual bool hasFeature(StringRef Feature) const {
+    return false;
+  }
+  
   // getRegParmMax - Returns maximal number of args passed in registers.
   unsigned getRegParmMax() const {
     assert(RegParmMax < 7 && "RegParmMax value is larger than AST can handle");

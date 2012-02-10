@@ -524,7 +524,6 @@ static Stmt::StmtClass DecodeOperatorCall(const CXXOperatorCallExpr *S,
   case OO_Conditional:
   case NUM_OVERLOADED_OPERATORS:
     llvm_unreachable("Invalid operator call kind");
-    return Stmt::ArraySubscriptExprClass;
       
   case OO_Plus:
     if (S->getNumArgs() == 1) {
@@ -809,6 +808,24 @@ void StmtProfiler::VisitCXXFunctionalCastExpr(const CXXFunctionalCastExpr *S) {
 void
 StmtProfiler::VisitCXXTemporaryObjectExpr(const CXXTemporaryObjectExpr *S) {
   VisitCXXConstructExpr(S);
+}
+
+void
+StmtProfiler::VisitLambdaExpr(const LambdaExpr *S) {
+  VisitExpr(S);
+  for (LambdaExpr::capture_iterator C = S->explicit_capture_begin(),
+                                 CEnd = S->explicit_capture_end();
+       C != CEnd; ++C) {
+    ID.AddInteger(C->getCaptureKind());
+    if (C->capturesVariable()) {
+      VisitDecl(C->getCapturedVar());
+      ID.AddBoolean(C->isPackExpansion());
+    }
+  }
+  // Note: If we actually needed to be able to match lambda
+  // expressions, we would have to consider parameters and return type
+  // here, among other things.
+  VisitStmt(S->getBody());
 }
 
 void

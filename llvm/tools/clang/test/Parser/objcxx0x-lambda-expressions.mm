@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wno-unused-value -std=c++11 %s
 
 class C {
 
@@ -11,13 +11,12 @@ class C {
     []; // expected-error {{expected body of lambda expression}}
     [=,foo+] {}; // expected-error {{expected ',' or ']' in lambda capture list}}
     [&this] {}; // expected-error {{address expression must be an lvalue}}
-    [] {}; // expected-error {{lambda expressions are not supported yet}}
-    [=] (int i) {}; // expected-error {{lambda expressions are not supported yet}}
-    [&] (int) mutable -> void {}; // expected-error {{lambda expressions are not supported yet}}
-    // FIXME: Implicit return type deduction doesn't work yet.
-    [foo,bar] () { return 3; }; // expected-error {{void function 'f' should not return a value}} expected-error {{lambda expressions are not supported yet}}
-    [=,&foo] () {}; // expected-error {{lambda expressions are not supported yet}}
-    [this] () {}; // expected-error {{lambda expressions are not supported yet}}
+    [] {}; 
+    [=] (int i) {}; 
+    [&] (int) mutable -> void {}; 
+    [foo,bar] () { return 3; }; 
+    [=,&foo] () {}; 
+    [this] () {}; 
   }
 
 };

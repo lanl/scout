@@ -336,13 +336,26 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
       return argTy->isPointerType() || argTy->isObjCObjectPointerType() ||
         argTy->isNullPtrType();
 
-    case ObjCPointerTy:
-      return argTy->getAs<ObjCObjectPointerType>() != NULL;
+    case ObjCPointerTy: {
+      if (argTy->getAs<ObjCObjectPointerType>() ||
+          argTy->getAs<BlockPointerType>())
+        return true;
+      
+      // Handle implicit toll-free bridging.
+      if (const PointerType *PT = argTy->getAs<PointerType>()) {
+        // Things such as CFTypeRef are really just opaque pointers
+        // to C structs representing CF types that can often be bridged
+        // to Objective-C objects.  Since the compiler doesn't know which
+        // structs can be toll-free bridged, we just accept them all.
+        QualType pointee = PT->getPointeeType();
+        if (pointee->getAsStructureType() || pointee->isVoidType())
+          return true;
+      }
+      return false;      
+    }
   }
 
-  // FIXME: Should be unreachable, but Clang is currently emitting
-  // a warning.
-  return false;
+  llvm_unreachable("Invalid ArgTypeResult Kind!");
 }
 
 QualType ArgTypeResult::getRepresentativeType(ASTContext &C) const {
@@ -369,14 +382,12 @@ QualType ArgTypeResult::getRepresentativeType(ASTContext &C) const {
     }
   }
 
-  // FIXME: Should be unreachable, but Clang is currently emitting
-  // a warning.
-  return QualType();
+  llvm_unreachable("Invalid ArgTypeResult Kind!");
 }
 
 std::string ArgTypeResult::getRepresentativeTypeName(ASTContext &C) const {
   std::string S = getRepresentativeType(C).getAsString();
-  if (Name)
+  if (Name && S != Name)
     return std::string("'") + Name + "' (aka '" + S + "')";
   return std::string("'") + S + "'";
 }
@@ -535,6 +546,7 @@ bool FormatSpecifier::hasValidLengthModifier() const {
         case ConversionSpecifier::nArg:
         case ConversionSpecifier::cArg:
         case ConversionSpecifier::sArg:
+        case ConversionSpecifier::ScanListArg:
           return true;
         default:
           return false;
@@ -550,6 +562,14 @@ bool FormatSpecifier::hasValidLengthModifier() const {
         case ConversionSpecifier::EArg:
         case ConversionSpecifier::gArg:
         case ConversionSpecifier::GArg:
+          return true;
+        // GNU extension.
+        case ConversionSpecifier::dArg:
+        case ConversionSpecifier::iArg:
+        case ConversionSpecifier::oArg:
+        case ConversionSpecifier::uArg:
+        case ConversionSpecifier::xArg:
+        case ConversionSpecifier::XArg:
           return true;
         default:
           return false;
@@ -577,5 +597,5 @@ bool FormatSpecifier::hasValidLengthModifier() const {
           return false;
       }
   }
-  return false;
+  llvm_unreachable("Invalid LengthModifier Kind!");
 }

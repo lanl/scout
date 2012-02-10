@@ -23,11 +23,31 @@ using namespace ento;
 
 namespace {
 class DivZeroChecker : public Checker< check::PreStmt<BinaryOperator> > {
-  mutable llvm::OwningPtr<BuiltinBug> BT;
+  mutable OwningPtr<BuiltinBug> BT;
+  void reportBug(const char *Msg,
+                 ProgramStateRef StateZero,
+                 CheckerContext &C) const ;
 public:
   void checkPreStmt(const BinaryOperator *B, CheckerContext &C) const;
 };  
 } // end anonymous namespace
+
+void DivZeroChecker::reportBug(const char *Msg,
+                               ProgramStateRef StateZero,
+                               CheckerContext &C) const {
+  if (ExplodedNode *N = C.generateSink(StateZero)) {
+    if (!BT)
+      BT.reset(new BuiltinBug("Division by zero"));
+
+    BugReport *R =
+      new BugReport(*BT, Msg, N);
+
+    R->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N,
+                                 bugreporter::GetDenomExpr(N)));
+
+    C.EmitReport(R);
+  }
+}
 
 void DivZeroChecker::checkPreStmt(const BinaryOperator *B,
                                   CheckerContext &C) const {
@@ -52,23 +72,18 @@ void DivZeroChecker::checkPreStmt(const BinaryOperator *B,
 
   // Check for divide by zero.
   ConstraintManager &CM = C.getConstraintManager();
-  const ProgramState *stateNotZero, *stateZero;
+  ProgramStateRef stateNotZero, stateZero;
   llvm::tie(stateNotZero, stateZero) = CM.assumeDual(C.getState(), *DV);
 
   if (!stateNotZero) {
     assert(stateZero);
-    if (ExplodedNode *N = C.generateSink(stateZero)) {
-      if (!BT)
-        BT.reset(new BuiltinBug("Division by zero"));
+    reportBug("Division by zero", stateZero, C);
+    return;
+  }
 
-      BugReport *R = 
-        new BugReport(*BT, BT->getDescription(), N);
-
-      R->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N,
-                                   bugreporter::GetDenomExpr(N)));
-
-      C.EmitReport(R);
-    }
+  bool TaintedD = C.getState()->isTainted(*DV);
+  if ((stateNotZero && stateZero && TaintedD)) {
+    reportBug("Division by a tainted value, possibly zero", stateZero, C);
     return;
   }
 

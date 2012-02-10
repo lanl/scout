@@ -82,25 +82,20 @@ namespace {
     AliasAnalysis *AA;
     const TargetInstrInfo *TII;
     RegisterClassInfo RegClassInfo;
-    CodeGenOpt::Level OptLevel;
 
   public:
     static char ID;
-    PostRAScheduler(CodeGenOpt::Level ol) :
-      MachineFunctionPass(ID), OptLevel(ol) {}
+    PostRAScheduler() : MachineFunctionPass(ID) {}
 
     void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesCFG();
       AU.addRequired<AliasAnalysis>();
+      AU.addRequired<TargetPassConfig>();
       AU.addRequired<MachineDominatorTree>();
       AU.addPreserved<MachineDominatorTree>();
       AU.addRequired<MachineLoopInfo>();
       AU.addPreserved<MachineLoopInfo>();
       MachineFunctionPass::getAnalysisUsage(AU);
-    }
-
-    const char *getPassName() const {
-      return "Post RA top-down list latency scheduler";
     }
 
     bool runOnMachineFunction(MachineFunction &Fn);
@@ -180,12 +175,17 @@ namespace {
   };
 }
 
+char &llvm::PostRASchedulerID = PostRAScheduler::ID;
+
+INITIALIZE_PASS(PostRAScheduler, "post-RA-sched",
+                "Post RA top-down list latency scheduler", false, false)
+
 SchedulePostRATDList::SchedulePostRATDList(
   MachineFunction &MF, MachineLoopInfo &MLI, MachineDominatorTree &MDT,
   AliasAnalysis *AA, const RegisterClassInfo &RCI,
   TargetSubtargetInfo::AntiDepBreakMode AntiDepMode,
   SmallVectorImpl<TargetRegisterClass*> &CriticalPathRCs)
-  : ScheduleDAGInstrs(MF, MLI, MDT), Topo(SUnits), AA(AA),
+  : ScheduleDAGInstrs(MF, MLI, MDT, /*IsPostRA=*/true), Topo(SUnits), AA(AA),
     KillIndices(TRI->getNumRegs())
 {
   const TargetMachine &TM = MF.getTarget();
@@ -209,6 +209,8 @@ bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
   MachineLoopInfo &MLI = getAnalysis<MachineLoopInfo>();
   MachineDominatorTree &MDT = getAnalysis<MachineDominatorTree>();
   AliasAnalysis *AA = &getAnalysis<AliasAnalysis>();
+  TargetPassConfig *PassConfig = &getAnalysis<TargetPassConfig>();
+
   RegClassInfo.runOnMachineFunction(Fn);
 
   // Check for explicit enable/disable of post-ra scheduling.
@@ -222,7 +224,8 @@ bool PostRAScheduler::runOnMachineFunction(MachineFunction &Fn) {
     // Check that post-RA scheduling is enabled for this target.
     // This may upgrade the AntiDepMode.
     const TargetSubtargetInfo &ST = Fn.getTarget().getSubtarget<TargetSubtargetInfo>();
-    if (!ST.enablePostRAScheduler(OptLevel, AntiDepMode, CriticalPathRCs))
+    if (!ST.enablePostRAScheduler(PassConfig->getOptLevel(), AntiDepMode,
+                                  CriticalPathRCs))
       return false;
   }
 
@@ -704,12 +707,4 @@ void SchedulePostRATDList::ListScheduleTopDown() {
 #ifndef NDEBUG
   VerifySchedule(/*isBottomUp=*/false);
 #endif
-}
-
-//===----------------------------------------------------------------------===//
-//                         Public Constructor Functions
-//===----------------------------------------------------------------------===//
-
-FunctionPass *llvm::createPostRAScheduler(CodeGenOpt::Level OptLevel) {
-  return new PostRAScheduler(OptLevel);
 }

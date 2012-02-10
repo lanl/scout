@@ -57,12 +57,17 @@ bool TemplateDeclInstantiator::SubstQualifier(const TagDecl *OldDecl,
   return false;
 }
 
-// FIXME: Is this still too simple?
+// Include attribute instantiation code.
+#include "clang/Sema/AttrTemplateInstantiate.inc"
+
 void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
-                            const Decl *Tmpl, Decl *New) {
+                            const Decl *Tmpl, Decl *New,
+                            LateInstantiatedAttrVec *LateAttrs,
+                            LocalInstantiationScope *OuterMostScope) {
   for (AttrVec::const_iterator i = Tmpl->attr_begin(), e = Tmpl->attr_end();
        i != e; ++i) {
     const Attr *TmplAttr = *i;
+
     // FIXME: This should be generalized to more than just the AlignedAttr.
     if (const AlignedAttr *Aligned = dyn_cast<AlignedAttr>(TmplAttr)) {
       if (Aligned->isAlignmentDependent()) {
@@ -87,9 +92,18 @@ void Sema::InstantiateAttrs(const MultiLevelTemplateArgumentList &TemplateArgs,
       }
     }
 
-    // FIXME: Is cloning correct for all attributes?
-    Attr *NewAttr = TmplAttr->clone(Context);
-    New->addAttr(NewAttr);
+    if (TmplAttr->isLateParsed() && LateAttrs) {
+      // Late parsed attributes must be instantiated and attached after the
+      // enclosing class has been instantiated.  See Sema::InstantiateClass.
+      LocalInstantiationScope *Saved = 0;
+      if (CurrentInstantiationScope)
+        Saved = CurrentInstantiationScope->cloneScopes(OuterMostScope);
+      LateAttrs->push_back(LateInstantiatedAttribute(TmplAttr, Saved, New));
+    } else {
+      Attr *NewAttr = sema::instantiateTemplateAttribute(TmplAttr, Context,
+                                                         *this, TemplateArgs);
+      New->addAttr(NewAttr);
+    }
   }
 }
 
@@ -163,7 +177,7 @@ Decl *TemplateDeclInstantiator::InstantiateTypedefNameDecl(TypedefNameDecl *D,
     }
   }
 
-  if (TypedefNameDecl *Prev = D->getPreviousDeclaration()) {
+  if (TypedefNameDecl *Prev = D->getPreviousDecl()) {
     NamedDecl *InstPrev = SemaRef.FindInstantiatedDecl(D->getLocation(), Prev,
                                                        TemplateArgs);
     if (!InstPrev)
@@ -210,7 +224,7 @@ TemplateDeclInstantiator::VisitTypeAliasTemplateDecl(TypeAliasTemplateDecl *D) {
   TypeAliasDecl *Pattern = D->getTemplatedDecl();
 
   TypeAliasTemplateDecl *PrevAliasTemplate = 0;
-  if (Pattern->getPreviousDeclaration()) {
+  if (Pattern->getPreviousDecl()) {
     DeclContext::lookup_result Found = Owner->lookup(Pattern->getDeclName());
     if (Found.first != Found.second) {
       PrevAliasTemplate = dyn_cast<TypeAliasTemplateDecl>(*Found.first);
@@ -330,6 +344,7 @@ Decl *TemplateDeclInstantiator::VisitVarDecl(VarDecl *D) {
   Var->setThreadSpecified(D->isThreadSpecified());
   Var->setCXXDirectInitializer(D->hasCXXDirectInitializer());
   Var->setCXXForRangeDecl(D->isCXXForRangeDecl());
+  Var->setConstexpr(D->isConstexpr());
 
   // Substitute the nested name specifier, if any.
   if (SubstQualifier(D, Var))
@@ -492,7 +507,7 @@ Decl *TemplateDeclInstantiator::VisitFieldDecl(FieldDecl *D) {
     return 0;
   }
 
-  SemaRef.InstantiateAttrs(TemplateArgs, D, Field);
+  SemaRef.InstantiateAttrs(TemplateArgs, D, Field, LateAttrs, StartingScope);
 
   if (Invalid)
     Field->setInvalidDecl();
@@ -739,7 +754,7 @@ Decl *TemplateDeclInstantiator::VisitClassTemplateDecl(ClassTemplateDecl *D) {
   CXXRecordDecl *PrevDecl = 0;
   ClassTemplateDecl *PrevClassTemplate = 0;
 
-  if (!isFriend && Pattern->getPreviousDeclaration()) {
+  if (!isFriend && Pattern->getPreviousDecl()) {
     DeclContext::lookup_result Found = Owner->lookup(Pattern->getDeclName());
     if (Found.first != Found.second) {
       PrevClassTemplate = dyn_cast<ClassTemplateDecl>(*Found.first);
@@ -976,9 +991,9 @@ Decl *TemplateDeclInstantiator::VisitCXXRecordDecl(CXXRecordDecl *D) {
   CXXRecordDecl *PrevDecl = 0;
   if (D->isInjectedClassName())
     PrevDecl = cast<CXXRecordDecl>(Owner);
-  else if (D->getPreviousDeclaration()) {
+  else if (D->getPreviousDecl()) {
     NamedDecl *Prev = SemaRef.FindInstantiatedDecl(D->getLocation(),
-                                                   D->getPreviousDeclaration(),
+                                                   D->getPreviousDecl(),
                                                    TemplateArgs);
     if (!Prev) return 0;
     PrevDecl = cast<CXXRecordDecl>(Prev);
@@ -1238,9 +1253,9 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
   if (isFriend) {
     NamedDecl *PrevDecl;
     if (TemplateParams)
-      PrevDecl = FunctionTemplate->getPreviousDeclaration();
+      PrevDecl = FunctionTemplate->getPreviousDecl();
     else
-      PrevDecl = Function->getPreviousDeclaration();
+      PrevDecl = Function->getPreviousDecl();
 
     PrincipalDecl->setObjectOfFriendDecl(PrevDecl != 0);
     DC->makeDeclVisibleInContext(PrincipalDecl, /*Recoverable=*/ false);
@@ -1373,8 +1388,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   }
 
   SmallVector<ParmVarDecl *, 4> Params;
-  TypeSourceInfo *TInfo = D->getTypeSourceInfo();
-  TInfo = SubstFunctionType(D, Params);
+  TypeSourceInfo *TInfo = SubstFunctionType(D, Params);
   if (!TInfo)
     return 0;
   QualType T = TInfo->getType();
@@ -1587,7 +1601,8 @@ Decl *TemplateDeclInstantiator::VisitCXXConversionDecl(CXXConversionDecl *D) {
 
 ParmVarDecl *TemplateDeclInstantiator::VisitParmVarDecl(ParmVarDecl *D) {
   return SemaRef.SubstParmVarDecl(D, TemplateArgs, /*indexAdjustment*/ 0,
-                                  llvm::Optional<unsigned>());
+                                  llvm::Optional<unsigned>(),
+                                  /*ExpectParameterPack=*/false);
 }
 
 Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
@@ -2332,17 +2347,12 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
         E = SemaRef.CheckBooleanCondition(E.get(), E.get()->getLocStart());
 
       if (E.isUsable()) {
-        SourceLocation ErrLoc;
-        llvm::APSInt NoexceptVal;
         NoexceptExpr = E.take();
         if (!NoexceptExpr->isTypeDependent() &&
-            !NoexceptExpr->isValueDependent() &&
-            !NoexceptExpr->isIntegerConstantExpr(NoexceptVal, SemaRef.Context,
-                                                 &ErrLoc, /*evaluated=*/false)){
-          SemaRef.Diag(ErrLoc, diag::err_noexcept_needs_constant_expression)
-            << NoexceptExpr->getSourceRange();
-          NoexceptExpr = 0;
-        }
+            !NoexceptExpr->isValueDependent())
+          NoexceptExpr = SemaRef.VerifyIntegerConstantExpression(NoexceptExpr,
+            0, SemaRef.PDiag(diag::err_noexcept_needs_constant_expression),
+            /*AllowFold*/ false).take();
       }
     }
 
@@ -2376,7 +2386,8 @@ TemplateDeclInstantiator::InitFunctionInstantiation(FunctionDecl *New,
   // Get the definition. Leaves the variable unchanged if undefined.
   Tmpl->isDefined(Definition);
 
-  SemaRef.InstantiateAttrs(TemplateArgs, Definition, New);
+  SemaRef.InstantiateAttrs(TemplateArgs, Definition, New,
+                           LateAttrs, StartingScope);
 
   return false;
 }
@@ -3340,12 +3351,12 @@ void Sema::PerformPendingInstantiations(bool LocalOnly) {
 
     // Don't try to instantiate declarations if the most recent redeclaration
     // is invalid.
-    if (Var->getMostRecentDeclaration()->isInvalidDecl())
+    if (Var->getMostRecentDecl()->isInvalidDecl())
       continue;
 
     // Check if the most recent declaration has changed the specialization kind
     // and removed the need for implicit instantiation.
-    switch (Var->getMostRecentDeclaration()->getTemplateSpecializationKind()) {
+    switch (Var->getMostRecentDecl()->getTemplateSpecializationKind()) {
     case TSK_Undeclared:
       llvm_unreachable("Cannot instantitiate an undeclared specialization.");
     case TSK_ExplicitInstantiationDeclaration:
@@ -3354,7 +3365,7 @@ void Sema::PerformPendingInstantiations(bool LocalOnly) {
     case TSK_ExplicitInstantiationDefinition:
       // We only need an instantiation if the pending instantiation *is* the
       // explicit instantiation.
-      if (Var != Var->getMostRecentDeclaration()) continue;
+      if (Var != Var->getMostRecentDecl()) continue;
     case TSK_ImplicitInstantiation:
       break;
     }

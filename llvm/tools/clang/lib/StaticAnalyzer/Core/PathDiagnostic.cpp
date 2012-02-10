@@ -24,15 +24,14 @@ using namespace clang;
 using namespace ento;
 
 bool PathDiagnosticMacroPiece::containsEvent() const {
-  for (const_iterator I = begin(), E = end(); I!=E; ++I) {
+  for (PathPieces::const_iterator I = subPieces.begin(), E = subPieces.end();
+       I!=E; ++I) {
     if (isa<PathDiagnosticEventPiece>(*I))
       return true;
-
     if (PathDiagnosticMacroPiece *MP = dyn_cast<PathDiagnosticMacroPiece>(*I))
       if (MP->containsEvent())
         return true;
   }
-
   return false;
 }
 
@@ -52,43 +51,138 @@ PathDiagnosticPiece::PathDiagnosticPiece(Kind k, DisplayHint hint)
 
 PathDiagnosticPiece::~PathDiagnosticPiece() {}
 PathDiagnosticEventPiece::~PathDiagnosticEventPiece() {}
+PathDiagnosticCallEnterPiece::~PathDiagnosticCallEnterPiece() {}
+PathDiagnosticCallExitPiece::~PathDiagnosticCallExitPiece() {}
 PathDiagnosticControlFlowPiece::~PathDiagnosticControlFlowPiece() {}
-
-PathDiagnosticMacroPiece::~PathDiagnosticMacroPiece() {
-  for (iterator I = begin(), E = end(); I != E; ++I) delete *I;
-}
-
-PathDiagnostic::PathDiagnostic() : Size(0) {}
-
-PathDiagnostic::~PathDiagnostic() {
-  for (iterator I = begin(), E = end(); I != E; ++I) delete &*I;
-}
-
-void PathDiagnostic::resetPath(bool deletePieces) {
-  Size = 0;
-
-  if (deletePieces)
-    for (iterator I=begin(), E=end(); I!=E; ++I)
-      delete &*I;
-
-  path.clear();
-}
-
+PathDiagnosticMacroPiece::~PathDiagnosticMacroPiece() {}
+PathDiagnostic::PathDiagnostic() {}
+PathPieces::~PathPieces() {}
+PathDiagnostic::~PathDiagnostic() {}
 
 PathDiagnostic::PathDiagnostic(StringRef bugtype, StringRef desc,
                                StringRef category)
-  : Size(0),
-    BugType(StripTrailingDots(bugtype)),
+  : BugType(StripTrailingDots(bugtype)),
     Desc(StripTrailingDots(desc)),
     Category(StripTrailingDots(category)) {}
 
 void PathDiagnosticConsumer::anchor() { }
 
-void PathDiagnosticConsumer::HandlePathDiagnostic(const PathDiagnostic *D) {
-  // For now this simply forwards to HandlePathDiagnosticImpl.  In the future
-  // we can use this indirection to control for multi-threaded access to
-  // the PathDiagnosticConsumer from multiple bug reporters.
-  HandlePathDiagnosticImpl(D);
+PathDiagnosticConsumer::~PathDiagnosticConsumer() {
+  // Delete the contents of the FoldingSet if it isn't empty already.
+  for (llvm::FoldingSet<PathDiagnostic>::iterator it =
+       Diags.begin(), et = Diags.end() ; it != et ; ++it) {
+    delete &*it;
+  }
+}
+
+void PathDiagnosticConsumer::HandlePathDiagnostic(PathDiagnostic *D) {
+  if (!D)
+    return;
+  
+  if (D->path.empty()) {
+    delete D;
+    return;
+  }
+  
+  // We need to flatten the locations (convert Stmt* to locations) because
+  // the referenced statements may be freed by the time the diagnostics
+  // are emitted.
+  D->flattenLocations();
+
+  // Profile the node to see if we already have something matching it
+  llvm::FoldingSetNodeID profile;
+  D->Profile(profile);
+  void *InsertPos = 0;
+
+  if (PathDiagnostic *orig = Diags.FindNodeOrInsertPos(profile, InsertPos)) {
+    // Keep the PathDiagnostic with the shorter path.
+    if (orig->path.size() <= D->path.size()) {
+      bool shouldKeepOriginal = true;
+      if (orig->path.size() == D->path.size()) {
+        // Here we break ties in a fairly arbitrary, but deterministic, way.
+        llvm::FoldingSetNodeID fullProfile, fullProfileOrig;
+        D->FullProfile(fullProfile);
+        orig->FullProfile(fullProfileOrig);
+        if (fullProfile.ComputeHash() < fullProfileOrig.ComputeHash())
+          shouldKeepOriginal = false;
+      }
+
+      if (shouldKeepOriginal) {
+        delete D;
+        return;
+      }
+    }
+    Diags.RemoveNode(orig);
+    delete orig;
+  }
+  
+  Diags.InsertNode(D);
+}
+
+
+namespace {
+struct CompareDiagnostics {
+  // Compare if 'X' is "<" than 'Y'.
+  bool operator()(const PathDiagnostic *X, const PathDiagnostic *Y) const {
+    // First compare by location
+    const FullSourceLoc &XLoc = X->getLocation().asLocation();
+    const FullSourceLoc &YLoc = Y->getLocation().asLocation();
+    if (XLoc < YLoc)
+      return true;
+    if (XLoc != YLoc)
+      return false;
+    
+    // Next, compare by bug type.
+    StringRef XBugType = X->getBugType();
+    StringRef YBugType = Y->getBugType();
+    if (XBugType < YBugType)
+      return true;
+    if (XBugType != YBugType)
+      return false;
+    
+    // Next, compare by bug description.
+    StringRef XDesc = X->getDescription();
+    StringRef YDesc = Y->getDescription();
+    if (XDesc < YDesc)
+      return true;
+    if (XDesc != YDesc)
+      return false;
+    
+    // FIXME: Further refine by comparing PathDiagnosticPieces?
+    return false;    
+  }  
+};  
+}
+
+void
+PathDiagnosticConsumer::FlushDiagnostics(SmallVectorImpl<std::string> *Files) {
+  if (flushed)
+    return;
+  
+  flushed = true;
+  
+  std::vector<const PathDiagnostic *> BatchDiags;
+  for (llvm::FoldingSet<PathDiagnostic>::iterator it = Diags.begin(),
+       et = Diags.end(); it != et; ++it) {
+    BatchDiags.push_back(&*it);
+  }
+  
+  // Clear out the FoldingSet.
+  Diags.clear();
+
+  // Sort the diagnostics so that they are always emitted in a deterministic
+  // order.
+  if (!BatchDiags.empty())
+    std::sort(BatchDiags.begin(), BatchDiags.end(), CompareDiagnostics());
+  
+  FlushDiagnosticsImpl(BatchDiags, Files);
+
+  // Delete the flushed diagnostics.
+  for (std::vector<const PathDiagnostic *>::iterator it = BatchDiags.begin(),
+       et = BatchDiags.end(); it != et; ++it) {
+    const PathDiagnostic *D = *it;
+    delete D;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -361,18 +455,23 @@ void PathDiagnosticControlFlowPiece::Profile(llvm::FoldingSetNodeID &ID) const {
 
 void PathDiagnosticMacroPiece::Profile(llvm::FoldingSetNodeID &ID) const {
   PathDiagnosticSpotPiece::Profile(ID);
-  for (const_iterator I = begin(), E = end(); I != E; ++I)
+  for (PathPieces::const_iterator I = subPieces.begin(), E = subPieces.end();
+       I != E; ++I)
     ID.Add(**I);
 }
 
 void PathDiagnostic::Profile(llvm::FoldingSetNodeID &ID) const {
-  ID.AddInteger(Size);
+  if (!path.empty())
+    getLocation().Profile(ID);
   ID.AddString(BugType);
   ID.AddString(Desc);
   ID.AddString(Category);
-  for (const_iterator I = begin(), E = end(); I != E; ++I)
-    ID.Add(*I);
-  
+}
+
+void PathDiagnostic::FullProfile(llvm::FoldingSetNodeID &ID) const {
+  Profile(ID);
+  for (PathPieces::const_iterator I = path.begin(), E = path.end(); I != E; ++I)
+    ID.Add(**I);
   for (meta_iterator I = meta_begin(), E = meta_end(); I != E; ++I)
     ID.AddString(*I);
 }

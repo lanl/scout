@@ -58,7 +58,8 @@ void MCExpr::print(raw_ostream &OS) const {
         SRE.getKind() == MCSymbolRefExpr::VK_ARM_GOT ||
         SRE.getKind() == MCSymbolRefExpr::VK_ARM_GOTOFF ||
         SRE.getKind() == MCSymbolRefExpr::VK_ARM_TPOFF ||
-        SRE.getKind() == MCSymbolRefExpr::VK_ARM_GOTTPOFF)
+        SRE.getKind() == MCSymbolRefExpr::VK_ARM_GOTTPOFF ||
+        SRE.getKind() == MCSymbolRefExpr::VK_ARM_TARGET1)
       OS << MCSymbolRefExpr::getVariantKindName(SRE.getKind());
     else if (SRE.getKind() != MCSymbolRefExpr::VK_None &&
              SRE.getKind() != MCSymbolRefExpr::VK_PPC_DARWIN_HA16 &&
@@ -131,7 +132,7 @@ void MCExpr::print(raw_ostream &OS) const {
   }
   }
 
-  assert(0 && "Invalid expression kind!");
+  llvm_unreachable("Invalid expression kind!");
 }
 
 void MCExpr::dump() const {
@@ -193,6 +194,7 @@ StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
   case VK_ARM_TPOFF: return "(tpoff)";
   case VK_ARM_GOTTPOFF: return "(gottpoff)";
   case VK_ARM_TLSGD: return "(tlsgd)";
+  case VK_ARM_TARGET1: return "(target1)";
   case VK_PPC_TOC: return "toc";
   case VK_PPC_DARWIN_HA16: return "ha16";
   case VK_PPC_DARWIN_LO16: return "lo16";
@@ -574,8 +576,7 @@ bool MCExpr::EvaluateAsRelocatableImpl(MCValue &Res,
   }
   }
 
-  assert(0 && "Invalid assembly expression kind!");
-  return false;
+  llvm_unreachable("Invalid assembly expression kind!");
 }
 
 const MCSection *MCExpr::FindAssociatedSection() const {
@@ -616,6 +617,5 @@ const MCSection *MCExpr::FindAssociatedSection() const {
   }
   }
 
-  assert(0 && "Invalid assembly expression kind!");
-  return 0;
+  llvm_unreachable("Invalid assembly expression kind!");
 }

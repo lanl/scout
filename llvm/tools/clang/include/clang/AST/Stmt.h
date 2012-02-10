@@ -168,7 +168,7 @@ protected:
     unsigned : NumExprBits;
 
     unsigned HasQualifier : 1;
-    unsigned HasExplicitTemplateArgs : 1;
+    unsigned HasTemplateKWAndArgsInfo : 1;
     unsigned HasFoundDecl : 1;
     unsigned HadMultipleCandidates : 1;
   };

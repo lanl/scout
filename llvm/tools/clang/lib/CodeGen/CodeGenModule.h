@@ -102,8 +102,10 @@ namespace CodeGen {
     /// void
     llvm::Type *VoidTy;
 
-    /// i8, i32, and i64
-    llvm::IntegerType *Int8Ty, *Int32Ty, *Int64Ty;
+    /// i8, i16, i32, and i64
+    llvm::IntegerType *Int8Ty, *Int16Ty, *Int32Ty, *Int64Ty;
+    /// float, double
+    llvm::Type *FloatTy, *DoubleTy;
 
     /// int
     llvm::IntegerType *IntTy;
@@ -469,7 +471,6 @@ public:
     case ProtectedVisibility: return llvm::GlobalValue::ProtectedVisibility;
     }
     llvm_unreachable("unknown visibility!");
-    return llvm::GlobalValue::DefaultVisibility;
   }
 
   llvm::Constant *GetAddrOfGlobal(GlobalDecl GD) {
@@ -569,11 +570,6 @@ public:
   /// requires no captures.
   llvm::Constant *GetAddrOfGlobalBlock(const BlockExpr *BE, const char *);
   
-  /// GetStringForStringLiteral - Return the appropriate bytes for a string
-  /// literal, properly padded to match the literal type. If only the address of
-  /// a constant is needed consider using GetAddrOfConstantStringLiteral.
-  std::string GetStringForStringLiteral(const StringLiteral *E);
-
   /// GetAddrOfConstantCFString - Return a pointer to a constant CFString object
   /// for the given string.
   llvm::Constant *GetAddrOfConstantCFString(const StringLiteral *Literal);
@@ -687,11 +683,21 @@ public:
 
   llvm::Constant *getMemberPointerConstant(const UnaryOperator *e);
 
+  /// EmitConstantInit - Try to emit the initializer for the given declaration
+  /// as a constant; returns 0 if the expression cannot be emitted as a
+  /// constant.
+  llvm::Constant *EmitConstantInit(const VarDecl &D, CodeGenFunction *CGF = 0);
+
   /// EmitConstantExpr - Try to emit the given expression as a
   /// constant; returns 0 if the expression cannot be emitted as a
   /// constant.
   llvm::Constant *EmitConstantExpr(const Expr *E, QualType DestType,
                                    CodeGenFunction *CGF = 0);
+
+  /// EmitConstantValue - Try to emit the given constant value as a
+  /// constant; returns 0 if the value cannot be emitted as a constant.
+  llvm::Constant *EmitConstantValue(const APValue &Value, QualType DestType,
+                                    CodeGenFunction *CGF = 0);
 
   /// EmitNullConstant - Return the result of value-initializing the given
   /// type, i.e. a null expression of the given type.  This is usually,

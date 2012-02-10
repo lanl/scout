@@ -16,9 +16,10 @@
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cstdio>
 
 using namespace clang;
@@ -361,7 +362,7 @@ StringRef Selector::getNameForSlot(unsigned int argIndex) const {
 }
 
 std::string MultiKeywordSelector::getName() const {
-  llvm::SmallString<256> Str;
+  SmallString<256> Str;
   llvm::raw_svector_ostream OS(Str);
   for (keyword_iterator I = keyword_begin(), E = keyword_end(); I != E; ++I) {
     if (*I)
@@ -459,6 +460,18 @@ static SelectorTableImpl &getSelectorTableImpl(void *P) {
   return *static_cast<SelectorTableImpl*>(P);
 }
 
+/*static*/ Selector
+SelectorTable::constructSetterName(IdentifierTable &Idents,
+                                   SelectorTable &SelTable,
+                                   const IdentifierInfo *Name) {
+  SmallString<100> SelectorName;
+  SelectorName = "set";
+  SelectorName += Name->getName();
+  SelectorName[3] = toupper(SelectorName[3]);
+  IdentifierInfo *SetterName = &Idents.get(SelectorName);
+  return SelTable.getUnarySelector(SetterName);
+}
+
 size_t SelectorTable::getTotalMemory() const {
   SelectorTableImpl &SelTabImpl = getSelectorTableImpl(Impl);
   return SelTabImpl.Allocator.getTotalMemory();
@@ -509,5 +522,5 @@ const char *clang::getOperatorSpelling(OverloadedOperatorKind Operator) {
 #include "clang/Basic/OperatorKinds.def"
   }
 
-  return 0;
+  llvm_unreachable("Invalid OverloadedOperatorKind!");
 }

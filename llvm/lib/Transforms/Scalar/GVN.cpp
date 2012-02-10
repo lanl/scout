@@ -780,7 +780,7 @@ static int AnalyzeLoadFromClobberingWrite(Type *LoadTy, Value *LoadPtr,
                                           Value *WritePtr,
                                           uint64_t WriteSizeInBits,
                                           const TargetData &TD) {
-  // If the loaded or stored value is an first class array or struct, don't try
+  // If the loaded or stored value is a first class array or struct, don't try
   // to transform them.  We need to be able to bitcast to integer.
   if (LoadTy->isStructTy() || LoadTy->isArrayTy())
     return -1;
@@ -977,7 +977,7 @@ static Value *GetStoreValueForLoad(Value *SrcVal, unsigned Offset,
   return CoerceAvailableValueToLoadType(SrcVal, LoadTy, InsertPt, TD);
 }
 
-/// GetStoreValueForLoad - This function is called when we have a
+/// GetLoadValueForLoad - This function is called when we have a
 /// memdep query of a load that ends up being a clobbering load.  This means
 /// that the load *may* provide bits used by the load but we can't be sure
 /// because the pointers don't mustalias.  Check this case to see if there is
@@ -1278,14 +1278,14 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
   // If we had to process more than one hundred blocks to find the
   // dependencies, this load isn't worth worrying about.  Optimizing
   // it will be too expensive.
-  if (Deps.size() > 100)
+  unsigned NumDeps = Deps.size();
+  if (NumDeps > 100)
     return false;
 
   // If we had a phi translation failure, we'll have a single entry which is a
   // clobber in the current block.  Reject this early.
-  if (Deps.size() == 1
-      && !Deps[0].getResult().isDef() && !Deps[0].getResult().isClobber())
-  {
+  if (NumDeps == 1 &&
+      !Deps[0].getResult().isDef() && !Deps[0].getResult().isClobber()) {
     DEBUG(
       dbgs() << "GVN: non-local load ";
       WriteAsOperand(dbgs(), LI);
@@ -1298,10 +1298,10 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
   // where we have a value available in repl, also keep track of whether we see
   // dependencies that produce an unknown value for the load (such as a call
   // that could potentially clobber the load).
-  SmallVector<AvailableValueInBlock, 16> ValuesPerBlock;
-  SmallVector<BasicBlock*, 16> UnavailableBlocks;
+  SmallVector<AvailableValueInBlock, 64> ValuesPerBlock;
+  SmallVector<BasicBlock*, 64> UnavailableBlocks;
 
-  for (unsigned i = 0, e = Deps.size(); i != e; ++i) {
+  for (unsigned i = 0, e = NumDeps; i != e; ++i) {
     BasicBlock *DepBB = Deps[i].getBB();
     MemDepResult DepInfo = Deps[i].getResult();
 
@@ -1900,12 +1900,9 @@ unsigned GVN::replaceAllDominatedUsesWith(Value *From, Value *To,
   unsigned Count = 0;
   for (Value::use_iterator UI = From->use_begin(), UE = From->use_end();
        UI != UE; ) {
-    Instruction *User = cast<Instruction>(*UI);
-    unsigned OpNum = UI.getOperandNo();
-    ++UI;
-
-    if (DT->dominates(Root, User->getParent())) {
-      User->setOperand(OpNum, To);
+    Use &U = (UI++).getUse();
+    if (DT->dominates(Root, cast<Instruction>(U.getUser())->getParent())) {
+      U.set(To);
       ++Count;
     }
   }
@@ -1994,35 +1991,15 @@ bool GVN::propagateEquality(Value *LHS, Value *RHS, BasicBlock *Root) {
 /// particular 'Dst' must not be reachable via another edge from 'Src'.
 static bool isOnlyReachableViaThisEdge(BasicBlock *Src, BasicBlock *Dst,
                                        DominatorTree *DT) {
-  // First off, there must not be more than one edge from Src to Dst, there
-  // should be exactly one.  So keep track of the number of times Src occurs
-  // as a predecessor of Dst and fail if it's more than once.  Secondly, any
-  // other predecessors of Dst should be dominated by Dst (see logic below).
-  bool SawEdgeFromSrc = false;
-  for (pred_iterator PI = pred_begin(Dst), PE = pred_end(Dst); PI != PE; ++PI) {
-    BasicBlock *Pred = *PI;
-    if (Pred == Src) {
-      // An edge from Src to Dst.
-      if (SawEdgeFromSrc)
-        // There are multiple edges from Src to Dst - fail.
-        return false;
-      SawEdgeFromSrc = true;
-      continue;
-    }
-    // If the predecessor is not dominated by Dst, then it must be possible to
-    // reach it either without passing through Src (and thus not via the edge)
-    // or by passing through Src but taking a different edge out of Src.  Either
-    // way it is possible to reach Dst without passing via the edge, so fail.
-    if (!DT->dominates(Dst, *PI))
-      return false;
-  }
-  assert(SawEdgeFromSrc && "No edge between these basic blocks!");
-
-  // Every path from the entry block to Dst must at some point pass to Dst from
-  // a predecessor that is not dominated by Dst.  This predecessor can only be
-  // Src, since all others are dominated by Dst.  As there is only one edge from
-  // Src to Dst, the path passes by this edge.
-  return true;
+  // While in theory it is interesting to consider the case in which Dst has
+  // more than one predecessor, because Dst might be part of a loop which is
+  // only reachable from Src, in practice it is pointless since at the time
+  // GVN runs all such loops have preheaders, which means that Dst will have
+  // been changed to have only one predecessor, namely Src.
+  BasicBlock *Pred = Dst->getSinglePredecessor();
+  assert((!Pred || Pred == Src) && "No edge between these basic blocks!");
+  (void)Src;
+  return Pred != 0;
 }
 
 /// processInstruction - When calculating availability, handle an instruction
@@ -2085,8 +2062,8 @@ bool GVN::processInstruction(Instruction *I) {
     Value *SwitchCond = SI->getCondition();
     BasicBlock *Parent = SI->getParent();
     bool Changed = false;
-    for (unsigned i = 1, e = SI->getNumCases(); i != e; ++i) {
-      BasicBlock *Dst = SI->getSuccessor(i);
+    for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i) {
+      BasicBlock *Dst = SI->getCaseSuccessor(i);
       if (isOnlyReachableViaThisEdge(Parent, Dst, DT))
         Changed |= propagateEquality(SwitchCond, SI->getCaseValue(i), Dst);
     }

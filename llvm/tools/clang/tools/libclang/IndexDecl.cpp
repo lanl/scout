@@ -25,13 +25,41 @@ public:
 
   void handleDeclarator(DeclaratorDecl *D, const NamedDecl *Parent = 0) {
     if (!Parent) Parent = D;
-    IndexCtx.indexTypeSourceInfo(D->getTypeSourceInfo(), Parent);
-    IndexCtx.indexNestedNameSpecifierLoc(D->getQualifierLoc(), Parent);
+
+    if (!IndexCtx.indexFunctionLocalSymbols()) {
+      IndexCtx.indexTypeSourceInfo(D->getTypeSourceInfo(), Parent);
+      IndexCtx.indexNestedNameSpecifierLoc(D->getQualifierLoc(), Parent);
+    } else {
+      if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(D)) {
+        IndexCtx.handleVar(Parm);
+      } else if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+        for (FunctionDecl::param_iterator
+               PI = FD->param_begin(), PE = FD->param_end(); PI != PE; ++PI) {
+          IndexCtx.handleVar(*PI);
+        }
+      }
+    }
   }
 
   bool VisitFunctionDecl(FunctionDecl *D) {
     IndexCtx.handleFunction(D);
     handleDeclarator(D);
+
+    if (CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(D)) {
+      // Constructor initializers.
+      for (CXXConstructorDecl::init_iterator I = Ctor->init_begin(),
+                                             E = Ctor->init_end();
+           I != E; ++I) {
+        CXXCtorInitializer *Init = *I;
+        if (Init->isWritten()) {
+          IndexCtx.indexTypeSourceInfo(Init->getTypeSourceInfo(), D);
+          if (const FieldDecl *Member = Init->getAnyMember())
+            IndexCtx.handleReference(Member, Init->getMemberLocation(), D, D);
+          IndexCtx.indexBody(Init->getInit(), D, D);
+        }
+      }
+    }
+
     if (D->isThisDeclarationADefinition()) {
       const Stmt *Body = D->getBody();
       if (Body) {
@@ -215,6 +243,9 @@ public:
 } // anonymous namespace
 
 void IndexingContext::indexDecl(const Decl *D) {
+  if (D->isImplicit() && shouldIgnoreIfImplicit(D))
+    return;
+
   bool Handled = IndexingDeclVisitor(*this).Visit(const_cast<Decl*>(D));
   if (!Handled && isa<DeclContext>(D))
     indexDeclContext(cast<DeclContext>(D));

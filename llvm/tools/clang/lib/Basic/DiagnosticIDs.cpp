@@ -532,7 +532,6 @@ DiagnosticIDs::getDiagnosticLevel(unsigned DiagID, unsigned DiagClass,
     (diag::kind)DiagID);
 
   switch (MappingInfo.getMapping()) {
-  default: llvm_unreachable("Unknown mapping!");
   case diag::MAP_IGNORE:
     Result = DiagnosticIDs::Ignored;
     break;
@@ -683,6 +682,12 @@ bool DiagnosticIDs::getDiagnosticsInGroup(
   return false;
 }
 
+void DiagnosticIDs::getAllDiagnostics(
+                               llvm::SmallVectorImpl<diag::kind> &Diags) const {
+  for (unsigned i = 0; i != StaticDiagInfoSize; ++i)
+    Diags.push_back(StaticDiagInfo[i].DiagID);
+}
+
 StringRef DiagnosticIDs::getNearestWarningOption(StringRef Group) {
   StringRef Best;
   unsigned BestDistance = Group.size() + 1; // Sanity threshold.
@@ -794,12 +799,12 @@ bool DiagnosticIDs::ProcessDiag(DiagnosticsEngine &Diag) const {
   // If we have any Fix-Its, make sure that all of the Fix-Its point into
   // source locations that aren't macro expansions. If any point into macro
   // expansions, remove all of the Fix-Its.
-  for (unsigned I = 0, N = Diag.NumFixItHints; I != N; ++I) {
+  for (unsigned I = 0, N = Diag.FixItHints.size(); I != N; ++I) {
     const FixItHint &FixIt = Diag.FixItHints[I];
     if (FixIt.RemoveRange.isInvalid() ||
         FixIt.RemoveRange.getBegin().isMacroID() ||
         FixIt.RemoveRange.getEnd().isMacroID()) {
-      Diag.NumFixItHints = 0;
+      Diag.FixItHints.clear();
       break;
     }    
   }

@@ -46,7 +46,7 @@ public:
                                     unsigned MaxBytesToEmit = 0);
   virtual void EmitCodeAlignment(unsigned ByteAlignment,
                                  unsigned MaxBytesToEmit = 0);
-  virtual void EmitValueToOffset(const MCExpr *Offset,
+  virtual bool EmitValueToOffset(const MCExpr *Offset,
                                  unsigned char Value = 0);
   virtual void FinishImpl();
 
@@ -96,7 +96,6 @@ public:
   virtual bool EmitDwarfFileDirective(unsigned FileNo, StringRef Directory,
                                       StringRef Filename) {
     report_fatal_error("unsupported directive in pure streamer");
-    return false;
   }
 
   /// @}
@@ -185,9 +184,10 @@ void MCPureStreamer::EmitCodeAlignment(unsigned ByteAlignment,
     getCurrentSectionData()->setAlignment(ByteAlignment);
 }
 
-void MCPureStreamer::EmitValueToOffset(const MCExpr *Offset,
+bool MCPureStreamer::EmitValueToOffset(const MCExpr *Offset,
                                        unsigned char Value) {
   new MCOrgFragment(*Offset, Value, getCurrentSectionData());
+  return false;
 }
 
 void MCPureStreamer::EmitInstToFragment(const MCInst &Inst) {

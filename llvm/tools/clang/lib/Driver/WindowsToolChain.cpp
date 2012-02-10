@@ -9,15 +9,10 @@
 
 #include "ToolChains.h"
 
-#ifdef HAVE_CLANG_CONFIG_H
-# include "clang/Config/config.h"
-#endif
-
 #include "clang/Driver/Arg.h"
 #include "clang/Driver/ArgList.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
-#include "clang/Driver/HostInfo.h"
 #include "clang/Driver/Options.h"
 #include "clang/Basic/Version.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -36,8 +31,8 @@ using namespace clang::driver;
 using namespace clang::driver::toolchains;
 using namespace clang;
 
-Windows::Windows(const HostInfo &Host, const llvm::Triple& Triple)
-  : ToolChain(Host, Triple) {
+Windows::Windows(const Driver &D, const llvm::Triple& Triple)
+  : ToolChain(D, Triple) {
 }
 
 Tool &Windows::SelectTool(const Compilation &C, const JobAction &JA,

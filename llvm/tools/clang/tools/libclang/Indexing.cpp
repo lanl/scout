@@ -18,6 +18,7 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Sema/SemaConsumer.h"
 #include "clang/AST/ASTConsumer.h"
@@ -176,6 +177,7 @@ public:
     IndexCtx.setASTContext(CI.getASTContext());
     Preprocessor &PP = CI.getPreprocessor();
     PP.addPPCallbacks(new IndexPPCallbacks(PP, IndexCtx));
+    IndexCtx.setPreprocessor(PP);
     return new IndexingConsumer(IndexCtx);
   }
 

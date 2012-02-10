@@ -38,7 +38,7 @@ class AnalysisManager : public BugReporterData {
   DiagnosticsEngine &Diags;
   const LangOptions &LangInfo;
 
-  llvm::OwningPtr<PathDiagnosticConsumer> PD;
+  OwningPtr<PathDiagnosticConsumer> PD;
 
   // Configurable components creators.
   StoreManagerCreator CreateStoreMgr;
@@ -138,7 +138,7 @@ public:
   
   void FlushDiagnostics() {
     if (PD.get())
-      PD->FlushDiagnostics();
+      PD->FlushDiagnostics(0);
   }
 
   unsigned getMaxNodes() const { return MaxNodes; }

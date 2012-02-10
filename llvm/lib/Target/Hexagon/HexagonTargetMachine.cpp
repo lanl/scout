@@ -1,4 +1,4 @@
-//===-- HexagonTargetMachine.cpp - Define TargetMachine for Hexagon -------===//
+//===- HexagonTargetMachine.cpp - Define TargetMachine for Hexagon --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,11 +16,10 @@
 #include "llvm/Module.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/PassManager.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
-#include <iostream>
 
 using namespace llvm;
 
@@ -76,14 +75,37 @@ bool HexagonTargetMachine::addPassesForOptimizations(PassManagerBase &PM) {
   return true;
 }
 
-bool HexagonTargetMachine::addInstSelector(PassManagerBase &PM) {
-  PM.add(createHexagonRemoveExtendOps(*this));
-  PM.add(createHexagonISelDag(*this));
+namespace {
+/// Hexagon Code Generator Pass Configuration Options.
+class HexagonPassConfig : public TargetPassConfig {
+public:
+  HexagonPassConfig(HexagonTargetMachine *TM, PassManagerBase &PM)
+    : TargetPassConfig(TM, PM) {}
+
+  HexagonTargetMachine &getHexagonTargetMachine() const {
+    return getTM<HexagonTargetMachine>();
+  }
+
+  virtual bool addInstSelector();
+  virtual bool addPreRegAlloc();
+  virtual bool addPostRegAlloc();
+  virtual bool addPreSched2();
+  virtual bool addPreEmitPass();
+};
+} // namespace
+
+TargetPassConfig *HexagonTargetMachine::createPassConfig(PassManagerBase &PM) {
+  return new HexagonPassConfig(this, PM);
+}
+
+bool HexagonPassConfig::addInstSelector() {
+  PM.add(createHexagonRemoveExtendOps(getHexagonTargetMachine()));
+  PM.add(createHexagonISelDag(getHexagonTargetMachine()));
   return false;
 }
 
 
-bool HexagonTargetMachine::addPreRegAlloc(PassManagerBase &PM) {
+bool HexagonPassConfig::addPreRegAlloc() {
   if (!DisableHardwareLoops) {
     PM.add(createHexagonHardwareLoops());
   }
@@ -91,28 +113,28 @@ bool HexagonTargetMachine::addPreRegAlloc(PassManagerBase &PM) {
   return false;
 }
 
-bool HexagonTargetMachine::addPostRegAlloc(PassManagerBase &PM) {
-  PM.add(createHexagonCFGOptimizer(*this));
+bool HexagonPassConfig::addPostRegAlloc() {
+  PM.add(createHexagonCFGOptimizer(getHexagonTargetMachine()));
   return true;
 }
 
 
-bool HexagonTargetMachine::addPreSched2(PassManagerBase &PM) {
-  PM.add(createIfConverterPass());
+bool HexagonPassConfig::addPreSched2() {
+  addPass(IfConverterID);
   return true;
 }
 
-bool HexagonTargetMachine::addPreEmitPass(PassManagerBase &PM) {
+bool HexagonPassConfig::addPreEmitPass() {
 
   if (!DisableHardwareLoops) {
     PM.add(createHexagonFixupHwLoops());
   }
 
   // Expand Spill code for predicate registers.
-  PM.add(createHexagonExpandPredSpillCode(*this));
+  PM.add(createHexagonExpandPredSpillCode(getHexagonTargetMachine()));
 
   // Split up TFRcondsets into conditional transfers.
-  PM.add(createHexagonSplitTFRCondSets(*this));
+  PM.add(createHexagonSplitTFRCondSets(getHexagonTargetMachine()));
 
   return false;
 }

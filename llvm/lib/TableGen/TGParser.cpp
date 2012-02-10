@@ -318,7 +318,6 @@ Init *TGParser::ParseObjectName(MultiClass *CurMultiClass) {
     // Some of these can also begin values but we disallow those cases
     // because they are unlikely to be useful.
     return StringInit::get(GetNewAnonymousName());
-    break;
   default:
     break;
   }
@@ -722,7 +721,6 @@ Init *TGParser::ParseOperation(Record *CurRec) {
   default:
     TokError("unknown operation");
     return 0;
-    break;
   case tgtok::XHead:
   case tgtok::XTail:
   case tgtok::XEmpty:
@@ -731,7 +729,7 @@ Init *TGParser::ParseOperation(Record *CurRec) {
     RecTy *Type = 0;
 
     switch (Lex.getCode()) {
-    default: assert(0 && "Unhandled code!");
+    default: llvm_unreachable("Unhandled code!");
     case tgtok::XCast:
       Lex.Lex();  // eat the operation
       Code = UnOpInit::CAST;
@@ -847,7 +845,7 @@ Init *TGParser::ParseOperation(Record *CurRec) {
     RecTy *Type = 0;
 
     switch (OpTok) {
-    default: assert(0 && "Unhandled code!");
+    default: llvm_unreachable("Unhandled code!");
     case tgtok::XConcat: Code = BinOpInit::CONCAT;Type = DagRecTy::get(); break;
     case tgtok::XSRA:    Code = BinOpInit::SRA;   Type = IntRecTy::get(); break;
     case tgtok::XSRL:    Code = BinOpInit::SRL;   Type = IntRecTy::get(); break;
@@ -911,7 +909,7 @@ Init *TGParser::ParseOperation(Record *CurRec) {
     tgtok::TokKind LexCode = Lex.getCode();
     Lex.Lex();  // eat the operation
     switch (LexCode) {
-    default: assert(0 && "Unhandled code!");
+    default: llvm_unreachable("Unhandled code!");
     case tgtok::XIf:
       Code = TernOpInit::IF;
       break;
@@ -956,7 +954,7 @@ Init *TGParser::ParseOperation(Record *CurRec) {
     Lex.Lex();  // eat the ')'
 
     switch (LexCode) {
-    default: assert(0 && "Unhandled code!");
+    default: llvm_unreachable("Unhandled code!");
     case tgtok::XIf: {
       // FIXME: The `!if' operator doesn't handle non-TypedInit well at
       // all. This can be made much more robust.
@@ -1026,8 +1024,6 @@ Init *TGParser::ParseOperation(Record *CurRec) {
                                                              CurMultiClass);
   }
   }
-  TokError("could not parse operation");
-  return 0;
 }
 
 /// ParseOperatorType - Parse a type for an operator.  This returns
@@ -1088,7 +1084,6 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
     // still exists in some .td files.  Ignore it.
     Lex.Lex();  // Skip '#'.
     return ParseSimpleValue(CurRec, ItemType, Mode);
-    break;
   case tgtok::IntVal: R = IntInit::get(Lex.getCurIntVal()); Lex.Lex(); break;
   case tgtok::StrVal: {
     std::string Val = Lex.getCurStrVal();
@@ -1516,6 +1511,10 @@ std::vector<Init*> TGParser::ParseValueList(Record *CurRec, Record *ArgsRec,
   unsigned int ArgN = 0;
   if (ArgsRec != 0 && EltTy == 0) {
     const std::vector<Init *> &TArgs = ArgsRec->getTemplateArgs();
+    if (!TArgs.size()) {
+      TokError("template argument provided to non-template class");
+      return std::vector<Init*>();
+    }
     const RecordVal *RV = ArgsRec->getValue(TArgs[ArgN]);
     if (!RV) {
       errs() << "Cannot find template arg " << ArgN << " (" << TArgs[ArgN]
@@ -1776,7 +1775,7 @@ bool TGParser::ParseDef(MultiClass *CurMultiClass) {
     // Top-level def definition.
 
     // Ensure redefinition doesn't happen.
-    if (Records.getDef(CurRec->getName())) {
+    if (Records.getDef(CurRec->getNameInitAsString())) {
       Error(DefLoc, "def '" + CurRec->getNameInitAsString()
             + "' already defined");
       return true;

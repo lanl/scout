@@ -11,10 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef HAVE_CLANG_CONFIG_H
-# include "clang/Config/config.h"
-#endif
-
 #include "clang/Frontend/Utils.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
@@ -29,6 +25,11 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Path.h"
+
+#ifdef HAVE_CLANG_CONFIG_H
+# include "clang/Config/config.h"
+#endif
+
 #include "llvm/Config/config.h"
 using namespace clang;
 using namespace clang::frontend;
@@ -108,7 +109,7 @@ void InitHeaderSearch::AddPath(const Twine &Path,
   FileManager &FM = Headers.getFileMgr();
 
   // Compute the actual path, taking into consideration -isysroot.
-  llvm::SmallString<256> MappedPathStorage;
+  SmallString<256> MappedPathStorage;
   StringRef MappedPathStr = Path.toStringRef(MappedPathStorage);
 
   // Handle isysroot.
@@ -328,19 +329,6 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
 void InitHeaderSearch::
 AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOptions &HSOpts) {
   llvm::Triple::OSType os = triple.getOS();
-  StringRef CxxIncludeRoot(CXX_INCLUDE_ROOT);
-  if (CxxIncludeRoot != "") {
-    StringRef CxxIncludeArch(CXX_INCLUDE_ARCH);
-    if (CxxIncludeArch == "")
-      AddGnuCPlusPlusIncludePaths(CxxIncludeRoot, triple.str().c_str(),
-                                  CXX_INCLUDE_32BIT_DIR, CXX_INCLUDE_64BIT_DIR,
-                                  triple);
-    else
-      AddGnuCPlusPlusIncludePaths(CxxIncludeRoot, CXX_INCLUDE_ARCH,
-                                  CXX_INCLUDE_32BIT_DIR, CXX_INCLUDE_64BIT_DIR,
-                                  triple);
-    return;
-  }
   // FIXME: temporary hack: hard-coded paths.
 
   if (triple.isOSDarwin()) {
@@ -383,11 +371,10 @@ AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOp
 
   case llvm::Triple::Cygwin:
     // Cygwin-1.7
+    AddMinGWCPlusPlusIncludePaths("/usr/lib/gcc", "i686-pc-cygwin", "4.5.3");
     AddMinGWCPlusPlusIncludePaths("/usr/lib/gcc", "i686-pc-cygwin", "4.3.4");
     // g++-4 / Cygwin-1.5
     AddMinGWCPlusPlusIncludePaths("/usr/lib/gcc", "i686-pc-cygwin", "4.3.2");
-    // FIXME: Do we support g++-3.4.4?
-    AddMinGWCPlusPlusIncludePaths("/usr/lib/gcc", "i686-pc-cygwin", "3.4.4");
     break;
   case llvm::Triple::MinGW32:
     // mingw-w64 C++ include paths (i686-w64-mingw32 and x86_64-w64-mingw32)
@@ -665,6 +652,14 @@ void clang::ApplyHeaderSearchOptions(HeaderSearch &HS,
   }
 
   Init.AddDefaultIncludePaths(Lang, Triple, HSOpts);
+
+  if (HSOpts.UseBuiltinIncludes) {
+    // Set up the builtin include directory in the module map.
+    llvm::sys::Path P(HSOpts.ResourceDir);
+    P.appendComponent("include");
+    if (const DirectoryEntry *Dir = HS.getFileMgr().getDirectory(P.str()))
+      HS.getModuleMap().setBuiltinIncludeDir(Dir);
+  }
 
   Init.Realize(Lang);
 }

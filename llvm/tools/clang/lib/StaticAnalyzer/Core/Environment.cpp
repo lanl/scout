@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/Analysis/AnalysisContext.h"
 #include "clang/Analysis/CFG.h"
@@ -59,7 +60,6 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
       case Stmt::GenericSelectionExprClass:
         llvm_unreachable("ParenExprs and GenericSelectionExprs should "
                          "have been handled by IgnoreParens()");
-        return UnknownVal();
       case Stmt::CharacterLiteralClass: {
         const CharacterLiteral* C = cast<CharacterLiteral>(E);
         return svalBuilder.makeIntVal(C->getValue(), C->getType());
@@ -161,7 +161,7 @@ static inline bool IsLocation(const EnvironmentEntry &E) {
 Environment
 EnvironmentManager::removeDeadBindings(Environment Env,
                                        SymbolReaper &SymReaper,
-                                       const ProgramState *ST) {
+                                       ProgramStateRef ST) {
 
   // We construct a new Environment object entirely, as this is cheaper than
   // individually removing all the subexpression bindings (which will greatly

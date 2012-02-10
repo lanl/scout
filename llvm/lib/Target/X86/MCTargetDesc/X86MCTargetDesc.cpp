@@ -24,6 +24,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Host.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 
 #define GET_REGINFO_MC_DESC
@@ -72,6 +73,8 @@ bool X86_MC::GetCpuIDAndInfo(unsigned value, unsigned *rEAX,
     *rECX = registers[2];
     *rEDX = registers[3];
     return false;
+  #else
+    return true;
   #endif
 #elif defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)
   #if defined(__GNUC__)
@@ -98,9 +101,12 @@ bool X86_MC::GetCpuIDAndInfo(unsigned value, unsigned *rEAX,
       mov   dword ptr [esi],edx
     }
     return false;
+  #else
+    return true;
   #endif
-#endif
+#else
   return true;
+#endif
 }
 
 /// GetCpuIDAndInfoEx - Execute the specified cpuid with subleaf and return the
@@ -131,7 +137,11 @@ bool X86_MC::GetCpuIDAndInfoEx(unsigned value, unsigned subleaf, unsigned *rEAX,
       *rECX = registers[2];
       *rEDX = registers[3];
       return false;
+    #else
+      return true;
     #endif
+  #else
+    return true;
   #endif
 #elif defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)
   #if defined(__GNUC__)
@@ -160,9 +170,12 @@ bool X86_MC::GetCpuIDAndInfoEx(unsigned value, unsigned subleaf, unsigned *rEAX,
       mov   dword ptr [esi],edx
     }
     return false;
+  #else
+    return true;
   #endif
-#endif
+#else
   return true;
+#endif
 }
 
 void X86_MC::DetectFamilyModel(unsigned EAX, unsigned &Family,
@@ -319,7 +332,8 @@ MCSubtargetInfo *X86_MC::createX86MCSubtargetInfo(StringRef TT, StringRef CPU,
 
   std::string CPUName = CPU;
   if (CPUName.empty()) {
-#if defined (__x86_64__) || defined(__i386__)
+#if defined(i386) || defined(__i386__) || defined(__x86__) || defined(_M_IX86)\
+    || defined(__x86_64__) || defined(_M_AMD64) || defined (_M_X64)
     CPUName = sys::getHostCPUName();
 #else
     CPUName = "generic";

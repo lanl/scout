@@ -87,9 +87,13 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
   std::string ptxStrName = "ptxAssembly";
 
+  // ndm - MERGE
+  //Constant *AssemblyCodeArray =
+  //ConstantArray::get(cpuModule.getContext(), AssemblyCode);
+
   Constant *AssemblyCodeArray =
-    ConstantArray::get(cpuModule.getContext(), AssemblyCode);
-  
+  ConstantDataArray::getString(cpuModule.getContext(), AssemblyCode);  
+
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),
                             true,

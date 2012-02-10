@@ -1047,13 +1047,13 @@ namespace {
   private:
     llvm::Value *addr;
     const ObjCIvarDecl *ivar;
-    CodeGenFunction::Destroyer &destroyer;
+    CodeGenFunction::Destroyer *destroyer;
     bool useEHCleanupForArray;
   public:
     DestroyIvar(llvm::Value *addr, const ObjCIvarDecl *ivar,
                 CodeGenFunction::Destroyer *destroyer,
                 bool useEHCleanupForArray)
-      : addr(addr), ivar(ivar), destroyer(*destroyer),
+      : addr(addr), ivar(ivar), destroyer(destroyer),
         useEHCleanupForArray(useEHCleanupForArray) {}
 
     void Emit(CodeGenFunction &CGF, Flags flags) {
@@ -1093,11 +1093,11 @@ static void emitCXXDestructMethod(CodeGenFunction &CGF,
     // Use a call to objc_storeStrong to destroy strong ivars, for the
     // general benefit of the tools.
     if (dtorKind == QualType::DK_objc_strong_lifetime) {
-      destroyer = &destroyARCStrongWithStore;
+      destroyer = destroyARCStrongWithStore;
 
     // Otherwise use the default for the destruction kind.
     } else {
-      destroyer = &CGF.getDestroyer(dtorKind);
+      destroyer = CGF.getDestroyer(dtorKind);
     }
 
     CleanupKind cleanupKind = CGF.getCleanupKind(dtorKind);
@@ -1696,8 +1696,7 @@ CodeGenFunction::EmitARCRetainAutoreleasedReturnValue(llvm::Value *value) {
     // in a moment.
     } else if (CGM.getCodeGenOpts().OptimizationLevel == 0) {
       llvm::FunctionType *type =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
-                                /*variadic*/ false);
+        llvm::FunctionType::get(VoidTy, /*variadic*/false);
       
       marker = llvm::InlineAsm::get(type, assembly, "", /*sideeffects*/ true);
 
@@ -2086,7 +2085,6 @@ static TryEmitResult tryEmitARCRetainLoadOfScalar(CodeGenFunction &CGF,
   }
 
   llvm_unreachable("impossible lifetime!");
-  return TryEmitResult();
 }
 
 static TryEmitResult tryEmitARCRetainLoadOfScalar(CodeGenFunction &CGF,

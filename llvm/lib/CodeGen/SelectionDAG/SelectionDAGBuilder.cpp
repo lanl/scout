@@ -197,7 +197,7 @@ static SDValue getCopyFromParts(SelectionDAG &DAG, DebugLoc DL,
     // FP_ROUND's are always exact here.
     if (ValueVT.bitsLT(Val.getValueType()))
       return DAG.getNode(ISD::FP_ROUND, DL, ValueVT, Val,
-                         DAG.getIntPtrConstant(1));
+                         DAG.getTargetConstant(1, TLI.getPointerTy()));
 
     return DAG.getNode(ISD::FP_EXTEND, DL, ValueVT, Val);
   }
@@ -206,7 +206,6 @@ static SDValue getCopyFromParts(SelectionDAG &DAG, DebugLoc DL,
     return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
 
   llvm_unreachable("Unknown mismatch!");
-  return SDValue();
 }
 
 /// getCopyFromParts - Create a value that contains the specified legal parts
@@ -1056,6 +1055,23 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {
       return DAG.getMergeValues(&Constants[0], Constants.size(),
                                 getCurDebugLoc());
     }
+    
+    if (const ConstantDataSequential *CDS =
+          dyn_cast<ConstantDataSequential>(C)) {
+      SmallVector<SDValue, 4> Ops;
+      for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
+        SDNode *Val = getValue(CDS->getElementAsConstant(i)).getNode();
+        // Add each leaf value from the operand to the Constants list
+        // to form a flattened list of all the values.
+        for (unsigned i = 0, e = Val->getNumValues(); i != e; ++i)
+          Ops.push_back(SDValue(Val, i));
+      }
+
+      if (isa<ArrayType>(CDS->getType()))
+        return DAG.getMergeValues(&Ops[0], Ops.size(), getCurDebugLoc());
+      return NodeMap[V] = DAG.getNode(ISD::BUILD_VECTOR, getCurDebugLoc(),
+                                      VT, &Ops[0], Ops.size());
+    }
 
     if (C->getType()->isStructTy() || C->getType()->isArrayTy()) {
       assert((isa<ConstantAggregateZero>(C) || isa<UndefValue>(C)) &&
@@ -1090,9 +1106,9 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {
     // Now that we know the number and type of the elements, get that number of
     // elements into the Ops array based on what kind of constant it is.
     SmallVector<SDValue, 16> Ops;
-    if (const ConstantVector *CP = dyn_cast<ConstantVector>(C)) {
+    if (const ConstantVector *CV = dyn_cast<ConstantVector>(C)) {
       for (unsigned i = 0; i != NumElements; ++i)
-        Ops.push_back(getValue(CP->getOperand(i)));
+        Ops.push_back(getValue(CV->getOperand(i)));
     } else {
       assert(isa<ConstantAggregateZero>(C) && "Unknown vector constant!");
       EVT EltVT = TLI.getValueType(VecTy->getElementType());
@@ -1128,7 +1144,6 @@ SDValue SelectionDAGBuilder::getValueImpl(const Value *V) {
   }
 
   llvm_unreachable("Can't get register for value!");
-  return SDValue();
 }
 
 void SelectionDAGBuilder::visitRet(const ReturnInst &I) {
@@ -1824,9 +1839,6 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
                           DAG.getBasicBlock(Return)));
 }
 
-void SelectionDAGBuilder::visitUnwind(const UnwindInst &I) {
-}
-
 void SelectionDAGBuilder::visitResume(const ResumeInst &RI) {
   llvm_unreachable("SelectionDAGBuilder shouldn't visit resume instructions!");
 }
@@ -2194,7 +2206,7 @@ bool SelectionDAGBuilder::handleBTSplitSwitchCase(CaseRec& CR,
 
   CaseRange LHSR(CR.Range.first, Pivot);
   CaseRange RHSR(Pivot, CR.Range.second);
-  Constant *C = Pivot->Low;
+  const Constant *C = Pivot->Low;
   MachineBasicBlock *FalseBB = 0, *TrueBB = 0;
 
   // We know that we branch to the LHS if the Value being switched on is
@@ -2387,14 +2399,14 @@ size_t SelectionDAGBuilder::Clusterify(CaseVector& Cases,
 
   BranchProbabilityInfo *BPI = FuncInfo.BPI;
   // Start with "simple" cases
-  for (size_t i = 1; i < SI.getNumSuccessors(); ++i) {
-    BasicBlock *SuccBB = SI.getSuccessor(i);
+  for (size_t i = 0; i < SI.getNumCases(); ++i) {
+    BasicBlock *SuccBB = SI.getCaseSuccessor(i);
     MachineBasicBlock *SMBB = FuncInfo.MBBMap[SuccBB];
 
     uint32_t ExtraWeight = BPI ? BPI->getEdgeWeight(SI.getParent(), SuccBB) : 0;
 
-    Cases.push_back(Case(SI.getSuccessorValue(i),
-                         SI.getSuccessorValue(i),
+    Cases.push_back(Case(SI.getCaseValue(i),
+                         SI.getCaseValue(i),
                          SMBB, ExtraWeight));
   }
   std::sort(Cases.begin(), Cases.end(), CaseCmp());
@@ -2461,7 +2473,7 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
 
   // If there is only the default destination, branch to it if it is not the
   // next basic block.  Otherwise, just fall through.
-  if (SI.getNumCases() == 1) {
+  if (!SI.getNumCases()) {
     // Update machine-CFG edges.
 
     // If this is not a fall-through branch, emit the branch.
@@ -2691,7 +2703,8 @@ void SelectionDAGBuilder::visitFPTrunc(const User &I) {
   SDValue N = getValue(I.getOperand(0));
   EVT DestVT = TLI.getValueType(I.getType());
   setValue(&I, DAG.getNode(ISD::FP_ROUND, getCurDebugLoc(),
-                           DestVT, N, DAG.getIntPtrConstant(0)));
+                           DestVT, N,
+                           DAG.getTargetConstant(0, TLI.getPointerTy())));
 }
 
 void SelectionDAGBuilder::visitFPExt(const User &I){
@@ -2790,22 +2803,13 @@ static bool isSequentialInRange(const SmallVectorImpl<int> &Mask,
 }
 
 void SelectionDAGBuilder::visitShuffleVector(const User &I) {
-  SmallVector<int, 8> Mask;
   SDValue Src1 = getValue(I.getOperand(0));
   SDValue Src2 = getValue(I.getOperand(1));
 
-  // Convert the ConstantVector mask operand into an array of ints, with -1
-  // representing undef values.
-  SmallVector<Constant*, 8> MaskElts;
-  cast<Constant>(I.getOperand(2))->getVectorElements(MaskElts);
-  unsigned MaskNumElts = MaskElts.size();
-  for (unsigned i = 0; i != MaskNumElts; ++i) {
-    if (isa<UndefValue>(MaskElts[i]))
-      Mask.push_back(-1);
-    else
-      Mask.push_back(cast<ConstantInt>(MaskElts[i])->getSExtValue());
-  }
-
+  SmallVector<int, 8> Mask;
+  ShuffleVectorInst::getShuffleMask(cast<Constant>(I.getOperand(2)), Mask);
+  unsigned MaskNumElts = Mask.size();
+  
   EVT VT = TLI.getValueType(I.getType());
   EVT SrcVT = Src1.getValueType();
   unsigned SrcNumElts = SrcVT.getVectorNumElements();
@@ -3378,7 +3382,7 @@ void SelectionDAGBuilder::visitAtomicRMW(const AtomicRMWInst &I) {
   DebugLoc dl = getCurDebugLoc();
   ISD::NodeType NT;
   switch (I.getOperation()) {
-  default: llvm_unreachable("Unknown atomicrmw operation"); return;
+  default: llvm_unreachable("Unknown atomicrmw operation");
   case AtomicRMWInst::Xchg: NT = ISD::ATOMIC_SWAP; break;
   case AtomicRMWInst::Add:  NT = ISD::ATOMIC_LOAD_ADD; break;
   case AtomicRMWInst::Sub:  NT = ISD::ATOMIC_LOAD_SUB; break;
@@ -3516,7 +3520,7 @@ void SelectionDAGBuilder::visitTargetIntrinsic(const CallInst &I,
   // Add the intrinsic ID as an integer operand if it's not a target intrinsic.
   if (!IsTgtIntrinsic || Info.opc == ISD::INTRINSIC_VOID ||
       Info.opc == ISD::INTRINSIC_W_CHAIN)
-    Ops.push_back(DAG.getConstant(Intrinsic, TLI.getPointerTy()));
+    Ops.push_back(DAG.getTargetConstant(Intrinsic, TLI.getPointerTy()));
 
   // Add all operands of the call to the operand list.
   for (unsigned i = 0, e = I.getNumArgOperands(); i != e; ++i) {
@@ -4679,43 +4683,6 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
       MMI.setVariableDbgInfo(Variable, FI, DI.getDebugLoc());
     return 0;
   }
-  case Intrinsic::eh_exception: {
-    // Insert the EXCEPTIONADDR instruction.
-    assert(FuncInfo.MBB->isLandingPad() &&
-           "Call to eh.exception not in landing pad!");
-    SDVTList VTs = DAG.getVTList(TLI.getPointerTy(), MVT::Other);
-    SDValue Ops[1];
-    Ops[0] = DAG.getRoot();
-    SDValue Op = DAG.getNode(ISD::EXCEPTIONADDR, dl, VTs, Ops, 1);
-    setValue(&I, Op);
-    DAG.setRoot(Op.getValue(1));
-    return 0;
-  }
-
-  case Intrinsic::eh_selector: {
-    MachineBasicBlock *CallMBB = FuncInfo.MBB;
-    MachineModuleInfo &MMI = DAG.getMachineFunction().getMMI();
-    if (CallMBB->isLandingPad())
-      AddCatchInfo(I, &MMI, CallMBB);
-    else {
-#ifndef NDEBUG
-      FuncInfo.CatchInfoLost.insert(&I);
-#endif
-      // FIXME: Mark exception selector register as live in.  Hack for PR1508.
-      unsigned Reg = TLI.getExceptionSelectorRegister();
-      if (Reg) FuncInfo.MBB->addLiveIn(Reg);
-    }
-
-    // Insert the EHSELECTION instruction.
-    SDVTList VTs = DAG.getVTList(TLI.getPointerTy(), MVT::Other);
-    SDValue Ops[2];
-    Ops[0] = getValue(I.getArgOperand(0));
-    Ops[1] = getRoot();
-    SDValue Op = DAG.getNode(ISD::EHSELECTION, dl, VTs, Ops, 2);
-    DAG.setRoot(Op.getValue(1));
-    setValue(&I, DAG.getSExtOrTrunc(Op, dl, MVT::i32));
-    return 0;
-  }
 
   case Intrinsic::eh_typeid_for: {
     // Find the type id for the given typeinfo.
@@ -5063,7 +5030,6 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
   case Intrinsic::gcread:
   case Intrinsic::gcwrite:
     llvm_unreachable("GC failed to lower gcread/gcwrite intrinsics!");
-    return 0;
   case Intrinsic::flt_rounds:
     setValue(&I, DAG.getNode(ISD::FLT_ROUNDS_, dl, MVT::i32));
     return 0;
@@ -6055,7 +6021,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
       // constant pool entry to get its address.
       const Value *OpVal = OpInfo.CallOperandVal;
       if (isa<ConstantFP>(OpVal) || isa<ConstantInt>(OpVal) ||
-          isa<ConstantVector>(OpVal)) {
+          isa<ConstantVector>(OpVal) || isa<ConstantDataVector>(OpVal)) {
         OpInfo.CallOperand = DAG.getConstantPool(cast<Constant>(OpVal),
                                                  TLI.getPointerTy());
       } else {
@@ -6604,7 +6570,6 @@ void TargetLowering::LowerOperationWrapper(SDNode *N,
 
 SDValue TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   llvm_unreachable("LowerOperation not implemented for this target!");
-  return SDValue();
 }
 
 void

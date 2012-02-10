@@ -13,6 +13,7 @@
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCMachObjectWriter.h"
+#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixup.h"
 #include "llvm/MC/MCFixupKindInfo.h"
@@ -136,7 +137,8 @@ RecordARMMovwMovtRelocation(MachObjectWriter *Writer,
   MCSymbolData *A_SD = &Asm.getSymbolData(*A);
 
   if (!A_SD->getFragment())
-    report_fatal_error("symbol '" + A->getName() +
+    Asm.getContext().FatalError(Fixup.getLoc(),
+                       "symbol '" + A->getName() +
                        "' can not be undefined in a subtraction expression");
 
   uint32_t Value = Writer->getSymbolAddress(A_SD, Layout);
@@ -149,7 +151,8 @@ RecordARMMovwMovtRelocation(MachObjectWriter *Writer,
     MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
 
     if (!B_SD->getFragment())
-      report_fatal_error("symbol '" + B->getSymbol().getName() +
+      Asm.getContext().FatalError(Fixup.getLoc(),
+                         "symbol '" + B->getSymbol().getName() +
                          "' can not be undefined in a subtraction expression");
 
     // Select the appropriate difference relocation type.
@@ -240,7 +243,8 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
   MCSymbolData *A_SD = &Asm.getSymbolData(*A);
 
   if (!A_SD->getFragment())
-    report_fatal_error("symbol '" + A->getName() +
+    Asm.getContext().FatalError(Fixup.getLoc(),
+                       "symbol '" + A->getName() +
                        "' can not be undefined in a subtraction expression");
 
   uint32_t Value = Writer->getSymbolAddress(A_SD, Layout);
@@ -252,7 +256,8 @@ void ARMMachObjectWriter::RecordARMScatteredRelocation(MachObjectWriter *Writer,
     MCSymbolData *B_SD = &Asm.getSymbolData(B->getSymbol());
 
     if (!B_SD->getFragment())
-      report_fatal_error("symbol '" + B->getSymbol().getName() +
+      Asm.getContext().FatalError(Fixup.getLoc(),
+                         "symbol '" + B->getSymbol().getName() +
                          "' can not be undefined in a subtraction expression");
 
     // Select the appropriate difference relocation type.
@@ -294,10 +299,13 @@ void ARMMachObjectWriter::RecordRelocation(MachObjectWriter *Writer,
   unsigned IsPCRel = Writer->isFixupKindPCRel(Asm, Fixup.getKind());
   unsigned Log2Size;
   unsigned RelocType = macho::RIT_Vanilla;
-  if (!getARMFixupKindMachOInfo(Fixup.getKind(), RelocType, Log2Size)) {
-    report_fatal_error("unknown ARM fixup kind!");
-    return;
-  }
+  if (!getARMFixupKindMachOInfo(Fixup.getKind(), RelocType, Log2Size))
+    // If we failed to get fixup kind info, it's because there's no legal
+    // relocation type for the fixup kind. This happens when it's a fixup that's
+    // expected to always be resolvable at assembly time and not have any
+    // relocations needed.
+    Asm.getContext().FatalError(Fixup.getLoc(),
+                                "unsupported relocation on symbol");
 
   // If this is a difference or a defined symbol plus an offset, then we need a
   // scattered relocation entry.  Differences always require scattered

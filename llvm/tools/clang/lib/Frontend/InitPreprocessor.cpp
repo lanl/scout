@@ -127,7 +127,7 @@ static void DefineFloatMacros(MacroBuilder &Builder, StringRef Prefix,
                "1.79769313486231580793728971405301e+308L",
                "1.18973149535723176508575932662800702e+4932L");
 
-  llvm::SmallString<32> DefPrefix;
+  SmallString<32> DefPrefix;
   DefPrefix = "__";
   DefPrefix += Prefix;
   DefPrefix += "_";
@@ -324,6 +324,14 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
   Builder.defineMacro("__GNUC_PATCHLEVEL__", "1");
   Builder.defineMacro("__GNUC__", "4");
   Builder.defineMacro("__GXX_ABI_VERSION", "1002");
+
+  // Define macros for the C11 / C++11 memory orderings
+  Builder.defineMacro("__ATOMIC_RELAXED", "0");
+  Builder.defineMacro("__ATOMIC_CONSUME", "1");
+  Builder.defineMacro("__ATOMIC_ACQUIRE", "2");
+  Builder.defineMacro("__ATOMIC_RELEASE", "3");
+  Builder.defineMacro("__ATOMIC_ACQ_REL", "4");
+  Builder.defineMacro("__ATOMIC_SEQ_CST", "5");
 
   // As sad as it is, enough software depends on the __VERSION__ for version
   // checks that it is necessary to report 4.2.1 (the base GCC version we claim

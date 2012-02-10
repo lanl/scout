@@ -43,6 +43,7 @@ namespace llvm {
   class DILexicalBlockFile;
   class DIVariable;
   class DIType;
+  class DIObjCProperty;
 
   /// DIDescriptor - A thin wraper around MDNode to access encoded debug info.
   /// This should not be stored in a container, because underly MDNode may
@@ -128,6 +129,7 @@ namespace llvm {
     bool isUnspecifiedParameter() const;
     bool isTemplateTypeParameter() const;
     bool isTemplateValueParameter() const;
+    bool isObjCProperty() const;
   };
 
   /// DISubrange - This is used to represent ranges, for array bounds.
@@ -355,29 +357,45 @@ namespace llvm {
     /// return base type size.
     uint64_t getOriginalTypeSize() const;
 
-    StringRef getObjCPropertyName() const { return getStringField(10); }
+    /// getObjCProperty - Return property node, if this ivar is 
+    /// associated with one.
+    MDNode *getObjCProperty() const;
+
+    StringRef getObjCPropertyName() const { 
+      if (getVersion() > LLVMDebugVersion11)
+        return StringRef();
+      return getStringField(10); 
+    }
     StringRef getObjCPropertyGetterName() const {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return getStringField(11);
     }
     StringRef getObjCPropertySetterName() const {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return getStringField(12);
     }
     bool isReadOnlyObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_readonly) != 0;
     }
     bool isReadWriteObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_readwrite) != 0;
     }
     bool isAssignObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_assign) != 0;
     }
     bool isRetainObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_retain) != 0;
     }
     bool isCopyObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_copy) != 0;
     }
     bool isNonAtomicObjCProperty() {
+      assert (getVersion() <= LLVMDebugVersion11  && "Invalid Request");
       return (getUnsignedField(13) & dwarf::DW_APPLE_PROPERTY_nonatomic) != 0;
     }
 
@@ -767,6 +785,46 @@ namespace llvm {
     StringRef getFilename() const    { return getScope().getFilename(); }
     StringRef getDirectory() const   { return getScope().getDirectory(); }
     bool Verify() const;
+  };
+
+  class DIObjCProperty : public DIDescriptor {
+  public:
+    explicit DIObjCProperty(const MDNode *N) : DIDescriptor(N) { }
+
+    StringRef getObjCPropertyName() const { return getStringField(1); }
+    StringRef getObjCPropertyGetterName() const {
+      return getStringField(2);
+    }
+    StringRef getObjCPropertySetterName() const {
+      return getStringField(3);
+    }
+    bool isReadOnlyObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_readonly) != 0;
+    }
+    bool isReadWriteObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_readwrite) != 0;
+    }
+    bool isAssignObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_assign) != 0;
+    }
+    bool isRetainObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_retain) != 0;
+    }
+    bool isCopyObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_copy) != 0;
+    }
+    bool isNonAtomicObjCProperty() {
+      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_nonatomic) != 0;
+    }
+
+    /// Verify - Verify that a derived type descriptor is well formed.
+    bool Verify() const;
+
+    /// print - print derived type.
+    void print(raw_ostream &OS) const;
+
+    /// dump - print derived type to dbgs() with a newline.
+    void dump() const;
   };
 
   /// getDISubprogram - Find subprogram that is enclosing this scope.

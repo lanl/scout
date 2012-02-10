@@ -122,7 +122,6 @@ void Decl::PrintStats() {
 
 void Decl::add(Kind k) {
   switch (k) {
-  default: llvm_unreachable("Declaration not in DeclNodes.inc!");
 #define DECL(DERIVED, BASE) case DERIVED: ++n##DERIVED##s; break;
 #define ABSTRACT_DECL(DECL)
 #include "clang/AST/DeclNodes.inc"
@@ -207,12 +206,21 @@ void Decl::setLexicalDeclContext(DeclContext *DC) {
     return;
 
   if (isInSemaDC()) {
-    MultipleDC *MDC = new (getASTContext()) MultipleDC();
-    MDC->SemanticDC = getDeclContext();
-    MDC->LexicalDC = DC;
-    DeclCtx = MDC;
+    setDeclContextsImpl(getDeclContext(), DC, getASTContext());
   } else {
     getMultipleDC()->LexicalDC = DC;
+  }
+}
+
+void Decl::setDeclContextsImpl(DeclContext *SemaDC, DeclContext *LexicalDC,
+                               ASTContext &Ctx) {
+  if (SemaDC == LexicalDC) {
+    DeclCtx = SemaDC;
+  } else {
+    Decl::MultipleDC *MDC = new (Ctx) Decl::MultipleDC();
+    MDC->SemanticDC = SemaDC;
+    MDC->LexicalDC = LexicalDC;
+    DeclCtx = MDC;
   }
 }
 
@@ -536,13 +544,13 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
       return 0;
   }
 
-  return 0;
+  llvm_unreachable("Invalid DeclKind!");
 }
 
-void Decl::setAttrs(const AttrVec &attrs) {
+void Decl::setAttrsImpl(const AttrVec &attrs, ASTContext &Ctx) {
   assert(!HasAttrs && "Decl already contains attrs.");
 
-  AttrVec &AttrBlank = getASTContext().getDeclAttrs(this);
+  AttrVec &AttrBlank = Ctx.getDeclAttrs(this);
   assert(AttrBlank.empty() && "HasAttrs was wrong?");
 
   AttrBlank = attrs;
@@ -873,8 +881,8 @@ DeclContext::collectAllContexts(llvm::SmallVectorImpl<DeclContext *> &Contexts){
   }
   
   NamespaceDecl *Self = static_cast<NamespaceDecl *>(this);
-  for (NamespaceDecl *N = Self->getMostRecentDeclaration(); N;
-       N = N->getPreviousDeclaration())
+  for (NamespaceDecl *N = Self->getMostRecentDecl(); N;
+       N = N->getPreviousDecl())
     Contexts.push_back(N);
   
   std::reverse(Contexts.begin(), Contexts.end());

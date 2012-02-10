@@ -551,7 +551,7 @@ def ATOMSWAP6432 : I<0, Pseudo, (outs GR32:$dst1, GR32:$dst2),
 // Memory barriers
 
 // TODO: Get this to fold the constant into the instruction.
-let isCodeGenOnly = 1 in
+let isCodeGenOnly = 1, Defs = [EFLAGS] in
 def OR32mrLocked  : I<0x09, MRMDestMem, (outs), (ins i32mem:$dst, GR32:$zero),
                       "lock\n\t"
                       "or{l}\t{$zero, $dst|$dst, $zero}",
@@ -561,15 +561,6 @@ let hasSideEffects = 1 in
 def Int_MemBarrier : I<0, Pseudo, (outs), (ins),
                      "#MEMBARRIER",
                      [(X86MemBarrier)]>;
-
-// TODO: Get this to fold the constant into the instruction.
-let hasSideEffects = 1, Defs = [ESP], isCodeGenOnly = 1 in
-def Int_MemBarrierNoSSE64  : RI<0x09, MRM1r, (outs), (ins GR64:$zero),
-                           "lock\n\t"
-                           "or{q}\t{$zero, (%rsp)|(%rsp), $zero}",
-                           [(X86MemBarrierNoSSE GR64:$zero)]>,
-                           Requires<[In64BitMode]>, LOCK;
-
 
 // RegOpc corresponds to the mr version of the instruction
 // ImmOpc corresponds to the mi version of the instruction

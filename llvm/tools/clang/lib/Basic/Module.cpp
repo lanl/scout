@@ -14,6 +14,7 @@
 #include "clang/Basic/Module.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/TargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/SmallVector.h"
@@ -24,13 +25,15 @@ Module::Module(StringRef Name, SourceLocation DefinitionLoc, Module *Parent,
                bool IsFramework, bool IsExplicit)
   : Name(Name), DefinitionLoc(DefinitionLoc), Parent(Parent), 
     Umbrella(), IsAvailable(true), IsFromModuleFile(false), 
-    IsFramework(IsFramework), IsExplicit(IsExplicit), InferSubmodules(false), 
-    InferExplicitSubmodules(false), InferExportWildcard(false),
-    NameVisibility(Hidden) 
+    IsFramework(IsFramework), IsExplicit(IsExplicit), IsSystem(false),
+    InferSubmodules(false), InferExplicitSubmodules(false), 
+    InferExportWildcard(false), NameVisibility(Hidden) 
 { 
   if (Parent) {
     if (!Parent->isAvailable())
       IsAvailable = false;
+    if (Parent->IsSystem)
+      IsSystem = true;
     
     Parent->SubModuleIndex[Name] = Parent->SubModules.size();
     Parent->SubModules.push_back(this);
@@ -47,24 +50,29 @@ Module::~Module() {
 
 /// \brief Determine whether a translation unit built using the current
 /// language options has the given feature.
-static bool hasFeature(StringRef Feature, const LangOptions &LangOpts) {
+static bool hasFeature(StringRef Feature, const LangOptions &LangOpts,
+                       const TargetInfo &Target) {
   return llvm::StringSwitch<bool>(Feature)
+           .Case("altivec", LangOpts.AltiVec)
            .Case("blocks", LangOpts.Blocks)
            .Case("cplusplus", LangOpts.CPlusPlus)
            .Case("cplusplus11", LangOpts.CPlusPlus0x)
            .Case("objc", LangOpts.ObjC1)
            .Case("objc_arc", LangOpts.ObjCAutoRefCount)
-           .Default(false);
+           .Case("opencl", LangOpts.OpenCL)
+           .Case("tls", Target.isTLSSupported())
+           .Default(Target.hasFeature(Feature));
 }
 
 bool 
-Module::isAvailable(const LangOptions &LangOpts, StringRef &Feature) const {
+Module::isAvailable(const LangOptions &LangOpts, const TargetInfo &Target,
+                    StringRef &Feature) const {
   if (IsAvailable)
     return true;
 
   for (const Module *Current = this; Current; Current = Current->Parent) {
     for (unsigned I = 0, N = Current->Requires.size(); I != N; ++I) {
-      if (!hasFeature(Current->Requires[I], LangOpts)) {
+      if (!hasFeature(Current->Requires[I], LangOpts, Target)) {
         Feature = Current->Requires[I];
         return false;
       }
@@ -72,7 +80,6 @@ Module::isAvailable(const LangOptions &LangOpts, StringRef &Feature) const {
   }
 
   llvm_unreachable("could not find a reason why module is unavailable");
-  return false;
 }
 
 bool Module::isSubModuleOf(Module *Other) const {
@@ -122,11 +129,12 @@ const DirectoryEntry *Module::getUmbrellaDir() const {
   return Umbrella.dyn_cast<const DirectoryEntry *>();
 }
 
-void Module::addRequirement(StringRef Feature, const LangOptions &LangOpts) {
+void Module::addRequirement(StringRef Feature, const LangOptions &LangOpts,
+                            const TargetInfo &Target) {
   Requires.push_back(Feature);
 
   // If this feature is currently available, we're done.
-  if (hasFeature(Feature, LangOpts))
+  if (hasFeature(Feature, LangOpts, Target))
     return;
 
   if (!IsAvailable)
@@ -173,8 +181,15 @@ void Module::print(llvm::raw_ostream &OS, unsigned Indent) const {
     OS << "framework ";
   if (IsExplicit)
     OS << "explicit ";
-  OS << "module " << Name << " {\n";
+  OS << "module " << Name;
 
+  if (IsSystem) {
+    OS.indent(Indent + 2);
+    OS << " [system]";
+  }
+
+  OS << " {\n";
+  
   if (!Requires.empty()) {
     OS.indent(Indent + 2);
     OS << "requires ";

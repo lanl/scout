@@ -22,7 +22,7 @@ using namespace ento;
 namespace {
 class TaintTesterChecker : public Checker< check::PostStmt<Expr> > {
 
-  mutable llvm::OwningPtr<BugType> BT;
+  mutable OwningPtr<BugType> BT;
   void initBugType() const;
 
   /// Given a pointer argument, get the symbol of the value it contains
@@ -43,7 +43,7 @@ inline void TaintTesterChecker::initBugType() const {
 
 void TaintTesterChecker::checkPostStmt(const Expr *E,
                                        CheckerContext &C) const {
-  const ProgramState *State = C.getState();
+  ProgramStateRef State = C.getState();
   if (!State)
     return;
 
@@ -57,13 +57,6 @@ void TaintTesterChecker::checkPostStmt(const Expr *E,
   }
 }
 
-// ndm - MERGE
-namespace clang{
-namespace ento{
-
-void registerTaintTesterChecker(CheckerManager &mgr) {
+void ento::registerTaintTesterChecker(CheckerManager &mgr) {
   mgr.registerChecker<TaintTesterChecker>();
-}
-
-}
 }

@@ -1244,7 +1244,7 @@ private:
   };
   SmallVector<BreakContinue, 8> BreakContinueStack;
 
-  /// SwitchInsn - This is nearest current switch instruction. It is null if if
+  /// SwitchInsn - This is nearest current switch instruction. It is null if
   /// current context is not in a switch.
   llvm::SwitchInst *SwitchInsn;
 
@@ -1351,27 +1351,27 @@ public:
   void pushIrregularPartialArrayCleanup(llvm::Value *arrayBegin,
                                         llvm::Value *arrayEndPointer,
                                         QualType elementType,
-                                        Destroyer &destroyer);
+                                        Destroyer *destroyer);
   void pushRegularPartialArrayCleanup(llvm::Value *arrayBegin,
                                       llvm::Value *arrayEnd,
                                       QualType elementType,
-                                      Destroyer &destroyer);
+                                      Destroyer *destroyer);
 
   void pushDestroy(QualType::DestructionKind dtorKind,
                    llvm::Value *addr, QualType type);
   void pushDestroy(CleanupKind kind, llvm::Value *addr, QualType type,
-                   Destroyer &destroyer, bool useEHCleanupForArray);
-  void emitDestroy(llvm::Value *addr, QualType type, Destroyer &destroyer,
+                   Destroyer *destroyer, bool useEHCleanupForArray);
+  void emitDestroy(llvm::Value *addr, QualType type, Destroyer *destroyer,
                    bool useEHCleanupForArray);
   llvm::Function *generateDestroyHelper(llvm::Constant *addr,
                                         QualType type,
-                                        Destroyer &destroyer,
+                                        Destroyer *destroyer,
                                         bool useEHCleanupForArray);
   void emitArrayDestroy(llvm::Value *begin, llvm::Value *end,
-                        QualType type, Destroyer &destroyer,
+                        QualType type, Destroyer *destroyer,
                         bool checkZeroLength, bool useEHCleanup);
 
-  Destroyer &getDestroyer(QualType::DestructionKind destructionKind);
+  Destroyer *getDestroyer(QualType::DestructionKind destructionKind);
 
   /// Determines whether an EH cleanup is required to destroy a type
   /// with the given destruction kind.
@@ -2081,7 +2081,9 @@ public:
     llvm::AttrListPtr namPAL;
     llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
     llvm::AttributeWithIndex PAWI;
-    PAWI.Index = 0u; PAWI.Attrs = 0 | llvm::Attribute::NoAlias;
+    // ndm - MERGE
+    //PAWI.Index = 0u; PAWI.Attrs = 0 | llvm::Attribute::NoAlias;
+    PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
     Attrs.push_back(PAWI);
     namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
     llvm::Function *namF;
@@ -2201,13 +2203,14 @@ public:
   /// the LLVM value representation.
   void EmitStoreOfScalar(llvm::Value *Value, llvm::Value *Addr,
                          bool Volatile, unsigned Alignment, QualType Ty,
-                         llvm::MDNode *TBAAInfo = 0);
+                         llvm::MDNode *TBAAInfo = 0, bool isInit=false);
 
   /// EmitStoreOfScalar - Store a scalar value to an address, taking
   /// care to appropriately convert from the memory representation to
   /// the LLVM value representation.  The l-value must be a simple
-  /// l-value.
-  void EmitStoreOfScalar(llvm::Value *value, LValue lvalue);
+  /// l-value.  The isInit flag indicates whether this is an initialization.
+  /// If so, atomic qualifiers are ignored and the store is always non-atomic.
+  void EmitStoreOfScalar(llvm::Value *value, LValue lvalue, bool isInit=false);
 
   /// EmitLoadOfLValue - Given an expression that represents a value lvalue,
   /// this method emits the address of the lvalue, then loads the result as an
@@ -2219,7 +2222,7 @@ public:
   /// EmitStoreThroughLValue - Store the specified rvalue into the specified
   /// lvalue, where both are guaranteed to the have the same type, and that type
   /// is 'Ty'.
-  void EmitStoreThroughLValue(RValue Src, LValue Dst);
+  void EmitStoreThroughLValue(RValue Src, LValue Dst, bool isInit=false);
   void EmitStoreThroughExtVectorComponentLValue(RValue Src, LValue Dst);
 
   /// EmitStoreThroughLValue - Store Src into Dst with same constraints as
@@ -2288,6 +2291,7 @@ public:
 
   LValue EmitCXXConstructLValue(const CXXConstructExpr *E);
   LValue EmitCXXBindTemporaryLValue(const CXXBindTemporaryExpr *E);
+  LValue EmitLambdaLValue(const LambdaExpr *E);
   LValue EmitCXXTypeidLValue(const CXXTypeidExpr *E);
 
   LValue EmitObjCMessageExprLValue(const ObjCMessageExpr *E);
@@ -2569,6 +2573,8 @@ public:
   void enterNonTrivialFullExpression(const ExprWithCleanups *E);
 
   void EmitCXXThrowExpr(const CXXThrowExpr *E);
+
+  void EmitLambdaExpr(const LambdaExpr *E, AggValueSlot Dest);
 
   RValue EmitAtomicExpr(AtomicExpr *E, llvm::Value *Dest = 0);
 

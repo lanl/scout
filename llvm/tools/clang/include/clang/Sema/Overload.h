@@ -24,6 +24,7 @@
 #include "clang/Sema/SemaFixItUtils.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Allocator.h"
 
 namespace clang {
   class ASTContext;
@@ -110,6 +111,23 @@ namespace clang {
   };
 
   ImplicitConversionRank GetConversionRank(ImplicitConversionKind Kind);
+
+  /// NarrowingKind - The kind of narrowing conversion being performed by a
+  /// standard conversion sequence according to C++11 [dcl.init.list]p7.
+  enum NarrowingKind {
+    /// Not a narrowing conversion.
+    NK_Not_Narrowing,
+
+    /// A narrowing conversion by virtue of the source and destination types.
+    NK_Type_Narrowing,
+
+    /// A narrowing conversion, because a constant expression got narrowed.
+    NK_Constant_Narrowing,
+
+    /// A narrowing conversion, because a non-constant-expression variable might
+    /// have got narrowed.
+    NK_Variable_Narrowing
+  };
 
   /// StandardConversionSequence - represents a standard conversion
   /// sequence (C++ 13.3.3.1.1). A standard conversion sequence
@@ -217,6 +235,8 @@ namespace clang {
     }
     
     ImplicitConversionRank getRank() const;
+    NarrowingKind getNarrowingKind(ASTContext &Context, const Expr *Converted,
+                                   APValue &ConstantValue) const;
     bool isPointerConversionToBool() const;
     bool isPointerConversionToVoidPointer(ASTContext& Context) const;
     void DebugPrint() const;
@@ -468,7 +488,7 @@ namespace clang {
         return 3;
       }
 
-      return 3;
+      llvm_unreachable("Invalid ImplicitConversionSequence::Kind!");
     }
 
     bool isBad() const { return getKind() == BadConversion; }
@@ -582,11 +602,16 @@ namespace clang {
     CXXConversionDecl *Surrogate;
 
     /// Conversions - The conversion sequences used to convert the
-    /// function arguments to the function parameters.
-    SmallVector<ImplicitConversionSequence, 4> Conversions;
+    /// function arguments to the function parameters, the pointer points to a
+    /// fixed size array with NumConversions elements. The memory is owned by
+    /// the OverloadCandidateSet.
+    ImplicitConversionSequence *Conversions;
 
     /// The FixIt hints which can be used to fix the Bad candidate.
     ConversionFixItGenerator Fix;
+
+    /// NumConversions - The number of elements in the Conversions array.
+    unsigned NumConversions;
 
     /// Viable - True to indicate that this overload candidate is viable.
     bool Viable;
@@ -656,10 +681,9 @@ namespace clang {
     /// hasAmbiguousConversion - Returns whether this overload
     /// candidate requires an ambiguous conversion or not.
     bool hasAmbiguousConversion() const {
-      for (SmallVectorImpl<ImplicitConversionSequence>::const_iterator
-             I = Conversions.begin(), E = Conversions.end(); I != E; ++I) {
-        if (!I->isInitialized()) return false;
-        if (I->isAmbiguous()) return true;
+      for (unsigned i = 0, e = NumConversions; i != e; ++i) {
+        if (!Conversions[i].isInitialized()) return false;
+        if (Conversions[i].isAmbiguous()) return true;
       }
       return false;
     }
@@ -680,17 +704,29 @@ namespace clang {
 
   /// OverloadCandidateSet - A set of overload candidates, used in C++
   /// overload resolution (C++ 13.3).
-  class OverloadCandidateSet : public SmallVector<OverloadCandidate, 16> {
-    typedef SmallVector<OverloadCandidate, 16> inherited;
+  class OverloadCandidateSet {
+    SmallVector<OverloadCandidate, 16> Candidates;
     llvm::SmallPtrSet<Decl *, 16> Functions;
 
-    SourceLocation Loc;    
-    
+    // Allocator for OverloadCandidate::Conversions. We store the first few
+    // elements inline to avoid allocation for small sets.
+    llvm::BumpPtrAllocator ConversionSequenceAllocator;
+
+    SourceLocation Loc;
+
+    unsigned NumInlineSequences;
+    char InlineSpace[16 * sizeof(ImplicitConversionSequence)];
+
     OverloadCandidateSet(const OverloadCandidateSet &);
     OverloadCandidateSet &operator=(const OverloadCandidateSet &);
     
   public:
-    OverloadCandidateSet(SourceLocation Loc) : Loc(Loc) {}
+    OverloadCandidateSet(SourceLocation Loc) : Loc(Loc), NumInlineSequences(0){}
+    ~OverloadCandidateSet() {
+      for (iterator i = begin(), e = end(); i != e; ++i)
+        for (unsigned ii = 0, ie = i->NumConversions; ii != ie; ++ii)
+          i->Conversions[ii].~ImplicitConversionSequence();
+    }
 
     SourceLocation getLocation() const { return Loc; }
 
@@ -702,6 +738,40 @@ namespace clang {
 
     /// \brief Clear out all of the candidates.
     void clear();
+
+    typedef SmallVector<OverloadCandidate, 16>::iterator iterator;
+    iterator begin() { return Candidates.begin(); }
+    iterator end() { return Candidates.end(); }
+
+    size_t size() const { return Candidates.size(); }
+    bool empty() const { return Candidates.empty(); }
+
+    /// \brief Add a new candidate with NumConversions conversion sequence slots
+    /// to the overload set.
+    OverloadCandidate &addCandidate(unsigned NumConversions = 0) {
+      Candidates.push_back(OverloadCandidate());
+      OverloadCandidate &C = Candidates.back();
+
+      // Assign space from the inline array if there are enough free slots
+      // available.
+      if (NumConversions + NumInlineSequences <= 16) {
+        ImplicitConversionSequence *I =
+          (ImplicitConversionSequence*)InlineSpace;
+        C.Conversions = &I[NumInlineSequences];
+        NumInlineSequences += NumConversions;
+      } else {
+        // Otherwise get memory from the allocator.
+        C.Conversions = ConversionSequenceAllocator
+                          .Allocate<ImplicitConversionSequence>(NumConversions);
+      }
+
+      // Construct the new objects.
+      for (unsigned i = 0; i != NumConversions; ++i)
+        new (&C.Conversions[i]) ImplicitConversionSequence();
+
+      C.NumConversions = NumConversions;
+      return C;
+    }
 
     /// Find the best viable function on this overload set, if it exists.
     OverloadingResult BestViableFunction(Sema &S, SourceLocation Loc,

@@ -17,6 +17,7 @@
 #define LLVM_MC_MCREGISTERINFO_H
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cassert>
 
 namespace llvm {
@@ -26,7 +27,7 @@ class MCRegisterClass {
 public:
   typedef const unsigned* iterator;
   typedef const unsigned* const_iterator;
-private:
+
   unsigned ID;
   const char *Name;
   const unsigned RegSize, Alignment; // Size & Alignment of register in bytes
@@ -35,17 +36,6 @@ private:
   const iterator RegsBegin, RegsEnd;
   const unsigned char *const RegSet;
   const unsigned RegSetSize;
-public:
-  MCRegisterClass(unsigned id, const char *name,
-                  unsigned RS, unsigned Al, int CC, bool Allocable,
-                  iterator RB, iterator RE, const unsigned char *Bits,
-                  unsigned NumBytes)
-    : ID(id), Name(name), RegSize(RS), Alignment(Al), CopyCost(CC),
-      Allocatable(Allocable), RegsBegin(RB), RegsEnd(RE), RegSet(Bits),
-      RegSetSize(NumBytes) {
-    for (iterator i = RegsBegin; i != RegsEnd; ++i)
-       assert(contains(*i) && "Bit field corrupted.");
-  }
 
   /// getID() - Return the register class ID number.
   ///
@@ -273,8 +263,7 @@ public:
     const DenseMap<unsigned, unsigned> &M = isEH ? EHDwarf2LRegs : Dwarf2LRegs;
     const DenseMap<unsigned, unsigned>::const_iterator I = M.find(RegNum);
     if (I == M.end()) {
-      assert(0 && "Invalid RegNum");
-      return -1;
+      llvm_unreachable("Invalid RegNum");
     }
     return I->second;
   }

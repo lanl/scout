@@ -15,18 +15,19 @@
 #ifndef LLVM_EXECUTION_ENGINE_H
 #define LLVM_EXECUTION_ENGINE_H
 
-#include <vector>
-#include <map>
-#include <string>
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ValueMap.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include <vector>
+#include <map>
+#include <string>
 
 namespace llvm {
 
@@ -238,6 +239,15 @@ public:
   ///
   virtual void *getPointerToNamedFunction(const std::string &Name,
                                           bool AbortOnFailure = true) = 0;
+
+  /// mapSectionAddress - map a section to its target address space value.
+  /// Map the address of a JIT section as returned from the memory manager
+  /// to the address in the target process as the running code will see it.
+  /// This is the address which will be used for relocation resolution.
+  virtual void mapSectionAddress(void *LocalAddress, uint64_t TargetAddress) {
+    llvm_unreachable("Re-mapping of section addresses not supported with this "
+                     "EE!");
+  }
 
   /// runStaticConstructorsDestructors - This method is used to execute all of
   /// the static constructors or destructors for a program.

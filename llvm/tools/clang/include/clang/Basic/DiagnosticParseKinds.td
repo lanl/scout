@@ -119,6 +119,7 @@ def err_parse_error : Error<"parse error">;
 def err_expected_expression : Error<"expected expression">;
 def err_expected_type : Error<"expected a type">;
 def err_expected_external_declaration : Error<"expected external declaration">;
+def err_extraneous_closing_brace : Error<"extraneous closing brace ('}')">;
 def err_expected_ident : Error<"expected identifier">;
 def err_expected_ident_lparen : Error<"expected identifier or '('">;
 def err_expected_ident_lbrace : Error<"expected identifier or '{'">;
@@ -153,8 +154,8 @@ def err_expected_fn_body : Error<
 def err_expected_method_body : Error<"expected method body">;
 def err_invalid_token_after_toplevel_declarator : Error<
   "expected ';' after top level declarator">;
-def err_invalid_equalequal_after_declarator : Error<
-  "invalid '==' at end of declaration; did you mean '='?">;
+def err_invalid_token_after_declarator_suggest_equal : Error<
+  "invalid '%0' at end of declaration; did you mean '='?">;
 def err_expected_statement : Error<"expected statement">;
 def err_expected_lparen_after : Error<"expected '(' after '%0'">;
 def err_expected_lparen_after_id : Error<"expected '(' after %0">;
@@ -329,8 +330,10 @@ def err_illegal_super_cast : Error<
 let CategoryName = "ARC Parse Issue" in {
 def err_arc_bridge_retain : Error<
   "unknown cast annotation __bridge_retain; did you mean __bridge_retained?">;
-def err_arc_bridge_cast_nonarc : Error<
-  "'%0' casts are only allowed when using ARC">;
+// To be default mapped to an error later.
+def err_arc_bridge_cast_nonarc : Warning<
+  "'%0' casts are only allowed when using ARC">,
+  InGroup<DiagGroup<"arc-bridge-casts-disallowed-in-nonarc">>;
 }
   
 def err_objc_illegal_visibility_spec : Error<

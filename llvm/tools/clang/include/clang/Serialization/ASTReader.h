@@ -218,7 +218,7 @@ public:
 
 private:
   /// \brief The receiver of some callbacks invoked by ASTReader.
-  llvm::OwningPtr<ASTReaderListener> Listener;
+  OwningPtr<ASTReaderListener> Listener;
 
   /// \brief The receiver of deserialization events.
   ASTDeserializationListener *DeserializationListener;
@@ -335,10 +335,6 @@ private:
   /// declarations that have not yet been linked to their definitions.
   llvm::SmallPtrSet<Decl *, 4> PendingDefinitions;
   
-  /// \brief Set of ObjC interfaces that have categories chained to them in
-  /// other modules.
-  llvm::DenseSet<serialization::GlobalDeclID> ObjCChainedCategoriesInterfaces;
-
   /// \brief Read the records that describe the contents of declcontexts.
   bool ReadDeclContextStorage(ModuleFile &M,
                               llvm::BitstreamCursor &Cursor,
@@ -423,6 +419,10 @@ private:
   /// selector resides along with the offset that should be added to the
   /// global selector ID to produce a local ID.
   GlobalSelectorMapType GlobalSelectorMap;
+
+  /// \brief The generation number of the last time we loaded data from the
+  /// global method pool for this selector.
+  llvm::DenseMap<Selector, unsigned> SelectorGeneration;
 
   /// \brief Mapping from identifiers that represent macros whose definitions
   /// have not yet been deserialized to the global offset where the macro
@@ -579,6 +579,10 @@ private:
   /// \brief Whether to disable the use of stat caches in AST files.
   bool DisableStatCache;
 
+  /// \brief The current "generation" of the module file import stack, which 
+  /// indicates how many separate module file load operations have occurred.
+  unsigned CurrentGeneration;
+
   /// \brief Mapping from switch-case IDs in the chain to switch-case statements
   ///
   /// Statements usually don't have IDs, but switch cases need them, so that the
@@ -635,6 +639,12 @@ private:
   /// \brief Number of Decl/types that are currently deserializing.
   unsigned NumCurrentElementsDeserializing;
 
+  /// \brief Set true while we are in the process of passing deserialized
+  /// "interesting" decls to consumer inside FinishedDeserializing().
+  /// This is used as a guard to avoid recursively repeating the process of
+  /// passing decls to consumer.
+  bool PassingDeclsToConsumer;
+
   /// Number of CXX base specifiers currently loaded
   unsigned NumCXXBaseSpecifiersLoaded;
 
@@ -652,6 +662,10 @@ private:
   /// loaded once the recursive loading has completed.
   std::deque<PendingIdentifierInfo> PendingIdentifierInfos;
 
+  /// \brief The generation number of each identifier, which keeps track of
+  /// the last time we loaded information about this identifier.
+  llvm::DenseMap<IdentifierInfo *, unsigned> IdentifierGeneration;
+  
   /// \brief Contains declarations and definitions that will be
   /// "interesting" to the ASTConsumer, when we get that AST consumer.
   ///
@@ -660,10 +674,10 @@ private:
   /// Objective-C protocols.
   std::deque<Decl *> InterestingDecls;
 
-  /// \brief We delay loading of the previous declaration chain to avoid
-  /// deeply nested calls when there are many redeclarations.
-  std::deque<std::pair<Decl *, serialization::DeclID> > PendingPreviousDecls;
-
+  /// \brief The set of redeclarable declaraations that have been deserialized
+  /// since the last time the declaration chains were linked.
+  llvm::SmallPtrSet<Decl *, 16> RedeclsDeserialized;
+  
   /// \brief The list of redeclaration chains that still need to be 
   /// reconstructed.
   ///
@@ -675,6 +689,15 @@ private:
   /// \brief Keeps track of the elements added to PendingDeclChains.
   llvm::SmallSet<serialization::DeclID, 16> PendingDeclChainsKnown;
 
+  /// \brief The set of Objective-C categories that have been deserialized
+  /// since the last time the declaration chains were linked.
+  llvm::SmallPtrSet<ObjCCategoryDecl *, 16> CategoriesDeserialized;
+
+  /// \brief The set of Objective-C class definitions that have already been
+  /// loaded, for which we will need to check for categories whenever a new
+  /// module is loaded.
+  llvm::SmallVector<ObjCInterfaceDecl *, 16> ObjCClassesLoaded;
+  
   typedef llvm::DenseMap<Decl *, llvm::SmallVector<serialization::DeclID, 2> >
     MergedDeclsMap;
     
@@ -703,11 +726,6 @@ private:
   MergedDeclsMap::iterator
   combineStoredMergedDecls(Decl *Canon, serialization::GlobalDeclID CanonID);
   
-  /// \brief We delay loading the chain of objc categories after recursive
-  /// loading of declarations is finished.
-  std::vector<std::pair<ObjCInterfaceDecl *, serialization::DeclID> >
-    PendingChainedObjCCategories;
-
   /// \brief Ready to load the previous declaration of the given Decl.
   void loadAndAttachPreviousDecl(Decl *D, serialization::DeclID ID);
 
@@ -789,8 +807,8 @@ private:
                                  unsigned &RawLocation);
   void loadDeclUpdateRecords(serialization::DeclID ID, Decl *D);
   void loadPendingDeclChain(serialization::GlobalDeclID ID);
-  void loadObjCChainedCategories(serialization::GlobalDeclID ID,
-                                 ObjCInterfaceDecl *D);
+  void loadObjCCategories(serialization::GlobalDeclID ID, ObjCInterfaceDecl *D,
+                          unsigned PreviousGeneration = 0);
 
   RecordLocation getLocalBitOffset(uint64_t GlobalOffset);
   uint64_t getGlobalBitOffset(ModuleFile &M, uint32_t LocalOffset);
@@ -1037,6 +1055,10 @@ public:
   /// \arg M.
   bool isDeclIDFromModule(serialization::GlobalDeclID ID, ModuleFile &M) const;
 
+  /// \brief Retrieve the module file that owns the given declaration, or NULL
+  /// if the declaration is not from a module file.
+  ModuleFile *getOwningModuleFile(Decl *D);
+  
   /// \brief Returns the source location for the decl \arg ID.
   SourceLocation getSourceLocationForDeclID(serialization::GlobalDeclID ID);
 
@@ -1190,11 +1212,7 @@ public:
 
   /// \brief Load the contents of the global method pool for a given
   /// selector.
-  ///
-  /// \returns a pair of Objective-C methods lists containing the
-  /// instance and factory methods, respectively, with this selector.
-  virtual std::pair<ObjCMethodList, ObjCMethodList>
-    ReadMethodPool(Selector Sel);
+  virtual void ReadMethodPool(Selector Sel);
 
   /// \brief Load the set of namespaces that are known to the external source,
   /// which will be used during typo correction.
@@ -1432,6 +1450,9 @@ public:
   /// \brief Update an out-of-date identifier.
   virtual void updateOutOfDateIdentifier(IdentifierInfo &II);
 
+  /// \brief Note that this identifier is up-to-date.
+  void markIdentifierUpToDate(IdentifierInfo *II);
+  
   /// \brief Read the macro definition corresponding to this iterator
   /// into the unread macro record offsets table.
   void LoadMacroDefinition(

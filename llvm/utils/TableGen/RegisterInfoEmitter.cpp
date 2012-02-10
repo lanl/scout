@@ -134,8 +134,7 @@ RegisterInfoEmitter::EmitRegMapping(raw_ostream &OS,
       OS << "EHFlavour";
     OS << ") {\n"
      << "  default:\n"
-     << "    assert(0 && \"Unknown DWARF flavour\");\n"
-     << "    break;\n";
+     << "    llvm_unreachable(\"Unknown DWARF flavour\");\n";
 
     for (unsigned i = 0, e = maxLength; i != e; ++i) {
       OS << "  case " << i << ":\n";
@@ -180,8 +179,7 @@ RegisterInfoEmitter::EmitRegMapping(raw_ostream &OS,
       OS << "EHFlavour";
     OS << ") {\n"
        << "  default:\n"
-       << "    assert(0 && \"Unknown DWARF flavour\");\n"
-       << "    break;\n";
+       << "    llvm_unreachable(\"Unknown DWARF flavour\");\n";
 
     for (unsigned i = 0, e = maxLength; i != e; ++i) {
       OS << "  case " << i << ":\n";
@@ -189,6 +187,9 @@ RegisterInfoEmitter::EmitRegMapping(raw_ostream &OS,
       for (DwarfRegNumsMapTy::iterator
              I = DwarfRegNums.begin(), E = DwarfRegNums.end(); I != E; ++I) {
         int RegNo = I->second[i];
+        if (RegNo == -1) // -1 is the default value, don't emit a mapping.
+          continue;
+
         OS << "    ";
         if (!isCtor)
           OS << "RI->";
@@ -282,7 +283,7 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
      continue;
     // getSubRegs() orders by SubRegIndex. We want a topological order.
     SetVector<CodeGenRegister*> SR;
-    Reg.addSubRegsPreOrder(SR);
+    Reg.addSubRegsPreOrder(SR, RegBank);
     OS << "  const unsigned " << Reg.getName() << "_SubRegsSet[] = { ";
     for (unsigned j = 0, je = SR.size(); j != je; ++j)
       OS << getQualifiedName(SR[j]->TheDef) << ", ";
@@ -369,7 +370,7 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
 
   for (unsigned rc = 0, e = RegisterClasses.size(); rc != e; ++rc) {
     const CodeGenRegisterClass &RC = *RegisterClasses[rc];
-    OS << "  MCRegisterClass(" << RC.getQualifiedName() + "RegClassID" << ", "
+    OS << "  { " << RC.getQualifiedName() + "RegClassID" << ", "
        << '\"' << RC.getName() << "\", "
        << RC.SpillSize/8 << ", "
        << RC.SpillAlignment/8 << ", "
@@ -378,7 +379,7 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
        << RC.getName() << ", " << RC.getName() << " + "
        << RC.getOrder().size() << ", "
        << RC.getName() << "Bits, sizeof(" << RC.getName() << "Bits)"
-       << "),\n";
+       << " },\n";
   }
 
   OS << "};\n\n";
@@ -431,17 +432,17 @@ RegisterInfoEmitter::runTargetHeader(raw_ostream &OS, CodeGenTarget &Target,
         "unsigned) const;\n"
      << "};\n\n";
 
-  const std::vector<Record*> &SubRegIndices = RegBank.getSubRegIndices();
+  ArrayRef<CodeGenSubRegIndex*> SubRegIndices = RegBank.getSubRegIndices();
   if (!SubRegIndices.empty()) {
     OS << "\n// Subregister indices\n";
-    std::string Namespace = SubRegIndices[0]->getValueAsString("Namespace");
+    std::string Namespace =
+      SubRegIndices[0]->getNamespace();
     if (!Namespace.empty())
       OS << "namespace " << Namespace << " {\n";
     OS << "enum {\n  NoSubRegister,\n";
     for (unsigned i = 0, e = RegBank.getNumNamedIndices(); i != e; ++i)
       OS << "  " << SubRegIndices[i]->getName() << ",\t// " << i+1 << "\n";
-    OS << "  NUM_TARGET_NAMED_SUBREGS = " << SubRegIndices.size()+1 << "\n";
-    OS << "};\n";
+    OS << "  NUM_TARGET_NAMED_SUBREGS\n};\n";
     if (!Namespace.empty())
       OS << "}\n";
   }
@@ -520,7 +521,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
     // Emit the register list now.
     OS << "  // " << Name
        << " Register Class Value Types...\n"
-       << "  static const EVT " << Name
+       << "  static const MVT::SimpleValueType " << Name
        << "[] = {\n    ";
     for (unsigned i = 0, e = RC.VTs.size(); i != e; ++i)
       OS << getEnumName(RC.VTs[i]) << ", ";
@@ -640,17 +641,22 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
            << "getRawAllocationOrder(const MachineFunction &MF) const {\n";
         for (unsigned oi = 1 , oe = RC.getNumOrders(); oi != oe; ++oi) {
           ArrayRef<Record*> Elems = RC.getOrder(oi);
-          OS << "  static const unsigned AltOrder" << oi << "[] = {";
-          for (unsigned elem = 0; elem != Elems.size(); ++elem)
-            OS << (elem ? ", " : " ") << getQualifiedName(Elems[elem]);
-          OS << " };\n";
+          if (!Elems.empty()) {
+            OS << "  static const unsigned AltOrder" << oi << "[] = {";
+            for (unsigned elem = 0; elem != Elems.size(); ++elem)
+              OS << (elem ? ", " : " ") << getQualifiedName(Elems[elem]);
+            OS << " };\n";
+          }
         }
         OS << "  const MCRegisterClass &MCR = " << Target.getName()
-           << "MCRegisterClasses[" << RC.getQualifiedName() + "RegClassID];"
+           << "MCRegisterClasses[" << RC.getQualifiedName() + "RegClassID];\n"
            << "  static const ArrayRef<unsigned> Order[] = {\n"
            << "    makeArrayRef(MCR.begin(), MCR.getNumRegs()";
         for (unsigned oi = 1, oe = RC.getNumOrders(); oi != oe; ++oi)
-          OS << "),\n    makeArrayRef(AltOrder" << oi;
+          if (RC.getOrder(oi).empty())
+            OS << "),\n    ArrayRef<unsigned>(";
+          else
+            OS << "),\n    makeArrayRef(AltOrder" << oi;
         OS << ")\n  };\n  const unsigned Select = " << RC.getName()
            << "AltOrderSelect(MF);\n  assert(Select < " << RC.getNumOrders()
            << ");\n  return Order[Select];\n}\n";
@@ -690,7 +696,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   unsigned NamedIndices = RegBank.getNumNamedIndices();
 
   // Emit SubRegIndex names, skipping 0
-  const std::vector<Record*> &SubRegIndices = RegBank.getSubRegIndices();
+  ArrayRef<CodeGenSubRegIndex*> SubRegIndices = RegBank.getSubRegIndices();
   OS << "\n  static const char *const " << TargetName
      << "SubRegIndexTable[] = { \"";
   for (unsigned i = 0, e = SubRegIndices.size(); i != e; ++i) {
@@ -729,7 +735,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
     OS << "    default: return 0;\n";
     for (CodeGenRegister::SubRegMap::const_iterator ii = SRM.begin(),
          ie = SRM.end(); ii != ie; ++ii)
-      OS << "    case " << getQualifiedName(ii->first)
+      OS << "    case " << ii->first->getQualifiedName()
          << ": return " << getQualifiedName(ii->second->TheDef) << ";\n";
     OS << "    };\n" << "    break;\n";
   }
@@ -749,7 +755,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
     for (CodeGenRegister::SubRegMap::const_iterator ii = SRM.begin(),
          ie = SRM.end(); ii != ie; ++ii)
       OS << "    if (SubRegNo == " << getQualifiedName(ii->second->TheDef)
-         << ")  return " << getQualifiedName(ii->first) << ";\n";
+         << ")  return " << ii->first->getQualifiedName() << ";\n";
     OS << "    return 0;\n";
   }
   OS << "  };\n";
@@ -764,15 +770,15 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   for (unsigned i = 0, e = SubRegIndices.size(); i != e; ++i) {
     bool Open = false;
     for (unsigned j = 0; j != e; ++j) {
-      if (Record *Comp = RegBank.getCompositeSubRegIndex(SubRegIndices[i],
-                                                         SubRegIndices[j])) {
+      if (CodeGenSubRegIndex *Comp =
+            SubRegIndices[i]->compose(SubRegIndices[j])) {
         if (!Open) {
-          OS << "  case " << getQualifiedName(SubRegIndices[i])
+          OS << "  case " << SubRegIndices[i]->getQualifiedName()
              << ": switch(IdxB) {\n    default: return IdxB;\n";
           Open = true;
         }
-        OS << "    case " << getQualifiedName(SubRegIndices[j])
-           << ": return " << getQualifiedName(Comp) << ";\n";
+        OS << "    case " << SubRegIndices[j]->getQualifiedName()
+           << ": return " << Comp->getQualifiedName() << ";\n";
       }
     }
     if (Open)
@@ -801,7 +807,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
       const CodeGenRegisterClass &RC = *RegisterClasses[rci];
       OS << "    {\t// " << RC.getName() << "\n";
       for (unsigned sri = 0, sre = SubRegIndices.size(); sri != sre; ++sri) {
-        Record *Idx = SubRegIndices[sri];
+        CodeGenSubRegIndex *Idx = SubRegIndices[sri];
         if (CodeGenRegisterClass *SRC = RC.getSubClassWithSubReg(Idx))
           OS << "      " << SRC->EnumValue + 1 << ",\t// " << Idx->getName()
              << " -> " << SRC->getName() << "\n";
@@ -842,7 +848,7 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
       const CodeGenRegisterClass &RC = *RegisterClasses[rci];
       OS << "    {\t// " << RC.getName() << "\n";
       for (unsigned sri = 0, sre = SubRegIndices.size(); sri != sre; ++sri) {
-        Record *Idx = SubRegIndices[sri];
+        CodeGenSubRegIndex *Idx = SubRegIndices[sri];
         BV.reset();
         RC.getSuperRegClasses(Idx, BV);
         OS << "      { ";
@@ -878,6 +884,30 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   EmitRegMapping(OS, Regs, true);
 
   OS << "}\n\n";
+
+
+  // Emit CalleeSavedRegs information.
+  std::vector<Record*> CSRSets =
+    Records.getAllDerivedDefinitions("CalleeSavedRegs");
+  for (unsigned i = 0, e = CSRSets.size(); i != e; ++i) {
+    Record *CSRSet = CSRSets[i];
+    const SetTheory::RecVec *Regs = RegBank.getSets().expand(CSRSet);
+    assert(Regs && "Cannot expand CalleeSavedRegs instance");
+
+    // Emit the *_SaveList list of callee-saved registers.
+    OS << "static const unsigned " << CSRSet->getName()
+       << "_SaveList[] = { ";
+    for (unsigned r = 0, re = Regs->size(); r != re; ++r)
+      OS << getQualifiedName((*Regs)[r]) << ", ";
+    OS << "0 };\n";
+
+    // Emit the *_RegMask bit mask of call-preserved registers.
+    OS << "static const uint32_t " << CSRSet->getName()
+       << "_RegMask[] = { ";
+    printBitVectorAsHex(OS, RegBank.computeCoveredRegisters(*Regs), 32);
+    OS << "};\n";
+  }
+  OS << "\n\n";
 
   OS << "} // End llvm namespace \n";
   OS << "#endif // GET_REGINFO_TARGET_DESC\n\n";

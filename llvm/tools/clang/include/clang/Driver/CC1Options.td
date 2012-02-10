@@ -101,6 +101,15 @@ def analyzer_checker_help : Flag<"-analyzer-checker-help">,
   HelpText<"Display the list of analyzer checkers that are available">;
 
 //===----------------------------------------------------------------------===//
+// Migrator Options
+//===----------------------------------------------------------------------===//
+def migrator_no_nsalloc_error : Flag<"-no-ns-alloc-error">,
+  HelpText<"Do not error on use of NSAllocateCollectable/NSReallocateCollectable">;
+
+def migrator_no_finalize_removal : Flag<"-no-finalize-removal">,
+  HelpText<"Do not remove finalize method in gc mode">;
+
+//===----------------------------------------------------------------------===//
 // CodeGen Options
 //===----------------------------------------------------------------------===//
 
@@ -145,6 +154,8 @@ def ffunction_sections : Flag<"-ffunction-sections">,
   HelpText<"Place each function in its own section (ELF Only)">;
 def fdata_sections : Flag<"-fdata-sections">,
   HelpText<"Place each data in its own section (ELF Only)">;
+def ftrap_function_EQ : Joined<"-ftrap-function=">,
+  HelpText<"Issue call to specified function rather than a trap instruction">;
 def funroll_loops : Flag<"-funroll-loops">,
   HelpText<"Turn on loop unroller">;
 def femit_coverage_notes : Flag<"-femit-coverage-notes">,
@@ -166,6 +177,8 @@ def mdebug_pass : Separate<"-mdebug-pass">,
   HelpText<"Enable additional debug output">;
 def mdisable_fp_elim : Flag<"-mdisable-fp-elim">,
   HelpText<"Disable frame pointer elimination optimization">;
+def mdisable_tail_calls : Flag<"-mdisable-tail-calls">,
+  HelpText<"Disable tail call optimization, keeping the call stack accurate">;
 def menable_no_infinities : Flag<"-menable-no-infs">,
   HelpText<"Allow optimization to assume there are no infinities.">;
 def menable_no_nans : Flag<"-menable-no-nans">,
@@ -222,6 +235,8 @@ def pg : Flag<"-pg">, HelpText<"Enable mcount instrumentation">;
 
 def dependency_file : Separate<"-dependency-file">,
   HelpText<"Filename (or -) to write dependency output to">;
+def dependency_dot : Separate<"-dependency-dot">,
+  HelpText<"Filename to write DOT-formatted header dependencies to">;
 def sys_header_deps : Flag<"-sys-header-deps">,
   HelpText<"Include system headers in dependency output">;
 def header_include_file : Separate<"-header-include-file">,
@@ -440,14 +455,25 @@ def ftime_report : Flag<"-ftime-report">,
   HelpText<"Print the amount of time each phase of compilation takes">;
 def fdump_record_layouts : Flag<"-fdump-record-layouts">,
   HelpText<"Dump record layout information">;
+def fdump_record_layouts_simple : Flag<"-fdump-record-layouts-simple">,
+  HelpText<"Dump record layout information in a simple form used for testing">;
 def fix_what_you_can : Flag<"-fix-what-you-can">,
   HelpText<"Apply fix-it advice even in the presence of unfixable errors">;
+def fix_only_warnings : Flag<"-fix-only-warnings">,
+  HelpText<"Apply fix-it advice only for warnings, not errors">;
+def fixit_recompile : Flag<"-fixit-recompile">,
+  HelpText<"Apply fix-it changes and recompile">;
+def fixit_to_temp : Flag<"-fixit-to-temporary">,
+  HelpText<"Apply fix-it changes to temporary files">;
 
 // Generic forwarding to LLVM options. This should only be used for debugging
 // and experimental features.
 def mllvm : Separate<"-mllvm">,
   HelpText<"Additional arguments to forward to LLVM's option processing">;
 
+def foverride_record_layout_EQ : Joined<"-foverride-record-layout=">,
+  HelpText<"Override record layouts with those in the given file">;
+  
 //===----------------------------------------------------------------------===//
 // Language Options
 //===----------------------------------------------------------------------===//
@@ -625,6 +651,8 @@ def funknown_anytype : Flag<"-funknown-anytype">,
   HelpText<"Enable parser support for the __unknown_anytype type; for testing purposes only">;
 def fdebugger_support : Flag<"-fdebugger-support">,
   HelpText<"Enable special debugger support behavior">;
+def fdebugger_cast_result_to_id : Flag<"-fdebugger-cast-result-to-id">,
+  HelpText<"Enable casting unknown expression results to id">;
 def fdeprecated_macro : Flag<"-fdeprecated-macro">,
   HelpText<"Defines the __DEPRECATED macro">;
 def fno_deprecated_macro : Flag<"-fno-deprecated-macro">,

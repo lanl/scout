@@ -61,29 +61,33 @@ TailMergeSize("tail-merge-size",
 
 namespace {
   /// BranchFolderPass - Wrap branch folder in a machine function pass.
-  class BranchFolderPass : public MachineFunctionPass,
-                           public BranchFolder {
+  class BranchFolderPass : public MachineFunctionPass {
   public:
     static char ID;
-    explicit BranchFolderPass(bool defaultEnableTailMerge)
-      : MachineFunctionPass(ID), BranchFolder(defaultEnableTailMerge, true) {}
+    explicit BranchFolderPass(): MachineFunctionPass(ID) {}
 
     virtual bool runOnMachineFunction(MachineFunction &MF);
-    virtual const char *getPassName() const { return "Control Flow Optimizer"; }
+
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.addRequired<TargetPassConfig>();
+      MachineFunctionPass::getAnalysisUsage(AU);
+    }
   };
 }
 
 char BranchFolderPass::ID = 0;
+char &llvm::BranchFolderPassID = BranchFolderPass::ID;
 
-FunctionPass *llvm::createBranchFoldingPass(bool DefaultEnableTailMerge) {
-  return new BranchFolderPass(DefaultEnableTailMerge);
-}
+INITIALIZE_PASS(BranchFolderPass, "branch-folder",
+                "Control Flow Optimizer", false, false)
 
 bool BranchFolderPass::runOnMachineFunction(MachineFunction &MF) {
-  return OptimizeFunction(MF,
-                          MF.getTarget().getInstrInfo(),
-                          MF.getTarget().getRegisterInfo(),
-                          getAnalysisIfAvailable<MachineModuleInfo>());
+  TargetPassConfig *PassConfig = &getAnalysis<TargetPassConfig>();
+  BranchFolder Folder(PassConfig->getEnableTailMerge(), /*CommonHoist=*/true);
+  return Folder.OptimizeFunction(MF,
+                                 MF.getTarget().getInstrInfo(),
+                                 MF.getTarget().getRegisterInfo(),
+                                 getAnalysisIfAvailable<MachineModuleInfo>());
 }
 
 
@@ -208,7 +212,7 @@ bool BranchFolder::OptimizeFunction(MachineFunction &MF,
     delete RS;
     return MadeChange;
   }
-  
+
   // Walk the function to find jump tables that are live.
   BitVector JTIsLive(JTI->getJumpTables().size());
   for (MachineFunction::iterator BB = MF.begin(), E = MF.end();
@@ -483,8 +487,9 @@ BranchFolder::MergePotentialsElt::operator<(const MergePotentialsElt &o) const {
     // an object with itself.
 #ifndef _GLIBCXX_DEBUG
     llvm_unreachable("Predecessor appears twice");
-#endif
+#else
     return false;
+#endif
   }
 }
 
@@ -1094,7 +1099,7 @@ ReoptimizeBlock:
         MachineBasicBlock::iterator PrevBBIter = PrevBB.end();
         --PrevBBIter;
         MachineBasicBlock::iterator MBBIter = MBB->begin();
-        // Check if DBG_VALUE at the end of PrevBB is identical to the 
+        // Check if DBG_VALUE at the end of PrevBB is identical to the
         // DBG_VALUE at the beginning of MBB.
         while (PrevBBIter != PrevBB.begin() && MBBIter != MBB->end()
                && PrevBBIter->isDebugValue() && MBBIter->isDebugValue()) {

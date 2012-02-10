@@ -33,10 +33,11 @@ using namespace llvm;
 
 ScheduleDAGInstrs::ScheduleDAGInstrs(MachineFunction &mf,
                                      const MachineLoopInfo &mli,
-                                     const MachineDominatorTree &mdt)
+                                     const MachineDominatorTree &mdt,
+                                     bool IsPostRAFlag)
   : ScheduleDAG(mf), MLI(mli), MDT(mdt), MFI(mf.getFrameInfo()),
-    InstrItins(mf.getTarget().getInstrItineraryData()),
-    Defs(TRI->getNumRegs()), Uses(TRI->getNumRegs()),
+    InstrItins(mf.getTarget().getInstrItineraryData()), IsPostRA(IsPostRAFlag),
+    UnitLatencies(false), Defs(TRI->getNumRegs()), Uses(TRI->getNumRegs()),
     LoopRegs(MLI, MDT), FirstDbgValue(0) {
   DbgValues.clear();
 }
@@ -50,6 +51,9 @@ void ScheduleDAGInstrs::Run(MachineBasicBlock *bb,
   BB = bb;
   Begin = begin;
   InsertPosIndex = endcount;
+
+  // Check to see if the scheduler cares about latencies.
+  UnitLatencies = ForceUnitLatencies();
 
   ScheduleDAG::Run(bb, end);
 }
@@ -162,8 +166,10 @@ void ScheduleDAGInstrs::AddSchedBarrierDeps() {
       unsigned Reg = MO.getReg();
       if (Reg == 0) continue;
 
-      assert(TRI->isPhysicalRegister(Reg) && "Virtual register encountered!");
-      Uses[Reg].push_back(&ExitSU);
+      if (TRI->isPhysicalRegister(Reg))
+        Uses[Reg].push_back(&ExitSU);
+      else
+        assert(!IsPostRA && "Virtual register encountered after regalloc.");
     }
   } else {
     // For others, e.g. fallthrough, conditional branch, assume the exit
@@ -178,6 +184,234 @@ void ScheduleDAGInstrs::AddSchedBarrierDeps() {
           Uses[Reg].push_back(&ExitSU);
       }
   }
+}
+
+/// addPhysRegDeps - Add register dependencies (data, anti, and output) from
+/// this SUnit to following instructions in the same scheduling region that
+/// depend the physical register referenced at OperIdx.
+void ScheduleDAGInstrs::addPhysRegDeps(SUnit *SU, unsigned OperIdx) {
+  const MachineInstr *MI = SU->getInstr();
+  const MachineOperand &MO = MI->getOperand(OperIdx);
+  unsigned Reg = MO.getReg();
+
+  // Ask the target if address-backscheduling is desirable, and if so how much.
+  const TargetSubtargetInfo &ST = TM.getSubtarget<TargetSubtargetInfo>();
+  unsigned SpecialAddressLatency = ST.getSpecialAddressLatency();
+
+  // Optionally add output and anti dependencies. For anti
+  // dependencies we use a latency of 0 because for a multi-issue
+  // target we want to allow the defining instruction to issue
+  // in the same cycle as the using instruction.
+  // TODO: Using a latency of 1 here for output dependencies assumes
+  //       there's no cost for reusing registers.
+  SDep::Kind Kind = MO.isUse() ? SDep::Anti : SDep::Output;
+  for (const unsigned *Alias = TRI->getOverlaps(Reg); *Alias; ++Alias) {
+    std::vector<SUnit *> &DefList = Defs[*Alias];
+    for (unsigned i = 0, e = DefList.size(); i != e; ++i) {
+      SUnit *DefSU = DefList[i];
+      if (DefSU == &ExitSU)
+        continue;
+      if (DefSU != SU &&
+          (Kind != SDep::Output || !MO.isDead() ||
+           !DefSU->getInstr()->registerDefIsDead(*Alias))) {
+        if (Kind == SDep::Anti)
+          DefSU->addPred(SDep(SU, Kind, 0, /*Reg=*/*Alias));
+        else {
+          unsigned AOLat = TII->getOutputLatency(InstrItins, MI, OperIdx,
+                                                 DefSU->getInstr());
+          DefSU->addPred(SDep(SU, Kind, AOLat, /*Reg=*/*Alias));
+        }
+      }
+    }
+  }
+
+  // Retrieve the UseList to add data dependencies and update uses.
+  std::vector<SUnit *> &UseList = Uses[Reg];
+  if (MO.isDef()) {
+    // Update DefList. Defs are pushed in the order they are visited and
+    // never reordered.
+    std::vector<SUnit *> &DefList = Defs[Reg];
+
+    // Add any data dependencies.
+    unsigned DataLatency = SU->Latency;
+    for (unsigned i = 0, e = UseList.size(); i != e; ++i) {
+      SUnit *UseSU = UseList[i];
+      if (UseSU == SU)
+        continue;
+      unsigned LDataLatency = DataLatency;
+      // Optionally add in a special extra latency for nodes that
+      // feed addresses.
+      // TODO: Do this for register aliases too.
+      // TODO: Perhaps we should get rid of
+      // SpecialAddressLatency and just move this into
+      // adjustSchedDependency for the targets that care about it.
+      if (SpecialAddressLatency != 0 && !UnitLatencies &&
+          UseSU != &ExitSU) {
+        MachineInstr *UseMI = UseSU->getInstr();
+        const MCInstrDesc &UseMCID = UseMI->getDesc();
+        int RegUseIndex = UseMI->findRegisterUseOperandIdx(Reg);
+        assert(RegUseIndex >= 0 && "UseMI doesn's use register!");
+        if (RegUseIndex >= 0 &&
+            (UseMI->mayLoad() || UseMI->mayStore()) &&
+            (unsigned)RegUseIndex < UseMCID.getNumOperands() &&
+            UseMCID.OpInfo[RegUseIndex].isLookupPtrRegClass())
+          LDataLatency += SpecialAddressLatency;
+      }
+      // Adjust the dependence latency using operand def/use
+      // information (if any), and then allow the target to
+      // perform its own adjustments.
+      const SDep& dep = SDep(SU, SDep::Data, LDataLatency, Reg);
+      if (!UnitLatencies) {
+        ComputeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
+        ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
+      }
+      UseSU->addPred(dep);
+    }
+    for (const unsigned *Alias = TRI->getAliasSet(Reg); *Alias; ++Alias) {
+      std::vector<SUnit *> &UseList = Uses[*Alias];
+      for (unsigned i = 0, e = UseList.size(); i != e; ++i) {
+        SUnit *UseSU = UseList[i];
+        if (UseSU == SU)
+          continue;
+        const SDep& dep = SDep(SU, SDep::Data, DataLatency, *Alias);
+        if (!UnitLatencies) {
+          ComputeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
+          ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
+        }
+        UseSU->addPred(dep);
+      }
+    }
+
+    // If a def is going to wrap back around to the top of the loop,
+    // backschedule it.
+    if (!UnitLatencies && DefList.empty()) {
+      LoopDependencies::LoopDeps::iterator I = LoopRegs.Deps.find(Reg);
+      if (I != LoopRegs.Deps.end()) {
+        const MachineOperand *UseMO = I->second.first;
+        unsigned Count = I->second.second;
+        const MachineInstr *UseMI = UseMO->getParent();
+        unsigned UseMOIdx = UseMO - &UseMI->getOperand(0);
+        const MCInstrDesc &UseMCID = UseMI->getDesc();
+        // TODO: If we knew the total depth of the region here, we could
+        // handle the case where the whole loop is inside the region but
+        // is large enough that the isScheduleHigh trick isn't needed.
+        if (UseMOIdx < UseMCID.getNumOperands()) {
+          // Currently, we only support scheduling regions consisting of
+          // single basic blocks. Check to see if the instruction is in
+          // the same region by checking to see if it has the same parent.
+          if (UseMI->getParent() != MI->getParent()) {
+            unsigned Latency = SU->Latency;
+            if (UseMCID.OpInfo[UseMOIdx].isLookupPtrRegClass())
+              Latency += SpecialAddressLatency;
+            // This is a wild guess as to the portion of the latency which
+            // will be overlapped by work done outside the current
+            // scheduling region.
+            Latency -= std::min(Latency, Count);
+            // Add the artificial edge.
+            ExitSU.addPred(SDep(SU, SDep::Order, Latency,
+                                /*Reg=*/0, /*isNormalMemory=*/false,
+                                /*isMustAlias=*/false,
+                                /*isArtificial=*/true));
+          } else if (SpecialAddressLatency > 0 &&
+                     UseMCID.OpInfo[UseMOIdx].isLookupPtrRegClass()) {
+            // The entire loop body is within the current scheduling region
+            // and the latency of this operation is assumed to be greater
+            // than the latency of the loop.
+            // TODO: Recursively mark data-edge predecessors as
+            //       isScheduleHigh too.
+            SU->isScheduleHigh = true;
+          }
+        }
+        LoopRegs.Deps.erase(I);
+      }
+    }
+
+    UseList.clear();
+    if (!MO.isDead())
+      DefList.clear();
+
+    // Calls will not be reordered because of chain dependencies (see
+    // below). Since call operands are dead, calls may continue to be added
+    // to the DefList making dependence checking quadratic in the size of
+    // the block. Instead, we leave only one call at the back of the
+    // DefList.
+    if (SU->isCall) {
+      while (!DefList.empty() && DefList.back()->isCall)
+        DefList.pop_back();
+    }
+    DefList.push_back(SU);
+  } else {
+    UseList.push_back(SU);
+  }
+}
+
+/// addVRegDefDeps - Add register output and data dependencies from this SUnit
+/// to instructions that occur later in the same scheduling region if they read
+/// from or write to the virtual register defined at OperIdx.
+///
+/// TODO: Hoist loop induction variable increments. This has to be
+/// reevaluated. Generally, IV scheduling should be done before coalescing.
+void ScheduleDAGInstrs::addVRegDefDeps(SUnit *SU, unsigned OperIdx) {
+  const MachineInstr *MI = SU->getInstr();
+  unsigned Reg = MI->getOperand(OperIdx).getReg();
+
+  const TargetSubtargetInfo &ST = TM.getSubtarget<TargetSubtargetInfo>();
+
+  // Add output dependence to the next nearest def of this vreg.
+  //
+  // Unless this definition is dead, the output dependence should be
+  // transitively redundant with antidependencies from this definition's
+  // uses. We're conservative for now until we have a way to guarantee the uses
+  // are not eliminated sometime during scheduling. The output dependence edge
+  // is also useful if output latency exceeds def-use latency.
+  SUnit *DefSU = VRegDefs[Reg];
+  if (DefSU && DefSU != SU && DefSU != &ExitSU) {
+    unsigned OutLatency = TII->getOutputLatency(InstrItins, MI, OperIdx,
+                                                DefSU->getInstr());
+    DefSU->addPred(SDep(SU, SDep::Output, OutLatency, Reg));
+  }
+  VRegDefs[Reg] = SU;
+
+  // Add data dependence to any uses of this vreg before the next nearest def.
+  //
+  // TODO: Handle ExitSU properly.
+  //
+  // TODO: Data dependence could be handled more efficiently at the use-side.
+  std::vector<SUnit*> &UseList = VRegUses[Reg];
+  for (std::vector<SUnit*>::const_iterator UI = UseList.begin(),
+         UE = UseList.end(); UI != UE; ++UI) {
+    SUnit *UseSU = *UI;
+    if (UseSU == SU) continue;
+
+    // TODO: Handle "special" address latencies cleanly.
+    const SDep& dep = SDep(SU, SDep::Data, SU->Latency, Reg);
+    if (!UnitLatencies) {
+      // Adjust the dependence latency using operand def/use information, then
+      // allow the target to perform its own adjustments.
+      ComputeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
+      ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
+    }
+    UseSU->addPred(dep);
+  }
+  UseList.clear();
+}
+
+/// addVRegUseDeps - Add register antidependencies from this SUnit to
+/// instructions that occur later in the same scheduling region if they
+/// write the virtual register referenced at OperIdx.
+void ScheduleDAGInstrs::addVRegUseDeps(SUnit *SU, unsigned OperIdx) {
+  unsigned Reg = SU->getInstr()->getOperand(OperIdx).getReg();
+
+  // Add antidependence to the following def of the vreg it uses.
+  SUnit *DefSU = VRegDefs[Reg];
+  if (DefSU && DefSU != SU)
+    DefSU->addPred(SDep(SU, SDep::Anti, 0, Reg));
+
+  // Add this SUnit to the use list of the vreg it uses.
+  //
+  // TODO: pinch the DAG before we see too many uses to avoid quadratic
+  // behavior. Limiting the scheduling window can accomplish the same thing.
+  VRegUses[Reg].push_back(SU);
 }
 
 void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
@@ -198,13 +432,6 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
   std::map<const Value *, SUnit *> AliasMemDefs, NonAliasMemDefs;
   std::map<const Value *, std::vector<SUnit *> > AliasMemUses, NonAliasMemUses;
 
-  // Check to see if the scheduler cares about latencies.
-  bool UnitLatencies = ForceUnitLatencies();
-
-  // Ask the target if address-backscheduling is desirable, and if so how much.
-  const TargetSubtargetInfo &ST = TM.getSubtarget<TargetSubtargetInfo>();
-  unsigned SpecialAddressLatency = ST.getSpecialAddressLatency();
-
   // Remove any stale debug info; sometimes BuildSchedGraph is called again
   // without emitting the info from the previous call.
   DbgValues.clear();
@@ -217,6 +444,15 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
   for (int i = 0, e = TRI->getNumRegs(); i != e; ++i) {
     assert(Defs[i].empty() && "Only BuildGraph should push/pop Defs");
   }
+
+  // Reinitialize the large VReg vectors, while reusing the memory.
+  //
+  // Note: this can be an expensive part of DAG building. We may want to be more
+  // clever. Reevaluate after VRegUses goes away.
+  assert(VRegDefs.size() == 0 && VRegUses.size() == 0 &&
+         "Only BuildSchedGraph should access VRegDefs/Uses");
+  VRegDefs.resize(MF.getRegInfo().getNumVirtRegs());
+  VRegUses.resize(MF.getRegInfo().getNumVirtRegs());
 
   // Walk the list of instructions, from bottom moving up.
   MachineInstr *PrevMI = NULL;
@@ -253,152 +489,14 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
       unsigned Reg = MO.getReg();
       if (Reg == 0) continue;
 
-      assert(TRI->isPhysicalRegister(Reg) && "Virtual register encountered!");
-
-      // Optionally add output and anti dependencies. For anti
-      // dependencies we use a latency of 0 because for a multi-issue
-      // target we want to allow the defining instruction to issue
-      // in the same cycle as the using instruction.
-      // TODO: Using a latency of 1 here for output dependencies assumes
-      //       there's no cost for reusing registers.
-      SDep::Kind Kind = MO.isUse() ? SDep::Anti : SDep::Output;
-      for (const unsigned *Alias = TRI->getOverlaps(Reg); *Alias; ++Alias) {
-        std::vector<SUnit *> &DefList = Defs[*Alias];
-        for (unsigned i = 0, e = DefList.size(); i != e; ++i) {
-          SUnit *DefSU = DefList[i];
-          if (DefSU == &ExitSU)
-            continue;
-          if (DefSU != SU &&
-              (Kind != SDep::Output || !MO.isDead() ||
-               !DefSU->getInstr()->registerDefIsDead(*Alias))) {
-            if (Kind == SDep::Anti)
-              DefSU->addPred(SDep(SU, Kind, 0, /*Reg=*/*Alias));
-            else {
-              unsigned AOLat = TII->getOutputLatency(InstrItins, MI, j,
-                                                     DefSU->getInstr());
-              DefSU->addPred(SDep(SU, Kind, AOLat, /*Reg=*/*Alias));
-            }
-          }
-        }
-      }
-
-      // Retrieve the UseList to add data dependencies and update uses.
-      std::vector<SUnit *> &UseList = Uses[Reg];
-      if (MO.isDef()) {
-        // Update DefList. Defs are pushed in the order they are visited and
-        // never reordered.
-        std::vector<SUnit *> &DefList = Defs[Reg];
-
-        // Add any data dependencies.
-        unsigned DataLatency = SU->Latency;
-        for (unsigned i = 0, e = UseList.size(); i != e; ++i) {
-          SUnit *UseSU = UseList[i];
-          if (UseSU == SU)
-            continue;
-          unsigned LDataLatency = DataLatency;
-          // Optionally add in a special extra latency for nodes that
-          // feed addresses.
-          // TODO: Do this for register aliases too.
-          // TODO: Perhaps we should get rid of
-          // SpecialAddressLatency and just move this into
-          // adjustSchedDependency for the targets that care about it.
-          if (SpecialAddressLatency != 0 && !UnitLatencies &&
-              UseSU != &ExitSU) {
-            MachineInstr *UseMI = UseSU->getInstr();
-            const MCInstrDesc &UseMCID = UseMI->getDesc();
-            int RegUseIndex = UseMI->findRegisterUseOperandIdx(Reg);
-            assert(RegUseIndex >= 0 && "UseMI doesn's use register!");
-            if (RegUseIndex >= 0 &&
-                (UseMI->mayLoad() || UseMI->mayStore()) &&
-                (unsigned)RegUseIndex < UseMCID.getNumOperands() &&
-                UseMCID.OpInfo[RegUseIndex].isLookupPtrRegClass())
-              LDataLatency += SpecialAddressLatency;
-          }
-          // Adjust the dependence latency using operand def/use
-          // information (if any), and then allow the target to
-          // perform its own adjustments.
-          const SDep& dep = SDep(SU, SDep::Data, LDataLatency, Reg);
-          if (!UnitLatencies) {
-            ComputeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
-            ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
-          }
-          UseSU->addPred(dep);
-        }
-        for (const unsigned *Alias = TRI->getAliasSet(Reg); *Alias; ++Alias) {
-          std::vector<SUnit *> &UseList = Uses[*Alias];
-          for (unsigned i = 0, e = UseList.size(); i != e; ++i) {
-            SUnit *UseSU = UseList[i];
-            if (UseSU == SU)
-              continue;
-            const SDep& dep = SDep(SU, SDep::Data, DataLatency, *Alias);
-            if (!UnitLatencies) {
-              ComputeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
-              ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
-            }
-            UseSU->addPred(dep);
-          }
-        }
-
-        // If a def is going to wrap back around to the top of the loop,
-        // backschedule it.
-        if (!UnitLatencies && DefList.empty()) {
-          LoopDependencies::LoopDeps::iterator I = LoopRegs.Deps.find(Reg);
-          if (I != LoopRegs.Deps.end()) {
-            const MachineOperand *UseMO = I->second.first;
-            unsigned Count = I->second.second;
-            const MachineInstr *UseMI = UseMO->getParent();
-            unsigned UseMOIdx = UseMO - &UseMI->getOperand(0);
-            const MCInstrDesc &UseMCID = UseMI->getDesc();
-            // TODO: If we knew the total depth of the region here, we could
-            // handle the case where the whole loop is inside the region but
-            // is large enough that the isScheduleHigh trick isn't needed.
-            if (UseMOIdx < UseMCID.getNumOperands()) {
-              // Currently, we only support scheduling regions consisting of
-              // single basic blocks. Check to see if the instruction is in
-              // the same region by checking to see if it has the same parent.
-              if (UseMI->getParent() != MI->getParent()) {
-                unsigned Latency = SU->Latency;
-                if (UseMCID.OpInfo[UseMOIdx].isLookupPtrRegClass())
-                  Latency += SpecialAddressLatency;
-                // This is a wild guess as to the portion of the latency which
-                // will be overlapped by work done outside the current
-                // scheduling region.
-                Latency -= std::min(Latency, Count);
-                // Add the artificial edge.
-                ExitSU.addPred(SDep(SU, SDep::Order, Latency,
-                                    /*Reg=*/0, /*isNormalMemory=*/false,
-                                    /*isMustAlias=*/false,
-                                    /*isArtificial=*/true));
-              } else if (SpecialAddressLatency > 0 &&
-                         UseMCID.OpInfo[UseMOIdx].isLookupPtrRegClass()) {
-                // The entire loop body is within the current scheduling region
-                // and the latency of this operation is assumed to be greater
-                // than the latency of the loop.
-                // TODO: Recursively mark data-edge predecessors as
-                //       isScheduleHigh too.
-                SU->isScheduleHigh = true;
-              }
-            }
-            LoopRegs.Deps.erase(I);
-          }
-        }
-
-        UseList.clear();
-        if (!MO.isDead())
-          DefList.clear();
-
-        // Calls will not be reordered because of chain dependencies (see
-        // below). Since call operands are dead, calls may continue to be added
-        // to the DefList making dependence checking quadratic in the size of
-        // the block. Instead, we leave only one call at the back of the
-        // DefList.
-        if (SU->isCall) {
-          while (!DefList.empty() && DefList.back()->isCall)
-            DefList.pop_back();
-        }
-        DefList.push_back(SU);
-      } else {
-        UseList.push_back(SU);
+      if (TRI->isPhysicalRegister(Reg))
+        addPhysRegDeps(SU, j);
+      else {
+        assert(!IsPostRA && "Virtual register encountered!");
+        if (MO.isDef())
+          addVRegDefDeps(SU, j);
+        else
+          addVRegUseDeps(SU, j);
       }
     }
 
@@ -556,6 +654,8 @@ void ScheduleDAGInstrs::BuildSchedGraph(AliasAnalysis *AA) {
     Defs[i].clear();
     Uses[i].clear();
   }
+  VRegDefs.clear();
+  VRegUses.clear();
   PendingLoads.clear();
 }
 

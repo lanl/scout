@@ -43,7 +43,7 @@ ExprResult Sema::ParseObjCStringLiteral(SourceLocation *AtLocs,
   // If we have a multi-part string, merge it all together.
   if (NumStrings != 1) {
     // Concatenate objc strings.
-    llvm::SmallString<128> StrBuf;
+    SmallString<128> StrBuf;
     SmallVector<SourceLocation, 8> StrLocs;
 
     for (unsigned i = 0; i != NumStrings; ++i) {
@@ -237,14 +237,8 @@ ExprResult Sema::ParseObjCProtocolExpression(IdentifierInfo *ProtocolId,
 }
 
 /// Try to capture an implicit reference to 'self'.
-ObjCMethodDecl *Sema::tryCaptureObjCSelf() {
-  // Ignore block scopes: we can capture through them.
-  DeclContext *DC = CurContext;
-  while (true) {
-    if (isa<BlockDecl>(DC)) DC = cast<BlockDecl>(DC)->getDeclContext();
-    else if (isa<EnumDecl>(DC)) DC = cast<EnumDecl>(DC)->getDeclContext();
-    else break;
-  }
+ObjCMethodDecl *Sema::tryCaptureObjCSelf(SourceLocation Loc) {
+  DeclContext *DC = getFunctionLevelDeclContext();
 
   // If we're not in an ObjC method, error out.  Note that, unlike the
   // C++ case, we don't require an instance method --- class methods
@@ -253,21 +247,7 @@ ObjCMethodDecl *Sema::tryCaptureObjCSelf() {
   if (!method)
     return 0;
 
-  ImplicitParamDecl *self = method->getSelfDecl();
-  assert(self && "capturing 'self' in non-definition?");
-
-  // Mark that we're closing on 'this' in all the block scopes, if applicable.
-  for (unsigned idx = FunctionScopes.size() - 1;
-       isa<BlockScopeInfo>(FunctionScopes[idx]);
-       --idx) {
-    BlockScopeInfo *blockScope = cast<BlockScopeInfo>(FunctionScopes[idx]);
-    unsigned &captureIndex = blockScope->CaptureMap[self];
-    if (captureIndex) break;
-
-    bool nested = isa<BlockScopeInfo>(FunctionScopes[idx-1]);
-    blockScope->AddCapture(self, /*byref*/ false, nested, /*copy*/ 0);
-    captureIndex = blockScope->Captures.size(); // +1
-  }
+  TryCaptureVar(method->getSelfDecl(), Loc);
 
   return method;
 }
@@ -453,14 +433,12 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
                        Args[NumArgs-1]->getLocEnd());
     }
   }
-  // diagnose nonnull arguments.
-  for (specific_attr_iterator<NonNullAttr>
-       i = Method->specific_attr_begin<NonNullAttr>(),
-       e = Method->specific_attr_end<NonNullAttr>(); i != e; ++i) {
-    CheckNonNullArguments(*i, Args, lbrac);
-  }
 
   DiagnoseSentinelCalls(Method, lbrac, Args, NumArgs);
+
+  // Do additional checkings on method.
+  IsError |= CheckObjCMethodCall(Method, lbrac, Args, NumArgs);
+
   return IsError;
 }
 
@@ -706,7 +684,7 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
   DeclFilterCCC<ObjCPropertyDecl> Validator;
   if (TypoCorrection Corrected = CorrectTypo(
       DeclarationNameInfo(MemberName, MemberLoc), LookupOrdinaryName, NULL,
-      NULL, &Validator, IFace, false, OPT)) {
+      NULL, Validator, IFace, false, OPT)) {
     ObjCPropertyDecl *Property =
         Corrected.getCorrectionDeclAs<ObjCPropertyDecl>();
     DeclarationName TypoResult = Corrected.getCorrection();
@@ -764,7 +742,7 @@ ActOnClassPropertyRefExpr(IdentifierInfo &receiverName,
     if (receiverNamePtr->isStr("super")) {
       IsSuper = true;
 
-      if (ObjCMethodDecl *CurMethod = tryCaptureObjCSelf()) {
+      if (ObjCMethodDecl *CurMethod = tryCaptureObjCSelf(receiverNameLoc)) {
         if (CurMethod->isInstanceMethod()) {
           QualType T = 
             Context.getObjCInterfaceType(CurMethod->getClassInterface());
@@ -938,7 +916,7 @@ Sema::ObjCMessageKind Sema::getObjCMessageKind(Scope *S,
   ObjCInterfaceOrSuperCCC Validator(getCurMethodDecl());
   if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                              Result.getLookupKind(), S, NULL,
-                                             &Validator)) {
+                                             Validator)) {
     if (Corrected.isKeyword()) {
       // If we've found the keyword "super" (the only keyword that would be
       // returned by CorrectTypo), this is a send to super.
@@ -976,7 +954,7 @@ ExprResult Sema::ActOnSuperMessage(Scope *S,
                                    SourceLocation RBracLoc,
                                    MultiExprArg Args) {
   // Determine whether we are inside a method or not.
-  ObjCMethodDecl *Method = tryCaptureObjCSelf();
+  ObjCMethodDecl *Method = tryCaptureObjCSelf(SuperLoc);
   if (!Method) {
     Diag(SuperLoc, diag::err_invalid_receiver_to_message_super);
     return ExprError();
@@ -1381,11 +1359,15 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                 ? PDiag(diag::err_arc_receiver_forward_instance)
                     << (Receiver ? Receiver->getSourceRange() 
                                  : SourceRange(SuperLoc))
-                : PDiag())) {
+                : PDiag(diag::warn_receiver_forward_instance)
+                    << (Receiver ? Receiver->getSourceRange() 
+                                 : SourceRange(SuperLoc)))) {
           if (getLangOptions().ObjCAutoRefCount)
             return ExprError();
           
           forwardClass = OCIType->getInterfaceDecl();
+          Diag(Receiver ? Receiver->getLocStart() 
+                        : SuperLoc, diag::note_receiver_is_id);
           Method = 0;
         } else {
           Method = ClassDecl->lookupInstanceMethod(Sel);
@@ -1903,6 +1885,13 @@ namespace {
   };
 }
 
+static bool
+KnownName(Sema &S, const char *name) {
+  LookupResult R(S, &S.Context.Idents.get(name), SourceLocation(),
+                 Sema::LookupOrdinaryName);
+  return S.LookupName(R, S.TUScope, false);
+}
+
 static void
 diagnoseObjCARCConversion(Sema &S, SourceRange castRange,
                           QualType castType, ARCConversionTypeClass castACTC,
@@ -1938,6 +1927,7 @@ diagnoseObjCARCConversion(Sema &S, SourceRange castRange,
 
   // Bridge from an ARC type to a CF type.
   if (castACTC == ACTC_retainable && isAnyRetainable(exprACTC)) {
+
     S.Diag(loc, diag::err_arc_cast_requires_bridge)
       << unsigned(CCK == Sema::CCK_ImplicitConversion) // cast|implicit
       << 2 // of C pointer type
@@ -1946,20 +1936,22 @@ diagnoseObjCARCConversion(Sema &S, SourceRange castRange,
       << castType
       << castRange
       << castExpr->getSourceRange();
-
+    bool br = KnownName(S, "CFBridgingRelease");
     S.Diag(noteLoc, diag::note_arc_bridge)
       << (CCK != Sema::CCK_CStyleCast ? FixItHint() :
             FixItHint::CreateInsertion(afterLParen, "__bridge "));
     S.Diag(noteLoc, diag::note_arc_bridge_transfer)
-      << castExprType
+      << castExprType << br 
       << (CCK != Sema::CCK_CStyleCast ? FixItHint() :
-            FixItHint::CreateInsertion(afterLParen, "__bridge_transfer "));
+          FixItHint::CreateInsertion(afterLParen, 
+                                br ? "CFBridgingRelease " : "__bridge_transfer "));
 
     return;
   }
     
   // Bridge from a CF type to an ARC type.
   if (exprACTC == ACTC_retainable && isAnyRetainable(castACTC)) {
+    bool br = KnownName(S, "CFBridgingRetain");
     S.Diag(loc, diag::err_arc_cast_requires_bridge)
       << unsigned(CCK == Sema::CCK_ImplicitConversion) // cast|implicit
       << unsigned(castExprType->isBlockPointerType()) // of ObjC|block type
@@ -1973,9 +1965,10 @@ diagnoseObjCARCConversion(Sema &S, SourceRange castRange,
       << (CCK != Sema::CCK_CStyleCast ? FixItHint() :
             FixItHint::CreateInsertion(afterLParen, "__bridge "));
     S.Diag(noteLoc, diag::note_arc_bridge_retained)
-      << castType
+      << castType << br
       << (CCK != Sema::CCK_CStyleCast ? FixItHint() :
-            FixItHint::CreateInsertion(afterLParen, "__bridge_retained "));
+          FixItHint::CreateInsertion(afterLParen, 
+                              br ? "CFBridgingRetain " : "__bridge_retained"));
 
     return;
   }
@@ -2206,7 +2199,8 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
     case OBC_Bridge:
       break;
       
-    case OBC_BridgeRetained:
+    case OBC_BridgeRetained: {
+      bool br = KnownName(*this, "CFBridgingRelease");
       Diag(BridgeKeywordLoc, diag::err_arc_bridge_cast_wrong_kind)
         << 2
         << FromType
@@ -2217,12 +2211,14 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
       Diag(BridgeKeywordLoc, diag::note_arc_bridge)
         << FixItHint::CreateReplacement(BridgeKeywordLoc, "__bridge");
       Diag(BridgeKeywordLoc, diag::note_arc_bridge_transfer)
-        << FromType
+        << FromType << br
         << FixItHint::CreateReplacement(BridgeKeywordLoc, 
-                                        "__bridge_transfer ");
+                                        br ? "CFBridgingRelease " 
+                                           : "__bridge_transfer ");
 
       Kind = OBC_Bridge;
       break;
+    }
       
     case OBC_BridgeTransfer:
       // We must consume the Objective-C object produced by the cast.
@@ -2246,7 +2242,8 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
                                          SubExpr, 0, VK_RValue);
       break;
       
-    case OBC_BridgeTransfer:
+    case OBC_BridgeTransfer: {
+      bool br = KnownName(*this, "CFBridgingRetain");
       Diag(BridgeKeywordLoc, diag::err_arc_bridge_cast_wrong_kind)
         << (FromType->isBlockPointerType()? 1 : 0)
         << FromType
@@ -2258,11 +2255,13 @@ ExprResult Sema::BuildObjCBridgedCast(SourceLocation LParenLoc,
       Diag(BridgeKeywordLoc, diag::note_arc_bridge)
         << FixItHint::CreateReplacement(BridgeKeywordLoc, "__bridge ");
       Diag(BridgeKeywordLoc, diag::note_arc_bridge_retained)
-        << T
-        << FixItHint::CreateReplacement(BridgeKeywordLoc, "__bridge_retained ");
+        << T << br
+        << FixItHint::CreateReplacement(BridgeKeywordLoc, 
+                          br ? "CFBridgingRetain " : "__bridge_retained");
         
       Kind = OBC_Bridge;
       break;
+    }
     }
   } else {
     Diag(LParenLoc, diag::err_arc_bridge_cast_incompatible)

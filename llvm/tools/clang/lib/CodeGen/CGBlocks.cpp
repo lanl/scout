@@ -217,6 +217,7 @@ static bool isSafeForCXXConstantCapture(QualType type) {
 /// acceptable because we make no promises about address stability of
 /// captured variables.
 static llvm::Constant *tryCaptureAsConstant(CodeGenModule &CGM,
+                                            CodeGenFunction *CGF,
                                             const VarDecl *var) {
   QualType type = var->getType();
 
@@ -237,7 +238,7 @@ static llvm::Constant *tryCaptureAsConstant(CodeGenModule &CGM,
   const Expr *init = var->getInit();
   if (!init) return 0;
 
-  return CGM.EmitConstantExpr(init, var->getType());
+  return CGM.EmitConstantInit(*var, CGF);
 }
 
 /// Get the low bit of a nonzero character count.  This is the
@@ -280,7 +281,8 @@ static void initializeForBlockHeader(CodeGenModule &CGM, CGBlockInfo &info,
 
 /// Compute the layout of the given block.  Attempts to lay the block
 /// out with minimal space requirements.
-static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
+static void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
+                             CGBlockInfo &info) {
   ASTContext &C = CGM.getContext();
   const BlockDecl *block = info.getBlockDecl();
 
@@ -344,7 +346,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CGBlockInfo &info) {
 
     // Otherwise, build a layout chunk with the size and alignment of
     // the declaration.
-    if (llvm::Constant *constant = tryCaptureAsConstant(CGM, variable)) {
+    if (llvm::Constant *constant = tryCaptureAsConstant(CGM, CGF, variable)) {
       info.Captures[variable] = CGBlockInfo::Capture::makeConstant(constant);
       continue;
     }
@@ -516,7 +518,7 @@ llvm::Value
   blockInfo.BlockExpression = blockExpr;
   
   // Compute information about the layout, etc., of this block.
-  computeBlockInfo(CGM, blockInfo);
+  computeBlockInfo(CGM, this, blockInfo);
 
   // Build a loop around the block declaration to facilitate
   // the induction variable range information.
@@ -884,7 +886,7 @@ static void enterBlockScope(CodeGenFunction &CGF, BlockDecl *block) {
 
   // Compute information about the layout, etc., of this block,
   // pushing cleanups as necessary.
-  computeBlockInfo(CGF.CGM, blockInfo);
+  computeBlockInfo(CGF.CGM, &CGF, blockInfo);
 
   // Nothing else to do if it can be global.
   if (blockInfo.CanBeGlobal) return;
@@ -920,9 +922,9 @@ static void enterBlockScope(CodeGenFunction &CGF, BlockDecl *block) {
     // Block captures count as local values and have imprecise semantics.
     // They also can't be arrays, so need to worry about that.
     if (dtorKind == QualType::DK_objc_strong_lifetime) {
-      destroyer = &CodeGenFunction::destroyARCStrongImprecise;
+      destroyer = CodeGenFunction::destroyARCStrongImprecise;
     } else {
-      destroyer = &CGF.getDestroyer(dtorKind);
+      destroyer = CGF.getDestroyer(dtorKind);
     }
 
     // GEP down to the address.
@@ -939,7 +941,7 @@ static void enterBlockScope(CodeGenFunction &CGF, BlockDecl *block) {
       cleanupKind = InactiveNormalAndEHCleanup;
 
     CGF.pushDestroy(cleanupKind, addr, variable->getType(),
-                    *destroyer, useArrayEHCleanup);
+                    destroyer, useArrayEHCleanup);
 
     // Remember where that cleanup was.
     capture.setCleanup(CGF.EHStack.stable_begin());
@@ -991,13 +993,13 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const BlockExpr *blockExpr) {
   // layout for it.
   if (!blockExpr->getBlockDecl()->hasCaptures()) {
     CGBlockInfo blockInfo(blockExpr->getBlockDecl(), CurFn->getName());
-    computeBlockInfo(CGM, blockInfo);
+    computeBlockInfo(CGM, this, blockInfo);
     blockInfo.BlockExpression = blockExpr;
     return EmitBlockLiteral(blockInfo);
   }
 
   // Find the block info for this block and take ownership of it.
-  llvm::OwningPtr<CGBlockInfo> blockInfo;
+  OwningPtr<CGBlockInfo> blockInfo;
   blockInfo.reset(findAndRemoveBlockInfo(&FirstBlockInfo,
                                          blockExpr->getBlockDecl()));
 
@@ -1298,7 +1300,7 @@ CodeGenModule::GetAddrOfGlobalBlock(const BlockExpr *blockExpr,
   blockInfo.BlockExpression = blockExpr;
 
   // Compute information about the layout, etc., of this block.
-  computeBlockInfo(*this, blockInfo);
+  computeBlockInfo(*this, 0, blockInfo);
 
   // Using that metadata, generate the actual block function.
   llvm::Constant *blockFn;
@@ -2236,7 +2238,7 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
 
     unsigned NumPaddingBytes = AlignedOffsetInBytes - CurrentOffsetInBytes;
     if (NumPaddingBytes > 0) {
-      llvm::Type *Ty = llvm::Type::getInt8Ty(getLLVMContext());
+      llvm::Type *Ty = Int8Ty;
       // FIXME: We need a sema error for alignment larger than the minimum of
       // the maximal stack alignment and the alignment of malloc on the system.
       if (NumPaddingBytes > 1)

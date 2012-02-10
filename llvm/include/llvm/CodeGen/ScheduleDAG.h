@@ -129,8 +129,7 @@ namespace llvm {
                Contents.Order.isMustAlias == Other.Contents.Order.isMustAlias &&
                Contents.Order.isArtificial == Other.Contents.Order.isArtificial;
       }
-      assert(0 && "Invalid dependency kind!");
-      return false;
+      llvm_unreachable("Invalid dependency kind!");
     }
 
     bool operator!=(const SDep &Other) const {

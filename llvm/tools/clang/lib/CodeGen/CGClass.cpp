@@ -95,7 +95,6 @@ CodeGenFunction::GetAddressOfDirectBaseInCompleteClass(llvm::Value *This,
   // TODO: for complete types, this should be possible with a GEP.
   llvm::Value *V = This;
   if (Offset.isPositive()) {
-    llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
     V = Builder.CreateBitCast(V, Int8PtrTy);
     V = Builder.CreateConstInBoundsGEP1_64(V, Offset.getQuantity());
   }
@@ -125,8 +124,7 @@ ApplyNonVirtualAndVirtualOffset(CodeGenFunction &CGF, llvm::Value *ThisPtr,
     BaseOffset = NonVirtualOffset;
   
   // Apply the base offset.
-  llvm::Type *Int8PtrTy = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
-  ThisPtr = CGF.Builder.CreateBitCast(ThisPtr, Int8PtrTy);
+  ThisPtr = CGF.Builder.CreateBitCast(ThisPtr, CGF.Int8PtrTy);
   ThisPtr = CGF.Builder.CreateGEP(ThisPtr, BaseOffset, "add.ptr");
 
   return ThisPtr;
@@ -945,13 +943,13 @@ namespace {
 
   class DestroyField  : public EHScopeStack::Cleanup {
     const FieldDecl *field;
-    CodeGenFunction::Destroyer &destroyer;
+    CodeGenFunction::Destroyer *destroyer;
     bool useEHCleanupForArray;
 
   public:
     DestroyField(const FieldDecl *field, CodeGenFunction::Destroyer *destroyer,
                  bool useEHCleanupForArray)
-      : field(field), destroyer(*destroyer),
+      : field(field), destroyer(destroyer),
         useEHCleanupForArray(useEHCleanupForArray) {}
 
     void Emit(CodeGenFunction &CGF, Flags flags) {
@@ -1197,8 +1195,8 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
 
   CGDebugInfo *DI = getDebugInfo();
   if (DI && CGM.getCodeGenOpts().LimitDebugInfo) {
-    // If debug info for this class has been emitted then this is the right time
-    // to do so.
+    // If debug info for this class has not been emitted then this is the
+    // right time to do so.
     const CXXRecordDecl *Parent = D->getParent();
     DI->getOrCreateRecordType(CGM.getContext().getTypeDeclType(Parent),
                               Parent->getLocation());

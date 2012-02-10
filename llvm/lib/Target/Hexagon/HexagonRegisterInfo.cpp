@@ -1,4 +1,4 @@
-//==- HexagonRegisterInfo.cpp - Hexagon Register Information -----*- C++ -*-==//
+//===- HexagonRegisterInfo.cpp - Hexagon Register Information -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -17,24 +17,23 @@
 #include "HexagonSubtarget.h"
 #include "HexagonTargetMachine.h"
 #include "HexagonMachineFunctionInfo.h"
+#include "llvm/Function.h"
+#include "llvm/Type.h"
+#include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/MC/MachineLocation.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/Type.h"
-#include "llvm/ADT/BitVector.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include <iostream>
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/ErrorHandling.h"
 
-#include "llvm/CodeGen/MachineFunctionPass.h"
-#include "llvm/Function.h"
 using namespace llvm;
 
 
@@ -126,7 +125,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
   } else if (MI.getOpcode() == Hexagon::ADJCALLSTACKUP) {
     // Hexagon_TODO: add code
   } else {
-    assert(0 && "Cannot handle this call frame pseudo instruction");
+    llvm_unreachable("Cannot handle this call frame pseudo instruction");
   }
   MBB.erase(I);
 }
@@ -306,13 +305,11 @@ void HexagonRegisterInfo::getInitialFrameState(std::vector<MachineMove>
 }
 
 unsigned HexagonRegisterInfo::getEHExceptionRegister() const {
-  assert(0 && "What is the exception register");
-  return 0;
+  llvm_unreachable("What is the exception register");
 }
 
 unsigned HexagonRegisterInfo::getEHHandlerRegister() const {
-  assert(0 && "What is the exception handler register");
-  return 0;
+  llvm_unreachable("What is the exception handler register");
 }
 
 #define GET_REGINFO_TARGET_DESC

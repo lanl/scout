@@ -285,7 +285,10 @@ Release Notes</a>.</h1>
 
   <ul>
     <li>IR support for half float</li>
-	<li>IR support for vectors of pointers, including vector GEPs.</li>
+    <li>IR support for vectors of pointers, including vector GEPs.</li>
+    <li>The <tt>unwind</tt> instruction is now gone. With the introduction of
+        the new exception handling system in LLVM 3.0, the <tt>unwind</tt>
+        instruction became obsolete.</li>
     <li>....</li>
   </ul>
 </div>
@@ -355,6 +358,10 @@ Release Notes</a>.</h1>
   frozen when register allocation starts.  Target hooks should use the
   <code>MRI->canReserveReg(FramePtr)</code> method to avoid accidentally
   disabling frame pointer elimination during register allocation.</li>
+  <li>A new kind of <code>MachineOperand</code> provides a compact
+  representation of large clobber lists on call instructions.  The register
+  mask operand references a bit mask of preserved registers. Everything else is
+  clobbered.</li>
 </ul>
 </div>
 
@@ -525,7 +532,7 @@ Release Notes</a>.</h1>
   src="http://www.w3.org/Icons/valid-html401-blue" alt="Valid HTML 4.01"></a>
 
   <a href="http://llvm.org/">LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2012-01-04 17:26:49 -0700 (Wed, 04 Jan 2012) $
+  Last modified: $Date: 2012-02-07 01:42:29 -0700 (Tue, 07 Feb 2012) $
 </address>
 
 </body>

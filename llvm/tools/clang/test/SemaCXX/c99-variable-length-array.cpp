@@ -73,10 +73,11 @@ void test_accept_array(int N) {
 }
 
 // Variably-modified types cannot be used in local classes.
-void local_classes(int N) {
+void local_classes(int N) { // expected-note {{declared here}}
   struct X {
     int size;
     int array[N]; // expected-error{{fields must have a constant size: 'variable length array in structure' extension will never be supported}} \
+                  // expected-error{{reference to local variable 'N' declared in enclosing function 'local_classes'}} \
                   // expected-warning{{variable length arrays are a C99 feature}}
   };
 }
@@ -129,4 +130,12 @@ static const int k_cVal3 = (int)(1000*0.2f);
     // Ok, fold to a constant size array as an extension.
     char rgch[k_cVal3] = {0};
   }
+}
+
+namespace PR11744 {
+  template<typename T> int f(int n) {
+    T arr[3][n]; // expected-warning 3 {{variable length arrays are a C99 feature}}
+    return 3;
+  }
+  int test = f<int>(0); // expected-note {{instantiation of}}
 }

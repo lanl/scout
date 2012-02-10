@@ -62,8 +62,7 @@ public:
     return &TSInfo;
   }
 
-  virtual bool addInstSelector(PassManagerBase &PM);
-  virtual bool addPreEmitPass(PassManagerBase &PM);
+  virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
 }; // MSP430TargetMachine.
 
 } // end namespace llvm

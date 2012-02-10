@@ -245,9 +245,6 @@ void ObjCInterfaceDecl::startDefinition() {
     if (*RD != this)
       RD->Data = Data;
   }
-
-  if (ASTMutationListener *L = getASTContext().getASTMutationListener())
-    L->CompletedObjCForwardRef(this);
 }
 
 /// getFirstClassExtension - Find first class extension of the given class.
@@ -685,7 +682,7 @@ ObjCInterfaceDecl *ObjCMethodDecl::getClassInterface() {
 // ObjCInterfaceDecl
 //===----------------------------------------------------------------------===//
 
-ObjCInterfaceDecl *ObjCInterfaceDecl::Create(ASTContext &C,
+ObjCInterfaceDecl *ObjCInterfaceDecl::Create(const ASTContext &C,
                                              DeclContext *DC,
                                              SourceLocation atLoc,
                                              IdentifierInfo *Id,
@@ -1058,9 +1055,6 @@ void ObjCProtocolDecl::startDefinition() {
   for (redecl_iterator RD = redecls_begin(), RDEnd = redecls_end();
        RD != RDEnd; ++RD)
     RD->Data = this->Data;
-  
-  if (ASTMutationListener *L = getASTContext().getASTMutationListener())
-    L->CompletedObjCForwardRef(this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1197,8 +1191,8 @@ FindPropertyImplDecl(IdentifierInfo *Id) const {
 }
 
 raw_ostream &clang::operator<<(raw_ostream &OS,
-                                     const ObjCCategoryImplDecl *CID) {
-  OS << CID->getName();
+                               const ObjCCategoryImplDecl &CID) {
+  OS << CID.getName();
   return OS;
 }
 
@@ -1241,8 +1235,8 @@ void ObjCImplementationDecl::setIvarInitializers(ASTContext &C,
 }
 
 raw_ostream &clang::operator<<(raw_ostream &OS,
-                                     const ObjCImplementationDecl *ID) {
-  OS << ID->getName();
+                               const ObjCImplementationDecl &ID) {
+  OS << ID.getName();
   return OS;
 }
 

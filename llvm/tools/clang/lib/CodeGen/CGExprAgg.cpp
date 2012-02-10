@@ -142,6 +142,7 @@ public:
   }
   void VisitCXXBindTemporaryExpr(CXXBindTemporaryExpr *E);
   void VisitCXXConstructExpr(const CXXConstructExpr *E);
+  void VisitLambdaExpr(LambdaExpr *E);
   void VisitExprWithCleanups(ExprWithCleanups *E);
   void VisitCXXScalarValueInitExpr(CXXScalarValueInitExpr *E);
   void VisitCXXTypeidExpr(CXXTypeidExpr *E) { EmitAggLoadOfLValue(E); }
@@ -337,6 +338,8 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
 
   case CK_LValueToRValue: // hope for downstream optimization
   case CK_NoOp:
+  case CK_AtomicToNonAtomic:
+  case CK_NonAtomicToAtomic:
   case CK_UserDefinedConversion:
   case CK_ConstructorConversion:
     assert(CGF.getContext().hasSameUnqualifiedType(E->getSubExpr()->getType(),
@@ -347,7 +350,6 @@ void AggExprEmitter::VisitCastExpr(CastExpr *E) {
       
   case CK_LValueBitCast:
     llvm_unreachable("should not be emitting lvalue bitcast as rvalue");
-    break;
 
   case CK_Dependent:
   case CK_BitCast:
@@ -535,6 +537,12 @@ void
 AggExprEmitter::VisitCXXConstructExpr(const CXXConstructExpr *E) {
   AggValueSlot Slot = EnsureSlot(E->getType());
   CGF.EmitCXXConstructExpr(E, Slot);
+}
+
+void
+AggExprEmitter::VisitLambdaExpr(LambdaExpr *E) {
+  AggValueSlot Slot = EnsureSlot(E->getType());
+  CGF.EmitLambdaExpr(E, Slot);
 }
 
 void AggExprEmitter::VisitExprWithCleanups(ExprWithCleanups *E) {
@@ -1013,9 +1021,8 @@ static void CheckAggExprForMemSetUse(AggValueSlot &Slot, const Expr *E,
   CharUnits Align = TypeInfo.second;
 
   llvm::Value *Loc = Slot.getAddr();
-  llvm::Type *BP = llvm::Type::getInt8PtrTy(CGF.getLLVMContext());
   
-  Loc = CGF.Builder.CreateBitCast(Loc, BP);
+  Loc = CGF.Builder.CreateBitCast(Loc, CGF.Int8PtrTy);
   CGF.Builder.CreateMemSet(Loc, CGF.Builder.getInt8(0), SizeVal, 
                            Align.getQuantity(), false);
   

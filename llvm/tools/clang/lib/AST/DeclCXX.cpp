@@ -43,7 +43,8 @@ CXXRecordDecl::DefinitionData::DefinitionData(CXXRecordDecl *D)
     Aggregate(true), PlainOldData(true), Empty(true), Polymorphic(false),
     Abstract(false), IsStandardLayout(true), HasNoNonEmptyBases(true),
     HasPrivateFields(false), HasProtectedFields(false), HasPublicFields(false),
-    HasMutableFields(false), HasTrivialDefaultConstructor(true),
+    HasMutableFields(false), HasOnlyCMembers(true),
+    HasTrivialDefaultConstructor(true),
     HasConstexprNonCopyMoveConstructor(false),
     DefaultedDefaultConstructorIsConstexpr(true),
     DefaultedCopyConstructorIsConstexpr(true),
@@ -456,6 +457,12 @@ void CXXRecordDecl::markedVirtualFunctionPure() {
 }
 
 void CXXRecordDecl::addedMember(Decl *D) {
+  if (!D->isImplicit() &&
+      !isa<FieldDecl>(D) &&
+      !isa<IndirectFieldDecl>(D) &&
+      (!isa<TagDecl>(D) || cast<TagDecl>(D)->getTagKind() == TTK_Class))
+    data().HasOnlyCMembers = false;
+
   // Ignore friends and invalid declarations.
   if (D->getFriendObjectKind() || D->isInvalidDecl())
     return;
@@ -708,14 +715,14 @@ NotASpecialMember:;
       // hasn't been set yet.  That's really just a misdesign in Sema.
 
       if (FunTmpl) {
-        if (FunTmpl->getPreviousDeclaration())
-          data().Conversions.replace(FunTmpl->getPreviousDeclaration(),
+        if (FunTmpl->getPreviousDecl())
+          data().Conversions.replace(FunTmpl->getPreviousDecl(),
                                      FunTmpl);
         else
           data().Conversions.addDecl(FunTmpl);
       } else {
-        if (Conversion->getPreviousDeclaration())
-          data().Conversions.replace(Conversion->getPreviousDeclaration(),
+        if (Conversion->getPreviousDecl())
+          data().Conversions.replace(Conversion->getPreviousDecl(),
                                      Conversion);
         else
           data().Conversions.addDecl(Conversion);        
@@ -793,11 +800,7 @@ NotASpecialMember:;
     }
 
     // Record if this field is the first non-literal field or base.
-    // As a slight variation on the standard, we regard mutable members as being
-    // non-literal, since mutating a constexpr variable would break C++11
-    // constant expression semantics.
-    if ((!hasNonLiteralTypeFieldsOrBases() && !T->isLiteralType()) ||
-        Field->isMutable())
+    if (!hasNonLiteralTypeFieldsOrBases() && !T->isLiteralType())
       data().HasNonLiteralTypeFieldsOrBases = true;
 
     if (Field->hasInClassInitializer()) {
@@ -955,6 +958,15 @@ NotASpecialMember:;
     if (Shadow->getDeclName().getNameKind()
           == DeclarationName::CXXConversionFunctionName)
       data().Conversions.addDecl(Shadow, Shadow->getAccess());
+}
+
+bool CXXRecordDecl::isCLike() const {
+  if (getTagKind() == TTK_Class || !TemplateOrInstantiation.isNull())
+    return false;
+  if (!hasDefinition())
+    return true;
+
+  return isPOD() && data().HasOnlyCMembers;
 }
 
 static CanQualType GetConversionType(ASTContext &Context, NamedDecl *Conv) {
@@ -1941,7 +1953,6 @@ StaticAssertDecl *StaticAssertDecl::CreateDeserialized(ASTContext &C,
 
 static const char *getAccessName(AccessSpecifier AS) {
   switch (AS) {
-    default:
     case AS_none:
       llvm_unreachable("Invalid access specifier!");
     case AS_public:
@@ -1951,9 +1962,15 @@ static const char *getAccessName(AccessSpecifier AS) {
     case AS_protected:
       return "protected";
   }
+  llvm_unreachable("Invalid access specifier!");
 }
 
 const DiagnosticBuilder &clang::operator<<(const DiagnosticBuilder &DB,
+                                           AccessSpecifier AS) {
+  return DB << getAccessName(AS);
+}
+
+const PartialDiagnostic &clang::operator<<(const PartialDiagnostic &DB,
                                            AccessSpecifier AS) {
   return DB << getAccessName(AS);
 }

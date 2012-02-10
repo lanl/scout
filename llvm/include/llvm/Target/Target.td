@@ -22,8 +22,12 @@ include "llvm/Intrinsics.td"
 class RegisterClass; // Forward def
 
 // SubRegIndex - Use instances of SubRegIndex to identify subregisters.
-class SubRegIndex {
+class SubRegIndex<list<SubRegIndex> comps = []> {
   string Namespace = "";
+
+  // ComposedOf - A list of two SubRegIndex instances, [A, B].
+  // This indicates that this SubRegIndex is the result of composing A and B.
+  list<SubRegIndex> ComposedOf = comps;
 }
 
 // RegAltNameIndex - The alternate name set to use for register operands of
@@ -86,6 +90,12 @@ class Register<string n, list<string> altNames = []> {
   // This is used by the x86-64 and ARM Thumb targets where some registers
   // require larger instruction encodings.
   int CostPerUse = 0;
+
+  // CoveredBySubRegs - When this bit is set, the value of this register is
+  // completely determined by the value of its sub-registers.  For example, the
+  // x86 register AX is covered by its sub-registers AL and AH, but EAX is not
+  // covered by its sub-register AX.
+  bit CoveredBySubRegs = 0;
 }
 
 // RegisterWithSubRegs - This can be used to define instances of Register which
@@ -194,12 +204,15 @@ class RegisterClass<string namespace, list<ValueType> regTypes, int alignment,
 //
 // (decimate GPR, 2) - Pick every N'th element, starting with the first.
 //
+// (interleave A, B, ...) - Interleave the elements from each argument list.
+//
 // All of these operators work on ordered sets, not lists. That means
 // duplicates are removed from sub-expressions.
 
 // Set operators. The rest is defined in TargetSelectionDAG.td.
 def sequence;
 def decimate;
+def interleave;
 
 // RegisterTuples - Automatically generate super-registers by forming tuples of
 // sub-registers. This is useful for modeling register sequence constraints

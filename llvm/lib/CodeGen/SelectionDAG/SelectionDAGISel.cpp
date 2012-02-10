@@ -74,7 +74,6 @@ STATISTIC(NumFastIselFailSwitch,"Fast isel fails on Switch");
 STATISTIC(NumFastIselFailIndirectBr,"Fast isel fails on IndirectBr");
 STATISTIC(NumFastIselFailInvoke,"Fast isel fails on Invoke");
 STATISTIC(NumFastIselFailResume,"Fast isel fails on Resume");
-STATISTIC(NumFastIselFailUnwind,"Fast isel fails on Unwind");
 STATISTIC(NumFastIselFailUnreachable,"Fast isel fails on Unreachable");
 
   // Standard binary operators...
@@ -225,6 +224,8 @@ namespace llvm {
       return createBURRListDAGScheduler(IS, OptLevel);
     if (TLI.getSchedulingPreference() == Sched::Hybrid)
       return createHybridListDAGScheduler(IS, OptLevel);
+    if (TLI.getSchedulingPreference() == Sched::VLIW)
+      return createVLIWDAGScheduler(IS, OptLevel);
     assert(TLI.getSchedulingPreference() == Sched::ILP &&
            "Unknown sched type!");
     return createILPListDAGScheduler(IS, OptLevel);
@@ -249,7 +250,6 @@ TargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
           "TargetLowering::EmitInstrWithCustomInserter!";
 #endif
   llvm_unreachable(0);
-  return 0;
 }
 
 void TargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
@@ -786,31 +786,6 @@ void SelectionDAGISel::PrepareEHLandingPad() {
   // Mark exception selector register as live in.
   Reg = TLI.getExceptionSelectorRegister();
   if (Reg) MBB->addLiveIn(Reg);
-
-  // FIXME: Hack around an exception handling flaw (PR1508): the personality
-  // function and list of typeids logically belong to the invoke (or, if you
-  // like, the basic block containing the invoke), and need to be associated
-  // with it in the dwarf exception handling tables.  Currently however the
-  // information is provided by an intrinsic (eh.selector) that can be moved
-  // to unexpected places by the optimizers: if the unwind edge is critical,
-  // then breaking it can result in the intrinsics being in the successor of
-  // the landing pad, not the landing pad itself.  This results
-  // in exceptions not being caught because no typeids are associated with
-  // the invoke.  This may not be the only way things can go wrong, but it
-  // is the only way we try to work around for the moment.
-  const BasicBlock *LLVMBB = MBB->getBasicBlock();
-  const BranchInst *Br = dyn_cast<BranchInst>(LLVMBB->getTerminator());
-
-  if (Br && Br->isUnconditional()) { // Critical edge?
-    BasicBlock::const_iterator I, E;
-    for (I = LLVMBB->begin(), E = --LLVMBB->end(); I != E; ++I)
-      if (isa<EHSelectorInst>(I))
-        break;
-
-    if (I == E)
-      // No catch info found - try to extract some from the successor.
-      CopyCatchInfo(Br->getSuccessor(0), LLVMBB, &MF->getMMI(), *FuncInfo);
-  }
 }
 
 /// TryToFoldFastISelLoad - We're checking to see if we can fold the specified
@@ -919,7 +894,6 @@ static void collectFailStats(const Instruction *I) {
   case Instruction::IndirectBr:  NumFastIselFailIndirectBr++; return;
   case Instruction::Invoke:      NumFastIselFailInvoke++; return;
   case Instruction::Resume:      NumFastIselFailResume++; return;
-  case Instruction::Unwind:      NumFastIselFailUnwind++; return;
   case Instruction::Unreachable: NumFastIselFailUnreachable++; return;
 
   // Standard binary operators...
@@ -981,7 +955,6 @@ static void collectFailStats(const Instruction *I) {
   case Instruction::InsertValue:    NumFastIselFailInsertValue++; return;
   case Instruction::LandingPad:     NumFastIselFailLandingPad++; return;
   }
-  return;
 }
 #endif
 
@@ -2206,6 +2179,7 @@ SelectCodeCommon(SDNode *NodeToMatch, const unsigned char *MatcherTable,
   case ISD::EntryToken:       // These nodes remain the same.
   case ISD::BasicBlock:
   case ISD::Register:
+  case ISD::RegisterMask:
   //case ISD::VALUETYPE:
   //case ISD::CONDCODE:
   case ISD::HANDLENODE:

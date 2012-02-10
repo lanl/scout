@@ -19,6 +19,7 @@ add_clang_library(clangFrontend
   CompilerInvocation.cpp
   CreateInvocationFromCommandLine.cpp
   DependencyFile.cpp
+  DependencyGraph.cpp
   DiagnosticRenderer.cpp
   FrontendAction.cpp
   FrontendActions.cpp
@@ -27,6 +28,7 @@ add_clang_library(clangFrontend
   InitHeaderSearch.cpp
   InitPreprocessor.cpp
   LangStandards.cpp
+  LayoutOverrideSource.cpp
   LogDiagnosticPrinter.cpp
   MultiplexConsumer.cpp
   PrintPreprocessedOutput.cpp

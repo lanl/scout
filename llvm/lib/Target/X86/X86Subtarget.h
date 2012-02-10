@@ -49,6 +49,13 @@ protected:
     NoThreeDNow, ThreeDNow, ThreeDNowA
   };
 
+  enum X86ProcFamilyEnum {
+    Others, IntelAtom
+  };
+
+  /// X86ProcFamily - X86 processor family: Intel Atom, and others
+  X86ProcFamilyEnum X86ProcFamily;
+  
   /// PICStyle - Which PIC style to use
   ///
   PICStyles::Style PICStyle;
@@ -125,6 +132,13 @@ protected:
   /// this is true for most x86-64 chips, but not the first AMD chips.
   bool HasCmpxchg16b;
 
+  /// UseLeaForSP - True if the LEA instruction should be used for adjusting
+  /// the stack pointer. This is an optimization for Intel Atom processors.
+  bool UseLeaForSP;
+
+  /// PostRAScheduler - True if using post-register-allocation scheduler.
+  bool PostRAScheduler;
+
   /// stackAlignment - The minimum alignment known to hold of the stack frame on
   /// entry to the function and which must be maintained by every function.
   unsigned stackAlignment;
@@ -135,6 +149,9 @@ protected:
 
   /// TargetTriple - What processor and OS we're targeting.
   Triple TargetTriple;
+  
+  /// Instruction itineraries for scheduling
+  InstrItineraryData InstrItins;
 
 private:
   /// In64BitMode - True if compiling for 64-bit, false for 32-bit.
@@ -201,6 +218,9 @@ public:
   bool isUnalignedMemAccessFast() const { return IsUAMemFast; }
   bool hasVectorUAMem() const { return HasVectorUAMem; }
   bool hasCmpxchg16b() const { return HasCmpxchg16b; }
+  bool useLeaForSP() const { return UseLeaForSP; }
+
+  bool isAtom() const { return X86ProcFamily == IntelAtom; }
 
   const Triple &getTargetTriple() const { return TargetTriple; }
 
@@ -214,38 +234,28 @@ public:
 
   // ELF is a reasonably sane default and the only other X86 targets we
   // support are Darwin and Windows. Just use "not those".
-  bool isTargetELF() const {
-    return !isTargetDarwin() && !isTargetWindows() && !isTargetCygMing();
-  }
+  bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
   bool isTargetLinux() const { return TargetTriple.getOS() == Triple::Linux; }
   bool isTargetNaCl() const {
     return TargetTriple.getOS() == Triple::NativeClient;
   }
   bool isTargetNaCl32() const { return isTargetNaCl() && !is64Bit(); }
   bool isTargetNaCl64() const { return isTargetNaCl() && is64Bit(); }
-
   bool isTargetWindows() const { return TargetTriple.getOS() == Triple::Win32; }
   bool isTargetMingw() const { return TargetTriple.getOS() == Triple::MinGW32; }
   bool isTargetCygwin() const { return TargetTriple.getOS() == Triple::Cygwin; }
-  bool isTargetCygMing() const {
-    return isTargetMingw() || isTargetCygwin();
-  }
-
-  /// isTargetCOFF - Return true if this is any COFF/Windows target variant.
-  bool isTargetCOFF() const {
-    return isTargetMingw() || isTargetCygwin() || isTargetWindows();
-  }
+  bool isTargetCygMing() const { return TargetTriple.isOSCygMing(); }
+  bool isTargetCOFF() const { return TargetTriple.isOSBinFormatCOFF(); }
+  bool isTargetEnvMacho() const { return TargetTriple.isEnvironmentMachO(); }
 
   bool isTargetWin64() const {
     // FIXME: x86_64-cygwin has not been released yet.
-    return In64BitMode && (isTargetCygMing() || isTargetWindows());
-  }
-
-  bool isTargetEnvMacho() const {
-    return isTargetDarwin() || (TargetTriple.getEnvironment() == Triple::MachO);
+    return In64BitMode && TargetTriple.isOSWindows();
   }
 
   bool isTargetWin32() const {
+    // FIXME: Cygwin is included for isTargetWin64 -- should it be included
+    // here too?
     return !In64BitMode && (isTargetMingw() || isTargetWindows());
   }
 
@@ -291,6 +301,15 @@ public:
   /// indicating the number of scheduling cycles of backscheduling that
   /// should be attempted.
   unsigned getSpecialAddressLatency() const;
+
+  /// enablePostRAScheduler - run for Atom optimization.
+  bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
+                             TargetSubtargetInfo::AntiDepBreakMode& Mode,
+                             RegClassVector& CriticalPathRCs) const;
+
+  /// getInstrItins = Return the instruction itineraries based on the
+  /// subtarget selection.
+  const InstrItineraryData &getInstrItineraryData() const { return InstrItins; }
 };
 
 } // End llvm namespace

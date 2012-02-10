@@ -39,8 +39,7 @@
 #include "clang/AST/TypeVisitor.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace clang;
 
@@ -66,7 +65,6 @@ template <class Impl> struct XMLDeclVisitor {
 
   void dispatch(Decl *D) {
     switch (D->getKind()) {
-      default: llvm_unreachable("Decl that isn't part of DeclNodes.inc!");
 #define DECL(DERIVED, BASE) \
       case Decl::DERIVED: \
         DISPATCH(dispatch##DERIVED##DeclAttrs, DERIVED##Decl); \
@@ -121,7 +119,6 @@ template <class Impl> struct XMLTypeVisitor {
 
   void dispatch(Type *T) {
     switch (T->getTypeClass()) {
-      default: llvm_unreachable("Type that isn't part of TypeNodes.inc!");
 #define TYPE(DERIVED, BASE) \
       case Type::DERIVED: \
         DISPATCH(dispatch##DERIVED##TypeAttrs, DERIVED##Type); \
@@ -167,7 +164,6 @@ static StringRef getTypeKindName(Type *T) {
   }
 
   llvm_unreachable("unknown type kind!");
-  return "unknown_type";
 }
 
 struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
@@ -227,7 +223,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   //---- General utilities -------------------------------------------//
 
   void setPointer(StringRef prop, const void *p) {
-    llvm::SmallString<10> buffer;
+    SmallString<10> buffer;
     llvm::raw_svector_ostream os(buffer);
     os << p;
     os.flush();
@@ -243,7 +239,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   void setInteger(StringRef prop, unsigned n) {
-    llvm::SmallString<10> buffer;
+    SmallString<10> buffer;
     llvm::raw_svector_ostream os(buffer);
     os << n;
     os.flush();
@@ -411,7 +407,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   }
 
   template <class T> void visitRedeclarableAttrs(T *D) {
-    if (T *Prev = D->getPreviousDeclaration())
+    if (T *Prev = D->getPreviousDecl())
       setPointer("previous", Prev);
   }
 

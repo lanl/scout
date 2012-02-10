@@ -172,7 +172,7 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   MCLineEntry::Make(this, getCurrentSection());
 
   // If this instruction doesn't need relaxation, just emit it as data.
-  if (!getAssembler().getBackend().MayNeedRelaxation(Inst)) {
+  if (!getAssembler().getBackend().mayNeedRelaxation(Inst)) {
     EmitInstToData(Inst);
     return;
   }
@@ -181,9 +181,9 @@ void MCObjectStreamer::EmitInstruction(const MCInst &Inst) {
   // possible and emit it as data.
   if (getAssembler().getRelaxAll()) {
     MCInst Relaxed;
-    getAssembler().getBackend().RelaxInstruction(Inst, Relaxed);
-    while (getAssembler().getBackend().MayNeedRelaxation(Relaxed))
-      getAssembler().getBackend().RelaxInstruction(Relaxed, Relaxed);
+    getAssembler().getBackend().relaxInstruction(Inst, Relaxed);
+    while (getAssembler().getBackend().mayNeedRelaxation(Relaxed))
+      getAssembler().getBackend().relaxInstruction(Relaxed, Relaxed);
     EmitInstToData(Relaxed);
     return;
   }
@@ -232,12 +232,12 @@ void MCObjectStreamer::EmitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
   new MCDwarfCallFrameFragment(*AddrDelta, getCurrentSectionData());
 }
 
-void MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
-                                        unsigned char Value) {
+bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
+                                         unsigned char Value) {
   int64_t Res;
   if (Offset->EvaluateAsAbsolute(Res, getAssembler())) {
     new MCOrgFragment(*Offset, Value, getCurrentSectionData());
-    return;
+    return false;
   }
 
   MCSymbol *CurrentPos = getContext().CreateTempSymbol();
@@ -249,8 +249,9 @@ void MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
     MCBinaryExpr::Create(MCBinaryExpr::Sub, Offset, Ref, getContext());
 
   if (!Delta->EvaluateAsAbsolute(Res, getAssembler()))
-    report_fatal_error("expected assembly-time absolute expression");
+    return true;
   EmitFill(Res, Value, 0);
+  return false;
 }
 
 // Associate GPRel32 fixup with data and resize data area

@@ -373,7 +373,7 @@ if test "$llvm_cv_target_arch" = "Unknown" ; then
   AC_MSG_WARN([Configuring LLVM for an unknown target archicture])
 fi
 
-# Determine the LLVM native architecture for the target
+dnl Determine the LLVM native architecture for the target
 case "$llvm_cv_target_arch" in
     x86)     LLVM_NATIVE_ARCH="X86" ;;
     x86_64)  LLVM_NATIVE_ARCH="X86" ;;
@@ -386,7 +386,7 @@ AC_SUBST(ARCH,$llvm_cv_target_arch)
 dnl Check for the endianness of the target
 AC_C_BIGENDIAN(AC_SUBST([ENDIAN],[big]),AC_SUBST([ENDIAN],[little]))
 
-dnl Check for build platform executable suffix if we're crosscompiling
+dnl Check for build platform executable suffix if we're cross-compiling
 if test "$cross_compiling" = yes; then
   AC_SUBST(LLVM_CROSS_COMPILING, [1])
   AC_BUILD_EXEEXT
@@ -670,8 +670,8 @@ case "$enableval" in
 esac
 AC_SUBST(TARGETS_TO_BUILD,$TARGETS_TO_BUILD)
 
-# Determine whether we are building LLVM support for the native architecture.
-# If so, define LLVM_NATIVE_ARCH to that LLVM target.
+dnl Determine whether we are building LLVM support for the native architecture.
+dnl If so, define LLVM_NATIVE_ARCH to that LLVM target.
 for a_target in $TARGETS_TO_BUILD; do
   if test "$a_target" = "$LLVM_NATIVE_ARCH"; then
     AC_DEFINE_UNQUOTED(LLVM_NATIVE_ARCH, $LLVM_NATIVE_ARCH,
@@ -698,8 +698,8 @@ for a_target in $TARGETS_TO_BUILD; do
   fi
 done
 
-# Build the LLVM_TARGET and LLVM_... macros for Targets.def and the individual
-# target feature def files.
+dnl Build the LLVM_TARGET and LLVM_... macros for Targets.def and the individual
+dnl target feature def files.
 LLVM_ENUM_TARGETS=""
 LLVM_ENUM_ASM_PRINTERS=""
 LLVM_ENUM_ASM_PARSERS=""
@@ -833,33 +833,15 @@ AC_ARG_WITH(c-include-dirs,
 AC_DEFINE_UNQUOTED(C_INCLUDE_DIRS,"$withval",
                    [Directories clang will search for headers])
 
-AC_ARG_WITH(cxx-include-root,
-  AS_HELP_STRING([--with-cxx-include-root],
-    [Directory with the libstdc++ headers.]),,
+# Clang normally uses the system c++ headers and libraries. With this option,
+# clang will use the ones provided by a gcc installation instead. This option should
+# be passed the same value that was used with --prefix when configuring gcc.
+AC_ARG_WITH(gcc-toolchain,
+  AS_HELP_STRING([--with-gcc-toolchain],
+    [Directory where gcc is installed.]),,
     withval="")
-AC_DEFINE_UNQUOTED(CXX_INCLUDE_ROOT,"$withval",
-                   [Directory with the libstdc++ headers.])
-
-AC_ARG_WITH(cxx-include-arch,
-  AS_HELP_STRING([--with-cxx-include-arch],
-    [Architecture of the libstdc++ headers.]),,
-    withval="")
-AC_DEFINE_UNQUOTED(CXX_INCLUDE_ARCH,"$withval",
-                   [Arch the libstdc++ headers.])
-
-AC_ARG_WITH(cxx-include-32bit-dir,
-  AS_HELP_STRING([--with-cxx-include-32bit-dir],
-    [32 bit multilib dir.]),,
-    withval="")
-AC_DEFINE_UNQUOTED(CXX_INCLUDE_32BIT_DIR,"$withval",
-                   [32 bit multilib directory.])
-
-AC_ARG_WITH(cxx-include-64bit-dir,
-  AS_HELP_STRING([--with-cxx-include-64bit-dir],
-    [64 bit multilib directory.]),,
-    withval="")
-AC_DEFINE_UNQUOTED(CXX_INCLUDE_64BIT_DIR,"$withval",
-                   [64 bit multilib directory.])
+AC_DEFINE_UNQUOTED(GCC_INSTALL_PREFIX,"$withval",
+                   [Directory where gcc is installed.])
 
 dnl Allow linking of LLVM with GPLv3 binutils code.
 AC_ARG_WITH(binutils-include,
@@ -1435,9 +1417,9 @@ dnl Propagate the run-time library path variable that the libltdl
 dnl checks found to the Makefiles so we can use it there too
 AC_SUBST(SHLIBPATH_VAR,$libltdl_cv_shlibpath_var)
 
-# Translate the various configuration directories and other basic
-# information into substitutions that will end up in Makefile.config.in
-# that these configured values can be used by the makefiles
+dnl Translate the various configuration directories and other basic
+dnl information into substitutions that will end up in Makefile.config.in
+dnl that these configured values can be used by the makefiles
 if test "${prefix}" = "NONE" ; then
   prefix="/usr/local"
 fi
@@ -1462,8 +1444,8 @@ AC_SUBST(LLVM_INFODIR)
 AC_SUBST(LLVM_MANDIR)
 AC_SUBST(LLVM_CONFIGTIME)
 
-# Place the various directores into the config.h file as #defines so that we
-# can know about the installation paths within LLVM.
+dnl Place the various directories into the config.h file as #defines so that we
+dnl can know about the installation paths within LLVM.
 AC_DEFINE_UNQUOTED(LLVM_PREFIX,"$LLVM_PREFIX",
                    [Installation prefix directory])
 AC_DEFINE_UNQUOTED(LLVM_BINDIR, "$LLVM_BINDIR",
@@ -1487,7 +1469,7 @@ AC_DEFINE_UNQUOTED(LLVM_CONFIGTIME, "$LLVM_CONFIGTIME",
 AC_DEFINE_UNQUOTED(LLVM_DEFAULT_TARGET_TRIPLE, "$target",
                    [Target triple LLVM will generate code for by default])
 
-# Determine which bindings to build.
+dnl Determine which bindings to build.
 if test "$BINDINGS_TO_BUILD" = auto ; then
   BINDINGS_TO_BUILD=""
   if test "x$OCAMLC" != x -a "x$OCAMLDEP" != x ; then
@@ -1496,11 +1478,11 @@ if test "$BINDINGS_TO_BUILD" = auto ; then
 fi
 AC_SUBST(BINDINGS_TO_BUILD,$BINDINGS_TO_BUILD)
 
-# This isn't really configurey, but it avoids having to repeat the list in
-# other files.
+dnl This isn't really configurey, but it avoids having to repeat the list in
+dnl other files.
 AC_SUBST(ALL_BINDINGS,ocaml)
 
-# Do any work necessary to ensure that bindings have what they need.
+dnl Do any work necessary to ensure that bindings have what they need.
 binding_prereqs_failed=0
 for a_binding in $BINDINGS_TO_BUILD ; do
   case "$a_binding" in
@@ -1564,7 +1546,7 @@ dnl===-----------------------------------------------------------------------===
 
 dnl Configure header files
 dnl WARNING: dnl If you add or remove any of the following config headers, then
-dnl you MUST also update Makefile.rules so that the variable FilesToConfig
+dnl you MUST also update Makefile so that the variable FilesToConfig
 dnl contains the same list of files as AC_CONFIG_HEADERS below. This ensures the
 dnl files can be updated automatically when their *.in sources change.
 AC_CONFIG_HEADERS([include/llvm/Config/config.h include/llvm/Config/llvm-config.h])
@@ -1586,8 +1568,17 @@ AC_CONFIG_FILES([llvm.spec])
 
 dnl Configure doxygen's configuration file
 AC_CONFIG_FILES([docs/doxygen.cfg])
-if test -f ${srcdir}/tools/clang/README.txt; then
-  AC_CONFIG_FILES([tools/clang/docs/doxygen.cfg])
+
+dnl Configure clang, if present
+if test "${clang_src_root}" = ""; then
+  clang_src_root="$srcdir/tools/clang"
+fi
+if test -f ${clang_src_root}/README.txt; then
+  dnl Use variables to stay under 80 columns.
+  configh="include/clang/Config/config.h"
+  doxy="docs/doxygen.cfg"
+  AC_CONFIG_HEADERS([tools/clang/${configh}:${clang_src_root}/${configh}.in])
+  AC_CONFIG_FILES([tools/clang/${doxy}:${clang_src_root}/${doxy}.in])
 fi
 
 dnl OCaml findlib META file

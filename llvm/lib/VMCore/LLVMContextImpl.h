@@ -138,23 +138,23 @@ public:
   // on Context destruction.
   SmallPtrSet<MDNode*, 1> NonUniquedMDNodes;
   
-  ConstantUniqueMap<char, char, Type, ConstantAggregateZero> AggZeroConstants;
+  DenseMap<Type*, ConstantAggregateZero*> CAZConstants;
 
-  typedef ConstantUniqueMap<std::vector<Constant*>, ArrayRef<Constant*>,
-    ArrayType, ConstantArray, true /*largekey*/> ArrayConstantsTy;
+  typedef ConstantAggrUniqueMap<ArrayType, ConstantArray> ArrayConstantsTy;
   ArrayConstantsTy ArrayConstants;
   
-  typedef ConstantUniqueMap<std::vector<Constant*>, ArrayRef<Constant*>,
-    StructType, ConstantStruct, true /*largekey*/> StructConstantsTy;
+  typedef ConstantAggrUniqueMap<StructType, ConstantStruct> StructConstantsTy;
   StructConstantsTy StructConstants;
   
-  typedef ConstantUniqueMap<std::vector<Constant*>, ArrayRef<Constant*>,
-                            VectorType, ConstantVector> VectorConstantsTy;
+  typedef ConstantAggrUniqueMap<VectorType, ConstantVector> VectorConstantsTy;
   VectorConstantsTy VectorConstants;
   
-  ConstantUniqueMap<char, char, PointerType, ConstantPointerNull>
-    NullPtrConstants;
-  ConstantUniqueMap<char, char, Type, UndefValue> UndefValueConstants;
+  DenseMap<PointerType*, ConstantPointerNull*> CPNConstants;
+
+  DenseMap<Type*, UndefValue*> UVConstants;
+  
+  StringMap<ConstantDataSequential*> CDSConstants;
+
   
   DenseMap<std::pair<Function*, BasicBlock*> , BlockAddress*> BlockAddresses;
   ConstantUniqueMap<ExprMapKeyType, const ExprMapKeyType&, Type, ConstantExpr>

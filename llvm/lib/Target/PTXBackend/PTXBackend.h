@@ -488,9 +488,12 @@ extern cl::opt<unsigned> PTX_PTR_SIZE;
       assert(0 && "Lowerinvoke pass didn't work!");
     }
 
-    void visitUnwindInst(UnwindInst &I) {
-      assert(0 && "Lowerinvoke pass didn't work!");
-    }
+
+    // ndm - MERGE - no more unwind instruction?
+    //void visitUnwindInst(UnwindInst &I) {
+    //assert(0 && "Lowerinvoke pass didn't work!");
+    //}
+    
     void visitUnreachableInst(UnreachableInst &I);
 
     void visitPHINode(PHINode &I);

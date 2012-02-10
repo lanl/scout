@@ -58,7 +58,7 @@ public:
 
   // getBinaryCodeForInstr - TableGen'erated function for getting the
   // binary encoding for an instruction.
-  unsigned getBinaryCodeForInstr(const MCInst &MI,
+  uint64_t getBinaryCodeForInstr(const MCInst &MI,
                                  SmallVectorImpl<MCFixup> &Fixups) const;
 
   // getBranchJumpOpValue - Return binary encoding of the jump
@@ -237,8 +237,6 @@ getMachineOpValue(const MCInst &MI, const MCOperand &MO,
     return Ret;
   }
   llvm_unreachable("Unable to encode MCOperand!");
-  // Not reached
-  return 0;
 }
 
 /// getMemEncoding - Return binary encoding of memory related operand.

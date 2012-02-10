@@ -834,46 +834,39 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
   }
 
   UndefElts = 0;
-  if (ConstantVector *CV = dyn_cast<ConstantVector>(V)) {
-    Type *EltTy = cast<VectorType>(V->getType())->getElementType();
-    Constant *Undef = UndefValue::get(EltTy);
-
-    std::vector<Constant*> Elts;
-    for (unsigned i = 0; i != VWidth; ++i)
-      if (!DemandedElts[i]) {   // If not demanded, set to undef.
-        Elts.push_back(Undef);
-        UndefElts.setBit(i);
-      } else if (isa<UndefValue>(CV->getOperand(i))) {   // Already undef.
-        Elts.push_back(Undef);
-        UndefElts.setBit(i);
-      } else {                               // Otherwise, defined.
-        Elts.push_back(CV->getOperand(i));
-      }
-
-    // If we changed the constant, return it.
-    Constant *NewCP = ConstantVector::get(Elts);
-    return NewCP != CV ? NewCP : 0;
-  }
   
-  if (isa<ConstantAggregateZero>(V)) {
-    // Simplify the CAZ to a ConstantVector where the non-demanded elements are
-    // set to undef.
-    
+  // Handle ConstantAggregateZero, ConstantVector, ConstantDataSequential.
+  if (Constant *C = dyn_cast<Constant>(V)) {
     // Check if this is identity. If so, return 0 since we are not simplifying
     // anything.
     if (DemandedElts.isAllOnesValue())
       return 0;
-    
+
     Type *EltTy = cast<VectorType>(V->getType())->getElementType();
-    Constant *Zero = Constant::getNullValue(EltTy);
     Constant *Undef = UndefValue::get(EltTy);
-    std::vector<Constant*> Elts;
+    
+    SmallVector<Constant*, 16> Elts;
     for (unsigned i = 0; i != VWidth; ++i) {
-      Constant *Elt = DemandedElts[i] ? Zero : Undef;
-      Elts.push_back(Elt);
+      if (!DemandedElts[i]) {   // If not demanded, set to undef.
+        Elts.push_back(Undef);
+        UndefElts.setBit(i);
+        continue;
+      }
+      
+      Constant *Elt = C->getAggregateElement(i);
+      if (Elt == 0) return 0;
+      
+      if (isa<UndefValue>(Elt)) {   // Already undef.
+        Elts.push_back(Undef);
+        UndefElts.setBit(i);
+      } else {                               // Otherwise, defined.
+        Elts.push_back(Elt);
+      }
     }
-    UndefElts = DemandedElts ^ EltMask;
-    return ConstantVector::get(Elts);
+    
+    // If we changed the constant, return it.
+    Constant *NewCV = ConstantVector::get(Elts);
+    return NewCV != C ? NewCV : 0;
   }
   
   // Limit search depth.
@@ -989,7 +982,7 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
 
     if (NewUndefElts) {
       // Add additional discovered undefs.
-      std::vector<Constant*> Elts;
+      SmallVector<Constant*, 16> Elts;
       for (unsigned i = 0; i < VWidth; ++i) {
         if (UndefElts[i])
           Elts.push_back(UndefValue::get(Type::getInt32Ty(I->getContext())));

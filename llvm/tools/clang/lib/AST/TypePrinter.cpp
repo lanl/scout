@@ -78,7 +78,7 @@ static void AppendTypeQualList(std::string &S, unsigned TypeQuals) {
 
 void TypePrinter::print(QualType t, std::string &buffer) {
   SplitQualType split = t.split();
-  print(split.first, split.second, buffer);
+  print(split.Ty, split.Quals, buffer);
 }
 
 void TypePrinter::print(const Type *T, Qualifiers Quals, std::string &buffer) {
@@ -404,6 +404,35 @@ void TypePrinter::printExtVector(const ExtVectorType *T, std::string &S) {
   print(T->getElementType(), S);
 }
 
+void 
+FunctionProtoType::printExceptionSpecification(std::string &S, 
+                                               PrintingPolicy Policy) const {
+  
+  if (hasDynamicExceptionSpec()) {
+    S += " throw(";
+    if (getExceptionSpecType() == EST_MSAny)
+      S += "...";
+    else
+      for (unsigned I = 0, N = getNumExceptions(); I != N; ++I) {
+        if (I)
+          S += ", ";
+        
+        S += getExceptionType(I).getAsString(Policy);
+      }
+    S += ")";
+  } else if (isNoexceptExceptionSpec(getExceptionSpecType())) {
+    S += " noexcept";
+    if (getExceptionSpecType() == EST_ComputedNoexcept) {
+      S += "(";
+      llvm::raw_string_ostream EOut(S);
+      getNoexceptExpr()->printPretty(EOut, 0, Policy);
+      EOut.flush();
+      S += EOut.str();
+      S += ")";
+    }
+  }
+}
+
 void TypePrinter::printFunctionProto(const FunctionProtoType *T, 
                                      std::string &S) { 
   // If needed for precedence reasons, wrap the inner part in grouping parens.
@@ -434,8 +463,7 @@ void TypePrinter::printFunctionProto(const FunctionProtoType *T,
 
   FunctionType::ExtInfo Info = T->getExtInfo();
   switch(Info.getCC()) {
-  case CC_Default:
-  default: break;
+  case CC_Default: break;
   case CC_C:
     S += " __attribute__((cdecl))";
     break;
@@ -478,33 +506,7 @@ void TypePrinter::printFunctionProto(const FunctionProtoType *T,
     S += " &&";
     break;
   }
-
-  if (T->hasDynamicExceptionSpec()) {
-    S += " throw(";
-    if (T->getExceptionSpecType() == EST_MSAny)
-      S += "...";
-    else
-      for (unsigned I = 0, N = T->getNumExceptions(); I != N; ++I) {
-        if (I)
-          S += ", ";
-
-        std::string ExceptionType;
-        print(T->getExceptionType(I), ExceptionType);
-        S += ExceptionType;
-      }
-    S += ")";
-  } else if (isNoexceptExceptionSpec(T->getExceptionSpecType())) {
-    S += " noexcept";
-    if (T->getExceptionSpecType() == EST_ComputedNoexcept) {
-      S += "(";
-      llvm::raw_string_ostream EOut(S);
-      T->getNoexceptExpr()->printPretty(EOut, 0, Policy);
-      EOut.flush();
-      S += EOut.str();
-      S += ")";
-    }
-  }
-
+  T->printExceptionSpecification(S, Policy);
   print(T->getResultType(), S);
 }
 
@@ -948,7 +950,7 @@ void TypePrinter::printAttributed(const AttributedType *T,
   case AttributedType::attr_objc_ownership:
     S += "objc_ownership(";
     switch (T->getEquivalentType().getObjCLifetime()) {
-    case Qualifiers::OCL_None: llvm_unreachable("no ownership!"); break;
+    case Qualifiers::OCL_None: llvm_unreachable("no ownership!");
     case Qualifiers::OCL_ExplicitNone: S += "none"; break;
     case Qualifiers::OCL_Strong: S += "strong"; break;
     case Qualifiers::OCL_Weak: S += "weak"; break;

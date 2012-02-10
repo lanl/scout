@@ -241,7 +241,8 @@ bool clang::analyze_format_string::ParsePrintfString(FormatStringHandler &H,
 // Methods on PrintfSpecifier.
 //===----------------------------------------------------------------------===//
 
-ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx) const {
+ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx,
+                                          bool IsObjCLiteral) const {
   const PrintfConversionSpecifier &CS = getConversionSpecifier();
 
   if (!CS.consumesDataArgument())
@@ -259,7 +260,8 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx) const {
   if (CS.isIntArg())
     switch (LM.getKind()) {
       case LengthModifier::AsLongDouble:
-        return ArgTypeResult::Invalid();
+        // GNU extension.
+        return Ctx.LongLongTy;
       case LengthModifier::None: return Ctx.IntTy;
       case LengthModifier::AsChar: return ArgTypeResult::AnyCharTy;
       case LengthModifier::AsShort: return Ctx.ShortTy;
@@ -280,7 +282,8 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx) const {
   if (CS.isUIntArg())
     switch (LM.getKind()) {
       case LengthModifier::AsLongDouble:
-        return ArgTypeResult::Invalid();
+        // GNU extension.
+        return Ctx.UnsignedLongLongTy;
       case LengthModifier::None: return Ctx.UnsignedIntTy;
       case LengthModifier::AsChar: return Ctx.UnsignedCharTy;
       case LengthModifier::AsShort: return Ctx.UnsignedShortTy;
@@ -307,16 +310,24 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx) const {
 
   switch (CS.getKind()) {
     case ConversionSpecifier::sArg:
-      if (LM.getKind() == LengthModifier::AsWideChar)
+      if (LM.getKind() == LengthModifier::AsWideChar) {
+        if (IsObjCLiteral)
+          return Ctx.getPointerType(Ctx.UnsignedShortTy.withConst());
         return ArgTypeResult(ArgTypeResult::WCStrTy, "wchar_t *");
+      }
       return ArgTypeResult::CStrTy;
     case ConversionSpecifier::SArg:
-      // FIXME: This appears to be Mac OS X specific.
+      if (IsObjCLiteral)
+        return Ctx.getPointerType(Ctx.UnsignedShortTy.withConst());
       return ArgTypeResult(ArgTypeResult::WCStrTy, "wchar_t *");
     case ConversionSpecifier::CArg:
+      if (IsObjCLiteral)
+        return Ctx.UnsignedShortTy;
       return ArgTypeResult(Ctx.WCharTy, "wchar_t");
     case ConversionSpecifier::pArg:
       return ArgTypeResult::CPointerTy;
+    case ConversionSpecifier::ObjCObjArg:
+      return ArgTypeResult::ObjCPointerTy;
     default:
       break;
   }

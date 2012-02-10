@@ -73,16 +73,16 @@ public:
       { "fixup_ppc_ha16",        16,     16,   0 },
       { "fixup_ppc_lo14",        16,     14,   0 }
     };
-  
+
     if (Kind < FirstTargetFixupKind)
       return MCAsmBackend::getFixupKindInfo(Kind);
-  
+
     assert(unsigned(Kind - FirstTargetFixupKind) < getNumFixupKinds() &&
            "Invalid kind!");
     return Infos[Kind - FirstTargetFixupKind];
   }
-  
-  bool MayNeedRelaxation(const MCInst &Inst) const {
+
+  bool mayNeedRelaxation(const MCInst &Inst) const {
     // FIXME.
     return false;
   }
@@ -92,24 +92,23 @@ public:
                             const MCInstFragment *DF,
                             const MCAsmLayout &Layout) const {
     // FIXME.
-    assert(0 && "RelaxInstruction() unimplemented");
-    return false;
+    llvm_unreachable("relaxInstruction() unimplemented");
   }
 
-  
-  void RelaxInstruction(const MCInst &Inst, MCInst &Res) const {
+
+  void relaxInstruction(const MCInst &Inst, MCInst &Res) const {
     // FIXME.
-    assert(0 && "RelaxInstruction() unimplemented");
+    llvm_unreachable("relaxInstruction() unimplemented");
   }
-  
-  bool WriteNopData(uint64_t Count, MCObjectWriter *OW) const {
+
+  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const {
     // FIXME: Zero fill for now. That's not right, but at least will get the
     // section size right.
     for (uint64_t i = 0; i != Count; ++i)
       OW->Write8(0);
     return true;
-  }      
-  
+  }
+
   unsigned getPointerSize() const {
     StringRef Name = TheTarget.getName();
     if (Name == "ppc64") return 8;
@@ -125,12 +124,12 @@ namespace {
   class DarwinPPCAsmBackend : public PPCAsmBackend {
   public:
     DarwinPPCAsmBackend(const Target &T) : PPCAsmBackend(T) { }
-    
-    void ApplyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
+
+    void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
                     uint64_t Value) const {
-      assert(0 && "UNIMP");
+      llvm_unreachable("UNIMP");
     }
-    
+
     MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
       bool is64 = getPointerSize() == 8;
       return createMachObjectWriter(new PPCMachObjectWriter(
@@ -140,7 +139,7 @@ namespace {
                                       object::mach::CSPPC_ALL),
                                     OS, /*IsLittleEndian=*/false);
     }
-    
+
     virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
       return false;
     }
@@ -151,8 +150,8 @@ namespace {
   public:
     ELFPPCAsmBackend(const Target &T, uint8_t OSABI) :
       PPCAsmBackend(T), OSABI(OSABI) { }
-    
-    void ApplyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
+
+    void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
                     uint64_t Value) const {
       Value = adjustFixupValue(Fixup.getKind(), Value);
       if (!Value) return;           // Doesn't change encoding.
@@ -165,12 +164,12 @@ namespace {
       for (unsigned i = 0; i != 4; ++i)
         Data[Offset + i] |= uint8_t((Value >> ((4 - i - 1)*8)) & 0xff);
     }
-    
+
     MCObjectWriter *createObjectWriter(raw_ostream &OS) const {
       bool is64 = getPointerSize() == 8;
       return createPPCELFObjectWriter(OS, is64, OSABI);
     }
-    
+
     virtual bool doesSectionRequireSymbols(const MCSection &Section) const {
       return false;
     }

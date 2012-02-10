@@ -18,6 +18,7 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
 class Target;
@@ -99,9 +100,9 @@ public:
                      Bytes(bytes), Size(size), BasePC(basePC) {}
  
   uint64_t getBase() const { return BasePC; }
-  uint64_t getExtent() const { return Size; }
+  uint64_t getExtent() { return Size; }
 
-  int readByte(uint64_t Addr, uint8_t *Byte) const {
+  int readByte(uint64_t Addr, uint8_t *Byte) {
     if (Addr - BasePC >= Size)
       return -1;
     *Byte = Bytes[Addr - BasePC];
@@ -163,5 +164,5 @@ size_t LLVMDisasmInstruction(LLVMDisasmContextRef DCR, uint8_t *Bytes,
     return Size;
   }
   }
-  return 0;
+  llvm_unreachable("Invalid DecodeStatus!");
 }

@@ -221,22 +221,120 @@ unsigned CodeMetrics::CountCodeReductionForConstant(Value *V) {
 unsigned CodeMetrics::CountCodeReductionForAlloca(Value *V) {
   if (!V->getType()->isPointerTy()) return 0;  // Not a pointer
   unsigned Reduction = 0;
-  for (Value::use_iterator UI = V->use_begin(), E = V->use_end(); UI != E;++UI){
-    Instruction *I = cast<Instruction>(*UI);
-    if (isa<LoadInst>(I) || isa<StoreInst>(I))
-      Reduction += InlineConstants::InstrCost;
-    else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(I)) {
-      // If the GEP has variable indices, we won't be able to do much with it.
-      if (GEP->hasAllConstantIndices())
-        Reduction += CountCodeReductionForAlloca(GEP);
-    } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(I)) {
-      // Track pointer through bitcasts.
-      Reduction += CountCodeReductionForAlloca(BCI);
-    } else {
-      // If there is some other strange instruction, we're not going to be able
-      // to do much if we inline this.
-      return 0;
+
+  // Looking at ICmpInsts will never abort the analysis and return zero, and
+  // analyzing them is expensive, so save them for last so that we don't do
+  // extra work that we end up throwing out.
+  SmallVector<ICmpInst *, 4> ICmpInsts;
+
+  SmallVector<Value *, 4> Worklist;
+  Worklist.push_back(V);
+  do {
+    Value *V = Worklist.pop_back_val();
+    for (Value::use_iterator UI = V->use_begin(), E = V->use_end();
+         UI != E; ++UI){
+      Instruction *I = cast<Instruction>(*UI);
+      if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
+        if (!LI->isSimple())
+          return 0;
+        Reduction += InlineConstants::InstrCost;
+      } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+        if (!SI->isSimple())
+          return 0;
+        Reduction += InlineConstants::InstrCost;
+      } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(I)) {
+        // If the GEP has variable indices, we won't be able to do much with it.
+        if (!GEP->hasAllConstantIndices())
+          return 0;
+        // A non-zero GEP will likely become a mask operation after SROA.
+        if (GEP->hasAllZeroIndices())
+          Reduction += InlineConstants::InstrCost;
+        Worklist.push_back(GEP);
+      } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(I)) {
+        // Track pointer through bitcasts.
+        Worklist.push_back(BCI);
+        Reduction += InlineConstants::InstrCost;
+      } else if (SelectInst *SI = dyn_cast<SelectInst>(I)) {
+        // SROA can handle a select of alloca iff all uses of the alloca are
+        // loads, and dereferenceable. We assume it's dereferenceable since
+        // we're told the input is an alloca.
+        for (Value::use_iterator UI = SI->use_begin(), UE = SI->use_end();
+             UI != UE; ++UI) {
+          LoadInst *LI = dyn_cast<LoadInst>(*UI);
+          if (LI == 0 || !LI->isSimple()) return 0;
+        }
+        // We don't know whether we'll be deleting the rest of the chain of
+        // instructions from the SelectInst on, because we don't know whether
+        // the other side of the select is also an alloca or not.
+        continue;
+      } else if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
+        switch (II->getIntrinsicID()) {
+        default:
+          return 0;
+        case Intrinsic::memset:
+        case Intrinsic::memcpy:
+        case Intrinsic::memmove:
+        case Intrinsic::lifetime_start:
+        case Intrinsic::lifetime_end:
+          // SROA can usually chew through these intrinsics.
+          Reduction += InlineConstants::InstrCost;
+          break;
+        }
+      } else if (ICmpInst *ICI = dyn_cast<ICmpInst>(I)) {
+        if (!isa<Constant>(ICI->getOperand(1)))
+          return 0;
+        ICmpInsts.push_back(ICI);
+      } else {
+        // If there is some other strange instruction, we're not going to be
+        // able to do much if we inline this.
+        return 0;
+      }
     }
+  } while (!Worklist.empty());
+
+  while (!ICmpInsts.empty()) {
+    ICmpInst *ICI = ICmpInsts.pop_back_val();
+
+    // An icmp pred (alloca, C) becomes true if the predicate is true when
+    // equal and false otherwise.
+    bool Result = ICI->isTrueWhenEqual();
+
+    SmallVector<Instruction *, 4> Worklist;
+    Worklist.push_back(ICI);
+    do {
+      Instruction *U = Worklist.pop_back_val();
+      Reduction += InlineConstants::InstrCost;
+      for (Value::use_iterator UI = U->use_begin(), UE = U->use_end();
+           UI != UE; ++UI) {
+        Instruction *I = dyn_cast<Instruction>(*UI);
+        if (!I || I->mayHaveSideEffects()) continue;
+        if (I->getNumOperands() == 1)
+          Worklist.push_back(I);
+        if (BinaryOperator *BO = dyn_cast<BinaryOperator>(I)) {
+          // If BO produces the same value as U, then the other operand is
+          // irrelevant and we can put it into the Worklist to continue
+          // deleting dead instructions. If BO produces the same value as the
+          // other operand, we can delete BO but that's it.
+          if (Result == true) {
+            if (BO->getOpcode() == Instruction::Or)
+              Worklist.push_back(I);
+            if (BO->getOpcode() == Instruction::And)
+              Reduction += InlineConstants::InstrCost;
+          } else {
+            if (BO->getOpcode() == Instruction::Or ||
+                BO->getOpcode() == Instruction::Xor)
+              Reduction += InlineConstants::InstrCost;
+            if (BO->getOpcode() == Instruction::And)
+              Worklist.push_back(I);
+          }
+        }
+        if (BranchInst *BI = dyn_cast<BranchInst>(I)) {
+          BasicBlock *BB = BI->getSuccessor(Result ? 0 : 1);
+          if (BB->getSinglePredecessor())
+            Reduction += InlineConstants::InstrCost * NumBBInsts[BB];
+        }
+      }
+    } while (!Worklist.empty());
   }
 
   return Reduction;

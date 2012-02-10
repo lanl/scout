@@ -282,7 +282,7 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
   OwningPtr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
-  MCContext Ctx(*MAI, *MRI, MOFI.get());
+  MCContext Ctx(*MAI, *MRI, MOFI.get(), &SrcMgr);
   // FIXME: Assembler behavior can change with -static.
   MOFI->InitMCObjectFileInfo(Opts.Triple,
                              Reloc::Default, CodeModel::Default, Ctx);
@@ -413,7 +413,7 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
     for (unsigned i = 0; i != NumArgs; ++i)
       Args[i + 1] = Asm.LLVMArgs[i].c_str();
     Args[NumArgs + 1] = 0;
-    llvm::cl::ParseCommandLineOptions(NumArgs + 1, const_cast<char **>(Args));
+    llvm::cl::ParseCommandLineOptions(NumArgs + 1, Args);
   }
 
   // Execute the invocation, unless there were parsing errors.

@@ -128,6 +128,10 @@ void MCStreamer::EmitSymbolValue(const MCSymbol *Sym, unsigned Size,
                 AddrSpace);
 }
 
+void MCStreamer::EmitGPRel64Value(const MCExpr *Value) {
+  report_fatal_error("unsupported directive in streamer");
+}
+
 void MCStreamer::EmitGPRel32Value(const MCExpr *Value) {
   report_fatal_error("unsupported directive in streamer");
 }
@@ -439,6 +443,12 @@ void MCStreamer::EmitCFIEscape(StringRef Values) {
   CurFrame->Instructions.push_back(Instruction);
 }
 
+void MCStreamer::EmitCFISignalFrame() {
+  EnsureValidFrame();
+  MCDwarfFrameInfo *CurFrame = getCurrentFrameInfo();
+  CurFrame->IsSignalFrame = true;
+}
+
 void MCStreamer::setCurrentW64UnwindInfo(MCWin64EHUnwindInfo *Frame) {
   W64UnwindInfos.push_back(Frame);
   CurrentW64UnwindInfo = W64UnwindInfos.back();
@@ -590,7 +600,7 @@ void MCStreamer::EmitWin64EHEndProlog() {
 }
 
 void MCStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol) {
-  assert(0 && "This file format doesn't support this directive");
+  llvm_unreachable("This file format doesn't support this directive");
 }
 
 void MCStreamer::EmitFnStart() {

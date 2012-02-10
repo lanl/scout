@@ -77,25 +77,33 @@ static SourceLocation getImmediateMacroCalleeLoc(const SourceManager &SM,
 /// refers to the SourceManager-owned buffer of the source where that macro
 /// name is spelled. Thus, the result shouldn't out-live that SourceManager.
 ///
+/// This differs from Lexer::getImmediateMacroName in that any macro argument
+/// location will result in the topmost function macro that accepted it.
+/// e.g.
+/// \code
+///   MAC1( MAC2(foo) )
+/// \endcode
+/// for location of 'foo' token, this function will return "MAC1" while
+/// Lexer::getImmediateMacroName will return "MAC2".
 static StringRef getImmediateMacroName(SourceLocation Loc,
                                        const SourceManager &SM,
                                        const LangOptions &LangOpts) {
-  assert(Loc.isMacroID() && "Only reasonble to call this on macros");
-  // Walk past macro argument expanions.
-  while (SM.isMacroArgExpansion(Loc))
-    Loc = SM.getImmediateExpansionRange(Loc).first;
-  
-  // Find the spelling location of the start of the non-argument expansion
-  // range. This is where the macro name was spelled in order to begin
-  // expanding this macro.
-  Loc = SM.getSpellingLoc(SM.getImmediateExpansionRange(Loc).first);
-  
-  // Dig out the buffer where the macro name was spelled and the extents of the
-  // name so that we can render it into the expansion note.
-  std::pair<FileID, unsigned> ExpansionInfo = SM.getDecomposedLoc(Loc);
-  unsigned MacroTokenLength = Lexer::MeasureTokenLength(Loc, SM, LangOpts);
-  StringRef ExpansionBuffer = SM.getBufferData(ExpansionInfo.first);
-  return ExpansionBuffer.substr(ExpansionInfo.second, MacroTokenLength);
+   assert(Loc.isMacroID() && "Only reasonble to call this on macros");
+   // Walk past macro argument expanions.
+   while (SM.isMacroArgExpansion(Loc))
+     Loc = SM.getImmediateExpansionRange(Loc).first;
+
+   // Find the spelling location of the start of the non-argument expansion
+   // range. This is where the macro name was spelled in order to begin
+   // expanding this macro.
+   Loc = SM.getSpellingLoc(SM.getImmediateExpansionRange(Loc).first);
+
+   // Dig out the buffer where the macro name was spelled and the extents of the
+   // name so that we can render it into the expansion note.
+   std::pair<FileID, unsigned> ExpansionInfo = SM.getDecomposedLoc(Loc);
+   unsigned MacroTokenLength = Lexer::MeasureTokenLength(Loc, SM, LangOpts);
+   StringRef ExpansionBuffer = SM.getBufferData(ExpansionInfo.first);
+   return ExpansionBuffer.substr(ExpansionInfo.second, MacroTokenLength);
 }
 
 /// Get the presumed location of a diagnostic message. This computes the
@@ -252,7 +260,8 @@ void DiagnosticRenderer::emitMacroExpansionsAndCarets(
   Loc = getImmediateMacroCalleeLoc(SM, Loc);
   
   unsigned MacroSkipStart = 0, MacroSkipEnd = 0;
-  if (MacroDepth > DiagOpts.MacroBacktraceLimit) {
+  if (MacroDepth > DiagOpts.MacroBacktraceLimit &&
+      DiagOpts.MacroBacktraceLimit != 0) {
     MacroSkipStart = DiagOpts.MacroBacktraceLimit / 2 +
     DiagOpts.MacroBacktraceLimit % 2;
     MacroSkipEnd = MacroDepth - DiagOpts.MacroBacktraceLimit / 2;
@@ -276,7 +285,7 @@ void DiagnosticRenderer::emitMacroExpansionsAndCarets(
   if (Suppressed) {
     // Tell the user that we've skipped contexts.
     if (OnMacroInst == MacroSkipStart) {
-      llvm::SmallString<200> MessageStorage;
+      SmallString<200> MessageStorage;
       llvm::raw_svector_ostream Message(MessageStorage);
       Message << "(skipping " << (MacroSkipEnd - MacroSkipStart)
               << " expansions in backtrace; use -fmacro-backtrace-limit=0 to "
@@ -286,7 +295,7 @@ void DiagnosticRenderer::emitMacroExpansionsAndCarets(
     return;
   }
   
-  llvm::SmallString<100> MessageStorage;
+  SmallString<100> MessageStorage;
   llvm::raw_svector_ostream Message(MessageStorage);
   Message << "expanded from macro '"
           << getImmediateMacroName(MacroLoc, SM, LangOpts) << "'";

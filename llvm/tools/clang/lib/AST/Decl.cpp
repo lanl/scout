@@ -48,8 +48,6 @@ static llvm::Optional<Visibility> getVisibilityOf(const Decl *D) {
     case VisibilityAttr::Protected:
       return ProtectedVisibility;
     }
-
-    return DefaultVisibility;
   }
 
   // If we're on Mac OS X, an 'availability' for Mac OS X attribute
@@ -67,17 +65,6 @@ static llvm::Optional<Visibility> getVisibilityOf(const Decl *D) {
 }
 
 typedef NamedDecl::LinkageInfo LinkageInfo;
-typedef std::pair<Linkage,Visibility> LVPair;
-
-static LVPair merge(LVPair L, LVPair R) {
-  return LVPair(minLinkage(L.first, R.first),
-                minVisibility(L.second, R.second));
-}
-
-static LVPair merge(LVPair L, LinkageInfo R) {
-  return LVPair(minLinkage(L.first, R.linkage()),
-                minVisibility(L.second, R.visibility()));
-}
 
 namespace {
 /// Flags controlling the computation of linkage and visibility.
@@ -113,11 +100,16 @@ struct LVFlags {
 }; 
 } // end anonymous namespace
 
+static LinkageInfo getLVForType(QualType T) {
+  std::pair<Linkage,Visibility> P = T->getLinkageAndVisibility();
+  return LinkageInfo(P.first, P.second, T->isVisibilityExplicit());
+}
+
 /// \brief Get the most restrictive linkage for the types in the given
 /// template parameter list.
-static LVPair
+static LinkageInfo
 getLVForTemplateParameterList(const TemplateParameterList *Params) {
-  LVPair LV(ExternalLinkage, DefaultVisibility);
+  LinkageInfo LV(ExternalLinkage, DefaultVisibility, false);
   for (TemplateParameterList::const_iterator P = Params->begin(),
                                           PEnd = Params->end();
        P != PEnd; ++P) {
@@ -126,20 +118,20 @@ getLVForTemplateParameterList(const TemplateParameterList *Params) {
         for (unsigned I = 0, N = NTTP->getNumExpansionTypes(); I != N; ++I) {
           QualType T = NTTP->getExpansionType(I);
           if (!T->isDependentType())
-            LV = merge(LV, T->getLinkageAndVisibility());
+            LV.merge(getLVForType(T));
         }
         continue;
       }
 
       if (!NTTP->getType()->isDependentType()) {
-        LV = merge(LV, NTTP->getType()->getLinkageAndVisibility());
+        LV.merge(getLVForType(NTTP->getType()));
         continue;
       }
     }
 
     if (TemplateTemplateParmDecl *TTP
                                    = dyn_cast<TemplateTemplateParmDecl>(*P)) {
-      LV = merge(LV, getLVForTemplateParameterList(TTP->getTemplateParameters()));
+      LV.merge(getLVForTemplateParameterList(TTP->getTemplateParameters()));
     }
   }
 
@@ -151,10 +143,10 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags F);
 
 /// \brief Get the most restrictive linkage for the types and
 /// declarations in the given template argument list.
-static LVPair getLVForTemplateArgumentList(const TemplateArgument *Args,
-                                           unsigned NumArgs,
-                                           LVFlags &F) {
-  LVPair LV(ExternalLinkage, DefaultVisibility);
+static LinkageInfo getLVForTemplateArgumentList(const TemplateArgument *Args,
+                                                unsigned NumArgs,
+                                                LVFlags &F) {
+  LinkageInfo LV(ExternalLinkage, DefaultVisibility, false);
 
   for (unsigned I = 0; I != NumArgs; ++I) {
     switch (Args[I].getKind()) {
@@ -164,7 +156,7 @@ static LVPair getLVForTemplateArgumentList(const TemplateArgument *Args,
       break;
 
     case TemplateArgument::Type:
-      LV = merge(LV, Args[I].getAsType()->getLinkageAndVisibility());
+      LV.merge(getLVForType(Args[I].getAsType()));
       break;
 
     case TemplateArgument::Declaration:
@@ -180,13 +172,13 @@ static LVPair getLVForTemplateArgumentList(const TemplateArgument *Args,
     case TemplateArgument::TemplateExpansion:
       if (TemplateDecl *Template
                 = Args[I].getAsTemplateOrTemplatePattern().getAsTemplateDecl())
-        LV = merge(LV, getLVForDecl(Template, F));
+        LV.merge(getLVForDecl(Template, F));
       break;
 
     case TemplateArgument::Pack:
-      LV = merge(LV, getLVForTemplateArgumentList(Args[I].pack_begin(),
-                                                  Args[I].pack_size(),
-                                                  F));
+      LV.merge(getLVForTemplateArgumentList(Args[I].pack_begin(),
+                                            Args[I].pack_size(),
+                                            F));
       break;
     }
   }
@@ -194,7 +186,7 @@ static LVPair getLVForTemplateArgumentList(const TemplateArgument *Args,
   return LV;
 }
 
-static LVPair
+static LinkageInfo
 getLVForTemplateArgumentList(const TemplateArgumentList &TArgs,
                              LVFlags &F) {
   return getLVForTemplateArgumentList(TArgs.data(), TArgs.size(), F);
@@ -235,9 +227,9 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
         Var->getStorageClass() != SC_Extern &&
         Var->getStorageClass() != SC_PrivateExtern) {
       bool FoundExtern = false;
-      for (const VarDecl *PrevVar = Var->getPreviousDeclaration();
+      for (const VarDecl *PrevVar = Var->getPreviousDecl();
            PrevVar && !FoundExtern; 
-           PrevVar = PrevVar->getPreviousDeclaration())
+           PrevVar = PrevVar->getPreviousDecl())
         if (isExternalLinkage(PrevVar->getLinkage()))
           FoundExtern = true;
       
@@ -245,8 +237,8 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
         return LinkageInfo::internal();
     }
     if (Var->getStorageClass() == SC_None) {
-      const VarDecl *PrevVar = Var->getPreviousDeclaration();
-      for (; PrevVar; PrevVar = PrevVar->getPreviousDeclaration())
+      const VarDecl *PrevVar = Var->getPreviousDecl();
+      for (; PrevVar; PrevVar = PrevVar->getPreviousDecl())
         if (PrevVar->getStorageClass() == SC_PrivateExtern)
           break;
         if (PrevVar)
@@ -275,7 +267,8 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
   if (D->isInAnonymousNamespace()) {
     const VarDecl *Var = dyn_cast<VarDecl>(D);
     const FunctionDecl *Func = dyn_cast<FunctionDecl>(D);
-    if ((!Var || !Var->isExternC()) && (!Func || !Func->isExternC()))
+    if ((!Var || !Var->getDeclContext()->isExternCContext()) &&
+        (!Func || !Func->getDeclContext()->isExternCContext()))
       return LinkageInfo::uniqueExternal();
   }
 
@@ -336,12 +329,13 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
     //
     // Note that we don't want to make the variable non-external
     // because of this, but unique-external linkage suits us.
-    if (Context.getLangOptions().CPlusPlus && !Var->isExternC()) {
-      LVPair TypeLV = Var->getType()->getLinkageAndVisibility();
-      if (TypeLV.first != ExternalLinkage)
+    if (Context.getLangOptions().CPlusPlus &&
+        !Var->getDeclContext()->isExternCContext()) {
+      LinkageInfo TypeLV = getLVForType(Var->getType());
+      if (TypeLV.linkage() != ExternalLinkage)
         return LinkageInfo::uniqueExternal();
       if (!LV.visibilityExplicit())
-        LV.mergeVisibility(TypeLV.second);
+        LV.mergeVisibility(TypeLV.visibility(), TypeLV.visibilityExplicit());
     }
 
     if (Var->getStorageClass() == SC_PrivateExtern)
@@ -360,7 +354,7 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
       //   specified at the prior declaration. If no prior declaration
       //   is visible, or if the prior declaration specifies no
       //   linkage, then the identifier has external linkage.
-      if (const VarDecl *PrevVar = Var->getPreviousDeclaration()) {
+      if (const VarDecl *PrevVar = Var->getPreviousDecl()) {
         LinkageInfo PrevLV = getLVForDecl(PrevVar, F);
         if (PrevLV.linkage()) LV.setLinkage(PrevLV.linkage());
         LV.mergeVisibility(PrevLV);
@@ -395,7 +389,7 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
       //   specified at the prior declaration. If no prior declaration
       //   is visible, or if the prior declaration specifies no
       //   linkage, then the identifier has external linkage.
-      if (const FunctionDecl *PrevFunc = Function->getPreviousDeclaration()) {
+      if (const FunctionDecl *PrevFunc = Function->getPreviousDecl()) {
         LinkageInfo PrevLV = getLVForDecl(PrevFunc, F);
         if (PrevLV.linkage()) LV.setLinkage(PrevLV.linkage());
         LV.mergeVisibility(PrevLV);
@@ -406,7 +400,8 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D, LVFlags F) {
     // unique-external linkage, it's not legally usable from outside
     // this translation unit.  However, we should use the C linkage
     // rules instead for extern "C" declarations.
-    if (Context.getLangOptions().CPlusPlus && !Function->isExternC() &&
+    if (Context.getLangOptions().CPlusPlus &&
+        !Function->getDeclContext()->isExternCContext() &&
         Function->getType()->getLinkage() == UniqueExternalLinkage)
       return LinkageInfo::uniqueExternal();
 
@@ -599,11 +594,11 @@ static LinkageInfo getLVForClassMember(const NamedDecl *D, LVFlags F) {
   } else if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
     // Modify the variable's linkage by its type, but ignore the
     // type's visibility unless it's a definition.
-    LVPair TypeLV = VD->getType()->getLinkageAndVisibility();
-    if (TypeLV.first != ExternalLinkage)
+    LinkageInfo TypeLV = getLVForType(VD->getType());
+    if (TypeLV.linkage() != ExternalLinkage)
       LV.mergeLinkage(UniqueExternalLinkage);
     if (!LV.visibilityExplicit())
-      LV.mergeVisibility(TypeLV.second);
+      LV.mergeVisibility(TypeLV.visibility(), TypeLV.visibilityExplicit());
   }
 
   F.ConsiderGlobalVisibility &= !LV.visibilityExplicit();
@@ -687,13 +682,13 @@ LinkageInfo NamedDecl::getLinkageAndVisibility() const {
 llvm::Optional<Visibility> NamedDecl::getExplicitVisibility() const {
   // Use the most recent declaration of a variable.
   if (const VarDecl *var = dyn_cast<VarDecl>(this))
-    return getVisibilityOf(var->getMostRecentDeclaration());
+    return getVisibilityOf(var->getMostRecentDecl());
 
   // Use the most recent declaration of a function, and also handle
   // function template specializations.
   if (const FunctionDecl *fn = dyn_cast<FunctionDecl>(this)) {
     if (llvm::Optional<Visibility> V
-                            = getVisibilityOf(fn->getMostRecentDeclaration())) 
+                            = getVisibilityOf(fn->getMostRecentDecl())) 
       return V;
 
     // If the function is a specialization of a template with an
@@ -768,7 +763,8 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags Flags) {
   //   external linkage.
   if (D->getLexicalDeclContext()->isFunctionOrMethod()) {
     if (const FunctionDecl *Function = dyn_cast<FunctionDecl>(D)) {
-      if (Function->isInAnonymousNamespace() && !Function->isExternC())
+      if (Function->isInAnonymousNamespace() &&
+          !Function->getDeclContext()->isExternCContext())
         return LinkageInfo::uniqueExternal();
 
       LinkageInfo LV;
@@ -777,7 +773,7 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags Flags) {
           LV.setVisibility(*Vis);
       }
       
-      if (const FunctionDecl *Prev = Function->getPreviousDeclaration()) {
+      if (const FunctionDecl *Prev = Function->getPreviousDecl()) {
         LinkageInfo PrevLV = getLVForDecl(Prev, Flags);
         if (PrevLV.linkage()) LV.setLinkage(PrevLV.linkage());
         LV.mergeVisibility(PrevLV);
@@ -789,7 +785,8 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags Flags) {
     if (const VarDecl *Var = dyn_cast<VarDecl>(D))
       if (Var->getStorageClass() == SC_Extern ||
           Var->getStorageClass() == SC_PrivateExtern) {
-        if (Var->isInAnonymousNamespace() && !Var->isExternC())
+        if (Var->isInAnonymousNamespace() &&
+            !Var->getDeclContext()->isExternCContext())
           return LinkageInfo::uniqueExternal();
 
         LinkageInfo LV;
@@ -800,7 +797,7 @@ static LinkageInfo getLVForDecl(const NamedDecl *D, LVFlags Flags) {
             LV.setVisibility(*Vis);
         }
         
-        if (const VarDecl *Prev = Var->getPreviousDeclaration()) {
+        if (const VarDecl *Prev = Var->getPreviousDecl()) {
           LinkageInfo PrevLV = getLVForDecl(Prev, Flags);
           if (PrevLV.linkage()) LV.setLinkage(PrevLV.linkage());
           LV.mergeVisibility(PrevLV);
@@ -909,7 +906,7 @@ bool NamedDecl::declarationReplaces(NamedDecl *OldD) const {
 
   if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(this))
     // For function declarations, we keep track of redeclarations.
-    return FD->getPreviousDeclaration() == OldD;
+    return FD->getPreviousDecl() == OldD;
 
   // For function templates, the underlying function declarations are linked.
   if (const FunctionTemplateDecl *FunctionTemplate
@@ -1142,7 +1139,6 @@ const char *VarDecl::getStorageClassSpecifierString(StorageClass SC) {
   }
 
   llvm_unreachable("Invalid storage class");
-  return 0;
 }
 
 VarDecl *VarDecl::Create(ASTContext &C, DeclContext *DC,
@@ -1173,27 +1169,17 @@ SourceRange VarDecl::getSourceRange() const {
 }
 
 bool VarDecl::isExternC() const {
-  ASTContext &Context = getASTContext();
-  if (!Context.getLangOptions().CPlusPlus)
-    return (getDeclContext()->isTranslationUnit() &&
-            getStorageClass() != SC_Static) ||
-      (getDeclContext()->isFunctionOrMethod() && hasExternalStorage());
-
-  const DeclContext *DC = getDeclContext();
-  if (DC->isFunctionOrMethod())
+  if (getLinkage() != ExternalLinkage)
     return false;
 
-  for (; !DC->isTranslationUnit(); DC = DC->getParent()) {
-    if (const LinkageSpecDecl *Linkage = dyn_cast<LinkageSpecDecl>(DC))  {
-      if (Linkage->getLanguage() == LinkageSpecDecl::lang_c)
-        return getStorageClass() != SC_Static;
+  const DeclContext *DC = getDeclContext();
+  if (DC->isRecord())
+    return false;
 
-      break;
-    }
-
-  }
-
-  return false;
+  ASTContext &Context = getASTContext();
+  if (!Context.getLangOptions().CPlusPlus)
+    return true;
+  return DC->isExternCContext();
 }
 
 VarDecl *VarDecl::getCanonicalDecl() {
@@ -1231,8 +1217,8 @@ VarDecl::DefinitionKind VarDecl::isThisDeclarationADefinition() const {
   
   if (getStorageClassAsWritten() == SC_Extern ||
        getStorageClassAsWritten() == SC_PrivateExtern) {
-    for (const VarDecl *PrevVar = getPreviousDeclaration();
-         PrevVar; PrevVar = PrevVar->getPreviousDeclaration()) {
+    for (const VarDecl *PrevVar = getPreviousDecl();
+         PrevVar; PrevVar = PrevVar->getPreviousDecl()) {
       if (PrevVar->getLinkage() == InternalLinkage && PrevVar->hasInit())
         return DeclarationOnly;
     }
@@ -1385,15 +1371,20 @@ EvaluatedStmt *VarDecl::ensureEvaluatedStmt() const {
   return Eval;
 }
 
-bool VarDecl::evaluateValue(
-                      llvm::SmallVectorImpl<PartialDiagnosticAt> &Notes) const {
+APValue *VarDecl::evaluateValue() const {
+  llvm::SmallVector<PartialDiagnosticAt, 8> Notes;
+  return evaluateValue(Notes);
+}
+
+APValue *VarDecl::evaluateValue(
+    llvm::SmallVectorImpl<PartialDiagnosticAt> &Notes) const {
   EvaluatedStmt *Eval = ensureEvaluatedStmt();
 
   // We only produce notes indicating why an initializer is non-constant the
   // first time it is evaluated. FIXME: The notes won't always be emitted the
   // first time we try evaluation, so might not be produced at all.
   if (Eval->WasEvaluated)
-    return !Eval->Evaluated.isUninit();
+    return Eval->Evaluated.isUninit() ? 0 : &Eval->Evaluated;
 
   const Expr *Init = cast<Expr>(Eval->Value);
   assert(!Init->isValueDependent());
@@ -1402,7 +1393,7 @@ bool VarDecl::evaluateValue(
     // FIXME: Produce a diagnostic for self-initialization.
     Eval->CheckedICE = true;
     Eval->IsICE = false;
-    return false;
+    return 0;
   }
 
   Eval->IsEvaluating = true;
@@ -1421,10 +1412,10 @@ bool VarDecl::evaluateValue(
   // expression as a side-effect.
   if (getASTContext().getLangOptions().CPlusPlus0x && !Eval->CheckedICE) {
     Eval->CheckedICE = true;
-    Eval->IsICE = Notes.empty();
+    Eval->IsICE = Result && Notes.empty();
   }
 
-  return Result;
+  return Result ? &Eval->Evaluated : 0;
 }
 
 bool VarDecl::checkInitIsICE() const {
@@ -1688,27 +1679,21 @@ bool FunctionDecl::isReservedGlobalPlacementOperator() const {
 }
 
 bool FunctionDecl::isExternC() const {
-  ASTContext &Context = getASTContext();
-  // In C, any non-static, non-overloadable function has external
-  // linkage.
-  if (!Context.getLangOptions().CPlusPlus)
-    return getStorageClass() != SC_Static && !getAttr<OverloadableAttr>();
+  if (getLinkage() != ExternalLinkage)
+    return false;
+
+  if (getAttr<OverloadableAttr>())
+    return false;
 
   const DeclContext *DC = getDeclContext();
   if (DC->isRecord())
     return false;
 
-  for (; !DC->isTranslationUnit(); DC = DC->getParent()) {
-    if (const LinkageSpecDecl *Linkage = dyn_cast<LinkageSpecDecl>(DC))  {
-      if (Linkage->getLanguage() == LinkageSpecDecl::lang_c)
-        return getStorageClass() != SC_Static &&
-               !getAttr<OverloadableAttr>();
+  ASTContext &Context = getASTContext();
+  if (!Context.getLangOptions().CPlusPlus)
+    return true;
 
-      break;
-    }
-  }
-
-  return isMain();
+  return isMain() || DC->isExternCContext();
 }
 
 bool FunctionDecl::isGlobal() const {
@@ -1897,31 +1882,79 @@ bool FunctionDecl::isInlined() const {
   return false;
 }
 
+static bool RedeclForcesDefC99(const FunctionDecl *Redecl) {
+  // Only consider file-scope declarations in this test.
+  if (!Redecl->getLexicalDeclContext()->isTranslationUnit())
+    return false;
+
+  // Only consider explicit declarations; the presence of a builtin for a
+  // libcall shouldn't affect whether a definition is externally visible.
+  if (Redecl->isImplicit())
+    return false;
+
+  if (!Redecl->isInlineSpecified() || Redecl->getStorageClass() == SC_Extern) 
+    return true; // Not an inline definition
+
+  return false;
+}
+
 /// \brief For a function declaration in C or C++, determine whether this
 /// declaration causes the definition to be externally visible.
 ///
-/// Determines whether this is the first non-inline redeclaration of an inline
-/// function in a language where "inline" does not normally require an
-/// externally visible definition.
+/// Specifically, this determines if adding the current declaration to the set
+/// of redeclarations of the given functions causes
+/// isInlineDefinitionExternallyVisible to change from false to true.
 bool FunctionDecl::doesDeclarationForceExternallyVisibleDefinition() const {
   assert(!doesThisDeclarationHaveABody() &&
          "Must have a declaration without a body.");
 
   ASTContext &Context = getASTContext();
 
-  // In C99 mode, a function may have an inline definition (causing it to
-  // be deferred) then redeclared later.  As a special case, "extern inline"
-  // is not required to produce an external symbol.
-  if (Context.getLangOptions().GNUInline || !Context.getLangOptions().C99 ||
-      Context.getLangOptions().CPlusPlus)
+  if (Context.getLangOptions().GNUInline || hasAttr<GNUInlineAttr>()) {
+    // With GNU inlining, a declaration with 'inline' but not 'extern', forces
+    // an externally visible definition.
+    //
+    // FIXME: What happens if gnu_inline gets added on after the first
+    // declaration?
+    if (!isInlineSpecified() || getStorageClassAsWritten() == SC_Extern)
+      return false;
+
+    const FunctionDecl *Prev = this;
+    bool FoundBody = false;
+    while ((Prev = Prev->getPreviousDecl())) {
+      FoundBody |= Prev->Body;
+
+      if (Prev->Body) {
+        // If it's not the case that both 'inline' and 'extern' are
+        // specified on the definition, then it is always externally visible.
+        if (!Prev->isInlineSpecified() ||
+            Prev->getStorageClassAsWritten() != SC_Extern)
+          return false;
+      } else if (Prev->isInlineSpecified() && 
+                 Prev->getStorageClassAsWritten() != SC_Extern) {
+        return false;
+      }
+    }
+    return FoundBody;
+  }
+
+  if (Context.getLangOptions().CPlusPlus)
     return false;
-  if (getLinkage() != ExternalLinkage || isInlineSpecified())
+
+  // C99 6.7.4p6:
+  //   [...] If all of the file scope declarations for a function in a 
+  //   translation unit include the inline function specifier without extern, 
+  //   then the definition in that translation unit is an inline definition.
+  if (isInlineSpecified() && getStorageClass() != SC_Extern)
     return false;
-  const FunctionDecl *Definition = 0;
-  if (hasBody(Definition))
-    return Definition->isInlined() &&
-           Definition->isInlineDefinitionExternallyVisible();
-  return false;
+  const FunctionDecl *Prev = this;
+  bool FoundBody = false;
+  while ((Prev = Prev->getPreviousDecl())) {
+    FoundBody |= Prev->Body;
+    if (RedeclForcesDefC99(Prev))
+      return false;
+  }
+  return FoundBody;
 }
 
 /// \brief For an inline function definition in C or C++, determine whether the 
@@ -1947,6 +1980,9 @@ bool FunctionDecl::isInlineDefinitionExternallyVisible() const {
   ASTContext &Context = getASTContext();
   
   if (Context.getLangOptions().GNUInline || hasAttr<GNUInlineAttr>()) {
+    // Note: If you change the logic here, please change
+    // doesDeclarationForceExternallyVisibleDefinition as well.
+    //
     // If it's not the case that both 'inline' and 'extern' are
     // specified on the definition, then this inline definition is
     // externally visible.
@@ -1965,7 +2001,7 @@ bool FunctionDecl::isInlineDefinitionExternallyVisible() const {
     
     return false;
   }
-  
+
   // C99 6.7.4p6:
   //   [...] If all of the file scope declarations for a function in a 
   //   translation unit include the inline function specifier without extern, 
@@ -1973,17 +2009,8 @@ bool FunctionDecl::isInlineDefinitionExternallyVisible() const {
   for (redecl_iterator Redecl = redecls_begin(), RedeclEnd = redecls_end();
        Redecl != RedeclEnd;
        ++Redecl) {
-    // Only consider file-scope declarations in this test.
-    if (!Redecl->getLexicalDeclContext()->isTranslationUnit())
-      continue;
-
-    // Only consider explicit declarations; the presence of a builtin for a
-    // libcall shouldn't affect whether a definition is externally visible.
-    if (Redecl->isImplicit())
-      continue;
-
-    if (!Redecl->isInlineSpecified() || Redecl->getStorageClass() == SC_Extern) 
-      return true; // Not an inline definition
+    if (RedeclForcesDefC99(*Redecl))
+      return true;
   }
   
   // C99 6.7.4p6:
@@ -2302,81 +2329,90 @@ SourceRange FunctionDecl::getSourceRange() const {
   return SourceRange(getOuterLocStart(), EndRangeLoc);
 }
 
-FunctionDecl::MemoryFunctionKind FunctionDecl::getMemoryFunctionKind() {
+unsigned FunctionDecl::getMemoryFunctionKind() const {
   IdentifierInfo *FnInfo = getIdentifier();
 
   if (!FnInfo)
-    return MFK_Invalid;
+    return 0;
     
   // Builtin handling.
   switch (getBuiltinID()) {
   case Builtin::BI__builtin_memset:
   case Builtin::BI__builtin___memset_chk:
   case Builtin::BImemset:
-    return MFK_Memset;
+    return Builtin::BImemset;
 
   case Builtin::BI__builtin_memcpy:
   case Builtin::BI__builtin___memcpy_chk:
   case Builtin::BImemcpy:
-    return MFK_Memcpy;
+    return Builtin::BImemcpy;
 
   case Builtin::BI__builtin_memmove:
   case Builtin::BI__builtin___memmove_chk:
   case Builtin::BImemmove:
-    return MFK_Memmove;
+    return Builtin::BImemmove;
 
   case Builtin::BIstrlcpy:
-    return MFK_Strlcpy;
+    return Builtin::BIstrlcpy;
   case Builtin::BIstrlcat:
-    return MFK_Strlcat;
+    return Builtin::BIstrlcat;
 
   case Builtin::BI__builtin_memcmp:
-    return MFK_Memcmp;
+  case Builtin::BImemcmp:
+    return Builtin::BImemcmp;
 
   case Builtin::BI__builtin_strncpy:
   case Builtin::BI__builtin___strncpy_chk:
   case Builtin::BIstrncpy:
-    return MFK_Strncpy;
+    return Builtin::BIstrncpy;
 
   case Builtin::BI__builtin_strncmp:
-    return MFK_Strncmp;
+  case Builtin::BIstrncmp:
+    return Builtin::BIstrncmp;
 
   case Builtin::BI__builtin_strncasecmp:
-    return MFK_Strncasecmp;
+  case Builtin::BIstrncasecmp:
+    return Builtin::BIstrncasecmp;
 
   case Builtin::BI__builtin_strncat:
+  case Builtin::BI__builtin___strncat_chk:
   case Builtin::BIstrncat:
-    return MFK_Strncat;
+    return Builtin::BIstrncat;
 
   case Builtin::BI__builtin_strndup:
   case Builtin::BIstrndup:
-    return MFK_Strndup;
+    return Builtin::BIstrndup;
+
+  case Builtin::BI__builtin_strlen:
+  case Builtin::BIstrlen:
+    return Builtin::BIstrlen;
 
   default:
-    if (getLinkage() == ExternalLinkage &&
-        (!getASTContext().getLangOptions().CPlusPlus || isExternC())) {
+    if (isExternC()) {
       if (FnInfo->isStr("memset"))
-        return MFK_Memset;
+        return Builtin::BImemset;
       else if (FnInfo->isStr("memcpy"))
-        return MFK_Memcpy;
+        return Builtin::BImemcpy;
       else if (FnInfo->isStr("memmove"))
-        return MFK_Memmove;
+        return Builtin::BImemmove;
       else if (FnInfo->isStr("memcmp"))
-        return MFK_Memcmp;
+        return Builtin::BImemcmp;
       else if (FnInfo->isStr("strncpy"))
-        return MFK_Strncpy;
+        return Builtin::BIstrncpy;
       else if (FnInfo->isStr("strncmp"))
-        return MFK_Strncmp;
+        return Builtin::BIstrncmp;
       else if (FnInfo->isStr("strncasecmp"))
-        return MFK_Strncasecmp;
+        return Builtin::BIstrncasecmp;
       else if (FnInfo->isStr("strncat"))
-        return MFK_Strncat;
+        return Builtin::BIstrncat;
       else if (FnInfo->isStr("strndup"))
-        return MFK_Strndup;
+        return Builtin::BIstrndup;
+      else if (FnInfo->isStr("strlen"))
+        return Builtin::BIstrlen;
     }
     break;
   }
-  return MFK_Invalid;
+  return 0;
 }
 
 //===----------------------------------------------------------------------===//

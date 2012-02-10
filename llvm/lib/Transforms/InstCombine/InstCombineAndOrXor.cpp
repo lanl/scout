@@ -87,16 +87,15 @@ static unsigned getFCmpCode(FCmpInst::Predicate CC, bool &isOrdered) {
   default:
     // Not expecting FCMP_FALSE and FCMP_TRUE;
     llvm_unreachable("Unexpected FCmp predicate!");
-    return 0;
   }
 }
 
-/// getICmpValue - This is the complement of getICmpCode, which turns an
+/// getNewICmpValue - This is the complement of getICmpCode, which turns an
 /// opcode and two operands into either a constant true or false, or a brand 
 /// new ICmp instruction. The sign is passed in to determine which kind
 /// of predicate to use in the new icmp instruction.
-Value *getNewICmpValue(bool Sign, unsigned Code, Value *LHS, Value *RHS,
-                    InstCombiner::BuilderTy *Builder) {
+static Value *getNewICmpValue(bool Sign, unsigned Code, Value *LHS, Value *RHS,
+                              InstCombiner::BuilderTy *Builder) {
   ICmpInst::Predicate NewPred;
   if (Value *NewConstant = getICmpValue(Sign, Code, LHS, RHS, NewPred))
     return NewConstant;
@@ -111,7 +110,7 @@ static Value *getFCmpValue(bool isordered, unsigned code,
                            InstCombiner::BuilderTy *Builder) {
   CmpInst::Predicate Pred;
   switch (code) {
-  default: assert(0 && "Illegal FCmp code!");
+  default: llvm_unreachable("Illegal FCmp code!");
   case 0: Pred = isordered ? FCmpInst::FCMP_ORD : FCmpInst::FCMP_UNO; break;
   case 1: Pred = isordered ? FCmpInst::FCMP_OGT : FCmpInst::FCMP_UGT; break;
   case 2: Pred = isordered ? FCmpInst::FCMP_OEQ : FCmpInst::FCMP_UEQ; break;
@@ -1555,7 +1554,6 @@ Value *InstCombiner::FoldOrOfICmps(ICmpInst *LHS, ICmpInst *RHS) {
     case ICmpInst::ICMP_SLT:         // (X != 13 | X s< 15) -> true
       return ConstantInt::getTrue(LHS->getContext());
     }
-    break;
   case ICmpInst::ICMP_ULT:
     switch (RHSCC) {
     default: llvm_unreachable("Unknown integer condition code!");

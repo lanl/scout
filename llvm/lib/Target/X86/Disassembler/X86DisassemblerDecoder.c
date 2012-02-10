@@ -103,7 +103,7 @@ static InstrUID decode(OpcodeType type,
                        InstructionContext insnContext,
                        uint8_t opcode,
                        uint8_t modRM) {
-  const struct ModRMDecision* dec;
+  const struct ModRMDecision* dec = 0;
   
   switch (type) {
   case ONEBYTE:
@@ -131,14 +131,17 @@ static InstrUID decode(OpcodeType type,
     debug("Corrupt table!  Unknown modrm_type");
     return 0;
   case MODRM_ONEENTRY:
-    return dec->instructionIDs[0];
+    return modRMTable[dec->instructionIDs];
   case MODRM_SPLITRM:
     if (modFromModRM(modRM) == 0x3)
-      return dec->instructionIDs[1];
-    else
-      return dec->instructionIDs[0];
+      return modRMTable[dec->instructionIDs+1];
+    return modRMTable[dec->instructionIDs];
+  case MODRM_SPLITREG:
+    if (modFromModRM(modRM) == 0x3)
+      return modRMTable[dec->instructionIDs+((modRM & 0x38) >> 3)+8];
+    return modRMTable[dec->instructionIDs+((modRM & 0x38) >> 3)];
   case MODRM_FULL:
-    return dec->instructionIDs[modRM];
+    return modRMTable[dec->instructionIDs+modRM];
   }
 }
 

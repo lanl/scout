@@ -25,7 +25,7 @@ using namespace ento;
 namespace {
 class PointerSubChecker 
   : public Checker< check::PreStmt<BinaryOperator> > {
-  mutable llvm::OwningPtr<BuiltinBug> BT;
+  mutable OwningPtr<BuiltinBug> BT;
 
 public:
   void checkPreStmt(const BinaryOperator *B, CheckerContext &C) const;
@@ -39,7 +39,7 @@ void PointerSubChecker::checkPreStmt(const BinaryOperator *B,
   if (B->getOpcode() != BO_Sub)
     return;
 
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   const LocationContext *LCtx = C.getLocationContext();
   SVal LV = state->getSVal(B->getLHS(), LCtx);
   SVal RV = state->getSVal(B->getRHS(), LCtx);

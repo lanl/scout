@@ -136,6 +136,12 @@ def t2ldrlabel : Operand<i32> {
   let PrintMethod = "printT2LdrLabelOperand";
 }
 
+def t2ldr_pcrel_imm12_asmoperand : AsmOperandClass {let Name = "MemPCRelImm12";}
+def t2ldr_pcrel_imm12 : Operand<i32> {
+  let ParserMatchClass = t2ldr_pcrel_imm12_asmoperand;
+  // used for assembler pseudo instruction and maps to t2ldrlabel, so
+  // doesn't need encoder or print methods of its own.
+}
 
 // ADR instruction labels.
 def t2adrlabel : Operand<i32> {
@@ -940,7 +946,8 @@ multiclass T2I_ld<bit signed, bits<2> opcod, string opc,
     let DecoderMethod = "DecodeT2LoadShift";
   }
 
-  // FIXME: Is the pci variant actually needed?
+  // pci variant is very similar to i12, but supports negative offsets
+  // from the PC.
   def pci : T2Ipc <(outs target:$Rt), (ins t2ldrlabel:$addr), iii,
                    opc, ".w\t$Rt, $addr",
                    [(set target:$Rt, (opnode (ARMWrapper tconstpool:$addr)))]> {
@@ -3058,9 +3065,7 @@ def t2STREX  : Thumb2I<(outs rGPR:$Rd), (ins rGPR:$Rt,
   let Inst{11-8}  = Rd;
   let Inst{7-0} = addr{7-0};
 }
-}
-
-let hasExtraSrcRegAllocReq = 1, Constraints = "@earlyclobber $Rd" in
+let hasExtraSrcRegAllocReq = 1 in
 def t2STREXD : T2I_strex<0b11, (outs rGPR:$Rd),
                          (ins rGPR:$Rt, rGPR:$Rt2, addr_offset_none:$addr),
                          AddrModeNone, 4, NoItinerary,
@@ -3068,6 +3073,7 @@ def t2STREXD : T2I_strex<0b11, (outs rGPR:$Rd),
                          {?, ?, ?, ?}> {
   bits<4> Rt2;
   let Inst{11-8} = Rt2;
+}
 }
 
 def t2CLREX : T2I<(outs), (ins), NoItinerary, "clrex", "", []>,
@@ -3096,7 +3102,7 @@ def t2CLREX : T2I<(outs), (ins), NoItinerary, "clrex", "", []>,
 //   $val is a scratch register for our use.
 let Defs =
   [ R0,  R1,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9,  R10, R11, R12, LR, CPSR,
-    QQQQ0, QQQQ1, QQQQ2, QQQQ3 ],
+    Q0, Q1, Q2, Q3, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15],
   hasSideEffects = 1, isBarrier = 1, isCodeGenOnly = 1,
   usesCustomInserter = 1 in {
   def t2Int_eh_sjlj_setjmp : Thumb2XI<(outs), (ins tGPR:$src, tGPR:$val),
@@ -3216,7 +3222,8 @@ def t2Bcc : T2I<(outs), (ins brtarget:$target), IIC_Br,
 // it goes here.
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1 in {
   // IOS version.
-  let Defs = [R0, R1, R2, R3, R9, R12, QQQQ0, QQQQ2, QQQQ3, PC],
+  let Defs = [R0, R1, R2, R3, R9, R12, PC,
+              Q0, Q1, Q2, Q3, Q8, Q9, Q10, Q11, Q12, Q13, Q14, Q15],
       Uses = [SP] in
   def tTAILJMPd: tPseudoExpand<(outs),
                    (ins uncondbrtarget:$dst, pred:$p, variable_ops),
@@ -4149,3 +4156,29 @@ def t2MOVSsr: t2AsmPseudo<"movs${p} $Rd, $shift",
 // ADR w/o the .w suffix
 def : t2InstAlias<"adr${p} $Rd, $addr",
                   (t2ADR rGPR:$Rd, t2adrlabel:$addr, pred:$p)>;
+
+// LDR(literal) w/ alternate [pc, #imm] syntax.
+def t2LDRpcrel   : t2AsmPseudo<"ldr${p} $Rt, $addr",
+                         (ins GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def t2LDRBpcrel  : t2AsmPseudo<"ldrb${p} $Rt, $addr",
+                         (ins GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def t2LDRHpcrel  : t2AsmPseudo<"ldrh${p} $Rt, $addr",
+                         (ins GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def t2LDRSBpcrel  : t2AsmPseudo<"ldrsb${p} $Rt, $addr",
+                         (ins GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def t2LDRSHpcrel  : t2AsmPseudo<"ldrsh${p} $Rt, $addr",
+                         (ins GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+    // Version w/ the .w suffix.
+def : t2InstAlias<"ldr${p}.w $Rt, $addr",
+                  (t2LDRpcrel GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def : t2InstAlias<"ldrb${p}.w $Rt, $addr",
+                  (t2LDRBpcrel GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def : t2InstAlias<"ldrh${p}.w $Rt, $addr",
+                  (t2LDRHpcrel GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def : t2InstAlias<"ldrsb${p}.w $Rt, $addr",
+                  (t2LDRSBpcrel GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+def : t2InstAlias<"ldrsh${p}.w $Rt, $addr",
+                  (t2LDRSHpcrel GPRnopc:$Rt, t2ldr_pcrel_imm12:$addr, pred:$p)>;
+
+def : t2InstAlias<"add${p} $Rd, pc, $imm",
+                  (t2ADR rGPR:$Rd, imm0_4095:$imm, pred:$p)>;

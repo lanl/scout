@@ -36,6 +36,7 @@ enum ActionType {
   GenClangAttrPCHWrite,
   GenClangAttrSpellingList,
   GenClangAttrLateParsedList,
+  GenClangAttrTemplateInstantiate,
   GenClangDiagsDefs,
   GenClangDiagGroups,
   GenClangDiagsIndexName,
@@ -71,6 +72,9 @@ namespace {
                     clEnumValN(GenClangAttrLateParsedList,
                                "gen-clang-attr-late-parsed-list",
                                "Generate a clang attribute LateParsed list"),
+                    clEnumValN(GenClangAttrTemplateInstantiate,
+                               "gen-clang-attr-template-instantiate",
+                               "Generate a clang template instantiate code"),
                     clEnumValN(GenClangDiagsDefs, "gen-clang-diags-defs",
                                "Generate Clang diagnostics definitions"),
                     clEnumValN(GenClangDiagGroups, "gen-clang-diag-groups",
@@ -122,6 +126,9 @@ public:
     case GenClangAttrLateParsedList:
       ClangAttrLateParsedListEmitter(Records).run(OS);
       break;
+    case GenClangAttrTemplateInstantiate:
+      ClangAttrTemplateInstantiateEmitter(Records).run(OS);
+      break;
     case GenClangDiagsDefs:
       ClangDiagsDefsEmitter(Records, ClangComponent).run(OS);
       break;
@@ -156,9 +163,6 @@ public:
     case GenArmNeonTest:
       NeonEmitter(Records).runTests(OS);
       break;
-    default:
-      assert(1 && "Invalid Action");
-      return true;
     }
 
     return false;

@@ -48,6 +48,16 @@ struct DropReferences {
     P.second->dropAllReferences();
   }
 };
+
+// Temporary - drops pair.first instead of second.
+struct DropFirst {
+  // Takes the value_type of a ConstantUniqueMap's internal map, whose 'second'
+  // is a Constant*.
+  template<typename PairT>
+  void operator()(const PairT &P) {
+    P.first->dropAllReferences();
+  }
+};
 }
 
 LLVMContextImpl::~LLVMContextImpl() {
@@ -58,24 +68,31 @@ LLVMContextImpl::~LLVMContextImpl() {
   std::vector<Module*> Modules(OwnedModules.begin(), OwnedModules.end());
   DeleteContainerPointers(Modules);
   
+  // Free the constants.  This is important to do here to ensure that they are
+  // freed before the LeakDetector is torn down.
   std::for_each(ExprConstants.map_begin(), ExprConstants.map_end(),
                 DropReferences());
   std::for_each(ArrayConstants.map_begin(), ArrayConstants.map_end(),
-                DropReferences());
+                DropFirst());
   std::for_each(StructConstants.map_begin(), StructConstants.map_end(),
-                DropReferences());
+                DropFirst());
   std::for_each(VectorConstants.map_begin(), VectorConstants.map_end(),
-                DropReferences());
+                DropFirst());
   ExprConstants.freeConstants();
   ArrayConstants.freeConstants();
   StructConstants.freeConstants();
   VectorConstants.freeConstants();
-  AggZeroConstants.freeConstants();
-  NullPtrConstants.freeConstants();
-  UndefValueConstants.freeConstants();
+  DeleteContainerSeconds(CAZConstants);
+  DeleteContainerSeconds(CPNConstants);
+  DeleteContainerSeconds(UVConstants);
   InlineAsms.freeConstants();
   DeleteContainerSeconds(IntConstants);
   DeleteContainerSeconds(FPConstants);
+  
+  for (StringMap<ConstantDataSequential*>::iterator I = CDSConstants.begin(),
+       E = CDSConstants.end(); I != E; ++I)
+    delete I->second;
+  CDSConstants.clear();
   
   // Destroy MDNodes.  ~MDNode can move and remove nodes between the MDNodeSet
   // and the NonUniquedMDNodes sets, so copy the values out first.

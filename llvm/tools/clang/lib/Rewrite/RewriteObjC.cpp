@@ -590,12 +590,7 @@ ASTConsumer *clang::CreateObjCRewriter(const std::string& InFile,
                                        DiagnosticsEngine &Diags,
                                        const LangOptions &LOpts,
                                        bool SilenceRewriteMacroWarning) {
-  if (true /*!LOpts.ObjCNonFragileABI*/)
-    return new RewriteObjCFragileABI(InFile, OS, Diags, LOpts, SilenceRewriteMacroWarning);
-  else {
-    assert(false && "objective-C rewriter for nonfragile ABI = NYI");
-    return 0;
-  }
+  return new RewriteObjCFragileABI(InFile, OS, Diags, LOpts, SilenceRewriteMacroWarning);
 }
 
 void RewriteObjC::InitializeCommon(ASTContext &context) {

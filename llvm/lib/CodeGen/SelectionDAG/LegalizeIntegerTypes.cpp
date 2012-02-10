@@ -249,8 +249,10 @@ SDValue DAGTypeLegalizer::PromoteIntRes_BITCAST(SDNode *N) {
     return DAG.getNode(ISD::BITCAST, dl, NOutVT, InOp);
   }
   case TargetLowering::TypeWidenVector:
-    if (NOutVT.bitsEq(NInVT))
-      // The input is widened to the same size.  Convert to the widened value.
+    // The input is widened to the same size. Convert to the widened value.
+    // Make sure that the outgoing value is not a vector, because this would
+    // make us bitcast between two vectors which are legalized in different ways.
+    if (NOutVT.bitsEq(NInVT) && !NOutVT.isVector())
       return DAG.getNode(ISD::BITCAST, dl, NOutVT, GetWidenedVector(InOp));
   }
 
@@ -1177,7 +1179,6 @@ std::pair <SDValue, SDValue> DAGTypeLegalizer::ExpandAtomic(SDNode *Node) {
   switch (Opc) {
   default:
     llvm_unreachable("Unhandled atomic intrinsic Expand!");
-    break;
   case ISD::ATOMIC_SWAP:
     switch (VT.SimpleTy) {
     default: llvm_unreachable("Unexpected value type for atomic!");
@@ -1499,8 +1500,6 @@ ExpandShiftWithUnknownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi) {
     Hi = DAG.getNode(ISD::SELECT, dl, NVT, isShort, HiS, HiL);
     return true;
   }
-
-  return false;
 }
 
 void DAGTypeLegalizer::ExpandIntRes_ADDSUB(SDNode *N,
@@ -2788,7 +2787,7 @@ SDValue DAGTypeLegalizer::ExpandIntOp_UINT_TO_FP(SDNode *N) {
     else if (SrcVT == MVT::i128)
       FF = APInt(32, F32TwoE128);
     else
-      assert(false && "Unsupported UINT_TO_FP!");
+      llvm_unreachable("Unsupported UINT_TO_FP!");
 
     // Check whether the sign bit is set.
     SDValue Lo, Hi;

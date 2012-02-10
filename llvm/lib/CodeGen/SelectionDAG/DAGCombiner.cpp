@@ -4957,6 +4957,7 @@ SDValue DAGCombiner::visitSIGN_EXTEND_INREG(SDNode *N) {
 SDValue DAGCombiner::visitTRUNCATE(SDNode *N) {
   SDValue N0 = N->getOperand(0);
   EVT VT = N->getValueType(0);
+  bool isLE = TLI.isLittleEndian();
 
   // noop truncate
   if (N0.getValueType() == N->getValueType(0))
@@ -4982,6 +4983,44 @@ SDValue DAGCombiner::visitTRUNCATE(SDNode *N) {
       // if the source and dest are the same type, we can drop both the extend
       // and the truncate.
       return N0.getOperand(0);
+  }
+
+  // Fold extract-and-trunc into a narrow extract. For example:
+  //   i64 x = EXTRACT_VECTOR_ELT(v2i64 val, i32 1)
+  //   i32 y = TRUNCATE(i64 x)
+  //        -- becomes --
+  //   v16i8 b = BITCAST (v2i64 val)
+  //   i8 x = EXTRACT_VECTOR_ELT(v16i8 b, i32 8)
+  //
+  // Note: We only run this optimization after type legalization (which often
+  // creates this pattern) and before operation legalization after which
+  // we need to be more careful about the vector instructions that we generate.
+  if (N0.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
+      LegalTypes && !LegalOperations && N0->hasOneUse()) {
+
+    EVT VecTy = N0.getOperand(0).getValueType();
+    EVT ExTy = N0.getValueType();
+    EVT TrTy = N->getValueType(0);
+
+    unsigned NumElem = VecTy.getVectorNumElements();
+    unsigned SizeRatio = ExTy.getSizeInBits()/TrTy.getSizeInBits();
+
+    EVT NVT = EVT::getVectorVT(*DAG.getContext(), TrTy, SizeRatio * NumElem);
+    assert(NVT.getSizeInBits() == VecTy.getSizeInBits() && "Invalid Size");
+
+    SDValue EltNo = N0->getOperand(1);
+    if (isa<ConstantSDNode>(EltNo) && isTypeLegal(NVT)) {
+      int Elt = cast<ConstantSDNode>(EltNo)->getZExtValue();
+
+      int Index = isLE ? (Elt*SizeRatio) : (Elt*SizeRatio + (SizeRatio-1));
+
+      SDValue V = DAG.getNode(ISD::BITCAST, N->getDebugLoc(),
+                              NVT, N0.getOperand(0));
+
+      return DAG.getNode(ISD::EXTRACT_VECTOR_ELT,
+                         N->getDebugLoc(), TrTy, V,
+                         DAG.getConstant(Index, MVT::i32));
+    }
   }
 
   // See if we can simplify the input to this truncate through knowledge that
@@ -6982,18 +7021,51 @@ SDValue DAGCombiner::visitINSERT_VECTOR_ELT(SDNode *N) {
 SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
   // (vextract (scalar_to_vector val, 0) -> val
   SDValue InVec = N->getOperand(0);
+  EVT VT = InVec.getValueType();
+  EVT NVT = N->getValueType(0);
 
   if (InVec.getOpcode() == ISD::SCALAR_TO_VECTOR) {
     // Check if the result type doesn't match the inserted element type. A
     // SCALAR_TO_VECTOR may truncate the inserted element and the
     // EXTRACT_VECTOR_ELT may widen the extracted vector.
     SDValue InOp = InVec.getOperand(0);
-    EVT NVT = N->getValueType(0);
     if (InOp.getValueType() != NVT) {
       assert(InOp.getValueType().isInteger() && NVT.isInteger());
       return DAG.getSExtOrTrunc(InOp, InVec.getDebugLoc(), NVT);
     }
     return InOp;
+  }
+
+  SDValue EltNo = N->getOperand(1);
+  bool ConstEltNo = isa<ConstantSDNode>(EltNo);
+
+  // Transform: (EXTRACT_VECTOR_ELT( VECTOR_SHUFFLE )) -> EXTRACT_VECTOR_ELT.
+  // We only perform this optimization before the op legalization phase because
+  // we may introduce new vector instructions which are not backed by TD patterns.
+  // For example on AVX, extracting elements from a wide vector without using
+  // extract_subvector.
+  if (InVec.getOpcode() == ISD::VECTOR_SHUFFLE
+      && ConstEltNo && !LegalOperations) {
+    int Elt = cast<ConstantSDNode>(EltNo)->getZExtValue();
+    int NumElem = VT.getVectorNumElements();
+    ShuffleVectorSDNode *SVOp = cast<ShuffleVectorSDNode>(InVec);
+    // Find the new index to extract from.
+    int OrigElt = SVOp->getMaskElt(Elt);
+
+    // Extracting an undef index is undef.
+    if (OrigElt == -1)
+      return DAG.getUNDEF(NVT);
+
+    // Select the right vector half to extract from.
+    if (OrigElt < NumElem) {
+      InVec = InVec->getOperand(0);
+    } else {
+      InVec = InVec->getOperand(1);
+      OrigElt -= NumElem;
+    }
+
+    return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, N->getDebugLoc(), NVT,
+                       InVec, DAG.getConstant(OrigElt, MVT::i32));
   }
 
   // Perform only after legalization to ensure build_vector / vector_shuffle
@@ -7003,13 +7075,11 @@ SDValue DAGCombiner::visitEXTRACT_VECTOR_ELT(SDNode *N) {
   // (vextract (v4f32 load $addr), c) -> (f32 load $addr+c*size)
   // (vextract (v4f32 s2v (f32 load $addr)), c) -> (f32 load $addr+c*size)
   // (vextract (v4f32 shuffle (load $addr), <1,u,u,u>), 0) -> (f32 load $addr)
-  SDValue EltNo = N->getOperand(1);
 
-  if (isa<ConstantSDNode>(EltNo)) {
+  if (ConstEltNo) {
     int Elt = cast<ConstantSDNode>(EltNo)->getZExtValue();
     bool NewLoad = false;
     bool BCNumEltsChanged = false;
-    EVT VT = InVec.getValueType();
     EVT ExtVT = VT.getVectorElementType();
     EVT LVT = ExtVT;
 
@@ -7142,11 +7212,13 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
   // optimizations. We do not handle sign-extend because we can't fill the sign
   // using shuffles.
   EVT SourceType = MVT::Other;
-  bool allAnyExt = true;
-  for (unsigned i = 0; i < NumInScalars; ++i) {
+  bool AllAnyExt = true;
+  bool AllUndef = true;
+  for (unsigned i = 0; i != NumInScalars; ++i) {
     SDValue In = N->getOperand(i);
     // Ignore undef inputs.
     if (In.getOpcode() == ISD::UNDEF) continue;
+    AllUndef = false;
 
     bool AnyExt  = In.getOpcode() == ISD::ANY_EXTEND;
     bool ZeroExt = In.getOpcode() == ISD::ZERO_EXTEND;
@@ -7171,9 +7243,11 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
     }
 
     // Check if all of the extends are ANY_EXTENDs.
-    allAnyExt &= AnyExt;
+    AllAnyExt &= AnyExt;
   }
 
+  if (AllUndef)
+    return DAG.getUNDEF(VT);
 
   // In order to have valid types, all of the inputs must be extended from the
   // same source type and all of the inputs must be any or zero extend.
@@ -7193,7 +7267,7 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
     bool isLE = TLI.isLittleEndian();
     unsigned ElemRatio = OutScalarTy.getSizeInBits()/SourceType.getSizeInBits();
     assert(ElemRatio > 1 && "Invalid element size ratio");
-    SDValue Filler = allAnyExt ? DAG.getUNDEF(SourceType):
+    SDValue Filler = AllAnyExt ? DAG.getUNDEF(SourceType):
                                  DAG.getConstant(0, SourceType);
 
     unsigned NewBVElems = ElemRatio * N->getValueType(0).getVectorNumElements();
@@ -8208,30 +8282,20 @@ bool DAGCombiner::isAlias(SDValue Ptr1, int64_t Size1,
 /// FindAliasInfo - Extracts the relevant alias information from the memory
 /// node.  Returns true if the operand was a load.
 bool DAGCombiner::FindAliasInfo(SDNode *N,
-                        SDValue &Ptr, int64_t &Size,
-                        const Value *&SrcValue,
-                        int &SrcValueOffset,
-                        unsigned &SrcValueAlign,
-                        const MDNode *&TBAAInfo) const {
-  if (LoadSDNode *LD = dyn_cast<LoadSDNode>(N)) {
-    Ptr = LD->getBasePtr();
-    Size = LD->getMemoryVT().getSizeInBits() >> 3;
-    SrcValue = LD->getSrcValue();
-    SrcValueOffset = LD->getSrcValueOffset();
-    SrcValueAlign = LD->getOriginalAlignment();
-    TBAAInfo = LD->getTBAAInfo();
-    return true;
-  }
-  if (StoreSDNode *ST = dyn_cast<StoreSDNode>(N)) {
-    Ptr = ST->getBasePtr();
-    Size = ST->getMemoryVT().getSizeInBits() >> 3;
-    SrcValue = ST->getSrcValue();
-    SrcValueOffset = ST->getSrcValueOffset();
-    SrcValueAlign = ST->getOriginalAlignment();
-    TBAAInfo = ST->getTBAAInfo();
-    return false;
-  }
-  llvm_unreachable("FindAliasInfo expected a memory operand");
+                                SDValue &Ptr, int64_t &Size,
+                                const Value *&SrcValue,
+                                int &SrcValueOffset,
+                                unsigned &SrcValueAlign,
+                                const MDNode *&TBAAInfo) const {
+  LSBaseSDNode *LS = cast<LSBaseSDNode>(N);
+
+  Ptr = LS->getBasePtr();
+  Size = LS->getMemoryVT().getSizeInBits() >> 3;
+  SrcValue = LS->getSrcValue();
+  SrcValueOffset = LS->getSrcValueOffset();
+  SrcValueAlign = LS->getOriginalAlignment();
+  TBAAInfo = LS->getTBAAInfo();
+  return isa<LoadSDNode>(LS);
 }
 
 /// GatherAllAliases - Walk up chain skipping non-aliasing memory nodes,

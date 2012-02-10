@@ -34,17 +34,7 @@
 // receives a reference to 'self', the checker keeps track and passes the flags
 // for 1) and 2) to the new object that 'self' points to after the call.
 //
-// FIXME (rdar://7937506): In the case of:
-//   [super init];
-//   return self;
-// Have an extra PathDiagnosticPiece in the path that says "called [super init],
-// but didn't assign the result to self."
-
 //===----------------------------------------------------------------------===//
-
-// FIXME: Somehow stick the link to Apple's documentation about initializing
-// objects in the diagnostics.
-// http://developer.apple.com/library/mac/#documentation/Cocoa/Conceptual/ObjectiveC/Articles/ocAllocInit.html
 
 #include "ClangSACheckers.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -87,8 +77,8 @@ namespace {
 class InitSelfBug : public BugType {
   const std::string desc;
 public:
-  InitSelfBug() : BugType("missing \"self = [(super or self) init...]\"",
-                          "missing \"self = [(super or self) init...]\"") {}
+  InitSelfBug() : BugType("Missing \"self = [(super or self) init...]\"",
+                          "Core Foundation/Objective-C") {}
 };
 
 } // end anonymous namespace
@@ -130,7 +120,7 @@ namespace ento {
 }
 }
 
-static SelfFlagEnum getSelfFlags(SVal val, const ProgramState *state) {
+static SelfFlagEnum getSelfFlags(SVal val, ProgramStateRef state) {
   if (SymbolRef sym = val.getAsSymbol())
     if (const unsigned *attachedFlags = state->get<SelfFlag>(sym))
       return (SelfFlagEnum)*attachedFlags;
@@ -141,7 +131,7 @@ static SelfFlagEnum getSelfFlags(SVal val, CheckerContext &C) {
   return getSelfFlags(val, C.getState());
 }
 
-static void addSelfFlag(const ProgramState *state, SVal val,
+static void addSelfFlag(ProgramStateRef state, SVal val,
                         SelfFlagEnum flag, CheckerContext &C) {
   // We tag the symbol that the SVal wraps.
   if (SymbolRef sym = val.getAsSymbol())
@@ -194,12 +184,12 @@ void ObjCSelfInitChecker::checkPostObjCMessage(ObjCMessage msg,
 
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisDeclContext()->getDecl())))
+                                C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   if (isInitMessage(msg)) {
     // Tag the return value as the result of an initializer.
-    const ProgramState *state = C.getState();
+    ProgramStateRef state = C.getState();
     
     // FIXME this really should be context sensitive, where we record
     // the current stack frame (for IPA).  Also, we need to clean this
@@ -221,7 +211,7 @@ void ObjCSelfInitChecker::checkPostStmt(const ObjCIvarRefExpr *E,
                                         CheckerContext &C) const {
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisDeclContext()->getDecl())))
+                                 C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   checkForInvalidSelf(E->getBase(), C,
@@ -233,7 +223,7 @@ void ObjCSelfInitChecker::checkPreStmt(const ReturnStmt *S,
                                        CheckerContext &C) const {
   // FIXME: A callback should disable checkers at the start of functions.
   if (!shouldRunOnFunctionOrMethod(dyn_cast<NamedDecl>(
-                                     C.getCurrentAnalysisDeclContext()->getDecl())))
+                                 C.getCurrentAnalysisDeclContext()->getDecl())))
     return;
 
   checkForInvalidSelf(S->getRetValue(), C,
@@ -259,7 +249,7 @@ void ObjCSelfInitChecker::checkPreStmt(const ReturnStmt *S,
 
 void ObjCSelfInitChecker::checkPreStmt(const CallExpr *CE,
                                        CheckerContext &C) const {
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   for (CallExpr::const_arg_iterator
          I = CE->arg_begin(), E = CE->arg_end(); I != E; ++I) {
     SVal argV = state->getSVal(*I, C.getLocationContext());
@@ -277,7 +267,7 @@ void ObjCSelfInitChecker::checkPreStmt(const CallExpr *CE,
 
 void ObjCSelfInitChecker::checkPostStmt(const CallExpr *CE,
                                         CheckerContext &C) const {
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   const LocationContext *LCtx = C.getLocationContext();
   for (CallExpr::const_arg_iterator
          I = CE->arg_begin(), E = CE->arg_end(); I != E; ++I) {
@@ -301,7 +291,7 @@ void ObjCSelfInitChecker::checkLocation(SVal location, bool isLoad,
                                         CheckerContext &C) const {
   // Tag the result of a load from 'self' so that we can easily know that the
   // value is the object that 'self' points to.
-  const ProgramState *state = C.getState();
+  ProgramStateRef state = C.getState();
   if (isSelfVar(location, C))
     addSelfFlag(state, state->getSVal(cast<Loc>(location)), SelfFlag_Self, C);
 }

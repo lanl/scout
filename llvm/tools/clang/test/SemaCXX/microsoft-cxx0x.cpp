@@ -6,5 +6,3 @@ struct A {
 };
 int b = 3;
 A var = {  b }; // expected-warning {{ cannot be narrowed }} expected-note {{override}}
-
-

@@ -53,11 +53,9 @@ TargetLoweringObjectFileELF::getCFIPersonalitySymbol(const GlobalValue *GV,
     report_fatal_error("We do not support this DWARF encoding yet!");
   case dwarf::DW_EH_PE_absptr:
     return  Mang->getSymbol(GV);
-    break;
   case dwarf::DW_EH_PE_pcrel: {
     return getContext().GetOrCreateSymbol(StringRef("DW.ref.") +
                                           Mang->getSymbol(GV)->getName());
-    break;
   }
   }
 }
@@ -342,6 +340,32 @@ getExprForDwarfGlobalReference(const GlobalValue *GV, Mangler *Mang,
     getExprForDwarfGlobalReference(GV, Mang, MMI, Encoding, Streamer);
 }
 
+const MCSection *
+TargetLoweringObjectFileELF::getStaticCtorSection(unsigned Priority) const {
+  // The default scheme is .ctor / .dtor, so we have to invert the priority
+  // numbering.
+  if (Priority == 65535)
+    return StaticCtorSection;
+
+  std::string Name = std::string(".ctors.") + utostr(65535 - Priority);
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS,
+                                    ELF::SHF_ALLOC |ELF::SHF_WRITE,
+                                    SectionKind::getDataRel());
+}
+
+const MCSection *
+TargetLoweringObjectFileELF::getStaticDtorSection(unsigned Priority) const {
+  // The default scheme is .ctor / .dtor, so we have to invert the priority
+  // numbering.
+  if (Priority == 65535)
+    return StaticDtorSection;
+
+  std::string Name = std::string(".dtors.") + utostr(65535 - Priority);
+  return getContext().getELFSection(Name, ELF::SHT_PROGBITS,
+                                    ELF::SHF_ALLOC |ELF::SHF_WRITE,
+                                    SectionKind::getDataRel());
+}
+
 //===----------------------------------------------------------------------===//
 //                                 MachO
 //===----------------------------------------------------------------------===//
@@ -361,8 +385,6 @@ getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
     report_fatal_error("Global variable '" + GV->getName() +
                        "' has an invalid section specifier '" +
                        GV->getSection() + "': " + ErrorCode + ".");
-    // Fall back to dropping it into the data section.
-    return DataSection;
   }
 
   // Get the section.

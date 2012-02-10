@@ -79,8 +79,7 @@ namespace llvm {
     }
 
     // Pass Pipeline Configuration
-    virtual bool addInstSelector(PassManagerBase &PM);
-    virtual bool addPreEmitPass(PassManagerBase &PM);
+    virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);
   };
 } // End llvm namespace
 

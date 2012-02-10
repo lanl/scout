@@ -108,6 +108,11 @@ public:
 
 }
 
+static void addObjCARCAPElimPass(const PassManagerBuilder &Builder, PassManagerBase &PM) {
+  if (Builder.OptLevel > 0)
+    PM.add(createObjCARCAPElimPass());
+}
+
 static void addObjCARCExpandPass(const PassManagerBuilder &Builder, PassManagerBase &PM) {
   if (Builder.OptLevel > 0)
     PM.add(createObjCARCExpandPass());
@@ -154,6 +159,8 @@ void EmitAssemblyHelper::CreatePasses() {
   if (LangOpts.ObjCAutoRefCount) {
     PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
                            addObjCARCExpandPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_ModuleOptimizerEarly,
+                           addObjCARCAPElimPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_ScalarOptimizerLate,
                            addObjCARCOptPass);
   }
@@ -248,7 +255,7 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
     CM = llvm::CodeModel::Default;
   }
 
-  std::vector<const char *> BackendArgs;
+  SmallVector<const char *, 16> BackendArgs;
   BackendArgs.push_back("clang"); // Fake program name.
   if (!CodeGenOpts.DebugPass.empty()) {
     BackendArgs.push_back("-debug-pass");
@@ -266,7 +273,7 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
     BackendArgs.push_back("-global-merge=false");
   BackendArgs.push_back(0);
   llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
-                                    const_cast<char **>(&BackendArgs[0]));
+                                    BackendArgs.data());
 
   std::string FeaturesStr;
   if (TargetOpts.Features.size()) {
@@ -328,6 +335,8 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
   Options.UseSoftFloat = CodeGenOpts.SoftFloat;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
   Options.RealignStack = CodeGenOpts.StackRealignment;
+  Options.DisableTailCalls = CodeGenOpts.DisableTailCalls;
+  Options.TrapFuncName = CodeGenOpts.TrapFuncName;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Triple, TargetOpts.CPU,
                                                      FeaturesStr, Options,

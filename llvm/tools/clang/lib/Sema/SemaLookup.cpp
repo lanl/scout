@@ -32,6 +32,7 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
@@ -1163,20 +1164,40 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
         // Check whether there are any other declarations with the same name
         // and in the same scope.
         if (I != IEnd) {
-          DeclContext *DC = (*I)->getDeclContext()->getRedeclContext();
+          // Find the scope in which this declaration was declared (if it
+          // actually exists in a Scope).
+          while (S && !S->isDeclScope(D))
+            S = S->getParent();
+          
+          // If the scope containing the declaration is the translation unit,
+          // then we'll need to perform our checks based on the matching
+          // DeclContexts rather than matching scopes.
+          if (S && isNamespaceOrTranslationUnitScope(S))
+            S = 0;
+
+          // Compute the DeclContext, if we need it.
+          DeclContext *DC = 0;
+          if (!S)
+            DC = (*I)->getDeclContext()->getRedeclContext();
+            
           IdentifierResolver::iterator LastI = I;
           for (++LastI; LastI != IEnd; ++LastI) {
-            DeclContext *LastDC 
-              = (*LastI)->getDeclContext()->getRedeclContext();
+            if (S) {
+              // Match based on scope.
+              if (!S->isDeclScope(*LastI))
+                break;
+            } else {
+              // Match based on DeclContext.
+              DeclContext *LastDC 
+                = (*LastI)->getDeclContext()->getRedeclContext();
+              if (!LastDC->Equals(DC))
+                break;
+            }
+            
+            // If the declaration isn't in the right namespace, skip it.
             if (!(*LastI)->isInIdentifierNamespace(IDNS))
               continue;
-            
-            if (!LastDC->Equals(DC))
-              break;
-            
-            if (!LastDC->isFileContext() && !S->isDeclScope(*LastI))
-              break;
-            
+                        
             D = R.isHiddenDeclarationVisible()? *LastI : getVisibleDecl(*LastI);
             if (D)
               R.addDecl(D);
@@ -1712,7 +1733,6 @@ bool Sema::DiagnoseAmbiguousLookup(LookupResult &Result) {
   }
 
   llvm_unreachable("unknown ambiguity kind");
-  return true;
 }
 
 namespace {
@@ -2531,7 +2551,7 @@ void ADLResult::insert(NamedDecl *New) {
 
   FunctionDecl *Cursor = NewFD;
   while (true) {
-    Cursor = Cursor->getPreviousDeclaration();
+    Cursor = Cursor->getPreviousDecl();
 
     // If we got to the end without finding OldFD, OldFD is the newer
     // declaration;  leave things as they are.
@@ -3063,15 +3083,11 @@ class TypoCorrectionConsumer : public VisibleDeclConsumer {
   /// whether there is a keyword with this name.
   TypoEditDistanceMap BestResults;
 
-  /// \brief The worst of the best N edit distances found so far.
-  unsigned MaxEditDistance;
-
   Sema &SemaRef;
 
 public:
   explicit TypoCorrectionConsumer(Sema &SemaRef, IdentifierInfo *Typo)
     : Typo(Typo->getName()),
-      MaxEditDistance((std::numeric_limits<unsigned>::max)()),
       SemaRef(SemaRef) { }
 
   ~TypoCorrectionConsumer() {
@@ -3102,12 +3118,9 @@ public:
     return (*BestResults.begin()->second)[Name];
   }
 
-  unsigned getMaxEditDistance() const {
-    return MaxEditDistance;
-  }
-
   unsigned getBestEditDistance() {
-    return (BestResults.empty()) ? MaxEditDistance : BestResults.begin()->first;
+    return (BestResults.empty()) ?
+        (std::numeric_limits<unsigned>::max)() : BestResults.begin()->first;
   }
 };
 
@@ -3133,40 +3146,22 @@ void TypoCorrectionConsumer::FoundName(StringRef Name) {
   // Use a simple length-based heuristic to determine the minimum possible
   // edit distance. If the minimum isn't good enough, bail out early.
   unsigned MinED = abs((int)Name.size() - (int)Typo.size());
-  if (MinED > MaxEditDistance || (MinED && Typo.size() / MinED < 3))
+  if (MinED && Typo.size() / MinED < 3)
     return;
 
   // Compute an upper bound on the allowable edit distance, so that the
   // edit-distance algorithm can short-circuit.
-  unsigned UpperBound =
-    std::min(unsigned((Typo.size() + 2) / 3), MaxEditDistance);
+  unsigned UpperBound = (Typo.size() + 2) / 3;
 
   // Compute the edit distance between the typo and the name of this
-  // entity. If this edit distance is not worse than the best edit
-  // distance we've seen so far, add it to the list of results.
-  unsigned ED = Typo.edit_distance(Name, true, UpperBound);
-
-  if (ED > MaxEditDistance) {
-    // This result is worse than the best results we've seen so far;
-    // ignore it.
-    return;
-  }
-
-  addName(Name, NULL, ED);
+  // entity, and add the identifier to the list of results.
+  addName(Name, NULL, Typo.edit_distance(Name, true, UpperBound));
 }
 
 void TypoCorrectionConsumer::addKeywordResult(StringRef Keyword) {
-  // Compute the edit distance between the typo and this keyword.
-  // If this edit distance is not worse than the best edit
-  // distance we've seen so far, add it to the list of results.
-  unsigned ED = Typo.edit_distance(Keyword);
-  if (ED > MaxEditDistance) {
-    // This result is worse than the best results we've seen so far;
-    // ignore it.
-    return;
-  }
-
-  addName(Keyword, NULL, ED, NULL, true);
+  // Compute the edit distance between the typo and this keyword,
+  // and add the keyword to the list of results.
+  addName(Keyword, NULL, Typo.edit_distance(Keyword), NULL, true);
 }
 
 void TypoCorrectionConsumer::addName(StringRef Name,
@@ -3492,77 +3487,6 @@ static void AddKeywordsToConsumer(Sema &SemaRef,
   }
 }
 
-namespace {
-
-// Simple CorrectionCandidateCallback class that sets the keyword flags based
-// on a given CorrectTypoContext, but does not perform any extra validation
-// of typo correction candidates.
-class CorrectTypoContextReplacementCCC : public CorrectionCandidateCallback {
- public:
-  CorrectTypoContextReplacementCCC(
-      Sema &SemaRef, Sema::CorrectTypoContext CTC = Sema::CTC_Unknown) {
-    WantTypeSpecifiers = false;
-    WantExpressionKeywords = false;
-    WantCXXNamedCasts = false;
-    WantRemainingKeywords = false;
-    switch (CTC) {
-      case Sema::CTC_Unknown:
-        WantTypeSpecifiers = true;
-        WantExpressionKeywords = true;
-        WantCXXNamedCasts = true;
-        WantRemainingKeywords = true;
-        if (ObjCMethodDecl *Method = SemaRef.getCurMethodDecl())
-          WantObjCSuper = Method->getClassInterface() &&
-                          Method->getClassInterface()->getSuperClass();
-        break;
-
-      case Sema::CTC_Type:
-        WantTypeSpecifiers = true;
-        break;
-
-      case Sema::CTC_ObjCMessageReceiver:
-        WantObjCSuper = true;
-        // Fall through to handle message receivers like expressions.
-
-      case Sema::CTC_Expression:
-        if (SemaRef.getLangOptions().CPlusPlus)
-          WantTypeSpecifiers = true;
-        WantExpressionKeywords = true;
-        // Fall through to get C++ named casts.
-
-      case Sema::CTC_CXXCasts:
-        WantCXXNamedCasts = true;
-        break;
-
-      case Sema::CTC_MemberLookup:
-      case Sema::CTC_NoKeywords:
-      case Sema::CTC_ObjCPropertyLookup:
-        break;
-
-      case Sema::CTC_ObjCIvarLookup:
-        IsObjCIvarLookup = true;
-        break;
-    }
-  }
-};
-
-}
-
-/// \brief Compatibility wrapper for call sites that pass a CorrectTypoContext
-/// value to CorrectTypo instead of providing a callback object.
-TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
-                                 Sema::LookupNameKind LookupKind,
-                                 Scope *S, CXXScopeSpec *SS,
-                                 DeclContext *MemberContext,
-                                 bool EnteringContext,
-                                 CorrectTypoContext CTC,
-                                 const ObjCObjectPointerType *OPT) {
-  CorrectTypoContextReplacementCCC CTCVerifier(*this, CTC);
-
-  return CorrectTypo(TypoName, LookupKind, S, SS, &CTCVerifier, MemberContext,
-                     EnteringContext, OPT);
-}
-
 /// \brief Try to "correct" a typo in the source code by finding
 /// visible declarations whose names are similar to the name that was
 /// present in the source code.
@@ -3597,7 +3521,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
 TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
                                  Sema::LookupNameKind LookupKind,
                                  Scope *S, CXXScopeSpec *SS,
-                                 CorrectionCandidateCallback *CCC,
+                                 CorrectionCandidateCallback &CCC,
                                  DeclContext *MemberContext,
                                  bool EnteringContext,
                                  const ObjCObjectPointerType *OPT) {
@@ -3630,6 +3554,11 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
 
   TypoCorrectionConsumer Consumer(*this, Typo);
 
+  // If a callback object returns true for an empty typo correction candidate,
+  // assume it does not do any actual validation of the candidates.
+  TypoCorrection EmptyCorrection;
+  bool ValidatingCallback = !CCC.ValidateCandidate(EmptyCorrection);
+
   // Perform name lookup to find visible, similarly-named entities.
   bool IsUnqualifiedLookup = false;
   if (MemberContext) {
@@ -3659,46 +3588,52 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     IsUnqualifiedLookup = true;
     UnqualifiedTyposCorrectedMap::iterator Cached
       = UnqualifiedTyposCorrected.find(Typo);
-    if (Cached == UnqualifiedTyposCorrected.end() ||
-        (Cached->second && CCC && !CCC->ValidateCandidate(Cached->second))) {
+    if (Cached != UnqualifiedTyposCorrected.end()) {
+      // Add the cached value, unless it's a keyword or fails validation. In the
+      // keyword case, we'll end up adding the keyword below.
+      if (Cached->second) {
+        if (!Cached->second.isKeyword() &&
+            CCC.ValidateCandidate(Cached->second))
+          Consumer.addCorrection(Cached->second);
+      } else {
+        // Only honor no-correction cache hits when a callback that will validate
+        // correction candidates is not being used.
+        if (!ValidatingCallback)
+          return TypoCorrection();
+      }
+    }
+    if (Cached == UnqualifiedTyposCorrected.end()) {
       // Provide a stop gap for files that are just seriously broken.  Trying
       // to correct all typos can turn into a HUGE performance penalty, causing
       // some files to take minutes to get rejected by the parser.
       if (TyposCorrected + UnqualifiedTyposCorrected.size() >= 20)
         return TypoCorrection();
+    }
 
-      // For unqualified lookup, look through all of the names that we have
-      // seen in this translation unit.
-      for (IdentifierTable::iterator I = Context.Idents.begin(),
-                                  IEnd = Context.Idents.end();
-           I != IEnd; ++I)
-        Consumer.FoundName(I->getKey());
+    // For unqualified lookup, look through all of the names that we have
+    // seen in this translation unit.
+    // FIXME: Re-add the ability to skip very unlikely potential corrections.
+    for (IdentifierTable::iterator I = Context.Idents.begin(),
+                                IEnd = Context.Idents.end();
+         I != IEnd; ++I)
+      Consumer.FoundName(I->getKey());
 
-      // Walk through identifiers in external identifier sources.
-      if (IdentifierInfoLookup *External
-                              = Context.Idents.getExternalIdentifierLookup()) {
-        llvm::OwningPtr<IdentifierIterator> Iter(External->getIdentifiers());
-        do {
-          StringRef Name = Iter->Next();
-          if (Name.empty())
-            break;
+    // Walk through identifiers in external identifier sources.
+    // FIXME: Re-add the ability to skip very unlikely potential corrections.
+    if (IdentifierInfoLookup *External
+                            = Context.Idents.getExternalIdentifierLookup()) {
+      OwningPtr<IdentifierIterator> Iter(External->getIdentifiers());
+      do {
+        StringRef Name = Iter->Next();
+        if (Name.empty())
+          break;
 
-          Consumer.FoundName(Name);
-        } while (true);
-      }
-    } else {
-      // Use the cached value, unless it's a keyword. In the keyword case, we'll
-      // end up adding the keyword below.
-      if (!Cached->second)
-        return TypoCorrection();
-
-      if (!Cached->second.isKeyword())
-        Consumer.addCorrection(Cached->second);
+        Consumer.FoundName(Name);
+      } while (true);
     }
   }
 
-  CorrectTypoContextReplacementCCC DefaultCCC(*this);
-  AddKeywordsToConsumer(*this, Consumer, S, CCC ? *CCC : DefaultCCC);
+  AddKeywordsToConsumer(*this, Consumer, S, CCC);
 
   // If we haven't found anything, we're done.
   if (Consumer.empty()) {
@@ -3755,7 +3690,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
       if (I->second.isResolved()) {
         TypoCorrectionConsumer::result_iterator Prev = I;
         ++I;
-        if (CCC && !CCC->ValidateCandidate(Prev->second))
+        if (!CCC.ValidateCandidate(Prev->second))
           DI->second->erase(Prev);
         continue;
       }
@@ -3763,7 +3698,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
       // Perform name lookup on this name.
       IdentifierInfo *Name = I->second.getCorrectionAsIdentifierInfo();
       LookupPotentialTypoResult(*this, TmpRes, Name, S, SS, MemberContext,
-                                EnteringContext, CCC && CCC->IsObjCIvarLookup);
+                                EnteringContext, CCC.IsObjCIvarLookup);
 
       switch (TmpRes.getResultKind()) {
       case LookupResult::NotFound:
@@ -3792,7 +3727,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
              TRD != TRDEnd; ++TRD)
           I->second.addCorrectionDecl(*TRD);
         ++I;
-        if (CCC && !CCC->ValidateCandidate(Prev->second))
+        if (!CCC.ValidateCandidate(Prev->second))
           DI->second->erase(Prev);
         break;
       }
@@ -3801,7 +3736,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
         TypoCorrectionConsumer::result_iterator Prev = I;
         I->second.setCorrectionDecl(TmpRes.getAsSingle<NamedDecl>());
         ++I;
-        if (CCC && !CCC->ValidateCandidate(Prev->second))
+        if (!CCC.ValidateCandidate(Prev->second))
           DI->second->erase(Prev);
         break;
       }
@@ -3828,10 +3763,9 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
           DeclContext *Ctx = NI->DeclCtx;
           unsigned QualifiedED = ED + NI->EditDistance;
 
-          // Stop searching once the namespaces are too far away to create
+          // FIXME: Stop searching once the namespaces are too far away to create
           // acceptable corrections for this identifier (since the namespaces
-          // are sorted in ascending order by edit distance)
-          if (QualifiedED > Consumer.getMaxEditDistance()) break;
+          // are sorted in ascending order by edit distance).
 
           TmpRes.clear();
           TmpRes.setLookupName(*QRI);
@@ -3874,8 +3808,10 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
   ED = Consumer.begin()->first;
 
   if (ED > 0 && Typo->getName().size() / ED < 3) {
-    // If this was an unqualified lookup, note that no correction was found.
-    if (IsUnqualifiedLookup)
+    // If this was an unqualified lookup and we believe the callback
+    // object wouldn't have filtered out possible corrections, note
+    // that no correction was found.
+    if (IsUnqualifiedLookup && !ValidatingCallback)
       (void)UnqualifiedTyposCorrected[Typo];
 
     return TypoCorrection();
@@ -3917,7 +3853,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
            // WantObjCSuper is only true for CTC_ObjCMessageReceiver and for
            // some instances of CTC_Unknown, while WantRemainingKeywords is true
            // for CTC_Unknown but not for CTC_ObjCMessageReceiver.
-           && CCC && CCC->WantObjCSuper && !CCC->WantRemainingKeywords
+           && CCC.WantObjCSuper && !CCC.WantRemainingKeywords
            && BestResults["super"].isKeyword()) {
     // Prefer 'super' when we're completing in a message-receiver
     // context.
@@ -3933,7 +3869,9 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     return BestResults["super"];
   }
 
-  if (IsUnqualifiedLookup)
+  // If this was an unqualified lookup and we believe the callback object did
+  // not filter out possible corrections, note that no correction was found.
+  if (IsUnqualifiedLookup && !ValidatingCallback)
     (void)UnqualifiedTyposCorrected[Typo];
 
   return TypoCorrection();

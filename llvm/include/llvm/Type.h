@@ -26,6 +26,7 @@ class raw_ostream;
 class Module;
 class LLVMContext;
 class LLVMContextImpl;
+class StringRef;
 template<class GraphType> struct GraphTraits;
 
 /// The instances of the Type class are immutable: once they are created,
@@ -294,10 +295,6 @@ public:
   /// otherwise return 'this'.
   Type *getScalarType();
 
-  /// getNumElements - If this is a vector type, return the number of elements,
-  /// otherwise return zero.
-  unsigned getNumElements();
-
   //===--------------------------------------------------------------------===//
   // Type Iteration support.
   //
@@ -318,6 +315,34 @@ public:
   ///
   unsigned getNumContainedTypes() const { return NumContainedTys; }
 
+  //===--------------------------------------------------------------------===//
+  // Helper methods corresponding to subclass methods.  This forces a cast to
+  // the specified subclass and calls its accessor.  "getVectorNumElements" (for
+  // example) is shorthand for cast<VectorType>(Ty)->getNumElements().  This is
+  // only intended to cover the core methods that are frequently used, helper
+  // methods should not be added here.
+  
+  unsigned getIntegerBitWidth() const;
+
+  Type *getFunctionParamType(unsigned i) const;
+  unsigned getFunctionNumParams() const;
+  bool isFunctionVarArg() const;
+  
+  StringRef getStructName() const;
+  unsigned getStructNumElements() const;
+  Type *getStructElementType(unsigned N) const;
+  
+  Type *getSequentialElementType() const;
+  
+  uint64_t getArrayNumElements() const;
+  Type *getArrayElementType() const { return getSequentialElementType(); }
+
+  unsigned getVectorNumElements() const;
+  Type *getVectorElementType() const { return getSequentialElementType(); }
+
+  unsigned getPointerAddressSpace() const;
+  Type *getPointerElementType() const { return getSequentialElementType(); }
+  
   //===--------------------------------------------------------------------===//
   // Static members exported by the Type class itself.  Useful for getting
   // instances of Type.

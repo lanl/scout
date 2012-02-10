@@ -170,7 +170,6 @@ namespace {
     }
 
     virtual bool runOnMachineFunction(MachineFunction &MF);
-    virtual const char *getPassName() const { return "If Converter"; }
 
   private:
     bool ReverseBranchCondition(BBInfo &BBI);
@@ -253,11 +252,11 @@ namespace {
   char IfConverter::ID = 0;
 }
 
+char &llvm::IfConverterID = IfConverter::ID;
+
 INITIALIZE_PASS_BEGIN(IfConverter, "if-converter", "If Converter", false, false)
 INITIALIZE_PASS_DEPENDENCY(MachineBranchProbabilityInfo)
 INITIALIZE_PASS_END(IfConverter, "if-converter", "If Converter", false, false)
-
-FunctionPass *llvm::createIfConverterPass() { return new IfConverter(); }
 
 bool IfConverter::runOnMachineFunction(MachineFunction &MF) {
   TLI = MF.getTarget().getTargetLowering();
@@ -315,8 +314,7 @@ bool IfConverter::runOnMachineFunction(MachineFunction &MF) {
 
       bool RetVal = false;
       switch (Kind) {
-      default: assert(false && "Unexpected!");
-        break;
+      default: llvm_unreachable("Unexpected!");
       case ICSimple:
       case ICSimpleFalse: {
         bool isFalse = Kind == ICSimpleFalse;
@@ -1036,7 +1034,7 @@ bool IfConverter::IfConvertSimple(BBInfo &BBI, IfcvtKind Kind) {
 
   if (Kind == ICSimpleFalse)
     if (TII->ReverseBranchCondition(Cond))
-      assert(false && "Unable to reverse branch condition!");
+      llvm_unreachable("Unable to reverse branch condition!");
 
   // Initialize liveins to the first BB. These are potentiall redefined by
   // predicated instructions.
@@ -1109,7 +1107,7 @@ bool IfConverter::IfConvertTriangle(BBInfo &BBI, IfcvtKind Kind) {
 
   if (Kind == ICTriangleFalse || Kind == ICTriangleFRev)
     if (TII->ReverseBranchCondition(Cond))
-      assert(false && "Unable to reverse branch condition!");
+      llvm_unreachable("Unable to reverse branch condition!");
 
   if (Kind == ICTriangleRev || Kind == ICTriangleFRev) {
     if (ReverseBranchCondition(*CvtBBI)) {
@@ -1156,7 +1154,7 @@ bool IfConverter::IfConvertTriangle(BBInfo &BBI, IfcvtKind Kind) {
     SmallVector<MachineOperand, 4> RevCond(CvtBBI->BrCond.begin(),
                                            CvtBBI->BrCond.end());
     if (TII->ReverseBranchCondition(RevCond))
-      assert(false && "Unable to reverse branch condition!");
+      llvm_unreachable("Unable to reverse branch condition!");
     TII->InsertBranch(*BBI.BB, CvtBBI->FalseBB, NULL, RevCond, dl);
     BBI.BB->addSuccessor(CvtBBI->FalseBB);
   }
@@ -1228,7 +1226,7 @@ bool IfConverter::IfConvertDiamond(BBInfo &BBI, IfcvtKind Kind,
   BBInfo *BBI2 = &FalseBBI;
   SmallVector<MachineOperand, 4> RevCond(BBI.BrCond.begin(), BBI.BrCond.end());
   if (TII->ReverseBranchCondition(RevCond))
-    assert(false && "Unable to reverse branch condition!");
+    llvm_unreachable("Unable to reverse branch condition!");
   SmallVector<MachineOperand, 4> *Cond1 = &BBI.BrCond;
   SmallVector<MachineOperand, 4> *Cond2 = &RevCond;
 

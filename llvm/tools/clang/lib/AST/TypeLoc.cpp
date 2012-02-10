@@ -200,81 +200,79 @@ SourceRange TypeOfExprTypeLoc::getLocalSourceRange() const {
 TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   if (needsExtraLocalData())
     return static_cast<TypeSpecifierType>(getWrittenBuiltinSpecs().Type);
-  else {
-    switch (getTypePtr()->getKind()) {
-    case BuiltinType::Void:
-      return TST_void;
-    case BuiltinType::Bool:
-      return TST_bool;
-    case BuiltinType::Char_U:
-    case BuiltinType::Char_S:
-      return TST_char;
-    case BuiltinType::Char16:
-      return TST_char16;
-    case BuiltinType::Char32:
-      return TST_char32;
-    case BuiltinType::WChar_S:
-    case BuiltinType::WChar_U:
-      return TST_wchar;
 
-    case BuiltinType::UChar:
-    case BuiltinType::UShort:
-    case BuiltinType::UInt:
-    case BuiltinType::ULong:
-    case BuiltinType::ULongLong:
-    case BuiltinType::UInt128:
-    case BuiltinType::SChar:
-    case BuiltinType::Short:
-    case BuiltinType::Int:
-    case BuiltinType::Long:
-    case BuiltinType::LongLong:
-    case BuiltinType::Int128:
-    case BuiltinType::Half:
-    case BuiltinType::Float:
-    case BuiltinType::Double:
-    case BuiltinType::LongDouble:
-
-    // ndm - Scout vector types
+  switch (getTypePtr()->getKind()) {
+  case BuiltinType::Void:
+    return TST_void;
+  case BuiltinType::Bool:
+    return TST_bool;
+  case BuiltinType::Char_U:
+  case BuiltinType::Char_S:
+    return TST_char;
+  case BuiltinType::Char16:
+    return TST_char16;
+  case BuiltinType::Char32:
+    return TST_char32;
+  case BuiltinType::WChar_S:
+  case BuiltinType::WChar_U:
+    return TST_wchar;
+  case BuiltinType::UChar:
+  case BuiltinType::UShort:
+  case BuiltinType::UInt:
+  case BuiltinType::ULong:
+  case BuiltinType::ULongLong:
+  case BuiltinType::UInt128:
+  case BuiltinType::SChar:
+  case BuiltinType::Short:
+  case BuiltinType::Int:
+  case BuiltinType::Long:
+  case BuiltinType::LongLong:
+  case BuiltinType::Int128:
+  case BuiltinType::Half:
+  case BuiltinType::Float:
+  case BuiltinType::Double:
+  case BuiltinType::LongDouble:
+    
+  // ndm - Scout vector types
         
-    case BuiltinType::Bool2:
-    case BuiltinType::Bool3:
-    case BuiltinType::Bool4:    
-    case BuiltinType::Char2:
-    case BuiltinType::Char3:
-    case BuiltinType::Char4:
-    case BuiltinType::Short2:
-    case BuiltinType::Short3:
-    case BuiltinType::Short4: 
-    case BuiltinType::Int2:
-    case BuiltinType::Int3:
-    case BuiltinType::Int4: 
-    case BuiltinType::Long2:
-    case BuiltinType::Long3:
-    case BuiltinType::Long4: 
-    case BuiltinType::Float2:
-    case BuiltinType::Float3:
-    case BuiltinType::Float4: 
-    case BuiltinType::Double2:
-    case BuiltinType::Double3:
-    case BuiltinType::Double4: 
-      llvm_unreachable("Builtin type needs extra local data!");
-      // Fall through, if the impossible happens.
-        
-    case BuiltinType::NullPtr:
-    case BuiltinType::Overload:
-    case BuiltinType::Dependent:
-    case BuiltinType::BoundMember:
-    case BuiltinType::UnknownAny:
-    case BuiltinType::ARCUnbridgedCast:
-    case BuiltinType::PseudoObject:
-    case BuiltinType::ObjCId:
-    case BuiltinType::ObjCClass:
-    case BuiltinType::ObjCSel:
-      return TST_unspecified;
-    }
+  case BuiltinType::Bool2:
+  case BuiltinType::Bool3:
+  case BuiltinType::Bool4:    
+  case BuiltinType::Char2:
+  case BuiltinType::Char3:
+  case BuiltinType::Char4:
+  case BuiltinType::Short2:
+  case BuiltinType::Short3:
+  case BuiltinType::Short4: 
+  case BuiltinType::Int2:
+  case BuiltinType::Int3:
+  case BuiltinType::Int4: 
+  case BuiltinType::Long2:
+  case BuiltinType::Long3:
+  case BuiltinType::Long4: 
+  case BuiltinType::Float2:
+  case BuiltinType::Float3:
+  case BuiltinType::Float4: 
+  case BuiltinType::Double2:
+  case BuiltinType::Double3:
+  case BuiltinType::Double4: 
+    llvm_unreachable("Builtin type needs extra local data!");
+    // Fall through, if the impossible happens.
+      
+  case BuiltinType::NullPtr:
+  case BuiltinType::Overload:
+  case BuiltinType::Dependent:
+  case BuiltinType::BoundMember:
+  case BuiltinType::UnknownAny:
+  case BuiltinType::ARCUnbridgedCast:
+  case BuiltinType::PseudoObject:
+  case BuiltinType::ObjCId:
+  case BuiltinType::ObjCClass:
+  case BuiltinType::ObjCSel:
+    return TST_unspecified;
   }
-  
-  return TST_unspecified;
+
+  llvm_unreachable("Invalid BuiltinType Kind!");
 }
 
 TypeLoc TypeLoc::IgnoreParensImpl(TypeLoc TL) {
@@ -285,7 +283,7 @@ TypeLoc TypeLoc::IgnoreParensImpl(TypeLoc TL) {
 
 void ElaboratedTypeLoc::initializeLocal(ASTContext &Context, 
                                         SourceLocation Loc) {
-  setKeywordLoc(Loc);
+  setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
   Builder.MakeTrivial(Context, getTypePtr()->getQualifier(), Loc);
   setQualifierLoc(Builder.getWithLocInContext(Context));
@@ -293,17 +291,17 @@ void ElaboratedTypeLoc::initializeLocal(ASTContext &Context,
 
 void DependentNameTypeLoc::initializeLocal(ASTContext &Context, 
                                            SourceLocation Loc) {
-  setKeywordLoc(Loc);
+  setElaboratedKeywordLoc(Loc);
   NestedNameSpecifierLocBuilder Builder;
   Builder.MakeTrivial(Context, getTypePtr()->getQualifier(), Loc);
   setQualifierLoc(Builder.getWithLocInContext(Context));
   setNameLoc(Loc);
 }
 
-void 
-DependentTemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context, 
+void
+DependentTemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
                                                         SourceLocation Loc) {
-  setKeywordLoc(Loc);
+  setElaboratedKeywordLoc(Loc);
   if (getTypePtr()->getQualifier()) {
     NestedNameSpecifierLocBuilder Builder;
     Builder.MakeTrivial(Context, getTypePtr()->getQualifier(), Loc);
@@ -311,8 +309,8 @@ DependentTemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
   } else {
     setQualifierLoc(NestedNameSpecifierLoc());
   }
-  
-  setNameLoc(Loc);
+  setTemplateKeywordLoc(Loc);
+  setTemplateNameLoc(Loc);
   setLAngleLoc(Loc);
   setRAngleLoc(Loc);
   TemplateSpecializationTypeLoc::initializeArgLocs(Context, getNumArgs(),

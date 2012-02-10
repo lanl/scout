@@ -765,8 +765,7 @@ static unsigned getSizeForEncoding(MCStreamer &streamer,
   MCContext &context = streamer.getContext();
   unsigned format = symbolEncoding & 0x0f;
   switch (format) {
-  default:
-    assert(0 && "Unknown Encoding");
+  default: llvm_unreachable("Unknown Encoding");
   case dwarf::DW_EH_PE_absptr:
   case dwarf::DW_EH_PE_signed:
     return context.getAsmInfo().getPointerSize();
@@ -840,6 +839,7 @@ namespace {
                             const MCSymbol *personality,
                             unsigned personalityEncoding,
                             const MCSymbol *lsda,
+                            bool IsSignalFrame,
                             unsigned lsdaEncoding);
     MCSymbol *EmitFDE(MCStreamer &streamer,
                       const MCSymbol &cieStart,
@@ -856,28 +856,40 @@ namespace {
 static void EmitEncodingByte(MCStreamer &Streamer, unsigned Encoding,
                              StringRef Prefix) {
   if (Streamer.isVerboseAsm()) {
-    const char *EncStr = 0;
+    const char *EncStr;
     switch (Encoding) {
-    default: EncStr = "<unknown encoding>";
-    case dwarf::DW_EH_PE_absptr: EncStr = "absptr";
-    case dwarf::DW_EH_PE_omit:   EncStr = "omit";
-    case dwarf::DW_EH_PE_pcrel:  EncStr = "pcrel";
-    case dwarf::DW_EH_PE_udata4: EncStr = "udata4";
-    case dwarf::DW_EH_PE_udata8: EncStr = "udata8";
-    case dwarf::DW_EH_PE_sdata4: EncStr = "sdata4";
-    case dwarf::DW_EH_PE_sdata8: EncStr = "sdata8";
-    case dwarf::DW_EH_PE_pcrel |dwarf::DW_EH_PE_udata4: EncStr = "pcrel udata4";
-    case dwarf::DW_EH_PE_pcrel |dwarf::DW_EH_PE_sdata4: EncStr = "pcrel sdata4";
-    case dwarf::DW_EH_PE_pcrel |dwarf::DW_EH_PE_udata8: EncStr = "pcrel udata8";
-    case dwarf::DW_EH_PE_pcrel |dwarf::DW_EH_PE_sdata8: EncStr = "pcrel sdata8";
+    default: EncStr = "<unknown encoding>"; break;
+    case dwarf::DW_EH_PE_absptr: EncStr = "absptr"; break;
+    case dwarf::DW_EH_PE_omit:   EncStr = "omit"; break;
+    case dwarf::DW_EH_PE_pcrel:  EncStr = "pcrel"; break;
+    case dwarf::DW_EH_PE_udata4: EncStr = "udata4"; break;
+    case dwarf::DW_EH_PE_udata8: EncStr = "udata8"; break;
+    case dwarf::DW_EH_PE_sdata4: EncStr = "sdata4"; break;
+    case dwarf::DW_EH_PE_sdata8: EncStr = "sdata8"; break;
+    case dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_udata4:
+      EncStr = "pcrel udata4";
+      break;
+    case dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_sdata4:
+      EncStr = "pcrel sdata4";
+      break;
+    case dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_udata8:
+      EncStr = "pcrel udata8";
+      break;
+    case dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_sdata8:
+      EncStr = "screl sdata8";
+      break;
     case dwarf::DW_EH_PE_indirect |dwarf::DW_EH_PE_pcrel|dwarf::DW_EH_PE_udata4:
       EncStr = "indirect pcrel udata4";
+      break;
     case dwarf::DW_EH_PE_indirect |dwarf::DW_EH_PE_pcrel|dwarf::DW_EH_PE_sdata4:
       EncStr = "indirect pcrel sdata4";
+      break;
     case dwarf::DW_EH_PE_indirect |dwarf::DW_EH_PE_pcrel|dwarf::DW_EH_PE_udata8:
       EncStr = "indirect pcrel udata8";
+      break;
     case dwarf::DW_EH_PE_indirect |dwarf::DW_EH_PE_pcrel|dwarf::DW_EH_PE_sdata8:
       EncStr = "indirect pcrel sdata8";
+      break;
     }
 
     Streamer.AddComment(Twine(Prefix) + " = " + EncStr);
@@ -1099,6 +1111,7 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(MCStreamer &streamer,
                                           const MCSymbol *personality,
                                           unsigned personalityEncoding,
                                           const MCSymbol *lsda,
+                                          bool IsSignalFrame,
                                           unsigned lsdaEncoding) {
   MCContext &context = streamer.getContext();
   const MCRegisterInfo &MRI = context.getRegisterInfo();
@@ -1141,6 +1154,8 @@ const MCSymbol &FrameEmitterImpl::EmitCIE(MCStreamer &streamer,
     if (lsda)
       Augmentation += "L";
     Augmentation += "R";
+    if (IsSignalFrame)
+      Augmentation += "S";
     streamer.EmitBytes(Augmentation.str(), 0);
   }
   streamer.EmitIntValue(0, 1);
@@ -1300,17 +1315,18 @@ MCSymbol *FrameEmitterImpl::EmitFDE(MCStreamer &streamer,
 
 namespace {
   struct CIEKey {
-    static const CIEKey getEmptyKey() { return CIEKey(0, 0, -1); }
-    static const CIEKey getTombstoneKey() { return CIEKey(0, -1, 0); }
+    static const CIEKey getEmptyKey() { return CIEKey(0, 0, -1, false); }
+    static const CIEKey getTombstoneKey() { return CIEKey(0, -1, 0, false); }
 
     CIEKey(const MCSymbol* Personality_, unsigned PersonalityEncoding_,
-           unsigned LsdaEncoding_) : Personality(Personality_),
-                                     PersonalityEncoding(PersonalityEncoding_),
-                                     LsdaEncoding(LsdaEncoding_) {
+           unsigned LsdaEncoding_, bool IsSignalFrame_) :
+      Personality(Personality_), PersonalityEncoding(PersonalityEncoding_),
+      LsdaEncoding(LsdaEncoding_), IsSignalFrame(IsSignalFrame_) {
     }
     const MCSymbol* Personality;
     unsigned PersonalityEncoding;
     unsigned LsdaEncoding;
+    bool IsSignalFrame;
   };
 }
 
@@ -1328,13 +1344,15 @@ namespace llvm {
       ID.AddPointer(Key.Personality);
       ID.AddInteger(Key.PersonalityEncoding);
       ID.AddInteger(Key.LsdaEncoding);
+      ID.AddBoolean(Key.IsSignalFrame);
       return ID.ComputeHash();
     }
     static bool isEqual(const CIEKey &LHS,
                         const CIEKey &RHS) {
       return LHS.Personality == RHS.Personality &&
         LHS.PersonalityEncoding == RHS.PersonalityEncoding &&
-        LHS.LsdaEncoding == RHS.LsdaEncoding;
+        LHS.LsdaEncoding == RHS.LsdaEncoding &&
+        LHS.IsSignalFrame == RHS.IsSignalFrame;
     }
   };
 }
@@ -1370,11 +1388,12 @@ void MCDwarfFrameEmitter::Emit(MCStreamer &Streamer,
   for (unsigned i = 0, n = FrameArray.size(); i < n; ++i) {
     const MCDwarfFrameInfo &Frame = FrameArray[i];
     CIEKey Key(Frame.Personality, Frame.PersonalityEncoding,
-               Frame.LsdaEncoding);
+               Frame.LsdaEncoding, Frame.IsSignalFrame);
     const MCSymbol *&CIEStart = IsEH ? CIEStarts[Key] : DummyDebugKey;
     if (!CIEStart)
       CIEStart = &Emitter.EmitCIE(Streamer, Frame.Personality,
                                   Frame.PersonalityEncoding, Frame.Lsda,
+                                  Frame.IsSignalFrame,
                                   Frame.LsdaEncoding);
 
     FDEEnd = Emitter.EmitFDE(Streamer, *CIEStart, Frame);

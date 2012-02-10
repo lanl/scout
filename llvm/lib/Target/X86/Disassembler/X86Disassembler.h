@@ -78,7 +78,7 @@
   const char*             name;
 
 #define INSTRUCTION_IDS               \
-  const InstrUID *instructionIDs;
+  unsigned instructionIDs;
 
 #include "X86DisassemblerDecoderCommon.h"
 
@@ -114,7 +114,7 @@ public:
   /// getInstruction - See MCDisassembler.
   DecodeStatus getInstruction(MCInst &instr,
                               uint64_t &size,
-                              const MemoryObject &region,
+                              MemoryObject &region,
                               uint64_t address,
                               raw_ostream &vStream,
                               raw_ostream &cStream) const;

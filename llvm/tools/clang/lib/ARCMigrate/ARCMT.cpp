@@ -10,6 +10,7 @@
 #include "Internals.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/AST/ASTConsumer.h"
@@ -184,7 +185,7 @@ static bool HasARCRuntime(CompilerInvocation &origCI) {
 
 static CompilerInvocation *
 createInvocationForMigration(CompilerInvocation &origCI) {
-  llvm::OwningPtr<CompilerInvocation> CInvok;
+  OwningPtr<CompilerInvocation> CInvok;
   CInvok.reset(new CompilerInvocation(origCI));
   CInvok->getPreprocessorOpts().ImplicitPCHInclude = std::string();
   CInvok->getPreprocessorOpts().ImplicitPTHInclude = std::string();
@@ -220,7 +221,7 @@ static void emitPremigrationErrors(const CapturedDiagList &arcDiags,
 //===----------------------------------------------------------------------===//
 
 bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
-                                 StringRef Filename, InputKind Kind,
+                                 const FrontendInputFile &Input,
                                  DiagnosticConsumer *DiagClient,
                                  bool emitPremigrationARCErrors,
                                  StringRef plistOut) {
@@ -228,14 +229,17 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
     return false;
 
   LangOptions::GCMode OrigGCMode = origCI.getLangOpts()->getGC();
+  bool NoNSAllocReallocError = origCI.getMigratorOpts().NoNSAllocReallocError;
+  bool NoFinalizeRemoval = origCI.getMigratorOpts().NoFinalizeRemoval;
 
-  std::vector<TransformFn> transforms = arcmt::getAllTransformations(OrigGCMode);
+  std::vector<TransformFn> transforms = arcmt::getAllTransformations(OrigGCMode,
+                                                                     NoFinalizeRemoval);
   assert(!transforms.empty());
 
-  llvm::OwningPtr<CompilerInvocation> CInvok;
+  OwningPtr<CompilerInvocation> CInvok;
   CInvok.reset(createInvocationForMigration(origCI));
   CInvok->getFrontendOpts().Inputs.clear();
-  CInvok->getFrontendOpts().Inputs.push_back(std::make_pair(Kind, Filename));
+  CInvok->getFrontendOpts().Inputs.push_back(Input);
 
   CapturedDiagList capturedDiags;
 
@@ -248,7 +252,7 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
   CaptureDiagnosticConsumer errRec(*Diags, capturedDiags);
   Diags->setClient(&errRec, /*ShouldOwnClient=*/false);
 
-  llvm::OwningPtr<ASTUnit> Unit(
+  OwningPtr<ASTUnit> Unit(
       ASTUnit::LoadFromCompilerInvocationAction(CInvok.take(), Diags));
   if (!Unit)
     return true;
@@ -291,6 +295,8 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
 
   TransformActions testAct(*Diags, capturedDiags, Ctx, Unit->getPreprocessor());
   MigrationPass pass(Ctx, OrigGCMode, Unit->getSema(), testAct, ARCMTMacroLocs);
+  pass.setNSAllocReallocError(NoNSAllocReallocError);
+  pass.setNoFinalizeRemoval(NoFinalizeRemoval);
 
   for (unsigned i=0, e = transforms.size(); i != e; ++i)
     transforms[i](pass);
@@ -311,7 +317,7 @@ bool arcmt::checkForManualIssues(CompilerInvocation &origCI,
 //===----------------------------------------------------------------------===//
 
 static bool applyTransforms(CompilerInvocation &origCI,
-                            StringRef Filename, InputKind Kind,
+                            const FrontendInputFile &Input,
                             DiagnosticConsumer *DiagClient,
                             StringRef outputDir,
                             bool emitPremigrationARCErrors,
@@ -323,17 +329,19 @@ static bool applyTransforms(CompilerInvocation &origCI,
 
   // Make sure checking is successful first.
   CompilerInvocation CInvokForCheck(origCI);
-  if (arcmt::checkForManualIssues(CInvokForCheck, Filename, Kind, DiagClient,
+  if (arcmt::checkForManualIssues(CInvokForCheck, Input, DiagClient,
                                   emitPremigrationARCErrors, plistOut))
     return true;
 
   CompilerInvocation CInvok(origCI);
   CInvok.getFrontendOpts().Inputs.clear();
-  CInvok.getFrontendOpts().Inputs.push_back(std::make_pair(Kind, Filename));
+  CInvok.getFrontendOpts().Inputs.push_back(Input);
   
   MigrationProcess migration(CInvok, DiagClient, outputDir);
+  bool NoFinalizeRemoval = origCI.getMigratorOpts().NoFinalizeRemoval;
 
-  std::vector<TransformFn> transforms = arcmt::getAllTransformations(OrigGCMode);
+  std::vector<TransformFn> transforms = arcmt::getAllTransformations(OrigGCMode,
+                                                                     NoFinalizeRemoval);
   assert(!transforms.empty());
 
   for (unsigned i=0, e = transforms.size(); i != e; ++i) {
@@ -357,20 +365,20 @@ static bool applyTransforms(CompilerInvocation &origCI,
 }
 
 bool arcmt::applyTransformations(CompilerInvocation &origCI,
-                                 StringRef Filename, InputKind Kind,
+                                 const FrontendInputFile &Input,
                                  DiagnosticConsumer *DiagClient) {
-  return applyTransforms(origCI, Filename, Kind, DiagClient,
+  return applyTransforms(origCI, Input, DiagClient,
                          StringRef(), false, StringRef());
 }
 
 bool arcmt::migrateWithTemporaryFiles(CompilerInvocation &origCI,
-                                      StringRef Filename, InputKind Kind,
+                                      const FrontendInputFile &Input,
                                       DiagnosticConsumer *DiagClient,
                                       StringRef outputDir,
                                       bool emitPremigrationARCErrors,
                                       StringRef plistOut) {
   assert(!outputDir.empty() && "Expected output directory path");
-  return applyTransforms(origCI, Filename, Kind, DiagClient,
+  return applyTransforms(origCI, Input, DiagClient,
                          outputDir, emitPremigrationARCErrors, plistOut);
 }
 
@@ -492,7 +500,7 @@ MigrationProcess::MigrationProcess(const CompilerInvocation &CI,
 
 bool MigrationProcess::applyTransform(TransformFn trans,
                                       RewriteListener *listener) {
-  llvm::OwningPtr<CompilerInvocation> CInvok;
+  OwningPtr<CompilerInvocation> CInvok;
   CInvok.reset(createInvocationForMigration(OrigCI));
   CInvok->getDiagnosticOpts().IgnoreWarnings = true;
 
@@ -510,10 +518,10 @@ bool MigrationProcess::applyTransform(TransformFn trans,
   CaptureDiagnosticConsumer errRec(*Diags, capturedDiags);
   Diags->setClient(&errRec, /*ShouldOwnClient=*/false);
 
-  llvm::OwningPtr<ARCMTMacroTrackerAction> ASTAction;
+  OwningPtr<ARCMTMacroTrackerAction> ASTAction;
   ASTAction.reset(new ARCMTMacroTrackerAction(ARCMTMacroLocs));
 
-  llvm::OwningPtr<ASTUnit> Unit(
+  OwningPtr<ASTUnit> Unit(
       ASTUnit::LoadFromCompilerInvocationAction(CInvok.take(), Diags,
                                                 ASTAction.get()));
   if (!Unit)
@@ -565,13 +573,13 @@ bool MigrationProcess::applyTransform(TransformFn trans,
     assert(file);
     std::string newFname = file->getName();
     newFname += "-trans";
-    llvm::SmallString<512> newText;
+    SmallString<512> newText;
     llvm::raw_svector_ostream vecOS(newText);
     buf.write(vecOS);
     vecOS.flush();
     llvm::MemoryBuffer *memBuf = llvm::MemoryBuffer::getMemBufferCopy(
                    StringRef(newText.data(), newText.size()), newFname);
-    llvm::SmallString<64> filePath(file->getName());
+    SmallString<64> filePath(file->getName());
     Unit->getFileManager().FixupRelativePath(filePath);
     Remapper.remap(filePath.str(), memBuf);
   }

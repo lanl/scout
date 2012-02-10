@@ -25,6 +25,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Bitcode/BitstreamWriter.h"
 #include <map>
 #include <queue>
@@ -283,17 +284,10 @@ private:
   /// \brief Decls that will be replaced in the current dependent AST file.
   DeclsToRewriteTy DeclsToRewrite;
 
-  struct ChainedObjCCategoriesData {
-    /// \brief The interface in the imported module.
-    const ObjCInterfaceDecl *Interface;
-    /// \brief The local tail category ID that got chained to the imported
-    /// interface.
-    const ObjCCategoryDecl *TailCategory;
-  };
-  /// \brief ObjC categories that got chained to an interface imported from
-  /// another module.
-  SmallVector<ChainedObjCCategoriesData, 16> LocalChainedObjCCategories;
-
+  /// \brief The set of Objective-C class that have categories we
+  /// should serialize.
+  llvm::SetVector<ObjCInterfaceDecl *> ObjCClassesWithCategories;
+                    
   struct ReplacedDeclInfo {
     serialization::DeclID ID;
     uint64_t Offset;
@@ -312,11 +306,12 @@ private:
   /// serialized again. In this case, it is registered here, so that the reader
   /// knows to read the updated version.
   SmallVector<ReplacedDeclInfo, 16> ReplacedDecls;
-                    
-  /// \brief The list of local redeclarations of entities that were
-  /// first declared non-locally.
-  SmallVector<serialization::LocalRedeclarationsInfo, 2> LocalRedeclarations;
-                  
+                 
+  /// \brief The set of declarations that may have redeclaration chains that
+  /// need to be serialized.
+  llvm::SetVector<Decl *, llvm::SmallVector<Decl *, 4>, 
+                  llvm::SmallPtrSet<Decl *, 4> > Redeclarations;
+                                      
   /// \brief Statements that we've encountered while serializing a
   /// declaration or type.
   SmallVector<Stmt *, 16> StmtsToEmit;
@@ -411,10 +406,11 @@ private:
   void ResolveDeclUpdatesBlocks();
   void WriteDeclUpdatesBlocks();
   void WriteDeclReplacementsBlock();
-  void WriteChainedObjCCategories();
   void WriteDeclContextVisibleUpdate(const DeclContext *DC);
   void WriteFPPragmaOptions(const FPOptions &Opts);
   void WriteOpenCLExtensions(Sema &SemaRef);
+  void WriteObjCCategories();
+  void WriteRedeclarations();
   void WriteMergedDecls();
                         
   unsigned DeclParmVarAbbrev;
@@ -686,7 +682,6 @@ public:
   virtual void StaticDataMemberInstantiated(const VarDecl *D);
   virtual void AddedObjCCategoryToInterface(const ObjCCategoryDecl *CatD,
                                             const ObjCInterfaceDecl *IFD);
-  virtual void CompletedObjCForwardRef(const ObjCContainerDecl *D);
   virtual void AddedObjCPropertyInClassExtension(const ObjCPropertyDecl *Prop,
                                             const ObjCPropertyDecl *OrigProp,
                                             const ObjCCategoryDecl *ClassExt);

@@ -14,6 +14,7 @@
 #ifndef HexagonINSTRUCTIONINFO_H
 #define HexagonINSTRUCTIONINFO_H
 
+#include "MCTargetDesc/HexagonBaseInfo.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetFrameLowering.h"
 #include "HexagonRegisterInfo.h"
@@ -135,6 +136,13 @@ public:
   isProfitableToDupForIfCvt(MachineBasicBlock &MBB,unsigned NumCycles,
                             const BranchProbability &Probability) const;
 
+  virtual DFAPacketizer*
+  CreateTargetScheduleState(const TargetMachine *TM,
+                            const ScheduleDAG *DAG) const;
+
+  virtual bool isSchedulingBoundary(const MachineInstr *MI,
+                                    const MachineBasicBlock *MBB,
+                                    const MachineFunction &MF) const;
   bool isValidOffset(const int Opcode, const int Offset) const;
   bool isValidAutoIncImm(const EVT VT, const int Offset) const;
   bool isMemOp(const MachineInstr *MI) const;

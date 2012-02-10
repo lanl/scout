@@ -124,7 +124,6 @@ SourceLocation Expr::getExprLoc() const {
 #include "clang/AST/StmtNodes.inc"
   }
   llvm_unreachable("unknown statement kind");
-  return SourceLocation();
 }
 
 //===----------------------------------------------------------------------===//
@@ -259,6 +258,7 @@ void DeclRefExpr::computeDependence() {
 }
 
 DeclRefExpr::DeclRefExpr(NestedNameSpecifierLoc QualifierLoc,
+                         SourceLocation TemplateKWLoc,
                          ValueDecl *D, const DeclarationNameInfo &NameInfo,
                          NamedDecl *FoundD,
                          const TemplateArgumentListInfo *TemplateArgs,
@@ -271,16 +271,20 @@ DeclRefExpr::DeclRefExpr(NestedNameSpecifierLoc QualifierLoc,
   DeclRefExprBits.HasFoundDecl = FoundD ? 1 : 0;
   if (FoundD)
     getInternalFoundDecl() = FoundD;
-  DeclRefExprBits.HasExplicitTemplateArgs = TemplateArgs ? 1 : 0;
+  DeclRefExprBits.HasTemplateKWAndArgsInfo
+    = (TemplateArgs || TemplateKWLoc.isValid()) ? 1 : 0;
   if (TemplateArgs) {
     bool Dependent = false;
     bool InstantiationDependent = false;
     bool ContainsUnexpandedParameterPack = false;
-    getExplicitTemplateArgs().initializeFrom(*TemplateArgs, Dependent,
-                                             InstantiationDependent,
-                                             ContainsUnexpandedParameterPack);
+    getTemplateKWAndArgsInfo()->initializeFrom(TemplateKWLoc, *TemplateArgs,
+                                               Dependent,
+                                               InstantiationDependent,
+                                               ContainsUnexpandedParameterPack);
     if (InstantiationDependent)
       setInstantiationDependent(true);
+  } else if (TemplateKWLoc.isValid()) {
+    getTemplateKWAndArgsInfo()->initializeFrom(TemplateKWLoc);
   }
   DeclRefExprBits.HadMultipleCandidates = 0;
 
@@ -289,19 +293,21 @@ DeclRefExpr::DeclRefExpr(NestedNameSpecifierLoc QualifierLoc,
 
 DeclRefExpr *DeclRefExpr::Create(ASTContext &Context,
                                  NestedNameSpecifierLoc QualifierLoc,
+                                 SourceLocation TemplateKWLoc,
                                  ValueDecl *D,
                                  SourceLocation NameLoc,
                                  QualType T,
                                  ExprValueKind VK,
                                  NamedDecl *FoundD,
                                  const TemplateArgumentListInfo *TemplateArgs) {
-  return Create(Context, QualifierLoc, D,
+  return Create(Context, QualifierLoc, TemplateKWLoc, D,
                 DeclarationNameInfo(D->getDeclName(), NameLoc),
                 T, VK, FoundD, TemplateArgs);
 }
 
 DeclRefExpr *DeclRefExpr::Create(ASTContext &Context,
                                  NestedNameSpecifierLoc QualifierLoc,
+                                 SourceLocation TemplateKWLoc,
                                  ValueDecl *D,
                                  const DeclarationNameInfo &NameInfo,
                                  QualType T,
@@ -318,25 +324,27 @@ DeclRefExpr *DeclRefExpr::Create(ASTContext &Context,
   if (FoundD)
     Size += sizeof(NamedDecl *);
   if (TemplateArgs)
-    Size += ASTTemplateArgumentListInfo::sizeFor(*TemplateArgs);
+    Size += ASTTemplateKWAndArgsInfo::sizeFor(TemplateArgs->size());
+  else if (TemplateKWLoc.isValid())
+    Size += ASTTemplateKWAndArgsInfo::sizeFor(0);
 
   void *Mem = Context.Allocate(Size, llvm::alignOf<DeclRefExpr>());
-  return new (Mem) DeclRefExpr(QualifierLoc, D, NameInfo, FoundD, TemplateArgs,
-                               T, VK);
+  return new (Mem) DeclRefExpr(QualifierLoc, TemplateKWLoc, D, NameInfo,
+                               FoundD, TemplateArgs, T, VK);
 }
 
 DeclRefExpr *DeclRefExpr::CreateEmpty(ASTContext &Context,
                                       bool HasQualifier,
                                       bool HasFoundDecl,
-                                      bool HasExplicitTemplateArgs,
+                                      bool HasTemplateKWAndArgsInfo,
                                       unsigned NumTemplateArgs) {
   std::size_t Size = sizeof(DeclRefExpr);
   if (HasQualifier)
     Size += sizeof(NestedNameSpecifierLoc);
   if (HasFoundDecl)
     Size += sizeof(NamedDecl *);
-  if (HasExplicitTemplateArgs)
-    Size += ASTTemplateArgumentListInfo::sizeFor(NumTemplateArgs);
+  if (HasTemplateKWAndArgsInfo)
+    Size += ASTTemplateKWAndArgsInfo::sizeFor(NumTemplateArgs);
 
   void *Mem = Context.Allocate(Size, llvm::alignOf<DeclRefExpr>());
   return new (Mem) DeclRefExpr(EmptyShell());
@@ -360,7 +368,7 @@ std::string PredefinedExpr::ComputeName(IdentType IT, const Decl *CurrentDecl) {
     if (IT != PrettyFunction && IT != PrettyFunctionNoVirtual)
       return FD->getNameAsString();
 
-    llvm::SmallString<256> Name;
+    SmallString<256> Name;
     llvm::raw_svector_ostream Out(Name);
 
     if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
@@ -413,7 +421,7 @@ std::string PredefinedExpr::ComputeName(IdentType IT, const Decl *CurrentDecl) {
     return Name.str().str();
   }
   if (const ObjCMethodDecl *MD = dyn_cast<ObjCMethodDecl>(CurrentDecl)) {
-    llvm::SmallString<256> Name;
+    SmallString<256> Name;
     llvm::raw_svector_ostream Out(Name);
     Out << (MD->isInstanceMethod() ? '-' : '+');
     Out << '[';
@@ -425,7 +433,7 @@ std::string PredefinedExpr::ComputeName(IdentType IT, const Decl *CurrentDecl) {
 
     if (const ObjCCategoryImplDecl *CID =
         dyn_cast<ObjCCategoryImplDecl>(MD->getDeclContext()))
-      Out << '(' << CID << ')';
+      Out << '(' << *CID << ')';
 
     Out <<  ' ';
     Out << MD->getSelector().getAsString();
@@ -652,7 +660,6 @@ getLocationOfByte(unsigned ByteNo, const SourceManager &SM,
 /// corresponds to, e.g. "sizeof" or "[pre]++".
 const char *UnaryOperator::getOpcodeStr(Opcode Op) {
   switch (Op) {
-  default: llvm_unreachable("Unknown unary operator");
   case UO_PostInc: return "++";
   case UO_PostDec: return "--";
   case UO_PreInc:  return "++";
@@ -667,6 +674,7 @@ const char *UnaryOperator::getOpcodeStr(Opcode Op) {
   case UO_Imag:    return "__imag";
   case UO_Extension: return "__extension__";
   }
+  llvm_unreachable("Unknown unary operator");
 }
 
 UnaryOperatorKind
@@ -942,6 +950,7 @@ IdentifierInfo *OffsetOfExpr::OffsetOfNode::getFieldName() const {
 
 MemberExpr *MemberExpr::Create(ASTContext &C, Expr *base, bool isarrow,
                                NestedNameSpecifierLoc QualifierLoc,
+                               SourceLocation TemplateKWLoc,
                                ValueDecl *memberdecl,
                                DeclAccessPair founddecl,
                                DeclarationNameInfo nameinfo,
@@ -958,7 +967,9 @@ MemberExpr *MemberExpr::Create(ASTContext &C, Expr *base, bool isarrow,
     Size += sizeof(MemberNameQualifier);
 
   if (targs)
-    Size += ASTTemplateArgumentListInfo::sizeFor(*targs);
+    Size += ASTTemplateKWAndArgsInfo::sizeFor(targs->size());
+  else if (TemplateKWLoc.isValid())
+    Size += ASTTemplateKWAndArgsInfo::sizeFor(0);
 
   void *Mem = C.Allocate(Size, llvm::alignOf<MemberExpr>());
   MemberExpr *E = new (Mem) MemberExpr(base, isarrow, memberdecl, nameinfo,
@@ -982,16 +993,20 @@ MemberExpr *MemberExpr::Create(ASTContext &C, Expr *base, bool isarrow,
     NQ->FoundDecl = founddecl;
   }
 
+  E->HasTemplateKWAndArgsInfo = (targs || TemplateKWLoc.isValid());
+
   if (targs) {
     bool Dependent = false;
     bool InstantiationDependent = false;
     bool ContainsUnexpandedParameterPack = false;
-    E->HasExplicitTemplateArgumentList = true;
-    E->getExplicitTemplateArgs().initializeFrom(*targs, Dependent,
-                                                InstantiationDependent,
-                                              ContainsUnexpandedParameterPack);
+    E->getTemplateKWAndArgsInfo()->initializeFrom(TemplateKWLoc, *targs,
+                                                  Dependent,
+                                                  InstantiationDependent,
+                                             ContainsUnexpandedParameterPack);
     if (InstantiationDependent)
       E->setInstantiationDependent(true);
+  } else if (TemplateKWLoc.isValid()) {
+    E->getTemplateKWAndArgsInfo()->initializeFrom(TemplateKWLoc);
   }
 
   return E;
@@ -1011,11 +1026,10 @@ SourceRange MemberExpr::getSourceRange() const {
     if (StartLoc.isInvalid())
       StartLoc = MemberLoc;
   }
-  
-  SourceLocation EndLoc = 
-    HasExplicitTemplateArgumentList? getRAngleLoc() 
-                                   : getMemberNameInfo().getEndLoc();
-  
+
+  SourceLocation EndLoc = hasExplicitTemplateArgs()
+    ? getRAngleLoc() : getMemberNameInfo().getEndLoc();
+
   return SourceRange(StartLoc, EndLoc);
 }
 
@@ -1105,6 +1119,8 @@ void CastExpr::CheckCastConsistency() const {
   case CK_Dependent:
   case CK_LValueToRValue:
   case CK_NoOp:
+  case CK_AtomicToNonAtomic:
+  case CK_NonAtomicToAtomic:
   case CK_PointerToBoolean:
   case CK_IntegralToBoolean:
   case CK_FloatingToBoolean:
@@ -1217,10 +1233,13 @@ const char *CastExpr::getCastKindName() const {
     return "ARCReclaimReturnedObject";
   case CK_ARCExtendBlockObject:
     return "ARCCExtendBlockObject";
+  case CK_AtomicToNonAtomic:
+    return "AtomicToNonAtomic";
+  case CK_NonAtomicToAtomic:
+    return "NonAtomicToAtomic";
   }
 
   llvm_unreachable("Unhandled cast kind!");
-  return 0;
 }
 
 Expr *CastExpr::getSubExprAsWritten() {
@@ -1262,7 +1281,6 @@ CXXBaseSpecifier **CastExpr::path_buffer() {
 #include "clang/AST/StmtNodes.inc"
   default:
     llvm_unreachable("non-cast expressions not possible here");
-    return 0;
   }
 }
 
@@ -1350,7 +1368,7 @@ const char *BinaryOperator::getOpcodeStr(Opcode Op) {
   case BO_Comma:     return ",";
   }
 
-  return "";
+  llvm_unreachable("Invalid OpCode!");
 }
 
 BinaryOperatorKind
@@ -1990,8 +2008,8 @@ Expr::CanThrowResult Expr::CanThrow(ASTContext &C) const {
     //     pointer, or member function pointer that does not have a non-throwing
     //     exception-specification
   case CallExprClass:
-  case CXXOperatorCallExprClass:
-  case CXXMemberCallExprClass: {
+  case CXXMemberCallExprClass:
+  case CXXOperatorCallExprClass: {
     const CallExpr *CE = cast<CallExpr>(this);
     CanThrowResult CT;
     if (isTypeDependent())
@@ -2012,6 +2030,16 @@ Expr::CanThrowResult Expr::CanThrow(ASTContext &C) const {
     if (CT == CT_Can)
       return CT;
     return MergeCanThrow(CT, CanSubExprsThrow(C, this));
+  }
+
+  case LambdaExprClass: {
+    const LambdaExpr *Lambda = cast<LambdaExpr>(this);
+    CanThrowResult CT = Expr::CT_Cannot;
+    for (LambdaExpr::capture_init_iterator Cap = Lambda->capture_init_begin(),
+                                        CapEnd = Lambda->capture_init_end();
+         Cap != CapEnd; ++Cap)
+      CT = MergeCanThrow(CT, (*Cap)->CanThrow(C));
+    return CT;
   }
 
   case CXXNewExprClass: {
@@ -2063,34 +2091,34 @@ Expr::CanThrowResult Expr::CanThrow(ASTContext &C) const {
 
     // Many other things have subexpressions, so we have to test those.
     // Some are simple:
-  case ParenExprClass:
-  case MemberExprClass:
-  case CXXReinterpretCastExprClass:
-  case CXXConstCastExprClass:
   case ConditionalOperatorClass:
   case CompoundLiteralExprClass:
+  case CXXConstCastExprClass:
+  case CXXDefaultArgExprClass:
+  case CXXReinterpretCastExprClass:
+  case DesignatedInitExprClass:
+  case ExprWithCleanupsClass:
   case ExtVectorElementExprClass:
   case InitListExprClass:
-  case DesignatedInitExprClass:
-  case ParenListExprClass:
-  case VAArgExprClass:
-  case CXXDefaultArgExprClass:
-  case ExprWithCleanupsClass:
-  case ObjCIvarRefExprClass:
+  case MemberExprClass:
   case ObjCIsaExprClass:
+  case ObjCIvarRefExprClass:
+  case ParenExprClass:
+  case ParenListExprClass:
   case ShuffleVectorExprClass:
+  case VAArgExprClass:
     return CanSubExprsThrow(C, this);
 
     // Some might be dependent for other reasons.
-  case UnaryOperatorClass:
   case ArraySubscriptExprClass:
-  case ImplicitCastExprClass:
+  case BinaryOperatorClass:
+  case CompoundAssignOperatorClass:
   case CStyleCastExprClass:
   case CXXStaticCastExprClass:
   case CXXFunctionalCastExprClass:
-  case BinaryOperatorClass:
-  case CompoundAssignOperatorClass:
-  case MaterializeTemporaryExprClass: {
+  case ImplicitCastExprClass:
+  case MaterializeTemporaryExprClass:
+  case UnaryOperatorClass: {
     CanThrowResult CT = isTypeDependent() ? CT_Dependent : CT_Cannot;
     return MergeCanThrow(CT, CanSubExprsThrow(C, this));
   }
@@ -2110,16 +2138,70 @@ Expr::CanThrowResult Expr::CanThrow(ASTContext &C) const {
     return cast<GenericSelectionExpr>(this)->getResultExpr()->CanThrow(C);
 
     // Some expressions are always dependent.
-  case DependentScopeDeclRefExprClass:
-  case CXXUnresolvedConstructExprClass:
   case CXXDependentScopeMemberExprClass:
+  case CXXUnresolvedConstructExprClass:
+  case DependentScopeDeclRefExprClass:
     return CT_Dependent;
 
-  default:
-    // All other expressions don't have subexpressions, or else they are
-    // unevaluated.
+  case AtomicExprClass:
+  case AsTypeExprClass:
+  case BinaryConditionalOperatorClass:
+  case BlockExprClass:
+  case BlockDeclRefExprClass:
+  case CUDAKernelCallExprClass:
+  case DeclRefExprClass:
+  case ObjCBridgedCastExprClass:
+  case ObjCIndirectCopyRestoreExprClass:
+  case ObjCProtocolExprClass:
+  case ObjCSelectorExprClass:
+  case OffsetOfExprClass:
+  case PackExpansionExprClass:
+  case PseudoObjectExprClass:
+  case SubstNonTypeTemplateParmExprClass:
+  case SubstNonTypeTemplateParmPackExprClass:
+  case UnaryExprOrTypeTraitExprClass:
+  case UnresolvedLookupExprClass:
+  case UnresolvedMemberExprClass:
+    // FIXME: Can any of the above throw?  If so, when?
     return CT_Cannot;
+
+  case AddrLabelExprClass:
+  case ArrayTypeTraitExprClass:
+  case BinaryTypeTraitExprClass:
+  case CXXBoolLiteralExprClass:
+  case CXXNoexceptExprClass:
+  case CXXNullPtrLiteralExprClass:
+  case CXXPseudoDestructorExprClass:
+  case CXXScalarValueInitExprClass:
+  case CXXThisExprClass:
+  case CXXUuidofExprClass:
+  case CharacterLiteralClass:
+  case ExpressionTraitExprClass:
+  case FloatingLiteralClass:
+  case GNUNullExprClass:
+  case ImaginaryLiteralClass:
+  case ImplicitValueInitExprClass:
+  case IntegerLiteralClass:
+  case ObjCEncodeExprClass:
+  case ObjCStringLiteralClass:
+  case OpaqueValueExprClass:
+  case PredefinedExprClass:
+  case SizeOfPackExprClass:
+  case StringLiteralClass:
+  case UnaryTypeTraitExprClass:
+    // These expressions can never throw.
+    return CT_Cannot;
+
+#define STMT(CLASS, PARENT) case CLASS##Class:
+#define STMT_RANGE(Base, First, Last)
+#define LAST_STMT_RANGE(BASE, FIRST, LAST)
+#define EXPR(CLASS, PARENT)
+#define ABSTRACT_STMT(STMT)
+#include "clang/AST/StmtNodes.inc"
+  case NoStmtClass:
+    llvm_unreachable("Invalid class for expression");
   }
+  llvm_unreachable("Bogus StmtClass");
 }
 
 Expr* Expr::IgnoreParens() {
@@ -2548,6 +2630,18 @@ bool Expr::isConstantInitializer(ASTContext &Ctx, bool IsForRef) const {
   case ImplicitCastExprClass:
   case CStyleCastExprClass: {
     const CastExpr *CE = cast<CastExpr>(this);
+
+    // If we're promoting an integer to an _Atomic type then this is constant
+    // if the integer is constant.  We also need to check the converse in case
+    // someone does something like:
+    //
+    // int a = (_Atomic(int))42;
+    //
+    // I doubt anyone would write code like this directly, but it's quite
+    // possible as the result of macro expansions.
+    if (CE->getCastKind() == CK_NonAtomicToAtomic ||
+        CE->getCastKind() == CK_AtomicToNonAtomic)
+      return CE->getSubExpr()->isConstantInitializer(Ctx, false);
 
     // Handle bitcasts of vector constants.
     if (getType()->isVectorType() && CE->getCastKind() == CK_BitCast)
@@ -3010,7 +3104,7 @@ SourceRange ObjCMessageExpr::getReceiverRange() const {
     return getSuperLoc();
   }
 
-  return SourceLocation();
+  llvm_unreachable("Invalid ReceiverKind!");
 }
 
 Selector ObjCMessageExpr::getSelector() const {
@@ -3059,8 +3153,8 @@ StringRef ObjCBridgedCastExpr::getBridgeKindName() const {
   case OBC_BridgeRetained:
     return "__bridge_retained";
   }
-  
-  return "__bridge";
+
+  llvm_unreachable("Invalid BridgeKind!");
 }
 
 bool ChooseExpr::isConditionTrue(const ASTContext &C) const {

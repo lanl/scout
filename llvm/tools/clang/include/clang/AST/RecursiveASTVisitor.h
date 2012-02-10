@@ -1368,8 +1368,6 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionInstantiations(
     case TSK_Undeclared:           // Declaration of the template definition.
     case TSK_ExplicitSpecialization:
       break;
-    default:
-      llvm_unreachable("Unknown specialization kind.");
     }
   }
 
@@ -1996,6 +1994,10 @@ DEF_TRAVERSE_STMT(VAArgExpr, {
 DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
     // This is called for code like 'return T()' where T is a class type.
     TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
+  })
+
+DEF_TRAVERSE_STMT(LambdaExpr, {
+    TRY_TO(TraverseStmt(S->getBody()));
   })
 
 DEF_TRAVERSE_STMT(CXXUnresolvedConstructExpr, {
