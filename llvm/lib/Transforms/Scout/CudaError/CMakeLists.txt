@@ -12,6 +12,10 @@ include_directories(
   ${CUDA_INCLUDE_DIRS}
   )
 
+# Note: 
+#
+#   *** This is no longer necessary in the lastest drop of CUDA (4.1).
+#   ***
 #
 # Try to work-around an "error" in cuda.h where there is a 
 # trailing comma in an enumerated type.  This appears to 
@@ -19,7 +23,7 @@ include_directories(
 # this case we've been forced to edit cuda.h manually and 
 # remove the offending comma...
 #
-SET(CMAKE_CXX_FLAGS "-std=c99")
+#SET(CMAKE_CXX_FLAGS "-std=c99")
 
 add_llvm_library(scCudaError
   CheckCudaError.cpp
