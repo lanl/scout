@@ -26,6 +26,7 @@ using namespace scout;
 glRenderable::glRenderable()
 {
   _hide = false;
+  shader_prog = NULL;
 }
 
 

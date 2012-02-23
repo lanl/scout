@@ -19,6 +19,7 @@
 #define SCOUT_GL_CAMERA_H_
 
 #include "runtime/opengl/vectors.h"
+#include <iostream>
 
 namespace scout
 {

@@ -13,11 +13,14 @@ enable_testing()
 set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
+find_package(MPI REQUIRED)
+
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
+  ${MPI_INCLUDE_PATH}
 )
 
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
@@ -122,13 +125,14 @@ if (SCOUT_ENABLE_RT_THREADS)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
+file(GLOB volren_srcs volren/hpgv/*.cpp)
 
 # Finally add the library and dependencies...  Note that if we
 # are running w/out PNG/OpenGL support the associated variables
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs})
+add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${png_srcs} ${volren_srcs})
 add_dependencies(scRuntime 
   scc
   glsl2cstr

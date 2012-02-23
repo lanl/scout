@@ -40,6 +40,7 @@ find_package(CUDA)
 #find_package(PNG)
 find_package(OpenGL)
 find_package(HWLOC)
+find_package(MPI)
 
 if (${CUDA_FOUND}) 
   add_definitions(-DSC_ENABLE_CUDA) 
