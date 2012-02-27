@@ -46,33 +46,34 @@ glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
   initialize(camera);
   hpgv_vis_para(_para_input);
 
-  // set up opengl stuff
-  _ntexcoords = 2;
-  _texture = new glTexture2D(xdim, ydim);
-  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  if (id == root) {
+    // set up opengl stuff
+    _ntexcoords = 2;
+    _texture = new glTexture2D(xdim, ydim);
+    _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-  _pbo = new glTextureBuffer;
-  _pbo->bind();
-  _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
-  _pbo->release();
+    _pbo = new glTextureBuffer;
+    _pbo->bind();
+    _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
+    _pbo->release();
 
-  _vbo = new glVertexBuffer;
-  _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
-  _vbo->release();
-  _nverts = 4;
+    _vbo = new glVertexBuffer;
+    _vbo->bind();
+    _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
+    fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+    _vbo->release();
+    _nverts = 4;
 
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
-  _tcbo->release();
+    _tcbo = new glTexCoordBuffer;
+    _tcbo->bind();
+    _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
+    fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
+    _tcbo->release();
 
-  OpenGLErrorCheck();
-
+    OpenGLErrorCheck();
+  }
   //if (id == root) printf("finished hpgv_vis_para()\n");
 
 }
@@ -102,7 +103,9 @@ glVolumeRenderable::~glVolumeRenderable()
 void glVolumeRenderable::initialize(glCamera* camera)
 {
   initializeRenderer(camera);
-  initializeOpenGL(camera);
+  if (_id == _root) {
+    initializeOpenGL(camera);
+  }
 }
 
 
@@ -259,7 +262,7 @@ void glVolumeRenderable::createBlock()
       _npx, _npy, _npz, &header);
   memcpy(&(_block->blk_header), &header, sizeof(blk_header_t));
 
-  block_add_volume(_block, HPGV_DOUBLE, _data, 0);
+  block_add_volume(_block, HPGV_FLOAT, _data, 0);
 
   //hpgv_block_print(id, _root, block);
 
