@@ -23,7 +23,6 @@
 using namespace std;
 using namespace scout;
 
-
 glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
     int nx, int ny, int nz, double* x, double* y, double* z, 
     int win_width, int win_height, glCamera* camera, trans_func_t* trans_func,
@@ -33,19 +32,48 @@ glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
     _trans_func(trans_func), _id(id), _root(root), _gcomm(gcomm)
     
 {
-  //  setMinPoint(min_pt);
-  //  setMaxPoint(max_pt);
-
   if (!hpgv_vis_valid()) {
     hpgv_vis_init(MPI_COMM_WORLD, _root);
   }
+
+  size_t xdim = win_width;
+  size_t ydim = win_height;
+
+  setMinPoint(glfloat3(0, 0, 0));
+  setMaxPoint(glfloat3(xdim, ydim, 0));
 
   // Set up vis params  
   initialize(camera);
   hpgv_vis_para(_para_input);
 
-  if (id == root) printf("finished hpgv_vis_para()\n");
+  // set up opengl stuff
+  _ntexcoords = 2;
+  _texture = new glTexture2D(xdim, ydim);
+  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+  _pbo = new glTextureBuffer;
+  _pbo->bind();
+  _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
+  _pbo->release();
+
+  _vbo = new glVertexBuffer;
+  _vbo->bind();
+  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
+  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _vbo->release();
+  _nverts = 4;
+
+  _tcbo = new glTexCoordBuffer;
+  _tcbo->bind();
+  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
+  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
+  _tcbo->release();
+
+  OpenGLErrorCheck();
+
+  //if (id == root) printf("finished hpgv_vis_para()\n");
 
 }
 
@@ -58,12 +86,29 @@ glVolumeRenderable::~glVolumeRenderable()
   if (_block) {
     free(_block);
   }
+
+  if (_texture != 0) delete _texture;
+  if (_pbo != 0) delete _pbo;
+  if (_vbo != 0) delete _vbo;
+  if (_tcbo != 0) delete _tcbo;
+  _texture = NULL;
+  _pbo = NULL;
+  _vbo = NULL;
+  _tcbo = NULL;
+
 }
 
     
 void glVolumeRenderable::initialize(glCamera* camera)
 {
+  initializeRenderer(camera);
+  initializeOpenGL(camera);
+}
 
+
+
+void glVolumeRenderable::initializeRenderer(glCamera* camera)
+{
   /* new param struct */
   para_input_t *pi = (para_input_t *)calloc(1, sizeof(para_input_t));
   HPGV_ASSERT_P(_id, pi, "Out of memory.", HPGV_ERR_MEM);
@@ -149,6 +194,46 @@ void glVolumeRenderable::initialize(glCamera* camera)
   pi->para_image->light_vol[0].lightpar[3] =  128.0000; //spec. refl. exponent
 
   _para_input =  pi;
+
+}
+
+void glVolumeRenderable::initializeOpenGL(glCamera* camera)
+{
+ glMatrixMode(GL_PROJECTION);
+
+  glLoadIdentity();
+
+  size_t width = _max_pt.x - _min_pt.x;
+  size_t height = _max_pt.y - _min_pt.y;
+
+  static const float pad = 0.05;
+
+  if(height == 0){
+    float px = pad * width;
+    gluOrtho2D(-px, width + px, -px, width + px);
+
+  }
+  else{
+    if(width >= height){
+      float px = pad * width;
+      float py = (1 - float(height)/width) * width * 0.50;
+      gluOrtho2D(-px, width + px, -py - px, width - py + px);
+    }
+    else{
+      float py = pad * height;
+      float px = (1 - float(width)/height) * height * 0.50;
+      gluOrtho2D(-px - py, width + px + py, -py, height + py);
+    }
+
+  }
+
+  glMatrixMode(GL_MODELVIEW);
+
+  glLoadIdentity();
+
+  glClearColor(0.5, 0.55, 0.65, 0.0);
+
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void glVolumeRenderable::setVolumeData(void* dataptr) 
@@ -313,9 +398,129 @@ void glVolumeRenderable::writePPM(double time)
   }
 }
 
+
 void glVolumeRenderable::draw(glCamera* camera)
 {
   createBlock();
   render();
-  writePPM(0);
+
+  if (_id == _root) {
+
+    // now put it up in the window
+    float4* _colors = map_colors();
+
+    hpgv_vis_copyraw( _para_input->para_view.frame_width,
+        _para_input->para_view.frame_height,
+        _para_input->image_format,
+        _para_input->image_type,
+        _para_input->num_image,
+        0,
+        hpgv_vis_get_imageptr(),
+        (void*)_colors);
+/*
+    for (int i = 0; i < _para_input->para_view.frame_height; i++) {
+      for (int j = 0; j < _para_input->para_view.frame_width; j++) {
+          float4 color = _colors[(i*_para_input->para_view.frame_width) + j];
+        printf(" %f:%f:%f", color.components[0], color.components[1], 
+          color.components[2]); 
+      }
+      printf("\n");
+    } 
+*/
+    unmap_colors();
+
+    _pbo->bind();
+    _texture->enable();
+    _texture->update(0);
+    _pbo->release();
+
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    _tcbo->bind();
+    glTexCoordPointer(_ntexcoords, GL_FLOAT, 0, 0);
+
+    glEnableClientState(GL_VERTEX_ARRAY);
+    _vbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+
+    OpenGLErrorCheck();
+
+    glDrawArrays(GL_POLYGON, 0, _nverts);
+
+    glDisableClientState(GL_VERTEX_ARRAY);
+    _vbo->release();
+
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    _tcbo->release();
+
+    _texture->disable();
+
+  }
 }
+
+void glVolumeRenderable::fill_vbo(float x0,
+    float y0,
+    float x1,
+    float y1)
+{
+
+  float* verts = (float*)_vbo->mapForWrite();
+
+  verts[0] = x0;
+  verts[1] = y0;
+  verts[2] = 0.0f;
+
+  verts[3] = x1;
+  verts[4] = y0;
+  verts[5] = 0.f;
+
+  verts[6] = x1;
+  verts[7] = y1;
+  verts[8] = 0.0f;
+
+  verts[9] = x0;
+  verts[10] = y1;
+  verts[11] = 0.0f;
+
+  _vbo->unmap();
+}
+
+
+void glVolumeRenderable::fill_tcbo2d(float x0,
+    float y0,
+    float x1,
+    float y1)
+{
+
+  float* coords = (float*)_tcbo->mapForWrite();
+
+  coords[0] = x0;
+  coords[1] = y0;
+
+  coords[2] = x1;
+  coords[3] = y0;
+
+  coords[4] = x1;
+  coords[5] = y1;
+
+  coords[6] = x0;
+  coords[7] = y1;
+
+  _tcbo->unmap();
+
+}
+
+float4* glVolumeRenderable::map_colors()
+{
+  return (float4*)_pbo->mapForWrite();
+}
+
+
+void glVolumeRenderable::unmap_colors()
+{
+  _pbo->unmap();
+  _pbo->bind();
+  _texture->initialize(0);
+  _pbo->release();
+}
+
+

@@ -44,7 +44,7 @@ namespace scout
     : renderall_base_rt(nx, ny, nz), _camera(camera)
   {
       if(!__sc_glsdl){
-        __sc_init_sdl(win_width, win_height, camera);
+        __sc_init_sdl(win_width, win_height);
       }
 
     _renderable = new glVolumeRenderable(npx, npy, npz, nx, ny, nz, 

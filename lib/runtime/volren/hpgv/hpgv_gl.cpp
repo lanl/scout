@@ -900,4 +900,37 @@ void * hpgv_vis_loadraw(int *width, int *height, int *format, int *type,
     
     return pixels;
 }
+
+
+/**
+ * hpgv_vis_copyraw
+ * copies numimages starting at imagenum, since images stored contiguously
+ *
+ */
+int hpgv_vis_copyraw(int width, int height, int format, int type, int numimages,
+                     int imagenum, const void *pixels, void* dest)
+{
+    if (pixels == NULL) {
+        fprintf(stderr, "Empty pixel data.\n");
+        return HPGV_ERROR;
+    }
+    
+    int realnum = numimages;
+
+    if (realnum < 1) {
+        realnum = 1;
+    }
+    
+    size_t size = width * height * hpgv_formatsize(format) * hpgv_typesize(type) *
+                realnum;
+
+    size_t offset = width * height * hpgv_formatsize(format) 
+      * hpgv_typesize(type) * imagenum;
+
+    memcpy(dest, (void*)((char*)pixels+offset), size); 
+
+    return HPGV_TRUE;
+}
+
+
 }

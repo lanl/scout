@@ -23,7 +23,12 @@
 #include <list>
 
 #include "runtime/opengl/glCamera.h"
+#include "runtime/opengl/glTexture.h"
+#include "runtime/opengl/glTexture2D.h"
+#include "runtime/opengl/glTextureBuffer.h"
 #include "runtime/opengl/glRenderable.h"
+#include "runtime/opengl/glVertexBuffer.h"
+#include "runtime/opengl/glTexCoordBuffer.h"
 #include "runtime/volren/hpgv/hpgv.h"
 
 
@@ -47,18 +52,46 @@ namespace scout
 
       void initialize(glCamera* camera);
 
+      float4* map_colors();
+      void unmap_colors();
+
       void setVolumeData(void* dataptr);
 
       void draw(glCamera* camera);
 
-      //GLuint get_buffer_object_id() { return _abo->id(); } 
+    void setMinPoint(glfloat3 pt)
+    { _min_pt = pt; }
 
-      //glyph_vertex* map_data() 
-      //{ return (glyph_vertex*)_abo->mapForWrite(); }
+    void setMaxPoint(glfloat3 pt)
+    { _max_pt = pt; }
 
-      //void unmap_vertex_data() { _abo->unmap(); }
+    void setTexture(glTexture *texture)
+    { _texture = texture; }
+
+    glTexture* texture() const
+    { return _texture; }
+
+    void setTexCoordScale(float s)
+    { _tex_coord_scale = s; }
+
+  private:
+    void fill_vbo(float x0, float y0, float x1, float y1);
+    void fill_tcbo2d(float x0, float y0, float x1, float y1);
+
+   private:
+      glVertexBuffer* _vbo;
+      glTexture* _texture;
+      glTextureBuffer* _pbo;
+      glTexCoordBuffer* _tcbo;
+      unsigned short _ntexcoords;
+      unsigned int _nverts;
+      glfloat3 _min_pt;
+      glfloat3 _max_pt;
+      float _tex_coord_scale;
 
     private:
+      void initializeRenderer(glCamera* camera);
+      void initializeOpenGL(glCamera* camera);
       void createBlock();
       void render();
       void writePPM(double time);
@@ -75,9 +108,6 @@ namespace scout
     public:
       void*           _data;
       
-      
-      //glAttributeBuffer      *_abo;      // attributes
-
   };
 
 }

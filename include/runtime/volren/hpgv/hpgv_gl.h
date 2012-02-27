@@ -293,6 +293,13 @@ namespace scout {
     void *hpgv_vis_loadraw(int *width, int *height, int *format, int *type,
         int *imgnum, char *filename);
 
+    /**
+     * hpgv_vis_copyraw
+     *
+     */
+    int hpgv_vis_copyraw(int width, int height, int format, int type, 
+        int numimages, int imagenum, const void *pixels, void* dest);
+
 
   }
 
