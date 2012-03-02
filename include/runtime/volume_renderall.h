@@ -35,13 +35,13 @@ namespace scout
       void begin();
       void end();
     private:
-      void map_gpu_resources();
-      void unmap_gpu_resources();
       void exec();
 
     private:
       glVolumeRenderable* _renderable;
       glCamera* _camera;
+      int _id;
+      int _root;
   };
 
 } // end namespace scout

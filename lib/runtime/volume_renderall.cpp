@@ -41,24 +41,16 @@ namespace scout
       size_t win_width, size_t win_height,
       glCamera* camera, trans_func_t* trans_func,
       int id, int root, MPI_Comm gcomm)
-    : renderall_base_rt(nx, ny, nz), _camera(camera)
+    : renderall_base_rt(nx, ny, nz), _camera(camera),
+    _id(id), _root(root)
   {
-      if(!__sc_glsdl){
+      if((_id == root) && (!__sc_glsdl)){
         __sc_init_sdl(win_width, win_height);
       }
 
     _renderable = new glVolumeRenderable(npx, npy, npz, nx, ny, nz, 
       x, y, z, win_width, win_height, camera, trans_func, id, root, gcomm);
 
-    if(__sc_gpu){
-      // register buffer object for access by CUDA, return handle 
-      /*
-      assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, 
-            _renderable->get_buffer_object_id(), 
-            CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
-          CUDA_SUCCESS);
-      */
-    }
     
     // we need a camera or nothing will happen! 
     if (camera ==  NULL) 
@@ -69,7 +61,7 @@ namespace scout
     _renderable->initialize(camera);
 
     // show empty buffer
-    __sc_glsdl->swapBuffers();
+    if (_id == _root) __sc_glsdl->swapBuffers();
   }
 
 
@@ -81,14 +73,8 @@ namespace scout
 
   void volume_renderall::begin()
   {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (_id == _root) glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if(__sc_gpu){
-      //map_gpu_resources();
-    }
-    else{
-      //__sc_volume_renderall_data =_renderable->map_data();
-    }
   }
 
 
@@ -96,49 +82,22 @@ namespace scout
   {
     _renderable->setVolumeData(__sc_volume_renderall_data);
 
-    if(__sc_gpu){
-      //unmap_gpu_resources();
-    }
-    else{
-      //_renderable->unmap_data();
-    }
-
     exec();
 
     // show what we just drew
-    __sc_glsdl->swapBuffers();
+    if (_id == _root) {
+      __sc_glsdl->swapBuffers();
 
-    bool done = __sc_glsdl->processEvent();
+      bool done = __sc_glsdl->processEvent();
 
-    // fix this
-    if (done) exit(0);
-  }
-
-
-  // should this be a member function?
-  void volume_renderall::map_gpu_resources()
-  {
-    // map one graphics resource for access by CUDA
-    assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
-
-    size_t bytes;
-    // return a pointer by which the mapped graphics resource may be accessed.
-    assert(cuGraphicsResourceGetMappedPointer(
-          &__sc_device_volume_renderall_data, &bytes, 
-          __sc_device_resource) == CUDA_SUCCESS);
-  }
-
-
-  // should this be a member function?
-  void volume_renderall::unmap_gpu_resources()
-  {
-    assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) 
-        == CUDA_SUCCESS);
+      // fix this
+      if (done) exit(0);
+    }
   }
 
 
   void volume_renderall::exec(){
-    __sc_glsdl->update();
+    if (_id == _root)__sc_glsdl->update();
     _renderable->draw(_camera);
   }
 

@@ -988,7 +988,7 @@ hpgv_vis_framesize(int width, int height, int type, int format, int framenum)
             realnum = framenum;
         }
             
-        theVisControl->colorimage
+        theVisControl->colorimage 
             = (void *)realloc(theVisControl->colorimage, bytenum * realnum);
         
         HPGV_ASSERT_P(theVisControl->id, theVisControl->colorimage,
@@ -1170,9 +1170,7 @@ hpgv_vis_composite_init(MPI_Comm comm)
 void
 hpgv_vis_render_one_composite(block_t *block, int root, MPI_Comm comm, trans_func_t* tf)
 {
-    int mpiid = 0;
-    MPI_Comm_rank(comm, &mpiid);
-    //hpgv_msg_p(mpiid, root, "in hpgv_render_one_composite\n");
+    hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_one_composite\n", block->mpiid);
 
     int img = 0;
     
@@ -1344,9 +1342,8 @@ hpgv_vis_render_one_composite(block_t *block, int root, MPI_Comm comm, trans_fun
 void
 hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_func_t* tf)
 {
-    int mpiid = 0;
-    MPI_Comm_rank(comm, &mpiid);
-    //hpgv_msg_p(mpiid, root, "in hpgv_render_multi_composite\n");
+
+    hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_multi_composite\n", block->mpiid);
 
     int img = 0;
 
@@ -1424,8 +1421,9 @@ hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_f
         }
 
         HPGV_TIMING_END(MY_STEP_MULTI_VOLREND_TIME);
-        
+       
 #ifdef HPGV_DEBUG_LOCAL_IMG
+{
         uint64_t index, offset;
         pixel_t *pixel;
 
@@ -1439,6 +1437,7 @@ hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_f
                          hpgv_gl_get_cbtype(),
                          hpgv_gl_get_cbptr(),
                          filename);
+}
 #endif
 
         int i;

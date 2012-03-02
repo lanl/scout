@@ -85,6 +85,9 @@ glVolumeRenderable::~glVolumeRenderable()
   }
 
   if (_block) {
+    if (_block->volume_data[0]->data_original) {
+      free(_block->volume_data[0]->data_original);
+    }
     free(_block);
   }
 
@@ -185,7 +188,9 @@ void glVolumeRenderable::initializeRenderer(glCamera* camera)
   pi->para_image->num_vol = 1;
   pi->para_image->id_vol = (int*)calloc (1, sizeof (int));
   pi->para_image->id_vol[0] = 0;
-  pi->para_image->sampling_spacing = 1.297920;
+  //pi->para_image->sampling_spacing = 2.0;
+  //pi->para_image->sampling_spacing = 1.297920;
+  pi->para_image->sampling_spacing = 1.0;
   pi->para_image->tf_vol = (para_tf_t *)calloc(1, sizeof(para_tf_t));
 
 
@@ -264,7 +269,8 @@ void glVolumeRenderable::createBlock()
 
   block_add_volume(_block, HPGV_FLOAT, _data, 0);
 
-  //hpgv_block_print(id, _root, block);
+  //hpgv_block_print(_id, _root, _block);
+
 
   /*  initalize timing module   */
   if (!HPGV_TIMING_VALID()) {
@@ -320,8 +326,8 @@ void glVolumeRenderable::render()
     time(&start_timer);
     start_time = localtime(&start_timer);
 
-    //fprintf(stderr, "tstep render call starts at %02d:%02d:%02d\n",
-    //    start_time->tm_hour, start_time->tm_min, start_time->tm_sec);
+    fprintf(stderr, "render call starts at %02d:%02d:%02d\n",
+        start_time->tm_hour, start_time->tm_min, start_time->tm_sec);
   }
 
 
@@ -336,17 +342,32 @@ void glVolumeRenderable::render()
       block_exchange_boundary(_block, image->id_vol[j]);
     }
   }
-  if (_id == _root) printf("finished ghost area exchange\n");
 
   HPGV_TIMING_END(MY_STEP_GHOST_VOL_TIME);
 
+  //if (_id == _root) fprintf(stderr, "hpgv_vis_render ...");
+  fprintf(stderr, "id: %d starting hpgv_vis_render ...\n", _id);
+
   hpgv_vis_render(_block, _root, _gcomm, 0, _trans_func);
 
-  if (_id == _root) printf("finished hpgv_vis_render()\n");
+  //if (_id == _root) fprintf(stderr, "done\n");
+  fprintf(stderr, "id: %d hpgv_vis_render done\n", _id);
 
   HPGV_TIMING_END(MY_STEP_VIS_TIME);
 
   HPGV_TIMING_END(MY_ALL_VIS_TIME);
+
+  MPI_Barrier(_gcomm);
+
+    if (_id == _root) {
+        struct tm *end_time;
+        time_t end_timer;
+        time(&end_timer);
+        end_time = localtime(&end_timer);
+
+        fprintf(stderr, "render call ends at %02d:%02d:%02d\n\n",
+            end_time->tm_hour, end_time->tm_min, end_time->tm_sec);
+    }
 
 }
 
