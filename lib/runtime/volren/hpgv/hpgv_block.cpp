@@ -1590,10 +1590,11 @@ void block_read_data(block_t *block, int vol, char *filename)
     {
         HPGV_ABORT("Can not read file", HPGV_ERR_IO);
     }
-    
+  
+    int count; 
+    MPI_Get_count(&status, datatype, &count);
     HPGV_ASSERT_P(block->mpiid,
-                  status.count
-                  == hpgv_typesize(volume->data_type) * totalsize,
+                  count == hpgv_typesize(volume->data_type) * totalsize,
                   "Inconsistent read",
                   HPGV_ERR_IO);
     
@@ -1706,9 +1707,11 @@ void block_write_data(block_t *block, int vol, char *filename)
         HPGV_ABORT("Can not read file", HPGV_ERR_IO);
     }
     
+    int count; 
+    MPI_Get_count(&status, datatype, &count);
+
     HPGV_ASSERT_P(block->mpiid,
-                  status.count
-                  == hpgv_typesize(HPGV_FLOAT) * totalsize,
+                  count == hpgv_typesize(HPGV_FLOAT) * totalsize,
                   "Inconsistent read",
                   HPGV_ERR_IO);
     
