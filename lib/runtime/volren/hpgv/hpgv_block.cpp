@@ -1580,8 +1580,10 @@ void block_read_data(block_t *block, int vol, char *filename)
     {
         HPGV_ABORT("Can not open file", HPGV_ERR_IO);
     }
-    
-    MPI_File_set_view(fd, 0, datatype, filetype, "native", MPI_INFO_NULL);
+   
+    char str[] = "native";
+
+    MPI_File_set_view(fd, 0, datatype, filetype, str, MPI_INFO_NULL);
     
     if (MPI_File_read_all(fd, volume->data_original, totalsize, datatype,
                           &status) != MPI_SUCCESS)
@@ -1694,7 +1696,9 @@ void block_write_data(block_t *block, int vol, char *filename)
         HPGV_ABORT("Can not open file", HPGV_ERR_IO);
     }
     
-    MPI_File_set_view(fd, 0, datatype, filetype, "native", MPI_INFO_NULL);
+    char str[] = "native";
+
+    MPI_File_set_view(fd, 0, datatype, filetype, str, MPI_INFO_NULL);
     
     if (MPI_File_write_all(fd, tempbuf, totalsize, datatype,
                            &status) != MPI_SUCCESS)

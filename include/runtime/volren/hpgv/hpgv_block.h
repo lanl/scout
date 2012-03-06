@@ -158,7 +158,7 @@ namespace scout {
 
     typedef float quantize_t(float value, int varname);
     void hpgv_block_print(int mpiid, int root, block_t *block);
-    void header_new(int id, int mpicomm, int groupsize,
+    void header_new(int id, MPI_Comm mpicomm, int groupsize,
           double *x, double *y, double *z,
           int nx, int ny, int nz,
           int npx, int npy, int npz,
