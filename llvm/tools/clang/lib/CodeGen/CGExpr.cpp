@@ -1848,15 +1848,15 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
         // Check if this is a Scout '*.width' instrinsic.
         if(memberName == "width")
-          return MakeAddrLValue(ScoutMeshSizes[meshName][0], getContext().IntTy);
+          return MakeAddrLValue(ScoutMeshSizes[0], getContext().IntTy);
 
         // Check if this is a Scout '*.height' instrinsic.
         if(memberName == "height")
-          return MakeAddrLValue(ScoutMeshSizes[meshName][1], getContext().IntTy);
+          return MakeAddrLValue(ScoutMeshSizes[1], getContext().IntTy);
 
         // Check if this is a Scout '*.depth' instrinsic.
         if(memberName == "depth")
-          return MakeAddrLValue(ScoutMeshSizes[meshName][2], getContext().IntTy);
+          return MakeAddrLValue(ScoutMeshSizes[2], getContext().IntTy);
 
         return EmitMeshMemberExpr(VD, memberName);
       }

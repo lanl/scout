@@ -601,6 +601,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
 
+  ScoutMeshSizes.clear();
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
+    Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
+    ScoutMeshSizes.push_back(lval);
+  }
+  
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
   
@@ -798,12 +805,12 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
                                                blockInfo,
-                                               ScoutMeshSizes[S.getMesh()->getName()],
+                                               ScoutMeshSizes,
                                                inputs);
 
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
-                       ScoutMeshSizes[S.getMesh()->getName()], inputs);
+                       ScoutMeshSizes, inputs);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {

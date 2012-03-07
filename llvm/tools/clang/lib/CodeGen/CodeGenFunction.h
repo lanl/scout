@@ -634,7 +634,6 @@ public:
   typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< FieldDecl *, int > FieldPair;
-  typedef std::map< llvm::StringRef, llvm::SmallVector< llvm::Value *, 3 > > Map;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   /// Scout forall explicit induction variable.
   llvm::Value *ForallIndVal;
@@ -642,7 +641,7 @@ public:
   /// Scout forall implicit induction variables.
   Vector ScoutIdxVars;
   /// Scout mesh dimension sizes.
-  Map ScoutMeshSizes;
+  llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
   /// Scout defined mesh variables.
   Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;

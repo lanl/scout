@@ -864,16 +864,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
           // Save type info for use when implicitly used in forall stmt.
           ScoutMeshVars.push_back(DeclPtr);
-
-          llvm::StringRef meshName = DeclPtr->getName();
-
-          llvm::SmallVector< llvm::Value *, 3 > sizes;
-          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-            llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
-            Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
-            sizes.push_back(lval);
-          }
-          ScoutMeshSizes[meshName] = sizes;
         }
       }
     } else {
