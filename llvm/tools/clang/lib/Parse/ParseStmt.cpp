@@ -2485,6 +2485,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   IdentifierInfo* MeshII = 0;
   SourceLocation MeshLoc;
+  VarDecl* MVD = 0;
   
   MemberExpr* ElementMember = 0;
   Expr* ElementColor = 0;
@@ -2664,7 +2665,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     // Lookup the meshtype and store it for the ForAllStmt Constructor.
     LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
     Actions.LookupName(LR, getCurScope());
-    MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
+    MVD = cast<VarDecl>(LR.getFoundDecl());
+    MT = cast<MeshType>(MVD->getType());
     
     size_t FieldCount = 0;
     const MeshDecl* MD = MT->getDecl();
@@ -2765,7 +2767,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     assert(Block && "expected a block expression");
     Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
 
-    ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT,
+    ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT, MVD,
                                            LoopVariableII, MeshII, LParenLoc,
                                            Op, RParenLoc, Body, Block);
     if(!ForAllResult.isUsable())
@@ -2821,7 +2823,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       InsertCPPCode("__sc_end_renderall();", BodyLoc);      
     }
 
-    ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT,
+    ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT, MVD,
                                               LoopVariableII, MeshII, LParenLoc,
                                               Op, RParenLoc, Body, Block);
   }
@@ -2984,12 +2986,14 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
   // Lookup the meshtype and store it for the ForAllStmt Constructor.
   LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
   Actions.LookupName(LR, getCurScope());
-  const MeshType *MT = cast<MeshType>(cast<VarDecl>(LR.getFoundDecl())->getType());
+  VarDecl* MVD = cast<VarDecl>(LR.getFoundDecl());
+  const MeshType *MT = cast<MeshType>(MVD->getType());
 
   StmtResult ForAllResult =
   Actions.ActOnForAllStmt(NameLoc,
                           ForAllStmt::Cells,
                           MT,
+                          MVD,
                           &Actions.Context.Idents.get("c"),
                           Name,
                           NameLoc,

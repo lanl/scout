@@ -2760,6 +2760,7 @@ namespace{
 StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  ForAllStmt::ForAllType Type,
                                  const MeshType *MT,
+                                 VarDecl* MVD,
                                  IdentifierInfo* LoopVariableII,
                                  IdentifierInfo* MeshII,
                                  SourceLocation LParenLoc,
@@ -2770,7 +2771,7 @@ StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
   SCLStack.pop_back();
 
   ForAllStmt* FS = new (Context) ForAllStmt(Context, Type, MT,
-                                            LoopVariableII, MeshII,
+                                            LoopVariableII, MeshII, MVD,
                                             Op, Body, Block,
                                             ForAllLoc, LParenLoc,
                                             RParenLoc);
@@ -2899,6 +2900,7 @@ namespace{
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     ForAllStmt::ForAllType Type,
                                     const MeshType *MT,
+                                    VarDecl* MVD,
                                     IdentifierInfo* LoopVariableII,
                                     IdentifierInfo* MeshII,
                                     SourceLocation LParenLoc,
@@ -2917,7 +2919,7 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
   }
 
   return Owned(new (Context) RenderAllStmt(Context, Type, MT,
-                                           LoopVariableII, MeshII,
+                                           LoopVariableII, MeshII, MVD,
                                            Op, Body, Block,
                                            RenderAllLoc, LParenLoc,
                                            RParenLoc));

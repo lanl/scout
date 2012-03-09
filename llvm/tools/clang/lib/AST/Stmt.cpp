@@ -803,8 +803,8 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
 // ndm - Scout Stmts
 
 ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
-                       const MeshType *MT, IdentifierInfo* LII,
-                       IdentifierInfo* MII, Expr *Op,
+                       const MeshType *MT,IdentifierInfo* LII,
+                       IdentifierInfo* MII, VarDecl* MVD, Expr *Op,
                        Stmt *Body, BlockExpr* Block,
                        SourceLocation FL, SourceLocation LP,
                        SourceLocation RP)
@@ -815,6 +815,7 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
+MeshVarDecl(MVD),
 LoopVariableII(LII),
 XStart(0),
 XEnd(0),
@@ -835,8 +836,8 @@ ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
 }
 
 ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
-                       IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-                       Stmt *Body, BlockExpr* Block, SourceLocation FL,
+                       IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+                       Expr *Op, Stmt *Body, BlockExpr* Block, SourceLocation FL,
                        SourceLocation LP, SourceLocation RP)
 : Stmt(ForAllStmtClass),
 Type(T),
@@ -845,6 +846,7 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
+MeshVarDecl(MVD),
 LoopVariableII(LII),
 XStart(0),
 XEnd(0),
@@ -871,17 +873,17 @@ ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
 : XInductionVarII(0),
 YInductionVarII(0),
 ZInductionVarII(0),
-ForAllStmt(ForAllArrayStmtClass, C, ForAllStmt::Array, 0, 0, 0, 0, Body, Block, FAL,
+ForAllStmt(ForAllArrayStmtClass, C, ForAllStmt::Array, 0, 0, 0, 0, 0, Body, Block, FAL,
            SourceLocation(), SourceLocation()){
   setBody(Body);
 }
 
 RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
-                             IdentifierInfo* LII, IdentifierInfo* MII,
+                             IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
                              Expr *Op, Stmt *Body, BlockExpr *Block,
                              SourceLocation RL, SourceLocation RP,
                              SourceLocation LP)
-  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII,
+  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, MVD,
                Op, Body, Block, RL, RP, LP),
 ElementColor(0),
 ElementRadius(0){

@@ -1667,7 +1667,8 @@ private:
   SourceLocation LParenLoc, RParenLoc;
   IdentifierInfo* MeshII;
   IdentifierInfo* LoopVariableII;
-
+  VarDecl* MeshVarDecl;
+  
   Expr* XStart;
   Expr* XEnd;
   Expr* XStride;
@@ -1680,13 +1681,13 @@ private:
 
 public:
   ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
-             IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
-             Stmt *Body, BlockExpr* Block,
+             IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+             Expr *Op, Stmt *Body, BlockExpr* Block,
              SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
 
   ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type,
-             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII,
+             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
              Expr *Op, Stmt *Body, BlockExpr* Block,
              SourceLocation FL, SourceLocation LP,
              SourceLocation RP);
@@ -1729,6 +1730,10 @@ public:
     MeshII = II;
   }
 
+  VarDecl* getMeshVarDecl(){
+    return MeshVarDecl;
+  }
+  
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }
@@ -1932,7 +1937,8 @@ class RenderAllStmt : public ForAllStmt {
 public:
 
   RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
-                IdentifierInfo* LII, IdentifierInfo* MII, Expr *Op,
+                IdentifierInfo* LII, IdentifierInfo* MII, 
+                VarDecl* MVD, Expr *Op,
                 Stmt *Body, BlockExpr *Block,
                 SourceLocation RL, SourceLocation LP,
                 SourceLocation RP);
