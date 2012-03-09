@@ -1734,6 +1734,10 @@ public:
     return MeshVarDecl;
   }
   
+  const VarDecl* getMeshVarDecl() const{
+    return MeshVarDecl;
+  }
+  
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }

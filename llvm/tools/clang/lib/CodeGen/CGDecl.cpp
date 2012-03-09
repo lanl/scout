@@ -861,9 +861,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
             Builder.CreateStore(val, field);
           }
-
-          // Save type info for use when implicitly used in forall stmt.
-          ScoutMeshVars.push_back(DeclPtr);
         }
       }
     } else {

@@ -595,7 +595,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshMembers.clear();
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  SetImplicitMeshVariable(meshName);
 
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
@@ -610,6 +609,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
+  const VarDecl* MVD = S.getMeshVarDecl();
+  
+  llvm::Value* baseAddr = LocalDeclMap[MVD];
   
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
@@ -619,7 +621,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     meshFieldMap[name.str()] = true;
     
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
-    llvm::Value *baseAddr = GetImplicitMeshVariable();
+    
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
       llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
@@ -1012,7 +1014,6 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  SetImplicitMeshVariable(meshName);
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();

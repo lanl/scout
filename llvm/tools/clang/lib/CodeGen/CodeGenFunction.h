@@ -642,8 +642,6 @@ public:
   Vector ScoutIdxVars;
   /// Scout mesh dimension sizes.
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
-  /// Scout defined mesh variables.
-  Vector ScoutMeshVars;
   llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;
@@ -691,20 +689,6 @@ public:
     default:
       assert(false && "Unknown dimension in toString()!\n");
     }
-  }
-
-  void SetImplicitMeshVariable(llvm::StringRef name) {
-    for(unsigned i = 0, e = ScoutMeshVars.size(); i < e; ++i) {
-      if(ScoutMeshVars[i]->getName() == name) {
-        ImplicitMeshVar = ScoutMeshVars[i];
-        return;
-      }
-    }
-    assert(false && "Undeclared implicit Scout mesh variable!");
-  }
-
-  llvm::Value *GetImplicitMeshVariable() {
-    return ImplicitMeshVar;
   }
 
   bool hasPrintfEdge(Stmt *S) {
