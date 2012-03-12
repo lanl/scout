@@ -803,6 +803,8 @@ def gpu : Flag<"-gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
 def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
+def debugWait : Flag<"-debug-wait">,
+  HelpText<"Used to allow debugger to attach to the scc driver.">;
 
 //===----------------------------------------------------------------------===//
 // CUDA Options

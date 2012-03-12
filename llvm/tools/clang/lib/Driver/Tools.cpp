@@ -1229,12 +1229,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   //
   // FIXME: Implement custom jobs for internal actions.
   CmdArgs.push_back("-cc1");
-
+  
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
+  // ndm - debug wait flag
+  if(Args.hasArg(options::OPT_debugWait)){
+    CmdArgs.push_back("-debug-wait");
+  }
+  
   // Select the appropriate action.
   bool IsRewriter = false;
   if (isa<AnalyzeJobAction>(JA)) {
