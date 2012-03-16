@@ -22,7 +22,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/OwningPtr.h"
-#include "llvm/Config/config.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -275,7 +274,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
   // the function tries to identify a target as prefix. E.g.
   // "x86_64-linux-clang" as interpreted as suffix "clang" with
   // target prefix "x86_64-linux". If such a target prefix is found,
-  // is gets added via -ccc-host-triple as implicit first argument.
+  // is gets added via -target as implicit first argument.
   static const struct {
     const char *Suffix;
     bool IsCXX;
@@ -317,13 +316,13 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     if (FoundMatch) {
       StringRef::size_type LastComponent = ProgNameRef.rfind('-',
         ProgNameRef.size() - strlen(suffixes[i].Suffix));
-      if (LastComponent != llvm::StringRef::npos)
+      if (LastComponent != StringRef::npos)
         Prefix = ProgNameRef.slice(0, LastComponent);
       break;
     }
 
     StringRef::size_type LastComponent = ProgNameRef.rfind('-');
-    if (LastComponent == llvm::StringRef::npos)
+    if (LastComponent == StringRef::npos)
       break;
     ProgNameRef = ProgNameRef.slice(0, LastComponent);
   }
@@ -338,7 +337,7 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
       ++it;
     ArgVector.insert(it, SaveStringInSet(SavedStrings, Prefix));
     ArgVector.insert(it,
-      SaveStringInSet(SavedStrings, std::string("-ccc-host-triple")));
+      SaveStringInSet(SavedStrings, std::string("-target")));
   }
 }
 
@@ -352,7 +351,7 @@ int main(int argc_, const char **argv_) {
   ExpandArgv(argc_, argv_, argv, SavedStrings);
 
   // Handle -cc1 integrated tools.
-  if (argv.size() > 1 && llvm::StringRef(argv[1]).startswith("-cc1")) {
+  if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
     for (int i = 2, size = argv.size(); i < size; ++i) {
@@ -396,14 +395,8 @@ int main(int argc_, const char **argv_) {
 
 #ifdef CLANG_IS_PRODUCTION
   const bool IsProduction = true;
-#  ifdef CLANGXX_IS_PRODUCTION
-  const bool CXXIsProduction = true;
-#  else
-  const bool CXXIsProduction = false;
-#  endif
 #else
   const bool IsProduction = false;
-  const bool CXXIsProduction = false;
 #endif
   Driver TheDriver(Path.str(), llvm::sys::getDefaultTargetTriple(),
                    "a.out", IsProduction, Diags);
