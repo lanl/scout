@@ -1141,6 +1141,20 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     return ICS;
   }
 
+  const MeshType* MTFrom = FromType->getAs<MeshType>();
+  const MeshType* MTTo = ToType->getAs<MeshType>();
+  
+  // ndm - handle conversion between mesh types
+  if(MTFrom && MTTo && MTFrom->getDecl()->canConvertTo(S.Context, MTTo->getDecl())){
+    ICS.setStandard();
+    ICS.Standard.setAsIdentityConversion();
+    ICS.Standard.setFromType(FromType);
+    ICS.Standard.setAllToTypes(ToType);
+    ICS.Standard.CopyConstructor = 0;
+    
+    return ICS;
+  }
+  
   return TryUserDefinedConversion(S, From, ToType, SuppressUserConversions,
                                   AllowExplicit, InOverloadResolution, CStyle,
                                   AllowObjCWritebackConversion);

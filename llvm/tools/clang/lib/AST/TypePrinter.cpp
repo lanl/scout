@@ -733,10 +733,11 @@ void TypePrinter::printEnum(const EnumType *T, std::string &S) {
   printTag(T->getDecl(), S);
 }
 
-// ndm - Scout Mesh
-// TODO implement based on printTag()
+// ndm - conver mesh type to mesh name - used in diagnostics
 void TypePrinter::printMesh(const MeshType *T, std::string &S) {
-  S = "mesh";
+  MeshDecl* MD = T->getDecl();
+  
+  S = MD->getIdentifier()->getName().str();
 }
 
 void TypePrinter::printTemplateTypeParm(const TemplateTypeParmType *T, 

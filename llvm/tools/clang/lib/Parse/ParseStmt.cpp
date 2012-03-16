@@ -84,9 +84,9 @@ StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement,
                                     SourceLocation *TrailingElseLoc) {
   // ndm - test hook into parsing stmts from the main file
-  //if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
+  if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
     //DumpLookAheads(20);
-  //}
+  }
 
   const char *SemiError = 0;
   StmtResult Res;
@@ -168,7 +168,7 @@ Retry:
         if(isScoutLang() && isScoutSource(Tok.getLocation())){
           QualType qt = Sema::GetTypeFromParser(Classification.getType());
           
-          if(qt.getAsString() == "mesh" && 
+          if(qt->getAs<MeshType>() && 
              GetLookAheadToken(1).is(tok::identifier)){
             
             if(GetLookAheadToken(2).is(tok::l_square)){

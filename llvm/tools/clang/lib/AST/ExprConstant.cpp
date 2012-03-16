@@ -2608,7 +2608,7 @@ public:
       BaseTy = E->getBase()->getType();
     }
 
-    if(BaseTy.getAsString() == "mesh"){
+    if(BaseTy->getAs<MeshType>()){
       return true;
     }
 

@@ -2791,6 +2791,26 @@ MeshDecl::field_iterator MeshDecl::field_begin() const{
   return field_iterator(decl_iterator(FirstDecl));
 }
 
+bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
+  field_iterator fromItr = field_begin();
+  for(field_iterator itr = MD->field_begin(), itrEnd = MD->field_end();
+      itr != itrEnd; ++itr){
+    if(fromItr == field_end()){
+      return false;
+    }
+    
+    FieldDecl* fromField = *fromItr;
+    FieldDecl* toField = *itr;
+    
+    if(!C.hasSameUnqualifiedType(fromField->getType(), toField->getType())){
+      return false;
+    }
+    ++fromItr;
+  }
+  
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Other Decl Allocation/Deallocation Method Implementations
 //===----------------------------------------------------------------------===//

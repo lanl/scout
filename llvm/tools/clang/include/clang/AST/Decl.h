@@ -3231,6 +3231,8 @@ public:
     return static_cast<DeclContext*>(const_cast<MeshDecl*>(D));
   }
   
+  bool canConvertTo(ASTContext& C, MeshDecl* MD);
+  
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
 };
