@@ -275,7 +275,7 @@ void StmtPrinter::VisitForStmt(ForStmt *Node) {
   }
 }
 
-// ndm - Scout Stmts
+// SCOUTCODE ndm - Scout Stmts
 // TODO - implement
 void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
   
@@ -288,6 +288,7 @@ void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) {
 void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
   
 }
+// ENDSCOUTCODE
 
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
   Indent() << "for (";
@@ -915,12 +916,13 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
                                                                 Policy);
 }
 
-// ndm - Scout vector types
+// SCOUTCODE ndm - Scout vector types
 // TODO - implement
 
 void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
   
 }
+// ENDSCOUTCODE
 
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());

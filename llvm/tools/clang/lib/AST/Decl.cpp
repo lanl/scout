@@ -2750,7 +2750,7 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
-// ndm - Scout Decl implementation
+// SCOUTCODE ndm - Scout Decl implementation
 MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
                            SourceLocation StartLoc, SourceLocation IdLoc,
                            IdentifierInfo* Id, MeshDecl* PrevDecl){
@@ -2798,18 +2798,19 @@ bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
     if(fromItr == field_end()){
       return false;
     }
-    
+
     FieldDecl* fromField = *fromItr;
     FieldDecl* toField = *itr;
-    
+
     if(!C.hasSameUnqualifiedType(fromField->getType(), toField->getType())){
       return false;
     }
     ++fromItr;
   }
-  
+
   return true;
 }
+// ENDSCOUTCODE
 
 //===----------------------------------------------------------------------===//
 // Other Decl Allocation/Deallocation Method Implementations

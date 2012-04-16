@@ -804,8 +804,9 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::FunctionProto:
     case Type::FunctionNoProto:
 
-    // ndm - Scout Mesh
+    // SCOUTCODE ndm - Scout Mesh
     case Type::Mesh:
+    // ENDSCOUTCODE
         
     case Type::Enum:
     case Type::Paren:
@@ -1762,7 +1763,7 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::LongDouble: Out << 'e'; break;
   case BuiltinType::NullPtr: Out << "Dn"; break;
     
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
   // TODO implement correctly
   case BuiltinType::Bool2: Out << "b2"; break;
   case BuiltinType::Bool3: Out << "b3"; break;
@@ -1785,6 +1786,7 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::Double2: Out << "d2"; break;
   case BuiltinType::Double3: Out << "d3"; break;
   case BuiltinType::Double4: Out << "d4"; break;
+  // ENDSCOUTCODE
 
 #define BUILTIN_TYPE(Id, SingletonId)
 #define PLACEHOLDER_TYPE(Id, SingletonId) \
@@ -1864,11 +1866,12 @@ void CXXNameMangler::mangleType(const TagType *T) {
   mangleName(T->getDecl());
 }
 
-// ndm - Scout Mesh
+// SCOUTCODE ndm - Scout Mesh
 
 void CXXNameMangler::mangleType(const MeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
+// ENDSCOUTCODE
 
 // <type>       ::= <array-type>
 // <array-type> ::= A <positive dimension number> _ <element type>

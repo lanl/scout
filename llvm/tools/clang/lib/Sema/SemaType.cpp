@@ -734,7 +734,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
 
 
-    // ndm - Scout vector types
+    // SCOUTCODE ndm - Scout vector types
 
   case DeclSpec::TST_bool2:
     Result = Context.Bool2Ty;  
@@ -799,6 +799,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
   case DeclSpec::TST_double4:
     Result = Context.Double4Ty;  
     break;
+  // ENDSCOUTCODE
 
 
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool

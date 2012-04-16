@@ -2470,12 +2470,13 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       return Tag;
     }
 
-    // ndm - do not emit empty declaration warning if this is a mesh
+    // SCOUTCODE ndm - do not emit empty declaration warning if this is a mesh
     if(DS.getTypeSpecType() != DeclSpec::TST_mesh){
       Diag(DS.getSourceRange().getBegin(), diag::ext_no_declarators)
       << DS.getSourceRange();
       emittedWarning = true;
     }
+    // ENDSCOUTCODE
   }
 
   // We're going to complain about a bunch of spurious specifiers;
@@ -10136,7 +10137,7 @@ void Sema::ActOnPragmaWeakAlias(IdentifierInfo* Name,
   }
 }
 
-// ndm - Scout Mesh
+// SCOUTCODE ndm - Scout Mesh
 // called at the begining part of a mesh definition
 Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,
@@ -10155,7 +10156,7 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
   return MD;
 }
 
-// ndm - Scout Mesh field
+// ndm - Scout Mesh field SCOUTCODE
 Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
                            Declarator &D) {
   FieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
@@ -10163,7 +10164,7 @@ Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
   return Res;
 }
 
-// ndm - Scout Mesh
+// ndm - Scout Mesh SCOUTCODE
 void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
   MeshDecl *Mesh = cast<MeshDecl>(MeshD);
 
@@ -10171,7 +10172,7 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
   PushDeclContext(S, Mesh);
 }
 
-// ndm - Scout Mesh
+// ndm - Scout Mesh SCOUTCODE
 FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
                                  SourceLocation DeclStart,
                                  Declarator &D) {
@@ -10214,7 +10215,7 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
   return NewFD;
 }
 
-// ndm - Scout Mesh
+// ndm - Scout Mesh SCOUTCODE
 FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     TypeSourceInfo *TInfo,
                                     MeshDecl *Mesh, SourceLocation Loc,
@@ -10261,11 +10262,11 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
   return NewFD;
 }
 
-// ndm - Scout Mesh
+// ndm - Scout Mesh SCOUTCODE
 // return true on success
 
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  // ndm - ok to pass null type source info and bit field width?
+  // ndm - ok to pass null type source info and bit field width? SCOUTCODE
 
   FieldDecl *PositionFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
@@ -10440,6 +10441,7 @@ void Sema::AddInitializerToScoutVector(VarDecl *vdecl, BuiltinType::Kind kind, E
   }
   vdecl->setInit(init);
 }
+// ENDSCOUTCODE
 
 Decl *Sema::getObjCDeclContext() const {
   return (dyn_cast_or_null<ObjCContainerDecl>(CurContext));

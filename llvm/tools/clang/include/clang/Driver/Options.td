@@ -948,6 +948,7 @@ def Z_reserved_lib_stdcxx : Flag<"-Z-reserved-lib-stdc++">,
 def Z_reserved_lib_cckext : Flag<"-Z-reserved-lib-cckext">,
     Flags<[LinkerInput, NoArgumentUnused, Unsupported]>, Group<reserved_lib_Group>;
 
+// SCOUTCODE - no ndm
 //===----------------------------------------------------------------------===//
 // Scout Options
 //===----------------------------------------------------------------------===//
@@ -957,4 +958,6 @@ def cpuThreads : Flag<"-mt">,
     HelpText<"Enable CPU multithreading support.">;
 def debugWait : Flag<"-debug-wait">,
     HelpText<"Used to allow debugger to attach to the scc driver.">;
-    
+
+// ENDSCOUTCODE
+

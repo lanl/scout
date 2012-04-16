@@ -1967,7 +1967,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Builtin:
       break;
 
-    // ndm - Scout Mesh
+    // SCOUTCODE ndm - Scout Mesh
     // TODO - fix
     case Type::Mesh: {
         //MeshDecl *Mesh
@@ -1975,6 +1975,7 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
         //addAssociatedClassesAndNamespaces(Result, Mesh);
         break;
     }
+    // ENDSCOUTCODE
         
     //     -- If T is a class type (including unions), its associated
     //        classes are: the class itself; the class of which it is a

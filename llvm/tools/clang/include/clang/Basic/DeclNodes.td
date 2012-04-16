@@ -22,9 +22,9 @@ def Named : Decl<1>;
       def TypeAlias : DDecl<TypedefName>;
     def UnresolvedUsingTypename : DDecl<Type>;
 
-// ndm - Scout Mesh
-
+// SCOUTCODE ndm - Scout Mesh
     def Mesh : DDecl<Type>, DeclContext;
+// ENDSCOUTCODE
     def Tag : DDecl<Type, 1>, DeclContext;
       def Enum : DDecl<Tag>;
       def Record : DDecl<Tag>;

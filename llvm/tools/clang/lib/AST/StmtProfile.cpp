@@ -124,7 +124,7 @@ void StmtProfiler::VisitDoStmt(const DoStmt *S) {
   VisitStmt(S);
 }
 
-// ndm - Scout Stmts
+// SCOUTCODE ndm - Scout Stmts
 
 void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
   VisitStmt(S);
@@ -137,6 +137,7 @@ void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) {
 void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
   VisitStmt(S);
 }
+// ENDSCOUTCODE
 
 void StmtProfiler::VisitForStmt(const ForStmt *S) {
   VisitStmt(S);
@@ -358,12 +359,13 @@ void StmtProfiler::VisitMemberExpr(const MemberExpr *S) {
   ID.AddBoolean(S->isArrow());
 }
 
-// ndm - Scout vector types
+// SCOUTCODE ndm - Scout vector types
 // TODO - implement
 
 void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S){
   
 }
+// ENDSCOUTCODE
 
 void StmtProfiler::VisitCompoundLiteralExpr(const CompoundLiteralExpr *S) {
   VisitExpr(S);

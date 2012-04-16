@@ -346,7 +346,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
                                  static_cast<unsigned>(Context.getTypeSize(T)));
       break;
 
-    // ndm - Scout vector types
+    // SCOUTCODE ndm - Scout vector types
     case BuiltinType::Bool2:
       return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 2);
     case BuiltinType::Bool3:
@@ -383,6 +383,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     case BuiltinType::Double4:
       return VectorTy::get(getTypeForFormat(getLLVMContext(),
         Context.getFloatTypeSemantics(T)), 4);
+    // ENDSCOUTCODE
     case BuiltinType::Half:
       // Half is special: it might be lowered to i16 (and will be storage-only
       // type),. or can be represented as a set of native operations.
@@ -574,7 +575,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   case Type::Mesh: {
     // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
@@ -614,6 +615,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
     return structTy;
   }
+  // ENDSCOUTCODE
 
   case Type::Enum: {
     const EnumDecl *ED = cast<EnumType>(Ty)->getDecl();

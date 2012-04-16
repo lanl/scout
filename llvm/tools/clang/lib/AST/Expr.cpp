@@ -1033,7 +1033,7 @@ SourceRange MemberExpr::getSourceRange() const {
   return SourceRange(StartLoc, EndLoc);
 }
 
-// ndm - Scout vector types
+// SCOUTCODE ndm - Scout vector types
 
 ScoutVectorMemberExpr*
 ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
@@ -1045,6 +1045,7 @@ ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
   
   return E;
 }
+// ENDSCOUTCODE
 
 void CastExpr::CheckCastConsistency() const {
   switch (getCastKind()) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// ndm - This file implements the Scout AST viewer functionality used
+// SCOUTCODE ndm - This file implements the Scout AST viewer functionality used
 // by the scc command for debugging purposes.
 //
 //===----------------------------------------------------------------------===//
@@ -413,3 +413,5 @@ void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
     }
   }
 }
+// ENDSCOUTCODE
+

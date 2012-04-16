@@ -602,7 +602,7 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
-// ndm - Scout Mesh
+// SCOUTCODE ndm - Scout Mesh
 // return true if there is an error
 
 static bool
@@ -680,6 +680,7 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
   
   return false;
 }
+// ENDSCOUTCODE
 
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
@@ -901,9 +902,9 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
   
-  if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){    
+  if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){
     QualType VCType;
     bool isScoutVector = false;
     
@@ -1015,6 +1016,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                               index, VCType));
     }
   }
+  // ENDSCOUTCODE
   
   if (R.isAmbiguous())
     return ExprError();
@@ -1279,7 +1281,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   
   if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
     if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
@@ -1339,6 +1341,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
         break;
     }    
   }
+  // ENDSCOUTCODE
   
   // Handle ivar access to Objective-C objects.
   if (const ObjCObjectType *OTy = BaseType->getAs<ObjCObjectType>()) {

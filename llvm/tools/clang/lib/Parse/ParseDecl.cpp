@@ -22,8 +22,9 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 
-// ndm
+// SCOUTCODE ndm vjs
 #include <map>
+// ENDSCOUTCODE
 
 using namespace clang;
 
@@ -1307,7 +1308,7 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
         return 0;
       }
 
-      // ndm - handle scout vector initialization here
+      // SCOUTCODE ndm - handle scout vector initialization here
       // e.g: float3 v1 = 0;
       //      float4 v2 = float4(0,1,2,3);
 
@@ -1329,6 +1330,7 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
           return ThisDecl;
         }
       }
+      // ENDSCOUTCODE
 
       ExprResult Init(ParseInitializer());
 
@@ -1535,9 +1537,10 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
       
-      // ndm - added TST mesh
+      // SCOUTCODE ndm - added TST mesh
       case DeclSpec::TST_mesh:
         TagName="mesh" ; FixitTagName = "mesh " ;TagKind=tok::kw_mesh ;break;
+      // ENDSCOUTCODE
     }
 
     if (TagName) {
@@ -2162,10 +2165,40 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // type-specifier
     case tok::kw_short:
+      // SCOUTCODE vjs - detect short <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout short4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_half;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_short);
+        if (myTst != TST_half) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
       isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_short, Loc, PrevSpec,
                                       DiagID);
       break;
     case tok::kw_long:
+      // SCOUTCODE vjs - detect long <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout long4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_int;  // There is no TST_long!!  hack
+        myTst = GetIspcScoutExtension(myTst, tok::kw_long);
+        if (myTst != TST_int) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
       if (DS.getTypeSpecWidth() != DeclSpec::TSW_long)
         isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_long, Loc, PrevSpec,
                                         DiagID);
@@ -2198,27 +2231,88 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_char:
+      // SCOUTCODE vjs - detect char <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout char4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_char;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_char);
+        if (myTst != TST_char) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_int:
+      // SCOUTCODE vjs - detect int <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout int4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_int;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_int);
+        if (myTst != TST_int) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int, Loc, PrevSpec,
                                      DiagID);
       break;
-     case tok::kw_half:
-       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_half, Loc, PrevSpec,
-                                      DiagID);
-       break;
+    case tok::kw_half:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_half, Loc, PrevSpec,
+                                     DiagID);
+      break;
     case tok::kw_float:
+      // SCOUTCODE vjs - detect float <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout float4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_float;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_float);
+        if (myTst != TST_float) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
+		   
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_double:
+      // SCOUTCODE vjs - detect double <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout double4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_double;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_double);
+        if (myTst != TST_double) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec,
                                      DiagID);
       break;
 
-    // ndm - Scout vector types
+    // SCOUTCODE ndm - Scout vector types
 
     case tok::kw_bool2:
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec,
@@ -2328,7 +2422,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       break;
 
 
-    // ndm - end Scout vector types
+    // ndm - end Scout vector types SCOUTCODE
+    // ENDSCOUTCODE
 
 
     case tok::kw_wchar_t:
@@ -2344,6 +2439,21 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_bool:
+      // SCOUTCODE vjs - detect bool <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout bool4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_bool;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_bool);
+        if (myTst != TST_bool) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      // ENDSCOUTCODE
     case tok::kw__Bool:
       if (Tok.is(tok::kw_bool) &&
           DS.getTypeSpecType() != DeclSpec::TST_unspecified &&
@@ -2391,7 +2501,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
 
-    // ndm - Mesh definition
+    // SCOUTCODE ndm - Mesh definition
 
     case tok::kw_uniform:
     case tok::kw_rectlinear:
@@ -2408,6 +2518,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       continue;
     }
+    // ENDSCOUTCODE
 
     // enum-specifier:
     case tok::kw_enum:
@@ -2661,7 +2772,7 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
     break;
 
 
-    // ndm - Scout vector types
+    // SCOUTCODE ndm - Scout vector types
 
     case tok::kw_bool2:
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec,
@@ -2770,8 +2881,8 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
                                      DiagID);
       break;
 
-
-    // ndm - end Scout vector types
+    // ndm - end Scout vector types SCOUTCODE
+    // ENDSCOUTCODE
 
 
   case tok::kw_wchar_t:
@@ -2818,7 +2929,7 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
     return true;
   }
 
-  // ndm - Scout mesh definition
+  // SCOUTCODE ndm - Scout mesh definition
   case tok::kw_uniform:
   case tok::kw_rectlinear:
   case tok::kw_structured:
@@ -2831,6 +2942,7 @@ bool Parser::ParseOptionalTypeSpecifier(DeclSpec &DS, bool& isInvalid,
 
     return true;
   }
+  // ENDSCOUTCODE
 
   // enum-specifier:
   case tok::kw_enum:
@@ -3542,7 +3654,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_float:
   case tok::kw_double:
 
-// ndm - Scout vector types
+// SCOUTCODE ndm - Scout vector types
 
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -3571,6 +3683,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_unstructured:
   case tok::kw_rectlinear:
   case tok::kw_mesh:
+  // ENDSCOUTCODE
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -3643,7 +3756,7 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_float:
   case tok::kw_double:
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
 
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -3672,6 +3785,7 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectlinear:
+  // ENDSCOUTCODE
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -3810,7 +3924,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_float:
   case tok::kw_double:
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
 
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -3839,6 +3953,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectlinear:
+  // ENDSCOUTCODE
 
   case tok::kw_bool:
   case tok::kw__Bool:
@@ -4284,7 +4399,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
 ///
 void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
-
+  
   if (getLang().CPlusPlus && D.mayHaveIdentifier()) {
     // ParseDeclaratorInternal might already have parsed the scope.
     if (D.getCXXScopeSpec().isEmpty()) {
@@ -4298,7 +4413,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       if (Actions.ShouldEnterDeclaratorScope(getCurScope(), D.getCXXScopeSpec()))
         // Change the declaration context for name lookup, until this function
         // is exited (and the declarator has been parsed).
-        DeclScopeObj.EnterDeclaratorScope();
+		  DeclScopeObj.EnterDeclaratorScope();
     }
 
     // C++0x [dcl.fct]p14:
@@ -4383,6 +4498,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     // portion is empty), if an abstract-declarator is allowed.
     D.SetIdentifier(0, Tok.getLocation());
   } else {
+
     if (D.getContext() == Declarator::MemberContext)
       Diag(Tok, diag::err_expected_member_name_or_semi)
         << D.getDeclSpec().getSourceRange();
@@ -5133,6 +5249,106 @@ void Parser::ParseAtomicSpecifier(DeclSpec &DS) {
     Diag(StartLoc, DiagID) << PrevSpec;
 }
 
+// SCOUTCODE vjs - Get value of LookAheadToken.  A hack just to
+//                 to get value between 2 and 4.  Needs replacement
+static int GetValueLAT(const char *v) {
+   if ((*v > '4') || (*v < '2')) return 0;
+   if ((*(v+1) >= '0') && (*(v+1) <= '9')) return 0;
+  return ((int) (*v - '0'));
+}
+// ENDSCOUTCODE - end GetValueLAT
+
+// SCOUTCODE vjs - detect float <4>, int <3>, ... iSPC constructs and
+//                 return TST_value of Scout float4, int3, ...
+//                 that should be substituted.  Return same if not iSPC
+//                 Involves lookahead and possible token consumption
+DeclSpec::TST Parser::GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw) {
+
+  
+  switch (kw) {
+    default: break;
+    case tok::kw_bool:
+    case tok::kw_char:
+    case tok::kw_short:
+    case tok::kw_int:
+    case tok::kw_long:
+    case tok::kw_float:
+    case tok::kw_double:
+      if ((GetLookAheadToken(1).is(tok::less))             &&
+          (GetLookAheadToken(2).is(tok::numeric_constant)) &&
+          (GetLookAheadToken(3).is(tok::greater)))            {
+        const char *v = GetLookAheadToken(2).getLiteralData();
+        int val = GetValueLAT(v);
+
+        if (val < 2 || val > 4) break;
+        switch(kw) {
+          default: assert(0 && "GetIspc bad kw 2 logic"); break;
+          case tok:: kw_bool:
+            switch (val) {
+              case 2: TagType = TST_bool2; break;
+              case 3: TagType = TST_bool3; break;
+              case 4: TagType = TST_bool4; break;
+              default: assert(0 && "GetIspc bad bool logic"); break;
+            } // end kw_bool
+            break;
+          case tok:: kw_char:
+            switch (val) {
+              case 2: TagType = TST_char2; break;
+              case 3: TagType = TST_char3; break;
+              case 4: TagType = TST_char4; break;
+              default: assert(0 && "GetIspc bad char logic"); break;
+            } // end kw_char
+            break;
+          case tok:: kw_short:
+            switch (val) {
+              case 2: TagType = TST_short2; break;
+              case 3: TagType = TST_short3; break;
+              case 4: TagType = TST_short4; break;
+              default: assert(0 && "GetIspc bad short logic"); break;
+            } // end kw_short
+            break;
+          case tok:: kw_int:
+            switch (val) {
+              case 2: TagType = TST_int2; break;
+              case 3: TagType = TST_int3; break;
+              case 4: TagType = TST_int4; break;
+              default: assert(0 && "GetIspc bad int logic"); break;
+            } // end kw_int
+            break;
+          case tok:: kw_long:
+            switch (val) {
+              case 2: TagType = TST_long2; break;
+              case 3: TagType = TST_long3; break;
+              case 4: TagType = TST_long4; break;
+              default: assert(0 && "GetIspc bad long logic"); break;
+            } // end kw_long
+            break;
+          case tok:: kw_float:
+            switch (val) {
+              case 2: TagType = TST_float2; break;
+              case 3: TagType = TST_float3; break;
+              case 4: TagType = TST_float4; break;
+              default: assert(0 && "GetIspc bad float logic"); break;
+            } // end kw_float
+            break;
+          case tok:: kw_double:
+            switch (val) {
+              case 2: TagType = TST_double2; break;
+              case 3: TagType = TST_double3; break;
+              case 4: TagType = TST_double4; break;
+              default: assert(0 && "GetIspc bad double logic"); break;
+            } // end kw_double
+            break;
+          } // end switch(kw)
+        } // end if lookahead
+        break; // endcase of all scout kw_bool2 ... kw_double4
+  } // endswitch(kw)
+
+  return TagType;
+}
+// ENDSCOUTCODE - end GetIspcScoutExtension()
+
+
 
 /// TryAltiVecVectorTokenOutOfLine - Out of line body that should only be called
 /// from TryAltiVecVectorToken.
@@ -5150,7 +5366,7 @@ bool Parser::TryAltiVecVectorTokenOutOfLine() {
   case tok::kw_float:
   case tok::kw_double:
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
 
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -5173,6 +5389,7 @@ bool Parser::TryAltiVecVectorTokenOutOfLine() {
   case tok::kw_double2:
   case tok::kw_double3:
   case tok::kw_double4:
+  // ENDSCOUTCODE
 
   case tok::kw_bool:
   case tok::kw___pixel:
@@ -5223,7 +5440,7 @@ bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
   return false;
 }
 
-// ndm - Scout Mesh
+// SCOUTCODE ndm - Scout Mesh
 // this method is used to parse a mesh field declaration, e.g:
 // uniform mesh MyMesh[512,512]{
 //   cells:
@@ -5272,7 +5489,7 @@ ParseMeshDeclaration(DeclSpec &DS,
   }
 }
 
-// ndm - parse a window or image declaration
+// ndm - parse a window or image declaration SCOUTCODE
 // return true on success
 
 // these look like:
@@ -5502,4 +5719,6 @@ Parser::ParseWindowOrImageDeclaration(bool window,
 
   return ParseStatementOrDeclaration(Stmts, OnlyStatement);
 }
+// ENDSCOUTCODE
+
 

@@ -88,8 +88,9 @@ class CGDebugInfo {
   llvm::DIType CreateType(const FunctionType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const RecordType *Ty);
   
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   llvm::DIType CreateType(const MeshType *Ty);
+  // ENDSCOUTCODE
   
   llvm::DIType CreateType(const ObjCInterfaceType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const ObjCObjectType *Ty, llvm::DIFile F);

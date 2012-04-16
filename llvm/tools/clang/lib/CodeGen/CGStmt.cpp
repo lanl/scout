@@ -136,7 +136,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::WhileStmtClass:    EmitWhileStmt(cast<WhileStmt>(*S));       break;
   case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
 
-  // ndm - Scout Stmts
+  // SCOUTCODE ndm - Scout Stmts
   case Stmt::ForAllStmtClass:
     EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
     break;
@@ -146,6 +146,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::RenderAllStmtClass:
     EmitRenderAllStmt(cast<RenderAllStmt>(*S));
     break;
+  // ENDSCOUTCODE
 
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
@@ -587,7 +588,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
     SimplifyForwardingBlocks(LoopCond.getBlock());
 }
 
-// ndm - Scout Stmts
+// SCOUTCODE ndm - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
   
@@ -1160,6 +1161,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
   RenderAll = 0;
 }
+// ENDSCOUTCODE
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");

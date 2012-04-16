@@ -74,8 +74,9 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
     llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   case Decl::Mesh:
+  // ENDSCOUTCODE
     return;
 
   case Decl::Record:    // struct/union/class X;

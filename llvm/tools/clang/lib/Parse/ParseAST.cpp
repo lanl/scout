@@ -25,9 +25,10 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
-// ndm - Scout AST view
+// SCOUTCODE ndm - Scout AST view
 #include "clang/AST/ASTViewScout.h"
 #include <iostream>
+// ENDSCOUTCODE
 
 using namespace clang;
 
@@ -40,12 +41,15 @@ using namespace clang;
 /// held by Ctx.
 ///
 
-// ndm - added ASTViewer param
 void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
                      TranslationUnitKind TUKind,
-                     CodeCompleteConsumer *CompletionConsumer,
-                     ASTViewScout* ASTViewer) {
+                     CodeCompleteConsumer *CompletionConsumer
+                     // SCOUTCODE ndm - added ASTViewer param
+                     , ASTViewScout* ASTViewer
+							// ENDSCOUTCODE
+							)
+							{
 
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
                                    TUKind,
@@ -54,11 +58,18 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleaupSema(S.get());
   
-  ParseAST(*S.get(), PrintStats, ASTViewer);
+  ParseAST(*S.get(), PrintStats
+  // SCOUTCODE - no ndm.  Add ASTViewer
+  , ASTViewer
+  // ENDSCOUTCODE
+  );
 }
 
-// ndm - added ASTViewer param
-void clang::ParseAST(Sema &S, bool PrintStats, ASTViewScout* ASTViewer) {
+void clang::ParseAST(Sema &S, bool PrintStats
+                     // SCOUTCODE ndm - added ASTViewer param
+                     , ASTViewScout* ASTViewer
+                     // ENDSCOUTCODE
+							) {
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
     Decl::CollectingStats(true);
@@ -102,11 +113,12 @@ void clang::ParseAST(Sema &S, bool PrintStats, ASTViewScout* ASTViewer) {
       }
     }
     
-    // ndm - AST Viewer, if the -ast-view front-end option was passed
+    // SCOUTCODE ndm - AST Viewer, if the -ast-view front-end option was passed
     // potentially generate Graphviz output for this decl. group
     if(ASTViewer){
       ASTViewer->outputGraphviz(ADecl.get());
     }
+    // ENDSCOUTCODE
   }
 
   if (Abort)

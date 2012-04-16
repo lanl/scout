@@ -64,9 +64,11 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR,
-  // ndm - Scout input kind
-  IK_Scout
+  IK_LLVM_IR
+  // SCOUTCODE ndm - Scout input kind
+  , IK_Scout
+  // ENDSCOUTCODE
+
 };
 
   
@@ -113,8 +115,9 @@ public:
   unsigned ARCMTMigrateEmitARCErrors : 1;  /// Emit ARC errors even if the
                                            /// migrator can fix them
 
-  // ndm - Scout View AST option
+  // SCOUTCODE ndm - Scout View AST option
   unsigned ViewAST : 1;
+  // ENDSCOUTCODE
   
   enum {
     ARCMT_None,
@@ -179,9 +182,9 @@ public:
     ShowGlobalSymbolsInCodeCompletion = 1;
     ShowStats = 0;
     
-// ndm - View AST flag
-    
+    // SCOUTCODE ndm - View AST flag
     ViewAST = 0;
+    // ENDSCOUTCODE
     
     ShowTimers = 0;
     ShowVersion = 0;

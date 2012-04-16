@@ -689,7 +689,7 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
-// ndm - Scout specific errors
+// SCOUTCODE ndm - Scout specific errors
 def err_expected_numeric_constant_in_mesh_def : Error<
 "expected a numeric constant in mesh definition dimensions">;
 def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
@@ -755,6 +755,7 @@ def err_not_array_renderall_elements: Error<"mesh field is not an array type">;
 
 def err_mismatch_forall_array : Error<
 "start/end/stride groups do not match number of induction variables">;
+// ENDSCOUTCODE
   
 } // end of Parse Issue category.
 

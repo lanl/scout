@@ -489,6 +489,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
     llvm::StructType::get(CGM.getLLVMContext(), elementTypes, true);
 }
 
+// SCOUTCODE - no ndm
 llvm::Value 
 *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
                                         CGBlockInfo &blockInfo,
@@ -873,6 +874,7 @@ llvm::Value
   // ndm - to call the block directly
   //Builder.CreateCall(blk, genericBlk);
 }
+// ENDSCOUTCODE
 
 /// Enter the scope of a block.  This should be run at the entrance to
 /// a full-expression so that the block's cleanups are pushed at the

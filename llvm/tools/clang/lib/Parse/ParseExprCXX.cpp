@@ -1298,7 +1298,7 @@ bool Parser::isCXXSimpleTypeSpecifier() const {
   case tok::kw_float:
   case tok::kw_double:
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
       
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -1321,6 +1321,7 @@ bool Parser::isCXXSimpleTypeSpecifier() const {
   case tok::kw_double2:
   case tok::kw_double3:
   case tok::kw_double4: 
+  // ENDSCOUTCODE
 
   case tok::kw_wchar_t:
   case tok::kw_char16_t:
@@ -1435,7 +1436,7 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
     break;
 
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
       
   case tok::kw_bool2:
     DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec, DiagID);
@@ -1501,7 +1502,8 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
     DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec, DiagID);
     break;
     
-  // ndm - end Scout vector types
+  // ndm - end Scout vector types SCOUTCODE
+  // ENDSCOUTCODE
 
 
   case tok::kw_wchar_t:

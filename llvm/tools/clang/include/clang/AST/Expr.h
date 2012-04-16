@@ -2412,7 +2412,7 @@ public:
   friend class ASTStmtWriter;
 };
 
-// ndm
+// SCOUTCODE ndm
 // represents indexing a scout vector, e.g:
 // float3 v;
 // v.y;
@@ -2463,6 +2463,7 @@ public:
   friend class ASTReader;
   friend class ASTStmtWriter;
 };
+// ENDSCOUTCODE
 
 /// CompoundLiteralExpr - [C99 6.5.2.5]
 ///

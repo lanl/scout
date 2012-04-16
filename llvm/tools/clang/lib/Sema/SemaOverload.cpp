@@ -1141,20 +1141,21 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     return ICS;
   }
 
+  // SCOUTCODE ndm - handle conversion between mesh types
   const MeshType* MTFrom = FromType->getAs<MeshType>();
   const MeshType* MTTo = ToType->getAs<MeshType>();
-  
-  // ndm - handle conversion between mesh types
+
   if(MTFrom && MTTo && MTFrom->getDecl()->canConvertTo(S.Context, MTTo->getDecl())){
     ICS.setStandard();
     ICS.Standard.setAsIdentityConversion();
     ICS.Standard.setFromType(FromType);
     ICS.Standard.setAllToTypes(ToType);
     ICS.Standard.CopyConstructor = 0;
-    
+
     return ICS;
   }
-  
+  // ENDSCOUTCODE
+
   return TryUserDefinedConversion(S, From, ToType, SuppressUserConversions,
                                   AllowExplicit, InOverloadResolution, CStyle,
                                   AllowObjCWritebackConversion);
@@ -6173,8 +6174,9 @@ class BuiltinOperatorOverloadBuilder {
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 9;
 
-  // ndm - updated count from 18 to 39
+  // SCOUTCODE ndm - updated count from 18 to 39
   static const unsigned NumArithmeticTypes = 39;
+  // ENDSCOUTCODE
 
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
@@ -6203,11 +6205,11 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::SignedCharTy,
       &ASTContext::ShortTy,
       &ASTContext::UnsignedCharTy,
-      &ASTContext::UnsignedShortTy,
+      &ASTContext::UnsignedShortTy
 
-      // ndm - Scout vector types
+      // SCOUTCODE ndm - Scout vector types
         
-      &ASTContext::Bool2Ty,
+      , &ASTContext::Bool2Ty,
       &ASTContext::Bool3Ty,
       &ASTContext::Bool4Ty,
       &ASTContext::Char2Ty,
@@ -6228,6 +6230,7 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::Double2Ty,
       &ASTContext::Double3Ty,
       &ASTContext::Double4Ty
+      // ENDSCOUTCODE
       // End of integral types.
       // FIXME: What about complex?
     };

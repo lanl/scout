@@ -4,6 +4,7 @@
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
+// ndm LANL license SCOUTCODE
 //
 //===----------------------------------------------------------------------===//
 //
@@ -113,8 +114,8 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
   ExtendedTokenMode = 0;
 }
 
-// ndm - modified the following Lexer Ctors to support string lexer
-
+// SCOUTCODE ndm - modified the following Lexer Ctors to support string lexer
+// ENDSCOUTCODE
 /// Lexer constructor - Create a new lexer object for the specified buffer
 /// with the specified preprocessor managing the lexing process.  This lexer
 /// assumes that the associated file buffer and Preprocessor objects will
@@ -122,9 +123,12 @@ void Lexer::InitLexer(const char *BufStart, const char *BufPtr,
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   : PreprocessorLexer(&PP, FID),
     FileLoc(PP.getSourceManager().getLocForStartOfFile(FID)),
-    Features(PP.getLangOptions()),
-    StringLexerMemoryBuffer(0),
-    StringLexerStringRef(0){
+    Features(PP.getLangOptions())
+	 // SCOUTCODE ndmv StringLexerMemoryBuffer and StringLexerStringRef
+	 , StringLexerMemoryBuffer(0)
+    , StringLexerStringRef(0)
+    // ENDSCOUTCODE
+		{
 
   InitLexer(InputFile->getBufferStart(), InputFile->getBufferStart(),
             InputFile->getBufferEnd());
@@ -132,7 +136,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   // Default to keeping comments if the preprocessor wants them.
   SetCommentRetentionState(PP.getCommentRetentionState());
 
-  // ndm - enable Scout keywords only when the file being lexed from is
+  // SCOUTCODE ndm - enable Scout keywords only when the file being lexed from is
   // ".sc", or ".sch" file -- this extra check is necessary because,
   // for example, we might be including a C++ header from a .sc file
   // which would otherwise pick up the Scout keyword extensions,
@@ -152,6 +156,7 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
   if(!valid || (ext != "sc" && ext != "sch")){
     Features.Scout = false;
   }
+  // ENDSCOUTCODE
 }
 
 /// Lexer constructor - Create a new raw lexer object.  This object is only
@@ -160,9 +165,12 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
 Lexer::Lexer(SourceLocation fileloc, const LangOptions &features,
              const char *BufStart, const char *BufPtr, const char *BufEnd)
   : FileLoc(fileloc),
-Features(features),
-StringLexerMemoryBuffer(0),
-StringLexerStringRef(0){
+Features(features)
+// SCOUTCODE ndmv StringLexerMemoryBuffer and StringLexerStringRef
+, StringLexerMemoryBuffer(0)
+, StringLexerStringRef(0)
+// ENDSCOUTCODE
+{
 
   InitLexer(BufStart, BufPtr, BufEnd);
 
@@ -176,9 +184,12 @@ StringLexerStringRef(0){
 Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *FromFile,
              const SourceManager &SM, const LangOptions &features)
   : FileLoc(SM.getLocForStartOfFile(FID)),
-Features(features),
-StringLexerMemoryBuffer(0),
-StringLexerStringRef(0){
+Features(features)
+// SCOUTCODE StringLexerMemoryBuffer and StringLexerStringRef
+, StringLexerMemoryBuffer(0)
+, StringLexerStringRef(0)
+// ENDSCOUTCODE
+{
 
   InitLexer(FromFile->getBufferStart(), FromFile->getBufferStart(),
             FromFile->getBufferEnd());
@@ -187,7 +198,7 @@ StringLexerStringRef(0){
   LexingRawMode = true;
 }
 
-// ndm - string lexer
+// SCOUTCODE ndm - string lexer
 // Allows the lexer to operate from a string
 // Which can be useful when CPP code is to be inserted into the lexer
 // stream used by the parser
@@ -208,8 +219,9 @@ Features(PP.getLangOptions()){
   // Default to keeping comments if the preprocessor wants them.
   SetCommentRetentionState(PP.getCommentRetentionState());
 }
+// ENDSCOUTCODE
 
-// ndm - added Dtor
+// SCOUTCODE ndm - added Dtor
 Lexer::~Lexer(){
   // if this is a string lexer, clean up after it
   
@@ -221,6 +233,7 @@ Lexer::~Lexer(){
     delete StringLexerStringRef;
   }
 }
+// ENDSCOUTCODE
 
 /// Create_PragmaLexer: Lexer constructor - Create a new lexer object for
 /// _Pragma expansion.  This has a variety of magic semantics that this method
@@ -1562,7 +1575,7 @@ FinishIdentifier:
     if (II->isHandleIdentifierCase())
       PP->HandleIdentifier(Result);
     
-    // ndm - if we are lexing from a non-Scout file, then we need
+    // SCOUTCODE ndm - if we are lexing from a non-Scout file, then we need
     // to treat the Scout keywords as ordinary identifiers
     
     if(!Features.Scout){
@@ -1580,6 +1593,7 @@ FinishIdentifier:
         Result.setKind(tok::identifier);  
       }
     }
+	 // ENDSCOUTCODE
                                        
     return;
   }
@@ -1631,14 +1645,15 @@ static bool isHexaLiteral(const char *Start, const LangOptions &Features) {
 void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   unsigned Size;
 
-  // ndm
+  // SCOUTCODE ndm
   unsigned Size2;
+  // ENDSCOUTCODE
 
   char C = getCharAndSize(CurPtr, Size);
   char PrevCh = 0;
   while (isNumberBody(C)) { // FIXME: UCNs?
 
-    // ndm - support for Scout ".." punctuator
+    // SCOUTCODE ndm - support for Scout ".." punctuator
     // this case is needed because we might have: [1..width]
     // where the first '.' would normally be lexed as part of the
     // numeric constant
@@ -1646,6 +1661,7 @@ void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
     if(C == '.' && getCharAndSize(CurPtr + 1, Size2) == '.'){
       break;
     }
+	 // ENDSCOUTCODE
 
     CurPtr = ConsumeChar(CurPtr, Size, Result);
     PrevCh = C;
@@ -2618,13 +2634,13 @@ LexNextToken:
 
   switch (Char) {
   case 0:  // Null.
-    // ndm - special handling for string lexer, as EOF code below interferes
+    // SCOUTCODE ndm - special handling for string lexer, as EOF code below interferes
     // with the state of the preprocessor
     if(StringLexerMemoryBuffer){
       Kind = tok::eof;
       break;
     }
-
+	 // ENDSCOUTCODE
     // Found end of file?
     if (CurPtr-1 == BufferEnd) {
       // Read the PP instance variable into an automatic variable, because
@@ -2925,11 +2941,12 @@ LexNextToken:
                              SizeTmp2, Result);
         Kind = tok::ellipsis;
       }
-      // ndm - Scout .. punctuator
+      // SCOUTCODE ndm - Scout .. punctuator
       else{
         CurPtr = ConsumeChar(CurPtr, SizeTmp, Result);
         Kind = tok::periodperiod;
       }
+		// ENDSCOUTCODE
     } else {
       Kind = tok::period;
     }

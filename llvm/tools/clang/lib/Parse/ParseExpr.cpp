@@ -355,9 +355,10 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // an assignment-expression in C++.
 
     ExprResult RHS;
+
+    // SCOUTCODE ndm - Scout vector binary operator rhs
     bool rhsSet = false;
     
-    // ndm - Scout vector binary operator rhs
     if(!LHS.isInvalid()){
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
         ValueDecl* vd = dr->getDecl();
@@ -380,11 +381,14 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     }
     
     if(!rhsSet){
+    // ENDSCOUTCODE
       if (getLang().CPlusPlus && NextTokPrec <= prec::Conditional)
         RHS = ParseAssignmentExpression();
       else
         RHS = ParseCastExpression(false);
+    // SCOUTCODE - no ndm.  Needed to balance braces
     }
+    // ENDSCOUTCODE
     
     if (RHS.isInvalid())
       LHS = ExprError();
@@ -988,7 +992,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_float:
   case tok::kw_double:
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
       
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -1011,6 +1015,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_double2:
   case tok::kw_double3:
   case tok::kw_double4: 
+  // ENDSCOUTCODE
 
   case tok::kw_void:
   case tok::kw_typename:
@@ -2407,7 +2412,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   return move(Result);
 }
 
-// ndm - Parse the right hand side of a vector expression, e.g:
+// SCOUTCODE ndm - Parse the right hand side of a vector expression, e.g:
 // 1.0, or float3(1.0, 1.0, 1.0) 
 ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType vectorType){
   size_t length;
@@ -2666,4 +2671,5 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
 
   return ParseExpression();
 }
+// ENDSCOUTCODE
 

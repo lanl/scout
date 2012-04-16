@@ -58,7 +58,7 @@ namespace clang {
     TST_underlyingType, // __underlying_type for C++0x
     TST_auto,         // C++0x auto
 
-    // ndm - Scout types
+    // SCOUTCODE ndm - Scout types
     TST_mesh,
     TST_bool2,
     TST_bool3,
@@ -81,6 +81,7 @@ namespace clang {
     TST_double2,
     TST_double3,
     TST_double4,
+    // ENDSCOUTCODE
 
     TST_unknown_anytype, // __unknown_anytype extension
     TST_atomic,       // C11 _Atomic

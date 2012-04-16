@@ -795,7 +795,7 @@ def cl_std_EQ : Joined<"-cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 //===----------------------------------------------------------------------===//
-// ndm - Scout Options
+// SCOUTCODE ndm - Scout Options
 //===----------------------------------------------------------------------===//
 def view_ast : Flag<"-view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
@@ -812,3 +812,4 @@ def debugWait : Flag<"-debug-wait">,
 
 def fcuda_is_device : Flag<"-fcuda-is-device">,
   HelpText<"Generate code for CUDA device">;
+// ENDSCOUTCODE

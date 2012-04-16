@@ -27,7 +27,6 @@ namespace clang {
   class SourceLocation;
   struct WarningOption;
 
-  // ndm - changed parse space enums to 400
   
   // Import the diagnostic enums themselves.
   namespace diag {
@@ -38,6 +37,9 @@ namespace clang {
       DIAG_START_SERIALIZATION = DIAG_START_FRONTEND        +  100,
       DIAG_START_LEX           = DIAG_START_SERIALIZATION   +  120,
       DIAG_START_PARSE         = DIAG_START_LEX             +  300,
+  // SCOUTCODE ndm - changed parse space enums (DIAG_START_AST) to 350
+
+  // ENDSCOUTCODE
       DIAG_START_AST           = DIAG_START_PARSE           +  350,
       DIAG_START_SEMA          = DIAG_START_AST             +  100,
       DIAG_START_ANALYSIS      = DIAG_START_SEMA            + 3000,

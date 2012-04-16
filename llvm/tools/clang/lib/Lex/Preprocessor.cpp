@@ -4,6 +4,7 @@
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
+// ndm LANL license SCOUTCODE
 //
 //===----------------------------------------------------------------------===//
 //
@@ -59,9 +60,10 @@ Preprocessor::Preprocessor(DiagnosticsEngine &diags, LangOptions &opts,
     SourceMgr(SM), HeaderInfo(Headers), TheModuleLoader(TheModuleLoader),
     ExternalSource(0), 
     Identifiers(opts, IILookup),
-    // ndm - ScoutIdentifiers init - LangOpts empty because we don't want it
+    // SCOUTCODE ndm - ScoutIdentifiers init - LangOpts empty because we don't want it
     // to pick up the Scout keywords
     ScoutIdentifiers(LangOptions()),
+	 // ENDSCOUTCODE
     CodeComplete(0),
     CodeCompletionFile(0), CodeCompletionOffset(0), CodeCompletionReached(0),
     SkipMainFilePreamble(0, true), CurPPLexer(0), 

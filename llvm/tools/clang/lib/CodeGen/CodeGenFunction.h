@@ -2039,7 +2039,7 @@ public:
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
 
-  // ndm - Scout Stmts
+  // SCOUTCODE ndm - Scout Stmts
 
   void EmitForAllStmtWrapper(const ForAllStmt &S);
   bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
@@ -2064,7 +2064,7 @@ public:
     llvm::AttrListPtr namPAL;
     llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
     llvm::AttributeWithIndex PAWI;
-    // ndm - MERGE
+    // ndm - MERGE SCOUTCODE
     //PAWI.Index = 0u; PAWI.Attrs = 0 | llvm::Attribute::NoAlias;
     PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
     Attrs.push_back(PAWI);
@@ -2092,6 +2092,7 @@ public:
   }
 
   FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+  // ENDSCOUTCODE
 
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);

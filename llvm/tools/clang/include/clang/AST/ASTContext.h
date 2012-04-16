@@ -556,7 +556,7 @@ public:
   CanQualType PseudoObjectTy, ARCUnbridgedCastTy;
   CanQualType ObjCBuiltinIdTy, ObjCBuiltinClassTy, ObjCBuiltinSelTy;
 
-  // ndm - Scout vector types
+  // SCOUTCODE ndm - Scout vector types
   // essentially, we keep on QualType for each of the vector
   // types so that we can do such things as equivalence testing
   // between types, and for space reduction, this keeps with the 
@@ -583,6 +583,7 @@ public:
   CanQualType Double2Ty;
   CanQualType Double3Ty;
   CanQualType Double4Ty;
+  // ENDSCOUTCODE
 
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
@@ -821,9 +822,9 @@ public:
   QualType getTypedefType(const TypedefNameDecl *Decl,
                           QualType Canon = QualType()) const;
 
-  // ndm - Scout Mesh
-  
+  // SCOUTCODE ndm - Scout Mesh
   QualType getMeshType(const MeshDecl *Decl) const;
+  // ENDSCOUTCODE
   
   QualType getRecordType(const RecordDecl *Decl) const;
 
@@ -921,8 +922,9 @@ public:
   /// specified TagDecl (struct/union/class/enum) decl.
   QualType getTagDeclType(const TagDecl *Decl) const;
   
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   QualType getMeshDeclType(const MeshDecl *Decl) const;
+  // ENDSCOUTCODE
   
   /// getSizeType - Return the unique type for "size_t" (C99 7.17), defined
   /// in <stddef.h>. The sizeof operator requires this (C99 6.5.3.4p4).

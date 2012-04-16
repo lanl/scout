@@ -541,6 +541,13 @@ private:
                                    bool NeedType = false);
   bool TryAnnotateCXXScopeToken(bool EnteringContext = false);
 
+  // SCOUTCODE vjs - detect float <4>, int <3>, ... iSPC constructs and
+  //                 return TST_value of Scout float4, int3, ...
+  //                 that should be substituted.  Return same if not iSPC
+  //                 Involves lookahead.  Pure
+  DeclSpec::TST GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw);
+  // ENDSCOUTCODE
+
   /// TryAltiVecToken - Check for context-sensitive AltiVec identifier tokens,
   /// replacing them with the non-context-sensitive keywords.  This returns
   /// true if the token was replaced.
@@ -554,6 +561,7 @@ private:
 
     return TryAltiVecTokenOutOfLine(DS, Loc, PrevSpec, DiagID, isInvalid);
   }
+
 
   /// TryAltiVecVectorToken - Check for context-sensitive AltiVec vector
   /// identifier token, replacing it with the non-context-sensitive __vector.
@@ -1500,10 +1508,13 @@ private:
 
   StmtResult ParseStatement(SourceLocation *TrailingElseLoc = NULL) {
     StmtVector Stmts(Actions);
-    // ndm
+    // SCOUTCODE ndm
     StmtsStack.push_back(&Stmts);
+	 // ENDSCOUTCODE
     StmtResult R = ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
+    // SCOUTCODE - no ndm
     StmtsStack.pop_back();
+    // ENDSCOUTCODE
     return R;
   }
   
@@ -2184,7 +2195,7 @@ private:
   virtual void CodeCompleteNaturalLanguage();
   
   
-  // **************************** ndm - Scout parsing methods
+  // SCOUTCODE **************************** ndm - Scout parsing methods
   
   StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
   
@@ -2206,7 +2217,7 @@ private:
                                            StmtVector &Stmts,
                                            bool OnlyStatement);
   
-  // ndm - insert CPP code into the lexer stream for parsing. 
+  // ndm - insert CPP code into the lexer stream for parsing.  SCOUTCODE
   // Inserts a stream of tokens before or after the current token Tok.
   // This is a good method for handling cases such as inserting the call
   // to initScout(argc, argv) at the beginning of main(), for other cases
@@ -2215,11 +2226,11 @@ private:
                      SourceLocation location,
                      bool beforeLookAhead=true);
   
-  // ndm
+  // ndm SCOUTCODE
   // Debugging method for displaying the next N lookahead tokens.
   void DumpLookAheads(unsigned N);
   
-  // ndm - convert a token into a string representation
+  // ndm - convert a token into a string representation SCOUTCODE
   std::string TokToStr(const Token& tok);
   
   std::string ToCPPCode(Stmt* stmt){
@@ -2249,6 +2260,7 @@ private:
                       ScoutVectorType vectorType=ScoutVectorGeneric);
   
   bool isScoutVectorValueDecl(Decl* decl, BuiltinType::Kind &kind) const;
+  // ENDSCOUTCODE
   
 };
 

@@ -224,7 +224,7 @@ void ASTStmtReader::VisitForStmt(ForStmt *S) {
   S->setRParenLoc(ReadSourceLocation(Record, Idx));
 }
 
-// ndm - Scout Stmts
+// SCOUTCODE ndm - Scout Stmts
 // TODO - implement
 
 void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
@@ -240,6 +240,7 @@ void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
 }
 
 void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+// ENDSCOUTCODE
 
 }
 

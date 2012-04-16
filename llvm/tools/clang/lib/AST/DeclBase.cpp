@@ -502,8 +502,9 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCIvar:
       return IDNS_Member;
 
-    // ndm - Scout Mesh
+    // SCOUTCODE ndm - Scout Mesh
     case Mesh:
+	 // ENDSCOUTCODE
       
     case Record:
     case CXXRecord:
@@ -850,7 +851,7 @@ DeclContext *DeclContext::getPrimaryContext() {
       return Tag;
     }
 
-    // ndm - Scout Mesh decl. context
+    // SCOUTCODE ndm - Scout Mesh decl. context
     if(DeclKind == Decl::Mesh){
       MeshDecl *Mesh = cast<MeshDecl>(this);
       
@@ -864,6 +865,7 @@ DeclContext *DeclContext::getPrimaryContext() {
       
       return Mesh;
     }
+	 // ENDSCOUTCODE
       
     assert(DeclKind >= Decl::firstFunction && DeclKind <= Decl::lastFunction &&
           "Unknown DeclContext kind");

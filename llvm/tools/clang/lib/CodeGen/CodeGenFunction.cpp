@@ -37,7 +37,11 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
     IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),
     CXXThisDecl(0), CXXThisValue(0), CXXVTTDecl(0), CXXVTTValue(0),
     OutermostConditional(0), TerminateLandingPad(0), TerminateHandler(0),
-    TrapBB(0), RenderAll(0), CurrentForAllArrayStmt(0) {
+    TrapBB(0)
+	 // SCOUTCODE - no ndm
+	 , RenderAll(0), CurrentForAllArrayStmt(0)
+	 // ENDSCOUTCODE
+	 {
 
   CatchUndefined = getContext().getLangOptions().CatchUndefined;
   CGM.getCXXABI().getMangleContext().startNewFunction();
@@ -90,8 +94,9 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::IncompleteArray:
   case Type::VariableArray:
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   case Type::Mesh:
+  // ENDSCOUTCODE
 
   case Type::Record:
   case Type::ObjCObject:
@@ -949,7 +954,9 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
+	 // SCOUTCODE - no ndm
     case Type::Mesh:
+    // ENDSCOUTCODE
     case Type::Builtin:
     case Type::Complex:
     case Type::Vector:

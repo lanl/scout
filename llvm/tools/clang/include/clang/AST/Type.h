@@ -82,10 +82,10 @@ namespace clang {
   class TemplateTemplateParmDecl;
   class TagDecl;
 
-// ndm
-
+// SCOUTCODE ndm
   class MeshDecl;
   class MemberExpr;
+// ENDSCOUTCODE
 
   class RecordDecl;
   class CXXRecordDecl;
@@ -3173,7 +3173,7 @@ public:
   static bool classof(const RecordType *) { return true; }
 };
 
-// ndm - Scout MeshType
+// SCOUTCODE ndm - Scout MeshType
 
 class MeshType : public Type{
 public:
@@ -3239,6 +3239,7 @@ public:
   }
   
 };
+// ENDSCOUTCODE
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.

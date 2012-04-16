@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// ndm - This file defines the Scout AST viewer class.
+// SCOUTCODE ndm - This file defines the Scout AST viewer class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,4 +31,5 @@ private:
 } // end namespace clang
 
 #endif // LLVM_CLANG_AST_AST_VIEW_SCOUT_H
+// ENDSCOUTCODE
 

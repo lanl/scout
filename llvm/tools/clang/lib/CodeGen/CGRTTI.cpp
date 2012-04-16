@@ -188,7 +188,7 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Float:
     case BuiltinType::Double:
 
-    // ndm - Scout vector types
+    // SCOUTCODE ndm - Scout vector types
     
     case BuiltinType::Bool2:
     case BuiltinType::Bool3:
@@ -211,6 +211,7 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Double2:
     case BuiltinType::Double3:
     case BuiltinType::Double4:
+    // ENDSCOUTCODE
 
     case BuiltinType::LongDouble:
     case BuiltinType::Char16:
@@ -456,11 +457,12 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv116__enum_type_infoE";
     break;
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
       
   case Type::Mesh:
     VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
     break;
+  // ENDSCOUTCODE
       
   case Type::Record: {
     const CXXRecordDecl *RD = 
@@ -652,12 +654,13 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // abi::__function_type_info adds no data members to std::type_info.
     break;
       
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   // TODO - fix  
       
   case Type::Mesh:
     // abi::__enum_mesh_info adds no data members to std::type_info.
     break;
+  // ENDSCOUTCODE
       
   case Type::Enum:
     // Itanium C++ ABI 2.9.5p5:

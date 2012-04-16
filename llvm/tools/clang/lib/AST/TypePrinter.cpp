@@ -116,8 +116,9 @@ void TypePrinter::print(const Type *T, Qualifiers Quals, std::string &buffer) {
     case Type::Decltype:
     case Type::UnaryTransform:
 
-    // ndm - Scout Mesh
+    // SCOUTCODE ndm - Scout Mesh
     case Type::Mesh:
+	 // ENDSCOUTCODE
 
     case Type::Record:
     case Type::Enum:
@@ -733,12 +734,13 @@ void TypePrinter::printEnum(const EnumType *T, std::string &S) {
   printTag(T->getDecl(), S);
 }
 
-// ndm - conver mesh type to mesh name - used in diagnostics
+// SCOUTCODE ndm - conver mesh type to mesh name - used in diagnostics
 void TypePrinter::printMesh(const MeshType *T, std::string &S) {
   MeshDecl* MD = T->getDecl();
-  
+
   S = MD->getIdentifier()->getName().str();
 }
+// ENDSCOUTCODE
 
 void TypePrinter::printTemplateTypeParm(const TemplateTypeParmType *T, 
                                         std::string &S) { 

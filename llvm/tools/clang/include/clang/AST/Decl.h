@@ -2013,7 +2013,7 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
-  // ndm - Scout Mesh fields are instances of FieldDecl, with the appropriate
+  // SCOUTCODE ndm - Scout Mesh fields are instances of FieldDecl, with appropriate
   // FieldType of MeshFieldType set, a normal FieldDecl from a non-mesh,
   // e.g: RecordDecl, gets FieldNone
   
@@ -2027,6 +2027,7 @@ public:
     FieldFaces,
     FieldEdges
   };
+  // ENDSCOUTCODE
 
 private:
   
@@ -2035,11 +2036,12 @@ private:
   mutable unsigned CachedFieldIndex : 31;
 
 
-  // ndm - Scout Mesh
+  // SCOUTCODE ndm - Scout Mesh
   unsigned FieldType : 2;
 
   // bit to set whether this is an implicitly added mesh field, e.g: "position"
   bool IsMeshImplicit : 1;
+  // ENDSCOUTCODE
   
   /// \brief A pointer to either the in-class initializer for this field (if
   /// the boolean value is false), or the bit width expression for this bit
@@ -2148,7 +2150,7 @@ public:
 
   SourceRange getSourceRange() const;
 
-  // ndm - Scout Mesh field methods
+  // SCOUTCODE ndm - Scout Mesh field methods
   // pass implicit if this is an implicitly added mesh field such as 
   // "position", or "color"
   void setMeshFieldType(MeshFieldType type, bool implicit){
@@ -2163,6 +2165,7 @@ public:
   MeshFieldType meshFieldType() const{
     return MeshFieldType(FieldType);
   }
+  // ENDSCOUTCODE
   
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -3146,7 +3149,7 @@ public:
   }
 };
 
-// ndm - Scout Mesh
+// SCOUTCODE ndm - Scout Mesh
 // A mesh declaration is similar to a TagDecl/RecordDecl but different
 // enough that a new subclass of TypeDecl was created. It encapsulates
 // a mesh definition such as:
@@ -3230,12 +3233,13 @@ public:
   static DeclContext* castToDeclContext(const MeshDecl* D){
     return static_cast<DeclContext*>(const_cast<MeshDecl*>(D));
   }
-  
+
   bool canConvertTo(ASTContext& C, MeshDecl* MD);
   
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
 };
+// ENDSCOUTCODE
   
 /// \brief Describes a module import declaration, which makes the contents
 /// of the named module visible in the current translation unit.

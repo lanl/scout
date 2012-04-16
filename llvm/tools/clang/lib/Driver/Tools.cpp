@@ -1229,17 +1229,18 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   //
   // FIXME: Implement custom jobs for internal actions.
   CmdArgs.push_back("-cc1");
-  
+
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
-  // ndm - debug wait flag
+  // SCOUTCODE ndm - debug wait flag
   if(Args.hasArg(options::OPT_debugWait)){
     CmdArgs.push_back("-debug-wait");
   }
-  
+  // ENDSCOUTCODE
+
   // Select the appropriate action.
   bool IsRewriter = false;
   if (isa<AnalyzeJobAction>(JA)) {
@@ -3894,7 +3895,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
-  // ndm - add Scout library search paths
+  // SCOUTCODE ndm - add Scout library search paths
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -3914,6 +3915,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
+  // ENDSCOUTCODE
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
@@ -4026,7 +4028,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
-  // ndm - add Scout libs and other dependencies
+  // SCOUTCODE ndm - add Scout libs and other dependencies
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
@@ -4042,6 +4044,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
 
+  // ENDSCOUTCODE
   getDarwinToolChain().AddLinkSearchPathArgs(Args, CmdArgs);
 
   // In ARC, if we don't have runtime support, link in the runtime
@@ -4914,7 +4917,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/lib64/ld-linux-x86-64.so.2");
   }
 
-  // ndm - add Scout library search paths
+  // SCOUTCODE ndm - add Scout library search paths
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -4934,6 +4937,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
+  // ENDSCOUTCODE
 
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
@@ -5024,7 +5028,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back(Args.MakeArgString(Plugin));
   }
 
-  // ndm - add Scout libs and other dependencies
+  // SCOUTCODE ndm - add Scout libs and other dependencies
 
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
@@ -5038,6 +5042,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
 
+  // ENDSCOUTCODE
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
 
