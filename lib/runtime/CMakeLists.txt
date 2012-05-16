@@ -13,6 +13,7 @@ enable_testing()
 set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
+find_package(SDL)
 find_package(MPI REQUIRED)
 
 include_directories(
@@ -21,6 +22,9 @@ include_directories(
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
   ${MPI_INCLUDE_PATH}
+  ${CUDA_INCLUDE_DIRS}  	
+  ${SDL_INCLUDE_DIR} 
+  $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
 
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
@@ -53,12 +57,19 @@ if(SCOUT_ENABLE_RT_OPENGL)
 
     get_filename_component(name ${v_shader} NAME_WE) # file name w/out extension
 
-    add_custom_command(
-      OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-      COMMAND ${GLSLCC} --vertex ${v_shader} 
-      COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
-      DEPENDS ${GLSLCC} ${v_shader}
-      )
+    if(DEFINED ENV{DISPLAY}) #only compile shaders if $DISPLAY is set
+      add_custom_command(
+        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND ${GLSLCC} --vertex ${v_shader} 
+        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        DEPENDS ${GLSLCC} ${v_shader}
+        )
+    else()
+      add_custom_command(
+        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        )
+    endif()
 
     add_custom_target(compile_${name}
       ALL
@@ -71,12 +82,19 @@ if(SCOUT_ENABLE_RT_OPENGL)
 
     get_filename_component(name ${f_shader} NAME_WE) # file name w/out extension
 
-    add_custom_command(
-      OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-      COMMAND ${GLSLCC} --fragment ${f_shader} 
-      COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
-      DEPENDS ${GLSLCC} ${f_shader}
-      )
+    if(DEFINED ENV{DISPLAY}) #only compile shaders if $DISPLAY is set
+      add_custom_command(
+        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND ${GLSLCC} --fragment ${f_shader} 
+        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        DEPENDS ${GLSLCC} ${f_shader}
+        )
+    else()
+      add_custom_command(
+        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        )
+    endif()
 
     add_custom_target(compile_${name}
       ALL
