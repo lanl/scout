@@ -1,4 +1,4 @@
-//===- MSP430InstrInfo.cpp - MSP430 Instruction Information ---------------===//
+//===-- MSP430InstrInfo.cpp - MSP430 Instruction Information --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MSP430.h"
 #include "MSP430InstrInfo.h"
+#include "MSP430.h"
 #include "MSP430MachineFunctionInfo.h"
 #include "MSP430TargetMachine.h"
 #include "llvm/Function.h"

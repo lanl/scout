@@ -650,12 +650,10 @@ void Interpreter::visitSwitchInst(SwitchInst &I) {
 
   // Check to see if any of the cases match...
   BasicBlock *Dest = 0;
-  unsigned NumCases = I.getNumCases();
-  // Skip the first item since that's the default case.
-  for (unsigned i = 0; i < NumCases; ++i) {
-    GenericValue CaseVal = getOperandValue(I.getCaseValue(i), SF);
+  for (SwitchInst::CaseIt i = I.case_begin(), e = I.case_end(); i != e; ++i) {
+    GenericValue CaseVal = getOperandValue(i.getCaseValue(), SF);
     if (executeICMP_EQ(CondVal, CaseVal, ElTy).IntVal != 0) {
-      Dest = cast<BasicBlock>(I.getCaseSuccessor(i));
+      Dest = cast<BasicBlock>(i.getCaseSuccessor());
       break;
     }
   }
@@ -1235,7 +1233,7 @@ GenericValue Interpreter::getConstantExprValue (ConstantExpr *CE,
     break;
   default:
     dbgs() << "Unhandled ConstantExpr: " << *CE << "\n";
-    llvm_unreachable(0);
+    llvm_unreachable("Unhandled ConstantExpr");
   }
   return Dest;
 }

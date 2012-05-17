@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify -Wno-objc-root-class %s
 // rdar://9340606
 
 @interface Foo {
@@ -168,3 +168,8 @@ void foo(Baz *f) {
         f.realy_strong_attr_prop = [[Baz alloc] init];
         f.implicit = [[Baz alloc] init];
 }
+
+// rdar://11253688
+@interface Boom 
+@property (readonly) const void * innerPointer __attribute__((objc_returns_inner_pointer)); // expected-error {{'objc_returns_inner_pointer' attribute only applies to methods}}
+@end

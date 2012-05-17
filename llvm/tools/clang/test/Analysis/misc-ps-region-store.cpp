@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks -analyzer-opt-analyze-nested-blocks %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks   -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks -analyzer-opt-analyze-nested-blocks %s -fexceptions -fcxx-exceptions
+// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks   -analyzer-opt-analyze-nested-blocks %s -fexceptions -fcxx-exceptions
 
 // Test basic handling of references.
 char &test1_aux();
@@ -504,5 +504,91 @@ void TestNullThis::test() {
   if (p)
     return;
   field = 2; // no-warning
+}
+
+// Test handling of 'catch' exception variables, and not warning
+// about uninitialized values.
+enum MyEnum { MyEnumValue };
+MyEnum rdar10892489() {
+  try {
+      throw MyEnumValue;
+  } catch (MyEnum e) {
+      return e; // no-warning
+  }
+  return MyEnumValue;
+}
+
+MyEnum rdar10892489_positive() {
+  try {
+    throw MyEnumValue;
+  } catch (MyEnum e) {
+    int *p = 0;
+    *p = 0xDEADBEEF; // expected-warning {{null}}
+    return e;
+  }
+  return MyEnumValue;
+}
+
+// Test handling of catch with no condition variable.
+void PR11545() {
+  try
+  {
+      throw;
+  }
+  catch (...)
+  {
+  }
+}
+
+void PR11545_positive() {
+  try
+  {
+      throw;
+  }
+  catch (...)
+  {
+    int *p = 0;
+    *p = 0xDEADBEEF; // expected-warning {{null}}
+  }
+}
+
+// Test handling taking the address of a field.  While the analyzer
+// currently doesn't do anything intelligent here, this previously
+// resulted in a crash.
+class PR11146 {
+public:
+  struct Entry;
+  void baz();
+};
+
+struct PR11146::Entry {
+  int x;
+};
+
+void PR11146::baz() {
+  (void) &Entry::x;
+}
+
+// Test symbolicating a reference.  In this example, the
+// analyzer (originally) didn't know how to handle x[index - index2],
+// returning an UnknownVal.  The conjured symbol wasn't a location,
+// and would result in a crash.
+void rdar10924675(unsigned short x[], int index, int index2) {
+  unsigned short &y = x[index - index2];
+  if (y == 0)
+    return;
+}
+
+// Test handling CXXScalarValueInitExprs.
+void rdar11401827() {
+  int x = int();
+  if (!x) {
+    int *p = 0;
+    *p = 0xDEADBEEF; // expected-warning {{null pointer}}
+  }
+  else {
+    int *p = 0;
+    *p = 0xDEADBEEF;
+  }
 }
 

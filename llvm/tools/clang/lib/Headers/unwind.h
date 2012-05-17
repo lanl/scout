@@ -23,9 +23,31 @@
 
 /* See "Data Definitions for libgcc_s" in the Linux Standard Base.*/
 
-#if defined(__APPLE__) && __has_include_next(<unwind.h>)
-/* Darwin typically has its own unwind.h; use it. */
+#if __has_include_next(<unwind.h>)
+/* Darwin and libunwind provide an unwind.h. If that's available, use
+ * it. libunwind wraps some of its definitions in #ifdef _GNU_SOURCE,
+ * so define that around the include.*/
+# ifndef _GNU_SOURCE
+#  define _SHOULD_UNDEFINE_GNU_SOURCE
+#  define _GNU_SOURCE
+# endif
+// libunwind's unwind.h reflects the current visibility.  However, Mozilla
+// builds with -fvisibility=hidden and relies on gcc's unwind.h to reset the
+// visibility to default and export its contents.  gcc also allows users to
+// override its override by #defining HIDE_EXPORTS (but note, this only obeys
+// the user's -fvisibility setting; it doesn't hide any exports on its own).  We
+// imitate gcc's header here:
+# ifdef HIDE_EXPORTS
 #  include_next <unwind.h>
+# else
+#  pragma GCC visibility push(default)
+#  include_next <unwind.h>
+#  pragma GCC visibility pop
+# endif
+# ifdef _SHOULD_UNDEFINE_GNU_SOURCE
+#  undef _GNU_SOURCE
+#  undef _SHOULD_UNDEFINE_GNU_SOURCE
+# endif
 #else
 
 #include <stdint.h>

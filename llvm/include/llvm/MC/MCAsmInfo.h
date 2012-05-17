@@ -43,7 +43,7 @@ namespace llvm {
     //===------------------------------------------------------------------===//
     // Properties to be set by the target writer, used to configure asm printer.
     //
-    
+
     /// PointerSize - Pointer size in bytes.
     ///               Default is 4.
     unsigned PointerSize;
@@ -142,6 +142,10 @@ namespace llvm {
     /// AllowPeriodsInName - This is true if the assembler allows periods in
     /// symbol names.  This defaults to true.
     bool AllowPeriodsInName;
+
+    /// AllowUTF8 - This is true if the assembler accepts UTF-8 input.
+    // FIXME: Make this a more general encoding setting?
+    bool AllowUTF8;
 
     //===--- Data Emission Directives -------------------------------------===//
 
@@ -334,10 +338,6 @@ namespace llvm {
     /// instead of symbolic register names in .cfi_* directives.
     bool DwarfRegNumForCFI;  // Defaults to false;
 
-    //===--- CBE Asm Translation Table -----------------------------------===//
-
-    const char *const *AsmTransCBE;          // Defaults to empty
-
     //===--- Prologue State ----------------------------------------------===//
 
     std::vector<MachineMove> InitialFrameState;
@@ -485,6 +485,9 @@ namespace llvm {
     bool doesAllowPeriodsInName() const {
       return AllowPeriodsInName;
     }
+    bool doesAllowUTF8() const {
+      return AllowUTF8;
+    }
     const char *getZeroDirective() const {
       return ZeroDirective;
     }
@@ -552,7 +555,7 @@ namespace llvm {
          ExceptionsType == ExceptionHandling::ARM ||
          ExceptionsType == ExceptionHandling::Win64);
     }
-    bool doesDwarfUsesInlineInfoSection() const {
+    bool doesDwarfUseInlineInfoSection() const {
       return DwarfUsesInlineInfoSection;
     }
     const char *getDwarfSectionOffsetDirective() const {
@@ -561,7 +564,7 @@ namespace llvm {
     bool doesDwarfRequireRelocationForSectionOffset() const {
       return DwarfRequiresRelocationForSectionOffset;
     }
-    bool doesDwarfUsesLabelOffsetForRanges() const {
+    bool doesDwarfUseLabelOffsetForRanges() const {
       return DwarfUsesLabelOffsetForRanges;
     }
     bool doesDwarfUseRelocationsForStringPool() const {
@@ -569,9 +572,6 @@ namespace llvm {
     }
     bool useDwarfRegNumForCFI() const {
       return DwarfRegNumForCFI;
-    }
-    const char *const *getAsmCBE() const {
-      return AsmTransCBE;
     }
 
     void addInitialFrameState(MCSymbol *label, const MachineLocation &D,

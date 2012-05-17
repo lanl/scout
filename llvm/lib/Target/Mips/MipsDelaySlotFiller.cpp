@@ -1,4 +1,4 @@
-//===-- DelaySlotFiller.cpp - Mips delay slot filler ---------------------===//
+//===-- DelaySlotFiller.cpp - Mips Delay Slot Filler ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -105,7 +105,7 @@ runOnMachineBasicBlock(MachineBasicBlock &MBB) {
       if (EnableDelaySlotFiller && findDelayInstr(MBB, I, D)) {
         MBB.splice(llvm::next(I), &MBB, D);
         ++UsefulSlots;
-      } else 
+      } else
         BuildMI(MBB, llvm::next(I), I->getDebugLoc(), TII->get(Mips::NOP));
 
       // Record the filler instruction that filled the delay slot.
@@ -173,7 +173,7 @@ bool Filler::delayHasHazard(MachineBasicBlock::iterator candidate,
     return true;
 
   // Loads or stores cannot be moved past a store to the delay slot
-  // and stores cannot be moved past a load. 
+  // and stores cannot be moved past a load.
   if (candidate->mayLoad()) {
     if (sawStore)
       return true;
@@ -220,8 +220,8 @@ void Filler::insertDefsUses(MachineBasicBlock::iterator MI,
   MCInstrDesc MCID = MI->getDesc();
   unsigned e = MI->isCall() || MI->isReturn() ? MCID.getNumOperands() :
                                                 MI->getNumOperands();
-  
-  // Add RA to RegDefs to prevent users of RA from going into delay slot. 
+
+  // Add RA to RegDefs to prevent users of RA from going into delay slot.
   if (MI->isCall())
     RegDefs.insert(Mips::RA);
 
@@ -244,7 +244,7 @@ bool Filler::IsRegInSet(SmallSet<unsigned, 32>& RegSet, unsigned Reg) {
   if (RegSet.count(Reg))
     return true;
   // check Aliased Registers
-  for (const unsigned *Alias = TM.getRegisterInfo()->getAliasSet(Reg);
+  for (const uint16_t *Alias = TM.getRegisterInfo()->getAliasSet(Reg);
        *Alias; ++Alias)
     if (RegSet.count(*Alias))
       return true;

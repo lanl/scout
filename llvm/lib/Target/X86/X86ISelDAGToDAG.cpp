@@ -21,7 +21,6 @@
 #include "X86TargetMachine.h"
 #include "llvm/Instructions.h"
 #include "llvm/Intrinsics.h"
-#include "llvm/Support/CFG.h"
 #include "llvm/Type.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
@@ -32,11 +31,11 @@
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Support/CFG.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
 using namespace llvm;
 
@@ -540,7 +539,7 @@ void X86DAGToDAGISel::EmitSpecialCodeForMain(MachineBasicBlock *BB,
   const TargetInstrInfo *TII = TM.getInstrInfo();
   if (Subtarget->isTargetCygMing()) {
     unsigned CallOp =
-      Subtarget->is64Bit() ? X86::WINCALL64pcrel32 : X86::CALLpcrel32;
+      Subtarget->is64Bit() ? X86::CALL64pcrel32 : X86::CALLpcrel32;
     BuildMI(BB, DebugLoc(),
             TII->get(CallOp)).addExternalSymbol("__main");
   }
@@ -621,14 +620,14 @@ bool X86DAGToDAGISel::MatchWrapper(SDValue N, X86ISelAddressMode &AM) {
 
   // Handle X86-64 rip-relative addresses.  We check this before checking direct
   // folding because RIP is preferable to non-RIP accesses.
-  if (Subtarget->is64Bit() &&
+  if (Subtarget->is64Bit() && N.getOpcode() == X86ISD::WrapperRIP &&
       // Under X86-64 non-small code model, GV (and friends) are 64-bits, so
       // they cannot be folded into immediate fields.
       // FIXME: This can be improved for kernel and other models?
-      (M == CodeModel::Small || M == CodeModel::Kernel) &&
-      // Base and index reg must be 0 in order to use %rip as base and lowering
-      // must allow RIP.
-      !AM.hasBaseOrIndexReg() && N.getOpcode() == X86ISD::WrapperRIP) {
+      (M == CodeModel::Small || M == CodeModel::Kernel)) {
+    // Base and index reg must be 0 in order to use %rip as base.
+    if (AM.hasBaseOrIndexReg())
+      return true;
     if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(N0)) {
       X86ISelAddressMode Backup = AM;
       AM.GV = G->getGlobal();
@@ -663,11 +662,12 @@ bool X86DAGToDAGISel::MatchWrapper(SDValue N, X86ISelAddressMode &AM) {
   }
 
   // Handle the case when globals fit in our immediate field: This is true for
-  // X86-32 always and X86-64 when in -static -mcmodel=small mode.  In 64-bit
-  // mode, this results in a non-RIP-relative computation.
+  // X86-32 always and X86-64 when in -mcmodel=small mode.  In 64-bit
+  // mode, this only applies to a non-RIP-relative computation.
   if (!Subtarget->is64Bit() ||
-      ((M == CodeModel::Small || M == CodeModel::Kernel) &&
-       TM.getRelocationModel() == Reloc::Static)) {
+      M == CodeModel::Small || M == CodeModel::Kernel) {
+    assert(N.getOpcode() != X86ISD::WrapperRIP &&
+           "RIP-relative addressing already handled");
     if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(N0)) {
       AM.GV = G->getGlobal();
       AM.Disp += G->getOffset();
@@ -897,7 +897,7 @@ static bool FoldMaskAndShiftToScale(SelectionDAG &DAG, SDValue N,
   APInt MaskedHighBits = APInt::getHighBitsSet(X.getValueSizeInBits(),
                                                MaskLZ);
   APInt KnownZero, KnownOne;
-  DAG.ComputeMaskedBits(X, MaskedHighBits, KnownZero, KnownOne);
+  DAG.ComputeMaskedBits(X, KnownZero, KnownOne);
   if (MaskedHighBits != KnownZero) return true;
 
   // We've identified a pattern that can be transformed into a single shift
@@ -1654,7 +1654,7 @@ enum AtomicSz {
   AtomicSzEnd
 };
 
-static const unsigned int AtomicOpcTbl[AtomicOpcEnd][AtomicSzEnd] = {
+static const uint16_t AtomicOpcTbl[AtomicOpcEnd][AtomicSzEnd] = {
   {
     X86::LOCK_OR8mi,
     X86::LOCK_OR8mr,
@@ -1846,6 +1846,96 @@ static bool HasNoSignedComparisonUses(SDNode *N) {
     }
   }
   return true;
+}
+
+/// isLoadIncOrDecStore - Check whether or not the chain ending in StoreNode
+/// is suitable for doing the {load; increment or decrement; store} to modify
+/// transformation.
+static bool isLoadIncOrDecStore(StoreSDNode *StoreNode, unsigned Opc, 
+                                SDValue StoredVal, SelectionDAG *CurDAG,
+                                LoadSDNode* &LoadNode, SDValue &InputChain) {
+
+  // is the value stored the result of a DEC or INC?
+  if (!(Opc == X86ISD::DEC || Opc == X86ISD::INC)) return false;
+
+  // is the stored value result 0 of the load?
+  if (StoredVal.getResNo() != 0) return false;
+
+  // are there other uses of the loaded value than the inc or dec?
+  if (!StoredVal.getNode()->hasNUsesOfValue(1, 0)) return false;
+
+  // is the store non-extending and non-indexed?
+  if (!ISD::isNormalStore(StoreNode) || StoreNode->isNonTemporal())
+    return false;
+
+  SDValue Load = StoredVal->getOperand(0);
+  // Is the stored value a non-extending and non-indexed load?
+  if (!ISD::isNormalLoad(Load.getNode())) return false;
+
+  // Return LoadNode by reference.
+  LoadNode = cast<LoadSDNode>(Load);
+  // is the size of the value one that we can handle? (i.e. 64, 32, 16, or 8)
+  EVT LdVT = LoadNode->getMemoryVT();    
+  if (LdVT != MVT::i64 && LdVT != MVT::i32 && LdVT != MVT::i16 && 
+      LdVT != MVT::i8)
+    return false;
+
+  // Is store the only read of the loaded value?
+  if (!Load.hasOneUse())
+    return false;
+  
+  // Is the address of the store the same as the load?
+  if (LoadNode->getBasePtr() != StoreNode->getBasePtr() ||
+      LoadNode->getOffset() != StoreNode->getOffset())
+    return false;
+
+  // Check if the chain is produced by the load or is a TokenFactor with
+  // the load output chain as an operand. Return InputChain by reference.
+  SDValue Chain = StoreNode->getChain();
+
+  bool ChainCheck = false;
+  if (Chain == Load.getValue(1)) {
+    ChainCheck = true;
+    InputChain = LoadNode->getChain();
+  } else if (Chain.getOpcode() == ISD::TokenFactor) {
+    SmallVector<SDValue, 4> ChainOps;
+    for (unsigned i = 0, e = Chain.getNumOperands(); i != e; ++i) {
+      SDValue Op = Chain.getOperand(i);
+      if (Op == Load.getValue(1)) {
+        ChainCheck = true;
+        continue;
+      }
+      ChainOps.push_back(Op);
+    }
+
+    if (ChainCheck)
+      // Make a new TokenFactor with all the other input chains except
+      // for the load.
+      InputChain = CurDAG->getNode(ISD::TokenFactor, Chain.getDebugLoc(),
+                                   MVT::Other, &ChainOps[0], ChainOps.size());
+  }
+  if (!ChainCheck)
+    return false;
+
+  return true;
+}
+
+/// getFusedLdStOpcode - Get the appropriate X86 opcode for an in memory
+/// increment or decrement. Opc should be X86ISD::DEC or X86ISD::INC.
+static unsigned getFusedLdStOpcode(EVT &LdVT, unsigned Opc) {
+  if (Opc == X86ISD::DEC) {
+    if (LdVT == MVT::i64) return X86::DEC64m;
+    if (LdVT == MVT::i32) return X86::DEC32m;
+    if (LdVT == MVT::i16) return X86::DEC16m;
+    if (LdVT == MVT::i8)  return X86::DEC8m;
+  } else {
+    assert(Opc == X86ISD::INC && "unrecognized opcode");
+    if (LdVT == MVT::i64) return X86::INC64m;
+    if (LdVT == MVT::i32) return X86::INC32m;
+    if (LdVT == MVT::i16) return X86::INC16m;
+    if (LdVT == MVT::i8)  return X86::INC8m;
+  }
+  llvm_unreachable("unrecognized size for LdVT");
 }
 
 SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
@@ -2269,7 +2359,7 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
 
         // On x86-32, only the ABCD registers have 8-bit subregisters.
         if (!Subtarget->is64Bit()) {
-          TargetRegisterClass *TRC = 0;
+          const TargetRegisterClass *TRC;
           switch (N0.getValueType().getSimpleVT().SimpleTy) {
           case MVT::i32: TRC = &X86::GR32_ABCDRegClass; break;
           case MVT::i16: TRC = &X86::GR16_ABCDRegClass; break;
@@ -2298,7 +2388,7 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
         SDValue Reg = N0.getNode()->getOperand(0);
 
         // Put the value in an ABCD register.
-        TargetRegisterClass *TRC = 0;
+        const TargetRegisterClass *TRC;
         switch (N0.getValueType().getSimpleVT().SimpleTy) {
         case MVT::i64: TRC = &X86::GR64_ABCDRegClass; break;
         case MVT::i32: TRC = &X86::GR32_ABCDRegClass; break;
@@ -2355,9 +2445,13 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
     break;
   }
   case ISD::STORE: {
+    // Change a chain of {load; incr or dec; store} of the same value into
+    // a simple increment or decrement through memory of that value, if the
+    // uses of the modified value and its address are suitable.
     // The DEC64m tablegen pattern is currently not able to match the case where
-    // the EFLAGS on the original DEC are used.
-    // we'll need to improve tablegen to allow flags to be transferred from a
+    // the EFLAGS on the original DEC are used. (This also applies to 
+    // {INC,DEC}X{64,32,16,8}.)
+    // We'll need to improve tablegen to allow flags to be transferred from a
     // node in the pattern to the result node.  probably with a new keyword
     // for example, we have this
     // def DEC64m : RI<0xFF, MRM1m, (outs), (ins i64mem:$dst), "dec{q}\t$dst",
@@ -2367,41 +2461,16 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
     // def DEC64m : RI<0xFF, MRM1m, (outs), (ins i64mem:$dst), "dec{q}\t$dst",
     //  [(store (add (loadi64 addr:$dst), -1), addr:$dst),
     //   (transferrable EFLAGS)]>;
+
     StoreSDNode *StoreNode = cast<StoreSDNode>(Node);
-    SDValue Chain = StoreNode->getOperand(0);
     SDValue StoredVal = StoreNode->getOperand(1);
-    SDValue Address = StoreNode->getOperand(2);
-    SDValue Undef = StoreNode->getOperand(3);
+    unsigned Opc = StoredVal->getOpcode();
 
-    if (StoreNode->getMemOperand()->getSize() != 8 ||
-        Undef->getOpcode() != ISD::UNDEF ||
-        Chain->getOpcode() != ISD::LOAD ||
-        StoredVal->getOpcode() != X86ISD::DEC ||
-        StoredVal.getResNo() != 0 ||
-        StoredVal->getOperand(0).getNode() != Chain.getNode())
+    LoadSDNode *LoadNode = 0;
+    SDValue InputChain;
+    if (!isLoadIncOrDecStore(StoreNode, Opc, StoredVal, CurDAG,
+                             LoadNode, InputChain))
       break;
-
-    //OPC_CheckPredicate, 1, // Predicate_nontemporalstore
-    if (StoreNode->isNonTemporal())
-      break;
-
-    LoadSDNode *LoadNode = cast<LoadSDNode>(Chain.getNode());
-    if (LoadNode->getOperand(1) != Address ||
-        LoadNode->getOperand(2) != Undef)
-      break;
-
-    if (!ISD::isNormalLoad(LoadNode))
-      break;
-
-    if (!ISD::isNormalStore(StoreNode))
-      break;
-
-    // check load chain has only one use (from the store)
-    if (!Chain.hasOneUse())
-      break;
-
-    // Merge the input chains if they are not intra-pattern references.
-    SDValue InputChain = LoadNode->getOperand(0);
 
     SDValue Base, Scale, Index, Disp, Segment;
     if (!SelectAddr(LoadNode, LoadNode->getBasePtr(),
@@ -2412,7 +2481,9 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
     MemOp[0] = StoreNode->getMemOperand();
     MemOp[1] = LoadNode->getMemOperand();
     const SDValue Ops[] = { Base, Scale, Index, Disp, Segment, InputChain };
-    MachineSDNode *Result = CurDAG->getMachineNode(X86::DEC64m,
+    EVT LdVT = LoadNode->getMemoryVT();    
+    unsigned newOpc = getFusedLdStOpcode(LdVT, Opc);
+    MachineSDNode *Result = CurDAG->getMachineNode(newOpc,
                                                    Node->getDebugLoc(),
                                                    MVT::i32, MVT::Other, Ops,
                                                    array_lengthof(Ops));
@@ -2463,6 +2534,6 @@ SelectInlineAsmMemoryOperand(const SDValue &Op, char ConstraintCode,
 /// X86-specific DAG, ready for instruction scheduling.
 ///
 FunctionPass *llvm::createX86ISelDag(X86TargetMachine &TM,
-                                     llvm::CodeGenOpt::Level OptLevel) {
+                                     CodeGenOpt::Level OptLevel) {
   return new X86DAGToDAGISel(TM, OptLevel);
 }

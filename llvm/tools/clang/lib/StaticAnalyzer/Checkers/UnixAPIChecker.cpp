@@ -67,7 +67,7 @@ static inline void LazyInitialize(OwningPtr<BugType> &BT,
                                   const char *name) {
   if (BT)
     return;
-  BT.reset(new BugType(name, "Unix API"));
+  BT.reset(new BugType(name, categories::UnixAPI));
 }
 
 //===----------------------------------------------------------------------===//
@@ -224,7 +224,8 @@ bool UnixAPIChecker::ReportZeroByteAllocation(CheckerContext &C,
   BugReport *report = new BugReport(*BT_mallocZero, os.str(), N);
 
   report->addRange(arg->getSourceRange());
-  report->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N, arg));
+  report->addVisitor(bugreporter::getTrackNullOrUndefValueVisitor(N, arg,
+                                                                  report));
   C.EmitReport(report);
 
   return true;

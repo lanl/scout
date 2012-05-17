@@ -21,7 +21,9 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include <map>
 #include <vector>
@@ -483,7 +485,7 @@ public:
 /// the case of a macro expansion, for example, the spelling location indicates
 /// where the expanded token came from and the expansion location specifies
 /// where it was expanded.
-class SourceManager : public llvm::RefCountedBase<SourceManager> {
+class SourceManager : public RefCountedBase<SourceManager> {
   /// \brief DiagnosticsEngine object.
   DiagnosticsEngine &Diag;
 
@@ -501,9 +503,24 @@ class SourceManager : public llvm::RefCountedBase<SourceManager> {
   /// files, should report the original file name. Defaults to true.
   bool OverridenFilesKeepOriginalName;
 
-  /// \brief Files that have been overriden with the contents from another file.
-  llvm::DenseMap<const FileEntry *, const FileEntry *> OverriddenFiles;
+  struct OverriddenFilesInfoTy {
+    /// \brief Files that have been overriden with the contents from another
+    /// file.
+    llvm::DenseMap<const FileEntry *, const FileEntry *> OverriddenFiles;
+    /// \brief Files that were overridden with a memory buffer.
+    llvm::DenseSet<const FileEntry *> OverriddenFilesWithBuffer;
+  };
 
+  /// \brief Lazily create the object keeping overridden files info, since
+  /// it is uncommonly used.
+  OwningPtr<OverriddenFilesInfoTy> OverriddenFilesInfo;
+
+  OverriddenFilesInfoTy &getOverriddenFilesInfo() {
+    if (!OverriddenFilesInfo)
+      OverriddenFilesInfo.reset(new OverriddenFilesInfoTy);
+    return *OverriddenFilesInfo;
+  }
+  
   /// MemBufferInfos - Information about various memory buffers that we have
   /// read in.  All FileEntry* within the stored ContentCache objects are NULL,
   /// as they do not refer to a file.
@@ -519,7 +536,7 @@ class SourceManager : public llvm::RefCountedBase<SourceManager> {
   ///
   /// Negative FileIDs are indexes into this table. To get from ID to an index,
   /// use (-ID - 2).
-  std::vector<SrcMgr::SLocEntry> LoadedSLocEntryTable;
+  mutable std::vector<SrcMgr::SLocEntry> LoadedSLocEntryTable;
 
   /// \brief The starting offset of the next local SLocEntry.
   ///
@@ -575,6 +592,8 @@ class SourceManager : public llvm::RefCountedBase<SourceManager> {
 
   // Cache for the "fake" buffer used for error-recovery purposes.
   mutable llvm::MemoryBuffer *FakeBufferForRecovery;
+
+  mutable SrcMgr::ContentCache *FakeContentCacheForRecovery;
 
   /// \brief Lazily computed map of macro argument chunks to their expanded
   /// source location.
@@ -712,6 +731,23 @@ public:
   /// data instead of the contents of the given source file.
   void overrideFileContents(const FileEntry *SourceFile,
                             const FileEntry *NewFile);
+
+  /// \brief Returns true if the file contents have been overridden.
+  bool isFileOverridden(const FileEntry *File) {
+    if (OverriddenFilesInfo) {
+      if (OverriddenFilesInfo->OverriddenFilesWithBuffer.count(File))
+        return true;
+      if (OverriddenFilesInfo->OverriddenFiles.find(File) !=
+          OverriddenFilesInfo->OverriddenFiles.end())
+        return true;
+    }
+    return false;
+  }
+
+  /// \brief Disable overridding the contents of a file, previously enabled
+  /// with \see overrideFileContents.
+  /// This should be called before parsing has begun.
+  void disableFileContentsOverride(const FileEntry *File);
 
   //===--------------------------------------------------------------------===//
   // FileID manipulation methods.
@@ -1260,9 +1296,9 @@ public:
   const SrcMgr::SLocEntry &getLoadedSLocEntry(unsigned Index,
                                               bool *Invalid = 0) const {
     assert(Index < LoadedSLocEntryTable.size() && "Invalid index");
-    if (!SLocEntryLoaded[Index])
-      ExternalSLocEntries->ReadSLocEntry(-(static_cast<int>(Index) + 2));
-    return LoadedSLocEntryTable[Index];
+    if (SLocEntryLoaded[Index])
+      return LoadedSLocEntryTable[Index];
+    return loadSLocEntry(Index, Invalid);
   }
 
   const SrcMgr::SLocEntry &getSLocEntry(FileID FID, bool *Invalid = 0) const {
@@ -1313,6 +1349,9 @@ public:
 
 private:
   const llvm::MemoryBuffer *getFakeBufferForRecovery() const;
+  const SrcMgr::ContentCache *getFakeContentCacheForRecovery() const;
+
+  const SrcMgr::SLocEntry &loadSLocEntry(unsigned Index, bool *Invalid) const;
 
   /// \brief Get the entry with the given unwrapped FileID.
   const SrcMgr::SLocEntry &getSLocEntryByID(int ID) const {
@@ -1322,8 +1361,9 @@ private:
     return getLocalSLocEntry(static_cast<unsigned>(ID));
   }
 
-  const SrcMgr::SLocEntry &getLoadedSLocEntryByID(int ID) const {
-    return getLoadedSLocEntry(static_cast<unsigned>(-ID - 2));
+  const SrcMgr::SLocEntry &getLoadedSLocEntryByID(int ID,
+                                                  bool *Invalid = 0) const {
+    return getLoadedSLocEntry(static_cast<unsigned>(-ID - 2), Invalid);
   }
 
   /// createExpansionLoc - Implements the common elements of storing an

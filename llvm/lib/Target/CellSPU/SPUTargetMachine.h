@@ -1,4 +1,4 @@
-//===-- SPUTargetMachine.h - Define TargetMachine for Cell SPU ----*- C++ -*-=//
+//===-- SPUTargetMachine.h - Define TargetMachine for Cell SPU --*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -23,9 +23,6 @@
 #include "llvm/Target/TargetData.h"
 
 namespace llvm {
-class PassManager;
-class GlobalValue;
-class TargetFrameLowering;
 
 /// SPUTargetMachine
 ///

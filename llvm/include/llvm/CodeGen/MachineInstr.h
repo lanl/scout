@@ -74,9 +74,10 @@ private:
                                         // anything other than to convey comment
                                         // information to AsmPrinter.
 
+  uint16_t NumMemRefs;                  // information on memory references
+  mmo_iterator MemRefs;
+
   std::vector<MachineOperand> Operands; // the operands
-  mmo_iterator MemRefs;                 // information on memory references
-  mmo_iterator MemRefsEnd;
   MachineBasicBlock *Parent;            // Pointer to the owning basic block.
   DebugLoc debugLoc;                    // Source line information.
 
@@ -284,13 +285,13 @@ public:
 
   /// Access to memory operands of the instruction
   mmo_iterator memoperands_begin() const { return MemRefs; }
-  mmo_iterator memoperands_end() const { return MemRefsEnd; }
-  bool memoperands_empty() const { return MemRefsEnd == MemRefs; }
+  mmo_iterator memoperands_end() const { return MemRefs + NumMemRefs; }
+  bool memoperands_empty() const { return NumMemRefs == 0; }
 
   /// hasOneMemOperand - Return true if this instruction has exactly one
   /// MachineMemOperand.
   bool hasOneMemOperand() const {
-    return MemRefsEnd - MemRefs == 1;
+    return NumMemRefs == 1;
   }
 
   /// API for querying MachineInstr properties. They are the same as MCInstrDesc
@@ -307,7 +308,14 @@ public:
   /// The first argument is the property being queried.
   /// The second argument indicates whether the query should look inside
   /// instruction bundles.
-  bool hasProperty(unsigned Flag, QueryType Type = AnyInBundle) const;
+  bool hasProperty(unsigned MCFlag, QueryType Type = AnyInBundle) const {
+    // Inline the fast path.
+    if (Type == IgnoreBundle || !isBundle())
+      return getDesc().getFlags() & (1 << MCFlag);
+
+    // If we have a bundle, take the slow path.
+    return hasPropertyInBundle(1 << MCFlag, Type);
+  }
 
   /// isVariadic - Return true if this instruction can have a variable number of
   /// operands.  In this case, the variable operands will be after the normal
@@ -702,6 +710,7 @@ public:
   /// that are not dead are skipped. If Overlap is true, then it also looks for
   /// defs that merely overlap the specified register. If TargetRegisterInfo is
   /// non-null, then it also checks if there is a def of a super-register.
+  /// This may also return a register mask operand when Overlap is true.
   int findRegisterDefOperandIdx(unsigned Reg,
                                 bool isDead = false, bool Overlap = false,
                                 const TargetRegisterInfo *TRI = NULL) const;
@@ -887,7 +896,7 @@ public:
   /// list. This does not transfer ownership.
   void setMemRefs(mmo_iterator NewMemRefs, mmo_iterator NewMemRefsEnd) {
     MemRefs = NewMemRefs;
-    MemRefsEnd = NewMemRefsEnd;
+    NumMemRefs = NewMemRefsEnd - NewMemRefs;
   }
 
 private:
@@ -909,6 +918,10 @@ private:
   /// this instruction from their respective use lists.  This requires that the
   /// operands not be on their use lists yet.
   void AddRegOperandsToUseLists(MachineRegisterInfo &RegInfo);
+
+  /// hasPropertyInBundle - Slow path for hasProperty when we're dealing with a
+  /// bundle.
+  bool hasPropertyInBundle(unsigned Mask, QueryType Type) const;
 };
 
 /// MachineInstrExpressionTrait - Special DenseMapInfo traits to compare

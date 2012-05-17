@@ -88,6 +88,7 @@ void CompilerInstance::setASTConsumer(ASTConsumer *Value) {
 
 void CompilerInstance::setCodeCompletionConsumer(CodeCompleteConsumer *Value) {
   CompletionConsumer.reset(Value);
+  getFrontendOpts().SkipFunctionBodies = Value != 0;
 }
 
 // Diagnostics
@@ -175,15 +176,15 @@ void CompilerInstance::createDiagnostics(int Argc, const char* const *Argv,
                                   &getCodeGenOpts());
 }
 
-llvm::IntrusiveRefCntPtr<DiagnosticsEngine>
+IntrusiveRefCntPtr<DiagnosticsEngine>
 CompilerInstance::createDiagnostics(const DiagnosticOptions &Opts,
                                     int Argc, const char* const *Argv,
                                     DiagnosticConsumer *Client,
                                     bool ShouldOwnClient,
                                     bool ShouldCloneClient,
                                     const CodeGenOptions *CodeGenOpts) {
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-  llvm::IntrusiveRefCntPtr<DiagnosticsEngine>
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  IntrusiveRefCntPtr<DiagnosticsEngine>
       Diags(new DiagnosticsEngine(DiagID));
 
   // Create the diagnostic client for reporting errors or for
@@ -257,8 +258,7 @@ void CompilerInstance::createPreprocessor() {
   }
 
   if (PPOpts.DetailedRecord)
-    PP->createPreprocessingRecord(
-                                  PPOpts.DetailedRecordIncludesNestedMacroExpansions);
+    PP->createPreprocessingRecord(PPOpts.DetailedRecordConditionalDirectives);
 
   InitializePreprocessor(*PP, PPOpts, getHeaderSearchOpts(), getFrontendOpts());
 
@@ -307,12 +307,14 @@ void CompilerInstance::createASTContext() {
 void CompilerInstance::createPCHExternalASTSource(StringRef Path,
                                                   bool DisablePCHValidation,
                                                   bool DisableStatCache,
+                                                bool AllowPCHWithCompilerErrors,
                                                  void *DeserializationListener){
   OwningPtr<ExternalASTSource> Source;
   bool Preamble = getPreprocessorOpts().PrecompiledPreambleBytes.first != 0;
   Source.reset(createPCHExternalASTSource(Path, getHeaderSearchOpts().Sysroot,
                                           DisablePCHValidation,
                                           DisableStatCache,
+                                          AllowPCHWithCompilerErrors,
                                           getPreprocessor(), getASTContext(),
                                           DeserializationListener,
                                           Preamble));
@@ -325,6 +327,7 @@ CompilerInstance::createPCHExternalASTSource(StringRef Path,
                                              const std::string &Sysroot,
                                              bool DisablePCHValidation,
                                              bool DisableStatCache,
+                                             bool AllowPCHWithCompilerErrors,
                                              Preprocessor &PP,
                                              ASTContext &Context,
                                              void *DeserializationListener,
@@ -332,7 +335,8 @@ CompilerInstance::createPCHExternalASTSource(StringRef Path,
   OwningPtr<ASTReader> Reader;
   Reader.reset(new ASTReader(PP, Context,
                              Sysroot.empty() ? "" : Sysroot.c_str(),
-                             DisablePCHValidation, DisableStatCache));
+                             DisablePCHValidation, DisableStatCache,
+                             AllowPCHWithCompilerErrors));
 
   Reader->setDeserializationListener(
             static_cast<ASTDeserializationListener *>(DeserializationListener));
@@ -380,7 +384,7 @@ static bool EnableCodeCompletion(Preprocessor &PP,
 void CompilerInstance::createCodeCompletionConsumer() {
   const ParsedSourceLocation &Loc = getFrontendOpts().CodeCompletionAt;
   if (!CompletionConsumer) {
-    CompletionConsumer.reset(
+    setCodeCompletionConsumer(
       createCodeCompletionConsumer(getPreprocessor(),
                                    Loc.FileName, Loc.Line, Loc.Column,
                                    getFrontendOpts().ShowMacrosInCodeCompletion,
@@ -391,14 +395,14 @@ void CompilerInstance::createCodeCompletionConsumer() {
       return;
   } else if (EnableCodeCompletion(getPreprocessor(), Loc.FileName,
                                   Loc.Line, Loc.Column)) {
-    CompletionConsumer.reset();
+    setCodeCompletionConsumer(0);
     return;
   }
 
   if (CompletionConsumer->isOutputBinary() &&
       llvm::sys::Program::ChangeStdoutToBinary()) {
     getPreprocessor().getDiagnostics().Report(diag::err_fe_stdout_binary);
-    CompletionConsumer.reset();
+    setCodeCompletionConsumer(0);
   }
 }
 
@@ -471,7 +475,8 @@ CompilerInstance::createDefaultOutputFile(bool Binary,
                                           StringRef InFile,
                                           StringRef Extension) {
   return createOutputFile(getFrontendOpts().OutputFile, Binary,
-                          /*RemoveFileOnSignal=*/true, InFile, Extension);
+                          /*RemoveFileOnSignal=*/true, InFile, Extension,
+                          /*UseTemporary=*/true);
 }
 
 llvm::raw_fd_ostream *
@@ -479,12 +484,14 @@ CompilerInstance::createOutputFile(StringRef OutputPath,
                                    bool Binary, bool RemoveFileOnSignal,
                                    StringRef InFile,
                                    StringRef Extension,
-                                   bool UseTemporary) {
+                                   bool UseTemporary,
+                                   bool CreateMissingDirectories) {
   std::string Error, OutputPathName, TempPathName;
   llvm::raw_fd_ostream *OS = createOutputFile(OutputPath, Error, Binary,
                                               RemoveFileOnSignal,
                                               InFile, Extension,
                                               UseTemporary,
+                                              CreateMissingDirectories,
                                               &OutputPathName,
                                               &TempPathName);
   if (!OS) {
@@ -509,8 +516,12 @@ CompilerInstance::createOutputFile(StringRef OutputPath,
                                    StringRef InFile,
                                    StringRef Extension,
                                    bool UseTemporary,
+                                   bool CreateMissingDirectories,
                                    std::string *ResultPathName,
                                    std::string *TempPathName) {
+  assert((!CreateMissingDirectories || UseTemporary) &&
+         "CreateMissingDirectories is only allowed when using temporary files");
+
   std::string OutFile, TempFile;
   if (!OutputPath.empty()) {
     OutFile = OutputPath;
@@ -529,19 +540,28 @@ CompilerInstance::createOutputFile(StringRef OutputPath,
   std::string OSFile;
 
   if (UseTemporary && OutFile != "-") {
-    llvm::sys::Path OutPath(OutFile);
-    // Only create the temporary if we can actually write to OutPath, otherwise
-    // we want to fail early.
+    // Only create the temporary if the parent directory exists (or create
+    // missing directories is true) and we can actually write to OutPath,
+    // otherwise we want to fail early.
+    SmallString<256> AbsPath(OutputPath);
+    llvm::sys::fs::make_absolute(AbsPath);
+    llvm::sys::Path OutPath(AbsPath);
+    bool ParentExists = false;
+    if (llvm::sys::fs::exists(llvm::sys::path::parent_path(AbsPath.str()),
+                              ParentExists))
+      ParentExists = false;
     bool Exists;
-    if ((llvm::sys::fs::exists(OutPath.str(), Exists) || !Exists) ||
-        (OutPath.isRegularFile() && OutPath.canWrite())) {
+    if ((CreateMissingDirectories || ParentExists) &&
+        ((llvm::sys::fs::exists(AbsPath.str(), Exists) || !Exists) ||
+         (OutPath.isRegularFile() && OutPath.canWrite()))) {
       // Create a temporary file.
       SmallString<128> TempPath;
       TempPath = OutFile;
       TempPath += "-%%%%%%%%";
       int fd;
       if (llvm::sys::fs::unique_file(TempPath.str(), fd, TempPath,
-                               /*makeAbsolute=*/false) == llvm::errc::success) {
+                                     /*makeAbsolute=*/false, 0664)
+          == llvm::errc::success) {
         OS.reset(new llvm::raw_fd_ostream(fd, /*shouldClose=*/true));
         OSFile = TempFile = TempPath.str();
       }
@@ -631,6 +651,10 @@ bool CompilerInstance::ExecuteAction(FrontendAction &Act) {
   // FIXME: We shouldn't need to do this, the target should be immutable once
   // created. This complexity should be lifted elsewhere.
   getTarget().setForcedLangOptions(getLangOpts());
+
+  // rewriter project will change target built-in bool type from its default. 
+  if (getFrontendOpts().ProgramAction == frontend::RewriteObjC)
+    getTarget().noSignedCharForObjCBool();
 
   // Validate/process some options.
   if (getHeaderSearchOpts().Verbose)
@@ -734,7 +758,7 @@ static void compileModule(CompilerInstance &ImportingInstance,
     = ImportingInstance.getPreprocessor().getHeaderSearchInfo().getModuleMap();
     
   // Construct a compiler invocation for creating this module.
-  llvm::IntrusiveRefCntPtr<CompilerInvocation> Invocation
+  IntrusiveRefCntPtr<CompilerInvocation> Invocation
     (new CompilerInvocation(ImportingInstance.getInvocation()));
 
   PreprocessorOptions &PPOpts = Invocation->getPreprocessorOpts();
@@ -836,13 +860,6 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
   }
   
   // Determine what file we're searching from.
-  SourceManager &SourceMgr = getSourceManager();
-  SourceLocation ExpandedImportLoc = SourceMgr.getExpansionLoc(ImportLoc);
-  const FileEntry *CurFile
-    = SourceMgr.getFileEntryForID(SourceMgr.getFileID(ExpandedImportLoc));
-  if (!CurFile)
-    CurFile = SourceMgr.getFileEntryForID(SourceMgr.getMainFileID());
-
   StringRef ModuleName = Path[0].first->getName();
   SourceLocation ModuleNameLoc = Path[0].second;
 

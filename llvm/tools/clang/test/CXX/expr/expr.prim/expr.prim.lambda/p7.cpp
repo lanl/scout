@@ -2,7 +2,7 @@
 
 // Check that analysis-based warnings work in lambda bodies.
 void analysis_based_warnings() {
-  (void)[]() -> int { }; // expected-warning{{control reaches end of non-void function}}
+  (void)[]() -> int { }; // expected-warning{{control reaches end of non-void lambda}}
 }
 
 // Check that we get the right types of captured variables (the
@@ -43,3 +43,14 @@ void test_capture_constness(int i, const int ic) {
 }
 
 
+struct S1 {
+  int x, y;
+  S1 &operator=(int*);
+  int operator()(int);
+  void f() {
+    [&]()->int {
+      S1 &s1 = operator=(&this->x);
+      return operator()(this->x + y);
+    }(); 
+  }
+};

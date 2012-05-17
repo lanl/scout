@@ -38,7 +38,6 @@
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
@@ -136,7 +135,7 @@ void MBlazeAsmPrinter::printSavedRegsBitmask() {
   for (unsigned i = 0, e = CSI.size(); i != e; ++i) {
     unsigned Reg = CSI[i].getReg();
     unsigned RegNum = getMBlazeRegisterNumbering(Reg);
-    if (MBlaze::GPRRegisterClass->contains(Reg))
+    if (MBlaze::GPRRegClass.contains(Reg))
       CPUBitmask |= (1 << RegNum);
   }
 

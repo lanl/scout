@@ -77,10 +77,10 @@ add_llvm_library(LLVMCodeGen
   RegAllocPBQP.cpp
   RegisterClassInfo.cpp
   RegisterCoalescer.cpp
+  RegisterPressure.cpp
   RegisterScavenging.cpp
   RenderMachineFunction.cpp
   ScheduleDAG.cpp
-  ScheduleDAGEmit.cpp
   ScheduleDAGInstrs.cpp
   ScheduleDAGPrinter.cpp
   ScoreboardHazardRecognizer.cpp

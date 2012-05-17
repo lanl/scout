@@ -45,15 +45,8 @@ public:
   virtual uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment,
                                        unsigned SectionID) = 0;
 
-  // Allocate ActualSize bytes, or more, for the named function. Return
-  // a pointer to the allocated memory and update Size to reflect how much
-  // memory was acutally allocated.
-  virtual uint8_t *startFunctionBody(const char *Name, uintptr_t &Size) = 0;
-
-  // Mark the end of the function, including how much of the allocated
-  // memory was actually used.
-  virtual void endFunctionBody(const char *Name, uint8_t *FunctionStart,
-                               uint8_t *FunctionEnd) = 0;
+  virtual void *getPointerToNamedFunction(const std::string &Name,
+                                          bool AbortOnFailure = true) = 0;
 };
 
 class RuntimeDyld {
@@ -72,12 +65,15 @@ public:
   RuntimeDyld(RTDyldMemoryManager*);
   ~RuntimeDyld();
 
+  /// Load an in-memory object file into the dynamic linker.
   bool loadObject(MemoryBuffer *InputBuffer);
-  // Get the address of our local copy of the symbol. This may or may not
-  // be the address used for relocation (clients can copy the data around
-  // and resolve relocatons based on where they put it).
+
+  /// Get the address of our local copy of the symbol. This may or may not
+  /// be the address used for relocation (clients can copy the data around
+  /// and resolve relocatons based on where they put it).
   void *getSymbolAddress(StringRef Name);
-  // Resolve the relocations for all symbols we currently know about.
+
+  /// Resolve the relocations for all symbols we currently know about.
   void resolveRelocations();
 
   /// mapSectionAddress - map a section to its target address space value.

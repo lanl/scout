@@ -1,4 +1,4 @@
-//===- ARMCallingConv.td - Calling Conventions for ARM -----*- tablegen -*-===//
+//===-- ARMCallingConv.td - Calling Conventions for ARM ----*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,10 +8,6 @@
 //===----------------------------------------------------------------------===//
 // This describes the calling conventions for ARM architecture.
 //===----------------------------------------------------------------------===//
-
-/// CCIfSubtarget - Match if the current subtarget has a feature F.
-class CCIfSubtarget<string F, CCAction A>:
-  CCIf<!strconcat("State.getTarget().getSubtarget<ARMSubtarget>().", F), A>;
 
 /// CCIfAlign - Match of the original alignment of the arg
 class CCIfAlign<string Align, CCAction A>:

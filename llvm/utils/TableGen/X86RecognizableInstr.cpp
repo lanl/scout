@@ -36,7 +36,16 @@ using namespace llvm;
   MAP(F8, 41)           \
   MAP(F9, 42)           \
   MAP(D0, 45)           \
-  MAP(D1, 46)
+  MAP(D1, 46)           \
+  MAP(D4, 47)           \
+  MAP(D8, 48)           \
+  MAP(D9, 49)           \
+  MAP(DA, 50)           \
+  MAP(DB, 51)           \
+  MAP(DC, 52)           \
+  MAP(DD, 53)           \
+  MAP(DE, 54)           \
+  MAP(DF, 55)
 
 // A clone of X86 since we can't depend on something that is generated.
 namespace X86Local {
@@ -216,6 +225,7 @@ RecognizableInstr::RecognizableInstr(DisassemblerTables &tables,
   SegOvr   = byteFromRec(Rec, "SegOvrBits");
   
   HasOpSizePrefix  = Rec->getValueAsBit("hasOpSizePrefix");
+  HasAdSizePrefix  = Rec->getValueAsBit("hasAdSizePrefix");
   HasREX_WPrefix   = Rec->getValueAsBit("hasREX_WPrefix");
   HasVEXPrefix     = Rec->getValueAsBit("hasVEXPrefix");
   HasVEX_4VPrefix  = Rec->getValueAsBit("hasVEX_4VPrefix");
@@ -334,6 +344,8 @@ InstructionContext RecognizableInstr::insnContext() const {
       insnContext = IC_64BIT_XS_OPSIZE;
     else if (HasOpSizePrefix)
       insnContext = IC_64BIT_OPSIZE;
+    else if (HasAdSizePrefix)
+      insnContext = IC_64BIT_ADSIZE;
     else if (HasREX_WPrefix &&
              (Prefix == X86Local::XS || Prefix == X86Local::T8XS))
       insnContext = IC_64BIT_REXW_XS;
@@ -360,6 +372,8 @@ InstructionContext RecognizableInstr::insnContext() const {
       insnContext = IC_XS_OPSIZE;
     else if (HasOpSizePrefix)
       insnContext = IC_OPSIZE;
+    else if (HasAdSizePrefix)
+      insnContext = IC_ADSIZE;
     else if (Prefix == X86Local::XD || Prefix == X86Local::T8XD ||
              Prefix == X86Local::TAXD)
       insnContext = IC_XD;
@@ -391,13 +405,13 @@ RecognizableInstr::filter_ret RecognizableInstr::filter() const {
     return FILTER_STRONG;
     
     
-  // Filter out artificial instructions
+  // Filter out artificial instructions but leave in the LOCK_PREFIX so it is
+  // printed as a separate "instruction".
     
   if (Name.find("_Int") != Name.npos       ||
       Name.find("Int_") != Name.npos       ||
       Name.find("_NOREX") != Name.npos     ||
-      Name.find("2SDL") != Name.npos       ||
-      Name == "LOCK_PREFIX")
+      Name.find("2SDL") != Name.npos)
     return FILTER_STRONG;
 
   // Filter out instructions with segment override prefixes.
@@ -1101,6 +1115,7 @@ OperandType RecognizableInstr::typeFromString(const std::string &s,
   TYPE("i16imm_pcrel",        TYPE_REL16)
   TYPE("i32imm_pcrel",        TYPE_REL32)
   TYPE("SSECC",               TYPE_IMM3)
+  TYPE("AVXCC",               TYPE_IMM5)
   TYPE("brtarget",            TYPE_RELv)
   TYPE("uncondbrtarget",      TYPE_RELv)
   TYPE("brtarget8",           TYPE_REL8)
@@ -1142,6 +1157,7 @@ OperandEncoding RecognizableInstr::immediateEncodingFromString
   ENCODING("i32i8imm",        ENCODING_IB)
   ENCODING("u32u8imm",        ENCODING_IB)
   ENCODING("SSECC",           ENCODING_IB)
+  ENCODING("AVXCC",           ENCODING_IB)
   ENCODING("i16imm",          ENCODING_Iv)
   ENCODING("i16i8imm",        ENCODING_IB)
   ENCODING("i32imm",          ENCODING_Iv)

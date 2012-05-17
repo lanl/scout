@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -fsyntax-only -Wno-unused-value -Wmicrosoft -verify -fms-extensions -fdelayed-template-parsing
+// RUN: %clang_cc1 %s -std=c++11 -fsyntax-only -Wno-unused-value -Wmicrosoft -verify -fms-extensions -fms-compatibility -fdelayed-template-parsing
 
 /* Microsoft attribute tests */
 [repeatable][source_annotation_attribute( Parameter|ReturnValue )]
@@ -103,7 +103,7 @@ typedef COM_CLASS_TEMPLATE<struct_with_uuid> COM_TYPE_2;
 
 template <class T, const GUID& g>
 class COM_CLASS_TEMPLATE_REF  { };
-typedef COM_CLASS_TEMPLATE<struct_with_uuid, __uuidof(struct_with_uuid)> COM_TYPE_REF;
+typedef COM_CLASS_TEMPLATE_REF<struct_with_uuid, __uuidof(struct_with_uuid)> COM_TYPE_REF;
 
   struct late_defined_uuid;
   template<typename T>
@@ -151,11 +151,24 @@ void missing_template_keyword(){
 
 class AAAA { };
 
+template <typename T>
+class SimpleTemplate {};
+
 template <class T>
 void redundant_typename() {
    typename T t;// expected-warning {{expected a qualified name after 'typename'}}
    typename AAAA a;// expected-warning {{expected a qualified name after 'typename'}}
+
    t = 3;
+   
+   typedef typename T* pointerT;// expected-warning {{expected a qualified name after 'typename'}}
+   typedef typename SimpleTemplate<int> templateT;// expected-warning {{expected a qualified name after 'typename'}}
+
+   pointerT pT = &t;
+   *pT = 4;
+
+   int var;
+   int k = typename var;// expected-error {{expected a qualified name after 'typename'}}
 }
 
 
@@ -284,3 +297,28 @@ int main () {
   missing_template_keyword<int>();
 }
 
+
+
+
+namespace access_protected_PTM {
+
+class A {
+protected:
+  void f(); // expected-note {{must name member using the type of the current context 'access_protected_PTM::B'}}
+};
+
+class B : public A{
+public:
+  void test_access();
+  static void test_access_static();
+};
+
+void B::test_access() {
+  &A::f; // expected-error {{'f' is a protected member of 'access_protected_PTM::A'}}
+}
+
+void B::test_access_static() {
+  &A::f;
+}
+
+}

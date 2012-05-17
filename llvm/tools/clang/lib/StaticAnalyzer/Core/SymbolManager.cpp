@@ -164,6 +164,13 @@ void SymExpr::symbol_iterator::expand() {
   llvm_unreachable("unhandled expansion case");
 }
 
+unsigned SymExpr::computeComplexity() const {
+  unsigned R = 0;
+  for (symbol_iterator I = symbol_begin(), E = symbol_end(); I != E; ++I)
+    R++;
+  return R;
+}
+
 const SymbolRegionValue*
 SymbolManager::getRegionValueSymbol(const TypedValueRegion* R) {
   llvm::FoldingSetNodeID profile;
@@ -181,16 +188,17 @@ SymbolManager::getRegionValueSymbol(const TypedValueRegion* R) {
 }
 
 const SymbolConjured*
-SymbolManager::getConjuredSymbol(const Stmt *E, QualType T, unsigned Count,
+SymbolManager::getConjuredSymbol(const Stmt *E, const LocationContext *LCtx,
+                                 QualType T, unsigned Count,
                                  const void *SymbolTag) {
 
   llvm::FoldingSetNodeID profile;
-  SymbolConjured::Profile(profile, E, T, Count, SymbolTag);
+  SymbolConjured::Profile(profile, E, T, Count, LCtx, SymbolTag);
   void *InsertPos;
   SymExpr *SD = DataSet.FindNodeOrInsertPos(profile, InsertPos);
   if (!SD) {
     SD = (SymExpr*) BPAlloc.Allocate<SymbolConjured>();
-    new (SD) SymbolConjured(SymbolCounter, E, T, Count, SymbolTag);
+    new (SD) SymbolConjured(SymbolCounter, E, LCtx, T, Count, SymbolTag);
     DataSet.InsertNode(SD, InsertPos);
     ++SymbolCounter;
   }
@@ -500,6 +508,9 @@ SymbolReaper::isLive(const Stmt *ExprVal, const LocationContext *ELCtx) const {
       return false;
     return true;
   }
+  // If no statement is provided, everything is this and parent contexts is live.
+  if (!Loc)
+    return true;
 
   return LCtx->getAnalysis<RelaxedLiveVariables>()->isLive(Loc, ExprVal);
 }
@@ -509,6 +520,10 @@ bool SymbolReaper::isLive(const VarRegion *VR, bool includeStoreBindings) const{
   const StackFrameContext *CurrentContext = LCtx->getCurrentStackFrame();
 
   if (VarContext == CurrentContext) {
+    // If no statemetnt is provided, everything is live.
+    if (!Loc)
+      return true;
+
     if (LCtx->getAnalysis<RelaxedLiveVariables>()->isLive(Loc, VR->getDecl()))
       return true;
 

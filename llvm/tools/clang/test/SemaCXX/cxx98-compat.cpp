@@ -1,6 +1,16 @@
 // RUN: %clang_cc1 -fsyntax-only -std=c++11 -Wc++98-compat -verify %s
 // RUN: %clang_cc1 -fsyntax-only -std=c++11 %s
 
+namespace std {
+  struct type_info;
+  using size_t = decltype(sizeof(0)); // expected-warning {{decltype}} expected-warning {{alias}}
+  template<typename T> struct initializer_list {
+    initializer_list(T*, size_t);
+    T *p;
+    size_t n;
+  };
+}
+
 template<typename ...T>  // expected-warning {{variadic templates are incompatible with C++98}}
 class Variadic1 {};
 
@@ -34,18 +44,42 @@ namespace TemplateParsing {
 }
 
 void Lambda() {
-  // FIXME: Enable when lambdas are minimally working.
-  //[]{}; // FIXME-warning {{lambda expressions are incompatible with C++98}}
+  []{}(); // expected-warning {{lambda expressions are incompatible with C++98}}
 }
 
-int InitList() {
-  (void)new int {}; // expected-warning {{generalized initializer lists are incompatible with C++98}}
-  (void)int{}; // expected-warning {{generalized initializer lists are incompatible with C++98}}
+struct Ctor {
+  Ctor(int, char);
+  Ctor(double, long);
+};
+struct InitListCtor {
+  InitListCtor(std::initializer_list<bool>);
+};
+
+int InitList(int i = {}) { // expected-warning {{generalized initializer lists are incompatible with C++98}} \
+                           // expected-warning {{scalar initialized from empty initializer list is incompatible with C++98}}
+  (void)new int {}; // expected-warning {{generalized initializer lists are incompatible with C++98}} \
+                    // expected-warning {{scalar initialized from empty initializer list is incompatible with C++98}}
+  (void)int{}; // expected-warning {{generalized initializer lists are incompatible with C++98}} \
+               // expected-warning {{scalar initialized from empty initializer list is incompatible with C++98}}
   int x { 0 }; // expected-warning {{generalized initializer lists are incompatible with C++98}}
+  S<int> s = {}; // ok, aggregate
+  s = {}; // expected-warning {{generalized initializer lists are incompatible with C++98}}
+  std::initializer_list<int> xs = { 1, 2, 3 }; // expected-warning {{initialization of initializer_list object is incompatible with C++98}}
+  auto ys = { 1, 2, 3 }; // expected-warning {{initialization of initializer_list object is incompatible with C++98}} \
+                         // expected-warning {{'auto' type specifier is incompatible with C++98}}
+  Ctor c1 = { 1, 2 }; // expected-warning {{constructor call from initializer list is incompatible with C++98}}
+  Ctor c2 = { 3.0, 4l }; // expected-warning {{constructor call from initializer list is incompatible with C++98}}
+  InitListCtor ilc = { true, false }; // expected-warning {{initialization of initializer_list object is incompatible with C++98}}
+  const int &r = { 0 }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
+  struct { int a; const int &r; } rr = { 0, {{0}} }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
   return { 0 }; // expected-warning {{generalized initializer lists are incompatible with C++98}}
 }
+struct DelayedDefaultArgumentParseInitList {
+  void f(int i = {1}) { // expected-warning {{generalized initializer lists are incompatible with C++98}}
+  }
+};
 
-int operator""_hello(const char *); // expected-warning {{literal operators are incompatible with C++98}}
+int operator"" _hello(const char *); // expected-warning {{literal operators are incompatible with C++98}}
 
 enum EnumFixed : int { // expected-warning {{enumeration types with a fixed underlying type are incompatible with C++98}}
 };
@@ -98,17 +132,22 @@ char16_t c16 = 0; // expected-warning {{'char16_t' type specifier is incompatibl
 char32_t c32 = 0; // expected-warning {{'char32_t' type specifier is incompatible with C++98}}
 constexpr int const_expr = 0; // expected-warning {{'constexpr' specifier is incompatible with C++98}}
 decltype(const_expr) decl_type = 0; // expected-warning {{'decltype' type specifier is incompatible with C++98}}
+__decltype(const_expr) decl_type2 = 0; // ok
 void no_except() noexcept; // expected-warning {{noexcept specifications are incompatible with C++98}}
 bool no_except_expr = noexcept(1 + 1); // expected-warning {{noexcept expressions are incompatible with C++98}}
 void *null = nullptr; // expected-warning {{'nullptr' is incompatible with C++98}}
 static_assert(true, "!"); // expected-warning {{static_assert declarations are incompatible with C++98}}
 
+// FIXME: Reintroduce this test if support for inheriting constructors is
+//        implemented.
+#if 0
 struct InhCtorBase {
   InhCtorBase(int);
 };
 struct InhCtorDerived : InhCtorBase {
-  using InhCtorBase::InhCtorBase; // expected-warning {{inherited constructors are incompatible with C++98}}
+  using InhCtorBase::InhCtorBase; // xpected-warning {{inheriting constructors are incompatible with C++98}}
 };
+#endif
 
 struct FriendMember {
   static void MemberFn();
@@ -203,10 +242,8 @@ namespace CopyCtorIssues {
     Ambiguous(const Ambiguous &, int = 0); // expected-note {{candidate}}
     Ambiguous(const Ambiguous &, double = 0); // expected-note {{candidate}}
   };
-  struct Deleted { // expected-note {{here}}
-    // Copy ctor implicitly defined as deleted because Private's copy ctor is
-    // inaccessible.
-    Private p;
+  struct Deleted {
+    Private p; // expected-note {{implicitly deleted}}
   };
 
   const Private &a = Private(); // expected-warning {{copying variable of type 'CopyCtorIssues::Private' when binding a reference to a temporary would invoke an inaccessible constructor in C++98}}
@@ -237,6 +274,11 @@ namespace UnionOrAnonStructMembers {
       NonTrivDtor ntd; // expected-warning {{anonymous struct member 'ntd' with a non-trivial destructor is incompatible with C++98}}
     };
   };
+  union WithStaticDataMember {
+    static constexpr double d = 0.0; // expected-warning {{static data member 'd' in union is incompatible with C++98}} expected-warning {{'constexpr' specifier is incompatible with C++98}}
+    static const int n = 0; // expected-warning {{static data member 'n' in union is incompatible with C++98}}
+    static int k; // expected-warning {{static data member 'k' in union is incompatible with C++98}}
+  };
 }
 
 int EnumNNS = Enum::enum_val; // expected-warning {{enumeration type in nested name specifier is incompatible with C++98}}
@@ -260,4 +302,36 @@ Later: // expected-note {{possible target of indirect goto}}
   default: // expected-warning {{switch case would be in a protected scope in C++98}}
     return;
   }
+}
+
+namespace UnevaluatedMemberAccess {
+  struct S {
+    int n;
+    int f() { return sizeof(S::n); } // ok
+  };
+  int k = sizeof(S::n); // expected-warning {{use of non-static data member 'n' in an unevaluated context is incompatible with C++98}}
+  const std::type_info &ti = typeid(S::n); // expected-warning {{use of non-static data member 'n' in an unevaluated context is incompatible with C++98}}
+}
+
+namespace LiteralUCNs {
+  char c1 = '\u001e'; // expected-warning {{universal character name referring to a control character is incompatible with C++98}}
+  wchar_t c2 = L'\u0041'; // expected-warning {{specifying character 'A' with a universal character name is incompatible with C++98}}
+  const char *s1 = "foo\u0031"; // expected-warning {{specifying character '1' with a universal character name is incompatible with C++98}}
+  const wchar_t *s2 = L"bar\u0085"; // expected-warning {{universal character name referring to a control character is incompatible with C++98}}
+}
+
+namespace NonTypeTemplateArgs {
+  template<typename T, T v> struct S {};
+  const int k = 5; // expected-note {{here}}
+  static void f() {} // expected-note {{here}}
+  S<const int&, k> s1; // expected-warning {{non-type template argument referring to object 'k' with internal linkage is incompatible with C++98}}
+  S<void(&)(), f> s2; // expected-warning {{non-type template argument referring to function 'f' with internal linkage is incompatible with C++98}}
+}
+
+namespace NullPointerTemplateArg {
+  struct A {};
+  template<int*> struct X {};
+  template<int A::*> struct Y {};
+  X<(int*)0> x; // expected-warning {{use of null pointer as non-type template argument is incompatible with C++98}}
+  Y<(int A::*)0> y; // expected-warning {{use of null pointer as non-type template argument is incompatible with C++98}}
 }

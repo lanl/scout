@@ -28,6 +28,7 @@ namespace {
     llvm::PointerIntPair<APValue::LValueBase, 1, bool> BaseAndIsOnePastTheEnd;
     CharUnits Offset;
     unsigned PathLength;
+    unsigned CallIndex;
   };
 }
 
@@ -121,73 +122,71 @@ APValue::UnionData::~UnionData () {
   delete Value;
 }
 
-const APValue &APValue::operator=(const APValue &RHS) {
-  if (this == &RHS)
-    return *this;
-  if (Kind != RHS.Kind || Kind == Array || Kind == Struct ||
-      Kind == MemberPointer) {
-    MakeUninit();
-    if (RHS.isInt())
-      MakeInt();
-    else if (RHS.isFloat())
-      MakeFloat();
-    else if (RHS.isVector())
-      MakeVector();
-    else if (RHS.isComplexInt())
-      MakeComplexInt();
-    else if (RHS.isComplexFloat())
-      MakeComplexFloat();
-    else if (RHS.isLValue())
-      MakeLValue();
-    else if (RHS.isArray())
-      MakeArray(RHS.getArrayInitializedElts(), RHS.getArraySize());
-    else if (RHS.isStruct())
-      MakeStruct(RHS.getStructNumBases(), RHS.getStructNumFields());
-    else if (RHS.isUnion())
-      MakeUnion();
-    else if (RHS.isMemberPointer())
-      MakeMemberPointer(RHS.getMemberPointerDecl(),
-                        RHS.isMemberPointerToDerivedMember(),
-                        RHS.getMemberPointerPath());
-    else if (RHS.isAddrLabelDiff())
-      MakeAddrLabelDiff();
-  }
-  if (isInt())
+APValue::APValue(const APValue &RHS) : Kind(Uninitialized) {
+  switch (RHS.getKind()) {
+  case Uninitialized:
+    break;
+  case Int:
+    MakeInt();
     setInt(RHS.getInt());
-  else if (isFloat())
+    break;
+  case Float:
+    MakeFloat();
     setFloat(RHS.getFloat());
-  else if (isVector())
+    break;
+  case Vector:
+    MakeVector();
     setVector(((const Vec *)(const char *)RHS.Data)->Elts,
               RHS.getVectorLength());
-  else if (isComplexInt())
+    break;
+  case ComplexInt:
+    MakeComplexInt();
     setComplexInt(RHS.getComplexIntReal(), RHS.getComplexIntImag());
-  else if (isComplexFloat())
+    break;
+  case ComplexFloat:
+    MakeComplexFloat();
     setComplexFloat(RHS.getComplexFloatReal(), RHS.getComplexFloatImag());
-  else if (isLValue()) {
+    break;
+  case LValue:
+    MakeLValue();
     if (RHS.hasLValuePath())
       setLValue(RHS.getLValueBase(), RHS.getLValueOffset(), RHS.getLValuePath(),
-                RHS.isLValueOnePastTheEnd());
+                RHS.isLValueOnePastTheEnd(), RHS.getLValueCallIndex());
     else
-      setLValue(RHS.getLValueBase(), RHS.getLValueOffset(), NoLValuePath());
-  } else if (isArray()) {
+      setLValue(RHS.getLValueBase(), RHS.getLValueOffset(), NoLValuePath(),
+                RHS.getLValueCallIndex());
+    break;
+  case Array:
+    MakeArray(RHS.getArrayInitializedElts(), RHS.getArraySize());
     for (unsigned I = 0, N = RHS.getArrayInitializedElts(); I != N; ++I)
       getArrayInitializedElt(I) = RHS.getArrayInitializedElt(I);
     if (RHS.hasArrayFiller())
       getArrayFiller() = RHS.getArrayFiller();
-  } else if (isStruct()) {
+    break;
+  case Struct:
+    MakeStruct(RHS.getStructNumBases(), RHS.getStructNumFields());
     for (unsigned I = 0, N = RHS.getStructNumBases(); I != N; ++I)
       getStructBase(I) = RHS.getStructBase(I);
     for (unsigned I = 0, N = RHS.getStructNumFields(); I != N; ++I)
       getStructField(I) = RHS.getStructField(I);
-  } else if (isUnion()) {
+    break;
+  case Union:
+    MakeUnion();
     setUnion(RHS.getUnionField(), RHS.getUnionValue());
-  } else if (isAddrLabelDiff()) {
+    break;
+  case MemberPointer:
+    MakeMemberPointer(RHS.getMemberPointerDecl(),
+                      RHS.isMemberPointerToDerivedMember(),
+                      RHS.getMemberPointerPath());
+    break;
+  case AddrLabelDiff:
+    MakeAddrLabelDiff();
     setAddrLabelDiff(RHS.getAddrLabelDiffLHS(), RHS.getAddrLabelDiffRHS());
+    break;
   }
-  return *this;
 }
 
-void APValue::MakeUninit() {
+void APValue::DestroyDataAndMakeUninit() {
   if (Kind == Int)
     ((APSInt*)(char*)Data)->~APSInt();
   else if (Kind == Float)
@@ -211,6 +210,14 @@ void APValue::MakeUninit() {
   else if (Kind == AddrLabelDiff)
     ((AddrLabelDiffData*)(char*)Data)->~AddrLabelDiffData();
   Kind = Uninitialized;
+}
+
+void APValue::swap(APValue &RHS) {
+  std::swap(Kind, RHS.Kind);
+  char TmpData[MaxSize];
+  memcpy(TmpData, Data, MaxSize);
+  memcpy(Data, RHS.Data, MaxSize);
+  memcpy(RHS.Data, TmpData, MaxSize);
 }
 
 void APValue::dump() const {
@@ -305,7 +312,10 @@ void APValue::printPretty(raw_ostream &Out, ASTContext &Ctx, QualType Ty) const{
     Out << "<uninitialized>";
     return;
   case APValue::Int:
-    Out << getInt();
+    if (Ty->isBooleanType())
+      Out << (getInt().getBoolValue() ? "true" : "false");
+    else
+      Out << getInt();
     return;
   case APValue::Float:
     Out << GetApproxValue(getFloat());
@@ -457,9 +467,9 @@ void APValue::printPretty(raw_ostream &Out, ASTContext &Ctx, QualType Ty) const{
          FI != RD->field_end(); ++FI) {
       if (!First)
         Out << ", ";
-      if ((*FI)->isUnnamedBitfield()) continue;
-      getStructField((*FI)->getFieldIndex()).
-        printPretty(Out, Ctx, (*FI)->getType());
+      if (FI->isUnnamedBitfield()) continue;
+      getStructField(FI->getFieldIndex()).
+        printPretty(Out, Ctx, FI->getType());
       First = false;
     }
     Out << '}';
@@ -525,22 +535,31 @@ ArrayRef<APValue::LValuePathEntry> APValue::getLValuePath() const {
   return ArrayRef<LValuePathEntry>(LVal.getPath(), LVal.PathLength);
 }
 
-void APValue::setLValue(LValueBase B, const CharUnits &O, NoLValuePath) {
+unsigned APValue::getLValueCallIndex() const {
+  assert(isLValue() && "Invalid accessor");
+  return ((const LV*)(const char*)Data)->CallIndex;
+}
+
+void APValue::setLValue(LValueBase B, const CharUnits &O, NoLValuePath,
+                        unsigned CallIndex) {
   assert(isLValue() && "Invalid accessor");
   LV &LVal = *((LV*)(char*)Data);
   LVal.BaseAndIsOnePastTheEnd.setPointer(B);
   LVal.BaseAndIsOnePastTheEnd.setInt(false);
   LVal.Offset = O;
+  LVal.CallIndex = CallIndex;
   LVal.resizePath((unsigned)-1);
 }
 
 void APValue::setLValue(LValueBase B, const CharUnits &O,
-                        ArrayRef<LValuePathEntry> Path, bool IsOnePastTheEnd) {
+                        ArrayRef<LValuePathEntry> Path, bool IsOnePastTheEnd,
+                        unsigned CallIndex) {
   assert(isLValue() && "Invalid accessor");
   LV &LVal = *((LV*)(char*)Data);
   LVal.BaseAndIsOnePastTheEnd.setPointer(B);
   LVal.BaseAndIsOnePastTheEnd.setInt(IsOnePastTheEnd);
   LVal.Offset = O;
+  LVal.CallIndex = CallIndex;
   LVal.resizePath(Path.size());
   memcpy(LVal.getPath(), Path.data(), Path.size() * sizeof(LValuePathEntry));
 }

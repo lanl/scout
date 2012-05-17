@@ -238,11 +238,11 @@ SDNode *PPCDAGToDAGISel::getGlobalBaseReg() {
     DebugLoc dl;
 
     if (PPCLowering.getPointerTy() == MVT::i32) {
-      GlobalBaseReg = RegInfo->createVirtualRegister(PPC::GPRCRegisterClass);
+      GlobalBaseReg = RegInfo->createVirtualRegister(&PPC::GPRCRegClass);
       BuildMI(FirstMBB, MBBI, dl, TII.get(PPC::MovePCtoLR));
       BuildMI(FirstMBB, MBBI, dl, TII.get(PPC::MFLR), GlobalBaseReg);
     } else {
-      GlobalBaseReg = RegInfo->createVirtualRegister(PPC::G8RCRegisterClass);
+      GlobalBaseReg = RegInfo->createVirtualRegister(&PPC::G8RCRegClass);
       BuildMI(FirstMBB, MBBI, dl, TII.get(PPC::MovePCtoLR8));
       BuildMI(FirstMBB, MBBI, dl, TII.get(PPC::MFLR8), GlobalBaseReg);
     }
@@ -377,8 +377,8 @@ SDNode *PPCDAGToDAGISel::SelectBitfieldInsert(SDNode *N) {
   DebugLoc dl = N->getDebugLoc();
 
   APInt LKZ, LKO, RKZ, RKO;
-  CurDAG->ComputeMaskedBits(Op0, APInt::getAllOnesValue(32), LKZ, LKO);
-  CurDAG->ComputeMaskedBits(Op1, APInt::getAllOnesValue(32), RKZ, RKO);
+  CurDAG->ComputeMaskedBits(Op0, LKZ, LKO);
+  CurDAG->ComputeMaskedBits(Op1, RKZ, RKO);
 
   unsigned TargetMask = LKZ.getZExtValue();
   unsigned InsertMask = RKZ.getZExtValue();

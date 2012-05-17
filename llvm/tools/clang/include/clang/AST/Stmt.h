@@ -20,8 +20,10 @@
 #include "clang/AST/StmtIterator.h"
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/ASTContext.h"
-#include "llvm/Support/raw_ostream.h"
+#include "clang/AST/Attr.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/raw_ostream.h"
 #include <string>
 
 namespace llvm {
@@ -145,6 +147,8 @@ protected:
     friend class CallExpr; // ctor
     friend class OffsetOfExpr; // ctor
     friend class ObjCMessageExpr; // ctor
+    friend class ObjCArrayLiteral; // ctor
+    friend class ObjCDictionaryLiteral; // ctor
     friend class ShuffleVectorExpr; // ctor
     friend class ParenListExpr; // ctor
     friend class CXXUnresolvedConstructExpr; // ctor
@@ -163,6 +167,29 @@ protected:
   };
   enum { NumExprBits = 16 };
 
+  class CharacterLiteralBitfields {
+    friend class CharacterLiteral;
+    unsigned : NumExprBits;
+
+    unsigned Kind : 2;
+  };
+
+  class FloatingLiteralBitfields {
+    friend class FloatingLiteral;
+    unsigned : NumExprBits;
+
+    unsigned IsIEEE : 1; // Distinguishes between PPC128 and IEEE128.
+    unsigned IsExact : 1;
+  };
+
+  class UnaryExprOrTypeTraitExprBitfields {
+    friend class UnaryExprOrTypeTraitExpr;
+    unsigned : NumExprBits;
+
+    unsigned Kind : 2;
+    unsigned IsType : 1; // true if operand is a type, false if an expression.
+  };
+
   class DeclRefExprBitfields {
     friend class DeclRefExpr;
     friend class ASTStmtReader; // deserialization
@@ -172,6 +199,7 @@ protected:
     unsigned HasTemplateKWAndArgsInfo : 1;
     unsigned HasFoundDecl : 1;
     unsigned HadMultipleCandidates : 1;
+    unsigned RefersToEnclosingLocal : 1;
   };
 
   class CastExprBitfields {
@@ -217,6 +245,38 @@ protected:
     unsigned ShouldCopy : 1;
   };
 
+  class InitListExprBitfields {
+    friend class InitListExpr;
+
+    unsigned : NumExprBits;
+
+    /// Whether this initializer list originally had a GNU array-range
+    /// designator in it. This is a temporary marker used by CodeGen.
+    unsigned HadArrayRangeDesignator : 1;
+
+    /// Whether this initializer list initializes a std::initializer_list
+    /// object.
+    unsigned InitializesStdInitializerList : 1;
+  };
+
+  class TypeTraitExprBitfields {
+    friend class TypeTraitExpr;
+    friend class ASTStmtReader;
+    friend class ASTStmtWriter;
+    
+    unsigned : NumExprBits;
+    
+    /// \brief The kind of type trait, which is a value of a TypeTrait enumerator.
+    unsigned Kind : 8;
+    
+    /// \brief If this expression is not value-dependent, this indicates whether
+    /// the trait evaluated true or false.
+    unsigned Value : 1;
+
+    /// \brief The number of arguments to this type trait.
+    unsigned NumArgs : 32 - 8 - 1 - NumExprBits;
+  };
+  
   union {
     // FIXME: this is wasteful on 64-bit platforms.
     void *Aligner;
@@ -224,15 +284,21 @@ protected:
     StmtBitfields StmtBits;
     CompoundStmtBitfields CompoundStmtBits;
     ExprBitfields ExprBits;
+    CharacterLiteralBitfields CharacterLiteralBits;
+    FloatingLiteralBitfields FloatingLiteralBits;
+    UnaryExprOrTypeTraitExprBitfields UnaryExprOrTypeTraitExprBits;
     DeclRefExprBitfields DeclRefExprBits;
     CastExprBitfields CastExprBits;
     CallExprBitfields CallExprBits;
     ExprWithCleanupsBitfields ExprWithCleanupsBits;
     PseudoObjectExprBitfields PseudoObjectExprBits;
     ObjCIndirectCopyRestoreExprBitfields ObjCIndirectCopyRestoreExprBits;
+    InitListExprBitfields InitListExprBits;
+    TypeTraitExprBitfields TypeTraitExprBits;
   };
 
   friend class ASTStmtReader;
+  friend class ASTStmtWriter;
 
 public:
   // Only allow allocation of Stmts using the allocator in ASTContext
@@ -262,17 +328,21 @@ public:
   /// de-serialization).
   struct EmptyShell { };
 
+private:
+  /// \brief Whether statistic collection is enabled.
+  static bool StatisticsEnabled;
+
 protected:
   /// \brief Construct an empty statement.
   explicit Stmt(StmtClass SC, EmptyShell) {
     StmtBits.sClass = SC;
-    if (Stmt::CollectingStats()) Stmt::addStmtClass(SC);
+    if (StatisticsEnabled) Stmt::addStmtClass(SC);
   }
 
 public:
   Stmt(StmtClass SC) {
     StmtBits.sClass = SC;
-    if (Stmt::CollectingStats()) Stmt::addStmtClass(SC);
+    if (StatisticsEnabled) Stmt::addStmtClass(SC);
   }
 
   StmtClass getStmtClass() const {
@@ -283,21 +353,20 @@ public:
   /// SourceLocation tokens are not useful in isolation - they are low level
   /// value objects created/interpreted by SourceManager. We assume AST
   /// clients will have a pointer to the respective SourceManager.
-  SourceRange getSourceRange() const;
-
-  SourceLocation getLocStart() const { return getSourceRange().getBegin(); }
-  SourceLocation getLocEnd() const { return getSourceRange().getEnd(); }
+  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceLocation getLocStart() const LLVM_READONLY;
+  SourceLocation getLocEnd() const LLVM_READONLY;
 
   // global temp stats (until we have a per-module visitor)
   static void addStmtClass(const StmtClass s);
-  static bool CollectingStats(bool Enable = false);
+  static void EnableStatistics();
   static void PrintStats();
 
   /// dump - This does a local dump of the specified AST fragment.  It dumps the
   /// specified node and a few nodes underneath it, but not the whole subtree.
   /// This is useful in a debugger.
-  void dump() const;
-  void dump(SourceManager &SM) const;
+  LLVM_ATTRIBUTE_USED void dump() const;
+  LLVM_ATTRIBUTE_USED void dump(SourceManager &SM) const;
   void dump(raw_ostream &OS, SourceManager &SM) const;
 
   /// dumpAll - This does a dump of the specified AST fragment and all subtrees.
@@ -416,7 +485,7 @@ public:
   SourceLocation getEndLoc() const { return EndLoc; }
   void setEndLoc(SourceLocation L) { EndLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(StartLoc, EndLoc);
   }
 
@@ -465,7 +534,7 @@ public:
 
   bool hasLeadingEmptyMacro() const { return HasLeadingEmptyMacro; }
 
-  SourceRange getSourceRange() const { return SourceRange(SemiLoc); }
+  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(SemiLoc); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == NullStmtClass;
@@ -545,7 +614,7 @@ public:
     return const_reverse_body_iterator(body_begin());
   }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(LBracLoc, RBracLoc);
   }
 
@@ -590,7 +659,7 @@ public:
     return const_cast<SwitchCase*>(this)->getSubStmt();
   }
 
-  SourceRange getSourceRange() const { return SourceRange(); }
+  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CaseStmtClass ||
@@ -645,7 +714,7 @@ public:
   void setRHS(Expr *Val) { SubExprs[RHS] = reinterpret_cast<Stmt*>(Val); }
 
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     // Handle deeply nested case statements with iteration instead of recursion.
     const CaseStmt *CS = this;
     while (const CaseStmt *CS2 = dyn_cast<CaseStmt>(CS->getSubStmt()))
@@ -685,7 +754,7 @@ public:
   SourceLocation getColonLoc() const { return ColonLoc; }
   void setColonLoc(SourceLocation L) { ColonLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(DefaultLoc, SubStmt->getLocEnd());
   }
   static bool classof(const Stmt *T) {
@@ -722,7 +791,7 @@ public:
   void setIdentLoc(SourceLocation L) { IdentLoc = L; }
   void setSubStmt(Stmt *SS) { SubStmt = SS; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(IdentLoc, SubStmt->getLocEnd());
   }
   child_range children() { return child_range(&SubStmt, &SubStmt+1); }
@@ -731,6 +800,47 @@ public:
     return T->getStmtClass() == LabelStmtClass;
   }
   static bool classof(const LabelStmt *) { return true; }
+};
+
+
+/// \brief Represents an attribute applied to a statement.
+///
+/// Represents an attribute applied to a statement. For example:
+///   [[omp::for(...)]] for (...) { ... }
+///
+class AttributedStmt : public Stmt {
+  Stmt *SubStmt;
+  SourceLocation AttrLoc;
+  AttrVec Attrs;
+  // TODO: It can be done as Attr *Attrs[1]; and variable size array as in
+  // StringLiteral
+
+  friend class ASTStmtReader;
+
+public:
+  AttributedStmt(SourceLocation loc, const AttrVec &attrs, Stmt *substmt)
+    : Stmt(AttributedStmtClass), SubStmt(substmt), AttrLoc(loc), Attrs(attrs) {
+  }
+
+  // \brief Build an empty attributed statement.
+  explicit AttributedStmt(EmptyShell Empty)
+    : Stmt(AttributedStmtClass, Empty) {
+  }
+
+  SourceLocation getAttrLoc() const { return AttrLoc; }
+  const AttrVec &getAttrs() const { return Attrs; }
+  Stmt *getSubStmt() { return SubStmt; }
+  const Stmt *getSubStmt() const { return SubStmt; }
+
+  SourceRange getSourceRange() const LLVM_READONLY {
+    return SourceRange(AttrLoc, SubStmt->getLocEnd());
+  }
+  child_range children() { return child_range(&SubStmt, &SubStmt + 1); }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == AttributedStmtClass;
+  }
+  static bool classof(const AttributedStmt *) { return true; }
 };
 
 
@@ -783,7 +893,7 @@ public:
   SourceLocation getElseLoc() const { return ElseLoc; }
   void setElseLoc(SourceLocation L) { ElseLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     if (SubExprs[ELSE])
       return SourceRange(IfLoc, SubExprs[ELSE]->getLocEnd());
     else
@@ -882,7 +992,7 @@ public:
     return (bool) AllEnumCasesCovered;
   }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(SwitchLoc, SubExprs[BODY]->getLocEnd());
   }
   // Iterators
@@ -937,7 +1047,7 @@ public:
   SourceLocation getWhileLoc() const { return WhileLoc; }
   void setWhileLoc(SourceLocation L) { WhileLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(WhileLoc, SubExprs[BODY]->getLocEnd());
   }
   static bool classof(const Stmt *T) {
@@ -986,7 +1096,7 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(DoLoc, RParenLoc);
   }
   static bool classof(const Stmt *T) {
@@ -1058,7 +1168,7 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(ForLoc, SubExprs[BODY]->getLocEnd());
   }
   static bool classof(const Stmt *T) {
@@ -1093,7 +1203,7 @@ public:
   SourceLocation getLabelLoc() const { return LabelLoc; }
   void setLabelLoc(SourceLocation L) { LabelLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(GotoLoc, LabelLoc);
   }
   static bool classof(const Stmt *T) {
@@ -1137,7 +1247,7 @@ public:
     return const_cast<IndirectGotoStmt*>(this)->getConstantTarget();
   }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(GotoLoc, Target->getLocEnd());
   }
 
@@ -1164,7 +1274,7 @@ public:
   SourceLocation getContinueLoc() const { return ContinueLoc; }
   void setContinueLoc(SourceLocation L) { ContinueLoc = L; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(ContinueLoc);
   }
 
@@ -1190,7 +1300,7 @@ public:
   SourceLocation getBreakLoc() const { return BreakLoc; }
   void setBreakLoc(SourceLocation L) { BreakLoc = L; }
 
-  SourceRange getSourceRange() const { return SourceRange(BreakLoc); }
+  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(BreakLoc); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == BreakStmtClass;
@@ -1242,7 +1352,7 @@ public:
   const VarDecl *getNRVOCandidate() const { return NRVOCandidate; }
   void setNRVOCandidate(const VarDecl *Var) { NRVOCandidate = Var; }
 
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ReturnStmtClass;
@@ -1452,7 +1562,7 @@ public:
   StringLiteral *getClobber(unsigned i) { return Clobbers[i]; }
   const StringLiteral *getClobber(unsigned i) const { return Clobbers[i]; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(AsmLoc, RParenLoc);
   }
 
@@ -1523,7 +1633,7 @@ public:
                                SourceLocation ExceptLoc,
                                Expr *FilterExpr,
                                Stmt *Block);
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(getExceptLoc(), getEndLoc());
   }
 
@@ -1566,7 +1676,7 @@ public:
                                 SourceLocation FinallyLoc,
                                 Stmt *Block);
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(getFinallyLoc(), getEndLoc());
   }
 
@@ -1610,7 +1720,7 @@ public:
                             Stmt *TryBlock,
                             Stmt *Handler);
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(getTryLoc(), getEndLoc());
   }
 

@@ -13,13 +13,13 @@
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCAsmBackend.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
@@ -299,8 +299,10 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
     Value -= Offset;
   }
 
-  // Let the backend adjust the fixup value if necessary.
-  Backend.processFixupValue(*this, Layout, Fixup, DF, Target, Value);
+  // Let the backend adjust the fixup value if necessary, including whether
+  // we need a relocation.
+  Backend.processFixupValue(*this, Layout, Fixup, DF, Target, Value,
+                            IsResolved);
 
   return IsResolved;
 }

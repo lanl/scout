@@ -1,4 +1,4 @@
-//===-- Thumb2ITBlockPass.cpp - Insert Thumb IT blocks ----------*- C++ -*-===//
+//===-- Thumb2ITBlockPass.cpp - Insert Thumb-2 IT blocks ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -76,7 +76,7 @@ static void TrackDefUses(MachineInstr *MI,
   for (unsigned i = 0, e = LocalUses.size(); i != e; ++i) {
     unsigned Reg = LocalUses[i];
     Uses.insert(Reg);
-    for (const unsigned *Subreg = TRI->getSubRegisters(Reg);
+    for (const uint16_t *Subreg = TRI->getSubRegisters(Reg);
          *Subreg; ++Subreg)
       Uses.insert(*Subreg);
   }
@@ -84,7 +84,7 @@ static void TrackDefUses(MachineInstr *MI,
   for (unsigned i = 0, e = LocalDefs.size(); i != e; ++i) {
     unsigned Reg = LocalDefs[i];
     Defs.insert(Reg);
-    for (const unsigned *Subreg = TRI->getSubRegisters(Reg);
+    for (const uint16_t *Subreg = TRI->getSubRegisters(Reg);
          *Subreg; ++Subreg)
       Defs.insert(*Subreg);
     if (Reg == ARM::CPSR)
@@ -154,7 +154,7 @@ Thumb2ITBlockPass::MoveCopyOutOfITBlock(MachineInstr *MI,
     ++I;
   if (I != E) {
     unsigned NPredReg = 0;
-    ARMCC::CondCodes NCC = llvm::getITInstrPredicate(I, NPredReg);
+    ARMCC::CondCodes NCC = getITInstrPredicate(I, NPredReg);
     if (NCC == CC || NCC == OCC)
       return true;
   }
@@ -171,7 +171,7 @@ bool Thumb2ITBlockPass::InsertITInstructions(MachineBasicBlock &MBB) {
     MachineInstr *MI = &*MBBI;
     DebugLoc dl = MI->getDebugLoc();
     unsigned PredReg = 0;
-    ARMCC::CondCodes CC = llvm::getITInstrPredicate(MI, PredReg);
+    ARMCC::CondCodes CC = getITInstrPredicate(MI, PredReg);
     if (CC == ARMCC::AL) {
       ++MBBI;
       continue;
@@ -207,7 +207,7 @@ bool Thumb2ITBlockPass::InsertITInstructions(MachineBasicBlock &MBB) {
       MI = NMI;
 
       unsigned NPredReg = 0;
-      ARMCC::CondCodes NCC = llvm::getITInstrPredicate(NMI, NPredReg);
+      ARMCC::CondCodes NCC = getITInstrPredicate(NMI, NPredReg);
       if (NCC == CC || NCC == OCC) {
         Mask |= (NCC & 1) << Pos;
         // Add implicit use of ITSTATE.

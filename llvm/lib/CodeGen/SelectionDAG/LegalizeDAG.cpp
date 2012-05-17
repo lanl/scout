@@ -150,21 +150,21 @@ public:
   // Node replacement helpers
   void ReplacedNode(SDNode *N) {
     if (N->use_empty()) {
-      DAG.RemoveDeadNode(N, this);
+      DAG.RemoveDeadNode(N);
     } else {
       ForgetNode(N);
     }
   }
   void ReplaceNode(SDNode *Old, SDNode *New) {
-    DAG.ReplaceAllUsesWith(Old, New, this);
+    DAG.ReplaceAllUsesWith(Old, New);
     ReplacedNode(Old);
   }
   void ReplaceNode(SDValue Old, SDValue New) {
-    DAG.ReplaceAllUsesWith(Old, New, this);
+    DAG.ReplaceAllUsesWith(Old, New);
     ReplacedNode(Old.getNode());
   }
   void ReplaceNode(SDNode *Old, const SDValue *New) {
-    DAG.ReplaceAllUsesWith(Old, New, this);
+    DAG.ReplaceAllUsesWith(Old, New);
     ReplacedNode(Old);
   }
 };
@@ -203,7 +203,8 @@ SelectionDAGLegalize::ShuffleWithNarrowerEltType(EVT NVT, EVT VT,  DebugLoc dl,
 }
 
 SelectionDAGLegalize::SelectionDAGLegalize(SelectionDAG &dag)
-  : TM(dag.getTarget()), TLI(dag.getTargetLoweringInfo()),
+  : SelectionDAG::DAGUpdateListener(dag),
+    TM(dag.getTarget()), TLI(dag.getTargetLoweringInfo()),
     DAG(dag) {
 }
 
@@ -718,9 +719,14 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
   case ISD::INTRINSIC_W_CHAIN:
   case ISD::INTRINSIC_WO_CHAIN:
   case ISD::INTRINSIC_VOID:
-  case ISD::VAARG:
   case ISD::STACKSAVE:
     Action = TLI.getOperationAction(Node->getOpcode(), MVT::Other);
+    break;
+  case ISD::VAARG:
+    Action = TLI.getOperationAction(Node->getOpcode(),
+                                    Node->getValueType(0));
+    if (Action != TargetLowering::Promote)
+      Action = TLI.getOperationAction(Node->getOpcode(), MVT::Other);
     break;
   case ISD::SINT_TO_FP:
   case ISD::UINT_TO_FP:
@@ -846,7 +852,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
 
     SDNode *NewNode = DAG.UpdateNodeOperands(Node, Ops.data(), Ops.size());
     if (NewNode != Node) {
-      DAG.ReplaceAllUsesWith(Node, NewNode, this);
+      DAG.ReplaceAllUsesWith(Node, NewNode);
       for (unsigned i = 0, e = Node->getNumValues(); i != e; ++i)
         DAG.TransferDbgValues(SDValue(Node, i), SDValue(NewNode, i));
       ReplacedNode(Node);
@@ -868,7 +874,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
             ResultVals.push_back(Tmp1.getValue(i));
         }
         if (Tmp1.getNode() != Node || Tmp1.getResNo() != 0) {
-          DAG.ReplaceAllUsesWith(Node, ResultVals.data(), this);
+          DAG.ReplaceAllUsesWith(Node, ResultVals.data());
           for (unsigned i = 0, e = Node->getNumValues(); i != e; ++i)
             DAG.TransferDbgValues(SDValue(Node, i), ResultVals[i]);
           ReplacedNode(Node);
@@ -1762,11 +1768,6 @@ SDValue SelectionDAGLegalize::ExpandBUILD_VECTOR(SDNode *Node) {
 // and leave the Hi part unset.
 SDValue SelectionDAGLegalize::ExpandLibCall(RTLIB::Libcall LC, SDNode *Node,
                                             bool isSigned) {
-  // The input chain to this libcall is the entry node of the function.
-  // Legalizing the call will automatically add the previous call to the
-  // dependence.
-  SDValue InChain = DAG.getEntryNode();
-
   TargetLowering::ArgListTy Args;
   TargetLowering::ArgListEntry Entry;
   for (unsigned i = 0, e = Node->getNumOperands(); i != e; ++i) {
@@ -1782,13 +1783,23 @@ SDValue SelectionDAGLegalize::ExpandLibCall(RTLIB::Libcall LC, SDNode *Node,
 
   Type *RetTy = Node->getValueType(0).getTypeForEVT(*DAG.getContext());
 
+  // By default, the input chain to this libcall is the entry node of the
+  // function. If the libcall is going to be emitted as a tail call then
+  // TLI.isUsedByReturnOnly will change it to the right chain if the return
+  // node which is being folded has a non-entry input chain.
+  SDValue InChain = DAG.getEntryNode();
+
   // isTailCall may be true since the callee does not reference caller stack
   // frame. Check if it's in the right position.
-  bool isTailCall = isInTailCallPosition(DAG, Node, TLI);
+  SDValue TCChain = InChain;
+  bool isTailCall = isInTailCallPosition(DAG, Node, TCChain, TLI);
+  if (isTailCall)
+    InChain = TCChain;
+
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(InChain, RetTy, isSigned, !isSigned, false, false,
                     0, TLI.getLibcallCallingConv(LC), isTailCall,
-                    /*isReturnValueUsed=*/true,
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                     Callee, Args, DAG, Node->getDebugLoc());
 
   if (!CallInfo.second.getNode())
@@ -1820,8 +1831,8 @@ SDValue SelectionDAGLegalize::ExpandLibCall(RTLIB::Libcall LC, EVT RetVT,
   Type *RetTy = RetVT.getTypeForEVT(*DAG.getContext());
   std::pair<SDValue,SDValue> CallInfo =
   TLI.LowerCallTo(DAG.getEntryNode(), RetTy, isSigned, !isSigned, false,
-                  false, 0, TLI.getLibcallCallingConv(LC), false,
-                  /*isReturnValueUsed=*/true,
+                  false, 0, TLI.getLibcallCallingConv(LC), /*isTailCall=*/false,
+                  /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                   Callee, Args, DAG, dl);
 
   return CallInfo.first;
@@ -1853,7 +1864,7 @@ SelectionDAGLegalize::ExpandChainLibCall(RTLIB::Libcall LC,
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(InChain, RetTy, isSigned, !isSigned, false, false,
                     0, TLI.getLibcallCallingConv(LC), /*isTailCall=*/false,
-                    /*isReturnValueUsed=*/true,
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                     Callee, Args, DAG, Node->getDebugLoc());
 
   return CallInfo;
@@ -1985,7 +1996,8 @@ SelectionDAGLegalize::ExpandDivRemLibCall(SDNode *Node,
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(InChain, RetTy, isSigned, !isSigned, false, false,
                     0, TLI.getLibcallCallingConv(LC), /*isTailCall=*/false,
-                    /*isReturnValueUsed=*/true, Callee, Args, DAG, dl);
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
+                    Callee, Args, DAG, dl);
 
   // Remainder is loaded back from the stack frame.
   SDValue Rem = DAG.getLoad(RetVT, dl, CallInfo.second, FIPtr,
@@ -2563,7 +2575,7 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
       TLI.LowerCallTo(Node->getOperand(0), Type::getVoidTy(*DAG.getContext()),
                       false, false, false, false, 0, CallingConv::C,
                       /*isTailCall=*/false,
-                      /*isReturnValueUsed=*/true,
+                      /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                       DAG.getExternalSymbol("__sync_synchronize",
                                             TLI.getPointerTy()),
                       Args, DAG, dl);
@@ -2640,7 +2652,7 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
       TLI.LowerCallTo(Node->getOperand(0), Type::getVoidTy(*DAG.getContext()),
                       false, false, false, false, 0, CallingConv::C,
                       /*isTailCall=*/false,
-                      /*isReturnValueUsed=*/true,
+                      /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                       DAG.getExternalSymbol("abort", TLI.getPointerTy()),
                       Args, DAG, dl);
     Results.push_back(CallResult.second);
@@ -3024,11 +3036,21 @@ void SelectionDAGLegalize::ExpandNode(SDNode *Node) {
     break;
   }
   case ISD::EXCEPTIONADDR: {
-    unsigned Reg = TLI.getExceptionAddressRegister();
+    unsigned Reg = TLI.getExceptionPointerRegister();
     assert(Reg && "Can't expand to unknown register!");
     Results.push_back(DAG.getCopyFromReg(Node->getOperand(0), dl, Reg,
                                          Node->getValueType(0)));
     Results.push_back(Results[0].getValue(1));
+    break;
+  }
+  case ISD::FSUB: {
+    EVT VT = Node->getValueType(0);
+    assert(TLI.isOperationLegalOrCustom(ISD::FADD, VT) &&
+           TLI.isOperationLegalOrCustom(ISD::FNEG, VT) &&
+           "Don't know how to expand this FP subtraction!");
+    Tmp1 = DAG.getNode(ISD::FNEG, dl, VT, Node->getOperand(1));
+    Tmp1 = DAG.getNode(ISD::FADD, dl, VT, Node->getOperand(0), Tmp1);
+    Results.push_back(Tmp1);
     break;
   }
   case ISD::SUB: {
@@ -3517,6 +3539,33 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
                                  Node->getOpcode() == ISD::SINT_TO_FP, dl);
     Results.push_back(Tmp1);
     break;
+  case ISD::VAARG: {
+    SDValue Chain = Node->getOperand(0); // Get the chain.
+    SDValue Ptr = Node->getOperand(1); // Get the pointer.
+
+    unsigned TruncOp;
+    if (OVT.isVector()) {
+      TruncOp = ISD::BITCAST;
+    } else {
+      assert(OVT.isInteger()
+        && "VAARG promotion is supported only for vectors or integer types");
+      TruncOp = ISD::TRUNCATE;
+    }
+
+    // Perform the larger operation, then convert back
+    Tmp1 = DAG.getVAArg(NVT, dl, Chain, Ptr, Node->getOperand(2),
+             Node->getConstantOperandVal(3));
+    Chain = Tmp1.getValue(1);
+
+    Tmp2 = DAG.getNode(TruncOp, dl, OVT, Tmp1);
+
+    // Modified the chain result - switch anything that used the old chain to
+    // use the new one.
+    DAG.ReplaceAllUsesOfValueWith(SDValue(Node, 0), Tmp2);
+    DAG.ReplaceAllUsesOfValueWith(SDValue(Node, 1), Chain);
+    ReplacedNode(Node);
+    break;
+  }
   case ISD::AND:
   case ISD::OR:
   case ISD::XOR: {
@@ -3589,10 +3638,12 @@ void SelectionDAGLegalize::PromoteNode(SDNode *Node) {
                                   Tmp1, Tmp2, Node->getOperand(2)));
     break;
   }
+  case ISD::FDIV:
+  case ISD::FREM:
   case ISD::FPOW: {
     Tmp1 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(0));
     Tmp2 = DAG.getNode(ISD::FP_EXTEND, dl, NVT, Node->getOperand(1));
-    Tmp3 = DAG.getNode(ISD::FPOW, dl, NVT, Tmp1, Tmp2);
+    Tmp3 = DAG.getNode(Node->getOpcode(), dl, NVT, Tmp1, Tmp2);
     Results.push_back(DAG.getNode(ISD::FP_ROUND, dl, OVT,
                                   Tmp3, DAG.getIntPtrConstant(0)));
     break;

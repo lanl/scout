@@ -1,4 +1,4 @@
-//===- X86InstrInfo.cpp - X86 Instruction Information -----------*- C++ -*-===//
+//===-- X86InstrInfo.cpp - X86 Instruction Information --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -25,13 +25,13 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/LiveVariables.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/MC/MCAsmInfo.h"
 #include <limits>
 
 #define GET_INSTRINFO_CTOR
@@ -82,6 +82,12 @@ enum {
   TB_FOLDED_STORE = 1 << 19
 };
 
+struct X86OpTblEntry {
+  uint16_t RegOp;
+  uint16_t MemOp;
+  uint32_t Flags;
+};
+
 X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
   : X86GenInstrInfo((tm.getSubtarget<X86Subtarget>().is64Bit()
                      ? X86::ADJCALLSTACKDOWN64
@@ -91,7 +97,7 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
                      : X86::ADJCALLSTACKUP32)),
     TM(tm), RI(tm, *this) {
 
-  static const unsigned OpTbl2Addr[][3] = {
+  static const X86OpTblEntry OpTbl2Addr[] = {
     { X86::ADC32ri,     X86::ADC32mi,    0 },
     { X86::ADC32ri8,    X86::ADC32mi8,   0 },
     { X86::ADC32rr,     X86::ADC32mr,    0 },
@@ -259,22 +265,21 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl2Addr); i != e; ++i) {
-    unsigned RegOp = OpTbl2Addr[i][0];
-    unsigned MemOp = OpTbl2Addr[i][1];
-    unsigned Flags = OpTbl2Addr[i][2];
+    unsigned RegOp = OpTbl2Addr[i].RegOp;
+    unsigned MemOp = OpTbl2Addr[i].MemOp;
+    unsigned Flags = OpTbl2Addr[i].Flags;
     AddTableEntry(RegOp2MemOpTable2Addr, MemOp2RegOpTable,
                   RegOp, MemOp,
                   // Index 0, folded load and store, no alignment requirement.
                   Flags | TB_INDEX_0 | TB_FOLDED_LOAD | TB_FOLDED_STORE);
   }
 
-  static const unsigned OpTbl0[][3] = {
+  static const X86OpTblEntry OpTbl0[] = {
     { X86::BT16ri8,     X86::BT16mi8,       TB_FOLDED_LOAD },
     { X86::BT32ri8,     X86::BT32mi8,       TB_FOLDED_LOAD },
     { X86::BT64ri8,     X86::BT64mi8,       TB_FOLDED_LOAD },
     { X86::CALL32r,     X86::CALL32m,       TB_FOLDED_LOAD },
     { X86::CALL64r,     X86::CALL64m,       TB_FOLDED_LOAD },
-    { X86::WINCALL64r,  X86::WINCALL64m,    TB_FOLDED_LOAD },
     { X86::CMP16ri,     X86::CMP16mi,       TB_FOLDED_LOAD },
     { X86::CMP16ri8,    X86::CMP16mi8,      TB_FOLDED_LOAD },
     { X86::CMP16rr,     X86::CMP16mr,       TB_FOLDED_LOAD },
@@ -371,14 +376,14 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl0); i != e; ++i) {
-    unsigned RegOp      = OpTbl0[i][0];
-    unsigned MemOp      = OpTbl0[i][1];
-    unsigned Flags      = OpTbl0[i][2];
+    unsigned RegOp      = OpTbl0[i].RegOp;
+    unsigned MemOp      = OpTbl0[i].MemOp;
+    unsigned Flags      = OpTbl0[i].Flags;
     AddTableEntry(RegOp2MemOpTable0, MemOp2RegOpTable,
                   RegOp, MemOp, TB_INDEX_0 | Flags);
   }
 
-  static const unsigned OpTbl1[][3] = {
+  static const X86OpTblEntry OpTbl1[] = {
     { X86::CMP16rr,         X86::CMP16rm,             0 },
     { X86::CMP32rr,         X86::CMP32rm,             0 },
     { X86::CMP64rr,         X86::CMP64rm,             0 },
@@ -556,16 +561,16 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl1); i != e; ++i) {
-    unsigned RegOp = OpTbl1[i][0];
-    unsigned MemOp = OpTbl1[i][1];
-    unsigned Flags = OpTbl1[i][2];
+    unsigned RegOp = OpTbl1[i].RegOp;
+    unsigned MemOp = OpTbl1[i].MemOp;
+    unsigned Flags = OpTbl1[i].Flags;
     AddTableEntry(RegOp2MemOpTable1, MemOp2RegOpTable,
                   RegOp, MemOp,
                   // Index 1, folded load
                   Flags | TB_INDEX_1 | TB_FOLDED_LOAD);
   }
 
-  static const unsigned OpTbl2[][3] = {
+  static const X86OpTblEntry OpTbl2[] = {
     { X86::ADC32rr,         X86::ADC32rm,       0 },
     { X86::ADC64rr,         X86::ADC64rm,       0 },
     { X86::ADD16rr,         X86::ADD16rm,       0 },
@@ -1044,9 +1049,9 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VPCMPGTWYrr,       X86::VPCMPGTWYrm,        TB_ALIGN_32 },
     { X86::VPERM2I128rr,      X86::VPERM2I128rm,       TB_ALIGN_32 },
     { X86::VPERMDYrr,         X86::VPERMDYrm,          TB_ALIGN_32 },
-    { X86::VPERMPDYrr,        X86::VPERMPDYrm,         TB_ALIGN_32 },
+    { X86::VPERMPDYri,        X86::VPERMPDYmi,         TB_ALIGN_32 },
     { X86::VPERMPSYrr,        X86::VPERMPSYrm,         TB_ALIGN_32 },
-    { X86::VPERMQYrr,         X86::VPERMQYrm,          TB_ALIGN_32 },
+    { X86::VPERMQYri,         X86::VPERMQYmi,          TB_ALIGN_32 },
     { X86::VPHADDDYrr,        X86::VPHADDDYrm,         TB_ALIGN_32 },
     { X86::VPHADDSWrr256,     X86::VPHADDSWrm256,      TB_ALIGN_32 },
     { X86::VPHADDWYrr,        X86::VPHADDWYrm,         TB_ALIGN_32 },
@@ -1109,9 +1114,9 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl2); i != e; ++i) {
-    unsigned RegOp = OpTbl2[i][0];
-    unsigned MemOp = OpTbl2[i][1];
-    unsigned Flags = OpTbl2[i][2];
+    unsigned RegOp = OpTbl2[i].RegOp;
+    unsigned MemOp = OpTbl2[i].MemOp;
+    unsigned Flags = OpTbl2[i].Flags;
     AddTableEntry(RegOp2MemOpTable2, MemOp2RegOpTable,
                   RegOp, MemOp,
                   // Index 2, folded load
@@ -1777,12 +1782,13 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       assert(MI->getNumOperands() >= 2 && "Unknown inc instruction!");
       unsigned Opc = MIOpc == X86::INC64r ? X86::LEA64r
         : (is64Bit ? X86::LEA64_32r : X86::LEA32r);
+      const TargetRegisterClass *RC = MIOpc == X86::INC64r ?
+        (const TargetRegisterClass*)&X86::GR64_NOSPRegClass :
+        (const TargetRegisterClass*)&X86::GR32_NOSPRegClass;
 
       // LEA can't handle RSP.
       if (TargetRegisterInfo::isVirtualRegister(Src) &&
-          !MF.getRegInfo().constrainRegClass(Src,
-                            MIOpc == X86::INC64r ? X86::GR64_NOSPRegisterClass :
-                                                   X86::GR32_NOSPRegisterClass))
+          !MF.getRegInfo().constrainRegClass(Src, RC))
         return 0;
 
       NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
@@ -1807,11 +1813,12 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
       assert(MI->getNumOperands() >= 2 && "Unknown dec instruction!");
       unsigned Opc = MIOpc == X86::DEC64r ? X86::LEA64r
         : (is64Bit ? X86::LEA64_32r : X86::LEA32r);
+      const TargetRegisterClass *RC = MIOpc == X86::DEC64r ?
+        (const TargetRegisterClass*)&X86::GR64_NOSPRegClass :
+        (const TargetRegisterClass*)&X86::GR32_NOSPRegClass;
       // LEA can't handle RSP.
       if (TargetRegisterInfo::isVirtualRegister(Src) &&
-          !MF.getRegInfo().constrainRegClass(Src,
-                            MIOpc == X86::DEC64r ? X86::GR64_NOSPRegisterClass :
-                                                   X86::GR32_NOSPRegisterClass))
+          !MF.getRegInfo().constrainRegClass(Src, RC))
         return 0;
 
       NewMI = addRegOffset(BuildMI(MF, MI->getDebugLoc(), get(Opc))
@@ -1836,13 +1843,13 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
     case X86::ADD32rr_DB: {
       assert(MI->getNumOperands() >= 3 && "Unknown add instruction!");
       unsigned Opc;
-      TargetRegisterClass *RC;
+      const TargetRegisterClass *RC;
       if (MIOpc == X86::ADD64rr || MIOpc == X86::ADD64rr_DB) {
         Opc = X86::LEA64r;
-        RC = X86::GR64_NOSPRegisterClass;
+        RC = &X86::GR64_NOSPRegClass;
       } else {
         Opc = is64Bit ? X86::LEA64_32r : X86::LEA32r;
-        RC = X86::GR32_NOSPRegisterClass;
+        RC = &X86::GR32_NOSPRegClass;
       }
 
 
@@ -2804,7 +2811,7 @@ X86InstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
         return NULL;
       bool NarrowToMOV32rm = false;
       if (Size) {
-        unsigned RCSize = getRegClass(MI->getDesc(), i, &RI)->getSize();
+        unsigned RCSize = getRegClass(MI->getDesc(), i, &RI, MF)->getSize();
         if (Size < RCSize) {
           // Check if it's safe to fold the load. If the size of the object is
           // narrower than the load width, then it's not.
@@ -3197,7 +3204,7 @@ bool X86InstrInfo::unfoldMemoryOperand(MachineFunction &MF, MachineInstr *MI,
   UnfoldStore &= FoldedStore;
 
   const MCInstrDesc &MCID = get(Opc);
-  const TargetRegisterClass *RC = getRegClass(MCID, Index, &RI);
+  const TargetRegisterClass *RC = getRegClass(MCID, Index, &RI, MF);
   if (!MI->hasOneMemOperand() &&
       RC == &X86::VR128RegClass &&
       !TM.getSubtarget<X86Subtarget>().isUnalignedMemAccessFast())
@@ -3292,7 +3299,7 @@ bool X86InstrInfo::unfoldMemoryOperand(MachineFunction &MF, MachineInstr *MI,
 
   // Emit the store instruction.
   if (UnfoldStore) {
-    const TargetRegisterClass *DstRC = getRegClass(MCID, 0, &RI);
+    const TargetRegisterClass *DstRC = getRegClass(MCID, 0, &RI, MF);
     std::pair<MachineInstr::mmo_iterator,
               MachineInstr::mmo_iterator> MMOs =
       MF.extractStoreMemRefs(MI->memoperands_begin(),
@@ -3318,7 +3325,8 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
   bool FoldedLoad = I->second.second & TB_FOLDED_LOAD;
   bool FoldedStore = I->second.second & TB_FOLDED_STORE;
   const MCInstrDesc &MCID = get(Opc);
-  const TargetRegisterClass *RC = getRegClass(MCID, Index, &RI);
+  MachineFunction &MF = DAG.getMachineFunction();
+  const TargetRegisterClass *RC = getRegClass(MCID, Index, &RI, MF);
   unsigned NumDefs = MCID.NumDefs;
   std::vector<SDValue> AddrOps;
   std::vector<SDValue> BeforeOps;
@@ -3339,7 +3347,6 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
 
   // Emit the load instruction.
   SDNode *Load = 0;
-  MachineFunction &MF = DAG.getMachineFunction();
   if (FoldedLoad) {
     EVT VT = *RC->vt_begin();
     std::pair<MachineInstr::mmo_iterator,
@@ -3366,7 +3373,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
   std::vector<EVT> VTs;
   const TargetRegisterClass *DstRC = 0;
   if (MCID.getNumDefs() > 0) {
-    DstRC = getRegClass(MCID, 0, &RI);
+    DstRC = getRegClass(MCID, 0, &RI, MF);
     VTs.push_back(*DstRC->vt_begin());
   }
   for (unsigned i = 0, e = N->getNumValues(); i != e; ++i) {
@@ -3620,7 +3627,7 @@ unsigned X86InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
   // Create the register. The code to initialize it is inserted
   // later, by the CGBR pass (below).
   MachineRegisterInfo &RegInfo = MF->getRegInfo();
-  GlobalBaseReg = RegInfo.createVirtualRegister(X86::GR32RegisterClass);
+  GlobalBaseReg = RegInfo.createVirtualRegister(&X86::GR32RegClass);
   X86FI->setGlobalBaseReg(GlobalBaseReg);
   return GlobalBaseReg;
 }
@@ -3628,7 +3635,7 @@ unsigned X86InstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
 // These are the replaceable SSE instructions. Some of these have Int variants
 // that we don't include here. We don't want to replace instructions selected
 // by intrinsics.
-static const unsigned ReplaceableInstrs[][3] = {
+static const uint16_t ReplaceableInstrs[][3] = {
   //PackedSingle     PackedDouble    PackedInt
   { X86::MOVAPSmr,   X86::MOVAPDmr,  X86::MOVDQAmr  },
   { X86::MOVAPSrm,   X86::MOVAPDrm,  X86::MOVDQArm  },
@@ -3668,7 +3675,7 @@ static const unsigned ReplaceableInstrs[][3] = {
   { X86::VMOVNTPSYmr,  X86::VMOVNTPDYmr,  X86::VMOVNTDQYmr }
 };
 
-static const unsigned ReplaceableInstrsAVX2[][3] = {
+static const uint16_t ReplaceableInstrsAVX2[][3] = {
   //PackedSingle       PackedDouble       PackedInt
   { X86::VANDNPSYrm,   X86::VANDNPDYrm,   X86::VPANDNYrm   },
   { X86::VANDNPSYrr,   X86::VANDNPDYrr,   X86::VPANDNYrr   },
@@ -3689,14 +3696,14 @@ static const unsigned ReplaceableInstrsAVX2[][3] = {
 // FIXME: Some shuffle and unpack instructions have equivalents in different
 // domains, but they require a bit more work than just switching opcodes.
 
-static const unsigned *lookup(unsigned opcode, unsigned domain) {
+static const uint16_t *lookup(unsigned opcode, unsigned domain) {
   for (unsigned i = 0, e = array_lengthof(ReplaceableInstrs); i != e; ++i)
     if (ReplaceableInstrs[i][domain-1] == opcode)
       return ReplaceableInstrs[i];
   return 0;
 }
 
-static const unsigned *lookupAVX2(unsigned opcode, unsigned domain) {
+static const uint16_t *lookupAVX2(unsigned opcode, unsigned domain) {
   for (unsigned i = 0, e = array_lengthof(ReplaceableInstrsAVX2); i != e; ++i)
     if (ReplaceableInstrsAVX2[i][domain-1] == opcode)
       return ReplaceableInstrsAVX2[i];
@@ -3719,7 +3726,7 @@ void X86InstrInfo::setExecutionDomain(MachineInstr *MI, unsigned Domain) const {
   assert(Domain>0 && Domain<4 && "Invalid execution domain");
   uint16_t dom = (MI->getDesc().TSFlags >> X86II::SSEDomainShift) & 3;
   assert(dom && "Not an SSE instruction");
-  const unsigned *table = lookup(MI->getOpcode(), dom);
+  const uint16_t *table = lookup(MI->getOpcode(), dom);
   if (!table) { // try the other table
     assert((TM.getSubtarget<X86Subtarget>().hasAVX2() || Domain < 3) &&
            "256-bit vector operations only available in AVX2");
@@ -3830,7 +3837,7 @@ namespace {
 
       unsigned PC;
       if (TM->getSubtarget<X86Subtarget>().isPICStyleGOT())
-        PC = RegInfo.createVirtualRegister(X86::GR32RegisterClass);
+        PC = RegInfo.createVirtualRegister(&X86::GR32RegClass);
       else
         PC = GlobalBaseReg;
 

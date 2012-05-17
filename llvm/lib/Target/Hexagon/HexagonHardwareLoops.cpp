@@ -27,6 +27,8 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "hwloops"
+#include "Hexagon.h"
+#include "HexagonTargetMachine.h"
 #include "llvm/Constants.h"
 #include "llvm/PassSupport.h"
 #include "llvm/ADT/DenseMap.h"
@@ -43,8 +45,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include <algorithm>
-#include "Hexagon.h"
-#include "HexagonTargetMachine.h"
 
 using namespace llvm;
 
@@ -517,8 +517,8 @@ bool HexagonHardwareLoops::convertToHardwareLoop(MachineLoop *L) {
   // The loop ends with either:
   //  - a conditional branch followed by an unconditional branch, or
   //  - a conditional branch to the loop start.
-  if (LastI->getOpcode() == Hexagon::JMP_Pred ||
-      LastI->getOpcode() == Hexagon::JMP_PredNot) {
+  if (LastI->getOpcode() == Hexagon::JMP_c ||
+      LastI->getOpcode() == Hexagon::JMP_cNot) {
     // delete one and change/add an uncond. branch to out of the loop
     MachineBasicBlock *BranchTarget = LastI->getOperand(1).getMBB();
     LastI = LastMBB->erase(LastI);
@@ -623,7 +623,7 @@ void HexagonFixupHwLoops::convertLoopInstr(MachineFunction &MF,
   const TargetInstrInfo *TII = MF.getTarget().getInstrInfo();
   MachineBasicBlock *MBB = MII->getParent();
   DebugLoc DL = MII->getDebugLoc();
-  unsigned Scratch = RS.scavengeRegister(Hexagon::IntRegsRegisterClass, MII, 0);
+  unsigned Scratch = RS.scavengeRegister(&Hexagon::IntRegsRegClass, MII, 0);
 
   // First, set the LC0 with the trip count.
   if (MII->getOperand(1).isReg()) {

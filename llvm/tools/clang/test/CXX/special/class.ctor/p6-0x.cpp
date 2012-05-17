@@ -11,7 +11,7 @@ struct NonConstexpr2 { // expected-note {{here}}
 struct NonConstexpr2a : NonConstexpr1 { };
 constexpr NonConstexpr1 nc1 = NonConstexpr1(); // ok, does not call constructor
 constexpr NonConstexpr2 nc2 = NonConstexpr2(); // ok, does not call constructor
-constexpr NonConstexpr2a nc2a = NonConstexpr2a(); // expected-error {{constant expression}} expected-note {{non-literal type 'const NonConstexpr2a'}}
+constexpr NonConstexpr2a nc2a = NonConstexpr2a(); // ok, does not call constructor
 constexpr int nc2_a = NonConstexpr2().nl.a; // ok
 constexpr int nc2a_a = NonConstexpr2a().a; // ok
 struct Helper {
@@ -21,8 +21,8 @@ struct Helper {
 
 struct Constexpr1 {};
 constexpr Constexpr1 c1 = Constexpr1(); // ok
-struct NonConstexpr3 : virtual Constexpr1 {};
-constexpr NonConstexpr3 nc3 = NonConstexpr3(); // expected-error {{constant expression}} expected-note {{non-literal type 'const NonConstexpr3'}}
+struct NonConstexpr3 : virtual Constexpr1 {}; // expected-note {{struct with virtual base}} expected-note {{declared here}}
+constexpr NonConstexpr3 nc3 = NonConstexpr3(); // expected-error {{non-literal type 'const NonConstexpr3'}}
 
 struct Constexpr2 {
   int a = 0;
@@ -55,3 +55,42 @@ struct A {}; // expected-note {{here}}
 struct B {
   friend A::A(); // expected-error {{non-constexpr declaration of 'A' follows constexpr declaration}}
 };
+
+namespace UnionCtors {
+  union A { // expected-note {{here}}
+    int a;
+    int b;
+  };
+  union B {
+    int a;
+    int b = 5;
+  };
+  union C {
+    int a = 5;
+    int b;
+  };
+  struct D {
+    union {
+      int a = 5;
+      int b;
+    };
+    union {
+      int c;
+      int d = 5;
+    };
+  };
+  struct E { // expected-note {{here}}
+    union {
+      int a;
+      int b;
+    };
+  };
+
+  struct Test {
+    friend constexpr A::A() noexcept; // expected-error {{follows non-constexpr declaration}}
+    friend constexpr B::B() noexcept;
+    friend constexpr C::C() noexcept;
+    friend constexpr D::D() noexcept;
+    friend constexpr E::E() noexcept; // expected-error {{follows non-constexpr declaration}}
+  };
+}

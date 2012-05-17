@@ -1,4 +1,4 @@
-@ RUN: llvm-mc -triple=thumbv7-apple-darwin -show-encoding < %s | FileCheck %s
+@ RUN: llvm-mc -triple=thumbv7-apple-darwin -mcpu=cortex-a8 -show-encoding < %s | FileCheck %s
   .syntax unified
   .globl _func
 
@@ -48,6 +48,7 @@ _func:
         adcs	r0, r1, r3, lsl #7
         adc.w	r0, r1, r3, lsr #31
         adcs.w	r0, r1, r3, asr #32
+        add r2, sp, ip
 
 @ CHECK: adc.w	r4, r5, r6              @ encoding: [0x45,0xeb,0x06,0x04]
 @ CHECK: adcs.w	r4, r5, r6              @ encoding: [0x55,0xeb,0x06,0x04]
@@ -57,6 +58,7 @@ _func:
 @ CHECK: adcs.w	r0, r1, r3, lsl #7      @ encoding: [0x51,0xeb,0xc3,0x10]
 @ CHECK: adc.w	r0, r1, r3, lsr #31     @ encoding: [0x41,0xeb,0xd3,0x70]
 @ CHECK: adcs.w	r0, r1, r3, asr #32     @ encoding: [0x51,0xeb,0x23,0x00]
+@ CHECK: add.w	r2, sp, r12             @ encoding: [0x0d,0xeb,0x0c,0x02]
 
 
 @------------------------------------------------------------------------------
@@ -75,6 +77,14 @@ _func:
         adds r1, r2, #0x1f0
 	add r2, #1
         add r0, r0, #32
+        adds r2, r2, #56
+        adds r2, #56
+
+        adds.w r2, #-16
+        adds.w r2, r2, #-16
+        addw r2, #-16
+        addw r2, #-16
+        addw r2, r2, #-16
 
 @ CHECK: itet	eq                      @ encoding: [0x0a,0xbf]
 @ CHECK: addeq	r1, r2, #4              @ encoding: [0x11,0x1d]
@@ -89,6 +99,14 @@ _func:
 @ CHECK: adds.w	r1, r2, #496            @ encoding: [0x12,0xf5,0xf8,0x71]
 @ CHECK: add.w	r2, r2, #1              @ encoding: [0x02,0xf1,0x01,0x02]
 @ CHECK: add.w	r0, r0, #32             @ encoding: [0x00,0xf1,0x20,0x00]
+@ CHECK: adds	r2, #56                 @ encoding: [0x38,0x32]
+@ CHECK: adds	r2, #56                 @ encoding: [0x38,0x32]
+
+@ CHECK: subs.w	r2, r2, #16             @ encoding: [0xb2,0xf1,0x10,0x02]
+@ CHECK: subs.w	r2, r2, #16             @ encoding: [0xb2,0xf1,0x10,0x02]
+@ CHECK: subw	r2, r2, #16             @ encoding: [0xa2,0xf2,0x10,0x02]
+@ CHECK: subw	r2, r2, #16             @ encoding: [0xa2,0xf2,0x10,0x02]
+@ CHECK: subw	r2, r2, #16             @ encoding: [0xa2,0xf2,0x10,0x02]
 
 
 @------------------------------------------------------------------------------
@@ -368,7 +386,8 @@ _func:
         cmp sp, r6, lsr #1
         cmp r2, r5, asr #24
         cmp r1, r4, ror #15
-        cmp r0, #-2
+        cmp r2, #-2
+        cmp r9, #1
 
 @ CHECK: cmp.w	r5, #65280              @ encoding: [0xb5,0xf5,0x7f,0x4f]
 @ CHECK: cmp.w	r4, r12                 @ encoding: [0xb4,0xeb,0x0c,0x0f]
@@ -377,7 +396,9 @@ _func:
 @ CHECK: cmp.w	sp, r6, lsr #1          @ encoding: [0xbd,0xeb,0x56,0x0f]
 @ CHECK: cmp.w	r2, r5, asr #24         @ encoding: [0xb2,0xeb,0x25,0x6f]
 @ CHECK: cmp.w	r1, r4, ror #15         @ encoding: [0xb1,0xeb,0xf4,0x3f]
-@ CHECK: cmn.w	r0, #2                  @ encoding: [0x10,0xf1,0x02,0x0f]
+@ CHECK: cmn.w	r2, #2                  @ encoding: [0x12,0xf1,0x02,0x0f]
+@ CHECK: cmp.w	r9, #1                  @ encoding: [0xb9,0xf1,0x01,0x0f]
+
 
 @------------------------------------------------------------------------------
 @ DBG
@@ -502,6 +523,19 @@ _func:
 @ CHECK: subne	r5, r6, r7              @ encoding: [0xf5,0x1b]
 @ CHECK: addeq	r1, r2, #4              @ encoding: [0x11,0x1d]
 
+@ Should also work for UPPER CASE condition codes.
+
+        ITEET EQ
+        ADDEQ R0, R1, R2
+        NOPNE
+        SUBNE R5, R6, R7
+        ADDEQ R1, R2, #4
+
+@ CHECK: iteet	eq                      @ encoding: [0x0d,0xbf]
+@ CHECK: addeq	r0, r1, r2              @ encoding: [0x88,0x18]
+@ CHECK: nopne                          @ encoding: [0x00,0xbf]
+@ CHECK: subne	r5, r6, r7              @ encoding: [0xf5,0x1b]
+@ CHECK: addeq	r1, r2, #4              @ encoding: [0x11,0x1d]
 
 @------------------------------------------------------------------------------
 @ LDC{L}/LDC2{L}
@@ -1084,9 +1118,13 @@ _func:
 @------------------------------------------------------------------------------
         mcr  p7, #1, r5, c1, c1, #4
         mcr2  p7, #1, r5, c1, c1, #4
+        mcr p14, #0, r4, c0, c5
+        mcr2 p4, #2, r2, c1, c3
 
 @ CHECK: mcr	p7, #1, r5, c1, c1, #4  @ encoding: [0x21,0xee,0x91,0x57]
 @ CHECK: mcr2	p7, #1, r5, c1, c1, #4  @ encoding: [0x21,0xfe,0x91,0x57]
+@ CHECK: mcr	p14, #0, r4, c0, c5, #0 @ encoding: [0x00,0xee,0x15,0x4e]
+@ CHECK: mcr2	p4, #2, r2, c1, c3, #0  @ encoding: [0x41,0xfe,0x13,0x24]
 
 
 @------------------------------------------------------------------------------
@@ -1126,6 +1164,8 @@ _func:
         moveq r1, #12
         movne.w r1, #12
         mov.w r6, #450
+        it lo
+        movlo r1, #-1
 
         @ alias for mvn
 	mov r3, #-3
@@ -1145,7 +1185,8 @@ _func:
 @ CHECK: moveq	r1, #12                 @ encoding: [0x0c,0x21]
 @ CHECK: movne.w r1, #12                @ encoding: [0x4f,0xf0,0x0c,0x01]
 @ CHECK: mov.w	r6, #450                @ encoding: [0x4f,0xf4,0xe1,0x76]
-
+@ CHECK: it	lo                      @ encoding: [0x38,0xbf]
+@ CHECK: movlo.w	r1, #-1         @ encoding: [0x4f,0xf0,0xff,0x31]
 @ CHECK: mvn	r3, #2                  @ encoding: [0x6f,0xf0,0x02,0x03]
 
 @------------------------------------------------------------------------------
@@ -1206,9 +1247,13 @@ _func:
 @------------------------------------------------------------------------------
         mrc  p14, #0, r1, c1, c2, #4
         mrc2  p14, #0, r1, c1, c2, #4
+        mrc p11, #1, r1, c2, c2
+        mrc2 p12, #3, r3, c3, c4
 
 @ CHECK: mrc	p14, #0, r1, c1, c2, #4 @ encoding: [0x11,0xee,0x92,0x1e]
 @ CHECK: mrc2	p14, #0, r1, c1, c2, #4 @ encoding: [0x11,0xfe,0x92,0x1e]
+@ CHECK: mrc	p11, #1, r1, c2, c2, #0 @ encoding: [0x32,0xee,0x12,0x1b]
+@ CHECK: mrc2	p12, #3, r3, c3, c4, #0 @ encoding: [0x73,0xfe,0x14,0x3c]
 
 
 @------------------------------------------------------------------------------
@@ -1250,6 +1295,7 @@ _func:
         msr  spsr_fc, r0
         msr  SPSR_fsxc, r5
         msr  cpsr_fsxc, r8
+        msr  cpsr, r3
 
 @ CHECK: msr	APSR_nzcvq, r1          @ encoding: [0x81,0xf3,0x00,0x88]
 @ CHECK: msr	APSR_g, r2              @ encoding: [0x82,0xf3,0x00,0x84]
@@ -1265,6 +1311,7 @@ _func:
 @ CHECK: msr	SPSR_fc, r0             @ encoding: [0x90,0xf3,0x00,0x89]
 @ CHECK: msr	SPSR_fsxc, r5           @ encoding: [0x95,0xf3,0x00,0x8f]
 @ CHECK: msr	CPSR_fsxc, r8           @ encoding: [0x88,0xf3,0x00,0x8f]
+@ CHECK: msr	CPSR_fc, r3             @ encoding: [0x83,0xf3,0x00,0x89]
 
 
 @------------------------------------------------------------------------------
@@ -2636,6 +2683,8 @@ _func:
         subs r1, r2, #0x1f0
 	sub r2, #1
         sub r0, r0, #32
+        subs r2, r2, #56
+        subs r2, #56
 
 @ CHECK: itet	eq                      @ encoding: [0x0a,0xbf]
 @ CHECK: subeq	r1, r2, #4              @ encoding: [0x11,0x1f]
@@ -2650,6 +2699,8 @@ _func:
 @ CHECK: subs.w	r1, r2, #496            @ encoding: [0xb2,0xf5,0xf8,0x71]
 @ CHECK: sub.w	r2, r2, #1              @ encoding: [0xa2,0xf1,0x01,0x02]
 @ CHECK: sub.w	r0, r0, #32             @ encoding: [0xa0,0xf1,0x20,0x00]
+@ CHECK: subs	r2, #56                 @ encoding: [0x38,0x3a]
+@ CHECK: subs	r2, #56                 @ encoding: [0x38,0x3a]
 
 
 @------------------------------------------------------------------------------
@@ -2662,6 +2713,12 @@ _func:
         sub r4, r5, r6, asr #5
         sub r4, r5, r6, ror #5
         sub.w r5, r2, r12, rrx
+        sub r2, sp, ip
+        sub sp, sp, ip
+        sub sp, ip
+        sub.w r2, sp, ip
+        sub.w sp, sp, ip
+        sub.w sp, ip
 
 @ CHECK: sub.w	r4, r5, r6              @ encoding: [0xa5,0xeb,0x06,0x04]
 @ CHECK: sub.w	r4, r5, r6, lsl #5      @ encoding: [0xa5,0xeb,0x46,0x14]
@@ -2670,6 +2727,12 @@ _func:
 @ CHECK: sub.w	r4, r5, r6, asr #5      @ encoding: [0xa5,0xeb,0x66,0x14]
 @ CHECK: sub.w	r4, r5, r6, ror #5      @ encoding: [0xa5,0xeb,0x76,0x14]
 @ CHECK: sub.w r5, r2, r12, rrx         @ encoding: [0xa2,0xeb,0x3c,0x05]
+@ CHECK: sub.w	r2, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x02]
+@ CHECK: sub.w	sp, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x0d]
+@ CHECK: sub.w	sp, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x0d]
+@ CHECK: sub.w	r2, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x02]
+@ CHECK: sub.w	sp, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x0d]
+@ CHECK: sub.w	sp, sp, r12             @ encoding: [0xad,0xeb,0x0c,0x0d]
 
 
 @------------------------------------------------------------------------------

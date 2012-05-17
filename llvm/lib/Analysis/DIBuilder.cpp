@@ -17,6 +17,7 @@
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Module.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/Dwarf.h"
 
 using namespace llvm;
@@ -46,15 +47,15 @@ void DIBuilder::finalize() {
   DIType(TempSubprograms).replaceAllUsesWith(SPs);
   for (unsigned i = 0, e = SPs.getNumElements(); i != e; ++i) {
     DISubprogram SP(SPs.getElement(i));
+    SmallVector<Value *, 4> Variables;
     if (NamedMDNode *NMD = getFnSpecificMDNode(M, SP)) {
-      SmallVector<Value *, 4> Variables;
       for (unsigned ii = 0, ee = NMD->getNumOperands(); ii != ee; ++ii)
         Variables.push_back(NMD->getOperand(ii));
-      if (MDNode *Temp = SP.getVariablesNodes()) {
-        DIArray AV = getOrCreateArray(Variables);
-        DIType(Temp).replaceAllUsesWith(AV);
-      }
       NMD->eraseFromParent();
+    }
+    if (MDNode *Temp = SP.getVariablesNodes()) {
+      DIArray AV = getOrCreateArray(Variables);
+      DIType(Temp).replaceAllUsesWith(AV);
     }
   }
 
@@ -385,16 +386,21 @@ DIType DIBuilder::createObjCIVar(StringRef Name,
 
 /// createObjCProperty - Create debugging information entry for Objective-C
 /// property.
-DIObjCProperty DIBuilder::createObjCProperty(StringRef Name, 
+DIObjCProperty DIBuilder::createObjCProperty(StringRef Name,
+					     DIFile File, unsigned LineNumber,
                                              StringRef GetterName,
                                              StringRef SetterName, 
-                                             unsigned PropertyAttributes) {
+                                             unsigned PropertyAttributes,
+					     DIType Ty) {
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_APPLE_Property),
+    GetTagConstant(VMContext, dwarf::DW_TAG_APPLE_property),
     MDString::get(VMContext, Name),
+    File,
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
     MDString::get(VMContext, GetterName),
     MDString::get(VMContext, SetterName),
-    ConstantInt::get(Type::getInt32Ty(VMContext), PropertyAttributes)
+    ConstantInt::get(Type::getInt32Ty(VMContext), PropertyAttributes),
+    Ty
   };
   return DIObjCProperty(MDNode::get(VMContext, Elts));
 }
@@ -405,7 +411,7 @@ DIType DIBuilder::createClassType(DIDescriptor Context, StringRef Name,
                                   uint64_t SizeInBits, uint64_t AlignInBits,
                                   uint64_t OffsetInBits, unsigned Flags,
                                   DIType DerivedFrom, DIArray Elements,
-                                  MDNode *VTableHoder, MDNode *TemplateParams) {
+                                  MDNode *VTableHolder, MDNode *TemplateParams) {
  // TAG_class_type is encoded in DICompositeType format.
   Value *Elts[] = {
     GetTagConstant(VMContext, dwarf::DW_TAG_class_type),
@@ -420,7 +426,7 @@ DIType DIBuilder::createClassType(DIDescriptor Context, StringRef Name,
     DerivedFrom,
     Elements,
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    VTableHoder,
+    VTableHolder,
     TemplateParams
   };
   return DIType(MDNode::get(VMContext, Elts));
@@ -671,12 +677,13 @@ DIType DIBuilder::createTemporaryType(DIFile F) {
 
 /// createForwardDecl - Create a temporary forward-declared type that
 /// can be RAUW'd if the full type is seen.
-DIType DIBuilder::createForwardDecl(unsigned Tag, StringRef Name, DIFile F,
-                                    unsigned Line) {
+DIType DIBuilder::createForwardDecl(unsigned Tag, StringRef Name,
+                                    DIDescriptor Scope, DIFile F,
+                                    unsigned Line, unsigned RuntimeLang) {
   // Create a temporary MDNode.
   Value *Elts[] = {
     GetTagConstant(VMContext, Tag),
-    NULL, // TheCU
+    getNonCompileUnitScope(Scope),
     MDString::get(VMContext, Name),
     F,
     ConstantInt::get(Type::getInt32Ty(VMContext), Line),
@@ -685,7 +692,10 @@ DIType DIBuilder::createForwardDecl(unsigned Tag, StringRef Name, DIFile F,
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext), 0),
     ConstantInt::get(Type::getInt32Ty(VMContext),
-                     DIDescriptor::FlagFwdDecl)
+                     DIDescriptor::FlagFwdDecl),
+    NULL,
+    DIArray(),
+    ConstantInt::get(Type::getInt32Ty(VMContext), RuntimeLang)
   };
   MDNode *Node = MDNode::getTemporary(VMContext, Elts);
   return DIType(Node);
@@ -817,6 +827,7 @@ DISubprogram DIBuilder::createFunction(DIDescriptor Context,
                                        DIFile File, unsigned LineNo,
                                        DIType Ty,
                                        bool isLocalToUnit, bool isDefinition,
+                                       unsigned ScopeLine,
                                        unsigned Flags, bool isOptimized,
                                        Function *Fn,
                                        MDNode *TParams,
@@ -846,7 +857,8 @@ DISubprogram DIBuilder::createFunction(DIDescriptor Context,
     Fn,
     TParams,
     Decl,
-    THolder
+    THolder,
+    ConstantInt::get(Type::getInt32Ty(VMContext), ScopeLine)
   };
   MDNode *Node = MDNode::get(VMContext, Elts);
 
@@ -894,7 +906,9 @@ DISubprogram DIBuilder::createMethod(DIDescriptor Context,
     Fn,
     TParam,
     llvm::Constant::getNullValue(Type::getInt32Ty(VMContext)),
-    THolder
+    THolder,
+    // FIXME: Do we want to use a different scope lines?
+    ConstantInt::get(Type::getInt32Ty(VMContext), LineNo)
   };
   MDNode *Node = MDNode::get(VMContext, Elts);
   return DISubprogram(Node);

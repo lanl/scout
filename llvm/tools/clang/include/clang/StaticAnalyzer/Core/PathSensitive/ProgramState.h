@@ -218,6 +218,7 @@ public:
   ///  from Begin to End. Optionally invalidates global regions as well.
   ProgramStateRef invalidateRegions(ArrayRef<const MemRegion *> Regions,
                                const Expr *E, unsigned BlockCount,
+                               const LocationContext *LCtx,
                                StoreManager::InvalidatedSymbols *IS = 0,
                                const CallOrObjCMessage *Call = 0) const;
 
@@ -228,9 +229,6 @@ public:
 
   /// Get the lvalue for a variable reference.
   Loc getLValue(const VarDecl *D, const LocationContext *LC) const;
-
-  /// Get the lvalue for a StringLiteral.
-  Loc getLValue(const StringLiteral *literal) const;
 
   Loc getLValue(const CompoundLiteralExpr *literal, 
                 const LocationContext *LC) const;
@@ -252,11 +250,15 @@ public:
   
   SVal getSValAsScalarOrLoc(const Stmt *Ex, const LocationContext *LCtx) const;
 
+  /// \brief Return the value bound to the specified location.
+  /// Returns UnknownVal() if none found.
   SVal getSVal(Loc LV, QualType T = QualType()) const;
 
   /// Returns the "raw" SVal bound to LV before any value simplfication.
   SVal getRawSVal(Loc LV, QualType T= QualType()) const;
 
+  /// \brief Return the value bound to the specified location.
+  /// Returns UnknownVal() if none found.
   SVal getSVal(const MemRegion* R) const;
 
   SVal getSValAsScalarOrLoc(const MemRegion *R) const;
@@ -378,6 +380,7 @@ private:
   ProgramStateRef 
   invalidateRegionsImpl(ArrayRef<const MemRegion *> Regions,
                         const Expr *E, unsigned BlockCount,
+                        const LocationContext *LCtx,
                         StoreManager::InvalidatedSymbols &IS,
                         const CallOrObjCMessage *Call) const;
 };
@@ -632,10 +635,6 @@ inline ProgramStateRef ProgramState::bindLoc(SVal LV, SVal V) const {
 inline Loc ProgramState::getLValue(const VarDecl *VD,
                                const LocationContext *LC) const {
   return getStateManager().StoreMgr->getLValueVar(VD, LC);
-}
-
-inline Loc ProgramState::getLValue(const StringLiteral *literal) const {
-  return getStateManager().StoreMgr->getLValueString(literal);
 }
 
 inline Loc ProgramState::getLValue(const CompoundLiteralExpr *literal,

@@ -100,6 +100,7 @@ $(LLVMBuildMakeFrag): $(PROJ_SRC_ROOT)/Makefile.rules \
 	$(Verb) $(LLVMBuildTool) \
 	  --native-target "$(TARGET_NATIVE_ARCH)" \
 	  --enable-targets "$(TARGETS_TO_BUILD)" \
+	  --enable-optional-components "$(OPTIONAL_COMPONENTS)" \
 	  --write-library-table $(LLVMConfigLibraryDependenciesInc) \
 	  --write-make-fragment $(LLVMBuildMakeFrag)
 
@@ -537,9 +538,6 @@ ifeq ($(LLVM_CROSS_COMPILING),1)
 else
   LLVM_CONFIG := $(LLVMToolDir)/llvm-config$(EXEEXT)
 endif
-ifndef LLVMLD
-LLVMLD    := $(LLVMToolDir)/llvm-ld$(EXEEXT)
-endif
 ifndef LLVMDIS
 LLVMDIS  := $(LLVMToolDir)/llvm-dis$(EXEEXT)
 endif
@@ -650,7 +648,7 @@ ifndef NO_PEDANTIC
 CompileCommonOpts += -pedantic -Wno-long-long
 endif
 CompileCommonOpts += -Wall -W -Wno-unused-parameter -Wwrite-strings \
-                     $(EXTRA_OPTIONS)
+                     $(EXTRA_OPTIONS) $(COVERED_SWITCH_DEFAULT)
 # Enable cast-qual for C++; the workaround is to use const_cast.
 CXX.Flags += -Wcast-qual
 
@@ -701,7 +699,13 @@ ifeq ($(HOST_OS),AuroraUX)
 CPP.BaseFlags += -include llvm/Support/Solaris.h
 endif # !HOST_OS - AuroraUX.
 
-LD.Flags      += -L$(LibDir) -L$(LLVMLibDir)
+# On Windows, SharedLibDir != LibDir. The order is important.
+ifeq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
+  LD.Flags    += -L$(SharedLibDir) -L$(LibDir) -L$(LLVMToolDir) -L$(LLVMLibDir)
+else
+  LD.Flags    += -L$(LibDir) -L$(LLVMLibDir)
+endif
+
 CPP.BaseFlags += -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 # All -I flags should go here, so that they don't confuse llvm-config.
 CPP.Flags     += $(sort -I$(PROJ_OBJ_DIR) -I$(PROJ_SRC_DIR) \
@@ -1064,7 +1068,7 @@ ifeq ($(HAVE_LINK_VERSION_SCRIPT),1)
 NativeExportsFile := $(ObjDir)/$(notdir $(EXPORTED_SYMBOL_FILE)).map
 $(NativeExportsFile): $(EXPORTED_SYMBOL_FILE) $(ObjDir)/.dir
 	$(Verb) echo "{" > $@
-	$(Verb) grep -q "\<" $< && echo "  global:" >> $@ || :
+	$(Verb) grep -q '[[:alnum:]_]' $< && echo "  global:" >> $@ || :
 	$(Verb) sed -e 's/$$/;/' -e 's/^/    /' < $< >> $@
 ifneq ($(HOST_OS),OpenBSD)
 	$(Verb) echo "  local: *;" >> $@
@@ -1426,7 +1430,7 @@ LD.Flags += -Wl,-exported_symbol,_main
 endif
 endif
 
-ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux NetBSD FreeBSD))
+ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux NetBSD FreeBSD GNU))
 ifneq ($(ARCH), Mips)
   LD.Flags += -Wl,--version-script=$(LLVM_SRC_ROOT)/autoconf/ExportMap.map
 endif
@@ -1486,12 +1490,23 @@ else
 $(ToolBuildPath): $(ToolDir)/.dir
 endif
 
+ifdef CODESIGN_TOOLS
 $(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
 	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
 	$(Verb) $(Link) -o $@ $(TOOLLINKOPTS) $(ObjectsO) $(ProjLibsOptions) \
 	$(LLVMLibsOptions) $(ExtraLibs) $(TOOLLINKOPTSB) $(LIBS)
 	$(Echo) ======= Finished Linking $(BuildMode) Executable $(TOOLNAME) \
           $(StripWarnMsg)
+	$(Echo) ======= Code-Signing $(BuildMode) Executable $(TOOLNAME)
+	$(Verb) codesign -s - $@
+else
+$(ToolBuildPath): $(ObjectsO) $(ProjLibsPaths) $(LLVMLibsPaths)
+	$(Echo) Linking $(BuildMode) executable $(TOOLNAME) $(StripWarnMsg)
+	$(Verb) $(Link) -o $@ $(TOOLLINKOPTS) $(ObjectsO) $(ProjLibsOptions) \
+	$(LLVMLibsOptions) $(ExtraLibs) $(TOOLLINKOPTSB) $(LIBS)
+	$(Echo) ======= Finished Linking $(BuildMode) Executable $(TOOLNAME) \
+          $(StripWarnMsg)
+endif
 
 ifneq ($(strip $(ToolAliasBuildPath)),)
 $(ToolAliasBuildPath): $(ToolBuildPath)

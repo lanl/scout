@@ -63,6 +63,9 @@ namespace CodeGen {
 /// Implements runtime-specific code generation functions.
 class CGObjCRuntime {
 protected:
+  CodeGen::CodeGenModule &CGM;
+  CGObjCRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
+
   // Utility functions for unified ivar access. These need to
   // eventually be folded into other places (the structure layout
   // code).
@@ -132,7 +135,7 @@ public:
 
   /// Generate a constant string object.
   virtual llvm::Constant *GenerateConstantString(const StringLiteral *) = 0;
-
+  
   /// Generate a category.  A category contains a list of methods (and
   /// accompanying metadata) and a list of protocols.
   virtual void GenerateCategory(const ObjCCategoryImplDecl *OCD) = 0;
@@ -199,6 +202,10 @@ public:
   /// Return the runtime function for setting properties.
   virtual llvm::Constant *GetPropertySetFunction() = 0;
 
+  /// Return the runtime function for optimized setting properties.
+  virtual llvm::Constant *GetOptimizedPropertySetFunction(bool atomic, 
+                                                          bool copy) = 0;
+
   // API for atomic copying of qualified aggregates in getter.
   virtual llvm::Constant *GetGetStructFunction() = 0;
   // API for atomic copying of qualified aggregates in setter.
@@ -255,6 +262,19 @@ public:
   virtual llvm::Constant *BuildGCBlockLayout(CodeGen::CodeGenModule &CGM,
                                   const CodeGen::CGBlockInfo &blockInfo) = 0;
   virtual llvm::GlobalVariable *GetClassGlobal(const std::string &Name) = 0;
+
+  struct MessageSendInfo {
+    const CGFunctionInfo &CallInfo;
+    llvm::PointerType *MessengerType;
+
+    MessageSendInfo(const CGFunctionInfo &callInfo,
+                    llvm::PointerType *messengerType)
+      : CallInfo(callInfo), MessengerType(messengerType) {}
+  };
+
+  MessageSendInfo getMessageSendInfo(const ObjCMethodDecl *method,
+                                     QualType resultType,
+                                     CallArgList &callArgs);
 };
 
 /// Creates an instance of an Objective-C runtime class.

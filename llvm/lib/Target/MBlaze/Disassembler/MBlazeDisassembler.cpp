@@ -1,4 +1,4 @@
-//===- MBlazeDisassembler.cpp - Disassembler for MicroBlaze  ----*- C++ -*-===//
+//===-- MBlazeDisassembler.cpp - Disassembler for MicroBlaze  -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -34,9 +34,9 @@ extern const MCInstrDesc MBlazeInsts[];
 
 using namespace llvm;
 
-const unsigned UNSUPPORTED = -1;
+const uint16_t UNSUPPORTED = -1;
 
-static const unsigned mblazeBinary2Opcode[] = {
+static const uint16_t mblazeBinary2Opcode[] = {
   MBlaze::ADD,   MBlaze::RSUB,   MBlaze::ADDC,   MBlaze::RSUBC,   //00,01,02,03
   MBlaze::ADDK,  MBlaze::RSUBK,  MBlaze::ADDKC,  MBlaze::RSUBKC,  //04,05,06,07
   MBlaze::ADDI,  MBlaze::RSUBI,  MBlaze::ADDIC,  MBlaze::RSUBIC,  //08,09,0A,0B
@@ -492,7 +492,7 @@ static unsigned getOPCODE(uint32_t insn) {
   }
 }
 
-EDInstInfo *MBlazeDisassembler::getEDInfo() const {
+const EDInstInfo *MBlazeDisassembler::getEDInfo() const {
   return instInfoMBlaze;
 }
 
@@ -502,7 +502,7 @@ EDInstInfo *MBlazeDisassembler::getEDInfo() const {
 
 MCDisassembler::DecodeStatus MBlazeDisassembler::getInstruction(MCInst &instr,
                                         uint64_t &size,
-                                        MemoryObject &region,
+                                        const MemoryObject &region,
                                         uint64_t address,
                                         raw_ostream &vStream,
                                         raw_ostream &cStream) const {

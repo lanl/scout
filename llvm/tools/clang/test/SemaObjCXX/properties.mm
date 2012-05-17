@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify -Wno-objc-root-class %s
 
 struct X { 
   void f() const;
@@ -68,3 +68,41 @@ void test5(Test5* t5) {
   if (t5->count < 2) { }
 }
 
+
+@interface Test6
++ (Class)class;
+- (Class)class;
+@end
+
+void test6(Test6 *t6) {
+  Class x = t6.class;
+  Class x2 = Test6.class;
+}
+
+template<typename T>
+void test6_template(T *t6) {
+  Class x = t6.class;
+}
+
+template void test6_template(Test6*);
+
+// rdar://problem/10965735
+struct Test7PointerMaker {
+  operator char *() const;
+};
+@interface Test7
+- (char*) implicit_property;
+- (char) bad_implicit_property;
+- (Test7PointerMaker) implicit_struct_property;
+@property int *explicit_property;
+@property int bad_explicit_property;
+@property Test7PointerMaker explicit_struct_property;
+@end
+void test7(Test7 *ptr) {
+  delete ptr.implicit_property;
+  delete ptr.bad_implicit_property; // expected-error {{cannot delete expression of type 'char'}}
+  delete ptr.explicit_property;
+  delete ptr.bad_explicit_property; // expected-error {{cannot delete expression of type 'int'}}
+  delete ptr.implicit_struct_property;
+  delete ptr.explicit_struct_property;
+}

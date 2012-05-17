@@ -3,8 +3,8 @@ set(LLVM_LINK_COMPONENTS support)
 set(LLVM_USED_LIBS clangBasic clangLex clangAST clangFrontend clangRewrite)
 
 add_clang_library(clangStaticAnalyzerCore
-  AggExprVisitor.cpp
   AnalysisManager.cpp
+  APSIntType.cpp
   BasicConstraintManager.cpp
   BasicValueFactory.cpp
   BlockCounter.cpp
@@ -23,6 +23,7 @@ add_clang_library(clangStaticAnalyzerCore
   ExprEngineCXX.cpp
   ExprEngineCallAndReturn.cpp
   ExprEngineObjC.cpp
+  FunctionSummary.cpp
   HTMLDiagnostics.cpp
   MemRegion.cpp
   ObjCMessage.cpp

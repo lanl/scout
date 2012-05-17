@@ -89,3 +89,24 @@ extern int printf(__const char *__restrict __format, ...);
 void test16() {
   printg("Hello, world!\n"); /* expected-warning {{implicit declaration of function 'printg'}} */
 }
+
+struct x { int x,y[]; }; /* expected-warning {{Flexible array members are a C99-specific feature}} */
+
+/* Duplicated type-qualifiers aren't allowed by C90 */
+const const int c_i; /* expected-warning {{duplicate 'const' declaration specifier}} */
+typedef volatile int vol_int;
+volatile vol_int volvol_i; /* expected-warning {{duplicate 'volatile' declaration specifier}} */
+typedef volatile vol_int volvol_int; /* expected-warning {{duplicate 'volatile' declaration specifier}} */
+const int * const c;
+
+typedef const int CI;
+
+const CI mine1[5][5]; /* expected-warning {{duplicate 'const' declaration specifier}} */
+
+typedef CI array_of_CI[5];
+const array_of_CI mine2; /* expected-warning {{duplicate 'const' declaration specifier}} */
+
+typedef CI *array_of_pointer_to_CI[5];
+const array_of_pointer_to_CI mine3;
+
+void main() {} /* expected-error {{'main' must return 'int'}} */

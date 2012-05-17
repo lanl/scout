@@ -64,8 +64,8 @@ MSP430TargetLowering::MSP430TargetLowering(MSP430TargetMachine &tm) :
   TD = getTargetData();
 
   // Set up the register classes.
-  addRegisterClass(MVT::i8,  MSP430::GR8RegisterClass);
-  addRegisterClass(MVT::i16, MSP430::GR16RegisterClass);
+  addRegisterClass(MVT::i8,  &MSP430::GR8RegClass);
+  addRegisterClass(MVT::i16, &MSP430::GR16RegClass);
 
   // Compute derived properties from the register classes
   computeRegisterProperties();
@@ -226,9 +226,9 @@ getRegForInlineAsmConstraint(const std::string &Constraint,
     default: break;
     case 'r':   // GENERAL_REGS
       if (VT == MVT::i8)
-        return std::make_pair(0U, MSP430::GR8RegisterClass);
+        return std::make_pair(0U, &MSP430::GR8RegClass);
 
-      return std::make_pair(0U, MSP430::GR16RegisterClass);
+      return std::make_pair(0U, &MSP430::GR16RegClass);
     }
   }
 
@@ -268,7 +268,7 @@ MSP430TargetLowering::LowerFormalArguments(SDValue Chain,
 SDValue
 MSP430TargetLowering::LowerCall(SDValue Chain, SDValue Callee,
                                 CallingConv::ID CallConv, bool isVarArg,
-                                bool &isTailCall,
+                                bool doesNotRet, bool &isTailCall,
                                 const SmallVectorImpl<ISD::OutputArg> &Outs,
                                 const SmallVectorImpl<SDValue> &OutVals,
                                 const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -330,8 +330,7 @@ MSP430TargetLowering::LowerCCCArguments(SDValue Chain,
           llvm_unreachable(0);
         }
       case MVT::i16:
-        unsigned VReg =
-          RegInfo.createVirtualRegister(MSP430::GR16RegisterClass);
+        unsigned VReg = RegInfo.createVirtualRegister(&MSP430::GR16RegClass);
         RegInfo.addLiveIn(VA.getLocReg(), VReg);
         SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, RegVT);
 
@@ -644,7 +643,7 @@ SDValue MSP430TargetLowering::LowerExternalSymbol(SDValue Op,
   const char *Sym = cast<ExternalSymbolSDNode>(Op)->getSymbol();
   SDValue Result = DAG.getTargetExternalSymbol(Sym, getPointerTy());
 
-  return DAG.getNode(MSP430ISD::Wrapper, dl, getPointerTy(), Result);;
+  return DAG.getNode(MSP430ISD::Wrapper, dl, getPointerTy(), Result);
 }
 
 SDValue MSP430TargetLowering::LowerBlockAddress(SDValue Op,
@@ -653,7 +652,7 @@ SDValue MSP430TargetLowering::LowerBlockAddress(SDValue Op,
   const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
   SDValue Result = DAG.getBlockAddress(BA, getPointerTy(), /*isTarget=*/true);
 
-  return DAG.getNode(MSP430ISD::Wrapper, dl, getPointerTy(), Result);;
+  return DAG.getNode(MSP430ISD::Wrapper, dl, getPointerTy(), Result);
 }
 
 static SDValue EmitCMP(SDValue &LHS, SDValue &RHS, SDValue &TargetCC,
@@ -1024,27 +1023,27 @@ MSP430TargetLowering::EmitShiftInstr(MachineInstr *MI,
   default: llvm_unreachable("Invalid shift opcode!");
   case MSP430::Shl8:
    Opc = MSP430::SHL8r1;
-   RC = MSP430::GR8RegisterClass;
+   RC = &MSP430::GR8RegClass;
    break;
   case MSP430::Shl16:
    Opc = MSP430::SHL16r1;
-   RC = MSP430::GR16RegisterClass;
+   RC = &MSP430::GR16RegClass;
    break;
   case MSP430::Sra8:
    Opc = MSP430::SAR8r1;
-   RC = MSP430::GR8RegisterClass;
+   RC = &MSP430::GR8RegClass;
    break;
   case MSP430::Sra16:
    Opc = MSP430::SAR16r1;
-   RC = MSP430::GR16RegisterClass;
+   RC = &MSP430::GR16RegClass;
    break;
   case MSP430::Srl8:
    Opc = MSP430::SAR8r1c;
-   RC = MSP430::GR8RegisterClass;
+   RC = &MSP430::GR8RegClass;
    break;
   case MSP430::Srl16:
    Opc = MSP430::SAR16r1c;
-   RC = MSP430::GR16RegisterClass;
+   RC = &MSP430::GR16RegClass;
    break;
   }
 
@@ -1072,8 +1071,8 @@ MSP430TargetLowering::EmitShiftInstr(MachineInstr *MI,
   LoopBB->addSuccessor(RemBB);
   LoopBB->addSuccessor(LoopBB);
 
-  unsigned ShiftAmtReg = RI.createVirtualRegister(MSP430::GR8RegisterClass);
-  unsigned ShiftAmtReg2 = RI.createVirtualRegister(MSP430::GR8RegisterClass);
+  unsigned ShiftAmtReg = RI.createVirtualRegister(&MSP430::GR8RegClass);
+  unsigned ShiftAmtReg2 = RI.createVirtualRegister(&MSP430::GR8RegClass);
   unsigned ShiftReg = RI.createVirtualRegister(RC);
   unsigned ShiftReg2 = RI.createVirtualRegister(RC);
   unsigned ShiftAmtSrcReg = MI->getOperand(2).getReg();

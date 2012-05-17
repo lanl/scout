@@ -71,6 +71,11 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
         else 
           return svalBuilder.makeBoolVal(cast<CXXBoolLiteralExpr>(E));
       }
+      case Stmt::CXXScalarValueInitExprClass:
+      case Stmt::ImplicitValueInitExprClass: {
+        QualType Ty = cast<Expr>(E)->getType();
+        return svalBuilder.makeZeroVal(Ty);
+      }
       case Stmt::IntegerLiteralClass: {
         // In C++, this expression may have been bound to a temporary object.
         SVal const *X = ExprBindings.lookup(EnvironmentEntry(E, LCtx));
@@ -79,6 +84,9 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
         else
           return svalBuilder.makeIntVal(cast<IntegerLiteral>(E));
       }
+      case Stmt::ObjCBoolLiteralExprClass:
+        return svalBuilder.makeBoolVal(cast<ObjCBoolLiteralExpr>(E));
+
       // For special C0xx nullptr case, make a null pointer SVal.
       case Stmt::CXXNullPtrLiteralExprClass:
         return svalBuilder.makeNull();
@@ -90,6 +98,16 @@ SVal Environment::getSVal(const EnvironmentEntry &Entry,
         continue;
       case Stmt::ObjCPropertyRefExprClass:
         return loc::ObjCPropRef(cast<ObjCPropertyRefExpr>(E));
+      case Stmt::ObjCStringLiteralClass: {
+        MemRegionManager &MRMgr = svalBuilder.getRegionManager();
+        const ObjCStringLiteral *SL = cast<ObjCStringLiteral>(E);
+        return svalBuilder.makeLoc(MRMgr.getObjCStringRegion(SL));
+      }
+      case Stmt::StringLiteralClass: {
+        MemRegionManager &MRMgr = svalBuilder.getRegionManager();
+        const StringLiteral *SL = cast<StringLiteral>(E);
+        return svalBuilder.makeLoc(MRMgr.getStringRegion(SL));
+      }
       case Stmt::ReturnStmtClass: {
         const ReturnStmt *RS = cast<ReturnStmt>(E);
         if (const Expr *RE = RS->getRetValue()) {
@@ -139,7 +157,14 @@ class MarkLiveCallback : public SymbolVisitor {
   SymbolReaper &SymReaper;
 public:
   MarkLiveCallback(SymbolReaper &symreaper) : SymReaper(symreaper) {}
-  bool VisitSymbol(SymbolRef sym) { SymReaper.markLive(sym); return true; }
+  bool VisitSymbol(SymbolRef sym) {
+    SymReaper.markLive(sym);
+    return true;
+  }
+  bool VisitMemRegion(const MemRegion *R) {
+    SymReaper.markLive(R);
+    return true;
+  }
 };
 } // end anonymous namespace
 

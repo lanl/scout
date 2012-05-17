@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -verify -fsyntax-only -Wvector-conversions
+// RUN: %clang_cc1 %s -verify -fsyntax-only -Wvector-conversion
 typedef unsigned int v2u __attribute__ ((vector_size (8)));
 typedef int v2s __attribute__ ((vector_size (8)));
 typedef float v2f __attribute__ ((vector_size(8)));
@@ -13,7 +13,7 @@ void test1(v2u v2ua, v2s v2sa, v2f v2fa) {
   (void)(~v2fa); // expected-error{{invalid argument type 'v2f' to unary}}
 
   // Comparison operators
-  v2ua = (v2ua==v2sa); // expected-warning{{incompatible vector types assigning to 'v2u' from 'int  __attribute__((ext_vector_type(2)))'}}
+  v2ua = (v2ua==v2sa); // expected-warning{{incompatible vector types assigning to 'v2u' from 'int __attribute__((ext_vector_type(2)))'}}
   v2sa = (v2ua==v2sa);
   
   // Arrays

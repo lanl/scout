@@ -71,4 +71,22 @@ namespace reference {
     static_assert(sizeof(h({1, 2})) == sizeof(two), "bad overload resolution");
   }
 
+  void edge_cases() {
+    // FIXME: very poor error message
+    int const &b({0}); // expected-error {{could not bind}}
+  }
+
+}
+
+namespace PR12182 {
+  void f(int const(&)[3]);
+
+  void g() {
+      f({1, 2});
+  }
+}
+
+namespace PR12660 {
+  const int &i { 1 };
+  struct S { S(int); } const &s { 2 };
 }

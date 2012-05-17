@@ -538,7 +538,7 @@ void CGRecordLayoutBuilder::LayoutUnion(const RecordDecl *D) {
        fieldEnd = D->field_end(); field != fieldEnd; ++field, ++fieldNo) {
     assert(layout.getFieldOffset(fieldNo) == 0 &&
           "Union field offset did not start at the beginning of record!");
-    llvm::Type *fieldType = LayoutUnionField(*field, layout);
+    llvm::Type *fieldType = LayoutUnionField(&*field, layout);
 
     if (!fieldType)
       continue;
@@ -576,6 +576,7 @@ void CGRecordLayoutBuilder::LayoutUnion(const RecordDecl *D) {
     }
   }
   if (unionAlign.isZero()) {
+    (void)hasOnlyZeroSizedBitFields;
     assert(hasOnlyZeroSizedBitFields &&
            "0-align record did not have all zero-sized bit-fields!");
     unionAlign = CharUnits::One();
@@ -713,14 +714,18 @@ CGRecordLayoutBuilder::LayoutNonVirtualBases(const CXXRecordDecl *RD,
     }
 
   // Otherwise, add a vtable / vf-table if the layout says to do so.
-  } else if (Types.getContext().getTargetInfo().getCXXABI() == CXXABI_Microsoft
-               ? Layout.getVFPtrOffset() != CharUnits::fromQuantity(-1)
-               : RD->isDynamicClass()) {
+  } else if (Layout.hasOwnVFPtr()) {
     llvm::Type *FunctionType =
       llvm::FunctionType::get(llvm::Type::getInt32Ty(Types.getLLVMContext()),
                               /*isVarArg=*/true);
     llvm::Type *VTableTy = FunctionType->getPointerTo();
-    
+
+    if (getTypeAlignment(VTableTy) > Alignment) {
+      // FIXME: Should we allow this to happen in Sema?
+      assert(!Packed && "Alignment is wrong even with packed struct!");
+      return false;
+    }
+
     assert(NextFieldOffset.isZero() &&
            "VTable pointer must come first!");
     AppendField(CharUnits::Zero(), VTableTy->getPointerTo());
@@ -813,7 +818,7 @@ bool CGRecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
     if (IsMsStruct) {
       // Zero-length bitfields following non-bitfield members are
       // ignored:
-      const FieldDecl *FD =  (*Field);
+      const FieldDecl *FD = &*Field;
       if (Types.getContext().ZeroBitfieldFollowsNonBitfield(FD, LastFD)) {
         --FieldNo;
         continue;
@@ -821,7 +826,7 @@ bool CGRecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
       LastFD = FD;
     }
     
-    if (!LayoutField(*Field, Layout.getFieldOffset(FieldNo))) {
+    if (!LayoutField(&*Field, Layout.getFieldOffset(FieldNo))) {
       assert(!Packed &&
              "Could not layout fields even with a packed LLVM struct!");
       return false;
@@ -971,7 +976,7 @@ void CGRecordLayoutBuilder::CheckZeroInitializable(QualType T) {
     return;
 
   // Can only have member pointers if we're compiling C++.
-  if (!Types.getContext().getLangOptions().CPlusPlus)
+  if (!Types.getContext().getLangOpts().CPlusPlus)
     return;
 
   const Type *elementType = T->getBaseElementTypeUnsafe();
@@ -1016,7 +1021,7 @@ CGRecordLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
   RL->BitFields.swap(Builder.BitFields);
 
   // Dump the layout, if requested.
-  if (getContext().getLangOptions().DumpRecordLayouts) {
+  if (getContext().getLangOpts().DumpRecordLayouts) {
     llvm::errs() << "\n*** Dumping IRgen Record Layout\n";
     llvm::errs() << "Record: ";
     D->dump();
@@ -1056,7 +1061,7 @@ CGRecordLayout *CodeGenTypes::ComputeRecordLayout(const RecordDecl *D,
   const FieldDecl *LastFD = 0;
   bool IsMsStruct = D->hasAttr<MsStructAttr>();
   for (unsigned i = 0, e = AST_RL.getFieldCount(); i != e; ++i, ++it) {
-    const FieldDecl *FD = *it;
+    const FieldDecl *FD = &*it;
 
     // For non-bit-fields, just check that the LLVM struct offset matches the
     // AST offset.
@@ -1117,7 +1122,7 @@ void CGRecordLayout::print(raw_ostream &OS) const {
     const RecordDecl *RD = it->first->getParent();
     unsigned Index = 0;
     for (RecordDecl::field_iterator
-           it2 = RD->field_begin(); *it2 != it->first; ++it2)
+           it2 = RD->field_begin(); &*it2 != it->first; ++it2)
       ++Index;
     BFIs.push_back(std::make_pair(Index, &it->second));
   }

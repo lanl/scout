@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PPC.h"
 #include "PPCTargetMachine.h"
+#include "PPC.h"
 #include "llvm/PassManager.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/CodeGen/Passes.h"
@@ -39,6 +39,10 @@ PPCTargetMachine::PPCTargetMachine(const Target &T, StringRef TT,
     FrameLowering(Subtarget), JITInfo(*this, is64Bit),
     TLInfo(*this), TSInfo(*this),
     InstrItins(Subtarget.getInstrItineraryData()) {
+
+  // The binutils for the BG/P are too old for CFI.
+  if (Subtarget.isBGP())
+    setMCUseCFI(false);
 }
 
 void PPC32TargetMachine::anchor() { }
@@ -94,13 +98,13 @@ TargetPassConfig *PPCTargetMachine::createPassConfig(PassManagerBase &PM) {
 
 bool PPCPassConfig::addInstSelector() {
   // Install an instruction selector.
-  PM.add(createPPCISelDag(getPPCTargetMachine()));
+  PM->add(createPPCISelDag(getPPCTargetMachine()));
   return false;
 }
 
 bool PPCPassConfig::addPreEmitPass() {
   // Must run branch selection immediately preceding the asm printer.
-  PM.add(createPPCBranchSelectionPass());
+  PM->add(createPPCBranchSelectionPass());
   return false;
 }
 

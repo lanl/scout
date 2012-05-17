@@ -990,6 +990,8 @@ namespace clang {
       STMT_DEFAULT,
       /// \brief A LabelStmt record.
       STMT_LABEL,
+      /// \brief An AttributedStmt record.
+      STMT_ATTRIBUTED,
       /// \brief An IfStmt record.
       STMT_IF,
       /// \brief A SwitchStmt record.
@@ -1078,8 +1080,6 @@ namespace clang {
       EXPR_SHUFFLE_VECTOR,
       /// \brief BlockExpr
       EXPR_BLOCK,
-      /// \brief A BlockDeclRef record.
-      EXPR_BLOCK_DECL_REF,
       /// \brief A GenericSelectionExpr record.
       EXPR_GENERIC_SELECTION,
       /// \brief A PseudoObjectExpr record.
@@ -1091,6 +1091,12 @@ namespace clang {
 
       /// \brief An ObjCStringLiteral record.
       EXPR_OBJC_STRING_LITERAL,
+
+      EXPR_OBJC_BOXED_EXPRESSION,
+      EXPR_OBJC_ARRAY_LITERAL,
+      EXPR_OBJC_DICTIONARY_LITERAL,
+
+    
       /// \brief An ObjCEncodeExpr record.
       EXPR_OBJC_ENCODE,
       /// \brief An ObjCSelectorExpr record.
@@ -1101,6 +1107,8 @@ namespace clang {
       EXPR_OBJC_IVAR_REF_EXPR,
       /// \brief An ObjCPropertyRefExpr record.
       EXPR_OBJC_PROPERTY_REF_EXPR,
+      /// \brief An ObjCSubscriptRefExpr record.
+      EXPR_OBJC_SUBSCRIPT_REF_EXPR,
       /// \brief UNUSED
       EXPR_OBJC_KVC_REF_EXPR,
       /// \brief An ObjCMessageExpr record.
@@ -1124,6 +1132,8 @@ namespace clang {
       STMT_OBJC_AT_THROW,
       /// \brief An ObjCAutoreleasePoolStmt record.
       STMT_OBJC_AUTORELEASE_POOL,
+      /// \brief A ObjCBoolLiteralExpr record.
+      EXPR_OBJC_BOOL_LITERAL,
 
       // C++
 
@@ -1152,6 +1162,8 @@ namespace clang {
       EXPR_CXX_CONST_CAST,
       /// \brief A CXXFunctionalCastExpr record.
       EXPR_CXX_FUNCTIONAL_CAST,
+      /// \brief A UserDefinedLiteral record.
+      EXPR_USER_DEFINED_LITERAL,
       /// \brief A CXXBoolLiteralExpr record.
       EXPR_CXX_BOOL_LITERAL,
       EXPR_CXX_NULL_PTR_LITERAL,  // CXXNullPtrLiteralExpr
@@ -1182,6 +1194,7 @@ namespace clang {
       EXPR_OPAQUE_VALUE,          // OpaqueValueExpr
       EXPR_BINARY_CONDITIONAL_OPERATOR,  // BinaryConditionalOperator
       EXPR_BINARY_TYPE_TRAIT,     // BinaryTypeTraitExpr
+      EXPR_TYPE_TRAIT,            // TypeTraitExpr
       EXPR_ARRAY_TYPE_TRAIT,      // ArrayTypeTraitIntExpr
 
       EXPR_PACK_EXPANSION,        // PackExpansionExpr
@@ -1206,7 +1219,8 @@ namespace clang {
       // ARC
       EXPR_OBJC_BRIDGED_CAST,     // ObjCBridgedCastExpr
       
-      STMT_MS_DEPENDENT_EXISTS    // MSDependentExistsStmt
+      STMT_MS_DEPENDENT_EXISTS,   // MSDependentExistsStmt
+      EXPR_LAMBDA                 // LambdaExpr
     };
 
     /// \brief The kinds of designators that can occur in a

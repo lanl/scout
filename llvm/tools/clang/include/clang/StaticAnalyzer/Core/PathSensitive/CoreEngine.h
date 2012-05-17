@@ -18,6 +18,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/Analysis/AnalysisContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/FunctionSummary.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/WorkList.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/BlockCounter.h"
 #include "llvm/ADT/OwningPtr.h"
@@ -42,6 +43,7 @@ class NodeBuilder;
 class CoreEngine {
   friend struct NodeBuilderContext;
   friend class NodeBuilder;
+  friend class ExprEngine;
   friend class CommonNodeBuilder;
   friend class IndirectGotoNodeBuilder;
   friend class SwitchNodeBuilder;
@@ -78,6 +80,14 @@ private:
   /// usually because it could not reason about something.
   BlocksAborted blocksAborted;
 
+  /// The functions which have been analyzed through inlining. This is owned by
+  /// AnalysisConsumer. It can be null.
+  SetOfConstDecls *AnalyzedCallees;
+
+  /// The information about functions shared by the whole translation unit.
+  /// (This data is owned by AnalysisConsumer.)
+  FunctionSummariesTy *FunctionSummaries;
+
   void generateNode(const ProgramPoint &Loc,
                     ProgramStateRef State,
                     ExplodedNode *Pred);
@@ -94,25 +104,18 @@ private:
   CoreEngine(const CoreEngine&); // Do not implement.
   CoreEngine& operator=(const CoreEngine&);
 
-  void enqueueStmtNode(ExplodedNode *N,
-                       const CFGBlock *Block, unsigned Idx);
-
-  ExplodedNode *generateCallExitNode(ExplodedNode *N);
+  ExplodedNode *generateCallExitBeginNode(ExplodedNode *N);
 
 public:
   /// Construct a CoreEngine object to analyze the provided CFG using
   ///  a DFS exploration of the exploded graph.
-  CoreEngine(SubEngine& subengine)
+  CoreEngine(SubEngine& subengine, SetOfConstDecls *VisitedCallees,
+             FunctionSummariesTy *FS)
     : SubEng(subengine), G(new ExplodedGraph()),
       WList(WorkList::makeBFS()),
-      BCounterFactory(G->getAllocator()) {}
-
-  /// Construct a CoreEngine object to analyze the provided CFG and to
-  ///  use the provided worklist object to execute the worklist algorithm.
-  ///  The CoreEngine object assumes ownership of 'wlist'.
-  CoreEngine(WorkList* wlist, SubEngine& subengine)
-    : SubEng(subengine), G(new ExplodedGraph()), WList(wlist),
-      BCounterFactory(G->getAllocator()) {}
+      BCounterFactory(G->getAllocator()),
+      AnalyzedCallees(VisitedCallees),
+      FunctionSummaries(FS){}
 
   ~CoreEngine() {
     delete WList;
@@ -129,10 +132,16 @@ public:
   ///  steps.  Returns true if there is still simulation state on the worklist.
   bool ExecuteWorkList(const LocationContext *L, unsigned Steps,
                        ProgramStateRef InitState);
-  void ExecuteWorkListWithInitialState(const LocationContext *L,
+  /// Returns true if there is still simulation state on the worklist.
+  bool ExecuteWorkListWithInitialState(const LocationContext *L,
                                        unsigned Steps,
                                        ProgramStateRef InitState, 
                                        ExplodedNodeSet &Dst);
+
+  /// Dispatch the work list item based on the given location information.
+  /// Use Pred parameter as the predecessor state.
+  void dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
+                        const WorkListUnit& WU);
 
   // Functions for external checking of whether we have unfinished work
   bool wasBlockAborted() const { return !blocksAborted.empty(); }
@@ -172,14 +181,17 @@ public:
   /// \brief enqueue the nodes corresponding to the end of function onto the
   /// end of path / work list.
   void enqueueEndOfFunction(ExplodedNodeSet &Set);
+
+  /// \brief Enqueue a single node created as a result of statement processing.
+  void enqueueStmtNode(ExplodedNode *N, const CFGBlock *Block, unsigned Idx);
 };
 
 // TODO: Turn into a calss.
 struct NodeBuilderContext {
-  CoreEngine &Eng;
+  const CoreEngine &Eng;
   const CFGBlock *Block;
   ExplodedNode *Pred;
-  NodeBuilderContext(CoreEngine &E, const CFGBlock *B, ExplodedNode *N)
+  NodeBuilderContext(const CoreEngine &E, const CFGBlock *B, ExplodedNode *N)
     : Eng(E), Block(B), Pred(N) { assert(B); assert(!N->isSink()); }
 
   ExplodedNode *getPred() const { return Pred; }

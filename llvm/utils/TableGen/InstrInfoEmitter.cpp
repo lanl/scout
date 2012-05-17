@@ -14,14 +14,16 @@
 
 #include "InstrInfoEmitter.h"
 #include "CodeGenTarget.h"
+#include "SequenceToOffsetTable.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/ADT/StringExtras.h"
 #include <algorithm>
+#include <cstdio>
 using namespace llvm;
 
 static void PrintDefList(const std::vector<Record*> &Uses,
                          unsigned Num, raw_ostream &OS) {
-  OS << "static const unsigned ImplicitList" << Num << "[] = { ";
+  OS << "static const uint16_t ImplicitList" << Num << "[] = { ";
   for (unsigned i = 0, e = Uses.size(); i != e; ++i)
     OS << getQualifiedName(Uses[i]) << ", ";
   OS << "0 };\n";
@@ -106,6 +108,11 @@ InstrInfoEmitter::GetOperandInfo(const CodeGenInstruction &Inst) {
       if (Inst.Operands[i].Rec->isSubClassOf("OptionalDefOperand"))
         Res += "|(1<<MCOI::OptionalDef)";
 
+      // Fill in operand type.
+      Res += ", MCOI::";
+      assert(!Inst.Operands[i].OperandType.empty() && "Invalid operand type.");
+      Res += Inst.Operands[i].OperandType;
+
       // Fill in constraint info.
       Res += ", ";
 
@@ -120,11 +127,6 @@ InstrInfoEmitter::GetOperandInfo(const CodeGenInstruction &Inst) {
         Res += "((" + utostr(Constraint.getTiedOperand()) +
                     " << 16) | (1 << MCOI::TIED_TO))";
       }
-
-      // Fill in operand type.
-      Res += ", MCOI::";
-      assert(!Inst.Operands[i].OperandType.empty() && "Invalid operand type.");
-      Res += Inst.Operands[i].OperandType;
 
       Result.push_back(Res);
     }
@@ -212,10 +214,33 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
                OperandInfoIDs, OS);
   OS << "};\n\n";
 
+  // Build an array of instruction names
+  SequenceToOffsetTable<std::string> InstrNames;
+  for (unsigned i = 0, e = NumberedInstructions.size(); i != e; ++i) {
+    const CodeGenInstruction *Instr = NumberedInstructions[i];
+    InstrNames.add(Instr->TheDef->getName());
+  }
+
+  InstrNames.layout();
+  OS << "extern const char " << TargetName << "InstrNameData[] = {\n";
+  InstrNames.emit(OS, printChar);
+  OS << "};\n\n";
+
+  OS << "extern const unsigned " << TargetName <<"InstrNameIndices[] = {";
+  for (unsigned i = 0, e = NumberedInstructions.size(); i != e; ++i) {
+    if (i % 8 == 0)
+      OS << "\n    ";
+    const CodeGenInstruction *Instr = NumberedInstructions[i];
+    OS << InstrNames.get(Instr->TheDef->getName()) << "U, ";
+  }
+
+  OS << "\n};\n\n";
+
   // MCInstrInfo initialization routine.
   OS << "static inline void Init" << TargetName
      << "MCInstrInfo(MCInstrInfo *II) {\n";
   OS << "  II->InitMCInstrInfo(" << TargetName << "Insts, "
+     << TargetName << "InstrNameIndices, " << TargetName << "InstrNameData, "
      << NumberedInstructions.size() << ");\n}\n\n";
 
   OS << "} // End llvm namespace \n";
@@ -240,9 +265,12 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
 
   OS << "namespace llvm {\n";
   OS << "extern const MCInstrDesc " << TargetName << "Insts[];\n";
+  OS << "extern const unsigned " << TargetName << "InstrNameIndices[];\n";
+  OS << "extern const char " << TargetName << "InstrNameData[];\n";
   OS << ClassName << "::" << ClassName << "(int SO, int DO)\n"
      << "  : TargetInstrInfoImpl(SO, DO) {\n"
      << "  InitMCInstrInfo(" << TargetName << "Insts, "
+     << TargetName << "InstrNameIndices, " << TargetName << "InstrNameData, "
      << NumberedInstructions.size() << ");\n}\n";
   OS << "} // End llvm namespace \n";
 
@@ -329,8 +357,6 @@ void InstrInfoEmitter::emitRecord(const CodeGenInstruction &Inst, unsigned Num,
   else
     OS << "OperandInfo" << OpInfo.find(OperandInfo)->second;
 
-  OS << ", \"" << Inst.TheDef->getName() << '"';
-
   OS << " },  // Inst #" << Num << " = " << Inst.TheDef->getName() << "\n";
 }
 
@@ -347,7 +373,7 @@ void InstrInfoEmitter::emitEnums(raw_ostream &OS) {
 
   // We must emit the PHI opcode first...
   std::string Namespace = Target.getInstNamespace();
-  
+
   if (Namespace.empty()) {
     fprintf(stderr, "No instructions defined!\n");
     exit(1);

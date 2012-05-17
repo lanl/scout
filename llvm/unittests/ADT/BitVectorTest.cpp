@@ -42,7 +42,8 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_FALSE(Vec.none());
   EXPECT_FALSE(Vec.empty());
 
-  BitVector Inv = ~Vec;
+  BitVector Inv = Vec;
+  Inv.flip();
   EXPECT_EQ(6U, Inv.count());
   EXPECT_EQ(11U, Inv.size());
   EXPECT_TRUE(Inv.any());
@@ -52,7 +53,7 @@ TEST(BitVectorTest, TrivialOperation) {
 
   EXPECT_FALSE(Inv == Vec);
   EXPECT_TRUE(Inv != Vec);
-  Vec = ~Vec;
+  Vec.flip();
   EXPECT_TRUE(Inv == Vec);
   EXPECT_FALSE(Inv != Vec);
 
@@ -131,7 +132,7 @@ TEST(BitVectorTest, TrivialOperation) {
   EXPECT_TRUE(Vec.none());
   EXPECT_FALSE(Vec.empty());
 
-  Inv = ~BitVector();
+  Inv = BitVector().flip();
   EXPECT_EQ(0U, Inv.count());
   EXPECT_EQ(0U, Inv.size());
   EXPECT_FALSE(Inv.any());
@@ -242,6 +243,34 @@ TEST(BitVectorTest, PortableBitMask) {
   A.clearBitsNotInMask(Mask1, 1);
   EXPECT_EQ(64-4u, A.count());
 }
-}
 
+TEST(BitVectorTest, BinOps) {
+  BitVector A;
+  BitVector B;
+
+  A.resize(65);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(B));
+
+  B.resize(64);
+  A.set(64);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
+
+  B.set(63);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
+
+  A.set(63);
+  EXPECT_TRUE(A.anyCommon(B));
+  EXPECT_TRUE(B.anyCommon(A));
+
+  B.resize(70);
+  B.set(64);
+  B.reset(63);
+  A.resize(64);
+  EXPECT_FALSE(A.anyCommon(B));
+  EXPECT_FALSE(B.anyCommon(A));
+}
+}
 #endif

@@ -118,8 +118,10 @@ public:
   /// branch target.
   uint32_t getARMBranchTargetOpValue(const MCInst &MI, unsigned OpIdx,
                                      SmallVectorImpl<MCFixup> &Fixups) const;
+  uint32_t getARMBLTargetOpValue(const MCInst &MI, unsigned OpIdx,
+                                 SmallVectorImpl<MCFixup> &Fixups) const;
   uint32_t getARMBLXTargetOpValue(const MCInst &MI, unsigned OpIdx,
-                                     SmallVectorImpl<MCFixup> &Fixups) const;
+                                  SmallVectorImpl<MCFixup> &Fixups) const;
 
   /// getAdrLabelOpValue - Return encoding info for 12-bit immediate
   /// ADR label target.
@@ -592,16 +594,25 @@ getARMBranchTargetOpValue(const MCInst &MI, unsigned OpIdx,
 }
 
 uint32_t ARMMCCodeEmitter::
-getARMBLXTargetOpValue(const MCInst &MI, unsigned OpIdx,
+getARMBLTargetOpValue(const MCInst &MI, unsigned OpIdx,
                           SmallVectorImpl<MCFixup> &Fixups) const {
   const MCOperand MO = MI.getOperand(OpIdx);
   if (MO.isExpr()) {
     if (HasConditionalBranch(MI))
-      return ::getBranchTargetOpValue(MI, OpIdx,
-                                      ARM::fixup_arm_condbranch, Fixups);
-    return ::getBranchTargetOpValue(MI, OpIdx,
-                                    ARM::fixup_arm_uncondbranch, Fixups);
+      return ::getBranchTargetOpValue(MI, OpIdx, 
+                                      ARM::fixup_arm_condbl, Fixups);
+    return ::getBranchTargetOpValue(MI, OpIdx, ARM::fixup_arm_uncondbl, Fixups);
   }
+
+  return MO.getImm() >> 2;
+}
+
+uint32_t ARMMCCodeEmitter::
+getARMBLXTargetOpValue(const MCInst &MI, unsigned OpIdx,
+                          SmallVectorImpl<MCFixup> &Fixups) const {
+  const MCOperand MO = MI.getOperand(OpIdx);
+  if (MO.isExpr())
+    return ::getBranchTargetOpValue(MI, OpIdx, ARM::fixup_arm_blx, Fixups);
 
   return MO.getImm() >> 1;
 }
@@ -850,11 +861,11 @@ ARMMCCodeEmitter::getHiLo16ImmOpValue(const MCInst &MI, unsigned OpIdx,
 
   // Handle :upper16: and :lower16: assembly prefixes.
   const MCExpr *E = MO.getExpr();
+  MCFixupKind Kind;
   if (E->getKind() == MCExpr::Target) {
     const ARMMCExpr *ARM16Expr = cast<ARMMCExpr>(E);
     E = ARM16Expr->getSubExpr();
 
-    MCFixupKind Kind;
     switch (ARM16Expr->getKind()) {
     default: llvm_unreachable("Unsupported ARMFixup");
     case ARMMCExpr::VK_ARM_HI16:
@@ -880,9 +891,21 @@ ARMMCCodeEmitter::getHiLo16ImmOpValue(const MCInst &MI, unsigned OpIdx,
     }
     Fixups.push_back(MCFixup::Create(0, E, Kind, MI.getLoc()));
     return 0;
-  };
-
-  llvm_unreachable("Unsupported MCExpr type in MCOperand!");
+  }
+  // If the expression doesn't have :upper16: or :lower16: on it,
+  // it's just a plain immediate expression, and those evaluate to
+  // the lower 16 bits of the expression regardless of whether
+  // we have a movt or a movw.
+  if (!isTargetDarwin() && EvaluateAsPCRel(E))
+    Kind = MCFixupKind(isThumb2()
+                       ? ARM::fixup_t2_movw_lo16_pcrel
+                       : ARM::fixup_arm_movw_lo16_pcrel);
+  else
+    Kind = MCFixupKind(isThumb2()
+                       ? ARM::fixup_t2_movw_lo16
+                       : ARM::fixup_arm_movw_lo16);
+  Fixups.push_back(MCFixup::Create(0, E, Kind, MI.getLoc()));
+  return 0;
 }
 
 uint32_t ARMMCCodeEmitter::
@@ -1181,8 +1204,7 @@ getSORegImmOpValue(const MCInst &MI, unsigned OpIdx,
   // Encode shift_imm bit[11:7].
   Binary |= SBits << 4;
   unsigned Offset = ARM_AM::getSORegOffset(MO1.getImm());
-  assert(Offset && "Offset must be in range 1-32!");
-  if (Offset == 32) Offset = 0;
+  assert(Offset < 32 && "Offset must be in range 0-31!");
   return Binary | (Offset << 7);
 }
 
@@ -1323,8 +1345,8 @@ getRegisterListOpValue(const MCInst &MI, unsigned Op,
   // LDM/STM:
   //   {15-0}  = Bitfield of GPRs.
   unsigned Reg = MI.getOperand(Op).getReg();
-  bool SPRRegs = llvm::ARMMCRegisterClasses[ARM::SPRRegClassID].contains(Reg);
-  bool DPRRegs = llvm::ARMMCRegisterClasses[ARM::DPRRegClassID].contains(Reg);
+  bool SPRRegs = ARMMCRegisterClasses[ARM::SPRRegClassID].contains(Reg);
+  bool DPRRegs = ARMMCRegisterClasses[ARM::DPRRegClassID].contains(Reg);
 
   unsigned Binary = 0;
 

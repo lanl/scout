@@ -594,6 +594,9 @@ public:
   /// normal form.
   bool isLoopSimplifyForm() const;
 
+  /// isSafeToClone - Return true if the loop body is safe to clone in practice.
+  bool isSafeToClone() const;
+
   /// hasDedicatedExits - Return true if no exit block for the loop
   /// has a predecessor that is outside the loop.
   bool hasDedicatedExits() const;
@@ -762,7 +765,8 @@ public:
          InvBlockTraits::child_begin(BB), E = InvBlockTraits::child_end(BB);
          I != E; ++I) {
       typename InvBlockTraits::NodeType *N = *I;
-      if (DT.dominates(BB, N))   // If BB dominates its predecessor...
+      // If BB dominates its predecessor...
+      if (DT.dominates(BB, N) && DT.isReachableFromEntry(N))
           TodoStack.push_back(N);
     }
 
@@ -772,14 +776,12 @@ public:
     LoopT *L = new LoopT(BB);
     BBMap[BB] = L;
 
-    BlockT *EntryBlock = BB->getParent()->begin();
-
     while (!TodoStack.empty()) {  // Process all the nodes in the loop
       BlockT *X = TodoStack.back();
       TodoStack.pop_back();
 
       if (!L->contains(X) &&         // As of yet unprocessed??
-          DT.dominates(EntryBlock, X)) {   // X is reachable from entry block?
+          DT.isReachableFromEntry(X)) {
         // Check to see if this block already belongs to a loop.  If this occurs
         // then we have a case where a loop that is supposed to be a child of
         // the current loop was processed before the current loop.  When this

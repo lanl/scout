@@ -15,7 +15,7 @@
 #define DEBUG_TYPE "jit"
 #include "ARM.h"
 #include "ARMConstantPoolValue.h"
-#include "ARMInstrInfo.h"
+#include "ARMBaseInstrInfo.h"
 #include "ARMRelocations.h"
 #include "ARMSubtarget.h"
 #include "ARMTargetMachine.h"
@@ -46,7 +46,7 @@ namespace {
 
   class ARMCodeEmitter : public MachineFunctionPass {
     ARMJITInfo                *JTI;
-    const ARMInstrInfo        *II;
+    const ARMBaseInstrInfo    *II;
     const TargetData          *TD;
     const ARMSubtarget        *Subtarget;
     TargetMachine             &TM;
@@ -66,7 +66,7 @@ namespace {
   public:
     ARMCodeEmitter(TargetMachine &tm, JITCodeEmitter &mce)
       : MachineFunctionPass(ID), JTI(0),
-        II((const ARMInstrInfo *)tm.getInstrInfo()),
+        II((const ARMBaseInstrInfo *)tm.getInstrInfo()),
         TD(tm.getTargetData()), TM(tm),
         MCE(mce), MCPEs(0), MJTEs(0),
         IsPIC(TM.getRelocationModel() == Reloc::PIC_), IsThumb(false) {}
@@ -188,6 +188,8 @@ namespace {
     unsigned getUnconditionalBranchTargetOpValue(const MachineInstr &MI,
       unsigned Op) const { return 0; }
     unsigned getARMBranchTargetOpValue(const MachineInstr &MI, unsigned Op)
+      const { return 0; }
+    unsigned getARMBLTargetOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
     unsigned getARMBLXTargetOpValue(const MachineInstr &MI, unsigned Op)
       const { return 0; }
@@ -366,9 +368,9 @@ bool ARMCodeEmitter::runOnMachineFunction(MachineFunction &MF) {
   assert((MF.getTarget().getRelocationModel() != Reloc::Default ||
           MF.getTarget().getRelocationModel() != Reloc::Static) &&
          "JIT relocation model must be set to static or default!");
-  JTI = ((ARMTargetMachine &)MF.getTarget()).getJITInfo();
-  II = ((const ARMTargetMachine &)MF.getTarget()).getInstrInfo();
-  TD = ((const ARMTargetMachine &)MF.getTarget()).getTargetData();
+  JTI = ((ARMBaseTargetMachine &)MF.getTarget()).getJITInfo();
+  II = (const ARMBaseInstrInfo *)MF.getTarget().getInstrInfo();
+  TD = MF.getTarget().getTargetData();
   Subtarget = &TM.getSubtarget<ARMSubtarget>();
   MCPEs = &MF.getConstantPool()->getConstants();
   MJTEs = 0;
@@ -834,9 +836,7 @@ void ARMCodeEmitter::emitPseudoInstruction(const MachineInstr &MI) {
   default:
     llvm_unreachable("ARMCodeEmitter::emitPseudoInstruction");
   case ARM::BX_CALL:
-  case ARM::BMOVPCRX_CALL:
-  case ARM::BXr9_CALL:
-  case ARM::BMOVPCRXr9_CALL: {
+  case ARM::BMOVPCRX_CALL: {
     // First emit mov lr, pc
     unsigned Binary = 0x01a0e00f;
     Binary |= II->getPredicate(&MI) << ARMII::CondShift;
@@ -1541,7 +1541,7 @@ void ARMCodeEmitter::emitMiscBranchInstruction(const MachineInstr &MI) {
 static unsigned encodeVFPRd(const MachineInstr &MI, unsigned OpIdx) {
   unsigned RegD = MI.getOperand(OpIdx).getReg();
   unsigned Binary = 0;
-  bool isSPVFP = ARM::SPRRegisterClass->contains(RegD);
+  bool isSPVFP = ARM::SPRRegClass.contains(RegD);
   RegD = getARMRegisterNumbering(RegD);
   if (!isSPVFP)
     Binary |=   RegD               << ARMII::RegRdShift;
@@ -1555,7 +1555,7 @@ static unsigned encodeVFPRd(const MachineInstr &MI, unsigned OpIdx) {
 static unsigned encodeVFPRn(const MachineInstr &MI, unsigned OpIdx) {
   unsigned RegN = MI.getOperand(OpIdx).getReg();
   unsigned Binary = 0;
-  bool isSPVFP = ARM::SPRRegisterClass->contains(RegN);
+  bool isSPVFP = ARM::SPRRegClass.contains(RegN);
   RegN = getARMRegisterNumbering(RegN);
   if (!isSPVFP)
     Binary |=   RegN               << ARMII::RegRnShift;
@@ -1569,7 +1569,7 @@ static unsigned encodeVFPRn(const MachineInstr &MI, unsigned OpIdx) {
 static unsigned encodeVFPRm(const MachineInstr &MI, unsigned OpIdx) {
   unsigned RegM = MI.getOperand(OpIdx).getReg();
   unsigned Binary = 0;
-  bool isSPVFP = ARM::SPRRegisterClass->contains(RegM);
+  bool isSPVFP = ARM::SPRRegClass.contains(RegM);
   RegM = getARMRegisterNumbering(RegM);
   if (!isSPVFP)
     Binary |=   RegM;

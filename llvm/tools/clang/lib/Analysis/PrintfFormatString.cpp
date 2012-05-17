@@ -266,7 +266,9 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx,
       case LengthModifier::AsChar: return ArgTypeResult::AnyCharTy;
       case LengthModifier::AsShort: return Ctx.ShortTy;
       case LengthModifier::AsLong: return Ctx.LongTy;
-      case LengthModifier::AsLongLong: return Ctx.LongLongTy;
+      case LengthModifier::AsLongLong:
+      case LengthModifier::AsQuad:
+        return Ctx.LongLongTy;
       case LengthModifier::AsIntMax:
         return ArgTypeResult(Ctx.getIntMaxType(), "intmax_t");
       case LengthModifier::AsSizeT:
@@ -288,7 +290,9 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx,
       case LengthModifier::AsChar: return Ctx.UnsignedCharTy;
       case LengthModifier::AsShort: return Ctx.UnsignedShortTy;
       case LengthModifier::AsLong: return Ctx.UnsignedLongTy;
-      case LengthModifier::AsLongLong: return Ctx.UnsignedLongLongTy;
+      case LengthModifier::AsLongLong:
+      case LengthModifier::AsQuad:
+        return Ctx.UnsignedLongLongTy;
       case LengthModifier::AsIntMax:
         return ArgTypeResult(Ctx.getUIntMaxType(), "uintmax_t");
       case LengthModifier::AsSizeT:
@@ -336,7 +340,8 @@ ArgTypeResult PrintfSpecifier::getArgType(ASTContext &Ctx,
   return ArgTypeResult();
 }
 
-bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt) {
+bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
+                              ASTContext &Ctx, bool IsObjCLiteral) {
   // Handle strings first (char *, wchar_t *)
   if (QT->isPointerType() && (QT->getPointeeType()->isAnyCharacterType())) {
     CS.setKind(ConversionSpecifier::sArg);
@@ -433,6 +438,11 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt) {
     }
   }
 
+  // If fixing the length modifier was enough, we are done.
+  const analyze_printf::ArgTypeResult &ATR = getArgType(Ctx, IsObjCLiteral);
+  if (hasValidLengthModifier() && ATR.isValid() && ATR.matchesType(Ctx, QT))
+    return true;
+
   // Set conversion specifier and disable any flags which do not apply to it.
   // Let typedefs to char fall through to int, as %c is silly for uint8_t.
   if (isa<TypedefType>(QT) && QT->isAnyCharacterType()) {
@@ -452,9 +462,7 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt) {
     HasAlternativeForm = 0;
   }
   else if (QT->isUnsignedIntegerType()) {
-    // Preserve the original formatting, e.g. 'X', 'o'.
-    if (!cast<PrintfConversionSpecifier>(CS).isUIntArg())
-      CS.setKind(ConversionSpecifier::uArg);
+    CS.setKind(ConversionSpecifier::uArg);
     HasAlternativeForm = 0;
     HasPlusPrefix = 0;
   } else {

@@ -46,8 +46,8 @@ namespace llvm {
   class DIObjCProperty;
 
   /// DIDescriptor - A thin wraper around MDNode to access encoded debug info.
-  /// This should not be stored in a container, because underly MDNode may
-  /// change in certain situations.
+  /// This should not be stored in a container, because the underlying MDNode
+  /// may change in certain situations.
   class DIDescriptor {
   public:
     enum {
@@ -519,6 +519,7 @@ namespace llvm {
     DICompositeType getContainingType() const {
       return getFieldAs<DICompositeType>(13);
     }
+
     unsigned isArtificial() const    { 
       if (getVersion() <= llvm::LLVMDebugVersion8)
         return getUnsignedField(14); 
@@ -566,6 +567,11 @@ namespace llvm {
 
       return getFieldAs<DIFile>(6).getDirectory(); 
     }
+
+    /// getScopeLineNumber - Get the beginning of the scope of the
+    /// function, not necessarily where the name of the program
+    /// starts.
+    unsigned getScopeLineNumber() const { return getUnsignedField(20); }
 
     /// Verify - Verify that a subprogram descriptor is well formed.
     bool Verify() const;
@@ -792,30 +798,35 @@ namespace llvm {
     explicit DIObjCProperty(const MDNode *N) : DIDescriptor(N) { }
 
     StringRef getObjCPropertyName() const { return getStringField(1); }
+    DIFile getFile() const { return getFieldAs<DIFile>(2); }
+    unsigned getLineNumber() const { return getUnsignedField(3); }
+
     StringRef getObjCPropertyGetterName() const {
-      return getStringField(2);
+      return getStringField(4);
     }
     StringRef getObjCPropertySetterName() const {
-      return getStringField(3);
+      return getStringField(5);
     }
     bool isReadOnlyObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_readonly) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_readonly) != 0;
     }
     bool isReadWriteObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_readwrite) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_readwrite) != 0;
     }
     bool isAssignObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_assign) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_assign) != 0;
     }
     bool isRetainObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_retain) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_retain) != 0;
     }
     bool isCopyObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_copy) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_copy) != 0;
     }
     bool isNonAtomicObjCProperty() {
-      return (getUnsignedField(4) & dwarf::DW_APPLE_PROPERTY_nonatomic) != 0;
+      return (getUnsignedField(6) & dwarf::DW_APPLE_PROPERTY_nonatomic) != 0;
     }
+
+    DIType getType() const { return getFieldAs<DIType>(7); }
 
     /// Verify - Verify that a derived type descriptor is well formed.
     bool Verify() const;

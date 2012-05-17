@@ -1,7 +1,10 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -Wformat-nonliteral %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wformat-nonliteral -isystem %S/Inputs %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wformat-nonliteral -isystem %S/Inputs -fno-signed-char %s
 
+#define __need_wint_t
 #include <stdarg.h>
-typedef __typeof(sizeof(int)) size_t;
+#include <stddef.h> // For wint_t and wchar_t
+
 typedef struct _FILE FILE;
 int fprintf(FILE *, const char *restrict, ...);
 int printf(const char *restrict, ...); // expected-note{{passing argument to parameter here}}
@@ -14,6 +17,8 @@ int vprintf(const char *restrict, va_list);
 int vsnprintf(char *, size_t, const char *, va_list);
 int vsprintf(char *restrict, const char *restrict, va_list); // expected-note{{passing argument to parameter here}}
 
+int vscanf(const char *restrict format, va_list arg);
+
 char * global_fmt;
 
 void check_string_literal( FILE* fp, const char* s, char *buf, ... ) {
@@ -23,20 +28,22 @@ void check_string_literal( FILE* fp, const char* s, char *buf, ... ) {
   va_start(ap,buf);
 
   printf(s); // expected-warning {{format string is not a string literal}}
-  vprintf(s,ap); // // no-warning
+  vprintf(s,ap); // expected-warning {{format string is not a string literal}}
   fprintf(fp,s); // expected-warning {{format string is not a string literal}}
-  vfprintf(fp,s,ap); // no-warning
+  vfprintf(fp,s,ap); // expected-warning {{format string is not a string literal}}
   asprintf(&b,s); // expected-warning {{format string is not a string lit}}
-  vasprintf(&b,s,ap); // no-warning
+  vasprintf(&b,s,ap); // expected-warning {{format string is not a string literal}}
   sprintf(buf,s); // expected-warning {{format string is not a string literal}}
   snprintf(buf,2,s); // expected-warning {{format string is not a string lit}}
   __builtin___sprintf_chk(buf,0,-1,s); // expected-warning {{format string is not a string literal}}
   __builtin___snprintf_chk(buf,2,0,-1,s); // expected-warning {{format string is not a string lit}}
-  vsprintf(buf,s,ap); // no-warning
-  vsnprintf(buf,2,s,ap); // no-warning
+  vsprintf(buf,s,ap); // expected-warning {{format string is not a string lit}}
+  vsnprintf(buf,2,s,ap); // expected-warning {{format string is not a string lit}}
   vsnprintf(buf,2,global_fmt,ap); // expected-warning {{format string is not a string literal}}
-  __builtin___vsnprintf_chk(buf,2,0,-1,s,ap); // no-warning
+  __builtin___vsnprintf_chk(buf,2,0,-1,s,ap); // expected-warning {{format string is not a string lit}}
   __builtin___vsnprintf_chk(buf,2,0,-1,global_fmt,ap); // expected-warning {{format string is not a string literal}}
+
+  vscanf(s, ap); // expected-warning {{format string is not a string literal}}
 
   // rdar://6079877
   printf("abc"
@@ -49,6 +56,25 @@ def"
   // the field width and precision.  This deviates from C99, but is reasonably safe
   // and is also accepted by GCC.
   printf("%*d", (unsigned) 1, 1); // no-warning  
+}
+
+__attribute__((__format__ (__printf__, 2, 4)))
+void check_string_literal2( FILE* fp, const char* s, char *buf, ... ) {
+  char * b;
+  va_list ap;
+  va_start(ap,buf);
+
+  printf(s); // expected-warning {{format string is not a string literal}}
+  vprintf(s,ap); // no-warning
+  fprintf(fp,s); // expected-warning {{format string is not a string literal}}
+  vfprintf(fp,s,ap); // no-warning
+  asprintf(&b,s); // expected-warning {{format string is not a string lit}}
+  vasprintf(&b,s,ap); // no-warning
+  sprintf(buf,s); // expected-warning {{format string is not a string literal}}
+  snprintf(buf,2,s); // expected-warning {{format string is not a string lit}}
+  __builtin___vsnprintf_chk(buf,2,0,-1,s,ap); // no-warning
+
+  vscanf(s, ap); // expected-warning {{format string is not a string literal}}
 }
 
 void check_conditional_literal(const char* s, int i) {
@@ -167,7 +193,9 @@ void test10(int x, float f, int i, long long lli) {
   printf("%.d", x); // no-warning
   printf("%.", x);  // expected-warning{{incomplete format specifier}}
   printf("%f", 4); // expected-warning{{format specifies type 'double' but the argument has type 'int'}}
-  printf("%qd", lli);
+  printf("%qd", lli); // no-warning
+  printf("%qd", x); // expected-warning{{format specifies type 'long long' but the argument has type 'int'}}
+  printf("%qp", (void *)0); // expected-warning{{length modifier 'q' results in undefined behavior or no effect with 'p' conversion specifier}}
   printf("hhX %hhX", (unsigned char)10); // no-warning
   printf("llX %llX", (long long) 10); // no-warning
   // This is fine, because there is an implicit conversion to an int.
@@ -233,7 +261,6 @@ void f0(int_t x) { printf("%d\n", x); }
 
 // Unicode test cases.  These are possibly specific to Mac OS X.  If so, they should
 // eventually be moved into a separate test.
-typedef __WCHAR_TYPE__ wchar_t;
 
 void test_unicode_conversions(wchar_t *s) {
   printf("%S", s); // no-warning
@@ -243,7 +270,6 @@ void test_unicode_conversions(wchar_t *s) {
   // FIXME: This test reports inconsistent results. On Windows, '%C' expects
   // 'unsigned short'.
   // printf("%C", 10);
-  // FIXME: we report the expected type as 'int*' instead of 'wchar_t*'
   printf("%S", "hello"); // expected-warning{{but the argument has type 'char *'}}
 }
 
@@ -308,17 +334,18 @@ void bug7377_bad_length_mod_usage() {
 }
 
 // PR 7981 - handle '%lc' (wint_t)
-#ifndef wint_t
-typedef int __darwin_wint_t;
-typedef __darwin_wint_t wint_t;
-#endif
 
 void pr7981(wint_t c, wchar_t c2) {
   printf("%lc", c); // no-warning
   printf("%lc", 1.0); // expected-warning{{the argument has type 'double'}}
   printf("%lc", (char) 1); // no-warning
-  printf("%lc", &c); // expected-warning{{the argument has type 'wint_t *' (aka 'int *')}}
+  printf("%lc", &c); // expected-warning{{the argument has type 'wint_t *'}}
+  // If wint_t and wchar_t are the same width and wint_t is signed where
+  // wchar_t is unsigned, an implicit conversion isn't possible.
+#if defined(__WINT_UNSIGNED__) || !defined(__WCHAR_UNSIGNED__) ||   \
+  __WINT_WIDTH__ > __WCHAR_WIDTH__
   printf("%lc", c2); // no-warning
+#endif
 }
 
 // <rdar://problem/8269537> -Wformat-security says NULL is not a string literal
@@ -471,6 +498,12 @@ void pr9751() {
 
   const char kFormat17[] = "%hu"; // expected-note{{format string is defined here}}}
   printf(kFormat17, (int[]){0}); // expected-warning{{format specifies type 'unsigned short' but the argument}}
+
+  printf("%a", (long double)0); // expected-warning{{format specifies type 'double' but the argument has type 'long double'}}
+
+  // Test braced char[] initializers.
+  const char kFormat18[] = { "%lld" }; // expected-note{{format string is defined here}}}
+  printf(kFormat18, 0); // expected-warning{{format specifies type}}
 }
 
 // PR 9466: clang: doesn't know about %Lu, %Ld, and %Lx 
@@ -494,4 +527,33 @@ void test_other_formats() {
   monformat(str); // expected-warning{{format string is not a string literal (potentially insecure)}}
   dateformat(""); // expected-warning{{format string is empty}}
   dateformat(str); // no-warning (using strftime non literal is not unsafe)
+}
+
+// Do not warn about unused arguments coming from system headers.
+// <rdar://problem/11317765>
+#include <format-unused-system-args.h>
+void test_unused_system_args(int x) {
+  PRINT1("%d\n", x); // no-warning{{extra argument is system header is OK}}
+}
+
+void pr12761(char c) {
+  // This should not warn even with -fno-signed-char.
+  printf("%hhx", c);
+}
+
+
+// Test that we correctly merge the format in both orders.
+extern void test14_foo(const char *, const char *, ...)
+     __attribute__((__format__(__printf__, 1, 3)));
+extern void test14_foo(const char *, const char *, ...)
+     __attribute__((__format__(__scanf__, 2, 3)));
+
+extern void test14_bar(const char *, const char *, ...)
+     __attribute__((__format__(__scanf__, 2, 3)));
+extern void test14_bar(const char *, const char *, ...)
+     __attribute__((__format__(__printf__, 1, 3)));
+
+void test14_zed(int *p) {
+  test14_foo("%", "%d", p); // expected-warning{{incomplete format specifier}}
+  test14_bar("%", "%d", p); // expected-warning{{incomplete format specifier}}
 }

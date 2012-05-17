@@ -1,4 +1,4 @@
-//===-- PPCTargetMachine.h - Define TargetMachine for PowerPC -----*- C++ -*-=//
+//===-- PPCTargetMachine.h - Define TargetMachine for PowerPC ---*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -24,8 +24,6 @@
 #include "llvm/Target/TargetData.h"
 
 namespace llvm {
-class PassManager;
-class GlobalValue;
 
 /// PPCTargetMachine - Common code between 32-bit and 64-bit PowerPC targets.
 ///

@@ -372,13 +372,9 @@ FunctionType *Intrinsic::getType(LLVMContext &Context,
 }
 
 bool Intrinsic::isOverloaded(ID id) {
-  static const bool OTable[] = {
-    false,
 #define GET_INTRINSIC_OVERLOAD_TABLE
 #include "llvm/Intrinsics.gen"
 #undef GET_INTRINSIC_OVERLOAD_TABLE
-  };
-  return OTable[id];
 }
 
 /// This defines the "Intrinsic::getAttributes(ID id)" method.
@@ -404,7 +400,8 @@ Function *Intrinsic::getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys) {
 bool Function::hasAddressTaken(const User* *PutOffender) const {
   for (Value::const_use_iterator I = use_begin(), E = use_end(); I != E; ++I) {
     const User *U = *I;
-    // FIXME: Check for blockaddress, which does not take the address.
+    if (isa<BlockAddress>(U))
+      continue;
     if (!isa<CallInst>(U) && !isa<InvokeInst>(U))
       return PutOffender ? (*PutOffender = U, true) : true;
     ImmutableCallSite CS(cast<Instruction>(U));

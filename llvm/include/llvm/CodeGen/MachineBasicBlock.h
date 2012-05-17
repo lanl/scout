@@ -117,6 +117,10 @@ public:
   /// "(null)".
   StringRef getName() const;
 
+  /// getFullName - Return a formatted string to identify this block and its
+  /// parent function.
+  std::string getFullName() const;
+
   /// hasAddressTaken - Test whether this block is potentially the target
   /// of an indirect branch.
   bool hasAddressTaken() const { return AddressTaken; }
@@ -152,7 +156,10 @@ public:
       assert((!mi || !mi->isInsideBundle()) &&
              "It's not legal to initialize bundle_iterator with a bundled MI");
     }
-    bundle_iterator(const bundle_iterator &I) : MII(I.MII) {}
+    // Template allows conversion from const to nonconst.
+    template<class OtherTy, class OtherIterTy>
+    bundle_iterator(const bundle_iterator<OtherTy, OtherIterTy> &I)
+      : MII(I.getInstrIterator()) {}
     bundle_iterator() : MII(0) {}
 
     Ty &operator*() const { return *MII; }

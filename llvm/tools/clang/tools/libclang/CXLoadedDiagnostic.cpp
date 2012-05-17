@@ -119,6 +119,10 @@ unsigned CXLoadedDiagnostic::getCategory() const {
   return category;
 }
 
+CXString CXLoadedDiagnostic::getCategoryText() const {
+  return cxstring::createCXString(CategoryText);
+}
+
 unsigned CXLoadedDiagnostic::getNumRanges() const {
   return Ranges.size();
 }
@@ -257,7 +261,7 @@ CXDiagnosticSet DiagLoader::load(const char *file) {
   FileSystemOptions FO;
   FileManager FileMgr(FO);
 
-  llvm::OwningPtr<llvm::MemoryBuffer> Buffer;
+  OwningPtr<llvm::MemoryBuffer> Buffer;
   Buffer.reset(FileMgr.getBufferForFile(file));
 
   if (!Buffer) {
@@ -282,7 +286,7 @@ CXDiagnosticSet DiagLoader::load(const char *file) {
     return 0;
   }
 
-  llvm::OwningPtr<CXLoadedDiagnosticSetImpl>
+  OwningPtr<CXLoadedDiagnosticSetImpl>
     Diags(new CXLoadedDiagnosticSetImpl());
 
   while (true) {
@@ -543,7 +547,7 @@ LoadResult DiagLoader::readDiagnosticBlock(llvm::BitstreamCursor &Stream,
     return Failure;
   }
   
-  llvm::OwningPtr<CXLoadedDiagnostic> D(new CXLoadedDiagnostic());
+  OwningPtr<CXLoadedDiagnostic> D(new CXLoadedDiagnostic());
   RecordData Record;
   
   while (true) {
@@ -650,6 +654,7 @@ LoadResult DiagLoader::readDiagnosticBlock(llvm::BitstreamCursor &Stream,
         D->category = Record[offset++];
         unsigned diagFlag = Record[offset++];
         D->DiagOption = diagFlag ? TopDiags.WarningFlags[diagFlag] : "";
+        D->CategoryText = D->category ? TopDiags.Categories[D->category] : "";
         D->Spelling = TopDiags.makeString(BlobStart, BlobLen);
         continue;
       }

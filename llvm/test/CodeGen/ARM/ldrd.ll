@@ -18,7 +18,6 @@ entry:
 
 ; M3: t:
 ; M3-NOT: ldrd
-; M3: ldm.w r2, {r2, r3}
 
 	%0 = load i64** @b, align 4
 	%1 = load i64* %0, align 4
@@ -44,8 +43,7 @@ entry:
 ; BASIC: str
 ; GREEDY: @f
 ; GREEDY: %bb
-; GREEDY: ldr
-; GREEDY: ldr
+; GREEDY: ldrd
 ; GREEDY: str
 define void @f(i32* nocapture %a, i32* nocapture %b, i32 %n) nounwind {
 entry:

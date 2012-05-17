@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/ADT/OwningPtr.h"
 #include <vector>
 
 namespace clang {
@@ -119,6 +120,17 @@ public:
 /// HeaderSearch - This class encapsulates the information needed to find the
 /// file referenced by a #include or #include_next, (sub-)framework lookup, etc.
 class HeaderSearch {
+  /// This structure is used to record entries in our framework cache.
+  struct FrameworkCacheEntry {
+    /// The directory entry which should be used for the cached framework.
+    const DirectoryEntry *Directory;
+
+    /// Whether this framework has been "user-specified" to be treated as if it
+    /// were a system framework (even if it was found outside a system framework
+    /// directory).
+    bool IsUserSpecifiedSystemFramework;
+  };
+
   FileManager &FileMgr;
   DiagnosticsEngine &Diags;
   /// #include search path information.  Requests for #include "x" search the
@@ -151,8 +163,14 @@ class HeaderSearch {
 
   /// FrameworkMap - This is a collection mapping a framework or subframework
   /// name like "Carbon" to the Carbon.framework directory.
-  llvm::StringMap<const DirectoryEntry *, llvm::BumpPtrAllocator>
-    FrameworkMap;
+  llvm::StringMap<FrameworkCacheEntry, llvm::BumpPtrAllocator> FrameworkMap;
+
+  /// IncludeAliases - maps include file names (including the quotes or
+  /// angle brackets) to other include file names.  This is used to support the
+  /// include_alias pragma for Microsoft compatibility.
+  typedef llvm::StringMap<std::string, llvm::BumpPtrAllocator>
+    IncludeAliasMap;
+  OwningPtr<IncludeAliasMap> IncludeAliases;
 
   /// HeaderMaps - This is a mapping from FileEntry -> HeaderMap, uniquing
   /// headermaps.  This vector owns the headermap.
@@ -215,6 +233,34 @@ public:
     if (!isAngled)
       AngledDirIdx++;
     SystemDirIdx++;
+  }
+
+  /// HasIncludeAliasMap - Checks whether the map exists or not
+  bool HasIncludeAliasMap() const {
+    return IncludeAliases;
+  }
+
+  /// AddIncludeAlias - Map the source include name to the dest include name.
+  /// The Source should include the angle brackets or quotes, the dest 
+  /// should not.  This allows for distinction between <> and "" headers.
+  void AddIncludeAlias(StringRef Source, StringRef Dest) {
+    if (!IncludeAliases)
+      IncludeAliases.reset(new IncludeAliasMap);
+    (*IncludeAliases)[Source] = Dest;
+  }
+
+  /// MapHeaderToIncludeAlias - Maps one header file name to a different header
+  /// file name, for use with the include_alias pragma.  Note that the source
+  /// file name should include the angle brackets or quotes.  Returns StringRef
+  /// as null if the header cannot be mapped.
+  StringRef MapHeaderToIncludeAlias(StringRef Source) {
+    assert(IncludeAliases && "Trying to map headers when there's no map");
+
+    // Do any filename replacements before anything else
+    IncludeAliasMap::const_iterator Iter = IncludeAliases->find(Source);
+    if (Iter != IncludeAliases->end())
+      return Iter->second;
+    return StringRef();
   }
 
   /// \brief Set the path to the module cache.
@@ -295,7 +341,7 @@ public:
   /// LookupFrameworkCache - Look up the specified framework name in our
   /// framework cache, returning the DirectoryEntry it is in if we know,
   /// otherwise, return null.
-  const DirectoryEntry *&LookupFrameworkCache(StringRef FWName) {
+  FrameworkCacheEntry &LookupFrameworkCache(StringRef FWName) {
     return FrameworkMap.GetOrCreateValue(FWName).getValue();
   }
 

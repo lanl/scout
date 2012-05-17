@@ -185,16 +185,7 @@ bool Type::isSizedDerivedType() const {
   if (!this->isStructTy()) 
     return false;
 
-  // Opaque structs have no size.
-  if (cast<StructType>(this)->isOpaque())
-    return false;
-  
-  // Okay, our struct is sized if all of the elements are.
-  for (subtype_iterator I = subtype_begin(), E = subtype_end(); I != E; ++I)
-    if (!(*I)->isSized()) 
-      return false;
-
-  return true;
+  return cast<StructType>(this)->isSized();
 }
 
 //===----------------------------------------------------------------------===//
@@ -390,24 +381,20 @@ FunctionType::FunctionType(Type *Result, ArrayRef<Type*> Params,
 // FunctionType::get - The factory function for the FunctionType class.
 FunctionType *FunctionType::get(Type *ReturnType,
                                 ArrayRef<Type*> Params, bool isVarArg) {
-  // TODO: This is brutally slow.
-  unsigned ParamsSize = Params.size();
-  std::vector<Type*> Key;
-  Key.reserve(ParamsSize + 2);
-  Key.push_back(const_cast<Type*>(ReturnType));
-  for (unsigned i = 0, e = ParamsSize; i != e; ++i)
-    Key.push_back(const_cast<Type*>(Params[i]));
-  if (isVarArg)
-    Key.push_back(0);
-  
   LLVMContextImpl *pImpl = ReturnType->getContext().pImpl;
-  FunctionType *&FT = pImpl->FunctionTypes[Key];
-  
-  if (FT == 0) {
+  FunctionTypeKeyInfo::KeyTy Key(ReturnType, Params, isVarArg);
+  LLVMContextImpl::FunctionTypeMap::iterator I =
+    pImpl->FunctionTypes.find_as(Key);
+  FunctionType *FT;
+
+  if (I == pImpl->FunctionTypes.end()) {
     FT = (FunctionType*) pImpl->TypeAllocator.
-      Allocate(sizeof(FunctionType) + sizeof(Type*) * (ParamsSize + 1),
+      Allocate(sizeof(FunctionType) + sizeof(Type*) * (Params.size() + 1),
                AlignOf<FunctionType>::Alignment);
     new (FT) FunctionType(ReturnType, Params, isVarArg);
+    pImpl->FunctionTypes[FT] = true;
+  } else {
+    FT = I->first;
   }
 
   return FT;
@@ -440,24 +427,22 @@ bool FunctionType::isValidArgumentType(Type *ArgTy) {
 
 StructType *StructType::get(LLVMContext &Context, ArrayRef<Type*> ETypes, 
                             bool isPacked) {
-  // FIXME: std::vector is horribly inefficient for this probe.
-  unsigned ETypesSize = ETypes.size();
-  std::vector<Type*> Key(ETypesSize);
-  for (unsigned i = 0, e = ETypesSize; i != e; ++i) {
-    assert(isValidElementType(ETypes[i]) &&
-           "Invalid type for structure element!");
-    Key[i] = ETypes[i];
+  LLVMContextImpl *pImpl = Context.pImpl;
+  AnonStructTypeKeyInfo::KeyTy Key(ETypes, isPacked);
+  LLVMContextImpl::StructTypeMap::iterator I =
+    pImpl->AnonStructTypes.find_as(Key);
+  StructType *ST;
+
+  if (I == pImpl->AnonStructTypes.end()) {
+    // Value not found.  Create a new type!
+    ST = new (Context.pImpl->TypeAllocator) StructType(Context);
+    ST->setSubclassData(SCDB_IsLiteral);  // Literal struct.
+    ST->setBody(ETypes, isPacked);
+    Context.pImpl->AnonStructTypes[ST] = true;
+  } else {
+    ST = I->first;
   }
-  if (isPacked)
-    Key.push_back(0);
-  
-  StructType *&ST = Context.pImpl->AnonStructTypes[Key];
-  if (ST) return ST;
-  
-  // Value not found.  Create a new type!
-  ST = new (Context.pImpl->TypeAllocator) StructType(Context);
-  ST->setSubclassData(SCDB_IsLiteral);  // Literal struct.
-  ST->setBody(ETypes, isPacked);
+
   return ST;
 }
 
@@ -585,6 +570,26 @@ StructType *StructType::create(StringRef Name, Type *type, ...) {
   return llvm::StructType::create(Ctx, StructFields, Name);
 }
 
+bool StructType::isSized() const {
+  if ((getSubclassData() & SCDB_IsSized) != 0)
+    return true;
+  if (isOpaque())
+    return false;
+
+  // Okay, our struct is sized if all of the elements are, but if one of the
+  // elements is opaque, the struct isn't sized *yet*, but may become sized in
+  // the future, so just bail out without caching.
+  for (element_iterator I = element_begin(), E = element_end(); I != E; ++I)
+    if (!(*I)->isSized())
+      return false;
+
+  // Here we cheat a bit and cast away const-ness. The goal is to memoize when
+  // we find a sized type, as types can only move from opaque to sized, not the
+  // other way.
+  const_cast<StructType*>(this)->setSubclassData(
+    getSubclassData() | SCDB_IsSized);
+  return true;
+}
 
 StringRef StructType::getName() const {
   assert(!isLiteral() && "Literal structs never have names");

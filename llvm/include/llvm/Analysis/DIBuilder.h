@@ -211,13 +211,19 @@ namespace llvm {
     /// createObjCProperty - Create debugging information entry for Objective-C
     /// property.
     /// @param Name         Property name.
+    /// @param File         File where this property is defined.
+    /// @param LineNumber   Line number.
     /// @param GetterName   Name of the Objective C property getter selector.
     /// @param SetterName   Name of the Objective C property setter selector.
     /// @param PropertyAttributes Objective C property attributes.
-    DIObjCProperty createObjCProperty(StringRef Name, StringRef GetterName,
-                                      StringRef SetterName, 
-                                      unsigned PropertyAttributes);
-
+    /// @param Ty           Type.
+    DIObjCProperty createObjCProperty(StringRef Name,
+				      DIFile File, unsigned LineNumber,
+				      StringRef GetterName,
+				      StringRef SetterName,
+				      unsigned PropertyAttributes,
+				      DIType Ty);
+      
     /// createClassType - Create debugging information entry for a class.
     /// @param Scope        Scope in which this class is defined.
     /// @param Name         class name.
@@ -342,8 +348,8 @@ namespace llvm {
     DIType createTemporaryType(DIFile F);
 
     /// createForwardDecl - Create a temporary forward-declared type.
-    DIType createForwardDecl(unsigned Tag, StringRef Name, DIFile F,
-                             unsigned Line);
+    DIType createForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Scope,
+                             DIFile F, unsigned Line, unsigned RuntimeLang = 0);
 
     /// retainType - Retain DIType in a module even if it is not referenced 
     /// through debug info anchors.
@@ -439,6 +445,7 @@ namespace llvm {
     /// @param Ty            Function type.
     /// @param isLocalToUnit True if this function is not externally visible..
     /// @param isDefinition  True if this is a function definition.
+    /// @param ScopeLine     Set to the beginning of the scope this starts
     /// @param Flags         e.g. is this function prototyped or not.
     ///                      This flags are used to emit dwarf attributes.
     /// @param isOptimized   True if optimization is ON.
@@ -449,6 +456,7 @@ namespace llvm {
                                 DIFile File, unsigned LineNo,
                                 DIType Ty, bool isLocalToUnit,
                                 bool isDefinition,
+                                unsigned ScopeLine,
                                 unsigned Flags = 0,
                                 bool isOptimized = false,
                                 Function *Fn = 0,

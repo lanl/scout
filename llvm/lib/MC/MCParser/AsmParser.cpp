@@ -14,7 +14,6 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -111,6 +110,9 @@ private:
 
   /// ActiveMacros - Stack of active macro instantiations.
   std::vector<MacroInstantiation*> ActiveMacros;
+
+  /// ActiveRept - Stack of active .rept directives.
+  std::vector<SMLoc> ActiveRept;
 
   /// Boolean tracking whether macro substitution is enabled.
   unsigned MacrosEnabled : 1;
@@ -210,6 +212,10 @@ private:
   /// will be either the EndOfStatement or EOF.
   StringRef ParseStringToEndOfStatement();
 
+  /// \brief Parse until the end of a statement or a comma is encountered,
+  /// return the contents from the current token up to the end or comma.
+  StringRef ParseStringToComma();
+
   bool ParseAssignment(StringRef Name, bool allow_redef);
 
   bool ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc);
@@ -246,6 +252,10 @@ private:
   bool ParseDirectiveIncbin(); // ".incbin"
 
   bool ParseDirectiveIf(SMLoc DirectiveLoc); // ".if"
+  // ".ifb" or ".ifnb", depending on ExpectBlank.
+  bool ParseDirectiveIfb(SMLoc DirectiveLoc, bool ExpectBlank);
+  // ".ifc" or ".ifnc", depending on ExpectEqual.
+  bool ParseDirectiveIfc(SMLoc DirectiveLoc, bool ExpectEqual);
   // ".ifdef" or ".ifndef", depending on expect_defined
   bool ParseDirectiveIfdef(SMLoc DirectiveLoc, bool expect_defined);
   bool ParseDirectiveElseIf(SMLoc DirectiveLoc); // ".elseif"
@@ -258,6 +268,9 @@ private:
 
   const MCExpr *ApplyModifierToExpr(const MCExpr *E,
                                     MCSymbolRefExpr::VariantKind Variant);
+
+  bool ParseDirectiveRept(SMLoc DirectiveLoc);
+  bool ParseDirectiveEndRept(SMLoc DirectiveLoc);
 };
 
 /// \brief Generic implementations of directive handling, etc. which is shared
@@ -329,6 +342,7 @@ public:
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveMacro>(".macro");
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveEndMacro>(".endm");
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveEndMacro>(".endmacro");
+    AddDirectiveHandler<&GenericAsmParser::ParseDirectivePurgeMacro>(".purgem");
 
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveLEB128>(".sleb128");
     AddDirectiveHandler<&GenericAsmParser::ParseDirectiveLEB128>(".uleb128");
@@ -360,6 +374,7 @@ public:
   bool ParseDirectiveMacrosOnOff(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveMacro(StringRef, SMLoc DirectiveLoc);
   bool ParseDirectiveEndMacro(StringRef, SMLoc DirectiveLoc);
+  bool ParseDirectivePurgeMacro(StringRef, SMLoc DirectiveLoc);
 
   bool ParseDirectiveLEB128(StringRef, SMLoc);
 };
@@ -603,6 +618,18 @@ StringRef AsmParser::ParseStringToEndOfStatement() {
   return StringRef(Start, End - Start);
 }
 
+StringRef AsmParser::ParseStringToComma() {
+  const char *Start = getTok().getLoc().getPointer();
+
+  while (Lexer.isNot(AsmToken::EndOfStatement) &&
+         Lexer.isNot(AsmToken::Comma) &&
+         Lexer.isNot(AsmToken::Eof))
+    Lex();
+
+  const char *End = getTok().getLoc().getPointer();
+  return StringRef(Start, End - Start);
+}
+
 /// ParseParenExpr - Parse a paren expression and return it.
 /// NOTE: This assumes the leading '(' has already been consumed.
 ///
@@ -701,7 +728,7 @@ bool AsmParser::ParsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) {
                                                       IDVal == "f" ? 1 : 0);
         Res = MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_None,
                                       getContext());
-        if(IDVal == "b" && Sym->isUndefined())
+        if (IDVal == "b" && Sym->isUndefined())
           return Error(Loc, "invalid reference to undefined symbol");
         EndLoc = Lexer.getLoc();
         Lex(); // Eat identifier.
@@ -1043,6 +1070,14 @@ bool AsmParser::ParseStatement() {
   // example.
   if (IDVal == ".if")
     return ParseDirectiveIf(IDLoc);
+  if (IDVal == ".ifb")
+    return ParseDirectiveIfb(IDLoc, true);
+  if (IDVal == ".ifnb")
+    return ParseDirectiveIfb(IDLoc, false);
+  if (IDVal == ".ifc")
+    return ParseDirectiveIfc(IDLoc, true);
+  if (IDVal == ".ifnc")
+    return ParseDirectiveIfc(IDLoc, false);
   if (IDVal == ".ifdef")
     return ParseDirectiveIfdef(IDLoc, true);
   if (IDVal == ".ifndef" || IDVal == ".ifnotdef")
@@ -1193,6 +1228,10 @@ bool AsmParser::ParseStatement() {
 
     // Symbol attribute directives
 
+    if (IDVal == ".extern") {
+      EatToEndOfStatement(); // .extern is the default, ignore it.
+      return false;
+    }
     if (IDVal == ".globl" || IDVal == ".global")
       return ParseDirectiveSymbolAttribute(MCSA_Global);
     if (IDVal == ".indirect_symbol")
@@ -1226,8 +1265,13 @@ bool AsmParser::ParseStatement() {
     if (IDVal == ".incbin")
       return ParseDirectiveIncbin();
 
-    if (IDVal == ".code16")
+    if (IDVal == ".code16" || IDVal == ".code16gcc")
       return TokError(Twine(IDVal) + " not supported yet");
+
+    if (IDVal == ".rept")
+      return ParseDirectiveRept(IDLoc);
+    if (IDVal == ".endr")
+      return ParseDirectiveEndRept(IDLoc);
 
     // Look up the handler in the handler table.
     std::pair<MCAsmParserExtension*, DirectiveHandler> Handler =
@@ -1239,9 +1283,7 @@ bool AsmParser::ParseStatement() {
     if (!getTargetParser().ParseDirective(ID))
       return false;
 
-    bool retval = Warning(IDLoc, "ignoring directive for now");
-    EatToEndOfStatement();
-    return retval;
+    return Error(IDLoc, "unknown directive");
   }
 
   CheckForValidSection();
@@ -1528,6 +1570,11 @@ bool AsmParser::HandleMacroEntry(StringRef Name, SMLoc NameLoc,
     }
     Lex();
   }
+  // If the last argument didn't end up with any tokens, it's not a real
+  // argument and we should remove it from the list. This happens with either
+  // a tailing comma or an empty argument list.
+  if (MacroArguments.back().empty())
+    MacroArguments.pop_back();
 
   // Macro instantiation is lexical, unfortunately. We construct a new buffer
   // to hold the macro body with substitutions.
@@ -1624,6 +1671,8 @@ bool AsmParser::ParseAssignment(StringRef Name, bool allow_redef) {
       return Error(EqualLoc, "Recursive use of '" + Name + "'");
     else if (Sym->isUndefined() && !Sym->isUsed() && !Sym->isVariable())
       ; // Allow redefinitions of undefined symbols only used in directives.
+    else if (Sym->isVariable() && !Sym->isUsed() && allow_redef)
+      ; // Allow redefinitions of variables that haven't yet been used.
     else if (!Sym->isUndefined() && (!Sym->isVariable() || !allow_redef))
       return Error(EqualLoc, "redefinition of '" + Name + "'");
     else if (!Sym->isVariable())
@@ -2289,10 +2338,9 @@ bool AsmParser::ParseDirectiveIncbin() {
 bool AsmParser::ParseDirectiveIf(SMLoc DirectiveLoc) {
   TheCondStack.push_back(TheCondState);
   TheCondState.TheCond = AsmCond::IfCond;
-  if(TheCondState.Ignore) {
+  if (TheCondState.Ignore) {
     EatToEndOfStatement();
-  }
-  else {
+  } else {
     int64_t ExprValue;
     if (ParseAbsoluteExpression(ExprValue))
       return true;
@@ -2309,6 +2357,61 @@ bool AsmParser::ParseDirectiveIf(SMLoc DirectiveLoc) {
   return false;
 }
 
+/// ParseDirectiveIfb
+/// ::= .ifb string
+bool AsmParser::ParseDirectiveIfb(SMLoc DirectiveLoc, bool ExpectBlank) {
+  TheCondStack.push_back(TheCondState);
+  TheCondState.TheCond = AsmCond::IfCond;
+
+  if (TheCondState.Ignore) {
+    EatToEndOfStatement();
+  } else {
+    StringRef Str = ParseStringToEndOfStatement();
+
+    if (getLexer().isNot(AsmToken::EndOfStatement))
+      return TokError("unexpected token in '.ifb' directive");
+
+    Lex();
+
+    TheCondState.CondMet = ExpectBlank == Str.empty();
+    TheCondState.Ignore = !TheCondState.CondMet;
+  }
+
+  return false;
+}
+
+/// ParseDirectiveIfc
+/// ::= .ifc string1, string2
+bool AsmParser::ParseDirectiveIfc(SMLoc DirectiveLoc, bool ExpectEqual) {
+  TheCondStack.push_back(TheCondState);
+  TheCondState.TheCond = AsmCond::IfCond;
+
+  if (TheCondState.Ignore) {
+    EatToEndOfStatement();
+  } else {
+    StringRef Str1 = ParseStringToComma();
+
+    if (getLexer().isNot(AsmToken::Comma))
+      return TokError("unexpected token in '.ifc' directive");
+
+    Lex();
+
+    StringRef Str2 = ParseStringToEndOfStatement();
+
+    if (getLexer().isNot(AsmToken::EndOfStatement))
+      return TokError("unexpected token in '.ifc' directive");
+
+    Lex();
+
+    TheCondState.CondMet = ExpectEqual == (Str1 == Str2);
+    TheCondState.Ignore = !TheCondState.CondMet;
+  }
+
+  return false;
+}
+
+/// ParseDirectiveIfdef
+/// ::= .ifdef symbol
 bool AsmParser::ParseDirectiveIfdef(SMLoc DirectiveLoc, bool expect_defined) {
   StringRef Name;
   TheCondStack.push_back(TheCondState);
@@ -2992,6 +3095,27 @@ bool GenericAsmParser::ParseDirectiveEndMacro(StringRef Directive,
                   "no current macro definition");
 }
 
+/// ParseDirectivePurgeMacro
+/// ::= .purgem
+bool GenericAsmParser::ParseDirectivePurgeMacro(StringRef Directive,
+                                                SMLoc DirectiveLoc) {
+  StringRef Name;
+  if (getParser().ParseIdentifier(Name))
+    return TokError("expected identifier in '.purgem' directive");
+
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return TokError("unexpected token in '.purgem' directive");
+
+  StringMap<Macro*>::iterator I = getParser().MacroMap.find(Name);
+  if (I == getParser().MacroMap.end())
+    return Error(DirectiveLoc, "macro '" + Name + "' is not defined");
+
+  // Undefine the macro.
+  delete I->getValue();
+  getParser().MacroMap.erase(I);
+  return false;
+}
+
 bool GenericAsmParser::ParseDirectiveLEB128(StringRef DirName, SMLoc) {
   getParser().CheckForValidSection();
 
@@ -3011,6 +3135,86 @@ bool GenericAsmParser::ParseDirectiveLEB128(StringRef DirName, SMLoc) {
   return false;
 }
 
+bool AsmParser::ParseDirectiveRept(SMLoc DirectiveLoc) {
+  const MCExpr *Value;
+
+  if (ParseExpression(Value))
+    return true;
+
+  int64_t Count;
+  if (!Value->EvaluateAsAbsolute(Count))
+    return TokError("Cannot evaluate value");
+
+  if (Count < 0)
+    return TokError("Count is negative");
+
+  AsmToken EndToken, StartToken = getTok();
+  unsigned Nest = 1;
+
+  // Lex the macro definition.
+  for (;;) {
+    // Check whether we have reached the end of the file.
+    if (getLexer().is(AsmToken::Eof))
+      return Error(DirectiveLoc, "no matching '.endr' in definition");
+
+    // Chcek if we have a nested .rept.
+    if (getLexer().is(AsmToken::Identifier) &&
+        (getTok().getIdentifier() == ".rept")) {
+      Nest++;
+      EatToEndOfStatement();
+      continue;
+    }
+
+    // Otherwise, check whether we have reach the .endr.
+    if (getLexer().is(AsmToken::Identifier) &&
+        (getTok().getIdentifier() == ".endr")) {
+      Nest--;
+      if (Nest == 0) {
+        EndToken = getTok();
+        Lex();
+        if (getLexer().isNot(AsmToken::EndOfStatement))
+          return TokError("unexpected token in '.endr' directive");
+        break;
+      }
+    }
+
+    // Otherwise, scan til the end of the statement.
+    EatToEndOfStatement();
+  }
+
+  const char *BodyStart = StartToken.getLoc().getPointer();
+  const char *BodyEnd = EndToken.getLoc().getPointer();
+  StringRef Body = StringRef(BodyStart, BodyEnd - BodyStart);
+
+  SmallString<256> Buf;
+  raw_svector_ostream OS(Buf);
+  for (int i = 0; i < Count; i++)
+    OS << Body;
+  OS << ".endr\n";
+
+  MemoryBuffer *Instantiation =
+    MemoryBuffer::getMemBufferCopy(OS.str(), "<instantiation>");
+
+  CurBuffer = SrcMgr.AddNewSourceBuffer(Instantiation, SMLoc());
+  Lexer.setBuffer(SrcMgr.getMemoryBuffer(CurBuffer));
+
+  ActiveRept.push_back(getTok().getLoc());
+
+  return false;
+}
+
+bool AsmParser::ParseDirectiveEndRept(SMLoc DirectiveLoc) {
+  if (ActiveRept.empty())
+    return TokError("unexpected '.endr' directive, no current .rept");
+
+  // The only .repl that should get here are the ones created by
+  // ParseDirectiveRept.
+  assert(getLexer().is(AsmToken::EndOfStatement));
+
+  JumpToLoc(ActiveRept.back());
+  ActiveRept.pop_back();
+  return false;
+}
 
 /// \brief Create an MCAsmParser instance.
 MCAsmParser *llvm::createMCAsmParser(SourceMgr &SM,

@@ -31,14 +31,15 @@
 
 #define DEBUG_TYPE "regalloc"
 
-#include "LiveRangeEdit.h"
 #include "RenderMachineFunction.h"
 #include "Spiller.h"
 #include "VirtRegMap.h"
 #include "RegisterCoalescer.h"
+#include "llvm/Module.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/CalcSpillWeights.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
+#include "llvm/CodeGen/LiveRangeEdit.h"
 #include "llvm/CodeGen/LiveStackAnalysis.h"
 #include "llvm/CodeGen/RegAllocPBQP.h"
 #include "llvm/CodeGen/MachineDominators.h"
@@ -56,6 +57,7 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <vector>
 
 using namespace llvm;
@@ -68,6 +70,13 @@ static cl::opt<bool>
 pbqpCoalescing("pbqp-coalescing",
                 cl::desc("Attempt coalescing during PBQP register allocation."),
                 cl::init(false), cl::Hidden);
+
+#ifndef NDEBUG
+static cl::opt<bool>
+pbqpDumpGraphs("pbqp-dump-graphs",
+               cl::desc("Dump graphs for each function/round in the compilation unit."),
+               cl::init(false), cl::Hidden);
+#endif
 
 namespace {
 
@@ -85,7 +94,6 @@ public:
       : MachineFunctionPass(ID), builder(b), customPassID(cPassID) {
     initializeSlotIndexesPass(*PassRegistry::getPassRegistry());
     initializeLiveIntervalsPass(*PassRegistry::getPassRegistry());
-    initializeRegisterCoalescerPass(*PassRegistry::getPassRegistry());
     initializeCalculateSpillWeightsPass(*PassRegistry::getPassRegistry());
     initializeLiveStacksPass(*PassRegistry::getPassRegistry());
     initializeMachineLoopInfoPass(*PassRegistry::getPassRegistry());
@@ -163,7 +171,7 @@ PBQP::Graph::NodeItr PBQPRAProblem::getNodeForVReg(unsigned vreg) const {
   VReg2Node::const_iterator nodeItr = vreg2Node.find(vreg);
   assert(nodeItr != vreg2Node.end() && "No node for vreg.");
   return nodeItr->second;
-  
+
 }
 
 const PBQPRAProblem::AllowedSet&
@@ -188,9 +196,9 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
                                                 const RegSet &vregs) {
 
   typedef std::vector<const LiveInterval*> LIVector;
-
+  ArrayRef<SlotIndex> regMaskSlots = lis->getRegMaskSlots();
   MachineRegisterInfo *mri = &mf->getRegInfo();
-  const TargetRegisterInfo *tri = mf->getTarget().getRegisterInfo();  
+  const TargetRegisterInfo *tri = mf->getTarget().getRegisterInfo();
 
   std::auto_ptr<PBQPRAProblem> p(new PBQPRAProblem());
   PBQP::Graph &g = p->getGraph();
@@ -207,7 +215,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
 
   BitVector reservedRegs = tri->getReservedRegs(*mf);
 
-  // Iterate over vregs. 
+  // Iterate over vregs.
   for (RegSet::const_iterator vregItr = vregs.begin(), vregEnd = vregs.end();
        vregItr != vregEnd; ++vregItr) {
     unsigned vreg = *vregItr;
@@ -217,7 +225,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
     // Compute an initial allowed set for the current vreg.
     typedef std::vector<unsigned> VRAllowed;
     VRAllowed vrAllowed;
-    ArrayRef<unsigned> rawOrder = trc->getRawAllocationOrder(*mf);
+    ArrayRef<uint16_t> rawOrder = trc->getRawAllocationOrder(*mf);
     for (unsigned i = 0; i != rawOrder.size(); ++i) {
       unsigned preg = rawOrder[i];
       if (!reservedRegs.test(preg)) {
@@ -225,7 +233,9 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
       }
     }
 
-    // Remove any physical registers which overlap.
+    RegSet overlappingPRegs;
+
+    // Record physical registers whose ranges overlap.
     for (RegSet::const_iterator pregItr = pregs.begin(),
                                 pregEnd = pregs.end();
          pregItr != pregEnd; ++pregItr) {
@@ -236,9 +246,41 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
         continue;
       }
 
-      if (!vregLI->overlaps(*pregLI)) {
-        continue;
+      if (vregLI->overlaps(*pregLI))
+        overlappingPRegs.insert(preg);      
+    }
+
+    // Record any overlaps with regmask operands.
+    BitVector regMaskOverlaps(tri->getNumRegs());
+    for (ArrayRef<SlotIndex>::iterator rmItr = regMaskSlots.begin(),
+                                       rmEnd = regMaskSlots.end();
+         rmItr != rmEnd; ++rmItr) {
+      SlotIndex rmIdx = *rmItr;
+      if (vregLI->liveAt(rmIdx)) {
+        MachineInstr *rmMI = lis->getInstructionFromIndex(rmIdx);
+        const uint32_t* regMask = 0;
+        for (MachineInstr::mop_iterator mopItr = rmMI->operands_begin(),
+                                        mopEnd = rmMI->operands_end();
+             mopItr != mopEnd; ++mopItr) {
+          if (mopItr->isRegMask()) {
+            regMask = mopItr->getRegMask();
+            break;
+          }
+        }
+        assert(regMask != 0 && "Couldn't find register mask.");
+        regMaskOverlaps.setBitsNotInMask(regMask);
       }
+    }
+
+    for (unsigned preg = 0; preg < tri->getNumRegs(); ++preg) {
+      if (regMaskOverlaps.test(preg))
+        overlappingPRegs.insert(preg);
+    }
+
+    for (RegSet::const_iterator pregItr = overlappingPRegs.begin(),
+                                pregEnd = overlappingPRegs.end();
+         pregItr != pregEnd; ++pregItr) {
+      unsigned preg = *pregItr;
 
       // Remove the register from the allowed set.
       VRAllowed::iterator eraseItr =
@@ -249,7 +291,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
       }
 
       // Also remove any aliases.
-      const unsigned *aliasItr = tri->getAliasSet(preg);
+      const uint16_t *aliasItr = tri->getAliasSet(preg);
       if (aliasItr != 0) {
         for (; *aliasItr != 0; ++aliasItr) {
           VRAllowed::iterator eraseItr =
@@ -263,7 +305,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
     }
 
     // Construct the node.
-    PBQP::Graph::NodeItr node = 
+    PBQP::Graph::NodeItr node =
       g.addNode(PBQP::Vector(vrAllowed.size() + 1, 0));
 
     // Record the mapping and allowed set in the problem.
@@ -364,7 +406,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilderWithCoalescing::build(
 
       const float copyFactor = 0.5; // Cost of copy relative to load. Current
       // value plucked randomly out of the air.
-                                      
+
       PBQP::PBQPNum cBenefit =
         copyFactor * LiveIntervals::getSpillWeight(false, true,
                                                    loopInfo->getLoopDepth(mbb));
@@ -375,7 +417,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilderWithCoalescing::build(
         }
 
         const PBQPRAProblem::AllowedSet &allowed = p->getAllowedSet(src);
-        unsigned pregOpt = 0;  
+        unsigned pregOpt = 0;
         while (pregOpt < allowed.size() && allowed[pregOpt] != dst) {
           ++pregOpt;
         }
@@ -400,7 +442,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilderWithCoalescing::build(
             std::swap(allowed1, allowed2);
           }
         }
-            
+
         addVirtRegCoalesce(g.getEdgeCosts(edge), *allowed1, *allowed2,
                            cBenefit);
       }
@@ -432,7 +474,7 @@ void PBQPBuilderWithCoalescing::addVirtRegCoalesce(
 
       if (preg1 == preg2) {
         costMat[i + 1][j + 1] += -benefit;
-      } 
+      }
     }
   }
 }
@@ -446,7 +488,6 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.addPreserved<SlotIndexes>();
   au.addRequired<LiveIntervals>();
   //au.addRequiredID(SplitCriticalEdgesID);
-  au.addRequiredID(RegisterCoalescerPassID);
   if (customPassID)
     au.addRequiredID(*customPassID);
   au.addRequired<CalculateSpillWeights>();
@@ -502,14 +543,14 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAProblem &problem,
     unsigned alloc = solution.getSelection(node);
 
     if (problem.isPRegOption(vreg, alloc)) {
-      unsigned preg = problem.getPRegForOption(vreg, alloc);    
+      unsigned preg = problem.getPRegForOption(vreg, alloc);
       DEBUG(dbgs() << "VREG " << vreg << " -> " << tri->getName(preg) << "\n");
       assert(preg != 0 && "Invalid preg selected.");
-      vrm->assignVirt2Phys(vreg, preg);      
+      vrm->assignVirt2Phys(vreg, preg);
     } else if (problem.isSpillOption(vreg, alloc)) {
       vregsToAlloc.erase(vreg);
       SmallVector<LiveInterval*, 8> newSpills;
-      LiveRangeEdit LRE(lis->getInterval(vreg), newSpills);
+      LiveRangeEdit LRE(lis->getInterval(vreg), newSpills, *mf, *lis, vrm);
       spiller->spill(LRE);
 
       DEBUG(dbgs() << "VREG " << vreg << " -> SPILLED (Cost: "
@@ -609,7 +650,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   tm = &mf->getTarget();
   tri = tm->getRegisterInfo();
   tii = tm->getInstrInfo();
-  mri = &mf->getRegInfo(); 
+  mri = &mf->getRegInfo();
 
   lis = &getAnalysis<LiveIntervals>();
   lss = &getAnalysis<LiveStacks>();
@@ -635,6 +676,12 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   // Find the vreg intervals in need of allocation.
   findVRegIntervalsToAlloc();
 
+  const Function* func = mf->getFunction();
+  std::string fqn =
+    func->getParent()->getModuleIdentifier() + "." +
+    func->getName().str();
+  (void)fqn;
+
   // If there are non-empty intervals allocate them using pbqp.
   if (!vregsToAlloc.empty()) {
 
@@ -646,6 +693,20 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
       std::auto_ptr<PBQPRAProblem> problem =
         builder->build(mf, lis, loopInfo, vregsToAlloc);
+
+#ifndef NDEBUG
+      if (pbqpDumpGraphs) {
+        std::ostringstream rs;
+        rs << round;
+        std::string graphFileName(fqn + "." + rs.str() + ".pbqpgraph");
+        std::string tmp;
+        raw_fd_ostream os(graphFileName.c_str(), tmp);
+        DEBUG(dbgs() << "Dumping graph for round " << round << " to \""
+              << graphFileName << "\"\n");
+        problem->getGraph().dump(os);
+      }
+#endif
+
       PBQP::Solution solution =
         PBQP::HeuristicSolver<PBQP::Heuristics::Briggs>::solve(
           problem->getGraph());
@@ -668,6 +729,11 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
   // Run rewriter
   vrm->rewrite(lis->getSlotIndexes());
+
+  // All machine operands and other references to virtual registers have been
+  // replaced. Remove the virtual registers.
+  vrm->clearAllVirt();
+  mri->clearVirtRegs();
 
   return true;
 }

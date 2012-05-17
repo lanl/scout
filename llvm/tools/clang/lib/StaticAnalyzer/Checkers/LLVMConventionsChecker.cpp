@@ -115,8 +115,10 @@ static bool IsSmallVector(QualType T) {
 namespace {
 class StringRefCheckerVisitor : public StmtVisitor<StringRefCheckerVisitor> {
   BugReporter &BR;
+  const Decl *DeclWithIssue;
 public:
-  StringRefCheckerVisitor(BugReporter &br) : BR(br) {}
+  StringRefCheckerVisitor(const Decl *declWithIssue, BugReporter &br)
+    : BR(br), DeclWithIssue(declWithIssue) {}
   void VisitChildren(Stmt *S) {
     for (Stmt::child_iterator I = S->child_begin(), E = S->child_end() ;
       I != E; ++I)
@@ -131,7 +133,7 @@ private:
 } // end anonymous namespace
 
 static void CheckStringRefAssignedTemporary(const Decl *D, BugReporter &BR) {
-  StringRefCheckerVisitor walker(BR);
+  StringRefCheckerVisitor walker(D, BR);
   walker.Visit(D->getBody());
 }
 
@@ -176,7 +178,7 @@ void StringRefCheckerVisitor::VisitVarDecl(VarDecl *VD) {
                      "std::string that it outlives";
   PathDiagnosticLocation VDLoc =
     PathDiagnosticLocation::createBegin(VD, BR.getSourceManager());
-  BR.EmitBasicReport(desc, "LLVM Conventions", desc,
+  BR.EmitBasicReport(DeclWithIssue, desc, "LLVM Conventions", desc,
                      VDLoc, Init->getSourceRange());
 }
 
@@ -229,7 +231,7 @@ static void CheckASTMemory(const CXXRecordDecl *R, BugReporter &BR) {
   for (RecordDecl::field_iterator I = R->field_begin(), E = R->field_end();
        I != E; ++I) {
     ASTFieldVisitor walker(R, BR);
-    walker.Visit(*I);
+    walker.Visit(&*I);
   }
 }
 
@@ -245,7 +247,7 @@ void ASTFieldVisitor::Visit(FieldDecl *D) {
     const RecordDecl *RD = RT->getDecl()->getDefinition();
     for (RecordDecl::field_iterator I = RD->field_begin(), E = RD->field_end();
          I != E; ++I)
-      Visit(*I);
+      Visit(&*I);
   }
 
   FieldChain.pop_back();
@@ -281,7 +283,7 @@ void ASTFieldVisitor::ReportError(QualType T) {
   // the class may be in the header file, for example).
   PathDiagnosticLocation L = PathDiagnosticLocation::createBegin(
                                FieldChain.front(), BR.getSourceManager());
-  BR.EmitBasicReport("AST node allocates heap memory", "LLVM Conventions",
+  BR.EmitBasicReport(Root, "AST node allocates heap memory", "LLVM Conventions",
                      os.str(), L);
 }
 

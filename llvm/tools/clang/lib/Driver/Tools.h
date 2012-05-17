@@ -59,6 +59,7 @@ namespace tools {
 
   /// \brief Clang integrated assembler tool.
   class LLVM_LIBRARY_VISIBILITY ClangAs : public Tool {
+    void AddARMTargetArgs(const ArgList &Args, ArgStringList &CmdArgs) const;
   public:
     ClangAs(const ToolChain &TC) : Tool("clang::as",
                                         "clang integrated assembler", TC) {}
@@ -147,6 +148,7 @@ namespace gcc {
                                        "linker (via gcc)", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void RenderExtraToolArgs(const JobAction &JA,
                                      ArgStringList &CmdArgs) const;
@@ -178,6 +180,7 @@ namespace hexagon {
       "hexagon-ld", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void RenderExtraToolArgs(const JobAction &JA,
                                      ArgStringList &CmdArgs) const;
@@ -284,6 +287,7 @@ namespace darwin {
     Link(const ToolChain &TC) : DarwinTool("darwin::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -355,6 +359,7 @@ namespace openbsd {
     Link(const ToolChain &TC) : Tool("openbsd::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -384,6 +389,7 @@ namespace freebsd {
     Link(const ToolChain &TC) : Tool("freebsd::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -416,6 +422,7 @@ namespace netbsd {
       : Tool("netbsd::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -445,6 +452,7 @@ namespace linuxtools {
     Link(const ToolChain &TC) : Tool("linux::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -473,6 +481,7 @@ namespace minix {
     Link(const ToolChain &TC) : Tool("minix::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -481,6 +490,36 @@ namespace minix {
                               const char *LinkingOutput) const;
   };
 } // end namespace minix
+
+  /// solaris -- Directly call Solaris assembler and linker
+namespace solaris {
+  class LLVM_LIBRARY_VISIBILITY Assemble : public Tool  {
+  public:
+    Assemble(const ToolChain &TC) : Tool("solaris::Assemble", "assembler",
+                                         TC) {}
+
+    virtual bool hasIntegratedCPP() const { return false; }
+
+    virtual void ConstructJob(Compilation &C, const JobAction &JA,
+                              const InputInfo &Output,
+                              const InputInfoList &Inputs,
+                              const ArgList &TCArgs,
+                              const char *LinkingOutput) const;
+  };
+  class LLVM_LIBRARY_VISIBILITY Link : public Tool  {
+  public:
+    Link(const ToolChain &TC) : Tool("solaris::Link", "linker", TC) {}
+
+    virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
+
+    virtual void ConstructJob(Compilation &C, const JobAction &JA,
+                              const InputInfo &Output,
+                              const InputInfoList &Inputs,
+                              const ArgList &TCArgs,
+                              const char *LinkingOutput) const;
+  };
+} // end namespace solaris
 
   /// auroraux -- Directly call GNU Binutils assembler and linker
 namespace auroraux {
@@ -502,6 +541,7 @@ namespace auroraux {
     Link(const ToolChain &TC) : Tool("auroraux::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -531,6 +571,7 @@ namespace dragonfly {
     Link(const ToolChain &TC) : Tool("dragonfly::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,
@@ -547,6 +588,7 @@ namespace visualstudio {
     Link(const ToolChain &TC) : Tool("visualstudio::Link", "linker", TC) {}
 
     virtual bool hasIntegratedCPP() const { return false; }
+    virtual bool isLinkJob() const { return true; }
 
     virtual void ConstructJob(Compilation &C, const JobAction &JA,
                               const InputInfo &Output,

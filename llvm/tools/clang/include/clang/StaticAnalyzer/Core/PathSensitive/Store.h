@@ -94,10 +94,6 @@ public:
     return svalBuilder.makeLoc(MRMgr.getVarRegion(VD, LC));
   }
 
-  virtual Loc getLValueString(const StringLiteral* S) {
-    return svalBuilder.makeLoc(MRMgr.getStringRegion(S));
-  }
-
   Loc getLValueCompoundLiteral(const CompoundLiteralExpr *CL,
                                const LocationContext *LC) {
     return loc::MemRegionVal(MRMgr.getCompoundLiteralRegion(CL, LC));
@@ -124,9 +120,18 @@ public:
   virtual SVal ArrayToPointer(Loc Array) = 0;
 
   /// Evaluates DerivedToBase casts.
-  virtual SVal evalDerivedToBase(SVal derived, QualType basePtrType) {
-    return UnknownVal();
-  }
+  virtual SVal evalDerivedToBase(SVal derived, QualType basePtrType) = 0;
+
+  /// \brief Evaluates C++ dynamic_cast cast.
+  /// The callback may result in the following 3 scenarios:
+  ///  - Successful cast (ex: derived is subclass of base).
+  ///  - Failed cast (ex: derived is definitely not a subclass of base).
+  ///  - We don't know (base is a symbolic region and we don't have 
+  ///    enough info to determine if the cast will succeed at run time).
+  /// The function returns an SVal representing the derived class; it's
+  /// valid only if Failed flag is set to false.
+  virtual SVal evalDynamicCast(SVal base, QualType derivedPtrType,
+                                 bool &Failed) = 0;
 
   class CastResult {
     ProgramStateRef state;
@@ -188,6 +193,7 @@ public:
   virtual StoreRef invalidateRegions(Store store,
                                      ArrayRef<const MemRegion *> Regions,
                                      const Expr *E, unsigned Count,
+                                     const LocationContext *LCtx,
                                      InvalidatedSymbols &IS,
                                      const CallOrObjCMessage *Call,
                                      InvalidatedRegions *Invalidated) = 0;
@@ -206,6 +212,21 @@ public:
     virtual ~BindingsHandler();
     virtual bool HandleBinding(StoreManager& SMgr, Store store,
                                const MemRegion *region, SVal val) = 0;
+  };
+
+  class FindUniqueBinding :
+  public BindingsHandler {
+    SymbolRef Sym;
+    const MemRegion* Binding;
+    bool First;
+
+  public:
+    FindUniqueBinding(SymbolRef sym) : Sym(sym), Binding(0), First(true) {}
+
+    bool HandleBinding(StoreManager& SMgr, Store store, const MemRegion* R,
+                       SVal val);
+    operator bool() { return First && Binding; }
+    const MemRegion *getRegion() { return Binding; }
   };
 
   /// iterBindings - Iterate over the bindings in the Store.

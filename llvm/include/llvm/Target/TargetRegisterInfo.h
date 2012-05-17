@@ -34,27 +34,18 @@ class raw_ostream;
 
 class TargetRegisterClass {
 public:
-  typedef const unsigned* iterator;
-  typedef const unsigned* const_iterator;
+  typedef const uint16_t* iterator;
+  typedef const uint16_t* const_iterator;
   typedef const MVT::SimpleValueType* vt_iterator;
   typedef const TargetRegisterClass* const * sc_iterator;
-private:
-  virtual void anchor();
+
+  // Instance variables filled by tablegen, do not use!
   const MCRegisterClass *MC;
   const vt_iterator VTs;
-  const unsigned *SubClassMask;
+  const uint32_t *SubClassMask;
+  const uint16_t *SuperRegIndices;
   const sc_iterator SuperClasses;
-  const sc_iterator SuperRegClasses;
-public:
-  TargetRegisterClass(const MCRegisterClass *MC,
-                      const MVT::SimpleValueType *vts,
-                      const unsigned *subcm,
-                      const TargetRegisterClass * const *supcs,
-                      const TargetRegisterClass * const *superregcs)
-    : MC(MC), VTs(vts), SubClassMask(subcm), SuperClasses(supcs),
-      SuperRegClasses(superregcs) {}
-
-  virtual ~TargetRegisterClass() {}     // Allow subclasses
+  ArrayRef<uint16_t> (*OrderFunc)(const MachineFunction&);
 
   /// getID() - Return the register class ID number.
   ///
@@ -128,18 +119,6 @@ public:
     return I;
   }
 
-  /// superregclasses_begin / superregclasses_end - Loop over all of
-  /// the superreg register classes of this register class.
-  sc_iterator superregclasses_begin() const {
-    return SuperRegClasses;
-  }
-
-  sc_iterator superregclasses_end() const {
-    sc_iterator I = SuperRegClasses;
-    while (*I != NULL) ++I;
-    return I;
-  }
-
   /// hasSubClass - return true if the specified TargetRegisterClass
   /// is a proper sub-class of this TargetRegisterClass.
   bool hasSubClass(const TargetRegisterClass *RC) const {
@@ -168,8 +147,20 @@ public:
   /// getSubClassMask - Returns a bit vector of subclasses, including this one.
   /// The vector is indexed by class IDs, see hasSubClassEq() above for how to
   /// use it.
-  const unsigned *getSubClassMask() const {
+  const uint32_t *getSubClassMask() const {
     return SubClassMask;
+  }
+
+  /// getSuperRegIndices - Returns a 0-terminated list of sub-register indices
+  /// that projec some super-register class into this register class. The list
+  /// has an entry for each Idx such that:
+  ///
+  ///   There exists SuperRC where:
+  ///     For all Reg in SuperRC:
+  ///       this->contains(Reg:Idx)
+  ///
+  const uint16_t *getSuperRegIndices() const {
+    return SuperRegIndices;
   }
 
   /// getSuperClasses - Returns a NULL terminated list of super-classes.  The
@@ -199,9 +190,8 @@ public:
   ///
   /// By default, this method returns all registers in the class.
   ///
-  virtual
-  ArrayRef<unsigned> getRawAllocationOrder(const MachineFunction &MF) const {
-    return makeArrayRef(begin(), getNumRegs());
+  ArrayRef<uint16_t> getRawAllocationOrder(const MachineFunction &MF) const {
+    return OrderFunc ? OrderFunc(MF) : makeArrayRef(begin(), getNumRegs());
   }
 };
 
@@ -210,6 +200,13 @@ public:
 struct TargetRegisterInfoDesc {
   unsigned CostPerUse;          // Extra cost of instructions using register.
   bool inAllocatableClass;      // Register belongs to an allocatable regclass.
+};
+
+/// Each TargetRegisterClass has a per register weight, and weight
+/// limit which must be less than the limits of its pressure sets.
+struct RegClassWeight {
+  unsigned RegWeight;
+  unsigned WeightLimit;
 };
 
 /// TargetRegisterInfo base class - We assume that the target defines a static
@@ -304,6 +301,11 @@ public:
   const TargetRegisterClass *
     getMinimalPhysRegClass(unsigned Reg, EVT VT = MVT::Other) const;
 
+  /// getAllocatableClass - Return the maximal subclass of the given register
+  /// class that is alloctable, or NULL.
+  const TargetRegisterClass *
+    getAllocatableClass(const TargetRegisterClass *RC) const;
+
   /// getAllocatableSet - Returns a bitset indexed by register number
   /// indicating if a register is allocatable or not. If a register class is
   /// specified, returns the subset for the class.
@@ -335,7 +337,7 @@ public:
     if (regA == regB) return true;
     if (isVirtualRegister(regA) || isVirtualRegister(regB))
       return false;
-    for (const unsigned *regList = getOverlaps(regA)+1; *regList; ++regList) {
+    for (const uint16_t *regList = getOverlaps(regA)+1; *regList; ++regList) {
       if (*regList == regB) return true;
     }
     return false;
@@ -350,7 +352,7 @@ public:
   /// isSuperRegister - Returns true if regB is a super-register of regA.
   ///
   bool isSuperRegister(unsigned regA, unsigned regB) const {
-    for (const unsigned *regList = getSuperRegisters(regA); *regList;++regList){
+    for (const uint16_t *regList = getSuperRegisters(regA); *regList;++regList){
       if (*regList == regB) return true;
     }
     return false;
@@ -361,7 +363,7 @@ public:
   /// order of desired callee-save stack frame offset. The first register is
   /// closest to the incoming stack pointer if stack grows down, and vice versa.
   ///
-  virtual const unsigned* getCalleeSavedRegs(const MachineFunction *MF = 0)
+  virtual const uint16_t* getCalleeSavedRegs(const MachineFunction *MF = 0)
                                                                       const = 0;
 
   /// getCallPreservedMask - Return a mask of call-preserved registers for the
@@ -393,24 +395,11 @@ public:
   /// used by register scavenger to determine what registers are free.
   virtual BitVector getReservedRegs(const MachineFunction &MF) const = 0;
 
-  /// getSubReg - Returns the physical register number of sub-register "Index"
-  /// for physical register RegNo. Return zero if the sub-register does not
-  /// exist.
-  virtual unsigned getSubReg(unsigned RegNo, unsigned Index) const = 0;
-
-  /// getSubRegIndex - For a given register pair, return the sub-register index
-  /// if the second register is a sub-register of the first. Return zero
-  /// otherwise.
-  virtual unsigned getSubRegIndex(unsigned RegNo, unsigned SubRegNo) const = 0;
-
   /// getMatchingSuperReg - Return a super-register of the specified register
   /// Reg so its sub-register of index SubIdx is Reg.
   unsigned getMatchingSuperReg(unsigned Reg, unsigned SubIdx,
                                const TargetRegisterClass *RC) const {
-    for (const unsigned *SRs = getSuperRegisters(Reg); unsigned SR = *SRs;++SRs)
-      if (Reg == getSubReg(SR, SubIdx) && RC->contains(SR))
-        return SR;
-    return 0;
+    return MCRegisterInfo::getMatchingSuperReg(Reg, SubIdx, RC->MC);
   }
 
   /// canCombineSubRegIndices - Given a register class and a list of
@@ -432,7 +421,7 @@ public:
   /// TableGen will synthesize missing A sub-classes.
   virtual const TargetRegisterClass *
   getMatchingSuperRegClass(const TargetRegisterClass *A,
-                           const TargetRegisterClass *B, unsigned Idx) const =0;
+                           const TargetRegisterClass *B, unsigned Idx) const;
 
   /// getSubClassWithSubReg - Returns the largest legal sub-class of RC that
   /// supports the sub-register index Idx.
@@ -447,7 +436,10 @@ public:
   ///
   /// TableGen will synthesize missing RC sub-classes.
   virtual const TargetRegisterClass *
-  getSubClassWithSubReg(const TargetRegisterClass *RC, unsigned Idx) const =0;
+  getSubClassWithSubReg(const TargetRegisterClass *RC, unsigned Idx) const {
+    assert(Idx == 0 && "Target has no sub-registers");
+    return RC;
+  }
 
   /// composeSubRegIndices - Return the subregister index you get from composing
   /// two subregister indices.
@@ -465,6 +457,34 @@ public:
     // This default implementation is correct for most targets.
     return b;
   }
+
+  /// getCommonSuperRegClass - Find a common super-register class if it exists.
+  ///
+  /// Find a register class, SuperRC and two sub-register indices, PreA and
+  /// PreB, such that:
+  ///
+  ///   1. PreA + SubA == PreB + SubB  (using composeSubRegIndices()), and
+  ///
+  ///   2. For all Reg in SuperRC: Reg:PreA in RCA and Reg:PreB in RCB, and
+  ///
+  ///   3. SuperRC->getSize() >= max(RCA->getSize(), RCB->getSize()).
+  ///
+  /// SuperRC will be chosen such that no super-class of SuperRC satisfies the
+  /// requirements, and there is no register class with a smaller spill size
+  /// that satisfies the requirements.
+  ///
+  /// SubA and SubB must not be 0. Use getMatchingSuperRegClass() instead.
+  ///
+  /// Either of the PreA and PreB sub-register indices may be returned as 0. In
+  /// that case, the returned register class will be a sub-class of the
+  /// corresponding argument register class.
+  ///
+  /// The function returns NULL if no register class can be found.
+  ///
+  const TargetRegisterClass*
+  getCommonSuperRegClass(const TargetRegisterClass *RCA, unsigned SubA,
+                         const TargetRegisterClass *RCB, unsigned SubB,
+                         unsigned &PreA, unsigned &PreB) const;
 
   //===--------------------------------------------------------------------===//
   // Register Class Information
@@ -495,7 +515,8 @@ public:
   /// getPointerRegClass - Returns a TargetRegisterClass used for pointer
   /// values.  If a target supports multiple different pointer register classes,
   /// kind specifies which one is indicated.
-  virtual const TargetRegisterClass *getPointerRegClass(unsigned Kind=0) const {
+  virtual const TargetRegisterClass *
+  getPointerRegClass(const MachineFunction &MF, unsigned Kind=0) const {
     llvm_unreachable("Target didn't implement getPointerRegClass!");
   }
 
@@ -523,10 +544,32 @@ public:
   /// getRegPressureLimit - Return the register pressure "high water mark" for
   /// the specific register class. The scheduler is in high register pressure
   /// mode (for the specific register class) if it goes over the limit.
+  ///
+  /// Note: this is the old register pressure model that relies on a manually
+  /// specified representative register class per value type.
   virtual unsigned getRegPressureLimit(const TargetRegisterClass *RC,
                                        MachineFunction &MF) const {
     return 0;
   }
+
+// Get the weight in units of pressure for this register class.
+  virtual const RegClassWeight &getRegClassWeight(
+    const TargetRegisterClass *RC) const = 0;
+
+  /// Get the number of dimensions of register pressure.
+  virtual unsigned getNumRegPressureSets() const = 0;
+
+  /// Get the name of this register unit pressure set.
+  virtual const char *getRegPressureSetName(unsigned Idx) const = 0;
+
+  /// Get the register unit pressure limit for this dimension.
+  /// This limit must be adjusted dynamically for reserved registers.
+  virtual unsigned getRegPressureSetLimit(unsigned Idx) const = 0;
+
+  /// Get the dimensions of register pressure impacted by this register class.
+  /// Returns a -1 terminated array of pressure set IDs.
+  virtual const int *getRegClassPressureSets(
+    const TargetRegisterClass *RC) const = 0;
 
   /// getRawAllocationOrder - Returns the register allocation order for a
   /// specified register class with a target-dependent hint. The returned list
@@ -534,7 +577,7 @@ public:
   ///
   /// Register allocators need only call this function to resolve
   /// target-dependent hints, but it should work without hinting as well.
-  virtual ArrayRef<unsigned>
+  virtual ArrayRef<uint16_t>
   getRawAllocationOrder(const TargetRegisterClass *RC,
                         unsigned HintType, unsigned HintReg,
                         const MachineFunction &MF) const {
@@ -603,6 +646,12 @@ public:
   /// processFunctionBeforeCalleeSavedScan().
   virtual bool hasReservedSpillSlot(const MachineFunction &MF, unsigned Reg,
                                     int &FrameIdx) const {
+    return false;
+  }
+
+  /// trackLivenessAfterRegAlloc - returns true if the live-ins should be tracked
+  /// after register allocation.
+  virtual bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const {
     return false;
   }
 
@@ -704,6 +753,62 @@ public:
   }
 };
 
+
+//===----------------------------------------------------------------------===//
+//                           SuperRegClassIterator
+//===----------------------------------------------------------------------===//
+//
+// Iterate over the possible super-registers for a given register class. The
+// iterator will visit a list of pairs (Idx, Mask) corresponding to the
+// possible classes of super-registers.
+//
+// Each bit mask will have at least one set bit, and each set bit in Mask
+// corresponds to a SuperRC such that:
+//
+//   For all Reg in SuperRC: Reg:Idx is in RC.
+//
+// The iterator can include (O, RC->getSubClassMask()) as the first entry which
+// also satisfies the above requirement, assuming Reg:0 == Reg.
+//
+class SuperRegClassIterator {
+  const unsigned RCMaskWords;
+  unsigned SubReg;
+  const uint16_t *Idx;
+  const uint32_t *Mask;
+
+public:
+  /// Create a SuperRegClassIterator that visits all the super-register classes
+  /// of RC. When IncludeSelf is set, also include the (0, sub-classes) entry.
+  SuperRegClassIterator(const TargetRegisterClass *RC,
+                        const TargetRegisterInfo *TRI,
+                        bool IncludeSelf = false)
+    : RCMaskWords((TRI->getNumRegClasses() + 31) / 32),
+      SubReg(0),
+      Idx(RC->getSuperRegIndices()),
+      Mask(RC->getSubClassMask()) {
+    if (!IncludeSelf)
+      ++*this;
+  }
+
+  /// Returns true if this iterator is still pointing at a valid entry.
+  bool isValid() const { return Idx; }
+
+  /// Returns the current sub-register index.
+  unsigned getSubReg() const { return SubReg; }
+
+  /// Returns the bit mask if register classes that getSubReg() projects into
+  /// RC.
+  const uint32_t *getMask() const { return Mask; }
+
+  /// Advance iterator to the next entry.
+  void operator++() {
+    assert(isValid() && "Cannot move iterator past end.");
+    Mask += RCMaskWords;
+    SubReg = *Idx++;
+    if (!SubReg)
+      Idx = 0;
+  }
+};
 
 // This is useful when building IndexedMaps keyed on virtual registers
 struct VirtReg2IndexFunctor : public std::unary_function<unsigned, unsigned> {

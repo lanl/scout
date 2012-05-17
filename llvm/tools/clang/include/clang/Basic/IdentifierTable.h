@@ -67,7 +67,7 @@ class IdentifierInfo {
   bool OutOfDate              : 1; // True if there may be additional
                                    // information about this identifier
                                    // stored externally.
-  bool IsImport               : 1; // True if this is the 'import' contextual
+  bool IsModulesImport               : 1; // True if this is the 'import' contextual
                                    // keyword.
   // 1 bit left in 32-bit word.
   
@@ -283,12 +283,14 @@ public:
       RecomputeNeedsHandleIdentifier();
   }
   
-  /// \brief Determine whether this is the contextual keyword 'import'.
-  bool isImport() const { return IsImport; }
+  /// \brief Determine whether this is the contextual keyword
+  /// '__experimental_modules_import'.
+  bool isModulesImport() const { return IsModulesImport; }
   
-  /// \brief Set whether this identifier is the contextual keyword 'import'.
-  void setImport(bool I) {
-    IsImport = I;
+  /// \brief Set whether this identifier is the contextual keyword 
+  /// '__experimental_modules_import'.
+  void setModulesImport(bool I) {
+    IsModulesImport = I;
     if (I)
       NeedsHandleIdentifier = true;
     else
@@ -307,7 +309,7 @@ private:
     NeedsHandleIdentifier =
       (isPoisoned() | hasMacroDefinition() | isCPlusPlusOperatorKeyword() |
        isExtensionToken() | isCXX11CompatKeyword() || isOutOfDate() ||
-       isImport());
+       isModulesImport());
   }
 };
 
@@ -458,10 +460,6 @@ public:
     // contents.
     II->Entry = &Entry;
 
-    // If this is the 'import' contextual keyword, mark it as such.
-    if (Name.equals("import"))
-      II->setImport(true);
-
     return *II;
   }
 
@@ -496,7 +494,7 @@ public:
       
       // If this is the 'import' contextual keyword, mark it as such.
       if (Name.equals("import"))
-        II->setImport(true);
+        II->setModulesImport(true);
     }
 
     return *II;
@@ -576,9 +574,10 @@ class Selector {
   friend class Diagnostic;
 
   enum IdentifierInfoFlag {
-    // MultiKeywordSelector = 0.
+    // Empty selector = 0.
     ZeroArg  = 0x1,
     OneArg   = 0x2,
+    MultiArg = 0x3,
     ArgFlags = ZeroArg|OneArg
   };
   uintptr_t InfoPtr; // a pointer to the MultiKeywordSelector or IdentifierInfo.
@@ -592,13 +591,18 @@ class Selector {
   Selector(MultiKeywordSelector *SI) {
     InfoPtr = reinterpret_cast<uintptr_t>(SI);
     assert((InfoPtr & ArgFlags) == 0 &&"Insufficiently aligned IdentifierInfo");
+    InfoPtr |= MultiArg;
   }
 
   IdentifierInfo *getAsIdentifierInfo() const {
-    if (getIdentifierInfoFlag())
+    if (getIdentifierInfoFlag() < MultiArg)
       return reinterpret_cast<IdentifierInfo *>(InfoPtr & ~ArgFlags);
     return 0;
   }
+  MultiKeywordSelector *getMultiKeywordSelector() const {
+    return reinterpret_cast<MultiKeywordSelector *>(InfoPtr & ~ArgFlags);
+  }
+  
   unsigned getIdentifierInfoFlag() const {
     return InfoPtr & ArgFlags;
   }
@@ -665,6 +669,7 @@ public:
   
   /// getAsString - Derive the full selector name (e.g. "foo:bar:") and return
   /// it as an std::string.
+  // FIXME: Add a print method that uses a raw_ostream.
   std::string getAsString() const;
 
   /// getMethodFamily - Derive the conventional family of this method.

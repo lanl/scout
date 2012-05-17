@@ -179,7 +179,8 @@ static unsigned ProcessCharEscape(const char *&ThisTokBuf,
 
 /// ProcessUCNEscape - Read the Universal Character Name, check constraints and
 /// return the UTF32.
-static bool ProcessUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
+static bool ProcessUCNEscape(const char *ThisTokBegin, const char *&ThisTokBuf,
+                             const char *ThisTokEnd,
                              uint32_t &UcnVal, unsigned short &UcnLen,
                              FullSourceLoc Loc, DiagnosticsEngine *Diags, 
                              const LangOptions &Features,
@@ -187,8 +188,7 @@ static bool ProcessUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
   if (!Features.CPlusPlus && !Features.C99 && Diags)
     Diags->Report(Loc, diag::warn_ucn_not_valid_in_c89);
 
-  // Save the beginning of the string (for error diagnostics).
-  const char *ThisTokBegin = ThisTokBuf;
+  const char *UcnBegin = ThisTokBuf;
 
   // Skip the '\u' char's.
   ThisTokBuf += 2;
@@ -210,31 +210,43 @@ static bool ProcessUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
   if (UcnLenSave) {
     if (Diags) {
       SourceLocation L =
-        Lexer::AdvanceToTokenCharacter(Loc, ThisTokBuf-ThisTokBegin,
+        Lexer::AdvanceToTokenCharacter(Loc, UcnBegin - ThisTokBegin,
                                        Loc.getManager(), Features);
-      Diags->Report(FullSourceLoc(L, Loc.getManager()),
-                    diag::err_ucn_escape_incomplete);
+      Diags->Report(L, diag::err_ucn_escape_incomplete);
     }
     return false;
   }
+
   // Check UCN constraints (C99 6.4.3p2) [C++11 lex.charset p2]
-  bool invalid_ucn = (0xD800<=UcnVal && UcnVal<=0xDFFF) // surrogate codepoints
-                       || 0x10FFFF < UcnVal; // maximum legal UTF32 value
-
-  // C++11 allows UCNs that refer to control characters and basic source
-  // characters inside character and string literals
-  if (!Features.CPlusPlus0x || !in_char_string_literal) {
-    if ((UcnVal < 0xa0 &&
-         (UcnVal != 0x24 && UcnVal != 0x40 && UcnVal != 0x60 ))) {  // $, @, `
-      invalid_ucn = true;
-    }
-  }
-
-  if (invalid_ucn) {
+  if ((0xD800 <= UcnVal && UcnVal <= 0xDFFF) || // surrogate codepoints
+      UcnVal > 0x10FFFF) {                      // maximum legal UTF32 value
     if (Diags)
       Diags->Report(Loc, diag::err_ucn_escape_invalid);
     return false;
   }
+
+  // C++11 allows UCNs that refer to control characters and basic source
+  // characters inside character and string literals
+  if (UcnVal < 0xa0 &&
+      (UcnVal != 0x24 && UcnVal != 0x40 && UcnVal != 0x60)) {  // $, @, `
+    bool IsError = (!Features.CPlusPlus0x || !in_char_string_literal);
+    if (Diags) {
+      SourceLocation UcnBeginLoc =
+        Lexer::AdvanceToTokenCharacter(Loc, UcnBegin - ThisTokBegin,
+                                       Loc.getManager(), Features);
+      char BasicSCSChar = UcnVal;
+      if (UcnVal >= 0x20 && UcnVal < 0x7f)
+        Diags->Report(UcnBeginLoc, IsError ? diag::err_ucn_escape_basic_scs :
+                      diag::warn_cxx98_compat_literal_ucn_escape_basic_scs)
+          << StringRef(&BasicSCSChar, 1);
+      else
+        Diags->Report(UcnBeginLoc, IsError ? diag::err_ucn_control_character :
+                      diag::warn_cxx98_compat_literal_ucn_control_character);
+    }
+    if (IsError)
+      return false;
+  }
+
   return true;
 }
 
@@ -242,7 +254,8 @@ static bool ProcessUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
 /// convert the UTF32 to UTF8 or UTF16. This is a subroutine of
 /// StringLiteralParser. When we decide to implement UCN's for identifiers,
 /// we will likely rework our support for UCN's.
-static void EncodeUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
+static void EncodeUCNEscape(const char *ThisTokBegin, const char *&ThisTokBuf,
+                            const char *ThisTokEnd,
                             char *&ResultBuf, bool &HadError,
                             FullSourceLoc Loc, unsigned CharByteWidth,
                             DiagnosticsEngine *Diags,
@@ -250,8 +263,8 @@ static void EncodeUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
   typedef uint32_t UTF32;
   UTF32 UcnVal = 0;
   unsigned short UcnLen = 0;
-  if (!ProcessUCNEscape(ThisTokBuf, ThisTokEnd, UcnVal, UcnLen, Loc, Diags,
-                        Features)) {
+  if (!ProcessUCNEscape(ThisTokBegin, ThisTokBuf, ThisTokEnd, UcnVal, UcnLen,
+                        Loc, Diags, Features, true)) {
     HadError = 1;
     return;
   }
@@ -333,6 +346,10 @@ static void EncodeUCNEscape(const char *&ThisTokBuf, const char *ThisTokEnd,
 ///         decimal-constant integer-suffix
 ///         octal-constant integer-suffix
 ///         hexadecimal-constant integer-suffix
+///       user-defined-integer-literal: [C++11 lex.ext]
+///         decimal-literal ud-suffix
+///         octal-literal ud-suffix
+///         hexadecimal-literal ud-suffix
 ///       decimal-constant:
 ///         nonzero-digit
 ///         decimal-constant digit
@@ -382,6 +399,7 @@ NumericLiteralParser(const char *begin, const char *end,
   s = DigitsBegin = begin;
   saw_exponent = false;
   saw_period = false;
+  saw_ud_suffix = false;
   isLong = false;
   isUnsigned = false;
   isLongLong = false;
@@ -464,7 +482,7 @@ NumericLiteralParser(const char *begin, const char *end,
       continue;  // Success.
     case 'i':
     case 'I':
-      if (PP.getLangOptions().MicrosoftExt) {
+      if (PP.getLangOpts().MicrosoftExt) {
         if (isFPConstant || isLong || isLongLong) break;
 
         // Allow i8, i16, i32, i64, and i128.
@@ -519,13 +537,20 @@ NumericLiteralParser(const char *begin, const char *end,
       isImaginary = true;
       continue;  // Success.
     }
-    // If we reached here, there was an error.
+    // If we reached here, there was an error or a ud-suffix.
     break;
   }
 
-  // Report an error if there are any.
   if (s != ThisTokEnd) {
-    PP.Diag(PP.AdvanceToTokenCharacter(TokLoc, s-begin),
+    if (PP.getLangOpts().CPlusPlus0x && s == SuffixBegin && *s == '_') {
+      // We have a ud-suffix! By C++11 [lex.ext]p10, ud-suffixes not starting
+      // with an '_' are ill-formed.
+      saw_ud_suffix = true;
+      return;
+    }
+
+    // Report an error if there are any.
+    PP.Diag(PP.AdvanceToTokenCharacter(TokLoc, SuffixBegin-begin),
             isFPConstant ? diag::err_invalid_suffix_float_constant :
                            diag::err_invalid_suffix_integer_constant)
       << StringRef(SuffixBegin, ThisTokEnd-SuffixBegin);
@@ -583,7 +608,7 @@ void NumericLiteralParser::ParseNumberStartingWithZero(SourceLocation TokLoc) {
       }
       s = first_non_digit;
 
-      if (!PP.getLangOptions().HexFloats)
+      if (!PP.getLangOpts().HexFloats)
         PP.Diag(TokLoc, diag::ext_hexconstant_invalid);
     } else if (saw_period) {
       PP.Diag(PP.AdvanceToTokenCharacter(TokLoc, s-ThisTokBegin),
@@ -731,7 +756,11 @@ NumericLiteralParser::GetFloatValue(llvm::APFloat &Result) {
 }
 
 
-///       character-literal: [C++0x lex.ccon]
+///       user-defined-character-literal: [C++11 lex.ext]
+///         character-literal ud-suffix
+///       ud-suffix:
+///         identifier
+///       character-literal: [C++11 lex.ccon]
 ///         ' c-char-sequence '
 ///         u' c-char-sequence '
 ///         U' c-char-sequence '
@@ -744,7 +773,7 @@ NumericLiteralParser::GetFloatValue(llvm::APFloat &Result) {
 ///           backslash \, or new-line character
 ///         escape-sequence
 ///         universal-character-name
-///       escape-sequence: [C++0x lex.ccon]
+///       escape-sequence:
 ///         simple-escape-sequence
 ///         octal-escape-sequence
 ///         hexadecimal-escape-sequence
@@ -757,7 +786,7 @@ NumericLiteralParser::GetFloatValue(llvm::APFloat &Result) {
 ///       hexadecimal-escape-sequence:
 ///         \x hexadecimal-digit
 ///         hexadecimal-escape-sequence hexadecimal-digit
-///       universal-character-name:
+///       universal-character-name: [C++11 lex.charset]
 ///         \u hex-quad
 ///         \U hex-quad hex-quad
 ///       hex-quad:
@@ -771,6 +800,8 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
 
   Kind = kind;
 
+  const char *TokBegin = begin;
+
   // Skip over wide character determinant.
   if (Kind != tok::char_constant) {
     ++begin;
@@ -780,8 +811,18 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
   assert(begin[0] == '\'' && "Invalid token lexed");
   ++begin;
 
+  // Remove an optional ud-suffix.
+  if (end[-1] != '\'') {
+    const char *UDSuffixEnd = end;
+    do {
+      --end;
+    } while (end[-1] != '\'');
+    UDSuffixBuf.assign(end, UDSuffixEnd);
+    UDSuffixOffset = end - TokBegin;
+  }
+
   // Trim the ending quote.
-  assert(end[-1] == '\'' && "Invalid token lexed");
+  assert(end != begin && "Invalid token lexed");
   --end;
 
   // FIXME: The "Value" is an uint64_t so we can handle char literals of
@@ -822,17 +863,32 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
         ++begin;
       } while (begin != end && *begin != '\\');
 
-      uint32_t *tmp_begin = buffer_begin;
+      char const *tmp_in_start = start;
+      uint32_t *tmp_out_start = buffer_begin;
       ConversionResult res =
       ConvertUTF8toUTF32(reinterpret_cast<UTF8 const **>(&start),
                          reinterpret_cast<UTF8 const *>(begin),
                          &buffer_begin,buffer_end,strictConversion);
       if (res!=conversionOK) {
-        PP.Diag(Loc, diag::err_bad_character_encoding);
-        HadError = true;
+        // If we see bad encoding for unprefixed character literals, warn and 
+        // simply copy the byte values, for compatibility with gcc and 
+        // older versions of clang.
+        bool NoErrorOnBadEncoding = isAscii();
+        unsigned Msg = diag::err_bad_character_encoding;
+        if (NoErrorOnBadEncoding)
+          Msg = diag::warn_bad_character_encoding;
+        PP.Diag(Loc, Msg);
+        if (NoErrorOnBadEncoding) {
+          start = tmp_in_start;
+          buffer_begin = tmp_out_start;
+          for ( ; start != begin; ++start, ++buffer_begin)
+            *buffer_begin = static_cast<uint8_t>(*start);
+        } else {
+          HadError = true;
+        }
       } else {
-        for (; tmp_begin<buffer_begin; ++tmp_begin) {
-          if (*tmp_begin > largest_character_for_kind) {
+        for (; tmp_out_start <buffer_begin; ++tmp_out_start) {
+          if (*tmp_out_start > largest_character_for_kind) {
             HadError = true;
             PP.Diag(Loc, diag::err_character_too_large);
           }
@@ -844,9 +900,9 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
     // Is this a Universal Character Name excape?
     if (begin[1] == 'u' || begin[1] == 'U') {
       unsigned short UcnLen = 0;
-      if (!ProcessUCNEscape(begin, end, *buffer_begin, UcnLen,
+      if (!ProcessUCNEscape(TokBegin, begin, end, *buffer_begin, UcnLen,
                             FullSourceLoc(Loc, PP.getSourceManager()),
-                            &PP.getDiagnostics(), PP.getLangOptions(),
+                            &PP.getDiagnostics(), PP.getLangOpts(),
                             true))
       {
         HadError = true;
@@ -911,7 +967,7 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
   // character constants are not sign extended in the this implementation:
   // '\xFF\xFF' = 65536 and '\x0\xFF' = 255, which matches GCC.
   if (isAscii() && NumCharsSoFar == 1 && (Value & 128) &&
-      PP.getLangOptions().CharIsSigned)
+      PP.getLangOpts().CharIsSigned)
     Value = (signed char)Value;
 }
 
@@ -971,7 +1027,7 @@ CharLiteralParser::CharLiteralParser(const char *begin, const char *end,
 StringLiteralParser::
 StringLiteralParser(const Token *StringToks, unsigned NumStringToks,
                     Preprocessor &PP, bool Complain)
-  : SM(PP.getSourceManager()), Features(PP.getLangOptions()),
+  : SM(PP.getSourceManager()), Features(PP.getLangOpts()),
     Target(PP.getTargetInfo()), Diags(Complain ? &PP.getDiagnostics() : 0),
     MaxTokenLength(0), SizeBound(0), CharByteWidth(0), Kind(tok::unknown),
     ResultPtr(ResultBuf.data()), hadError(false), Pascal(false) {
@@ -981,10 +1037,8 @@ StringLiteralParser(const Token *StringToks, unsigned NumStringToks,
 void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
   // The literal token may have come from an invalid source location (e.g. due
   // to a PCH error), in which case the token length will be 0.
-  if (NumStringToks == 0 || StringToks[0].getLength() < 2) {
-    hadError = true;
-    return;
-  }
+  if (NumStringToks == 0 || StringToks[0].getLength() < 2)
+    return DiagnoseLexingError(SourceLocation());
 
   // Scan all of the string portions, remember the max individual token length,
   // computing a bound on the concatenated string length, and see whether any
@@ -1001,10 +1055,8 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
   // Implement Translation Phase #6: concatenation of string literals
   /// (C99 5.1.1.2p1).  The common case is only one string fragment.
   for (unsigned i = 1; i != NumStringToks; ++i) {
-    if (StringToks[i].getLength() < 2) {
-      hadError = true;
-      return;
-    }
+    if (StringToks[i].getLength() < 2)
+      return DiagnoseLexingError(StringToks[i].getLocation());
 
     // The string could be shorter than this if it needs cleaning, but this is a
     // reasonable bound, which is all we need.
@@ -1056,6 +1108,8 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
 
   Pascal = false;
 
+  SourceLocation UDSuffixTokLoc;
+
   for (unsigned i = 0, e = NumStringToks; i != e; ++i) {
     const char *ThisTokBuf = &TokenBuf[0];
     // Get the spelling of the token, which eliminates trigraphs, etc.  We know
@@ -1065,12 +1119,45 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
     unsigned ThisTokLen = 
       Lexer::getSpelling(StringToks[i], ThisTokBuf, SM, Features,
                          &StringInvalid);
-    if (StringInvalid) {
-      hadError = true;
-      continue;
+    if (StringInvalid)
+      return DiagnoseLexingError(StringToks[i].getLocation());
+
+    const char *ThisTokBegin = ThisTokBuf;
+    const char *ThisTokEnd = ThisTokBuf+ThisTokLen;
+
+    // Remove an optional ud-suffix.
+    if (ThisTokEnd[-1] != '"') {
+      const char *UDSuffixEnd = ThisTokEnd;
+      do {
+        --ThisTokEnd;
+      } while (ThisTokEnd[-1] != '"');
+
+      StringRef UDSuffix(ThisTokEnd, UDSuffixEnd - ThisTokEnd);
+
+      if (UDSuffixBuf.empty()) {
+        UDSuffixBuf.assign(UDSuffix);
+        UDSuffixToken = i;
+        UDSuffixOffset = ThisTokEnd - ThisTokBuf;
+        UDSuffixTokLoc = StringToks[i].getLocation();
+      } else if (!UDSuffixBuf.equals(UDSuffix)) {
+        // C++11 [lex.ext]p8: At the end of phase 6, if a string literal is the
+        // result of a concatenation involving at least one user-defined-string-
+        // literal, all the participating user-defined-string-literals shall
+        // have the same ud-suffix.
+        if (Diags) {
+          SourceLocation TokLoc = StringToks[i].getLocation();
+          Diags->Report(TokLoc, diag::err_string_concat_mixed_suffix)
+            << UDSuffixBuf << UDSuffix
+            << SourceRange(UDSuffixTokLoc, UDSuffixTokLoc)
+            << SourceRange(TokLoc, TokLoc);
+        }
+        hadError = true;
+      }
     }
 
-    const char *ThisTokEnd = ThisTokBuf+ThisTokLen-1;  // Skip end quote.
+    // Strip the end quote.
+    --ThisTokEnd;
+
     // TODO: Input character set mapping support.
 
     // Skip marker for wide or unicode strings.
@@ -1090,21 +1177,20 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
         ++ThisTokBuf;
       ++ThisTokBuf; // skip '('
 
-      // remove same number of characters from the end
-      if (ThisTokEnd >= ThisTokBuf + (ThisTokBuf - Prefix))
-        ThisTokEnd -= (ThisTokBuf - Prefix);
+      // Remove same number of characters from the end
+      ThisTokEnd -= ThisTokBuf - Prefix;
+      assert(ThisTokEnd >= ThisTokBuf && "malformed raw string literal");
 
       // Copy the string over
-      if (CopyStringFragment(StringRef(ThisTokBuf,ThisTokEnd-ThisTokBuf)))
-      {
-        if (Diags)
-          Diags->Report(FullSourceLoc(StringToks[i].getLocation(), SM),
-                        diag::err_bad_string_encoding);
-        hadError = true;
-      }
-
+      if (CopyStringFragment(StringRef(ThisTokBuf, ThisTokEnd - ThisTokBuf)))
+        if (DiagnoseBadString(StringToks[i]))
+          hadError = true;
     } else {
-      assert(ThisTokBuf[0] == '"' && "Expected quote, lexer broken?");
+      if (ThisTokBuf[0] != '"') {
+        // The file may have come from PCH and then changed after loading the
+        // PCH; Fail gracefully.
+        return DiagnoseLexingError(StringToks[i].getLocation());
+      }
       ++ThisTokBuf; // skip "
 
       // Check if this is a pascal string
@@ -1129,19 +1215,16 @@ void StringLiteralParser::init(const Token *StringToks, unsigned NumStringToks){
           } while (ThisTokBuf != ThisTokEnd && ThisTokBuf[0] != '\\');
 
           // Copy the character span over.
-          if (CopyStringFragment(StringRef(InStart,ThisTokBuf-InStart)))
-          {
-            if (Diags)
-              Diags->Report(FullSourceLoc(StringToks[i].getLocation(), SM),
-                            diag::err_bad_string_encoding);
-            hadError = true;
-          }
+          if (CopyStringFragment(StringRef(InStart, ThisTokBuf - InStart)))
+            if (DiagnoseBadString(StringToks[i]))
+              hadError = true;
           continue;
         }
         // Is this a Universal Character Name escape?
         if (ThisTokBuf[1] == 'u' || ThisTokBuf[1] == 'U') {
-          EncodeUCNEscape(ThisTokBuf, ThisTokEnd, ResultPtr,
-                          hadError, FullSourceLoc(StringToks[i].getLocation(),SM),
+          EncodeUCNEscape(ThisTokBegin, ThisTokBuf, ThisTokEnd,
+                          ResultPtr, hadError,
+                          FullSourceLoc(StringToks[i].getLocation(), SM),
                           CharByteWidth, Diags, Features);
           continue;
         }
@@ -1219,6 +1302,9 @@ bool StringLiteralParser::CopyStringFragment(StringRef Fragment) {
   ConversionResult result = conversionOK;
   // Copy the character span over.
   if (CharByteWidth == 1) {
+    if (!isLegalUTF8String(reinterpret_cast<const UTF8*>(Fragment.begin()),
+                           reinterpret_cast<const UTF8*>(Fragment.end())))
+      result = sourceIllegal;
     memcpy(ResultPtr, Fragment.data(), Fragment.size());
     ResultPtr += Fragment.size();
   } else if (CharByteWidth == 2) {
@@ -1226,7 +1312,7 @@ bool StringLiteralParser::CopyStringFragment(StringRef Fragment) {
     // FIXME: Make the type of the result buffer correct instead of
     // using reinterpret_cast.
     UTF16 *targetStart = reinterpret_cast<UTF16*>(ResultPtr);
-    ConversionFlags flags = lenientConversion;
+    ConversionFlags flags = strictConversion;
     result = ConvertUTF8toUTF16(
 	    &sourceStart,sourceStart + Fragment.size(),
         &targetStart,targetStart + 2*Fragment.size(),flags);
@@ -1237,7 +1323,7 @@ bool StringLiteralParser::CopyStringFragment(StringRef Fragment) {
     // FIXME: Make the type of the result buffer correct instead of
     // using reinterpret_cast.
     UTF32 *targetStart = reinterpret_cast<UTF32*>(ResultPtr);
-    ConversionFlags flags = lenientConversion;
+    ConversionFlags flags = strictConversion;
     result = ConvertUTF8toUTF32(
         &sourceStart,sourceStart + Fragment.size(),
         &targetStart,targetStart + 4*Fragment.size(),flags);
@@ -1249,6 +1335,23 @@ bool StringLiteralParser::CopyStringFragment(StringRef Fragment) {
   return result != conversionOK;
 }
 
+bool StringLiteralParser::DiagnoseBadString(const Token &Tok) {
+  // If we see bad encoding for unprefixed string literals, warn and
+  // simply copy the byte values, for compatibility with gcc and older
+  // versions of clang.
+  bool NoErrorOnBadEncoding = isAscii();
+  unsigned Msg = NoErrorOnBadEncoding ? diag::warn_bad_string_encoding :
+                                        diag::err_bad_string_encoding;
+  if (Diags)
+    Diags->Report(FullSourceLoc(Tok.getLocation(), SM), Msg);
+  return !NoErrorOnBadEncoding;
+}
+
+void StringLiteralParser::DiagnoseLexingError(SourceLocation Loc) {
+  hadError = true;
+  if (Diags)
+    Diags->Report(Loc, diag::err_lexing_string);
+}
 
 /// getOffsetOfStringByte - This function returns the offset of the
 /// specified byte of the string data represented by Token.  This handles

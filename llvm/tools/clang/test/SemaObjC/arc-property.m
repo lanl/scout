@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -fobjc-exceptions -verify -Wno-objc-root-class %s
 // rdar://9309489
 
 @interface MyClass {
@@ -46,3 +46,20 @@
 @synthesize z;  // suppressed
 @end
 
+// rdar://problem/10904479
+// Don't crash.
+@interface Test2
+// Minor FIXME: kill the redundant error
+@property (strong) UndeclaredClass *test2;  // expected-error {{unknown type name 'UndeclaredClass'}} expected-error {{must be of object type}}
+@end
+@implementation Test2
+@synthesize test2;
+@end
+
+// rdar://problem/11144407
+@interface Test3
+@property (strong) id exception;
+@end
+void test3(Test3 *t3) {
+  @throw t3.exception;
+}

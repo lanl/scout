@@ -1,4 +1,4 @@
-//===- HexagonTargetMachine.cpp - Define TargetMachine for Hexagon --------===//
+//===-- HexagonTargetMachine.cpp - Define TargetMachine for Hexagon -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// Implements the info about Hexagon target spec.
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,6 +28,10 @@ static cl::
 opt<bool> DisableHardwareLoops(
                         "disable-hexagon-hwloops", cl::Hidden,
                         cl::desc("Disable Hardware Loops for Hexagon target"));
+static cl::
+opt<bool> DisableCExtOpt(
+                        "disable-hexagon-cextopt", cl::Hidden,
+                        cl::desc("Disable Optimization of Constant Extenders"));
 
 /// HexagonTargetMachineModule - Note that this is used on hosts that
 /// cannot link in a library unless there are references into the
@@ -49,12 +54,14 @@ extern "C" void LLVMInitializeHexagonTarget() {
 ///
 HexagonTargetMachine::HexagonTargetMachine(const Target &T, StringRef TT,
                                            StringRef CPU, StringRef FS,
-                                           TargetOptions Options,
+                                           const TargetOptions &Options,
                                            Reloc::Model RM,
                                            CodeModel::Model CM,
                                            CodeGenOpt::Level OL)
   : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
-    DataLayout("e-p:32:32:32-i64:64:64-i32:32:32-i16:16:16-i1:32:32-a0:0") ,
+    DataLayout("e-p:32:32:32-"
+                "i64:64:64-i32:32:32-i16:16:16-i1:32:32-"
+                "f64:64:64-f32:32:32-a0:0-n32") ,
     Subtarget(TT, CPU, FS), InstrInfo(Subtarget), TLInfo(*this),
     TSInfo(*this),
     FrameLowering(Subtarget),
@@ -99,22 +106,25 @@ TargetPassConfig *HexagonTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 bool HexagonPassConfig::addInstSelector() {
-  PM.add(createHexagonRemoveExtendOps(getHexagonTargetMachine()));
-  PM.add(createHexagonISelDag(getHexagonTargetMachine()));
+  PM->add(createHexagonRemoveExtendOps(getHexagonTargetMachine()));
+  PM->add(createHexagonISelDag(getHexagonTargetMachine()));
+  PM->add(createHexagonPeephole());
   return false;
 }
 
 
 bool HexagonPassConfig::addPreRegAlloc() {
-  if (!DisableHardwareLoops) {
-    PM.add(createHexagonHardwareLoops());
+  if (!DisableCExtOpt) {
+    PM->add(createHexagonOptimizeConstExt(getHexagonTargetMachine()));
   }
-
+  if (!DisableHardwareLoops) {
+    PM->add(createHexagonHardwareLoops());
+  }
   return false;
 }
 
 bool HexagonPassConfig::addPostRegAlloc() {
-  PM.add(createHexagonCFGOptimizer(getHexagonTargetMachine()));
+  PM->add(createHexagonCFGOptimizer(getHexagonTargetMachine()));
   return true;
 }
 
@@ -127,14 +137,19 @@ bool HexagonPassConfig::addPreSched2() {
 bool HexagonPassConfig::addPreEmitPass() {
 
   if (!DisableHardwareLoops) {
-    PM.add(createHexagonFixupHwLoops());
+    PM->add(createHexagonFixupHwLoops());
   }
 
+  PM->add(createHexagonNewValueJump());
+
   // Expand Spill code for predicate registers.
-  PM.add(createHexagonExpandPredSpillCode(getHexagonTargetMachine()));
+  PM->add(createHexagonExpandPredSpillCode(getHexagonTargetMachine()));
 
   // Split up TFRcondsets into conditional transfers.
-  PM.add(createHexagonSplitTFRCondSets(getHexagonTargetMachine()));
+  PM->add(createHexagonSplitTFRCondSets(getHexagonTargetMachine()));
+
+  // Create Packets.
+  PM->add(createHexagonPacketizer());
 
   return false;
 }

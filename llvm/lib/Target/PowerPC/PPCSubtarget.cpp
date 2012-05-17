@@ -1,4 +1,4 @@
-//===- PowerPCSubtarget.cpp - PPC Subtarget Information -------------------===//
+//===-- PowerPCSubtarget.cpp - PPC Subtarget Information ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -146,10 +146,11 @@ bool PPCSubtarget::enablePostRAScheduler(
            CodeGenOpt::Level OptLevel,
            TargetSubtargetInfo::AntiDepBreakMode& Mode,
            RegClassVector& CriticalPathRCs) const {
-  if (DarwinDirective == PPC::DIR_440)
-    return false;
+  if (DarwinDirective == PPC::DIR_440 || DarwinDirective == PPC::DIR_A2)
+    Mode = TargetSubtargetInfo::ANTIDEP_ALL;
+  else
+    Mode = TargetSubtargetInfo::ANTIDEP_CRITICAL;
 
-  Mode = TargetSubtargetInfo::ANTIDEP_CRITICAL;
   CriticalPathRCs.clear();
 
   if (isPPC64())

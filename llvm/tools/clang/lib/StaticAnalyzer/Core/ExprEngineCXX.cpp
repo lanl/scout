@@ -16,80 +16,10 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ObjCMessage.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/StmtCXX.h"
 
 using namespace clang;
 using namespace ento;
-
-namespace {
-class CallExprWLItem {
-public:
-  CallExpr::const_arg_iterator I;
-  ExplodedNode *N;
-
-  CallExprWLItem(const CallExpr::const_arg_iterator &i, ExplodedNode *n)
-    : I(i), N(n) {}
-};
-}
-
-void ExprEngine::evalArguments(ConstExprIterator AI, ConstExprIterator AE,
-                                 const FunctionProtoType *FnType, 
-                                 ExplodedNode *Pred, ExplodedNodeSet &Dst,
-                                 bool FstArgAsLValue) {
-
-
-  SmallVector<CallExprWLItem, 20> WorkList;
-  WorkList.reserve(AE - AI);
-  WorkList.push_back(CallExprWLItem(AI, Pred));
-
-  while (!WorkList.empty()) {
-    CallExprWLItem Item = WorkList.back();
-    WorkList.pop_back();
-
-    if (Item.I == AE) {
-      Dst.insert(Item.N);
-      continue;
-    }
-
-    // Evaluate the argument.
-    ExplodedNodeSet Tmp;
-    if (FstArgAsLValue) {
-      FstArgAsLValue = false;
-    }
-
-    Visit(*Item.I, Item.N, Tmp);
-    ++(Item.I);
-    for (ExplodedNodeSet::iterator NI=Tmp.begin(), NE=Tmp.end(); NI != NE; ++NI)
-      WorkList.push_back(CallExprWLItem(Item.I, *NI));
-  }
-}
-
-void ExprEngine::evalCallee(const CallExpr *callExpr,
-                            const ExplodedNodeSet &src,
-                            ExplodedNodeSet &dest) {
-  
-  const Expr *callee = 0;
-  
-  switch (callExpr->getStmtClass()) {
-    case Stmt::CXXMemberCallExprClass: {
-      // Evaluate the implicit object argument that is the recipient of the
-      // call.
-      callee = cast<CXXMemberCallExpr>(callExpr)->getImplicitObjectArgument();
-      
-      // FIXME: handle member pointers.
-      if (!callee)
-        return;
-
-      break;      
-    }
-    default: {
-      callee = callExpr->getCallee()->IgnoreParens();
-      break;
-    }
-  }
-
-  for (ExplodedNodeSet::iterator i = src.begin(), e = src.end(); i != e; ++i)
-    Visit(callee, *i, dest);
-}
 
 const CXXThisRegion *ExprEngine::getCXXThisRegion(const CXXRecordDecl *D,
                                                  const StackFrameContext *SFC) {
@@ -134,8 +64,10 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
                                        ExplodedNode *Pred,
                                        ExplodedNodeSet &destNodes) {
 
+#if 0
   const CXXConstructorDecl *CD = E->getConstructor();
   assert(CD);
+#endif
   
 #if 0
   if (!(CD->doesThisDeclarationHaveABody() && AMgr.shouldInlineCall()))
@@ -143,26 +75,19 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
     return;
 #endif
   
-  // Evaluate other arguments.
-  ExplodedNodeSet argsEvaluated;
-  const FunctionProtoType *FnType = CD->getType()->getAs<FunctionProtoType>();
-  evalArguments(E->arg_begin(), E->arg_end(), FnType, Pred, argsEvaluated);
-
 #if 0
   // Is the constructor elidable?
   if (E->isElidable()) {
-    VisitAggExpr(E->getArg(0), destNodes, Pred, Dst);
-    // FIXME: this is here to force propagation if VisitAggExpr doesn't
-    if (destNodes.empty())
-      destNodes.Add(Pred);
+    destNodes.Add(Pred);
     return;
   }
 #endif
   
   // Perform the previsit of the constructor.
-  ExplodedNodeSet destPreVisit;
-  getCheckerManager().runCheckersForPreStmt(destPreVisit, argsEvaluated, E, 
-                                            *this);
+  ExplodedNodeSet SrcNodes;
+  SrcNodes.Add(Pred);
+  ExplodedNodeSet TmpNodes;
+  getCheckerManager().runCheckersForPreStmt(TmpNodes, SrcNodes, E, *this);
   
   // Evaluate the constructor.  Currently we don't now allow checker-specific
   // implementations of specific constructors (as we do with ordinary
@@ -190,9 +115,9 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
 
     CallEnter Loc(E, SFC, Pred->getLocationContext());
 
-    StmtNodeBuilder Bldr(argsEvaluated, destNodes, *currentBuilderContext);
-    for (ExplodedNodeSet::iterator NI = argsEvaluated.begin(),
-                                  NE = argsEvaluated.end(); NI != NE; ++NI) {
+    StmtNodeBuilder Bldr(SrcNodes, TmpNodes, *currentBuilderContext);
+    for (ExplodedNodeSet::iterator NI = SrcNodes.begin(),
+                                   NE = SrcNodes.end(); NI != NE; ++NI) {
       ProgramStateRef state = (*NI)->getState();
       // Setup 'this' region, so that the ctor is evaluated on the object pointed
       // by 'Dest'.
@@ -205,10 +130,9 @@ void ExprEngine::VisitCXXConstructExpr(const CXXConstructExpr *E,
   // Default semantics: invalidate all regions passed as arguments.
   ExplodedNodeSet destCall;
   {
-    StmtNodeBuilder Bldr(destPreVisit, destCall, *currentBuilderContext);
-    for (ExplodedNodeSet::iterator
-        i = destPreVisit.begin(), e = destPreVisit.end();
-        i != e; ++i)
+    StmtNodeBuilder Bldr(TmpNodes, destCall, *currentBuilderContext);
+    for (ExplodedNodeSet::iterator i = TmpNodes.begin(), e = TmpNodes.end();
+         i != e; ++i)
     {
       ExplodedNode *Pred = *i;
       const LocationContext *LC = Pred->getLocationContext();
@@ -251,8 +175,9 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
   StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
   
   unsigned blockCount = currentBuilderContext->getCurrentBlockCount();
+  const LocationContext *LCtx = Pred->getLocationContext();
   DefinedOrUnknownSVal symVal =
-    svalBuilder.getConjuredSymbolVal(NULL, CNE, CNE->getType(), blockCount);
+    svalBuilder.getConjuredSymbolVal(NULL, CNE, LCtx, CNE->getType(), blockCount);
   const MemRegion *NewReg = cast<loc::MemRegionVal>(symVal).getRegion();  
   QualType ObjTy = CNE->getType()->getAs<PointerType>()->getPointeeType();
   const ElementRegion *EleReg = 
@@ -268,6 +193,8 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
     return;
   }
 
+  // FIXME: Update for AST changes.
+#if 0
   // Evaluate constructor arguments.
   const FunctionProtoType *FnType = NULL;
   const CXXConstructorDecl *CD = CNE->getConstructor();
@@ -327,19 +254,33 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
                             loc::MemRegionVal(EleReg));
     Bldr.generateNode(CNE, *I, state);
   }
+#endif
 }
 
 void ExprEngine::VisitCXXDeleteExpr(const CXXDeleteExpr *CDE, 
                                     ExplodedNode *Pred, ExplodedNodeSet &Dst) {
-  // Should do more checking.
-  ExplodedNodeSet Argevaluated;
-  Visit(CDE->getArgument(), Pred, Argevaluated);
-  StmtNodeBuilder Bldr(Argevaluated, Dst, *currentBuilderContext);
-  for (ExplodedNodeSet::iterator I = Argevaluated.begin(), 
-                                 E = Argevaluated.end(); I != E; ++I) {
-    ProgramStateRef state = (*I)->getState();
-    Bldr.generateNode(CDE, *I, state);
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
+  ProgramStateRef state = Pred->getState();
+  Bldr.generateNode(CDE, Pred, state);
+}
+
+void ExprEngine::VisitCXXCatchStmt(const CXXCatchStmt *CS,
+                                   ExplodedNode *Pred,
+                                   ExplodedNodeSet &Dst) {
+  const VarDecl *VD = CS->getExceptionDecl();
+  if (!VD) {
+    Dst.Add(Pred);
+    return;
   }
+
+  const LocationContext *LCtx = Pred->getLocationContext();
+  SVal V = svalBuilder.getConjuredSymbolVal(CS, LCtx, VD->getType(),
+                                 currentBuilderContext->getCurrentBlockCount());
+  ProgramStateRef state = Pred->getState();
+  state = state->bindLoc(state->getLValue(VD, LCtx), V);
+
+  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
+  Bldr.generateNode(CS, Pred, state);
 }
 
 void ExprEngine::VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred,

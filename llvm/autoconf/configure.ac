@@ -31,7 +31,9 @@ dnl===
 dnl===-----------------------------------------------------------------------===
 dnl Initialize autoconf and define the package name, version number and
 dnl address for reporting bugs.
-AC_INIT([LLVM],[3.1svn],[http://llvm.org/bugs/])
+AC_INIT([LLVM],[3.2svn],[http://llvm.org/bugs/])
+AC_DEFINE([LLVM_VERSION_MAJOR], [3], [Major version of the LLVM API])
+AC_DEFINE([LLVM_VERSION_MINOR], [2], [Minor version of the LLVM API])
 
 dnl Provide a copyright substitution and ensure the copyright notice is included
 dnl in the output of --version option of the generated configure script.
@@ -284,7 +286,7 @@ AC_CACHE_CHECK([type of operating system we're going to target],
     llvm_cv_target_os_type="Darwin" ;;
   *-*-minix*)
     llvm_cv_target_os_type="Minix" ;;
-  *-*-freebsd*)
+  *-*-freebsd* | *-*-kfreebsd-gnu)
     llvm_cv_target_os_type="FreeBSD" ;;
   *-*-openbsd*)
     llvm_cv_target_os_type="OpenBSD" ;;
@@ -298,6 +300,8 @@ AC_CACHE_CHECK([type of operating system we're going to target],
     llvm_cv_target_os_type="Interix" ;;
   *-*-linux*)
     llvm_cv_target_os_type="Linux" ;;
+  *-*-gnu*)
+    llvm_cv_target_os_type="GNU" ;;
   *-*-solaris*)
     llvm_cv_target_os_type="SunOS" ;;
   *-*-auroraux*)
@@ -366,6 +370,7 @@ AC_CACHE_CHECK([target architecture],[llvm_cv_target_arch],
   hexagon-*)              llvm_cv_target_arch="Hexagon" ;;
   mblaze-*)               llvm_cv_target_arch="MBlaze" ;;
   ptx-*)                  llvm_cv_target_arch="PTX" ;;
+  nvptx-*)                llvm_cv_target_arch="NVPTX" ;;
   *)                      llvm_cv_target_arch="Unknown" ;;
 esac])
 
@@ -513,6 +518,7 @@ else
     Hexagon)     AC_SUBST(TARGET_HAS_JIT,0) ;;
     MBlaze)      AC_SUBST(TARGET_HAS_JIT,0) ;;
     PTX)         AC_SUBST(TARGET_HAS_JIT,0) ;;
+    NVPTX)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     *)           AC_SUBST(TARGET_HAS_JIT,0) ;;
   esac
 fi
@@ -624,13 +630,13 @@ TARGETS_TO_BUILD=""
 AC_ARG_ENABLE([targets],AS_HELP_STRING([--enable-targets],
     [Build specific host targets: all or target1,target2,... Valid targets are:
      host, x86, x86_64, sparc, powerpc, arm, mips, spu, hexagon,
-     xcore, msp430, ptx, cbe, and cpp (default=all)]),,
+     xcore, msp430, ptx, nvptx, and cpp (default=all)]),,
     enableval=all)
 if test "$enableval" = host-only ; then
   enableval=host
 fi
 case "$enableval" in
-  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM Mips CellSPU XCore MSP430 CBackend CppBackend MBlaze PTX Hexagon" ;;
+  all) TARGETS_TO_BUILD="X86 Sparc PowerPC ARM Mips CellSPU XCore MSP430 CppBackend MBlaze PTX NVPTX Hexagon" ;;
   *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
       case "$a_target" in
         x86)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
@@ -643,11 +649,11 @@ case "$enableval" in
         spu)      TARGETS_TO_BUILD="CellSPU $TARGETS_TO_BUILD" ;;
         xcore)    TARGETS_TO_BUILD="XCore $TARGETS_TO_BUILD" ;;
         msp430)   TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
-        cbe)      TARGETS_TO_BUILD="CBackend $TARGETS_TO_BUILD" ;;
         cpp)      TARGETS_TO_BUILD="CppBackend $TARGETS_TO_BUILD" ;;
         hexagon)  TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
         mblaze)   TARGETS_TO_BUILD="MBlaze $TARGETS_TO_BUILD" ;;
         ptx)      TARGETS_TO_BUILD="PTX $TARGETS_TO_BUILD" ;;
+        nvptx)    TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
         host) case "$llvm_cv_target_arch" in
             x86)         TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
             x86_64)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
@@ -661,6 +667,7 @@ case "$enableval" in
             MSP430)      TARGETS_TO_BUILD="MSP430 $TARGETS_TO_BUILD" ;;
             Hexagon)     TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
             PTX)         TARGETS_TO_BUILD="PTX $TARGETS_TO_BUILD" ;;
+            NVPTX)       TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
             *)       AC_MSG_ERROR([Can not set target to build]) ;;
           esac ;;
         *) AC_MSG_ERROR([Unrecognized target $a_target]) ;;
@@ -683,6 +690,9 @@ for a_target in $TARGETS_TO_BUILD; do
     if test -f ${srcdir}/lib/Target/${LLVM_NATIVE_ARCH}/AsmParser/Makefile ; then
       LLVM_NATIVE_ASMPARSER="LLVMInitialize${LLVM_NATIVE_ARCH}AsmParser"
     fi
+    if test -f ${srcdir}/lib/Target/${LLVM_NATIVE_ARCH}/Disassembler/Makefile ; then
+      LLVM_NATIVE_DISASSEMBLER="LLVMInitialize${LLVM_NATIVE_ARCH}Disassembler"
+    fi
     AC_DEFINE_UNQUOTED(LLVM_NATIVE_TARGET, $LLVM_NATIVE_TARGET,
       [LLVM name for the native Target init function, if available])
     AC_DEFINE_UNQUOTED(LLVM_NATIVE_TARGETINFO, $LLVM_NATIVE_TARGETINFO,
@@ -694,6 +704,10 @@ for a_target in $TARGETS_TO_BUILD; do
     if test -f ${srcdir}/lib/Target/${LLVM_NATIVE_ARCH}/AsmParser/Makefile ; then
       AC_DEFINE_UNQUOTED(LLVM_NATIVE_ASMPARSER, $LLVM_NATIVE_ASMPARSER,
        [LLVM name for the native AsmParser init function, if available])
+    fi
+    if test -f ${srcdir}/lib/Target/${LLVM_NATIVE_ARCH}/Disassembler/Makefile ; then
+      AC_DEFINE_UNQUOTED(LLVM_NATIVE_DISASSEMBLER, $LLVM_NATIVE_DISASSEMBLER,
+       [LLVM name for the native Disassembler init function, if available])
     fi
   fi
 done
@@ -720,21 +734,6 @@ AC_SUBST(LLVM_ENUM_TARGETS)
 AC_SUBST(LLVM_ENUM_ASM_PRINTERS)
 AC_SUBST(LLVM_ENUM_ASM_PARSERS)
 AC_SUBST(LLVM_ENUM_DISASSEMBLERS)
-
-dnl Prevent the CBackend from using printf("%a") for floating point so older
-dnl C compilers that cannot deal with the 0x0p+0 hex floating point format
-dnl can still compile the CBE's output
-AC_ARG_ENABLE([cbe-printf-a],AS_HELP_STRING([--enable-cbe-printf-a],
-  [Enable C Backend output with hex floating point via %a  (default is YES)]),,
-  enableval=default)
-case "$enableval" in
-  yes) AC_SUBST(ENABLE_CBE_PRINTF_A,[1]) ;;
-  no)  AC_SUBST(ENABLE_CBE_PRINTF_A,[0]) ;;
-  default)  AC_SUBST(ENABLE_CBE_PRINTF_A,[1]) ;;
-  *) AC_MSG_ERROR([Invalid setting for --enable-cbe-printf-a. Use "yes" or "no"]) ;;
-esac
-AC_DEFINE_UNQUOTED([ENABLE_CBE_PRINTF_A],$ENABLE_CBE_PRINTF_A,
-                   [Define if CBE is enabled for printf %a output])
 
 dnl Override the option to use for optimized builds.
 AC_ARG_WITH(optimize-option,
@@ -842,6 +841,13 @@ AC_ARG_WITH(gcc-toolchain,
     withval="")
 AC_DEFINE_UNQUOTED(GCC_INSTALL_PREFIX,"$withval",
                    [Directory where gcc is installed.])
+
+AC_ARG_WITH(default-sysroot,
+  AS_HELP_STRING([--with-default-sysroot],
+    [Add --sysroot=<path> to all compiler invocations.]),,
+    withval="")
+AC_DEFINE_UNQUOTED(DEFAULT_SYSROOT,"$withval",
+                   [Default <path> to all compiler invocations for --sysroot=<path>.])
 
 dnl Allow linking of LLVM with GPLv3 binutils code.
 AC_ARG_WITH(binutils-include,
@@ -1003,16 +1009,6 @@ if test "$XDOT_PY" != "echo xdot.py" ; then
    [Define to path to xdot.py program if found or 'echo xdot.py' otherwise])
 fi
 
-dnl Look for a sufficiently recent version of Perl.
-LLVM_PROG_PERL([5.006])
-AC_SUBST(PERL)
-if test x"$PERL" = xnone; then
-   AC_SUBST(HAVE_PERL,0)
-   AC_MSG_ERROR([perl is required but was not found, please install it])
-else
-   AC_SUBST(HAVE_PERL,1)
-fi
-
 dnl Find the install program
 AC_PROG_INSTALL
 dnl Prepend src dir to install path dir if it's a relative path
@@ -1032,8 +1028,6 @@ AC_PATH_PROG(CAT, [cat])
 AC_PATH_PROG(DOXYGEN, [doxygen])
 AC_PATH_PROG(GROFF, [groff])
 AC_PATH_PROG(GZIPBIN, [gzip])
-AC_PATH_PROG(POD2HTML, [pod2html])
-AC_PATH_PROG(POD2MAN, [pod2man])
 AC_PATH_PROG(PDFROFF, [pdfroff])
 AC_PATH_PROG(RUNTEST, [runtest])
 DJ_AC_PATH_TCLSH
@@ -1113,7 +1107,8 @@ dnl Check optional compiler flags.
 AC_MSG_CHECKING([optional compiler flags])
 CXX_FLAG_CHECK(NO_VARIADIC_MACROS, [-Wno-variadic-macros])
 CXX_FLAG_CHECK(NO_MISSING_FIELD_INITIALIZERS, [-Wno-missing-field-initializers])
-AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS])
+CXX_FLAG_CHECK(COVERED_SWITCH_DEFAULT, [-Wcovered-switch-default])
+AC_MSG_RESULT([$NO_VARIADIC_MACROS $NO_MISSING_FIELD_INITIALIZERS $COVERED_SWITCH_DEFAULT])
 
 dnl===-----------------------------------------------------------------------===
 dnl===
@@ -1190,28 +1185,82 @@ AC_ARG_WITH(oprofile,
         *) llvm_cv_oppath="${withval}/lib/oprofile"
            CPPFLAGS="-I${withval}/include";;
       esac
-      if test -n "$llvm_cv_oppath" ; then
-        LIBS="$LIBS -L${llvm_cv_oppath} -Wl,-rpath,${llvm_cv_oppath}"
-        dnl Work around http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=537744:
-        dnl libbfd is not included properly in libopagent in some Debian
-        dnl versions.  If libbfd isn't found at all, we assume opagent works
-        dnl anyway.
-        AC_SEARCH_LIBS(bfd_init, bfd, [], [])
-        AC_SEARCH_LIBS(op_open_agent, opagent, [], [
-          echo "Error! You need to have libopagent around."
-          exit -1
-        ])
-        AC_CHECK_HEADER([opagent.h], [], [
-          echo "Error! You need to have opagent.h around."
-          exit -1
-          ])
-      fi
+      case $llvm_cv_os_type in
+        Linux)
+          if test -n "$llvm_cv_oppath" ; then
+            LIBS="$LIBS -lopagent -L${llvm_cv_oppath} -Wl,-rpath,${llvm_cv_oppath}"
+            dnl Work around http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=537744:
+            dnl libbfd is not included properly in libopagent in some Debian
+            dnl versions.  If libbfd isn't found at all, we assume opagent works
+            dnl anyway.
+            AC_SEARCH_LIBS(bfd_init, bfd, [], [])
+            AC_SEARCH_LIBS(op_open_agent, opagent, [], [
+              echo "Error! You need to have libopagent around."
+              exit -1
+            ])
+            AC_CHECK_HEADER([opagent.h], [], [
+              echo "Error! You need to have opagent.h around."
+              exit -1
+              ])
+          fi ;;
+        *)
+          AC_MSG_ERROR([OProfile support is available on Linux only.]) ;;
+      esac 
     ],
     [
       AC_SUBST(USE_OPROFILE, [0])
     ])
-AC_DEFINE_UNQUOTED([USE_OPROFILE],$USE_OPROFILE,
+AC_DEFINE_UNQUOTED([LLVM_USE_OPROFILE],$USE_OPROFILE,
                    [Define if we have the oprofile JIT-support library])
+
+dnl Enable support for Intel JIT Events API.
+AC_ARG_WITH(intel-jitevents,
+  AS_HELP_STRING([--with-intel-jitevents=<vtune-amplifier-dir>],
+    [Specify location of run-time support library for Intel JIT API (default=/opt/intel/vtune_amplifier_xe_2011)]),
+    [
+      case $llvm_cv_os_type in
+        Linux|Win32|Cygwin|MingW) ;;
+        *)
+          AC_MSG_ERROR([
+            Intel JIT API support is available on Linux and Windows only."]) ;;
+      esac
+
+      AC_SUBST(USE_INTEL_JITEVENTS, [1])
+      case "$llvm_cv_target_arch" in
+        x86)    llvm_intel_jitevents_archdir="lib32";;
+        x86_64) llvm_intel_jitevents_archdir="lib64";;
+        *)      echo "Target architecture $llvm_cv_target_arch does not support Intel JIT Events API"
+                exit -1;;
+      esac
+      INTEL_JITEVENTS_INCDIR="/opt/intel/vtune_amplifier_xe_2011/include"
+      INTEL_JITEVENTS_LIBDIR="/opt/intel/vtune_amplifier_xe_2011/$llvm_intel_jitevents_archdir"
+      case "$withval" in
+        /* | [[A-Za-z]]:[[\\/]]*) INTEL_JITEVENTS_INCDIR=$withval/include
+                                  INTEL_JITEVENTS_LIBDIR=$withval/$llvm_intel_jitevents_archdir ;;
+        *) ;;
+      esac
+
+      AC_SUBST(INTEL_JITEVENTS_INCDIR)
+      AC_SUBST(INTEL_JITEVENTS_LIBDIR)
+
+      LIBS="$LIBS -L${INTEL_JITEVENTS_LIBDIR}"
+      CPPFLAGS="$CPPFLAGS -I$INTEL_JITEVENTS_INCDIR"
+
+      AC_SEARCH_LIBS(iJIT_IsProfilingActive, jitprofiling, [], [
+        echo "Error! Cannot find libjitprofiling.a. Please check path specified in flag --with-intel-jitevents"
+        exit -1
+      ])
+      AC_CHECK_HEADER([jitprofiling.h], [], [
+        echo "Error! Cannot find jitprofiling.h. Please check path specified in flag --with-intel-jitevents"
+        exit -1
+      ])
+
+    ],
+    [
+      AC_SUBST(USE_INTEL_JITEVENTS, [0])
+    ])
+AC_DEFINE_UNQUOTED([LLVM_USE_INTEL_JITEVENTS],$USE_INTEL_JITEVENTS,
+                   [Define if we have the Intel JIT API runtime support library])
 
 dnl===-----------------------------------------------------------------------===
 dnl===
@@ -1295,7 +1344,7 @@ AC_CHECK_FUNCS([powf fmodf strtof round ])
 AC_CHECK_FUNCS([getpagesize getrusage getrlimit setrlimit gettimeofday ])
 AC_CHECK_FUNCS([isatty mkdtemp mkstemp ])
 AC_CHECK_FUNCS([mktemp posix_spawn pread realpath sbrk setrlimit strdup ])
-AC_CHECK_FUNCS([strerror strerror_r setenv ])
+AC_CHECK_FUNCS([strerror strerror_r setenv arc4random ])
 AC_CHECK_FUNCS([strtoll strtoq sysconf malloc_zone_statistics ])
 AC_CHECK_FUNCS([setjmp longjmp sigsetjmp siglongjmp writev])
 AC_C_PRINTF_A
@@ -1443,6 +1492,11 @@ AC_SUBST(LLVM_INCLUDEDIR)
 AC_SUBST(LLVM_INFODIR)
 AC_SUBST(LLVM_MANDIR)
 AC_SUBST(LLVM_CONFIGTIME)
+
+dnl Disable embedding timestamps in the build directory, with ENABLE_TIMESTAMPS.
+if test "${ENABLE_TIMESTAMPS}" = "0"; then
+  LLVM_CONFIGTIME="(timestamp not enabled)"
+fi
 
 dnl Place the various directories into the config.h file as #defines so that we
 dnl can know about the installation paths within LLVM.

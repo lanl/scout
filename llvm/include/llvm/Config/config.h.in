@@ -12,8 +12,8 @@
 /* Directories clang will search for headers */
 #undef C_INCLUDE_DIRS
 
-/* Define if CBE is enabled for printf %a output */
-#undef ENABLE_CBE_PRINTF_A
+/* Default <path> to all compiler invocations for --sysroot=<path>. */
+#undef DEFAULT_SYSROOT
 
 /* Define if position independent code is enabled */
 #undef ENABLE_PIC
@@ -23,6 +23,9 @@
 
 /* Directory where gcc is installed. */
 #undef GCC_INSTALL_PREFIX
+
+/* Define to 1 if you have the `arc4random' function. */
+#undef HAVE_ARC4RANDOM
 
 /* Define to 1 if you have the `argz_append' function. */
 #undef HAVE_ARGZ_APPEND
@@ -570,6 +573,9 @@
 /* LLVM name for the native AsmPrinter init function, if available */
 #undef LLVM_NATIVE_ASMPRINTER
 
+/* LLVM name for the native Disassembler init function, if available */
+#undef LLVM_NATIVE_DISASSEMBLER
+
 /* LLVM name for the native Target init function, if available */
 #undef LLVM_NATIVE_TARGET
 
@@ -614,6 +620,18 @@
 
 /* Installation prefix directory */
 #undef LLVM_PREFIX
+
+/* Define if we have the Intel JIT API runtime support library */
+#undef LLVM_USE_INTEL_JITEVENTS
+
+/* Define if we have the oprofile JIT-support library */
+#undef LLVM_USE_OPROFILE
+
+/* Major version of the LLVM API */
+#undef LLVM_VERSION_MAJOR
+
+/* Minor version of the LLVM API */
+#undef LLVM_VERSION_MINOR
 
 /* Define if the OS needs help to load dependent libraries for dlopen(). */
 #undef LTDL_DLOPEN_DEPLIBS
@@ -668,9 +686,6 @@
 
 /* Define to 1 if your <sys/time.h> declares `struct tm'. */
 #undef TM_IN_SYS_TIME
-
-/* Define if we have the oprofile JIT-support library */
-#undef USE_OPROFILE
 
 /* Define if use udis86 library */
 #undef USE_UDIS86

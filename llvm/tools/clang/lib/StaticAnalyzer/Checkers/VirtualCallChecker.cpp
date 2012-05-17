@@ -15,7 +15,7 @@
 #include "ClangSACheckers.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/Analysis/Support/SaveAndRestore.h"
+#include "llvm/Support/SaveAndRestore.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
@@ -186,7 +186,8 @@ void WalkAST::ReportVirtualCall(const CallExpr *CE, bool isPure) {
   if (isPure) {
     os << "\n" <<  "Call pure virtual functions during construction or "
        << "destruction may leads undefined behaviour";
-    BR.EmitBasicReport("Call pure virtual function during construction or "
+    BR.EmitBasicReport(AC->getDecl(),
+                       "Call pure virtual function during construction or "
                        "Destruction",
                        "Cplusplus",
                        os.str(), CELoc, &R, 1);
@@ -195,7 +196,8 @@ void WalkAST::ReportVirtualCall(const CallExpr *CE, bool isPure) {
   else {
     os << "\n" << "Call virtual functions during construction or "
        << "destruction will never go to a more derived class";
-    BR.EmitBasicReport("Call virtual function during construction or "
+    BR.EmitBasicReport(AC->getDecl(),
+                       "Call virtual function during construction or "
                        "Destruction",
                        "Cplusplus",
                        os.str(), CELoc, &R, 1);

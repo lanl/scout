@@ -1,4 +1,4 @@
-/*===- X86DisassemblerDecoder.c - Disassembler decoder -------------*- C -*-==*
+/*===-- X86DisassemblerDecoder.c - Disassembler decoder ------------*- C -*-===*
  *
  *                     The LLVM Compiler Infrastructure
  *
@@ -82,11 +82,9 @@ static int modRMRequired(OpcodeType type,
     decision = &THREEBYTEA7_SYM;
     break;
   }
-  
+
   return decision->opcodeDecisions[insnContext].modRMDecisions[opcode].
     modrm_type != MODRM_ONEENTRY;
-  
-  return 0;
 }
 
 /*
@@ -314,6 +312,15 @@ static int readPrefixes(struct InternalInstruction* insn) {
     
     if (consumeByte(insn, &byte))
       return -1;
+
+    /*
+     * If the first byte is a LOCK prefix break and let it be disassembled
+     * as a lock "instruction", by creating an <MCInst #xxxx LOCK_PREFIX>.
+     * FIXME there is currently no way to get the disassembler to print the
+     * lock prefix if it is not the first byte.
+     */
+    if (insn->readerCursor - 1 == insn->startLocation && byte == 0xf0)
+      break;
     
     switch (byte) {
     case 0xf0:  /* LOCK */
@@ -712,7 +719,7 @@ static BOOL is16BitEquvalent(const char* orig, const char* equiv) {
  * @return      - 0 if the ModR/M could be read when needed or was not needed;
  *                nonzero otherwise.
  */
-static int getID(struct InternalInstruction* insn) {  
+static int getID(struct InternalInstruction* insn, void *miiArg) {
   uint8_t attrMask;
   uint16_t instructionID;
   
@@ -765,6 +772,8 @@ static int getID(struct InternalInstruction* insn) {
   else {
     if (isPrefixAtLocation(insn, 0x66, insn->necessaryPrefixLocation))
       attrMask |= ATTR_OPSIZE;
+    else if (isPrefixAtLocation(insn, 0x67, insn->necessaryPrefixLocation))
+      attrMask |= ATTR_ADSIZE;
     else if (isPrefixAtLocation(insn, 0xf3, insn->necessaryPrefixLocation))
       attrMask |= ATTR_XS;
     else if (isPrefixAtLocation(insn, 0xf2, insn->necessaryPrefixLocation))
@@ -826,7 +835,7 @@ static int getID(struct InternalInstruction* insn) {
     
     const struct InstructionSpecifier *spec;
     uint16_t instructionIDWithOpsize;
-    const struct InstructionSpecifier *specWithOpsize;
+    const char *specName, *specWithOpSizeName;
     
     spec = specifierForUID(instructionID);
     
@@ -843,11 +852,13 @@ static int getID(struct InternalInstruction* insn) {
       return 0;
     }
     
-    specWithOpsize = specifierForUID(instructionIDWithOpsize);
-    
-    if (is16BitEquvalent(spec->name, specWithOpsize->name)) {
+    specName = x86DisassemblerGetInstrName(instructionID, miiArg);
+    specWithOpSizeName =
+      x86DisassemblerGetInstrName(instructionIDWithOpsize, miiArg);
+
+    if (is16BitEquvalent(specName, specWithOpSizeName)) {
       insn->instructionID = instructionIDWithOpsize;
-      insn->spec = specWithOpsize;
+      insn->spec = specifierForUID(instructionIDWithOpsize);
     } else {
       insn->instructionID = instructionID;
       insn->spec = spec;
@@ -1014,6 +1025,7 @@ static int readDisplacement(struct InternalInstruction* insn) {
     return 0;
   
   insn->consumedDisplacement = TRUE;
+  insn->displacementOffset = insn->readerCursor - insn->startLocation;
   
   switch (insn->eaDisplacement) {
   case EA_DISP_NONE:
@@ -1410,6 +1422,7 @@ static int readImmediate(struct InternalInstruction* insn, uint8_t size) {
     size = insn->immediateSize;
   else
     insn->immediateSize = size;
+  insn->immediateOffset = insn->readerCursor - insn->startLocation;
   
   switch (size) {
   case 1:
@@ -1514,6 +1527,9 @@ static int readOperands(struct InternalInstruction* insn) {
       if (insn->spec->operands[index].type == TYPE_IMM3 &&
           insn->immediates[insn->numImmediatesConsumed - 1] > 7)
         return -1;
+      if (insn->spec->operands[index].type == TYPE_IMM5 &&
+          insn->immediates[insn->numImmediatesConsumed - 1] > 31)
+        return -1;
       if (insn->spec->operands[index].type == TYPE_XMM128 ||
           insn->spec->operands[index].type == TYPE_XMM256)
         sawRegImm = 1;
@@ -1608,6 +1624,7 @@ int decodeInstruction(struct InternalInstruction* insn,
                       void* readerArg,
                       dlog_t logger,
                       void* loggerArg,
+                      void* miiArg,
                       uint64_t startLoc,
                       DisassemblerMode mode) {
   memset(insn, 0, sizeof(struct InternalInstruction));
@@ -1623,7 +1640,7 @@ int decodeInstruction(struct InternalInstruction* insn,
   
   if (readPrefixes(insn)       ||
       readOpcode(insn)         ||
-      getID(insn)              ||
+      getID(insn, miiArg)      ||
       insn->instructionID == 0 ||
       readOperands(insn))
     return -1;

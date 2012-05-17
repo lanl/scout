@@ -1,7 +1,7 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=core,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -analyzer-checker=core,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DVARIANT -analyzer-checker=core,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=core,experimental.unix.cstring.NullArg,experimental.unix.cstring.OutOfBounds,experimental.unix.cstring.BufferOverlap,experimental.unix.cstring.NotNullTerminated -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,unix.cstring,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -analyzer-checker=core,unix.cstring,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DVARIANT -analyzer-checker=core,unix.cstring,experimental.unix.cstring -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=core,unix.cstring.NullArg,experimental.unix.cstring.OutOfBounds,experimental.unix.cstring.BufferOverlap,experimental.unix.cstring.NotNullTerminated -analyzer-store=region -Wno-null-dereference -verify %s
 
 //===----------------------------------------------------------------------===
 // Declarations
@@ -427,4 +427,14 @@ void bcopy2 () {
   char dst[1];
 
   bcopy(src, dst, 4); // expected-warning{{overflow}}
+}
+
+void *malloc(size_t);
+void free(void *);
+char radar_11125445_memcopythenlogfirstbyte(const char *input, size_t length) {
+  char *bytes = malloc(sizeof(char) * (length + 1));
+  memcpy(bytes, input, length);
+  char x = bytes[0]; // no warning
+  free(bytes);
+  return x;
 }

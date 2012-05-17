@@ -719,7 +719,9 @@ static void WriteConstantInternal(raw_ostream &Out, const Constant *CV,
       bool ignored;
       bool isHalf = &CFP->getValueAPF().getSemantics()==&APFloat::IEEEhalf;
       bool isDouble = &CFP->getValueAPF().getSemantics()==&APFloat::IEEEdouble;
-      if (!isHalf) {
+      bool isInf = CFP->getValueAPF().isInfinity();
+      bool isNaN = CFP->getValueAPF().isNaN();
+      if (!isHalf && !isInf && !isNaN) {
         double Val = isDouble ? CFP->getValueAPF().convertToDouble() :
                                 CFP->getValueAPF().convertToFloat();
         SmallString<128> StrVal;
@@ -733,7 +735,7 @@ static void WriteConstantInternal(raw_ostream &Out, const Constant *CV,
             ((StrVal[0] == '-' || StrVal[0] == '+') &&
              (StrVal[1] >= '0' && StrVal[1] <= '9'))) {
           // Reparse stringized version!
-          if (atof(StrVal.c_str()) == Val) {
+          if (APFloat(APFloat::IEEEdouble, StrVal).convertToDouble() == Val) {
             Out << StrVal.str();
             return;
           }
@@ -1729,12 +1731,12 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
     Out << ", ";
     writeOperand(SI.getDefaultDest(), true);
     Out << " [";
-    unsigned NumCases = SI.getNumCases();
-    for (unsigned i = 0; i < NumCases; ++i) {
+    for (SwitchInst::CaseIt i = SI.case_begin(), e = SI.case_end();
+         i != e; ++i) {
       Out << "\n    ";
-      writeOperand(SI.getCaseValue(i), true);
+      writeOperand(i.getCaseValue(), true);
       Out << ", ";
-      writeOperand(SI.getCaseSuccessor(i), true);
+      writeOperand(i.getCaseSuccessor(), true);
     }
     Out << "\n  ]";
   } else if (isa<IndirectBrInst>(I)) {

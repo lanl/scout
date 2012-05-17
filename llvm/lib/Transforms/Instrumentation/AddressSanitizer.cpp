@@ -15,6 +15,7 @@
 
 #define DEBUG_TYPE "asan"
 
+#include "FunctionBlackList.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallSet.h"
@@ -29,8 +30,6 @@
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/IRBuilder.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 #include "llvm/Target/TargetData.h"
@@ -126,21 +125,6 @@ static cl::opt<int> ClDebugMax("asan-debug-max", cl::desc("Debug man inst"),
 
 namespace {
 
-// Blacklisted functions are not instrumented.
-// The blacklist file contains one or more lines like this:
-// ---
-// fun:FunctionWildCard
-// ---
-// This is similar to the "ignore" feature of ThreadSanitizer.
-// http://code.google.com/p/data-race-test/wiki/ThreadSanitizerIgnores
-class BlackList {
- public:
-  BlackList(const std::string &Path);
-  bool isIn(const Function &F);
- private:
-  Regex *Functions;
-};
-
 /// AddressSanitizer: instrument the code in module to find memory bugs.
 struct AddressSanitizer : public ModulePass {
   AddressSanitizer();
@@ -167,7 +151,7 @@ struct AddressSanitizer : public ModulePass {
 
   uint64_t getAllocaSizeInBytes(AllocaInst *AI) {
     Type *Ty = AI->getAllocatedType();
-    uint64_t SizeInBytes = TD->getTypeStoreSizeInBits(Ty) / 8;
+    uint64_t SizeInBytes = TD->getTypeAllocSize(Ty);
     return SizeInBytes;
   }
   uint64_t getAlignedSize(uint64_t SizeInBytes) {
@@ -179,6 +163,7 @@ struct AddressSanitizer : public ModulePass {
     return getAlignedSize(SizeInBytes);
   }
 
+  Function *checkInterfaceFunction(Constant *FuncOrBitcast);
   void PoisonStack(const ArrayRef<AllocaInst*> &AllocaVec, IRBuilder<> IRB,
                    Value *ShadowBase, bool DoPoison);
   bool LooksLikeCodeInBug11395(Instruction *I);
@@ -195,7 +180,7 @@ struct AddressSanitizer : public ModulePass {
   Function *AsanCtorFunction;
   Function *AsanInitFunction;
   Instruction *CtorInsertBefore;
-  OwningPtr<BlackList> BL;
+  OwningPtr<FunctionBlackList> BL;
 };
 }  // namespace
 
@@ -333,6 +318,17 @@ void AddressSanitizer::instrumentMop(Instruction *I) {
   instrumentAddress(I, IRB, Addr, TypeSize, IsWrite);
 }
 
+// Validate the result of Module::getOrInsertFunction called for an interface
+// function of AddressSanitizer. If the instrumented module defines a function
+// with the same name, their prototypes must match, otherwise
+// getOrInsertFunction returns a bitcast.
+Function *AddressSanitizer::checkInterfaceFunction(Constant *FuncOrBitcast) {
+  if (isa<Function>(FuncOrBitcast)) return cast<Function>(FuncOrBitcast);
+  FuncOrBitcast->dump();
+  report_fatal_error("trying to redefine an AddressSanitizer "
+                     "interface function");
+}
+
 Instruction *AddressSanitizer::generateCrashCode(
     IRBuilder<> &IRB, Value *Addr, bool IsWrite, uint32_t TypeSize) {
   // IsWrite and TypeSize are encoded in the function name.
@@ -367,11 +363,12 @@ void AddressSanitizer::instrumentAddress(Instruction *OrigIns,
   size_t Granularity = 1 << MappingScale;
   if (TypeSize < 8 * Granularity) {
     // Addr & (Granularity - 1)
-    Value *Lower3Bits = IRB2.CreateAnd(
+    Value *LastAccessedByte = IRB2.CreateAnd(
         AddrLong, ConstantInt::get(IntptrTy, Granularity - 1));
     // (Addr & (Granularity - 1)) + size - 1
-    Value *LastAccessedByte = IRB2.CreateAdd(
-        Lower3Bits, ConstantInt::get(IntptrTy, TypeSize / 8 - 1));
+    if (TypeSize / 8 > 1)
+      LastAccessedByte = IRB2.CreateAdd(
+          LastAccessedByte, ConstantInt::get(IntptrTy, TypeSize / 8 - 1));
     // (uint8_t) ((Addr & (Granularity-1)) + size - 1)
     LastAccessedByte = IRB2.CreateIntCast(
         LastAccessedByte, IRB.getInt8Ty(), false);
@@ -470,7 +467,7 @@ bool AddressSanitizer::insertGlobalRedzones(Module &M) {
     GlobalVariable *G = GlobalsToChange[i];
     PointerType *PtrTy = cast<PointerType>(G->getType());
     Type *Ty = PtrTy->getElementType();
-    uint64_t SizeInBytes = TD->getTypeStoreSizeInBits(Ty) / 8;
+    uint64_t SizeInBytes = TD->getTypeAllocSize(Ty);
     uint64_t RightRedzoneSize = RedzoneSize +
         (RedzoneSize - (SizeInBytes % RedzoneSize));
     Type *RightRedZoneTy = ArrayType::get(IRB.getInt8Ty(), RightRedzoneSize);
@@ -517,7 +514,7 @@ bool AddressSanitizer::insertGlobalRedzones(Module &M) {
       M, ArrayOfGlobalStructTy, false, GlobalVariable::PrivateLinkage,
       ConstantArray::get(ArrayOfGlobalStructTy, Initializers), "");
 
-  Function *AsanRegisterGlobals = cast<Function>(M.getOrInsertFunction(
+  Function *AsanRegisterGlobals = checkInterfaceFunction(M.getOrInsertFunction(
       kAsanRegisterGlobalsName, IRB.getVoidTy(), IntptrTy, IntptrTy, NULL));
   AsanRegisterGlobals->setLinkage(Function::ExternalLinkage);
 
@@ -532,8 +529,10 @@ bool AddressSanitizer::insertGlobalRedzones(Module &M) {
       GlobalValue::InternalLinkage, kAsanModuleDtorName, &M);
   BasicBlock *AsanDtorBB = BasicBlock::Create(*C, "", AsanDtorFunction);
   IRBuilder<> IRB_Dtor(ReturnInst::Create(*C, AsanDtorBB));
-  Function *AsanUnregisterGlobals = cast<Function>(M.getOrInsertFunction(
-      kAsanUnregisterGlobalsName, IRB.getVoidTy(), IntptrTy, IntptrTy, NULL));
+  Function *AsanUnregisterGlobals =
+      checkInterfaceFunction(M.getOrInsertFunction(
+          kAsanUnregisterGlobalsName,
+          IRB.getVoidTy(), IntptrTy, IntptrTy, NULL));
   AsanUnregisterGlobals->setLinkage(Function::ExternalLinkage);
 
   IRB_Dtor.CreateCall2(AsanUnregisterGlobals,
@@ -551,7 +550,7 @@ bool AddressSanitizer::runOnModule(Module &M) {
   TD = getAnalysisIfAvailable<TargetData>();
   if (!TD)
     return false;
-  BL.reset(new BlackList(ClBlackListFile));
+  BL.reset(new FunctionBlackList(ClBlackListFile));
 
   CurrentModule = &M;
   C = &(M.getContext());
@@ -567,7 +566,7 @@ bool AddressSanitizer::runOnModule(Module &M) {
 
   // call __asan_init in the module ctor.
   IRBuilder<> IRB(CtorInsertBefore);
-  AsanInitFunction = cast<Function>(
+  AsanInitFunction = checkInterfaceFunction(
       M.getOrInsertFunction(kAsanInitName, IRB.getVoidTy(), NULL));
   AsanInitFunction->setLinkage(Function::ExternalLinkage);
   IRB.CreateCall(AsanInitFunction);
@@ -595,18 +594,23 @@ bool AddressSanitizer::runOnModule(Module &M) {
   if (ClGlobals)
     Res |= insertGlobalRedzones(M);
 
-  // Tell the run-time the current values of mapping offset and scale.
-  GlobalValue *asan_mapping_offset =
-      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                     ConstantInt::get(IntptrTy, MappingOffset),
-                     kAsanMappingOffsetName);
-  GlobalValue *asan_mapping_scale =
-      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                         ConstantInt::get(IntptrTy, MappingScale),
-                         kAsanMappingScaleName);
-  // Read these globals, otherwise they may be optimized away.
-  IRB.CreateLoad(asan_mapping_scale, true);
-  IRB.CreateLoad(asan_mapping_offset, true);
+  if (ClMappingOffsetLog >= 0) {
+    // Tell the run-time the current values of mapping offset and scale.
+    GlobalValue *asan_mapping_offset =
+        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                       ConstantInt::get(IntptrTy, MappingOffset),
+                       kAsanMappingOffsetName);
+    // Read the global, otherwise it may be optimized away.
+    IRB.CreateLoad(asan_mapping_offset, true);
+  }
+  if (ClMappingScale) {
+    GlobalValue *asan_mapping_scale =
+        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                           ConstantInt::get(IntptrTy, MappingScale),
+                           kAsanMappingScaleName);
+    // Read the global, otherwise it may be optimized away.
+    IRB.CreateLoad(asan_mapping_scale, true);
+  }
 
 
   for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
@@ -945,55 +949,4 @@ bool AddressSanitizer::poisonStackInFunction(Module &M, Function &F) {
   }
 
   return true;
-}
-
-BlackList::BlackList(const std::string &Path) {
-  Functions = NULL;
-  const char *kFunPrefix = "fun:";
-  if (!ClBlackListFile.size()) return;
-  std::string Fun;
-
-  OwningPtr<MemoryBuffer> File;
-  if (error_code EC = MemoryBuffer::getFile(ClBlackListFile.c_str(), File)) {
-    report_fatal_error("Can't open blacklist file " + ClBlackListFile + ": " +
-                       EC.message());
-  }
-  MemoryBuffer *Buff = File.take();
-  const char *Data = Buff->getBufferStart();
-  size_t DataLen = Buff->getBufferSize();
-  SmallVector<StringRef, 16> Lines;
-  SplitString(StringRef(Data, DataLen), Lines, "\n\r");
-  for (size_t i = 0, numLines = Lines.size(); i < numLines; i++) {
-    if (Lines[i].startswith(kFunPrefix)) {
-      std::string ThisFunc = Lines[i].substr(strlen(kFunPrefix));
-      std::string ThisFuncRE;
-      // add ThisFunc replacing * with .*
-      for (size_t j = 0, n = ThisFunc.size(); j < n; j++) {
-        if (ThisFunc[j] == '*')
-          ThisFuncRE += '.';
-        ThisFuncRE += ThisFunc[j];
-      }
-      // Check that the regexp is valid.
-      Regex CheckRE(ThisFuncRE);
-      std::string Error;
-      if (!CheckRE.isValid(Error))
-        report_fatal_error("malformed blacklist regex: " + ThisFunc +
-                           ": " + Error);
-      // Append to the final regexp.
-      if (Fun.size())
-        Fun += "|";
-      Fun += ThisFuncRE;
-    }
-  }
-  if (Fun.size()) {
-    Functions = new Regex(Fun);
-  }
-}
-
-bool BlackList::isIn(const Function &F) {
-  if (Functions) {
-    bool Res = Functions->match(F.getName());
-    return Res;
-  }
-  return false;
 }

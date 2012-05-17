@@ -753,7 +753,7 @@ Value *InstCombiner::FoldAndOfICmps(ICmpInst *LHS, ICmpInst *RHS) {
   // (trunc x) == C1 & (and x, CA) == C2 -> (and x, CA|CMAX) == C1|C2
   // where CMAX is the all ones value for the truncated type,
   // iff the lower bits of C2 and CA are zero.
-  if (LHSCC == RHSCC && ICmpInst::isEquality(LHSCC) &&
+  if (LHSCC == ICmpInst::ICMP_EQ && LHSCC == RHSCC &&
       LHS->hasOneUse() && RHS->hasOneUse()) {
     Value *V;
     ConstantInt *AndCst, *SmallCst = 0, *BigCst = 0;
@@ -1362,13 +1362,8 @@ static bool CollectBSwapParts(Value *V, int OverallLeftShift, uint32_t ByteMask,
   // part of the value (e.g. byte 3) then it must be shifted right.  If from the
   // low part, it must be shifted left.
   unsigned DestByteNo = InputByteNo + OverallLeftShift;
-  if (InputByteNo < ByteValues.size()/2) {
-    if (ByteValues.size()-1-DestByteNo != InputByteNo)
-      return true;
-  } else {
-    if (ByteValues.size()-1-DestByteNo != InputByteNo)
-      return true;
-  }
+  if (ByteValues.size()-1-DestByteNo != InputByteNo)
+    return true;
   
   // If the destination byte value is already defined, the values are or'd
   // together, which isn't a bswap (unless it's an or of the same bits).
@@ -1929,13 +1924,21 @@ Instruction *InstCombiner::visitOr(BinaryOperator &I) {
       }
 
   // Canonicalize xor to the RHS.
-  if (match(Op0, m_Xor(m_Value(), m_Value())))
+  bool SwappedForXor = false;
+  if (match(Op0, m_Xor(m_Value(), m_Value()))) {
     std::swap(Op0, Op1);
+    SwappedForXor = true;
+  }
 
   // A | ( A ^ B) -> A |  B
   // A | (~A ^ B) -> A | ~B
+  // (A & B) | (A ^ B)
   if (match(Op1, m_Xor(m_Value(A), m_Value(B)))) {
     if (Op0 == A || Op0 == B)
+      return BinaryOperator::CreateOr(A, B);
+
+    if (match(Op0, m_And(m_Specific(A), m_Specific(B))) ||
+        match(Op0, m_And(m_Specific(B), m_Specific(A))))
       return BinaryOperator::CreateOr(A, B);
 
     if (Op1->hasOneUse() && match(A, m_Not(m_Specific(Op0)))) {
@@ -1960,6 +1963,9 @@ Instruction *InstCombiner::visitOr(BinaryOperator &I) {
         Value *Not = Builder->CreateNot(NotOp, NotOp->getName()+".not");
         return BinaryOperator::CreateOr(Not, Op0);
       }
+
+  if (SwappedForXor)
+    std::swap(Op0, Op1);
 
   if (ICmpInst *RHS = dyn_cast<ICmpInst>(I.getOperand(1)))
     if (ICmpInst *LHS = dyn_cast<ICmpInst>(I.getOperand(0)))

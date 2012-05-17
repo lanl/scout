@@ -26,11 +26,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Path.h"
 
-#ifdef HAVE_CLANG_CONFIG_H
-# include "clang/Config/config.h"
-#endif
+#include "clang/Config/config.h" // C_INCLUDE_DIRS
 
-#include "llvm/Config/config.h"
 using namespace clang;
 using namespace clang::frontend;
 
@@ -390,6 +387,9 @@ AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOp
     AddMinGW64CXXPaths(HSOpts.ResourceDir, "4.7.0");
     // mingw.org C++ include paths
     AddMinGWCPlusPlusIncludePaths("/mingw/lib/gcc", "mingw32", "4.5.2"); //MSYS
+    AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.6.2");
+    AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.6.1");
+    AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.5.2");
     AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.5.0");
     AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.4.0");
     AddMinGWCPlusPlusIncludePaths("c:/MinGW/lib/gcc", "mingw32", "4.3.0");
@@ -418,6 +418,8 @@ AddDefaultCPlusPlusIncludePaths(const llvm::Triple &triple, const HeaderSearchOp
                                 "", "", "", triple);
     break;
   case llvm::Triple::Solaris:
+    AddGnuCPlusPlusIncludePaths("/usr/gcc/4.5/include/c++/4.5.2/",
+                                "i386-pc-solaris2.11", "", "", triple);
     // Solaris - Fall though..
   case llvm::Triple::AuroraUX:
     // AuroraUX
@@ -462,6 +464,11 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
           AddPath(P.str(), CXXSystem, true, false, false, true);
         }
       }
+      // On Solaris, include the support directory for things like xlocale and
+      // fudged system headers.
+      if (triple.getOS() == llvm::Triple::Solaris) 
+        AddPath("/usr/include/c++/v1/support/solaris", CXXSystem, true, false,
+            false);
       
       AddPath("/usr/include/c++/v1", CXXSystem, true, false, false);
     } else {

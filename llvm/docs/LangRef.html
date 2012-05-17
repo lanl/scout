@@ -7,7 +7,7 @@
   <meta name="author" content="Chris Lattner">
   <meta name="description"
   content="LLVM Assembly Language Reference Manual.">
-  <link rel="stylesheet" href="llvm.css" type="text/css">
+  <link rel="stylesheet" href="_static/llvm.css" type="text/css">
 </head>
 
 <body>
@@ -103,9 +103,15 @@
       <li><a href="#metadata">Metadata Nodes and Metadata Strings</a>
         <ol>
           <li><a href="#tbaa">'<tt>tbaa</tt>' Metadata</a></li>
-          <li><a href="#fpaccuracy">'<tt>fpaccuracy</tt>' Metadata</a></li>
+          <li><a href="#fpmath">'<tt>fpmath</tt>' Metadata</a></li>
+          <li><a href="#range">'<tt>range</tt>' Metadata</a></li>
         </ol>
       </li>
+    </ol>
+  </li>
+  <li><a href="#module_flags">Module Flags Metadata</a>
+    <ol>
+      <li><a href="#objc_gc_flags">Objective-C Garbage Collection Module Flags Metadata</a></li>
     </ol>
   </li>
   <li><a href="#intrinsic_globals">Intrinsic Global Variables</a>
@@ -301,6 +307,8 @@
             '<tt>llvm.annotation.*</tt>' Intrinsic</a></li>
           <li><a href="#int_trap">
             '<tt>llvm.trap</tt>' Intrinsic</a></li>
+          <li><a href="#int_debugger">
+            '<tt>llvm.debugger</tt>' Intrinsic</a></li>
           <li><a href="#int_stackprotector">
             '<tt>llvm.stackprotector</tt>' Intrinsic</a></li>
 	  <li><a href="#int_objectsize">
@@ -485,43 +493,43 @@
 
 <div>
 
-<p>LLVM programs are composed of "Module"s, each of which is a translation unit
-   of the input programs.  Each module consists of functions, global variables,
-   and symbol table entries.  Modules may be combined together with the LLVM
-   linker, which merges function (and global variable) definitions, resolves
-   forward declarations, and merges symbol table entries. Here is an example of
-   the "hello world" module:</p>
+<p>LLVM programs are composed of <tt>Module</tt>s, each of which is a
+   translation unit of the input programs.  Each module consists of functions,
+   global variables, and symbol table entries.  Modules may be combined together
+   with the LLVM linker, which merges function (and global variable)
+   definitions, resolves forward declarations, and merges symbol table
+   entries. Here is an example of the "hello world" module:</p>
 
 <pre class="doc_code">
 <i>; Declare the string constant as a global constant.</i>&nbsp;
-<a href="#identifiers">@.LC0</a> = <a href="#linkage_internal">internal</a>&nbsp;<a href="#globalvars">constant</a>&nbsp;<a href="#t_array">[13 x i8]</a> c"hello world\0A\00"      <i>; [13 x i8]*</i>&nbsp;
+<a href="#identifiers">@.str</a> = <a href="#linkage_private">private</a>&nbsp;<a href="#globalvars">unnamed_addr</a>&nbsp;<a href="#globalvars">constant</a>&nbsp;<a href="#t_array">[13 x i8]</a> c"hello world\0A\00"&nbsp;
 
 <i>; External declaration of the puts function</i>&nbsp;
-<a href="#functionstructure">declare</a> i32 @puts(i8*)                                      <i>; i32 (i8*)* </i>&nbsp;
+<a href="#functionstructure">declare</a> i32 @puts(i8* <a href="#nocapture">nocapture</a>) <a href="#fnattrs">nounwind</a>&nbsp;
 
 <i>; Definition of main function</i>
 define i32 @main() {   <i>; i32()* </i>&nbsp;
   <i>; Convert [13 x i8]* to i8  *...</i>&nbsp;
-  %cast210 = <a href="#i_getelementptr">getelementptr</a> [13 x i8]* @.LC0, i64 0, i64 0   <i>; i8*</i>&nbsp;
+  %cast210 = <a href="#i_getelementptr">getelementptr</a> [13 x i8]* @.str, i64 0, i64 0
 
   <i>; Call puts function to write out the string to stdout.</i>&nbsp;
-  <a href="#i_call">call</a> i32 @puts(i8* %cast210)           <i>; i32</i>&nbsp;
+  <a href="#i_call">call</a> i32 @puts(i8* %cast210)
   <a href="#i_ret">ret</a> i32 0&nbsp;
 }
 
 <i>; Named metadata</i>
-!1 = metadata !{i32 41}
+!1 = metadata !{i32 42}
 !foo = !{!1, null}
 </pre>
 
 <p>This example is made up of a <a href="#globalvars">global variable</a> named
-   "<tt>.LC0</tt>", an external declaration of the "<tt>puts</tt>" function,
+   "<tt>.str</tt>", an external declaration of the "<tt>puts</tt>" function,
    a <a href="#functionstructure">function definition</a> for
    "<tt>main</tt>" and <a href="#namedmetadatastructure">named metadata</a> 
-   "<tt>foo"</tt>.</p>
+   "<tt>foo</tt>".</p>
 
-<p>In general, a module is made up of a list of global values, where both
-   functions and global variables are global values.  Global values are
+<p>In general, a module is made up of a list of global values (where both
+   functions and global variables are global values). Global values are
    represented by a pointer to a memory location (in this case, a pointer to an
    array of char, and a pointer to a function), and have one of the
    following <a href="#linkage">linkage types</a>.</p>
@@ -2994,14 +3002,16 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 
 <!-- _______________________________________________________________________ -->
 <h4>
-  <a name="fpaccuracy">'<tt>fpaccuracy</tt>' Metadata</a>
+  <a name="fpmath">'<tt>fpmath</tt>' Metadata</a>
 </h4>
  
 <div>
 
-<p><tt>fpaccuracy</tt> metadata may be attached to any instruction of floating
-   point type.  It expresses the maximum relative error of the result of
-   that instruction, in ULPs. ULP is defined as follows:</p>
+<p><tt>fpmath</tt> metadata may be attached to any instruction of floating point
+  type.  It can be used to express the maximum acceptable error in the result of
+  that instruction, in ULPs, thus potentially allowing the compiler to use a
+  more efficient but less accurate method of computing it.  ULP is defined as
+  follows:</p>
 
 <blockquote>
 
@@ -3013,17 +3023,252 @@ call void @llvm.dbg.value(metadata !24, i64 0, metadata !25)
 
 </blockquote>
 
-<p>The maximum relative error may be any rational number.  The metadata node
-   shall consist of a pair of unsigned integers respectively representing
-   the numerator and denominator.  For example, 2.5 ULP:</p>
+<p>The metadata node shall consist of a single positive floating point number
+   representing the maximum relative error, for example:</p>
 
 <div class="doc_code">
 <pre>
-!0 = metadata !{ i32 5, i32 2 }
+!0 = metadata !{ float 2.5 } ; maximum acceptable inaccuracy is 2.5 ULPs
 </pre>
 </div>
 
 </div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="range">'<tt>range</tt>' Metadata</a>
+</h4>
+
+<div>
+<p><tt>range</tt> metadata may be attached only to loads of integer types. It
+   expresses the possible ranges the loaded value is in. The ranges are
+   represented with a flattened list of integers. The loaded value is known to
+   be in the union of the ranges defined by each consecutive pair. Each pair
+   has the following properties:</p>
+<ul>
+   <li>The type must match the type loaded by the instruction.</li>
+   <li>The pair <tt>a,b</tt> represents the range <tt>[a,b)</tt>.</li>
+   <li>Both <tt>a</tt> and <tt>b</tt> are constants.</li>
+   <li>The range is allowed to wrap.</li>
+   <li>The range should not represent the full or empty set. That is,
+       <tt>a!=b</tt>. </li>
+</ul>
+
+<p>Examples:</p>
+<div class="doc_code">
+<pre>
+  %a = load i8* %x, align 1, !range !0 ; Can only be 0 or 1
+  %b = load i8* %y, align 1, !range !1 ; Can only be 255 (-1), 0 or 1
+  %c = load i8* %z, align 1, !range !2 ; Can only be 0, 1, 3, 4 or 5
+...
+!0 = metadata !{ i8 0, i8 2 }
+!1 = metadata !{ i8 255, i8 2 }
+!2 = metadata !{ i8 0, i8 2, i8 3, i8 6 }
+</pre>
+</div>
+</div>
+</div>
+
+</div>
+
+<!-- *********************************************************************** -->
+<h2>
+  <a name="module_flags">Module Flags Metadata</a>
+</h2>
+<!-- *********************************************************************** -->
+
+<div>
+
+<p>Information about the module as a whole is difficult to convey to LLVM's
+   subsystems. The LLVM IR isn't sufficient to transmit this
+   information. The <tt>llvm.module.flags</tt> named metadata exists in order to
+   facilitate this. These flags are in the form of key / value pairs &mdash;
+   much like a dictionary &mdash; making it easy for any subsystem who cares
+   about a flag to look it up.</p>
+
+<p>The <tt>llvm.module.flags</tt> metadata contains a list of metadata
+   triplets. Each triplet has the following form:</p>
+
+<ul>
+  <li>The first element is a <i>behavior</i> flag, which specifies the behavior
+      when two (or more) modules are merged together, and it encounters two (or
+      more) metadata with the same ID. The supported behaviors are described
+      below.</li>
+
+  <li>The second element is a metadata string that is a unique ID for the
+      metadata. How each ID is interpreted is documented below.</li>
+
+  <li>The third element is the value of the flag.</li>
+</ul>
+
+<p>When two (or more) modules are merged together, the resulting
+   <tt>llvm.module.flags</tt> metadata is the union of the
+   modules' <tt>llvm.module.flags</tt> metadata. The only exception being a flag
+   with the <i>Override</i> behavior, which may override another flag's value
+   (see below).</p>
+
+<p>The following behaviors are supported:</p>
+
+<table border="1" cellspacing="0" cellpadding="4">
+  <tbody>
+    <tr>
+      <th>Value</th>
+      <th>Behavior</th>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td align="left">
+        <dl>
+          <dt><b>Error</b></dt>
+          <dd>Emits an error if two values disagree. It is an error to have an ID
+              with both an Error and a Warning behavior.</dd>
+        </dl>
+      </td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td align="left">
+        <dl>
+          <dt><b>Warning</b></dt>
+          <dd>Emits a warning if two values disagree.</dd>
+        </dl>
+      </td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td align="left">
+        <dl>
+          <dt><b>Require</b></dt>
+          <dd>Emits an error when the specified value is not present or doesn't
+              have the specified value. It is an error for two (or more)
+              <tt>llvm.module.flags</tt> with the same ID to have the Require
+              behavior but different values. There may be multiple Require flags
+              per ID.</dd>
+        </dl>
+      </td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td align="left">
+        <dl>
+          <dt><b>Override</b></dt>
+          <dd>Uses the specified value if the two values disagree. It is an
+              error for two (or more) <tt>llvm.module.flags</tt> with the same
+              ID to have the Override behavior but different values.</dd>
+        </dl>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<p>An example of module flags:</p>
+
+<pre class="doc_code">
+!0 = metadata !{ i32 1, metadata !"foo", i32 1 }
+!1 = metadata !{ i32 4, metadata !"bar", i32 37 }
+!2 = metadata !{ i32 2, metadata !"qux", i32 42 }
+!3 = metadata !{ i32 3, metadata !"qux",
+  metadata !{
+    metadata !"foo", i32 1
+  }
+}
+!llvm.module.flags = !{ !0, !1, !2, !3 }
+</pre>
+
+<ul>
+  <li><p>Metadata <tt>!0</tt> has the ID <tt>!"foo"</tt> and the value '1'. The
+         behavior if two or more <tt>!"foo"</tt> flags are seen is to emit an
+         error if their values are not equal.</p></li>
+
+  <li><p>Metadata <tt>!1</tt> has the ID <tt>!"bar"</tt> and the value '37'. The
+         behavior if two or more <tt>!"bar"</tt> flags are seen is to use the
+         value '37' if their values are not equal.</p></li>
+
+  <li><p>Metadata <tt>!2</tt> has the ID <tt>!"qux"</tt> and the value '42'. The
+         behavior if two or more <tt>!"qux"</tt> flags are seen is to emit a
+         warning if their values are not equal.</p></li>
+
+  <li><p>Metadata <tt>!3</tt> has the ID <tt>!"qux"</tt> and the value:</p>
+
+<pre class="doc_code">
+metadata !{ metadata !"foo", i32 1 }
+</pre>
+
+      <p>The behavior is to emit an error if the <tt>llvm.module.flags</tt> does
+         not contain a flag with the ID <tt>!"foo"</tt> that has the value
+         '1'. If two or more <tt>!"qux"</tt> flags exist, then they must have
+         the same value or an error will be issued.</p></li>
+</ul>
+
+
+<!-- ======================================================================= -->
+<h3>
+<a name="objc_gc_flags">Objective-C Garbage Collection Module Flags Metadata</a>
+</h3>
+
+<div>
+
+<p>On the Mach-O platform, Objective-C stores metadata about garbage collection
+   in a special section called "image info". The metadata consists of a version
+   number and a bitmask specifying what types of garbage collection are
+   supported (if any) by the file. If two or more modules are linked together
+   their garbage collection metadata needs to be merged rather than appended
+   together.</p>
+
+<p>The Objective-C garbage collection module flags metadata consists of the
+   following key-value pairs:</p>
+
+<table border="1" cellspacing="0" cellpadding="4">
+  <col width="30%">
+  <tbody>
+    <tr>
+      <th>Key</th>
+      <th>Value</th>
+    </tr>
+    <tr>
+      <td><tt>Objective-C&nbsp;Version</tt></td>
+      <td align="left"><b>[Required]</b> &mdash; The Objective-C ABI
+         version. Valid values are 1 and 2.</td>
+    </tr>
+    <tr>
+      <td><tt>Objective-C&nbsp;Image&nbsp;Info&nbsp;Version</tt></td>
+      <td align="left"><b>[Required]</b> &mdash; The version of the image info
+         section. Currently always 0.</td>
+    </tr>
+    <tr>
+      <td><tt>Objective-C&nbsp;Image&nbsp;Info&nbsp;Section</tt></td>
+      <td align="left"><b>[Required]</b> &mdash; The section to place the
+         metadata. Valid values are <tt>"__OBJC, __image_info, regular"</tt> for
+         Objective-C ABI version 1, and <tt>"__DATA,__objc_imageinfo, regular,
+         no_dead_strip"</tt> for Objective-C ABI version 2.</td>
+    </tr>
+    <tr>
+      <td><tt>Objective-C&nbsp;Garbage&nbsp;Collection</tt></td>
+      <td align="left"><b>[Required]</b> &mdash; Specifies whether garbage
+          collection is supported or not. Valid values are 0, for no garbage
+          collection, and 2, for garbage collection supported.</td>
+    </tr>
+    <tr>
+      <td><tt>Objective-C&nbsp;GC&nbsp;Only</tt></td>
+      <td align="left"><b>[Optional]</b> &mdash; Specifies that only garbage
+         collection is supported. If present, its value must be 6. This flag
+         requires that the <tt>Objective-C Garbage Collection</tt> flag have the
+         value 2.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Some important flag interactions:</p>
+
+<ul>
+  <li>If a module with <tt>Objective-C Garbage Collection</tt> set to 0 is
+      merged with a module with <tt>Objective-C Garbage Collection</tt> set to
+      2, then the resulting module has the <tt>Objective-C Garbage
+      Collection</tt> flag set to 0.</li>
+
+  <li>A module with <tt>Objective-C Garbage Collection</tt> set to 0 cannot be
+      merged with a module with <tt>Objective-C GC Only</tt> set to 6.</li>
+</ul>
 
 </div>
 
@@ -4660,7 +4905,11 @@ IfUnequal:
    variables that must have an address available.  When the function returns
    (either with the <tt><a href="#i_ret">ret</a></tt>
    or <tt><a href="#i_resume">resume</a></tt> instructions), the memory is
-   reclaimed.  Allocating zero bytes is legal, but the result is undefined.</p>
+   reclaimed.  Allocating zero bytes is legal, but the result is undefined.
+   The order in which memory is allocated (ie., which way the stack grows) is
+   not specified.</p>
+
+<p>
 
 <h5>Example:</h5>
 <pre>
@@ -4681,7 +4930,7 @@ IfUnequal:
 
 <h5>Syntax:</h5>
 <pre>
-  &lt;result&gt; = load [volatile] &lt;ty&gt;* &lt;pointer&gt;[, align &lt;alignment&gt;][, !nontemporal !&lt;index&gt;]
+  &lt;result&gt; = load [volatile] &lt;ty&gt;* &lt;pointer&gt;[, align &lt;alignment&gt;][, !nontemporal !&lt;index&gt;][, !invariant.load !&lt;index&gt;]
   &lt;result&gt; = load atomic [volatile] &lt;ty&gt;* &lt;pointer&gt; [singlethread] &lt;ordering&gt;, align &lt;alignment&gt;
   !&lt;index&gt; = !{ i32 1 }
 </pre>
@@ -4725,6 +4974,14 @@ IfUnequal:
    and code generator that this load is not expected to be reused in the cache.
    The code generator may select special instructions to save cache bandwidth,
    such as the <tt>MOVNT</tt> instruction on x86.</p>
+
+<p>The optional <tt>!invariant.load</tt> metadata must reference a single
+   metatadata name &lt;index&gt; corresponding to a metadata node with no
+   entries.  The existence of the <tt>!invariant.load</tt> metatadata on the
+   instruction tells the optimizer and code generator that this load address
+   points to memory which does not change value during program execution.
+   The optimizer may then move this load around, for example, by hoisting it
+   out of loops using loop invariant code motion.</p>
 
 <h5>Semantics:</h5>
 <p>The location of memory pointed to is loaded.  If the value being loaded is of
@@ -8145,6 +8402,30 @@ LLVM</a>.</p>
 
 <!-- _______________________________________________________________________ -->
 <h4>
+  <a name="int_debugger">'<tt>llvm.debugger</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<pre>
+  declare void @llvm.debugger()
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.debugger</tt>' intrinsic.</p>
+
+<h5>Arguments:</h5>
+<p>None.</p>
+
+<h5>Semantics:</h5>
+<p>This intrinsic is lowered to code which is intended to cause an execution
+   trap with the intention of requesting the attention of a debugger.</p>
+
+</div>
+
+<!-- _______________________________________________________________________ -->
+<h4>
   <a name="int_stackprotector">'<tt>llvm.stackprotector</tt>' Intrinsic</a>
 </h4>
 
@@ -8186,8 +8467,8 @@ LLVM</a>.</p>
 
 <h5>Syntax:</h5>
 <pre>
-  declare i32 @llvm.objectsize.i32(i8* &lt;object&gt;, i1 &lt;type&gt;)
-  declare i64 @llvm.objectsize.i64(i8* &lt;object&gt;, i1 &lt;type&gt;)
+  declare i32 @llvm.objectsize.i32(i8* &lt;object&gt;, i1 &lt;min&gt;, i32 &lt;runtime&gt;)
+  declare i64 @llvm.objectsize.i64(i8* &lt;object&gt;, i1 &lt;min&gt;, i32 &lt;runtime&gt;)
 </pre>
 
 <h5>Overview:</h5>
@@ -8198,17 +8479,21 @@ LLVM</a>.</p>
    an allocation of a specific class, structure, array, or other object.</p>
 
 <h5>Arguments:</h5>
-<p>The <tt>llvm.objectsize</tt> intrinsic takes two arguments. The first
+<p>The <tt>llvm.objectsize</tt> intrinsic takes three arguments. The first
    argument is a pointer to or into the <tt>object</tt>. The second argument
-   is a boolean 0 or 1. This argument determines whether you want the 
-   maximum (0) or minimum (1) bytes remaining. This needs to be a literal 0 or
-   1, variables are not allowed.</p>
+   is a boolean and determines whether <tt>llvm.objectsize</tt> returns 0 (if true)
+   or -1 (if false) when the object size is unknown.
+   The third argument, <tt>runtime</tt>, indicates whether the compiler is allowed
+   to return a non-constant value. The higher the value, the higher the potential
+   run-time performance impact.
+   The second and third arguments only accepts constants.</p>
    
 <h5>Semantics:</h5>
-<p>The <tt>llvm.objectsize</tt> intrinsic is lowered to either a constant
-   representing the size of the object concerned, or <tt>i32/i64 -1 or 0</tt>,
-   depending on the <tt>type</tt> argument, if the size cannot be determined at
-   compile time.</p>
+<p>The <tt>llvm.objectsize</tt> intrinsic is lowered to a constant representing
+   the size of the object concerned. If the size cannot be determined at compile
+   time, <tt>llvm.objectsize</tt> either returns <tt>i32/i64 -1 or 0</tt>
+   (depending on the <tt>min</tt> argument) if <tt>runtime</tt> is 0, or a run-time
+   value (if <tt>runtime</tt> &gt; 0 and an expression could be generated).</p>
 
 </div>
 <!-- _______________________________________________________________________ -->
@@ -8250,7 +8535,7 @@ LLVM</a>.</p>
 
   <a href="mailto:sabre@nondot.org">Chris Lattner</a><br>
   <a href="http://llvm.org/">The LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2012-02-06 14:57:33 -0700 (Mon, 06 Feb 2012) $
+  Last modified: $Date: 2012-05-10 18:19:32 -0600 (Thu, 10 May 2012) $
 </address>
 
 </body>

@@ -60,9 +60,9 @@ class ModuleLoader;
 /// single source file, and don't know anything about preprocessor-level issues
 /// like the #include stack, token expansion, etc.
 ///
-class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
+class Preprocessor : public RefCountedBase<Preprocessor> {
   DiagnosticsEngine        *Diags;
-  LangOptions       &Features;
+  LangOptions       &LangOpts;
   const TargetInfo  *Target;
   FileManager       &FileMgr;
   SourceManager     &SourceMgr;
@@ -124,6 +124,9 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   /// \brief Whether we have already loaded macros from the external source.
   mutable bool ReadMacrosFromExternalSource : 1;
 
+  /// \brief True if we are pre-expanding macro arguments.
+  bool InMacroArgPreExpansion;
+
   /// Identifiers - This is mapping/lookup information for all identifiers in
   /// the program, including program keywords.
   mutable IdentifierTable Identifiers;
@@ -151,6 +154,10 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   /// \brief Tracks all of the comment handlers that the client registered
   /// with this preprocessor.
   std::vector<CommentHandler *> CommentHandlers;
+
+  /// \brief True if we want to ignore EOF token and continue later on (thus 
+  /// avoid tearing the Lexer and etc. down).
+  bool IncrementalProcessing;
 
   /// \brief The code-completion handler.
   CodeCompletionHandler *CodeComplete;
@@ -251,6 +258,15 @@ class Preprocessor : public llvm::RefCountedBase<Preprocessor> {
   /// encountered (e.g. a file is #included, etc).
   PPCallbacks *Callbacks;
 
+  struct MacroExpandsInfo {
+    Token Tok;
+    MacroInfo *MI;
+    SourceRange Range;
+    MacroExpandsInfo(Token Tok, MacroInfo *MI, SourceRange Range)
+      : Tok(Tok), MI(MI), Range(Range) { }
+  };
+  SmallVector<MacroExpandsInfo, 2> DelayedMacroExpandsCallbacks;
+
   /// Macros - For each IdentifierInfo with 'HasMacro' set, we keep a mapping
   /// to the actual definition of the macro.
   llvm::DenseMap<IdentifierInfo*, MacroInfo*> Macros;
@@ -348,7 +364,8 @@ public:
                ModuleLoader &TheModuleLoader,
                IdentifierInfoLookup *IILookup = 0,
                bool OwnsHeaderSearch = false,
-               bool DelayInitialization = false);
+               bool DelayInitialization = false,
+               bool IncrProcessing = false);
 
   ~Preprocessor();
 
@@ -361,7 +378,7 @@ public:
   DiagnosticsEngine &getDiagnostics() const { return *Diags; }
   void setDiagnostics(DiagnosticsEngine &D) { Diags = &D; }
 
-  const LangOptions &getLangOptions() const { return Features; }
+  const LangOptions &getLangOpts() const { return LangOpts; }
   const TargetInfo &getTargetInfo() const { return *Target; }
   FileManager &getFileManager() const { return FileMgr; }
   SourceManager &getSourceManager() const { return SourceMgr; }
@@ -516,7 +533,7 @@ public:
 
   /// \brief Create a new preprocessing record, which will keep track of
   /// all macro expansions, macro definitions, etc.
-  void createPreprocessingRecord(bool IncludeNestedMacroExpansions);
+  void createPreprocessingRecord(bool RecordConditionalDirectives);
 
   /// EnterMainSourceFile - Enter the specified FileID as the main source file,
   /// which implicitly adds the builtin defines etc.
@@ -695,6 +712,14 @@ public:
   /// \brief Recompute the current lexer kind based on the CurLexer/CurPTHLexer/
   /// CurTokenLexer pointers.
   void recomputeCurLexerKind();
+
+  /// \brief Returns true if incremental processing is enabled
+  bool isIncrementalProcessingEnabled() const { return IncrementalProcessing; }
+
+  /// \brief Enables the incremental processing
+  void enableIncrementalProcessing(bool value = true) {
+    IncrementalProcessing = value;
+  }
   
   /// \brief Specify the point at which code-completion will be performed.
   ///
@@ -786,7 +811,7 @@ public:
   StringRef getSpelling(SourceLocation loc,
                               SmallVectorImpl<char> &buffer,
                               bool *invalid = 0) const {
-    return Lexer::getSpelling(loc, buffer, SourceMgr, Features, invalid);
+    return Lexer::getSpelling(loc, buffer, SourceMgr, LangOpts, invalid);
   }
 
   /// getSpelling() - Return the 'spelling' of the Tok token.  The spelling of a
@@ -797,7 +822,7 @@ public:
   ///
   /// \param Invalid If non-null, will be set \c true if an error occurs.
   std::string getSpelling(const Token &Tok, bool *Invalid = 0) const {
-    return Lexer::getSpelling(Tok, SourceMgr, Features, Invalid);
+    return Lexer::getSpelling(Tok, SourceMgr, LangOpts, Invalid);
   }
 
   /// getSpelling - This method is used to get the spelling of a token into a
@@ -812,15 +837,15 @@ public:
   /// if an internal buffer is returned.
   unsigned getSpelling(const Token &Tok, const char *&Buffer,
                        bool *Invalid = 0) const {
-    return Lexer::getSpelling(Tok, Buffer, SourceMgr, Features, Invalid);
+    return Lexer::getSpelling(Tok, Buffer, SourceMgr, LangOpts, Invalid);
   }
 
   /// getSpelling - This method is used to get the spelling of a token into a
   /// SmallVector. Note that the returned StringRef may not point to the
   /// supplied buffer if a copy can be avoided.
   StringRef getSpelling(const Token &Tok,
-                              SmallVectorImpl<char> &Buffer,
-                              bool *Invalid = 0) const;
+                        SmallVectorImpl<char> &Buffer,
+                        bool *Invalid = 0) const;
 
   /// getSpellingOfSingleCharacterNumericConstant - Tok is a numeric constant
   /// with length 1, return the character.
@@ -847,7 +872,7 @@ public:
   /// refers to the SourceManager-owned buffer of the source where that macro
   /// name is spelled. Thus, the result shouldn't out-live the SourceManager.
   StringRef getImmediateMacroName(SourceLocation Loc) {
-    return Lexer::getImmediateMacroName(Loc, SourceMgr, getLangOptions());
+    return Lexer::getImmediateMacroName(Loc, SourceMgr, getLangOpts());
   }
 
   /// CreateString - Plop the specified string into a scratch buffer and set the
@@ -873,7 +898,7 @@ public:
   /// location pointing just past the end of the token; an offset of 1 produces
   /// a source location pointing to the last character in the token, etc.
   SourceLocation getLocForEndOfToken(SourceLocation Loc, unsigned Offset = 0) {
-    return Lexer::getLocForEndOfToken(Loc, Offset, SourceMgr, Features);
+    return Lexer::getLocForEndOfToken(Loc, Offset, SourceMgr, LangOpts);
   }
 
   /// \brief Returns true if the given MacroID location points at the first
@@ -883,7 +908,7 @@ public:
   /// begin location of the macro.
   bool isAtStartOfMacroExpansion(SourceLocation loc,
                                  SourceLocation *MacroBegin = 0) const {
-    return Lexer::isAtStartOfMacroExpansion(loc, SourceMgr, Features,
+    return Lexer::isAtStartOfMacroExpansion(loc, SourceMgr, LangOpts,
                                             MacroBegin);
   }
 
@@ -894,7 +919,7 @@ public:
   /// end location of the macro.
   bool isAtEndOfMacroExpansion(SourceLocation loc,
                                SourceLocation *MacroEnd = 0) const {
-    return Lexer::isAtEndOfMacroExpansion(loc, SourceMgr, Features, MacroEnd);
+    return Lexer::isAtEndOfMacroExpansion(loc, SourceMgr, LangOpts, MacroEnd);
   }
 
   /// DumpToken - Print the token to stderr, used for debugging.
@@ -907,7 +932,7 @@ public:
   /// token, return a new location that specifies a character within the token.
   SourceLocation AdvanceToTokenCharacter(SourceLocation TokStart,
                                          unsigned Char) const {
-    return Lexer::AdvanceToTokenCharacter(TokStart, Char, SourceMgr, Features);
+    return Lexer::AdvanceToTokenCharacter(TokStart, Char, SourceMgr, LangOpts);
   }
 
   /// IncrementPasteCounter - Increment the counters for the number of token
@@ -1117,9 +1142,10 @@ private:
 
   /// ReadMacroDefinitionArgList - The ( starting an argument list of a macro
   /// definition has just been read.  Lex the rest of the arguments and the
-  /// closing ), updating MI with what we learn.  Return true if an error occurs
-  /// parsing the arg list.
-  bool ReadMacroDefinitionArgList(MacroInfo *MI);
+  /// closing ), updating MI with what we learn and saving in LastTok the
+  /// last token read.
+  /// Return true if an error occurs parsing the arg list.
+  bool ReadMacroDefinitionArgList(MacroInfo *MI, Token& LastTok);
 
   /// SkipExcludedConditionalBlock - We just read a #if or related directive and
   /// decided that the subsequent tokens are in the #if'd out portion of the
@@ -1247,6 +1273,7 @@ private:
   void HandleIncludeNextDirective(SourceLocation HashLoc, Token &Tok);
   void HandleIncludeMacrosDirective(SourceLocation HashLoc, Token &Tok);
   void HandleImportDirective(SourceLocation HashLoc, Token &Tok);
+  void HandleMicrosoftImportDirective(Token &Tok);
 
   // Macro handling.
   void HandleDefineDirective(Token &Tok);
@@ -1272,6 +1299,7 @@ public:
   void HandlePragmaMessage(Token &MessageTok);
   void HandlePragmaPushMacro(Token &Tok);
   void HandlePragmaPopMacro(Token &Tok);
+  void HandlePragmaIncludeAlias(Token &Tok);
   IdentifierInfo *ParsePragmaPushOrPopMacro(Token &Tok);
 
   // Return true and store the first token only if any CommentHandler

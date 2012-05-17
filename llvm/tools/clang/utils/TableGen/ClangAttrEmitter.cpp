@@ -14,8 +14,10 @@
 #include "ClangAttrEmitter.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/TableGen/Record.h"
+#include "llvm/TableGen/StringMatcher.h"
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 using namespace llvm;
 
@@ -65,6 +67,30 @@ static std::string WritePCHRecord(StringRef type, StringRef name) {
     .Default("Record.push_back(" + std::string(name) + ");\n");
 }
 
+// Normalize attribute name by removing leading and trailing
+// underscores. For example, __foo, foo__, __foo__ would
+// become foo.
+static StringRef NormalizeAttrName(StringRef AttrName) {
+  if (AttrName.startswith("__"))
+    AttrName = AttrName.substr(2, AttrName.size());
+
+  if (AttrName.endswith("__"))
+    AttrName = AttrName.substr(0, AttrName.size() - 2);
+
+  return AttrName;
+}
+
+// Normalize attribute spelling only if the spelling has both leading
+// and trailing underscores. For example, __ms_struct__ will be 
+// normalized to "ms_struct"; __cdecl will remain intact.
+static StringRef NormalizeAttrSpelling(StringRef AttrSpelling) {
+  if (AttrSpelling.startswith("__") && AttrSpelling.endswith("__")) {
+    AttrSpelling = AttrSpelling.substr(2, AttrSpelling.size() - 4);
+  }
+
+  return AttrSpelling;
+}
+
 namespace {
   class Argument {
     std::string lowerName, upperName;
@@ -90,7 +116,7 @@ namespace {
     virtual void writeAccessorDefinitions(raw_ostream &OS) const {}
     virtual void writeCloneArgs(raw_ostream &OS) const = 0;
     virtual void writeTemplateInstantiationArgs(raw_ostream &OS) const = 0;
-    virtual void writeTemplateInstantiation(raw_ostream &OS) const {};
+    virtual void writeTemplateInstantiation(raw_ostream &OS) const {}
     virtual void writeCtorBody(raw_ostream &OS) const {}
     virtual void writeCtorInitializers(raw_ostream &OS) const = 0;
     virtual void writeCtorParameters(raw_ostream &OS) const = 0;
@@ -645,6 +671,10 @@ void ClangAttrClassEmitter::run(raw_ostream &OS) {
   for (std::vector<Record*>::iterator i = Attrs.begin(), e = Attrs.end();
        i != e; ++i) {
     Record &R = **i;
+    
+    if (!R.getValueAsBit("ASTNode"))
+      continue;
+    
     const std::string &SuperName = R.getSuperClasses().back()->getName();
 
     OS << "class " << R.getName() << "Attr : public " << SuperName << " {\n";
@@ -729,6 +759,10 @@ void ClangAttrImplEmitter::run(raw_ostream &OS) {
 
   for (; i != e; ++i) {
     Record &R = **i;
+    
+    if (!R.getValueAsBit("ASTNode"))
+      continue;
+    
     std::vector<Record*> ArgRecords = R.getValueAsListOfDefs("Args");
     std::vector<StringRef> Spellings = getValueAsListOfStrings(R, "Spellings");
     std::vector<Argument*> Args;
@@ -773,8 +807,12 @@ static void EmitAttrList(raw_ostream &OS, StringRef Class,
 
   if (i != e) {
     // Move the end iterator back to emit the last attribute.
-    for(--e; i != e; ++i)
+    for(--e; i != e; ++i) {
+      if (!(*i)->getValueAsBit("ASTNode"))
+        continue;
+      
       OS << Class << "(" << (*i)->getName() << ")\n";
+    }
     
     OS << "LAST_" << Class << "(" << (*i)->getName() << ")\n\n";
   }
@@ -810,6 +848,9 @@ void ClangAttrListEmitter::run(raw_ostream &OS) {
                        NonInhAttrs, InhAttrs, InhParamAttrs;
   for (std::vector<Record*>::iterator i = Attrs.begin(), e = Attrs.end();
        i != e; ++i) {
+    if (!(*i)->getValueAsBit("ASTNode"))
+      continue;
+    
     if ((*i)->isSubClassOf(InhParamClass))
       InhParamAttrs.push_back(*i);
     else if ((*i)->isSubClassOf(InhClass))
@@ -845,6 +886,9 @@ void ClangAttrPCHReadEmitter::run(raw_ostream &OS) {
   OS << "    break;\n";
   for (; i != e; ++i) {
     Record &R = **i;
+    if (!R.getValueAsBit("ASTNode"))
+      continue;
+    
     OS << "  case attr::" << R.getName() << ": {\n";
     if (R.isSubClassOf(InhClass))
       OS << "    bool isInherited = Record[Idx++];\n";
@@ -880,6 +924,8 @@ void ClangAttrPCHWriteEmitter::run(raw_ostream &OS) {
   OS << "    break;\n";
   for (; i != e; ++i) {
     Record &R = **i;
+    if (!R.getValueAsBit("ASTNode"))
+      continue;
     OS << "  case attr::" << R.getName() << ": {\n";
     Args = R.getValueAsListOfDefs("Args");
     if (R.isSubClassOf(InhClass) || !Args.empty())
@@ -954,8 +1000,18 @@ void ClangAttrTemplateInstantiateEmitter::run(raw_ostream &OS) {
   for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
        I != E; ++I) {
     Record &R = **I;
+    if (!R.getValueAsBit("ASTNode"))
+      continue;
 
     OS << "    case attr::" << R.getName() << ": {\n";
+    bool ShouldClone = R.getValueAsBit("Clone");
+
+    if (!ShouldClone) {
+      OS << "      return NULL;\n";
+      OS << "    }\n";
+      continue;
+    }
+
     OS << "      const " << R.getName() << "Attr *A = cast<"
        << R.getName() << "Attr>(At);\n";
     bool TDependent = R.getValueAsBit("TemplateDependent");
@@ -998,4 +1054,91 @@ void ClangAttrTemplateInstantiateEmitter::run(raw_ostream &OS) {
      << "} // end namespace sema\n"
      << "} // end namespace clang\n";
 }
+
+void ClangAttrParsedAttrListEmitter::run(raw_ostream &OS) {
+  OS << "// This file is generated by TableGen. Do not edit.\n\n";
+  
+  OS << "#ifndef PARSED_ATTR\n";
+  OS << "#define PARSED_ATTR(NAME) NAME\n";
+  OS << "#endif\n\n";
+  
+  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
+  std::set<StringRef> ProcessedAttrs;
+
+  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    Record &Attr = **I;
+    
+    bool SemaHandler = Attr.getValueAsBit("SemaHandler");
+    bool DistinctSpellings = Attr.getValueAsBit("DistinctSpellings");
+
+    if (SemaHandler) {
+      std::vector<StringRef> Spellings =
+        getValueAsListOfStrings(Attr, "Spellings");
+      
+      for (std::vector<StringRef>::const_iterator I = Spellings.begin(),
+           E = Spellings.end(); I != E; ++I) {
+        StringRef AttrName = *I;
+
+        AttrName = NormalizeAttrName(AttrName);
+        // skip if a normalized version has been processed.
+        if (ProcessedAttrs.find(AttrName) != ProcessedAttrs.end())
+          continue;
+        else
+          ProcessedAttrs.insert(AttrName);
+
+        OS << "PARSED_ATTR(" << AttrName << ")\n";
+        
+        if (!DistinctSpellings)
+          break;
+      }
+    }
+  }
+}
+
+void ClangAttrParsedAttrKindsEmitter::run(raw_ostream &OS) {
+  OS << "// This file is generated by TableGen. Do not edit.\n\n";
+  OS << "\n";
+  
+  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
+
+  std::vector<StringMatcher::StringPair> Matches;
+  for (std::vector<Record*>::iterator I = Attrs.begin(), E = Attrs.end();
+       I != E; ++I) {
+    Record &Attr = **I;
+    
+    bool SemaHandler = Attr.getValueAsBit("SemaHandler");
+    bool Ignored = Attr.getValueAsBit("Ignored");
+    bool DistinctSpellings = Attr.getValueAsBit("DistinctSpellings");
+    if (SemaHandler || Ignored) {
+      std::vector<StringRef> Spellings =
+        getValueAsListOfStrings(Attr, "Spellings");
+
+      for (std::vector<StringRef>::const_iterator I = Spellings.begin(),
+           E = Spellings.end(); I != E; ++I) {
+        StringRef AttrName = NormalizeAttrName(DistinctSpellings
+                                                 ? *I
+                                                 : Spellings.front());
+        StringRef Spelling = NormalizeAttrSpelling(*I);
+
+        if (SemaHandler)
+          Matches.push_back(
+            StringMatcher::StringPair(
+              Spelling,
+              std::string("return AttributeList::AT_")+AttrName.str() + ";"));
+        else
+          Matches.push_back(
+            StringMatcher::StringPair(
+              Spelling,
+              std::string("return AttributeList::IgnoredAttribute;")));
+      }
+    }
+  }
+  
+  OS << "static AttributeList::Kind getAttrKind(StringRef Name) {\n";
+  StringMatcher("Name", Matches, OS).Emit();
+  OS << "return AttributeList::UnknownAttribute;\n"
+     << "}\n";
+}
+
 

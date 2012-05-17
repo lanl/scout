@@ -36,6 +36,7 @@ def immZExt6 : ImmLeaf<i32, [{return Imm == (Imm & 0x3f);}]>;
 //===----------------------------------------------------------------------===//
 // Shifts
 // 64-bit shift instructions.
+let DecoderNamespace = "Mips64" in {
 class shift_rotate_imm64<bits<6> func, bits<5> isRotate, string instr_asm,
                          SDNode OpNode>:
   shift_rotate_imm<func, isRotate, instr_asm, OpNode, immZExt6, shamt,
@@ -49,16 +50,21 @@ class Div64<SDNode op, bits<6> func, string instr_asm, InstrItinClass itin>:
 
 multiclass Atomic2Ops64<PatFrag Op, string Opstr> {
   def #NAME# : Atomic2Ops<Op, Opstr, CPU64Regs, CPURegs>, Requires<[NotN64]>;
-  def _P8    : Atomic2Ops<Op, Opstr, CPU64Regs, CPU64Regs>, Requires<[IsN64]>;
+  def _P8    : Atomic2Ops<Op, Opstr, CPU64Regs, CPU64Regs>, Requires<[IsN64]> {
+    let isCodeGenOnly = 1;
+  }
 }
 
 multiclass AtomicCmpSwap64<PatFrag Op, string Width>  {
   def #NAME# : AtomicCmpSwap<Op, Width, CPU64Regs, CPURegs>, Requires<[NotN64]>;
   def _P8    : AtomicCmpSwap<Op, Width, CPU64Regs, CPU64Regs>,
-               Requires<[IsN64]>;
+               Requires<[IsN64]> {
+    let isCodeGenOnly = 1;
+  }
 }
-
-let usesCustomInserter = 1, Predicates = [HasMips64] in {
+}
+let usesCustomInserter = 1, Predicates = [HasMips64],
+  DecoderNamespace = "Mips64" in {
   defm ATOMIC_LOAD_ADD_I64  : Atomic2Ops64<atomic_load_add_64, "load_add_64">;
   defm ATOMIC_LOAD_SUB_I64  : Atomic2Ops64<atomic_load_sub_64, "load_sub_64">;
   defm ATOMIC_LOAD_AND_I64  : Atomic2Ops64<atomic_load_and_64, "load_and_64">;
@@ -72,7 +78,7 @@ let usesCustomInserter = 1, Predicates = [HasMips64] in {
 //===----------------------------------------------------------------------===//
 // Instruction definition
 //===----------------------------------------------------------------------===//
-
+let DecoderNamespace = "Mips64" in {
 /// Arithmetic Instructions (ALU Immediate)
 def DADDiu   : ArithLogicI<0x19, "daddiu", add, simm16_64, immSExt16,
                            CPU64Regs>;
@@ -97,18 +103,19 @@ def NOR64    : LogicNOR<0x00, 0x27, "nor", CPU64Regs>;
 def DSLL     : shift_rotate_imm64<0x38, 0x00, "dsll", shl>;
 def DSRL     : shift_rotate_imm64<0x3a, 0x00, "dsrl", srl>;
 def DSRA     : shift_rotate_imm64<0x3b, 0x00, "dsra", sra>;
-def DSLLV    : shift_rotate_reg<0x24, 0x00, "dsllv", shl, CPU64Regs>;
-def DSRLV    : shift_rotate_reg<0x26, 0x00, "dsrlv", srl, CPU64Regs>;
-def DSRAV    : shift_rotate_reg<0x27, 0x00, "dsrav", sra, CPU64Regs>;
-
+def DSLLV    : shift_rotate_reg<0x14, 0x00, "dsllv", shl, CPU64Regs>;
+def DSRLV    : shift_rotate_reg<0x16, 0x00, "dsrlv", srl, CPU64Regs>;
+def DSRAV    : shift_rotate_reg<0x17, 0x00, "dsrav", sra, CPU64Regs>;
+}
 // Rotate Instructions
-let Predicates = [HasMips64r2] in {
+let Predicates = [HasMips64r2], DecoderNamespace = "Mips64" in {
   def DROTR    : shift_rotate_imm64<0x3a, 0x01, "drotr", rotr>;
   def DROTRV   : shift_rotate_reg<0x16, 0x01, "drotrv", rotr, CPU64Regs>;
 }
 
+let DecoderNamespace = "Mips64" in {
 /// Load and Store Instructions
-///  aligned 
+///  aligned
 defm LB64    : LoadM64<0x20, "lb",  sextloadi8>;
 defm LBu64   : LoadM64<0x24, "lbu", zextloadi8>;
 defm LH64    : LoadM64<0x21, "lh",  sextloadi16_a>;
@@ -132,9 +139,13 @@ defm USD       : StoreM64<0x3f, "usd", store_u, 1>;
 
 /// Load-linked, Store-conditional
 def LLD    : LLBase<0x34, "lld", CPU64Regs, mem>, Requires<[NotN64]>;
-def LLD_P8 : LLBase<0x34, "lld", CPU64Regs, mem64>, Requires<[IsN64]>;
+def LLD_P8 : LLBase<0x34, "lld", CPU64Regs, mem64>, Requires<[IsN64]> {
+  let isCodeGenOnly = 1;
+}
 def SCD    : SCBase<0x3c, "scd", CPU64Regs, mem>, Requires<[NotN64]>;
-def SCD_P8 : SCBase<0x3c, "scd", CPU64Regs, mem64>, Requires<[IsN64]>;
+def SCD_P8 : SCBase<0x3c, "scd", CPU64Regs, mem64>, Requires<[IsN64]> {
+  let isCodeGenOnly = 1;
+}
 
 /// Jump and Branch Instructions
 def JR64   : JumpFR<0x00, 0x08, "jr", CPU64Regs>;
@@ -142,18 +153,13 @@ def BEQ64  : CBranch<0x04, "beq", seteq, CPU64Regs>;
 def BNE64  : CBranch<0x05, "bne", setne, CPU64Regs>;
 def BGEZ64 : CBranchZero<0x01, 1, "bgez", setge, CPU64Regs>;
 def BGTZ64 : CBranchZero<0x07, 0, "bgtz", setgt, CPU64Regs>;
-def BLEZ64 : CBranchZero<0x07, 0, "blez", setle, CPU64Regs>;
+def BLEZ64 : CBranchZero<0x06, 0, "blez", setle, CPU64Regs>;
 def BLTZ64 : CBranchZero<0x01, 0, "bltz", setlt, CPU64Regs>;
-
-// NOTE: These registers are N64's temporary registers. N32 has a different
-//       set of temporary registers.
-let Defs = [AT_64, V0_64, V1_64, A0_64, A1_64, A2_64, A3_64, T0_64, T1_64,
-            T2_64, T3_64, T4_64, T5_64, T6_64, T7_64, T8_64, T9_64, K0_64,
-            K1_64, D0_64, D1_64, D2_64, D3_64, D4_64, D5_64, D6_64, D7_64,
-            D8_64, D9_64, D10_64, D11_64, D12_64, D13_64, D14_64, D15_64,
-            D16_64, D17_64, D18_64, D19_64, D20_64, D21_64, D22_64, D23_64] in
+}
+let DecoderNamespace = "Mips64" in
 def JALR64 : JumpLinkReg<0x00, 0x09, "jalr", CPU64Regs>;
 
+let DecoderNamespace = "Mips64" in {
 /// Multiply and Divide Instructions.
 def DMULT    : Mult64<0x1c, "dmult", IIImul>;
 def DMULTu   : Mult64<0x1d, "dmultu", IIImul>;
@@ -178,11 +184,13 @@ def DSBH : SubwordSwap<0x24, 0x2, "dsbh", CPU64Regs>;
 def DSHD : SubwordSwap<0x24, 0x5, "dshd", CPU64Regs>;
 
 def LEA_ADDiu64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>;
-
-let Uses = [SP_64] in
+}
+let Uses = [SP_64], DecoderNamespace = "Mips64" in
 def DynAlloc64 : EffectiveAddress<"daddiu\t$rt, $addr", CPU64Regs, mem_ea_64>,
-                 Requires<[IsN64]>;
-
+                 Requires<[IsN64]> {
+  let isCodeGenOnly = 1;
+}
+let DecoderNamespace = "Mips64" in {
 def RDHWR64 : ReadHardware<CPU64Regs, HWRegs64>;
 
 def DEXT : ExtBase<3, "dext", CPU64Regs>;
@@ -190,12 +198,12 @@ def DINS : InsBase<7, "dins", CPU64Regs>;
 
 def DSLL64_32 : FR<0x3c, 0x00, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
                    "dsll\t$rd, $rt, 32", [], IIAlu>;
-
 def SLL64_32 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPURegs:$rt),
                   "sll\t$rd, $rt, 0", [], IIAlu>;
+let isCodeGenOnly = 1 in
 def SLL64_64 : FR<0x0, 0x00, (outs CPU64Regs:$rd), (ins CPU64Regs:$rt),
                   "sll\t$rd, $rt, 0", [], IIAlu>;
-
+}
 //===----------------------------------------------------------------------===//
 //  Arbitrary patterns that map to one or more instructions
 //===----------------------------------------------------------------------===//
@@ -244,12 +252,12 @@ def : Pat<(add CPU64Regs:$hi, (MipsLo tconstpool:$lo)),
 def : Pat<(add CPU64Regs:$hi, (MipsLo tglobaltlsaddr:$lo)),
           (DADDiu CPU64Regs:$hi, tglobaltlsaddr:$lo)>;
 
-def : WrapperPat<tglobaladdr, DADDiu, GP_64>;
-def : WrapperPat<tconstpool, DADDiu, GP_64>;
-def : WrapperPat<texternalsym, DADDiu, GP_64>;
-def : WrapperPat<tblockaddress, DADDiu, GP_64>;
-def : WrapperPat<tjumptable, DADDiu, GP_64>;
-def : WrapperPat<tglobaltlsaddr, DADDiu, GP_64>;
+def : WrapperPat<tglobaladdr, DADDiu, CPU64Regs>;
+def : WrapperPat<tconstpool, DADDiu, CPU64Regs>;
+def : WrapperPat<texternalsym, DADDiu, CPU64Regs>;
+def : WrapperPat<tblockaddress, DADDiu, CPU64Regs>;
+def : WrapperPat<tjumptable, DADDiu, CPU64Regs>;
+def : WrapperPat<tglobaltlsaddr, DADDiu, CPU64Regs>;
 
 defm : BrcondPats<CPU64Regs, BEQ64, BNE64, SLT64, SLTu64, SLTi64, SLTiu64,
                   ZERO_64>;
@@ -267,7 +275,7 @@ def : Pat<(MipsDynAlloc addr:$f), (DynAlloc64 addr:$f)>, Requires<[IsN64]>;
 // truncate
 def : Pat<(i32 (trunc CPU64Regs:$src)),
           (SLL (EXTRACT_SUBREG CPU64Regs:$src, sub_32), 0)>, Requires<[IsN64]>;
- 
+
 // 32-to-64-bit extension
 def : Pat<(i64 (anyext CPURegs:$src)), (SLL64_32 CPURegs:$src)>;
 def : Pat<(i64 (zext CPURegs:$src)), (DSRL (DSLL64_32 CPURegs:$src), 32)>;

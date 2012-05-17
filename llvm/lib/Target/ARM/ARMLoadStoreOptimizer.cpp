@@ -1,4 +1,4 @@
-//===-- ARMLoadStoreOptimizer.cpp - ARM load / store opt. pass ----*- C++ -*-=//
+//===-- ARMLoadStoreOptimizer.cpp - ARM load / store opt. pass ------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,8 +15,8 @@
 #define DEBUG_TYPE "arm-ldst-opt"
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
+#include "ARMBaseRegisterInfo.h"
 #include "ARMMachineFunctionInfo.h"
-#include "ARMRegisterInfo.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -93,7 +93,9 @@ namespace {
     bool MergeOps(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                   int Offset, unsigned Base, bool BaseKill, int Opcode,
                   ARMCC::CondCodes Pred, unsigned PredReg, unsigned Scratch,
-                  DebugLoc dl, SmallVector<std::pair<unsigned, bool>, 8> &Regs);
+                  DebugLoc dl,
+                  ArrayRef<std::pair<unsigned, bool> > Regs,
+                  ArrayRef<unsigned> ImpDefs);
     void MergeOpsUpdate(MachineBasicBlock &MBB,
                         MemOpQueue &MemOps,
                         unsigned memOpsBegin,
@@ -282,7 +284,8 @@ ARMLoadStoreOpt::MergeOps(MachineBasicBlock &MBB,
                           int Offset, unsigned Base, bool BaseKill,
                           int Opcode, ARMCC::CondCodes Pred,
                           unsigned PredReg, unsigned Scratch, DebugLoc dl,
-                          SmallVector<std::pair<unsigned, bool>, 8> &Regs) {
+                          ArrayRef<std::pair<unsigned, bool> > Regs,
+                          ArrayRef<unsigned> ImpDefs) {
   // Only a single register to load / store. Don't bother.
   unsigned NumRegs = Regs.size();
   if (NumRegs <= 1)
@@ -350,6 +353,10 @@ ARMLoadStoreOpt::MergeOps(MachineBasicBlock &MBB,
     MIB = MIB.addReg(Regs[i].first, getDefRegState(isDef)
                      | getKillRegState(Regs[i].second));
 
+  // Add implicit defs for super-registers.
+  for (unsigned i = 0, e = ImpDefs.size(); i != e; ++i)
+    MIB.addReg(ImpDefs[i], RegState::ImplicitDefine);
+
   return true;
 }
 
@@ -384,19 +391,29 @@ void ARMLoadStoreOpt::MergeOpsUpdate(MachineBasicBlock &MBB,
   }
 
   SmallVector<std::pair<unsigned, bool>, 8> Regs;
+  SmallVector<unsigned, 8> ImpDefs;
   for (unsigned i = memOpsBegin; i < memOpsEnd; ++i) {
     unsigned Reg = memOps[i].Reg;
     // If we are inserting the merged operation after an operation that
     // uses the same register, make sure to transfer any kill flag.
     bool isKill = memOps[i].isKill || KilledRegs.count(Reg);
     Regs.push_back(std::make_pair(Reg, isKill));
+
+    // Collect any implicit defs of super-registers. They must be preserved.
+    for (MIOperands MO(memOps[i].MBBI); MO.isValid(); ++MO) {
+      if (!MO->isReg() || !MO->isDef() || !MO->isImplicit() || MO->isDead())
+        continue;
+      unsigned DefReg = MO->getReg();
+      if (std::find(ImpDefs.begin(), ImpDefs.end(), DefReg) == ImpDefs.end())
+        ImpDefs.push_back(DefReg);
+    }
   }
 
   // Try to do the merge.
   MachineBasicBlock::iterator Loc = memOps[insertAfter].MBBI;
   ++Loc;
   if (!MergeOps(MBB, Loc, Offset, Base, BaseKill, Opcode,
-                Pred, PredReg, Scratch, dl, Regs))
+                Pred, PredReg, Scratch, dl, Regs, ImpDefs))
     return;
 
   // Merge succeeded, update records.
@@ -537,7 +554,7 @@ static bool isMatchingDecrement(MachineInstr *MI, unsigned Base,
   if (!(MI->getOperand(0).getReg() == Base &&
         MI->getOperand(1).getReg() == Base &&
         (MI->getOperand(2).getImm()*Scale) == Bytes &&
-        llvm::getInstrPredicate(MI, MyPredReg) == Pred &&
+        getInstrPredicate(MI, MyPredReg) == Pred &&
         MyPredReg == PredReg))
     return false;
 
@@ -570,7 +587,7 @@ static bool isMatchingIncrement(MachineInstr *MI, unsigned Base,
   if (!(MI->getOperand(0).getReg() == Base &&
         MI->getOperand(1).getReg() == Base &&
         (MI->getOperand(2).getImm()*Scale) == Bytes &&
-        llvm::getInstrPredicate(MI, MyPredReg) == Pred &&
+        getInstrPredicate(MI, MyPredReg) == Pred &&
         MyPredReg == PredReg))
     return false;
 
@@ -701,7 +718,7 @@ bool ARMLoadStoreOpt::MergeBaseUpdateLSMultiple(MachineBasicBlock &MBB,
   bool BaseKill = MI->getOperand(0).isKill();
   unsigned Bytes = getLSMultipleTransferSize(MI);
   unsigned PredReg = 0;
-  ARMCC::CondCodes Pred = llvm::getInstrPredicate(MI, PredReg);
+  ARMCC::CondCodes Pred = getInstrPredicate(MI, PredReg);
   int Opcode = MI->getOpcode();
   DebugLoc dl = MI->getDebugLoc();
 
@@ -854,7 +871,7 @@ bool ARMLoadStoreOpt::MergeBaseUpdateLoadStore(MachineBasicBlock &MBB,
     return false;
 
   unsigned PredReg = 0;
-  ARMCC::CondCodes Pred = llvm::getInstrPredicate(MI, PredReg);
+  ARMCC::CondCodes Pred = getInstrPredicate(MI, PredReg);
   bool DoMerge = false;
   ARM_AM::AddrOpc AddSub = ARM_AM::add;
   unsigned NewOpc = 0;
@@ -1112,7 +1129,7 @@ bool ARMLoadStoreOpt::FixInvalidRegPairOp(MachineBasicBlock &MBB,
     bool OffUndef = isT2 ? false : MI->getOperand(3).isUndef();
     int OffImm = getMemoryOpOffset(MI);
     unsigned PredReg = 0;
-    ARMCC::CondCodes Pred = llvm::getInstrPredicate(MI, PredReg);
+    ARMCC::CondCodes Pred = getInstrPredicate(MI, PredReg);
 
     if (OddRegNum > EvenRegNum && OffImm == 0) {
       // Ascending register numbers and no offset. It's safe to change it to a
@@ -1143,6 +1160,11 @@ bool ARMLoadStoreOpt::FixInvalidRegPairOp(MachineBasicBlock &MBB,
       unsigned NewOpc = (isLd)
         ? (isT2 ? (OffImm < 0 ? ARM::t2LDRi8 : ARM::t2LDRi12) : ARM::LDRi12)
         : (isT2 ? (OffImm < 0 ? ARM::t2STRi8 : ARM::t2STRi12) : ARM::STRi12);
+      // Be extra careful for thumb2. t2LDRi8 can't reference a zero offset,
+      // so adjust and use t2LDRi12 here for that.
+      unsigned NewOpc2 = (isLd)
+        ? (isT2 ? (OffImm+4 < 0 ? ARM::t2LDRi8 : ARM::t2LDRi12) : ARM::LDRi12)
+        : (isT2 ? (OffImm+4 < 0 ? ARM::t2STRi8 : ARM::t2STRi12) : ARM::STRi12);
       DebugLoc dl = MBBI->getDebugLoc();
       // If this is a load and base register is killed, it may have been
       // re-defed by the load, make sure the first load does not clobber it.
@@ -1150,7 +1172,7 @@ bool ARMLoadStoreOpt::FixInvalidRegPairOp(MachineBasicBlock &MBB,
           (BaseKill || OffKill) &&
           (TRI->regsOverlap(EvenReg, BaseReg))) {
         assert(!TRI->regsOverlap(OddReg, BaseReg));
-        InsertLDR_STR(MBB, MBBI, OffImm+4, isLd, dl, NewOpc,
+        InsertLDR_STR(MBB, MBBI, OffImm+4, isLd, dl, NewOpc2,
                       OddReg, OddDeadKill, false,
                       BaseReg, false, BaseUndef, false, OffUndef,
                       Pred, PredReg, TII, isT2);
@@ -1167,12 +1189,16 @@ bool ARMLoadStoreOpt::FixInvalidRegPairOp(MachineBasicBlock &MBB,
           EvenDeadKill = false;
           OddDeadKill = true;
         }
+        // Never kill the base register in the first instruction.
+        // <rdar://problem/11101911>
+        if (EvenReg == BaseReg)
+          EvenDeadKill = false;
         InsertLDR_STR(MBB, MBBI, OffImm, isLd, dl, NewOpc,
                       EvenReg, EvenDeadKill, EvenUndef,
                       BaseReg, false, BaseUndef, false, OffUndef,
                       Pred, PredReg, TII, isT2);
         NewBBI = llvm::prior(MBBI);
-        InsertLDR_STR(MBB, MBBI, OffImm+4, isLd, dl, NewOpc,
+        InsertLDR_STR(MBB, MBBI, OffImm+4, isLd, dl, NewOpc2,
                       OddReg, OddDeadKill, OddUndef,
                       BaseReg, BaseKill, BaseUndef, OffKill, OffUndef,
                       Pred, PredReg, TII, isT2);
@@ -1223,7 +1249,7 @@ bool ARMLoadStoreOpt::LoadStoreMultipleOpti(MachineBasicBlock &MBB) {
       bool isKill = MO.isDef() ? false : MO.isKill();
       unsigned Base = MBBI->getOperand(1).getReg();
       unsigned PredReg = 0;
-      ARMCC::CondCodes Pred = llvm::getInstrPredicate(MBBI, PredReg);
+      ARMCC::CondCodes Pred = getInstrPredicate(MBBI, PredReg);
       int Offset = getMemoryOpOffset(MBBI);
       // Watch out for:
       // r4 := ldr [r5]
@@ -1298,7 +1324,7 @@ bool ARMLoadStoreOpt::LoadStoreMultipleOpti(MachineBasicBlock &MBB) {
         // First advance to the instruction just before the start of the chain.
         AdvanceRS(MBB, MemOps);
         // Find a scratch register.
-        unsigned Scratch = RS->FindUnusedReg(ARM::GPRRegisterClass);
+        unsigned Scratch = RS->FindUnusedReg(&ARM::GPRRegClass);
         // Process the load / store instructions.
         RS->forward(prior(MBBI));
 
@@ -1599,7 +1625,7 @@ ARMPreAllocLoadStoreOpt::CanFormLdStDWord(MachineInstr *Op0, MachineInstr *Op1,
   if (EvenReg == OddReg)
     return false;
   BaseReg = Op0->getOperand(1).getReg();
-  Pred = llvm::getInstrPredicate(Op0, PredReg);
+  Pred = getInstrPredicate(Op0, PredReg);
   dl = Op0->getDebugLoc();
   return true;
 }
@@ -1711,7 +1737,7 @@ bool ARMPreAllocLoadStoreOpt::RescheduleOps(MachineBasicBlock *MBB,
           Ops.pop_back();
 
           const MCInstrDesc &MCID = TII->get(NewOpc);
-          const TargetRegisterClass *TRC = TII->getRegClass(MCID, 0, TRI);
+          const TargetRegisterClass *TRC = TII->getRegClass(MCID, 0, TRI, *MF);
           MRI->constrainRegClass(EvenReg, TRC);
           MRI->constrainRegClass(OddReg, TRC);
 
@@ -1796,7 +1822,7 @@ ARMPreAllocLoadStoreOpt::RescheduleLoadStoreInstrs(MachineBasicBlock *MBB) {
       if (!isMemoryOp(MI))
         continue;
       unsigned PredReg = 0;
-      if (llvm::getInstrPredicate(MI, PredReg) != ARMCC::AL)
+      if (getInstrPredicate(MI, PredReg) != ARMCC::AL)
         continue;
 
       int Opc = MI->getOpcode();

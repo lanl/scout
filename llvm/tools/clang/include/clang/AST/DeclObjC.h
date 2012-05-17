@@ -17,6 +17,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/SelectorLocationsKind.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Compiler.h"
 
 namespace clang {
 class Expr;
@@ -149,6 +150,15 @@ private:
   /// "standard" position, a enum SelectorLocationsKind.
   unsigned SelLocsKind : 2;
 
+  /// \brief Whether this method overrides any other in the class hierarchy.
+  ///
+  /// A method is said to override any method in the class's
+  /// base classes, its protocols, or its categories' protocols, that has
+  /// the same selector and is of the same kind (class or instance).
+  /// A method in an implementation is not considered as overriding the same
+  /// method in the interface or its categories.
+  unsigned IsOverriding : 1;
+
   // Result type of this method.
   QualType MethodDeclType;
 
@@ -229,7 +239,7 @@ private:
     IsDefined(isDefined), IsRedeclaration(0), HasRedeclaration(0),
     DeclImplementation(impControl), objcDeclQualifier(OBJC_TQ_None),
     RelatedResultType(HasRelatedResultType),
-    SelLocsKind(SelLoc_StandardNoSpace),
+    SelLocsKind(SelLoc_StandardNoSpace), IsOverriding(0),
     MethodDeclType(T), ResultTInfo(ResultTInfo),
     ParamsAndSelLocs(0), NumParams(0),
     EndLoc(endLoc), Body(0), SelfDecl(0), CmdDecl(0) {
@@ -281,10 +291,10 @@ public:
   void setAsRedeclaration(const ObjCMethodDecl *PrevMethod);
 
   // Location information, modeled after the Stmt API.
-  SourceLocation getLocStart() const { return getLocation(); }
-  SourceLocation getLocEnd() const { return EndLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return getLocation(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
   void setEndLoc(SourceLocation Loc) { EndLoc = Loc; }
-  virtual SourceRange getSourceRange() const {
+  virtual SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(getLocation(), EndLoc);
   }
 
@@ -395,6 +405,16 @@ public:
   bool isDefined() const { return IsDefined; }
   void setDefined(bool isDefined) { IsDefined = isDefined; }
 
+  /// \brief Whether this method overrides any other in the class hierarchy.
+  ///
+  /// A method is said to override any method in the class's
+  /// base classes, its protocols, or its categories' protocols, that has
+  /// the same selector and is of the same kind (class or instance).
+  /// A method in an implementation is not considered as overriding the same
+  /// method in the interface or its categories.
+  bool isOverriding() const { return IsOverriding; }
+  void setOverriding(bool isOverriding) { IsOverriding = isOverriding; }
+  
   // Related to protocols declared in  @protocol
   void setDeclImplementation(ImplementationControl ic) {
     DeclImplementation = ic;
@@ -507,7 +527,7 @@ public:
     AtEnd = atEnd;
   }
 
-  virtual SourceRange getSourceRange() const {
+  virtual SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(AtStart, getAtEndRange().getEnd());
   }
 
@@ -637,7 +657,7 @@ public:
 
   static ObjCInterfaceDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
-  virtual SourceRange getSourceRange() const {
+  virtual SourceRange getSourceRange() const LLVM_READONLY {
     if (isThisDeclarationADefinition())
       return ObjCContainerDecl::getSourceRange();
     
@@ -650,6 +670,7 @@ public:
   void setExternallyCompleted();
 
   const ObjCProtocolList &getReferencedProtocols() const {
+    assert(hasDefinition() && "Caller did not check for forward reference!");
     if (data().ExternallyCompleted)
       LoadExternalDefinition();
 
@@ -898,12 +919,15 @@ public:
 
   // Lookup a method. First, we search locally. If a method isn't
   // found, we search referenced protocols and class categories.
-  ObjCMethodDecl *lookupMethod(Selector Sel, bool isInstance) const;
-  ObjCMethodDecl *lookupInstanceMethod(Selector Sel) const {
-    return lookupMethod(Sel, true/*isInstance*/);
+  ObjCMethodDecl *lookupMethod(Selector Sel, bool isInstance,
+                               bool shallowCategoryLookup= false) const;
+  ObjCMethodDecl *lookupInstanceMethod(Selector Sel,
+                            bool shallowCategoryLookup = false) const {
+    return lookupMethod(Sel, true/*isInstance*/, shallowCategoryLookup);
   }
-  ObjCMethodDecl *lookupClassMethod(Selector Sel) const {
-    return lookupMethod(Sel, false/*isInstance*/);
+  ObjCMethodDecl *lookupClassMethod(Selector Sel,
+                     bool shallowCategoryLookup = false) const {
+    return lookupMethod(Sel, false/*isInstance*/, shallowCategoryLookup);
   }
   ObjCInterfaceDecl *lookupInheritedClass(const IdentifierInfo *ICName);
 
@@ -1214,7 +1238,7 @@ public:
   /// \brief Starts the definition of this Objective-C protocol.
   void startDefinition();
 
-  virtual SourceRange getSourceRange() const {
+  virtual SourceRange getSourceRange() const LLVM_READONLY {
     if (isThisDeclarationADefinition())
       return ObjCContainerDecl::getSourceRange();
    
@@ -1280,12 +1304,19 @@ class ObjCCategoryDecl : public ObjCContainerDecl {
   /// \brief The location of the category name in this declaration.
   SourceLocation CategoryNameLoc;
 
+  /// class extension may have private ivars.
+  SourceLocation IvarLBraceLoc;
+  SourceLocation IvarRBraceLoc;
+  
   ObjCCategoryDecl(DeclContext *DC, SourceLocation AtLoc,
                    SourceLocation ClassNameLoc, SourceLocation CategoryNameLoc,
-                   IdentifierInfo *Id, ObjCInterfaceDecl *IDecl)
+                   IdentifierInfo *Id, ObjCInterfaceDecl *IDecl,
+                   SourceLocation IvarLBraceLoc=SourceLocation(),
+                   SourceLocation IvarRBraceLoc=SourceLocation())
     : ObjCContainerDecl(ObjCCategory, DC, Id, ClassNameLoc, AtLoc),
       ClassInterface(IDecl), NextClassCategory(0), HasSynthBitfield(false),
-      CategoryNameLoc(CategoryNameLoc) {
+      CategoryNameLoc(CategoryNameLoc),
+      IvarLBraceLoc(IvarLBraceLoc), IvarRBraceLoc(IvarRBraceLoc) {
   }
 public:
 
@@ -1294,7 +1325,9 @@ public:
                                   SourceLocation ClassNameLoc,
                                   SourceLocation CategoryNameLoc,
                                   IdentifierInfo *Id,
-                                  ObjCInterfaceDecl *IDecl);
+                                  ObjCInterfaceDecl *IDecl,
+                                  SourceLocation IvarLBraceLoc=SourceLocation(),
+                                  SourceLocation IvarRBraceLoc=SourceLocation());
   static ObjCCategoryDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
   ObjCInterfaceDecl *getClassInterface() { return ClassInterface; }
@@ -1350,6 +1383,11 @@ public:
 
   SourceLocation getCategoryNameLoc() const { return CategoryNameLoc; }
   void setCategoryNameLoc(SourceLocation Loc) { CategoryNameLoc = Loc; }
+  
+  void setIvarLBraceLoc(SourceLocation Loc) { IvarLBraceLoc = Loc; }
+  SourceLocation getIvarLBraceLoc() const { return IvarLBraceLoc; }
+  void setIvarRBraceLoc(SourceLocation Loc) { IvarRBraceLoc = Loc; }
+  SourceLocation getIvarRBraceLoc() const { return IvarRBraceLoc; }
 
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const ObjCCategoryDecl *D) { return true; }
@@ -1518,6 +1556,10 @@ class ObjCImplementationDecl : public ObjCImplDecl {
   virtual void anchor();
   /// Implementation Class's super class.
   ObjCInterfaceDecl *SuperClass;
+  /// @implementation may have private ivars.
+  SourceLocation IvarLBraceLoc;
+  SourceLocation IvarRBraceLoc;
+  
   /// Support for ivar initialization.
   /// IvarInitializers - The arguments used to initialize the ivars
   CXXCtorInitializer **IvarInitializers;
@@ -1532,16 +1574,22 @@ class ObjCImplementationDecl : public ObjCImplDecl {
   ObjCImplementationDecl(DeclContext *DC,
                          ObjCInterfaceDecl *classInterface,
                          ObjCInterfaceDecl *superDecl,
-                         SourceLocation nameLoc, SourceLocation atStartLoc)
+                         SourceLocation nameLoc, SourceLocation atStartLoc,
+                         SourceLocation IvarLBraceLoc=SourceLocation(), 
+                         SourceLocation IvarRBraceLoc=SourceLocation())
     : ObjCImplDecl(ObjCImplementation, DC, classInterface, nameLoc, atStartLoc),
-       SuperClass(superDecl), IvarInitializers(0), NumIvarInitializers(0),
-       HasCXXStructors(false), HasSynthBitfield(false) {}
+       SuperClass(superDecl), IvarLBraceLoc(IvarLBraceLoc), 
+       IvarRBraceLoc(IvarRBraceLoc),
+       IvarInitializers(0), NumIvarInitializers(0),
+       HasCXXStructors(false), HasSynthBitfield(false){}
 public:
   static ObjCImplementationDecl *Create(ASTContext &C, DeclContext *DC,
                                         ObjCInterfaceDecl *classInterface,
                                         ObjCInterfaceDecl *superDecl,
                                         SourceLocation nameLoc,
-                                        SourceLocation atStartLoc);
+                                        SourceLocation atStartLoc,
+                                        SourceLocation IvarLBraceLoc=SourceLocation(), 
+                                        SourceLocation IvarRBraceLoc=SourceLocation());
 
   static ObjCImplementationDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 
@@ -1620,6 +1668,11 @@ public:
 
   void setSuperClass(ObjCInterfaceDecl * superCls) { SuperClass = superCls; }
 
+  void setIvarLBraceLoc(SourceLocation Loc) { IvarLBraceLoc = Loc; }
+  SourceLocation getIvarLBraceLoc() const { return IvarLBraceLoc; }
+  void setIvarRBraceLoc(SourceLocation Loc) { IvarRBraceLoc = Loc; }
+  SourceLocation getIvarRBraceLoc() const { return IvarRBraceLoc; }
+  
   typedef specific_decl_iterator<ObjCIvarDecl> ivar_iterator;
   ivar_iterator ivar_begin() const {
     return ivar_iterator(decls_begin());
@@ -1705,6 +1758,7 @@ public:
   enum PropertyControl { None, Required, Optional };
 private:
   SourceLocation AtLoc;   // location of @property
+  SourceLocation LParenLoc; // location of '(' starting attribute list or null.
   TypeSourceInfo *DeclType;
   unsigned PropertyAttributes : NumPropertyAttrsBits;
   unsigned PropertyAttributesAsWritten : NumPropertyAttrsBits;
@@ -1719,8 +1773,10 @@ private:
   ObjCIvarDecl *PropertyIvarDecl;   // Synthesize ivar for this property
 
   ObjCPropertyDecl(DeclContext *DC, SourceLocation L, IdentifierInfo *Id,
-                   SourceLocation AtLocation, TypeSourceInfo *T)
-    : NamedDecl(ObjCProperty, DC, L, Id), AtLoc(AtLocation), DeclType(T),
+                   SourceLocation AtLocation,  SourceLocation LParenLocation,
+                   TypeSourceInfo *T)
+    : NamedDecl(ObjCProperty, DC, L, Id), AtLoc(AtLocation), 
+      LParenLoc(LParenLocation), DeclType(T),
       PropertyAttributes(OBJC_PR_noattr),
       PropertyAttributesAsWritten(OBJC_PR_noattr),
       PropertyImplementation(None),
@@ -1731,6 +1787,7 @@ public:
   static ObjCPropertyDecl *Create(ASTContext &C, DeclContext *DC,
                                   SourceLocation L,
                                   IdentifierInfo *Id, SourceLocation AtLocation,
+                                  SourceLocation LParenLocation,
                                   TypeSourceInfo *T,
                                   PropertyControl propControl = None);
   
@@ -1738,6 +1795,9 @@ public:
   
   SourceLocation getAtLoc() const { return AtLoc; }
   void setAtLoc(SourceLocation L) { AtLoc = L; }
+  
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+  void setLParenLoc(SourceLocation L) { LParenLoc = L; }
 
   TypeSourceInfo *getTypeSourceInfo() const { return DeclType; }
   QualType getType() const { return DeclType->getType(); }
@@ -1829,7 +1889,7 @@ public:
     return PropertyIvarDecl;
   }
 
-  virtual SourceRange getSourceRange() const {
+  virtual SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(AtLoc, getLocation());
   }
 
@@ -1897,9 +1957,9 @@ public:
 
   static ObjCPropertyImplDecl *CreateDeserialized(ASTContext &C, unsigned ID);
   
-  virtual SourceRange getSourceRange() const;
+  virtual SourceRange getSourceRange() const LLVM_READONLY;
 
-  SourceLocation getLocStart() const { return AtLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return AtLoc; }
   void setAtLoc(SourceLocation Loc) { AtLoc = Loc; }
 
   ObjCPropertyDecl *getPropertyDecl() const {

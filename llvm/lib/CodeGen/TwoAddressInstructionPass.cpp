@@ -102,7 +102,7 @@ namespace {
     MachineInstr *FindLastUseInMBB(unsigned Reg, MachineBasicBlock *MBB,
                                    unsigned Dist);
 
-    bool isProfitableToCommute(unsigned regB, unsigned regC,
+    bool isProfitableToCommute(unsigned regA, unsigned regB, unsigned regC,
                                MachineInstr *MI, MachineBasicBlock *MBB,
                                unsigned Dist);
 
@@ -169,7 +169,6 @@ namespace {
       AU.addPreserved<LiveVariables>();
       AU.addPreservedID(MachineLoopInfoID);
       AU.addPreservedID(MachineDominatorsID);
-      AU.addPreservedID(PHIEliminationID);
       MachineFunctionPass::getAnalysisUsage(AU);
     }
 
@@ -568,7 +567,8 @@ regsAreCompatible(unsigned RegA, unsigned RegB, const TargetRegisterInfo *TRI) {
 /// isProfitableToReMat - Return true if it's potentially profitable to commute
 /// the two-address instruction that's being processed.
 bool
-TwoAddressInstructionPass::isProfitableToCommute(unsigned regB, unsigned regC,
+TwoAddressInstructionPass::isProfitableToCommute(unsigned regA, unsigned regB,
+                                       unsigned regC,
                                        MachineInstr *MI, MachineBasicBlock *MBB,
                                        unsigned Dist) {
   if (OptLevel == CodeGenOpt::None)
@@ -605,15 +605,15 @@ TwoAddressInstructionPass::isProfitableToCommute(unsigned regB, unsigned regC,
   // %reg1026<def> = ADD %reg1024, %reg1025
   // r0            = MOV %reg1026
   // Commute the ADD to hopefully eliminate an otherwise unavoidable copy.
-  unsigned FromRegB = getMappedReg(regB, SrcRegMap);
-  unsigned FromRegC = getMappedReg(regC, SrcRegMap);
-  unsigned ToRegB = getMappedReg(regB, DstRegMap);
-  unsigned ToRegC = getMappedReg(regC, DstRegMap);
-  if ((FromRegB && ToRegB && !regsAreCompatible(FromRegB, ToRegB, TRI)) &&
-      ((!FromRegC && !ToRegC) ||
-       regsAreCompatible(FromRegB, ToRegC, TRI) ||
-       regsAreCompatible(FromRegC, ToRegB, TRI)))
-    return true;
+  unsigned ToRegA = getMappedReg(regA, DstRegMap);
+  if (ToRegA) {
+    unsigned FromRegB = getMappedReg(regB, SrcRegMap);
+    unsigned FromRegC = getMappedReg(regC, SrcRegMap);
+    bool BComp = !FromRegB || regsAreCompatible(FromRegB, ToRegA, TRI);
+    bool CComp = !FromRegC || regsAreCompatible(FromRegC, ToRegA, TRI);
+    if (BComp != CComp)
+      return !BComp && CComp;
+  }
 
   // If there is a use of regC between its last def (could be livein) and this
   // instruction, then bail.
@@ -1184,8 +1184,9 @@ TwoAddressInstructionPass::RescheduleKillAboveMI(MachineBasicBlock *MBB,
 /// TryInstructionTransform - For the case where an instruction has a single
 /// pair of tied register operands, attempt some transformations that may
 /// either eliminate the tied operands or improve the opportunities for
-/// coalescing away the register copy.  Returns true if the tied operands
-/// are eliminated altogether.
+/// coalescing away the register copy.  Returns true if no copy needs to be
+/// inserted to untie mi's operands (either because they were untied, or
+/// because mi was rescheduled, and will be visited again later).
 bool TwoAddressInstructionPass::
 TryInstructionTransform(MachineBasicBlock::iterator &mi,
                         MachineBasicBlock::iterator &nmi,
@@ -1211,6 +1212,9 @@ TryInstructionTransform(MachineBasicBlock::iterator &mi,
     return true; // Done with this instruction.
   }
 
+  if (TargetRegisterInfo::isVirtualRegister(regA))
+    ScanUses(regA, &*mbbi, Processed);
+
   // Check if it is profitable to commute the operands.
   unsigned SrcOp1, SrcOp2;
   unsigned regC = 0;
@@ -1230,7 +1234,7 @@ TryInstructionTransform(MachineBasicBlock::iterator &mi,
         // If C dies but B does not, swap the B and C operands.
         // This makes the live ranges of A and C joinable.
         TryCommute = true;
-      else if (isProfitableToCommute(regB, regC, &MI, mbbi, Dist)) {
+      else if (isProfitableToCommute(regA, regB, regC, &MI, mbbi, Dist)) {
         TryCommute = true;
         AggressiveCommute = true;
       }
@@ -1251,9 +1255,6 @@ TryInstructionTransform(MachineBasicBlock::iterator &mi,
     ++NumReSchedDowns;
     return true;
   }
-
-  if (TargetRegisterInfo::isVirtualRegister(regA))
-    ScanUses(regA, &*mbbi, Processed);
 
   if (MI.isConvertibleTo3Addr()) {
     // This instruction is potentially convertible to a true
@@ -1298,7 +1299,8 @@ TryInstructionTransform(MachineBasicBlock::iterator &mi,
         // Unfold the load.
         DEBUG(dbgs() << "2addr:   UNFOLDING: " << MI);
         const TargetRegisterClass *RC =
-          TII->getRegClass(UnfoldMCID, LoadRegIndex, TRI);
+          TRI->getAllocatableClass(
+            TII->getRegClass(UnfoldMCID, LoadRegIndex, TRI, MF));
         unsigned Reg = MRI->createVirtualRegister(RC);
         SmallVector<MachineInstr *, 2> NewMIs;
         if (!TII->unfoldMemoryOperand(MF, &MI, Reg,
@@ -1381,7 +1383,6 @@ TryInstructionTransform(MachineBasicBlock::iterator &mi,
 /// runOnMachineFunction - Reduce two-address instructions to two operands.
 ///
 bool TwoAddressInstructionPass::runOnMachineFunction(MachineFunction &MF) {
-  DEBUG(dbgs() << "Machine Function\n");
   const TargetMachine &TM = MF.getTarget();
   MRI = &MF.getRegInfo();
   TII = TM.getInstrInfo();
@@ -1596,19 +1597,19 @@ bool TwoAddressInstructionPass::runOnMachineFunction(MachineFunction &MF) {
         MadeChange = true;
 
         DEBUG(dbgs() << "\t\trewrite to:\t" << *mi);
-      }
 
-      // Rewrite INSERT_SUBREG as COPY now that we no longer need SSA form.
-      if (mi->isInsertSubreg()) {
-        // From %reg = INSERT_SUBREG %reg, %subreg, subidx
-        // To   %reg:subidx = COPY %subreg
-        unsigned SubIdx = mi->getOperand(3).getImm();
-        mi->RemoveOperand(3);
-        assert(mi->getOperand(0).getSubReg() == 0 && "Unexpected subreg idx");
-        mi->getOperand(0).setSubReg(SubIdx);
-        mi->RemoveOperand(1);
-        mi->setDesc(TII->get(TargetOpcode::COPY));
-        DEBUG(dbgs() << "\t\tconvert to:\t" << *mi);
+        // Rewrite INSERT_SUBREG as COPY now that we no longer need SSA form.
+        if (mi->isInsertSubreg()) {
+          // From %reg = INSERT_SUBREG %reg, %subreg, subidx
+          // To   %reg:subidx = COPY %subreg
+          unsigned SubIdx = mi->getOperand(3).getImm();
+          mi->RemoveOperand(3);
+          assert(mi->getOperand(0).getSubReg() == 0 && "Unexpected subreg idx");
+          mi->getOperand(0).setSubReg(SubIdx);
+          mi->RemoveOperand(1);
+          mi->setDesc(TII->get(TargetOpcode::COPY));
+          DEBUG(dbgs() << "\t\tconvert to:\t" << *mi);
+        }
       }
 
       // Clear TiedOperands here instead of at the top of the loop
@@ -1834,6 +1835,7 @@ bool TwoAddressInstructionPass::EliminateRegSequences() {
     SmallSet<unsigned, 4> Seen;
     for (unsigned i = 1, e = MI->getNumOperands(); i < e; i += 2) {
       unsigned SrcReg = MI->getOperand(i).getReg();
+      unsigned SrcSubIdx = MI->getOperand(i).getSubReg();
       unsigned SubIdx = MI->getOperand(i+1).getImm();
       // DefMI of NULL means the value does not have a vreg in this block
       // i.e., its a physical register or a subreg.
@@ -1889,7 +1891,7 @@ bool TwoAddressInstructionPass::EliminateRegSequences() {
         MachineInstr *CopyMI = BuildMI(*MI->getParent(), InsertLoc,
                                 MI->getDebugLoc(), TII->get(TargetOpcode::COPY))
             .addReg(DstReg, RegState::Define, SubIdx)
-            .addReg(SrcReg, getKillRegState(isKill));
+            .addReg(SrcReg, getKillRegState(isKill), SrcSubIdx);
         MI->getOperand(i).setReg(0);
         if (LV && isKill && !TargetRegisterInfo::isPhysicalRegister(SrcReg))
           LV->replaceKillInstruction(SrcReg, MI, CopyMI);

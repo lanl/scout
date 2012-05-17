@@ -30,6 +30,8 @@ td {
   <ul>
   <li><a href="#cl_diagnostics">Options to Control Error and Warning
       Messages</a></li>
+  <li><a href="#cl_crash_diagnostics">Options to Control Clang Crash
+      Diagnostics</a></li>
   </ul>
 </li>
 <li><a href="#general_features">Language and Target-Independent Features</a>
@@ -99,7 +101,7 @@ Web Site</a> or the <a href="http://llvm.org">LLVM Web Site</a>.</p>
 an end-user, documenting the supported features, command line options, etc.  If
 you are interested in using Clang to build a tool that processes code, please
 see <a href="InternalsManual.html">the Clang Internals Manual</a>.  If you are
-interested in the <a href="http://clang.llvm.org/StaticAnalysis.html">Clang
+interested in the <a href="http://clang-analyzer.llvm.org">Clang
 Static Analyzer</a>, please see its web page.</p>
 
 <p>Clang is designed to support the C family of programming languages, which
@@ -415,7 +417,6 @@ quotes(as &quot;\&quot;&quot;) and non-printable characters (as octal
 
 </dl>
 
- 
 
 
 <!-- ===================================================== -->
@@ -509,6 +510,27 @@ off.</p>
 
 </dl>
 
+<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+<h3 id="cl_crash_diagnostics">Options to Control Clang Crash Diagnostics</h3>
+<!-- = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = -->
+
+<p>As unbelievable as it may sound, Clang does crash from time to time.  
+Generally, this only occurs to those living on the 
+<a href="http://llvm.org/releases/download.html#svn">bleeding edge</a>.  Clang
+goes to great lengths to assist you in filing a bug report.  Specifically, Clang
+generates preprocessed source file(s) and associated run script(s) upon a
+crash.  These files should be attached to a bug report to ease reproducibility
+of the failure.  Below are the command line options to control the crash
+diagnostics.
+</p>
+
+<p><b>-fno-crash-diagnostics</b>: Disable auto-generation of preprocessed 
+source files during a clang crash.</p>
+
+<p>The -fno-crash-diagnostics flag can be helpful for speeding the process of
+generating a delta reduced test case.</p>
+
+
 <!-- ======================================================================= -->
 <h2 id="general_features">Language and Target-Independent Features</h2>
 <!-- ======================================================================= -->
@@ -535,8 +557,6 @@ it:</p>
 <li>A categorization of the diagnostic as a note, warning, error, or fatal
     error.</li>
 <li>A text string that describes what the problem is.</li>
-<li>An option that indicates whether to print the diagnostic name [<a
-    href="#opt_fdiagnostics-show-name">-fdiagnostics-show-name</a>].</li>
 <li>An option that indicates how to control the diagnostic (for diagnostics that
     support it) [<a 
    href="#opt_fdiagnostics-show-option">-fdiagnostics-show-option</a>].</li>
@@ -810,6 +830,14 @@ The checks are:
 </ul>
 </dd>
 
+<dt id="opt_faddress-sanitizer"><b>-f[no-]address-sanitizer</b>:
+Turn on <a href="AddressSanitizer.html">AddressSanitizer</a>,
+a memory error detector.
+
+<dt id="opt_fthread-sanitizer"><b>-f[no-]thread-sanitizer</b>:
+Turn on ThreadSanitizer, an <em>experimental</em> data race detector.
+Not ready for widespread use.
+
 <dt id="opt_fno-assume-sane-operator-new"><b>-fno-assume-sane-operator-new</b>:
 Don't assume that the C++'s new operator is sane.</dt>
 <dd>This option tells the compiler to do not assume that C++'s global new
@@ -1064,7 +1092,7 @@ Generating assembly requires a suitable LLVM backend.
 <h4 id="target_os_darwin">Darwin (Mac OS/X)</h4>
 <!-- ======================================= -->
 
-<p>No __thread support, 64-bit ObjC support requires SL tools.</p>
+<p>None</p>
 
 <!-- ======================================= -->
 <h4 id="target_os_win32">Windows</h4>
@@ -1107,7 +1135,7 @@ Clang assumes directories as below;</p>
 <li><tt>some_directory/bin/../include</tt></li>
 </ul>
 
-<p>This directory layout is standard for any toolchain you will find on the official <a href="mingw-w64.sourceforge.net">MinGW-w64 website</a>.
+<p>This directory layout is standard for any toolchain you will find on the official <a href="http://mingw-w64.sourceforge.net">MinGW-w64 website</a>.
 
 <p>Clang expects the GCC executable &quot;gcc.exe&quot; compiled for i686-w64-mingw32 (or x86_64-w64-mingw32) to be present on PATH.</p>
 

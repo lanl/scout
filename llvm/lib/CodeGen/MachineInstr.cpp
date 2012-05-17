@@ -40,6 +40,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/Hashing.h"
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -254,12 +255,16 @@ void MachineOperand::print(raw_ostream &OS, const TargetMachine *TM) const {
           OS << "imp-";
         OS << "def";
         NeedComma = true;
+        // <def,read-undef> only makes sense when getSubReg() is set.
+        // Don't clutter the output otherwise.
+        if (isUndef() && getSubReg())
+          OS << ",read-undef";
       } else if (isImplicit()) {
           OS << "imp-use";
           NeedComma = true;
       }
 
-      if (isKill() || isDead() || isUndef() || isInternalRead()) {
+      if (isKill() || isDead() || (isUndef() && isUse()) || isInternalRead()) {
         if (NeedComma) OS << ',';
         NeedComma = false;
         if (isKill()) {
@@ -270,7 +275,7 @@ void MachineOperand::print(raw_ostream &OS, const TargetMachine *TM) const {
           OS << "dead";
           NeedComma = true;
         }
-        if (isUndef()) {
+        if (isUndef() && isUse()) {
           if (NeedComma) OS << ',';
           OS << "undef";
           NeedComma = true;
@@ -380,10 +385,11 @@ MachinePointerInfo MachinePointerInfo::getStack(int64_t Offset) {
 
 MachineMemOperand::MachineMemOperand(MachinePointerInfo ptrinfo, unsigned f,
                                      uint64_t s, unsigned int a,
-                                     const MDNode *TBAAInfo)
+                                     const MDNode *TBAAInfo,
+                                     const MDNode *Ranges)
   : PtrInfo(ptrinfo), Size(s),
     Flags((f & ((1 << MOMaxBits) - 1)) | ((Log2_32(a) + 1) << MOMaxBits)),
-    TBAAInfo(TBAAInfo) {
+    TBAAInfo(TBAAInfo), Ranges(Ranges) {
   assert((PtrInfo.V == 0 || isa<PointerType>(PtrInfo.V->getType())) &&
          "invalid pointer value");
   assert(getBaseAlignment() == a && "Alignment is not a power of 2!");
@@ -481,7 +487,7 @@ raw_ostream &llvm::operator<<(raw_ostream &OS, const MachineMemOperand &MMO) {
 /// MCID NULL and no operands.
 MachineInstr::MachineInstr()
   : MCID(0), Flags(0), AsmPrinterFlags(0),
-    MemRefs(0), MemRefsEnd(0),
+    NumMemRefs(0), MemRefs(0),
     Parent(0) {
   // Make sure that we get added to a machine basicblock
   LeakDetector::addGarbageObject(this);
@@ -489,10 +495,10 @@ MachineInstr::MachineInstr()
 
 void MachineInstr::addImplicitDefUseOperands() {
   if (MCID->ImplicitDefs)
-    for (const unsigned *ImpDefs = MCID->ImplicitDefs; *ImpDefs; ++ImpDefs)
+    for (const uint16_t *ImpDefs = MCID->getImplicitDefs(); *ImpDefs; ++ImpDefs)
       addOperand(MachineOperand::CreateReg(*ImpDefs, true, true));
   if (MCID->ImplicitUses)
-    for (const unsigned *ImpUses = MCID->ImplicitUses; *ImpUses; ++ImpUses)
+    for (const uint16_t *ImpUses = MCID->getImplicitUses(); *ImpUses; ++ImpUses)
       addOperand(MachineOperand::CreateReg(*ImpUses, false, true));
 }
 
@@ -501,7 +507,7 @@ void MachineInstr::addImplicitDefUseOperands() {
 /// the MCInstrDesc.
 MachineInstr::MachineInstr(const MCInstrDesc &tid, bool NoImp)
   : MCID(&tid), Flags(0), AsmPrinterFlags(0),
-    MemRefs(0), MemRefsEnd(0), Parent(0) {
+    NumMemRefs(0), MemRefs(0), Parent(0) {
   unsigned NumImplicitOps = 0;
   if (!NoImp)
     NumImplicitOps = MCID->getNumImplicitDefs() + MCID->getNumImplicitUses();
@@ -516,7 +522,7 @@ MachineInstr::MachineInstr(const MCInstrDesc &tid, bool NoImp)
 MachineInstr::MachineInstr(const MCInstrDesc &tid, const DebugLoc dl,
                            bool NoImp)
   : MCID(&tid), Flags(0), AsmPrinterFlags(0),
-    MemRefs(0), MemRefsEnd(0), Parent(0), debugLoc(dl) {
+    NumMemRefs(0), MemRefs(0), Parent(0), debugLoc(dl) {
   unsigned NumImplicitOps = 0;
   if (!NoImp)
     NumImplicitOps = MCID->getNumImplicitDefs() + MCID->getNumImplicitUses();
@@ -532,7 +538,7 @@ MachineInstr::MachineInstr(const MCInstrDesc &tid, const DebugLoc dl,
 /// basic block.
 MachineInstr::MachineInstr(MachineBasicBlock *MBB, const MCInstrDesc &tid)
   : MCID(&tid), Flags(0), AsmPrinterFlags(0),
-    MemRefs(0), MemRefsEnd(0), Parent(0) {
+    NumMemRefs(0), MemRefs(0), Parent(0) {
   assert(MBB && "Cannot use inserting ctor with null basic block!");
   unsigned NumImplicitOps =
     MCID->getNumImplicitDefs() + MCID->getNumImplicitUses();
@@ -548,7 +554,7 @@ MachineInstr::MachineInstr(MachineBasicBlock *MBB, const MCInstrDesc &tid)
 MachineInstr::MachineInstr(MachineBasicBlock *MBB, const DebugLoc dl,
                            const MCInstrDesc &tid)
   : MCID(&tid), Flags(0), AsmPrinterFlags(0),
-    MemRefs(0), MemRefsEnd(0), Parent(0), debugLoc(dl) {
+    NumMemRefs(0), MemRefs(0), Parent(0), debugLoc(dl) {
   assert(MBB && "Cannot use inserting ctor with null basic block!");
   unsigned NumImplicitOps =
     MCID->getNumImplicitDefs() + MCID->getNumImplicitUses();
@@ -563,7 +569,7 @@ MachineInstr::MachineInstr(MachineBasicBlock *MBB, const DebugLoc dl,
 ///
 MachineInstr::MachineInstr(MachineFunction &MF, const MachineInstr &MI)
   : MCID(&MI.getDesc()), Flags(0), AsmPrinterFlags(0),
-    MemRefs(MI.MemRefs), MemRefsEnd(MI.MemRefsEnd),
+    NumMemRefs(MI.NumMemRefs), MemRefs(MI.MemRefs),
     Parent(0), debugLoc(MI.getDebugLoc()) {
   Operands.reserve(MI.getNumOperands());
 
@@ -738,28 +744,23 @@ void MachineInstr::RemoveOperand(unsigned OpNo) {
 void MachineInstr::addMemOperand(MachineFunction &MF,
                                  MachineMemOperand *MO) {
   mmo_iterator OldMemRefs = MemRefs;
-  mmo_iterator OldMemRefsEnd = MemRefsEnd;
+  uint16_t OldNumMemRefs = NumMemRefs;
 
-  size_t NewNum = (MemRefsEnd - MemRefs) + 1;
+  uint16_t NewNum = NumMemRefs + 1;
   mmo_iterator NewMemRefs = MF.allocateMemRefsArray(NewNum);
-  mmo_iterator NewMemRefsEnd = NewMemRefs + NewNum;
 
-  std::copy(OldMemRefs, OldMemRefsEnd, NewMemRefs);
+  std::copy(OldMemRefs, OldMemRefs + OldNumMemRefs, NewMemRefs);
   NewMemRefs[NewNum - 1] = MO;
 
   MemRefs = NewMemRefs;
-  MemRefsEnd = NewMemRefsEnd;
+  NumMemRefs = NewNum;
 }
 
-bool
-MachineInstr::hasProperty(unsigned MCFlag, QueryType Type) const {
-  if (Type == IgnoreBundle || !isBundle())
-    return getDesc().getFlags() & (1 << MCFlag);
-
+bool MachineInstr::hasPropertyInBundle(unsigned Mask, QueryType Type) const {
   const MachineBasicBlock *MBB = getParent();
   MachineBasicBlock::const_instr_iterator MII = *this; ++MII;
   while (MII != MBB->end() && MII->isInsideBundle()) {
-    if (MII->getDesc().getFlags() & (1 << MCFlag)) {
+    if (MII->getDesc().getFlags() & Mask) {
       if (Type == AnyInBundle)
         return true;
     } else {
@@ -941,9 +942,13 @@ const TargetRegisterClass*
 MachineInstr::getRegClassConstraint(unsigned OpIdx,
                                     const TargetInstrInfo *TII,
                                     const TargetRegisterInfo *TRI) const {
+  assert(getParent() && "Can't have an MBB reference here!");
+  assert(getParent()->getParent() && "Can't have an MF reference here!");
+  const MachineFunction &MF = *getParent()->getParent();
+
   // Most opcodes have fixed constraints in their MCInstrDesc.
   if (!isInlineAsm())
-    return TII->getRegClass(getDesc(), OpIdx, TRI);
+    return TII->getRegClass(getDesc(), OpIdx, TRI, MF);
 
   if (!getOperand(OpIdx).isReg())
     return NULL;
@@ -965,7 +970,7 @@ MachineInstr::getRegClassConstraint(unsigned OpIdx,
 
   // Assume that all registers in a memory operand are pointers.
   if (InlineAsm::getKind(Flag) == InlineAsm::Kind_Mem)
-    return TRI->getPointerRegClass();
+    return TRI->getPointerRegClass(MF);
 
   return NULL;
 }
@@ -1045,6 +1050,10 @@ MachineInstr::findRegisterDefOperandIdx(unsigned Reg, bool isDead, bool Overlap,
   bool isPhys = TargetRegisterInfo::isPhysicalRegister(Reg);
   for (unsigned i = 0, e = getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = getOperand(i);
+    // Accept regmask operands when Overlap is set.
+    // Ignore them when looking for a specific def operand (Overlap == false).
+    if (isPhys && Overlap && MO.isRegMask() && MO.clobbersPhysReg(Reg))
+      return i;
     if (!MO.isReg() || !MO.isDef())
       continue;
     unsigned MOReg = MO.getReg();
@@ -1484,7 +1493,10 @@ void MachineInstr::print(raw_ostream &OS, const TargetMachine *TM) const {
     OS << " = ";
 
   // Print the opcode name.
-  OS << getDesc().getName();
+  if (TM && TM->getInstrInfo())
+    OS << TM->getInstrInfo()->getName(getOpcode());
+  else
+    OS << "UNKNOWN";
 
   // Print the rest of the operands.
   bool OmittedAnyCallClobbers = false;
@@ -1526,7 +1538,7 @@ void MachineInstr::print(raw_ostream &OS, const TargetMachine *TM) const {
         const MachineRegisterInfo &MRI = MF->getRegInfo();
         if (MRI.use_empty(Reg) && !MRI.isLiveOut(Reg)) {
           bool HasAliasLive = false;
-          for (const unsigned *Alias = TM->getRegisterInfo()->getAliasSet(Reg);
+          for (const uint16_t *Alias = TM->getRegisterInfo()->getAliasSet(Reg);
                unsigned AliasReg = *Alias; ++Alias)
             if (!MRI.use_empty(AliasReg) || MRI.isLiveOut(AliasReg)) {
               HasAliasLive = true;
@@ -1836,49 +1848,55 @@ void MachineInstr::setPhysRegsDeadExcept(ArrayRef<unsigned> UsedRegs,
 
 unsigned
 MachineInstrExpressionTrait::getHashValue(const MachineInstr* const &MI) {
-  unsigned Hash = MI->getOpcode() * 37;
+  // Build up a buffer of hash code components.
+  //
+  // FIXME: This is a total hack. We should have a hash_value overload for
+  // MachineOperand, but currently that doesn't work because there are many
+  // different ideas of "equality" and thus different sets of information that
+  // contribute to the hash code. This one happens to want to take a specific
+  // subset. And it's still not clear that this routine uses the *correct*
+  // subset of information when computing the hash code. The goal is to use the
+  // same inputs for the hash code here that MachineInstr::isIdenticalTo uses to
+  // test for equality when passed the 'IgnoreVRegDefs' filter flag. It would
+  // be very useful to factor the selection of relevant inputs out of the two
+  // functions and into a common routine, but it's not clear how that can be
+  // done.
+  SmallVector<size_t, 8> HashComponents;
+  HashComponents.reserve(MI->getNumOperands() + 1);
+  HashComponents.push_back(MI->getOpcode());
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = MI->getOperand(i);
-    uint64_t Key = (uint64_t)MO.getType() << 32;
     switch (MO.getType()) {
     default: break;
     case MachineOperand::MO_Register:
       if (MO.isDef() && TargetRegisterInfo::isVirtualRegister(MO.getReg()))
         continue;  // Skip virtual register defs.
-      Key |= MO.getReg();
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getReg()));
       break;
     case MachineOperand::MO_Immediate:
-      Key |= MO.getImm();
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getImm()));
       break;
     case MachineOperand::MO_FrameIndex:
     case MachineOperand::MO_ConstantPoolIndex:
     case MachineOperand::MO_JumpTableIndex:
-      Key |= MO.getIndex();
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getIndex()));
       break;
     case MachineOperand::MO_MachineBasicBlock:
-      Key |= DenseMapInfo<void*>::getHashValue(MO.getMBB());
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getMBB()));
       break;
     case MachineOperand::MO_GlobalAddress:
-      Key |= DenseMapInfo<void*>::getHashValue(MO.getGlobal());
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getGlobal()));
       break;
     case MachineOperand::MO_BlockAddress:
-      Key |= DenseMapInfo<void*>::getHashValue(MO.getBlockAddress());
+      HashComponents.push_back(hash_combine(MO.getType(),
+                                            MO.getBlockAddress()));
       break;
     case MachineOperand::MO_MCSymbol:
-      Key |= DenseMapInfo<void*>::getHashValue(MO.getMCSymbol());
+      HashComponents.push_back(hash_combine(MO.getType(), MO.getMCSymbol()));
       break;
     }
-    Key += ~(Key << 32);
-    Key ^= (Key >> 22);
-    Key += ~(Key << 13);
-    Key ^= (Key >> 8);
-    Key += (Key << 3);
-    Key ^= (Key >> 15);
-    Key += ~(Key << 27);
-    Key ^= (Key >> 31);
-    Hash = (unsigned)Key + Hash * 37;
   }
-  return Hash;
+  return hash_combine_range(HashComponents.begin(), HashComponents.end());
 }
 
 void MachineInstr::emitError(StringRef Msg) const {

@@ -1,8 +1,9 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=osx.cocoa.SelfInit %s -verify
+// RUN: %clang_cc1 -analyze -analyzer-checker=osx.cocoa.SelfInit -fobjc-default-synthesize-properties -fno-builtin %s -verify
 
 @class NSZone, NSCoder;
 @protocol NSObject
-@end 
+- (id)self;
+@end
 @protocol NSCopying  - (id)copyWithZone:(NSZone *)zone;
 @end 
 @protocol NSMutableCopying  - (id)mutableCopyWithZone:(NSZone *)zone;
@@ -22,9 +23,14 @@
 
 //#import "Foundation/NSObject.h"
 typedef unsigned NSUInteger;
-typedef int NSInteger;
+typedef long NSInteger;
 
-@class NSInvocation, NSMethodSignature, NSCoder, NSString, NSEnumerator;
+@interface NSInvocation : NSObject {}
+- (void)getArgument:(void *)argumentLocation atIndex:(NSInteger)idx;
+- (void)setArgument:(void *)argumentLocation atIndex:(NSInteger)idx;
+@end
+
+@class NSMethodSignature, NSCoder, NSString, NSEnumerator;
 @interface NSString : NSObject <NSCopying, NSMutableCopying, NSCoding>
 - (NSUInteger)length;
 + (id)stringWithUTF8String:(const char *)nullTerminatedCString;
@@ -43,9 +49,7 @@ void log(void *obj);
 extern void *somePtr;
 
 @class MyObj;
-static id _commonInit(MyObj *self) {
-  return self;
-}
+extern id _commonInit(MyObj *self);
 
 @interface MyObj : NSObject {
 	id myivar;
@@ -54,6 +58,7 @@ static id _commonInit(MyObj *self) {
 -(id)_init;
 -(id)initWithSomething:(int)x;
 -(void)doSomething;
++(id)commonInitMember:(id)s;
 @end
 
 @interface MyProxyObj : NSProxy {}
@@ -83,6 +88,14 @@ static id _commonInit(MyObj *self) {
 		log(&self);
 	}
 	return self;
+}
+
+-(id)init4_w {
+  [super init];
+  if (self) {
+    log(&self);
+  }
+  return self; // expected-warning {{Returning 'self' while it is not set to the result of '[(super or self) init...]'}}
 }
 
 - (id)initWithSomething:(int)x {    
@@ -152,6 +165,12 @@ static id _commonInit(MyObj *self) {
   return self;
 }
 
+-(id)init14_w {
+  [super init];
+  self = _commonInit(self);
+  return self; // expected-warning {{Returning 'self' while it is not set to the result of '[(super or self) init...]'}}
+}
+
 -(id)init15 {
   if (!(self = [super init]))
     return 0;
@@ -171,6 +190,28 @@ static id _commonInit(MyObj *self) {
   return 0;
 }
 
+-(id)init18 {
+  self = [super init];
+  self = _commonInit(self);
+  return self;
+}
+
++(id)commonInitMember:(id)s {
+  return s;
+}
+
+-(id)init19 {
+  self = [super init];
+  self = [MyObj commonInitMember:self];
+  return self;
+}
+
+-(id)init19_w {
+  [super init];
+  self = [MyObj commonInitMember:self];
+  return self; // expected-warning {{Returning 'self'}}
+}
+
 -(void)doSomething {}
 
 @end
@@ -180,3 +221,62 @@ static id _commonInit(MyObj *self) {
 - (id)init { return self; }
 
 @end
+
+
+// Test for radar://10973514 : self should not be invalidated by a method call.
+@interface Test : NSObject {
+    NSInvocation *invocation_;
+}
+@end
+@implementation Test
+-(id) initWithTarget:(id) rec selector:(SEL) cb {
+  if (self=[super init]) {
+    [invocation_ setArgument:&self atIndex:2];
+  }   
+  return self;
+}
+@end
+
+// Test radar:11235991 - passing self to a call to super.
+@protocol MyDelegate
+@end
+@interface Object : NSObject
+- (id) initWithObject: (id)i;
+@end
+@interface Derived: Object <MyDelegate>
+- (id) initWithInt: (int)t;
+@property (nonatomic, retain, readwrite) Object *size;
+@end
+@implementation Derived 
+- (id) initWithInt: (int)t {
+   if ((self = [super initWithObject:self])) {
+      _size = [[Object alloc] init];
+   }
+   return self;
+}
+@end
+
+// Test for radar://11125870: init constructing a special instance.
+typedef signed char BOOL;
+@interface MyClass : NSObject
+@end
+@implementation MyClass
++ (id)specialInstance {
+    return [[MyClass alloc] init];
+}
+- (id)initSpecially:(BOOL)handleSpecially {
+    if ((self = [super init])) {
+        if (handleSpecially) {
+            self = [MyClass specialInstance];
+        }
+    }
+    return self;
+}
+- (id)initSelfSelf {
+    if ((self = [super init])) {
+      self = self;
+    }
+    return self;
+}
+@end
+

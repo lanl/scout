@@ -43,9 +43,12 @@ namespace {
     virtual bool runOnMachineFunction(MachineFunction &MF);
 
   private:
+    typedef SmallVector<unsigned, 4> DestList;
+    typedef DenseMap<unsigned, DestList> SourceMap;
+
     void SourceNoLongerAvailable(unsigned Reg,
-                               DenseMap<unsigned, unsigned> &SrcMap,
-                               DenseMap<unsigned, MachineInstr*> &AvailCopyMap);
+                                 SourceMap &SrcMap,
+                                 DenseMap<unsigned, MachineInstr*> &AvailCopyMap);
     bool CopyPropagateBlock(MachineBasicBlock &MBB);
   };
 }
@@ -57,24 +60,32 @@ INITIALIZE_PASS(MachineCopyPropagation, "machine-cp",
 
 void
 MachineCopyPropagation::SourceNoLongerAvailable(unsigned Reg,
-                              DenseMap<unsigned, unsigned> &SrcMap,
+                              SourceMap &SrcMap,
                               DenseMap<unsigned, MachineInstr*> &AvailCopyMap) {
-  DenseMap<unsigned, unsigned>::iterator SI = SrcMap.find(Reg);
+  SourceMap::iterator SI = SrcMap.find(Reg);
   if (SI != SrcMap.end()) {
-    unsigned MappedDef = SI->second;
-    // Source of copy is no longer available for propagation.
-    if (AvailCopyMap.erase(MappedDef)) {
-      for (const unsigned *SR = TRI->getSubRegisters(MappedDef); *SR; ++SR)
-        AvailCopyMap.erase(*SR);
+    const DestList& Defs = SI->second;
+    for (DestList::const_iterator I = Defs.begin(), E = Defs.end();
+         I != E; ++I) {
+      unsigned MappedDef = *I;
+      // Source of copy is no longer available for propagation.
+      if (AvailCopyMap.erase(MappedDef)) {
+        for (const uint16_t *SR = TRI->getSubRegisters(MappedDef); *SR; ++SR)
+          AvailCopyMap.erase(*SR);
+      }
     }
   }
-  for (const unsigned *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
+  for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
     SI = SrcMap.find(*AS);
     if (SI != SrcMap.end()) {
-      unsigned MappedDef = SI->second;
-      if (AvailCopyMap.erase(MappedDef)) {
-        for (const unsigned *SR = TRI->getSubRegisters(MappedDef); *SR; ++SR)
-          AvailCopyMap.erase(*SR);
+      const DestList& Defs = SI->second;
+      for (DestList::const_iterator I = Defs.begin(), E = Defs.end();
+           I != E; ++I) {
+        unsigned MappedDef = *I;
+        if (AvailCopyMap.erase(MappedDef)) {
+          for (const uint16_t *SR = TRI->getSubRegisters(MappedDef); *SR; ++SR)
+            AvailCopyMap.erase(*SR);
+        }
       }
     }
   }
@@ -99,11 +110,36 @@ static bool NoInterveningSideEffect(const MachineInstr *CopyMI,
   return true;
 }
 
+/// isNopCopy - Return true if the specified copy is really a nop. That is
+/// if the source of the copy is the same of the definition of the copy that
+/// supplied the source. If the source of the copy is a sub-register than it
+/// must check the sub-indices match. e.g.
+/// ecx = mov eax
+/// al  = mov cl
+/// But not
+/// ecx = mov eax
+/// al  = mov ch
+static bool isNopCopy(MachineInstr *CopyMI, unsigned Def, unsigned Src,
+                      const TargetRegisterInfo *TRI) {
+  unsigned SrcSrc = CopyMI->getOperand(1).getReg();
+  if (Def == SrcSrc)
+    return true;
+  if (TRI->isSubRegister(SrcSrc, Def)) {
+    unsigned SrcDef = CopyMI->getOperand(0).getReg();
+    unsigned SubIdx = TRI->getSubRegIndex(SrcSrc, Def);
+    if (!SubIdx)
+      return false;
+    return SubIdx == TRI->getSubRegIndex(SrcDef, Src);
+  }
+
+  return false;
+}
+
 bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
-  SmallSetVector<MachineInstr*, 8> MaybeDeadCopies; // Candidates for deletion
-  DenseMap<unsigned, MachineInstr*> AvailCopyMap;   // Def -> available copies map
-  DenseMap<unsigned, MachineInstr*> CopyMap;        // Def -> copies map
-  DenseMap<unsigned, unsigned> SrcMap;              // Src -> Def map
+  SmallSetVector<MachineInstr*, 8> MaybeDeadCopies;  // Candidates for deletion
+  DenseMap<unsigned, MachineInstr*> AvailCopyMap;    // Def -> available copies map
+  DenseMap<unsigned, MachineInstr*> CopyMap;         // Def -> copies map
+  SourceMap SrcMap; // Src -> Def map
 
   bool Changed = false;
   for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end(); I != E; ) {
@@ -122,10 +158,9 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
       DenseMap<unsigned, MachineInstr*>::iterator CI = AvailCopyMap.find(Src);
       if (CI != AvailCopyMap.end()) {
         MachineInstr *CopyMI = CI->second;
-        unsigned SrcSrc = CopyMI->getOperand(1).getReg();
         if (!ReservedRegs.test(Def) &&
             (!ReservedRegs.test(Src) || NoInterveningSideEffect(CopyMI, MI)) &&
-            (SrcSrc == Def || TRI->isSubRegister(SrcSrc, Def))) {
+            isNopCopy(CopyMI, Def, Src, TRI)) {
           // The two copies cancel out and the source of the first copy
           // hasn't been overridden, eliminate the second one. e.g.
           //  %ECX<def> = COPY %EAX<kill>
@@ -156,7 +191,7 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
       CI = CopyMap.find(Src);
       if (CI != CopyMap.end())
         MaybeDeadCopies.remove(CI->second);
-      for (const unsigned *AS = TRI->getAliasSet(Src); *AS; ++AS) {
+      for (const uint16_t *AS = TRI->getAliasSet(Src); *AS; ++AS) {
         CI = CopyMap.find(*AS);
         if (CI != CopyMap.end())
           MaybeDeadCopies.remove(CI->second);
@@ -175,16 +210,24 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
       SourceNoLongerAvailable(Def, SrcMap, AvailCopyMap);
 
       // Remember Def is defined by the copy.
+      // ... Make sure to clear the def maps of aliases first.
+      for (const uint16_t *AS = TRI->getAliasSet(Def); *AS; ++AS) {
+        CopyMap.erase(*AS);
+        AvailCopyMap.erase(*AS);
+      }
       CopyMap[Def] = MI;
       AvailCopyMap[Def] = MI;
-      for (const unsigned *SR = TRI->getSubRegisters(Def); *SR; ++SR) {
+      for (const uint16_t *SR = TRI->getSubRegisters(Def); *SR; ++SR) {
         CopyMap[*SR] = MI;
         AvailCopyMap[*SR] = MI;
       }
 
       // Remember source that's copied to Def. Once it's clobbered, then
       // it's no longer available for copy propagation.
-      SrcMap[Src] = Def;
+      if (std::find(SrcMap[Src].begin(), SrcMap[Src].end(), Def) ==
+          SrcMap[Src].end()) {
+        SrcMap[Src].push_back(Def);
+      }
 
       continue;
     }
@@ -216,7 +259,7 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
       DenseMap<unsigned, MachineInstr*>::iterator CI = CopyMap.find(Reg);
       if (CI != CopyMap.end())
         MaybeDeadCopies.remove(CI->second);
-      for (const unsigned *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
+      for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
         CI = CopyMap.find(*AS);
         if (CI != CopyMap.end())
           MaybeDeadCopies.remove(CI->second);
@@ -255,7 +298,7 @@ bool MachineCopyPropagation::CopyPropagateBlock(MachineBasicBlock &MBB) {
       // No longer defined by a copy.
       CopyMap.erase(Reg);
       AvailCopyMap.erase(Reg);
-      for (const unsigned *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
+      for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
         CopyMap.erase(*AS);
         AvailCopyMap.erase(*AS);
       }

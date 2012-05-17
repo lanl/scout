@@ -20,6 +20,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CoreEngine.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/Type.h"
@@ -27,6 +28,7 @@
 namespace clang {
 
 class AnalysisDeclContextManager;
+class CXXCatchStmt;
 class CXXConstructExpr;
 class CXXDeleteExpr;
 class CXXNewExpr;
@@ -89,21 +91,25 @@ class ExprEngine : public SubEngine {
   GRBugReporter BR;
 
 public:
-  ExprEngine(AnalysisManager &mgr, bool gcEnabled);
+  ExprEngine(AnalysisManager &mgr, bool gcEnabled,
+             SetOfConstDecls *VisitedCallees,
+             FunctionSummariesTy *FS);
 
   ~ExprEngine();
 
-  void ExecuteWorkList(const LocationContext *L, unsigned Steps = 150000) {
-    Engine.ExecuteWorkList(L, Steps, 0);
+  /// Returns true if there is still simulation state on the worklist.
+  bool ExecuteWorkList(const LocationContext *L, unsigned Steps = 150000) {
+    return Engine.ExecuteWorkList(L, Steps, 0);
   }
 
   /// Execute the work list with an initial state. Nodes that reaches the exit
   /// of the function are added into the Dst set, which represent the exit
-  /// state of the function call.
-  void ExecuteWorkListWithInitialState(const LocationContext *L, unsigned Steps,
+  /// state of the function call. Returns true if there is still simulation
+  /// state on the worklist.
+  bool ExecuteWorkListWithInitialState(const LocationContext *L, unsigned Steps,
                                        ProgramStateRef InitState, 
                                        ExplodedNodeSet &Dst) {
-    Engine.ExecuteWorkListWithInitialState(L, Steps, InitState, Dst);
+    return Engine.ExecuteWorkListWithInitialState(L, Steps, InitState, Dst);
   }
 
   /// getContext - Return the ASTContext associated with this analysis.
@@ -145,6 +151,25 @@ public:
   ExplodedGraph& getGraph() { return G; }
   const ExplodedGraph& getGraph() const { return G; }
 
+  /// \brief Run the analyzer's garbage collection - remove dead symbols and
+  /// bindings.
+  ///
+  /// \param Node - The predecessor node, from which the processing should 
+  /// start.
+  /// \param Out - The returned set of output nodes.
+  /// \param ReferenceStmt - Run garbage collection using the symbols, 
+  /// which are live before the given statement.
+  /// \param LC - The location context of the ReferenceStmt.
+  /// \param DiagnosticStmt - the statement used to associate the diagnostic 
+  /// message, if any warnings should occur while removing the dead (leaks 
+  /// are usually reported here).
+  /// \param K - In some cases it is possible to use PreStmt kind. (Do 
+  /// not use it unless you know what you are doing.) 
+  void removeDead(ExplodedNode *Node, ExplodedNodeSet &Out,
+            const Stmt *ReferenceStmt, const LocationContext *LC,
+            const Stmt *DiagnosticStmt,
+            ProgramPoint::Kind K = ProgramPoint::PreStmtPurgeDeadSymbolsKind);
+
   /// processCFGElement - Called by CoreEngine. Used to generate new successor
   ///  nodes by processing the 'effects' of a CFG element.
   void processCFGElement(const CFGElement E, ExplodedNode *Pred,
@@ -166,7 +191,8 @@ public:
                             ExplodedNode *Pred, ExplodedNodeSet &Dst);
 
   /// Called by CoreEngine when processing the entrance of a CFGBlock.
-  virtual void processCFGBlockEntrance(NodeBuilderWithSinks &nodeBuilder);
+  virtual void processCFGBlockEntrance(const BlockEdge &L,
+                                       NodeBuilderWithSinks &nodeBuilder);
   
   /// ProcessBranch - Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a branch condition.
@@ -192,7 +218,8 @@ public:
   /// Generate the entry node of the callee.
   void processCallEnter(CallEnter CE, ExplodedNode *Pred);
 
-  /// Generate the first post callsite node.
+  /// Generate the sequence of nodes that simulate the call exit and the post
+  /// visit for CallExpr.
   void processCallExit(ExplodedNode *Pred);
 
   /// Called by CoreEngine when the analysis worklist has terminated.
@@ -212,7 +239,8 @@ public:
   processRegionChanges(ProgramStateRef state,
                        const StoreManager::InvalidatedSymbols *invalidated,
                        ArrayRef<const MemRegion *> ExplicitRegions,
-                       ArrayRef<const MemRegion *> Regions);
+                       ArrayRef<const MemRegion *> Regions,
+                       const CallOrObjCMessage *Call);
 
   /// printState - Called by ProgramStateManager to print checker-specific data.
   void printState(raw_ostream &Out, ProgramStateRef State,
@@ -257,16 +285,6 @@ public:
 
   /// VisitAsmStmt - Transfer function logic for inline asm.
   void VisitAsmStmt(const AsmStmt *A, ExplodedNode *Pred, ExplodedNodeSet &Dst);
-
-  void VisitAsmStmtHelperOutputs(const AsmStmt *A,
-                                 AsmStmt::const_outputs_iterator I,
-                                 AsmStmt::const_outputs_iterator E,
-                                 ExplodedNode *Pred, ExplodedNodeSet &Dst);
-
-  void VisitAsmStmtHelperInputs(const AsmStmt *A,
-                                AsmStmt::const_inputs_iterator I,
-                                AsmStmt::const_inputs_iterator E,
-                                ExplodedNode *Pred, ExplodedNodeSet &Dst);
   
   /// VisitBlockExpr - Transfer function logic for BlockExprs.
   void VisitBlockExpr(const BlockExpr *BE, ExplodedNode *Pred, 
@@ -348,6 +366,9 @@ public:
   void VisitIncrementDecrementOperator(const UnaryOperator* U,
                                        ExplodedNode *Pred,
                                        ExplodedNodeSet &Dst);
+  
+  void VisitCXXCatchStmt(const CXXCatchStmt *CS, ExplodedNode *Pred,
+                         ExplodedNodeSet &Dst);
 
   void VisitCXXThisExpr(const CXXThisExpr *TE, ExplodedNode *Pred, 
                         ExplodedNodeSet & Dst);
@@ -368,9 +389,6 @@ public:
   void VisitCXXDeleteExpr(const CXXDeleteExpr *CDE, ExplodedNode *Pred,
                           ExplodedNodeSet &Dst);
 
-  void VisitAggExpr(const Expr *E, const MemRegion *Dest, ExplodedNode *Pred,
-                    ExplodedNodeSet &Dst);
-
   /// Create a C++ temporary object for an rvalue.
   void CreateCXXTemporaryObject(const MaterializeTemporaryExpr *ME,
                                 ExplodedNode *Pred, 
@@ -382,17 +400,7 @@ public:
 
   const CXXThisRegion *getCXXThisRegion(const CXXMethodDecl *decl,
                                         const StackFrameContext *frameCtx);
-
-  /// Evaluate arguments with a work list algorithm.
-  void evalArguments(ConstExprIterator AI, ConstExprIterator AE,
-                     const FunctionProtoType *FnType, 
-                     ExplodedNode *Pred, ExplodedNodeSet &Dst,
-                     bool FstArgAsLValue = false);
   
-  /// Evaluate callee expression (for a function call).
-  void evalCallee(const CallExpr *callExpr, const ExplodedNodeSet &src,
-                  ExplodedNodeSet &dest);
-
   /// evalEagerlyAssume - Given the nodes in 'Src', eagerly assume symbolic
   ///  expressions of the form 'x != 0' and generate new nodes (stored in Dst)
   ///  with those assumptions.
@@ -444,8 +452,7 @@ protected:
   /// evalBind - Handle the semantics of binding a value to a specific location.
   ///  This method is used by evalStore, VisitDeclStmt, and others.
   void evalBind(ExplodedNodeSet &Dst, const Stmt *StoreE, ExplodedNode *Pred,
-                SVal location, SVal Val, bool atDeclInit = false,
-                ProgramPoint::Kind PP = ProgramPoint::PostStmtKind);
+                SVal location, SVal Val, bool atDeclInit = false);
 
 public:
   // FIXME: 'tag' should be removed, and a LocationContext should be used
@@ -454,8 +461,13 @@ public:
   // be the same as Pred->state, and when 'location' may not be the
   // same as state->getLValue(Ex).
   /// Simulate a read of the result of Ex.
-  void evalLoad(ExplodedNodeSet &Dst, const Expr *Ex, ExplodedNode *Pred,
-                ProgramStateRef St, SVal location, const ProgramPointTag *tag = 0,
+  void evalLoad(ExplodedNodeSet &Dst,
+                const Expr *NodeEx,  /* Eventually will be a CFGStmt */
+                const Expr *BoundExpr,
+                ExplodedNode *Pred,
+                ProgramStateRef St,
+                SVal location,
+                const ProgramPointTag *tag = 0,
                 QualType LoadTy = QualType());
 
   // FIXME: 'tag' should be removed, and a LocationContext should be used
@@ -464,17 +476,37 @@ public:
                  ExplodedNode *Pred, ProgramStateRef St, SVal TargetLV, SVal Val,
                  const ProgramPointTag *tag = 0);
 private:
-  void evalLoadCommon(ExplodedNodeSet &Dst, const Expr *Ex, ExplodedNode *Pred,
-                      ProgramStateRef St, SVal location, const ProgramPointTag *tag,
+  void evalLoadCommon(ExplodedNodeSet &Dst,
+                      const Expr *NodeEx,  /* Eventually will be a CFGStmt */
+                      const Expr *BoundEx,
+                      ExplodedNode *Pred,
+                      ProgramStateRef St,
+                      SVal location,
+                      const ProgramPointTag *tag,
                       QualType LoadTy);
 
   // FIXME: 'tag' should be removed, and a LocationContext should be used
   // instead.
-  void evalLocation(ExplodedNodeSet &Dst, const Stmt *S, ExplodedNode *Pred,
+  void evalLocation(ExplodedNodeSet &Dst,
+                    const Stmt *NodeEx, /* This will eventually be a CFGStmt */
+                    const Stmt *BoundEx,
+                    ExplodedNode *Pred,
                     ProgramStateRef St, SVal location,
                     const ProgramPointTag *tag, bool isLoad);
 
+  bool shouldInlineDecl(const FunctionDecl *FD, ExplodedNode *Pred);
   bool InlineCall(ExplodedNodeSet &Dst, const CallExpr *CE, ExplodedNode *Pred);
+
+  bool replayWithoutInlining(ExplodedNode *P, const LocationContext *CalleeLC);
+};
+
+/// Traits for storing the call processing policy inside GDM.
+/// The GDM stores the corresponding CallExpr pointer.
+struct ReplayWithoutInlining{};
+template <>
+struct ProgramStateTrait<ReplayWithoutInlining> :
+  public ProgramStatePartialTrait<void*> {
+  static void *GDMIndex() { static int index = 0; return &index; }
 };
 
 } // end ento namespace

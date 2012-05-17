@@ -162,9 +162,9 @@ void test (BD &br) {
   aPtr = br; // expected-error {{assigning to 'AD *' from incompatible type 'BD'; take the address with &}}
 }
 
-void foo1() const {} // expected-error {{type qualifier is not allowed on this function}}
-void foo2() volatile {} // expected-error {{type qualifier is not allowed on this function}}
-void foo3() const volatile {} // expected-error {{type qualifier is not allowed on this function}}
+void foo1() const {} // expected-error {{non-member function cannot have 'const' qualifier}}
+void foo2() volatile {} // expected-error {{non-member function cannot have 'volatile' qualifier}}
+void foo3() const volatile {} // expected-error {{non-member function cannot have 'const volatile' qualifier}}
 
 struct S { void f(int, char); };
 int itsAComma,
@@ -199,3 +199,46 @@ template<class T> typedef Mystery<T>::type getMysteriousThing() { // \
   expected-error {{missing 'typename' prior to dependent}}
   return Mystery<T>::get();
 }
+
+template<template<typename> Foo, // expected-error {{template template parameter requires 'class' after the parameter list}}
+         template<typename> typename Bar, // expected-error {{template template parameter requires 'class' after the parameter list}}
+         template<typename> struct Baz> // expected-error {{template template parameter requires 'class' after the parameter list}}
+void func();
+
+namespace ShadowedTagType {
+class Foo {
+ public:
+  enum Bar { X, Y };
+  void SetBar(Bar bar);
+  Bar Bar(); // expected-note 2 {{enum 'Bar' is hidden by a non-type declaration of 'Bar' here}}
+ private:
+  Bar bar_; // expected-error {{must use 'enum' tag to refer to type 'Bar' in this scope}}
+};
+void Foo::SetBar(Bar bar) { bar_ = bar; } // expected-error {{must use 'enum' tag to refer to type 'Bar' in this scope}}
+}
+
+#define NULL __null
+char c = NULL; // expected-warning {{implicit conversion of NULL constant to 'char'}}
+
+namespace arrow_suggest {
+
+template <typename T>
+class wrapped_ptr {
+ public:
+  wrapped_ptr(T* ptr) : ptr_(ptr) {}
+  T* operator->() { return ptr_; }
+ private:
+  T *ptr_;
+};
+
+class Worker {
+ public:
+  void DoSomething();
+};
+
+void test() {
+  wrapped_ptr<Worker> worker(new Worker);
+  worker.DoSomething(); // expected-error {{no member named 'DoSomething' in 'arrow_suggest::wrapped_ptr<arrow_suggest::Worker>'; did you mean to use '->' instead of '.'?}}
+}
+
+} // namespace arrow_suggest

@@ -11,10 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SPU.h"
 #include "SPUTargetMachine.h"
+#include "SPU.h"
 #include "llvm/PassManager.h"
-#include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -73,7 +72,7 @@ TargetPassConfig *SPUTargetMachine::createPassConfig(PassManagerBase &PM) {
 
 bool SPUPassConfig::addInstSelector() {
   // Install an instruction selector.
-  PM.add(createSPUISelDag(getSPUTargetMachine()));
+  PM->add(createSPUISelDag(getSPUTargetMachine()));
   return false;
 }
 
@@ -86,9 +85,9 @@ bool SPUPassConfig::addPreEmitPass() {
     (BuilderFunc)(intptr_t)sys::DynamicLibrary::SearchForAddressOfSymbol(
           "createTCESchedulerPass");
   if (schedulerCreator != NULL)
-      PM.add(schedulerCreator("cellspu"));
+      PM->add(schedulerCreator("cellspu"));
 
   //align instructions with nops/lnops for dual issue
-  PM.add(createSPUNopFillerPass(getSPUTargetMachine()));
+  PM->add(createSPUNopFillerPass(getSPUTargetMachine()));
   return true;
 }

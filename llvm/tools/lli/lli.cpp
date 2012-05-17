@@ -141,6 +141,28 @@ namespace {
                                 "Large code model"),
                      clEnumValEnd));
 
+  cl::opt<bool>
+  EnableJITExceptionHandling("jit-enable-eh",
+    cl::desc("Emit exception handling information"),
+    cl::init(false));
+
+  cl::opt<bool>
+// In debug builds, make this default to true.
+#ifdef NDEBUG
+#define EMIT_DEBUG false
+#else
+#define EMIT_DEBUG true
+#endif
+  EmitJitDebugInfo("jit-emit-debug",
+    cl::desc("Emit debug information to debugger"),
+    cl::init(EMIT_DEBUG));
+#undef EMIT_DEBUG
+
+  static cl::opt<bool>
+  EmitJitDebugInfoToDisk("jit-emit-debug-to-disk",
+    cl::Hidden,
+    cl::desc("Emit debug info objfiles to disk"),
+    cl::init(false));
 }
 
 static ExecutionEngine *EE = 0;
@@ -213,7 +235,6 @@ int main(int argc, char **argv, char * const *envp) {
   // Enable MCJIT if desired.
   if (UseMCJIT && !ForceInterpreter) {
     builder.setUseMCJIT(true);
-    builder.setJITMemoryManager(JITMemoryManager::CreateDefaultMemManager());
   }
 
   CodeGenOpt::Level OLvl = CodeGenOpt::Default;
@@ -229,6 +250,12 @@ int main(int argc, char **argv, char * const *envp) {
   }
   builder.setOptLevel(OLvl);
 
+  TargetOptions Options;
+  Options.JITExceptionHandling = EnableJITExceptionHandling;
+  Options.JITEmitDebugInfo = EmitJitDebugInfo;
+  Options.JITEmitDebugInfoToDisk = EmitJitDebugInfoToDisk;
+  builder.setTargetOptions(Options);
+
   EE = builder.create();
   if (!EE) {
     if (!ErrorMsg.empty())
@@ -238,7 +265,12 @@ int main(int argc, char **argv, char * const *envp) {
     exit(1);
   }
 
-  EE->RegisterJITEventListener(createOProfileJITEventListener());
+  // The following functions have no effect if their respective profiling
+  // support wasn't enabled in the build configuration.
+  EE->RegisterJITEventListener(
+                JITEventListener::createOProfileJITEventListener());
+  EE->RegisterJITEventListener(
+                JITEventListener::createIntelJITEventListener());
 
   EE->DisableLazyCompilation(NoLazyCompilation);
 

@@ -55,6 +55,7 @@ namespace clang {
   class Decl;
   class Expr;
   class Stmt;
+  class InitListExpr;
   class StringLiteral;
   class NamedDecl;
   class ValueDecl;
@@ -137,6 +138,7 @@ namespace CodeGen {
     union {
       unsigned char PointerAlignInBytes;
       unsigned char PointerSizeInBytes;
+      unsigned char SizeSizeInBytes;     // sizeof(size_t)
     };
   };
 
@@ -214,7 +216,7 @@ class CodeGenModule : public CodeGenTypeCache {
   typedef std::vector<std::pair<llvm::Constant*, int> > CtorList;
 
   ASTContext &Context;
-  const LangOptions &Features;
+  const LangOptions &LangOpts;
   const CodeGenOptions &CodeGenOpts;
   llvm::Module &TheModule;
   const llvm::TargetData &TheTargetData;
@@ -233,6 +235,7 @@ class CodeGenModule : public CodeGenTypeCache {
   CGCUDARuntime* CUDARuntime;
   CGDebugInfo* DebugInfo;
   ARCEntrypoints *ARCData;
+  llvm::MDNode *NoObjCARCExceptionsMetadata;
   RREntrypoints *RRData;
 
   // WeakRefReferences - A set of references that have only been seen via
@@ -277,7 +280,8 @@ class CodeGenModule : public CodeGenTypeCache {
 
   llvm::StringMap<llvm::Constant*> CFConstantStringMap;
   llvm::StringMap<llvm::GlobalVariable*> ConstantStringMap;
-  llvm::DenseMap<const Decl*, llvm::Value*> StaticLocalDeclMap;
+  llvm::DenseMap<const Decl*, llvm::Constant *> StaticLocalDeclMap;
+  llvm::DenseMap<const Decl*, llvm::GlobalVariable*> StaticLocalDeclGuardMap;
   
   llvm::DenseMap<QualType, llvm::Constant *> AtomicSetterHelperFnMap;
   llvm::DenseMap<QualType, llvm::Constant *> AtomicGetterHelperFnMap;
@@ -386,7 +390,7 @@ public:
   CGCXXABI &getCXXABI() { return ABI; }
 
   ARCEntrypoints &getARCEntrypoints() const {
-    assert(getLangOptions().ObjCAutoRefCount && ARCData != 0);
+    assert(getLangOpts().ObjCAutoRefCount && ARCData != 0);
     return *ARCData;
   }
 
@@ -395,12 +399,20 @@ public:
     return *RRData;
   }
 
-  llvm::Value *getStaticLocalDeclAddress(const VarDecl *VD) {
-    return StaticLocalDeclMap[VD];
+  llvm::Constant *getStaticLocalDeclAddress(const VarDecl *D) {
+    return StaticLocalDeclMap[D];
   }
   void setStaticLocalDeclAddress(const VarDecl *D, 
-                             llvm::GlobalVariable *GV) {
-    StaticLocalDeclMap[D] = GV;
+                                 llvm::Constant *C) {
+    StaticLocalDeclMap[D] = C;
+  }
+
+  llvm::GlobalVariable *getStaticLocalDeclGuardAddress(const VarDecl *D) {
+    return StaticLocalDeclGuardMap[D];
+  }
+  void setStaticLocalDeclGuardAddress(const VarDecl *D, 
+                                      llvm::GlobalVariable *C) {
+    StaticLocalDeclGuardMap[D] = C;
   }
 
   llvm::Constant *getAtomicSetterHelperFnMap(QualType Ty) {
@@ -421,9 +433,17 @@ public:
 
   CGDebugInfo *getModuleDebugInfo() { return DebugInfo; }
 
+  llvm::MDNode *getNoObjCARCExceptionsMetadata() {
+    if (!NoObjCARCExceptionsMetadata)
+      NoObjCARCExceptionsMetadata =
+        llvm::MDNode::get(getLLVMContext(),
+                          SmallVector<llvm::Value*,1>());
+    return NoObjCARCExceptionsMetadata;
+  }
+
   ASTContext &getContext() const { return Context; }
   const CodeGenOptions &getCodeGenOpts() const { return CodeGenOpts; }
-  const LangOptions &getLangOptions() const { return Features; }
+  const LangOptions &getLangOpts() const { return LangOpts; }
   llvm::Module &getModule() const { return TheModule; }
   CodeGenTypes &getTypes() { return Types; }
   CodeGenVTables &getVTables() { return VTables; }
@@ -438,6 +458,9 @@ public:
   bool shouldUseTBAA() const { return TBAA != 0; }
 
   llvm::MDNode *getTBAAInfo(QualType QTy);
+  llvm::MDNode *getTBAAInfoForVTablePtr();
+
+  bool isTypeConstant(QualType QTy, bool ExcludeCtorDtor);
 
   static void DecorateInstruction(llvm::Instruction *Inst,
                                   llvm::MDNode *TBAAInfo);
@@ -646,6 +669,10 @@ public:
   /// EmitTopLevelDecl - Emit code for a single top level declaration.
   void EmitTopLevelDecl(Decl *D);
 
+  /// HandleCXXStaticMemberVarInstantiation - Tell the consumer that this
+  // variable has been instantiated.
+  void HandleCXXStaticMemberVarInstantiation(VarDecl *VD);
+
   /// AddUsedGlobal - Add a global which should be forced to be
   /// present in the object file; these are emitted to the llvm.used
   /// metadata global.
@@ -694,10 +721,16 @@ public:
   llvm::Constant *EmitConstantExpr(const Expr *E, QualType DestType,
                                    CodeGenFunction *CGF = 0);
 
-  /// EmitConstantValue - Try to emit the given constant value as a
-  /// constant; returns 0 if the value cannot be emitted as a constant.
+  /// EmitConstantValue - Emit the given constant value as a constant, in the
+  /// type's scalar representation.
   llvm::Constant *EmitConstantValue(const APValue &Value, QualType DestType,
                                     CodeGenFunction *CGF = 0);
+
+  /// EmitConstantValueForMemory - Emit the given constant value as a constant,
+  /// in the type's memory representation.
+  llvm::Constant *EmitConstantValueForMemory(const APValue &Value,
+                                             QualType DestType,
+                                             CodeGenFunction *CGF = 0);
 
   /// EmitNullConstant - Return the result of value-initializing the given
   /// type, i.e. a null expression of the given type.  This is usually,
@@ -866,6 +899,8 @@ private:
 
   void EmitGlobalFunctionDefinition(GlobalDecl GD);
   void EmitGlobalVarDefinition(const VarDecl *D);
+  llvm::Constant *MaybeEmitGlobalStdInitializerListInitializer(const VarDecl *D,
+                                                              const Expr *init);
   void EmitAliasDefinition(GlobalDecl GD);
   void EmitObjCPropertyImplementations(const ObjCImplementationDecl *D);
   void EmitObjCIvarInitializations(ObjCImplementationDecl *D);
@@ -900,8 +935,11 @@ private:
   /// EmitCXXGlobalDtorFunc - Emit the function that destroys C++ globals.
   void EmitCXXGlobalDtorFunc();
 
+  /// EmitCXXGlobalVarDeclInitFunc - Emit the function that initializes the
+  /// specified global (if PerformInit is true) and registers its destructor.
   void EmitCXXGlobalVarDeclInitFunc(const VarDecl *D,
-                                    llvm::GlobalVariable *Addr);
+                                    llvm::GlobalVariable *Addr,
+                                    bool PerformInit);
 
   // FIXME: Hardcoding priority here is gross.
   void AddGlobalCtor(llvm::Function *Ctor, int Priority=65535);

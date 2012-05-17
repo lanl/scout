@@ -1,4 +1,4 @@
-//===- PTXInstrInfo.cpp - PTX Instruction Information ---------------------===//
+//===-- PTXInstrInfo.cpp - PTX Instruction Information --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,8 +13,8 @@
 
 #define DEBUG_TYPE "ptx-instrinfo"
 
-#include "PTX.h"
 #include "PTXInstrInfo.h"
+#include "PTX.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"

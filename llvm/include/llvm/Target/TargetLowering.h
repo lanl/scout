@@ -25,7 +25,6 @@
 #include "llvm/CallingConv.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/Attributes.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/Support/DebugLoc.h"
@@ -41,6 +40,7 @@ namespace llvm {
   class FastISel;
   class FunctionLoweringInfo;
   class ImmutableCallSite;
+  class IntrinsicInst;
   class MachineBasicBlock;
   class MachineFunction;
   class MachineInstr;
@@ -63,17 +63,6 @@ namespace llvm {
       VLIW              // Scheduling for VLIW targets.
     };
   }
-
-  // FIXME: should this be here?
-  namespace TLSModel {
-    enum Model {
-      GeneralDynamic,
-      LocalDynamic,
-      InitialExec,
-      LocalExec
-    };
-  }
-  TLSModel::Model getTLSModel(const GlobalValue *GV, Reloc::Model reloc);
 
 
 //===----------------------------------------------------------------------===//
@@ -161,6 +150,12 @@ public:
   /// that should be avoided.
   bool isJumpExpensive() const { return JumpIsExpensive; }
 
+  /// isPredictableSelectExpensive - Return true if selects are only cheaper
+  /// than branches if the branch is unlikely to be predicted right.
+  bool isPredictableSelectExpensive() const {
+    return predictableSelectIsExpensive;
+  }
+
   /// getSetCCResultType - Return the ValueType of the result of SETCC
   /// operations.  Also used to obtain the target's preferred type for
   /// the condition operand of SELECT and BRCOND nodes.  In the case of
@@ -201,9 +196,9 @@ public:
 
   /// getRegClassFor - Return the register class that should be used for the
   /// specified value type.
-  virtual TargetRegisterClass *getRegClassFor(EVT VT) const {
+  virtual const TargetRegisterClass *getRegClassFor(EVT VT) const {
     assert(VT.isSimple() && "getRegClassFor called on illegal type!");
-    TargetRegisterClass *RC = RegClassForVT[VT.getSimpleVT().SimpleTy];
+    const TargetRegisterClass *RC = RegClassForVT[VT.getSimpleVT().SimpleTy];
     assert(RC && "This value type is not natively supported!");
     return RC;
   }
@@ -688,10 +683,10 @@ public:
     return StackPointerRegisterToSaveRestore;
   }
 
-  /// getExceptionAddressRegister - If a physical register, this returns
+  /// getExceptionPointerRegister - If a physical register, this returns
   /// the register that receives the exception address on entry to a landing
   /// pad.
-  unsigned getExceptionAddressRegister() const {
+  unsigned getExceptionPointerRegister() const {
     return ExceptionPointerRegister;
   }
 
@@ -873,7 +868,6 @@ public:
   /// Mask are known to be either zero or one and return them in the
   /// KnownZero/KnownOne bitsets.
   virtual void computeMaskedBitsForTargetNode(const SDValue Op,
-                                              const APInt &Mask,
                                               APInt &KnownZero,
                                               APInt &KnownOne,
                                               const SelectionDAG &DAG,
@@ -1043,7 +1037,7 @@ protected:
   /// addRegisterClass - Add the specified register class as an available
   /// regclass for the specified value type.  This indicates the selector can
   /// handle values of that class natively.
-  void addRegisterClass(EVT VT, TargetRegisterClass *RC) {
+  void addRegisterClass(EVT VT, const TargetRegisterClass *RC) {
     assert((unsigned)VT.getSimpleVT().SimpleTy < array_lengthof(RegClassForVT));
     AvailableRegClasses.push_back(std::make_pair(VT, RC));
     RegClassForVT[VT.getSimpleVT().SimpleTy] = RC;
@@ -1233,7 +1227,8 @@ public:
   LowerCallTo(SDValue Chain, Type *RetTy, bool RetSExt, bool RetZExt,
               bool isVarArg, bool isInreg, unsigned NumFixedArgs,
               CallingConv::ID CallConv, bool isTailCall,
-              bool isReturnValueUsed, SDValue Callee, ArgListTy &Args,
+              bool doesNotRet, bool isReturnValueUsed,
+              SDValue Callee, ArgListTy &Args,
               SelectionDAG &DAG, DebugLoc dl) const;
 
   /// LowerCall - This hook must be implemented to lower calls into the
@@ -1245,7 +1240,7 @@ public:
   virtual SDValue
     LowerCall(SDValue /*Chain*/, SDValue /*Callee*/,
               CallingConv::ID /*CallConv*/, bool /*isVarArg*/,
-              bool &/*isTailCall*/,
+              bool /*doesNotRet*/, bool &/*isTailCall*/,
               const SmallVectorImpl<ISD::OutputArg> &/*Outs*/,
               const SmallVectorImpl<SDValue> &/*OutVals*/,
               const SmallVectorImpl<ISD::InputArg> &/*Ins*/,
@@ -1285,9 +1280,11 @@ public:
   }
 
   /// isUsedByReturnOnly - Return true if result of the specified node is used
-  /// by a return node only. This is used to determine whether it is possible
+  /// by a return node only. It also compute and return the input chain for the
+  /// tail call.
+  /// This is used to determine whether it is possible
   /// to codegen a libcall as tail call at legalization time.
-  virtual bool isUsedByReturnOnly(SDNode *) const {
+  virtual bool isUsedByReturnOnly(SDNode *, SDValue &Chain) const {
     return false;
   }
 
@@ -1538,6 +1535,17 @@ public:
     AddrMode() : BaseGV(0), BaseOffs(0), HasBaseReg(false), Scale(0) {}
   };
 
+  /// GetAddrModeArguments - CodeGenPrepare sinks address calculations into the
+  /// same BB as Load/Store instructions reading the address.  This allows as
+  /// much computation as possible to be done in the address mode for that
+  /// operand.  This hook lets targets also pass back when this should be done
+  /// on intrinsics which load/store.
+  virtual bool GetAddrModeArguments(IntrinsicInst *I,
+                                    SmallVectorImpl<Value*> &Ops,
+                                    Type *&AccessTy) const {
+    return false;
+  }
+
   /// isLegalAddressingMode - Return true if the addressing mode represented by
   /// AM is legal for this target, for a load/store of the specified type.
   /// The type may be VoidTy, in which case only return true if the addressing
@@ -1585,6 +1593,18 @@ public:
   }
 
   virtual bool isZExtFree(EVT /*VT1*/, EVT /*VT2*/) const {
+    return false;
+  }
+
+  /// isFNegFree - Return true if an fneg operation is free to the point where
+  /// it is never worthwhile to replace it with a bitwise operation.
+  virtual bool isFNegFree(EVT) const {
+    return false;
+  }
+
+  /// isFAbsFree - Return true if an fneg operation is free to the point where
+  /// it is never worthwhile to replace it with a bitwise operation.
+  virtual bool isFAbsFree(EVT) const {
     return false;
   }
 
@@ -1760,7 +1780,7 @@ private:
 
   /// RegClassForVT - This indicates the default register class to use for
   /// each ValueType the target supports natively.
-  TargetRegisterClass *RegClassForVT[MVT::LAST_VALUETYPE];
+  const TargetRegisterClass *RegClassForVT[MVT::LAST_VALUETYPE];
   unsigned char NumRegistersForVT[MVT::LAST_VALUETYPE];
   EVT RegisterTypeForVT[MVT::LAST_VALUETYPE];
 
@@ -1934,7 +1954,7 @@ private:
     return LegalizeKind(TypeSplitVector, NVT);
   }
 
-  std::vector<std::pair<EVT, TargetRegisterClass*> > AvailableRegClasses;
+  std::vector<std::pair<EVT, const TargetRegisterClass*> > AvailableRegClasses;
 
   /// TargetDAGCombineArray - Targets can specify ISD nodes that they would
   /// like PerformDAGCombine callbacks for by calling setTargetDAGCombine(),
@@ -2014,14 +2034,14 @@ protected:
   /// optimization.
   bool benefitFromCodePlacementOpt;
 
+  /// predictableSelectIsExpensive - Tells the code generator that select is
+  /// more expensive than a branch if the branch is usually predicted right.
+  bool predictableSelectIsExpensive;
+
 private:
   /// isLegalRC - Return true if the value types that can be represented by the
   /// specified register class are all legal.
   bool isLegalRC(const TargetRegisterClass *RC) const;
-
-  /// hasLegalSuperRegRegClasses - Return true if the specified register class
-  /// has one or more super-reg register classes that are legal.
-  bool hasLegalSuperRegRegClasses(const TargetRegisterClass *RC) const;
 };
 
 /// GetReturnInfo - Given an LLVM IR type and return type attributes,

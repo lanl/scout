@@ -28,6 +28,10 @@
 #include "llvm/OperandTraits.h"
 using namespace llvm;
 
+enum {
+  SWITCH_INST_MAGIC = 0x4B5 // May 2012 => 1205 => Hex
+};
+
 void BitcodeReader::materializeForwardReferencedFunctions() {
   while (!BlockAddrFwdRefs.empty()) {
     Function *F = BlockAddrFwdRefs.begin()->first;
@@ -458,12 +462,6 @@ bool BitcodeReader::ParseAttributeBlock() {
       if (Record.size() & 1)
         return Error("Invalid ENTRY record");
 
-      // FIXME : Remove this autoupgrade code in LLVM 3.0.
-      // If Function attributes are using index 0 then transfer them
-      // to index ~0. Index 0 is used for return value attributes but used to be
-      // used for function attributes.
-      Attributes RetAttribute;
-      Attributes FnAttribute;
       for (unsigned i = 0, e = Record.size(); i != e; i += 2) {
         // FIXME: remove in LLVM 3.0
         // The alignment is stored as a 16-bit raw value from bits 31--16.
@@ -480,34 +478,10 @@ bool BitcodeReader::ParseAttributeBlock() {
             Attributes((Record[i+1] & (0xffffull << 32)) >> 11);
 
         Record[i+1] = ReconstitutedAttr.Raw();
-        if (Record[i] == 0)
-          RetAttribute = ReconstitutedAttr;
-        else if (Record[i] == ~0U)
-          FnAttribute = ReconstitutedAttr;
-      }
-
-      Attributes OldRetAttrs = (Attribute::NoUnwind|Attribute::NoReturn|
-                              Attribute::ReadOnly|Attribute::ReadNone);
-
-      if (FnAttribute == Attribute::None && RetAttribute != Attribute::None &&
-          (RetAttribute & OldRetAttrs)) {
-        if (FnAttribute == Attribute::None) { // add a slot so they get added.
-          Record.push_back(~0U);
-          Record.push_back(0);
-        }
-
-        FnAttribute  |= RetAttribute & OldRetAttrs;
-        RetAttribute &= ~OldRetAttrs;
       }
 
       for (unsigned i = 0, e = Record.size(); i != e; i += 2) {
-        if (Record[i] == 0) {
-          if (RetAttribute != Attribute::None)
-            Attrs.push_back(AttributeWithIndex::get(0, RetAttribute));
-        } else if (Record[i] == ~0U) {
-          if (FnAttribute != Attribute::None)
-            Attrs.push_back(AttributeWithIndex::get(~0U, FnAttribute));
-        } else if (Attributes(Record[i+1]) != Attribute::None)
+        if (Attributes(Record[i+1]) != Attribute::None)
           Attrs.push_back(AttributeWithIndex::get(Record[i],
                                                   Attributes(Record[i+1])));
       }
@@ -618,26 +592,6 @@ bool BitcodeReader::ParseTypeTableBody() {
       ResultTy = getTypeByID(Record[0]);
       if (ResultTy == 0) return Error("invalid element type in pointer type");
       ResultTy = PointerType::get(ResultTy, AddressSpace);
-      break;
-    }
-    case bitc::TYPE_CODE_FUNCTION_OLD: {
-      // FIXME: attrid is dead, remove it in LLVM 3.0
-      // FUNCTION: [vararg, attrid, retty, paramty x N]
-      if (Record.size() < 3)
-        return Error("Invalid FUNCTION type record");
-      SmallVector<Type*, 8> ArgTys;
-      for (unsigned i = 3, e = Record.size(); i != e; ++i) {
-        if (Type *T = getTypeByID(Record[i]))
-          ArgTys.push_back(T);
-        else
-          break;
-      }
-      
-      ResultTy = getTypeByID(Record[2]);
-      if (ResultTy == 0 || ArgTys.size() < Record.size()-3)
-        return Error("invalid type in function type");
-
-      ResultTy = FunctionType::get(ResultTy, ArgTys, Record[0]);
       break;
     }
     case bitc::TYPE_CODE_FUNCTION: {
@@ -977,6 +931,16 @@ bool BitcodeReader::ResolveGlobalAndAliasInits() {
   return false;
 }
 
+APInt ReadWideAPInt(const uint64_t *Vals, unsigned ActiveWords,
+                    unsigned TypeBits) {
+  SmallVector<uint64_t, 8> Words;
+  Words.resize(ActiveWords);
+  for (unsigned i = 0; i != ActiveWords; ++i)
+    Words[i] = DecodeSignRotatedValue(Vals[i]);
+  
+  return APInt(TypeBits, Words);
+}
+
 bool BitcodeReader::ParseConstants() {
   if (Stream.EnterSubBlock(bitc::CONSTANTS_BLOCK_ID))
     return Error("Malformed block record");
@@ -1033,13 +997,11 @@ bool BitcodeReader::ParseConstants() {
         return Error("Invalid WIDE_INTEGER record");
 
       unsigned NumWords = Record.size();
-      SmallVector<uint64_t, 8> Words;
-      Words.resize(NumWords);
-      for (unsigned i = 0; i != NumWords; ++i)
-        Words[i] = DecodeSignRotatedValue(Record[i]);
-      V = ConstantInt::get(Context,
-                           APInt(cast<IntegerType>(CurTy)->getBitWidth(),
-                                 Words));
+      
+      APInt VInt = ReadWideAPInt(&Record[0], NumWords,
+          cast<IntegerType>(CurTy)->getBitWidth());
+      V = ConstantInt::get(Context, VInt);
+      
       break;
     }
     case bitc::CST_CODE_FLOAT: {    // FLOAT: [fpval]
@@ -2271,6 +2233,62 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       break;
     }
     case bitc::FUNC_CODE_INST_SWITCH: { // SWITCH: [opty, op0, op1, ...]
+      // Check magic 
+      if ((Record[0] >> 16) == SWITCH_INST_MAGIC) {
+        // New SwitchInst format with case ranges.
+        
+        Type *OpTy = getTypeByID(Record[1]);
+        unsigned ValueBitWidth = cast<IntegerType>(OpTy)->getBitWidth();
+
+        Value *Cond = getFnValueByID(Record[2], OpTy);
+        BasicBlock *Default = getBasicBlock(Record[3]);
+        if (OpTy == 0 || Cond == 0 || Default == 0)
+          return Error("Invalid SWITCH record");
+
+        unsigned NumCases = Record[4];
+        
+        SwitchInst *SI = SwitchInst::Create(Cond, Default, NumCases);
+        InstructionList.push_back(SI);
+        
+        unsigned CurIdx = 5;
+        for (unsigned i = 0; i != NumCases; ++i) {
+          CRSBuilder CaseBuilder;
+          unsigned NumItems = Record[CurIdx++];
+          for (unsigned ci = 0; ci != NumItems; ++ci) {
+            bool isSingleNumber = Record[CurIdx++];
+            
+            APInt Low;
+            unsigned ActiveWords = 1;
+            if (ValueBitWidth > 64)
+              ActiveWords = Record[CurIdx++];
+            Low = ReadWideAPInt(&Record[CurIdx], ActiveWords, ValueBitWidth);
+            CurIdx += ActiveWords;
+            
+            if (!isSingleNumber) {
+              ActiveWords = 1;
+              if (ValueBitWidth > 64)
+                ActiveWords = Record[CurIdx++];
+              APInt High =
+                  ReadWideAPInt(&Record[CurIdx], ActiveWords, ValueBitWidth);
+              CaseBuilder.add(cast<ConstantInt>(ConstantInt::get(OpTy, Low)),
+                              cast<ConstantInt>(ConstantInt::get(OpTy, High)));
+              CurIdx += ActiveWords;
+            } else
+              CaseBuilder.add(cast<ConstantInt>(ConstantInt::get(OpTy, Low)));
+          }
+          BasicBlock *DestBB = getBasicBlock(Record[CurIdx++]);
+          ConstantRangesSet Case = CaseBuilder.getCase(); 
+          SI->addCase(Case, DestBB);
+        }
+        uint16_t Hash = SI->hash();
+        if (Hash != (Record[0] & 0xFFFF))
+          return Error("Invalid SWITCH record");
+        I = SI;
+        break;
+      }
+      
+      // Old SwitchInst format without case ranges.
+      
       if (Record.size() < 3 || (Record.size() & 1) == 0)
         return Error("Invalid SWITCH record");
       Type *OpTy = getTypeByID(Record[0]);
@@ -2788,6 +2806,12 @@ bool BitcodeReader::MaterializeModule(Module *M, std::string *ErrInfo) {
     if (F->isMaterializable() &&
         Materialize(F, ErrInfo))
       return true;
+
+  // At this point, if there are any function bodies, the current bit is
+  // pointing to the END_BLOCK record after them. Now make sure the rest
+  // of the bits in the module have been read.
+  if (NextUnreadBit)
+    ParseModule(true);
 
   // Upgrade any intrinsic calls that slipped through (should not happen!) and
   // delete the old functions to clean up. We can't do this unless the entire

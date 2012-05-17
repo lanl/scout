@@ -12,6 +12,7 @@ class DStmt<Stmt base, bit abstract = 0> : Stmt<abstract> {
 def NullStmt : Stmt;
 def CompoundStmt : Stmt;
 def LabelStmt : Stmt;
+def AttributedStmt : Stmt;
 def IfStmt : Stmt;
 def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
@@ -110,6 +111,7 @@ def CXXReinterpretCastExpr : DStmt<CXXNamedCastExpr>;
 def CXXConstCastExpr : DStmt<CXXNamedCastExpr>;
 def CXXFunctionalCastExpr : DStmt<ExplicitCastExpr>;
 def CXXTypeidExpr : DStmt<Expr>;
+def UserDefinedLiteral : DStmt<CallExpr>;
 def CXXBoolLiteralExpr : DStmt<Expr>;
 def CXXNullPtrLiteralExpr : DStmt<Expr>;
 def CXXThisExpr : DStmt<Expr>;
@@ -119,6 +121,7 @@ def CXXScalarValueInitExpr : DStmt<Expr>;
 def CXXNewExpr : DStmt<Expr>;
 def CXXDeleteExpr : DStmt<Expr>;
 def CXXPseudoDestructorExpr : DStmt<Expr>;
+def TypeTraitExpr : DStmt<Expr>;
 def UnaryTypeTraitExpr : DStmt<Expr>;
 def BinaryTypeTraitExpr : DStmt<Expr>;
 def ArrayTypeTraitExpr : DStmt<Expr>;
@@ -143,6 +146,9 @@ def LambdaExpr : DStmt<Expr>;
 
 // Obj-C Expressions.
 def ObjCStringLiteral : DStmt<Expr>;
+def ObjCBoxedExpr : DStmt<Expr>;
+def ObjCArrayLiteral : DStmt<Expr>;
+def ObjCDictionaryLiteral : DStmt<Expr>;
 def ObjCEncodeExpr : DStmt<Expr>;
 def ObjCMessageExpr : DStmt<Expr>;
 def ObjCSelectorExpr : DStmt<Expr>;
@@ -151,6 +157,8 @@ def ObjCIvarRefExpr : DStmt<Expr>;
 def ObjCPropertyRefExpr : DStmt<Expr>;
 def ObjCIsaExpr : DStmt<Expr>;
 def ObjCIndirectCopyRestoreExpr : DStmt<Expr>;
+def ObjCBoolLiteralExpr : DStmt<Expr>;
+def ObjCSubscriptRefExpr : DStmt<Expr>;
 
 // Obj-C ARC Expressions.
 def ObjCBridgedCastExpr : DStmt<ExplicitCastExpr>;
@@ -161,7 +169,6 @@ def CUDAKernelCallExpr : DStmt<CallExpr>;
 // Clang Extensions.
 def ShuffleVectorExpr : DStmt<Expr>;
 def BlockExpr : DStmt<Expr>;
-def BlockDeclRefExpr : DStmt<Expr>;
 def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.

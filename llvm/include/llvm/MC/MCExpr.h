@@ -15,7 +15,6 @@
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
-class MCAsmInfo;
 class MCAsmLayout;
 class MCAssembler;
 class MCContext;
@@ -162,6 +161,7 @@ public:
     VK_TPOFF,
     VK_DTPOFF,
     VK_TLVP,      // Mach-O thread local variable relocation
+    VK_SECREL,
     // FIXME: We'd really like to use the generic Kinds listed above for these.
     VK_ARM_PLT,   // ARM-style PLT references. i.e., (PLT) instead of @PLT
     VK_ARM_TLSGD, //   ditto for TLSGD, GOT, GOTOFF, TPOFF and GOTTPOFF
@@ -194,7 +194,7 @@ public:
     VK_Mips_GPOFF_LO,
     VK_Mips_GOT_DISP,
     VK_Mips_GOT_PAGE,
-    VK_Mips_GOT_OFST 
+    VK_Mips_GOT_OFST
   };
 
 private:

@@ -340,7 +340,8 @@ bool GenerateModuleAction::ComputeASTConsumerArguments(CompilerInstance &CI,
   // We use a temporary to avoid race conditions.
   OS = CI.createOutputFile(CI.getFrontendOpts().OutputFile, /*Binary=*/true,
                            /*RemoveFileOnSignal=*/false, InFile,
-                           /*Extension=*/"", /*useTemporary=*/true);
+                           /*Extension=*/"", /*useTemporary=*/true,
+                           /*CreateMissingDirectories=*/true);
   if (!OS)
     return true;
   
@@ -363,7 +364,7 @@ void DumpRawTokensAction::ExecuteAction() {
 
   // Start lexing the specified input file.
   const llvm::MemoryBuffer *FromFile = SM.getBuffer(SM.getMainFileID());
-  Lexer RawLex(SM.getMainFileID(), FromFile, SM, PP.getLangOptions());
+  Lexer RawLex(SM.getMainFileID(), FromFile, SM, PP.getLangOpts());
   RawLex.SetKeepWhitespaceMode(true);
 
   Token RawTok;

@@ -30,7 +30,7 @@ using namespace clang::cxstring;
 
 namespace {
 class USRGenerator : public DeclVisitor<USRGenerator> {
-  llvm::OwningPtr<llvm::SmallString<128> > OwnedBuf;
+  OwningPtr<SmallString<128> > OwnedBuf;
   SmallVectorImpl<char> &Buf;
   llvm::raw_svector_ostream Out;
   bool IgnoreResults;
@@ -41,7 +41,7 @@ class USRGenerator : public DeclVisitor<USRGenerator> {
   
 public:
   explicit USRGenerator(ASTContext *Ctx = 0, SmallVectorImpl<char> *extBuf = 0)
-  : OwnedBuf(extBuf ? 0 : new llvm::SmallString<128>()),
+  : OwnedBuf(extBuf ? 0 : new SmallString<128>()),
     Buf(extBuf ? *extBuf : *OwnedBuf.get()),
     Out(Buf),
     IgnoreResults(false),
@@ -194,8 +194,18 @@ void USRGenerator::VisitFunctionDecl(FunctionDecl *D) {
   D->printName(Out);
 
   ASTContext &Ctx = *Context;
-  if (!Ctx.getLangOptions().CPlusPlus || D->isExternC())
+  if (!Ctx.getLangOpts().CPlusPlus || D->isExternC())
     return;
+
+  if (const TemplateArgumentList *
+        SpecArgs = D->getTemplateSpecializationArgs()) {
+    Out << '<';
+    for (unsigned I = 0, N = SpecArgs->size(); I != N; ++I) {
+      Out << '#';
+      VisitTemplateArgument(SpecArgs->get(I));
+    }
+    Out << '>';
+  }
 
   // Mangle in type information for the arguments.
   for (FunctionDecl::param_iterator I = D->param_begin(), E = D->param_end();

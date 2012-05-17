@@ -12,11 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Driver/ArgList.h"
+#include "clang/Driver/Options.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Option.h"
+#include "clang/Driver/OptTable.h"
+#include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/DiagnosticOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Frontend/Utils.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallString.h"
@@ -189,7 +194,7 @@ static void ExpandArgsFromBuf(const char *Arg,
                               SmallVectorImpl<const char*> &ArgVector,
                               std::set<std::string> &SavedStrings) {
   const char *FName = Arg + 1;
-  llvm::OwningPtr<llvm::MemoryBuffer> MemBuf;
+  OwningPtr<llvm::MemoryBuffer> MemBuf;
   if (llvm::MemoryBuffer::getFile(FName, MemBuf)) {
     ArgVector.push_back(SaveStringInSet(SavedStrings, Arg));
     return;
@@ -303,10 +308,8 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
     for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
       if (ProgNameRef.endswith(suffixes[i].Suffix)) {
         FoundMatch = true;
-
-        if (suffixes[i].IsCXX){
+        if (suffixes[i].IsCXX)
           TheDriver.CCCIsCXX = true;
-	}
         if (suffixes[i].IsCPP)
           TheDriver.CCCIsCPP = true;
         break;
@@ -387,11 +390,27 @@ int main(int argc_, const char **argv_) {
 
   llvm::sys::Path Path = GetExecutablePath(argv[0], CanonicalPrefixes);
 
+  DiagnosticOptions DiagOpts;
+  {
+    // Note that ParseDiagnosticArgs() uses the cc1 option table.
+    OwningPtr<OptTable> CC1Opts(createDriverOptTable());
+    unsigned MissingArgIndex, MissingArgCount;
+    OwningPtr<InputArgList> Args(CC1Opts->ParseArgs(argv.begin()+1, argv.end(),
+                                            MissingArgIndex, MissingArgCount));
+    // We ignore MissingArgCount and the return value of ParseDiagnosticArgs.
+    // Any errors that would be diagnosed here will also be diagnosed later,
+    // when the DiagnosticsEngine actually exists.
+    (void) ParseDiagnosticArgs(DiagOpts, *Args);
+  }
+  // Now we can create the DiagnosticsEngine with a properly-filled-out
+  // DiagnosticOptions instance.
   TextDiagnosticPrinter *DiagClient
-    = new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
+    = new TextDiagnosticPrinter(llvm::errs(), DiagOpts);
   DiagClient->setPrefix(llvm::sys::path::stem(Path.str()));
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+
   DiagnosticsEngine Diags(DiagID, DiagClient);
+  ProcessWarningOptions(Diags, DiagOpts);
 
 #ifdef CLANG_IS_PRODUCTION
   const bool IsProduction = true;
@@ -405,7 +424,7 @@ int main(int argc_, const char **argv_) {
   // the installed path. We do this manually, because we want to support that
   // path being a symlink.
   {
-    llvm::SmallString<128> InstalledPath(argv[0]);
+    SmallString<128> InstalledPath(argv[0]);
 
     // Do a PATH lookup, if there are no directory components.
     if (llvm::sys::path::filename(InstalledPath) == InstalledPath) {
@@ -490,6 +509,10 @@ int main(int argc_, const char **argv_) {
   if (C.get())
     Res = TheDriver.ExecuteCompilation(*C, FailingCommand);
 
+  // Force a crash to test the diagnostics.
+  if(::getenv("FORCE_CLANG_DIAGNOSTICS_CRASH"))
+     Res = -1;
+
   // If result status is < 0, then the driver command signalled an error.
   // In this case, generate additional diagnostic information if possible.
   if (Res < 0)
@@ -498,7 +521,7 @@ int main(int argc_, const char **argv_) {
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.
   llvm::TimerGroup::printAll(llvm::errs());
-
+  
   llvm::llvm_shutdown();
 
   return Res;

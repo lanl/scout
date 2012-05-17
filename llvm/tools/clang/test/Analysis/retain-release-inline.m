@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -analyzer-inline-call -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -analyzer-ipa=inlining -verify %s
 
 //===----------------------------------------------------------------------===//
 // The following code is reduced using delta-debugging from Mac OS X headers:
@@ -253,6 +253,19 @@ extern CGColorSpaceRef CGColorSpaceCreateDeviceRGB(void);
 + (id)array;
 @end
 
+enum {
+    NSASCIIStringEncoding = 1,
+    NSNEXTSTEPStringEncoding = 2,
+    NSJapaneseEUCStringEncoding = 3,
+    NSUTF8StringEncoding = 4,
+    NSISOLatin1StringEncoding = 5,
+    NSSymbolStringEncoding = 6,
+    NSNonLossyASCIIStringEncoding = 7,
+};
+typedef struct __CFString * CFMutableStringRef;
+typedef NSUInteger NSStringEncoding;
+
+extern CFStringRef CFStringCreateWithCStringNoCopy(CFAllocatorRef alloc, const char *cStr, CFStringEncoding encoding, CFAllocatorRef contentsDeallocator);
 
 //===----------------------------------------------------------------------===//
 // Test cases.
@@ -280,4 +293,55 @@ void test_neg() {
   bar(s);
   bar(s);
 }
+
+//===----------------------------------------------------------------------===//
+// Test returning retained and not-retained values.
+//===----------------------------------------------------------------------===//
+
+// On return (intraprocedural), assume CF objects are leaked.
+CFStringRef test_return_ratained_CF(char *bytes) {
+  CFStringRef str;
+  return CFStringCreateWithCStringNoCopy(0, bytes, NSNEXTSTEPStringEncoding, 0); // expected-warning {{leak}}
+}
+
+// On return (intraprocedural), assume NSObjects are not leaked.
+id test_return_retained_NS() {
+  return [[NSString alloc] init]; // no-warning
+}
+
+void test_test_return_retained() {
+  id x = test_return_retained_NS(); // expected-warning {{leak}}
+  [x retain];
+  [x release];
+}
+
+//===----------------------------------------------------------------------===//
+// Test not applying "double effects" from inlining and RetainCountChecker summaries.
+// If we inline a call, we should already see its retain/release semantics.
+//===----------------------------------------------------------------------===//
+
+__attribute__((cf_returns_retained)) CFStringRef test_return_inline(CFStringRef x) {
+  CFRetain(x);
+  return x;
+}
+
+void test_test_return_inline(char *bytes) {
+  CFStringRef str = CFStringCreateWithCStringNoCopy(0, bytes, NSNEXTSTEPStringEncoding, 0);
+  // After this call, 'str' really has +2 reference count.
+  CFStringRef str2 = test_return_inline(str);
+  // After this call, 'str' really has a +1 reference count.
+  CFRelease(str);
+  // After this call, 'str2' and 'str' has a +0 reference count.
+  CFRelease(str2);
+}
+
+void test_test_return_inline_2(char *bytes) {
+  CFStringRef str = CFStringCreateWithCStringNoCopy(0, bytes, NSNEXTSTEPStringEncoding, 0); // expected-warning {{leak}}
+  // After this call, 'str' really has +2 reference count.
+  CFStringRef str2 = test_return_inline(str);
+  // After this call, 'str' really has a +1 reference count.
+  CFRelease(str);
+}
+
+
 

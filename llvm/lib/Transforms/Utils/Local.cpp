@@ -106,31 +106,32 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions) {
     // If we are switching on a constant, we can convert the switch into a
     // single branch instruction!
     ConstantInt *CI = dyn_cast<ConstantInt>(SI->getCondition());
-    BasicBlock *TheOnlyDest = SI->getDefaultDest();  // The default dest
+    BasicBlock *TheOnlyDest = SI->getDefaultDest();
     BasicBlock *DefaultDest = TheOnlyDest;
 
     // Figure out which case it goes to.
-    for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i) {
+    for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end();
+         i != e; ++i) {
       // Found case matching a constant operand?
-      if (SI->getCaseValue(i) == CI) {
-        TheOnlyDest = SI->getCaseSuccessor(i);
+      if (i.getCaseValue() == CI) {
+        TheOnlyDest = i.getCaseSuccessor();
         break;
       }
 
       // Check to see if this branch is going to the same place as the default
       // dest.  If so, eliminate it as an explicit compare.
-      if (SI->getCaseSuccessor(i) == DefaultDest) {
+      if (i.getCaseSuccessor() == DefaultDest) {
         // Remove this entry.
         DefaultDest->removePredecessor(SI->getParent());
         SI->removeCase(i);
-        --i; --e;  // Don't skip an entry...
+        --i; --e;
         continue;
       }
 
       // Otherwise, check to see if the switch only branches to one destination.
       // We do this by reseting "TheOnlyDest" to null when we find two non-equal
       // destinations.
-      if (SI->getCaseSuccessor(i) != TheOnlyDest) TheOnlyDest = 0;
+      if (i.getCaseSuccessor() != TheOnlyDest) TheOnlyDest = 0;
     }
 
     if (CI && !TheOnlyDest) {
@@ -167,11 +168,13 @@ bool llvm::ConstantFoldTerminator(BasicBlock *BB, bool DeleteDeadConditions) {
     if (SI->getNumCases() == 1) {
       // Otherwise, we can fold this switch into a conditional branch
       // instruction if it has only one non-default destination.
+      SwitchInst::CaseIt FirstCase = SI->case_begin();
       Value *Cond = Builder.CreateICmpEQ(SI->getCondition(),
-                                         SI->getCaseValue(0), "cond");
+          FirstCase.getCaseValue(), "cond");
 
       // Insert the new branch.
-      Builder.CreateCondBr(Cond, SI->getCaseSuccessor(0), SI->getDefaultDest());
+      Builder.CreateCondBr(Cond, FirstCase.getCaseSuccessor(),
+                           SI->getDefaultDest());
 
       // Delete the old switch.
       SI->eraseFromParent();
@@ -257,7 +260,7 @@ bool llvm::isInstructionTriviallyDead(Instruction *I) {
       return isa<UndefValue>(II->getArgOperand(1));
   }
 
-  if (extractMallocCall(I)) return true;
+  if (extractMallocCall(I) || extractCallocCall(I)) return true;
 
   if (CallInst *CI = isFreeCall(I))
     if (Constant *C = dyn_cast<Constant>(CI->getArgOperand(0)))
@@ -352,22 +355,27 @@ bool llvm::RecursivelyDeleteDeadPHINode(PHINode *PN) {
 /// instructions in other blocks as well in this block.
 bool llvm::SimplifyInstructionsInBlock(BasicBlock *BB, const TargetData *TD) {
   bool MadeChange = false;
-  for (BasicBlock::iterator BI = BB->begin(), E = BB->end(); BI != E; ) {
+
+#ifndef NDEBUG
+  // In debug builds, ensure that the terminator of the block is never replaced
+  // or deleted by these simplifications. The idea of simplification is that it
+  // cannot introduce new instructions, and there is no way to replace the
+  // terminator of a block without introducing a new instruction.
+  AssertingVH<Instruction> TerminatorVH(--BB->end());
+#endif
+
+  for (BasicBlock::iterator BI = BB->begin(), E = --BB->end(); BI != E; ) {
+    assert(!BI->isTerminator());
     Instruction *Inst = BI++;
-    
-    if (Value *V = SimplifyInstruction(Inst, TD)) {
-      WeakVH BIHandle(BI);
-      ReplaceAndSimplifyAllUses(Inst, V, TD);
+
+    WeakVH BIHandle(BI);
+    if (recursivelySimplifyInstruction(Inst, TD)) {
       MadeChange = true;
       if (BIHandle != BI)
         BI = BB->begin();
       continue;
     }
 
-    if (Inst->isTerminator())
-      break;
-
-    WeakVH BIHandle(BI);
     MadeChange |= RecursivelyDeleteTriviallyDeadInstructions(Inst);
     if (BIHandle != BI)
       BI = BB->begin();
@@ -405,17 +413,11 @@ void llvm::RemovePredecessorAndSimplify(BasicBlock *BB, BasicBlock *Pred,
   WeakVH PhiIt = &BB->front();
   while (PHINode *PN = dyn_cast<PHINode>(PhiIt)) {
     PhiIt = &*++BasicBlock::iterator(cast<Instruction>(PhiIt));
-
-    Value *PNV = SimplifyInstruction(PN, TD);
-    if (PNV == 0) continue;
-
-    // If we're able to simplify the phi to a single value, substitute the new
-    // value into all of its uses.
-    assert(PNV != PN && "SimplifyInstruction broken!");
-    
     Value *OldPhiIt = PhiIt;
-    ReplaceAndSimplifyAllUses(PN, PNV, TD);
-    
+
+    if (!recursivelySimplifyInstruction(PN, TD))
+      continue;
+
     // If recursive simplification ended up deleting the next PHI node we would
     // iterate to, then our iterator is invalid, restart scanning from the top
     // of the block.
@@ -760,9 +762,8 @@ unsigned llvm::getOrEnforceKnownAlignment(Value *V, unsigned PrefAlign,
   assert(V->getType()->isPointerTy() &&
          "getOrEnforceKnownAlignment expects a pointer!");
   unsigned BitWidth = TD ? TD->getPointerSizeInBits() : 64;
-  APInt Mask = APInt::getAllOnesValue(BitWidth);
   APInt KnownZero(BitWidth, 0), KnownOne(BitWidth, 0);
-  ComputeMaskedBits(V, Mask, KnownZero, KnownOne, TD);
+  ComputeMaskedBits(V, KnownZero, KnownOne, TD);
   unsigned TrailZ = KnownZero.countTrailingOnes();
   
   // Avoid trouble with rediculously large TrailZ values, such as

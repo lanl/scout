@@ -145,7 +145,7 @@ RedeclarableTemplateDecl::CommonBase *RedeclarableTemplateDecl::getCommonPtr() {
 template <class EntryType>
 typename RedeclarableTemplateDecl::SpecEntryTraits<EntryType>::DeclType*
 RedeclarableTemplateDecl::findSpecializationImpl(
-                                 llvm::FoldingSet<EntryType> &Specs,
+                                 llvm::FoldingSetVector<EntryType> &Specs,
                                  const TemplateArgument *Args, unsigned NumArgs,
                                  void *&InsertPos) {
   typedef SpecEntryTraits<EntryType> SETraits;
@@ -173,7 +173,7 @@ static void GenerateInjectedTemplateArgs(ASTContext &Context,
       Arg = TemplateArgument(ArgType);
     } else if (NonTypeTemplateParmDecl *NTTP =
                dyn_cast<NonTypeTemplateParmDecl>(*Param)) {
-      Expr *E = new (Context) DeclRefExpr(NTTP,
+      Expr *E = new (Context) DeclRefExpr(NTTP, /*enclosing*/ false,
                                   NTTP->getType().getNonLValueExprType(Context),
                                   Expr::getValueKindForType(NTTP->getType()),
                                           NTTP->getLocation());
@@ -238,7 +238,10 @@ FunctionTemplateDecl::findSpecialization(const TemplateArgument *Args,
 
 void FunctionTemplateDecl::addSpecialization(
       FunctionTemplateSpecializationInfo *Info, void *InsertPos) {
-  getSpecializations().InsertNode(Info, InsertPos);
+  if (InsertPos)
+    getSpecializations().InsertNode(Info, InsertPos);
+  else
+    getSpecializations().GetOrInsertNode(Info);
   if (ASTMutationListener *L = getASTMutationListener())
     L->AddedCXXTemplateSpecialization(this, Info->Function);
 }
@@ -295,13 +298,13 @@ void ClassTemplateDecl::LoadLazySpecializations() {
   }
 }
 
-llvm::FoldingSet<ClassTemplateSpecializationDecl> &
+llvm::FoldingSetVector<ClassTemplateSpecializationDecl> &
 ClassTemplateDecl::getSpecializations() {
   LoadLazySpecializations();
   return getCommonPtr()->Specializations;
 }  
 
-llvm::FoldingSet<ClassTemplatePartialSpecializationDecl> &
+llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl> &
 ClassTemplateDecl::getPartialSpecializations() {
   LoadLazySpecializations();
   return getCommonPtr()->PartialSpecializations;
@@ -322,7 +325,14 @@ ClassTemplateDecl::findSpecialization(const TemplateArgument *Args,
 
 void ClassTemplateDecl::AddSpecialization(ClassTemplateSpecializationDecl *D,
                                           void *InsertPos) {
-  getSpecializations().InsertNode(D, InsertPos);
+  if (InsertPos)
+    getSpecializations().InsertNode(D, InsertPos);
+  else {
+    ClassTemplateSpecializationDecl *Existing 
+      = getSpecializations().GetOrInsertNode(D);
+    (void)Existing;
+    assert(Existing->isCanonicalDecl() && "Non-canonical specialization?");
+  }
   if (ASTMutationListener *L = getASTMutationListener())
     L->AddedCXXTemplateSpecialization(this, D);
 }
@@ -338,18 +348,26 @@ ClassTemplateDecl::findPartialSpecialization(const TemplateArgument *Args,
 void ClassTemplateDecl::AddPartialSpecialization(
                                       ClassTemplatePartialSpecializationDecl *D,
                                       void *InsertPos) {
-  getPartialSpecializations().InsertNode(D, InsertPos);
+  if (InsertPos)
+    getPartialSpecializations().InsertNode(D, InsertPos);
+  else {
+    ClassTemplatePartialSpecializationDecl *Existing
+      = getPartialSpecializations().GetOrInsertNode(D);
+    (void)Existing;
+    assert(Existing->isCanonicalDecl() && "Non-canonical specialization?");
+  }
+
   if (ASTMutationListener *L = getASTMutationListener())
     L->AddedCXXTemplateSpecialization(this, D);
 }
 
 void ClassTemplateDecl::getPartialSpecializations(
           SmallVectorImpl<ClassTemplatePartialSpecializationDecl *> &PS) {
-  llvm::FoldingSet<ClassTemplatePartialSpecializationDecl> &PartialSpecs
+  llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl> &PartialSpecs
     = getPartialSpecializations();
   PS.clear();
   PS.resize(PartialSpecs.size());
-  for (llvm::FoldingSet<ClassTemplatePartialSpecializationDecl>::iterator
+  for (llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl>::iterator
        P = PartialSpecs.begin(), PEnd = PartialSpecs.end();
        P != PEnd; ++P) {
     assert(!PS[P->getSequenceNumber()]);
@@ -360,7 +378,8 @@ void ClassTemplateDecl::getPartialSpecializations(
 ClassTemplatePartialSpecializationDecl *
 ClassTemplateDecl::findPartialSpecialization(QualType T) {
   ASTContext &Context = getASTContext();
-  typedef llvm::FoldingSet<ClassTemplatePartialSpecializationDecl>::iterator
+  using llvm::FoldingSetVector;
+  typedef FoldingSetVector<ClassTemplatePartialSpecializationDecl>::iterator
     partial_spec_iterator;
   for (partial_spec_iterator P = getPartialSpecializations().begin(),
                           PEnd = getPartialSpecializations().end();
@@ -376,7 +395,7 @@ ClassTemplatePartialSpecializationDecl *
 ClassTemplateDecl::findPartialSpecInstantiatedFromMember(
                                     ClassTemplatePartialSpecializationDecl *D) {
   Decl *DCanon = D->getCanonicalDecl();
-  for (llvm::FoldingSet<ClassTemplatePartialSpecializationDecl>::iterator
+  for (llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl>::iterator
             P = getPartialSpecializations().begin(),
          PEnd = getPartialSpecializations().end();
        P != PEnd; ++P) {

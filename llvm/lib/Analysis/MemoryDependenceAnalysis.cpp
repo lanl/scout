@@ -350,14 +350,18 @@ namespace {
 
     bool shouldExplore(Use *U) {
       Instruction *I = cast<Instruction>(U->getUser());
-      if (BeforeHere != I && DT->dominates(BeforeHere, I))
+      BasicBlock *BB = I->getParent();
+      if (BeforeHere != I &&
+          (!DT->isReachableFromEntry(BB) || DT->dominates(BeforeHere, I)))
         return false;
       return true;
     }
 
     bool captured(Use *U) {
       Instruction *I = cast<Instruction>(U->getUser());
-      if (BeforeHere != I && DT->dominates(BeforeHere, I))
+      BasicBlock *BB = I->getParent();
+      if (BeforeHere != I &&
+          (!DT->isReachableFromEntry(BB) || DT->dominates(BeforeHere, I)))
         return false;
       Captured = true;
       return true;
@@ -382,15 +386,17 @@ MemoryDependenceAnalysis::getModRefInfo(const Instruction *Inst,
   // with a smarter AA in place, this test is just wasting compile time.
   if (!DT) return AliasAnalysis::ModRef;
   const Value *Object = GetUnderlyingObject(MemLoc.Ptr, TD);
-  if (!isIdentifiedObject(Object) || isa<GlobalValue>(Object))
+  if (!isIdentifiedObject(Object) || isa<GlobalValue>(Object) ||
+      isa<Constant>(Object))
     return AliasAnalysis::ModRef;
+
   ImmutableCallSite CS(Inst);
-  if (!CS.getInstruction()) return AliasAnalysis::ModRef;
+  if (!CS.getInstruction() || CS.getInstruction() == Object)
+    return AliasAnalysis::ModRef;
 
   CapturesBefore CB(Inst, DT);
   llvm::PointerMayBeCaptured(Object, &CB);
-
-  if (isa<Constant>(Object) || CS.getInstruction() == Object || CB.Captured)
+  if (CB.Captured)
     return AliasAnalysis::ModRef;
 
   unsigned ArgNo = 0;

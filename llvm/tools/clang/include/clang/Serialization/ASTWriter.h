@@ -76,6 +76,7 @@ public:
   typedef SmallVectorImpl<uint64_t> RecordDataImpl;
 
   friend class ASTDeclWriter;
+  friend class ASTStmtWriter;
 private:
   /// \brief Map that provides the ID numbers of each type within the
   /// output stream, plus those deserialized from a chained PCH.
@@ -108,6 +109,9 @@ private:
   /// \brief Indicates when the AST writing is actively performing
   /// serialization, rather than just queueing updates.
   bool WritingAST;
+
+  /// \brief Indicates that the AST contained compiler errors.
+  bool ASTHasCompilerErrors;
 
   /// \brief Stores a declaration or a type to be written to the AST file.
   class DeclOrType {
@@ -206,6 +210,18 @@ private:
   /// discovery), starting at 1. An ID of zero refers to a NULL
   /// IdentifierInfo.
   llvm::DenseMap<const IdentifierInfo *, serialization::IdentID> IdentifierIDs;
+
+  /// @name FlushStmt Caches
+  /// @{
+
+  /// \brief Set of parent Stmts for the currently serializing sub stmt.
+  llvm::DenseSet<Stmt *> ParentStmts;
+
+  /// \brief Offsets of sub stmts already serialized. The offset points
+  /// just after the stmt record.
+  llvm::DenseMap<Stmt *, uint64_t> SubStmtEntries;
+
+  /// @}
 
   /// \brief Offsets of each of the identifier IDs into the identifier
   /// table.
@@ -321,7 +337,7 @@ private:
   SmallVector<Stmt *, 16> *CollectedStmts;
 
   /// \brief Mapping from SwitchCase statements to IDs.
-  std::map<SwitchCase *, unsigned> SwitchCaseIDs;
+  llvm::DenseMap<SwitchCase *, unsigned> SwitchCaseIDs;
 
   /// \brief The number of statements written to the AST file.
   unsigned NumStatements;
@@ -455,7 +471,8 @@ public:
   /// are relative to the given system root.
   void WriteAST(Sema &SemaRef, MemorizeStatCalls *StatCalls,
                 const std::string &OutputFile,
-                Module *WritingModule, StringRef isysroot);
+                Module *WritingModule, StringRef isysroot,
+                bool hasErrors = false);
 
   /// \brief Emit a source location.
   void AddSourceLocation(SourceLocation Loc, RecordDataImpl &Record);
@@ -697,7 +714,7 @@ class PCHGenerator : public SemaConsumer {
   raw_ostream *Out;
   Sema *SemaPtr;
   MemorizeStatCalls *StatCalls; // owned by the FileManager
-  std::vector<unsigned char> Buffer;
+  llvm::SmallVector<char, 128> Buffer;
   llvm::BitstreamWriter Stream;
   ASTWriter Writer;
 

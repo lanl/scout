@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,experimental.deadcode.IdempotentOperations,experimental.core.CastToStruct,experimental.security.ReturnPtrRange,experimental.security.ArrayBound -analyzer-store=region -verify -fblocks -analyzer-opt-analyze-nested-blocks %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -DTEST_64 -analyze -analyzer-checker=core,experimental.deadcode.IdempotentOperations,experimental.core.CastToStruct,experimental.security.ReturnPtrRange,experimental.security.ArrayBound -analyzer-store=region -verify -fblocks   -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,experimental.deadcode.IdempotentOperations,experimental.core.CastToStruct,experimental.security.ReturnPtrRange,experimental.security.ArrayBound -analyzer-store=region -verify -fblocks -analyzer-opt-analyze-nested-blocks -Wno-objc-root-class %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -DTEST_64 -analyze -analyzer-checker=core,experimental.deadcode.IdempotentOperations,experimental.core.CastToStruct,experimental.security.ReturnPtrRange,experimental.security.ArrayBound -analyzer-store=region -verify -fblocks   -analyzer-opt-analyze-nested-blocks -Wno-objc-root-class %s
 
 typedef long unsigned int size_t;
 void *memcpy(void *, const void *, size_t);
@@ -294,9 +294,11 @@ int test_invalidate_field_test_positive() {
 struct ArrayWrapper { unsigned char y[16]; };
 struct WrappedStruct { unsigned z; };
 
+void test_handle_array_wrapper_helper();
+
 int test_handle_array_wrapper() {
   struct ArrayWrapper x;
-  test_handle_array_wrapper(&x);
+  test_handle_array_wrapper_helper(&x);
   struct WrappedStruct *p = (struct WrappedStruct*) x.y; // expected-warning{{Casting a non-structure type to a structure type and accessing a field can lead to memory access errors or data corruption.}}
   return p->z;  // no-warning
 }
@@ -1323,3 +1325,39 @@ void rdar9444714() {
   *dst = '\0';
 }
 
+// Test handling symbolic elements with field accesses.
+// <rdar://problem/11127008>
+typedef struct {
+    unsigned value;
+} RDar11127008;
+
+signed rdar_11127008_index();
+
+static unsigned rdar_11127008(void) {
+    RDar11127008 values[] = {{.value = 0}, {.value = 1}};
+    signed index = rdar_11127008_index();
+    if (index < 0) return 0;
+    if (index >= 2) return 0;
+    return values[index].value;
+}
+
+// Test handling invalidating arrays passed to a block via captured
+// pointer value (not a __block variable).
+typedef void (^radar11125868_cb)(int *, unsigned);
+
+void rdar11125868_aux(radar11125868_cb cb);
+
+int rdar11125868() {
+  int integersStackArray[1];
+  int *integers = integersStackArray;
+  rdar11125868_aux(^(int *integerValue, unsigned index) {
+      integers[index] = integerValue[index];
+    });
+  return integers[0] == 0; // no-warning
+}
+
+int rdar11125868_positive() {
+  int integersStackArray[1];
+  int *integers = integersStackArray;
+  return integers[0] == 0; // expected-warning {{he left operand of '==' is a}}
+}

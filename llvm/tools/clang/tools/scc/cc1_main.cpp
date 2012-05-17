@@ -15,7 +15,7 @@
 
 #include "clang/Driver/Arg.h"
 #include "clang/Driver/ArgList.h"
-#include "clang/Driver/CC1Options.h"
+#include "clang/Driver/Options.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/OptTable.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -58,7 +58,7 @@ static int cc1_test(DiagnosticsEngine &Diags,
   llvm::errs() << "\n";
 
   // Parse the arguments.
-  OptTable *Opts = createCC1OptTable();
+  OptTable *Opts = createDriverOptTable();
   unsigned MissingArgIndex, MissingArgCount;
   InputArgList *Args = Opts->ParseArgs(ArgBegin, ArgEnd,
                                        MissingArgIndex, MissingArgCount);
@@ -117,8 +117,8 @@ static int cc1_test(DiagnosticsEngine &Diags,
 
 int cc1_main(const char **ArgBegin, const char **ArgEnd,
              const char *Argv0, void *MainAddr) {
-  llvm::OwningPtr<CompilerInstance> Clang(new CompilerInstance());
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  OwningPtr<CompilerInstance> Clang(new CompilerInstance());
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   // Run clang -cc1 test.
   if (ArgBegin != ArgEnd && StringRef(ArgBegin[0]) == "-cc1test") {

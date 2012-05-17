@@ -251,11 +251,6 @@ public:
     return *this;
   }
 
-  // No argument flip.
-  BitVector operator~() const {
-    return BitVector(*this).flip();
-  }
-
   // Indexing.
   reference operator[](unsigned Idx) {
     assert (Idx < Size && "Out-of-bounds Bit access.");
@@ -270,6 +265,16 @@ public:
 
   bool test(unsigned Idx) const {
     return (*this)[Idx];
+  }
+
+  /// Test if any common bits are set.
+  bool anyCommon(const BitVector &RHS) const {
+    unsigned ThisWords = NumBitWords(size());
+    unsigned RHSWords  = NumBitWords(RHS.size());
+    for (unsigned i = 0, e = std::min(ThisWords, RHSWords); i != e; ++i)
+      if (Bits[i] & RHS.Bits[i])
+        return true;
+    return false;
   }
 
   // Comparison operators.
@@ -471,24 +476,6 @@ private:
       clear_unused_bits();
   }
 };
-
-inline BitVector operator&(const BitVector &LHS, const BitVector &RHS) {
-  BitVector Result(LHS);
-  Result &= RHS;
-  return Result;
-}
-
-inline BitVector operator|(const BitVector &LHS, const BitVector &RHS) {
-  BitVector Result(LHS);
-  Result |= RHS;
-  return Result;
-}
-
-inline BitVector operator^(const BitVector &LHS, const BitVector &RHS) {
-  BitVector Result(LHS);
-  Result ^= RHS;
-  return Result;
-}
 
 } // End llvm namespace
 

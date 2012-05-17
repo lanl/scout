@@ -1,4 +1,4 @@
-//===-- X86/X86MCCodeEmitter.cpp - Convert X86 code to machine code -------===//
+//===-- X86MCCodeEmitter.cpp - Convert X86 code to machine code -----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -44,6 +44,11 @@ public:
   bool is64BitMode() const {
     // FIXME: Can tablegen auto-generate this?
     return (STI.getFeatureBits() & X86::Mode64Bit) != 0;
+  }
+
+  bool is32BitMode() const {
+    // FIXME: Can tablegen auto-generate this?
+    return (STI.getFeatureBits() & X86::Mode64Bit) == 0;
   }
 
   static unsigned GetX86RegNum(const MCOperand &MO) {
@@ -154,9 +159,8 @@ static MCFixupKind getImmFixupKind(uint64_t TSFlags) {
   return MCFixup::getKindForSize(Size, isPCRel);
 }
 
-/// Is32BitMemOperand - Return true if the specified instruction with a memory
-/// operand should emit the 0x67 prefix byte in 64-bit mode due to a 32-bit
-/// memory operand.  Op specifies the operand # of the memoperand.
+/// Is32BitMemOperand - Return true if the specified instruction has
+/// a 32-bit memory operand. Op specifies the operand # of the memoperand.
 static bool Is32BitMemOperand(const MCInst &MI, unsigned Op) {
   const MCOperand &BaseReg  = MI.getOperand(Op+X86::AddrBaseReg);
   const MCOperand &IndexReg = MI.getOperand(Op+X86::AddrIndexReg);
@@ -165,6 +169,36 @@ static bool Is32BitMemOperand(const MCInst &MI, unsigned Op) {
        X86MCRegisterClasses[X86::GR32RegClassID].contains(BaseReg.getReg())) ||
       (IndexReg.getReg() != 0 &&
        X86MCRegisterClasses[X86::GR32RegClassID].contains(IndexReg.getReg())))
+    return true;
+  return false;
+}
+
+/// Is64BitMemOperand - Return true if the specified instruction has
+/// a 64-bit memory operand. Op specifies the operand # of the memoperand.
+#ifndef NDEBUG
+static bool Is64BitMemOperand(const MCInst &MI, unsigned Op) {
+  const MCOperand &BaseReg  = MI.getOperand(Op+X86::AddrBaseReg);
+  const MCOperand &IndexReg = MI.getOperand(Op+X86::AddrIndexReg);
+
+  if ((BaseReg.getReg() != 0 &&
+       X86MCRegisterClasses[X86::GR64RegClassID].contains(BaseReg.getReg())) ||
+      (IndexReg.getReg() != 0 &&
+       X86MCRegisterClasses[X86::GR64RegClassID].contains(IndexReg.getReg())))
+    return true;
+  return false;
+}
+#endif
+
+/// Is16BitMemOperand - Return true if the specified instruction has
+/// a 16-bit memory operand. Op specifies the operand # of the memoperand.
+static bool Is16BitMemOperand(const MCInst &MI, unsigned Op) {
+  const MCOperand &BaseReg  = MI.getOperand(Op+X86::AddrBaseReg);
+  const MCOperand &IndexReg = MI.getOperand(Op+X86::AddrIndexReg);
+
+  if ((BaseReg.getReg() != 0 &&
+       X86MCRegisterClasses[X86::GR16RegClassID].contains(BaseReg.getReg())) ||
+      (IndexReg.getReg() != 0 &&
+       X86MCRegisterClasses[X86::GR16RegClassID].contains(IndexReg.getReg())))
     return true;
   return false;
 }
@@ -222,6 +256,7 @@ EmitImmediate(const MCOperand &DispOp, SMLoc Loc, unsigned Size,
 
   // If we have an immoffset, add it to the expression.
   if ((FixupKind == FK_Data_4 ||
+       FixupKind == FK_Data_8 ||
        FixupKind == MCFixupKind(X86::reloc_signed_4byte))) {
     GlobalOffsetTableExprKind Kind = StartsWithGlobalOffsetTable(Expr);
     if (Kind != GOT_None) {
@@ -230,6 +265,11 @@ EmitImmediate(const MCOperand &DispOp, SMLoc Loc, unsigned Size,
       FixupKind = MCFixupKind(X86::reloc_global_offset_table);
       if (Kind == GOT_Normal)
         ImmOffset = CurByte;
+    } else if (Expr->getKind() == MCExpr::SymbolRef) {
+      const MCSymbolRefExpr *Ref = static_cast<const MCSymbolRefExpr*>(Expr);
+      if (Ref->getKind() == MCSymbolRefExpr::VK_SECREL) {
+        FixupKind = MCFixupKind(FK_SecRel_4);
+      }
     }
   }
 
@@ -811,8 +851,22 @@ void X86MCCodeEmitter::EmitOpcodePrefix(uint64_t TSFlags, unsigned &CurByte,
     EmitByte(0xF3, CurByte, OS);
 
   // Emit the address size opcode prefix as needed.
-  if ((TSFlags & X86II::AdSize) ||
-      (MemOperand != -1 && is64BitMode() && Is32BitMemOperand(MI, MemOperand)))
+  bool need_address_override;
+  if (TSFlags & X86II::AdSize) {
+    need_address_override = true;
+  } else if (MemOperand == -1) {
+    need_address_override = false;
+  } else if (is64BitMode()) {
+    assert(!Is16BitMemOperand(MI, MemOperand));
+    need_address_override = Is32BitMemOperand(MI, MemOperand);
+  } else if (is32BitMode()) {
+    assert(!Is64BitMemOperand(MI, MemOperand));
+    need_address_override = Is16BitMemOperand(MI, MemOperand);
+  } else {
+    need_address_override = false;
+  }
+
+  if (need_address_override)
     EmitByte(0x67, CurByte, OS);
 
   // Emit the operand size opcode prefix as needed.
@@ -1052,53 +1106,45 @@ EncodeInstruction(const MCInst &MI, raw_ostream &OS,
                      TSFlags, CurByte, OS, Fixups);
     CurOp += X86::AddrNumOperands;
     break;
-  case X86II::MRM_C1:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC1, CurByte, OS);
-    break;
-  case X86II::MRM_C2:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC2, CurByte, OS);
-    break;
-  case X86II::MRM_C3:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC3, CurByte, OS);
-    break;
-  case X86II::MRM_C4:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC4, CurByte, OS);
-    break;
-  case X86II::MRM_C8:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC8, CurByte, OS);
-    break;
-  case X86II::MRM_C9:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xC9, CurByte, OS);
-    break;
-  case X86II::MRM_E8:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xE8, CurByte, OS);
-    break;
-  case X86II::MRM_F0:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xF0, CurByte, OS);
-    break;
-  case X86II::MRM_F8:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xF8, CurByte, OS);
-    break;
+  case X86II::MRM_C1: case X86II::MRM_C2:
+  case X86II::MRM_C3: case X86II::MRM_C4:
+  case X86II::MRM_C8: case X86II::MRM_C9:
+  case X86II::MRM_D0: case X86II::MRM_D1:
+  case X86II::MRM_D4: case X86II::MRM_D8:
+  case X86II::MRM_D9: case X86II::MRM_DA:
+  case X86II::MRM_DB: case X86II::MRM_DC:
+  case X86II::MRM_DD: case X86II::MRM_DE:
+  case X86II::MRM_DF: case X86II::MRM_E8:
+  case X86II::MRM_F0: case X86II::MRM_F8:
   case X86II::MRM_F9:
     EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xF9, CurByte, OS);
-    break;
-  case X86II::MRM_D0:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xD0, CurByte, OS);
-    break;
-  case X86II::MRM_D1:
-    EmitByte(BaseOpcode, CurByte, OS);
-    EmitByte(0xD1, CurByte, OS);
+
+    unsigned char MRM;
+    switch (TSFlags & X86II::FormMask) {
+    default: llvm_unreachable("Invalid Form");
+    case X86II::MRM_C1: MRM = 0xC1; break;
+    case X86II::MRM_C2: MRM = 0xC2; break;
+    case X86II::MRM_C3: MRM = 0xC3; break;
+    case X86II::MRM_C4: MRM = 0xC4; break;
+    case X86II::MRM_C8: MRM = 0xC8; break;
+    case X86II::MRM_C9: MRM = 0xC9; break;
+    case X86II::MRM_D0: MRM = 0xD0; break;
+    case X86II::MRM_D1: MRM = 0xD1; break;
+    case X86II::MRM_D4: MRM = 0xD4; break;
+    case X86II::MRM_D8: MRM = 0xD8; break;
+    case X86II::MRM_D9: MRM = 0xD9; break;
+    case X86II::MRM_DA: MRM = 0xDA; break;
+    case X86II::MRM_DB: MRM = 0xDB; break;
+    case X86II::MRM_DC: MRM = 0xDC; break;
+    case X86II::MRM_DD: MRM = 0xDD; break;
+    case X86II::MRM_DE: MRM = 0xDE; break;
+    case X86II::MRM_DF: MRM = 0xDF; break;
+    case X86II::MRM_E8: MRM = 0xE8; break;
+    case X86II::MRM_F0: MRM = 0xF0; break;
+    case X86II::MRM_F8: MRM = 0xF8; break;
+    case X86II::MRM_F9: MRM = 0xF9; break;
+    }
+    EmitByte(MRM, CurByte, OS);
     break;
   }
 

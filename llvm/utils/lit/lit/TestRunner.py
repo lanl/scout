@@ -23,43 +23,6 @@ kUseCloseFDs = not kIsWindows
 # Use temporary files to replace /dev/null on Windows.
 kAvoidDevNull = kIsWindows
 
-def RemoveForce(f):
-    try:
-        os.remove(f)
-    except OSError:
-        pass
-
-def WinRename(f_o, f_n):
-    import time
-    retry_cnt = 256
-    while (True):
-        try:
-            os.rename(f_o, f_n)
-            break
-        except WindowsError, (winerror, strerror):
-            retry_cnt = retry_cnt - 1
-            if retry_cnt <= 0:
-                raise
-            elif winerror == 32: # ERROR_SHARING_VIOLATION
-                time.sleep(0.01)
-            else:
-                raise
-
-def WinWaitReleased(f):
-    import random
-    t = "%s%06d" % (f, random.randint(0, 999999))
-    RemoveForce(t)
-    try:
-        WinRename(f, t) # rename
-        WinRename(t, f) # restore
-    except WindowsError, (winerror, strerror):
-        if winerror in (2, 3):
-            # 2: ERROR_FILE_NOT_FOUND
-            # 3: ERROR_PATH_NOT_FOUND
-            pass
-        else:
-            raise
-
 def executeCommand(command, cwd=None, env=None):
     p = subprocess.Popen(command, cwd=cwd,
                          stdin=subprocess.PIPE,
@@ -105,7 +68,6 @@ def executeShCmd(cmd, cfg, cwd, results):
     input = subprocess.PIPE
     stderrTempFiles = []
     opened_files = []
-    written_files = []
     named_temp_files = []
     # To avoid deadlock, we use a single stderr stream for piped
     # output. This is null until we have seen some output using
@@ -162,8 +124,6 @@ def executeShCmd(cmd, cfg, cwd, results):
                     if r[1] == 'a':
                         r[2].seek(0, 2)
                     opened_files.append(r[2])
-                    if r[1] in 'aw':
-                        written_files.append(r[0])
                 result = r[2]
             final_redirects.append(result)
 
@@ -264,14 +224,12 @@ def executeShCmd(cmd, cfg, cwd, results):
         else:
             exitCode = res
 
-    # Make sure written_files is released by other (child) processes.
-    if (kIsWindows):
-        for f in written_files:
-            WinWaitReleased(f)
-
     # Remove any named temporary files we created.
     for f in named_temp_files:
-        RemoveForce(f)
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
     if cmd.negate:
         exitCode = not exitCode
@@ -459,6 +417,7 @@ def parseIntegratedTestScript(test, normalize_slashes=False,
     substitutions.extend([('%s', sourcepath),
                           ('%S', sourcedir),
                           ('%p', sourcedir),
+                          ('%{pathsep}', os.pathsep),
                           ('%t', tmpBase + '.tmp'),
                           ('%T', tmpDir),
                           # FIXME: Remove this once we kill DejaGNU.

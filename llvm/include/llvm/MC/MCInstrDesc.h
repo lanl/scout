@@ -58,17 +58,17 @@ public:
   /// if the operand is a register.  If isLookupPtrRegClass is set, then this is
   /// an index that is passed to TargetRegisterInfo::getPointerRegClass(x) to
   /// get a dynamic register class.
-  short RegClass;
+  int16_t RegClass;
 
   /// Flags - These are flags from the MCOI::OperandFlags enum.
-  unsigned short Flags;
+  uint8_t Flags;
+
+  /// OperandType - Information about the type of the operand.
+  uint8_t OperandType;
 
   /// Lower 16 bits are used to specify which constraints are set. The higher 16
   /// bits are used to specify the value of constraints (4 bits each).
-  unsigned Constraints;
-
-  /// OperandType - Information about the type of the operand.
-  MCOI::OperandType OperandType;
+  uint32_t Constraints;
   /// Currently no other information.
 
   /// isLookupPtrRegClass - Set if this operand is a pointer value and it
@@ -139,10 +139,9 @@ public:
   unsigned short  Size;          // Number of bytes in encoding.
   unsigned        Flags;         // Flags identifying machine instr class
   uint64_t        TSFlags;       // Target Specific Flag values
-  const unsigned *ImplicitUses;  // Registers implicitly read by this instr
-  const unsigned *ImplicitDefs;  // Registers implicitly defined by this instr
+  const uint16_t *ImplicitUses;  // Registers implicitly read by this instr
+  const uint16_t *ImplicitDefs;  // Registers implicitly defined by this instr
   const MCOperandInfo *OpInfo;   // 'NumOperands' entries about operands
-  const char     *Name;          // Name of the instruction record in td file
 
   /// getOperandConstraint - Returns the value of the specific constraint if
   /// it is set. Returns -1 if it is not set.
@@ -159,12 +158,6 @@ public:
   /// getOpcode - Return the opcode number for this descriptor.
   unsigned getOpcode() const {
     return Opcode;
-  }
-
-  /// getName - Return the name of the record in the .td file for this
-  /// instruction, for example "ADD8ri".
-  const char *getName() const {
-    return Name;
   }
 
   /// getNumOperands - Return the number of declared MachineOperands for this
@@ -455,7 +448,7 @@ public:
   /// does.
   ///
   /// This method returns null if the instruction has no implicit uses.
-  const unsigned *getImplicitUses() const {
+  const uint16_t *getImplicitUses() const {
     return ImplicitUses;
   }
 
@@ -478,7 +471,7 @@ public:
   /// EAX/EDX/EFLAGS registers.
   ///
   /// This method returns null if the instruction has no implicit defs.
-  const unsigned *getImplicitDefs() const {
+  const uint16_t *getImplicitDefs() const {
     return ImplicitDefs;
   }
 
@@ -494,7 +487,7 @@ public:
   /// hasImplicitUseOfPhysReg - Return true if this instruction implicitly
   /// uses the specified physical register.
   bool hasImplicitUseOfPhysReg(unsigned Reg) const {
-    if (const unsigned *ImpUses = ImplicitUses)
+    if (const uint16_t *ImpUses = ImplicitUses)
       for (; *ImpUses; ++ImpUses)
         if (*ImpUses == Reg) return true;
     return false;
@@ -503,7 +496,7 @@ public:
   /// hasImplicitDefOfPhysReg - Return true if this instruction implicitly
   /// defines the specified physical register.
   bool hasImplicitDefOfPhysReg(unsigned Reg) const {
-    if (const unsigned *ImpDefs = ImplicitDefs)
+    if (const uint16_t *ImpDefs = ImplicitDefs)
       for (; *ImpDefs; ++ImpDefs)
         if (*ImpDefs == Reg) return true;
     return false;

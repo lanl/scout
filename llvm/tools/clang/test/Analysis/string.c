@@ -1,7 +1,7 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=core,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -analyzer-checker=core,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DVARIANT -analyzer-checker=core,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
-// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=experimental.security.taint,core,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,unix.cstring,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -analyzer-checker=core,unix.cstring,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DVARIANT -analyzer-checker=core,unix.cstring,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
+// RUN: %clang_cc1 -analyze -DUSE_BUILTINS -DVARIANT -analyzer-checker=experimental.security.taint,core,unix.cstring,experimental.unix.cstring,experimental.deadcode.UnreachableCode -analyzer-store=region -Wno-null-dereference -verify %s
 
 //===----------------------------------------------------------------------===
 // Declarations
@@ -578,6 +578,17 @@ void strncpy_exactly_matching_buffer2(char *y) {
 		(void)*(int*)0; // no-warning
 }
 
+void strncpy_zero(char *src) {
+  char dst[] = "123";
+  strncpy(dst, src, 0); // no-warning
+}
+
+void strncpy_empty() {
+  char dst[] = "123";
+  char src[] = "";
+  strncpy(dst, src, 4); // no-warning
+}
+
 //===----------------------------------------------------------------------===
 // strncat()
 //===----------------------------------------------------------------------===
@@ -714,6 +725,17 @@ void strncat_too_big(char *dst, char *src) {
   if (strlen(src) != 2)
     return;
   strncat(dst, src, 2); // expected-warning{{This expression will create a string whose length is too big to be represented as a size_t}}
+}
+
+void strncat_zero(char *src) {
+  char dst[] = "123";
+  strncat(dst, src, 0); // no-warning
+}
+
+void strncat_empty() {
+  char dst[8] = "123";
+  char src[] = "";
+  strncat(dst, src, 4); // no-warning
 }
 
 //===----------------------------------------------------------------------===
@@ -1121,4 +1143,36 @@ void strncasecmp_diff_length_6() {
 void strncasecmp_embedded_null () {
 	if (strncasecmp("ab\0zz", "ab\0yy", 4) != 0)
 		(void)*(char*)0; // no-warning
+}
+
+//===----------------------------------------------------------------------===
+// Miscellaneous extras.
+//===----------------------------------------------------------------------===
+
+// See additive-folding.cpp for a description of this bug.
+// This test is insurance in case we significantly change how SymExprs are
+// evaluated. It isn't as good as additive-folding.cpp's version
+// because it will only actually be a test on systems where
+//   sizeof(1 == 1) < sizeof(size_t).
+// We could add a triple if it becomes necessary.
+void PR12206(const char *x) {
+  // This test is only useful under these conditions.
+  size_t comparisonSize = sizeof(1 == 1);
+  if (sizeof(size_t) <= comparisonSize) return;
+
+  // Create a value that requires more bits to store than a comparison result.
+  size_t value = 1UL;
+  value <<= 8 * comparisonSize;
+  value += 1;
+
+  // Constrain the length of x.
+  if (strlen(x) != value) return;
+
+  // Test relational operators.
+  if (strlen(x) < 2) { (void)*(char*)0; } // no-warning
+  if (2 > strlen(x)) { (void)*(char*)0; } // no-warning
+
+  // Test equality operators.
+  if (strlen(x) == 1) { (void)*(char*)0; } // no-warning
+  if (1 == strlen(x)) { (void)*(char*)0; } // no-warning
 }

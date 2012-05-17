@@ -7,16 +7,18 @@ public:
 
   static void sm() {
     sx = 0;
-    this->x = 0; // expected-error {{invalid use of 'this' outside of a nonstatic member function}}
+    this->x = 0; // expected-error {{invalid use of 'this' outside of a non-static member function}}
     x = 0; // expected-error {{invalid use of member 'x' in static member function}}
   }
 
   class NestedC {
   public:
     NestedC(int);
-    void m() {
+    void f() {
       sx = 0;
-      x = 0; // expected-error {{invalid use of nonstatic data member 'x'}}
+      x = 0; // expected-error {{use of non-static data member 'x' of 'C' from nested type 'NestedC'}}
+      sm();
+      m(); // expected-error {{call to non-static member function 'm' of 'C' from nested type 'NestedC'}}
     }
   };
 
@@ -129,10 +131,10 @@ namespace pr6629 {
     bogus<foo<T1,T2> > // expected-error {{unknown template name 'bogus'}} \
                        // BOGUS expected-error {{expected '{' after base class list}} \
                        // BOGUS expected-error {{expected ';' after struct}} \
-                       // BOGUS expected-error {{expected unqualified-id}} \
+                       // BOGUS expected-error {{expected unqualified-id}}
   { };
 
-  template<> struct foo<unknown,unknown> { // why isn't there an error here?
+  template<> struct foo<unknown,unknown> { // expected-error {{undeclared identifier 'unknown'}}
     template <typename U1, typename U2> struct bar {
       typedef bar type;
       static const int value = 0;
@@ -186,7 +188,7 @@ struct S {
 };
 
 void f() {
-    S::c; // expected-error {{invalid use of nonstatic data member}}
+    S::c; // expected-error {{invalid use of non-static data member}}
 }
 }
 

@@ -320,7 +320,8 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
       break;
         
     case TemplateArgument::Declaration: {
-      visitDeclRef(A.getAsDecl());
+      if (Decl *D = A.getAsDecl())
+        visitDeclRef(D);
       break;
     }
     case TemplateArgument::Integral: {
@@ -461,7 +462,13 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     if (D->getStorageClass() != SC_None)
       set("storage",
           VarDecl::getStorageClassSpecifierString(D->getStorageClass()));
-    setFlag("directinit", D->hasCXXDirectInitializer());
+    StringRef initStyle = "";
+    switch (D->getInitStyle()) {
+    case VarDecl::CInit: initStyle = "c"; break;
+    case VarDecl::CallInit: initStyle = "call"; break;
+    case VarDecl::ListInit: initStyle = "list"; break;
+    }
+    set("initstyle", initStyle);
     setFlag("nrvo", D->isNRVOVariable());
     // TODO: instantiation, etc.
   }
@@ -490,6 +497,10 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
   void visitFunctionDeclChildren(FunctionDecl *D) {
     for (FunctionDecl::param_iterator
            I = D->param_begin(), E = D->param_end(); I != E; ++I)
+      dispatch(*I);
+    for (llvm::ArrayRef<NamedDecl*>::iterator
+           I = D->getDeclsInPrototypeScope().begin(), E = D->getDeclsInPrototypeScope().end();
+         I != E; ++I)
       dispatch(*I);
     if (D->doesThisDeclarationHaveABody())
       dispatch(D->getBody());

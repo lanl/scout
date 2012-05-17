@@ -111,11 +111,11 @@ void testTaintSystemCall() {
   char buffer[156];
   char addr[128];
   scanf("%s", addr);
-  system(addr); // expected-warning {{Tainted data passed to a system call}}
+  system(addr); // expected-warning {{Untrusted data is passed to a system call}}
 
   // Test that spintf transfers taint.
   sprintf(buffer, "/bin/mail %s < /tmp/email", addr);
-  system(buffer); // expected-warning {{Tainted data passed to a system call}}
+  system(buffer); // expected-warning {{Untrusted data is passed to a system call}}
 }
 
 void testTaintSystemCall2() {
@@ -124,7 +124,7 @@ void testTaintSystemCall2() {
   char addr[128];
   scanf("%s", addr);
   __builtin_snprintf(buffern, 10, "/bin/mail %s < /tmp/email", addr);
-  system(buffern); // expected-warning {{Tainted data passed to a system call}}
+  system(buffern); // expected-warning {{Untrusted data is passed to a system call}}
 }
 
 void testTaintSystemCall3() {
@@ -133,20 +133,20 @@ void testTaintSystemCall3() {
   char addr[128];
   scanf("%s %d", addr, &numt);
   __builtin_snprintf(buffern2, numt, "/bin/mail %s < /tmp/email", "abcd");
-  system(buffern2); // expected-warning {{Tainted data passed to a system call}}
+  system(buffern2); // expected-warning {{Untrusted data is passed to a system call}}
 }
 
 void testTaintedBufferSize() {
   size_t ts;
   scanf("%zd", &ts);
 
-  int *buf1 = (int*)malloc(ts*sizeof(int)); // expected-warning {{Tainted data is used to specify the buffer size}}
-  char *dst = (char*)calloc(ts, sizeof(char)); //expected-warning {{Tainted data is used to specify the buffer size}}
-  bcopy(buf1, dst, ts); // expected-warning {{Tainted data is used to specify the buffer size}}
-  __builtin_memcpy(dst, buf1, (ts + 4)*sizeof(char)); // expected-warning {{Tainted data is used to specify the buffer size}}
+  int *buf1 = (int*)malloc(ts*sizeof(int)); // expected-warning {{Untrusted data is used to specify the buffer size}}
+  char *dst = (char*)calloc(ts, sizeof(char)); //expected-warning {{Untrusted data is used to specify the buffer size}}
+  bcopy(buf1, dst, ts); // expected-warning {{Untrusted data is used to specify the buffer size}}
+  __builtin_memcpy(dst, buf1, (ts + 4)*sizeof(char)); // expected-warning {{Untrusted data is used to specify the buffer size}}
 
   // If both buffers are trusted, do not issue a warning.
-  char *dst2 = (char*)malloc(ts*sizeof(char)); // expected-warning {{Tainted data is used to specify the buffer size}}
+  char *dst2 = (char*)malloc(ts*sizeof(char)); // expected-warning {{Untrusted data is used to specify the buffer size}}
   strncat(dst2, dst, ts); // no-warning
 }
 
@@ -164,7 +164,7 @@ void testSocket() {
 
   sock = socket(AF_INET, SOCK_STREAM, 0);
   read(sock, buffer, 100);
-  execl(buffer, "filename", 0); // expected-warning {{Tainted data passed to a system call}}
+  execl(buffer, "filename", 0); // expected-warning {{Untrusted data is passed to a system call}}
 
   sock = socket(AF_LOCAL, SOCK_STREAM, 0);
   read(sock, buffer, 100);
@@ -183,3 +183,32 @@ void testTaintedVLASize() {
   scanf("%d", &x);
   int vla[x]; // expected-warning{{Declared variable-length array (VLA) has tainted size}}
 }
+
+// This computation used to take a very long time.
+#define longcmp(a,b,c) { \
+  a -= c;  a ^= c;  c += b; b -= a;  b ^= (a<<6) | (a >> (32-b));  a += c; c -= b;  c ^= b;  b += a; \
+  a -= c;  a ^= c;  c += b; b -= a;  b ^= a;  a += c; c -= b;  c ^= b;  b += a; }
+
+unsigned radar11369570_hanging(const unsigned char *arr, int l) {
+  unsigned a, b, c;
+  a = b = c = 0x9899e3 + l;
+  while (l >= 6) {
+    unsigned t;
+    scanf("%d", &t);
+    a += b;
+    a ^= a;
+    a += (arr[3] + ((unsigned) arr[2] << 8) + ((unsigned) arr[1] << 16) + ((unsigned) arr[0] << 24));
+    longcmp(a, t, c);
+    l -= 12;
+  }
+  return 5/a; // expected-warning {{Division by a tainted value, possibly zero}}
+}
+
+// Check that we do not assert of the following code.
+int SymSymExprWithDiffTypes(void* p) {
+  int i;
+  scanf("%d", &i);
+  int j = (i % (int)(long)p);
+  return 5/j; // expected-warning {{Division by a tainted value, possibly zero}}
+}
+

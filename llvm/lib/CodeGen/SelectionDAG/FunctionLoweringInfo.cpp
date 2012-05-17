@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "function-lowering-info"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
@@ -68,7 +69,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf) {
   GetReturnInfo(Fn->getReturnType(),
                 Fn->getAttributes().getRetAttributes(), Outs, TLI);
   CanLowerReturn = TLI.CanLowerReturn(Fn->getCallingConv(), *MF,
-				      Fn->isVarArg(),
+                                      Fn->isVarArg(),
                                       Outs, Fn->getContext());
 
   // Initialize the mapping of values to registers.  This is only set up for
@@ -95,11 +96,13 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf) {
            (TySize >= 8 && isa<ArrayType>(Ty) &&
             cast<ArrayType>(Ty)->getElementType()->isIntegerTy(8)));
         StaticAllocaMap[AI] =
-          MF->getFrameInfo()->CreateStackObject(TySize, Align, false, MayNeedSP);
+          MF->getFrameInfo()->CreateStackObject(TySize, Align, false,
+                                                MayNeedSP);
       }
 
   for (; BB != EB; ++BB)
-    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
+         I != E; ++I) {
       // Mark values used outside their block as exported, by allocating
       // a virtual register for them.
       if (isUsedOutsideOfDefiningBlock(I))
@@ -355,7 +358,7 @@ void FunctionLoweringInfo::ComputePHILiveOutRegInfo(const PHINode *PN) {
 /// argument. This overrides previous frame index entry for this argument,
 /// if any.
 void FunctionLoweringInfo::setArgumentFrameIndex(const Argument *A,
-                                                      int FI) {
+                                                 int FI) {
   ByValArgFrameIndexMap[A] = FI;
 }
 
@@ -367,8 +370,32 @@ int FunctionLoweringInfo::getArgumentFrameIndex(const Argument *A) {
     ByValArgFrameIndexMap.find(A);
   if (I != ByValArgFrameIndexMap.end())
     return I->second;
-  DEBUG(dbgs() << "Argument does not have assigned frame index!");
+  DEBUG(dbgs() << "Argument does not have assigned frame index!\n");
   return 0;
+}
+
+/// ComputeUsesVAFloatArgument - Determine if any floating-point values are
+/// being passed to this variadic function, and set the MachineModuleInfo's
+/// usesVAFloatArgument flag if so. This flag is used to emit an undefined
+/// reference to _fltused on Windows, which will link in MSVCRT's
+/// floating-point support.
+void llvm::ComputeUsesVAFloatArgument(const CallInst &I,
+                                      MachineModuleInfo *MMI)
+{
+  FunctionType *FT = cast<FunctionType>(
+    I.getCalledValue()->getType()->getContainedType(0));
+  if (FT->isVarArg() && !MMI->usesVAFloatArgument()) {
+    for (unsigned i = 0, e = I.getNumArgOperands(); i != e; ++i) {
+      Type* T = I.getArgOperand(i)->getType();
+      for (po_iterator<Type*> i = po_begin(T), e = po_end(T);
+           i != e; ++i) {
+        if (i->isFloatingPointTy()) {
+          MMI->setUsesVAFloatArgument(true);
+          return;
+        }
+      }
+    }
+  }
 }
 
 /// AddCatchInfo - Extract the personality and type infos from an eh.selector

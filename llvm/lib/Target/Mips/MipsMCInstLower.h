@@ -1,4 +1,4 @@
-//===-- MipsMCInstLower.h - Lower MachineInstr to MCInst -------------------==//
+//===-- MipsMCInstLower.h - Lower MachineInstr to MCInst -------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,31 +14,30 @@
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
-  class MCAsmInfo;
   class MCContext;
   class MCInst;
   class MCOperand;
-  class MCSymbol;
   class MachineInstr;
   class MachineFunction;
   class Mangler;
   class MipsAsmPrinter;
-  
+
 /// MipsMCInstLower - This class is used to lower an MachineInstr into an
 //                    MCInst.
 class LLVM_LIBRARY_VISIBILITY MipsMCInstLower {
   typedef MachineOperand::MachineOperandType MachineOperandType;
-  MCContext &Ctx;
+  MCContext *Ctx;
   Mangler *Mang;
   MipsAsmPrinter &AsmPrinter;
 public:
-  MipsMCInstLower(Mangler *mang, const MachineFunction &MF,
-                  MipsAsmPrinter &asmprinter);  
+  MipsMCInstLower(MipsAsmPrinter &asmprinter);
+  void Initialize(Mangler *mang, MCContext* C);
   void Lower(const MachineInstr *MI, MCInst &OutMI) const;
-  void LowerCPLOAD(const MachineInstr *MI, SmallVector<MCInst, 4>& MCInsts);
-  void LowerCPRESTORE(const MachineInstr *MI, SmallVector<MCInst, 4>& MCInsts); 
+  void LowerCPLOAD(SmallVector<MCInst, 4>& MCInsts);
+  void LowerCPRESTORE(int64_t Offset, SmallVector<MCInst, 4>& MCInsts);
   void LowerUnalignedLoadStore(const MachineInstr *MI,
-		                           SmallVector<MCInst, 4>& MCInsts);
+                               SmallVector<MCInst, 4>& MCInsts);
+  void LowerSETGP01(SmallVector<MCInst, 4>& MCInsts);
 private:
   MCOperand LowerSymbolOperand(const MachineOperand &MO,
                                MachineOperandType MOTy, unsigned Offset) const;

@@ -83,7 +83,7 @@ namespace llvm {
       /// long double expm1l(long double x);
       expm1l,
       /// float expm1f(float x);
-      expl1f,
+      expm1f,
       /// double fabs(double x);
       fabs,
       /// long double fabsl(long double x);
@@ -159,8 +159,14 @@ namespace llvm {
       rint,
       /// float rintf(float x);
       rintf,
-      /// long dobule rintl(long double x);
+      /// long double rintl(long double x);
       rintl,
+      /// double round(double x);
+      round,
+      /// float roundf(float x);
+      roundf,
+      /// long double roundl(long double x);
+      roundl,
       /// double sin(double x);
       sin,
       /// long double sinl(long double x);
@@ -199,6 +205,15 @@ namespace llvm {
       truncf,
       /// long double truncl(long double x);
       truncl,
+      /// int __cxa_atexit(void (*f)(void *), void *p, void *d);
+      cxa_atexit,
+      /// void __cxa_guard_abort(guard_t *guard);
+      /// guard_t is int64_t in Itanium ABI or int32_t on ARM eabi.
+      cxa_guard_abort,      
+      /// int __cxa_guard_acquire(guard_t *guard);
+      cxa_guard_acquire,
+      /// void __cxa_guard_release(guard_t *guard);
+      cxa_guard_release,
 
       NumLibFuncs
     };

@@ -33,8 +33,9 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/config.h"
 #include <algorithm>
-#include <set>
+#include <cstdio>
 #include <map>
+#include <set>
 using namespace llvm;
 
 static cl::opt<std::string>
@@ -193,6 +194,18 @@ static std::string getTypePrefix(Type *Ty) {
 
 void CppWriter::error(const std::string& msg) {
   report_fatal_error(msg);
+}
+
+static inline std::string ftostr(const APFloat& V) {
+  std::string Buf;
+  if (&V.getSemantics() == &APFloat::IEEEdouble) {
+    raw_string_ostream(Buf) << V.convertToDouble();
+    return Buf;
+  } else if (&V.getSemantics() == &APFloat::IEEEsingle) {
+    raw_string_ostream(Buf) << (double)V.convertToFloat();
+    return Buf;
+  }
+  return "<unknown format in ftostr>"; // error
 }
 
 // printCFP - Print a floating point constant .. very carefully :)
@@ -1090,10 +1103,10 @@ void CppWriter::printInstruction(const Instruction *I,
         << getOpName(SI->getDefaultDest()) << ", "
         << SI->getNumCases() << ", " << bbname << ");";
     nl(Out);
-    unsigned NumCases = SI->getNumCases();
-    for (unsigned i = 0; i < NumCases; ++i) {
-      const ConstantInt* CaseVal = SI->getCaseValue(i);
-      const BasicBlock *BB = SI->getCaseSuccessor(i);
+    for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end();
+         i != e; ++i) {
+      const ConstantInt* CaseVal = i.getCaseValue();
+      const BasicBlock *BB = i.getCaseSuccessor();
       Out << iName << "->addCase("
           << getOpName(CaseVal) << ", "
           << getOpName(BB) << ");";

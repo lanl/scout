@@ -22,6 +22,7 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -47,8 +48,7 @@ static struct TripleMap triplemap[] = {
   { Triple::x86,          "i386-unknown-unknown"    },
   { Triple::x86_64,       "x86_64-unknown-unknown"  },
   { Triple::arm,          "arm-unknown-unknown"     },
-  { Triple::thumb,        "thumb-unknown-unknown"   },
-  { Triple::InvalidArch,  NULL,                     }
+  { Triple::thumb,        "thumb-unknown-unknown"   }
 };
 
 /// infoFromArch - Returns the TripleMap corresponding to a given architecture,
@@ -104,27 +104,22 @@ EDDisassembler *EDDisassembler::getDisassembler(StringRef str,
   CPUKey key;
   key.Triple = str.str();
   key.Syntax = syntax;
-  
+
   EDDisassembler::DisassemblerMap_t::iterator i = sDisassemblers.find(key);
-    
+
   if (i != sDisassemblers.end()) {
     return i->second;  
   }
-  else {
-    EDDisassembler *sdd = new EDDisassembler(key);
-    if (!sdd->valid()) {
-      delete sdd;
-      return NULL;
-    }
-    
-    sDisassemblers[key] = sdd;
-    
-    return sdd;
+
+  EDDisassembler *sdd = new EDDisassembler(key);
+  if (!sdd->valid()) {
+    delete sdd;
+    return NULL;
   }
-  
-  return NULL;
-    
-  return getDisassembler(Triple(str).getArch(), syntax);
+
+  sDisassemblers[key] = sdd;
+
+  return sdd;
 }
 
 EDDisassembler::EDDisassembler(CPUKey &key) : 
@@ -133,8 +128,6 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
   ErrorStream(nulls()), 
   Key(key),
   TgtTriple(key.Triple.c_str()) {        
-  if (TgtTriple.getArch() == Triple::InvalidArch)
-    return;
   
   LLVMSyntaxVariant = getLLVMSyntaxVariant(TgtTriple.getArch(), key.Syntax);
   
@@ -173,10 +166,16 @@ EDDisassembler::EDDisassembler(CPUKey &key) :
     return;
     
   InstInfos = Disassembler->getEDInfo();
-  
+
+  MII.reset(Tgt->createMCInstrInfo());
+
+  if (!MII)
+    return;
+
   InstString.reset(new std::string);
   InstStream.reset(new raw_string_ostream(*InstString));
-  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo, *STI));
+  InstPrinter.reset(Tgt->createMCInstPrinter(LLVMSyntaxVariant, *AsmInfo,
+                                             *MII, *MRI, *STI));
   
   if (!InstPrinter)
     return;
@@ -207,8 +206,8 @@ namespace {
                    void *arg) : Callback(callback), Arg(arg) { }
     ~EDMemoryObject() { }
     uint64_t getBase() const { return 0x0; }
-    uint64_t getExtent() { return (uint64_t)-1; }
-    int readByte(uint64_t address, uint8_t *ptr) {
+    uint64_t getExtent() const { return (uint64_t)-1; }
+    int readByte(uint64_t address, uint8_t *ptr) const {
       if (!Callback)
         return -1;
       

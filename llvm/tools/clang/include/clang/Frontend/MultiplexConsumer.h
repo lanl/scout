@@ -35,10 +35,12 @@ public:
 
   // ASTConsumer
   virtual void Initialize(ASTContext &Context);
+  virtual void HandleCXXStaticMemberVarInstantiation(VarDecl *VD);
   virtual bool HandleTopLevelDecl(DeclGroupRef D);
   virtual void HandleInterestingDecl(DeclGroupRef D);
   virtual void HandleTranslationUnit(ASTContext &Ctx);
   virtual void HandleTagDeclDefinition(TagDecl *D);
+  virtual void HandleCXXImplicitFunctionInstantiation(FunctionDecl *D);
   virtual void HandleTopLevelDeclInObjCContainer(DeclGroupRef D);
   virtual void CompleteTentativeDefinition(VarDecl *D);
   virtual void HandleVTable(CXXRecordDecl *RD, bool DefinitionRequired);

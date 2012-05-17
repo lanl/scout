@@ -39,9 +39,9 @@ namespace {
   /// ReduceTable - A static table with information on mapping from wide
   /// opcodes to narrow
   struct ReduceEntry {
-    unsigned WideOpc;      // Wide opcode
-    unsigned NarrowOpc1;   // Narrow opcode to transform to
-    unsigned NarrowOpc2;   // Narrow opcode when it's two-address
+    uint16_t WideOpc;      // Wide opcode
+    uint16_t NarrowOpc1;   // Narrow opcode to transform to
+    uint16_t NarrowOpc2;   // Narrow opcode when it's two-address
     uint8_t  Imm1Limit;    // Limit of immediate field (bits)
     uint8_t  Imm2Limit;    // Limit of immediate field when it's two-address
     unsigned LowRegs1 : 1; // Only possible if low-registers are used
@@ -67,6 +67,7 @@ namespace {
     { ARM::t2BICrr, 0,            ARM::tBIC,     0,   0,    0,   1,  0,0, 1,0 },
     //FIXME: Disable CMN, as CCodes are backwards from compare expectations
     //{ ARM::t2CMNrr, ARM::tCMN,  0,             0,   0,    1,   0,  2,0, 0,0 },
+    { ARM::t2CMNzrr, ARM::tCMNz,  0,             0,   0,    1,   0,  2,0, 0,0 },
     { ARM::t2CMPri, ARM::tCMPi8,  0,             8,   0,    1,   0,  2,0, 0,0 },
     { ARM::t2CMPrr, ARM::tCMPhir, 0,             0,   0,    0,   0,  2,0, 0,1 },
     { ARM::t2EORrr, 0,            ARM::tEOR,     0,   0,    0,   1,  0,0, 1,0 },
@@ -189,7 +190,7 @@ Thumb2SizeReduce::Thumb2SizeReduce() : MachineFunctionPass(ID) {
 }
 
 static bool HasImplicitCPSRDef(const MCInstrDesc &MCID) {
-  for (const unsigned *Regs = MCID.ImplicitDefs; *Regs; ++Regs)
+  for (const uint16_t *Regs = MCID.getImplicitDefs(); *Regs; ++Regs)
     if (*Regs == ARM::CPSR)
       return true;
   return false;
@@ -597,7 +598,24 @@ Thumb2SizeReduce::ReduceTo2Addr(MachineBasicBlock &MBB, MachineInstr *MI,
 
   unsigned Reg0 = MI->getOperand(0).getReg();
   unsigned Reg1 = MI->getOperand(1).getReg();
-  if (Reg0 != Reg1) {
+  // t2MUL is "special". The tied source operand is second, not first.
+  if (MI->getOpcode() == ARM::t2MUL) {
+    unsigned Reg2 = MI->getOperand(2).getReg();
+    // Early exit if the regs aren't all low regs.
+    if (!isARMLowRegister(Reg0) || !isARMLowRegister(Reg1)
+        || !isARMLowRegister(Reg2))
+      return false;
+    if (Reg0 != Reg2) {
+      // If the other operand also isn't the same as the destination, we
+      // can't reduce.
+      if (Reg1 != Reg0)
+        return false;
+      // Try to commute the operands to make it a 2-address instruction.
+      MachineInstr *CommutedMI = TII->commuteInstruction(MI);
+      if (!CommutedMI)
+        return false;
+    }
+  } else if (Reg0 != Reg1) {
     // Try to commute the operands to make it a 2-address instruction.
     unsigned CommOpIdx1, CommOpIdx2;
     if (!TII->findCommutedOpIndices(MI, CommOpIdx1, CommOpIdx2) ||
@@ -834,7 +852,7 @@ bool Thumb2SizeReduce::ReduceMBB(MachineBasicBlock &MBB) {
   // If this BB loops back to itself, conservatively avoid narrowing the
   // first instruction that does partial flag update.
   bool IsSelfLoop = MBB.isSuccessor(&MBB);
-  MachineBasicBlock::instr_iterator MII = MBB.instr_begin(), E = MBB.instr_end();
+  MachineBasicBlock::instr_iterator MII = MBB.instr_begin(),E = MBB.instr_end();
   MachineBasicBlock::instr_iterator NextMII;
   for (; MII != E; MII = NextMII) {
     NextMII = llvm::next(MII);

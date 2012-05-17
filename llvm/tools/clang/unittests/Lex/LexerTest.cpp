@@ -39,12 +39,12 @@ protected:
 
   FileSystemOptions FileMgrOpts;
   FileManager FileMgr;
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID;
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID;
   DiagnosticsEngine Diags;
   SourceManager SourceMgr;
   LangOptions LangOpts;
   TargetOptions TargetOpts;
-  llvm::IntrusiveRefCntPtr<TargetInfo> Target;
+  IntrusiveRefCntPtr<TargetInfo> Target;
 };
 
 class VoidModuleLoader : public ModuleLoader {
@@ -66,10 +66,10 @@ TEST_F(LexerTest, LexAPI) {
     "N(INN(val)) N(NOF1) N(NOF2) N(val)";
 
   MemoryBuffer *buf = MemoryBuffer::getMemBuffer(source);
-  SourceMgr.createMainFileIDForMemBuffer(buf);
+  (void)SourceMgr.createMainFileIDForMemBuffer(buf);
 
   VoidModuleLoader ModLoader;
-  HeaderSearch HeaderInfo(FileMgr, Diags, LangOpts, &*Target);
+  HeaderSearch HeaderInfo(FileMgr, Diags, LangOpts, Target.getPtr());
   Preprocessor PP(Diags, LangOpts,
                   Target.getPtr(),
                   SourceMgr, HeaderInfo, ModLoader,

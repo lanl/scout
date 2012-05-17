@@ -1,4 +1,4 @@
-//=======- X86FrameLowering.cpp - X86 Frame Information --------*- C++ -*-====//
+//===-- X86FrameLowering.cpp - X86 Frame Information ----------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -95,11 +95,11 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
   if (!F || MF->getMMI().callsEHReturn())
     return 0;
 
-  static const unsigned CallerSavedRegs32Bit[] = {
+  static const uint16_t CallerSavedRegs32Bit[] = {
     X86::EAX, X86::EDX, X86::ECX, 0
   };
 
-  static const unsigned CallerSavedRegs64Bit[] = {
+  static const uint16_t CallerSavedRegs64Bit[] = {
     X86::RAX, X86::RDX, X86::RCX, X86::RSI, X86::RDI,
     X86::R8,  X86::R9,  X86::R10, X86::R11, 0
   };
@@ -117,7 +117,7 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
   case X86::TCRETURNmi64:
   case X86::EH_RETURN:
   case X86::EH_RETURN64: {
-    SmallSet<unsigned, 8> Uses;
+    SmallSet<uint16_t, 8> Uses;
     for (unsigned i = 0, e = MBBI->getNumOperands(); i != e; ++i) {
       MachineOperand &MO = MBBI->getOperand(i);
       if (!MO.isReg() || MO.isDef())
@@ -125,11 +125,11 @@ static unsigned findDeadCallerSavedReg(MachineBasicBlock &MBB,
       unsigned Reg = MO.getReg();
       if (!Reg)
         continue;
-      for (const unsigned *AsI = TRI.getOverlaps(Reg); *AsI; ++AsI)
+      for (const uint16_t *AsI = TRI.getOverlaps(Reg); *AsI; ++AsI)
         Uses.insert(*AsI);
     }
 
-    const unsigned *CS = Is64Bit ? CallerSavedRegs64Bit : CallerSavedRegs32Bit;
+    const uint16_t *CS = Is64Bit ? CallerSavedRegs64Bit : CallerSavedRegs32Bit;
     for (; *CS; ++CS)
       if (!Uses.count(*CS))
         return *CS;
@@ -1173,6 +1173,18 @@ int X86FrameLowering::getFrameIndexOffset(const MachineFunction &MF, int FI) con
 
   return Offset;
 }
+
+int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
+                                             unsigned &FrameReg) const {
+  const X86RegisterInfo *RI =
+      static_cast<const X86RegisterInfo*>(MF.getTarget().getRegisterInfo());
+  // We can't calculate offset from frame pointer if the stack is realigned,
+  // so enforce usage of stack pointer.
+  FrameReg = (RI->needsStackRealignment(MF)) ? RI->getStackRegister()
+                                             : RI->getFrameRegister(MF);
+  return getFrameIndexOffset(MF, FI);
+}
+
 
 bool X86FrameLowering::spillCalleeSavedRegisters(MachineBasicBlock &MBB,
                                              MachineBasicBlock::iterator MI,

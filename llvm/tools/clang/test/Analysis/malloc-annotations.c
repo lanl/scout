@@ -6,6 +6,8 @@ void *realloc(void *ptr, size_t size);
 void *calloc(size_t nmemb, size_t size);
 void __attribute((ownership_returns(malloc))) *my_malloc(size_t);
 void __attribute((ownership_takes(malloc, 1))) my_free(void *);
+void my_freeBoth(void *, void *)
+       __attribute((ownership_holds(malloc, 1, 2)));
 void __attribute((ownership_returns(malloc, 1))) *my_malloc2(size_t);
 void __attribute((ownership_holds(malloc, 1))) my_hold(void *);
 
@@ -24,19 +26,19 @@ struct stuff myglobalstuff;
 
 void f1() {
   int *p = malloc(12);
-  return; // expected-warning{{Allocated memory never released. Potential memory leak.}}
+  return; // expected-warning{{Memory is never released; potential leak}}
 }
 
 void f2() {
   int *p = malloc(12);
   free(p);
-  free(p); // expected-warning{{Try to free a memory block that has been released}}
+  free(p); // expected-warning{{Attempt to free released memory}}
 }
 
 void f2_realloc_0() {
   int *p = malloc(12);
   realloc(p,0);
-  realloc(p,0); // expected-warning{{Try to free a memory block that has been released}}
+  realloc(p,0); // expected-warning{{Attempt to free released memory}}
 }
 
 void f2_realloc_1() {
@@ -52,25 +54,26 @@ void naf1() {
 
 void n2af1() {
   int *p = my_malloc2(12);
-  return; // expected-warning{{Allocated memory never released. Potential memory leak.}}
+  return; // expected-warning{{Memory is never released; potential leak}}
 }
 
 void af1() {
   int *p = my_malloc(12);
-  return; // expected-warning{{Allocated memory never released. Potential memory leak.}}
+  return; // expected-warning{{Memory is never released; potential leak}}
 }
 
 void af1_b() {
-  int *p = my_malloc(12); // expected-warning{{Allocated memory never released. Potential memory leak.}}
+  int *p = my_malloc(12); // expected-warning{{Memory is never released; potential leak}}
 }
 
 void af1_c() {
   myglobalpointer = my_malloc(12); // no-warning
 }
 
+// TODO: We will be able to handle this after we add support for tracking allocations stored in struct fields.
 void af1_d() {
   struct stuff mystuff;
-  mystuff.somefield = my_malloc(12); // expected-warning{{Allocated memory never released. Potential memory leak.}}
+  mystuff.somefield = my_malloc(12); // false negative
 }
 
 // Test that we can pass out allocated memory via pointer-to-pointer.
@@ -91,25 +94,25 @@ void af1_g(struct stuff **pps) {
 void af2() {
   int *p = my_malloc(12);
   my_free(p);
-  free(p); // expected-warning{{Try to free a memory block that has been released}}
+  free(p); // expected-warning{{Attempt to free released memory}}
 }
 
 void af2b() {
   int *p = my_malloc(12);
   free(p);
-  my_free(p); // expected-warning{{Try to free a memory block that has been released}}
+  my_free(p); // expected-warning{{Attempt to free released memory}}
 }
 
 void af2c() {
   int *p = my_malloc(12);
   free(p);
-  my_hold(p); // expected-warning{{Try to free a memory block that has been released}}
+  my_hold(p); // expected-warning{{Attempt to free released memory}}
 }
 
 void af2d() {
   int *p = my_malloc(12);
   free(p);
-  my_hold2(0, 0, p); // expected-warning{{Try to free a memory block that has been released}}
+  my_hold2(0, 0, p); // expected-warning{{Attempt to free released memory}}
 }
 
 // No leak if malloc returns null.
@@ -128,12 +131,10 @@ void af3() {
   free(p); // no-warning
 }
 
-// This case would inflict a double-free elsewhere.
-// However, this case is considered an analyzer bug since it causes false-positives.
 int * af4() {
   int *p = my_malloc(12);
   my_free(p);
-  return p; // no-warning
+  return p; // expected-warning{{Use of memory after it is freed}}
 }
 
 // This case is (possibly) ok, be conservative
@@ -199,13 +200,13 @@ void pr6293() {
 void f7() {
   char *x = (char*) malloc(4);
   free(x);
-  x[0] = 'a'; // expected-warning{{Use dynamically allocated memory after it is freed.}}
+  x[0] = 'a'; // expected-warning{{Use of memory after it is freed}}
 }
 
 void f7_realloc() {
   char *x = (char*) malloc(4);
   realloc(x,0);
-  x[0] = 'a'; // expected-warning{{Use dynamically allocated memory after it is freed.}}
+  x[0] = 'a'; // expected-warning{{Use of memory after it is freed}}
 }
 
 void PR6123() {
@@ -261,3 +262,10 @@ char callocZeroesBad () {
   }
   return result; // expected-warning{{never released}}
 }
+
+void testMultipleFreeAnnotations() {
+  int *p = malloc(12);
+  int *q = malloc(12);
+  my_freeBoth(p, q);
+}
+

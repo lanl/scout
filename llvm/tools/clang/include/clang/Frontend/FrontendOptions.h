@@ -46,6 +46,7 @@ namespace frontend {
     RewriteObjC,            ///< ObjC->C Rewriter.
     RewriteTest,            ///< Rewriter playground
     RunAnalysis,            ///< Run one or more source code analyses.
+    MigrateSource,          ///< Run migrator.
     RunPreprocessorOnly     ///< Just lex, no output.
   };
 }
@@ -114,6 +115,10 @@ public:
   unsigned FixToTemporaries : 1;           ///< Apply fixes to temporary files.
   unsigned ARCMTMigrateEmitARCErrors : 1;  /// Emit ARC errors even if the
                                            /// migrator can fix them
+  unsigned SkipFunctionBodies : 1;         ///< Skip over function bodies to
+                                           /// speed up parsing in cases you do
+                                           /// not need them (e.g. with code
+                                           /// completion).
 
   // SCOUTCODE ndm - Scout View AST option
   unsigned ViewAST : 1;
@@ -126,7 +131,16 @@ public:
     ARCMT_Migrate
   } ARCMTAction;
 
-  std::string ARCMTMigrateDir;
+  enum {
+    ObjCMT_None = 0,
+    /// \brief Enable migration to modern ObjC literals.
+    ObjCMT_Literals = 0x1,
+    /// \brief Enable migration to modern ObjC subscripting.
+    ObjCMT_Subscripting = 0x2
+  };
+  unsigned ObjCMTAction;
+
+  std::string MTMigrateDir;
   std::string ARCMTMigrateReportOut;
 
   /// The input files and their types.
@@ -190,6 +204,8 @@ public:
     ShowVersion = 0;
     ARCMTAction = ARCMT_None;
     ARCMTMigrateEmitARCErrors = 0;
+    SkipFunctionBodies = 0;
+    ObjCMTAction = ObjCMT_None;
   }
 
   /// getInputKindForExtension - Return the appropriate input kind for a file

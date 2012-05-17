@@ -14,6 +14,7 @@
 #include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/Debug.h"
@@ -188,6 +189,7 @@ StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
   case VK_TPOFF: return "TPOFF";
   case VK_DTPOFF: return "DTPOFF";
   case VK_TLVP: return "TLVP";
+  case VK_SECREL: return "SECREL";
   case VK_ARM_PLT: return "(PLT)";
   case VK_ARM_GOT: return "(GOT)";
   case VK_ARM_GOTOFF: return "(GOTOFF)";
@@ -355,6 +357,11 @@ static void AttemptToFoldSymbolOffsetDifference(const MCAssembler *Asm,
              Layout->getSymbolOffset(&Asm->getSymbolData(B->getSymbol())));
   if (Addrs && (&SecA != &SecB))
     Addend += (Addrs->lookup(&SecA) - Addrs->lookup(&SecB));
+
+  // Pointers to Thumb symbols need to have their low-bit set to allow
+  // for interworking.
+  if (Asm->isThumbFunc(&SA))
+    Addend |= 1;
 
   // Clear the symbol expr pointers to indicate we have folded these
   // operands.

@@ -1,4 +1,4 @@
-//=====-- SparcMCAsmInfo.h - Sparc asm properties -------------*- C++ -*--====//
+//===-- SparcMCAsmInfo.h - Sparc asm properties ----------------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,10 +14,10 @@
 #ifndef SPARCTARGETASMINFO_H
 #define SPARCTARGETASMINFO_H
 
-#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfo.h"
 
 namespace llvm {
+  class StringRef;
   class Target;
 
   class SparcELFMCAsmInfo : public MCAsmInfo {

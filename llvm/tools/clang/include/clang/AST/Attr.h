@@ -40,19 +40,17 @@ namespace clang {
 
 // Defined in ASTContext.h
 void *operator new(size_t Bytes, const clang::ASTContext &C,
-                   size_t Alignment = 16) throw ();
+                   size_t Alignment = 16);
 // FIXME: Being forced to not have a default argument here due to redeclaration
 //        rules on default arguments sucks
 void *operator new[](size_t Bytes, const clang::ASTContext &C,
-                     size_t Alignment) throw ();
+                     size_t Alignment);
 
 // It is good practice to pair new/delete operators.  Also, MSVC gives many
 // warnings if a matching delete overload is not declared, even though the
 // throw() spec guarantees it will not be implicitly called.
-void operator delete(void *Ptr, const clang::ASTContext &C, size_t)
-              throw ();
-void operator delete[](void *Ptr, const clang::ASTContext &C, size_t)
-              throw ();
+void operator delete(void *Ptr, const clang::ASTContext &C, size_t);
+void operator delete[](void *Ptr, const clang::ASTContext &C, size_t);
 
 namespace clang {
 
@@ -148,10 +146,6 @@ public:
 /// AttrVec - A vector of Attr, which is how they are stored on the AST.
 typedef SmallVector<Attr*, 2> AttrVec;
 typedef SmallVector<const Attr*, 2> ConstAttrVec;
-
-/// DestroyAttrs - Destroy the contents of an AttrVec.
-inline void DestroyAttrs (AttrVec& V, ASTContext &C) {
-}
 
 /// specific_attr_iterator - Iterates over a subrange of an AttrVec, only
 /// providing attributes that are of a specifc type.

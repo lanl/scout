@@ -123,6 +123,8 @@ namespace {
 
     /// \brief The allocator used to allocate new code-completion strings.
     CodeCompletionAllocator &Allocator;
+
+    CodeCompletionTUInfo &CCTUInfo;
     
     /// \brief If non-NULL, a filter function used to remove any code-completion
     /// results that are not desirable.
@@ -166,9 +168,11 @@ namespace {
     
   public:
     explicit ResultBuilder(Sema &SemaRef, CodeCompletionAllocator &Allocator,
+                           CodeCompletionTUInfo &CCTUInfo,
                            const CodeCompletionContext &CompletionContext,
                            LookupFilter Filter = 0)
-      : SemaRef(SemaRef), Allocator(Allocator), Filter(Filter), 
+      : SemaRef(SemaRef), Allocator(Allocator), CCTUInfo(CCTUInfo),
+        Filter(Filter), 
         AllowNestedNameSpecifiers(false), HasObjectTypeQualifiers(false), 
         CompletionContext(CompletionContext),
         ObjCImplementation(0) 
@@ -251,6 +255,8 @@ namespace {
     
     /// \brief Retrieve the allocator used to allocate code completion strings.
     CodeCompletionAllocator &getAllocator() const { return Allocator; }
+
+    CodeCompletionTUInfo &getCodeCompletionTUInfo() const { return CCTUInfo; }
     
     /// \brief Determine whether the given declaration is at all interesting
     /// as a code-completion result.
@@ -274,9 +280,9 @@ namespace {
     /// of the shadow maps), or replace an existing result (for, e.g., a 
     /// redeclaration).
     ///
-    /// \param CurContext the result to add (if it is unique).
+    /// \param R the result to add (if it is unique).
     ///
-    /// \param R the context in which this result will be named.
+    /// \param CurContext the context in which this result will be named.
     void MaybeAddResult(Result R, DeclContext *CurContext = 0);
     
     /// \brief Add a new result to this result set, where we already know
@@ -325,6 +331,7 @@ namespace {
     bool IsMember(NamedDecl *ND) const;
     bool IsObjCIvar(NamedDecl *ND) const;
     bool IsObjCMessageReceiver(NamedDecl *ND) const;
+    bool IsObjCMessageReceiverOrLambdaCapture(NamedDecl *ND) const;
     bool IsObjCCollection(NamedDecl *ND) const;
     bool IsImpossibleToSatisfy(NamedDecl *ND) const;
     //@}    
@@ -513,14 +520,6 @@ bool ResultBuilder::isInterestingDecl(NamedDecl *ND,
         return false;
     }
   }
-   
-  // Skip out-of-line declarations and definitions.
-  // NOTE: Unless it's an Objective-C property, method, or ivar, where
-  // the contexts can be messy.
-  if (!ND->getDeclContext()->Equals(ND->getLexicalDeclContext()) &&
-      !(isa<ObjCPropertyDecl>(ND) || isa<ObjCIvarDecl>(ND) ||
-        isa<ObjCMethodDecl>(ND)))
-    return false;
 
   if (Filter == &ResultBuilder::IsNestedNameSpecifier ||
       ((isa<NamespaceDecl>(ND) || isa<NamespaceAliasDecl>(ND)) &&
@@ -532,7 +531,7 @@ bool ResultBuilder::isInterestingDecl(NamedDecl *ND,
   // Filter out any unwanted results.
   if (Filter && !(this->*Filter)(ND)) {
     // Check whether it is interesting as a nested-name-specifier.
-    if (AllowNestedNameSpecifiers && SemaRef.getLangOptions().CPlusPlus && 
+    if (AllowNestedNameSpecifiers && SemaRef.getLangOpts().CPlusPlus && 
         IsNestedNameSpecifier(ND) &&
         (Filter != &ResultBuilder::IsMember ||
          (isa<CXXRecordDecl>(ND) && 
@@ -552,7 +551,7 @@ bool ResultBuilder::CheckHiddenResult(Result &R, DeclContext *CurContext,
   // In C, there is no way to refer to a hidden name.
   // FIXME: This isn't true; we can find a tag name hidden by an ordinary
   // name if we introduce the tag type.
-  if (!SemaRef.getLangOptions().CPlusPlus)
+  if (!SemaRef.getLangOpts().CPlusPlus)
     return true;
   
   DeclContext *HiddenCtx = R.Declaration->getDeclContext()->getRedeclContext();
@@ -731,7 +730,7 @@ void ResultBuilder::AdjustResultPriorityForDecl(Result &R) {
 }
 
 void ResultBuilder::MaybeAddConstructorResults(Result R) {
-  if (!SemaRef.getLangOptions().CPlusPlus || !R.Declaration ||
+  if (!SemaRef.getLangOpts().CPlusPlus || !R.Declaration ||
       !CompletionContext.wantConstructorResults())
     return;
   
@@ -903,7 +902,7 @@ void ResultBuilder::AddResult(Result R, DeclContext *CurContext,
 
   if (Hiding && CheckHiddenResult(R, CurContext, Hiding))
     return;
-      
+
   // Make sure that any given declaration only shows up in the result set once.
   if (!AllDeclsFound.insert(R.Declaration->getCanonicalDecl()))
     return;
@@ -987,9 +986,9 @@ bool ResultBuilder::IsOrdinaryName(NamedDecl *ND) const {
   ND = cast<NamedDecl>(ND->getUnderlyingDecl());
 
   unsigned IDNS = Decl::IDNS_Ordinary;
-  if (SemaRef.getLangOptions().CPlusPlus)
+  if (SemaRef.getLangOpts().CPlusPlus)
     IDNS |= Decl::IDNS_Tag | Decl::IDNS_Namespace | Decl::IDNS_Member;
-  else if (SemaRef.getLangOptions().ObjC1) {
+  else if (SemaRef.getLangOpts().ObjC1) {
     if (isa<ObjCIvarDecl>(ND))
       return true;
   }
@@ -1005,9 +1004,9 @@ bool ResultBuilder::IsOrdinaryNonTypeName(NamedDecl *ND) const {
     return false;
   
   unsigned IDNS = Decl::IDNS_Ordinary;
-  if (SemaRef.getLangOptions().CPlusPlus)
+  if (SemaRef.getLangOpts().CPlusPlus)
     IDNS |= Decl::IDNS_Tag | Decl::IDNS_Namespace | Decl::IDNS_Member;
-  else if (SemaRef.getLangOptions().ObjC1) {
+  else if (SemaRef.getLangOpts().ObjC1) {
     if (isa<ObjCIvarDecl>(ND))
       return true;
   }
@@ -1032,7 +1031,7 @@ bool ResultBuilder::IsOrdinaryNonValueName(NamedDecl *ND) const {
   ND = cast<NamedDecl>(ND->getUnderlyingDecl());
 
   unsigned IDNS = Decl::IDNS_Ordinary;
-  if (SemaRef.getLangOptions().CPlusPlus)
+  if (SemaRef.getLangOpts().CPlusPlus)
     IDNS |= Decl::IDNS_Tag | Decl::IDNS_Namespace;
   
   return (ND->getIdentifierNamespace() & IDNS) && 
@@ -1134,7 +1133,7 @@ static bool isObjCReceiverType(ASTContext &C, QualType T) {
     break;
   }
   
-  if (!C.getLangOptions().CPlusPlus)
+  if (!C.getLangOpts().CPlusPlus)
     return false;
 
   // FIXME: We could perform more analysis here to determine whether a 
@@ -1152,9 +1151,20 @@ bool ResultBuilder::IsObjCMessageReceiver(NamedDecl *ND) const {
   return isObjCReceiverType(SemaRef.Context, T);
 }
 
+bool ResultBuilder::IsObjCMessageReceiverOrLambdaCapture(NamedDecl *ND) const {
+  if (IsObjCMessageReceiver(ND))
+    return true;
+  
+  VarDecl *Var = dyn_cast<VarDecl>(ND);
+  if (!Var)
+    return false;
+  
+  return Var->hasLocalStorage() && !Var->hasAttr<BlocksAttr>();
+}
+
 bool ResultBuilder::IsObjCCollection(NamedDecl *ND) const {
-  if ((SemaRef.getLangOptions().CPlusPlus && !IsOrdinaryName(ND)) ||
-      (!SemaRef.getLangOptions().CPlusPlus && !IsOrdinaryNonTypeName(ND)))
+  if ((SemaRef.getLangOpts().CPlusPlus && !IsOrdinaryName(ND)) ||
+      (!SemaRef.getLangOpts().CPlusPlus && !IsOrdinaryNonTypeName(ND)))
     return false;
   
   QualType T = getDeclUsageType(SemaRef.Context, ND);
@@ -1164,7 +1174,7 @@ bool ResultBuilder::IsObjCCollection(NamedDecl *ND) const {
   T = SemaRef.Context.getBaseElementType(T);
   return T->isObjCObjectType() || T->isObjCObjectPointerType() ||
          T->isObjCIdType() || 
-         (SemaRef.getLangOptions().CPlusPlus && T->isRecordType());
+         (SemaRef.getLangOpts().CPlusPlus && T->isRecordType());
 }
 
 bool ResultBuilder::IsImpossibleToSatisfy(NamedDecl *ND) const {
@@ -1227,7 +1237,8 @@ static void AddTypeSpecifierResults(const LangOptions &LangOpts,
     Results.AddResult(Result("restrict", CCP_Type));
   }
   
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   if (LangOpts.CPlusPlus) {
     // C++-specific
     Results.AddResult(Result("bool", CCP_Type + 
@@ -1337,7 +1348,8 @@ static void AddObjCInterfaceResults(const LangOptions &LangOpts,
 static void AddObjCTopLevelResults(ResultBuilder &Results, bool NeedAt);
 
 static void AddTypedefResult(ResultBuilder &Results) {
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   Builder.AddTypedTextChunk("typedef");
   Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
   Builder.AddPlaceholderChunk("type");
@@ -1402,7 +1414,7 @@ static const char *GetCompletionTypeString(QualType T,
   if (!T.getLocalQualifiers()) {
     // Built-in type names are constant strings.
     if (const BuiltinType *BT = dyn_cast<BuiltinType>(T))
-      return BT->getName(Policy);
+      return BT->getNameAsCString(Policy);
     
     // Anonymous tag types are constant strings.
     if (const TagType *TagT = dyn_cast<TagType>(T))
@@ -1423,19 +1435,36 @@ static const char *GetCompletionTypeString(QualType T,
   return Allocator.CopyString(Result);
 }
 
+/// \brief Add a completion for "this", if we're in a member function.
+static void addThisCompletion(Sema &S, ResultBuilder &Results) {
+  QualType ThisTy = S.getCurrentThisType();
+  if (ThisTy.isNull())
+    return;
+  
+  CodeCompletionAllocator &Allocator = Results.getAllocator();
+  CodeCompletionBuilder Builder(Allocator, Results.getCodeCompletionTUInfo());
+  PrintingPolicy Policy = getCompletionPrintingPolicy(S);
+  Builder.AddResultTypeChunk(GetCompletionTypeString(ThisTy, 
+                                                     S.Context, 
+                                                     Policy,
+                                                     Allocator));
+  Builder.AddTypedTextChunk("this");
+  Results.AddResult(CodeCompletionResult(Builder.TakeString()));            
+}
+
 /// \brief Add language constructs that show up for "ordinary" names.
 static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
                                    Scope *S,
                                    Sema &SemaRef,
                                    ResultBuilder &Results) {
   CodeCompletionAllocator &Allocator = Results.getAllocator();
-  CodeCompletionBuilder Builder(Allocator);
+  CodeCompletionBuilder Builder(Allocator, Results.getCodeCompletionTUInfo());
   PrintingPolicy Policy = getCompletionPrintingPolicy(SemaRef);
   
   typedef CodeCompletionResult Result;
   switch (CCC) {
   case Sema::PCC_Namespace:
-    if (SemaRef.getLangOptions().CPlusPlus) {
+    if (SemaRef.getLangOpts().CPlusPlus) {
       if (Results.includeCodePatterns()) {
         // namespace <identifier> { declarations }
         Builder.AddTypedTextChunk("namespace");
@@ -1480,14 +1509,14 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       }
     }
       
-    if (SemaRef.getLangOptions().ObjC1)
+    if (SemaRef.getLangOpts().ObjC1)
       AddObjCTopLevelResults(Results, true);
       
     AddTypedefResult(Results);
     // Fall through
 
   case Sema::PCC_Class:
-    if (SemaRef.getLangOptions().CPlusPlus) {
+    if (SemaRef.getLangOpts().CPlusPlus) {
       // Using declaration
       Builder.AddTypedTextChunk("using");
       Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
@@ -1513,17 +1542,20 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
 
         // public:
         Builder.AddTypedTextChunk("public");
-        Builder.AddChunk(CodeCompletionString::CK_Colon);
+        if (Results.includeCodePatterns())
+          Builder.AddChunk(CodeCompletionString::CK_Colon);
         Results.AddResult(Result(Builder.TakeString()));
 
         // protected:
         Builder.AddTypedTextChunk("protected");
-        Builder.AddChunk(CodeCompletionString::CK_Colon);
+        if (Results.includeCodePatterns())
+          Builder.AddChunk(CodeCompletionString::CK_Colon);
         Results.AddResult(Result(Builder.TakeString()));
 
         // private:
         Builder.AddTypedTextChunk("private");
-        Builder.AddChunk(CodeCompletionString::CK_Colon);
+        if (Results.includeCodePatterns())
+          Builder.AddChunk(CodeCompletionString::CK_Colon);
         Results.AddResult(Result(Builder.TakeString()));
       }
     }
@@ -1531,7 +1563,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
 
   case Sema::PCC_Template:
   case Sema::PCC_MemberTemplate:
-    if (SemaRef.getLangOptions().CPlusPlus && Results.includeCodePatterns()) {
+    if (SemaRef.getLangOpts().CPlusPlus && Results.includeCodePatterns()) {
       // template < parameters >
       Builder.AddTypedTextChunk("template");
       Builder.AddChunk(CodeCompletionString::CK_LeftAngle);
@@ -1540,32 +1572,32 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       Results.AddResult(Result(Builder.TakeString()));
     }
 
-    AddStorageSpecifiers(CCC, SemaRef.getLangOptions(), Results);
-    AddFunctionSpecifiers(CCC, SemaRef.getLangOptions(), Results);
+    AddStorageSpecifiers(CCC, SemaRef.getLangOpts(), Results);
+    AddFunctionSpecifiers(CCC, SemaRef.getLangOpts(), Results);
     break;
 
   case Sema::PCC_ObjCInterface:
-    AddObjCInterfaceResults(SemaRef.getLangOptions(), Results, true);
-    AddStorageSpecifiers(CCC, SemaRef.getLangOptions(), Results);
-    AddFunctionSpecifiers(CCC, SemaRef.getLangOptions(), Results);
+    AddObjCInterfaceResults(SemaRef.getLangOpts(), Results, true);
+    AddStorageSpecifiers(CCC, SemaRef.getLangOpts(), Results);
+    AddFunctionSpecifiers(CCC, SemaRef.getLangOpts(), Results);
     break;
       
   case Sema::PCC_ObjCImplementation:
-    AddObjCImplementationResults(SemaRef.getLangOptions(), Results, true);
-    AddStorageSpecifiers(CCC, SemaRef.getLangOptions(), Results);
-    AddFunctionSpecifiers(CCC, SemaRef.getLangOptions(), Results);
+    AddObjCImplementationResults(SemaRef.getLangOpts(), Results, true);
+    AddStorageSpecifiers(CCC, SemaRef.getLangOpts(), Results);
+    AddFunctionSpecifiers(CCC, SemaRef.getLangOpts(), Results);
     break;
       
   case Sema::PCC_ObjCInstanceVariableList:
-    AddObjCVisibilityResults(SemaRef.getLangOptions(), Results, true);
+    AddObjCVisibilityResults(SemaRef.getLangOpts(), Results, true);
     break;
       
   case Sema::PCC_RecoveryInFunction:
   case Sema::PCC_Statement: {
     AddTypedefResult(Results);
 
-    if (SemaRef.getLangOptions().CPlusPlus && Results.includeCodePatterns() &&
-        SemaRef.getLangOptions().CXXExceptions) {
+    if (SemaRef.getLangOpts().CPlusPlus && Results.includeCodePatterns() &&
+        SemaRef.getLangOpts().CXXExceptions) {
       Builder.AddTypedTextChunk("try");
       Builder.AddChunk(CodeCompletionString::CK_LeftBrace);
       Builder.AddPlaceholderChunk("statements");
@@ -1581,14 +1613,14 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       Builder.AddChunk(CodeCompletionString::CK_RightBrace);
       Results.AddResult(Result(Builder.TakeString()));
     }
-    if (SemaRef.getLangOptions().ObjC1)
+    if (SemaRef.getLangOpts().ObjC1)
       AddObjCStatementResults(Results, true);
     
     if (Results.includeCodePatterns()) {
       // if (condition) { statements }
       Builder.AddTypedTextChunk("if");
       Builder.AddChunk(CodeCompletionString::CK_LeftParen);
-      if (SemaRef.getLangOptions().CPlusPlus)
+      if (SemaRef.getLangOpts().CPlusPlus)
         Builder.AddPlaceholderChunk("condition");
       else
         Builder.AddPlaceholderChunk("expression");
@@ -1602,7 +1634,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       // switch (condition) { }
       Builder.AddTypedTextChunk("switch");
       Builder.AddChunk(CodeCompletionString::CK_LeftParen);
-      if (SemaRef.getLangOptions().CPlusPlus)
+      if (SemaRef.getLangOpts().CPlusPlus)
         Builder.AddPlaceholderChunk("condition");
       else
         Builder.AddPlaceholderChunk("expression");
@@ -1632,7 +1664,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       /// while (condition) { statements }
       Builder.AddTypedTextChunk("while");
       Builder.AddChunk(CodeCompletionString::CK_LeftParen);
-      if (SemaRef.getLangOptions().CPlusPlus)
+      if (SemaRef.getLangOpts().CPlusPlus)
         Builder.AddPlaceholderChunk("condition");
       else
         Builder.AddPlaceholderChunk("expression");
@@ -1658,7 +1690,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       // for ( for-init-statement ; condition ; expression ) { statements }
       Builder.AddTypedTextChunk("for");
       Builder.AddChunk(CodeCompletionString::CK_LeftParen);
-      if (SemaRef.getLangOptions().CPlusPlus || SemaRef.getLangOptions().C99)
+      if (SemaRef.getLangOpts().CPlusPlus || SemaRef.getLangOpts().C99)
         Builder.AddPlaceholderChunk("init-statement");
       else
         Builder.AddPlaceholderChunk("init-expression");
@@ -1723,11 +1755,11 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
   // Fall through (for statement expressions).
   case Sema::PCC_ForInit:
   case Sema::PCC_Condition:
-    AddStorageSpecifiers(CCC, SemaRef.getLangOptions(), Results);
+    AddStorageSpecifiers(CCC, SemaRef.getLangOpts(), Results);
     // Fall through: conditions and statements can have expressions.
 
   case Sema::PCC_ParenthesizedExpression:
-    if (SemaRef.getLangOptions().ObjCAutoRefCount &&
+    if (SemaRef.getLangOpts().ObjCAutoRefCount &&
         CCC == Sema::PCC_ParenthesizedExpression) {
       // (__bridge <type>)<expression>
       Builder.AddTypedTextChunk("__bridge");
@@ -1756,17 +1788,9 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
     // Fall through
 
   case Sema::PCC_Expression: {
-    if (SemaRef.getLangOptions().CPlusPlus) {
+    if (SemaRef.getLangOpts().CPlusPlus) {
       // 'this', if we're in a non-static member function.
-      QualType ThisTy = SemaRef.getCurrentThisType();
-      if (!ThisTy.isNull()) {
-        Builder.AddResultTypeChunk(GetCompletionTypeString(ThisTy, 
-                                                           SemaRef.Context, 
-                                                           Policy,
-                                                           Allocator));
-        Builder.AddTypedTextChunk("this");
-        Results.AddResult(Result(Builder.TakeString()));      
-      }
+      addThisCompletion(SemaRef, Results);
       
       // true
       Builder.AddResultTypeChunk("bool");
@@ -1778,7 +1802,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       Builder.AddTypedTextChunk("false");
       Results.AddResult(Result(Builder.TakeString()));
 
-      if (SemaRef.getLangOptions().RTTI) {
+      if (SemaRef.getLangOpts().RTTI) {
         // dynamic_cast < type-id > ( expression )
         Builder.AddTypedTextChunk("dynamic_cast");
         Builder.AddChunk(CodeCompletionString::CK_LeftAngle);
@@ -1820,7 +1844,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       Builder.AddChunk(CodeCompletionString::CK_RightParen);
       Results.AddResult(Result(Builder.TakeString()));      
 
-      if (SemaRef.getLangOptions().RTTI) {
+      if (SemaRef.getLangOpts().RTTI) {
         // typeid ( expression-or-type )
         Builder.AddResultTypeChunk("std::type_info");
         Builder.AddTypedTextChunk("typeid");
@@ -1868,7 +1892,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       Builder.AddPlaceholderChunk("expression");
       Results.AddResult(Result(Builder.TakeString()));
 
-      if (SemaRef.getLangOptions().CXXExceptions) {
+      if (SemaRef.getLangOpts().CXXExceptions) {
         // throw expression
         Builder.AddResultTypeChunk("void");
         Builder.AddTypedTextChunk("throw");
@@ -1879,7 +1903,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
      
       // FIXME: Rethrow?
 
-      if (SemaRef.getLangOptions().CPlusPlus0x) {
+      if (SemaRef.getLangOpts().CPlusPlus0x) {
         // nullptr
         Builder.AddResultTypeChunk("std::nullptr_t");
         Builder.AddTypedTextChunk("nullptr");
@@ -1911,7 +1935,7 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
       }
     }
 
-    if (SemaRef.getLangOptions().ObjC1) {
+    if (SemaRef.getLangOpts().ObjC1) {
       // Add "super", if we're in an Objective-C class with a superclass.
       if (ObjCMethodDecl *Method = SemaRef.getCurMethodDecl()) {
         // The interface can be NULL.
@@ -1946,10 +1970,10 @@ static void AddOrdinaryNameResults(Sema::ParserCompletionContext CCC,
     break;
   }
 
-  if (WantTypesInContext(CCC, SemaRef.getLangOptions()))
-    AddTypeSpecifierResults(SemaRef.getLangOptions(), Results);
+  if (WantTypesInContext(CCC, SemaRef.getLangOpts()))
+    AddTypeSpecifierResults(SemaRef.getLangOpts(), Results);
 
-  if (SemaRef.getLangOptions().CPlusPlus && CCC != Sema::PCC_Type)
+  if (SemaRef.getLangOpts().CPlusPlus && CCC != Sema::PCC_Type)
     Results.AddResult(Result("operator"));
 }
 
@@ -1995,7 +2019,7 @@ static void MaybeAddSentinel(ASTContext &Context, NamedDecl *FunctionOrMethod,
                              CodeCompletionBuilder &Result) {
   if (SentinelAttr *Sentinel = FunctionOrMethod->getAttr<SentinelAttr>())
     if (Sentinel->getSentinel() == 0) {
-      if (Context.getLangOptions().ObjC1 &&
+      if (Context.getLangOpts().ObjC1 &&
           Context.Idents.get("nil").hasMacroDefinition())
         Result.AddTextChunk(", nil");
       else if (Context.Idents.get("NULL").hasMacroDefinition())
@@ -2159,7 +2183,6 @@ static void AddFunctionParameterChunks(ASTContext &Context,
                                        CodeCompletionBuilder &Result,
                                        unsigned Start = 0,
                                        bool InOptional = false) {
-  typedef CodeCompletionString::Chunk Chunk;
   bool FirstParameter = true;
   
   for (unsigned P = Start, N = Function->getNumParams(); P != N; ++P) {
@@ -2168,9 +2191,10 @@ static void AddFunctionParameterChunks(ASTContext &Context,
     if (Param->hasDefaultArg() && !InOptional) {
       // When we see an optional default argument, put that argument and
       // the remaining default arguments into a new, optional string.
-      CodeCompletionBuilder Opt(Result.getAllocator());
+      CodeCompletionBuilder Opt(Result.getAllocator(),
+                                Result.getCodeCompletionTUInfo());
       if (!FirstParameter)
-        Opt.AddChunk(Chunk(CodeCompletionString::CK_Comma));        
+        Opt.AddChunk(CodeCompletionString::CK_Comma);
       AddFunctionParameterChunks(Context, Policy, Function, Opt, P, true);
       Result.AddOptionalChunk(Opt.TakeString());
       break;
@@ -2179,7 +2203,7 @@ static void AddFunctionParameterChunks(ASTContext &Context,
     if (FirstParameter)
       FirstParameter = false;
     else
-      Result.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+      Result.AddChunk(CodeCompletionString::CK_Comma);
     
     InOptional = false;
     
@@ -2213,7 +2237,6 @@ static void AddTemplateParameterChunks(ASTContext &Context,
                                        unsigned MaxParameters = 0,
                                        unsigned Start = 0,
                                        bool InDefaultArg = false) {
-  typedef CodeCompletionString::Chunk Chunk;
   bool FirstParameter = true;
   
   TemplateParameterList *Params = Template->getTemplateParameters();
@@ -2260,9 +2283,10 @@ static void AddTemplateParameterChunks(ASTContext &Context,
     if (HasDefaultArg && !InDefaultArg) {
       // When we see an optional default argument, put that argument and
       // the remaining default arguments into a new, optional string.
-      CodeCompletionBuilder Opt(Result.getAllocator());
+      CodeCompletionBuilder Opt(Result.getAllocator(),
+                                Result.getCodeCompletionTUInfo());
       if (!FirstParameter)
-        Opt.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+        Opt.AddChunk(CodeCompletionString::CK_Comma);
       AddTemplateParameterChunks(Context, Policy, Template, Opt, MaxParameters,
                                  P - Params->begin(), true);
       Result.AddOptionalChunk(Opt.TakeString());
@@ -2274,7 +2298,7 @@ static void AddTemplateParameterChunks(ASTContext &Context,
     if (FirstParameter)
       FirstParameter = false;
     else
-      Result.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+      Result.AddChunk(CodeCompletionString::CK_Comma);
     
     // Add the placeholder string.
     Result.AddPlaceholderChunk(
@@ -2344,8 +2368,6 @@ AddFunctionTypeQualsToCompletionString(CodeCompletionBuilder &Result,
 /// \brief Add the name of the given declaration 
 static void AddTypedNameChunk(ASTContext &Context, const PrintingPolicy &Policy,
                               NamedDecl *ND, CodeCompletionBuilder &Result) {
-  typedef CodeCompletionString::Chunk Chunk;
-  
   DeclarationName Name = ND->getDeclName();
   if (!Name)
     return;
@@ -2407,9 +2429,9 @@ static void AddTypedNameChunk(ASTContext &Context, const PrintingPolicy &Policy,
     Result.AddTypedTextChunk(
                   Result.getAllocator().CopyString(Record->getNameAsString()));
     if (ClassTemplateDecl *Template = Record->getDescribedClassTemplate()) {
-      Result.AddChunk(Chunk(CodeCompletionString::CK_LeftAngle));
+      Result.AddChunk(CodeCompletionString::CK_LeftAngle);
       AddTemplateParameterChunks(Context, Policy, Template, Result);
-      Result.AddChunk(Chunk(CodeCompletionString::CK_RightAngle));
+      Result.AddChunk(CodeCompletionString::CK_RightAngle);
     }
     break;
   }
@@ -2417,8 +2439,9 @@ static void AddTypedNameChunk(ASTContext &Context, const PrintingPolicy &Policy,
 }
 
 CodeCompletionString *CodeCompletionResult::CreateCodeCompletionString(Sema &S,
-                                         CodeCompletionAllocator &Allocator) {
-  return CreateCodeCompletionString(S.Context, S.PP, Allocator);
+                                         CodeCompletionAllocator &Allocator,
+                                         CodeCompletionTUInfo &CCTUInfo) {
+  return CreateCodeCompletionString(S.Context, S.PP, Allocator, CCTUInfo);
 }
 
 /// \brief If possible, create a new code completion string for the given
@@ -2430,14 +2453,21 @@ CodeCompletionString *CodeCompletionResult::CreateCodeCompletionString(Sema &S,
 CodeCompletionString *
 CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
                                                  Preprocessor &PP,
-                                           CodeCompletionAllocator &Allocator) {
-  typedef CodeCompletionString::Chunk Chunk;
-  CodeCompletionBuilder Result(Allocator, Priority, Availability);
+                                           CodeCompletionAllocator &Allocator,
+                                           CodeCompletionTUInfo &CCTUInfo) {
+  CodeCompletionBuilder Result(Allocator, CCTUInfo, Priority, Availability);
   
   PrintingPolicy Policy = getCompletionPrintingPolicy(Ctx, PP);
   if (Kind == RK_Pattern) {
     Pattern->Priority = Priority;
     Pattern->Availability = Availability;
+    
+    if (Declaration) {
+      Result.addParentContext(Declaration->getDeclContext());
+      Pattern->ParentKind = Result.getParentKind();
+      Pattern->ParentName = Result.getParentName();
+    }
+    
     return Pattern;
   }
   
@@ -2457,7 +2487,7 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
       return Result.TakeString();
     
     // Format a function-like macro with placeholders for the arguments.
-    Result.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
+    Result.AddChunk(CodeCompletionString::CK_LeftParen);
     MacroInfo::arg_iterator A = MI->arg_begin(), AEnd = MI->arg_end();
     
     // C99 variadic macros add __VA_ARGS__ at the end. Skip it.
@@ -2471,7 +2501,7 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
     
     for (MacroInfo::arg_iterator A = MI->arg_begin(); A != AEnd; ++A) {
       if (A != MI->arg_begin())
-        Result.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+        Result.AddChunk(CodeCompletionString::CK_Comma);
 
       if (MI->isVariadic() && (A+1) == AEnd) {
         SmallString<32> Arg = (*A)->getName();
@@ -2487,13 +2517,14 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
       Result.AddPlaceholderChunk(
                           Result.getAllocator().CopyString((*A)->getName()));
     }
-    Result.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Result.AddChunk(CodeCompletionString::CK_RightParen);
     return Result.TakeString();
   }
   
   assert(Kind == RK_Declaration && "Missed a result kind?");
   NamedDecl *ND = Declaration;
-  
+  Result.addParentContext(ND->getDeclContext());
+                          
   if (StartsNestedNameSpecifier) {
     Result.AddTypedTextChunk(
                       Result.getAllocator().CopyString(ND->getNameAsString()));
@@ -2513,9 +2544,9 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
     AddQualifierToCompletionString(Result, Qualifier, QualifierIsInformative, 
                                    Ctx, Policy);
     AddTypedNameChunk(Ctx, Policy, ND, Result);
-    Result.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
+    Result.AddChunk(CodeCompletionString::CK_LeftParen);
     AddFunctionParameterChunks(Ctx, Policy, Function, Result);
-    Result.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Result.AddChunk(CodeCompletionString::CK_RightParen);
     AddFunctionTypeQualsToCompletionString(Result, Function);
     return Result.TakeString();
   }
@@ -2560,16 +2591,16 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
       // Some of the function template arguments cannot be deduced from a
       // function call, so we introduce an explicit template argument list
       // containing all of the arguments up to the first deducible argument.
-      Result.AddChunk(Chunk(CodeCompletionString::CK_LeftAngle));
+      Result.AddChunk(CodeCompletionString::CK_LeftAngle);
       AddTemplateParameterChunks(Ctx, Policy, FunTmpl, Result, 
                                  LastDeducibleArgument);
-      Result.AddChunk(Chunk(CodeCompletionString::CK_RightAngle));
+      Result.AddChunk(CodeCompletionString::CK_RightAngle);
     }
     
     // Add the function parameters
-    Result.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
+    Result.AddChunk(CodeCompletionString::CK_LeftParen);
     AddFunctionParameterChunks(Ctx, Policy, Function, Result);
-    Result.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Result.AddChunk(CodeCompletionString::CK_RightParen);
     AddFunctionTypeQualsToCompletionString(Result, Function);
     return Result.TakeString();
   }
@@ -2579,9 +2610,9 @@ CodeCompletionResult::CreateCodeCompletionString(ASTContext &Ctx,
                                    Ctx, Policy);
     Result.AddTypedTextChunk(
                 Result.getAllocator().CopyString(Template->getNameAsString()));
-    Result.AddChunk(Chunk(CodeCompletionString::CK_LeftAngle));
+    Result.AddChunk(CodeCompletionString::CK_LeftAngle);
     AddTemplateParameterChunks(Ctx, Policy, Template, Result);
-    Result.AddChunk(Chunk(CodeCompletionString::CK_RightAngle));
+    Result.AddChunk(CodeCompletionString::CK_RightAngle);
     return Result.TakeString();
   }
   
@@ -2679,12 +2710,12 @@ CodeCompletionString *
 CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
                                                           unsigned CurrentArg,
                                                                Sema &S,
-                                     CodeCompletionAllocator &Allocator) const {
-  typedef CodeCompletionString::Chunk Chunk;
+                                     CodeCompletionAllocator &Allocator,
+                                     CodeCompletionTUInfo &CCTUInfo) const {
   PrintingPolicy Policy = getCompletionPrintingPolicy(S);
 
   // FIXME: Set priority, availability appropriately.
-  CodeCompletionBuilder Result(Allocator, 1, CXAvailability_Available);
+  CodeCompletionBuilder Result(Allocator,CCTUInfo, 1, CXAvailability_Available);
   FunctionDecl *FDecl = getFunction();
   AddResultTypeChunk(S.Context, Policy, FDecl, Result);
   const FunctionProtoType *Proto 
@@ -2696,9 +2727,9 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
     Result.AddTextChunk(GetCompletionTypeString(FT->getResultType(),
                                                 S.Context, Policy, 
                                                 Result.getAllocator()));
-    Result.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
-    Result.AddChunk(Chunk(CodeCompletionString::CK_CurrentParameter, "..."));
-    Result.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Result.AddChunk(CodeCompletionString::CK_LeftParen);
+    Result.AddChunk(CodeCompletionString::CK_CurrentParameter, "...");
+    Result.AddChunk(CodeCompletionString::CK_RightParen);
     return Result.TakeString();
   }
   
@@ -2710,11 +2741,11 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
          Result.getAllocator().CopyString(
                                   Proto->getResultType().getAsString(Policy)));
   
-  Result.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
+  Result.AddChunk(CodeCompletionString::CK_LeftParen);
   unsigned NumParams = FDecl? FDecl->getNumParams() : Proto->getNumArgs();
   for (unsigned I = 0; I != NumParams; ++I) {
     if (I)
-      Result.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+      Result.AddChunk(CodeCompletionString::CK_Comma);
     
     std::string ArgString;
     QualType ArgType;
@@ -2729,20 +2760,20 @@ CodeCompleteConsumer::OverloadCandidate::CreateSignatureString(
     ArgType.getAsStringInternal(ArgString, Policy);
     
     if (I == CurrentArg)
-      Result.AddChunk(Chunk(CodeCompletionString::CK_CurrentParameter, 
-                             Result.getAllocator().CopyString(ArgString)));
+      Result.AddChunk(CodeCompletionString::CK_CurrentParameter,
+                      Result.getAllocator().CopyString(ArgString));
     else
       Result.AddTextChunk(Result.getAllocator().CopyString(ArgString));
   }
   
   if (Proto && Proto->isVariadic()) {
-    Result.AddChunk(Chunk(CodeCompletionString::CK_Comma));
+    Result.AddChunk(CodeCompletionString::CK_Comma);
     if (CurrentArg < NumParams)
       Result.AddTextChunk("...");
     else
-      Result.AddChunk(Chunk(CodeCompletionString::CK_CurrentParameter, "..."));
+      Result.AddChunk(CodeCompletionString::CK_CurrentParameter, "...");
   }
-  Result.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+  Result.AddChunk(CodeCompletionString::CK_RightParen);
   
   return Result.TakeString();
 }
@@ -2811,6 +2842,7 @@ CXCursorKind clang::getCursorKindForDecl(Decl *D) {
     case Decl::ClassTemplatePartialSpecialization:
       return CXCursor_ClassTemplatePartialSpecialization;
     case Decl::UsingDirective:     return CXCursor_UsingDirective;
+    case Decl::TranslationUnit:    return CXCursor_TranslationUnit;
       
     case Decl::Using:
     case Decl::UnresolvedUsingValue:
@@ -2851,7 +2883,7 @@ static void AddMacroResults(Preprocessor &PP, ResultBuilder &Results,
        M != MEnd; ++M) {
     Results.AddResult(Result(M->first, 
                              getMacroUsagePriority(M->first->getName(),
-                                                   PP.getLangOptions(),
+                                                   PP.getLangOpts(),
                                                    TargetTypeIsPointer)));
   }
   
@@ -2911,8 +2943,8 @@ static enum CodeCompletionContext::Kind mapCodeCompletionContext(Sema &S,
     return CodeCompletionContext::CCC_Recovery;
 
   case Sema::PCC_ForInit:
-    if (S.getLangOptions().CPlusPlus || S.getLangOptions().C99 ||
-        S.getLangOptions().ObjC1)
+    if (S.getLangOpts().CPlusPlus || S.getLangOpts().C99 ||
+        S.getLangOpts().ObjC1)
       return CodeCompletionContext::CCC_ParenthesizedExpression;
     else
       return CodeCompletionContext::CCC_Expression;
@@ -2971,7 +3003,8 @@ static void MaybeAddOverrideCalls(Sema &S, DeclContext *InContext,
   for (CXXMethodDecl::method_iterator M = Method->begin_overridden_methods(),
                                    MEnd = Method->end_overridden_methods();
        M != MEnd; ++M) {
-    CodeCompletionBuilder Builder(Results.getAllocator());
+    CodeCompletionBuilder Builder(Results.getAllocator(),
+                                  Results.getCodeCompletionTUInfo());
     CXXMethodDecl *Overridden = const_cast<CXXMethodDecl *>(*M);
     if (Overridden->getCanonicalDecl() == Method->getCanonicalDecl())
       continue;
@@ -3008,7 +3041,9 @@ static void MaybeAddOverrideCalls(Sema &S, DeclContext *InContext,
     Builder.AddChunk(CodeCompletionString::CK_RightParen);
     Results.AddResult(CodeCompletionResult(Builder.TakeString(),
                                            CCP_SuperCompletion,
-                                           CXCursor_CXXMethod));
+                                           CXCursor_CXXMethod,
+                                           CXAvailability_Available,
+                                           Overridden));
     Results.Ignore(Overridden);
   }
 }
@@ -3017,11 +3052,12 @@ void Sema::CodeCompleteModuleImport(SourceLocation ImportLoc,
                                     ModuleIdPath Path) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   
   CodeCompletionAllocator &Allocator = Results.getAllocator();
-  CodeCompletionBuilder Builder(Allocator);
+  CodeCompletionBuilder Builder(Allocator, Results.getCodeCompletionTUInfo());
   typedef CodeCompletionResult Result;
   if (Path.empty()) {
     // Enumerate all top-level modules.
@@ -3068,6 +3104,7 @@ void Sema::CodeCompleteOrdinaryName(Scope *S,
                                     ParserCompletionContext CompletionContext) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         mapCodeCompletionContext(*this, CompletionContext));
   Results.EnterNewScope();
   
@@ -3092,12 +3129,12 @@ void Sema::CodeCompleteOrdinaryName(Scope *S,
   case PCC_Expression:
   case PCC_ForInit:
   case PCC_Condition:
-    if (WantTypesInContext(CompletionContext, getLangOptions()))
+    if (WantTypesInContext(CompletionContext, getLangOpts()))
       Results.setFilter(&ResultBuilder::IsOrdinaryName);
     else
       Results.setFilter(&ResultBuilder::IsOrdinaryNonTypeName);
       
-    if (getLangOptions().CPlusPlus)
+    if (getLangOpts().CPlusPlus)
       MaybeAddOverrideCalls(*this, /*InContext=*/0, Results);
     break;
       
@@ -3126,7 +3163,7 @@ void Sema::CodeCompleteOrdinaryName(Scope *S,
   case PCC_Statement:
   case PCC_RecoveryInFunction:
     if (S->getFnParent())
-      AddPrettyFunctionResults(PP.getLangOptions(), Results);        
+      AddPrettyFunctionResults(PP.getLangOpts(), Results);        
     break;
     
   case PCC_Namespace:
@@ -3163,6 +3200,7 @@ void Sema::CodeCompleteDeclSpec(Scope *S, DeclSpec &DS,
                                 bool AllowNestedNameSpecifiers) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         AllowNestedNameSpecifiers
                           ? CodeCompletionContext::CCC_PotentiallyQualifiedName
                           : CodeCompletionContext::CCC_Name);
@@ -3171,10 +3209,10 @@ void Sema::CodeCompleteDeclSpec(Scope *S, DeclSpec &DS,
   // Type qualifiers can come after names.
   Results.AddResult(Result("const"));
   Results.AddResult(Result("volatile"));
-  if (getLangOptions().C99)
+  if (getLangOpts().C99)
     Results.AddResult(Result("restrict"));
 
-  if (getLangOptions().CPlusPlus) {
+  if (getLangOpts().CPlusPlus) {
     if (AllowNonIdentifiers) {
       Results.AddResult(Result("operator")); 
     }
@@ -3240,12 +3278,13 @@ void Sema::CodeCompleteExpression(Scope *S,
                                   const CodeCompleteExpressionData &Data) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Expression);
   if (Data.ObjCCollection)
     Results.setFilter(&ResultBuilder::IsObjCCollection);
   else if (Data.IntegralConstantExpression)
     Results.setFilter(&ResultBuilder::IsIntegralConstantValue);
-  else if (WantTypesInContext(PCC_Expression, getLangOptions()))
+  else if (WantTypesInContext(PCC_Expression, getLangOpts()))
     Results.setFilter(&ResultBuilder::IsOrdinaryName);
   else
     Results.setFilter(&ResultBuilder::IsOrdinaryNonTypeName);
@@ -3274,7 +3313,7 @@ void Sema::CodeCompleteExpression(Scope *S,
   if (S->getFnParent() && 
       !Data.ObjCCollection && 
       !Data.IntegralConstantExpression)
-    AddPrettyFunctionResults(PP.getLangOptions(), Results);        
+    AddPrettyFunctionResults(PP.getLangOpts(), Results);        
 
   if (CodeCompleter->includeMacros())
     AddMacroResults(PP, Results, PreferredTypeIsPointer);
@@ -3287,7 +3326,7 @@ void Sema::CodeCompleteExpression(Scope *S,
 void Sema::CodeCompletePostfixExpression(Scope *S, ExprResult E) {
   if (E.isInvalid())
     CodeCompleteOrdinaryName(S, PCC_RecoveryInFunction);
-  else if (getLangOptions().ObjC1)
+  else if (getLangOpts().ObjC1)
     CodeCompleteObjCInstanceMessage(S, E.take(), 0, 0, false);
 }
 
@@ -3309,7 +3348,7 @@ static void AddObjCProperties(ObjCContainerDecl *Container,
        P != PEnd;
        ++P) {
     if (AddedProperties.insert(P->getIdentifier()))
-      Results.MaybeAddResult(Result(*P, 0), CurContext);
+      Results.MaybeAddResult(Result(&*P, 0), CurContext);
   }
   
   // Add nullary methods
@@ -3322,33 +3361,14 @@ static void AddObjCProperties(ObjCContainerDecl *Container,
       if (M->getSelector().isUnarySelector())
         if (IdentifierInfo *Name = M->getSelector().getIdentifierInfoForSlot(0))
           if (AddedProperties.insert(Name)) {
-            CodeCompletionBuilder Builder(Results.getAllocator());
-            AddResultTypeChunk(Context, Policy, *M, Builder);
+            CodeCompletionBuilder Builder(Results.getAllocator(),
+                                          Results.getCodeCompletionTUInfo());
+            AddResultTypeChunk(Context, Policy, &*M, Builder);
             Builder.AddTypedTextChunk(
                             Results.getAllocator().CopyString(Name->getName()));
             
-            CXAvailabilityKind Availability = CXAvailability_Available;
-            switch (M->getAvailability()) {
-            case AR_Available:
-            case AR_NotYetIntroduced:
-              Availability = CXAvailability_Available;      
-              break;
-              
-            case AR_Deprecated:
-              Availability = CXAvailability_Deprecated;
-              break;
-              
-            case AR_Unavailable:
-              Availability = CXAvailability_NotAvailable;
-              break;
-            }
-
-            Results.MaybeAddResult(Result(Builder.TakeString(),
-                                  CCP_MemberDeclaration + CCD_MethodAsProperty,
-                                          M->isInstanceMethod()
-                                            ? CXCursor_ObjCInstanceMethodDecl
-                                            : CXCursor_ObjCClassMethodDecl,
-                                          Availability),
+            Results.MaybeAddResult(Result(Builder.TakeString(), &*M,
+                                  CCP_MemberDeclaration + CCD_MethodAsProperty),
                                           CurContext);
           }
     }
@@ -3434,6 +3454,7 @@ void Sema::CodeCompleteMemberReferenceExpr(Scope *S, Expr *Base,
   }
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                   CodeCompletionContext(contextKind,
                                         BaseType),
                         &ResultBuilder::IsMember);
@@ -3449,7 +3470,7 @@ void Sema::CodeCompleteMemberReferenceExpr(Scope *S, Expr *Base,
     LookupVisibleDecls(Record->getDecl(), LookupMemberName, Consumer,
                        CodeCompleter->includeGlobals());
 
-    if (getLangOptions().CPlusPlus) {
+    if (getLangOpts().CPlusPlus) {
       if (!Results.empty()) {
         // The "template" keyword can follow "->" or "." in the grammar.
         // However, we only want to suggest the template keyword if something
@@ -3543,7 +3564,8 @@ void Sema::CodeCompleteTag(Scope *S, unsigned TagSpec) {
     llvm_unreachable("Unknown type specifier kind in CodeCompleteTag");
   }
   
-  ResultBuilder Results(*this, CodeCompleter->getAllocator(), ContextKind);
+  ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(), ContextKind);
   CodeCompletionDeclConsumer Consumer(Results, CurContext);
 
   // First pass: look for tags.
@@ -3563,13 +3585,14 @@ void Sema::CodeCompleteTag(Scope *S, unsigned TagSpec) {
 
 void Sema::CodeCompleteTypeQualifiers(DeclSpec &DS) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_TypeQualifiers);
   Results.EnterNewScope();
   if (!(DS.getTypeQualifiers() & DeclSpec::TQ_const))
     Results.AddResult("const");
   if (!(DS.getTypeQualifiers() & DeclSpec::TQ_volatile))
     Results.AddResult("volatile");
-  if (getLangOptions().C99 &&
+  if (getLangOpts().C99 &&
       !(DS.getTypeQualifiers() & DeclSpec::TQ_restrict))
     Results.AddResult("restrict");
   Results.ExitScope();
@@ -3634,7 +3657,7 @@ void Sema::CodeCompleteCase(Scope *S) {
       }
   }
   
-  if (getLangOptions().CPlusPlus && !Qualifier && EnumeratorsSeen.empty()) {
+  if (getLangOpts().CPlusPlus && !Qualifier && EnumeratorsSeen.empty()) {
     // If there are no prior enumerators in C++, check whether we have to 
     // qualify the names of the enumerators that we suggest, because they
     // may not be visible in this scope.
@@ -3643,15 +3666,16 @@ void Sema::CodeCompleteCase(Scope *S) {
   
   // Add any enumerators that have not yet been mentioned.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Expression);
   Results.EnterNewScope();
   for (EnumDecl::enumerator_iterator E = Enum->enumerator_begin(),
                                   EEnd = Enum->enumerator_end();
        E != EEnd; ++E) {
-    if (EnumeratorsSeen.count(*E))
+    if (EnumeratorsSeen.count(&*E))
       continue;
     
-    CodeCompletionResult R(*E, Qualifier);
+    CodeCompletionResult R(&*E, Qualifier);
     R.Priority = CCP_EnumInCase;
     Results.AddResult(R, CurContext, 0, false);
   }
@@ -3664,7 +3688,6 @@ void Sema::CodeCompleteCase(Scope *S) {
     AddMacroResults(PP, Results);
     kind = CodeCompletionContext::CCC_OtherWithMacros;
   }
-  
   
   HandleCodeCompleteResults(this, CodeCompleter, 
                             kind,
@@ -3687,19 +3710,19 @@ namespace {
   };
 }
 
-static bool anyNullArguments(Expr **Args, unsigned NumArgs) {
-  if (NumArgs && !Args)
+static bool anyNullArguments(llvm::ArrayRef<Expr*> Args) {
+  if (Args.size() && !Args.data())
     return true;
-  
-  for (unsigned I = 0; I != NumArgs; ++I)
+
+  for (unsigned I = 0; I != Args.size(); ++I)
     if (!Args[I])
       return true;
-  
+
   return false;
 }
 
 void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
-                            Expr **ArgsIn, unsigned NumArgs) {
+                            llvm::ArrayRef<Expr *> Args) {
   if (!CodeCompleter)
     return;
 
@@ -3709,11 +3732,10 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
   // e.g., by merging the two kinds of results.
 
   Expr *Fn = (Expr *)FnIn;
-  Expr **Args = (Expr **)ArgsIn;
 
   // Ignore type-dependent call expressions entirely.
-  if (!Fn || Fn->isTypeDependent() || anyNullArguments(Args, NumArgs) ||
-      Expr::hasAnyTypeDependentArguments(Args, NumArgs)) {
+  if (!Fn || Fn->isTypeDependent() || anyNullArguments(Args) ||
+      Expr::hasAnyTypeDependentArguments(Args)) {
     CodeCompleteOrdinaryName(S, PCC_Expression);
     return;
   }
@@ -3731,19 +3753,18 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
 
   Expr *NakedFn = Fn->IgnoreParenCasts();
   if (UnresolvedLookupExpr *ULE = dyn_cast<UnresolvedLookupExpr>(NakedFn))
-    AddOverloadedCallCandidates(ULE, Args, NumArgs, CandidateSet,
+    AddOverloadedCallCandidates(ULE, Args, CandidateSet,
                                 /*PartialOverloading=*/ true);
   else if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(NakedFn)) {
     FunctionDecl *FDecl = dyn_cast<FunctionDecl>(DRE->getDecl());
     if (FDecl) {
-      if (!getLangOptions().CPlusPlus || 
+      if (!getLangOpts().CPlusPlus || 
           !FDecl->getType()->getAs<FunctionProtoType>())
         Results.push_back(ResultCandidate(FDecl));
       else
         // FIXME: access?
-        AddOverloadCandidate(FDecl, DeclAccessPair::make(FDecl, AS_none),
-                             Args, NumArgs, CandidateSet,
-                             false, /*PartialOverloading*/true);
+        AddOverloadCandidate(FDecl, DeclAccessPair::make(FDecl, AS_none), Args,
+                             CandidateSet, false, /*PartialOverloading*/true);
     }
   }
   
@@ -3766,12 +3787,12 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
     for (unsigned I = 0, N = Results.size(); I != N; ++I) {
       if (const FunctionType *FType = Results[I].getFunctionType())
         if (const FunctionProtoType *Proto = dyn_cast<FunctionProtoType>(FType))
-          if (NumArgs < Proto->getNumArgs()) {
+          if (Args.size() < Proto->getNumArgs()) {
             if (ParamType.isNull())
-              ParamType = Proto->getArgType(NumArgs);
+              ParamType = Proto->getArgType(Args.size());
             else if (!Context.hasSameUnqualifiedType(
                                             ParamType.getNonReferenceType(),
-                           Proto->getArgType(NumArgs).getNonReferenceType())) {
+                       Proto->getArgType(Args.size()).getNonReferenceType())) {
               ParamType = QualType();
               break;
             }
@@ -3792,8 +3813,8 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
     
     if (const FunctionProtoType *Proto
                                   = FunctionType->getAs<FunctionProtoType>()) {
-      if (NumArgs < Proto->getNumArgs())
-        ParamType = Proto->getArgType(NumArgs);
+      if (Args.size() < Proto->getNumArgs())
+        ParamType = Proto->getArgType(Args.size());
     }
   }
 
@@ -3803,7 +3824,7 @@ void Sema::CodeCompleteCall(Scope *S, Expr *FnIn,
     CodeCompleteExpression(S, ParamType);
   
   if (!Results.empty())
-    CodeCompleter->ProcessOverloadCandidates(*this, NumArgs, Results.data(), 
+    CodeCompleter->ProcessOverloadCandidates(*this, Args.size(), Results.data(),
                                              Results.size());
 }
 
@@ -3836,6 +3857,7 @@ void Sema::CodeCompleteReturn(Scope *S) {
 void Sema::CodeCompleteAfterIf(Scope *S) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         mapCodeCompletionContext(*this, PCC_Statement));
   Results.setFilter(&ResultBuilder::IsOrdinaryName);
   Results.EnterNewScope();
@@ -3847,14 +3869,17 @@ void Sema::CodeCompleteAfterIf(Scope *S) {
   AddOrdinaryNameResults(PCC_Statement, S, *this, Results);
   
   // "else" block
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   Builder.AddTypedTextChunk("else");
-  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
-  Builder.AddChunk(CodeCompletionString::CK_LeftBrace);
-  Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
-  Builder.AddPlaceholderChunk("statements");
-  Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
-  Builder.AddChunk(CodeCompletionString::CK_RightBrace);
+  if (Results.includeCodePatterns()) {
+    Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+    Builder.AddChunk(CodeCompletionString::CK_LeftBrace);
+    Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
+    Builder.AddPlaceholderChunk("statements");
+    Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
+    Builder.AddChunk(CodeCompletionString::CK_RightBrace);
+  }
   Results.AddResult(Builder.TakeString());
 
   // "else if" block
@@ -3863,23 +3888,25 @@ void Sema::CodeCompleteAfterIf(Scope *S) {
   Builder.AddTextChunk("if");
   Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
   Builder.AddChunk(CodeCompletionString::CK_LeftParen);
-  if (getLangOptions().CPlusPlus)
+  if (getLangOpts().CPlusPlus)
     Builder.AddPlaceholderChunk("condition");
   else
     Builder.AddPlaceholderChunk("expression");
   Builder.AddChunk(CodeCompletionString::CK_RightParen);
-  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
-  Builder.AddChunk(CodeCompletionString::CK_LeftBrace);
-  Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
-  Builder.AddPlaceholderChunk("statements");
-  Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
-  Builder.AddChunk(CodeCompletionString::CK_RightBrace);
+  if (Results.includeCodePatterns()) {
+    Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+    Builder.AddChunk(CodeCompletionString::CK_LeftBrace);
+    Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
+    Builder.AddPlaceholderChunk("statements");
+    Builder.AddChunk(CodeCompletionString::CK_VerticalSpace);
+    Builder.AddChunk(CodeCompletionString::CK_RightBrace);
+  }
   Results.AddResult(Builder.TakeString());
 
   Results.ExitScope();
   
   if (S->getFnParent())
-    AddPrettyFunctionResults(PP.getLangOptions(), Results);        
+    AddPrettyFunctionResults(PP.getLangOpts(), Results);        
   
   if (CodeCompleter->includeMacros())
     AddMacroResults(PP, Results);
@@ -3910,6 +3937,7 @@ void Sema::CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS,
     return;
 
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Name);
   Results.EnterNewScope();
   
@@ -3941,6 +3969,7 @@ void Sema::CodeCompleteUsing(Scope *S) {
     return;
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PotentiallyQualifiedName,
                         &ResultBuilder::IsNestedNameSpecifier);
   Results.EnterNewScope();
@@ -3968,6 +3997,7 @@ void Sema::CodeCompleteUsingDirective(Scope *S) {
   // After "using namespace", we expect to see a namespace name or namespace
   // alias.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Namespace,
                         &ResultBuilder::IsNamespaceOrAlias);
   Results.EnterNewScope();
@@ -3992,6 +4022,7 @@ void Sema::CodeCompleteNamespaceDecl(Scope *S)  {
     = Ctx && !CodeCompleter->includeGlobals() && isa<TranslationUnitDecl>(Ctx);
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         SuppressedGlobalResults
                           ? CodeCompletionContext::CCC_Namespace
                           : CodeCompletionContext::CCC_Other,
@@ -4006,13 +4037,14 @@ void Sema::CodeCompleteNamespaceDecl(Scope *S)  {
     for (DeclContext::specific_decl_iterator<NamespaceDecl> 
          NS(Ctx->decls_begin()), NSEnd(Ctx->decls_end());
          NS != NSEnd; ++NS)
-      OrigToLatest[NS->getOriginalNamespace()] = *NS;
+      OrigToLatest[NS->getOriginalNamespace()] = &*NS;
     
     // Add the most recent definition (or extended definition) of each 
     // namespace to the list of results.
     Results.EnterNewScope();
     for (std::map<NamespaceDecl *, NamespaceDecl *>::iterator 
-         NS = OrigToLatest.begin(), NSEnd = OrigToLatest.end();
+              NS = OrigToLatest.begin(),
+           NSEnd = OrigToLatest.end();
          NS != NSEnd; ++NS)
       Results.AddResult(CodeCompletionResult(NS->second, 0),
                         CurContext, 0, false);
@@ -4030,6 +4062,7 @@ void Sema::CodeCompleteNamespaceAliasDecl(Scope *S)  {
   
   // After "namespace", we expect to see a namespace or alias.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Namespace,
                         &ResultBuilder::IsNamespaceOrAlias);
   CodeCompletionDeclConsumer Consumer(Results, CurContext);
@@ -4046,6 +4079,7 @@ void Sema::CodeCompleteOperatorName(Scope *S) {
 
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Type,
                         &ResultBuilder::IsType);
   Results.EnterNewScope();
@@ -4063,7 +4097,7 @@ void Sema::CodeCompleteOperatorName(Scope *S) {
                      CodeCompleter->includeGlobals());
   
   // Add any type specifiers
-  AddTypeSpecifierResults(getLangOptions(), Results);
+  AddTypeSpecifierResults(getLangOpts(), Results);
   Results.ExitScope();
   
   HandleCodeCompleteResults(this, CodeCompleter, 
@@ -4081,6 +4115,7 @@ void Sema::CodeCompleteConstructorInitializer(Decl *ConstructorD,
     return;
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PotentiallyQualifiedName);
   Results.EnterNewScope();
   
@@ -4097,7 +4132,8 @@ void Sema::CodeCompleteConstructorInitializer(Decl *ConstructorD,
   }
   
   // Add completions for base classes.
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   bool SawLastInitializer = (NumInitializers == 0);
   CXXRecordDecl *ClassDecl = Constructor->getParent();
   for (CXXRecordDecl::base_class_iterator Base = ClassDecl->bases_begin(),
@@ -4157,7 +4193,7 @@ void Sema::CodeCompleteConstructorInitializer(Decl *ConstructorD,
       SawLastInitializer
         = NumInitializers > 0 && 
           Initializers[NumInitializers - 1]->isAnyMemberInitializer() &&
-          Initializers[NumInitializers - 1]->getAnyMember() == *Field;
+          Initializers[NumInitializers - 1]->getAnyMember() == &*Field;
       continue;
     }
     
@@ -4172,9 +4208,66 @@ void Sema::CodeCompleteConstructorInitializer(Decl *ConstructorD,
     Results.AddResult(CodeCompletionResult(Builder.TakeString(), 
                                    SawLastInitializer? CCP_NextInitializer
                                                      : CCP_MemberDeclaration,
-                                           CXCursor_MemberRef));
+                                           CXCursor_MemberRef,
+                                           CXAvailability_Available,
+                                           &*Field));
     SawLastInitializer = false;
   }
+  Results.ExitScope();
+  
+  HandleCodeCompleteResults(this, CodeCompleter, Results.getCompletionContext(),
+                            Results.data(), Results.size());
+}
+
+/// \brief Determine whether this scope denotes a namespace.
+static bool isNamespaceScope(Scope *S) {
+  DeclContext *DC = static_cast<DeclContext *>(S->getEntity());
+  if (!DC)
+    return false;
+
+  return DC->isFileContext();
+}
+
+void Sema::CodeCompleteLambdaIntroducer(Scope *S, LambdaIntroducer &Intro,
+                                        bool AfterAmpersand) {
+  ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
+                        CodeCompletionContext::CCC_Other);
+  Results.EnterNewScope();
+
+  // Note what has already been captured.
+  llvm::SmallPtrSet<IdentifierInfo *, 4> Known;
+  bool IncludedThis = false;
+  for (SmallVectorImpl<LambdaCapture>::iterator C = Intro.Captures.begin(),
+                                             CEnd = Intro.Captures.end();
+       C != CEnd; ++C) {
+    if (C->Kind == LCK_This) {
+      IncludedThis = true;
+      continue;
+    }
+    
+    Known.insert(C->Id);
+  }
+  
+  // Look for other capturable variables.
+  for (; S && !isNamespaceScope(S); S = S->getParent()) {
+    for (Scope::decl_iterator D = S->decl_begin(), DEnd = S->decl_end();
+         D != DEnd; ++D) {
+      VarDecl *Var = dyn_cast<VarDecl>(*D);
+      if (!Var ||
+          !Var->hasLocalStorage() ||
+          Var->hasAttr<BlocksAttr>())
+        continue;
+      
+      if (Known.insert(Var->getIdentifier()))
+        Results.AddResult(CodeCompletionResult(Var), CurContext, 0, false);
+    }
+  }
+
+  // Add 'this', if it would be valid.
+  if (!IncludedThis && !AfterAmpersand && Intro.Default != LCD_ByCopy)
+    addThisCompletion(*this, Results);
+  
   Results.ExitScope();
   
   HandleCodeCompleteResults(this, CodeCompleter, Results.getCompletionContext(),
@@ -4191,7 +4284,8 @@ static void AddObjCImplementationResults(const LangOptions &LangOpts,
   // Since we have an implementation, we can end it.
   Results.AddResult(Result(OBJC_AT_KEYWORD_NAME(NeedAt,end)));
   
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   if (LangOpts.ObjC2) {
     // @dynamic
     Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt,dynamic));
@@ -4229,7 +4323,8 @@ static void AddObjCInterfaceResults(const LangOptions &LangOpts,
 
 static void AddObjCTopLevelResults(ResultBuilder &Results, bool NeedAt) {
   typedef CodeCompletionResult Result;
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   
   // @class name ;
   Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt,class));
@@ -4271,12 +4366,13 @@ static void AddObjCTopLevelResults(ResultBuilder &Results, bool NeedAt) {
 void Sema::CodeCompleteObjCAtDirective(Scope *S) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   if (isa<ObjCImplDecl>(CurContext))
-    AddObjCImplementationResults(getLangOptions(), Results, false);
+    AddObjCImplementationResults(getLangOpts(), Results, false);
   else if (CurContext->isObjCContainer())
-    AddObjCInterfaceResults(getLangOptions(), Results, false);
+    AddObjCInterfaceResults(getLangOpts(), Results, false);
   else
     AddObjCTopLevelResults(Results, false);
   Results.ExitScope();
@@ -4287,12 +4383,13 @@ void Sema::CodeCompleteObjCAtDirective(Scope *S) {
 
 static void AddObjCExpressionResults(ResultBuilder &Results, bool NeedAt) {
   typedef CodeCompletionResult Result;
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
 
   // @encode ( type-name )
   const char *EncodeType = "char[]";
-  if (Results.getSema().getLangOptions().CPlusPlus ||
-      Results.getSema().getLangOptions().ConstStrings)
+  if (Results.getSema().getLangOpts().CPlusPlus ||
+      Results.getSema().getLangOpts().ConstStrings)
     EncodeType = " const char[]";
   Builder.AddResultTypeChunk(EncodeType);
   Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt,encode));
@@ -4316,11 +4413,32 @@ static void AddObjCExpressionResults(ResultBuilder &Results, bool NeedAt) {
   Builder.AddPlaceholderChunk("selector");
   Builder.AddChunk(CodeCompletionString::CK_RightParen);
   Results.AddResult(Result(Builder.TakeString()));
+  
+  // @[ objects, ... ]
+  Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt,[));
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddPlaceholderChunk("objects, ...");
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddChunk(CodeCompletionString::CK_RightBracket);
+  Results.AddResult(Result(Builder.TakeString()));
+
+  // @{ key : object, ... }
+  Builder.AddTypedTextChunk(OBJC_AT_KEYWORD_NAME(NeedAt,{));
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddPlaceholderChunk("key");
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddChunk(CodeCompletionString::CK_Colon);
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddPlaceholderChunk("object, ...");
+  Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
+  Builder.AddChunk(CodeCompletionString::CK_RightBrace);
+  Results.AddResult(Result(Builder.TakeString()));
 }
 
 static void AddObjCStatementResults(ResultBuilder &Results, bool NeedAt) {
   typedef CodeCompletionResult Result;
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   
   if (Results.includeCodePatterns()) {
     // @try { statements } @catch ( declaration ) { statements } @finally
@@ -4376,9 +4494,10 @@ static void AddObjCVisibilityResults(const LangOptions &LangOpts,
 
 void Sema::CodeCompleteObjCAtVisibility(Scope *S) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
-  AddObjCVisibilityResults(getLangOptions(), Results, false);
+  AddObjCVisibilityResults(getLangOpts(), Results, false);
   Results.ExitScope();
   HandleCodeCompleteResults(this, CodeCompleter, 
                             CodeCompletionContext::CCC_Other,
@@ -4387,6 +4506,7 @@ void Sema::CodeCompleteObjCAtVisibility(Scope *S) {
 
 void Sema::CodeCompleteObjCAtStatement(Scope *S) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   AddObjCStatementResults(Results, false);
@@ -4399,6 +4519,7 @@ void Sema::CodeCompleteObjCAtStatement(Scope *S) {
 
 void Sema::CodeCompleteObjCAtExpression(Scope *S) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   AddObjCExpressionResults(Results, false);
@@ -4452,6 +4573,7 @@ void Sema::CodeCompleteObjCPropertyFlags(Scope *S, ObjCDeclSpec &ODS) {
   
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   if (!ObjCPropertyFlagConflicts(Attributes, ObjCDeclSpec::DQ_PR_readonly))
@@ -4474,14 +4596,16 @@ void Sema::CodeCompleteObjCPropertyFlags(Scope *S, ObjCDeclSpec &ODS) {
   if (!ObjCPropertyFlagConflicts(Attributes, ObjCDeclSpec::DQ_PR_atomic))
     Results.AddResult(CodeCompletionResult("atomic"));
   if (!ObjCPropertyFlagConflicts(Attributes, ObjCDeclSpec::DQ_PR_setter)) {
-    CodeCompletionBuilder Setter(Results.getAllocator());
+    CodeCompletionBuilder Setter(Results.getAllocator(),
+                                 Results.getCodeCompletionTUInfo());
     Setter.AddTypedTextChunk("setter");
     Setter.AddTextChunk(" = ");
     Setter.AddPlaceholderChunk("method");
     Results.AddResult(CodeCompletionResult(Setter.TakeString()));
   }
   if (!ObjCPropertyFlagConflicts(Attributes, ObjCDeclSpec::DQ_PR_getter)) {
-    CodeCompletionBuilder Getter(Results.getAllocator());
+    CodeCompletionBuilder Getter(Results.getAllocator(),
+                                 Results.getCodeCompletionTUInfo());
     Getter.AddTypedTextChunk("getter");
     Getter.AddTextChunk(" = ");
     Getter.AddPlaceholderChunk("method");
@@ -4574,17 +4698,17 @@ static void AddObjCMethods(ObjCContainerDecl *Container,
   for (ObjCContainerDecl::method_iterator M = Container->meth_begin(),
                                        MEnd = Container->meth_end();
        M != MEnd; ++M) {
-    if ((*M)->isInstanceMethod() == WantInstanceMethods) {
+    if (M->isInstanceMethod() == WantInstanceMethods) {
       // Check whether the selector identifiers we've been given are a 
       // subset of the identifiers for this particular method.
-      if (!isAcceptableObjCMethod(*M, WantKind, SelIdents, NumSelIdents,
+      if (!isAcceptableObjCMethod(&*M, WantKind, SelIdents, NumSelIdents,
                                   AllowSameLength))
         continue;
 
-      if (!Selectors.insert((*M)->getSelector()))
+      if (!Selectors.insert(M->getSelector()))
         continue;
       
-      Result R = Result(*M, 0);
+      Result R = Result(&*M, 0);
       R.StartParameter = NumSelIdents;
       R.AllParametersAreInformative = (WantKind != MK_Any);
       if (!InOriginalClass)
@@ -4612,9 +4736,8 @@ static void AddObjCMethods(ObjCContainerDecl *Container,
     return;
   
   // Add methods in protocols.
-  const ObjCList<ObjCProtocolDecl> &Protocols= IFace->getReferencedProtocols();
-  for (ObjCList<ObjCProtocolDecl>::iterator I = Protocols.begin(),
-                                            E = Protocols.end(); 
+  for (ObjCInterfaceDecl::protocol_iterator I = IFace->protocol_begin(),
+                                            E = IFace->protocol_end();
        I != E; ++I)
     AddObjCMethods(*I, WantInstanceMethods, WantKind, SelIdents, NumSelIdents, 
                    CurContext, Selectors, AllowSameLength, Results, false);
@@ -4673,6 +4796,7 @@ void Sema::CodeCompleteObjCPropertyGetter(Scope *S) {
 
   // Find all of the potential getters.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
 
@@ -4702,6 +4826,7 @@ void Sema::CodeCompleteObjCPropertySetter(Scope *S) {
 
   // Find all of the potential getters.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
 
@@ -4719,6 +4844,7 @@ void Sema::CodeCompleteObjCPassingType(Scope *S, ObjCDeclSpec &DS,
                                        bool IsParameter) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Type);
   Results.EnterNewScope();
   
@@ -4750,16 +4876,16 @@ void Sema::CodeCompleteObjCPassingType(Scope *S, ObjCDeclSpec &DS,
   //   IBAction)<#selector#>:(id)sender
   if (DS.getObjCDeclQualifier() == 0 && !IsParameter &&
       Context.Idents.get("IBAction").hasMacroDefinition()) {
-    typedef CodeCompletionString::Chunk Chunk;
-    CodeCompletionBuilder Builder(Results.getAllocator(), CCP_CodePattern, 
-                                  CXAvailability_Available);
+    CodeCompletionBuilder Builder(Results.getAllocator(),
+                                  Results.getCodeCompletionTUInfo(),
+                                  CCP_CodePattern, CXAvailability_Available);
     Builder.AddTypedTextChunk("IBAction");
-    Builder.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Builder.AddChunk(CodeCompletionString::CK_RightParen);
     Builder.AddPlaceholderChunk("selector");
-    Builder.AddChunk(Chunk(CodeCompletionString::CK_Colon));
-    Builder.AddChunk(Chunk(CodeCompletionString::CK_LeftParen));
+    Builder.AddChunk(CodeCompletionString::CK_Colon);
+    Builder.AddChunk(CodeCompletionString::CK_LeftParen);
     Builder.AddTextChunk("id");
-    Builder.AddChunk(Chunk(CodeCompletionString::CK_RightParen));
+    Builder.AddChunk(CodeCompletionString::CK_RightParen);
     Builder.AddTextChunk("sender");
     Results.AddResult(CodeCompletionResult(Builder.TakeString()));
   }
@@ -4923,7 +5049,8 @@ static ObjCMethodDecl *AddSuperSendCompletion(Sema &S, bool NeedSuperKeyword,
   }
   
   // We have a superclass method. Now, form the send-to-super completion.
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   
   // Give this completion a return type.
   AddResultTypeChunk(S.Context, getCompletionPrintingPolicy(S), SuperMethod, 
@@ -4969,18 +5096,19 @@ static ObjCMethodDecl *AddSuperSendCompletion(Sema &S, bool NeedSuperKeyword,
     }
   }
   
-  Results.AddResult(CodeCompletionResult(Builder.TakeString(), CCP_SuperCompletion,
-                                         SuperMethod->isInstanceMethod()
-                                           ? CXCursor_ObjCInstanceMethodDecl
-                                           : CXCursor_ObjCClassMethodDecl));
+  Results.AddResult(CodeCompletionResult(Builder.TakeString(), SuperMethod,
+                                         CCP_SuperCompletion));
   return SuperMethod;
 }
                                    
 void Sema::CodeCompleteObjCMessageReceiver(Scope *S) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCMessageReceiver,
-                        &ResultBuilder::IsObjCMessageReceiver);
+                        getLangOpts().CPlusPlus0x
+                          ? &ResultBuilder::IsObjCMessageReceiverOrLambdaCapture
+                          : &ResultBuilder::IsObjCMessageReceiver);
   
   CodeCompletionDeclConsumer Consumer(Results, CurContext);
   Results.EnterNewScope();
@@ -4996,6 +5124,9 @@ void Sema::CodeCompleteObjCMessageReceiver(Scope *S) {
         
         AddSuperSendCompletion(*this, /*NeedSuperKeyword=*/true, 0, 0, Results);
       }
+  
+  if (getLangOpts().CPlusPlus0x)
+    addThisCompletion(*this, Results);
   
   Results.ExitScope();
   
@@ -5194,6 +5325,7 @@ void Sema::CodeCompleteObjCClassMessage(Scope *S, ParsedType Receiver,
   QualType T = this->GetTypeFromParser(Receiver);
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
               CodeCompletionContext(CodeCompletionContext::CCC_ObjCClassMessage,
                                     T, SelIdents, NumSelIdents));
     
@@ -5259,6 +5391,7 @@ void Sema::CodeCompleteObjCInstanceMessage(Scope *S, Expr *Receiver,
 
   // Build the set of methods we can see.
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
            CodeCompletionContext(CodeCompletionContext::CCC_ObjCInstanceMessage,
                                  ReceiverType, SelIdents, NumSelIdents));
   
@@ -5410,6 +5543,7 @@ void Sema::CodeCompleteObjCSelector(Scope *S, IdentifierInfo **SelIdents,
   }
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_SelectorName);
   Results.EnterNewScope();
   for (GlobalMethodPool::iterator M = MethodPool.begin(),
@@ -5420,7 +5554,8 @@ void Sema::CodeCompleteObjCSelector(Scope *S, IdentifierInfo **SelIdents,
     if (!isAcceptableObjCSelector(Sel, MK_Any, SelIdents, NumSelIdents))
       continue;
 
-    CodeCompletionBuilder Builder(Results.getAllocator());
+    CodeCompletionBuilder Builder(Results.getAllocator(),
+                                  Results.getCodeCompletionTUInfo());
     if (Sel.isUnarySelector()) {
       Builder.AddTypedTextChunk(Builder.getAllocator().CopyString(
                                                        Sel.getNameForSlot(0)));
@@ -5471,6 +5606,7 @@ static void AddProtocolResults(DeclContext *Ctx, DeclContext *CurContext,
 void Sema::CodeCompleteObjCProtocolReferences(IdentifierLocPair *Protocols,
                                               unsigned NumProtocols) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCProtocolName);
   
   if (CodeCompleter && CodeCompleter->includeGlobals()) {
@@ -5498,6 +5634,7 @@ void Sema::CodeCompleteObjCProtocolReferences(IdentifierLocPair *Protocols,
 
 void Sema::CodeCompleteObjCProtocolDecl(Scope *) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCProtocolName);
   
   if (CodeCompleter && CodeCompleter->includeGlobals()) {
@@ -5536,6 +5673,7 @@ static void AddInterfaceResults(DeclContext *Ctx, DeclContext *CurContext,
 
 void Sema::CodeCompleteObjCInterfaceDecl(Scope *S) { 
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   
@@ -5555,6 +5693,7 @@ void Sema::CodeCompleteObjCInterfaceDecl(Scope *S) {
 void Sema::CodeCompleteObjCSuperclass(Scope *S, IdentifierInfo *ClassName,
                                       SourceLocation ClassNameLoc) { 
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCInterfaceName);
   Results.EnterNewScope();
   
@@ -5579,6 +5718,7 @@ void Sema::CodeCompleteObjCSuperclass(Scope *S, IdentifierInfo *ClassName,
 
 void Sema::CodeCompleteObjCImplementationDecl(Scope *S) { 
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
 
@@ -5601,6 +5741,7 @@ void Sema::CodeCompleteObjCInterfaceCategory(Scope *S,
   typedef CodeCompletionResult Result;
   
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCCategoryName);
   
   // Ignore any categories we find that have already been implemented by this
@@ -5644,6 +5785,7 @@ void Sema::CodeCompleteObjCImplementationCategory(Scope *S,
     return CodeCompleteObjCInterfaceCategory(S, ClassName, ClassNameLoc);
     
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_ObjCCategoryName);
   
   // Add all of the categories that have have corresponding interface 
@@ -5672,6 +5814,7 @@ void Sema::CodeCompleteObjCImplementationCategory(Scope *S,
 void Sema::CodeCompleteObjCPropertyDefinition(Scope *S) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
 
   // Figure out where this @synthesize lives.
@@ -5712,6 +5855,7 @@ void Sema::CodeCompleteObjCPropertySynthesizeIvar(Scope *S,
                                                   IdentifierInfo *PropertyName) {
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
 
   // Figure out where this @synthesize lives.
@@ -5781,7 +5925,8 @@ void Sema::CodeCompleteObjCPropertySynthesizeIvar(Scope *S,
     unsigned Priority = CCP_MemberDeclaration + 1;
     typedef CodeCompletionResult Result;
     CodeCompletionAllocator &Allocator = Results.getAllocator();
-    CodeCompletionBuilder Builder(Allocator, Priority,CXAvailability_Available);
+    CodeCompletionBuilder Builder(Allocator, Results.getCodeCompletionTUInfo(),
+                                  Priority,CXAvailability_Available);
 
     PrintingPolicy Policy = getCompletionPrintingPolicy(*this);
     Builder.AddResultTypeChunk(GetCompletionTypeString(PropertyType, Context,
@@ -5876,12 +6021,12 @@ static void FindImplementableMethods(ASTContext &Context,
   for (ObjCContainerDecl::method_iterator M = Container->meth_begin(),
                                        MEnd = Container->meth_end();
        M != MEnd; ++M) {
-    if ((*M)->isInstanceMethod() == WantInstanceMethods) {
+    if (M->isInstanceMethod() == WantInstanceMethods) {
       if (!ReturnType.isNull() &&
-          !Context.hasSameUnqualifiedType(ReturnType, (*M)->getResultType()))
+          !Context.hasSameUnqualifiedType(ReturnType, M->getResultType()))
         continue;
 
-      KnownMethods[(*M)->getSelector()] = std::make_pair(*M, InOriginalClass);
+      KnownMethods[M->getSelector()] = std::make_pair(&*M, InOriginalClass);
     }
   }
 }
@@ -5889,10 +6034,14 @@ static void FindImplementableMethods(ASTContext &Context,
 /// \brief Add the parenthesized return or parameter type chunk to a code 
 /// completion string.
 static void AddObjCPassingTypeChunk(QualType Type,
+                                    unsigned ObjCDeclQuals,
                                     ASTContext &Context,
                                     const PrintingPolicy &Policy,
                                     CodeCompletionBuilder &Builder) {
   Builder.AddChunk(CodeCompletionString::CK_LeftParen);
+  std::string Quals = formatObjCParamQualifiers(ObjCDeclQuals);
+  if (!Quals.empty())
+    Builder.AddTextChunk(Builder.getAllocator().CopyString(Quals));
   Builder.AddTextChunk(GetCompletionTypeString(Type, Context, Policy,
                                                Builder.getAllocator()));
   Builder.AddChunk(CodeCompletionString::CK_RightParen);
@@ -5928,7 +6077,7 @@ static void AddObjCKeyValueCompletions(ObjCPropertyDecl *Property,
   // Builder that will create each code completion.
   typedef CodeCompletionResult Result;
   CodeCompletionAllocator &Allocator = Results.getAllocator();
-  CodeCompletionBuilder Builder(Allocator);
+  CodeCompletionBuilder Builder(Allocator, Results.getCodeCompletionTUInfo());
   
   // The selector table.
   SelectorTable &Selectors = Context.Selectors;
@@ -5967,7 +6116,8 @@ static void AddObjCKeyValueCompletions(ObjCPropertyDecl *Property,
       KnownSelectors.insert(Selectors.getNullarySelector(PropName)) &&
       ReturnTypeMatchesProperty && !Property->getGetterMethodDecl()) {
     if (ReturnType.isNull())
-      AddObjCPassingTypeChunk(Property->getType(), Context, Policy, Builder);
+      AddObjCPassingTypeChunk(Property->getType(), /*Quals=*/0,
+                              Context, Policy, Builder);
     
     Builder.AddTypedTextChunk(Key);
     Results.AddResult(Result(Builder.TakeString(), CCP_CodePattern, 
@@ -6013,7 +6163,8 @@ static void AddObjCKeyValueCompletions(ObjCPropertyDecl *Property,
       Builder.AddTypedTextChunk(
                                 Allocator.CopyString(SelectorId->getName()));
       Builder.AddTypedTextChunk(":");
-      AddObjCPassingTypeChunk(Property->getType(), Context, Policy, Builder);
+      AddObjCPassingTypeChunk(Property->getType(), /*Quals=*/0,
+                              Context, Policy, Builder);
       Builder.AddTextChunk(Key);
       Results.AddResult(Result(Builder.TakeString(), CCP_CodePattern, 
                                CXCursor_ObjCInstanceMethodDecl));
@@ -6582,6 +6733,7 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
   // Add declarations or definitions for each of the known methods.
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   Results.EnterNewScope();
   PrintingPolicy Policy = getCompletionPrintingPolicy(*this);
@@ -6589,13 +6741,16 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
                               MEnd = KnownMethods.end();
        M != MEnd; ++M) {
     ObjCMethodDecl *Method = M->second.first;
-    CodeCompletionBuilder Builder(Results.getAllocator());
+    CodeCompletionBuilder Builder(Results.getAllocator(),
+                                  Results.getCodeCompletionTUInfo());
     
     // If the result type was not already provided, add it to the
     // pattern as (type).
     if (ReturnType.isNull())
-      AddObjCPassingTypeChunk(Method->getResultType(), Context, Policy, 
-                              Builder);
+      AddObjCPassingTypeChunk(Method->getResultType(),
+                              Method->getObjCDeclQualifier(),
+                              Context, Policy,
+                              Builder); 
 
     Selector Sel = Method->getSelector();
 
@@ -6619,7 +6774,9 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
         break;
 
       // Add the parameter type.
-      AddObjCPassingTypeChunk((*P)->getOriginalType(), Context, Policy, 
+      AddObjCPassingTypeChunk((*P)->getOriginalType(),
+                              (*P)->getObjCDeclQualifier(),
+                              Context, Policy,
                               Builder);
       
       if (IdentifierInfo *Id = (*P)->getIdentifier())
@@ -6654,15 +6811,12 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
     if (!M->second.second)
       Priority += CCD_InBaseClass;
     
-    Results.AddResult(Result(Builder.TakeString(), Priority, 
-                             Method->isInstanceMethod()
-                               ? CXCursor_ObjCInstanceMethodDecl
-                               : CXCursor_ObjCClassMethodDecl));
+    Results.AddResult(Result(Builder.TakeString(), Method, Priority));
   }
 
   // Add Key-Value-Coding and Key-Value-Observing accessor methods for all of 
   // the properties in this class and its categories.
-  if (Context.getLangOptions().ObjC2) {
+  if (Context.getLangOpts().ObjC2) {
     SmallVector<ObjCContainerDecl *, 4> Containers;
     Containers.push_back(SearchDecl);
     
@@ -6688,7 +6842,7 @@ void Sema::CodeCompleteObjCMethodDecl(Scope *S,
       for (ObjCContainerDecl::prop_iterator P = Containers[I]->prop_begin(),
                                          PEnd = Containers[I]->prop_end(); 
            P != PEnd; ++P) {
-        AddObjCKeyValueCompletions(*P, IsInstanceMethod, ReturnType, Context, 
+        AddObjCKeyValueCompletions(&*P, IsInstanceMethod, ReturnType, Context, 
                                    KnownSelectors, Results);
       }
     }
@@ -6723,6 +6877,7 @@ void Sema::CodeCompleteObjCMethodDeclSelector(Scope *S,
   // Build the set of methods we can see.
   typedef CodeCompletionResult Result;
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_Other);
   
   if (ReturnTy)
@@ -6745,7 +6900,8 @@ void Sema::CodeCompleteObjCMethodDeclSelector(Scope *S,
         if (NumSelIdents && NumSelIdents <= MethList->Method->param_size()) {
           ParmVarDecl *Param = MethList->Method->param_begin()[NumSelIdents-1];
           if (Param->getIdentifier()) {
-            CodeCompletionBuilder Builder(Results.getAllocator());
+            CodeCompletionBuilder Builder(Results.getAllocator(),
+                                          Results.getCodeCompletionTUInfo());
             Builder.AddTypedTextChunk(Builder.getAllocator().CopyString(
                                            Param->getIdentifier()->getName()));
             Results.AddResult(Builder.TakeString());
@@ -6771,11 +6927,13 @@ void Sema::CodeCompleteObjCMethodDeclSelector(Scope *S,
 
 void Sema::CodeCompletePreprocessorDirective(bool InConditional) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PreprocessorDirective);
   Results.EnterNewScope();
   
   // #if <condition>
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   Builder.AddTypedTextChunk("if");
   Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
   Builder.AddPlaceholderChunk("condition");
@@ -6874,7 +7032,7 @@ void Sema::CodeCompletePreprocessorDirective(bool InConditional) {
   Builder.AddPlaceholderChunk("arguments");
   Results.AddResult(Builder.TakeString());
 
-  if (getLangOptions().ObjC1) {
+  if (getLangOpts().ObjC1) {
     // #import "header"
     Builder.AddTypedTextChunk("import");
     Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
@@ -6934,11 +7092,13 @@ void Sema::CodeCompleteInPreprocessorConditionalExclusion(Scope *S) {
 
 void Sema::CodeCompletePreprocessorMacroName(bool IsDefinition) {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         IsDefinition? CodeCompletionContext::CCC_MacroName
                                     : CodeCompletionContext::CCC_MacroNameUse);
   if (!IsDefinition && (!CodeCompleter || CodeCompleter->includeMacros())) {
     // Add just the names of macros, not their arguments.    
-    CodeCompletionBuilder Builder(Results.getAllocator());
+    CodeCompletionBuilder Builder(Results.getAllocator(),
+                                  Results.getCodeCompletionTUInfo());
     Results.EnterNewScope();
     for (Preprocessor::macro_iterator M = PP.macro_begin(), 
                                    MEnd = PP.macro_end();
@@ -6958,6 +7118,7 @@ void Sema::CodeCompletePreprocessorMacroName(bool IsDefinition) {
 
 void Sema::CodeCompletePreprocessorExpression() {
   ResultBuilder Results(*this, CodeCompleter->getAllocator(),
+                        CodeCompleter->getCodeCompletionTUInfo(),
                         CodeCompletionContext::CCC_PreprocessorExpression);
   
   if (!CodeCompleter || CodeCompleter->includeMacros())
@@ -6965,7 +7126,8 @@ void Sema::CodeCompletePreprocessorExpression() {
   
     // defined (<macro>)
   Results.EnterNewScope();
-  CodeCompletionBuilder Builder(Results.getAllocator());
+  CodeCompletionBuilder Builder(Results.getAllocator(),
+                                Results.getCodeCompletionTUInfo());
   Builder.AddTypedTextChunk("defined");
   Builder.AddChunk(CodeCompletionString::CK_HorizontalSpace);
   Builder.AddChunk(CodeCompletionString::CK_LeftParen);
@@ -6997,8 +7159,10 @@ void Sema::CodeCompleteNaturalLanguage() {
 }
 
 void Sema::GatherGlobalCodeCompletions(CodeCompletionAllocator &Allocator,
+                                       CodeCompletionTUInfo &CCTUInfo,
                  SmallVectorImpl<CodeCompletionResult> &Results) {
-  ResultBuilder Builder(*this, Allocator, CodeCompletionContext::CCC_Recovery);
+  ResultBuilder Builder(*this, Allocator, CCTUInfo,
+                        CodeCompletionContext::CCC_Recovery);
   if (!CodeCompleter || CodeCompleter->includeGlobals()) {
     CodeCompletionDeclConsumer Consumer(Builder, 
                                         Context.getTranslationUnitDecl());

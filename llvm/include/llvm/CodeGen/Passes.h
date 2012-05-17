@@ -31,15 +31,34 @@ namespace llvm {
 
 namespace llvm {
 
+extern char &NoPassID; // Allow targets to choose not to run a pass.
+
+class PassConfigImpl;
+
 /// Target-Independent Code Generator Pass Configuration Options.
 ///
 /// This is an ImmutablePass solely for the purpose of exposing CodeGen options
 /// to the internals of other CodeGen passes.
 class TargetPassConfig : public ImmutablePass {
+public:
+  /// Pseudo Pass IDs. These are defined within TargetPassConfig because they
+  /// are unregistered pass IDs. They are only useful for use with
+  /// TargetPassConfig APIs to identify multiple occurrences of the same pass.
+  ///
+
+  /// EarlyTailDuplicate - A clone of the TailDuplicate pass that runs early
+  /// during codegen, on SSA form.
+  static char EarlyTailDuplicateID;
+
+  /// PostRAMachineLICM - A clone of the LICM pass that runs during late machine
+  /// optimization after regalloc.
+  static char PostRAMachineLICMID;
+
 protected:
   TargetMachine *TM;
-  PassManagerBase &PM;
-  bool Initialized; // Flagged after all passes are configured.
+  PassManagerBase *PM;
+  PassConfigImpl *Impl; // Internal data structures
+  bool Initialized;     // Flagged after all passes are configured.
 
   // Target Pass Options
   // Targets provide a default setting, user flags override.
@@ -67,6 +86,7 @@ public:
     return TM->getTargetLowering();
   }
 
+  //
   void setInitialized() { Initialized = true; }
 
   CodeGenOpt::Level getOptLevel() const { return TM->getOptLevel(); }
@@ -75,6 +95,24 @@ public:
 
   bool getEnableTailMerge() const { return EnableTailMerge; }
   void setEnableTailMerge(bool Enable) { setOpt(EnableTailMerge, Enable); }
+
+  /// Allow the target to override a specific pass without overriding the pass
+  /// pipeline. When passes are added to the standard pipeline at the
+  /// point where StadardID is expected, add TargetID in its place.
+  void substitutePass(char &StandardID, char &TargetID);
+
+  /// Allow the target to enable a specific standard pass by default.
+  void enablePass(char &ID) { substitutePass(ID, ID); }
+
+  /// Allow the target to disable a specific standard pass by default.
+  void disablePass(char &ID) { substitutePass(ID, NoPassID); }
+
+  /// Return the pass ssubtituted for StandardID by the target.
+  /// If no substitution exists, return StandardID.
+  AnalysisID getPassSubstitution(AnalysisID StandardID) const;
+
+  /// Return true if the optimized regalloc pipeline is enabled.
+  bool getOptimizeRegAlloc() const;
 
   /// Add common target configurable passes that perform LLVM IR to IR
   /// transforms following machine independent optimization.
@@ -122,13 +160,33 @@ protected:
     return false;
   }
 
-  // addRegAlloc - Add standard passes related to register allocation.
-  virtual void addRegAlloc();
+  /// createTargetRegisterAllocator - Create the register allocator pass for
+  /// this target at the current optimization level.
+  virtual FunctionPass *createTargetRegisterAllocator(bool Optimized);
 
-  /// addPostRegAlloc - This method may be implemented by targets that want
-  /// to run passes after register allocation but before prolog-epilog
-  /// insertion.  This should return true if -print-machineinstrs should print
-  /// after these passes.
+  /// addFastRegAlloc - Add the minimum set of target-independent passes that
+  /// are required for fast register allocation.
+  virtual void addFastRegAlloc(FunctionPass *RegAllocPass);
+
+  /// addOptimizedRegAlloc - Add passes related to register allocation.
+  /// LLVMTargetMachine provides standard regalloc passes for most targets.
+  virtual void addOptimizedRegAlloc(FunctionPass *RegAllocPass);
+
+  /// addFinalizeRegAlloc - This method may be implemented by targets that want
+  /// to run passes within the regalloc pipeline, immediately after the register
+  /// allocation pass itself. These passes run as soon as virtual regisiters
+  /// have been rewritten to physical registers but before and other postRA
+  /// optimization happens. Targets that have marked instructions for bundling
+  /// must have finalized those bundles by the time these passes have run,
+  /// because subsequent passes are not guaranteed to be bundle-aware.
+  virtual bool addFinalizeRegAlloc() {
+    return false;
+  }
+
+  /// addPostRegAlloc - This method may be implemented by targets that want to
+  /// run passes after register allocation pass pipeline but before
+  /// prolog-epilog insertion.  This should return true if -print-machineinstrs
+  /// should print after these passes.
   virtual bool addPostRegAlloc() {
     return false;
   }
@@ -157,13 +215,13 @@ protected:
   /// Utilities for targets to add passes to the pass manager.
   ///
 
-  /// Add a target-independent CodeGen pass at this point in the pipeline.
-  void addPass(char &ID);
+  /// Add a CodeGen pass at this point in the pipeline after checking overrides.
+  /// Return the pass that was added, or NoPassID.
+  AnalysisID addPass(char &ID);
 
-  /// printNoVerify - Add a pass to dump the machine function, if debugging is
-  /// enabled.
-  ///
-  void printNoVerify(const char *Banner) const;
+  /// addMachinePasses helper to create the target-selected or overriden
+  /// regalloc pass.
+  FunctionPass *createRegAllocPass(bool Optimized);
 
   /// printAndVerify - Add a pass to dump then verify the machine function, if
   /// those steps are enabled.
@@ -200,6 +258,10 @@ namespace llvm {
   /// EdgeBundles analysis - Bundle machine CFG edges.
   extern char &EdgeBundlesID;
 
+  /// LiveVariables pass - This pass computes the set of blocks in which each
+  /// variable is life and sets machine operand kill flags.
+  extern char &LiveVariablesID;
+
   /// PHIElimination - This pass eliminates machine instruction PHI nodes
   /// by inserting copy instructions.  This destroys SSA information, but is the
   /// desired input for some register allocators.  This pass is "required" by
@@ -222,8 +284,11 @@ namespace llvm {
   /// register allocators.
   extern char &TwoAddressInstructionPassID;
 
-  /// RegisteCoalescer - This pass merges live ranges to eliminate copies.
-  extern char &RegisterCoalescerPassID;
+  /// ProcessImpicitDefs pass - This pass removes IMPLICIT_DEFs.
+  extern char &ProcessImplicitDefsID;
+
+  /// RegisterCoalescer - This pass merges live ranges to eliminate copies.
+  extern char &RegisterCoalescerID;
 
   /// MachineScheduler - This pass schedules machine instructions.
   extern char &MachineSchedulerID;
@@ -238,11 +303,6 @@ namespace llvm {
 
   /// DeadMachineInstructionElim - This pass removes dead machine instructions.
   extern char &DeadMachineInstructionElimID;
-
-  /// Creates a register allocator as the user specified on the command line, or
-  /// picks one that matches OptLevel.
-  ///
-  FunctionPass *createRegisterAllocator(CodeGenOpt::Level OptLevel);
 
   /// FastRegisterAllocation Pass - This pass register allocates as fast as
   /// possible. It is best suited for debug code where live ranges are short.
@@ -358,10 +418,10 @@ namespace llvm {
   /// adapted to code generation.  Required if using dwarf exception handling.
   FunctionPass *createDwarfEHPass(const TargetMachine *tm);
 
-  /// createSjLjEHPass - This pass adapts exception handling code to use
+  /// createSjLjEHPreparePass - This pass adapts exception handling code to use
   /// the GCC-style builtin setjmp/longjmp (sjlj) to handling EH control flow.
   ///
-  FunctionPass *createSjLjEHPass(const TargetLowering *tli);
+  FunctionPass *createSjLjEHPreparePass(const TargetLowering *tli);
 
   /// LocalStackSlotAllocation - This pass assigns local frame indices to stack
   /// slots relative to one another and allocates base registers to access them

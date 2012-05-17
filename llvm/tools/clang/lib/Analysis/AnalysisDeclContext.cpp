@@ -24,8 +24,8 @@
 #include "clang/Analysis/CFG.h"
 #include "clang/Analysis/CFGStmtMap.h"
 #include "clang/Analysis/Support/BumpVector.h"
-#include "clang/Analysis/Support/SaveAndRestore.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/Support/SaveAndRestore.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace clang;
@@ -34,11 +34,9 @@ typedef llvm::DenseMap<const void *, ManagedAnalysis *> ManagedAnalysisMap;
 
 AnalysisDeclContext::AnalysisDeclContext(AnalysisDeclContextManager *Mgr,
                                  const Decl *d,
-                                 idx::TranslationUnit *tu,
                                  const CFG::BuildOptions &buildOptions)
   : Manager(Mgr),
     D(d),
-    TU(tu),
     cfgBuildOptions(buildOptions),
     forcedBlkExprs(0),
     builtCFG(false),
@@ -50,11 +48,9 @@ AnalysisDeclContext::AnalysisDeclContext(AnalysisDeclContextManager *Mgr,
 }
 
 AnalysisDeclContext::AnalysisDeclContext(AnalysisDeclContextManager *Mgr,
-                                 const Decl *d,
-                                 idx::TranslationUnit *tu)
+                                 const Decl *d)
 : Manager(Mgr),
   D(d),
-  TU(tu),
   forcedBlkExprs(0),
   builtCFG(false),
   builtCompleteCFG(false),
@@ -180,7 +176,7 @@ CFGReverseBlockReachabilityAnalysis *AnalysisDeclContext::getCFGReachablityAnaly
 }
 
 void AnalysisDeclContext::dumpCFG(bool ShowColors) {
-    getCFG()->dump(getASTContext().getLangOptions(), ShowColors);
+    getCFG()->dump(getASTContext().getLangOpts(), ShowColors);
 }
 
 ParentMap &AnalysisDeclContext::getParentMap() {
@@ -195,11 +191,10 @@ PseudoConstantAnalysis *AnalysisDeclContext::getPseudoConstantAnalysis() {
   return PCA.get();
 }
 
-AnalysisDeclContext *AnalysisDeclContextManager::getContext(const Decl *D,
-                                                    idx::TranslationUnit *TU) {
+AnalysisDeclContext *AnalysisDeclContextManager::getContext(const Decl *D) {
   AnalysisDeclContext *&AC = Contexts[D];
   if (!AC)
-    AC = new AnalysisDeclContext(this, D, TU, cfgBuildOptions);
+    AC = new AnalysisDeclContext(this, D, cfgBuildOptions);
   return AC;
 }
 
@@ -335,8 +330,8 @@ namespace {
 class FindBlockDeclRefExprsVals : public StmtVisitor<FindBlockDeclRefExprsVals>{
   BumpVector<const VarDecl*> &BEVals;
   BumpVectorContext &BC;
-  llvm::DenseMap<const VarDecl*, unsigned> Visited;
-  llvm::SmallSet<const DeclContext*, 4> IgnoredContexts;
+  llvm::SmallPtrSet<const VarDecl*, 4> Visited;
+  llvm::SmallPtrSet<const DeclContext*, 4> IgnoredContexts;
 public:
   FindBlockDeclRefExprsVals(BumpVector<const VarDecl*> &bevals,
                             BumpVectorContext &bc)
@@ -355,22 +350,12 @@ public:
 
   void VisitDeclRefExpr(DeclRefExpr *DR) {
     // Non-local variables are also directly modified.
-    if (const VarDecl *VD = dyn_cast<VarDecl>(DR->getDecl()))
-      if (!VD->hasLocalStorage()) {
-        unsigned &flag = Visited[VD];
-        if (!flag) {
-          flag = 1;
-          BEVals.push_back(VD, BC);
-        }
-      }
-  }
-
-  void VisitBlockDeclRefExpr(BlockDeclRefExpr *DR) {
     if (const VarDecl *VD = dyn_cast<VarDecl>(DR->getDecl())) {
-      unsigned &flag = Visited[VD];
-      if (!flag) {
-        flag = 1;
-        if (IsTrackedDecl(VD))
+      if (!VD->hasLocalStorage()) {
+        if (Visited.insert(VD))
+          BEVals.push_back(VD, BC);
+      } else if (DR->refersToEnclosingLocal()) {
+        if (Visited.insert(VD) && IsTrackedDecl(VD))
           BEVals.push_back(VD, BC);
       }
     }

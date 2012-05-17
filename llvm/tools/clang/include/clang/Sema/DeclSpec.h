@@ -29,6 +29,7 @@
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace clang {
@@ -244,6 +245,7 @@ public:
   static const TST TST_char16 = clang::TST_char16;
   static const TST TST_char32 = clang::TST_char32;
   static const TST TST_int = clang::TST_int;
+  static const TST TST_int128 = clang::TST_int128;
   static const TST TST_half = clang::TST_half;
   static const TST TST_float = clang::TST_float;
   static const TST TST_double = clang::TST_double;
@@ -481,7 +483,10 @@ public:
   CXXScopeSpec &getTypeSpecScope() { return TypeScope; }
   const CXXScopeSpec &getTypeSpecScope() const { return TypeScope; }
 
-  const SourceRange &getSourceRange() const { return Range; }
+  const SourceRange &getSourceRange() const LLVM_READONLY { return Range; }
+  SourceLocation getLocStart() const LLVM_READONLY { return Range.getBegin(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return Range.getEnd(); }
+
   SourceLocation getTypeSpecWidthLoc() const { return TSWLoc; }
   SourceLocation getTypeSpecComplexLoc() const { return TSCLoc; }
   SourceLocation getTypeSpecSignLoc() const { return TSSLoc; }
@@ -644,6 +649,11 @@ public:
   
   bool isConstexprSpecified() const { return Constexpr_specified; }
   SourceLocation getConstexprSpecLoc() const { return ConstexprLoc; }
+
+  void ClearConstexprSpec() {
+    Constexpr_specified = false;
+    ConstexprLoc = SourceLocation();
+  }
 
   AttributePool &getAttributePool() const {
     return Attrs.getPool();
@@ -998,9 +1008,11 @@ public:
   void setTemplateId(TemplateIdAnnotation *TemplateId);
 
   /// \brief Return the source range that covers this unqualified-id.
-  SourceRange getSourceRange() const { 
+  SourceRange getSourceRange() const LLVM_READONLY { 
     return SourceRange(StartLocation, EndLocation); 
   }
+  SourceLocation getLocStart() const LLVM_READONLY { return StartLocation; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return EndLocation; }
 };
   
 /// CachedTokens - A set of tokens that has been cached for later
@@ -1452,9 +1464,10 @@ public:
     ObjCCatchContext,    // Objective-C catch exception-declaration
     BlockLiteralContext,  // Block literal declarator.
     LambdaExprContext,   // Lambda-expression declarator.
+    TrailingReturnContext, // C++11 trailing-type-specifier.
     TemplateTypeArgContext, // Template type argument.
-    AliasDeclContext,    // C++0x alias-declaration.
-    AliasTemplateContext // C++0x alias-declaration template.
+    AliasDeclContext,    // C++11 alias-declaration.
+    AliasTemplateContext // C++11 alias-declaration template.
   };
 
 private:
@@ -1559,7 +1572,9 @@ public:
   }
 
   /// getSourceRange - Get the source range that spans this declarator.
-  const SourceRange &getSourceRange() const { return Range; }
+  const SourceRange &getSourceRange() const LLVM_READONLY { return Range; }
+  SourceLocation getLocStart() const LLVM_READONLY { return Range.getBegin(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return Range.getEnd(); }
 
   void SetSourceRange(SourceRange R) { Range = R; }
   /// SetRangeBegin - Set the start of the source range to Loc, unless it's
@@ -1626,6 +1641,7 @@ public:
     case BlockLiteralContext:
     case LambdaExprContext:
     case TemplateTypeArgContext:
+    case TrailingReturnContext:
       return true;
     }
     llvm_unreachable("unknown context kind!");
@@ -1657,6 +1673,7 @@ public:
     case BlockLiteralContext:
     case LambdaExprContext:
     case TemplateTypeArgContext:
+    case TrailingReturnContext:
       return false;
     }
     llvm_unreachable("unknown context kind!");
@@ -1674,15 +1691,24 @@ public:
         Context != FileContext)
       return false;
 
+    // Special names can't have direct initializers.
+    if (Name.getKind() != UnqualifiedId::IK_Identifier)
+      return false;
+
     switch (Context) {
     case FileContext:
     case BlockContext:
     case ForContext:
       return true;
 
+    case ConditionContext:
+      // This may not be followed by a direct initializer, but it can't be a
+      // function declaration either, and we'd prefer to perform a tentative
+      // parse in order to produce the right diagnostic.
+      return true;
+
     case KNRTypeListContext:
     case MemberContext:
-    case ConditionContext:
     case PrototypeContext:
     case ObjCParameterContext:
     case ObjCResultContext:
@@ -1696,6 +1722,7 @@ public:
     case BlockLiteralContext:
     case LambdaExprContext:
     case TemplateTypeArgContext:
+    case TrailingReturnContext:
       return false;
     }
     llvm_unreachable("unknown context kind!");
@@ -1958,16 +1985,19 @@ struct LambdaCapture {
   LambdaCaptureKind Kind;
   SourceLocation Loc;
   IdentifierInfo* Id;
-
+  SourceLocation EllipsisLoc;
+  
   LambdaCapture(LambdaCaptureKind Kind, SourceLocation Loc,
-                IdentifierInfo* Id = 0)
-    : Kind(Kind), Loc(Loc), Id(Id)
+                IdentifierInfo* Id = 0,
+                SourceLocation EllipsisLoc = SourceLocation())
+    : Kind(Kind), Loc(Loc), Id(Id), EllipsisLoc(EllipsisLoc)
   {}
 };
 
 /// LambdaIntroducer - Represents a complete lambda introducer.
 struct LambdaIntroducer {
   SourceRange Range;
+  SourceLocation DefaultLoc;
   LambdaCaptureDefault Default;
   llvm::SmallVector<LambdaCapture, 4> Captures;
 
@@ -1977,8 +2007,9 @@ struct LambdaIntroducer {
   /// addCapture - Append a capture in a lambda introducer.
   void addCapture(LambdaCaptureKind Kind,
                   SourceLocation Loc,
-                  IdentifierInfo* Id = 0) {
-    Captures.push_back(LambdaCapture(Kind, Loc, Id));
+                  IdentifierInfo* Id = 0, 
+                  SourceLocation EllipsisLoc = SourceLocation()) {
+    Captures.push_back(LambdaCapture(Kind, Loc, Id, EllipsisLoc));
   }
 
 };

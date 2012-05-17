@@ -195,9 +195,10 @@ MachineFunction::DeleteMachineBasicBlock(MachineBasicBlock *MBB) {
 MachineMemOperand *
 MachineFunction::getMachineMemOperand(MachinePointerInfo PtrInfo, unsigned f,
                                       uint64_t s, unsigned base_alignment,
-                                      const MDNode *TBAAInfo) {
+                                      const MDNode *TBAAInfo,
+                                      const MDNode *Ranges) {
   return new (Allocator) MachineMemOperand(PtrInfo, f, s, base_alignment,
-                                           TBAAInfo);
+                                           TBAAInfo, Ranges);
 }
 
 MachineMemOperand *
@@ -284,7 +285,13 @@ void MachineFunction::dump() const {
 }
 
 void MachineFunction::print(raw_ostream &OS, SlotIndexes *Indexes) const {
-  OS << "# Machine code for function " << Fn->getName() << ":\n";
+  OS << "# Machine code for function " << Fn->getName() << ": ";
+  if (RegInfo) {
+    OS << (RegInfo->isSSA() ? "SSA" : "Post SSA");
+    if (!RegInfo->tracksLiveness())
+      OS << ", not tracking liveness";
+  }
+  OS << '\n';
 
   // Print Frame Information
   FrameInfo->print(*this, OS);
@@ -462,7 +469,7 @@ MachineFrameInfo::getPristineRegs(const MachineBasicBlock *MBB) const {
   if (!isCalleeSavedInfoValid())
     return BV;
 
-  for (const unsigned *CSR = TRI->getCalleeSavedRegs(MF); CSR && *CSR; ++CSR)
+  for (const uint16_t *CSR = TRI->getCalleeSavedRegs(MF); CSR && *CSR; ++CSR)
     BV.set(*CSR);
 
   // The entry MBB always has all CSRs pristine.

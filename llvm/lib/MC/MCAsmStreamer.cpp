@@ -826,7 +826,7 @@ void MCAsmStreamer::EmitDwarfLocDirective(unsigned FileNo, unsigned Line,
 
   if (IsVerboseAsm) {
     OS.PadToColumn(MAI.getCommentColumn());
-    OS << MAI.getCommentString() << ' ' << FileName << ':' 
+    OS << MAI.getCommentString() << ' ' << FileName << ':'
        << Line << ':' << Column;
   }
   EmitEOL();
@@ -1309,13 +1309,15 @@ void MCAsmStreamer::EmitRawText(StringRef String) {
 }
 
 void MCAsmStreamer::FinishImpl() {
+  // FIXME: This header is duplicated with MCObjectStreamer
   // Dump out the dwarf file & directory tables and line tables.
+  const MCSymbol *LineSectionSymbol = NULL;
   if (getContext().hasDwarfFiles() && !UseLoc)
-    MCDwarfFileTable::Emit(this);
+    LineSectionSymbol = MCDwarfFileTable::Emit(this);
 
   // If we are generating dwarf for assembly source files dump out the sections.
   if (getContext().getGenDwarfForAssembly())
-    MCGenDwarfInfo::Emit(this);
+    MCGenDwarfInfo::Emit(this, LineSectionSymbol);
 
   if (!UseCFI)
     EmitFrames(false);

@@ -12,12 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Analysis/Support/SaveAndRestore.h"
+#include "llvm/Support/SaveAndRestore.h"
 #include "clang/Analysis/CFG.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/CharUnits.h"
+#include "clang/Basic/AttrKinds.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Format.h"
@@ -286,6 +287,11 @@ class CFGBuilder {
   CFG::BuildOptions::ForcedBlkExprs::value_type *cachedEntry;
   const Stmt *lastLookup;
 
+  // Caches boolean evaluations of expressions to avoid multiple re-evaluations
+  // during construction of branches for chained logical operators.
+  typedef llvm::DenseMap<Expr *, TryResult> CachedBoolEvalsTy;
+  CachedBoolEvalsTy CachedBoolEvals;
+
 public:
   explicit CFGBuilder(ASTContext *astContext,
                       const CFG::BuildOptions &buildOpts) 
@@ -305,7 +311,6 @@ private:
   // Visitors to walk an AST and construct the CFG.
   CFGBlock *VisitAddrLabelExpr(AddrLabelExpr *A, AddStmtChoice asc);
   CFGBlock *VisitBinaryOperator(BinaryOperator *B, AddStmtChoice asc);
-  CFGBlock *VisitBlockExpr(BlockExpr *E, AddStmtChoice asc);
   CFGBlock *VisitBreakStmt(BreakStmt *B);
   CFGBlock *VisitCXXCatchStmt(CXXCatchStmt *S);
   CFGBlock *VisitExprWithCleanups(ExprWithCleanups *E,
@@ -331,14 +336,17 @@ private:
   CFGBlock *VisitDeclSubExpr(DeclStmt *DS);
   CFGBlock *VisitDefaultStmt(DefaultStmt *D);
   CFGBlock *VisitDoStmt(DoStmt *D);
+  CFGBlock *VisitLambdaExpr(LambdaExpr *E, AddStmtChoice asc);
   CFGBlock *VisitForStmt(ForStmt *F);
   CFGBlock *VisitGotoStmt(GotoStmt *G);
   CFGBlock *VisitIfStmt(IfStmt *I);
   CFGBlock *VisitImplicitCastExpr(ImplicitCastExpr *E, AddStmtChoice asc);
   CFGBlock *VisitIndirectGotoStmt(IndirectGotoStmt *I);
   CFGBlock *VisitLabelStmt(LabelStmt *L);
+  CFGBlock *VisitLambdaExpr(LambdaExpr *L);
   CFGBlock *VisitMemberExpr(MemberExpr *M, AddStmtChoice asc);
   CFGBlock *VisitObjCAtCatchStmt(ObjCAtCatchStmt *S);
+  CFGBlock *VisitObjCAutoreleasePoolStmt(ObjCAutoreleasePoolStmt *S);
   CFGBlock *VisitObjCAtSynchronizedStmt(ObjCAtSynchronizedStmt *S);
   CFGBlock *VisitObjCAtThrowStmt(ObjCAtThrowStmt *S);
   CFGBlock *VisitObjCAtTryStmt(ObjCAtTryStmt *S);
@@ -355,6 +363,7 @@ private:
   CFGBlock *Visit(Stmt *S, AddStmtChoice asc = AddStmtChoice::NotAlwaysAdd);
   CFGBlock *VisitStmt(Stmt *S, AddStmtChoice asc);
   CFGBlock *VisitChildren(Stmt *S);
+  CFGBlock *VisitNoRecurse(Expr *E, AddStmtChoice asc);
 
   // Visitors to walk an AST and generate destructors of temporaries in
   // full expression.
@@ -438,12 +447,64 @@ private:
   /// tryEvaluateBool - Try and evaluate the Stmt and return 0 or 1
   /// if we can evaluate to a known value, otherwise return -1.
   TryResult tryEvaluateBool(Expr *S) {
-    bool Result;
     if (!BuildOpts.PruneTriviallyFalseEdges ||
-        S->isTypeDependent() || S->isValueDependent() ||
-        !S->EvaluateAsBooleanCondition(Result, *Context))
+        S->isTypeDependent() || S->isValueDependent())
       return TryResult();
-    return Result;
+
+    if (BinaryOperator *Bop = dyn_cast<BinaryOperator>(S)) {
+      if (Bop->isLogicalOp()) {
+        // Check the cache first.
+        CachedBoolEvalsTy::iterator I = CachedBoolEvals.find(S);
+        if (I != CachedBoolEvals.end())
+          return I->second; // already in map;
+
+        // Retrieve result at first, or the map might be updated.
+        TryResult Result = evaluateAsBooleanConditionNoCache(S);
+        CachedBoolEvals[S] = Result; // update or insert
+        return Result;
+      }
+    }
+
+    return evaluateAsBooleanConditionNoCache(S);
+  }
+
+  /// \brief Evaluate as boolean \param E without using the cache.
+  TryResult evaluateAsBooleanConditionNoCache(Expr *E) {
+    if (BinaryOperator *Bop = dyn_cast<BinaryOperator>(E)) {
+      if (Bop->isLogicalOp()) {
+        TryResult LHS = tryEvaluateBool(Bop->getLHS());
+        if (LHS.isKnown()) {
+          // We were able to evaluate the LHS, see if we can get away with not
+          // evaluating the RHS: 0 && X -> 0, 1 || X -> 1
+          if (LHS.isTrue() == (Bop->getOpcode() == BO_LOr))
+            return LHS.isTrue();
+
+          TryResult RHS = tryEvaluateBool(Bop->getRHS());
+          if (RHS.isKnown()) {
+            if (Bop->getOpcode() == BO_LOr)
+              return LHS.isTrue() || RHS.isTrue();
+            else
+              return LHS.isTrue() && RHS.isTrue();
+          }
+        } else {
+          TryResult RHS = tryEvaluateBool(Bop->getRHS());
+          if (RHS.isKnown()) {
+            // We can't evaluate the LHS; however, sometimes the result
+            // is determined by the RHS: X && 0 -> 0, X || 1 -> 1.
+            if (RHS.isTrue() == (Bop->getOpcode() == BO_LOr))
+              return RHS.isTrue();
+          }
+        }
+
+        return TryResult();
+      }
+    }
+
+    bool Result;
+    if (E->EvaluateAsBooleanCondition(Result, *Context))
+      return Result;
+
+    return TryResult();
   }
   
 };
@@ -771,7 +832,7 @@ void CFGBuilder::addImplicitDtorsForDestructor(const CXXDestructorDecl *DD) {
     if (const CXXRecordDecl *CD = QT->getAsCXXRecordDecl())
       if (!CD->hasTrivialDestructor()) {
         autoCreateBlock();
-        appendMemberDtor(Block, *FI);
+        appendMemberDtor(Block, &*FI);
       }
   }
 }
@@ -926,7 +987,7 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
       return VisitBinaryOperator(cast<BinaryOperator>(S), asc);
 
     case Stmt::BlockExprClass:
-      return VisitBlockExpr(cast<BlockExpr>(S), asc);
+      return VisitNoRecurse(cast<Expr>(S), asc);
 
     case Stmt::BreakStmtClass:
       return VisitBreakStmt(cast<BreakStmt>(S));
@@ -934,6 +995,7 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
     case Stmt::CallExprClass:
     case Stmt::CXXOperatorCallExprClass:
     case Stmt::CXXMemberCallExprClass:
+    case Stmt::UserDefinedLiteralClass:
       return VisitCallExpr(cast<CallExpr>(S), asc);
 
     case Stmt::CaseStmtClass:
@@ -1005,6 +1067,9 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
     case Stmt::LabelStmtClass:
       return VisitLabelStmt(cast<LabelStmt>(S));
 
+    case Stmt::LambdaExprClass:
+      return VisitLambdaExpr(cast<LambdaExpr>(S), asc);
+
     case Stmt::MemberExprClass:
       return VisitMemberExpr(cast<MemberExpr>(S), asc);
 
@@ -1013,6 +1078,9 @@ CFGBlock *CFGBuilder::Visit(Stmt * S, AddStmtChoice asc) {
 
     case Stmt::ObjCAtCatchStmtClass:
       return VisitObjCAtCatchStmt(cast<ObjCAtCatchStmt>(S));
+
+    case Stmt::ObjCAutoreleasePoolStmtClass:
+    return VisitObjCAutoreleasePoolStmt(cast<ObjCAutoreleasePoolStmt>(S));
 
     case Stmt::ObjCAtSynchronizedStmtClass:
       return VisitObjCAtSynchronizedStmt(cast<ObjCAtSynchronizedStmt>(S));
@@ -1064,7 +1132,7 @@ CFGBlock *CFGBuilder::VisitStmt(Stmt *S, AddStmtChoice asc) {
 
 /// VisitChildren - Visit the children of a Stmt.
 CFGBlock *CFGBuilder::VisitChildren(Stmt *Terminator) {
-  CFGBlock *lastBlock = Block;  
+  CFGBlock *lastBlock = Block;
   for (Stmt::child_range I = Terminator->children(); I; ++I)
     if (Stmt *child = *I)
       if (CFGBlock *b = Visit(child))
@@ -1122,6 +1190,10 @@ CFGBlock *CFGBuilder::VisitBinaryOperator(BinaryOperator *B,
       RHSBlock = createBlock();
     }
 
+    // Generate the blocks for evaluating the LHS.
+    Block = LHSBlock;
+    CFGBlock *EntryLHSBlock = addStmt(B->getLHS());
+
     // See if this is a known constant.
     TryResult KnownVal = tryEvaluateBool(B->getLHS());
     if (KnownVal.isKnown() && (B->getOpcode() == BO_LOr))
@@ -1137,9 +1209,7 @@ CFGBlock *CFGBuilder::VisitBinaryOperator(BinaryOperator *B,
       addSuccessor(LHSBlock, KnownVal.isTrue() ? NULL : ConfluenceBlock);
     }
 
-    // Generate the blocks for evaluating the LHS.
-    Block = LHSBlock;
-    return addStmt(B->getLHS());
+    return EntryLHSBlock;
   }
 
   if (B->getOpcode() == BO_Comma) { // ,
@@ -1171,7 +1241,7 @@ CFGBlock *CFGBuilder::VisitBinaryOperator(BinaryOperator *B,
   return (LBlock ? LBlock : RBlock);
 }
 
-CFGBlock *CFGBuilder::VisitBlockExpr(BlockExpr *E, AddStmtChoice asc) {
+CFGBlock *CFGBuilder::VisitNoRecurse(Expr *E, AddStmtChoice asc) {
   if (asc.alwaysAdd(*this, E)) {
     autoCreateBlock();
     appendStmt(Block, E);
@@ -1211,7 +1281,8 @@ static bool CanThrow(Expr *E, ASTContext &Ctx) {
   const FunctionType *FT = Ty->getAs<FunctionType>();
   if (FT) {
     if (const FunctionProtoType *Proto = dyn_cast<FunctionProtoType>(FT))
-      if (Proto->isNothrow(Ctx))
+      if (Proto->getExceptionSpecType() != EST_Uninstantiated &&
+          Proto->isNothrow(Ctx))
         return false;
   }
   return true;
@@ -1234,7 +1305,7 @@ CFGBlock *CFGBuilder::VisitCallExpr(CallExpr *C, AddStmtChoice asc) {
   bool AddEHEdge = false;
 
   // Languages without exceptions are assumed to not throw.
-  if (Context->getLangOptions().Exceptions) {
+  if (Context->getLangOpts().Exceptions) {
     if (BuildOpts.AddEHEdges)
       AddEHEdge = true;
   }
@@ -1459,14 +1530,24 @@ CFGBlock *CFGBuilder::VisitDeclSubExpr(DeclStmt *DS) {
 
   autoCreateBlock();
   appendStmt(Block, DS);
+  
+  // Keep track of the last non-null block, as 'Block' can be nulled out
+  // if the initializer expression is something like a 'while' in a
+  // statement-expression.
+  CFGBlock *LastBlock = Block;
 
   if (Init) {
-    if (HasTemporaries)
+    if (HasTemporaries) {
       // For expression with temporaries go directly to subexpression to omit
       // generating destructors for the second time.
-      Visit(cast<ExprWithCleanups>(Init)->getSubExpr());
-    else
-      Visit(Init);
+      ExprWithCleanups *EC = cast<ExprWithCleanups>(Init);
+      if (CFGBlock *newBlock = Visit(EC->getSubExpr()))
+        LastBlock = newBlock;
+    }
+    else {
+      if (CFGBlock *newBlock = Visit(Init))
+        LastBlock = newBlock;
+    }
   }
 
   // If the type of VD is a VLA, then we must process its size expressions.
@@ -1478,7 +1559,7 @@ CFGBlock *CFGBuilder::VisitDeclSubExpr(DeclStmt *DS) {
   if (ScopePos && VD == *ScopePos)
     ++ScopePos;
 
-  return Block;
+  return Block ? Block : LastBlock;
 }
 
 CFGBlock *CFGBuilder::VisitIfStmt(IfStmt *I) {
@@ -1642,6 +1723,19 @@ CFGBlock *CFGBuilder::VisitLabelStmt(LabelStmt *L) {
   return LabelBlock;
 }
 
+CFGBlock *CFGBuilder::VisitLambdaExpr(LambdaExpr *E, AddStmtChoice asc) {
+  CFGBlock *LastBlock = VisitNoRecurse(E, asc);
+  for (LambdaExpr::capture_init_iterator it = E->capture_init_begin(),
+       et = E->capture_init_end(); it != et; ++it) {
+    if (Expr *Init = *it) {
+      CFGBlock *Tmp = Visit(Init);
+      if (Tmp != 0)
+        LastBlock = Tmp;
+    }
+  }
+  return LastBlock;
+}
+  
 CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
   // Goto is a control-flow statement.  Thus we stop processing the current
   // block and create a new one.
@@ -1927,6 +2021,12 @@ CFGBlock *CFGBuilder::VisitObjCForCollectionStmt(ObjCForCollectionStmt *S) {
   // Now create a prologue block to contain the collection expression.
   Block = createBlock();
   return addStmt(S->getCollection());
+}
+
+CFGBlock *CFGBuilder::VisitObjCAutoreleasePoolStmt(ObjCAutoreleasePoolStmt *S) {
+  // Inline the body.
+  return addStmt(S->getSubStmt());
+  // TODO: consider adding cleanups for the end of @autoreleasepool scope.
 }
 
 CFGBlock *CFGBuilder::VisitObjCAtSynchronizedStmt(ObjCAtSynchronizedStmt *S) {
@@ -2609,9 +2709,18 @@ CFGBlock *CFGBuilder::VisitCXXCatchStmt(CXXCatchStmt *CS) {
   CFGBlock *CatchBlock = Block;
   if (!CatchBlock)
     CatchBlock = createBlock();
+  
+  // CXXCatchStmt is more than just a label.  They have semantic meaning
+  // as well, as they implicitly "initialize" the catch variable.  Add
+  // it to the CFG as a CFGElement so that the control-flow of these
+  // semantics gets captured.
+  appendStmt(CatchBlock, CS);
 
+  // Also add the CXXCatchStmt as a label, to mirror handling of regular
+  // labels.
   CatchBlock->setLabel(CS);
 
+  // Bail out if the CFG is bad.
   if (badCFG)
     return 0;
 
@@ -3067,7 +3176,7 @@ CFGImplicitDtor::getDestructorDecl(ASTContext &astContext) const {
       const VarDecl *var = cast<CFGAutomaticObjDtor>(this)->getVarDecl();
       QualType ty = var->getType();
       ty = ty.getNonReferenceType();
-      if (const ArrayType *arrayType = astContext.getAsArrayType(ty)) {
+      while (const ArrayType *arrayType = astContext.getAsArrayType(ty)) {
         ty = arrayType->getElementType();
       }
       const RecordType *recordType = ty->getAs<RecordType>();

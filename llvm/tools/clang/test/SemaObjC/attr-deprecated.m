@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -fsyntax-only -verify
+// RUN: %clang_cc1 -fsyntax-only -verify -Wno-objc-root-class %s
 
 @interface A {
   int X __attribute__((deprecated));
@@ -53,7 +53,7 @@ void t1(A *a)
 
 void t2(id a)
 {
-  [a f]; // expected-warning {{'f' is deprecated}}
+  [a f];
 }
 
 void t3(A<P>* a)
@@ -120,21 +120,4 @@ void test(Test2 *foo) {
 
 __attribute__((deprecated))
 @interface A(Blah) // expected-error{{attributes may not be specified on a category}}
-@end
-
-// rdar://10459930
-
-@class NSString;
-@interface NSDocumentController
-{
-  id iv;
-}
-- (void)fileExtensionsFromType:(NSString *)typeName __attribute__((deprecated));
-@end
-
-@implementation NSDocumentController
-- (void) Meth {
-  [iv fileExtensionsFromType:@"public.text"]; // expected-warning {{'fileExtensionsFromType:' is deprecated}}
-}
-- (void)fileExtensionsFromType:(NSString *)typeName {}
 @end

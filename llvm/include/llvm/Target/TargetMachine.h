@@ -14,8 +14,8 @@
 #ifndef LLVM_TARGET_TARGETMACHINE_H
 #define LLVM_TARGET_TARGETMACHINE_H
 
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/ADT/StringRef.h"
 #include <cassert>
 #include <string>
@@ -24,11 +24,10 @@ namespace llvm {
 
 class InstrItineraryData;
 class JITCodeEmitter;
+class GlobalValue;
 class MCAsmInfo;
 class MCCodeGenInfo;
 class MCContext;
-class Pass;
-class PassManager;
 class PassManagerBase;
 class Target;
 class TargetData;
@@ -196,6 +195,10 @@ public:
   /// getCodeModel - Returns the code model. The choices are small, kernel,
   /// medium, large, and target default.
   CodeModel::Model getCodeModel() const;
+
+  /// getTLSModel - Returns the TLS model which should be used for the given
+  /// global variable.
+  TLSModel::Model getTLSModel(const GlobalValue *GV) const;
 
   /// getOptLevel - Returns the optimization level: None, Less,
   /// Default, or Aggressive.

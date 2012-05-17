@@ -1,10 +1,10 @@
-//===- X86InstrFormats.td - X86 Instruction Formats --------*- tablegen -*-===//
-// 
+//===-- X86InstrFormats.td - X86 Instruction Formats -------*- tablegen -*-===//
+//
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
-// 
+//
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -43,6 +43,15 @@ def RawFrmImm8 : Format<43>;
 def RawFrmImm16 : Format<44>;
 def MRM_D0 : Format<45>;
 def MRM_D1 : Format<46>;
+def MRM_D4 : Format<47>;
+def MRM_D8 : Format<48>;
+def MRM_D9 : Format<49>;
+def MRM_DA : Format<50>;
+def MRM_DB : Format<51>;
+def MRM_DC : Format<52>;
+def MRM_DD : Format<53>;
+def MRM_DE : Format<54>;
+def MRM_DF : Format<55>;
 
 // ImmType - This specifies the immediate type used by an instruction. This is
 // part of the ad-hoc solution used to emit machine instruction encodings by our
@@ -246,8 +255,9 @@ class Ii32PCRel<bits<8> o, Format f, dag outs, dag ins, string asm,
 
 // FPStack Instruction Templates:
 // FPI - Floating Point Instruction template.
-class FPI<bits<8> o, Format F, dag outs, dag ins, string asm>
-  : I<o, F, outs, ins, asm, []> {}
+class FPI<bits<8> o, Format F, dag outs, dag ins, string asm,
+          InstrItinClass itin = IIC_DEFAULT>
+  : I<o, F, outs, ins, asm, [], itin> {}
 
 // FpI_ - Floating Point Pseudo Instruction template. Not Predicated.
 class FpI_<dag outs, dag ins, FPFormat fp, list<dag> pattern,
@@ -369,7 +379,7 @@ class SDIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern, InstrItinClass itin = IIC_DEFAULT>
       : Ii8<o, F, outs, ins, asm, pattern, itin>, XD, Requires<[HasSSE2]>;
 class SSDIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
-             list<dag> pattern>
+             list<dag> pattern, InstrItinClass itin = IIC_DEFAULT>
       : Ii8<o, F, outs, ins, asm, pattern>, XS, Requires<[HasSSE2]>;
 class PDI<bits<8> o, Format F, dag outs, dag ins, string asm,
           list<dag> pattern, InstrItinClass itin = IIC_DEFAULT>
@@ -494,18 +504,18 @@ class AVX2AIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
 class AES8I<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag>pattern, InstrItinClass itin = IIC_DEFAULT>
       : I<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, T8,
-        Requires<[HasSSE2, HasAES]>;
+        Requires<[HasAES]>;
 
 class AESAI<bits<8> o, Format F, dag outs, dag ins, string asm,
             list<dag> pattern, InstrItinClass itin = IIC_DEFAULT>
       : Ii8<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, TA,
-        Requires<[HasSSE2, HasAES]>;
+        Requires<[HasAES]>;
 
 // CLMUL Instruction Templates
 class CLMULIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
                list<dag>pattern, InstrItinClass itin = IIC_DEFAULT>
       : Ii8<o, F, outs, ins, asm, pattern, itin, SSEPackedInt>, TA,
-        OpSize, Requires<[HasSSE2, HasCLMUL]>;
+        OpSize, Requires<[HasCLMUL]>;
 
 class AVXCLMULIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
                   list<dag>pattern, InstrItinClass itin = IIC_DEFAULT>

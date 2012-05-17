@@ -1,4 +1,4 @@
-//===-- HexagonTargetObjectFile.cpp - Hexagon asm properties ----*- C++ -*-===//
+//===-- HexagonTargetObjectFile.cpp - Hexagon asm properties --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,6 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "HexagonTargetObjectFile.h"
+#include "HexagonSubtarget.h"
+#include "HexagonTargetMachine.h"
 #include "llvm/Function.h"
 #include "llvm/GlobalVariable.h"
 #include "llvm/Target/TargetData.h"
@@ -18,9 +21,6 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/CommandLine.h"
-#include "HexagonSubtarget.h"
-#include "HexagonTargetObjectFile.h"
-#include "HexagonTargetMachine.h"
 
 using namespace llvm;
 

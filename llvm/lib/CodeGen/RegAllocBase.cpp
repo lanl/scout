@@ -14,11 +14,11 @@
 
 #define DEBUG_TYPE "regalloc"
 #include "RegAllocBase.h"
-#include "LiveRangeEdit.h"
 #include "Spiller.h"
 #include "VirtRegMap.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
+#include "llvm/CodeGen/LiveRangeEdit.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Target/TargetMachine.h"
@@ -69,11 +69,14 @@ void RegAllocBase::verify() {
   for (LiveIntervals::iterator liItr = LIS->begin(), liEnd = LIS->end();
        liItr != liEnd; ++liItr) {
     unsigned reg = liItr->first;
+    LiveInterval* li = liItr->second;
     if (TargetRegisterInfo::isPhysicalRegister(reg)) continue;
     if (!VRM->hasPhys(reg)) continue; // spilled?
+    if (li->empty()) continue; // unionVRegs will only be filled if li is
+                               // non-empty
     unsigned PhysReg = VRM->getPhys(reg);
     if (!unionVRegs[PhysReg].test(reg)) {
-      dbgs() << "LiveVirtReg " << reg << " not in union " <<
+      dbgs() << "LiveVirtReg " << PrintReg(reg, TRI) << " not in union " <<
         TRI->getName(PhysReg) << "\n";
       llvm_unreachable("unallocated live vreg");
     }
@@ -236,7 +239,7 @@ void RegAllocBase::allocatePhysRegs() {
 // physical register. Return the interfering register.
 unsigned RegAllocBase::checkPhysRegInterference(LiveInterval &VirtReg,
                                                 unsigned PhysReg) {
-  for (const unsigned *AliasI = TRI->getOverlaps(PhysReg); *AliasI; ++AliasI)
+  for (const uint16_t *AliasI = TRI->getOverlaps(PhysReg); *AliasI; ++AliasI)
     if (query(VirtReg, *AliasI).checkInterference())
       return *AliasI;
   return 0;

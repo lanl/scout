@@ -63,7 +63,16 @@ struct AssemblerInvocation {
   /// @name Target Options
   /// @{
 
+  /// The name of the target triple to assemble for.
   std::string Triple;
+
+  /// If given, the name of the target CPU to determine which instructions
+  /// are legal.
+  std::string CPU;
+
+  /// The list of target specific features to enable or disable -- this should
+  /// be a list of strings starting with '+' or '-'.
+  std::vector<std::string> Features;
 
   /// @}
   /// @name Language Options
@@ -158,9 +167,13 @@ bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
   // Construct the invocation.
 
   // Target Options
-  Opts.Triple = Triple::normalize(Args->getLastArgValue(OPT_triple));
-  if (Opts.Triple.empty()) // Use the default target triple if unspecified.
-    Opts.Triple = sys::getDefaultTargetTriple();
+  Opts.Triple = llvm::Triple::normalize(Args->getLastArgValue(OPT_triple));
+  Opts.CPU = Args->getLastArgValue(OPT_target_cpu);
+  Opts.Features = Args->getAllArgValues(OPT_target_feature);
+
+  // Use the default target triple if unspecified.
+  if (Opts.Triple.empty())
+    Opts.Triple = llvm::sys::getDefaultTargetTriple();
 
   // Language Options
   Opts.IncludePaths = Args->getAllArgValues(OPT_I);
@@ -293,16 +306,25 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
   if (!Opts.DwarfDebugFlags.empty())
     Ctx.setDwarfDebugFlags(StringRef(Opts.DwarfDebugFlags));
 
+  // Build up the feature string from the target feature list.
+  std::string FS;
+  if (!Opts.Features.empty()) {
+    FS = Opts.Features[0];
+    for (unsigned i = 1, e = Opts.Features.size(); i != e; ++i)
+      FS += "," + Opts.Features[i];
+  }
+
   OwningPtr<MCStreamer> Str;
 
   OwningPtr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
   OwningPtr<MCSubtargetInfo>
-    STI(TheTarget->createMCSubtargetInfo(Opts.Triple, "", ""));
+    STI(TheTarget->createMCSubtargetInfo(Opts.Triple, Opts.CPU, FS));
 
   // FIXME: There is a bit of code duplication with addPassesToEmitFile.
   if (Opts.OutputType == AssemblerInvocation::FT_Asm) {
     MCInstPrinter *IP =
-      TheTarget->createMCInstPrinter(Opts.OutputAsmVariant, *MAI, *STI);
+      TheTarget->createMCInstPrinter(Opts.OutputAsmVariant, *MAI, *MCII, *MRI,
+                                     *STI);
     MCCodeEmitter *CE = 0;
     MCAsmBackend *MAB = 0;
     if (Opts.ShowEncoding) {
@@ -375,7 +397,7 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
   TextDiagnosticPrinter *DiagClient
     = new TextDiagnosticPrinter(errs(), DiagnosticOptions());
   DiagClient->setPrefix("clang -cc1as");
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   DiagnosticsEngine Diags(DiagID, DiagClient);
 
   // Set an error handler, so that any LLVM backend diagnostics go through our
@@ -390,7 +412,7 @@ int cc1as_main(const char **ArgBegin, const char **ArgEnd,
 
   // Honor -help.
   if (Asm.ShowHelp) {
-    llvm::OwningPtr<driver::OptTable> Opts(driver::createCC1AsOptTable());
+    OwningPtr<driver::OptTable> Opts(driver::createCC1AsOptTable());
     Opts->PrintHelp(llvm::outs(), "clang -cc1as", "Clang Integrated Assembler");
     return 0;
   }

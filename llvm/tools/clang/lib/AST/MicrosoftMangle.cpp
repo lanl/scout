@@ -119,7 +119,7 @@ static bool isInCLinkageSpecification(const Decl *D) {
 
 bool MicrosoftMangleContext::shouldMangleDeclName(const NamedDecl *D) {
   // In C, functions with no attributes never need to be mangled. Fastpath them.
-  if (!getASTContext().getLangOptions().CPlusPlus && !D->hasAttrs())
+  if (!getASTContext().getLangOpts().CPlusPlus && !D->hasAttrs())
     return false;
 
   // Any decl can be declared with __asm("foo") on it, and this takes precedence
@@ -136,7 +136,7 @@ bool MicrosoftMangleContext::shouldMangleDeclName(const NamedDecl *D) {
     return true;
 
   // Otherwise, no mangling is done outside C++ mode.
-  if (!getASTContext().getLangOptions().CPlusPlus)
+  if (!getASTContext().getLangOpts().CPlusPlus)
     return false;
 
   // Variables at global scope with internal linkage are not mangled.
@@ -763,12 +763,16 @@ void MicrosoftCXXNameMangler::mangleType(const FunctionType *T,
     Out << 'X';
   } else {
     if (D) {
-      // If we got a decl, use the "types-as-written" to make sure arrays
-      // get mangled right.
+      // If we got a decl, use the type-as-written to make sure arrays
+      // get mangled right.  Note that we can't rely on the TSI
+      // existing if (for example) the parameter was synthesized.
       for (FunctionDecl::param_const_iterator Parm = D->param_begin(),
-           ParmEnd = D->param_end();
-           Parm != ParmEnd; ++Parm)
-        mangleType((*Parm)->getTypeSourceInfo()->getType());
+             ParmEnd = D->param_end(); Parm != ParmEnd; ++Parm) {
+        if (TypeSourceInfo *typeAsWritten = (*Parm)->getTypeSourceInfo())
+          mangleType(typeAsWritten->getType());
+        else
+          mangleType((*Parm)->getType());
+      }
     } else {
       for (FunctionProtoType::arg_type_iterator Arg = Proto->arg_type_begin(),
            ArgEnd = Proto->arg_type_end();

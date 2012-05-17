@@ -15,9 +15,11 @@
 #define LLVM_CLANG_PATH_DIAGNOSTIC_H
 
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Analysis/ProgramPoint.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/Optional.h"
 #include <deque>
 #include <iterator>
 #include <string>
@@ -39,6 +41,8 @@ class Stmt;
 namespace ento {
 
 class ExplodedNode;
+class SymExpr;
+typedef const SymExpr* SymbolRef;
 
 //===----------------------------------------------------------------------===//
 // High-level interface for handlers of path-sensitive diagnostics.
@@ -67,6 +71,10 @@ public:
   virtual bool supportsLogicalOpControlFlow() const { return false; }
   virtual bool supportsAllBlockEdges() const { return false; }
   virtual bool useVerboseDescription() const { return true; }
+  
+  /// Return true if the PathDiagnosticConsumer supports individual
+  /// PathDiagnostics that span multiple files.
+  virtual bool supportsCrossFileDiagnostics() const { return false; }
 
 protected:
   bool flushed;
@@ -260,9 +268,9 @@ public:
 // Path "pieces" for path-sensitive diagnostics.
 //===----------------------------------------------------------------------===//
 
-class PathDiagnosticPiece : public llvm::RefCountedBaseVPTR {
+class PathDiagnosticPiece : public RefCountedBaseVPTR {
 public:
-  enum Kind { ControlFlow, Event, Macro, CallEnter, CallExit };
+  enum Kind { ControlFlow, Event, Macro, Call };
   enum DisplayHint { Above, Below };
 
 private:
@@ -326,7 +334,7 @@ public:
   
   
 class PathPieces :
-  public std::deque<llvm::IntrusiveRefCntPtr<PathDiagnosticPiece> > {
+  public std::deque<IntrusiveRefCntPtr<PathDiagnosticPiece> > {
 public:
   ~PathPieces();  
 };
@@ -351,44 +359,168 @@ public:
   virtual void Profile(llvm::FoldingSetNodeID &ID) const;
 };
 
+/// \brief Interface for classes constructing Stack hints.
+///
+/// If a PathDiagnosticEvent occurs in a different frame than the final 
+/// diagnostic the hints can be used to summarize the effect of the call.
+class StackHintGenerator {
+public:
+  virtual ~StackHintGenerator() = 0;
+
+  /// \brief Construct the Diagnostic message for the given ExplodedNode.
+  virtual std::string getMessage(const ExplodedNode *N) = 0;
+};
+
+/// \brief Constructs a Stack hint for the given symbol.
+///
+/// The class knows how to construct the stack hint message based on
+/// traversing the CallExpr associated with the call and checking if the given
+/// symbol is returned or is one of the arguments.
+/// The hint can be customized by redefining 'getMessageForX()' methods.
+class StackHintGeneratorForSymbol : public StackHintGenerator {
+private:
+  SymbolRef Sym;
+  std::string Msg;
+
+public:
+  StackHintGeneratorForSymbol(SymbolRef S, StringRef M) : Sym(S), Msg(M) {}
+  virtual ~StackHintGeneratorForSymbol() {}
+
+  /// \brief Search the call expression for the symbol Sym and dispatch the
+  /// 'getMessageForX()' methods to construct a specific message.
+  virtual std::string getMessage(const ExplodedNode *N);
+
+  /// Prints the ordinal form of the given integer,
+  /// only valid for ValNo : ValNo > 0.
+  void printOrdinal(unsigned ValNo, llvm::raw_svector_ostream &Out);
+
+  /// Produces the message of the following form:
+  ///   'Msg via Nth parameter'
+  virtual std::string getMessageForArg(const Expr *ArgE, unsigned ArgIndex);
+  virtual std::string getMessageForReturn(const CallExpr *CallExpr) {
+    return Msg;
+  }
+  virtual std::string getMessageForSymbolNotFound() {
+    return Msg;
+  }
+};
+
 class PathDiagnosticEventPiece : public PathDiagnosticSpotPiece {
+  llvm::Optional<bool> IsPrunable;
+
+  /// If the event occurs in a different frame than the final diagnostic,
+  /// supply a message that will be used to construct an extra hint on the
+  /// returns from all the calls on the stack from this event to the final
+  /// diagnostic.
+  llvm::OwningPtr<StackHintGenerator> CallStackHint;
 
 public:
   PathDiagnosticEventPiece(const PathDiagnosticLocation &pos,
-                           StringRef s, bool addPosRange = true)
-    : PathDiagnosticSpotPiece(pos, s, Event, addPosRange) {}
+                           StringRef s, bool addPosRange = true,
+                           StackHintGenerator *stackHint = 0)
+    : PathDiagnosticSpotPiece(pos, s, Event, addPosRange),
+      CallStackHint(stackHint) {}
 
   ~PathDiagnosticEventPiece();
+
+  /// Mark the diagnostic piece as being potentially prunable.  This
+  /// flag may have been previously set, at which point it will not
+  /// be reset unless one specifies to do so.
+  void setPrunable(bool isPrunable, bool override = false) {
+    if (IsPrunable.hasValue() && !override)
+     return;
+    IsPrunable = isPrunable;
+  }
+
+  /// Return true if the diagnostic piece is prunable.
+  bool isPrunable() const {
+    return IsPrunable.hasValue() ? IsPrunable.getValue() : false;
+  }
+  
+  bool hasCallStackHint() {
+    return (CallStackHint != 0);
+  }
+
+  /// Produce the hint for the given node. The node contains 
+  /// information about the call for which the diagnostic can be generated.
+  std::string getCallStackMessage(const ExplodedNode *N) {
+    if (CallStackHint)
+      return CallStackHint->getMessage(N);
+    return "";  
+  }
 
   static inline bool classof(const PathDiagnosticPiece *P) {
     return P->getKind() == Event;
   }
 };
-  
-class PathDiagnosticCallEnterPiece : public PathDiagnosticSpotPiece {
-public:
-  PathDiagnosticCallEnterPiece(const PathDiagnosticLocation &pos,
-                              StringRef s)
-    : PathDiagnosticSpotPiece(pos, s, CallEnter, false) {}
-  
-  ~PathDiagnosticCallEnterPiece();
-  
-  static inline bool classof(const PathDiagnosticPiece *P) {
-    return P->getKind() == CallEnter;
-  }  
-};
 
-class PathDiagnosticCallExitPiece : public PathDiagnosticSpotPiece {
+class PathDiagnosticCallPiece : public PathDiagnosticPiece {
+  PathDiagnosticCallPiece(const Decl *callerD,
+                          const PathDiagnosticLocation &callReturnPos)
+    : PathDiagnosticPiece(Call), Caller(callerD), Callee(0),
+      NoExit(false), callReturn(callReturnPos) {}
+
+  PathDiagnosticCallPiece(PathPieces &oldPath, const Decl *caller)
+    : PathDiagnosticPiece(Call), Caller(caller), Callee(0),
+      NoExit(true), path(oldPath) {}
+  
+  const Decl *Caller;
+  const Decl *Callee;
+
+  // Flag signifying that this diagnostic has only call enter and no matching
+  // call exit.
+  bool NoExit;
+
+  // The custom string, which should appear after the call Return Diagnostic.
+  // TODO: Should we allow multiple diagnostics?
+  std::string CallStackMessage;
+
 public:
-  PathDiagnosticCallExitPiece(const PathDiagnosticLocation &pos,
-                             StringRef s)
-  : PathDiagnosticSpotPiece(pos, s, CallExit, false) {}
+  PathDiagnosticLocation callEnter;
+  PathDiagnosticLocation callEnterWithin;
+  PathDiagnosticLocation callReturn;  
+  PathPieces path;
   
-  ~PathDiagnosticCallExitPiece();
+  virtual ~PathDiagnosticCallPiece();
   
+  const Decl *getCaller() const { return Caller; }
+  
+  const Decl *getCallee() const { return Callee; }
+  void setCallee(const CallEnter &CE, const SourceManager &SM);
+  
+  bool hasCallStackMessage() { return !CallStackMessage.empty(); }
+  void setCallStackMessage(StringRef st) {
+    CallStackMessage = st;
+  }
+
+  virtual PathDiagnosticLocation getLocation() const {
+    return callEnter;
+  }
+  
+  IntrusiveRefCntPtr<PathDiagnosticEventPiece> getCallEnterEvent() const;
+  IntrusiveRefCntPtr<PathDiagnosticEventPiece>
+    getCallEnterWithinCallerEvent() const;
+  IntrusiveRefCntPtr<PathDiagnosticEventPiece> getCallExitEvent() const;
+
+  virtual void flattenLocations() {
+    callEnter.flatten();
+    callReturn.flatten();
+    for (PathPieces::iterator I = path.begin(), 
+         E = path.end(); I != E; ++I) (*I)->flattenLocations();
+  }
+  
+  static PathDiagnosticCallPiece *construct(const ExplodedNode *N,
+                                            const CallExitEnd &CE,
+                                            const SourceManager &SM);
+  
+  static PathDiagnosticCallPiece *construct(PathPieces &pieces,
+                                            const Decl *caller);
+  
+  virtual void Profile(llvm::FoldingSetNodeID &ID) const;
+
   static inline bool classof(const PathDiagnosticPiece *P) {
-    return P->getKind() == CallExit;
-  }  
+    return P->getKind() == Call;
+  }
 };
 
 class PathDiagnosticControlFlowPiece : public PathDiagnosticPiece {
@@ -475,15 +607,41 @@ public:
 ///  diagnostic.  It represents an ordered-collection of PathDiagnosticPieces,
 ///  each which represent the pieces of the path.
 class PathDiagnostic : public llvm::FoldingSetNode {
+  const Decl *DeclWithIssue;
   std::string BugType;
   std::string Desc;
   std::string Category;
   std::deque<std::string> OtherDesc;
+  PathPieces pathImpl;
+  llvm::SmallVector<PathPieces *, 3> pathStack;
+  
+  PathDiagnostic(); // Do not implement.
 public:
-  PathPieces path;
+  const PathPieces &path;
 
-  PathDiagnostic();
-  PathDiagnostic(StringRef bugtype, StringRef desc,
+  /// Return the path currently used by builders for constructing the 
+  /// PathDiagnostic.
+  PathPieces &getActivePath() {
+    if (pathStack.empty())
+      return pathImpl;
+    return *pathStack.back();
+  }
+  
+  /// Return a mutable version of 'path'.
+  PathPieces &getMutablePieces() {
+    return pathImpl;
+  }
+    
+  /// Return the unrolled size of the path.
+  unsigned full_size();
+
+  void pushActivePath(PathPieces *p) { pathStack.push_back(p); }
+  void popActivePath() { if (!pathStack.empty()) pathStack.pop_back(); }
+  
+  //  PathDiagnostic();
+  PathDiagnostic(const Decl *DeclWithIssue,
+                 StringRef bugtype,
+                 StringRef desc,
                  StringRef category);
 
   ~PathDiagnostic();
@@ -491,21 +649,21 @@ public:
   StringRef getDescription() const { return Desc; }
   StringRef getBugType() const { return BugType; }
   StringRef getCategory() const { return Category; }
-  
+
+  /// Return the semantic context where an issue occurred.  If the
+  /// issue occurs along a path, this represents the "central" area
+  /// where the bug manifests.
+  const Decl *getDeclWithIssue() const { return DeclWithIssue; }
 
   typedef std::deque<std::string>::const_iterator meta_iterator;
   meta_iterator meta_begin() const { return OtherDesc.begin(); }
   meta_iterator meta_end() const { return OtherDesc.end(); }
   void addMeta(StringRef s) { OtherDesc.push_back(s); }
 
-  PathDiagnosticLocation getLocation() const {
-    assert(path.size() > 0 &&
-           "getLocation() requires a non-empty PathDiagnostic.");
-    return (*path.rbegin())->getLocation();
-  }
+  PathDiagnosticLocation getLocation() const;
 
   void flattenLocations() {
-    for (PathPieces::iterator I = path.begin(), E = path.end(); 
+    for (PathPieces::iterator I = pathImpl.begin(), E = pathImpl.end(); 
          I != E; ++I) (*I)->flattenLocations();
   }
   

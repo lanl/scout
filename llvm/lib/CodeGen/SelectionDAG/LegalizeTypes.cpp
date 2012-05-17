@@ -628,7 +628,8 @@ namespace {
   public:
     explicit NodeUpdateListener(DAGTypeLegalizer &dtl,
                                 SmallSetVector<SDNode*, 16> &nta)
-      : DTL(dtl), NodesToAnalyze(nta) {}
+      : SelectionDAG::DAGUpdateListener(dtl.getDAG()),
+        DTL(dtl), NodesToAnalyze(nta) {}
 
     virtual void NodeDeleted(SDNode *N, SDNode *E) {
       assert(N->getNodeId() != DAGTypeLegalizer::ReadyToProcess &&
@@ -680,7 +681,7 @@ void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
   SmallSetVector<SDNode*, 16> NodesToAnalyze;
   NodeUpdateListener NUL(*this, NodesToAnalyze);
   do {
-    DAG.ReplaceAllUsesOfValueWith(From, To, &NUL);
+    DAG.ReplaceAllUsesOfValueWith(From, To);
 
     // The old node may still be present in a map like ExpandedIntegers or
     // PromotedIntegers.  Inform maps about the replacement.
@@ -709,7 +710,7 @@ void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
           SDValue NewVal(M, i);
           if (M->getNodeId() == Processed)
             RemapValue(NewVal);
-          DAG.ReplaceAllUsesOfValueWith(OldVal, NewVal, &NUL);
+          DAG.ReplaceAllUsesOfValueWith(OldVal, NewVal);
           // OldVal may be a target of the ReplacedValues map which was marked
           // NewNode to force reanalysis because it was updated.  Ensure that
           // anything that ReplacedValues mapped to OldVal will now be mapped
@@ -748,7 +749,11 @@ void DAGTypeLegalizer::SetSoftenedFloat(SDValue Op, SDValue Result) {
 }
 
 void DAGTypeLegalizer::SetScalarizedVector(SDValue Op, SDValue Result) {
-  assert(Result.getValueType() == Op.getValueType().getVectorElementType() &&
+  // Note that in some cases vector operation operands may be greater than
+  // the vector element type. For example BUILD_VECTOR of type <1 x i1> with
+  // a constant i8 operand.
+  assert(Result.getValueType().getSizeInBits() >=
+         Op.getValueType().getVectorElementType().getSizeInBits() &&
          "Invalid type for scalarized vector");
   AnalyzeNewValue(Result);
 
@@ -1052,8 +1057,9 @@ SDValue DAGTypeLegalizer::MakeLibCall(RTLIB::Libcall LC, EVT RetVT,
   Type *RetTy = RetVT.getTypeForEVT(*DAG.getContext());
   std::pair<SDValue,SDValue> CallInfo =
     TLI.LowerCallTo(DAG.getEntryNode(), RetTy, isSigned, !isSigned, false,
-                    false, 0, TLI.getLibcallCallingConv(LC), false,
-                    /*isReturnValueUsed=*/true,
+                    false, 0, TLI.getLibcallCallingConv(LC),
+                    /*isTailCall=*/false,
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                     Callee, Args, DAG, dl);
   return CallInfo.first;
 }
@@ -1084,7 +1090,7 @@ DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC,
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(InChain, RetTy, isSigned, !isSigned, false, false,
                     0, TLI.getLibcallCallingConv(LC), /*isTailCall=*/false,
-                    /*isReturnValueUsed=*/true,
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
                     Callee, Args, DAG, Node->getDebugLoc());
 
   return CallInfo;

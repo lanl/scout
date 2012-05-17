@@ -75,6 +75,7 @@ add_dependencies(check.deps
               UnitTests
               BugpointPasses LLVMHello
               llc lli llvm-ar llvm-as llvm-dis llvm-extract llvm-dwarfdump
-              llvm-ld llvm-link llvm-mc llvm-nm llvm-objdump macho-dump opt
-              FileCheck count not json-bench)
+              llvm-link llvm-mc llvm-nm llvm-objdump llvm-readobj
+              macho-dump opt
+              FileCheck count not)
 set_target_properties(check.deps PROPERTIES FOLDER "Tests")

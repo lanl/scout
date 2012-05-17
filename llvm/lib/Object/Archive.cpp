@@ -19,7 +19,7 @@
 using namespace llvm;
 using namespace object;
 
-static const StringRef Magic = "!<arch>\n";
+static const char *Magic = "!<arch>\n";
 
 namespace {
 struct ArchiveMemberHeader {
@@ -174,7 +174,7 @@ error_code Archive::Child::getAsBinary(OwningPtr<Binary> &Result) const {
 }
 
 Archive::Archive(MemoryBuffer *source, error_code &ec)
-  : Binary(Binary::isArchive, source) {
+  : Binary(Binary::ID_Archive, source) {
   // Check for sufficient magic.
   if (!source || source->getBufferSize()
                  < (8 + sizeof(ArchiveMemberHeader) + 2) // Smallest archive.
@@ -200,7 +200,7 @@ Archive::Archive(MemoryBuffer *source, error_code &ec)
 }
 
 Archive::child_iterator Archive::begin_children(bool skip_internal) const {
-  const char *Loc = Data->getBufferStart() + Magic.size();
+  const char *Loc = Data->getBufferStart() + strlen(Magic);
   size_t Size = sizeof(ArchiveMemberHeader) +
     ToHeader(Loc)->getSize();
   Child c(this, StringRef(Loc, Size));

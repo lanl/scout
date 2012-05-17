@@ -117,8 +117,8 @@ TargetAlignElem::operator==(const TargetAlignElem &rhs) const {
           && TypeBitWidth == rhs.TypeBitWidth);
 }
 
-const TargetAlignElem TargetData::InvalidAlignmentElem =
-                TargetAlignElem::get((AlignTypeEnum) -1, 0, 0, 0);
+const TargetAlignElem
+TargetData::InvalidAlignmentElem = { (AlignTypeEnum)0xFF, 0, 0, 0 };
 
 //===----------------------------------------------------------------------===//
 //                       TargetData Class Implementation
@@ -150,6 +150,7 @@ void TargetData::init() {
   setAlignment(FLOAT_ALIGN,     2,  2, 16);  // half
   setAlignment(FLOAT_ALIGN,     4,  4, 32);  // float
   setAlignment(FLOAT_ALIGN,     8,  8, 64);  // double
+  setAlignment(FLOAT_ALIGN,    16, 16, 128); // ppcf128, quad, ...
   setAlignment(VECTOR_ALIGN,    8,  8, 64);  // v2i32, v1i64, ...
   setAlignment(VECTOR_ALIGN,   16, 16, 128); // v16i8, v8i16, v4i32, ...
   setAlignment(AGGREGATE_ALIGN, 0,  8,  0);  // struct
@@ -372,7 +373,7 @@ unsigned TargetData::getAlignmentInfo(AlignTypeEnum AlignType,
       // If the alignment is not a power of 2, round up to the next power of 2.
       // This happens for non-power-of-2 length vectors.
       if (Align & (Align-1))
-        Align = llvm::NextPowerOf2(Align);
+        Align = NextPowerOf2(Align);
       return Align;
     }
   }

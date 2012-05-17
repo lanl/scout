@@ -236,7 +236,8 @@ namespace clang {
     
     ImplicitConversionRank getRank() const;
     NarrowingKind getNarrowingKind(ASTContext &Context, const Expr *Converted,
-                                   APValue &ConstantValue) const;
+                                   APValue &ConstantValue,
+                                   QualType &ConstantType) const;
     bool isPointerConversionToBool() const;
     bool isPointerConversionToVoidPointer(ASTContext& Context) const;
     void DebugPrint() const;
@@ -401,10 +402,14 @@ namespace clang {
     };
 
     /// ConversionKind - The kind of implicit conversion sequence.
-    unsigned ConversionKind : 31;
+    unsigned ConversionKind : 30;
 
     /// \brief Whether the argument is an initializer list.
     bool ListInitializationSequence : 1;
+
+    /// \brief Whether the target is really a std::initializer_list, and the
+    /// sequence only represents the worst element conversion.
+    bool StdInitializerListElement : 1;
 
     void setKind(Kind K) {
       destruct();
@@ -435,13 +440,16 @@ namespace clang {
     };
 
     ImplicitConversionSequence() 
-      : ConversionKind(Uninitialized), ListInitializationSequence(false) {}
+      : ConversionKind(Uninitialized), ListInitializationSequence(false),
+        StdInitializerListElement(false)
+    {}
     ~ImplicitConversionSequence() {
       destruct();
     }
     ImplicitConversionSequence(const ImplicitConversionSequence &Other)
       : ConversionKind(Other.ConversionKind), 
-        ListInitializationSequence(Other.ListInitializationSequence)
+        ListInitializationSequence(Other.ListInitializationSequence),
+        StdInitializerListElement(Other.StdInitializerListElement)
     {
       switch (ConversionKind) {
       case Uninitialized: break;
@@ -534,6 +542,16 @@ namespace clang {
 
     void setListInitializationSequence() {
       ListInitializationSequence = true;
+    }
+
+    /// \brief Whether the target is really a std::initializer_list, and the
+    /// sequence only represents the worst element conversion.
+    bool isStdInitializerListElement() const {
+      return StdInitializerListElement;
+    }
+
+    void setStdInitializerListElement(bool V = true) {
+      StdInitializerListElement = V;
     }
 
     // The result of a comparison between implicit conversion
@@ -641,12 +659,25 @@ namespace clang {
     /// A structure used to record information about a failed
     /// template argument deduction.
     struct DeductionFailureInfo {
-      // A Sema::TemplateDeductionResult.
-      unsigned Result;
+      /// A Sema::TemplateDeductionResult.
+      unsigned Result : 8;
+
+      /// \brief Indicates whether a diagnostic is stored in Diagnostic.
+      unsigned HasDiagnostic : 1;
 
       /// \brief Opaque pointer containing additional data about
       /// this deduction failure.
       void *Data;
+
+      /// \brief A diagnostic indicating why deduction failed.
+      union {
+        void *Align;
+        char Diagnostic[sizeof(PartialDiagnosticAt)];
+      };
+
+      /// \brief Retrieve the diagnostic which caused this deduction failure,
+      /// if any.
+      PartialDiagnosticAt *getSFINAEDiagnostic();
       
       /// \brief Retrieve the template parameter this deduction failure
       /// refers to, if any.
@@ -723,9 +754,12 @@ namespace clang {
   public:
     OverloadCandidateSet(SourceLocation Loc) : Loc(Loc), NumInlineSequences(0){}
     ~OverloadCandidateSet() {
-      for (iterator i = begin(), e = end(); i != e; ++i)
+      for (iterator i = begin(), e = end(); i != e; ++i) {
         for (unsigned ii = 0, ie = i->NumConversions; ii != ie; ++ii)
           i->Conversions[ii].~ImplicitConversionSequence();
+        if (i->FailureKind == ovl_fail_bad_deduction)
+          i->DeductionFailure.Destroy();
+      }
     }
 
     SourceLocation getLocation() const { return Loc; }
@@ -780,7 +814,7 @@ namespace clang {
 
     void NoteCandidates(Sema &S,
                         OverloadCandidateDisplayKind OCD,
-                        Expr **Args, unsigned NumArgs,
+                        llvm::ArrayRef<Expr *> Args,
                         const char *Opc = 0,
                         SourceLocation Loc = SourceLocation());
   };

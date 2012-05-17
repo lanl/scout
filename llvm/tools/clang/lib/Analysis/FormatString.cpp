@@ -156,6 +156,9 @@ clang::analyze_format_string::ParseArgPosition(FormatStringHandler &H,
   }
 
   if (Amt.getHowSpecified() == OptionalAmount::Constant && *(I++) == '$') {
+    // Warn that positional arguments are non-standard.
+    H.HandlePosition(Start, I - Start);
+
     // Special case: '%0$', since this is an easy mistake.
     if (Amt.getConstantAmount() == 0) {
       H.HandleZeroPosition(Start, I - Start);
@@ -198,7 +201,7 @@ clang::analyze_format_string::ParseLengthModifier(FormatSpecifier &FS,
     case 'z': lmKind = LengthModifier::AsSizeT;      ++I; break;
     case 't': lmKind = LengthModifier::AsPtrDiff;    ++I; break;
     case 'L': lmKind = LengthModifier::AsLongDouble; ++I; break;
-    case 'q': lmKind = LengthModifier::AsLongLong;   ++I; break;
+    case 'q': lmKind = LengthModifier::AsQuad;       ++I; break;
     case 'a':
       if (IsScanf && !LO.C99 && !LO.CPlusPlus0x) {
         // For scanf in C90, look at the next character to see if this should
@@ -262,10 +265,9 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
             break;
           case BuiltinType::Char_S:
           case BuiltinType::SChar:
-            return T == C.UnsignedCharTy;
           case BuiltinType::Char_U:
           case BuiltinType::UChar:                    
-            return T == C.SignedCharTy;
+            return T == C.UnsignedCharTy || T == C.SignedCharTy;
           case BuiltinType::Short:
             return T == C.UnsignedShortTy;
           case BuiltinType::UShort:
@@ -316,25 +318,25 @@ bool ArgTypeResult::matchesType(ASTContext &C, QualType argTy) const {
     }
 
     case WIntTy: {
-      // Instead of doing a lookup for the definition of 'wint_t' (which
-      // is defined by the system headers) instead see if wchar_t and
-      // the argument type promote to the same type.
-      QualType PromoWChar =
-        C.getWCharType()->isPromotableIntegerType()
-          ? C.getPromotedIntegerType(C.getWCharType()) : C.getWCharType();
       QualType PromoArg =
         argTy->isPromotableIntegerType()
           ? C.getPromotedIntegerType(argTy) : argTy;
 
-      PromoWChar = C.getCanonicalType(PromoWChar).getUnqualifiedType();
+      QualType WInt = C.getCanonicalType(C.getWIntType()).getUnqualifiedType();
       PromoArg = C.getCanonicalType(PromoArg).getUnqualifiedType();
 
-      return PromoWChar == PromoArg;
+      // If the promoted argument is the corresponding signed type of the
+      // wint_t type, then it should match.
+      if (PromoArg->hasSignedIntegerRepresentation() &&
+          C.getCorrespondingUnsignedType(PromoArg) == WInt)
+        return true;
+
+      return WInt == PromoArg;
     }
 
     case CPointerTy:
       return argTy->isPointerType() || argTy->isObjCObjectPointerType() ||
-        argTy->isNullPtrType();
+             argTy->isBlockPointerType() || argTy->isNullPtrType();
 
     case ObjCPointerTy: {
       if (argTy->getAs<ObjCObjectPointerType>() ||
@@ -377,8 +379,7 @@ QualType ArgTypeResult::getRepresentativeType(ASTContext &C) const {
     case CPointerTy:
       return C.VoidPtrTy;
     case WIntTy: {
-      QualType WC = C.getWCharType();
-      return WC->isPromotableIntegerType() ? C.getPromotedIntegerType(WC) : WC;
+      return C.getWIntType();
     }
   }
 
@@ -417,6 +418,8 @@ analyze_format_string::LengthModifier::toString() const {
     return "l";
   case AsLongLong:
     return "ll";
+  case AsQuad:
+    return "q";
   case AsIntMax:
     return "j";
   case AsSizeT:
@@ -506,10 +509,11 @@ bool FormatSpecifier::hasValidLengthModifier() const {
     case LengthModifier::None:
       return true;
 
-        // Handle most integer flags
+    // Handle most integer flags
     case LengthModifier::AsChar:
     case LengthModifier::AsShort:
     case LengthModifier::AsLongLong:
+    case LengthModifier::AsQuad:
     case LengthModifier::AsIntMax:
     case LengthModifier::AsSizeT:
     case LengthModifier::AsPtrDiff:
@@ -526,7 +530,7 @@ bool FormatSpecifier::hasValidLengthModifier() const {
           return false;
       }
 
-        // Handle 'l' flag
+    // Handle 'l' flag
     case LengthModifier::AsLong:
       switch (CS.getKind()) {
         case ConversionSpecifier::dArg:
@@ -598,4 +602,75 @@ bool FormatSpecifier::hasValidLengthModifier() const {
       }
   }
   llvm_unreachable("Invalid LengthModifier Kind!");
+}
+
+bool FormatSpecifier::hasStandardLengthModifier() const {
+  switch (LM.getKind()) {
+    case LengthModifier::None:
+    case LengthModifier::AsChar:
+    case LengthModifier::AsShort:
+    case LengthModifier::AsLong:
+    case LengthModifier::AsLongLong:
+    case LengthModifier::AsIntMax:
+    case LengthModifier::AsSizeT:
+    case LengthModifier::AsPtrDiff:
+    case LengthModifier::AsLongDouble:
+      return true;
+    case LengthModifier::AsAllocate:
+    case LengthModifier::AsMAllocate:
+    case LengthModifier::AsQuad:
+      return false;
+  }
+  llvm_unreachable("Invalid LengthModifier Kind!");
+}
+
+bool FormatSpecifier::hasStandardConversionSpecifier(const LangOptions &LangOpt) const {
+  switch (CS.getKind()) {
+    case ConversionSpecifier::cArg:
+    case ConversionSpecifier::dArg:
+    case ConversionSpecifier::iArg:
+    case ConversionSpecifier::oArg:
+    case ConversionSpecifier::uArg:
+    case ConversionSpecifier::xArg:
+    case ConversionSpecifier::XArg:
+    case ConversionSpecifier::fArg:
+    case ConversionSpecifier::FArg:
+    case ConversionSpecifier::eArg:
+    case ConversionSpecifier::EArg:
+    case ConversionSpecifier::gArg:
+    case ConversionSpecifier::GArg:
+    case ConversionSpecifier::aArg:
+    case ConversionSpecifier::AArg:
+    case ConversionSpecifier::sArg:
+    case ConversionSpecifier::pArg:
+    case ConversionSpecifier::nArg:
+    case ConversionSpecifier::ObjCObjArg:
+    case ConversionSpecifier::ScanListArg:
+    case ConversionSpecifier::PercentArg:
+      return true;
+    case ConversionSpecifier::CArg:
+    case ConversionSpecifier::SArg:
+      return LangOpt.ObjC1 || LangOpt.ObjC2;
+    case ConversionSpecifier::InvalidSpecifier:
+    case ConversionSpecifier::PrintErrno:
+      return false;
+  }
+  llvm_unreachable("Invalid ConversionSpecifier Kind!");
+}
+
+bool FormatSpecifier::hasStandardLengthConversionCombination() const {
+  if (LM.getKind() == LengthModifier::AsLongDouble) {
+    switch(CS.getKind()) {
+        case ConversionSpecifier::dArg:
+        case ConversionSpecifier::iArg:
+        case ConversionSpecifier::oArg:
+        case ConversionSpecifier::uArg:
+        case ConversionSpecifier::xArg:
+        case ConversionSpecifier::XArg:
+          return false;
+        default:
+          return true;
+    }
+  }
+  return true;
 }

@@ -53,6 +53,9 @@ namespace llvm {
       f128           =  11,   // This is a 128 bit floating point value
       ppcf128        =  12,   // This is a PPC 128-bit floating point value
 
+      FIRST_FP_VALUETYPE = f16,
+      LAST_FP_VALUETYPE  = ppcf128,
+
       v2i8           =  13,   //  2 x i8
       v4i8           =  14,   //  4 x i8
       v8i8           =  15,   //  8 x i8
@@ -79,6 +82,10 @@ namespace llvm {
 
       FIRST_VECTOR_VALUETYPE = v2i8,
       LAST_VECTOR_VALUETYPE  = v4f64,
+      FIRST_INTEGER_VECTOR_VALUETYPE = v2i8,
+      LAST_INTEGER_VECTOR_VALUETYPE = v8i64,
+      FIRST_FP_VECTOR_VALUETYPE = v2f16,
+      LAST_FP_VECTOR_VALUETYPE = v4f64,
 
       x86mmx         =  35,   // This is an X86 MMX value
 
@@ -146,15 +153,18 @@ namespace llvm {
 
     /// isFloatingPoint - Return true if this is a FP, or a vector FP type.
     bool isFloatingPoint() const {
-      return ((SimpleTy >= MVT::f16 && SimpleTy <= MVT::ppcf128) ||
-	      (SimpleTy >= MVT::v2f32 && SimpleTy <= MVT::v4f64));
+      return ((SimpleTy >= MVT::FIRST_FP_VALUETYPE &&
+               SimpleTy <= MVT::LAST_FP_VALUETYPE) ||
+              (SimpleTy >= MVT::FIRST_FP_VECTOR_VALUETYPE &&
+         SimpleTy <= MVT::LAST_FP_VECTOR_VALUETYPE));
     }
 
     /// isInteger - Return true if this is an integer, or a vector integer type.
     bool isInteger() const {
       return ((SimpleTy >= MVT::FIRST_INTEGER_VALUETYPE &&
                SimpleTy <= MVT::LAST_INTEGER_VALUETYPE) ||
-	      (SimpleTy >= MVT::v2i8 && SimpleTy <= MVT::v8i64));
+              (SimpleTy >= MVT::FIRST_INTEGER_VECTOR_VALUETYPE &&
+               SimpleTy <= MVT::LAST_INTEGER_VECTOR_VALUETYPE));
     }
 
     /// isVector - Return true if this is a vector value type.
@@ -189,7 +199,7 @@ namespace llvm {
     MVT getVectorElementType() const {
       switch (SimpleTy) {
       default:
-        return (MVT::SimpleValueType)(MVT::INVALID_SIMPLE_VALUE_TYPE);
+        llvm_unreachable("Not a vector MVT!");
       case v2i8 :
       case v4i8 :
       case v8i8 :
@@ -218,7 +228,7 @@ namespace llvm {
     unsigned getVectorNumElements() const {
       switch (SimpleTy) {
       default:
-        return ~0U;
+        llvm_unreachable("Not a vector MVT!");
       case v32i8: return 32;
       case v16i8:
       case v16i16: return 16;
@@ -436,19 +446,6 @@ namespace llvm {
       return getExtendedVectorVT(Context, VT, NumElements);
     }
 
-    /// getIntVectorWithNumElements - Return any integer vector type that has
-    /// the specified number of elements.
-    static EVT getIntVectorWithNumElements(LLVMContext &C, unsigned NumElts) {
-      switch (NumElts) {
-      default: return getVectorVT(C, MVT::i8, NumElts);
-      case  1: return MVT::v1i64;
-      case  2: return MVT::v2i32;
-      case  4: return MVT::v4i16;
-      case  8: return MVT::v8i8;
-      case 16: return MVT::v16i8;
-      }
-    }
-
     /// changeVectorElementTypeToInteger - Return a vector with the same number
     /// of elements as this vector, but with the element type converted to an
     /// integer type with the same bitwidth.
@@ -509,7 +506,7 @@ namespace llvm {
     }
 
     /// is256BitVector - Return true if this is a 256-bit vector type.
-    inline bool is256BitVector() const {
+    bool is256BitVector() const {
       if (!isSimple())
         return isExtended256BitVector();
       return (V == MVT::v8f32  || V == MVT::v4f64 || V == MVT::v32i8 ||
@@ -517,7 +514,7 @@ namespace llvm {
     }
 
     /// is512BitVector - Return true if this is a 512-bit vector type.
-    inline bool is512BitVector() const {
+    bool is512BitVector() const {
       return isSimple() ? (V == MVT::v8i64) : isExtended512BitVector();
     }
 

@@ -19,7 +19,7 @@ set( LLVM_USED_LIBS
   clangCodeGen
   clangDriver
   clangFrontend
-  clangIndex
+  clangEdit
   clangLex
   clangParse
   clangARCMigrate

@@ -24,15 +24,11 @@ namespace llvm {
   // Possible float ABI settings. Used with FloatABIType in TargetOptions.h.
   namespace FloatABI {
     enum ABIType {
-      Default, // Target-specific (either soft of hard depending on triple, etc).
+      Default, // Target-specific (either soft or hard depending on triple, etc).
       Soft, // Soft float.
       Hard  // Hard float.
     };
   }
-
-  /// StrongPHIElim - This flag enables more aggressive PHI elimination
-  /// wth earlier copy coalescing.
-  extern bool StrongPHIElim;
 
   class TargetOptions {
   public:
@@ -46,8 +42,8 @@ namespace llvm {
           GuaranteedTailCallOpt(false), DisableTailCalls(false),
           StackAlignmentOverride(0), RealignStack(true),
           DisableJumpTables(false), EnableFastISel(false),
-          EnableSegmentedStacks(false), TrapFuncName(""),
-          FloatABIType(FloatABI::Default)
+          PositionIndependentExecutable(false), EnableSegmentedStacks(false),
+          TrapFuncName(""), FloatABIType(FloatABI::Default)
     {}
 
     /// PrintMachineCode - This flag is enabled when the -print-machineinstrs
@@ -167,6 +163,12 @@ namespace llvm {
     /// which trades away generated code quality in favor of reducing
     /// compile time.
     unsigned EnableFastISel : 1;
+
+    /// PositionIndependentExecutable - This flag indicates whether the code
+    /// will eventually be linked into a single executable, despite the PIC
+    /// relocation model being in use. It's value is undefined (and irrelevant)
+    /// if the relocation model is anything other than PIC.
+    unsigned PositionIndependentExecutable : 1;
 
     unsigned EnableSegmentedStacks : 1;
 

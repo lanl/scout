@@ -177,6 +177,9 @@ public:
   Value *VisitCharacterLiteral(const CharacterLiteral *E) {
     return llvm::ConstantInt::get(ConvertType(E->getType()), E->getValue());
   }
+  Value *VisitObjCBoolLiteralExpr(const ObjCBoolLiteralExpr *E) {
+    return llvm::ConstantInt::get(ConvertType(E->getType()), E->getValue());
+  }
   Value *VisitCXXBoolLiteralExpr(const CXXBoolLiteralExpr *E) {
     return llvm::ConstantInt::get(ConvertType(E->getType()), E->getValue());
   }
@@ -211,30 +214,14 @@ public:
 
   // l-values.
   Value *VisitDeclRefExpr(DeclRefExpr *E) {
-    Expr::EvalResult Result;
-    if (!E->EvaluateAsRValue(Result, CGF.getContext()))
-      return EmitLoadOfLValue(E);
-
-    assert(!Result.HasSideEffects && "Constant declref with side-effect?!");
-
-    llvm::Constant *C;
-    if (Result.Val.isInt())
-      C = Builder.getInt(Result.Val.getInt());
-    else if (Result.Val.isFloat())
-      C = llvm::ConstantFP::get(VMContext, Result.Val.getFloat());
-    else
-      return EmitLoadOfLValue(E);
-
-    // Make sure we emit a debug reference to the global variable.
-    if (VarDecl *VD = dyn_cast<VarDecl>(E->getDecl())) {
-      if (!CGF.getContext().DeclMustBeEmitted(VD))
-        CGF.EmitDeclRefExprDbgValue(E, C);
-    } else if (isa<EnumConstantDecl>(E->getDecl())) {
-      CGF.EmitDeclRefExprDbgValue(E, C);
+    if (CodeGenFunction::ConstantEmission result = CGF.tryEmitAsConstant(E)) {
+      if (result.isReference())
+        return EmitLoadOfLValue(result.getReferenceLValue(CGF, E));
+      return result.getValue();
     }
-
-    return C;
+    return EmitLoadOfLValue(E);
   }
+
   Value *VisitObjCSelectorExpr(ObjCSelectorExpr *E) {
     return CGF.EmitObjCSelectorExpr(E);
   }
@@ -285,8 +272,6 @@ public:
   }
 
   Value *VisitStmtExpr(const StmtExpr *E);
-
-  Value *VisitBlockDeclRefExpr(const BlockDeclRefExpr *E);
 
   // Unary Operators.
   Value *VisitUnaryPostDec(const UnaryOperator *E) {
@@ -409,7 +394,7 @@ public:
   // Binary Operators.
   Value *EmitMul(const BinOpInfo &Ops) {
     if (Ops.Ty->isSignedIntegerOrEnumerationType()) {
-      switch (CGF.getContext().getLangOptions().getSignedOverflowBehavior()) {
+      switch (CGF.getContext().getLangOpts().getSignedOverflowBehavior()) {
       case LangOptions::SOB_Undefined:
         return Builder.CreateNSWMul(Ops.LHS, Ops.RHS, "mul");
       case LangOptions::SOB_Defined:
@@ -424,8 +409,8 @@ public:
     return Builder.CreateMul(Ops.LHS, Ops.RHS, "mul");
   }
   bool isTrapvOverflowBehavior() {
-    return CGF.getContext().getLangOptions().getSignedOverflowBehavior()
-               == LangOptions::SOB_Trapping;
+    return CGF.getContext().getLangOpts().getSignedOverflowBehavior() 
+      == LangOptions::SOB_Trapping; 
   }
   /// Create a binary op that checks for overflow.
   /// Currently only supports +, - and *.
@@ -515,6 +500,15 @@ public:
   Value *VisitVAArgExpr(VAArgExpr *VE);
   Value *VisitObjCStringLiteral(const ObjCStringLiteral *E) {
     return CGF.EmitObjCStringLiteral(E);
+  }
+  Value *VisitObjCBoxedExpr(ObjCBoxedExpr *E) {
+    return CGF.EmitObjCBoxedExpr(E);
+  }
+  Value *VisitObjCArrayLiteral(ObjCArrayLiteral *E) {
+    return CGF.EmitObjCArrayLiteral(E);
+  }
+  Value *VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
+    return CGF.EmitObjCDictionaryLiteral(E);
   }
   Value *VisitAsTypeExpr(AsTypeExpr *CE);
   Value *VisitAtomicExpr(AtomicExpr *AE);
@@ -763,8 +757,8 @@ Value *ScalarExprEmitter::VisitShuffleVectorExpr(ShuffleVectorExpr *E) {
                                                         MTy->getNumElements());
     Value* NewV = llvm::UndefValue::get(RTy);
     for (unsigned i = 0, e = MTy->getNumElements(); i != e; ++i) {
-      Value *Indx = Builder.getInt32(i);
-      Indx = Builder.CreateExtractElement(Mask, Indx, "shuf_idx");
+      Value *IIndx = Builder.getInt32(i);
+      Value *Indx = Builder.CreateExtractElement(Mask, IIndx, "shuf_idx");
       Indx = Builder.CreateZExt(Indx, CGF.Int32Ty, "idx_zext");
 
       // Handle vec3 special since the index will be off by one for the RHS.
@@ -776,7 +770,7 @@ Value *ScalarExprEmitter::VisitShuffleVectorExpr(ShuffleVectorExpr *E) {
         Indx = Builder.CreateSelect(cmpIndx, newIndx, Indx, "sel_shuf_idx");
       }
       Value *VExt = Builder.CreateExtractElement(LHS, Indx, "shuf_elt");
-      NewV = Builder.CreateInsertElement(NewV, VExt, Indx, "shuf_ins");
+      NewV = Builder.CreateInsertElement(NewV, VExt, IIndx, "shuf_ins");
     }
     return NewV;
   }
@@ -810,7 +804,8 @@ Value *ScalarExprEmitter::VisitMemberExpr(MemberExpr *E) {
   // Emit debug info for aggregate now, if it was delayed to reduce
   // debug info size.
   CGDebugInfo *DI = CGF.getDebugInfo();
-  if (DI && CGF.CGM.getCodeGenOpts().LimitDebugInfo) {
+  if (DI &&
+      CGF.CGM.getCodeGenOpts().DebugInfo == CodeGenOptions::LimitedDebugInfo) {
     QualType PQTy = E->getBase()->IgnoreParenImpCasts()->getType();
     if (const PointerType * PTy = dyn_cast<PointerType>(PQTy))
       if (FieldDecl *M = dyn_cast<FieldDecl>(E->getMemberDecl()))
@@ -898,8 +893,7 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
           if (CurIdx == 0) {
             // insert into undef -> shuffle (src, undef)
             Args.push_back(C);
-            for (unsigned j = 1; j != ResElts; ++j)
-              Args.push_back(llvm::UndefValue::get(CGF.Int32Ty));
+            Args.resize(ResElts, llvm::UndefValue::get(CGF.Int32Ty));
 
             LHS = EI->getVectorOperand();
             RHS = V;
@@ -910,9 +904,7 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
             for (unsigned j = 0; j != CurIdx; ++j)
               Args.push_back(getMaskElt(SVV, j, 0, CGF.Int32Ty));
             Args.push_back(Builder.getInt32(ResElts + C->getZExtValue()));
-            for (unsigned j = CurIdx + 1; j != ResElts; ++j)
-              Args.push_back(llvm::UndefValue::get(CGF.Int32Ty));
-
+            Args.resize(ResElts, llvm::UndefValue::get(CGF.Int32Ty));
             LHS = cast<llvm::ShuffleVectorInst>(V)->getOperand(0);
             RHS = EI->getVectorOperand();
             VIsUndefShuffle = false;
@@ -956,8 +948,7 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
         }
         for (unsigned j = 0, je = InitElts; j != je; ++j)
           Args.push_back(getMaskElt(SVI, j, Offset, CGF.Int32Ty));
-        for (unsigned j = CurIdx + InitElts; j != ResElts; ++j)
-          Args.push_back(llvm::UndefValue::get(CGF.Int32Ty));
+        Args.resize(ResElts, llvm::UndefValue::get(CGF.Int32Ty));
 
         if (VIsUndefShuffle)
           V = cast<llvm::ShuffleVectorInst>(V)->getOperand(0);
@@ -971,8 +962,7 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
     if (Args.empty()) {
       for (unsigned j = 0; j != InitElts; ++j)
         Args.push_back(Builder.getInt32(j));
-      for (unsigned j = InitElts; j != ResElts; ++j)
-        Args.push_back(llvm::UndefValue::get(CGF.Int32Ty));
+      Args.resize(ResElts, llvm::UndefValue::get(CGF.Int32Ty));
       llvm::Constant *Mask = llvm::ConstantVector::get(Args);
       Init = Builder.CreateShuffleVector(Init, llvm::UndefValue::get(VVT),
                                          Mask, "vext");
@@ -982,8 +972,7 @@ Value *ScalarExprEmitter::VisitInitListExpr(InitListExpr *E) {
         Args.push_back(Builder.getInt32(j));
       for (unsigned j = 0; j != InitElts; ++j)
         Args.push_back(Builder.getInt32(j+Offset));
-      for (unsigned j = CurIdx + InitElts; j != ResElts; ++j)
-        Args.push_back(llvm::UndefValue::get(CGF.Int32Ty));
+      Args.resize(ResElts, llvm::UndefValue::get(CGF.Int32Ty));
     }
 
     // If V is undef, make sure it ends up on the RHS of the shuffle to aid
@@ -1129,6 +1118,7 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     return CGF.CGM.getCXXABI().EmitNullMemberPointer(MPT);
   }
 
+  case CK_ReinterpretMemberPointer:
   case CK_BaseToDerivedMemberPointer:
   case CK_DerivedToBaseMemberPointer: {
     Value *Src = Visit(E);
@@ -1154,6 +1144,9 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   case CK_ARCExtendBlockObject:
     return CGF.EmitARCExtendBlockObject(E);
 
+  case CK_CopyAndAutoreleaseBlockObject:
+    return CGF.EmitBlockCopyAndAutorelease(Visit(E), E->getType());
+      
   case CK_FloatingRealToComplex:
   case CK_FloatingComplexCast:
   case CK_IntegralRealToComplex:
@@ -1248,11 +1241,6 @@ Value *ScalarExprEmitter::VisitStmtExpr(const StmtExpr *E) {
     .getScalarVal();
 }
 
-Value *ScalarExprEmitter::VisitBlockDeclRefExpr(const BlockDeclRefExpr *E) {
-  LValue LV = CGF.EmitBlockDeclRefLValue(E);
-  return CGF.EmitLoadOfLValue(LV).getScalarVal();
-}
-
 //===----------------------------------------------------------------------===//
 //                             Unary Operators
 //===----------------------------------------------------------------------===//
@@ -1261,7 +1249,7 @@ llvm::Value *ScalarExprEmitter::
 EmitAddConsiderOverflowBehavior(const UnaryOperator *E,
                                 llvm::Value *InVal,
                                 llvm::Value *NextVal, bool IsInc) {
-  switch (CGF.getContext().getLangOptions().getSignedOverflowBehavior()) {
+  switch (CGF.getContext().getLangOpts().getSignedOverflowBehavior()) {
   case LangOptions::SOB_Undefined:
     return Builder.CreateNSWAdd(InVal, NextVal, IsInc ? "inc" : "dec");
   case LangOptions::SOB_Defined:
@@ -1333,7 +1321,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
           = CGF.getContext().getAsVariableArrayType(type)) {
       llvm::Value *numElts = CGF.getVLASize(vla).first;
       if (!isInc) numElts = Builder.CreateNSWNeg(numElts, "vla.negsize");
-      if (CGF.getContext().getLangOptions().isSignedOverflowDefined())
+      if (CGF.getContext().getLangOpts().isSignedOverflowDefined())
         value = Builder.CreateGEP(value, numElts, "vla.inc");
       else
         value = Builder.CreateInBoundsGEP(value, numElts, "vla.inc");
@@ -1343,7 +1331,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
       llvm::Value *amt = Builder.getInt32(amount);
 
       value = CGF.EmitCastToVoidPtr(value);
-      if (CGF.getContext().getLangOptions().isSignedOverflowDefined())
+      if (CGF.getContext().getLangOpts().isSignedOverflowDefined())
         value = Builder.CreateGEP(value, amt, "incdec.funcptr");
       else
         value = Builder.CreateInBoundsGEP(value, amt, "incdec.funcptr");
@@ -1352,7 +1340,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
     // For everything else, we can just do a simple increment.
     } else {
       llvm::Value *amt = Builder.getInt32(amount);
-      if (CGF.getContext().getLangOptions().isSignedOverflowDefined())
+      if (CGF.getContext().getLangOpts().isSignedOverflowDefined())
         value = Builder.CreateGEP(value, amt, "incdec.ptr");
       else
         value = Builder.CreateInBoundsGEP(value, amt, "incdec.ptr");
@@ -1413,7 +1401,7 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
     llvm::Value *sizeValue =
       llvm::ConstantInt::get(CGF.SizeTy, size.getQuantity());
 
-    if (CGF.getContext().getLangOptions().isSignedOverflowDefined())
+    if (CGF.getContext().getLangOpts().isSignedOverflowDefined())
       value = Builder.CreateGEP(value, sizeValue, "incdec.objptr");
     else
       value = Builder.CreateInBoundsGEP(value, sizeValue, "incdec.objptr");
@@ -1534,8 +1522,8 @@ Value *ScalarExprEmitter::VisitOffsetOfExpr(OffsetOfExpr *E) {
       // FIXME: It would be nice if we didn't have to loop here!
       for (RecordDecl::field_iterator Field = RD->field_begin(),
                                       FieldEnd = RD->field_end();
-           Field != FieldEnd; (void)++Field, ++i) {
-        if (*Field == MemberDecl)
+           Field != FieldEnd; ++Field, ++i) {
+        if (&*Field == MemberDecl)
           break;
       }
       assert(i < RL.getFieldCount() && "offsetof field in wrong type");
@@ -1648,7 +1636,10 @@ Value *ScalarExprEmitter::VisitUnaryImag(const UnaryOperator *E) {
 
   // __imag on a scalar returns zero.  Emit the subexpr to ensure side
   // effects are evaluated, but not the actual value.
-  CGF.EmitScalarExpr(Op, true);
+  if (Op->isGLValue())
+    CGF.EmitLValue(Op);
+  else
+    CGF.EmitScalarExpr(Op, true);
   return llvm::Constant::getNullValue(ConvertType(E->getType()));
 }
 
@@ -1750,7 +1741,7 @@ Value *ScalarExprEmitter::EmitCompoundAssign(const CompoundAssignOperator *E,
     return 0;
 
   // The result of an assignment in C is the assigned r-value.
-  if (!CGF.getContext().getLangOptions().CPlusPlus)
+  if (!CGF.getContext().getLangOpts().CPlusPlus)
     return RHS;
 
   // If the lvalue is non-volatile, return the computed value of the assignment.
@@ -1811,13 +1802,13 @@ Value *ScalarExprEmitter::EmitDiv(const BinOpInfo &Ops) {
   }
   if (Ops.LHS->getType()->isFPOrFPVectorTy()) {
     llvm::Value *Val = Builder.CreateFDiv(Ops.LHS, Ops.RHS, "div");
-    if (CGF.getContext().getLangOptions().OpenCL) {
+    if (CGF.getContext().getLangOpts().OpenCL) {
       // OpenCL 1.1 7.4: minimum accuracy of single precision / is 2.5ulp
       llvm::Type *ValTy = Val->getType();
       if (ValTy->isFloatTy() ||
           (isa<llvm::VectorType>(ValTy) &&
            cast<llvm::VectorType>(ValTy)->getElementType()->isFloatTy()))
-        CGF.SetFPAccuracy(Val, 5, 2);
+        CGF.SetFPAccuracy(Val, 2.5);
     }
     return Val;
   }
@@ -1887,7 +1878,7 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
 
   // Handle overflow with llvm.trap.
   const std::string *handlerName =
-    &CGF.getContext().getLangOptions().OverflowHandler;
+    &CGF.getContext().getLangOpts().OverflowHandler;
   if (handlerName->empty()) {
     EmitOverflowBB(overflowBB);
     Builder.SetInsertPoint(continueBB);
@@ -1986,7 +1977,7 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     // GEP indexes are signed, and scaling an index isn't permitted to
     // signed-overflow, so we use the same semantics for our explicit
     // multiply.  We suppress this if overflow is not undefined behavior.
-    if (CGF.getLangOptions().isSignedOverflowDefined()) {
+    if (CGF.getLangOpts().isSignedOverflowDefined()) {
       index = CGF.Builder.CreateMul(index, numElements, "vla.index");
       pointer = CGF.Builder.CreateGEP(pointer, index, "add.ptr");
     } else {
@@ -2005,7 +1996,7 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
     return CGF.Builder.CreateBitCast(result, pointer->getType());
   }
 
-  if (CGF.getLangOptions().isSignedOverflowDefined())
+  if (CGF.getLangOpts().isSignedOverflowDefined())
     return CGF.Builder.CreateGEP(pointer, index, "add.ptr");
 
   return CGF.Builder.CreateInBoundsGEP(pointer, index, "add.ptr");
@@ -2017,7 +2008,7 @@ Value *ScalarExprEmitter::EmitAdd(const BinOpInfo &op) {
     return emitPointerArithmetic(CGF, op, /*subtraction*/ false);
 
   if (op.Ty->isSignedIntegerOrEnumerationType()) {
-    switch (CGF.getContext().getLangOptions().getSignedOverflowBehavior()) {
+    switch (CGF.getContext().getLangOpts().getSignedOverflowBehavior()) {
     case LangOptions::SOB_Undefined:
       return Builder.CreateNSWAdd(op.LHS, op.RHS, "add");
     case LangOptions::SOB_Defined:
@@ -2037,7 +2028,7 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
   // The LHS is always a pointer if either side is.
   if (!op.LHS->getType()->isPointerTy()) {
     if (op.Ty->isSignedIntegerOrEnumerationType()) {
-      switch (CGF.getContext().getLangOptions().getSignedOverflowBehavior()) {
+      switch (CGF.getContext().getLangOpts().getSignedOverflowBehavior()) {
       case LangOptions::SOB_Undefined:
         return Builder.CreateNSWSub(op.LHS, op.RHS, "sub");
       case LangOptions::SOB_Defined:
@@ -2363,7 +2354,7 @@ Value *ScalarExprEmitter::VisitBinAssign(const BinaryOperator *E) {
     return 0;
 
   // The result of an assignment in C is the assigned r-value.
-  if (!CGF.getContext().getLangOptions().CPlusPlus)
+  if (!CGF.getContext().getLangOpts().CPlusPlus)
     return RHS;
 
   // If the lvalue is non-volatile, return the computed value of the assignment.
@@ -2577,7 +2568,7 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
 
   // OpenCL: If the condition is a vector, we can treat this condition like
   // the select function.
-  if (CGF.getContext().getLangOptions().OpenCL
+  if (CGF.getContext().getLangOpts().OpenCL 
       && condExpr->getType()->isVectorType()) {
     llvm::Value *CondV = CGF.EmitScalarExpr(condExpr);
     llvm::Value *LHS = Visit(lhsExpr);

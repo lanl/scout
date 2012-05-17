@@ -31,16 +31,17 @@ using namespace llvm;
 
 void MDString::anchor() { }
 
-MDString::MDString(LLVMContext &C, StringRef S)
-  : Value(Type::getMetadataTy(C), Value::MDStringVal), Str(S) {}
+MDString::MDString(LLVMContext &C)
+  : Value(Type::getMetadataTy(C), Value::MDStringVal) {}
 
 MDString *MDString::get(LLVMContext &Context, StringRef Str) {
   LLVMContextImpl *pImpl = Context.pImpl;
-  StringMapEntry<MDString *> &Entry =
+  StringMapEntry<Value*> &Entry =
     pImpl->MDStringCache.GetOrCreateValue(Str);
-  MDString *&S = Entry.getValue();
-  if (!S) S = new MDString(Context, Entry.getKey());
-  return S;
+  Value *&S = Entry.getValue();
+  if (!S) S = new MDString(Context);
+  S->setValueName(&Entry);
+  return cast<MDString>(S);
 }
 
 //===----------------------------------------------------------------------===//
@@ -50,14 +51,30 @@ MDString *MDString::get(LLVMContext &Context, StringRef Str) {
 // Use CallbackVH to hold MDNode operands.
 namespace llvm {
 class MDNodeOperand : public CallbackVH {
-  MDNode *Parent;
+  MDNode *getParent() {
+    MDNodeOperand *Cur = this;
+
+    while (Cur->getValPtrInt() != 1)
+      --Cur;
+
+    assert(Cur->getValPtrInt() == 1 &&
+           "Couldn't find the beginning of the operand list!");
+    return reinterpret_cast<MDNode*>(Cur) - 1;
+  }
+
 public:
-  MDNodeOperand(Value *V, MDNode *P) : CallbackVH(V), Parent(P) {}
+  MDNodeOperand(Value *V) : CallbackVH(V) {}
   ~MDNodeOperand() {}
 
   void set(Value *V) {
-    setValPtr(V);
+    unsigned IsFirst = this->getValPtrInt();
+    this->setValPtr(V);
+    this->setAsFirstOperand(IsFirst);
   }
+
+  /// setAsFirstOperand - Accessor method to mark the operand as the first in
+  /// the list.
+  void setAsFirstOperand(unsigned V) { this->setValPtrInt(V); }
 
   virtual void deleted();
   virtual void allUsesReplacedWith(Value *NV);
@@ -66,14 +83,12 @@ public:
 
 
 void MDNodeOperand::deleted() {
-  Parent->replaceOperand(this, 0);
+  getParent()->replaceOperand(this, 0);
 }
 
 void MDNodeOperand::allUsesReplacedWith(Value *NV) {
-  Parent->replaceOperand(this, NV);
+  getParent()->replaceOperand(this, NV);
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // MDNode implementation.
@@ -84,7 +99,12 @@ void MDNodeOperand::allUsesReplacedWith(Value *NV) {
 static MDNodeOperand *getOperandPtr(MDNode *N, unsigned Op) {
   // Use <= instead of < to permit a one-past-the-end address.
   assert(Op <= N->getNumOperands() && "Invalid operand number");
-  return reinterpret_cast<MDNodeOperand*>(N+1)+Op;
+  return reinterpret_cast<MDNodeOperand*>(N + 1) + Op;
+}
+
+void MDNode::replaceOperandWith(unsigned i, Value *Val) {
+  MDNodeOperand *Op = getOperandPtr(this, i);
+  replaceOperand(Op, Val);
 }
 
 MDNode::MDNode(LLVMContext &C, ArrayRef<Value*> Vals, bool isFunctionLocal)
@@ -97,10 +117,14 @@ MDNode::MDNode(LLVMContext &C, ArrayRef<Value*> Vals, bool isFunctionLocal)
   // Initialize the operand list, which is co-allocated on the end of the node.
   unsigned i = 0;
   for (MDNodeOperand *Op = getOperandPtr(this, 0), *E = Op+NumOperands;
-       Op != E; ++Op, ++i)
-    new (Op) MDNodeOperand(Vals[i], this);
-}
+       Op != E; ++Op, ++i) {
+    new (Op) MDNodeOperand(Vals[i]);
 
+    // Mark the first MDNodeOperand as being the first in the list of operands.
+    if (i == 0)
+      Op->setAsFirstOperand(1);
+  }
+}
 
 /// ~MDNode - Destroy MDNode.
 MDNode::~MDNode() {
@@ -200,11 +224,11 @@ MDNode *MDNode::getMDNode(LLVMContext &Context, ArrayRef<Value*> Vals,
     ID.AddPointer(Vals[i]);
 
   void *InsertPoint;
-  MDNode *N = NULL;
-  
-  if ((N = pImpl->MDNodeSet.FindNodeOrInsertPos(ID, InsertPoint)))
+  MDNode *N = pImpl->MDNodeSet.FindNodeOrInsertPos(ID, InsertPoint);
+
+  if (N || !Insert)
     return N;
-    
+
   bool isFunctionLocal = false;
   switch (FL) {
   case FL_Unknown:
@@ -226,8 +250,11 @@ MDNode *MDNode::getMDNode(LLVMContext &Context, ArrayRef<Value*> Vals,
   }
 
   // Coallocate space for the node and Operands together, then placement new.
-  void *Ptr = malloc(sizeof(MDNode)+Vals.size()*sizeof(MDNodeOperand));
+  void *Ptr = malloc(sizeof(MDNode) + Vals.size() * sizeof(MDNodeOperand));
   N = new (Ptr) MDNode(Context, Vals, isFunctionLocal);
+
+  // Cache the operand hash.
+  N->Hash = ID.ComputeHash();
 
   // InsertPoint will have been set by the FindNodeOrInsertPos call.
   pImpl->MDNodeSet.InsertNode(N, InsertPoint);
@@ -251,7 +278,7 @@ MDNode *MDNode::getIfExists(LLVMContext &Context, ArrayRef<Value*> Vals) {
 
 MDNode *MDNode::getTemporary(LLVMContext &Context, ArrayRef<Value*> Vals) {
   MDNode *N =
-    (MDNode *)malloc(sizeof(MDNode)+Vals.size()*sizeof(MDNodeOperand));
+    (MDNode *)malloc(sizeof(MDNode) + Vals.size() * sizeof(MDNodeOperand));
   N = new (N) MDNode(Context, Vals, FL_No);
   N->setValueSubclassData(N->getSubclassDataFromValue() |
                           NotUniquedBit);
@@ -352,6 +379,8 @@ void MDNode::replaceOperand(MDNodeOperand *Op, Value *To) {
     return;
   }
 
+  // Cache the operand hash.
+  Hash = ID.ComputeHash();
   // InsertPoint will have been set by the FindNodeOrInsertPos call.
   pImpl->MDNodeSet.InsertNode(this, InsertPoint);
 
@@ -546,16 +575,14 @@ getAllMetadataOtherThanDebugLocImpl(SmallVectorImpl<std::pair<unsigned,
          getContext().pImpl->MetadataStore.count(this) &&
          "Shouldn't have called this");
   const LLVMContextImpl::MDMapTy &Info =
-  getContext().pImpl->MetadataStore.find(this)->second;
+    getContext().pImpl->MetadataStore.find(this)->second;
   assert(!Info.empty() && "Shouldn't have called this");
-  
   Result.append(Info.begin(), Info.end());
-  
+
   // Sort the resulting array so it is stable.
   if (Result.size() > 1)
     array_pod_sort(Result.begin(), Result.end());
 }
-
 
 /// clearMetadataHashEntries - Clear all hashtable-based metadata from
 /// this instruction.

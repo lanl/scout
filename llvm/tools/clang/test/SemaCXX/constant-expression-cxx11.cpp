@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple i686-linux -fsyntax-only -verify -std=c++11 -pedantic %s -Wno-comment
+// RUN: %clang_cc1 -triple i686-linux -Wno-string-plus-int -fsyntax-only -verify -std=c++11 -pedantic %s -Wno-comment
 
 namespace StaticAssertFoldTest {
 
@@ -100,8 +100,8 @@ namespace CaseStatements {
 }
 
 extern int &Recurse1;
-int &Recurse2 = Recurse1; // expected-note 2{{declared here}} expected-note {{initializer of 'Recurse1' is not a constant expression}}
-int &Recurse1 = Recurse2; // expected-note {{declared here}} expected-note {{initializer of 'Recurse2' is not a constant expression}}
+int &Recurse2 = Recurse1; // expected-note {{declared here}}
+int &Recurse1 = Recurse2;
 constexpr int &Recurse3 = Recurse2; // expected-error {{must be initialized by a constant expression}} expected-note {{initializer of 'Recurse2' is not a constant expression}}
 
 extern const int RecurseA;
@@ -190,26 +190,21 @@ namespace StaticMemberFunction {
 namespace ParameterScopes {
 
   const int k = 42;
-  constexpr const int &ObscureTheTruth(const int &a) { return a; } // expected-note 3{{reference to 'a' cannot be returned from a constexpr function}}
+  constexpr const int &ObscureTheTruth(const int &a) { return a; }
   constexpr const int &MaybeReturnJunk(bool b, const int a) { // expected-note 2{{declared here}}
-    return ObscureTheTruth(b ? a : k); // expected-note 2{{in call to 'ObscureTheTruth(a)'}}
+    return ObscureTheTruth(b ? a : k);
   }
   static_assert(MaybeReturnJunk(false, 0) == 42, ""); // ok
-  constexpr int a = MaybeReturnJunk(true, 0); // expected-error {{constant expression}} expected-note {{in call to 'MaybeReturnJunk(1, 0)'}}
+  constexpr int a = MaybeReturnJunk(true, 0); // expected-error {{constant expression}} expected-note {{read of variable whose lifetime has ended}}
 
-  constexpr const int MaybeReturnNonstaticRef(bool b, const int a) { // expected-note {{here}}
-    // If ObscureTheTruth returns a reference to 'a', the result is not a
-    // constant expression even though 'a' is still in scope.
-    return ObscureTheTruth(b ? a : k); // expected-note {{in call to 'ObscureTheTruth(a)'}}
+  constexpr const int MaybeReturnNonstaticRef(bool b, const int a) {
+    return ObscureTheTruth(b ? a : k);
   }
   static_assert(MaybeReturnNonstaticRef(false, 0) == 42, ""); // ok
-  constexpr int b = MaybeReturnNonstaticRef(true, 0); // expected-error {{constant expression}} expected-note {{in call to 'MaybeReturnNonstaticRef(1, 0)'}}
+  constexpr int b = MaybeReturnNonstaticRef(true, 0); // ok
 
   constexpr int InternalReturnJunk(int n) {
-    // TODO: We could reject this: it never produces a constant expression.
-    // However, we currently don't evaluate function calls while testing for
-    // potential constant expressions, for performance.
-    return MaybeReturnJunk(true, n); // expected-note {{in call to 'MaybeReturnJunk(1, 0)'}}
+    return MaybeReturnJunk(true, n); // expected-note {{read of variable whose lifetime has ended}}
   }
   constexpr int n3 = InternalReturnJunk(0); // expected-error {{must be initialized by a constant expression}} expected-note {{in call to 'InternalReturnJunk(0)'}}
 
@@ -413,6 +408,12 @@ struct U {
 } constexpr u = { { L"test" }, 0 };
 static_assert(u.chars[2] == L's', "");
 
+struct V {
+  char c[4];
+  constexpr V() : c("hi!") {}
+};
+static_assert(V().c[1] == "i"[0], "");
+
 }
 
 namespace Array {
@@ -528,10 +529,10 @@ struct D {
 static_assert(D().c.n == 42, "");
 
 struct E {
-  constexpr E() : p(&p) {} // expected-note {{pointer to subobject of temporary cannot be used to initialize a member in a constant expression}}
+  constexpr E() : p(&p) {}
   void *p;
 };
-constexpr const E &e1 = E(); // expected-error {{constant expression}} expected-note {{in call to 'E()'}} expected-note {{temporary created here}}
+constexpr const E &e1 = E(); // expected-error {{constant expression}} expected-note {{reference to temporary is not a constant expression}} expected-note {{temporary created here}}
 // This is a constant expression if we elide the copy constructor call, and
 // is not a constant expression if we don't! But we do, so it is.
 constexpr E e2 = E();
@@ -613,6 +614,10 @@ static_assert(agg1.arr[0] == 0, "");
 static_assert(agg1.arr[4] == 0, "");
 static_assert(agg1.arr[5] == 0, ""); // expected-error {{constant expression}} expected-note {{read of dereferenced one-past-the-end}}
 static_assert(agg1.p == nullptr, "");
+
+static constexpr const unsigned char uc[] = { "foo" };
+static_assert(uc[0] == 'f', "");
+static_assert(uc[3] == 0, "");
 
 namespace SimpleDerivedClass {
 
@@ -1054,6 +1059,28 @@ namespace ComplexConstexpr {
   constexpr _Complex int test6 = {5,6};
   typedef _Complex float fcomplex;
   constexpr fcomplex test7 = fcomplex();
+
+  constexpr const double &t2r = __real test3;
+  constexpr const double &t2i = __imag test3;
+  static_assert(&t2r + 1 == &t2i, "");
+  static_assert(t2r == 1.0, "");
+  static_assert(t2i == 2.0, "");
+  constexpr const double *t2p = &t2r;
+  static_assert(t2p[-1] == 0.0, ""); // expected-error {{constant expr}} expected-note {{cannot refer to element -1 of array of 2 elements}}
+  static_assert(t2p[0] == 1.0, "");
+  static_assert(t2p[1] == 2.0, "");
+  static_assert(t2p[2] == 0.0, ""); // expected-error {{constant expr}} expected-note {{one-past-the-end pointer}}
+  static_assert(t2p[3] == 0.0, ""); // expected-error {{constant expr}} expected-note {{cannot refer to element 3 of array of 2 elements}}
+  constexpr _Complex float *p = 0;
+  constexpr float pr = __real *p; // expected-error {{constant expr}} expected-note {{cannot access real component of null}}
+  constexpr float pi = __imag *p; // expected-error {{constant expr}} expected-note {{cannot access imaginary component of null}}
+  constexpr const _Complex double *q = &test3 + 1;
+  constexpr double qr = __real *q; // expected-error {{constant expr}} expected-note {{cannot access real component of pointer past the end}}
+  constexpr double qi = __imag *q; // expected-error {{constant expr}} expected-note {{cannot access imaginary component of pointer past the end}}
+
+  static_assert(__real test6 == 5, "");
+  static_assert(__imag test6 == 6, "");
+  static_assert(&__imag test6 == &__real test6 + 1, "");
 }
 
 namespace InstantiateCaseStmt {
@@ -1157,4 +1184,85 @@ namespace Fold {
 
   #undef fold
 
+}
+
+namespace DR1454 {
+
+constexpr const int &f(const int &n) { return n; }
+constexpr int k1 = f(0); // ok
+
+struct Wrap {
+  const int &value;
+};
+constexpr const Wrap &g(const Wrap &w) { return w; }
+constexpr int k2 = g({0}).value; // ok
+
+constexpr const int &i = 0; // expected-error {{constant expression}} expected-note {{temporary}} expected-note 2{{here}}
+constexpr const int j = i; // expected-error {{constant expression}} expected-note {{initializer of 'i' is not a constant expression}}
+
+}
+
+namespace RecursiveOpaqueExpr {
+  template<typename Iter>
+  constexpr auto LastNonzero(Iter p, Iter q) -> decltype(+*p) {
+    return p != q ? (LastNonzero(p+1, q) ?: *p) : 0; // expected-warning {{GNU}}
+  }
+
+  constexpr int arr1[] = { 1, 0, 0, 3, 0, 2, 0, 4, 0, 0 };
+  static_assert(LastNonzero(begin(arr1), end(arr1)) == 4, "");
+
+  constexpr int arr2[] = { 1, 0, 0, 3, 0, 2, 0, 4, 0, 5 };
+  static_assert(LastNonzero(begin(arr2), end(arr2)) == 5, "");
+}
+
+namespace VLASizeof {
+
+  void f(int k) {
+    int arr[k]; // expected-warning {{C99}}
+    constexpr int n = 1 +
+        sizeof(arr) // expected-error {{constant expression}}
+        * 3;
+  }
+}
+
+namespace CompoundLiteral {
+  // FIXME:
+  // We don't model the semantics of this correctly: the compound literal is
+  // represented as a prvalue in the AST, but actually behaves like an lvalue.
+  // We treat the compound literal as a temporary and refuse to produce a
+  // pointer to it. This is OK: we're not required to treat this as a constant
+  // in C++, and in C we model compound literals as lvalues.
+  constexpr int *p = (int*)(int[1]){0}; // expected-warning {{C99}} expected-error {{constant expression}} expected-note 2{{temporary}}
+}
+
+namespace Vector {
+  typedef int __attribute__((vector_size(16))) VI4;
+  constexpr VI4 f(int n) {
+    return VI4 { n * 3, n + 4, n - 5, n / 6 };
+  }
+  constexpr auto v1 = f(10);
+
+  typedef double __attribute__((vector_size(32))) VD4;
+  constexpr VD4 g(int n) {
+    return (VD4) { n / 2.0, n + 1.5, n - 5.4, n * 0.9 }; // expected-warning {{C99}}
+  }
+  constexpr auto v2 = g(4);
+}
+
+// PR12626, redux
+namespace InvalidClasses {
+  void test0() {
+    struct X; // expected-note {{forward declaration}}
+    struct Y { bool b; X x; }; // expected-error {{field has incomplete type}}
+    Y y;
+    auto& b = y.b;
+  }
+}
+
+// Indirectly test that an implicit lvalue to xvalue conversion performed for
+// an NRVO move operation isn't implemented as CK_LValueToRValue.
+namespace PR12826 {
+  struct Foo {};
+  constexpr Foo id(Foo x) { return x; }
+  constexpr Foo res(id(Foo()));
 }

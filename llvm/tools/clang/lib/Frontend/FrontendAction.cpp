@@ -180,7 +180,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     assert(hasASTFileSupport() &&
            "This action does not have AST file support!");
 
-    llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags(&CI.getDiagnostics());
+    IntrusiveRefCntPtr<DiagnosticsEngine> Diags(&CI.getDiagnostics());
     std::string Error;
     ASTUnit *AST = ASTUnit::LoadFromASTFile(Input.File, Diags,
                                             CI.getFileSystemOpts());
@@ -285,6 +285,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
                                 CI.getPreprocessorOpts().ImplicitPCHInclude,
                                 CI.getPreprocessorOpts().DisablePCHValidation,
                                 CI.getPreprocessorOpts().DisableStatCache,
+                            CI.getPreprocessorOpts().AllowPCHWithCompilerErrors,
                                 DeserialListener);
       if (!CI.getASTContext().getExternalSource())
         goto failure;
@@ -300,7 +301,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   if (!CI.hasASTContext() || !CI.getASTContext().getExternalSource()) {
     Preprocessor &PP = CI.getPreprocessor();
     PP.getBuiltinInfo().InitializeBuiltins(PP.getIdentifierTable(),
-                                           PP.getLangOptions());
+                                           PP.getLangOpts());
   }
 
   // If there is a layout overrides file, attach an external AST source that
@@ -432,12 +433,14 @@ void ASTFrontendAction::ExecuteAction() {
   if(CI.getFrontendOpts().ViewAST){
     ASTViewScout ASTViewer(CI.getSema());
     
-    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats, &ASTViewer);
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+             false, &ASTViewer);
   }
   else{
-  // ENDSCOUTCODE
-    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats);
-  // SCOUTCODE - if else
+    // ENDSCOUTCODE
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+             CI.getFrontendOpts().SkipFunctionBodies);
+    // SCOUTCODE - if else
   }
   // ENDSCOUTCODE
 }

@@ -262,6 +262,14 @@ void StringRegion::ProfileRegion(llvm::FoldingSetNodeID& ID,
   ID.AddPointer(superRegion);
 }
 
+void ObjCStringRegion::ProfileRegion(llvm::FoldingSetNodeID& ID,
+                                     const ObjCStringLiteral* Str,
+                                     const MemRegion* superRegion) {
+  ID.AddInteger((unsigned) ObjCStringRegionKind);
+  ID.AddPointer(Str);
+  ID.AddPointer(superRegion);
+}
+
 void AllocaRegion::ProfileRegion(llvm::FoldingSetNodeID& ID,
                                  const Expr *Ex, unsigned cnt,
                                  const MemRegion *) {
@@ -483,7 +491,11 @@ void ObjCIvarRegion::dumpToStream(raw_ostream &os) const {
 }
 
 void StringRegion::dumpToStream(raw_ostream &os) const {
-  Str->printPretty(os, 0, PrintingPolicy(getContext().getLangOptions()));
+  Str->printPretty(os, 0, PrintingPolicy(getContext().getLangOpts()));
+}
+
+void ObjCStringRegion::dumpToStream(raw_ostream &os) const {
+  Str->printPretty(os, 0, PrintingPolicy(getContext().getLangOpts()));
 }
 
 void SymbolicRegion::dumpToStream(raw_ostream &os) const {
@@ -520,6 +532,19 @@ void GlobalSystemSpaceRegion::dumpToStream(raw_ostream &os) const {
 
 void GlobalImmutableSpaceRegion::dumpToStream(raw_ostream &os) const {
   os << "GlobalImmutableSpaceRegion";
+}
+
+void MemRegion::dumpPretty(raw_ostream &os) const {
+  return;
+}
+
+void VarRegion::dumpPretty(raw_ostream &os) const {
+  os << getDecl()->getName();
+}
+
+void FieldRegion::dumpPretty(raw_ostream &os) const {
+  superRegion->dumpPretty(os);
+  os << "->" << getDecl();
 }
 
 //===----------------------------------------------------------------------===//
@@ -613,6 +638,11 @@ const StringRegion* MemRegionManager::getStringRegion(const StringLiteral* Str){
   return getSubRegion<StringRegion>(Str, getGlobalsRegion());
 }
 
+const ObjCStringRegion *
+MemRegionManager::getObjCStringRegion(const ObjCStringLiteral* Str){
+  return getSubRegion<ObjCStringRegion>(Str, getGlobalsRegion());
+}
+
 const VarRegion* MemRegionManager::getVarRegion(const VarDecl *D,
                                                 const LocationContext *LC) {
   const MemRegion *sReg = 0;
@@ -690,18 +720,24 @@ const BlockDataRegion *
 MemRegionManager::getBlockDataRegion(const BlockTextRegion *BC,
                                      const LocationContext *LC) {
   const MemRegion *sReg = 0;
-
-  if (LC) {
-    // FIXME: Once we implement scope handling, we want the parent region
-    // to be the scope.
-    const StackFrameContext *STC = LC->getCurrentStackFrame();
-    assert(STC);
-    sReg = getStackLocalsRegion(STC);
+  const BlockDecl *BD = BC->getDecl();
+  if (!BD->hasCaptures()) {
+    // This handles 'static' blocks.
+    sReg = getGlobalsRegion(MemRegion::GlobalImmutableSpaceRegionKind);
   }
   else {
-    // We allow 'LC' to be NULL for cases where want BlockDataRegions
-    // without context-sensitivity.
-    sReg = getUnknownRegion();
+    if (LC) {
+      // FIXME: Once we implement scope handling, we want the parent region
+      // to be the scope.
+      const StackFrameContext *STC = LC->getCurrentStackFrame();
+      assert(STC);
+      sReg = getStackLocalsRegion(STC);
+    }
+    else {
+      // We allow 'LC' to be NULL for cases where want BlockDataRegions
+      // without context-sensitivity.
+      sReg = getUnknownRegion();
+    }
   }
 
   return getSubRegion<BlockDataRegion>(BC, LC, sReg);
@@ -980,7 +1016,7 @@ RegionOffset MemRegion::getAsOffset() const {
       unsigned idx = 0;
       for (RecordDecl::field_iterator FI = RD->field_begin(), 
              FE = RD->field_end(); FI != FE; ++FI, ++idx)
-        if (FR->getDecl() == *FI)
+        if (FR->getDecl() == &*FI)
           break;
 
       const ASTRecordLayout &Layout = getContext().getASTRecordLayout(RD);
@@ -1020,26 +1056,37 @@ void BlockDataRegion::LazyInitializeReferencedVars() {
   typedef BumpVector<const MemRegion*> VarVec;
   VarVec *BV = (VarVec*) A.Allocate<VarVec>();
   new (BV) VarVec(BC, E - I);
+  VarVec *BVOriginal = (VarVec*) A.Allocate<VarVec>();
+  new (BVOriginal) VarVec(BC, E - I);
 
   for ( ; I != E; ++I) {
     const VarDecl *VD = *I;
     const VarRegion *VR = 0;
+    const VarRegion *OriginalVR = 0;
 
-    if (!VD->getAttr<BlocksAttr>() && VD->hasLocalStorage())
+    if (!VD->getAttr<BlocksAttr>() && VD->hasLocalStorage()) {
       VR = MemMgr.getVarRegion(VD, this);
+      OriginalVR = MemMgr.getVarRegion(VD, LC);
+    }
     else {
-      if (LC)
+      if (LC) {
         VR = MemMgr.getVarRegion(VD, LC);
+        OriginalVR = VR;
+      }
       else {
         VR = MemMgr.getVarRegion(VD, MemMgr.getUnknownRegion());
+        OriginalVR = MemMgr.getVarRegion(VD, LC);
       }
     }
 
     assert(VR);
+    assert(OriginalVR);
     BV->push_back(VR, BC);
+    BVOriginal->push_back(OriginalVR, BC);
   }
 
   ReferencedVars = BV;
+  OriginalVars = BVOriginal;
 }
 
 BlockDataRegion::referenced_vars_iterator
@@ -1049,8 +1096,14 @@ BlockDataRegion::referenced_vars_begin() const {
   BumpVector<const MemRegion*> *Vec =
     static_cast<BumpVector<const MemRegion*>*>(ReferencedVars);
 
-  return BlockDataRegion::referenced_vars_iterator(Vec == (void*) 0x1 ?
-                                                   NULL : Vec->begin());
+  if (Vec == (void*) 0x1)
+    return BlockDataRegion::referenced_vars_iterator(0, 0);
+  
+  BumpVector<const MemRegion*> *VecOriginal =
+    static_cast<BumpVector<const MemRegion*>*>(OriginalVars);
+  
+  return BlockDataRegion::referenced_vars_iterator(Vec->begin(),
+                                                   VecOriginal->begin());
 }
 
 BlockDataRegion::referenced_vars_iterator
@@ -1060,6 +1113,12 @@ BlockDataRegion::referenced_vars_end() const {
   BumpVector<const MemRegion*> *Vec =
     static_cast<BumpVector<const MemRegion*>*>(ReferencedVars);
 
-  return BlockDataRegion::referenced_vars_iterator(Vec == (void*) 0x1 ?
-                                                   NULL : Vec->end());
+  if (Vec == (void*) 0x1)
+    return BlockDataRegion::referenced_vars_iterator(0, 0);
+  
+  BumpVector<const MemRegion*> *VecOriginal =
+    static_cast<BumpVector<const MemRegion*>*>(OriginalVars);
+
+  return BlockDataRegion::referenced_vars_iterator(Vec->end(),
+                                                   VecOriginal->end());
 }

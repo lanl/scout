@@ -169,7 +169,7 @@ void llvm::finalizeBundle(MachineBasicBlock &MBB,
       }
 
       if (!MO.isDead()) {
-        for (const unsigned *SubRegs = TRI->getSubRegisters(Reg);
+        for (const uint16_t *SubRegs = TRI->getSubRegisters(Reg);
              unsigned SubReg = *SubRegs; ++SubRegs) {
           if (LocalDefSet.insert(SubReg))
             LocalDefs.push_back(SubReg);
@@ -229,6 +229,8 @@ bool llvm::finalizeBundles(MachineFunction &MF) {
            "First instr cannot be inside bundle before finalization!");
 
     MachineBasicBlock::instr_iterator MIE = MBB.instr_end();
+    if (MII == MIE)
+      continue;
     for (++MII; MII != MIE; ) {
       if (!MII->isInsideBundle())
         ++MII;
@@ -240,4 +242,37 @@ bool llvm::finalizeBundles(MachineFunction &MF) {
   }
 
   return Changed;
+}
+
+//===----------------------------------------------------------------------===//
+// MachineOperand iterator
+//===----------------------------------------------------------------------===//
+
+MachineOperandIteratorBase::RegInfo
+MachineOperandIteratorBase::analyzeVirtReg(unsigned Reg,
+                    SmallVectorImpl<std::pair<MachineInstr*, unsigned> > *Ops) {
+  RegInfo RI = { false, false, false };
+  for(; isValid(); ++*this) {
+    MachineOperand &MO = deref();
+    if (!MO.isReg() || MO.getReg() != Reg)
+      continue;
+
+    // Remember each (MI, OpNo) that refers to Reg.
+    if (Ops)
+      Ops->push_back(std::make_pair(MO.getParent(), getOperandNo()));
+
+    // Both defs and uses can read virtual registers.
+    if (MO.readsReg()) {
+      RI.Reads = true;
+      if (MO.isDef())
+        RI.Tied = true;
+    }
+
+    // Only defs can write.
+    if (MO.isDef())
+      RI.Writes = true;
+    else if (!RI.Tied && MO.getParent()->isRegTiedToDefOperand(getOperandNo()))
+      RI.Tied = true;
+  }
+  return RI;
 }

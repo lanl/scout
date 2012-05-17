@@ -66,7 +66,8 @@ public:
     AsChar,       // 'hh'
     AsShort,      // 'h'
     AsLong,       // 'l'
-    AsLongLong,   // 'll', 'q' (BSD, deprecated)
+    AsLongLong,   // 'll'
+    AsQuad,       // 'q' (BSD, deprecated, for 64-bit integer types)
     AsIntMax,     // 'j'
     AsSizeT,      // 'z'
     AsPtrDiff,    // 't'
@@ -174,6 +175,7 @@ public:
     switch (kind) {
       case PrintErrno:
         assert(IsPrintf);
+        return false;
       case PercentArg:
         return false;
       default:
@@ -305,9 +307,9 @@ protected:
   LengthModifier LM;
   OptionalAmount FieldWidth;
   ConversionSpecifier CS;
-    /// Positional arguments, an IEEE extension:
-    ///  IEEE Std 1003.1, 2004 Edition
-    ///  http://www.opengroup.org/onlinepubs/009695399/functions/printf.html
+  /// Positional arguments, an IEEE extension:
+  ///  IEEE Std 1003.1, 2004 Edition
+  ///  http://www.opengroup.org/onlinepubs/009695399/functions/printf.html
   bool UsesPositionalArg;
   unsigned argIndex;
 public:
@@ -347,6 +349,12 @@ public:
   bool usesPositionalArg() const { return UsesPositionalArg; }
 
   bool hasValidLengthModifier() const;
+
+  bool hasStandardLengthModifier() const;
+
+  bool hasStandardConversionSpecifier(const LangOptions &LangOpt) const;
+
+  bool hasStandardLengthConversionCombination() const;
 };
 
 } // end analyze_format_string namespace
@@ -368,7 +376,7 @@ public:
   bool isObjCArg() const { return kind >= ObjCBeg && kind <= ObjCEnd; }
   bool isIntArg() const { return kind >= IntArgBeg && kind <= IntArgEnd; }
   bool isDoubleArg() const { return kind >= DoubleArgBeg &&
-                                    kind <= DoubleArgBeg; }
+                                    kind <= DoubleArgEnd; }
   unsigned getLength() const {
       // Conversion specifiers currently only are represented by
       // single characters, but we be flexible.
@@ -467,10 +475,11 @@ public:
   const OptionalFlag &hasSpacePrefix() const { return HasSpacePrefix; }
   bool usesPositionalArg() const { return UsesPositionalArg; }
 
-    /// Changes the specifier and length according to a QualType, retaining any
-    /// flags or options. Returns true on success, or false when a conversion
-    /// was not successful.
-  bool fixType(QualType QT, const LangOptions &LangOpt);
+  /// Changes the specifier and length according to a QualType, retaining any
+  /// flags or options. Returns true on success, or false when a conversion
+  /// was not successful.
+  bool fixType(QualType QT, const LangOptions &LangOpt, ASTContext &Ctx,
+               bool IsObjCLiteral);
 
   void toString(raw_ostream &os) const;
 
@@ -567,7 +576,7 @@ public:
 
   ScanfArgTypeResult getArgType(ASTContext &Ctx) const;
 
-  bool fixType(QualType QT, const LangOptions &LangOpt);
+  bool fixType(QualType QT, const LangOptions &LangOpt, ASTContext &Ctx);
 
   void toString(raw_ostream &os) const;
 
@@ -589,6 +598,8 @@ public:
   virtual ~FormatStringHandler();
 
   virtual void HandleNullChar(const char *nullCharacter) {}
+
+  virtual void HandlePosition(const char *startPos, unsigned posLen) {}
 
   virtual void HandleInvalidPosition(const char *startPos, unsigned posLen,
                                      PositionContext p) {}

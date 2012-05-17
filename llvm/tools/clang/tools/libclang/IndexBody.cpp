@@ -9,14 +9,14 @@
 
 #include "IndexingContext.h"
 
-#include "clang/AST/RecursiveASTVisitor.h"
+#include "RecursiveASTVisitor.h"
 
 using namespace clang;
 using namespace cxindex;
 
 namespace {
 
-class BodyIndexer : public RecursiveASTVisitor<BodyIndexer> {
+class BodyIndexer : public cxindex::RecursiveASTVisitor<BodyIndexer> {
   IndexingContext &IndexCtx;
   const NamedDecl *Parent;
   const DeclContext *ParentDC;
@@ -51,6 +51,17 @@ public:
     return true;
   }
 
+  bool VisitDesignatedInitExpr(DesignatedInitExpr *E) {
+    for (DesignatedInitExpr::reverse_designators_iterator
+           D = E->designators_rbegin(), DEnd = E->designators_rend();
+           D != DEnd; ++D) {
+      if (D->isFieldDesignator())
+        IndexCtx.handleReference(D->getField(), D->getFieldLoc(),
+                                 Parent, ParentDC, E);
+    }
+    return true;
+  }
+
   bool VisitObjCIvarRefExpr(ObjCIvarRefExpr *E) {
     IndexCtx.handleReference(E->getDecl(), E->getLocation(),
                              Parent, ParentDC, E);
@@ -70,17 +81,33 @@ public:
   }
 
   bool VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *E) {
-    if (E->isImplicitProperty()) {
-      if (ObjCMethodDecl *MD = E->getImplicitPropertyGetter())
-        IndexCtx.handleReference(MD, E->getLocation(), Parent, ParentDC, E,
-                                 CXIdxEntityRef_Implicit);
-      if (ObjCMethodDecl *MD = E->getImplicitPropertySetter())
-        IndexCtx.handleReference(MD, E->getLocation(), Parent, ParentDC, E,
-                                 CXIdxEntityRef_Implicit);
-    } else {
+    if (E->isExplicitProperty())
       IndexCtx.handleReference(E->getExplicitProperty(), E->getLocation(),
                                Parent, ParentDC, E);
-    }
+
+    // No need to do a handleReference for the objc method, because there will
+    // be a message expr as part of PseudoObjectExpr.
+    return true;
+  }
+
+  bool VisitObjCBoxedExpr(ObjCBoxedExpr *E) {
+    if (ObjCMethodDecl *MD = E->getBoxingMethod())
+      IndexCtx.handleReference(MD, E->getLocStart(),
+                               Parent, ParentDC, E, CXIdxEntityRef_Implicit);
+    return true;
+  }
+  
+  bool VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
+    if (ObjCMethodDecl *MD = E->getDictWithObjectsMethod())
+      IndexCtx.handleReference(MD, E->getLocStart(),
+                               Parent, ParentDC, E, CXIdxEntityRef_Implicit);
+    return true;
+  }
+
+  bool VisitObjCArrayLiteral(ObjCArrayLiteral *E) {
+    if (ObjCMethodDecl *MD = E->getArrayWithObjectsMethod())
+      IndexCtx.handleReference(MD, E->getLocStart(),
+                               Parent, ParentDC, E, CXIdxEntityRef_Implicit);
     return true;
   }
 
@@ -97,10 +124,51 @@ public:
   }
 
   bool VisitDeclStmt(DeclStmt *S) {
-    if (IndexCtx.indexFunctionLocalSymbols())
+    if (IndexCtx.shouldIndexFunctionLocalSymbols())
       IndexCtx.indexDeclGroupRef(S->getDeclGroup());
     return true;
   }
+
+  bool TraverseLambdaCapture(LambdaExpr::Capture C) {
+    if (C.capturesThis())
+      return true;
+
+    if (IndexCtx.shouldIndexFunctionLocalSymbols())
+      IndexCtx.handleReference(C.getCapturedVar(), C.getLocation(),
+                               Parent, ParentDC);
+    return true;
+  }
+
+  // SCOUTCODE - stubs to avoid linking errors in libclang
+  bool TraverseMeshType(MeshType*){
+    return true;
+  }
+
+  bool TraverseScoutVectorMemberExpr(ScoutVectorMemberExpr*){
+    return true;
+  }
+  
+  bool TraverseForAllArrayStmt(ForAllArrayStmt*){
+    return true;
+  }
+
+  bool TraverseMeshTypeLoc(MeshTypeLoc*){
+    return true;
+  }
+
+  bool TraverseMeshDecl(MeshDecl*){
+    return true;
+  }
+
+  bool TraverseForAllStmt(ForAllStmt*){
+    return true;
+  }
+
+  bool TraverseRenderAllStmt(RenderAllStmt*){
+    return true;
+  }
+
+  // ENDSCOUTCODE
 };
 
 } // anonymous namespace

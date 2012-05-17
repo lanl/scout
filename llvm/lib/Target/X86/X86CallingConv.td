@@ -1,10 +1,10 @@
-//===- X86CallingConv.td - Calling Conventions X86 32/64 ---*- tablegen -*-===//
-// 
+//===-- X86CallingConv.td - Calling Conventions X86 32/64 --*- tablegen -*-===//
+//
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
-// 
+//
 //===----------------------------------------------------------------------===//
 //
 // This describes the calling conventions for the X86-32 and X86-64
@@ -331,8 +331,8 @@ def CC_X86_32_ThisCall : CallingConv<[
   // Promote i8/i16 arguments to i32.
   CCIfType<[i8, i16], CCPromoteToType<i32>>,
 
-  // The 'nest' parameter, if any, is passed in EAX.
-  CCIfNest<CCAssignToReg<[EAX]>>,
+  // Pass sret arguments indirectly through EAX
+  CCIfSRet<CCAssignToReg<[EAX]>>,
 
   // The first integer argument is passed in ECX
   CCIfType<[i32], CCAssignToReg<[ECX]>>,
@@ -413,7 +413,7 @@ def CC_X86 : CallingConv<[
 // Callee-saved Registers.
 //===----------------------------------------------------------------------===//
 
-def CSR_Ghc : CalleeSavedRegs<(add)>;
+def CSR_NoRegs : CalleeSavedRegs<(add)>;
 
 def CSR_32 : CalleeSavedRegs<(add ESI, EDI, EBX, EBP)>;
 def CSR_64 : CalleeSavedRegs<(add RBX, R12, R13, R14, R15, RBP)>;

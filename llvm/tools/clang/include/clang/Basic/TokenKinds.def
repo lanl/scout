@@ -311,6 +311,9 @@ KEYWORD(_Generic                    , KEYALL)
 KEYWORD(_Imaginary                  , KEYALL)
 KEYWORD(_Static_assert              , KEYALL)
 KEYWORD(__func__                    , KEYALL)
+KEYWORD(__objc_yes                  , KEYALL)
+KEYWORD(__objc_no                   , KEYALL)
+
 
 // C++ 2.11p1: Keywords.
 KEYWORD(asm                         , KEYCXX|KEYGNU)
@@ -382,6 +385,7 @@ KEYWORD(__builtin_types_compatible_p, KEYALL)
 KEYWORD(__builtin_va_arg            , KEYALL)
 KEYWORD(__extension__               , KEYALL)
 KEYWORD(__imag                      , KEYALL)
+KEYWORD(__int128                    , KEYALL)
 KEYWORD(__label__                   , KEYALL)
 KEYWORD(__real                      , KEYALL)
 KEYWORD(__thread                    , KEYALL)
@@ -418,7 +422,9 @@ KEYWORD(__is_trivial                , KEYCXX)
 KEYWORD(__is_union                  , KEYCXX)
 
 // Clang-only C++ Type Traits
+KEYWORD(__is_trivially_constructible, KEYCXX)
 KEYWORD(__is_trivially_copyable     , KEYCXX)
+KEYWORD(__is_trivially_assignable   , KEYCXX)
 KEYWORD(__underlying_type           , KEYCXX)
 
 // Embarcadero Expression Traits
@@ -600,7 +606,7 @@ OBJC2_AT_KEYWORD(required)
 OBJC2_AT_KEYWORD(optional)
 OBJC2_AT_KEYWORD(synthesize)
 OBJC2_AT_KEYWORD(dynamic)
-OBJC2_AT_KEYWORD(import)
+OBJC2_AT_KEYWORD(__experimental_modules_import)
 
 // TODO: What to do about context-sensitive keywords like:
 //       bycopy/byref/in/inout/oneway/out?
@@ -625,6 +631,11 @@ ANNOTATION(pragma_unused)
 // The lexer produces these so that they only take effect when the parser
 // handles them.
 ANNOTATION(pragma_vis)
+
+// Annotation for #pragma pack...
+// The lexer produces these so that they only take effect when the parser
+// handles them.
+ANNOTATION(pragma_pack)
 
 #undef ANNOTATION
 #undef TESTING_KEYWORD

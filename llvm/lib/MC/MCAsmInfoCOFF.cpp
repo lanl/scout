@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCAsmInfoCOFF.h"
-#include "llvm/ADT/SmallVector.h"
 using namespace llvm;
 
 void MCAsmInfoCOFF::anchor() { }
@@ -27,7 +26,7 @@ MCAsmInfoCOFF::MCAsmInfoCOFF() {
   PrivateGlobalPrefix = "L";  // Prefix for private global symbols
   WeakRefDirective = "\t.weak\t";
   LinkOnceDirective = "\t.linkonce discard\n";
-  
+
   // Doesn't support visibility:
   HiddenVisibilityAttr = HiddenDeclarationVisibilityAttr = MCSA_Invalid;
   ProtectedVisibilityAttr = MCSA_Invalid;

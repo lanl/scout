@@ -15,10 +15,10 @@
 #ifndef MipsISELLOWERING_H
 #define MipsISELLOWERING_H
 
-#include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/Target/TargetLowering.h"
 #include "Mips.h"
 #include "MipsSubtarget.h"
+#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
   namespace MipsISD {
@@ -109,7 +109,7 @@ namespace llvm {
   private:
     // Subtarget Info
     const MipsSubtarget *Subtarget;
-    
+
     bool HasMips64, IsN64, IsO32;
 
     // Lower Operand helpers
@@ -128,11 +128,15 @@ namespace llvm {
     SDValue LowerGlobalTLSAddress(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerFABS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerMEMBARRIER(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG& DAG) const;
+    SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG& DAG) const;
+    SDValue LowerShiftRightParts(SDValue Op, SelectionDAG& DAG, bool IsSRA) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
@@ -144,7 +148,7 @@ namespace llvm {
     virtual SDValue
       LowerCall(SDValue Chain, SDValue Callee,
                 CallingConv::ID CallConv, bool isVarArg,
-                bool &isTailCall,
+                bool doesNotRet, bool &isTailCall,
                 const SmallVectorImpl<ISD::OutputArg> &Outs,
                 const SmallVectorImpl<SDValue> &OutVals,
                 const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -173,6 +177,15 @@ namespace llvm {
     std::pair<unsigned, const TargetRegisterClass*>
               getRegForInlineAsmConstraint(const std::string &Constraint,
               EVT VT) const;
+
+    /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
+    /// vector.  If it is invalid, don't add anything to Ops. If hasMemory is
+    /// true it means one of the asm constraint of the inline asm instruction
+    /// being processed is 'm'.
+    virtual void LowerAsmOperandForConstraint(SDValue Op,
+                                              std::string &Constraint,
+                                              std::vector<SDValue> &Ops,
+                                              SelectionDAG &DAG) const;
 
     virtual bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const;
 

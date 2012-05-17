@@ -15,12 +15,13 @@
 #define LLVM_CODEGEN_MACHINEREGISTERINFO_H
 
 #include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/CodeGen/MachineInstrBundle.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/IndexedMap.h"
 #include <vector>
 
 namespace llvm {
-  
+
 /// MachineRegisterInfo - Keep track of information for virtual and physical
 /// registers, including vreg register classes, use/def chains for registers,
 /// etc.
@@ -30,6 +31,11 @@ class MachineRegisterInfo {
   /// IsSSA - True when the machine function is in SSA form and virtual
   /// registers have a single def.
   bool IsSSA;
+
+  /// TracksLiveness - True while register liveness is being tracked accurately.
+  /// Basic block live-in lists, kill flags, and implicit defs may not be
+  /// accurate when after this flag is cleared.
+  bool TracksLiveness;
 
   /// VRegInfo - Information we keep for each virtual register.
   ///
@@ -46,17 +52,22 @@ class MachineRegisterInfo {
   /// the allocator should prefer the physical register allocated to the virtual
   /// register of the hint.
   IndexedMap<std::pair<unsigned, unsigned>, VirtReg2IndexFunctor> RegAllocHints;
-  
+
   /// PhysRegUseDefLists - This is an array of the head of the use/def list for
   /// physical registers.
-  MachineOperand **PhysRegUseDefLists; 
-  
+  MachineOperand **PhysRegUseDefLists;
+
   /// UsedPhysRegs - This is a bit vector that is computed and set by the
   /// register allocator, and must be kept up to date by passes that run after
   /// register allocation (though most don't modify this).  This is used
   /// so that the code generator knows which callee save registers to save and
   /// for other target specific uses.
+  /// This vector only has bits set for registers explicitly used, not their
+  /// aliases.
   BitVector UsedPhysRegs;
+
+  /// UsedPhysRegMask - Additional used physregs, but including aliases.
+  BitVector UsedPhysRegMask;
 
   /// ReservedRegs - This is a bit vector of reserved registers.  The target
   /// may change its mind about which registers should be reserved.  This
@@ -74,7 +85,7 @@ class MachineRegisterInfo {
   /// stored in the second element.
   std::vector<std::pair<unsigned, unsigned> > LiveIns;
   std::vector<unsigned> LiveOuts;
-  
+
   MachineRegisterInfo(const MachineRegisterInfo&); // DO NOT IMPLEMENT
   void operator=(const MachineRegisterInfo&);      // DO NOT IMPLEMENT
 public:
@@ -96,6 +107,23 @@ public:
 
   // leaveSSA - Indicates that the machine function is no longer in SSA form.
   void leaveSSA() { IsSSA = false; }
+
+  /// tracksLiveness - Returns true when tracking register liveness accurately.
+  ///
+  /// While this flag is true, register liveness information in basic block
+  /// live-in lists and machine instruction operands is accurate. This means it
+  /// can be used to change the code in ways that affect the values in
+  /// registers, for example by the register scavenger.
+  ///
+  /// When this flag is false, liveness is no longer reliable.
+  bool tracksLiveness() const { return TracksLiveness; }
+
+  /// invalidateLiveness - Indicates that register liveness is no longer being
+  /// tracked accurately.
+  ///
+  /// This should be called by late passes that invalidate the liveness
+  /// information.
+  void invalidateLiveness() { TracksLiveness = false; }
 
   //===--------------------------------------------------------------------===//
   // Register Info
@@ -150,7 +178,7 @@ public:
     return use_iterator(getRegUseDefListHead(RegNo));
   }
   static use_iterator use_end() { return use_iterator(0); }
-  
+
   /// use_empty - Return true if there are no instructions using the specified
   /// register.
   bool use_empty(unsigned RegNo) const { return use_begin(RegNo) == use_end(); }
@@ -166,7 +194,7 @@ public:
     return use_nodbg_iterator(getRegUseDefListHead(RegNo));
   }
   static use_nodbg_iterator use_nodbg_end() { return use_nodbg_iterator(0); }
-  
+
   /// use_nodbg_empty - Return true if there are no non-Debug instructions
   /// using the specified register.
   bool use_nodbg_empty(unsigned RegNo) const {
@@ -189,7 +217,7 @@ public:
   /// That function will return NULL if the virtual registers have incompatible
   /// constraints.
   void replaceRegWith(unsigned FromReg, unsigned ToReg);
-  
+
   /// getRegUseDefListHead - Return the head pointer for the register use/def
   /// list for the specified virtual or physical register.
   MachineOperand *&getRegUseDefListHead(unsigned RegNo) {
@@ -197,7 +225,7 @@ public:
       return VRegInfo[RegNo].second;
     return PhysRegUseDefLists[RegNo];
   }
-  
+
   MachineOperand *getRegUseDefListHead(unsigned RegNo) const {
     if (TargetRegisterInfo::isVirtualRegister(RegNo))
       return VRegInfo[RegNo].second;
@@ -214,7 +242,7 @@ public:
   /// optimization passes which extend register lifetimes and need only
   /// preserve conservative kill flag information.
   void clearKillFlags(unsigned Reg) const;
-  
+
 #ifndef NDEBUG
   void dumpUses(unsigned RegNo) const;
 #endif
@@ -227,7 +255,7 @@ public:
   //===--------------------------------------------------------------------===//
   // Virtual Register Info
   //===--------------------------------------------------------------------===//
-  
+
   /// getRegClass - Return the register class of the specified virtual register.
   ///
   const TargetRegisterClass *getRegClass(unsigned Reg) const {
@@ -268,6 +296,9 @@ public:
   ///
   unsigned getNumVirtRegs() const { return VRegInfo.size(); }
 
+  /// clearVirtRegs - Remove all virtual registers (after physreg assignment).
+  void clearVirtRegs();
+
   /// setRegAllocationHint - Specify a register allocation hint for the
   /// specified virtual register.
   void setRegAllocationHint(unsigned Reg, unsigned Type, unsigned PrefReg) {
@@ -293,35 +324,44 @@ public:
   //===--------------------------------------------------------------------===//
   // Physical Register Use Info
   //===--------------------------------------------------------------------===//
-  
+
   /// isPhysRegUsed - Return true if the specified register is used in this
   /// function.  This only works after register allocation.
-  bool isPhysRegUsed(unsigned Reg) const { return UsedPhysRegs[Reg]; }
+  bool isPhysRegUsed(unsigned Reg) const {
+    return UsedPhysRegs.test(Reg) || UsedPhysRegMask.test(Reg);
+  }
 
   /// isPhysRegOrOverlapUsed - Return true if Reg or any overlapping register
   /// is used in this function.
   bool isPhysRegOrOverlapUsed(unsigned Reg) const {
-    for (const unsigned *AI = TRI->getOverlaps(Reg); *AI; ++AI)
-      if (isPhysRegUsed(*AI))
+    if (UsedPhysRegMask.test(Reg))
+      return true;
+    for (const uint16_t *AI = TRI->getOverlaps(Reg); *AI; ++AI)
+      if (UsedPhysRegs.test(*AI))
         return true;
     return false;
   }
 
   /// setPhysRegUsed - Mark the specified register used in this function.
   /// This should only be called during and after register allocation.
-  void setPhysRegUsed(unsigned Reg) { UsedPhysRegs[Reg] = true; }
+  void setPhysRegUsed(unsigned Reg) { UsedPhysRegs.set(Reg); }
 
   /// addPhysRegsUsed - Mark the specified registers used in this function.
   /// This should only be called during and after register allocation.
   void addPhysRegsUsed(const BitVector &Regs) { UsedPhysRegs |= Regs; }
 
+  /// addPhysRegsUsedFromRegMask - Mark any registers not in RegMask as used.
+  /// This corresponds to the bit mask attached to register mask operands.
+  void addPhysRegsUsedFromRegMask(const uint32_t *RegMask) {
+    UsedPhysRegMask.setBitsNotInMask(RegMask);
+  }
+
   /// setPhysRegUnused - Mark the specified register unused in this function.
   /// This should only be called during and after register allocation.
-  void setPhysRegUnused(unsigned Reg) { UsedPhysRegs[Reg] = false; }
-
-  /// closePhysRegsUsed - Expand UsedPhysRegs to its transitive closure over
-  /// subregisters. That means that if R is used, so are all subregisters.
-  void closePhysRegsUsed(const TargetRegisterInfo&);
+  void setPhysRegUnused(unsigned Reg) {
+    UsedPhysRegs.reset(Reg);
+    UsedPhysRegMask.reset(Reg);
+  }
 
 
   //===--------------------------------------------------------------------===//
@@ -357,14 +397,14 @@ public:
   //===--------------------------------------------------------------------===//
   // LiveIn/LiveOut Management
   //===--------------------------------------------------------------------===//
-  
+
   /// addLiveIn/Out - Add the specified register as a live in/out.  Note that it
   /// is an error to add the same register to the same set more than once.
   void addLiveIn(unsigned Reg, unsigned vreg = 0) {
     LiveIns.push_back(std::make_pair(Reg, vreg));
   }
   void addLiveOut(unsigned Reg) { LiveOuts.push_back(Reg); }
-  
+
   // Iteration support for live in/out sets.  These sets are kept in sorted
   // order by their register number.
   typedef std::vector<std::pair<unsigned,unsigned> >::const_iterator
@@ -396,7 +436,7 @@ public:
 
 private:
   void HandleVRegListReallocation();
-  
+
 public:
   /// defusechain_iterator - This class provides iterator support for machine
   /// operands in the function that use or define a specific register.  If
@@ -424,31 +464,31 @@ public:
                           MachineInstr, ptrdiff_t>::reference reference;
     typedef std::iterator<std::forward_iterator_tag,
                           MachineInstr, ptrdiff_t>::pointer pointer;
-    
+
     defusechain_iterator(const defusechain_iterator &I) : Op(I.Op) {}
     defusechain_iterator() : Op(0) {}
-    
+
     bool operator==(const defusechain_iterator &x) const {
       return Op == x.Op;
     }
     bool operator!=(const defusechain_iterator &x) const {
       return !operator==(x);
     }
-    
+
     /// atEnd - return true if this iterator is equal to reg_end() on the value.
     bool atEnd() const { return Op == 0; }
-    
+
     // Iterator traversal: forward iteration only
     defusechain_iterator &operator++() {          // Preincrement
       assert(Op && "Cannot increment end iterator!");
       Op = Op->getNextOperandForReg();
-      
+
       // If this is an operand we don't care about, skip it.
-      while (Op && ((!ReturnUses && Op->isUse()) || 
+      while (Op && ((!ReturnUses && Op->isUse()) ||
                     (!ReturnDefs && Op->isDef()) ||
                     (SkipDebug && Op->isDebug())))
         Op = Op->getNextOperandForReg();
-      
+
       return *this;
     }
     defusechain_iterator operator++(int) {        // Postincrement
@@ -466,30 +506,38 @@ public:
       return MI;
     }
 
+    MachineInstr *skipBundle() {
+      if (!Op) return 0;
+      MachineInstr *MI = getBundleStart(Op->getParent());
+      do ++*this;
+      while (Op && getBundleStart(Op->getParent()) == MI);
+      return MI;
+    }
+
     MachineOperand &getOperand() const {
       assert(Op && "Cannot dereference end iterator!");
       return *Op;
     }
-    
+
     /// getOperandNo - Return the operand # of this MachineOperand in its
     /// MachineInstr.
     unsigned getOperandNo() const {
       assert(Op && "Cannot dereference end iterator!");
       return Op - &Op->getParent()->getOperand(0);
     }
-    
+
     // Retrieve a reference to the current operand.
     MachineInstr &operator*() const {
       assert(Op && "Cannot dereference end iterator!");
       return *Op->getParent();
     }
-    
+
     MachineInstr *operator->() const {
       assert(Op && "Cannot dereference end iterator!");
       return Op->getParent();
     }
   };
-  
+
 };
 
 } // End llvm namespace

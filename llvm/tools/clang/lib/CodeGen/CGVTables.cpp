@@ -52,7 +52,7 @@ bool CodeGenVTables::ShouldEmitVTableInThisTU(const CXXRecordDecl *RD) {
   // If we're building with optimization, we always emit VTables since that
   // allows for virtual function calls to be devirtualized.
   // (We don't want to do this in -fapple-kext mode however).
-  if (CGM.getCodeGenOpts().OptimizationLevel && !CGM.getLangOptions().AppleKext)
+  if (CGM.getCodeGenOpts().OptimizationLevel && !CGM.getLangOpts().AppleKext)
     return true;
 
   return KeyFunction->hasBody();
@@ -242,8 +242,8 @@ void CodeGenFunction::GenerateVarArgsThunk(
   QualType ResultType = FPT->getResultType();
 
   // Get the original function
-  llvm::Type *Ty =
-    CGM.getTypes().GetFunctionType(FnInfo, /*IsVariadic*/true);
+  assert(FnInfo.isVariadic());
+  llvm::Type *Ty = CGM.getTypes().GetFunctionType(FnInfo);
   llvm::Value *Callee = CGM.GetAddrOfFunction(GD, Ty, /*ForVTable=*/true);
   llvm::Function *BaseFn = cast<llvm::Function>(Callee);
 
@@ -329,6 +329,7 @@ void CodeGenFunction::GenerateThunk(llvm::Function *Fn,
                 SourceLocation());
 
   CGM.getCXXABI().EmitInstanceFunctionProlog(*this);
+  CXXThisValue = CXXABIThisValue;
 
   // Adjust the 'this' pointer if necessary.
   llvm::Value *AdjustedThisPtr = 
@@ -350,13 +351,13 @@ void CodeGenFunction::GenerateThunk(llvm::Function *Fn,
 
   // Get our callee.
   llvm::Type *Ty =
-    CGM.getTypes().GetFunctionType(CGM.getTypes().getFunctionInfo(GD),
-                                   FPT->isVariadic());
+    CGM.getTypes().GetFunctionType(CGM.getTypes().arrangeGlobalDeclaration(GD));
   llvm::Value *Callee = CGM.GetAddrOfFunction(GD, Ty, /*ForVTable=*/true);
 
 #ifndef NDEBUG
   const CGFunctionInfo &CallFnInfo = 
-    CGM.getTypes().getFunctionInfo(ResultType, CallArgs, FPT->getExtInfo());
+    CGM.getTypes().arrangeFunctionCall(ResultType, CallArgs, FPT->getExtInfo(),
+                                       RequiredArgs::forPrototypePlus(FPT, 1));
   assert(CallFnInfo.getRegParm() == FnInfo.getRegParm() &&
          CallFnInfo.isNoReturn() == FnInfo.isNoReturn() &&
          CallFnInfo.getCallingConvention() == FnInfo.getCallingConvention());
@@ -397,7 +398,7 @@ void CodeGenFunction::GenerateThunk(llvm::Function *Fn,
 void CodeGenVTables::EmitThunk(GlobalDecl GD, const ThunkInfo &Thunk, 
                                bool UseAvailableExternallyLinkage)
 {
-  const CGFunctionInfo &FnInfo = CGM.getTypes().getFunctionInfo(GD);
+  const CGFunctionInfo &FnInfo = CGM.getTypes().arrangeGlobalDeclaration(GD);
 
   // FIXME: re-use FnInfo in this computation.
   llvm::Constant *Entry = CGM.GetAddrOfThunk(GD, Thunk);
@@ -583,8 +584,8 @@ CodeGenVTables::CreateVTableInitializer(const CXXRecordDecl *RD,
             VTableThunks[NextVTableThunkIndex].first == I) {
           const ThunkInfo &Thunk = VTableThunks[NextVTableThunkIndex].second;
         
-          Init = CGM.GetAddrOfThunk(GD, Thunk);
           MaybeEmitThunkAvailableExternally(GD, Thunk);
+          Init = CGM.GetAddrOfThunk(GD, Thunk);
 
           NextVTableThunkIndex++;
         } else {

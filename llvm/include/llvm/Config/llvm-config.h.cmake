@@ -61,6 +61,9 @@
 /* LLVM name for the native AsmPrinter init function, if available */
 #cmakedefine LLVM_NATIVE_ASMPRINTER LLVMInitialize${LLVM_NATIVE_ARCH}AsmPrinter
 
+/* LLVM name for the native Disassembler init function, if available */
+#cmakedefine LLVM_NATIVE_DISASSEMBLER LLVMInitialize${LLVM_NATIVE_ARCH}Disassembler
+
 /* LLVM name for the native Target init function, if available */
 #cmakedefine LLVM_NATIVE_TARGET LLVMInitialize${LLVM_NATIVE_ARCH}Target
 
@@ -105,5 +108,11 @@
 
 /* Installation prefix directory */
 #cmakedefine LLVM_PREFIX "${LLVM_PREFIX}"
+
+/* Major version of the LLVM API */
+#cmakedefine LLVM_VERSION_MAJOR ${LLVM_VERSION_MAJOR}
+
+/* Minor version of the LLVM API */
+#cmakedefine LLVM_VERSION_MINOR ${LLVM_VERSION_MINOR}
 
 #endif

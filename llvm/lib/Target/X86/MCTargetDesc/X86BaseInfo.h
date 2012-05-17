@@ -128,6 +128,13 @@ namespace X86II {
     ///    SYMBOL_LABEL @NTPOFF
     MO_NTPOFF,
 
+    /// MO_GOTNTPOFF - On a symbol operand this indicates that the immediate is
+    /// some TLS offset.
+    ///
+    /// See 'ELF Handling for Thread-Local Storage' for more details.
+    ///    SYMBOL_LABEL @GOTNTPOFF
+    MO_GOTNTPOFF,
+
     /// MO_DLLIMPORT - On a symbol operand "FOO", this indicates that the
     /// reference is actually to the "__imp_FOO" symbol.  This is used for
     /// dllimport linkage on windows.
@@ -164,7 +171,13 @@ namespace X86II {
     /// is some TLS offset from the picbase.
     ///
     /// This is the 32-bit TLS offset for Darwin TLS in PIC mode.
-    MO_TLVP_PIC_BASE
+    MO_TLVP_PIC_BASE,
+
+    /// MO_SECREL - On a symbol operand this indicates that the immediate is
+    /// the offset from beginning of section.
+    ///
+    /// This is the TLS offset for the COFF/Windows TLS mechanism.
+    MO_SECREL
   };
 
   enum {
@@ -223,19 +236,13 @@ namespace X86II {
     // destinations are the same register.
     MRMInitReg = 32,
 
-    //// MRM_C1 - A mod/rm byte of exactly 0xC1.
-    MRM_C1 = 33,
-    MRM_C2 = 34,
-    MRM_C3 = 35,
-    MRM_C4 = 36,
-    MRM_C8 = 37,
-    MRM_C9 = 38,
-    MRM_E8 = 39,
-    MRM_F0 = 40,
-    MRM_F8 = 41,
-    MRM_F9 = 42,
-    MRM_D0 = 45,
-    MRM_D1 = 46,
+    //// MRM_XX - A mod/rm byte of exactly 0xXX.
+    MRM_C1 = 33, MRM_C2 = 34, MRM_C3 = 35, MRM_C4 = 36,
+    MRM_C8 = 37, MRM_C9 = 38, MRM_E8 = 39, MRM_F0 = 40,
+    MRM_F8 = 41, MRM_F9 = 42, MRM_D0 = 45, MRM_D1 = 46,
+    MRM_D4 = 47, MRM_D8 = 48, MRM_D9 = 49, MRM_DA = 50,
+    MRM_DB = 51, MRM_DC = 52, MRM_DD = 53, MRM_DE = 54,
+    MRM_DF = 55,
 
     /// RawFrmImm8 - This is used for the ENTER instruction, which has two
     /// immediates, the first of which is a 16-bit immediate (specified by
@@ -488,7 +495,9 @@ namespace X86II {
   ///
   static inline int getMemoryOperandNo(uint64_t TSFlags, unsigned Opcode) {
     switch (TSFlags & X86II::FormMask) {
-    case X86II::MRMInitReg:  llvm_unreachable("FIXME: Remove this form");
+    case X86II::MRMInitReg:
+        // FIXME: Remove this form.
+        return -1;
     default: llvm_unreachable("Unknown FormMask value in getMemoryOperandNo!");
     case X86II::Pseudo:
     case X86II::RawFrm:
@@ -529,18 +538,17 @@ namespace X86II {
         ++FirstMemOp;// Skip the register dest (which is encoded in VEX_VVVV).
       return FirstMemOp;
     }
-    case X86II::MRM_C1:
-    case X86II::MRM_C2:
-    case X86II::MRM_C3:
-    case X86II::MRM_C4:
-    case X86II::MRM_C8:
-    case X86II::MRM_C9:
-    case X86II::MRM_E8:
-    case X86II::MRM_F0:
-    case X86II::MRM_F8:
-    case X86II::MRM_F9:
-    case X86II::MRM_D0:
-    case X86II::MRM_D1:
+    case X86II::MRM_C1: case X86II::MRM_C2:
+    case X86II::MRM_C3: case X86II::MRM_C4:
+    case X86II::MRM_C8: case X86II::MRM_C9:
+    case X86II::MRM_E8: case X86II::MRM_F0:
+    case X86II::MRM_F8: case X86II::MRM_F9:
+    case X86II::MRM_D0: case X86II::MRM_D1:
+    case X86II::MRM_D4: case X86II::MRM_D8:
+    case X86II::MRM_D9: case X86II::MRM_DA:
+    case X86II::MRM_DB: case X86II::MRM_DC:
+    case X86II::MRM_DD: case X86II::MRM_DE:
+    case X86II::MRM_DF:
       return -1;
     }
   }

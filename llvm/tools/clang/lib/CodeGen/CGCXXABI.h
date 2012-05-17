@@ -49,10 +49,10 @@ protected:
 
 protected:
   ImplicitParamDecl *&getThisDecl(CodeGenFunction &CGF) {
-    return CGF.CXXThisDecl;
+    return CGF.CXXABIThisDecl;
   }
   llvm::Value *&getThisValue(CodeGenFunction &CGF) {
-    return CGF.CXXThisValue;
+    return CGF.CXXABIThisValue;
   }
 
   ImplicitParamDecl *&getVTTDecl(CodeGenFunction &CGF) {
@@ -70,6 +70,9 @@ protected:
   void EmitThisParam(CodeGenFunction &CGF);
 
   ASTContext &getContext() const { return CGM.getContext(); }
+
+  virtual bool requiresArrayCookie(const CXXDeleteExpr *E, QualType eltType);
+  virtual bool requiresArrayCookie(const CXXNewExpr *E);
 
 public:
 
@@ -100,11 +103,16 @@ public:
                                                     llvm::Value *MemPtr,
                                             const MemberPointerType *MPT);
 
-  /// Perform a derived-to-base or base-to-derived member pointer
-  /// conversion.
+  /// Perform a derived-to-base, base-to-derived, or bitcast member
+  /// pointer conversion.
   virtual llvm::Value *EmitMemberPointerConversion(CodeGenFunction &CGF,
                                                    const CastExpr *E,
                                                    llvm::Value *Src);
+
+  /// Perform a derived-to-base, base-to-derived, or bitcast member
+  /// pointer conversion on a constant value.
+  virtual llvm::Constant *EmitMemberPointerConversion(const CastExpr *E,
+                                                      llvm::Constant *Src);
 
   /// Return true if the given member pointer can be zero-initialized
   /// (in the C++ sense) with an LLVM zeroinitializer.
@@ -137,6 +145,15 @@ public:
                              llvm::Value *MemPtr,
                              const MemberPointerType *MPT);
 
+protected:
+  /// A utility method for computing the offset required for the given
+  /// base-to-derived or derived-to-base member-pointer conversion.
+  /// Does not handle virtual conversions (in case we ever fully
+  /// support an ABI that allows this).  Returns null if no adjustment
+  /// is required.
+  llvm::Constant *getMemberPointerAdjustment(const CastExpr *E);
+
+public:
   /// Build the signature of the given constructor variant by adding
   /// any required parameters.  For convenience, ResTy has been
   /// initialized to 'void', and ArgTys has been initialized with the
@@ -195,7 +212,8 @@ public:
   /// \param NewPtr - a char* which is the presumed-non-null
   ///   return value of the allocation function
   /// \param NumElements - the computed number of elements,
-  ///   potentially collapsed from the multidimensional array case
+  ///   potentially collapsed from the multidimensional array case;
+  ///   always a size_t
   /// \param ElementType - the base element allocated type,
   ///   i.e. the allocated type after stripping all array types
   virtual llvm::Value *InitializeArrayCookie(CodeGenFunction &CGF,
@@ -222,17 +240,45 @@ public:
                                QualType ElementType, llvm::Value *&NumElements,
                                llvm::Value *&AllocPtr, CharUnits &CookieSize);
 
+protected:
+  /// Returns the extra size required in order to store the array
+  /// cookie for the given type.  Assumes that an array cookie is
+  /// required.
+  virtual CharUnits getArrayCookieSizeImpl(QualType elementType);
+
+  /// Reads the array cookie for an allocation which is known to have one.
+  /// This is called by the standard implementation of ReadArrayCookie.
+  ///
+  /// \param ptr - a pointer to the allocation made for an array, as a char*
+  /// \param cookieSize - the computed cookie size of an array
+  /// Other parameters are as above.
+  /// \return a size_t
+  virtual llvm::Value *readArrayCookieImpl(CodeGenFunction &IGF,
+                                           llvm::Value *ptr,
+                                           CharUnits cookieSize);
+
+public:
+
   /*************************** Static local guards ****************************/
 
   /// Emits the guarded initializer and destructor setup for the given
   /// variable, given that it couldn't be emitted as a constant.
+  /// If \p PerformInit is false, the initialization has been folded to a
+  /// constant and should not be performed.
   ///
   /// The variable may be:
   ///   - a static local variable
   ///   - a static data member of a class template instantiation
   virtual void EmitGuardedInit(CodeGenFunction &CGF, const VarDecl &D,
-                               llvm::GlobalVariable *DeclPtr);
+                               llvm::GlobalVariable *DeclPtr, bool PerformInit);
 
+  /// Emit code to force the execution of a destructor during global
+  /// teardown.  The default implementation of this uses atexit.
+  ///
+  /// \param dtor - a function taking a single pointer argument
+  /// \param addr - a pointer to pass to the destructor function.
+  virtual void registerGlobalDtor(CodeGenFunction &CGF, llvm::Constant *dtor,
+                                  llvm::Constant *addr);
 };
 
 /// Creates an instance of a C++ ABI class.

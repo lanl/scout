@@ -21,7 +21,11 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Target/TargetData.h"
-#include "llvm/Transforms/Utils/FunctionUtils.h"
+
+// SCOUTCODE - include code extractor
+#include "llvm/Transforms/Utils/CodeExtractor.h"
+// ENDSCOUTCODE
+
 #include <algorithm>
 
 using namespace clang;
@@ -94,7 +98,7 @@ static llvm::Constant *buildBlockDescriptor(CodeGenModule &CGM,
                           CGM.GetAddrOfConstantCString(typeAtEncoding), i8p));
 
   // GC layout.
-  if (C.getLangOptions().ObjC1)
+  if (C.getLangOpts().ObjC1)
     elements.push_back(CGM.getObjCRuntime().BuildGCBlockLayout(CGM, blockInfo));
   else
     elements.push_back(llvm::Constant::getNullValue(i8p));
@@ -229,7 +233,7 @@ static llvm::Constant *tryCaptureAsConstant(CodeGenModule &CGM,
   //   Except that any class member declared mutable can be
   //   modified, any attempt to modify a const object during its
   //   lifetime results in undefined behavior.
-  if (CGM.getLangOptions().CPlusPlus && !isSafeForCXXConstantCapture(type))
+  if (CGM.getLangOpts().CPlusPlus && !isSafeForCXXConstantCapture(type))
     return 0;
 
   // If the variable doesn't have any initializer (shouldn't this be
@@ -376,7 +380,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
       info.HasCXXObject = true;
 
     // And so do types with destructors.
-    } else if (CGM.getLangOptions().CPlusPlus) {
+    } else if (CGM.getLangOpts().CPlusPlus) {
       if (const CXXRecordDecl *record =
             variable->getType()->getAsCXXRecordDecl()) {
         if (!record->hasTrivialDestructor()) {
@@ -460,18 +464,22 @@ static void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
     }
   }
 
+  assert(endAlign == getLowBit(blockSize));
+
   // At this point, we just have to add padding if the end align still
   // isn't aligned right.
   if (endAlign < maxFieldAlign) {
-    CharUnits padding = maxFieldAlign - endAlign;
+    CharUnits newBlockSize = blockSize.RoundUpToAlignment(maxFieldAlign);
+    CharUnits padding = newBlockSize - blockSize;
 
     elementTypes.push_back(llvm::ArrayType::get(CGM.Int8Ty,
                                                 padding.getQuantity()));
-    blockSize += padding;
-
-    endAlign = getLowBit(blockSize);
-    assert(endAlign >= maxFieldAlign);
+    blockSize = newBlockSize;
+    endAlign = getLowBit(blockSize); // might be > maxFieldAlign
   }
+
+  assert(endAlign >= maxFieldAlign);
+  assert(endAlign == getLowBit(blockSize));
 
   // Slam everything else on now.  This works because they have
   // strictly decreasing alignment and we expect that size is always a
@@ -513,7 +521,6 @@ llvm::Value
 
   // Generate body of function.
   std::string TheName = CurFn->getName();
-  // ndm - MERGE
 
   blockInfo = CGBlockInfo(blockExpr->getBlockDecl(), TheName.c_str());
   blockInfo.BlockExpression = blockExpr;
@@ -618,9 +625,13 @@ llvm::Value
   typedef llvm::Function::iterator BBIterator;
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
   llvm::BasicBlock *split;
-  for( ; BB->getName() != blockEntry->getName(); ++BB) split = BB;
+  for( ; BB->getName() != blockEntry->getName(); ++BB){
+    split = BB;
+  }
 
-  for( ; BB != BB_end; ++BB) region.insert(BB);
+  for( ; BB != BB_end; ++BB){
+    region.insert(BB);
+  }
 
   // Gather inputs to region.
   for(unsigned i = 0, e = region.size(); i < e; ++i) {
@@ -640,18 +651,24 @@ llvm::Value
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
-  llvm::Function *BlockFn = ExtractCodeRegion(DT,
-                                              std::vector< llvm::BasicBlock * >(region.begin(),
-                                                  region.end()));
+  
+  llvm::CodeExtractor 
+  codeExtractor(std::vector<llvm::BasicBlock *>(region.begin(),
+                                                region.end()),
+                &DT, false);
+  
+  llvm::Function *BlockFn = codeExtractor.extractCodeRegion();
+
   assert(BlockFn != 0 && "Failed to rip BlockExpr contents into a new function.");
 
   llvm::BasicBlock *continueBB = ret->getParent();
   ret->eraseFromParent();
 
   Builder.SetInsertPoint(continueBB);
-
+    
   // Remove function call to blockExpr function.
   llvm::BasicBlock *CallBB = split->getTerminator()->getSuccessor(0);
+
   typedef llvm::BasicBlock::iterator InstIterator;
   InstIterator I = CallBB->begin(), IE = CallBB->end();
   for( ; I != IE; ++I) {
@@ -880,6 +897,8 @@ llvm::Value
 /// a full-expression so that the block's cleanups are pushed at the
 /// right place in the stack.
 static void enterBlockScope(CodeGenFunction &CGF, BlockDecl *block) {
+  assert(CGF.HaveInsertPoint());
+
   // Allocate the block info and place it at the head of the list.
   CGBlockInfo &blockInfo =
     *new CGBlockInfo(block, CGF.CurFn->getName());
@@ -1011,9 +1030,11 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const BlockExpr *blockExpr) {
 
 llvm::Value *CodeGenFunction::EmitBlockLiteral(const CGBlockInfo &blockInfo) {
   // Using the computed layout, generate the actual block function.
+  bool isLambdaConv = blockInfo.getBlockDecl()->isConversionFromLambda();
   llvm::Constant *blockFn
     = CodeGenFunction(CGM).GenerateBlockFunction(CurGD, blockInfo,
-                                                 CurFuncDecl, LocalDeclMap);
+                                                 CurFuncDecl, LocalDeclMap,
+                                                 isLambdaConv);
   blockFn = llvm::ConstantExpr::getBitCast(blockFn, VoidPtrTy);
 
   // If there is nothing to capture, we can emit this as a global block.
@@ -1088,6 +1109,10 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const CGBlockInfo &blockInfo) {
       src = Builder.CreateStructGEP(LoadBlockStruct(),
                                     enclosingCapture.getIndex(),
                                     "block.capture.addr");
+    } else if (blockDecl->isConversionFromLambda()) {
+      // The lambda capture in a lambda's conversion-to-block-pointer is
+      // special; we'll simply emit it directly.
+      src = 0;
     } else {
       // This is a [[type]]*.
       src = LocalDeclMap[variable];
@@ -1109,7 +1134,19 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const CGBlockInfo &blockInfo) {
 
     // If we have a copy constructor, evaluate that into the block field.
     } else if (const Expr *copyExpr = ci->getCopyExpr()) {
-      EmitSynthesizedCXXCopyCtor(blockField, src, copyExpr);
+      if (blockDecl->isConversionFromLambda()) {
+        // If we have a lambda conversion, emit the expression
+        // directly into the block instead.
+        CharUnits Align = getContext().getTypeAlignInChars(type);
+        AggValueSlot Slot =
+            AggValueSlot::forAddr(blockField, Align, Qualifiers(),
+                                  AggValueSlot::IsDestructed,
+                                  AggValueSlot::DoesNotNeedGCBarriers,
+                                  AggValueSlot::IsNotAliased);
+        EmitAggExpr(copyExpr, Slot);
+      } else {
+        EmitSynthesizedCXXCopyCtor(blockField, src, copyExpr);
+      }
 
     // If it's a reference variable, copy the reference into the block field.
     } else if (type->isReferenceType()) {
@@ -1124,16 +1161,12 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const CGBlockInfo &blockInfo) {
 
       // We use one of these or the other depending on whether the
       // reference is nested.
-      DeclRefExpr notNested(const_cast<VarDecl*>(variable), type, VK_LValue,
-                            SourceLocation());
-      BlockDeclRefExpr nested(const_cast<VarDecl*>(variable), type,
-                              VK_LValue, SourceLocation(), /*byref*/ false);
-
-      Expr *declRef =
-        (ci->isNested() ? static_cast<Expr*>(&nested) : &notNested);
+      DeclRefExpr declRef(const_cast<VarDecl*>(variable),
+                          /*refersToEnclosing*/ ci->isNested(), type,
+                          VK_LValue, SourceLocation());
 
       ImplicitCastExpr l2r(ImplicitCastExpr::OnStack, type, CK_LValueToRValue,
-                           declRef, VK_RValue);
+                           &declRef, VK_RValue);
       EmitExprAsInit(&l2r, &blockFieldPseudoVar,
                      MakeAddrLValue(blockField, type,
                                     getContext().getDeclAlign(variable)),
@@ -1244,11 +1277,11 @@ RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
   llvm::Value *Func = Builder.CreateLoad(FuncPtr);
 
   const FunctionType *FuncTy = FnType->castAs<FunctionType>();
-  const CGFunctionInfo &FnInfo = CGM.getTypes().getFunctionInfo(Args, FuncTy);
+  const CGFunctionInfo &FnInfo =
+    CGM.getTypes().arrangeFunctionCall(Args, FuncTy);
 
   // Cast the function pointer to the right type.
-  llvm::Type *BlockFTy =
-    CGM.getTypes().GetFunctionType(FnInfo, false);
+  llvm::Type *BlockFTy = CGM.getTypes().GetFunctionType(FnInfo);
 
   llvm::Type *BlockFTyPtr = llvm::PointerType::getUnqual(BlockFTy);
   Func = Builder.CreateBitCast(Func, BlockFTyPtr);
@@ -1310,7 +1343,8 @@ CodeGenModule::GetAddrOfGlobalBlock(const BlockExpr *blockExpr,
     llvm::DenseMap<const Decl*, llvm::Value*> LocalDeclMap;
     blockFn = CodeGenFunction(*this).GenerateBlockFunction(GlobalDecl(),
                                                            blockInfo,
-                                                           0, LocalDeclMap);
+                                                           0, LocalDeclMap,
+                                                           false);
   }
   blockFn = llvm::ConstantExpr::getBitCast(blockFn, VoidPtrTy);
 
@@ -1364,7 +1398,8 @@ llvm::Function *
 CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
                                        const CGBlockInfo &blockInfo,
                                        const Decl *outerFnDecl,
-                                       const DeclMapTy &ldm) {
+                                       const DeclMapTy &ldm,
+                                       bool IsLambdaConversionToBlock) {
   const BlockDecl *blockDecl = blockInfo.getBlockDecl();
 
   // Check if we should generate debug info for this block function.
@@ -1402,16 +1437,15 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
     args.push_back(*i);
 
   // Create the function declaration.
-  const FunctionProtoType *fnType =
-    cast<FunctionProtoType>(blockInfo.getBlockExpr()->getFunctionType());
+  const FunctionProtoType *fnType = blockInfo.getBlockExpr()->getFunctionType();
   const CGFunctionInfo &fnInfo =
-    CGM.getTypes().getFunctionInfo(fnType->getResultType(), args,
-                                   fnType->getExtInfo());
+    CGM.getTypes().arrangeFunctionDeclaration(fnType->getResultType(), args,
+                                              fnType->getExtInfo(),
+                                              fnType->isVariadic());
   if (CGM.ReturnTypeUsesSRet(fnInfo))
     blockInfo.UsesStret = true;
 
-  llvm::FunctionType *fnLLVMType =
-    CGM.getTypes().GetFunctionType(fnInfo, fnType->isVariadic());
+  llvm::FunctionType *fnLLVMType = CGM.getTypes().GetFunctionType(fnInfo);
 
   MangleBuffer name;
   CGM.getBlockMangledName(GD, name, blockDecl);
@@ -1477,12 +1511,15 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
     LocalDeclMap[variable] = alloca;
   }
 
-  // Save a spot to insert the debug information for all the BlockDeclRefDecls.
+  // Save a spot to insert the debug information for all the DeclRefExprs.
   llvm::BasicBlock *entry = Builder.GetInsertBlock();
   llvm::BasicBlock::iterator entry_ptr = Builder.GetInsertPoint();
   --entry_ptr;
 
-  EmitStmt(blockDecl->getBody());
+  if (IsLambdaConversionToBlock)
+    EmitLambdaBlockInvokeBody();
+  else
+    EmitStmt(blockDecl->getBody());
 
   // Remember where we were...
   llvm::BasicBlock *resume = Builder.GetInsertBlock();
@@ -1491,7 +1528,7 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
   ++entry_ptr;
   Builder.SetInsertPoint(entry, entry_ptr);
 
-  // Emit debug information for all the BlockDeclRefDecls.
+  // Emit debug information for all the DeclRefExprs.
   // FIXME: also for 'this'
   if (CGDebugInfo *DI = getDebugInfo()) {
     for (BlockDecl::capture_const_iterator ci = blockDecl->capture_begin(),
@@ -1499,15 +1536,17 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
       const VarDecl *variable = ci->getVariable();
       DI->EmitLocation(Builder, variable->getLocation());
 
-      const CGBlockInfo::Capture &capture = blockInfo.getCapture(variable);
-      if (capture.isConstant()) {
-        DI->EmitDeclareOfAutoVariable(variable, LocalDeclMap[variable],
-                                      Builder);
-        continue;
-      }
+      if (CGM.getCodeGenOpts().DebugInfo >= CodeGenOptions::LimitedDebugInfo) {
+        const CGBlockInfo::Capture &capture = blockInfo.getCapture(variable);
+        if (capture.isConstant()) {
+          DI->EmitDeclareOfAutoVariable(variable, LocalDeclMap[variable],
+                                        Builder);
+          continue;
+        }
 
-      DI->EmitDeclareOfBlockDeclRefVariable(variable, BlockPointer,
-                                            Builder, blockInfo);
+        DI->EmitDeclareOfBlockDeclRefVariable(variable, BlockPointer,
+                                              Builder, blockInfo);
+      }
     }
   }
 
@@ -1553,11 +1592,13 @@ CodeGenFunction::GenerateCopyHelperFunction(const CGBlockInfo &blockInfo) {
   args.push_back(&srcDecl);
 
   const CGFunctionInfo &FI =
-      CGM.getTypes().getFunctionInfo(C.VoidTy, args, FunctionType::ExtInfo());
+    CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
+                                              FunctionType::ExtInfo(),
+                                              /*variadic*/ false);
 
   // FIXME: it would be nice if these were mergeable with things with
   // identical semantics.
-  llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI, false);
+  llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI);
 
   llvm::Function *Fn =
     llvm::Function::Create(LTy, llvm::GlobalValue::InternalLinkage,
@@ -1577,7 +1618,7 @@ CodeGenFunction::GenerateCopyHelperFunction(const CGBlockInfo &blockInfo) {
                                           SC_Static,
                                           SC_None,
                                           false,
-                                          true);
+                                          false);
   StartFunction(FD, C.VoidTy, Fn, FI, args, SourceLocation());
 
   llvm::Type *structPtrTy = blockInfo.StructureType->getPointerTo();
@@ -1620,7 +1661,7 @@ CodeGenFunction::GenerateCopyHelperFunction(const CGBlockInfo &blockInfo) {
         flags = BLOCK_FIELD_IS_BLOCK;
 
       // Special rules for ARC captures:
-      if (getLangOptions().ObjCAutoRefCount) {
+      if (getLangOpts().ObjCAutoRefCount) {
         Qualifiers qs = type.getQualifiers();
 
         // Don't generate special copy logic for a captured object
@@ -1668,11 +1709,13 @@ CodeGenFunction::GenerateDestroyHelperFunction(const CGBlockInfo &blockInfo) {
   args.push_back(&srcDecl);
 
   const CGFunctionInfo &FI =
-      CGM.getTypes().getFunctionInfo(C.VoidTy, args, FunctionType::ExtInfo());
+    CGM.getTypes().arrangeFunctionDeclaration(C.VoidTy, args,
+                                              FunctionType::ExtInfo(),
+                                              /*variadic*/ false);
 
   // FIXME: We'd like to put these into a mergable by content, with
   // internal linkage.
-  llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI, false);
+  llvm::FunctionType *LTy = CGM.getTypes().GetFunctionType(FI);
 
   llvm::Function *Fn =
     llvm::Function::Create(LTy, llvm::GlobalValue::InternalLinkage,
@@ -1690,7 +1733,7 @@ CodeGenFunction::GenerateDestroyHelperFunction(const CGBlockInfo &blockInfo) {
                                           SourceLocation(), II, C.VoidTy, 0,
                                           SC_Static,
                                           SC_None,
-                                          false, true);
+                                          false, false);
   StartFunction(FD, C.VoidTy, Fn, FI, args, SourceLocation());
 
   llvm::Type *structPtrTy = blockInfo.StructureType->getPointerTo();
@@ -1730,7 +1773,7 @@ CodeGenFunction::GenerateDestroyHelperFunction(const CGBlockInfo &blockInfo) {
         flags = BLOCK_FIELD_IS_BLOCK;
 
       // Special rules for ARC captures.
-      if (getLangOptions().ObjCAutoRefCount) {
+      if (getLangOpts().ObjCAutoRefCount) {
         Qualifiers qs = type.getQualifiers();
 
         // Don't generate special dispose logic for a captured object
@@ -1946,10 +1989,12 @@ generateByrefCopyHelper(CodeGenFunction &CGF,
   args.push_back(&src);
 
   const CGFunctionInfo &FI =
-    CGF.CGM.getTypes().getFunctionInfo(R, args, FunctionType::ExtInfo());
+    CGF.CGM.getTypes().arrangeFunctionDeclaration(R, args,
+                                                  FunctionType::ExtInfo(),
+                                                  /*variadic*/ false);
 
   CodeGenTypes &Types = CGF.CGM.getTypes();
-  llvm::FunctionType *LTy = Types.GetFunctionType(FI, false);
+  llvm::FunctionType *LTy = Types.GetFunctionType(FI);
 
   // FIXME: We'd like to put these into a mergable by content, with
   // internal linkage.
@@ -1966,7 +2011,7 @@ generateByrefCopyHelper(CodeGenFunction &CGF,
                                           SourceLocation(), II, R, 0,
                                           SC_Static,
                                           SC_None,
-                                          false, true);
+                                          false, false);
 
   CGF.StartFunction(FD, R, Fn, FI, args, SourceLocation());
 
@@ -2014,10 +2059,12 @@ generateByrefDisposeHelper(CodeGenFunction &CGF,
   args.push_back(&src);
 
   const CGFunctionInfo &FI =
-    CGF.CGM.getTypes().getFunctionInfo(R, args, FunctionType::ExtInfo());
+    CGF.CGM.getTypes().arrangeFunctionDeclaration(R, args,
+                                                  FunctionType::ExtInfo(),
+                                                  /*variadic*/ false);
 
   CodeGenTypes &Types = CGF.CGM.getTypes();
-  llvm::FunctionType *LTy = Types.GetFunctionType(FI, false);
+  llvm::FunctionType *LTy = Types.GetFunctionType(FI);
 
   // FIXME: We'd like to put these into a mergable by content, with
   // internal linkage.
@@ -2035,7 +2082,7 @@ generateByrefDisposeHelper(CodeGenFunction &CGF,
                                           SourceLocation(), II, R, 0,
                                           SC_Static,
                                           SC_None,
-                                          false, true);
+                                          false, false);
   CGF.StartFunction(FD, R, Fn, FI, args, SourceLocation());
 
   if (byrefInfo.needsDispose()) {
@@ -2107,7 +2154,7 @@ CodeGenFunction::buildByrefHelpers(llvm::StructType &byrefType,
 
   // If we have lifetime, that dominates.
   if (Qualifiers::ObjCLifetime lifetime = qs.getObjCLifetime()) {
-    assert(getLangOptions().ObjCAutoRefCount);
+    assert(getLangOpts().ObjCAutoRefCount);
 
     switch (lifetime) {
     case Qualifiers::OCL_None: llvm_unreachable("impossible");
@@ -2213,7 +2260,8 @@ llvm::Type *CodeGenFunction::BuildByRefType(const VarDecl *D) {
   // int32_t __size;
   types.push_back(Int32Ty);
 
-  bool HasCopyAndDispose = getContext().BlockRequiresCopying(Ty);
+  bool HasCopyAndDispose =
+       (Ty->isObjCRetainableType()) || getContext().getBlockVarCopyInits(D);
   if (HasCopyAndDispose) {
     /// void *__copy_helper;
     types.push_back(Int8PtrTy);
@@ -2342,7 +2390,7 @@ namespace {
 /// to be done externally.
 void CodeGenFunction::enterByrefCleanup(const AutoVarEmission &emission) {
   // We don't enter this cleanup if we're in pure-GC mode.
-  if (CGM.getLangOptions().getGC() == LangOptions::GCOnly)
+  if (CGM.getLangOpts().getGC() == LangOptions::GCOnly)
     return;
 
   EHStack.pushCleanup<CallBlockRelease>(NormalAndEHCleanup, emission.Address);
@@ -2351,7 +2399,7 @@ void CodeGenFunction::enterByrefCleanup(const AutoVarEmission &emission) {
 /// Adjust the declaration of something from the blocks API.
 static void configureBlocksRuntimeObject(CodeGenModule &CGM,
                                          llvm::Constant *C) {
-  if (!CGM.getLangOptions().BlocksRuntimeOptional) return;
+  if (!CGM.getLangOpts().BlocksRuntimeOptional) return;
 
   llvm::GlobalValue *GV = cast<llvm::GlobalValue>(C->stripPointerCasts());
   if (GV->isDeclaration() &&

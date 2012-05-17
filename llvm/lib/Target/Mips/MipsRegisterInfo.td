@@ -1,4 +1,4 @@
-//===- MipsRegisterInfo.td - Mips Register defs ------------*- tablegen -*-===//
+//===-- MipsRegisterInfo.td - Mips Register defs -----------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -69,8 +69,6 @@ class HWR<bits<5> num, string n> : MipsReg<n> {
 //===----------------------------------------------------------------------===//
 
 let Namespace = "Mips" in {
-  // FIXME: Fix DwarfRegNum.
-
   // General Purpose Registers
   def ZERO : MipsGPRReg< 0, "ZERO">, DwarfRegNum<[0]>;
   def AT   : MipsGPRReg< 1, "AT">,   DwarfRegNum<[1]>;
@@ -116,19 +114,19 @@ let Namespace = "Mips" in {
   def A3_64   : Mips64GPRReg< 7, "7",    [A3]>, DwarfRegNum<[7]>;
   def T0_64   : Mips64GPRReg< 8, "8",    [T0]>, DwarfRegNum<[8]>;
   def T1_64   : Mips64GPRReg< 9, "9",    [T1]>, DwarfRegNum<[9]>;
-  def T2_64   : Mips64GPRReg< 10, "10",  [T2]>, DwarfRegNum<[10]>;   
-  def T3_64   : Mips64GPRReg< 11, "11",  [T3]>, DwarfRegNum<[11]>;   
-  def T4_64   : Mips64GPRReg< 12, "12",  [T4]>, DwarfRegNum<[12]>;   
-  def T5_64   : Mips64GPRReg< 13, "13",  [T5]>, DwarfRegNum<[13]>;   
-  def T6_64   : Mips64GPRReg< 14, "14",  [T6]>, DwarfRegNum<[14]>;   
-  def T7_64   : Mips64GPRReg< 15, "15",  [T7]>, DwarfRegNum<[15]>;   
-  def S0_64   : Mips64GPRReg< 16, "16",  [S0]>, DwarfRegNum<[16]>;   
-  def S1_64   : Mips64GPRReg< 17, "17",  [S1]>, DwarfRegNum<[17]>;   
-  def S2_64   : Mips64GPRReg< 18, "18",  [S2]>, DwarfRegNum<[18]>;   
-  def S3_64   : Mips64GPRReg< 19, "19",  [S3]>, DwarfRegNum<[19]>;   
-  def S4_64   : Mips64GPRReg< 20, "20",  [S4]>, DwarfRegNum<[20]>;   
-  def S5_64   : Mips64GPRReg< 21, "21",  [S5]>, DwarfRegNum<[21]>;   
-  def S6_64   : Mips64GPRReg< 22, "22",  [S6]>, DwarfRegNum<[22]>;   
+  def T2_64   : Mips64GPRReg< 10, "10",  [T2]>, DwarfRegNum<[10]>;
+  def T3_64   : Mips64GPRReg< 11, "11",  [T3]>, DwarfRegNum<[11]>;
+  def T4_64   : Mips64GPRReg< 12, "12",  [T4]>, DwarfRegNum<[12]>;
+  def T5_64   : Mips64GPRReg< 13, "13",  [T5]>, DwarfRegNum<[13]>;
+  def T6_64   : Mips64GPRReg< 14, "14",  [T6]>, DwarfRegNum<[14]>;
+  def T7_64   : Mips64GPRReg< 15, "15",  [T7]>, DwarfRegNum<[15]>;
+  def S0_64   : Mips64GPRReg< 16, "16",  [S0]>, DwarfRegNum<[16]>;
+  def S1_64   : Mips64GPRReg< 17, "17",  [S1]>, DwarfRegNum<[17]>;
+  def S2_64   : Mips64GPRReg< 18, "18",  [S2]>, DwarfRegNum<[18]>;
+  def S3_64   : Mips64GPRReg< 19, "19",  [S3]>, DwarfRegNum<[19]>;
+  def S4_64   : Mips64GPRReg< 20, "20",  [S4]>, DwarfRegNum<[20]>;
+  def S5_64   : Mips64GPRReg< 21, "21",  [S5]>, DwarfRegNum<[21]>;
+  def S6_64   : Mips64GPRReg< 22, "22",  [S6]>, DwarfRegNum<[22]>;
   def S7_64   : Mips64GPRReg< 23, "23",  [S7]>, DwarfRegNum<[23]>;
   def T8_64   : Mips64GPRReg< 24, "24",  [T8]>, DwarfRegNum<[24]>;
   def T9_64   : Mips64GPRReg< 25, "25",  [T9]>, DwarfRegNum<[25]>;
@@ -265,9 +263,7 @@ def CPU64Regs : RegisterClass<"Mips", [i64], 64, (add
   // Callee save
   S0_64, S1_64, S2_64, S3_64, S4_64, S5_64, S6_64, S7_64,
   // Reserved
-  ZERO_64, AT_64, K0_64, K1_64, GP_64, SP_64, FP_64, RA_64)> {
-  let SubRegClasses = [(CPURegs sub_32)];
-}
+  ZERO_64, AT_64, K0_64, K1_64, GP_64, SP_64, FP_64, RA_64)>;
 
 // 64bit fp:
 // * FGR64  - 32 64-bit registers
@@ -284,22 +280,16 @@ def AFGR64 : RegisterClass<"Mips", [f64], 64, (add
   // Not preserved across procedure calls
   D2, D3, D4, D5, D8, D9,
   // Callee save
-  D10, D11, D12, D13, D14, D15)> {
-  let SubRegClasses = [(FGR32 sub_fpeven, sub_fpodd)];
-}
+  D10, D11, D12, D13, D14, D15)>;
 
-def FGR64 : RegisterClass<"Mips", [f64], 64, (sequence "D%u_64", 0, 31)> {
-  let SubRegClasses = [(FGR32 sub_32)];
-}
+def FGR64 : RegisterClass<"Mips", [f64], 64, (sequence "D%u_64", 0, 31)>;
 
 // Condition Register for floating point operations
 def CCR  : RegisterClass<"Mips", [i32], 32, (add FCR31)>;
 
 // Hi/Lo Registers
 def HILO : RegisterClass<"Mips", [i32], 32, (add HI, LO)>;
-def HILO64 : RegisterClass<"Mips", [i64], 64, (add HI64, LO64)> {
-  let SubRegClasses = [(HILO sub_32)];
-}
+def HILO64 : RegisterClass<"Mips", [i64], 64, (add HI64, LO64)>;
 
 // Hardware registers
 def HWRegs : RegisterClass<"Mips", [i32], 32, (add HWR29)>;

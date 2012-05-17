@@ -170,6 +170,23 @@ void StmtPrinter::VisitLabelStmt(LabelStmt *Node) {
   PrintStmt(Node->getSubStmt(), 0);
 }
 
+void StmtPrinter::VisitAttributedStmt(AttributedStmt *Node) {
+  OS << "[[";
+  bool first = true;
+  for (AttrVec::const_iterator it = Node->getAttrs().begin(),
+                               end = Node->getAttrs().end();
+                               it != end; ++it) {
+    if (!first) {
+      OS << ", ";
+      first = false;
+    }
+    // TODO: check this
+    (*it)->printPretty(OS, Context);
+  }
+  OS << "]] ";
+  PrintStmt(Node->getSubStmt(), 0);
+}
+
 void StmtPrinter::PrintRawIfStmt(IfStmt *If) {
   OS << "if (";
   PrintExpr(If->getCond());
@@ -619,6 +636,14 @@ void StmtPrinter::VisitObjCPropertyRefExpr(ObjCPropertyRefExpr *Node) {
     OS << Node->getExplicitProperty()->getName();
 }
 
+void StmtPrinter::VisitObjCSubscriptRefExpr(ObjCSubscriptRefExpr *Node) {
+  
+  PrintExpr(Node->getBaseExpr());
+  OS << "[";
+  PrintExpr(Node->getKeyExpr());
+  OS << "]";
+}
+
 void StmtPrinter::VisitPredefinedExpr(PredefinedExpr *Node) {
   switch (Node->getIdentType()) {
     default:
@@ -733,14 +758,42 @@ void StmtPrinter::VisitStringLiteral(StringLiteral *Str) {
   case StringLiteral::UTF32: OS << 'U'; break;
   }
   OS << '"';
-  static char Hex[] = "0123456789ABCDEF";
+  static const char Hex[] = "0123456789ABCDEF";
 
+  unsigned LastSlashX = Str->getLength();
   for (unsigned I = 0, N = Str->getLength(); I != N; ++I) {
     switch (uint32_t Char = Str->getCodeUnit(I)) {
     default:
-      // FIXME: Is this the best way to print wchar_t?
+      // FIXME: Convert UTF-8 back to codepoints before rendering.
+
+      // Convert UTF-16 surrogate pairs back to codepoints before rendering.
+      // Leave invalid surrogates alone; we'll use \x for those.
+      if (Str->getKind() == StringLiteral::UTF16 && I != N - 1 &&
+          Char >= 0xd800 && Char <= 0xdbff) {
+        uint32_t Trail = Str->getCodeUnit(I + 1);
+        if (Trail >= 0xdc00 && Trail <= 0xdfff) {
+          Char = 0x10000 + ((Char - 0xd800) << 10) + (Trail - 0xdc00);
+          ++I;
+        }
+      }
+
       if (Char > 0xff) {
-        assert(Char <= 0x10ffff && "invalid unicode codepoint");
+        // If this is a wide string, output characters over 0xff using \x
+        // escapes. Otherwise, this is a UTF-16 or UTF-32 string, and Char is a
+        // codepoint: use \x escapes for invalid codepoints.
+        if (Str->getKind() == StringLiteral::Wide ||
+            (Char >= 0xd800 && Char <= 0xdfff) || Char >= 0x110000) {
+          // FIXME: Is this the best way to print wchar_t?
+          OS << "\\x";
+          int Shift = 28;
+          while ((Char >> Shift) == 0)
+            Shift -= 4;
+          for (/**/; Shift >= 0; Shift -= 4)
+            OS << Hex[(Char >> Shift) & 15];
+          LastSlashX = I;
+          break;
+        }
+
         if (Char > 0xffff)
           OS << "\\U00"
              << Hex[(Char >> 20) & 15]
@@ -753,13 +806,26 @@ void StmtPrinter::VisitStringLiteral(StringLiteral *Str) {
            << Hex[(Char >>  0) & 15];
         break;
       }
+
+      // If we used \x... for the previous character, and this character is a
+      // hexadecimal digit, prevent it being slurped as part of the \x.
+      if (LastSlashX + 1 == I) {
+        switch (Char) {
+          case '0': case '1': case '2': case '3': case '4':
+          case '5': case '6': case '7': case '8': case '9':
+          case 'a': case 'b': case 'c': case 'd': case 'e': case 'f':
+          case 'A': case 'B': case 'C': case 'D': case 'E': case 'F':
+            OS << "\"\"";
+        }
+      }
+
       if (Char <= 0xff && isprint(Char))
         OS << (char)Char;
       else  // Output anything hard as an octal escape.
         OS << '\\'
-        << (char)('0'+ ((Char >> 6) & 7))
-        << (char)('0'+ ((Char >> 3) & 7))
-        << (char)('0'+ ((Char >> 0) & 7));
+           << (char)('0' + ((Char >> 6) & 7))
+           << (char)('0' + ((Char >> 3) & 7))
+           << (char)('0' + ((Char >> 0) & 7));
       break;
     // Handle some common non-printable cases to make dumps prettier.
     case '\\': OS << "\\\\"; break;
@@ -1084,52 +1150,34 @@ void StmtPrinter::VisitPseudoObjectExpr(PseudoObjectExpr *Node) {
 void StmtPrinter::VisitAtomicExpr(AtomicExpr *Node) {
   const char *Name = 0;
   switch (Node->getOp()) {
-    case AtomicExpr::Init:
-      Name = "__atomic_init(";
-      break;
-    case AtomicExpr::Load:
-      Name = "__atomic_load(";
-      break;
-    case AtomicExpr::Store:
-      Name = "__atomic_store(";
-      break;
-    case AtomicExpr::CmpXchgStrong:
-      Name = "__atomic_compare_exchange_strong(";
-      break;
-    case AtomicExpr::CmpXchgWeak:
-      Name = "__atomic_compare_exchange_weak(";
-      break;
-    case AtomicExpr::Xchg:
-      Name = "__atomic_exchange(";
-      break;
-    case AtomicExpr::Add:
-      Name = "__atomic_fetch_add(";
-      break;
-    case AtomicExpr::Sub:
-      Name = "__atomic_fetch_sub(";
-      break;
-    case AtomicExpr::And:
-      Name = "__atomic_fetch_and(";
-      break;
-    case AtomicExpr::Or:
-      Name = "__atomic_fetch_or(";
-      break;
-    case AtomicExpr::Xor:
-      Name = "__atomic_fetch_xor(";
-      break;
+#define BUILTIN(ID, TYPE, ATTRS)
+#define ATOMIC_BUILTIN(ID, TYPE, ATTRS) \
+  case AtomicExpr::AO ## ID: \
+    Name = #ID "("; \
+    break;
+#include "clang/Basic/Builtins.def"
   }
   OS << Name;
+
+  // AtomicExpr stores its subexpressions in a permuted order.
   PrintExpr(Node->getPtr());
   OS << ", ";
-  if (Node->getOp() != AtomicExpr::Load) {
+  if (Node->getOp() != AtomicExpr::AO__c11_atomic_load &&
+      Node->getOp() != AtomicExpr::AO__atomic_load_n) {
     PrintExpr(Node->getVal1());
     OS << ", ";
   }
-  if (Node->isCmpXChg()) {
+  if (Node->getOp() == AtomicExpr::AO__atomic_exchange ||
+      Node->isCmpXChg()) {
     PrintExpr(Node->getVal2());
     OS << ", ";
   }
-  if (Node->getOp() != AtomicExpr::Init)
+  if (Node->getOp() == AtomicExpr::AO__atomic_compare_exchange ||
+      Node->getOp() == AtomicExpr::AO__atomic_compare_exchange_n) {
+    PrintExpr(Node->getWeak());
+    OS << ", ";
+  }
+  if (Node->getOp() != AtomicExpr::AO__c11_atomic_init)
     PrintExpr(Node->getOrder());
   if (Node->isCmpXChg()) {
     OS << ", ";
@@ -1237,6 +1285,39 @@ void StmtPrinter::VisitCXXUuidofExpr(CXXUuidofExpr *Node) {
     PrintExpr(Node->getExprOperand());
   }
   OS << ")";
+}
+
+void StmtPrinter::VisitUserDefinedLiteral(UserDefinedLiteral *Node) {
+  switch (Node->getLiteralOperatorKind()) {
+  case UserDefinedLiteral::LOK_Raw:
+    OS << cast<StringLiteral>(Node->getArg(0)->IgnoreImpCasts())->getString();
+    break;
+  case UserDefinedLiteral::LOK_Template: {
+    DeclRefExpr *DRE = cast<DeclRefExpr>(Node->getCallee()->IgnoreImpCasts());
+    const TemplateArgumentList *Args =
+      cast<FunctionDecl>(DRE->getDecl())->getTemplateSpecializationArgs();
+    assert(Args);
+    const TemplateArgument &Pack = Args->get(0);
+    for (TemplateArgument::pack_iterator I = Pack.pack_begin(),
+                                         E = Pack.pack_end(); I != E; ++I) {
+      char C = (char)I->getAsIntegral()->getZExtValue();
+      OS << C;
+    }
+    break;
+  }
+  case UserDefinedLiteral::LOK_Integer: {
+    // Print integer literal without suffix.
+    IntegerLiteral *Int = cast<IntegerLiteral>(Node->getCookedLiteral());
+    OS << Int->getValue().toString(10, /*isSigned*/false);
+    break;
+  }
+  case UserDefinedLiteral::LOK_Floating:
+  case UserDefinedLiteral::LOK_String:
+  case UserDefinedLiteral::LOK_Character:
+    PrintExpr(Node->getCookedLiteral());
+    break;
+  }
+  OS << Node->getUDSuffix()->getName();
 }
 
 void StmtPrinter::VisitCXXBoolLiteralExpr(CXXBoolLiteralExpr *Node) {
@@ -1369,9 +1450,9 @@ void StmtPrinter::VisitLambdaExpr(LambdaExpr *Node) {
 
     // FIXME: Attributes
 
-    // FIXME: Suppress trailing return type if it wasn't specified in
-    // the source.
-    OS << " -> " << Proto->getResultType().getAsString(Policy);
+    // Print the trailing return type if it was specified in the source.
+    if (Node->hasExplicitResultType())
+      OS << " -> " << Proto->getResultType().getAsString(Policy);
   }
 
   // Print the body.
@@ -1415,17 +1496,13 @@ void StmtPrinter::VisitCXXNewExpr(CXXNewExpr *E) {
   if (E->isParenTypeId())
     OS << ")";
 
-  if (E->hasInitializer()) {
-    OS << "(";
-    unsigned NumCons = E->getNumConstructorArgs();
-    if (NumCons > 0) {
-      PrintExpr(E->getConstructorArg(0));
-      for (unsigned i = 1; i < NumCons; ++i) {
-        OS << ", ";
-        PrintExpr(E->getConstructorArg(i));
-      }
-    }
-    OS << ")";
+  CXXNewExpr::InitializationStyle InitStyle = E->getInitializationStyle();
+  if (InitStyle) {
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << "(";
+    PrintExpr(E->getInitializer());
+    if (InitStyle == CXXNewExpr::CallInit)
+      OS << ")";
   }
 }
 
@@ -1574,13 +1651,21 @@ static const char *getTypeTraitName(UnaryTypeTrait UTT) {
 
 static const char *getTypeTraitName(BinaryTypeTrait BTT) {
   switch (BTT) {
-  case BTT_IsBaseOf:         return "__is_base_of";
-  case BTT_IsConvertible:    return "__is_convertible";
-  case BTT_IsSame:           return "__is_same";
-  case BTT_TypeCompatible:   return "__builtin_types_compatible_p";
-  case BTT_IsConvertibleTo:  return "__is_convertible_to";
+  case BTT_IsBaseOf:              return "__is_base_of";
+  case BTT_IsConvertible:         return "__is_convertible";
+  case BTT_IsSame:                return "__is_same";
+  case BTT_TypeCompatible:        return "__builtin_types_compatible_p";
+  case BTT_IsConvertibleTo:       return "__is_convertible_to";
+  case BTT_IsTriviallyAssignable: return "__is_trivially_assignable";
   }
   llvm_unreachable("Binary type trait not covered by switch");
+}
+
+static const char *getTypeTraitName(TypeTrait TT) {
+  switch (TT) {
+  case clang::TT_IsTriviallyConstructible:return "__is_trivially_constructible";
+  }
+  llvm_unreachable("Type trait not covered by switch");
 }
 
 static const char *getTypeTraitName(ArrayTypeTrait ATT) {
@@ -1608,6 +1693,16 @@ void StmtPrinter::VisitBinaryTypeTraitExpr(BinaryTypeTraitExpr *E) {
   OS << getTypeTraitName(E->getTrait()) << "("
      << E->getLhsType().getAsString(Policy) << ","
      << E->getRhsType().getAsString(Policy) << ")";
+}
+
+void StmtPrinter::VisitTypeTraitExpr(TypeTraitExpr *E) {
+  OS << getTypeTraitName(E->getTrait()) << "(";
+  for (unsigned I = 0, N = E->getNumArgs(); I != N; ++I) {
+    if (I > 0)
+      OS << ", ";
+    OS << E->getArg(I)->getType().getAsString(Policy);
+  }
+  OS << ")";
 }
 
 void StmtPrinter::VisitArrayTypeTraitExpr(ArrayTypeTraitExpr *E) {
@@ -1655,6 +1750,41 @@ void StmtPrinter::VisitMaterializeTemporaryExpr(MaterializeTemporaryExpr *Node){
 void StmtPrinter::VisitObjCStringLiteral(ObjCStringLiteral *Node) {
   OS << "@";
   VisitStringLiteral(Node->getString());
+}
+
+void StmtPrinter::VisitObjCBoxedExpr(ObjCBoxedExpr *E) {
+  OS << "@";
+  Visit(E->getSubExpr());
+}
+
+void StmtPrinter::VisitObjCArrayLiteral(ObjCArrayLiteral *E) {
+  OS << "@[ ";
+  StmtRange ch = E->children();
+  if (ch.first != ch.second) {
+    while (1) {
+      Visit(*ch.first);
+      ++ch.first;
+      if (ch.first == ch.second) break;
+      OS << ", ";
+    }
+  }
+  OS << " ]";
+}
+
+void StmtPrinter::VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
+  OS << "@{ ";
+  for (unsigned I = 0, N = E->getNumElements(); I != N; ++I) {
+    if (I > 0)
+      OS << ", ";
+    
+    ObjCDictionaryElement Element = E->getKeyValueElement(I);
+    Visit(Element.Key);
+    OS << " : ";
+    Visit(Element.Value);
+    if (Element.isPackExpansion())
+      OS << "...";
+  }
+  OS << " }";
 }
 
 void StmtPrinter::VisitObjCEncodeExpr(ObjCEncodeExpr *Node) {
@@ -1707,6 +1837,10 @@ void StmtPrinter::VisitObjCMessageExpr(ObjCMessageExpr *Mess) {
   OS << "]";
 }
 
+void StmtPrinter::VisitObjCBoolLiteralExpr(ObjCBoolLiteralExpr *Node) {
+  OS << (Node->getValue() ? "__objc_yes" : "__objc_no");
+}
+
 void
 StmtPrinter::VisitObjCIndirectCopyRestoreExpr(ObjCIndirectCopyRestoreExpr *E) {
   PrintExpr(E->getSubExpr());
@@ -1747,10 +1881,6 @@ void StmtPrinter::VisitBlockExpr(BlockExpr *Node) {
   }
 }
 
-void StmtPrinter::VisitBlockDeclRefExpr(BlockDeclRefExpr *Node) {
-  OS << *Node->getDecl();
-}
-
 void StmtPrinter::VisitOpaqueValueExpr(OpaqueValueExpr *Node) { 
   PrintExpr(Node->getSourceExpr());
 }
@@ -1768,7 +1898,7 @@ void StmtPrinter::VisitAsTypeExpr(AsTypeExpr *Node) {
 
 void Stmt::dumpPretty(ASTContext& Context) const {
   printPretty(llvm::errs(), Context, 0,
-              PrintingPolicy(Context.getLangOptions()));
+              PrintingPolicy(Context.getLangOpts()));
 }
 
 void Stmt::printPretty(raw_ostream &OS, ASTContext& Context,
@@ -1792,7 +1922,7 @@ void Stmt::printPretty(raw_ostream &OS, ASTContext& Context,
 std::string Stmt::toCPPCode(ASTContext& context){
   std::string str;
   llvm::raw_string_ostream ostr(str);
-  printPretty(ostr, context, 0, PrintingPolicy(context.getLangOptions()));
+  printPretty(ostr, context, 0, PrintingPolicy(context.getLangOpts()));
   return ostr.str();
 }
 

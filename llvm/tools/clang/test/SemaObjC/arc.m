@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -fblocks -verify -Wno-objc-root-class %s
 
 typedef unsigned long NSUInteger;
 typedef const void * CFTypeRef;
@@ -42,10 +42,10 @@ void test1(A *a) {
 // rdar://8843638
 
 @interface I
-- (id)retain; // expected-note {{method declared here}}
-- (id)autorelease; // expected-note {{method declared here}}
-- (oneway void)release; // expected-note {{method declared here}}
-- (NSUInteger)retainCount; // expected-note {{method declared here}}
+- (id)retain; // expected-note {{method 'retain' declared here}}
+- (id)autorelease; // expected-note {{method 'autorelease' declared here}}
+- (oneway void)release; // expected-note {{method 'release' declared here}}
+- (NSUInteger)retainCount; // expected-note {{method 'retainCount' declared here}}
 @end
 
 @implementation I

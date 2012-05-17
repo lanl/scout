@@ -1,10 +1,10 @@
-//===- PPC.td - Describe the PowerPC Target Machine --------*- tablegen -*-===//
-// 
+//===-- PPC.td - Describe the PowerPC Target Machine -------*- tablegen -*-===//
+//
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
-// 
+//
 //===----------------------------------------------------------------------===//
 //
 // This is the top level entry point for the PowerPC target.
@@ -34,6 +34,7 @@ def Directive750 : SubtargetFeature<"", "DarwinDirective", "PPC::DIR_750", "">;
 def Directive970 : SubtargetFeature<"", "DarwinDirective", "PPC::DIR_970", "">;
 def Directive32  : SubtargetFeature<"", "DarwinDirective", "PPC::DIR_32", "">;
 def Directive64  : SubtargetFeature<"", "DarwinDirective", "PPC::DIR_64", "">;
+def DirectiveA2  : SubtargetFeature<"", "DarwinDirective", "PPC::DIR_A2", "">;
 
 def Feature64Bit     : SubtargetFeature<"64bit","Has64BitSupport", "true",
                                         "Enable 64-bit instructions">;
@@ -87,6 +88,10 @@ def : Processor<"g5", G5Itineraries,
                   [Directive970, FeatureAltivec,
                    FeatureGPUL, FeatureFSqrt, FeatureSTFIWX,
                    Feature64Bit /*, Feature64BitRegs */]>;
+def : Processor<"a2",  PPCA2Itineraries, [DirectiveA2, FeatureBookE,
+                                          FeatureFSqrt, FeatureSTFIWX,
+                                          Feature64Bit
+                                      /*, Feature64BitRegs */]>;
 def : Processor<"ppc", G3Itineraries, [Directive32]>;
 def : Processor<"ppc64", G5Itineraries,
                   [Directive64, FeatureAltivec,

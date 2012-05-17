@@ -49,25 +49,23 @@ struct UndefinedConstexpr {
 };
 
 // - an invocation of a constexpr function with arguments that, when substituted
-//   by function invocation substitution (7.1.5), do not produce a constant
+//   by function invocation substitution (7.1.5), do not produce a core constant
 //   expression;
 namespace NonConstExprReturn {
   static constexpr const int &id_ref(const int &n) {
-    return n; // expected-note {{reference to temporary cannot be returned from a constexpr function}}
+    return n;
   }
   struct NonConstExprFunction {
-    int n : id_ref( // expected-error {{constant expression}} expected-note {{in call to 'id_ref(16)'}}
-        16 // expected-note {{temporary created here}}
-        );
+    int n : id_ref(16); // ok
   };
   constexpr const int *address_of(const int &a) {
-    return &a; // expected-note {{pointer to 'n' cannot be returned from a constexpr function}}
+    return &a;
   }
   constexpr const int *return_param(int n) { // expected-note {{declared here}}
-    return address_of(n); // expected-note {{in call to 'address_of(n)'}}
+    return address_of(n);
   }
   struct S {
-    int n : *return_param(0); // expected-error {{constant expression}} expected-note {{in call to 'return_param(0)'}}
+    int n : *return_param(0); // expected-error {{constant expression}} expected-note {{read of variable whose lifetime has ended}}
   };
 }
 
@@ -78,16 +76,16 @@ namespace NonConstExprReturn {
 namespace NonConstExprCtor {
   struct T {
     constexpr T(const int &r) :
-      r(r) { // expected-note 2{{reference to temporary cannot be used to initialize a member in a constant expression}}
+      r(r) {
     }
     const int &r;
   };
   constexpr int n = 0;
   constexpr T t1(n); // ok
-  constexpr T t2(0); // expected-error {{must be initialized by a constant expression}} expected-note {{temporary created here}} expected-note {{in call to 'T(0)'}}
+  constexpr T t2(0); // expected-error {{must be initialized by a constant expression}} expected-note {{temporary created here}} expected-note {{reference to temporary is not a constant expression}}
 
   struct S {
-    int n : T(4).r; // expected-error {{constant expression}} expected-note {{temporary created here}} expected-note {{in call to 'T(4)'}}
+    int n : T(4).r; // ok
   };
 }
 
@@ -111,9 +109,10 @@ namespace RecursionLimits {
 
 // DR1458: taking the address of an object of incomplete class type
 namespace IncompleteClassTypeAddr {
-  struct S; // expected-note {{forward}}
+  struct S;
   extern S s;
-  constexpr S *p = &s; // expected-error {{constant expression}} expected-note {{cannot take address of object of incomplete class type 'IncompleteClassTypeAddr::S' in a constant expression}}
+  constexpr S *p = &s; // ok
+  static_assert(p, "");
 
   extern S sArr[];
   constexpr S (*p2)[] = &sArr; // ok
@@ -121,7 +120,7 @@ namespace IncompleteClassTypeAddr {
   struct S {
     constexpr S *operator&() { return nullptr; }
   };
-  constexpr S *q = &s;
+  constexpr S *q = &s; // ok
   static_assert(!q, "");
 }
 
@@ -175,12 +174,12 @@ namespace UndefinedBehavior {
   struct S {
     int m;
   };
-  constexpr S s = { 5 }; // expected-note {{declared here}}
+  constexpr S s = { 5 };
   constexpr const int *p = &s.m + 1;
   constexpr const int &f(const int *q) {
-    return q[0]; // expected-note {{dereferenced pointer past the end of subobject of 's' is not a constant expression}}
+    return q[0];
   }
-  constexpr int n = (f(p), 0); // expected-error {{constant expression}} expected-note {{in call to 'f(&s.m + 1)'}}
+  constexpr int n = (f(p), 0); // ok
   struct T {
     int n : f(p); // expected-error {{not an integral constant expression}} expected-note {{read of dereferenced one-past-the-end pointer}}
   };
@@ -287,7 +286,7 @@ namespace LValueToRValue {
   //   non-volatile const object with a preceding initialization, initialized
   //   with a constant expression  [Note: a string literal (2.14.5 [lex.string])
   //   corresponds to an array of such objects. -end note], or
-  volatile const int vi = 1; // expected-note {{here}}
+  volatile const int vi = 1; // expected-note 2{{here}}
   const int ci = 1;
   volatile const int &vrci = ci;
   static_assert(vi, ""); // expected-error {{constant expression}} expected-note {{read of volatile-qualified type}}
@@ -297,18 +296,23 @@ namespace LValueToRValue {
   // - a non-volatile glvalue of literal type that refers to a non-volatile
   //   object defined with constexpr, or that refers to a sub-object of such an
   //   object, or
-  struct S {
-    constexpr S(int=0) : i(1), v(1) {}
-    constexpr S(const S &s) : i(2), v(2) {}
-    int i;
-    volatile int v; // expected-note {{here}}
+  struct V {
+    constexpr V() : v(1) {}
+    volatile int v; // expected-note {{not literal because}}
   };
-  constexpr S s;
+  constexpr V v; // expected-error {{non-literal type}}
+  struct S {
+    constexpr S(int=0) : i(1), v(const_cast<volatile int&>(vi)) {}
+    constexpr S(const S &s) : i(2), v(const_cast<volatile int&>(vi)) {}
+    int i;
+    volatile int &v;
+  };
+  constexpr S s; // ok
   constexpr volatile S vs; // expected-note {{here}}
-  constexpr const volatile S &vrs = s;
+  constexpr const volatile S &vrs = s; // ok
   static_assert(s.i, "");
   static_assert(s.v, ""); // expected-error {{constant expression}} expected-note {{read of volatile-qualified type}}
-  static_assert(const_cast<int&>(s.v), ""); // expected-error {{constant expression}} expected-note {{read of volatile member 'v'}}
+  static_assert(const_cast<int&>(s.v), ""); // expected-error {{constant expression}} expected-note {{read of volatile object 'vi'}}
   static_assert(vs.i, ""); // expected-error {{constant expression}} expected-note {{read of volatile-qualified type}}
   static_assert(const_cast<int&>(vs.i), ""); // expected-error {{constant expression}} expected-note {{read of volatile object 'vs'}}
   static_assert(vrs.i, ""); // expected-error {{constant expression}} expected-note {{read of volatile-qualified type}}
@@ -358,8 +362,8 @@ namespace References {
   constexpr int e = 42;
   int &f = const_cast<int&>(e);
   extern int &g;
-  constexpr int &h(); // expected-note 2{{here}}
-  int &i = h(); // expected-note {{here}} expected-note {{undefined function 'h' cannot be used in a constant expression}}
+  constexpr int &h(); // expected-note {{here}}
+  int &i = h(); // expected-note {{here}}
   constexpr int &j() { return b; }
   int &k = j();
 

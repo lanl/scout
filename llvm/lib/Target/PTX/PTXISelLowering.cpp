@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PTX.h"
 #include "PTXISelLowering.h"
+#include "PTX.h"
 #include "PTXMachineFunctionInfo.h"
 #include "PTXRegisterInfo.h"
 #include "PTXSubtarget.h"
@@ -36,12 +36,12 @@ using namespace llvm;
 PTXTargetLowering::PTXTargetLowering(TargetMachine &TM)
   : TargetLowering(TM, new TargetLoweringObjectFileELF()) {
   // Set up the register classes.
-  addRegisterClass(MVT::i1,  PTX::RegPredRegisterClass);
-  addRegisterClass(MVT::i16, PTX::RegI16RegisterClass);
-  addRegisterClass(MVT::i32, PTX::RegI32RegisterClass);
-  addRegisterClass(MVT::i64, PTX::RegI64RegisterClass);
-  addRegisterClass(MVT::f32, PTX::RegF32RegisterClass);
-  addRegisterClass(MVT::f64, PTX::RegF64RegisterClass);
+  addRegisterClass(MVT::i1,  &PTX::RegPredRegClass);
+  addRegisterClass(MVT::i16, &PTX::RegI16RegClass);
+  addRegisterClass(MVT::i32, &PTX::RegI32RegClass);
+  addRegisterClass(MVT::i64, &PTX::RegI64RegClass);
+  addRegisterClass(MVT::f32, &PTX::RegF32RegClass);
+  addRegisterClass(MVT::f64, &PTX::RegF64RegClass);
 
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent); // FIXME: Is this correct?
@@ -97,7 +97,8 @@ PTXTargetLowering::PTXTargetLowering(TargetMachine &TM)
 
   // customise setcc to use bitwise logic if possible
 
-  setOperationAction(ISD::SETCC, MVT::i1, Custom);
+  //setOperationAction(ISD::SETCC, MVT::i1, Custom);
+  setOperationAction(ISD::SETCC, MVT::i1, Legal);
 
   // customize translation of memory addresses
 
@@ -156,18 +157,27 @@ SDValue PTXTargetLowering::LowerSETCC(SDValue Op, SelectionDAG &DAG) const {
   SDValue Op1 = Op.getOperand(1);
   SDValue Op2 = Op.getOperand(2);
   DebugLoc dl = Op.getDebugLoc();
-  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+  //ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
 
   // Look for X == 0, X == 1, X != 0, or X != 1
   // We can simplify these to bitwise logic
 
-  if (Op1.getOpcode() == ISD::Constant &&
-      (cast<ConstantSDNode>(Op1)->getZExtValue() == 1 ||
-       cast<ConstantSDNode>(Op1)->isNullValue()) &&
-      (CC == ISD::SETEQ || CC == ISD::SETNE)) {
+  //if (Op1.getOpcode() == ISD::Constant &&
+  //    (cast<ConstantSDNode>(Op1)->getZExtValue() == 1 ||
+  //     cast<ConstantSDNode>(Op1)->isNullValue()) &&
+  //    (CC == ISD::SETEQ || CC == ISD::SETNE)) {
+  //
+  //  return DAG.getNode(ISD::AND, dl, MVT::i1, Op0, Op1);
+  //}
 
-    return DAG.getNode(ISD::AND, dl, MVT::i1, Op0, Op1);
-  }
+  //ConstantSDNode* COp1 = cast<ConstantSDNode>(Op1);
+  //if(COp1 && COp1->getZExtValue() == 1) {
+  //  if(CC == ISD::SETNE) {
+  //    return DAG.getNode(PTX::XORripreds, dl, MVT::i1, Op0);
+  //  }
+  //}
+
+  llvm_unreachable("setcc was not matched by a pattern!");
 
   return DAG.getNode(ISD::SETCC, dl, MVT::i1, Op0, Op1, Op2);
 }
@@ -240,32 +250,25 @@ SDValue PTXTargetLowering::
   }
   else {
     for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
-      EVT                  RegVT = Ins[i].VT;
-      TargetRegisterClass* TRC   = getRegClassFor(RegVT);
-      unsigned             RegType;
+      EVT                        RegVT = Ins[i].VT;
+      const TargetRegisterClass* TRC   = getRegClassFor(RegVT);
+      unsigned                   RegType;
 
       // Determine which register class we need
-      if (RegVT == MVT::i1) {
+      if (RegVT == MVT::i1)
         RegType = PTXRegisterType::Pred;
-      }
-      else if (RegVT == MVT::i16) {
+      else if (RegVT == MVT::i16)
         RegType = PTXRegisterType::B16;
-      }
-      else if (RegVT == MVT::i32) {
+      else if (RegVT == MVT::i32)
         RegType = PTXRegisterType::B32;
-      }
-      else if (RegVT == MVT::i64) {
+      else if (RegVT == MVT::i64)
         RegType = PTXRegisterType::B64;
-      }
-      else if (RegVT == MVT::f32) {
+      else if (RegVT == MVT::f32)
         RegType = PTXRegisterType::F32;
-      }
-      else if (RegVT == MVT::f64) {
+      else if (RegVT == MVT::f64)
         RegType = PTXRegisterType::F64;
-      }
-      else {
+      else
         llvm_unreachable("Unknown parameter type");
-      }
 
       // Use a unique index in the instruction to prevent instruction folding.
       // Yes, this is a hack.
@@ -325,36 +328,30 @@ SDValue PTXTargetLowering::
     }
   } else {
     for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
-      EVT                  RegVT = Outs[i].VT;
-      TargetRegisterClass* TRC = 0;
-      unsigned             RegType;
+      EVT                        RegVT = Outs[i].VT;
+      const TargetRegisterClass* TRC;
+      unsigned                   RegType;
 
       // Determine which register class we need
       if (RegVT == MVT::i1) {
-        TRC = PTX::RegPredRegisterClass;
+        TRC = &PTX::RegPredRegClass;
         RegType = PTXRegisterType::Pred;
-      }
-      else if (RegVT == MVT::i16) {
-        TRC = PTX::RegI16RegisterClass;
+      } else if (RegVT == MVT::i16) {
+        TRC = &PTX::RegI16RegClass;
         RegType = PTXRegisterType::B16;
-      }
-      else if (RegVT == MVT::i32) {
-        TRC = PTX::RegI32RegisterClass;
+      } else if (RegVT == MVT::i32) {
+        TRC = &PTX::RegI32RegClass;
         RegType = PTXRegisterType::B32;
-      }
-      else if (RegVT == MVT::i64) {
-        TRC = PTX::RegI64RegisterClass;
+      } else if (RegVT == MVT::i64) {
+        TRC = &PTX::RegI64RegClass;
         RegType = PTXRegisterType::B64;
-      }
-      else if (RegVT == MVT::f32) {
-        TRC = PTX::RegF32RegisterClass;
+      } else if (RegVT == MVT::f32) {
+        TRC = &PTX::RegF32RegClass;
         RegType = PTXRegisterType::F32;
-      }
-      else if (RegVT == MVT::f64) {
-        TRC = PTX::RegF64RegisterClass;
+      } else if (RegVT == MVT::f64) {
+        TRC = &PTX::RegF64RegClass;
         RegType = PTXRegisterType::F64;
-      }
-      else {
+      } else {
         llvm_unreachable("Unknown parameter type");
       }
 
@@ -380,7 +377,7 @@ SDValue PTXTargetLowering::
 SDValue
 PTXTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
                              CallingConv::ID CallConv, bool isVarArg,
-                             bool &isTailCall,
+                             bool doesNotRet, bool &isTailCall,
                              const SmallVectorImpl<ISD::OutputArg> &Outs,
                              const SmallVectorImpl<SDValue> &OutVals,
                              const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -391,22 +388,22 @@ PTXTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
   PTXMachineFunctionInfo *PTXMFI = MF.getInfo<PTXMachineFunctionInfo>();
   PTXParamManager &PM = PTXMFI->getParamManager();
   MachineFrameInfo *MFI = MF.getFrameInfo();
-  
+
   assert(getTargetMachine().getSubtarget<PTXSubtarget>().callsAreHandled() &&
          "Calls are not handled for the target device");
 
   // Identify the callee function
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Callee)->getGlobal();
   const Function *function = cast<Function>(GV);
-  
+
   // allow non-device calls only for printf
-  bool isPrintf = function->getName() == "printf" || function->getName() == "puts";	
-  
+  bool isPrintf = function->getName() == "printf" || function->getName() == "puts";
+
   assert((isPrintf || function->getCallingConv() == CallingConv::PTX_Device) &&
 			 "PTX function calls must be to PTX device functions");
-  
+
   unsigned outSize = isPrintf ? 2 : Outs.size();
-  
+
   std::vector<SDValue> Ops;
   // The layout of the ops will be [Chain, #Ins, Ins, Callee, #Outs, Outs]
   Ops.resize(outSize + Ins.size() + 4);
@@ -419,7 +416,7 @@ PTXTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 
   // #Outs
   Ops[Ins.size()+3] = DAG.getTargetConstant(outSize, MVT::i32);
-  
+
   if (isPrintf) {
     // first argument is the address of the global string variable in memory
     unsigned Param0 = PM.addLocalParam(getPointerTy().getSizeInBits());
@@ -428,29 +425,29 @@ PTXTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
     Chain = DAG.getNode(PTXISD::STORE_PARAM, dl, MVT::Other, Chain,
                         ParamValue0, OutVals[0]);
     Ops[Ins.size()+4] = ParamValue0;
-      
+
     // alignment is the maximum size of all the arguments
     unsigned alignment = 0;
     for (unsigned i = 1; i < OutVals.size(); ++i) {
-      alignment = std::max(alignment, 
+      alignment = std::max(alignment,
     		               OutVals[i].getValueType().getSizeInBits());
     }
 
     // size is the alignment multiplied by the number of arguments
     unsigned size = alignment * (OutVals.size() - 1);
-  
+
     // second argument is the address of the stack object (unless no arguments)
     unsigned Param1 = PM.addLocalParam(getPointerTy().getSizeInBits());
     SDValue ParamValue1 = DAG.getTargetExternalSymbol(PM.getParamName(Param1).c_str(),
                                                       MVT::Other);
     Ops[Ins.size()+5] = ParamValue1;
-    
+
     if (size > 0)
     {
       // create a local stack object to store the arguments
       unsigned StackObject = MFI->CreateStackObject(size / 8, alignment / 8, false);
       SDValue FrameIndex = DAG.getFrameIndex(StackObject, getPointerTy());
-	  
+
       // store each of the arguments to the stack in turn
       for (unsigned int i = 1; i != OutVals.size(); i++) {
         SDValue FrameAddr = DAG.getNode(ISD::ADD, dl, getPointerTy(), FrameIndex, DAG.getTargetConstant((i - 1) * 8, getPointerTy()));
@@ -482,7 +479,7 @@ PTXTargetLowering::LowerCall(SDValue Chain, SDValue Callee,
 		Ops[i+Ins.size()+4] = ParamValue;
 	  }
   }
-  
+
   std::vector<SDValue> InParams;
 
   // Generate list of .param variables to hold the return value(s).

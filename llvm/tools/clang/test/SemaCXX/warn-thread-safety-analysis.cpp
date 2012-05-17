@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wthread-safety %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wthread-safety -std=c++11 -Wc++98-compat %s
 
 #define LOCKABLE            __attribute__ ((lockable))
 #define SCOPED_LOCKABLE     __attribute__ ((scoped_lockable))
@@ -313,12 +314,13 @@ Mutex wmu;
 
 // Test diagnostics for other method names.
 class WeirdMethods {
+  // FIXME: can't currently check inside constructors and destructors.
   WeirdMethods() {
-    wmu.Lock(); // expected-note {{mutex acquired here}}
-  } // expected-warning {{mutex 'wmu' is still locked at the end of function}}
+    wmu.Lock(); // EXPECTED-NOTE {{mutex acquired here}}
+  } // EXPECTED-WARNING {{mutex 'wmu' is still locked at the end of function}}
   ~WeirdMethods() {
-    wmu.Lock(); // expected-note {{mutex acquired here}}
-  } // expected-warning {{mutex 'wmu' is still locked at the end of function}}
+    wmu.Lock(); // EXPECTED-NOTE {{mutex acquired here}}
+  } // EXPECTED-WARNING {{mutex 'wmu' is still locked at the end of function}}
   void operator++() {
     wmu.Lock(); // expected-note {{mutex acquired here}}
   } // expected-warning {{mutex 'wmu' is still locked at the end of function}}
@@ -765,27 +767,7 @@ void es_bad_7() {
 // Unparseable lock expressions
 // ----------------------------------------------//
 
-Mutex UPmu;
-// FIXME: add support for lock expressions involving arrays.
-Mutex mua[5];
-
-int x __attribute__((guarded_by(UPmu = sls_mu)));
-int y __attribute__((guarded_by(mua[0])));
-
-
-void testUnparse() {
-  x = 5; // \
-    // expected-warning{{cannot resolve lock expression}}
-  y = 5; // \
-    // expected-warning{{cannot resolve lock expression}}
-}
-
-void testUnparse2() {
-  mua[0].Lock(); // \
-    // expected-warning{{cannot resolve lock expression}}
-  (&(mua[0]) + 4)->Lock(); // \
-    // expected-warning{{cannot resolve lock expression}}
-}
+// FIXME -- derive new tests for unhandled expressions
 
 
 //----------------------------------------------------------------------------//
@@ -1172,7 +1154,7 @@ class Foo {
 int Foo::foo()
 {
   int res;
-  w = 5.2;
+  w = 5;
   res = a_ + 5;
   return res;
 }
@@ -1186,7 +1168,7 @@ void Foo::bar()
   mu_.Unlock();
   if (x > 5) {
     mu1.Lock();
-    g = 2.3;
+    g = 2;
     mu1.Unlock();
   }
 }
@@ -1204,7 +1186,7 @@ void main()
   f2->bar(); // expected-warning {{cannot call function 'bar' while mutex 'mu_' is locked}}
   f2->mu_.Unlock();
   mu2.Lock();
-  w = 2.5;
+  w = 2;
   mu2.Unlock();
 }
 } // end namespace thread_annot_lock_13
@@ -1846,6 +1828,7 @@ class CellDelayed {
 public:
   // Test dependent guarded_by
   T data GUARDED_BY(mu_);
+  static T static_data GUARDED_BY(static_mu_);
 
   void fooEx(CellDelayed<T> *other) EXCLUSIVE_LOCKS_REQUIRED(mu_, other->mu_) {
     this->data = other->data;
@@ -1863,6 +1846,7 @@ public:
   }
 
   Mutex mu_;
+  static Mutex static_mu_;
 };
 
 void testDelayed() {
@@ -1936,3 +1920,325 @@ namespace GoingNative {
   }
 
 }
+
+
+
+namespace FunctionDefinitionTest {
+
+class Foo {
+public:
+  void foo1();
+  void foo2();
+  void foo3(Foo *other);
+
+  template<class T>
+  void fooT1(const T& dummy1);
+
+  template<class T>
+  void fooT2(const T& dummy2) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  Mutex mu_;
+  int a GUARDED_BY(mu_);
+};
+
+template<class T>
+class FooT {
+public:
+  void foo();
+
+  Mutex mu_;
+  T a GUARDED_BY(mu_);
+};
+
+
+void Foo::foo1() NO_THREAD_SAFETY_ANALYSIS {
+  a = 1;
+}
+
+void Foo::foo2() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  a = 2;
+}
+
+void Foo::foo3(Foo *other) EXCLUSIVE_LOCKS_REQUIRED(other->mu_) {
+  other->a = 3;
+}
+
+template<class T>
+void Foo::fooT1(const T& dummy1) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  a = dummy1;
+}
+
+/* TODO -- uncomment with template instantiation of attributes.
+template<class T>
+void Foo::fooT2(const T& dummy2) {
+  a = dummy2;
+}
+*/
+
+void fooF1(Foo *f) EXCLUSIVE_LOCKS_REQUIRED(f->mu_) {
+  f->a = 1;
+}
+
+void fooF2(Foo *f);
+void fooF2(Foo *f) EXCLUSIVE_LOCKS_REQUIRED(f->mu_) {
+  f->a = 2;
+}
+
+void fooF3(Foo *f) EXCLUSIVE_LOCKS_REQUIRED(f->mu_);
+void fooF3(Foo *f) {
+  f->a = 3;
+}
+
+template<class T>
+void FooT<T>::foo() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  a = 0;
+}
+
+void test() {
+  int dummy = 0;
+  Foo myFoo;
+
+  myFoo.foo2();        // \
+    // expected-warning {{calling function 'foo2' requires exclusive lock on 'mu_'}}
+  myFoo.foo3(&myFoo);  // \
+    // expected-warning {{calling function 'foo3' requires exclusive lock on 'mu_'}}
+  myFoo.fooT1(dummy);  // \
+    // expected-warning {{calling function 'fooT1' requires exclusive lock on 'mu_'}}
+
+  // FIXME: uncomment with template instantiation of attributes patch
+  // myFoo.fooT2(dummy);  // expected warning
+
+  fooF1(&myFoo);  // \
+    // expected-warning {{calling function 'fooF1' requires exclusive lock on 'mu_'}}
+  fooF2(&myFoo);  // \
+    // expected-warning {{calling function 'fooF2' requires exclusive lock on 'mu_'}}
+  fooF3(&myFoo);  // \
+    // expected-warning {{calling function 'fooF3' requires exclusive lock on 'mu_'}}
+
+  myFoo.mu_.Lock();
+  myFoo.foo2();
+  myFoo.foo3(&myFoo);
+  myFoo.fooT1(dummy);
+
+  // FIXME: uncomment with template instantiation of attributes patch
+  // myFoo.fooT2(dummy);
+
+  fooF1(&myFoo);
+  fooF2(&myFoo);
+  fooF3(&myFoo);
+  myFoo.mu_.Unlock();
+
+  FooT<int> myFooT;
+  myFooT.foo();  // \
+    // expected-warning {{calling function 'foo' requires exclusive lock on 'mu_'}}
+}
+
+} // end namespace FunctionDefinitionTest
+
+
+namespace SelfLockingTest {
+
+class LOCKABLE MyLock {
+public:
+  int foo GUARDED_BY(this);
+
+  void lock()   EXCLUSIVE_LOCK_FUNCTION();
+  void unlock() UNLOCK_FUNCTION();
+
+  void doSomething() {
+    this->lock();  // allow 'this' as a lock expression
+    foo = 0;
+    doSomethingElse();
+    this->unlock();
+  }
+
+  void doSomethingElse() EXCLUSIVE_LOCKS_REQUIRED(this) {
+    foo = 1;
+  };
+
+  void test() {
+    foo = 2;  // \
+      // expected-warning {{writing variable 'foo' requires locking 'this' exclusively}}
+  }
+};
+
+
+class LOCKABLE MyLock2 {
+public:
+  Mutex mu_;
+  int foo GUARDED_BY(this);
+
+  // don't check inside lock and unlock functions
+  void lock()   EXCLUSIVE_LOCK_FUNCTION() { mu_.Lock();   }
+  void unlock() UNLOCK_FUNCTION()         { mu_.Unlock(); }
+
+  // don't check inside constructors and destructors
+  MyLock2()  { foo = 1; }
+  ~MyLock2() { foo = 0; }
+};
+
+
+} // end namespace SelfLockingTest
+
+
+namespace InvalidNonstatic {
+
+// Forward decl here causes bogus "invalid use of non-static data member"
+// on reference to mutex_ in guarded_by attribute.
+class Foo;
+
+class Foo {
+  Mutex* mutex_;
+
+  int foo __attribute__((guarded_by(mutex_)));
+};
+
+}  // end namespace InvalidNonStatic
+
+
+namespace NoReturnTest {
+
+bool condition();
+void fatal() __attribute__((noreturn));
+
+Mutex mu_;
+
+void test1() {
+  MutexLock lock(&mu_);
+  if (condition()) {
+    fatal();
+    return;
+  }
+}
+
+} // end namespace NoReturnTest
+
+
+namespace TestMultiDecl {
+
+class Foo {
+public:
+  int GUARDED_BY(mu_) a;
+  int GUARDED_BY(mu_) b, c;
+
+  void foo() {
+    a = 0; // \
+      // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+    b = 0; // \
+      // expected-warning {{writing variable 'b' requires locking 'mu_' exclusively}}
+    c = 0; // \
+      // expected-warning {{writing variable 'c' requires locking 'mu_' exclusively}}
+  }
+
+private:
+  Mutex mu_;
+};
+
+} // end namespace TestMultiDecl
+
+
+namespace WarnNoDecl {
+
+class Foo {
+  void foo(int a);  __attribute__(( // \
+    // expected-warning {{declaration does not declare anything}}
+    exclusive_locks_required(a))); // \
+    // expected-warning {{attribute exclusive_locks_required ignored}}
+};
+
+} // end namespace WarnNoDecl
+
+
+
+namespace MoreLockExpressions {
+
+class Foo {
+public:
+  Mutex mu_;
+  int a GUARDED_BY(mu_);
+};
+
+class Bar {
+public:
+  int b;
+  Foo* f;
+
+  Foo& getFoo()              { return *f; }
+  Foo& getFoo2(int c)        { return *f; }
+  Foo& getFoo3(int c, int d) { return *f; }
+
+  Foo& getFooey() { return *f; }
+};
+
+Foo& getBarFoo(Bar &bar, int c) { return bar.getFoo2(c); }
+
+void test() {
+  Foo foo;
+  Foo *fooArray;
+  Bar bar;
+  int a;
+  int b;
+  int c;
+
+  bar.getFoo().mu_.Lock();
+  bar.getFoo().a = 0;
+  bar.getFoo().mu_.Unlock();
+
+  (bar.getFoo().mu_).Lock();   // test parenthesis
+  bar.getFoo().a = 0;
+  (bar.getFoo().mu_).Unlock();
+
+  bar.getFoo2(a).mu_.Lock();
+  bar.getFoo2(a).a = 0;
+  bar.getFoo2(a).mu_.Unlock();
+
+  bar.getFoo3(a, b).mu_.Lock();
+  bar.getFoo3(a, b).a = 0;
+  bar.getFoo3(a, b).mu_.Unlock();
+
+  getBarFoo(bar, a).mu_.Lock();
+  getBarFoo(bar, a).a = 0;
+  getBarFoo(bar, a).mu_.Unlock();
+
+  bar.getFoo2(10).mu_.Lock();
+  bar.getFoo2(10).a = 0;
+  bar.getFoo2(10).mu_.Unlock();
+
+  bar.getFoo2(a + 1).mu_.Lock();
+  bar.getFoo2(a + 1).a = 0;
+  bar.getFoo2(a + 1).mu_.Unlock();
+
+  (a > 0 ? fooArray[1] : fooArray[b]).mu_.Lock();
+  (a > 0 ? fooArray[1] : fooArray[b]).a = 0;
+  (a > 0 ? fooArray[1] : fooArray[b]).mu_.Unlock();
+
+  bar.getFoo().mu_.Lock();
+  bar.getFooey().a = 0; // \
+    // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+  bar.getFoo().mu_.Unlock();
+
+  bar.getFoo2(a).mu_.Lock();
+  bar.getFoo2(b).a = 0; // \
+    // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+  bar.getFoo2(a).mu_.Unlock();
+
+  bar.getFoo3(a, b).mu_.Lock();
+  bar.getFoo3(a, c).a = 0;  // \
+    // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+  bar.getFoo3(a, b).mu_.Unlock();
+
+  getBarFoo(bar, a).mu_.Lock();
+  getBarFoo(bar, b).a = 0;  // \
+    // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+  getBarFoo(bar, a).mu_.Unlock();
+
+  (a > 0 ? fooArray[1] : fooArray[b]).mu_.Lock();
+  (a > 0 ? fooArray[b] : fooArray[c]).a = 0; // \
+    // expected-warning {{writing variable 'a' requires locking 'mu_' exclusively}}
+  (a > 0 ? fooArray[1] : fooArray[b]).mu_.Unlock();
+}
+
+
+} // end namespace
+
+

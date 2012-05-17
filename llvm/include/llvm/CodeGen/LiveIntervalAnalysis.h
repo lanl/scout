@@ -63,6 +63,9 @@ namespace llvm {
     /// allocatableRegs_ - A bit vector of allocatable registers.
     BitVector allocatableRegs_;
 
+    /// reservedRegs_ - A bit vector of reserved registers.
+    BitVector reservedRegs_;
+
     /// RegMaskSlots - Sorted list of instructions with register mask operands.
     /// Always use the 'r' slot, RegMasks are normal clobbers, not early
     /// clobbers.
@@ -81,6 +84,13 @@ namespace llvm {
     /// improve locality when searching in RegMaskSlots.
     /// Also see the comment in LiveInterval::find().
     SmallVector<const uint32_t*, 8> RegMaskBits;
+
+    /// For each basic block number, keep (begin, size) pairs indexing into the
+    /// RegMaskSlots and RegMaskBits arrays.
+    /// Note that basic block numbers may not be layout contiguous, that's why
+    /// we can't just keep track of the first register mask in each basic
+    /// block.
+    SmallVector<std::pair<unsigned, unsigned>, 8> RegMaskBlocks;
 
   public:
     static char ID; // Pass identification, replacement for typeid
@@ -121,24 +131,16 @@ namespace llvm {
       return allocatableRegs_.test(reg);
     }
 
-    /// getScaledIntervalSize - get the size of an interval in "units,"
-    /// where every function is composed of one thousand units.  This
-    /// measure scales properly with empty index slots in the function.
-    double getScaledIntervalSize(LiveInterval& I) {
-      return (1000.0 * I.getSize()) / indexes_->getIndexesLength();
-    }
-
-    /// getFuncInstructionCount - Return the number of instructions in the
-    /// current function.
-    unsigned getFuncInstructionCount() {
-      return indexes_->getFunctionSize();
+    /// isReserved - is the physical register reg reserved in the current
+    /// function
+    bool isReserved(unsigned reg) const {
+      return reservedRegs_.test(reg);
     }
 
     /// getApproximateInstructionCount - computes an estimate of the number
     /// of instructions in a given LiveInterval.
     unsigned getApproximateInstructionCount(LiveInterval& I) {
-      double IntervalPercentage = getScaledIntervalSize(I) / 1000.0;
-      return (unsigned)(IntervalPercentage * indexes_->getFunctionSize());
+      return I.getSize()/SlotIndex::InstrDist;
     }
 
     // Interval creation
@@ -255,18 +257,28 @@ namespace llvm {
                             const SmallVectorImpl<LiveInterval*> *SpillIs,
                             bool &isLoad);
 
-    /// intervalIsInOneMBB - Returns true if the specified interval is entirely
-    /// within a single basic block.
-    bool intervalIsInOneMBB(const LiveInterval &li) const;
+    /// intervalIsInOneMBB - If LI is confined to a single basic block, return
+    /// a pointer to that block.  If LI is live in to or out of any block,
+    /// return NULL.
+    MachineBasicBlock *intervalIsInOneMBB(const LiveInterval &LI) const;
 
     /// addKillFlags - Add kill flags to any instruction that kills a virtual
     /// register.
     void addKillFlags();
 
-    /// moveInstr - Move MachineInstr mi to insertPt, updating the live
-    /// intervals of mi's operands to reflect the new position. The insertion
-    /// point can be above or below mi, but must be in the same basic block.
-    void moveInstr(MachineBasicBlock::iterator insertPt, MachineInstr* mi);
+    /// handleMove - call this method to notify LiveIntervals that
+    /// instruction 'mi' has been moved within a basic block. This will update
+    /// the live intervals for all operands of mi. Moves between basic blocks
+    /// are not supported.
+    void handleMove(MachineInstr* MI);
+
+    /// moveIntoBundle - Update intervals for operands of MI so that they
+    /// begin/end on the SlotIndex for BundleStart.
+    ///
+    /// Requires MI and BundleStart to have SlotIndexes, and assumes
+    /// existing liveness is accurate. BundleStart should be the first
+    /// instruction in the Bundle.
+    void handleMoveIntoBundle(MachineInstr* MI, MachineInstr* BundleStart);
 
     // Register mask functions.
     //
@@ -279,9 +291,28 @@ namespace llvm {
     // LiveIntervalAnalysis maintains a sorted list of instructions with
     // register mask operands.
 
-    /// getRegMaskSlots - Returns asorted array of slot indices of all
+    /// getRegMaskSlots - Returns a sorted array of slot indices of all
     /// instructions with register mask operands.
     ArrayRef<SlotIndex> getRegMaskSlots() const { return RegMaskSlots; }
+
+    /// getRegMaskSlotsInBlock - Returns a sorted array of slot indices of all
+    /// instructions with register mask operands in the basic block numbered
+    /// MBBNum.
+    ArrayRef<SlotIndex> getRegMaskSlotsInBlock(unsigned MBBNum) const {
+      std::pair<unsigned, unsigned> P = RegMaskBlocks[MBBNum];
+      return getRegMaskSlots().slice(P.first, P.second);
+    }
+
+    /// getRegMaskBits() - Returns an array of register mask pointers
+    /// corresponding to getRegMaskSlots().
+    ArrayRef<const uint32_t*> getRegMaskBits() const { return RegMaskBits; }
+
+    /// getRegMaskBitsInBlock - Returns an array of mask pointers corresponding
+    /// to getRegMaskSlotsInBlock(MBBNum).
+    ArrayRef<const uint32_t*> getRegMaskBitsInBlock(unsigned MBBNum) const {
+      std::pair<unsigned, unsigned> P = RegMaskBlocks[MBBNum];
+      return getRegMaskBits().slice(P.first, P.second);
+    }
 
     /// checkRegMaskInterference - Test if LI is live across any register mask
     /// instructions, and compute a bit mask of physical registers that are not
@@ -328,7 +359,7 @@ namespace llvm {
     /// handleLiveInRegister - Create interval for a livein register.
     void handleLiveInRegister(MachineBasicBlock* mbb,
                               SlotIndex MIIdx,
-                              LiveInterval &interval, bool isAlias = false);
+                              LiveInterval &interval);
 
     /// getReMatImplicitUse - If the remat definition MI has one (for now, we
     /// only allow one) virtual register operand, then its uses are implicitly
@@ -354,6 +385,8 @@ namespace llvm {
 
     void printInstrs(raw_ostream &O) const;
     void dumpInstrs() const;
+
+    class HMEditor;
   };
 } // End llvm namespace
 

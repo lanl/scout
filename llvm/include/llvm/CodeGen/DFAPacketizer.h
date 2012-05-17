@@ -26,13 +26,19 @@
 #ifndef LLVM_CODEGEN_DFAPACKETIZER_H
 #define LLVM_CODEGEN_DFAPACKETIZER_H
 
+#include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/ADT/DenseMap.h"
+#include <map>
 
 namespace llvm {
 
 class MCInstrDesc;
 class MachineInstr;
+class MachineLoopInfo;
+class MachineDominatorTree;
 class InstrItineraryData;
+class DefaultVLIWScheduler;
+class SUnit;
 
 class DFAPacketizer {
 private:
@@ -72,6 +78,89 @@ public:
   // reserveResources - Reserve the resources occupied by a machine
   // instruction and change the current state to reflect that change.
   void reserveResources(llvm::MachineInstr *MI);
+
+  const InstrItineraryData *getInstrItins() const { return InstrItins; }
+};
+
+// VLIWPacketizerList - Implements a simple VLIW packetizer using DFA. The
+// packetizer works on machine basic blocks. For each instruction I in BB, the
+// packetizer consults the DFA to see if machine resources are available to
+// execute I. If so, the packetizer checks if I depends on any instruction J in
+// the current packet. If no dependency is found, I is added to current packet
+// and machine resource is marked as taken. If any dependency is found, a target
+// API call is made to prune the dependence.
+class VLIWPacketizerList {
+protected:
+  const TargetMachine &TM;
+  const MachineFunction &MF;
+  const TargetInstrInfo *TII;
+
+  // The VLIW Scheduler.
+  DefaultVLIWScheduler *VLIWScheduler;
+
+  // Vector of instructions assigned to the current packet.
+  std::vector<MachineInstr*> CurrentPacketMIs;
+  // DFA resource tracker.
+  DFAPacketizer *ResourceTracker;
+
+  // Generate MI -> SU map.
+  std::map<MachineInstr*, SUnit*> MIToSUnit;
+
+public:
+  VLIWPacketizerList(
+    MachineFunction &MF, MachineLoopInfo &MLI, MachineDominatorTree &MDT,
+    bool IsPostRA);
+
+  virtual ~VLIWPacketizerList();
+
+  // PacketizeMIs - Implement this API in the backend to bundle instructions.
+  void PacketizeMIs(MachineBasicBlock *MBB,
+                    MachineBasicBlock::iterator BeginItr,
+                    MachineBasicBlock::iterator EndItr);
+
+  // getResourceTracker - return ResourceTracker
+  DFAPacketizer *getResourceTracker() {return ResourceTracker;}
+
+  // addToPacket - Add MI to the current packet.
+  virtual MachineBasicBlock::iterator addToPacket(MachineInstr *MI) {
+    MachineBasicBlock::iterator MII = MI;
+    CurrentPacketMIs.push_back(MI);
+    ResourceTracker->reserveResources(MI);
+    return MII;
+  }
+
+  // endPacket - End the current packet.
+  void endPacket(MachineBasicBlock *MBB, MachineInstr *MI);
+
+  // initPacketizerState - perform initialization before packetizing
+  // an instruction. This function is supposed to be overrided by
+  // the target dependent packetizer.
+  virtual void initPacketizerState(void) { return; }
+
+  // ignorePseudoInstruction - Ignore bundling of pseudo instructions.
+  virtual bool ignorePseudoInstruction(MachineInstr *I,
+                                       MachineBasicBlock *MBB) {
+    return false;
+  }
+
+  // isSoloInstruction - return true if instruction MI can not be packetized
+  // with any other instruction, which means that MI itself is a packet.
+  virtual bool isSoloInstruction(MachineInstr *MI) {
+    return true;
+  }
+
+  // isLegalToPacketizeTogether - Is it legal to packetize SUI and SUJ
+  // together.
+  virtual bool isLegalToPacketizeTogether(SUnit *SUI, SUnit *SUJ) {
+    return false;
+  }
+
+  // isLegalToPruneDependencies - Is it legal to prune dependece between SUI
+  // and SUJ.
+  virtual bool isLegalToPruneDependencies(SUnit *SUI, SUnit *SUJ) {
+    return false;
+  }
+
 };
 }
 

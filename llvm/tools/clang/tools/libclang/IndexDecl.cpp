@@ -26,7 +26,7 @@ public:
   void handleDeclarator(DeclaratorDecl *D, const NamedDecl *Parent = 0) {
     if (!Parent) Parent = D;
 
-    if (!IndexCtx.indexFunctionLocalSymbols()) {
+    if (!IndexCtx.shouldIndexFunctionLocalSymbols()) {
       IndexCtx.indexTypeSourceInfo(D->getTypeSourceInfo(), Parent);
       IndexCtx.indexNestedNameSpecifierLoc(D->getQualifierLoc(), Parent);
     } else {
@@ -37,6 +37,24 @@ public:
                PI = FD->param_begin(), PE = FD->param_end(); PI != PE; ++PI) {
           IndexCtx.handleVar(*PI);
         }
+      }
+    }
+  }
+
+  void handleObjCMethod(ObjCMethodDecl *D) {
+    IndexCtx.handleObjCMethod(D);
+    if (D->isImplicit())
+      return;
+
+    IndexCtx.indexTypeSourceInfo(D->getResultTypeSourceInfo(), D);
+    for (ObjCMethodDecl::param_iterator
+           I = D->param_begin(), E = D->param_end(); I != E; ++I)
+      handleDeclarator(*I, D);
+
+    if (D->isThisDeclarationADefinition()) {
+      const Stmt *Body = D->getBody();
+      if (Body) {
+        IndexCtx.indexBody(Body, D, D);
       }
     }
   }
@@ -161,22 +179,22 @@ public:
   }
 
   bool VisitObjCMethodDecl(ObjCMethodDecl *D) {
-    IndexCtx.handleObjCMethod(D);
-    IndexCtx.indexTypeSourceInfo(D->getResultTypeSourceInfo(), D);
-    for (ObjCMethodDecl::param_iterator
-           I = D->param_begin(), E = D->param_end(); I != E; ++I)
-      handleDeclarator(*I, D);
+    // Methods associated with a property, even user-declared ones, are
+    // handled when we handle the property.
+    if (D->isSynthesized())
+      return true;
 
-    if (D->isThisDeclarationADefinition()) {
-      const Stmt *Body = D->getBody();
-      if (Body) {
-        IndexCtx.indexBody(Body, D, D);
-      }
-    }
+    handleObjCMethod(D);
     return true;
   }
 
   bool VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
+    if (ObjCMethodDecl *MD = D->getGetterMethodDecl())
+      if (MD->getLexicalDeclContext() == D->getLexicalDeclContext())
+        handleObjCMethod(MD);
+    if (ObjCMethodDecl *MD = D->getSetterMethodDecl())
+      if (MD->getLexicalDeclContext() == D->getLexicalDeclContext())
+        handleObjCMethod(MD);
     IndexCtx.handleObjCProperty(D);
     IndexCtx.indexTypeSourceInfo(D->getTypeSourceInfo(), D);
     return true;
@@ -198,11 +216,13 @@ public:
 
     if (ObjCMethodDecl *MD = PD->getGetterMethodDecl()) {
       if (MD->isSynthesized())
-        IndexCtx.handleSynthesizedObjCMethod(MD, D->getLocation());
+        IndexCtx.handleSynthesizedObjCMethod(MD, D->getLocation(),
+                                             D->getLexicalDeclContext());
     }
     if (ObjCMethodDecl *MD = PD->getSetterMethodDecl()) {
       if (MD->isSynthesized())
-        IndexCtx.handleSynthesizedObjCMethod(MD, D->getLocation());
+        IndexCtx.handleSynthesizedObjCMethod(MD, D->getLocation(),
+                                             D->getLexicalDeclContext());
     }
     return true;
   }
@@ -213,10 +233,44 @@ public:
     return true;
   }
 
+  bool VisitUsingDecl(UsingDecl *D) {
+    // FIXME: Parent for the following is CXIdxEntity_Unexposed with no USR,
+    // we should do better.
+
+    IndexCtx.indexNestedNameSpecifierLoc(D->getQualifierLoc(), D);
+    for (UsingDecl::shadow_iterator
+           I = D->shadow_begin(), E = D->shadow_end(); I != E; ++I) {
+      IndexCtx.handleReference((*I)->getUnderlyingDecl(), D->getLocation(),
+                               D, D->getLexicalDeclContext());
+    }
+    return true;
+  }
+
+  bool VisitUsingDirectiveDecl(UsingDirectiveDecl *D) {
+    // FIXME: Parent for the following is CXIdxEntity_Unexposed with no USR,
+    // we should do better.
+
+    IndexCtx.indexNestedNameSpecifierLoc(D->getQualifierLoc(), D);
+    IndexCtx.handleReference(D->getNominatedNamespaceAsWritten(),
+                             D->getLocation(), D, D->getLexicalDeclContext());
+    return true;
+  }
+
   bool VisitClassTemplateDecl(ClassTemplateDecl *D) {
     IndexCtx.handleClassTemplate(D);
     if (D->isThisDeclarationADefinition())
       IndexCtx.indexDeclContext(D->getTemplatedDecl());
+    return true;
+  }
+
+  bool VisitClassTemplateSpecializationDecl(
+                                           ClassTemplateSpecializationDecl *D) {
+    // FIXME: Notify subsequent callbacks if info comes from implicit
+    // instantiation.
+    if (D->isThisDeclarationADefinition() &&
+        (IndexCtx.shouldIndexImplicitTemplateInsts() ||
+         !IndexCtx.isTemplateImplicitInstantiation(D)))
+      IndexCtx.indexTagDecl(D);
     return true;
   }
 
@@ -274,7 +328,9 @@ void IndexingContext::indexDeclGroupRef(DeclGroupRef DG) {
 }
 
 void IndexingContext::indexTUDeclsInObjCContainer() {
-  for (unsigned i = 0, e = TUDeclsInObjCContainer.size(); i != e; ++i)
-    indexDeclGroupRef(TUDeclsInObjCContainer[i]);
-  TUDeclsInObjCContainer.clear();
+  while (!TUDeclsInObjCContainer.empty()) {
+    DeclGroupRef DG = TUDeclsInObjCContainer.front();
+    TUDeclsInObjCContainer.pop_front();
+    indexDeclGroupRef(DG);
+  }
 }

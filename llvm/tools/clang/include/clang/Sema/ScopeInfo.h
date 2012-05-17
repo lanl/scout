@@ -22,13 +22,31 @@
 namespace clang {
 
 class BlockDecl;
+class CXXMethodDecl;
 class IdentifierInfo;
 class LabelDecl;
 class ReturnStmt;
 class Scope;
 class SwitchStmt;
+class VarDecl;
 
 namespace sema {
+
+/// \brief Contains information about the compound statement currently being
+/// parsed.
+class CompoundScopeInfo {
+public:
+  CompoundScopeInfo()
+    : HasEmptyLoopBodies(false) { }
+
+  /// \brief Whether this compound stamement contains `for' or `while' loops
+  /// with empty bodies.
+  bool HasEmptyLoopBodies;
+
+  void setHasEmptyLoopBodies() {
+    HasEmptyLoopBodies = true;
+  }
+};
 
 class PossiblyUnreachableDiag {
 public:
@@ -77,7 +95,11 @@ public:
   /// block, if there is any chance of applying the named return value
   /// optimization.
   SmallVector<ReturnStmt*, 4> Returns;
-  
+
+  /// \brief The stack of currently active compound stamement scopes in the
+  /// function.
+  SmallVector<CompoundScopeInfo, 4> CompoundScopes;
+
   /// \brief A list of PartialDiagnostics created but delayed within the
   /// current function scope.  These diagnostics are vetted for reachability
   /// prior to being emitted.
@@ -149,16 +171,26 @@ public:
     /// \brief The source location at which the first capture occurred..
     SourceLocation Loc;
     
+    /// \brief The location of the ellipsis that expands a parameter pack.
+    SourceLocation EllipsisLoc;
+    
+    /// \brief The type as it was captured, which is in effect the type of the
+    /// non-static data member that would hold the capture.
+    QualType CaptureType;
+    
   public:
     Capture(VarDecl *Var, bool block, bool byRef, bool isNested, 
-            SourceLocation Loc, Expr *Cpy)
+            SourceLocation Loc, SourceLocation EllipsisLoc, 
+            QualType CaptureType, Expr *Cpy)
       : VarAndKind(Var, block ? Cap_Block : byRef ? Cap_ByRef : Cap_ByCopy),
-        CopyExprAndNested(Cpy, isNested) {}
+        CopyExprAndNested(Cpy, isNested), Loc(Loc), EllipsisLoc(EllipsisLoc),
+        CaptureType(CaptureType){}
 
     enum IsThisCapture { ThisCapture };
-    Capture(IsThisCapture, bool isNested, SourceLocation Loc)
-      : VarAndKind(0, Cap_This), CopyExprAndNested(0, isNested), Loc(Loc) {
-    }
+    Capture(IsThisCapture, bool isNested, SourceLocation Loc, 
+            QualType CaptureType, Expr *Cpy)
+      : VarAndKind(0, Cap_This), CopyExprAndNested(Cpy, isNested), Loc(Loc),
+        EllipsisLoc(), CaptureType(CaptureType) { }
 
     bool isThisCapture() const { return VarAndKind.getInt() == Cap_This; }
     bool isVariableCapture() const { return !isThisCapture(); }
@@ -173,6 +205,15 @@ public:
     
     /// \brief Retrieve the location at which this variable was captured.
     SourceLocation getLocation() const { return Loc; }
+    
+    /// \brief Retrieve the source location of the ellipsis, whose presence
+    /// indicates that the capture is a pack expansion.
+    SourceLocation getEllipsisLoc() const { return EllipsisLoc; }
+    
+    /// \brief Retrieve the capture type for this capture, which is effectively
+    /// the type of the non-static data member in the lambda/block structure
+    /// that would store this capture.
+    QualType getCaptureType() const { return CaptureType; }
     
     Expr *getCopyExpr() const {
       return CopyExprAndNested.getPointer();
@@ -202,14 +243,18 @@ public:
   /// or null if unknown.
   QualType ReturnType;
 
-  void AddCapture(VarDecl *Var, bool isBlock, bool isByref, bool isNested,
-                  SourceLocation Loc, Expr *Cpy) {
-    Captures.push_back(Capture(Var, isBlock, isByref, isNested, Loc, Cpy));
+  void addCapture(VarDecl *Var, bool isBlock, bool isByref, bool isNested,
+                  SourceLocation Loc, SourceLocation EllipsisLoc, 
+                  QualType CaptureType, Expr *Cpy) {
+    Captures.push_back(Capture(Var, isBlock, isByref, isNested, Loc, 
+                               EllipsisLoc, CaptureType, Cpy));
     CaptureMap[Var] = Captures.size();
   }
 
-  void AddThisCapture(bool isNested, SourceLocation Loc) {
-    Captures.push_back(Capture(Capture::ThisCapture, isNested, Loc));
+  void addThisCapture(bool isNested, SourceLocation Loc, QualType CaptureType,
+                      Expr *Cpy) {
+    Captures.push_back(Capture(Capture::ThisCapture, isNested, Loc, CaptureType,
+                               Cpy));
     CXXThisCaptureIndex = Captures.size();
   }
 
@@ -299,6 +344,13 @@ public:
   /// \brief Whether any of the capture expressions requires cleanups.
   bool ExprNeedsCleanups;
 
+  /// \brief Variables used to index into by-copy array captures.
+  llvm::SmallVector<VarDecl *, 4> ArrayIndexVars;
+
+  /// \brief Offsets into the ArrayIndexVars array at which each capture starts
+  /// its list of array index variables.
+  llvm::SmallVector<unsigned, 4> ArrayIndexStarts;
+  
   LambdaScopeInfo(DiagnosticsEngine &Diag, CXXRecordDecl *Lambda,
                   CXXMethodDecl *CallOperator)
     : CapturingScopeInfo(Diag, ImpCap_None), Lambda(Lambda),

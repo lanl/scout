@@ -264,3 +264,15 @@
 @ CHECK: vst1.8	{d4, d5}, [r2]          @ encoding: [0x0f,0x4a,0x02,0xf4]
 @ CHECK: vst1.8	{d4, d5}, [r2]          @ encoding: [0x0f,0x4a,0x02,0xf4]
 @ CHECK: vst1.32 {d4, d5}, [r2]         @ encoding: [0x8f,0x4a,0x02,0xf4]
+
+@ rdar://11082188
+        vst2.8 {d8, d10}, [r4]
+@ CHECK: vst2.8	{d8, d10}, [r4]         @ encoding: [0x0f,0x89,0x04,0xf4]
+
+        vst1.32 {d9[1]}, [r3, :32]
+        vst1.32 {d27[1]}, [r9, :32]!
+        vst1.32 {d27[1]}, [r3, :32], r5
+@ CHECK: vst1.32	{d9[1]}, [r3, :32]       @ encoding: [0xbf,0x98,0x83,0xf4]
+@ CHECK: vst1.32	{d27[1]}, [r9, :32]!     @ encoding: [0xbd,0xb8,0xc9,0xf4]
+@ CHECK: vst1.32	{d27[1]}, [r3, :32], r5  @ encoding: [0xb5,0xb8,0xc3,0xf4]
+

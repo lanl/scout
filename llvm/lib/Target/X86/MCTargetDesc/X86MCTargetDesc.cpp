@@ -1,4 +1,4 @@
-//===-- X86MCTargetDesc.cpp - X86 Target Descriptions -----------*- C++ -*-===//
+//===-- X86MCTargetDesc.cpp - X86 Target Descriptions ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -35,6 +35,10 @@
 
 #define GET_SUBTARGETINFO_MC_DESC
 #include "X86GenSubtargetInfo.inc"
+
+#if _MSC_VER
+#include <intrin.h>
+#endif
 
 using namespace llvm;
 
@@ -470,11 +474,13 @@ static MCStreamer *createMCStreamer(const Target &T, StringRef TT,
 static MCInstPrinter *createX86MCInstPrinter(const Target &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
+                                             const MCInstrInfo &MII,
+                                             const MCRegisterInfo &MRI,
                                              const MCSubtargetInfo &STI) {
   if (SyntaxVariant == 0)
-    return new X86ATTInstPrinter(MAI);
+    return new X86ATTInstPrinter(MAI, MII, MRI);
   if (SyntaxVariant == 1)
-    return new X86IntelInstPrinter(MAI);
+    return new X86IntelInstPrinter(MAI, MII, MRI);
   return 0;
 }
 

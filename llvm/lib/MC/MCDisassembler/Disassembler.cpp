@@ -15,9 +15,12 @@
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
@@ -35,6 +38,18 @@ using namespace llvm;
 LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
                                       int TagType, LLVMOpInfoCallback GetOpInfo,
                                       LLVMSymbolLookupCallback SymbolLookUp) {
+  // Initialize targets and assembly printers/parsers.
+  // FIXME: Clients are responsible for initializing the targets. And this
+  // would be done by calling routines in "llvm-c/Target.h" which are static
+  // line functions. But the current use of LLVMCreateDisasm() is to dynamically
+  // load libLTO with dlopen() and then lookup the symbols using dlsym().
+  // And since these initialize routines are static that does not work which
+  // is why the call to them in this 'C' library API was added back.
+  llvm::InitializeAllTargetInfos();
+  llvm::InitializeAllTargetMCs();
+  llvm::InitializeAllAsmParsers();
+  llvm::InitializeAllDisassemblers();
+
   // Get the target.
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, Error);
@@ -43,6 +58,9 @@ LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
   // Get the assembler info needed to setup the MCContext.
   const MCAsmInfo *MAI = TheTarget->createMCAsmInfo(TripleName);
   assert(MAI && "Unable to create target asm info!");
+
+  const MCInstrInfo *MII = TheTarget->createMCInstrInfo();
+  assert(MII && "Unable to create target instruction info!");
 
   const MCRegisterInfo *MRI = TheTarget->createMCRegInfo(TripleName);
   assert(MRI && "Unable to create target register info!");
@@ -67,13 +85,13 @@ LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
   // Set up the instruction printer.
   int AsmPrinterVariant = MAI->getAssemblerDialect();
   MCInstPrinter *IP = TheTarget->createMCInstPrinter(AsmPrinterVariant,
-                                                     *MAI, *STI);
+                                                     *MAI, *MII, *MRI, *STI);
   assert(IP && "Unable to create instruction printer!");
 
   LLVMDisasmContext *DC = new LLVMDisasmContext(TripleName, DisInfo, TagType,
                                                 GetOpInfo, SymbolLookUp,
                                                 TheTarget, MAI, MRI,
-                                                Ctx, DisAsm, IP);
+                                                STI, MII, Ctx, DisAsm, IP);
   assert(DC && "Allocation failure!");
 
   return DC;
@@ -100,9 +118,9 @@ public:
                      Bytes(bytes), Size(size), BasePC(basePC) {}
  
   uint64_t getBase() const { return BasePC; }
-  uint64_t getExtent() { return Size; }
+  uint64_t getExtent() const { return Size; }
 
-  int readByte(uint64_t Addr, uint8_t *Byte) {
+  int readByte(uint64_t Addr, uint8_t *Byte) const {
     if (Addr - BasePC >= Size)
       return -1;
     *Byte = Bytes[Addr - BasePC];

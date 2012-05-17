@@ -1,4 +1,4 @@
-//===- X86InstrControl.td - Control Flow Instructions ------*- tablegen -*-===//
+//===-- X86InstrControl.td - Control Flow Instructions -----*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -21,20 +21,25 @@ let isTerminator = 1, isReturn = 1, isBarrier = 1,
   def RET    : I   <0xC3, RawFrm, (outs), (ins variable_ops),
                     "ret",
                     [(X86retflag 0)], IIC_RET>;
+  def RETW   : I   <0xC3, RawFrm, (outs), (ins variable_ops),
+                    "ret{w}",
+                    [], IIC_RET>, OpSize;
   def RETI   : Ii16<0xC2, RawFrm, (outs), (ins i16imm:$amt, variable_ops),
                     "ret\t$amt",
                     [(X86retflag timm:$amt)], IIC_RET_IMM>;
   def RETIW  : Ii16<0xC2, RawFrm, (outs), (ins i16imm:$amt, variable_ops),
-                    "retw\t$amt",
+                    "ret{w}\t$amt",
                     [], IIC_RET_IMM>, OpSize;
   def LRETL  : I   <0xCB, RawFrm, (outs), (ins),
-                    "lretl", [], IIC_RET>;
+                    "{l}ret{l|f}", [], IIC_RET>;
+  def LRETW  : I   <0xCB, RawFrm, (outs), (ins),
+                    "{l}ret{w|f}", [], IIC_RET>, OpSize;
   def LRETQ  : RI  <0xCB, RawFrm, (outs), (ins),
-                    "lretq", [], IIC_RET>;
+                    "{l}ret{q|f}", [], IIC_RET>;
   def LRETI  : Ii16<0xCA, RawFrm, (outs), (ins i16imm:$amt),
-                    "lret\t$amt", [], IIC_RET>;
+                    "{l}ret{l|f}\t$amt", [], IIC_RET>;
   def LRETIW : Ii16<0xCA, RawFrm, (outs), (ins i16imm:$amt),
-                    "lretw\t$amt", [], IIC_RET>, OpSize;
+                    "{l}ret{w|f}\t$amt", [], IIC_RET>, OpSize;
 }
 
 // Unconditional branches.
@@ -77,7 +82,7 @@ defm JLE : ICBr<0x7E, 0x8E, "jle\t$dst", X86_COND_LE>;
 defm JG  : ICBr<0x7F, 0x8F, "jg\t$dst" , X86_COND_G>;
 
 // jcx/jecx/jrcx instructions.
-let isAsmParserOnly = 1, isBranch = 1, isTerminator = 1 in {
+let isBranch = 1, isTerminator = 1 in {
   // These are the 32-bit versions of this instruction for the asmparser.  In
   // 32-bit mode, the address size prefix is jcxz and the unprefixed version is
   // jecxz.
@@ -141,11 +146,7 @@ let isCall = 1 in
   // a use to prevent stack-pointer assignments that appear immediately
   // before calls from potentially appearing dead. Uses for argument
   // registers are added manually.
-  let Defs = [EAX, ECX, EDX, FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
-              XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
-      Uses = [ESP] in {
+  let Uses = [ESP] in {
     def CALLpcrel32 : Ii32PCRel<0xE8, RawFrm,
                            (outs), (ins i32imm_pcrel:$dst,variable_ops),
                            "call{l}\t$dst", [], IIC_CALL_RI>, Requires<[In32BitMode]>;
@@ -182,15 +183,11 @@ let isCall = 1 in
 
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
     isCodeGenOnly = 1 in
-  let Defs = [EAX, ECX, EDX, FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
-              XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
-      Uses = [ESP] in {
+  let Uses = [ESP] in {
   def TCRETURNdi : PseudoI<(outs),
                      (ins i32imm_pcrel:$dst, i32imm:$offset, variable_ops), []>;
   def TCRETURNri : PseudoI<(outs),
-                     (ins GR32_TC:$dst, i32imm:$offset, variable_ops), []>;
+                     (ins ptr_rc_tailcall:$dst, i32imm:$offset, variable_ops), []>;
   let mayLoad = 1 in
   def TCRETURNmi : PseudoI<(outs),
                      (ins i32mem_TC:$dst, i32imm:$offset, variable_ops), []>;
@@ -201,7 +198,7 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
                            (ins i32imm_pcrel:$dst, variable_ops),
                            "jmp\t$dst  # TAILCALL",
                            [], IIC_JMP_REL>;
-  def TAILJMPr : I<0xFF, MRM4r, (outs), (ins GR32_TC:$dst, variable_ops),
+  def TAILJMPr : I<0xFF, MRM4r, (outs), (ins ptr_rc_tailcall:$dst, variable_ops),
                    "", [], IIC_JMP_REG>;  // FIXME: Remove encoding when JIT is dead.
   let mayLoad = 1 in
   def TAILJMPm : I<0xFF, MRM4m, (outs), (ins i32mem_TC:$dst, variable_ops),
@@ -212,64 +209,30 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
 //===----------------------------------------------------------------------===//
 //  Call Instructions...
 //
-let isCall = 1 in
-  // All calls clobber the non-callee saved registers. RSP is marked as
-  // a use to prevent stack-pointer assignments that appear immediately
-  // before calls from potentially appearing dead. Uses for argument
-  // registers are added manually.
-  let Defs = [RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11,
-              FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0, ST1,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
-              XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
-      Uses = [RSP] in {
 
-    // NOTE: this pattern doesn't match "X86call imm", because we do not know
-    // that the offset between an arbitrary immediate and the call will fit in
-    // the 32-bit pcrel field that we have.
-    def CALL64pcrel32 : Ii32PCRel<0xE8, RawFrm,
-                          (outs), (ins i64i32imm_pcrel:$dst, variable_ops),
-                          "call{q}\t$dst", [], IIC_CALL_RI>,
-                        Requires<[In64BitMode, NotWin64]>;
-    def CALL64r       : I<0xFF, MRM2r, (outs), (ins GR64:$dst, variable_ops),
-                          "call{q}\t{*}$dst", [(X86call GR64:$dst)],
-                          IIC_CALL_RI>,
-                        Requires<[In64BitMode, NotWin64]>;
-    def CALL64m       : I<0xFF, MRM2m, (outs), (ins i64mem:$dst, variable_ops),
-                          "call{q}\t{*}$dst", [(X86call (loadi64 addr:$dst))],
-                          IIC_CALL_MEM>,
-                        Requires<[In64BitMode, NotWin64]>;
+// RSP is marked as a use to prevent stack-pointer assignments that appear
+// immediately before calls from potentially appearing dead. Uses for argument
+// registers are added manually.
+let isCall = 1, Uses = [RSP] in {
+  // NOTE: this pattern doesn't match "X86call imm", because we do not know
+  // that the offset between an arbitrary immediate and the call will fit in
+  // the 32-bit pcrel field that we have.
+  def CALL64pcrel32 : Ii32PCRel<0xE8, RawFrm,
+                        (outs), (ins i64i32imm_pcrel:$dst, variable_ops),
+                        "call{q}\t$dst", [], IIC_CALL_RI>,
+                      Requires<[In64BitMode]>;
+  def CALL64r       : I<0xFF, MRM2r, (outs), (ins GR64:$dst, variable_ops),
+                        "call{q}\t{*}$dst", [(X86call GR64:$dst)],
+                        IIC_CALL_RI>,
+                      Requires<[In64BitMode]>;
+  def CALL64m       : I<0xFF, MRM2m, (outs), (ins i64mem:$dst, variable_ops),
+                        "call{q}\t{*}$dst", [(X86call (loadi64 addr:$dst))],
+                        IIC_CALL_MEM>,
+                      Requires<[In64BitMode]>;
 
-    def FARCALL64   : RI<0xFF, MRM3m, (outs), (ins opaque80mem:$dst),
-                         "lcall{q}\t{*}$dst", [], IIC_CALL_FAR_MEM>;
-  }
-
-  // FIXME: We need to teach codegen about single list of call-clobbered
-  // registers.
-let isCall = 1, isCodeGenOnly = 1 in
-  // All calls clobber the non-callee saved registers. RSP is marked as
-  // a use to prevent stack-pointer assignments that appear immediately
-  // before calls from potentially appearing dead. Uses for argument
-  // registers are added manually.
-  let Defs = [RAX, RCX, RDX, R8, R9, R10, R11,
-              FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0, ST1,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, YMM_HI_6_15, EFLAGS],
-      Uses = [RSP] in {
-    def WINCALL64pcrel32 : Ii32PCRel<0xE8, RawFrm,
-                             (outs), (ins i64i32imm_pcrel:$dst, variable_ops),
-                             "call{q}\t$dst", [], IIC_CALL_RI>,
-                           Requires<[IsWin64]>;
-    def WINCALL64r       : I<0xFF, MRM2r, (outs), (ins GR64:$dst, variable_ops),
-                             "call{q}\t{*}$dst",
-                             [(X86call GR64:$dst)], IIC_CALL_RI>,
-                           Requires<[IsWin64]>;
-    def WINCALL64m       : I<0xFF, MRM2m, (outs),
-                              (ins i64mem:$dst,variable_ops),
-                             "call{q}\t{*}$dst",
-                             [(X86call (loadi64 addr:$dst))], IIC_CALL_MEM>,
-                           Requires<[IsWin64]>;
-  }
+  def FARCALL64   : RI<0xFF, MRM3m, (outs), (ins opaque80mem:$dst),
+                       "lcall{q}\t{*}$dst", [], IIC_CALL_FAR_MEM>;
+}
 
 let isCall = 1, isCodeGenOnly = 1 in
   // __chkstk(MSVC):     clobber R10, R11 and EFLAGS.
@@ -284,12 +247,7 @@ let isCall = 1, isCodeGenOnly = 1 in
 
 let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
     isCodeGenOnly = 1 in
-  // AMD64 cc clobbers RSI, RDI, XMM6-XMM15.
-  let Defs = [RAX, RCX, RDX, R8, R9, R10, R11,
-              FP0, FP1, FP2, FP3, FP4, FP5, FP6, ST0, ST1,
-              MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
-              XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, EFLAGS],
-      Uses = [RSP],
+  let Uses = [RSP],
       usesCustomInserter = 1 in {
   def TCRETURNdi64 : PseudoI<(outs),
                       (ins i64i32imm_pcrel:$dst, i32imm:$offset, variable_ops),

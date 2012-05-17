@@ -175,7 +175,6 @@ SED        := @SED@
 TAR        := @TAR@
 
 # Paths to miscellaneous programs we hope are present but might not be
-PERL       := @PERL@
 BZIP2      := @BZIP2@
 CAT        := @CAT@
 DOT        := @DOT@
@@ -194,7 +193,6 @@ RUNTEST    := @RUNTEST@
 TCLSH      := @TCLSH@
 ZIP        := @ZIP@
 
-HAVE_PERL    := @HAVE_PERL@
 HAVE_PTHREAD := @HAVE_PTHREAD@
 
 LIBS       := @LIBS@
@@ -337,9 +335,26 @@ BINUTILS_INCDIR := @BINUTILS_INCDIR@
 NO_MISSING_FIELD_INITIALIZERS = @NO_MISSING_FIELD_INITIALIZERS@
 # -Wno-variadic-macros
 NO_VARIADIC_MACROS = @NO_VARIADIC_MACROS@
+# -Wcovered-switch-default
+COVERED_SWITCH_DEFAULT = @COVERED_SWITCH_DEFAULT@
 
 # Was polly found in tools/polly?
 LLVM_HAS_POLLY = @LLVM_HAS_POLLY@
 # Flags supported by the linker.
 # bfd ld / gold --version-script=file
 HAVE_LINK_VERSION_SCRIPT = @HAVE_LINK_VERSION_SCRIPT@
+
+# Flags to control building support for Intel JIT Events API
+USE_INTEL_JITEVENTS := @USE_INTEL_JITEVENTS@
+INTEL_JITEVENTS_INCDIR := @INTEL_JITEVENTS_INCDIR@
+INTEL_JITEVENTS_LIBDIR := @INTEL_JITEVENTS_LIBDIR@
+
+# Flags to control building support for OProfile JIT API
+USE_OPROFILE := @USE_OPROFILE@
+
+ifeq ($(USE_INTEL_JITEVENTS), 1)
+  OPTIONAL_COMPONENTS += IntelJITEvents
+endif
+ifeq ($(USE_OPROFILE), 1)
+  OPTIONAL_COMPONENTS += OProfileJIT
+endif

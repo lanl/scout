@@ -95,8 +95,40 @@ void HTMLDiagnostics::FlushDiagnosticsImpl(
   }
 }
 
+static void flattenPath(PathPieces &primaryPath, PathPieces &currentPath,
+                        const PathPieces &oldPath) {
+  for (PathPieces::const_iterator it = oldPath.begin(), et = oldPath.end();
+       it != et; ++it ) {
+    PathDiagnosticPiece *piece = it->getPtr();
+    if (const PathDiagnosticCallPiece *call =
+        dyn_cast<PathDiagnosticCallPiece>(piece)) {
+      IntrusiveRefCntPtr<PathDiagnosticEventPiece> callEnter =
+        call->getCallEnterEvent();
+      if (callEnter)
+        currentPath.push_back(callEnter);
+      flattenPath(primaryPath, primaryPath, call->path);
+      IntrusiveRefCntPtr<PathDiagnosticEventPiece> callExit =
+        call->getCallExitEvent();
+      if (callExit)
+        currentPath.push_back(callExit);
+      continue;
+    }
+    if (PathDiagnosticMacroPiece *macro =
+        dyn_cast<PathDiagnosticMacroPiece>(piece)) {
+      currentPath.push_back(piece);
+      PathPieces newPath;
+      flattenPath(primaryPath, newPath, macro->subPieces);
+      macro->subPieces = newPath;
+      continue;
+    }
+    
+    currentPath.push_back(piece);
+  }
+}
+
 void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
-                                 SmallVectorImpl<std::string> *FilesMade){
+                                 SmallVectorImpl<std::string> *FilesMade) {
+    
   // Create the HTML directory if it is missing.
   if (!createdDir) {
     createdDir = true;
@@ -119,43 +151,27 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
   if (noDir)
     return;
 
-  const SourceManager &SMgr = (*D.path.begin())->getLocation().getManager();
-  FileID FID;
+  // First flatten out the entire path to make it easier to use.
+  PathPieces path;
+  flattenPath(path, path, D.path);
 
-  // Verify that the entire path is from the same FileID.
-  for (PathPieces::const_iterator I = D.path.begin(), E = D.path.end();
-       I != E; ++I) {
-    FullSourceLoc L = (*I)->getLocation().asLocation().getExpansionLoc();
-
-    if (FID.isInvalid()) {
-      FID = SMgr.getFileID(L);
-    } else if (SMgr.getFileID(L) != FID)
-      return; // FIXME: Emit a warning?
-
-    // Check the source ranges.
-    for (PathDiagnosticPiece::range_iterator RI = (*I)->ranges_begin(),
-                                             RE = (*I)->ranges_end();
-                                             RI != RE; ++RI) {
-      SourceLocation L = SMgr.getExpansionLoc(RI->getBegin());
-      if (!L.isFileID() || SMgr.getFileID(L) != FID)
-        return; // FIXME: Emit a warning?
-      L = SMgr.getExpansionLoc(RI->getEnd());
-      if (!L.isFileID() || SMgr.getFileID(L) != FID)
-        return; // FIXME: Emit a warning?
-    }
-  }
-
-  if (FID.isInvalid())
-    return; // FIXME: Emit a warning?
+  // The path as already been prechecked that all parts of the path are
+  // from the same file and that it is non-empty.
+  const SourceManager &SMgr = (*path.begin())->getLocation().getManager();
+  assert(!path.empty());
+  FileID FID =
+    (*path.begin())->getLocation().asLocation().getExpansionLoc().getFileID();
+  assert(!FID.isInvalid());
 
   // Create a new rewriter to generate HTML.
-  Rewriter R(const_cast<SourceManager&>(SMgr), PP.getLangOptions());
+  Rewriter R(const_cast<SourceManager&>(SMgr), PP.getLangOpts());
 
   // Process the path.
-  unsigned n = D.path.size();
+  unsigned n = path.size();
   unsigned max = n;
 
-  for (PathPieces::const_reverse_iterator I = D.path.rbegin(), E=D.path.rend();
+  for (PathPieces::const_reverse_iterator I = path.rbegin(), 
+       E = path.rend();
         I != E; ++I, --n)
     HandlePiece(R, FID, **I, n, max);
 
@@ -200,9 +216,9 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
       << html::EscapeText(Entry->getName())
       << "</td></tr>\n<tr><td class=\"rowname\">Location:</td><td>"
          "<a href=\"#EndPath\">line "
-      << (*D.path.rbegin())->getLocation().asLocation().getExpansionLineNumber()
+      << (*path.rbegin())->getLocation().asLocation().getExpansionLineNumber()
       << ", column "
-      << (*D.path.rbegin())->getLocation().asLocation().getExpansionColumnNumber()
+      << (*path.rbegin())->getLocation().asLocation().getExpansionColumnNumber()
       << "</a></td></tr>\n"
          "<tr><td class=\"rowname\">Description:</td><td>"
       << D.getDescription() << "</td></tr>\n";
@@ -240,10 +256,10 @@ void HTMLDiagnostics::ReportDiag(const PathDiagnostic& D,
     os << "\n<!-- BUGFILE " << DirName << Entry->getName() << " -->\n";
 
     os << "\n<!-- BUGLINE "
-       << D.path.back()->getLocation().asLocation().getExpansionLineNumber()
+       << path.back()->getLocation().asLocation().getExpansionLineNumber()
        << " -->\n";
 
-    os << "\n<!-- BUGPATHLENGTH " << D.path.size() << " -->\n";
+    os << "\n<!-- BUGPATHLENGTH " << path.size() << " -->\n";
 
     // Mark the end of the tags.
     os << "\n<!-- BUGMETAEND -->\n";
@@ -332,8 +348,8 @@ void HTMLDiagnostics::HandlePiece(Rewriter& R, FileID BugFileID,
 
   const char *Kind = 0;
   switch (P.getKind()) {
-  case PathDiagnosticPiece::CallEnter:
-  case PathDiagnosticPiece::CallExit:
+  case PathDiagnosticPiece::Call:
+      llvm_unreachable("Calls should already be handled");
   case PathDiagnosticPiece::Event:  Kind = "Event"; break;
   case PathDiagnosticPiece::ControlFlow: Kind = "Control"; break;
     // Setting Kind to "Control" is intentional.
@@ -425,9 +441,10 @@ void HTMLDiagnostics::HandlePiece(Rewriter& R, FileID BugFileID,
       FullSourceLoc L = MP->getLocation().asLocation().getExpansionLoc();
       assert(L.isFileID());
       StringRef BufferInfo = L.getBufferData();
-      const char* MacroName = L.getDecomposedLoc().second + BufferInfo.data();
-      Lexer rawLexer(L, PP.getLangOptions(), BufferInfo.begin(),
-                     MacroName, BufferInfo.end());
+      std::pair<FileID, unsigned> LocInfo = L.getDecomposedLoc();
+      const char* MacroName = LocInfo.second + BufferInfo.data();
+      Lexer rawLexer(SM.getLocForStartOfFile(LocInfo.first), PP.getLangOpts(),
+                     BufferInfo.begin(), MacroName, BufferInfo.end());
 
       Token TheTok;
       rawLexer.LexFromRawLexer(TheTok);

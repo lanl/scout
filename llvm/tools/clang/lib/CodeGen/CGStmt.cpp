@@ -26,7 +26,10 @@
 #include "llvm/InlineAsm.h"
 #include "llvm/Intrinsics.h"
 #include "llvm/Target/TargetData.h"
-#include "llvm/Transforms/Utils/FunctionUtils.h"
+
+// SCOUTCODE - include code extractor
+#include "llvm/Transforms/Utils/CodeExtractor.h"
+// ENDSCOUTCODE
 
 #include <map>
 
@@ -88,6 +91,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::CompoundStmtClass:
   case Stmt::DeclStmtClass:
   case Stmt::LabelStmtClass:
+  case Stmt::AttributedStmtClass:
   case Stmt::GotoStmtClass:
   case Stmt::BreakStmtClass:
   case Stmt::ContinueStmtClass:
@@ -196,6 +200,8 @@ bool CodeGenFunction::EmitSimpleStmt(const Stmt *S) {
   case Stmt::CompoundStmtClass: EmitCompoundStmt(cast<CompoundStmt>(*S)); break;
   case Stmt::DeclStmtClass:     EmitDeclStmt(cast<DeclStmt>(*S));         break;
   case Stmt::LabelStmtClass:    EmitLabelStmt(cast<LabelStmt>(*S));       break;
+  case Stmt::AttributedStmtClass:
+                            EmitAttributedStmt(cast<AttributedStmt>(*S)); break;
   case Stmt::GotoStmtClass:     EmitGotoStmt(cast<GotoStmt>(*S));         break;
   case Stmt::BreakStmtClass:    EmitBreakStmt(cast<BreakStmt>(*S));       break;
   case Stmt::ContinueStmtClass: EmitContinueStmt(cast<ContinueStmt>(*S)); break;
@@ -215,19 +221,12 @@ RValue CodeGenFunction::EmitCompoundStmt(const CompoundStmt &S, bool GetLast,
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
                              "LLVM IR generation of compound statement ('{}')");
 
-  CGDebugInfo *DI = getDebugInfo();
-  if (DI)
-    DI->EmitLexicalBlockStart(Builder, S.getLBracLoc());
-
-  // Keep track of the current cleanup stack depth.
-  RunCleanupsScope Scope(*this);
+  // Keep track of the current cleanup stack depth, including debug scopes.
+  LexicalScope Scope(*this, S.getSourceRange());
 
   for (CompoundStmt::const_body_iterator I = S.body_begin(),
        E = S.body_end()-GetLast; I != E; ++I)
     EmitStmt(*I);
-
-  if (DI)
-    DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
 
   RValue RV;
   if (!GetLast)
@@ -361,6 +360,10 @@ void CodeGenFunction::EmitLabel(const LabelDecl *D) {
 
 void CodeGenFunction::EmitLabelStmt(const LabelStmt &S) {
   EmitLabel(S.getDecl());
+  EmitStmt(S.getSubStmt());
+}
+
+void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
   EmitStmt(S.getSubStmt());
 }
 
@@ -600,7 +603,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
-
+  
   ScoutMeshSizes.clear();
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
     llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
@@ -618,10 +621,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
 
-    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    llvm::StringRef name = dyn_cast< FieldDecl >(&*it)->getName();
     meshFieldMap[name.str()] = true;
     
-    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
+    QualType Ty = dyn_cast< FieldDecl >(&*it)->getType();
     
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
@@ -657,7 +660,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
     Colors = Builder.CreateLoad(local_colors, "colors");
   }
-
+  
   llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
@@ -693,15 +696,21 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
 
   llvm::BasicBlock *split;
-  for( ; BB->getName() != entry->getName(); ++BB) split = BB;
+  for( ; BB->getName() != entry->getName(); ++BB){
+    split = BB;
+  }
 
+  typedef llvm::BasicBlock::iterator InstIterator;
+  
   for( ; BB != BB_end; ++BB) {
     region.push_back(BB);
   }
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
-  llvm::Function *ForallFn = ExtractCodeRegion(DT, region);
+  
+  llvm::Function *ForallFn = 
+  llvm::CodeExtractor(region, &DT, false).extractCodeRegion();
   
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
@@ -919,7 +928,11 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
-  llvm::Function *ForallArrayFn = ExtractCodeRegion(DT, region);
+
+  llvm::CodeExtractor codeExtractor(region,
+                                    &DT, false);
+  
+  llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
   ForallArrayFn->setName("forall_array");
   
@@ -1387,7 +1400,7 @@ void CodeGenFunction::EmitDeclStmt(const DeclStmt &S) {
   DEBUG_OUT("EmitDeclStmt");
   // As long as debug info is modeled with instructions, we have to ensure we
   // have a place to insert here and write the stop point here.
-  if (getDebugInfo() && HaveInsertPoint())
+  if (HaveInsertPoint())
     EmitStopPoint(&S);
 
   for (DeclStmt::const_decl_iterator I = S.decl_begin(), E = S.decl_end();
@@ -1501,7 +1514,7 @@ void CodeGenFunction::EmitCaseStmt(const CaseStmt &S) {
 
   // If the body of the case is just a 'break', and if there was no fallthrough,
   // try to not emit an empty block.
-  if (isa<BreakStmt>(S.getSubStmt())) {
+  if ((CGM.getCodeGenOpts().OptimizationLevel > 0) && isa<BreakStmt>(S.getSubStmt())) {
     JumpDest Block = BreakContinueStack.back().BreakBlock;
 
     // Only do this optimization if there are no cleanups that need emitting.
@@ -1787,8 +1800,8 @@ void CodeGenFunction::EmitSwitchStmt(const SwitchStmt &S) {
       for (unsigned i = 0, e = CaseStmts.size(); i != e; ++i)
         EmitStmt(CaseStmts[i]);
 
-      // Now we want to restore the saved switch instance so that nested switches
-      // continue to function properly
+      // Now we want to restore the saved switch instance so that nested
+      // switches continue to function properly
       SwitchInsn = SavedSwitchInsn;
 
       return;
@@ -1904,6 +1917,8 @@ AddVariableConstraints(const std::string &Constraint, const Expr &AsmExpr,
   const VarDecl *Variable = dyn_cast<VarDecl>(&Value);
   if (!Variable)
     return Constraint;
+  if (Variable->getStorageClass() != SC_Register)
+    return Constraint;
   AsmLabelAttr *Attr = Variable->getAttr<AsmLabelAttr>();
   if (!Attr)
     return Constraint;
@@ -1979,7 +1994,7 @@ static llvm::MDNode *getAsmSrcLocInfo(const StringLiteral *Str,
   StringRef StrVal = Str->getString();
   if (!StrVal.empty()) {
     const SourceManager &SM = CGF.CGM.getContext().getSourceManager();
-    const LangOptions &LangOpts = CGF.CGM.getLangOptions();
+    const LangOptions &LangOpts = CGF.CGM.getLangOpts();
 
     // Add the location of the start of each subsequent line of the asm to the
     // MDNode.
@@ -2041,7 +2056,7 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
   std::vector<QualType> ResultRegQualTys;
   std::vector<llvm::Type *> ResultRegTypes;
   std::vector<llvm::Type *> ResultTruncRegTypes;
-  std::vector<llvm::Type*> ArgTypes;
+  std::vector<llvm::Type *> ArgTypes;
   std::vector<llvm::Value*> Args;
 
   // Keep track of inout constraints.
@@ -2113,6 +2128,11 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
       const Expr *InputExpr = S.getOutputExpr(i);
       llvm::Value *Arg = EmitAsmInputLValue(S, Info, Dest, InputExpr->getType(),
                                             InOutConstraints);
+
+      if (llvm::Type* AdjTy =
+            getTargetHooks().adjustInlineAsmType(*this, OutputConstraint,
+                                                 Arg->getType()))
+        Arg = Builder.CreateBitCast(Arg, AdjTy);
 
       if (Info.allowsRegister())
         InOutConstraints += llvm::utostr(i);

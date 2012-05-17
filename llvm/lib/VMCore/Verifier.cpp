@@ -1,4 +1,4 @@
-//===-- Verifier.cpp - Implement the Module Verifier -------------*- C++ -*-==//
+//===-- Verifier.cpp - Implement the Module Verifier -----------------------==//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -51,6 +51,7 @@
 #include "llvm/DerivedTypes.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/IntrinsicInst.h"
+#include "llvm/LLVMContext.h"
 #include "llvm/Metadata.h"
 #include "llvm/Module.h"
 #include "llvm/Pass.h"
@@ -117,7 +118,6 @@ namespace {
   struct Verifier : public FunctionPass, public InstVisitor<Verifier> {
     static char ID; // Pass ID, replacement for typeid
     bool Broken;          // Is this module found to be broken?
-    bool RealPass;        // Are we not being run by a PassManager?
     VerifierFailureAction action;
                           // What to do if verification fails.
     Module *Mod;          // Module we are verifying right now
@@ -143,13 +143,13 @@ namespace {
     const Value *PersonalityFn;
 
     Verifier()
-      : FunctionPass(ID), Broken(false), RealPass(true),
+      : FunctionPass(ID), Broken(false),
         action(AbortProcessAction), Mod(0), Context(0), DT(0),
         MessagesStr(Messages), PersonalityFn(0) {
       initializeVerifierPass(*PassRegistry::getPassRegistry());
     }
     explicit Verifier(VerifierFailureAction ctn)
-      : FunctionPass(ID), Broken(false), RealPass(true), action(ctn), Mod(0),
+      : FunctionPass(ID), Broken(false), action(ctn), Mod(0),
         Context(0), DT(0), MessagesStr(Messages), PersonalityFn(0) {
       initializeVerifierPass(*PassRegistry::getPassRegistry());
     }
@@ -158,17 +158,14 @@ namespace {
       Mod = &M;
       Context = &M.getContext();
 
-      // If this is a real pass, in a pass manager, we must abort before
-      // returning back to the pass manager, or else the pass manager may try to
-      // run other passes on the broken module.
-      if (RealPass)
-        return abortIfBroken();
-      return false;
+      // We must abort before returning back to the pass manager, or else the
+      // pass manager may try to run other passes on the broken module.
+      return abortIfBroken();
     }
 
     bool runOnFunction(Function &F) {
       // Get dominator information if we are being run by PassManager
-      if (RealPass) DT = &getAnalysis<DominatorTree>();
+      DT = &getAnalysis<DominatorTree>();
 
       Mod = F.getParent();
       if (!Context) Context = &F.getContext();
@@ -177,13 +174,9 @@ namespace {
       InstsInThisBlock.clear();
       PersonalityFn = 0;
 
-      // If this is a real pass, in a pass manager, we must abort before
-      // returning back to the pass manager, or else the pass manager may try to
-      // run other passes on the broken module.
-      if (RealPass)
-        return abortIfBroken();
-
-      return false;
+      // We must abort before returning back to the pass manager, or else the
+      // pass manager may try to run other passes on the broken module.
+      return abortIfBroken();
     }
 
     bool doFinalization(Module &M) {
@@ -214,8 +207,7 @@ namespace {
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
       AU.addRequiredID(PreVerifyID);
-      if (RealPass)
-        AU.addRequired<DominatorTree>();
+      AU.addRequired<DominatorTree>();
     }
 
     /// abortIfBroken - If the module is broken and we are supposed to abort on
@@ -279,6 +271,7 @@ namespace {
     void visitGetElementPtrInst(GetElementPtrInst &GEP);
     void visitLoadInst(LoadInst &LI);
     void visitStoreInst(StoreInst &SI);
+    void verifyDominatesUse(Instruction &I, unsigned i);
     void visitInstruction(Instruction &I);
     void visitTerminatorInst(TerminatorInst &I);
     void visitBranchInst(BranchInst &BI);
@@ -812,11 +805,11 @@ void Verifier::visitSwitchInst(SwitchInst &SI) {
   // have the same type as the switched-on value.
   Type *SwitchTy = SI.getCondition()->getType();
   SmallPtrSet<ConstantInt*, 32> Constants;
-  for (unsigned i = 0, e = SI.getNumCases(); i != e; ++i) {
-    Assert1(SI.getCaseValue(i)->getType() == SwitchTy,
+  for (SwitchInst::CaseIt i = SI.case_begin(), e = SI.case_end(); i != e; ++i) {
+    Assert1(i.getCaseValue()->getType() == SwitchTy,
             "Switch constants must all be same type as switch value!", &SI);
-    Assert2(Constants.insert(SI.getCaseValue(i)),
-            "Duplicate integer as switch case", &SI, SI.getCaseValue(i));
+    Assert2(Constants.insert(i.getCaseValue()),
+            "Duplicate integer as switch case", &SI, i.getCaseValue());
   }
 
   visitTerminatorInst(SI);
@@ -1368,6 +1361,25 @@ void Verifier::visitLoadInst(LoadInst &LI) {
     Assert1(LI.getSynchScope() == CrossThread,
             "Non-atomic load cannot have SynchronizationScope specified", &LI);
   }
+
+  if (MDNode *Range = LI.getMetadata(LLVMContext::MD_range)) {
+    unsigned NumOperands = Range->getNumOperands();
+    Assert1(NumOperands % 2 == 0, "Unfinished range!", Range);
+    unsigned NumRanges = NumOperands / 2;
+    Assert1(NumRanges >= 1, "It should have at least one range!", Range);
+    for (unsigned i = 0; i < NumRanges; ++i) {
+      ConstantInt *Low = dyn_cast<ConstantInt>(Range->getOperand(2*i));
+      Assert1(Low, "The lower limit must be an integer!", Low);
+      ConstantInt *High = dyn_cast<ConstantInt>(Range->getOperand(2*i + 1));
+      Assert1(High, "The upper limit must be an integer!", High);
+      Assert1(High->getType() == Low->getType() &&
+              High->getType() == ElTy, "Range types must match load type!",
+              &LI);
+      Assert1(High->getValue() != Low->getValue(), "Range must not be empty!",
+              Range);
+    }
+  }
+
   visitInstruction(LI);
 }
 
@@ -1512,6 +1524,58 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
   visitInstruction(LPI);
 }
 
+void Verifier::verifyDominatesUse(Instruction &I, unsigned i) {
+  Instruction *Op = cast<Instruction>(I.getOperand(i));
+  BasicBlock *BB = I.getParent();
+  BasicBlock *OpBlock = Op->getParent();
+  PHINode *PN = dyn_cast<PHINode>(&I);
+
+  // DT can handle non phi instructions for us.
+  if (!PN) {
+    // Definition must dominate use unless use is unreachable!
+    Assert2(InstsInThisBlock.count(Op) || !DT->isReachableFromEntry(BB) ||
+            DT->dominates(Op, &I),
+            "Instruction does not dominate all uses!", Op, &I);
+    return;
+  }
+
+  // Check that a definition dominates all of its uses.
+  if (InvokeInst *II = dyn_cast<InvokeInst>(Op)) {
+    // Invoke results are only usable in the normal destination, not in the
+    // exceptional destination.
+    BasicBlock *NormalDest = II->getNormalDest();
+
+
+    // PHI nodes differ from other nodes because they actually "use" the
+    // value in the predecessor basic blocks they correspond to.
+    BasicBlock *UseBlock = BB;
+    unsigned j = PHINode::getIncomingValueNumForOperand(i);
+    UseBlock = PN->getIncomingBlock(j);
+    Assert2(UseBlock, "Invoke operand is PHI node with bad incoming-BB",
+            Op, &I);
+
+    if (UseBlock == OpBlock) {
+      // Special case of a phi node in the normal destination or the unwind
+      // destination.
+      Assert2(BB == NormalDest || !DT->isReachableFromEntry(UseBlock),
+              "Invoke result not available in the unwind destination!",
+              Op, &I);
+    } else {
+      Assert2(DT->dominates(II, UseBlock) ||
+              !DT->isReachableFromEntry(UseBlock),
+              "Invoke result does not dominate all uses!", Op, &I);
+    }
+  }
+
+  // PHI nodes are more difficult than other nodes because they actually
+  // "use" the value in the predecessor basic blocks they correspond to.
+  unsigned j = PHINode::getIncomingValueNumForOperand(i);
+  BasicBlock *PredBB = PN->getIncomingBlock(j);
+  Assert2(PredBB && (DT->dominates(OpBlock, PredBB) ||
+                     !DT->isReachableFromEntry(PredBB)),
+          "Instruction does not dominate all uses!", Op, &I);
+}
+
 /// verifyInstruction - Verify that an instruction is well formed.
 ///
 void Verifier::visitInstruction(Instruction &I) {
@@ -1580,84 +1644,32 @@ void Verifier::visitInstruction(Instruction &I) {
     } else if (GlobalValue *GV = dyn_cast<GlobalValue>(I.getOperand(i))) {
       Assert1(GV->getParent() == Mod, "Referencing global in another module!",
               &I);
-    } else if (Instruction *Op = dyn_cast<Instruction>(I.getOperand(i))) {
-      BasicBlock *OpBlock = Op->getParent();
-
-      // Check that a definition dominates all of its uses.
-      if (InvokeInst *II = dyn_cast<InvokeInst>(Op)) {
-        // Invoke results are only usable in the normal destination, not in the
-        // exceptional destination.
-        BasicBlock *NormalDest = II->getNormalDest();
-
-        Assert2(NormalDest != II->getUnwindDest(),
-                "No uses of invoke possible due to dominance structure!",
-                Op, &I);
-
-        // PHI nodes differ from other nodes because they actually "use" the
-        // value in the predecessor basic blocks they correspond to.
-        BasicBlock *UseBlock = BB;
-        if (PHINode *PN = dyn_cast<PHINode>(&I)) {
-          unsigned j = PHINode::getIncomingValueNumForOperand(i);
-          UseBlock = PN->getIncomingBlock(j);
-        }
-        Assert2(UseBlock, "Invoke operand is PHI node with bad incoming-BB",
-                Op, &I);
-
-        if (isa<PHINode>(I) && UseBlock == OpBlock) {
-          // Special case of a phi node in the normal destination or the unwind
-          // destination.
-          Assert2(BB == NormalDest || !DT->isReachableFromEntry(UseBlock),
-                  "Invoke result not available in the unwind destination!",
-                  Op, &I);
-        } else {
-          Assert2(DT->dominates(NormalDest, UseBlock) ||
-                  !DT->isReachableFromEntry(UseBlock),
-                  "Invoke result does not dominate all uses!", Op, &I);
-
-          // If the normal successor of an invoke instruction has multiple
-          // predecessors, then the normal edge from the invoke is critical,
-          // so the invoke value can only be live if the destination block
-          // dominates all of it's predecessors (other than the invoke).
-          if (!NormalDest->getSinglePredecessor() &&
-              DT->isReachableFromEntry(UseBlock))
-            // If it is used by something non-phi, then the other case is that
-            // 'NormalDest' dominates all of its predecessors other than the
-            // invoke.  In this case, the invoke value can still be used.
-            for (pred_iterator PI = pred_begin(NormalDest),
-                 E = pred_end(NormalDest); PI != E; ++PI)
-              if (*PI != II->getParent() && !DT->dominates(NormalDest, *PI) &&
-                  DT->isReachableFromEntry(*PI)) {
-                CheckFailed("Invoke result does not dominate all uses!", Op,&I);
-                return;
-              }
-        }
-      } else if (PHINode *PN = dyn_cast<PHINode>(&I)) {
-        // PHI nodes are more difficult than other nodes because they actually
-        // "use" the value in the predecessor basic blocks they correspond to.
-        unsigned j = PHINode::getIncomingValueNumForOperand(i);
-        BasicBlock *PredBB = PN->getIncomingBlock(j);
-        Assert2(PredBB && (DT->dominates(OpBlock, PredBB) ||
-                           !DT->isReachableFromEntry(PredBB)),
-                "Instruction does not dominate all uses!", Op, &I);
-      } else {
-        if (OpBlock == BB) {
-          // If they are in the same basic block, make sure that the definition
-          // comes before the use.
-          Assert2(InstsInThisBlock.count(Op) || !DT->isReachableFromEntry(BB),
-                  "Instruction does not dominate all uses!", Op, &I);
-        }
-
-        // Definition must dominate use unless use is unreachable!
-        Assert2(InstsInThisBlock.count(Op) || DT->dominates(Op, &I) ||
-                !DT->isReachableFromEntry(BB),
-                "Instruction does not dominate all uses!", Op, &I);
-      }
+    } else if (isa<Instruction>(I.getOperand(i))) {
+      verifyDominatesUse(I, i);
     } else if (isa<InlineAsm>(I.getOperand(i))) {
       Assert1((i + 1 == e && isa<CallInst>(I)) ||
               (i + 3 == e && isa<InvokeInst>(I)),
               "Cannot take the address of an inline asm!", &I);
     }
   }
+
+  if (MDNode *MD = I.getMetadata(LLVMContext::MD_fpmath)) {
+    Assert1(I.getType()->isFPOrFPVectorTy(),
+            "fpmath requires a floating point result!", &I);
+    Assert1(MD->getNumOperands() == 1, "fpmath takes one operand!", &I);
+    Value *Op0 = MD->getOperand(0);
+    if (ConstantFP *CFP0 = dyn_cast_or_null<ConstantFP>(Op0)) {
+      APFloat Accuracy = CFP0->getValueAPF();
+      Assert1(Accuracy.isNormal() && !Accuracy.isNegative(),
+              "fpmath accuracy not a positive number!", &I);
+    } else {
+      Assert1(false, "invalid fpmath accuracy!", &I);
+    }
+  }
+
+  MDNode *MD = I.getMetadata(LLVMContext::MD_range);
+  Assert1(!MD || isa<LoadInst>(I), "Ranges are only for loads!", &I);
+
   InstsInThisBlock.insert(&I);
 }
 

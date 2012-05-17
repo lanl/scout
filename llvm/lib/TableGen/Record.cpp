@@ -18,6 +18,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -28,6 +29,8 @@ using namespace llvm;
 //===----------------------------------------------------------------------===//
 //    std::string wrapper for DenseMap purposes
 //===----------------------------------------------------------------------===//
+
+namespace llvm {
 
 /// TableGenStringKey - This is a wrapper for std::string suitable for
 /// using as a key to a DenseMap.  Because there isn't a particularly
@@ -43,14 +46,16 @@ public:
   TableGenStringKey(const char *str) : data(str) {}
 
   const std::string &str() const { return data; }
-  
+
+  friend hash_code hash_value(const TableGenStringKey &Value) {
+    using llvm::hash_value;
+    return hash_value(Value.str());
+  }
 private:
   std::string data;
 };
 
 /// Specialize DenseMapInfo for TableGenStringKey.
-namespace llvm {
-
 template<> struct DenseMapInfo<TableGenStringKey> {
   static inline TableGenStringKey getEmptyKey() {
     TableGenStringKey Empty("<<<EMPTY KEY>>>");
@@ -61,7 +66,8 @@ template<> struct DenseMapInfo<TableGenStringKey> {
     return Tombstone;
   }
   static unsigned getHashValue(const TableGenStringKey& Val) {
-    return HashString(Val.str());
+    using llvm::hash_value;
+    return hash_value(Val);
   }
   static bool isEqual(const TableGenStringKey& LHS,
                       const TableGenStringKey& RHS) {
@@ -69,7 +75,7 @@ template<> struct DenseMapInfo<TableGenStringKey> {
   }
 };
 
-}
+} // namespace llvm
 
 //===----------------------------------------------------------------------===//
 //    Type implementations
@@ -1720,12 +1726,6 @@ void Record::setName(Init *NewName) {
   }  // Otherwise this isn't yet registered.
   Name = NewName;
   checkName();
-  // Since the Init for the name was changed, see if we can resolve
-  // any of it using members of the Record.
-  Init *ComputedName = Name->resolveReferences(*this, 0);
-  if (ComputedName != Name) {
-    setName(ComputedName);
-  }
   // DO NOT resolve record values to the name at this point because
   // there might be default values for arguments of this def.  Those
   // arguments might not have been resolved yet so we don't want to
@@ -1748,6 +1748,8 @@ void Record::setName(const std::string &Name) {
 /// references.
 void Record::resolveReferencesTo(const RecordVal *RV) {
   for (unsigned i = 0, e = Values.size(); i != e; ++i) {
+    if (RV == &Values[i]) // Skip resolve the same field as the given one
+      continue;
     if (Init *V = Values[i].getValue())
       Values[i].setValue(V->resolveReferences(*this, RV));
   }

@@ -1362,7 +1362,7 @@ ExpandShiftWithKnownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi) {
 
   APInt HighBitMask = APInt::getHighBitsSet(ShBits, ShBits - Log2_32(NVTBits));
   APInt KnownZero, KnownOne;
-  DAG.ComputeMaskedBits(N->getOperand(1), HighBitMask, KnownZero, KnownOne);
+  DAG.ComputeMaskedBits(N->getOperand(1), KnownZero, KnownOne);
 
   // If we don't know anything about the high bits, exit.
   if (((KnownZero|KnownOne) & HighBitMask) == 0)
@@ -1397,15 +1397,15 @@ ExpandShiftWithKnownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi) {
     }
   }
 
-#if 0
-  // FIXME: This code is broken for shifts with a zero amount!
   // If we know that all of the high bits of the shift amount are zero, then we
   // can do this as a couple of simple shifts.
   if ((KnownZero & HighBitMask) == HighBitMask) {
-    // Compute 32-amt.
-    SDValue Amt2 = DAG.getNode(ISD::SUB, ShTy,
-                                 DAG.getConstant(NVTBits, ShTy),
-                                 Amt);
+    // Calculate 31-x. 31 is used instead of 32 to avoid creating an undefined
+    // shift if x is zero.  We can use XOR here because x is known to be smaller
+    // than 32.
+    SDValue Amt2 = DAG.getNode(ISD::XOR, dl, ShTy, Amt,
+                               DAG.getConstant(NVTBits-1, ShTy));
+
     unsigned Op1, Op2;
     switch (N->getOpcode()) {
     default: llvm_unreachable("Unknown shift");
@@ -1414,13 +1414,23 @@ ExpandShiftWithKnownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi) {
     case ISD::SRA:  Op1 = ISD::SRL; Op2 = ISD::SHL; break;
     }
 
-    Lo = DAG.getNode(N->getOpcode(), NVT, InL, Amt);
-    Hi = DAG.getNode(ISD::OR, NVT,
-                     DAG.getNode(Op1, NVT, InH, Amt),
-                     DAG.getNode(Op2, NVT, InL, Amt2));
+    // When shifting right the arithmetic for Lo and Hi is swapped.
+    if (N->getOpcode() != ISD::SHL)
+      std::swap(InL, InH);
+
+    // Use a little trick to get the bits that move from Lo to Hi. First
+    // shift by one bit.
+    SDValue Sh1 = DAG.getNode(Op2, dl, NVT, InL, DAG.getConstant(1, ShTy));
+    // Then compute the remaining shift with amount-1.
+    SDValue Sh2 = DAG.getNode(Op2, dl, NVT, Sh1, Amt2);
+
+    Lo = DAG.getNode(N->getOpcode(), dl, NVT, InL, Amt);
+    Hi = DAG.getNode(ISD::OR, dl, NVT, DAG.getNode(Op1, dl, NVT, InH, Amt),Sh2);
+
+    if (N->getOpcode() != ISD::SHL)
+      std::swap(Hi, Lo);
     return true;
   }
-#endif
 
   return false;
 }
@@ -2311,8 +2321,10 @@ void DAGTypeLegalizer::ExpandIntRes_XMULO(SDNode *N,
   SDValue Func = DAG.getExternalSymbol(TLI.getLibcallName(LC), PtrVT);
   std::pair<SDValue, SDValue> CallInfo =
     TLI.LowerCallTo(Chain, RetTy, true, false, false, false,
-		    0, TLI.getLibcallCallingConv(LC), false,
-		    true, Func, Args, DAG, dl);
+		    0, TLI.getLibcallCallingConv(LC),
+                    /*isTailCall=*/false,
+		    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
+                    Func, Args, DAG, dl);
 
   SplitInteger(CallInfo.first, Lo, Hi);
   SDValue Temp2 = DAG.getLoad(PtrVT, dl, CallInfo.second, Temp,

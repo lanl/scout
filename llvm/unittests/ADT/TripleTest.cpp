@@ -87,6 +87,24 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::Linux, T.getOS());
   EXPECT_EQ(Triple::GNU, T.getEnvironment());
 
+  T = Triple("powerpc-bgp-linux");
+  EXPECT_EQ(Triple::ppc, T.getArch());
+  EXPECT_EQ(Triple::BGP, T.getVendor());
+  EXPECT_EQ(Triple::Linux, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
+  T = Triple("powerpc-bgp-cnk");
+  EXPECT_EQ(Triple::ppc, T.getArch());
+  EXPECT_EQ(Triple::BGP, T.getVendor());
+  EXPECT_EQ(Triple::CNK, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
+  T = Triple("powerpc64-bgq-linux");
+  EXPECT_EQ(Triple::ppc64, T.getArch());
+  EXPECT_EQ(Triple::BGQ, T.getVendor());
+  EXPECT_EQ(Triple::Linux, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+
   T = Triple("powerpc-dunno-notsure");
   EXPECT_EQ(Triple::ppc, T.getArch());
   EXPECT_EQ(Triple::UnknownVendor, T.getVendor());
@@ -154,19 +172,13 @@ TEST(TripleTest, Normalization) {
   // Check that normalizing a permutated set of valid components returns a
   // triple with the unpermuted components.
   StringRef C[4];
-  for (int Arch = 1+Triple::UnknownArch; Arch < Triple::InvalidArch; ++Arch) {
+  for (int Arch = 1+Triple::UnknownArch; Arch <= Triple::amdil; ++Arch) {
     C[0] = Triple::getArchTypeName(Triple::ArchType(Arch));
     for (int Vendor = 1+Triple::UnknownVendor; Vendor <= Triple::PC;
          ++Vendor) {
       C[1] = Triple::getVendorTypeName(Triple::VendorType(Vendor));
       for (int OS = 1+Triple::UnknownOS; OS <= Triple::Minix; ++OS) {
         C[2] = Triple::getOSTypeName(Triple::OSType(OS));
-
-        // If a value has multiple interpretations, then the permutation
-        // test will inevitably fail.  Currently this is only the case for
-        // "psp" which parses as both an architecture and an O/S.
-        if (OS == Triple::Psp)
-          continue;
 
         std::string E = Join(C[0], C[1], C[2]);
         EXPECT_EQ(E, Triple::normalize(Join(C[0], C[1], C[2])));
@@ -211,9 +223,6 @@ TEST(TripleTest, Normalization) {
       }
     }
   }
-
-  EXPECT_EQ("a-b-psp", Triple::normalize("a-b-psp"));
-  EXPECT_EQ("psp-b-c", Triple::normalize("psp-b-c"));
 
   // Various real-world funky triples.  The value returned by GCC's config.sub
   // is given in the comment.
@@ -269,11 +278,6 @@ TEST(TripleTest, MutateName) {
 
 TEST(TripleTest, BitWidthPredicates) {
   Triple T;
-  EXPECT_FALSE(T.isArch16Bit());
-  EXPECT_FALSE(T.isArch32Bit());
-  EXPECT_FALSE(T.isArch64Bit());
-
-  T.setArch(Triple::InvalidArch);
   EXPECT_FALSE(T.isArch16Bit());
   EXPECT_FALSE(T.isArch32Bit());
   EXPECT_FALSE(T.isArch64Bit());
@@ -384,6 +388,71 @@ TEST(TripleTest, BitWidthArchVariants) {
   T.setArch(Triple::x86_64);
   EXPECT_EQ(Triple::x86, T.get32BitArchVariant().getArch());
   EXPECT_EQ(Triple::x86_64, T.get64BitArchVariant().getArch());
+}
+
+TEST(TripleTest, getOSVersion) {
+  Triple T;
+  unsigned Major, Minor, Micro;
+
+  T = Triple("i386-apple-darwin9");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)5, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)3, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+
+  T = Triple("x86_64-apple-darwin9");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)5, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)3, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+
+  T = Triple("x86_64-apple-macosx");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)4, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)3, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+
+  T = Triple("x86_64-apple-macosx10.7");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)7, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)3, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+
+  T = Triple("armv7-apple-ios");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)4, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)3, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+
+  T = Triple("armv7-apple-ios5.0");
+  T.getMacOSXVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)10, Major);
+  EXPECT_EQ((unsigned)4, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
+  T.getiOSVersion(Major, Minor, Micro);
+  EXPECT_EQ((unsigned)5, Major);
+  EXPECT_EQ((unsigned)0, Minor);
+  EXPECT_EQ((unsigned)0, Micro);
 }
 
 }

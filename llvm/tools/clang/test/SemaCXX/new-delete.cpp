@@ -102,8 +102,7 @@ void good_deletes()
 void bad_deletes()
 {
   delete 0; // expected-error {{cannot delete expression of type 'int'}}
-  delete [0] (int*)0; // expected-error {{expected ']'}} \
-                      // expected-note {{to match this '['}}
+  delete [0] (int*)0; // expected-error {{expected expression}}
   delete (void*)0; // expected-warning {{cannot delete expression with pointer-to-'void' type 'void *'}}
   delete (T*)0; // expected-warning {{deleting pointer to incomplete type}}
   ::S::delete (int*)0; // expected-error {{expected unqualified-id}}
@@ -387,7 +386,7 @@ namespace PairedDelete {
 
 namespace PR7702 {
   void test1() {
-    new DoesNotExist; // expected-error {{expected a type}}
+    new DoesNotExist; // expected-error {{unknown type name 'DoesNotExist'}}
   }
 }
 
@@ -416,4 +415,87 @@ namespace PR10504 {
     virtual void foo() = 0;
   };
   void f(A *x) { delete x; } // expected-warning {{delete called on 'PR10504::A' that is abstract but has non-virtual destructor}}
+}
+
+struct PlacementArg {};
+inline void *operator new[](size_t, const PlacementArg &) throw () {
+  return 0;
+}
+inline void operator delete[](void *, const PlacementArg &) throw () {
+}
+
+namespace r150682 {
+
+  template <typename X>
+  struct S {
+    struct Inner {};
+    S() { new Inner[1]; }
+  };
+
+  struct T {
+  };
+
+  template<typename X>
+  void tfn() {
+    new (*(PlacementArg*)0) T[1];
+  }
+
+  void fn() {
+    tfn<int>();
+  }
+
+}
+
+namespace P12023 {
+  struct CopyCounter
+  {
+      CopyCounter();
+      CopyCounter(const CopyCounter&);
+  };
+
+  int main()
+  {
+    CopyCounter* f = new CopyCounter[10](CopyCounter()); // expected-error {{cannot have initialization arguments}}
+      return 0;
+  }
+}
+
+namespace PR12061 {
+  template <class C> struct scoped_array {
+    scoped_array(C* p = __null);
+  };
+  template <class Payload> struct Foo {
+    Foo() : a_(new scoped_array<int>[5]) { }
+    scoped_array< scoped_array<int> > a_;
+  };
+  class Bar {};
+  Foo<Bar> x;
+
+  template <class C> struct scoped_array2 {
+    scoped_array2(C* p = __null, C* q = __null);
+  };
+  template <class Payload> struct Foo2 {
+    Foo2() : a_(new scoped_array2<int>[5]) { }
+    scoped_array2< scoped_array2<int> > a_;
+  };
+  class Bar2 {};
+  Foo2<Bar2> x2;
+
+  class MessageLoop {
+  public:
+    explicit MessageLoop(int type = 0);
+  };
+  template <class CookieStoreTestTraits>
+  class CookieStoreTest {
+  protected:
+    CookieStoreTest() {
+      new MessageLoop;
+    }
+  };
+  struct CookieMonsterTestTraits {
+  };
+  class DeferredCookieTaskTest : public CookieStoreTest<CookieMonsterTestTraits>
+  {
+    DeferredCookieTaskTest() {}
+  };
 }

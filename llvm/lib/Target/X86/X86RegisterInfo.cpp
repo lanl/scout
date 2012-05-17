@@ -1,4 +1,4 @@
-//===- X86RegisterInfo.cpp - X86 Register Information -----------*- C++ -*-===//
+//===-- X86RegisterInfo.cpp - X86 Register Information --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "X86.h"
 #include "X86RegisterInfo.h"
+#include "X86.h"
 #include "X86InstrBuilder.h"
 #include "X86MachineFunctionInfo.h"
 #include "X86Subtarget.h"
@@ -90,6 +90,12 @@ int X86RegisterInfo::getCompactUnwindRegNum(unsigned RegNum, bool isEH) const {
   return -1;
 }
 
+bool
+X86RegisterInfo::trackLivenessAfterRegAlloc(const MachineFunction &MF) const {
+  // Only enable when post-RA scheduling is enabled and this is needed.
+  return TM.getSubtargetImpl()->postRAScheduler();
+}
+
 int
 X86RegisterInfo::getSEHRegNum(unsigned i) const {
   int reg = X86_MC::getX86RegNum(i);
@@ -146,7 +152,7 @@ X86RegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC) const{
   // The GR8_NOREX class is always used in a way that won't be constrained to a
   // sub-class, so sub-classes like GR8_ABCD_L are allowed to expand to the
   // full GR8 class.
-  if (RC == X86::GR8_NOREXRegisterClass)
+  if (RC == &X86::GR8_NOREXRegClass)
     return RC;
 
   const TargetRegisterClass *Super = RC;
@@ -175,7 +181,8 @@ X86RegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC) const{
 }
 
 const TargetRegisterClass *
-X86RegisterInfo::getPointerRegClass(unsigned Kind) const {
+X86RegisterInfo::getPointerRegClass(const MachineFunction &MF, unsigned Kind)
+                                                                         const {
   switch (Kind) {
   default: llvm_unreachable("Unexpected Kind in getPointerRegClass!");
   case 0: // Normal GPRs.
@@ -226,7 +233,7 @@ X86RegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
   }
 }
 
-const unsigned *
+const uint16_t *
 X86RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   bool callsEHReturn = false;
   bool ghcCall = false;
@@ -238,7 +245,7 @@ X86RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   }
 
   if (ghcCall)
-    return CSR_Ghc_SaveList;
+    return CSR_NoRegs_SaveList;
   if (Is64Bit) {
     if (IsWin64)
       return CSR_Win64_SaveList;
@@ -254,7 +261,7 @@ X86RegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
 const uint32_t*
 X86RegisterInfo::getCallPreservedMask(CallingConv::ID CC) const {
   if (CC == CallingConv::GHC)
-    return CSR_Ghc_RegMask;
+    return CSR_NoRegs_RegMask;
   if (!Is64Bit)
     return CSR_32_RegMask;
   if (IsWin64)
@@ -293,6 +300,16 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(X86::FS);
   Reserved.set(X86::GS);
 
+  // Mark the floating point stack registers as reserved.
+  Reserved.set(X86::ST0);
+  Reserved.set(X86::ST1);
+  Reserved.set(X86::ST2);
+  Reserved.set(X86::ST3);
+  Reserved.set(X86::ST4);
+  Reserved.set(X86::ST5);
+  Reserved.set(X86::ST6);
+  Reserved.set(X86::ST7);
+
   // Reserve the registers that only exist in 64-bit mode.
   if (!Is64Bit) {
     // These 8-bit registers are part of the x86-64 extension even though their
@@ -304,16 +321,16 @@ BitVector X86RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
     for (unsigned n = 0; n != 8; ++n) {
       // R8, R9, ...
-      const unsigned GPR64[] = {
+      static const uint16_t GPR64[] = {
         X86::R8,  X86::R9,  X86::R10, X86::R11,
         X86::R12, X86::R13, X86::R14, X86::R15
       };
-      for (const unsigned *AI = getOverlaps(GPR64[n]); unsigned Reg = *AI; ++AI)
+      for (const uint16_t *AI = getOverlaps(GPR64[n]); unsigned Reg = *AI; ++AI)
         Reserved.set(Reg);
 
       // XMM8, XMM9, ...
       assert(X86::XMM15 == X86::XMM8+7);
-      for (const unsigned *AI = getOverlaps(X86::XMM8 + n); unsigned Reg = *AI;
+      for (const uint16_t *AI = getOverlaps(X86::XMM8 + n); unsigned Reg = *AI;
            ++AI)
         Reserved.set(Reg);
     }

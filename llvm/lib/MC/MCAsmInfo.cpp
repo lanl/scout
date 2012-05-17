@@ -49,6 +49,7 @@ MCAsmInfo::MCAsmInfo() {
   AllowQuotesInName = false;
   AllowNameToStartWithDigit = false;
   AllowPeriodsInName = true;
+  AllowUTF8 = true;
   ZeroDirective = "\t.zero\t";
   AsciiDirective = "\t.ascii\t";
   AscizDirective = "\t.asciz\t";
@@ -94,8 +95,6 @@ MCAsmInfo::MCAsmInfo() {
   DwarfUsesRelocationsForStringPool = true;
   DwarfRegNumForCFI = false;
   HasMicrosoftFastStdCallMangling = false;
-
-  AsmTransCBE = 0;
 }
 
 MCAsmInfo::~MCAsmInfo() {

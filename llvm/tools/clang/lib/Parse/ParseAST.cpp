@@ -44,36 +44,33 @@ using namespace clang;
 void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
                      TranslationUnitKind TUKind,
-                     CodeCompleteConsumer *CompletionConsumer
+                     CodeCompleteConsumer *CompletionConsumer,
+                     bool SkipFunctionBodies,
                      // SCOUTCODE ndm - added ASTViewer param
-                     , ASTViewScout* ASTViewer
-							// ENDSCOUTCODE
-							)
-							{
-
+                     ASTViewScout* ASTViewer
+                     // ENDSCOUTCODE
+                     )
+{
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
                                    TUKind,
                                    CompletionConsumer));
 
   // Recover resources if we crash before exiting this method.
-  llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleaupSema(S.get());
+  llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
   
-  ParseAST(*S.get(), PrintStats
-  // SCOUTCODE - no ndm.  Add ASTViewer
-  , ASTViewer
-  // ENDSCOUTCODE
-  );
+  ParseAST(*S.get(), PrintStats, SkipFunctionBodies, ASTViewer);
 }
 
-void clang::ParseAST(Sema &S, bool PrintStats
+void clang::ParseAST(Sema &S, bool PrintStats,
+                     bool SkipFunctionBodies,
                      // SCOUTCODE ndm - added ASTViewer param
-                     , ASTViewScout* ASTViewer
+                     ASTViewScout* ASTViewer
                      // ENDSCOUTCODE
-							) {
+                     ){
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
-    Decl::CollectingStats(true);
-    Stmt::CollectingStats(true);
+    Decl::EnableStatistics();
+    Stmt::EnableStatistics();
   }
 
   // Also turn on collection of stats inside of the Sema object.
@@ -82,14 +79,15 @@ void clang::ParseAST(Sema &S, bool PrintStats
 
   ASTConsumer *Consumer = &S.getASTConsumer();
 
-  OwningPtr<Parser> ParseOP(new Parser(S.getPreprocessor(), S));
+  OwningPtr<Parser> ParseOP(new Parser(S.getPreprocessor(), S,
+                                       SkipFunctionBodies));
   Parser &P = *ParseOP.get();
 
   PrettyStackTraceParserEntry CrashInfo(P);
 
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Parser>
-    CleaupParser(ParseOP.get());
+    CleanupParser(ParseOP.get());
 
   S.getPreprocessor().EnterMainSourceFile();
   P.Initialize();

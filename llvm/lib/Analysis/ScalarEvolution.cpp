@@ -3261,9 +3261,8 @@ ScalarEvolution::GetMinTrailingZeros(const SCEV *S) {
   if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(S)) {
     // For a SCEVUnknown, ask ValueTracking.
     unsigned BitWidth = getTypeSizeInBits(U->getType());
-    APInt Mask = APInt::getAllOnesValue(BitWidth);
     APInt Zeros(BitWidth, 0), Ones(BitWidth, 0);
-    ComputeMaskedBits(U->getValue(), Mask, Zeros, Ones);
+    ComputeMaskedBits(U->getValue(), Zeros, Ones);
     return Zeros.countTrailingOnes();
   }
 
@@ -3401,9 +3400,8 @@ ScalarEvolution::getUnsignedRange(const SCEV *S) {
 
   if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(S)) {
     // For a SCEVUnknown, ask ValueTracking.
-    APInt Mask = APInt::getAllOnesValue(BitWidth);
     APInt Zeros(BitWidth, 0), Ones(BitWidth, 0);
-    ComputeMaskedBits(U->getValue(), Mask, Zeros, Ones, TD);
+    ComputeMaskedBits(U->getValue(), Zeros, Ones, TD);
     if (Ones == ~Zeros + 1)
       return setUnsignedRange(U, ConservativeResult);
     return setUnsignedRange(U,
@@ -3660,9 +3658,8 @@ const SCEV *ScalarEvolution::createSCEV(Value *V) {
       // knew about to reconstruct a low-bits mask value.
       unsigned LZ = A.countLeadingZeros();
       unsigned BitWidth = A.getBitWidth();
-      APInt AllOnes = APInt::getAllOnesValue(BitWidth);
       APInt KnownZero(BitWidth, 0), KnownOne(BitWidth, 0);
-      ComputeMaskedBits(U->getOperand(0), AllOnes, KnownZero, KnownOne, TD);
+      ComputeMaskedBits(U->getOperand(0), KnownZero, KnownOne, TD);
 
       APInt EffectiveMask = APInt::getLowBitsSet(BitWidth, BitWidth - LZ);
 
@@ -4618,6 +4615,10 @@ ScalarEvolution::ComputeLoadConstantCompareExitLimit(
       VarIdxNum = i-2;
       Indexes.push_back(0);
     }
+
+  // Loop-invariant loads may be a byproduct of loop optimization. Skip them.
+  if (!VarIdx)
+    return getCouldNotCompute();
 
   // Okay, we know we have a (load (gep GV, 0, X)) comparison with a constant.
   // Check to see if X is a loop variant variable value now.
@@ -6845,7 +6846,7 @@ ScalarEvolution::computeBlockDisposition(const SCEV *S, const BasicBlock *BB) {
     return ProperlyDominatesBlock;
   case scCouldNotCompute:
     llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-  default: 
+  default:
     llvm_unreachable("Unknown SCEV kind!");
   }
 }
@@ -6859,43 +6860,58 @@ bool ScalarEvolution::properlyDominates(const SCEV *S, const BasicBlock *BB) {
 }
 
 bool ScalarEvolution::hasOperand(const SCEV *S, const SCEV *Op) const {
-  switch (S->getSCEVType()) {
-  case scConstant:
-    return false;
-  case scTruncate:
-  case scZeroExtend:
-  case scSignExtend: {
-    const SCEVCastExpr *Cast = cast<SCEVCastExpr>(S);
-    const SCEV *CastOp = Cast->getOperand();
-    return Op == CastOp || hasOperand(CastOp, Op);
-  }
-  case scAddRecExpr:
-  case scAddExpr:
-  case scMulExpr:
-  case scUMaxExpr:
-  case scSMaxExpr: {
-    const SCEVNAryExpr *NAry = cast<SCEVNAryExpr>(S);
-    for (SCEVNAryExpr::op_iterator I = NAry->op_begin(), E = NAry->op_end();
-         I != E; ++I) {
-      const SCEV *NAryOp = *I;
-      if (NAryOp == Op || hasOperand(NAryOp, Op))
+  SmallVector<const SCEV *, 8> Worklist;
+  Worklist.push_back(S);
+  do {
+    S = Worklist.pop_back_val();
+
+    switch (S->getSCEVType()) {
+    case scConstant:
+      break;
+    case scTruncate:
+    case scZeroExtend:
+    case scSignExtend: {
+      const SCEVCastExpr *Cast = cast<SCEVCastExpr>(S);
+      const SCEV *CastOp = Cast->getOperand();
+      if (Op == CastOp)
         return true;
+      Worklist.push_back(CastOp);
+      break;
     }
-    return false;
-  }
-  case scUDivExpr: {
-    const SCEVUDivExpr *UDiv = cast<SCEVUDivExpr>(S);
-    const SCEV *LHS = UDiv->getLHS(), *RHS = UDiv->getRHS();
-    return LHS == Op || hasOperand(LHS, Op) ||
-           RHS == Op || hasOperand(RHS, Op);
-  }
-  case scUnknown:
-    return false;
-  case scCouldNotCompute:
-    llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
-  default:
-    llvm_unreachable("Unknown SCEV kind!");
-  }
+    case scAddRecExpr:
+    case scAddExpr:
+    case scMulExpr:
+    case scUMaxExpr:
+    case scSMaxExpr: {
+      const SCEVNAryExpr *NAry = cast<SCEVNAryExpr>(S);
+      for (SCEVNAryExpr::op_iterator I = NAry->op_begin(), E = NAry->op_end();
+           I != E; ++I) {
+        const SCEV *NAryOp = *I;
+        if (NAryOp == Op)
+          return true;
+        Worklist.push_back(NAryOp);
+      }
+      break;
+    }
+    case scUDivExpr: {
+      const SCEVUDivExpr *UDiv = cast<SCEVUDivExpr>(S);
+      const SCEV *LHS = UDiv->getLHS(), *RHS = UDiv->getRHS();
+      if (LHS == Op || RHS == Op)
+        return true;
+      Worklist.push_back(LHS);
+      Worklist.push_back(RHS);
+      break;
+    }
+    case scUnknown:
+      break;
+    case scCouldNotCompute:
+      llvm_unreachable("Attempt to use a SCEVCouldNotCompute object!");
+    default:
+      llvm_unreachable("Unknown SCEV kind!");
+    }
+  } while (!Worklist.empty());
+
+  return false;
 }
 
 void ScalarEvolution::forgetMemoizedResults(const SCEV *S) {

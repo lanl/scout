@@ -37,7 +37,7 @@ using namespace llvm;
 void RegScavenger::setUsed(unsigned Reg) {
   RegsAvailable.reset(Reg);
 
-  for (const unsigned *SubRegs = TRI->getSubRegisters(Reg);
+  for (const uint16_t *SubRegs = TRI->getSubRegisters(Reg);
        unsigned SubReg = *SubRegs; ++SubRegs)
     RegsAvailable.reset(SubReg);
 }
@@ -45,7 +45,7 @@ void RegScavenger::setUsed(unsigned Reg) {
 bool RegScavenger::isAliasUsed(unsigned Reg) const {
   if (isUsed(Reg))
     return true;
-  for (const unsigned *R = TRI->getAliasSet(Reg); *R; ++R)
+  for (const uint16_t *R = TRI->getAliasSet(Reg); *R; ++R)
     if (isUsed(*R))
       return true;
   return false;
@@ -58,9 +58,6 @@ void RegScavenger::initRegState() {
 
   // All registers started out unused.
   RegsAvailable.set();
-
-  // Reserved registers are always used.
-  RegsAvailable ^= ReservedRegs;
 
   if (!MBB)
     return;
@@ -86,6 +83,11 @@ void RegScavenger::enterBasicBlock(MachineBasicBlock *mbb) {
   assert((NumPhysRegs == 0 || NumPhysRegs == TRI->getNumRegs()) &&
          "Target changed?");
 
+  // It is not possible to use the register scavenger after late optimization
+  // passes that don't preserve accurate liveness information.
+  assert(MRI->tracksLiveness() &&
+         "Cannot use register scavenger with inaccurate liveness");
+
   // Self-initialize.
   if (!MBB) {
     NumPhysRegs = TRI->getNumRegs();
@@ -98,7 +100,7 @@ void RegScavenger::enterBasicBlock(MachineBasicBlock *mbb) {
 
     // Create callee-saved registers bitvector.
     CalleeSavedRegs.resize(NumPhysRegs);
-    const unsigned *CSRegs = TRI->getCalleeSavedRegs(&MF);
+    const uint16_t *CSRegs = TRI->getCalleeSavedRegs(&MF);
     if (CSRegs != NULL)
       for (unsigned i = 0; CSRegs[i]; ++i)
         CalleeSavedRegs.set(CSRegs[i]);
@@ -112,7 +114,7 @@ void RegScavenger::enterBasicBlock(MachineBasicBlock *mbb) {
 
 void RegScavenger::addRegWithSubRegs(BitVector &BV, unsigned Reg) {
   BV.set(Reg);
-  for (const unsigned *R = TRI->getSubRegisters(Reg); *R; R++)
+  for (const uint16_t *R = TRI->getSubRegisters(Reg); *R; R++)
     BV.set(*R);
 }
 
@@ -148,6 +150,8 @@ void RegScavenger::forward() {
   DefRegs.reset();
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     const MachineOperand &MO = MI->getOperand(i);
+    if (MO.isRegMask())
+      (isPred ? DefRegs : KillRegs).setBitsNotInMask(MO.getRegMask());
     if (!MO.isReg())
       continue;
     unsigned Reg = MO.getReg();
@@ -191,7 +195,7 @@ void RegScavenger::forward() {
         // Ideally we would like a way to model this, but leaving the
         // insert_subreg around causes both correctness and performance issues.
         bool SubUsed = false;
-        for (const unsigned *SubRegs = TRI->getSubRegisters(Reg);
+        for (const uint16_t *SubRegs = TRI->getSubRegisters(Reg);
              unsigned SubReg = *SubRegs; ++SubRegs)
           if (isUsed(SubReg)) {
             SubUsed = true;
@@ -223,9 +227,11 @@ void RegScavenger::forward() {
 
 void RegScavenger::getRegsUsed(BitVector &used, bool includeReserved) {
   used = RegsAvailable;
-  if (!includeReserved)
-    used |= ReservedRegs;
   used.flip();
+  if (includeReserved)
+    used |= ReservedRegs;
+  else
+    used.reset(ReservedRegs);
 }
 
 unsigned RegScavenger::FindUnusedReg(const TargetRegisterClass *RC) const {
@@ -279,6 +285,8 @@ unsigned RegScavenger::findSurvivorReg(MachineBasicBlock::iterator StartMI,
     // Remove any candidates touched by instruction.
     for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
       const MachineOperand &MO = MI->getOperand(i);
+      if (MO.isRegMask())
+        Candidates.clearBitsNotInMask(MO.getRegMask());
       if (!MO.isReg() || MO.isUndef() || !MO.getReg())
         continue;
       if (TargetRegisterInfo::isVirtualRegister(MO.getReg())) {
@@ -289,7 +297,7 @@ unsigned RegScavenger::findSurvivorReg(MachineBasicBlock::iterator StartMI,
         continue;
       }
       Candidates.reset(MO.getReg());
-      for (const unsigned *R = TRI->getAliasSet(MO.getReg()); *R; R++)
+      for (const uint16_t *R = TRI->getAliasSet(MO.getReg()); *R; R++)
         Candidates.reset(*R);
     }
     // If we're not in a virtual reg's live range, this is a valid

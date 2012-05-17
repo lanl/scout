@@ -68,7 +68,7 @@ uint64_t DIDescriptor::getUInt64Field(unsigned Elt) const {
     return 0;
 
   if (Elt < DbgNode->getNumOperands())
-    if (ConstantInt *CI = dyn_cast<ConstantInt>(DbgNode->getOperand(Elt)))
+    if (ConstantInt *CI = dyn_cast_or_null<ConstantInt>(DbgNode->getOperand(Elt)))
       return CI->getZExtValue();
 
   return 0;
@@ -291,7 +291,7 @@ bool DIDescriptor::isEnumerator() const {
 
 /// isObjCProperty - Return true if the specified tag is DW_TAG
 bool DIDescriptor::isObjCProperty() const {
-  return DbgNode && getTag() == dwarf::DW_TAG_APPLE_Property;
+  return DbgNode && getTag() == dwarf::DW_TAG_APPLE_property;
 }
 //===----------------------------------------------------------------------===//
 // Simple Descriptor Constructors and other Methods
@@ -374,6 +374,19 @@ bool DICompileUnit::Verify() const {
   if (N.empty())
     return false;
   // It is possible that directory and produce string is empty.
+  return true;
+}
+
+/// Verify - Verify that an ObjC property is well formed.
+bool DIObjCProperty::Verify() const {
+  if (!DbgNode)
+    return false;
+  unsigned Tag = getTag();
+  if (Tag != dwarf::DW_TAG_APPLE_property) return false;
+  DIType Ty = getType();
+  if (!Ty.Verify()) return false;
+
+  // Don't worry about the rest of the strings for now.
   return true;
 }
 
@@ -721,8 +734,13 @@ void DIType::print(raw_ostream &OS) const {
 
   if (isBasicType())
     DIBasicType(DbgNode).print(OS);
-  else if (isDerivedType())
-    DIDerivedType(DbgNode).print(OS);
+  else if (isDerivedType()) {
+    DIDerivedType DTy = DIDerivedType(DbgNode);
+    DTy.print(OS);
+    DICompositeType CTy = getDICompositeType(DTy);
+    if (CTy.Verify())
+      CTy.print(OS);
+  }
   else if (isCompositeType())
     DICompositeType(DbgNode).print(OS);
   else {
@@ -740,7 +758,9 @@ void DIBasicType::print(raw_ostream &OS) const {
 
 /// print - Print derived type.
 void DIDerivedType::print(raw_ostream &OS) const {
-  OS << "\n\t Derived From: "; getTypeDerivedFrom().print(OS);
+  OS << "\n\t Derived From: ";
+  getTypeDerivedFrom().print(OS);
+  OS << "\n\t";
 }
 
 /// print - Print composite type.
@@ -766,6 +786,9 @@ void DISubprogram::print(raw_ostream &OS) const {
 
   if (isDefinition())
     OS << " [def] ";
+
+  if (getScopeLineNumber() != getLineNumber())
+    OS << " [Scope: " << getScopeLineNumber() << "] ";
 
   OS << "\n";
 }

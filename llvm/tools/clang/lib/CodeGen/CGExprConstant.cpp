@@ -53,8 +53,13 @@ private:
     NextFieldOffsetInChars(CharUnits::Zero()),
     LLVMStructAlignment(CharUnits::One()) { }
 
+  void AppendVTablePointer(BaseSubobject Base, llvm::Constant *VTable,
+                           const CXXRecordDecl *VTableClass);
+
   void AppendField(const FieldDecl *Field, uint64_t FieldOffset,
                    llvm::Constant *InitExpr);
+
+  void AppendBytes(CharUnits FieldOffsetInChars, llvm::Constant *InitCst);
 
   void AppendBitField(const FieldDecl *Field, uint64_t FieldOffset,
                       llvm::ConstantInt *InitExpr);
@@ -66,7 +71,9 @@ private:
   void ConvertStructToPacked();
 
   bool Build(InitListExpr *ILE);
-  void Build(const APValue &Val, QualType ValTy);
+  void Build(const APValue &Val, const RecordDecl *RD, bool IsPrimaryBase,
+             llvm::Constant *VTable, const CXXRecordDecl *VTableClass,
+             CharUnits BaseOffset);
   llvm::Constant *Finalize(QualType Ty);
 
   CharUnits getAlignment(const llvm::Constant *C) const {
@@ -81,13 +88,35 @@ private:
   }
 };
 
+void ConstStructBuilder::AppendVTablePointer(BaseSubobject Base,
+                                             llvm::Constant *VTable,
+                                             const CXXRecordDecl *VTableClass) {
+  // Find the appropriate vtable within the vtable group.
+  uint64_t AddressPoint =
+    CGM.getVTableContext().getVTableLayout(VTableClass).getAddressPoint(Base);
+  llvm::Value *Indices[] = {
+    llvm::ConstantInt::get(CGM.Int64Ty, 0),
+    llvm::ConstantInt::get(CGM.Int64Ty, AddressPoint)
+  };
+  llvm::Constant *VTableAddressPoint =
+    llvm::ConstantExpr::getInBoundsGetElementPtr(VTable, Indices);
+
+  // Add the vtable at the start of the object.
+  AppendBytes(Base.getBaseOffset(), VTableAddressPoint);
+}
+
 void ConstStructBuilder::
 AppendField(const FieldDecl *Field, uint64_t FieldOffset,
             llvm::Constant *InitCst) {
-
   const ASTContext &Context = CGM.getContext();
 
   CharUnits FieldOffsetInChars = Context.toCharUnitsFromBits(FieldOffset);
+
+  AppendBytes(FieldOffsetInChars, InitCst);
+}
+
+void ConstStructBuilder::
+AppendBytes(CharUnits FieldOffsetInChars, llvm::Constant *InitCst) {
 
   assert(NextFieldOffsetInChars <= FieldOffsetInChars
          && "Field offset mismatch!");
@@ -339,6 +368,11 @@ void ConstStructBuilder::ConvertStructToPacked() {
 }
                             
 bool ConstStructBuilder::Build(InitListExpr *ILE) {
+  if (ILE->initializesStdInitializerList()) {
+    //CGM.ErrorUnsupported(ILE, "global std::initializer_list");
+    return false;
+  }
+
   RecordDecl *RD = ILE->getType()->getAs<RecordType>()->getDecl();
   const ASTRecordLayout &Layout = CGM.getContext().getASTRecordLayout(RD);
 
@@ -352,20 +386,20 @@ bool ConstStructBuilder::Build(InitListExpr *ILE) {
     if (IsMsStruct) {
       // Zero-length bitfields following non-bitfield members are
       // ignored:
-      if (CGM.getContext().ZeroBitfieldFollowsNonBitfield((*Field), LastFD)) {
+      if (CGM.getContext().ZeroBitfieldFollowsNonBitfield(&*Field, LastFD)) {
         --FieldNo;
         continue;
       }
-      LastFD = (*Field);
+      LastFD = &*Field;
     }
     
     // If this is a union, skip all the fields that aren't being initialized.
-    if (RD->isUnion() && ILE->getInitializedFieldInUnion() != *Field)
+    if (RD->isUnion() && ILE->getInitializedFieldInUnion() != &*Field)
       continue;
 
     // Don't emit anonymous bitfields, they just affect layout.
     if (Field->isUnnamedBitfield()) {
-      LastFD = (*Field);
+      LastFD = &*Field;
       continue;
     }
 
@@ -383,10 +417,10 @@ bool ConstStructBuilder::Build(InitListExpr *ILE) {
     
     if (!Field->isBitField()) {
       // Handle non-bitfield members.
-      AppendField(*Field, Layout.getFieldOffset(FieldNo), EltInit);
+      AppendField(&*Field, Layout.getFieldOffset(FieldNo), EltInit);
     } else {
       // Otherwise we have a bitfield.
-      AppendBitField(*Field, Layout.getFieldOffset(FieldNo),
+      AppendBitField(&*Field, Layout.getFieldOffset(FieldNo),
                      cast<llvm::ConstantInt>(EltInit));
     }
   }
@@ -394,49 +428,78 @@ bool ConstStructBuilder::Build(InitListExpr *ILE) {
   return true;
 }
 
-void ConstStructBuilder::Build(const APValue &Val, QualType ValTy) {
-  RecordDecl *RD = ValTy->getAs<RecordType>()->getDecl();
+namespace {
+struct BaseInfo {
+  BaseInfo(const CXXRecordDecl *Decl, CharUnits Offset, unsigned Index)
+    : Decl(Decl), Offset(Offset), Index(Index) {
+  }
+
+  const CXXRecordDecl *Decl;
+  CharUnits Offset;
+  unsigned Index;
+
+  bool operator<(const BaseInfo &O) const { return Offset < O.Offset; }
+};
+}
+
+void ConstStructBuilder::Build(const APValue &Val, const RecordDecl *RD,
+                               bool IsPrimaryBase, llvm::Constant *VTable,
+                               const CXXRecordDecl *VTableClass,
+                               CharUnits Offset) {
   const ASTRecordLayout &Layout = CGM.getContext().getASTRecordLayout(RD);
 
-  if (CXXRecordDecl *CD = dyn_cast<CXXRecordDecl>(RD)) {
+  if (const CXXRecordDecl *CD = dyn_cast<CXXRecordDecl>(RD)) {
+    // Add a vtable pointer, if we need one and it hasn't already been added.
+    if (CD->isDynamicClass() && !IsPrimaryBase)
+      AppendVTablePointer(BaseSubobject(CD, Offset), VTable, VTableClass);
+
+    // Accumulate and sort bases, in order to visit them in address order, which
+    // may not be the same as declaration order.
+    llvm::SmallVector<BaseInfo, 8> Bases;
+    Bases.reserve(CD->getNumBases());
     unsigned BaseNo = 0;
-    for (CXXRecordDecl::base_class_iterator Base = CD->bases_begin(),
+    for (CXXRecordDecl::base_class_const_iterator Base = CD->bases_begin(),
          BaseEnd = CD->bases_end(); Base != BaseEnd; ++Base, ++BaseNo) {
-      // Build the base class subobject at the appropriately-offset location
-      // within this object.
+      assert(!Base->isVirtual() && "should not have virtual bases here");
       const CXXRecordDecl *BD = Base->getType()->getAsCXXRecordDecl();
       CharUnits BaseOffset = Layout.getBaseClassOffset(BD);
-      NextFieldOffsetInChars -= BaseOffset;
+      Bases.push_back(BaseInfo(BD, BaseOffset, BaseNo));
+    }
+    std::stable_sort(Bases.begin(), Bases.end());
 
-      Build(Val.getStructBase(BaseNo), Base->getType());
+    for (unsigned I = 0, N = Bases.size(); I != N; ++I) {
+      BaseInfo &Base = Bases[I];
 
-      NextFieldOffsetInChars += BaseOffset;
+      bool IsPrimaryBase = Layout.getPrimaryBase() == Base.Decl;
+      Build(Val.getStructBase(Base.Index), Base.Decl, IsPrimaryBase,
+            VTable, VTableClass, Offset + Base.Offset);
     }
   }
 
   unsigned FieldNo = 0;
   const FieldDecl *LastFD = 0;
   bool IsMsStruct = RD->hasAttr<MsStructAttr>();
+  uint64_t OffsetBits = CGM.getContext().toBits(Offset);
 
   for (RecordDecl::field_iterator Field = RD->field_begin(),
        FieldEnd = RD->field_end(); Field != FieldEnd; ++Field, ++FieldNo) {
     if (IsMsStruct) {
       // Zero-length bitfields following non-bitfield members are
       // ignored:
-      if (CGM.getContext().ZeroBitfieldFollowsNonBitfield((*Field), LastFD)) {
+      if (CGM.getContext().ZeroBitfieldFollowsNonBitfield(&*Field, LastFD)) {
         --FieldNo;
         continue;
       }
-      LastFD = (*Field);
+      LastFD = &*Field;
     }
 
     // If this is a union, skip all the fields that aren't being initialized.
-    if (RD->isUnion() && Val.getUnionField() != *Field)
+    if (RD->isUnion() && Val.getUnionField() != &*Field)
       continue;
 
     // Don't emit anonymous bitfields, they just affect layout.
     if (Field->isUnnamedBitfield()) {
-      LastFD = (*Field);
+      LastFD = &*Field;
       continue;
     }
 
@@ -444,15 +507,15 @@ void ConstStructBuilder::Build(const APValue &Val, QualType ValTy) {
     const APValue &FieldValue =
       RD->isUnion() ? Val.getUnionValue() : Val.getStructField(FieldNo);
     llvm::Constant *EltInit =
-      CGM.EmitConstantValue(FieldValue, Field->getType(), CGF);
+      CGM.EmitConstantValueForMemory(FieldValue, Field->getType(), CGF);
     assert(EltInit && "EmitConstantValue can't fail");
 
     if (!Field->isBitField()) {
       // Handle non-bitfield members.
-      AppendField(*Field, Layout.getFieldOffset(FieldNo), EltInit);
+      AppendField(&*Field, Layout.getFieldOffset(FieldNo) + OffsetBits, EltInit);
     } else {
       // Otherwise we have a bitfield.
-      AppendBitField(*Field, Layout.getFieldOffset(FieldNo),
+      AppendBitField(&*Field, Layout.getFieldOffset(FieldNo) + OffsetBits,
                      cast<llvm::ConstantInt>(EltInit));
     }
   }
@@ -527,7 +590,15 @@ llvm::Constant *ConstStructBuilder::BuildStruct(CodeGenModule &CGM,
                                                 const APValue &Val,
                                                 QualType ValTy) {
   ConstStructBuilder Builder(CGM, CGF);
-  Builder.Build(Val, ValTy);
+
+  const RecordDecl *RD = ValTy->castAs<RecordType>()->getDecl();
+  const CXXRecordDecl *CD = dyn_cast<CXXRecordDecl>(RD);
+  llvm::Constant *VTable = 0;
+  if (CD && CD->isDynamicClass())
+    VTable = CGM.getVTables().GetAddrOfVTable(CD);
+
+  Builder.Build(Val, RD, false, VTable, CD, CharUnits::Zero());
+
   return Builder.Finalize(ValTy);
 }
 
@@ -620,28 +691,32 @@ public:
 
     case CK_Dependent: llvm_unreachable("saw dependent cast!");
 
+    case CK_ReinterpretMemberPointer:
+    case CK_DerivedToBaseMemberPointer:
+    case CK_BaseToDerivedMemberPointer:
+      return CGM.getCXXABI().EmitMemberPointerConversion(E, C);
+
     // These will never be supported.
     case CK_ObjCObjectLValueCast:
     case CK_ARCProduceObject:
     case CK_ARCConsumeObject:
     case CK_ARCReclaimReturnedObject:
     case CK_ARCExtendBlockObject:
+    case CK_CopyAndAutoreleaseBlockObject:
       return 0;
 
     // These don't need to be handled here because Evaluate knows how to
     // evaluate them in the cases where they can be folded.
+    case CK_BitCast:
     case CK_ToVoid:
     case CK_Dynamic:
     case CK_LValueBitCast:
     case CK_NullToMemberPointer:
-    case CK_DerivedToBaseMemberPointer:
-    case CK_BaseToDerivedMemberPointer:
     case CK_UserDefinedConversion:
     case CK_ConstructorConversion:
     case CK_CPointerToObjCPointerCast:
     case CK_BlockPointerToObjCPointerCast:
     case CK_AnyPointerToBlockPointerCast:
-    case CK_BitCast:
     case CK_ArrayToPointerDecay:
     case CK_FunctionToPointerDecay:
     case CK_BaseToDerived:
@@ -683,15 +758,13 @@ public:
   }
 
   llvm::Constant *EmitArrayInitialization(InitListExpr *ILE) {
-    unsigned NumInitElements = ILE->getNumInits();
-    if (NumInitElements == 1 && ILE->getType() == ILE->getInit(0)->getType() &&
-        (isa<StringLiteral>(ILE->getInit(0)) ||
-         isa<ObjCEncodeExpr>(ILE->getInit(0))))
+    if (ILE->isStringLiteralInit())
       return Visit(ILE->getInit(0));
 
     llvm::ArrayType *AType =
         cast<llvm::ArrayType>(ConvertType(ILE->getType()));
     llvm::Type *ElemTy = AType->getElementType();
+    unsigned NumInitElements = ILE->getNumInits();
     unsigned NumElements = AType->getNumElements();
 
     // Initialising an array requires us to automatically
@@ -701,9 +774,9 @@ public:
     // Copy initializer elements.
     std::vector<llvm::Constant*> Elts;
     Elts.reserve(NumInitableElts + NumElements);
-    unsigned i = 0;
+
     bool RewriteType = false;
-    for (; i < NumInitableElts; ++i) {
+    for (unsigned i = 0; i < NumInitableElts; ++i) {
       Expr *Init = ILE->getInit(i);
       llvm::Constant *C = CGM.EmitConstantExpr(Init, Init->getType(), CGF);
       if (!C)
@@ -722,8 +795,7 @@ public:
     if (!fillC)
       return 0;
     RewriteType |= (fillC->getType() != ElemTy);
-    for (; i < NumElements; ++i)
-      Elts.push_back(fillC);
+    Elts.resize(NumElements, fillC);
 
     if (RewriteType) {
       // FIXME: Try to avoid packing the array
@@ -937,7 +1009,16 @@ public:
 llvm::Constant *CodeGenModule::EmitConstantInit(const VarDecl &D,
                                                 CodeGenFunction *CGF) {
   if (const APValue *Value = D.evaluateValue())
-    return EmitConstantValue(*Value, D.getType(), CGF);
+    return EmitConstantValueForMemory(*Value, D.getType(), CGF);
+
+  // FIXME: Implement C++11 [basic.start.init]p2: if the initializer of a
+  // reference is a constant expression, and the reference binds to a temporary,
+  // then constant initialization is performed. ConstExprEmitter will
+  // incorrectly emit a prvalue constant in this case, and the calling code
+  // interprets that as the (pointer) value of the reference, rather than the
+  // desired value of the referee.
+  if (D.getType()->isReferenceType())
+    return 0;
 
   const Expr *E = D.getInit();
   assert(E && "No initializer to emit");
@@ -962,10 +1043,12 @@ llvm::Constant *CodeGenModule::EmitConstantExpr(const Expr *E,
   else
     Success = E->EvaluateAsRValue(Result, Context);
 
+  llvm::Constant *C = 0;
   if (Success && !Result.HasSideEffects)
-    return EmitConstantValue(Result.Val, DestType, CGF);
+    C = EmitConstantValue(Result.Val, DestType, CGF);
+  else
+    C = ConstExprEmitter(*this, CGF).Visit(const_cast<Expr*>(E));
 
-  llvm::Constant* C = ConstExprEmitter(*this, CGF).Visit(const_cast<Expr*>(E));
   if (C && C->getType()->isIntegerTy(1)) {
     llvm::Type *BoolTy = getTypes().ConvertTypeForMem(E->getType());
     C = llvm::ConstantExpr::getZExt(C, BoolTy);
@@ -1023,16 +1106,8 @@ llvm::Constant *CodeGenModule::EmitConstantValue(const APValue &Value,
       return C;
     }
   }
-  case APValue::Int: {
-    llvm::Constant *C = llvm::ConstantInt::get(VMContext,
-                                               Value.getInt());
-
-    if (C->getType()->isIntegerTy(1)) {
-      llvm::Type *BoolTy = getTypes().ConvertTypeForMem(DestType);
-      C = llvm::ConstantExpr::getZExt(C, BoolTy);
-    }
-    return C;
-  }
+  case APValue::Int:
+    return llvm::ConstantInt::get(VMContext, Value.getInt());
   case APValue::ComplexInt: {
     llvm::Constant *Complex[2];
 
@@ -1112,16 +1187,16 @@ llvm::Constant *CodeGenModule::EmitConstantValue(const APValue &Value,
     // Emit array filler, if there is one.
     llvm::Constant *Filler = 0;
     if (Value.hasArrayFiller())
-      Filler = EmitConstantValue(Value.getArrayFiller(),
-                                 CAT->getElementType(), CGF);
+      Filler = EmitConstantValueForMemory(Value.getArrayFiller(),
+                                          CAT->getElementType(), CGF);
 
     // Emit initializer elements.
     llvm::Type *CommonElementType = 0;
     for (unsigned I = 0; I < NumElements; ++I) {
       llvm::Constant *C = Filler;
       if (I < NumInitElts)
-        C = EmitConstantValue(Value.getArrayInitializedElt(I),
-                              CAT->getElementType(), CGF);
+        C = EmitConstantValueForMemory(Value.getArrayInitializedElt(I),
+                                       CAT->getElementType(), CGF);
       if (I == 0)
         CommonElementType = C->getType();
       else if (C->getType() != CommonElementType)
@@ -1147,6 +1222,18 @@ llvm::Constant *CodeGenModule::EmitConstantValue(const APValue &Value,
     return getCXXABI().EmitMemberPointer(Value, DestType);
   }
   llvm_unreachable("Unknown APValue kind");
+}
+
+llvm::Constant *
+CodeGenModule::EmitConstantValueForMemory(const APValue &Value,
+                                          QualType DestType,
+                                          CodeGenFunction *CGF) {
+  llvm::Constant *C = EmitConstantValue(Value, DestType, CGF);
+  if (C->getType()->isIntegerTy(1)) {
+    llvm::Type *BoolTy = getTypes().ConvertTypeForMem(DestType);
+    C = llvm::ConstantExpr::getZExt(C, BoolTy);
+  }
+  return C;
 }
 
 llvm::Constant *
@@ -1287,7 +1374,7 @@ static llvm::Constant *EmitNullConstant(CodeGenModule &CGM,
   // Fill in all the fields.
   for (RecordDecl::field_iterator I = record->field_begin(),
          E = record->field_end(); I != E; ++I) {
-    const FieldDecl *field = *I;
+    const FieldDecl *field = &*I;
 
     // Fill in non-bitfields. (Bitfields always use a zero pattern, which we
     // will fill in later.)

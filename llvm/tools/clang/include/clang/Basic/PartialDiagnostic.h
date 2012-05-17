@@ -141,6 +141,16 @@ private:
     if (!DiagStorage)
       return;
 
+    // The hot path for PartialDiagnostic is when we just used it to wrap an ID
+    // (typically so we have the flexibility of passing a more complex
+    // diagnostic into the callee, but that does not commonly occur).
+    //
+    // Split this out into a slow function for silly compilers (*cough*) which
+    // can't do decent partial inlining.
+    freeStorageSlow();
+  }
+
+  void freeStorageSlow() {
     if (Allocator)
       Allocator->Deallocate(DiagStorage);
     else if (Allocator != reinterpret_cast<StorageAllocator *>(~uintptr_t(0)))
@@ -169,6 +179,12 @@ private:
   }
 
 public:
+  struct NullDiagnostic {};
+  /// \brief Create a null partial diagnostic, which cannot carry a payload,
+  /// and only exists to be swapped with a real partial diagnostic.
+  PartialDiagnostic(NullDiagnostic)
+    : DiagID(0), DiagStorage(0), Allocator(0) { }
+
   PartialDiagnostic(unsigned DiagID, StorageAllocator &Allocator)
     : DiagID(DiagID), DiagStorage(0), Allocator(&Allocator) { }
 
@@ -227,6 +243,12 @@ public:
     freeStorage();
   }
 
+  void swap(PartialDiagnostic &PD) {
+    std::swap(DiagID, PD.DiagID);
+    std::swap(DiagStorage, PD.DiagStorage);
+    std::swap(Allocator, PD.Allocator);
+  }
+
   unsigned getDiagID() const { return DiagID; }
 
   void AddTaggedVal(intptr_t V, DiagnosticsEngine::ArgumentKind Kind) const {
@@ -271,6 +293,18 @@ public:
     // Add all fix-its.
     for (unsigned i = 0, e = DiagStorage->FixItHints.size(); i != e; ++i)
       DB.AddFixItHint(DiagStorage->FixItHints[i]);
+  }
+
+  void EmitToString(DiagnosticsEngine &Diags,
+                    llvm::SmallVectorImpl<char> &Buf) const {
+    // FIXME: It should be possible to render a diagnostic to a string without
+    //        messing with the state of the diagnostics engine.
+    DiagnosticBuilder DB(Diags.Report(getDiagID()));
+    Emit(DB);
+    DB.FlushCounts();
+    Diagnostic(&Diags).FormatDiagnostic(Buf);
+    DB.Clear();
+    Diags.Clear();
   }
 
   /// \brief Clear out this partial diagnostic, giving it a new diagnostic ID

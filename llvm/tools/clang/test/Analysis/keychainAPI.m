@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=osx.SecKeychainAPI %s -verify
+// RUN: %clang_cc1 -analyze -analyzer-checker=osx.SecKeychainAPI %s -analyzer-ipa=inlining -verify
 
 // Fake typedefs.
 typedef unsigned int OSStatus;
@@ -133,7 +133,7 @@ void* returnContent() {
   return outData;
 } // no-warning
 
-// Password was passed in as an argument and does nt have to be deleted.
+// Password was passed in as an argument and does not have to be deleted.
 OSStatus getPasswordAndItem(void** password, UInt32* passwordLength) {
   OSStatus err;
   SecKeychainItemRef item;
@@ -275,7 +275,7 @@ void DellocWithCFStringCreate2(CFAllocatorRef alloc) {
   st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &bytes);
   if (st == noErr) {
     CFStringRef userStr = CFStringCreateWithBytesNoCopy(alloc, bytes, length, 5, 0, kCFAllocatorNull); // expected-warning{{Allocated data is not released}}
-    CFRelease(userStr);
+    CFRelease(userStr); 
   }
 }
 
@@ -337,3 +337,73 @@ static int *bug10798(int *p, int columns, int prevRow) {
   } while(10 >= row[1]);
   return row;
 }
+
+// Test inter-procedural behaviour.
+
+void my_FreeParam(void *attrList, void* X) {
+    SecKeychainItemFreeContent(attrList, X); 
+}
+
+void *my_AllocateReturn(OSStatus *st) {
+  unsigned int *ptr = 0;
+  UInt32 length;
+  void *outData;
+  *st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
+  return outData;
+}
+
+OSStatus my_Allocate_Param(void** password, UInt32* passwordLength) {
+  OSStatus err;
+  SecKeychainItemRef item;
+  err = SecKeychainFindGenericPassword(0, 3, "xx", 3, "xx",
+                                       passwordLength, password, &item);
+  return err;
+}
+
+void allocAndFree1() {
+    unsigned int *ptr = 0;
+    OSStatus st = 0;
+    UInt32 length;
+    void *outData;
+    st = SecKeychainItemCopyContent(2, ptr, ptr, &length, &outData);
+    if (st == noErr)
+      my_FreeParam(ptr, outData);
+}
+
+void consumeChar(char);
+
+void allocNoFree2(int x) {
+    OSStatus st = 0;
+    void *outData = my_AllocateReturn(&st); 
+    if (x) {
+      consumeChar(*(char*)outData); // expected-warning{{Allocated data is not released:}}
+      return;
+    } else {
+      consumeChar(*(char*)outData);
+    }
+    return;
+}
+
+void allocAndFree2(void *attrList) {
+    OSStatus st = 0;
+    void *outData = my_AllocateReturn(&st);
+    if (st == noErr)
+      my_FreeParam(attrList, outData);
+}
+
+void allocNoFree3() {
+    UInt32 length = 32;
+    void *outData;    
+    void *outData2;
+    OSStatus st = my_Allocate_Param(&outData, &length); // expected-warning{{Allocated data is not released}}
+    st = my_Allocate_Param(&outData2, &length); // expected-warning{{Allocated data is not released}}
+}
+
+void allocAndFree3(void *attrList) {
+    UInt32 length = 32;
+    void *outData;
+    OSStatus st = my_Allocate_Param(&outData, &length); 
+    if (st == noErr)
+      SecKeychainItemFreeContent(attrList, outData);
+}
+

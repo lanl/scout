@@ -29,6 +29,15 @@ namespace llvm {
   template<typename T, unsigned N> class SmallVector;
   template<typename T> class SmallVectorImpl;
 
+  template<typename T>
+  struct SaveAndRestore;
+
+  // Reference counting.
+  template <typename T> class IntrusiveRefCntPtr;
+  template <typename T> struct IntrusiveRefCntPtrInfo;
+  template <class Derived> class RefCountedBase;
+  class RefCountedBaseVPTR;
+
   class raw_ostream;
   // TODO: DenseMap, ...
 }
@@ -50,7 +59,14 @@ namespace clang {
   using llvm::SmallString;
   using llvm::SmallVector;
   using llvm::SmallVectorImpl;
-  
+  using llvm::SaveAndRestore;
+
+  // Reference counting.
+  using llvm::IntrusiveRefCntPtr;
+  using llvm::IntrusiveRefCntPtrInfo;
+  using llvm::RefCountedBase;
+  using llvm::RefCountedBaseVPTR;
+
   using llvm::raw_ostream;
 } // end namespace clang.
 

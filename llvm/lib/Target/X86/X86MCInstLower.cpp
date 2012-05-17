@@ -12,10 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "InstPrinter/X86ATTInstPrinter.h"
 #include "X86MCInstLower.h"
 #include "X86AsmPrinter.h"
 #include "X86COFFMachineModuleInfo.h"
+#include "InstPrinter/X86ATTInstPrinter.h"
+#include "llvm/Type.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -26,7 +27,6 @@
 #include "llvm/Target/Mangler.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Type.h"
 using namespace llvm;
 
 X86MCInstLower::X86MCInstLower(Mangler *mang, const MachineFunction &mf,
@@ -154,11 +154,13 @@ MCOperand X86MCInstLower::LowerSymbolOperand(const MachineOperand &MO,
                                                            Ctx),
                                    Ctx);
     break;
+  case X86II::MO_SECREL:    RefKind = MCSymbolRefExpr::VK_SECREL; break;
   case X86II::MO_TLSGD:     RefKind = MCSymbolRefExpr::VK_TLSGD; break;
   case X86II::MO_GOTTPOFF:  RefKind = MCSymbolRefExpr::VK_GOTTPOFF; break;
   case X86II::MO_INDNTPOFF: RefKind = MCSymbolRefExpr::VK_INDNTPOFF; break;
   case X86II::MO_TPOFF:     RefKind = MCSymbolRefExpr::VK_TPOFF; break;
   case X86II::MO_NTPOFF:    RefKind = MCSymbolRefExpr::VK_NTPOFF; break;
+  case X86II::MO_GOTNTPOFF: RefKind = MCSymbolRefExpr::VK_GOTNTPOFF; break;
   case X86II::MO_GOTPCREL:  RefKind = MCSymbolRefExpr::VK_GOTPCREL; break;
   case X86II::MO_GOT:       RefKind = MCSymbolRefExpr::VK_GOT; break;
   case X86II::MO_GOTOFF:    RefKind = MCSymbolRefExpr::VK_GOTOFF; break;
@@ -230,7 +232,8 @@ static void LowerUnaryToTwoAddr(MCInst &OutMI, unsigned NewOpc) {
 /// a short fixed-register form.
 static void SimplifyShortImmForm(MCInst &Inst, unsigned Opcode) {
   unsigned ImmOp = Inst.getNumOperands() - 1;
-  assert(Inst.getOperand(0).isReg() && Inst.getOperand(ImmOp).isImm() &&
+  assert(Inst.getOperand(0).isReg() &&
+         (Inst.getOperand(ImmOp).isImm() || Inst.getOperand(ImmOp).isExpr()) &&
          ((Inst.getNumOperands() == 3 && Inst.getOperand(1).isReg() &&
            Inst.getOperand(0).getReg() == Inst.getOperand(1).getReg()) ||
           Inst.getNumOperands() == 2) && "Unexpected instruction!");
@@ -387,14 +390,12 @@ ReSimplify:
     LowerUnaryToTwoAddr(OutMI, X86::XOR32rr); // MOV32r0 -> XOR32rr
     break;
 
-  // TAILJMPr64, [WIN]CALL64r, [WIN]CALL64pcrel32 - These instructions have
-  // register inputs modeled as normal uses instead of implicit uses.  As such,
-  // truncate off all but the first operand (the callee).  FIXME: Change isel.
+  // TAILJMPr64, CALL64r, CALL64pcrel32 - These instructions have register
+  // inputs modeled as normal uses instead of implicit uses.  As such, truncate
+  // off all but the first operand (the callee).  FIXME: Change isel.
   case X86::TAILJMPr64:
   case X86::CALL64r:
-  case X86::CALL64pcrel32:
-  case X86::WINCALL64r:
-  case X86::WINCALL64pcrel32: {
+  case X86::CALL64pcrel32: {
     unsigned Opcode = OutMI.getOpcode();
     MCOperand Saved = OutMI.getOperand(0);
     OutMI = MCInst();

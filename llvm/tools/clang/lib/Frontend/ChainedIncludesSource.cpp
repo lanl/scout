@@ -87,8 +87,8 @@ ChainedIncludesSource *ChainedIncludesSource::create(CompilerInstance &CI) {
 
     TextDiagnosticPrinter *DiagClient =
       new TextDiagnosticPrinter(llvm::errs(), DiagnosticOptions());
-    llvm::IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-    llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
+    IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+    IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
         new DiagnosticsEngine(DiagID, DiagClient));
 
     OwningPtr<CompilerInstance> Clang(new CompilerInstance());
@@ -116,7 +116,7 @@ ChainedIncludesSource *ChainedIncludesSource::create(CompilerInstance &CI) {
     if (firstInclude) {
       Preprocessor &PP = Clang->getPreprocessor();
       PP.getBuiltinInfo().InitializeBuiltins(PP.getIdentifierTable(),
-                                             PP.getLangOptions());
+                                             PP.getLangOpts());
     } else {
       assert(!serialBufs.empty());
       SmallVector<llvm::MemoryBuffer *, 4> bufs;

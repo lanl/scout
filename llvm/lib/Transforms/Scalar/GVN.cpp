@@ -36,6 +36,7 @@
 #include "llvm/Transforms/Utils/SSAUpdater.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Allocator.h"
@@ -57,6 +58,11 @@ STATISTIC(NumPRELoad,   "Number of loads PRE'd");
 static cl::opt<bool> EnablePRE("enable-pre",
                                cl::init(true), cl::Hidden);
 static cl::opt<bool> EnableLoadPRE("enable-load-pre", cl::init(true));
+
+// Maximum allowed recursion depth.
+static cl::opt<uint32_t>
+MaxRecurseDepth("max-recurse-depth", cl::Hidden, cl::init(1000), cl::ZeroOrMore,
+                cl::desc("Max recurse depth (default = 1000)"));
 
 //===----------------------------------------------------------------------===//
 //                         ValueTable Class
@@ -84,6 +90,12 @@ namespace {
         return false;
       return true;
     }
+
+    friend hash_code hash_value(const Expression &Value) {
+      return hash_combine(Value.opcode, Value.type,
+                          hash_combine_range(Value.varargs.begin(),
+                                             Value.varargs.end()));
+    }
   };
 
   class ValueTable {
@@ -96,12 +108,17 @@ namespace {
     uint32_t nextValueNumber;
 
     Expression create_expression(Instruction* I);
+    Expression create_cmp_expression(unsigned Opcode,
+                                     CmpInst::Predicate Predicate,
+                                     Value *LHS, Value *RHS);
     Expression create_extractvalue_expression(ExtractValueInst* EI);
     uint32_t lookup_or_add_call(CallInst* C);
   public:
     ValueTable() : nextValueNumber(1) { }
     uint32_t lookup_or_add(Value *V);
     uint32_t lookup(Value *V) const;
+    uint32_t lookup_or_add_cmp(unsigned Opcode, CmpInst::Predicate Pred,
+                               Value *LHS, Value *RHS);
     void add(Value *V, uint32_t num);
     void clear();
     void erase(Value *v);
@@ -125,16 +142,8 @@ template <> struct DenseMapInfo<Expression> {
   }
 
   static unsigned getHashValue(const Expression e) {
-    unsigned hash = e.opcode;
-
-    hash = ((unsigned)((uintptr_t)e.type >> 4) ^
-            (unsigned)((uintptr_t)e.type >> 9));
-
-    for (SmallVector<uint32_t, 4>::const_iterator I = e.varargs.begin(),
-         E = e.varargs.end(); I != E; ++I)
-      hash = *I + hash * 37;
-    
-    return hash;
+    using llvm::hash_value;
+    return static_cast<unsigned>(hash_value(e));
   }
   static bool isEqual(const Expression &LHS, const Expression &RHS) {
     return LHS == RHS;
@@ -154,15 +163,49 @@ Expression ValueTable::create_expression(Instruction *I) {
   for (Instruction::op_iterator OI = I->op_begin(), OE = I->op_end();
        OI != OE; ++OI)
     e.varargs.push_back(lookup_or_add(*OI));
+  if (I->isCommutative()) {
+    // Ensure that commutative instructions that only differ by a permutation
+    // of their operands get the same value number by sorting the operand value
+    // numbers.  Since all commutative instructions have two operands it is more
+    // efficient to sort by hand rather than using, say, std::sort.
+    assert(I->getNumOperands() == 2 && "Unsupported commutative instruction!");
+    if (e.varargs[0] > e.varargs[1])
+      std::swap(e.varargs[0], e.varargs[1]);
+  }
   
   if (CmpInst *C = dyn_cast<CmpInst>(I)) {
-    e.opcode = (C->getOpcode() << 8) | C->getPredicate();
+    // Sort the operand value numbers so x<y and y>x get the same value number.
+    CmpInst::Predicate Predicate = C->getPredicate();
+    if (e.varargs[0] > e.varargs[1]) {
+      std::swap(e.varargs[0], e.varargs[1]);
+      Predicate = CmpInst::getSwappedPredicate(Predicate);
+    }
+    e.opcode = (C->getOpcode() << 8) | Predicate;
   } else if (InsertValueInst *E = dyn_cast<InsertValueInst>(I)) {
     for (InsertValueInst::idx_iterator II = E->idx_begin(), IE = E->idx_end();
          II != IE; ++II)
       e.varargs.push_back(*II);
   }
   
+  return e;
+}
+
+Expression ValueTable::create_cmp_expression(unsigned Opcode,
+                                             CmpInst::Predicate Predicate,
+                                             Value *LHS, Value *RHS) {
+  assert((Opcode == Instruction::ICmp || Opcode == Instruction::FCmp) &&
+         "Not a comparison!");
+  Expression e;
+  e.type = CmpInst::makeCmpResultType(LHS->getType());
+  e.varargs.push_back(lookup_or_add(LHS));
+  e.varargs.push_back(lookup_or_add(RHS));
+
+  // Sort the operand value numbers so x<y and y>x get the same value number.
+  if (e.varargs[0] > e.varargs[1]) {
+    std::swap(e.varargs[0], e.varargs[1]);
+    Predicate = CmpInst::getSwappedPredicate(Predicate);
+  }
+  e.opcode = (Opcode << 8) | Predicate;
   return e;
 }
 
@@ -415,6 +458,19 @@ uint32_t ValueTable::lookup(Value *V) const {
   return VI->second;
 }
 
+/// lookup_or_add_cmp - Returns the value number of the given comparison,
+/// assigning it a new number if it did not have one before.  Useful when
+/// we deduced the result of a comparison, but don't immediately have an
+/// instruction realizing that comparison to hand.
+uint32_t ValueTable::lookup_or_add_cmp(unsigned Opcode,
+                                       CmpInst::Predicate Predicate,
+                                       Value *LHS, Value *RHS) {
+  Expression exp = create_cmp_expression(Opcode, Predicate, LHS, RHS);
+  uint32_t& e = expressionNumbering[exp];
+  if (!e) e = nextValueNumber++;
+  return e;
+}
+
 /// clear - Remove all entries from the ValueTable.
 void ValueTable::clear() {
   valueNumbering.clear();
@@ -596,7 +652,11 @@ void GVN::dump(DenseMap<uint32_t, Value*>& d) {
 ///   3) we are speculating for this block and have used that to speculate for
 ///      other blocks.
 static bool IsValueFullyAvailableInBlock(BasicBlock *BB,
-                            DenseMap<BasicBlock*, char> &FullyAvailableBlocks) {
+                            DenseMap<BasicBlock*, char> &FullyAvailableBlocks,
+                            uint32_t RecurseDepth) {
+  if (RecurseDepth > MaxRecurseDepth)
+    return false;
+
   // Optimistically assume that the block is fully available and check to see
   // if we already know about this block in one lookup.
   std::pair<DenseMap<BasicBlock*, char>::iterator, char> IV =
@@ -622,7 +682,7 @@ static bool IsValueFullyAvailableInBlock(BasicBlock *BB,
     // If the value isn't fully available in one of our predecessors, then it
     // isn't fully available in this block either.  Undo our previous
     // optimistic assumption and bail out.
-    if (!IsValueFullyAvailableInBlock(*PI, FullyAvailableBlocks))
+    if (!IsValueFullyAvailableInBlock(*PI, FullyAvailableBlocks,RecurseDepth+1))
       goto SpeculationFailure;
 
   return true;
@@ -1519,7 +1579,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
   for (pred_iterator PI = pred_begin(LoadBB), E = pred_end(LoadBB);
        PI != E; ++PI) {
     BasicBlock *Pred = *PI;
-    if (IsValueFullyAvailableInBlock(Pred, FullyAvailableBlocks)) {
+    if (IsValueFullyAvailableInBlock(Pred, FullyAvailableBlocks, 0)) {
       continue;
     }
     PredLoads[Pred] = 0;
@@ -1901,7 +1961,17 @@ unsigned GVN::replaceAllDominatedUsesWith(Value *From, Value *To,
   for (Value::use_iterator UI = From->use_begin(), UE = From->use_end();
        UI != UE; ) {
     Use &U = (UI++).getUse();
-    if (DT->dominates(Root, cast<Instruction>(U.getUser())->getParent())) {
+
+    // If From occurs as a phi node operand then the use implicitly lives in the
+    // corresponding incoming block.  Otherwise it is the block containing the
+    // user that must be dominated by Root.
+    BasicBlock *UsingBlock;
+    if (PHINode *PN = dyn_cast<PHINode>(U.getUser()))
+      UsingBlock = PN->getIncomingBlock(U);
+    else
+      UsingBlock = cast<Instruction>(U.getUser())->getParent();
+
+    if (DT->dominates(Root, UsingBlock)) {
       U.set(To);
       ++Count;
     }
@@ -1913,74 +1983,119 @@ unsigned GVN::replaceAllDominatedUsesWith(Value *From, Value *To,
 /// dominated by 'Root'.  Exploit this, for example by replacing 'LHS' with
 /// 'RHS' everywhere in the scope.  Returns whether a change was made.
 bool GVN::propagateEquality(Value *LHS, Value *RHS, BasicBlock *Root) {
-  if (LHS == RHS) return false;
-  assert(LHS->getType() == RHS->getType() && "Equal but types differ!");
-
-  // Don't try to propagate equalities between constants.
-  if (isa<Constant>(LHS) && isa<Constant>(RHS))
-    return false;
-
-  // Make sure that any constants are on the right-hand side.  In general the
-  // best results are obtained by placing the longest lived value on the RHS.
-  if (isa<Constant>(LHS))
-    std::swap(LHS, RHS);
-
-  // If neither term is constant then bail out.  This is not for correctness,
-  // it's just that the non-constant case is much less useful: it occurs just
-  // as often as the constant case but handling it hardly ever results in an
-  // improvement.
-  if (!isa<Constant>(RHS))
-    return false;
-
-  // If value numbering later deduces that an instruction in the scope is equal
-  // to 'LHS' then ensure it will be turned into 'RHS'.
-  addToLeaderTable(VN.lookup_or_add(LHS), RHS, Root);
-
-  // Replace all occurrences of 'LHS' with 'RHS' everywhere in the scope.  As
-  // LHS always has at least one use that is not dominated by Root, this will
-  // never do anything if LHS has only one use.
+  SmallVector<std::pair<Value*, Value*>, 4> Worklist;
+  Worklist.push_back(std::make_pair(LHS, RHS));
   bool Changed = false;
-  if (!LHS->hasOneUse()) {
-    unsigned NumReplacements = replaceAllDominatedUsesWith(LHS, RHS, Root);
-    Changed |= NumReplacements > 0;
-    NumGVNEqProp += NumReplacements;
-  }
 
-  // Now try to deduce additional equalities from this one.  For example, if the
-  // known equality was "(A != B)" == "false" then it follows that A and B are
-  // equal in the scope.  Only boolean equalities with an explicit true or false
-  // RHS are currently supported.
-  if (!RHS->getType()->isIntegerTy(1))
-    // Not a boolean equality - bail out.
-    return Changed;
-  ConstantInt *CI = dyn_cast<ConstantInt>(RHS);
-  if (!CI)
-    // RHS neither 'true' nor 'false' - bail out.
-    return Changed;
-  // Whether RHS equals 'true'.  Otherwise it equals 'false'.
-  bool isKnownTrue = CI->isAllOnesValue();
-  bool isKnownFalse = !isKnownTrue;
+  while (!Worklist.empty()) {
+    std::pair<Value*, Value*> Item = Worklist.pop_back_val();
+    LHS = Item.first; RHS = Item.second;
 
-  // If "A && B" is known true then both A and B are known true.  If "A || B"
-  // is known false then both A and B are known false.
-  Value *A, *B;
-  if ((isKnownTrue && match(LHS, m_And(m_Value(A), m_Value(B)))) ||
-      (isKnownFalse && match(LHS, m_Or(m_Value(A), m_Value(B))))) {
-    Changed |= propagateEquality(A, RHS, Root);
-    Changed |= propagateEquality(B, RHS, Root);
-    return Changed;
-  }
+    if (LHS == RHS) continue;
+    assert(LHS->getType() == RHS->getType() && "Equality but unequal types!");
 
-  // If we are propagating an equality like "(A == B)" == "true" then also
-  // propagate the equality A == B.
-  if (ICmpInst *Cmp = dyn_cast<ICmpInst>(LHS)) {
-    // Only equality comparisons are supported.
-    if ((isKnownTrue && Cmp->getPredicate() == CmpInst::ICMP_EQ) ||
-        (isKnownFalse && Cmp->getPredicate() == CmpInst::ICMP_NE)) {
-      Value *Op0 = Cmp->getOperand(0), *Op1 = Cmp->getOperand(1);
-      Changed |= propagateEquality(Op0, Op1, Root);
+    // Don't try to propagate equalities between constants.
+    if (isa<Constant>(LHS) && isa<Constant>(RHS)) continue;
+
+    // Prefer a constant on the right-hand side, or an Argument if no constants.
+    if (isa<Constant>(LHS) || (isa<Argument>(LHS) && !isa<Constant>(RHS)))
+      std::swap(LHS, RHS);
+    assert((isa<Argument>(LHS) || isa<Instruction>(LHS)) && "Unexpected value!");
+
+    // If there is no obvious reason to prefer the left-hand side over the right-
+    // hand side, ensure the longest lived term is on the right-hand side, so the
+    // shortest lived term will be replaced by the longest lived.  This tends to
+    // expose more simplifications.
+    uint32_t LVN = VN.lookup_or_add(LHS);
+    if ((isa<Argument>(LHS) && isa<Argument>(RHS)) ||
+        (isa<Instruction>(LHS) && isa<Instruction>(RHS))) {
+      // Move the 'oldest' value to the right-hand side, using the value number as
+      // a proxy for age.
+      uint32_t RVN = VN.lookup_or_add(RHS);
+      if (LVN < RVN) {
+        std::swap(LHS, RHS);
+        LVN = RVN;
+      }
     }
-    return Changed;
+    assert((!isa<Instruction>(RHS) ||
+            DT->properlyDominates(cast<Instruction>(RHS)->getParent(), Root)) &&
+           "Instruction doesn't dominate scope!");
+
+    // If value numbering later deduces that an instruction in the scope is equal
+    // to 'LHS' then ensure it will be turned into 'RHS'.
+    addToLeaderTable(LVN, RHS, Root);
+
+    // Replace all occurrences of 'LHS' with 'RHS' everywhere in the scope.  As
+    // LHS always has at least one use that is not dominated by Root, this will
+    // never do anything if LHS has only one use.
+    if (!LHS->hasOneUse()) {
+      unsigned NumReplacements = replaceAllDominatedUsesWith(LHS, RHS, Root);
+      Changed |= NumReplacements > 0;
+      NumGVNEqProp += NumReplacements;
+    }
+
+    // Now try to deduce additional equalities from this one.  For example, if the
+    // known equality was "(A != B)" == "false" then it follows that A and B are
+    // equal in the scope.  Only boolean equalities with an explicit true or false
+    // RHS are currently supported.
+    if (!RHS->getType()->isIntegerTy(1))
+      // Not a boolean equality - bail out.
+      continue;
+    ConstantInt *CI = dyn_cast<ConstantInt>(RHS);
+    if (!CI)
+      // RHS neither 'true' nor 'false' - bail out.
+      continue;
+    // Whether RHS equals 'true'.  Otherwise it equals 'false'.
+    bool isKnownTrue = CI->isAllOnesValue();
+    bool isKnownFalse = !isKnownTrue;
+
+    // If "A && B" is known true then both A and B are known true.  If "A || B"
+    // is known false then both A and B are known false.
+    Value *A, *B;
+    if ((isKnownTrue && match(LHS, m_And(m_Value(A), m_Value(B)))) ||
+        (isKnownFalse && match(LHS, m_Or(m_Value(A), m_Value(B))))) {
+      Worklist.push_back(std::make_pair(A, RHS));
+      Worklist.push_back(std::make_pair(B, RHS));
+      continue;
+    }
+
+    // If we are propagating an equality like "(A == B)" == "true" then also
+    // propagate the equality A == B.  When propagating a comparison such as
+    // "(A >= B)" == "true", replace all instances of "A < B" with "false".
+    if (ICmpInst *Cmp = dyn_cast<ICmpInst>(LHS)) {
+      Value *Op0 = Cmp->getOperand(0), *Op1 = Cmp->getOperand(1);
+
+      // If "A == B" is known true, or "A != B" is known false, then replace
+      // A with B everywhere in the scope.
+      if ((isKnownTrue && Cmp->getPredicate() == CmpInst::ICMP_EQ) ||
+          (isKnownFalse && Cmp->getPredicate() == CmpInst::ICMP_NE))
+        Worklist.push_back(std::make_pair(Op0, Op1));
+
+      // If "A >= B" is known true, replace "A < B" with false everywhere.
+      CmpInst::Predicate NotPred = Cmp->getInversePredicate();
+      Constant *NotVal = ConstantInt::get(Cmp->getType(), isKnownFalse);
+      // Since we don't have the instruction "A < B" immediately to hand, work out
+      // the value number that it would have and use that to find an appropriate
+      // instruction (if any).
+      uint32_t NextNum = VN.getNextUnusedValueNumber();
+      uint32_t Num = VN.lookup_or_add_cmp(Cmp->getOpcode(), NotPred, Op0, Op1);
+      // If the number we were assigned was brand new then there is no point in
+      // looking for an instruction realizing it: there cannot be one!
+      if (Num < NextNum) {
+        Value *NotCmp = findLeader(Root, Num);
+        if (NotCmp && isa<Instruction>(NotCmp)) {
+          unsigned NumReplacements =
+            replaceAllDominatedUsesWith(NotCmp, NotVal, Root);
+          Changed |= NumReplacements > 0;
+          NumGVNEqProp += NumReplacements;
+        }
+      }
+      // Ensure that any instruction in scope that gets the "A < B" value number
+      // is replaced with false.
+      addToLeaderTable(Num, NotVal, Root);
+
+      continue;
+    }
   }
 
   return Changed;
@@ -2062,16 +2177,17 @@ bool GVN::processInstruction(Instruction *I) {
     Value *SwitchCond = SI->getCondition();
     BasicBlock *Parent = SI->getParent();
     bool Changed = false;
-    for (unsigned i = 0, e = SI->getNumCases(); i != e; ++i) {
-      BasicBlock *Dst = SI->getCaseSuccessor(i);
+    for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end();
+         i != e; ++i) {
+      BasicBlock *Dst = i.getCaseSuccessor();
       if (isOnlyReachableViaThisEdge(Parent, Dst, DT))
-        Changed |= propagateEquality(SwitchCond, SI->getCaseValue(i), Dst);
+        Changed |= propagateEquality(SwitchCond, i.getCaseValue(), Dst);
     }
     return Changed;
   }
 
   // Instructions with void type don't return a value, so there's
-  // no point in trying to find redudancies in them.
+  // no point in trying to find redundancies in them.
   if (I->getType()->isVoidTy()) return false;
   
   uint32_t NextNum = VN.getNextUnusedValueNumber();
@@ -2087,7 +2203,7 @@ bool GVN::processInstruction(Instruction *I) {
   // If the number we were assigned was a brand new VN, then we don't
   // need to do a lookup to see if the number already exists
   // somewhere in the domtree: it can't!
-  if (Num == NextNum) {
+  if (Num >= NextNum) {
     addToLeaderTable(Num, I, I->getParent());
     return false;
   }
@@ -2228,7 +2344,14 @@ bool GVN::performPRE(Function &F) {
           CurInst->mayReadFromMemory() || CurInst->mayHaveSideEffects() ||
           isa<DbgInfoIntrinsic>(CurInst))
         continue;
-      
+
+      // Don't do PRE on compares. The PHI would prevent CodeGenPrepare from
+      // sinking the compare again, and it would force the code generator to
+      // move the i1 from processor flags or predicate registers into a general
+      // purpose register.
+      if (isa<CmpInst>(CurInst))
+        continue;
+
       // We don't currently value number ANY inline asm calls.
       if (CallInst *CallI = dyn_cast<CallInst>(CurInst))
         if (CallI->isInlineAsm())

@@ -170,6 +170,9 @@ class ReadMethodPoolVisitor;
 
 namespace reader {
   class ASTIdentifierLookupTrait;
+  /// \brief The on-disk hash table used for the DeclContext's Name lookup table.
+  typedef OnDiskChainedHashTable<ASTDeclContextNameLookupTrait>
+    ASTDeclContextNameLookupTable;
 }
 
 } // end namespace serialization
@@ -323,7 +326,9 @@ private:
   // TU, and when we read those update records, the actual context will not
   // be available yet (unless it's the TU), so have this pending map using the
   // ID as a key. It will be realized when the context is actually loaded.
-  typedef SmallVector<std::pair<void *, ModuleFile*>, 1> DeclContextVisibleUpdates;
+  typedef
+    SmallVector<std::pair<serialization::reader::ASTDeclContextNameLookupTable *,
+                          ModuleFile*>, 1> DeclContextVisibleUpdates;
   typedef llvm::DenseMap<serialization::DeclID, DeclContextVisibleUpdates>
       DeclContextVisibleUpdatesPending;
 
@@ -579,15 +584,21 @@ private:
   /// \brief Whether to disable the use of stat caches in AST files.
   bool DisableStatCache;
 
+  /// \brief Whether to accept an AST file with compiler errors.
+  bool AllowASTWithCompilerErrors;
+
   /// \brief The current "generation" of the module file import stack, which 
   /// indicates how many separate module file load operations have occurred.
   unsigned CurrentGeneration;
 
+  typedef llvm::DenseMap<unsigned, SwitchCase *> SwitchCaseMapTy;
   /// \brief Mapping from switch-case IDs in the chain to switch-case statements
   ///
   /// Statements usually don't have IDs, but switch cases need them, so that the
   /// switch statement can refer to them.
-  std::map<unsigned, SwitchCase *> SwitchCaseStmts;
+  SwitchCaseMapTy SwitchCaseStmts;
+
+  SwitchCaseMapTy *CurrSwitchCaseStmts;
 
   /// \brief The number of stat() calls that hit/missed the stat
   /// cache.
@@ -875,8 +886,13 @@ public:
   /// help when an AST file is being used in cases where the
   /// underlying files in the file system may have changed, but
   /// parsing should still continue.
+  ///
+  /// \param AllowASTWithCompilerErrors If true, the AST reader will accept an
+  /// AST file the was created out of an AST with compiler errors,
+  /// otherwise it will reject it.
   ASTReader(Preprocessor &PP, ASTContext &Context, StringRef isysroot = "",
-            bool DisableValidation = false, bool DisableStatCache = false);
+            bool DisableValidation = false, bool DisableStatCache = false,
+            bool AllowASTWithCompilerErrors = false);
 
   ~ASTReader();
 
@@ -1457,6 +1473,9 @@ public:
   /// into the unread macro record offsets table.
   void LoadMacroDefinition(
                      llvm::DenseMap<IdentifierInfo *, uint64_t>::iterator Pos);
+
+  /// \brief Load all external visible decls in the given DeclContext.
+  void completeVisibleDeclsMap(const DeclContext *DC);
 
   /// \brief Retrieve the AST context that this AST reader supplements.
   ASTContext &getContext() { return Context; }

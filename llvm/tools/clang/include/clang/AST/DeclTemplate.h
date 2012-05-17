@@ -18,6 +18,7 @@
 #include "clang/AST/Redeclarable.h"
 #include "clang/AST/TemplateBase.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/Support/Compiler.h"
 #include <limits>
 
 namespace clang {
@@ -105,7 +106,7 @@ public:
   SourceLocation getLAngleLoc() const { return LAngleLoc; }
   SourceLocation getRAngleLoc() const { return RAngleLoc; }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(TemplateLoc, RAngleLoc);
   }
 };
@@ -239,7 +240,7 @@ public:
     return K >= firstTemplate && K <= lastTemplate;
   }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     return SourceRange(TemplateParams->getTemplateLoc(),
                        TemplatedDecl->getSourceRange().getEnd());
   }
@@ -354,8 +355,8 @@ public:
 };
 
 /// \brief Provides information a specialization of a member of a class
-/// template, which may be a member function, static data member, or
-/// member class.
+/// template, which may be a member function, static data member,
+/// member class or member enumeration.
 class MemberSpecializationInfo {
   // The member declaration from which this member was instantiated, and the
   // manner in which the instantiation occurred (in the lower two bits).
@@ -511,7 +512,8 @@ protected:
     typedef _SETraits SETraits;
     typedef _DeclType DeclType;
 
-    typedef typename llvm::FoldingSet<EntryType>::iterator SetIteratorType;
+    typedef typename llvm::FoldingSetVector<EntryType>::iterator
+      SetIteratorType;
 
     SetIteratorType SetIter;
 
@@ -540,13 +542,13 @@ protected:
   };
 
   template <typename EntryType>
-  SpecIterator<EntryType> makeSpecIterator(llvm::FoldingSet<EntryType> &Specs,
-                                           bool isEnd) {
+  SpecIterator<EntryType>
+  makeSpecIterator(llvm::FoldingSetVector<EntryType> &Specs, bool isEnd) {
     return SpecIterator<EntryType>(isEnd ? Specs.end() : Specs.begin());
   }
 
   template <class EntryType> typename SpecEntryTraits<EntryType>::DeclType*
-  findSpecializationImpl(llvm::FoldingSet<EntryType> &Specs,
+  findSpecializationImpl(llvm::FoldingSetVector<EntryType> &Specs,
                          const TemplateArgument *Args, unsigned NumArgs,
                          void *&InsertPos);
 
@@ -617,8 +619,42 @@ public:
     getCommonPtr()->InstantiatedFromMember.setInt(true);
   }
 
-  /// \brief Retrieve the previous declaration of this template, or
-  /// NULL if no such declaration exists.
+  /// \brief Retrieve the member template from which this template was
+  /// instantiated, or NULL if this template was not instantiated from a 
+  /// member template.
+  ///
+  /// A template is instantiated from a member template when the member 
+  /// template itself is part of a class template (or member thereof). For
+  /// example, given
+  ///
+  /// \code
+  /// template<typename T>
+  /// struct X {
+  ///   template<typename U> void f(T, U);
+  /// };
+  ///
+  /// void test(X<int> x) {
+  ///   x.f(1, 'a');
+  /// };
+  /// \endcode
+  ///
+  /// \c X<int>::f is a FunctionTemplateDecl that describes the function
+  /// template
+  ///
+  /// \code
+  /// template<typename U> void X<int>::f(int, U);
+  /// \endcode
+  ///
+  /// which was itself created during the instantiation of \c X<int>. Calling
+  /// getInstantiatedFromMemberTemplate() on this FunctionTemplateDecl will
+  /// retrieve the FunctionTemplateDecl for the original template "f" within
+  /// the class template \c X<T>, i.e.,
+  ///
+  /// \code
+  /// template<typename T>
+  /// template<typename U>
+  /// void X<T>::f(T, U);
+  /// \endcode
   RedeclarableTemplateDecl *getInstantiatedFromMemberTemplate() {
     return getCommonPtr()->InstantiatedFromMember.getPointer();
   }
@@ -671,7 +707,7 @@ protected:
 
     /// \brief The function template specializations for this function
     /// template, including explicit specializations and instantiations.
-    llvm::FoldingSet<FunctionTemplateSpecializationInfo> Specializations;
+    llvm::FoldingSetVector<FunctionTemplateSpecializationInfo> Specializations;
 
     /// \brief The set of "injected" template arguments used within this
     /// function template.
@@ -697,13 +733,14 @@ protected:
 
   /// \brief Retrieve the set of function template specializations of this
   /// function template.
-  llvm::FoldingSet<FunctionTemplateSpecializationInfo> &getSpecializations() {
+  llvm::FoldingSetVector<FunctionTemplateSpecializationInfo> &
+  getSpecializations() {
     return getCommonPtr()->Specializations;
   }
 
   /// \brief Add a specialization of this function template.
   ///
-  /// \param InsertPos Insert position in the FoldingSet, must have been
+  /// \param InsertPos Insert position in the FoldingSetVector, must have been
   ///        retrieved by an earlier call to findSpecialization().
   void addSpecialization(FunctionTemplateSpecializationInfo* Info,
                          void *InsertPos);
@@ -917,7 +954,7 @@ public:
   /// \brief Returns whether this is a parameter pack.
   bool isParameterPack() const;
 
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -995,7 +1032,7 @@ public:
   using TemplateParmPosition::setPosition;
   using TemplateParmPosition::getIndex;
 
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
   /// \brief Determine whether this template parameter has a default
   /// argument.
@@ -1181,7 +1218,7 @@ public:
     DefaultArgumentWasInherited = false;
   }
 
-  SourceRange getSourceRange() const {
+  SourceRange getSourceRange() const LLVM_READONLY {
     SourceLocation End = getLocation();
     if (hasDefaultArgument() && !defaultArgumentWasInherited())
       End = getDefaultArgument().getSourceRange().getEnd();
@@ -1437,7 +1474,7 @@ public:
     return ExplicitInfo ? ExplicitInfo->TemplateKeywordLoc : SourceLocation();
   }
 
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
   void Profile(llvm::FoldingSetNodeID &ID) const {
     Profile(ID, TemplateArgs->data(), TemplateArgs->size(), getASTContext());
@@ -1653,11 +1690,11 @@ protected:
 
     /// \brief The class template specializations for this class
     /// template, including explicit specializations and instantiations.
-    llvm::FoldingSet<ClassTemplateSpecializationDecl> Specializations;
+    llvm::FoldingSetVector<ClassTemplateSpecializationDecl> Specializations;
 
     /// \brief The class template partial specializations for this class
     /// template.
-    llvm::FoldingSet<ClassTemplatePartialSpecializationDecl>
+    llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl>
       PartialSpecializations;
 
     /// \brief The injected-class-name type for this class template.
@@ -1675,11 +1712,11 @@ protected:
   void LoadLazySpecializations();
 
   /// \brief Retrieve the set of specializations of this class template.
-  llvm::FoldingSet<ClassTemplateSpecializationDecl> &getSpecializations();
+  llvm::FoldingSetVector<ClassTemplateSpecializationDecl> &getSpecializations();
 
   /// \brief Retrieve the set of partial specializations of this class
   /// template.
-  llvm::FoldingSet<ClassTemplatePartialSpecializationDecl> &
+  llvm::FoldingSetVector<ClassTemplatePartialSpecializationDecl> &
   getPartialSpecializations();
 
   ClassTemplateDecl(DeclContext *DC, SourceLocation L, DeclarationName Name,

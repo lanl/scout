@@ -100,6 +100,7 @@ AsmPrinter::AsmPrinter(TargetMachine &tm, MCStreamer &Streamer)
     OutStreamer(Streamer),
     LastMI(0), LastFn(0), Counter(~0U), SetCounter(0) {
   DD = 0; DE = 0; MMI = 0; LI = 0;
+  CurrentFnSym = CurrentFnSymForSize = 0;
   GCMetadataPrinters = 0;
   VerboseAsm = Streamer.isVerboseAsm();
 }
@@ -761,7 +762,8 @@ void AsmPrinter::EmitFunctionBody() {
 
     const MCExpr *SizeExp =
       MCBinaryExpr::CreateSub(MCSymbolRefExpr::Create(FnEndLabel, OutContext),
-                              MCSymbolRefExpr::Create(CurrentFnSym, OutContext),
+                              MCSymbolRefExpr::Create(CurrentFnSymForSize,
+                                                      OutContext),
                               OutContext);
     OutStreamer.EmitELFSize(CurrentFnSym, SizeExp);
   }
@@ -796,7 +798,7 @@ void AsmPrinter::EmitDwarfRegOp(const MachineLocation &MLoc) const {
   const TargetRegisterInfo *TRI = TM.getRegisterInfo();
   int Reg = TRI->getDwarfRegNum(MLoc.getReg(), false);
 
-  for (const unsigned *SR = TRI->getSuperRegisters(MLoc.getReg());
+  for (const uint16_t *SR = TRI->getSuperRegisters(MLoc.getReg());
        *SR && Reg < 0; ++SR) {
     Reg = TRI->getDwarfRegNum(*SR, false);
     // FIXME: Get the bit range this register uses of the superregister
@@ -856,6 +858,12 @@ bool AsmPrinter::doFinalization(Module &M) {
     MCSymbol *Name = Mang->getSymbol(&F);
     EmitVisibility(Name, V, false);
   }
+
+  // Emit module flags.
+  SmallVector<Module::ModuleFlagEntry, 8> ModuleFlags;
+  M.getModuleFlagsMetadata(ModuleFlags);
+  if (!ModuleFlags.empty())
+    getObjFileLowering().emitModuleFlags(OutStreamer, ModuleFlags, Mang, TM);
 
   // Finalize debug and EH information.
   if (DE) {
@@ -945,6 +953,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   this->MF = &MF;
   // Get the function symbol.
   CurrentFnSym = Mang->getSymbol(MF.getFunction());
+  CurrentFnSymForSize = CurrentFnSym;
 
   if (isVerbose())
     LI = &getAnalysis<MachineLoopInfo>();
@@ -1755,7 +1764,9 @@ static void EmitGlobalConstantFP(const ConstantFP *CFP, unsigned AddrSpace,
   if (CFP->getType()->isFloatTy()) {
     if (AP.isVerbose()) {
       float Val = CFP->getValueAPF().convertToFloat();
-      AP.OutStreamer.GetCommentOS() << "float " << Val << '\n';
+      uint64_t IntVal = CFP->getValueAPF().bitcastToAPInt().getZExtValue();
+      AP.OutStreamer.GetCommentOS() << "float " << Val << '\n'
+                                    << " (" << format("0x%x", IntVal) << ")\n";
     }
     uint64_t Val = CFP->getValueAPF().bitcastToAPInt().getZExtValue();
     AP.OutStreamer.EmitIntValue(Val, 4, AddrSpace);
@@ -1767,7 +1778,9 @@ static void EmitGlobalConstantFP(const ConstantFP *CFP, unsigned AddrSpace,
   if (CFP->getType()->isDoubleTy()) {
     if (AP.isVerbose()) {
       double Val = CFP->getValueAPF().convertToDouble();
-      AP.OutStreamer.GetCommentOS() << "double " << Val << '\n';
+      uint64_t IntVal = CFP->getValueAPF().bitcastToAPInt().getZExtValue();
+      AP.OutStreamer.GetCommentOS() << "double " << Val << '\n'
+                                    << " (" << format("0x%lx", IntVal) << ")\n";
     }
 
     uint64_t Val = CFP->getValueAPF().bitcastToAPInt().getZExtValue();
@@ -1838,13 +1851,12 @@ static void EmitGlobalConstantLargeInt(const ConstantInt *CI,
 
 static void EmitGlobalConstantImpl(const Constant *CV, unsigned AddrSpace,
                                    AsmPrinter &AP) {
-  if (isa<ConstantAggregateZero>(CV) || isa<UndefValue>(CV)) {
-    uint64_t Size = AP.TM.getTargetData()->getTypeAllocSize(CV->getType());
+  const TargetData *TD = AP.TM.getTargetData();
+  uint64_t Size = TD->getTypeAllocSize(CV->getType());
+  if (isa<ConstantAggregateZero>(CV) || isa<UndefValue>(CV))
     return AP.OutStreamer.EmitZeros(Size, AddrSpace);
-  }
 
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV)) {
-    unsigned Size = AP.TM.getTargetData()->getTypeAllocSize(CV->getType());
     switch (Size) {
     case 1:
     case 2:
@@ -1865,7 +1877,6 @@ static void EmitGlobalConstantImpl(const Constant *CV, unsigned AddrSpace,
     return EmitGlobalConstantFP(CFP, AddrSpace, AP);
 
   if (isa<ConstantPointerNull>(CV)) {
-    unsigned Size = AP.TM.getTargetData()->getTypeAllocSize(CV->getType());
     AP.OutStreamer.EmitIntValue(0, Size, AddrSpace);
     return;
   }
@@ -1879,20 +1890,28 @@ static void EmitGlobalConstantImpl(const Constant *CV, unsigned AddrSpace,
   if (const ConstantStruct *CVS = dyn_cast<ConstantStruct>(CV))
     return EmitGlobalConstantStruct(CVS, AddrSpace, AP);
 
-  // Look through bitcasts, which might not be able to be MCExpr'ized (e.g. of
-  // vectors).
-  if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV))
+  if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV)) {
+    // Look through bitcasts, which might not be able to be MCExpr'ized (e.g. of
+    // vectors).
     if (CE->getOpcode() == Instruction::BitCast)
       return EmitGlobalConstantImpl(CE->getOperand(0), AddrSpace, AP);
+
+    if (Size > 8) {
+      // If the constant expression's size is greater than 64-bits, then we have
+      // to emit the value in chunks. Try to constant fold the value and emit it
+      // that way.
+      Constant *New = ConstantFoldConstantExpression(CE, TD);
+      if (New && New != CE)
+        return EmitGlobalConstantImpl(New, AddrSpace, AP);
+    }
+  }
   
   if (const ConstantVector *V = dyn_cast<ConstantVector>(CV))
     return EmitGlobalConstantVector(V, AddrSpace, AP);
     
   // Otherwise, it must be a ConstantExpr.  Lower it to an MCExpr, then emit it
   // thread the streamer with EmitValue.
-  AP.OutStreamer.EmitValue(LowerConstant(CV, AP),
-                         AP.TM.getTargetData()->getTypeAllocSize(CV->getType()),
-                           AddrSpace);
+  AP.OutStreamer.EmitValue(LowerConstant(CV, AP), Size, AddrSpace);
 }
 
 /// EmitGlobalConstant - Print a general LLVM constant to the .s file.
@@ -2076,27 +2095,22 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock *MBB) const {
       OutStreamer.EmitLabel(Syms[i]);
   }
 
+  // Print some verbose block comments.
+  if (isVerbose()) {
+    if (const BasicBlock *BB = MBB->getBasicBlock())
+      if (BB->hasName())
+        OutStreamer.AddComment("%" + BB->getName());
+    EmitBasicBlockLoopComments(*MBB, LI, *this);
+  }
+
   // Print the main label for the block.
   if (MBB->pred_empty() || isBlockOnlyReachableByFallthrough(MBB)) {
     if (isVerbose() && OutStreamer.hasRawTextSupport()) {
-      if (const BasicBlock *BB = MBB->getBasicBlock())
-        if (BB->hasName())
-          OutStreamer.AddComment("%" + BB->getName());
-
-      EmitBasicBlockLoopComments(*MBB, LI, *this);
-
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer.EmitRawText(Twine(MAI->getCommentString()) + " BB#" +
                               Twine(MBB->getNumber()) + ":");
     }
   } else {
-    if (isVerbose()) {
-      if (const BasicBlock *BB = MBB->getBasicBlock())
-        if (BB->hasName())
-          OutStreamer.AddComment("%" + BB->getName());
-      EmitBasicBlockLoopComments(*MBB, LI, *this);
-    }
-
     OutStreamer.EmitLabel(MBB->getSymbol());
   }
 }

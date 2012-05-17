@@ -38,11 +38,15 @@ namespace clang {
                 ASTContext &Ctx, bool PrintStats = false,
                 TranslationUnitKind TUKind = TU_Complete,
                 CodeCompleteConsumer *CompletionConsumer = 0,
+                bool SkipFunctionBodies = false,
                 ASTViewScout* ASTViewer = 0);
 
   /// \brief Parse the main file known to the preprocessor, producing an 
   /// abstract syntax tree.
-  void ParseAST(Sema &S, bool PrintStats = false, ASTViewScout* ASTViewer = 0);
+
+  void ParseAST(Sema &S, bool PrintStats = false,
+                bool SkipFunctionBodies = false,
+                ASTViewScout* ASTViewer = 0);
   
 }  // end namespace clang
 

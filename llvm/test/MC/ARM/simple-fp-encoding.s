@@ -1,129 +1,137 @@
 @ RUN: llvm-mc -mcpu=cortex-a8 -triple armv7-apple-darwin -show-encoding < %s | FileCheck %s
 
+        vadd.f64  d16, d17, d16
+        vadd.f32  s0, s1, s0
 @ CHECK: vadd.f64 d16, d17, d16      @ encoding: [0xa0,0x0b,0x71,0xee]
-        vadd.f64        d16, d17, d16
-
 @ CHECK: vadd.f32 s0, s1, s0         @ encoding: [0x80,0x0a,0x30,0xee]
-        vadd.f32        s0, s1, s0
 
+        vsub.f64  d16, d17, d16
+        vsub.f32  s0, s1, s0
 @ CHECK: vsub.f64 d16, d17, d16      @ encoding: [0xe0,0x0b,0x71,0xee]
-        vsub.f64        d16, d17, d16
-
 @ CHECK: vsub.f32 s0, s1, s0         @ encoding: [0xc0,0x0a,0x30,0xee]
-        vsub.f32        s0, s1, s0
 
-@ CHECK: vdiv.f64 d16, d17, d16      @ encoding: [0xa0,0x0b,0xc1,0xee]
-        vdiv.f64        d16, d17, d16
+        vdiv.f64  d16, d17, d16
+        vdiv.f32  s0, s1, s0
+        vdiv.f32 s5, s7
+        vdiv.f64 d5, d7
 
-@ CHECK: vdiv.f32 s0, s1, s0         @ encoding: [0x80,0x0a,0x80,0xee]
-        vdiv.f32        s0, s1, s0
+@ CHECK: vdiv.f64 d16, d17, d16         @ encoding: [0xa0,0x0b,0xc1,0xee]
+@ CHECK: vdiv.f32 s0, s1, s0            @ encoding: [0x80,0x0a,0x80,0xee]
+@ CHECK: vdiv.f32	s5, s5, s7      @ encoding: [0xa3,0x2a,0xc2,0xee]
+@ CHECK: vdiv.f64	d5, d5, d7      @ encoding: [0x07,0x5b,0x85,0xee]
 
-@ CHECK: vmul.f64 d16, d17, d16      @ encoding: [0xa0,0x0b,0x61,0xee]
-        vmul.f64        d16, d17, d16
 
-@ CHECK: vmul.f64	d20, d20, d17   @ encoding: [0xa1,0x4b,0x64,0xee]
+        vmul.f64  d16, d17, d16
 	vmul.f64  d20, d17
-
-@ CHECK: vmul.f32 s0, s1, s0         @ encoding: [0x80,0x0a,0x20,0xee]
-        vmul.f32        s0, s1, s0
-
-@ CHECK: vmul.f32	s11, s11, s21   @ encoding: [0xaa,0x5a,0x65,0xee]
+        vmul.f32  s0, s1, s0
 	vmul.f32  s11, s21
 
-@ CHECK: vnmul.f64 d16, d17, d16     @ encoding: [0xe0,0x0b,0x61,0xee]
-        vnmul.f64       d16, d17, d16
 
-@ CHECK: vnmul.f32 s0, s1, s0        @ encoding: [0xc0,0x0a,0x20,0xee]
+@ CHECK: vmul.f64 d16, d17, d16      @ encoding: [0xa0,0x0b,0x61,0xee]
+@ CHECK: vmul.f64 d20, d20, d17      @ encoding: [0xa1,0x4b,0x64,0xee]
+@ CHECK: vmul.f32 s0, s1, s0         @ encoding: [0x80,0x0a,0x20,0xee]
+@ CHECK: vmul.f32 s11, s11, s21      @ encoding: [0xaa,0x5a,0x65,0xee]
+
+        vnmul.f64       d16, d17, d16
         vnmul.f32       s0, s1, s0
 
-@ CHECK: vcmpe.f64 d17, d16          @ encoding: [0xe0,0x1b,0xf4,0xee]
-        vcmpe.f64       d17, d16
+@ CHECK: vnmul.f64 d16, d17, d16     @ encoding: [0xe0,0x0b,0x61,0xee]
+@ CHECK: vnmul.f32 s0, s1, s0        @ encoding: [0xc0,0x0a,0x20,0xee]
 
-@ CHECK: vcmpe.f32 s1, s0            @ encoding: [0xc0,0x0a,0xf4,0xee]
+        vcmpe.f64       d17, d16
         vcmpe.f32       s1, s0
 
-@ CHECK: vcmpe.f64 d16, #0           @ encoding: [0xc0,0x0b,0xf5,0xee]
-        vcmpe.f64       d16, #0
+@ CHECK: vcmpe.f64 d17, d16          @ encoding: [0xe0,0x1b,0xf4,0xee]
+@ CHECK: vcmpe.f32 s1, s0            @ encoding: [0xc0,0x0a,0xf4,0xee]
 
-@ CHECK: vcmpe.f32 s0, #0            @ encoding: [0xc0,0x0a,0xb5,0xee]
+        vcmpe.f64       d16, #0
         vcmpe.f32       s0, #0
 
-@ CHECK: vabs.f64 d16, d16           @ encoding: [0xe0,0x0b,0xf0,0xee]
-        vabs.f64        d16, d16
+@ CHECK: vcmpe.f64 d16, #0           @ encoding: [0xc0,0x0b,0xf5,0xee]
+@ CHECK: vcmpe.f32 s0, #0            @ encoding: [0xc0,0x0a,0xb5,0xee]
 
-@ CHECK: vabs.f32 s0, s0             @ encoding: [0xc0,0x0a,0xb0,0xee]
+        vabs.f64        d16, d16
         vabs.f32        s0, s0
 
-@ CHECK: vcvt.f32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xb7,0xee]
-        vcvt.f32.f64    s0, d16
+@ CHECK: vabs.f64 d16, d16           @ encoding: [0xe0,0x0b,0xf0,0xee]
+@ CHECK: vabs.f32 s0, s0             @ encoding: [0xc0,0x0a,0xb0,0xee]
 
-@ CHECK: vcvt.f64.f32 d16, s0        @ encoding: [0xc0,0x0a,0xf7,0xee]
+        vcvt.f32.f64    s0, d16
         vcvt.f64.f32    d16, s0
 
-@ CHECK: vneg.f64 d16, d16           @ encoding: [0x60,0x0b,0xf1,0xee]
-        vneg.f64        d16, d16
+@ CHECK: vcvt.f32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xb7,0xee]
+@ CHECK: vcvt.f64.f32 d16, s0        @ encoding: [0xc0,0x0a,0xf7,0xee]
 
-@ CHECK: vneg.f32 s0, s0             @ encoding: [0x40,0x0a,0xb1,0xee]
+        vneg.f64        d16, d16
         vneg.f32        s0, s0
 
-@ CHECK: vsqrt.f64 d16, d16          @ encoding: [0xe0,0x0b,0xf1,0xee]
-        vsqrt.f64       d16, d16
+@ CHECK: vneg.f64 d16, d16           @ encoding: [0x60,0x0b,0xf1,0xee]
+@ CHECK: vneg.f32 s0, s0             @ encoding: [0x40,0x0a,0xb1,0xee]
 
-@ CHECK: vsqrt.f32 s0, s0            @ encoding: [0xc0,0x0a,0xb1,0xee]
+        vsqrt.f64       d16, d16
         vsqrt.f32       s0, s0
 
-@ CHECK: vcvt.f64.s32 d16, s0        @ encoding: [0xc0,0x0b,0xf8,0xee]
+@ CHECK: vsqrt.f64 d16, d16          @ encoding: [0xe0,0x0b,0xf1,0xee]
+@ CHECK: vsqrt.f32 s0, s0            @ encoding: [0xc0,0x0a,0xb1,0xee]
+
         vcvt.f64.s32    d16, s0
-
-@ CHECK: vcvt.f32.s32 s0, s0         @ encoding: [0xc0,0x0a,0xb8,0xee]
         vcvt.f32.s32    s0, s0
-
-@ CHECK: vcvt.f64.u32 d16, s0        @ encoding: [0x40,0x0b,0xf8,0xee]
         vcvt.f64.u32    d16, s0
-
-@ CHECK: vcvt.f32.u32 s0, s0         @ encoding: [0x40,0x0a,0xb8,0xee]
         vcvt.f32.u32    s0, s0
-
-@ CHECK: vcvt.s32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xbd,0xee]
         vcvt.s32.f64    s0, d16
-
-@ CHECK: vcvt.s32.f32 s0, s0         @ encoding: [0xc0,0x0a,0xbd,0xee]
         vcvt.s32.f32    s0, s0
-
-@ CHECK: vcvt.u32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xbc,0xee]
         vcvt.u32.f64    s0, d16
-
-@ CHECK: vcvt.u32.f32 s0, s0         @ encoding: [0xc0,0x0a,0xbc,0xee]
         vcvt.u32.f32    s0, s0
 
-@ CHECK: vmla.f64 d16, d18, d17      @ encoding: [0xa1,0x0b,0x42,0xee]
-        vmla.f64        d16, d18, d17
+@ CHECK: vcvt.f64.s32 d16, s0        @ encoding: [0xc0,0x0b,0xf8,0xee]
+@ CHECK: vcvt.f32.s32 s0, s0         @ encoding: [0xc0,0x0a,0xb8,0xee]
+@ CHECK: vcvt.f64.u32 d16, s0        @ encoding: [0x40,0x0b,0xf8,0xee]
+@ CHECK: vcvt.f32.u32 s0, s0         @ encoding: [0x40,0x0a,0xb8,0xee]
+@ CHECK: vcvt.s32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xbd,0xee]
+@ CHECK: vcvt.s32.f32 s0, s0         @ encoding: [0xc0,0x0a,0xbd,0xee]
+@ CHECK: vcvt.u32.f64 s0, d16        @ encoding: [0xe0,0x0b,0xbc,0xee]
+@ CHECK: vcvt.u32.f32 s0, s0         @ encoding: [0xc0,0x0a,0xbc,0xee]
 
-@ CHECK: vmla.f32 s1, s2, s0         @ encoding: [0x00,0x0a,0x41,0xee]
+
+        vmla.f64        d16, d18, d17
         vmla.f32        s1, s2, s0
 
-@ CHECK: vmls.f64 d16, d18, d17      @ encoding: [0xe1,0x0b,0x42,0xee]
-        vmls.f64        d16, d18, d17
+@ CHECK: vmla.f64 d16, d18, d17      @ encoding: [0xa1,0x0b,0x42,0xee]
+@ CHECK: vmla.f32 s1, s2, s0         @ encoding: [0x00,0x0a,0x41,0xee]
 
-@ CHECK: vmls.f32 s1, s2, s0         @ encoding: [0x40,0x0a,0x41,0xee]
+        vmls.f64        d16, d18, d17
         vmls.f32        s1, s2, s0
 
-@ CHECK: vnmla.f64 d16, d18, d17     @ encoding: [0xe1,0x0b,0x52,0xee]
-        vnmla.f64       d16, d18, d17
+@ CHECK: vmls.f64 d16, d18, d17      @ encoding: [0xe1,0x0b,0x42,0xee]
+@ CHECK: vmls.f32 s1, s2, s0         @ encoding: [0x40,0x0a,0x41,0xee]
 
-@ CHECK: vnmla.f32 s1, s2, s0        @ encoding: [0x40,0x0a,0x51,0xee]
+        vnmla.f64       d16, d18, d17
         vnmla.f32       s1, s2, s0
 
-@ CHECK: vnmls.f64 d16, d18, d17     @ encoding: [0xa1,0x0b,0x52,0xee]
-        vnmls.f64       d16, d18, d17
+@ CHECK: vnmla.f64 d16, d18, d17     @ encoding: [0xe1,0x0b,0x52,0xee]
+@ CHECK: vnmla.f32 s1, s2, s0        @ encoding: [0x40,0x0a,0x51,0xee]
 
-@ CHECK: vnmls.f32 s1, s2, s0        @ encoding: [0x00,0x0a,0x51,0xee]
+        vnmls.f64       d16, d18, d17
         vnmls.f32       s1, s2, s0
 
-@ CHECK: vmrs apsr_nzcv, fpscr       @ encoding: [0x10,0xfa,0xf1,0xee]
-@ CHECK: vmrs apsr_nzcv, fpscr       @ encoding: [0x10,0xfa,0xf1,0xee]
+@ CHECK: vnmls.f64 d16, d18, d17     @ encoding: [0xa1,0x0b,0x52,0xee]
+@ CHECK: vnmls.f32 s1, s2, s0        @ encoding: [0x00,0x0a,0x51,0xee]
+
+        vmrs    APSR_nzcv, fpscr
         vmrs    apsr_nzcv, fpscr
         fmstat
+        vmrs    r2, fpsid
+        vmrs    r3, FPSID
+        vmrs    r4, mvfr0
+        vmrs    r5, MVFR1
+
+@ CHECK: vmrs APSR_nzcv, fpscr       @ encoding: [0x10,0xfa,0xf1,0xee]
+@ CHECK: vmrs APSR_nzcv, fpscr       @ encoding: [0x10,0xfa,0xf1,0xee]
+@ CHECK: vmrs APSR_nzcv, fpscr       @ encoding: [0x10,0xfa,0xf1,0xee]
+@ CHECK: vmrs r2, fpsid              @ encoding: [0x10,0x2a,0xf0,0xee]
+@ CHECK: vmrs r3, fpsid              @ encoding: [0x10,0x3a,0xf0,0xee]
+@ CHECK: vmrs r4, mvfr0              @ encoding: [0x10,0x4a,0xf7,0xee]
+@ CHECK: vmrs r5, mvfr1              @ encoding: [0x10,0x5a,0xf6,0xee]
 
 @ CHECK: vnegne.f64 d16, d16         @ encoding: [0x60,0x0b,0xf1,0x1e]
         vnegne.f64      d16, d16
@@ -302,15 +310,40 @@
 
 
 @ VCVT (between floating-point and fixed-point)
-	vcvt.f32.u32 s0, s0, #20
+        vcvt.f32.u32 s0, s0, #20
         vcvt.f64.s32 d0, d0, #32
         vcvt.f32.u16 s0, s0, #1
         vcvt.f64.s16 d0, d0, #16
+        vcvt.f32.s32 s1, s1, #20
+        vcvt.f64.u32 d20, d20, #32
+        vcvt.f32.s16 s17, s17, #1
+        vcvt.f64.u16 d23, d23, #16
+        vcvt.u32.f32 s12, s12, #20 
+        vcvt.s32.f64 d2, d2, #32
+        vcvt.u16.f32 s28, s28, #1
+        vcvt.s16.f64 d15, d15, #16
+        vcvt.s32.f32 s1, s1, #20
+        vcvt.u32.f64 d20, d20, #32
+        vcvt.s16.f32 s17, s17, #1
+        vcvt.u16.f64 d23, d23, #16
 
 @ CHECK: vcvt.f32.u32	s0, s0, #20     @ encoding: [0xc6,0x0a,0xbb,0xee]
 @ CHECK: vcvt.f64.s32	d0, d0, #32     @ encoding: [0xc0,0x0b,0xba,0xee]
 @ CHECK: vcvt.f32.u16	s0, s0, #1      @ encoding: [0x67,0x0a,0xbb,0xee]
 @ CHECK: vcvt.f64.s16	d0, d0, #16     @ encoding: [0x40,0x0b,0xba,0xee]
+@ CHECK: vcvt.f32.s32	s1, s1, #20     @ encoding: [0xc6,0x0a,0xfa,0xee]
+@ CHECK: vcvt.f64.u32	d20, d20, #32   @ encoding: [0xc0,0x4b,0xfb,0xee]
+@ CHECK: vcvt.f32.s16	s17, s17, #1    @ encoding: [0x67,0x8a,0xfa,0xee]
+@ CHECK: vcvt.f64.u16	d23, d23, #16   @ encoding: [0x40,0x7b,0xfb,0xee]
+
+@ CHECK: vcvt.u32.f32	s12, s12, #20   @ encoding: [0xc6,0x6a,0xbf,0xee]
+@ CHECK: vcvt.s32.f64	d2, d2, #32     @ encoding: [0xc0,0x2b,0xbe,0xee]
+@ CHECK: vcvt.u16.f32	s28, s28, #1    @ encoding: [0x67,0xea,0xbf,0xee]
+@ CHECK: vcvt.s16.f64	d15, d15, #16   @ encoding: [0x40,0xfb,0xbe,0xee]
+@ CHECK: vcvt.s32.f32	s1, s1, #20     @ encoding: [0xc6,0x0a,0xfe,0xee]
+@ CHECK: vcvt.u32.f64	d20, d20, #32   @ encoding: [0xc0,0x4b,0xff,0xee]
+@ CHECK: vcvt.s16.f32	s17, s17, #1    @ encoding: [0x67,0x8a,0xfe,0xee]
+@ CHECK: vcvt.u16.f64	d23, d23, #16   @ encoding: [0x40,0x7b,0xff,0xee]
 
 
 @ Use NEON to load some f32 immediates that don't fit the f8 representation.

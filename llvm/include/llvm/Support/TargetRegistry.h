@@ -104,6 +104,8 @@ namespace llvm {
     typedef MCInstPrinter *(*MCInstPrinterCtorTy)(const Target &T,
                                                   unsigned SyntaxVariant,
                                                   const MCAsmInfo &MAI,
+                                                  const MCInstrInfo &MII,
+                                                  const MCRegisterInfo &MRI,
                                                   const MCSubtargetInfo &STI);
     typedef MCCodeEmitter *(*MCCodeEmitterCtorTy)(const MCInstrInfo &II,
                                                   const MCSubtargetInfo &STI,
@@ -392,10 +394,12 @@ namespace llvm {
 
     MCInstPrinter *createMCInstPrinter(unsigned SyntaxVariant,
                                        const MCAsmInfo &MAI,
+                                       const MCInstrInfo &MII,
+                                       const MCRegisterInfo &MRI,
                                        const MCSubtargetInfo &STI) const {
       if (!MCInstPrinterCtorFn)
         return 0;
-      return MCInstPrinterCtorFn(*this, SyntaxVariant, MAI, STI);
+      return MCInstPrinterCtorFn(*this, SyntaxVariant, MAI, MII, MRI, STI);
     }
 
 
@@ -504,6 +508,21 @@ namespace llvm {
     /// \param Error - On failure, an error string describing why no target was
     /// found.
     static const Target *lookupTarget(const std::string &Triple,
+                                      std::string &Error);
+
+    /// lookupTarget - Lookup a target based on an architecture name
+    /// and a target triple.  If the architecture name is non-empty,
+    /// then the lookup is done by architecture.  Otherwise, the target
+    /// triple is used.
+    ///
+    /// \param ArchName - The architecture to use for finding a target.
+    /// \param TheTriple - The triple to use for finding a target.  The
+    /// triple is updated with canonical architecture name if a lookup
+    /// by architecture is done.
+    /// \param Error - On failure, an error string describing why no target was
+    /// found.
+    static const Target *lookupTarget(const std::string &ArchName,
+                                      Triple &TheTriple,
                                       std::string &Error);
 
     /// getClosestTargetForJIT - Pick the best target that is compatible with
@@ -786,7 +805,7 @@ namespace llvm {
   /// extern "C" void LLVMInitializeFooTargetInfo() {
   ///   RegisterTarget<Triple::foo> X(TheFooTarget, "foo", "Foo description");
   /// }
-  template<Triple::ArchType TargetArchType = Triple::InvalidArch,
+  template<Triple::ArchType TargetArchType = Triple::UnknownArch,
            bool HasJIT = false>
   struct RegisterTarget {
     RegisterTarget(Target &T, const char *Name, const char *Desc) {

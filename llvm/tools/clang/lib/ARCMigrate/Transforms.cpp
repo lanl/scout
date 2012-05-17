@@ -12,7 +12,6 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/Analysis/DomainSpecific/CocoaConventions.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -29,50 +28,18 @@ ASTTraverser::~ASTTraverser() { }
 // Helpers.
 //===----------------------------------------------------------------------===//
 
-/// \brief True if the class is one that does not support weak.
-static bool isClassInWeakBlacklist(ObjCInterfaceDecl *cls) {
-  if (!cls)
-    return false;
-
-  bool inList = llvm::StringSwitch<bool>(cls->getName())
-                 .Case("NSColorSpace", true)
-                 .Case("NSFont", true)
-                 .Case("NSFontPanel", true)
-                 .Case("NSImage", true)
-                 .Case("NSLazyBrowserCell", true)
-                 .Case("NSWindow", true)
-                 .Case("NSWindowController", true)
-                 .Case("NSViewController", true)
-                 .Case("NSMenuView", true)
-                 .Case("NSPersistentUIWindowInfo", true)
-                 .Case("NSTableCellView", true)
-                 .Case("NSATSTypeSetter", true)
-                 .Case("NSATSGlyphStorage", true)
-                 .Case("NSLineFragmentRenderingContext", true)
-                 .Case("NSAttributeDictionary", true)
-                 .Case("NSParagraphStyle", true)
-                 .Case("NSTextTab", true)
-                 .Case("NSSimpleHorizontalTypesetter", true)
-                 .Case("_NSCachedAttributedString", true)
-                 .Case("NSStringDrawingTextStorage", true)
-                 .Case("NSTextView", true)
-                 .Case("NSSubTextStorage", true)
-                 .Default(false);
-
-  if (inList)
-    return true;
-
-  return isClassInWeakBlacklist(cls->getSuperClass());
-}
-
 bool trans::canApplyWeak(ASTContext &Ctx, QualType type,
                          bool AllowOnUnknownClass) {
-  if (!Ctx.getLangOptions().ObjCRuntimeHasWeak)
+  if (!Ctx.getLangOpts().ObjCRuntimeHasWeak)
     return false;
 
   QualType T = type;
   if (T.isNull())
     return false;
+
+  // iOS is always safe to use 'weak'.
+  if (Ctx.getTargetInfo().getTriple().getOS() == llvm::Triple::IOS)
+    AllowOnUnknownClass = true;
 
   while (const PointerType *ptr = T->getAs<PointerType>())
     T = ptr->getPointeeType();
@@ -83,8 +50,6 @@ bool trans::canApplyWeak(ASTContext &Ctx, QualType type,
     if (!AllowOnUnknownClass && !Class->hasDefinition())
       return false; // forward classes are not verifiable, therefore not safe.
     if (Class->isArcWeakrefUnavailable())
-      return false;
-    if (isClassInWeakBlacklist(Class))
       return false;
   }
 
@@ -111,10 +76,10 @@ SourceLocation trans::findSemiAfterLocation(SourceLocation loc,
                                             ASTContext &Ctx) {
   SourceManager &SM = Ctx.getSourceManager();
   if (loc.isMacroID()) {
-    if (!Lexer::isAtEndOfMacroExpansion(loc, SM, Ctx.getLangOptions(), &loc))
+    if (!Lexer::isAtEndOfMacroExpansion(loc, SM, Ctx.getLangOpts(), &loc))
       return SourceLocation();
   }
-  loc = Lexer::getLocForEndOfToken(loc, /*Offset=*/0, SM, Ctx.getLangOptions());
+  loc = Lexer::getLocForEndOfToken(loc, /*Offset=*/0, SM, Ctx.getLangOpts());
 
   // Break down the source location.
   std::pair<FileID, unsigned> locInfo = SM.getDecomposedLoc(loc);
@@ -129,7 +94,7 @@ SourceLocation trans::findSemiAfterLocation(SourceLocation loc,
 
   // Lex from the start of the given location.
   Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
-              Ctx.getLangOptions(),
+              Ctx.getLangOpts(),
               file.begin(), tokenBegin, file.end());
   Token tok;
   lexer.LexFromRawLexer(tok);
@@ -194,7 +159,6 @@ class ReferenceClear : public RecursiveASTVisitor<ReferenceClear> {
 public:
   ReferenceClear(ExprSet &refs) : Refs(refs) { }
   bool VisitDeclRefExpr(DeclRefExpr *E) { Refs.erase(E); return true; }
-  bool VisitBlockDeclRefExpr(BlockDeclRefExpr *E) { Refs.erase(E); return true; }
 };
 
 class ReferenceCollector : public RecursiveASTVisitor<ReferenceCollector> {
@@ -206,12 +170,6 @@ public:
     : Dcl(D), Refs(refs) { }
 
   bool VisitDeclRefExpr(DeclRefExpr *E) {
-    if (E->getDecl() == Dcl)
-      Refs.insert(E);
-    return true;
-  }
-
-  bool VisitBlockDeclRefExpr(BlockDeclRefExpr *E) {
     if (E->getDecl() == Dcl)
       Refs.insert(E);
     return true;
@@ -382,7 +340,7 @@ bool MigrationContext::rewritePropertyAttribute(StringRef fromAttr,
 
   // Lex from the start of the given location.
   Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
-              Pass.Ctx.getLangOptions(),
+              Pass.Ctx.getLangOpts(),
               file.begin(), tokenBegin, file.end());
   Token tok;
   lexer.LexFromRawLexer(tok);
@@ -465,7 +423,7 @@ bool MigrationContext::addPropertyAttribute(StringRef attr,
 
   // Lex from the start of the given location.
   Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
-              Pass.Ctx.getLangOptions(),
+              Pass.Ctx.getLangOpts(),
               file.begin(), tokenBegin, file.end());
   Token tok;
   lexer.LexFromRawLexer(tok);
@@ -514,8 +472,8 @@ static void GCRewriteFinalize(MigrationPass &pass) {
   for (impl_iterator I = impl_iterator(DC->decls_begin()),
        E = impl_iterator(DC->decls_end()); I != E; ++I) {
     for (ObjCImplementationDecl::instmeth_iterator
-         MI = (*I)->instmeth_begin(),
-         ME = (*I)->instmeth_end(); MI != ME; ++MI) {
+         MI = I->instmeth_begin(),
+         ME = I->instmeth_end(); MI != ME; ++MI) {
       ObjCMethodDecl *MD = *MI;
       if (!MD->hasBody())
         continue;
@@ -527,7 +485,7 @@ static void GCRewriteFinalize(MigrationPass &pass) {
                   "#if !__has_feature(objc_arc)\n");
         CharSourceRange::getTokenRange(FinalizeM->getSourceRange());
         const SourceManager &SM = pass.Ctx.getSourceManager();
-        const LangOptions &LangOpts = pass.Ctx.getLangOptions();
+        const LangOptions &LangOpts = pass.Ctx.getLangOpts();
         bool Invalid;
         std::string str = "\n#endif\n";
         str += Lexer::getSourceText(
@@ -553,6 +511,7 @@ static void traverseAST(MigrationPass &pass) {
     MigrateCtx.addTraverser(new GCAttrsTraverser());
   }
   MigrateCtx.addTraverser(new PropertyRewriteTraverser());
+  MigrateCtx.addTraverser(new BlockObjCVariableTraverser());
 
   MigrateCtx.traverse(pass.Ctx.getTranslationUnitDecl());
 }
@@ -564,7 +523,6 @@ static void independentTransforms(MigrationPass &pass) {
   removeZeroOutPropsInDeallocFinalize(pass);
   makeAssignARCSafe(pass);
   rewriteUnbridgedCasts(pass);
-  rewriteBlockObjCVariable(pass);
   checkAPIUses(pass);
   traverseAST(pass);
 }

@@ -1,4 +1,10 @@
-set(LLVM_USED_LIBS clangBasic clangAST clangLex clangAnalysis)
+set(LLVM_USED_LIBS
+  clangAST
+  clangAnalysis
+  clangBasic
+  clangEdit
+  clangLex
+  )
 
 add_clang_library(clangSema
   AnalysisBasedWarnings.cpp
@@ -8,7 +14,6 @@ add_clang_library(clangSema
   DelayedDiagnostic.cpp
   IdentifierResolver.cpp
   JumpDiagnostics.cpp
-  MultiInitializer.cpp
   Scope.cpp
   Sema.cpp
   SemaAccess.cpp
@@ -35,6 +40,7 @@ add_clang_library(clangSema
   SemaOverload.cpp
   SemaPseudoObject.cpp
   SemaStmt.cpp
+  SemaStmtAttr.cpp
   SemaTemplate.cpp
   SemaTemplateDeduction.cpp
   SemaTemplateInstantiate.cpp
@@ -46,4 +52,7 @@ add_clang_library(clangSema
 
 add_dependencies(clangSema ClangARMNeon ClangAttrClasses ClangAttrList 
                  ClangDiagnosticSema ClangDeclNodes ClangStmtNodes 
-                 ClangAttrTemplateInstantiate)
+                 ClangAttrTemplateInstantiate ClangAttrParsedAttrList 
+				 ClangAttrParsedAttrKinds)
+
+

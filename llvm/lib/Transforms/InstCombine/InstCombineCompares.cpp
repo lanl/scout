@@ -571,6 +571,14 @@ static Value *EvaluateGEPOffsetExpression(User *GEP, InstCombiner &IC) {
 Instruction *InstCombiner::FoldGEPICmp(GEPOperator *GEPLHS, Value *RHS,
                                        ICmpInst::Predicate Cond,
                                        Instruction &I) {
+  // Don't transform signed compares of GEPs into index compares. Even if the
+  // GEP is inbounds, the final add of the base pointer can have signed overflow
+  // and would change the result of the icmp.
+  // e.g. "&foo[0] <s &foo[1]" can't be folded to "true" because "foo" could be
+  // the maximum signed value for the pointer type.
+  if (ICmpInst::isSigned(Cond))
+    return 0;
+
   // Look through bitcasts.
   if (BitCastInst *BCI = dyn_cast<BitCastInst>(RHS))
     RHS = BCI->getOperand(0);
@@ -606,6 +614,20 @@ Instruction *InstCombiner::FoldGEPICmp(GEPOperator *GEPLHS, Value *RHS,
       if (IndicesTheSame)
         return new ICmpInst(ICmpInst::getSignedPredicate(Cond),
                             GEPLHS->getOperand(0), GEPRHS->getOperand(0));
+
+      // If we're comparing GEPs with two base pointers that only differ in type
+      // and both GEPs have only constant indices or just one use, then fold
+      // the compare with the adjusted indices.
+      if (TD && GEPLHS->isInBounds() && GEPRHS->isInBounds() &&
+          (GEPLHS->hasAllConstantIndices() || GEPLHS->hasOneUse()) &&
+          (GEPRHS->hasAllConstantIndices() || GEPRHS->hasOneUse()) &&
+          PtrBase->stripPointerCasts() ==
+            GEPRHS->getOperand(0)->stripPointerCasts()) {
+        Value *Cmp = Builder->CreateICmp(ICmpInst::getSignedPredicate(Cond),
+                                         EmitGEPOffset(GEPLHS),
+                                         EmitGEPOffset(GEPRHS));
+        return ReplaceInstUsesWith(I, Cmp);
+      }
 
       // Otherwise, the base pointers are different and the indices are
       // different, bail out.
@@ -1006,15 +1028,14 @@ Instruction *InstCombiner::visitICmpInstWithInstAndIntCst(ICmpInst &ICI,
       // of the high bits truncated out of x are known.
       unsigned DstBits = LHSI->getType()->getPrimitiveSizeInBits(),
              SrcBits = LHSI->getOperand(0)->getType()->getPrimitiveSizeInBits();
-      APInt Mask(APInt::getHighBitsSet(SrcBits, SrcBits-DstBits));
       APInt KnownZero(SrcBits, 0), KnownOne(SrcBits, 0);
-      ComputeMaskedBits(LHSI->getOperand(0), Mask, KnownZero, KnownOne);
+      ComputeMaskedBits(LHSI->getOperand(0), KnownZero, KnownOne);
 
       // If all the high bits are known, we can do this xform.
       if ((KnownZero|KnownOne).countLeadingOnes() >= SrcBits-DstBits) {
         // Pull in the high bits from known-ones set.
         APInt NewRHS = RHS->getValue().zext(SrcBits);
-        NewRHS |= KnownOne;
+        NewRHS |= KnownOne & APInt::getHighBitsSet(SrcBits, SrcBits-DstBits);
         return new ICmpInst(ICI.getPredicate(), LHSI->getOperand(0),
                             ConstantInt::get(ICI.getContext(), NewRHS));
       }
@@ -2711,6 +2732,17 @@ Instruction *InstCombiner::FoldFCmp_IntToFP_Cst(FCmpInst &I,
     if (SMin.compare(RHS) == APFloat::cmpGreaterThan) { // smin > 12312.0
       if (Pred == ICmpInst::ICMP_NE || Pred == ICmpInst::ICMP_SGT ||
           Pred == ICmpInst::ICMP_SGE)
+        return ReplaceInstUsesWith(I, ConstantInt::getTrue(I.getContext()));
+      return ReplaceInstUsesWith(I, ConstantInt::getFalse(I.getContext()));
+    }
+  } else {
+    // See if the RHS value is < UnsignedMin.
+    APFloat SMin(RHS.getSemantics(), APFloat::fcZero, false);
+    SMin.convertFromAPInt(APInt::getMinValue(IntWidth), true,
+                          APFloat::rmNearestTiesToEven);
+    if (SMin.compare(RHS) == APFloat::cmpGreaterThan) { // umin > 12312.0
+      if (Pred == ICmpInst::ICMP_NE || Pred == ICmpInst::ICMP_UGT ||
+          Pred == ICmpInst::ICMP_UGE)
         return ReplaceInstUsesWith(I, ConstantInt::getTrue(I.getContext()));
       return ReplaceInstUsesWith(I, ConstantInt::getFalse(I.getContext()));
     }

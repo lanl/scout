@@ -19,6 +19,8 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormattedStream.h"
@@ -26,13 +28,8 @@
 using namespace llvm;
 
 // Include the auto-generated portion of the assembly writer.
-#define GET_INSTRUCTION_NAME
 #define PRINT_ALIAS_INSTR
 #include "X86GenAsmWriter.inc"
-
-X86ATTInstPrinter::X86ATTInstPrinter(const MCAsmInfo &MAI)
-  : MCInstPrinter(MAI) {
-}
 
 void X86ATTInstPrinter::printRegName(raw_ostream &OS,
                                      unsigned RegNo) const {
@@ -45,15 +42,12 @@ void X86ATTInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
   if (!printAliasInstr(MI, OS))
     printInstruction(MI, OS);
   
-  // If verbose assembly is enabled, we can print some informative comments.
-  if (CommentStream) {
-    printAnnotation(OS, Annot);
-    EmitAnyX86InstComments(MI, *CommentStream, getRegisterName);
-  }
-}
+  // Next always print the annotation.
+  printAnnotation(OS, Annot);
 
-StringRef X86ATTInstPrinter::getOpcodeName(unsigned Opcode) const {
-  return getInstructionName(Opcode);
+  // If verbose assembly is enabled, we can print some informative comments.
+  if (CommentStream)
+    EmitAnyX86InstComments(MI, *CommentStream, getRegisterName);
 }
 
 void X86ATTInstPrinter::printSSECC(const MCInst *MI, unsigned Op,
@@ -103,11 +97,21 @@ void X86ATTInstPrinter::print_pcrel_imm(const MCInst *MI, unsigned OpNo,
                                         raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
   if (Op.isImm())
-    // Print this as a signed 32-bit value.
-    O << (int)Op.getImm();
+    O << Op.getImm();
   else {
     assert(Op.isExpr() && "unknown pcrel immediate operand");
-    O << *Op.getExpr();
+    // If a symbolic branch target was added as a constant expression then print
+    // that address in hex.
+    const MCConstantExpr *BranchTarget = dyn_cast<MCConstantExpr>(Op.getExpr());
+    int64_t Address;
+    if (BranchTarget && BranchTarget->EvaluateAsAbsolute(Address)) {
+      O << "0x";
+      O.write_hex(Address);
+    }
+    else {
+      // Otherwise, just print the expression.
+      O << *Op.getExpr();
+    }
   }
 }
 

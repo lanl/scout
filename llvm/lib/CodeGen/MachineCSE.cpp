@@ -63,6 +63,8 @@ namespace {
     virtual void releaseMemory() {
       ScopeMap.clear();
       Exps.clear();
+      AllocatableRegs.clear();
+      ReservedRegs.clear();
     }
 
   private:
@@ -76,6 +78,8 @@ namespace {
     ScopedHTType VNT;
     SmallVector<MachineInstr*, 64> Exps;
     unsigned CurrVN;
+    BitVector AllocatableRegs;
+    BitVector ReservedRegs;
 
     bool PerformTrivialCoalescing(MachineInstr *MI, MachineBasicBlock *MBB);
     bool isPhysDefTriviallyDead(unsigned Reg,
@@ -166,6 +170,8 @@ MachineCSE::isPhysDefTriviallyDead(unsigned Reg,
     bool SeenDef = false;
     for (unsigned i = 0, e = I->getNumOperands(); i != e; ++i) {
       const MachineOperand &MO = I->getOperand(i);
+      if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+        SeenDef = true;
       if (!MO.isReg() || !MO.getReg())
         continue;
       if (!TRI->regsOverlap(MO.getReg(), Reg))
@@ -213,7 +219,7 @@ bool MachineCSE::hasLivePhysRegDefUses(const MachineInstr *MI,
     PhysRefs.insert(Reg);
     if (MO.isDef())
       PhysDefs.push_back(Reg);
-    for (const unsigned *Alias = TRI->getAliasSet(Reg); *Alias; ++Alias)
+    for (const uint16_t *Alias = TRI->getAliasSet(Reg); *Alias; ++Alias)
       PhysRefs.insert(*Alias);
   }
 
@@ -236,9 +242,9 @@ bool MachineCSE::PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
       return false;
 
     for (unsigned i = 0, e = PhysDefs.size(); i != e; ++i) {
-      if (TRI->isInAllocatableClass(PhysDefs[i]))
-        // Avoid extending live range of physical registers unless
-        // they are unallocatable.
+      if (AllocatableRegs.test(PhysDefs[i]) || ReservedRegs.test(PhysDefs[i]))
+        // Avoid extending live range of physical registers if they are
+        //allocatable or reserved.
         return false;
     }
     CrossMBB = true;
@@ -267,6 +273,10 @@ bool MachineCSE::PhysRegDefsReach(MachineInstr *CSMI, MachineInstr *MI,
 
     for (unsigned i = 0, e = I->getNumOperands(); i != e; ++i) {
       const MachineOperand &MO = I->getOperand(i);
+      // RegMasks go on instructions like calls that clobber lots of physregs.
+      // Don't attempt to CSE across such an instruction.
+      if (MO.isRegMask())
+        return false;
       if (!MO.isReg() || !MO.isDef())
         continue;
       unsigned MOReg = MO.getReg();
@@ -588,5 +598,7 @@ bool MachineCSE::runOnMachineFunction(MachineFunction &MF) {
   MRI = &MF.getRegInfo();
   AA = &getAnalysis<AliasAnalysis>();
   DT = &getAnalysis<MachineDominatorTree>();
+  AllocatableRegs = TRI->getAllocatableSet(MF);
+  ReservedRegs = TRI->getReservedRegs(MF);
   return PerformCSE(DT->getRootNode());
 }

@@ -48,6 +48,11 @@ def ext_bcpl_comment : Extension<
   InGroup<Comment>;
 def ext_no_newline_eof : Extension<"no newline at end of file">, 
   InGroup<DiagGroup<"newline-eof">>;
+
+def warn_cxx98_compat_no_newline_eof : Warning<
+  "C++98 requires newline at end of file">,
+  InGroup<CXX98CompatPedantic>, DefaultIgnore;
+
 def ext_dollar_in_identifier : Extension<"'$' in identifier">,
   InGroup<DiagGroup<"dollar-in-identifier-extension">>;
 def ext_charize_microsoft : Extension<"@# is a microsoft extension">,
@@ -95,7 +100,16 @@ def err_hex_escape_no_digits : Error<"\\x used with no following hex digits">;
 def err_ucn_escape_no_digits : Error<"\\u used with no following hex digits">;
 def err_ucn_escape_invalid : Error<"invalid universal character">;
 def err_ucn_escape_incomplete : Error<"incomplete universal character name">;
-def err_ucn_escape_too_big : Error<"universal character name is too long">;
+def err_ucn_escape_basic_scs : Error<
+  "character '%0' cannot be specified by a universal character name">;
+def err_ucn_control_character : Error<
+  "universal character name refers to a control character">;
+def warn_cxx98_compat_literal_ucn_escape_basic_scs : Warning<
+  "specifying character '%0' with a universal character name "
+  "is incompatible with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
+def warn_cxx98_compat_literal_ucn_control_character : Warning<
+  "universal character name referring to a control character "
+  "is incompatible with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
 def err_invalid_decimal_digit : Error<"invalid digit '%0' in decimal constant">;
 def err_invalid_binary_digit : Error<"invalid digit '%0' in binary constant">;
 def err_invalid_octal_digit : Error<"invalid digit '%0' in octal constant">;
@@ -132,18 +146,43 @@ def warn_ucn_not_valid_in_c89 : ExtWarn<
 def warn_cxx98_compat_unicode_literal : Warning<
   "unicode literals are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
+def warn_cxx11_compat_user_defined_literal : Warning<
+  "identifier after literal will be treated as a user-defined literal suffix "
+  "in C++11">, InGroup<CXX11Compat>, DefaultIgnore;
+def warn_cxx11_compat_reserved_user_defined_literal : Warning<
+  "identifier after literal will be treated as a reserved user-defined literal "
+  "suffix in C++11">,
+  InGroup<CXX11CompatReservedUserDefinedLiteral>, DefaultIgnore;
+def ext_reserved_user_defined_literal : ExtWarn<
+  "invalid suffix on literal; C++11 requires a space between literal and "
+  "identifier">, InGroup<ReservedUserDefinedLiteral>, DefaultError;
+def ext_ms_reserved_user_defined_literal : ExtWarn<
+  "invalid suffix on literal; C++11 requires a space between literal and "
+  "identifier">, InGroup<ReservedUserDefinedLiteral>;
 def err_unsupported_string_concat : Error<
   "unsupported non-standard concatenation of string literals">;
+def err_string_concat_mixed_suffix : Error<
+  "differing user-defined suffixes ('%0' and '%1') in string literal "
+  "concatenation">;
+def err_pp_invalid_udl : Error<
+  "%select{character|integer}0 literal with user-defined suffix "
+  "cannot be used in preprocessor constant expression">;
 def err_bad_string_encoding : Error<
   "illegal character encoding in string literal">;
+def warn_bad_string_encoding : ExtWarn<
+  "illegal character encoding in string literal">,
+  InGroup<DiagGroup<"invalid-source-encoding">>;
 def err_bad_character_encoding : Error<
   "illegal character encoding in character literal">;
-  
+def warn_bad_character_encoding : ExtWarn<
+  "illegal character encoding in character literal">,
+  InGroup<DiagGroup<"invalid-source-encoding">>;
+def err_lexing_string : Error<"failure when lexing a string">;
+
+
 //===----------------------------------------------------------------------===//
 // PTH Diagnostics
 //===----------------------------------------------------------------------===//
-def err_pth_cannot_read : Error<
-    "PTH file '%0' could not be read">;
 def err_invalid_pth_file : Error<
     "invalid or corrupt PTH file '%0'">;
 
@@ -196,7 +235,11 @@ def warn_pp_convert_lhs_to_positive : Warning<
 def warn_pp_convert_rhs_to_positive : Warning<
   "right side of operator converted from negative value to unsigned: %0">;
 
-def ext_pp_import_directive : Extension<"#import is a language extension">;
+def ext_pp_import_directive : Extension<"#import is a language extension">,
+  InGroup<DiagGroup<"import-preprocessor-directive-pedantic">>;
+def err_pp_import_directive_ms : Error<
+  "#import of type library is an unsupported Microsoft feature">;
+
 def ext_pp_ident_directive : Extension<"#ident is a language extension">;
 def ext_pp_include_next_directive : Extension<
   "#include_next is a language extension">;
@@ -259,7 +302,6 @@ def pp_err_else_without_if : Error<"#else without #if">;
 def pp_err_elif_without_if : Error<"#elif without #if">;
 def err_pp_endif_without_if : Error<"#endif without #if">;
 def err_pp_expected_value_in_expr : Error<"expected value in expression">;
-def err_pp_missing_val_before_operator : Error<"missing value before operator">;
 def err_pp_expected_rparen : Error<"expected ')' in preprocessor expression">;
 def err_pp_expected_eol : Error<
   "expected end of line in preprocessor expression">;
@@ -288,6 +330,19 @@ def err_warning_check_malformed : Error<
 def warn_has_warning_invalid_option :
    ExtWarn<"__has_warning expected option name (e.g. \"-Wundef\")">,
    InGroup<MalformedWarningCheck>;
+
+def warn_pragma_include_alias_mismatch_angle :
+   ExtWarn<"angle-bracketed include <%0> cannot be aliased to double-quoted "
+   "include \"%1\"">, InGroup<UnknownPragmas>;
+def warn_pragma_include_alias_mismatch_quote :
+   ExtWarn<"double-quoted include \"%0\" cannot be aliased to angle-bracketed "
+   "include <%1>">, InGroup<UnknownPragmas>;
+def warn_pragma_include_alias_expected :
+   ExtWarn<"pragma include_alias expected '%0'">,
+   InGroup<UnknownPragmas>;
+def warn_pragma_include_alias_expected_filename :
+   ExtWarn<"pragma include_alias expected include filename">,
+   InGroup<UnknownPragmas>;
 
 def err__Pragma_malformed : Error<
   "_Pragma takes a parenthesized string literal">;
@@ -402,7 +457,6 @@ def note_mmap_lsquare_match : Note<"to match this ']'">;
 def err_mmap_expected_member : Error<
   "expected umbrella, header, submodule, or module export">;
 def err_mmap_expected_header : Error<"expected a header name after '%0'">;
-def err_mmap_expected_dir : Error<"expected a directory name after '%0'">;
 def err_mmap_module_redefinition : Error<
   "redefinition of module '%0'">;
 def note_mmap_prev_definition : Note<"previously defined here">;

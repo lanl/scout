@@ -7,17 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCObjectStreamer.h"
-
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/MC/MCAsmBackend.h"
+#include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
 
 MCObjectStreamer::MCObjectStreamer(MCContext &Context, MCAsmBackend &TAB,
@@ -266,12 +266,13 @@ void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
 
 void MCObjectStreamer::FinishImpl() {
   // Dump out the dwarf file & directory tables and line tables.
+  const MCSymbol *LineSectionSymbol = NULL;
   if (getContext().hasDwarfFiles())
-    MCDwarfFileTable::Emit(this);
+    LineSectionSymbol = MCDwarfFileTable::Emit(this);
 
   // If we are generating dwarf for assembly source files dump out the sections.
   if (getContext().getGenDwarfForAssembly())
-    MCGenDwarfInfo::Emit(this);
+    MCGenDwarfInfo::Emit(this, LineSectionSymbol);
 
   getAssembler().Finish();
 }

@@ -15,11 +15,12 @@
 #ifndef LLVM_CLANG_AST_TEMPLATEBASE_H
 #define LLVM_CLANG_AST_TEMPLATEBASE_H
 
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TemplateName.h"
+#include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
   class FoldingSetNodeID;
@@ -100,7 +101,6 @@ public:
   /// declaration, which is either an external declaration or a
   /// template declaration.
   TemplateArgument(Decl *D) : Kind(Declaration) {
-    // FIXME: Need to be sure we have the "canonical" declaration!
     TypeOrValue = reinterpret_cast<uintptr_t>(D);
   }
 
@@ -457,7 +457,7 @@ public:
   }
 
   /// \brief - Fetches the full source range of the argument.
-  SourceRange getSourceRange() const;
+  SourceRange getSourceRange() const LLVM_READONLY;
 
   const TemplateArgument &getArgument() const {
     return Argument;

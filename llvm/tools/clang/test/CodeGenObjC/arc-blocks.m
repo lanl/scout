@@ -510,3 +510,14 @@ void test13(id x) {
   // CHECK-NEXT: ret void
 }
 
+// <rdar://problem/10907510>
+void test14() {
+  void (^const x[1])(void) = { ^{} };
+}
+
+// rdar://11149025
+// Don't make invalid ASTs and crash.
+void test15_helper(void (^block)(void), int x);
+void test15(int a) {
+  test15_helper(^{ (void) a; }, ({ a; }));
+}

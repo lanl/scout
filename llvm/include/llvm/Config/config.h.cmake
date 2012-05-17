@@ -11,20 +11,17 @@
 /* Relative directory for resource files */
 #define CLANG_RESOURCE_DIR "${CLANG_RESOURCE_DIR}"
 
-/* Directory wherelibstdc++ is installed. */
-#define GCC_INSTALL_PREFIX "${GCC_INSTALL_PREFIX}"
-
 /* Directories clang will search for headers */
 #define C_INCLUDE_DIRS "${C_INCLUDE_DIRS}"
-
-/* Define if CBE is enabled for printf %a output */
-#cmakedefine ENABLE_CBE_PRINTF_A ${ENABLE_CBE_PRINTF_A}
 
 /* Define if position independent code is enabled */
 #cmakedefine ENABLE_PIC
 
 /* Define if timestamp information (e.g., __DATE___) is allowed */
 #cmakedefine ENABLE_TIMESTAMPS ${ENABLE_TIMESTAMPS}
+
+/* Define to 1 if you have the `arc4random' function. */
+#cmakedefine HAVE_ARC4RANDOM
 
 /* Define to 1 if you have the `argz_append' function. */
 #cmakedefine HAVE_ARGZ_APPEND ${HAVE_ARGZ_APPEND}
@@ -158,7 +155,7 @@
 #cmakedefine HAVE_GETTIMEOFDAY ${HAVE_GETTIMEOFDAY}
 
 /* Define if the Graphviz program is available */
-#undef HAVE_GRAPHVIZ
+#cmakedefine HAVE_GRAPHVIZ ${HAVE_GRAPHVIZ}
 
 /* Define if the gv program is available */
 #cmakedefine HAVE_GV ${HAVE_GV}
@@ -572,6 +569,9 @@
 /* LLVM name for the native AsmPrinter init function, if available */
 #cmakedefine LLVM_NATIVE_ASMPRINTER LLVMInitialize${LLVM_NATIVE_ARCH}AsmPrinter
 
+/* LLVM name for the native Disassembler init function, if available */
+#cmakedefine LLVM_NATIVE_DISASSEMBLER LLVMInitialize${LLVM_NATIVE_ARCH}Disassembler
+
 /* LLVM name for the native Target init function, if available */
 #cmakedefine LLVM_NATIVE_TARGET LLVMInitialize${LLVM_NATIVE_ARCH}Target
 
@@ -616,6 +616,12 @@
 
 /* Installation prefix directory */
 #cmakedefine LLVM_PREFIX "${LLVM_PREFIX}"
+
+/* Major version of the LLVM API */
+#cmakedefine LLVM_VERSION_MAJOR ${LLVM_VERSION_MAJOR}
+
+/* Minor version of the LLVM API */
+#cmakedefine LLVM_VERSION_MINOR ${LLVM_VERSION_MINOR}
 
 /* Define if the OS needs help to load dependent libraries for dlopen(). */
 #cmakedefine LTDL_DLOPEN_DEPLIBS ${LTDL_DLOPEN_DEPLIBS}
@@ -671,9 +677,6 @@
 /* Define to 1 if your <sys/time.h> declares `struct tm'. */
 #undef TM_IN_SYS_TIME
 
-/* Define if we have the oprofile JIT-support library */
-#undef USE_OPROFILE
-
 /* Define if use udis86 library */
 #undef USE_UDIS86
 
@@ -709,5 +712,11 @@
 
 /* Added by Kevin -- Maximum path length */
 #cmakedefine MAXPATHLEN ${MAXPATHLEN}
+
+/* Support for Intel JIT Events API is enabled */
+#cmakedefine LLVM_USE_INTEL_JITEVENTS 1
+
+/* Support for OProfile JIT API is enabled */
+#cmakedefine LLVM_USE_OPROFILE 1
 
 #endif

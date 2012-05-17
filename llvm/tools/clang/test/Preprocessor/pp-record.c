@@ -2,8 +2,22 @@
 
 // http://llvm.org/PR11120
 
-#define FILE_HEADER_NAME "pp-record.h"
+#define STRINGIZE(text) STRINGIZE_I(text)
+#define STRINGIZE_I(text) #text
 
-#if defined(FILE_HEADER_NAME)
-#include FILE_HEADER_NAME
+#define INC pp-record.h
+
+#include STRINGIZE(INC)
+
+CAKE;
+
+#define DIR 1
+#define FNM(x) x
+
+FNM(
+#if DIR
+    int a;
+#else
+    int b;
 #endif
+)

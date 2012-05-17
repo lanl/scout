@@ -141,8 +141,8 @@ void ilist_traits<MachineInstr>::deleteNode(MachineInstr* MI) {
 }
 
 MachineBasicBlock::iterator MachineBasicBlock::getFirstNonPHI() {
-  instr_iterator I = instr_begin();
-  while (I != end() && I->isPHI())
+  instr_iterator I = instr_begin(), E = instr_end();
+  while (I != E && I->isPHI())
     ++I;
   assert(!I->isInsideBundle() && "First non-phi MI cannot be inside a bundle!");
   return I;
@@ -150,7 +150,8 @@ MachineBasicBlock::iterator MachineBasicBlock::getFirstNonPHI() {
 
 MachineBasicBlock::iterator
 MachineBasicBlock::SkipPHIsAndLabels(MachineBasicBlock::iterator I) {
-  while (I != end() && (I->isPHI() || I->isLabel() || I->isDebugValue()))
+  iterator E = end();
+  while (I != E && (I->isPHI() || I->isLabel() || I->isDebugValue()))
     ++I;
   // FIXME: This needs to change if we wish to bundle labels / dbg_values
   // inside the bundle.
@@ -160,29 +161,29 @@ MachineBasicBlock::SkipPHIsAndLabels(MachineBasicBlock::iterator I) {
 }
 
 MachineBasicBlock::iterator MachineBasicBlock::getFirstTerminator() {
-  iterator I = end();
-  while (I != begin() && ((--I)->isTerminator() || I->isDebugValue()))
+  iterator B = begin(), E = end(), I = E;
+  while (I != B && ((--I)->isTerminator() || I->isDebugValue()))
     ; /*noop */
-  while (I != end() && !I->isTerminator())
+  while (I != E && !I->isTerminator())
     ++I;
   return I;
 }
 
 MachineBasicBlock::const_iterator
 MachineBasicBlock::getFirstTerminator() const {
-  const_iterator I = end();
-  while (I != begin() && ((--I)->isTerminator() || I->isDebugValue()))
+  const_iterator B = begin(), E = end(), I = E;
+  while (I != B && ((--I)->isTerminator() || I->isDebugValue()))
     ; /*noop */
-  while (I != end() && !I->isTerminator())
+  while (I != E && !I->isTerminator())
     ++I;
   return I;
 }
 
 MachineBasicBlock::instr_iterator MachineBasicBlock::getFirstInstrTerminator() {
-  instr_iterator I = instr_end();
-  while (I != instr_begin() && ((--I)->isTerminator() || I->isDebugValue()))
+  instr_iterator B = instr_begin(), E = instr_end(), I = E;
+  while (I != B && ((--I)->isTerminator() || I->isDebugValue()))
     ; /*noop */
-  while (I != instr_end() && !I->isTerminator())
+  while (I != E && !I->isTerminator())
     ++I;
   return I;
 }
@@ -235,6 +236,18 @@ StringRef MachineBasicBlock::getName() const {
     return LBB->getName();
   else
     return "(null)";
+}
+
+/// Return a hopefully unique identifier for this block.
+std::string MachineBasicBlock::getFullName() const {
+  std::string Name;
+  if (getParent())
+    Name = (getParent()->getFunction()->getName() + ":").str();
+  if (getBasicBlock())
+    Name += getBasicBlock()->getName();
+  else
+    Name += (Twine("BB") + Twine(getNumber())).str();
+  return Name;
 }
 
 void MachineBasicBlock::print(raw_ostream &OS, SlotIndexes *Indexes) const {
@@ -308,8 +321,8 @@ void MachineBasicBlock::print(raw_ostream &OS, SlotIndexes *Indexes) const {
 void MachineBasicBlock::removeLiveIn(unsigned Reg) {
   std::vector<unsigned>::iterator I =
     std::find(LiveIns.begin(), LiveIns.end(), Reg);
-  assert(I != LiveIns.end() && "Not a live in!");
-  LiveIns.erase(I);
+  if (I != LiveIns.end())
+    LiveIns.erase(I);
 }
 
 bool MachineBasicBlock::isLiveIn(unsigned Reg) const {
@@ -379,22 +392,44 @@ void MachineBasicBlock::updateTerminator() {
         TII->InsertBranch(*this, TBB, 0, Cond, dl);
       }
     } else {
+      // Walk through the successors and find the successor which is not
+      // a landing pad and is not the conditional branch destination (in TBB)
+      // as the fallthrough successor.
+      MachineBasicBlock *FallthroughBB = 0;
+      for (succ_iterator SI = succ_begin(), SE = succ_end(); SI != SE; ++SI) {
+        if ((*SI)->isLandingPad() || *SI == TBB)
+          continue;
+        assert(!FallthroughBB && "Found more than one fallthrough successor.");
+        FallthroughBB = *SI;
+      }
+      if (!FallthroughBB && canFallThrough()) {
+        // We fallthrough to the same basic block as the conditional jump
+        // targets. Remove the conditional jump, leaving unconditional
+        // fallthrough.
+        // FIXME: This does not seem like a reasonable pattern to support, but it
+        // has been seen in the wild coming out of degenerate ARM test cases.
+        TII->RemoveBranch(*this);
+
+        // Finally update the unconditional successor to be reached via a branch
+        // if it would not be reached by fallthrough.
+        if (!isLayoutSuccessor(TBB))
+          TII->InsertBranch(*this, TBB, 0, Cond, dl);
+        return;
+      }
+
       // The block has a fallthrough conditional branch.
-      MachineBasicBlock *MBBA = *succ_begin();
-      MachineBasicBlock *MBBB = *llvm::next(succ_begin());
-      if (MBBA == TBB) std::swap(MBBB, MBBA);
       if (isLayoutSuccessor(TBB)) {
         if (TII->ReverseBranchCondition(Cond)) {
           // We can't reverse the condition, add an unconditional branch.
           Cond.clear();
-          TII->InsertBranch(*this, MBBA, 0, Cond, dl);
+          TII->InsertBranch(*this, FallthroughBB, 0, Cond, dl);
           return;
         }
         TII->RemoveBranch(*this);
-        TII->InsertBranch(*this, MBBA, 0, Cond, dl);
-      } else if (!isLayoutSuccessor(MBBA)) {
+        TII->InsertBranch(*this, FallthroughBB, 0, Cond, dl);
+      } else if (!isLayoutSuccessor(FallthroughBB)) {
         TII->RemoveBranch(*this);
-        TII->InsertBranch(*this, TBB, MBBA, Cond, dl);
+        TII->InsertBranch(*this, TBB, FallthroughBB, Cond, dl);
       }
     }
   }
@@ -561,6 +596,11 @@ bool MachineBasicBlock::canFallThrough() {
 
 MachineBasicBlock *
 MachineBasicBlock::SplitCriticalEdge(MachineBasicBlock *Succ, Pass *P) {
+  // Splitting the critical edge to a landing pad block is non-trivial. Don't do
+  // it in this generic function.
+  if (Succ->isLandingPad())
+    return NULL;
+
   MachineFunction *MF = getParent();
   DebugLoc dl;  // FIXME: this is nowhere
 
@@ -726,8 +766,9 @@ MachineBasicBlock::erase(MachineBasicBlock::iterator I) {
 
 MachineInstr *MachineBasicBlock::remove(MachineInstr *I) {
   if (I->isBundle()) {
-    MachineBasicBlock::instr_iterator MII = I; ++MII;
-    while (MII != end() && MII->isInsideBundle()) {
+    instr_iterator MII = llvm::next(I);
+    iterator E = end();
+    while (MII != E && MII->isInsideBundle()) {
       MachineInstr *MI = &*MII++;
       Insts.remove(MI);
     }

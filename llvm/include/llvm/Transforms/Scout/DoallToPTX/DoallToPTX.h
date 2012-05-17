@@ -21,7 +21,6 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/Utils/FunctionUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Support/TargetRegistry.h"
 

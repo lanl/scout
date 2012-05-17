@@ -185,6 +185,7 @@ void ASTTypeWriter::VisitFunctionProtoType(const FunctionProtoType *T) {
   for (unsigned I = 0, N = T->getNumArgs(); I != N; ++I)
     Writer.AddTypeRef(T->getArgType(I), Record);
   Record.push_back(T->isVariadic());
+  Record.push_back(T->hasTrailingReturn());
   Record.push_back(T->getTypeQuals());
   Record.push_back(static_cast<unsigned>(T->getRefQualifier()));
   Record.push_back(T->getExceptionSpecType());
@@ -194,6 +195,9 @@ void ASTTypeWriter::VisitFunctionProtoType(const FunctionProtoType *T) {
       Writer.AddTypeRef(T->getExceptionType(I), Record);
   } else if (T->getExceptionSpecType() == EST_ComputedNoexcept) {
     Writer.AddStmt(T->getNoexceptExpr());
+  } else if (T->getExceptionSpecType() == EST_Uninstantiated) {
+    Writer.AddDeclRef(T->getExceptionSpecDecl(), Record);
+    Writer.AddDeclRef(T->getExceptionSpecTemplate(), Record);
   }
   Code = TYPE_FUNCTION_PROTO;
 }
@@ -221,6 +225,7 @@ void ASTTypeWriter::VisitTypeOfType(const TypeOfType *T) {
 }
 
 void ASTTypeWriter::VisitDecltypeType(const DecltypeType *T) {
+  Writer.AddTypeRef(T->getUnderlyingType(), Record);
   Writer.AddStmt(T->getUnderlyingExpr());
   Code = TYPE_DECLTYPE;
 }
@@ -370,7 +375,7 @@ void ASTTypeWriter::VisitElaboratedType(const ElaboratedType *T) {
 }
 
 void ASTTypeWriter::VisitInjectedClassNameType(const InjectedClassNameType *T) {
-  Writer.AddDeclRef(T->getDecl(), Record);
+  Writer.AddDeclRef(T->getDecl()->getCanonicalDecl(), Record);
   Writer.AddTypeRef(T->getInjectedSpecializationType(), Record);
   Code = TYPE_INJECTED_CLASS_NAME;
 }
@@ -664,6 +669,7 @@ static void AddStmtsExprs(llvm::BitstreamWriter &Stream,
   RECORD(STMT_CASE);
   RECORD(STMT_DEFAULT);
   RECORD(STMT_LABEL);
+  RECORD(STMT_ATTRIBUTED);
   RECORD(STMT_IF);
   RECORD(STMT_SWITCH);
   RECORD(STMT_WHILE);
@@ -706,9 +712,11 @@ static void AddStmtsExprs(llvm::BitstreamWriter &Stream,
   RECORD(EXPR_GNU_NULL);
   RECORD(EXPR_SHUFFLE_VECTOR);
   RECORD(EXPR_BLOCK);
-  RECORD(EXPR_BLOCK_DECL_REF);
   RECORD(EXPR_GENERIC_SELECTION);
   RECORD(EXPR_OBJC_STRING_LITERAL);
+  RECORD(EXPR_OBJC_BOXED_EXPRESSION);
+  RECORD(EXPR_OBJC_ARRAY_LITERAL);
+  RECORD(EXPR_OBJC_DICTIONARY_LITERAL);
   RECORD(EXPR_OBJC_ENCODE);
   RECORD(EXPR_OBJC_SELECTOR_EXPR);
   RECORD(EXPR_OBJC_PROTOCOL_EXPR);
@@ -722,6 +730,7 @@ static void AddStmtsExprs(llvm::BitstreamWriter &Stream,
   RECORD(STMT_OBJC_AT_TRY);
   RECORD(STMT_OBJC_AT_SYNCHRONIZED);
   RECORD(STMT_OBJC_AT_THROW);
+  RECORD(EXPR_OBJC_BOOL_LITERAL);
   RECORD(EXPR_CXX_OPERATOR_CALL);
   RECORD(EXPR_CXX_CONSTRUCT);
   RECORD(EXPR_CXX_STATIC_CAST);
@@ -729,6 +738,7 @@ static void AddStmtsExprs(llvm::BitstreamWriter &Stream,
   RECORD(EXPR_CXX_REINTERPRET_CAST);
   RECORD(EXPR_CXX_CONST_CAST);
   RECORD(EXPR_CXX_FUNCTIONAL_CAST);
+  RECORD(EXPR_USER_DEFINED_LITERAL);
   RECORD(EXPR_CXX_BOOL_LITERAL);
   RECORD(EXPR_CXX_NULL_PTR_LITERAL);
   RECORD(EXPR_CXX_TYPEID_EXPR);
@@ -990,6 +1000,7 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
   MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang major
   MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang minor
   MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Relocatable
+  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Has errors
   MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Target triple
   unsigned MetaAbbrevCode = Stream.EmitAbbrev(MetaAbbrev);
 
@@ -1000,6 +1011,7 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
   Record.push_back(CLANG_VERSION_MAJOR);
   Record.push_back(CLANG_VERSION_MINOR);
   Record.push_back(!isysroot.empty());
+  Record.push_back(ASTHasCompilerErrors);
   const std::string &Triple = Target.getTriple().getTriple();
   Stream.EmitRecordWithBlob(MetaAbbrevCode, Record, Triple);
 
@@ -1838,7 +1850,10 @@ void ASTWriter::WritePreprocessorDetail(PreprocessingRecord &PPRec) {
       Record.push_back(static_cast<unsigned>(ID->getKind()));
       SmallString<64> Buffer;
       Buffer += ID->getFileName();
-      Buffer += ID->getFile()->getName();
+      // Check that the FileEntry is not null because it was not resolved and
+      // we create a PCH even with compiler errors.
+      if (ID->getFile())
+        Buffer += ID->getFile()->getName();
       Stream.EmitRecordWithBlob(InclusionAbbrev, Record, Buffer);
       continue;
     }
@@ -2793,12 +2808,8 @@ uint64_t ASTWriter::WriteDeclContextVisibleBlock(ASTContext &Context,
   // IdentifierInfo chains, don't bother to build a visible-declarations table.
   // FIXME: In C++ we need the visible declarations in order to "see" the
   // friend declarations, is there a way to do this without writing the table ?
-  if (DC->isTranslationUnit() && !Context.getLangOptions().CPlusPlus)
+  if (DC->isTranslationUnit() && !Context.getLangOpts().CPlusPlus)
     return 0;
-
-  // Force the DeclContext to build a its name-lookup table.
-  if (!DC->hasExternalVisibleStorage())
-    DC->lookup(DeclarationName());
 
   // Serialize the contents of the mapping used for lookup. Note that,
   // although we have two very different code paths, the serialized
@@ -2806,7 +2817,7 @@ uint64_t ASTWriter::WriteDeclContextVisibleBlock(ASTContext &Context,
   // followed by a size, followed by references to the visible
   // declarations that have that name.
   uint64_t Offset = Stream.GetCurrentBitNo();
-  StoredDeclsMap *Map = static_cast<StoredDeclsMap*>(DC->getLookupPtr());
+  StoredDeclsMap *Map = DC->buildLookup();
   if (!Map || Map->empty())
     return 0;
 
@@ -2871,7 +2882,8 @@ uint64_t ASTWriter::WriteDeclContextVisibleBlock(ASTContext &Context,
 ///
 /// UPDATE_VISIBLE blocks contain the declarations that are added to an existing
 /// DeclContext in a dependent AST file. As such, they only exist for the TU
-/// (in C++) and for namespaces.
+/// (in C++), for namespaces, and for classes with forward-declared unscoped
+/// enumeration members (in C++11).
 void ASTWriter::WriteDeclContextVisibleUpdate(const DeclContext *DC) {
   StoredDeclsMap *Map = static_cast<StoredDeclsMap*>(DC->getLookupPtr());
   if (!Map || Map->empty())
@@ -2918,7 +2930,7 @@ void ASTWriter::WriteFPPragmaOptions(const FPOptions &Opts) {
 
 /// \brief Write an OPENCL_EXTENSIONS block for the given OpenCLOptions.
 void ASTWriter::WriteOpenCLExtensions(Sema &SemaRef) {
-  if (!SemaRef.Context.getLangOptions().OpenCL)
+  if (!SemaRef.Context.getLangOpts().OpenCL)
     return;
 
   const OpenCLOptions &Opts = SemaRef.getOpenCLOptions();
@@ -3124,7 +3136,7 @@ void ASTWriter::SetSelectorOffset(Selector Sel, uint32_t Offset) {
 
 ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream)
   : Stream(Stream), Context(0), PP(0), Chain(0), WritingModule(0),
-    WritingAST(false),
+    WritingAST(false), ASTHasCompilerErrors(false),
     FirstDeclID(NUM_PREDEF_DECL_IDS), NextDeclID(FirstDeclID),
     FirstTypeID(NUM_PREDEF_TYPE_IDS), NextTypeID(FirstTypeID),
     FirstIdentID(NUM_PREDEF_IDENT_IDS), NextIdentID(FirstIdentID), 
@@ -3153,8 +3165,11 @@ ASTWriter::~ASTWriter() {
 
 void ASTWriter::WriteAST(Sema &SemaRef, MemorizeStatCalls *StatCalls,
                          const std::string &OutputFile,
-                         Module *WritingModule, StringRef isysroot) {
+                         Module *WritingModule, StringRef isysroot,
+                         bool hasErrors) {
   WritingAST = true;
+  
+  ASTHasCompilerErrors = hasErrors;
   
   // Emit the file header.
   Stream.Emit((unsigned)'C', 8);
@@ -3223,7 +3238,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef, MemorizeStatCalls *StatCalls,
     IdentifierTable &Table = PP.getIdentifierTable();
     SmallVector<const char *, 32> BuiltinNames;
     Context.BuiltinInfo.GetBuiltinNames(BuiltinNames,
-                                        Context.getLangOptions().NoBuiltin);
+                                        Context.getLangOpts().NoBuiltin);
     for (unsigned I = 0, N = BuiltinNames.size(); I != N; ++I)
       getIdentifierRef(&Table.get(BuiltinNames[I]));
   }
@@ -3337,7 +3352,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef, MemorizeStatCalls *StatCalls,
   RecordData Record;
   Stream.EnterSubblock(AST_BLOCK_ID, 5);
   WriteMetadata(Context, isysroot, OutputFile);
-  WriteLanguageOptions(Context.getLangOptions());
+  WriteLanguageOptions(Context.getLangOpts());
   if (StatCalls && isysroot.empty())
     WriteStatCache(*StatCalls);
 
@@ -3873,6 +3888,10 @@ void ASTWriter::associateDeclWithFile(const Decl *D, DeclID ID) {
   // We only keep track of the file-level declarations of each file.
   if (!D->getLexicalDeclContext()->isFileContext())
     return;
+  // FIXME: ParmVarDecls that are part of a function type of a parameter of
+  // a function/objc method, should not have TU as lexical context.
+  if (isa<ParmVarDecl>(D))
+    return;
 
   SourceManager &SM = Context->getSourceManager();
   SourceLocation FileLoc = SM.getFileLoc(Loc);
@@ -4287,6 +4306,7 @@ void ASTWriter::AddCXXCtorInitializers(
 void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Record) {
   assert(D->DefinitionData);
   struct CXXRecordDecl::DefinitionData &Data = *D->DefinitionData;
+  Record.push_back(Data.IsLambda);
   Record.push_back(Data.UserDeclaredConstructor);
   Record.push_back(Data.UserDeclaredCopyConstructor);
   Record.push_back(Data.UserDeclaredMoveConstructor);
@@ -4304,13 +4324,22 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
   Record.push_back(Data.HasProtectedFields);
   Record.push_back(Data.HasPublicFields);
   Record.push_back(Data.HasMutableFields);
+  Record.push_back(Data.HasOnlyCMembers);
+  Record.push_back(Data.HasInClassInitializer);
   Record.push_back(Data.HasTrivialDefaultConstructor);
   Record.push_back(Data.HasConstexprNonCopyMoveConstructor);
+  Record.push_back(Data.DefaultedDefaultConstructorIsConstexpr);
+  Record.push_back(Data.DefaultedCopyConstructorIsConstexpr);
+  Record.push_back(Data.DefaultedMoveConstructorIsConstexpr);
+  Record.push_back(Data.HasConstexprDefaultConstructor);
+  Record.push_back(Data.HasConstexprCopyConstructor);
+  Record.push_back(Data.HasConstexprMoveConstructor);
   Record.push_back(Data.HasTrivialCopyConstructor);
   Record.push_back(Data.HasTrivialMoveConstructor);
   Record.push_back(Data.HasTrivialCopyAssignment);
   Record.push_back(Data.HasTrivialMoveAssignment);
   Record.push_back(Data.HasTrivialDestructor);
+  Record.push_back(Data.HasIrrelevantDestructor);
   Record.push_back(Data.HasNonLiteralTypeFieldsOrBases);
   Record.push_back(Data.ComputedVisibleConversions);
   Record.push_back(Data.UserProvidedDefaultConstructor);
@@ -4322,6 +4351,7 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
   Record.push_back(Data.DeclaredDestructor);
   Record.push_back(Data.FailedImplicitMoveConstructor);
   Record.push_back(Data.FailedImplicitMoveAssignment);
+  // IsLambda bit is already saved.
 
   Record.push_back(Data.NumBases);
   if (Data.NumBases > 0)
@@ -4338,6 +4368,27 @@ void ASTWriter::AddCXXDefinitionData(const CXXRecordDecl *D, RecordDataImpl &Rec
   AddUnresolvedSet(Data.VisibleConversions, Record);
   // Data.Definition is the owning decl, no need to write it. 
   AddDeclRef(Data.FirstFriend, Record);
+  
+  // Add lambda-specific data.
+  if (Data.IsLambda) {
+    CXXRecordDecl::LambdaDefinitionData &Lambda = D->getLambdaData();
+    Record.push_back(Lambda.Dependent);
+    Record.push_back(Lambda.NumCaptures);
+    Record.push_back(Lambda.NumExplicitCaptures);
+    Record.push_back(Lambda.ManglingNumber);
+    AddDeclRef(Lambda.ContextDecl, Record);
+    for (unsigned I = 0, N = Lambda.NumCaptures; I != N; ++I) {
+      LambdaExpr::Capture &Capture = Lambda.Captures[I];
+      AddSourceLocation(Capture.getLocation(), Record);
+      Record.push_back(Capture.isImplicit());
+      Record.push_back(Capture.getCaptureKind()); // FIXME: stable!
+      VarDecl *Var = Capture.capturesVariable()? Capture.getCapturedVar() : 0;
+      AddDeclRef(Var, Record);
+      AddSourceLocation(Capture.isPackExpansion()? Capture.getEllipsisLoc()
+                                                 : SourceLocation(), 
+                        Record);
+    }
+  }
 }
 
 void ASTWriter::ReaderInitialized(ASTReader *Reader) {
@@ -4515,4 +4566,3 @@ void ASTWriter::AddedObjCPropertyInClassExtension(const ObjCPropertyDecl *Prop,
 
   RewriteDecl(D);
 }
-

@@ -169,7 +169,7 @@ void MCObjectFileInfo::InitMachOMCObjectFileInfo(Triple T) {
     Ctx->getMachOSection("__DWARF", "__apple_types",
                          MCSectionMachO::S_ATTR_DEBUG,
                          SectionKind::getMetadata());
-    
+
   DwarfAbbrevSection =
     Ctx->getMachOSection("__DWARF", "__debug_abbrev",
                          MCSectionMachO::S_ATTR_DEBUG,
@@ -257,6 +257,18 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
         ? dwarf::DW_EH_PE_udata4 : dwarf::DW_EH_PE_absptr;
     }
   }
+
+  // Solaris requires different flags for .eh_frame to seemingly every other
+  // platform.
+  EHSectionType = ELF::SHT_PROGBITS;
+  EHSectionFlags = ELF::SHF_ALLOC;
+  if (T.getOS() == Triple::Solaris) {
+    if (T.getArch() == Triple::x86_64)
+      EHSectionType = ELF::SHT_X86_64_UNWIND;
+    else
+      EHSectionFlags |= ELF::SHF_WRITE;
+  }
+
 
   // ELF
   BSSSection =
@@ -402,12 +414,22 @@ void MCObjectFileInfo::InitCOFFMCObjectFileInfo(Triple T) {
                         COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
                         COFF::IMAGE_SCN_MEM_READ,
                         SectionKind::getReadOnly());
-  StaticCtorSection =
-    Ctx->getCOFFSection(".ctors",
-                        COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
-                        COFF::IMAGE_SCN_MEM_READ |
-                        COFF::IMAGE_SCN_MEM_WRITE,
-                        SectionKind::getDataRel());
+  if (T.getOS() == Triple::Win32) {
+    StaticCtorSection =
+      Ctx->getCOFFSection(".CRT$XCU",
+                          COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
+                          COFF::IMAGE_SCN_MEM_READ,
+                          SectionKind::getReadOnly());
+  } else {
+    StaticCtorSection =
+      Ctx->getCOFFSection(".ctors",
+                          COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
+                          COFF::IMAGE_SCN_MEM_READ |
+                          COFF::IMAGE_SCN_MEM_WRITE,
+                          SectionKind::getDataRel());
+  }
+
+
   StaticDtorSection =
     Ctx->getCOFFSection(".dtors",
                         COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
@@ -495,6 +517,12 @@ void MCObjectFileInfo::InitCOFFMCObjectFileInfo(Triple T) {
                         COFF::IMAGE_SCN_MEM_READ |
                         COFF::IMAGE_SCN_MEM_WRITE,
                         SectionKind::getDataRel());
+  TLSDataSection =
+    Ctx->getCOFFSection(".tls$",
+                        COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
+                        COFF::IMAGE_SCN_MEM_READ |
+                        COFF::IMAGE_SCN_MEM_WRITE,
+                        SectionKind::getDataRel());
 }
 
 void MCObjectFileInfo::InitMCObjectFileInfo(StringRef TT, Reloc::Model relocm,
@@ -552,8 +580,8 @@ void MCObjectFileInfo::InitEHFrameSection() {
                            SectionKind::getReadOnly());
   else if (Env == IsELF)
     EHFrameSection =
-      Ctx->getELFSection(".eh_frame", ELF::SHT_PROGBITS,
-                         ELF::SHF_ALLOC,
+      Ctx->getELFSection(".eh_frame", EHSectionType,
+                         EHSectionFlags,
                          SectionKind::getDataRel());
   else
     EHFrameSection =

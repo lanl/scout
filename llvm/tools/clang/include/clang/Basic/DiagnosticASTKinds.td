@@ -10,8 +10,6 @@
 let Component = "AST" in {
 
 // Constant expression diagnostics. These (and their users) belong in Sema.
-//def note_comma_in_ice : Note<
-//  "C does not permit evaluated commas in an integer constant expression">;
 def note_expr_divide_by_zero : Note<"division by zero">;
 def note_constexpr_invalid_cast : Note<
   "%select{reinterpret_cast|dynamic_cast|cast which performs the conversions of"
@@ -28,20 +26,20 @@ def note_constexpr_lshift_discards : Note<"signed left shift discards bits">;
 def note_constexpr_invalid_function : Note<
   "%select{non-constexpr|undefined}0 %select{function|constructor}1 %2 cannot "
   "be used in a constant expression">;
+def note_constexpr_virtual_call : Note<
+  "cannot evaluate virtual function call in a constant expression">;
+def note_constexpr_virtual_base : Note<
+  "cannot construct object of type %0 with virtual base class "
+  "in a constant expression">;
 def note_constexpr_nonliteral : Note<
   "non-literal type %0 cannot be used in a constant expression">;
 def note_constexpr_non_global : Note<
   "%select{pointer|reference}0 to %select{|subobject of }1"
-  "%select{temporary|%4}2 %select{is not a constant expression|"
-  "cannot be returned from a constexpr function|"
-  "cannot be used to initialize a member in a constant expression}3">;
+  "%select{temporary|%3}2 is not a constant expression">;
 def note_constexpr_array_index : Note<"cannot refer to element %0 of "
   "%select{array of %2 elements|non-array object}1 in a constant expression">;
 def note_constexpr_float_arithmetic : Note<
   "floating point arithmetic produces %select{an infinity|a NaN}0">;
-def note_constexpr_pointer_arithmetic : Note<
-  "cannot refer to element %0 of non-array object in a constant "
-  "expression">;
 def note_constexpr_pointer_subtraction_not_same_array : Note<
   "subtracted pointers are not elements of the same array">;
 def note_constexpr_pointer_comparison_base_classes : Note<
@@ -55,20 +53,19 @@ def note_constexpr_pointer_comparison_differing_access : Note<
   "specifiers (%1 vs %3) has unspecified value">;
 def note_constexpr_compare_virtual_mem_ptr : Note<
   "comparison of pointer to virtual member function %0 has unspecified value">;
-def note_constexpr_addr_of_incomplete : Note<
-  "cannot take address of object of incomplete class type %0 "
-  "in a constant expression">;
 def note_constexpr_past_end : Note<
   "dereferenced pointer past the end of %select{|subobject of }0"
   "%select{temporary|%2}1 is not a constant expression">;
 def note_constexpr_past_end_subobject : Note<
   "cannot %select{access base class of|access derived class of|access field of|"
-  "access array element of|ERROR|call member function on}0 "
+  "access array element of|ERROR|call member function on|"
+  "access real component of|access imaginary component of}0 "
   "pointer past the end of object">;
 def note_constexpr_null_subobject : Note<
   "cannot %select{access base class of|access derived class of|access field of|"
   "access array element of|perform pointer arithmetic on|"
-  "call member function on}0 null pointer">;
+  "call member function on|access real component of|"
+  "access imaginary component of}0 null pointer">;
 def note_constexpr_var_init_non_constant : Note<
   "initializer of %0 is not a constant expression">;
 def note_constexpr_typeid_polymorphic : Note<
@@ -77,9 +74,15 @@ def note_constexpr_typeid_polymorphic : Note<
 def note_constexpr_void_comparison : Note<
   "comparison between unequal pointers to void has unspecified result">;
 def note_constexpr_temporary_here : Note<"temporary created here">;
-def note_constexpr_literal_here : Note<"literal written here">;
+def note_constexpr_conditional_never_const : Note<
+  "both arms of conditional operator are unable to produce a "
+  "constant expression">;
 def note_constexpr_depth_limit_exceeded : Note<
   "constexpr evaluation exceeded maximum depth of %0 calls">;
+def note_constexpr_call_limit_exceeded : Note<
+  "constexpr evaluation hit maximum call limit">;
+def note_constexpr_lifetime_ended : Note<
+  "read of %select{temporary|variable}0 whose lifetime has ended">;
 def note_constexpr_ltor_volatile_type : Note<
   "read of volatile-qualified type %0 is not allowed in a constant expression">;
 def note_constexpr_ltor_volatile_obj : Note<

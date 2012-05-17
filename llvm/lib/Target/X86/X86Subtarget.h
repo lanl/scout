@@ -1,4 +1,4 @@
-//=====---- X86Subtarget.h - Define Subtarget for the X86 -----*- C++ -*--====//
+//===-- X86Subtarget.h - Define Subtarget for the X86 ----------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,9 +14,9 @@
 #ifndef X86SUBTARGET_H
 #define X86SUBTARGET_H
 
+#include "llvm/CallingConv.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
-#include "llvm/CallingConv.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
@@ -306,6 +306,8 @@ public:
   bool enablePostRAScheduler(CodeGenOpt::Level OptLevel,
                              TargetSubtargetInfo::AntiDepBreakMode& Mode,
                              RegClassVector& CriticalPathRCs) const;
+
+  bool postRAScheduler() const { return PostRAScheduler; }
 
   /// getInstrItins = Return the instruction itineraries based on the
   /// subtarget selection.

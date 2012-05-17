@@ -2003,6 +2003,23 @@ bool BinaryOperator::isExact() const {
 }
 
 //===----------------------------------------------------------------------===//
+//                             FPMathOperator Class
+//===----------------------------------------------------------------------===//
+
+/// getFPAccuracy - Get the maximum error permitted by this operation in ULPs.
+/// An accuracy of 0.0 means that the operation should be performed with the
+/// default precision.
+float FPMathOperator::getFPAccuracy() const {
+  const MDNode *MD =
+    cast<Instruction>(this)->getMetadata(LLVMContext::MD_fpmath);
+  if (!MD)
+    return 0.0;
+  ConstantFP *Accuracy = cast<ConstantFP>(MD->getOperand(0));
+  return Accuracy->getValueAPF().convertToFloat();
+}
+
+
+//===----------------------------------------------------------------------===//
 //                                CastInst Class
 //===----------------------------------------------------------------------===//
 
@@ -2559,9 +2576,8 @@ CastInst::getCastOpcode(
       assert(DestBits == SrcBits &&
              "Casting vector to floating point of different width");
       return BitCast;                             // same size, no-op cast
-    } else {
-      llvm_unreachable("Casting pointer or non-first class to float");
     }
+    llvm_unreachable("Casting pointer or non-first class to float");
   } else if (DestTy->isVectorTy()) {
     assert(DestBits == SrcBits &&
            "Illegal cast to vector (wrong type or size)");
@@ -2571,24 +2587,16 @@ CastInst::getCastOpcode(
       return BitCast;                               // ptr -> ptr
     } else if (SrcTy->isIntegerTy()) {
       return IntToPtr;                              // int -> ptr
-    } else {
-      llvm_unreachable("Casting pointer to other than pointer or int");
     }
+    llvm_unreachable("Casting pointer to other than pointer or int");
   } else if (DestTy->isX86_MMXTy()) {
     if (SrcTy->isVectorTy()) {
       assert(DestBits == SrcBits && "Casting vector of wrong width to X86_MMX");
       return BitCast;                               // 64-bit vector to MMX
-    } else {
-      llvm_unreachable("Illegal cast to X86_MMX");
     }
-  } else {
-    llvm_unreachable("Casting to type that is not first-class");
+    llvm_unreachable("Illegal cast to X86_MMX");
   }
-
-  // If we fall through to here we probably hit an assertion cast above
-  // and assertions are not turned on. Anything we return is an error, so
-  // BitCast is as good a choice as any.
-  return BitCast;
+  llvm_unreachable("Casting to type that is not first-class");
 }
 
 //===----------------------------------------------------------------------===//
@@ -3161,6 +3169,13 @@ SwitchInst::~SwitchInst() {
 /// addCase - Add an entry to the switch instruction...
 ///
 void SwitchInst::addCase(ConstantInt *OnVal, BasicBlock *Dest) {
+  CRSBuilder CB;
+  CB.add(OnVal);
+  ConstantRangesSet CRS = CB.getCase();
+  addCase(CRS, Dest);
+}
+
+void SwitchInst::addCase(ConstantRangesSet& OnVal, BasicBlock *Dest) {
   unsigned NewCaseIdx = getNumCases(); 
   unsigned OpNo = NumOperands;
   if (OpNo+2 > ReservedSpace)
@@ -3168,13 +3183,16 @@ void SwitchInst::addCase(ConstantInt *OnVal, BasicBlock *Dest) {
   // Initialize some new operands.
   assert(OpNo+1 < ReservedSpace && "Growing didn't work!");
   NumOperands = OpNo+2;
-  setCaseValue(NewCaseIdx, OnVal);
-  setCaseSuccessor(NewCaseIdx, Dest);
+  CaseIt Case(this, NewCaseIdx);
+  Case.setValueEx(OnVal);
+  Case.setSuccessor(Dest);
 }
 
 /// removeCase - This method removes the specified case and its successor
 /// from the switch instruction.
-void SwitchInst::removeCase(unsigned idx) {
+void SwitchInst::removeCase(CaseIt i) {
+  unsigned idx = i.getCaseIndex();
+  
   assert(2 + idx*2 < getNumOperands() && "Case index out of range!!!");
 
   unsigned NumOps = getNumOperands();

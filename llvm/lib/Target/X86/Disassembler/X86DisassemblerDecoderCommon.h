@@ -1,4 +1,4 @@
-/*===- X86DisassemblerDecoderCommon.h - Disassembler decoder -------*- C -*-==*
+/*===-- X86DisassemblerDecoderCommon.h - Disassembler decoder -----*- C -*-===*
  *
  *                     The LLVM Compiler Infrastructure
  *
@@ -54,8 +54,9 @@
   ENUM_ENTRY(ATTR_XD,     0x04) \
   ENUM_ENTRY(ATTR_REXW,   0x08) \
   ENUM_ENTRY(ATTR_OPSIZE, 0x10) \
-  ENUM_ENTRY(ATTR_VEX,    0x20) \
-  ENUM_ENTRY(ATTR_VEXL,   0x40)
+  ENUM_ENTRY(ATTR_ADSIZE, 0x20) \
+  ENUM_ENTRY(ATTR_VEX,    0x40) \
+  ENUM_ENTRY(ATTR_VEXL,   0x80)
 
 #define ENUM_ENTRY(n, v) n = v,
 enum attributeBits {
@@ -77,6 +78,8 @@ enum attributeBits {
                                         "64-bit mode but no more")             \
   ENUM_ENTRY(IC_OPSIZE,             3,  "requires an OPSIZE prefix, so "       \
                                         "operands change width")               \
+  ENUM_ENTRY(IC_ADSIZE,             3,  "requires an ADSIZE prefix, so "       \
+                                        "operands change width")               \
   ENUM_ENTRY(IC_XD,                 2,  "may say something about the opcode "  \
                                         "but not the operands")                \
   ENUM_ENTRY(IC_XS,                 2,  "may say something about the opcode "  \
@@ -88,6 +91,7 @@ enum attributeBits {
   ENUM_ENTRY(IC_64BIT_REXW,         4,  "requires a REX.W prefix, so operands "\
                                         "change width; overrides IC_OPSIZE")   \
   ENUM_ENTRY(IC_64BIT_OPSIZE,       3,  "Just as meaningful as IC_OPSIZE")     \
+  ENUM_ENTRY(IC_64BIT_ADSIZE,       3,  "Just as meaningful as IC_ADSIZE")     \
   ENUM_ENTRY(IC_64BIT_XD,           5,  "XD instructions are SSE; REX.W is "   \
                                         "secondary")                           \
   ENUM_ENTRY(IC_64BIT_XS,           5,  "Just as meaningful as IC_64BIT_XD")   \
@@ -269,6 +273,7 @@ struct ContextDecision {
   ENUM_ENTRY(TYPE_IMM32,      "4-byte")                                        \
   ENUM_ENTRY(TYPE_IMM64,      "8-byte")                                        \
   ENUM_ENTRY(TYPE_IMM3,       "1-byte immediate operand between 0 and 7")      \
+  ENUM_ENTRY(TYPE_IMM5,       "1-byte immediate operand between 0 and 31")     \
   ENUM_ENTRY(TYPE_RM8,        "1-byte register or memory operand")             \
   ENUM_ENTRY(TYPE_RM16,       "2-byte")                                        \
   ENUM_ENTRY(TYPE_RM32,       "4-byte")                                        \
@@ -339,8 +344,8 @@ typedef enum {
  *   operand.
  */
 struct OperandSpecifier {
-  OperandEncoding  encoding;
-  OperandType      type;
+  uint8_t encoding;
+  uint8_t type;
 };
 
 /*
@@ -367,7 +372,7 @@ typedef enum {
  * its operands.
  */
 struct InstructionSpecifier {
-  ModifierType modifierType;
+  uint8_t modifierType;
   uint8_t modifierBase;
   struct OperandSpecifier operands[X86_MAX_OPERANDS];
   

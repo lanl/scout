@@ -17,7 +17,6 @@
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -67,11 +66,11 @@ private:
                                MCStreamer &Out);
 
   /// isSrcOp - Returns true if operand is either (%rsi) or %ds:%(rsi)
-  /// in 64bit mode or (%edi) or %es:(%edi) in 32bit mode.
+  /// in 64bit mode or (%esi) or %es:(%esi) in 32bit mode.
   bool isSrcOp(X86Operand &Op);
 
-  /// isDstOp - Returns true if operand is either %es:(%rdi) in 64bit mode
-  /// or %es:(%edi) in 32bit mode.
+  /// isDstOp - Returns true if operand is either (%rdi) or %es:(%rdi)
+  /// in 64bit mode or (%edi) or %es:(%edi) in 32bit mode.
   bool isDstOp(X86Operand &Op);
 
   bool is64BitMode() const {
@@ -390,7 +389,11 @@ struct X86Operand : public MCParsedAsmOperand {
 
   void addAbsMemOperands(MCInst &Inst, unsigned N) const {
     assert((N == 1) && "Invalid number of operands!");
-    Inst.addOperand(MCOperand::CreateExpr(getMemDisp()));
+    // Add as immediates when possible.
+    if (const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getMemDisp()))
+      Inst.addOperand(MCOperand::CreateImm(CE->getValue()));
+    else
+      Inst.addOperand(MCOperand::CreateExpr(getMemDisp()));
   }
 
   static X86Operand *CreateToken(StringRef Str, SMLoc Loc) {
@@ -464,7 +467,8 @@ bool X86AsmParser::isSrcOp(X86Operand &Op) {
 bool X86AsmParser::isDstOp(X86Operand &Op) {
   unsigned basereg = is64BitMode() ? X86::RDI : X86::EDI;
 
-  return Op.isMem() && Op.Mem.SegReg == X86::ES &&
+  return Op.isMem() && 
+    (Op.Mem.SegReg == 0 || Op.Mem.SegReg == X86::ES) &&
     isa<MCConstantExpr>(Op.Mem.Disp) &&
     cast<MCConstantExpr>(Op.Mem.Disp)->getValue() == 0 &&
     Op.Mem.BaseReg == basereg && Op.Mem.IndexReg == 0;
@@ -834,6 +838,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
   // If we reached here, then we just ate the ( of the memory operand.  Process
   // the rest of the memory operand.
   unsigned BaseReg = 0, IndexReg = 0, Scale = 1;
+  SMLoc IndexLoc;
 
   if (getLexer().is(AsmToken::Percent)) {
     SMLoc StartLoc, EndLoc;
@@ -847,6 +852,7 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
 
   if (getLexer().is(AsmToken::Comma)) {
     Parser.Lex(); // Eat the comma.
+    IndexLoc = Parser.getTok().getLoc();
 
     // Following the comma we should have either an index register, or a scale
     // value. We don't support the later form, but we want to parse it
@@ -872,8 +878,10 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
           SMLoc Loc = Parser.getTok().getLoc();
 
           int64_t ScaleVal;
-          if (getParser().ParseAbsoluteExpression(ScaleVal))
+          if (getParser().ParseAbsoluteExpression(ScaleVal)){
+            Error(Loc, "expected scale expression");
             return 0;
+	  }
 
           // Validate the scale amount.
           if (ScaleVal != 1 && ScaleVal != 2 && ScaleVal != 4 && ScaleVal != 8){
@@ -906,6 +914,23 @@ X86Operand *X86AsmParser::ParseMemOperand(unsigned SegReg, SMLoc MemStart) {
   SMLoc MemEnd = Parser.getTok().getLoc();
   Parser.Lex(); // Eat the ')'.
 
+  // If we have both a base register and an index register make sure they are
+  // both 64-bit or 32-bit registers.
+  if (BaseReg != 0 && IndexReg != 0) {
+    if (X86MCRegisterClasses[X86::GR64RegClassID].contains(BaseReg) &&
+        !X86MCRegisterClasses[X86::GR64RegClassID].contains(IndexReg) &&
+        IndexReg != X86::RIZ) {
+      Error(IndexLoc, "index register is 32-bit, but base register is 64-bit");
+      return 0;
+    }
+    if (X86MCRegisterClasses[X86::GR32RegClassID].contains(BaseReg) &&
+        !X86MCRegisterClasses[X86::GR32RegClassID].contains(IndexReg) &&
+        IndexReg != X86::EIZ){
+      Error(IndexLoc, "index register is 64-bit, but base register is 32-bit");
+      return 0;
+    }
+  }
+
   return X86Operand::CreateMem(SegReg, Disp, BaseReg, IndexReg, Scale,
                                MemStart, MemEnd);
 }
@@ -925,20 +950,21 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
   if ((PatchedName.startswith("cmp") || PatchedName.startswith("vcmp")) &&
       (PatchedName.endswith("ss") || PatchedName.endswith("sd") ||
        PatchedName.endswith("ps") || PatchedName.endswith("pd"))) {
-    bool IsVCMP = PatchedName.startswith("vcmp");
+    bool IsVCMP = PatchedName[0] == 'v';
     unsigned SSECCIdx = IsVCMP ? 4 : 3;
     unsigned SSEComparisonCode = StringSwitch<unsigned>(
       PatchedName.slice(SSECCIdx, PatchedName.size() - 2))
-      .Case("eq",          0)
-      .Case("lt",          1)
-      .Case("le",          2)
-      .Case("unord",       3)
-      .Case("neq",         4)
-      .Case("nlt",         5)
-      .Case("nle",         6)
-      .Case("ord",         7)
-      .Case("eq_uq",       8)
-      .Case("nge",         9)
+      .Case("eq",       0x00)
+      .Case("lt",       0x01)
+      .Case("le",       0x02)
+      .Case("unord",    0x03)
+      .Case("neq",      0x04)
+      .Case("nlt",      0x05)
+      .Case("nle",      0x06)
+      .Case("ord",      0x07)
+      /* AVX only from here */
+      .Case("eq_uq",    0x08)
+      .Case("nge",      0x09)
       .Case("ngt",      0x0A)
       .Case("false",    0x0B)
       .Case("neq_oq",   0x0C)
@@ -962,7 +988,7 @@ ParseInstruction(StringRef Name, SMLoc NameLoc,
       .Case("gt_oq",    0x1E)
       .Case("true_us",  0x1F)
       .Default(~0U);
-    if (SSEComparisonCode != ~0U) {
+    if (SSEComparisonCode != ~0U && (IsVCMP || SSEComparisonCode < 8)) {
       ExtraImmOp = MCConstantExpr::Create(SSEComparisonCode,
                                           getParser().getContext());
       if (PatchedName.endswith("ss")) {
@@ -1444,7 +1470,6 @@ processInstruction(MCInst &Inst,
     return true;
   }
   }
-  return false;
 }
 
 bool X86AsmParser::

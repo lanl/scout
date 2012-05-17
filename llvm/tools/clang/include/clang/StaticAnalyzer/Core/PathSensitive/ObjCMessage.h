@@ -21,77 +21,66 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/Compiler.h"
 
 namespace clang {
 namespace ento {
+using llvm::StrInStrNoCase;
 
 /// \brief Represents both explicit ObjC message expressions and implicit
 /// messages that are sent for handling properties in dot syntax.
 class ObjCMessage {
-  const Expr *MsgOrPropE;
-  const Expr *OriginE;
-  bool IsPropSetter;
-  SVal SetterArgV;
-
-protected:
-  ObjCMessage(const Expr *E, const Expr *origE, bool isSetter, SVal setArgV)
-    : MsgOrPropE(E), OriginE(origE),
-      IsPropSetter(isSetter), SetterArgV(setArgV) { }
-
+  const ObjCMessageExpr *Msg;
+  const ObjCPropertyRefExpr *PE;
+  const bool IsPropSetter;
 public:
-  ObjCMessage() : MsgOrPropE(0), OriginE(0) { }
+  ObjCMessage() : Msg(0), PE(0), IsPropSetter(false) {}
 
-  ObjCMessage(const ObjCMessageExpr *E)
-    : MsgOrPropE(E), OriginE(E) {
+  ObjCMessage(const ObjCMessageExpr *E, const ObjCPropertyRefExpr *pe = 0,
+              bool isSetter = false)
+    : Msg(E), PE(pe), IsPropSetter(isSetter) {
     assert(E && "should not be initialized with null expression");
   }
 
-  bool isValid() const { return MsgOrPropE != 0; }
-  bool isInvalid() const { return !isValid(); }
+  bool isValid() const { return Msg; }
+  
+  bool isPureMessageExpr() const { return !PE; }
 
-  bool isMessageExpr() const {
-    return isValid() && isa<ObjCMessageExpr>(MsgOrPropE);
-  }
-
-  bool isPropertyGetter() const {
-    return isValid() &&
-           isa<ObjCPropertyRefExpr>(MsgOrPropE) && !IsPropSetter;
-  }
+  bool isPropertyGetter() const { return PE && !IsPropSetter; }
 
   bool isPropertySetter() const {
-    return isValid() &&
-           isa<ObjCPropertyRefExpr>(MsgOrPropE) && IsPropSetter;
+    return IsPropSetter;
   }
-  
-  const Expr *getOriginExpr() const { return OriginE; }
 
-  QualType getType(ASTContext &ctx) const;
+  const Expr *getMessageExpr() const { 
+    return Msg;
+  }
+
+  QualType getType(ASTContext &ctx) const {
+    return Msg->getType();
+  }
 
   QualType getResultType(ASTContext &ctx) const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      if (const ObjCMethodDecl *MD = msgE->getMethodDecl())
-        return MD->getResultType();
+    if (const ObjCMethodDecl *MD = Msg->getMethodDecl())
+      return MD->getResultType();
     return getType(ctx);
   }
 
-  ObjCMethodFamily getMethodFamily() const;
+  ObjCMethodFamily getMethodFamily() const {
+    return Msg->getMethodFamily();
+  }
 
-  Selector getSelector() const;
+  Selector getSelector() const {
+    return Msg->getSelector();
+  }
 
   const Expr *getInstanceReceiver() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->getInstanceReceiver();
-    const ObjCPropertyRefExpr *propE = cast<ObjCPropertyRefExpr>(MsgOrPropE);
-    if (propE->isObjectReceiver())
-      return propE->getBase();
-    return 0;
+    return Msg->getInstanceReceiver();
   }
 
   SVal getInstanceReceiverSVal(ProgramStateRef State,
                                const LocationContext *LC) const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
     if (!isInstanceMessage())
       return UndefinedVal();
     if (const Expr *Ex = getInstanceReceiver())
@@ -105,101 +94,66 @@ public:
   }
 
   bool isInstanceMessage() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->isInstanceMessage();
-    const ObjCPropertyRefExpr *propE = cast<ObjCPropertyRefExpr>(MsgOrPropE);
-    // FIXME: 'super' may be super class.
-    return propE->isObjectReceiver() || propE->isSuperReceiver();
+    return Msg->isInstanceMessage();
   }
 
-  const ObjCMethodDecl *getMethodDecl() const;
+  const ObjCMethodDecl *getMethodDecl() const {
+    return Msg->getMethodDecl();
+  }
 
-  const ObjCInterfaceDecl *getReceiverInterface() const;
+  const ObjCInterfaceDecl *getReceiverInterface() const {
+    return Msg->getReceiverInterface();
+  }
 
   SourceLocation getSuperLoc() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->getSuperLoc();
-    return cast<ObjCPropertyRefExpr>(MsgOrPropE)->getReceiverLocation();
-  }
+    if (PE)
+      return PE->getReceiverLocation();
+    return Msg->getSuperLoc();
+  }  
 
-  const Expr *getMsgOrPropExpr() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    return MsgOrPropE;
-  }
-
-  SourceRange getSourceRange() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    return MsgOrPropE->getSourceRange();
+  SourceRange getSourceRange() const LLVM_READONLY {
+    if (PE)
+      return PE->getSourceRange();
+    return Msg->getSourceRange();
   }
 
   unsigned getNumArgs() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->getNumArgs();
-    return isPropertySetter() ? 1 : 0;
+    return Msg->getNumArgs();
   }
 
   SVal getArgSVal(unsigned i,
                   const LocationContext *LCtx,
                   ProgramStateRef state) const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
     assert(i < getNumArgs() && "Invalid index for argument");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return state->getSVal(msgE->getArg(i), LCtx);
-    assert(isPropertySetter());
-    return SetterArgV;
+    return state->getSVal(Msg->getArg(i), LCtx);
   }
 
   QualType getArgType(unsigned i) const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
     assert(i < getNumArgs() && "Invalid index for argument");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->getArg(i)->getType();
-    assert(isPropertySetter());
-    return cast<ObjCPropertyRefExpr>(MsgOrPropE)->getType();
+    return Msg->getArg(i)->getType();
   }
 
-  const Expr *getArgExpr(unsigned i) const;
+  const Expr *getArgExpr(unsigned i) const {
+    assert(i < getNumArgs() && "Invalid index for argument");
+    return Msg->getArg(i);
+  }
 
   SourceRange getArgSourceRange(unsigned i) const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    assert(i < getNumArgs() && "Invalid index for argument");
-    if (const Expr *argE = getArgExpr(i))
-      return argE->getSourceRange();
-    return OriginE->getSourceRange();
+    const Expr *argE = getArgExpr(i);
+    return argE->getSourceRange();
   }
 
   SourceRange getReceiverSourceRange() const {
-    assert(isValid() && "This ObjCMessage is uninitialized!");
-    if (const ObjCMessageExpr *msgE = dyn_cast<ObjCMessageExpr>(MsgOrPropE))
-      return msgE->getReceiverRange();
-
-    const ObjCPropertyRefExpr *propE = cast<ObjCPropertyRefExpr>(MsgOrPropE);
-    if (propE->isObjectReceiver())
-      return propE->getBase()->getSourceRange();
+    if (PE) {
+      if (PE->isObjectReceiver())
+        return PE->getBase()->getSourceRange();
+    }
+    else {
+      return Msg->getReceiverRange();
+    }
 
     // FIXME: This isn't a range.
-    return propE->getReceiverLocation();
-  }
-};
-
-class ObjCPropertyGetter : public ObjCMessage {
-public:
-  ObjCPropertyGetter(const ObjCPropertyRefExpr *propE, const Expr *originE)
-    : ObjCMessage(propE, originE, false, SVal()) {
-    assert(propE && originE &&
-           "should not be initialized with null expressions");
-  }
-};
-
-class ObjCPropertySetter : public ObjCMessage {
-public:
-  ObjCPropertySetter(const ObjCPropertyRefExpr *propE, const Expr *storeE,
-                     SVal argV)
-    : ObjCMessage(propE, storeE, true, argV) {
-    assert(propE && storeE &&"should not be initialized with null expressions");
+    return PE->getReceiverLocation();
   }
 };
 
@@ -210,6 +164,9 @@ class CallOrObjCMessage {
   ObjCMessage Msg;
   ProgramStateRef State;
   const LocationContext *LCtx;
+
+  bool isCallbackArg(unsigned Idx, const Type *T) const;
+
 public:
   CallOrObjCMessage(const CallExpr *callE, ProgramStateRef state,
                     const LocationContext *lctx)
@@ -252,7 +209,7 @@ public:
 
   const Expr *getOriginExpr() const {
     if (!CallE)
-      return Msg.getOriginExpr();
+      return Msg.getMessageExpr();
     if (const CXXConstructExpr *Ctor =
           CallE.dyn_cast<const CXXConstructExpr *>())
       return Ctor;
@@ -303,6 +260,27 @@ public:
     assert(isObjCMessage());
     return Msg.getReceiverSourceRange();
   }
+
+  /// \brief Check if one of the arguments might be a callback.
+  bool hasNonZeroCallbackArg() const;
+
+
+  /// \brief Check if the name corresponds to a CoreFoundation or CoreGraphics 
+  /// function that allows objects to escape.
+  ///
+  /// Many methods allow a tracked object to escape.  For example:
+  ///
+  ///   CFMutableDictionaryRef x = CFDictionaryCreateMutable(..., customDeallocator);
+  ///   CFDictionaryAddValue(y, key, x);
+  ///
+  /// We handle this and similar cases with the following heuristic.  If the
+  /// function name contains "InsertValue", "SetValue", "AddValue",
+  /// "AppendValue", or "SetAttribute", then we assume that arguments may
+  /// escape.
+  //
+  // TODO: To reduce false negatives here, we should track the container
+  // allocation site and check if a proper deallocator was set there.
+  static bool isCFCGAllowingEscape(StringRef FName);
 };
 
 }

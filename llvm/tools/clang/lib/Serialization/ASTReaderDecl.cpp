@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ASTCommon.h"
+#include "ASTReaderInternals.h"
 #include "clang/Serialization/ASTReader.h"
 #include "clang/Sema/IdentifierResolver.h"
 #include "clang/Sema/Sema.h"
@@ -24,6 +25,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "llvm/Support/SaveAndRestore.h"
 using namespace clang;
 using namespace clang::serialization;
 
@@ -453,7 +455,13 @@ void ASTDeclReader::VisitEnumDecl(EnumDecl *ED) {
   ED->IsScoped = Record[Idx++];
   ED->IsScopedUsingClassTag = Record[Idx++];
   ED->IsFixed = Record[Idx++];
-  ED->setInstantiationOfMemberEnum(ReadDeclAs<EnumDecl>(Record, Idx));
+
+  if (EnumDecl *InstED = ReadDeclAs<EnumDecl>(Record, Idx)) {
+    TemplateSpecializationKind TSK = (TemplateSpecializationKind)Record[Idx++];
+    SourceLocation POI = ReadSourceLocation(Record, Idx);
+    ED->setInstantiationOfMemberEnum(Reader.getContext(), InstED, TSK);
+    ED->getMemberSpecializationInfo()->setPointOfInstantiation(POI);
+  }
 }
 
 void ASTDeclReader::VisitRecordDecl(RecordDecl *RD) {
@@ -622,6 +630,10 @@ void ASTDeclReader::VisitObjCMethodDecl(ObjCMethodDecl *MD) {
   if (Record[Idx++]) {
     // In practice, this won't be executed (since method definitions
     // don't occur in header files).
+    // Switch case IDs for this method body.
+    ASTReader::SwitchCaseMapTy SwitchCaseStmtsForObjCMethod;
+    SaveAndRestore<ASTReader::SwitchCaseMapTy *>
+      SCFOM(Reader.CurrSwitchCaseStmts, &SwitchCaseStmtsForObjCMethod);
     MD->setBody(Reader.ReadStmt(F));
     MD->setSelfDecl(ReadDeclAs<ImplicitParamDecl>(Record, Idx));
     MD->setCmdDecl(ReadDeclAs<ImplicitParamDecl>(Record, Idx));
@@ -630,6 +642,7 @@ void ASTDeclReader::VisitObjCMethodDecl(ObjCMethodDecl *MD) {
   MD->setVariadic(Record[Idx++]);
   MD->setSynthesized(Record[Idx++]);
   MD->setDefined(Record[Idx++]);
+  MD->IsOverriding = Record[Idx++];
 
   MD->IsRedeclaration = Record[Idx++];
   MD->HasRedeclaration = Record[Idx++];
@@ -770,6 +783,8 @@ void ASTDeclReader::VisitObjCAtDefsFieldDecl(ObjCAtDefsFieldDecl *FD) {
 void ASTDeclReader::VisitObjCCategoryDecl(ObjCCategoryDecl *CD) {
   VisitObjCContainerDecl(CD);
   CD->setCategoryNameLoc(ReadSourceLocation(Record, Idx));
+  CD->setIvarLBraceLoc(ReadSourceLocation(Record, Idx));
+  CD->setIvarRBraceLoc(ReadSourceLocation(Record, Idx));
   
   // Note that this category has been deserialized. We do this before
   // deserializing the interface declaration, so that it will consider this
@@ -799,6 +814,7 @@ void ASTDeclReader::VisitObjCCompatibleAliasDecl(ObjCCompatibleAliasDecl *CAD) {
 void ASTDeclReader::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
   VisitNamedDecl(D);
   D->setAtLoc(ReadSourceLocation(Record, Idx));
+  D->setLParenLoc(ReadSourceLocation(Record, Idx));
   D->setType(GetTypeSourceInfo(Record, Idx));
   // FIXME: stable encoding
   D->setPropertyAttributes(
@@ -829,6 +845,8 @@ void ASTDeclReader::VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *D) {
 void ASTDeclReader::VisitObjCImplementationDecl(ObjCImplementationDecl *D) {
   VisitObjCImplDecl(D);
   D->setSuperClass(ReadDeclAs<ObjCInterfaceDecl>(Record, Idx));
+  D->setIvarLBraceLoc(ReadSourceLocation(Record, Idx));
+  D->setIvarRBraceLoc(ReadSourceLocation(Record, Idx));
   llvm::tie(D->IvarInitializers, D->NumIvarInitializers)
       = Reader.ReadCXXCtorInitializers(F, Record, Idx);
   D->setHasSynthBitfield(Record[Idx++]);
@@ -877,7 +895,7 @@ void ASTDeclReader::VisitVarDecl(VarDecl *VD) {
   VD->VarDeclBits.SClass = (StorageClass)Record[Idx++];
   VD->VarDeclBits.SClassAsWritten = (StorageClass)Record[Idx++];
   VD->VarDeclBits.ThreadSpecified = Record[Idx++];
-  VD->VarDeclBits.HasCXXDirectInit = Record[Idx++];
+  VD->VarDeclBits.InitStyle = Record[Idx++];
   VD->VarDeclBits.ExceptionVar = Record[Idx++];
   VD->VarDeclBits.NRVOVariable = Record[Idx++];
   VD->VarDeclBits.CXXForRangeDecl = Record[Idx++];
@@ -943,6 +961,10 @@ void ASTDeclReader::VisitBlockDecl(BlockDecl *BD) {
   for (unsigned I = 0; I != NumParams; ++I)
     Params.push_back(ReadDeclAs<ParmVarDecl>(Record, Idx));
   BD->setParams(Params);
+
+  BD->setIsVariadic(Record[Idx++]);
+  BD->setBlockMissingReturnType(Record[Idx++]);
+  BD->setIsConversionFromLambda(Record[Idx++]);
 
   bool capturesCXXThis = Record[Idx++];
   unsigned numCaptures = Record[Idx++];
@@ -1050,6 +1072,7 @@ void ASTDeclReader::VisitUnresolvedUsingTypenameDecl(
 void ASTDeclReader::ReadCXXDefinitionData(
                                    struct CXXRecordDecl::DefinitionData &Data,
                                    const RecordData &Record, unsigned &Idx) {
+  // Note: the caller has deserialized the IsLambda bit already.
   Data.UserDeclaredConstructor = Record[Idx++];
   Data.UserDeclaredCopyConstructor = Record[Idx++];
   Data.UserDeclaredMoveConstructor = Record[Idx++];
@@ -1067,13 +1090,22 @@ void ASTDeclReader::ReadCXXDefinitionData(
   Data.HasProtectedFields = Record[Idx++];
   Data.HasPublicFields = Record[Idx++];
   Data.HasMutableFields = Record[Idx++];
+  Data.HasOnlyCMembers = Record[Idx++];
+  Data.HasInClassInitializer = Record[Idx++];
   Data.HasTrivialDefaultConstructor = Record[Idx++];
   Data.HasConstexprNonCopyMoveConstructor = Record[Idx++];
+  Data.DefaultedDefaultConstructorIsConstexpr = Record[Idx++];
+  Data.DefaultedCopyConstructorIsConstexpr = Record[Idx++];
+  Data.DefaultedMoveConstructorIsConstexpr = Record[Idx++];
+  Data.HasConstexprDefaultConstructor = Record[Idx++];
+  Data.HasConstexprCopyConstructor = Record[Idx++];
+  Data.HasConstexprMoveConstructor = Record[Idx++];
   Data.HasTrivialCopyConstructor = Record[Idx++];
   Data.HasTrivialMoveConstructor = Record[Idx++];
   Data.HasTrivialCopyAssignment = Record[Idx++];
   Data.HasTrivialMoveAssignment = Record[Idx++];
   Data.HasTrivialDestructor = Record[Idx++];
+  Data.HasIrrelevantDestructor = Record[Idx++];
   Data.HasNonLiteralTypeFieldsOrBases = Record[Idx++];
   Data.ComputedVisibleConversions = Record[Idx++];
   Data.UserProvidedDefaultConstructor = Record[Idx++];
@@ -1097,6 +1129,28 @@ void ASTDeclReader::ReadCXXDefinitionData(
   Reader.ReadUnresolvedSet(F, Data.VisibleConversions, Record, Idx);
   assert(Data.Definition && "Data.Definition should be already set!");
   Data.FirstFriend = ReadDeclAs<FriendDecl>(Record, Idx);
+  
+  if (Data.IsLambda) {
+    typedef LambdaExpr::Capture Capture;
+    CXXRecordDecl::LambdaDefinitionData &Lambda
+      = static_cast<CXXRecordDecl::LambdaDefinitionData &>(Data);
+    Lambda.Dependent = Record[Idx++];
+    Lambda.NumCaptures = Record[Idx++];
+    Lambda.NumExplicitCaptures = Record[Idx++];
+    Lambda.ManglingNumber = Record[Idx++];
+    Lambda.ContextDecl = ReadDecl(Record, Idx);
+    Lambda.Captures 
+      = (Capture*)Reader.Context.Allocate(sizeof(Capture)*Lambda.NumCaptures);
+    Capture *ToCapture = Lambda.Captures;
+    for (unsigned I = 0, N = Lambda.NumCaptures; I != N; ++I) {
+      SourceLocation Loc = ReadSourceLocation(Record, Idx);
+      bool IsImplicit = Record[Idx++];
+      LambdaCaptureKind Kind = static_cast<LambdaCaptureKind>(Record[Idx++]);
+      VarDecl *Var = ReadDeclAs<VarDecl>(Record, Idx);
+      SourceLocation EllipsisLoc = ReadSourceLocation(Record, Idx);
+      *ToCapture++ = Capture(Loc, IsImplicit, Kind, Var, EllipsisLoc);
+    }
+  }
 }
 
 void ASTDeclReader::VisitCXXRecordDecl(CXXRecordDecl *D) {
@@ -1104,7 +1158,13 @@ void ASTDeclReader::VisitCXXRecordDecl(CXXRecordDecl *D) {
 
   ASTContext &C = Reader.getContext();
   if (Record[Idx++]) {
-    D->DefinitionData = new (C) struct CXXRecordDecl::DefinitionData(D);
+    // Determine whether this is a lambda closure type, so that we can
+    // allocate the appropriate DefinitionData structure.
+    bool IsLambda = Record[Idx++];
+    if (IsLambda)
+      D->DefinitionData = new (C) CXXRecordDecl::LambdaDefinitionData(D, false);
+    else
+      D->DefinitionData = new (C) struct CXXRecordDecl::DefinitionData(D);
     
     // Propagate the DefinitionData pointer to the canonical declaration, so
     // that all other deserialized declarations will see it.
@@ -1492,7 +1552,7 @@ template<typename T>
 void ASTDeclReader::mergeRedeclarable(Redeclarable<T> *D, 
                                       RedeclarableResult &Redecl) {
   // If modules are not available, there is no reason to perform this merge.
-  if (!Reader.getContext().getLangOptions().Modules)
+  if (!Reader.getContext().getLangOpts().Modules)
     return;
   
   if (FindExistingResult ExistingRes = findExisting(static_cast<T*>(D))) {
@@ -2052,7 +2112,9 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
       DeclContextVisibleUpdates &U = I->second;
       for (DeclContextVisibleUpdates::iterator UI = U.begin(), UE = U.end();
            UI != UE; ++UI) {
-        UI->second->DeclContextInfos[DC].NameLookupTableData = UI->first;
+        DeclContextInfo &Info = UI->second->DeclContextInfos[DC];
+        delete Info.NameLookupTableData;
+        Info.NameLookupTableData = UI->first;
       }
       PendingVisibleUpdates.erase(I);
     }

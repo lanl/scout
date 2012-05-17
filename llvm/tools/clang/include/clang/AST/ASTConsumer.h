@@ -24,6 +24,7 @@ namespace clang {
   class SemaConsumer; // layering violation required for safe SemaConsumer
   class TagDecl;
   class VarDecl;
+  class FunctionDecl;
 
 /// ASTConsumer - This is an abstract interface that should be implemented by
 /// clients that read ASTs.  This abstraction layer allows the client to be
@@ -67,6 +68,12 @@ public:
   /// can be defined in declspecs).
   virtual void HandleTagDeclDefinition(TagDecl *D) {}
 
+  /// \brief Invoked when a function is implicitly instantiated.
+  /// Note that at this point point it does not have a body, its body is
+  /// instantiated at the end of the translation unit and passed to
+  /// HandleTopLevelDecl.
+  virtual void HandleCXXImplicitFunctionInstantiation(FunctionDecl *D) {}
+
   /// \brief Handle the specified top-level declaration that occurred inside
   /// and ObjC container.
   /// The default implementation ignored them.
@@ -82,6 +89,10 @@ public:
   /// declaration remains a tentative definition and has not been
   /// modified by the introduction of an implicit zero initializer.
   virtual void CompleteTentativeDefinition(VarDecl *D) {}
+
+  /// HandleCXXStaticMemberVarInstantiation - Tell the consumer that this
+  // variable has been instantiated.
+  virtual void HandleCXXStaticMemberVarInstantiation(VarDecl *D) {}
 
   /// \brief Callback involved at the end of a translation unit to
   /// notify the consumer that a vtable for the given C++ class is

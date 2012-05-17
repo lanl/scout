@@ -13,7 +13,7 @@
 // each member (if possible).  Then, if possible, it transforms the individual
 // alloca instructions into nice clean scalar SSA form.
 //
-// This combines a simple SRoA algorithm with the Mem2Reg algorithm because
+// This combines a simple SRoA algorithm with the Mem2Reg algorithm because they
 // often interact, especially for C++ programs.  As such, iterating between
 // SRoA, then Mem2Reg until we run out of things to promote works well.
 //
@@ -574,8 +574,9 @@ void ConvertToScalarInfo::ConvertUsesToScalar(Value *Ptr, AllocaInst *NewAI,
     // transform it into a store of the expanded constant value.
     if (MemSetInst *MSI = dyn_cast<MemSetInst>(User)) {
       assert(MSI->getRawDest() == Ptr && "Consistency error!");
-      unsigned NumBytes = cast<ConstantInt>(MSI->getLength())->getZExtValue();
-      if (NumBytes != 0) {
+      int64_t SNumBytes = cast<ConstantInt>(MSI->getLength())->getSExtValue();
+      if (SNumBytes > 0 && (SNumBytes >> 32) == 0) {
+        unsigned NumBytes = static_cast<unsigned>(SNumBytes);
         unsigned Val = cast<ConstantInt>(MSI->getValue())->getZExtValue();
 
         // Compute the value replicated the right number of times.
@@ -980,30 +981,25 @@ public:
     for (SmallVector<DbgValueInst *, 4>::const_iterator I = DVIs.begin(), 
            E = DVIs.end(); I != E; ++I) {
       DbgValueInst *DVI = *I;
+      Value *Arg = NULL;
       if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
-        Instruction *DbgVal = NULL;
         // If an argument is zero extended then use argument directly. The ZExt
         // may be zapped by an optimization pass in future.
-        Argument *ExtendedArg = NULL;
         if (ZExtInst *ZExt = dyn_cast<ZExtInst>(SI->getOperand(0)))
-          ExtendedArg = dyn_cast<Argument>(ZExt->getOperand(0));
+          Arg = dyn_cast<Argument>(ZExt->getOperand(0));
         if (SExtInst *SExt = dyn_cast<SExtInst>(SI->getOperand(0)))
-          ExtendedArg = dyn_cast<Argument>(SExt->getOperand(0));
-        if (ExtendedArg)
-          DbgVal = DIB->insertDbgValueIntrinsic(ExtendedArg, 0, 
-                                                DIVariable(DVI->getVariable()),
-                                                SI);
-        else
-          DbgVal = DIB->insertDbgValueIntrinsic(SI->getOperand(0), 0, 
-                                                DIVariable(DVI->getVariable()),
-                                                SI);
-        DbgVal->setDebugLoc(DVI->getDebugLoc());
+          Arg = dyn_cast<Argument>(SExt->getOperand(0));
+        if (!Arg)
+          Arg = SI->getOperand(0);
       } else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
-        Instruction *DbgVal = 
-          DIB->insertDbgValueIntrinsic(LI->getOperand(0), 0, 
-                                       DIVariable(DVI->getVariable()), LI);
-        DbgVal->setDebugLoc(DVI->getDebugLoc());
+        Arg = LI->getOperand(0);
+      } else {
+        continue;
       }
+      Instruction *DbgVal =
+        DIB->insertDbgValueIntrinsic(Arg, 0, DIVariable(DVI->getVariable()),
+                                     Inst);
+      DbgVal->setDebugLoc(DVI->getDebugLoc());
     }
   }
 };
@@ -1522,6 +1518,9 @@ void SROA::isSafeForScalarRepl(Instruction *I, uint64_t Offset,
       ConstantInt *Length = dyn_cast<ConstantInt>(MI->getLength());
       if (Length == 0)
         return MarkUnsafe(Info, User);
+      if (Length->isNegative())
+        return MarkUnsafe(Info, User);
+
       isSafeMemAccess(Offset, Length->getZExtValue(), 0,
                       UI.getOperandNo() == 0, Info, MI,
                       true /*AllowWholeAccess*/);

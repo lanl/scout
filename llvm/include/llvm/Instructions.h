@@ -20,11 +20,12 @@
 #include "llvm/DerivedTypes.h"
 #include "llvm/Attributes.h"
 #include "llvm/CallingConv.h"
+#include "llvm/Support/ConstantRangesSet.h"
+#include "llvm/Support/CRSBuilder.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <iterator>
-#include <limits.h>
 
 namespace llvm {
 
@@ -2468,8 +2469,141 @@ class SwitchInst : public TerminatorInst {
 protected:
   virtual SwitchInst *clone_impl() const;
 public:
+  
+  // -2
+  static const unsigned DefaultPseudoIndex = static_cast<unsigned>(~0L-1);
+  
+  template <class SwitchInstTy, class ConstantIntTy, class BasicBlockTy> 
+  class CaseIteratorT {
+  protected:
+    
+    SwitchInstTy *SI;
+    unsigned Index;
+    
+  public:
+    
+    typedef CaseIteratorT<SwitchInstTy, ConstantIntTy, BasicBlockTy> Self;
+    
+    /// Initializes case iterator for given SwitchInst and for given
+    /// case number.    
+    CaseIteratorT(SwitchInstTy *SI, unsigned CaseNum) {
+      this->SI = SI;
+      Index = CaseNum;
+    }
+    
+    /// Initializes case iterator for given SwitchInst and for given
+    /// TerminatorInst's successor index.
+    static Self fromSuccessorIndex(SwitchInstTy *SI, unsigned SuccessorIndex) {
+      assert(SuccessorIndex < SI->getNumSuccessors() &&
+             "Successor index # out of range!");    
+      return SuccessorIndex != 0 ? 
+             Self(SI, SuccessorIndex - 1) :
+             Self(SI, DefaultPseudoIndex);       
+    }
+    
+    /// Resolves case value for current case.
+    /// @Deprecated
+    ConstantIntTy *getCaseValue() {
+      assert(Index < SI->getNumCases() && "Index out the number of cases.");
+      ConstantRangesSet CRS =
+          reinterpret_cast<Constant*>(SI->getOperand(2 + Index*2));
+      ConstantRangesSet::Range R = CRS.getItem(0);
+      return R.Low;
+    }
 
-  enum { ErrorIndex = UINT_MAX };
+    /// Resolves case value for current case.
+    ConstantRangesSet getCaseValueEx() {
+      assert(Index < SI->getNumCases() && "Index out the number of cases.");
+      return reinterpret_cast<Constant*>(SI->getOperand(2 + Index*2));
+    }
+    
+    /// Resolves successor for current case.
+    BasicBlockTy *getCaseSuccessor() {
+      assert((Index < SI->getNumCases() ||
+              Index == DefaultPseudoIndex) &&
+             "Index out the number of cases.");
+      return SI->getSuccessor(getSuccessorIndex());      
+    }
+    
+    /// Returns number of current case.
+    unsigned getCaseIndex() const { return Index; }
+    
+    /// Returns TerminatorInst's successor index for current case successor.
+    unsigned getSuccessorIndex() const {
+      assert((Index == DefaultPseudoIndex || Index < SI->getNumCases()) &&
+             "Index out the number of cases.");
+      return Index != DefaultPseudoIndex ? Index + 1 : 0;
+    }
+    
+    Self operator++() {
+      // Check index correctness after increment.
+      // Note: Index == getNumCases() means end().      
+      assert(Index+1 <= SI->getNumCases() && "Index out the number of cases.");
+      ++Index;
+      return *this;
+    }
+    Self operator++(int) {
+      Self tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+    Self operator--() { 
+      // Check index correctness after decrement.
+      // Note: Index == getNumCases() means end().
+      // Also allow "-1" iterator here. That will became valid after ++.
+      assert((Index == 0 || Index-1 <= SI->getNumCases()) &&
+             "Index out the number of cases.");
+      --Index;
+      return *this;
+    }
+    Self operator--(int) {
+      Self tmp = *this;
+      --(*this);
+      return tmp;
+    }
+    bool operator==(const Self& RHS) const {
+      assert(RHS.SI == SI && "Incompatible operators.");
+      return RHS.Index == Index;
+    }
+    bool operator!=(const Self& RHS) const {
+      assert(RHS.SI == SI && "Incompatible operators.");
+      return RHS.Index != Index;
+    }
+  };
+  
+  typedef CaseIteratorT<const SwitchInst, const ConstantInt, const BasicBlock>
+    ConstCaseIt;
+
+  class CaseIt : public CaseIteratorT<SwitchInst, ConstantInt, BasicBlock> {
+    
+    typedef CaseIteratorT<SwitchInst, ConstantInt, BasicBlock> ParentTy;
+  
+  public:
+    
+    CaseIt(const ParentTy& Src) : ParentTy(Src) {}
+    CaseIt(SwitchInst *SI, unsigned CaseNum) : ParentTy(SI, CaseNum) {}
+
+    /// Sets the new value for current case.    
+    /// @Deprecated.
+    void setValue(ConstantInt *V) {
+      assert(Index < SI->getNumCases() && "Index out the number of cases.");
+      CRSBuilder CB;
+      CB.add(V);
+      SI->setOperand(2 + Index*2,
+          reinterpret_cast<Value*>((Constant*)CB.getCase()));
+    }
+    
+    /// Sets the new value for current case.
+    void setValueEx(ConstantRangesSet& V) {
+      assert(Index < SI->getNumCases() && "Index out the number of cases.");
+      SI->setOperand(2 + Index*2, reinterpret_cast<Value*>((Constant*)V));      
+    }
+    
+    /// Sets the new successor for current case.
+    void setSuccessor(BasicBlock *S) {
+      SI->setSuccessor(getSuccessorIndex(), S);      
+    }
+  };
 
   static SwitchInst *Create(Value *Value, BasicBlock *Default,
                             unsigned NumCases, Instruction *InsertBefore = 0) {
@@ -2479,6 +2613,7 @@ public:
                             unsigned NumCases, BasicBlock *InsertAtEnd) {
     return new SwitchInst(Value, Default, NumCases, InsertAtEnd);
   }
+  
   ~SwitchInst();
 
   /// Provide fast operand accessors
@@ -2502,78 +2637,91 @@ public:
     return getNumOperands()/2 - 1;
   }
 
-  /// getCaseValue - Return the specified case value. Note that case #0, means
-  /// first case, not a default case.
-  ConstantInt *getCaseValue(unsigned i) {
-    assert(i < getNumCases() && "Illegal case value to get!");
-    return reinterpret_cast<ConstantInt*>(getOperand(2 + i*2));
+  /// Returns a read/write iterator that points to the first
+  /// case in SwitchInst.
+  CaseIt case_begin() {
+    return CaseIt(this, 0);
   }
-
-  /// getCaseValue - Return the specified case value. Note that case #0, means
-  /// first case, not a default case.
-  const ConstantInt *getCaseValue(unsigned i) const {
-    assert(i < getNumCases() && "Illegal case value to get!");
-    return reinterpret_cast<const ConstantInt*>(getOperand(2 + i*2));
+  /// Returns a read-only iterator that points to the first
+  /// case in the SwitchInst.
+  ConstCaseIt case_begin() const {
+    return ConstCaseIt(this, 0);
   }
-
-  // setSuccessorValue - Updates the value associated with the specified
-  // case.
-  void setCaseValue(unsigned i, ConstantInt *CaseValue) {
-    assert(i < getNumCases() && "Case index # out of range!");
-    setOperand(2 + i*2, reinterpret_cast<Value*>(CaseValue));
+  
+  /// Returns a read/write iterator that points one past the last
+  /// in the SwitchInst.
+  CaseIt case_end() {
+    return CaseIt(this, getNumCases());
   }
-
+  /// Returns a read-only iterator that points one past the last
+  /// in the SwitchInst.
+  ConstCaseIt case_end() const {
+    return ConstCaseIt(this, getNumCases());
+  }
+  /// Returns an iterator that points to the default case.
+  /// Note: this iterator allows to resolve successor only. Attempt
+  /// to resolve case value causes an assertion.
+  /// Also note, that increment and decrement also causes an assertion and
+  /// makes iterator invalid. 
+  CaseIt case_default() {
+    return CaseIt(this, DefaultPseudoIndex);
+  }
+  ConstCaseIt case_default() const {
+    return ConstCaseIt(this, DefaultPseudoIndex);
+  }
+  
   /// findCaseValue - Search all of the case values for the specified constant.
-  /// If it is explicitly handled, return the case number of it, otherwise
-  /// return ErrorIndex to indicate that it is handled by the default handler.
-  unsigned findCaseValue(const ConstantInt *C) const {
-    for (unsigned i = 0, e = getNumCases(); i != e; ++i)
-      if (getCaseValue(i) == C)
+  /// If it is explicitly handled, return the case iterator of it, otherwise
+  /// return default case iterator to indicate
+  /// that it is handled by the default handler.
+  CaseIt findCaseValue(const ConstantInt *C) {
+    for (CaseIt i = case_begin(), e = case_end(); i != e; ++i)
+      if (i.getCaseValueEx().isSatisfies(C))
         return i;
-    return ErrorIndex;
+    return case_default();
   }
+  ConstCaseIt findCaseValue(const ConstantInt *C) const {
+    for (ConstCaseIt i = case_begin(), e = case_end(); i != e; ++i)
+      if (i.getCaseValueEx().isSatisfies(C))
+        return i;
+    return case_default();
+  }    
   
-  /// resolveSuccessorIndex - Converts case index to index of its successor
-  /// index in TerminatorInst successors collection.
-  /// If CaseIndex == ErrorIndex, "default" successor will returned then. 
-  unsigned resolveSuccessorIndex(unsigned CaseIndex) const {
-    assert((CaseIndex == ErrorIndex || CaseIndex < getNumCases()) &&
-           "Case index # out of range!");
-    return CaseIndex != ErrorIndex ? CaseIndex + 1 : 0;
-  }
-  
-  /// resolveCaseIndex - Converts index of successor in TerminatorInst
-  /// collection to index of case that corresponds to this successor.
-  unsigned resolveCaseIndex(unsigned SuccessorIndex) const {
-    assert(SuccessorIndex < getNumSuccessors() &&
-           "Successor index # out of range!");    
-    return SuccessorIndex != 0 ? SuccessorIndex - 1 : ErrorIndex; 
-  }
-
   /// findCaseDest - Finds the unique case value for a given successor. Returns
   /// null if the successor is not found, not unique, or is the default case.
   ConstantInt *findCaseDest(BasicBlock *BB) {
     if (BB == getDefaultDest()) return NULL;
 
     ConstantInt *CI = NULL;
-    for (unsigned i = 0, e = getNumCases(); i != e; ++i) {
-      if (getSuccessor(i + 1) == BB) {
+    for (CaseIt i = case_begin(), e = case_end(); i != e; ++i) {
+      if (i.getCaseSuccessor() == BB) {
         if (CI) return NULL;   // Multiple cases lead to BB.
-        else CI = getCaseValue(i);
+        else CI = i.getCaseValue();
       }
     }
     return CI;
   }
 
   /// addCase - Add an entry to the switch instruction...
-  ///
+  /// @Deprecated
+  /// Note:
+  /// This action invalidates case_end(). Old case_end() iterator will
+  /// point to the added case.
   void addCase(ConstantInt *OnVal, BasicBlock *Dest);
+  
+  /// addCase - Add an entry to the switch instruction.
+  /// Note:
+  /// This action invalidates case_end(). Old case_end() iterator will
+  /// point to the added case.
+  void addCase(ConstantRangesSet& OnVal, BasicBlock *Dest);
 
   /// removeCase - This method removes the specified case and its successor
   /// from the switch instruction. Note that this operation may reorder the
   /// remaining cases at index idx and above.
-  ///
-  void removeCase(unsigned idx);
+  /// Note:
+  /// This action invalidates iterators for all cases following the one removed,
+  /// including the case_end() iterator.
+  void removeCase(CaseIt i);
 
   unsigned getNumSuccessors() const { return getNumOperands()/2; }
   BasicBlock *getSuccessor(unsigned idx) const {
@@ -2584,36 +2732,17 @@ public:
     assert(idx < getNumSuccessors() && "Successor # out of range for switch!");
     setOperand(idx*2+1, (Value*)NewSucc);
   }
-
-  /// Resolves successor for idx-th case.
-  /// Use getCaseSuccessor instead of TerminatorInst::getSuccessor,
-  /// since internal SwitchInst organization of operands/successors is
-  /// hidden and may be changed in any moment.
-  BasicBlock *getCaseSuccessor(unsigned idx) const {
-    return getSuccessor(resolveSuccessorIndex(idx));
-  }
-
-  /// Set new successor for idx-th case.
-  /// Use setCaseSuccessor instead of TerminatorInst::setSuccessor,
-  /// since internal SwitchInst organization of operands/successors is
-  /// hidden and may be changed in any moment.
-  void setCaseSuccessor(unsigned idx, BasicBlock *NewSucc) {
-    setSuccessor(resolveSuccessorIndex(idx), NewSucc);
-  }
-
-  // getSuccessorValue - Return the value associated with the specified
-  // successor.
-  ConstantInt *getSuccessorValue(unsigned idx) const {
-    assert(idx < getNumSuccessors() && "Successor # out of range!");
-    return reinterpret_cast<ConstantInt*>(getOperand(idx*2));
-  }
-
-  // setSuccessorValue - Updates the value associated with the specified
-  // successor.
-  void setSuccessorValue(unsigned idx, ConstantInt* SuccessorValue) {
-    assert(idx < getNumSuccessors() && "Successor # out of range!");
-    setOperand(idx*2, reinterpret_cast<Value*>(SuccessorValue));
-  }
+  
+  uint16_t hash() const {
+    uint32_t NumberOfCases = (uint32_t)getNumCases();
+    uint16_t Hash = (0xFFFF & NumberOfCases) ^ (NumberOfCases >> 16);
+    for (ConstCaseIt i = case_begin(), e = case_end();
+         i != e; ++i) {
+      uint32_t NumItems = (uint32_t)i.getCaseValueEx().getNumItems(); 
+      Hash = (Hash << 1) ^ (0xFFFF & NumItems) ^ (NumItems >> 16);
+    }
+    return Hash;
+  }  
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const SwitchInst *) { return true; }

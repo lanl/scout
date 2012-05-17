@@ -11,6 +11,8 @@
 
 #include "llvm/Transforms/Scout/Driver/CudaDriver.h"
 
+#include <iostream>
+
 using namespace llvm;
 
 CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
@@ -230,6 +232,7 @@ void CudaDriver::create(Function *func,
   FuncArgIterator arg = func->arg_begin(), end = func->arg_end();
   for(unsigned i = 0; arg != end; ++arg, ++i) {
     Type *type = arg->getType();
+
     if(type->isPointerTy()) {
 
       Value *d_arg;

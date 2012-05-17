@@ -1,8 +1,9 @@
-// RUN: %clang_cc1 %s -fsyntax-only -verify -fobjc-exceptions
+// RUN: %clang_cc1 -fsyntax-only -verify -fobjc-exceptions -Wno-objc-root-class %s
 
 // rdar://6124613
 void test1() {
-  void *p = @1; // expected-error {{unexpected '@' in program}}
+  void *xyzzy = 0;
+  void *p = @xyzzy; // expected-error {{unexpected '@' in program}}
 }
 
 // <rdar://problem/7495713>
@@ -41,3 +42,13 @@ void foo() {
 @end
 
 @end // expected-error {{'@end' must appear in an Objective-C context}}
+
+@class ForwardBase;
+@implementation SomeI : ForwardBase // expected-error {{cannot find interface declaration for 'ForwardBase', superclass of 'SomeI'}} \
+                                    // expected-warning {{cannot find interface declaration for 'SomeI'}}
+-(void)meth {}
+@end
+
+@interface I3
+__attribute__((unavailable)) @interface I4 @end // expected-error {{Objective-C declarations may only appear in global scope}}
+@end

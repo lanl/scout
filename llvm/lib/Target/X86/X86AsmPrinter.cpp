@@ -13,13 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86AsmPrinter.h"
-#include "InstPrinter/X86ATTInstPrinter.h"
-#include "InstPrinter/X86IntelInstPrinter.h"
 #include "X86MCInstLower.h"
 #include "X86.h"
 #include "X86COFFMachineModuleInfo.h"
 #include "X86MachineFunctionInfo.h"
 #include "X86TargetMachine.h"
+#include "InstPrinter/X86ATTInstPrinter.h"
 #include "llvm/CallingConv.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Module.h"
@@ -191,6 +190,7 @@ void X86AsmPrinter::printSymbolOperand(const MachineOperand &MO,
   case X86II::MO_INDNTPOFF: O << "@INDNTPOFF"; break;
   case X86II::MO_TPOFF:     O << "@TPOFF";     break;
   case X86II::MO_NTPOFF:    O << "@NTPOFF";    break;
+  case X86II::MO_GOTNTPOFF: O << "@GOTNTPOFF"; break;
   case X86II::MO_GOTPCREL:  O << "@GOTPCREL";  break;
   case X86II::MO_GOT:       O << "@GOT";       break;
   case X86II::MO_GOTOFF:    O << "@GOTOFF";    break;
@@ -199,6 +199,7 @@ void X86AsmPrinter::printSymbolOperand(const MachineOperand &MO,
   case X86II::MO_TLVP_PIC_BASE:
     O << "@TLVP" << '-' << *MF->getPICBaseSymbol();
     break;
+  case X86II::MO_SECREL:      O << "@SECREL";      break;
   }
 }
 
@@ -264,8 +265,8 @@ void X86AsmPrinter::printOperand(const MachineInstr *MI, unsigned OpNo,
 void X86AsmPrinter::printSSECC(const MachineInstr *MI, unsigned Op,
                                raw_ostream &O) {
   unsigned char value = MI->getOperand(Op).getImm();
-  assert(value <= 7 && "Invalid ssecc argument!");
   switch (value) {
+  default: llvm_unreachable("Invalid ssecc argument!");
   case    0: O << "eq"; break;
   case    1: O << "lt"; break;
   case    2: O << "le"; break;
@@ -599,7 +600,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
   }
 
   if (Subtarget->isTargetWindows() && !Subtarget->isTargetCygMing() &&
-      MMI->callsExternalVAFunctionWithFloatingPointArguments()) {
+      MMI->usesVAFloatArgument()) {
     StringRef SymbolName = Subtarget->is64Bit() ? "_fltused" : "__fltused";
     MCSymbol *S = MMI->getContext().GetOrCreateSymbol(SymbolName);
     OutStreamer.EmitSymbolAttribute(S, MCSA_Global);

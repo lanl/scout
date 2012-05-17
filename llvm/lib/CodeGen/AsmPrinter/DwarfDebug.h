@@ -26,7 +26,6 @@
 #include "llvm/ADT/UniqueVector.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/DebugLoc.h"
-#include <map>
 
 namespace llvm {
 
@@ -209,9 +208,9 @@ class DwarfDebug {
   ///
   std::vector<DIEAbbrev *> Abbreviations;
 
-  /// SourceIdMap - Source id map, i.e. pair of source filename and directory
-  /// mapped to a unique id.
-  std::map<std::pair<std::string, std::string>, unsigned> SourceIdMap;
+  /// SourceIdMap - Source id map, i.e. pair of source filename and directory,
+  /// separated by a zero byte, mapped to a unique id.
+  StringMap<unsigned> SourceIdMap;
 
   /// StringPool - A String->Symbol mapping of strings used by indirect
   /// references.
@@ -244,7 +243,7 @@ class DwarfDebug {
   SmallPtrSet<DIE *, 4> InlinedSubprogramDIEs;
 
   /// InlineInfo - Keep track of inlined functions and their location.  This
-  /// information is used to populate debug_inlined section.
+  /// information is used to populate the debug_inlined section.
   typedef std::pair<const MCSymbol *, DIE *> InlineInfoLabels;
   DenseMap<const MDNode *, SmallVector<InlineInfoLabels, 4> > InlineInfo;
   SmallVector<const MDNode *, 4> InlinedSPNodes;

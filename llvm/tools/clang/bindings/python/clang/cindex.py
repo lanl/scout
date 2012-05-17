@@ -63,6 +63,7 @@ call is efficient.
 # o implement additional SourceLocation, SourceRange, and File methods.
 
 from ctypes import *
+import collections
 
 def get_cindex_library():
     # FIXME: It's probably not the case that the library is actually found in
@@ -84,6 +85,48 @@ def get_cindex_library():
 c_object_p = POINTER(c_void_p)
 
 lib = get_cindex_library()
+
+### Exception Classes ###
+
+class TranslationUnitLoadError(Exception):
+    """Represents an error that occurred when loading a TranslationUnit.
+
+    This is raised in the case where a TranslationUnit could not be
+    instantiated due to failure in the libclang library.
+
+    FIXME: Make libclang expose additional error information in this scenario.
+    """
+    pass
+
+class TranslationUnitSaveError(Exception):
+    """Represents an error that occurred when saving a TranslationUnit.
+
+    Each error has associated with it an enumerated value, accessible under
+    e.save_error. Consumers can compare the value with one of the ERROR_
+    constants in this class.
+    """
+
+    # Indicates that an unknown error occurred. This typically indicates that
+    # I/O failed during save.
+    ERROR_UNKNOWN = 1
+
+    # Indicates that errors during translation prevented saving. The errors
+    # should be available via the TranslationUnit's diagnostics.
+    ERROR_TRANSLATION_ERRORS = 2
+
+    # Indicates that the translation unit was somehow invalid.
+    ERROR_INVALID_TU = 3
+
+    def __init__(self, enumeration, message):
+        assert isinstance(enumeration, int)
+
+        if enumeration < 1 or enumeration > 3:
+            raise Exception("Encountered undefined TranslationUnit save error "
+                            "constant: %d. Please file a bug to have this "
+                            "value supported." % enumeration)
+
+        self.save_error = enumeration
+        Exception.__init__(self, 'Error %d: %s' % (enumeration, message))
 
 ### Structures and Utility Classes ###
 
@@ -892,7 +935,7 @@ class Cursor(Structure):
         return Cursor_eq(self, other)
 
     def __ne__(self, other):
-        return not Cursor_eq(self, other)
+        return not self.__eq__(other)
 
     def is_definition(self):
         """
@@ -981,6 +1024,28 @@ class Cursor(Structure):
         return self._type
 
     @property
+    def canonical(self):
+        """Return the canonical Cursor corresponding to this Cursor.
+
+        The canonical cursor is the cursor which is representative for the
+        underlying entity. For example, if you have multiple forward
+        declarations for the same class, the canonical cursor for the forward
+        declarations will be identical.
+        """
+        if not hasattr(self, '_canonical'):
+            self._canonical = Cursor_canonical(self)
+
+        return self._canonical
+
+    @property
+    def result_type(self):
+        """Retrieve the Type of the result for this Cursor."""
+        if not hasattr(self, '_result_type'):
+            self._result_type = Type_get_result(self.type)
+
+        return self._result_type
+
+    @property
     def underlying_typedef_type(self):
         """Return the underlying type of a typedef declaration.
 
@@ -1007,12 +1072,60 @@ class Cursor(Structure):
         return self._enum_type
 
     @property
+    def enum_value(self):
+        """Return the value of an enum constant."""
+        if not hasattr(self, '_enum_value'):
+            assert self.kind == CursorKind.ENUM_CONSTANT_DECL
+            # Figure out the underlying type of the enum to know if it
+            # is a signed or unsigned quantity.
+            underlying_type = self.type
+            if underlying_type.kind == TypeKind.ENUM:
+                underlying_type = underlying_type.get_declaration().enum_type
+            if underlying_type.kind in (TypeKind.CHAR_U,
+                                        TypeKind.UCHAR,
+                                        TypeKind.CHAR16,
+                                        TypeKind.CHAR32,
+                                        TypeKind.USHORT,
+                                        TypeKind.UINT,
+                                        TypeKind.ULONG,
+                                        TypeKind.ULONGLONG,
+                                        TypeKind.UINT128):
+                self._enum_value = Cursor_enum_const_decl_unsigned(self)
+            else:
+                self._enum_value = Cursor_enum_const_decl(self)
+        return self._enum_value
+
+    @property
+    def objc_type_encoding(self):
+        """Return the Objective-C type encoding as a str."""
+        if not hasattr(self, '_objc_type_encoding'):
+            self._objc_type_encoding = Cursor_objc_type_encoding(self)
+
+        return self._objc_type_encoding
+
+    @property
     def hash(self):
         """Returns a hash of the cursor as an int."""
         if not hasattr(self, '_hash'):
             self._hash = Cursor_hash(self)
 
         return self._hash
+
+    @property
+    def semantic_parent(self):
+        """Return the semantic parent for this cursor."""
+        if not hasattr(self, '_semantic_parent'):
+            self._semantic_parent = Cursor_semantic_parent(self)
+
+        return self._semantic_parent
+
+    @property
+    def lexical_parent(self):
+        """Return the lexical parent for this cursor."""
+        if not hasattr(self, '_lexical_parent'):
+            self._lexical_parent = Cursor_lexical_parent(self)
+
+        return self._lexical_parent
 
     def get_children(self):
         """Return an iterator for accessing the children of this cursor."""
@@ -1070,6 +1183,11 @@ class TypeKind(object):
                     self._name_map[value] = key
         return self._name_map[self]
 
+    @property
+    def spelling(self):
+        """Retrieve the spelling of this TypeKind."""
+        return TypeKind_spelling(self.value)
+
     @staticmethod
     def from_id(id):
         if id >= len(TypeKind._kinds) or TypeKind._kinds[id] is None:
@@ -1079,6 +1197,10 @@ class TypeKind(object):
     def __repr__(self):
         return 'TypeKind.%s' % (self.name,)
 
+TypeKind_spelling = lib.clang_getTypeKindSpelling
+TypeKind_spelling.argtypes = [c_uint]
+TypeKind_spelling.restype = _CXString
+TypeKind_spelling.errcheck = _CXString.from_result
 
 
 TypeKind.INVALID = TypeKind(0)
@@ -1137,6 +1259,71 @@ class Type(Structure):
         """Return the kind of this type."""
         return TypeKind.from_id(self._kind_id)
 
+    def argument_types(self):
+        """Retrieve a container for the non-variadic arguments for this type.
+
+        The returned object is iterable and indexable. Each item in the
+        container is a Type instance.
+        """
+        class ArgumentsIterator(collections.Sequence):
+            def __init__(self, parent):
+                self.parent = parent
+                self.length = None
+
+            def __len__(self):
+                if self.length is None:
+                    self.length = Type_get_num_arg_types(self.parent)
+
+                return self.length
+
+            def __getitem__(self, key):
+                # FIXME Support slice objects.
+                if not isinstance(key, int):
+                    raise TypeError("Must supply a non-negative int.")
+
+                if key < 0:
+                    raise IndexError("Only non-negative indexes are accepted.")
+
+                if key >= len(self):
+                    raise IndexError("Index greater than container length: "
+                                     "%d > %d" % ( key, len(self) ))
+
+                result = Type_get_arg_type(self.parent, key)
+                if result.kind == TypeKind.INVALID:
+                    raise IndexError("Argument could not be retrieved.")
+
+                return result
+
+        assert self.kind == TypeKind.FUNCTIONPROTO
+        return ArgumentsIterator(self)
+
+    @property
+    def element_type(self):
+        """Retrieve the Type of elements within this Type.
+
+        If accessed on a type that is not an array, complex, or vector type, an
+        exception will be raised.
+        """
+        result = Type_get_element_type(self)
+        if result.kind == TypeKind.INVALID:
+            raise Exception('Element type not available on this type.')
+
+        return result
+
+    @property
+    def element_count(self):
+        """Retrieve the number of elements in this type.
+
+        Returns an int.
+
+        If the Type is not an array or vector, this raises.
+        """
+        result = Type_get_num_elements(self)
+        if result < 0:
+            raise Exception('Type does not have elements.')
+
+        return result
+
     @staticmethod
     def from_result(res, fn, args):
         assert isinstance(res, Type)
@@ -1155,28 +1342,34 @@ class Type(Structure):
         return Type_get_canonical(self)
 
     def is_const_qualified(self):
-        """
-        Determine whether a Type has the "const" qualifier set,
-        without looking through typedefs that may have added "const"
+        """Determine whether a Type has the "const" qualifier set.
+
+        This does not look through typedefs that may have added "const"
         at a different level.
         """
         return Type_is_const_qualified(self)
 
     def is_volatile_qualified(self):
-        """
-        Determine whether a Type has the "volatile" qualifier set,
-        without looking through typedefs that may have added
-        "volatile" at a different level.
+        """Determine whether a Type has the "volatile" qualifier set.
+
+        This does not look through typedefs that may have added "volatile"
+        at a different level.
         """
         return Type_is_volatile_qualified(self)
 
     def is_restrict_qualified(self):
-        """
-        Determine whether a Type has the "restrict" qualifier set,
-        without looking through typedefs that may have added
-        "restrict" at a different level.
+        """Determine whether a Type has the "restrict" qualifier set.
+
+        This does not look through typedefs that may have added "restrict" at
+        a different level.
         """
         return Type_is_restrict_qualified(self)
+
+    def is_function_variadic(self):
+        """Determine whether this function Type is a variadic function type."""
+        assert self.kind == TypeKind.FUNCTIONPROTO
+
+        return Type_is_variadic(self)
 
     def is_pod(self):
         """Determine whether this Type represents plain old data (POD)."""
@@ -1211,6 +1404,15 @@ class Type(Structure):
         Retrieve the size of the constant array.
         """
         return Type_get_array_size(self)
+
+    def __eq__(self, other):
+        if type(other) != type(self):
+            return False
+
+        return Type_equal(self, other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 ## CIndex Objects ##
 
@@ -1483,15 +1685,11 @@ class Index(ClangObject):
         Index_dispose(self)
 
     def read(self, path):
-        """Load the translation unit from the given AST file."""
-        ptr = TranslationUnit_read(self, path)
-        if ptr:
-            return TranslationUnit(ptr)
-        return None
+        """Load a TranslationUnit from the given AST file."""
+        return TranslationUnit.from_ast(path, self)
 
-    def parse(self, path, args = [], unsaved_files = [], options = 0):
-        """
-        Load the translation unit from the given source code file by running
+    def parse(self, path, args=None, unsaved_files=None, options = 0):
+        """Load the translation unit from the given source code file by running
         clang and generating the AST before loading. Additional command line
         parameters can be passed to clang via the args parameter.
 
@@ -1499,39 +1697,153 @@ class Index(ClangObject):
         to as unsaved_files, the first item should be the filenames to be mapped
         and the second should be the contents to be substituted for the
         file. The contents may be passed as strings or file objects.
-        """
-        arg_array = 0
-        if len(args):
-            arg_array = (c_char_p * len(args))(* args)
-        unsaved_files_array = 0
-        if len(unsaved_files):
-            unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
-            for i,(name,value) in enumerate(unsaved_files):
-                if not isinstance(value, str):
-                    # FIXME: It would be great to support an efficient version
-                    # of this, one day.
-                    value = value.read()
-                    print value
-                if not isinstance(value, str):
-                    raise TypeError,'Unexpected unsaved file contents.'
-                unsaved_files_array[i].name = name
-                unsaved_files_array[i].contents = value
-                unsaved_files_array[i].length = len(value)
-        ptr = TranslationUnit_parse(self, path, arg_array, len(args),
-                                    unsaved_files_array, len(unsaved_files),
-                                    options)
-        if ptr:
-            return TranslationUnit(ptr)
-        return None
 
+        If an error was encountered during parsing, a TranslationUnitLoadError
+        will be raised.
+        """
+        return TranslationUnit.from_source(path, args, unsaved_files, options,
+                                           self)
 
 class TranslationUnit(ClangObject):
-    """
-    The TranslationUnit class represents a source code translation unit and
-    provides read-only access to its top-level declarations.
+    """Represents a source code translation unit.
+
+    This is one of the main types in the API. Any time you wish to interact
+    with Clang's representation of a source file, you typically start with a
+    translation unit.
     """
 
-    def __init__(self, ptr):
+    # Default parsing mode.
+    PARSE_NONE = 0
+
+    # Instruct the parser to create a detailed processing record containing
+    # metadata not normally retained.
+    PARSE_DETAILED_PROCESSING_RECORD = 1
+
+    # Indicates that the translation unit is incomplete. This is typically used
+    # when parsing headers.
+    PARSE_INCOMPLETE = 2
+
+    # Instruct the parser to create a pre-compiled preamble for the translation
+    # unit. This caches the preamble (included files at top of source file).
+    # This is useful if the translation unit will be reparsed and you don't
+    # want to incur the overhead of reparsing the preamble.
+    PARSE_PRECOMPILED_PREAMBLE = 4
+
+    # Cache code completion information on parse. This adds time to parsing but
+    # speeds up code completion.
+    PARSE_CACHE_COMPLETION_RESULTS = 8
+
+    # Flags with values 16 and 32 are deprecated and intentionally omitted.
+
+    # Do not parse function bodies. This is useful if you only care about
+    # searching for declarations/definitions.
+    PARSE_SKIP_FUNCTION_BODIES = 64
+
+    @classmethod
+    def from_source(cls, filename, args=None, unsaved_files=None, options=0,
+                    index=None):
+        """Create a TranslationUnit by parsing source.
+
+        This is capable of processing source code both from files on the
+        filesystem as well as in-memory contents.
+
+        Command-line arguments that would be passed to clang are specified as
+        a list via args. These can be used to specify include paths, warnings,
+        etc. e.g. ["-Wall", "-I/path/to/include"].
+
+        In-memory file content can be provided via unsaved_files. This is an
+        iterable of 2-tuples. The first element is the str filename. The
+        second element defines the content. Content can be provided as str
+        source code or as file objects (anything with a read() method). If
+        a file object is being used, content will be read until EOF and the
+        read cursor will not be reset to its original position.
+
+        options is a bitwise or of TranslationUnit.PARSE_XXX flags which will
+        control parsing behavior.
+
+        index is an Index instance to utilize. If not provided, a new Index
+        will be created for this TranslationUnit.
+
+        To parse source from the filesystem, the filename of the file to parse
+        is specified by the filename argument. Or, filename could be None and
+        the args list would contain the filename(s) to parse.
+
+        To parse source from an in-memory buffer, set filename to the virtual
+        filename you wish to associate with this source (e.g. "test.c"). The
+        contents of that file are then provided in unsaved_files.
+
+        If an error occurs, a TranslationUnitLoadError is raised.
+
+        Please note that a TranslationUnit with parser errors may be returned.
+        It is the caller's responsibility to check tu.diagnostics for errors.
+
+        Also note that Clang infers the source language from the extension of
+        the input filename. If you pass in source code containing a C++ class
+        declaration with the filename "test.c" parsing will fail.
+        """
+        if args is None:
+            args = []
+
+        if unsaved_files is None:
+            unsaved_files = []
+
+        if index is None:
+            index = Index.create()
+
+        args_array = None
+        if len(args) > 0:
+            args_array = (c_char_p * len(args))(* args)
+
+        unsaved_array = None
+        if len(unsaved_files) > 0:
+            unsaved_array = (_CXUnsavedFile * len(unsaved_files))()
+            for i, (name, contents) in enumerate(unsaved_files):
+                if hasattr(contents, "read"):
+                    contents = contents.read()
+
+                unsaved_array[i].name = name
+                unsaved_array[i].contents = contents
+                unsaved_array[i].length = len(contents)
+
+        ptr = TranslationUnit_parse(index, filename, args_array, len(args),
+                                    unsaved_array, len(unsaved_files),
+                                    options)
+
+        if ptr is None:
+            raise TranslationUnitLoadError("Error parsing translation unit.")
+
+        return cls(ptr, index=index)
+
+    @classmethod
+    def from_ast_file(cls, filename, index=None):
+        """Create a TranslationUnit instance from a saved AST file.
+
+        A previously-saved AST file (provided with -emit-ast or
+        TranslationUnit.save()) is loaded from the filename specified.
+
+        If the file cannot be loaded, a TranslationUnitLoadError will be
+        raised.
+
+        index is optional and is the Index instance to use. If not provided,
+        a default Index will be created.
+        """
+        if index is None:
+            index = Index.create()
+
+        ptr = TranslationUnit_read(index, filename)
+        if ptr is None:
+            raise TranslationUnitLoadError(filename)
+
+        return cls(ptr=ptr, index=index)
+
+    def __init__(self, ptr, index):
+        """Create a TranslationUnit instance.
+
+        TranslationUnits should be created using one of the from_* @classmethod
+        functions above. __init__ is only called internally.
+        """
+        assert isinstance(index, Index)
+
         ClangObject.__init__(self, ptr)
 
     def __del__(self):
@@ -1587,7 +1899,7 @@ class TranslationUnit(ClangObject):
 
         return DiagIterator(self)
 
-    def reparse(self, unsaved_files = [], options = 0):
+    def reparse(self, unsaved_files=None, options=0):
         """
         Reparse an already parsed translation unit.
 
@@ -1596,6 +1908,9 @@ class TranslationUnit(ClangObject):
         and the second should be the contents to be substituted for the
         file. The contents may be passed as strings or file objects.
         """
+        if unsaved_files is None:
+            unsaved_files = []
+
         unsaved_files_array = 0
         if len(unsaved_files):
             unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
@@ -1613,7 +1928,29 @@ class TranslationUnit(ClangObject):
         ptr = TranslationUnit_reparse(self, len(unsaved_files),
                                       unsaved_files_array,
                                       options)
-    def codeComplete(self, path, line, column, unsaved_files = [], options = 0):
+
+    def save(self, filename):
+        """Saves the TranslationUnit to a file.
+
+        This is equivalent to passing -emit-ast to the clang frontend. The
+        saved file can be loaded back into a TranslationUnit. Or, if it
+        corresponds to a header, it can be used as a pre-compiled header file.
+
+        If an error occurs while saving, a TranslationUnitSaveError is raised.
+        If the error was TranslationUnitSaveError.ERROR_INVALID_TU, this means
+        the constructed TranslationUnit was not valid at time of save. In this
+        case, the reason(s) why should be available via
+        TranslationUnit.diagnostics().
+
+        filename -- The path to save the translation unit to.
+        """
+        options = TranslationUnit_defaultSaveOptions(self)
+        result = int(TranslationUnit_save(self, filename, options))
+        if result != 0:
+            raise TranslationUnitSaveError(result,
+                'Error saving TranslationUnit.')
+
+    def codeComplete(self, path, line, column, unsaved_files=None, options=0):
         """
         Code complete in this translation unit.
 
@@ -1622,6 +1959,9 @@ class TranslationUnit(ClangObject):
         and the second should be the contents to be substituted for the
         file. The contents may be passed as strings or file objects.
         """
+        if unsaved_files is None:
+            unsaved_files = []
+
         unsaved_files_array = 0
         if len(unsaved_files):
             unsaved_files_array = (_CXUnsavedFile * len(unsaved_files))()
@@ -1795,7 +2135,7 @@ Cursor_def.errcheck = Cursor.from_result
 
 Cursor_eq = lib.clang_equalCursors
 Cursor_eq.argtypes = [Cursor, Cursor]
-Cursor_eq.restype = c_uint
+Cursor_eq.restype = bool
 
 Cursor_hash = lib.clang_hashCursor
 Cursor_hash.argtypes = [Cursor]
@@ -1824,6 +2164,11 @@ Cursor_ref.argtypes = [Cursor]
 Cursor_ref.restype = Cursor
 Cursor_ref.errcheck = Cursor.from_result
 
+Cursor_canonical = lib.clang_getCanonicalCursor
+Cursor_canonical.argtypes = [Cursor]
+Cursor_canonical.restype = Cursor
+Cursor_canonical.errcheck = Cursor.from_result
+
 Cursor_type = lib.clang_getCursorType
 Cursor_type.argtypes = [Cursor]
 Cursor_type.restype = Type
@@ -1838,6 +2183,29 @@ Cursor_enum_type = lib.clang_getEnumDeclIntegerType
 Cursor_enum_type.argtypes = [Cursor]
 Cursor_enum_type.restype = Type
 Cursor_enum_type.errcheck = Type.from_result
+
+Cursor_enum_const_decl = lib.clang_getEnumConstantDeclValue
+Cursor_enum_const_decl.argtypes = [Cursor]
+Cursor_enum_const_decl.restype = c_longlong
+
+Cursor_enum_const_decl_unsigned = lib.clang_getEnumConstantDeclUnsignedValue
+Cursor_enum_const_decl_unsigned.argtypes = [Cursor]
+Cursor_enum_const_decl_unsigned.restype = c_ulonglong
+
+Cursor_objc_type_encoding = lib.clang_getDeclObjCTypeEncoding
+Cursor_objc_type_encoding.argtypes = [Cursor]
+Cursor_objc_type_encoding.restype = _CXString
+Cursor_objc_type_encoding.errcheck = _CXString.from_result
+
+Cursor_semantic_parent = lib.clang_getCursorSemanticParent
+Cursor_semantic_parent.argtypes = [Cursor]
+Cursor_semantic_parent.restype = Cursor
+Cursor_semantic_parent.errcheck = Cursor.from_result
+
+Cursor_lexical_parent = lib.clang_getCursorLexicalParent
+Cursor_lexical_parent.argtypes = [Cursor]
+Cursor_lexical_parent.restype = Cursor
+Cursor_lexical_parent.errcheck = Cursor.from_result
 
 Cursor_visit_callback = CFUNCTYPE(c_int, Cursor, Cursor, py_object)
 Cursor_visit = lib.clang_visitChildren
@@ -1866,6 +2234,10 @@ Type_is_pod = lib.clang_isPODType
 Type_is_pod.argtypes = [Type]
 Type_is_pod.restype = bool
 
+Type_is_variadic = lib.clang_isFunctionTypeVariadic
+Type_is_variadic.argtypes = [Type]
+Type_is_variadic.restype = bool
+
 Type_get_pointee = lib.clang_getPointeeType
 Type_get_pointee.argtypes = [Type]
 Type_get_pointee.restype = Type
@@ -1881,6 +2253,24 @@ Type_get_result.argtypes = [Type]
 Type_get_result.restype = Type
 Type_get_result.errcheck = Type.from_result
 
+Type_get_num_arg_types = lib.clang_getNumArgTypes
+Type_get_num_arg_types.argtypes = [Type]
+Type_get_num_arg_types.restype = c_uint
+
+Type_get_arg_type = lib.clang_getArgType
+Type_get_arg_type.argtypes = [Type, c_uint]
+Type_get_arg_type.restype = Type
+Type_get_arg_type.errcheck = Type.from_result
+Type_get_element_type = lib.clang_getElementType
+
+Type_get_element_type.argtypes = [Type]
+Type_get_element_type.restype = Type
+Type_get_element_type.errcheck = Type.from_result
+
+Type_get_num_elements = lib.clang_getNumElements
+Type_get_num_elements.argtypes = [Type]
+Type_get_num_elements.restype = c_longlong
+
 Type_get_array_element = lib.clang_getArrayElementType
 Type_get_array_element.argtypes = [Type]
 Type_get_array_element.restype = Type
@@ -1889,6 +2279,10 @@ Type_get_array_element.errcheck = Type.from_result
 Type_get_array_size = lib.clang_getArraySize
 Type_get_array_size.argtype = [Type]
 Type_get_array_size.restype = c_longlong
+
+Type_equal = lib.clang_equalTypes
+Type_equal.argtypes = [Type, Type]
+Type_equal.restype = bool
 
 # Index Functions
 Index_create = lib.clang_createIndex
@@ -1938,6 +2332,14 @@ TranslationUnit_includes = lib.clang_getInclusions
 TranslationUnit_includes.argtypes = [TranslationUnit,
                                      TranslationUnit_includes_callback,
                                      py_object]
+
+TranslationUnit_defaultSaveOptions = lib.clang_defaultSaveOptions
+TranslationUnit_defaultSaveOptions.argtypes = [TranslationUnit]
+TranslationUnit_defaultSaveOptions.restype = c_uint
+
+TranslationUnit_save = lib.clang_saveTranslationUnit
+TranslationUnit_save.argtypes = [TranslationUnit, c_char_p, c_uint]
+TranslationUnit_save.restype = c_int
 
 # File Functions
 File_getFile = lib.clang_getFile
@@ -1990,8 +2392,18 @@ _clang_getCompletionPriority.argtypes = [c_void_p]
 _clang_getCompletionPriority.restype = c_int
 
 
-###
-
-__all__ = ['Index', 'TranslationUnit', 'Cursor', 'CursorKind', 'Type', 'TypeKind',
-           'Diagnostic', 'FixIt', 'CodeCompletionResults', 'SourceRange',
-           'SourceLocation', 'File']
+__all__ = [
+    'CodeCompletionResults',
+    'CursorKind',
+    'Cursor',
+    'Diagnostic',
+    'File',
+    'FixIt',
+    'Index',
+    'SourceLocation',
+    'SourceRange',
+    'TranslationUnitLoadError',
+    'TranslationUnit',
+    'TypeKind',
+    'Type',
+]

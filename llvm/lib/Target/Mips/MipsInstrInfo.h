@@ -1,4 +1,4 @@
-//===- MipsInstrInfo.h - Mips Instruction Information -----------*- C++ -*-===//
+//===-- MipsInstrInfo.h - Mips Instruction Information ----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,9 +15,9 @@
 #define MIPSINSTRUCTIONINFO_H
 
 #include "Mips.h"
+#include "MipsRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "MipsRegisterInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "MipsGenInstrInfo.inc"
@@ -103,12 +103,6 @@ public:
   /// Insert nop instruction when hazard condition is found
   virtual void insertNoop(MachineBasicBlock &MBB,
                           MachineBasicBlock::iterator MI) const;
-
-  /// getGlobalBaseReg - Return a virtual register initialized with the
-  /// the global base register value. Output instructions required to
-  /// initialize the register in the function entry block, if necessary.
-  ///
-  unsigned getGlobalBaseReg(MachineFunction *MF) const;
 };
 
 }

@@ -17,20 +17,16 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MachineLocation.h"
-#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Dwarf.h"
 #include <vector>
 
 namespace llvm {
   class MCContext;
-  class MCExpr;
+  class MCObjectWriter;
   class MCSection;
-  class MCSectionData;
   class MCStreamer;
   class MCSymbol;
-  class MCObjectStreamer;
-  class raw_ostream;
   class SourceMgr;
   class SMLoc;
 
@@ -212,7 +208,7 @@ namespace llvm {
     //
     // This emits the Dwarf file and the line tables.
     //
-    static void Emit(MCStreamer *MCOS);
+    static const MCSymbol *Emit(MCStreamer *MCOS);
   };
 
   class MCDwarfLineAddr {
@@ -235,7 +231,7 @@ namespace llvm {
     // When generating dwarf for assembly source files this emits the Dwarf
     // sections.
     //
-    static void Emit(MCStreamer *MCOS);
+    static void Emit(MCStreamer *MCOS, const MCSymbol *LineSectionSymbol);
   };
 
   // When generating dwarf for assembly source files this is the info that is

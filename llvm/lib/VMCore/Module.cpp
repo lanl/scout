@@ -65,20 +65,20 @@ Module::~Module() {
 Module::Endianness Module::getEndianness() const {
   StringRef temp = DataLayout;
   Module::Endianness ret = AnyEndianness;
-  
+
   while (!temp.empty()) {
     std::pair<StringRef, StringRef> P = getToken(temp, "-");
-    
+
     StringRef token = P.first;
     temp = P.second;
-    
+
     if (token[0] == 'e') {
       ret = LittleEndian;
     } else if (token[0] == 'E') {
       ret = BigEndian;
     }
   }
-  
+
   return ret;
 }
 
@@ -86,13 +86,13 @@ Module::Endianness Module::getEndianness() const {
 Module::PointerSize Module::getPointerSize() const {
   StringRef temp = DataLayout;
   Module::PointerSize ret = AnyPointerSize;
-  
+
   while (!temp.empty()) {
     std::pair<StringRef, StringRef> TmpP = getToken(temp, "-");
     temp = TmpP.second;
     TmpP = getToken(TmpP.first, ":");
     StringRef token = TmpP.second, signalToken = TmpP.first;
-    
+
     if (signalToken[0] == 'p') {
       int size = 0;
       getToken(token, ":").first.getAsInteger(10, size);
@@ -102,7 +102,7 @@ Module::PointerSize Module::getPointerSize() const {
         ret = Pointer64;
     }
   }
-  
+
   return ret;
 }
 
@@ -164,9 +164,9 @@ Constant *Module::getOrInsertFunction(StringRef Name,
   // right type.
   if (F->getType() != PointerType::getUnqual(Ty))
     return ConstantExpr::getBitCast(F, PointerType::getUnqual(Ty));
-  
+
   // Otherwise, we just found the existing function or a prototype.
-  return F;  
+  return F;
 }
 
 Constant *Module::getOrInsertTargetIntrinsic(StringRef Name,
@@ -183,7 +183,7 @@ Constant *Module::getOrInsertTargetIntrinsic(StringRef Name,
   }
 
   // Otherwise, we just found the existing function or a prototype.
-  return F;  
+  return F;
 }
 
 Constant *Module::getOrInsertFunction(StringRef Name,
@@ -229,7 +229,7 @@ Constant *Module::getOrInsertFunction(StringRef Name,
   va_end(Args);
 
   // Build the function type and chain to the other getOrInsertFunction...
-  return getOrInsertFunction(Name, 
+  return getOrInsertFunction(Name,
                              FunctionType::get(RetTy, ArgTys, false),
                              AttrListPtr::get((AttributeWithIndex *)0, 0));
 }
@@ -254,7 +254,7 @@ Function *Module::getFunction(StringRef Name) const {
 ///
 GlobalVariable *Module::getGlobalVariable(StringRef Name,
                                           bool AllowLocal) const {
-  if (GlobalVariable *Result = 
+  if (GlobalVariable *Result =
       dyn_cast_or_null<GlobalVariable>(getNamedValue(Name)))
     if (AllowLocal || !Result->hasLocalLinkage())
       return Result;
@@ -282,7 +282,7 @@ Constant *Module::getOrInsertGlobal(StringRef Name, Type *Ty) {
   // right type.
   if (GV->getType() != PointerType::getUnqual(Ty))
     return ConstantExpr::getBitCast(GV, PointerType::getUnqual(Ty));
-  
+
   // Otherwise, we just found the existing function or a prototype.
   return GV;
 }
@@ -299,7 +299,7 @@ GlobalAlias *Module::getNamedAlias(StringRef Name) const {
 }
 
 /// getNamedMetadata - Return the first NamedMDNode in the module with the
-/// specified name. This method returns null if a NamedMDNode with the 
+/// specified name. This method returns null if a NamedMDNode with the
 /// specified name is not found.
 NamedMDNode *Module::getNamedMetadata(const Twine &Name) const {
   SmallString<256> NameData;
@@ -307,8 +307,8 @@ NamedMDNode *Module::getNamedMetadata(const Twine &Name) const {
   return static_cast<StringMap<NamedMDNode*> *>(NamedMDSymTab)->lookup(NameRef);
 }
 
-/// getOrInsertNamedMetadata - Return the first named MDNode in the module 
-/// with the specified name. This method returns a new NamedMDNode if a 
+/// getOrInsertNamedMetadata - Return the first named MDNode in the module
+/// with the specified name. This method returns a new NamedMDNode if a
 /// NamedMDNode with the specified name is not found.
 NamedMDNode *Module::getOrInsertNamedMetadata(StringRef Name) {
   NamedMDNode *&NMD =
@@ -321,11 +321,67 @@ NamedMDNode *Module::getOrInsertNamedMetadata(StringRef Name) {
   return NMD;
 }
 
+/// eraseNamedMetadata - Remove the given NamedMDNode from this module and
+/// delete it.
 void Module::eraseNamedMetadata(NamedMDNode *NMD) {
   static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab)->erase(NMD->getName());
   NamedMDList.erase(NMD);
 }
 
+/// getModuleFlagsMetadata - Returns the module flags in the provided vector.
+void Module::
+getModuleFlagsMetadata(SmallVectorImpl<ModuleFlagEntry> &Flags) const {
+  const NamedMDNode *ModFlags = getModuleFlagsMetadata();
+  if (!ModFlags) return;
+
+  for (unsigned i = 0, e = ModFlags->getNumOperands(); i != e; ++i) {
+    MDNode *Flag = ModFlags->getOperand(i);
+    ConstantInt *Behavior = cast<ConstantInt>(Flag->getOperand(0));
+    MDString *Key = cast<MDString>(Flag->getOperand(1));
+    Value *Val = Flag->getOperand(2);
+    Flags.push_back(ModuleFlagEntry(ModFlagBehavior(Behavior->getZExtValue()),
+                                    Key, Val));
+  }
+}
+
+/// getModuleFlagsMetadata - Returns the NamedMDNode in the module that
+/// represents module-level flags. This method returns null if there are no
+/// module-level flags.
+NamedMDNode *Module::getModuleFlagsMetadata() const {
+  return getNamedMetadata("llvm.module.flags");
+}
+
+/// getOrInsertModuleFlagsMetadata - Returns the NamedMDNode in the module that
+/// represents module-level flags. If module-level flags aren't found, it
+/// creates the named metadata that contains them.
+NamedMDNode *Module::getOrInsertModuleFlagsMetadata() {
+  return getOrInsertNamedMetadata("llvm.module.flags");
+}
+
+/// addModuleFlag - Add a module-level flag to the module-level flags
+/// metadata. It will create the module-level flags named metadata if it doesn't
+/// already exist.
+void Module::addModuleFlag(ModFlagBehavior Behavior, StringRef Key,
+                           Value *Val) {
+  Type *Int32Ty = Type::getInt32Ty(Context);
+  Value *Ops[3] = {
+    ConstantInt::get(Int32Ty, Behavior), MDString::get(Context, Key), Val
+  };
+  getOrInsertModuleFlagsMetadata()->addOperand(MDNode::get(Context, Ops));
+}
+void Module::addModuleFlag(ModFlagBehavior Behavior, StringRef Key,
+                           uint32_t Val) {
+  Type *Int32Ty = Type::getInt32Ty(Context);
+  addModuleFlag(Behavior, Key, ConstantInt::get(Int32Ty, Val));
+}
+void Module::addModuleFlag(MDNode *Node) {
+  assert(Node->getNumOperands() == 3 &&
+         "Invalid number of operands for module flag!");
+  assert(isa<ConstantInt>(Node->getOperand(0)) &&
+         isa<MDString>(Node->getOperand(1)) &&
+         "Invalid operand types for module flag!");
+  getOrInsertModuleFlagsMetadata()->addOperand(Node);
+}
 
 //===----------------------------------------------------------------------===//
 // Methods to control the materialization of GlobalValues in the Module.
@@ -378,7 +434,7 @@ bool Module::MaterializeAllPermanently(std::string *ErrInfo) {
 //
 
 
-// dropAllReferences() - This function causes all the subelementss to "let go"
+// dropAllReferences() - This function causes all the subelements to "let go"
 // of all references that they are maintaining.  This allows one to 'delete' a
 // whole module at a time, even though there may be circular references... first
 // all references are dropped, and all use counts go to zero.  Then everything
@@ -425,12 +481,13 @@ namespace {
     // objects, we keep several helper maps.
     DenseSet<const Value*> VisitedConstants;
     DenseSet<Type*> VisitedTypes;
-    
+
     std::vector<StructType*> &StructTypes;
+    bool OnlyNamed;
   public:
-    TypeFinder(std::vector<StructType*> &structTypes)
-      : StructTypes(structTypes) {}
-    
+    TypeFinder(std::vector<StructType*> &structTypes, bool onlyNamed)
+      : StructTypes(structTypes), OnlyNamed(onlyNamed) {}
+
     void run(const Module &M) {
       // Get types from global variables.
       for (Module::const_global_iterator I = M.global_begin(),
@@ -439,7 +496,7 @@ namespace {
         if (I->hasInitializer())
           incorporateValue(I->getInitializer());
       }
-      
+
       // Get types from aliases.
       for (Module::const_alias_iterator I = M.alias_begin(),
            E = M.alias_end(); I != E; ++I) {
@@ -447,24 +504,32 @@ namespace {
         if (const Value *Aliasee = I->getAliasee())
           incorporateValue(Aliasee);
       }
-      
-      SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
 
       // Get types from functions.
+      SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
       for (Module::const_iterator FI = M.begin(), E = M.end(); FI != E; ++FI) {
         incorporateType(FI->getType());
-        
+
+        // First incorporate the arguments.
+        for (Function::const_arg_iterator AI = FI->arg_begin(),
+               AE = FI->arg_end(); AI != AE; ++AI)
+          incorporateValue(AI);
+
         for (Function::const_iterator BB = FI->begin(), E = FI->end();
              BB != E;++BB)
           for (BasicBlock::const_iterator II = BB->begin(),
                E = BB->end(); II != E; ++II) {
             const Instruction &I = *II;
-            // Incorporate the type of the instruction and all its operands.
+            // Incorporate the type of the instruction.
             incorporateType(I.getType());
+
+            // Incorporate non-instruction operand types. (We are incorporating
+            // all instructions with this loop.)
             for (User::const_op_iterator OI = I.op_begin(), OE = I.op_end();
                  OI != OE; ++OI)
-              incorporateValue(*OI);
-            
+              if (!isa<Instruction>(OI))
+                incorporateValue(*OI);
+
             // Incorporate types hiding in metadata.
             I.getAllMetadataOtherThanDebugLoc(MDForInst);
             for (unsigned i = 0, e = MDForInst.size(); i != e; ++i)
@@ -472,7 +537,7 @@ namespace {
             MDForInst.clear();
           }
       }
-      
+
       for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
         const NamedMDNode *NMD = I;
@@ -480,23 +545,24 @@ namespace {
           incorporateMDNode(NMD->getOperand(i));
       }
     }
-    
+
   private:
     void incorporateType(Type *Ty) {
       // Check to see if we're already visited this type.
       if (!VisitedTypes.insert(Ty).second)
         return;
-      
+
       // If this is a structure or opaque type, add a name for the type.
       if (StructType *STy = dyn_cast<StructType>(Ty))
-        StructTypes.push_back(STy);
-      
+        if (!OnlyNamed || STy->hasName())
+          StructTypes.push_back(STy);
+
       // Recursively walk all contained types.
       for (Type::subtype_iterator I = Ty->subtype_begin(),
            E = Ty->subtype_end(); I != E; ++I)
         incorporateType(*I);
     }
-    
+
     /// incorporateValue - This method is used to walk operand lists finding
     /// types hiding in constant expressions and other operands that won't be
     /// walked in other ways.  GlobalValues, basic blocks, instructions, and
@@ -505,27 +571,31 @@ namespace {
       if (const MDNode *M = dyn_cast<MDNode>(V))
         return incorporateMDNode(M);
       if (!isa<Constant>(V) || isa<GlobalValue>(V)) return;
-      
+
       // Already visited?
       if (!VisitedConstants.insert(V).second)
         return;
-      
+
       // Check this type.
       incorporateType(V->getType());
-      
+
+      // If this is an instruction, we incorporate it separately.
+      if (isa<Instruction>(V))
+        return;
+
       // Look in operands for types.
       const User *U = cast<User>(V);
       for (Constant::const_op_iterator I = U->op_begin(),
            E = U->op_end(); I != E;++I)
         incorporateValue(*I);
     }
-    
+
     void incorporateMDNode(const MDNode *V) {
-      
+
       // Already visited?
       if (!VisitedConstants.insert(V).second)
         return;
-      
+
       // Look in operands for types.
       for (unsigned i = 0, e = V->getNumOperands(); i != e; ++i)
         if (Value *Op = V->getOperand(i))
@@ -534,6 +604,7 @@ namespace {
   };
 } // end anonymous namespace
 
-void Module::findUsedStructTypes(std::vector<StructType*> &StructTypes) const {
-  TypeFinder(StructTypes).run(*this);
+void Module::findUsedStructTypes(std::vector<StructType*> &StructTypes,
+                                 bool OnlyNamed) const {
+  TypeFinder(StructTypes, OnlyNamed).run(*this);
 }

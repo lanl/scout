@@ -404,6 +404,8 @@ def brind      : SDNode<"ISD::BRIND"      , SDTBrind,  [SDNPHasChain]>;
 def br         : SDNode<"ISD::BR"         , SDTBr,     [SDNPHasChain]>;
 def trap       : SDNode<"ISD::TRAP"       , SDTNone,
                         [SDNPHasChain, SDNPSideEffect]>;
+def debugger   : SDNode<"ISD::DEBUGGER"   , SDTNone,
+                        [SDNPHasChain, SDNPSideEffect]>;
 
 def prefetch   : SDNode<"ISD::PREFETCH"   , SDTPrefetch,
                         [SDNPHasChain, SDNPMayLoad, SDNPMayStore,
@@ -655,6 +657,51 @@ def zextloadi16 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
 }]>;
 def zextloadi32 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
   return cast<LoadSDNode>(N)->getMemoryVT() == MVT::i32;
+}]>;
+
+def extloadvi1  : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i1;
+}]>;
+def extloadvi8  : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def extloadvi16 : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def extloadvi32 : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+def extloadvf32 : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::f32;
+}]>;
+def extloadvf64 : PatFrag<(ops node:$ptr), (extload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::f64;
+}]>;
+
+def sextloadvi1  : PatFrag<(ops node:$ptr), (sextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i1;
+}]>;
+def sextloadvi8  : PatFrag<(ops node:$ptr), (sextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def sextloadvi16 : PatFrag<(ops node:$ptr), (sextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def sextloadvi32 : PatFrag<(ops node:$ptr), (sextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
+}]>;
+
+def zextloadvi1  : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i1;
+}]>;
+def zextloadvi8  : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i8;
+}]>;
+def zextloadvi16 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i16;
+}]>;
+def zextloadvi32 : PatFrag<(ops node:$ptr), (zextload node:$ptr), [{
+  return cast<LoadSDNode>(N)->getMemoryVT().getScalarType() == MVT::i32;
 }]>;
 
 // store fragments.

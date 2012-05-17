@@ -17,10 +17,8 @@ This test serves two purposes:
 
 The list of warnings below should NEVER grow.  It should gradually shrink to 0.
 
-CHECK: Warnings without flags (266):
-CHECK-NEXT:   ext_anon_param_requires_type_specifier
+CHECK: Warnings without flags (245):
 CHECK-NEXT:   ext_anonymous_struct_union_qualified
-CHECK-NEXT:   ext_array_init_copy
 CHECK-NEXT:   ext_binary_literal
 CHECK-NEXT:   ext_cast_fn_obj
 CHECK-NEXT:   ext_delete_void_ptr_operand
@@ -59,7 +57,6 @@ CHECK-NEXT:   ext_plain_complex
 CHECK-NEXT:   ext_pp_bad_vaargs_use
 CHECK-NEXT:   ext_pp_comma_expr
 CHECK-NEXT:   ext_pp_ident_directive
-CHECK-NEXT:   ext_pp_import_directive
 CHECK-NEXT:   ext_pp_include_next_directive
 CHECK-NEXT:   ext_pp_line_too_big
 CHECK-NEXT:   ext_pp_macro_redef
@@ -79,8 +76,6 @@ CHECK-NEXT:   ext_typecheck_comparison_of_pointer_integer
 CHECK-NEXT:   ext_typecheck_cond_incompatible_operands
 CHECK-NEXT:   ext_typecheck_cond_incompatible_operands_nonstandard
 CHECK-NEXT:   ext_typecheck_cond_one_void
-CHECK-NEXT:   ext_typecheck_convert_int_pointer
-CHECK-NEXT:   ext_typecheck_convert_pointer_int
 CHECK-NEXT:   ext_typecheck_convert_pointer_void_func
 CHECK-NEXT:   ext_typecheck_ordered_comparison_of_function_pointers
 CHECK-NEXT:   ext_typecheck_ordered_comparison_of_pointer_and_zero
@@ -117,9 +112,6 @@ CHECK-NEXT:   warn_attribute_weak_import_invalid_on_definition
 CHECK-NEXT:   warn_attribute_weak_on_field
 CHECK-NEXT:   warn_attribute_weak_on_local
 CHECK-NEXT:   warn_attribute_wrong_decl_type
-CHECK-NEXT:   warn_availability_and_unavailable
-CHECK-NEXT:   warn_availability_unknown_platform
-CHECK-NEXT:   warn_availability_version_ordering
 CHECK-NEXT:   warn_bad_receiver_type
 CHECK-NEXT:   warn_bitfield_width_exceeds_type_size
 CHECK-NEXT:   warn_bool_switch_condition
@@ -138,23 +130,17 @@ CHECK-NEXT:   warn_conflicting_variadic
 CHECK-NEXT:   warn_conv_to_base_not_used
 CHECK-NEXT:   warn_conv_to_self_not_used
 CHECK-NEXT:   warn_conv_to_void_not_used
-CHECK-NEXT:   warn_cxx0x_right_shift_in_template_arg
-CHECK-NEXT:   warn_decl_in_param_list
 CHECK-NEXT:   warn_delete_array_type
-CHECK-NEXT:   warn_division_by_zero
 CHECK-NEXT:   warn_double_const_requires_fp64
 CHECK-NEXT:   warn_drv_assuming_mfloat_abi_is
 CHECK-NEXT:   warn_drv_clang_unsupported
-CHECK-NEXT:   warn_drv_conflicting_deployment_targets
 CHECK-NEXT:   warn_drv_input_file_unused
 CHECK-NEXT:   warn_drv_not_using_clang_arch
 CHECK-NEXT:   warn_drv_not_using_clang_cpp
 CHECK-NEXT:   warn_drv_not_using_clang_cxx
 CHECK-NEXT:   warn_drv_objc_gc_unsupported
 CHECK-NEXT:   warn_drv_pch_not_first_include
-CHECK-NEXT:   warn_drv_pipe_ignored_with_save_temps
 CHECK-NEXT:   warn_drv_preprocessed_input_file_unused
-CHECK-NEXT:   warn_drv_unsupported_option_argument
 CHECK-NEXT:   warn_dup_category_def
 CHECK-NEXT:   warn_duplicate_protocol_def
 CHECK-NEXT:   warn_enum_too_large
@@ -185,7 +171,6 @@ CHECK-NEXT:   warn_instance_method_on_class_found
 CHECK-NEXT:   warn_integer_too_large
 CHECK-NEXT:   warn_integer_too_large_for_signed
 CHECK-NEXT:   warn_invalid_asm_cast_lvalue
-CHECK-NEXT:   warn_label_attribute_not_unused
 CHECK-NEXT:   warn_many_braces_around_scalar_init
 CHECK-NEXT:   warn_maynot_respond
 CHECK-NEXT:   warn_member_extra_qualification
@@ -203,8 +188,6 @@ CHECK-NEXT:   warn_ns_attribute_wrong_parameter_type
 CHECK-NEXT:   warn_ns_attribute_wrong_return_type
 CHECK-NEXT:   warn_objc_object_attribute_wrong_type
 CHECK-NEXT:   warn_objc_property_copy_missing_on_block
-CHECK-NEXT:   warn_objc_property_default_assign_on_object
-CHECK-NEXT:   warn_objc_property_no_assignment_attribute
 CHECK-NEXT:   warn_objc_protocol_qualifier_missing_id
 CHECK-NEXT:   warn_octal_escape_too_large
 CHECK-NEXT:   warn_odr_tag_type_inconsistent
@@ -231,7 +214,6 @@ CHECK-NEXT:   warn_pragma_options_align_unsupported_option
 CHECK-NEXT:   warn_pragma_options_expected_align
 CHECK-NEXT:   warn_pragma_pack_invalid_action
 CHECK-NEXT:   warn_pragma_pack_invalid_alignment
-CHECK-NEXT:   warn_pragma_pack_invalid_constant
 CHECK-NEXT:   warn_pragma_pack_malformed
 CHECK-NEXT:   warn_pragma_pack_pop_failed
 CHECK-NEXT:   warn_pragma_pack_pop_identifer_and_alignment
@@ -255,7 +237,6 @@ CHECK-NEXT:   warn_redeclaration_without_attribute_prev_attribute_ignored
 CHECK-NEXT:   warn_register_objc_catch_parm
 CHECK-NEXT:   warn_related_result_type_compatibility_class
 CHECK-NEXT:   warn_related_result_type_compatibility_protocol
-CHECK-NEXT:   warn_remainder_by_zero
 CHECK-NEXT:   warn_root_inst_method_not_found
 CHECK-NEXT:   warn_second_parameter_of_va_start_not_last_named_argument
 CHECK-NEXT:   warn_second_parameter_to_va_arg_never_compatible
@@ -269,14 +250,12 @@ CHECK-NEXT:   warn_transparent_union_attribute_field_size_align
 CHECK-NEXT:   warn_transparent_union_attribute_floating
 CHECK-NEXT:   warn_transparent_union_attribute_not_definition
 CHECK-NEXT:   warn_transparent_union_attribute_zero_fields
-CHECK-NEXT:   warn_transparent_union_nonpointer
 CHECK-NEXT:   warn_typecheck_function_qualifiers
 CHECK-NEXT:   warn_unavailable_fwdclass_message
 CHECK-NEXT:   warn_undef_interface
 CHECK-NEXT:   warn_undef_interface_suggest
 CHECK-NEXT:   warn_undef_protocolref
 CHECK-NEXT:   warn_undefined_internal
-CHECK-NEXT:   warn_uninit_val
 CHECK-NEXT:   warn_unknown_analyzer_checker
 CHECK-NEXT:   warn_unknown_method_family
 CHECK-NEXT:   warn_unterminated_char

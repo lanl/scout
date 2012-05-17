@@ -137,6 +137,9 @@ public:
   /// default.
   virtual bool IsStrictAliasingDefault() const { return true; }
 
+  /// IsMathErrnoDefault - Does this tool chain use -fmath-errno by default.
+  virtual bool IsMathErrnoDefault() const { return true; }
+
   /// IsObjCDefaultSynthPropertiesDefault - Does this tool chain enable
   /// -fobjc-default-synthesize-properties by default.
   virtual bool IsObjCDefaultSynthPropertiesDefault() const { return false; }
@@ -183,6 +186,9 @@ public:
 
   /// Does this tool chain support Objective-C garbage collection.
   virtual bool SupportsObjCGC() const { return true; }
+
+  /// Does this tool chain support Objective-C ARC.
+  virtual bool SupportsObjCARC() const { return true; }
 
   /// UseDwarfDebugFlags - Embed the compile options to clang into the Dwarf
   /// compile unit information.

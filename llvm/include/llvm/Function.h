@@ -146,7 +146,7 @@ public:
   /// The particular intrinsic functions which correspond to this value are
   /// defined in llvm/Intrinsics.h.
   ///
-  unsigned getIntrinsicID() const LLVM_ATTRIBUTE_READONLY;
+  unsigned getIntrinsicID() const LLVM_READONLY;
   bool isIntrinsic() const { return getIntrinsicID() != 0; }
 
   /// getCallingConv()/setCallingConv(CC) - These method get and set the
@@ -420,8 +420,8 @@ public:
   void dropAllReferences();
 
   /// hasAddressTaken - returns true if there are any uses of this function
-  /// other than direct calls or invokes to it. Optionally passes back the
-  /// offending user for diagnostic purposes.
+  /// other than direct calls or invokes to it, or blockaddress expressions.
+  /// Optionally passes back an offending user for diagnostic purposes.
   ///
   bool hasAddressTaken(const User** = 0) const;
 

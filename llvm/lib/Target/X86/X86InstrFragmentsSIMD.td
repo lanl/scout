@@ -1,10 +1,10 @@
-//======- X86InstrFragmentsSIMD.td - x86 ISA -------------*- tablegen -*-=====//
+//===-- X86InstrFragmentsSIMD.td - x86 SIMD ISA ------------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
-// 
+//
 //===----------------------------------------------------------------------===//
 //
 // This file provides pattern fragments useful for SIMD instructions.
@@ -71,9 +71,14 @@ def X86insrtps : SDNode<"X86ISD::INSERTPS",
                                       SDTCisVT<2, v4f32>, SDTCisPtrTy<3>]>>;
 def X86vzmovl  : SDNode<"X86ISD::VZEXT_MOVL",
                  SDTypeProfile<1, 1, [SDTCisSameAs<0,1>]>>;
+
+def X86vzmovly  : SDNode<"X86ISD::VZEXT_MOVL",
+                 SDTypeProfile<1, 1, [SDTCisVec<0>, SDTCisVec<1>, 
+                                      SDTCisOpSmallerThanOp<1, 0> ]>>;
+
 def X86vsmovl  : SDNode<"X86ISD::VSEXT_MOVL",
                  SDTypeProfile<1, 1, [SDTCisVec<0>, SDTCisInt<1>, SDTCisInt<0>]>>;
-                 
+
 def X86vzload  : SDNode<"X86ISD::VZEXT_LOAD", SDTLoad,
                         [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
 def X86vshldq  : SDNode<"X86ISD::VSHLDQ",    SDTIntShiftOp>;
@@ -126,6 +131,8 @@ def SDTShuff3OpI : SDTypeProfile<1, 3, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                  SDTCisSameAs<0,2>, SDTCisInt<3>]>;
 
 def SDTVBroadcast : SDTypeProfile<1, 1, [SDTCisVec<0>]>;
+def SDTBlend : SDTypeProfile<1, 3, [SDTCisVec<0>, SDTCisSameAs<0,1>,
+SDTCisSameAs<1,2>, SDTCisVT<3, i32>]>;
 
 def X86PAlign : SDNode<"X86ISD::PALIGN", SDTShuff3OpI>;
 
@@ -153,10 +160,16 @@ def X86Unpckl : SDNode<"X86ISD::UNPCKL", SDTShuff2Op>;
 def X86Unpckh : SDNode<"X86ISD::UNPCKH", SDTShuff2Op>;
 
 def X86VPermilp  : SDNode<"X86ISD::VPERMILP", SDTShuff2OpI>;
+def X86VPermv    : SDNode<"X86ISD::VPERMV",   SDTShuff2Op>;
+def X86VPermi    : SDNode<"X86ISD::VPERMI",   SDTShuff2OpI>;
 
 def X86VPerm2x128 : SDNode<"X86ISD::VPERM2X128", SDTShuff3OpI>;
 
 def X86VBroadcast : SDNode<"X86ISD::VBROADCAST", SDTVBroadcast>;
+
+def X86Blendpw : SDNode<"X86ISD::BLENDPW", SDTBlend>;
+def X86Blendps : SDNode<"X86ISD::BLENDPS", SDTBlend>;
+def X86Blendpd : SDNode<"X86ISD::BLENDPD", SDTBlend>;
 
 //===----------------------------------------------------------------------===//
 // SSE Complex Patterns
@@ -216,6 +229,11 @@ def alignedstore256 : PatFrag<(ops node:$val, node:$ptr),
 // Like 'load', but always requires 128-bit vector alignment.
 def alignedload : PatFrag<(ops node:$ptr), (load node:$ptr), [{
   return cast<LoadSDNode>(N)->getAlignment() >= 16;
+}]>;
+
+// Like 'X86vzload', but always requires 128-bit vector alignment.
+def alignedX86vzload : PatFrag<(ops node:$ptr), (X86vzload node:$ptr), [{
+  return cast<MemSDNode>(N)->getAlignment() >= 16;
 }]>;
 
 // Like 'load', but always requires 256-bit vector alignment.
@@ -342,24 +360,6 @@ def BYTE_imm  : SDNodeXForm<imm, [{
   return getI32Imm(N->getZExtValue() >> 3);
 }]>;
 
-// SHUFFLE_get_shuf_imm xform function: convert vector_shuffle mask to PSHUF*,
-// SHUFP* etc. imm.
-def SHUFFLE_get_shuf_imm : SDNodeXForm<vector_shuffle, [{
-  return getI8Imm(X86::getShuffleSHUFImmediate(cast<ShuffleVectorSDNode>(N)));
-}]>;
-
-// SHUFFLE_get_pshufhw_imm xform function: convert vector_shuffle mask to
-// PSHUFHW imm.
-def SHUFFLE_get_pshufhw_imm : SDNodeXForm<vector_shuffle, [{
-  return getI8Imm(X86::getShufflePSHUFHWImmediate(N));
-}]>;
-
-// SHUFFLE_get_pshuflw_imm xform function: convert vector_shuffle mask to
-// PSHUFLW imm.
-def SHUFFLE_get_pshuflw_imm : SDNodeXForm<vector_shuffle, [{
-  return getI8Imm(X86::getShufflePSHUFLWImmediate(N));
-}]>;
-
 // EXTRACT_get_vextractf128_imm xform function: convert extract_subvector index
 // to VEXTRACTF128 imm.
 def EXTRACT_get_vextractf128_imm : SDNodeXForm<extract_subvector, [{
@@ -371,72 +371,6 @@ def EXTRACT_get_vextractf128_imm : SDNodeXForm<extract_subvector, [{
 def INSERT_get_vinsertf128_imm : SDNodeXForm<insert_subvector, [{
   return getI8Imm(X86::getInsertVINSERTF128Immediate(N));
 }]>;
-
-def splat_lo : PatFrag<(ops node:$lhs, node:$rhs),
-                       (vector_shuffle node:$lhs, node:$rhs), [{
-  ShuffleVectorSDNode *SVOp = cast<ShuffleVectorSDNode>(N);
-  return SVOp->isSplat() && SVOp->getSplatIndex() == 0;
-}]>;
-
-def movddup : PatFrag<(ops node:$lhs, node:$rhs),
-                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVDDUPMask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def movhlps : PatFrag<(ops node:$lhs, node:$rhs),
-                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVHLPSMask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def movhlps_undef : PatFrag<(ops node:$lhs, node:$rhs),
-                            (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVHLPS_v_undef_Mask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def movlhps : PatFrag<(ops node:$lhs, node:$rhs),
-                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVLHPSMask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def movlp : PatFrag<(ops node:$lhs, node:$rhs),
-                    (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVLPMask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def movl : PatFrag<(ops node:$lhs, node:$rhs),
-                   (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isMOVLMask(cast<ShuffleVectorSDNode>(N));
-}]>;
-
-def unpckl : PatFrag<(ops node:$lhs, node:$rhs),
-                     (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isUNPCKLMask(cast<ShuffleVectorSDNode>(N), Subtarget->hasAVX2());
-}]>;
-
-def unpckh : PatFrag<(ops node:$lhs, node:$rhs),
-                     (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isUNPCKHMask(cast<ShuffleVectorSDNode>(N), Subtarget->hasAVX2());
-}]>;
-
-def pshufd : PatFrag<(ops node:$lhs, node:$rhs),
-                     (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isPSHUFDMask(cast<ShuffleVectorSDNode>(N));
-}], SHUFFLE_get_shuf_imm>;
-
-def shufp : PatFrag<(ops node:$lhs, node:$rhs),
-                    (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isSHUFPMask(cast<ShuffleVectorSDNode>(N), Subtarget->hasAVX());
-}], SHUFFLE_get_shuf_imm>;
-
-def pshufhw : PatFrag<(ops node:$lhs, node:$rhs),
-                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isPSHUFHWMask(cast<ShuffleVectorSDNode>(N));
-}], SHUFFLE_get_pshufhw_imm>;
-
-def pshuflw : PatFrag<(ops node:$lhs, node:$rhs),
-                      (vector_shuffle node:$lhs, node:$rhs), [{
-  return X86::isPSHUFLWMask(cast<ShuffleVectorSDNode>(N));
-}], SHUFFLE_get_pshuflw_imm>;
 
 def vextractf128_extract : PatFrag<(ops node:$bigvec, node:$index),
                                    (extract_subvector node:$bigvec,

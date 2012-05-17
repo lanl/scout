@@ -1,4 +1,4 @@
-//===- ARMBaseRegisterInfo.cpp - ARM Register Information -------*- C++ -*-===//
+//===-- ARMBaseRegisterInfo.cpp - ARM Register Information ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,11 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ARMBaseRegisterInfo.h"
 #include "ARM.h"
 #include "ARMBaseInstrInfo.h"
-#include "ARMBaseRegisterInfo.h"
 #include "ARMFrameLowering.h"
-#include "ARMInstrInfo.h"
 #include "ARMMachineFunctionInfo.h"
 #include "ARMSubtarget.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
@@ -61,14 +60,16 @@ ARMBaseRegisterInfo::ARMBaseRegisterInfo(const ARMBaseInstrInfo &tii,
     BasePtr(ARM::R6) {
 }
 
-const unsigned*
+const uint16_t*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  return (STI.isTargetIOS()) ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;
+  return (STI.isTargetIOS() && !STI.isAAPCS_ABI())
+    ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;
 }
 
 const uint32_t*
 ARMBaseRegisterInfo::getCallPreservedMask(CallingConv::ID) const {
-  return (STI.isTargetIOS()) ? CSR_iOS_RegMask : CSR_AAPCS_RegMask;
+  return (STI.isTargetIOS() && !STI.isAAPCS_ABI())
+    ? CSR_iOS_RegMask : CSR_AAPCS_RegMask;
 }
 
 BitVector ARMBaseRegisterInfo::
@@ -258,8 +259,9 @@ ARMBaseRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC)
 }
 
 const TargetRegisterClass *
-ARMBaseRegisterInfo::getPointerRegClass(unsigned Kind) const {
-  return ARM::GPRRegisterClass;
+ARMBaseRegisterInfo::getPointerRegClass(const MachineFunction &MF, unsigned Kind)
+                                                                         const {
+  return &ARM::GPRRegClass;
 }
 
 const TargetRegisterClass *
@@ -291,7 +293,7 @@ ARMBaseRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
 
 /// getRawAllocationOrder - Returns the register allocation order for a
 /// specified register class with a target-dependent hint.
-ArrayRef<unsigned>
+ArrayRef<uint16_t>
 ARMBaseRegisterInfo::getRawAllocationOrder(const TargetRegisterClass *RC,
                                            unsigned HintType, unsigned HintReg,
                                            const MachineFunction &MF) const {
@@ -300,77 +302,77 @@ ARMBaseRegisterInfo::getRawAllocationOrder(const TargetRegisterClass *RC,
   // of register pairs.
 
   // No FP, R9 is available.
-  static const unsigned GPREven1[] = {
+  static const uint16_t GPREven1[] = {
     ARM::R0, ARM::R2, ARM::R4, ARM::R6, ARM::R8, ARM::R10,
     ARM::R1, ARM::R3, ARM::R12,ARM::LR, ARM::R5, ARM::R7,
     ARM::R9, ARM::R11
   };
-  static const unsigned GPROdd1[] = {
+  static const uint16_t GPROdd1[] = {
     ARM::R1, ARM::R3, ARM::R5, ARM::R7, ARM::R9, ARM::R11,
     ARM::R0, ARM::R2, ARM::R12,ARM::LR, ARM::R4, ARM::R6,
     ARM::R8, ARM::R10
   };
 
   // FP is R7, R9 is available.
-  static const unsigned GPREven2[] = {
+  static const uint16_t GPREven2[] = {
     ARM::R0, ARM::R2, ARM::R4,          ARM::R8, ARM::R10,
     ARM::R1, ARM::R3, ARM::R12,ARM::LR, ARM::R5, ARM::R6,
     ARM::R9, ARM::R11
   };
-  static const unsigned GPROdd2[] = {
+  static const uint16_t GPROdd2[] = {
     ARM::R1, ARM::R3, ARM::R5,          ARM::R9, ARM::R11,
     ARM::R0, ARM::R2, ARM::R12,ARM::LR, ARM::R4, ARM::R6,
     ARM::R8, ARM::R10
   };
 
   // FP is R11, R9 is available.
-  static const unsigned GPREven3[] = {
+  static const uint16_t GPREven3[] = {
     ARM::R0, ARM::R2, ARM::R4, ARM::R6, ARM::R8,
     ARM::R1, ARM::R3, ARM::R10,ARM::R12,ARM::LR, ARM::R5, ARM::R7,
     ARM::R9
   };
-  static const unsigned GPROdd3[] = {
+  static const uint16_t GPROdd3[] = {
     ARM::R1, ARM::R3, ARM::R5, ARM::R6, ARM::R9,
     ARM::R0, ARM::R2, ARM::R10,ARM::R12,ARM::LR, ARM::R4, ARM::R7,
     ARM::R8
   };
 
   // No FP, R9 is not available.
-  static const unsigned GPREven4[] = {
+  static const uint16_t GPREven4[] = {
     ARM::R0, ARM::R2, ARM::R4, ARM::R6,          ARM::R10,
     ARM::R1, ARM::R3, ARM::R12,ARM::LR, ARM::R5, ARM::R7, ARM::R8,
     ARM::R11
   };
-  static const unsigned GPROdd4[] = {
+  static const uint16_t GPROdd4[] = {
     ARM::R1, ARM::R3, ARM::R5, ARM::R7,          ARM::R11,
     ARM::R0, ARM::R2, ARM::R12,ARM::LR, ARM::R4, ARM::R6, ARM::R8,
     ARM::R10
   };
 
   // FP is R7, R9 is not available.
-  static const unsigned GPREven5[] = {
+  static const uint16_t GPREven5[] = {
     ARM::R0, ARM::R2, ARM::R4,                   ARM::R10,
     ARM::R1, ARM::R3, ARM::R12,ARM::LR, ARM::R5, ARM::R6, ARM::R8,
     ARM::R11
   };
-  static const unsigned GPROdd5[] = {
+  static const uint16_t GPROdd5[] = {
     ARM::R1, ARM::R3, ARM::R5,                   ARM::R11,
     ARM::R0, ARM::R2, ARM::R12,ARM::LR, ARM::R4, ARM::R6, ARM::R8,
     ARM::R10
   };
 
   // FP is R11, R9 is not available.
-  static const unsigned GPREven6[] = {
+  static const uint16_t GPREven6[] = {
     ARM::R0, ARM::R2, ARM::R4, ARM::R6,
     ARM::R1, ARM::R3, ARM::R10,ARM::R12,ARM::LR, ARM::R5, ARM::R7, ARM::R8
   };
-  static const unsigned GPROdd6[] = {
+  static const uint16_t GPROdd6[] = {
     ARM::R1, ARM::R3, ARM::R5, ARM::R7,
     ARM::R0, ARM::R2, ARM::R10,ARM::R12,ARM::LR, ARM::R4, ARM::R6, ARM::R8
   };
 
   // We only support even/odd hints for GPR and rGPR.
-  if (RC != ARM::GPRRegisterClass && RC != ARM::rGPRRegisterClass)
+  if (RC != &ARM::GPRRegClass && RC != &ARM::rGPRRegClass)
     return RC->getRawAllocationOrder(MF);
 
   if (HintType == ARMRI::RegPairEven) {
@@ -485,11 +487,15 @@ ARMBaseRegisterInfo::avoidWriteAfterWrite(const TargetRegisterClass *RC) const {
 bool ARMBaseRegisterInfo::hasBasePointer(const MachineFunction &MF) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   const ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
+  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
 
   if (!EnableBasePointer)
     return false;
 
-  if (needsStackRealignment(MF) && MFI->hasVarSizedObjects())
+  // When outgoing call frames are so large that we adjust the stack pointer
+  // around the call, we can no longer use the stack pointer to reach the
+  // emergency spill slot.
+  if (needsStackRealignment(MF) && !TFI->hasReservedCallFrame(MF))
     return true;
 
   // Thumb has trouble with negative offsets from the FP. Thumb2 has a limited
@@ -513,7 +519,6 @@ bool ARMBaseRegisterInfo::hasBasePointer(const MachineFunction &MF) const {
 }
 
 bool ARMBaseRegisterInfo::canRealignStack(const MachineFunction &MF) const {
-  const MachineFrameInfo *MFI = MF.getFrameInfo();
   const MachineRegisterInfo *MRI = &MF.getRegInfo();
   const ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   // We can't realign the stack if:
@@ -528,8 +533,9 @@ bool ARMBaseRegisterInfo::canRealignStack(const MachineFunction &MF) const {
   // register allocation with frame pointer elimination, it is too late now.
   if (!MRI->canReserveReg(FramePtr))
     return false;
-  // We may also need a base pointer if there are dynamic allocas.
-  if (!MFI->hasVarSizedObjects())
+  // We may also need a base pointer if there are dynamic allocas or stack
+  // pointer adjustments around calls.
+  if (MF.getTarget().getFrameLowering()->hasReservedCallFrame(MF))
     return true;
   if (!EnableBasePointer)
     return false;
@@ -709,6 +715,11 @@ requiresRegisterScavenging(const MachineFunction &MF) const {
 }
 
 bool ARMBaseRegisterInfo::
+trackLivenessAfterRegAlloc(const MachineFunction &MF) const {
+  return true;
+}
+
+bool ARMBaseRegisterInfo::
 requiresFrameIndexScavenging(const MachineFunction &MF) const {
   return true;
 }
@@ -780,7 +791,7 @@ int64_t ARMBaseRegisterInfo::
 getFrameIndexInstrOffset(const MachineInstr *MI, int Idx) const {
   const MCInstrDesc &Desc = MI->getDesc();
   unsigned AddrMode = (Desc.TSFlags & ARMII::AddrModeMask);
-  int64_t InstrOffs = 0;;
+  int64_t InstrOffs = 0;
   int Scale = 1;
   unsigned ImmIdx = 0;
   switch (AddrMode) {
@@ -929,7 +940,8 @@ materializeFrameBaseRegister(MachineBasicBlock *MBB,
 
   const MCInstrDesc &MCID = TII.get(ADDriOpc);
   MachineRegisterInfo &MRI = MBB->getParent()->getRegInfo();
-  MRI.constrainRegClass(BaseReg, TII.getRegClass(MCID, 0, this));
+  const MachineFunction &MF = *MBB->getParent();
+  MRI.constrainRegClass(BaseReg, TII.getRegClass(MCID, 0, this, MF));
 
   MachineInstrBuilder MIB = AddDefaultPred(BuildMI(*MBB, Ins, DL, MCID, BaseReg)
     .addFrameIndex(FrameIdx).addImm(Offset));
@@ -1057,6 +1069,21 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   int Offset = TFI->ResolveFrameIndexReference(MF, FrameIndex, FrameReg, SPAdj);
 
+  // PEI::scavengeFrameVirtualRegs() cannot accurately track SPAdj because the
+  // call frame setup/destroy instructions have already been eliminated.  That
+  // means the stack pointer cannot be used to access the emergency spill slot
+  // when !hasReservedCallFrame().
+#ifndef NDEBUG
+  if (RS && FrameReg == ARM::SP && FrameIndex == RS->getScavengingFrameIndex()){
+    assert(TFI->hasReservedCallFrame(MF) &&
+           "Cannot use SP to access the emergency spill slot in "
+           "functions without a reserved call frame");
+    assert(!MF.getFrameInfo()->hasVarSizedObjects() &&
+           "Cannot use SP to access the emergency spill slot in "
+           "functions with variable sized frame objects");
+  }
+#endif // NDEBUG
+
   // Special handling of dbg_value instructions.
   if (MI.isDebugValue()) {
     MI.getOperand(i).  ChangeToRegister(FrameReg, false /*isDef*/);
@@ -1092,7 +1119,7 @@ ARMBaseRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     // Must be addrmode4/6.
     MI.getOperand(i).ChangeToRegister(FrameReg, false, false, false);
   else {
-    ScratchReg = MF.getRegInfo().createVirtualRegister(ARM::GPRRegisterClass);
+    ScratchReg = MF.getRegInfo().createVirtualRegister(&ARM::GPRRegClass);
     if (!AFI->isThumbFunction())
       emitARMRegPlusImmediate(MBB, II, MI.getDebugLoc(), ScratchReg, FrameReg,
                               Offset, Pred, PredReg, TII);

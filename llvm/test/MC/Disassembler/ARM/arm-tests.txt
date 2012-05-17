@@ -1,4 +1,4 @@
-# RUN: llvm-mc --disassemble %s -triple=armv7-apple-darwin9 -mattr +mp | FileCheck %s
+# RUN: llvm-mc --disassemble %s -triple=armv7-apple-darwin9 -mcpu=cortex-a9-mp | FileCheck %s
 
 # CHECK:	addpl	r4, pc, #318767104
 0x4c 0x45 0x8f 0x52
@@ -201,7 +201,7 @@
 0x20 0x51 0x17 0xe6
 
 # CHECK:	strdeq	r2, r3, [r0], -r8
-0xf8 0x24 0x00 0x00
+0xf8 0x20 0x00 0x00
 
 # CHECK:	ldrdeq	r2, r3, [r0], -r12
 0xdc 0x24 0x00 0x00
@@ -320,4 +320,7 @@
 
 # CHECK: ldmgt	sp!, {r9}
 0x00 0x02 0xbd 0xc8
+
+# CHECK: cdp2	p10, #0, c6, c12, c0, #7
+0xe0 0x6a 0x0c 0xfe
 

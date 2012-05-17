@@ -171,7 +171,7 @@ bool DeadMachineInstructionElim::runOnMachineFunction(MachineFunction &MF) {
             // Check the subreg set, not the alias set, because a def
             // of a super-register may still be partially live after
             // this def.
-            for (const unsigned *SubRegs = TRI->getSubRegisters(Reg);
+            for (const uint16_t *SubRegs = TRI->getSubRegisters(Reg);
                  *SubRegs; ++SubRegs)
               LivePhysRegs.reset(*SubRegs);
           }
@@ -188,7 +188,7 @@ bool DeadMachineInstructionElim::runOnMachineFunction(MachineFunction &MF) {
           unsigned Reg = MO.getReg();
           if (TargetRegisterInfo::isPhysicalRegister(Reg)) {
             LivePhysRegs.set(Reg);
-            for (const unsigned *AliasSet = TRI->getAliasSet(Reg);
+            for (const uint16_t *AliasSet = TRI->getAliasSet(Reg);
                  *AliasSet; ++AliasSet)
               LivePhysRegs.set(*AliasSet);
           }

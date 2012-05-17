@@ -21,17 +21,18 @@
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/VersionTuple.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/LambdaMangleContext.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/CanonicalType.h"
-#include "clang/AST/UsuallyTinyPtrVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/Allocator.h"
 #include <vector>
 
@@ -55,6 +56,7 @@ namespace clang {
   class CXXABI;
   // Decls
   class DeclContext;
+  class CXXConversionDecl;
   class CXXMethodDecl;
   class CXXRecordDecl;
   class Decl;
@@ -80,7 +82,7 @@ namespace clang {
 
 /// ASTContext - This class holds long-lived AST nodes (such as types and
 /// decls) that can be referred to throughout the semantic analysis of a file.
-class ASTContext : public llvm::RefCountedBase<ASTContext> {
+class ASTContext : public RefCountedBase<ASTContext> {
   ASTContext &this_() { return *this; }
 
   mutable std::vector<Type*> Types;
@@ -144,6 +146,11 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
     ASTRecordLayouts;
   mutable llvm::DenseMap<const ObjCContainerDecl*, const ASTRecordLayout*>
     ObjCLayouts;
+
+  /// TypeInfoMap - A cache from types to size and alignment information.
+  typedef llvm::DenseMap<const Type*,
+                         std::pair<uint64_t, unsigned> > TypeInfoMap;
+  mutable TypeInfoMap MemoizedTypeInfo;
 
   /// KeyFunctions - A cache mapping from CXXRecordDecls to key functions.
   llvm::DenseMap<const CXXRecordDecl*, const CXXMethodDecl*> KeyFunctions;
@@ -216,6 +223,8 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
 
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
+  
+  QualType ObjCNSStringType;
 
   /// \brief The typedef declaration for the Objective-C "instancetype" type.
   TypedefDecl *ObjCInstanceTypeDecl;
@@ -318,9 +327,13 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   /// Since most C++ member functions aren't virtual and therefore
   /// don't override anything, we store the overridden functions in
   /// this map on the side rather than within the CXXMethodDecl structure.
-  typedef UsuallyTinyPtrVector<const CXXMethodDecl> CXXMethodVector;
+  typedef llvm::TinyPtrVector<const CXXMethodDecl*> CXXMethodVector;
   llvm::DenseMap<const CXXMethodDecl *, CXXMethodVector> OverriddenMethods;
 
+  /// \brief Mapping from each declaration context to its corresponding lambda 
+  /// mangling context.
+  llvm::DenseMap<const DeclContext *, LambdaMangleContext> LambdaMangleContexts;
+  
   /// \brief Mapping that stores parameterIndex values for ParmVarDecls
   /// when that value exceeds the bitfield size of
   /// ParmVarDeclBits.ParameterIndex.
@@ -358,7 +371,8 @@ class ASTContext : public llvm::RefCountedBase<ASTContext> {
   friend class ASTDeclReader;
   friend class ASTReader;
   friend class ASTWriter;
-  
+  friend class CXXRecordDecl;
+
   const TargetInfo *Target;
   clang::PrintingPolicy PrintingPolicy;
   
@@ -397,7 +411,7 @@ public:
 
   const TargetInfo &getTargetInfo() const { return *Target; }
   
-  const LangOptions& getLangOptions() const { return LangOpts; }
+  const LangOptions& getLangOpts() const { return LangOpts; }
 
   DiagnosticsEngine &getDiagnostics() const;
 
@@ -471,7 +485,7 @@ public:
                                   const FieldDecl *LastFD) const;
 
   // Access to the set of methods overridden by the given C++ method.
-  typedef CXXMethodVector::iterator overridden_cxx_method_iterator;
+  typedef CXXMethodVector::const_iterator overridden_cxx_method_iterator;
   overridden_cxx_method_iterator
   overridden_methods_begin(const CXXMethodDecl *Method) const;
 
@@ -543,6 +557,7 @@ public:
   CanQualType BoolTy;
   CanQualType CharTy;
   CanQualType WCharTy;  // [C++ 3.9.1p5], integer type in C99.
+  CanQualType WIntTy;   // [C99 7.24.1], integer type unchanged by default promotions.
   CanQualType Char16Ty; // [C++0x 3.9.1p5], integer type in C99.
   CanQualType Char32Ty; // [C++0x 3.9.1p5], integer type in C99.
   CanQualType SignedCharTy, ShortTy, IntTy, LongTy, LongLongTy, Int128Ty;
@@ -555,6 +570,7 @@ public:
   CanQualType DependentTy, OverloadTy, BoundMemberTy, UnknownAnyTy;
   CanQualType PseudoObjectTy, ARCUnbridgedCastTy;
   CanQualType ObjCBuiltinIdTy, ObjCBuiltinClassTy, ObjCBuiltinSelTy;
+  CanQualType ObjCBuiltinBoolTy;
 
   // SCOUTCODE ndm - Scout vector types
   // essentially, we keep on QualType for each of the vector
@@ -903,7 +919,7 @@ public:
   QualType getTypeOfType(QualType t) const;
 
   /// getDecltypeType - C++0x decltype.
-  QualType getDecltypeType(Expr *e) const;
+  QualType getDecltypeType(Expr *e, QualType UnderlyingType) const;
 
   /// getUnaryTransformType - unary type transforms
   QualType getUnaryTransformType(QualType BaseType, QualType UnderlyingType,
@@ -951,6 +967,10 @@ public:
   /// Used when in C++, as a GCC extension.
   QualType getUnsignedWCharType() const;
 
+  /// getWIntType - In C99, this returns a type compatible with the type
+  /// defined in <stddef.h> as defined by the target.
+  QualType getWIntType() const { return WIntTy; }
+
   /// getPointerDiffType - Return the unique type for "ptrdiff_t" (C99 7.17)
   /// defined in <stddef.h>. Pointer - pointer requires this (C99 6.5.6p9).
   QualType getPointerDiffType() const;
@@ -974,6 +994,14 @@ public:
     return ObjCConstantStringType;
   }
 
+  QualType getObjCNSStringType() const {
+    return ObjCNSStringType;
+  }
+  
+  void setObjCNSStringType(QualType T) {
+    ObjCNSStringType = T;
+  }
+  
   /// \brief Retrieve the type that 'id' has been defined to, which may be
   /// different from the built-in 'id' if 'id' has been typedef'd.
   QualType getObjCIdRedefinitionType() const {
@@ -1072,7 +1100,7 @@ public:
 
   /// \brief The result type of logical operations, '<', '>', '!=', etc.
   QualType getLogicalOperationType() const {
-    return getLangOptions().CPlusPlus ? BoolTy : IntTy;
+    return getLangOpts().CPlusPlus ? BoolTy : IntTy;
   }
 
   /// getObjCEncodingForType - Emit the ObjC type encoding for the
@@ -1239,6 +1267,7 @@ public:
 
 private:
   CanQualType getFromTargetType(unsigned Type) const;
+  std::pair<uint64_t, unsigned> getTypeInfoImpl(const Type *T) const;
 
   //===--------------------------------------------------------------------===//
   //                         Type Predicates.
@@ -1794,6 +1823,8 @@ public:
   /// it is not used.
   bool DeclMustBeEmitted(const Decl *D);
 
+  /// \brief Retrieve the lambda mangling number for a lambda expression.
+  unsigned getLambdaManglingNumber(CXXMethodDecl *CallOperator);
   
   /// \brief Used by ParmVarDecl to store on the side the
   /// index of the parameter when it exceeds the size of the normal bitfield.
@@ -1925,13 +1956,19 @@ static inline Selector GetUnarySelector(StringRef name, ASTContext& Ctx) {
 }  // end namespace clang
 
 // operator new and delete aren't allowed inside namespaces.
-// The throw specifications are mandated by the standard.
+
 /// @brief Placement new for using the ASTContext's allocator.
 ///
 /// This placement form of operator new uses the ASTContext's allocator for
-/// obtaining memory. It is a non-throwing new, which means that it returns
-/// null on error. (If that is what the allocator does. The current does, so if
-/// this ever changes, this operator will have to be changed, too.)
+/// obtaining memory.
+///
+/// IMPORTANT: These are also declared in clang/AST/Attr.h! Any changes here
+/// need to also be made there.
+///
+/// We intentionally avoid using a nothrow specification here so that the calls
+/// to this operator will not perform a null check on the result -- the
+/// underlying allocator never returns null pointers.
+///
 /// Usage looks like this (assuming there's an ASTContext 'Context' in scope):
 /// @code
 /// // Default alignment (8)
@@ -1949,7 +1986,7 @@ static inline Selector GetUnarySelector(StringRef name, ASTContext& Ctx) {
 ///                  allocator supports it).
 /// @return The allocated memory. Could be NULL.
 inline void *operator new(size_t Bytes, const clang::ASTContext &C,
-                          size_t Alignment) throw () {
+                          size_t Alignment) {
   return C.Allocate(Bytes, Alignment);
 }
 /// @brief Placement delete companion to the new above.
@@ -1958,14 +1995,17 @@ inline void *operator new(size_t Bytes, const clang::ASTContext &C,
 /// invoking it directly; see the new operator for more details. This operator
 /// is called implicitly by the compiler if a placement new expression using
 /// the ASTContext throws in the object constructor.
-inline void operator delete(void *Ptr, const clang::ASTContext &C, size_t)
-              throw () {
+inline void operator delete(void *Ptr, const clang::ASTContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 
 /// This placement form of operator new[] uses the ASTContext's allocator for
-/// obtaining memory. It is a non-throwing new[], which means that it returns
-/// null on error.
+/// obtaining memory.
+///
+/// We intentionally avoid using a nothrow specification here so that the calls
+/// to this operator will not perform a null check on the result -- the
+/// underlying allocator never returns null pointers.
+///
 /// Usage looks like this (assuming there's an ASTContext 'Context' in scope):
 /// @code
 /// // Default alignment (8)
@@ -1983,7 +2023,7 @@ inline void operator delete(void *Ptr, const clang::ASTContext &C, size_t)
 ///                  allocator supports it).
 /// @return The allocated memory. Could be NULL.
 inline void *operator new[](size_t Bytes, const clang::ASTContext& C,
-                            size_t Alignment = 8) throw () {
+                            size_t Alignment = 8) {
   return C.Allocate(Bytes, Alignment);
 }
 
@@ -1993,8 +2033,7 @@ inline void *operator new[](size_t Bytes, const clang::ASTContext& C,
 /// invoking it directly; see the new[] operator for more details. This operator
 /// is called implicitly by the compiler if a placement new[] expression using
 /// the ASTContext throws in the object constructor.
-inline void operator delete[](void *Ptr, const clang::ASTContext &C, size_t)
-              throw () {
+inline void operator delete[](void *Ptr, const clang::ASTContext &C, size_t) {
   C.Deallocate(Ptr);
 }
 

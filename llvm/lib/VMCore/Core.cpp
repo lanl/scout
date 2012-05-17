@@ -115,6 +115,25 @@ void LLVMDumpModule(LLVMModuleRef M) {
   unwrap(M)->dump();
 }
 
+LLVMBool LLVMPrintModuleToFile(LLVMModuleRef M, const char *Filename,
+                               char **ErrorMessage) {
+  std::string error;
+  raw_fd_ostream dest(Filename, error);
+  if (!error.empty()) {
+    *ErrorMessage = strdup(error.c_str());
+    return true;
+  }
+
+  unwrap(M)->print(dest, NULL);
+
+  if (!error.empty()) {
+    *ErrorMessage = strdup(error.c_str());
+    return true;
+  }
+  dest.flush();
+  return false;
+}
+
 /*--.. Operations on inline assembler ......................................--*/
 void LLVMSetModuleInlineAsm(LLVMModuleRef M, const char *Asm) {
   unwrap(M)->setModuleInlineAsm(StringRef(Asm));
@@ -2064,6 +2083,20 @@ LLVMValueRef LLVMBuildGlobalString(LLVMBuilderRef B, const char *Str,
 LLVMValueRef LLVMBuildGlobalStringPtr(LLVMBuilderRef B, const char *Str,
                                       const char *Name) {
   return wrap(unwrap(B)->CreateGlobalStringPtr(Str, Name));
+}
+
+LLVMBool LLVMGetVolatile(LLVMValueRef MemAccessInst) {
+  Value *P = unwrap<Value>(MemAccessInst);
+  if (LoadInst *LI = dyn_cast<LoadInst>(P))
+    return LI->isVolatile();
+  return cast<StoreInst>(P)->isVolatile();
+}
+
+void LLVMSetVolatile(LLVMValueRef MemAccessInst, LLVMBool isVolatile) {
+  Value *P = unwrap<Value>(MemAccessInst);
+  if (LoadInst *LI = dyn_cast<LoadInst>(P))
+    return LI->setVolatile(isVolatile);
+  return cast<StoreInst>(P)->setVolatile(isVolatile);
 }
 
 /*--.. Casts ...............................................................--*/

@@ -41,15 +41,20 @@ static inline bool inheritsFrom(InstructionContext child,
   case IC:
     return(inheritsFrom(child, IC_64BIT) ||
            inheritsFrom(child, IC_OPSIZE) ||
+           inheritsFrom(child, IC_ADSIZE) ||
            inheritsFrom(child, IC_XD) ||
            inheritsFrom(child, IC_XS));
   case IC_64BIT:
     return(inheritsFrom(child, IC_64BIT_REXW)   ||
            inheritsFrom(child, IC_64BIT_OPSIZE) ||
+           inheritsFrom(child, IC_64BIT_ADSIZE) ||
            inheritsFrom(child, IC_64BIT_XD)     ||
            inheritsFrom(child, IC_64BIT_XS));
   case IC_OPSIZE:
     return inheritsFrom(child, IC_64BIT_OPSIZE);
+  case IC_ADSIZE:
+  case IC_64BIT_ADSIZE:
+    return false;
   case IC_XD:
     return inheritsFrom(child, IC_64BIT_XD);
   case IC_XS:
@@ -140,8 +145,6 @@ static inline const char* stringForContext(InstructionContext insnContext) {
   INSTRUCTION_CONTEXTS
 #undef ENUM_ENTRY
   }
-
-  return 0;
 }
 
 /// stringForOperandType - Like stringForContext, but for OperandTypes.
@@ -454,11 +457,11 @@ void DisassemblerTables::emitInstructionInfo(raw_ostream &o, uint32_t &i)
   for (index = 0; index < numInstructions; ++index) {
     o.indent(i * 2) << "{ /* " << index << " */" << "\n";
     i++;
-    
-    o.indent(i * 2) << 
-      stringForModifierType(InstructionSpecifiers[index].modifierType);
+
+    o.indent(i * 2) << stringForModifierType(
+                       (ModifierType)InstructionSpecifiers[index].modifierType);
     o << "," << "\n";
-    
+
     o.indent(i * 2) << "0x";
     o << format("%02hhx", (uint16_t)InstructionSpecifiers[index].modifierBase);
     o << "," << "\n";
@@ -468,11 +471,11 @@ void DisassemblerTables::emitInstructionInfo(raw_ostream &o, uint32_t &i)
 
     for (operandIndex = 0; operandIndex < X86_MAX_OPERANDS; ++operandIndex) {
       o.indent(i * 2) << "{ ";
-      o << stringForOperandEncoding(InstructionSpecifiers[index]
-                                    .operands[operandIndex]
-                                    .encoding);
+      o <<stringForOperandEncoding((OperandEncoding)InstructionSpecifiers[index]
+                                   .operands[operandIndex]
+                                   .encoding);
       o << ", ";
-      o << stringForOperandType(InstructionSpecifiers[index]
+      o << stringForOperandType((OperandType)InstructionSpecifiers[index]
                                 .operands[operandIndex]
                                 .type);
       o << " }";
@@ -486,7 +489,7 @@ void DisassemblerTables::emitInstructionInfo(raw_ostream &o, uint32_t &i)
     i--;
     o.indent(i * 2) << "}," << "\n";
     
-    o.indent(i * 2) << "\"" << InstructionSpecifiers[index].name << "\"";
+    o.indent(i * 2) << "/* " << InstructionSpecifiers[index].name << " */";
     o << "\n";
 
     i--;
@@ -555,6 +558,8 @@ void DisassemblerTables::emitContextTable(raw_ostream &o, uint32_t &i) const {
       o << "IC_64BIT_XD";
     else if ((index & ATTR_64BIT) && (index & ATTR_OPSIZE))
       o << "IC_64BIT_OPSIZE";
+    else if ((index & ATTR_64BIT) && (index & ATTR_ADSIZE))
+      o << "IC_64BIT_ADSIZE";
     else if ((index & ATTR_64BIT) && (index & ATTR_REXW))
       o << "IC_64BIT_REXW";
     else if ((index & ATTR_64BIT))
@@ -569,6 +574,8 @@ void DisassemblerTables::emitContextTable(raw_ostream &o, uint32_t &i) const {
       o << "IC_XD";
     else if (index & ATTR_OPSIZE)
       o << "IC_OPSIZE";
+    else if (index & ATTR_ADSIZE)
+      o << "IC_ADSIZE";
     else
       o << "IC";
 

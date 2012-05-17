@@ -65,25 +65,25 @@ class TargetInfo;
 /// and a long form that takes explicit instances of any required objects.
 class CompilerInstance : public ModuleLoader {
   /// The options used in this compiler instance.
-  llvm::IntrusiveRefCntPtr<CompilerInvocation> Invocation;
+  IntrusiveRefCntPtr<CompilerInvocation> Invocation;
 
   /// The diagnostics engine instance.
-  llvm::IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics;
+  IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics;
 
   /// The target being compiled for.
-  llvm::IntrusiveRefCntPtr<TargetInfo> Target;
+  IntrusiveRefCntPtr<TargetInfo> Target;
 
   /// The file manager.
-  llvm::IntrusiveRefCntPtr<FileManager> FileMgr;
+  IntrusiveRefCntPtr<FileManager> FileMgr;
 
   /// The source manager.
-  llvm::IntrusiveRefCntPtr<SourceManager> SourceMgr;
+  IntrusiveRefCntPtr<SourceManager> SourceMgr;
 
   /// The preprocessor.
-  llvm::IntrusiveRefCntPtr<Preprocessor> PP;
+  IntrusiveRefCntPtr<Preprocessor> PP;
 
   /// The AST context.
-  llvm::IntrusiveRefCntPtr<ASTContext> Context;
+  IntrusiveRefCntPtr<ASTContext> Context;
 
   /// The AST consumer.
   OwningPtr<ASTConsumer> Consumer;
@@ -509,7 +509,7 @@ public:
   /// used by some diagnostics printers (for logging purposes only).
   ///
   /// \return The new object on success, or null on failure.
-  static llvm::IntrusiveRefCntPtr<DiagnosticsEngine> 
+  static IntrusiveRefCntPtr<DiagnosticsEngine>
   createDiagnostics(const DiagnosticOptions &Opts, int Argc,
                     const char* const *Argv,
                     DiagnosticConsumer *Client = 0,
@@ -535,6 +535,7 @@ public:
   void createPCHExternalASTSource(StringRef Path,
                                   bool DisablePCHValidation,
                                   bool DisableStatCache,
+                                  bool AllowPCHWithCompilerErrors,
                                   void *DeserializationListener);
 
   /// Create an external AST source to read a PCH file.
@@ -544,6 +545,7 @@ public:
   createPCHExternalASTSource(StringRef Path, const std::string &Sysroot,
                              bool DisablePCHValidation,
                              bool DisableStatCache,
+                             bool AllowPCHWithCompilerErrors,
                              Preprocessor &PP, ASTContext &Context,
                              void *DeserializationListener, bool Preamble);
 
@@ -572,6 +574,10 @@ public:
   /// Create the default output file (from the invocation's options) and add it
   /// to the list of tracked output files.
   ///
+  /// The files created by this function always use temporary files to write to
+  /// their result (that is, the data is written to a temporary file which will
+  /// atomically replace the target output on success).
+  ///
   /// \return - Null on error.
   llvm::raw_fd_ostream *
   createDefaultOutputFile(bool Binary = true, StringRef BaseInput = "",
@@ -586,7 +592,8 @@ public:
                    bool Binary = true, bool RemoveFileOnSignal = true,
                    StringRef BaseInput = "",
                    StringRef Extension = "",
-                   bool UseTemporary = false);
+                   bool UseTemporary = false,
+                   bool CreateMissingDirectories = false);
 
   /// Create a new output file, optionally deriving the output path name.
   ///
@@ -606,7 +613,9 @@ public:
   /// llvm::sys::RemoveFileOnSignal. Note that this is not safe for
   /// multithreaded use, as the underlying signal mechanism is not reentrant
   /// \param UseTemporary - Create a new temporary file that must be renamed to
-  ///         OutputPath in the end
+  /// OutputPath in the end.
+  /// \param CreateMissingDirectories - When \arg UseTemporary is true, create
+  /// missing directories in the output path.
   /// \param ResultPathName [out] - If given, the result path name will be
   /// stored here on success.
   /// \param TempPathName [out] - If given, the temporary file path name
@@ -617,6 +626,7 @@ public:
                    StringRef BaseInput = "",
                    StringRef Extension = "",
                    bool UseTemporary = false,
+                   bool CreateMissingDirectories = false,
                    std::string *ResultPathName = 0,
                    std::string *TempPathName = 0);
 

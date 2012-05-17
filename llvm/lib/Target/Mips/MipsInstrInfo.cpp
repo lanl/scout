@@ -1,4 +1,4 @@
-//===- MipsInstrInfo.cpp - Mips Instruction Information ---------*- C++ -*-===//
+//===-- MipsInstrInfo.cpp - Mips Instruction Information ------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -32,7 +32,7 @@ MipsInstrInfo::MipsInstrInfo(MipsTargetMachine &tm)
     RI(*TM.getSubtargetImpl(), *this),
     UncondBrOpc(TM.getRelocationModel() == Reloc::PIC_ ? Mips::B : Mips::J) {}
 
-const MipsRegisterInfo &MipsInstrInfo::getRegisterInfo() const { 
+const MipsRegisterInfo &MipsInstrInfo::getRegisterInfo() const {
   return RI;
 }
 
@@ -157,7 +157,7 @@ copyPhysReg(MachineBasicBlock &MBB,
   assert(Opc && "Cannot copy registers");
 
   MachineInstrBuilder MIB = BuildMI(MBB, I, DL, get(Opc));
-  
+
   if (DestReg)
     MIB.addReg(DestReg, RegState::Define);
 
@@ -173,7 +173,7 @@ static MachineMemOperand* GetMemOperand(MachineBasicBlock &MBB, int FI,
   MachineFunction &MF = *MBB.getParent();
   MachineFrameInfo &MFI = *MF.getFrameInfo();
   unsigned Align = MFI.getObjectAlignment(FI);
-  
+
   return MF.getMachineMemOperand(MachinePointerInfo::getFixedStack(FI), Flag,
                                  MFI.getObjectSize(FI), Align);
 }
@@ -189,15 +189,15 @@ storeRegToStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
 
   unsigned Opc = 0;
 
-  if (RC == Mips::CPURegsRegisterClass)
+  if (RC == &Mips::CPURegsRegClass)
     Opc = IsN64 ? Mips::SW_P8 : Mips::SW;
-  else if (RC == Mips::CPU64RegsRegisterClass)
+  else if (RC == &Mips::CPU64RegsRegClass)
     Opc = IsN64 ? Mips::SD_P8 : Mips::SD;
-  else if (RC == Mips::FGR32RegisterClass)
+  else if (RC == &Mips::FGR32RegClass)
     Opc = IsN64 ? Mips::SWC1_P8 : Mips::SWC1;
-  else if (RC == Mips::AFGR64RegisterClass)
+  else if (RC == &Mips::AFGR64RegClass)
     Opc = Mips::SDC1;
-  else if (RC == Mips::FGR64RegisterClass)
+  else if (RC == &Mips::FGR64RegClass)
     Opc = IsN64 ? Mips::SDC164_P8 : Mips::SDC164;
 
   assert(Opc && "Register class not handled!");
@@ -216,15 +216,15 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
   MachineMemOperand *MMO = GetMemOperand(MBB, FI, MachineMemOperand::MOLoad);
   unsigned Opc = 0;
 
-  if (RC == Mips::CPURegsRegisterClass)
+  if (RC == &Mips::CPURegsRegClass)
     Opc = IsN64 ? Mips::LW_P8 : Mips::LW;
-  else if (RC == Mips::CPU64RegsRegisterClass)
+  else if (RC == &Mips::CPU64RegsRegClass)
     Opc = IsN64 ? Mips::LD_P8 : Mips::LD;
-  else if (RC == Mips::FGR32RegisterClass)
+  else if (RC == &Mips::FGR32RegClass)
     Opc = IsN64 ? Mips::LWC1_P8 : Mips::LWC1;
-  else if (RC == Mips::AFGR64RegisterClass)
+  else if (RC == &Mips::AFGR64RegClass)
     Opc = Mips::LDC1;
-  else if (RC == Mips::FGR64RegisterClass)
+  else if (RC == &Mips::FGR64RegClass)
     Opc = IsN64 ? Mips::LDC164_P8 : Mips::LDC164;
 
   assert(Opc && "Register class not handled!");
@@ -283,7 +283,7 @@ static void AnalyzeCondBr(const MachineInstr* Inst, unsigned Opc,
                           SmallVectorImpl<MachineOperand>& Cond) {
   assert(GetAnalyzableBrOpc(Opc) && "Not an analyzable branch");
   int NumOp = Inst->getNumExplicitOperands();
-  
+
   // for both int and fp branches, the last explicit operand is the
   // MBB.
   BB = Inst->getOperand(NumOp-1).getMBB();
@@ -371,8 +371,8 @@ bool MipsInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   FBB = LastInst->getOperand(0).getMBB();
 
   return false;
-} 
-  
+}
+
 void MipsInstrInfo::BuildCondBr(MachineBasicBlock &MBB,
                                 MachineBasicBlock *TBB, DebugLoc DL,
                                 const SmallVectorImpl<MachineOperand>& Cond)
@@ -454,30 +454,3 @@ ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const
   return false;
 }
 
-/// getGlobalBaseReg - Return a virtual register initialized with the
-/// the global base register value. Output instructions required to
-/// initialize the register in the function entry block, if necessary.
-///
-unsigned MipsInstrInfo::getGlobalBaseReg(MachineFunction *MF) const {
-  MipsFunctionInfo *MipsFI = MF->getInfo<MipsFunctionInfo>();
-  unsigned GlobalBaseReg = MipsFI->getGlobalBaseReg();
-  if (GlobalBaseReg != 0)
-    return GlobalBaseReg;
-
-  // Insert the set of GlobalBaseReg into the first MBB of the function
-  MachineBasicBlock &FirstMBB = MF->front();
-  MachineBasicBlock::iterator MBBI = FirstMBB.begin();
-  MachineRegisterInfo &RegInfo = MF->getRegInfo();
-  const TargetInstrInfo *TII = MF->getTarget().getInstrInfo();
-  unsigned GP = IsN64 ? Mips::GP_64 : Mips::GP;
-  const TargetRegisterClass *RC
-    = IsN64 ? Mips::CPU64RegsRegisterClass : Mips::CPURegsRegisterClass;
-
-  GlobalBaseReg = RegInfo.createVirtualRegister(RC);
-  BuildMI(FirstMBB, MBBI, DebugLoc(), TII->get(TargetOpcode::COPY),
-          GlobalBaseReg).addReg(GP);
-  RegInfo.addLiveIn(GP);
-
-  MipsFI->setGlobalBaseReg(GlobalBaseReg);
-  return GlobalBaseReg;
-}

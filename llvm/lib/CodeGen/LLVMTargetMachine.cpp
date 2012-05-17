@@ -90,7 +90,7 @@ static void addPassesToHandleExceptions(TargetMachine *TM,
     // removed from the parent invoke(s). This could happen when a landing
     // pad is shared by multiple invokes and is also a target of a normal
     // edge from elsewhere.
-    PM.add(createSjLjEHPass(TM->getTargetLowering()));
+    PM.add(createSjLjEHPreparePass(TM->getTargetLowering()));
     // FALLTHROUGH
   case ExceptionHandling::DwarfCFI:
   case ExceptionHandling::ARM:
@@ -130,7 +130,7 @@ static MCContext *addPassesToGenerateCode(LLVMTargetMachine *TM,
     new MachineModuleInfo(*TM->getMCAsmInfo(), *TM->getRegisterInfo(),
                           &TM->getTargetLowering()->getObjFileLowering());
   PM.add(MMI);
-  MCContext *Context = &MMI->getContext(); // Return the MCContext specifically by-ref.
+  MCContext *Context = &MMI->getContext(); // Return the MCContext by-ref.
 
   // Set up a MachineFunction for the rest of CodeGen to work on.
   PM.add(new MachineFunctionAnalysis(*TM));
@@ -171,7 +171,9 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   switch (FileType) {
   case CGFT_AssemblyFile: {
     MCInstPrinter *InstPrinter =
-      getTarget().createMCInstPrinter(MAI.getAssemblerDialect(), MAI, STI);
+      getTarget().createMCInstPrinter(MAI.getAssemblerDialect(), MAI,
+                                      *getInstrInfo(),
+                                      Context->getRegisterInfo(), STI);
 
     // Create a code emitter if asked to show the encoding.
     MCCodeEmitter *MCE = 0;
@@ -270,7 +272,8 @@ bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM,
   // Create the code emitter for the target if it exists.  If not, .o file
   // emission fails.
   const MCSubtargetInfo &STI = getSubtarget<MCSubtargetInfo>();
-  MCCodeEmitter *MCE = getTarget().createMCCodeEmitter(*getInstrInfo(),STI, *Ctx);
+  MCCodeEmitter *MCE = getTarget().createMCCodeEmitter(*getInstrInfo(),STI,
+                                                       *Ctx);
   MCAsmBackend *MAB = getTarget().createMCAsmBackend(getTargetTriple());
   if (MCE == 0 || MAB == 0)
     return true;
