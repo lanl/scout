@@ -755,6 +755,9 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
     if (A->getOption().matches(options::OPT_mno_global_merge))
       CmdArgs.push_back("-mno-global-merge");
   }
+
+  if (Args.hasArg(options::OPT_mno_implicit_float))
+    CmdArgs.push_back("-no-implicit-float");
 }
 
 // Get default architecture.
@@ -1301,6 +1304,27 @@ static void addAsanRTLinux(const ToolChain &TC, const ArgList &Args,
       CmdArgs.push_back("-ldl");
       CmdArgs.push_back("-export-dynamic");
     }
+  }
+}
+
+/// If ThreadSanitizer is enabled, add appropriate linker flags (Linux).
+/// This needs to be called before we add the C run-time (malloc, etc).
+static void addTsanRTLinux(const ToolChain &TC, const ArgList &Args,
+                           ArgStringList &CmdArgs) {
+  if (!Args.hasFlag(options::OPT_fthread_sanitizer,
+                    options::OPT_fno_thread_sanitizer, false))
+    return;
+  if (!Args.hasArg(options::OPT_shared)) {
+    // LibTsan is "libclang_rt.tsan-<ArchName>.a" in the Linux library
+    // resource directory.
+    SmallString<128> LibTsan(TC.getDriver().ResourceDir);
+    llvm::sys::path::append(LibTsan, "lib", "linux",
+                            (Twine("libclang_rt.tsan-") +
+                             TC.getArchName() + ".a"));
+    CmdArgs.push_back(Args.MakeArgString(LibTsan));
+    CmdArgs.push_back("-lpthread");
+    CmdArgs.push_back("-ldl");
+    CmdArgs.push_back("-export-dynamic");
   }
 }
 
@@ -1949,7 +1973,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
-
+  Args.AddAllArgs(CmdArgs, options::OPT_gpu2);
+  
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).
   //
@@ -4120,7 +4145,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_t);
   Args.AddAllArgs(CmdArgs, options::OPT_Z_Flag);
   Args.AddAllArgs(CmdArgs, options::OPT_u_Group);
-  Args.AddAllArgs(CmdArgs, options::OPT_A);
   Args.AddLastArg(CmdArgs, options::OPT_e);
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
@@ -4156,8 +4180,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 
-  if (!Args.hasArg(options::OPT_A) &&
-      !Args.hasArg(options::OPT_nostdlib) &&
+  if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nostartfiles)) {
     // Derived from startfile spec.
     if (Args.hasArg(options::OPT_dynamiclib)) {
@@ -4274,7 +4297,11 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
 
-  if (isObjCRuntimeLinked(Args)) {
+  AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
+  
+  if (isObjCRuntimeLinked(Args) &&
+      !Args.hasArg(options::OPT_nostdlib) &&
+      !Args.hasArg(options::OPT_nodefaultlibs)) {
     // Avoid linking compatibility stubs on i386 mac.
     if (!getDarwinToolChain().isTargetMacOS() ||
         getDarwinToolChain().getArchName() != "i386") {
@@ -4293,8 +4320,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // Link libobj.
     CmdArgs.push_back("-lobjc");
   }
-
-  AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
 
   if (LinkingOutput) {
     CmdArgs.push_back("-arch_multiple");
@@ -4316,8 +4341,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     getDarwinToolChain().AddLinkRuntimeLibArgs(Args, CmdArgs);
   }
 
-  if (!Args.hasArg(options::OPT_A) &&
-      !Args.hasArg(options::OPT_nostdlib) &&
+  if (!Args.hasArg(options::OPT_nostdlib) &&
       !Args.hasArg(options::OPT_nostartfiles)) {
     // endfile_spec is empty.
   }
@@ -5400,6 +5424,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Call this before we add the C run-time.
   addAsanRTLinux(getToolChain(), Args, CmdArgs);
+  addTsanRTLinux(getToolChain(), Args, CmdArgs);
 
   if (!Args.hasArg(options::OPT_nostdlib)) {
     if (!Args.hasArg(options::OPT_nodefaultlibs)) {

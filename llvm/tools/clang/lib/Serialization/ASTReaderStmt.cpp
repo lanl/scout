@@ -893,6 +893,7 @@ void ASTStmtReader::VisitObjCProtocolExpr(ObjCProtocolExpr *E) {
   VisitExpr(E);
   E->setProtocol(ReadDeclAs<ObjCProtocolDecl>(Record, Idx));
   E->setAtLoc(ReadSourceLocation(Record, Idx));
+  E->ProtoLoc = ReadSourceLocation(Record, Idx);
   E->setRParenLoc(ReadSourceLocation(Record, Idx));
 }
 

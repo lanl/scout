@@ -668,16 +668,16 @@ let hasPostISelHook = 1, Defs = [CPSR] in {
 multiclass T2I_rbin_s_is<PatFrag opnode> {
    // shifted imm
    def ri : t2PseudoInst<(outs rGPR:$Rd),
-                         (ins GPRnopc:$Rn, t2_so_imm:$imm, pred:$p),
+                         (ins rGPR:$Rn, t2_so_imm:$imm, pred:$p),
                          4, IIC_iALUi,
                          [(set rGPR:$Rd, CPSR, (opnode t2_so_imm:$imm,
-                                                GPRnopc:$Rn))]>;
+                                                rGPR:$Rn))]>;
    // shifted register
    def rs : t2PseudoInst<(outs rGPR:$Rd),
-                         (ins GPRnopc:$Rn, t2_so_reg:$ShiftedRm, pred:$p),
+                         (ins rGPR:$Rn, t2_so_reg:$ShiftedRm, pred:$p),
                          4, IIC_iALUsi,
                          [(set rGPR:$Rd, CPSR, (opnode t2_so_reg:$ShiftedRm,
-                                                GPRnopc:$Rn))]>;
+                                                rGPR:$Rn))]>;
 }
 }
 
@@ -3683,13 +3683,13 @@ def t2MSR_AR : T2I<(outs), (ins msr_mask:$mask, rGPR:$Rn),
 def t2MSR_M : T2I<(outs), (ins msr_mask:$SYSm, rGPR:$Rn),
                   NoItinerary, "msr", "\t$SYSm, $Rn", []>,
               Requires<[IsThumb,IsMClass]> {
-  bits<8> SYSm;
+  bits<12> SYSm;
   bits<4> Rn;
   let Inst{31-21} = 0b11110011100;
   let Inst{20}    = 0b0;
   let Inst{19-16} = Rn;
   let Inst{15-12} = 0b1000;
-  let Inst{7-0}  = SYSm;
+  let Inst{11-0}  = SYSm;
 }
 
 

@@ -208,7 +208,10 @@ static const LangAS::Map *getAddressSpaceMap(const TargetInfo &T,
     static const unsigned FakeAddrSpaceMap[] = {
       1, // opencl_global
       2, // opencl_local
-      3  // opencl_constant
+      3, // opencl_constant
+      4, // cuda_device
+      5, // cuda_constant
+      6  // cuda_shared
     };
     return &FakeAddrSpaceMap;
   } else {
@@ -3594,7 +3597,7 @@ const ArrayType *ASTContext::getAsArrayType(QualType T) const {
                                               VAT->getBracketsRange()));
 }
 
-QualType ASTContext::getAdjustedParameterType(QualType T) {
+QualType ASTContext::getAdjustedParameterType(QualType T) const {
   // C99 6.7.5.3p7:
   //   A declaration of a parameter as "array of type" shall be
   //   adjusted to "qualified pointer to type", where the type
@@ -3613,7 +3616,7 @@ QualType ASTContext::getAdjustedParameterType(QualType T) {
   return T;
 }
 
-QualType ASTContext::getSignatureParameterType(QualType T) {
+QualType ASTContext::getSignatureParameterType(QualType T) const {
   T = getVariableArrayDecayedType(T);
   T = getAdjustedParameterType(T);
   return T.getUnqualifiedType();

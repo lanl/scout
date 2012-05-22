@@ -749,10 +749,6 @@ void Emitter<CodeEmitter>::emitOpcodePrefix(uint64_t TSFlags,
   }
 }
 
-static unsigned GetX86RegNum(const MachineOperand &MO) {
-  return X86_MC::getX86RegNum(MO.getReg());
-}
-
 // On regular x86, both XMM0-XMM7 and XMM8-XMM15 are encoded in the range
 // 0-7 and the difference between the 2 groups is given by the REX prefix.
 // In the VEX prefix, registers are seen sequencially from 0-15 and encoded
@@ -765,7 +761,7 @@ static unsigned GetX86RegNum(const MachineOperand &MO) {
 static unsigned char getVEXRegisterEncoding(const MachineInstr &MI,
                                             unsigned OpNum) {
   unsigned SrcReg = MI.getOperand(OpNum).getReg();
-  unsigned SrcRegNum = GetX86RegNum(MI.getOperand(OpNum));
+  unsigned SrcRegNum = X86_MC::getX86RegNum(MI.getOperand(OpNum).getReg());
   if (X86II::isX86_64ExtendedReg(SrcReg))
     SrcRegNum |= 8;
 
@@ -1132,6 +1128,7 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
   bool HasVEX_4V = (TSFlags >> X86II::VEXShift) & X86II::VEX_4V;
   bool HasVEX_4VOp3 = (TSFlags >> X86II::VEXShift) & X86II::VEX_4VOp3;
   bool HasMemOp4 = (TSFlags >> X86II::VEXShift) & X86II::MemOp4;
+  const unsigned MemOp4_I8IMMOperand = 2;
 
   // Determine where the memory operand starts, if present.
   int MemoryOperand = X86II::getMemoryOperandNo(TSFlags, Opcode);
@@ -1273,9 +1270,6 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
     emitRegModRMByte(MI.getOperand(CurOp).getReg(),
                      X86_MC::getX86RegNum(MI.getOperand(CurOp+1).getReg()));
     CurOp += 2;
-    if (CurOp != NumOps)
-      emitConstant(MI.getOperand(CurOp++).getImm(),
-                   X86II::getSizeOfImm(Desc->TSFlags));
     break;
   }
   case X86II::MRMDestMem: {
@@ -1287,9 +1281,6 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
     emitMemModRMByte(MI, CurOp,
                 X86_MC::getX86RegNum(MI.getOperand(SrcRegNum).getReg()));
     CurOp = SrcRegNum + 1;
-    if (CurOp != NumOps)
-      emitConstant(MI.getOperand(CurOp++).getImm(),
-                   X86II::getSizeOfImm(Desc->TSFlags));
     break;
   }
 
@@ -1298,20 +1289,17 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
 
     unsigned SrcRegNum = CurOp+1;
     if (HasVEX_4V) // Skip 1st src (which is encoded in VEX_VVVV)
-      SrcRegNum++;
+      ++SrcRegNum;
 
-    if(HasMemOp4) // Skip 2nd src (which is encoded in I8IMM)
-      SrcRegNum++;
+    if (HasMemOp4) // Skip 2nd src (which is encoded in I8IMM)
+      ++SrcRegNum;
 
     emitRegModRMByte(MI.getOperand(SrcRegNum).getReg(),
                      X86_MC::getX86RegNum(MI.getOperand(CurOp).getReg()));
-    // 2 operands skipped with HasMemOp4, comensate accordingly
+    // 2 operands skipped with HasMemOp4, compensate accordingly
     CurOp = HasMemOp4 ? SrcRegNum : SrcRegNum + 1;
     if (HasVEX_4VOp3)
       ++CurOp;
-    if (CurOp != NumOps)
-      emitConstant(MI.getOperand(CurOp++).getImm(),
-                   X86II::getSizeOfImm(Desc->TSFlags));
     break;
   }
   case X86II::MRMSrcMem: {
@@ -1321,7 +1309,7 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
       ++AddrOperands;
       ++FirstMemOp;  // Skip the register source (which is encoded in VEX_VVVV).
     }
-    if(HasMemOp4) // Skip second register source (encoded in I8IMM)
+    if (HasMemOp4) // Skip second register source (encoded in I8IMM)
       ++FirstMemOp;
 
     MCE.emitByte(BaseOpcode);
@@ -1333,9 +1321,6 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
     CurOp += AddrOperands + 1;
     if (HasVEX_4VOp3)
       ++CurOp;
-    if (CurOp != NumOps)
-      emitConstant(MI.getOperand(CurOp++).getImm(),
-                   X86II::getSizeOfImm(Desc->TSFlags));
     break;
   }
 
@@ -1344,7 +1329,7 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
   case X86II::MRM4r: case X86II::MRM5r:
   case X86II::MRM6r: case X86II::MRM7r: {
     if (HasVEX_4V) // Skip the register dst (which is encoded in VEX_VVVV).
-      CurOp++;
+      ++CurOp;
     MCE.emitByte(BaseOpcode);
     emitRegModRMByte(MI.getOperand(CurOp++).getReg(),
                      (Desc->TSFlags & X86II::FormMask)-X86II::MRM0r);
@@ -1381,7 +1366,7 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
   case X86II::MRM4m: case X86II::MRM5m:
   case X86II::MRM6m: case X86II::MRM7m: {
     if (HasVEX_4V) // Skip the register dst (which is encoded in VEX_VVVV).
-      CurOp++;
+      ++CurOp;
     intptr_t PCAdj = (CurOp + X86::AddrNumOperands != NumOps) ?
       (MI.getOperand(CurOp+X86::AddrNumOperands).isImm() ?
           X86II::getSizeOfImm(Desc->TSFlags) : 4) : 0;
@@ -1446,6 +1431,33 @@ void Emitter<CodeEmitter>::emitInstruction(MachineInstr &MI,
     MCE.emitByte(BaseOpcode);
     MCE.emitByte(0xF0);
     break;
+  }
+
+  if (CurOp != NumOps) {
+    // The last source register of a 4 operand instruction in AVX is encoded
+    // in bits[7:4] of a immediate byte.
+    if ((TSFlags >> X86II::VEXShift) & X86II::VEX_I8IMM) {
+      const MachineOperand &MO = MI.getOperand(HasMemOp4 ? MemOp4_I8IMMOperand
+                                                         : CurOp);
+      ++CurOp;
+      unsigned RegNum = X86_MC::getX86RegNum(MO.getReg()) << 4;
+      if (X86II::isX86_64ExtendedReg(MO.getReg()))
+        RegNum |= 1 << 7;
+      // If there is an additional 5th operand it must be an immediate, which
+      // is encoded in bits[3:0]
+      if (CurOp != NumOps) {
+        const MachineOperand &MIMM = MI.getOperand(CurOp++);
+        if (MIMM.isImm()) {
+          unsigned Val = MIMM.getImm();
+          assert(Val < 16 && "Immediate operand value out of range");
+          RegNum |= Val;
+        }
+      }
+      emitConstant(RegNum, 1);
+    } else {
+      emitConstant(MI.getOperand(CurOp++).getImm(),
+                   X86II::getSizeOfImm(Desc->TSFlags));
+    }
   }
 
   if (!MI.isVariadic() && CurOp != NumOps) {

@@ -170,6 +170,10 @@ Release Notes</a>.</h1>
    implementations of this and other low-level routines (some are 3x faster than
    the equivalent libgcc routines).</p>
 
+<p>As of 3.1, compiler-rt includes the helper functions for atomic operations,
+   allowing atomic operations on arbitrary-sized quantities to work.  These
+   functions follow the specification defined by gcc and are used by clang.</p>
+
 </div>
 
 <!--=========================================================================-->
@@ -197,6 +201,17 @@ Release Notes</a>.</h1>
 <p>Like compiler_rt, libc++ is now <a href="DeveloperPolicy.html#license">dual
    licensed</a> under the MIT and UIUC license, allowing it to be used more
    permissively.</p>
+
+<p>Within the LLVM 3.1 time-frame there were the following highlights:</p>
+
+<ul>
+  <li>The <code>&lt;atomic&gt;</code> header is now passing all tests, when
+      compiling with clang and linking against the support code from
+      compiler-rt.</li>
+  <li>FreeBSD now includes libc++ as part of the base system.</li>
+  <li>libc++ has been ported to Solaris and, in combination with libcxxrt and
+      clang, is working with a large body of existing code.</li>
+</ul>
 
 </div>
 
@@ -257,6 +272,18 @@ Release Notes</a>.</h1>
 <p>An exciting aspect of LLVM is that it is used as an enabling technology for
    a lot of other language and tools projects.  This section lists some of the
    projects that have already been updated to work with LLVM 3.1.</p>
+
+<h3>Crack</h3>
+
+<div>
+
+<p><a href="http://code.google.com/p/crack-language/">Crack</a> aims to provide
+   the ease of development of a scripting language with the performance of a
+   compiled language. The language derives concepts from C++, Java and Python,
+   incorporating object-oriented programming, operator overloading and strong
+   typing.</p>
+
+</div>
 
 <h3>FAUST</h3>
 
@@ -635,12 +662,20 @@ syntax, there are still significant gaps in that support.</p>
 </h3>
 
 <div>
-
-<p>This release has seen major new work on just about every aspect of the MIPS
-  backend.  Some of the major new features include:</p>
+New features and major changes in the MIPS target include:</p>
 
 <ul>
-  <li>....</li>
+  <li>MIPS32 little-endian direct object code emission is functional.</li>
+  <li>MIPS64 little-endian code generation is largely functional for N64 ABI in assembly printing mode with the exception of handling of long double (f128) type.</li>
+  <li>Support for new instructions has been added, which includes swap-bytes
+   instructions (WSBH and DSBH), floating point multiply-add/subtract and
+   negative multiply-add/subtract instructions, and floating
+   point load/store instructions with reg+reg addressing (LWXC1, etc.)</li>
+  <li>Various fixes to improve performance have been implemented.</li>
+  <li>Post-RA scheduling is now enabled at -O3.</li>
+  <li>Support for soft-float code generation has been added.</li>
+  <li>clang driver's support for MIPS 64-bits targets.</li>
+  <li>Support for MIPS floating point ABI option in clang driver.</li>
 </ul>
 </div>
 
@@ -861,7 +896,7 @@ bindings, please express your intent on IRC or the developers list.</p>
   src="http://www.w3.org/Icons/valid-html401-blue" alt="Valid HTML 4.01"></a>
 
   <a href="http://llvm.org/">LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2012-05-14 02:11:53 -0600 (Mon, 14 May 2012) $
+  Last modified: $Date: 2012-05-15 14:47:23 -0600 (Tue, 15 May 2012) $
 </address>
 
 </body>

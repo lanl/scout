@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Scalar.h"
 
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX2.h"
 using namespace clang;
 using namespace llvm;
 
@@ -123,6 +124,12 @@ static void addObjCARCOptPass(const PassManagerBuilder &Builder, PassManagerBase
     PM.add(createObjCARCOptPass());
 }
 
+static unsigned BoundsChecking;
+static void addBoundsCheckingPass(const PassManagerBuilder &Builder,
+                                    PassManagerBase &PM) {
+  PM.add(createBoundsCheckingPass(BoundsChecking));
+}
+
 static void addAddressSanitizerPass(const PassManagerBuilder &Builder,
                                     PassManagerBase &PM) {
   PM.add(createAddressSanitizerPass());
@@ -135,10 +142,15 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 
 void EmitAssemblyHelper::CreatePasses() {
 
-  // Check whether to enable Scout NVIDIA GPU support.
+  // scout - Check whether to enable Scout NVIDIA GPU support.
   if(CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
+    MPM.run(*TheModule);
+  }
+  else if(CodeGenOpts.ScoutNvidiaGPU2) {
+    PassManager MPM;
+    MPM.add(createDoallToPTX2Pass());
     MPM.run(*TheModule);
   }
 
@@ -168,6 +180,14 @@ void EmitAssemblyHelper::CreatePasses() {
                            addObjCARCAPElimPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_ScalarOptimizerLate,
                            addObjCARCOptPass);
+  }
+
+  if (CodeGenOpts.BoundsChecking > 0) {
+    BoundsChecking = CodeGenOpts.BoundsChecking;
+    PMBuilder.addExtension(PassManagerBuilder::EP_ScalarOptimizerLate,
+                           addBoundsCheckingPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addBoundsCheckingPass);
   }
 
   if (LangOpts.AddressSanitizer) {

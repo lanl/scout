@@ -29,7 +29,6 @@
 #include "llvm/ADT/StringExtras.h"
 using namespace llvm;
 
-
 // Explicit instantiations of SymbolTableListTraits since some of the methods
 // are not in the public header file...
 template class llvm::SymbolTableListTraits<Argument, Function>;
@@ -358,17 +357,101 @@ std::string Intrinsic::getName(ID id, ArrayRef<Type*> Tys) {
   return Result;
 }
 
-FunctionType *Intrinsic::getType(LLVMContext &Context,
-                                       ID id, ArrayRef<Type*> Tys) {
-  Type *ResultTy = NULL;
-  SmallVector<Type*, 8> ArgTys;
-  bool IsVarArg = false;
-  
-#define GET_INTRINSIC_GENERATOR
+#define GET_INTRINSTIC_GENERATOR_GLOBAL
 #include "llvm/Intrinsics.gen"
-#undef GET_INTRINSIC_GENERATOR
+#undef GET_INTRINSTIC_GENERATOR_GLOBAL
 
-  return FunctionType::get(ResultTy, ArgTys, IsVarArg); 
+static Type *DecodeFixedType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
+                             ArrayRef<Type*> Tys, LLVMContext &Context) {
+  IIT_Info Info = IIT_Info(Infos[NextElt++]);
+  unsigned StructElts = 2;
+  
+  switch (Info) {
+  case IIT_Done: return Type::getVoidTy(Context);
+  case IIT_I1: return Type::getInt1Ty(Context);
+  case IIT_I8: return Type::getInt8Ty(Context);
+  case IIT_I16: return Type::getInt16Ty(Context);
+  case IIT_I32: return Type::getInt32Ty(Context);
+  case IIT_I64: return Type::getInt64Ty(Context);
+  case IIT_F32: return Type::getFloatTy(Context);
+  case IIT_F64: return Type::getDoubleTy(Context);
+  case IIT_MMX: return Type::getX86_MMXTy(Context);
+  case IIT_METADATA: return Type::getMetadataTy(Context);
+  case IIT_EMPTYSTRUCT: return StructType::get(Context);
+  case IIT_V2:
+    return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 2);
+  case IIT_V4:
+    return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 4);
+  case IIT_V8:
+    return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 8);
+  case IIT_V16:
+    return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 16);
+  case IIT_V32:
+    return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 32);
+  case IIT_PTR: {
+    unsigned AddrSpace = Infos[NextElt++];
+    Type *PtrTy = DecodeFixedType(NextElt, Infos, Tys,Context);
+    return PointerType::get(PtrTy, AddrSpace);
+  }
+  case IIT_ARG:
+  case IIT_EXTEND_VEC_ARG:
+  case IIT_TRUNC_VEC_ARG: {
+    unsigned ArgNo = NextElt == Infos.size() ? 0 : Infos[NextElt++];
+    assert(ArgNo < Tys.size() && "Not enough types specified!");
+    Type *T = Tys[ArgNo];
+   
+    if (Info == IIT_EXTEND_VEC_ARG)
+      T = VectorType::getExtendedElementVectorType(cast<VectorType>(T));
+    if (Info == IIT_TRUNC_VEC_ARG)
+      T = VectorType::getTruncatedElementVectorType(cast<VectorType>(T));
+    return T;
+  }
+  case IIT_STRUCT5: ++StructElts; // FALL THROUGH.
+  case IIT_STRUCT4: ++StructElts; // FALL THROUGH.
+  case IIT_STRUCT3: ++StructElts; // FALL THROUGH.
+  case IIT_STRUCT2: {
+    Type *Elts[5];
+    for (unsigned i = 0; i != StructElts; ++i)
+      Elts[i] = DecodeFixedType(NextElt, Infos, Tys, Context);
+    return StructType::get(Context, ArrayRef<Type*>(Elts, StructElts));
+  }
+  }
+  llvm_unreachable("unhandled");
+}
+  
+
+FunctionType *Intrinsic::getType(LLVMContext &Context,
+                                 ID id, ArrayRef<Type*> Tys) {
+  // Check to see if the intrinsic's type was expressible by the table.
+  unsigned TableVal = IIT_Table[id-1];
+  
+  // Decode the TableVal into an array of IITValues.
+  SmallVector<unsigned char, 8> IITValues;
+  ArrayRef<unsigned char> IITEntries;
+  unsigned NextElt = 0;
+  if ((TableVal >> 31) != 0) {
+    // This is an offset into the IIT_LongEncodingTable.
+    IITEntries = IIT_LongEncodingTable;
+    
+    // Strip sentinel bit.
+    NextElt = (TableVal << 1) >> 1;
+  } else {
+    do {
+      IITValues.push_back(TableVal & 0xF);
+      TableVal >>= 4;
+    } while (TableVal);
+    
+    IITEntries = IITValues;
+    NextElt = 0;
+  }
+    
+  Type *ResultTy = DecodeFixedType(NextElt, IITEntries, Tys, Context);
+    
+  SmallVector<Type*, 8> ArgTys;
+  while (NextElt != IITEntries.size() && IITEntries[NextElt] != 0)
+    ArgTys.push_back(DecodeFixedType(NextElt, IITEntries, Tys, Context));
+
+  return FunctionType::get(ResultTy, ArgTys, false); 
 }
 
 bool Intrinsic::isOverloaded(ID id) {
@@ -440,4 +523,3 @@ bool Function::callsFunctionThatReturnsTwice() const {
   return false;
 }
 
-// vim: sw=2 ai

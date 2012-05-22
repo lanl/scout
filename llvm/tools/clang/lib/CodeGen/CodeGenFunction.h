@@ -659,19 +659,23 @@ public:
   const ForAllArrayStmt* CurrentForAllArrayStmt;
   
   llvm::Value *getGlobalIdx() {
-    return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
+    return isGPU() || isGPU2() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
   }
 
   bool isGPU() {
     return CGM.getCodeGenOpts().ScoutNvidiaGPU && !CallsPrintf;
   }
 
+  bool isGPU2() {
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU2 && !CallsPrintf;
+  }
+  
   bool isCPU() {
     return CGM.getCodeGenOpts().ScoutCPUThreads;
   }
 
   bool isSequential() {
-    return !isCPU() && !isGPU();
+    return !isCPU() && !isGPU() && !isGPU2();
   }
 
   bool isMeshMember(llvm::Argument *arg) {

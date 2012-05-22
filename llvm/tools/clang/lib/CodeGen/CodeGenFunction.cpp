@@ -44,7 +44,6 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
     // ENDSCOUTCODE
 {
 
-  BoundsChecking = getContext().getLangOpts().BoundsChecking;
   CatchUndefined = getContext().getLangOpts().CatchUndefined;
   CGM.getCXXABI().getMangleContext().startNewFunction();
 }

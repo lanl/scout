@@ -51,6 +51,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/CRSBuilder.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -1578,17 +1579,18 @@ void SelectionDAGBuilder::visitSwitchCase(CaseBlock &CB,
     } else
       Cond = DAG.getSetCC(dl, MVT::i1, CondLHS, getValue(CB.CmpRHS), CB.CC);
   } else {
-    assert(CB.CC == ISD::SETLE && "Can handle only LE ranges now");
+    assert(CB.CC == ISD::SETCC_INVALID &&
+           "Condition is undefined for to-the-range belonging check.");
 
     const APInt& Low = cast<ConstantInt>(CB.CmpLHS)->getValue();
     const APInt& High  = cast<ConstantInt>(CB.CmpRHS)->getValue();
 
     SDValue CmpOp = getValue(CB.CmpMHS);
     EVT VT = CmpOp.getValueType();
-
-    if (cast<ConstantInt>(CB.CmpLHS)->isMinValue(true)) {
+    
+    if (cast<ConstantInt>(CB.CmpLHS)->isMinValue(false)) {
       Cond = DAG.getSetCC(dl, MVT::i1, CmpOp, DAG.getConstant(High, VT),
-                          ISD::SETLE);
+                          ISD::SETULE);
     } else {
       SDValue SUB = DAG.getNode(ISD::SUB, dl,
                                 VT, CmpOp, DAG.getConstant(Low, VT));
@@ -2006,7 +2008,7 @@ bool SelectionDAGBuilder::handleSmallSwitchRange(CaseRec& CR,
       CC = ISD::SETEQ;
       LHS = SV; RHS = I->High; MHS = NULL;
     } else {
-      CC = ISD::SETLE;
+      CC = ISD::SETCC_INVALID; 
       LHS = I->Low; MHS = SV; RHS = I->High;
     }
 
@@ -2038,7 +2040,7 @@ static inline bool areJTsAllowed(const TargetLowering &TLI) {
 
 static APInt ComputeRange(const APInt &First, const APInt &Last) {
   uint32_t BitWidth = std::max(Last.getBitWidth(), First.getBitWidth()) + 1;
-  APInt LastExt = Last.sext(BitWidth), FirstExt = First.sext(BitWidth);
+  APInt LastExt = Last.zext(BitWidth), FirstExt = First.zext(BitWidth);
   return (LastExt - FirstExt + 1ULL);
 }
 
@@ -2104,7 +2106,7 @@ bool SelectionDAGBuilder::handleJTSwitchCase(CaseRec &CR,
     const APInt &Low = cast<ConstantInt>(I->Low)->getValue();
     const APInt &High = cast<ConstantInt>(I->High)->getValue();
 
-    if (Low.sle(TEI) && TEI.sle(High)) {
+    if (Low.ule(TEI) && TEI.ule(High)) {
       DestBBs.push_back(I->BB);
       if (TEI==High)
         ++I;
@@ -2261,7 +2263,7 @@ bool SelectionDAGBuilder::handleBTSplitSwitchCase(CaseRec& CR,
   // Create a CaseBlock record representing a conditional branch to
   // the LHS node if the value being switched on SV is less than C.
   // Otherwise, branch to LHS.
-  CaseBlock CB(ISD::SETLT, SV, C, NULL, TrueBB, FalseBB, CR.CaseBB);
+  CaseBlock CB(ISD::SETULT, SV, C, NULL, TrueBB, FalseBB, CR.CaseBB);
 
   if (CR.CaseBB == SwitchBB)
     visitSwitchCase(CB, SwitchBB);
@@ -2333,7 +2335,7 @@ bool SelectionDAGBuilder::handleBitTestsSwitchCase(CaseRec& CR,
   // Optimize the case where all the case values fit in a
   // word without having to subtract minValue. In this case,
   // we can optimize away the subtraction.
-  if (minValue.isNonNegative() && maxValue.slt(IntPtrBits)) {
+  if (maxValue.ult(IntPtrBits)) {
     cmpRange = maxValue;
   } else {
     lowBound = minValue;
@@ -2407,57 +2409,43 @@ bool SelectionDAGBuilder::handleBitTestsSwitchCase(CaseRec& CR,
 /// Clusterify - Transform simple list of Cases into list of CaseRange's
 size_t SelectionDAGBuilder::Clusterify(CaseVector& Cases,
                                        const SwitchInst& SI) {
-  size_t numCmps = 0;
+  
+  /// Use a shorter form of declaration, and also
+  /// show the we want to use CRSBuilder as Clusterifier.
+  typedef CRSBuilderBase<MachineBasicBlock, true> Clusterifier;
+  
+  Clusterifier TheClusterifier;
 
-  BranchProbabilityInfo *BPI = FuncInfo.BPI;
   // Start with "simple" cases
   for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
        i != e; ++i) {
     const BasicBlock *SuccBB = i.getCaseSuccessor();
     MachineBasicBlock *SMBB = FuncInfo.MBBMap[SuccBB];
 
-    uint32_t ExtraWeight = BPI ? BPI->getEdgeWeight(SI.getParent(), SuccBB) : 0;
-
-    Cases.push_back(Case(i.getCaseValue(), i.getCaseValue(),
-                         SMBB, ExtraWeight));
+    TheClusterifier.add(i.getCaseValueEx(), SMBB);
   }
-  std::sort(Cases.begin(), Cases.end(), CaseCmp());
-
-  // Merge case into clusters
-  if (Cases.size() >= 2)
-    // Must recompute end() each iteration because it may be
-    // invalidated by erase if we hold on to it
-    for (CaseItr I = Cases.begin(), J = llvm::next(Cases.begin());
-         J != Cases.end(); ) {
-      const APInt& nextValue = cast<ConstantInt>(J->Low)->getValue();
-      const APInt& currentValue = cast<ConstantInt>(I->High)->getValue();
-      MachineBasicBlock* nextBB = J->BB;
-      MachineBasicBlock* currentBB = I->BB;
-
-      // If the two neighboring cases go to the same destination, merge them
-      // into a single case.
-      if ((nextValue - currentValue == 1) && (currentBB == nextBB)) {
-        I->High = J->High;
-        J = Cases.erase(J);
-
-        if (BranchProbabilityInfo *BPI = FuncInfo.BPI) {
-          uint32_t CurWeight = currentBB->getBasicBlock() ?
-            BPI->getEdgeWeight(SI.getParent(), currentBB->getBasicBlock()) : 16;
-          uint32_t NextWeight = nextBB->getBasicBlock() ?
-            BPI->getEdgeWeight(SI.getParent(), nextBB->getBasicBlock()) : 16;
-
-          BPI->setEdgeWeight(SI.getParent(), currentBB->getBasicBlock(),
-                             CurWeight + NextWeight);
-        }
-      } else {
-        I = J++;
-      }
+  
+  TheClusterifier.optimize();
+  
+  BranchProbabilityInfo *BPI = FuncInfo.BPI;
+  size_t numCmps = 0;
+  for (Clusterifier::RangeIterator i = TheClusterifier.begin(),
+       e = TheClusterifier.end(); i != e; ++i, ++numCmps) {
+    Clusterifier::Cluster &C = *i;
+    unsigned W = 0;
+    if (BPI) {
+      W = BPI->getEdgeWeight(SI.getParent(), C.second->getBasicBlock());
+      if (!W)
+        W = 16;
+      W *= C.first.Weight;
+      BPI->setEdgeWeight(SI.getParent(), C.second->getBasicBlock(), W);  
     }
 
-  for (CaseItr I=Cases.begin(), E=Cases.end(); I!=E; ++I, ++numCmps) {
-    if (I->Low != I->High)
-      // A range counts double, since it requires two compares.
-      ++numCmps;
+    Cases.push_back(Case(C.first.Low, C.first.High, C.second, W));
+    
+    if (C.first.Low != C.first.High)
+    // A range counts double, since it requires two compares.
+    ++numCmps;
   }
 
   return numCmps;
@@ -5087,8 +5075,8 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     DAG.setRoot(Result.second);
     return 0;
   }
-  case Intrinsic::debugger: {
-    DAG.setRoot(DAG.getNode(ISD::DEBUGGER, dl,MVT::Other, getRoot()));
+  case Intrinsic::debugtrap: {
+    DAG.setRoot(DAG.getNode(ISD::DEBUGTRAP, dl,MVT::Other, getRoot()));
     return 0;
   }
   case Intrinsic::uadd_with_overflow:

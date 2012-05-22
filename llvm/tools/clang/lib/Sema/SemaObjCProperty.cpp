@@ -18,6 +18,8 @@
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ASTMutationListener.h"
+#include "clang/Lex/Lexer.h"
+#include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 
@@ -198,6 +200,37 @@ makePropertyAttributesAsWritten(unsigned Attributes) {
     attributesAsWritten |= ObjCPropertyDecl::OBJC_PR_atomic;
   
   return (ObjCPropertyDecl::PropertyAttributeKind)attributesAsWritten;
+}
+
+static bool LocPropertyAttribute( ASTContext &Context, const char *attrName, 
+                                 SourceLocation LParenLoc, SourceLocation &Loc) {
+  if (LParenLoc.isMacroID())
+    return false;
+  
+  SourceManager &SM = Context.getSourceManager();
+  std::pair<FileID, unsigned> locInfo = SM.getDecomposedLoc(LParenLoc);
+  // Try to load the file buffer.
+  bool invalidTemp = false;
+  StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
+  if (invalidTemp)
+    return false;
+  const char *tokenBegin = file.data() + locInfo.second;
+  
+  // Lex from the start of the given location.
+  Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
+              Context.getLangOpts(),
+              file.begin(), tokenBegin, file.end());
+  Token Tok;
+  do {
+    lexer.LexFromRawLexer(Tok);
+    if (Tok.is(tok::raw_identifier) &&
+        StringRef(Tok.getRawIdentifierData(), Tok.getLength()) == attrName) {
+      Loc = Tok.getLocation();
+      return true;
+    }
+  } while (Tok.isNot(tok::r_paren));
+  return false;
+  
 }
 
 Decl *
@@ -628,6 +661,27 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
         return 0;
       }
     }
+    
+    if (Synthesize&&
+        (PIkind & ObjCPropertyDecl::OBJC_PR_readonly) &&
+        property->hasAttr<IBOutletAttr>() &&
+        !AtLoc.isValid()) {
+      unsigned rwPIKind = (PIkind | ObjCPropertyDecl::OBJC_PR_readwrite);
+      rwPIKind &= (~ObjCPropertyDecl::OBJC_PR_readonly);
+      Diag(IC->getLocation(), diag::warn_auto_readonly_iboutlet_property);
+      Diag(property->getLocation(), diag::note_property_declare);
+      SourceLocation readonlyLoc;
+      if (LocPropertyAttribute(Context, "readonly", 
+                               property->getLParenLoc(), readonlyLoc)) {
+        SourceLocation endLoc = 
+          readonlyLoc.getLocWithOffset(strlen("readonly")-1);
+        SourceRange ReadonlySourceRange(readonlyLoc, endLoc);
+        Diag(property->getLocation(), 
+             diag::note_auto_readonly_iboutlet_fixup_suggest) <<
+        FixItHint::CreateReplacement(ReadonlySourceRange, "readwrite");
+      }
+    }
+        
   } else if ((CatImplClass = dyn_cast<ObjCCategoryImplDecl>(ClassImpDecl))) {
     if (Synthesize) {
       Diag(AtLoc, diag::error_synthesize_category_decl);
@@ -658,6 +712,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
   }
   ObjCIvarDecl *Ivar = 0;
   bool CompleteTypeErr = false;
+  bool compat = true;
   // Check that we have a valid, previously declared ivar for @synthesize
   if (Synthesize) {
     // @synthesize
@@ -773,8 +828,8 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
     QualType IvarType = Context.getCanonicalType(Ivar->getType());
 
     // Check that type of property and its ivar are type compatible.
-    if (Context.getCanonicalType(PropertyIvarType) != IvarType) {
-      bool compat = false;
+    if (!Context.hasSameType(PropertyIvarType, IvarType)) {
+      compat = false;
       if (isa<ObjCObjectPointerType>(PropertyIvarType) 
           && isa<ObjCObjectPointerType>(IvarType))
         compat = 
@@ -794,19 +849,20 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
         // Note! I deliberately want it to fall thru so, we have a
         // a property implementation and to avoid future warnings.
       }
-
-      // FIXME! Rules for properties are somewhat different that those
-      // for assignments. Use a new routine to consolidate all cases;
-      // specifically for property redeclarations as well as for ivars.
-      QualType lhsType =Context.getCanonicalType(PropertyIvarType).getUnqualifiedType();
-      QualType rhsType =Context.getCanonicalType(IvarType).getUnqualifiedType();
-      if (lhsType != rhsType &&
-          lhsType->isArithmeticType()) {
-        Diag(PropertyDiagLoc, diag::error_property_ivar_type)
-          << property->getDeclName() << PropType
-          << Ivar->getDeclName() << IvarType;
-        Diag(Ivar->getLocation(), diag::note_ivar_decl);
-        // Fall thru - see previous comment
+      else {
+        // FIXME! Rules for properties are somewhat different that those
+        // for assignments. Use a new routine to consolidate all cases;
+        // specifically for property redeclarations as well as for ivars.
+        QualType lhsType =Context.getCanonicalType(PropertyIvarType).getUnqualifiedType();
+        QualType rhsType =Context.getCanonicalType(IvarType).getUnqualifiedType();
+        if (lhsType != rhsType &&
+            lhsType->isArithmeticType()) {
+          Diag(PropertyDiagLoc, diag::error_property_ivar_type)
+            << property->getDeclName() << PropType
+            << Ivar->getDeclName() << IvarType;
+          Diag(Ivar->getLocation(), diag::note_ivar_decl);
+          // Fall thru - see previous comment
+        }
       }
       // __weak is explicit. So it works on Canonical type.
       if ((PropType.isObjCGCWeak() && !IvarType.isObjCGCWeak() &&
@@ -840,7 +896,7 @@ Decl *Sema::ActOnPropertyImplDecl(Scope *S,
                                 : ObjCPropertyImplDecl::Dynamic),
                                Ivar, PropertyIvarLoc);
 
-  if (CompleteTypeErr)
+  if (CompleteTypeErr || !compat)
     PIDecl->setInvalidDecl();
 
   if (ObjCMethodDecl *getterMethod = property->getGetterMethodDecl()) {
@@ -1048,21 +1104,42 @@ Sema::DiagnosePropertyMismatch(ObjCPropertyDecl *Property,
 bool Sema::DiagnosePropertyAccessorMismatch(ObjCPropertyDecl *property,
                                             ObjCMethodDecl *GetterMethod,
                                             SourceLocation Loc) {
-  if (GetterMethod &&
-      !Context.hasSameType(GetterMethod->getResultType().getNonReferenceType(),
-                           property->getType().getNonReferenceType())) {
-    AssignConvertType result = Incompatible;
-    if (property->getType()->isObjCObjectPointerType())
-      result = CheckAssignmentConstraints(Loc, GetterMethod->getResultType(),
-                                          property->getType());
-    if (result != Compatible) {
-      Diag(Loc, diag::warn_accessor_property_type_mismatch)
-      << property->getDeclName()
-      << GetterMethod->getSelector();
-      Diag(GetterMethod->getLocation(), diag::note_declared_at);
-      return true;
+  if (!GetterMethod)
+    return false;
+  QualType GetterType = GetterMethod->getResultType().getNonReferenceType();
+  QualType PropertyIvarType = property->getType().getNonReferenceType();
+  bool compat = Context.hasSameType(PropertyIvarType, GetterType);
+  if (!compat) {
+    if (isa<ObjCObjectPointerType>(PropertyIvarType) && 
+        isa<ObjCObjectPointerType>(GetterType))
+      compat =
+        Context.canAssignObjCInterfaces(
+                                      PropertyIvarType->getAs<ObjCObjectPointerType>(),
+                                      GetterType->getAs<ObjCObjectPointerType>());
+    else if (CheckAssignmentConstraints(Loc, PropertyIvarType, GetterType) 
+              != Compatible) {
+          Diag(Loc, diag::error_property_accessor_type)
+            << property->getDeclName() << PropertyIvarType
+            << GetterMethod->getSelector() << GetterType;
+          Diag(GetterMethod->getLocation(), diag::note_declared_at);
+          return true;
+    } else {
+      compat = true;
+      QualType lhsType =Context.getCanonicalType(PropertyIvarType).getUnqualifiedType();
+      QualType rhsType =Context.getCanonicalType(GetterType).getUnqualifiedType();
+      if (lhsType != rhsType && lhsType->isArithmeticType())
+        compat = false;
     }
   }
+  
+  if (!compat) {
+    Diag(Loc, diag::warn_accessor_property_type_mismatch)
+    << property->getDeclName()
+    << GetterMethod->getSelector();
+    Diag(GetterMethod->getLocation(), diag::note_declared_at);
+    return true;
+  }
+
   return false;
 }
 

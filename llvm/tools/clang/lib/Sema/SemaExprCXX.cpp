@@ -379,6 +379,10 @@ Sema::ActOnCXXTypeid(SourceLocation OpLoc, SourceLocation LParenLoc,
       return ExprError(Diag(OpLoc, diag::err_need_header_before_typeid));
   }
 
+  if (!getLangOpts().RTTI) {
+    return ExprError(Diag(OpLoc, diag::err_no_typeid_with_fno_rtti));
+  }
+
   QualType TypeInfoType = Context.getTypeDeclType(CXXTypeInfoDecl);
 
   if (isType) {
@@ -5310,7 +5314,7 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
   return Owned(E);
 }
 
-ExprResult Sema::ActOnFinishFullExpr(Expr *FE) {
+ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC) {
   ExprResult FullExpr = Owned(FE);
 
   if (!FullExpr.get())
@@ -5336,7 +5340,7 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE) {
   if (FullExpr.isInvalid())
     return ExprError();
 
-  CheckImplicitConversions(FullExpr.get(), FullExpr.get()->getExprLoc());
+  CheckImplicitConversions(FullExpr.get(), CC);
   return MaybeCreateExprWithCleanups(FullExpr);
 }
 

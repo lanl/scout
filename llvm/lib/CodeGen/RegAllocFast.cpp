@@ -659,9 +659,10 @@ RAFast::reloadVirtReg(MachineInstr *MI, unsigned OpNum,
 // Return true if the operand kills its register.
 bool RAFast::setPhysReg(MachineInstr *MI, unsigned OpNum, unsigned PhysReg) {
   MachineOperand &MO = MI->getOperand(OpNum);
+  bool Dead = MO.isDead();
   if (!MO.getSubReg()) {
     MO.setReg(PhysReg);
-    return MO.isKill() || MO.isDead();
+    return MO.isKill() || Dead;
   }
 
   // Handle subregister index.
@@ -674,7 +675,13 @@ bool RAFast::setPhysReg(MachineInstr *MI, unsigned OpNum, unsigned PhysReg) {
     MI->addRegisterKilled(PhysReg, TRI, true);
     return true;
   }
-  return MO.isDead();
+
+  // A <def,read-undef> of a sub-register requires an implicit def of the full
+  // register.
+  if (MO.isDef() && MO.isUndef())
+    MI->addRegisterDefined(PhysReg, TRI);
+
+  return Dead;
 }
 
 // Handle special instruction operand like early clobbers and tied ops when

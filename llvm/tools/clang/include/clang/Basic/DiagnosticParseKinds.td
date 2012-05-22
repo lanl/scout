@@ -21,15 +21,16 @@ def warn_file_asm_volatile : Warning<
 let CategoryName = "Parse Issue" in {
 
 def ext_empty_source_file : Extension<"ISO C forbids an empty source file">;
-def ext_top_level_semi : Extension<
-  "extra ';' outside of a function">;
 def warn_cxx98_compat_top_level_semi : Warning<
   "extra ';' outside of a function is incompatible with C++98">,
   InGroup<CXX98CompatPedantic>, DefaultIgnore;
-def ext_extra_struct_semi : Extension<
-  "extra ';' inside a %0">;
-def ext_extra_ivar_semi : Extension<
-  "extra ';' inside instance variable list">;
+def ext_extra_semi : Extension<
+  "extra ';' %select{"
+  "outside of a function|"
+  "inside a %1|"
+  "inside instance variable list|"
+  "after function definition}0">,
+  InGroup<DiagGroup<"extra-semi">>;
 
 def ext_duplicate_declspec : Extension<"duplicate '%0' declaration specifier">;
 def ext_plain_complex : ExtWarn<
@@ -377,6 +378,8 @@ def err_synthesized_property_name : Error<
 def warn_semicolon_before_method_body : Warning<
   "semicolon before method body is ignored">,
   InGroup<DiagGroup<"semicolon-before-method-body">>, DefaultIgnore;
+def note_extra_comma_message_arg : Note<
+  "comma separating objective-c messaging arguments">;
 
 def err_expected_field_designator : Error<
   "expected a field designator, such as '.field = 4'">;
@@ -650,7 +653,8 @@ def err_availability_unknown_change : Error<
   "%0 is not an availability stage; use 'introduced', 'deprecated', or "
   "'obsoleted'">;
 def err_availability_redundant : Error<
-  "redundant %0 availability change; only the last specified change will "        "be used">;
+  "redundant %0 availability change; only the last specified change will "
+  "be used">;
 def warn_availability_and_unavailable : Warning<
   "'unavailable' availability overrides all other availability information">,
   InGroup<Availability>;

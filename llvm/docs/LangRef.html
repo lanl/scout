@@ -307,8 +307,8 @@
             '<tt>llvm.annotation.*</tt>' Intrinsic</a></li>
           <li><a href="#int_trap">
             '<tt>llvm.trap</tt>' Intrinsic</a></li>
-          <li><a href="#int_debugger">
-            '<tt>llvm.debugger</tt>' Intrinsic</a></li>
+          <li><a href="#int_debugtrap">
+            '<tt>llvm.debugtrap</tt>' Intrinsic</a></li>
           <li><a href="#int_stackprotector">
             '<tt>llvm.stackprotector</tt>' Intrinsic</a></li>
 	  <li><a href="#int_objectsize">
@@ -8394,26 +8394,26 @@ LLVM</a>.</p>
 <p>None.</p>
 
 <h5>Semantics:</h5>
-<p>This intrinsics is lowered to the target dependent trap instruction. If the
+<p>This intrinsic is lowered to the target dependent trap instruction. If the
    target does not have a trap instruction, this intrinsic will be lowered to
-   the call of the <tt>abort()</tt> function.</p>
+   a call of the <tt>abort()</tt> function.</p>
 
 </div>
 
 <!-- _______________________________________________________________________ -->
 <h4>
-  <a name="int_debugger">'<tt>llvm.debugger</tt>' Intrinsic</a>
+  <a name="int_debugtrap">'<tt>llvm.debugtrap</tt>' Intrinsic</a>
 </h4>
 
 <div>
 
 <h5>Syntax:</h5>
 <pre>
-  declare void @llvm.debugger()
+  declare void @llvm.debugtrap()
 </pre>
 
 <h5>Overview:</h5>
-<p>The '<tt>llvm.debugger</tt>' intrinsic.</p>
+<p>The '<tt>llvm.debugtrap</tt>' intrinsic.</p>
 
 <h5>Arguments:</h5>
 <p>None.</p>
@@ -8467,8 +8467,8 @@ LLVM</a>.</p>
 
 <h5>Syntax:</h5>
 <pre>
-  declare i32 @llvm.objectsize.i32(i8* &lt;object&gt;, i1 &lt;min&gt;, i32 &lt;runtime&gt;)
-  declare i64 @llvm.objectsize.i64(i8* &lt;object&gt;, i1 &lt;min&gt;, i32 &lt;runtime&gt;)
+  declare i32 @llvm.objectsize.i32(i8* &lt;object&gt;, i1 &lt;min&gt;)
+  declare i64 @llvm.objectsize.i64(i8* &lt;object&gt;, i1 &lt;min&gt;)
 </pre>
 
 <h5>Overview:</h5>
@@ -8479,21 +8479,17 @@ LLVM</a>.</p>
    an allocation of a specific class, structure, array, or other object.</p>
 
 <h5>Arguments:</h5>
-<p>The <tt>llvm.objectsize</tt> intrinsic takes three arguments. The first
+<p>The <tt>llvm.objectsize</tt> intrinsic takes two arguments. The first
    argument is a pointer to or into the <tt>object</tt>. The second argument
-   is a boolean and determines whether <tt>llvm.objectsize</tt> returns 0 (if true)
-   or -1 (if false) when the object size is unknown.
-   The third argument, <tt>runtime</tt>, indicates whether the compiler is allowed
-   to return a non-constant value. The higher the value, the higher the potential
-   run-time performance impact.
-   The second and third arguments only accepts constants.</p>
+   is a boolean and determines whether <tt>llvm.objectsize</tt> returns 0 (if
+   true) or -1 (if false) when the object size is unknown.
+   The second argument only accepts constants.</p>
    
 <h5>Semantics:</h5>
 <p>The <tt>llvm.objectsize</tt> intrinsic is lowered to a constant representing
    the size of the object concerned. If the size cannot be determined at compile
-   time, <tt>llvm.objectsize</tt> either returns <tt>i32/i64 -1 or 0</tt>
-   (depending on the <tt>min</tt> argument) if <tt>runtime</tt> is 0, or a run-time
-   value (if <tt>runtime</tt> &gt; 0 and an expression could be generated).</p>
+   time, <tt>llvm.objectsize</tt> returns <tt>i32/i64 -1 or 0</tt>
+   (depending on the <tt>min</tt> argument).</p>
 
 </div>
 <!-- _______________________________________________________________________ -->
@@ -8535,7 +8531,7 @@ LLVM</a>.</p>
 
   <a href="mailto:sabre@nondot.org">Chris Lattner</a><br>
   <a href="http://llvm.org/">The LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2012-05-10 18:19:32 -0600 (Thu, 10 May 2012) $
+  Last modified: $Date: 2012-05-22 09:25:31 -0600 (Tue, 22 May 2012) $
 </address>
 
 </body>

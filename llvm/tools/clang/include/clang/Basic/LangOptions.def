@@ -44,6 +44,7 @@
 // SCOUTCODE ndm - Scout language option
 LANGOPT(Scout               , 1, 0, "Scout")
 LANGOPT(ScoutNvidiaGPU      , 1, 0, "ScoutNvidiaGPU")
+LANGOPT(ScoutNvidiaGPU2     , 1, 0, "ScoutNvidiaGPU2")
 LANGOPT(ScoutCPUThreads     , 1, 0, "ScoutCPUThreads")
 // ENDSCOUTCODE
 
@@ -166,7 +167,6 @@ BENIGN_LANGOPT(ConstexprCallDepth, 32, 512,
 BENIGN_LANGOPT(NumLargeByValueCopy, 32, 0, 
         "if non-zero, warn about parameter or return Warn if parameter/return value is larger in bytes than this setting. 0 is no check.")
 
-BENIGN_LANGOPT(BoundsChecking , 8, 0, "if non-zero, add run-time bounds checking code")
 VALUE_LANGOPT(MSCVersion, 32, 0, 
               "version of Microsoft Visual C/C++")
 

@@ -158,12 +158,13 @@ getLVForTemplateArgumentList(const TemplateArgumentList &TArgs,
   return getLVForTemplateArgumentList(TArgs.data(), TArgs.size(), OnlyTemplate);
 }
 
-static bool shouldConsiderTemplateLV(const FunctionDecl *fn) {
-  return !fn->hasAttr<VisibilityAttr>();
+static bool shouldConsiderTemplateLV(const FunctionDecl *fn,
+                               const FunctionTemplateSpecializationInfo *spec) {
+  return !fn->hasAttr<VisibilityAttr>() || spec->isExplicitSpecialization();
 }
 
 static bool shouldConsiderTemplateLV(const ClassTemplateSpecializationDecl *d) {
-  return !d->hasAttr<VisibilityAttr>();
+  return !d->hasAttr<VisibilityAttr>() || d->isExplicitSpecialization();
 }
 
 static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
@@ -374,7 +375,7 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
     // this is an explicit specialization with a visibility attribute.
     if (FunctionTemplateSpecializationInfo *specInfo
                                = Function->getTemplateSpecializationInfo()) {
-      if (shouldConsiderTemplateLV(Function)) {
+      if (shouldConsiderTemplateLV(Function, specInfo)) {
         LV.merge(getLVForDecl(specInfo->getTemplate(),
                               true));
         const TemplateArgumentList &templateArgs = *specInfo->TemplateArguments;
@@ -525,7 +526,7 @@ static LinkageInfo getLVForClassMember(const NamedDecl *D, bool OnlyTemplate) {
     // the template parameters and arguments.
     if (FunctionTemplateSpecializationInfo *spec
            = MD->getTemplateSpecializationInfo()) {
-      if (shouldConsiderTemplateLV(MD)) {
+      if (shouldConsiderTemplateLV(MD, spec)) {
         LV.mergeWithMin(getLVForTemplateArgumentList(*spec->TemplateArguments,
                                                      OnlyTemplate));
         if (!OnlyTemplate)
@@ -633,9 +634,19 @@ LinkageInfo NamedDecl::getLinkageAndVisibility() const {
 
 llvm::Optional<Visibility> NamedDecl::getExplicitVisibility() const {
   // Use the most recent declaration of a variable.
-  if (const VarDecl *var = dyn_cast<VarDecl>(this))
-    return getVisibilityOf(var->getMostRecentDecl());
+  if (const VarDecl *Var = dyn_cast<VarDecl>(this)) {
+    if (llvm::Optional<Visibility> V =
+        getVisibilityOf(Var->getMostRecentDecl()))
+      return V;
 
+    if (Var->isStaticDataMember()) {
+      VarDecl *InstantiatedFrom = Var->getInstantiatedFromStaticDataMember();
+      if (InstantiatedFrom)
+        return getVisibilityOf(InstantiatedFrom);
+    }
+
+    return llvm::Optional<Visibility>();
+  }
   // Use the most recent declaration of a function, and also handle
   // function template specializations.
   if (const FunctionDecl *fn = dyn_cast<FunctionDecl>(this)) {

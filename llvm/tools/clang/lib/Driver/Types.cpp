@@ -139,6 +139,7 @@ bool types::isCXX(ID Id) {
   // SCOUTCODE ndm - Scout type
   case TY_Scout:
   // ENDSCOUTCODE
+  case TY_CUDA:
     return true;
   }
 }

@@ -539,6 +539,17 @@ ExprResult Sema::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
     // Look for the appropriate method within NSNumber.
     BoxingMethod = getNSNumberFactoryMethod(*this, SR.getBegin(), ValueType);
     BoxedType = NSNumberPointer;
+
+  } else if (const EnumType *ET = ValueType->getAs<EnumType>()) {
+    if (!ET->getDecl()->isComplete()) {
+      Diag(SR.getBegin(), diag::err_objc_incomplete_boxed_expression_type)
+        << ValueType << ValueExpr->getSourceRange();
+      return ExprError();
+    }
+
+    BoxingMethod = getNSNumberFactoryMethod(*this, SR.getBegin(),
+                                            ET->getDecl()->getIntegerType());
+    BoxedType = NSNumberPointer;
   }
 
   if (!BoxingMethod) {
@@ -1001,8 +1012,9 @@ ExprResult Sema::ParseObjCProtocolExpression(IdentifierInfo *ProtocolId,
                                              SourceLocation AtLoc,
                                              SourceLocation ProtoLoc,
                                              SourceLocation LParenLoc,
+                                             SourceLocation ProtoIdLoc,
                                              SourceLocation RParenLoc) {
-  ObjCProtocolDecl* PDecl = LookupProtocol(ProtocolId, ProtoLoc);
+  ObjCProtocolDecl* PDecl = LookupProtocol(ProtocolId, ProtoIdLoc);
   if (!PDecl) {
     Diag(ProtoLoc, diag::err_undeclared_protocol) << ProtocolId;
     return true;
@@ -1012,7 +1024,7 @@ ExprResult Sema::ParseObjCProtocolExpression(IdentifierInfo *ProtocolId,
   if (Ty.isNull())
     return true;
   Ty = Context.getObjCObjectPointerType(Ty);
-  return new (Context) ObjCProtocolExpr(Ty, PDecl, AtLoc, RParenLoc);
+  return new (Context) ObjCProtocolExpr(Ty, PDecl, AtLoc, ProtoIdLoc, RParenLoc);
 }
 
 /// Try to capture an implicit reference to 'self'.
@@ -1386,14 +1398,15 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
                           bool Super) {
   const ObjCInterfaceType *IFaceT = OPT->getInterfaceType();
   ObjCInterfaceDecl *IFace = IFaceT->getDecl();
-  
-  if (MemberName.getNameKind() != DeclarationName::Identifier) {
+
+  if (!MemberName.isIdentifier()) {
     Diag(MemberLoc, diag::err_invalid_property_name)
       << MemberName << QualType(OPT, 0);
     return ExprError();
   }
-  
+
   IdentifierInfo *Member = MemberName.getAsIdentifierInfo();
+  
   SourceRange BaseRange = Super? SourceRange(SuperLoc)
                                : BaseExpr->getSourceRange();
   if (RequireCompleteType(MemberLoc, OPT->getPointeeType(), 

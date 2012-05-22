@@ -783,8 +783,67 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                                                 ArrayRef< llvm::Value * >(KMD)));
     
   }
-
-  if(isSequential() || isGPU()){
+  else if(isGPU2()) {
+    // Add metadata for scout kernel function.
+    llvm::NamedMDNode *ScoutMetadata =
+    CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+    
+    SmallVector< llvm::Value *, 4 > KMD; // Kernel MetaData
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
+    // For each function argument, a bit to indicate whether it is
+    // a mesh member.
+    SmallVector< llvm::Value *, 3 > args;
+    SmallVector< llvm::Value *, 3 > meshArgs;
+    typedef llvm::Function::arg_iterator ArgIterator;
+    for(ArgIterator it = ForallFn->arg_begin(),
+        end = ForallFn->arg_end(); it != end; ++it) {
+      if(isMeshMember(it)){
+        args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
+        
+        // Convert mesh field arguments to the function which
+        // have been uniqued by ExtractCodeRegion() back into mesh field names
+        std::string ns = (*it).getName().str();
+        while(!ns.empty()){
+          if(meshFieldMap.find(ns) != meshFieldMap.end()){
+            meshArgs.push_back(Builder.CreateGlobalStringPtr(ns));
+            break;
+          }
+          ns.erase(ns.length() - 1, 1);
+        }
+        
+        assert(!ns.empty() && "failed to convert uniqued mesh field name");
+      }
+      else{
+        args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+        meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
+      }
+    }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    
+    args.clear();
+    // Add dimension information.
+    for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+      args.push_back(TranslateExprToValue(S.getStart(i)));
+      args.push_back(TranslateExprToValue(S.getEnd(i)));
+    }
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    
+    args.clear();
+    args.push_back(Builder.CreateGlobalStringPtr(meshName));
+    
+    //llvm::Constant* MeshNameArray =
+    //llvm::ConstantArray::get(getLLVMContext(), meshName);
+    //args.push_back(MeshNameArray);
+    
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(meshArgs)));
+    
+    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
+                                                ArrayRef< llvm::Value * >(KMD)));
+    
+  }
+  
+  if(isSequential() || isGPU() || isGPU2()){
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
 
