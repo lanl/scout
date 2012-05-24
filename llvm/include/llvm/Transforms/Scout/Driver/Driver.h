@@ -82,6 +82,10 @@ public:
 
   llvm::PointerType *getPtrTy(llvm::Type *type);
 
+  llvm::Module& getModule(){
+    return _module;
+  }
+
  protected:
   llvm::Module &_module;
   llvm::IRBuilder<> &_builder;

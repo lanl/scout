@@ -13,7 +13,10 @@
 
 #include "llvm/Support/InstVisitor.h"
 
+#include "llvm/Target/TargetData.h"
+
 #include <map>
+#include <vector>
 
 using namespace llvm;
 
@@ -36,22 +39,25 @@ const char *DoallToPTX2::getPassName() const {
 
 GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   PassManager pm;
-  pm.add(createVerifierPass());
-  pm.run(ptxModule);
+  //pm.add(createVerifierPass());
+  //pm.run(ptxModule);
+
+  //std::cerr << "$$$$$$$$$$$$$$$$$$$$$$$$ AT TOP OF MODULE" << std::endl;
+  //ptxModule.dump();
+  //std::cerr << "$$$$$$$$$$$$$$$$$$$$$$$$ END MODULE" << std::endl;
 
   const Target *PTXTarget = 0;
   for(TargetRegistry::iterator it = TargetRegistry::begin(),
         ie = TargetRegistry::end(); it != ie; ++it) {
     //if(strcmp(it->getName(), "nvptx") == 0) {
     if(strcmp(it->getName(), "nvptx64") == 0) {
-    //    if(strcmp(it->getName(), "simple-ptx") == 0) {
       PTXTarget = &*it;
       break;
     }
   }
 
   assert(PTXTarget && "PTXBackend failed to load!");
-
+  
   std::string AssemblyCode;
   raw_string_ostream StringOut(AssemblyCode);
   formatted_raw_ostream PTXOut(StringOut);
@@ -61,7 +67,7 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   Triple TargetTriple = Triple(target_triple);
   TargetTriple.setArch(Triple::nvptx64);
 
-  const std::string CPU = "";
+  const std::string CPU = "sm_20";
   const std::string featuresStr = "";
   const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
 
@@ -74,29 +80,82 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
 				   CodeModel::Default,
 				   Lvl);
 
+  if(const TargetData* targetData = TheTarget->getTargetData())
+    pm.add(new TargetData(*targetData));
+  else
+    pm.add(new TargetData(&ptxModule));
+
   std::auto_ptr< TargetMachine > Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
 
-  const TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_AssemblyFile;
+  const TargetMachine::CodeGenFileType FileType = 
+    TargetMachine::CGFT_AssemblyFile;
 
-  const bool DisableVerify = false;
+  const bool DisableVerify = true;
 
-  std::cerr << "t9" << std::endl;
   Target->addPassesToEmitFile(pm, PTXOut, FileType, DisableVerify);
-  std::cerr << "t10" << std::endl;
 
   pm.add(createVerifierPass());
+
+  typedef std::vector<GlobalVariable*> GlobalVec;
+  GlobalVec globalsToRemove;
+
+  Module::global_iterator itr = ptxModule.global_begin();
+  while(itr != ptxModule.global_end()){
+    GlobalVariable* global = &*itr;
+    
+    Type* type = global->getType();
+
+    if(PointerType* pointerType = dyn_cast<PointerType>(type)){
+      if(pointerType->getAddressSpace() == 0){
+        //std::cerr << "####### removing global" << std::endl;
+        //global->dump();
+        globalsToRemove.push_back(global);
+      }
+    }
+    ++itr;
+  }
+
+  for(size_t i = 0; i < globalsToRemove.size(); ++i){
+    globalsToRemove[i]->eraseFromParent();
+  }
+  
+  llvm::NamedMDNode* annotations =
+    ptxModule.getOrInsertNamedMetadata("nvvm.annotations");
+
+  for(Module::iterator fitr = ptxModule.begin(),
+        fitrEnd = ptxModule.end(); fitr != fitrEnd; ++fitr){
+    Function* f = &*fitr;
+    f->removeFnAttr(Attribute::NoUnwind|
+                    Attribute::UWTable|
+                    Attribute::StackProtect);
+
+    if(f->getName().startswith("renderall") || 
+       f->getName().startswith("forall")){
+    //if(!f->getName().startswith("llvm.ptx")){
+      SmallVector<Value*, 3> av;
+      av.push_back(f);
+      av.push_back(MDString::get(ptxModule.getContext(), "kernel"));
+      av.push_back(ConstantInt::get(IntegerType::get(ptxModule.getContext(),
+                                                     32), 1));
+      annotations->addOperand(MDNode::get(ptxModule.getContext(), av)); 
+    }
+  }
+
+  //std::cerr << "----------------- pruned module" << std::endl;
+  //ptxModule.dump();
+  //std::cerr << "----------------- end pruned module" << std::endl;
+
   pm.run(ptxModule);
   PTXOut.flush();
 
   std::string ptxStrName = "ptxAssembly";
 
-  // ndm - MERGE
-  //Constant *AssemblyCodeArray =
-  //ConstantArray::get(cpuModule.getContext(), AssemblyCode);
-
   Constant *AssemblyCodeArray =
   ConstantDataArray::getString(cpuModule.getContext(), AssemblyCode);  
+
+  //std::cerr << "--------------------- ASSEMBLY" << std::endl;
+  //std::cerr << AssemblyCode << std::endl;
 
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),
@@ -145,21 +204,21 @@ void DoallToPTX2::pruneModule(Module &module, ValueToValueMapTy &valueMap,
   pm.run(module);
 }
 
-void DoallToPTX2::translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform) {
+void DoallToPTX2::translateVarToTid(CudaDriver2 &cuda, llvm::Instruction *inst, bool uniform) {
   llvm::BasicBlock *BB = inst->getParent();
   llvm::Function *FN = BB->getParent();
   llvm::Module *module = FN->getParent();
   IRBuilder<> Builder(module->getContext());
-  PTXDriver ptx(*module, Builder);
+  PTXDriver2 ptx(*module, Builder);
 
   ptx.setInsertPoint(BB, BB->begin());
 
   llvm::Type *i32Ty = llvm::Type::getInt32Ty(module->getContext());
 
-  llvm::Value *row = ptx.insertGetGlobalThreadIdx(PTXDriver::X);
-  llvm::Value *col = ptx.insertGetGlobalThreadIdx(PTXDriver::Y);
-  llvm::Value *blockDimX  = Builder.CreateZExt(ptx.insertGetGridDim(PTXDriver::X), i32Ty);
-  llvm::Value *threadDimX = Builder.CreateZExt(ptx.insertGetBlockDim(PTXDriver::X), i32Ty);
+  llvm::Value *row = ptx.insertGetGlobalThreadIdx(PTXDriver2::X);
+  llvm::Value *col = ptx.insertGetGlobalThreadIdx(PTXDriver2::Y);
+  llvm::Value *blockDimX  = Builder.CreateZExt(ptx.insertGetGridDim(PTXDriver2::X), i32Ty);
+  llvm::Value *threadDimX = Builder.CreateZExt(ptx.insertGetBlockDim(PTXDriver2::X), i32Ty);
   col = Builder.CreateMul(col, Builder.CreateMul(blockDimX, threadDimX));
   llvm::Value *tid = Builder.CreateAdd(row, col, "threadidx");
 
@@ -201,7 +260,7 @@ void DoallToPTX2::translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, b
   }
 }
 
-void DoallToPTX2::setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform) {
+void DoallToPTX2::setGPUThreading(CudaDriver2 &cuda, llvm::Function *FN, bool uniform) {
   llvm::SmallVector< llvm::Value *, 3 > indvars;
   typedef llvm::Function::iterator BasicBlockIterator;
   typedef llvm::BasicBlock::iterator InstIterator;
@@ -213,7 +272,7 @@ void DoallToPTX2::setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uni
       }
 }
 
-void DoallToPTX2::generatePTXHandler(CudaDriver &cuda, Module &module,
+void DoallToPTX2::generatePTXHandler(CudaDriver2 &cuda, Module &module,
                                     std::string name, GlobalValue *ptxAsm,
 				    Value* meshName) {
   Function *ptxHandler = module.getFunction(name);
@@ -403,7 +462,7 @@ namespace{
 bool DoallToPTX2::runOnModule(Module &M) {
   // Interface to CUDA Driver API
   IRBuilder<> Builder(M.getContext());
-  CudaDriver cuda(M, Builder, true);
+  CudaDriver2 cuda(M, Builder, true);
 
   for(Module::iterator itr = M.begin(), itrEnd = M.end(); 
       itr != itrEnd; ++itr){
@@ -456,12 +515,8 @@ bool DoallToPTX2::runOnModule(Module &M) {
     // Substitute PTX thread id's for induction variables.
     setGPUThreading(cuda, ptxModule->getFunction(FN->getName()), uniform);
 
-    std::cerr << "t1" << std::endl;
-
     // Embed ptx string in module.
     GlobalValue *ptxAsm = embedPTX(*ptxModule, M);
-
-    std::cerr << "t2" << std::endl;
 
     // Insert CUDA API calls.
     generatePTXHandler(cuda, M, FN->getName().str(), ptxAsm, meshName);
@@ -470,7 +525,7 @@ bool DoallToPTX2::runOnModule(Module &M) {
 }
 
 #ifdef NEVER_DEFINED
-bool DoallToPTX2::runOnModule(Module &M){
+bool DoallToPTX2::runOnModule(Module &M){  
   const Target *PTXTarget = 0;
   for(TargetRegistry::iterator it = TargetRegistry::begin(),
         ie = TargetRegistry::end(); it != ie; ++it) {

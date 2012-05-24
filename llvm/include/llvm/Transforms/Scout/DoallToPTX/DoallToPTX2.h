@@ -28,8 +28,8 @@
 #include <iostream>
 #include <map>
 
-#include <llvm/Transforms/Scout/Driver/CudaDriver.h>
-#include <llvm/Transforms/Scout/Driver/PTXDriver.h>
+#include <llvm/Transforms/Scout/Driver/CudaDriver2.h>
+#include <llvm/Transforms/Scout/Driver/PTXDriver2.h>
 
 class DoallToPTX2 : public llvm::ModulePass {
  public:
@@ -44,7 +44,7 @@ class DoallToPTX2 : public llvm::ModulePass {
   bool runOnModule(llvm::Module &M);
 
   llvm::GlobalValue *embedPTX(llvm::Module &ptxModule, llvm::Module &cpuModule);
-  void generatePTXHandler(CudaDriver &cuda, llvm::Module &module,
+  void generatePTXHandler(CudaDriver2 &cuda, llvm::Module &module,
                           std::string funcName, llvm::GlobalValue *ptxAsm,
 			  llvm::Value* meshName);
   llvm::Module *CloneModule(const llvm::Module *M, llvm::ValueToValueMapTy &VMap);
@@ -53,8 +53,8 @@ class DoallToPTX2 : public llvm::ModulePass {
   void pruneModule(llvm::Module &module, llvm::ValueToValueMapTy &valueMap,
                    llvm::Function &FN);
 
-  void setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform);
-  void translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform);
+  void setGPUThreading(CudaDriver2 &cuda, llvm::Function *FN, bool uniform);
+  void translateVarToTid(CudaDriver2 &cuda, llvm::Instruction *inst, bool uniform);
   
 private:
   FunctionMDMap functionMDMap;

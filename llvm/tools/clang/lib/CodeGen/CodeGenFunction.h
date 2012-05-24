@@ -2077,6 +2077,8 @@ public:
   void EmitForAllArrayStmt(const ForAllArrayStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
 
+  void insertMeshDump(llvm::Value* baseAddr);
+  
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);

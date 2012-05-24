@@ -9,13 +9,13 @@
  *
  */
 
-#include "llvm/Transforms/Scout/Driver/CudaDriver.h"
+#include "llvm/Transforms/Scout/Driver/CudaDriver2.h"
 
 #include <iostream>
 
 using namespace llvm;
 
-CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
+CudaDriver2::CudaDriver2(Module &module, IRBuilder<> &builder, bool debug)
   : Driver(module, builder, debug),
     CUaddress_modeTy(i32Ty),
     CUarrayTy(getOrInsertType(module, "struct.CUarray_st")),
@@ -48,15 +48,15 @@ CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
 #include "llvm/Transforms/Scout/Driver/CudaDriverDeclarations.h"
 }
 
-void CudaDriver::setGridSize(SmallVector< Constant *, 3 > &size) {
+void CudaDriver2::setGridSize(SmallVector< Constant *, 3 > &size) {
   _gridSize = size;
 }
 
-void CudaDriver::setBlockSize(SmallVector< Constant *, 3 > &size) {
+void CudaDriver2::setBlockSize(SmallVector< Constant *, 3 > &size) {
   _blockSize = size;
 }
 
-void CudaDriver::setCUDA_ARRAY_DESCRIPTORTy(Module &module) {
+void CudaDriver2::setCUDA_ARRAY_DESCRIPTORTy(Module &module) {
   //%struct.CUDA_ARRAY_DESCRIPTOR = type { i32, i32, i32, i32 }
   std::vector< Type * > params(4, i32Ty);
   Type *structType = StructType::get(module.getContext(), params);
@@ -65,7 +65,7 @@ void CudaDriver::setCUDA_ARRAY_DESCRIPTORTy(Module &module) {
                                             structType);
 }
 
-void CudaDriver::setCUDA_ARRAY3D_DESCRIPTORTy(Module &module) {
+void CudaDriver2::setCUDA_ARRAY3D_DESCRIPTORTy(Module &module) {
   //%struct.CUDA_ARRAY3D_DESCRIPTOR = type { i32, i32, i32, i32, i32, i32 }
   std::vector< Type * > params(6, i32Ty);
   Type *structType = StructType::get(module.getContext(), params);
@@ -74,7 +74,7 @@ void CudaDriver::setCUDA_ARRAY3D_DESCRIPTORTy(Module &module) {
                                           structType);
 }
 
-void CudaDriver::setCUdevpropTy(Module &module) {
+void CudaDriver2::setCUdevpropTy(Module &module) {
   //%struct.CUdevprop = type { i32, [3 x i32], [3 x i32], i32, i32, i32, i32, i32, i32, i32 }
   std::vector< Type * > params(10, i32Ty);
   params[1] = params[2] = ArrayType::get(i32Ty, 3);
@@ -82,7 +82,7 @@ void CudaDriver::setCUdevpropTy(Module &module) {
   CUdevpropTy = getOrInsertType(module, "struct.CUdevprop", structType);
 }
 
-void CudaDriver::setCUDA_MEMCPY2DTy(Module &module) {
+void CudaDriver2::setCUDA_MEMCPY2DTy(Module &module) {
   //%struct.CUDA_MEMCPY2D = type { i32, i32, i32, i8*,
   //                               i32, %struct.CUarray_st*, i32,
   //                               i32, i32, i32, i8*,
@@ -95,7 +95,7 @@ void CudaDriver::setCUDA_MEMCPY2DTy(Module &module) {
   CUDA_MEMCPY2DTy = getOrInsertType(module, "struct.CUDA_MEMCPY2D", structType);
 }
 
-void CudaDriver::setCUDA_MEMCPY3DTy(Module &module) {
+void CudaDriver2::setCUDA_MEMCPY3DTy(Module &module) {
   //%struct.CUDA_MEMCPY3D = type { i32, i32, i32, i32, i32,
   //                               i8*, i32, %struct.CUarray_st*, i8*, i32, i32,
   //                               i32, i32, i32, i32, i32,
@@ -108,27 +108,27 @@ void CudaDriver::setCUDA_MEMCPY3DTy(Module &module) {
   CUDA_MEMCPY3DTy = getOrInsertType(module, "struct.CUDA_MEMCPY3D", structType);
 }
 
-Type *CudaDriver::getCUdeviceTy() {
+Type *CudaDriver2::getCUdeviceTy() {
   return CUdeviceTy;
 }
 
-Type *CudaDriver::getCUcontextTy() {
+Type *CudaDriver2::getCUcontextTy() {
   return CUcontextTy;
 }
 
-Type *CudaDriver::getCUmoduleTy() {
+Type *CudaDriver2::getCUmoduleTy() {
   return CUmoduleTy;
 }
 
-Type *CudaDriver::getCUfunctionTy() {
+Type *CudaDriver2::getCUfunctionTy() {
   return CUfunctionTy;
 }
 
-Type *CudaDriver::getCUdeviceptrTy() {
+Type *CudaDriver2::getCUdeviceptrTy() {
   return CUdeviceptrTy;
 }
 
-Value *CudaDriver::insertCheckedCall(StringRef name,
+Value *CudaDriver2::insertCheckedCall(StringRef name,
                                 Value **begin,
                                 Value **end) {
   if(_debug) {
@@ -142,7 +142,7 @@ Value *CudaDriver::insertCheckedCall(StringRef name,
   }
 }
 
-Value *CudaDriver::insertCheckedCall(StringRef name,
+Value *CudaDriver2::insertCheckedCall(StringRef name,
                                      ArrayRef< Value * > args) {
  if(_debug) {
     Value *a = _module.getGlobalVariable(name);
@@ -155,7 +155,7 @@ Value *CudaDriver::insertCheckedCall(StringRef name,
   }
 }
 
-bool CudaDriver::setGridAndBlockSizes() {
+bool CudaDriver2::setGridAndBlockSizes() {
   _blockSize[0] = llvm::ConstantInt::get(i32Ty, 16);
   _blockSize[1] = llvm::ConstantInt::get(i32Ty, 16);
 
@@ -185,7 +185,7 @@ bool CudaDriver::setGridAndBlockSizes() {
   }
 }
 
-void CudaDriver::create(Function *func,
+void CudaDriver2::create(Function *func,
 			GlobalValue *ptxAsm,
 			Value* meshName,
 			MDNode* mdn) {
@@ -362,7 +362,7 @@ void CudaDriver::create(Function *func,
   _builder.CreateRetVoid();
 }
 
-void CudaDriver::initialize() {
+void CudaDriver2::initialize() {
   StringRef name = "cudaCreate";
   if(Function *func = _module.getFunction(name)) return;
 
@@ -416,7 +416,7 @@ void CudaDriver::initialize() {
   finalize();
 }
 
-void CudaDriver::finalize() {
+void CudaDriver2::finalize() {
   StringRef name = "cudaDestroy";
   if(_module.getFunction(name)) return;
 
@@ -447,7 +447,7 @@ void CudaDriver::finalize() {
   _builder.CreateCall(fin);
 }
 
-void CudaDriver::destroy() {
+void CudaDriver2::destroy() {
   if(_module.getFunction("cudaCreate") == NULL) return;
 
   Function *fin = _module.getFunction("cudaDestroy");
@@ -455,29 +455,29 @@ void CudaDriver::destroy() {
   CallInst::Create(fin, "", insertBefore);
 }
 
-Value *CudaDriver::insertInit() {
+Value *CudaDriver2::insertInit() {
   // The single parameter to cuInit() must be 0.
   Value *args[] = { ConstantInt::get(i32Ty, 0) };
   return insertCheckedCall("cuInit", ArrayRef< Value * >(args));
 }
 
-void CudaDriver::setFnArgAttributes(SmallVector< llvm::ConstantInt *, 3 > args) {
+void CudaDriver2::setFnArgAttributes(SmallVector< llvm::ConstantInt *, 3 > args) {
   fnArgAttrs = args;
 }
 
-void CudaDriver::setMeshFieldNames(SmallVector< llvm::Value *, 3 > args) {
+void CudaDriver2::setMeshFieldNames(SmallVector< llvm::Value *, 3 > args) {
   meshFieldNames = args;
 }
 
-llvm::Value *CudaDriver::getDimension(int dim) {
+llvm::Value *CudaDriver2::getDimension(int dim) {
   return dimensions[dim];
 }
 
-void CudaDriver::setDimensions(SmallVector< llvm::ConstantInt *, 3 > args) {
+void CudaDriver2::setDimensions(SmallVector< llvm::ConstantInt *, 3 > args) {
   dimensions = args;
 }
 
-int CudaDriver::getLinearizedMeshSize() {
+int CudaDriver2::getLinearizedMeshSize() {
   int sum = 1;
   for(unsigned i = 1, e = dimensions.size(); i < e; i+=2) {
     sum *= dimensions[i]->getSExtValue();
@@ -485,504 +485,504 @@ int CudaDriver::getLinearizedMeshSize() {
   return sum;
 }
 
-bool CudaDriver::isMeshMember(unsigned i) {
+bool CudaDriver2::isMeshMember(unsigned i) {
   return fnArgAttrs[i]->getSExtValue();
 }
 
-Value* CudaDriver::meshFieldName(unsigned i) {
+Value* CudaDriver2::meshFieldName(unsigned i) {
   return meshFieldNames[i];
 }
 
-Value *CudaDriver::insertDeviceComputeCapability(Value *a, Value *b) {
+Value *CudaDriver2::insertDeviceComputeCapability(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuDeviceComputeCapability", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceGet(Value *a, Value *b) {
+Value *CudaDriver2::insertDeviceGet(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuDeviceGet", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceGetAttribute(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertDeviceGetAttribute(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuDeviceGetAttribute", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceGetCount(Value *a) {
+Value *CudaDriver2::insertDeviceGetCount(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuDeviceGetCount", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceGetName(Value *a, Value *b) {
+Value *CudaDriver2::insertDeviceGetName(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuDeviceGetName", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceGetProperties(Value *a, Value *b) {
+Value *CudaDriver2::insertDeviceGetProperties(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuDeviceGetProperties", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDeviceTotalMem(Value *a, Value *b) {
+Value *CudaDriver2::insertDeviceTotalMem(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuDeviceTotalMem", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertDriverGetVersion(Value *a) {
+Value *CudaDriver2::insertDriverGetVersion(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuDriverGetVersion", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxAttach(Value *a, Value *b) {
+Value *CudaDriver2::insertCtxAttach(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuXtxAttach", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxCreate(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertCtxCreate(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuCtxCreate_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxDestroy(Value *a) {
+Value *CudaDriver2::insertCtxDestroy(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuCtxDestroy", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxDetach(Value *a) {
+Value *CudaDriver2::insertCtxDetach(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuCtxDetach", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxGetDevice(Value *a) {
+Value *CudaDriver2::insertCtxGetDevice(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuCtxGetDevice", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxPopCurrent(Value *a) {
+Value *CudaDriver2::insertCtxPopCurrent(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuCtxPopCurrent", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxPushCurrent(Value *a) {
+Value *CudaDriver2::insertCtxPushCurrent(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuCtxPushCurrent", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertCtxSynchronize() {
+Value *CudaDriver2::insertCtxSynchronize() {
   return insertCheckedCall("cuCtxSynchronize", ArrayRef< Value * >());
 }
 
-Value *CudaDriver::insertModuleGetFunction(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertModuleGetFunction(Value *a, Value *b, Value *c) {
   Value *args[3] = { a, b, c };
   return insertCheckedCall("cuModuleGetFunction", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleGetGlobal(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertModuleGetGlobal(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuModuleGetGlobal_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleGetTexRef(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertModuleGetTexRef(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuModuleGetTexRef", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleLoad(Value *a, Value *b) {
+Value *CudaDriver2::insertModuleLoad(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuModuleLoad", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleLoadData(Value *a, Value *b) {
+Value *CudaDriver2::insertModuleLoadData(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuModuleLoadData", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertScoutGetModule(Value *a, Value *b) {
+Value *CudaDriver2::insertScoutGetModule(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("__sc_get_gpu_module", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleLoadDataEx(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertModuleLoadDataEx(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuModuleLoadDataEx", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleLoadFatBinary(Value *a, Value *b) {
+Value *CudaDriver2::insertModuleLoadFatBinary(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuModuleLoadFatBinary", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertModuleUnload(Value *a) {
+Value *CudaDriver2::insertModuleUnload(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuModuleUnload", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertStreamCreate(Value *a, Value *b) {
+Value *CudaDriver2::insertStreamCreate(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuStreamCreate", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertStreamDestroy(Value *a) {
+Value *CudaDriver2::insertStreamDestroy(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuStreamDestroy", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertStreamQuery(Value *a) {
+Value *CudaDriver2::insertStreamQuery(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuStreamQuery", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertStreamSynchronize(Value *a) {
+Value *CudaDriver2::insertStreamSynchronize(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuStreamSynchronize", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventCreate(Value *a, Value *b) {
+Value *CudaDriver2::insertEventCreate(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuEventCreate", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventDestroy(Value *a) {
+Value *CudaDriver2::insertEventDestroy(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuEventDestroy", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventElapsedTime(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertEventElapsedTime(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuEventElapsedTime", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventQuery(Value *a) {
+Value *CudaDriver2::insertEventQuery(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuEventQuery", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventRecord(Value *a, Value *b) {
+Value *CudaDriver2::insertEventRecord(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuEventRecord", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertEventSynchronize(Value *a) {
+Value *CudaDriver2::insertEventSynchronize(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuEventSynchronize", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertFuncGetAttribute(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertFuncGetAttribute(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuFuncGetAttribute", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertFuncSetBlockShape(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertFuncSetBlockShape(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuFuncSetBlockShape", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertFuncSetSharedSize(Value *a, Value *b) {
+Value *CudaDriver2::insertFuncSetSharedSize(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuFuncSetSharedSize", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertLaunch(Value *a) {
+Value *CudaDriver2::insertLaunch(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuLaunch", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertLaunchGrid(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertLaunchGrid(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuLaunchGrid", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertLaunchGridAsync(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertLaunchGridAsync(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuLaunchGridAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertParamSetf(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertParamSetf(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuParamSetf", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertParamSeti(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertParamSeti(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuParamSeti", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertParamSetSize(Value *a, Value *b) {
+Value *CudaDriver2::insertParamSetSize(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuParamSetSize", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertParamSetTexRef(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertParamSetTexRef(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuParamSetTexRef", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertParamSetv(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertParamSetv(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuParamSetv", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertArray3DCreate(Value *a, Value *b) {
+Value *CudaDriver2::insertArray3DCreate(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuArray3DCreate", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertArray3DGetDescriptor(Value *a, Value *b) {
+Value *CudaDriver2::insertArray3DGetDescriptor(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuArray3DGetDescriptor", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertArrayCreate(Value *a, Value *b) {
+Value *CudaDriver2::insertArrayCreate(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuArrayCreate", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertArrayDestroy(Value *a) {
+Value *CudaDriver2::insertArrayDestroy(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuArrayDestroy", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertArrayGetDescriptor(Value *a, Value *b) {
+Value *CudaDriver2::insertArrayGetDescriptor(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuArrayGetDescriptor", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemAlloc(Value *a, Value *b) {
+Value *CudaDriver2::insertMemAlloc(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemAlloc_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemAllocHost(Value *a, Value *b) {
+Value *CudaDriver2::insertMemAllocHost(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemAllocHost", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemAllocPitch(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemAllocPitch(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemAllocPitch", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpy2D(Value *a) {
+Value *CudaDriver2::insertMemcpy2D(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuMemcpy2D", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpy2DAsync(Value *a, Value *b) {
+Value *CudaDriver2::insertMemcpy2DAsync(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemcpy2DAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpy2DUnaligned(Value *a) {
+Value *CudaDriver2::insertMemcpy2DUnaligned(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuMemcpy2DUnaligned", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpy3D(Value *a) {
+Value *CudaDriver2::insertMemcpy3D(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuMemcpy3D", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpy3DAsync(Value *a, Value *b) {
+Value *CudaDriver2::insertMemcpy3DAsync(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemcpy3DAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyAtoA(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemcpyAtoA(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemcpyAtoA", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyAtoD(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyAtoD(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyAtoD", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyAtoH(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyAtoH(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyAtoH", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyAtoHAsync(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemcpyAtoHAsync(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemcpyAtoHAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyDtoA(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyDtoA(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyDtoA", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyDtoD(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemcpyDtoD(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemcpyDtoD", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyDtoH(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemcpyDtoH(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemcpyDtoH_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyDtoHAsync(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyDtoHAsync(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyDtoHAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyHtoA(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyHtoA(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyHtoA", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyHtoAAsync(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemcpyHtoAAsync(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemcpyHtoAAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyHtoD(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemcpyHtoD(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemcpyHtoD_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemcpyHtoDAsync(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertMemcpyHtoDAsync(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuMemcpyHtoDAsync", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemFree(Value *a) {
+Value *CudaDriver2::insertMemFree(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuMemFree_v2", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemFreeHost(Value *a) {
+Value *CudaDriver2::insertMemFreeHost(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuMemFreeHost", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemGetAddressRange(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemGetAddressRange(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemGetAddressRange", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemGetInfo(Value *a, Value *b) {
+Value *CudaDriver2::insertMemGetInfo(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemGetInfo", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemHostAlloc(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemHostAlloc(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemHostAlloc", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemHostGetDevicePointer(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemHostGetDevicePointer(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemHostGetDevicePointer", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemHostGetFlags(Value *a, Value *b) {
+Value *CudaDriver2::insertMemHostGetFlags(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuMemHostGetFlags", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD16(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemsetD16(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemsetD16", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD2D16(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemsetD2D16(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemsetD2D16", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD2D32(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemsetD2D32(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemsetD2D32", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD2D8(Value *a, Value *b, Value *c, Value *d, Value *e) {
+Value *CudaDriver2::insertMemsetD2D8(Value *a, Value *b, Value *c, Value *d, Value *e) {
   Value *args[] = { a, b, c, d, e };
   return insertCheckedCall("cuMemsetD2D8", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD32(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemsetD32(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemsetD32", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertMemsetD8(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertMemsetD8(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuMemsetD8", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefCreate(Value *a) {
+Value *CudaDriver2::insertTexRefCreate(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuTexRefCreate", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefDestroy(Value *a) {
+Value *CudaDriver2::insertTexRefDestroy(Value *a) {
   Value *args[] = { a };
   return insertCheckedCall("cuTexRefDestroy", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetAddress(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefGetAddress(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefGetAddress", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetAddressMode(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertTexRefGetAddressMode(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuTexRefGetAddressMode", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetArray(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefGetArray(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefGetArray", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetFilterMode(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefGetFilterMode(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefGetFilterMode", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetFlags(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefGetFlags(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefGetFlags", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefGetFormat(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertTexRefGetFormat(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuTexRefGetFormat", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetAddress(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertTexRefSetAddress(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuTexRefSetAddress", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetAddress2D(Value *a, Value *b, Value *c, Value *d) {
+Value *CudaDriver2::insertTexRefSetAddress2D(Value *a, Value *b, Value *c, Value *d) {
   Value *args[] = { a, b, c, d };
   return insertCheckedCall("cuTexRefSetAddress2D", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetAddressMode(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertTexRefSetAddressMode(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuTexRefSetAddressMode", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetArray(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertTexRefSetArray(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuTexRefSetArray", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetFilterMode(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefSetFilterMode(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefSetFilterMode", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetFlags(Value *a, Value *b) {
+Value *CudaDriver2::insertTexRefSetFlags(Value *a, Value *b) {
   Value *args[] = { a, b };
   return insertCheckedCall("cuTexRefSetFlags", ArrayRef< Value * >(args));
 }
 
-Value *CudaDriver::insertTexRefSetFormat(Value *a, Value *b, Value *c) {
+Value *CudaDriver2::insertTexRefSetFormat(Value *a, Value *b, Value *c) {
   Value *args[] = { a, b, c };
   return insertCheckedCall("cuTexRefSetFormat", ArrayRef< Value * >(args));
 }

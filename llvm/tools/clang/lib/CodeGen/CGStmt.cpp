@@ -591,6 +591,32 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
     SimplifyForwardingBlocks(LoopCond.getBlock());
 }
 
+void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
+  // disabled
+  return;
+  
+  llvm::Function* dumpBlockFunc =
+  CGM.getModule().getFunction("__sc_dump_mesh");
+  
+  if(!dumpBlockFunc){
+    std::vector<llvm::Type*> types;
+    
+    types.push_back(baseAddr->getType());
+    
+    llvm::FunctionType* ft =
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
+                            types, false);
+    
+    dumpBlockFunc =
+    llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                           "__sc_dump_mesh", &CGM.getModule());
+  }
+  
+  std::vector<llvm::Value*> dumpArgs;
+  dumpArgs.push_back(baseAddr);
+  Builder.CreateCall(dumpBlockFunc, dumpArgs);
+}
+
 // SCOUTCODE ndm - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
@@ -781,7 +807,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
                                                 ArrayRef< llvm::Value * >(KMD)));
-    
   }
   else if(isGPU2()) {
     // Add metadata for scout kernel function.
@@ -842,12 +867,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                                                 ArrayRef< llvm::Value * >(KMD)));
     
   }
-  
+     
   if(isSequential() || isGPU() || isGPU2()){
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
 
     Builder.SetInsertPoint(cbb);
+    // scout - uncomment to enable mesh dumping
+    insertMeshDump(baseAddr);
     return;
   }
 
@@ -882,6 +909,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   // Generate a function call to BlockFn.
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
                        ScoutMeshSizes, inputs);
+  
+  // scout - uncomment to enable mesh dumping
+  insertMeshDump(baseAddr);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {

@@ -10,6 +10,7 @@
 
 add_llvm_library(scDriver 
   CudaDriver.cpp
+  CudaDriver2.cpp
   Driver.cpp
-  PTXDriver.cpp)
-
+  PTXDriver.cpp
+  PTXDriver2.cpp)

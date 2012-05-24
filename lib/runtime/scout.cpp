@@ -25,6 +25,18 @@ void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
   __sc_tbq->run(blockLiteral, numDimensions, numFields);
 }
 
+extern "C"
+void __sc_dump_mesh(void* mp){
+  cout << "----------------" << endl;
+  float** mesh = (float**)mp;
+  float* aStart = (float*)mesh[0];
+
+  for(size_t i = 0; i < 4; ++i){
+    float ai = aStart[i];
+    cout << "ai is: " << ai << endl;
+  }
+}
+
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
 
   if (__sc_glsdl) {
