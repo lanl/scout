@@ -85,17 +85,16 @@ static void recursive_mkdir(const char *filename) {
   int i, e;
 
   for (i = 1, e = strlen(filename); i != e; ++i) {
-    if (filename[i] == '/') {
-      pathname = malloc(i + 1);
-      strncpy(pathname, filename, i);
-      pathname[i] = '\0';
+    if (filename[i] != '/') continue;
+    pathname = malloc(i + 1);
+    strncpy(pathname, filename, i);
+    pathname[i] = '\0';
 #ifdef _WIN32
-      _mkdir(pathname);
+    _mkdir(pathname);
 #else
-      mkdir(pathname, 0750);  /* some of these will fail, ignore it. */
+    mkdir(pathname, 0750);  /* some of these will fail, ignore it. */
 #endif
-      free(pathname);
-    }
+    free(pathname);
   }
 }
 
@@ -121,7 +120,7 @@ void llvm_gcda_start_file(const char *orig_filename) {
       fprintf(stderr, "LLVM profiling runtime: while opening '%s': ",
               cptr ? cptr + 1 : orig_filename);
       perror("");
-      exit(1);
+      return;
     }
   }
 
@@ -167,6 +166,7 @@ void llvm_gcda_emit_function(uint32_t ident, const char *function_name) {
 #ifdef DEBUG_GCDAPROFILING
   printf("llvmgcda: function id=%x\n", ident);
 #endif
+  if (!output_file) return;
 
   /* function tag */  
   fwrite("\0\0\0\1", 4, 1, output_file);
@@ -179,7 +179,9 @@ void llvm_gcda_emit_function(uint32_t ident, const char *function_name) {
 
 void llvm_gcda_emit_arcs(uint32_t num_counters, uint64_t *counters) {
   uint32_t i;
-  /* counter #1 (arcs) tag */
+
+  /* Counter #1 (arcs) tag */
+  if (!output_file) return;
   fwrite("\0\0\xa1\1", 4, 1, output_file);
   write_int32(num_counters * 2);
   for (i = 0; i < num_counters; ++i) {
@@ -196,6 +198,7 @@ void llvm_gcda_emit_arcs(uint32_t num_counters, uint64_t *counters) {
 
 void llvm_gcda_end_file() {
   /* Write out EOF record. */
+  if (!output_file) return;
   fwrite("\0\0\0\0\0\0\0\0", 8, 1, output_file);
   fclose(output_file);
   output_file = NULL;

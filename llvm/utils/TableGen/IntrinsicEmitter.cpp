@@ -338,7 +338,8 @@ enum IIT_Info {
   IIT_STRUCT4 = 20,
   IIT_STRUCT5 = 21,
   IIT_EXTEND_VEC_ARG = 22,
-  IIT_TRUNC_VEC_ARG = 23
+  IIT_TRUNC_VEC_ARG = 23,
+  IIT_ANYPTR = 24
 };
 
 
@@ -412,13 +413,17 @@ static void EncodeFixedType(Record *R, unsigned &NextArgNo,
   }
   
   if (VT == MVT::iPTR) {
-    Sig.push_back(IIT_PTR);
     unsigned AddrSpace = 0;
     if (R->isSubClassOf("LLVMQualPointerType")) {
       AddrSpace = R->getValueAsInt("AddrSpace");
       assert(AddrSpace < 256 && "Address space exceeds 255");
     }
-    Sig.push_back(AddrSpace);
+    if (AddrSpace) {
+      Sig.push_back(IIT_ANYPTR);
+      Sig.push_back(AddrSpace);
+    } else {
+      Sig.push_back(IIT_PTR);
+    }
     return EncodeFixedType(R->getValueAsDef("ElTy"), NextArgNo, Sig);
   }
   
@@ -465,7 +470,7 @@ void printIITEntry(raw_ostream &OS, unsigned char X) {
 void IntrinsicEmitter::EmitGenerator(const std::vector<CodeGenIntrinsic> &Ints, 
                                      raw_ostream &OS) {
   OS << "// Global intrinsic function declaration type table.\n";
-  OS << "#ifdef GET_INTRINSTIC_GENERATOR_GLOBAL\n";
+  OS << "#ifdef GET_INTRINSIC_GENERATOR_GLOBAL\n";
   // NOTE: These enums must be kept in sync with the ones above!
   OS << "enum IIT_Info {\n";
   OS << "  IIT_Done = 0,\n";
@@ -491,7 +496,8 @@ void IntrinsicEmitter::EmitGenerator(const std::vector<CodeGenIntrinsic> &Ints,
   OS << "  IIT_STRUCT4 = 20,\n";
   OS << "  IIT_STRUCT5 = 21,\n";
   OS << "  IIT_EXTEND_VEC_ARG = 22,\n";
-  OS << "  IIT_TRUNC_VEC_ARG = 23\n";
+  OS << "  IIT_TRUNC_VEC_ARG = 23,\n";
+  OS << "  IIT_ANYPTR = 24\n";
   OS << "};\n\n";
 
   
@@ -569,7 +575,7 @@ void IntrinsicEmitter::EmitGenerator(const std::vector<CodeGenIntrinsic> &Ints,
     LongEncodingTable.emit(OS, printIITEntry);
   OS << "  255\n};\n\n";
   
-  OS << "#endif\n\n";  // End of GET_INTRINSTIC_GENERATOR_GLOBAL
+  OS << "#endif\n\n";  // End of GET_INTRINSIC_GENERATOR_GLOBAL
 }
 
 namespace {

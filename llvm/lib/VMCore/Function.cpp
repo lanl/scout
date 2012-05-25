@@ -357,9 +357,9 @@ std::string Intrinsic::getName(ID id, ArrayRef<Type*> Tys) {
   return Result;
 }
 
-#define GET_INTRINSTIC_GENERATOR_GLOBAL
+#define GET_INTRINSIC_GENERATOR_GLOBAL
 #include "llvm/Intrinsics.gen"
-#undef GET_INTRINSTIC_GENERATOR_GLOBAL
+#undef GET_INTRINSIC_GENERATOR_GLOBAL
 
 static Type *DecodeFixedType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
                              ArrayRef<Type*> Tys, LLVMContext &Context) {
@@ -388,7 +388,9 @@ static Type *DecodeFixedType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 16);
   case IIT_V32:
     return VectorType::get(DecodeFixedType(NextElt, Infos, Tys, Context), 32);
-  case IIT_PTR: {
+  case IIT_PTR:
+    return PointerType::getUnqual(DecodeFixedType(NextElt, Infos, Tys,Context));
+  case IIT_ANYPTR: {  // [ANYPTR addrspace, subtype]
     unsigned AddrSpace = Infos[NextElt++];
     Type *PtrTy = DecodeFixedType(NextElt, Infos, Tys,Context);
     return PointerType::get(PtrTy, AddrSpace);

@@ -818,3 +818,49 @@ namespace test43 {
   // CHECK: define hidden void @_ZN6test433barINS_3fooEEEvv
   // CHECK-HIDDEN: define hidden void @_ZN6test433barINS_3fooEEEvv
 }
+
+namespace test44 {
+  template <typename T>
+  struct foo {
+    foo() {}
+  };
+  namespace {
+    struct bar;
+  }
+  template struct DEFAULT foo<bar>;
+  foo<bar> x;
+  // CHECK: define internal void @_ZN6test443fooINS_12_GLOBAL__N_13barEEC1Ev
+  // CHECK-HIDDEN: define internal void @_ZN6test443fooINS_12_GLOBAL__N_13barEEC1Ev
+}
+
+namespace test45 {
+  template <typename T>
+  struct foo {
+    template <typename T2>
+    struct bar {
+      bar() {};
+    };
+  };
+  namespace {
+    struct zed;
+  }
+  template struct DEFAULT foo<int>::bar<zed>;
+  foo<int>::bar<zed> x;
+  // CHECK: define internal void @_ZN6test453fooIiE3barINS_12_GLOBAL__N_13zedEEC1Ev
+  // CHECK-HIDDEN: define internal void @_ZN6test453fooIiE3barINS_12_GLOBAL__N_13zedEEC1Ev
+}
+
+namespace test46 {
+  template <typename T>
+  void foo() {
+  }
+  namespace {
+    struct bar;
+  }
+  template DEFAULT void foo<bar>();
+  void zed() {
+    foo<bar>();
+  }
+  // CHECK: define internal void @_ZN6test463fooINS_12_GLOBAL__N_13barEEEvv
+  // CHECK-HIDDEN: define internal void @_ZN6test463fooINS_12_GLOBAL__N_13barEEEvv
+}

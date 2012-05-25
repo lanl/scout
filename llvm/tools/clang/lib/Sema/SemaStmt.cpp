@@ -161,10 +161,11 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
   if (!E)
     return;
 
+  const Expr *WarnExpr;
   SourceLocation Loc;
   SourceRange R1, R2;
   if (SourceMgr.isInSystemMacro(E->getExprLoc()) ||
-      !E->isUnusedResultAWarning(Loc, R1, R2, Context))
+      !E->isUnusedResultAWarning(WarnExpr, Loc, R1, R2, Context))
     return;
 
   // Okay, we have an unused result.  Depending on what the base expression is,
@@ -179,7 +180,7 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
   if (DiagnoseUnusedComparison(*this, E))
     return;
 
-  E = E->IgnoreParenImpCasts();
+  E = WarnExpr;
   if (const CallExpr *CE = dyn_cast<CallExpr>(E)) {
     if (E->getType()->isVoidType())
       return;
@@ -235,6 +236,11 @@ void Sema::DiagnoseUnusedExprResult(const Stmt *S) {
         << FixItHint::CreateRemoval(TL.getStarLoc());
       return;
     }
+  }
+
+  if (E->isGLValue() && E->getType().isVolatileQualified()) {
+    Diag(Loc, diag::warn_unused_volatile) << R1 << R2;
+    return;
   }
 
   DiagRuntimeBehavior(Loc, 0, PDiag(DiagID) << R1 << R2);

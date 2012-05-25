@@ -18,6 +18,8 @@
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -59,6 +61,22 @@ void RegisterPressure::increase(const TargetRegisterClass *RC,
 void RegisterPressure::decrease(const TargetRegisterClass *RC,
                                 const TargetRegisterInfo *TRI) {
   decreaseSetPressure(MaxSetPressure, RC, TRI);
+}
+
+void RegisterPressure::dump(const TargetRegisterInfo *TRI) {
+  dbgs() << "Live In: ";
+  for (unsigned i = 0, e = LiveInRegs.size(); i < e; ++i)
+    dbgs() << PrintReg(LiveInRegs[i], TRI) << " ";
+  dbgs() << '\n';
+  dbgs() << "Live Out: ";
+  for (unsigned i = 0, e = LiveOutRegs.size(); i < e; ++i)
+    dbgs() << PrintReg(LiveOutRegs[i], TRI) << " ";
+  dbgs() << '\n';
+  for (unsigned i = 0, e = MaxSetPressure.size(); i < e; ++i) {
+    if (MaxSetPressure[i] != 0)
+      dbgs() << TRI->getRegPressureSetName(i) << "=" << MaxSetPressure[i]
+             << '\n';
+  }
 }
 
 /// Increase the current pressure as impacted by these physical registers and
@@ -356,7 +374,7 @@ void RegPressureTracker::addLiveRegs(ArrayRef<unsigned> Regs) {
 /// Add PhysReg to the live in set and increase max pressure.
 void RegPressureTracker::discoverPhysLiveIn(unsigned Reg) {
   assert(!LivePhysRegs.count(Reg) && "avoid bumping max pressure twice");
-  if (findRegAlias(Reg, P.LiveInRegs, TRI) == P.LiveInRegs.end())
+  if (findRegAlias(Reg, P.LiveInRegs, TRI) != P.LiveInRegs.end())
     return;
 
   // At live in discovery, unconditionally increase the high water mark.
@@ -367,7 +385,7 @@ void RegPressureTracker::discoverPhysLiveIn(unsigned Reg) {
 /// Add PhysReg to the live out set and increase max pressure.
 void RegPressureTracker::discoverPhysLiveOut(unsigned Reg) {
   assert(!LivePhysRegs.count(Reg) && "avoid bumping max pressure twice");
-  if (findRegAlias(Reg, P.LiveOutRegs, TRI) == P.LiveOutRegs.end())
+  if (findRegAlias(Reg, P.LiveOutRegs, TRI) != P.LiveOutRegs.end())
     return;
 
   // At live out discovery, unconditionally increase the high water mark.

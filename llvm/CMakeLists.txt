@@ -84,7 +84,6 @@ set(LLVM_ALL_TARGETS
   MSP430
   NVPTX
   PowerPC
-  PTX
   PTXBackend
   Sparc
   X86
