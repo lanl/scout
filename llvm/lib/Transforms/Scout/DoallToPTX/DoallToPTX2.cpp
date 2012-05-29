@@ -39,12 +39,6 @@ const char *DoallToPTX2::getPassName() const {
 
 GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   PassManager pm;
-  //pm.add(createVerifierPass());
-  //pm.run(ptxModule);
-
-  //std::cerr << "$$$$$$$$$$$$$$$$$$$$$$$$ AT TOP OF MODULE" << std::endl;
-  //ptxModule.dump();
-  //std::cerr << "$$$$$$$$$$$$$$$$$$$$$$$$ END MODULE" << std::endl;
 
   const Target *PTXTarget = 0;
   for(TargetRegistry::iterator it = TargetRegistry::begin(),
@@ -56,7 +50,7 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
     }
   }
 
-  assert(PTXTarget && "PTXBackend failed to load!");
+  assert(PTXTarget && "NVPTXBackend failed to load!");
   
   std::string AssemblyCode;
   raw_string_ostream StringOut(AssemblyCode);
@@ -85,7 +79,7 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   else
     pm.add(new TargetData(&ptxModule));
 
-  std::auto_ptr< TargetMachine > Target(TheTarget);
+  std::auto_ptr<TargetMachine> Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
 
   const TargetMachine::CodeGenFileType FileType = 
@@ -126,13 +120,14 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   for(Module::iterator fitr = ptxModule.begin(),
         fitrEnd = ptxModule.end(); fitr != fitrEnd; ++fitr){
     Function* f = &*fitr;
-    f->removeFnAttr(Attribute::NoUnwind|
-                    Attribute::UWTable|
+
+    /*
+    f->removeFnAttr(Attribute::UWTable|
                     Attribute::StackProtect);
+    */
 
     if(f->getName().startswith("renderall") || 
        f->getName().startswith("forall")){
-    //if(!f->getName().startswith("llvm.ptx")){
       SmallVector<Value*, 3> av;
       av.push_back(f);
       av.push_back(MDString::get(ptxModule.getContext(), "kernel"));
@@ -142,9 +137,11 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
     }
   }
 
-  //std::cerr << "----------------- pruned module" << std::endl;
-  //ptxModule.dump();
-  //std::cerr << "----------------- end pruned module" << std::endl;
+  /*
+  std::cerr << "----------------- pruned module" << std::endl;
+  ptxModule.dump();
+  std::cerr << "----------------- end pruned module" << std::endl;
+  */
 
   pm.run(ptxModule);
   PTXOut.flush();
@@ -154,8 +151,10 @@ GlobalValue *DoallToPTX2::embedPTX(Module &ptxModule, Module &cpuModule) {
   Constant *AssemblyCodeArray =
   ConstantDataArray::getString(cpuModule.getContext(), AssemblyCode);  
 
-  //std::cerr << "--------------------- ASSEMBLY" << std::endl;
-  //std::cerr << AssemblyCode << std::endl;
+  /*
+  std::cerr << "--------------------- ASSEMBLY" << std::endl;
+  std::cerr << AssemblyCode << std::endl;
+  */
 
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),
@@ -523,67 +522,6 @@ bool DoallToPTX2::runOnModule(Module &M) {
   }
   return true;
 }
-
-#ifdef NEVER_DEFINED
-bool DoallToPTX2::runOnModule(Module &M){  
-  const Target *PTXTarget = 0;
-  for(TargetRegistry::iterator it = TargetRegistry::begin(),
-        ie = TargetRegistry::end(); it != ie; ++it) {
-    //if(strcmp(it->getName(), "nvptx") == 0) {
-    if(strcmp(it->getName(), "nvptx64") == 0) {
-      PTXTarget = &*it;
-      break;
-    }
-  }
-
-  std::string target_triple = sys::getDefaultTargetTriple();
-  
-  Triple TargetTriple = Triple(target_triple);
-  TargetTriple.setArch(Triple::x86);
-
-
-  const std::string CPU = "";
-  const std::string featuresStr = "";
-  const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
-
-  TargetMachine *TheTarget =
-    PTXTarget->createTargetMachine(TargetTriple.getTriple(),
-                                   CPU,
-                                   featuresStr,
-				   TargetOptions(),
-				   Reloc::Default,
-				   CodeModel::Default,
-				   Lvl);
-
-  std::string AssemblyCode;
-  raw_string_ostream StringOut(AssemblyCode);
-  formatted_raw_ostream PTXOut(StringOut);
-
-  const TargetMachine::CodeGenFileType FileType = 
-    TargetMachine::CGFT_AssemblyFile;
-
-  ValueToValueMapTy valueMap;
-  Module* ptxModule(CloneModule(&M, valueMap));  
-
-  pruneModule(*ptxModule, valueMap, *FN);
-
-  bool uniform = cuda.setGridAndBlockSizes();    
-
-  setGPUThreading(cuda, ptxModule->getFunction(FN->getName()), uniform);
-
-  PassManager pm;
-  pm.add(createVerifierPass());
-  pm.run(ptxModule);
-
-  TheTarget->addPassesToEmitFile(pm, PTXOut, FileType, false);
-
-  pm.add(createVerifierPass());
-  pm.run(ptxModule);
-  PTXOut.flush();
-
-  return true;
-}
-#endif
 
 char DoallToPTX2::ID = 1;
 RegisterPass< DoallToPTX2 > DoallToPTX2("Doall-to-PTX2", "Generate PTX assembly from doall region and embed assembly as a string literal");

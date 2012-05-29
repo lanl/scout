@@ -25,22 +25,22 @@ llvm::Value *PTXDriver2::insertGetThreadIdx(int dim) {
   assert(dim == X || dim == Y || dim == Z &&
          "ThreadIdx.* must specify a dimension x, y, or z!");
 
-  std::string f = std::string("llvm.ptx.read.tid.").append(1, dim);
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.tid.").append(1, dim);
 
   Function* function = getModule().getFunction(f);
   if(!function){
-    std::vector<llvm::Type*> types;
-    
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
     llvm::FunctionType* ft =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(getModule().getContext()),
-                              types, false);
+      llvm::FunctionType::get(i32, false);
     
     function =
       llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                             f, &getModule());      
+                             f, &getModule());
+    
   }
 
-  std::vector<llvm::Value*> args;
   return getBuilder().CreateCall(function);
 }
 
@@ -48,22 +48,21 @@ llvm::Value *PTXDriver2::insertGetBlockDim(int dim) {
   assert(dim == X || dim == Y || dim == Z &&
          "BlockDim.* must specify a dimension x, y, or z!");
 
-  std::string f = std::string("llvm.ptx.read.ntid.").append(1, dim);
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.ntid.").append(1, dim);
 
   Function* function = getModule().getFunction(f);
   if(!function){
-    std::vector<llvm::Type*> types;
-    
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
     llvm::FunctionType* ft =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(getModule().getContext()),
-                              types, false);
+      llvm::FunctionType::get(i32, false);
     
     function =
       llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                             f, &getModule());      
+                             f, &getModule());
   }
 
-  std::vector<llvm::Value*> args;
   return getBuilder().CreateCall(function);  
 }
 
@@ -71,22 +70,21 @@ llvm::Value *PTXDriver2::insertGetBlockIdx(int dim) {
   assert(dim == X || dim == Y &&
          "BlockIdx.* must specify a dimension x, or y!");
 
-  std::string f = std::string("llvm.ptx.read.ctaid.").append(1, dim);
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.ctaid.").append(1, dim);
 
   Function* function = getModule().getFunction(f);
   if(!function){
-    std::vector<llvm::Type*> types;
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
     
     llvm::FunctionType* ft =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(getModule().getContext()),
-                              types, false);
+      llvm::FunctionType::get(i32, false);
     
     function =
       llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                             f, &getModule());      
+                             f, &getModule());
   }
 
-  std::vector<llvm::Value*> args;
   return getBuilder().CreateCall(function);
 }
 
@@ -94,22 +92,21 @@ llvm::Value *PTXDriver2::insertGetGridDim(int dim) {
   assert(dim == X || dim == Y &&
          "GridDim.* must specify dimension x or y!");
 
-  std::string f = std::string("llvm.ptx.read.nctaid.").append(1, dim);
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.nctaid.").append(1, dim);
 
   Function* function = getModule().getFunction(f);
   if(!function){
-    std::vector<llvm::Type*> types;
-    
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
     llvm::FunctionType* ft =
-      llvm::FunctionType::get(llvm::Type::getInt32Ty(getModule().getContext()),
-                              types, false);
+      llvm::FunctionType::get(i32, false);
     
     function =
       llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                             f, &getModule());      
+                             f, &getModule());
   }
 
-  std::vector<llvm::Value*> args;
   return getBuilder().CreateCall(function);
 }
 
