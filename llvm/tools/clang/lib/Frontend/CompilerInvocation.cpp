@@ -1169,15 +1169,12 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   // Enable Scout NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-
-  // Enable Scout NVIDIA GPU support if OPT_gpu is present.
-  Opts.ScoutNvidiaGPU2 = Args.hasArg(OPT_gpu2);
   
   // Enable Scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
   // OPT_gpu and OPT_cpuThreads operate exclusively.
-  if((Opts.ScoutNvidiaGPU || Opts.ScoutNvidiaGPU2) && Opts.ScoutCPUThreads)
+  if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
     Diags.Report(diag::err_scout_cpu_gpu_combo);
 
   if (Args.hasArg(OPT_gline_tables_only)) {
@@ -2041,7 +2038,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   // SCOUTCODE ndm - detect Scout -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-  Opts.ScoutNvidiaGPU2 = Args.hasArg(OPT_gpu2);
   // ENDSCOUTCODE
 
   // FIXME: Eliminate this dependency.

@@ -2131,7 +2131,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     
     std::string args;
     
-    if(getLangOpts().ScoutNvidiaGPU || getLangOpts().ScoutNvidiaGPU2){
+    if(getLangOpts().ScoutNvidiaGPU){
       args = "true";
     }
     else{

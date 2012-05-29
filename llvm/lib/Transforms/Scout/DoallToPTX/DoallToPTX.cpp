@@ -13,7 +13,10 @@
 
 #include "llvm/Support/InstVisitor.h"
 
+#include "llvm/Target/TargetData.h"
+
 #include <map>
+#include <vector>
 
 using namespace llvm;
 
@@ -36,20 +39,19 @@ const char *DoallToPTX::getPassName() const {
 
 GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   PassManager pm;
-  pm.add(createVerifierPass());
-  pm.run(ptxModule);
 
   const Target *PTXTarget = 0;
   for(TargetRegistry::iterator it = TargetRegistry::begin(),
         ie = TargetRegistry::end(); it != ie; ++it) {
-    if(strcmp(it->getName(), "simple-ptx") == 0) {
+    //if(strcmp(it->getName(), "nvptx") == 0) {
+    if(strcmp(it->getName(), "nvptx64") == 0) {
       PTXTarget = &*it;
       break;
     }
   }
 
-  assert(PTXTarget && "PTXBackend failed to load!");
-
+  assert(PTXTarget && "NVPTXBackend failed to load!");
+  
   std::string AssemblyCode;
   raw_string_ostream StringOut(AssemblyCode);
   formatted_raw_ostream PTXOut(StringOut);
@@ -57,9 +59,9 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   std::string target_triple = sys::getDefaultTargetTriple();
   
   Triple TargetTriple = Triple(target_triple);
-  TargetTriple.setArch(Triple::x86);
+  TargetTriple.setArch(Triple::nvptx64);
 
-  const std::string CPU = "";
+  const std::string CPU = "sm_20";
   const std::string featuresStr = "";
   const CodeGenOpt::Level Lvl = CodeGenOpt::Aggressive;
 
@@ -72,27 +74,87 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 				   CodeModel::Default,
 				   Lvl);
 
-  std::auto_ptr< TargetMachine > Target(TheTarget);
+  if(const TargetData* targetData = TheTarget->getTargetData())
+    pm.add(new TargetData(*targetData));
+  else
+    pm.add(new TargetData(&ptxModule));
+
+  std::auto_ptr<TargetMachine> Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
 
-  const TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_AssemblyFile;
+  const TargetMachine::CodeGenFileType FileType = 
+    TargetMachine::CGFT_AssemblyFile;
 
-  const bool DisableVerify = false;
+  const bool DisableVerify = true;
 
   Target->addPassesToEmitFile(pm, PTXOut, FileType, DisableVerify);
 
   pm.add(createVerifierPass());
+
+  typedef std::vector<GlobalVariable*> GlobalVec;
+  GlobalVec globalsToRemove;
+
+  Module::global_iterator itr = ptxModule.global_begin();
+  while(itr != ptxModule.global_end()){
+    GlobalVariable* global = &*itr;
+    
+    Type* type = global->getType();
+
+    if(PointerType* pointerType = dyn_cast<PointerType>(type)){
+      if(pointerType->getAddressSpace() == 0){
+        //std::cerr << "####### removing global" << std::endl;
+        //global->dump();
+        globalsToRemove.push_back(global);
+      }
+    }
+    ++itr;
+  }
+
+  for(size_t i = 0; i < globalsToRemove.size(); ++i){
+    globalsToRemove[i]->eraseFromParent();
+  }
+  
+  llvm::NamedMDNode* annotations =
+    ptxModule.getOrInsertNamedMetadata("nvvm.annotations");
+
+  for(Module::iterator fitr = ptxModule.begin(),
+        fitrEnd = ptxModule.end(); fitr != fitrEnd; ++fitr){
+    Function* f = &*fitr;
+
+    /*
+    f->removeFnAttr(Attribute::UWTable|
+                    Attribute::StackProtect);
+    */
+
+    if(f->getName().startswith("renderall") || 
+       f->getName().startswith("forall")){
+      SmallVector<Value*, 3> av;
+      av.push_back(f);
+      av.push_back(MDString::get(ptxModule.getContext(), "kernel"));
+      av.push_back(ConstantInt::get(IntegerType::get(ptxModule.getContext(),
+                                                     32), 1));
+      annotations->addOperand(MDNode::get(ptxModule.getContext(), av)); 
+    }
+  }
+
+  /*
+  std::cerr << "----------------- pruned module" << std::endl;
+  ptxModule.dump();
+  std::cerr << "----------------- end pruned module" << std::endl;
+  */
+
   pm.run(ptxModule);
   PTXOut.flush();
 
   std::string ptxStrName = "ptxAssembly";
 
-  // ndm - MERGE
-  //Constant *AssemblyCodeArray =
-  //ConstantArray::get(cpuModule.getContext(), AssemblyCode);
-
   Constant *AssemblyCodeArray =
   ConstantDataArray::getString(cpuModule.getContext(), AssemblyCode);  
+
+  /*
+  std::cerr << "--------------------- ASSEMBLY" << std::endl;
+  std::cerr << AssemblyCode << std::endl;
+  */
 
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),

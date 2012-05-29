@@ -110,7 +110,6 @@ public:
   unsigned UnwindTables      : 1; ///< Emit unwind tables.
 
   unsigned ScoutNvidiaGPU    : 1; /// Scout NVIDIA GPU code generation.
-  unsigned ScoutNvidiaGPU2   : 1; /// Scout NVIDIA GPU2 code generation.
   unsigned ScoutCPUThreads   : 1; /// Scout CPU multithreading code generation.
 
   /// Attempt to use register sized accesses to bit-fields in structures, when

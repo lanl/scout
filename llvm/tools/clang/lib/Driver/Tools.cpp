@@ -1973,7 +1973,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
-  Args.AddAllArgs(CmdArgs, options::OPT_gpu2);
   
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).

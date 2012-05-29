@@ -512,8 +512,6 @@ def view_ast : Flag<"-view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<"-gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
-def gpu2 : Flag<"-gpu2">,
-  HelpText<"Enable NVIDIA GPU2 support.">;
 def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
 def debugWait : Flag<"-debug-wait">,

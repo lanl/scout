@@ -11,64 +11,103 @@
 
 #include "llvm/Transforms/Scout/Driver/PTXDriver.h"
 
-using namespace llvm;
+#include <iostream>
 
-static void createSpecialReg(Module &module, Type *type,
-                             const StringRef name, Constant *cons) {
-  if(!module.getNamedGlobal(name)) {
-    new GlobalVariable(module,
-                       type,
-                       false,
-                       GlobalValue::ExternalLinkage,
-                       cons,
-                       name);
-  }
-}
+using namespace llvm;
 
 PTXDriver::PTXDriver(Module &module, IRBuilder<> &builder, bool debug)
   : Driver(module, builder, debug), _blocksInY(NULL)
 {
-  Type *i16Ty = llvm::Type::getInt16Ty(llvm::getGlobalContext());
-  Constant *zero = llvm::ConstantInt::get(i16Ty, 0);
-  Constant *one  = llvm::ConstantInt::get(i16Ty, 1);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_tid_x", zero);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_tid_y", zero);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_tid_z", zero);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_ntid_x", one);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_ntid_y", one);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_ntid_z", one);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_ctaid_x", zero);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_ctaid_y", zero);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_nctaid_x", one);
-  createSpecialReg(module, i16Ty, "__ptx_sreg_nctaid_y", one);
+  
 }
 
 llvm::Value *PTXDriver::insertGetThreadIdx(int dim) {
   assert(dim == X || dim == Y || dim == Z &&
          "ThreadIdx.* must specify a dimension x, y, or z!");
-  std::string reg = std::string("__ptx_sreg_tid_").append(1, dim);
-  return insertGet(reg.c_str());
+
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.tid.").append(1, dim);
+
+  Function* function = getModule().getFunction(f);
+  if(!function){
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
+    llvm::FunctionType* ft =
+      llvm::FunctionType::get(i32, false);
+    
+    function =
+      llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                             f, &getModule());
+    
+  }
+
+  return getBuilder().CreateCall(function);
 }
 
 llvm::Value *PTXDriver::insertGetBlockDim(int dim) {
   assert(dim == X || dim == Y || dim == Z &&
          "BlockDim.* must specify a dimension x, y, or z!");
-  std::string reg = std::string("__ptx_sreg_ntid_").append(1, dim);
-  return insertGet(reg.c_str());
+
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.ntid.").append(1, dim);
+
+  Function* function = getModule().getFunction(f);
+  if(!function){
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
+    llvm::FunctionType* ft =
+      llvm::FunctionType::get(i32, false);
+    
+    function =
+      llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                             f, &getModule());
+  }
+
+  return getBuilder().CreateCall(function);  
 }
 
 llvm::Value *PTXDriver::insertGetBlockIdx(int dim) {
   assert(dim == X || dim == Y &&
          "BlockIdx.* must specify a dimension x, or y!");
-  std::string reg = std::string("__ptx_sreg_ctaid_").append(1, dim);
-  return insertGet(reg.c_str());
+
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.ctaid.").append(1, dim);
+
+  Function* function = getModule().getFunction(f);
+  if(!function){
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+    
+    llvm::FunctionType* ft =
+      llvm::FunctionType::get(i32, false);
+    
+    function =
+      llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                             f, &getModule());
+  }
+
+  return getBuilder().CreateCall(function);
 }
 
 llvm::Value *PTXDriver::insertGetGridDim(int dim) {
   assert(dim == X || dim == Y &&
          "GridDim.* must specify dimension x or y!");
-  std::string reg = std::string("__ptx_sreg_nctaid_").append(1, dim);
-  return insertGet(reg.c_str());
+
+  std::string f = 
+    std::string("llvm.nvvm.read.ptx.sreg.nctaid.").append(1, dim);
+
+  Function* function = getModule().getFunction(f);
+  if(!function){
+    llvm::Type* i32 = llvm::Type::getInt32Ty(getModule().getContext());
+
+    llvm::FunctionType* ft =
+      llvm::FunctionType::get(i32, false);
+    
+    function =
+      llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
+                             f, &getModule());
+  }
+
+  return getBuilder().CreateCall(function);
 }
 
 void PTXDriver::setBlocksInY(const unsigned blocksInY) {

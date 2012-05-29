@@ -37,7 +37,6 @@
 #include "llvm/Transforms/Scalar.h"
 
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
-#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX2.h"
 using namespace clang;
 using namespace llvm;
 
@@ -146,11 +145,6 @@ void EmitAssemblyHelper::CreatePasses() {
   if(CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
-    MPM.run(*TheModule);
-  }
-  else if(CodeGenOpts.ScoutNvidiaGPU2) {
-    PassManager MPM;
-    MPM.add(createDoallToPTX2Pass());
     MPM.run(*TheModule);
   }
 
