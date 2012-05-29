@@ -613,7 +613,7 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
-// scout ndm - Scout Mesh
+// scout - Scout Mesh
 // return true if there is an error
 
 static bool
@@ -913,7 +913,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
-  // scout ndm - Scout vector types
+  // scout - Scout vector types
   
   if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){
     QualType VCType;

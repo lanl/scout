@@ -5612,7 +5612,7 @@ def err_module_private_definition : Error<
   "definition of %0 must be imported before it is required">;
 }
 
-// scout ndm - Scout
+// scout - Scout
 
 let CategoryName = "Scout Issue" in {
 def err_loop_variable_shadows_forall : Error<

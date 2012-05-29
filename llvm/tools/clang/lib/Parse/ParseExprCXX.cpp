@@ -1537,7 +1537,7 @@ void Parser::ParseCXXSimpleTypeSpecifier(DeclSpec &DS) {
     break;
 
 
-  // scout ndm - Scout vector types
+  // scout - Scout vector types
       
   case tok::kw_bool2:
     DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec, DiagID);

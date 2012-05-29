@@ -28,7 +28,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
-// scout ndm - include Scout AST viewer
+// scout - include Scout AST viewer
 #include "clang/AST/ASTViewScout.h"
 
 #include <iostream>

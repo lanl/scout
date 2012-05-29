@@ -2089,7 +2089,7 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
-  // scout ndm - Scout Mesh fields are instances of FieldDecl, with appropriate
+  // scout - Scout Mesh fields are instances of FieldDecl, with appropriate
   // FieldType of MeshFieldType set, a normal FieldDecl from a non-mesh,
   // e.g: RecordDecl, gets FieldNone
   
@@ -3250,7 +3250,7 @@ public:
   }
 };
 
-// scout ndm - Scout Mesh
+// scout - Scout Mesh
 // A mesh declaration is similar to a TagDecl/RecordDecl but different
 // enough that a new subclass of TypeDecl was created. It encapsulates
 // a mesh definition such as:

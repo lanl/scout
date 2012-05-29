@@ -3050,7 +3050,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
   Braces.consumeClose();
 }
 
-// scout ndm - Scout Mesh
+// scout - Scout Mesh
 bool Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 

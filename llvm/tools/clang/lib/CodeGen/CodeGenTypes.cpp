@@ -345,7 +345,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
                                  static_cast<unsigned>(Context.getTypeSize(T)));
       break;
 
-    // scout ndm - Scout vector types
+    // scout - Scout vector types
     case BuiltinType::Bool2:
       return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 2);
     case BuiltinType::Bool3:
@@ -570,7 +570,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
-  // scout ndm - Scout Mesh
+  // scout - Scout Mesh
   case Type::Mesh: {
     // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();

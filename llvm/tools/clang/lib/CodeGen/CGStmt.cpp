@@ -615,7 +615,7 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
 }
 
-// scout ndm - Scout Stmts
+// scout - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
   

@@ -713,7 +713,7 @@ def err_seh___except_filter : Error<
 def err_seh___finally_block : Error<
   "%0 only allowed in __finally block">;
 
-// scout ndm - Scout specific errors
+// scout - Scout specific errors
 def err_expected_numeric_constant_in_mesh_def : Error<
 "expected a numeric constant in mesh definition dimensions">;
 def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;

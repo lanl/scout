@@ -10570,7 +10570,7 @@ void Sema::ActOnPragmaWeakAlias(IdentifierInfo* Name,
   }
 }
 
-// scout ndm - Scout Mesh
+// scout - Scout Mesh
 // called at the begining part of a mesh definition
 Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,

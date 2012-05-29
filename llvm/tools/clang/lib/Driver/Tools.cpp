@@ -4278,7 +4278,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
-  // scout ndm - add Scout libs and other dependencies
+  // scout - add Scout libs and other dependencies
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");

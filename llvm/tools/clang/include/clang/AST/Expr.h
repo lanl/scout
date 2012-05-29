@@ -2437,7 +2437,7 @@ public:
   friend class ASTStmtWriter;
 };
 
-// scout ndm
+// scout
 // represents indexing a scout vector, e.g:
 // float3 v;
 // v.y;

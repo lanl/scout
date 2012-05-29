@@ -2477,7 +2477,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   return move(Result);
 }
 
-// scout ndm - Parse the right hand side of a vector expression, e.g:
+// scout - Parse the right hand side of a vector expression, e.g:
 // 1.0, or float3(1.0, 1.0, 1.0) 
 ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType vectorType){
   size_t length;

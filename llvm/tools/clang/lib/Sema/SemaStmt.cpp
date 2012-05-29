@@ -2928,7 +2928,7 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
 }
 
-// scout ndm - ForAllVisitor class to check that LHS mesh field assignment
+// scout - ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
 // semantic checks
 

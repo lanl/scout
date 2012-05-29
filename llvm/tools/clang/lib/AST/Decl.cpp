@@ -2808,7 +2808,7 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
-// scout ndm - Scout Decl implementation
+// scout - Scout Decl implementation
 MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
                            SourceLocation StartLoc, SourceLocation IdLoc,
                            IdentifierInfo* Id, MeshDecl* PrevDecl){

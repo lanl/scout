@@ -113,7 +113,7 @@ public:
   Lexer(FileID FID, const llvm::MemoryBuffer *InputBuffer,
         const SourceManager &SM, const LangOptions &LangOpts);
 
-  // scout ndm - Ctor for string lexer
+  // scout - Ctor for string lexer
   Lexer(const std::string& str, Preprocessor& PP);
 
   // scout - added Dtor

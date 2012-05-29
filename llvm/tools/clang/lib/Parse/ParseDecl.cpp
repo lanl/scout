@@ -5420,7 +5420,7 @@ bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
   return false;
 }
 
-// scout ndm - Scout Mesh
+// scout - Scout Mesh
 // this method is used to parse a mesh field declaration, e.g:
 // uniform mesh MyMesh[512,512]{
 //   cells:

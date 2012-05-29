@@ -1715,7 +1715,7 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
   return Actions.ConvertDeclToDeclGroup(Import.get());
 }
 
-// scout ndm - parser utility method
+// scout - parser utility method
 // insert CPP code into the lexer stream for parsing. 
 // Inserts a stream of tokens before or after the current token Tok.
 // This is a good method for handling cases such as inserting the call
