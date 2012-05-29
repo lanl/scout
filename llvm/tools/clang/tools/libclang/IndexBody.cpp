@@ -145,7 +145,7 @@ public:
     return true;
   }
 
-  // SCOUTCODE - stubs to avoid linking errors in libclang
+  // scout - stubs to avoid linking errors in libclang
   bool TraverseMeshType(MeshType*){
     return true;
   }
@@ -173,8 +173,6 @@ public:
   bool TraverseRenderAllStmt(RenderAllStmt*){
     return true;
   }
-
-  // ENDSCOUTCODE
 };
 
 } // anonymous namespace

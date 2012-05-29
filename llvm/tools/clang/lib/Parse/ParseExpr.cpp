@@ -361,7 +361,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     ExprResult RHS;
     bool RHSIsInitList = false;
 
-    // SCOUTCODE Scout vector binary operator rhs
+    // scout - vector binary operator rhs
     bool rhsSet = false;
     
     if(!LHS.isInvalid()){
@@ -395,7 +395,6 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
       else
         RHS = ParseCastExpression(false);
     }
-    // ENDSCOUTCODE
      
     if (RHS.isInvalid())
       LHS = ExprError();
@@ -1026,7 +1025,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_float:
   case tok::kw_double:
 
-  // SCOUTCODE ndm - Scout vector types
+  // scout - Scout vector types
       
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -1049,7 +1048,6 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_double2:
   case tok::kw_double3:
   case tok::kw_double4: 
-  // ENDSCOUTCODE
 
   case tok::kw_void:
   case tok::kw_typename:
@@ -2479,7 +2477,7 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   return move(Result);
 }
 
-// SCOUTCODE ndm - Parse the right hand side of a vector expression, e.g:
+// scout ndm - Parse the right hand side of a vector expression, e.g:
 // 1.0, or float3(1.0, 1.0, 1.0) 
 ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType vectorType){
   size_t length;
@@ -2738,7 +2736,6 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
 
   return ParseExpression();
 }
-// ENDSCOUTCODE
 
 /// ParseObjCBoolLiteral - This handles the objective-c Boolean literals.
 ///

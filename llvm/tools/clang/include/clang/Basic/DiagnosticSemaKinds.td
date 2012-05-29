@@ -5612,7 +5612,7 @@ def err_module_private_definition : Error<
   "definition of %0 must be imported before it is required">;
 }
 
-// SCOUTCODE ndm - Scout
+// scout ndm - Scout
 
 let CategoryName = "Scout Issue" in {
 def err_loop_variable_shadows_forall : Error<
@@ -5683,7 +5683,6 @@ def err_invalid_scout_vector_component : Error<
 
 def err_invalid_scout_color_component : Error<
 "invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
-// ENDSCOUTCODE
 
 } // end of sema component.
 

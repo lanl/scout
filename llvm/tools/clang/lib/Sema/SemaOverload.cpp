@@ -1168,7 +1168,7 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     return ICS;
   }
 
-  // SCOUTCODE ndm - handle conversion between mesh types
+  // scout - handle conversion between mesh types
   const MeshType* MTFrom = FromType->getAs<MeshType>();
   const MeshType* MTTo = ToType->getAs<MeshType>();
 
@@ -1181,7 +1181,6 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
 
     return ICS;
   }
-  // ENDSCOUTCODE
 
   return TryUserDefinedConversion(S, From, ToType, SuppressUserConversions,
                                   AllowExplicit, InOverloadResolution, CStyle,
@@ -6411,9 +6410,8 @@ class BuiltinOperatorOverloadBuilder {
   static const unsigned FirstPromotedArithmeticType = 0,
                         LastPromotedArithmeticType = 9;
 
-  // SCOUTCODE ndm - updated count from 18 to 39
+  // scout - updated count from 18 to 39
   static const unsigned NumArithmeticTypes = 39;
-  // ENDSCOUTCODE
 
   /// \brief Get the canonical type for a given arithmetic type index.
   CanQualType getArithmeticType(unsigned index) {
@@ -6444,7 +6442,7 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::UnsignedCharTy,
       &ASTContext::UnsignedShortTy
 
-      // SCOUTCODE ndm - Scout vector types
+      // scout - vector types
         
       , &ASTContext::Bool2Ty,
       &ASTContext::Bool3Ty,
@@ -6467,7 +6465,6 @@ class BuiltinOperatorOverloadBuilder {
       &ASTContext::Double2Ty,
       &ASTContext::Double3Ty,
       &ASTContext::Double4Ty
-      // ENDSCOUTCODE
       // End of integral types.
       // FIXME: What about complex?
     };

@@ -22,9 +22,8 @@
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Target/TargetData.h"
 
-// SCOUTCODE - include code extractor
+// scout - include code extractor
 #include "llvm/Transforms/Utils/CodeExtractor.h"
-// ENDSCOUTCODE
 
 #include <algorithm>
 
@@ -497,7 +496,7 @@ static void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
     llvm::StructType::get(CGM.getLLVMContext(), elementTypes, true);
 }
 
-// SCOUTCODE - no ndm
+// scout - no ndm
 llvm::Value 
 *CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
                                         CGBlockInfo &blockInfo,
@@ -885,13 +884,12 @@ llvm::Value
   llvm::Value* numDims = llvm::ConstantInt::get(Int32Ty, numDimensions);
   llvm::Value* numInputs = llvm::ConstantInt::get(Int32Ty, inputs.size());
 
-  // ndm - to enable block queueing
+  // scout - to enable block queueing
   return Builder.CreateCall3(queueBlockFunc, genericBlk, numDims, numInputs);
 
-  // ndm - to call the block directly
+  // scout - to call the block directly
   //Builder.CreateCall(blk, genericBlk);
 }
-// ENDSCOUTCODE
 
 /// Enter the scope of a block.  This should be run at the entrance to
 /// a full-expression so that the block's cleanups are pushed at the

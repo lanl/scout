@@ -178,9 +178,8 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Decltype:
     case Type::UnaryTransform:
 
-    // SCOUTCODE ndm - Scout Mesh
+    // scout - Mesh
     case Type::Mesh:
-	 // ENDSCOUTCODE
 
     case Type::Record:
     case Type::Enum:
@@ -919,19 +918,17 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
 }
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
 
-// SCOUTCODE ndm - conver mesh type to mesh name - used in diagnostics
+// scout - convert mesh type to mesh name - used in diagnostics
 void TypePrinter::printMeshBefore(const MeshType *T, raw_ostream &OS) {
   MeshDecl* MD = T->getDecl();
 
   OS << MD->getIdentifier()->getName().str();
 }
-// ENDSCOUTCODE
 
-// SCOUTCODE ndm - conver mesh type to mesh name - used in diagnostics
+// scout - convert mesh type to mesh name - used in diagnostics
 void TypePrinter::printMeshAfter(const MeshType *T, raw_ostream &OS) {
   
 }
-// ENDSCOUTCODE
 
 void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
                                               raw_ostream &OS) { 

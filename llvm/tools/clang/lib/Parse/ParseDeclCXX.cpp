@@ -3050,7 +3050,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
   Braces.consumeClose();
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout ndm - Scout Mesh
 bool Parser::ParseMeshSpecifier(DeclSpec &DS){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
@@ -3119,7 +3119,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
   return false;
 }
 
-// ndm - Scout Mesh SCOUTCODE
+// scout - Scout Mesh
 // parse the body of a defintion of a mesh, e.g:
 // uniform mesh MyMesh [1024,1024] {
 ///     <BODY>
@@ -3206,7 +3206,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     }
   }
   
-  // ndm - test - dump fields SCOUTCODE
+  // scout - dump fields
   /*
   llvm::SmallVectorImpl<Decl*>::iterator itr = FieldDecls.begin();
   while(itr != FieldDecls.end()){
@@ -3232,7 +3232,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     Diag(LBraceLoc, diag::warn_empty_mesh);
   }
 
-  // ndm - MERGE SCOUTCODE
+  // scout - MERGE
   //SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
   assert(Tok.is(tok::r_brace));
   ConsumeBrace();
@@ -3246,5 +3246,4 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   
   return Actions.ActOnMeshFinish(StartLoc, Dec);
 }
-// ENDSCOUTCODE
 

@@ -19,11 +19,10 @@ def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
 
-// SCOUTCODE ndm - Scout Stmts
+// scout - Scout Stmts
 def ForAllStmt : Stmt;
 def ForAllArrayStmt : DStmt<ForAllStmt>;
 def RenderAllStmt : DStmt<ForAllStmt>;
-// ENDSCOUTCODE
 
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
@@ -69,9 +68,8 @@ def ArraySubscriptExpr : DStmt<Expr>;
 def CallExpr : DStmt<Expr>;
 def MemberExpr : DStmt<Expr>;
 
-// SCOUTCODE ndm - Scout Vector Member Expr
+// scout - Scout Vector Member Expr
 def ScoutVectorMemberExpr : DStmt<Expr>;
-// ENDSCOUTCODE
 
 def CastExpr : DStmt<Expr, 1>;
 def BinaryOperator : DStmt<Expr>;

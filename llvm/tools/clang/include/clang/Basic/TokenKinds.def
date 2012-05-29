@@ -189,9 +189,8 @@ PUNCTUATOR(hash,                "#")
 PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
-// SCOUTCODE ndm - Scout specific punctuators
+// scout - specific punctuators
 PUNCTUATOR(periodperiod,        "..")
-// ENDSCOUTCODE
 
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")
@@ -224,8 +223,7 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   BOOLSUPPORT - This is a keyword if 'bool' is a built-in type
 //
 
-// SCOUTCODE ndm - Scout keywords
-
+// scout - Scout keywords
 SCOUT_KEYWORD(bool2)
 SCOUT_KEYWORD(bool3)
 SCOUT_KEYWORD(bool4)
@@ -267,7 +265,6 @@ SCOUT_KEYWORD(image)
 SCOUT_KEYWORD(as)
 SCOUT_KEYWORD(elements)
 SCOUT_KEYWORD(spheres)
-// ENDSCOUTCODE
 
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)

@@ -1673,7 +1673,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     // If this name wasn't predeclared and if this is not a function
     // call, diagnose the problem.
     if (R.empty()) {
-      // ndm - Scout forall/renderall
+      // scout - Scout forall/renderall
       // check undeclared identifiers to see if they can be qualified
       // as member reference expr's by enclosing forall / renderall 
       // loop variables

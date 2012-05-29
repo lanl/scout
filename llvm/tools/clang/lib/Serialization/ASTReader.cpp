@@ -4284,12 +4284,11 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 // we are not using AST reader functionality for meshes for now,
 // so this is simply a no-op
 void TypeLocReader::VisitMeshTypeLoc(MeshTypeLoc TL) {
 }
-// ENDSCOUTCODE
 
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
@@ -4449,7 +4448,7 @@ QualType ASTReader::GetType(TypeID ID) {
       T = Context.getAutoRRefDeductType(); 
       break;
 
-    // SCOUTCODE ndm - Scout vector types
+    // scout - vector types
     case PREDEF_TYPE_BOOL2_ID:      T = Context.Bool2Ty;            break;
     case PREDEF_TYPE_BOOL3_ID:      T = Context.Bool3Ty;            break;
     case PREDEF_TYPE_BOOL4_ID:      T = Context.Bool4Ty;            break;
@@ -4471,7 +4470,6 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_DOUBLE2_ID:    T = Context.Double2Ty;          break;
     case PREDEF_TYPE_DOUBLE3_ID:    T = Context.Double3Ty;          break;
     case PREDEF_TYPE_DOUBLE4_ID:    T = Context.Double4Ty;          break;
-	 // ENDSCOUTCODE
 
     case PREDEF_TYPE_ARC_UNBRIDGED_CAST:
       T = Context.ARCUnbridgedCastTy;

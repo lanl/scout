@@ -33,12 +33,11 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 
-// SCOUTCODE ndm
+// scout
 #include "clang/AST/StmtVisitor.h"
 
 #include <map>
 #include <iostream>
-// ENDSCOUTCODE
 
 using namespace clang;
 using namespace sema;
@@ -2929,7 +2928,7 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
 }
 
-// SCOUTCODE ndm - ForAllVisitor class to check that LHS mesh field assignment
+// scout ndm - ForAllVisitor class to check that LHS mesh field assignment
 // operators do not appear as subsequent RHS values, and various other
 // semantic checks
 
@@ -3124,7 +3123,7 @@ namespace{
 
 } // end namespace
 
-// ndm - Scout Stmts SCOUTCODE
+// scout - Scout Stmts
 StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
                                  ForAllStmt::ForAllType Type,
                                  const MeshType *MT,
@@ -3293,7 +3292,7 @@ StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                            RParenLoc));
 }
 
-// ndm - Scout Stmts SCOUTCODE
+// scout - Scout Stmts
 
 bool Sema::ActOnForAllLoopVariable(Scope* S,
                                    tok::TokenKind VariableType,
@@ -3402,7 +3401,7 @@ bool Sema::ActOnForAllArrayInductionVariable(Scope* S,
   return true;
 }
 
-// ndm - Scout Stmts SCOUTCODE
+// scout - Scout Stmts
 
 bool Sema::ActOnRenderAllLoopVariable(Scope* S,
                                       tok::TokenKind VariableType,
@@ -3540,7 +3539,6 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   
   return MT;
 }
-// ENDSCOUTCODE
 
 StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,
                                             bool IsIfExists,

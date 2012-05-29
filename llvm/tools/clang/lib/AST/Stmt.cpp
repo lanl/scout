@@ -866,7 +866,7 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
   return new(C)SEHFinallyStmt(Loc,Block);
 }
 
-// SCOUTCODE ndm - Scout Stmts
+// scout - Scout Stmts
 
 ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
                        const MeshType *MT,IdentifierInfo* LII,
@@ -955,5 +955,3 @@ ElementColor(0),
 ElementRadius(0){
   
 }
-// ENDSCOUTCODE
-

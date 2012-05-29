@@ -1542,7 +1542,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   CharUnits Alignment = getContext().getDeclAlign(ND);
   QualType T = E->getType();
   
-  // SCOUTCODE ndm
+  // scout
   // Check if this is a Scout 'color' expression.
   if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) ) {
 
@@ -1570,7 +1570,6 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
       }
     }
   }
-  // ENDSCOUTCODE
 
   // FIXME: We should be able to assert this for FunctionDecls as well!
   // FIXME: We should be able to assert this for all DeclRefExprs, not just
@@ -2755,7 +2754,7 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
   return MakeAddrLValue(AddV, MPT->getPointeeType());
 }
 
-// SCOUTCODE - no ndm
+// scout - no ndm
 LValue CodeGenFunction::
 EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
   DEBUG_OUT("EmitScoutVectorMemberExpr");
@@ -2824,7 +2823,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   if(!vals.empty()) {
     SmallVector< llvm::Value *, 3 > dims;
     for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
-      // ndm - MERGE
+      // scout - MERGE
       llvm::APSInt result;
       exprDims[i]->EvaluateAsInt(result, getContext());
       unsigned dim = result.getSExtValue();
@@ -2862,7 +2861,6 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   llvm::Value *addr = Builder.CreateInBoundsGEP(var, arg, "arrayidx");
   return MakeAddrLValue(addr, Ty);
 }
-// ENDSCOUTCODE
 
 static void
 EmitAtomicOp(CodeGenFunction &CGF, AtomicExpr *E, llvm::Value *Dest,

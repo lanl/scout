@@ -251,8 +251,7 @@ public:
   static const TST TST_double = clang::TST_double;
   static const TST TST_bool = clang::TST_bool;
 
-  // SCOUTCODE ndm - Scout vector types
-  
+  // scout - vector types
   static const TST TST_mesh = clang::TST_mesh;
   static const TST TST_bool2 = clang::TST_bool2;
   static const TST TST_bool3 = clang::TST_bool3;
@@ -275,7 +274,6 @@ public:
   static const TST TST_double2 = clang::TST_double2;
   static const TST TST_double3 = clang::TST_double3;
   static const TST TST_double4 = clang::TST_double4;
-  // ENDSCOUTCODE
 
   static const TST TST_decimal32 = clang::TST_decimal32;
   static const TST TST_decimal64 = clang::TST_decimal64;
@@ -323,9 +321,8 @@ private:
   /*TSC*/unsigned TypeSpecComplex : 2;
   /*TSS*/unsigned TypeSpecSign : 2;
 
-  // SCOUTCODE ndm - to support Scout types, changed from 5 bits to 6 bits
+  // scout - to support Scout types, changed from 5 bits to 6 bits
   unsigned TypeSpecType : 6;
-  // ENDSCOUTCODE
   
   unsigned TypeAltiVecVector : 1;
   unsigned TypeAltiVecPixel : 1;
@@ -400,9 +397,8 @@ private:
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
             T == TST_union || T == TST_class
-    // SCOUTCODE ndm - added mesh TST
+    // scout - added mesh TST
             || T == TST_mesh
-    // ENDSCOUTCODE
             );
   }
 

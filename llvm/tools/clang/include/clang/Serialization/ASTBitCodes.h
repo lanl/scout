@@ -633,11 +633,10 @@ namespace clang {
       /// \brief ARC's unbridged-cast placeholder type.
       PREDEF_TYPE_ARC_UNBRIDGED_CAST = 34,
       /// \brief The pseudo-object placeholder type.
-      PREDEF_TYPE_PSEUDO_OBJECT = 35
+      PREDEF_TYPE_PSEUDO_OBJECT = 35,
 
-      // SCOUTCODE ndm - Scout vector types support
-
-      , PREDEF_TYPE_BOOL2_ID     = 50,
+      // scout - Scout vector types support
+      PREDEF_TYPE_BOOL2_ID     = 50,
       PREDEF_TYPE_BOOL3_ID     = 51,
       PREDEF_TYPE_BOOL4_ID     = 52,
       PREDEF_TYPE_CHAR2_ID     = 53,
@@ -658,7 +657,6 @@ namespace clang {
       PREDEF_TYPE_DOUBLE2_ID   = 68,
       PREDEF_TYPE_DOUBLE3_ID   = 69,
       PREDEF_TYPE_DOUBLE4_ID   = 70
-      // ENDSCOUTCODE
     };
 
     /// \brief The number of predefined type IDs that are reserved for

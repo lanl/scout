@@ -27,9 +27,8 @@
 #include "llvm/Intrinsics.h"
 #include "llvm/Target/TargetData.h"
 
-// SCOUTCODE - include code extractor
+// scout - include code extractor
 #include "llvm/Transforms/Utils/CodeExtractor.h"
-// ENDSCOUTCODE
 
 #include <map>
 
@@ -140,7 +139,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::WhileStmtClass:    EmitWhileStmt(cast<WhileStmt>(*S));       break;
   case Stmt::DoStmtClass:       EmitDoStmt(cast<DoStmt>(*S));             break;
 
-  // SCOUTCODE ndm - Scout Stmts
+  // scout - Stmts
   case Stmt::ForAllStmtClass:
     EmitForAllStmtWrapper(cast<ForAllStmt>(*S));
     break;
@@ -150,7 +149,6 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::RenderAllStmtClass:
     EmitRenderAllStmt(cast<RenderAllStmt>(*S));
     break;
-  // ENDSCOUTCODE
 
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
@@ -617,7 +615,7 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
 }
 
-// SCOUTCODE ndm - Scout Stmts
+// scout ndm - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
   
@@ -1196,7 +1194,7 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   ScoutColor = alloca;
   */
 
-  // ndm - skip the above, at least for now, because we are writing to colors 
+  // scout - skip the above, at least for now, because we are writing to colors 
   // which is a preallocated pixel buffer that exists at the time the
   // renderall loop is started - we write to an offset corresponding
   // to the induction variable - done in EmitForAllStmt()
@@ -1205,7 +1203,6 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
   RenderAll = 0;
 }
-// ENDSCOUTCODE
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
   JumpDest LoopExit = getJumpDestInCurrentScope("for.end");

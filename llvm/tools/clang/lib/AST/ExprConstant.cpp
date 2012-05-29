@@ -2787,11 +2787,10 @@ public:
       BaseTy = E->getBase()->getType();
     }
 
-    // SCOUTCODE - no ndm 
+    // scout
     if(BaseTy->getAs<MeshType>()){
       return true;
     }
-    // ENDSCOUTCODE
 
     const ValueDecl *MD = E->getMemberDecl();
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(E->getMemberDecl())) {

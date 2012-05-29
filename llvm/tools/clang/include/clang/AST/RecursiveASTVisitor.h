@@ -401,7 +401,7 @@ private:
   bool TraverseRecordHelper(RecordDecl *D);
   bool TraverseCXXRecordHelper(CXXRecordDecl *D);
   
-// ndm - Scout mesh
+// scout - Scout mesh
   
   bool TraverseMeshHelper(MeshDecl* D);
   
@@ -918,7 +918,7 @@ DEF_TRAVERSE_TYPE(AutoType, {
     TRY_TO(TraverseType(T->getDeducedType()));
   })
 
-// ndm - Scout Mesh
+// scout - Scout Mesh
 DEF_TRAVERSE_TYPE(MeshType, { })
 
 DEF_TRAVERSE_TYPE(RecordType, { })
@@ -1145,7 +1145,7 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
     TRY_TO(TraverseType(TL.getTypePtr()->getDeducedType()));
   })
 
-// ndm - Scout Mesh
+// scout - Scout Mesh
 DEF_TRAVERSE_TYPELOC(MeshType, { })
   
 DEF_TRAVERSE_TYPELOC(RecordType, { })
@@ -1560,7 +1560,7 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
   return true;
 }
 
-// ndm - Scout Mesh
+// scout - Scout Mesh
   
 // Helper methods for MeshDecl and its children.
 template<typename Derived>
@@ -1594,7 +1594,7 @@ DEF_TRAVERSE_DECL(RecordDecl, {
   })
 
   
-// ndm - Scout Mesh
+// scout - Scout Mesh
 DEF_TRAVERSE_DECL(MeshDecl, {
   TRY_TO(TraverseMeshHelper(D));
 })
@@ -1879,7 +1879,7 @@ DEF_TRAVERSE_STMT(DefaultStmt, { })
 DEF_TRAVERSE_STMT(DoStmt, { })
 DEF_TRAVERSE_STMT(ForStmt, { })
 
-// ndm - Scout Stmts
+// scout - Scout Stmts
   
 DEF_TRAVERSE_STMT(ForAllStmt, { })
 DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
@@ -1941,7 +1941,7 @@ DEF_TRAVERSE_STMT(MemberExpr, {
         S->getTemplateArgs(), S->getNumTemplateArgs()));
   })
 
-// ndm - Scout vector types
+// scout - Scout vector types
 // TODO - implement
   
 DEF_TRAVERSE_STMT(ScoutVectorMemberExpr, {

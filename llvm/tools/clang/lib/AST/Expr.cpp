@@ -1132,7 +1132,7 @@ SourceLocation MemberExpr::getLocEnd() const {
   return getMemberNameInfo().getEndLoc();
 }
 
-// SCOUTCODE ndm - Scout vector types
+// scout - Scout vector types
 
 ScoutVectorMemberExpr*
 ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
@@ -1144,7 +1144,6 @@ ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
   
   return E;
 }
-// ENDSCOUTCODE
 
 void CastExpr::CheckCastConsistency() const {
   switch (getCastKind()) {

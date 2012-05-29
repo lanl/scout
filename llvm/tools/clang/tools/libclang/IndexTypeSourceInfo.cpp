@@ -91,7 +91,7 @@ public:
     return true;
   }
 
-  // SCOUTCODE - stubs to avoid linking errors in libclang
+  // scout - stubs to avoid linking errors in libclang
 
   bool TraverseMeshTypeLoc(MeshTypeLoc){
     return true;
@@ -105,7 +105,6 @@ public:
     return true;
   }
 
-  // ENDSCOUTCODE
 };
 
 } // anonymous namespace

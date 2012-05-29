@@ -1368,11 +1368,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
-  // SCOUTCODE ndm - debug wait flag
+  // scout - debug wait flag
   if(Args.hasArg(options::OPT_debugWait)){
     CmdArgs.push_back("-debug-wait");
   }
-  // ENDSCOUTCODE
 
   // Select the appropriate action.
   bool IsRewriter = false;
@@ -4148,7 +4147,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
-  // SCOUTCODE ndm - add Scout library search paths
+  // scout - add Scout library search paths
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -4168,7 +4167,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
-  // ENDSCOUTCODE
 
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
@@ -4280,7 +4278,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
 
-  // SCOUTCODE ndm - add Scout libs and other dependencies
+  // scout ndm - add Scout libs and other dependencies
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
@@ -5338,7 +5336,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/lib64/ld-linux-x86-64.so.2");
   }
 
-  // SCOUTCODE ndm - add Scout library search paths
+  // scout - add Scout library search paths
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -5358,7 +5356,6 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
-  // ENDSCOUTCODE
 
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
@@ -5459,7 +5456,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
 
   addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
 
-  // SCOUTCODE ndm - add Scout libs and other dependencies
+  // scout - add Scout libs and other dependencies
 
   CmdArgs.push_back("-lpng");
   CmdArgs.push_back("-lscRuntime");
@@ -5473,7 +5470,6 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
 
-  // ENDSCOUTCODE
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
 

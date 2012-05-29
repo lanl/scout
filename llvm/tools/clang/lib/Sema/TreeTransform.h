@@ -729,13 +729,12 @@ public:
     return SemaRef.Context.getTypeDeclType(Enum);
   }
 
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   // TODO implement
   QualType RebuildMeshType(MeshDecl *Mesh) {
     //return SemaRef.Context.getTypeDeclType(Mesh);
     return QualType();
   }
-  // ENDSCOUTCODE
   
   /// \brief Build a new typeof(expr) type.
   ///
@@ -4500,7 +4499,7 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
   return Result;
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 // TODO - implement
   
 template<typename Derived>
@@ -4529,7 +4528,6 @@ QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
   */
   return QualType();
 }
-// ENDSCOUTCODE
   
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformEnumType(TypeLocBuilder &TLB,
@@ -5490,9 +5488,8 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
                                      FullInc, S->getRParenLoc(), Body.get());
 }
 
-// SCOUTCODE ndm - Scout Stmts
+// scout - Scout Stmts
 // TODO - implement
-  
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
@@ -5516,7 +5513,6 @@ TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
   R.set(S);
   return R;
 }
-// ENDSCOUTCODE
   
 template<typename Derived>
 StmtResult
@@ -6544,7 +6540,7 @@ TreeTransform<Derived>::TransformMemberExpr(MemberExpr *E) {
                                         FirstQualifierInScope);
 }
 
-// SCOUTCODE ndm - support for Scout vector member referencing
+// scout - support for Scout vector member referencing
   
 template<typename Derived>
 ExprResult
@@ -6553,7 +6549,6 @@ TreeTransform<Derived>::TransformScoutVectorMemberExpr(ScoutVectorMemberExpr *E)
   R.set(E);
   return R;
 }
-// ENDSCOUTCODE
   
 template<typename Derived>
 ExprResult

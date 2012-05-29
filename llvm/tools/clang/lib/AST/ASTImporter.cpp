@@ -67,11 +67,10 @@ namespace clang {
     QualType VisitAutoType(const AutoType *T);
     // FIXME: DependentDecltypeType
 
-    // SCOUTCODE ndm - Scout Mesh
+    // scout - Mesh
     QualType VisitMeshType(const MeshType* T);
-    // ENDSCOUTCODE
-                            
-    QualType VisitRecordType(const RecordType *T);
+
+                            QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
     // FIXME: TemplateTypeParmType
     // FIXME: SubstTemplateTypeParmType
@@ -136,9 +135,8 @@ namespace clang {
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
     
-    // SCOUTCODE ndm - Scout Mesh
+    // scout - Mesh
     Decl* VisitMeshDecl(MeshDecl* D);
-    // ENDSCOUTCODE
                             
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
@@ -664,14 +662,11 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   // we do not need to test the structural equivalance of meshes
   // so simply return false
-      
   case Type::Mesh:    
       return false;
-  // ENDSCOUTCODE
-      
       
   case Type::Record:
   case Type::Enum:
@@ -1642,7 +1637,7 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
   return Importer.getToContext().getTagDeclType(ToDecl);
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
   MeshDecl *ToDecl
   = dyn_cast_or_null<MeshDecl>(Importer.Import(T->getDecl()));
@@ -1651,7 +1646,6 @@ QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
   
   return Importer.getToContext().getMeshDeclType(ToDecl);
 }
-// ENDSCOUTCODE
 
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
   EnumDecl *ToDecl
@@ -2335,13 +2329,12 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   return D2;
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 // we are not using the AST import functionality for now
 // so simply return null
 Decl *ASTNodeImporter::VisitMeshDecl(MeshDecl *D){
   return 0;
 }
-// ENDSCOUTCODE
 
 Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // If this record has a definition in the translation unit we're coming from,

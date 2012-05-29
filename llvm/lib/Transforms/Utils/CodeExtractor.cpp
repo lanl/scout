@@ -53,10 +53,9 @@ static bool isBlockValidForExtraction(const BasicBlock &BB) {
 
   // Don't hoist code containing allocas, invokes, or vastarts.
   for (BasicBlock::const_iterator I = BB.begin(), E = BB.end(); I != E; ++I) {
-    // SCOUTCODE allow alloca instructions
+    // scout - allow alloca instructions
     if (/*isa<AllocaInst>(I) || */isa<InvokeInst>(I))
       return false;
-    // ENDSCOUTCODE
     if (const CallInst *CI = dyn_cast<CallInst>(I))
       if (const Function *F = CI->getCalledFunction())
         if (F->getIntrinsicID() == Intrinsic::vastart)

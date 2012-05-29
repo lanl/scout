@@ -25,10 +25,9 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
-// SCOUTCODE ndm - Scout AST view
+// scout - AST view
 #include "clang/AST/ASTViewScout.h"
 #include <iostream>
-// ENDSCOUTCODE
 
 using namespace clang;
 
@@ -46,9 +45,8 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
                      bool SkipFunctionBodies,
-                     // SCOUTCODE ndm - added ASTViewer param
+                     // scout - added ASTViewer param
                      ASTViewScout* ASTViewer
-                     // ENDSCOUTCODE
                      )
 {
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
@@ -63,9 +61,8 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
 
 void clang::ParseAST(Sema &S, bool PrintStats,
                      bool SkipFunctionBodies,
-                     // SCOUTCODE ndm - added ASTViewer param
+                     // scout - added ASTViewer param
                      ASTViewScout* ASTViewer
-                     // ENDSCOUTCODE
                      ){
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
@@ -111,12 +108,11 @@ void clang::ParseAST(Sema &S, bool PrintStats,
       }
     }
     
-    // SCOUTCODE ndm - AST Viewer, if the -ast-view front-end option was passed
+    // scout - AST Viewer, if the -ast-view front-end option was passed
     // potentially generate Graphviz output for this decl. group
     if(ASTViewer){
       ASTViewer->outputGraphviz(ADecl.get());
     }
-    // ENDSCOUTCODE
   }
 
   if (Abort)

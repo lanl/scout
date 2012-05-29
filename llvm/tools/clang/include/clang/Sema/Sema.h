@@ -7087,7 +7087,7 @@ public:
 
   Decl *getObjCDeclContext() const;
 
-  // SCOUTCODE ndm - Scout Sema methods
+  // scout ndm - Scout Sema methods
   // called at the beginning part of a mesh definition
   Decl* ActOnMeshDefinition(Scope* S,
                             tok::TokenKind MeshType,
@@ -7185,7 +7185,6 @@ public:
   typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
 
   ScoutLoopStack SCLStack;
-  // ENDSCOUTCODE
 
   DeclContext *getCurLexicalContext() const {
     return OriginalLexicalContext ? OriginalLexicalContext : CurContext;

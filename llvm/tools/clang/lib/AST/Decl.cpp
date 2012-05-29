@@ -2808,7 +2808,7 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
-// SCOUTCODE ndm - Scout Decl implementation
+// scout ndm - Scout Decl implementation
 MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
                            SourceLocation StartLoc, SourceLocation IdLoc,
                            IdentifierInfo* Id, MeshDecl* PrevDecl){
@@ -2868,7 +2868,6 @@ bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
 
   return true;
 }
-// ENDSCOUTCODE
 
 //===----------------------------------------------------------------------===//
 // Other Decl Allocation/Deallocation Method Implementations

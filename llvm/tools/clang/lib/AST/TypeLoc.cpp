@@ -233,7 +233,7 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Double:
   case BuiltinType::LongDouble:
     
-  // SCOUTCODE ndm - Scout vector types
+  // scout - vector types
         
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
@@ -256,7 +256,6 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4: 
-  // ENDSCOUTCODE
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
       

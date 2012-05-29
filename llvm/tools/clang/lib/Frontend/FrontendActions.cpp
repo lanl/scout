@@ -469,9 +469,8 @@ void PrintPreprocessedAction::ExecuteAction() {
 
 void PrintPreambleAction::ExecuteAction() {
   switch (getCurrentFileKind()) {
-  // SCOUTCODE ndm - Scout input kind
+  // scout - Scout input kind
   case IK_Scout:
-  // ENDSCOUTCODE
 
   case IK_C:
   case IK_CXX:

@@ -262,7 +262,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_enum:
     case TST_error:
 
-    // ndm - Scout vector types
+    // scout - Scout vector types
     case TST_bool2:
     case TST_bool3:
     case TST_bool4:
@@ -409,7 +409,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_float:       return "float";
   case DeclSpec::TST_double:      return "double";
 
-  // ndm - Scout vector types to strings
+  // scout - Scout vector types to strings
   
   case DeclSpec::TST_mesh:        return "mesh";
   case DeclSpec::TST_bool2:       return "bool2";

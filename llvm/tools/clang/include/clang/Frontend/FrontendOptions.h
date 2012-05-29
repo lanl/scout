@@ -65,10 +65,9 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR
-  // SCOUTCODE ndm - Scout input kind
-  , IK_Scout
-  // ENDSCOUTCODE
+  IK_LLVM_IR,
+  // scout - input kind
+  IK_Scout
 
 };
 
@@ -120,9 +119,8 @@ public:
                                            /// not need them (e.g. with code
                                            /// completion).
 
-  // SCOUTCODE ndm - Scout View AST option
+  // scout - View AST option
   unsigned ViewAST : 1;
-  // ENDSCOUTCODE
   
   enum {
     ARCMT_None,
@@ -196,9 +194,8 @@ public:
     ShowGlobalSymbolsInCodeCompletion = 1;
     ShowStats = 0;
     
-    // SCOUTCODE ndm - View AST flag
+    // scout - View AST flag
     ViewAST = 0;
-    // ENDSCOUTCODE
     
     ShowTimers = 0;
     ShowVersion = 0;

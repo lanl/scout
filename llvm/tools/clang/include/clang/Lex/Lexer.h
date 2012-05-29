@@ -55,10 +55,9 @@ class Lexer : public PreprocessorLexer {
   LangOptions LangOpts;          // LangOpts enabled by this language (cache).
   bool Is_PragmaLexer;           // True if lexer for _Pragma handling.
   
-  // SCOUTCODE ndm - support for lexing from a string
+  // scout - support for lexing from a string
   llvm::MemoryBuffer* StringLexerMemoryBuffer;
   llvm::StringRef* StringLexerStringRef;
-  // ENDSCOUTCODE
   
   //===--------------------------------------------------------------------===//
   // Context-specific lexing flags set by the preprocessor.
@@ -114,12 +113,11 @@ public:
   Lexer(FileID FID, const llvm::MemoryBuffer *InputBuffer,
         const SourceManager &SM, const LangOptions &LangOpts);
 
-  // SCOUTCODE ndm - Ctor for string lexer
+  // scout ndm - Ctor for string lexer
   Lexer(const std::string& str, Preprocessor& PP);
 
-  // ndm - added Dtor SCOUTCODE
+  // scout - added Dtor
   ~Lexer();
-  // ENDSCOUTCODE
   
   /// Create_PragmaLexer: Lexer constructor - Create a new lexer object for
   /// _Pragma expansion.  This has a variety of magic semantics that this method

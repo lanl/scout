@@ -904,13 +904,11 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T) {
   mangleType(static_cast<const TagType*>(T));
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 // TODO is this correct?
-
 void MicrosoftCXXNameMangler::mangleType(const MeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
-// ENDSCOUTCODE
 
 void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
   switch (T->getDecl()->getTagKind()) {

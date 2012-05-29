@@ -429,8 +429,7 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(DoubleTy,            BuiltinType::Double);
   InitBuiltinType(LongDoubleTy,        BuiltinType::LongDouble);
 
-  // SCOUTCODE ndm - Scout vector types - initialize the CanQualType's
-
+  // scout - Scout vector types - initialize the CanQualType's
   InitBuiltinType(Bool2Ty,             BuiltinType::Bool2);
   InitBuiltinType(Bool3Ty,             BuiltinType::Bool3);
   InitBuiltinType(Bool4Ty,             BuiltinType::Bool4);
@@ -452,7 +451,6 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(Double2Ty,           BuiltinType::Double2);
   InitBuiltinType(Double3Ty,           BuiltinType::Double3);
   InitBuiltinType(Double4Ty,           BuiltinType::Double4);
-  // ENDSCOUTCODE
 
   // GNU extension, 128-bit integers.
   InitBuiltinType(Int128Ty,            BuiltinType::Int128);
@@ -740,14 +738,13 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   switch (BT->getKind()) {
   default: llvm_unreachable("Not a floating point type!");
   case BuiltinType::Half:       return Target->getHalfFormat();
-  // SCOUTCODE - no ndm
+  // scout - float vectors
   case BuiltinType::Float2:
   case BuiltinType::Float3:
   case BuiltinType::Float4:
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4:  
-  // ENDSCOUTCODE
   case BuiltinType::Float:      return Target->getFloatFormat();
   case BuiltinType::Double:     return Target->getDoubleFormat();
   case BuiltinType::LongDouble: return Target->getLongDoubleFormat();
@@ -933,11 +930,10 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Align = 8;
       break;
 
-    // SCOUTCODE - no ndm
+    // scout - bool vectors
     case BuiltinType::Bool2:
     case BuiltinType::Bool3:
     case BuiltinType::Bool4:
-    // ENDSCOUTCODE
     case BuiltinType::Bool:
       Width = Target->getBoolWidth();
       Align = Target->getBoolAlign();
@@ -958,40 +954,36 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Width = Target->getChar16Width();
       Align = Target->getChar16Align();
       break;
-    // SCOUTCODE - no ndm
+    // scout - char vectors
     case BuiltinType::Char2:
     case BuiltinType::Char3:
     case BuiltinType::Char4:
-    // ENDSCOUTCODE
     case BuiltinType::Char32:
       Width = Target->getChar32Width();
       Align = Target->getChar32Align();
       break;
-    // SCOUTCODE - no ndm
+    // scout - short vectors
     case BuiltinType::Short2:
     case BuiltinType::Short3:
     case BuiltinType::Short4:
-    // ENDSCOUTCODE
     case BuiltinType::UShort:
     case BuiltinType::Short:
       Width = Target->getShortWidth();
       Align = Target->getShortAlign();
       break;
-    // SCOUTCODE - no ndm
+    // scout - int vectors
     case BuiltinType::Int2:
     case BuiltinType::Int3:
     case BuiltinType::Int4:
-    // ENDSCOUTCODE
     case BuiltinType::UInt:
     case BuiltinType::Int:
       Width = Target->getIntWidth();
       Align = Target->getIntAlign();
       break;
-    // SCOUTCODE - no ndm
+    // scout - long vectors
     case BuiltinType::Long2:
     case BuiltinType::Long3:
     case BuiltinType::Long4:
-    // ENDSCOUTCODE
     case BuiltinType::ULong:
     case BuiltinType::Long:
       Width = Target->getLongWidth();
@@ -1011,20 +1003,18 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
       Width = Target->getHalfWidth();
       Align = Target->getHalfAlign();
       break;
-    // SCOUTCODE - no ndm
+    // scout - float vectors
     case BuiltinType::Float2:
     case BuiltinType::Float3:
     case BuiltinType::Float4:
-    // ENDSCOUTCODE
     case BuiltinType::Float:
       Width = Target->getFloatWidth();
       Align = Target->getFloatAlign();
       break;
-    // SCOUTCODE - no ndm
+    // scout - double vectors
     case BuiltinType::Double2:
     case BuiltinType::Double3:
     case BuiltinType::Double4:
-    // ENDSCOUTCODE
     case BuiltinType::Double:
       Width = Target->getDoubleWidth();
       Align = Target->getDoubleAlign();
@@ -1118,10 +1108,9 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
 
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   // TODO - finish implementation
   // Do we need ASTMeshLayout like ASTRecordLayout?
-
   case Type::Mesh: {
     const MeshType *MT = cast<MeshType>(T);
 
@@ -1135,7 +1124,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = 8;
     break;
   }
-  // ENDSCOUTCODE
 
   case Type::SubstTemplateTypeParm:
     return getTypeInfo(cast<SubstTemplateTypeParmType>(T)->
@@ -1842,11 +1830,9 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::ObjCObjectPointer:
   case Type::Record:
 
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   // a mesh is not variably-modified
   case Type::Mesh:
-  // ENDSCOUTCODE
-
   case Type::Enum:
   case Type::UnresolvedUsing:
   case Type::TypeOfExpr:
@@ -2363,10 +2349,9 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     assert(!Enum->getPreviousDecl() &&
            "enum has previous declaration");
     return getEnumType(Enum);
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   } else if (const MeshDecl *Mesh = dyn_cast<MeshDecl>(Decl)) {
     return getMeshType(Mesh);
-  // ENDSCOUTCODE
   } else if (const UnresolvedUsingTypenameDecl *Using =
                dyn_cast<UnresolvedUsingTypenameDecl>(Decl)) {
     Type *newType = new (*this, TypeAlignment) UnresolvedUsingType(Using);
@@ -2407,8 +2392,7 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   return QualType(newType, 0);
 }
 
-// SCOUTCODE ndm - Scout
-
+// scout
 QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
 
@@ -2418,7 +2402,6 @@ QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
   Types.push_back(newType);
   return QualType(newType, 0);
 }
-// ENDSCOUTCODE
 
 QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
@@ -3169,14 +3152,13 @@ QualType ASTContext::getTagDeclType(const TagDecl *Decl) const {
   return getTypeDeclType(const_cast<TagDecl*>(Decl));
 }
 
-// SCOUTCODE ndm - Scout Mesh
+// scout - Mesh
 QualType ASTContext::getMeshDeclType(const MeshDecl *Decl) const {
   assert (Decl);
   // FIXME: What is the design on getTagDeclType when it requires casting
   // away const?  mutable?
   return getTypeDeclType(const_cast<MeshDecl*>(Decl));
 }
-// ENDSCOUTCODE
 
 /// getSizeType - Return the unique type for "size_t" (C99 7.17), the result
 /// of the sizeof operator (C99 6.5.3.4p4). The value is target dependent and
@@ -6198,10 +6180,8 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
 
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   case Type::Mesh:
-  // ENDSCOUTCODE
-
   case Type::Record:
   case Type::Enum:
     return QualType();

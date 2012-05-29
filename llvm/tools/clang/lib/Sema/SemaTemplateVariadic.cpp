@@ -672,7 +672,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_float:
   case TST_double:
 
-  // SCOUTCODE ndm - Scout vector types
+  // scout - Scout vector types
 
   case TST_bool2:
   case TST_bool3:
@@ -695,7 +695,6 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_double2:
   case TST_double3:
   case TST_double4:
-  // ENDSCOUTCODE
 
   case TST_bool:
   case TST_decimal32:

@@ -83,11 +83,10 @@ using namespace clang;
 StmtResult
 Parser::ParseStatementOrDeclaration(StmtVector &Stmts, bool OnlyStatement,
                                     SourceLocation *TrailingElseLoc) {
-  // SCOUTCODE ndm - test hook into parsing stmts from the main file
+  // scout - test hook into parsing stmts from the main file
   if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
     //DumpLookAheads(20);
   }
-  // ENDSCOUTCODE
 
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
 
@@ -179,7 +178,7 @@ Retry:
 
       case Sema::NC_Type:
       {
-        // SCOUTCODE ndm - parse a mesh declaration -this is handled as a special
+        // scout - parse a mesh declaration -this is handled as a special
         // case because the square brackets look like an array specification
         // when Clang normally parses a declaration
         
@@ -267,7 +266,7 @@ Retry:
             }
           }
         }
-        // ENDSCOUTCODE
+
         Tok.setKind(tok::annot_typename);
         setTypeAnnotation(Tok, Classification.getType());
         Tok.setAnnotationEndLoc(NameLoc);
@@ -322,7 +321,7 @@ Retry:
         break;
       }
 
-      // SCOUTCODE ndm - detect the forall shorthand, e.g:
+      // scout - detect the forall shorthand, e.g:
       // m.a[1..width-2][1..height-2] = MAX_TEMP;
       if(isScoutLang() && isScoutSource(NameLoc)){
         if(GetLookAheadToken(1).is(tok::period) &&
@@ -343,7 +342,6 @@ Retry:
           }
         }
       }
-      // ENDSCOUTCODE
     }
 
     // Fall through
@@ -355,11 +353,10 @@ Retry:
       DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
                                              DeclEnd, Attrs);
 
-      // SCOUTCODE ndm - test
+      // scout - test
       //StmtResult r = Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
       //r.get()->dump();
       //return r;
-      // ENDSCOUTCODE
       return Actions.ActOnDeclStmt(Decl, DeclStart, DeclEnd);
     }
 
@@ -397,7 +394,7 @@ Retry:
   case tok::kw_for:                 // C99 6.8.5.3: for-statement
     return ParseForStatement(TrailingElseLoc);
 
-  // SCOUTCODE ndm - Scout Stmts
+  // scout - Stmts
   case tok::kw_forall: {
     const Token& t = GetLookAheadToken(1);
     switch(t.getKind()){
@@ -417,7 +414,7 @@ Retry:
       return ParseWindowOrImageDeclaration(true, Stmts, OnlyStatement);
   case tok::kw_image:
     return ParseWindowOrImageDeclaration(false, Stmts, OnlyStatement);
-  // ENDSCOUTCODE
+    
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement
     Res = ParseGotoStatement();
     SemiError = "goto";
@@ -942,14 +939,13 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
 
     StmtResult R;
     if (Tok.isNot(tok::kw___extension__)) {
-      // SCOUTCODE ndm - store the stmt vec so we can insert statements into it
+      // scout - store the stmt vec so we can insert statements into it
       // when Stmts is not available as a parameter
       StmtsStack.push_back(&Stmts);
-      // ENDSCOUTCODE
+
       R = ParseStatementOrDeclaration(Stmts, false);
-      // SCOUTCODE - no ndm
+      // scout
       StmtsStack.pop_back();
-      // ENDSCOUTCODE
     } else {
       // __extension__ can start declarations and it can also be a unary
       // operator for expressions.  Consume multiple __extension__ markers here
@@ -2125,7 +2121,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
-  // SCOUTCODE ndm - insert call to __sc_init(argc, argv, gpu) at the top of main
+  // scout - insert call to __sc_init(argc, argv, gpu) at the top of main
   if(getLangOpts().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
     
@@ -2160,7 +2156,6 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
       }
     }
   }
-  // ENDSCOUTCODE
 
   // Do not enter a scope for the brace, as the arguments are in the same scope
   // (the function body) as the body itself.  Instead, just read the statement
@@ -2420,21 +2415,18 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
 
   // Condition is true, parse the statements.
   while (Tok.isNot(tok::r_brace)) {
-    // SCOUTCODE ndm - store the stmt vec so we can insert statements into it
+    // scout - store the stmt vec so we can insert statements into it
     // when Stmts is not available as a parameter
     StmtsStack.push_back(&Stmts);
-    // ENDSCOUTCODE
     StmtResult R = ParseStatementOrDeclaration(Stmts, false);
-    // SCOUTCODE ndm
     StmtsStack.pop_back();
-    // ENDSCOUTCODE
     if (R.isUsable())
       Stmts.push_back(R.release());
   }
   Braces.consumeClose();
 }
 
-// SCOUTCODE ndm - Scout Stmts
+// scout - Stmts
 StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   if(ForAll)
     assert(Tok.is(tok::kw_forall) && "Not a forall stmt!");
@@ -3216,5 +3208,3 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
 
   return ForAllArrayResult;
 }
-// ENDSCOUTCODE
-

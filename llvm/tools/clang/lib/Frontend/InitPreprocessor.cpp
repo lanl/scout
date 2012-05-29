@@ -391,10 +391,10 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
     Builder.defineMacro("__PASCAL_STRINGS__");
 
   if (LangOpts.Blocks) {
-    // SCOUTCODE ndm - renamed __block to __apple_block because of conflicts with
+    // scout - renamed __block to __apple_block because of conflicts with
     // standard C++ headers on Linux.
     Builder.defineMacro("__apple_block", "__attribute__((__blocks__(byref)))");
-    // ENDSCOUTCODE
+
     Builder.defineMacro("__BLOCKS__");
   }
 

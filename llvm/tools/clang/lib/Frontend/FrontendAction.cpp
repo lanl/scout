@@ -28,9 +28,8 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
-// SCOUTCODE ndm - include Scout AST viewer
+// scout ndm - include Scout AST viewer
 #include "clang/AST/ASTViewScout.h"
-// ENDSCOUTCODE
 
 #include <iostream>
 
@@ -229,12 +228,11 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
 
-  // SCOUTCODE ndm - implicity include the Scout headers file if this is a Scout file
+  // scout - implicity include the Scout headers file if this is a Scout file
   if(CI.getLangOpts().Scout){
     CI.getPreprocessorOpts().Includes.push_back("runtime/scout.sch");
     CI.getPreprocessorOpts().Includes.push_back("scout/scout.h");
   }
-  // ENDSCOUTCODE
   
   //PreprocessorOptions& opts = CI.getPreprocessorOpts();
   //const LanguageOptions& langOpts = CI.getLangOpts();
@@ -429,7 +427,7 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
-  // SCOUTCODE ndm - use AST viewer if the front-end option -Xclang -view-ast was passed
+  // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
   if(CI.getFrontendOpts().ViewAST){
     ASTViewScout ASTViewer(CI.getSema());
     
@@ -437,12 +435,10 @@ void ASTFrontendAction::ExecuteAction() {
              false, &ASTViewer);
   }
   else{
-    // ENDSCOUTCODE
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
              CI.getFrontendOpts().SkipFunctionBodies);
-    // SCOUTCODE - if else
+    // scout - if else
   }
-  // ENDSCOUTCODE
 }
 
 void PluginASTAction::anchor() { }

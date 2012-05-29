@@ -777,7 +777,7 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_const:
   case tok::kw_double:
 
-  // SCOUTCODE ndm - Scout vector types
+  // scout - vector types
   
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -806,7 +806,6 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_rectlinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  // ENDSCOUTCODE
       
   case tok::kw_enum:
   case tok::kw_half:
@@ -1169,7 +1168,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_float:
   case tok::kw_double:
 
-  // SCOUTCODE ndm - Scout vector types
+  // scout - vector types
       
   case tok::kw_bool2:
   case tok::kw_bool3:
@@ -1198,7 +1197,6 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_rectlinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
-  // ENDSCOUTCODE
       
   case tok::kw_void:
   case tok::annot_decltype:

@@ -50,9 +50,8 @@ namespace clang {
   class Stmt;
   class Expr;
   
-  // SCOUTCODE ndm
+  // scout
   class MemberExpr;
-  // ENDSCOUTCODE
 
   class ExprIterator {
     Stmt** I;
@@ -390,9 +389,8 @@ public:
   ///   works on systems with GraphViz (Mac OS X) or dot+gv installed.
   void viewAST() const;
 
-  // SCOUTCODE ndm - convert the Stmt or Expr back into code
+  // scout - convert the Stmt or Expr back into code
   std::string toCPPCode(ASTContext& context);
-  // ENDSCOUTCODE
 
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
@@ -1750,7 +1748,7 @@ public:
   static bool classof(SEHTryStmt *) { return true; }
 };
 
-// SCOUTCODE ndm - Scout Stmts
+// scout - Stmts
 
 class ForAllStmt : public Stmt {
 
@@ -2148,8 +2146,6 @@ public:
   static bool classof(const ForAllArrayStmt *) { return true; }
     
 };
-// ENDSCOUTCODE
-
   
 }  // end namespace clang
 

@@ -410,9 +410,8 @@ static const char *getInputKindName(InputKind Kind) {
   case IK_ObjC:              return "objective-c";
   case IK_ObjCXX:            return "objective-c++";
 
-  // SCOUTCODE ndm - Scout input kind
+  // scout - input kind
   case IK_Scout:             return "scout";
-  // ENDSCOUTCODE
 
   case IK_OpenCL:            return "cl";
   case IK_CUDA:              return "cuda";
@@ -484,11 +483,9 @@ static void FrontendOptsToArgs(const FrontendOptions &Opts, ToArgsList &Res) {
   if (Opts.ShowStats)
     Res.push_back("-print-stats");
 
-  // SCOUTCODE ndm - View AST flag
+  // scout - View AST flag
   if (Opts.ViewAST)
     Res.push_back("-view-ast");
-  // ENDSCOUTCODE
-
   if (Opts.ShowTimers)
     Res.push_back("-ftime-report");
   if (Opts.ShowVersion)
@@ -1514,10 +1511,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     = !Args.hasArg(OPT_no_code_completion_globals);
   Opts.ShowStats = Args.hasArg(OPT_print_stats);
 
-  // SCOUTCODE ndm - Scout View AST flag
+  // scout - View AST flag
   Opts.ViewAST = Args.hasArg(OPT_view_ast);
-  // ENDSCOUTCODE
-
   Opts.ShowTimers = Args.hasArg(OPT_ftime_report);
   Opts.ShowVersion = Args.hasArg(OPT_version);
   Opts.ASTMergeFiles = Args.getAllArgValues(OPT_ast_merge);
@@ -1586,9 +1581,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       .Case("ast", IK_AST)
       .Case("ir", IK_LLVM_IR)
 
-      // SCOUTCODE ndm - Scout input kind
+      // scout - input kind
       .Case("scout", IK_Scout)
-      // ENDSCOUTCODE
 
       .Default(IK_None);
     if (DashX == IK_None)
@@ -1755,9 +1749,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_PreprocessedObjC:
       LangStd = LangStandard::lang_gnu99;
       break;
-    // SCOUTCODE ndm - Scout language standard uses C++
+    // scout - language standard uses C++
     case IK_Scout:
-    // ENDSCOUTCODE
     case IK_CXX:
     case IK_PreprocessedCXX:
     case IK_ObjCXX:
@@ -1803,11 +1796,10 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 
   Opts.DollarIdents = !Opts.AsmPreprocessor;
 
-  // SCOUTCODE ndm - Scout language options
+  // scout - language options
   if(IK == IK_Scout){
     Opts.Scout = 1;
   }
-  // ENDSCOUTCODE
 }
 
 static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
@@ -1836,9 +1828,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
             << A->getAsString(Args) << "C/ObjC";
         break;
 
-      // SCOUTCODE ndm - Scout input kind
+      // scout - input kind
       case IK_Scout:
-      // ENDSCOUTCODE
 
       case IK_CXX:
       case IK_ObjCXX:
@@ -2036,9 +2027,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                  OPT_fno_deprecated_macro,
                                  Opts.Deprecated);
 
-  // SCOUTCODE ndm - detect Scout -gpu flag
+  // scout - detect Scout -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
-  // ENDSCOUTCODE
 
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags);

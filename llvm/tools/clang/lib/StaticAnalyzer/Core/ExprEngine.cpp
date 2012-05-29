@@ -538,10 +538,9 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::DoStmtClass:
     case Stmt::ForStmtClass:
 
-    // SCOUTCODE ndm - Scout Stmts
+    // scout - Scout Stmts
     case Stmt::ForAllStmtClass:
     case Stmt::RenderAllStmtClass:
-	 // ENDSCOUTCODE
 
     case Stmt::GotoStmtClass:
     case Stmt::IfStmtClass:

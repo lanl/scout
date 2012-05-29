@@ -3378,13 +3378,10 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
   return false;
 }
 
-// SCOUTCODE ndm - Scout Mesh
-// TODO implement
-
+// scout - Mesh
 bool UnnamedLocalNoLinkageFinder::VisitMeshType(const MeshType* T) {
   return false;
 }
-// ENDSCOUTCODE
 
 bool UnnamedLocalNoLinkageFinder::VisitAutoType(const AutoType *T) {
   return Visit(T->getDeducedType());

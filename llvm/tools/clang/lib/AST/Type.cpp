@@ -1484,7 +1484,7 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
 
-  // SCOUTCODE ndm - Scout vector types to strings
+  // scout - vector types to strings
   case Bool2:             return "bool2";
   case Bool3:             return "bool3";
   case Bool4:             return "bool4";
@@ -1506,7 +1506,6 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case Double2:           return "double2";
   case Double3:           return "double3";
   case Double4:           return "double4";
-  // ENDSCOUTCODE
   }
   
   llvm_unreachable("Invalid builtin type.");
@@ -2076,7 +2075,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
     return CachedProperties(NamedDecl::LinkageInfo(), false);
 
   
-  // SCOUTCODE ndm - Scout Mesh
+  // scout - Mesh
   // TODO - is this correct?
     case Type::Mesh: {
     const MeshDecl *Mesh = cast<MeshType>(T)->getDecl();
@@ -2086,7 +2085,6 @@ static CachedProperties computeCachedProperties(const Type *T) {
       Mesh->getDeclContext()->isFunctionOrMethod() || !Mesh->getIdentifier();
     return CachedProperties(LV, IsLocalOrUnnamed);
   }
-  // ENDSCOUTCODE
       
   case Type::Record:
   case Type::Enum: {
@@ -2322,9 +2320,9 @@ bool QualType::hasTrivialAssignment(ASTContext &Context, bool Copying) const {
   return true;
 }
 
-// SCOUTCODE ndm - Scout types
+// scout - types
 bool MeshType::isBeingDefined() const{
   return decl->isBeingDefined();
 }
-// ENDSCOUTCODE
+
 

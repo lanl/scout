@@ -29,7 +29,7 @@ InputKind FrontendOptions::getInputKindForExtension(StringRef Extension) {
     .Case("cu", IK_CUDA)
     .Cases("ll", "bc", IK_LLVM_IR)
 
-    // ndm - Scout input kind
+    // scout - Scout input kind
     .Case("sc", IK_Scout)
 
     .Default(IK_C);

@@ -84,9 +84,8 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
       
   PP.setCodeCompletionHandler(*this);
   
-  // SCOUTCODE ndm
+  // scout
   DeclaringMesh = false;
-  // ENDSCOUTCODE
 }
 
 /// If a crash happens while the parser is active, print out a line indicating
@@ -1716,7 +1715,7 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
   return Actions.ConvertDeclToDeclGroup(Import.get());
 }
 
-// SCOUTCODE ndm - parser utility method
+// scout ndm - parser utility method
 // insert CPP code into the lexer stream for parsing. 
 // Inserts a stream of tokens before or after the current token Tok.
 // This is a good method for handling cases such as inserting the call
@@ -1755,7 +1754,7 @@ void Parser::InsertCPPCode(const std::string& code,
   }
 }
 
-// ndm - debugging method for displaying the next N lookahead tokens SCOUTCODE
+// scout - debugging method for displaying the next N lookahead tokens
 void Parser::DumpLookAheads(unsigned N){
   for(unsigned i = 0; i < N; ++i){
     const Token& t = GetLookAheadToken(i);
@@ -2031,7 +2030,6 @@ bool Parser::isScoutVectorValueDecl(Decl* decl,
   }
   return false;
 }
-// ENDSCOUTCODE
 
 bool Parser::BalancedDelimiterTracker::diagnoseOverflow() {
   P.Diag(P.Tok, diag::err_parser_impl_limit_overflow);

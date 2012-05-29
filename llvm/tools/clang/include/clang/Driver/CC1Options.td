@@ -506,7 +506,7 @@ def cl_std_EQ : Joined<"-cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 //===----------------------------------------------------------------------===//
-// SCOUTCODE ndm - Scout Options
+// scout - Scout Options
 //===----------------------------------------------------------------------===//
 def view_ast : Flag<"-view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
@@ -516,8 +516,6 @@ def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
 def debugWait : Flag<"-debug-wait">,
   HelpText<"Used to allow debugger to attach to the scc driver.">;
-
-// ENDSCOUTCODE
 
 //===----------------------------------------------------------------------===//
 // CUDA Options
