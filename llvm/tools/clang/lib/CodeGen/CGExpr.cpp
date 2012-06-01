@@ -2081,9 +2081,6 @@ LValue CodeGenFunction::EmitLValueForField(LValue base,
   if (field->isBitField())
     return EmitLValueForBitfield(base.getAddress(), field,
                                  base.getVRQualifiers());
-
-  std::cerr << "---------------- dumping field" << std::endl;
-  field->dump();
   
   const RecordDecl *rec = field->getParent();
   QualType type = field->getType();
