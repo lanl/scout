@@ -3275,7 +3275,9 @@ public:
   MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
     : Type(Mesh, QualType(), false, false, false, false),
   decl(const_cast<MeshDecl*>(D)), instanceType(IT),
-  elementsMember(0) {}
+  elementsMember(0) {
+    
+  }
 
   MeshDecl* getDecl() const {
     return decl;

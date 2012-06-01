@@ -251,7 +251,7 @@ public:
   static const TST TST_double = clang::TST_double;
   static const TST TST_bool = clang::TST_bool;
 
-  // scout - vector types
+  // scout - Scout types
   static const TST TST_mesh = clang::TST_mesh;
   static const TST TST_bool2 = clang::TST_bool2;
   static const TST TST_bool3 = clang::TST_bool3;

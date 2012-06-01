@@ -1178,7 +1178,7 @@ TryImplicitConversion(Sema &S, Expr *From, QualType ToType,
     ICS.Standard.setFromType(FromType);
     ICS.Standard.setAllToTypes(ToType);
     ICS.Standard.CopyConstructor = 0;
-
+    
     return ICS;
   }
 
@@ -3871,6 +3871,19 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
   QualType UnqualT1 = Context.getUnqualifiedArrayType(T1, T1Quals);
   QualType UnqualT2 = Context.getUnqualifiedArrayType(T2, T2Quals);
 
+  // scout - allow meshes to be passed by reference when the underlying
+  // decl is the same
+  if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
+    if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
+      if(mt1->getDecl() == mt2->getDecl()){
+        return Ref_Compatible;
+      }
+      else{
+        return Ref_Incompatible; 
+      }
+    }
+  }
+  
   // C++ [dcl.init.ref]p4:
   //   Given types "cv1 T1" and "cv2 T2," "cv1 T1" is
   //   reference-related to "cv2 T2" if T1 is the same type as T2, or
@@ -4063,7 +4076,7 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
                  bool SuppressUserConversions,
                  bool AllowExplicit) {
   assert(DeclType->isReferenceType() && "Reference init needs a reference");
-
+  
   // Most paths end in a failed conversion.
   ImplicitConversionSequence ICS;
   ICS.setBad(BadConversionSequence::no_conversion, Init, DeclType);
@@ -5331,6 +5344,7 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
       // (13.3.3.1) that converts that argument to the corresponding
       // parameter of F.
       QualType ParamType = Proto->getArgType(ArgIdx);
+            
       Candidate.Conversions[ArgIdx]
         = TryCopyInitialization(*this, Args[ArgIdx], ParamType,
                                 SuppressUserConversions,

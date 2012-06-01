@@ -27,14 +27,25 @@ void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
 
 extern "C"
 void __sc_dump_mesh(void* mp){
-  cout << "----------------" << endl;
-  float** mesh = (float**)mp;
+  int32_t width = *(int*)mp;
+  int32_t height = *(int*)((char*)mp + sizeof(int32_t));
+  int32_t depth = *(int*)((char*)mp + sizeof(int32_t)*2);
+  
+  // mesh starts at this i32*4 offset due to alignment
+  float** mesh = (float**)((char*)mp + sizeof(int32_t)*4);
+
+  cout << "-------- mesh dump" << endl;
+
   float* aStart = (float*)mesh[0];
 
-  for(size_t i = 0; i < 4; ++i){
-    float ai = aStart[i];
-    cout << "ai is: " << ai << endl;
+  for(size_t i = 0; i < width; ++i){
+    if(i > 0){
+      cout << ", ";
+    }
+    cout << i << ": " << aStart[i];
   }
+
+  cout << endl << "-------- end mesh dump" << endl;
 }
 
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){

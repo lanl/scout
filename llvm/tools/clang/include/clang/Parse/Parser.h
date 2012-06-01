@@ -2145,8 +2145,8 @@ private:
   virtual void CodeCompleteNaturalLanguage();
   
   
-  // scout **************************** ndm - Scout parsing methods
-  
+  // scout **************************** Scout parsing methods
+    
   StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
   
   StmtResult ParseForAllArrayStatement(ParsedAttributes &Attr);
@@ -2192,10 +2192,7 @@ private:
   StmtVectorVec StmtsStack;
   
   bool DeclaringMesh;
-  
-  // return whether this source location came from a '.sc' or '.sch' file
-  bool isScoutSource(SourceLocation location) const;
-  
+    
   bool isScoutLang() const{
     return getLangOpts().Scout;
   }

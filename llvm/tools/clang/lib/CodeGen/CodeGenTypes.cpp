@@ -583,6 +583,12 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     MeshDecl::field_iterator it_end = mesh->field_end();
 
     std::vector< llvm::Type * > eltTys;
+
+    // width, height, depth
+    for(size_t i = 0; i < 3; ++i){
+      eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
+    }
+
     for( ; it != it_end; ++it) {
       llvm::StringRef name = it->getName();
       // Do not generate code for implicit mesh member variables.

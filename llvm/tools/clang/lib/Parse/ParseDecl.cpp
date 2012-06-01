@@ -2745,7 +2745,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       // so we know this is the start of:
       //   uniform mesh MyMesh { ...
-            
       ParseMeshSpecifier(DS);
 
       continue;
@@ -4899,9 +4898,63 @@ void Parser::ParseParameterDeclarationClause(
     // get rid of a parameter (FirstArgAttrs) and this statement. It might be
     // too much hassle.
     DS.takeAttributesFrom(FirstArgAttrs);
-
+    
     ParseDeclarationSpecifiers(DS);
-
+    
+    // scout - parse mesh parameters
+    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]"
+    DeclSpec::TST tst = DS.getTypeSpecType();
+    if(Tok.is(tok::l_square) && tst == DeclSpec::TST_typename){
+      ParsedType parsedType = DS.getRepAsType();
+      const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+      if(mt){
+        ConsumeBracket();
+        size_t numDims;
+        if(Tok.is(tok::r_square)){
+          numDims = 1;
+        }
+        else if(Tok.is(tok::colon)){
+          numDims = 2;
+          ConsumeToken();
+        } 
+        else if(Tok.is(tok::coloncolon)){
+          numDims = 3;
+          ConsumeToken();
+        }
+        else{
+          Diag(Tok, diag::err_expected_mesh_param_token);
+          SkipUntil(tok::r_square);
+          return;
+        }
+        
+        if(Tok.isNot(tok::r_square)){
+          Diag(Tok, diag::err_expected_mesh_param_token);
+          SkipUntil(tok::r_square);
+          return;
+        }
+        else{
+          ConsumeBracket();
+        }
+        
+        MeshType::MeshDimensionVec dims;
+        for(size_t i = 0; i < numDims; ++i){
+          dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
+        }
+        
+        MeshType* mdt = new MeshType(mt->getDecl());
+        mdt->setDimensions(dims);
+        parsedType.set(QualType(mdt, 0));
+        DS.UpdateTypeRep(parsedType);
+        
+        if(Tok.is(tok::star) || Tok.is(tok::amp)){
+          Diag(Tok, diag::err_mesh_param_star_amp);
+          SkipUntil(tok::l_paren);
+        }
+        
+        InsertCPPCode("&", Tok.getLocation());
+      }
+    }
+    
     // Parse the declarator.  This is "PrototypeContext", because we must
     // accept either 'declarator' or 'abstract-declarator' here.
     Declarator ParmDecl(DS, Declarator::PrototypeContext);
@@ -5030,7 +5083,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
-
+  
   // C array syntax has many features, but by-far the most common is [] and [4].
   // This code does a fast path to handle some of the most obvious cases.
   if (Tok.getKind() == tok::r_square) {

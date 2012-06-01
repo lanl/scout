@@ -2743,10 +2743,19 @@ private:
             }
           }
         }
-        assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
-               getTypePtr() ==
-               getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-               "type mismatch in call argument!");
+        
+        // scout - special case for mesh types, because we cannot check
+        // for type pointer equality because each mesh has its own type
+        // pointer to hold the mesh dimensions and other instance data
+        const Type* argType = getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
+        const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
+
+        if(isa<MeshType>(argType) && isa<MeshType>(actualType)){
+          // fine ...
+        }
+        else if(argType != actualType){
+          assert(false && "type mismatch in call argument!");
+        }
 #endif
         EmitCallArg(Args, *Arg, ArgType);
       }

@@ -877,8 +877,25 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             numElts *= result.getSExtValue();
           }
 
+          // store the mesh dimensions
+          for(size_t i = 0; i < 3; ++i){
+            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            
+            if(i >= dims.size()){
+              llvm::Value* intValue = 
+              llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
+              Builder.CreateStore(intValue, field);              
+            }
+            else{
+              llvm::APSInt result;
+              dims[i]->EvaluateAsInt(result, getContext());	
+              llvm::Value* intValue = llvm::ConstantInt::get(getLLVMContext(), result);
+              Builder.CreateStore(intValue, field);
+            }
+          }
+          
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-          for(unsigned i = 0, e = structTy->getNumContainedTypes(); i < e; ++i) {
+          for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
             // Dynamically allocate memory.
             llvm::Value *val = CreateMemAlloc(numElts);
             val = Builder.CreateBitCast(val, structTy->getContainedType(i));

@@ -590,7 +590,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 }
 
 void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
-  // disabled
+  // comment out to enable mesh dumping
   return;
   
   llvm::Function* dumpBlockFunc =
@@ -627,19 +627,21 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
-  
-  ScoutMeshSizes.clear();
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
-    Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
-    ScoutMeshSizes.push_back(lval);
-  }
-  
+    
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
   const VarDecl* MVD = S.getMeshVarDecl();
-  
   llvm::Value* baseAddr = LocalDeclMap[MVD];
+
+  if(MVD->getType().getTypePtr()->isReferenceType()){
+    baseAddr = Builder.CreateLoad(baseAddr);
+  }
+  
+  ScoutMeshSizes.clear();
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
+    ScoutMeshSizes.push_back(lval);
+  }
   
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
@@ -652,7 +654,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
-      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
+      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i+3, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
@@ -813,7 +815,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ret->eraseFromParent();
 
     Builder.SetInsertPoint(cbb);
-    // scout - uncomment to enable mesh dumping
+
     insertMeshDump(baseAddr);
     return;
   }
@@ -850,7 +852,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
                        ScoutMeshSizes, inputs);
   
-  // scout - uncomment to enable mesh dumping
   insertMeshDump(baseAddr);
 }
 
@@ -1068,13 +1069,21 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   ForallTripCount = one;
   std::vector< llvm::Value * > start, end, diff;
-
+  
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    start.push_back(TranslateExprToValue(S.getStart(i)));
-    end.push_back(TranslateExprToValue(S.getEnd(i)));
+    //start.push_back(TranslateExprToValue(S.getStart(i)));
+    //end.push_back(TranslateExprToValue(S.getEnd(i)));
 
-    diff.push_back(Builder.CreateSub(end.back(), start.back()));
-    ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
+    //diff.push_back(Builder.CreateSub(end.back(), start.back()));
+    //ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
+
+    llvm::Value* msi = Builder.CreateLoad(ScoutMeshSizes[i]);
+    
+    start.push_back(zero);
+    end.push_back(msi);
+    diff.push_back(msi);
+    
+    ForallTripCount = Builder.CreateMul(ForallTripCount, msi);
   }
 
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);

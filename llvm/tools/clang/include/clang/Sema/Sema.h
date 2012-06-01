@@ -7087,7 +7087,9 @@ public:
 
   Decl *getObjCDeclContext() const;
 
-  // scout - Scout Sema methods
+  // scout *************************** Scout Sema methods
+  bool isScoutSource(SourceLocation location);
+  
   // called at the beginning part of a mesh definition
   Decl* ActOnMeshDefinition(Scope* S,
                             tok::TokenKind MeshType,

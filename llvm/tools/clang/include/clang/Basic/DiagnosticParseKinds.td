@@ -779,6 +779,12 @@ def err_not_array_renderall_elements: Error<"mesh field is not an array type">;
 
 def err_mismatch_forall_array : Error<
 "start/end/stride groups do not match number of induction variables">;
+
+def err_expected_mesh_param_token : Error<
+"expected ']' or ':' while parsing mesh parameter">;
+
+def err_mesh_param_star_amp : Error<
+"Mesh params are references so they do not need to be qualified with '&' or '*'">;
   
 } // end of Parse Issue category.
 

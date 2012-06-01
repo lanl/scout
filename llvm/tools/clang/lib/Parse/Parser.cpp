@@ -1970,26 +1970,6 @@ std::string Parser::TokToStr(const Token& tok){
   }
 }
 
-bool Parser::isScoutSource(SourceLocation location) const{
-  std::string bufferName = Actions.SourceMgr.getBufferName(location);
-  std::string ext;
-  
-  bool valid = false;
-  for(int i = bufferName.length() - 1; i >= 0; --i){
-    if(bufferName[i] == '.'){
-      valid = true;
-      break;
-    }
-    ext.insert(0, 1, bufferName[i]);
-  }
-  
-  if(!valid){
-    return false;
-  }
-  
-  return ext == "sc" || ext == "sch";
-}
-
 bool Parser::isScoutVectorValueDecl(Decl* decl,
                                     BuiltinType::Kind &kind) const{
   if(ValueDecl* vd = dyn_cast<ValueDecl>(decl)){

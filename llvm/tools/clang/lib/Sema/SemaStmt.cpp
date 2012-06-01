@@ -3334,8 +3334,11 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   const Type* T = VD->getType().getTypePtr();
 
   if(!isa<MeshType>(T)){
-    Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
-    return false;
+    T = VD->getType().getNonReferenceType().getTypePtr();
+    if(!isa<MeshType>(T)){
+      Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
+      return false;
+    }
   }
 
   MeshDecl* MD = cast<MeshType>(T)->getDecl();

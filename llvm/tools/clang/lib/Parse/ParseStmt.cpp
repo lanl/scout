@@ -182,7 +182,7 @@ Retry:
         // case because the square brackets look like an array specification
         // when Clang normally parses a declaration
         
-        if(isScoutLang() && isScoutSource(Tok.getLocation())){
+        if(isScoutLang() && Actions.isScoutSource(Tok.getLocation())){
           QualType qt = Sema::GetTypeFromParser(Classification.getType());
           
           if(qt->getAs<MeshType>() &&
@@ -323,7 +323,7 @@ Retry:
 
       // scout - detect the forall shorthand, e.g:
       // m.a[1..width-2][1..height-2] = MAX_TEMP;
-      if(isScoutLang() && isScoutSource(NameLoc)){
+      if(isScoutLang() && Actions.isScoutSource(NameLoc)){
         if(GetLookAheadToken(1).is(tok::period) &&
            GetLookAheadToken(2).is(tok::identifier) &&
            GetLookAheadToken(3).is(tok::l_square)){
@@ -2681,8 +2681,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
     Actions.LookupName(LR, getCurScope());
     MVD = cast<VarDecl>(LR.getFoundDecl());
-    MT = cast<MeshType>(MVD->getType());
-    
+    MT = cast<MeshType>(MVD->getType().getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
     const MeshDecl* MD = MT->getDecl();
     
