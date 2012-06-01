@@ -3442,7 +3442,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
 
   VarDecl* VD = cast<VarDecl>(ND);
 
-  const Type* T = VD->getType().getTypePtr();
+  const Type* T = VD->getType().getNonReferenceType().getTypePtr();
 
   if(!isa<MeshType>(T)){
     Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;

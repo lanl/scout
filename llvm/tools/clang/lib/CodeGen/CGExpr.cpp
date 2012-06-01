@@ -1990,23 +1990,30 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
     const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
 
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-      if(isa<MeshType>(VD->getType())){
-
+      if(isa<MeshType>(VD->getType().getNonReferenceType())){
+        llvm::Value* baseAddr = LocalDeclMap[VD];
+        
+        if(VD->getType().getTypePtr()->isReferenceType()){
+          baseAddr = Builder.CreateLoad(baseAddr);
+        }
+        
+        
         llvm::StringRef memberName = E->getMemberDecl()->getName();
-
-        llvm::StringRef meshName = ND->getName();
 
         // Check if this is a Scout '*.width' instrinsic.
         if(memberName == "width")
-          return MakeAddrLValue(ScoutMeshSizes[0], getContext().IntTy);
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 0), 
+                                getContext().IntTy);
 
         // Check if this is a Scout '*.height' instrinsic.
         if(memberName == "height")
-          return MakeAddrLValue(ScoutMeshSizes[1], getContext().IntTy);
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 1), 
+                                getContext().IntTy);
 
         // Check if this is a Scout '*.depth' instrinsic.
         if(memberName == "depth")
-          return MakeAddrLValue(ScoutMeshSizes[2], getContext().IntTy);
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 2), 
+                                getContext().IntTy);
 
         return EmitMeshMemberExpr(VD, memberName);
       }
@@ -2075,6 +2082,9 @@ LValue CodeGenFunction::EmitLValueForField(LValue base,
     return EmitLValueForBitfield(base.getAddress(), field,
                                  base.getVRQualifiers());
 
+  std::cerr << "---------------- dumping field" << std::endl;
+  field->dump();
+  
   const RecordDecl *rec = field->getParent();
   QualType type = field->getType();
   CharUnits alignment = getContext().getDeclAlign(field);
