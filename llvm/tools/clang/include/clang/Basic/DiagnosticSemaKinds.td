@@ -5684,5 +5684,8 @@ def err_invalid_scout_vector_component : Error<
 def err_invalid_scout_color_component : Error<
 "invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
 
+def err_mesh_param_dimensionality_mismatch : Error<
+"dimensionality mismatch when passing mesh as parameter">;
+
 } // end of sema component.
 

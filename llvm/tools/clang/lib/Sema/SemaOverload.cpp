@@ -3876,7 +3876,11 @@ Sema::CompareReferenceRelationship(SourceLocation Loc,
   if(const MeshType* mt1 = dyn_cast<MeshType>(UnqualT1.getTypePtr())){
     if(const MeshType* mt2 = dyn_cast<MeshType>(UnqualT2.getTypePtr())){
       if(mt1->getDecl() == mt2->getDecl()){
-        return Ref_Compatible;
+        if(mt1->dimensions().size() == mt2->dimensions().size()){
+          return Ref_Compatible;
+        }
+        Diag(Loc, diag::err_mesh_param_dimensionality_mismatch);
+        return Ref_Incompatible;
       }
       else{
         return Ref_Incompatible; 
