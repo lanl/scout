@@ -27,9 +27,9 @@ void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
 
 extern "C"
 void __sc_dump_mesh(void* mp){
-  int32_t width = *(int*)mp;
-  int32_t height = *(int*)((char*)mp + sizeof(int32_t));
-  int32_t depth = *(int*)((char*)mp + sizeof(int32_t)*2);
+  int32_t width = *(int32_t*)mp;
+  int32_t height = *(int32_t*)((char*)mp + sizeof(int32_t));
+  int32_t depth = *(int32_t*)((char*)mp + sizeof(int32_t)*2);
   
   // mesh starts at this i32*4 offset due to alignment
   float** mesh = (float**)((char*)mp + sizeof(int32_t)*4);
@@ -38,7 +38,9 @@ void __sc_dump_mesh(void* mp){
 
   float* aStart = (float*)mesh[0];
 
-  for(size_t i = 0; i < width; ++i){
+  size_t len = width * height;
+
+  for(size_t i = 0; i < len; ++i){
     if(i > 0){
       cout << ", ";
     }

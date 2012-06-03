@@ -1990,7 +1990,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
     const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
 
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-      if(isa<MeshType>(VD->getType().getNonReferenceType())){
+      if(isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())){
         llvm::Value* baseAddr = LocalDeclMap[VD];
         
         if(VD->getType().getTypePtr()->isReferenceType()){
@@ -2822,7 +2822,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
                                            SmallVector< llvm::Value *, 3 > vals) {
   DEBUG_OUT("EmitMeshMemberExpr");
 
-  const MeshType *MT = cast<MeshType>(VD->getType());
+  const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
   MeshType::MeshDimensionVec exprDims = MT->dimensions();
 
   llvm::Value *arg = getGlobalIdx();

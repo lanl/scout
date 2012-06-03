@@ -2163,6 +2163,8 @@ private:
                             FieldCallback &Fields,
                             unsigned FieldType);
 
+  void ParseMeshParameterDeclaration(DeclSpec& DS);
+  
   StmtResult ParseWindowOrImageDeclaration(bool window,
                                            StmtVector &Stmts,
                                            bool OnlyStatement);

@@ -1373,6 +1373,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-debug-wait");
   }
 
+  // scout - add pthread arg
+  CmdArgs.push_back("-pthread");
+  
   // Select the appropriate action.
   bool IsRewriter = false;
   bool IsModernRewriter = false;

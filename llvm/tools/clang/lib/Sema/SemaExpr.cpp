@@ -1684,7 +1684,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
         
         VarDecl* vd = *sitr;
         
-        const MeshType* mt = dyn_cast<MeshType>(vd->getType());
+        const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
         MeshDecl* md = mt->getDecl();
         
         for(MeshDecl::field_iterator fitr = md->field_begin(),

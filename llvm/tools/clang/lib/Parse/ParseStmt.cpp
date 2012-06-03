@@ -248,7 +248,8 @@ Retry:
               VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
               assert(vd);
               
-              const MeshType* mt = dyn_cast<MeshType>(vd->getType().getTypePtr());
+              const MeshType* mt = 
+              dyn_cast<MeshType>(vd->getType().getCanonicalType().getTypePtr());
               assert(mt);
               
               MeshType* mdt = new MeshType(mt->getDecl());
@@ -335,7 +336,7 @@ Retry:
 
           if(Result.getResultKind() == LookupResult::Found){
             if(VarDecl* vd = dyn_cast<VarDecl>(Result.getFoundDecl())){
-              if(isa<MeshType>(vd->getType().getTypePtr())){
+              if(isa<MeshType>(vd->getType().getCanonicalType().getTypePtr())){
                 return ParseForAllShortStatement(Name, NameLoc, vd);
               }
             }
@@ -2681,7 +2682,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
     Actions.LookupName(LR, getCurScope());
     MVD = cast<VarDecl>(LR.getFoundDecl());
-    MT = cast<MeshType>(MVD->getType().getNonReferenceType().getTypePtr());
+    MT = 
+    cast<MeshType>(MVD->getType().getCanonicalType().getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
     const MeshDecl* MD = MT->getDecl();
     
@@ -3001,7 +3003,7 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
   LookupResult LR(Actions, Name, NameLoc, Sema::LookupOrdinaryName);
   Actions.LookupName(LR, getCurScope());
   VarDecl* MVD = cast<VarDecl>(LR.getFoundDecl());
-  const MeshType *MT = cast<MeshType>(MVD->getType());
+  const MeshType *MT = cast<MeshType>(MVD->getType().getCanonicalType());
 
   StmtResult ForAllResult =
   Actions.ActOnForAllStmt(NameLoc,

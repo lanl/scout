@@ -34,7 +34,7 @@ int cshift(int a, int dx, int dy, int dz);
 
 // ---- hsva
 //
-float4 hsva(float h, float s, float v, float a)
+static float4 hsva(float h, float s, float v, float a)
 {
   float4 r;
 
@@ -98,7 +98,7 @@ float4 hsva(float h, float s, float v, float a)
   return r;
 }
 
-float4 hsv(float h, float s, float v){
+static float4 hsv(float h, float s, float v){
   return hsva(h, s, v, 1.0f);
 }
 

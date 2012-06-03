@@ -4319,6 +4319,17 @@ static void diagnoseMisplacedEllipsis(Parser &P, Declarator &D,
 /// in isConstructorDeclarator.
 void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
+ 
+  // scout - parse mesh paramters e.g: MyMesh[:]
+  DeclSpec& DS = D.getMutableDeclSpec();
+  DeclSpec::TST tst = DS.getTypeSpecType();
+  if(Tok.is(tok::l_square) && tst == DeclSpec::TST_typename){
+    ParsedType parsedType = DS.getRepAsType();
+    const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+    if(mt){
+      ParseMeshParameterDeclaration(DS);
+    }
+  }
   
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
     // ParseDeclaratorInternal might already have parsed the scope.
@@ -4433,8 +4444,9 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     if (D.getContext() == Declarator::MemberContext)
       Diag(Tok, diag::err_expected_member_name_or_semi)
       << D.getDeclSpec().getSourceRange();
-    else if (getLangOpts().CPlusPlus)
+    else if (getLangOpts().CPlusPlus){
       Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus;
+    }
     else
       Diag(Tok, diag::err_expected_ident_lparen);
     D.SetIdentifier(0, Tok.getLocation());
@@ -4902,56 +4914,23 @@ void Parser::ParseParameterDeclarationClause(
     ParseDeclarationSpecifiers(DS);
     
     // scout - parse mesh parameters
-    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]"
+    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
+    // parameters are declared as references or pointers
     DeclSpec::TST tst = DS.getTypeSpecType();
-    if(Tok.is(tok::l_square) && tst == DeclSpec::TST_typename){
+    if(tst == DeclSpec::TST_typename){
       ParsedType parsedType = DS.getRepAsType();
-      const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+      const MeshType* mt = 
+      dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
       if(mt){
-        ConsumeBracket();
-        size_t numDims;
-        if(Tok.is(tok::r_square)){
-          numDims = 1;
+        if(Tok.is(tok::l_square)){
+          ParseMeshParameterDeclaration(DS);
         }
-        else if(Tok.is(tok::colon)){
-          numDims = 2;
-          ConsumeToken();
-        } 
-        else if(Tok.is(tok::coloncolon)){
-          numDims = 3;
-          ConsumeToken();
-        }
-        else{
-          Diag(Tok, diag::err_expected_mesh_param_token);
-          SkipUntil(tok::r_square);
+
+        if(Tok.isNot(tok::amp) && Tok.isNot(tok::star)){
+          Diag(Tok, diag::err_expected_mesh_param_star_amp);
+          SkipUntil(tok::r_paren);
           return;
         }
-        
-        if(Tok.isNot(tok::r_square)){
-          Diag(Tok, diag::err_expected_mesh_param_token);
-          SkipUntil(tok::r_square);
-          return;
-        }
-        else{
-          ConsumeBracket();
-        }
-        
-        MeshType::MeshDimensionVec dims;
-        for(size_t i = 0; i < numDims; ++i){
-          dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
-        }
-        
-        MeshType* mdt = new MeshType(mt->getDecl());
-        mdt->setDimensions(dims);
-        parsedType.set(QualType(mdt, 0));
-        DS.UpdateTypeRep(parsedType);
-        
-        if(Tok.is(tok::star) || Tok.is(tok::amp)){
-          Diag(Tok, diag::err_mesh_param_star_amp);
-          SkipUntil(tok::l_paren);
-        }
-        
-        InsertCPPCode("&", Tok.getLocation());
       }
     }
     
@@ -5521,10 +5500,54 @@ ParseMeshDeclaration(DeclSpec &DS,
     FirstDeclarator = false;
   }
 }
+// scout - parse a mesh parameter declaration
+// assumes on entry that the token stream looks like:
+// [], [:], [::], and that we have already parsed a mesh type
+void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
+  ParsedType parsedType = DS.getRepAsType();
+  const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+  
+  ConsumeBracket();
+  size_t numDims;
+  if(Tok.is(tok::r_square)){
+    numDims = 1;
+  }
+  else if(Tok.is(tok::colon)){
+    numDims = 2;
+    ConsumeToken();
+  } 
+  else if(Tok.is(tok::coloncolon)){
+    numDims = 3;
+    ConsumeToken();
+  }
+  else{
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  }
+  
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  }
+  else{
+    ConsumeBracket();
+  }
+  
+  MeshType::MeshDimensionVec dims;
+  for(size_t i = 0; i < numDims; ++i){
+    dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
+  }
+  
+  MeshType* mdt = new MeshType(mt->getDecl());
+  mdt->setDimensions(dims);
+  parsedType.set(QualType(mdt, 0));
+  DS.UpdateTypeRep(parsedType);
+}
 
 // scout - parse a window or image declaration
 // return true on success
-
 // these look like:
 
 // window win[1024,1024] {

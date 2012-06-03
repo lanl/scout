@@ -599,7 +599,7 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
   if(!dumpBlockFunc){
     std::vector<llvm::Type*> types;
     
-    types.push_back(baseAddr->getType());
+    types.push_back(VoidPtrTy);
     
     llvm::FunctionType* ft =
     llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),
@@ -610,8 +610,10 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
                            "__sc_dump_mesh", &CGM.getModule());
   }
   
+  llvm::Value* bp = Builder.CreateBitCast(baseAddr, VoidPtrTy);
+  
   std::vector<llvm::Value*> dumpArgs;
-  dumpArgs.push_back(baseAddr);
+  dumpArgs.push_back(bp);
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
 }
 
@@ -815,7 +817,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     ret->eraseFromParent();
 
     Builder.SetInsertPoint(cbb);
-
+    
     insertMeshDump(baseAddr);
     return;
   }

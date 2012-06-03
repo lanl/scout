@@ -2977,7 +2977,7 @@ namespace{
             if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
               if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
                 ValueDecl* bd = dr->getDecl();
-                if(!isa<MeshType>(bd->getType().getTypePtr())){
+                if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
                   sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
                   error_ = true;
                 }
@@ -3007,7 +3007,7 @@ namespace{
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
         ValueDecl* bd = dr->getDecl();
         if(const MeshType* MT = 
-           dyn_cast<MeshType>(bd->getType().getTypePtr())){
+           dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
           
           ValueDecl* md = E->getMemberDecl();
 
@@ -3059,7 +3059,7 @@ namespace{
         if(ME->getMemberDecl()->getName() == "position"){
           if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(ME->getBase())){
             if(const MeshType* MT = 
-               dyn_cast<MeshType>(DR->getDecl()->getType().getTypePtr())){
+               dyn_cast<MeshType>(DR->getDecl()->getType().getCanonicalType().getTypePtr())){
               if(E->getIdx() >= MT->dimensions().size()){
                 sema_.Diag(E->getLocation(), diag::err_invalid_position_ref);
                 error_ = true;
@@ -3331,10 +3331,10 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
 
   VarDecl* VD = cast<VarDecl>(ND);
 
-  const Type* T = VD->getType().getTypePtr();
+  const Type* T = VD->getType().getCanonicalType().getTypePtr();
 
   if(!isa<MeshType>(T)){
-    T = VD->getType().getNonReferenceType().getTypePtr();
+    T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
     if(!isa<MeshType>(T)){
       Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
       return false;
@@ -3442,7 +3442,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
 
   VarDecl* VD = cast<VarDecl>(ND);
 
-  const Type* T = VD->getType().getNonReferenceType().getTypePtr();
+  const Type* T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
 
   if(!isa<MeshType>(T)){
     Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
@@ -3526,7 +3526,8 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   }
   
   VarDecl* MD = SCLStack.back();
-  const MeshType* T = dyn_cast<MeshType>(MD->getType().getTypePtr());
+  const MeshType* T = 
+  dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
   
   MeshType* MT = new MeshType(T->getDecl(), IT);
   MT->setDimensions(T->dimensions());

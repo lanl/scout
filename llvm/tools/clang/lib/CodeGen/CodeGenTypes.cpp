@@ -574,7 +574,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   case Type::Mesh: {
     // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
-    MeshType::MeshDimensionVec dims = cast<MeshType>(OT.getTypePtr())->dimensions();
+    MeshType::MeshDimensionVec dims = 
+    cast<MeshType>(OT.getCanonicalType().getTypePtr())->dimensions();
+    
     llvm::StringRef meshName = mesh->getName();
 
     typedef llvm::ArrayType ArrayTy;
