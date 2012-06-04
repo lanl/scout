@@ -67,6 +67,11 @@ set(SCOUT_BINARY_REGRESSION_DIR  ${SCOUT_BINARY_DIR}/test)
 
 set(SCOUT_ENABLE_RT_THREADS  OFF CACHE BOOL "Enable threads in scout's runtime libraries.")
 
+set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL "Enable libnvvm instead of using the NVPTX backend for GPU mode.")
+
+if (SCOUT_ENABLE_LIB_NVVM)
+  add_definitions(-DSC_ENABLE_LIB_NVVM)
+endif()
 
 if (OPENGL_FOUND)
   set(SCOUT_ENABLE_RT_OPENGL   ON  CACHE BOOL "Enable OpenGL in scout's runtime libraries.")

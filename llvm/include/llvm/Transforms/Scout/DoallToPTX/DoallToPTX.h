@@ -39,6 +39,8 @@ class DoallToPTX : public llvm::ModulePass {
   static char ID;
   DoallToPTX();
 
+  ~DoallToPTX();
+
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const;
   const char *getPassName() const;
   bool runOnModule(llvm::Module &M);

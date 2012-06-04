@@ -12,8 +12,11 @@
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
 #include "llvm/Support/InstVisitor.h"
-
 #include "llvm/Target/TargetData.h"
+
+#ifdef SC_ENABLE_LIB_NVVM
+#include "nvvm.h"
+#endif
 
 #include <map>
 #include <vector>
@@ -21,8 +24,16 @@
 using namespace llvm;
 
 DoallToPTX::DoallToPTX()
-  : ModulePass(ID)
-{
+  : ModulePass(ID){
+#ifdef SC_ENABLE_LIB_NVVM
+  assert(nvvmInit() == NVVM_SUCCESS);
+#endif
+}
+
+DoallToPTX::~DoallToPTX(){
+#ifdef SC_ENABLE_LIB_NVVM
+  assert(nvvmFini() == NVVM_SUCCESS);
+#endif
 }
 
 ModulePass *createDoallToPTXPass() {
@@ -38,6 +49,7 @@ const char *DoallToPTX::getPassName() const {
 }
 
 GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
+#ifndef SC_ENABLE_LIB_NVVM
   PassManager pm;
 
   const Target *PTXTarget = 0;
@@ -90,6 +102,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   Target->addPassesToEmitFile(pm, PTXOut, FileType, DisableVerify);
 
   pm.add(createVerifierPass());
+#endif // SC_ENABLE_LIB_NVVM  
 
   typedef std::vector<GlobalVariable*> GlobalVec;
   GlobalVec globalsToRemove;
@@ -143,18 +156,49 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   std::cerr << "----------------- end pruned module" << std::endl;
   */
 
+  std::string ptxStrName = "ptxAssembly";
+
+#ifdef SC_ENABLE_LIB_NVVM
+  nvvmCU cu;
+
+  assert(nvvmCreateCU(&cu) == NVVM_SUCCESS);
+  
+  std::string ptxIR;
+  raw_string_ostream ptxIROut(ptxIR);
+  ptxModule.print(ptxIROut, 0);
+  ptxIROut.flush();
+
+  const char* options[] = 
+    {"-target=ptx", /*verify*/
+     "-arch=compute_20" /*compute_30*/};
+  
+  assert(nvvmCUAddModule(cu, ptxIR.c_str(), ptxIR.length()) == 
+         NVVM_SUCCESS);
+
+  assert(nvvmCompileCU(cu, 2, options) == NVVM_SUCCESS);
+
+  size_t bufferSize;
+  assert(nvvmGetCompiledResultSize(cu, &bufferSize) == NVVM_SUCCESS);
+
+  char* outBuffer = (char*)malloc(sizeof(char)*bufferSize);
+  assert(nvvmGetCompiledResult(cu, outBuffer) == NVVM_SUCCESS);
+
+  assert(nvvmDestroyCU(&cu) == NVVM_SUCCESS);
+
+  Constant* AssemblyCodeArray =
+  ConstantDataArray::getString(cpuModule.getContext(), outBuffer);  
+
+  free(outBuffer);
+
+#else // SC_ENABLE_LIB_NVVM
+
   pm.run(ptxModule);
   PTXOut.flush();
-
-  std::string ptxStrName = "ptxAssembly";
 
   Constant *AssemblyCodeArray =
   ConstantDataArray::getString(cpuModule.getContext(), AssemblyCode);  
 
-  /*
-  std::cerr << "--------------------- ASSEMBLY" << std::endl;
-  std::cerr << AssemblyCode << std::endl;
-  */
+#endif // SC_ENABLE_LIB_NVVM
 
   return new GlobalVariable(cpuModule,
                             AssemblyCodeArray->getType(),

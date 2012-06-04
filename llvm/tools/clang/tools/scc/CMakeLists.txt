@@ -51,11 +51,19 @@ add_clang_executable(scc
   cc1as_main.cpp
   )
 
-set_target_properties(clang PROPERTIES VERSION ${CLANG_EXECUTABLE_VERSION})
-
 if(${APPLE})
   find_library(FOUNDATION_FRAMEWORK NAMES Foundation)
-  target_link_libraries(scc ${FOUNDATION_FRAMEWORK})
+  if(SCOUT_ENABLE_LIB_NVVM)
+    find_library(LIB_NVVM NAMES nvvm 
+                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Mac/lib)
+    target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
+  endif()
+else()
+  if(SCOUT_ENABLE_LIB_NVVM)
+    find_library(LIB_NVVM NAMES nvvm 
+                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Linux/lib)
+    target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
+  endif()
 endif()
 
 file(COPY scc-ast DESTINATION ${SCOUT_BINARY_DIR}/tools/scc)
