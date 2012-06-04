@@ -36,7 +36,10 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 
+// scout includes
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Vectorize.h"
+
 using namespace clang;
 using namespace llvm;
 
@@ -142,9 +145,16 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 void EmitAssemblyHelper::CreatePasses() {
 
   // scout - Check whether to enable Scout NVIDIA GPU support.
+  // else, enable the BB autovectorizer pass if we are generating CPU code
   if(CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
+    MPM.run(*TheModule);
+  }
+  else{
+    PassManager MPM;
+    // also takes an optional config
+    MPM.add(createBBVectorizePass());
     MPM.run(*TheModule);
   }
 
