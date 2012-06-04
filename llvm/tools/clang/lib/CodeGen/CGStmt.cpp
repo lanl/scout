@@ -1139,7 +1139,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
       if(i == 1)
         val = diff[i - 1];
       else
-        val = Builder.CreateMul(diff[i], diff[i - 1]);
+        val = Builder.CreateMul(diff[i-1], diff[i - 2]);
       lval = Builder.CreateUDiv(lval, val);
     }
 
