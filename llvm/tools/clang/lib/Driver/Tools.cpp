@@ -1970,11 +1970,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_pedantic_errors);
   Args.AddLastArg(CmdArgs, options::OPT_w);
 
-  // Scout cpu multithreading support if present.
+  // scout cpu multithreading support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 
-  // Scout gpu support if present.
+  // scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
+
+  // scout enable autovectorize pass.
+  Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
   
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).

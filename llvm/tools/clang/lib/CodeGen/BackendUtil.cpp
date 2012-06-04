@@ -145,19 +145,19 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 void EmitAssemblyHelper::CreatePasses() {
 
   // scout - Check whether to enable Scout NVIDIA GPU support.
-  // else, enable the BB autovectorizer pass if we are generating CPU code
   if(CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
     MPM.run(*TheModule);
   }
-  else{
+
+  // enable the BB autovectorizer pass
+  if(CodeGenOpts.ScoutVectorize) {
     PassManager MPM;
-    // also takes an optional config
     MPM.add(createBBVectorizePass());
     MPM.run(*TheModule);
   }
-
+  
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.Inlining;
 

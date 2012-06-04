@@ -512,6 +512,8 @@ def view_ast : Flag<"-view-ast">,
   HelpText<"View the AST of a parsed file with GraphViz">;
 def gpu : Flag<"-gpu">,
   HelpText<"Enable NVIDIA GPU support.">;
+def vectorize : Flag<"-vectorize">,
+  HelpText<"Enable autovectorize pass.">;
 def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
 def debugWait : Flag<"-debug-wait">,

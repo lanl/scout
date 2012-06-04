@@ -41,12 +41,11 @@
      ENUM_LANGOPT(Name, Type, Bits, Default, Description)
 #endif
 
-// SCOUTCODE ndm - Scout language option
+// scout language options
 LANGOPT(Scout               , 1, 0, "Scout")
 LANGOPT(ScoutNvidiaGPU      , 1, 0, "ScoutNvidiaGPU")
-LANGOPT(ScoutNvidiaGPU2     , 1, 0, "ScoutNvidiaGPU2")
+LANGOPT(ScoutVectorize      , 1, 0, "ScoutNvidiaVectorize")
 LANGOPT(ScoutCPUThreads     , 1, 0, "ScoutCPUThreads")
-// ENDSCOUTCODE
 
 LANGOPT(C99               , 1, 0, "C99")
 LANGOPT(C11               , 1, 0, "C11")

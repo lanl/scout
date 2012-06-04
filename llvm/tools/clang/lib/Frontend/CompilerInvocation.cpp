@@ -1164,10 +1164,13 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.Inlining = Args.hasArg(OPT_fno_inline_functions) ?
     CodeGenOptions::OnlyAlwaysInlining : Opts.Inlining;
 
-  // Enable Scout NVIDIA GPU support if OPT_gpu is present.
+  // scout enable NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+
+  // scout enable autovectorize pass OPT_vectorize is present.
+  Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
   
-  // Enable Scout CPU multithreading support if OPT_cpuThreads is present.
+  // scout enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
   // OPT_gpu and OPT_cpuThreads operate exclusively.
@@ -2030,6 +2033,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // scout - detect Scout -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
+  Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
+  
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags);
   Opts.Optimize = Opt != 0;
