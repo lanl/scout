@@ -1,5 +1,6 @@
 set(files
   altivec.h
+  ammintrin.h
   avxintrin.h
   avx2intrin.h
   bmiintrin.h
@@ -7,6 +8,7 @@ set(files
   emmintrin.h
   float.h
   fma4intrin.h
+  fmaintrin.h
   immintrin.h
   iso646.h
   limits.h

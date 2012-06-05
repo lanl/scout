@@ -21,6 +21,7 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
+#include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -58,6 +59,7 @@ enum {
   TB_INDEX_0    = 0,
   TB_INDEX_1    = 1,
   TB_INDEX_2    = 2,
+  TB_INDEX_3    = 3,
   TB_INDEX_MASK = 0xff,
 
   // Minimum alignment required for load/store.
@@ -1122,6 +1124,158 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
                   // Index 2, folded load
                   Flags | TB_INDEX_2 | TB_FOLDED_LOAD);
   }
+
+  static const X86OpTblEntry OpTbl3[] = {
+    // FMA foldable instructions
+    { X86::VFMADDSSr231r,         X86::VFMADDSSr231m,         0 },
+    { X86::VFMADDSDr231r,         X86::VFMADDSDr231m,         0 },
+    { X86::VFMADDSSr132r,         X86::VFMADDSSr132m,         0 },
+    { X86::VFMADDSDr132r,         X86::VFMADDSDr132m,         0 },
+    { X86::VFMADDSSr213r,         X86::VFMADDSSr213m,         0 },
+    { X86::VFMADDSDr213r,         X86::VFMADDSDr213m,         0 },
+    { X86::VFMADDSSr132r_Int,     X86::VFMADDSSr132m_Int,     0 },
+    { X86::VFMADDSDr132r_Int,     X86::VFMADDSDr132m_Int,     0 },
+
+    { X86::VFMADDPSr231r,         X86::VFMADDPSr231m,         TB_ALIGN_16 },
+    { X86::VFMADDPDr231r,         X86::VFMADDPDr231m,         TB_ALIGN_16 },
+    { X86::VFMADDPSr132r,         X86::VFMADDPSr132m,         TB_ALIGN_16 },
+    { X86::VFMADDPDr132r,         X86::VFMADDPDr132m,         TB_ALIGN_16 },
+    { X86::VFMADDPSr213r,         X86::VFMADDPSr213m,         TB_ALIGN_16 },
+    { X86::VFMADDPDr213r,         X86::VFMADDPDr213m,         TB_ALIGN_16 },
+    { X86::VFMADDPSr231rY,        X86::VFMADDPSr231mY,        TB_ALIGN_32 },
+    { X86::VFMADDPDr231rY,        X86::VFMADDPDr231mY,        TB_ALIGN_32 },
+    { X86::VFMADDPSr132rY,        X86::VFMADDPSr132mY,        TB_ALIGN_32 },
+    { X86::VFMADDPDr132rY,        X86::VFMADDPDr132mY,        TB_ALIGN_32 },
+    { X86::VFMADDPSr213rY,        X86::VFMADDPSr213mY,        TB_ALIGN_32 },
+    { X86::VFMADDPDr213rY,        X86::VFMADDPDr213mY,        TB_ALIGN_32 },
+    { X86::VFMADDPSr132r_Int,     X86::VFMADDPSr132m_Int,     TB_ALIGN_16 },
+    { X86::VFMADDPDr132r_Int,     X86::VFMADDPDr132m_Int,     TB_ALIGN_16 },
+    { X86::VFMADDPSr132rY_Int,    X86::VFMADDPSr132mY_Int,    TB_ALIGN_32 },
+    { X86::VFMADDPDr132rY_Int,    X86::VFMADDPDr132mY_Int,    TB_ALIGN_32 },
+
+    { X86::VFNMADDSSr231r,        X86::VFNMADDSSr231m,        0 },
+    { X86::VFNMADDSDr231r,        X86::VFNMADDSDr231m,        0 },
+    { X86::VFNMADDSSr132r,        X86::VFNMADDSSr132m,        0 },
+    { X86::VFNMADDSDr132r,        X86::VFNMADDSDr132m,        0 },
+    { X86::VFNMADDSSr213r,        X86::VFNMADDSSr213m,        0 },
+    { X86::VFNMADDSDr213r,        X86::VFNMADDSDr213m,        0 },
+    { X86::VFNMADDSSr132r_Int,    X86::VFNMADDSSr132m_Int,    0 },
+    { X86::VFNMADDSDr132r_Int,    X86::VFNMADDSDr132m_Int,    0 },
+
+    { X86::VFNMADDPSr231r,        X86::VFNMADDPSr231m,        TB_ALIGN_16 },
+    { X86::VFNMADDPDr231r,        X86::VFNMADDPDr231m,        TB_ALIGN_16 },
+    { X86::VFNMADDPSr132r,        X86::VFNMADDPSr132m,        TB_ALIGN_16 },
+    { X86::VFNMADDPDr132r,        X86::VFNMADDPDr132m,        TB_ALIGN_16 },
+    { X86::VFNMADDPSr213r,        X86::VFNMADDPSr213m,        TB_ALIGN_16 },
+    { X86::VFNMADDPDr213r,        X86::VFNMADDPDr213m,        TB_ALIGN_16 },
+    { X86::VFNMADDPSr231rY,       X86::VFNMADDPSr231mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPDr231rY,       X86::VFNMADDPDr231mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPSr132rY,       X86::VFNMADDPSr132mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPDr132rY,       X86::VFNMADDPDr132mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPSr213rY,       X86::VFNMADDPSr213mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPDr213rY,       X86::VFNMADDPDr213mY,       TB_ALIGN_32 },
+    { X86::VFNMADDPSr132r_Int,    X86::VFNMADDPSr132m_Int,    TB_ALIGN_16 },
+    { X86::VFNMADDPDr132r_Int,    X86::VFNMADDPDr132m_Int,    TB_ALIGN_16 },
+    { X86::VFNMADDPSr132rY_Int,   X86::VFNMADDPSr132mY_Int,   TB_ALIGN_32 },
+    { X86::VFNMADDPDr132rY_Int,   X86::VFNMADDPDr132mY_Int,   TB_ALIGN_32 },
+
+    { X86::VFMSUBSSr231r,         X86::VFMSUBSSr231m,         0 },
+    { X86::VFMSUBSDr231r,         X86::VFMSUBSDr231m,         0 },
+    { X86::VFMSUBSSr132r,         X86::VFMSUBSSr132m,         0 },
+    { X86::VFMSUBSDr132r,         X86::VFMSUBSDr132m,         0 },
+    { X86::VFMSUBSSr213r,         X86::VFMSUBSSr213m,         0 },
+    { X86::VFMSUBSDr213r,         X86::VFMSUBSDr213m,         0 },
+    { X86::VFMSUBSSr132r_Int,     X86::VFMSUBSSr132m_Int,     0 },
+    { X86::VFMSUBSDr132r_Int,     X86::VFMSUBSDr132m_Int,     0 },
+
+    { X86::VFMSUBPSr231r,         X86::VFMSUBPSr231m,         TB_ALIGN_16 },
+    { X86::VFMSUBPDr231r,         X86::VFMSUBPDr231m,         TB_ALIGN_16 },
+    { X86::VFMSUBPSr132r,         X86::VFMSUBPSr132m,         TB_ALIGN_16 },
+    { X86::VFMSUBPDr132r,         X86::VFMSUBPDr132m,         TB_ALIGN_16 },
+    { X86::VFMSUBPSr213r,         X86::VFMSUBPSr213m,         TB_ALIGN_16 },
+    { X86::VFMSUBPDr213r,         X86::VFMSUBPDr213m,         TB_ALIGN_16 },
+    { X86::VFMSUBPSr231rY,        X86::VFMSUBPSr231mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPDr231rY,        X86::VFMSUBPDr231mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPSr132rY,        X86::VFMSUBPSr132mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPDr132rY,        X86::VFMSUBPDr132mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPSr213rY,        X86::VFMSUBPSr213mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPDr213rY,        X86::VFMSUBPDr213mY,        TB_ALIGN_32 },
+    { X86::VFMSUBPSr132r_Int,     X86::VFMSUBPSr132m_Int,     TB_ALIGN_16 },
+    { X86::VFMSUBPDr132r_Int,     X86::VFMSUBPDr132m_Int,     TB_ALIGN_16 },
+    { X86::VFMSUBPSr132rY_Int,    X86::VFMSUBPSr132mY_Int,    TB_ALIGN_32 },
+    { X86::VFMSUBPDr132rY_Int,    X86::VFMSUBPDr132mY_Int,    TB_ALIGN_32 },
+
+    { X86::VFNMSUBSSr231r,        X86::VFNMSUBSSr231m,        0 },
+    { X86::VFNMSUBSDr231r,        X86::VFNMSUBSDr231m,        0 },
+    { X86::VFNMSUBSSr132r,        X86::VFNMSUBSSr132m,        0 },
+    { X86::VFNMSUBSDr132r,        X86::VFNMSUBSDr132m,        0 },
+    { X86::VFNMSUBSSr213r,        X86::VFNMSUBSSr213m,        0 },
+    { X86::VFNMSUBSDr213r,        X86::VFNMSUBSDr213m,        0 },
+    { X86::VFNMSUBSSr132r_Int,    X86::VFNMSUBSSr132m_Int,    0 },
+    { X86::VFNMSUBSDr132r_Int,    X86::VFNMSUBSDr132m_Int,    0 },
+
+    { X86::VFNMSUBPSr231r,        X86::VFNMSUBPSr231m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPDr231r,        X86::VFNMSUBPDr231m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPSr132r,        X86::VFNMSUBPSr132m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPDr132r,        X86::VFNMSUBPDr132m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPSr213r,        X86::VFNMSUBPSr213m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPDr213r,        X86::VFNMSUBPDr213m,        TB_ALIGN_16 },
+    { X86::VFNMSUBPSr231rY,       X86::VFNMSUBPSr231mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPDr231rY,       X86::VFNMSUBPDr231mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPSr132rY,       X86::VFNMSUBPSr132mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPDr132rY,       X86::VFNMSUBPDr132mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPSr213rY,       X86::VFNMSUBPSr213mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPDr213rY,       X86::VFNMSUBPDr213mY,       TB_ALIGN_32 },
+    { X86::VFNMSUBPSr132r_Int,    X86::VFNMSUBPSr132m_Int,    TB_ALIGN_16 },
+    { X86::VFNMSUBPDr132r_Int,    X86::VFNMSUBPDr132m_Int,    TB_ALIGN_16 },
+    { X86::VFNMSUBPSr132rY_Int,   X86::VFNMSUBPSr132mY_Int,   TB_ALIGN_32 },
+    { X86::VFNMSUBPDr132rY_Int,   X86::VFNMSUBPDr132mY_Int,   TB_ALIGN_32 },
+
+    { X86::VFMADDSUBPSr231r,      X86::VFMADDSUBPSr231m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPDr231r,      X86::VFMADDSUBPDr231m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPSr132r,      X86::VFMADDSUBPSr132m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPDr132r,      X86::VFMADDSUBPDr132m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPSr213r,      X86::VFMADDSUBPSr213m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPDr213r,      X86::VFMADDSUBPDr213m,      TB_ALIGN_16 },
+    { X86::VFMADDSUBPSr231rY,     X86::VFMADDSUBPSr231mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPDr231rY,     X86::VFMADDSUBPDr231mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPSr132rY,     X86::VFMADDSUBPSr132mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPDr132rY,     X86::VFMADDSUBPDr132mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPSr213rY,     X86::VFMADDSUBPSr213mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPDr213rY,     X86::VFMADDSUBPDr213mY,     TB_ALIGN_32 },
+    { X86::VFMADDSUBPSr132r_Int,  X86::VFMADDSUBPSr132m_Int,  TB_ALIGN_16 },
+    { X86::VFMADDSUBPDr132r_Int,  X86::VFMADDSUBPDr132m_Int,  TB_ALIGN_16 },
+    { X86::VFMADDSUBPSr132rY_Int, X86::VFMADDSUBPSr132mY_Int, TB_ALIGN_32 },
+    { X86::VFMADDSUBPDr132rY_Int, X86::VFMADDSUBPDr132mY_Int, TB_ALIGN_32 },
+
+    { X86::VFMSUBADDPSr231r,      X86::VFMSUBADDPSr231m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPDr231r,      X86::VFMSUBADDPDr231m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPSr132r,      X86::VFMSUBADDPSr132m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPDr132r,      X86::VFMSUBADDPDr132m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPSr213r,      X86::VFMSUBADDPSr213m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPDr213r,      X86::VFMSUBADDPDr213m,      TB_ALIGN_16 },
+    { X86::VFMSUBADDPSr231rY,     X86::VFMSUBADDPSr231mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPDr231rY,     X86::VFMSUBADDPDr231mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPSr132rY,     X86::VFMSUBADDPSr132mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPDr132rY,     X86::VFMSUBADDPDr132mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPSr213rY,     X86::VFMSUBADDPSr213mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPDr213rY,     X86::VFMSUBADDPDr213mY,     TB_ALIGN_32 },
+    { X86::VFMSUBADDPSr132r_Int,  X86::VFMSUBADDPSr132m_Int,  TB_ALIGN_16 },
+    { X86::VFMSUBADDPDr132r_Int,  X86::VFMSUBADDPDr132m_Int,  TB_ALIGN_16 },
+    { X86::VFMSUBADDPSr132rY_Int, X86::VFMSUBADDPSr132mY_Int, TB_ALIGN_32 },
+    { X86::VFMSUBADDPDr132rY_Int, X86::VFMSUBADDPDr132mY_Int, TB_ALIGN_32 },
+  };
+
+  for (unsigned i = 0, e = array_lengthof(OpTbl3); i != e; ++i) {
+    unsigned RegOp = OpTbl3[i].RegOp;
+    unsigned MemOp = OpTbl3[i].MemOp;
+    unsigned Flags = OpTbl3[i].Flags;
+    AddTableEntry(RegOp2MemOpTable3, MemOp2RegOpTable,
+                  RegOp, MemOp,
+                  // Index 3, folded load
+                  Flags | TB_INDEX_3 | TB_FOLDED_LOAD);
+  }
+
 }
 
 void
@@ -2639,6 +2793,44 @@ void X86InstrInfo::loadRegFromAddr(MachineFunction &MF, unsigned DestReg,
   NewMIs.push_back(MIB);
 }
 
+bool X86InstrInfo::
+OptimizeSubInstr(MachineInstr *SubInstr, const MachineRegisterInfo *MRI) const {
+  // If destination is a memory operand, do not perform this optimization.
+  if ((SubInstr->getOpcode() != X86::SUB64rr) &&
+      (SubInstr->getOpcode() != X86::SUB32rr) &&
+      (SubInstr->getOpcode() != X86::SUB16rr) &&
+      (SubInstr->getOpcode() != X86::SUB8rr) &&
+      (SubInstr->getOpcode() != X86::SUB64ri32) &&
+      (SubInstr->getOpcode() != X86::SUB64ri8) &&
+      (SubInstr->getOpcode() != X86::SUB32ri) &&
+      (SubInstr->getOpcode() != X86::SUB32ri8) &&
+      (SubInstr->getOpcode() != X86::SUB16ri) &&
+      (SubInstr->getOpcode() != X86::SUB16ri8) &&
+      (SubInstr->getOpcode() != X86::SUB8ri))
+    return false;
+  unsigned DestReg = SubInstr->getOperand(0).getReg();
+  if (MRI->use_begin(DestReg) != MRI->use_end())
+    return false;
+
+  // There is no use of the destination register, we can replace SUB with CMP.
+  switch (SubInstr->getOpcode()) {
+    default: break;
+    case X86::SUB64rr:   SubInstr->setDesc(get(X86::CMP64rr));   break;
+    case X86::SUB32rr:   SubInstr->setDesc(get(X86::CMP32rr));   break;
+    case X86::SUB16rr:   SubInstr->setDesc(get(X86::CMP16rr));   break;
+    case X86::SUB8rr:    SubInstr->setDesc(get(X86::CMP8rr));    break;
+    case X86::SUB64ri32: SubInstr->setDesc(get(X86::CMP64ri32)); break;
+    case X86::SUB64ri8:  SubInstr->setDesc(get(X86::CMP64ri8));  break;
+    case X86::SUB32ri:   SubInstr->setDesc(get(X86::CMP32ri));   break;
+    case X86::SUB32ri8:  SubInstr->setDesc(get(X86::CMP32ri8));  break;
+    case X86::SUB16ri:   SubInstr->setDesc(get(X86::CMP16ri));   break;
+    case X86::SUB16ri8:  SubInstr->setDesc(get(X86::CMP16ri8));  break;
+    case X86::SUB8ri:    SubInstr->setDesc(get(X86::CMP8ri));    break;
+  }
+  SubInstr->RemoveOperand(0);
+  return true;
+}
+
 /// Expand2AddrUndef - Expand a single-def pseudo instruction to a two-addr
 /// instruction with two undef reads of the register being defined.  This is
 /// used for mapping:
@@ -3865,9 +4057,126 @@ namespace {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
+
+   private:
+    unsigned BaseReg;
   };
 }
 
 char CGBR::ID = 0;
 FunctionPass*
 llvm::createGlobalBaseRegPass() { return new CGBR(); }
+
+namespace {
+  struct LDTLSCleanup : public MachineFunctionPass {
+    static char ID;
+    LDTLSCleanup() : MachineFunctionPass(ID) {}
+
+    virtual bool runOnMachineFunction(MachineFunction &MF) {
+      X86MachineFunctionInfo* MFI = MF.getInfo<X86MachineFunctionInfo>();
+      if (MFI->getNumLocalDynamicTLSAccesses() < 2) {
+        // No point folding accesses if there isn't at least two.
+        return false;
+      }
+
+      MachineDominatorTree *DT = &getAnalysis<MachineDominatorTree>();
+      return VisitNode(DT->getRootNode(), 0);
+    }
+
+    // Visit the dominator subtree rooted at Node in pre-order.
+    // If TLSBaseAddrReg is non-null, then use that to replace any
+    // TLS_base_addr instructions. Otherwise, create the register
+    // when the first such instruction is seen, and then use it
+    // as we encounter more instructions.
+    bool VisitNode(MachineDomTreeNode *Node, unsigned TLSBaseAddrReg) {
+      MachineBasicBlock *BB = Node->getBlock();
+      bool Changed = false;
+
+      // Traverse the current block.
+      for (MachineBasicBlock::iterator I = BB->begin(), E = BB->end(); I != E;
+           ++I) {
+        switch (I->getOpcode()) {
+          case X86::TLS_base_addr32:
+          case X86::TLS_base_addr64:
+            if (TLSBaseAddrReg)
+              I = ReplaceTLSBaseAddrCall(I, TLSBaseAddrReg);
+            else
+              I = SetRegister(I, &TLSBaseAddrReg);
+            Changed = true;
+            break;
+          default:
+            break;
+        }
+      }
+
+      // Visit the children of this block in the dominator tree.
+      for (MachineDomTreeNode::iterator I = Node->begin(), E = Node->end();
+           I != E; ++I) {
+        Changed |= VisitNode(*I, TLSBaseAddrReg);
+      }
+
+      return Changed;
+    }
+
+    // Replace the TLS_base_addr instruction I with a copy from
+    // TLSBaseAddrReg, returning the new instruction.
+    MachineInstr *ReplaceTLSBaseAddrCall(MachineInstr *I,
+                                         unsigned TLSBaseAddrReg) {
+      MachineFunction *MF = I->getParent()->getParent();
+      const X86TargetMachine *TM =
+          static_cast<const X86TargetMachine *>(&MF->getTarget());
+      const bool is64Bit = TM->getSubtarget<X86Subtarget>().is64Bit();
+      const X86InstrInfo *TII = TM->getInstrInfo();
+
+      // Insert a Copy from TLSBaseAddrReg to RAX/EAX.
+      MachineInstr *Copy = BuildMI(*I->getParent(), I, I->getDebugLoc(),
+                                   TII->get(TargetOpcode::COPY),
+                                   is64Bit ? X86::RAX : X86::EAX)
+                                   .addReg(TLSBaseAddrReg);
+
+      // Erase the TLS_base_addr instruction.
+      I->eraseFromParent();
+
+      return Copy;
+    }
+
+    // Create a virtal register in *TLSBaseAddrReg, and populate it by
+    // inserting a copy instruction after I. Returns the new instruction.
+    MachineInstr *SetRegister(MachineInstr *I, unsigned *TLSBaseAddrReg) {
+      MachineFunction *MF = I->getParent()->getParent();
+      const X86TargetMachine *TM =
+          static_cast<const X86TargetMachine *>(&MF->getTarget());
+      const bool is64Bit = TM->getSubtarget<X86Subtarget>().is64Bit();
+      const X86InstrInfo *TII = TM->getInstrInfo();
+
+      // Create a virtual register for the TLS base address.
+      MachineRegisterInfo &RegInfo = MF->getRegInfo();
+      *TLSBaseAddrReg = RegInfo.createVirtualRegister(is64Bit
+                                                      ? &X86::GR64RegClass
+                                                      : &X86::GR32RegClass);
+
+      // Insert a copy from RAX/EAX to TLSBaseAddrReg.
+      MachineInstr *Next = I->getNextNode();
+      MachineInstr *Copy = BuildMI(*I->getParent(), Next, I->getDebugLoc(),
+                                   TII->get(TargetOpcode::COPY),
+                                   *TLSBaseAddrReg)
+                                   .addReg(is64Bit ? X86::RAX : X86::EAX);
+
+      return Copy;
+    }
+
+    virtual const char *getPassName() const {
+      return "Local Dynamic TLS Access Clean-up";
+    }
+
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.setPreservesCFG();
+      AU.addRequired<MachineDominatorTree>();
+      MachineFunctionPass::getAnalysisUsage(AU);
+    }
+  };
+}
+
+char LDTLSCleanup::ID = 0;
+FunctionPass*
+llvm::createCleanupLocalDynamicTLSPass() { return new LDTLSCleanup(); }

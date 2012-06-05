@@ -20,6 +20,10 @@ def warn_variables_not_in_loop_body : Warning<
   "used in loop condition not modified in loop body">,
   InGroup<DiagGroup<"loop-analysis">>, DefaultIgnore;
 
+def warn_identical_enum_values : Warning<
+  "all elements of %0 are initialized with literals to value %1">,
+  InGroup<DiagGroup<"unique-enum">>;
+
 // Constant expressions
 def err_expr_not_ice : Error<
   "expression is not an %select{integer|integral}0 constant expression">;
@@ -331,10 +335,14 @@ def warn_dyn_class_memaccess : Warning<
 def note_bad_memaccess_silence : Note<
   "explicitly cast the pointer to silence this warning">;
 def warn_sizeof_pointer_expr_memaccess : Warning<
-  "argument to 'sizeof' in %0 call is the same expression as the "
-  "%select{destination|source}1; did you mean to "
-  "%select{dereference it|remove the addressof|provide an explicit length}2?">,
+  "'%0' call operates on objects of type %1 while the size is based on a " 
+  "different type %2">, 
   InGroup<DiagGroup<"sizeof-pointer-memaccess">>;
+def warn_sizeof_pointer_expr_memaccess_note : Note<
+  "did you mean to %select{dereference the argument to 'sizeof' (and multiply "
+  "it by the number of elements)|remove the addressof in the argument to "
+  "'sizeof' (and multiply it by the number of elements)|provide an explicit "
+  "length}0?">;
 def warn_sizeof_pointer_type_memaccess : Warning<
   "argument to 'sizeof' in %0 call is the same pointer type %1 as the "
   "%select{destination|source}2; expected %3 or an explicit length">,
@@ -626,10 +634,9 @@ def warn_missing_explicit_synthesis : Warning <
 def warn_property_getter_owning_mismatch : Warning<
   "property declared as returning non-retained objects"
   "; getter returning retained objects">;
-def warn_property_setter_ambiguous_use : Warning<
+def error_property_setter_ambiguous_use : Error<
   "synthesized properties '%0' and '%1' both claim setter %2 -"
-  " use of this setter may cause unexpected behavior">,
-  InGroup<DiagGroup<"objc-multiple-property-setter-use">>;
+  " use of this setter will cause unexpected behavior">;
 def err_ownin_getter_rule : Error<
   "property's synthesized getter follows Cocoa naming"
   " convention for returning 'owned' objects">;
@@ -1150,6 +1157,10 @@ def err_reference_bind_failed : Error<
   "%2">;
 def err_reference_bind_init_list : Error<
   "reference to type %0 cannot bind to an initializer list">;
+def warn_temporary_array_to_pointer_decay : Warning<
+  "pointer is initialized by a temporary array, which will be destroyed at the "
+  "end of the full-expression">,
+  InGroup<DiagGroup<"address-of-array-temporary">>;
 def err_init_list_bad_dest_type : Error<
   "%select{|non-aggregate }0type %1 cannot be initialized with an initializer "
   "list">;
@@ -1180,38 +1191,31 @@ def warn_uninit_self_reference_in_init : Warning<
   "variable %0 is uninitialized when used within its own initialization">,
   InGroup<Uninitialized>;
 def warn_uninit_var : Warning<
-  "variable %0 is uninitialized when used here">,
+  "variable %0 is uninitialized when %select{used here|captured by block}1">,
   InGroup<Uninitialized>, DefaultIgnore;
 def warn_sometimes_uninit_var : Warning<
-  "variable %0 is sometimes uninitialized when used here">,
-  InGroup<UninitializedSometimes>, DefaultIgnore;
-def warn_maybe_uninit_var :
-  Warning<"variable %0 may be uninitialized when used here">,
-    InGroup<UninitializedMaybe>, DefaultIgnore;
-def note_uninit_var_def : Note<
-  "variable %0 is declared here">;
-def warn_uninit_var_captured_by_block : Warning<
-  "variable %0 is uninitialized when captured by block">,
-  InGroup<Uninitialized>, DefaultIgnore;
-def warn_sometimes_uninit_var_captured_by_block : Warning<
-  "variable %0 is sometimes uninitialized when captured by block">,
-  InGroup<UninitializedSometimes>, DefaultIgnore;
-def warn_maybe_uninit_var_captured_by_block : Warning<
-  "variable %0 may be uninitialized when captured by block">,
+  "variable %0 is %select{used|captured}1 uninitialized whenever "
+  "%select{'%3' condition is %select{true|false}4|"
+  "'%3' loop %select{is entered|exits because its condition is false}4|"
+  "'%3' loop %select{condition is true|exits because its condition is false}4|"
+  "switch %3 is taken}2">, InGroup<UninitializedSometimes>, DefaultIgnore;
+def warn_maybe_uninit_var : Warning<
+  "variable %0 may be uninitialized when "
+  "%select{used here|captured by block}1">,
   InGroup<UninitializedMaybe>, DefaultIgnore;
+def note_uninit_var_def : Note<"variable %0 is declared here">;
+def note_uninit_var_use : Note<
+  "%select{uninitialized use occurs|variable is captured by block}0 here">;
 def warn_uninit_byref_blockvar_captured_by_block : Warning<
   "block pointer variable %0 is uninitialized when captured by block">,
   InGroup<Uninitialized>, DefaultIgnore;
-def note_sometimes_uninit_var_branch : Note<
-  "uninitialized use occurs whenever "
-  "%select{'%1' condition is %select{true|false}2|"
-  "'%1' loop %select{is entered|exits because its condition is false}2|"
-  "'%1' loop %select{condition is true|exits because its condition is false}2|"
-  "switch %1 is taken}0">;
 def note_block_var_fixit_add_initialization : Note<
   "maybe you meant to use __block %0">;
 def note_var_fixit_add_initialization : Note<
   "initialize the variable %0 to silence this warning">;
+def note_uninit_fixit_remove_cond : Note<
+  "remove the %select{'%1' if its condition|condition if it}0 "
+  "is always %select{false|true}2">;
 def err_init_incomplete_type : Error<"initialization of incomplete type %0">;
 
 def err_temp_copy_no_viable : Error<
@@ -4332,10 +4336,6 @@ let CategoryName = "Lambda Issue" in {
   def note_lambda_decl : Note<"lambda expression begins here">;
   def err_lambda_unevaluated_operand : Error<
     "lambda expression in an unevaluated operand">;
-  def ext_lambda_implies_void_return : ExtWarn<
-    "C++11 requires lambda with omitted result type to consist of a single "
-    "return statement">,
-    InGroup<LambdaExtensions>;
   def err_lambda_return_init_list : Error<
     "cannot deduce lambda return type from initializer list">;
   def err_lambda_capture_default_arg : Error<
@@ -5298,6 +5298,9 @@ def warn_missing_cases : Warning<
 def warn_unannotated_fallthrough : Warning<
   "unannotated fall-through between switch labels">,
   InGroup<ImplicitFallthrough>, DefaultIgnore;
+def warn_unannotated_fallthrough_per_method : Warning<
+  "unannotated fall-through between switch labels in partly annotated method">,
+  InGroup<ImplicitFallthroughPerMethod>, DefaultIgnore;
 def note_insert_fallthrough_fixit : Note<
   "insert '[[clang::fallthrough]];' to silence this warning">;
 def note_insert_break_fixit : Note<

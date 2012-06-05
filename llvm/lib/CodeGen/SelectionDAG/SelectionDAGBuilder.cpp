@@ -51,7 +51,7 @@
 #include "llvm/Target/TargetLowering.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/CRSBuilder.h"
+#include "llvm/Support/IntegersSubsetMapping.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
@@ -844,7 +844,7 @@ void SelectionDAGBuilder::clear() {
 }
 
 /// clearDanglingDebugInfo - Clear the dangling debug information
-/// map. This function is seperated from the clear so that debug
+/// map. This function is separated from the clear so that debug
 /// information that is dangling in a basic block can be properly
 /// resolved in a different basic block. This allows the
 /// SelectionDAG to resolve dangling debug information attached
@@ -1903,8 +1903,6 @@ bool SelectionDAGBuilder::handleSmallSwitchRange(CaseRec& CR,
                                                  const Value* SV,
                                                  MachineBasicBlock *Default,
                                                  MachineBasicBlock *SwitchBB) {
-  Case& BackCase  = *(CR.Range.second-1);
-
   // Size is the number of Cases represented by this range.
   size_t Size = CR.Range.second - CR.Range.first;
   if (Size > 3)
@@ -1972,11 +1970,28 @@ bool SelectionDAGBuilder::handleSmallSwitchRange(CaseRec& CR,
     }
   }
 
+  // Order cases by weight so the most likely case will be checked first.
+  BranchProbabilityInfo *BPI = FuncInfo.BPI;
+  if (BPI) {
+    for (CaseItr I = CR.Range.first, IE = CR.Range.second; I != IE; ++I) {
+      uint32_t IWeight = BPI->getEdgeWeight(SwitchBB->getBasicBlock(),
+                                            I->BB->getBasicBlock());
+      for (CaseItr J = CR.Range.first; J < I; ++J) {
+        uint32_t JWeight = BPI->getEdgeWeight(SwitchBB->getBasicBlock(),
+                                              J->BB->getBasicBlock());
+        if (IWeight > JWeight)
+          std::swap(*I, *J);
+      }
+    }
+  }
   // Rearrange the case blocks so that the last one falls through if possible.
-  if (NextBlock && Default != NextBlock && BackCase.BB != NextBlock) {
+  Case &BackCase = *(CR.Range.second-1);
+  if (Size > 1 &&
+      NextBlock && Default != NextBlock && BackCase.BB != NextBlock) {
     // The last case block won't fall through into 'NextBlock' if we emit the
     // branches in this order.  See if rearranging a case value would help.
-    for (CaseItr I = CR.Range.first, E = CR.Range.second-1; I != E; ++I) {
+    // We start at the bottom as it's the case with the least weight.
+    for (Case *I = &*(CR.Range.second-2), *E = &*CR.Range.first-1; I != E; --I){
       if (I->BB == NextBlock) {
         std::swap(*I, BackCase);
         break;
@@ -2412,7 +2427,7 @@ size_t SelectionDAGBuilder::Clusterify(CaseVector& Cases,
   
   /// Use a shorter form of declaration, and also
   /// show the we want to use CRSBuilder as Clusterifier.
-  typedef CRSBuilderBase<MachineBasicBlock, true> Clusterifier;
+  typedef IntegersSubsetMapping<MachineBasicBlock> Clusterifier;
   
   Clusterifier TheClusterifier;
 
@@ -2441,9 +2456,12 @@ size_t SelectionDAGBuilder::Clusterify(CaseVector& Cases,
       BPI->setEdgeWeight(SI.getParent(), C.second->getBasicBlock(), W);  
     }
 
-    Cases.push_back(Case(C.first.Low, C.first.High, C.second, W));
+    // FIXME: Currently work with ConstantInt based numbers.
+    // Changing it to APInt based is a pretty heavy for this commit.
+    Cases.push_back(Case(C.first.getLow().toConstantInt(),
+                         C.first.getHigh().toConstantInt(), C.second, W));
     
-    if (C.first.Low != C.first.High)
+    if (C.first.getLow() != C.first.getHigh())
     // A range counts double, since it requires two compares.
     ++numCmps;
   }
@@ -2792,7 +2810,7 @@ void SelectionDAGBuilder::visitExtractElement(const User &I) {
 }
 
 // Utility for visitShuffleVector - Return true if every element in Mask,
-// begining from position Pos and ending in Pos+Size, falls within the
+// beginning from position Pos and ending in Pos+Size, falls within the
 // specified sequential range [L, L+Pos). or is undef.
 static bool isSequentialInRange(const SmallVectorImpl<int> &Mask,
                                 unsigned Pos, unsigned Size, int Low) {
@@ -4901,6 +4919,11 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return 0;
   case Intrinsic::pow:
     visitPow(I);
+    return 0;
+  case Intrinsic::fabs:
+    setValue(&I, DAG.getNode(ISD::FABS, dl,
+                             getValue(I.getArgOperand(0)).getValueType(),
+                             getValue(I.getArgOperand(0))));
     return 0;
   case Intrinsic::fma:
     setValue(&I, DAG.getNode(ISD::FMA, dl,

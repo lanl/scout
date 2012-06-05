@@ -83,6 +83,7 @@ CodeGenRegister::CodeGenRegister(Record *R, unsigned Enum)
     EnumValue(Enum),
     CostPerUse(R->getValueAsInt("CostPerUse")),
     CoveredBySubRegs(R->getValueAsBit("CoveredBySubRegs")),
+    NumNativeRegUnits(0),
     SubRegsComplete(false),
     SuperRegsComplete(false),
     TopoSig(~0u)
@@ -109,7 +110,7 @@ void CodeGenRegister::buildObjectGraph(CodeGenRegBank &RegBank) {
   if (CoveredBySubRegs && !ExplicitSubRegs.empty())
     ExplicitSubRegs.front()->LeadingSuperRegs.push_back(this);
 
-  // Add ad hoc alias links. This is a symmetric relationship betwen two
+  // Add ad hoc alias links. This is a symmetric relationship between two
   // registers, so build a symmetric graph by adding links in both ends.
   std::vector<Record*> Aliases = TheDef->getValueAsListOfDefs("Aliases");
   for (unsigned i = 0, e = Aliases.size(); i != e; ++i) {
@@ -311,7 +312,7 @@ CodeGenRegister::computeSubRegs(CodeGenRegBank &RegBank) {
   //   dsub_2 -> ssub_0
   //
   // We pick the latter composition because another register may have [dsub_0,
-  // dsub_1, dsub_2] subregs without neccessarily having a qsub_1 subreg.  The
+  // dsub_1, dsub_2] subregs without necessarily having a qsub_1 subreg.  The
   // dsub_2 -> ssub_0 composition can be shared.
   while (!Indices.empty() && !Orphans.empty()) {
     CodeGenSubRegIndex *Idx = Indices.pop_back_val();
@@ -396,6 +397,10 @@ CodeGenRegister::computeSubRegs(CodeGenRegBank &RegBank) {
   // necessary. This means the aliasing leaf registers can share a single unit.
   if (RegUnits.empty())
     RegUnits.push_back(RegBank.newRegUnit(this));
+
+  // We have now computed the native register units. More may be adopted later
+  // for balancing purposes.
+  NumNativeRegUnits = RegUnits.size();
 
   return SubRegs;
 }
@@ -914,7 +919,7 @@ void CodeGenRegisterClass::computeSubClasses(CodeGenRegBank &RegBank) {
       RC.SubClasses |= SubRC->SubClasses;
     }
 
-    // Sweep up missed clique members.  They will be immediately preceeding RC.
+    // Sweep up missed clique members.  They will be immediately preceding RC.
     for (unsigned s = rci - 1; s && testSubClass(&RC, RegClasses[s - 1]); --s)
       RC.SubClasses.set(s - 1);
   }

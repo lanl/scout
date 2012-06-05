@@ -7209,52 +7209,50 @@ def AESKEYGENASSIST128rm : AESAI<0xDF, MRMSrcMem, (outs VR128:$dst),
   OpSize;
 
 //===----------------------------------------------------------------------===//
-// CLMUL Instructions
+// PCLMUL Instructions
 //===----------------------------------------------------------------------===//
 
-// Carry-less Multiplication instructions
-let neverHasSideEffects = 1 in {
 // AVX carry-less Multiplication instructions
-def VPCLMULQDQrr : AVXCLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
+def VPCLMULQDQrr : AVXPCLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
            (ins VR128:$src1, VR128:$src2, i8imm:$src3),
            "vpclmulqdq\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
-           []>;
+           [(set VR128:$dst,
+             (int_x86_pclmulqdq VR128:$src1, VR128:$src2, imm:$src3))]>;
 
-let mayLoad = 1 in
-def VPCLMULQDQrm : AVXCLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
+def VPCLMULQDQrm : AVXPCLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
            (ins VR128:$src1, i128mem:$src2, i8imm:$src3),
            "vpclmulqdq\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
-           []>;
+           [(set VR128:$dst, (int_x86_pclmulqdq VR128:$src1,
+                              (memopv2i64 addr:$src2), imm:$src3))]>;
 
+// Carry-less Multiplication instructions
 let Constraints = "$src1 = $dst" in {
-def PCLMULQDQrr : CLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
+def PCLMULQDQrr : PCLMULIi8<0x44, MRMSrcReg, (outs VR128:$dst),
            (ins VR128:$src1, VR128:$src2, i8imm:$src3),
            "pclmulqdq\t{$src3, $src2, $dst|$dst, $src2, $src3}",
-           []>;
+           [(set VR128:$dst,
+             (int_x86_pclmulqdq VR128:$src1, VR128:$src2, imm:$src3))]>;
 
-let mayLoad = 1 in
-def PCLMULQDQrm : CLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
+def PCLMULQDQrm : PCLMULIi8<0x44, MRMSrcMem, (outs VR128:$dst),
            (ins VR128:$src1, i128mem:$src2, i8imm:$src3),
            "pclmulqdq\t{$src3, $src2, $dst|$dst, $src2, $src3}",
-           []>;
+           [(set VR128:$dst, (int_x86_pclmulqdq VR128:$src1,
+                              (memopv2i64 addr:$src2), imm:$src3))]>;
 } // Constraints = "$src1 = $dst"
-} // neverHasSideEffects = 1
 
 
 multiclass pclmul_alias<string asm, int immop> {
-  def : InstAlias<!strconcat("pclmul", asm, 
-                           "dq {$src, $dst|$dst, $src}"),
+  def : InstAlias<!strconcat("pclmul", asm, "dq {$src, $dst|$dst, $src}"),
                   (PCLMULQDQrr VR128:$dst, VR128:$src, immop)>;
 
-  def : InstAlias<!strconcat("pclmul", asm, 
-                             "dq {$src, $dst|$dst, $src}"),
+  def : InstAlias<!strconcat("pclmul", asm, "dq {$src, $dst|$dst, $src}"),
                   (PCLMULQDQrm VR128:$dst, i128mem:$src, immop)>;
 
-  def : InstAlias<!strconcat("vpclmul", asm, 
+  def : InstAlias<!strconcat("vpclmul", asm,
                              "dq {$src2, $src1, $dst|$dst, $src1, $src2}"),
                   (VPCLMULQDQrr VR128:$dst, VR128:$src1, VR128:$src2, immop)>;
 
-  def : InstAlias<!strconcat("vpclmul", asm, 
+  def : InstAlias<!strconcat("vpclmul", asm,
                              "dq {$src2, $src1, $dst|$dst, $src1, $src2}"),
                   (VPCLMULQDQrm VR128:$dst, VR128:$src1, i128mem:$src2, immop)>;
 }
@@ -7268,6 +7266,31 @@ defm : pclmul_alias<"lqlq", 0x00>;
 //===----------------------------------------------------------------------===//
 
 let Predicates = [HasSSE4A] in {
+
+let Constraints = "$src = $dst" in {
+def EXTRQI : Ii8<0x78, MRM0r, (outs VR128:$dst),
+                 (ins VR128:$src, i8imm:$len, i8imm:$idx),
+                 "extrq\t{$idx, $len, $src|$src, $len, $idx}",
+                 [(set VR128:$dst, (int_x86_sse4a_extrqi VR128:$src, imm:$len,
+                                    imm:$idx))]>, TB, OpSize;
+def EXTRQ  : I<0x79, MRMSrcReg, (outs VR128:$dst),
+              (ins VR128:$src, VR128:$mask),
+              "extrq\t{$mask, $src|$src, $mask}",
+              [(set VR128:$dst, (int_x86_sse4a_extrq VR128:$src,
+                                 VR128:$mask))]>, TB, OpSize;
+
+def INSERTQI : Ii8<0x78, MRMSrcReg, (outs VR128:$dst),
+                   (ins VR128:$src, VR128:$src2, i8imm:$len, i8imm:$idx),
+                   "insertq\t{$idx, $len, $src2, $src|$src, $src2, $len, $idx}",
+                   [(set VR128:$dst, (int_x86_sse4a_insertqi VR128:$src,
+                                      VR128:$src2, imm:$len, imm:$idx))]>, XD;
+def INSERTQ  : I<0x79, MRMSrcReg, (outs VR128:$dst),
+                 (ins VR128:$src, VR128:$mask),
+                 "insertq\t{$mask, $src|$src, $mask}",
+                 [(set VR128:$dst, (int_x86_sse4a_insertq VR128:$src,
+                                    VR128:$mask))]>, XD;
+}
+
 def MOVNTSS : I<0x2B, MRMDestMem, (outs), (ins f32mem:$dst, VR128:$src),
                 "movntss\t{$src, $dst|$dst, $src}",
                 [(int_x86_sse4a_movnt_ss addr:$dst, VR128:$src)]>, XS;

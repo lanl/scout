@@ -89,8 +89,8 @@ namespace {
     void addRegWithSubRegs(RegVector &RV, unsigned Reg) {
       RV.push_back(Reg);
       if (TargetRegisterInfo::isPhysicalRegister(Reg))
-        for (const uint16_t *R = TRI->getSubRegisters(Reg); *R; R++)
-          RV.push_back(*R);
+        for (MCSubRegIterator SubRegs(Reg, TRI); SubRegs.isValid(); ++SubRegs)
+          RV.push_back(*SubRegs);
     }
 
     struct BBInfo {
@@ -384,10 +384,10 @@ void MachineVerifier::visitMachineFunctionBefore() {
   // A sub-register of a reserved register is also reserved
   for (int Reg = regsReserved.find_first(); Reg>=0;
        Reg = regsReserved.find_next(Reg)) {
-    for (const uint16_t *Sub = TRI->getSubRegisters(Reg); *Sub; ++Sub) {
+    for (MCSubRegIterator SubRegs(Reg, TRI); SubRegs.isValid(); ++SubRegs) {
       // FIXME: This should probably be:
-      // assert(regsReserved.test(*Sub) && "Non-reserved sub-register");
-      regsReserved.set(*Sub);
+      // assert(regsReserved.test(*SubRegs) && "Non-reserved sub-register");
+      regsReserved.set(*SubRegs);
     }
   }
 
@@ -554,8 +554,8 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
       continue;
     }
     regsLive.insert(*I);
-    for (const uint16_t *R = TRI->getSubRegisters(*I); *R; R++)
-      regsLive.insert(*R);
+    for (MCSubRegIterator SubRegs(*I, TRI); SubRegs.isValid(); ++SubRegs)
+      regsLive.insert(*SubRegs);
   }
   regsLiveInButUnused = regsLive;
 
@@ -564,8 +564,8 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   BitVector PR = MFI->getPristineRegs(MBB);
   for (int I = PR.find_first(); I>0; I = PR.find_next(I)) {
     regsLive.insert(I);
-    for (const uint16_t *R = TRI->getSubRegisters(I); *R; R++)
-      regsLive.insert(*R);
+    for (MCSubRegIterator SubRegs(I, TRI); SubRegs.isValid(); ++SubRegs)
+      regsLive.insert(*SubRegs);
   }
 
   regsKilled.clear();
@@ -634,7 +634,7 @@ MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
   if (MONum < MCID.getNumDefs()) {
     if (!MO->isReg())
       report("Explicit definition must be a register", MO, MONum);
-    else if (!MO->isDef())
+    else if (!MO->isDef() && !MCOI.isOptionalDef())
       report("Explicit definition marked as use", MO, MONum);
     else if (MO->isImplicit())
       report("Explicit definition marked as implicit", MO, MONum);

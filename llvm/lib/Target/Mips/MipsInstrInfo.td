@@ -44,6 +44,10 @@ def SDT_Ins : SDTypeProfile<1, 4, [SDTCisInt<0>, SDTCisSameAs<0, 1>,
                                    SDTCisVT<2, i32>, SDTCisSameAs<2, 3>,
                                    SDTCisSameAs<0, 4>]>;
 
+def SDTMipsLoadLR  : SDTypeProfile<1, 2,
+                                   [SDTCisInt<0>, SDTCisPtrTy<1>,
+                                    SDTCisSameAs<0, 2>]>;
+
 // Call
 def MipsJmpLink : SDNode<"MipsISD::JmpLink",SDT_MipsJmpLink,
                          [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
@@ -113,6 +117,23 @@ def MipsSync : SDNode<"MipsISD::Sync", SDT_Sync, [SDNPHasChain]>;
 def MipsExt :  SDNode<"MipsISD::Ext", SDT_Ext>;
 def MipsIns :  SDNode<"MipsISD::Ins", SDT_Ins>;
 
+def MipsLWL : SDNode<"MipsISD::LWL", SDTMipsLoadLR,
+                     [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def MipsLWR : SDNode<"MipsISD::LWR", SDTMipsLoadLR,
+                     [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def MipsSWL : SDNode<"MipsISD::SWL", SDTStore,
+                     [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+def MipsSWR : SDNode<"MipsISD::SWR", SDTStore,
+                     [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+def MipsLDL : SDNode<"MipsISD::LDL", SDTMipsLoadLR,
+                     [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def MipsLDR : SDNode<"MipsISD::LDR", SDTMipsLoadLR,
+                     [SDNPHasChain, SDNPMayLoad, SDNPMemOperand]>;
+def MipsSDL : SDNode<"MipsISD::SDL", SDTStore,
+                     [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+def MipsSDR : SDNode<"MipsISD::SDR", SDTStore,
+                     [SDNPHasChain, SDNPMayStore, SDNPMemOperand]>;
+
 //===----------------------------------------------------------------------===//
 // Mips Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
@@ -148,9 +169,8 @@ def RelocPIC    :     Predicate<"TM.getRelocationModel() == Reloc::PIC_">,
                       AssemblerPredicate<"FeatureMips32">;
 def NoNaNsFPMath :    Predicate<"TM.Options.NoNaNsFPMath">,
                       AssemblerPredicate<"FeatureMips32">;
-def HasStandardEncoding:
-  Predicate<"Subtarget.hasStandardEncoding()">,
-  AssemblerPredicate<"FeatureMips32,FeatureMips32r2,FeatureMips64"> ;
+def HasStandardEncoding : Predicate<"Subtarget.hasStandardEncoding()">,
+                          AssemblerPredicate<"!FeatureMips16">;
 
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
@@ -425,14 +445,6 @@ class StoreM<bits<6> op, string instr_asm, PatFrag OpNode, RegisterClass RC,
   let isPseudo = Pseudo;
 }
 
-// Unaligned Memory Load/Store
-let canFoldAsLoad = 1 in
-class LoadUnAlign<bits<6> op, RegisterClass RC, Operand MemOpnd>:
-  FMem<op, (outs RC:$rt), (ins MemOpnd:$addr), "", [], IILoad> {}
-
-class StoreUnAlign<bits<6> op, RegisterClass RC, Operand MemOpnd>:
-  FMem<op, (outs), (ins RC:$rt, MemOpnd:$addr), "", [], IIStore> {}
-
 // 32-bit load.
 multiclass LoadM32<bits<6> op, string instr_asm, PatFrag OpNode,
                    bit Pseudo = 0> {
@@ -457,16 +469,6 @@ multiclass LoadM64<bits<6> op, string instr_asm, PatFrag OpNode,
   }
 }
 
-// 32-bit load.
-multiclass LoadUnAlign32<bits<6> op> {
-  def #NAME# : LoadUnAlign<op, CPURegs, mem>,
-               Requires<[NotN64, HasStandardEncoding]>;
-  def _P8    : LoadUnAlign<op, CPURegs, mem64>,
-               Requires<[IsN64, HasStandardEncoding]> {
-    let DecoderNamespace = "Mips64";
-    let isCodeGenOnly = 1;
-  }
-}
 // 32-bit store.
 multiclass StoreM32<bits<6> op, string instr_asm, PatFrag OpNode,
                     bit Pseudo = 0> {
@@ -491,11 +493,60 @@ multiclass StoreM64<bits<6> op, string instr_asm, PatFrag OpNode,
   }
 }
 
-// 32-bit store.
-multiclass StoreUnAlign32<bits<6> op> {
-  def #NAME# : StoreUnAlign<op, CPURegs, mem>,
+// Load/Store Left/Right
+let canFoldAsLoad = 1 in
+class LoadLeftRight<bits<6> op, string instr_asm, SDNode OpNode,
+                    RegisterClass RC, Operand MemOpnd> :
+  FMem<op, (outs RC:$rt), (ins MemOpnd:$addr, RC:$src),
+       !strconcat(instr_asm, "\t$rt, $addr"),
+       [(set RC:$rt, (OpNode addr:$addr, RC:$src))], IILoad> {
+  string Constraints = "$src = $rt";
+}
+
+class StoreLeftRight<bits<6> op, string instr_asm, SDNode OpNode,
+                     RegisterClass RC, Operand MemOpnd>:
+  FMem<op, (outs), (ins RC:$rt, MemOpnd:$addr),
+       !strconcat(instr_asm, "\t$rt, $addr"), [(OpNode RC:$rt, addr:$addr)],
+       IIStore>;
+
+// 32-bit load left/right.
+multiclass LoadLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
+  def #NAME# : LoadLeftRight<op, instr_asm, OpNode, CPURegs, mem>,
                Requires<[NotN64, HasStandardEncoding]>;
-  def _P8    : StoreUnAlign<op, CPURegs, mem64>,
+  def _P8    : LoadLeftRight<op, instr_asm, OpNode, CPURegs, mem64>,
+               Requires<[IsN64, HasStandardEncoding]> {
+    let DecoderNamespace = "Mips64";
+    let isCodeGenOnly = 1;
+  }
+}
+
+// 64-bit load left/right.
+multiclass LoadLeftRightM64<bits<6> op, string instr_asm, SDNode OpNode> {
+  def #NAME# : LoadLeftRight<op, instr_asm, OpNode, CPU64Regs, mem>,
+               Requires<[NotN64, HasStandardEncoding]>;
+  def _P8    : LoadLeftRight<op, instr_asm, OpNode, CPU64Regs, mem64>,
+               Requires<[IsN64, HasStandardEncoding]> {
+    let DecoderNamespace = "Mips64";
+    let isCodeGenOnly = 1;
+  }
+}
+
+// 32-bit store left/right.
+multiclass StoreLeftRightM32<bits<6> op, string instr_asm, SDNode OpNode> {
+  def #NAME# : StoreLeftRight<op, instr_asm, OpNode, CPURegs, mem>,
+               Requires<[NotN64, HasStandardEncoding]>;
+  def _P8    : StoreLeftRight<op, instr_asm, OpNode, CPURegs, mem64>,
+               Requires<[IsN64, HasStandardEncoding]> {
+    let DecoderNamespace = "Mips64";
+    let isCodeGenOnly = 1;
+  }
+}
+
+// 64-bit store left/right.
+multiclass StoreLeftRightM64<bits<6> op, string instr_asm, SDNode OpNode> {
+  def #NAME# : StoreLeftRight<op, instr_asm, OpNode, CPU64Regs, mem>,
+               Requires<[NotN64, HasStandardEncoding]>;
+  def _P8    : StoreLeftRight<op, instr_asm, OpNode, CPU64Regs, mem64>,
                Requires<[IsN64, HasStandardEncoding]> {
     let DecoderNamespace = "Mips64";
     let isCodeGenOnly = 1;
@@ -796,29 +847,6 @@ let neverHasSideEffects = 1 in
 def CPRESTORE : MipsPseudo<(outs), (ins i32imm:$loc, CPURegs:$gp),
                            ".cprestore\t$loc", []>;
 
-// For O32 ABI & PIC & non-fixed global base register, the following instruction
-// seqeunce is emitted to set the global base register:
-//
-//  0. lui   $2, %hi(_gp_disp)
-//  1. addiu $2, $2, %lo(_gp_disp)
-//  2. addu  $globalbasereg, $2, $t9
-//
-// SETGP01 is emitted during Prologue/Epilogue insertion and then converted to
-// instructions 0 and 1 in the sequence above during MC lowering.
-// SETGP2 is emitted just before register allocation and converted to
-// instruction 2 just prior to post-RA scheduling.
-//
-// These pseudo instructions are needed to ensure no instructions are inserted
-// before or between instructions 0 and 1, which is a limitation imposed by
-// GNU linker.
-
-let isTerminator = 1, isBarrier = 1 in
-def SETGP01 : MipsPseudo<(outs CPURegs:$dst), (ins), "", []>;
-
-let neverHasSideEffects = 1 in
-def SETGP2 : MipsPseudo<(outs CPURegs:$globalreg), (ins CPURegs:$picreg), "",
-                        []>;
-
 let usesCustomInserter = 1 in {
   defm ATOMIC_LOAD_ADD_I8   : Atomic2Ops32<atomic_load_add_8, "load_add_8">;
   defm ATOMIC_LOAD_ADD_I16  : Atomic2Ops32<atomic_load_add_16, "load_add_16">;
@@ -910,11 +938,11 @@ defm ULW     : LoadM32<0x23, "ulw",  load_u, 1>;
 defm USH     : StoreM32<0x29, "ush", truncstorei16_u, 1>;
 defm USW     : StoreM32<0x2b, "usw", store_u, 1>;
 
-/// Primitives for unaligned
-defm LWL     : LoadUnAlign32<0x22>;
-defm LWR     : LoadUnAlign32<0x26>;
-defm SWL     : StoreUnAlign32<0x2A>;
-defm SWR     : StoreUnAlign32<0x2E>;
+/// load/store left/right
+defm LWL : LoadLeftRightM32<0x22, "lwl", MipsLWL>;
+defm LWR : LoadLeftRightM32<0x26, "lwr", MipsLWR>;
+defm SWL : StoreLeftRightM32<0x2a, "swl", MipsSWL>;
+defm SWR : StoreLeftRightM32<0x2e, "swr", MipsSWR>;
 
 let hasSideEffects = 1 in
 def SYNC : MipsInst<(outs), (ins i32imm:$stype), "sync $stype",

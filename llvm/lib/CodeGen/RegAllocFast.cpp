@@ -354,8 +354,8 @@ void RAFast::usePhysReg(MachineOperand &MO) {
   }
 
   // Maybe a superregister is reserved?
-  for (const uint16_t *AS = TRI->getAliasSet(PhysReg);
-       unsigned Alias = *AS; ++AS) {
+  for (MCRegAliasIterator AI(PhysReg, TRI, false); AI.isValid(); ++AI) {
+    unsigned Alias = *AI;
     switch (PhysRegState[Alias]) {
     case regDisabled:
       break;
@@ -408,8 +408,8 @@ void RAFast::definePhysReg(MachineInstr *MI, unsigned PhysReg,
 
   // This is a disabled register, disable all aliases.
   PhysRegState[PhysReg] = NewState;
-  for (const uint16_t *AS = TRI->getAliasSet(PhysReg);
-       unsigned Alias = *AS; ++AS) {
+  for (MCRegAliasIterator AI(PhysReg, TRI, false); AI.isValid(); ++AI) {
+    unsigned Alias = *AI;
     switch (unsigned VirtReg = PhysRegState[Alias]) {
     case regDisabled:
       break;
@@ -456,8 +456,8 @@ unsigned RAFast::calcSpillCost(unsigned PhysReg) const {
   // This is a disabled register, add up cost of aliases.
   DEBUG(dbgs() << PrintReg(PhysReg, TRI) << " is disabled.\n");
   unsigned Cost = 0;
-  for (const uint16_t *AS = TRI->getAliasSet(PhysReg);
-       unsigned Alias = *AS; ++AS) {
+  for (MCRegAliasIterator AI(PhysReg, TRI, false); AI.isValid(); ++AI) {
+    unsigned Alias = *AI;
     if (UsedInInstr.test(Alias))
       return spillImpossible;
     switch (unsigned VirtReg = PhysRegState[Alias]) {
@@ -711,13 +711,10 @@ void RAFast::handleThroughOperands(MachineInstr *MI,
     if (!MO.isReg() || !MO.isDef()) continue;
     unsigned Reg = MO.getReg();
     if (!Reg || !TargetRegisterInfo::isPhysicalRegister(Reg)) continue;
-    UsedInInstr.set(Reg);
-    if (ThroughRegs.count(PhysRegState[Reg]))
-      definePhysReg(MI, Reg, regFree);
-    for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS) {
-      UsedInInstr.set(*AS);
-      if (ThroughRegs.count(PhysRegState[*AS]))
-        definePhysReg(MI, *AS, regFree);
+    for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI) {
+      UsedInInstr.set(*AI);
+      if (ThroughRegs.count(PhysRegState[*AI]))
+        definePhysReg(MI, *AI, regFree);
     }
   }
 
@@ -1036,9 +1033,8 @@ void RAFast::AllocateBasicBlock() {
         if (!Reg || !TargetRegisterInfo::isPhysicalRegister(Reg)) continue;
         // Look for physreg defs and tied uses.
         if (!MO.isDef() && !MI->isRegTiedToDefOperand(i)) continue;
-        UsedInInstr.set(Reg);
-        for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS)
-          UsedInInstr.set(*AS);
+        for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+          UsedInInstr.set(*AI);
       }
     }
 

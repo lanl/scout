@@ -53,6 +53,13 @@ public:
     CopyFrom(other);
   }
 
+#if LLVM_USE_RVALUE_REFERENCES
+  DenseMap(DenseMap &&other) {
+    init(0);
+    swap(other);
+  }
+#endif
+
   explicit DenseMap(unsigned NumInitBuckets = 0) {
     init(NumInitBuckets);
   }
@@ -62,20 +69,9 @@ public:
     init(NextPowerOf2(std::distance(I, E)));
     insert(I, E);
   }
-  
+
   ~DenseMap() {
-    const KeyT EmptyKey = getEmptyKey(), TombstoneKey = getTombstoneKey();
-    for (BucketT *P = Buckets, *E = Buckets+NumBuckets; P != E; ++P) {
-      if (!KeyInfoT::isEqual(P->first, EmptyKey) &&
-          !KeyInfoT::isEqual(P->first, TombstoneKey))
-        P->second.~ValueT();
-      P->first.~KeyT();
-    }
-#ifndef NDEBUG
-    if (NumBuckets)
-      memset((void*)Buckets, 0x5a, sizeof(BucketT)*NumBuckets);
-#endif
-    operator delete(Buckets);
+    DestroyAll();
   }
 
   typedef DenseMapIterator<KeyT, ValueT, KeyInfoT> iterator;
@@ -236,10 +232,33 @@ public:
     return FindAndConstruct(Key).second;
   }
 
+#if LLVM_USE_RVALUE_REFERENCES
+  value_type& FindAndConstruct(KeyT &&Key) {
+    BucketT *TheBucket;
+    if (LookupBucketFor(Key, TheBucket))
+      return *TheBucket;
+
+    return *InsertIntoBucket(Key, ValueT(), TheBucket);
+  }
+
+  ValueT &operator[](KeyT &&Key) {
+    return FindAndConstruct(Key).second;
+  }
+#endif
+
   DenseMap& operator=(const DenseMap& other) {
     CopyFrom(other);
     return *this;
   }
+
+#if LLVM_USE_RVALUE_REFERENCES
+  DenseMap& operator=(DenseMap &&other) {
+    DestroyAll();
+    init(0);
+    swap(other);
+    return *this;
+  }
+#endif
 
   /// isPointerIntoBucketsArray - Return true if the specified pointer points
   /// somewhere into the DenseMap's array of buckets (i.e. either to a key or
@@ -254,28 +273,29 @@ public:
   const void *getPointerIntoBucketsArray() const { return Buckets; }
 
 private:
-  void CopyFrom(const DenseMap& other) {
-    if (NumBuckets != 0 &&
-        (!isPodLike<KeyT>::value || !isPodLike<ValueT>::value)) {
-      const KeyT EmptyKey = getEmptyKey(), TombstoneKey = getTombstoneKey();
-      for (BucketT *P = Buckets, *E = Buckets+NumBuckets; P != E; ++P) {
-        if (!KeyInfoT::isEqual(P->first, EmptyKey) &&
-            !KeyInfoT::isEqual(P->first, TombstoneKey))
-          P->second.~ValueT();
-        P->first.~KeyT();
-      }
+  void DestroyAll() {
+    if (NumBuckets == 0) // Nothing to do.
+      return;
+
+    const KeyT EmptyKey = getEmptyKey(), TombstoneKey = getTombstoneKey();
+    for (BucketT *P = Buckets, *E = Buckets+NumBuckets; P != E; ++P) {
+      if (!KeyInfoT::isEqual(P->first, EmptyKey) &&
+          !KeyInfoT::isEqual(P->first, TombstoneKey))
+        P->second.~ValueT();
+      P->first.~KeyT();
     }
+
+#ifndef NDEBUG
+    memset((void*)Buckets, 0x5a, sizeof(BucketT)*NumBuckets);
+#endif
+    operator delete(Buckets);
+  }
+
+  void CopyFrom(const DenseMap& other) {
+    DestroyAll();
 
     NumEntries = other.NumEntries;
     NumTombstones = other.NumTombstones;
-
-    if (NumBuckets) {
-#ifndef NDEBUG
-      memset((void*)Buckets, 0x5a, sizeof(BucketT)*NumBuckets);
-#endif
-      operator delete(Buckets);
-    }
-
     NumBuckets = other.NumBuckets;
 
     if (NumBuckets == 0) {
@@ -298,6 +318,33 @@ private:
 
   BucketT *InsertIntoBucket(const KeyT &Key, const ValueT &Value,
                             BucketT *TheBucket) {
+    TheBucket = InsertIntoBucketImpl(Key, TheBucket);
+
+    TheBucket->first = Key;
+    new (&TheBucket->second) ValueT(Value);
+    return TheBucket;
+  }
+
+#if LLVM_USE_RVALUE_REFERENCES
+  BucketT *InsertIntoBucket(const KeyT &Key, ValueT &&Value,
+                            BucketT *TheBucket) {
+    TheBucket = InsertIntoBucketImpl(Key, TheBucket);
+
+    TheBucket->first = Key;
+    new (&TheBucket->second) ValueT(std::move(Value));
+    return TheBucket;
+  }
+
+  BucketT *InsertIntoBucket(KeyT &&Key, ValueT &&Value, BucketT *TheBucket) {
+    TheBucket = InsertIntoBucketImpl(Key, TheBucket);
+
+    TheBucket->first = std::move(Key);
+    new (&TheBucket->second) ValueT(std::move(Value));
+    return TheBucket;
+  }
+#endif
+
+  BucketT *InsertIntoBucketImpl(const KeyT &Key, BucketT *TheBucket) {
     // If the load of the hash table is more than 3/4, or if fewer than 1/8 of
     // the buckets are empty (meaning that many are filled with tombstones),
     // grow the table.
@@ -321,8 +368,6 @@ private:
     if (!KeyInfoT::isEqual(TheBucket->first, getEmptyKey()))
       --NumTombstones;
 
-    TheBucket->first = Key;
-    new (&TheBucket->second) ValueT(Value);
     return TheBucket;
   }
 

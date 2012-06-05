@@ -2110,6 +2110,7 @@ public:
   LiteralOperatorLookupResult LookupLiteralOperator(Scope *S, LookupResult &R,
                                                     ArrayRef<QualType> ArgTys,
                                                     bool AllowRawAndTemplate);
+  bool isKnownName(StringRef name);
 
   void ArgumentDependentLookup(DeclarationName Name, bool Operator,
                                SourceLocation Loc,
@@ -2192,7 +2193,7 @@ public:
   bool isPropertyReadonly(ObjCPropertyDecl *PropertyDecl,
                           ObjCInterfaceDecl *IDecl);
 
-  typedef llvm::DenseSet<Selector, llvm::DenseMapInfo<Selector> > SelectorSet;
+  typedef llvm::SmallPtrSet<Selector, 8> SelectorSet;
   typedef llvm::DenseMap<Selector, ObjCMethodDecl*> ProtocolsMethodsMap;
 
   /// CheckProtocolMethodDefs - This routine checks unimplemented
@@ -2697,7 +2698,7 @@ public:
   /// this variable in the innermost block or lambda. Only valid when the
   /// variable can be captured.
   ///
-  /// \param DeclRefType Will be set to the type of a refernce to the capture
+  /// \param DeclRefType Will be set to the type of a reference to the capture
   /// from within the current scope. Only valid when the variable can be 
   /// captured.
   ///

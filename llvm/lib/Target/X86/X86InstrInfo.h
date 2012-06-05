@@ -128,8 +128,8 @@ class X86InstrInfo : public X86GenInstrInfo {
   X86TargetMachine &TM;
   const X86RegisterInfo RI;
 
-  /// RegOp2MemOpTable2Addr, RegOp2MemOpTable0, RegOp2MemOpTable1,
-  /// RegOp2MemOpTable2 - Load / store folding opcode maps.
+  /// RegOp2MemOpTable3Addr, RegOp2MemOpTable0, RegOp2MemOpTable1,
+  /// RegOp2MemOpTable2, RegOp2MemOpTable3 - Load / store folding opcode maps.
   ///
   typedef DenseMap<unsigned,
                    std::pair<unsigned, unsigned> > RegOp2MemOpTableType;
@@ -137,6 +137,7 @@ class X86InstrInfo : public X86GenInstrInfo {
   RegOp2MemOpTableType RegOp2MemOpTable0;
   RegOp2MemOpTableType RegOp2MemOpTable1;
   RegOp2MemOpTableType RegOp2MemOpTable2;
+  RegOp2MemOpTableType RegOp2MemOpTable3;
 
   /// MemOp2RegOpTable - Load / store unfolding opcode map.
   ///
@@ -362,6 +363,9 @@ public:
                              const MachineRegisterInfo *MRI,
                              const MachineInstr *DefMI, unsigned DefIdx,
                              const MachineInstr *UseMI, unsigned UseIdx) const;
+
+  virtual bool OptimizeSubInstr(MachineInstr *SubInstr,
+                                const MachineRegisterInfo *MRI) const;
 
 private:
   MachineInstr * convertToThreeAddressWithLEA(unsigned MIOpc,

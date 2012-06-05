@@ -20,7 +20,7 @@
 // This file also defines a simple ARC-aware AliasAnalysis.
 //
 // WARNING: This file knows about certain library functions. It recognizes them
-// by name, and hardwires knowedge of their semantics.
+// by name, and hardwires knowledge of their semantics.
 //
 // WARNING: This file knows about how certain Objective-C library functions are
 // used. Naive LLVM IR transformations which would otherwise be
@@ -812,7 +812,7 @@ ObjCARCAliasAnalysis::getModRefInfo(ImmutableCallSite CS, const Location &Loc) {
   case IC_FusedRetainAutorelease:
   case IC_FusedRetainAutoreleaseRV:
     // These functions don't access any memory visible to the compiler.
-    // Note that this doesn't include objc_retainBlock, becuase it updates
+    // Note that this doesn't include objc_retainBlock, because it updates
     // pointers when it copies block data.
     return NoModRef;
   default:

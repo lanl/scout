@@ -137,9 +137,8 @@ bool BranchFolder::OptimizeImpDefsBlock(MachineBasicBlock *MBB) {
       break;
     unsigned Reg = I->getOperand(0).getReg();
     ImpDefRegs.insert(Reg);
-    for (const uint16_t *SubRegs = TRI->getSubRegisters(Reg);
-         unsigned SubReg = *SubRegs; ++SubRegs)
-      ImpDefRegs.insert(SubReg);
+    for (MCSubRegIterator SubRegs(Reg, TRI); SubRegs.isValid(); ++SubRegs)
+      ImpDefRegs.insert(*SubRegs);
     ++I;
   }
   if (ImpDefRegs.empty())
@@ -1467,7 +1466,7 @@ static MachineBasicBlock *findFalseBlock(MachineBasicBlock *BB,
 }
 
 /// findHoistingInsertPosAndDeps - Find the location to move common instructions
-/// in successors to. The location is ususally just before the terminator,
+/// in successors to. The location is usually just before the terminator,
 /// however if the terminator is a conditional branch and its previous
 /// instruction is the flag setting instruction, the previous instruction is
 /// the preferred location. This function also gathers uses and defs of the
@@ -1491,9 +1490,8 @@ MachineBasicBlock::iterator findHoistingInsertPosAndDeps(MachineBasicBlock *MBB,
     if (!Reg)
       continue;
     if (MO.isUse()) {
-      Uses.insert(Reg);
-      for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS)
-        Uses.insert(*AS);
+      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+        Uses.insert(*AI);
     } else if (!MO.isDead())
       // Don't try to hoist code in the rare case the terminator defines a
       // register that is later used.
@@ -1553,18 +1551,16 @@ MachineBasicBlock::iterator findHoistingInsertPosAndDeps(MachineBasicBlock *MBB,
     if (!Reg)
       continue;
     if (MO.isUse()) {
-      Uses.insert(Reg);
-      for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS)
-        Uses.insert(*AS);
+      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+        Uses.insert(*AI);
     } else {
       if (Uses.count(Reg)) {
         Uses.erase(Reg);
-        for (const uint16_t *SR = TRI->getSubRegisters(Reg); *SR; ++SR)
-          Uses.erase(*SR); // Use getSubRegisters to be conservative
+        for (MCSubRegIterator SubRegs(Reg, TRI); SubRegs.isValid(); ++SubRegs)
+          Uses.erase(*SubRegs); // Use sub-registers to be conservative
       }
-      Defs.insert(Reg);
-      for (const uint16_t *AS = TRI->getAliasSet(Reg); *AS; ++AS)
-        Defs.insert(*AS);
+      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+        Defs.insert(*AI);
     }
   }
 
@@ -1691,8 +1687,8 @@ bool BranchFolder::HoistCommonCodeInSuccs(MachineBasicBlock *MBB) {
       unsigned Reg = MO.getReg();
       if (!Reg || !LocalDefsSet.count(Reg))
         continue;
-      for (const uint16_t *OR = TRI->getOverlaps(Reg); *OR; ++OR)
-        LocalDefsSet.erase(*OR);
+      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+        LocalDefsSet.erase(*AI);
     }
 
     // Track local defs so we can update liveins.
@@ -1704,8 +1700,8 @@ bool BranchFolder::HoistCommonCodeInSuccs(MachineBasicBlock *MBB) {
       if (!Reg)
         continue;
       LocalDefs.push_back(Reg);
-      for (const uint16_t *OR = TRI->getOverlaps(Reg); *OR; ++OR)
-        LocalDefsSet.insert(*OR);
+      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+        LocalDefsSet.insert(*AI);
     }
 
     HasDups = true;

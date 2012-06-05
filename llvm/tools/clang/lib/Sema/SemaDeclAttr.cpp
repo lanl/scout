@@ -2085,7 +2085,15 @@ static void handleObjCNSObject(Sema &S, Decl *D, const AttributeList &Attr) {
       return;
     }
   }
-  else if (!isa<ObjCPropertyDecl>(D)) {
+  else if (ObjCPropertyDecl *PD = dyn_cast<ObjCPropertyDecl>(D)) {
+    QualType T = PD->getType();
+    if (!T->isPointerType() ||
+        !T->getAs<PointerType>()->getPointeeType()->isRecordType()) {
+      S.Diag(PD->getLocation(), diag::err_nsobject_attribute);
+      return;
+    }
+  }
+  else {
     // It is okay to include this attribute on properties, e.g.:
     //
     //  @property (retain, nonatomic) struct Bork *Q __attribute__((NSObject));
@@ -4367,7 +4375,7 @@ static void handleDelayedForbiddenType(Sema &S, DelayedDiagnostic &diag,
   }
   if (S.getLangOpts().ObjCAutoRefCount)
     if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(decl)) {
-      // FIXME. we may want to supress diagnostics for all
+      // FIXME: we may want to suppress diagnostics for all
       // kind of forbidden type messages on unavailable functions. 
       if (FD->hasAttr<UnavailableAttr>() &&
           diag.getForbiddenTypeDiagnostic() == 
@@ -4489,8 +4497,12 @@ void Sema::EmitDeprecationWarning(NamedDecl *D, StringRef Message,
                                 : diag::note_previous_decl) << D->getDeclName();
   }
   else {
-    if (!UnknownObjCClass)
+    if (!UnknownObjCClass) {
       Diag(Loc, diag::warn_deprecated) << D->getDeclName();
+      Diag(D->getLocation(), 
+           isa<ObjCMethodDecl>(D) ? diag::note_method_declared_at 
+                                  : diag::note_previous_decl) << D->getDeclName();
+    }
     else {
       Diag(Loc, diag::warn_deprecated_fwdclass_message) << D->getDeclName();
       Diag(UnknownObjCClass->getLocation(), diag::note_forward_class);

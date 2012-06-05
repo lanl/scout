@@ -1400,6 +1400,7 @@ public:
                           const ObjCPropertyImplDecl *PID);
   void generateObjCGetterBody(const ObjCImplementationDecl *classImpl,
                               const ObjCPropertyImplDecl *propImpl,
+                              const ObjCMethodDecl *GetterMothodDecl,
                               llvm::Constant *AtomicHelperFn);
 
   void GenerateObjCCtorDtorMethod(ObjCImplementationDecl *IMP,
@@ -2091,7 +2092,7 @@ public:
     llvm::AttributeWithIndex PAWI;
     PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
     Attrs.push_back(PAWI);
-    namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
+    namPAL = llvm::AttrListPtr::get(Attrs);
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("_Znam")) {

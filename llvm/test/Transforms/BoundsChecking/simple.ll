@@ -33,7 +33,7 @@ define void @f3(i64 %x) nounwind {
   %2 = bitcast i8* %1 to i32*
   %idx = getelementptr inbounds i32* %2, i64 8
 ; CHECK: mul i64 4, %
-; CHECK-NEXT: sub i64 {{.*}}, 32
+; CHECK: sub i64 {{.*}}, 32
 ; CHECK-NEXT: icmp ult i64 {{.*}}, 32
 ; CHECK-NEXT: icmp ult i64 {{.*}}, 4
 ; CHECK-NEXT: or i1
@@ -91,7 +91,7 @@ define void @f8() nounwind {
 define void @f9(i128* %arg) nounwind {
   %1 = alloca i128
   %2 = select i1 undef, i128* %arg, i128* %1
-; CHECK: br i1 false
+; CHECK-NOT: trap
   %3 = load i128* %2, align 4
   ret void
 }
@@ -105,5 +105,14 @@ define void @f10(i64 %x, i64 %y) nounwind {
 ; CHECK: select
 ; CHECK: trap
   %4 = load i128* %3, align 4
+  ret void
+}
+
+; CHECK: @f11
+define void @f11(i128* byval %x) nounwind {
+  %1 = bitcast i128* %x to i8*
+  %2 = getelementptr inbounds i8* %1, i64 16
+; CHECK: br label
+  %3 = load i8* %2, align 4
   ret void
 }

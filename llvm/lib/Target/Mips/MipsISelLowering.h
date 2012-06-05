@@ -79,7 +79,17 @@ namespace llvm {
       Sync,
 
       Ext,
-      Ins
+      Ins,
+
+      // Load/Store Left/Right nodes.
+      LWL = ISD::FIRST_TARGET_MEMORY_OPCODE,
+      LWR,
+      SWL,
+      SWR,
+      LDL,
+      LDR,
+      SDL,
+      SDR
     };
   }
 
@@ -137,6 +147,8 @@ namespace llvm {
     SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerShiftRightParts(SDValue Op, SelectionDAG& DAG, bool IsSRA) const;
+    SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,

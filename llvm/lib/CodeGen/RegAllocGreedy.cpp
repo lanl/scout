@@ -541,8 +541,8 @@ bool RAGreedy::canEvictInterference(LiveInterval &VirtReg, unsigned PhysReg,
     Cascade = NextCascade;
 
   EvictionCost Cost;
-  for (const uint16_t *AliasI = TRI->getOverlaps(PhysReg); *AliasI; ++AliasI) {
-    LiveIntervalUnion::Query &Q = query(VirtReg, *AliasI);
+  for (MCRegAliasIterator AI(PhysReg, TRI, true); AI.isValid(); ++AI) {
+    LiveIntervalUnion::Query &Q = query(VirtReg, *AI);
     // If there is 10 or more interferences, chances are one is heavier.
     if (Q.collectInterferingVRegs(10) >= 10)
       return false;
@@ -558,7 +558,13 @@ bool RAGreedy::canEvictInterference(LiveInterval &VirtReg, unsigned PhysReg,
       // Once a live range becomes small enough, it is urgent that we find a
       // register for it. This is indicated by an infinite spill weight. These
       // urgent live ranges get to evict almost anything.
-      bool Urgent = !VirtReg.isSpillable() && Intf->isSpillable();
+      //
+      // Also allow urgent evictions of unspillable ranges from a strictly
+      // larger allocation order.
+      bool Urgent = !VirtReg.isSpillable() &&
+        (Intf->isSpillable() ||
+         RegClassInfo.getNumAllocatableRegs(MRI->getRegClass(VirtReg.reg)) <
+         RegClassInfo.getNumAllocatableRegs(MRI->getRegClass(Intf->reg)));
       // Only evict older cascades or live ranges without a cascade.
       unsigned IntfCascade = ExtraRegInfo[Intf->reg].Cascade;
       if (Cascade <= IntfCascade) {
@@ -599,8 +605,8 @@ void RAGreedy::evictInterference(LiveInterval &VirtReg, unsigned PhysReg,
 
   DEBUG(dbgs() << "evicting " << PrintReg(PhysReg, TRI)
                << " interference: Cascade " << Cascade << '\n');
-  for (const uint16_t *AliasI = TRI->getOverlaps(PhysReg); *AliasI; ++AliasI) {
-    LiveIntervalUnion::Query &Q = query(VirtReg, *AliasI);
+  for (MCRegAliasIterator AI(PhysReg, TRI, true); AI.isValid(); ++AI) {
+    LiveIntervalUnion::Query &Q = query(VirtReg, *AI);
     assert(Q.seenAllInterferences() && "Didn't check all interfererences.");
     for (unsigned i = 0, e = Q.interferingVRegs().size(); i != e; ++i) {
       LiveInterval *Intf = Q.interferingVRegs()[i];
@@ -1352,7 +1358,7 @@ void RAGreedy::calcGapWeights(unsigned PhysReg,
   GapWeight.assign(NumGaps, 0.0f);
 
   // Add interference from each overlapping register.
-  for (const uint16_t *AI = TRI->getOverlaps(PhysReg); *AI; ++AI) {
+  for (MCRegAliasIterator AI(PhysReg, TRI, true); AI.isValid(); ++AI) {
     if (!query(const_cast<LiveInterval&>(SA->getParent()), *AI)
            .checkInterference())
       continue;

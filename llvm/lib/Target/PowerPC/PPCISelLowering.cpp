@@ -51,9 +51,8 @@ static bool CC_PPC_SVR4_Custom_AlignFPArgRegs(unsigned &ValNo, MVT &ValVT,
                                               ISD::ArgFlagsTy &ArgFlags,
                                               CCState &State);
 
-static cl::opt<bool> EnablePPCPreinc("enable-ppc-preinc",
-cl::desc("enable preincrement load/store generation on PPC (experimental)"),
-                                     cl::Hidden);
+static cl::opt<bool> DisablePPCPreinc("disable-ppc-preinc",
+cl::desc("disable preincrement load/store generation on PPC"), cl::Hidden);
 
 static TargetLoweringObjectFile *CreateTLOF(const PPCTargetMachine &TM) {
   if (TM.getSubtargetImpl()->isDarwin())
@@ -906,6 +905,7 @@ bool PPCTargetLowering::SelectAddressRegImm(SDValue N, SDValue &Disp,
              && "Cannot handle constant offsets yet!");
       Disp = N.getOperand(1).getOperand(0);  // The global address.
       assert(Disp.getOpcode() == ISD::TargetGlobalAddress ||
+             Disp.getOpcode() == ISD::TargetGlobalTLSAddress ||
              Disp.getOpcode() == ISD::TargetConstantPool ||
              Disp.getOpcode() == ISD::TargetJumpTable);
       Base = N.getOperand(0);
@@ -1084,8 +1084,7 @@ bool PPCTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
                                                   SDValue &Offset,
                                                   ISD::MemIndexedMode &AM,
                                                   SelectionDAG &DAG) const {
-  // Disabled by default for now.
-  if (!EnablePPCPreinc) return false;
+  if (DisablePPCPreinc) return false;
 
   SDValue Ptr;
   EVT VT;
@@ -1220,6 +1219,30 @@ SDValue PPCTargetLowering::LowerBlockAddress(SDValue Op,
   SDValue TgtBAHi = DAG.getBlockAddress(BA, PtrVT, /*isTarget=*/true, MOHiFlag);
   SDValue TgtBALo = DAG.getBlockAddress(BA, PtrVT, /*isTarget=*/true, MOLoFlag);
   return LowerLabelRef(TgtBAHi, TgtBALo, isPIC, DAG);
+}
+
+SDValue PPCTargetLowering::LowerGlobalTLSAddress(SDValue Op,
+                                              SelectionDAG &DAG) const {
+
+  GlobalAddressSDNode *GA = cast<GlobalAddressSDNode>(Op);
+  DebugLoc dl = GA->getDebugLoc();
+  const GlobalValue *GV = GA->getGlobal();
+  EVT PtrVT = getPointerTy();
+  bool is64bit = PPCSubTarget.isPPC64();
+
+  TLSModel::Model model = getTargetMachine().getTLSModel(GV);
+
+  SDValue TGAHi = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
+                                             PPCII::MO_TPREL16_HA);
+  SDValue TGALo = DAG.getTargetGlobalAddress(GV, dl, PtrVT, 0,
+                                             PPCII::MO_TPREL16_LO);
+
+  if (model != TLSModel::LocalExec)
+    llvm_unreachable("only local-exec TLS mode supported");
+  SDValue R13 = DAG.getRegister(is64bit ? PPC::X13 : PPC::R13,
+                                is64bit ? MVT::i64 : MVT::i32);
+  SDValue Hi = DAG.getNode(PPCISD::Hi, dl, PtrVT, TGAHi, R13);
+  return DAG.getNode(PPCISD::Lo, dl, PtrVT, TGALo, Hi);
 }
 
 SDValue PPCTargetLowering::LowerGlobalAddress(SDValue Op,
@@ -4567,7 +4590,7 @@ SDValue PPCTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::ConstantPool:       return LowerConstantPool(Op, DAG);
   case ISD::BlockAddress:       return LowerBlockAddress(Op, DAG);
   case ISD::GlobalAddress:      return LowerGlobalAddress(Op, DAG);
-  case ISD::GlobalTLSAddress:   llvm_unreachable("TLS not implemented for PPC");
+  case ISD::GlobalTLSAddress:   return LowerGlobalTLSAddress(Op, DAG);
   case ISD::JumpTable:          return LowerJumpTable(Op, DAG);
   case ISD::SETCC:              return LowerSETCC(Op, DAG);
   case ISD::INIT_TRAMPOLINE:    return LowerINIT_TRAMPOLINE(Op, DAG);

@@ -223,24 +223,28 @@ BasicBlock* LowerSwitch::newLeafBlock(CaseRange& Leaf, Value* Val,
 // Clusterify - Transform simple list of Cases into list of CaseRange's
 unsigned LowerSwitch::Clusterify(CaseVector& Cases, SwitchInst *SI) {
 
-  CRSBuilder TheClusterifier;
+  IntegersSubsetToBB TheClusterifier;
 
   // Start with "simple" cases
   for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end();
        i != e; ++i) {
     BasicBlock *SuccBB = i.getCaseSuccessor();
-    ConstantRangesSet CRS = i.getCaseValueEx();
-    TheClusterifier.add(CRS, SuccBB);
+    IntegersSubset CaseRanges = i.getCaseValueEx();
+    TheClusterifier.add(CaseRanges, SuccBB);
   }
   
   TheClusterifier.optimize();
   
   size_t numCmps = 0;
-  for (CRSBuilder::RangeIterator i = TheClusterifier.begin(),
+  for (IntegersSubsetToBB::RangeIterator i = TheClusterifier.begin(),
        e = TheClusterifier.end(); i != e; ++i, ++numCmps) {
-    CRSBuilder::Cluster &C = *i;
-    Cases.push_back(CaseRange(C.first.Low, C.first.High, C.second));
-    if (C.first.Low != C.first.High)
+    IntegersSubsetToBB::Cluster &C = *i;
+    
+    // FIXME: Currently work with ConstantInt based numbers.
+    // Changing it to APInt based is a pretty heavy for this commit.
+    Cases.push_back(CaseRange(C.first.getLow().toConstantInt(),
+                              C.first.getHigh().toConstantInt(), C.second));
+    if (C.first.isSingleNumber())
       // A range counts double, since it requires two compares.
       ++numCmps;
   }

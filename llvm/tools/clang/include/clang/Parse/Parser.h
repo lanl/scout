@@ -454,7 +454,7 @@ private:
       }
     }
     
-    enum { MaxDepth = 512 };
+    enum { MaxDepth = 256 };
     
     bool diagnoseOverflow();
     bool diagnoseMissingClose();

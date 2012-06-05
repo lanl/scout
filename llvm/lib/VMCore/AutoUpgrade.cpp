@@ -64,6 +64,12 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
       NewFn = 0;
       return true;
     }
+    // Fix the FMA4 intrinsics to remove the 4
+    if (Name.startswith("x86.fma4.")) {
+      F->setName("llvm.x86.fma" + Name.substr(8));
+      NewFn = F;
+      return true;
+    }
     break;
   }
   }
