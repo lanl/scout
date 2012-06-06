@@ -35,8 +35,8 @@ all: $(build_dir)/Makefile compile
 
 $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
-	@(cd packages/hwloc; ./configure --prefix=$(build_dir))
-	@(cd packages/hwloc; make -j $(nprocs); make install)	
+	@(cd packages/hwloc-1.4.2; ./configure $(HWLOCOPTS) --prefix=$(build_dir))
+	@(cd packages/hwloc-1.4.2; make -j $(nprocs); make install)	
 	@(cd packages/libpng-1.5.4; ./configure --prefix=$(build_dir))
 	@(cd packages/libpng-1.5.4; make -j $(nprocs); make install)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
