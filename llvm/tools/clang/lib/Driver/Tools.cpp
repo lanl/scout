@@ -1981,6 +1981,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
+  // scout emit-all-definitions support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
+  
   // scout enable autovectorize pass.
   Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
   

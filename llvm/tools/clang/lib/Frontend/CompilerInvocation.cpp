@@ -1173,6 +1173,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // scout enable scout CPU multithreading support if OPT_cpuThreads is present.
   Opts.ScoutCPUThreads = Args.hasArg(OPT_cpuThreads);
 
+  // scout enable scout CPU multithreading support if OPT_cpuThreads is present.
+  Opts.ScoutEmitAllDefinitions = Args.hasArg(OPT_emitAllDefinitions);
+  
   // OPT_gpu and OPT_cpuThreads operate exclusively.
   if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
     Diags.Report(diag::err_scout_cpu_gpu_combo);

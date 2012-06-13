@@ -265,6 +265,7 @@ SCOUT_KEYWORD(image)
 SCOUT_KEYWORD(as)
 SCOUT_KEYWORD(elements)
 SCOUT_KEYWORD(spheres)
+SCOUT_KEYWORD(stencil)
 
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)
