@@ -6,4 +6,5 @@ add_subdirectory(diagtool)
 # scout - disable build of the clang driver
 #add_subdirectory(driver)
 add_subdirectory(scc)
+add_subdirectory(scc-rewrite)
 add_subdirectory(clang-check)

@@ -47,8 +47,10 @@
 
 using namespace clang;
 
+// scout - added ScoutASTConsumer / ScoutRewriter init
 CompilerInstance::CompilerInstance()
-  : Invocation(new CompilerInvocation()), ModuleManager(0) {
+: Invocation(new CompilerInvocation()), ModuleManager(0),
+ScoutASTConsumer(0), ScoutRewriter(0){
 }
 
 CompilerInstance::~CompilerInstance() {

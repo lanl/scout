@@ -428,7 +428,17 @@ void ASTFrontendAction::ExecuteAction() {
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
   // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
-  if(CI.getFrontendOpts().ViewAST){
+  ASTConsumer* scoutASTConsumer = CI.getScoutASTConsumer();
+  if(scoutASTConsumer){
+    Rewriter* scoutRewriter = CI.getScoutRewriter();
+    
+    scoutRewriter->setSourceMgr(CI.getSourceManager(),
+                                CI.getLangOpts());
+    
+    ParseAST(CI.getPreprocessor(), scoutASTConsumer,
+             CI.getASTContext());
+  }
+  else if(CI.getFrontendOpts().ViewAST){
     ASTViewScout ASTViewer(CI.getSema());
     
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
