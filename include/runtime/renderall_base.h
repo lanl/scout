@@ -26,6 +26,8 @@ namespace scout{
 
     virtual void end() = 0;
 
+    virtual void addVolume(void* dataptr, unsigned volumenum) = 0;
+
     size_t width(){
       return width_;
     }

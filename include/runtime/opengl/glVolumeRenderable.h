@@ -45,7 +45,7 @@ namespace scout
       glVolumeRenderable(int npx, int npy, int npz,
           int nx, int ny, int nz, double* x, double* y, double* z,
           int win_width, int win_height, 
-          glCamera* camera, trans_func_t* trans_func,
+          glCamera* camera, trans_func_ab_t trans_func,
           int id, int root, MPI_Comm gcomm);
 
       ~glVolumeRenderable();
@@ -55,30 +55,30 @@ namespace scout
       float4* map_colors();
       void unmap_colors();
 
-      void setVolumeData(void* dataptr);
+      void addVolume(void* dataptr, unsigned blocknum);
 
       void draw(glCamera* camera);
 
-    void setMinPoint(glfloat3 pt)
-    { _min_pt = pt; }
+      void setMinPoint(glfloat3 pt)
+      { _min_pt = pt; }
 
-    void setMaxPoint(glfloat3 pt)
-    { _max_pt = pt; }
+      void setMaxPoint(glfloat3 pt)
+      { _max_pt = pt; }
 
-    void setTexture(glTexture *texture)
-    { _texture = texture; }
+      void setTexture(glTexture *texture)
+      { _texture = texture; }
 
-    glTexture* texture() const
-    { return _texture; }
+      glTexture* texture() const
+      { return _texture; }
 
-    void setTexCoordScale(float s)
-    { _tex_coord_scale = s; }
+      void setTexCoordScale(float s)
+      { _tex_coord_scale = s; }
 
-  private:
-    void fill_vbo(float x0, float y0, float x1, float y1);
-    void fill_tcbo2d(float x0, float y0, float x1, float y1);
+    private:
+      void fill_vbo(float x0, float y0, float x1, float y1);
+      void fill_tcbo2d(float x0, float y0, float x1, float y1);
 
-   private:
+    private:
       glVertexBuffer* _vbo;
       glTexture* _texture;
       glTextureBuffer* _pbo;
@@ -102,12 +102,12 @@ namespace scout
       int             _npx, _npy, _npz, _nx, _ny, _nz, _win_height, 
                       _win_width, _id, _root, _groupsize;
       double          *_x, *_y, *_z;
-      trans_func_t*   _trans_func;
+      trans_func_ab_t   _trans_func;
       MPI_Comm        _gcomm;
 
     public:
       void*           _data;
-      
+
   };
 
 }

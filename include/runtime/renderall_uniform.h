@@ -29,6 +29,8 @@ namespace scout{
 
     void end();
 
+    void addVolume(void* dataptr, unsigned volumenum){}
+
   private:
     class renderall_uniform_rt_* x_;
   };

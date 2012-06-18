@@ -39,7 +39,7 @@ int MY_STEP_MULTI_GHOST_TIME            = HPGV_TIMING_UNIT_153;
  *
  */
 typedef struct rgb_t {
-    float red, green, blue;
+    float r, g, b;
 } rgb_t;
 
 
@@ -585,11 +585,11 @@ vis_update_projarea(vis_control_t *visctl, float sampling_spacing)
 void
 vis_color_comoposite(rgba_t *partialcolor, rgba_t *compositecolor) 
 {
-    float a = 1 - compositecolor->alpha;
-    compositecolor->red   += a * partialcolor->red;
-    compositecolor->green += a * partialcolor->green;
-    compositecolor->blue  += a * partialcolor->blue;
-    compositecolor->alpha += a * partialcolor->alpha;
+    float a = 1 - compositecolor->a;
+    compositecolor->r   += a * partialcolor->r;
+    compositecolor->g += a * partialcolor->g;
+    compositecolor->b  += a * partialcolor->b;
+    compositecolor->a += a * partialcolor->a;
 }
 
 
@@ -679,31 +679,31 @@ vis_render_pos(vis_control_t    *visctl,
                int              *id_vol,
                para_tf_t        *tf_vol,
                para_light_t     *light_vol,
-               trans_func_t     *transfer_func_user)
+               trans_func_ab_t     transfer_func_user)
 {
 
     rgba_t partialcolor;
 
 #ifdef DRAW_PARTITION
     if (visctl->id % 3 == 0) {
-        partialcolor.red   = (float)(visctl->id + 1)/visctl->groupsize;
-        partialcolor.green = 0;
-        partialcolor.blue  = 0;
-        partialcolor.alpha = 1;
+        partialcolor.r   = (float)(visctl->id + 1)/visctl->groupsize;
+        partialcolor.g = 0;
+        partialcolor.b  = 0;
+        partialcolor.a = 1;
     }
     
     if (visctl->id % 3 == 1) {
-        partialcolor.red   = 0;
-        partialcolor.green = (float)(visctl->id + 1)/visctl->groupsize;
-        partialcolor.blue  = 0;
-        partialcolor.alpha = 1;
+        partialcolor.r   = 0;
+        partialcolor.g = (float)(visctl->id + 1)/visctl->groupsize;
+        partialcolor.b  = 0;
+        partialcolor.a = 1;
     }
 
     if (visctl->id % 3 == 2) {
-        partialcolor.red   = 0;
-        partialcolor.green = 0;
-        partialcolor.blue  = (float)(visctl->id + 1)/visctl->groupsize;
-        partialcolor.alpha = 1;
+        partialcolor.r   = 0;
+        partialcolor.g = 0;
+        partialcolor.b  = (float)(visctl->id + 1)/visctl->groupsize;
+        partialcolor.a = 1;
     }
     
     vis_color_comoposite(&partialcolor, color);
@@ -715,13 +715,13 @@ vis_render_pos(vis_control_t    *visctl,
     
     for (vol = 0; vol < num_vol; vol++) {
       //int retval = transfer_func_user(block, pos, partcolor);
-      int retval = transfer_func_user(block, pos, &partialcolor);
+      int retval = transfer_func_user(block, pos, partialcolor);
       if (retval == HPGV_FALSE) {
         //printf("transfer func returned false!");
         //free(partcolor);
         return;
       }
-        if (light_vol[vol].withlighting == 1 && partialcolor.alpha > 0.01){
+        if (light_vol[vol].withlighting == 1 && partialcolor.a > 0.01){
             float amb_diff, specular;
 
             vis_volume_lighting(block,
@@ -732,12 +732,12 @@ vis_render_pos(vis_control_t    *visctl,
                                 &amb_diff,
                                 &specular);
 
-            partialcolor.red   = partialcolor.red   * amb_diff +
-                                specular * partialcolor.alpha;
-            partialcolor.green = partialcolor.green * amb_diff +
-                                specular * partialcolor.alpha;
-            partialcolor.blue  = partialcolor.blue  * amb_diff +
-                                specular * partialcolor.alpha;
+            partialcolor.r   = partialcolor.r   * amb_diff +
+                                specular * partialcolor.a;
+            partialcolor.g = partialcolor.g * amb_diff +
+                                specular * partialcolor.a;
+            partialcolor.b  = partialcolor.b  * amb_diff +
+                                specular * partialcolor.a;
         }
         
         vis_color_comoposite(&partialcolor, color);
@@ -766,7 +766,7 @@ vis_ray_render_positions(vis_control_t  *visctl,
                          int            *id_vol,
                          para_tf_t      *tf_vol,
                          para_light_t   *light_vol,
-                         trans_func_t*  tf_user)
+                         trans_func_ab_t  tf_user)
 {
     int32_t pos;
     point_3d_t real_sample;
@@ -794,8 +794,8 @@ vis_ray_render_positions(vis_control_t  *visctl,
                        light_vol,
                        tf_user);
         
-        if (color->alpha >= 1) {
-            color->alpha = 1;
+        if (color->a >= 1) {
+            color->a = 1;
             break;
         }
     }
@@ -821,7 +821,7 @@ hpgv_vis_clear_color(vis_control_t *visctl)
  */
 void
 vis_render_volume(vis_control_t *visctl, int num_vol, float sampling_spacing, int *id_vol, 
-                  para_tf_t *tf_vol, para_light_t *light_vol, trans_func_t* tf_user)
+                  para_tf_t *tf_vol, para_light_t *light_vol, trans_func_ab_t tf_user)
 {
     HPGV_TIMING_BARRIER(visctl->comm);
     HPGV_TIMING_BEGIN(MY_STEP_VOLUME_RENDER_TIME);
@@ -844,7 +844,7 @@ vis_render_volume(vis_control_t *visctl, int num_vol, float sampling_spacing, in
         
         /* ray casting for normal compositing*/
         pixel = &(visctl->cast_ctl[index].pixel);
-        color.red = color.green = color.blue = color.alpha = 0.0;
+        color.r = color.g = color.b = color.a = 0.0;
         
         vis_ray_render_positions(visctl,
                                  visctl->block,
@@ -862,7 +862,7 @@ vis_render_volume(vis_control_t *visctl, int num_vol, float sampling_spacing, in
                                  tf_user);
         
         hpgv_gl_fragcolor(pixel->x, pixel->y, 
-                          color.red, color.green, color.blue, color.alpha);
+                          color.r, color.g, color.b, color.a);
         
     }
 
@@ -1168,9 +1168,9 @@ hpgv_vis_composite_init(MPI_Comm comm)
  *
  */
 void
-hpgv_vis_render_one_composite(block_t *block, int root, MPI_Comm comm, trans_func_t* tf)
+hpgv_vis_render_one_composite(block_t *block, int root, MPI_Comm comm, trans_func_ab_t tf)
 {
-    hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_one_composite\n", block->mpiid);
+    //hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_one_composite\n", block->mpiid);
 
     int img = 0;
     
@@ -1340,10 +1340,10 @@ hpgv_vis_render_one_composite(block_t *block, int root, MPI_Comm comm, trans_fun
  *
  */
 void
-hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_func_t* tf)
+hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_func_ab_t tf)
 {
 
-    hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_multi_composite\n", block->mpiid);
+    //hpgv_msg_p(block->mpiid, root, "id: %d in hpgv_render_multi_composite\n", block->mpiid);
 
     int img = 0;
 
@@ -1537,7 +1537,7 @@ hpgv_vis_render_multi_composite(block_t *block, int root, MPI_Comm comm, trans_f
  *
  */
 void
-hpgv_vis_render(block_t *block, int root, MPI_Comm comm, int opt, trans_func_t* tf_user)
+hpgv_vis_render(block_t *block, int root, MPI_Comm comm, int opt, trans_func_ab_t tf_user)
 {
     if (opt == 0) {
         hpgv_vis_render_multi_composite(block, root, comm, tf_user);
@@ -1624,7 +1624,7 @@ hpgv_vis_finalize()
     free(theVisControl);
 
     /*
-    fprintf(stderr, "Memory cleared on PE %d.\n", theVisControl->id);
+    fprintf(stderr, "Memory clear on PE %d.\n", theVisControl->id);
     */
 }
 }
