@@ -115,9 +115,8 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
     if(PointerType* pointerType = dyn_cast<PointerType>(type)){
       if(pointerType->getAddressSpace() == 0){
-        //std::cerr << "####### removing global" << std::endl;
-        //global->dump();
         globalsToRemove.push_back(global);
+        global->replaceAllUsesWith(UndefValue::get(type));
       }
     }
     ++itr;
@@ -126,7 +125,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   for(size_t i = 0; i < globalsToRemove.size(); ++i){
     globalsToRemove[i]->eraseFromParent();
   }
-  
+
   llvm::NamedMDNode* annotations =
     ptxModule.getOrInsertNamedMetadata("nvvm.annotations");
 
@@ -443,6 +442,10 @@ namespace{
 
     void visitCallInst(CallInst& I){
       Function* f = I.getCalledFunction();
+
+      if(!f){
+        return;
+      }
 
       if(f->getName().startswith("llvm.memcpy")){
 	Value* v = I.getArgOperand(0);
