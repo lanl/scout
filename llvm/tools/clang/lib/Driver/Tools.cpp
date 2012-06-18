@@ -4308,6 +4308,9 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
 
+  CmdArgs.push_back("-lmpi");
+  CmdArgs.push_back("-lmpi_cxx");
+
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
   
   if (isObjCRuntimeLinked(Args) &&

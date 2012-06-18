@@ -26,6 +26,7 @@ namespace scout
       glyph_renderall(size_t width, size_t height, size_t depth, size_t npts,
           glCamera* camera);
       ~glyph_renderall();
+      void addVolume(void* dataptr, unsigned volumenum){}
       void begin();
       void end();
     private:

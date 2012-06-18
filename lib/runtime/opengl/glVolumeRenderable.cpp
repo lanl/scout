@@ -25,7 +25,7 @@ using namespace scout;
 
 glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
     int nx, int ny, int nz, double* x, double* y, double* z, 
-    int win_width, int win_height, glCamera* camera, trans_func_t* trans_func,
+    int win_width, int win_height, glCamera* camera, trans_func_ab_t trans_func,
     int id, int root, MPI_Comm gcomm)
     :_npx(npx), _npy(npy), _npz(npz), _nx(nx), _ny(ny), _nz(nz),
     _x(x), _y(y), _z(z), _win_width(win_width), _win_height(win_height),
@@ -74,7 +74,8 @@ glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
 
     OpenGLErrorCheck();
   }
-  //if (id == root) printf("finished hpgv_vis_para()\n");
+
+  createBlock();
 
 }
 
@@ -244,12 +245,14 @@ void glVolumeRenderable::initializeOpenGL(glCamera* camera)
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void glVolumeRenderable::setVolumeData(void* dataptr) 
+// must have a block first, so createBlock() would need to be called before this
+void glVolumeRenderable::addVolume(void* dataptr, unsigned volumenum) 
 {
-  _data = dataptr;
+  if (_block != NULL) {
+    block_add_volume(_block, HPGV_FLOAT, dataptr, volumenum);
+  }
 }
  
-// assume _data has been set before this is called
 void glVolumeRenderable::createBlock()
 {
   /* new block */
@@ -266,11 +269,6 @@ void glVolumeRenderable::createBlock()
   header_new(_id, _gcomm, _groupsize, _x, _y, _z, _nx, _ny, _nz, 
       _npx, _npy, _npz, &header);
   memcpy(&(_block->blk_header), &header, sizeof(blk_header_t));
-
-  block_add_volume(_block, HPGV_FLOAT, _data, 0);
-
-  //hpgv_block_print(_id, _root, _block);
-
 
   /*  initalize timing module   */
   if (!HPGV_TIMING_VALID()) {
@@ -320,6 +318,7 @@ void glVolumeRenderable::render()
 
   MPI_Barrier(_gcomm);
 
+#ifdef NOTYET
   if (_id == _root) {
     struct tm *start_time;
     time_t start_timer;
@@ -329,7 +328,7 @@ void glVolumeRenderable::render()
     fprintf(stderr, "render call starts at %02d:%02d:%02d\n",
         start_time->tm_hour, start_time->tm_min, start_time->tm_sec);
   }
-
+#endif
 
   HPGV_TIMING_BEGIN(MY_STEP_GHOST_VOL_TIME);
   HPGV_TIMING_COUNT(MY_STEP_GHOST_VOL_TIME);
@@ -345,13 +344,7 @@ void glVolumeRenderable::render()
 
   HPGV_TIMING_END(MY_STEP_GHOST_VOL_TIME);
 
-  //if (_id == _root) fprintf(stderr, "hpgv_vis_render ...");
-  fprintf(stderr, "id: %d starting hpgv_vis_render ...\n", _id);
-
   hpgv_vis_render(_block, _root, _gcomm, 0, _trans_func);
-
-  //if (_id == _root) fprintf(stderr, "done\n");
-  fprintf(stderr, "id: %d hpgv_vis_render done\n", _id);
 
   HPGV_TIMING_END(MY_STEP_VIS_TIME);
 
@@ -359,6 +352,7 @@ void glVolumeRenderable::render()
 
   MPI_Barrier(_gcomm);
 
+#ifdef NOTYET
     if (_id == _root) {
         struct tm *end_time;
         time_t end_timer;
@@ -368,6 +362,7 @@ void glVolumeRenderable::render()
         fprintf(stderr, "render call ends at %02d:%02d:%02d\n\n",
             end_time->tm_hour, end_time->tm_min, end_time->tm_sec);
     }
+#endif
 
 }
 
@@ -425,7 +420,6 @@ void glVolumeRenderable::writePPM(double time)
 
 void glVolumeRenderable::draw(glCamera* camera)
 {
-  createBlock();
   render();
 
   if (_id == _root) {

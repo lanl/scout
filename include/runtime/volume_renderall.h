@@ -8,13 +8,14 @@
  *-----
  * 
  */
-#ifndef SCOUT_GLYPH_RENDERALL_H_
-#define SCOUT_GLYPH_RENDERALL_H_
+#ifndef SCOUT_VOLUME_RENDERALL_H_
+#define SCOUT_VOLUME_RENDERALL_H_
 
 #include "runtime/base_types.h"
 #include "runtime/vec_types.h"
 #include "runtime/renderall_base.h"
 #include "runtime/volren/hpgv/hpgv_render.h"
+#include "runtime/opengl/glCamera.h"
 #include <mpi.h>
 
 namespace scout 
@@ -26,12 +27,13 @@ namespace scout
     public:
      volume_renderall(
       int npx, int npy, int npz, int nx, int ny, int nz,
-      double* x, double* y, double* z, 
       size_t win_width, size_t win_height,
-      glCamera* camera, trans_func_t* trans_func,
-      int id, int root, MPI_Comm gcomm);
+      glCamera* camera, trans_func_ab_t trans_func,
+      int id, int root, MPI_Comm gcomm, bool stop_mpi_after);
 
       ~volume_renderall();
+      void genGrid(int id, int npx, int npy, int npz, int* pnx, int* pny, int* pnz);
+      void addVolume(void* dataptr, unsigned volumenum); 
       void begin();
       void end();
     private:
@@ -42,17 +44,20 @@ namespace scout
       glCamera* _camera;
       int _id;
       int _root;
+      double *_x, *_y, *_z;
+      bool _stop_mpi_after;
   };
 
 } // end namespace scout
 
+
 using namespace scout;
 
 extern void __sc_init_volume_renderall(
-    int npx, int npy, int npz,
-    int nx, int ny, int nz, double* x, double* y, double* z,
-    size_t win_width, size_t win_height,
-    glCamera* camera, trans_func_t* trans_func,
-    int id, int root, MPI_Comm gcomm);
+        int nx, int ny, int nz,
+            size_t win_width, size_t win_height,
+                glCamera* camera, trans_func_ab_t trans_func);
+
+extern void __sc_add_volume(float* dataptr, unsigned volumenum);
 
 #endif 

@@ -27,6 +27,8 @@
 #include "runtime/volren/hpgv/hpgv_util.h"
 #include "runtime/volren/hpgv/hpgv_composite.h"
 #include "runtime/volren/hpgv/hpgv_parameter.h"
+#include "runtime/vec_types.h"
+
 
 namespace scout {
 
@@ -36,17 +38,18 @@ namespace scout {
      *
      */
     typedef struct rgba_t {
-      float red;
-      float green;
-      float blue;
-      float alpha;
+      float r;
+      float g;
+      float b;
+      float a;
     } rgba_t;
+
 
     void hpgv_vis_para(para_input_t *para_input);
 
-    typedef int trans_func_t(block_t* block, point_3d_t* pos, rgba_t* color);
+    typedef int (^trans_func_ab_t)(block_t* block, point_3d_t* pos, rgba_t& color);
 
-    void hpgv_vis_render(block_t *block, int root, MPI_Comm comm, int opt, trans_func_t* xfer);
+    void hpgv_vis_render(block_t *block, int root, MPI_Comm comm, int opt, trans_func_ab_t xfer);
 
     const void * hpgv_vis_get_imageptr();
 
