@@ -503,7 +503,7 @@ ActOnStartClassInterface(SourceLocation AtInterfaceLoc,
 }
 
 /// ActOnCompatiblityAlias - this action is called after complete parsing of
-/// @compatibility_alias declaration. It sets up the alias relationships.
+/// a \@compatibility_alias declaration. It sets up the alias relationships.
 Decl *Sema::ActOnCompatiblityAlias(SourceLocation AtLoc,
                                         IdentifierInfo *AliasName,
                                         SourceLocation AliasLocation,
@@ -695,7 +695,7 @@ void Sema::DiagnoseClassExtensionDupMethods(ObjCCategoryDecl *CAT,
   llvm::DenseMap<Selector, const ObjCMethodDecl*> MethodMap;
   for (ObjCInterfaceDecl::method_iterator i = ID->meth_begin(),
        e =  ID->meth_end(); i != e; ++i) {
-    ObjCMethodDecl *MD = &*i;
+    ObjCMethodDecl *MD = *i;
     MethodMap[MD->getSelector()] = MD;
   }
 
@@ -703,7 +703,7 @@ void Sema::DiagnoseClassExtensionDupMethods(ObjCCategoryDecl *CAT,
     return;
   for (ObjCCategoryDecl::method_iterator i = CAT->meth_begin(),
        e =  CAT->meth_end(); i != e; ++i) {
-    ObjCMethodDecl *Method = &*i;
+    ObjCMethodDecl *Method = *i;
     const ObjCMethodDecl *&PrevMethod = MethodMap[Method->getSelector()];
     if (PrevMethod && !MatchTwoMethodDeclarations(Method, PrevMethod)) {
       Diag(Method->getLocation(), diag::err_duplicate_method_decl)
@@ -713,7 +713,7 @@ void Sema::DiagnoseClassExtensionDupMethods(ObjCCategoryDecl *CAT,
   }
 }
 
-/// ActOnForwardProtocolDeclaration - Handle @protocol foo;
+/// ActOnForwardProtocolDeclaration - Handle \@protocol foo;
 Sema::DeclGroupPtrTy
 Sema::ActOnForwardProtocolDeclaration(SourceLocation AtProtocolLoc,
                                       const IdentifierLocPair *IdentList,
@@ -1020,8 +1020,8 @@ void Sema::CheckImplementationIvars(ObjCImplementationDecl *ImpDecl,
   ObjCInterfaceDecl* IDecl = ImpDecl->getClassInterface();
   if (!IDecl)
     return;
-  /// Check case of non-existing @interface decl.
-  /// (legacy objective-c @implementation decl without an @interface decl).
+  /// Check case of non-existing \@interface decl.
+  /// (legacy objective-c \@implementation decl without an \@interface decl).
   /// Add implementations's ivar to the synthesize class's ivar list.
   if (IDecl->isImplicitInterfaceDecl()) {
     IDecl->setEndOfDefinitionLoc(RBrace);
@@ -1065,7 +1065,7 @@ void Sema::CheckImplementationIvars(ObjCImplementationDecl *ImpDecl,
     IVI = IDecl->ivar_begin(), IVE = IDecl->ivar_end();
   for (; numIvars > 0 && IVI != IVE; ++IVI) {
     ObjCIvarDecl* ImplIvar = ivars[j++];
-    ObjCIvarDecl* ClsIvar = &*IVI;
+    ObjCIvarDecl* ClsIvar = *IVI;
     assert (ImplIvar && "missing implementation ivar");
     assert (ClsIvar && "missing class ivar");
 
@@ -2147,14 +2147,14 @@ ObjCMethodDecl *Sema::LookupImplementedMethodInGlobalPool(Selector Sel) {
 
 /// DiagnoseDuplicateIvars - 
 /// Check for duplicate ivars in the entire class at the start of 
-/// @implementation. This becomes necesssary because class extension can
+/// \@implementation. This becomes necesssary because class extension can
 /// add ivars to a class in random order which will not be known until
-/// class's @implementation is seen.
+/// class's \@implementation is seen.
 void Sema::DiagnoseDuplicateIvars(ObjCInterfaceDecl *ID, 
                                   ObjCInterfaceDecl *SID) {
   for (ObjCInterfaceDecl::ivar_iterator IVI = ID->ivar_begin(),
        IVE = ID->ivar_end(); IVI != IVE; ++IVI) {
-    ObjCIvarDecl* Ivar = &*IVI;
+    ObjCIvarDecl* Ivar = *IVI;
     if (Ivar->isInvalidDecl())
       continue;
     if (IdentifierInfo *II = Ivar->getIdentifier()) {
@@ -2292,7 +2292,7 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
       for (ObjCContainerDecl::prop_iterator I = CDecl->prop_begin(),
                                             E = CDecl->prop_end();
            I != E; ++I)
-        ProcessPropertyDecl(&*I, CDecl);
+        ProcessPropertyDecl(*I, CDecl);
     CDecl->setAtEndRange(AtEnd);
   }
   if (ObjCImplementationDecl *IC=dyn_cast<ObjCImplementationDecl>(ClassDecl)) {
@@ -2308,7 +2308,7 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
            ClsExtDecl; ClsExtDecl = ClsExtDecl->getNextClassExtension()) {
         for (ObjCContainerDecl::prop_iterator I = ClsExtDecl->prop_begin(),
              E = ClsExtDecl->prop_end(); I != E; ++I) {
-          ObjCPropertyDecl *Property = &*I;
+          ObjCPropertyDecl *Property = *I;
           // Skip over properties declared @dynamic
           if (const ObjCPropertyImplDecl *PIDecl
               = IC->FindPropertyImplDecl(Property->getIdentifier()))
@@ -2947,7 +2947,7 @@ bool Sema::CheckObjCDeclScope(Decl *D) {
   return true;
 }
 
-/// Called whenever @defs(ClassName) is encountered in the source.  Inserts the
+/// Called whenever \@defs(ClassName) is encountered in the source.  Inserts the
 /// instance variables of ClassName into Decls.
 void Sema::ActOnDefs(Scope *S, Decl *TagD, SourceLocation DeclStart,
                      IdentifierInfo *ClassName,

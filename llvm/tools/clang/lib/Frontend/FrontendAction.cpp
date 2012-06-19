@@ -330,7 +330,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   return false;
 }
 
-void FrontendAction::Execute() {
+bool FrontendAction::Execute() {
   CompilerInstance &CI = getCompilerInstance();
 
   // Initialize the main file entry. This needs to be delayed until after PCH
@@ -340,7 +340,7 @@ void FrontendAction::Execute() {
                                     getCurrentInput().IsSystem
                                       ? SrcMgr::C_System
                                       : SrcMgr::C_User))
-      return;
+      return false;
   }
 
   if (CI.hasFrontendTimer()) {
@@ -348,6 +348,8 @@ void FrontendAction::Execute() {
     ExecuteAction();
   }
   else ExecuteAction();
+
+  return true;
 }
 
 void FrontendAction::EndSourceFile() {

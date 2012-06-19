@@ -15,6 +15,12 @@ function(add_llvm_unittest test_dirname)
   set_target_properties(${test_name}Tests PROPERTIES FOLDER "Tests")
 endfunction()
 
+# Visual Studio 2012 only supports up to 8 template parameters in
+# std::tr1::tuple by default, but gtest requires 10
+if(MSVC AND MSVC_VERSION EQUAL 1700)
+  add_definitions(-D_VARIADIC_MAX=10)
+endif ()
+
 add_custom_target(UnitTests)
 set_target_properties(UnitTests PROPERTIES FOLDER "Tests")
 
@@ -67,7 +73,8 @@ add_llvm_unittest(ADT
   ADT/IntervalMapTest.cpp
   ADT/IntrusiveRefCntPtrTest.cpp
   ADT/PackedVectorTest.cpp
-  ADT/SmallBitVectorTest.cpp
+  ADT/SCCIteratorTest.cpp
+  ADT/SmallPtrSetTest.cpp
   ADT/SmallStringTest.cpp
   ADT/SmallVectorTest.cpp
   ADT/SparseBitVectorTest.cpp
@@ -134,12 +141,12 @@ add_llvm_unittest(Transforms/Utils
 
 set(VMCoreSources
   VMCore/ConstantsTest.cpp
+  VMCore/DominatorTreeTest.cpp
   VMCore/InstructionsTest.cpp
   VMCore/MetadataTest.cpp
   VMCore/PassManagerTest.cpp
   VMCore/ValueMapTest.cpp
   VMCore/VerifierTest.cpp
-  VMCore/DominatorTreeTest.cpp
   )
 
 # MSVC9 and 8 cannot compile ValueMapTest.cpp due to their bug.
@@ -160,13 +167,20 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_llvm_unittest(Support
+  Support/AlignOfTest.cpp
   Support/AllocatorTest.cpp
+  Support/BlockFrequencyTest.cpp
   Support/Casting.cpp
   Support/CommandLineTest.cpp
   Support/ConstantRangeTest.cpp
+  Support/DataExtractorTest.cpp
   Support/EndianTest.cpp
+  Support/IntegersSubsetTest.cpp
+  Support/IRBuilderTest.cpp
   Support/LeakDetectorTest.cpp
+  Support/ManagedStatic.cpp
   Support/MathExtrasTest.cpp
+  Support/MDBuilderTest.cpp
   Support/Path.cpp
   Support/raw_ostream_test.cpp
   Support/RegexTest.cpp

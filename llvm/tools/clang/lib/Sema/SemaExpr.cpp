@@ -130,6 +130,111 @@ void Sema::NoteDeletedFunction(FunctionDecl *Decl) {
     << 1 << Decl->isDeleted();
 }
 
+/// \brief Determine whether a FunctionDecl was ever declared with an
+/// explicit storage class.
+static bool hasAnyExplicitStorageClass(const FunctionDecl *D) {
+  for (FunctionDecl::redecl_iterator I = D->redecls_begin(),
+                                     E = D->redecls_end();
+       I != E; ++I) {
+    if (I->getStorageClassAsWritten() != SC_None)
+      return true;
+  }
+  return false;
+}
+
+/// \brief Check whether we're in an extern inline function and referring to a
+/// variable or function with internal linkage.
+///
+/// This also applies to anonymous-namespaced objects, which are effectively
+/// internal.
+/// This is only a warning because we used to silently accept this code, but
+/// most likely it will not do what the user intends.
+static void diagnoseUseOfInternalDeclInInlineFunction(Sema &S,
+                                                      const NamedDecl *D,
+                                                      SourceLocation Loc) {
+  // C11 6.7.4p3: An inline definition of a function with external linkage...
+  //   shall not contain a reference to an identifier with internal linkage.
+  // C++11 [basic.def.odr]p6: ...in each definition of D, corresponding names,
+  //   looked up according to 3.4, shall refer to an entity defined within the
+  //   definition of D, or shall refer to the same entity, after overload
+  //   resolution (13.3) and after matching of partial template specialization
+  //   (14.8.3), except that a name can refer to a const object with internal or
+  //   no linkage if the object has the same literal type in all definitions of
+  //   D, and the object is initialized with a constant expression (5.19), and
+  //   the value (but not the address) of the object is used, and the object has
+  //   the same value in all definitions of D; ...
+
+  // Check if this is an inlined function or method.
+  FunctionDecl *Current = S.getCurFunctionDecl();
+  if (!Current)
+    return;
+  if (!Current->isInlined())
+    return;
+  if (Current->getLinkage() != ExternalLinkage)
+    return;
+  
+  // Check if the decl has internal linkage.
+  Linkage UsedLinkage = D->getLinkage();
+  switch (UsedLinkage) {
+  case NoLinkage:
+    return;
+  case InternalLinkage:
+  case UniqueExternalLinkage:
+    break;
+  case ExternalLinkage:
+    return;
+  }
+
+  // Check C++'s exception for const variables. This is in the standard
+  // because in C++ const variables have internal linkage unless
+  // explicitly declared extern.
+  // Note that we don't do any of the cross-TU checks, and this code isn't
+  // even particularly careful about checking if the variable "has the
+  // same value in all definitions" of the inline function. It just does a
+  // sanity check to make sure there is an initializer at all.
+  // FIXME: We should still be checking to see if we're using a constant
+  // as a glvalue anywhere, but we don't have the necessary information to
+  // do that here, and as long as this is a warning and not a hard error
+  // it's not appropriate to change the semantics of the program (i.e.
+  // by having BuildDeclRefExpr use VK_RValue for constants like these).
+  const VarDecl *VD = dyn_cast<VarDecl>(D);
+  if (VD && S.getLangOpts().CPlusPlus)
+    if (VD->getType().isConstant(S.getASTContext()) && VD->getAnyInitializer())
+      return;
+
+  // Don't warn unless -pedantic is on if the inline function is in the main
+  // source file, and in C++ don't warn at all, since the one-definition rule is
+  // still satisfied. This function will most likely not be inlined into
+  // another translation unit, so it's effectively internal.
+  bool IsInMainFile = S.getSourceManager().isFromMainFile(Loc);
+  if (S.getLangOpts().CPlusPlus) {
+    if (IsInMainFile)
+      return;
+
+    S.Diag(Loc, diag::warn_internal_in_extern_inline_cxx)
+      << (bool)VD << D
+      << (UsedLinkage == UniqueExternalLinkage)
+      << isa<CXXMethodDecl>(Current);
+  } else {
+    S.Diag(Loc, IsInMainFile ? diag::ext_internal_in_extern_inline
+                             : diag::warn_internal_in_extern_inline)
+      << (bool)VD << D;
+  }
+
+  // Suggest "static" on the inline function, if possible.
+  if (!isa<CXXMethodDecl>(Current) &&
+      !hasAnyExplicitStorageClass(Current)) {
+    const FunctionDecl *FirstDecl = Current->getCanonicalDecl();
+    SourceLocation DeclBegin = FirstDecl->getSourceRange().getBegin();
+    S.Diag(DeclBegin, diag::note_convert_inline_to_static)
+      << Current << FixItHint::CreateInsertion(DeclBegin, "static ");
+  }
+
+  S.Diag(D->getCanonicalDecl()->getLocation(),
+         diag::note_internal_decl_declared_here)
+    << D;
+}
+
 /// \brief Determine whether the use of this declaration is valid, and
 /// emit any corresponding diagnostics.
 ///
@@ -182,6 +287,9 @@ bool Sema::DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
   // Warn if this is used but marked unused.
   if (D->hasAttr<UnusedAttr>())
     Diag(Loc, diag::warn_used_but_marked_unused) << D->getDeclName();
+
+  diagnoseUseOfInternalDeclInInlineFunction(*this, D, Loc);
+
   return false;
 }
 
@@ -943,6 +1051,10 @@ QualType Sema::UsualArithmeticConversions(ExprResult &LHS, ExprResult &RHS,
   QualType RHSType =
     Context.getCanonicalType(RHS.get()->getType()).getUnqualifiedType();
 
+  // For conversion purposes, we ignore any atomic qualifier on the LHS.
+  if (const AtomicType *AtomicLHS = LHSType->getAs<AtomicType>())
+    LHSType = AtomicLHS->getValueType();
+
   // If both types are identical, no conversion is needed.
   if (LHSType == RHSType)
     return LHSType;
@@ -950,7 +1062,7 @@ QualType Sema::UsualArithmeticConversions(ExprResult &LHS, ExprResult &RHS,
   // If either side is a non-arithmetic type (e.g. a pointer), we are done.
   // The caller can deal with this (e.g. pointer + int).
   if (!LHSType->isArithmeticType() || !RHSType->isArithmeticType())
-    return LHSType;
+    return QualType();
 
   // Apply unary and bitfield promotions to the LHS's type.
   QualType LHSUnpromotedType = LHSType;
@@ -1692,7 +1804,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
             fitrEnd = md->field_end();
             fitr != fitrEnd; ++fitr){
           
-          FieldDecl* fd = &*fitr;
+          FieldDecl* fd = *fitr;
           
           bool valid;
 
@@ -2668,7 +2780,7 @@ ExprResult Sema::ActOnNumericConstant(const Token &Tok, Scope *UDLScope) {
       llvm::APSInt Value(CharBits, CharIsUnsigned);
       for (unsigned I = 0, N = Literal.getUDSuffixOffset(); I != N; ++I) {
         Value = ThisTokBegin[I];
-        TemplateArgument Arg(Value, Context.CharTy);
+        TemplateArgument Arg(Context, Value, Context.CharTy);
         TemplateArgumentLocInfo ArgInfo;
         ExplicitArgs.addArgument(TemplateArgumentLoc(Arg, ArgInfo));
       }
@@ -4146,11 +4258,6 @@ CastKind Sema::PrepareScalarCast(ExprResult &Src, QualType DestTy) {
   // pointers.  Everything else should be possible.
 
   QualType SrcTy = Src.get()->getType();
-  if (const AtomicType *SrcAtomicTy = SrcTy->getAs<AtomicType>())
-    SrcTy = SrcAtomicTy->getValueType();
-  if (const AtomicType *DestAtomicTy = DestTy->getAs<AtomicType>())
-    DestTy = DestAtomicTy->getValueType();
-
   if (Context.hasSameUnqualifiedType(SrcTy, DestTy))
     return CK_NoOp;
 
@@ -5474,20 +5581,18 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
     return Compatible;
   }
 
+  // If we have an atomic type, try a non-atomic assignment, then just add an
+  // atomic qualification step.
   if (const AtomicType *AtomicTy = dyn_cast<AtomicType>(LHSType)) {
-    if (AtomicTy->getValueType() == RHSType) {
-      Kind = CK_NonAtomicToAtomic;
-      return Compatible;
-    }
+    Sema::AssignConvertType result =
+      CheckAssignmentConstraints(AtomicTy->getValueType(), RHS, Kind);
+    if (result != Compatible)
+      return result;
+    if (Kind != CK_NoOp)
+      RHS = ImpCastExprToType(RHS.take(), AtomicTy->getValueType(), Kind);
+    Kind = CK_NonAtomicToAtomic;
+    return Compatible;
   }
-
-  if (const AtomicType *AtomicTy = dyn_cast<AtomicType>(RHSType)) {
-    if (AtomicTy->getValueType() == LHSType) {
-      Kind = CK_AtomicToNonAtomic;
-      return Compatible;
-    }
-  }
-
 
   // If the left-hand side is a reference type, then we are in a
   // (rare!) case where we've allowed the use of references in C,
@@ -5769,7 +5874,7 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
       if (RHSType->isPointerType())
         if (RHSType->castAs<PointerType>()->getPointeeType()->isVoidType()) {
           RHS = ImpCastExprToType(RHS.take(), it->getType(), CK_BitCast);
-          InitField = &*it;
+          InitField = *it;
           break;
         }
 
@@ -5777,7 +5882,7 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
                                            Expr::NPC_ValueDependentIsNull)) {
         RHS = ImpCastExprToType(RHS.take(), it->getType(),
                                 CK_NullToPointer);
-        InitField = &*it;
+        InitField = *it;
         break;
       }
     }
@@ -5786,7 +5891,7 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
     if (CheckAssignmentConstraints(it->getType(), RHS, Kind)
           == Compatible) {
       RHS = ImpCastExprToType(RHS.take(), it->getType(), Kind);
-      InitField = &*it;
+      InitField = *it;
       break;
     }
   }
@@ -6028,14 +6133,8 @@ QualType Sema::CheckMultiplyDivideOperands(ExprResult &LHS, ExprResult &RHS,
     return QualType();
 
 
-  if (!LHS.get()->getType()->isArithmeticType() ||
-      !RHS.get()->getType()->isArithmeticType()) {
-    if (IsCompAssign &&
-        LHS.get()->getType()->isAtomicType() &&
-        RHS.get()->getType()->isArithmeticType())
-      return compType;
+  if (compType.isNull() || !compType->isArithmeticType())
     return InvalidOperands(Loc, LHS, RHS);
-  }
 
   // Check for division by zero.
   if (IsDiv &&
@@ -6063,8 +6162,7 @@ QualType Sema::CheckRemainderOperands(
   if (LHS.isInvalid() || RHS.isInvalid())
     return QualType();
 
-  if (!LHS.get()->getType()->isIntegerType() ||
-      !RHS.get()->getType()->isIntegerType())
+  if (compType.isNull() || !compType->isIntegerType())
     return InvalidOperands(Loc, LHS, RHS);
 
   // Check for remainder by zero.
@@ -6300,15 +6398,8 @@ QualType Sema::CheckAdditionOperands( // C99 6.5.6
     diagnoseStringPlusInt(*this, Loc, LHS.get(), RHS.get());
 
   // handle the common case first (both operands are arithmetic).
-  if (LHS.get()->getType()->isArithmeticType() &&
-      RHS.get()->getType()->isArithmeticType()) {
+  if (!compType.isNull() && compType->isArithmeticType()) {
     if (CompLHSTy) *CompLHSTy = compType;
-    return compType;
-  }
-
-  if (LHS.get()->getType()->isAtomicType() &&
-      RHS.get()->getType()->isArithmeticType()) {
-    *CompLHSTy = LHS.get()->getType();
     return compType;
   }
 
@@ -6366,15 +6457,8 @@ QualType Sema::CheckSubtractionOperands(ExprResult &LHS, ExprResult &RHS,
   // Enforce type constraints: C99 6.5.6p3.
 
   // Handle the common case first (both operands are arithmetic).
-  if (LHS.get()->getType()->isArithmeticType() &&
-      RHS.get()->getType()->isArithmeticType()) {
+  if (!compType.isNull() && compType->isArithmeticType()) {
     if (CompLHSTy) *CompLHSTy = compType;
-    return compType;
-  }
-
-  if (LHS.get()->getType()->isAtomicType() &&
-      RHS.get()->getType()->isArithmeticType()) {
-    *CompLHSTy = LHS.get()->getType();
     return compType;
   }
 
@@ -6650,6 +6734,153 @@ static void diagnoseFunctionPointerToVoidComparison(Sema &S, SourceLocation Loc,
                       : diag::ext_typecheck_comparison_of_fptr_to_void)
     << LHS.get()->getType() << RHS.get()->getType()
     << LHS.get()->getSourceRange() << RHS.get()->getSourceRange();
+}
+
+static bool isObjCObjectLiteral(ExprResult &E) {
+  switch (E.get()->getStmtClass()) {
+  case Stmt::ObjCArrayLiteralClass:
+  case Stmt::ObjCDictionaryLiteralClass:
+  case Stmt::ObjCStringLiteralClass:
+  case Stmt::ObjCBoxedExprClass:
+    return true;
+  default:
+    // Note that ObjCBoolLiteral is NOT an object literal!
+    return false;
+  }
+}
+
+static DiagnosticBuilder diagnoseObjCLiteralComparison(Sema &S,
+                                                       SourceLocation Loc,
+                                                       ExprResult &LHS,
+                                                       ExprResult &RHS,
+                                                       bool CanFix = false) {
+  Expr *Literal = (isObjCObjectLiteral(LHS) ? LHS : RHS).get();
+
+  unsigned LiteralKind;
+  switch (Literal->getStmtClass()) {
+  case Stmt::ObjCStringLiteralClass:
+    // "string literal"
+    LiteralKind = 0;
+    break;
+  case Stmt::ObjCArrayLiteralClass:
+    // "array literal"
+    LiteralKind = 1;
+    break;
+  case Stmt::ObjCDictionaryLiteralClass:
+    // "dictionary literal"
+    LiteralKind = 2;
+    break;
+  case Stmt::ObjCBoxedExprClass: {
+    Expr *Inner = cast<ObjCBoxedExpr>(Literal)->getSubExpr();
+    switch (Inner->getStmtClass()) {
+    case Stmt::IntegerLiteralClass:
+    case Stmt::FloatingLiteralClass:
+    case Stmt::CharacterLiteralClass:
+    case Stmt::ObjCBoolLiteralExprClass:
+    case Stmt::CXXBoolLiteralExprClass:
+      // "numeric literal"
+      LiteralKind = 3;
+      break;
+    case Stmt::ImplicitCastExprClass: {
+      CastKind CK = cast<CastExpr>(Inner)->getCastKind();
+      // Boolean literals can be represented by implicit casts.
+      if (CK == CK_IntegralToBoolean || CK == CK_IntegralCast) {
+        LiteralKind = 3;
+        break;
+      }
+      // FALLTHROUGH
+    }
+    default:
+      // "boxed expression"
+      LiteralKind = 4;
+      break;
+    }
+    break;
+  }
+  default:
+    llvm_unreachable("Unknown Objective-C object literal kind");
+  }
+
+  return S.Diag(Loc, diag::err_objc_literal_comparison)
+           << LiteralKind << CanFix << Literal->getSourceRange();
+}
+
+static ExprResult fixObjCLiteralComparison(Sema &S, SourceLocation OpLoc,
+                                           ExprResult &LHS,
+                                           ExprResult &RHS,
+                                           BinaryOperatorKind Op) {
+  assert((Op == BO_EQ || Op == BO_NE) && "Cannot fix other operations.");
+
+  // Get the LHS object's interface type.
+  QualType Type = LHS.get()->getType();
+  QualType InterfaceType;
+  if (const ObjCObjectPointerType *PTy = Type->getAs<ObjCObjectPointerType>()) {
+    InterfaceType = PTy->getPointeeType();
+    if (const ObjCObjectType *iQFaceTy =
+        InterfaceType->getAsObjCQualifiedInterfaceType())
+      InterfaceType = iQFaceTy->getBaseType();
+  } else {
+    // If this is not actually an Objective-C object, bail out.
+    return ExprEmpty();
+  }
+
+  // If the RHS isn't an Objective-C object, bail out.
+  if (!RHS.get()->getType()->isObjCObjectPointerType())
+    return ExprEmpty();
+
+  // Try to find the -isEqual: method.
+  Selector IsEqualSel = S.NSAPIObj->getIsEqualSelector();
+  ObjCMethodDecl *Method = S.LookupMethodInObjectType(IsEqualSel,
+                                                      InterfaceType,
+                                                      /*instance=*/true);
+  bool ReceiverIsId = (Type->isObjCIdType() || Type->isObjCQualifiedIdType());
+
+  if (!Method && ReceiverIsId) {
+    Method = S.LookupInstanceMethodInGlobalPool(IsEqualSel, SourceRange(),
+                                                /*receiverId=*/true,
+                                                /*warn=*/false);
+  }
+
+  if (!Method)
+    return ExprEmpty();
+
+  QualType T = Method->param_begin()[0]->getType();
+  if (!T->isObjCObjectPointerType())
+    return ExprEmpty();
+
+  QualType R = Method->getResultType();
+  if (!R->isScalarType())
+    return ExprEmpty();
+
+  // At this point we know we have a good -isEqual: method.
+  // Emit the diagnostic and fixit.
+  DiagnosticBuilder Diag = diagnoseObjCLiteralComparison(S, OpLoc,
+                                                         LHS, RHS, true);
+
+  Expr *LHSExpr = LHS.take();
+  Expr *RHSExpr = RHS.take();
+
+  SourceLocation Start = LHSExpr->getLocStart();
+  SourceLocation End = S.PP.getLocForEndOfToken(RHSExpr->getLocEnd());
+  SourceRange OpRange(OpLoc, S.PP.getLocForEndOfToken(OpLoc));
+
+  Diag << FixItHint::CreateInsertion(Start, Op == BO_EQ ? "[" : "![")
+       << FixItHint::CreateReplacement(OpRange, "isEqual:")
+       << FixItHint::CreateInsertion(End, "]");
+
+  // Finally, build the call to -isEqual: (and possible logical not).
+  ExprResult Call = S.BuildInstanceMessage(LHSExpr, LHSExpr->getType(),
+                                           /*SuperLoc=*/SourceLocation(),
+                                           IsEqualSel, Method,
+                                           OpLoc, OpLoc, OpLoc,
+                                           MultiExprArg(S, &RHSExpr, 1),
+                                           /*isImplicit=*/false);
+
+  ExprResult CallCond = S.CheckBooleanCondition(Call.get(), OpLoc);
+
+  if (Op == BO_NE)
+    return S.CreateBuiltinUnaryOp(OpLoc, UO_LNot, CallCond.get());
+  return CallCond;
 }
 
 // C99 6.5.8, C++ [expr.rel]
@@ -6976,6 +7207,9 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
       if (!Context.areComparableObjCPointerTypes(LHSType, RHSType))
         diagnoseDistinctPointerComparison(*this, Loc, LHS, RHS,
                                           /*isError*/false);
+      if (isObjCObjectLiteral(LHS) || isObjCObjectLiteral(RHS))
+        diagnoseObjCLiteralComparison(*this, Loc, LHS, RHS);
+
       if (LHSIsNull && !RHSIsNull)
         LHS = ImpCastExprToType(LHS.take(), RHSType, CK_BitCast);
       else
@@ -7129,8 +7363,7 @@ inline QualType Sema::CheckBitwiseOperands(
   LHS = LHSResult.take();
   RHS = RHSResult.take();
 
-  if (LHS.get()->getType()->isIntegralOrUnscopedEnumerationType() &&
-      RHS.get()->getType()->isIntegralOrUnscopedEnumerationType())
+  if (!compType.isNull() && compType->isIntegralOrUnscopedEnumerationType())
     return compType;
   return InvalidOperands(Loc, LHS, RHS);
 }
@@ -8034,6 +8267,13 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
     break;
   case BO_EQ:
   case BO_NE:
+    if (isObjCObjectLiteral(LHS) || isObjCObjectLiteral(RHS)) {
+      ExprResult IsEqualCall = fixObjCLiteralComparison(*this, OpLoc,
+                                                        LHS, RHS, Opc);
+      if (IsEqualCall.isUsable())
+        return IsEqualCall;
+      // Otherwise, fall back to the normal diagnostic in CheckCompareOperands.
+    }
     ResultTy = CheckCompareOperands(LHS, RHS, OpLoc, Opc, false);
     break;
   case BO_And:
@@ -8992,7 +9232,8 @@ void Sema::ActOnBlockStart(SourceLocation CaretLoc, Scope *CurScope) {
   PushExpressionEvaluationContext(PotentiallyEvaluated);  
 }
 
-void Sema::ActOnBlockArguments(Declarator &ParamInfo, Scope *CurScope) {
+void Sema::ActOnBlockArguments(SourceLocation CaretLoc, Declarator &ParamInfo,
+                               Scope *CurScope) {
   assert(ParamInfo.getIdentifier()==0 && "block-id should have no identifier!");
   assert(ParamInfo.getContext() == Declarator::BlockLiteralContext);
   BlockScopeInfo *CurBlock = getCurBlock();
@@ -9000,6 +9241,18 @@ void Sema::ActOnBlockArguments(Declarator &ParamInfo, Scope *CurScope) {
   TypeSourceInfo *Sig = GetTypeForDeclarator(ParamInfo, CurScope);
   QualType T = Sig->getType();
 
+  // FIXME: We should allow unexpanded parameter packs here, but that would,
+  // in turn, make the block expression contain unexpanded parameter packs.
+  if (DiagnoseUnexpandedParameterPack(CaretLoc, Sig, UPPC_Block)) {
+    // Drop the parameters.
+    FunctionProtoType::ExtProtoInfo EPI;
+    EPI.HasTrailingReturn = false;
+    EPI.TypeQuals |= DeclSpec::TQ_const;
+    T = Context.getFunctionType(Context.DependentTy, /*Args=*/0, /*NumArgs=*/0,
+                                EPI);
+    Sig = Context.getTrivialTypeSourceInfo(T);
+  }
+  
   // GetTypeForDeclarator always produces a function type for a block
   // literal signature.  Furthermore, it is always a FunctionProtoType
   // unless the function was written with a typedef.
@@ -10112,7 +10365,7 @@ static ExprResult captureInLambda(Sema &S, LambdaScopeInfo *LSI,
   FieldDecl *Field
     = FieldDecl::Create(S.Context, Lambda, Loc, Loc, 0, FieldType,
                         S.Context.getTrivialTypeSourceInfo(FieldType, Loc),
-                        0, false, false);
+                        0, false, ICIS_NoInit);
   Field->setImplicit(true);
   Field->setAccess(AS_private);
   Lambda->addDecl(Field);

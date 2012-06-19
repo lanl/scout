@@ -61,7 +61,7 @@ void DeclToIndex::computeMap(const DeclContext &dc) {
   DeclContext::specific_decl_iterator<VarDecl> I(dc.decls_begin()),
                                                E(dc.decls_end());
   for ( ; I != E; ++I) {
-    const VarDecl *vd = &*I;
+    const VarDecl *vd = *I;
     if (isTrackedVar(vd, &dc))
       map[vd] = count++;
   }
@@ -625,6 +625,18 @@ void TransferFunctions::VisitDeclStmt(DeclStmt *ds) {
           // the use of the uninitialized value (which visiting the
           // initializer).
           vals[vd] = Initialized;
+        } else {
+          // No initializer: the variable is now uninitialized. This matters
+          // for cases like:
+          //   while (...) {
+          //     int n;
+          //     use(n);
+          //     n = 0;
+          //   }
+          // FIXME: Mark the variable as uninitialized whenever its scope is
+          // left, since its scope could be re-entered by a jump over the
+          // declaration.
+          vals[vd] = Uninitialized;
         }
       }
     }

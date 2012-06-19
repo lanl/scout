@@ -156,6 +156,7 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 
   case Stmt::SwitchStmtClass:   EmitSwitchStmt(cast<SwitchStmt>(*S));     break;
   case Stmt::AsmStmtClass:      EmitAsmStmt(cast<AsmStmt>(*S));           break;
+  case Stmt::MSAsmStmtClass:    EmitMSAsmStmt(cast<MSAsmStmt>(*S));       break;
 
   case Stmt::ObjCAtTryStmtClass:
     EmitObjCAtTryStmt(cast<ObjCAtTryStmt>(*S));
@@ -649,10 +650,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
 
-    llvm::StringRef name = dyn_cast< FieldDecl >(&*it)->getName();
+    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
     meshFieldMap[name.str()] = true;
     
-    QualType Ty = dyn_cast< FieldDecl >(&*it)->getType();
+    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
@@ -2334,4 +2335,9 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
 
     EmitStoreThroughLValue(RValue::get(Tmp), ResultRegDests[i]);
   }
+}
+
+void CodeGenFunction::EmitMSAsmStmt(const MSAsmStmt &S) {
+  // Analyze the asm string to decompose it into its pieces.
+  llvm::report_fatal_error("MS-style asm codegen isn't yet supported.");
 }

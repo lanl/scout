@@ -986,19 +986,23 @@ Value *InstCombiner::FoldAndOfFCmps(FCmpInst *LHS, FCmpInst *RHS) {
     bool Op1Ordered;
     unsigned Op0Pred = getFCmpCode(Op0CC, Op0Ordered);
     unsigned Op1Pred = getFCmpCode(Op1CC, Op1Ordered);
+    // uno && ord -> false
+    if (Op0Pred == 0 && Op1Pred == 0 && Op0Ordered != Op1Ordered)
+        return ConstantInt::get(CmpInst::makeCmpResultType(LHS->getType()), 0);
     if (Op1Pred == 0) {
       std::swap(LHS, RHS);
       std::swap(Op0Pred, Op1Pred);
       std::swap(Op0Ordered, Op1Ordered);
     }
     if (Op0Pred == 0) {
-      // uno && ueq -> uno && (uno || eq) -> ueq
+      // uno && ueq -> uno && (uno || eq) -> uno
       // ord && olt -> ord && (ord && lt) -> olt
-      if (Op0Ordered == Op1Ordered)
+      if (!Op0Ordered && (Op0Ordered == Op1Ordered))
+        return LHS;
+      if (Op0Ordered && (Op0Ordered == Op1Ordered))
         return RHS;
       
       // uno && oeq -> uno && (ord && eq) -> false
-      // uno && ord -> false
       if (!Op0Ordered)
         return ConstantInt::get(CmpInst::makeCmpResultType(LHS->getType()), 0);
       // ord && ueq -> ord && (uno || eq) -> oeq

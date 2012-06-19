@@ -1351,10 +1351,15 @@ RetainSummaryManager::getStandardMethodSummary(const ObjCMethodDecl *MD,
   // because the reference count is quite possibly handled by a delegate
   // method.
   if (S.isKeywordSelector()) {
-    const std::string &str = S.getAsString();
-    assert(!str.empty());
-    if (StrInStrNoCase(str, "delegate:") != StringRef::npos)
-      ReceiverEff = StopTracking;
+    for (unsigned i = 0, e = S.getNumArgs(); i != e; ++i) {
+      StringRef Slot = S.getNameForSlot(i);
+      if (Slot.substr(Slot.size() - 8).equals_lower("delegate")) {
+        if (ResultEff == ObjCInitRetE)
+          ResultEff = RetEffect::MakeNoRet();
+        else
+          ReceiverEff = StopTracking;
+      }
+    }
   }
 
   if (ScratchArgs.isEmpty() && ReceiverEff == DoNothing &&
@@ -1700,30 +1705,16 @@ namespace {
   };
 
   class Leak : public CFRefBug {
-    const bool isReturn;
-  protected:
-    Leak(StringRef name, bool isRet)
-    : CFRefBug(name), isReturn(isRet) {
+  public:
+    Leak(StringRef name)
+    : CFRefBug(name) {
       // Leaks should not be reported if they are post-dominated by a sink.
       setSuppressOnSink(true);
     }
-  public:
 
     const char *getDescription() const { return ""; }
 
     bool isLeak() const { return true; }
-  };
-
-  class LeakAtReturn : public Leak {
-  public:
-    LeakAtReturn(StringRef name)
-    : Leak(name, true) {}
-  };
-
-  class LeakWithinFunction : public Leak {
-  public:
-    LeakWithinFunction(StringRef name)
-    : Leak(name, false) {}
   };
 
   //===---------===//
@@ -2420,20 +2411,17 @@ public:
                                      bool GCEnabled) const {
     if (GCEnabled) {
       if (!leakWithinFunctionGC)
-        leakWithinFunctionGC.reset(new LeakWithinFunction("Leak of object when "
-                                                          "using garbage "
-                                                          "collection"));
+        leakWithinFunctionGC.reset(new Leak("Leak of object when using "
+                                             "garbage collection"));
       return leakWithinFunctionGC.get();
     } else {
       if (!leakWithinFunction) {
         if (LOpts.getGC() == LangOptions::HybridGC) {
-          leakWithinFunction.reset(new LeakWithinFunction("Leak of object when "
-                                                          "not using garbage "
-                                                          "collection (GC) in "
-                                                          "dual GC/non-GC "
-                                                          "code"));
+          leakWithinFunction.reset(new Leak("Leak of object when not using "
+                                            "garbage collection (GC) in "
+                                            "dual GC/non-GC code"));
         } else {
-          leakWithinFunction.reset(new LeakWithinFunction("Leak"));
+          leakWithinFunction.reset(new Leak("Leak"));
         }
       }
       return leakWithinFunction.get();
@@ -2443,17 +2431,17 @@ public:
   CFRefBug *getLeakAtReturnBug(const LangOptions &LOpts, bool GCEnabled) const {
     if (GCEnabled) {
       if (!leakAtReturnGC)
-        leakAtReturnGC.reset(new LeakAtReturn("Leak of returned object when "
-                                              "using garbage collection"));
+        leakAtReturnGC.reset(new Leak("Leak of returned object when using "
+                                      "garbage collection"));
       return leakAtReturnGC.get();
     } else {
       if (!leakAtReturn) {
         if (LOpts.getGC() == LangOptions::HybridGC) {
-          leakAtReturn.reset(new LeakAtReturn("Leak of returned object when "
-                                              "not using garbage collection "
-                                              "(GC) in dual GC/non-GC code"));
+          leakAtReturn.reset(new Leak("Leak of returned object when not using "
+                                      "garbage collection (GC) in dual "
+                                      "GC/non-GC code"));
         } else {
-          leakAtReturn.reset(new LeakAtReturn("Leak of returned object"));
+          leakAtReturn.reset(new Leak("Leak of returned object"));
         }
       }
       return leakAtReturn.get();

@@ -14,15 +14,16 @@
 
 #define DEBUG_TYPE "misched"
 
-#include "RegisterClassInfo.h"
-#include "RegisterPressure.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineScheduler.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/RegisterClassInfo.h"
+#include "llvm/CodeGen/RegisterPressure.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/MC/MCInstrItineraries.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -350,15 +351,21 @@ class ScheduleDAGMI : public ScheduleDAGInstrs {
   IntervalPressure BotPressure;
   RegPressureTracker BotRPTracker;
 
+#ifndef NDEBUG
   /// The number of instructions scheduled so far. Used to cut off the
   /// scheduler at the point determined by misched-cutoff.
   unsigned NumInstrsScheduled;
+#endif
 public:
   ScheduleDAGMI(MachineSchedContext *C, MachineSchedStrategy *S):
     ScheduleDAGInstrs(*C->MF, *C->MLI, *C->MDT, /*IsPostRA=*/false, C->LIS),
     AA(C->AA), RegClassInfo(C->RegClassInfo), SchedImpl(S),
     RPTracker(RegPressure), CurrentTop(), TopRPTracker(TopPressure),
-    CurrentBottom(), BotRPTracker(BotPressure), NumInstrsScheduled(0) {}
+    CurrentBottom(), BotRPTracker(BotPressure) {
+#ifndef NDEBUG
+    NumInstrsScheduled = 0;
+#endif
+  }
 
   ~ScheduleDAGMI() {
     delete SchedImpl;
@@ -392,6 +399,12 @@ public:
 
   const std::vector<PressureElement> &getRegionCriticalPSets() const {
     return RegionCriticalPSets;
+  }
+
+  /// getIssueWidth - Return the max instructions per scheduling group.
+  ///
+  unsigned getIssueWidth() const {
+    return InstrItins ? InstrItins->Props.IssueWidth : 1;
   }
 
 protected:
@@ -787,13 +800,16 @@ class ConvergingScheduler : public MachineSchedStrategy {
     /// MinReadyCycle - Cycle of the soonest available instruction.
     unsigned MinReadyCycle;
 
+    // Remember the greatest min operand latency.
+    unsigned MaxMinLatency;
+
     /// Pending queues extend the ready queues with the same ID and the
     /// PendingFlag set.
     SchedBoundary(unsigned ID, const Twine &Name):
       Available(ID, Name+".A"),
       Pending(ID << ConvergingScheduler::LogMaxQID, Name+".P"),
       CheckPending(false), HazardRec(0), CurrCycle(0), IssueCount(0),
-      MinReadyCycle(UINT_MAX) {}
+      MinReadyCycle(UINT_MAX), MaxMinLatency(0) {}
 
     ~SchedBoundary() { delete HazardRec; }
 
@@ -804,6 +820,8 @@ class ConvergingScheduler : public MachineSchedStrategy {
     void releaseNode(SUnit *SU, unsigned ReadyCycle);
 
     void bumpCycle();
+
+    void bumpNode(SUnit *SU, unsigned IssueWidth);
 
     void releasePending();
 
@@ -868,25 +886,53 @@ void ConvergingScheduler::initialize(ScheduleDAGMI *dag) {
 }
 
 void ConvergingScheduler::releaseTopNode(SUnit *SU) {
-  Top.releaseNode(SU, SU->getDepth());
+  if (SU->isScheduled)
+    return;
+
+  for (SUnit::succ_iterator I = SU->Preds.begin(), E = SU->Preds.end();
+       I != E; ++I) {
+    unsigned PredReadyCycle = I->getSUnit()->TopReadyCycle;
+    unsigned Latency =
+      DAG->computeOperandLatency(I->getSUnit(), SU, *I, /*FindMin=*/true);
+#ifndef NDEBUG
+    Top.MaxMinLatency = std::max(Latency, Top.MaxMinLatency);
+#endif
+    if (SU->TopReadyCycle < PredReadyCycle + Latency)
+      SU->TopReadyCycle = PredReadyCycle + Latency;
+  }
+  Top.releaseNode(SU, SU->TopReadyCycle);
 }
 
 void ConvergingScheduler::releaseBottomNode(SUnit *SU) {
-  Bot.releaseNode(SU, SU->getHeight());
+  if (SU->isScheduled)
+    return;
+
+  assert(SU->getInstr() && "Scheduled SUnit must have instr");
+
+  for (SUnit::succ_iterator I = SU->Succs.begin(), E = SU->Succs.end();
+       I != E; ++I) {
+    unsigned SuccReadyCycle = I->getSUnit()->BotReadyCycle;
+    unsigned Latency =
+      DAG->computeOperandLatency(SU, I->getSUnit(), *I, /*FindMin=*/true);
+#ifndef NDEBUG
+    Bot.MaxMinLatency = std::max(Latency, Bot.MaxMinLatency);
+#endif
+    if (SU->BotReadyCycle < SuccReadyCycle + Latency)
+      SU->BotReadyCycle = SuccReadyCycle + Latency;
+  }
+  Bot.releaseNode(SU, SU->BotReadyCycle);
 }
 
 void ConvergingScheduler::SchedBoundary::releaseNode(SUnit *SU,
                                                      unsigned ReadyCycle) {
-  if (SU->isScheduled)
-    return;
-
   if (ReadyCycle < MinReadyCycle)
     MinReadyCycle = ReadyCycle;
 
   // Check for interlocks first. For the purpose of other heuristics, an
   // instruction that cannot issue appears as if it's not in the ReadyQueue.
-  if (HazardRec->isEnabled()
-      && HazardRec->getHazardType(SU) != ScheduleHazardRecognizer::NoHazard)
+  if (ReadyCycle > CurrCycle
+      || (HazardRec->isEnabled() && (HazardRec->getHazardType(SU)
+                                     != ScheduleHazardRecognizer::NoHazard)))
     Pending.push(SU);
   else
     Available.push(SU);
@@ -900,10 +946,11 @@ void ConvergingScheduler::SchedBoundary::bumpCycle() {
   unsigned NextCycle = std::max(CurrCycle + 1, MinReadyCycle);
 
   if (!HazardRec->isEnabled()) {
-    // Bypass lots of virtual calls in case of long latency.
+    // Bypass HazardRec virtual calls.
     CurrCycle = NextCycle;
   }
   else {
+    // Bypass getHazardType calls in case of long latency.
     for (; CurrCycle != NextCycle; ++CurrCycle) {
       if (isTop())
         HazardRec->AdvanceCycle();
@@ -917,6 +964,26 @@ void ConvergingScheduler::SchedBoundary::bumpCycle() {
         << CurrCycle << '\n');
 }
 
+/// Move the boundary of scheduled code by one SUnit.
+void ConvergingScheduler::SchedBoundary::bumpNode(SUnit *SU,
+                                                  unsigned IssueWidth) {
+  // Update the reservation table.
+  if (HazardRec->isEnabled()) {
+    if (!isTop() && SU->isCall) {
+      // Calls are scheduled with their preceding instructions. For bottom-up
+      // scheduling, clear the pipeline state before emitting.
+      HazardRec->Reset();
+    }
+    HazardRec->EmitInstruction(SU);
+  }
+  // Check the instruction group size limit.
+  ++IssueCount;
+  if (IssueCount == IssueWidth) {
+    DEBUG(dbgs() << "*** Max instrs at cycle " << CurrCycle << '\n');
+    bumpCycle();
+  }
+}
+
 /// Release pending ready nodes in to the available queue. This makes them
 /// visible to heuristics.
 void ConvergingScheduler::SchedBoundary::releasePending() {
@@ -928,7 +995,7 @@ void ConvergingScheduler::SchedBoundary::releasePending() {
   // so, add them to the available queue.
   for (unsigned i = 0, e = Pending.size(); i != e; ++i) {
     SUnit *SU = *(Pending.begin()+i);
-    unsigned ReadyCycle = isTop() ? SU->getHeight() : SU->getDepth();
+    unsigned ReadyCycle = isTop() ? SU->TopReadyCycle : SU->BotReadyCycle;
 
     if (ReadyCycle < MinReadyCycle)
       MinReadyCycle = ReadyCycle;
@@ -965,7 +1032,8 @@ SUnit *ConvergingScheduler::SchedBoundary::pickOnlyChoice() {
     releasePending();
 
   for (unsigned i = 0; Available.empty(); ++i) {
-    assert(i <= HazardRec->getMaxLookAhead() && "permanent hazard"); (void)i;
+    assert(i <= (HazardRec->getMaxLookAhead() + MaxMinLatency) &&
+           "permanent hazard"); (void)i;
     bumpCycle();
     releasePending();
   }
@@ -1205,27 +1273,15 @@ SUnit *ConvergingScheduler::pickNode(bool &IsTopNode) {
 
 /// Update the scheduler's state after scheduling a node. This is the same node
 /// that was just returned by pickNode(). However, ScheduleDAGMI needs to update
-/// it's state based on the current cycle before MachineSchedStrategy.
+/// it's state based on the current cycle before MachineSchedStrategy does.
 void ConvergingScheduler::schedNode(SUnit *SU, bool IsTopNode) {
-  // Update the reservation table.
-  if (IsTopNode && Top.HazardRec->isEnabled()) {
-    Top.HazardRec->EmitInstruction(SU);
-    if (Top.HazardRec->atIssueLimit()) {
-      DEBUG(dbgs() << "*** Max instrs at cycle " << Top.CurrCycle << '\n');
-      Top.bumpCycle();
-    }
+  if (IsTopNode) {
+    SU->TopReadyCycle = Top.CurrCycle;
+    Top.bumpNode(SU, DAG->getIssueWidth());
   }
-  else if (Bot.HazardRec->isEnabled()) {
-    if (SU->isCall) {
-      // Calls are scheduled with their preceding instructions. For bottom-up
-      // scheduling, clear the pipeline state before emitting.
-      Bot.HazardRec->Reset();
-    }
-    Bot.HazardRec->EmitInstruction(SU);
-    if (Bot.HazardRec->atIssueLimit()) {
-      DEBUG(dbgs() << "*** Max instrs at cycle " << Bot.CurrCycle << '\n');
-      Bot.bumpCycle();
-    }
+  else {
+    SU->BotReadyCycle = Bot.CurrCycle;
+    Bot.bumpNode(SU, DAG->getIssueWidth());
   }
 }
 

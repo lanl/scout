@@ -1069,7 +1069,7 @@ static NamedDecl *getVisibleDecl(NamedDecl *D) {
   
   for (Decl::redecl_iterator RD = D->redecls_begin(), RDEnd = D->redecls_end();
        RD != RDEnd; ++RD) {
-    if (NamedDecl *ND = dyn_cast<NamedDecl>(RD)) {
+    if (NamedDecl *ND = dyn_cast<NamedDecl>(*RD)) {
       if (LookupResult::isVisible(ND))
         return ND;
     }
@@ -3541,7 +3541,16 @@ static void LookupPotentialTypoResult(Sema &SemaRef,
 /// \brief Add keywords to the consumer as possible typo corrections.
 static void AddKeywordsToConsumer(Sema &SemaRef,
                                   TypoCorrectionConsumer &Consumer,
-                                  Scope *S, CorrectionCandidateCallback &CCC) {
+                                  Scope *S, CorrectionCandidateCallback &CCC,
+                                  bool AfterNestedNameSpecifier) {
+  if (AfterNestedNameSpecifier) {
+    // For 'X::', we know exactly which keywords can appear next.
+    Consumer.addKeywordResult("template");
+    if (CCC.WantExpressionKeywords)
+      Consumer.addKeywordResult("operator");
+    return;
+  }
+
   if (CCC.WantObjCSuper)
     Consumer.addKeywordResult("super");
 
@@ -3803,6 +3812,9 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
   bool SearchNamespaces
     = getLangOpts().CPlusPlus &&
       (IsUnqualifiedLookup || (QualifiedDC && QualifiedDC->isNamespace()));
+  // In a few cases we *only* want to search for corrections bases on just
+  // adding or changing the nested name specifier.
+  bool AllowOnlyNNSChanges = Typo->getName().size() < 3;
   
   if (IsUnqualifiedLookup || SearchNamespaces) {
     // For unqualified lookup, look through all of the names that we have
@@ -3828,7 +3840,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     }
   }
 
-  AddKeywordsToConsumer(*this, Consumer, S, CCC);
+  AddKeywordsToConsumer(*this, Consumer, S, CCC, SS && SS->isNotEmpty());
 
   // If we haven't found anything, we're done.
   if (Consumer.empty()) {
@@ -3839,8 +3851,8 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     return TypoCorrection();
   }
 
-  // Make sure that the user typed at least 3 characters for each correction
-  // made. Otherwise, we don't even both looking at the results.
+  // Make sure the best edit distance (prior to adding any namespace qualifiers)
+  // is not more that about a third of the length of the typo's identifier.
   unsigned ED = Consumer.getBestEditDistance(true);
   if (ED > 0 && Typo->getName().size() / ED < 3) {
     // If this was an unqualified lookup, note that no correction was found.
@@ -3880,6 +3892,16 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
     for (TypoCorrectionConsumer::result_iterator I = DI->second.begin(),
                                               IEnd = DI->second.end();
          I != IEnd; /* Increment in loop. */) {
+      // If we only want nested name specifier corrections, ignore potential
+      // corrections that have a different base identifier from the typo.
+      if (AllowOnlyNNSChanges &&
+          I->second.front().getCorrectionAsIdentifierInfo() != Typo) {
+        TypoCorrectionConsumer::result_iterator Prev = I;
+        ++I;
+        DI->second.erase(Prev);
+        continue;
+      }
+
       // If the item already has been looked up or is a keyword, keep it.
       // If a validator callback object was given, drop the correction
       // unless it passes validation.
@@ -4021,7 +4043,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
   TypoResultsMap &BestResults = Consumer.getBestResults();
   ED = Consumer.getBestEditDistance(true);
 
-  if (ED > 0 && Typo->getName().size() / ED < 3) {
+  if (!AllowOnlyNNSChanges && ED > 0 && Typo->getName().size() / ED < 3) {
     // If this was an unqualified lookup and we believe the callback
     // object wouldn't have filtered out possible corrections, note
     // that no correction was found.

@@ -330,7 +330,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                           Arg2.getIntegralType()))
       return false;
     
-    return IsSameValue(*Arg1.getAsIntegral(), *Arg2.getAsIntegral());
+    return IsSameValue(Arg1.getAsIntegral(), Arg2.getAsIntegral());
       
   case TemplateArgument::Declaration:
     if (!Arg1.getAsDecl() || !Arg2.getAsDecl())
@@ -1031,7 +1031,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     }
     
-    if (!IsStructurallyEquivalent(Context, &*Field1, &*Field2))
+    if (!IsStructurallyEquivalent(Context, *Field1, *Field2))
       return false;    
   }
   
@@ -1882,14 +1882,8 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
       = FromData.HasConstexprNonCopyMoveConstructor;
     ToData.DefaultedDefaultConstructorIsConstexpr
       = FromData.DefaultedDefaultConstructorIsConstexpr;
-    ToData.DefaultedCopyConstructorIsConstexpr
-      = FromData.DefaultedCopyConstructorIsConstexpr;
-    ToData.DefaultedMoveConstructorIsConstexpr
-      = FromData.DefaultedMoveConstructorIsConstexpr;
     ToData.HasConstexprDefaultConstructor
       = FromData.HasConstexprDefaultConstructor;
-    ToData.HasConstexprCopyConstructor = FromData.HasConstexprCopyConstructor;
-    ToData.HasConstexprMoveConstructor = FromData.HasConstexprMoveConstructor;
     ToData.HasTrivialCopyConstructor = FromData.HasTrivialCopyConstructor;
     ToData.HasTrivialMoveConstructor = FromData.HasTrivialMoveConstructor;
     ToData.HasTrivialCopyAssignment = FromData.HasTrivialCopyAssignment;
@@ -2016,7 +2010,7 @@ ASTNodeImporter::ImportTemplateArgument(const TemplateArgument &From) {
     QualType ToType = Importer.Import(From.getIntegralType());
     if (ToType.isNull())
       return TemplateArgument();
-    return TemplateArgument(*From.getAsIntegral(), ToType);
+    return TemplateArgument(From, ToType);
   }
 
   case TemplateArgument::Declaration:
@@ -2693,7 +2687,7 @@ Decl *ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
                                          Importer.Import(D->getInnerLocStart()),
                                          Loc, Name.getAsIdentifierInfo(),
                                          T, TInfo, BitWidth, D->isMutable(),
-                                         D->hasInClassInitializer());
+                                         D->getInClassInitStyle());
   ToField->setAccess(D->getAccess());
   ToField->setLexicalDeclContext(LexicalDC);
   if (ToField->hasInClassInitializer())

@@ -189,6 +189,12 @@ static ControlFlowKind CheckFallThrough(AnalysisDeclContext &AC) {
         continue;
       }
     }
+    if (isa<MSAsmStmt>(S)) {
+      // TODO: Verify this is correct.
+      HasFakeEdge = true;
+      HasLiveReturn = true;
+      continue;
+    }
     if (isa<CXXTryStmt>(S)) {
       HasAbnormalEdge = true;
       continue;
@@ -815,14 +821,14 @@ namespace {
 }
 
 static void DiagnoseSwitchLabelsFallthrough(Sema &S, AnalysisDeclContext &AC,
-                                            bool PerMethod) {
+                                            bool PerFunction) {
   FallthroughMapper FM(S);
   FM.TraverseStmt(AC.getBody());
 
   if (!FM.foundSwitchStatements())
     return;
 
-  if (PerMethod && FM.getFallthroughStmts().empty())
+  if (PerFunction && FM.getFallthroughStmts().empty())
     return;
 
   CFG *Cfg = AC.getCFG();
@@ -843,8 +849,8 @@ static void DiagnoseSwitchLabelsFallthrough(Sema &S, AnalysisDeclContext &AC,
       continue;
 
     S.Diag(Label->getLocStart(),
-        PerMethod ? diag::warn_unannotated_fallthrough_per_method
-                  : diag::warn_unannotated_fallthrough);
+        PerFunction ? diag::warn_unannotated_fallthrough_per_function
+                    : diag::warn_unannotated_fallthrough);
 
     if (!AnnotatedCnt) {
       SourceLocation L = Label->getLocStart();
@@ -1333,10 +1339,10 @@ AnalysisBasedWarnings::IssueWarnings(sema::AnalysisBasedWarnings::Policy P,
   bool FallThroughDiagFull =
       Diags.getDiagnosticLevel(diag::warn_unannotated_fallthrough,
                                D->getLocStart()) != DiagnosticsEngine::Ignored;
-  bool FallThroughDiagPerMethod =
-      Diags.getDiagnosticLevel(diag::warn_unannotated_fallthrough_per_method,
+  bool FallThroughDiagPerFunction =
+      Diags.getDiagnosticLevel(diag::warn_unannotated_fallthrough_per_function,
                                D->getLocStart()) != DiagnosticsEngine::Ignored;
-  if (FallThroughDiagFull || FallThroughDiagPerMethod) {
+  if (FallThroughDiagFull || FallThroughDiagPerFunction) {
     DiagnoseSwitchLabelsFallthrough(S, AC, !FallThroughDiagFull);
   }
 

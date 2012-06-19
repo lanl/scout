@@ -177,7 +177,6 @@ class ARMFastISel : public FastISel {
     bool ARMEmitLoad(EVT VT, unsigned &ResultReg, Address &Addr,
                      unsigned Alignment = 0, bool isZExt = true,
                      bool allocReg = true);
-                     
     bool ARMEmitStore(EVT VT, unsigned SrcReg, Address &Addr,
                       unsigned Alignment = 0);
     bool ARMComputeAddress(const Value *Obj, Address &Addr);
@@ -190,7 +189,7 @@ class ARMFastISel : public FastISel {
     unsigned ARMMaterializeGV(const GlobalValue *GV, EVT VT);
     unsigned ARMMoveToFPReg(EVT VT, unsigned SrcReg);
     unsigned ARMMoveToIntReg(EVT VT, unsigned SrcReg);
-    unsigned ARMSelectCallOp(const GlobalValue *GV);
+    unsigned ARMSelectCallOp(bool UseReg);
 
     // Call handling routines.
   private:
@@ -202,6 +201,7 @@ class ARMFastISel : public FastISel {
                          SmallVectorImpl<unsigned> &RegArgs,
                          CallingConv::ID CC,
                          unsigned &NumBytes);
+    unsigned getLibcallReg(const Twine &Name);
     bool FinishCall(MVT RetVT, SmallVectorImpl<unsigned> &UsedRegs,
                     const Instruction *I, CallingConv::ID CC,
                     unsigned &NumBytes);
@@ -1355,7 +1355,7 @@ bool ARMFastISel::SelectIndirectBr(const Instruction *I) {
   unsigned Opc = isThumb2 ? ARM::tBRIND : ARM::BX;
   AddOptionalDefs(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL, TII.get(Opc))
                   .addReg(AddrReg));
-  return true;  
+  return true;
 }
 
 bool ARMFastISel::ARMEmitCmp(const Value *Src1Value, const Value *Src2Value,
@@ -1420,12 +1420,12 @@ bool ARMFastISel::ARMEmitCmp(const Value *Src1Value, const Value *Src2Value,
         if (!UseImm)
           CmpOpc = ARM::t2CMPrr;
         else
-          CmpOpc = isNegativeImm ? ARM::t2CMNzri : ARM::t2CMPri;
+          CmpOpc = isNegativeImm ? ARM::t2CMNri : ARM::t2CMPri;
       } else {
         if (!UseImm)
           CmpOpc = ARM::CMPrr;
         else
-          CmpOpc = isNegativeImm ? ARM::CMNzri : ARM::CMPri;
+          CmpOpc = isNegativeImm ? ARM::CMNri : ARM::CMPri;
       }
       break;
   }
@@ -1734,7 +1734,7 @@ bool ARMFastISel::SelectBinaryIntOp(const Instruction *I, unsigned ISDOpcode) {
   // type and the target independent selector doesn't know how to handle it.
   if (DestVT != MVT::i16 && DestVT != MVT::i8 && DestVT != MVT::i1)
     return false;
-  
+
   unsigned Opc;
   switch (ISDOpcode) {
     default: return false;
@@ -2108,8 +2108,17 @@ bool ARMFastISel::SelectRet(const Instruction *I) {
   return true;
 }
 
-unsigned ARMFastISel::ARMSelectCallOp(const GlobalValue *GV) {
-  return isThumb2 ? ARM::tBL : ARM::BL;
+unsigned ARMFastISel::ARMSelectCallOp(bool UseReg) {
+  if (UseReg)
+    return isThumb2 ? ARM::tBLXr : ARM::BLX;
+  else
+    return isThumb2 ? ARM::tBL : ARM::BL;
+}
+
+unsigned ARMFastISel::getLibcallReg(const Twine &Name) {
+  GlobalValue *GV = new GlobalVariable(Type::getInt32Ty(*Context), false,
+                                       GlobalValue::ExternalLinkage, 0, Name);
+  return ARMMaterializeGV(GV, TLI.getValueType(GV->getType()));
 }
 
 // A quick function that will emit a call for a named libcall in F with the
@@ -2130,11 +2139,8 @@ bool ARMFastISel::ARMEmitLibcall(const Instruction *I, RTLIB::Libcall Call) {
   else if (!isTypeLegal(RetTy, RetVT))
     return false;
 
-  // TODO: For now if we have long calls specified we don't handle the call.
-  if (EnableARMLongCalls) return false;
-
   // Can't handle non-double multi-reg retvals.
-  if (RetVT != MVT::isVoid && RetVT != MVT::i32) {  
+  if (RetVT != MVT::isVoid && RetVT != MVT::i32) {
     SmallVector<CCValAssign, 16> RVLocs;
     CCState CCInfo(CC, false, *FuncInfo.MF, TM, RVLocs, *Context);
     CCInfo.AnalyzeCallResult(RetVT, CCAssignFnForCall(CC, true));
@@ -2176,20 +2182,32 @@ bool ARMFastISel::ARMEmitLibcall(const Instruction *I, RTLIB::Libcall Call) {
   if (!ProcessCallArgs(Args, ArgRegs, ArgVTs, ArgFlags, RegArgs, CC, NumBytes))
     return false;
 
-  // Issue the call.
-  MachineInstrBuilder MIB;
-  unsigned CallOpc = ARMSelectCallOp(NULL);
-  if (isThumb2)
-    // Explicitly adding the predicate here.
-    MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                         TII.get(CallOpc)))
-                         .addExternalSymbol(TLI.getLibcallName(Call));
-  else
-    // Explicitly adding the predicate here.
-    MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                         TII.get(CallOpc))
-          .addExternalSymbol(TLI.getLibcallName(Call)));
+  unsigned CalleeReg = 0;
+  if (EnableARMLongCalls) {
+    CalleeReg = getLibcallReg(TLI.getLibcallName(Call));
+    if (CalleeReg == 0) return false;
+  }
 
+  // Issue the call.
+  unsigned CallOpc = ARMSelectCallOp(EnableARMLongCalls);
+  MachineInstrBuilder MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt,
+                                    DL, TII.get(CallOpc));
+  if (isThumb2) {
+    // Explicitly adding the predicate here.
+    AddDefaultPred(MIB);
+    if (EnableARMLongCalls)
+      MIB.addReg(CalleeReg);
+    else
+      MIB.addExternalSymbol(TLI.getLibcallName(Call));
+  } else {
+    if (EnableARMLongCalls)
+      MIB.addReg(CalleeReg);
+    else
+      MIB.addExternalSymbol(TLI.getLibcallName(Call));
+
+    // Explicitly adding the predicate here.
+    AddDefaultPred(MIB);
+  }
   // Add implicit physical register uses to the call.
   for (unsigned i = 0, e = RegArgs.size(); i != e; ++i)
     MIB.addReg(RegArgs[i]);
@@ -2236,9 +2254,6 @@ bool ARMFastISel::SelectCall(const Instruction *I,
   else if (!isTypeLegal(RetTy, RetVT) && RetVT != MVT::i16 &&
            RetVT != MVT::i8  && RetVT != MVT::i1)
     return false;
-
-  // TODO: For now if we have long calls specified we don't handle the call.
-  if (EnableARMLongCalls) return false;
 
   // Can't handle non-double multi-reg retvals.
   if (RetVT != MVT::isVoid && RetVT != MVT::i1 && RetVT != MVT::i8 &&
@@ -2306,45 +2321,45 @@ bool ARMFastISel::SelectCall(const Instruction *I,
   if (!ProcessCallArgs(Args, ArgRegs, ArgVTs, ArgFlags, RegArgs, CC, NumBytes))
     return false;
 
-  // Issue the call.
-  MachineInstrBuilder MIB;
+  bool UseReg = false;
   const GlobalValue *GV = dyn_cast<GlobalValue>(Callee);
-  unsigned CallOpc = ARMSelectCallOp(GV);
-  unsigned CalleeReg = 0;
+  if (!GV || EnableARMLongCalls) UseReg = true;
 
-  if (!GV){
-    CallOpc = isThumb2 ? ARM::tBLXr : ARM::BLX;
-    CalleeReg = getRegForValue(Callee);
+  unsigned CalleeReg = 0;
+  if (UseReg) {
+    if (IntrMemName)
+      CalleeReg = getLibcallReg(IntrMemName);
+    else
+      CalleeReg = getRegForValue(Callee);
+
     if (CalleeReg == 0) return false;
   }
 
-  // Explicitly adding the predicate here.
+  // Issue the call.
+  unsigned CallOpc = ARMSelectCallOp(UseReg);
+  MachineInstrBuilder MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt,
+                                    DL, TII.get(CallOpc));
   if(isThumb2) {
     // Explicitly adding the predicate here.
-    MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                                 TII.get(CallOpc)));
-    if (!GV)
+    AddDefaultPred(MIB);
+    if (UseReg)
       MIB.addReg(CalleeReg);
     else if (!IntrMemName)
       MIB.addGlobalAddress(GV, 0, 0);
-    else 
+    else
       MIB.addExternalSymbol(IntrMemName, 0);
   } else {
-    if (!GV)
-      MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                                   TII.get(CallOpc))
-            .addReg(CalleeReg));
+    if (UseReg)
+      MIB.addReg(CalleeReg);
     else if (!IntrMemName)
-      // Explicitly adding the predicate here.
-      MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                                   TII.get(CallOpc))
-            .addGlobalAddress(GV, 0, 0));
+      MIB.addGlobalAddress(GV, 0, 0);
     else
-      MIB = AddDefaultPred(BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DL,
-                                   TII.get(CallOpc))
-            .addExternalSymbol(IntrMemName, 0));
+      MIB.addExternalSymbol(IntrMemName, 0);
+
+    // Explicitly adding the predicate here.
+    AddDefaultPred(MIB);
   }
-  
+
   // Add implicit physical register uses to the call.
   for (unsigned i = 0, e = RegArgs.size(); i != e; ++i)
     MIB.addReg(RegArgs[i]);
@@ -2465,10 +2480,10 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
           return true;
       }
     }
-    
+
     if (!MTI.getLength()->getType()->isIntegerTy(32))
       return false;
-    
+
     if (MTI.getSourceAddressSpace() > 255 || MTI.getDestAddressSpace() > 255)
       return false;
 
@@ -2480,13 +2495,13 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
     // Don't handle volatile.
     if (MSI.isVolatile())
       return false;
-    
+
     if (!MSI.getLength()->getType()->isIntegerTy(32))
       return false;
-    
+
     if (MSI.getDestAddressSpace() > 255)
       return false;
-    
+
     return SelectCall(&I, "memset");
   }
   case Intrinsic::trap: {
@@ -2497,7 +2512,7 @@ bool ARMFastISel::SelectIntrinsicCall(const IntrinsicInst &I) {
 }
 
 bool ARMFastISel::SelectTrunc(const Instruction *I) {
-  // The high bits for a type smaller than the register size are assumed to be 
+  // The high bits for a type smaller than the register size are assumed to be
   // undefined.
   Value *Op = I->getOperand(0);
 
@@ -2688,7 +2703,7 @@ bool ARMFastISel::TryToFoldLoad(MachineInstr *MI, unsigned OpNo,
   // See if we can handle this address.
   Address Addr;
   if (!ARMComputeAddress(LI->getOperand(0), Addr)) return false;
-  
+
   unsigned ResultReg = MI->getOperand(0).getReg();
   if (!ARMEmitLoad(VT, ResultReg, Addr, LI->getAlignment(), isZExt, false))
     return false;

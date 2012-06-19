@@ -634,6 +634,16 @@ static void HeaderSearchOptsToArgs(const HeaderSearchOptions &Opts,
     Res.push_back(E.Path);
   }
 
+  /// User-specified system header prefixes.
+  for (unsigned i = 0, e = Opts.SystemHeaderPrefixes.size(); i != e; ++i) {
+    if (Opts.SystemHeaderPrefixes[i].IsSystemHeader)
+      Res.push_back("-isystem-prefix");
+    else
+      Res.push_back("-ino-system-prefix");
+
+    Res.push_back(Opts.SystemHeaderPrefixes[i].Prefix);
+  }
+
   if (!Opts.ResourceDir.empty())
     Res.push_back("-resource-dir", Opts.ResourceDir);
   if (!Opts.ModuleCachePath.empty())
@@ -906,7 +916,7 @@ static void TargetOptsToArgs(const TargetOptions &Opts,
     Res.push_back("-target-feature", Opts.Features[i]);
 }
 
-void CompilerInvocation::toArgs(std::vector<std::string> &Res) {
+void CompilerInvocation::toArgs(std::vector<std::string> &Res) const {
   ToArgsList List(Res);
   AnalyzerOptsToArgs(getAnalyzerOpts(), List);
   CodeGenOptsToArgs(getCodeGenOpts(), List);
@@ -1246,6 +1256,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.TrapFuncName = Args.getLastArgValue(OPT_ftrap_function_EQ);
   Opts.BoundsChecking = Args.getLastArgIntValue(OPT_fbounds_checking_EQ, 0,
                                                 Diags);
+  Opts.UseInitArray = Args.hasArg(OPT_fuse_init_array);
 
   Opts.FunctionSections = Args.hasArg(OPT_ffunction_sections);
   Opts.DataSections = Args.hasArg(OPT_fdata_sections);
@@ -1719,6 +1730,14 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
     Opts.AddPath((*I)->getValue(Args), frontend::System,
                  false, false, /*IgnoreSysRoot=*/true, /*IsInternal=*/true,
                  (*I)->getOption().matches(OPT_internal_externc_isystem));
+
+  // Add the path prefixes which are implicitly treated as being system headers.
+  for (arg_iterator I = Args.filtered_begin(OPT_isystem_prefix,
+                                            OPT_ino_system_prefix),
+                    E = Args.filtered_end();
+       I != E; ++I)
+    Opts.AddSystemHeaderPrefix((*I)->getValue(Args),
+                               (*I)->getOption().matches(OPT_isystem_prefix));
 }
 
 void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
@@ -1778,9 +1797,22 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.HexFloats = Std.hasHexFloats();
   Opts.ImplicitInt = Std.hasImplicitInt();
 
-  // OpenCL has some additional defaults.
+  // Set OpenCL Version.
   if (LangStd == LangStandard::lang_opencl) {
     Opts.OpenCL = 1;
+    Opts.OpenCLVersion = 100;
+  }
+  else if (LangStd == LangStandard::lang_opencl11) {
+      Opts.OpenCL = 1;
+      Opts.OpenCLVersion = 110;
+  }
+  else if (LangStd == LangStandard::lang_opencl12) {
+    Opts.OpenCL = 1;
+    Opts.OpenCLVersion = 120;
+  }
+  
+  // OpenCL has some additional defaults.
+  if (Opts.OpenCL) {
     Opts.AltiVec = 0;
     Opts.CXXOperatorNames = 1;
     Opts.LaxVectorConversions = 0;
@@ -2173,6 +2205,7 @@ static void ParsePreprocessorOutputArgs(PreprocessorOutputOptions &Opts,
   Opts.ShowLineMarkers = !Args.hasArg(OPT_P);
   Opts.ShowMacroComments = Args.hasArg(OPT_CC);
   Opts.ShowMacros = Args.hasArg(OPT_dM) || Args.hasArg(OPT_dD);
+  Opts.RewriteIncludes = Args.hasArg(OPT_frewrite_includes);
 }
 
 static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args) {

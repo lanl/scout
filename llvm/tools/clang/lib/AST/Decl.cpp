@@ -381,7 +381,7 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
       LinkageInfo ArgsLV = getLVForTemplateArgumentList(templateArgs,
                                                         OnlyTemplate);
       if (shouldConsiderTemplateVis(Function, specInfo)) {
-        LV.merge(TempLV);
+        LV.mergeWithMin(TempLV);
         LV.mergeWithMin(ArgsLV);
       } else {
         LV.mergeLinkage(TempLV);
@@ -412,7 +412,7 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
       LinkageInfo ArgsLV = getLVForTemplateArgumentList(TemplateArgs,
                                                         OnlyTemplate);
       if (shouldConsiderTemplateVis(spec)) {
-        LV.merge(TempLV);
+        LV.mergeWithMin(TempLV);
         LV.mergeWithMin(ArgsLV);
       } else {
         LV.mergeLinkage(TempLV);
@@ -544,7 +544,7 @@ static LinkageInfo getLVForClassMember(const NamedDecl *D, bool OnlyTemplate) {
       if (shouldConsiderTemplateVis(MD, spec)) {
         LV.mergeWithMin(ArgsLV);
         if (!OnlyTemplate)
-          LV.merge(ParamsLV);
+          LV.mergeWithMin(ParamsLV);
       } else {
         LV.mergeLinkage(ArgsLV);
         if (!OnlyTemplate)
@@ -569,7 +569,7 @@ static LinkageInfo getLVForClassMember(const NamedDecl *D, bool OnlyTemplate) {
       if (shouldConsiderTemplateVis(spec)) {
         LV.mergeWithMin(ArgsLV);
         if (!OnlyTemplate)
-          LV.merge(ParamsLV);
+          LV.mergeWithMin(ParamsLV);
       } else {
         LV.mergeLinkage(ArgsLV);
         if (!OnlyTemplate)
@@ -1684,6 +1684,13 @@ void FunctionDecl::setPure(bool P) {
       Parent->markedVirtualFunctionPure();
 }
 
+void FunctionDecl::setConstexpr(bool IC) {
+  IsConstexpr = IC;
+  CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(this);
+  if (IC && CD)
+    CD->getParent()->markedConstructorConstexpr(CD);
+}
+
 bool FunctionDecl::isMain() const {
   const TranslationUnitDecl *tunit =
     dyn_cast<TranslationUnitDecl>(getDeclContext()->getRedeclContext());
@@ -2458,15 +2465,15 @@ FieldDecl *FieldDecl::Create(const ASTContext &C, DeclContext *DC,
                              SourceLocation StartLoc, SourceLocation IdLoc,
                              IdentifierInfo *Id, QualType T,
                              TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
-                             bool HasInit) {
+                             InClassInitStyle InitStyle) {
   return new (C) FieldDecl(Decl::Field, DC, StartLoc, IdLoc, Id, T, TInfo,
-                           BW, Mutable, HasInit);
+                           BW, Mutable, InitStyle);
 }
 
 FieldDecl *FieldDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
   void *Mem = AllocateDeserializedDecl(C, ID, sizeof(FieldDecl));
   return new (Mem) FieldDecl(Field, 0, SourceLocation(), SourceLocation(),
-                             0, QualType(), 0, 0, false, false);
+                             0, QualType(), 0, 0, false, ICIS_NoInit);
 }
 
 bool FieldDecl::isAnonymousStructOrUnion() const {
@@ -2499,11 +2506,11 @@ unsigned FieldDecl::getFieldIndex() const {
 
     if (IsMsStruct) {
       // Zero-length bitfields following non-bitfield members are ignored.
-      if (getASTContext().ZeroBitfieldFollowsNonBitfield(&*I, LastFD)) {
+      if (getASTContext().ZeroBitfieldFollowsNonBitfield(*I, LastFD)) {
         --Index;
         continue;
       }
-      LastFD = &*I;
+      LastFD = *I;
     }
   }
 
@@ -2518,10 +2525,9 @@ SourceRange FieldDecl::getSourceRange() const {
 }
 
 void FieldDecl::setInClassInitializer(Expr *Init) {
-  assert(!InitializerOrBitWidth.getPointer() &&
+  assert(!InitializerOrBitWidth.getPointer() && hasInClassInitializer() &&
          "bit width or initializer already set");
   InitializerOrBitWidth.setPointer(Init);
-  InitializerOrBitWidth.setInt(0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2865,8 +2871,8 @@ bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
       return false;
     }
 
-    FieldDecl* fromField = &*fromItr;
-    FieldDecl* toField = &*itr;
+    FieldDecl* fromField = *fromItr;
+    FieldDecl* toField = *itr;
 
     if(!C.hasSameUnqualifiedType(fromField->getType(), toField->getType())){
       return false;

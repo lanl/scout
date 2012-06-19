@@ -1383,7 +1383,7 @@ TemplateInstantiator::TransformSubstTemplateTypeParmPackType(
 /// substituted. If this type is not dependent, it will be returned
 /// immediately.
 ///
-/// \param TemplateArgs the template arguments that will be
+/// \param Args the template arguments that will be
 /// substituted for the top-level template parameters within T.
 ///
 /// \param Loc the location in the source code where this substitution
@@ -1963,9 +1963,7 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
         Expr *Init = NewInit.take();
         assert(Init && "no-argument initializer in class");
         assert(!isa<ParenListExpr>(Init) && "call-style init in class");
-        ActOnCXXInClassMemberInitializer(NewField, 
-                                         Init->getSourceRange().getBegin(), 
-                                         Init);
+        ActOnCXXInClassMemberInitializer(NewField, Init->getLocStart(), Init);
       }
     }
   }

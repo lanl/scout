@@ -225,7 +225,7 @@ public:
   /// recursively, any member or element of all contained aggregates or unions)
   /// with a const-qualified type.
   ///
-  /// \param Loc [in] [out] - A source location which *may* be filled
+  /// \param Loc [in,out] - A source location which *may* be filled
   /// in with the location of the expression making this a
   /// non-modifiable lvalue, if specified.
   enum isModifiableLvalueResult {
@@ -1385,8 +1385,8 @@ public:
     return StringRef(StrData.asChar, getByteLength());
   }
 
-  /// Allow clients that need the byte representation, such as ASTWriterStmt
-  /// ::VisitStringLiteral(), access.
+  /// Allow access to clients that need the byte representation, such as
+  /// ASTWriterStmt::VisitStringLiteral().
   StringRef getBytes() const {
     // FIXME: StringRef may not be the right type to use as a result for this.
     if (CharByteWidth == 1)
@@ -1398,6 +1398,8 @@ public:
     return StringRef(reinterpret_cast<const char*>(StrData.asUInt16),
                      getByteLength());
   }
+
+  void outputString(raw_ostream &OS);
 
   uint32_t getCodeUnit(size_t i) const {
     assert(i < Length && "out of bounds access");

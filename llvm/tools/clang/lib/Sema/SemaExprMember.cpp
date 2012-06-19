@@ -1723,9 +1723,9 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
 /// \param HasTrailingLParen whether the next token is '(', which
 ///   is used to diagnose mis-uses of special members that can
 ///   only be called
-/// \param ObjCImpDecl the current ObjC @implementation decl;
-///   this is an ugly hack around the fact that ObjC @implementations
-///   aren't properly put in the context chain
+/// \param ObjCImpDecl the current Objective-C \@implementation
+///   decl; this is an ugly hack around the fact that Objective-C
+///   \@implementations aren't properly put in the context chain
 ExprResult Sema::ActOnMemberAccessExpr(Scope *S, Expr *Base,
                                        SourceLocation OpLoc,
                                        tok::TokenKind OpKind,
@@ -1854,6 +1854,8 @@ BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
       MemberType = S.Context.getQualifiedType(MemberType, Combined);
   }
   
+  S.UnusedPrivateFields.remove(Field);
+
   ExprResult Base =
   S.PerformObjectMemberConversion(BaseExpr, SS.getScopeRep(),
                                   FoundDecl, Field);

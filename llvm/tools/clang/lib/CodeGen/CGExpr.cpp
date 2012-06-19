@@ -160,7 +160,11 @@ namespace {
 /// \brief An adjustment to be made to the temporary created when emitting a
 /// reference binding, which accesses a particular subobject of that temporary.
   struct SubobjectAdjustment {
-    enum { DerivedToBaseAdjustment, FieldAdjustment } Kind;
+    enum {
+      DerivedToBaseAdjustment,
+      FieldAdjustment,
+      MemberPointerAdjustment
+    } Kind;
 
     union {
       struct {
@@ -169,6 +173,11 @@ namespace {
       } DerivedToBase;
 
       FieldDecl *Field;
+
+      struct {
+        const MemberPointerType *MPT;
+        llvm::Value *Ptr;
+      } Ptr;
     };
 
     SubobjectAdjustment(const CastExpr *BasePath,
@@ -181,6 +190,12 @@ namespace {
     SubobjectAdjustment(FieldDecl *Field)
       : Kind(FieldAdjustment) {
       this->Field = Field;
+    }
+
+    SubobjectAdjustment(const MemberPointerType *MPT, llvm::Value *Ptr)
+      : Kind(MemberPointerAdjustment) {
+      this->Ptr.MPT = MPT;
+      this->Ptr.Ptr = Ptr;
     }
   };
 }
@@ -349,6 +364,15 @@ EmitExprForReferenceBinding(CodeGenFunction &CGF, const Expr *E,
             continue;
           }
         }
+      } else if (const BinaryOperator *BO = dyn_cast<BinaryOperator>(E)) {
+        if (BO->isPtrMemOp()) {
+          assert(BO->getLHS()->isRValue());
+          E = BO->getLHS();
+          const MemberPointerType *MPT =
+              BO->getRHS()->getType()->getAs<MemberPointerType>();
+          llvm::Value *Ptr = CGF.EmitScalarExpr(BO->getRHS());
+          Adjustments.push_back(SubobjectAdjustment(MPT, Ptr));
+        }
       }
 
       if (const OpaqueValueExpr *opaque = dyn_cast<OpaqueValueExpr>(E))
@@ -421,6 +445,11 @@ EmitExprForReferenceBinding(CodeGenFunction &CGF, const Expr *E,
           break;
         }
 
+        case SubobjectAdjustment::MemberPointerAdjustment: {
+          Object = CGF.CGM.getCXXABI().EmitMemberDataPointerAddress(
+                        CGF, Object, Adjustment.Ptr.Ptr, Adjustment.Ptr.MPT);
+          break;
+        }
         }
       }
 
@@ -2192,7 +2221,10 @@ LValue CodeGenFunction::EmitCompoundLiteralLValue(const CompoundLiteralExpr *E){
     llvm::Value *GlobalPtr = CGM.GetAddrOfConstantCompoundLiteral(E);
     return MakeAddrLValue(GlobalPtr, E->getType());
   }
-
+  if (E->getType()->isVariablyModifiedType())
+    // make sure to emit the VLA size.
+    EmitVariablyModifiedType(E->getType());
+  
   llvm::Value *DeclPtr = CreateMemTemp(E->getType(), ".compoundliteral");
   const Expr *InitExpr = E->getInitializer();
   LValue Result = MakeAddrLValue(DeclPtr, E->getType());
@@ -2784,11 +2816,11 @@ std::pair< FieldDecl *, int > CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm:
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-    if(dyn_cast<NamedDecl>(&*it)->getName() == memberName) {
-      return std::make_pair(&*it, i);
+    if(dyn_cast<NamedDecl>(*it)->getName() == memberName) {
+      return std::make_pair(*it, i);
     }
   }
-  return std::make_pair(&*it, -1);
+  return std::make_pair(*it, -1);
 }
 
 RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {

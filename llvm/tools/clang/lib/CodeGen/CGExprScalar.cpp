@@ -1523,7 +1523,7 @@ Value *ScalarExprEmitter::VisitOffsetOfExpr(OffsetOfExpr *E) {
       for (RecordDecl::field_iterator Field = RD->field_begin(),
                                       FieldEnd = RD->field_end();
            Field != FieldEnd; ++Field, ++i) {
-        if (&*Field == MemberDecl)
+        if (*Field == MemberDecl)
           break;
       }
       assert(i < RL.getFieldCount() && "offsetof field in wrong type");
@@ -1684,11 +1684,9 @@ LValue ScalarExprEmitter::EmitCompoundAssignLValue(
   // Load/convert the LHS.
   LValue LHSLV = EmitCheckedLValue(E->getLHS());
   OpInfo.LHS = EmitLoadOfLValue(LHSLV);
-  OpInfo.LHS = EmitScalarConversion(OpInfo.LHS, LHSTy,
-                                    E->getComputationLHSType());
 
   llvm::PHINode *atomicPHI = 0;
-  if (const AtomicType *atomicTy = OpInfo.Ty->getAs<AtomicType>()) {
+  if (LHSTy->isAtomicType()) {
     // FIXME: For floating point types, we should be saving and restoring the
     // floating point environment in the loop.
     llvm::BasicBlock *startBB = Builder.GetInsertBlock();
@@ -1697,9 +1695,12 @@ LValue ScalarExprEmitter::EmitCompoundAssignLValue(
     Builder.SetInsertPoint(opBB);
     atomicPHI = Builder.CreatePHI(OpInfo.LHS->getType(), 2);
     atomicPHI->addIncoming(OpInfo.LHS, startBB);
-    OpInfo.Ty = atomicTy->getValueType();
     OpInfo.LHS = atomicPHI;
   }
+
+  OpInfo.LHS = EmitScalarConversion(OpInfo.LHS, LHSTy,
+                                    E->getComputationLHSType());
+
   // Expand the binary operator.
   Result = (this->*Func)(OpInfo);
 

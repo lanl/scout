@@ -1276,7 +1276,7 @@ bool Sema::SemaBuiltinUnorderedCompare(CallExpr *TheCall) {
 
   // If the common type isn't a real floating type, then the arguments were
   // invalid for this operation.
-  if (!Res->isRealFloatingType())
+  if (Res.isNull() || !Res->isRealFloatingType())
     return Diag(OrigArg0.get()->getLocStart(),
                 diag::err_typecheck_call_invalid_ordered_compare)
       << OrigArg0.get()->getType() << OrigArg1.get()->getType()
@@ -2633,7 +2633,7 @@ void Sema::CheckFormatString(const StringLiteral *FExpr,
                              bool inFunctionCall) {
   
   // CHECK: is the format string a wide literal?
-  if (!FExpr->isAscii()) {
+  if (!FExpr->isAscii() && !FExpr->isUTF8()) {
     CheckFormatHandler::EmitFormatDiagnostic(
       *this, inFunctionCall, Args[format_idx],
       PDiag(diag::warn_format_string_is_wide_literal), FExpr->getLocStart(),

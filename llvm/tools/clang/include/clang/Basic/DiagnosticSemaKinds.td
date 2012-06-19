@@ -173,6 +173,8 @@ def warn_unneeded_internal_decl : Warning<
 def warn_unneeded_member_function : Warning<
   "member function %0 is not needed and will not be emitted">,
   InGroup<UnneededMemberFunction>, DefaultIgnore;
+def warn_unused_private_field: Warning<"private field %0 is not used">,
+  InGroup<UnusedPrivateField>, DefaultIgnore;
 
 def warn_parameter_size: Warning<
   "%0 is a large (%1 bytes) pass-by-value argument; "
@@ -1470,6 +1472,10 @@ def warn_cxx98_compat_unicode_type : Warning<
 // Objective-C++
 def err_objc_decls_may_only_appear_in_global_scope : Error<
   "Objective-C declarations may only appear in global scope">;
+def warn_auto_var_is_id : Warning<
+  "'auto' deduced as 'id' in declaration of %0">,
+  InGroup<DiagGroup<"auto-var-id">>;
+
 // Attributes
 def err_nsobject_attribute : Error<
   "__attribute ((NSObject)) is for pointer types only">;
@@ -1506,8 +1512,6 @@ def err_attribute_argument_outof_range : Error<
 def err_init_priority_object_attr : Error<
   "can only use 'init_priority' attribute on file-scope definitions "
   "of objects of class type">;
-def err_attribute_argument_duplicate: Error<
-  "'%0' attribute parameter %1 is duplicated">;
 def err_attribute_argument_n_not_int : Error<
   "'%0' attribute requires parameter %1 to be an integer constant">;
 def err_attribute_argument_n_not_string : Error<
@@ -1594,6 +1598,10 @@ def err_invalid_collection_element : Error<
 def err_box_literal_collection : Error<
   "%select{string|character|boolean|numeric}0 literal must be prefixed by '@' "
   "in a collection">;
+def err_objc_literal_comparison : Error<
+  "direct comparison of %select{a string literal|an array literal|"
+  "a dictionary literal|a numeric literal|a boxed expression|}0 is not "
+  "allowed%select{|; use -isEqual: instead}1">;
 
 let CategoryName = "Cocoa API Issue" in {
 def warn_objc_redundant_literal_use : Warning<
@@ -1612,11 +1620,16 @@ def warn_mismatched_section : Warning<
 
 def err_attribute_aligned_not_power_of_two : Error<
   "requested alignment is not a power of 2">;
+def err_attribute_aligned_greater_than_8192 : Error<
+  "requested alignment must be 8192 bytes or smaller">;
 def warn_redeclaration_without_attribute_prev_attribute_ignored : Warning<
   "'%0' redeclared without %1 attribute: previous %1 ignored">;
 def warn_attribute_ignored : Warning<"%0 attribute ignored">;
 def warn_unknown_attribute_ignored : Warning<
   "unknown attribute %0 ignored">, InGroup<UnknownAttributes>;
+def warn_unhandled_ms_attribute_ignored : Warning<
+  "__declspec attribute %0 is not supported">, 
+  InGroup<IgnoredAttributes>;
 def warn_attribute_invalid_on_stmt : Warning<
   "attribute %0 cannot be specified on a statement">,
   InGroup<IgnoredAttributes>;
@@ -2157,6 +2170,17 @@ def note_ovl_candidate_bad_arc_conv : Note<"candidate "
     "constructor (inherited)}0%1"
     " not viable: cannot implicitly convert argument of type %2 to %3 for "
     "%select{%ordinal5 argument|object argument}4 under ARC">;
+def note_ovl_candidate_bad_lvalue : Note<"candidate "
+    "%select{function|function|constructor|"
+    "function |function |constructor |"
+    "constructor (the implicit default constructor)|"
+    "constructor (the implicit copy constructor)|"
+    "constructor (the implicit move constructor)|"
+    "function (the implicit copy assignment operator)|"
+    "function (the implicit move assignment operator)|"
+    "constructor (inherited)}0%1"
+    " not viable: expects an l-value for "
+    "%select{%ordinal3 argument|object argument}2">;
 def note_ovl_candidate_bad_addrspace : Note<"candidate "
     "%select{function|function|constructor|"
     "function |function |constructor |"
@@ -2851,28 +2875,28 @@ def err_unexpanded_parameter_pack_0 : Error<
   "size|static assertion|fixed underlying type|enumerator value|"
   "using declaration|friend declaration|qualifier|initializer|default argument|"
   "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name}0 "
+  "__if_exists name|__if_not_exists name|lambda|block}0 "
   "contains an unexpanded parameter pack">;
 def err_unexpanded_parameter_pack_1 : Error<
   "%select{expression|base type|declaration type|data member type|bit-field "
   "size|static assertion|fixed underlying type|enumerator value|"
   "using declaration|friend declaration|qualifier|initializer|default argument|"
   "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name}0 "
+  "__if_exists name|__if_not_exists name|lambda|block}0 "
   "contains unexpanded parameter pack %1">;
 def err_unexpanded_parameter_pack_2 : Error<
   "%select{expression|base type|declaration type|data member type|bit-field "
   "size|static assertion|fixed underlying type|enumerator value|"
   "using declaration|friend declaration|qualifier|initializer|default argument|"
   "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name}0 "
+  "__if_exists name|__if_not_exists name|lambda|block}0 "
   "contains unexpanded parameter packs %1 and %2">;
 def err_unexpanded_parameter_pack_3_or_more : Error<
   "%select{expression|base type|declaration type|data member type|bit-field "
   "size|static assertion|fixed underlying type|enumerator value|"
   "using declaration|friend declaration|qualifier|initializer|default argument|"
   "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name}0 "
+  "__if_exists name|__if_not_exists name|lambda|block}0 "
   "contains unexpanded parameter packs %1, %2, ...">;
 
 def err_pack_expansion_without_parameter_packs : Error<
@@ -2989,6 +3013,24 @@ def warn_undefined_internal : Warning<
   "%select{function|variable}0 %q1 has internal linkage but is not defined">,
   DiagGroup<"undefined-internal">;
 def note_used_here : Note<"used here">;
+
+def warn_internal_in_extern_inline : ExtWarn<
+  "%select{function|variable}0 %1 has internal linkage but is used in an "
+  "inline function with external linkage">,
+  InGroup<DiagGroup<"internal-linkage-in-inline"> >;
+def ext_internal_in_extern_inline : Extension<
+  "%select{function|variable}0 %1 has internal linkage but is used in an "
+  "inline function with external linkage">,
+  InGroup<DiagGroup<"internal-linkage-in-inline"> >;
+def warn_internal_in_extern_inline_cxx : Warning<
+  "%select{function|variable}0 %1 %select{has internal linkage|is in an anonymous"
+  " namespace}2 but is used in an inline %select{function|method}3 with"
+  " external linkage">,
+  InGroup<DiagGroup<"internal-linkage-in-inline"> >;
+def note_convert_inline_to_static : Note<
+  "use 'static' to give inline function %0 internal linkage">;
+def note_internal_decl_declared_here : Note<
+  "%0 declared here">;
 
 def warn_redefinition_of_typedef : ExtWarn<
   "redefinition of typedef %0 is a C11 feature">,
@@ -5298,9 +5340,9 @@ def warn_missing_cases : Warning<
 def warn_unannotated_fallthrough : Warning<
   "unannotated fall-through between switch labels">,
   InGroup<ImplicitFallthrough>, DefaultIgnore;
-def warn_unannotated_fallthrough_per_method : Warning<
-  "unannotated fall-through between switch labels in partly annotated method">,
-  InGroup<ImplicitFallthroughPerMethod>, DefaultIgnore;
+def warn_unannotated_fallthrough_per_function : Warning<
+  "unannotated fall-through between switch labels in partly-annotated "
+  "function">, InGroup<ImplicitFallthroughPerFunction>, DefaultIgnore;
 def note_insert_fallthrough_fixit : Note<
   "insert '[[clang::fallthrough]];' to silence this warning">;
 def note_insert_break_fixit : Note<

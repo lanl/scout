@@ -58,9 +58,14 @@ void MipsAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     return;
   }
 
-  MCInst TmpInst0;
-  MCInstLowering.Lower(MI, TmpInst0);
-  OutStreamer.EmitInstruction(TmpInst0);
+  MachineBasicBlock::const_instr_iterator I = MI;
+  MachineBasicBlock::const_instr_iterator E = MI->getParent()->instr_end();
+
+  do {
+    MCInst TmpInst0;
+    MCInstLowering.Lower(I++, TmpInst0);
+    OutStreamer.EmitInstruction(TmpInst0);
+  } while ((I != E) && I->isInsideBundle());
 }
 
 //===----------------------------------------------------------------------===//
@@ -200,7 +205,8 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
       OutStreamer.EmitRawText(StringRef("\t.set\tmips16"));
     else
       OutStreamer.EmitRawText(StringRef("\t.set\tnomips16"));
-    OutStreamer.EmitRawText(StringRef("\t.set\tnomicromips"));
+    // leave out until FSF available gas has micromips changes
+    // OutStreamer.EmitRawText(StringRef("\t.set\tnomicromips"));
     OutStreamer.EmitRawText("\t.ent\t" + Twine(CurrentFnSym->getName()));
   }
   OutStreamer.EmitLabel(CurrentFnSym);
@@ -223,15 +229,6 @@ void MipsAsmPrinter::EmitFunctionBodyStart() {
     OutStreamer.EmitRawText(StringRef("\t.set\tnomacro"));
     if (MipsFI->getEmitNOAT())
       OutStreamer.EmitRawText(StringRef("\t.set\tnoat"));
-  }
-
-  if ((MF->getTarget().getRelocationModel() == Reloc::PIC_) &&
-      Subtarget->isABI_O32() && MipsFI->globalBaseRegSet()) {
-    SmallVector<MCInst, 4> MCInsts;
-    MCInstLowering.LowerSETGP01(MCInsts);
-    for (SmallVector<MCInst, 4>::iterator I = MCInsts.begin();
-         I != MCInsts.end(); ++I)
-      OutStreamer.EmitInstruction(*I);
   }
 }
 
@@ -389,7 +386,7 @@ void MipsAsmPrinter::printOperand(const MachineInstr *MI, int opNum,
       break;
 
     case MachineOperand::MO_BlockAddress: {
-      MCSymbol* BA = GetBlockAddressSymbol(MO.getBlockAddress());
+      MCSymbol *BA = GetBlockAddressSymbol(MO.getBlockAddress());
       O << BA->getName();
       break;
     }
@@ -450,7 +447,7 @@ printMemOperandEA(const MachineInstr *MI, int opNum, raw_ostream &O) {
 void MipsAsmPrinter::
 printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
                 const char *Modifier) {
-  const MachineOperand& MO = MI->getOperand(opNum);
+  const MachineOperand &MO = MI->getOperand(opNum);
   O << Mips::MipsFCCToString((Mips::CondCode)MO.getImm());
 }
 

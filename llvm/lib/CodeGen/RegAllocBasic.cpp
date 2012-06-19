@@ -64,9 +64,10 @@ class RABasic : public MachineFunctionPass, public RegAllocBase
   // context
   MachineFunction *MF;
 
+#ifndef NDEBUG
   // analyses
-  LiveStacks *LS;
   RenderMachineFunction *RMF;
+#endif
 
   // state
   std::auto_ptr<Spiller> SpillerInstance;
@@ -147,6 +148,7 @@ void RABasic::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<AliasAnalysis>();
   AU.addPreserved<AliasAnalysis>();
   AU.addRequired<LiveIntervals>();
+  AU.addPreserved<LiveIntervals>();
   AU.addPreserved<SlotIndexes>();
   AU.addRequired<LiveDebugVariables>();
   AU.addPreserved<LiveDebugVariables>();
@@ -308,46 +310,13 @@ bool RABasic::runOnMachineFunction(MachineFunction &mf) {
 
   allocatePhysRegs();
 
-  addMBBLiveIns(MF);
-
   // Diagnostic output before rewriting
   DEBUG(dbgs() << "Post alloc VirtRegMap:\n" << *VRM << "\n");
 
   // optional HTML output
   DEBUG(RMF->renderMachineFunction("After basic register allocation.", VRM));
 
-  // FIXME: Verification currently must run before VirtRegRewriter. We should
-  // make the rewriter a separate pass and override verifyAnalysis instead. When
-  // that happens, verification naturally falls under VerifyMachineCode.
-#ifndef NDEBUG
-  if (VerifyEnabled) {
-    // Verify accuracy of LiveIntervals. The standard machine code verifier
-    // ensures that each LiveIntervals covers all uses of the virtual reg.
-
-    // FIXME: MachineVerifier is badly broken when using the standard
-    // spiller. Always use -spiller=inline with -verify-regalloc. Even with the
-    // inline spiller, some tests fail to verify because the coalescer does not
-    // always generate verifiable code.
-    MF->verify(this, "In RABasic::verify");
-
-    // Verify that LiveIntervals are partitioned into unions and disjoint within
-    // the unions.
-    verify();
-  }
-#endif // !NDEBUG
-
-  // Run rewriter
-  VRM->rewrite(LIS->getSlotIndexes());
-
-  // Write out new DBG_VALUE instructions.
-  getAnalysis<LiveDebugVariables>().emitDebugValues(VRM);
-
-  // All machine operands and other references to virtual registers have been
-  // replaced. Remove the virtual registers and release all the transient data.
-  VRM->clearAllVirt();
-  MRI->clearVirtRegs();
   releaseMemory();
-
   return true;
 }
 

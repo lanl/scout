@@ -83,6 +83,42 @@ class TypeNameValidatorCCC : public CorrectionCandidateCallback {
 
 }
 
+/// \brief Determine whether the token kind starts a simple-type-specifier.
+bool Sema::isSimpleTypeSpecifier(tok::TokenKind Kind) const {
+  switch (Kind) {
+  // FIXME: Take into account the current language when deciding whether a
+  // token kind is a valid type specifier
+  case tok::kw_short:
+  case tok::kw_long:
+  case tok::kw___int64:
+  case tok::kw___int128:
+  case tok::kw_signed:
+  case tok::kw_unsigned:
+  case tok::kw_void:
+  case tok::kw_char:
+  case tok::kw_int:
+  case tok::kw_half:
+  case tok::kw_float:
+  case tok::kw_double:
+  case tok::kw_wchar_t:
+  case tok::kw_bool:
+  case tok::kw___underlying_type:
+    return true;
+
+  case tok::annot_typename:
+  case tok::kw_char16_t:
+  case tok::kw_char32_t:
+  case tok::kw_typeof:
+  case tok::kw_decltype:
+    return getLangOpts().CPlusPlus;
+
+  default:
+    break;
+  }
+
+  return false;
+}
+
 /// \brief If the identifier refers to a type name within this scope,
 /// return the declaration of that type.
 ///
@@ -364,7 +400,7 @@ bool Sema::isMicrosoftMissingTypename(const CXXScopeSpec *SS, Scope *S) {
   return CurContext->isFunctionOrMethod() || S->isFunctionPrototypeScope();
 }
 
-bool Sema::DiagnoseUnknownTypeName(const IdentifierInfo &II,
+bool Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
                                    SourceLocation IILoc,
                                    Scope *S,
                                    CXXScopeSpec *SS,
@@ -375,7 +411,7 @@ bool Sema::DiagnoseUnknownTypeName(const IdentifierInfo &II,
   // There may have been a typo in the name of the type. Look up typo
   // results, in case we have something that we can suggest.
   TypeNameValidatorCCC Validator(false);
-  if (TypoCorrection Corrected = CorrectTypo(DeclarationNameInfo(&II, IILoc),
+  if (TypoCorrection Corrected = CorrectTypo(DeclarationNameInfo(II, IILoc),
                                              LookupOrdinaryName, S, SS,
                                              Validator)) {
     std::string CorrectedStr(Corrected.getAsString(getLangOpts()));
@@ -383,19 +419,23 @@ bool Sema::DiagnoseUnknownTypeName(const IdentifierInfo &II,
 
     if (Corrected.isKeyword()) {
       // We corrected to a keyword.
-      // FIXME: Actually recover with the keyword we suggest, and emit a fix-it.
+      IdentifierInfo *NewII = Corrected.getCorrectionAsIdentifierInfo();
+      if (!isSimpleTypeSpecifier(NewII->getTokenID()))
+        CorrectedQuotedStr = "the keyword " + CorrectedQuotedStr;
       Diag(IILoc, diag::err_unknown_typename_suggest)
-        << &II << CorrectedQuotedStr;
+        << II << CorrectedQuotedStr
+        << FixItHint::CreateReplacement(SourceRange(IILoc), CorrectedStr);
+      II = NewII;
     } else {
       NamedDecl *Result = Corrected.getCorrectionDecl();
       // We found a similarly-named type or interface; suggest that.
       if (!SS || !SS->isSet())
         Diag(IILoc, diag::err_unknown_typename_suggest)
-          << &II << CorrectedQuotedStr
+          << II << CorrectedQuotedStr
           << FixItHint::CreateReplacement(SourceRange(IILoc), CorrectedStr);
       else if (DeclContext *DC = computeDeclContext(*SS, false))
         Diag(IILoc, diag::err_unknown_nested_typename_suggest)
-          << &II << DC << CorrectedQuotedStr << SS->getRange()
+          << II << DC << CorrectedQuotedStr << SS->getRange()
           << FixItHint::CreateReplacement(SourceRange(IILoc), CorrectedStr);
       else
         llvm_unreachable("could not have corrected a typo here");
@@ -414,7 +454,7 @@ bool Sema::DiagnoseUnknownTypeName(const IdentifierInfo &II,
   if (getLangOpts().CPlusPlus) {
     // See if II is a class template that the user forgot to pass arguments to.
     UnqualifiedId Name;
-    Name.setIdentifier(&II, IILoc);
+    Name.setIdentifier(II, IILoc);
     CXXScopeSpec EmptySS;
     TemplateTy TemplateResult;
     bool MemberOfUnknownSpecialization;
@@ -435,21 +475,21 @@ bool Sema::DiagnoseUnknownTypeName(const IdentifierInfo &II,
   // (struct, union, enum) from Parser::ParseImplicitInt here, instead?
 
   if (!SS || (!SS->isSet() && !SS->isInvalid()))
-    Diag(IILoc, diag::err_unknown_typename) << &II;
+    Diag(IILoc, diag::err_unknown_typename) << II;
   else if (DeclContext *DC = computeDeclContext(*SS, false))
     Diag(IILoc, diag::err_typename_nested_not_found)
-      << &II << DC << SS->getRange();
+      << II << DC << SS->getRange();
   else if (isDependentScopeSpecifier(*SS)) {
     unsigned DiagID = diag::err_typename_missing;
     if (getLangOpts().MicrosoftMode && isMicrosoftMissingTypename(SS, S))
       DiagID = diag::warn_typename_missing;
 
     Diag(SS->getRange().getBegin(), DiagID)
-      << (NestedNameSpecifier *)SS->getScopeRep() << II.getName()
+      << (NestedNameSpecifier *)SS->getScopeRep() << II->getName()
       << SourceRange(SS->getRange().getBegin(), IILoc)
       << FixItHint::CreateInsertion(SS->getRange().getBegin(), "typename ");
-    SuggestedType = ActOnTypenameType(S, SourceLocation(), *SS, II, IILoc)
-                                                                         .get();
+    SuggestedType = ActOnTypenameType(S, SourceLocation(),
+                                      *SS, *II, IILoc).get();
   } else {
     assert(SS && SS->isInvalid() &&
            "Invalid scope specifier has already been diagnosed");
@@ -2044,7 +2084,7 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, Decl *OldD, Scope *S) {
             << New << getSpecialMember(OldMethod);
           return true;
         }
-      } else if (OldMethod->isExplicitlyDefaulted()) {
+      } else if (OldMethod->isExplicitlyDefaulted() && !isFriend) {
         Diag(NewMethod->getLocation(),
              diag::err_definition_of_explicitly_defaulted_member)
           << getSpecialMember(OldMethod);
@@ -2245,12 +2285,9 @@ bool Sema::MergeCompatibleFunctionDecls(FunctionDecl *New, FunctionDecl *Old,
 
 void Sema::mergeObjCMethodDecls(ObjCMethodDecl *newMethod,
                                 ObjCMethodDecl *oldMethod) {
-  // We don't want to merge unavailable and deprecated attributes
-  // except from interface to implementation.
-  bool mergeDeprecation = isa<ObjCImplDecl>(newMethod->getDeclContext());
 
-  // Merge the attributes.
-  mergeDeclAttributes(newMethod, oldMethod, mergeDeprecation);
+  // Merge the attributes, including deprecated/unavailable
+  mergeDeclAttributes(newMethod, oldMethod, /* mergeDeprecation */true);
 
   // Merge attributes from the parameters.
   ObjCMethodDecl::param_const_iterator oi = oldMethod->param_begin(),
@@ -2982,7 +3019,7 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
                              Context.getTypeDeclType(Record),
                              TInfo,
                              /*BitWidth=*/0, /*Mutable=*/false,
-                             /*HasInit=*/false);
+                             /*InitStyle=*/ICIS_NoInit);
     Anon->setAccess(AS);
     if (getLangOpts().CPlusPlus)
       FieldCollector->Add(cast<FieldDecl>(Anon));
@@ -3079,7 +3116,7 @@ Decl *Sema::BuildMicrosoftCAnonymousStruct(Scope *S, DeclSpec &DS,
                              Context.getTypeDeclType(Record),
                              TInfo,
                              /*BitWidth=*/0, /*Mutable=*/false,
-                             /*HasInit=*/false);
+                             /*InitStyle=*/ICIS_NoInit);
   Anon->setImplicit();
 
   // Add the anonymous struct object to the current context.
@@ -3908,8 +3945,6 @@ Sema::ActOnTypedefNameDecl(Scope *S, DeclContext *DC, TypedefNameDecl *NewTD,
         Context.setsigjmp_bufDecl(NewTD);
       else if (II->isStr("ucontext_t"))
         Context.setucontext_tDecl(NewTD);
-      else if (II->isStr("__builtin_va_list"))
-        Context.setBuiltinVaListType(Context.getTypedefType(NewTD));
     }
 
   return NewTD;
@@ -4622,22 +4657,39 @@ namespace {
 // Also only accept corrections that have the same parent decl.
 class DifferentNameValidatorCCC : public CorrectionCandidateCallback {
  public:
-  DifferentNameValidatorCCC(CXXRecordDecl *Parent)
-      : ExpectedParent(Parent ? Parent->getCanonicalDecl() : 0) {}
+  DifferentNameValidatorCCC(ASTContext &Context, FunctionDecl *TypoFD,
+                            CXXRecordDecl *Parent)
+      : Context(Context), OriginalFD(TypoFD),
+        ExpectedParent(Parent ? Parent->getCanonicalDecl() : 0) {}
 
   virtual bool ValidateCandidate(const TypoCorrection &candidate) {
     if (candidate.getEditDistance() == 0)
       return false;
 
-    if (CXXMethodDecl *MD = candidate.getCorrectionDeclAs<CXXMethodDecl>()) {
-      CXXRecordDecl *Parent = MD->getParent();
-      return Parent && Parent->getCanonicalDecl() == ExpectedParent;
+    llvm::SmallVector<unsigned, 1> MismatchedParams;
+    for (TypoCorrection::const_decl_iterator CDecl = candidate.begin(),
+                                          CDeclEnd = candidate.end();
+         CDecl != CDeclEnd; ++CDecl) {
+      FunctionDecl *FD = dyn_cast<FunctionDecl>(*CDecl);
+
+      if (FD && !FD->hasBody() &&
+          hasSimilarParameters(Context, FD, OriginalFD, MismatchedParams)) {
+        if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD)) {
+          CXXRecordDecl *Parent = MD->getParent();
+          if (Parent && Parent->getCanonicalDecl() == ExpectedParent)
+            return true;
+        } else if (!ExpectedParent) {
+          return true;
+        }
+      }
     }
 
-    return !ExpectedParent;
+    return false;
   }
 
  private:
+  ASTContext &Context;
+  FunctionDecl *OriginalFD;
   CXXRecordDecl *ExpectedParent;
 };
 
@@ -4673,7 +4725,8 @@ static NamedDecl* DiagnoseInvalidRedeclaration(
   assert(!Prev.isAmbiguous() &&
          "Cannot have an ambiguity in previous-declaration lookup");
   CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(NewFD);
-  DifferentNameValidatorCCC Validator(MD ? MD->getParent() : 0);
+  DifferentNameValidatorCCC Validator(SemaRef.Context, NewFD,
+                                      MD ? MD->getParent() : 0);
   if (!Prev.empty()) {
     for (LookupResult::iterator Func = Prev.begin(), FuncEnd = Prev.end();
          Func != FuncEnd; ++Func) {
@@ -4703,8 +4756,8 @@ static NamedDecl* DiagnoseInvalidRedeclaration(
                                     CDeclEnd = Correction.end();
          CDecl != CDeclEnd; ++CDecl) {
       FunctionDecl *FD = dyn_cast<FunctionDecl>(*CDecl);
-      if (FD && hasSimilarParameters(SemaRef.Context, FD, NewFD,
-                                     MismatchedParams)) {
+      if (FD && !FD->hasBody() &&
+          hasSimilarParameters(SemaRef.Context, FD, NewFD, MismatchedParams)) {
         Previous.addDecl(FD);
       }
     }
@@ -4742,15 +4795,19 @@ static NamedDecl* DiagnoseInvalidRedeclaration(
     }
   }
 
-  if (Correction)
-    SemaRef.Diag(NewFD->getLocation(), DiagMsg)
+  if (Correction) {
+    SourceRange FixItLoc(NewFD->getLocation());
+    CXXScopeSpec &SS = ExtraArgs.D.getCXXScopeSpec();
+    if (Correction.getCorrectionSpecifier() && SS.isValid())
+      FixItLoc.setBegin(SS.getBeginLoc());
+    SemaRef.Diag(NewFD->getLocStart(), DiagMsg)
         << Name << NewDC << Correction.getQuoted(SemaRef.getLangOpts())
         << FixItHint::CreateReplacement(
-            NewFD->getLocation(),
-            Correction.getAsString(SemaRef.getLangOpts()));
-  else
+            FixItLoc, Correction.getAsString(SemaRef.getLangOpts()));
+  } else {
     SemaRef.Diag(NewFD->getLocation(), DiagMsg)
         << Name << NewDC << NewFD->getLocation();
+  }
 
   bool NewFDisConst = false;
   if (CXXMethodDecl *NewMD = dyn_cast<CXXMethodDecl>(NewFD))
@@ -5154,7 +5211,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       QualType T = R->getAs<FunctionType>()->getResultType();
       DeclaratorChunk &C = D.getTypeObject(0);
       if (!T->isVoidType() && C.Fun.NumArgs == 0 && !C.Fun.isVariadic &&
-          !C.Fun.TrailingReturnType &&
+          !C.Fun.hasTrailingReturnType() &&
           C.Fun.getExceptionSpecType() == EST_None) {
         SourceRange ParenRange(C.Loc, C.EndLoc);
         Diag(C.Loc, diag::warn_empty_parens_are_function_decl) << ParenRange;
@@ -6190,7 +6247,7 @@ namespace {
     void VisitUnaryOperator(UnaryOperator *E) {
       // For POD record types, addresses of its own members are well-defined.
       if (E->getOpcode() == UO_AddrOf && isRecordType && isPODType &&
-          isa<MemberExpr>(E->getSubExpr())) return;
+          isa<MemberExpr>(E->getSubExpr()->IgnoreParens())) return;
       Inherited::VisitUnaryOperator(E);
     } 
 
@@ -6299,6 +6356,17 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
     // In ARC, infer lifetime.
     if (getLangOpts().ObjCAutoRefCount && inferObjCARCLifetime(VDecl))
       VDecl->setInvalidDecl();
+
+    // Warn if we deduced 'id'. 'auto' usually implies type-safety, but using
+    // 'id' instead of a specific object type prevents most of our usual checks.
+    // We only want to warn outside of template instantiations, though:
+    // inside a template, the 'id' could have come from a parameter.
+    if (ActiveTemplateInstantiations.empty() &&
+        DeducedType->getType()->isObjCIdType()) {
+      SourceLocation Loc = DeducedType->getTypeLoc().getBeginLoc();
+      Diag(Loc, diag::warn_auto_var_is_id)
+        << VDecl->getDeclName() << DeduceInit->getSourceRange();
+    }
 
     // If this is a redeclaration, check that the type we just deduced matches
     // the previously declared type.
@@ -7464,7 +7532,7 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D) {
       if (EnumDecl *ED = dyn_cast<EnumDecl>(D)) {
         for (EnumDecl::enumerator_iterator EI = ED->enumerator_begin(),
                EE = ED->enumerator_end(); EI != EE; ++EI)
-          PushOnScopeChains(&*EI, FnBodyScope, /*AddToContext=*/false);
+          PushOnScopeChains(*EI, FnBodyScope, /*AddToContext=*/false);
       }
     }
   }
@@ -7582,8 +7650,6 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
   } else if (ObjCMethodDecl *MD = dyn_cast_or_null<ObjCMethodDecl>(dcl)) {
     assert(MD == getCurMethodDecl() && "Method parsing confused");
     MD->setBody(Body);
-    if (Body)
-      MD->setEndLoc(Body->getLocEnd());
     if (!MD->isInvalidDecl()) {
       DiagnoseUnusedParameters(MD->param_begin(), MD->param_end());
       DiagnoseSizeOfParametersAndReturnValue(MD->param_begin(), MD->param_end(),
@@ -8965,7 +9031,7 @@ Decl *Sema::ActOnField(Scope *S, Decl *TagD, SourceLocation DeclStart,
                        Declarator &D, Expr *BitfieldWidth) {
   FieldDecl *Res = HandleField(S, cast_or_null<RecordDecl>(TagD),
                                DeclStart, D, static_cast<Expr*>(BitfieldWidth),
-                               /*HasInit=*/false, AS_public);
+                               /*InitStyle=*/ICIS_NoInit, AS_public);
   return Res;
 }
 
@@ -8973,7 +9039,8 @@ Decl *Sema::ActOnField(Scope *S, Decl *TagD, SourceLocation DeclStart,
 ///
 FieldDecl *Sema::HandleField(Scope *S, RecordDecl *Record,
                              SourceLocation DeclStart,
-                             Declarator &D, Expr *BitWidth, bool HasInit,
+                             Declarator &D, Expr *BitWidth,
+                             InClassInitStyle InitStyle,
                              AccessSpecifier AS) {
   IdentifierInfo *II = D.getIdentifier();
   SourceLocation Loc = DeclStart;
@@ -9037,7 +9104,7 @@ FieldDecl *Sema::HandleField(Scope *S, RecordDecl *Record,
     = (D.getDeclSpec().getStorageClassSpec() == DeclSpec::SCS_mutable);
   SourceLocation TSSL = D.getLocStart();
   FieldDecl *NewFD
-    = CheckFieldDecl(II, T, TInfo, Record, Loc, Mutable, BitWidth, HasInit,
+    = CheckFieldDecl(II, T, TInfo, Record, Loc, Mutable, BitWidth, InitStyle,
                      TSSL, AS, PrevDecl, &D);
 
   if (NewFD->isInvalidDecl())
@@ -9070,7 +9137,8 @@ FieldDecl *Sema::HandleField(Scope *S, RecordDecl *Record,
 FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
                                 TypeSourceInfo *TInfo,
                                 RecordDecl *Record, SourceLocation Loc,
-                                bool Mutable, Expr *BitWidth, bool HasInit,
+                                bool Mutable, Expr *BitWidth,
+                                InClassInitStyle InitStyle,
                                 SourceLocation TSSL,
                                 AccessSpecifier AS, NamedDecl *PrevDecl,
                                 Declarator *D) {
@@ -9160,7 +9228,7 @@ FieldDecl *Sema::CheckFieldDecl(DeclarationName Name, QualType T,
   }
 
   FieldDecl *NewFD = FieldDecl::Create(Context, Record, TSSL, Loc, II, T, TInfo,
-                                       BitWidth, Mutable, HasInit);
+                                       BitWidth, Mutable, InitStyle);
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 
@@ -9296,7 +9364,7 @@ void Sema::DiagnoseNontrivial(const RecordType* T, CXXSpecialMember member) {
     if (RD->hasUserDeclaredConstructor()) {
       typedef CXXRecordDecl::ctor_iterator ctor_iter;
       for (ctor_iter CI = RD->ctor_begin(), CE = RD->ctor_end(); CI != CE; ++CI)
-        if (DiagnoseNontrivialUserProvidedCtor(*this, QT, &*CI, member))
+        if (DiagnoseNontrivialUserProvidedCtor(*this, QT, *CI, member))
           return;
 
       // No user-provided constructors; look for constructor templates.
@@ -10723,7 +10791,7 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
     InvalidDecl = true;
 
   FieldDecl *NewFD = FieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
-                                       0, true, false);
+                                       0, true, ICIS_NoInit);
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 
@@ -10749,7 +10817,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   FieldDecl *PositionFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
                     &Context.Idents.get("position"), Context.Int4Ty, 0,
-                    0, true, false);
+                    0, true, ICIS_NoInit);
 
   PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
 
@@ -10758,7 +10826,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   FieldDecl *WidthFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
                     &Context.Idents.get("width"), Context.IntTy, 0,
-                    0, true, false);
+                    0, true, ICIS_NoInit);
 
   WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
 
@@ -10767,7 +10835,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   FieldDecl *HeightFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
                     &Context.Idents.get("height"), Context.IntTy, 0,
-                    0, true, false);
+                    0, true, ICIS_NoInit);
 
   HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
 
@@ -10776,7 +10844,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   FieldDecl *DepthFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
                     &Context.Idents.get("depth"), Context.IntTy, 0,
-                    0, true, false);
+                    0, true, ICIS_NoInit);
 
   DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
 
@@ -10820,7 +10888,7 @@ bool Sema::IsValidDeclInMesh(Decl* D){
     MeshDecl::field_iterator itr = MD->field_begin();
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itrEnd = MD->field_end(); itr != itrEnd; ++itr){
-      FieldDecl* FD = &*itr;
+      FieldDecl* FD = *itr;
       if(!IsValidMeshField(FD)){
         return false;
       }
@@ -10830,7 +10898,7 @@ bool Sema::IsValidDeclInMesh(Decl* D){
     RecordDecl::field_iterator itr = RD->field_begin();
     for(RecordDecl::field_iterator itr = RD->field_begin(),
         itrEnd = RD->field_end(); itr != itrEnd; ++itr){
-      FieldDecl* FD = &*itr;
+      FieldDecl* FD = *itr;
       if(!IsValidMeshField(FD)){
         return false;
       }

@@ -121,8 +121,18 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// DisableMacroExpansion - True if macro expansion is disabled.
   bool DisableMacroExpansion : 1;
 
+  /// MacroExpansionInDirectivesOverride - Temporarily disables
+  /// DisableMacroExpansion (i.e. enables expansion) when parsing preprocessor
+  /// directives.
+  bool MacroExpansionInDirectivesOverride : 1;
+
+  class ResetMacroExpansionHelper;
+
   /// \brief Whether we have already loaded macros from the external source.
   mutable bool ReadMacrosFromExternalSource : 1;
+
+  /// \brief True if pragmas are enabled.
+  bool PragmasEnabled : 1;
 
   /// \brief True if we are pre-expanding macro arguments.
   bool InMacroArgPreExpansion;
@@ -412,6 +422,9 @@ public:
 
   bool getCommentRetentionState() const { return KeepComments; }
 
+  void setPragmasEnabled(bool Enabled) { PragmasEnabled = Enabled; }
+  bool getPragmasEnabled() const { return PragmasEnabled; }
+
   void SetSuppressIncludeNotFoundError(bool Suppress) {
     SuppressIncludeNotFoundError = Suppress;
   }
@@ -646,6 +659,12 @@ public:
     while (Result.getKind() == tok::comment);
   }
 
+  /// Disables macro expansion everywhere except for preprocessor directives.
+  void SetMacroExpansionOnlyInDirectives() {
+    DisableMacroExpansion = true;
+    MacroExpansionInDirectivesOverride = true;
+  }
+
   /// LookAhead - This peeks ahead N tokens and returns that token without
   /// consuming any tokens.  LookAhead(0) returns the next token that would be
   /// returned by Lex(), LookAhead(1) returns the token after it, etc.  This
@@ -764,25 +783,24 @@ public:
     getDiagnostics().setSuppressAllDiagnostics(true);
   }
 
-  /// \brief The location of the currently-active #pragma clang
+  /// \brief The location of the currently-active \#pragma clang
   /// arc_cf_code_audited begin.  Returns an invalid location if there
   /// is no such pragma active.
   SourceLocation getPragmaARCCFCodeAuditedLoc() const {
     return PragmaARCCFCodeAuditedLoc;
   }
 
-  /// \brief Set the location of the currently-active #pragma clang
+  /// \brief Set the location of the currently-active \#pragma clang
   /// arc_cf_code_audited begin.  An invalid location ends the pragma.
   void setPragmaARCCFCodeAuditedLoc(SourceLocation Loc) {
     PragmaARCCFCodeAuditedLoc = Loc;
   }
 
-  /// \brief Instruct the preprocessor to skip part of the main
-  /// the main source file.
+  /// \brief Instruct the preprocessor to skip part of the main source file.
   ///
-  /// \brief Bytes The number of bytes in the preamble to skip.
+  /// \param Bytes The number of bytes in the preamble to skip.
   ///
-  /// \brief StartOfLine Whether skipping these bytes puts the lexer at the
+  /// \param StartOfLine Whether skipping these bytes puts the lexer at the
   /// start of a line.
   void setSkipMainFilePreamble(unsigned Bytes, bool StartOfLine) {
     SkipMainFilePreamble.first = Bytes;

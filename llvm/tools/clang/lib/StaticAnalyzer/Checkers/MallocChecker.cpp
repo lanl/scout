@@ -477,19 +477,27 @@ ProgramStateRef MallocChecker::MallocMemAux(CheckerContext &C,
                                            const CallExpr *CE,
                                            SVal Size, SVal Init,
                                            ProgramStateRef state) {
-  // Get the return value.
-  SVal retVal = state->getSVal(CE, C.getLocationContext());
+
+  // Bind the return value to the symbolic value from the heap region.
+  // TODO: We could rewrite post visit to eval call; 'malloc' does not have
+  // side effects other than what we model here.
+  unsigned Count = C.getCurrentBlockCount();
+  SValBuilder &svalBuilder = C.getSValBuilder();
+  const LocationContext *LCtx = C.getPredecessor()->getLocationContext();
+  DefinedSVal RetVal =
+    cast<DefinedSVal>(svalBuilder.getConjuredHeapSymbolVal(CE, LCtx, Count));
+  state = state->BindExpr(CE, C.getLocationContext(), RetVal);
 
   // We expect the malloc functions to return a pointer.
-  if (!isa<Loc>(retVal))
+  if (!isa<Loc>(RetVal))
     return 0;
 
   // Fill the region with the initialization value.
-  state = state->bindDefault(retVal, Init);
+  state = state->bindDefault(RetVal, Init);
 
   // Set the region's extent equal to the Size parameter.
   const SymbolicRegion *R =
-      dyn_cast_or_null<SymbolicRegion>(retVal.getAsRegion());
+      dyn_cast_or_null<SymbolicRegion>(RetVal.getAsRegion());
   if (!R)
     return 0;
   if (isa<DefinedOrUnknownSVal>(Size)) {
@@ -1326,12 +1334,14 @@ bool MallocChecker::doesNotFreeMemory(const CallOrObjCMessage *Call,
                 return false;
     }
 
-    // A bunch of other functions, which take ownership of a pointer (See retain
-    // release checker). Not all the parameters here are invalidated, but the
-    // Malloc checker cannot differentiate between them. The right way of doing
-    // this would be to implement a pointer escapes callback.
-    if (FName == "CVPixelBufferCreateWithBytes" ||
+    // A bunch of other functions which either take ownership of a pointer or
+    // wrap the result up in a struct or object, meaning it can be freed later.
+    // (See RetainCountChecker.) Not all the parameters here are invalidated,
+    // but the Malloc checker cannot differentiate between them. The right way
+    // of doing this would be to implement a pointer escapes callback.
+    if (FName == "CGBitmapContextCreate" ||
         FName == "CGBitmapContextCreateWithData" ||
+        FName == "CVPixelBufferCreateWithBytes" ||
         FName == "CVPixelBufferCreateWithPlanarBytes" ||
         FName == "OSAtomicEnqueue") {
       return false;
@@ -1371,6 +1381,16 @@ bool MallocChecker::doesNotFreeMemory(const CallOrObjCMessage *Call,
     // transferred as well.
     // Ex:  [NSData dataWithBytesNoCopy:bytes length:10];
     if (S.getNameForSlot(0).endswith("NoCopy")) {
+      return false;
+    }
+
+    // If the first selector starts with addPointer, insertPointer,
+    // or replacePointer, assume we are dealing with NSPointerArray or similar.
+    // This is similar to C++ containers (vector); we still might want to check
+    // that the pointers get freed, by following the container itself.
+    if (S.getNameForSlot(0).startswith("addPointer") ||
+        S.getNameForSlot(0).startswith("insertPointer") ||
+        S.getNameForSlot(0).startswith("replacePointer")) {
       return false;
     }
 

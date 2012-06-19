@@ -36,7 +36,6 @@ namespace llvm {
   /// scheduled as soon as possible after the variable's last use.
   ///
   class LoopDependencies {
-    const MachineLoopInfo &MLI;
     const MachineDominatorTree &MDT;
 
   public:
@@ -44,9 +43,7 @@ namespace llvm {
       LoopDeps;
     LoopDeps Deps;
 
-    LoopDependencies(const MachineLoopInfo &mli,
-                     const MachineDominatorTree &mdt) :
-      MLI(mli), MDT(mdt) {}
+    LoopDependencies(const MachineDominatorTree &mdt) : MDT(mdt) {}
 
     /// VisitLoop - Clear out any previous state and analyze the given loop.
     ///
@@ -291,11 +288,15 @@ namespace llvm {
     ///
     virtual void computeLatency(SUnit *SU);
 
-    /// computeOperandLatency - Override dependence edge latency using
+    /// computeOperandLatency - Return dependence edge latency using
     /// operand use/def information
     ///
-    virtual void computeOperandLatency(SUnit *Def, SUnit *Use,
-                                       SDep& dep) const;
+    /// FindMin may be set to get the minimum vs. expected latency. Minimum
+    /// latency is used for scheduling groups, while expected latency is for
+    /// instruction cost and critical path.
+    virtual unsigned computeOperandLatency(SUnit *Def, SUnit *Use,
+                                           const SDep& dep,
+                                           bool FindMin = false) const;
 
     /// schedule - Order nodes according to selected style, filling
     /// in the Sequence member.

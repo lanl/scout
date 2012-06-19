@@ -237,7 +237,7 @@ public:
     /// This context usually implies that no completions should be added,
     /// unless they come from an appropriate natural-language dictionary.
     CCC_NaturalLanguage,
-    /// \brief Code completion for a selector, as in an @selector expression.
+    /// \brief Code completion for a selector, as in an \@selector expression.
     CCC_SelectorName,
     /// \brief Code completion within a type-qualifier list.
     CCC_TypeQualifiers,
@@ -379,7 +379,7 @@ public:
     CK_Equal,
     /// \brief Horizontal whitespace (' ').
     CK_HorizontalSpace,
-    /// \brief Verticle whitespace ('\n' or '\r\n', depending on the
+    /// \brief Vertical whitespace ('\\n' or '\\r\\n', depending on the
     /// platform).
     CK_VerticalSpace
   };
@@ -638,10 +638,10 @@ class CodeCompletionResult {
 public:
   /// \brief Describes the kind of result generated.
   enum ResultKind {
-    RK_Declaration = 0, //< Refers to a declaration
-    RK_Keyword,         //< Refers to a keyword or symbol.
-    RK_Macro,           //< Refers to a macro
-    RK_Pattern          //< Refers to a precomputed pattern.
+    RK_Declaration = 0, ///< Refers to a declaration
+    RK_Keyword,         ///< Refers to a keyword or symbol.
+    RK_Macro,           ///< Refers to a macro
+    RK_Pattern          ///< Refers to a precomputed pattern.
   };
 
   /// \brief When Kind == RK_Declaration or RK_Pattern, the declaration we are

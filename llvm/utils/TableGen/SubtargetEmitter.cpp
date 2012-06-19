@@ -11,13 +11,60 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SubtargetEmitter.h"
 #include "CodeGenTarget.h"
-#include "llvm/TableGen/Record.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/TableGen/Record.h"
+#include "llvm/TableGen/TableGenBackend.h"
 #include <algorithm>
+#include <map>
+#include <string>
+#include <vector>
 using namespace llvm;
+
+namespace {
+class SubtargetEmitter {
+
+  RecordKeeper &Records;
+  std::string Target;
+  bool HasItineraries;
+
+  void Enumeration(raw_ostream &OS, const char *ClassName, bool isBits);
+  unsigned FeatureKeyValues(raw_ostream &OS);
+  unsigned CPUKeyValues(raw_ostream &OS);
+  unsigned CollectAllItinClasses(raw_ostream &OS,
+                                 std::map<std::string,unsigned> &ItinClassesMap,
+                                 std::vector<Record*> &ItinClassList);
+  void FormItineraryStageString(const std::string &Names,
+                                Record *ItinData, std::string &ItinString,
+                                unsigned &NStages);
+  void FormItineraryOperandCycleString(Record *ItinData, std::string &ItinString,
+                                       unsigned &NOperandCycles);
+  void FormItineraryBypassString(const std::string &Names,
+                                 Record *ItinData,
+                                 std::string &ItinString, unsigned NOperandCycles);
+  void EmitStageAndOperandCycleData(raw_ostream &OS, unsigned NItinClasses,
+                     std::map<std::string, unsigned> &ItinClassesMap,
+                     std::vector<Record*> &ItinClassList,
+                     std::vector<std::vector<InstrItinerary> > &ProcList);
+  void EmitItineraryProp(raw_ostream &OS, const Record *R, const char *Name,
+                         char Separator);
+  void EmitProcessorData(raw_ostream &OS,
+                         std::vector<Record*> &ItinClassList,
+                         std::vector<std::vector<InstrItinerary> > &ProcList);
+  void EmitProcessorLookup(raw_ostream &OS);
+  void EmitData(raw_ostream &OS);
+  void ParseFeaturesFunction(raw_ostream &OS, unsigned NumFeatures,
+                             unsigned NumProcs);
+
+public:
+  SubtargetEmitter(RecordKeeper &R) : Records(R), HasItineraries(false) {}
+
+  void run(raw_ostream &o);
+
+};
+} // End anonymous namespace
 
 //
 // Enumeration - Emit the specified class as an enumeration.
@@ -332,8 +379,8 @@ void SubtargetEmitter::EmitStageAndOperandCycleData(raw_ostream &OS,
        << "namespace " << Name << "FU {\n";
 
     for (unsigned j = 0, FUN = FUs.size(); j < FUN; ++j)
-      OS << "  const unsigned " << FUs[j]->getName()
-         << " = 1 << " << j << ";\n";
+      OS << "  const uint64_t " << FUs[j]->getName()
+         << " = 1ULL << " << j << ";\n";
 
     OS << "}\n";
 
@@ -485,7 +532,7 @@ void SubtargetEmitter::EmitItineraryProp(raw_ostream &OS, const Record *R,
   if (V >= 0)
     OS << V << Separator << " // " << Name;
   else
-    OS << "DefaultItineraryProps." << Name << Separator;
+    OS << "InstrItineraryProps::Default" << Name << Separator;
   OS << '\n';
 }
 
@@ -496,7 +543,6 @@ void SubtargetEmitter::
 EmitProcessorData(raw_ostream &OS,
                   std::vector<Record*> &ItinClassList,
                   std::vector<std::vector<InstrItinerary> > &ProcList) {
-  OS << "static const llvm::InstrItineraryProps " << "DefaultItineraryProps;";
 
   // Get an iterator for processor itinerary stages
   std::vector<std::vector<InstrItinerary> >::iterator
@@ -650,7 +696,7 @@ void SubtargetEmitter::ParseFeaturesFunction(raw_ostream &OS,
   OS << Target;
   OS << "Subtarget::ParseSubtargetFeatures(StringRef CPU, StringRef FS) {\n"
      << "  DEBUG(dbgs() << \"\\nFeatures:\" << FS);\n"
-     << "  DEBUG(dbgs() << \"\\nCPU:\" << CPU);\n";
+     << "  DEBUG(dbgs() << \"\\nCPU:\" << CPU << \"\\n\\n\");\n";
 
   if (Features.empty()) {
     OS << "}\n";
@@ -686,7 +732,7 @@ void SubtargetEmitter::ParseFeaturesFunction(raw_ostream &OS,
 void SubtargetEmitter::run(raw_ostream &OS) {
   Target = CodeGenTarget(Records).getName();
 
-  EmitSourceFileHeader("Subtarget Enumeration Source Fragment", OS);
+  emitSourceFileHeader("Subtarget Enumeration Source Fragment", OS);
 
   OS << "\n#ifdef GET_SUBTARGETINFO_ENUM\n";
   OS << "#undef GET_SUBTARGETINFO_ENUM\n";
@@ -803,3 +849,11 @@ void SubtargetEmitter::run(raw_ostream &OS) {
 
   OS << "#endif // GET_SUBTARGETINFO_CTOR\n\n";
 }
+
+namespace llvm {
+
+void EmitSubtarget(RecordKeeper &RK, raw_ostream &OS) {
+  SubtargetEmitter(RK).run(OS);
+}
+
+} // End llvm namespace

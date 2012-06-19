@@ -451,11 +451,13 @@ void PPCDarwinAsmPrinter::EmitStartOfAsmFile(Module &M) {
     "ppc750",
     "ppc970",
     "ppcA2",
+    "power6",
+    "power7",
     "ppc64"
   };
 
   unsigned Directive = Subtarget.getDarwinDirective();
-  if (Subtarget.isGigaProcessor() && Directive < PPC::DIR_970)
+  if (Subtarget.hasMFOCRF() && Directive < PPC::DIR_970)
     Directive = PPC::DIR_970;
   if (Subtarget.hasAltivec() && Directive < PPC::DIR_7400)
     Directive = PPC::DIR_7400;

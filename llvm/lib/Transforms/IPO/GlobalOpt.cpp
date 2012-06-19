@@ -1716,7 +1716,7 @@ static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
 /// possible.  If we make a change, return true.
 bool GlobalOpt::ProcessGlobal(GlobalVariable *GV,
                               Module::global_iterator &GVI) {
-  if (!GV->hasLocalLinkage())
+  if (!GV->isDiscardableIfUnused())
     return false;
 
   // Do more involved optimizations if the global is internal.
@@ -1728,6 +1728,9 @@ bool GlobalOpt::ProcessGlobal(GlobalVariable *GV,
     ++NumDeleted;
     return true;
   }
+
+  if (!GV->hasLocalLinkage())
+    return false;
 
   SmallPtrSet<const PHINode*, 16> PHIUsers;
   GlobalStatus GS;

@@ -192,6 +192,11 @@ void StmtProfiler::VisitAsmStmt(const AsmStmt *S) {
     VisitStringLiteral(S->getClobber(I));
 }
 
+void StmtProfiler::VisitMSAsmStmt(const MSAsmStmt *S) {
+  // FIXME: Implement MS style inline asm statement profiler.
+  VisitStmt(S);
+}
+
 void StmtProfiler::VisitCXXCatchStmt(const CXXCatchStmt *S) {
   VisitStmt(S);
   VisitType(S->getCaughtType());
@@ -1181,7 +1186,7 @@ void StmtProfiler::VisitTemplateArgument(const TemplateArgument &Arg) {
     break;
 
   case TemplateArgument::Integral:
-    Arg.getAsIntegral()->Profile(ID);
+    Arg.getAsIntegral().Profile(ID);
     VisitType(Arg.getIntegralType());
     break;
 

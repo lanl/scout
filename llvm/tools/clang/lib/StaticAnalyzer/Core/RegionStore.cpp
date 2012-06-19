@@ -1055,8 +1055,12 @@ SVal RegionStoreManager::getBinding(Store store, Loc L, QualType T) {
   if (RTy->isUnionType())
     return UnknownVal();
 
-  if (RTy->isArrayType())
-    return getBindingForArray(store, R);
+  if (RTy->isArrayType()) {
+    if (RTy->isConstantArrayType())
+      return getBindingForArray(store, R);
+    else
+      return UnknownVal();
+  }
 
   // FIXME: handle Vector types.
   if (RTy->isVectorType())
@@ -1746,7 +1750,7 @@ StoreRef RegionStoreManager::BindStruct(Store store, const TypedValueRegion* R,
       continue;
 
     QualType FTy = FI->getType();
-    const FieldRegion* FR = MRMgr.getFieldRegion(&*FI, R);
+    const FieldRegion* FR = MRMgr.getFieldRegion(*FI, R);
 
     if (FTy->isArrayType())
       newStore = BindArray(newStore.getStore(), FR, *VI);

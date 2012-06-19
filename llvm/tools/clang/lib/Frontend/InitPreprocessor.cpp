@@ -49,7 +49,7 @@ static void DefineBuiltinMacro(MacroBuilder &Builder, StringRef Macro,
   }
 }
 
-/// AddImplicitInclude - Add an implicit #include of the specified file to the
+/// AddImplicitInclude - Add an implicit \#include of the specified file to the
 /// predefines buffer.
 static void AddImplicitInclude(MacroBuilder &Builder, StringRef File,
                                FileManager &FileMgr) {
@@ -66,8 +66,8 @@ static void AddImplicitIncludeMacros(MacroBuilder &Builder,
   Builder.append("##"); // ##?
 }
 
-/// AddImplicitIncludePTH - Add an implicit #include using the original file
-///  used to generate a PTH cache.
+/// AddImplicitIncludePTH - Add an implicit \#include using the original file
+/// used to generate a PTH cache.
 static void AddImplicitIncludePTH(MacroBuilder &Builder, Preprocessor &PP,
                                   StringRef ImplicitIncludePTH) {
   PTHManager *P = PP.getPTHManager();
@@ -377,6 +377,11 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 
     if (LangOpts.NeXTRuntime)
       Builder.defineMacro("__NEXT_RUNTIME__");
+
+    Builder.defineMacro("IBOutlet", "__attribute__((iboutlet))");
+    Builder.defineMacro("IBOutletCollection(ClassName)",
+                        "__attribute__((iboutletcollection(ClassName)))");
+    Builder.defineMacro("IBAction", "void)__attribute__((ibaction)");
   }
 
   // darwin_constant_cfstrings controls this. This is also dependent
@@ -521,9 +526,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
 
   if (TI.getLongLongWidth() > TI.getLongWidth())
     DefineExactWidthIntType(TargetInfo::SignedLongLong, TI, Builder);
-
-  // Add __builtin_va_list typedef.
-  Builder.append(TI.getVAListDeclaration());
 
   if (const char *Prefix = TI.getUserLabelPrefix())
     Builder.defineMacro("__USER_LABEL_PREFIX__", Prefix);

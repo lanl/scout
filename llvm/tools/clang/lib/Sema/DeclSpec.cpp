@@ -165,7 +165,7 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto, bool isVariadic,
                                              SourceLocation LocalRangeBegin,
                                              SourceLocation LocalRangeEnd,
                                              Declarator &TheDeclarator,
-                                             ParsedType TrailingReturnType) {
+                                             TypeResult TrailingReturnType) {
   DeclaratorChunk I;
   I.Kind                        = Function;
   I.Loc                         = LocalRangeBegin;
@@ -188,7 +188,9 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto, bool isVariadic,
   I.Fun.NumExceptions           = 0;
   I.Fun.Exceptions              = 0;
   I.Fun.NoexceptExpr            = 0;
-  I.Fun.TrailingReturnType   = TrailingReturnType.getAsOpaquePtr();
+  I.Fun.HasTrailingReturnType   = TrailingReturnType.isUsable() ||
+                                  TrailingReturnType.isInvalid();
+  I.Fun.TrailingReturnType      = TrailingReturnType.get();
 
   // new[] an argument array if needed.
   if (NumArgs) {
@@ -801,7 +803,7 @@ void DeclSpec::SaveWrittenBuiltinSpecs() {
   writtenBS.ModeAttr = false;
   AttributeList* attrs = getAttributes().getList();
   while (attrs) {
-    if (attrs->getKind() == AttributeList::AT_mode) {
+    if (attrs->getKind() == AttributeList::AT_Mode) {
       writtenBS.ModeAttr = true;
       break;
     }

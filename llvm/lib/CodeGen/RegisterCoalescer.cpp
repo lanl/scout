@@ -16,7 +16,6 @@
 #define DEBUG_TYPE "regalloc"
 #include "RegisterCoalescer.h"
 #include "LiveDebugVariables.h"
-#include "RegisterClassInfo.h"
 #include "VirtRegMap.h"
 
 #include "llvm/Pass.h"
@@ -36,6 +35,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/RegisterClassInfo.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -451,10 +451,7 @@ bool RegisterCoalescer::adjustCopiesBackFrom(const CoalescerPair &CP,
   // IntB, we can merge them.
   if (ValLR+1 != BLR) return false;
 
-  DEBUG({
-      dbgs() << "Extending: ";
-      IntB.print(dbgs(), TRI);
-    });
+  DEBUG(dbgs() << "Extending: " << PrintReg(IntB.reg, TRI));
 
   SlotIndex FillerStart = ValLR->end, FillerEnd = BLR->start;
   // We are about to delete CopyMI, so need to remove it as the 'instruction
@@ -489,11 +486,7 @@ bool RegisterCoalescer::adjustCopiesBackFrom(const CoalescerPair &CP,
     if (HasPHIKill)
       ValLR->valno->setHasPHIKill(true);
   }
-  DEBUG({
-      dbgs() << "   result = ";
-      IntB.print(dbgs(), TRI);
-      dbgs() << "\n";
-    });
+  DEBUG(dbgs() << "   result = " << IntB << '\n');
 
   // If the source instruction was killing the source register before the
   // merge, unset the isKill marker given the live range has been extended.
@@ -877,7 +870,7 @@ void RegisterCoalescer::updateRegDefsUses(unsigned SrcReg,
                                           unsigned DstReg,
                                           unsigned SubIdx) {
   bool DstIsPhys = TargetRegisterInfo::isPhysicalRegister(DstReg);
-  LiveInterval &DstInt = LIS->getInterval(DstReg);
+  LiveInterval *DstInt = DstIsPhys ? 0 : &LIS->getInterval(DstReg);
 
   // Update LiveDebugVariables.
   LDV->renameRegister(SrcReg, DstReg, SubIdx);
@@ -890,8 +883,8 @@ void RegisterCoalescer::updateRegDefsUses(unsigned SrcReg,
 
     // If SrcReg wasn't read, it may still be the case that DstReg is live-in
     // because SrcReg is a sub-register.
-    if (!Reads && SubIdx)
-      Reads = DstInt.liveAt(LIS->getInstructionIndex(UseMI));
+    if (DstInt && !Reads && SubIdx)
+      Reads = DstInt->liveAt(LIS->getInstructionIndex(UseMI));
 
     // Replace SrcReg with DstReg in all UseMI operands.
     for (unsigned i = 0, e = Ops.size(); i != e; ++i) {
@@ -946,7 +939,7 @@ bool RegisterCoalescer::joinCopy(MachineInstr *CopyMI, bool &Again) {
   Again = false;
   DEBUG(dbgs() << LIS->getInstructionIndex(CopyMI) << '\t' << *CopyMI);
 
-  CoalescerPair CP(*TII, *TRI);
+  CoalescerPair CP(*TRI);
   if (!CP.setRegisters(CopyMI)) {
     DEBUG(dbgs() << "\tNot coalescable.\n");
     return false;
@@ -1084,12 +1077,8 @@ bool RegisterCoalescer::joinCopy(MachineInstr *CopyMI, bool &Again) {
   // Update regalloc hint.
   TRI->UpdateRegAllocHint(CP.getSrcReg(), CP.getDstReg(), *MF);
 
-  DEBUG({
-    LiveInterval &DstInt = LIS->getInterval(CP.getDstReg());
-    dbgs() << "\tJoined. Result = ";
-    DstInt.print(dbgs(), TRI);
-    dbgs() << "\n";
-  });
+  DEBUG(dbgs() << "\tJoined. Result = " << PrintReg(CP.getDstReg(), TRI)
+               << ' ' << LIS->getInterval(CP.getDstReg()) << '\n');
 
   ++numJoins;
   return true;
@@ -1100,7 +1089,8 @@ bool RegisterCoalescer::joinReservedPhysReg(CoalescerPair &CP) {
   assert(CP.isPhys() && "Must be a physreg copy");
   assert(RegClassInfo.isReserved(CP.getDstReg()) && "Not a reserved register");
   LiveInterval &RHS = LIS->getInterval(CP.getSrcReg());
-  DEBUG({ dbgs() << "\t\tRHS = "; RHS.print(dbgs(), TRI); dbgs() << "\n"; });
+  DEBUG(dbgs() << "\t\tRHS = " << PrintReg(CP.getSrcReg()) << ' ' << RHS
+               << '\n');
 
   assert(CP.isFlipped() && RHS.containsOneValue() &&
          "Invalid join with reserved register");
@@ -1112,16 +1102,24 @@ bool RegisterCoalescer::joinReservedPhysReg(CoalescerPair &CP) {
 
   // Deny any overlapping intervals.  This depends on all the reserved
   // register live ranges to look like dead defs.
-  for (MCRegAliasIterator AS(CP.getDstReg(), TRI, true); AS.isValid(); ++AS) {
-    if (!LIS->hasInterval(*AS)) {
-      // Make sure at least DstReg itself exists before attempting a join.
-      if (*AS == CP.getDstReg())
-        LIS->getOrCreateInterval(CP.getDstReg());
-      continue;
-    }
-    if (RHS.overlaps(LIS->getInterval(*AS))) {
-      DEBUG(dbgs() << "\t\tInterference: " << PrintReg(*AS, TRI) << '\n');
-      return false;
+  if (LIS->trackingRegUnits()) {
+    for (MCRegUnitIterator UI(CP.getDstReg(), TRI); UI.isValid(); ++UI)
+      if (RHS.overlaps(LIS->getRegUnit(*UI))) {
+        DEBUG(dbgs() << "\t\tInterference: " << PrintRegUnit(*UI, TRI) << '\n');
+        return false;
+      }
+  } else {
+    for (MCRegAliasIterator AS(CP.getDstReg(), TRI, true); AS.isValid(); ++AS) {
+      if (!LIS->hasInterval(*AS)) {
+        // Make sure at least DstReg itself exists before attempting a join.
+        if (*AS == CP.getDstReg())
+          LIS->getOrCreateInterval(CP.getDstReg());
+        continue;
+      }
+      if (RHS.overlaps(LIS->getInterval(*AS))) {
+        DEBUG(dbgs() << "\t\tInterference: " << PrintReg(*AS, TRI) << '\n');
+        return false;
+      }
     }
   }
   // Skip any value computations, we are not adding new values to the
@@ -1263,7 +1261,8 @@ bool RegisterCoalescer::joinIntervals(CoalescerPair &CP) {
     return joinReservedPhysReg(CP);
 
   LiveInterval &RHS = LIS->getInterval(CP.getSrcReg());
-  DEBUG({ dbgs() << "\t\tRHS = "; RHS.print(dbgs(), TRI); dbgs() << "\n"; });
+  DEBUG(dbgs() << "\t\tRHS = " << PrintReg(CP.getSrcReg()) << ' ' << RHS
+               << '\n');
 
   // Compute the final value assignment, assuming that the live ranges can be
   // coalesced.
@@ -1277,7 +1276,8 @@ bool RegisterCoalescer::joinIntervals(CoalescerPair &CP) {
   SmallVector<MachineInstr*, 8> DeadCopies;
 
   LiveInterval &LHS = LIS->getOrCreateInterval(CP.getDstReg());
-  DEBUG({ dbgs() << "\t\tLHS = "; LHS.print(dbgs(), TRI); dbgs() << "\n"; });
+  DEBUG(dbgs() << "\t\tLHS = " << PrintReg(CP.getDstReg(), TRI) << ' ' << LHS
+               << '\n');
 
   // Loop over the value numbers of the LHS, seeing if any are defined from
   // the RHS.
@@ -1619,17 +1619,8 @@ bool RegisterCoalescer::runOnMachineFunction(MachineFunction &fn) {
   RegClassInfo.runOnMachineFunction(fn);
 
   // Join (coalesce) intervals if requested.
-  if (EnableJoining) {
+  if (EnableJoining)
     joinAllIntervals();
-    DEBUG({
-        dbgs() << "********** INTERVALS POST JOINING **********\n";
-        for (LiveIntervals::iterator I = LIS->begin(), E = LIS->end();
-             I != E; ++I){
-          I->second->print(dbgs(), TRI);
-          dbgs() << "\n";
-        }
-      });
-  }
 
   // After deleting a lot of copies, register classes may be less constrained.
   // Removing sub-register operands may allow GR32_ABCD -> GR32 and DPR_VFP2 ->

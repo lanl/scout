@@ -37,9 +37,9 @@
 #ifndef LLVM_CODEGEN_REGALLOCBASE
 #define LLVM_CODEGEN_REGALLOCBASE
 
-#include "llvm/ADT/OwningPtr.h"
 #include "LiveIntervalUnion.h"
-#include "RegisterClassInfo.h"
+#include "llvm/CodeGen/RegisterClassInfo.h"
+#include "llvm/ADT/OwningPtr.h"
 
 namespace llvm {
 
@@ -62,27 +62,7 @@ class RegAllocBase {
   // registers may have changed.
   unsigned UserTag;
 
-  // Array of LiveIntervalUnions indexed by physical register.
-  class LiveUnionArray {
-    unsigned NumRegs;
-    LiveIntervalUnion *Array;
-  public:
-    LiveUnionArray(): NumRegs(0), Array(0) {}
-    ~LiveUnionArray() { clear(); }
-
-    unsigned numRegs() const { return NumRegs; }
-
-    void init(LiveIntervalUnion::Allocator &, unsigned NRegs);
-
-    void clear();
-
-    LiveIntervalUnion& operator[](unsigned PhysReg) {
-      assert(PhysReg <  NumRegs && "physReg out of bounds");
-      return Array[PhysReg];
-    }
-  };
-
-  LiveUnionArray PhysReg2LiveUnion;
+  LiveIntervalUnion::Array PhysReg2LiveUnion;
 
   // Current queries, one per physreg. They must be reinitialized each time we
   // query on a new live virtual register.
@@ -156,9 +136,6 @@ protected:
   /// This can be invoked from selectOrSplit, but be careful to guarantee that
   /// allocation is making progress.
   void unassign(LiveInterval &VirtReg, unsigned PhysReg);
-
-  /// addMBBLiveIns - Add physreg liveins to basic blocks.
-  void addMBBLiveIns(MachineFunction *);
 
 #ifndef NDEBUG
   // Verify each LiveIntervalUnion.

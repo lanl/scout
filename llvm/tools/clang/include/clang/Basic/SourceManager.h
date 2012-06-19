@@ -40,15 +40,20 @@ class LangOptions;
 class ASTWriter;
 class ASTReader;
 
+/// \file
 /// There are three different types of locations in a file: a spelling
 /// location, an expansion location, and a presumed location.
 ///
 /// Given an example of:
+/// \code
 /// #define min(x, y) x < y ? x : y
+/// \endcode
 ///
 /// and then later on a use of min:
+/// \code
 /// #line 17
 /// return min(a, b);
+/// \endcode
 ///
 /// The expansion location is the line in the source code where the macro
 /// was expanded (the return statement), the spelling location is the
@@ -56,7 +61,8 @@ class ASTReader;
 /// and the presumed location is where the line directive states that
 /// the line is 17, or any other line.
 
-/// SrcMgr - Public enums and private classes that are part of the
+/// \namespace SrcMgr
+/// \brief Public enums and private classes that are part of the
 /// SourceManager implementation.
 ///
 namespace SrcMgr {
@@ -64,7 +70,7 @@ namespace SrcMgr {
   /// holds normal user code, system code, or system code which is implicitly
   /// 'extern "C"' in C++ mode.  Entire directories can be tagged with this
   /// (this is maintained by DirectoryLookup and friends) as can specific
-  /// FileInfos when a #pragma system_header is seen or various other cases.
+  /// FileInfos when a \#pragma system_header is seen or various other cases.
   ///
   enum CharacteristicKind {
     C_User, C_System, C_ExternCSystem
@@ -202,24 +208,24 @@ namespace SrcMgr {
   /// that it represents and include stack information.
   ///
   /// Each FileInfo has include stack information, indicating where it came
-  /// from. This information encodes the #include chain that a token was
+  /// from. This information encodes the \#include chain that a token was
   /// expanded from. The main include file has an invalid IncludeLoc.
   ///
   /// FileInfos contain a "ContentCache *", with the contents of the file.
   ///
   class FileInfo {
-    /// IncludeLoc - The location of the #include that brought in this file.
-    /// This is an invalid SLOC for the main file (top of the #include chain).
+    /// IncludeLoc - The location of the \#include that brought in this file.
+    /// This is an invalid SLOC for the main file (top of the \#include chain).
     unsigned IncludeLoc;  // Really a SourceLocation
 
     /// \brief Number of FileIDs (files and macros) that were created during
-    /// preprocessing of this #include, including this SLocEntry.
+    /// preprocessing of this \#include, including this SLocEntry.
     /// Zero means the preprocessor didn't provide such info for this SLocEntry.
     unsigned NumCreatedFIDs;
 
-    /// Data - This contains the ContentCache* and the bits indicating the
-    /// characteristic of the file and whether it has #line info, all bitmangled
-    /// together.
+    /// \brief Contains the ContentCache* and the bits indicating the
+    /// characteristic of the file and whether it has \#line info, all
+    /// bitmangled together.
     uintptr_t Data;
 
     friend class clang::SourceManager;
@@ -246,16 +252,15 @@ namespace SrcMgr {
       return reinterpret_cast<const ContentCache*>(Data & ~7UL);
     }
 
-    /// getCharacteristic - Return whether this is a system header or not.
+    /// \brief Return whether this is a system header or not.
     CharacteristicKind getFileCharacteristic() const {
       return (CharacteristicKind)(Data & 3);
     }
 
-    /// hasLineDirectives - Return true if this FileID has #line directives in
-    /// it.
+    /// \brief Return true if this FileID has \#line directives in it.
     bool hasLineDirectives() const { return (Data & 4) != 0; }
 
-    /// setHasLineDirectives - Set the flag that indicates that this FileID has
+    /// \brief Set the flag that indicates that this FileID has
     /// line table entries associated with it.
     void setHasLineDirectives() {
       Data |= 4;
@@ -415,13 +420,13 @@ class IsBeforeInTranslationUnitCache {
   /// to compare macro expansion locations.
   bool IsLQFIDBeforeRQFID;
 
-  /// CommonFID - This is the file found in common between the two #include
-  /// traces.  It is the nearest common ancestor of the #include tree.
+  /// CommonFID - This is the file found in common between the two \#include
+  /// traces.  It is the nearest common ancestor of the \#include tree.
   FileID CommonFID;
 
   /// L/R CommonOffset - This is the offset of the previous query in CommonFID.
-  /// Usually, this represents the location of the #include for QueryFID, but if
-  /// LQueryFID is a parent of RQueryFID (or vise versa) then these can be a
+  /// Usually, this represents the location of the \#include for QueryFID, but
+  /// if LQueryFID is a parent of RQueryFID (or vice versa) then these can be a
   /// random token in the parent.
   unsigned LCommonOffset, RCommonOffset;
 public:
@@ -476,7 +481,7 @@ public:
 /// \brief This class handles loading and caching of source files into memory.
 ///
 /// This object owns the MemoryBuffer objects for all of the loaded
-/// files and assigns unique FileID's for each unique #include chain.
+/// files and assigns unique FileID's for each unique \#include chain.
 ///
 /// The SourceManager can be queried for information about SourceLocation
 /// objects, turning them into either spelling or expansion locations. Spelling
@@ -562,13 +567,15 @@ class SourceManager : public RefCountedBase<SourceManager> {
   /// \brief An external source for source location entries.
   ExternalSLocEntrySource *ExternalSLocEntries;
 
-  /// LastFileIDLookup - This is a one-entry cache to speed up getFileID.
+  /// \brief This is a one-entry cache to speed up getFileID.
+  ///
   /// LastFileIDLookup records the last FileID looked up or created, because it
   /// is very common to look up many tokens from the same file.
   mutable FileID LastFileIDLookup;
 
-  /// LineTable - This holds information for #line directives.  It is referenced
-  /// by indices from SLocEntryTable.
+  /// \brief Holds information for \#line directives.
+  ///
+  /// It is referenced by indices from SLocEntryTable.
   LineTableInfo *LineTable;
 
   /// LastLineNo - These ivars serve as a cache used in the getLineNumber
@@ -578,11 +585,14 @@ class SourceManager : public RefCountedBase<SourceManager> {
   mutable unsigned LastLineNoFilePos;
   mutable unsigned LastLineNoResult;
 
-  /// MainFileID - The file ID for the main source file of the translation unit.
+  /// \brief The file ID for the main source file of the translation unit.
   FileID MainFileID;
 
   /// \brief The file ID for the precompiled preamble there is one.
   FileID PreambleFileID;
+
+  /// \brief The file ID for the preprocessor's predefines.
+  FileID PredefinesFileID;
 
   // Statistics for -print-stats.
   mutable unsigned NumLinearScans, NumBinaryProbes;
@@ -628,6 +638,14 @@ public:
     MainFileID = createFileIDForMemBuffer(Buffer);
     return MainFileID;
   }
+  
+  /// \brief Create the FileID for a memory buffer that contains the
+  /// preprocessor's predefines.
+  FileID createPredefinesFileIDForMemBuffer(const llvm::MemoryBuffer *Buffer) {
+    assert(PredefinesFileID.isInvalid() && "PredefinesFileID already set!");
+    PredefinesFileID = createFileIDForMemBuffer(Buffer);
+    return PredefinesFileID;
+  }
 
   //===--------------------------------------------------------------------===//
   // MainFileID creation and querying methods.
@@ -635,6 +653,9 @@ public:
 
   /// getMainFileID - Returns the FileID of the main source file.
   FileID getMainFileID() const { return MainFileID; }
+
+  /// \brief Returns the FileID of the preprocessor predefines buffer.
+  FileID getPredefinesFileID() const { return PredefinesFileID; }
 
   /// createMainFileID - Create the FileID for the main source file.
   FileID createMainFileID(const FileEntry *SourceFile, 
@@ -664,7 +685,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// createFileID - Create a new FileID that represents the specified file
-  /// being #included from the specified IncludePosition.  This translates NULL
+  /// being \#included from the specified IncludePosition.  This translates NULL
   /// into standard input.
   FileID createFileID(const FileEntry *SourceFile, SourceLocation IncludePos,
                       SrcMgr::CharacteristicKind FileCharacter,
@@ -881,7 +902,7 @@ public:
     return SourceLocation::getFileLoc(FileOffset + getFileIDSize(FID) - 1);
   }
 
-  /// \brief Returns the include location if \p FID is a #include'd file
+  /// \brief Returns the include location if \p FID is a \#include'd file
   /// otherwise it returns an invalid location.
   SourceLocation getIncludeLoc(FileID FID) const {
     bool Invalid = false;
@@ -1072,9 +1093,11 @@ public:
   unsigned getExpansionLineNumber(SourceLocation Loc, bool *Invalid = 0) const;
   unsigned getPresumedLineNumber(SourceLocation Loc, bool *Invalid = 0) const;
 
-  /// Return the filename or buffer identifier of the buffer the location is in.
-  /// Note that this name does not respect #line directives.  Use getPresumedLoc
-  /// for normal clients.
+  /// \brief Return the filename or buffer identifier of the buffer the
+  /// location is in.
+  ///
+  /// Note that this name does not respect \#line directives.  Use
+  /// getPresumedLoc for normal clients.
   const char *getBufferName(SourceLocation Loc, bool *Invalid = 0) const;
 
   /// getFileCharacteristic - return the file characteristic of the specified
@@ -1082,13 +1105,15 @@ public:
   /// header, or an "implicit extern C" system header.
   ///
   /// This state can be modified with flags on GNU linemarker directives like:
+  /// \code
   ///   # 4 "foo.h" 3
+  /// \endcode
   /// which changes all source locations in the current file after that to be
   /// considered to be from a system header.
   SrcMgr::CharacteristicKind getFileCharacteristic(SourceLocation Loc) const;
 
   /// getPresumedLoc - This method returns the "presumed" location of a
-  /// SourceLocation specifies.  A "presumed location" can be modified by #line
+  /// SourceLocation specifies.  A "presumed location" can be modified by \#line
   /// or GNU line marker directives.  This provides a view on the data that a
   /// user should see in diagnostics, for example.
   ///
@@ -1111,6 +1136,12 @@ public:
   ///   the main file.
   bool isFromMainFile(SourceLocation Loc) const {
     return getFileID(Loc) == getMainFileID();
+  }
+
+  /// isFromPredefines - Returns true if the provided SourceLocation is
+  ///   within the processor's predefines buffer.
+  bool isFromPredefines(SourceLocation Loc) const {
+    return getFileID(Loc) == getPredefinesFileID();
   }
 
   /// isInSystemHeader - Returns if a SourceLocation is in a system header.
@@ -1345,6 +1376,65 @@ public:
   /// \brief Returns true if \p FID did not come from a PCH/Module.
   bool isLocalFileID(FileID FID) const {
     return !isLoadedFileID(FID);
+  }
+
+  /// Get a presumed location suitable for displaying in a diagnostic message,
+  /// taking into account macro arguments and expansions.
+  PresumedLoc getPresumedLocForDisplay(SourceLocation Loc) const {
+    // This is a condensed form of the algorithm used by emitCaretDiagnostic to
+    // walk to the top of the macro call stack.
+    while (Loc.isMacroID()) {
+      Loc = skipToMacroArgExpansion(Loc);
+      Loc = getImmediateMacroCallerLoc(Loc);
+    }
+
+    return getPresumedLoc(Loc);
+  }
+
+  /// Look through spelling locations for a macro argument expansion, and if
+  /// found skip to it so that we can trace the argument rather than the macros
+  /// in which that argument is used. If no macro argument expansion is found,
+  /// don't skip anything and return the starting location.
+  SourceLocation skipToMacroArgExpansion(SourceLocation StartLoc) const {
+    for (SourceLocation L = StartLoc; L.isMacroID();
+         L = getImmediateSpellingLoc(L)) {
+      if (isMacroArgExpansion(L))
+        return L;
+    }
+    // Otherwise just return initial location, there's nothing to skip.
+    return StartLoc;
+  }
+
+  /// Gets the location of the immediate macro caller, one level up the stack
+  /// toward the initial macro typed into the source.
+  SourceLocation getImmediateMacroCallerLoc(SourceLocation Loc) const {
+    if (!Loc.isMacroID()) return Loc;
+
+    // When we have the location of (part of) an expanded parameter, its
+    // spelling location points to the argument as typed into the macro call,
+    // and therefore is used to locate the macro caller.
+    if (isMacroArgExpansion(Loc))
+      return getImmediateSpellingLoc(Loc);
+
+    // Otherwise, the caller of the macro is located where this macro is
+    // expanded (while the spelling is part of the macro definition).
+    return getImmediateExpansionRange(Loc).first;
+  }
+
+  /// Gets the location of the immediate macro callee, one level down the stack
+  /// toward the leaf macro.
+  SourceLocation getImmediateMacroCalleeLoc(SourceLocation Loc) const {
+    if (!Loc.isMacroID()) return Loc;
+
+    // When we have the location of (part of) an expanded parameter, its
+    // expansion location points to the unexpanded parameter reference within
+    // the macro definition (or callee).
+    if (isMacroArgExpansion(Loc))
+      return getImmediateExpansionRange(Loc).first;
+
+    // Otherwise, the callee of the macro is located where this location was
+    // spelled inside the macro definition.
+    return getImmediateSpellingLoc(Loc);
   }
 
 private:

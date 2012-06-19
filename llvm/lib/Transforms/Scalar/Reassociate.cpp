@@ -37,7 +37,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SmallMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include <algorithm>
@@ -116,8 +116,7 @@ namespace {
   class Reassociate : public FunctionPass {
     DenseMap<BasicBlock*, unsigned> RankMap;
     DenseMap<AssertingVH<Value>, unsigned> ValueRankMap;
-    SmallVector<WeakVH, 8> RedoInsts;
-    SmallVector<WeakVH, 8> DeadInsts;
+    SetVector<AssertingVH<Instruction> > RedoInsts;
     bool MadeChange;
   public:
     static char ID; // Pass identification, replacement for typeid
@@ -133,7 +132,7 @@ namespace {
   private:
     void BuildRankMap(Function &F);
     unsigned getRank(Value *V);
-    Value *ReassociateExpression(BinaryOperator *I);
+    void ReassociateExpression(BinaryOperator *I);
     void RewriteExprTree(BinaryOperator *I, SmallVectorImpl<ValueEntry> &Ops);
     Value *OptimizeExpression(BinaryOperator *I,
                               SmallVectorImpl<ValueEntry> &Ops);
@@ -143,11 +142,9 @@ namespace {
     Value *buildMinimalMultiplyDAG(IRBuilder<> &Builder,
                                    SmallVectorImpl<Factor> &Factors);
     Value *OptimizeMul(BinaryOperator *I, SmallVectorImpl<ValueEntry> &Ops);
-    void LinearizeExprTree(BinaryOperator *I, SmallVectorImpl<ValueEntry> &Ops);
     Value *RemoveFactorFromExpression(Value *V, Value *Factor);
-    void ReassociateInst(BasicBlock::iterator &BBI);
-
-    void RemoveDeadBinaryOp(Value *V);
+    void EraseInst(Instruction *I);
+    void OptimizeInst(Instruction *I);
   };
 }
 
@@ -165,25 +162,6 @@ static BinaryOperator *isReassociableOp(Value *V, unsigned Opcode) {
       cast<Instruction>(V)->getOpcode() == Opcode)
     return cast<BinaryOperator>(V);
   return 0;
-}
-
-void Reassociate::RemoveDeadBinaryOp(Value *V) {
-  BinaryOperator *Op = dyn_cast<BinaryOperator>(V);
-  if (!Op)
-    return;
-
-  ValueRankMap.erase(Op);
-  DeadInsts.push_back(Op);
-
-  BinaryOperator *LHS = isReassociableOp(Op->getOperand(0), Op->getOpcode());
-  BinaryOperator *RHS = isReassociableOp(Op->getOperand(1), Op->getOpcode());
-  Op->setOperand(0, UndefValue::get(Op->getType()));
-  Op->setOperand(1, UndefValue::get(Op->getType()));
-
-  if (LHS)
-    RemoveDeadBinaryOp(LHS);
-  if (RHS)
-    RemoveDeadBinaryOp(RHS);
 }
 
 static bool isUnmovableInstruction(Instruction *I) {
@@ -259,24 +237,160 @@ unsigned Reassociate::getRank(Value *V) {
 
 /// LowerNegateToMultiply - Replace 0-X with X*-1.
 ///
-static BinaryOperator *LowerNegateToMultiply(Instruction *Neg,
-                         DenseMap<AssertingVH<Value>, unsigned> &ValueRankMap) {
+static BinaryOperator *LowerNegateToMultiply(Instruction *Neg) {
   Constant *Cst = Constant::getAllOnesValue(Neg->getType());
 
   BinaryOperator *Res =
     BinaryOperator::CreateMul(Neg->getOperand(1), Cst, "",Neg);
-  ValueRankMap.erase(Neg);
+  Neg->setOperand(1, Constant::getNullValue(Neg->getType())); // Drop use of op.
   Res->takeName(Neg);
   Neg->replaceAllUsesWith(Res);
   Res->setDebugLoc(Neg->getDebugLoc());
-  Neg->eraseFromParent();
   return Res;
 }
 
+/// CarmichaelShift - Returns k such that lambda(2^Bitwidth) = 2^k, where lambda
+/// is the Carmichael function. This means that x^(2^k) === 1 mod 2^Bitwidth for
+/// every odd x, i.e. x^(2^k) = 1 for every odd x in Bitwidth-bit arithmetic.
+/// Note that 0 <= k < Bitwidth, and if Bitwidth > 3 then x^(2^k) = 0 for every
+/// even x in Bitwidth-bit arithmetic.
+static unsigned CarmichaelShift(unsigned Bitwidth) {
+  if (Bitwidth < 3)
+    return Bitwidth - 1;
+  return Bitwidth - 2;
+}
+
+/// IncorporateWeight - Add the extra weight 'RHS' to the existing weight 'LHS',
+/// reducing the combined weight using any special properties of the operation.
+/// The existing weight LHS represents the computation X op X op ... op X where
+/// X occurs LHS times.  The combined weight represents  X op X op ... op X with
+/// X occurring LHS + RHS times.  If op is "Xor" for example then the combined
+/// operation is equivalent to X if LHS + RHS is odd, or 0 if LHS + RHS is even;
+/// the routine returns 1 in LHS in the first case, and 0 in LHS in the second.
+static void IncorporateWeight(APInt &LHS, const APInt &RHS, unsigned Opcode) {
+  // If we were working with infinite precision arithmetic then the combined
+  // weight would be LHS + RHS.  But we are using finite precision arithmetic,
+  // and the APInt sum LHS + RHS may not be correct if it wraps (it is correct
+  // for nilpotent operations and addition, but not for idempotent operations
+  // and multiplication), so it is important to correctly reduce the combined
+  // weight back into range if wrapping would be wrong.
+
+  // If RHS is zero then the weight didn't change.
+  if (RHS.isMinValue())
+    return;
+  // If LHS is zero then the combined weight is RHS.
+  if (LHS.isMinValue()) {
+    LHS = RHS;
+    return;
+  }
+  // From this point on we know that neither LHS nor RHS is zero.
+
+  if (Instruction::isIdempotent(Opcode)) {
+    // Idempotent means X op X === X, so any non-zero weight is equivalent to a
+    // weight of 1.  Keeping weights at zero or one also means that wrapping is
+    // not a problem.
+    assert(LHS == 1 && RHS == 1 && "Weights not reduced!");
+    return; // Return a weight of 1.
+  }
+  if (Instruction::isNilpotent(Opcode)) {
+    // Nilpotent means X op X === 0, so reduce weights modulo 2.
+    assert(LHS == 1 && RHS == 1 && "Weights not reduced!");
+    LHS = 0; // 1 + 1 === 0 modulo 2.
+    return;
+  }
+  if (Opcode == Instruction::Add) {
+    // TODO: Reduce the weight by exploiting nsw/nuw?
+    LHS += RHS;
+    return;
+  }
+
+  assert(Opcode == Instruction::Mul && "Unknown associative operation!");
+  unsigned Bitwidth = LHS.getBitWidth();
+  // If CM is the Carmichael number then a weight W satisfying W >= CM+Bitwidth
+  // can be replaced with W-CM.  That's because x^W=x^(W-CM) for every Bitwidth
+  // bit number x, since either x is odd in which case x^CM = 1, or x is even in
+  // which case both x^W and x^(W - CM) are zero.  By subtracting off multiples
+  // of CM like this weights can always be reduced to the range [0, CM+Bitwidth)
+  // which by a happy accident means that they can always be represented using
+  // Bitwidth bits.
+  // TODO: Reduce the weight by exploiting nsw/nuw?  (Could do much better than
+  // the Carmichael number).
+  if (Bitwidth > 3) {
+    /// CM - The value of Carmichael's lambda function.
+    APInt CM = APInt::getOneBitSet(Bitwidth, CarmichaelShift(Bitwidth));
+    // Any weight W >= Threshold can be replaced with W - CM.
+    APInt Threshold = CM + Bitwidth;
+    assert(LHS.ult(Threshold) && RHS.ult(Threshold) && "Weights not reduced!");
+    // For Bitwidth 4 or more the following sum does not overflow.
+    LHS += RHS;
+    while (LHS.uge(Threshold))
+      LHS -= CM;
+  } else {
+    // To avoid problems with overflow do everything the same as above but using
+    // a larger type.
+    unsigned CM = 1U << CarmichaelShift(Bitwidth);
+    unsigned Threshold = CM + Bitwidth;
+    assert(LHS.getZExtValue() < Threshold && RHS.getZExtValue() < Threshold &&
+           "Weights not reduced!");
+    unsigned Total = LHS.getZExtValue() + RHS.getZExtValue();
+    while (Total >= Threshold)
+      Total -= CM;
+    LHS = Total;
+  }
+}
+
+/// EvaluateRepeatedConstant - Compute C op C op ... op C where the constant C
+/// is repeated Weight times.
+static Constant *EvaluateRepeatedConstant(unsigned Opcode, Constant *C,
+                                          APInt Weight) {
+  // For addition the result can be efficiently computed as the product of the
+  // constant and the weight.
+  if (Opcode == Instruction::Add)
+    return ConstantExpr::getMul(C, ConstantInt::get(C->getContext(), Weight));
+
+  // The weight might be huge, so compute by repeated squaring to ensure that
+  // compile time is proportional to the logarithm of the weight.
+  Constant *Result = 0;
+  Constant *Power = C; // Successively C, C op C, (C op C) op (C op C) etc.
+  // Visit the bits in Weight.
+  while (Weight != 0) {
+    // If the current bit in Weight is non-zero do Result = Result op Power.
+    if (Weight[0])
+      Result = Result ? ConstantExpr::get(Opcode, Result, Power) : Power;
+    // Move on to the next bit if any more are non-zero.
+    Weight = Weight.lshr(1);
+    if (Weight.isMinValue())
+      break;
+    // Square the power.
+    Power = ConstantExpr::get(Opcode, Power, Power);
+  }
+
+  assert(Result && "Only positive weights supported!");
+  return Result;
+}
+
+typedef std::pair<Value*, APInt> RepeatedValue;
+
 /// LinearizeExprTree - Given an associative binary expression, return the leaf
-/// nodes in Ops.  The original expression is the same as Ops[0] op ... Ops[N].
-/// Note that a node may occur multiple times in Ops, but if so all occurrences
-/// are consecutive in the vector.
+/// nodes in Ops along with their weights (how many times the leaf occurs).  The
+/// original expression is the same as
+///   (Ops[0].first op Ops[0].first op ... Ops[0].first)  <- Ops[0].second times
+/// op 
+///   (Ops[1].first op Ops[1].first op ... Ops[1].first)  <- Ops[1].second times
+/// op
+///   ...
+/// op
+///   (Ops[N].first op Ops[N].first op ... Ops[N].first)  <- Ops[N].second times
+///
+/// Note that the values Ops[0].first, ..., Ops[N].first are all distinct, and
+/// they are all non-constant except possibly for the last one, which if it is
+/// constant will have weight one (Ops[N].second === 1).
+///
+/// This routine may modify the function, in which case it returns 'true'.  The
+/// changes it makes may well be destructive, changing the value computed by 'I'
+/// to something completely different.  Thus if the routine returns 'true' then
+/// you MUST either replace I with a new expression computed from the Ops array,
+/// or use RewriteExprTree to put the values back in.
 ///
 /// A leaf node is either not a binary operation of the same kind as the root
 /// node 'I' (i.e. is not a binary operator at all, or is, but with a different
@@ -298,7 +412,7 @@ static BinaryOperator *LowerNegateToMultiply(Instruction *Neg,
 ///                   +   *      |      F,  G
 ///
 /// The leaf nodes are C, E, F and G.  The Ops array will contain (maybe not in
-/// that order) C, E, F, F, G, G.
+/// that order) (C, 1), (E, 1), (F, 2), (G, 2).
 ///
 /// The expression is maximal: if some instruction is a binary operator of the
 /// same kind as 'I', and all of its uses are non-leaf nodes of the expression,
@@ -309,7 +423,8 @@ static BinaryOperator *LowerNegateToMultiply(Instruction *Neg,
 /// order to ensure that every non-root node in the expression has *exactly one*
 /// use by a non-leaf node of the expression.  This destruction means that the
 /// caller MUST either replace 'I' with a new expression or use something like
-/// RewriteExprTree to put the values back in.
+/// RewriteExprTree to put the values back in if the routine indicates that it
+/// made a change by returning 'true'.
 ///
 /// In the above example either the right operand of A or the left operand of B
 /// will be replaced by undef.  If it is B's operand then this gives:
@@ -332,9 +447,18 @@ static BinaryOperator *LowerNegateToMultiply(Instruction *Neg,
 /// of the expression) if it can turn them into binary operators of the right
 /// type and thus make the expression bigger.
 
-void Reassociate::LinearizeExprTree(BinaryOperator *I,
-                                    SmallVectorImpl<ValueEntry> &Ops) {
+static bool LinearizeExprTree(BinaryOperator *I,
+                              SmallVectorImpl<RepeatedValue> &Ops) {
   DEBUG(dbgs() << "LINEARIZE: " << *I << '\n');
+  unsigned Bitwidth = I->getType()->getScalarType()->getPrimitiveSizeInBits();
+  unsigned Opcode = I->getOpcode();
+  assert(Instruction::isAssociative(Opcode) &&
+         Instruction::isCommutative(Opcode) &&
+         "Expected an associative and commutative operation!");
+  // If we see an absorbing element then the entire expression must be equal to
+  // it.  For example, if this is a multiplication expression and zero occurs as
+  // an operand somewhere in it then the result of the expression must be zero.
+  Constant *Absorber = ConstantExpr::getBinOpAbsorber(Opcode, I->getType());
 
   // Visit all operands of the expression, keeping track of their weight (the
   // number of paths from the expression root to the operand, or if you like
@@ -346,9 +470,9 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
   // with their weights, representing a certain number of paths to the operator.
   // If an operator occurs in the worklist multiple times then we found multiple
   // ways to get to it.
-  SmallVector<std::pair<BinaryOperator*, unsigned>, 8> Worklist; // (Op, Weight)
-  Worklist.push_back(std::make_pair(I, 1));
-  unsigned Opcode = I->getOpcode();
+  SmallVector<std::pair<BinaryOperator*, APInt>, 8> Worklist; // (Op, Weight)
+  Worklist.push_back(std::make_pair(I, APInt(Bitwidth, 1)));
+  bool MadeChange = false;
 
   // Leaves of the expression are values that either aren't the right kind of
   // operation (eg: a constant, or a multiply in an add tree), or are, but have
@@ -365,7 +489,7 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
 
   // Leaves - Keeps track of the set of putative leaves as well as the number of
   // paths to each leaf seen so far.
-  typedef SmallMap<Value*, unsigned, 8> LeafMap;
+  typedef DenseMap<Value*, APInt> LeafMap;
   LeafMap Leaves; // Leaf -> Total weight so far.
   SmallVector<Value*, 8> LeafOrder; // Ensure deterministic leaf output order.
 
@@ -373,15 +497,21 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
   SmallPtrSet<Value*, 8> Visited; // For sanity checking the iteration scheme.
 #endif
   while (!Worklist.empty()) {
-    std::pair<BinaryOperator*, unsigned> P = Worklist.pop_back_val();
+    std::pair<BinaryOperator*, APInt> P = Worklist.pop_back_val();
     I = P.first; // We examine the operands of this binary operator.
-    assert(P.second >= 1 && "No paths to here, so how did we get here?!");
 
     for (unsigned OpIdx = 0; OpIdx < 2; ++OpIdx) { // Visit operands.
       Value *Op = I->getOperand(OpIdx);
-      unsigned Weight = P.second; // Number of paths to this operand.
+      APInt Weight = P.second; // Number of paths to this operand.
       DEBUG(dbgs() << "OPERAND: " << *Op << " (" << Weight << ")\n");
       assert(!Op->use_empty() && "No uses, so how did we get to it?!");
+
+      // If the expression contains an absorbing element then there is no need
+      // to analyze it further: it must evaluate to the absorbing element.
+      if (Op == Absorber && !Weight.isMinValue()) {
+        Ops.push_back(std::make_pair(Absorber, APInt(Bitwidth, 1)));
+        return MadeChange;
+      }
 
       // If this is a binary operation of the right kind with only one use then
       // add its operands to the expression.
@@ -411,7 +541,7 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
         assert(Visited.count(Op) && "In leaf map but not visited!");
 
         // Update the number of paths to the leaf.
-        It->second += Weight;
+        IncorporateWeight(It->second, Weight, Opcode);
 
         // The leaf already has one use from inside the expression.  As we want
         // exactly one such use, drop this new use of the leaf.
@@ -454,7 +584,7 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
       BinaryOperator *BO = dyn_cast<BinaryOperator>(Op);
       if (Opcode == Instruction::Mul && BO && BinaryOperator::isNeg(BO)) {
         DEBUG(dbgs() << "MORPH LEAF: " << *Op << " (" << Weight << ") TO ");
-        BO = LowerNegateToMultiply(BO, ValueRankMap);
+        BO = LowerNegateToMultiply(BO);
         DEBUG(dbgs() << *BO << 'n');
         Worklist.push_back(std::make_pair(BO, Weight));
         MadeChange = true;
@@ -472,21 +602,50 @@ void Reassociate::LinearizeExprTree(BinaryOperator *I,
 
   // The leaves, repeated according to their weights, represent the linearized
   // form of the expression.
+  Constant *Cst = 0; // Accumulate constants here.
   for (unsigned i = 0, e = LeafOrder.size(); i != e; ++i) {
     Value *V = LeafOrder[i];
     LeafMap::iterator It = Leaves.find(V);
     if (It == Leaves.end())
-      // Leaf already output, or node initially thought to be a leaf wasn't.
+      // Node initially thought to be a leaf wasn't.
       continue;
     assert(!isReassociableOp(V, Opcode) && "Shouldn't be a leaf!");
-    unsigned Weight = It->second;
-    assert(Weight > 0 && "No paths to this value!");
-    // FIXME: Rather than repeating values Weight times, use a vector of
-    // (ValueEntry, multiplicity) pairs.
-    Ops.append(Weight, ValueEntry(getRank(V), V));
+    APInt Weight = It->second;
+    if (Weight.isMinValue())
+      // Leaf already output or weight reduction eliminated it.
+      continue;
     // Ensure the leaf is only output once.
-    Leaves.erase(It);
+    It->second = 0;
+    // Glob all constants together into Cst.
+    if (Constant *C = dyn_cast<Constant>(V)) {
+      C = EvaluateRepeatedConstant(Opcode, C, Weight);
+      Cst = Cst ? ConstantExpr::get(Opcode, Cst, C) : C;
+      continue;
+    }
+    // Add non-constant
+    Ops.push_back(std::make_pair(V, Weight));
   }
+
+  // Add any constants back into Ops, all globbed together and reduced to having
+  // weight 1 for the convenience of users.
+  Constant *Identity = ConstantExpr::getBinOpIdentity(Opcode, I->getType());
+  if (Cst && Cst != Identity) {
+    // If combining multiple constants resulted in the absorber then the entire
+    // expression must evaluate to the absorber.
+    if (Cst == Absorber)
+      Ops.clear();
+    Ops.push_back(std::make_pair(Cst, APInt(Bitwidth, 1)));
+  }
+
+  // For nilpotent operations or addition there may be no operands, for example
+  // because the expression was "X xor X" or consisted of 2^Bitwidth additions:
+  // in both cases the weight reduces to 0 causing the value to be skipped.
+  if (Ops.empty()) {
+    assert(Identity && "Associative operation without identity!");
+    Ops.push_back(std::make_pair(Identity, APInt(Bitwidth, 1)));
+  }
+
+  return MadeChange;
 }
 
 // RewriteExprTree - Now that the operands for this expression tree are
@@ -624,7 +783,7 @@ void Reassociate::RewriteExprTree(BinaryOperator *I,
 
   // Throw away any left over nodes from the original expression.
   for (unsigned i = 0, e = NodesToRewrite.size(); i != e; ++i)
-    RemoveDeadBinaryOp(NodesToRewrite[i]);
+    RedoInsts.insert(NodesToRewrite[i]);
 }
 
 /// NegateValue - Insert instructions before the instruction pointed to by BI,
@@ -722,8 +881,7 @@ static bool ShouldBreakUpSubtract(Instruction *Sub) {
 /// BreakUpSubtract - If we have (X-Y), and if either X is an add, or if this is
 /// only used by an add, transform this into (X+(0-Y)) to promote better
 /// reassociation.
-static Instruction *BreakUpSubtract(Instruction *Sub,
-                         DenseMap<AssertingVH<Value>, unsigned> &ValueRankMap) {
+static BinaryOperator *BreakUpSubtract(Instruction *Sub) {
   // Convert a subtract into an add and a neg instruction. This allows sub
   // instructions to be commuted with other add instructions.
   //
@@ -731,15 +889,15 @@ static Instruction *BreakUpSubtract(Instruction *Sub,
   // and set it as the RHS of the add instruction we just made.
   //
   Value *NegVal = NegateValue(Sub->getOperand(1), Sub);
-  Instruction *New =
+  BinaryOperator *New =
     BinaryOperator::CreateAdd(Sub->getOperand(0), NegVal, "", Sub);
+  Sub->setOperand(0, Constant::getNullValue(Sub->getType())); // Drop use of op.
+  Sub->setOperand(1, Constant::getNullValue(Sub->getType())); // Drop use of op.
   New->takeName(Sub);
 
   // Everyone now refers to the add instruction.
-  ValueRankMap.erase(Sub);
   Sub->replaceAllUsesWith(New);
   New->setDebugLoc(Sub->getDebugLoc());
-  Sub->eraseFromParent();
 
   DEBUG(dbgs() << "Negated: " << *New << '\n');
   return New;
@@ -748,27 +906,17 @@ static Instruction *BreakUpSubtract(Instruction *Sub,
 /// ConvertShiftToMul - If this is a shift of a reassociable multiply or is used
 /// by one, change this into a multiply by a constant to assist with further
 /// reassociation.
-static Instruction *ConvertShiftToMul(Instruction *Shl,
-                         DenseMap<AssertingVH<Value>, unsigned> &ValueRankMap) {
-  // If an operand of this shift is a reassociable multiply, or if the shift
-  // is used by a reassociable multiply or add, turn into a multiply.
-  if (isReassociableOp(Shl->getOperand(0), Instruction::Mul) ||
-      (Shl->hasOneUse() &&
-       (isReassociableOp(Shl->use_back(), Instruction::Mul) ||
-        isReassociableOp(Shl->use_back(), Instruction::Add)))) {
-    Constant *MulCst = ConstantInt::get(Shl->getType(), 1);
-    MulCst = ConstantExpr::getShl(MulCst, cast<Constant>(Shl->getOperand(1)));
+static BinaryOperator *ConvertShiftToMul(Instruction *Shl) {
+  Constant *MulCst = ConstantInt::get(Shl->getType(), 1);
+  MulCst = ConstantExpr::getShl(MulCst, cast<Constant>(Shl->getOperand(1)));
 
-    Instruction *Mul =
-      BinaryOperator::CreateMul(Shl->getOperand(0), MulCst, "", Shl);
-    ValueRankMap.erase(Shl);
-    Mul->takeName(Shl);
-    Shl->replaceAllUsesWith(Mul);
-    Mul->setDebugLoc(Shl->getDebugLoc());
-    Shl->eraseFromParent();
-    return Mul;
-  }
-  return 0;
+  BinaryOperator *Mul =
+    BinaryOperator::CreateMul(Shl->getOperand(0), MulCst, "", Shl);
+  Shl->setOperand(0, UndefValue::get(Shl->getType())); // Drop use of op.
+  Mul->takeName(Shl);
+  Shl->replaceAllUsesWith(Mul);
+  Mul->setDebugLoc(Shl->getDebugLoc());
+  return Mul;
 }
 
 /// FindInOperandList - Scan backwards and forwards among values with the same
@@ -808,8 +956,15 @@ Value *Reassociate::RemoveFactorFromExpression(Value *V, Value *Factor) {
   BinaryOperator *BO = isReassociableOp(V, Instruction::Mul);
   if (!BO) return 0;
 
+  SmallVector<RepeatedValue, 8> Tree;
+  MadeChange |= LinearizeExprTree(BO, Tree);
   SmallVector<ValueEntry, 8> Factors;
-  LinearizeExprTree(BO, Factors);
+  Factors.reserve(Tree.size());
+  for (unsigned i = 0, e = Tree.size(); i != e; ++i) {
+    RepeatedValue E = Tree[i];
+    Factors.append(E.second.getZExtValue(),
+                   ValueEntry(getRank(E.first), E.first));
+  }
 
   bool FoundFactor = false;
   bool NeedsNegate = false;
@@ -841,7 +996,7 @@ Value *Reassociate::RemoveFactorFromExpression(Value *V, Value *Factor) {
   // If this was just a single multiply, remove the multiply and return the only
   // remaining operand.
   if (Factors.size() == 1) {
-    RemoveDeadBinaryOp(BO);
+    RedoInsts.insert(BO);
     V = Factors[0].Op;
   } else {
     RewriteExprTree(BO, Factors);
@@ -955,7 +1110,7 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
       // Now that we have inserted a multiply, optimize it. This allows us to
       // handle cases that require multiple factoring steps, such as this:
       // (X*2) + (X*2) + (X*2) -> (X*2)*3 -> X*6
-      RedoInsts.push_back(Mul);
+      RedoInsts.insert(cast<Instruction>(Mul));
 
       // If every add operand was a duplicate, return the multiply.
       if (Ops.empty())
@@ -1082,14 +1237,15 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
     // A*A*B + A*A*C   -->   A*(A*B+A*C)   -->   A*(A*(B+C))
     assert(NumAddedValues > 1 && "Each occurrence should contribute a value");
     (void)NumAddedValues;
-    RedoInsts.push_back(V);
+    if (Instruction *VI = dyn_cast<Instruction>(V))
+      RedoInsts.insert(VI);
 
     // Create the multiply.
-    Value *V2 = BinaryOperator::CreateMul(V, MaxOccVal, "tmp", I);
+    Instruction *V2 = BinaryOperator::CreateMul(V, MaxOccVal, "tmp", I);
 
     // Rerun associate on the multiply in case the inner expression turned into
     // a multiply.  We want to make sure that we keep things in canonical form.
-    RedoInsts.push_back(V2);
+    RedoInsts.insert(V2);
 
     // If every add operand included the factor (e.g. "A*B + A*C"), then the
     // entire result expression is just the multiply "A*(B+C)".
@@ -1223,8 +1379,9 @@ Value *Reassociate::buildMinimalMultiplyDAG(IRBuilder<> &Builder,
 
     // Reset the base value of the first factor to the new expression tree.
     // We'll remove all the factors with the same power in a second pass.
-    Factors[LastIdx].Base = buildMultiplyTree(Builder, InnerProduct);
-    RedoInsts.push_back(Factors[LastIdx].Base);
+    Value *M = Factors[LastIdx].Base = buildMultiplyTree(Builder, InnerProduct);
+    if (Instruction *MI = dyn_cast<Instruction>(M))
+      RedoInsts.insert(MI);
 
     LastIdx = Idx;
   }
@@ -1282,48 +1439,9 @@ Value *Reassociate::OptimizeExpression(BinaryOperator *I,
                                        SmallVectorImpl<ValueEntry> &Ops) {
   // Now that we have the linearized expression tree, try to optimize it.
   // Start by folding any constants that we found.
-  bool IterateOptimization = false;
   if (Ops.size() == 1) return Ops[0].Op;
 
   unsigned Opcode = I->getOpcode();
-
-  if (Constant *V1 = dyn_cast<Constant>(Ops[Ops.size()-2].Op))
-    if (Constant *V2 = dyn_cast<Constant>(Ops.back().Op)) {
-      Ops.pop_back();
-      Ops.back().Op = ConstantExpr::get(Opcode, V1, V2);
-      return OptimizeExpression(I, Ops);
-    }
-
-  // Check for destructive annihilation due to a constant being used.
-  if (ConstantInt *CstVal = dyn_cast<ConstantInt>(Ops.back().Op))
-    switch (Opcode) {
-    default: break;
-    case Instruction::And:
-      if (CstVal->isZero())                  // X & 0 -> 0
-        return CstVal;
-      if (CstVal->isAllOnesValue())          // X & -1 -> X
-        Ops.pop_back();
-      break;
-    case Instruction::Mul:
-      if (CstVal->isZero()) {                // X * 0 -> 0
-        ++NumAnnihil;
-        return CstVal;
-      }
-
-      if (cast<ConstantInt>(CstVal)->isOne())
-        Ops.pop_back();                      // X * 1 -> X
-      break;
-    case Instruction::Or:
-      if (CstVal->isAllOnesValue())          // X | -1 -> -1
-        return CstVal;
-      // FALLTHROUGH!
-    case Instruction::Add:
-    case Instruction::Xor:
-      if (CstVal->isZero())                  // X [|^+] 0 -> X
-        Ops.pop_back();
-      break;
-    }
-  if (Ops.size() == 1) return Ops[0].Op;
 
   // Handle destructive annihilation due to identities between elements in the
   // argument list here.
@@ -1348,50 +1466,77 @@ Value *Reassociate::OptimizeExpression(BinaryOperator *I,
     break;
   }
 
-  if (IterateOptimization || Ops.size() != NumOps)
+  if (Ops.size() != NumOps)
     return OptimizeExpression(I, Ops);
   return 0;
 }
 
-/// ReassociateInst - Inspect and reassociate the instruction at the
-/// given position, post-incrementing the position.
-void Reassociate::ReassociateInst(BasicBlock::iterator &BBI) {
-  Instruction *BI = BBI++;
-  if (BI->getOpcode() == Instruction::Shl &&
-      isa<ConstantInt>(BI->getOperand(1)))
-    if (Instruction *NI = ConvertShiftToMul(BI, ValueRankMap)) {
+/// EraseInst - Zap the given instruction, adding interesting operands to the
+/// work list.
+void Reassociate::EraseInst(Instruction *I) {
+  assert(isInstructionTriviallyDead(I) && "Trivially dead instructions only!");
+  SmallVector<Value*, 8> Ops(I->op_begin(), I->op_end());
+  // Erase the dead instruction.
+  ValueRankMap.erase(I);
+  I->eraseFromParent();
+  // Optimize its operands.
+  SmallPtrSet<Instruction *, 8> Visited; // Detect self-referential nodes.
+  for (unsigned i = 0, e = Ops.size(); i != e; ++i)
+    if (Instruction *Op = dyn_cast<Instruction>(Ops[i])) {
+      // If this is a node in an expression tree, climb to the expression root
+      // and add that since that's where optimization actually happens.
+      unsigned Opcode = Op->getOpcode();
+      while (Op->hasOneUse() && Op->use_back()->getOpcode() == Opcode &&
+             Visited.insert(Op))
+        Op = Op->use_back();
+      RedoInsts.insert(Op);
+    }
+}
+
+/// OptimizeInst - Inspect and optimize the given instruction. Note that erasing
+/// instructions is not allowed.
+void Reassociate::OptimizeInst(Instruction *I) {
+  // Only consider operations that we understand.
+  if (!isa<BinaryOperator>(I))
+    return;
+
+  if (I->getOpcode() == Instruction::Shl &&
+      isa<ConstantInt>(I->getOperand(1)))
+    // If an operand of this shift is a reassociable multiply, or if the shift
+    // is used by a reassociable multiply or add, turn into a multiply.
+    if (isReassociableOp(I->getOperand(0), Instruction::Mul) ||
+        (I->hasOneUse() &&
+         (isReassociableOp(I->use_back(), Instruction::Mul) ||
+          isReassociableOp(I->use_back(), Instruction::Add)))) {
+      Instruction *NI = ConvertShiftToMul(I);
+      RedoInsts.insert(I);
       MadeChange = true;
-      BI = NI;
+      I = NI;
     }
 
   // Floating point binary operators are not associative, but we can still
   // commute (some) of them, to canonicalize the order of their operands.
   // This can potentially expose more CSE opportunities, and makes writing
   // other transformations simpler.
-  if (isa<BinaryOperator>(BI) &&
-      (BI->getType()->isFloatingPointTy() || BI->getType()->isVectorTy())) {
+  if ((I->getType()->isFloatingPointTy() || I->getType()->isVectorTy())) {
     // FAdd and FMul can be commuted.
-    if (BI->getOpcode() != Instruction::FMul &&
-        BI->getOpcode() != Instruction::FAdd)
+    if (I->getOpcode() != Instruction::FMul &&
+        I->getOpcode() != Instruction::FAdd)
       return;
 
-    Value *LHS = BI->getOperand(0);
-    Value *RHS = BI->getOperand(1);
+    Value *LHS = I->getOperand(0);
+    Value *RHS = I->getOperand(1);
     unsigned LHSRank = getRank(LHS);
     unsigned RHSRank = getRank(RHS);
 
     // Sort the operands by rank.
     if (RHSRank < LHSRank) {
-      BI->setOperand(0, RHS);
-      BI->setOperand(1, LHS);
+      I->setOperand(0, RHS);
+      I->setOperand(1, LHS);
     }
 
     return;
   }
-
-  // Do not reassociate operations that we do not understand.
-  if (!isa<BinaryOperator>(BI))
-    return;
 
   // Do not reassociate boolean (i1) expressions.  We want to preserve the
   // original order of evaluation for short-circuited comparisons that
@@ -1399,55 +1544,62 @@ void Reassociate::ReassociateInst(BasicBlock::iterator &BBI) {
   // is not further optimized, it is likely to be transformed back to a
   // short-circuited form for code gen, and the source order may have been
   // optimized for the most likely conditions.
-  if (BI->getType()->isIntegerTy(1))
+  if (I->getType()->isIntegerTy(1))
     return;
 
   // If this is a subtract instruction which is not already in negate form,
   // see if we can convert it to X+-Y.
-  if (BI->getOpcode() == Instruction::Sub) {
-    if (ShouldBreakUpSubtract(BI)) {
-      BI = BreakUpSubtract(BI, ValueRankMap);
-      // Reset the BBI iterator in case BreakUpSubtract changed the
-      // instruction it points to.
-      BBI = BI;
-      ++BBI;
+  if (I->getOpcode() == Instruction::Sub) {
+    if (ShouldBreakUpSubtract(I)) {
+      Instruction *NI = BreakUpSubtract(I);
+      RedoInsts.insert(I);
       MadeChange = true;
-    } else if (BinaryOperator::isNeg(BI)) {
+      I = NI;
+    } else if (BinaryOperator::isNeg(I)) {
       // Otherwise, this is a negation.  See if the operand is a multiply tree
       // and if this is not an inner node of a multiply tree.
-      if (isReassociableOp(BI->getOperand(1), Instruction::Mul) &&
-          (!BI->hasOneUse() ||
-           !isReassociableOp(BI->use_back(), Instruction::Mul))) {
-        BI = LowerNegateToMultiply(BI, ValueRankMap);
+      if (isReassociableOp(I->getOperand(1), Instruction::Mul) &&
+          (!I->hasOneUse() ||
+           !isReassociableOp(I->use_back(), Instruction::Mul))) {
+        Instruction *NI = LowerNegateToMultiply(I);
+        RedoInsts.insert(I);
         MadeChange = true;
+        I = NI;
       }
     }
   }
 
-  // If this instruction is a commutative binary operator, process it.
-  if (!BI->isAssociative()) return;
-  BinaryOperator *I = cast<BinaryOperator>(BI);
+  // If this instruction is an associative binary operator, process it.
+  if (!I->isAssociative()) return;
+  BinaryOperator *BO = cast<BinaryOperator>(I);
 
   // If this is an interior node of a reassociable tree, ignore it until we
   // get to the root of the tree, to avoid N^2 analysis.
-  if (I->hasOneUse() && isReassociableOp(I->use_back(), I->getOpcode()))
+  if (BO->hasOneUse() && BO->use_back()->getOpcode() == BO->getOpcode())
     return;
 
   // If this is an add tree that is used by a sub instruction, ignore it
   // until we process the subtract.
-  if (I->hasOneUse() && I->getOpcode() == Instruction::Add &&
-      cast<Instruction>(I->use_back())->getOpcode() == Instruction::Sub)
+  if (BO->hasOneUse() && BO->getOpcode() == Instruction::Add &&
+      cast<Instruction>(BO->use_back())->getOpcode() == Instruction::Sub)
     return;
 
-  ReassociateExpression(I);
+  ReassociateExpression(BO);
 }
 
-Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
+void Reassociate::ReassociateExpression(BinaryOperator *I) {
 
   // First, walk the expression tree, linearizing the tree, collecting the
   // operand information.
+  SmallVector<RepeatedValue, 8> Tree;
+  MadeChange |= LinearizeExprTree(I, Tree);
   SmallVector<ValueEntry, 8> Ops;
-  LinearizeExprTree(I, Ops);
+  Ops.reserve(Tree.size());
+  for (unsigned i = 0, e = Tree.size(); i != e; ++i) {
+    RepeatedValue E = Tree[i];
+    Ops.append(E.second.getZExtValue(),
+               ValueEntry(getRank(E.first), E.first));
+  }
 
   DEBUG(dbgs() << "RAIn:\t"; PrintOps(I, Ops); dbgs() << '\n');
 
@@ -1462,15 +1614,18 @@ Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
   // OptimizeExpression - Now that we have the expression tree in a convenient
   // sorted form, optimize it globally if possible.
   if (Value *V = OptimizeExpression(I, Ops)) {
+    if (V == I)
+      // Self-referential expression in unreachable code.
+      return;
     // This expression tree simplified to something that isn't a tree,
     // eliminate it.
     DEBUG(dbgs() << "Reassoc to scalar: " << *V << '\n');
     I->replaceAllUsesWith(V);
     if (Instruction *VI = dyn_cast<Instruction>(V))
       VI->setDebugLoc(I->getDebugLoc());
-    RemoveDeadBinaryOp(I);
+    RedoInsts.insert(I);
     ++NumAnnihil;
-    return V;
+    return;
   }
 
   // We want to sink immediates as deeply as possible except in the case where
@@ -1488,46 +1643,53 @@ Value *Reassociate::ReassociateExpression(BinaryOperator *I) {
   DEBUG(dbgs() << "RAOut:\t"; PrintOps(I, Ops); dbgs() << '\n');
 
   if (Ops.size() == 1) {
+    if (Ops[0].Op == I)
+      // Self-referential expression in unreachable code.
+      return;
+
     // This expression tree simplified to something that isn't a tree,
     // eliminate it.
     I->replaceAllUsesWith(Ops[0].Op);
     if (Instruction *OI = dyn_cast<Instruction>(Ops[0].Op))
       OI->setDebugLoc(I->getDebugLoc());
-    RemoveDeadBinaryOp(I);
-    return Ops[0].Op;
+    RedoInsts.insert(I);
+    return;
   }
 
   // Now that we ordered and optimized the expressions, splat them back into
   // the expression tree, removing any unneeded nodes.
   RewriteExprTree(I, Ops);
-  return I;
 }
 
 bool Reassociate::runOnFunction(Function &F) {
-  // Recalculate the rank map for F
+  // Calculate the rank map for F
   BuildRankMap(F);
 
   MadeChange = false;
-  for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI)
-    for (BasicBlock::iterator BBI = FI->begin(); BBI != FI->end(); )
-      ReassociateInst(BBI);
+  for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
+    // Optimize every instruction in the basic block.
+    for (BasicBlock::iterator II = BI->begin(), IE = BI->end(); II != IE; )
+      if (isInstructionTriviallyDead(II)) {
+        EraseInst(II++);
+      } else {
+        OptimizeInst(II);
+        assert(II->getParent() == BI && "Moved to a different block!");
+        ++II;
+      }
 
-  // Now that we're done, revisit any instructions which are likely to
-  // have secondary reassociation opportunities.
-  while (!RedoInsts.empty())
-    if (Value *V = RedoInsts.pop_back_val()) {
-      BasicBlock::iterator BBI = cast<Instruction>(V);
-      ReassociateInst(BBI);
+    // If this produced extra instructions to optimize, handle them now.
+    while (!RedoInsts.empty()) {
+      Instruction *I = RedoInsts.pop_back_val();
+      if (isInstructionTriviallyDead(I))
+        EraseInst(I);
+      else
+        OptimizeInst(I);
     }
+  }
 
   // We are done with the rank map.
   RankMap.clear();
   ValueRankMap.clear();
-
-  // Now that we're done, delete any instructions which are no longer used.
-  while (!DeadInsts.empty())
-    if (Value *V = DeadInsts.pop_back_val())
-      RecursivelyDeleteTriviallyDeadInstructions(V);
 
   return MadeChange;
 }

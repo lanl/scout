@@ -62,7 +62,7 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
   MSStructHandler.reset(new PragmaMSStructHandler(actions));
   PP.AddPragmaHandler(MSStructHandler.get());
 
-  UnusedHandler.reset(new PragmaUnusedHandler(actions, *this));
+  UnusedHandler.reset(new PragmaUnusedHandler(actions));
   PP.AddPragmaHandler(UnusedHandler.get());
 
   WeakHandler.reset(new PragmaWeakHandler(actions));
@@ -71,12 +71,11 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
   RedefineExtnameHandler.reset(new PragmaRedefineExtnameHandler(actions));
   PP.AddPragmaHandler(RedefineExtnameHandler.get());
 
-  FPContractHandler.reset(new PragmaFPContractHandler(actions, *this));
+  FPContractHandler.reset(new PragmaFPContractHandler(actions));
   PP.AddPragmaHandler("STDC", FPContractHandler.get());
 
   if (getLangOpts().OpenCL) {
-    OpenCLExtensionHandler.reset(
-                  new PragmaOpenCLExtensionHandler(actions, *this));
+    OpenCLExtensionHandler.reset(new PragmaOpenCLExtensionHandler(actions));
     PP.AddPragmaHandler("OPENCL", OpenCLExtensionHandler.get());
 
     PP.AddPragmaHandler("OPENCL", FPContractHandler.get());
@@ -444,10 +443,6 @@ void Parser::Initialize() {
 
   // Prime the lexer look-ahead.
   ConsumeToken();
-
-  if (Tok.is(tok::eof) &&
-      !getLangOpts().CPlusPlus)  // Empty source file is an extension in C
-    Diag(Tok, diag::ext_empty_source_file);
 
   // Initialization for Objective-C context sensitive keywords recognition.
   // Referenced in Parser::ParseObjCTypeQualifierList.
@@ -2011,13 +2006,13 @@ bool Parser::isScoutVectorValueDecl(Decl* decl,
   return false;
 }
 
-bool Parser::BalancedDelimiterTracker::diagnoseOverflow() {
+bool BalancedDelimiterTracker::diagnoseOverflow() {
   P.Diag(P.Tok, diag::err_parser_impl_limit_overflow);
   P.SkipUntil(tok::eof);
   return true;  
 }
 
-bool Parser::BalancedDelimiterTracker::expectAndConsume(unsigned DiagID, 
+bool BalancedDelimiterTracker::expectAndConsume(unsigned DiagID,
                                             const char *Msg,
                                             tok::TokenKind SkipToToc ) {
   LOpen = P.Tok.getLocation();
@@ -2030,7 +2025,7 @@ bool Parser::BalancedDelimiterTracker::expectAndConsume(unsigned DiagID,
   return diagnoseOverflow();
 }
 
-bool Parser::BalancedDelimiterTracker::diagnoseMissingClose() {
+bool BalancedDelimiterTracker::diagnoseMissingClose() {
   assert(!P.Tok.is(Close) && "Should have consumed closing delimiter");
   
   const char *LHSName = "unknown";
@@ -2048,6 +2043,6 @@ bool Parser::BalancedDelimiterTracker::diagnoseMissingClose() {
   return true;
 }
 
-void Parser::BalancedDelimiterTracker::skipToEnd() {
+void BalancedDelimiterTracker::skipToEnd() {
   P.SkipUntil(Close, false);
 }

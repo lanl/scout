@@ -954,7 +954,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
            EDI != ED->enumerator_end(); ++EDI) {
         llvm::APSInt Val = EDI->getInitVal();
         AdjustAPSInt(Val, CondWidth, CondIsSigned);
-        EnumVals.push_back(std::make_pair(Val, &*EDI));
+        EnumVals.push_back(std::make_pair(Val, *EDI));
       }
       std::stable_sort(EnumVals.begin(), EnumVals.end(), CmpEnumVals);
       EnumValsTy::iterator EIend =
@@ -1123,18 +1123,15 @@ namespace {
     llvm::SmallPtrSet<VarDecl*, 8> &Decls;
     llvm::SmallVector<SourceRange, 10> &Ranges;
     bool Simple;
-    PartialDiagnostic &PDiag;
 public:
   typedef EvaluatedExprVisitor<DeclExtractor> Inherited;
 
   DeclExtractor(Sema &S, llvm::SmallPtrSet<VarDecl*, 8> &Decls,
-                llvm::SmallVector<SourceRange, 10> &Ranges,
-                PartialDiagnostic &PDiag) :
+                llvm::SmallVector<SourceRange, 10> &Ranges) :
       Inherited(S.Context),
       Decls(Decls),
       Ranges(Ranges),
-      Simple(true),
-      PDiag(PDiag) {}
+      Simple(true) {}
 
   bool isSimple() { return Simple; }
 
@@ -1203,7 +1200,6 @@ public:
   class DeclMatcher : public EvaluatedExprVisitor<DeclMatcher> {
     llvm::SmallPtrSet<VarDecl*, 8> &Decls;
     bool FoundDecl;
-    //bool EvalDecl;
 
 public:
   typedef EvaluatedExprVisitor<DeclMatcher> Inherited;
@@ -1281,7 +1277,7 @@ public:
     PartialDiagnostic PDiag = S.PDiag(diag::warn_variables_not_in_loop_body);
     llvm::SmallPtrSet<VarDecl*, 8> Decls;
     llvm::SmallVector<SourceRange, 10> Ranges;
-    DeclExtractor DE(S, Decls, Ranges, PDiag);
+    DeclExtractor DE(S, Decls, Ranges);
     DE.Visit(Second);
 
     // Don't analyze complex conditionals.
@@ -2677,6 +2673,15 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
       << InputExpr->getSourceRange();
     return StmtError();
   }
+
+  return Owned(NS);
+}
+
+StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc,
+                                std::string &AsmString,
+                                SourceLocation EndLoc) {
+  MSAsmStmt *NS =
+    new (Context) MSAsmStmt(Context, AsmLoc, AsmString, EndLoc);
 
   return Owned(NS);
 }

@@ -1371,15 +1371,15 @@ void Parser::ParseObjCClassInstanceVariables(Decl *interfaceDecl,
 ///     objc-protocol-forward-reference
 ///
 ///   objc-protocol-definition:
-///     @protocol identifier
+///     \@protocol identifier
 ///       objc-protocol-refs[opt]
 ///       objc-interface-decl-list
-///     @end
+///     \@end
 ///
 ///   objc-protocol-forward-reference:
-///     @protocol identifier-list ';'
+///     \@protocol identifier-list ';'
 ///
-///   "@protocol identifier ;" should be resolved as "@protocol
+///   "\@protocol identifier ;" should be resolved as "\@protocol
 ///   identifier-list ;": objc-interface-decl-list may not start with a
 ///   semicolon in the first alternative if objc-protocol-refs are omitted.
 Parser::DeclGroupPtrTy 
@@ -2139,7 +2139,7 @@ bool Parser::ParseObjCXXMessageReceiver(bool &IsExpr, void *&TypeOrExpr) {
       Tok.is(tok::kw_typename) || Tok.is(tok::annot_cxxscope))
     TryAnnotateTypeOrScopeToken();
 
-  if (!isCXXSimpleTypeSpecifier()) {
+  if (!Actions.isSimpleTypeSpecifier(Tok.getKind())) {
     //   objc-receiver:
     //     expression
     ExprResult Receiver = ParseExpression();
@@ -2754,7 +2754,7 @@ Parser::ParseObjCEncodeExpression(SourceLocation AtLoc) {
 }
 
 ///     objc-protocol-expression
-///       @protocol ( protocol-name )
+///       \@protocol ( protocol-name )
 ExprResult
 Parser::ParseObjCProtocolExpression(SourceLocation AtLoc) {
   SourceLocation ProtoLoc = ConsumeToken();

@@ -54,6 +54,9 @@ static bool CC_PPC_SVR4_Custom_AlignFPArgRegs(unsigned &ValNo, MVT &ValVT,
 static cl::opt<bool> DisablePPCPreinc("disable-ppc-preinc",
 cl::desc("disable preincrement load/store generation on PPC"), cl::Hidden);
 
+static cl::opt<bool> DisableILPPref("disable-ppc-ilp-pref",
+cl::desc("disable setting the node scheduling preference to ILP on PPC"), cl::Hidden);
+
 static TargetLoweringObjectFile *CreateTLOF(const PPCTargetMachine &TM) {
   if (TM.getSubtargetImpl()->isDarwin())
     return new TargetLoweringObjectFileMachO();
@@ -1102,7 +1105,15 @@ bool PPCTargetLowering::getPreIndexedAddressParts(SDNode *N, SDValue &Base,
   if (VT.isVector())
     return false;
 
-  // TODO: Check reg+reg first.
+  if (SelectAddressRegReg(Ptr, Offset, Base, DAG)) {
+    if (isa<StoreSDNode>(N)) {
+      AM = ISD::PRE_INC;
+      return true;
+    }
+
+    // FIXME: reg+reg preinc loads
+    return false;
+  }
 
   // LDU/STU use reg+imm*4, others use reg+imm.
   if (VT != MVT::i64) {
@@ -1239,9 +1250,9 @@ SDValue PPCTargetLowering::LowerGlobalTLSAddress(SDValue Op,
 
   if (model != TLSModel::LocalExec)
     llvm_unreachable("only local-exec TLS mode supported");
-  SDValue R13 = DAG.getRegister(is64bit ? PPC::X13 : PPC::R13,
-                                is64bit ? MVT::i64 : MVT::i32);
-  SDValue Hi = DAG.getNode(PPCISD::Hi, dl, PtrVT, TGAHi, R13);
+  SDValue TLSReg = DAG.getRegister(is64bit ? PPC::X13 : PPC::R2,
+                                   is64bit ? MVT::i64 : MVT::i32);
+  SDValue Hi = DAG.getNode(PPCISD::Hi, dl, PtrVT, TGAHi, TLSReg);
   return DAG.getNode(PPCISD::Lo, dl, PtrVT, TGALo, Hi);
 }
 
@@ -5871,10 +5882,9 @@ EVT PPCTargetLowering::getOptimalMemOpType(uint64_t Size,
 }
 
 Sched::Preference PPCTargetLowering::getSchedulingPreference(SDNode *N) const {
-  unsigned Directive = PPCSubTarget.getDarwinDirective();
-  if (Directive == PPC::DIR_440 || Directive == PPC::DIR_A2)
-    return Sched::ILP;
+  if (DisableILPPref)
+    return TargetLowering::getSchedulingPreference(N);
 
-  return TargetLowering::getSchedulingPreference(N);
+  return Sched::ILP;
 }
 

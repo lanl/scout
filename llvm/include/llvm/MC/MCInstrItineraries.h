@@ -62,7 +62,7 @@ struct InstrStage {
   };
 
   unsigned Cycles_;  ///< Length of stage in machine cycles
-  unsigned Units_;   ///< Choice of functional units
+  uint64_t Units_;   ///< Choice of functional units
   int NextCycles_;   ///< Number of machine cycles to next stage
   ReservationKinds Kind_; ///< Kind of the FU reservation
 
@@ -72,7 +72,7 @@ struct InstrStage {
   }
 
   /// getUnits - returns the choice of FUs
-  unsigned getUnits() const {
+  uint64_t getUnits() const {
     return Units_;
   }
 
@@ -111,6 +111,7 @@ struct InstrItineraryProps {
   // IssueWidth is the maximum number of instructions that may be scheduled in
   // the same per-cycle group.
   unsigned IssueWidth;
+  static const unsigned DefaultIssueWidth = 1;
 
   // MinLatency is the minimum latency between a register write
   // followed by a data dependent read. This determines which
@@ -133,12 +134,14 @@ struct InstrItineraryProps {
   //      Optional InstrItinerary OperandCycles provides expected latency.
   //      TODO: can't yet specify both min and expected latency per operand.
   int MinLatency;
+  static const unsigned DefaultMinLatency = -1;
 
   // LoadLatency is the expected latency of load instructions.
   //
   // If MinLatency >= 0, this may be overriden for individual load opcodes by
   // InstrItinerary OperandCycles.
   unsigned LoadLatency;
+  static const unsigned DefaultLoadLatency = 4;
 
   // HighLatency is the expected latency of "very high latency" operations.
   // See TargetInstrInfo::isHighLatencyDef().
@@ -146,9 +149,16 @@ struct InstrItineraryProps {
   // likely to have some impact on scheduling heuristics.
   // If MinLatency >= 0, this may be overriden by InstrItinData OperandCycles.
   unsigned HighLatency;
+  static const unsigned DefaultHighLatency = 10;
 
-  InstrItineraryProps(): IssueWidth(1), MinLatency(-1), LoadLatency(4),
-                         HighLatency(10) {}
+  // Default's must be specified as static const literals so that tablegenerated
+  // target code can use it in static initializers. The defaults need to be
+  // initialized in this default ctor because some clients directly instantiate
+  // InstrItineraryData instead of using a generated itinerary.
+  InstrItineraryProps(): IssueWidth(DefaultMinLatency),
+                         MinLatency(DefaultMinLatency),
+                         LoadLatency(DefaultLoadLatency),
+                         HighLatency(DefaultHighLatency) {}
 
   InstrItineraryProps(unsigned iw, int ml, unsigned ll, unsigned hl):
     IssueWidth(iw), MinLatency(ml), LoadLatency(ll), HighLatency(hl) {}
@@ -214,6 +224,12 @@ public:
   /// class.  The latency is the maximum completion time for any stage
   /// in the itinerary.
   ///
+  /// InstrStages override the itinerary's MinLatency property. In fact, if the
+  /// stage latencies, which may be zero, are less than MinLatency,
+  /// getStageLatency returns a value less than MinLatency.
+  ///
+  /// If no stages exist, MinLatency is used. If MinLatency is invalid (<0),
+  /// then it defaults to one cycle.
   unsigned getStageLatency(unsigned ItinClassIndx) const {
     // If the target doesn't provide itinerary information, use a simple
     // non-zero default value for all instructions.  Some target's provide a
@@ -222,7 +238,7 @@ public:
     // stage). This is different from beginStage == endStage != 0, which could
     // be used for zero-latency pseudo ops.
     if (isEmpty() || Itineraries[ItinClassIndx].FirstStage == 0)
-      return 1;
+      return (Props.MinLatency < 0) ? 1 : Props.MinLatency;
 
     // Calculate the maximum completion time for any stage.
     unsigned Latency = 0, StartCycle = 0;

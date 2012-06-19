@@ -88,7 +88,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>11</integer>
-// CHECK:            <key>col</key><integer>10</integer>
+// CHECK:            <key>col</key><integer>7</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -101,7 +101,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>12</integer>
-// CHECK:            <key>col</key><integer>5</integer>
+// CHECK:            <key>col</key><integer>6</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -122,7 +122,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>12</integer>
-// CHECK:            <key>col</key><integer>5</integer>
+// CHECK:            <key>col</key><integer>6</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -198,7 +198,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>14</integer>
-// CHECK:            <key>col</key><integer>5</integer>
+// CHECK:            <key>col</key><integer>10</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -219,7 +219,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>14</integer>
-// CHECK:            <key>col</key><integer>5</integer>
+// CHECK:            <key>col</key><integer>10</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -274,6 +274,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Division by zero</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>foo</string>
+// CHECK:   <key>issue_hash</key><integer>4</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>14</integer>
@@ -341,7 +342,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>18</integer>
-// CHECK:            <key>col</key><integer>1</integer>
+// CHECK:            <key>col</key><integer>4</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -396,6 +397,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Dereference of null pointer</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>has_bug</string>
+// CHECK:   <key>issue_hash</key><integer>1</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>19</integer>
@@ -420,7 +422,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>33</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>4</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -433,7 +435,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>33</integer>
-// CHECK:            <key>col</key><integer>9</integer>
+// CHECK:            <key>col</key><integer>8</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -483,7 +485,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>33</integer>
-// CHECK:            <key>col</key><integer>9</integer>
+// CHECK:            <key>col</key><integer>8</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -496,7 +498,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>36</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>4</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -517,7 +519,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>36</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>4</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -530,7 +532,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>37</integer>
-// CHECK:            <key>col</key><integer>5</integer>
+// CHECK:            <key>col</key><integer>16</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -594,7 +596,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>26</integer>
-// CHECK:            <key>col</key><integer>1</integer>
+// CHECK:            <key>col</key><integer>4</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -649,6 +651,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Dereference of null pointer</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>triggers_bug</string>
+// CHECK:   <key>issue_hash</key><integer>1</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>27</integer>
@@ -702,7 +705,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>45</integer>
-// CHECK:            <key>col</key><integer>8</integer>
+// CHECK:            <key>col</key><integer>5</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -856,7 +859,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>50</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>5</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -890,7 +893,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>50</integer>
-// CHECK:            <key>col</key><integer>41</integer>
+// CHECK:            <key>col</key><integer>12</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -945,6 +948,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Dereference of null pointer</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>test_block_ret</string>
+// CHECK:   <key>issue_hash</key><integer>2</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>51</integer>
@@ -969,7 +973,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>55</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>9</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -1003,7 +1007,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>56</integer>
-// CHECK:            <key>col</key><integer>17</integer>
+// CHECK:            <key>col</key><integer>3</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -1058,6 +1062,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Dereference of null pointer</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>test_block_blockvar</string>
+// CHECK:   <key>issue_hash</key><integer>3</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>57</integer>
@@ -1082,7 +1087,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>61</integer>
-// CHECK:            <key>col</key><integer>3</integer>
+// CHECK:            <key>col</key><integer>5</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -1116,7 +1121,7 @@ void test_block_arg() {
 // CHECK:           </dict>
 // CHECK:           <dict>
 // CHECK:            <key>line</key><integer>62</integer>
-// CHECK:            <key>col</key><integer>27</integer>
+// CHECK:            <key>col</key><integer>3</integer>
 // CHECK:            <key>file</key><integer>0</integer>
 // CHECK:           </dict>
 // CHECK:          </array>
@@ -1171,6 +1176,7 @@ void test_block_arg() {
 // CHECK:    <key>type</key><string>Dereference of null pointer</string>
 // CHECK:   <key>issue_context_kind</key><string>function</string>
 // CHECK:   <key>issue_context</key><string>test_block_arg</string>
+// CHECK:   <key>issue_hash</key><integer>3</integer>
 // CHECK:   <key>location</key>
 // CHECK:   <dict>
 // CHECK:    <key>line</key><integer>63</integer>

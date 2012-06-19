@@ -418,6 +418,8 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::Int_CVTPS2PDrr,  X86::Int_CVTPS2PDrm,      0 },
     { X86::CVTSD2SI64rr,    X86::CVTSD2SI64rm,        0 },
     { X86::CVTSD2SIrr,      X86::CVTSD2SIrm,          0 },
+    { X86::CVTSS2SI64rr,    X86::CVTSS2SI64rm,        0 },
+    { X86::CVTSS2SIrr,      X86::CVTSS2SIrm,          0 },
     { X86::Int_CVTSD2SSrr,  X86::Int_CVTSD2SSrm,      0 },
     { X86::Int_CVTSI2SD64rr,X86::Int_CVTSI2SD64rm,    0 },
     { X86::Int_CVTSI2SDrr,  X86::Int_CVTSI2SDrm,      0 },
@@ -502,6 +504,18 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::Int_VCVTPS2PDrr, X86::Int_VCVTPS2PDrm,     0 },
     { X86::Int_VUCOMISDrr,  X86::Int_VUCOMISDrm,      0 },
     { X86::Int_VUCOMISSrr,  X86::Int_VUCOMISSrm,      0 },
+    { X86::VCVTTSD2SI64rr,  X86::VCVTTSD2SI64rm,      0 },
+    { X86::Int_VCVTTSD2SI64rr,X86::Int_VCVTTSD2SI64rm,0 },
+    { X86::VCVTTSD2SIrr,    X86::VCVTTSD2SIrm,        0 },
+    { X86::Int_VCVTTSD2SIrr,X86::Int_VCVTTSD2SIrm,    0 },
+    { X86::VCVTTSS2SI64rr,  X86::VCVTTSS2SI64rm,      0 },
+    { X86::Int_VCVTTSS2SI64rr,X86::Int_VCVTTSS2SI64rm,0 },
+    { X86::VCVTTSS2SIrr,    X86::VCVTTSS2SIrm,        0 },
+    { X86::Int_VCVTTSS2SIrr,X86::Int_VCVTTSS2SIrm,    0 },
+    { X86::VCVTSD2SI64rr,   X86::VCVTSD2SI64rm,       0 },
+    { X86::VCVTSD2SIrr,     X86::VCVTSD2SIrm,         0 },
+    { X86::VCVTSS2SI64rr,   X86::VCVTSS2SI64rm,       0 },
+    { X86::VCVTSS2SIrr,     X86::VCVTSS2SIrm,         0 },
     { X86::FsVMOVAPDrr,     X86::VMOVSDrm,            TB_NO_REVERSE },
     { X86::FsVMOVAPSrr,     X86::VMOVSSrm,            TB_NO_REVERSE },
     { X86::VMOV64toPQIrr,   X86::VMOVQI2PQIrm,        0 },
@@ -810,16 +824,6 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::Int_VCVTSI2SSrr,   X86::Int_VCVTSI2SSrm,    0 },
     { X86::VCVTSS2SDrr,       X86::VCVTSS2SDrm,        0 },
     { X86::Int_VCVTSS2SDrr,   X86::Int_VCVTSS2SDrm,    0 },
-    { X86::VCVTTSD2SI64rr,    X86::VCVTTSD2SI64rm,     0 },
-    { X86::Int_VCVTTSD2SI64rr,X86::Int_VCVTTSD2SI64rm, 0 },
-    { X86::VCVTTSD2SIrr,      X86::VCVTTSD2SIrm,       0 },
-    { X86::Int_VCVTTSD2SIrr,  X86::Int_VCVTTSD2SIrm,   0 },
-    { X86::VCVTTSS2SI64rr,    X86::VCVTTSS2SI64rm,     0 },
-    { X86::Int_VCVTTSS2SI64rr,X86::Int_VCVTTSS2SI64rm, 0 },
-    { X86::VCVTTSS2SIrr,      X86::VCVTTSS2SIrm,       0 },
-    { X86::Int_VCVTTSS2SIrr,  X86::Int_VCVTTSS2SIrm,   0 },
-    { X86::VCVTSD2SI64rr,     X86::VCVTSD2SI64rm,      0 },
-    { X86::VCVTSD2SIrr,       X86::VCVTSD2SIrm,        0 },
     { X86::VCVTTPD2DQrr,      X86::VCVTTPD2DQrm,       TB_ALIGN_16 },
     { X86::VCVTTPS2DQrr,      X86::VCVTTPS2DQrm,       TB_ALIGN_16 },
     { X86::VRSQRTSSr,         X86::VRSQRTSSm,          0 },
@@ -2793,44 +2797,6 @@ void X86InstrInfo::loadRegFromAddr(MachineFunction &MF, unsigned DestReg,
   NewMIs.push_back(MIB);
 }
 
-bool X86InstrInfo::
-OptimizeSubInstr(MachineInstr *SubInstr, const MachineRegisterInfo *MRI) const {
-  // If destination is a memory operand, do not perform this optimization.
-  if ((SubInstr->getOpcode() != X86::SUB64rr) &&
-      (SubInstr->getOpcode() != X86::SUB32rr) &&
-      (SubInstr->getOpcode() != X86::SUB16rr) &&
-      (SubInstr->getOpcode() != X86::SUB8rr) &&
-      (SubInstr->getOpcode() != X86::SUB64ri32) &&
-      (SubInstr->getOpcode() != X86::SUB64ri8) &&
-      (SubInstr->getOpcode() != X86::SUB32ri) &&
-      (SubInstr->getOpcode() != X86::SUB32ri8) &&
-      (SubInstr->getOpcode() != X86::SUB16ri) &&
-      (SubInstr->getOpcode() != X86::SUB16ri8) &&
-      (SubInstr->getOpcode() != X86::SUB8ri))
-    return false;
-  unsigned DestReg = SubInstr->getOperand(0).getReg();
-  if (MRI->use_begin(DestReg) != MRI->use_end())
-    return false;
-
-  // There is no use of the destination register, we can replace SUB with CMP.
-  switch (SubInstr->getOpcode()) {
-    default: break;
-    case X86::SUB64rr:   SubInstr->setDesc(get(X86::CMP64rr));   break;
-    case X86::SUB32rr:   SubInstr->setDesc(get(X86::CMP32rr));   break;
-    case X86::SUB16rr:   SubInstr->setDesc(get(X86::CMP16rr));   break;
-    case X86::SUB8rr:    SubInstr->setDesc(get(X86::CMP8rr));    break;
-    case X86::SUB64ri32: SubInstr->setDesc(get(X86::CMP64ri32)); break;
-    case X86::SUB64ri8:  SubInstr->setDesc(get(X86::CMP64ri8));  break;
-    case X86::SUB32ri:   SubInstr->setDesc(get(X86::CMP32ri));   break;
-    case X86::SUB32ri8:  SubInstr->setDesc(get(X86::CMP32ri8));  break;
-    case X86::SUB16ri:   SubInstr->setDesc(get(X86::CMP16ri));   break;
-    case X86::SUB16ri8:  SubInstr->setDesc(get(X86::CMP16ri8));  break;
-    case X86::SUB8ri:    SubInstr->setDesc(get(X86::CMP8ri));    break;
-  }
-  SubInstr->RemoveOperand(0);
-  return true;
-}
-
 /// Expand2AddrUndef - Expand a single-def pseudo instruction to a two-addr
 /// instruction with two undef reads of the register being defined.  This is
 /// used for mapping:
@@ -4057,9 +4023,6 @@ namespace {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
-
-   private:
-    unsigned BaseReg;
   };
 }
 

@@ -224,9 +224,6 @@ public:
   /// \param Unexpanded The set of unexpanded parameter packs within the 
   /// pattern.
   ///
-  /// \param NumUnexpanded The number of unexpanded parameter packs in
-  /// \p Unexpanded.
-  ///
   /// \param ShouldExpand Will be set to \c true if the transformer should
   /// expand the corresponding pack expansions into separate arguments. When
   /// set, \c NumExpansions must also be set.
@@ -1186,7 +1183,17 @@ public:
                                   RParenLoc, MSAsm);
   }
 
-  /// \brief Build a new Objective-C @try statement.
+  /// \brief Build a new MS style inline asm statement.
+  ///
+  /// By default, performs semantic analysis to build the new statement.
+  /// Subclasses may override this routine to provide different behavior.
+  StmtResult RebuildMSAsmStmt(SourceLocation AsmLoc,
+                              std::string &AsmString,
+                              SourceLocation EndLoc) {
+    return getSema().ActOnMSAsmStmt(AsmLoc, AsmString, EndLoc);
+  }
+
+  /// \brief Build a new Objective-C \@try statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1210,7 +1217,7 @@ public:
                                             ExceptionDecl->getIdentifier());
   }
   
-  /// \brief Build a new Objective-C @catch statement.
+  /// \brief Build a new Objective-C \@catch statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1222,7 +1229,7 @@ public:
                                           Var, Body);
   }
   
-  /// \brief Build a new Objective-C @finally statement.
+  /// \brief Build a new Objective-C \@finally statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1231,7 +1238,7 @@ public:
     return getSema().ActOnObjCAtFinallyStmt(AtLoc, Body);
   }
   
-  /// \brief Build a new Objective-C @throw statement.
+  /// \brief Build a new Objective-C \@throw statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1240,7 +1247,7 @@ public:
     return getSema().BuildObjCAtThrowStmt(AtLoc, Operand);
   }
   
-  /// \brief Rebuild the operand to an Objective-C @synchronized statement.
+  /// \brief Rebuild the operand to an Objective-C \@synchronized statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1249,7 +1256,7 @@ public:
     return getSema().ActOnObjCAtSynchronizedOperand(atLoc, object);
   }
 
-  /// \brief Build a new Objective-C @synchronized statement.
+  /// \brief Build a new Objective-C \@synchronized statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -1258,7 +1265,7 @@ public:
     return getSema().ActOnObjCAtSynchronizedStmt(AtLoc, Object, Body);
   }
 
-  /// \brief Build a new Objective-C @autoreleasepool statement.
+  /// \brief Build a new Objective-C \@autoreleasepool statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
   /// Subclasses may override this routine to provide different behavior.
@@ -2268,7 +2275,7 @@ public:
     return getSema().BuildObjCDictionaryLiteral(Range, Elements, NumElements);
   }
   
-  /// \brief Build a new Objective-C @encode expression.
+  /// \brief Build a new Objective-C \@encode expression.
   ///
   /// By default, performs semantic analysis to build the new expression.
   /// Subclasses may override this routine to provide different behavior.
@@ -5665,6 +5672,14 @@ TreeTransform<Derived>::TransformAsmStmt(AsmStmt *S) {
                                      S->isMSAsm());
 }
 
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformMSAsmStmt(MSAsmStmt *S) {
+  // No need to transform the asm string literal.
+  return getDerived().RebuildMSAsmStmt(S->getAsmLoc(),
+                                       *S->getAsmString(),
+                                       S->getEndLoc());
+}
 
 template<typename Derived>
 StmtResult

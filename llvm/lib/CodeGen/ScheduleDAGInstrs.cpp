@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #define DEBUG_TYPE "sched-instrs"
-#include "RegisterPressure.h"
 #include "llvm/Operator.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -22,6 +21,7 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/CodeGen/RegisterPressure.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Target/TargetMachine.h"
@@ -47,7 +47,7 @@ ScheduleDAGInstrs::ScheduleDAGInstrs(MachineFunction &mf,
   : ScheduleDAG(mf), MLI(mli), MDT(mdt), MFI(mf.getFrameInfo()),
     InstrItins(mf.getTarget().getInstrItineraryData()), LIS(lis),
     IsPostRA(IsPostRAFlag), UnitLatencies(false), CanHandleTerminators(false),
-    LoopRegs(MLI, MDT), FirstDbgValue(0) {
+    LoopRegs(MDT), FirstDbgValue(0) {
   assert((IsPostRA || LIS) && "PreRA scheduling requires LiveIntervals");
   DbgValues.clear();
   assert(!(IsPostRA && MRI.getNumVirtRegs()) &&
@@ -271,10 +271,12 @@ void ScheduleDAGInstrs::addPhysRegDataDeps(SUnit *SU,
       // Adjust the dependence latency using operand def/use
       // information (if any), and then allow the target to
       // perform its own adjustments.
-      const SDep& dep = SDep(SU, SDep::Data, LDataLatency, *Alias);
+      SDep dep(SU, SDep::Data, LDataLatency, *Alias);
       if (!UnitLatencies) {
-        computeOperandLatency(SU, UseSU, const_cast<SDep &>(dep));
-        ST.adjustSchedDependency(SU, UseSU, const_cast<SDep &>(dep));
+        unsigned Latency = computeOperandLatency(SU, UseSU, dep);
+        dep.setLatency(Latency);
+
+        ST.adjustSchedDependency(SU, UseSU, dep);
       }
       UseSU->addPred(dep);
     }
@@ -411,8 +413,10 @@ void ScheduleDAGInstrs::addVRegDefDeps(SUnit *SU, unsigned OperIdx) {
 
   // SSA defs do not have output/anti dependencies.
   // The current operand is a def, so we have at least one.
-  if (llvm::next(MRI.def_begin(Reg)) == MRI.def_end())
-    return;
+  //
+  // FIXME: This optimization is disabled pending PR13112.
+  //if (llvm::next(MRI.def_begin(Reg)) == MRI.def_end())
+  //  return;
 
   // Add output dependence to the next nearest def of this vreg.
   //
@@ -461,11 +465,13 @@ void ScheduleDAGInstrs::addVRegUseDeps(SUnit *SU, unsigned OperIdx) {
       // Create a data dependence.
       //
       // TODO: Handle "special" address latencies cleanly.
-      const SDep &dep = SDep(DefSU, SDep::Data, DefSU->Latency, Reg);
+      SDep dep(DefSU, SDep::Data, DefSU->Latency, Reg);
       if (!UnitLatencies) {
         // Adjust the dependence latency using operand def/use information, then
         // allow the target to perform its own adjustments.
-        computeOperandLatency(DefSU, SU, const_cast<SDep &>(dep));
+        unsigned Latency = computeOperandLatency(DefSU, SU, const_cast<SDep &>(dep));
+        dep.setLatency(Latency);
+
         const TargetSubtargetInfo &ST = TM.getSubtarget<TargetSubtargetInfo>();
         ST.adjustSchedDependency(DefSU, SU, const_cast<SDep &>(dep));
       }
@@ -635,7 +641,8 @@ iterateChainSucc(AliasAnalysis *AA, const MachineFrameInfo *MFI,
 /// checks whether SU can be aliasing any node dominated
 /// by it.
 static void adjustChainDeps(AliasAnalysis *AA, const MachineFrameInfo *MFI,
-            SUnit *SU, SUnit *ExitSU, std::set<SUnit *> &CheckList) {
+                            SUnit *SU, SUnit *ExitSU, std::set<SUnit *> &CheckList,
+                            unsigned LatencyToLoad) {
   if (!SU)
     return;
 
@@ -646,9 +653,11 @@ static void adjustChainDeps(AliasAnalysis *AA, const MachineFrameInfo *MFI,
        I != IE; ++I) {
     if (SU == *I)
       continue;
-    if (MIsNeedChainEdge(AA, MFI, SU->getInstr(), (*I)->getInstr()))
-      (*I)->addPred(SDep(SU, SDep::Order, /*Latency=*/0, /*Reg=*/0,
+    if (MIsNeedChainEdge(AA, MFI, SU->getInstr(), (*I)->getInstr())) {
+      unsigned Latency = ((*I)->getInstr()->mayLoad()) ? LatencyToLoad : 0;
+      (*I)->addPred(SDep(SU, SDep::Order, Latency, /*Reg=*/0,
                          /*isNormalMemory=*/true));
+    }
     // Now go through all the chain successors and iterate from them.
     // Keep track of visited nodes.
     for (SUnit::const_succ_iterator J = (*I)->Succs.begin(),
@@ -811,8 +820,7 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
     // after stack slots are lowered to actual addresses.
     // TODO: Use an AliasAnalysis and do real alias-analysis queries, and
     // produce more precise dependence information.
-#define STORE_LOAD_LATENCY 1
-    unsigned TrueMemOrderLatency = 0;
+    unsigned TrueMemOrderLatency = MI->mayStore() ? 1 : 0;
     if (isGlobalMemoryObject(AA, MI)) {
       // Be conservative with these and add dependencies on all memory
       // references, even those that are known to not alias.
@@ -831,7 +839,8 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
       BarrierChain = SU;
       // This is a barrier event that acts as a pivotal node in the DAG,
       // so it is safe to clear list of exposed nodes.
-      adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes);
+      adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes,
+                      TrueMemOrderLatency);
       RejectMemNodes.clear();
       NonAliasMemDefs.clear();
       NonAliasMemUses.clear();
@@ -839,8 +848,13 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
       // fall-through
     new_alias_chain:
       // Chain all possibly aliasing memory references though SU.
-      if (AliasChain)
-        addChainDependency(AA, MFI, SU, AliasChain, RejectMemNodes);
+      if (AliasChain) {
+        unsigned ChainLatency = 0;
+        if (AliasChain->getInstr()->mayLoad())
+          ChainLatency = TrueMemOrderLatency;
+        addChainDependency(AA, MFI, SU, AliasChain, RejectMemNodes,
+                           ChainLatency);
+      }
       AliasChain = SU;
       for (unsigned k = 0, m = PendingLoads.size(); k != m; ++k)
         addChainDependency(AA, MFI, SU, PendingLoads[k], RejectMemNodes,
@@ -854,13 +868,13 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
           addChainDependency(AA, MFI, SU, I->second[i], RejectMemNodes,
                              TrueMemOrderLatency);
       }
-      adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes);
+      adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes,
+                      TrueMemOrderLatency);
       PendingLoads.clear();
       AliasMemDefs.clear();
       AliasMemUses.clear();
     } else if (MI->mayStore()) {
       bool MayAlias = true;
-      TrueMemOrderLatency = STORE_LOAD_LATENCY;
       if (const Value *V = getUnderlyingObjectForInstr(MI, MFI, MayAlias)) {
         // A store to a specific PseudoSourceValue. Add precise dependencies.
         // Record the def in MemDefs, first adding a dep if there is
@@ -901,7 +915,8 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
             addChainDependency(AA, MFI, SU, AliasChain, RejectMemNodes);
           // But we also should check dependent instructions for the
           // SU in question.
-          adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes);
+          adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes,
+                          TrueMemOrderLatency);
         }
         // Add dependence on barrier chain, if needed.
         // There is no point to check aliasing on barrier event. Even if
@@ -923,7 +938,6 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
                             /*isArtificial=*/true));
     } else if (MI->mayLoad()) {
       bool MayAlias = true;
-      TrueMemOrderLatency = 0;
       if (MI->isInvariantLoad(AA)) {
         // Invariant load, no chain dependencies needed!
       } else {
@@ -951,7 +965,7 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
           MayAlias = true;
         }
         if (MayAlias)
-          adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes);
+          adjustChainDeps(AA, MFI, SU, &ExitSU, RejectMemNodes, /*Latency=*/0);
         // Add dependencies on alias and barrier chains, if needed.
         if (MayAlias && AliasChain)
           addChainDependency(AA, MFI, SU, AliasChain, RejectMemNodes);
@@ -970,8 +984,9 @@ void ScheduleDAGInstrs::buildSchedGraph(AliasAnalysis *AA,
 }
 
 void ScheduleDAGInstrs::computeLatency(SUnit *SU) {
-  // Compute the latency for the node.
-  if (!InstrItins || InstrItins->isEmpty()) {
+  // Compute the latency for the node. We only provide a default for missing
+  // itineraries. Empty itineraries still have latency properties.
+  if (!InstrItins) {
     SU->Latency = 1;
 
     // Simplistic target-independent heuristic: assume that loads take
@@ -983,63 +998,15 @@ void ScheduleDAGInstrs::computeLatency(SUnit *SU) {
   }
 }
 
-void ScheduleDAGInstrs::computeOperandLatency(SUnit *Def, SUnit *Use,
-                                              SDep& dep) const {
-  if (!InstrItins || InstrItins->isEmpty())
-    return;
-
+unsigned ScheduleDAGInstrs::computeOperandLatency(SUnit *Def, SUnit *Use,
+                                                  const SDep& dep,
+                                                  bool FindMin) const {
   // For a data dependency with a known register...
   if ((dep.getKind() != SDep::Data) || (dep.getReg() == 0))
-    return;
+    return 1;
 
-  const unsigned Reg = dep.getReg();
-
-  // ... find the definition of the register in the defining
-  // instruction
-  MachineInstr *DefMI = Def->getInstr();
-  int DefIdx = DefMI->findRegisterDefOperandIdx(Reg);
-  if (DefIdx != -1) {
-    const MachineOperand &MO = DefMI->getOperand(DefIdx);
-    if (MO.isReg() && MO.isImplicit() &&
-        DefIdx >= (int)DefMI->getDesc().getNumOperands()) {
-      // This is an implicit def, getOperandLatency() won't return the correct
-      // latency. e.g.
-      //   %D6<def>, %D7<def> = VLD1q16 %R2<kill>, 0, ..., %Q3<imp-def>
-      //   %Q1<def> = VMULv8i16 %Q1<kill>, %Q3<kill>, ...
-      // What we want is to compute latency between def of %D6/%D7 and use of
-      // %Q3 instead.
-      unsigned Op2 = DefMI->findRegisterDefOperandIdx(Reg, false, true, TRI);
-      if (DefMI->getOperand(Op2).isReg())
-        DefIdx = Op2;
-    }
-    MachineInstr *UseMI = Use->getInstr();
-    // For all uses of the register, calculate the maxmimum latency
-    int Latency = -1;
-    if (UseMI) {
-      for (unsigned i = 0, e = UseMI->getNumOperands(); i != e; ++i) {
-        const MachineOperand &MO = UseMI->getOperand(i);
-        if (!MO.isReg() || !MO.isUse())
-          continue;
-        unsigned MOReg = MO.getReg();
-        if (MOReg != Reg)
-          continue;
-
-        int UseCycle = TII->getOperandLatency(InstrItins, DefMI, DefIdx,
-                                              UseMI, i);
-        Latency = std::max(Latency, UseCycle);
-      }
-    } else {
-      // UseMI is null, then it must be a scheduling barrier.
-      if (!InstrItins || InstrItins->isEmpty())
-        return;
-      unsigned DefClass = DefMI->getDesc().getSchedClass();
-      Latency = InstrItins->getOperandCycle(DefClass, DefIdx);
-    }
-
-    // If we found a latency, then replace the existing dependence latency.
-    if (Latency >= 0)
-      dep.setLatency(Latency);
-  }
+  return TII->computeOperandLatency(InstrItins, TRI, Def->getInstr(),
+                                    Use->getInstr(), dep.getReg(), FindMin);
 }
 
 void ScheduleDAGInstrs::dumpNode(const SUnit *SU) const {

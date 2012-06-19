@@ -73,7 +73,6 @@ class RAGreedy : public MachineFunctionPass,
 
   // analyses
   SlotIndexes *Indexes;
-  LiveStacks *LS;
   MachineDominatorTree *DomTree;
   MachineLoopInfo *Loops;
   EdgeBundles *Bundles;
@@ -338,6 +337,7 @@ void RAGreedy::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<AliasAnalysis>();
   AU.addPreserved<AliasAnalysis>();
   AU.addRequired<LiveIntervals>();
+  AU.addPreserved<LiveIntervals>();
   AU.addRequired<SlotIndexes>();
   AU.addPreserved<SlotIndexes>();
   AU.addRequired<LiveDebugVariables>();
@@ -1753,26 +1753,6 @@ bool RAGreedy::runOnMachineFunction(MachineFunction &mf) {
   GlobalCand.resize(32);  // This will grow as needed.
 
   allocatePhysRegs();
-  addMBBLiveIns(MF);
-  LIS->addKillFlags();
-
-  // Run rewriter
-  {
-    NamedRegionTimer T("Rewriter", TimerGroupName, TimePassesIsEnabled);
-    VRM->rewrite(Indexes);
-  }
-
-  // Write out new DBG_VALUE instructions.
-  {
-    NamedRegionTimer T("Emit Debug Info", TimerGroupName, TimePassesIsEnabled);
-    DebugVars->emitDebugValues(VRM);
-  }
-
-  // All machine operands and other references to virtual registers have been
-  // replaced. Remove the virtual registers and release all the transient data.
-  VRM->clearAllVirt();
-  MRI->clearVirtRegs();
   releaseMemory();
-
   return true;
 }

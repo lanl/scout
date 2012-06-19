@@ -28,6 +28,7 @@
 namespace clang {
   class PragmaHandler;
   class Scope;
+  class BalancedDelimiterTracker;
   class DeclGroupRef;
   class DiagnosticBuilder;
   class Parser;
@@ -83,6 +84,7 @@ class Parser : public CodeCompletionHandler {
   friend class InMessageExpressionRAIIObject;
   friend class PoisonSEHIdentifiersRAIIObject;
   friend class ParenBraceBracketBalancer;
+  friend class BalancedDelimiterTracker;
 
   Preprocessor &PP;
 
@@ -97,7 +99,7 @@ class Parser : public CodeCompletionHandler {
   SourceLocation PrevTokLocation;
 
   unsigned short ParenCount, BracketCount, BraceCount;
-
+  
   /// Actions - These are the callbacks we invoke as we parse various constructs
   /// in the file.
   Sema &Actions;
@@ -437,78 +439,6 @@ private:
     return PP.LookAhead(0);
   }
 
-  /// \brief RAII class that helps handle the parsing of an open/close delimiter
-  /// pair, such as braces { ... } or parentheses ( ... ).
-  class BalancedDelimiterTracker {
-    Parser& P;
-    tok::TokenKind Kind, Close;
-    SourceLocation (Parser::*Consumer)();
-    SourceLocation LOpen, LClose;
-
-    unsigned short &getDepth() {
-      switch (Kind) {
-      case tok::l_brace: return P.BraceCount;
-      case tok::l_square: return P.BracketCount;
-      case tok::l_paren: return P.ParenCount;
-      default: llvm_unreachable("Wrong token kind");
-      }
-    }
-    
-    enum { MaxDepth = 256 };
-    
-    bool diagnoseOverflow();
-    bool diagnoseMissingClose();
-    
-  public:
-    BalancedDelimiterTracker(Parser& p, tok::TokenKind k) : P(p), Kind(k) {
-      switch (Kind) {
-      default: llvm_unreachable("Unexpected balanced token");
-      case tok::l_brace:
-        Close = tok::r_brace; 
-        Consumer = &Parser::ConsumeBrace;
-        break;
-      case tok::l_paren:
-        Close = tok::r_paren; 
-        Consumer = &Parser::ConsumeParen;
-        break;
-        
-      case tok::l_square:
-        Close = tok::r_square; 
-        Consumer = &Parser::ConsumeBracket;
-        break;
-      }      
-    }
-
-    SourceLocation getOpenLocation() const { return LOpen; }
-    SourceLocation getCloseLocation() const { return LClose; }
-    SourceRange getRange() const { return SourceRange(LOpen, LClose); }
-
-    bool consumeOpen() {
-      if (!P.Tok.is(Kind))
-        return true;
-      
-      if (getDepth() < MaxDepth) {
-        LOpen = (P.*Consumer)();
-        return false;
-      }
-      
-      return diagnoseOverflow();
-    }
-    
-    bool expectAndConsume(unsigned DiagID,
-                          const char *Msg = "",
-                          tok::TokenKind SkipToTok = tok::unknown);
-    bool consumeClose() {
-      if (P.Tok.is(Close)) {
-        LClose = (P.*Consumer)();
-        return false;
-      } 
-
-      return diagnoseMissingClose();
-    }
-    void skipToEnd();
-  };
-
   /// getTypeAnnotation - Read a parsed type out of an annotation token.
   static ParsedType getTypeAnnotation(Token &Tok) {
     return ParsedType::getFromOpaquePtr(Tok.getAnnotationValue());
@@ -736,6 +666,9 @@ private:
 public:
   DiagnosticBuilder Diag(SourceLocation Loc, unsigned DiagID);
   DiagnosticBuilder Diag(const Token &Tok, unsigned DiagID);
+  DiagnosticBuilder Diag(unsigned DiagID) {
+    return Diag(Tok, DiagID);
+  }
 
 private:
   void SuggestParentheses(SourceLocation Loc, unsigned DK,
@@ -1289,6 +1222,8 @@ private:
   // C++ Expressions
   ExprResult ParseCXXIdExpression(bool isAddressOfOperand = false);
 
+  bool areTokensAdjacent(const Token &A, const Token &B);
+
   void CheckForTemplateAndDigraph(Token &Next, ParsedType ObjectTypePtr,
                                   bool EnteringContext, IdentifierInfo &II,
                                   CXXScopeSpec &SS);
@@ -1360,8 +1295,6 @@ private:
   //===--------------------------------------------------------------------===//
   // C++ 5.2.3: Explicit type conversion (functional notation)
   ExprResult ParseCXXTypeConstructExpression(const DeclSpec &DS);
-
-  bool isCXXSimpleTypeSpecifier() const;
 
   /// ParseCXXSimpleTypeSpecifier - [C++ 7.1.5.2] Simple type specifiers.
   /// This should only be called when the current token is known to be part of
@@ -1791,7 +1724,7 @@ private:
                              = Declarator::TypeNameContext,
                            AccessSpecifier AS = AS_none,
                            Decl **OwnedType = 0);
-  void ParseBlockId();
+  void ParseBlockId(SourceLocation CaretLoc);
 
   // Check for the start of a C++11 attribute-specifier-seq in a context where
   // an attribute is not allowed.
@@ -1870,7 +1803,14 @@ private:
   }
   void ParseMicrosoftAttributes(ParsedAttributes &attrs,
                                 SourceLocation *endLoc = 0);
-  void ParseMicrosoftDeclSpec(ParsedAttributes &attrs);
+  void ParseMicrosoftDeclSpec(ParsedAttributes &Attrs);
+  bool IsSimpleMicrosoftDeclSpec(IdentifierInfo *Ident);
+  void ParseComplexMicrosoftDeclSpec(IdentifierInfo *Ident, 
+                                     SourceLocation Loc,
+                                     ParsedAttributes &Attrs);
+  void ParseMicrosoftDeclSpecWithSingleArg(IdentifierInfo *AttrName, 
+                                           SourceLocation AttrNameLoc, 
+                                           ParsedAttributes &Attrs);
   void ParseMicrosoftTypeAttributes(ParsedAttributes &attrs);
   void ParseMicrosoftInheritanceClassAttributes(ParsedAttributes &attrs);
   void ParseBorlandTypeAttributes(ParsedAttributes &attrs);
