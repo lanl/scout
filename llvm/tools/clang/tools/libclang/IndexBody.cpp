@@ -173,6 +173,10 @@ public:
   bool TraverseRenderAllStmt(RenderAllStmt*){
     return true;
   }
+
+  bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){
+    return true;
+  }
 };
 
 } // anonymous namespace

@@ -2821,7 +2821,15 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     }
 
   }
-    
+
+  // Check if this is a volume renderall.  If the mesh is
+  // three-dimensional and has cells as the ForAllType,
+  // then we branch off here into other code to handle it.
+
+  if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
+    return(ParseVolumeRenderAll(attrs, MeshII, MVD, Op, LParenLoc, RParenLoc));
+  }
+
   SourceLocation BodyLoc = Tok.getLocation();
 
   StmtResult BodyResult(ParseStatement());
@@ -3269,4 +3277,44 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   }
 
   return ForAllArrayResult;
+}
+
+StmtResult Parser::ParseVolumeRenderAll(ParsedAttributes &attrs,
+    IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
+    SourceLocation OpLParenLoc, SourceLocation OpRParenLoc){
+
+  ParseScope CompoundScope(this, Scope::DeclScope);
+  StmtVector Stmts(Actions);
+  StmtResult R;
+  assert(Tok.is(tok::l_brace));
+  SourceLocation LBraceLoc = Tok.getLocation();
+  PrettyStackTraceLoc CrashInfo(PP.getSourceManager(),
+      Tok.getLocation(),
+      "in volume renderall statement ('{}')");
+
+  // Now parse Body for transfer function closure.
+  // We want to parse it here -- will give correct line numbers
+  // for errors and warnings if we do so.
+  StmtResult BodyResult(ParseStatement());
+
+  // Not sure why it doesn't deem it invalid when an error is 
+  // found in ParseStatement
+
+  // We end up getting an error and warning later, since it doesn't seem to 
+  // return here as I would expect.
+  if(BodyResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_renderall_body);
+    SkipUntil(tok::r_brace);
+    return StmtError();
+  }
+
+  class CompoundStmt* compoundStmt;
+  compoundStmt = dyn_cast<class CompoundStmt>(BodyResult.get());
+  SourceLocation RBraceLoc = compoundStmt->getRBracLoc();
+
+  // TBD do more in here
+
+  return Actions.ActOnVolumeRenderAllStmt(LBraceLoc, RBraceLoc, MeshII, MVD,
+      move_arg(Stmts), false);
+
 }

@@ -182,6 +182,10 @@ void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) {
 
 }
 
+void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+
+}
+
 void ASTStmtWriter::VisitGotoStmt(GotoStmt *S) {
   VisitStmt(S);
   Writer.AddDeclRef(S->getLabel(), Record);

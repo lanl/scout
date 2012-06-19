@@ -147,6 +147,10 @@ void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
   VisitStmt(S);
 }
 
+void StmtProfiler::VisitVolumeRenderAllStmt(const VolumeRenderAllStmt *S) {
+    VisitStmt(S);
+}
+
 void StmtProfiler::VisitForStmt(const ForStmt *S) {
   VisitStmt(S);
 }

@@ -2094,7 +2094,10 @@ private:
   StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
                                        SourceLocation NameLoc,
                                        VarDecl* VD);
-  
+  StmtResult ParseVolumeRenderAll(ParsedAttributes &attrs,
+      IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
+      SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
+
   bool ParseMeshSpecifier(DeclSpec &DS);
   
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);

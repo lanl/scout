@@ -547,13 +547,14 @@ public:
 
 /// CompoundStmt - This represents a group of statements like { stmt stmt }.
 ///
+/// scout -- modified constructor args
 class CompoundStmt : public Stmt {
   Stmt** Body;
   SourceLocation LBracLoc, RBracLoc;
 public:
   CompoundStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
-               SourceLocation LB, SourceLocation RB)
-  : Stmt(CompoundStmtClass), LBracLoc(LB), RBracLoc(RB) {
+               SourceLocation LB, SourceLocation RB, StmtClass SC = CompoundStmtClass)
+    : Stmt(SC), LBracLoc(LB), RBracLoc(RB) {
     CompoundStmtBits.NumStmts = NumStmts;
     assert(CompoundStmtBits.NumStmts == NumStmts &&
            "NumStmts doesn't fit in bits of CompoundStmtBits.NumStmts!");
@@ -2192,7 +2193,79 @@ public:
   static bool classof(const ForAllArrayStmt *) { return true; }
     
 };
-  
+
+/// scout 
+/// VolumeRenderAllStmt - This represents a group of statements like { stmt stmt }.
+/// that work together to perform functionality required to render a volume
+class VolumeRenderAllStmt : public CompoundStmt {
+  enum {OP, BODY, END_EXPR};
+
+  IdentifierInfo* MeshII;
+  VarDecl* MeshVarDecl;
+  SourceLocation LParenLoc, RParenLoc;
+  Stmt* SubExprs[END_EXPR];
+
+  public:
+  VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
+      SourceLocation LB, SourceLocation RB,  IdentifierInfo* MII, VarDecl* MVD);
+
+  static bool classof(const CompoundStmt *T) 
+  { return (T->getStmtClass() == VolumeRenderAllStmtClass); }
+  static bool classof(const VolumeRenderAllStmt *) { return true; }
+  static bool classof(const Stmt *T) 
+  { return (T->getStmtClass() == VolumeRenderAllStmtClass);}
+
+  const MeshType *getMeshType() const {
+    return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());
+  }
+
+  const IdentifierInfo* getMesh() const {
+    return MeshII;
+  }
+
+  IdentifierInfo* getMesh(){
+    return MeshII;
+  }
+
+  void setMesh(IdentifierInfo* II){
+    MeshII = II;
+  }
+
+  VarDecl* getMeshVarDecl(){
+    return MeshVarDecl;
+  }
+
+  const VarDecl* getMeshVarDecl() const{
+    return MeshVarDecl;
+  }
+
+  Expr* getOp(){
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  const Expr* getOp() const{
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  void setOp(Expr* O){
+    SubExprs[OP] = reinterpret_cast<Stmt*>(O);
+  }
+
+  Stmt* getBody(){
+    return SubExprs[BODY];
+  }
+
+  const Stmt* getBody() const{
+    return SubExprs[BODY];
+  }
+
+  void setBody(Stmt* B){
+    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+
+};
+
+
 }  // end namespace clang
 
 #endif

@@ -3269,6 +3269,114 @@ namespace{
 
 } // end namespace
 
+namespace {
+  // scout
+  class VolumeRenderAllVisitor : public StmtVisitor<VolumeRenderAllVisitor> {
+    public:
+      VolumeRenderAllVisitor() {}
+      void VisitStmt(Stmt* S){
+        VisitChildren(S);
+      }
+      void VisitIfStmt(IfStmt* S){}
+      void VisitBinaryOperator(BinaryOperator* S){}
+      void VisitChildren(Stmt* S){}
+#ifdef NOTYET
+      VolumeRenderAllVisitor()
+        foundColorAssign_(false){
+
+          for(size_t i = 0; i < 4; ++i){
+            foundComponentAssign_[i] = false;
+          }
+
+        }
+
+      void VisitStmt(Stmt* S){
+        VisitChildren(S);
+      }
+
+      void VisitIfStmt(IfStmt* S){
+        size_t ic = 0;
+        for(Stmt::child_iterator I = S->child_begin(),
+            E = S->child_end(); I != E; ++I){
+
+
+          if(Stmt* child = *I){
+            if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
+              RenderAllVisitor v;
+              v.Visit(child);
+              if(v.foundColorAssign()){
+                foundColorAssign_ = true;
+              }
+              else{
+                foundColorAssign_ = false;
+                break;
+              }
+            }
+            else{
+              Visit(child);
+            }
+            ++ic;
+          }
+        }
+        if(ic == 2){
+          foundColorAssign_ = false;
+        }
+      }
+
+      void VisitBinaryOperator(BinaryOperator* S){
+        if(S->getOpcode() == BO_Assign){
+          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
+            if(dr->getDecl()->getName().str() == "color"){
+              foundColorAssign_ = true;
+            }
+          }
+          else if(ScoutVectorMemberExpr* vm =
+              dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
+
+            if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
+              if(dr->getDecl()->getName().str() == "color"){
+                foundComponentAssign_[vm->getIdx()] = true;
+              }
+            }
+          }
+        }
+        else{
+          VisitChildren(S);
+        }
+      }
+
+      void VisitChildren(Stmt* S){
+        for(Stmt::child_iterator I = S->child_begin(),
+            E = S->child_end(); I != E; ++I){
+          if(Stmt* child = *I){
+            Visit(child);
+          }
+        }
+      }
+
+      bool foundColorAssign(){
+        if(foundColorAssign_){
+          return true;
+        }
+
+        for(size_t i = 0; i < 4; ++i){
+          if(!foundComponentAssign_[i]){
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+    private:
+      bool foundColorAssign_;
+      bool foundComponentAssign_[4];
+#endif
+  };
+
+} // end namespace
+
+
 StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
                                     ForAllStmt::ForAllType Type,
                                     const MeshType *MT,
@@ -3547,6 +3655,45 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
   SCLStack.push_back(D);
   
   return MT;
+}
+
+StmtResult
+Sema::ActOnVolumeRenderAllStmt(SourceLocation L, SourceLocation R,
+        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, bool isStmtExpr)
+{
+
+  unsigned NumElts = elts.size();
+  Stmt **Elts = reinterpret_cast<Stmt**>(elts.release());
+  // If we're in C89 mode, check that we don't have any decls after stmts.  If
+  // so, emit an extension diagnostic.
+  if (!getLangOpts().C99 && !getLangOpts().CPlusPlus) {
+    // Note that __extension__ can be around a decl.
+    unsigned i = 0;
+    // Skip over all declarations.
+    for (; i != NumElts && isa<DeclStmt>(Elts[i]); ++i)
+      /*empty*/;
+
+    // We found the end of the list or a statement.  Scan for another declstmt.
+    for (; i != NumElts && !isa<DeclStmt>(Elts[i]); ++i)
+      /*empty*/;
+
+    if (i != NumElts) {
+      Decl *D = *cast<DeclStmt>(Elts[i])->decl_begin();
+      Diag(D->getLocation(), diag::ext_mixed_decls_code);
+    }
+  }
+  // Warn about unused expressions in statements.
+  for (unsigned i = 0; i != NumElts; ++i) {
+    // Ignore statements that are last in a statement expression.
+    if (isStmtExpr && i == NumElts - 1)
+      continue;
+    DiagnoseUnusedExprResult(Elts[i]);
+  }
+
+  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
+      NumElts, L, R, MII, MVD);
+
+  return Owned(vrs);
 }
 
 StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,

@@ -5520,6 +5520,14 @@ TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
   R.set(S);
   return R;
 }
+
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
   
 template<typename Derived>
 StmtResult

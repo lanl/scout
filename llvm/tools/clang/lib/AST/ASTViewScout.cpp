@@ -319,7 +319,7 @@ namespace{
   // highlighting/coloring them
   bool isScoutASTNode(const string& name){
     return name == "ForAllStmt" || name == "RenderAllStmt" || 
-    name == "ScoutVectorMemberExpr";
+    name == "ScoutVectorMemberExpr" || name == "VolumeRenderAllStmt";
   }
   
   // output the nodes in the GraphViz graph, initially passed

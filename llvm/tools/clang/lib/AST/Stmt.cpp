@@ -961,3 +961,12 @@ ElementColor(0),
 ElementRadius(0){
   
 }
+
+VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, 
+    unsigned NumStmts, SourceLocation LB, SourceLocation RB, 
+    IdentifierInfo* MII, VarDecl* MVD)
+  : CompoundStmt(C, StmtStart, NumStmts, LB, RB, VolumeRenderAllStmtClass),
+    MeshII(MII), MeshVarDecl(MVD) {
+
+  }
+

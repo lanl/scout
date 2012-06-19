@@ -2073,6 +2073,9 @@ public:
   void EmitForAllStmt(const ForAllStmt &S);
   void EmitForAllArrayStmt(const ForAllArrayStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
+  RValue EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S, 
+      bool GetLast = false, AggValueSlot AVS = AggValueSlot::ignored());
+
 
   void insertMeshDump(llvm::Value* baseAddr);
   

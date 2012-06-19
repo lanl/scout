@@ -1896,7 +1896,8 @@ DEF_TRAVERSE_STMT(ForStmt, { })
 DEF_TRAVERSE_STMT(ForAllStmt, { })
 DEF_TRAVERSE_STMT(ForAllArrayStmt, { })
 DEF_TRAVERSE_STMT(RenderAllStmt, { })  
-  
+DEF_TRAVERSE_STMT(VolumeRenderAllStmt, { })
+
 DEF_TRAVERSE_STMT(GotoStmt, { })
 DEF_TRAVERSE_STMT(IfStmt, { })
 DEF_TRAVERSE_STMT(IndirectGotoStmt, { })

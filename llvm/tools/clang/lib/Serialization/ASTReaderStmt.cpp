@@ -250,6 +250,11 @@ void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
 
 }
 
+void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+
+}
+
+
 void ASTStmtReader::VisitGotoStmt(GotoStmt *S) {
   VisitStmt(S);
   S->setLabel(ReadDeclAs<LabelDecl>(Record, Idx));

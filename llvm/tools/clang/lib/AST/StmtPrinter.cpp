@@ -306,6 +306,10 @@ void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
   
 }
 
+void StmtPrinter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *Node) {
+
+}
+
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
   Indent() << "for (";
   if (DeclStmt *DS = dyn_cast<DeclStmt>(Node->getElement()))

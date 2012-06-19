@@ -23,6 +23,7 @@ def ForStmt : Stmt;
 def ForAllStmt : Stmt;
 def ForAllArrayStmt : DStmt<ForAllStmt>;
 def RenderAllStmt : DStmt<ForAllStmt>;
+def VolumeRenderAllStmt : DStmt<CompoundStmt>;
 
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;

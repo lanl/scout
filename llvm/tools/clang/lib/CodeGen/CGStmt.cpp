@@ -150,6 +150,10 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
     EmitRenderAllStmt(cast<RenderAllStmt>(*S));
     break;
 
+  case Stmt::VolumeRenderAllStmtClass:
+    EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S)); 
+    break;
+
   case Stmt::ForStmtClass:      EmitForStmt(cast<ForStmt>(*S));           break;
 
   case Stmt::ReturnStmtClass:   EmitReturnStmt(cast<ReturnStmt>(*S));     break;
@@ -1214,6 +1218,10 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   RenderAll = 1;
   EmitForAllStmtWrapper(cast<ForAllStmt>(S));
   RenderAll = 0;
+}
+
+RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S, 
+    bool GetLast, AggValueSlot AggSlot) {
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
