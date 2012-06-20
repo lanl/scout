@@ -209,10 +209,6 @@ static void CodeGenOptsToArgs(const CodeGenOptions &Opts, ToArgsList &Res) {
     Res.push_back("-fdebug-compilation-dir", Opts.DebugCompilationDir);
   if (!Opts.DwarfDebugFlags.empty())
     Res.push_back("-dwarf-debug-flags", Opts.DwarfDebugFlags);
-  if (Opts.ObjCRuntimeHasARC)
-    Res.push_back("-fobjc-runtime-has-arc");
-  if (Opts.ObjCRuntimeHasTerminate)
-    Res.push_back("-fobjc-runtime-has-terminate");
   if (Opts.EmitGcovArcs)
     Res.push_back("-femit-coverage-data");
   if (Opts.EmitGcovNotes)
@@ -689,8 +685,6 @@ static void LangOptsToArgs(const LangOptions &Opts, ToArgsList &Res) {
     Res.push_back("-fmsc-version=" + llvm::utostr(Opts.MSCVersion));
   if (Opts.Borland)
     Res.push_back("-fborland-extensions");
-  if (!Opts.ObjCNonFragileABI)
-    Res.push_back("-fobjc-fragile-abi");
   if (Opts.ObjCDefaultSynthProperties)
     Res.push_back("-fobjc-default-synthesize-properties");
   // NoInline is implicit.
@@ -726,8 +720,6 @@ static void LangOptsToArgs(const LangOptions &Opts, ToArgsList &Res) {
     Res.push_back("-fno-rtti");
   if (Opts.MSBitfields)
     Res.push_back("-mms-bitfields");
-  if (!Opts.NeXTRuntime)
-    Res.push_back("-fgnu-runtime");
   if (Opts.Freestanding)
     Res.push_back("-ffreestanding");
   if (Opts.NoBuiltin)
@@ -797,6 +789,7 @@ static void LangOptsToArgs(const LangOptions &Opts, ToArgsList &Res) {
       Res.push_back("-fobjc-gc-only");
     }
   }
+  Res.push_back("-fobjc-runtime=" + Opts.ObjCRuntime.getAsString());
   if (Opts.ObjCAutoRefCount)
     Res.push_back("-fobjc-arc");
   if (Opts.ObjCRuntimeHasWeak)
@@ -1217,8 +1210,6 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.AsmVerbose = Args.hasArg(OPT_masm_verbose);
   Opts.ObjCAutoRefCountExceptions = Args.hasArg(OPT_fobjc_arc_exceptions);
-  Opts.ObjCRuntimeHasARC = Args.hasArg(OPT_fobjc_runtime_has_arc);
-  Opts.ObjCRuntimeHasTerminate = Args.hasArg(OPT_fobjc_runtime_has_terminate);
   Opts.CUDAIsDevice = Args.hasArg(OPT_fcuda_is_device);
   Opts.CXAAtExit = !Args.hasArg(OPT_fno_use_cxa_atexit);
   Opts.CXXCtorDtorAliases = Args.hasArg(OPT_mconstructor_aliases);
@@ -1893,13 +1884,24 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     }
   }
 
+  // -cl-std only applies for OpenCL language standards.
+  // Override the -std option in this case.
   if (const Arg *A = Args.getLastArg(OPT_cl_std_EQ)) {
-    if (strcmp(A->getValue(Args), "CL1.1") != 0) {
+    LangStandard::Kind OpenCLLangStd
+    = llvm::StringSwitch<LangStandard::Kind>(A->getValue(Args))
+    .Case("CL", LangStandard::lang_opencl)
+    .Case("CL1.1", LangStandard::lang_opencl11)
+    .Case("CL1.2", LangStandard::lang_opencl12)
+    .Default(LangStandard::lang_unspecified);
+    
+    if (OpenCLLangStd == LangStandard::lang_unspecified) {
       Diags.Report(diag::err_drv_invalid_value)
-        << A->getAsString(Args) << A->getValue(Args);
+      << A->getAsString(Args) << A->getValue(Args);
     }
+    else
+      LangStd = OpenCLLangStd;
   }
-
+  
   CompilerInvocation::setLangDefaults(Opts, IK, LangStd);
 
   // We abuse '-f[no-]gnu-keywords' to force overriding all GNU-extension
@@ -1914,16 +1916,23 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
     Opts.CXXOperatorNames = 0;
 
   if (Opts.ObjC1) {
+    if (Arg *arg = Args.getLastArg(OPT_fobjc_runtime_EQ)) {
+      StringRef value = arg->getValue(Args);
+      if (Opts.ObjCRuntime.tryParse(value))
+        Diags.Report(diag::err_drv_unknown_objc_runtime) << value;
+    }
+
     if (Args.hasArg(OPT_fobjc_gc_only))
       Opts.setGC(LangOptions::GCOnly);
     else if (Args.hasArg(OPT_fobjc_gc))
       Opts.setGC(LangOptions::HybridGC);
     else if (Args.hasArg(OPT_fobjc_arc)) {
       Opts.ObjCAutoRefCount = 1;
-      if (Args.hasArg(OPT_fobjc_fragile_abi))
+      if (!Opts.ObjCRuntime.isNonFragile())
         Diags.Report(diag::err_arc_nonfragile_abi);
     }
 
+    Opts.ObjCRuntimeHasWeak = Opts.ObjCRuntime.hasWeak();
     if (Args.hasArg(OPT_fobjc_runtime_has_weak))
       Opts.ObjCRuntimeHasWeak = 1;
 
@@ -2026,12 +2035,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.NumLargeByValueCopy = Args.getLastArgIntValue(OPT_Wlarge_by_value_copy_EQ,
                                                     0, Diags);
   Opts.MSBitfields = Args.hasArg(OPT_mms_bitfields);
-  Opts.NeXTRuntime = !Args.hasArg(OPT_fgnu_runtime);
   Opts.ObjCConstantStringClass =
     Args.getLastArgValue(OPT_fconstant_string_class);
-  Opts.ObjCNonFragileABI = !Args.hasArg(OPT_fobjc_fragile_abi);
-  if (Opts.ObjCNonFragileABI)
-    Opts.ObjCNonFragileABI2 = true;
   Opts.ObjCDefaultSynthProperties =
     Args.hasArg(OPT_fobjc_default_synthesize_properties);
   Opts.CatchUndefined = Args.hasArg(OPT_fcatch_undefined_behavior);

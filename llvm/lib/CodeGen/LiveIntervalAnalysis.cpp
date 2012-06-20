@@ -254,8 +254,8 @@ void LiveIntervals::handleVirtualRegisterDef(MachineBasicBlock *mbb,
     bool PHIJoin = LV->isPHIJoin(interval.reg);
 
     if (PHIJoin) {
-      // A phi join register is killed at the end of the MBB and revived as a new
-      // valno in the killing blocks.
+      // A phi join register is killed at the end of the MBB and revived as a
+      // new valno in the killing blocks.
       assert(vi.AliveBlocks.empty() && "Phi join can't pass through blocks");
       DEBUG(dbgs() << " phi-join");
       ValNo->setHasPHIKill(true);
@@ -266,7 +266,8 @@ void LiveIntervals::handleVirtualRegisterDef(MachineBasicBlock *mbb,
       for (SparseBitVector<>::iterator I = vi.AliveBlocks.begin(),
                E = vi.AliveBlocks.end(); I != E; ++I) {
         MachineBasicBlock *aliveBlock = MF->getBlockNumbered(*I);
-        LiveRange LR(getMBBStartIdx(aliveBlock), getMBBEndIdx(aliveBlock), ValNo);
+        LiveRange LR(getMBBStartIdx(aliveBlock), getMBBEndIdx(aliveBlock),
+                     ValNo);
         interval.addRange(LR);
         DEBUG(dbgs() << " +" << LR);
       }
@@ -1192,78 +1193,44 @@ private:
       // TODO: Currently we're skipping uses that are reserved or have no
       // interval, but we're not updating their kills. This should be
       // fixed.
-      if (!LIS.hasInterval(Reg) ||
-          (TargetRegisterInfo::isPhysicalRegister(Reg) && LIS.isReserved(Reg)))
+      if (TargetRegisterInfo::isPhysicalRegister(Reg) && LIS.isReserved(Reg))
         continue;
 
-      LiveInterval* LI = &LIS.getInterval(Reg);
+      // Collect ranges for register units. These live ranges are computed on
+      // demand, so just skip any that haven't been computed yet.
+      if (TargetRegisterInfo::isPhysicalRegister(Reg) && LIS.trackingRegUnits())
+        for (MCRegUnitIterator Units(Reg, &TRI); Units.isValid(); ++Units)
+          if (LiveInterval *LI = LIS.getCachedRegUnit(*Units))
+            collectRanges(MO, LI, Entering, Internal, Exiting, OldIdx);
 
-      if (MO.readsReg()) {
-        LiveRange* LR = LI->getLiveRangeContaining(OldIdx);
-        if (LR != 0)
-          Entering.insert(std::make_pair(LI, LR));
-      }
-      if (MO.isDef()) {
-        if (MO.isEarlyClobber()) {
-          LiveRange* LR = LI->getLiveRangeContaining(OldIdx.getRegSlot(true));
-          assert(LR != 0 && "No EC range?");
-          if (LR->end > OldIdx.getDeadSlot())
-            Exiting.insert(std::make_pair(LI, LR));
-          else
-            Internal.insert(std::make_pair(LI, LR));
-        } else if (MO.isDead()) {
-          LiveRange* LR = LI->getLiveRangeContaining(OldIdx.getRegSlot());
-          assert(LR != 0 && "No dead-def range?");
-          Internal.insert(std::make_pair(LI, LR));
-        } else {
-          LiveRange* LR = LI->getLiveRangeContaining(OldIdx.getDeadSlot());
-          assert(LR && LR->end > OldIdx.getDeadSlot() &&
-                 "Non-dead-def should have live range exiting.");
-          Exiting.insert(std::make_pair(LI, LR));
-        }
-      }
+      // Collect ranges for individual registers.
+      if (LIS.hasInterval(Reg))
+        collectRanges(MO, &LIS.getInterval(Reg),
+                      Entering, Internal, Exiting, OldIdx);
     }
   }
 
-  // Collect IntRangePairs for all operands of MI that may need fixing.
-  void collectRangesInBundle(MachineInstr* MI, RangeSet& Entering,
-                             RangeSet& Exiting, SlotIndex MIStartIdx,
-                             SlotIndex MIEndIdx) {
-    for (MachineInstr::mop_iterator MOI = MI->operands_begin(),
-                                    MOE = MI->operands_end();
-         MOI != MOE; ++MOI) {
-      const MachineOperand& MO = *MOI;
-      assert(!MO.isRegMask() && "Can't have RegMasks in bundles.");
-      if (!MO.isReg() || MO.getReg() == 0)
-        continue;
-
-      unsigned Reg = MO.getReg();
-
-      // TODO: Currently we're skipping uses that are reserved or have no
-      // interval, but we're not updating their kills. This should be
-      // fixed.
-      if (!LIS.hasInterval(Reg) ||
-          (TargetRegisterInfo::isPhysicalRegister(Reg) && LIS.isReserved(Reg)))
-        continue;
-
-      LiveInterval* LI = &LIS.getInterval(Reg);
-
-      if (MO.readsReg()) {
-        LiveRange* LR = LI->getLiveRangeContaining(MIStartIdx);
-        if (LR != 0)
-          Entering.insert(std::make_pair(LI, LR));
-      }
-      if (MO.isDef()) {
-        assert(!MO.isEarlyClobber() && "Early clobbers not allowed in bundles.");
-        assert(!MO.isDead() && "Dead-defs not allowed in bundles.");
-        LiveRange* LR = LI->getLiveRangeContaining(MIEndIdx.getDeadSlot());
-        assert(LR != 0 && "Internal ranges not allowed in bundles.");
+  void collectRanges(const MachineOperand &MO, LiveInterval *LI,
+                     RangeSet &Entering, RangeSet &Internal, RangeSet &Exiting,
+                     SlotIndex OldIdx) {
+    if (MO.readsReg()) {
+      LiveRange* LR = LI->getLiveRangeContaining(OldIdx);
+      if (LR != 0)
+        Entering.insert(std::make_pair(LI, LR));
+    }
+    if (MO.isDef()) {
+      LiveRange* LR = LI->getLiveRangeContaining(OldIdx.getRegSlot());
+      assert(LR != 0 && "No live range for def?");
+      if (LR->end > OldIdx.getDeadSlot())
         Exiting.insert(std::make_pair(LI, LR));
-      }
+      else
+        Internal.insert(std::make_pair(LI, LR));
     }
   }
 
-  BundleRanges createBundleRanges(RangeSet& Entering, RangeSet& Internal, RangeSet& Exiting) {
+  BundleRanges createBundleRanges(RangeSet& Entering,
+                                  RangeSet& Internal,
+                                  RangeSet& Exiting) {
     BundleRanges BR;
 
     for (RangeSet::iterator EI = Entering.begin(), EE = Entering.end();
@@ -1300,7 +1267,8 @@ private:
       return; // Bail out if we don't have kill flags on the old register.
     MachineInstr* NewKillMI = LIS.getInstructionFromIndex(newKillIdx);
     assert(OldKillMI->killsRegister(reg) && "Old 'kill' instr isn't a kill.");
-    assert(!NewKillMI->killsRegister(reg) && "New kill instr is already a kill.");
+    assert(!NewKillMI->killsRegister(reg) &&
+           "New kill instr is already a kill.");
     OldKillMI->clearRegisterKills(reg, &TRI);
     NewKillMI->addRegisterKilled(reg, &TRI);
   }
@@ -1553,7 +1521,8 @@ void LiveIntervals::handleMove(MachineInstr* MI) {
   HME.moveAllRangesFrom(MI, OldIndex);
 }
 
-void LiveIntervals::handleMoveIntoBundle(MachineInstr* MI, MachineInstr* BundleStart) {
+void LiveIntervals::handleMoveIntoBundle(MachineInstr* MI,
+                                         MachineInstr* BundleStart) {
   SlotIndex NewIndex = Indexes->getInstructionIndex(BundleStart);
   HMEditor HME(*this, *MRI, *TRI, NewIndex);
   HME.moveAllRangesInto(MI, BundleStart);

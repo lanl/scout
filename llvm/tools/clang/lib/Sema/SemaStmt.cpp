@@ -537,45 +537,45 @@ Sema::ActOnStartOfSwitchStmt(SourceLocation SwitchLoc, Expr *Cond,
 
   class SwitchConvertDiagnoser : public ICEConvertDiagnoser {
     Expr *Cond;
-    
+
   public:
     SwitchConvertDiagnoser(Expr *Cond)
       : ICEConvertDiagnoser(false, true), Cond(Cond) { }
-    
+
     virtual DiagnosticBuilder diagnoseNotInt(Sema &S, SourceLocation Loc,
                                              QualType T) {
       return S.Diag(Loc, diag::err_typecheck_statement_requires_integer) << T;
     }
-    
+
     virtual DiagnosticBuilder diagnoseIncomplete(Sema &S, SourceLocation Loc,
                                                  QualType T) {
       return S.Diag(Loc, diag::err_switch_incomplete_class_type)
                << T << Cond->getSourceRange();
     }
-    
+
     virtual DiagnosticBuilder diagnoseExplicitConv(Sema &S, SourceLocation Loc,
                                                    QualType T,
                                                    QualType ConvTy) {
       return S.Diag(Loc, diag::err_switch_explicit_conversion) << T << ConvTy;
     }
-    
+
     virtual DiagnosticBuilder noteExplicitConv(Sema &S, CXXConversionDecl *Conv,
                                                QualType ConvTy) {
       return S.Diag(Conv->getLocation(), diag::note_switch_conversion)
         << ConvTy->isEnumeralType() << ConvTy;
     }
-    
+
     virtual DiagnosticBuilder diagnoseAmbiguous(Sema &S, SourceLocation Loc,
                                                 QualType T) {
       return S.Diag(Loc, diag::err_switch_multiple_conversions) << T;
     }
-    
+
     virtual DiagnosticBuilder noteAmbiguous(Sema &S, CXXConversionDecl *Conv,
                                             QualType ConvTy) {
       return S.Diag(Conv->getLocation(), diag::note_switch_conversion)
       << ConvTy->isEnumeralType() << ConvTy;
     }
-    
+
     virtual DiagnosticBuilder diagnoseConversion(Sema &S, SourceLocation Loc,
                                                  QualType T,
                                                  QualType ConvTy) {
@@ -2351,7 +2351,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
         // FIXME: The diagnostics here don't really describe what is happening.
         InitializedEntity Entity =
             InitializedEntity::InitializeTemporary(RelatedRetType);
-        
+
         ExprResult Res = PerformCopyInitialization(Entity, SourceLocation(),
                                                    RetValExp);
         if (Res.isInvalid()) {
@@ -2445,7 +2445,7 @@ static bool isOperandMentioned(unsigned OpNo,
     if (Piece.getOperandNo() == OpNo)
       return true;
   }
-
+  
   return false;
 }
 
@@ -2680,6 +2680,9 @@ StmtResult Sema::ActOnAsmStmt(SourceLocation AsmLoc, bool IsSimple,
 StmtResult Sema::ActOnMSAsmStmt(SourceLocation AsmLoc,
                                 std::string &AsmString,
                                 SourceLocation EndLoc) {
+  // MS-style inline assembly is not fully supported, so emit a warning.
+  Diag(AsmLoc, diag::warn_unsupported_msasm);
+
   MSAsmStmt *NS =
     new (Context) MSAsmStmt(Context, AsmLoc, AsmString, EndLoc);
 
@@ -2752,7 +2755,7 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
     if (!AtCatchParent)
       return StmtError(Diag(AtLoc, diag::error_rethrow_used_outside_catch));
   }
-
+  
   return BuildObjCAtThrowStmt(AtLoc, Throw);
 }
 

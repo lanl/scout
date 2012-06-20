@@ -418,7 +418,7 @@ def fgnu_keywords : Flag<"-fgnu-keywords">, Group<f_Group>, Flags<[CC1Option]>,
 def fgnu89_inline : Flag<"-fgnu89-inline">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Use the gnu89 inline semantics">;
 def fno_gnu89_inline : Flag<"-fno-gnu89-inline">, Group<f_Group>;
-def fgnu_runtime : Flag<"-fgnu-runtime">, Group<f_Group>, Flags<[CC1Option]>,
+def fgnu_runtime : Flag<"-fgnu-runtime">, Group<f_Group>,
   HelpText<"Generate output compatible with the standard GNU Objective-C runtime">;
 def fheinous_gnu_extensions : Flag<"-fheinous-gnu-extensions">, Flags<[CC1Option]>;
 def filelist : Separate<"-filelist">, Flags<[LinkerInput]>;
@@ -565,6 +565,8 @@ def fno_objc_infer_related_result_type : Flag<
 def fobjc_link_runtime: Flag<"-fobjc-link-runtime">, Group<f_Group>;
 
 // Objective-C ABI options.
+def fobjc_runtime_EQ : Joined<"-fobjc-runtime=">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Specify the target Objective-C runtime kind and version">;
 def fobjc_abi_version_EQ : Joined<"-fobjc-abi-version=">, Group<f_Group>;
 def fobjc_nonfragile_abi_version_EQ : Joined<"-fobjc-nonfragile-abi-version=">, Group<f_Group>;
 def fobjc_nonfragile_abi : Flag<"-fobjc-nonfragile-abi">, Group<f_Group>;
@@ -836,7 +838,6 @@ def no_canonical_prefixes : Flag<"-no-canonical-prefixes">, Flags<[HelpHidden]>,
 def no_cpp_precomp : Flag<"-no-cpp-precomp">, Group<clang_ignored_f_Group>;
 def no_integrated_as : Flag<"-no-integrated-as">, Flags<[DriverOption]>;
 def no_integrated_cpp : Flag<"-no-integrated-cpp">, Flags<[DriverOption]>;
-def no_pedantic : Flag<"-no-pedantic">, Group<pedantic_Group>;
 def no__dead__strip__inits__and__terms : Flag<"-no_dead_strip_inits_and_terms">;
 def nobuiltininc : Flag<"-nobuiltininc">, Flags<[CC1Option]>,
   HelpText<"Disable builtin #include directories">;
@@ -1039,7 +1040,6 @@ def _machine_EQ : Joined<"--machine=">, Alias<m_Joined>;
 def _machine : Separate<"--machine">, Alias<m_Joined>;
 def _no_integrated_cpp : Flag<"--no-integrated-cpp">, Alias<no_integrated_cpp>;
 def _no_line_commands : Flag<"--no-line-commands">, Alias<P>;
-def _no_pedantic : Flag<"--no-pedantic">, Alias<no_pedantic>;
 def _no_standard_includes : Flag<"--no-standard-includes">, Alias<nostdinc>;
 def _no_standard_libraries : Flag<"--no-standard-libraries">, Alias<nostdlib>;
 def _no_undefined : Flag<"--no-undefined">, Flags<[LinkerInput]>;

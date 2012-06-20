@@ -85,10 +85,10 @@ Follow these simple steps to start your project:
    with these commands. (You must be using ``Autoconf`` version 2.59 or later
    and your ``aclocal`` version should be 1.9 or later.)
 
-.. code-block:: bash
+       .. code-block:: bash
 
-   % cd autoconf
-   % ./AutoRegen.sh
+         % cd autoconf
+         % ./AutoRegen.sh
 
 6. Run ``configure`` in the directory in which you want to place object code.
    Use the following options to tell your project where it can find LLVM:
@@ -273,16 +273,16 @@ Variables for Building Programs
 
 ``LIBS``
 
-    To link dynamic libraries, add <tt>-l&lt;library base name&gt;</tt> to the
-    ``LIBS`` variable.  The LLVM build system will look in the same places for
-    dynamic libraries as it does for static libraries.
+    To link dynamic libraries, add ``-l<library base name>`` to the ``LIBS``
+    variable.  The LLVM build system will look in the same places for dynamic
+    libraries as it does for static libraries.
 
     For example, to link ``libsample.so``, you would have the following line in
     your ``Makefile``:
 
-.. code-block: Makefile
+        .. code-block:: makefile
 
-  LIBS += -lsample
+          LIBS += -lsample
 
 Note that ``LIBS`` must occur in the Makefile after the inclusion of
 ``Makefile.common``.

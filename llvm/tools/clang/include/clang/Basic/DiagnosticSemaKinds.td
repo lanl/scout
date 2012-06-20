@@ -630,6 +630,10 @@ def warn_auto_synthesizing_protocol_property :Warning<
   "auto property synthesis will not synthesize property"
   " declared in a protocol">,
   InGroup<DiagGroup<"objc-protocol-property-synthesis">>;
+def warn_autosynthesis_property_ivar_match :Warning<
+  "autosynthesized property %0 will use %select{|synthesized}1 instance variable "
+  "%2, not existing instance variable %3">,
+  InGroup<DiagGroup<"objc-autosynthesis-property-ivar-name-match">>;
 def warn_missing_explicit_synthesis : Warning <
   "auto property synthesis is synthesizing property not explicitly synthesized">,
   InGroup<DiagGroup<"objc-missing-property-synthesis">>, DefaultIgnore;
@@ -1742,6 +1746,11 @@ def warn_thread_attribute_decl_not_lockable : Warning<
 def warn_thread_attribute_decl_not_pointer : Warning<
   "'%0' only applies to pointer types; type here is %1">,
   InGroup<ThreadSafetyAttributes>, DefaultIgnore;
+def warn_thread_attribute_wrong_decl_type : Warning<
+  "%0 attribute only applies to %select{"
+  "fields and global variables|functions and methods|"
+  "classes and structs}1">,
+  InGroup<ThreadSafetyAttributes>, DefaultIgnore;  
 def err_attribute_argument_out_of_range : Error<
   "%0 attribute parameter %1 is out of bounds: "
   "%plural{0:no parameters to index into|"
@@ -3021,11 +3030,6 @@ def warn_internal_in_extern_inline : ExtWarn<
 def ext_internal_in_extern_inline : Extension<
   "%select{function|variable}0 %1 has internal linkage but is used in an "
   "inline function with external linkage">,
-  InGroup<DiagGroup<"internal-linkage-in-inline"> >;
-def warn_internal_in_extern_inline_cxx : Warning<
-  "%select{function|variable}0 %1 %select{has internal linkage|is in an anonymous"
-  " namespace}2 but is used in an inline %select{function|method}3 with"
-  " external linkage">,
   InGroup<DiagGroup<"internal-linkage-in-inline"> >;
 def note_convert_inline_to_static : Note<
   "use 'static' to give inline function %0 internal linkage">;
@@ -4837,6 +4841,9 @@ let CategoryName = "Inline Assembly Issue" in {
     "invalid use of a cast in a inline asm context requiring an l-value: "
     "accepted due to -fheinous-gnu-extensions, but clang may remove support "
     "for this in the future">;
+
+  def warn_unsupported_msasm : ExtWarn<
+    "MS-style inline assembly is not supported">, InGroup<Microsoft>;
 }
 
 let CategoryName = "Semantic Issue" in {
@@ -5620,6 +5627,10 @@ def err_filter_expression_integral : Error<
 // OpenCL warnings and errors.
 def err_invalid_astype_of_different_size : Error<
   "invalid reinterpretation: sizes of %0 and %1 must match">;
+def err_static_kernel : Error<
+  "kernel functions cannot be declared static">;
+def err_static_function_scope : Error<
+  "variables in function scope cannot be declared static">;
 
 } // end of sema category
 

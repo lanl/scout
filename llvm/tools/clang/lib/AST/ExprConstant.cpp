@@ -6856,6 +6856,9 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(Ctx), Ctx);
   }
+  // ndm - scout expr types
+  case Expr::ScoutVectorMemberExprClass:
+    return NoDiag();
   }
 
   llvm_unreachable("Invalid StmtClass!");

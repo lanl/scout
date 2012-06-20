@@ -18,6 +18,7 @@
 #include "llvm/Constants.h"
 #include "llvm/Instructions.h"
 #include "llvm/Analysis/Dominators.h"
+#include "llvm/Analysis/LoopInfoImpl.h"
 #include "llvm/Analysis/LoopIterator.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Assembly/Writer.h"
@@ -29,6 +30,10 @@
 #include <algorithm>
 using namespace llvm;
 
+// Explicitly instantiate methods in LoopInfoImpl.h for IR-level Loops.
+template class llvm::LoopBase<BasicBlock, Loop>;
+template class llvm::LoopInfoBase<BasicBlock, Loop>;
+
 // Always verify loopinfo if expensive checking is enabled.
 #ifdef XDEBUG
 static bool VerifyLoopInfo = true;
@@ -38,6 +43,10 @@ static bool VerifyLoopInfo = false;
 static cl::opt<bool,true>
 VerifyLoopInfoX("verify-loop-info", cl::location(VerifyLoopInfo),
                 cl::desc("Verify loop info (time consuming)"));
+
+static cl::opt<bool>
+StableLoopInfo("stable-loops", cl::Hidden, cl::init(false),
+               cl::desc("Compute a stable loop tree."));
 
 char LoopInfo::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopInfo, "loops", "Natural Loop Information", true, true)
@@ -507,7 +516,10 @@ Loop *UnloopUpdater::getNearestLoop(BasicBlock *BB, Loop *BBLoop) {
 //
 bool LoopInfo::runOnFunction(Function &) {
   releaseMemory();
-  LI.Calculate(getAnalysis<DominatorTree>().getBase());    // Update
+  if (StableLoopInfo)
+    LI.Analyze(getAnalysis<DominatorTree>().getBase());
+  else
+    LI.Calculate(getAnalysis<DominatorTree>().getBase());    // Update
   return false;
 }
 

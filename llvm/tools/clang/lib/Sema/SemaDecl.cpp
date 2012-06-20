@@ -4471,6 +4471,15 @@ bool Sema::CheckVariableDeclaration(VarDecl *NewVD,
     return false;
   }
 
+  // OpenCL v1.2 s6.8 -- The static qualifier is valid only in program
+  // scope.
+  if ((getLangOpts().OpenCLVersion >= 120)
+      && NewVD->isStaticLocal()) {
+    Diag(NewVD->getLocation(), diag::err_static_function_scope);
+    NewVD->setInvalidDecl();
+    return false;
+  }
+
   if (NewVD->hasLocalStorage() && T.isObjCGCWeak()
       && !NewVD->hasAttr<BlocksAttr>()) {
     if (getLangOpts().getGC() != LangOptions::NonGC)
@@ -5788,6 +5797,14 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
         FunctionTemplate->setInvalidDecl();
       return FunctionTemplate;
     }
+  }
+
+  // OpenCL v1.2 s6.8 static is invalid for kernel functions.
+  if ((getLangOpts().OpenCLVersion >= 120)
+      && NewFD->hasAttr<OpenCLKernelAttr>()
+      && (SC == SC_Static)) {
+    Diag(D.getIdentifierLoc(), diag::err_static_kernel);
+    D.setInvalidType();
   }
 
   MarkUnusedFileScopedDecl(NewFD);
@@ -9576,7 +9593,7 @@ Decl *Sema::ActOnIvar(Scope *S,
   ObjCContainerDecl *EnclosingContext;
   if (ObjCImplementationDecl *IMPDecl =
       dyn_cast<ObjCImplementationDecl>(EnclosingDecl)) {
-    if (!LangOpts.ObjCNonFragileABI2) {
+    if (LangOpts.ObjCRuntime.isFragile()) {
     // Case of ivar declared in an implementation. Context is that of its class.
       EnclosingContext = IMPDecl->getClassInterface();
       assert(EnclosingContext && "Implementation has no class interface!");
@@ -9586,7 +9603,7 @@ Decl *Sema::ActOnIvar(Scope *S,
   } else {
     if (ObjCCategoryDecl *CDecl =
         dyn_cast<ObjCCategoryDecl>(EnclosingDecl)) {
-      if (!LangOpts.ObjCNonFragileABI2 || !CDecl->IsClassExtension()) {
+      if (LangOpts.ObjCRuntime.isFragile() || !CDecl->IsClassExtension()) {
         Diag(Loc, diag::err_misplaced_ivar) << CDecl->IsClassExtension();
         return 0;
       }
@@ -9630,7 +9647,7 @@ Decl *Sema::ActOnIvar(Scope *S,
     IdResolver.AddDecl(NewID);
   }
   
-  if (LangOpts.ObjCNonFragileABI2 &&
+  if (LangOpts.ObjCRuntime.isNonFragile() &&
       !NewID->isInvalidDecl() && isa<ObjCInterfaceDecl>(EnclosingDecl))
     Diag(Loc, diag::warn_ivars_in_interface);
   
@@ -9643,7 +9660,7 @@ Decl *Sema::ActOnIvar(Scope *S,
 /// then add an implicit `char :0` ivar to the end of that interface.
 void Sema::ActOnLastBitfield(SourceLocation DeclLoc,
                              SmallVectorImpl<Decl *> &AllIvarDecls) {
-  if (!LangOpts.ObjCNonFragileABI2 || AllIvarDecls.empty())
+  if (LangOpts.ObjCRuntime.isFragile() || AllIvarDecls.empty())
     return;
 
   Decl *ivarDecl = AllIvarDecls[AllIvarDecls.size()-1];

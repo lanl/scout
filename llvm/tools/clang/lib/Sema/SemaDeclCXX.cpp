@@ -9628,7 +9628,8 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
       Diag(Loc, diag::err_objc_object_catch);
       Invalid = true;
     } else if (T->isObjCObjectPointerType()) {
-      if (!getLangOpts().ObjCNonFragileABI)
+      // FIXME: should this be a test for macosx-fragile specifically?
+      if (getLangOpts().ObjCRuntime.isFragile())
         Diag(Loc, diag::warn_objc_pointer_cxx_catch_fragile);
     }
   }
