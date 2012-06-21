@@ -1,7 +1,5 @@
 set(LLVM_LINK_COMPONENTS support)
 
-set(LLVM_USED_LIBS clangBasic clangLex)
-
 add_clang_library(clangAST
   APValue.cpp
   ASTConsumer.cpp
@@ -56,5 +54,17 @@ add_clang_library(clangAST
   ASTViewScout.cpp
   )
 
-add_dependencies(clangAST ClangARMNeon ClangAttrClasses ClangAttrList 
-                 ClangAttrImpl ClangDiagnosticAST ClangDeclNodes ClangStmtNodes)
+add_dependencies(clangAST
+  ClangARMNeon
+  ClangAttrClasses
+  ClangAttrList
+  ClangAttrImpl
+  ClangDiagnosticAST
+  ClangDeclNodes
+  ClangStmtNodes
+  )
+
+target_link_libraries(clangAST
+  clangBasic
+  clangLex
+  )

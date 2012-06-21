@@ -11,28 +11,6 @@
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-common -Woverloaded-virtual -Wcast-qual -fno-strict-aliasing -pedantic -Wno-long-long -Wall -W -Wno-unused-parameter -Wwrite-strings -fno-rtti") 
 set(CLANG_ARGS -g -S -emit-ast -x c++ -fno-rtti) 
 
-set( LLVM_USED_LIBS
-  clangFrontendTool
-  clangAST
-  clangAnalysis
-  clangBasic
-  clangCodeGen
-  clangDriver
-  clangFrontend
-  clangEdit
-  clangLex
-  clangParse
-  clangARCMigrate
-  clangRewrite
-  clangSema
-  clangSerialization
-  clangStaticAnalyzerFrontend
-  clangStaticAnalyzerCheckers
-  clangStaticAnalyzerCore
-  LLVMdoallToPTX
-  scDriver
-  )
-
 set( LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   asmparser
@@ -51,18 +29,41 @@ add_clang_executable(scc-rewrite
   cc1as_main.cpp
   )
 
+target_link_libraries(scc-rewrite
+  clangFrontendTool
+  clangAST
+  clangAnalysis
+  clangBasic
+  clangCodeGen
+  clangDriver
+  clangEdit
+  clangFrontend
+  clangLex
+  clangParse
+  clangEdit
+  clangARCMigrate
+  clangRewrite
+  clangSema
+  clangSerialization
+  clangStaticAnalyzerFrontend
+  clangStaticAnalyzerCheckers
+  clangStaticAnalyzerCore
+  LLVMdoallToPTX
+  scDriver
+  )
+
 if(${APPLE})
   find_library(FOUNDATION_FRAMEWORK NAMES Foundation)
   if(SCOUT_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
                  HINTS ${SCOUT_SRC_DIR}/lib/scc/Mac/lib)
-    target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
+    target_link_libraries(scc-rewrite ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 else()
   if(SCOUT_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
                  HINTS ${SCOUT_SRC_DIR}/lib/scc/Linux/lib)
-    target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
+    target_link_libraries(scc-rewrite ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 endif()
 
