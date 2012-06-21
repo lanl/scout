@@ -2827,7 +2827,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   // then we branch off here into other code to handle it.
 
   if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
-    return(ParseVolumeRenderAll(attrs, MeshII, MVD, Op, LParenLoc, RParenLoc));
+    return(ParseVolumeRenderAll(ForAllLoc, attrs, MeshII, MVD, Op, 
+          LParenLoc, RParenLoc));
   }
 
   SourceLocation BodyLoc = Tok.getLocation();
@@ -3279,7 +3280,8 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   return ForAllArrayResult;
 }
 
-StmtResult Parser::ParseVolumeRenderAll(ParsedAttributes &attrs,
+StmtResult Parser::ParseVolumeRenderAll(SourceLocation VolRenLoc,
+    ParsedAttributes &attrs,
     IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
     SourceLocation OpLParenLoc, SourceLocation OpRParenLoc){
 
@@ -3314,7 +3316,7 @@ StmtResult Parser::ParseVolumeRenderAll(ParsedAttributes &attrs,
 
   // TBD do more in here
 
-  return Actions.ActOnVolumeRenderAllStmt(LBraceLoc, RBraceLoc, MeshII, MVD,
-      move_arg(Stmts), false);
+  return Actions.ActOnVolumeRenderAllStmt(VolRenLoc, LBraceLoc, RBraceLoc, 
+      MeshII, MVD, move_arg(Stmts), compoundStmt, false);
 
 }

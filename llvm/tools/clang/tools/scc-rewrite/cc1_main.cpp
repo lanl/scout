@@ -41,12 +41,15 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseAST.h"
+#include "clang/Parse/Parser.h"
 #include "clang/Rewrite/Rewriter.h"
 #include "clang/Rewrite/Rewriters.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdio>
+#include <sstream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -75,10 +78,75 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
       rewriter_.InsertText(fas->getLocEnd().getLocWithOffset(1),
                            "\nend_forall();\n", true, true);      
     }
+      
+    if (isa<VolumeRenderAllStmt>(s)) {
+      VolumeRenderAllStmt* vras = cast<VolumeRenderAllStmt>(s);
+      // get mesh info and block text and create a new function call
+      return VisitVolumeRenderAllStmt(vras);
+    }
     
     return true;
   }
 
+  bool VisitVolumeRenderAllStmt(VolumeRenderAllStmt* vras) {
+    
+    std::string bc;
+        
+    bc = "__sc_init_volume_renderall(";
+    
+    // Get dimensions of the mesh and insert as arguments to the call
+    const MeshType *MT = cast<MeshType>(vras->getMeshType());
+    MeshType::MeshDimensionVec dims = MT->dimensions();
+    
+    for(size_t i = 0; i < 3; ++i){
+      if(i > 0){
+        bc += ", ";
+      }
+      
+      if(i >= dims.size()){
+        bc += "0";
+      }
+      else{
+        bc += rewriter_.ConvertToString(dims[i]);
+      }
+    }
+    
+    // One argument to the call is an apple block to hold body of renderall (transfer function closure)
+    bc += ", 1024, 1024, NULL, \
+    ^int(scout::block_t* block, scout::point_3d_t* pos, scout::rgba_t& color){";
+    // Insert code to get values of data fields for transfer function closure
+    size_t FieldCount = 0;
+    const MeshDecl* MD = MT->getDecl();
+    
+    for(MeshDecl::field_iterator FI = MD->field_begin(),
+        FE = MD->field_end(); FI != FE; ++FI){
+      FieldDecl* FD = *FI;
+      if(!FD->isMeshImplicit() &&
+         FD->meshFieldType() == FieldDecl::FieldCells){
+        bc += FD->getType().getAsString() + " " + FD->getName().str() + ";";
+        std::stringstream fieldCountStr;
+        fieldCountStr << FieldCount;
+        bc +=
+        "if (scout::block_get_value(block, " + fieldCountStr.str()
+        + ", pos->x3d, pos->y3d, pos->z3d, &" + FD->getName().str() + ") == HPGV_FALSE) \
+        { \
+        return 0; \
+        } ";
+        ++FieldCount;
+      }
+    }
+    
+    // Add user's renderall body to the string 
+    
+    bc += rewriter_.ConvertToString(vras->getBody());
+    
+    // Finish the sc_init_volume_renderall function call.
+    bc += "return 1;});\n";
+    rewriter_.InsertText(vras->getLocStart(), bc);
+    
+    return true;
+  }
+  
  private:
   Rewriter& rewriter_;
 };

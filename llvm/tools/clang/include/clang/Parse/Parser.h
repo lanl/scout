@@ -2095,7 +2095,8 @@ private:
   StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
                                        SourceLocation NameLoc,
                                        VarDecl* VD);
-  StmtResult ParseVolumeRenderAll(ParsedAttributes &attrs,
+  StmtResult ParseVolumeRenderAll(SourceLocation VolRenLoc,
+      ParsedAttributes &attrs,
       IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
       SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
 

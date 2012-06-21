@@ -3661,8 +3661,10 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
 }
 
 StmtResult
-Sema::ActOnVolumeRenderAllStmt(SourceLocation L, SourceLocation R,
-        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, bool isStmtExpr)
+Sema::ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+        SourceLocation L, SourceLocation R,
+        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, 
+        CompoundStmt* body, bool isStmtExpr)
 {
 
   unsigned NumElts = elts.size();
@@ -3694,7 +3696,7 @@ Sema::ActOnVolumeRenderAllStmt(SourceLocation L, SourceLocation R,
   }
 
   VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
-      NumElts, L, R, MII, MVD);
+      NumElts, VolRenLoc, L, R, MII, MVD, body);
 
   return Owned(vrs);
 }

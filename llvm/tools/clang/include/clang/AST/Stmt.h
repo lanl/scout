@@ -2202,12 +2202,13 @@ class VolumeRenderAllStmt : public CompoundStmt {
 
   IdentifierInfo* MeshII;
   VarDecl* MeshVarDecl;
-  SourceLocation LParenLoc, RParenLoc;
   Stmt* SubExprs[END_EXPR];
+  SourceLocation VolRenLoc;
 
   public:
   VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
-      SourceLocation LB, SourceLocation RB,  IdentifierInfo* MII, VarDecl* MVD);
+      SourceLocation VolRenLoc, SourceLocation LB, SourceLocation RB,  
+      IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* body);
 
   static bool classof(const CompoundStmt *T) 
   { return (T->getStmtClass() == VolumeRenderAllStmtClass); }
@@ -2239,6 +2240,9 @@ class VolumeRenderAllStmt : public CompoundStmt {
     return MeshVarDecl;
   }
 
+  SourceLocation getVolRenLoc() const { return VolRenLoc; }
+  void setVolRenLoc(SourceLocation L) { VolRenLoc = L; }
+
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }
@@ -2261,6 +2265,10 @@ class VolumeRenderAllStmt : public CompoundStmt {
 
   void setBody(Stmt* B){
     SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+
+  SourceRange getSourceRange() const {
+    return SourceRange(VolRenLoc, SubExprs[BODY]->getLocEnd());
   }
 
 };
