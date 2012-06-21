@@ -963,10 +963,12 @@ ElementRadius(0){
 }
 
 VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, 
-    unsigned NumStmts, SourceLocation LB, SourceLocation RB, 
-    IdentifierInfo* MII, VarDecl* MVD)
+    unsigned NumStmts, SourceLocation VolRenL,
+    SourceLocation LB, SourceLocation RB, 
+    IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* Body)
   : CompoundStmt(C, StmtStart, NumStmts, LB, RB, VolumeRenderAllStmtClass),
-    MeshII(MII), MeshVarDecl(MVD) {
+    VolRenLoc(VolRenL), MeshII(MII), MeshVarDecl(MVD) {
 
+      setBody(Body);
   }
 

@@ -7248,9 +7248,11 @@ public:
                                 Stmt* Body,
                                 BlockExpr *Block);
 
-  StmtResult ActOnVolumeRenderAllStmt(SourceLocation L, SourceLocation R, 
+  StmtResult ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+                                      SourceLocation L, SourceLocation R, 
                                       IdentifierInfo* MII, VarDecl* MVD, 
-                                      MultiStmtArg elts, bool isStmtExpr);
+                                      MultiStmtArg elts, CompoundStmt* Body,
+                                      bool isStmtExpr);
 
   bool IsValidMeshField(FieldDecl* FD);
 
