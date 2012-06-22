@@ -6,6 +6,7 @@
 #include "runtime/image.h"
 #include "runtime/tbq.h"
 #include "runtime/opengl/glCamera.h"
+#include "runtime/volume_renderall.h"
 
 extern scout::tbq_rt* __sc_tbq;
 

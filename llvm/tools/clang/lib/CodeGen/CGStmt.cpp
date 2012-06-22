@@ -1222,6 +1222,120 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
 
 RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S, 
     bool GetLast, AggValueSlot AggSlot) {
+  DEBUG_OUT("EmitVolumeRenderallStmt");
+  PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
+                                "LLVM IR generation of volume renderall statement ('{}')");
+  
+  CGDebugInfo *DI = getDebugInfo();
+  if (DI)
+    DI->EmitLexicalBlockStart(Builder, S.getLBracLoc());
+  
+  // Keep track of the current cleanup stack depth.
+  RunCleanupsScope Scope(*this);
+  
+  // Clear stale mesh elements.
+  MeshMembers.clear();
+  const IdentifierInfo *MeshII = S.getMesh();
+  llvm::StringRef meshName = MeshII->getName();
+  
+  const MeshType *MT = S.getMeshType();
+  MeshType::MeshDimensionVec dims = MT->dimensions();
+  const MeshDecl *MD = MT->getDecl();
+  
+  ScoutMeshSizes.clear();
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
+    Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
+    ScoutMeshSizes.push_back(lval);
+  }
+  
+  typedef std::map<std::string, bool> MeshFieldMap;
+  MeshFieldMap meshFieldMap;
+  const VarDecl* MVD = S.getMeshVarDecl();
+  
+  llvm::Value* baseAddr = LocalDeclMap[MVD];
+  
+  llvm::Constant *addVolFunc = CGM.getModule().getFunction("__sc_add_volume");
+  
+  if(!addVolFunc){
+    
+    llvm::PointerType* p1 = llvm::PointerType::get(llvm::Type::getFloatTy(getLLVMContext()), 0);
+    llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());       
+    std::vector<llvm::Type*> args;    
+    args.push_back(p1);
+    args.push_back(p2);
+ 
+    
+    llvm::FunctionType *FTy = 
+      llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+                              args, false);
+    
+    addVolFunc = llvm::Function::Create(FTy, 
+                                        llvm::GlobalValue::ExternalLinkage,
+                                        "__sc_add_volume", 
+                                        &CGM.getModule());
+  }
+
+  
+  int fieldcount = 0;
+  typedef MeshDecl::field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  for(unsigned i = 0; it != it_end; ++it, ++i) {
+    
+    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    meshFieldMap[name.str()] = true;
+    
+    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
+    
+    if(!(name.equals("position") || name.equals("width") ||
+         name.equals("height") || name.equals("depth"))) {
+      
+      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
+      addr = Builder.CreateLoad(addr);
+      llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
+      Builder.CreateStore(addr, var);
+      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
+      MeshMembers[name].first->setName(var->getName());
+      
+      // the Value* var holding the addr where the mesh member is 
+      llvm::Value* meshField = MeshMembers[name].first;
+      
+      // the Value* for the volume number
+      llvm::ConstantInt* volumeNum = llvm::ConstantInt::get(Int32Ty, fieldcount);
+      
+      // emit the call
+            
+      llvm::CallInst* CI = Builder.CreateCall2(addVolFunc, meshField, volumeNum);
+      
+      fieldcount++;
+
+    } 
+  }
+  
+  if (DI)
+    DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
+  
+  RValue RV;
+  if (!GetLast)
+    RV = RValue::get(0);
+  else {
+    // We have to special case labels here.  They are statements, but when put
+    // at the end of a statement expression, they yield the value of their
+    // subexpression.  Handle this by walking through all labels we encounter,
+    // emitting them before we evaluate the subexpr.
+    const Stmt *LastStmt = S.body_back();
+    while (const LabelStmt *LS = dyn_cast<LabelStmt>(LastStmt)) {
+      EmitLabel(LS->getDecl());
+      LastStmt = LS->getSubStmt();
+    }
+    
+    EnsureInsertPoint();
+    
+    RV = EmitAnyExpr(cast<Expr>(LastStmt), AggSlot);
+  }
+  
+  return RV;
+
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {
