@@ -78,13 +78,7 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
       rewriter_.InsertText(fas->getLocEnd().getLocWithOffset(1),
                            "\nend_forall();\n", true, true);      
     }
-      
-    if (isa<VolumeRenderAllStmt>(s)) {
-      VolumeRenderAllStmt* vras = cast<VolumeRenderAllStmt>(s);
-      // get mesh info and block text and create a new function call
-      return VisitVolumeRenderAllStmt(vras);
-    }
-    
+
     return true;
   }
 
