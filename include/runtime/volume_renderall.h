@@ -58,6 +58,7 @@ extern void __sc_init_volume_renderall(
             size_t win_width, size_t win_height,
                 glCamera* camera, trans_func_ab_t trans_func);
 
-extern void __sc_add_volume(float* dataptr, unsigned volumenum);
+extern "C" 
+void __sc_add_volume(float* dataptr, unsigned volumenum);
 
 #endif 

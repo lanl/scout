@@ -1240,14 +1240,7 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
   
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
-  const MeshDecl *MD = MT->getDecl();
-  
-  ScoutMeshSizes.clear();
-  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0, meshName + "_" + toString(i));
-    Builder.CreateStore(TranslateExprToValue(dims[i]), lval);
-    ScoutMeshSizes.push_back(lval);
-  }
+  const MeshDecl *MD = MT->getDecl();  
   
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
@@ -1255,7 +1248,18 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
   
   llvm::Value* baseAddr = LocalDeclMap[MVD];
   
-  llvm::Constant *addVolFunc = CGM.getModule().getFunction("__sc_add_volume");
+  if(MVD->getType().getTypePtr()->isReferenceType()){
+    baseAddr = Builder.CreateLoad(baseAddr);
+  }
+  
+  ScoutMeshSizes.clear();
+  for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+    llvm::Value *lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
+    ScoutMeshSizes.push_back(lval);      
+  }
+
+
+  llvm::Function *addVolFunc = CGM.getModule().getFunction("__sc_add_volume");
   
   if(!addVolFunc){
     
@@ -1271,7 +1275,7 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
                               args, false);
     
     addVolFunc = llvm::Function::Create(FTy, 
-                                        llvm::GlobalValue::ExternalLinkage,
+                                        llvm::Function::ExternalLinkage,
                                         "__sc_add_volume", 
                                         &CGM.getModule());
   }
@@ -1290,7 +1294,7 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
       
-      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i, name);
+      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i+3, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
@@ -1312,6 +1316,60 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
     } 
   }
   
+  std::vector<llvm::Value*> Args;
+  
+  llvm::Function *beginRendFunc = CGM.getModule().getFunction("__sc_begin_renderall");
+  
+  if(!beginRendFunc){
+    
+    std::vector<llvm::Type*> args;    
+     
+    llvm::FunctionType *FTy = 
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+                            args, false);
+    
+    beginRendFunc = llvm::Function::Create(FTy, 
+                                        llvm::Function::ExternalLinkage,
+                                        "__sc_begin_renderall", 
+                                        &CGM.getModule());
+  }
+  Builder.CreateCall(beginRendFunc, Args);
+  
+  llvm::Function *endRendFunc = CGM.getModule().getFunction("__sc_end_renderall");
+  
+  if(!endRendFunc){
+    
+    std::vector<llvm::Type*> args;    
+    
+    llvm::FunctionType *FTy = 
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+                            args, false);
+    
+    endRendFunc = llvm::Function::Create(FTy, 
+                                           llvm::Function::ExternalLinkage,
+                                           "__sc_end_renderall", 
+                                           &CGM.getModule());
+  }
+  Builder.CreateCall(endRendFunc, Args);
+  
+  llvm::Function *delRendFunc = CGM.getModule().getFunction("__sc_delete_renderall");
+  
+  if(!delRendFunc){
+    
+    std::vector<llvm::Type*> args;    
+    
+    llvm::FunctionType *FTy = 
+    llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
+                            args, false);
+    
+    delRendFunc = llvm::Function::Create(FTy, 
+                                           llvm::Function::ExternalLinkage,
+                                           "__sc_delete_renderall", 
+                                           &CGM.getModule());
+  }
+  Builder.CreateCall(delRendFunc, Args);
+
+
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
   
