@@ -131,8 +131,13 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
     }
     
     // Add user's renderall body to the string 
-    
-    bc += rewriter_.ConvertToString(vras->getBody());
+    std::string SStr;
+    llvm::raw_string_ostream S(SStr);
+    LangOptions LO = rewriter_.getLangOpts();
+    PrintingPolicy printingPolicy(LO);
+    printingPolicy.SuppressMemberBase = true;
+    vras->getBody()->printPretty(S, 0, printingPolicy);
+    bc += S.str();
     
     // Finish the sc_init_volume_renderall function call.
     bc += "return 1;});\n";

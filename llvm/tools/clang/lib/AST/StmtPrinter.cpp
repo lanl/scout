@@ -885,13 +885,26 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   PrintCallArgs(Call);
   OS << ")";
 }
+
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  PrintExpr(Node->getBase());
+  
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
+  ValueDecl* d = dr->getDecl();
+  QualType qt = d->getType();
+  bool isMeshType = false;
+  if(isa<MeshType>(qt.getCanonicalType().getTypePtr())) {
+    isMeshType = true;
+  }
+  
+  if (!(isMeshType && Policy.SuppressMemberBase))
+    PrintExpr(Node->getBase());
+  
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;
-  OS << (Node->isArrow() ? "->" : ".");
+  if (!(isMeshType && Policy.SuppressMemberBase))
+    OS << (Node->isArrow() ? "->" : ".");
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())

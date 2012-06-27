@@ -39,7 +39,7 @@ struct PrintingPolicy {
       SuppressUnwrittenScope(false), SuppressInitializers(false),
       Dump(false), ConstantArraySizeAsWritten(false),
       AnonymousTagLocations(true), SuppressStrongLifetime(false),
-      Bool(LO.Bool) { }
+      Bool(LO.Bool), SuppressMemberBase(false) { }
 
   /// \brief The number of spaces to use to indent each line.
   unsigned Indentation : 8;
@@ -139,6 +139,11 @@ struct PrintingPolicy {
   /// \brief Whether we can use 'bool' rather than '_Bool', even if the language
   /// doesn't actually have 'bool' (because, e.g., it is defined as a macro).
   unsigned Bool : 1;
+
+  // scout
+  /// \brief Whether we suppress printing the base of a member
+  ///
+  unsigned SuppressMemberBase : 1;
 };
 
 } // end namespace clang
