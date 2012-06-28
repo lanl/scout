@@ -73,10 +73,10 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
     if(isa<ForAllStmt>(s)){
       ForAllStmt* fas = cast<ForAllStmt>(s);
       rewriter_.InsertText(fas->getLocStart(),
-                           "begin_forall();\n", true, true);
+                           "//begin_forall();\n", true, true);
       
       rewriter_.InsertText(fas->getLocEnd().getLocWithOffset(1),
-                           "\nend_forall();\n", true, true);      
+                           "\n//end_forall();\n", true, true);      
     }
 
     return true;
