@@ -115,9 +115,9 @@ if(SCOUT_ENABLE_RT_OPENGL)
     add_custom_command(
       OUTPUT ${SCOUT_BINARY_DIR}/include/${name}.h
       COMMAND ${GLSL2CSTR} 
-        --in ${shader} 
-	--out ${SCOUT_BINARY_DIR}/include/${name}.h 
-        --name ${name}
+        --in      ${shader} 
+	--out     ${SCOUT_BINARY_DIR}/include/${name}.h 
+        --varname ${name}
       DEPENDS ${GLSL2CSTR} ${shader}
       )
 
