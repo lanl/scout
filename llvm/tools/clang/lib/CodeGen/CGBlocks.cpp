@@ -1030,7 +1030,7 @@ llvm::Value *CodeGenFunction::EmitBlockLiteral(const CGBlockInfo &blockInfo) {
   // Using the computed layout, generate the actual block function.
   bool isLambdaConv = blockInfo.getBlockDecl()->isConversionFromLambda();
   llvm::Constant *blockFn
-    = CodeGenFunction(CGM).GenerateBlockFunction(CurGD, blockInfo,
+    = CodeGenFunction(CGM, true).GenerateBlockFunction(CurGD, blockInfo,
                                                  CurFuncDecl, LocalDeclMap,
                                                  isLambdaConv);
   blockFn = llvm::ConstantExpr::getBitCast(blockFn, VoidPtrTy);
@@ -1276,7 +1276,7 @@ RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
 
   const FunctionType *FuncTy = FnType->castAs<FunctionType>();
   const CGFunctionInfo &FnInfo =
-    CGM.getTypes().arrangeFunctionCall(Args, FuncTy);
+    CGM.getTypes().arrangeFreeFunctionCall(Args, FuncTy);
 
   // Cast the function pointer to the right type.
   llvm::Type *BlockFTy = CGM.getTypes().GetFunctionType(FnInfo);
@@ -1403,7 +1403,8 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
   // Check if we should generate debug info for this block function.
   if (CGM.getModuleDebugInfo())
     DebugInfo = CGM.getModuleDebugInfo();
-
+  CurGD = GD;
+  
   BlockInfo = &blockInfo;
 
   // Arrange for local static and local extern declarations to appear

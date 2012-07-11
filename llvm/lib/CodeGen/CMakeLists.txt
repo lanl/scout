@@ -11,6 +11,7 @@ add_llvm_library(LLVMCodeGen
   DeadMachineInstructionElim.cpp
   DFAPacketizer.cpp
   DwarfEHPrepare.cpp
+  EarlyIfConversion.cpp
   EdgeBundles.cpp
   ExecutionDepsFix.cpp
   ExpandISelPseudos.cpp
@@ -103,6 +104,8 @@ add_llvm_library(LLVMCodeGen
   UnreachableBlockElim.cpp
   VirtRegMap.cpp
   )
+
+add_dependencies(LLVMCodeGen intrinsics_gen)
 
 add_subdirectory(SelectionDAG)
 add_subdirectory(AsmPrinter)

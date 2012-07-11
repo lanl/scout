@@ -1931,11 +1931,16 @@ def : T2Pat<(add        GPR:$src, t2_so_imm_neg:$imm),
             (t2SUBri    GPR:$src, t2_so_imm_neg:$imm)>;
 def : T2Pat<(add        GPR:$src, imm0_4095_neg:$imm),
             (t2SUBri12  GPR:$src, imm0_4095_neg:$imm)>;
+def : T2Pat<(add        GPR:$src, imm0_65535_neg:$imm),
+            (t2SUBrr    GPR:$src, (t2MOVi16 (imm_neg_XFORM imm:$imm)))>;
+
 let AddedComplexity = 1 in
 def : T2Pat<(ARMaddc    rGPR:$src, imm0_255_neg:$imm),
             (t2SUBSri   rGPR:$src, imm0_255_neg:$imm)>;
 def : T2Pat<(ARMaddc    rGPR:$src, t2_so_imm_neg:$imm),
             (t2SUBSri   rGPR:$src, t2_so_imm_neg:$imm)>;
+def : T2Pat<(ARMaddc    rGPR:$src, imm0_65535_neg:$imm),
+            (t2SUBSrr   rGPR:$src, (t2MOVi16 (imm_neg_XFORM imm:$imm)))>;
 // The with-carry-in form matches bitwise not instead of the negation.
 // Effectively, the inverse interpretation of the carry flag already accounts
 // for part of the negation.
@@ -1944,6 +1949,8 @@ def : T2Pat<(ARMadde    rGPR:$src, imm0_255_not:$imm, CPSR),
             (t2SBCri    rGPR:$src, imm0_255_not:$imm)>;
 def : T2Pat<(ARMadde    rGPR:$src, t2_so_imm_not:$imm, CPSR),
             (t2SBCri    rGPR:$src, t2_so_imm_not:$imm)>;
+def : T2Pat<(ARMadde    rGPR:$src, imm0_65535_neg:$imm, CPSR),
+            (t2SBCrr    rGPR:$src, (t2MOVi16 (imm_neg_XFORM imm:$imm)))>;
 
 // Select Bytes -- for disassembly only
 
@@ -2154,8 +2161,8 @@ defm t2ROR  : T2I_sh_ir<0b11, "ror", imm0_31,
                         BinOpFrag<(rotr node:$LHS, node:$RHS)>, "t2ROR">;
 
 // (rotr x, (and y, 0x...1f)) ==> (ROR x, y)
-def : Pat<(rotr rGPR:$lhs, (and rGPR:$rhs, lo5AllOne)),
-          (t2RORrr rGPR:$lhs, rGPR:$rhs)>;
+def : T2Pat<(rotr rGPR:$lhs, (and rGPR:$rhs, lo5AllOne)),
+            (t2RORrr rGPR:$lhs, rGPR:$rhs)>;
 
 let Uses = [CPSR] in {
 def t2RRX : T2sTwoReg<(outs rGPR:$Rd), (ins rGPR:$Rm), IIC_iMOVsi,

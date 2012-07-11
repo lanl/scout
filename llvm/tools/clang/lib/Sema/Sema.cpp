@@ -682,9 +682,17 @@ void Sema::ActOnEndOfTranslationUnit() {
           if (isa<CXXMethodDecl>(DiagD))
             Diag(DiagD->getLocation(), diag::warn_unneeded_member_function)
                   << DiagD->getDeclName();
-          else
-            Diag(DiagD->getLocation(), diag::warn_unneeded_internal_decl)
-                  << /*function*/0 << DiagD->getDeclName();
+          else {
+            if (FD->getStorageClassAsWritten() == SC_Static &&
+                !FD->isInlineSpecified() &&
+                !SourceMgr.isFromMainFile(
+                   SourceMgr.getExpansionLoc(FD->getLocation())))
+              Diag(DiagD->getLocation(), diag::warn_unneeded_static_internal_decl)
+                << DiagD->getDeclName();
+            else
+              Diag(DiagD->getLocation(), diag::warn_unneeded_internal_decl)
+                   << /*function*/0 << DiagD->getDeclName();
+          }
         } else {
           Diag(DiagD->getLocation(),
                isa<CXXMethodDecl>(DiagD) ? diag::warn_unused_member_function
@@ -1016,6 +1024,24 @@ LambdaScopeInfo *Sema::getCurLambda() {
 
 void Sema::ActOnComment(SourceRange Comment) {
   RawComment RC(SourceMgr, Comment);
+  if (RC.isAlmostTrailingComment()) {
+    SourceRange MagicMarkerRange(Comment.getBegin(),
+                                 Comment.getBegin().getLocWithOffset(3));
+    StringRef MagicMarkerText;
+    switch (RC.getKind()) {
+    case RawComment::RCK_OrdinaryBCPL:
+      MagicMarkerText = "///<";
+      break;
+    case RawComment::RCK_OrdinaryC:
+      MagicMarkerText = "/**<";
+      break;
+    default:
+      llvm_unreachable("if this is an almost Doxygen comment, "
+                       "it should be ordinary");
+    }
+    Diag(Comment.getBegin(), diag::warn_not_a_doxygen_trailing_member_comment) <<
+      FixItHint::CreateReplacement(MagicMarkerRange, MagicMarkerText);
+  }
   Context.addComment(RC);
 }
 

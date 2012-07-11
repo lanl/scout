@@ -31,15 +31,12 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/STLExtras.h"
 #include "LiveRangeCalc.h"
 #include <algorithm>
 #include <limits>
 #include <cmath>
 using namespace llvm;
-
-STATISTIC(numIntervals , "Number of original intervals");
 
 char LiveIntervals::ID = 0;
 INITIALIZE_PASS_BEGIN(LiveIntervals, "liveintervals",
@@ -76,11 +73,9 @@ LiveIntervals::~LiveIntervals() {
 
 void LiveIntervals::releaseMemory() {
   // Free the live intervals themselves.
-  for (DenseMap<unsigned, LiveInterval*>::iterator I = R2IMap.begin(),
-       E = R2IMap.end(); I != E; ++I)
-    delete I->second;
-
-  R2IMap.clear();
+  for (unsigned i = 0, e = VirtRegIntervals.size(); i != e; ++i)
+    delete VirtRegIntervals[TargetRegisterInfo::index2VirtReg(i)];
+  VirtRegIntervals.clear();
   RegMaskSlots.clear();
   RegMaskBits.clear();
   RegMaskBlocks.clear();
@@ -111,9 +106,6 @@ bool LiveIntervals::runOnMachineFunction(MachineFunction &fn) {
   ReservedRegs = TRI->getReservedRegs(fn);
 
   computeIntervals();
-
-  numIntervals += getNumIntervals();
-
   computeLiveInRegUnits();
 
   DEBUG(dump());
@@ -124,21 +116,17 @@ bool LiveIntervals::runOnMachineFunction(MachineFunction &fn) {
 void LiveIntervals::print(raw_ostream &OS, const Module* ) const {
   OS << "********** INTERVALS **********\n";
 
-  // Dump the physregs.
-  for (unsigned Reg = 1, RegE = TRI->getNumRegs(); Reg != RegE; ++Reg)
-    if (const LiveInterval *LI = R2IMap.lookup(Reg))
-      OS << PrintReg(Reg, TRI) << '\t' << *LI << '\n';
-
   // Dump the regunits.
   for (unsigned i = 0, e = RegUnitIntervals.size(); i != e; ++i)
     if (LiveInterval *LI = RegUnitIntervals[i])
       OS << PrintRegUnit(i, TRI) << " = " << *LI << '\n';
 
   // Dump the virtregs.
-  for (unsigned Reg = 0, RegE = MRI->getNumVirtRegs(); Reg != RegE; ++Reg)
-    if (const LiveInterval *LI =
-        R2IMap.lookup(TargetRegisterInfo::index2VirtReg(Reg)))
-      OS << PrintReg(LI->reg) << '\t' << *LI << '\n';
+  for (unsigned i = 0, e = MRI->getNumVirtRegs(); i != e; ++i) {
+    unsigned Reg = TargetRegisterInfo::index2VirtReg(i);
+    if (hasInterval(Reg))
+      OS << PrintReg(Reg) << " = " << getInterval(Reg) << '\n';
+  }
 
   printInstrs(OS);
 }
@@ -362,101 +350,6 @@ void LiveIntervals::handleVirtualRegisterDef(MachineBasicBlock *mbb,
   DEBUG(dbgs() << '\n');
 }
 
-static bool isRegLiveIntoSuccessor(const MachineBasicBlock *MBB, unsigned Reg) {
-  for (MachineBasicBlock::const_succ_iterator SI = MBB->succ_begin(),
-                                              SE = MBB->succ_end();
-       SI != SE; ++SI) {
-    const MachineBasicBlock* succ = *SI;
-    if (succ->isLiveIn(Reg))
-      return true;
-  }
-  return false;
-}
-
-void LiveIntervals::handlePhysicalRegisterDef(MachineBasicBlock *MBB,
-                                              MachineBasicBlock::iterator mi,
-                                              SlotIndex MIIdx,
-                                              MachineOperand& MO,
-                                              LiveInterval &interval) {
-  DEBUG(dbgs() << "\t\tregister: " << PrintReg(interval.reg, TRI));
-
-  SlotIndex baseIndex = MIIdx;
-  SlotIndex start = baseIndex.getRegSlot(MO.isEarlyClobber());
-  SlotIndex end = start;
-
-  // If it is not used after definition, it is considered dead at
-  // the instruction defining it. Hence its interval is:
-  // [defSlot(def), defSlot(def)+1)
-  // For earlyclobbers, the defSlot was pushed back one; the extra
-  // advance below compensates.
-  if (MO.isDead()) {
-    DEBUG(dbgs() << " dead");
-    end = start.getDeadSlot();
-    goto exit;
-  }
-
-  // If it is not dead on definition, it must be killed by a
-  // subsequent instruction. Hence its interval is:
-  // [defSlot(def), useSlot(kill)+1)
-  baseIndex = baseIndex.getNextIndex();
-  while (++mi != MBB->end()) {
-
-    if (mi->isDebugValue())
-      continue;
-    if (getInstructionFromIndex(baseIndex) == 0)
-      baseIndex = Indexes->getNextNonNullIndex(baseIndex);
-
-    if (mi->killsRegister(interval.reg, TRI)) {
-      DEBUG(dbgs() << " killed");
-      end = baseIndex.getRegSlot();
-      goto exit;
-    } else {
-      int DefIdx = mi->findRegisterDefOperandIdx(interval.reg,false,false,TRI);
-      if (DefIdx != -1) {
-        if (mi->isRegTiedToUseOperand(DefIdx)) {
-          // Two-address instruction.
-          end = baseIndex.getRegSlot(mi->getOperand(DefIdx).isEarlyClobber());
-        } else {
-          // Another instruction redefines the register before it is ever read.
-          // Then the register is essentially dead at the instruction that
-          // defines it. Hence its interval is:
-          // [defSlot(def), defSlot(def)+1)
-          DEBUG(dbgs() << " dead");
-          end = start.getDeadSlot();
-        }
-        goto exit;
-      }
-    }
-
-    baseIndex = baseIndex.getNextIndex();
-  }
-
-  // If we get here the register *should* be live out.
-  assert(!isAllocatable(interval.reg) && "Physregs shouldn't be live out!");
-
-  // FIXME: We need saner rules for reserved regs.
-  if (isReserved(interval.reg)) {
-    end = start.getDeadSlot();
-  } else {
-    // Unreserved, unallocable registers like EFLAGS can be live across basic
-    // block boundaries.
-    assert(isRegLiveIntoSuccessor(MBB, interval.reg) &&
-           "Unreserved reg not live-out?");
-    end = getMBBEndIdx(MBB);
-  }
-exit:
-  assert(start < end && "did not find end of interval?");
-
-  // Already exists? Extend old live interval.
-  VNInfo *ValNo = interval.getVNInfoAt(start);
-  bool Extend = ValNo != 0;
-  if (!Extend)
-    ValNo = interval.getNextValue(start, VNInfoAllocator);
-  LiveRange LR(start, end, ValNo);
-  interval.addRange(LR);
-  DEBUG(dbgs() << " +" << LR << '\n');
-}
-
 void LiveIntervals::handleRegisterDef(MachineBasicBlock *MBB,
                                       MachineBasicBlock::iterator MI,
                                       SlotIndex MIIdx,
@@ -465,93 +358,6 @@ void LiveIntervals::handleRegisterDef(MachineBasicBlock *MBB,
   if (TargetRegisterInfo::isVirtualRegister(MO.getReg()))
     handleVirtualRegisterDef(MBB, MI, MIIdx, MO, MOIdx,
                              getOrCreateInterval(MO.getReg()));
-  else
-    handlePhysicalRegisterDef(MBB, MI, MIIdx, MO,
-                              getOrCreateInterval(MO.getReg()));
-}
-
-void LiveIntervals::handleLiveInRegister(MachineBasicBlock *MBB,
-                                         SlotIndex MIIdx,
-                                         LiveInterval &interval) {
-  assert(TargetRegisterInfo::isPhysicalRegister(interval.reg) &&
-         "Only physical registers can be live in.");
-  assert((!isAllocatable(interval.reg) || MBB->getParent()->begin() ||
-          MBB->isLandingPad()) &&
-          "Allocatable live-ins only valid for entry blocks and landing pads.");
-
-  DEBUG(dbgs() << "\t\tlivein register: " << PrintReg(interval.reg, TRI));
-
-  // Look for kills, if it reaches a def before it's killed, then it shouldn't
-  // be considered a livein.
-  MachineBasicBlock::iterator mi = MBB->begin();
-  MachineBasicBlock::iterator E = MBB->end();
-  // Skip over DBG_VALUE at the start of the MBB.
-  if (mi != E && mi->isDebugValue()) {
-    while (++mi != E && mi->isDebugValue())
-      ;
-    if (mi == E)
-      // MBB is empty except for DBG_VALUE's.
-      return;
-  }
-
-  SlotIndex baseIndex = MIIdx;
-  SlotIndex start = baseIndex;
-  if (getInstructionFromIndex(baseIndex) == 0)
-    baseIndex = Indexes->getNextNonNullIndex(baseIndex);
-
-  SlotIndex end = baseIndex;
-  bool SeenDefUse = false;
-
-  while (mi != E) {
-    if (mi->killsRegister(interval.reg, TRI)) {
-      DEBUG(dbgs() << " killed");
-      end = baseIndex.getRegSlot();
-      SeenDefUse = true;
-      break;
-    } else if (mi->modifiesRegister(interval.reg, TRI)) {
-      // Another instruction redefines the register before it is ever read.
-      // Then the register is essentially dead at the instruction that defines
-      // it. Hence its interval is:
-      // [defSlot(def), defSlot(def)+1)
-      DEBUG(dbgs() << " dead");
-      end = start.getDeadSlot();
-      SeenDefUse = true;
-      break;
-    }
-
-    while (++mi != E && mi->isDebugValue())
-      // Skip over DBG_VALUE.
-      ;
-    if (mi != E)
-      baseIndex = Indexes->getNextNonNullIndex(baseIndex);
-  }
-
-  // Live-in register might not be used at all.
-  if (!SeenDefUse) {
-    if (isAllocatable(interval.reg) ||
-        !isRegLiveIntoSuccessor(MBB, interval.reg)) {
-      // Allocatable registers are never live through.
-      // Non-allocatable registers that aren't live into any successors also
-      // aren't live through.
-      DEBUG(dbgs() << " dead");
-      return;
-    } else {
-      // If we get here the register is non-allocatable and live into some
-      // successor. We'll conservatively assume it's live-through.
-      DEBUG(dbgs() << " live through");
-      end = getMBBEndIdx(MBB);
-    }
-  }
-
-  SlotIndex defIdx = getMBBStartIdx(MBB);
-  assert(getInstructionFromIndex(defIdx) == 0 &&
-         "PHI def index points at actual instruction.");
-  VNInfo *vni = interval.getNextValue(defIdx, VNInfoAllocator);
-  vni->setIsPHIDef(true);
-  LiveRange LR(start, end, vni);
-
-  interval.addRange(LR);
-  DEBUG(dbgs() << " +" << LR << '\n');
 }
 
 /// computeIntervals - computes the live intervals for virtual
@@ -579,12 +385,6 @@ void LiveIntervals::computeIntervals() {
     DEBUG(dbgs() << "BB#" << MBB->getNumber()
           << ":\t\t# derived from " << MBB->getName() << "\n");
 
-    // Create intervals for live-ins to this BB first.
-    for (MachineBasicBlock::livein_iterator LI = MBB->livein_begin(),
-           LE = MBB->livein_end(); LI != LE; ++LI) {
-      handleLiveInRegister(MBB, MIIndex, getOrCreateInterval(*LI));
-    }
-
     // Skip over empty initial indices.
     if (getInstructionFromIndex(MIIndex) == 0)
       MIIndex = Indexes->getNextNonNullIndex(MIIndex);
@@ -608,7 +408,7 @@ void LiveIntervals::computeIntervals() {
           continue;
         }
 
-        if (!MO.isReg() || !MO.getReg())
+        if (!MO.isReg() || !TargetRegisterInfo::isVirtualRegister(MO.getReg()))
           continue;
 
         // handle register defs - build intervals
@@ -1188,15 +988,15 @@ private:
 
       // Collect ranges for register units. These live ranges are computed on
       // demand, so just skip any that haven't been computed yet.
-      if (TargetRegisterInfo::isPhysicalRegister(Reg) && LIS.trackingRegUnits())
+      if (TargetRegisterInfo::isPhysicalRegister(Reg)) {
         for (MCRegUnitIterator Units(Reg, &TRI); Units.isValid(); ++Units)
           if (LiveInterval *LI = LIS.getCachedRegUnit(*Units))
             collectRanges(MO, LI, Entering, Internal, Exiting, OldIdx);
-
-      // Collect ranges for individual registers.
-      if (LIS.hasInterval(Reg))
+      } else {
+        // Collect ranges for individual virtual registers.
         collectRanges(MO, &LIS.getInterval(Reg),
                       Entering, Internal, Exiting, OldIdx);
+      }
     }
   }
 

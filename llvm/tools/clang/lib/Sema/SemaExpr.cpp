@@ -649,8 +649,7 @@ bool Sema::variadicArgumentPODCheck(const Expr *E, VariadicCallType CT) {
 /// interfaces passed by value.
 ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
                                                   FunctionDecl *FDecl) {
-  const QualType &Ty = E->getType();
-  if (const BuiltinType *PlaceholderTy = Ty->getAsPlaceholderType()) {
+  if (const BuiltinType *PlaceholderTy = E->getType()->getAsPlaceholderType()) {
     // Strip the unbridged-cast placeholder expression off, if applicable.
     if (PlaceholderTy->getKind() == BuiltinType::ARCUnbridgedCast &&
         (CT == VariadicMethod ||
@@ -671,15 +670,15 @@ ExprResult Sema::DefaultVariadicArgumentPromotion(Expr *E, VariadicCallType CT,
     return ExprError();
   E = ExprRes.take();
 
-  if (Ty->isObjCObjectType() &&
+  if (E->getType()->isObjCObjectType() &&
     DiagRuntimeBehavior(E->getLocStart(), 0,
                         PDiag(diag::err_cannot_pass_objc_interface_to_vararg)
-                          << Ty << CT))
+                          << E->getType() << CT))
     return ExprError();
 
   // Diagnostics regarding non-POD argument types are
   // emitted along with format string checking in Sema::CheckFunctionCall().
-  if (isValidVarArgType(Ty) == VAK_Invalid) {
+  if (isValidVarArgType(E->getType()) == VAK_Invalid) {
     // Turn this into a trap.
     CXXScopeSpec SS;
     SourceLocation TemplateKWLoc;
@@ -1492,36 +1491,40 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
         if (getLangOpts().MicrosoftMode)
           diagnostic = diag::warn_found_via_dependent_bases_lookup;
         if (isInstance) {
+          Diag(R.getNameLoc(), diagnostic) << Name
+            << FixItHint::CreateInsertion(R.getNameLoc(), "this->");
           UnresolvedLookupExpr *ULE = cast<UnresolvedLookupExpr>(
               CallsUndergoingInstantiation.back()->getCallee());
-          CXXMethodDecl *DepMethod = cast_or_null<CXXMethodDecl>(
-              CurMethod->getInstantiatedFromMemberFunction());
-          if (DepMethod) {
-            Diag(R.getNameLoc(), diagnostic) << Name
-              << FixItHint::CreateInsertion(R.getNameLoc(), "this->");
-            QualType DepThisType = DepMethod->getThisType(Context);
-            CheckCXXThisCapture(R.getNameLoc());
-            CXXThisExpr *DepThis = new (Context) CXXThisExpr(
-                                       R.getNameLoc(), DepThisType, false);
-            TemplateArgumentListInfo TList;
-            if (ULE->hasExplicitTemplateArgs())
-              ULE->copyTemplateArgumentsInto(TList);
-            
-            CXXScopeSpec SS;
-            SS.Adopt(ULE->getQualifierLoc());
-            CXXDependentScopeMemberExpr *DepExpr =
-                CXXDependentScopeMemberExpr::Create(
-                    Context, DepThis, DepThisType, true, SourceLocation(),
-                    SS.getWithLocInContext(Context),
-                    ULE->getTemplateKeywordLoc(), 0,
-                    R.getLookupNameInfo(),
-                    ULE->hasExplicitTemplateArgs() ? &TList : 0);
-            CallsUndergoingInstantiation.back()->setCallee(DepExpr);
-          } else {
-            // FIXME: we should be able to handle this case too. It is correct
-            // to add this-> here. This is a workaround for PR7947.
-            Diag(R.getNameLoc(), diagnostic) << Name;
-          }
+
+          
+          CXXMethodDecl *DepMethod;
+          if (CurMethod->getTemplatedKind() ==
+              FunctionDecl::TK_FunctionTemplateSpecialization)
+            DepMethod = cast<CXXMethodDecl>(CurMethod->getPrimaryTemplate()->
+                getInstantiatedFromMemberTemplate()->getTemplatedDecl());
+          else
+            DepMethod = cast<CXXMethodDecl>(
+                CurMethod->getInstantiatedFromMemberFunction());
+          assert(DepMethod && "No template pattern found");
+
+          QualType DepThisType = DepMethod->getThisType(Context);
+          CheckCXXThisCapture(R.getNameLoc());
+          CXXThisExpr *DepThis = new (Context) CXXThisExpr(
+                                     R.getNameLoc(), DepThisType, false);
+          TemplateArgumentListInfo TList;
+          if (ULE->hasExplicitTemplateArgs())
+            ULE->copyTemplateArgumentsInto(TList);
+          
+          CXXScopeSpec SS;
+          SS.Adopt(ULE->getQualifierLoc());
+          CXXDependentScopeMemberExpr *DepExpr =
+              CXXDependentScopeMemberExpr::Create(
+                  Context, DepThis, DepThisType, true, SourceLocation(),
+                  SS.getWithLocInContext(Context),
+                  ULE->getTemplateKeywordLoc(), 0,
+                  R.getLookupNameInfo(),
+                  ULE->hasExplicitTemplateArgs() ? &TList : 0);
+          CallsUndergoingInstantiation.back()->setCallee(DepExpr);
         } else {
           Diag(R.getNameLoc(), diagnostic) << Name;
         }
@@ -2536,6 +2539,7 @@ ExprResult Sema::ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind) {
   default: llvm_unreachable("Unknown simple primary expr!");
   case tok::kw___func__: IT = PredefinedExpr::Func; break; // [C99 6.4.2.2]
   case tok::kw___FUNCTION__: IT = PredefinedExpr::Function; break;
+  case tok::kw_L__FUNCTION__: IT = PredefinedExpr::LFunction; break;
   case tok::kw___PRETTY_FUNCTION__: IT = PredefinedExpr::PrettyFunction; break;
   }
 
@@ -2557,7 +2561,10 @@ ExprResult Sema::ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind) {
     unsigned Length = PredefinedExpr::ComputeName(IT, currentDecl).length();
 
     llvm::APInt LengthI(32, Length + 1);
-    ResTy = Context.CharTy.withConst();
+    if (IT == PredefinedExpr::LFunction)
+      ResTy = Context.WCharTy.withConst();
+    else
+      ResTy = Context.CharTy.withConst();
     ResTy = Context.getConstantArrayType(ResTy, LengthI, ArrayType::Normal, 0);
   }
   return Owned(new (Context) PredefinedExpr(Loc, ResTy, IT));
@@ -3439,6 +3446,8 @@ ExprResult Sema::BuildCXXDefaultArgExpr(SourceLocation CallLoc,
       = ArgList.getInnermost();
     InstantiatingTemplate Inst(*this, CallLoc, Param, Innermost.first,
                                Innermost.second);
+    if (Inst)
+      return ExprError();
 
     ExprResult Result;
     {
@@ -3513,8 +3522,8 @@ Sema::getVariadicCallType(FunctionDecl *FDecl, const FunctionProtoType *Proto,
       if (CXXMethodDecl *Method = dyn_cast_or_null<CXXMethodDecl>(FDecl))
         if (Method->isInstance())
           return VariadicMethod;
-      return VariadicFunction;
     }
+    return VariadicFunction;
   }
   return VariadicDoesNotApply;
 }
@@ -6793,7 +6802,7 @@ static DiagnosticBuilder diagnoseObjCLiteralComparison(Sema &S,
     llvm_unreachable("Unknown Objective-C object literal kind");
   }
 
-  return S.Diag(Loc, diag::err_objc_literal_comparison)
+  return S.Diag(Loc, diag::warn_objc_literal_comparison)
            << LiteralKind << CanFix << Literal->getSourceRange();
 }
 
@@ -6801,6 +6810,14 @@ static ExprResult fixObjCLiteralComparison(Sema &S, SourceLocation OpLoc,
                                            ExprResult &LHS,
                                            ExprResult &RHS,
                                            BinaryOperatorKind Op) {
+  // Check early to see if the warning's on.
+  // If it's off, we should /not/ be auto-applying the accompanying fixit.
+  DiagnosticsEngine::Level Level =
+    S.getDiagnostics().getDiagnosticLevel(diag::warn_objc_literal_comparison,
+                                          OpLoc);
+  if (Level == DiagnosticsEngine::Ignored)
+    return ExprEmpty();
+
   assert((Op == BO_EQ || Op == BO_NE) && "Cannot fix other operations.");
 
   // Get the LHS object's interface type.
@@ -7614,7 +7631,27 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
   return true;
 }
 
+static void CheckIdentityFieldAssignment(Expr *LHSExpr, Expr *RHSExpr,
+                                         SourceLocation Loc,
+                                         Sema &Sema) {
+  // C / C++ fields
+  MemberExpr *ML = dyn_cast<MemberExpr>(LHSExpr);
+  MemberExpr *MR = dyn_cast<MemberExpr>(RHSExpr);
+  if (ML && MR && ML->getMemberDecl() == MR->getMemberDecl()) {
+    if (isa<CXXThisExpr>(ML->getBase()) && isa<CXXThisExpr>(MR->getBase()))
+      Sema.Diag(Loc, diag::warn_identity_field_assign) << 0;
+  }
 
+  // Objective-C instance variables
+  ObjCIvarRefExpr *OL = dyn_cast<ObjCIvarRefExpr>(LHSExpr);
+  ObjCIvarRefExpr *OR = dyn_cast<ObjCIvarRefExpr>(RHSExpr);
+  if (OL && OR && OL->getDecl() == OR->getDecl()) {
+    DeclRefExpr *RL = dyn_cast<DeclRefExpr>(OL->getBase()->IgnoreImpCasts());
+    DeclRefExpr *RR = dyn_cast<DeclRefExpr>(OR->getBase()->IgnoreImpCasts());
+    if (RL && RR && RL->getDecl() == RR->getDecl())
+      Sema.Diag(Loc, diag::warn_identity_field_assign) << 1;
+  }
+}
 
 // C99 6.5.16.1
 QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
@@ -7631,6 +7668,10 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
                                              CompoundType;
   AssignConvertType ConvTy;
   if (CompoundType.isNull()) {
+    Expr *RHSCheck = RHS.get();
+
+    CheckIdentityFieldAssignment(LHSExpr, RHSCheck, Loc, *this);
+
     QualType LHSTy(LHSType);
     ConvTy = CheckSingleAssignmentConstraints(LHSTy, RHS);
     if (RHS.isInvalid())
@@ -7651,7 +7692,6 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
     // If the RHS is a unary plus or minus, check to see if they = and + are
     // right next to each other.  If so, the user may have typo'd "x =+ 4"
     // instead of "x += 4".
-    Expr *RHSCheck = RHS.get();
     if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(RHSCheck))
       RHSCheck = ICE->getSubExpr();
     if (UnaryOperator *UO = dyn_cast<UnaryOperator>(RHSCheck)) {
@@ -8259,12 +8299,14 @@ ExprResult Sema::CreateBuiltinBinOp(SourceLocation OpLoc,
     break;
   case BO_EQ:
   case BO_NE:
-    if (isObjCObjectLiteral(LHS) || isObjCObjectLiteral(RHS)) {
-      ExprResult IsEqualCall = fixObjCLiteralComparison(*this, OpLoc,
-                                                        LHS, RHS, Opc);
-      if (IsEqualCall.isUsable())
-        return IsEqualCall;
-      // Otherwise, fall back to the normal diagnostic in CheckCompareOperands.
+    if (getLangOpts().ObjC1) {
+      if (isObjCObjectLiteral(LHS) || isObjCObjectLiteral(RHS)) {
+        ExprResult IsEqualCall = fixObjCLiteralComparison(*this, OpLoc,
+                                                          LHS, RHS, Opc);
+        if (IsEqualCall.isUsable())
+          return IsEqualCall;
+        // Otherwise, fall back to the normal warning in CheckCompareOperands.
+      }
     }
     ResultTy = CheckCompareOperands(LHS, RHS, OpLoc, Opc, false);
     break;
@@ -9383,7 +9425,10 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
   PopExpressionEvaluationContext();
 
   BlockScopeInfo *BSI = cast<BlockScopeInfo>(FunctionScopes.back());
-  
+
+  if (BSI->HasImplicitReturnType)
+    deduceClosureReturnType(*BSI);
+
   PopDeclContext();
 
   QualType RetTy = Context.VoidTy;
@@ -9456,7 +9501,12 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
 
   BSI->TheDecl->setBody(cast<CompoundStmt>(Body));
 
-  computeNRVO(Body, getCurBlock());
+  // Try to apply the named return value optimization. We have to check again
+  // if we can do this, though, because blocks keep return statements around
+  // to deduce an implicit return type.
+  if (getLangOpts().CPlusPlus && RetTy->isRecordType() &&
+      !BSI->TheDecl->isDependentContext())
+    computeNRVO(Body, getCurBlock());
   
   BlockExpr *Result = new (Context) BlockExpr(BSI->TheDecl, BlockTy);
   const AnalysisBasedWarnings::Policy &WP = AnalysisWarnings.getDefaultPolicy();
@@ -10899,6 +10949,25 @@ static void MarkExprReferenced(Sema &SemaRef, SourceLocation Loc,
   }
 
   SemaRef.MarkAnyDeclReferenced(Loc, D);
+
+  // If this is a call to a method via a cast, also mark the method in the
+  // derived class used in case codegen can devirtualize the call.
+  const MemberExpr *ME = dyn_cast<MemberExpr>(E);
+  if (!ME)
+    return;
+  CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(ME->getMemberDecl());
+  if (!MD)
+    return;
+  const Expr *Base = ME->getBase();
+  if (Base->getType()->isDependentType())
+    return;
+  const CXXRecordDecl *MostDerivedClassDecl = Base->getBestDynamicClassType();
+  if (!MostDerivedClassDecl)
+    return;
+  CXXMethodDecl *DM = MD->getCorrespondingMethodInClass(MostDerivedClassDecl);
+  if (!DM)
+    return;
+  SemaRef.MarkAnyDeclReferenced(Loc, DM);
 } 
 
 /// \brief Perform reference-marking and odr-use handling for a DeclRefExpr.

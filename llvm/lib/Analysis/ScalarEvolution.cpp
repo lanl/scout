@@ -878,13 +878,6 @@ const SCEV *ScalarEvolution::getTruncateExpr(const SCEV *Op,
     return getAddRecExpr(Operands, AddRec->getLoop(), SCEV::FlagAnyWrap);
   }
 
-  // As a special case, fold trunc(undef) to undef. We don't want to
-  // know too much about SCEVUnknowns, but this special case is handy
-  // and harmless.
-  if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(Op))
-    if (isa<UndefValue>(U->getValue()))
-      return getSCEV(UndefValue::get(Ty));
-
   // The cast wasn't folded; create an explicit cast node. We can reuse
   // the existing insert position since if we get here, we won't have
   // made any changes which would invalidate it.
@@ -1343,13 +1336,6 @@ const SCEV *ScalarEvolution::getAnyExtendExpr(const SCEV *Op,
       Ops.push_back(getAnyExtendExpr(*I, Ty));
     return getAddRecExpr(Ops, AR->getLoop(), SCEV::FlagNW);
   }
-
-  // As a special case, fold anyext(undef) to undef. We don't want to
-  // know too much about SCEVUnknowns, but this special case is handy
-  // and harmless.
-  if (const SCEVUnknown *U = dyn_cast<SCEVUnknown>(Op))
-    if (isa<UndefValue>(U->getValue()))
-      return getSCEV(UndefValue::get(Ty));
 
   // If the expression is obviously signed, use the sext cast value.
   if (isa<SCEVSMaxExpr>(Op))
@@ -2726,7 +2712,7 @@ const SCEV *ScalarEvolution::getCouldNotCompute() {
 const SCEV *ScalarEvolution::getSCEV(Value *V) {
   assert(isSCEVable(V->getType()) && "Value is not SCEVable!");
 
-  ValueExprMapType::const_iterator I = ValueExprMap.find(V);
+  ValueExprMapType::const_iterator I = ValueExprMap.find_as(V);
   if (I != ValueExprMap.end()) return I->second;
   const SCEV *S = createSCEV(V);
 
@@ -2963,7 +2949,7 @@ ScalarEvolution::ForgetSymbolicName(Instruction *PN, const SCEV *SymName) {
     if (!Visited.insert(I)) continue;
 
     ValueExprMapType::iterator It =
-      ValueExprMap.find(static_cast<Value *>(I));
+      ValueExprMap.find_as(static_cast<Value *>(I));
     if (It != ValueExprMap.end()) {
       const SCEV *Old = It->second;
 
@@ -3020,7 +3006,7 @@ const SCEV *ScalarEvolution::createNodeForPHI(PHINode *PN) {
       if (BEValueV && StartValueV) {
         // While we are analyzing this PHI node, handle its value symbolically.
         const SCEV *SymbolicName = getUnknown(PN);
-        assert(ValueExprMap.find(PN) == ValueExprMap.end() &&
+        assert(ValueExprMap.find_as(PN) == ValueExprMap.end() &&
                "PHI node already processed?");
         ValueExprMap.insert(std::make_pair(SCEVCallbackVH(PN, this), SymbolicName));
 
@@ -4084,7 +4070,7 @@ ScalarEvolution::getBackedgeTakenInfo(const Loop *L) {
       if (!Visited.insert(I)) continue;
 
       ValueExprMapType::iterator It =
-        ValueExprMap.find(static_cast<Value *>(I));
+        ValueExprMap.find_as(static_cast<Value *>(I));
       if (It != ValueExprMap.end()) {
         const SCEV *Old = It->second;
 
@@ -4135,7 +4121,8 @@ void ScalarEvolution::forgetLoop(const Loop *L) {
     Instruction *I = Worklist.pop_back_val();
     if (!Visited.insert(I)) continue;
 
-    ValueExprMapType::iterator It = ValueExprMap.find(static_cast<Value *>(I));
+    ValueExprMapType::iterator It =
+      ValueExprMap.find_as(static_cast<Value *>(I));
     if (It != ValueExprMap.end()) {
       forgetMemoizedResults(It->second);
       ValueExprMap.erase(It);
@@ -4168,7 +4155,8 @@ void ScalarEvolution::forgetValue(Value *V) {
     I = Worklist.pop_back_val();
     if (!Visited.insert(I)) continue;
 
-    ValueExprMapType::iterator It = ValueExprMap.find(static_cast<Value *>(I));
+    ValueExprMapType::iterator It =
+      ValueExprMap.find_as(static_cast<Value *>(I));
     if (It != ValueExprMap.end()) {
       forgetMemoizedResults(It->second);
       ValueExprMap.erase(It);
@@ -5484,7 +5472,7 @@ ScalarEvolution::HowFarToZero(const SCEV *V, const Loop *L) {
   // to 0, it must be counting down to equal 0. Consequently, N = Start / -Step.
   // We have not yet seen any such cases.
   const SCEVConstant *StepC = dyn_cast<SCEVConstant>(Step);
-  if (StepC == 0)
+  if (StepC == 0 || StepC->getValue()->equalsInt(0))
     return getCouldNotCompute();
 
   // For positive steps (counting up until unsigned overflow):

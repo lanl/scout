@@ -13,6 +13,9 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
+#include "clang/AST/CommentLexer.h"
+#include "clang/AST/CommentSema.h"
+#include "clang/AST/CommentParser.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -63,11 +66,15 @@ const RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
 
   assert(D);
 
+  // User can not attach documentation to implicit declarations.
+  if (D->isImplicit())
+    return NULL;
+
   // TODO: handle comments for function parameters properly.
   if (isa<ParmVarDecl>(D))
     return NULL;
 
-  ArrayRef<RawComment> RawComments = Comments.getComments();
+  ArrayRef<RawComment *> RawComments = Comments.getComments();
 
   // If there are no comments anywhere, we won't find anything.
   if (RawComments.empty())
@@ -80,10 +87,11 @@ const RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
     return NULL;
 
   // Find the comment that occurs just after this declaration.
-  ArrayRef<RawComment>::iterator Comment
+  RawComment CommentAtDeclLoc(SourceMgr, SourceRange(DeclLoc));
+  ArrayRef<RawComment *>::iterator Comment
       = std::lower_bound(RawComments.begin(),
                          RawComments.end(),
-                         SourceRange(DeclLoc),
+                         &CommentAtDeclLoc,
                          BeforeThanCompare<RawComment>(SourceMgr));
 
   // Decompose the location for the declaration and find the beginning of the
@@ -92,17 +100,17 @@ const RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
 
   // First check whether we have a trailing comment.
   if (Comment != RawComments.end() &&
-      Comment->isDoxygen() && Comment->isTrailingComment() &&
-      !isa<TagDecl>(D) && !isa<NamespaceDecl>(D)) {
+      (*Comment)->isDocumentation() && (*Comment)->isTrailingComment() &&
+      (isa<FieldDecl>(D) || isa<EnumConstantDecl>(D) || isa<VarDecl>(D))) {
     std::pair<FileID, unsigned> CommentBeginDecomp
-      = SourceMgr.getDecomposedLoc(Comment->getSourceRange().getBegin());
+      = SourceMgr.getDecomposedLoc((*Comment)->getSourceRange().getBegin());
     // Check that Doxygen trailing comment comes after the declaration, starts
     // on the same line and in the same file as the declaration.
     if (DeclLocDecomp.first == CommentBeginDecomp.first &&
         SourceMgr.getLineNumber(DeclLocDecomp.first, DeclLocDecomp.second)
           == SourceMgr.getLineNumber(CommentBeginDecomp.first,
                                      CommentBeginDecomp.second)) {
-      return &*Comment;
+      return *Comment;
     }
   }
 
@@ -113,12 +121,12 @@ const RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
   --Comment;
 
   // Check that we actually have a non-member Doxygen comment.
-  if (!Comment->isDoxygen() || Comment->isTrailingComment())
+  if (!(*Comment)->isDocumentation() || (*Comment)->isTrailingComment())
     return NULL;
 
   // Decompose the end of the comment.
   std::pair<FileID, unsigned> CommentEndDecomp
-    = SourceMgr.getDecomposedLoc(Comment->getSourceRange().getEnd());
+    = SourceMgr.getDecomposedLoc((*Comment)->getSourceRange().getEnd());
 
   // If the comment and the declaration aren't in the same file, then they
   // aren't related.
@@ -136,24 +144,57 @@ const RawComment *ASTContext::getRawCommentForDeclNoCache(const Decl *D) const {
   StringRef Text(Buffer + CommentEndDecomp.second,
                  DeclLocDecomp.second - CommentEndDecomp.second);
 
-  // There should be no other declarations between comment and declaration.
-  if (Text.find_first_of(",;{}") != StringRef::npos)
+  // There should be no other declarations or preprocessor directives between
+  // comment and declaration.
+  if (Text.find_first_of(",;{}#") != StringRef::npos)
     return NULL;
 
-  return &*Comment;
+  return *Comment;
 }
 
 const RawComment *ASTContext::getRawCommentForDecl(const Decl *D) const {
   // Check whether we have cached a comment string for this declaration
   // already.
-  llvm::DenseMap<const Decl *, const RawComment *>::iterator Pos
+  llvm::DenseMap<const Decl *, RawAndParsedComment>::iterator Pos
       = DeclComments.find(D);
-  if (Pos != DeclComments.end())
-      return Pos->second;
+  if (Pos != DeclComments.end()) {
+    RawAndParsedComment C = Pos->second;
+    return C.first;
+  }
 
   const RawComment *RC = getRawCommentForDeclNoCache(D);
-  DeclComments[D] = RC;
+  // If we found a comment, it should be a documentation comment.
+  assert(!RC || RC->isDocumentation());
+  DeclComments[D] =
+      RawAndParsedComment(RC, static_cast<comments::FullComment *>(NULL));
   return RC;
+}
+
+comments::FullComment *ASTContext::getCommentForDecl(const Decl *D) const {
+  llvm::DenseMap<const Decl *, RawAndParsedComment>::iterator Pos
+      = DeclComments.find(D);
+  const RawComment *RC;
+  if (Pos != DeclComments.end()) {
+    RawAndParsedComment C = Pos->second;
+    if (comments::FullComment *FC = C.second)
+      return FC;
+    RC = C.first;
+  } else
+    RC = getRawCommentForDecl(D);
+
+  if (!RC)
+    return NULL;
+
+  const StringRef RawText = RC->getRawText(SourceMgr);
+  comments::Lexer L(RC->getSourceRange().getBegin(), comments::CommentOptions(),
+                    RawText.begin(), RawText.end());
+
+  comments::Sema S(this->BumpAlloc);
+  comments::Parser P(L, S, this->BumpAlloc);
+
+  comments::FullComment *FC = P.parseFullComment();
+  DeclComments[D].second = FC;
+  return FC;
 }
 
 void 
@@ -624,6 +665,9 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
 
   // half type (OpenCL 6.1.1.1) / ARM NEON __fp16
   InitBuiltinType(HalfTy, BuiltinType::Half);
+
+  // Builtin type used to help define __builtin_va_list.
+  VaListTagTy = QualType();
 }
 
 DiagnosticsEngine &ASTContext::getDiagnostics() const {
@@ -4244,6 +4288,8 @@ std::string ASTContext::getObjCEncodingForBlock(const BlockExpr *Expr) const {
        E = Decl->param_end(); PI != E; ++PI) {
     QualType PType = (*PI)->getType();
     CharUnits sz = getObjCEncodingTypeSize(PType);
+    if (sz.isZero())
+      continue;
     assert (sz.isPositive() && "BlockExpr - Incomplete param type");
     ParmOffset += sz;
   }
@@ -4285,10 +4331,10 @@ bool ASTContext::getObjCEncodingForFunctionDecl(const FunctionDecl *Decl,
     QualType PType = (*PI)->getType();
     CharUnits sz = getObjCEncodingTypeSize(PType);
     if (sz.isZero())
-      return true;
-
-    assert (sz.isPositive() &&
-        "getObjCEncodingForFunctionDecl - Incomplete param type");
+      continue;
+ 
+    assert (sz.isPositive() && 
+            "getObjCEncodingForFunctionDecl - Incomplete param type");
     ParmOffset += sz;
   }
   S += charUnitsToString(ParmOffset);
@@ -4354,10 +4400,10 @@ bool ASTContext::getObjCEncodingForMethodDecl(const ObjCMethodDecl *Decl,
     QualType PType = (*PI)->getType();
     CharUnits sz = getObjCEncodingTypeSize(PType);
     if (sz.isZero())
-      return true;
-
-    assert (sz.isPositive() &&
-        "getObjCEncodingForMethodDecl - Incomplete param type");
+      continue;
+ 
+    assert (sz.isPositive() && 
+            "getObjCEncodingForMethodDecl - Incomplete param type");
     ParmOffset += sz;
   }
   S += charUnitsToString(ParmOffset);
@@ -4945,7 +4991,7 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
         CXXRecordDecl *base = BI->getType()->getAsCXXRecordDecl();
         if (base->isEmpty())
           continue;
-        uint64_t offs = layout.getBaseClassOffsetInBits(base);
+        uint64_t offs = toBits(layout.getBaseClassOffset(base));
         FieldOrBaseOffsets.insert(FieldOrBaseOffsets.upper_bound(offs),
                                   std::make_pair(offs, base));
       }
@@ -4968,7 +5014,7 @@ void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
       CXXRecordDecl *base = BI->getType()->getAsCXXRecordDecl();
       if (base->isEmpty())
         continue;
-      uint64_t offs = layout.getVBaseClassOffsetInBits(base);
+      uint64_t offs = toBits(layout.getVBaseClassOffset(base));
       if (FieldOrBaseOffsets.find(offs) == FieldOrBaseOffsets.end())
         FieldOrBaseOffsets.insert(FieldOrBaseOffsets.end(),
                                   std::make_pair(offs, base));
@@ -5208,6 +5254,7 @@ static TypedefDecl *CreatePowerABIBuiltinVaListDecl(const ASTContext *Context) {
   }
   VaListTagDecl->completeDefinition();
   QualType VaListTagType = Context->getRecordType(VaListTagDecl);
+  Context->VaListTagTy = VaListTagType;
 
   // } __va_list_tag;
   TypedefDecl *VaListTagTypedefDecl
@@ -5281,6 +5328,7 @@ CreateX86_64ABIBuiltinVaListDecl(const ASTContext *Context) {
   }
   VaListTagDecl->completeDefinition();
   QualType VaListTagType = Context->getRecordType(VaListTagDecl);
+  Context->VaListTagTy = VaListTagType;
 
   // } __va_list_tag;
   TypedefDecl *VaListTagTypedefDecl
@@ -5348,6 +5396,15 @@ TypedefDecl *ASTContext::getBuiltinVaListDecl() const {
     BuiltinVaListDecl = CreateVaListDecl(this, Target->getBuiltinVaListKind());
 
   return BuiltinVaListDecl;
+}
+
+QualType ASTContext::getVaListTagType() const {
+  // Force the creation of VaListTagTy by building the __builtin_va_list
+  // declaration.
+  if (VaListTagTy.isNull())
+    (void) getBuiltinVaListDecl();
+
+  return VaListTagTy;
 }
 
 void ASTContext::setObjCConstantStringInterface(ObjCInterfaceDecl *Decl) {

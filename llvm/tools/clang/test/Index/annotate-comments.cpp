@@ -95,11 +95,11 @@ void isdoxy19(int, int);
 /** But there are other blocks that are part of the comment, too.  IS_DOXYGEN_END */
 void isdoxy20(int);
 
-void isdoxy21(int); ///< This is a member comment.  isdoxy21 IS_DOXYGEN_SINGLE
+void notdoxy21(int); ///< This is a member comment.  isdoxy21 IS_DOXYGEN_NOT_ATTACHED
 
-void isdoxy22(int); /*!< This is a member comment.  isdoxy22 IS_DOXYGEN_SINGLE */
+void notdoxy22(int); /*!< This is a member comment.  isdoxy22 IS_DOXYGEN_NOT_ATTACHED */
 
-void isdoxy23(int); /**< This is a member comment.  isdoxy23 IS_DOXYGEN_SINGLE */
+void notdoxy23(int); /**< This is a member comment.  isdoxy23 IS_DOXYGEN_NOT_ATTACHED */
 
 void notdoxy24(int); // NOT_DOXYGEN
 
@@ -163,6 +163,46 @@ class test42 {
   int isdoxy42; /* NOT_DOXYGEN */ ///< isdoxy42 IS_DOXYGEN_SINGLE
 };
 
+/// IS_DOXYGEN_START
+/// It is fine to have a command at the end of comment.
+///\brief
+///
+/// Some malformed command.
+/* \*/
+/**
+ * \brief Aaa aaaaaaa aaaa.
+ * IS_DOXYGEN_END
+ */
+void isdoxy43(void);
+
+/// IS_DOXYGEN_START Aaa bbb
+/// ccc.
+///
+/// Ddd eee.
+/// Fff.
+///
+/// Ggg. IS_DOXYGEN_END
+void isdoxy44(void);
+
+/// IS_DOXYGEN_START Aaa bbb
+/// ccc.
+///
+/// \brief
+/// Ddd eee.
+/// Fff.
+///
+/// Ggg. IS_DOXYGEN_END
+void isdoxy45(void);
+
+/// IS_DOXYGEN_NOT_ATTACHED
+#define FOO
+void notdoxy46(void);
+
+/// IS_DOXYGEN_START Aaa bbb
+/// \param ccc
+/// \returns ddd IS_DOXYGEN_END
+void isdoxy47(int);
+
 #endif
 
 // RUN: rm -rf %t
@@ -187,8 +227,8 @@ class test42 {
 // WRONG-NOT: IS_DOXYGEN_NOT_ATTACHED
 
 // Ensure we don't pick up extra comments.
-// WRONG-NOT: IS_DOXYGEN_START{{.*}}IS_DOXYGEN_START
-// WRONG-NOT: IS_DOXYGEN_END{{.*}}IS_DOXYGEN_END
+// WRONG-NOT: IS_DOXYGEN_START{{.*}}IS_DOXYGEN_START{{.*}}BriefComment=
+// WRONG-NOT: IS_DOXYGEN_END{{.*}}IS_DOXYGEN_END{{.*}}BriefComment=
 
 // RUN: FileCheck %s < %t/out.c-index-direct
 // RUN: FileCheck %s < %t/out.c-index-pch
@@ -208,9 +248,6 @@ class test42 {
 // CHECK: annotate-comments.cpp:80:5: FunctionDecl=isdoxy18:{{.*}} isdoxy18 IS_DOXYGEN_START{{.*}} IS_DOXYGEN_END
 // CHECK: annotate-comments.cpp:90:6: FunctionDecl=isdoxy19:{{.*}} isdoxy19 IS_DOXYGEN_START{{.*}} IS_DOXYGEN_END
 // CHECK: annotate-comments.cpp:96:6: FunctionDecl=isdoxy20:{{.*}} isdoxy20 IS_DOXYGEN_START{{.*}} IS_DOXYGEN_END
-// CHECK: annotate-comments.cpp:98:6: FunctionDecl=isdoxy21:{{.*}} isdoxy21 IS_DOXYGEN_SINGLE
-// CHECK: annotate-comments.cpp:100:6: FunctionDecl=isdoxy22:{{.*}} isdoxy22 IS_DOXYGEN_SINGLE
-// CHECK: annotate-comments.cpp:102:6: FunctionDecl=isdoxy23:{{.*}} isdoxy23 IS_DOXYGEN_SINGLE
 // CHECK: annotate-comments.cpp:107:8: StructDecl=isdoxy25:{{.*}} IS_DOXYGEN_SINGLE
 // CHECK: annotate-comments.cpp:112:7: FieldDecl=isdoxy26:{{.*}} IS_DOXYGEN_SINGLE
 // CHECK: annotate-comments.cpp:116:7: FieldDecl=isdoxy27:{{.*}} IS_DOXYGEN_SINGLE
@@ -226,4 +263,9 @@ class test42 {
 // CHECK: annotate-comments.cpp:155:6: FunctionDecl=isdoxy40:{{.*}} isdoxy40 IS_DOXYGEN_SINGLE
 // CHECK: annotate-comments.cpp:160:5: FunctionDecl=isdoxy41:{{.*}} isdoxy41 IS_DOXYGEN_SINGLE
 // CHECK: annotate-comments.cpp:163:7: FieldDecl=isdoxy42:{{.*}} isdoxy42 IS_DOXYGEN_SINGLE
+// CHECK: annotate-comments.cpp:176:6: FunctionDecl=isdoxy43:{{.*}} IS_DOXYGEN_START{{.*}} IS_DOXYGEN_END
+
+// CHECK: annotate-comments.cpp:185:6: FunctionDecl=isdoxy44:{{.*}} BriefComment=[IS_DOXYGEN_START Aaa bbb ccc.]
+// CHECK: annotate-comments.cpp:195:6: FunctionDecl=isdoxy45:{{.*}} BriefComment=[Ddd eee. Fff.]
+// CHECK: annotate-comments.cpp:204:6: FunctionDecl=isdoxy47:{{.*}} BriefComment=[IS_DOXYGEN_START Aaa bbb]
 

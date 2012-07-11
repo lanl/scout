@@ -19,7 +19,6 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/StmtIterator.h"
 #include "clang/AST/DeclGroup.h"
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
@@ -32,14 +31,17 @@ namespace llvm {
 
 namespace clang {
   class ASTContext;
+  class BlockExpr;
   class Expr;
   class Decl;
   class ParmVarDecl;
   class QualType;
   class IdentifierInfo;
+  class LabelDecl;
   class SourceManager;
   class StringLiteral;
   class SwitchStmt;
+  class VarDecl;
 
   //===--------------------------------------------------------------------===//
   // ExprIterator - Iterators for iterating over Stmt* arrays that contain
@@ -552,20 +554,13 @@ class CompoundStmt : public Stmt {
   Stmt** Body;
   SourceLocation LBracLoc, RBracLoc;
 public:
-  CompoundStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
-               SourceLocation LB, SourceLocation RB, StmtClass SC = CompoundStmtClass)
-    : Stmt(SC), LBracLoc(LB), RBracLoc(RB) {
-    CompoundStmtBits.NumStmts = NumStmts;
-    assert(CompoundStmtBits.NumStmts == NumStmts &&
-           "NumStmts doesn't fit in bits of CompoundStmtBits.NumStmts!");
+  CompoundStmt(ASTContext &C, Stmt **StmtStart, unsigned NumStmts,
+               SourceLocation LB, SourceLocation RB);
 
-    if (NumStmts == 0) {
-      Body = 0;
-      return;
-    }
-
-    Body = new (C) Stmt*[NumStmts];
-    memcpy(Body, StmtStart, NumStmts * sizeof(*Body));
+  // \brief Build an empty compound statment with a location.
+  explicit CompoundStmt(SourceLocation Loc)
+    : Stmt(CompoundStmtClass), Body(0), LBracLoc(Loc), RBracLoc(Loc) {
+    CompoundStmtBits.NumStmts = 0;
   }
 
   // \brief Build an empty compound statement.
@@ -810,24 +805,32 @@ public:
 class AttributedStmt : public Stmt {
   Stmt *SubStmt;
   SourceLocation AttrLoc;
-  AttrVec Attrs;
-  // TODO: It can be done as Attr *Attrs[1]; and variable size array as in
-  // StringLiteral
+  unsigned NumAttrs;
+  const Attr *Attrs[1];
 
   friend class ASTStmtReader;
 
-public:
-  AttributedStmt(SourceLocation loc, const AttrVec &attrs, Stmt *substmt)
-    : Stmt(AttributedStmtClass), SubStmt(substmt), AttrLoc(loc), Attrs(attrs) {
+  AttributedStmt(SourceLocation Loc, ArrayRef<const Attr*> Attrs, Stmt *SubStmt)
+    : Stmt(AttributedStmtClass), SubStmt(SubStmt), AttrLoc(Loc),
+      NumAttrs(Attrs.size()) {
+    memcpy(this->Attrs, Attrs.data(), Attrs.size() * sizeof(Attr*));
   }
 
-  // \brief Build an empty attributed statement.
-  explicit AttributedStmt(EmptyShell Empty)
-    : Stmt(AttributedStmtClass, Empty) {
+  explicit AttributedStmt(EmptyShell Empty, unsigned NumAttrs)
+    : Stmt(AttributedStmtClass, Empty), NumAttrs(NumAttrs) {
+    memset(Attrs, 0, NumAttrs * sizeof(Attr*));
   }
+
+public:
+  static AttributedStmt *Create(ASTContext &C, SourceLocation Loc,
+                                ArrayRef<const Attr*> Attrs, Stmt *SubStmt);
+  // \brief Build an empty attributed statement.
+  static AttributedStmt *CreateEmpty(ASTContext &C, unsigned NumAttrs);
 
   SourceLocation getAttrLoc() const { return AttrLoc; }
-  const AttrVec &getAttrs() const { return Attrs; }
+  ArrayRef<const Attr*> getAttrs() const {
+    return ArrayRef<const Attr*>(Attrs, NumAttrs);
+  }
   Stmt *getSubStmt() { return SubStmt; }
   const Stmt *getSubStmt() const { return SubStmt; }
 
@@ -2216,9 +2219,7 @@ class VolumeRenderAllStmt : public CompoundStmt {
   static bool classof(const Stmt *T) 
   { return (T->getStmtClass() == VolumeRenderAllStmtClass);}
 
-  const MeshType *getMeshType() const {
-    return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());
-  }
+  const MeshType *getMeshType() const;
 
   const IdentifierInfo* getMesh() const {
     return MeshII;

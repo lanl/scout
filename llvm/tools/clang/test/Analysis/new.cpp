@@ -5,6 +5,21 @@ void clang_analyzer_eval(bool);
 typedef typeof(sizeof(int)) size_t;
 extern "C" void *malloc(size_t);
 
+int someGlobal;
+void testImplicitlyDeclaredGlobalNew() {
+  if (someGlobal != 0)
+    return;
+
+  // This used to crash because the global operator new is being implicitly
+  // declared and it does not have a valid source location. (PR13090)
+  void *x = ::operator new(0);
+  ::operator delete(x);
+
+  // Check that the new/delete did not invalidate someGlobal;
+  clang_analyzer_eval(someGlobal == 0); // expected-warning{{TRUE}}
+}
+
+
 // This is the standard placement new.
 inline void* operator new(size_t, void* __p) throw()
 {
@@ -34,6 +49,16 @@ void *testCustomNew() {
   return y; // no-warning
 }
 
+void *operator new(size_t, void *, void *);
+void *testCustomNewMalloc() {
+  int *x = (int *)malloc(sizeof(int));
+
+  // Should be no-warning (the custom allocator could have freed x).
+  void *y = new (0, x) int; // no-warning
+
+  return y;
+}
+
 
 //--------------------------------
 // Incorrectly-modelled behavior
@@ -52,16 +77,5 @@ void testValueInitialization() {
 
   // Should be TRUE (and have no uninitialized variable warning)
   clang_analyzer_eval(*n == 3); // expected-warning{{UNKNOWN}}
-}
-
-
-void *operator new(size_t, void *, void *);
-void *testCustomNewMalloc() {
-  int *x = (int *)malloc(sizeof(int));  
-
-  // Should be no-warning (the custom allocator could have freed x).
-  void *y = new (0, x) int; // expected-warning{{leak of memory pointed to by 'x'}}
-
-  return y;
 }
 

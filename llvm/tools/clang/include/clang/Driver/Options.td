@@ -358,6 +358,9 @@ def fdiagnostics_show_note_include_stack : Flag<"-fdiagnostics-show-note-include
     Group<f_Group>,  Flags<[CC1Option]>, HelpText<"Display include stacks for diagnostic notes">;
 def fdiagnostics_format_EQ : Joined<"-fdiagnostics-format=">, Group<f_clang_Group>;
 def fdiagnostics_show_category_EQ : Joined<"-fdiagnostics-show-category=">, Group<f_clang_Group>;
+def fdiagnostics_show_template_tree : Flag<"-fdiagnostics-show-template-tree">,
+    Group<f_Group>, Flags<[CC1Option]>,
+    HelpText<"Print a template comparison tree for differing templates">;
 def fdollars_in_identifiers : Flag<"-fdollars-in-identifiers">, Group<f_Group>,
   HelpText<"Allow '$' in identifiers">, Flags<[CC1Option]>;
 def fdwarf2_cfi_asm : Flag<"-fdwarf2-cfi-asm">, Group<f_Group>;
@@ -365,6 +368,9 @@ def fno_dwarf2_cfi_asm : Flag<"-fno-dwarf2-cfi-asm">, Group<f_Group>,  Flags<[CC
 def fdwarf_directory_asm : Flag<"-fdwarf-directory-asm">, Group<f_Group>;
 def fno_dwarf_directory_asm : Flag<"-fno-dwarf-directory-asm">, Group<f_Group>, Flags<[CC1Option]>;
 def felide_constructors : Flag<"-felide-constructors">, Group<f_Group>;
+def fno_elide_type : Flag<"-fno-elide-type">, Group<f_Group>,
+    Flags<[CC1Option]>,
+    HelpText<"Do not elide types when printing diagnostics">;
 def feliminate_unused_debug_symbols : Flag<"-feliminate-unused-debug-symbols">, Group<f_Group>;
 def femit_all_decls : Flag<"-femit-all-decls">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Emit all declarations, even if unused">;
@@ -404,6 +410,9 @@ def fhonor_infinites : Flag<"-fhonor-infinites">, Alias<fhonor_infinities>;
 def fno_honor_infinites : Flag<"-fno-honor-infinites">, Alias<fno_honor_infinities>;
 def ftrapping_math : Flag<"-ftrapping-math">, Group<f_Group>;
 def fno_trapping_math : Flag<"-fno-trapping-math">, Group<f_Group>;
+def ffp_contract : Joined<"-ffp-contract=">, Group<f_Group>,
+  Flags<[CC1Option]>, HelpText<"Form fused FP ops (e.g. FMAs): fast (everywhere)"
+  " | on (according to FP_CONTRACT pragma, default) | off (never fuse)">;
 
 def ffor_scope : Flag<"-ffor-scope">, Group<f_Group>;
 def fno_for_scope : Flag<"-fno-for-scope">, Group<f_Group>;
@@ -642,6 +651,7 @@ def Wframe_larger_than_EQ : Joined<"-Wframe-larger-than=">, Alias<Wframe_larger_
 def fterminated_vtables : Flag<"-fterminated-vtables">, Alias<fapple_kext>;
 def fthreadsafe_statics : Flag<"-fthreadsafe-statics">, Group<f_Group>;
 def ftime_report : Flag<"-ftime-report">, Group<f_Group>, Flags<[CC1Option]>;
+def ftlsmodel_EQ : Joined<"-ftls-model=">, Group<f_Group>, Flags<[CC1Option]>;
 def ftrapv : Flag<"-ftrapv">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Trap on integer overflow">;
 def ftrapv_handler_EQ : Joined<"-ftrapv-handler=">, Group<f_Group>,
@@ -798,11 +808,15 @@ def mno_ssse3 : Flag<"-mno-ssse3">, Group<m_x86_Features_Group>;
 def mno_aes : Flag<"-mno-aes">, Group<m_x86_Features_Group>;
 def mno_avx : Flag<"-mno-avx">, Group<m_x86_Features_Group>;
 def mno_avx2 : Flag<"-mno-avx2">, Group<m_x86_Features_Group>;
+def mno_pclmul : Flag<"-mno-pclmul">, Group<m_x86_Features_Group>;
 def mno_lzcnt : Flag<"-mno-lzcnt">, Group<m_x86_Features_Group>;
+def mno_rdrnd : Flag<"-mno-rdrnd">, Group<m_x86_Features_Group>;
 def mno_bmi : Flag<"-mno-bmi">, Group<m_x86_Features_Group>;
 def mno_bmi2 : Flag<"-mno-bmi2">, Group<m_x86_Features_Group>;
 def mno_popcnt : Flag<"-mno-popcnt">, Group<m_x86_Features_Group>;
 def mno_fma4 : Flag<"-mno-fma4">, Group<m_x86_Features_Group>;
+def mno_fma : Flag<"-mno-fma">, Group<m_x86_Features_Group>;
+def mno_xop : Flag<"-mno-xop">, Group<m_x86_Features_Group>;
 
 def mno_thumb : Flag<"-mno-thumb">, Group<m_Group>;
 def marm : Flag<"-marm">, Alias<mno_thumb>;
@@ -834,11 +848,21 @@ def mssse3 : Flag<"-mssse3">, Group<m_x86_Features_Group>;
 def maes : Flag<"-maes">, Group<m_x86_Features_Group>;
 def mavx : Flag<"-mavx">, Group<m_x86_Features_Group>;
 def mavx2 : Flag<"-mavx2">, Group<m_x86_Features_Group>;
+def mpclmul : Flag<"-mpclmul">, Group<m_x86_Features_Group>;
 def mlzcnt : Flag<"-mlzcnt">, Group<m_x86_Features_Group>;
+def mrdrnd : Flag<"-mrdrnd">, Group<m_x86_Features_Group>;
 def mbmi : Flag<"-mbmi">, Group<m_x86_Features_Group>;
 def mbmi2 : Flag<"-mbmi2">, Group<m_x86_Features_Group>;
 def mpopcnt : Flag<"-mpopcnt">, Group<m_x86_Features_Group>;
 def mfma4 : Flag<"-mfma4">, Group<m_x86_Features_Group>;
+def mfma : Flag<"-mfma">, Group<m_x86_Features_Group>;
+def mxop : Flag<"-mxop">, Group<m_x86_Features_Group>;
+def mips16 : Flag<"-mips16">, Group<m_Group>;
+def mno_mips16 : Flag<"-mno-mips16">, Group<m_Group>;
+def mdsp : Flag<"-mdsp">, Group<m_Group>;
+def mno_dsp : Flag<"-mno-dsp">, Group<m_Group>;
+def mdspr2 : Flag<"-mdspr2">, Group<m_Group>;
+def mno_dspr2 : Flag<"-mno-dspr2">, Group<m_Group>;
 def mthumb : Flag<"-mthumb">, Group<m_Group>;
 def mtune_EQ : Joined<"-mtune=">, Group<m_Group>;
 def multi__module : Flag<"-multi_module">;
@@ -852,6 +876,7 @@ def no_canonical_prefixes : Flag<"-no-canonical-prefixes">, Flags<[HelpHidden]>,
 def no_cpp_precomp : Flag<"-no-cpp-precomp">, Group<clang_ignored_f_Group>;
 def no_integrated_as : Flag<"-no-integrated-as">, Flags<[DriverOption]>;
 def no_integrated_cpp : Flag<"-no-integrated-cpp">, Flags<[DriverOption]>;
+def no_pedantic : Flag<"-no-pedantic">, Group<pedantic_Group>;
 def no__dead__strip__inits__and__terms : Flag<"-no_dead_strip_inits_and_terms">;
 def nobuiltininc : Flag<"-nobuiltininc">, Flags<[CC1Option]>,
   HelpText<"Disable builtin #include directories">;
@@ -1054,6 +1079,7 @@ def _machine_EQ : Joined<"--machine=">, Alias<m_Joined>;
 def _machine : Separate<"--machine">, Alias<m_Joined>;
 def _no_integrated_cpp : Flag<"--no-integrated-cpp">, Alias<no_integrated_cpp>;
 def _no_line_commands : Flag<"--no-line-commands">, Alias<P>;
+def _no_pedantic : Flag<"--no-pedantic">, Alias<no_pedantic>;
 def _no_standard_includes : Flag<"--no-standard-includes">, Alias<nostdinc>;
 def _no_standard_libraries : Flag<"--no-standard-libraries">, Alias<nostdlib>;
 def _no_undefined : Flag<"--no-undefined">, Flags<[LinkerInput]>;
@@ -1123,6 +1149,7 @@ def _write_dependencies : Flag<"--write-dependencies">, Alias<MD>;
 def _write_user_dependencies : Flag<"--write-user-dependencies">, Alias<MMD>;
 def _ : Joined<"--">, Flags<[Unsupported]>;
 def mieee_rnd_near : Flag<"-mieee-rnd-near">, Group<m_hexagon_Features_Group>;
+def serialize_diags : Separate<"-serialize-diagnostics">, Alias<_serialize_diags>;
 
 // Special internal option to handle -Xlinker --no-demangle.
 def Z_Xlinker__no_demangle : Flag<"-Z-Xlinker-no-demangle">,

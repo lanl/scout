@@ -20,7 +20,7 @@
 #include "clang/Analysis/Analyses/LiveVariables.h"
 #include "clang/Analysis/AnalysisContext.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ObjCMessage.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/Calls.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
@@ -252,7 +252,7 @@ public:
                              const Expr *E, unsigned Count,
                              const LocationContext *LCtx,
                              InvalidatedSymbols &IS,
-                             const CallOrObjCMessage *Call,
+                             const CallEvent *Call,
                              InvalidatedRegions *Invalidated);
 
 public:   // Made public for helper classes.
@@ -790,7 +790,7 @@ StoreRef RegionStoreManager::invalidateRegions(Store store,
                                                const Expr *Ex, unsigned Count,
                                                const LocationContext *LCtx,
                                                InvalidatedSymbols &IS,
-                                               const CallOrObjCMessage *Call,
+                                               const CallEvent *Call,
                                               InvalidatedRegions *Invalidated) {
   invalidateRegionsWorker W(*this, StateMgr,
                             RegionStoreManager::GetRegionBindings(store),
@@ -1447,16 +1447,27 @@ SVal RegionStoreManager::getBindingForLazySymbol(const TypedValueRegion *R) {
   return svalBuilder.getRegionValueSymbolVal(R);
 }
 
+static bool mayHaveLazyBinding(QualType Ty) {
+  return Ty->isArrayType() || Ty->isStructureOrClassType();
+}
+
 SVal RegionStoreManager::getBindingForStruct(Store store, 
                                         const TypedValueRegion* R) {
-  assert(R->getValueType()->isStructureOrClassType());
-  
-  // If we already have a lazy binding, don't create a new one.
-  RegionBindings B = GetRegionBindings(store);
-  BindingKey K = BindingKey::Make(R, BindingKey::Default);
-  if (const nonloc::LazyCompoundVal *V =
-      dyn_cast_or_null<nonloc::LazyCompoundVal>(lookup(B, K))) {
-    return *V;
+  const RecordDecl *RD = R->getValueType()->castAs<RecordType>()->getDecl();
+  if (RD->field_empty())
+    return UnknownVal();
+
+  // If we already have a lazy binding, don't create a new one,
+  // unless the first field might have a lazy binding of its own.
+  // (Right now we can't tell the difference.)
+  QualType FirstFieldType = RD->field_begin()->getType();
+  if (!mayHaveLazyBinding(FirstFieldType)) {
+    RegionBindings B = GetRegionBindings(store);
+    BindingKey K = BindingKey::Make(R, BindingKey::Default);
+    if (const nonloc::LazyCompoundVal *V =
+          dyn_cast_or_null<nonloc::LazyCompoundVal>(lookup(B, K))) {
+      return *V;
+    }
   }
 
   return svalBuilder.makeLazyCompoundVal(StoreRef(store, *this), R);
@@ -1464,14 +1475,19 @@ SVal RegionStoreManager::getBindingForStruct(Store store,
 
 SVal RegionStoreManager::getBindingForArray(Store store,
                                        const TypedValueRegion * R) {
-  assert(Ctx.getAsConstantArrayType(R->getValueType()));
+  const ConstantArrayType *Ty = Ctx.getAsConstantArrayType(R->getValueType());
+  assert(Ty && "Only constant array types can have compound bindings.");
   
-  // If we already have a lazy binding, don't create a new one.
-  RegionBindings B = GetRegionBindings(store);
-  BindingKey K = BindingKey::Make(R, BindingKey::Default);
-  if (const nonloc::LazyCompoundVal *V =
-      dyn_cast_or_null<nonloc::LazyCompoundVal>(lookup(B, K))) {
-    return *V;
+  // If we already have a lazy binding, don't create a new one,
+  // unless the first element might have a lazy binding of its own.
+  // (Right now we can't tell the difference.)
+  if (!mayHaveLazyBinding(Ty->getElementType())) {
+    RegionBindings B = GetRegionBindings(store);
+    BindingKey K = BindingKey::Make(R, BindingKey::Default);
+    if (const nonloc::LazyCompoundVal *V =
+        dyn_cast_or_null<nonloc::LazyCompoundVal>(lookup(B, K))) {
+      return *V;
+    }
   }
 
   return svalBuilder.makeLazyCompoundVal(StoreRef(store, *this), R);
@@ -2097,8 +2113,19 @@ StoreRef RegionStoreManager::enterStackFrame(ProgramStateRef state,
                    svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
                    ArgVal);
     }
-  } else if (const CXXConstructExpr *CE =
-               dyn_cast<CXXConstructExpr>(calleeCtx->getCallSite())) {
+
+    // For C++ method calls, also include the 'this' pointer.
+    if (const CXXMemberCallExpr *CME = dyn_cast<CXXMemberCallExpr>(CE)) {
+      loc::MemRegionVal This =
+        svalBuilder.getCXXThis(cast<CXXMethodDecl>(CME->getCalleeDecl()),
+                               calleeCtx);
+      SVal CalledObj = state->getSVal(CME->getImplicitObjectArgument(),
+                                      callerCtx);
+      store = Bind(store.getStore(), This, CalledObj);
+    }
+  }
+  else if (const CXXConstructExpr *CE =
+            dyn_cast<CXXConstructExpr>(calleeCtx->getCallSite())) {
     CXXConstructExpr::const_arg_iterator AI = CE->arg_begin(),
       AE = CE->arg_end();
 
@@ -2109,8 +2136,10 @@ StoreRef RegionStoreManager::enterStackFrame(ProgramStateRef state,
                    svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
                    ArgVal);
     }
-  } else
+  }
+  else {
     assert(isa<CXXDestructorDecl>(calleeCtx->getDecl()));
+  }
 
   return store;
 }

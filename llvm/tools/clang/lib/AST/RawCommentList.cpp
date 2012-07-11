@@ -8,6 +8,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/RawCommentList.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/CommentLexer.h"
+#include "clang/AST/CommentBriefParser.h"
 #include "llvm/ADT/STLExtras.h"
 
 using namespace clang;
@@ -16,19 +19,19 @@ namespace {
 /// Get comment kind and bool describing if it is a trailing comment.
 std::pair<RawComment::CommentKind, bool> getCommentKind(StringRef Comment) {
   if (Comment.size() < 3 || Comment[0] != '/')
-    return std::make_pair(RawComment::CK_Invalid, false);
+    return std::make_pair(RawComment::RCK_Invalid, false);
 
   RawComment::CommentKind K;
   if (Comment[1] == '/') {
     if (Comment.size() < 3)
-      return std::make_pair(RawComment::CK_OrdinaryBCPL, false);
+      return std::make_pair(RawComment::RCK_OrdinaryBCPL, false);
 
     if (Comment[2] == '/')
-      K = RawComment::CK_BCPLSlash;
+      K = RawComment::RCK_BCPLSlash;
     else if (Comment[2] == '!')
-      K = RawComment::CK_BCPLExcl;
+      K = RawComment::RCK_BCPLExcl;
     else
-      return std::make_pair(RawComment::CK_OrdinaryBCPL, false);
+      return std::make_pair(RawComment::RCK_OrdinaryBCPL, false);
   } else {
     assert(Comment.size() >= 4);
 
@@ -37,14 +40,14 @@ std::pair<RawComment::CommentKind, bool> getCommentKind(StringRef Comment) {
     if (Comment[1] != '*' ||
         Comment[Comment.size() - 2] != '*' ||
         Comment[Comment.size() - 1] != '/')
-      return std::make_pair(RawComment::CK_Invalid, false);
+      return std::make_pair(RawComment::RCK_Invalid, false);
 
     if (Comment[2] == '*')
-      K = RawComment::CK_JavaDoc;
+      K = RawComment::RCK_JavaDoc;
     else if (Comment[2] == '!')
-      K = RawComment::CK_Qt;
+      K = RawComment::RCK_Qt;
     else
-      return std::make_pair(RawComment::CK_OrdinaryC, false);
+      return std::make_pair(RawComment::RCK_OrdinaryC, false);
   }
   const bool TrailingComment = (Comment.size() > 3) && (Comment[3] == '<');
   return std::make_pair(K, TrailingComment);
@@ -57,11 +60,12 @@ bool mergedCommentIsTrailingComment(StringRef Comment) {
 
 RawComment::RawComment(const SourceManager &SourceMgr, SourceRange SR,
                        bool Merged) :
-    Range(SR), RawTextValid(false), IsAlmostTrailingComment(false),
+    Range(SR), RawTextValid(false), BriefTextValid(false),
+    IsAlmostTrailingComment(false),
     BeginLineValid(false), EndLineValid(false) {
   // Extract raw comment text, if possible.
-  if (getRawText(SourceMgr).empty()) {
-    Kind = CK_Invalid;
+  if (SR.getBegin() == SR.getEnd() || getRawText(SourceMgr).empty()) {
+    Kind = RCK_Invalid;
     return;
   }
 
@@ -74,7 +78,7 @@ RawComment::RawComment(const SourceManager &SourceMgr, SourceRange SR,
     IsAlmostTrailingComment = RawText.startswith("//<") ||
                                  RawText.startswith("/*<");
   } else {
-    Kind = CK_Merged;
+    Kind = RCK_Merged;
     IsTrailingComment = mergedCommentIsTrailingComment(RawText);
   }
 }
@@ -126,6 +130,24 @@ StringRef RawComment::getRawTextSlow(const SourceManager &SourceMgr) const {
   return StringRef(BufferStart + BeginOffset, Length);
 }
 
+const char *RawComment::extractBriefText(const ASTContext &Context) const {
+  // Make sure that RawText is valid.
+  getRawText(Context.getSourceManager());
+
+  comments::Lexer L(Range.getBegin(), comments::CommentOptions(),
+                    RawText.begin(), RawText.end());
+  comments::BriefParser P(L);
+
+  const std::string Result = P.Parse();
+  const unsigned BriefTextLength = Result.size();
+  char *BriefTextPtr = new (Context) char[BriefTextLength + 1];
+  memcpy(BriefTextPtr, Result.c_str(), BriefTextLength + 1);
+  BriefText = BriefTextPtr;
+  BriefTextValid = true;
+
+  return BriefTextPtr;
+}
+
 namespace {
 bool containsOnlyWhitespace(StringRef Str) {
   return Str.find_first_not_of(" \t\f\v\r\n") == StringRef::npos;
@@ -154,17 +176,20 @@ bool onlyWhitespaceBetweenComments(SourceManager &SM,
 }
 } // unnamed namespace
 
-void RawCommentList::addComment(const RawComment &RC) {
+void RawCommentList::addComment(const RawComment &RC,
+                                llvm::BumpPtrAllocator &Allocator) {
   if (RC.isInvalid())
     return;
 
-  assert((Comments.empty() ||
-          Comments.back().getSourceRange().getEnd() ==
-              RC.getSourceRange().getBegin() ||
-          SourceMgr.isBeforeInTranslationUnit(
-              Comments.back().getSourceRange().getEnd(),
-              RC.getSourceRange().getBegin())) &&
-         "comments are not coming in source order");
+  // Check if the comments are not in source order.
+  while (!Comments.empty() &&
+         !SourceMgr.isBeforeInTranslationUnit(
+              Comments.back()->getSourceRange().getBegin(),
+              RC.getSourceRange().getBegin())) {
+    // If they are, just pop a few last comments that don't fit.
+    // This happens if an \#include directive contains comments.
+    Comments.pop_back();
+  }
 
   if (OnlyWhitespaceSeen) {
     if (!onlyWhitespaceBetweenComments(SourceMgr, LastComment, RC))
@@ -180,12 +205,12 @@ void RawCommentList::addComment(const RawComment &RC) {
   // If this is the first Doxygen comment, save it (because there isn't
   // anything to merge it with).
   if (Comments.empty()) {
-    Comments.push_back(RC);
+    Comments.push_back(new (Allocator) RawComment(RC));
     OnlyWhitespaceSeen = true;
     return;
   }
 
-  const RawComment &C1 = Comments.back();
+  const RawComment &C1 = *Comments.back();
   const RawComment &C2 = RC;
 
   // Merge comments only if there is only whitespace between them.
@@ -197,11 +222,9 @@ void RawCommentList::addComment(const RawComment &RC) {
        C1.getEndLine(SourceMgr) + 1 >= C2.getBeginLine(SourceMgr))) {
     SourceRange MergedRange(C1.getSourceRange().getBegin(),
                             C2.getSourceRange().getEnd());
-    RawComment Merged(SourceMgr, MergedRange, true);
-    Comments.pop_back();
-    Comments.push_back(Merged);
+    *Comments.back() = RawComment(SourceMgr, MergedRange, true);
   } else
-    Comments.push_back(RC);
+    Comments.push_back(new (Allocator) RawComment(RC));
 
   OnlyWhitespaceSeen = true;
 }

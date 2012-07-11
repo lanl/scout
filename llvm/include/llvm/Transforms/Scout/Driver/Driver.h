@@ -12,7 +12,7 @@
 #ifndef _SC_DRIVER_H_
 #define _SC_DRIVER_H_
 
-#include <llvm/Support/IRBuilder.h>
+#include <llvm/IRBuilder.h>
 #include "llvm/Module.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Support/FormattedStream.h"

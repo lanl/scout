@@ -222,7 +222,10 @@ Parser::ParseSingleDeclarationAfterTemplate(
   ParsingDeclSpec DS(*this, &DiagsFromTParams);
 
   // Move the attributes from the prefix into the DS.
-  DS.takeAttributesFrom(prefixAttrs);
+  if (TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation)
+    ProhibitAttributes(prefixAttrs);
+  else
+    DS.takeAttributesFrom(prefixAttrs);
 
   ParseDeclarationSpecifiers(DS, TemplateInfo, AS,
                              getDeclSpecContextFromDeclaratorContext(Context));

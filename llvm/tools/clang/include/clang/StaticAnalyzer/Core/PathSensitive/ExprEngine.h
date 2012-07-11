@@ -41,8 +41,9 @@ class ObjCForCollectionStmt;
 namespace ento {
 
 class AnalysisManager;
-class CallOrObjCMessage;
-class ObjCMessage;
+class CallEvent;
+class SimpleCall;
+class ObjCMethodCall;
 
 class ExprEngine : public SubEngine {
   AnalysisManager &AMgr;
@@ -240,7 +241,7 @@ public:
                        const StoreManager::InvalidatedSymbols *invalidated,
                        ArrayRef<const MemRegion *> ExplicitRegions,
                        ArrayRef<const MemRegion *> Regions,
-                       const CallOrObjCMessage *Call);
+                       const CallEvent *Call);
 
   /// printState - Called by ProgramStateManager to print checker-specific data.
   void printState(raw_ostream &Out, ProgramStateRef State,
@@ -347,7 +348,7 @@ public:
   void VisitObjCForCollectionStmt(const ObjCForCollectionStmt *S, 
                                   ExplodedNode *Pred, ExplodedNodeSet &Dst);
 
-  void VisitObjCMessage(const ObjCMessage &msg, ExplodedNode *Pred,
+  void VisitObjCMessage(const ObjCMethodCall &Msg, ExplodedNode *Pred,
                         ExplodedNodeSet &Dst);
 
   /// VisitReturnStmt - Transfer function logic for return statements.
@@ -397,13 +398,6 @@ public:
   void CreateCXXTemporaryObject(const MaterializeTemporaryExpr *ME,
                                 ExplodedNode *Pred, 
                                 ExplodedNodeSet &Dst);
-
-  /// Synthesize CXXThisRegion.
-  const CXXThisRegion *getCXXThisRegion(const CXXRecordDecl *RD,
-                                        const StackFrameContext *SFC);
-
-  const CXXThisRegion *getCXXThisRegion(const CXXMethodDecl *decl,
-                                        const StackFrameContext *frameCtx);
   
   /// evalEagerlyAssume - Given the nodes in 'Src', eagerly assume symbolic
   ///  expressions of the form 'x != 0' and generate new nodes (stored in Dst)
@@ -440,13 +434,9 @@ public:
   }
   
 protected:
-  void evalObjCMessage(StmtNodeBuilder &Bldr, const ObjCMessage &msg,
+  void evalObjCMessage(StmtNodeBuilder &Bldr, const ObjCMethodCall &Msg,
                        ExplodedNode *Pred, ProgramStateRef state,
                        bool GenSink);
-
-  ProgramStateRef invalidateArguments(ProgramStateRef State,
-                                          const CallOrObjCMessage &Call,
-                                          const LocationContext *LC);
 
   ProgramStateRef MarkBranch(ProgramStateRef state,
                                  const Stmt *Terminator,
@@ -479,6 +469,11 @@ public:
   void evalStore(ExplodedNodeSet &Dst, const Expr *AssignE, const Expr *StoreE,
                  ExplodedNode *Pred, ProgramStateRef St, SVal TargetLV, SVal Val,
                  const ProgramPointTag *tag = 0);
+
+  void evalCall(ExplodedNodeSet &Dst, ExplodedNode *Pred,
+                const SimpleCall &Call);
+  void defaultEvalCall(ExplodedNodeSet &Dst, ExplodedNode *Pred,
+                       const CallEvent &Call);
 private:
   void evalLoadCommon(ExplodedNodeSet &Dst,
                       const Expr *NodeEx,  /* Eventually will be a CFGStmt */
@@ -499,7 +494,8 @@ private:
                     const ProgramPointTag *tag, bool isLoad);
 
   bool shouldInlineDecl(const Decl *D, ExplodedNode *Pred);
-  bool InlineCall(ExplodedNodeSet &Dst, const CallExpr *CE, ExplodedNode *Pred);
+  bool inlineCall(ExplodedNodeSet &Dst, const CallEvent &Call,
+                  ExplodedNode *Pred);
 
   bool replayWithoutInlining(ExplodedNode *P, const LocationContext *CalleeLC);
 };
