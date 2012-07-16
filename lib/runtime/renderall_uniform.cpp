@@ -12,10 +12,13 @@
 
 #include <iostream>
 #include "runtime/renderall_uniform.h"
-#include "runtime/scout_gpu.h"
 #include "runtime/base_types.h"
 #include "runtime/opengl/glSDL.h"
 #include "runtime/opengl/glQuadRenderableVA.h"
+
+#ifdef SC_ENABLE_CUDA
+#include "runtime/scout_gpu.h"
+#endif
 
 using namespace std;
 using namespace scout;
@@ -23,7 +26,10 @@ using namespace scout;
 // ------  LLVM - globals accessed by LLVM / CUDA driver
 
 float4* __sc_renderall_uniform_colors;
+
+#ifdef SC_ENABLE_CUDA
 CUdeviceptr __sc_device_renderall_uniform_colors;
+#endif
 
 // -------------
 
@@ -56,11 +62,13 @@ namespace scout{
         _renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
           glfloat3(o_->width(), o_->height(), 0.0));
 
+#ifdef SC_ENABLE_CUDA
         if(__sc_gpu){
           //register_gpu_pbo(pbo_->id();
           register_gpu_pbo(_renderable->get_buffer_object_id(),
               CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
         }
+#endif // SC_ENABLE_CUDA
 
         _renderable->initialize(NULL);
 
@@ -70,21 +78,29 @@ namespace scout{
 
       void begin(){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#ifdef SC_ENABLE_CUDA
         if(__sc_gpu){
           map_gpu_resources();
         }
         else{
          __sc_renderall_uniform_colors =_renderable->map_colors();
         }
+#else
+       __sc_renderall_uniform_colors =_renderable->map_colors(); 
+#endif // SC_ENABLE_CUDA
       }
 
       void end(){
+#ifdef SC_ENABLE_CUDA
         if(__sc_gpu){
           unmap_gpu_resources();
         }
         else{
           _renderable->unmap_colors();
         }
+#else
+        _renderable->unmap_colors(); 
+#endif // SC_ENABLE_CUDA
 
         exec();
 
@@ -98,26 +114,31 @@ namespace scout{
       }
 
       void map_gpu_resources(){
+#ifdef SC_ENABLE_CUDA
         // map one graphics resource for access by CUDA
         assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
         size_t bytes;
         // return a pointer by which the mapped graphics resource may be accessed.
         assert(cuGraphicsResourceGetMappedPointer(&__sc_device_renderall_uniform_colors, &bytes, __sc_device_resource) == CUDA_SUCCESS);
+#endif // SC_ENABLE_CUDA
       }
 
       void unmap_gpu_resources(){
+#ifdef SC_ENABLE_CUDA
         assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
         _renderable->alloc_texture();
+#endif // SC_ENABLE_CUDA
       }
 
       // register pbo for access by CUDA, return handle 
       void register_gpu_pbo(GLuint pbo, unsigned int flags){
+#ifdef SC_ENABLE_CUDA
         assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, pbo, flags) ==
             CUDA_SUCCESS);
+#endif // SC_ENABLE_CUDA
       }
-
 
       void exec(){
         _renderable->draw(NULL);

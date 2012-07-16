@@ -15,12 +15,18 @@
 #include "runtime/volume_renderall.h"
 #include "runtime/opengl/glVolumeRenderable.h"
 #include "runtime/types.h"
+
+#ifdef SC_ENABLE_CUDA
 #include "runtime/scout_gpu.h"
+#endif
 
 // ------  LLVM - globals accessed by LLVM / CUDA driver
 
 void* __sc_volume_renderall_data;
+
+#ifdef SC_ENABLE_CUDA
 CUdeviceptr __sc_device_volume_renderall_data;
+#endif
 
 // -------------
 

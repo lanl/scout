@@ -35,6 +35,10 @@ else()
   file(GLOB rt_srcs *.cpp)  
 endif()
 
+if(NOT ${CUDA_FOUND})
+  list(REMOVE_ITEM rt_srcs scout_gpu.cpp gpu.cpp)
+endif()
+
 if(SCOUT_ENABLE_RT_OPENGL) 
   # Add OpenGL source files to the build...
   file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)

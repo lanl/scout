@@ -6,7 +6,6 @@
 #include <cctype>
 
 #include "runtime/opengl/opengl.h"
-
 #include "runtime/scout_gpu.h"
 
 using namespace std;

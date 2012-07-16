@@ -16,12 +16,18 @@
 #include "runtime/opengl/glGlyphRenderable.h"
 #include "runtime/opengl/glyph_vertex.h"
 #include "runtime/types.h"
+
+#ifdef SC_ENABLE_CUDA
 #include "runtime/scout_gpu.h"
+#endif
 
 // ------  LLVM - globals accessed by LLVM / CUDA driver
 
 glyph_vertex* __sc_glyph_renderall_vertex_data;
+
+#ifdef SC_ENABLE_CUDA
 CUdeviceptr __sc_device_glyph_renderall_vertex_data;
+#endif
 
 // -------------
 
@@ -46,6 +52,7 @@ namespace scout
 
     _renderable = new glGlyphRenderable(npoints);
 
+#ifdef SC_ENABLE_CUDA
     if(__sc_gpu){
       // register buffer object for access by CUDA, return handle 
       assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, 
@@ -53,6 +60,7 @@ namespace scout
             CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
           CUDA_SUCCESS);
     }
+#endif // SC_ENABLE_CUDA
     
     // we need a camera or nothing will happen! 
     if (camera ==  NULL) 
@@ -76,23 +84,31 @@ namespace scout
   void glyph_renderall::begin()
   {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#ifdef SC_ENABLE_CUDA
     if(__sc_gpu){
       map_gpu_resources();
     }
     else{
       __sc_glyph_renderall_vertex_data =_renderable->map_vertex_data();
     }
+#else
+    __sc_glyph_renderall_vertex_data =_renderable->map_vertex_data();
+#endif // SC_ENABLE_CUDA
   }
 
 
   void glyph_renderall::end()
   {
+#ifdef SC_ENABLE_CUDA
     if(__sc_gpu){
       unmap_gpu_resources();
     }
     else{
       _renderable->unmap_vertex_data();
     }
+#else
+      _renderable->unmap_vertex_data();
+#endif // SC_ENABLE_CUDA
 
     exec();
 
@@ -109,6 +125,7 @@ namespace scout
   // should this be a member function?
   void glyph_renderall::map_gpu_resources()
   {
+#ifdef SC_ENABLE_CUDA
     // map one graphics resource for access by CUDA
     assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
 
@@ -117,14 +134,17 @@ namespace scout
     assert(cuGraphicsResourceGetMappedPointer(
           &__sc_device_glyph_renderall_vertex_data, &bytes, 
           __sc_device_resource) == CUDA_SUCCESS);
+#endif // SC_ENABLE_CUDA
   }
 
 
   // should this be a member function?
   void glyph_renderall::unmap_gpu_resources()
   {
+#ifdef SC_ENABLE_CUDA
     assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) 
         == CUDA_SUCCESS);
+#endif // SC_ENABLE_CUDA
   }
 
 
