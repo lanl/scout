@@ -159,7 +159,9 @@ if (SCOUT_ENABLE_RT_THREADS)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
-file(GLOB volren_srcs volren/hpgv/*.cpp)
+if(${MPI_FOUND})
+  file(GLOB volren_srcs volren/hpgv/*.cpp)
+endif()
 
 # Finally add the library and dependencies...  Note that if we
 # are running w/out PNG/OpenGL support the associated variables
