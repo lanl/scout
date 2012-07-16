@@ -46,6 +46,8 @@ if (${CUDA_FOUND})
   add_definitions(-DSC_ENABLE_CUDA) 
 endif()
 
+set(MPI_FOUND FALSE)
+
 # TODO - we now build hwloc as part of the distribution so this can 
 # go away...
 if (NOT ${HWLOC_FOUND})

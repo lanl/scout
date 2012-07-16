@@ -14,17 +14,19 @@ set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
 find_package(SDL)
-find_package(MPI REQUIRED)
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
-  ${MPI_INCLUDE_PATH}	
   ${SDL_INCLUDE_DIR} 
   $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
+
+if(${MPI_FOUND})
+  include_directories(${MPI_INCLUDE_PATH})
+endif()
 
 file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
 
@@ -34,15 +36,25 @@ else()
   file(GLOB rt_srcs *.cpp)
 endif()
 
+if(${MPI_FOUND})
+  file(GLOB rt_srcs_mpi mpi/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_mpi})
+endif()
+
 if(${CUDA_FOUND})
   include_directories(${CUDA_INCLUDE_DIRS})
-  file(GLOB rt_srcs gpu/*.cpp)  
+  file(GLOB rt_srcs_cuda gpu/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_cuda})
 endif()
 
 if(SCOUT_ENABLE_RT_OPENGL) 
   # Add OpenGL source files to the build...
   file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
+if(${MPI_FOUND})
+  file(GLOB gl_srcs_mpi opengl/mpi/*.cpp)
+  list(APPEND gl_srcs ${gl_srcs_mpi})
+endif()
 
   # Add supporting opengl shaders to the build dependencies.  In this
   # case we actually package up the shaders into the library source by
