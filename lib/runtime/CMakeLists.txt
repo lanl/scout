@@ -21,8 +21,7 @@ include_directories(
   ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
-  ${MPI_INCLUDE_PATH}
-  ${CUDA_INCLUDE_DIRS}  	
+  ${MPI_INCLUDE_PATH}	
   ${SDL_INCLUDE_DIR} 
   $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
@@ -32,11 +31,12 @@ file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
 if(${APPLE})
   file(GLOB rt_srcs *.cpp *.mm)
 else()
-  file(GLOB rt_srcs *.cpp)  
+  file(GLOB rt_srcs *.cpp)
 endif()
 
-if(NOT ${CUDA_FOUND})
-  list(REMOVE_ITEM rt_srcs scout_gpu.cpp gpu.cpp)
+if(${CUDA_FOUND})
+  include_directories(${CUDA_INCLUDE_DIRS})
+  file(GLOB rt_srcs gpu/*.cpp)  
 endif()
 
 if(SCOUT_ENABLE_RT_OPENGL) 

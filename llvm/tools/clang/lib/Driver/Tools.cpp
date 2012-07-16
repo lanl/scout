@@ -4509,8 +4509,10 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("OpenGL");
 
+#ifdef SC_ENABLE_CUDA
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
+#endif
 
   CmdArgs.push_back("-lmpi");
   CmdArgs.push_back("-lmpi_cxx");
@@ -5700,8 +5702,10 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lGLU");
   CmdArgs.push_back("-lSDL");
 
+#ifdef SC_ENABLE_CUDA
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
+#endif
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
