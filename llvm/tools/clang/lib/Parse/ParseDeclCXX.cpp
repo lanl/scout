@@ -3090,7 +3090,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
 }
 
 // scout - Scout Mesh
-bool Parser::ParseMeshSpecifier(DeclSpec &DS){
+bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo){
   
   // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
   // tok::kw_structured, or tok::kw_unstructured
@@ -3133,6 +3133,15 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
     SkipUntil(tok::semi);
     return false;
   }
+  
+  TemplateParameterLists* TemplateParams = TemplateInfo.TemplateParams;
+  
+  MultiTemplateParamsArg TParams;
+  
+  if(TemplateParams){
+    TParams =
+    MultiTemplateParamsArg(&(*TemplateParams)[0], TemplateParams->size());
+  }
     
   MeshDecl* Dec = 
   static_cast<MeshDecl*>( 
@@ -3140,7 +3149,8 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS){
                                                      MeshType, 
                                                      MeshTypeLocation,
                                                      Name,
-                                                     NameLoc)); 
+                                                     NameLoc,
+                                                     TParams)); 
   
   bool valid = ParseMeshBody(MeshLocation, Dec);
   

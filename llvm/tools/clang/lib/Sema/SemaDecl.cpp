@@ -10739,7 +10739,8 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,
                                 SourceLocation KWLoc,
                                 IdentifierInfo* Name,
-                                SourceLocation NameLoc){
+                                SourceLocation NameLoc,
+                                MultiTemplateParamsArg TemplateParameterLists){
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
 

@@ -2917,7 +2917,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
       // so we know this is the start of:
       //   uniform mesh MyMesh { ...
-      ParseMeshSpecifier(DS);
+      ParseMeshSpecifier(DS, TemplateInfo);
 
       continue;
     }

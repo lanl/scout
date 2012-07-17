@@ -7181,7 +7181,8 @@ public:
                             tok::TokenKind MeshType,
                             SourceLocation KWLoc,
                             IdentifierInfo* Name,
-                            SourceLocation NameLoc);
+                            SourceLocation NameLoc,
+                            MultiTemplateParamsArg TemplateParameterLists);
 
   Decl* ActOnMeshField(Scope *S, Decl *MeshD,
                        SourceLocation DeclStart, Declarator &D);

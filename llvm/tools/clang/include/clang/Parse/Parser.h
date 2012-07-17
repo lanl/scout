@@ -2118,7 +2118,7 @@ private:
       IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
       SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
 
-  bool ParseMeshSpecifier(DeclSpec &DS);
+  bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
   
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
   
