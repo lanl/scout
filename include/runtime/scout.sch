@@ -6,7 +6,10 @@
 #include "runtime/image.h"
 #include "runtime/tbq.h"
 #include "runtime/opengl/glCamera.h"
+
+#ifdef SC_ENABLE_MPI
 #include "runtime/volume_renderall.h"
+#endif
 
 extern scout::tbq_rt* __sc_tbq;
 
