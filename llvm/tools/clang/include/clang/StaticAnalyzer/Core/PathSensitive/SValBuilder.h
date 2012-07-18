@@ -15,6 +15,7 @@
 #ifndef LLVM_CLANG_GR_SVALBUILDER
 #define LLVM_CLANG_GR_SVALBUILDER
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
@@ -310,6 +311,13 @@ public:
     return loc::ConcreteInt(BasicVals.getValue(integer));
   }
 
+  /// Return a memory region for the 'this' object reference.
+  loc::MemRegionVal getCXXThis(const CXXMethodDecl *D,
+                               const StackFrameContext *SFC);
+
+  /// Return a memory region for the 'this' object reference.
+  loc::MemRegionVal getCXXThis(const CXXRecordDecl *D,
+                               const StackFrameContext *SFC);
 };
 
 SValBuilder* createSimpleSValBuilder(llvm::BumpPtrAllocator &alloc,

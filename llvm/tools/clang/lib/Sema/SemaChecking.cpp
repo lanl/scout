@@ -287,6 +287,13 @@ Sema::CheckBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
         if (CheckARMBuiltinFunctionCall(BuiltinID, TheCall))
           return ExprError();
         break;
+      case llvm::Triple::mips:
+      case llvm::Triple::mipsel:
+      case llvm::Triple::mips64:
+      case llvm::Triple::mips64el:
+        if (CheckMipsBuiltinFunctionCall(BuiltinID, TheCall))
+          return ExprError();
+        break;
       default:
         break;
     }
@@ -405,6 +412,11 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
 #undef GET_NEON_IMMEDIATE_CHECK
   };
 
+  // We can't check the value of a dependent argument.
+  if (TheCall->getArg(i)->isTypeDependent() ||
+      TheCall->getArg(i)->isValueDependent())
+    return false;
+
   // Check that the immediate argument is actually a constant.
   if (SemaBuiltinConstantArg(TheCall, i, Result))
     return true;
@@ -416,6 +428,33 @@ bool Sema::CheckARMBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
       << l << u+l << TheCall->getArg(i)->getSourceRange();
 
   // FIXME: VFP Intrinsics should error if VFP not present.
+  return false;
+}
+
+bool Sema::CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
+  unsigned i = 0, l = 0, u = 0;
+  switch (BuiltinID) {
+  default: return false;
+  case Mips::BI__builtin_mips_wrdsp: i = 1; l = 0; u = 63; break;
+  case Mips::BI__builtin_mips_rddsp: i = 0; l = 0; u = 63; break;
+  };
+
+  // We can't check the value of a dependent argument.
+  if (TheCall->getArg(i)->isTypeDependent() ||
+      TheCall->getArg(i)->isValueDependent())
+    return false;
+
+  // Check that the immediate argument is actually a constant.
+  llvm::APSInt Result;
+  if (SemaBuiltinConstantArg(TheCall, i, Result))
+    return true;
+
+  // Range check against the upper/lower values for this instruction.
+  unsigned Val = Result.getZExtValue();
+  if (Val < l || Val > u)
+    return Diag(TheCall->getLocStart(), diag::err_argument_invalid_range)
+      << l << u << TheCall->getArg(i)->getSourceRange();
+
   return false;
 }
 
@@ -1478,7 +1517,11 @@ bool Sema::SemaBuiltinPrefetch(CallExpr *TheCall) {
   // constant integers.
   for (unsigned i = 1; i != NumArgs; ++i) {
     Expr *Arg = TheCall->getArg(i);
-    
+
+    // We can't check the value of a dependent argument.
+    if (Arg->isTypeDependent() || Arg->isValueDependent())
+      continue;
+
     llvm::APSInt Result;
     if (SemaBuiltinConstantArg(TheCall, i, Result))
       return true;
@@ -1523,7 +1566,12 @@ bool Sema::SemaBuiltinConstantArg(CallExpr *TheCall, int ArgNum,
 // For compatibility check 0-3, llvm only handles 0 and 2.
 bool Sema::SemaBuiltinObjectSize(CallExpr *TheCall) {
   llvm::APSInt Result;
-  
+
+  // We can't check the value of a dependent argument.
+  if (TheCall->getArg(1)->isTypeDependent() ||
+      TheCall->getArg(1)->isValueDependent())
+    return false;
+
   // Check constant-ness first.
   if (SemaBuiltinConstantArg(TheCall, 1, Result))
     return true;
@@ -5219,7 +5267,7 @@ bool Sema::checkUnsafeAssigns(SourceLocation Loc,
   while (ImplicitCastExpr *cast = dyn_cast<ImplicitCastExpr>(RHS)) {
     if (cast->getCastKind() == CK_ARCConsumeObject) {
       Diag(Loc, diag::warn_arc_retained_assign)
-        << (LT == Qualifiers::OCL_ExplicitNone) 
+        << (LT == Qualifiers::OCL_ExplicitNone) << 1
         << RHS->getSourceRange();
       return true;
     }
@@ -5271,6 +5319,16 @@ void Sema::checkUnsafeExprAssigns(SourceLocation Loc,
         if (cast->getCastKind() == CK_ARCConsumeObject) {
           Diag(Loc, diag::warn_arc_retained_property_assign)
           << RHS->getSourceRange();
+          return;
+        }
+        RHS = cast->getSubExpr();
+      }
+    }
+    else if (Attributes & ObjCPropertyDecl::OBJC_PR_weak) {
+      while (ImplicitCastExpr *cast = dyn_cast<ImplicitCastExpr>(RHS)) {
+        if (cast->getCastKind() == CK_ARCConsumeObject) {
+          Diag(Loc, diag::warn_arc_retained_assign)
+          << 0 << 0<< RHS->getSourceRange();
           return;
         }
         RHS = cast->getSubExpr();

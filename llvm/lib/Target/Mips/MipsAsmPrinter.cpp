@@ -21,21 +21,20 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Analysis/DebugInfo.h"
 #include "llvm/BasicBlock.h"
-#include "llvm/Instructions.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
+#include "llvm/InlineAsm.h"
 #include "llvm/Instructions.h"
-#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/Mangler.h"
 #include "llvm/Target/TargetData.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
@@ -323,6 +322,51 @@ bool MipsAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
         return true;
       O << MO.getImm() - 1;
       return false;
+    case 'z': {
+      // $0 if zero, regular printing otherwise
+      if (MO.getType() != MachineOperand::MO_Immediate)
+        return true;
+      int64_t Val = MO.getImm();
+      if (Val)
+        O << Val;
+      else
+        O << "$0";
+      return false;
+    }
+    case 'D': {
+      // Second part of a double word register operand
+      if (OpNum == 0)
+        return true;
+      const MachineOperand &FlagsOP = MI->getOperand(OpNum - 1);
+      if (!FlagsOP.isImm())
+        return true;
+      unsigned Flags = FlagsOP.getImm();
+      unsigned NumVals = InlineAsm::getNumOperandRegisters(Flags);
+      // Number of registers represented by this operand. We are looking
+      // for 2 for 32 bit mode and 1 for 64 bit mode.
+      if (NumVals != 2) {
+        if (Subtarget->isGP64bit() && NumVals == 1 && MO.isReg()) {
+          unsigned Reg = MO.getReg();
+          O << '$' << MipsInstPrinter::getRegisterName(Reg);
+          return false;
+        }
+        return true;
+      }
+      unsigned RegOp;
+      switch(ExtraCode[0]) {
+      case 'D':
+        RegOp = (!Subtarget->isGP32bit()) ? OpNum : OpNum + 1;
+        break;
+      }
+      if (RegOp >= MI->getNumOperands())
+        return true;
+      const MachineOperand &MO = MI->getOperand(RegOp);
+      if (!MO.isReg())
+        return true;
+      unsigned Reg = MO.getReg();
+      O << '$' << MipsInstPrinter::getRegisterName(Reg);
+      return false;
+    }
     }
   }
 
@@ -335,11 +379,12 @@ bool MipsAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI,
                                            const char *ExtraCode,
                                            raw_ostream &O) {
   if (ExtraCode && ExtraCode[0])
-     return true; // Unknown modifier.
+    return true; // Unknown modifier.
 
   const MachineOperand &MO = MI->getOperand(OpNum);
   assert(MO.isReg() && "unexpected inline asm memory operand");
   O << "0($" << MipsInstPrinter::getRegisterName(MO.getReg()) << ")";
+
   return false;
 }
 

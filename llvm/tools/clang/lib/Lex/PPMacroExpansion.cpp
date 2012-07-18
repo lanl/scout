@@ -487,10 +487,12 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
     } else if (MI->isVariadic() &&
                (NumActuals+1 == MinArgsExpected ||  // A(x, ...) -> A(X)
                 (NumActuals == 0 && MinArgsExpected == 2))) {// A(x,...) -> A()
-      // Varargs where the named vararg parameter is missing: ok as extension.
-      // #define A(x, ...)
-      // A("blah")
+      // Varargs where the named vararg parameter is missing: OK as extension.
+      //   #define A(x, ...)
+      //   A("blah")
       Diag(Tok, diag::ext_missing_varargs_arg);
+      Diag(MI->getDefinitionLoc(), diag::note_macro_here)
+        << MacroName.getIdentifierInfo();
 
       // Remember this occurred, allowing us to elide the comma when used for
       // cases like:
@@ -630,6 +632,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
            .Case("attribute_objc_method_family", true)
            .Case("attribute_overloadable", true)
            .Case("attribute_unavailable_with_message", true)
+           .Case("attribute_unused_on_fields", true)
            .Case("blocks", LangOpts.Blocks)
            .Case("cxx_exceptions", LangOpts.Exceptions)
            .Case("cxx_rtti", LangOpts.RTTI)

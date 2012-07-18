@@ -23,6 +23,9 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
+// scout
+#include "clang/AST/Expr.h"
+
 static struct StmtClassNameTable {
   const char *Name;
   unsigned Counter;
@@ -244,6 +247,22 @@ SourceLocation Stmt::getLocEnd() const {
   llvm_unreachable("unknown statement kind");
 }
 
+CompoundStmt::CompoundStmt(ASTContext &C, Stmt **StmtStart, unsigned NumStmts,
+                           SourceLocation LB, SourceLocation RB)
+  : Stmt(CompoundStmtClass), LBracLoc(LB), RBracLoc(RB) {
+  CompoundStmtBits.NumStmts = NumStmts;
+  assert(CompoundStmtBits.NumStmts == NumStmts &&
+         "NumStmts doesn't fit in bits of CompoundStmtBits.NumStmts!");
+
+  if (NumStmts == 0) {
+    Body = 0;
+    return;
+  }
+
+  Body = new (C) Stmt*[NumStmts];
+  memcpy(Body, StmtStart, NumStmts * sizeof(*Body));
+}
+
 void CompoundStmt::setStmts(ASTContext &C, Stmt **Stmts, unsigned NumStmts) {
   if (this->Body)
     C.Deallocate(Body);
@@ -255,6 +274,23 @@ void CompoundStmt::setStmts(ASTContext &C, Stmt **Stmts, unsigned NumStmts) {
 
 const char *LabelStmt::getName() const {
   return getDecl()->getIdentifier()->getNameStart();
+}
+
+AttributedStmt *AttributedStmt::Create(ASTContext &C, SourceLocation Loc,
+                                       ArrayRef<const Attr*> Attrs,
+                                       Stmt *SubStmt) {
+  void *Mem = C.Allocate(sizeof(AttributedStmt) +
+                         sizeof(Attr*) * (Attrs.size() - 1),
+                         llvm::alignOf<AttributedStmt>());
+  return new (Mem) AttributedStmt(Loc, Attrs, SubStmt);
+}
+
+AttributedStmt *AttributedStmt::CreateEmpty(ASTContext &C, unsigned NumAttrs) {
+  assert(NumAttrs > 0 && "NumAttrs should be greater than zero");
+  void *Mem = C.Allocate(sizeof(AttributedStmt) +
+                         sizeof(Attr*) * (NumAttrs - 1),
+                         llvm::alignOf<AttributedStmt>());
+  return new (Mem) AttributedStmt(EmptyShell(), NumAttrs);
 }
 
 // This is defined here to avoid polluting Stmt.h with importing Expr.h
@@ -966,9 +1002,12 @@ VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart,
     unsigned NumStmts, SourceLocation VolRenL,
     SourceLocation LB, SourceLocation RB, 
     IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* Body)
-  : CompoundStmt(C, StmtStart, NumStmts, LB, RB, VolumeRenderAllStmtClass),
+  : CompoundStmt(C, StmtStart, NumStmts, LB, RB),
     VolRenLoc(VolRenL), MeshII(MII), MeshVarDecl(MVD) {
 
       setBody(Body);
   }
 
+const MeshType* VolumeRenderAllStmt::getMeshType() const {
+  return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());
+}

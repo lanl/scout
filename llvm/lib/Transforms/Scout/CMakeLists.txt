@@ -9,5 +9,9 @@
 #
 
 add_subdirectory(Driver)
-add_subdirectory(CudaError)
+
+if(${CUDA_FOUND})
+  add_subdirectory(CudaError)
+endif()
+
 add_subdirectory(DoallToPTX)

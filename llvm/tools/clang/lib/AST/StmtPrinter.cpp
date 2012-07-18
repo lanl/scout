@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
@@ -173,9 +174,9 @@ void StmtPrinter::VisitLabelStmt(LabelStmt *Node) {
 void StmtPrinter::VisitAttributedStmt(AttributedStmt *Node) {
   OS << "[[";
   bool first = true;
-  for (AttrVec::const_iterator it = Node->getAttrs().begin(),
-                               end = Node->getAttrs().end();
-                               it != end; ++it) {
+  for (ArrayRef<const Attr*>::iterator it = Node->getAttrs().begin(),
+                                       end = Node->getAttrs().end();
+                                       it != end; ++it) {
     if (!first) {
       OS << ", ";
       first = false;
@@ -662,6 +663,9 @@ void StmtPrinter::VisitPredefinedExpr(PredefinedExpr *Node) {
     case PredefinedExpr::Function:
       OS << "__FUNCTION__";
       break;
+    case PredefinedExpr::LFunction:
+      OS << "L__FUNCTION__";
+      break;
     case PredefinedExpr::PrettyFunction:
       OS << "__PRETTY_FUNCTION__";
       break;
@@ -830,7 +834,12 @@ void StmtPrinter::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *Node){
     OS << "sizeof";
     break;
   case UETT_AlignOf:
-    OS << "__alignof";
+    if (Policy.LangOpts.CPlusPlus)
+      OS << "alignof";
+    else if (Policy.LangOpts.C11)
+      OS << "_Alignof";
+    else
+      OS << "__alignof";
     break;
   case UETT_VecStep:
     OS << "vec_step";

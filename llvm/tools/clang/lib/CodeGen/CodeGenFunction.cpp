@@ -28,7 +28,7 @@
 using namespace clang;
 using namespace CodeGen;
 
-CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
+CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   : CodeGenTypeCache(cgm), CGM(cgm),
     Target(CGM.getContext().getTargetInfo()),
     Builder(cgm.getModule().getContext()),
@@ -44,7 +44,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm)
 {
 
   CatchUndefined = getContext().getLangOpts().CatchUndefined;
-  CGM.getCXXABI().getMangleContext().startNewFunction();
+  if (!suppressNewContext)
+    CGM.getCXXABI().getMangleContext().startNewFunction();
 }
 
 CodeGenFunction::~CodeGenFunction() {
@@ -257,6 +258,51 @@ void CodeGenFunction::EmitMCountInstrumentation() {
   Builder.CreateCall(MCountFn);
 }
 
+void CodeGenFunction::EmitOpenCLKernelMetadata(const FunctionDecl *FD, 
+                                               llvm::Function *Fn)
+{
+  if (!FD->hasAttr<OpenCLKernelAttr>())
+    return;
+
+  llvm::LLVMContext &Context = getLLVMContext();
+
+  llvm::SmallVector <llvm::Value*, 5> kernelMDArgs;
+  kernelMDArgs.push_back(Fn);
+
+  if (FD->hasAttr<WorkGroupSizeHintAttr>()) {
+    llvm::SmallVector <llvm::Value*, 5> attrMDArgs;
+    attrMDArgs.push_back(llvm::MDString::get(Context, "work_group_size_hint"));
+    WorkGroupSizeHintAttr *attr = FD->getAttr<WorkGroupSizeHintAttr>();
+    llvm::Type *iTy = llvm::IntegerType::get(Context, 32);
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getXDim())));
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getYDim())));
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getZDim())));
+    kernelMDArgs.push_back(llvm::MDNode::get(Context, attrMDArgs));
+  }
+
+  if (FD->hasAttr<ReqdWorkGroupSizeAttr>()) {
+    llvm::SmallVector <llvm::Value*, 5> attrMDArgs;
+    attrMDArgs.push_back(llvm::MDString::get(Context, "reqd_work_group_size"));
+    ReqdWorkGroupSizeAttr *attr = FD->getAttr<ReqdWorkGroupSizeAttr>();
+    llvm::Type *iTy = llvm::IntegerType::get(Context, 32);
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getXDim())));
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getYDim())));
+    attrMDArgs.push_back(llvm::ConstantInt::get(iTy,
+       llvm::APInt(32, (uint64_t)attr->getZDim())));
+    kernelMDArgs.push_back(llvm::MDNode::get(Context, attrMDArgs));
+  }
+
+  llvm::MDNode *kernelMDNode = llvm::MDNode::get(Context, kernelMDArgs);
+  llvm::NamedMDNode *OpenCLKernelMetadata =
+    CGM.getModule().getOrInsertNamedMetadata("opencl.kernels");
+  OpenCLKernelMetadata->addOperand(kernelMDNode);
+}
+
 void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
                                     llvm::Function *Fn,
                                     const CGFunctionInfo &FnInfo,
@@ -286,14 +332,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
   if (getContext().getLangOpts().OpenCL) {
     // Add metadata for a kernel function.
     if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D))
-      if (FD->hasAttr<OpenCLKernelAttr>()) {
-        llvm::LLVMContext &Context = getLLVMContext();
-        llvm::NamedMDNode *OpenCLMetadata =
-          CGM.getModule().getOrInsertNamedMetadata("opencl.kernels");
-
-        llvm::Value *Op = Fn;
-        OpenCLMetadata->addOperand(llvm::MDNode::get(Context, Op));
-      }
+      EmitOpenCLKernelMetadata(FD, Fn);
   }
 
   llvm::BasicBlock *EntryBB = createBasicBlock("entry", CurFn);

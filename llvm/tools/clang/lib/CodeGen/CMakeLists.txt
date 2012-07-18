@@ -54,6 +54,7 @@ add_clang_library(clangCodeGen
 add_dependencies(clangCodeGen
   ClangAttrClasses
   ClangAttrList
+  ClangCommentNodes
   ClangDeclNodes
   ClangStmtNodes
   )

@@ -3253,11 +3253,10 @@ MipsTargetLowering::LowerReturn(SDValue Chain,
 
   // Return on Mips is always a "jr $ra"
   if (Flag.getNode())
-    return DAG.getNode(MipsISD::Ret, dl, MVT::Other,
-                       Chain, DAG.getRegister(Mips::RA, MVT::i32), Flag);
-  else // Return Void
-    return DAG.getNode(MipsISD::Ret, dl, MVT::Other,
-                       Chain, DAG.getRegister(Mips::RA, MVT::i32));
+    return DAG.getNode(MipsISD::Ret, dl, MVT::Other, Chain, Flag);
+
+  // Return Void
+  return DAG.getNode(MipsISD::Ret, dl, MVT::Other, Chain);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3354,6 +3353,8 @@ getRegForInlineAsmConstraint(const std::string &Constraint, EVT VT) const
     case 'y': // Same as 'r'. Exists for compatibility.
     case 'r':
       if (VT == MVT::i32 || VT == MVT::i16 || VT == MVT::i8)
+        return std::make_pair(0U, &Mips::CPURegsRegClass);
+      if (VT == MVT::i64 && !HasMips64)
         return std::make_pair(0U, &Mips::CPURegsRegClass);
       if (VT == MVT::i64 && HasMips64)
         return std::make_pair(0U, &Mips::CPU64RegsRegClass);

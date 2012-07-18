@@ -14,17 +14,17 @@
 
 #define DEBUG_TYPE "bounds-checking"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/IRBuilder.h"
+#include "llvm/Intrinsics.h"
+#include "llvm/Pass.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/InstIterator.h"
-#include "llvm/Support/IRBuilder.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetFolder.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetData.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Pass.h"
 using namespace llvm;
 
 static cl::opt<bool> SingleTrapBB("bounds-checking-single-trap",
@@ -54,7 +54,7 @@ namespace {
     const TargetData *TD;
     ObjectSizeOffsetEvaluator *ObjSizeEval;
     BuilderTy *Builder;
-    Function *Fn;
+    Instruction *Inst;
     BasicBlock *TrapBB;
     unsigned Penalty;
 
@@ -67,11 +67,8 @@ namespace {
 }
 
 char BoundsChecking::ID = 0;
-INITIALIZE_PASS_BEGIN(BoundsChecking, "bounds-checking",
-                      "Run-time bounds checking", false, false)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolution)
-INITIALIZE_PASS_END(BoundsChecking, "bounds-checking",
-                      "Run-time bounds checking", false, false)
+INITIALIZE_PASS(BoundsChecking, "bounds-checking", "Run-time bounds checking",
+                false, false)
 
 
 /// getTrapBB - create a basic block that traps. All overflowing conditions
@@ -80,6 +77,7 @@ BasicBlock *BoundsChecking::getTrapBB() {
   if (TrapBB && SingleTrapBB)
     return TrapBB;
 
+  Function *Fn = Inst->getParent()->getParent();
   BasicBlock::iterator PrevInsertPoint = Builder->GetInsertPoint();
   TrapBB = BasicBlock::Create(Fn->getContext(), "trap", Fn);
   Builder->SetInsertPoint(TrapBB);
@@ -88,6 +86,7 @@ BasicBlock *BoundsChecking::getTrapBB() {
   CallInst *TrapCall = Builder->CreateCall(F);
   TrapCall->setDoesNotReturn();
   TrapCall->setDoesNotThrow();
+  TrapCall->setDebugLoc(Inst->getDebugLoc());
   Builder->CreateUnreachable();
 
   Builder->SetInsertPoint(PrevInsertPoint);
@@ -139,20 +138,26 @@ bool BoundsChecking::instrument(Value *Ptr, Value *InstVal) {
 
   Value *Size   = SizeOffset.first;
   Value *Offset = SizeOffset.second;
+  ConstantInt *SizeCI = dyn_cast<ConstantInt>(Size);
 
-  IntegerType *IntTy = TD->getIntPtrType(Fn->getContext());
+  IntegerType *IntTy = TD->getIntPtrType(Inst->getContext());
   Value *NeededSizeVal = ConstantInt::get(IntTy, NeededSize);
 
   // three checks are required to ensure safety:
   // . Offset >= 0  (since the offset is given from the base ptr)
   // . Size >= Offset  (unsigned)
   // . Size - Offset >= NeededSize  (unsigned)
+  //
+  // optimization: if Size >= 0 (signed), skip 1st check
   // FIXME: add NSW/NUW here?  -- we dont care if the subtraction overflows
   Value *ObjSize = Builder->CreateSub(Size, Offset);
-  Value *Cmp1 = Builder->CreateICmpSLT(Offset, ConstantInt::get(IntTy, 0));
   Value *Cmp2 = Builder->CreateICmpULT(Size, Offset);
   Value *Cmp3 = Builder->CreateICmpULT(ObjSize, NeededSizeVal);
-  Value *Or = Builder->CreateOr(Cmp1, Builder->CreateOr(Cmp2, Cmp3));
+  Value *Or = Builder->CreateOr(Cmp2, Cmp3);
+  if (!SizeCI || SizeCI->getValue().slt(0)) {
+    Value *Cmp1 = Builder->CreateICmpSLT(Offset, ConstantInt::get(IntTy, 0));
+    Or = Builder->CreateOr(Cmp1, Or);
+  }
   emitBranchToTrap(Or);
 
   ++ChecksAdded;
@@ -163,7 +168,6 @@ bool BoundsChecking::runOnFunction(Function &F) {
   TD = &getAnalysis<TargetData>();
 
   TrapBB = 0;
-  Fn = &F;
   BuilderTy TheBuilder(F.getContext(), TargetFolder(TD));
   Builder = &TheBuilder;
   ObjectSizeOffsetEvaluator TheObjSizeEval(TD, F.getContext());
@@ -182,16 +186,16 @@ bool BoundsChecking::runOnFunction(Function &F) {
   bool MadeChange = false;
   for (std::vector<Instruction*>::iterator i = WorkList.begin(),
        e = WorkList.end(); i != e; ++i) {
-    Instruction *I = *i;
+    Inst = *i;
 
-    Builder->SetInsertPoint(I);
-    if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
+    Builder->SetInsertPoint(Inst);
+    if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
       MadeChange |= instrument(LI->getPointerOperand(), LI);
-    } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+    } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
       MadeChange |= instrument(SI->getPointerOperand(), SI->getValueOperand());
-    } else if (AtomicCmpXchgInst *AI = dyn_cast<AtomicCmpXchgInst>(I)) {
+    } else if (AtomicCmpXchgInst *AI = dyn_cast<AtomicCmpXchgInst>(Inst)) {
       MadeChange |= instrument(AI->getPointerOperand(),AI->getCompareOperand());
-    } else if (AtomicRMWInst *AI = dyn_cast<AtomicRMWInst>(I)) {
+    } else if (AtomicRMWInst *AI = dyn_cast<AtomicRMWInst>(Inst)) {
       MadeChange |= instrument(AI->getPointerOperand(), AI->getValOperand());
     } else {
       llvm_unreachable("unknown Instruction type");

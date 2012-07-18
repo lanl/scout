@@ -257,6 +257,7 @@
           <li><a href="#int_exp">'<tt>llvm.exp.*</tt>' Intrinsic</a></li>
           <li><a href="#int_log">'<tt>llvm.log.*</tt>' Intrinsic</a></li>
           <li><a href="#int_fma">'<tt>llvm.fma.*</tt>' Intrinsic</a></li>
+          <li><a href="#int_fabs">'<tt>llvm.fabs.*</tt>' Intrinsic</a></li>
         </ol>
       </li>
       <li><a href="#int_manip">Bit Manipulation Intrinsics</a>
@@ -316,10 +317,12 @@
             '<tt>llvm.debugtrap</tt>' Intrinsic</a></li>
           <li><a href="#int_stackprotector">
             '<tt>llvm.stackprotector</tt>' Intrinsic</a></li>
-	  <li><a href="#int_objectsize">
+          <li><a href="#int_objectsize">
             '<tt>llvm.objectsize</tt>' Intrinsic</a></li>
-	  <li><a href="#int_expect">
+          <li><a href="#int_expect">
             '<tt>llvm.expect</tt>' Intrinsic</a></li>
+          <li><a href="#int_donothing">
+            '<tt>llvm.donothing</tt>' Intrinsic</a></li>
         </ol>
       </li>
     </ol>
@@ -838,9 +841,32 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
 <p>Global variables define regions of memory allocated at compilation time
    instead of run-time.  Global variables may optionally be initialized, may
    have an explicit section to be placed in, and may have an optional explicit
-   alignment specified.  A variable may be defined as "thread_local", which
+   alignment specified.</p>
+
+<p>A variable may be defined as <tt>thread_local</tt>, which
    means that it will not be shared by threads (each thread will have a
-   separated copy of the variable).  A variable may be defined as a global
+   separated copy of the variable).  Not all targets support thread-local
+   variables.  Optionally, a TLS model may be specified:</p>
+
+<dl>
+  <dt><b><tt>localdynamic</tt></b>:</dt>
+  <dd>For variables that are only used within the current shared library.</dd>
+
+  <dt><b><tt>initialexec</tt></b>:</dt>
+  <dd>For variables in modules that will not be loaded dynamically.</dd>
+
+  <dt><b><tt>localexec</tt></b>:</dt>
+  <dd>For variables defined in the executable and only used within it.</dd>
+</dl>
+
+<p>The models correspond to the ELF TLS models; see
+   <a href="http://people.redhat.com/drepper/tls.pdf">ELF
+   Handling For Thread-Local Storage</a> for more information on under which
+   circumstances the different models may be used.  The target may choose a
+   different TLS model if the specified model is not supported, or if a better
+   choice of model can be made.</p>
+
+<p>A variable may be defined as a global
    "constant," which indicates that the contents of the variable
    will <b>never</b> be modified (enabling better optimization, allowing the
    global data to be placed in the read-only section of an executable, etc).
@@ -891,6 +917,13 @@ define i32 @main() {   <i>; i32()* </i>&nbsp;
 
 <pre class="doc_code">
 @G = addrspace(5) constant float 1.0, section "foo", align 4
+</pre>
+
+<p>The following example defines a thread-local global with
+   the <tt>initialexec</tt> TLS model:</p>
+
+<pre class="doc_code">
+@G = thread_local(initialexec) global i32 0, align 4
 </pre>
 
 </div>
@@ -7476,6 +7509,40 @@ LLVM</a>.</p>
 
 </div>
 
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_fabs">'<tt>llvm.fabs.*</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<p>This is an overloaded intrinsic. You can use <tt>llvm.fabs</tt> on any
+   floating point or vector of floating point type. Not all targets support all
+   types however.</p>
+
+<pre>
+  declare float     @llvm.fabs.f32(float  %Val)
+  declare double    @llvm.fabs.f64(double %Val)
+  declare x86_fp80  @llvm.fabs.f80(x86_fp80  %Val)
+  declare fp128     @llvm.fabs.f128(fp128 %Val)
+  declare ppc_fp128 @llvm.fabs.ppcf128(ppc_fp128  %Val)
+</pre>
+
+<h5>Overview:</h5>
+<p>The '<tt>llvm.fabs.*</tt>' intrinsics return the absolute value of
+   the operand.</p>
+
+<h5>Arguments:</h5>
+<p>The argument and return value are floating point numbers of the same
+   type.</p>
+
+<h5>Semantics:</h5>
+<p>This function returns the same values as the libm <tt>fabs</tt> functions
+   would, and handles error conditions in the same way.</p>
+
+</div>
+
 </div>
 
 <!-- ======================================================================= -->
@@ -8575,6 +8642,30 @@ intrinsic function should be used instead.</p>
 <p>This intrinsic is lowered to the <tt>val</tt>.</p>
 </div>
 
+<!-- _______________________________________________________________________ -->
+<h4>
+  <a name="int_donothing">'<tt>llvm.donothing</tt>' Intrinsic</a>
+</h4>
+
+<div>
+
+<h5>Syntax:</h5>
+<pre>
+  declare void @llvm.donothing() nounwind readnone
+</pre>
+
+<h5>Overview:</h5>
+<p>The <tt>llvm.donothing</tt> intrinsic doesn't perform any operation. It's the
+only intrinsic that can be called with an invoke instruction.</p>
+
+<h5>Arguments:</h5>
+<p>None.</p>
+
+<h5>Semantics:</h5>
+<p>This intrinsic does nothing, and it's removed by optimizers and ignored by
+codegen.</p>
+</div>
+
 </div>
 
 </div>
@@ -8588,7 +8679,7 @@ intrinsic function should be used instead.</p>
 
   <a href="mailto:sabre@nondot.org">Chris Lattner</a><br>
   <a href="http://llvm.org/">The LLVM Compiler Infrastructure</a><br>
-  Last modified: $Date: 2012-06-18 17:34:26 -0600 (Mon, 18 Jun 2012) $
+  Last modified: $Date: 2012-07-05 11:37:07 -0600 (Thu, 05 Jul 2012) $
 </address>
 
 </body>

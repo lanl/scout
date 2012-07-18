@@ -5,8 +5,11 @@
 
 #define SC_USE_PNG
 
+#ifdef SC_ENABLE_CUDA
 #include "runtime/scout_gpu.h"
 #include "runtime/cuda/cuda.h"
+#endif // SC_ENABLE_CUDA
+
 #include "runtime/init_mac.h"
 #include "runtime/opengl/glSDL.h"
 #include "runtime/tbq.h"
@@ -62,9 +65,16 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
 void __sc_init(int argc, char** argv, bool gpu){
   __sc_tbq = new tbq_rt;
 
+
   if(gpu){
+#ifdef SC_ENABLE_CUDA
     __sc_init_sdl(__sc_initial_width, __sc_initial_height);
     __sc_init_cuda();
+#else
+    cerr << "Error: Attempt to use GPU mode when Scout was compiled "
+      "without CUDA." << endl;
+    exit(1);
+#endif // SC_ENABLE_CUDA
   }
 }
 

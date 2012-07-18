@@ -305,6 +305,7 @@ KEYWORD(void                        , KEYALL)
 KEYWORD(volatile                    , KEYALL)
 KEYWORD(while                       , KEYALL)
 KEYWORD(_Alignas                    , KEYALL)
+KEYWORD(_Alignof                    , KEYALL)
 KEYWORD(_Atomic                     , KEYALL)
 KEYWORD(_Bool                       , KEYNOCXX)
 KEYWORD(_Complex                    , KEYALL)
@@ -395,6 +396,9 @@ KEYWORD(__PRETTY_FUNCTION__         , KEYALL)
 
 // GNU Extensions (outside impl-reserved namespace)
 KEYWORD(typeof                      , KEYGNU)
+
+// MS Extensions
+KEYWORD(L__FUNCTION__               , KEYMS)
 
 // GNU and MS Type Traits
 KEYWORD(__has_nothrow_assign        , KEYCXX)
@@ -642,6 +646,11 @@ ANNOTATION(pragma_vis)
 // The lexer produces these so that they only take effect when the parser
 // handles them.
 ANNOTATION(pragma_pack)
+
+// Annotation for #pragma clang __debug parser_crash...
+// The lexer produces these so that they only take effect when the parser
+// handles them.
+ANNOTATION(pragma_parser_crash)
 
 #undef ANNOTATION
 #undef TESTING_KEYWORD

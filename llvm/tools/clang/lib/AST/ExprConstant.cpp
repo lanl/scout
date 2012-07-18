@@ -287,7 +287,9 @@ namespace {
     /// parameters' function scope indices.
     const APValue *Arguments;
 
-    typedef llvm::DenseMap<const Expr*, APValue> MapTy;
+    // Note that we intentionally use std::map here so that references to
+    // values are stable.
+    typedef std::map<const Expr*, APValue> MapTy;
     typedef MapTy::const_iterator temp_iterator;
     /// Temporaries - Temporary lvalues materialized within this stack frame.
     MapTy Temporaries;
@@ -361,11 +363,6 @@ namespace {
     /// NextCallIndex - The next call index to assign.
     unsigned NextCallIndex;
 
-    typedef llvm::DenseMap<const OpaqueValueExpr*, APValue> MapTy;
-    /// OpaqueValues - Values used as the common expression in a
-    /// BinaryConditionalOperator.
-    MapTy OpaqueValues;
-
     /// BottomFrame - The frame in which evaluation started. This must be
     /// initialized after CurrentCall and CallStackDepth.
     CallStackFrame BottomFrame;
@@ -393,12 +390,6 @@ namespace {
         BottomFrame(*this, SourceLocation(), 0, 0, 0),
         EvaluatingDecl(0), EvaluatingDeclValue(0), HasActiveDiagnostic(false),
         CheckingPotentialConstantExpression(false) {}
-
-    const APValue *getOpaqueValue(const OpaqueValueExpr *e) const {
-      MapTy::const_iterator i = OpaqueValues.find(e);
-      if (i == OpaqueValues.end()) return 0;
-      return &i->second;
-    }
 
     void setEvaluatingDecl(const VarDecl *VD, APValue &Value) {
       EvaluatingDecl = VD;
@@ -2360,32 +2351,6 @@ public:
   bool VisitSizeOfPackExpr(const SizeOfPackExpr *) { return false; }
 };
 
-class OpaqueValueEvaluation {
-  EvalInfo &info;
-  OpaqueValueExpr *opaqueValue;
-
-public:
-  OpaqueValueEvaluation(EvalInfo &info, OpaqueValueExpr *opaqueValue,
-                        Expr *value)
-    : info(info), opaqueValue(opaqueValue) {
-
-    // If evaluation fails, fail immediately.
-    if (!Evaluate(info.OpaqueValues[opaqueValue], info, value)) {
-      this->opaqueValue = 0;
-      return;
-    }
-  }
-
-  bool hasError() const { return opaqueValue == 0; }
-
-  ~OpaqueValueEvaluation() {
-    // FIXME: For a recursive constexpr call, an outer stack frame might have
-    // been using this opaque value too, and will now have to re-evaluate the
-    // source expression.
-    if (opaqueValue) info.OpaqueValues.erase(opaqueValue);
-  }
-};
-  
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
@@ -2528,9 +2493,10 @@ public:
   }
 
   RetTy VisitBinaryConditionalOperator(const BinaryConditionalOperator *E) {
-    // Cache the value of the common expression.
-    OpaqueValueEvaluation opaque(Info, E->getOpaqueValue(), E->getCommon());
-    if (opaque.hasError())
+    // Evaluate and cache the common expression. We treat it as a temporary,
+    // even though it's not quite the same thing.
+    if (!Evaluate(Info.CurrentCall->Temporaries[E->getOpaqueValue()],
+                  Info, E->getCommon()))
       return false;
 
     return HandleConditionalOperator(E);
@@ -2564,8 +2530,8 @@ public:
   }
 
   RetTy VisitOpaqueValueExpr(const OpaqueValueExpr *E) {
-    const APValue *Value = Info.getOpaqueValue(E);
-    if (!Value) {
+    APValue &Value = Info.CurrentCall->Temporaries[E];
+    if (Value.isUninit()) {
       const Expr *Source = E->getSourceExpr();
       if (!Source)
         return Error(E);
@@ -2575,7 +2541,7 @@ public:
       }
       return StmtVisitorTy::Visit(Source);
     }
-    return DerivedSuccess(*Value, E);
+    return DerivedSuccess(Value, E);
   }
 
   RetTy VisitCallExpr(const CallExpr *E) {
@@ -3906,8 +3872,24 @@ bool ArrayExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
 
   bool Success = true;
 
+  assert((!Result.isArray() || Result.getArrayInitializedElts() == 0) &&
+         "zero-initialized array shouldn't have any initialized elts");
+  APValue Filler;
+  if (Result.isArray() && Result.hasArrayFiller())
+    Filler = Result.getArrayFiller();
+
   Result = APValue(APValue::UninitArray(), E->getNumInits(),
                    CAT->getSize().getZExtValue());
+
+  // If the array was previously zero-initialized, preserve the
+  // zero-initialized values.
+  if (!Filler.isUninit()) {
+    for (unsigned I = 0, E = Result.getArrayInitializedElts(); I != E; ++I)
+      Result.getArrayInitializedElt(I) = Filler;
+    if (Result.hasArrayFiller())
+      Result.getArrayFiller() = Filler;
+  }
+
   LValue Subobject = This;
   Subobject.addArray(Info, E, CAT);
   unsigned Index = 0;
@@ -3938,11 +3920,24 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
   if (!CAT)
     return Error(E);
 
-  bool HadZeroInit = !Result.isUninit();
-  if (!HadZeroInit)
-    Result = APValue(APValue::UninitArray(), 0, CAT->getSize().getZExtValue());
-  if (!Result.hasArrayFiller())
-    return true;
+  // FIXME: The Subobject here isn't necessarily right. This rarely matters,
+  // but sometimes does:
+  //   struct S { constexpr S() : p(&p) {} void *p; };
+  //   S s[10];
+  LValue Subobject = This;
+
+  APValue *Value = &Result;
+  bool HadZeroInit = true;
+  while (CAT) {
+    Subobject.addArray(Info, E, CAT);
+    HadZeroInit &= !Value->isUninit();
+    if (!HadZeroInit)
+      *Value = APValue(APValue::UninitArray(), 0, CAT->getSize().getZExtValue());
+    if (!Value->hasArrayFiller())
+      return true;
+    CAT = Info.Ctx.getAsConstantArrayType(CAT->getElementType());
+    Value = &Value->getArrayFiller();
+  }
 
   const CXXConstructorDecl *FD = E->getConstructor();
 
@@ -3952,17 +3947,15 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
       return true;
 
     if (ZeroInit) {
-      LValue Subobject = This;
-      Subobject.addArray(Info, E, CAT);
       ImplicitValueInitExpr VIE(CAT->getElementType());
-      return EvaluateInPlace(Result.getArrayFiller(), Info, Subobject, &VIE);
+      return EvaluateInPlace(*Value, Info, Subobject, &VIE);
     }
 
     const CXXRecordDecl *RD = FD->getParent();
     if (RD->isUnion())
-      Result.getArrayFiller() = APValue((FieldDecl*)0);
+      *Value = APValue((FieldDecl*)0);
     else
-      Result.getArrayFiller() =
+      *Value =
           APValue(APValue::UninitStruct(), RD->getNumBases(),
                   std::distance(RD->field_begin(), RD->field_end()));
     return true;
@@ -3974,23 +3967,16 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
   if (!CheckConstexprFunction(Info, E->getExprLoc(), FD, Definition))
     return false;
 
-  // FIXME: The Subobject here isn't necessarily right. This rarely matters,
-  // but sometimes does:
-  //   struct S { constexpr S() : p(&p) {} void *p; };
-  //   S s[10];
-  LValue Subobject = This;
-  Subobject.addArray(Info, E, CAT);
-
   if (ZeroInit && !HadZeroInit) {
     ImplicitValueInitExpr VIE(CAT->getElementType());
-    if (!EvaluateInPlace(Result.getArrayFiller(), Info, Subobject, &VIE))
+    if (!EvaluateInPlace(*Value, Info, Subobject, &VIE))
       return false;
   }
 
   llvm::ArrayRef<const Expr*> Args(E->getArgs(), E->getNumArgs());
   return HandleConstructorCall(E->getExprLoc(), Subobject, Args,
                                cast<CXXConstructorDecl>(Definition),
-                               Info, Result.getArrayFiller());
+                               Info, *Value);
 }
 
 //===----------------------------------------------------------------------===//

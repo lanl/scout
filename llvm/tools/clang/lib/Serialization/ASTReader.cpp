@@ -4488,6 +4488,9 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_ARC_UNBRIDGED_CAST:
       T = Context.ARCUnbridgedCastTy;
       break;
+    case PREDEF_TYPE_VA_LIST_TAG:
+      T = Context.getVaListTagType();
+      break;
     }
 
     assert(!T.isNull() && "Unknown predefined type");
@@ -4696,7 +4699,9 @@ Decl *ASTReader::GetDecl(DeclID ID) {
   unsigned Index = ID - NUM_PREDEF_DECL_IDS;
 
   if (Index >= DeclsLoaded.size()) {
+    assert(0 && "declaration ID out-of-range for AST file");
     Error("declaration ID out-of-range for AST file");
+    return 0;
   }
   
   if (!DeclsLoaded[Index]) {
@@ -6306,7 +6311,7 @@ void ASTReader::ClearSwitchCaseIDs() {
 }
 
 void ASTReader::ReadComments() {
-  std::vector<RawComment> Comments;
+  std::vector<RawComment *> Comments;
   for (SmallVectorImpl<std::pair<llvm::BitstreamCursor,
                                  serialization::ModuleFile *> >::iterator
        I = CommentsCursors.begin(),
@@ -6347,8 +6352,9 @@ void ASTReader::ReadComments() {
             (RawComment::CommentKind) Record[Idx++];
         bool IsTrailingComment = Record[Idx++];
         bool IsAlmostTrailingComment = Record[Idx++];
-        Comments.push_back(RawComment(SR, Kind, IsTrailingComment,
-                                      IsAlmostTrailingComment));
+        Comments.push_back(new (Context) RawComment(SR, Kind,
+                                                    IsTrailingComment,
+                                                    IsAlmostTrailingComment));
         break;
       }
       }

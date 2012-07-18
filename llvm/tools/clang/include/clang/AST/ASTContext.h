@@ -20,6 +20,7 @@
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/VersionTuple.h"
+#include "clang/AST/Comment.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/LambdaMangleContext.h"
 #include "clang/AST/NestedNameSpecifier.h"
@@ -424,23 +425,31 @@ public:
   /// \brief True if comments are already loaded from ExternalASTSource.
   mutable bool CommentsLoaded;
 
-  /// \brief Mapping from declarations to their comments (stored within
-  /// Comments list), once we have already looked up the comment associated
-  /// with a given declaration.
-  mutable llvm::DenseMap<const Decl *, const RawComment *> DeclComments;
+  typedef std::pair<const RawComment *, comments::FullComment *>
+      RawAndParsedComment;
 
-  /// \brief Return the Doxygen-style comment attached to a given declaration,
+  /// \brief Mapping from declarations to their comments.
+  ///
+  /// Raw comments are owned by Comments list.  This mapping is populated
+  /// lazily.
+  mutable llvm::DenseMap<const Decl *, RawAndParsedComment> DeclComments;
+
+  /// \brief Return the documentation comment attached to a given declaration,
   /// without looking into cache.
   const RawComment *getRawCommentForDeclNoCache(const Decl *D) const;
 
 public:
   void addComment(const RawComment &RC) {
-    Comments.addComment(RC);
+    Comments.addComment(RC, BumpAlloc);
   }
 
-  /// \brief Return the Doxygen-style comment attached to a given declaration.
+  /// \brief Return the documentation comment attached to a given declaration.
   /// Returns NULL if no comment is attached.
   const RawComment *getRawCommentForDecl(const Decl *D) const;
+
+  /// Return parsed documentation comment attached to a given declaration.
+  /// Returns NULL if no comment is attached.
+  comments::FullComment *getCommentForDecl(const Decl *D) const;
 
   /// \brief Retrieve the attributes for the given declaration.
   AttrVec& getDeclAttrs(const Decl *D);
@@ -625,6 +634,10 @@ public:
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
+
+  // Type used to help define __builtin_va_list for some targets.
+  // The type is built when constructing 'BuiltinVaListDecl'.
+  mutable QualType VaListTagTy;
 
   ASTContext(LangOptions& LOpts, SourceManager &SM, const TargetInfo *t,
              IdentifierTable &idents, SelectorTable &sels,
@@ -1217,6 +1230,11 @@ public:
   QualType getBuiltinVaListType() const {
     return getTypeDeclType(getBuiltinVaListDecl());
   }
+
+  /// \brief Retrieve the C type declaration corresponding to the predefined
+  /// __va_list_tag type used to help define the __builtin_va_list type for
+  /// some targets.
+  QualType getVaListTagType() const;
 
   /// getCVRQualifiedType - Returns a type with additional const,
   /// volatile, or restrict qualifiers.

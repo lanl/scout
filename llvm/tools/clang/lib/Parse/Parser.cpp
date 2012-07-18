@@ -52,7 +52,7 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
   : PP(pp), Actions(actions), Diags(PP.getDiagnostics()),
     GreaterThanIsOperator(true), ColonIsSacred(false), 
     InMessageExpression(false), TemplateParameterDepth(0),
-    SkipFunctionBodies(SkipFunctionBodies) {
+    ParsingInObjCContainer(false), SkipFunctionBodies(SkipFunctionBodies) {
   Tok.setKind(tok::eof);
   Actions.CurScope = 0;
   NumCachedScopes = 0;
@@ -543,6 +543,11 @@ namespace {
 /// ParseTopLevelDecl - Parse one top-level declaration, return whatever the
 /// action tells us to.  This returns true if the EOF was encountered.
 bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result) {
+  // scout - test hook into parsing top-level decls from main file
+  if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
+    //DumpLookAheads(20);
+  }
+  
   DestroyTemplateIdAnnotationsRAIIObj CleanupRAII(TemplateIds);
 
   // Skip over the EOF token, flagging end of previous input for incremental 
@@ -752,8 +757,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
   dont_know:
     // We can't tell whether this is a function-definition or declaration yet.
     if (DS) {
-      DS->takeAttributesFrom(attrs);
-      return ParseDeclarationOrFunctionDefinition(*DS);
+      return ParseDeclarationOrFunctionDefinition(attrs, DS);
     } else {
       return ParseDeclarationOrFunctionDefinition(attrs);
     }
@@ -773,7 +777,7 @@ bool Parser::isDeclarationAfterDeclarator() {
     if (KW.is(tok::kw_default) || KW.is(tok::kw_delete))
       return false;
   }
-
+  
   return Tok.is(tok::equal) ||      // int X()=  -> not a function def
     Tok.is(tok::comma) ||           // int X(),  -> not a function def
     Tok.is(tok::semi)  ||           // int X();  -> not a function def
@@ -804,6 +808,27 @@ bool Parser::isStartOfFunctionDefinition(const ParsingDeclarator &Declarator) {
          Tok.is(tok::kw_try);          // X() try { ... }
 }
 
+/// \brief Determine whether the current token, if it occurs after a
+/// a function declarator, indicates the start of a function definition
+/// inside an objective-C class implementation and thus can be delay parsed. 
+bool Parser::isStartOfDelayParsedFunctionDefinition(
+                                       const ParsingDeclarator &Declarator) {
+  if (!CurParsedObjCImpl ||
+      !Declarator.isFunctionDeclarator())
+    return false;
+  if (Tok.is(tok::l_brace))   // int X() {}
+    return true;
+
+  // Handle K&R C argument lists: int X(f) int f; {}
+  if (!getLangOpts().CPlusPlus &&
+      Declarator.getFunctionTypeInfo().isKNRPrototype()) 
+    return isDeclarationSpecifier();
+  
+  return getLangOpts().CPlusPlus &&
+           (Tok.is(tok::colon) ||         // X() : Base() {} (used for ctors)
+            Tok.is(tok::kw_try));          // X() try { ... }
+}
+
 /// ParseDeclarationOrFunctionDefinition - Parse either a function-definition or
 /// a declaration.  We can't tell which we have until we read up to the
 /// compound-statement in function-definition. TemplateParams, if
@@ -821,19 +846,23 @@ bool Parser::isStartOfFunctionDefinition(const ParsingDeclarator &Declarator) {
 /// [OMP]   threadprivate-directive                              [TODO]
 ///
 Parser::DeclGroupPtrTy
-Parser::ParseDeclarationOrFunctionDefinition(ParsingDeclSpec &DS,
-                                             AccessSpecifier AS) {
+Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
+                                       ParsingDeclSpec &DS,
+                                       AccessSpecifier AS) {
   // Parse the common declaration-specifiers piece.
   ParseDeclarationSpecifiers(DS, ParsedTemplateInfo(), AS, DSC_top_level);
 
   // C99 6.7.2.3p6: Handle "struct-or-union identifier;", "enum { X };"
   // declaration-specifiers init-declarator-list[opt] ';'
   if (Tok.is(tok::semi)) {
+    ProhibitAttributes(attrs);
     ConsumeToken();
     Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS, DS);
     DS.complete(TheDecl);
     return Actions.ConvertDeclToDeclGroup(TheDecl);
   }
+
+  DS.takeAttributesFrom(attrs);
 
   // ObjC2 allows prefix attributes on class interfaces and protocols.
   // FIXME: This still needs better diagnostics. We should only accept
@@ -875,16 +904,20 @@ Parser::ParseDeclarationOrFunctionDefinition(ParsingDeclSpec &DS,
 }
 
 Parser::DeclGroupPtrTy
-Parser::ParseDeclarationOrFunctionDefinition(ParsedAttributes &attrs,
+Parser::ParseDeclarationOrFunctionDefinition(ParsedAttributesWithRange &attrs,
+                                             ParsingDeclSpec *DS,
                                              AccessSpecifier AS) {
-  ParsingDeclSpec DS(*this);
-  DS.takeAttributesFrom(attrs);
-  // Must temporarily exit the objective-c container scope for
-  // parsing c constructs and re-enter objc container scope
-  // afterwards.
-  ObjCDeclContextSwitch ObjCDC(*this);
-    
-  return ParseDeclarationOrFunctionDefinition(DS, AS);
+  if (DS) {
+    return ParseDeclOrFunctionDefInternal(attrs, *DS, AS);
+  } else {
+    ParsingDeclSpec PDS(*this);
+    // Must temporarily exit the objective-c container scope for
+    // parsing c constructs and re-enter objc container scope
+    // afterwards.
+    ObjCDeclContextSwitch ObjCDC(*this);
+      
+    return ParseDeclOrFunctionDefInternal(attrs, PDS, AS);
+  }
 }
 
 /// ParseFunctionDefinition - We parsed and verified that the specified
@@ -958,6 +991,7 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
   // In delayed template parsing mode, for function template we consume the
   // tokens and store them for late parsing at the end of the translation unit.
   if (getLangOpts().DelayedTemplateParsing &&
+      Tok.isNot(tok::equal) &&
       TemplateInfo.Kind == ParsedTemplateInfo::Template) {
     MultiTemplateParamsArg TemplateParameterLists(Actions,
                                          TemplateInfo.TemplateParams->data(),

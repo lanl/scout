@@ -111,6 +111,8 @@ public:
   }
 
   size_t size() const { return UniqueFiles.size(); }
+
+  void erase(const FileEntry *Entry) { UniqueFiles.erase(Entry->getName()); }
 };
 
 //===----------------------------------------------------------------------===//
@@ -152,6 +154,8 @@ public:
   }
 
   size_t size() const { return UniqueFiles.size(); }
+
+  void erase(const FileEntry *Entry) { UniqueFiles.erase(*Entry); }
 };
 
 #endif
@@ -558,6 +562,18 @@ bool FileManager::getNoncachedStatValue(StringRef Path,
 
   return ::stat(FilePath.c_str(), &StatBuf) != 0;
 }
+
+void FileManager::invalidateCache(const FileEntry *Entry) {
+  assert(Entry && "Cannot invalidate a NULL FileEntry");
+
+  SeenFileEntries.erase(Entry->getName());
+
+  // FileEntry invalidation should not block future optimizations in the file
+  // caches. Possible alternatives are cache truncation (invalidate last N) or
+  // invalidation of the whole cache.
+  UniqueRealFiles.erase(Entry);
+}
+
 
 void FileManager::GetUniqueIDMapping(
                    SmallVectorImpl<const FileEntry *> &UIDToFiles) const {

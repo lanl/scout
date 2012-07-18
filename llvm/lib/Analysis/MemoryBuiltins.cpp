@@ -46,30 +46,37 @@ struct AllocFnsTy {
   signed char FstParam, SndParam;
 };
 
+// FIXME: certain users need more information. E.g., SimplifyLibCalls needs to
+// know which functions are nounwind, noalias, nocapture parameters, etc.
 static const AllocFnsTy AllocationFnData[] = {
-  {"malloc",         MallocLike,  1, 0,  -1},
-  {"valloc",         MallocLike,  1, 0,  -1},
-  {"_Znwj",          MallocLike,  1, 0,  -1}, // operator new(unsigned int)
-  {"_Znwm",          MallocLike,  1, 0,  -1}, // operator new(unsigned long)
-  {"_Znaj",          MallocLike,  1, 0,  -1}, // operator new[](unsigned int)
-  {"_Znam",          MallocLike,  1, 0,  -1}, // operator new[](unsigned long)
-  {"posix_memalign", MallocLike,  3, 2,  -1},
-  {"calloc",         CallocLike,  2, 0,  1},
-  {"realloc",        ReallocLike, 2, 1,  -1},
-  {"reallocf",       ReallocLike, 2, 1,  -1},
-  {"strdup",         StrDupLike,  1, -1, -1},
-  {"strndup",        StrDupLike,  2, -1, -1}
+  {"malloc",              MallocLike,  1, 0,  -1},
+  {"valloc",              MallocLike,  1, 0,  -1},
+  {"_Znwj",               MallocLike,  1, 0,  -1}, // new(unsigned int)
+  {"_ZnwjRKSt9nothrow_t", MallocLike,  2, 0,  -1}, // new(unsigned int, nothrow)
+  {"_Znwm",               MallocLike,  1, 0,  -1}, // new(unsigned long)
+  {"_ZnwmRKSt9nothrow_t", MallocLike,  2, 0,  -1}, // new(unsigned long, nothrow)
+  {"_Znaj",               MallocLike,  1, 0,  -1}, // new[](unsigned int)
+  {"_ZnajRKSt9nothrow_t", MallocLike,  2, 0,  -1}, // new[](unsigned int, nothrow)
+  {"_Znam",               MallocLike,  1, 0,  -1}, // new[](unsigned long)
+  {"_ZnamRKSt9nothrow_t", MallocLike,  2, 0,  -1}, // new[](unsigned long, nothrow)
+  {"posix_memalign",      MallocLike,  3, 2,  -1},
+  {"calloc",              CallocLike,  2, 0,  1},
+  {"realloc",             ReallocLike, 2, 1,  -1},
+  {"reallocf",            ReallocLike, 2, 1,  -1},
+  {"strdup",              StrDupLike,  1, -1, -1},
+  {"strndup",             StrDupLike,  2, -1, -1}
 };
 
 
 static Function *getCalledFunction(const Value *V, bool LookThroughBitCast) {
   if (LookThroughBitCast)
     V = V->stripPointerCasts();
-  const CallInst *CI = dyn_cast<CallInst>(V);
-  if (!CI)
+
+  CallSite CS(const_cast<Value*>(V));
+  if (!CS.getInstruction())
     return 0;
 
-  Function *Callee = CI->getCalledFunction();
+  Function *Callee = CS.getCalledFunction();
   if (!Callee || !Callee->isDeclaration())
     return 0;
   return Callee;
@@ -117,44 +124,47 @@ static const AllocFnsTy *getAllocationData(const Value *V, AllocType AllocTy,
 }
 
 static bool hasNoAliasAttr(const Value *V, bool LookThroughBitCast) {
-  Function *Callee = getCalledFunction(V, LookThroughBitCast);
-  return Callee && Callee->hasFnAttr(Attribute::NoAlias);
+  ImmutableCallSite CS(LookThroughBitCast ? V->stripPointerCasts() : V);
+  return CS && CS.hasFnAttr(Attribute::NoAlias);
 }
 
 
-/// \brief Tests if a value is a call to a library function that allocates or
-/// reallocates memory (either malloc, calloc, realloc, or strdup like).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates or reallocates memory (either malloc, calloc, realloc, or strdup
+/// like).
 bool llvm::isAllocationFn(const Value *V, bool LookThroughBitCast) {
   return getAllocationData(V, AnyAlloc, LookThroughBitCast);
 }
 
-/// \brief Tests if a value is a call to a function that returns a NoAlias
-/// pointer (including malloc/calloc/strdup-like functions).
+/// \brief Tests if a value is a call or invoke to a function that returns a
+/// NoAlias pointer (including malloc/calloc/realloc/strdup-like functions).
 bool llvm::isNoAliasFn(const Value *V, bool LookThroughBitCast) {
-  return isAllocLikeFn(V, LookThroughBitCast) ||
+  // it's safe to consider realloc as noalias since accessing the original
+  // pointer is undefined behavior
+  return isAllocationFn(V, LookThroughBitCast) ||
          hasNoAliasAttr(V, LookThroughBitCast);
 }
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// uninitialized memory (such as malloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates uninitialized memory (such as malloc).
 bool llvm::isMallocLikeFn(const Value *V, bool LookThroughBitCast) {
   return getAllocationData(V, MallocLike, LookThroughBitCast);
 }
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// zero-filled memory (such as calloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates zero-filled memory (such as calloc).
 bool llvm::isCallocLikeFn(const Value *V, bool LookThroughBitCast) {
   return getAllocationData(V, CallocLike, LookThroughBitCast);
 }
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// memory (either malloc, calloc, or strdup like).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates memory (either malloc, calloc, or strdup like).
 bool llvm::isAllocLikeFn(const Value *V, bool LookThroughBitCast) {
   return getAllocationData(V, AllocLike, LookThroughBitCast);
 }
 
-/// \brief Tests if a value is a call to a library function that reallocates
-/// memory (such as realloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// reallocates memory (such as realloc).
 bool llvm::isReallocLikeFn(const Value *V, bool LookThroughBitCast) {
   return getAllocationData(V, ReallocLike, LookThroughBitCast);
 }
@@ -163,14 +173,7 @@ bool llvm::isReallocLikeFn(const Value *V, bool LookThroughBitCast) {
 /// is a malloc call.  Since CallInst::CreateMalloc() only creates calls, we
 /// ignore InvokeInst here.
 const CallInst *llvm::extractMallocCall(const Value *I) {
-  return isMallocLikeFn(I) ? cast<CallInst>(I) : 0;
-}
-
-/// extractMallocCallFromBitCast - Returns the corresponding CallInst if the
-/// instruction is a bitcast of the result of a malloc call.
-const CallInst *llvm::extractMallocCallFromBitCast(const Value *I) {
-  const BitCastInst *BCI = dyn_cast<BitCastInst>(I);
-  return BCI ? extractMallocCall(BCI->getOperand(0)) : 0;
+  return isMallocLikeFn(I) ? dyn_cast<CallInst>(I) : 0;
 }
 
 static Value *computeArraySize(const CallInst *CI, const TargetData *TD,
@@ -446,6 +449,11 @@ ObjectSizeOffsetVisitor::visitConstantPointerNull(ConstantPointerNull&) {
 }
 
 SizeOffsetType
+ObjectSizeOffsetVisitor::visitExtractElementInst(ExtractElementInst&) {
+  return unknown();
+}
+
+SizeOffsetType
 ObjectSizeOffsetVisitor::visitExtractValueInst(ExtractValueInst&) {
   // Easy cases were already folded by previous passes.
   return unknown();
@@ -622,6 +630,16 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitCallSite(CallSite CS) {
 }
 
 SizeOffsetEvalType
+ObjectSizeOffsetEvaluator::visitExtractElementInst(ExtractElementInst&) {
+  return unknown();
+}
+
+SizeOffsetEvalType
+ObjectSizeOffsetEvaluator::visitExtractValueInst(ExtractValueInst&) {
+  return unknown();
+}
+
+SizeOffsetEvalType
 ObjectSizeOffsetEvaluator::visitGEPOperator(GEPOperator &GEP) {
   SizeOffsetEvalType PtrData = compute_(GEP.getPointerOperand());
   if (!bothKnown(PtrData))
@@ -664,7 +682,19 @@ SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitPHINode(PHINode &PHI) {
     SizePHI->addIncoming(EdgeData.first, PHI.getIncomingBlock(i));
     OffsetPHI->addIncoming(EdgeData.second, PHI.getIncomingBlock(i));
   }
-  return std::make_pair(SizePHI, OffsetPHI);
+
+  Value *Size = SizePHI, *Offset = OffsetPHI, *Tmp;
+  if ((Tmp = SizePHI->hasConstantValue())) {
+    Size = Tmp;
+    SizePHI->replaceAllUsesWith(Size);
+    SizePHI->eraseFromParent();
+  }
+  if ((Tmp = OffsetPHI->hasConstantValue())) {
+    Offset = Tmp;
+    OffsetPHI->replaceAllUsesWith(Offset);
+    OffsetPHI->eraseFromParent();
+  }
+  return std::make_pair(Size, Offset);
 }
 
 SizeOffsetEvalType ObjectSizeOffsetEvaluator::visitSelectInst(SelectInst &I) {

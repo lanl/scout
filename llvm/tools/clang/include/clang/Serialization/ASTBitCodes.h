@@ -642,6 +642,8 @@ namespace clang {
       PREDEF_TYPE_ARC_UNBRIDGED_CAST = 34,
       /// \brief The pseudo-object placeholder type.
       PREDEF_TYPE_PSEUDO_OBJECT = 35,
+      /// \brief The __va_list_tag placeholder type.
+      PREDEF_TYPE_VA_LIST_TAG = 36,
 
       // scout - Scout vector types support
       PREDEF_TYPE_BOOL2_ID     = 50,
@@ -895,7 +897,7 @@ namespace clang {
       /// in the order in which those declarations were added to the
       /// declaration context. This data is used when iterating over
       /// the contents of a DeclContext, e.g., via
-      /// DeclContext::decls_begin()/DeclContext::decls_end().
+      /// DeclContext::decls_begin() and DeclContext::decls_end().
       DECL_CONTEXT_LEXICAL,
       /// \brief A record that stores the set of declarations that are
       /// visible from a given DeclContext.

@@ -44,10 +44,6 @@ static cl::opt<bool,true>
 VerifyLoopInfoX("verify-loop-info", cl::location(VerifyLoopInfo),
                 cl::desc("Verify loop info (time consuming)"));
 
-static cl::opt<bool>
-StableLoopInfo("stable-loops", cl::Hidden, cl::init(false),
-               cl::desc("Compute a stable loop tree."));
-
 char LoopInfo::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopInfo, "loops", "Natural Loop Information", true, true)
 INITIALIZE_PASS_DEPENDENCY(DominatorTree)
@@ -516,10 +512,7 @@ Loop *UnloopUpdater::getNearestLoop(BasicBlock *BB, Loop *BBLoop) {
 //
 bool LoopInfo::runOnFunction(Function &) {
   releaseMemory();
-  if (StableLoopInfo)
-    LI.Analyze(getAnalysis<DominatorTree>().getBase());
-  else
-    LI.Calculate(getAnalysis<DominatorTree>().getBase());    // Update
+  LI.Analyze(getAnalysis<DominatorTree>().getBase());
   return false;
 }
 
@@ -601,9 +594,6 @@ void LoopInfo::verifyAnalysis() const {
   }
 
   // Verify that blocks are mapped to valid loops.
-  //
-  // FIXME: With an up-to-date DFS (see LoopIterator.h) and DominatorTree, we
-  // could also verify that the blocks are still in the correct loops.
   for (DenseMap<BasicBlock*, Loop*>::const_iterator I = LI.BBMap.begin(),
          E = LI.BBMap.end(); I != E; ++I) {
     assert(Loops.count(I->second) && "orphaned loop");

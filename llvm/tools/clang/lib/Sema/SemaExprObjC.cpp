@@ -1379,10 +1379,12 @@ static void DiagnoseARCUseOfWeakReceiver(Sema &S, Expr *Receiver) {
     ObjCMethodDecl *Method = ME->getMethodDecl();
     if (Method && Method->isSynthesized()) {
       Selector Sel = Method->getSelector();
-      if (Sel.getNumArgs() == 0)
+      if (Sel.getNumArgs() == 0) {
+        const DeclContext *Container = Method->getDeclContext();
         PDecl = 
-          S.LookupPropertyDecl(Method->getClassInterface(), 
+          S.LookupPropertyDecl(cast<ObjCContainerDecl>(Container),
                                Sel.getIdentifierInfoForSlot(0));
+      }
       if (PDecl)
         T = PDecl->getType();
     }
@@ -1940,9 +1942,9 @@ static void checkCocoaAPI(Sema &S, const ObjCMessageExpr *Msg) {
 ///
 /// \param LBracLoc The location of the opening square bracket ']'.
 ///
-/// \param RBrac The location of the closing square bracket ']'.
+/// \param RBracLoc The location of the closing square bracket ']'.
 ///
-/// \param Args The message arguments.
+/// \param ArgsIn The message arguments.
 ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
                                    QualType ReceiverType,
                                    SourceLocation SuperLoc,
@@ -2110,9 +2112,9 @@ ExprResult Sema::BuildInstanceMessageImplicit(Expr *Receiver,
 ///
 /// \param LBracLoc The location of the opening square bracket ']'.
 ///
-/// \param RBrac The location of the closing square bracket ']'.
+/// \param RBracLoc The location of the closing square bracket ']'.
 ///
-/// \param Args The message arguments.
+/// \param ArgsIn The message arguments.
 ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
                                       QualType ReceiverType,
                                       SourceLocation SuperLoc,
@@ -2238,12 +2240,15 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
 
       // We allow sending a message to a qualified ID ("id<foo>"), which is ok as
       // long as one of the protocols implements the selector (if not, warn).
+      // And as long as message is not deprecated/unavailable (warn if it is).
       if (const ObjCObjectPointerType *QIdTy 
                                    = ReceiverType->getAsObjCQualifiedIdType()) {
         // Search protocols for instance methods.
         Method = LookupMethodInQualifiedType(Sel, QIdTy, true);
         if (!Method)
           Method = LookupMethodInQualifiedType(Sel, QIdTy, false);
+        if (Method && DiagnoseUseOfDecl(Method, Loc))
+          return ExprError();
       } else if (const ObjCObjectPointerType *OCIType
                    = ReceiverType->getAsObjCInterfacePointerType()) {
         // We allow sending a message to a pointer to an interface (an object).

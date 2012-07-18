@@ -23,6 +23,9 @@ def warn_variables_not_in_loop_body : Warning<
 def warn_identical_enum_values : Warning<
   "all elements of %0 are initialized with literals to value %1">,
   InGroup<DiagGroup<"unique-enum">>;
+def note_identical_enum_values : Note<
+  "initialize the last element with the previous element to silence "
+  "this warning">;
 
 // Constant expressions
 def err_expr_not_ice : Error<
@@ -169,6 +172,10 @@ def warn_used_but_marked_unused: Warning<"%0 was marked unused but was used">,
   InGroup<UsedButMarkedUnused>, DefaultIgnore;
 def warn_unneeded_internal_decl : Warning<
   "%select{function|variable}0 %1 is not needed and will not be emitted">,
+  InGroup<UnneededInternalDecl>, DefaultIgnore;
+def warn_unneeded_static_internal_decl : Warning<
+  "'static' function %0 declared in header file "
+  "should be declared 'static inline'">,
   InGroup<UnneededInternalDecl>, DefaultIgnore;
 def warn_unneeded_member_function : Warning<
   "member function %0 is not needed and will not be emitted">,
@@ -631,8 +638,8 @@ def warn_auto_synthesizing_protocol_property :Warning<
   " declared in a protocol">,
   InGroup<DiagGroup<"objc-protocol-property-synthesis">>;
 def warn_autosynthesis_property_ivar_match :Warning<
-  "autosynthesized property '%0' will use %select{|synthesized}1 instance variable "
-  "'%2', not existing instance variable '%3'">,
+  "autosynthesized property %0 will use %select{|synthesized}1 instance variable "
+  "%2, not existing instance variable %3">,
   InGroup<DiagGroup<"objc-autosynthesis-property-ivar-name-match">>;
 def warn_missing_explicit_synthesis : Warning <
   "auto property synthesis is synthesizing property not explicitly synthesized">,
@@ -1145,22 +1152,23 @@ def err_init_conversion_failed : Error<
   "%select{none|const|restrict|const and restrict|volatile|const and volatile|"
   "volatile and restrict|const, volatile, and restrict}6)}4">;
 
-def err_lvalue_to_rvalue_ref : Error<"rvalue reference to type %0 cannot bind "
-  "to lvalue of type %1">;
+def err_lvalue_to_rvalue_ref : Error<"rvalue reference %diff{to type $ cannot "
+  "bind to lvalue of type $|cannot bind to incompatible lvalue}0,1">;
 def err_lvalue_reference_bind_to_initlist : Error<
   "%select{non-const|volatile}0 lvalue reference to type %1 cannot bind to an "
   "initializer list temporary">;
 def err_lvalue_reference_bind_to_temporary : Error<
-  "%select{non-const|volatile}0 lvalue reference to type %1 cannot bind to a "
-  "temporary of type %2">;
+  "%select{non-const|volatile}0 lvalue reference %diff{to type $ cannot bind "
+  "to a temporary of type $|cannot bind to incompatible temporary}1,2">;
 def err_lvalue_reference_bind_to_unrelated : Error<
-  "%select{non-const|volatile}0 lvalue reference to type %1 cannot bind to a "
-  "value of unrelated type %2">;
+  "%select{non-const|volatile}0 lvalue reference %diff{to type $ cannot bind "
+  "to a value of unrelated type $|cannot bind to a value of unrelated type}1,2">;
 def err_reference_bind_drops_quals : Error<
-  "binding of reference to type %0 to a value of type %1 drops qualifiers">;
+  "binding of reference %diff{to type $ to a value of type $ drops "
+  "qualifiers|drops qualifiers}0,1">;
 def err_reference_bind_failed : Error<
-  "reference to type %0 could not bind to an %select{rvalue|lvalue}1 of type "
-  "%2">;
+  "reference %diff{to type $ could not bind to an %select{rvalue|lvalue}1 of "
+  "type $|could not bind to %select{rvalue|lvalue}1 of incompatible type}0,2">;
 def err_reference_bind_init_list : Error<
   "reference to type %0 cannot bind to an initializer list">;
 def warn_temporary_array_to_pointer_decay : Warning<
@@ -1602,10 +1610,13 @@ def err_invalid_collection_element : Error<
 def err_box_literal_collection : Error<
   "%select{string|character|boolean|numeric}0 literal must be prefixed by '@' "
   "in a collection">;
-def err_objc_literal_comparison : Error<
+def warn_objc_literal_comparison : Warning<
   "direct comparison of %select{a string literal|an array literal|"
-  "a dictionary literal|a numeric literal|a boxed expression|}0 is not "
-  "allowed%select{|; use -isEqual: instead}1">;
+  "a dictionary literal|a numeric literal|a boxed expression|}0 has "
+  "undefined behavior%select{|; use -isEqual: instead}1">,
+  InGroup<DiagGroup<"objc-literal-compare">>;
+def err_attr_tlsmodel_arg : Error<"tls_model must be \"global-dynamic\", "
+  "\"local-dynamic\", \"initial-exec\" or \"local-exec\"">;
 
 let CategoryName = "Cocoa API Issue" in {
 def warn_objc_redundant_literal_use : Warning<
@@ -1673,13 +1684,13 @@ def warn_attribute_wrong_decl_type : Warning<
   "functions, methods and blocks|functions, methods, and parameters|"
   "classes|variables|methods|variables, functions and labels|"
   "fields and global variables|structs|"
-  "variables, functions and tag types}1">;
+  "variables, functions and tag types|thread-local variables}1">;
 def err_attribute_wrong_decl_type : Error<
   "%0 attribute only applies to %select{functions|unions|"
   "variables and functions|functions and methods|parameters|"
   "functions, methods and blocks|functions, methods, and parameters|"
   "classes|variables|methods|variables, functions and labels|"
-  "fields and global variables|structs}1">;
+  "fields and global variables|structs|thread-local variables}1">;
 def warn_function_attribute_wrong_type : Warning<
   "'%0' only applies to function types; type here is %1">;
 def warn_pointer_attribute_wrong_type : Warning<
@@ -1767,6 +1778,9 @@ def warn_double_lock : Warning<
 def warn_no_unlock : Warning<
   "mutex '%0' is still locked at the end of function">,
   InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
+def warn_expecting_locked : Warning<
+  "expecting mutex '%0' to be locked at the end of function">,
+  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;  
 // FIXME: improve the error message about locks not in scope
 def warn_lock_some_predecessors : Warning<
   "mutex '%0' is not locked on every path through here">,
@@ -2162,12 +2176,13 @@ def note_ovl_candidate_bad_conv : Note<"candidate "
     "function (the implicit copy assignment operator)|"
     "function (the implicit move assignment operator)|"
     "constructor (inherited)}0%1"
-    " not viable: no known conversion from %2 to %3 for "
-    "%select{%ordinal5 argument|object argument}4; "
-    "%select{|dereference the argument with *|"
-    "take the address of the argument with &|"
-    "remove *|"
-    "remove &}6">;
+    " not viable: no known conversion "
+    "%diff{from $ to $|from argument type to parameter type}2,3 for "
+    "%select{%ordinal5 argument|object argument}4"
+    "%select{|; dereference the argument with *|"
+    "; take the address of the argument with &|"
+    "; remove *|"
+    "; remove &}6">;
 def note_ovl_candidate_bad_arc_conv : Note<"candidate "
     "%select{function|function|constructor|"
     "function |function |constructor |"
@@ -3171,7 +3186,8 @@ def err_local_cant_init : Error<
   "'__local' variable cannot have an initializer">;
 def err_block_extern_cant_init : Error<
   "'extern' variable cannot have an initializer">;
-def warn_extern_init : Warning<"'extern' variable has an initializer">;
+def warn_extern_init : Warning<"'extern' variable has an initializer">,
+  InGroup<DiagGroup<"extern-initializer">>;
 def err_variable_object_no_init : Error<
   "variable-sized object may not be initialized">;
 def err_excess_initializers : Error<
@@ -3468,7 +3484,8 @@ def warn_arc_non_pod_class_with_object_member : Warning<
   "to make it ABI-compatible">, InGroup<AutomaticReferenceCountingABI>,
   DefaultIgnore;
 def warn_arc_retained_assign : Warning<
-  "assigning retained object to %select{weak|unsafe_unretained}0 variable"
+  "assigning retained object to %select{weak|unsafe_unretained}0 "
+  "%select{property|variable}1"
   "; object will be released after assignment">,
   InGroup<ARCUnsafeRetainedAssign>;
 def warn_arc_retained_property_assign : Warning<
@@ -3517,7 +3534,7 @@ def err_arc_receiver_forward_instance : Error<
   "receiver type %0 for instance message is a forward declaration">;
 def warn_receiver_forward_instance : Warning<
   "receiver type %0 for instance message is a forward declaration">,
-  InGroup<DiagGroup<"receiver-forward-class">>, DefaultIgnore;
+  InGroup<ForwardClassReceiver>, DefaultIgnore;
 def err_arc_collection_forward : Error<
   "collection expression type %0 is a forward declaration">;
 def err_arc_multiple_method_decl : Error<
@@ -3719,17 +3736,17 @@ def warn_sizeof_array_param : Warning<
   InGroup<SizeofArrayArgument>;
 
 def err_sizeof_nonfragile_interface : Error<
-  "invalid application of '%select{alignof|sizeof}1' to interface %0 in "
-  "non-fragile ABI">;
+  "application of '%select{alignof|sizeof}1' to interface %0 is "
+  "not supported on this architecture and platform">;
 def err_atdef_nonfragile_interface : Error<
-  "invalid application of @defs in non-fragile ABI">;
+  "use of @defs is not supported on this architecture and platform">;
 def err_subscript_nonfragile_interface : Error<
-  "subscript requires size of interface %0, which is not constant in "
-  "non-fragile ABI">;
+  "subscript requires size of interface %0, which is not constant for "
+  "this architecture and platform">;
 
 def err_arithmetic_nonfragile_interface : Error<
-  "arithmetic on pointer to interface %0, which is not a constant size in "
-  "non-fragile ABI">;
+  "arithmetic on pointer to interface %0, which is not a constant size for "
+  "this architecture and platform">;
 
 
 def ext_subscript_non_lvalue : Extension<
@@ -4077,13 +4094,17 @@ def err_imaginary_not_supported : Error<"imaginary types are not supported">;
 
 // Obj-c expressions
 def warn_root_inst_method_not_found : Warning<
-  "instance method %0 is being used on 'Class' which is not in the root class">;
+  "instance method %0 is being used on 'Class' which is not in the root class">,
+  InGroup<MethodAccess>;
 def warn_class_method_not_found : Warning<
-  "class method %objcclass0 not found (return type defaults to 'id')">;
+  "class method %objcclass0 not found (return type defaults to 'id')">,
+  InGroup<MethodAccess>;
 def warn_instance_method_on_class_found : Warning<
-  "instance method %0 found instead of class method %1">;
+  "instance method %0 found instead of class method %1">,
+  InGroup<MethodAccess>;
 def warn_inst_method_not_found : Warning<
-  "instance method %objcinstance0 not found (return type defaults to 'id')">;
+  "instance method %objcinstance0 not found (return type defaults to 'id')">,
+  InGroup<MethodAccess>;
 def error_no_super_class_message : Error<
   "no @interface declaration found in class messaging of %0">;
 def error_root_class_cannot_use_super : Error<
@@ -4098,7 +4119,7 @@ def err_missing_open_square_message_send : Error<
   "missing '[' at start of message send expression">;
 def warn_bad_receiver_type : Warning<
   "receiver type %0 is not 'id' or interface pointer, consider "
-  "casting it to 'id'">;
+  "casting it to 'id'">,InGroup<ObjCReceiver>;
 def err_bad_receiver_type : Error<"bad receiver type %0">;
 def err_unknown_receiver_suggest : Error<
   "unknown receiver %0; did you mean %1?">;
@@ -5265,6 +5286,10 @@ def warn_stringcompare : Warning<
   "unspecified (use strncmp instead)">,
   InGroup<DiagGroup<"string-compare">>;
 
+def warn_identity_field_assign : Warning<
+  "assigning %select{field|instance variable}0 to itself">,
+  InGroup<SelfAssignmentField>;
+
 // Generic selections.
 def err_assoc_type_incomplete : Error<
   "type %0 in generic association incomplete">;
@@ -5492,17 +5517,21 @@ def err_selector_element_not_lvalue : Error<
 def err_selector_element_type : Error<
   "selector element type %0 is not a valid object">;
 def err_collection_expr_type : Error<
-  "collection expression type %0 is not a valid object">;
+  "the type %0 is not a pointer to a fast-enumerable object">;
 def warn_collection_expr_type : Warning<
   "collection expression type %0 may not respond to %1">;
 
 def err_invalid_conversion_between_ext_vectors : Error<
   "invalid conversion between ext-vector type %0 and %1">;
 
+def warn_duplicate_attribute : Warning<
+  "attribute %0 is already applied with different parameters">;
+
 // Type
 def ext_invalid_sign_spec : Extension<"'%0' cannot be signed or unsigned">;
 def warn_receiver_forward_class : Warning<
-    "receiver %0 is a forward class and corresponding @interface may not exist">;
+    "receiver %0 is a forward class and corresponding @interface may not exist">,
+    InGroup<ForwardClassReceiver>;
 def note_method_sent_forward_class : Note<"method %0 is used for the forward class">;
 def ext_missing_declspec : ExtWarn<
   "declaration specifier missing, defaulting to 'int'">;
@@ -5557,6 +5586,8 @@ def warn_missing_method_return_type : Warning<
   InGroup<MissingMethodReturnType>, DefaultIgnore;
 
 // Spell-checking diagnostics
+def err_unknown_type_or_class_name_suggest : Error<
+  "unknown %select{type|class}2 name %0; did you mean %1?">;
 def err_unknown_typename_suggest : Error<
   "unknown type name %0; did you mean %1?">;
 def err_unknown_nested_typename_suggest : Error<
@@ -5672,8 +5703,12 @@ def err_module_private_definition : Error<
   "definition of %0 must be imported before it is required">;
 }
 
-// scout - Scout
+let CategoryName = "Documentation Issue" in {
+def warn_not_a_doxygen_trailing_member_comment : Warning<
+  "not a Doxygen trailing comment">, InGroup<Doxygen>, DefaultIgnore;
+} // end of documentation issue category
 
+// scout - Scout
 let CategoryName = "Scout Issue" in {
 def err_loop_variable_shadows_forall : Error<
 "forall loop variable %0 shadows an existing identifier">;
@@ -5736,7 +5771,6 @@ def err_invalid_depth_mesh : Error<
 
 def warn_lhs_outside_forall : Warning<
   "non-mesh variable '%0' from outside scope appears on LHS within parallel (forall) construct">;
-}
 
 def err_invalid_scout_vector_component : Error<
 "invalid vector component, expected [x,y,z,w]">;
@@ -5746,5 +5780,7 @@ def err_invalid_scout_color_component : Error<
 
 def err_mesh_param_dimensionality_mismatch : Error<
 "dimensionality mismatch when passing mesh as parameter">;
+
+} // end Scout issue category
 
 } // end of sema component.

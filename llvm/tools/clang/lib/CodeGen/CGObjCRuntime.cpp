@@ -120,6 +120,8 @@ LValue CGObjCRuntime::EmitValueForIvarAtOffset(CodeGen::CodeGenFunction &CGF,
   uint64_t ContainingTypeAlign = CGF.CGM.getContext().getTargetInfo().getCharAlign();
   uint64_t ContainingTypeSize = TypeSizeInBits - (FieldBitOffset - BitOffset);
   uint64_t BitFieldSize = Ivar->getBitWidthValue(CGF.getContext());
+  CharUnits ContainingTypeAlignCharUnits = 
+    CGF.CGM.getContext().toCharUnitsFromBits(ContainingTypeAlign);
 
   // Allocate a new CGBitFieldInfo object to describe this access.
   //
@@ -132,7 +134,8 @@ LValue CGObjCRuntime::EmitValueForIvarAtOffset(CodeGen::CodeGenFunction &CGF,
                              ContainingTypeSize, ContainingTypeAlign));
 
   return LValue::MakeBitfield(V, *Info,
-                              IvarTy.withCVRQualifiers(CVRQualifiers));
+                              IvarTy.withCVRQualifiers(CVRQualifiers),
+                              ContainingTypeAlignCharUnits);
 }
 
 namespace {
@@ -355,17 +358,17 @@ CGObjCRuntime::getMessageSendInfo(const ObjCMethodDecl *method,
     // Otherwise, there is.
     FunctionType::ExtInfo einfo = signature.getExtInfo();
     const CGFunctionInfo &argsInfo =
-      CGM.getTypes().arrangeFunctionCall(resultType, callArgs, einfo,
-                                         signature.getRequiredArgs());
+      CGM.getTypes().arrangeFreeFunctionCall(resultType, callArgs, einfo,
+                                             signature.getRequiredArgs());
 
     return MessageSendInfo(argsInfo, signatureType);
   }
 
   // There's no method;  just use a default CC.
   const CGFunctionInfo &argsInfo =
-    CGM.getTypes().arrangeFunctionCall(resultType, callArgs, 
-                                       FunctionType::ExtInfo(),
-                                       RequiredArgs::All);
+    CGM.getTypes().arrangeFreeFunctionCall(resultType, callArgs, 
+                                           FunctionType::ExtInfo(),
+                                           RequiredArgs::All);
 
   // Derive the signature to call from that.
   llvm::PointerType *signatureType =

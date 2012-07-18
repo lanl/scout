@@ -15,13 +15,14 @@
 #ifndef LLVM_ANALYSIS_MEMORYBUILTINS_H
 #define LLVM_ANALYSIS_MEMORYBUILTINS_H
 
+#include "llvm/IRBuilder.h"
+#include "llvm/Operator.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/Operator.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/InstVisitor.h"
-#include "llvm/Support/IRBuilder.h"
 #include "llvm/Support/TargetFolder.h"
+#include "llvm/Support/ValueHandle.h"
 
 namespace llvm {
 class CallInst;
@@ -31,28 +32,29 @@ class Type;
 class Value;
 
 
-/// \brief Tests if a value is a call to a library function that allocates or
-/// reallocates memory (either malloc, calloc, realloc, or strdup like).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates or reallocates memory (either malloc, calloc, realloc, or strdup
+/// like).
 bool isAllocationFn(const Value *V, bool LookThroughBitCast = false);
 
-/// \brief Tests if a value is a call to a function that returns a NoAlias
-/// pointer (including malloc/calloc/strdup-like functions).
+/// \brief Tests if a value is a call or invoke to a function that returns a
+/// NoAlias pointer (including malloc/calloc/realloc/strdup-like functions).
 bool isNoAliasFn(const Value *V, bool LookThroughBitCast = false);
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// uninitialized memory (such as malloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates uninitialized memory (such as malloc).
 bool isMallocLikeFn(const Value *V, bool LookThroughBitCast = false);
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// zero-filled memory (such as calloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates zero-filled memory (such as calloc).
 bool isCallocLikeFn(const Value *V, bool LookThroughBitCast = false);
 
-/// \brief Tests if a value is a call to a library function that allocates
-/// memory (either malloc, calloc, or strdup like).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates memory (either malloc, calloc, or strdup like).
 bool isAllocLikeFn(const Value *V, bool LookThroughBitCast = false);
 
-/// \brief Tests if a value is a call to a library function that reallocates
-/// memory (such as realloc).
+/// \brief Tests if a value is a call or invoke to a library function that
+/// reallocates memory (such as realloc).
 bool isReallocLikeFn(const Value *V, bool LookThroughBitCast = false);
 
 
@@ -66,13 +68,6 @@ bool isReallocLikeFn(const Value *V, bool LookThroughBitCast = false);
 const CallInst *extractMallocCall(const Value *I);
 static inline CallInst *extractMallocCall(Value *I) {
   return const_cast<CallInst*>(extractMallocCall((const Value*)I));
-}
-
-/// extractMallocCallFromBitCast - Returns the corresponding CallInst if the
-/// instruction is a bitcast of the result of a malloc call.
-const CallInst *extractMallocCallFromBitCast(const Value *I);
-static inline CallInst *extractMallocCallFromBitCast(Value *I) {
-  return const_cast<CallInst*>(extractMallocCallFromBitCast((const Value*)I));
 }
 
 /// isArrayMalloc - Returns the corresponding CallInst if the instruction 
@@ -180,6 +175,7 @@ public:
   SizeOffsetType visitArgument(Argument &A);
   SizeOffsetType visitCallSite(CallSite CS);
   SizeOffsetType visitConstantPointerNull(ConstantPointerNull&);
+  SizeOffsetType visitExtractElementInst(ExtractElementInst &I);
   SizeOffsetType visitExtractValueInst(ExtractValueInst &I);
   SizeOffsetType visitGEPOperator(GEPOperator &GEP);
   SizeOffsetType visitGlobalVariable(GlobalVariable &GV);
@@ -200,7 +196,8 @@ class ObjectSizeOffsetEvaluator
   : public InstVisitor<ObjectSizeOffsetEvaluator, SizeOffsetEvalType> {
 
   typedef IRBuilder<true, TargetFolder> BuilderTy;
-  typedef DenseMap<const Value*, SizeOffsetEvalType> CacheMapTy;
+  typedef std::pair<WeakVH, WeakVH> WeakEvalType;
+  typedef DenseMap<const Value*, WeakEvalType> CacheMapTy;
   typedef SmallPtrSet<const Value*, 8> PtrSetTy;
 
   const TargetData *TD;
@@ -221,24 +218,26 @@ public:
   ObjectSizeOffsetEvaluator(const TargetData *TD, LLVMContext &Context);
   SizeOffsetEvalType compute(Value *V);
 
-  bool knownSize(SizeOffsetEvalType &SizeOffset) {
+  bool knownSize(SizeOffsetEvalType SizeOffset) {
     return SizeOffset.first;
   }
 
-  bool knownOffset(SizeOffsetEvalType &SizeOffset) {
+  bool knownOffset(SizeOffsetEvalType SizeOffset) {
     return SizeOffset.second;
   }
 
-  bool anyKnown(SizeOffsetEvalType &SizeOffset) {
+  bool anyKnown(SizeOffsetEvalType SizeOffset) {
     return knownSize(SizeOffset) || knownOffset(SizeOffset);
   }
 
-  bool bothKnown(SizeOffsetEvalType &SizeOffset) {
+  bool bothKnown(SizeOffsetEvalType SizeOffset) {
     return knownSize(SizeOffset) && knownOffset(SizeOffset);
   }
 
   SizeOffsetEvalType visitAllocaInst(AllocaInst &I);
   SizeOffsetEvalType visitCallSite(CallSite CS);
+  SizeOffsetEvalType visitExtractElementInst(ExtractElementInst &I);
+  SizeOffsetEvalType visitExtractValueInst(ExtractValueInst &I);
   SizeOffsetEvalType visitGEPOperator(GEPOperator &GEP);
   SizeOffsetEvalType visitIntToPtrInst(IntToPtrInst&);
   SizeOffsetEvalType visitLoadInst(LoadInst &I);

@@ -24,6 +24,8 @@
 #include "clang/AST/Stmt.h"
 #include "llvm/ADT/SmallString.h"
 
+// scout
+#include "clang/AST/ASTContext.h"
 #include <iostream>
 
 using namespace clang;
@@ -1054,7 +1056,7 @@ bool Parser::ParseParenExprOrCondition(ExprResult &ExprResult,
 
   // Otherwise the condition is valid or the rparen is present.
   T.consumeClose();
-  
+
   // Check for extraneous ')'s to catch things like "if (foo())) {".  We know
   // that all callers are looking for a statement after the condition, so ")"
   // isn't valid.
@@ -1063,7 +1065,7 @@ bool Parser::ParseParenExprOrCondition(ExprResult &ExprResult,
       << FixItHint::CreateRemoval(Tok.getLocation());
     ConsumeParen();
   }
-  
+
   return false;
 }
 
@@ -1417,6 +1419,12 @@ StmtResult Parser::ParseDoStatement() {
   // Parse the parenthesized condition.
   BalancedDelimiterTracker T(*this, tok::l_paren);
   T.consumeOpen();
+
+  // FIXME: Do not just parse the attribute contents and throw them away
+  ParsedAttributesWithRange attrs(AttrFactory);
+  MaybeParseCXX0XAttributes(attrs);
+  ProhibitAttributes(attrs);
+
   ExprResult Cond = ParseExpression();
   T.consumeClose();
   DoScope.Exit();
@@ -1457,7 +1465,8 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     return StmtError();
   }
 
-  bool C99orCXXorObjC = getLangOpts().C99 || getLangOpts().CPlusPlus || getLangOpts().ObjC1;
+  bool C99orCXXorObjC = getLangOpts().C99 || getLangOpts().CPlusPlus ||
+    getLangOpts().ObjC1;
 
   // C99 6.8.5p5 - In C99, the for statement is a block.  This is not
   // the case for C90.  Start the loop scope.
@@ -1505,8 +1514,12 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     return StmtError();
   }
 
+  ParsedAttributesWithRange attrs(AttrFactory);
+  MaybeParseCXX0XAttributes(attrs);
+
   // Parse the first part of the for specifier.
   if (Tok.is(tok::semi)) {  // for (;
+    ProhibitAttributes(attrs);
     // no first part, eat the ';'.
     ConsumeToken();
   } else if (isForInitDeclaration()) {  // for (int X = 4;
@@ -1551,6 +1564,7 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
       Diag(Tok, diag::err_expected_semi_for);
     }
   } else {
+    ProhibitAttributes(attrs);
     Value = ParseExpression();
 
     ForEach = isTokIdentifier_in();
@@ -1638,6 +1652,8 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   // statememt before parsing the body, in order to be able to deduce the type
   // of an auto-typed loop variable.
   StmtResult ForRangeStmt;
+  StmtResult ForEachStmt;
+
   if (ForRange) {
     ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, T.getOpenLocation(),
                                                 FirstPart.take(),
@@ -1649,9 +1665,10 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   // Similarly, we need to do the semantic analysis for a for-range
   // statement immediately in order to close over temporaries correctly.
   } else if (ForEach) {
-    if (!Collection.isInvalid())
-      Collection =
-        Actions.ActOnObjCForCollectionOperand(ForLoc, Collection.take());
+    ForEachStmt = Actions.ActOnObjCForCollectionStmt(ForLoc, T.getOpenLocation(),
+                                                     FirstPart.take(),
+                                                     Collection.take(),
+                                                     T.getCloseLocation());
   }
 
   // C99 6.8.5p5 - In C99, the body of the if statement is a scope, even if
@@ -1681,11 +1698,8 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     return StmtError();
 
   if (ForEach)
-   return Actions.ActOnObjCForCollectionStmt(ForLoc, T.getOpenLocation(),
-                                             FirstPart.take(),
-                                             Collection.take(), 
-                                             T.getCloseLocation(),
-                                             Body.take());
+   return Actions.FinishObjCForCollectionStmt(ForEachStmt.take(),
+                                              Body.take());
 
   if (ForRange)
     return Actions.FinishCXXForRangeStmt(ForRangeStmt.take(), Body.take());
@@ -1785,7 +1799,7 @@ StmtResult Parser::ParseReturnStatement() {
 }
 
 // needSpaceAsmToken - This function handles whitespace around asm punctuation.
-// Returns true if a space should be emitted.  
+// Returns true if a space should be emitted.
 static inline bool needSpaceAsmToken(Token currTok) {
   static Token prevTok;
 
@@ -1949,7 +1963,7 @@ StmtResult Parser::ParseMicrosoftAsmStatement(SourceLocation AsmLoc) {
   for (unsigned i = 0, e = AsmToks.size(); i < e; ++i) {
     const char *ThisTokBuf = &TokenBuf[0];
     bool StringInvalid = false;
-    unsigned ThisTokLen = 
+    unsigned ThisTokLen =
       Lexer::getSpelling(AsmToks[i], ThisTokBuf, PP.getSourceManager(),
                          PP.getLangOpts(), &StringInvalid);
     if (i && (!AsmLineNum || i != LineEnds[AsmLineNum-1]) &&
@@ -1993,7 +2007,8 @@ StmtResult Parser::ParseAsmStatement(bool &msAsm) {
   assert(Tok.is(tok::kw_asm) && "Not an asm stmt");
   SourceLocation AsmLoc = ConsumeToken();
 
-  if (getLangOpts().MicrosoftExt && Tok.isNot(tok::l_paren) && !isTypeQualifier()) {
+  if (getLangOpts().MicrosoftExt && Tok.isNot(tok::l_paren) &&
+      !isTypeQualifier()) {
     msAsm = true;
     return ParseMicrosoftAsmStatement(AsmLoc);
   }
@@ -2332,7 +2347,7 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc) {
     return move(TryBlock);
 
   // Borland allows SEH-handlers with 'try'
-  
+
   if ((Tok.is(tok::identifier) &&
        Tok.getIdentifierInfo() == getSEHExceptKeyword()) ||
       Tok.is(tok::kw___finally)) {
@@ -2372,7 +2387,7 @@ StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc) {
     if (Handlers.empty())
       return StmtError();
 
-    return Actions.ActOnCXXTryBlock(TryLoc, TryBlock.take(), move_arg(Handlers));
+    return Actions.ActOnCXXTryBlock(TryLoc, TryBlock.take(),move_arg(Handlers));
   }
 }
 
@@ -2468,10 +2483,10 @@ void Parser::ParseMicrosoftIfExistsStatement(StmtVector &Stmts) {
   case IEB_Parse:
     // Parse the statements below.
     break;
-      
+
   case IEB_Dependent:
     llvm_unreachable("Dependent case handled above");
-      
+
   case IEB_Skip:
     Braces.skipToEnd();
     return;

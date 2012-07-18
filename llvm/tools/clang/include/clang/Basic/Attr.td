@@ -160,6 +160,12 @@ def AlwaysInline : InheritableAttr {
   let Spellings = [GNU<"always_inline">];
 }
 
+def TLSModel : InheritableAttr {
+  let Spellings = [GNU<"tls_model">];
+  let Subjects = [Var];
+  let Args = [StringArgument<"Model">];
+}
+
 def AnalyzerNoReturn : InheritableAttr {
   let Spellings = [GNU<"analyzer_noreturn">];
 }
@@ -569,6 +575,13 @@ def Regparm : InheritableAttr {
 def ReqdWorkGroupSize : InheritableAttr {
   let Spellings = [GNU<"reqd_work_group_size">];
   let Args = [UnsignedArgument<"XDim">, UnsignedArgument<"YDim">,
+              UnsignedArgument<"ZDim">];
+}
+
+def WorkGroupSizeHint :  InheritableAttr {
+  let Spellings = [GNU<"work_group_size_hint">];
+  let Args = [UnsignedArgument<"XDim">, 
+              UnsignedArgument<"YDim">,
               UnsignedArgument<"ZDim">];
 }
 

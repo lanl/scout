@@ -172,8 +172,6 @@ Instruction *InstCombiner::SimplifyMemSet(MemSetInst *MI) {
 Instruction *InstCombiner::visitCallInst(CallInst &CI) {
   if (isFreeCall(&CI))
     return visitFree(CI);
-  if (isAllocLikeFn(&CI))
-    return visitMalloc(CI);
 
   // If the caller function is nounwind, mark the call as nounwind, even if the
   // callee isn't.
@@ -881,6 +879,9 @@ static IntrinsicInst *FindInitTrampoline(Value *Callee) {
 // visitCallSite - Improvements for call and invoke instructions.
 //
 Instruction *InstCombiner::visitCallSite(CallSite CS) {
+  if (isAllocLikeFn(CS.getInstruction()))
+    return visitAllocSite(*CS.getInstruction());
+
   bool Changed = false;
 
   // If the callee is a pointer to a function, attempt to move any casts to the
@@ -916,24 +917,24 @@ Instruction *InstCombiner::visitCallSite(CallSite CS) {
     }
 
   if (isa<ConstantPointerNull>(Callee) || isa<UndefValue>(Callee)) {
-    // This instruction is not reachable, just remove it.  We insert a store to
-    // undef so that we know that this code is not reachable, despite the fact
-    // that we can't modify the CFG here.
-    new StoreInst(ConstantInt::getTrue(Callee->getContext()),
-               UndefValue::get(Type::getInt1PtrTy(Callee->getContext())),
-                  CS.getInstruction());
-
     // If CS does not return void then replaceAllUsesWith undef.
     // This allows ValueHandlers and custom metadata to adjust itself.
     if (!CS.getInstruction()->getType()->isVoidTy())
       ReplaceInstUsesWith(*CS.getInstruction(),
                           UndefValue::get(CS.getInstruction()->getType()));
 
-    if (InvokeInst *II = dyn_cast<InvokeInst>(CS.getInstruction())) {
-      // Don't break the CFG, insert a dummy cond branch.
-      BranchInst::Create(II->getNormalDest(), II->getUnwindDest(),
-                         ConstantInt::getTrue(Callee->getContext()), II);
+    if (isa<InvokeInst>(CS.getInstruction())) {
+      // Can't remove an invoke because we cannot change the CFG.
+      return 0;
     }
+
+    // This instruction is not reachable, just remove it.  We insert a store to
+    // undef so that we know that this code is not reachable, despite the fact
+    // that we can't modify the CFG here.
+    new StoreInst(ConstantInt::getTrue(Callee->getContext()),
+                  UndefValue::get(Type::getInt1PtrTy(Callee->getContext())),
+                  CS.getInstruction());
+
     return EraseInstFromFunction(*CS.getInstruction());
   }
 

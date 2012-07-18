@@ -117,6 +117,10 @@ private:
 void MipsDAGToDAGISel::InitGlobalBaseReg(MachineFunction &MF) {
   MipsFunctionInfo *MipsFI = MF.getInfo<MipsFunctionInfo>();
 
+  if (((MF.getTarget().getRelocationModel() == Reloc::Static) ||
+       Subtarget.inMips16Mode()) && !MipsFI->globalBaseRegSet())
+    return;
+
   MachineBasicBlock &MBB = MF.front();
   MachineBasicBlock::iterator I = MBB.begin();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
@@ -125,7 +129,10 @@ void MipsDAGToDAGISel::InitGlobalBaseReg(MachineFunction &MF) {
   const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
   DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   unsigned V0, V1, GlobalBaseReg = MipsFI->getGlobalBaseReg();
-  int FI = MipsFI->initGlobalRegFI();
+  int FI = 0; 
+
+  if (!Subtarget.inMips16Mode())
+    FI= MipsFI->initGlobalRegFI();
 
   const TargetRegisterClass *RC = Subtarget.isABI_N64() ?
     (const TargetRegisterClass*)&Mips::CPU64RegsRegClass :
@@ -186,6 +193,10 @@ void MipsDAGToDAGISel::InitGlobalBaseReg(MachineFunction &MF) {
   }
 
   assert(Subtarget.isABI_O32());
+
+  if (Subtarget.inMips16Mode())
+    return; // no need to load GP. It can be calculated anywhere
+
 
   // For O32 ABI, the following instruction sequence is emitted to initialize
   // the global base register:

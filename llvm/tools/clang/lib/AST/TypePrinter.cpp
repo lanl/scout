@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -454,12 +455,12 @@ void TypePrinter::printVariableArrayAfter(const VariableArrayType *T,
     AppendTypeQualList(OS, T->getIndexTypeCVRQualifiers());
     OS << ' ';
   }
-  
+
   if (T->getSizeModifier() == VariableArrayType::Static)
     OS << "static";
   else if (T->getSizeModifier() == VariableArrayType::Star)
     OS << '*';
-  
+
   if (T->getSizeExpr())
     T->getSizeExpr()->printPretty(OS, 0, Policy);
   OS << ']';
@@ -1266,6 +1267,7 @@ TemplateSpecializationType::PrintTemplateArgumentList(
   if (!SkipBrackets)
     OS << '<';
   
+  bool needSpace = false;
   for (unsigned Arg = 0; Arg < NumArgs; ++Arg) {
     if (Arg > 0)
       OS << ", ";
@@ -1288,9 +1290,17 @@ TemplateSpecializationType::PrintTemplateArgumentList(
     // to avoid printing the diagraph '<:'.
     if (!Arg && !ArgString.empty() && ArgString[0] == ':')
       OS << ' ';
-    
+
     OS << ArgString;
+
+    needSpace = (!ArgString.empty() && ArgString.back() == '>');
   }
+
+  // If the last character of our string is '>', add another space to
+  // keep the two '>''s separate tokens. We don't *have* to do this in
+  // C++0x, but it's still good hygiene.
+  if (needSpace)
+    OS << ' ';
 
   if (!SkipBrackets)
     OS << '>';
@@ -1302,6 +1312,8 @@ PrintTemplateArgumentList(raw_ostream &OS,
                           const TemplateArgumentLoc *Args, unsigned NumArgs,
                           const PrintingPolicy &Policy) {
   OS << '<';
+
+  bool needSpace = false;
   for (unsigned Arg = 0; Arg < NumArgs; ++Arg) {
     if (Arg > 0)
       OS << ", ";
@@ -1324,10 +1336,18 @@ PrintTemplateArgumentList(raw_ostream &OS,
     // to avoid printing the diagraph '<:'.
     if (!Arg && !ArgString.empty() && ArgString[0] == ':')
       OS << ' ';
-    
+
     OS << ArgString;
+
+    needSpace = (!ArgString.empty() && ArgString.back() == '>');
   }
   
+  // If the last character of our string is '>', add another space to
+  // keep the two '>''s separate tokens. We don't *have* to do this in
+  // C++0x, but it's still good hygiene.
+  if (needSpace)
+    OS << ' ';
+
   OS << '>';
 }
 
@@ -1550,7 +1570,7 @@ void Qualifiers::print(raw_ostream &OS, const PrintingPolicy& Policy,
         OS << ' ';
       addSpace = true;
     }
-    
+
     switch (lifetime) {
     case Qualifiers::OCL_None: llvm_unreachable("none but true");
     case Qualifiers::OCL_ExplicitNone: OS << "__unsafe_unretained"; break;

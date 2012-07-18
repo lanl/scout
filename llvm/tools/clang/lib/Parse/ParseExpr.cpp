@@ -30,6 +30,10 @@
 #include "RAIIObjectsForParser.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
+
+// scout
+#include "clang/AST/ASTContext.h"
+
 using namespace clang;
 
 /// \brief Return the precedence of the specified binary operator token.
@@ -538,6 +542,7 @@ class CastExpressionIdValidator : public CorrectionCandidateCallback {
 /// [C++11] 'sizeof' '...' '(' identifier ')'
 /// [GNU]   '__alignof' unary-expression
 /// [GNU]   '__alignof' '(' type-name ')'
+/// [C11]   '_Alignof' '(' type-name ')'
 /// [C++11] 'alignof' '(' type-id ')'
 /// [GNU]   '&&' identifier
 /// [C++11] 'noexcept' '(' expression ')' [C++11 5.3.7]
@@ -885,6 +890,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     break;
   case tok::kw___func__:       // primary-expression: __func__ [C99 6.4.2.2]
   case tok::kw___FUNCTION__:   // primary-expression: __FUNCTION__ [GNU]
+  case tok::kw_L__FUNCTION__:   // primary-expression: L__FUNCTION__ [MS]
   case tok::kw___PRETTY_FUNCTION__:  // primary-expression: __P..Y_F..N__ [GNU]
     Res = Actions.ActOnPredefinedExpr(Tok.getLocation(), SavedKind);
     ConsumeToken();
@@ -951,12 +957,15 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       Res = Actions.ActOnUnaryOp(getCurScope(), SavedLoc, SavedKind, Res.get());
     return move(Res);
   }
-  case tok::kw_sizeof:     // unary-expression: 'sizeof' unary-expression
-                           // unary-expression: 'sizeof' '(' type-name ')'
-  case tok::kw_alignof:
+  case tok::kw__Alignof:   // unary-expression: '_Alignof' '(' type-name ')'
+    if (!getLangOpts().C11)
+      Diag(Tok, diag::ext_c11_alignment) << Tok.getName();
+    // fallthrough
+  case tok::kw_alignof:    // unary-expression: 'alignof' '(' type-id ')'
   case tok::kw___alignof:  // unary-expression: '__alignof' unary-expression
                            // unary-expression: '__alignof' '(' type-name ')'
-                           // unary-expression: 'alignof' '(' type-id ')'
+  case tok::kw_sizeof:     // unary-expression: 'sizeof' unary-expression
+                           // unary-expression: 'sizeof' '(' type-name ')'
   case tok::kw_vec_step:   // unary-expression: OpenCL 'vec_step' expression
     return ParseUnaryExprOrTypeTraitExpression();
   case tok::ampamp: {      // unary-expression: '&&' identifier
@@ -1569,6 +1578,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
 ///         'sizeof' '(' type-name ')'
 /// [GNU]   '__alignof' unary-expression
 /// [GNU]   '__alignof' '(' type-name ')'
+/// [C11]   '_Alignof' '(' type-name ')'
 /// [C++0x] 'alignof' '(' type-id ')'
 ///
 /// [GNU]   typeof-specifier:
@@ -1588,7 +1598,7 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
 
   assert((OpTok.is(tok::kw_typeof)    || OpTok.is(tok::kw_sizeof) ||
           OpTok.is(tok::kw___alignof) || OpTok.is(tok::kw_alignof) ||
-          OpTok.is(tok::kw_vec_step)) &&
+          OpTok.is(tok::kw__Alignof)  || OpTok.is(tok::kw_vec_step)) &&
           "Not a typeof/sizeof/alignof/vec_step expression!");
 
   ExprResult Operand;
@@ -1646,11 +1656,13 @@ Parser::ParseExprAfterUnaryExprOrTypeTrait(const Token &OpTok,
 /// [C++0x] 'sizeof' '...' '(' identifier ')'
 /// [GNU]   '__alignof' unary-expression
 /// [GNU]   '__alignof' '(' type-name ')'
+/// [C11]   '_Alignof' '(' type-name ')'
 /// [C++0x] 'alignof' '(' type-id ')'
 /// \endverbatim
 ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
-  assert((Tok.is(tok::kw_sizeof) || Tok.is(tok::kw___alignof)
-          || Tok.is(tok::kw_alignof) || Tok.is(tok::kw_vec_step)) &&
+  assert((Tok.is(tok::kw_sizeof) || Tok.is(tok::kw___alignof) ||
+          Tok.is(tok::kw_alignof) || Tok.is(tok::kw__Alignof) ||
+          Tok.is(tok::kw_vec_step)) &&
          "Not a sizeof/alignof/vec_step expression!");
   Token OpTok = Tok;
   ConsumeToken();
@@ -1698,7 +1710,7 @@ ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
                                                 RParenLoc);
   }
 
-  if (OpTok.is(tok::kw_alignof))
+  if (OpTok.is(tok::kw_alignof) || OpTok.is(tok::kw__Alignof))
     Diag(OpTok, diag::warn_cxx98_compat_alignof);
 
   EnterExpressionEvaluationContext Unevaluated(Actions, Sema::Unevaluated);
@@ -1712,7 +1724,8 @@ ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
                                                           CastRange);
 
   UnaryExprOrTypeTrait ExprKind = UETT_SizeOf;
-  if (OpTok.is(tok::kw_alignof) || OpTok.is(tok::kw___alignof))
+  if (OpTok.is(tok::kw_alignof) || OpTok.is(tok::kw___alignof) ||
+      OpTok.is(tok::kw__Alignof))
     ExprKind = UETT_AlignOf;
   else if (OpTok.is(tok::kw_vec_step))
     ExprKind = UETT_VecStep;

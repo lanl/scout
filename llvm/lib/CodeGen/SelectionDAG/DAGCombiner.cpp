@@ -2340,7 +2340,7 @@ SDValue DAGCombiner::SimplifyBinOpWithSameOpcodeHands(SDNode *N) {
   // We also handle SCALAR_TO_VECTOR because xor/or/and operations are cheaper
   // on scalars.
   if ((N0.getOpcode() == ISD::BITCAST || N0.getOpcode() == ISD::SCALAR_TO_VECTOR)
-      && Level == AfterLegalizeVectorOps) {
+      && Level == AfterLegalizeTypes) {
     SDValue In0 = N0.getOperand(0);
     SDValue In1 = N1.getOperand(0);
     EVT In0Ty = In0.getValueType();
@@ -5020,6 +5020,10 @@ SDValue DAGCombiner::ReduceLoadWidth(SDNode *N) {
   LoadSDNode *LN0 = cast<LoadSDNode>(N0);
   EVT PtrType = N0.getOperand(1).getValueType();
 
+  if (PtrType == MVT::Untyped || PtrType.isExtended())
+    // It's not possible to generate a constant of extended or untyped type.
+    return SDValue();
+
   // For big endian targets, we need to adjust the offset to the pointer to
   // load the correct bytes.
   if (TLI.isBigEndian()) {
@@ -5644,7 +5648,7 @@ SDValue DAGCombiner::visitFADD(SDNode *N) {
                                    N0.getOperand(1), N1));
 
   // FADD -> FMA combines:
-  if ((DAG.getTarget().Options.AllowExcessFPPrecision ||
+  if ((DAG.getTarget().Options.AllowFPOpFusion == FPOpFusion::Fast ||
        DAG.getTarget().Options.UnsafeFPMath) &&
       DAG.getTarget().getTargetLowering()->isFMAFasterThanMulAndAdd(VT) &&
       TLI.isOperationLegal(ISD::FMA, VT)) {
@@ -5721,7 +5725,7 @@ SDValue DAGCombiner::visitFSUB(SDNode *N) {
   }
 
   // FSUB -> FMA combines:
-  if ((DAG.getTarget().Options.AllowExcessFPPrecision ||
+  if ((DAG.getTarget().Options.AllowFPOpFusion == FPOpFusion::Fast ||
        DAG.getTarget().Options.UnsafeFPMath) &&
       DAG.getTarget().getTargetLowering()->isFMAFasterThanMulAndAdd(VT) &&
       TLI.isOperationLegal(ISD::FMA, VT)) {
@@ -5970,6 +5974,30 @@ SDValue DAGCombiner::visitSINT_TO_FP(SDNode *N) {
       return DAG.getNode(ISD::UINT_TO_FP, N->getDebugLoc(), VT, N0);
   }
 
+  // fold (sint_to_fp (setcc x, y, cc)) -> (select_cc x, y, -1.0, 0.0,, cc)
+  if (N0.getOpcode() == ISD::SETCC && !VT.isVector() &&
+      (!LegalOperations ||
+       TLI.isOperationLegalOrCustom(llvm::ISD::ConstantFP, VT))) {
+    SDValue Ops[] =
+      { N0.getOperand(0), N0.getOperand(1),
+        DAG.getConstantFP(-1.0, VT) , DAG.getConstantFP(0.0, VT),
+        N0.getOperand(2) };
+    return DAG.getNode(ISD::SELECT_CC, N->getDebugLoc(), VT, Ops, 5);
+  }
+
+  // fold (sint_to_fp (zext (setcc x, y, cc))) ->
+  //      (select_cc x, y, 1.0, 0.0,, cc)
+  if (N0.getOpcode() == ISD::ZERO_EXTEND &&
+      N0.getOperand(0).getOpcode() == ISD::SETCC &&!VT.isVector() &&
+      (!LegalOperations ||
+       TLI.isOperationLegalOrCustom(llvm::ISD::ConstantFP, VT))) {
+    SDValue Ops[] =
+      { N0.getOperand(0).getOperand(0), N0.getOperand(0).getOperand(1),
+        DAG.getConstantFP(1.0, VT) , DAG.getConstantFP(0.0, VT),
+        N0.getOperand(0).getOperand(2) };
+    return DAG.getNode(ISD::SELECT_CC, N->getDebugLoc(), VT, Ops, 5);
+  }
+
   return SDValue();
 }
 
@@ -5994,6 +6022,18 @@ SDValue DAGCombiner::visitUINT_TO_FP(SDNode *N) {
     if (DAG.SignBitIsZero(N0))
       return DAG.getNode(ISD::SINT_TO_FP, N->getDebugLoc(), VT, N0);
   }
+
+  // fold (uint_to_fp (setcc x, y, cc)) -> (select_cc x, y, -1.0, 0.0,, cc)
+  if (N0.getOpcode() == ISD::SETCC && !VT.isVector() &&
+      (!LegalOperations ||
+       TLI.isOperationLegalOrCustom(llvm::ISD::ConstantFP, VT))) {
+    SDValue Ops[] =
+      { N0.getOperand(0), N0.getOperand(1),
+        DAG.getConstantFP(1.0, VT),  DAG.getConstantFP(0.0, VT),
+        N0.getOperand(2) };
+    return DAG.getNode(ISD::SELECT_CC, N->getDebugLoc(), VT, Ops, 5);
+  }
+
 
   return SDValue();
 }

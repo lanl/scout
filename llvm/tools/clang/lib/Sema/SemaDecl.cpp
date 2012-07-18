@@ -63,7 +63,8 @@ namespace {
 
 class TypeNameValidatorCCC : public CorrectionCandidateCallback {
  public:
-  TypeNameValidatorCCC(bool AllowInvalid) : AllowInvalidDecl(AllowInvalid) {
+  TypeNameValidatorCCC(bool AllowInvalid, bool WantClass=false)
+      : AllowInvalidDecl(AllowInvalid), WantClassName(WantClass) {
     WantExpressionKeywords = false;
     WantCXXNamedCasts = false;
     WantRemainingKeywords = false;
@@ -74,11 +75,12 @@ class TypeNameValidatorCCC : public CorrectionCandidateCallback {
       return (isa<TypeDecl>(ND) || isa<ObjCInterfaceDecl>(ND)) &&
           (AllowInvalidDecl || !ND->isInvalidDecl());
     else
-      return candidate.isKeyword();
+      return !WantClassName && candidate.isKeyword();
   }
 
  private:
   bool AllowInvalidDecl;
+  bool WantClassName;
 };
 
 }
@@ -212,7 +214,7 @@ ParsedType Sema::getTypeName(IdentifierInfo &II, SourceLocation NameLoc,
   case LookupResult::NotFound:
   case LookupResult::NotFoundInCurrentInstantiation:
     if (CorrectedII) {
-      TypeNameValidatorCCC Validator(true);
+      TypeNameValidatorCCC Validator(true, isClassName);
       TypoCorrection Correction = CorrectTypo(Result.getLookupNameInfo(),
                                               Kind, S, SS, Validator);
       IdentifierInfo *NewII = Correction.getCorrectionAsIdentifierInfo();
@@ -241,8 +243,8 @@ ParsedType Sema::getTypeName(IdentifierInfo &II, SourceLocation NameLoc,
           std::string CorrectedStr(Correction.getAsString(getLangOpts()));
           std::string CorrectedQuotedStr(
               Correction.getQuoted(getLangOpts()));
-          Diag(NameLoc, diag::err_unknown_typename_suggest)
-              << Result.getLookupName() << CorrectedQuotedStr
+          Diag(NameLoc, diag::err_unknown_type_or_class_name_suggest)
+              << Result.getLookupName() << CorrectedQuotedStr << isClassName
               << FixItHint::CreateReplacement(SourceRange(NameLoc),
                                               CorrectedStr);
           if (NamedDecl *FirstDecl = Correction.getCorrectionDecl())
@@ -637,6 +639,19 @@ Corrected:
     if (!SecondTry) {
       SecondTry = true;
       CorrectionCandidateCallback DefaultValidator;
+      // Try to limit which sets of keywords should be included in typo
+      // correction based on what the next token is.
+      DefaultValidator.WantTypeSpecifiers =
+          NextToken.is(tok::l_paren) || NextToken.is(tok::less) ||
+          NextToken.is(tok::identifier) || NextToken.is(tok::star) ||
+          NextToken.is(tok::amp) || NextToken.is(tok::l_square);
+      DefaultValidator.WantExpressionKeywords =
+          NextToken.is(tok::l_paren) || NextToken.is(tok::identifier) ||
+          NextToken.is(tok::arrow) || NextToken.is(tok::period);
+      DefaultValidator.WantRemainingKeywords =
+          NextToken.is(tok::l_paren) || NextToken.is(tok::semi) ||
+          NextToken.is(tok::identifier) || NextToken.is(tok::l_brace);
+      DefaultValidator.WantCXXNamedCasts = false;
       if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                                  Result.getLookupKind(), S, 
                                                  &SS, DefaultValidator)) {
@@ -1360,7 +1375,7 @@ void Sema::ActOnEndFunctionDeclarator() {
 ///
 /// \param IdLoc The location of the name in the translation unit.
 ///
-/// \param TypoCorrection If true, this routine will attempt typo correction
+/// \param DoTypoCorrection If true, this routine will attempt typo correction
 /// if there is no class with the given name.
 ///
 /// \returns The declaration of the named Objective-C class, or NULL if the
@@ -5079,7 +5094,11 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   FunctionTemplateDecl *FunctionTemplate = 0;
   bool isExplicitSpecialization = false;
   bool isFunctionTemplateSpecialization = false;
+
   bool isDependentClassScopeExplicitSpecialization = false;
+  bool HasExplicitTemplateArgs = false;
+  TemplateArgumentListInfo TemplateArgs;
+
   bool isVirtualOkay = false;
 
   FunctionDecl *NewFD = CreateNewFunctionDecl(*this, D, DC, R, TInfo, SC,
@@ -5522,8 +5541,6 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   } else {
     // If the declarator is a template-id, translate the parser's template
     // argument list into our AST format.
-    bool HasExplicitTemplateArgs = false;
-    TemplateArgumentListInfo TemplateArgs;
     if (D.getName().getKind() == UnqualifiedId::IK_TemplateId) {
       TemplateIdAnnotation *TemplateId = D.getName().TemplateId;
       TemplateArgs.setLAngleLoc(TemplateId->LAngleLoc);
@@ -5827,8 +5844,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   if (isDependentClassScopeExplicitSpecialization) {
     ClassScopeFunctionSpecializationDecl *NewSpec =
                          ClassScopeFunctionSpecializationDecl::Create(
-                                Context, CurContext,  SourceLocation(), 
-                                cast<CXXMethodDecl>(NewFD));
+                                Context, CurContext, SourceLocation(), 
+                                cast<CXXMethodDecl>(NewFD),
+                                HasExplicitTemplateArgs, TemplateArgs);
     CurContext->addDecl(NewSpec);
     AddToScope = false;
   }
@@ -5846,12 +5864,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 /// that have been instantiated via C++ template instantiation (called
 /// via InstantiateDecl).
 ///
-/// \param IsExplicitSpecialiation whether this new function declaration is
+/// \param IsExplicitSpecialization whether this new function declaration is
 /// an explicit specialization of the previous declaration.
 ///
 /// This sets NewFD->isInvalidDecl() to true if there was an error.
 ///
-/// Returns true if the function declaration is a redeclaration.
+/// \returns true if the function declaration is a redeclaration.
 bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
                                     LookupResult &Previous,
                                     bool IsExplicitSpecialization) {
@@ -6333,7 +6351,10 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
   ParenListExpr *CXXDirectInit = dyn_cast<ParenListExpr>(Init);
 
   // C++11 [decl.spec.auto]p6. Deduce the type which 'auto' stands in for.
-  if (TypeMayContainAuto && VDecl->getType()->getContainedAutoType()) {
+  AutoType *Auto = 0;
+  if (TypeMayContainAuto &&
+      (Auto = VDecl->getType()->getContainedAutoType()) &&
+      !Auto->isDeduced()) {
     Expr *DeduceInit = Init;
     // Initializer could be a C++ direct-initializer. Deduction only works if it
     // contains exactly one expression.
@@ -7659,7 +7680,12 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
       if (CXXConstructorDecl *Constructor = dyn_cast<CXXConstructorDecl>(FD))
         MarkVTableUsed(FD->getLocation(), Constructor->getParent());
 
-      computeNRVO(Body, getCurFunction());
+      // Try to apply the named return value optimization. We have to check
+      // if we can do this here because lambdas keep return statements around
+      // to deduce an implicit return type.
+      if (getLangOpts().CPlusPlus && FD->getResultType()->isRecordType() &&
+          !FD->isDependentContext())
+        computeNRVO(Body, getCurFunction());
     }
 
     assert((FD == getCurFunctionDecl() || getCurLambda()->CallOperator == FD) &&
@@ -10381,6 +10407,13 @@ static void CheckForUniqueEnumValues(Sema &S, Decl **Elements,
   S.Diag(Enum->getLocation(), diag::warn_identical_enum_values)
       << EnumType << FirstVal.toString(10)
       << Enum->getSourceRange();
+
+  EnumConstantDecl *Last = cast<EnumConstantDecl>(Elements[NumElements - 1]),
+                   *Next = cast<EnumConstantDecl>(Elements[NumElements - 2]);
+
+  S.Diag(Last->getLocation(), diag::note_identical_enum_values)
+    << FixItHint::CreateReplacement(Last->getInitExpr()->getSourceRange(),
+                                    Next->getName());
 }
 
 void Sema::ActOnEnumBody(SourceLocation EnumLoc, SourceLocation LBraceLoc,
@@ -10706,7 +10739,8 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
                                 tok::TokenKind MeshType,
                                 SourceLocation KWLoc,
                                 IdentifierInfo* Name,
-                                SourceLocation NameLoc){
+                                SourceLocation NameLoc,
+                                MultiTemplateParamsArg TemplateParameterLists){
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
 

@@ -9,7 +9,6 @@ void free(void *);
 void testNSDatafFreeWhenDoneNoError(NSUInteger dataLength) {
   unsigned char *data = (unsigned char *)malloc(42);
   NSData *nsdata = [NSData dataWithBytesNoCopy:data length:dataLength];
-  free(data); // no warning
 }
 
 void testNSDataFreeWhenDoneYES(NSUInteger dataLength) {
@@ -22,6 +21,16 @@ void testNSDataFreeWhenDoneYES2(NSUInteger dataLength) {
   NSData *nsdata = [[NSData alloc] initWithBytesNoCopy:data length:dataLength freeWhenDone:1]; // no-warning
 }
 
+void testNSStringFreeWhenDoneYES3(NSUInteger dataLength) {
+  unsigned char *data = (unsigned char *)malloc(42);
+  NSString *nsstr = [[NSString alloc] initWithBytesNoCopy:data length:dataLength encoding:NSUTF8StringEncoding freeWhenDone:1];
+}
+
+void testNSStringFreeWhenDoneYES4(NSUInteger dataLength) {
+  unichar *data = (unichar*)malloc(42);
+  NSString *nsstr = [[NSString alloc] initWithCharactersNoCopy:data length:dataLength freeWhenDone:1];
+  free(data); //expected-warning {{Attempt to free non-owned memory}}
+}
 
 void testNSStringFreeWhenDoneYES(NSUInteger dataLength) {
   unsigned char *data = (unsigned char *)malloc(42);
@@ -55,11 +64,17 @@ void testNSStringFreeWhenDoneNO2(NSUInteger dataLength) {
   NSString *nsstr = [[NSString alloc] initWithCharactersNoCopy:data length:dataLength freeWhenDone:0]; // expected-warning{{leak}}
 }
 
-// TODO: False Negative.
-void testNSDatafFreeWhenDoneFN(NSUInteger dataLength) {
-  unsigned char *data = (unsigned char *)malloc(42);
-  NSData *nsdata = [NSData dataWithBytesNoCopy:data length:dataLength freeWhenDone:1];
-  free(data); // false negative
+void testRelinquished1() {
+  void *data = malloc(42);
+  NSData *nsdata = [NSData dataWithBytesNoCopy:data length:42 freeWhenDone:1];
+  free(data); // expected-warning {{Attempt to free non-owned memory}}
+}
+
+void testRelinquished2() {
+  void *data = malloc(42);
+  NSData *nsdata;
+  free(data);
+  [NSData dataWithBytesNoCopy:data length:42]; // expected-warning {{Attempt to free released memory}}
 }
 
 // Test CF/NS...NoCopy. PR12100: Pointers can escape when custom deallocators are provided.
@@ -201,4 +216,9 @@ void foo(NSPointerArray* pointerArray) {
   // Freeing the buffer is allowed.
   void* buffer = [pointerArray pointerAtIndex:0];
   free(buffer);
+}
+
+void noCrashOnVariableArgumentSelector() {
+  NSMutableString *myString = [NSMutableString stringWithString:@"some text"];
+  [myString appendFormat:@"some text = %d", 3];
 }
