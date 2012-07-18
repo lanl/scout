@@ -75,21 +75,21 @@ void ExprEngine::VisitCXXDestructor(const CXXDestructorDecl *DD,
                                       const Stmt *S,
                                       ExplodedNode *Pred, 
                                       ExplodedNodeSet &Dst) {
-  StmtNodeBuilder Bldr(Pred, Dst, *currentBuilderContext);
-  if (!(DD->doesThisDeclarationHaveABody() && AMgr.shouldInlineCall()))
-    return;
+  CXXDestructorCall Call(DD, S, Dest, Pred->getState(),
+                         Pred->getLocationContext());
 
-  // Create the context for 'this' region.
-  const StackFrameContext *SFC =
-    AnalysisDeclContexts.getContext(DD)->
-      getStackFrame(Pred->getLocationContext(), S,
-      currentBuilderContext->getBlock(), currentStmtIdx);
+  ExplodedNodeSet DstPreCall;
+  getCheckerManager().runCheckersForPreCall(DstPreCall, Pred,
+                                            Call, *this);
 
-  CallEnter PP(S, SFC, Pred->getLocationContext());
-  ProgramStateRef state = Pred->getState();
-  state = state->bindLoc(svalBuilder.getCXXThis(DD->getParent(), SFC),
-                         loc::MemRegionVal(Dest));
-  Bldr.generateNode(PP, Pred, state);
+  ExplodedNodeSet DstInvalidated;
+  for (ExplodedNodeSet::iterator I = DstPreCall.begin(), E = DstPreCall.end();
+       I != E; ++I)
+    defaultEvalCall(DstInvalidated, *I, Call);
+
+  ExplodedNodeSet DstPostCall;
+  getCheckerManager().runCheckersForPostCall(Dst, DstInvalidated,
+                                             Call, *this);
 }
 
 void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
@@ -134,6 +134,19 @@ void ExprEngine::VisitCXXNewExpr(const CXXNewExpr *CNE, ExplodedNode *Pred,
     State = State->BindExpr(CNE, LCtx, PlacementLoc);
   } else {
     State = State->BindExpr(CNE, LCtx, symVal);
+  }
+
+  // If the type is not a record, we won't have a CXXConstructExpr as an
+  // initializer. Copy the value over.
+  if (const Expr *Init = CNE->getInitializer()) {
+    if (!isa<CXXConstructExpr>(Init)) {
+      QualType ObjTy = CNE->getType()->getAs<PointerType>()->getPointeeType();
+      (void)ObjTy;
+      assert(!ObjTy->isRecordType());
+      SVal Location = State->getSVal(CNE, LCtx);
+      if (isa<Loc>(Location))
+        State = State->bindLoc(cast<Loc>(Location), State->getSVal(Init, LCtx));
+    }
   }
 
   Bldr.generateNode(CNE, Pred, State);

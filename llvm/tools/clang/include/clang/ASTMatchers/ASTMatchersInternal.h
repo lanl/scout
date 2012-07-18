@@ -44,13 +44,13 @@
 #include <string>
 #include <vector>
 
+namespace clang {
+namespace ast_matchers {
+
 /// FIXME: Move into the llvm support library.
 template <bool> struct CompileAssert {};
 #define TOOLING_COMPILE_ASSERT(Expr, Msg) \
   typedef CompileAssert<(bool(Expr))> Msg[bool(Expr) ? 1 : -1]
-
-namespace clang {
-namespace ast_matchers {
 
 class BoundNodes;
 
@@ -411,11 +411,12 @@ public:
   virtual ~ASTMatchFinder() {}
 
   /// \brief Returns true if the given class is directly or indirectly derived
-  /// from a base type with the given name.
+  /// from a base type matching \c base.
   ///
   /// A class is considered to be also derived from itself.
   virtual bool classIsDerivedFrom(const CXXRecordDecl *Declaration,
-                                  StringRef BaseName) const = 0;
+                                  const Matcher<NamedDecl> &Base,
+                                  BoundNodesTreeBuilder *Builder) = 0;
 
   // FIXME: Implement for other base nodes.
   virtual bool matchesChildOf(const Decl &DeclNode,

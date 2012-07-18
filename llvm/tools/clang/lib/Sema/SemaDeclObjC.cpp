@@ -2429,6 +2429,7 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
     Consumer.HandleTopLevelDeclInObjCContainer(DG);
   }
 
+  ActOnDocumentableDecl(ClassDecl);
   return ClassDecl;
 }
 
@@ -2952,7 +2953,9 @@ Decl *Sema::ActOnMethodDeclaration(
     if (InferRelatedResultType)
       ObjCMethod->SetRelatedResultType();
   }
-    
+
+  ActOnDocumentableDecl(ObjCMethod);
+
   return ObjCMethod;
 }
 

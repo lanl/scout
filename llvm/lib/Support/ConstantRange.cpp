@@ -143,16 +143,17 @@ bool ConstantRange::isSignWrappedSet() const {
 /// getSetSize - Return the number of elements in this set.
 ///
 APInt ConstantRange::getSetSize() const {
-  if (isEmptySet()) 
-    return APInt(getBitWidth(), 0);
-  if (getBitWidth() == 1) {
-    if (Lower != Upper)  // One of T or F in the set...
-      return APInt(2, 1);
-    return APInt(2, 2);      // Must be full set...
+  if (isEmptySet())
+    return APInt(getBitWidth()+1, 0);
+
+  if (isFullSet()) {
+    APInt Size(getBitWidth()+1, 0);
+    Size.setBit(getBitWidth());
+    return Size;
   }
 
-  // Simply subtract the bounds...
-  return Upper - Lower;
+  // This is also correct for wrapped sets.
+  return (Upper - Lower).zext(getBitWidth()+1);
 }
 
 /// getUnsignedMax - Return the largest unsigned value contained in the
@@ -535,6 +536,12 @@ ConstantRange::multiply(const ConstantRange &Other) const {
 
   if (isEmptySet() || Other.isEmptySet())
     return ConstantRange(getBitWidth(), /*isFullSet=*/false);
+
+  // If any of the operands is zero, then the result is also zero.
+  if ((getSingleElement() && *getSingleElement() == 0) ||
+      (Other.getSingleElement() && *Other.getSingleElement() == 0))
+    return ConstantRange(APInt(getBitWidth(), 0));
+
   if (isFullSet() || Other.isFullSet())
     return ConstantRange(getBitWidth(), /*isFullSet=*/true);
 

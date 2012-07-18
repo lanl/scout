@@ -11,7 +11,6 @@
  *
  * ===----------------------------------------------------------------------===
  */
-#include "abi.h"
 
 #include "int_lib.h"
 
@@ -20,8 +19,6 @@
  */
 
 /* Translated from Figure 3-40 of The PowerPC Compiler Writer's Guide */
-
-ARM_EABI_FNALIAS(uldivmod, udivmoddi4);
 
 COMPILER_RT_ABI du_int
 __udivmoddi4(du_int a, du_int b, du_int* rem)

@@ -57,8 +57,8 @@ FullComment *CommentParserTest::parseString(const char *Source) {
   comments::Lexer L(Begin, CommentOptions(),
                     Source, Source + strlen(Source));
 
-  comments::Sema S(Allocator);
-  comments::Parser P(L, S, Allocator);
+  comments::Sema S(Allocator, SourceMgr, Diags);
+  comments::Parser P(L, S, Allocator, SourceMgr, Diags);
   comments::FullComment *FC = P.parseFullComment();
 
   if (DEBUG) {
@@ -244,9 +244,9 @@ struct NoArgs {};
   if (!AR)
     return AR;
 
-  if (ICC->getArgCount() != 0)
+  if (ICC->getNumArgs() != 0)
     return ::testing::AssertionFailure()
-        << "InlineCommandComment has " << ICC->getArgCount() << " arg(s), "
+        << "InlineCommandComment has " << ICC->getNumArgs() << " arg(s), "
            "expected 0";
 
   return ::testing::AssertionSuccess();
@@ -261,9 +261,9 @@ struct NoArgs {};
   if (!AR)
     return AR;
 
-  if (ICC->getArgCount() != 1)
+  if (ICC->getNumArgs() != 1)
     return ::testing::AssertionFailure()
-        << "InlineCommandComment has " << ICC->getArgCount() << " arg(s), "
+        << "InlineCommandComment has " << ICC->getNumArgs() << " arg(s), "
            "expected 1";
 
   StringRef ActualArg = ICC->getArgText(0);
@@ -275,84 +275,111 @@ struct NoArgs {};
   return ::testing::AssertionSuccess();
 }
 
-::testing::AssertionResult HasHTMLOpenTagAt(const Comment *C,
-                                            size_t Idx,
-                                            HTMLOpenTagComment *&HOT,
-                                            StringRef TagName) {
-  ::testing::AssertionResult AR = GetChildAt(C, Idx, HOT);
+::testing::AssertionResult HasHTMLStartTagAt(const Comment *C,
+                                             size_t Idx,
+                                             HTMLStartTagComment *&HST,
+                                             StringRef TagName) {
+  ::testing::AssertionResult AR = GetChildAt(C, Idx, HST);
   if (!AR)
     return AR;
 
-  StringRef ActualTagName = HOT->getTagName();
+  StringRef ActualTagName = HST->getTagName();
   if (ActualTagName != TagName)
     return ::testing::AssertionFailure()
-        << "HTMLOpenTagComment has name \"" << ActualTagName.str() << "\", "
+        << "HTMLStartTagComment has name \"" << ActualTagName.str() << "\", "
            "expected \"" << TagName.str() << "\"";
 
   return ::testing::AssertionSuccess();
 }
 
-struct NoAttrs {};
+struct SelfClosing {};
 
-::testing::AssertionResult HasHTMLOpenTagAt(const Comment *C,
-                                            size_t Idx,
-                                            HTMLOpenTagComment *&HOT,
-                                            StringRef TagName,
-                                            NoAttrs) {
-  ::testing::AssertionResult AR = HasHTMLOpenTagAt(C, Idx, HOT, TagName);
+::testing::AssertionResult HasHTMLStartTagAt(const Comment *C,
+                                             size_t Idx,
+                                             HTMLStartTagComment *&HST,
+                                             StringRef TagName,
+                                             SelfClosing) {
+  ::testing::AssertionResult AR = HasHTMLStartTagAt(C, Idx, HST, TagName);
   if (!AR)
     return AR;
 
-  if (HOT->getAttrCount() != 0)
+  if (!HST->isSelfClosing())
     return ::testing::AssertionFailure()
-        << "HTMLOpenTagComment has " << HOT->getAttrCount() << " attr(s), "
+        << "HTMLStartTagComment is not self-closing";
+
+  return ::testing::AssertionSuccess();
+}
+
+
+struct NoAttrs {};
+
+::testing::AssertionResult HasHTMLStartTagAt(const Comment *C,
+                                             size_t Idx,
+                                             HTMLStartTagComment *&HST,
+                                             StringRef TagName,
+                                             NoAttrs) {
+  ::testing::AssertionResult AR = HasHTMLStartTagAt(C, Idx, HST, TagName);
+  if (!AR)
+    return AR;
+
+  if (HST->isSelfClosing())
+    return ::testing::AssertionFailure()
+        << "HTMLStartTagComment is self-closing";
+
+  if (HST->getNumAttrs() != 0)
+    return ::testing::AssertionFailure()
+        << "HTMLStartTagComment has " << HST->getNumAttrs() << " attr(s), "
            "expected 0";
 
   return ::testing::AssertionSuccess();
 }
 
-::testing::AssertionResult HasHTMLOpenTagAt(const Comment *C,
-                                            size_t Idx,
-                                            HTMLOpenTagComment *&HOT,
-                                            StringRef TagName,
-                                            StringRef AttrName,
-                                            StringRef AttrValue) {
-  ::testing::AssertionResult AR = HasHTMLOpenTagAt(C, Idx, HOT, TagName);
+::testing::AssertionResult HasHTMLStartTagAt(const Comment *C,
+                                             size_t Idx,
+                                             HTMLStartTagComment *&HST,
+                                             StringRef TagName,
+                                             StringRef AttrName,
+                                             StringRef AttrValue) {
+  ::testing::AssertionResult AR = HasHTMLStartTagAt(C, Idx, HST, TagName);
   if (!AR)
     return AR;
 
-  if (HOT->getAttrCount() != 1)
+  if (HST->isSelfClosing())
     return ::testing::AssertionFailure()
-        << "HTMLOpenTagComment has " << HOT->getAttrCount() << " attr(s), "
+        << "HTMLStartTagComment is self-closing";
+
+  if (HST->getNumAttrs() != 1)
+    return ::testing::AssertionFailure()
+        << "HTMLStartTagComment has " << HST->getNumAttrs() << " attr(s), "
            "expected 1";
 
-  StringRef ActualName = HOT->getAttr(0).Name;
+  StringRef ActualName = HST->getAttr(0).Name;
   if (ActualName != AttrName)
     return ::testing::AssertionFailure()
-        << "HTMLOpenTagComment has attr \"" << ActualName.str() << "\", "
+        << "HTMLStartTagComment has attr \"" << ActualName.str() << "\", "
            "expected \"" << AttrName.str() << "\"";
 
-  StringRef ActualValue = HOT->getAttr(0).Value;
+  StringRef ActualValue = HST->getAttr(0).Value;
   if (ActualValue != AttrValue)
     return ::testing::AssertionFailure()
-        << "HTMLOpenTagComment has attr value \"" << ActualValue.str() << "\", "
+        << "HTMLStartTagComment has attr value \"" << ActualValue.str() << "\", "
            "expected \"" << AttrValue.str() << "\"";
 
   return ::testing::AssertionSuccess();
 }
 
-::testing::AssertionResult HasHTMLCloseTagAt(const Comment *C,
-                                             size_t Idx,
-                                             HTMLCloseTagComment *&HCT,
-                                             StringRef TagName) {
-  ::testing::AssertionResult AR = GetChildAt(C, Idx, HCT);
+::testing::AssertionResult HasHTMLEndTagAt(const Comment *C,
+                                           size_t Idx,
+                                           HTMLEndTagComment *&HET,
+                                           StringRef TagName) {
+  ::testing::AssertionResult AR = GetChildAt(C, Idx, HET);
   if (!AR)
     return AR;
 
-  StringRef ActualTagName = HCT->getTagName();
+  StringRef ActualTagName = HET->getTagName();
   if (ActualTagName != TagName)
     return ::testing::AssertionFailure()
-        << "HTMLCloseTagComment has name \"" << ActualTagName.str() << "\", "
+        << "HTMLEndTagComment has name \"" << ActualTagName.str() << "\", "
            "expected \"" << TagName.str() << "\"";
 
   return ::testing::AssertionSuccess();
@@ -386,9 +413,9 @@ struct NoLines {};
   if (!AR)
     return AR;
 
-  if (VBC->getLineCount() != 0)
+  if (VBC->getNumLines() != 0)
     return ::testing::AssertionFailure()
-        << "VerbatimBlockComment has " << VBC->getLineCount() << " lines(s), "
+        << "VerbatimBlockComment has " << VBC->getNumLines() << " lines(s), "
            "expected 0";
 
   return ::testing::AssertionSuccess();
@@ -403,9 +430,9 @@ struct NoLines {};
   if (!AR)
     return AR;
 
-  if (VBC->getLineCount() != 1)
+  if (VBC->getNumLines() != 1)
     return ::testing::AssertionFailure()
-        << "VerbatimBlockComment has " << VBC->getLineCount() << " lines(s), "
+        << "VerbatimBlockComment has " << VBC->getNumLines() << " lines(s), "
            "expected 1";
 
   StringRef ActualLine0 = VBC->getText(0);
@@ -427,9 +454,9 @@ struct NoLines {};
   if (!AR)
     return AR;
 
-  if (VBC->getLineCount() != 2)
+  if (VBC->getNumLines() != 2)
     return ::testing::AssertionFailure()
-        << "VerbatimBlockComment has " << VBC->getLineCount() << " lines(s), "
+        << "VerbatimBlockComment has " << VBC->getNumLines() << " lines(s), "
            "expected 2";
 
   StringRef ActualLine0 = VBC->getText(0);
@@ -825,17 +852,39 @@ TEST_F(CommentParserTest, HTML1) {
 
     {
       ParagraphComment *PC;
-      HTMLOpenTagComment *HOT;
+      HTMLStartTagComment *HST;
       ASSERT_TRUE(GetChildAt(FC, 0, PC));
 
       ASSERT_TRUE(HasChildCount(PC, 2));
         ASSERT_TRUE(HasTextAt(PC, 0, " "));
-        ASSERT_TRUE(HasHTMLOpenTagAt(PC, 1, HOT, "a", NoAttrs()));
+        ASSERT_TRUE(HasHTMLStartTagAt(PC, 1, HST, "a", NoAttrs()));
     }
   }
 }
 
 TEST_F(CommentParserTest, HTML2) {
+  const char *Sources[] = {
+    "// <br/>",
+    "// <br />"
+  };
+
+  for (size_t i = 0, e = array_lengthof(Sources); i != e; i++) {
+    FullComment *FC = parseString(Sources[i]);
+    ASSERT_TRUE(HasChildCount(FC, 1));
+
+    {
+      ParagraphComment *PC;
+      HTMLStartTagComment *HST;
+      ASSERT_TRUE(GetChildAt(FC, 0, PC));
+
+      ASSERT_TRUE(HasChildCount(PC, 2));
+        ASSERT_TRUE(HasTextAt(PC, 0, " "));
+        ASSERT_TRUE(HasHTMLStartTagAt(PC, 1, HST, "br", SelfClosing()));
+    }
+  }
+}
+
+TEST_F(CommentParserTest, HTML3) {
   const char *Sources[] = {
     "// <a href",
     "// <a href ",
@@ -849,17 +898,17 @@ TEST_F(CommentParserTest, HTML2) {
 
     {
       ParagraphComment *PC;
-      HTMLOpenTagComment *HOT;
+      HTMLStartTagComment *HST;
       ASSERT_TRUE(GetChildAt(FC, 0, PC));
 
       ASSERT_TRUE(HasChildCount(PC, 2));
         ASSERT_TRUE(HasTextAt(PC, 0, " "));
-        ASSERT_TRUE(HasHTMLOpenTagAt(PC, 1, HOT, "a", "href", ""));
+        ASSERT_TRUE(HasHTMLStartTagAt(PC, 1, HST, "a", "href", ""));
     }
   }
 }
 
-TEST_F(CommentParserTest, HTML3) {
+TEST_F(CommentParserTest, HTML4) {
   const char *Sources[] = {
     "// <a href=\"bbb\"",
     "// <a href=\"bbb\">",
@@ -871,17 +920,17 @@ TEST_F(CommentParserTest, HTML3) {
 
     {
       ParagraphComment *PC;
-      HTMLOpenTagComment *HOT;
+      HTMLStartTagComment *HST;
       ASSERT_TRUE(GetChildAt(FC, 0, PC));
 
       ASSERT_TRUE(HasChildCount(PC, 2));
         ASSERT_TRUE(HasTextAt(PC, 0, " "));
-        ASSERT_TRUE(HasHTMLOpenTagAt(PC, 1, HOT, "a", "href", "bbb"));
+        ASSERT_TRUE(HasHTMLStartTagAt(PC, 1, HST, "a", "href", "bbb"));
     }
   }
 }
 
-TEST_F(CommentParserTest, HTML4) {
+TEST_F(CommentParserTest, HTML5) {
   const char *Sources[] = {
     "// </a",
     "// </a>",
@@ -894,17 +943,17 @@ TEST_F(CommentParserTest, HTML4) {
 
     {
       ParagraphComment *PC;
-      HTMLCloseTagComment *HCT;
+      HTMLEndTagComment *HET;
       ASSERT_TRUE(GetChildAt(FC, 0, PC));
 
       ASSERT_TRUE(HasChildCount(PC, 2));
         ASSERT_TRUE(HasTextAt(PC, 0, " "));
-        ASSERT_TRUE(HasHTMLCloseTagAt(PC, 1, HCT, "a"));
+        ASSERT_TRUE(HasHTMLEndTagAt(PC, 1, HET, "a"));
     }
   }
 }
 
-TEST_F(CommentParserTest, HTML5) {
+TEST_F(CommentParserTest, HTML6) {
   const char *Source =
     "// <pre>\n"
     "// Aaa\n"
@@ -916,17 +965,17 @@ TEST_F(CommentParserTest, HTML5) {
 
   {
     ParagraphComment *PC;
-    HTMLOpenTagComment *HOT;
-    HTMLCloseTagComment *HCT;
+    HTMLStartTagComment *HST;
+    HTMLEndTagComment *HET;
     ASSERT_TRUE(GetChildAt(FC, 0, PC));
 
     ASSERT_TRUE(HasChildCount(PC, 6));
       ASSERT_TRUE(HasTextAt(PC, 0, " "));
-      ASSERT_TRUE(HasHTMLOpenTagAt(PC, 1, HOT, "pre", NoAttrs()));
+      ASSERT_TRUE(HasHTMLStartTagAt(PC, 1, HST, "pre", NoAttrs()));
       ASSERT_TRUE(HasTextWithNewlineAt(PC, 2, " Aaa"));
       ASSERT_TRUE(HasTextWithNewlineAt(PC, 3, " Bbb"));
       ASSERT_TRUE(HasTextAt(PC, 4, " "));
-      ASSERT_TRUE(HasHTMLCloseTagAt(PC, 5, HCT, "pre"));
+      ASSERT_TRUE(HasHTMLEndTagAt(PC, 5, HET, "pre"));
   }
 }
 
@@ -1061,7 +1110,7 @@ TEST_F(CommentParserTest, VerbatimBlock6) {
   {
     VerbatimBlockComment *VBC;
     ASSERT_TRUE(HasVerbatimBlockAt(FC, 1, VBC, "verbatim"));
-    ASSERT_EQ(4U, VBC->getLineCount());
+    ASSERT_EQ(4U, VBC->getNumLines());
     ASSERT_EQ(" Aaa", VBC->getText(0));
     ASSERT_EQ("",     VBC->getText(1));
     ASSERT_EQ(" Bbb", VBC->getText(2));

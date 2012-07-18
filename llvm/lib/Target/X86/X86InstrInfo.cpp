@@ -539,6 +539,8 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VSQRTPSr_Int,    X86::VSQRTPSm_Int,        TB_ALIGN_16 },
     { X86::VUCOMISDrr,      X86::VUCOMISDrm,          0 },
     { X86::VUCOMISSrr,      X86::VUCOMISSrm,          0 },
+    { X86::VBROADCASTSSrr,  X86::VBROADCASTSSrm,      TB_NO_REVERSE },
+
     // AVX 256-bit foldable instructions
     { X86::VMOVAPDYrr,      X86::VMOVAPDYrm,          TB_ALIGN_32 },
     { X86::VMOVAPSYrr,      X86::VMOVAPSYrm,          TB_ALIGN_32 },
@@ -547,6 +549,7 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VMOVUPSYrr,      X86::VMOVUPSYrm,          0 },
     { X86::VPERMILPDYri,    X86::VPERMILPDYmi,        TB_ALIGN_32 },
     { X86::VPERMILPSYri,    X86::VPERMILPSYmi,        TB_ALIGN_32 },
+
     // AVX2 foldable instructions
     { X86::VPABSBrr256,     X86::VPABSBrm256,         TB_ALIGN_32 },
     { X86::VPABSDrr256,     X86::VPABSDrm256,         TB_ALIGN_32 },
@@ -562,6 +565,8 @@ X86InstrInfo::X86InstrInfo(X86TargetMachine &tm)
     { X86::VSQRTPDYr_Int,   X86::VSQRTPDYm_Int,       TB_ALIGN_32 },
     { X86::VSQRTPSYr,       X86::VSQRTPSYm,           TB_ALIGN_32 },
     { X86::VSQRTPSYr_Int,   X86::VSQRTPSYm_Int,       TB_ALIGN_32 },
+    { X86::VBROADCASTSSYrr, X86::VBROADCASTSSYrm,     TB_NO_REVERSE },
+    { X86::VBROADCASTSDYrr, X86::VBROADCASTSDYrm,     TB_NO_REVERSE },
   };
 
   for (unsigned i = 0, e = array_lengthof(OpTbl1); i != e; ++i) {
@@ -2011,6 +2016,13 @@ X86InstrInfo::convertToThreeAddress(MachineFunction::iterator &MFI,
                         .addReg(Dest, RegState::Define |
                                 getDeadRegState(isDead)),
                         Src, isKill, Src2, isKill2);
+
+      // Preserve undefness of the operands.
+      bool isUndef = MI->getOperand(1).isUndef();
+      bool isUndef2 = MI->getOperand(2).isUndef();
+      NewMI->getOperand(1).setIsUndef(isUndef);
+      NewMI->getOperand(3).setIsUndef(isUndef2);
+
       if (LV && isKill2)
         LV->replaceKillInstruction(Src2, MI, NewMI);
       break;
@@ -2376,7 +2388,7 @@ X86::CondCode X86::GetOppositeBranchCondition(X86::CondCode CC) {
 /// getSwappedCondition - assume the flags are set by MI(a,b), return
 /// the condition code if we modify the instructions such that flags are
 /// set by MI(b,a).
-X86::CondCode getSwappedCondition(X86::CondCode CC) {
+static X86::CondCode getSwappedCondition(X86::CondCode CC) {
   switch (CC) {
   default: return X86::COND_INVALID;
   case X86::COND_E:  return X86::COND_E;
@@ -3110,6 +3122,7 @@ optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg, unsigned SrcReg2,
       RE = CmpInstr->getParent() == MI->getParent() ?
            MachineBasicBlock::reverse_iterator(++Def) /* points to MI */ :
            CmpInstr->getParent()->rend();
+  MachineInstr *Movr0Inst = 0;
   for (; RI != RE; ++RI) {
     MachineInstr *Instr = &*RI;
     // Check whether CmpInstr can be made redundant by the current instruction.
@@ -3119,10 +3132,24 @@ optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg, unsigned SrcReg2,
     }
 
     if (Instr->modifiesRegister(X86::EFLAGS, TRI) ||
-        Instr->readsRegister(X86::EFLAGS, TRI))
+        Instr->readsRegister(X86::EFLAGS, TRI)) {
       // This instruction modifies or uses EFLAGS.
+
+      // MOV32r0 etc. are implemented with xor which clobbers condition code.
+      // They are safe to move up, if the definition to EFLAGS is dead and
+      // earlier instructions do not read or write EFLAGS.
+      if (!Movr0Inst && (Instr->getOpcode() == X86::MOV8r0 ||
+           Instr->getOpcode() == X86::MOV16r0 ||
+           Instr->getOpcode() == X86::MOV32r0 ||
+           Instr->getOpcode() == X86::MOV64r0) &&
+          Instr->registerDefIsDead(X86::EFLAGS, TRI)) {
+        Movr0Inst = Instr;
+        continue;
+      }
+
       // We can't remove CmpInstr.
       return false;
+    }
   }
 
   // Return false if no candidates exist.
@@ -3202,6 +3229,12 @@ optimizeCompareInstr(MachineInstr *CmpInstr, unsigned SrcReg, unsigned SrcReg2,
              SE = MBB->succ_end(); SI != SE; ++SI)
       if ((*SI)->isLiveIn(X86::EFLAGS))
         return false;
+  }
+
+  // Move Movr0Inst to the place right before Sub.
+  if (Movr0Inst) {
+    Sub->getParent()->remove(Movr0Inst);
+    Sub->getParent()->insert(MachineBasicBlock::iterator(Sub), Movr0Inst);
   }
 
   // Make sure Sub instruction defines EFLAGS.

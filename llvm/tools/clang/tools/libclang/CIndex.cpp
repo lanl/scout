@@ -2492,7 +2492,8 @@ CXTranslationUnit clang_createTranslationUnit(CXIndex CIdx,
                                   CXXIdx->getOnlyLocalDecls(),
                                   0, 0,
                                   /*CaptureDiagnostics=*/true,
-                                  /*AllowPCHWithCompilerErrors=*/true);
+                                  /*AllowPCHWithCompilerErrors=*/true,
+                                  /*UserFilesAreVolatile=*/true);
   return MakeCXTranslationUnit(CXXIdx, TU);
 }
 
@@ -2640,6 +2641,7 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
                                  IncludeBriefCommentsInCodeCompletion,
                                  /*AllowPCHWithCompilerErrors=*/true,
                                  SkipFunctionBodies,
+                                 /*UserFilesAreVolatile=*/true,
                                  &ErrUnit));
 
   if (NumErrors != Diags->getClient()->getNumErrors()) {
@@ -5737,8 +5739,6 @@ CXString clang_Cursor_getRawCommentText(CXCursor C) {
   return createCXString(RawText, false);
 }
 
-} // end: extern "C"
-
 CXString clang_Cursor_getBriefCommentText(CXCursor C) {
   if (!clang_isDeclaration(C.kind))
     return createCXString((const char *) NULL);
@@ -5757,6 +5757,8 @@ CXString clang_Cursor_getBriefCommentText(CXCursor C) {
 
   return createCXString((const char *) NULL);
 }
+
+} // end: extern "C"
 
 //===----------------------------------------------------------------------===//
 // C++ AST instrospection.

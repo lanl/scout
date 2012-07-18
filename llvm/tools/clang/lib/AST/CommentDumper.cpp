@@ -43,8 +43,8 @@ public:
   // Inline content.
   void visitTextComment(const TextComment *C);
   void visitInlineCommandComment(const InlineCommandComment *C);
-  void visitHTMLOpenTagComment(const HTMLOpenTagComment *C);
-  void visitHTMLCloseTagComment(const HTMLCloseTagComment *C);
+  void visitHTMLStartTagComment(const HTMLStartTagComment *C);
+  void visitHTMLEndTagComment(const HTMLEndTagComment *C);
 
   // Block content.
   void visitParagraphComment(const ParagraphComment *C);
@@ -106,24 +106,26 @@ void CommentDumper::visitTextComment(const TextComment *C) {
 void CommentDumper::visitInlineCommandComment(const InlineCommandComment *C) {
   dumpComment(C);
 
-  for (unsigned i = 0, e = C->getArgCount(); i != e; ++i)
+  for (unsigned i = 0, e = C->getNumArgs(); i != e; ++i)
     OS << " Arg[" << i << "]=\"" << C->getArgText(i) << "\"";
 }
 
-void CommentDumper::visitHTMLOpenTagComment(const HTMLOpenTagComment *C) {
+void CommentDumper::visitHTMLStartTagComment(const HTMLStartTagComment *C) {
   dumpComment(C);
 
   OS << " Name=\"" << C->getTagName() << "\"";
-  if (C->getAttrCount() != 0) {
+  if (C->getNumAttrs() != 0) {
     OS << " Attrs: ";
-    for (unsigned i = 0, e = C->getAttrCount(); i != e; ++i) {
-      const HTMLOpenTagComment::Attribute &Attr = C->getAttr(i);
+    for (unsigned i = 0, e = C->getNumAttrs(); i != e; ++i) {
+      const HTMLStartTagComment::Attribute &Attr = C->getAttr(i);
       OS << " \"" << Attr.Name << "=\"" << Attr.Value << "\"";
     }
   }
+  if (C->isSelfClosing())
+    OS << " SelfClosing";
 }
 
-void CommentDumper::visitHTMLCloseTagComment(const HTMLCloseTagComment *C) {
+void CommentDumper::visitHTMLEndTagComment(const HTMLEndTagComment *C) {
   dumpComment(C);
 
   OS << " Name=\"" << C->getTagName() << "\"";
@@ -142,17 +144,7 @@ void CommentDumper::visitBlockCommandComment(const BlockCommandComment *C) {
 void CommentDumper::visitParamCommandComment(const ParamCommandComment *C) {
   dumpComment(C);
 
-  switch (C->getDirection()) {
-  case ParamCommandComment::In:
-    OS << " [in]";
-    break;
-  case ParamCommandComment::Out:
-    OS << " [out]";
-    break;
-  case ParamCommandComment::InOut:
-    OS << " [in,out]";
-    break;
-  }
+  OS << " " << ParamCommandComment::getDirectionAsString(C->getDirection());
 
   if (C->isDirectionExplicit())
     OS << " explicitly";

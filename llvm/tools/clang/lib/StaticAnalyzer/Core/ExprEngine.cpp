@@ -375,6 +375,7 @@ void ExprEngine::ProcessInitializer(const CFGInitializer Init,
 
     const FieldDecl *FD = BMI->getAnyMember();
 
+    // FIXME: This does not work for initializers that call constructors.
     SVal FieldLoc = state->getLValue(FD, thisVal);
     SVal InitVal = state->getSVal(BMI->getInit(), Pred->getLocationContext());
     state = state->bindLoc(FieldLoc, InitVal);
@@ -458,7 +459,27 @@ void ExprEngine::ProcessTemporaryDtor(const CFGTemporaryDtor D,
                                       ExplodedNode *Pred,
                                       ExplodedNodeSet &Dst) {}
 
-void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred, 
+static const VarDecl *findDirectConstruction(const DeclStmt *DS,
+                                             const Expr *Init) {
+  for (DeclStmt::const_decl_iterator I = DS->decl_begin(), E = DS->decl_end();
+       I != E; ++I) {
+    const VarDecl *Var = dyn_cast<VarDecl>(*I);
+    if (!Var)
+      continue;
+    if (Var->getInit() != Init)
+      continue;
+    // FIXME: We need to decide how copy-elision should work here.
+    if (!Var->isDirectInit())
+      break;
+    if (Var->getType()->isReferenceType())
+      break;
+    return Var;
+  }
+
+  return 0;
+}
+
+void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
                        ExplodedNodeSet &DstTop) {
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
                                 S->getLocStart(),
@@ -729,10 +750,18 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXTemporaryObjectExprClass:
     case Stmt::CXXConstructExprClass: {
       const CXXConstructExpr *C = cast<CXXConstructExpr>(S);
-      // For block-level CXXConstructExpr, we don't have a destination region.
-      // Let VisitCXXConstructExpr() create one.
+      const MemRegion *Target = 0;
+
+      const LocationContext *LCtx = Pred->getLocationContext();
+      const ParentMap &PM = LCtx->getParentMap();
+      if (const DeclStmt *DS = dyn_cast_or_null<DeclStmt>(PM.getParent(C)))
+        if (const VarDecl *Var = findDirectConstruction(DS, C))
+          Target = Pred->getState()->getLValue(Var, LCtx).getAsRegion();
+      // If we don't have a destination region, VisitCXXConstructExpr() will
+      // create one.
+      
       Bldr.takeNodes(Pred);
-      VisitCXXConstructExpr(C, 0, Pred, Dst);
+      VisitCXXConstructExpr(C, Target, Pred, Dst);
       Bldr.addNodes(Dst);
       break;
     }
@@ -989,6 +1018,7 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   const StackFrameContext *CallerSF = CalleeSF->getParent()->getCurrentStackFrame();
   assert(CalleeSF && CallerSF);
   ExplodedNode *BeforeProcessingCall = 0;
+  const Stmt *CE = CalleeSF->getCallSite();
 
   // Find the first node before we started processing the call expression.
   while (N) {
@@ -1000,11 +1030,15 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
     if (L.getLocationContext()->getCurrentStackFrame() != CallerSF)
       continue;
     // We reached the caller. Find the node right before we started
-    // processing the CallExpr.
+    // processing the call.
     if (L.isPurgeKind())
       continue;
+    if (isa<PreImplicitCall>(&L))
+      continue;
+    if (isa<CallEnter>(&L))
+      continue;
     if (const StmtPoint *SP = dyn_cast<StmtPoint>(&L))
-      if (SP->getStmt() == CalleeSF->getCallSite())
+      if (SP->getStmt() == CE)
         continue;
     break;
   }
@@ -1015,7 +1049,7 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   // TODO: Clean up the unneeded nodes.
 
   // Build an Epsilon node from which we will restart the analyzes.
-  const Stmt *CE = CalleeSF->getCallSite();
+  // Note that CE is permitted to be NULL!
   ProgramPoint NewNodeLoc =
                EpsilonPoint(BeforeProcessingCall->getLocationContext(), CE);
   // Add the special flag to GDM to signal retrying with no inlining.
@@ -1179,6 +1213,45 @@ static SVal RecoverCastedSymbol(ProgramStateManager& StateMgr,
   return state->getSVal(Ex, LCtx);
 }
 
+static const Stmt *ResolveCondition(const Stmt *Condition,
+                                    const CFGBlock *B) {
+  if (const Expr *Ex = dyn_cast<Expr>(Condition))
+    Condition = Ex->IgnoreParens();
+
+  const BinaryOperator *BO = dyn_cast<BinaryOperator>(Condition);
+  if (!BO || !BO->isLogicalOp())
+    return Condition;
+
+  // For logical operations, we still have the case where some branches
+  // use the traditional "merge" approach and others sink the branch
+  // directly into the basic blocks representing the logical operation.
+  // We need to distinguish between those two cases here.
+
+  // The invariants are still shifting, but it is possible that the
+  // last element in a CFGBlock is not a CFGStmt.  Look for the last
+  // CFGStmt as the value of the condition.
+  CFGBlock::const_reverse_iterator I = B->rbegin(), E = B->rend();
+  for (; I != E; ++I) {
+    CFGElement Elem = *I;
+    CFGStmt *CS = dyn_cast<CFGStmt>(&Elem);
+    if (!CS)
+      continue;
+    if (CS->getStmt() != Condition)
+      break;
+    return Condition;
+  }
+
+  assert(I != E);
+
+  while (Condition) {
+    BO = dyn_cast<BinaryOperator>(Condition);
+    if (!BO || !BO->isLogicalOp())
+      return Condition;
+    Condition = BO->getRHS()->IgnoreParens();
+  }
+  llvm_unreachable("could not resolve condition");
+}
+
 void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
                                NodeBuilderContext& BldCtx,
                                ExplodedNode *Pred,
@@ -1195,6 +1268,12 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
     return;
   }
 
+
+  // Resolve the condition in the precense of nested '||' and '&&'.
+  if (const Expr *Ex = dyn_cast<Expr>(Condition))
+    Condition = Ex->IgnoreParens();
+
+  Condition = ResolveCondition(Condition, BldCtx.getBlock());
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
                                 Condition->getLocStart(),
                                 "Error evaluating branch");
@@ -1877,6 +1956,16 @@ struct DOTGraphTraits<ExplodedNode*> :
     return "";
   }
 
+  static void printLocation(llvm::raw_ostream &Out, SourceLocation SLoc) {
+    if (SLoc.isFileID()) {
+      Out << "\\lline="
+        << GraphPrintSourceManager->getExpansionLineNumber(SLoc)
+        << " col="
+        << GraphPrintSourceManager->getExpansionColumnNumber(SLoc)
+        << "\\l";
+    }
+  }
+
   static std::string getNodeLabel(const ExplodedNode *N, void*){
 
     std::string sbuf;
@@ -1926,22 +2015,34 @@ struct DOTGraphTraits<ExplodedNode*> :
         Out << "Epsilon Point";
         break;
 
+      case ProgramPoint::PreImplicitCallKind: {
+        ImplicitCallPoint *PC = cast<ImplicitCallPoint>(&Loc);
+        Out << "PreCall: ";
+
+        // FIXME: Get proper printing options.
+        PC->getDecl()->print(Out, LangOptions());
+        printLocation(Out, PC->getLocation());
+        break;
+      }
+
+      case ProgramPoint::PostImplicitCallKind: {
+        ImplicitCallPoint *PC = cast<ImplicitCallPoint>(&Loc);
+        Out << "PostCall: ";
+
+        // FIXME: Get proper printing options.
+        PC->getDecl()->print(Out, LangOptions());
+        printLocation(Out, PC->getLocation());
+        break;
+      }
+
       default: {
         if (StmtPoint *L = dyn_cast<StmtPoint>(&Loc)) {
           const Stmt *S = L->getStmt();
-          SourceLocation SLoc = S->getLocStart();
 
           Out << S->getStmtClassName() << ' ' << (void*) S << ' ';
           LangOptions LO; // FIXME.
           S->printPretty(Out, 0, PrintingPolicy(LO));
-
-          if (SLoc.isFileID()) {
-            Out << "\\lline="
-              << GraphPrintSourceManager->getExpansionLineNumber(SLoc)
-              << " col="
-              << GraphPrintSourceManager->getExpansionColumnNumber(SLoc)
-              << "\\l";
-          }
+          printLocation(Out, S->getLocStart());
 
           if (isa<PreStmt>(Loc))
             Out << "\\lPreStmt\\l;";

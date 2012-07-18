@@ -389,16 +389,6 @@ public: // Part of public interface to class.
   ///  It returns a new Store with these values removed.
   StoreRef removeDeadBindings(Store store, const StackFrameContext *LCtx,
                               SymbolReaper& SymReaper);
-
-  StoreRef enterStackFrame(ProgramStateRef state,
-                           const LocationContext *callerCtx,
-                           const StackFrameContext *calleeCtx);
-
-  StoreRef enterStackFrame(ProgramStateRef state,
-                           const FunctionDecl *FD,
-                           const LocationContext *callerCtx,
-                           const StackFrameContext *calleeCtx);
-
   
   //===------------------------------------------------------------------===//
   // Region "extents".
@@ -887,10 +877,22 @@ SVal RegionStoreManager::ArrayToPointer(Loc Array) {
   return loc::MemRegionVal(MRMgr.getElementRegion(T, ZeroIdx, ArrayR, Ctx));
 }
 
+// This mirrors Type::getCXXRecordDeclForPointerType(), but there doesn't
+// appear to be another need for this in the rest of the codebase.
+static const CXXRecordDecl *GetCXXRecordDeclForReferenceType(QualType Ty) {
+  if (const ReferenceType *RT = Ty->getAs<ReferenceType>())
+    if (const RecordType *RCT = RT->getPointeeType()->getAs<RecordType>())
+      return dyn_cast<CXXRecordDecl>(RCT->getDecl());
+  return 0;
+}
+
 SVal RegionStoreManager::evalDerivedToBase(SVal derived, QualType baseType) {
   const CXXRecordDecl *baseDecl;
+  
   if (baseType->isPointerType())
     baseDecl = baseType->getCXXRecordDeclForPointerType();
+  else if (baseType->isReferenceType())
+    baseDecl = GetCXXRecordDeclForReferenceType(baseType);
   else
     baseDecl = baseType->getAsCXXRecordDecl();
 
@@ -2064,84 +2066,6 @@ StoreRef RegionStoreManager::removeDeadBindings(Store store,
   }
 
   return StoreRef(B.getRootWithoutRetain(), *this);
-}
-
-StoreRef RegionStoreManager::enterStackFrame(ProgramStateRef state,
-                                             const LocationContext *callerCtx,
-                                             const StackFrameContext *calleeCtx)
-{
-  const Decl *D = calleeCtx->getDecl();
-  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
-    return enterStackFrame(state, FD, callerCtx, calleeCtx);
-  
-  // FIXME: when we handle more cases, this will need to be expanded.
-  
-  const BlockDecl *BD = cast<BlockDecl>(D);
-  BlockDecl::param_const_iterator PI = BD->param_begin(),
-                                  PE = BD->param_end();
-  StoreRef store = StoreRef(state->getStore(), *this);
-  const CallExpr *CE = cast<CallExpr>(calleeCtx->getCallSite());
-  CallExpr::const_arg_iterator AI = CE->arg_begin(), AE = CE->arg_end();
-  for (; AI != AE && PI != PE; ++AI, ++PI) {
-    SVal ArgVal = state->getSVal(*AI, callerCtx);
-    store = Bind(store.getStore(),
-                 svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
-                 ArgVal);
-  }
-  
-  return store;
-}
-
-StoreRef RegionStoreManager::enterStackFrame(ProgramStateRef state,
-                                             const FunctionDecl *FD,
-                                             const LocationContext *callerCtx,
-                                             const StackFrameContext *calleeCtx)
-{
-  FunctionDecl::param_const_iterator PI = FD->param_begin(), 
-                                     PE = FD->param_end();
-  StoreRef store = StoreRef(state->getStore(), *this);
-
-  if (CallExpr const *CE = dyn_cast<CallExpr>(calleeCtx->getCallSite())) {
-    CallExpr::const_arg_iterator AI = CE->arg_begin(), AE = CE->arg_end();
-
-    // Copy the arg expression value to the arg variables.  We check that
-    // PI != PE because the actual number of arguments may be different than
-    // the function declaration.
-    for (; AI != AE && PI != PE; ++AI, ++PI) {
-      SVal ArgVal = state->getSVal(*AI, callerCtx);
-      store = Bind(store.getStore(),
-                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
-                   ArgVal);
-    }
-
-    // For C++ method calls, also include the 'this' pointer.
-    if (const CXXMemberCallExpr *CME = dyn_cast<CXXMemberCallExpr>(CE)) {
-      loc::MemRegionVal This =
-        svalBuilder.getCXXThis(cast<CXXMethodDecl>(CME->getCalleeDecl()),
-                               calleeCtx);
-      SVal CalledObj = state->getSVal(CME->getImplicitObjectArgument(),
-                                      callerCtx);
-      store = Bind(store.getStore(), This, CalledObj);
-    }
-  }
-  else if (const CXXConstructExpr *CE =
-            dyn_cast<CXXConstructExpr>(calleeCtx->getCallSite())) {
-    CXXConstructExpr::const_arg_iterator AI = CE->arg_begin(),
-      AE = CE->arg_end();
-
-    // Copy the arg expression value to the arg variables.
-    for (; AI != AE; ++AI, ++PI) {
-      SVal ArgVal = state->getSVal(*AI, callerCtx);
-      store = Bind(store.getStore(),
-                   svalBuilder.makeLoc(MRMgr.getVarRegion(*PI, calleeCtx)),
-                   ArgVal);
-    }
-  }
-  else {
-    assert(isa<CXXDestructorDecl>(calleeCtx->getDecl()));
-  }
-
-  return store;
 }
 
 //===----------------------------------------------------------------------===//

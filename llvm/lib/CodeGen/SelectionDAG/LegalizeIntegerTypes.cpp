@@ -588,18 +588,14 @@ SDValue DAGTypeLegalizer::PromoteIntRes_TRUNCATE(SDNode *N) {
     unsigned NumElts = InVT.getVectorNumElements();
     assert(NumElts == NVT.getVectorNumElements() &&
            "Dst and Src must have the same number of elements");
-    EVT EltVT = InVT.getScalarType();
     assert(isPowerOf2_32(NumElts) &&
            "Promoted vector type must be a power of two");
 
-    EVT HalfVT = EVT::getVectorVT(*DAG.getContext(), EltVT, NumElts/2);
+    SDValue EOp1, EOp2;
+    GetSplitVector(InOp, EOp1, EOp2);
+
     EVT HalfNVT = EVT::getVectorVT(*DAG.getContext(), NVT.getScalarType(),
                                    NumElts/2);
-
-    SDValue EOp1 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, HalfVT, InOp,
-                               DAG.getIntPtrConstant(0));
-    SDValue EOp2 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, HalfVT, InOp,
-                               DAG.getIntPtrConstant(NumElts/2));
     EOp1 = DAG.getNode(ISD::TRUNCATE, dl, HalfNVT, EOp1);
     EOp2 = DAG.getNode(ISD::TRUNCATE, dl, HalfNVT, EOp2);
 

@@ -1151,11 +1151,10 @@ static bool EvaluateAsBooleanCondition(const Expr *E, bool &Result,
 }
 
 template<typename T>
-static bool HandleOverflow(EvalInfo &Info, const Expr *E,
+static void HandleOverflow(EvalInfo &Info, const Expr *E,
                            const T &SrcValue, QualType DestType) {
-  Info.Diag(E, diag::note_constexpr_overflow)
+  Info.CCEDiag(E, diag::note_constexpr_overflow)
     << SrcValue << DestType;
-  return false;
 }
 
 static bool HandleFloatToIntCast(EvalInfo &Info, const Expr *E,
@@ -1169,7 +1168,7 @@ static bool HandleFloatToIntCast(EvalInfo &Info, const Expr *E,
   bool ignored;
   if (Value.convertToInteger(Result, llvm::APFloat::rmTowardZero, &ignored)
       & APFloat::opInvalidOp)
-    return HandleOverflow(Info, E, Value, DestType);
+    HandleOverflow(Info, E, Value, DestType);
   return true;
 }
 
@@ -1181,7 +1180,7 @@ static bool HandleFloatToFloatCast(EvalInfo &Info, const Expr *E,
   if (Result.convert(Info.Ctx.getFloatTypeSemantics(DestType),
                      APFloat::rmNearestTiesToEven, &ignored)
       & APFloat::opOverflow)
-    return HandleOverflow(Info, E, Value, DestType);
+    HandleOverflow(Info, E, Value, DestType);
   return true;
 }
 
@@ -1204,7 +1203,7 @@ static bool HandleIntToFloatCast(EvalInfo &Info, const Expr *E,
   if (Result.convertFromAPInt(Value, Value.isSigned(),
                               APFloat::rmNearestTiesToEven)
       & APFloat::opOverflow)
-    return HandleOverflow(Info, E, Value, DestType);
+    HandleOverflow(Info, E, Value, DestType);
   return true;
 }
 
@@ -2323,6 +2322,9 @@ public:
     { return Visit(E->getLHS()) || Visit(E->getRHS()); }
   bool VisitChooseExpr(const ChooseExpr *E)
     { return Visit(E->getChosenSubExpr(Ctx)); }
+  bool VisitAbstractConditionalOperator(const AbstractConditionalOperator *E)
+    { return Visit(E->getCond()) || Visit(E->getTrueExpr())
+      || Visit(E->getFalseExpr()); }
   bool VisitCastExpr(const CastExpr *E) { return Visit(E->getSubExpr()); }
   bool VisitBinAssign(const BinaryOperator *E) { return true; }
   bool VisitCompoundAssignOperator(const BinaryOperator *E) { return true; }
@@ -3916,10 +3918,6 @@ bool ArrayExprEvaluator::VisitInitListExpr(const InitListExpr *E) {
 }
 
 bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
-  const ConstantArrayType *CAT = Info.Ctx.getAsConstantArrayType(E->getType());
-  if (!CAT)
-    return Error(E);
-
   // FIXME: The Subobject here isn't necessarily right. This rarely matters,
   // but sometimes does:
   //   struct S { constexpr S() : p(&p) {} void *p; };
@@ -3928,16 +3926,21 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
 
   APValue *Value = &Result;
   bool HadZeroInit = true;
-  while (CAT) {
+  QualType ElemTy = E->getType();
+  while (const ConstantArrayType *CAT =
+           Info.Ctx.getAsConstantArrayType(ElemTy)) {
     Subobject.addArray(Info, E, CAT);
     HadZeroInit &= !Value->isUninit();
     if (!HadZeroInit)
       *Value = APValue(APValue::UninitArray(), 0, CAT->getSize().getZExtValue());
     if (!Value->hasArrayFiller())
       return true;
-    CAT = Info.Ctx.getAsConstantArrayType(CAT->getElementType());
     Value = &Value->getArrayFiller();
+    ElemTy = CAT->getElementType();
   }
+
+  if (!ElemTy->isRecordType())
+    return Error(E);
 
   const CXXConstructorDecl *FD = E->getConstructor();
 
@@ -3947,7 +3950,7 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
       return true;
 
     if (ZeroInit) {
-      ImplicitValueInitExpr VIE(CAT->getElementType());
+      ImplicitValueInitExpr VIE(ElemTy);
       return EvaluateInPlace(*Value, Info, Subobject, &VIE);
     }
 
@@ -3968,7 +3971,7 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E) {
     return false;
 
   if (ZeroInit && !HadZeroInit) {
-    ImplicitValueInitExpr VIE(CAT->getElementType());
+    ImplicitValueInitExpr VIE(ElemTy);
     if (!EvaluateInPlace(*Value, Info, Subobject, &VIE))
       return false;
   }

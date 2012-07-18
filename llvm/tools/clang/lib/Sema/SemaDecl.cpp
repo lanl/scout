@@ -21,6 +21,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CXXInheritance.h"
+#include "clang/AST/CommentDiagnostic.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
@@ -1758,12 +1759,12 @@ bool Sema::mergeDeclAttribute(Decl *D, InheritableAttr *Attr) {
   return false;
 }
 
-static const Decl *getDefinition(Decl *D) {
-  if (TagDecl *TD = dyn_cast<TagDecl>(D))
+static const Decl *getDefinition(const Decl *D) {
+  if (const TagDecl *TD = dyn_cast<TagDecl>(D))
     return TD->getDefinition();
-  if (VarDecl *VD = dyn_cast<VarDecl>(D))
+  if (const VarDecl *VD = dyn_cast<VarDecl>(D))
     return VD->getDefinition();
-  if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
     const FunctionDecl* Def;
     if (FD->hasBody(Def))
       return Def;
@@ -1771,16 +1772,46 @@ static const Decl *getDefinition(Decl *D) {
   return NULL;
 }
 
+static bool hasAttribute(const Decl *D, attr::Kind Kind) {
+  for (Decl::attr_iterator I = D->attr_begin(), E = D->attr_end();
+       I != E; ++I) {
+    Attr *Attribute = *I;
+    if (Attribute->getKind() == Kind)
+      return true;
+  }
+  return false;
+}
+
+/// checkNewAttributesAfterDef - If we already have a definition, check that
+/// there are no new attributes in this declaration.
+static void checkNewAttributesAfterDef(Sema &S, Decl *New, const Decl *Old) {
+  if (!New->hasAttrs())
+    return;
+
+  const Decl *Def = getDefinition(Old);
+  if (!Def || Def == New)
+    return;
+
+  AttrVec &NewAttributes = New->getAttrs();
+  for (unsigned I = 0, E = NewAttributes.size(); I != E;) {
+    const Attr *NewAttribute = NewAttributes[I];
+    if (hasAttribute(Def, NewAttribute->getKind())) {
+      ++I;
+      continue; // regular attr merging will take care of validating this.
+    }
+    S.Diag(NewAttribute->getLocation(),
+           diag::warn_attribute_precede_definition);
+    S.Diag(Def->getLocation(), diag::note_previous_definition);
+    NewAttributes.erase(NewAttributes.begin() + I);
+    --E;
+  }
+}
+
 /// mergeDeclAttributes - Copy attributes from the Old decl to the New one.
 void Sema::mergeDeclAttributes(Decl *New, Decl *Old,
                                bool MergeDeprecation) {
   // attributes declared post-definition are currently ignored
-  const Decl *Def = getDefinition(Old);
-  if (Def && Def != New && New->hasAttrs()) {
-    Diag(New->getLocation(), diag::warn_attribute_precede_definition);
-    Diag(Def->getLocation(), diag::note_previous_definition);
-    New->dropAttrs();
-  }
+  checkNewAttributesAfterDef(*this, New, Old);
 
   if (!Old->hasAttrs())
     return;
@@ -2072,17 +2103,22 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, Decl *OldD, Scope *S) {
         //   [...] A member shall not be declared twice in the
         //   member-specification, except that a nested class or member
         //   class template can be declared and then later defined.
-        unsigned NewDiag;
-        if (isa<CXXConstructorDecl>(OldMethod))
-          NewDiag = diag::err_constructor_redeclared;
-        else if (isa<CXXDestructorDecl>(NewMethod))
-          NewDiag = diag::err_destructor_redeclared;
-        else if (isa<CXXConversionDecl>(NewMethod))
-          NewDiag = diag::err_conv_function_redeclared;
-        else
-          NewDiag = diag::err_member_redeclared;
+        if (ActiveTemplateInstantiations.empty()) {
+          unsigned NewDiag;
+          if (isa<CXXConstructorDecl>(OldMethod))
+            NewDiag = diag::err_constructor_redeclared;
+          else if (isa<CXXDestructorDecl>(NewMethod))
+            NewDiag = diag::err_destructor_redeclared;
+          else if (isa<CXXConversionDecl>(NewMethod))
+            NewDiag = diag::err_conv_function_redeclared;
+          else
+            NewDiag = diag::err_member_redeclared;
 
-        Diag(New->getLocation(), NewDiag);
+          Diag(New->getLocation(), NewDiag);
+        } else {
+          Diag(New->getLocation(), diag::err_member_redeclared_in_instantiation)
+            << New << New->getType();
+        }
         Diag(Old->getLocation(), PrevDiag) << Old << Old->getType();
 
       // Complain if this is an explicit declaration of a special
@@ -2712,6 +2748,8 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       }
     }
   }
+
+  ActOnDocumentableDecl(TagD);
 
   return TagD;
 }
@@ -7122,9 +7160,55 @@ Sema::BuildDeclaratorGroup(Decl **Group, unsigned NumDecls,
     }
   }
 
+  ActOnDocumentableDecls(Group, NumDecls);
+
   return DeclGroupPtrTy::make(DeclGroupRef::Create(Context, Group, NumDecls));
 }
 
+void Sema::ActOnDocumentableDecl(Decl *D) {
+  ActOnDocumentableDecls(&D, 1);
+}
+
+void Sema::ActOnDocumentableDecls(Decl **Group, unsigned NumDecls) {
+  // Don't parse the comment if Doxygen diagnostics are ignored.
+  if (NumDecls == 0 || !Group[0])
+   return;
+
+  if (Diags.getDiagnosticLevel(diag::warn_doc_param_not_found,
+                               Group[0]->getLocation())
+        == DiagnosticsEngine::Ignored)
+    return;
+
+  if (NumDecls >= 2) {
+    // This is a decl group.  Normally it will contain only declarations
+    // procuded from declarator list.  But in case we have any definitions or
+    // additional declaration references:
+    //   'typedef struct S {} S;'
+    //   'typedef struct S *S;'
+    //   'struct S *pS;'
+    // FinalizeDeclaratorGroup adds these as separate declarations.
+    Decl *MaybeTagDecl = Group[0];
+    if (MaybeTagDecl && isa<TagDecl>(MaybeTagDecl)) {
+      Group++;
+      NumDecls--;
+    }
+  }
+
+  // See if there are any new comments that are not attached to a decl.
+  ArrayRef<RawComment *> Comments = Context.getRawCommentList().getComments();
+  if (!Comments.empty() &&
+      !Comments.back()->isAttached()) {
+    // There is at least one comment that not attached to a decl.
+    // Maybe it should be attached to one of these decls?
+    //
+    // Note that this way we pick up not only comments that precede the
+    // declaration, but also comments that *follow* the declaration -- thanks to
+    // the lookahead in the lexer: we've consumed the semicolon and looked
+    // ahead through comments.
+    for (unsigned i = 0; i != NumDecls; ++i)
+      Context.getCommentForDecl(Group[i]);
+  }
+}
 
 /// ActOnParamDeclarator - Called from Parser::ParseFunctionDeclarator()
 /// to introduce parameters into function prototype scope.
@@ -8878,6 +8962,10 @@ CreateNewDecl:
   if (PrevDecl)
     mergeDeclAttributes(New, PrevDecl);
 
+  // If there's a #pragma GCC visibility in scope, set the visibility of this
+  // record.
+  AddPushedVisibilityAttribute(New);
+
   OwnedDecl = true;
   return New;
 }
@@ -8888,6 +8976,12 @@ void Sema::ActOnTagStartDefinition(Scope *S, Decl *TagD) {
 
   // Enter the tag context.
   PushDeclContext(S, Tag);
+
+  ActOnDocumentableDecl(TagD);
+
+  // If there's a #pragma GCC visibility in scope, set the visibility of this
+  // record.
+  AddPushedVisibilityAttribute(Tag);
 }
 
 Decl *Sema::ActOnObjCContainerStartDefinition(Decl *IDecl) {
@@ -10081,11 +10175,6 @@ void Sema::ActOnFields(Scope* S,
 
   if (Attr)
     ProcessDeclAttributeList(S, Record, Attr);
-
-  // If there's a #pragma GCC visibility in scope, and this isn't a subclass,
-  // set the visibility of this record.
-  if (Record && !Record->getDeclContext()->isRecord())
-    AddPushedVisibilityAttribute(Record);
 }
 
 /// \brief Determine whether the given integral value is representable within
@@ -10362,6 +10451,8 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
     PushOnScopeChains(New, S);
   }
 
+  ActOnDocumentableDecl(New);
+
   return New;
 }
 
@@ -10400,7 +10491,7 @@ static void CheckForUniqueEnumValues(Sema &S, Decl **Elements,
       continue;
     }
 
-    if (FirstVal != ECD->getInitVal())
+    if (!llvm::APSInt::isSameValue(FirstVal, ECD->getInitVal()))
       return;
   }
 

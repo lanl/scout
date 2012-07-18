@@ -7274,7 +7274,7 @@ let ExeDomain = SSEPackedSingle in {
                                       int_x86_avx_vbroadcast_ss_256>;
 }
 let ExeDomain = SSEPackedDouble in
-def VBROADCASTSDrm  : avx_broadcast<0x19, "vbroadcastsd", VR256, f64mem,
+def VBROADCASTSDYrm  : avx_broadcast<0x19, "vbroadcastsd", VR256, f64mem,
                                     int_x86_avx_vbroadcast_sd_256>;
 def VBROADCASTF128 : avx_broadcast<0x1A, "vbroadcastf128", VR256, f128mem,
                                    int_x86_avx_vbroadcastf128_pd_256>;
@@ -7753,11 +7753,11 @@ let Predicates = [HasAVX] in {
 def : Pat<(v8i32 (X86VBroadcast (loadi32 addr:$src))),
           (VBROADCASTSSYrm addr:$src)>;
 def : Pat<(v4i64 (X86VBroadcast (loadi64 addr:$src))),
-          (VBROADCASTSDrm addr:$src)>;
+          (VBROADCASTSDYrm addr:$src)>;
 def : Pat<(v8f32 (X86VBroadcast (loadf32 addr:$src))),
           (VBROADCASTSSYrm addr:$src)>;
 def : Pat<(v4f64 (X86VBroadcast (loadf64 addr:$src))),
-          (VBROADCASTSDrm addr:$src)>;
+          (VBROADCASTSDYrm addr:$src)>;
 def : Pat<(v4f32 (X86VBroadcast (loadf32 addr:$src))),
           (VBROADCASTSSrm addr:$src)>;
 def : Pat<(v4i32 (X86VBroadcast (loadi32 addr:$src))),
@@ -7781,11 +7781,12 @@ def : Pat<(v4i32 (X86VBroadcast (loadi32 addr:$src))),
   def : Pat<(v4f64 (X86VBroadcast FR64:$src)),
             (VINSERTF128rr (INSERT_SUBREG (v4f64 (IMPLICIT_DEF)),
               (VPSHUFDri
-                (INSERT_SUBREG (v2f64 (IMPLICIT_DEF)), FR64:$src, sub_sd), 0),
-                  sub_xmm),
+                (INSERT_SUBREG (v2f64 (IMPLICIT_DEF)), FR64:$src, sub_sd),
+                0x44),
+              sub_xmm),
               (VPSHUFDri
                 (INSERT_SUBREG (v2f64 (IMPLICIT_DEF)), FR64:$src, sub_sd),
-              0), 1)>;
+                0x44), 1)>;
 
   def : Pat<(v4i32 (X86VBroadcast GR32:$src)),
             (VPSHUFDri
@@ -7801,11 +7802,12 @@ def : Pat<(v4i32 (X86VBroadcast (loadi32 addr:$src))),
   def : Pat<(v4i64 (X86VBroadcast GR64:$src)),
             (VINSERTF128rr (INSERT_SUBREG (v4i64 (IMPLICIT_DEF)),
               (VPSHUFDri
-                (INSERT_SUBREG (v2i64 (IMPLICIT_DEF)), GR64:$src, sub_sd), 0),
-                  sub_xmm),
+                (INSERT_SUBREG (v2i64 (IMPLICIT_DEF)), GR64:$src, sub_sd),
+                0x44),
+              sub_xmm),
               (VPSHUFDri
                 (INSERT_SUBREG (v2i64 (IMPLICIT_DEF)), GR64:$src, sub_sd),
-              0), 1)>;
+                0x44), 1)>;
   }
 }
 
@@ -7899,8 +7901,8 @@ let neverHasSideEffects = 1 in {
 def VINSERTI128rr : AVX2AIi8<0x38, MRMSrcReg, (outs VR256:$dst),
           (ins VR256:$src1, VR128:$src2, i8imm:$src3),
           "vinserti128\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
-          []>,
-          VEX_4V;
+          []>, VEX_4V;
+let mayLoad = 1 in
 def VINSERTI128rm : AVX2AIi8<0x38, MRMSrcMem, (outs VR256:$dst),
           (ins VR256:$src1, i128mem:$src2, i8imm:$src3),
           "vinserti128\t{$src3, $src2, $src1, $dst|$dst, $src1, $src2, $src3}",
@@ -8036,27 +8038,27 @@ defm VPSRAVD : avx2_var_shift<0x46, "vpsravd", sra, v4i32, v8i32>;
 
 //===----------------------------------------------------------------------===//
 // VGATHER - GATHER Operations
-multiclass avx2_gather<bits<8> opc, string OpcodeStr,
-                       RegisterClass RC256, X86MemOperand memop256> {
-  def rm  : AVX28I<opc, MRMSrcMem, (outs VR128:$dst),
-            (ins VR128:$src1, v128mem:$src2, VR128:$mask),
+multiclass avx2_gather<bits<8> opc, string OpcodeStr, RegisterClass RC256,
+                       X86MemOperand memop128, X86MemOperand memop256> {
+  def rm  : AVX28I<opc, MRMSrcMem, (outs VR128:$dst, VR128:$mask_wb),
+            (ins VR128:$src1, memop128:$src2, VR128:$mask),
             !strconcat(OpcodeStr,
               "\t{$mask, $src2, $dst|$dst, $src2, $mask}"),
             []>, VEX_4VOp3;
-  def Yrm : AVX28I<opc, MRMSrcMem, (outs RC256:$dst),
+  def Yrm : AVX28I<opc, MRMSrcMem, (outs RC256:$dst, RC256:$mask_wb),
             (ins RC256:$src1, memop256:$src2, RC256:$mask),
             !strconcat(OpcodeStr,
               "\t{$mask, $src2, $dst|$dst, $src2, $mask}"),
             []>, VEX_4VOp3, VEX_L;
 }
 
-let Constraints = "$src1 = $dst" in {
-  defm VGATHERDPD : avx2_gather<0x92, "vgatherdpd", VR256, v128mem>, VEX_W;
-  defm VGATHERQPD : avx2_gather<0x93, "vgatherqpd", VR256, v256mem>, VEX_W;
-  defm VGATHERDPS : avx2_gather<0x92, "vgatherdps", VR256, v256mem>;
-  defm VGATHERQPS : avx2_gather<0x93, "vgatherqps", VR128, v256mem>;
-  defm VPGATHERDQ : avx2_gather<0x90, "vpgatherdq", VR256, v128mem>, VEX_W;
-  defm VPGATHERQQ : avx2_gather<0x91, "vpgatherqq", VR256, v256mem>, VEX_W;
-  defm VPGATHERDD : avx2_gather<0x90, "vpgatherdd", VR256, v256mem>;
-  defm VPGATHERQD : avx2_gather<0x91, "vpgatherqd", VR128, v256mem>;
+let Constraints = "$src1 = $dst, $mask = $mask_wb" in {
+  defm VGATHERDPD : avx2_gather<0x92, "vgatherdpd", VR256, vx64mem, vx64mem>, VEX_W;
+  defm VGATHERQPD : avx2_gather<0x93, "vgatherqpd", VR256, vx64mem, vy64mem>, VEX_W;
+  defm VGATHERDPS : avx2_gather<0x92, "vgatherdps", VR256, vx32mem, vy32mem>;
+  defm VGATHERQPS : avx2_gather<0x93, "vgatherqps", VR128, vx32mem, vy32mem>;
+  defm VPGATHERDQ : avx2_gather<0x90, "vpgatherdq", VR256, vx64mem, vx64mem>, VEX_W;
+  defm VPGATHERQQ : avx2_gather<0x91, "vpgatherqq", VR256, vx64mem, vy64mem>, VEX_W;
+  defm VPGATHERDD : avx2_gather<0x90, "vpgatherdd", VR256, vx32mem, vy32mem>;
+  defm VPGATHERQD : avx2_gather<0x91, "vpgatherqd", VR128, vx32mem, vy32mem>;
 }

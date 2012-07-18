@@ -9,13 +9,16 @@
 
 #include "clang/AST/CommentParser.h"
 #include "clang/AST/CommentSema.h"
+#include "clang/AST/CommentDiagnostic.h"
+#include "clang/Basic/SourceManager.h"
 #include "llvm/Support/ErrorHandling.h"
 
 namespace clang {
 namespace comments {
 
-Parser::Parser(Lexer &L, Sema &S, llvm::BumpPtrAllocator &Allocator):
-    L(L), S(S), Allocator(Allocator) {
+Parser::Parser(Lexer &L, Sema &S, llvm::BumpPtrAllocator &Allocator,
+               const SourceManager &SourceMgr, DiagnosticsEngine &Diags):
+    L(L), S(S), Allocator(Allocator), SourceMgr(SourceMgr), Diags(Diags) {
   consumeToken();
 }
 
@@ -26,18 +29,16 @@ ParamCommandComment *Parser::parseParamCommandArgs(
   // Check if argument looks like direction specification: [dir]
   // e.g., [in], [out], [in,out]
   if (Retokenizer.lexDelimitedSeq(Arg, '[', ']'))
-    PC = S.actOnParamCommandArg(PC,
-                                Arg.getLocation(),
-                                Arg.getEndLocation(),
-                                Arg.getText(),
-                                /* IsDirection = */ true);
+    PC = S.actOnParamCommandDirectionArg(PC,
+                                         Arg.getLocation(),
+                                         Arg.getEndLocation(),
+                                         Arg.getText());
 
   if (Retokenizer.lexWord(Arg))
-    PC = S.actOnParamCommandArg(PC,
-                                Arg.getLocation(),
-                                Arg.getEndLocation(),
-                                Arg.getText(),
-                                /* IsDirection = */ false);
+    PC = S.actOnParamCommandParamNameArg(PC,
+                                         Arg.getLocation(),
+                                         Arg.getEndLocation(),
+                                         Arg.getText());
 
   return PC;
 }
@@ -84,7 +85,6 @@ BlockCommandComment *Parser::parseBlockCommand() {
   if (Tok.is(tok::command) && S.isBlockCommand(Tok.getCommandName())) {
     // Block command ahead.  We can't nest block commands, so pretend that this
     // command has an empty argument.
-    // TODO: Diag() Warn empty arg to block command
     ParagraphComment *PC = S.actOnParagraphComment(
                                 ArrayRef<InlineContentComment *>());
     return S.actOnBlockCommandFinish(BC, PC);
@@ -155,32 +155,38 @@ InlineCommandComment *Parser::parseInlineCommand() {
   return IC;
 }
 
-HTMLOpenTagComment *Parser::parseHTMLOpenTag() {
-  assert(Tok.is(tok::html_tag_open));
-  HTMLOpenTagComment *HOT =
-      S.actOnHTMLOpenTagStart(Tok.getLocation(),
-                              Tok.getHTMLTagOpenName());
+HTMLStartTagComment *Parser::parseHTMLStartTag() {
+  assert(Tok.is(tok::html_start_tag));
+  HTMLStartTagComment *HST =
+      S.actOnHTMLStartTagStart(Tok.getLocation(),
+                               Tok.getHTMLTagStartName());
   consumeToken();
 
-  SmallVector<HTMLOpenTagComment::Attribute, 2> Attrs;
+  SmallVector<HTMLStartTagComment::Attribute, 2> Attrs;
   while (true) {
-    if (Tok.is(tok::html_ident)) {
+    switch (Tok.getKind()) {
+    case tok::html_ident: {
       Token Ident = Tok;
       consumeToken();
       if (Tok.isNot(tok::html_equals)) {
-        Attrs.push_back(HTMLOpenTagComment::Attribute(Ident.getLocation(),
-                                                      Ident.getHTMLIdent()));
+        Attrs.push_back(HTMLStartTagComment::Attribute(Ident.getLocation(),
+                                                       Ident.getHTMLIdent()));
         continue;
       }
       Token Equals = Tok;
       consumeToken();
       if (Tok.isNot(tok::html_quoted_string)) {
-        // TODO: Diag() expected quoted string
-        Attrs.push_back(HTMLOpenTagComment::Attribute(Ident.getLocation(),
-                                                      Ident.getHTMLIdent()));
+        Diag(Tok.getLocation(),
+             diag::warn_doc_html_start_tag_expected_quoted_string)
+          << SourceRange(Equals.getLocation());
+        Attrs.push_back(HTMLStartTagComment::Attribute(Ident.getLocation(),
+                                                       Ident.getHTMLIdent()));
+        while (Tok.is(tok::html_equals) ||
+               Tok.is(tok::html_quoted_string))
+          consumeToken();
         continue;
       }
-      Attrs.push_back(HTMLOpenTagComment::Attribute(
+      Attrs.push_back(HTMLStartTagComment::Attribute(
                               Ident.getLocation(),
                               Ident.getHTMLIdent(),
                               Equals.getLocation(),
@@ -189,31 +195,73 @@ HTMLOpenTagComment *Parser::parseHTMLOpenTag() {
                               Tok.getHTMLQuotedString()));
       consumeToken();
       continue;
-    } else if (Tok.is(tok::html_greater)) {
-      HOT = S.actOnHTMLOpenTagFinish(HOT,
-                                     copyArray(llvm::makeArrayRef(Attrs)),
-                                     Tok.getLocation());
+    }
+
+    case tok::html_greater:
+      HST = S.actOnHTMLStartTagFinish(HST,
+                                      copyArray(llvm::makeArrayRef(Attrs)),
+                                      Tok.getLocation(),
+                                      /* IsSelfClosing = */ false);
       consumeToken();
-      return HOT;
-    } else if (Tok.is(tok::html_equals) ||
-               Tok.is(tok::html_quoted_string)) {
-      // TODO: Diag() Err expected ident
+      return HST;
+
+    case tok::html_slash_greater:
+      HST = S.actOnHTMLStartTagFinish(HST,
+                                      copyArray(llvm::makeArrayRef(Attrs)),
+                                      Tok.getLocation(),
+                                      /* IsSelfClosing = */ true);
+      consumeToken();
+      return HST;
+
+    case tok::html_equals:
+    case tok::html_quoted_string:
+      Diag(Tok.getLocation(),
+           diag::warn_doc_html_start_tag_expected_ident_or_greater);
       while (Tok.is(tok::html_equals) ||
              Tok.is(tok::html_quoted_string))
         consumeToken();
-    } else {
-      // Not a token from HTML open tag.  Thus HTML tag prematurely ended.
-      // TODO: Diag() Err HTML tag prematurely ended
-      return S.actOnHTMLOpenTagFinish(HOT,
+      if (Tok.is(tok::html_ident) ||
+          Tok.is(tok::html_greater) ||
+          Tok.is(tok::html_slash_greater))
+        continue;
+
+      return S.actOnHTMLStartTagFinish(HST,
+                                       copyArray(llvm::makeArrayRef(Attrs)),
+                                       SourceLocation(),
+                                       /* IsSelfClosing = */ false);
+
+    default:
+      // Not a token from an HTML start tag.  Thus HTML tag prematurely ended.
+      HST = S.actOnHTMLStartTagFinish(HST,
                                       copyArray(llvm::makeArrayRef(Attrs)),
-                                      SourceLocation());
+                                      SourceLocation(),
+                                      /* IsSelfClosing = */ false);
+      bool StartLineInvalid;
+      const unsigned StartLine = SourceMgr.getPresumedLineNumber(
+                                                  HST->getLocation(),
+                                                  &StartLineInvalid);
+      bool EndLineInvalid;
+      const unsigned EndLine = SourceMgr.getPresumedLineNumber(
+                                                  Tok.getLocation(),
+                                                  &EndLineInvalid);
+      if (StartLineInvalid || EndLineInvalid || StartLine == EndLine)
+        Diag(Tok.getLocation(),
+             diag::warn_doc_html_start_tag_expected_ident_or_greater)
+          << HST->getSourceRange();
+      else {
+        Diag(Tok.getLocation(),
+             diag::warn_doc_html_start_tag_expected_ident_or_greater);
+        Diag(HST->getLocation(), diag::note_doc_html_tag_started_here)
+          << HST->getSourceRange();
+      }
+      return HST;
     }
   }
 }
 
-HTMLCloseTagComment *Parser::parseHTMLCloseTag() {
-  assert(Tok.is(tok::html_tag_close));
-  Token TokTagOpen = Tok;
+HTMLEndTagComment *Parser::parseHTMLEndTag() {
+  assert(Tok.is(tok::html_end_tag));
+  Token TokEndTag = Tok;
   consumeToken();
   SourceLocation Loc;
   if (Tok.is(tok::html_greater)) {
@@ -221,9 +269,9 @@ HTMLCloseTagComment *Parser::parseHTMLCloseTag() {
     consumeToken();
   }
 
-  return S.actOnHTMLCloseTag(TokTagOpen.getLocation(),
-                             Loc,
-                             TokTagOpen.getHTMLTagCloseName());
+  return S.actOnHTMLEndTag(TokEndTag.getLocation(),
+                           Loc,
+                           TokEndTag.getHTMLTagEndName());
 }
 
 BlockContentComment *Parser::parseParagraphOrBlockCommand() {
@@ -267,12 +315,12 @@ BlockContentComment *Parser::parseParagraphOrBlockCommand() {
     }
 
     // Don't deal with HTML tag soup now.
-    case tok::html_tag_open:
-      Content.push_back(parseHTMLOpenTag());
+    case tok::html_start_tag:
+      Content.push_back(parseHTMLStartTag());
       continue;
 
-    case tok::html_tag_close:
-      Content.push_back(parseHTMLCloseTag());
+    case tok::html_end_tag:
+      Content.push_back(parseHTMLEndTag());
       continue;
 
     case tok::text:
@@ -289,6 +337,7 @@ BlockContentComment *Parser::parseParagraphOrBlockCommand() {
     case tok::html_equals:
     case tok::html_quoted_string:
     case tok::html_greater:
+    case tok::html_slash_greater:
       llvm_unreachable("should not see this token");
     }
     break;
@@ -369,8 +418,8 @@ BlockContentComment *Parser::parseBlockContent() {
   switch (Tok.getKind()) {
   case tok::text:
   case tok::command:
-  case tok::html_tag_open:
-  case tok::html_tag_close:
+  case tok::html_start_tag:
+  case tok::html_end_tag:
     return parseParagraphOrBlockCommand();
 
   case tok::verbatim_block_begin:
@@ -388,6 +437,7 @@ BlockContentComment *Parser::parseBlockContent() {
   case tok::html_equals:
   case tok::html_quoted_string:
   case tok::html_greater:
+  case tok::html_slash_greater:
     llvm_unreachable("should not see this token");
   }
   llvm_unreachable("bogus token kind");

@@ -57,7 +57,9 @@ def DeprecatedImplementations :DiagGroup<"deprecated-implementations">;
 def : DiagGroup<"disabled-optimization">;
 def : DiagGroup<"discard-qual">;
 def : DiagGroup<"div-by-zero">;
-def Doxygen : DiagGroup<"doxygen">;
+def DocumentationHTML : DiagGroup<"documentation-html">;
+def DocumentationPedantic : DiagGroup<"documentation-pedantic">;
+def Documentation : DiagGroup<"documentation", [DocumentationHTML]>;
 def EmptyBody : DiagGroup<"empty-body">;
 def ExtraTokens : DiagGroup<"extra-tokens">;
 
@@ -433,4 +435,9 @@ def ObjCRedundantAPIUse : DiagGroup<"objc-redundant-api-use", [
 
 def ObjCCocoaAPI : DiagGroup<"objc-cocoa-api", [
     ObjCRedundantAPIUse
+  ]>;
+
+def ObjCStringComparison : DiagGroup<"objc-string-compare">;
+def ObjCLiteralComparison : DiagGroup<"objc-literal-compare", [
+    ObjCStringComparison
   ]>;

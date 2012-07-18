@@ -2322,6 +2322,55 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
           }
         }
       }
+
+    if (C1.getMinSignedBits() <= 64 &&
+        !isLegalICmpImmediate(C1.getSExtValue())) {
+      // (X & -256) == 256 -> (X >> 8) == 1
+      if ((Cond == ISD::SETEQ || Cond == ISD::SETNE) &&
+          N0.getOpcode() == ISD::AND && N0.hasOneUse()) {
+        if (ConstantSDNode *AndRHS =
+            dyn_cast<ConstantSDNode>(N0.getOperand(1))) {
+          const APInt &AndRHSC = AndRHS->getAPIntValue();
+          if ((-AndRHSC).isPowerOf2() && (AndRHSC & C1) == C1) {
+            unsigned ShiftBits = AndRHSC.countTrailingZeros();
+            EVT ShiftTy = DCI.isBeforeLegalize() ?
+              getPointerTy() : getShiftAmountTy(N0.getValueType());
+            EVT CmpTy = N0.getValueType();
+            SDValue Shift = DAG.getNode(ISD::SRL, dl, CmpTy, N0.getOperand(0),
+                                        DAG.getConstant(ShiftBits, ShiftTy));
+            SDValue CmpRHS = DAG.getConstant(C1.lshr(ShiftBits), CmpTy);
+            return DAG.getSetCC(dl, VT, Shift, CmpRHS, Cond);
+          }
+        }
+      } else if (Cond == ISD::SETULT || Cond == ISD::SETUGE ||
+                 Cond == ISD::SETULE || Cond == ISD::SETUGT) {
+        bool AdjOne = (Cond == ISD::SETULE || Cond == ISD::SETUGT);
+        // X <  0x100000000 -> (X >> 32) <  1
+        // X >= 0x100000000 -> (X >> 32) >= 1
+        // X <= 0x0ffffffff -> (X >> 32) <  1
+        // X >  0x0ffffffff -> (X >> 32) >= 1
+        unsigned ShiftBits;
+        APInt NewC = C1;
+        ISD::CondCode NewCond = Cond;
+        if (AdjOne) {
+          ShiftBits = C1.countTrailingOnes();
+          NewC = NewC + 1;
+          NewCond = (Cond == ISD::SETULE) ? ISD::SETULT : ISD::SETUGE;
+        } else {
+          ShiftBits = C1.countTrailingZeros();
+        }
+        NewC = NewC.lshr(ShiftBits);
+        if (ShiftBits && isLegalICmpImmediate(NewC.getSExtValue())) {
+          EVT ShiftTy = DCI.isBeforeLegalize() ?
+            getPointerTy() : getShiftAmountTy(N0.getValueType());
+          EVT CmpTy = N0.getValueType();
+          SDValue Shift = DAG.getNode(ISD::SRL, dl, CmpTy, N0,
+                                      DAG.getConstant(ShiftBits, ShiftTy));
+          SDValue CmpRHS = DAG.getConstant(NewC, CmpTy);
+          return DAG.getSetCC(dl, VT, Shift, CmpRHS, NewCond);
+        }
+      }
+    }
   }
 
   if (isa<ConstantFPSDNode>(N0.getNode())) {

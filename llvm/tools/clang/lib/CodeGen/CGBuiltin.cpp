@@ -1629,13 +1629,17 @@ Value *CodeGenFunction::EmitARMBuiltinExpr(unsigned BuiltinID,
   }
   case ARM::BI__builtin_neon_vclz_v:
   case ARM::BI__builtin_neon_vclzq_v: {
-    Function *F = CGM.getIntrinsic(Intrinsic::arm_neon_vclz, Ty);
+    // Generate target-independent intrinsic; also need to add second argument
+    // for whether or not clz of zero is undefined; on ARM it isn't.
+    Function *F = CGM.getIntrinsic(Intrinsic::ctlz, Ty);
+    Ops.push_back(Builder.getInt1(Target.isCLZForZeroUndef()));
     return EmitNeonCall(F, Ops, "vclz");
   }
   case ARM::BI__builtin_neon_vcnt_v:
   case ARM::BI__builtin_neon_vcntq_v: {
-    Function *F = CGM.getIntrinsic(Intrinsic::arm_neon_vcnt, Ty);
-    return EmitNeonCall(F, Ops, "vcnt");
+    // generate target-independent intrinsic
+    Function *F = CGM.getIntrinsic(Intrinsic::ctpop, Ty);
+    return EmitNeonCall(F, Ops, "vctpop");
   }
   case ARM::BI__builtin_neon_vcvt_f16_v: {
     assert(Type.getEltType() == NeonTypeFlags::Float16 && !quad &&
@@ -2446,6 +2450,27 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     Ops[0] = Builder.CreateBitCast(Ops[0], MMXTy, "cast");
     llvm::Function *F = CGM.getIntrinsic(ID);
     return Builder.CreateCall(F, Ops, name);
+  }
+  case X86::BI__builtin_ia32_rdrand16_step:
+  case X86::BI__builtin_ia32_rdrand32_step:
+  case X86::BI__builtin_ia32_rdrand64_step: {
+    Intrinsic::ID ID;
+    switch (BuiltinID) {
+    default: llvm_unreachable("Unsupported intrinsic!");
+    case X86::BI__builtin_ia32_rdrand16_step:
+      ID = Intrinsic::x86_rdrand_16;
+      break;
+    case X86::BI__builtin_ia32_rdrand32_step:
+      ID = Intrinsic::x86_rdrand_32;
+      break;
+    case X86::BI__builtin_ia32_rdrand64_step:
+      ID = Intrinsic::x86_rdrand_64;
+      break;
+    }
+
+    Value *Call = Builder.CreateCall(CGM.getIntrinsic(ID));
+    Builder.CreateStore(Builder.CreateExtractValue(Call, 0), Ops[0]);
+    return Builder.CreateExtractValue(Call, 1);
   }
   }
 }
