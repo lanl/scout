@@ -26,8 +26,9 @@ namespace scout
   class window_rt {
 
    public:
-  
-    window_rt(dim_t w, dim_t h, float4 bgColor,
+ 
+    // r, g, b and a are for background color 
+    window_rt(dim_t w, dim_t h, float bg_r, float bg_g, float bg_b, float bg_a,
 	      bool saveFrames, const char* filename)
         : width(w), height(h)
     { }

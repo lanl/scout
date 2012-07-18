@@ -9,11 +9,12 @@
 #include "runtime/volume_renderall.h"
 
 extern scout::tbq_rt* __sc_tbq;
+extern scout::glCamera* __sc_camera;
 
 extern const size_t __sc_initial_width;
 extern const size_t __sc_initial_height;
 
-void __sc_init_sdl(size_t width, size_t height, scout::glCamera* camera = NULL);
+void __sc_init_sdl(size_t width, size_t height, scout::glCamera* cam = NULL);
 
 void __sc_init(int argc, char** argv, bool gpu);
 
