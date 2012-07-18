@@ -13,15 +13,15 @@ enable_testing()
 set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
-find_package(SDL)
+#find_library(GLFW glfw)
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
-  ${SDL_INCLUDE_DIR} 
-  $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
+  ${SDL_INCLUDE_DIR}
+#  ${GLFW_INCLUDE_DIR} 
 )
 
 if(${MPI_FOUND})

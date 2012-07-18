@@ -106,16 +106,16 @@ namespace scout
     virtual bool processEvent() = 0;
     virtual void eventLoop() = 0;
 
-    virtual void keyPressEvent() = 0;
-    virtual void keyReleaseEvent() = 0;        
-    virtual void mousePressLeft() = 0;
-    virtual void mousePressMiddle() = 0;
-    virtual void mousePressRight() = 0;
-    virtual void mouseReleaseLeft() = 0;    
-    virtual void mouseReleaseMiddle() = 0;    
-    virtual void mouseReleaseRight() = 0;    
-    virtual void mouseMoveEvent() = 0;
-    virtual void resizeEvent() = 0;
+    virtual void keyPressEvent(){};
+    virtual void keyReleaseEvent(){};        
+    virtual void mousePressLeft(){};
+    virtual void mousePressMiddle(){};
+    virtual void mousePressRight(){};
+    virtual void mouseReleaseLeft(){};    
+    virtual void mouseReleaseMiddle(){};    
+    virtual void mouseReleaseRight(){};    
+    virtual void mouseMoveEvent(){};
+    virtual void resizeEvent(){};
 
     void saveState();
     void restoreState();

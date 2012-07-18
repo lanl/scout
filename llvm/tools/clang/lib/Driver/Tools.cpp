@@ -4501,6 +4501,7 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lscRuntime");
   CmdArgs.push_back("-lscStandard");
   CmdArgs.push_back("-lhwloc");
+  //CmdArgs.push_back("-lglfw");
   CmdArgs.push_back("-lSDL");
   CmdArgs.push_back("-framework");
   CmdArgs.push_back("Foundation");
@@ -5701,6 +5702,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lGL");
   CmdArgs.push_back("-lGLU");
   CmdArgs.push_back("-lSDL");
+  //CmdArgs.push_back("-lglfw");
 
 #ifdef SC_ENABLE_CUDA
   CmdArgs.push_back("-lcuda");
