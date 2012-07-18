@@ -13,6 +13,8 @@ enable_testing()
 set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
+find_package(SDL)
+
 #find_library(GLFW glfw)
 
 include_directories(
