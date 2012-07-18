@@ -23,7 +23,8 @@ include_directories(
   ${HWLOC_INCLUDE_DIR}
   ${SCOUT_SRC_DIR}/packages/hwloc/include
   ${SDL_INCLUDE_DIR}
-#  ${GLFW_INCLUDE_DIR} 
+  $ENV{SDLDIR}/include
+#  ${GLFW_INCLUDE_DIR}
 )
 
 if(${MPI_FOUND})
