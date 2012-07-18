@@ -1,0 +1,8 @@
+add_subdirectory(libclang)
+add_subdirectory(c-index-test)
+add_subdirectory(arcmt-test)
+add_subdirectory(c-arcmt-test)
+add_subdirectory(diagtool)
+add_subdirectory(driver)
+add_subdirectory(clang-check)
+add_subdirectory(clang-ast-dump)
