@@ -56,6 +56,6 @@ clean:
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
-	-@((test -f packages/hwloc/Makefile) && (cd packages/hwloc; make distclean > /dev/null))
+	-@((test -f packages/hwloc-1.4.2/Makefile) && (cd packages/hwloc-1.4.2; make distclean > /dev/null))
 	-@((test -f packages/libpng-1.5.4/Makefile) && (cd packages/libpng-1.5.4; make distclean > /dev/null))
 
