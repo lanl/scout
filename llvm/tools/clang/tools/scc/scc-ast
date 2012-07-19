@@ -1,0 +1,5 @@
+#!/bin/sh
+
+DIR=$(dirname $0)
+$DIR/scc -Xclang -view-ast $@ | dot -Tpdf > scc-ast.pdf
+
