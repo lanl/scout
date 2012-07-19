@@ -23,6 +23,9 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
+// scout
+#include "clang/AST/Expr.h"
+
 static struct StmtClassNameTable {
   const char *Name;
   unsigned Counter;
@@ -361,7 +364,7 @@ void AsmStmt::setOutputsAndInputsAndClobbers(ASTContext &C,
                                              StringLiteral **Constraints,
                                              Stmt **Exprs,
                                              unsigned NumOutputs,
-                                             unsigned NumInputs,                                      
+                                             unsigned NumInputs,
                                              StringLiteral **Clobbers,
                                              unsigned NumClobbers) {
   this->NumOutputs = NumOutputs;
@@ -369,19 +372,19 @@ void AsmStmt::setOutputsAndInputsAndClobbers(ASTContext &C,
   this->NumClobbers = NumClobbers;
 
   unsigned NumExprs = NumOutputs + NumInputs;
-  
+
   C.Deallocate(this->Names);
   this->Names = new (C) IdentifierInfo*[NumExprs];
   std::copy(Names, Names + NumExprs, this->Names);
-  
+
   C.Deallocate(this->Exprs);
   this->Exprs = new (C) Stmt*[NumExprs];
   std::copy(Exprs, Exprs + NumExprs, this->Exprs);
-  
+
   C.Deallocate(this->Constraints);
   this->Constraints = new (C) StringLiteral*[NumExprs];
   std::copy(Constraints, Constraints + NumExprs, this->Constraints);
-  
+
   C.Deallocate(this->Clobbers);
   this->Clobbers = new (C) StringLiteral*[NumClobbers];
   std::copy(Clobbers, Clobbers + NumClobbers, this->Clobbers);
@@ -440,7 +443,7 @@ unsigned AsmStmt::AnalyzeAsmString(SmallVectorImpl<AsmStringPiece>&Pieces,
   std::string CurStringPiece;
 
   bool HasVariants = !C.getTargetInfo().hasNoAsmVariants();
-  
+
   while (1) {
     // Done with the string?
     if (CurPtr == StrEnd) {
@@ -461,7 +464,7 @@ unsigned AsmStmt::AnalyzeAsmString(SmallVectorImpl<AsmStringPiece>&Pieces,
       CurStringPiece += CurChar;
       continue;
     }
-    
+
     // Escaped "%" character in asm string.
     if (CurPtr == StrEnd) {
       // % at end of string is invalid (no escape).
@@ -558,8 +561,8 @@ QualType CXXCatchStmt::getCaughtType() const {
 // Constructors
 //===----------------------------------------------------------------------===//
 
-AsmStmt::AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple, 
-                 bool isvolatile, bool msasm, 
+AsmStmt::AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
+                 bool isvolatile, bool msasm,
                  unsigned numoutputs, unsigned numinputs,
                  IdentifierInfo **names, StringLiteral **constraints,
                  Expr **exprs, StringLiteral *asmstr, unsigned numclobbers,
@@ -569,7 +572,7 @@ AsmStmt::AsmStmt(ASTContext &C, SourceLocation asmloc, bool issimple,
   , NumOutputs(numoutputs), NumInputs(numinputs), NumClobbers(numclobbers) {
 
   unsigned NumExprs = NumOutputs +NumInputs;
-    
+
   Names = new (C) IdentifierInfo*[NumExprs];
   std::copy(names, names + NumExprs, Names);
 
@@ -610,31 +613,31 @@ ObjCAtTryStmt::ObjCAtTryStmt(SourceLocation atTryLoc, Stmt *atTryStmt,
   Stmts[0] = atTryStmt;
   for (unsigned I = 0; I != NumCatchStmts; ++I)
     Stmts[I + 1] = CatchStmts[I];
-  
+
   if (HasFinally)
     Stmts[NumCatchStmts + 1] = atFinallyStmt;
 }
 
-ObjCAtTryStmt *ObjCAtTryStmt::Create(ASTContext &Context, 
-                                     SourceLocation atTryLoc, 
+ObjCAtTryStmt *ObjCAtTryStmt::Create(ASTContext &Context,
+                                     SourceLocation atTryLoc,
                                      Stmt *atTryStmt,
-                                     Stmt **CatchStmts, 
+                                     Stmt **CatchStmts,
                                      unsigned NumCatchStmts,
                                      Stmt *atFinallyStmt) {
-  unsigned Size = sizeof(ObjCAtTryStmt) + 
+  unsigned Size = sizeof(ObjCAtTryStmt) +
     (1 + NumCatchStmts + (atFinallyStmt != 0)) * sizeof(Stmt *);
   void *Mem = Context.Allocate(Size, llvm::alignOf<ObjCAtTryStmt>());
   return new (Mem) ObjCAtTryStmt(atTryLoc, atTryStmt, CatchStmts, NumCatchStmts,
                                  atFinallyStmt);
 }
 
-ObjCAtTryStmt *ObjCAtTryStmt::CreateEmpty(ASTContext &Context, 
+ObjCAtTryStmt *ObjCAtTryStmt::CreateEmpty(ASTContext &Context,
                                                  unsigned NumCatchStmts,
                                                  bool HasFinally) {
-  unsigned Size = sizeof(ObjCAtTryStmt) + 
+  unsigned Size = sizeof(ObjCAtTryStmt) +
     (1 + NumCatchStmts + HasFinally) * sizeof(Stmt *);
   void *Mem = Context.Allocate(Size, llvm::alignOf<ObjCAtTryStmt>());
-  return new (Mem) ObjCAtTryStmt(EmptyShell(), NumCatchStmts, HasFinally);  
+  return new (Mem) ObjCAtTryStmt(EmptyShell(), NumCatchStmts, HasFinally);
 }
 
 SourceRange ObjCAtTryStmt::getSourceRange() const {
@@ -645,12 +648,12 @@ SourceRange ObjCAtTryStmt::getSourceRange() const {
     EndLoc = getCatchStmt(NumCatchStmts - 1)->getLocEnd();
   else
     EndLoc = getTryBody()->getLocEnd();
-  
+
   return SourceRange(AtTryLoc, EndLoc);
 }
 
 CXXTryStmt *CXXTryStmt::Create(ASTContext &C, SourceLocation tryLoc,
-                               Stmt *tryBlock, Stmt **handlers, 
+                               Stmt *tryBlock, Stmt **handlers,
                                unsigned numHandlers) {
   std::size_t Size = sizeof(CXXTryStmt);
   Size += ((numHandlers + 1) * sizeof(Stmt));
@@ -710,20 +713,20 @@ const VarDecl *CXXForRangeStmt::getLoopVariable() const {
   return const_cast<CXXForRangeStmt*>(this)->getLoopVariable();
 }
 
-IfStmt::IfStmt(ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond, 
+IfStmt::IfStmt(ASTContext &C, SourceLocation IL, VarDecl *var, Expr *cond,
                Stmt *then, SourceLocation EL, Stmt *elsev)
   : Stmt(IfStmtClass), IfLoc(IL), ElseLoc(EL)
 {
   setConditionVariable(C, var);
   SubExprs[COND] = reinterpret_cast<Stmt*>(cond);
   SubExprs[THEN] = then;
-  SubExprs[ELSE] = elsev;  
+  SubExprs[ELSE] = elsev;
 }
 
 VarDecl *IfStmt::getConditionVariable() const {
   if (!SubExprs[VAR])
     return 0;
-  
+
   DeclStmt *DS = cast<DeclStmt>(SubExprs[VAR]);
   return cast<VarDecl>(DS->getSingleDecl());
 }
@@ -739,10 +742,10 @@ void IfStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
                                    VarRange.getEnd());
 }
 
-ForStmt::ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar, 
-                 Expr *Inc, Stmt *Body, SourceLocation FL, SourceLocation LP, 
+ForStmt::ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,
+                 Expr *Inc, Stmt *Body, SourceLocation FL, SourceLocation LP,
                  SourceLocation RP)
-  : Stmt(ForStmtClass), ForLoc(FL), LParenLoc(LP), RParenLoc(RP) 
+  : Stmt(ForStmtClass), ForLoc(FL), LParenLoc(LP), RParenLoc(RP)
 {
   SubExprs[INIT] = Init;
   setConditionVariable(C, condVar);
@@ -754,7 +757,7 @@ ForStmt::ForStmt(ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,
 VarDecl *ForStmt::getConditionVariable() const {
   if (!SubExprs[CONDVAR])
     return 0;
-  
+
   DeclStmt *DS = cast<DeclStmt>(SubExprs[CONDVAR]);
   return cast<VarDecl>(DS->getSingleDecl());
 }
@@ -764,14 +767,14 @@ void ForStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     SubExprs[CONDVAR] = 0;
     return;
   }
-  
+
   SourceRange VarRange = V->getSourceRange();
   SubExprs[CONDVAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
                                        VarRange.getEnd());
 }
 
-SwitchStmt::SwitchStmt(ASTContext &C, VarDecl *Var, Expr *cond) 
-  : Stmt(SwitchStmtClass), FirstCase(0), AllEnumCasesCovered(0) 
+SwitchStmt::SwitchStmt(ASTContext &C, VarDecl *Var, Expr *cond)
+  : Stmt(SwitchStmtClass), FirstCase(0), AllEnumCasesCovered(0)
 {
   setConditionVariable(C, Var);
   SubExprs[COND] = reinterpret_cast<Stmt*>(cond);
@@ -781,7 +784,7 @@ SwitchStmt::SwitchStmt(ASTContext &C, VarDecl *Var, Expr *cond)
 VarDecl *SwitchStmt::getConditionVariable() const {
   if (!SubExprs[VAR])
     return 0;
-  
+
   DeclStmt *DS = cast<DeclStmt>(SubExprs[VAR]);
   return cast<VarDecl>(DS->getSingleDecl());
 }
@@ -791,7 +794,7 @@ void SwitchStmt::setConditionVariable(ASTContext &C, VarDecl *V) {
     SubExprs[VAR] = 0;
     return;
   }
-  
+
   SourceRange VarRange = V->getSourceRange();
   SubExprs[VAR] = new (C) DeclStmt(DeclGroupRef(V), VarRange.getBegin(),
                                    VarRange.getEnd());
@@ -803,7 +806,7 @@ Stmt *SwitchCase::getSubStmt() {
   return cast<DefaultStmt>(this)->getSubStmt();
 }
 
-WhileStmt::WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body, 
+WhileStmt::WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body,
                      SourceLocation WL)
   : Stmt(WhileStmtClass) {
   setConditionVariable(C, Var);
@@ -815,7 +818,7 @@ WhileStmt::WhileStmt(ASTContext &C, VarDecl *Var, Expr *cond, Stmt *body,
 VarDecl *WhileStmt::getConditionVariable() const {
   if (!SubExprs[VAR])
     return 0;
-  
+
   DeclStmt *DS = cast<DeclStmt>(SubExprs[VAR]);
   return cast<VarDecl>(DS->getSingleDecl());
 }
@@ -903,4 +906,108 @@ SEHFinallyStmt* SEHFinallyStmt::Create(ASTContext &C,
                                        SourceLocation Loc,
                                        Stmt *Block) {
   return new(C)SEHFinallyStmt(Loc,Block);
+}
+
+// scout - Scout Stmts
+
+ForAllStmt::ForAllStmt(StmtClass SC, ASTContext &C, ForAllType T,
+                       const MeshType *MT,IdentifierInfo* LII,
+                       IdentifierInfo* MII, VarDecl* MVD, Expr *Op,
+                       Stmt *Body, BlockExpr* Block,
+                       SourceLocation FL, SourceLocation LP,
+                       SourceLocation RP)
+: Stmt(SC),
+Type(T),
+meshType(MT),
+ForAllLoc(FL),
+LParenLoc(LP),
+RParenLoc(RP),
+MeshII(MII),
+MeshVarDecl(MVD),
+LoopVariableII(LII),
+XStart(0),
+XEnd(0),
+XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+YStart(0),
+YEnd(0),
+YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+ZStart(0),
+ZEnd(0),
+ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL))
+{
+  setBlock(Block);
+  setOp(Op);
+  setBody(Body);
+}
+
+ForAllStmt::ForAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
+                       IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+                       Expr *Op, Stmt *Body, BlockExpr* Block, SourceLocation FL,
+                       SourceLocation LP, SourceLocation RP)
+: Stmt(ForAllStmtClass),
+Type(T),
+meshType(MT),
+ForAllLoc(FL),
+LParenLoc(LP),
+RParenLoc(RP),
+MeshII(MII),
+MeshVarDecl(MVD),
+LoopVariableII(LII),
+XStart(0),
+XEnd(0),
+XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+YStart(0),
+YEnd(0),
+YStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL)),
+ZStart(0),
+ZEnd(0),
+ZStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
+                               C.IntTy, FL))
+{
+  setBlock(Block);
+  setOp(Op);
+  setBody(Body);
+}
+
+ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
+                                 SourceLocation FAL,
+                                 Stmt* Body,
+                                 BlockExpr* Block)
+: XInductionVarII(0),
+YInductionVarII(0),
+ZInductionVarII(0),
+ForAllStmt(ForAllArrayStmtClass, C, ForAllStmt::Array, 0, 0, 0, 0, 0, Body, Block, FAL,
+           SourceLocation(), SourceLocation()){
+  setBody(Body);
+}
+
+RenderAllStmt::RenderAllStmt(ASTContext &C, ForAllType T, const MeshType *MT,
+                             IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+                             Expr *Op, Stmt *Body, BlockExpr *Block,
+                             SourceLocation RL, SourceLocation RP,
+                             SourceLocation LP)
+  : ForAllStmt(RenderAllStmtClass, C, T, MT, LII, MII, MVD,
+               Op, Body, Block, RL, RP, LP),
+ElementColor(0),
+ElementRadius(0){
+  
+}
+
+VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, 
+    unsigned NumStmts, SourceLocation VolRenL,
+    SourceLocation LB, SourceLocation RB, 
+    IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* Body)
+  : CompoundStmt(C, StmtStart, NumStmts, LB, RB),
+    VolRenLoc(VolRenL), MeshII(MII), MeshVarDecl(MVD) {
+
+      setBody(Body);
+  }
+
+const MeshType* VolumeRenderAllStmt::getMeshType() const {
+  return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());
 }

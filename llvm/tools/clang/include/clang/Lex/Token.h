@@ -61,8 +61,6 @@ class Token {
   ///    This is null.
   void *PtrData;
 
-  /// Kind - The actual flavor of token this is.
-  ///
   unsigned short Kind;
 
   /// Flags - Bits we track about this token, members of the TokenFlags enum.

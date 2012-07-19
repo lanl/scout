@@ -56,6 +56,8 @@ add_clang_library(clangAST
   TypePrinter.cpp
   VTableBuilder.cpp
   VTTBuilder.cpp
+# ndm - scout
+  ASTViewScout.cpp
   )
 
 add_dependencies(clangAST

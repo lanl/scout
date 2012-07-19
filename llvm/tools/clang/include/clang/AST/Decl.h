@@ -2089,9 +2089,36 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
+  // scout - Scout Mesh fields are instances of FieldDecl, with appropriate
+  // FieldType of MeshFieldType set, a normal FieldDecl from a non-mesh,
+  // e.g: RecordDecl, gets FieldNone
+  
+public:
+  
+  enum MeshFieldType{
+    FieldNone,
+    FieldAll,
+    FieldVertices,
+    FieldCells,
+    FieldFaces,
+    FieldEdges
+  };
+
+private:
+  
   // FIXME: This can be packed into the bitfields in Decl.
   bool Mutable : 1;
   mutable unsigned CachedFieldIndex : 31;
+
+  // scout - Mesh
+  unsigned FieldType : 2;
+
+  // bit to set whether this is an implicitly added mesh field, e.g: "position"
+  bool IsMeshImplicit : 1;
+  
+  /// \brief A pointer to either the in-class initializer for this field (if
+  /// the boolean value is false), or the bit width expression for this bit
+  /// field (if the boolean value is true).
 
   /// \brief An InClassInitStyle value, and either a bit width expression (if
   /// the InClassInitStyle value is ICIS_NoInit), or a pointer to the in-class
@@ -2111,6 +2138,8 @@ protected:
             InClassInitStyle InitStyle)
     : DeclaratorDecl(DK, DC, IdLoc, Id, T, TInfo, StartLoc),
       Mutable(Mutable), CachedFieldIndex(0),
+      FieldType(FieldNone),
+      IsMeshImplicit(false),
       InitializerOrBitWidth(BW, InitStyle) {
     assert((!BW || InitStyle == ICIS_NoInit) && "got initializer for bitfield");
   }
@@ -2202,6 +2231,22 @@ public:
 
   SourceRange getSourceRange() const LLVM_READONLY;
 
+  // scout - Mesh field methods
+  // pass implicit if this is an implicitly added mesh field such as 
+  // "position", or "color"
+  void setMeshFieldType(MeshFieldType type, bool implicit){
+    FieldType = type;
+    IsMeshImplicit = implicit;
+  }
+  
+  bool isMeshImplicit() const{
+    return IsMeshImplicit;
+  }
+  
+  MeshFieldType meshFieldType() const{
+    return MeshFieldType(FieldType);
+  }
+  
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classof(const FieldDecl *D) { return true; }
@@ -3218,6 +3263,97 @@ public:
   }
 };
 
+// scout - Scout Mesh
+// A mesh declaration is similar to a TagDecl/RecordDecl but different
+// enough that a new subclass of TypeDecl was created. It encapsulates
+// a mesh definition such as:
+//    
+//   uniform mesh MyMesh [512,512]{
+//     cells:
+//          float a;
+//   }
+  
+class MeshDecl : public TypeDecl, public DeclContext{
+private:
+  
+  bool IsDefinition : 1;
+  bool IsBeingDefined : 1;
+  SourceLocation RBraceLoc;
+  
+protected:
+  MeshDecl(Kind DK, DeclContext* DC,
+           SourceLocation L, SourceLocation StartL,
+           IdentifierInfo* Id, MeshDecl* PrevDecl)
+  : TypeDecl(DK, DC, L, Id, StartL),
+  DeclContext(DK){
+    IsDefinition = false;
+    IsBeingDefined = false;
+  }  
+  
+public:
+  
+  static MeshDecl* Create(ASTContext& C, Kind DK, DeclContext* DC, 
+                          SourceLocation StartLoc, SourceLocation IdLoc, 
+                          IdentifierInfo* Id, MeshDecl* PrevDecl);
+  
+
+  
+  void completeDefinition();
+  
+  SourceLocation getRBraceLoc() const { return RBraceLoc; }
+  void setRBraceLoc(SourceLocation L) { RBraceLoc = L; }
+  
+  SourceLocation getInnerLocStart() const { return getLocStart(); }
+  
+  SourceLocation getOuterLocStart() const;
+  virtual SourceRange getSourceRange() const;
+  
+  bool isThisDeclarationADefinition() const {
+    return isDefinition();
+  }
+  
+  bool isDefinition() const {
+    return IsDefinition;
+  }
+  
+  bool isBeingDefined() const {
+    return IsBeingDefined;
+  }
+  
+  void startDefinition();
+  
+  MeshDecl* getDefinition() const;
+  
+  typedef specific_decl_iterator<FieldDecl> field_iterator;
+  
+  field_iterator field_begin() const;
+  
+  field_iterator field_end() const{
+    return field_iterator(decl_iterator());
+  }
+  
+  bool field_empty() const{
+    return field_begin() == field_end();
+  }
+  
+  NestedNameSpecifierLoc getQualifierLoc() const {
+    return NestedNameSpecifierLoc();
+  }
+  
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const MeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == Mesh; }
+  
+  static DeclContext* castToDeclContext(const MeshDecl* D){
+    return static_cast<DeclContext*>(const_cast<MeshDecl*>(D));
+  }
+
+  bool canConvertTo(ASTContext& C, MeshDecl* MD);
+  
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
+};
+  
 /// \brief Describes a module import declaration, which makes the contents
 /// of the named module visible in the current translation unit.
 ///
@@ -3286,7 +3422,6 @@ public:
   static bool classofKind(Kind K) { return K == Import; }
 };
   
-
 /// Insertion operator for diagnostics.  This allows sending NamedDecl's
 /// into a diagnostic with <<.
 inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,

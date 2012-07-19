@@ -3,6 +3,7 @@
 project(LLVM)
 cmake_minimum_required(VERSION 2.8)
 
+
 # Add path for custom modules
 set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
@@ -95,8 +96,11 @@ if( MSVC )
   set(LLVM_TARGETS_TO_BUILD X86
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 else( MSVC )
-  set(LLVM_TARGETS_TO_BUILD "all"
+if (NOT LLVM_TARGETS_TO_BUILD)
+  set(LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS}
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+endif()
+
 endif( MSVC )
 
 option(BUILD_SHARED_LIBS

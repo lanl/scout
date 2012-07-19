@@ -46,6 +46,9 @@ if(MSVC_IDE OR XCODE)
    set(other_output_dir ${LLVM_BINARY_DIR}/bin/lib/clang/${CLANG_VERSION}/include)
 endif()
 
+# ndm - copy the clang specific headers so scc can find them
+set(scc_output_dir ${SCOUT_BINARY_DIR}/tools/lib/clang/${CLANG_VERSION}/include)
+
 # Generate arm_neon.h
 clang_tablegen(arm_neon.h.inc -gen-arm-neon
   SOURCE ${CLANG_SOURCE_DIR}/include/clang/Basic/arm_neon.td)
@@ -68,6 +71,15 @@ foreach( f ${files} )
       COMMENT "Copying clang's ${f}...")    
     list(APPEND out_files ${other_dst})
   endif()
+
+  # ndm copy for scc command
+  set(scc_dst ${scc_output_dir}/${f})
+  add_custom_command(OUTPUT ${scc_dst}
+    DEPENDS ${src}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${scc_dst}
+    COMMENT "Copying clang's ${f}... for scc")    
+  list(APPEND out_files ${scc_dst})
+
 endforeach( f )
 
 add_custom_command(OUTPUT ${output_dir}/arm_neon.h 

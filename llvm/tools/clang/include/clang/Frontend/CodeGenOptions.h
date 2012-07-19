@@ -115,6 +115,11 @@ public:
   unsigned UnsafeFPMath      : 1; ///< Allow unsafe floating point optzns.
   unsigned UnwindTables      : 1; ///< Emit unwind tables.
 
+  unsigned ScoutNvidiaGPU    : 1; /// scout NVIDIA GPU code generation.
+  unsigned ScoutCPUThreads   : 1; /// scout CPU multithreading code generation.
+  unsigned ScoutVectorize    : 1; /// scout enable autovectorize pass.
+  unsigned ScoutEmitAllDefinitions : 1; /// scout emission of all defs.
+  
   /// Attempt to use register sized accesses to bit-fields in structures, when
   /// possible.
   unsigned UseRegisterSizedBitfieldAccess : 1;

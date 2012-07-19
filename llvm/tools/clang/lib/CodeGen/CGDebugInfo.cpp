@@ -1195,6 +1195,12 @@ llvm::DIType CGDebugInfo::getOrCreateInterfaceType(QualType D,
   return T;
 }
 
+// scout - Scout Mesh
+// TODO - implement
+llvm::DIType CGDebugInfo::CreateType(const MeshType *Ty) {
+  return llvm::DIType();
+}
+
 /// CreateType - get structure or union type.
 llvm::DIType CGDebugInfo::CreateType(const RecordType *Ty) {
   RecordDecl *RD = Ty->getDecl();
@@ -1746,6 +1752,11 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<BlockPointerType>(Ty), Unit);
   case Type::Typedef:
     return CreateType(cast<TypedefType>(Ty), Unit);
+  
+  // scout - Mesh
+  case Type::Mesh:
+    return CreateType(cast<MeshType>(Ty));
+      
   case Type::Record:
     return CreateType(cast<RecordType>(Ty));
   case Type::Enum:

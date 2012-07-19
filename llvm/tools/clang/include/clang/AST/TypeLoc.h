@@ -594,6 +594,16 @@ public:
   EnumDecl *getDecl() const { return getTypePtr()->getDecl(); }
 };
 
+// scout - Mesh support class
+  
+/// \brief Wrapper for source info for mesh types.
+class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
+                                                     MeshTypeLoc,
+                                                     MeshType> {
+  public:
+    MeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+  
 /// \brief Wrapper for template type parameters.
 class TemplateTypeParmTypeLoc :
     public InheritingConcreteTypeLoc<TypeSpecTypeLoc,

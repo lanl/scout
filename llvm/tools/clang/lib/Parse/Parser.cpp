@@ -21,6 +21,9 @@
 #include "ParsePragma.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTConsumer.h"
+
+#include <iostream>
+
 using namespace clang;
 
 namespace {
@@ -98,6 +101,9 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
   PP.addCommentHandler(CommentSemaHandler.get());
 
   PP.setCodeCompletionHandler(*this);
+  
+  // scout
+  DeclaringMesh = false;
 }
 
 /// If a crash happens while the parser is active, print out a line indicating
@@ -539,6 +545,11 @@ namespace {
 /// ParseTopLevelDecl - Parse one top-level declaration, return whatever the
 /// action tells us to.  This returns true if the EOF was encountered.
 bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result) {
+  // scout - test hook into parsing top-level decls from main file
+  if(Actions.SourceMgr.isFromMainFile(Tok.getLocation())){
+    //DumpLookAheads(20);
+  }
+  
   DestroyTemplateIdAnnotationsRAIIObj CleanupRAII(TemplateIds);
 
   // Skip over the EOF token, flagging end of previous input for incremental 
@@ -1753,6 +1764,302 @@ Parser::DeclGroupPtrTy Parser::ParseModuleImport(SourceLocation AtLoc) {
     return DeclGroupPtrTy();
   
   return Actions.ConvertDeclToDeclGroup(Import.get());
+}
+
+// scout - parser utility method
+// insert CPP code into the lexer stream for parsing. 
+// Inserts a stream of tokens before or after the current token Tok.
+// This is a good method for handling cases such as inserting the call
+// to initScout(argc, argv) at the beginning of main(), for other cases
+// it may be necessary to construct the AST manually.
+void Parser::InsertCPPCode(const std::string& code,
+                           SourceLocation location,
+                           bool beforeLookAhead){
+    
+  typedef std::vector<Token> TokenStream;
+  Lexer lexer(code, PP);
+  
+  TokenStream tokenStream;
+  
+  for(;;){
+    Token tok;
+    lexer.Lex(tok);
+    tok.setLocation(location);
+    if(tok.is(tok::eof)){
+      break;
+    }
+    tokenStream.push_back(tok);
+  }
+  
+  if(beforeLookAhead){
+    tokenStream.push_back(Tok);
+  }
+  
+  for(TokenStream::reverse_iterator itr = tokenStream.rbegin(),
+      itrEnd = tokenStream.rend(); itr != itrEnd; ++itr){
+    PP.EnterToken(*itr);
+  }
+  
+  if(beforeLookAhead){
+    ConsumeAnyToken();
+  }
+}
+
+// scout - debugging method for displaying the next N lookahead tokens
+void Parser::DumpLookAheads(unsigned N){
+  for(unsigned i = 0; i < N; ++i){
+    const Token& t = GetLookAheadToken(i);
+        
+    std::cerr << "lookahead[" << i << "]: " << t.getName();
+    
+    if(t.is(tok::eof) || t.is(tok::semi)){
+      std::cerr << std::endl;
+      break;
+    }
+    
+    if(t.isAnnotation()){
+      std::cerr << std::endl;
+      continue;
+    }
+    
+    size_t length = t.getLength();
+    
+    if(t.isLiteral()){
+      std::string str = t.getLiteralData();
+      str = str.substr(0, length);
+      std::cerr << " = " << str;
+    }
+    else if(t.is(tok::identifier)){
+      std::cerr << " = " << t.getIdentifierInfo()->getName().str();
+    }
+    else if(t.is(tok::raw_identifier)){
+      std::string str = t.getRawIdentifierData();
+      str = str.substr(0, length);
+      std::cerr << " = " << str;
+    }
+    std::cerr << std::endl;
+  }
+  std::cerr << std::endl;
+}
+
+std::string Parser::TokToStr(const Token& tok){
+  if(tok.isLiteral()){
+    size_t length = tok.getLength();
+
+    std::string ret = tok.getLiteralData();
+    ret = ret.substr(0, length);
+    return ret;
+  }
+  else if(tok.is(tok::identifier)){
+    return tok.getIdentifierInfo()->getName().str();
+  }
+  
+  switch(tok.getKind()){
+    case tok::l_square:{
+      return "[";
+    }
+    case tok::r_square:{
+      return "]";
+    }
+    case tok::l_paren:{
+      return "(";
+    }
+    case tok::r_paren:{
+      return ")";
+    }
+    case tok::l_brace:{
+      return "{";
+    }
+    case tok::r_brace:{
+      return "}";
+    }
+    case tok::period:{
+      return ".";
+    }
+    case tok::ellipsis:{
+      return "...";
+    }
+    case tok::amp:{
+      return "&";
+    }
+    case tok::ampamp:{
+      return "&&";
+    }
+    case tok::ampequal:{
+      return "&=";
+    }
+    case tok::star:{
+      return "*";
+    }
+    case tok::starequal:{
+      return "*=";
+    }
+    case tok::plus:{
+      return "+";
+    }
+    case tok::plusplus:{
+      return "++";
+    }
+    case tok::plusequal:{
+      return "+=";
+    }
+    case tok::minus:{
+      return "-";
+    }
+    case tok::minusequal:{
+      return "-=";
+    }
+    case tok::tilde:{
+      return "~";
+    }
+    case tok::exclaim:{
+      return "!";
+    }
+    case tok::exclaimequal:{
+      return "!=";
+    }
+    case tok::slash:{
+      return "/";
+    }
+    case tok::slashequal:{
+      return "/=";
+    }
+    case tok::percent:{
+      return "%";
+    }
+    case tok::percentequal:{
+      return "%=";
+    }
+    case tok::less:{
+      return "<";
+    }
+    case tok::lessless:{
+      return "<<";
+    }
+    case tok::lessequal:{
+      return "<=";
+    }
+    case tok::lesslessequal:{
+      return "<<=";
+    }
+    case tok::greater:{
+      return ">";
+    }
+    case tok::greatergreater:{
+      return ">>";
+    }
+    case tok::greaterequal:{
+      return ">=";
+    }
+    case tok::greatergreaterequal:{
+      return ">>=";
+    }
+    case tok::caret:{
+      return "^";
+    }
+    case tok::caretequal:{
+      return "^=";
+    }
+    case tok::pipe:{
+      return "|";
+    }
+    case tok::pipepipe:{
+      return "||";
+    }
+    case tok::pipeequal:{
+      return "|=";
+    }
+    case tok::question:{
+      return "?";
+    }
+    case tok::colon:{
+      return ":";
+    }
+    case tok::semi:{
+      return ";";
+    }
+    case tok::equal:{
+      return "=";
+    }
+    case tok::equalequal:{
+      return "==";
+    }
+    case tok::comma:{
+      return ",";
+    }
+    case tok::hash:{
+      return "#";
+    }
+    case tok::hashhash:{
+      return "##";
+    }
+    case tok::hashat:{
+      return "#@";
+    }
+    case tok::periodstar:{
+      return ".*";
+    }
+    case tok::arrowstar:{
+      return "->*";
+    }
+    case tok::coloncolon:{
+      return "::";
+    }
+    case tok::at:{
+      return "@";
+    }
+    case tok::lesslessless:{
+      return "<<<";
+    }
+    case tok::greatergreatergreater:{
+      return ">>>";
+    }
+    default:
+    {
+      return tok.getName();
+    }
+  }
+}
+
+bool Parser::isScoutVectorValueDecl(Decl* decl,
+                                    BuiltinType::Kind &kind) const{
+  if(ValueDecl* vd = dyn_cast<ValueDecl>(decl)){
+    if(const BuiltinType* bt = 
+       dyn_cast<BuiltinType>(vd->getType().getTypePtr())){
+      
+      kind = bt->getKind();
+      
+      switch(kind){
+        case BuiltinType::Bool2:
+        case BuiltinType::Bool3:
+        case BuiltinType::Bool4:
+        case BuiltinType::Char2:
+        case BuiltinType::Char3:
+        case BuiltinType::Char4:
+        case BuiltinType::Short2:
+        case BuiltinType::Short3:
+        case BuiltinType::Short4:
+        case BuiltinType::Int2:
+        case BuiltinType::Int3:
+        case BuiltinType::Int4:
+        case BuiltinType::Long2:
+        case BuiltinType::Long3:
+        case BuiltinType::Long4:
+        case BuiltinType::Float2:
+        case BuiltinType::Float3:
+        case BuiltinType::Float4:
+        case BuiltinType::Double2:
+        case BuiltinType::Double3:
+        case BuiltinType::Double4:
+        {
+          return true;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  return false;
 }
 
 bool BalancedDelimiterTracker::diagnoseOverflow() {

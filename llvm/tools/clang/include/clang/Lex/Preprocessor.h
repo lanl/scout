@@ -141,6 +141,9 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// the program, including program keywords.
   mutable IdentifierTable Identifiers;
 
+  // scout - identifiers table
+  mutable IdentifierTable ScoutIdentifiers;
+  
   /// Selectors - This table contains all the selectors in the program. Unlike
   /// IdentifierTable above, this table *isn't* populated by the preprocessor.
   /// It is declared/expanded here because it's role/lifetime is
@@ -978,6 +981,11 @@ public:
   /// updating the token kind accordingly.
   IdentifierInfo *LookUpIdentifierInfo(Token &Identifier) const;
 
+  // scout - Identifier Lookup
+  IdentifierInfo* getScoutIdentifier(StringRef name){
+    return &ScoutIdentifiers.get(name);
+  }
+  
 private:
   llvm::DenseMap<IdentifierInfo*,unsigned> PoisonReasons;
 

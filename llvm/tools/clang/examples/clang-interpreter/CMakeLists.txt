@@ -34,4 +34,6 @@ target_link_libraries(clang-interpreter
   clangParse
   clangLex
   clangBasic
+  LLVMdoallToPTX
+  scDriver
   )

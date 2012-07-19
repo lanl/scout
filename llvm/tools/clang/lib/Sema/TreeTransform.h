@@ -726,6 +726,13 @@ public:
     return SemaRef.Context.getTypeDeclType(Enum);
   }
 
+  // scout - Mesh
+  // TODO implement
+  QualType RebuildMeshType(MeshDecl *Mesh) {
+    //return SemaRef.Context.getTypeDeclType(Mesh);
+    return QualType();
+  }
+  
   /// \brief Build a new typeof(expr) type.
   ///
   /// By default, performs semantic analysis when building the typeof type.
@@ -4493,6 +4500,36 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
   return Result;
 }
 
+// scout - Mesh
+// TODO - implement
+  
+template<typename Derived>
+QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
+                                                   MeshTypeLoc TL) {
+  /*
+  const MeshType *T = TL.getTypePtr();
+  MeshDecl *Mesh
+  = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                        T->getDecl()));
+  if (!Mesh)
+    return QualType();
+  
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      Mesh != T->getDecl()) {
+    Result = getDerived().RebuildMeshType(Record);
+    if (Result.isNull())
+      return QualType();
+  }
+  
+  RecordTypeLoc NewTL = TLB.push<RecordTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+  
+  return Result;
+  */
+  return QualType();
+}
+  
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformEnumType(TypeLocBuilder &TLB,
                                                    EnumTypeLoc TL) {
@@ -5452,6 +5489,40 @@ TreeTransform<Derived>::TransformForStmt(ForStmt *S) {
                                      FullInc, S->getRParenLoc(), Body.get());
 }
 
+// scout - Scout Stmts
+// TODO - implement
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformForAllStmt(ForAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformForAllArrayStmt(ForAllArrayStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+  
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformRenderAllStmt(RenderAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+  StmtResult R(false);
+  R.set(S);
+  return R;
+}
+  
 template<typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformGotoStmt(GotoStmt *S) {
@@ -6482,6 +6553,16 @@ TreeTransform<Derived>::TransformMemberExpr(MemberExpr *E) {
                                         FirstQualifierInScope);
 }
 
+// scout - support for Scout vector member referencing
+  
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+  ExprResult R(false);
+  R.set(E);
+  return R;
+}
+  
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformBinaryOperator(BinaryOperator *E) {

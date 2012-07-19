@@ -1462,8 +1462,10 @@ public:
   bool CheckNontrivialField(FieldDecl *FD);
   void DiagnoseNontrivial(const RecordType* Record, CXXSpecialMember mem);
   CXXSpecialMember getSpecialMember(const CXXMethodDecl *MD);
+
   void ActOnLastBitfield(SourceLocation DeclStart,
                          SmallVectorImpl<Decl *> &AllIvarDecls);
+
   Decl *ActOnIvar(Scope *S, SourceLocation DeclStart,
                   Declarator &D, Expr *BitfieldWidth,
                   tok::ObjCKeywordKind visibility);
@@ -1674,6 +1676,7 @@ public:
                                  QualType &ConvertedType);
   bool IsBlockPointerConversion(QualType FromType, QualType ToType,
                                 QualType& ConvertedType);
+
   bool FunctionArgTypesAreEqual(const FunctionProtoType *OldType,
                                 const FunctionProtoType *NewType,
                                 unsigned *ArgPos = 0);
@@ -2250,6 +2253,7 @@ public:
   /// properties which must be synthesized in the class's \@implementation.
   void DefaultSynthesizeProperties (Scope *S, ObjCImplDecl* IMPDecl,
                                     ObjCInterfaceDecl *IDecl);
+
   void DefaultSynthesizeProperties(Scope *S, Decl *D);
 
   /// CollectImmediateProperties - This routine collects all properties in
@@ -2503,6 +2507,7 @@ public:
                           FullExprArg Third,
                           SourceLocation RParenLoc,
                           Stmt *Body);
+
   ExprResult CheckObjCForCollectionOperand(SourceLocation forLoc,
                                            Expr *collection);
   StmtResult ActOnObjCForCollectionStmt(SourceLocation ForColLoc,
@@ -2662,6 +2667,7 @@ public:
   bool DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
                          const ObjCInterfaceDecl *UnknownObjCClass=0);
   void NoteDeletedFunction(FunctionDecl *FD);
+
   std::string getDeletedOrUnavailableSuffix(const FunctionDecl *FD);
   bool DiagnosePropertyAccessorMismatch(ObjCPropertyDecl *PD,
                                         ObjCMethodDecl *Getter,
@@ -6640,7 +6646,6 @@ public:
   // For compound assignment, pass both expressions and the converted type.
   QualType CheckAssignmentOperands( // C99 6.5.16.[1,2]
     Expr *LHSExpr, ExprResult &RHS, SourceLocation Loc, QualType CompoundType);
-
   ExprResult checkPseudoObjectIncDec(Scope *S, SourceLocation OpLoc,
                                      UnaryOperatorKind Opcode, Expr *Op);
   ExprResult checkPseudoObjectAssignment(Scope *S, SourceLocation OpLoc,
@@ -6747,6 +6752,7 @@ public:
 
   /// \brief Checks for invalid conversions and casts between
   /// retainable pointers and other pointer kinds.
+
   ARCConversionResult CheckObjCARCConversion(SourceRange castRange,
                                              QualType castType, Expr *&op,
                                              CheckedConversionKind CCK);
@@ -7178,6 +7184,114 @@ public:
   Scope *getCurScope() const { return CurScope; }
 
   Decl *getObjCDeclContext() const;
+
+  // scout *************************** Scout Sema methods
+  bool isScoutSource(SourceLocation location);
+  
+  // called at the beginning part of a mesh definition
+  Decl* ActOnMeshDefinition(Scope* S,
+                            tok::TokenKind MeshType,
+                            SourceLocation KWLoc,
+                            IdentifierInfo* Name,
+                            SourceLocation NameLoc,
+                            MultiTemplateParamsArg TemplateParameterLists);
+
+  Decl* ActOnMeshField(Scope *S, Decl *MeshD,
+                       SourceLocation DeclStart, Declarator &D);
+
+  void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
+
+  bool ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
+
+  FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
+                             SourceLocation DeclStart, Declarator &D);
+
+
+  FieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
+                                TypeSourceInfo *TInfo,
+                                MeshDecl *Mesh, SourceLocation Loc,
+                                SourceLocation TSSL,
+                                NamedDecl *PrevDecl,
+                                Declarator *D = 0);
+
+  bool ActOnForAllLoopVariable(Scope* S,
+                               tok::TokenKind VariableType,
+                               IdentifierInfo* LoopVariableII,
+                               SourceLocation LoopVariableLoc,
+                               IdentifierInfo* MeshII,
+                               SourceLocation MeshLoc);
+
+  bool ActOnForAllArrayInductionVariable(Scope* S,
+                                         IdentifierInfo* InductionVariableII,
+                                         SourceLocation InductionVariableLoc);
+
+  bool ActOnRenderAllLoopVariable(Scope* S,
+                                  tok::TokenKind VariableType,
+                                  IdentifierInfo* LoopVariableII,
+                                  SourceLocation LoopVariableLoc,
+                                  IdentifierInfo* MeshII,
+                                  SourceLocation MeshLoc);
+
+  const MeshType* 
+  ActOnRenderAllElementsVariable(Scope* S,
+                                 MemberExpr* ME,
+                                 tok::TokenKind VariableType,
+                                 IdentifierInfo* ElementsVariableII,
+                                 SourceLocation ElementsVariableLoc);
+  
+  StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
+                             ForAllStmt::ForAllType Type,
+                             const MeshType *MT,
+                             VarDecl* MVD,
+                             IdentifierInfo* LoopVariableII,
+                             IdentifierInfo* MeshII,
+                             SourceLocation LParenLoc,
+                             Expr* Op, SourceLocation RParenLoc,
+                             Stmt* Body,
+                             BlockExpr* Block);
+
+  StmtResult ActOnForAllStmt(SourceLocation ForAllLoc,
+                             IdentifierInfo* LoopVariableII,
+                             IdentifierInfo* MeshII,
+                             VarDecl* MVD,
+                             SourceLocation LParenLoc,
+                             Expr* Op, SourceLocation RParenLoc,
+                             Stmt* Body,
+                             BlockExpr* Block);
+
+  StmtResult ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                  Stmt* Body,
+                                  BlockExpr* Block);
+
+  StmtResult ActOnRenderAllStmt(SourceLocation RenderAllLoc,
+                                ForAllStmt::ForAllType Type,
+                                const MeshType *MT,
+                                VarDecl* MVD,
+                                IdentifierInfo* LoopVariableII,
+                                IdentifierInfo* MeshII,
+                                SourceLocation LParenLoc,
+                                Expr *Op, SourceLocation RParenLoc,
+                                Stmt* Body,
+                                BlockExpr *Block);
+
+  StmtResult ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+                                      SourceLocation L, SourceLocation R, 
+                                      IdentifierInfo* MII, VarDecl* MVD, 
+                                      MultiStmtArg elts, CompoundStmt* Body,
+                                      bool isStmtExpr);
+
+  bool IsValidMeshField(FieldDecl* FD);
+
+  bool IsValidDeclInMesh(Decl* D);
+
+  void AddInitializerToScoutVector(VarDecl *vdecl,
+                                   BuiltinType::Kind kind,
+                                   Expr *init);
+
+  // support for unqualified variables within a forall / renderall loop
+  typedef llvm::SmallVector<VarDecl*, 3> ScoutLoopStack;
+
+  ScoutLoopStack SCLStack;
 
   DeclContext *getCurLexicalContext() const {
     return OriginalLexicalContext ? OriginalLexicalContext : CurContext;

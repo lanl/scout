@@ -260,6 +260,31 @@ public:
   static const TST TST_float = clang::TST_float;
   static const TST TST_double = clang::TST_double;
   static const TST TST_bool = clang::TST_bool;
+
+  // scout - Scout types
+  static const TST TST_mesh = clang::TST_mesh;
+  static const TST TST_bool2 = clang::TST_bool2;
+  static const TST TST_bool3 = clang::TST_bool3;
+  static const TST TST_bool4 = clang::TST_bool4;
+  static const TST TST_char2 = clang::TST_char2;
+  static const TST TST_char3 = clang::TST_char3;
+  static const TST TST_char4 = clang::TST_char4;
+  static const TST TST_short2 = clang::TST_short2;
+  static const TST TST_short3 = clang::TST_short3;
+  static const TST TST_short4 = clang::TST_short4;
+  static const TST TST_int2 = clang::TST_int2;
+  static const TST TST_int3 = clang::TST_int3;
+  static const TST TST_int4 = clang::TST_int4;
+  static const TST TST_long2 = clang::TST_long2;
+  static const TST TST_long3 = clang::TST_long3;
+  static const TST TST_long4 = clang::TST_long4;
+  static const TST TST_float2 = clang::TST_float2;
+  static const TST TST_float3 = clang::TST_float3;
+  static const TST TST_float4 = clang::TST_float4;
+  static const TST TST_double2 = clang::TST_double2;
+  static const TST TST_double3 = clang::TST_double3;
+  static const TST TST_double4 = clang::TST_double4;
+
   static const TST TST_decimal32 = clang::TST_decimal32;
   static const TST TST_decimal64 = clang::TST_decimal64;
   static const TST TST_decimal128 = clang::TST_decimal128;
@@ -305,7 +330,10 @@ private:
   /*TSW*/unsigned TypeSpecWidth : 2;
   /*TSC*/unsigned TypeSpecComplex : 2;
   /*TSS*/unsigned TypeSpecSign : 2;
-  /*TST*/unsigned TypeSpecType : 5;
+
+  // scout - to support Scout types, changed from 5 bits to 6 bits
+  unsigned TypeSpecType : 6;
+  
   unsigned TypeAltiVecVector : 1;
   unsigned TypeAltiVecPixel : 1;
   unsigned TypeAltiVecBool : 1;
@@ -378,7 +406,10 @@ private:
   }
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
-            T == TST_union || T == TST_class);
+            T == TST_union || T == TST_class
+    // scout - added mesh TST
+            || T == TST_mesh
+            );
   }
 
   DeclSpec(const DeclSpec&);       // DO NOT IMPLEMENT

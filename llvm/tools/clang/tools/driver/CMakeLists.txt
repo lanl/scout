@@ -35,6 +35,8 @@ target_link_libraries(clang
   clangStaticAnalyzerFrontend
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
+  LLVMdoallToPTX
+  scDriver
   )
 
 set_target_properties(clang PROPERTIES VERSION ${CLANG_EXECUTABLE_VERSION})

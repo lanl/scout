@@ -2840,6 +2840,67 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
+// scout - Scout Decl implementation
+MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                           SourceLocation StartLoc, SourceLocation IdLoc,
+                           IdentifierInfo* Id, MeshDecl* PrevDecl){
+  
+  MeshDecl* M = new (C) MeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+SourceLocation MeshDecl::getOuterLocStart() const {
+  
+}
+
+SourceRange MeshDecl::getSourceRange() const {
+  SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
+  return SourceRange(getOuterLocStart(), E);
+}
+
+void MeshDecl::startDefinition() {
+  IsBeingDefined = true;
+}
+
+void MeshDecl::completeDefinition() {
+  IsDefinition = true;
+  IsBeingDefined = false;
+}
+
+MeshDecl* MeshDecl::getDefinition() const{
+  if(isDefinition()){
+    return const_cast<MeshDecl*>(this);
+  }
+  
+  return 0;
+}
+
+MeshDecl::field_iterator MeshDecl::field_begin() const{
+  return field_iterator(decl_iterator(FirstDecl));
+}
+
+bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
+  field_iterator fromItr = field_begin();
+  for(field_iterator itr = MD->field_begin(), itrEnd = MD->field_end();
+      itr != itrEnd; ++itr){
+    if(fromItr == field_end()){
+      return false;
+    }
+
+    FieldDecl* fromField = *fromItr;
+    FieldDecl* toField = *itr;
+
+    if(!C.hasSameUnqualifiedType(fromField->getType(), toField->getType())){
+      return false;
+    }
+    ++fromItr;
+  }
+
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Other Decl Allocation/Deallocation Method Implementations
 //===----------------------------------------------------------------------===//

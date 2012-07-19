@@ -20,6 +20,9 @@
 #include "clang/Sema/PrettyDeclStackTrace.h"
 #include "llvm/ADT/SmallString.h"
 #include "RAIIObjectsForParser.h"
+
+#include <iostream>
+
 using namespace clang;
 
 /// ParseNamespace - We know that the current token is a namespace keyword. This
@@ -3085,3 +3088,211 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
   
   Braces.consumeClose();
 }
+
+// scout - Scout Mesh
+bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo){
+  
+  // the current lookahead token is tok::kw_uniform, tok::kw_rectlinear, 
+  // tok::kw_structured, or tok::kw_unstructured
+  
+  tok::TokenKind MeshType = Tok.getKind();
+  
+  SourceLocation MeshTypeLocation = ConsumeToken();
+  
+  if(Tok.isNot(tok::kw_mesh)){
+    Diag(Tok, diag::err_expected_mesh_kw);
+    
+    DS.SetTypeSpecError();
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+  }
+  
+  SourceLocation MeshLocation = ConsumeToken();
+  
+  // parse mesh name
+  IdentifierInfo* Name;
+  SourceLocation NameLoc;
+  if(Tok.is(tok::identifier)){
+    Name = Tok.getIdentifierInfo();
+    NameLoc = ConsumeToken();
+  }
+  else{
+    Diag(Tok, diag::err_expected_ident);
+    
+    DS.SetTypeSpecError();
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    return false;
+  }
+  
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok, diag::err_expected_lbrace);
+    
+    DS.SetTypeSpecError();
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    return false;
+  }
+  
+  TemplateParameterLists* TemplateParams = TemplateInfo.TemplateParams;
+  
+  MultiTemplateParamsArg TParams;
+  
+  if(TemplateParams){
+    TParams =
+    MultiTemplateParamsArg(&(*TemplateParams)[0], TemplateParams->size());
+  }
+    
+  MeshDecl* Dec = 
+  static_cast<MeshDecl*>( 
+                         Actions.ActOnMeshDefinition(getCurScope(),
+                                                     MeshType, 
+                                                     MeshTypeLocation,
+                                                     Name,
+                                                     NameLoc,
+                                                     TParams)); 
+  
+  bool valid = ParseMeshBody(MeshLocation, Dec);
+  
+  if(valid){
+    Dec->completeDefinition();
+    
+    unsigned DiagID;
+    const char* PrevSpec;
+    DS.SetTypeSpecType(DeclSpec::TST_mesh, MeshLocation, PrevSpec,
+                       DiagID, Dec, true);
+
+    return true;
+  }
+  
+  return false;
+}
+
+// scout - Scout Mesh
+// parse the body of a defintion of a mesh, e.g:
+// uniform mesh MyMesh [1024,1024] {
+///     <BODY>
+// }
+// return true on success
+
+bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
+  PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
+                                      "parsing Scout mesh body");
+  
+  SourceLocation LBraceLoc = ConsumeBrace();
+  
+  ParseScope MeshScope(this, Scope::ClassScope|Scope::DeclScope);
+  Actions.ActOnMeshStartDefinition(getCurScope(), Dec);
+  
+  unsigned fieldType = FieldDecl::FieldNone;
+  
+  bool valid = true;
+  
+  llvm::SmallVector<Decl *, 32> FieldDecls;
+  while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)){
+
+    if(Tok.is(tok::kw_cells)){
+      ConsumeToken();
+      fieldType = FieldDecl::FieldCells;
+      if(Tok.isNot(tok::colon)){
+        Diag(Tok, diag::err_expected_colon_after) << "cells";
+        SkipUntil(tok::r_brace, true, true);
+      }
+      ConsumeToken();
+    }
+    else if(Tok.is(tok::kw_vertices)){
+      ConsumeToken();
+      fieldType = FieldDecl::FieldVertices;
+      if(Tok.isNot(tok::colon)){
+        Diag(Tok, diag::err_expected_colon_after) << "vertices";
+        SkipUntil(tok::r_brace, true, true);
+      }
+      ConsumeToken();
+    }
+    
+    DeclSpec DS(AttrFactory);
+    
+    struct ScoutFieldCallback : FieldCallback {
+      Parser& P;
+      Decl* MeshDecl;
+      llvm::SmallVectorImpl<Decl*>& FieldDecls;
+      
+      ScoutFieldCallback(Parser& P, Decl* MeshDecl,
+                         llvm::SmallVectorImpl<Decl*>& FieldDecls) :
+      P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
+      
+      virtual Decl* invoke(FieldDeclarator& FD) {
+        // Install the declarator into the current MeshDecl.
+        Decl* Field = 
+        P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
+                                 FD.D.getDeclSpec().getSourceRange().getBegin(),
+                                 FD.D);
+                
+        FieldDecls.push_back(Field);
+        return Field;
+      }
+    } Callback(*this, Dec, FieldDecls);
+    
+    if(fieldType == FieldDecl::FieldNone){
+      Diag(Tok, diag::err_no_mesh_field_specifier);
+      valid = false;
+    }
+    
+    ParseMeshDeclaration(DS, Callback, fieldType);
+    
+    if(Tok.is(tok::semi)){
+      ConsumeToken();
+    }
+    else if(Tok.is(tok::r_brace)){
+      ExpectAndConsume(tok::semi, diag::ext_expected_semi_decl_list);
+    }
+    else{
+      ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
+      SkipUntil(tok::r_brace, true, true);
+      if(Tok.is(tok::semi)){
+        ConsumeToken();
+      }
+    }
+  }
+  
+  // scout - dump fields
+  /*
+  llvm::SmallVectorImpl<Decl*>::iterator itr = FieldDecls.begin();
+  while(itr != FieldDecls.end()){
+    FieldDecl* fd = cast<FieldDecl>(*itr);
+    switch(fd->meshFieldType()){
+      case FieldDecl::FieldNone:
+        std::cerr << "none: ";
+        break;
+      case FieldDecl::FieldCells:
+        std::cerr << "cells: ";
+        break;
+      case FieldDecl::FieldVertices:
+        std::cerr << "vertices: ";
+        break;
+    }
+    fd->dump();
+    std::cerr << std::endl;
+    ++itr;
+  }
+  */
+  
+  if(FieldDecls.empty()){
+    Diag(LBraceLoc, diag::warn_empty_mesh);
+  }
+
+  // scout - MERGE
+  //SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
+  assert(Tok.is(tok::r_brace));
+  ConsumeBrace();
+  
+
+  MeshScope.Exit();
+  
+  if(!valid){
+    return false;
+  }
+  
+  return Actions.ActOnMeshFinish(StartLoc, Dec);
+}
+

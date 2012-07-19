@@ -89,6 +89,10 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_ObjCXXHeader: case TY_PP_ObjCXXHeader:
   case TY_AST:
   case TY_LLVM_IR: case TY_LLVM_BC:
+
+  // scout - Scout input type
+  case TY_Scout:
+
     return true;
   }
 }
@@ -109,6 +113,7 @@ bool types::isOnlyAcceptedByClang(ID Id) {
 
 bool types::isObjC(ID Id) {
   switch (Id) {
+  // scout - Scout does not currently support ObjC 
   default:
     return false;
 
@@ -129,6 +134,8 @@ bool types::isCXX(ID Id) {
   case TY_ObjCXX: case TY_PP_ObjCXX:
   case TY_CXXHeader: case TY_PP_CXXHeader:
   case TY_ObjCXXHeader: case TY_PP_ObjCXXHeader:
+  // scout - Scout input type
+  case TY_Scout:
   case TY_CUDA:
     return true;
   }
@@ -178,6 +185,8 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("F90", TY_Fortran)
            .Case("F95", TY_Fortran)
            .Case("mii", TY_PP_ObjCXX)
+           // scout - Scout type extension
+           .Case("sc", TY_Scout)
            .Default(TY_INVALID);
 }
 
@@ -242,7 +251,12 @@ ID types::lookupCXXTypeForCType(ID Id) {
   switch (Id) {
   default:
     return Id;
-    
+
+  // scout - Scout type
+  // TODO - leave out?  
+  //case types::TY_Scout:
+    //return types::TY_CXX;  
+
   case types::TY_C:
     return types::TY_CXX;
   case types::TY_PP_C:

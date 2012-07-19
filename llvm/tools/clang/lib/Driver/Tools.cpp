@@ -384,7 +384,7 @@ void Clang::AddPreprocessingOptions(Compilation &C,
       CmdArgs.push_back(C.getArgs().MakeArgString(sysroot));
     }
   }
-  
+
   // If a module path was provided, pass it along. Otherwise, use a temporary
   // directory.
   if (Arg *A = Args.getLastArg(options::OPT_fmodule_cache_path)) {
@@ -392,13 +392,13 @@ void Clang::AddPreprocessingOptions(Compilation &C,
     A->render(Args, CmdArgs);
   } else {
     SmallString<128> DefaultModuleCache;
-    llvm::sys::path::system_temp_directory(/*erasedOnReboot=*/false, 
+    llvm::sys::path::system_temp_directory(/*erasedOnReboot=*/false,
                                            DefaultModuleCache);
     llvm::sys::path::append(DefaultModuleCache, "clang-module-cache");
     CmdArgs.push_back("-fmodule-cache-path");
     CmdArgs.push_back(Args.MakeArgString(DefaultModuleCache));
   }
-  
+
   // Parse additional include paths from environment variables.
   // FIXME: We should probably sink the logic for handling these from the
   // frontend into the driver. It will allow deleting 4 otherwise unused flags.
@@ -767,7 +767,7 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
     CmdArgs.push_back("-arm-darwin-use-movt=0");
   }
 
-  // Setting -mno-global-merge disables the codegen global merge pass. Setting 
+  // Setting -mno-global-merge disables the codegen global merge pass. Setting
   // -mglobal-merge has no effect as the pass is enabled by default.
   if (Arg *A = Args.getLastArg(options::OPT_mglobal_merge,
                                options::OPT_mno_global_merge)) {
@@ -813,7 +813,7 @@ static const char* getMipsCPUFromArch(StringRef ArchName) {
 static const char* getMipsABIFromArch(StringRef ArchName) {
     if (ArchName == "mips" || ArchName == "mipsel")
       return "o32";
-    
+
     assert((ArchName == "mips64" || ArchName == "mips64el") &&
            "Unexpected arch name.");
     return "n64";
@@ -839,11 +839,11 @@ static void getMipsCPUAndABI(const ArgList &Args,
     else
       CPUName = getMipsCPUFromArch(ArchName);
   }
- 
+
   // Select the ABI to use.
   if (Arg *A = Args.getLastArg(options::OPT_mabi_EQ))
     ABIName = A->getValue(Args);
-  else 
+  else
     ABIName = getMipsABIFromArch(ArchName);
 }
 
@@ -1485,6 +1485,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
+  // scout - debug wait flag
+  if(Args.hasArg(options::OPT_debugWait)){
+    CmdArgs.push_back("-debug-wait");
+  }
+
+  // scout - add pthread arg
+  CmdArgs.push_back("-pthread");
+  
   // Select the appropriate action.
   RewriteKind rewriteKind = RK_None;
   
@@ -2098,6 +2106,18 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_pedantic_errors);
   Args.AddLastArg(CmdArgs, options::OPT_w);
 
+  // scout cpu multithreading support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
+
+  // scout gpu support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_gpu);
+
+  // scout emit-all-definitions support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
+  
+  // scout enable autovectorize pass.
+  Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
+  
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).
   //
@@ -2389,7 +2409,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
          !Args.hasArg(options::OPT_fno_blocks))) {
     CmdArgs.push_back("-fblocks");
 
-    if (!Args.hasArg(options::OPT_fgnu_runtime) && 
+    if (!Args.hasArg(options::OPT_fgnu_runtime) &&
         !getToolChain().hasBlocksRuntime())
       CmdArgs.push_back("-fblocks-runtime-optional");
   }
@@ -3015,7 +3035,7 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
-  std::string TripleStr = 
+  std::string TripleStr =
     getToolChain().ComputeEffectiveClangTriple(Args, Input.getType());
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
@@ -3493,7 +3513,7 @@ void darwin::CC1::RemoveCC1UnsupportedArgs(ArgStringList &CmdArgs) const {
         .Case("-mcpu=G5", true)
         .Default(false);
     }
-    
+
     // Handle warning options.
     if (Option.startswith("-W")) {
       // Remove -W/-Wno- to reduce the number of cases.
@@ -3501,7 +3521,7 @@ void darwin::CC1::RemoveCC1UnsupportedArgs(ArgStringList &CmdArgs) const {
         Option = Option.substr(5);
       else
         Option = Option.substr(2);
-      
+
       RemoveOption = llvm::StringSwitch<bool>(Option)
         .Case("address-of-temporary", true)
         .Case("ambiguous-member-template", true)
@@ -4337,6 +4357,27 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
+  // scout - add Scout library search paths
+  std::string sccPath = C.getDriver().Dir;
+  sccPath = llvm::sys::path::parent_path(sccPath);
+
+  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
+  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
+  static std::string scHwLocLibOpt = "-L/usr/local/lib";
+  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+  static std::string scLibOpt = "-L" + sccPath + "/lib";
+
+  static std::string scCudaLib;
+  scCudaLib = "-L/usr/local/cuda/lib";
+
+  CmdArgs.push_back(scRuntimeLibOpt.c_str());
+  CmdArgs.push_back(scStandardLibOpt.c_str());
+  CmdArgs.push_back(scHwLocLibOpt.c_str());
+  CmdArgs.push_back(scLLVMLibOpt.c_str());
+  CmdArgs.push_back(scLibOpt.c_str());
+
+  CmdArgs.push_back(scCudaLib.c_str());
+
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
   // categories.
@@ -4454,6 +4495,27 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fopenmp))
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
+
+  // scout - add Scout libs and other dependencies
+  CmdArgs.push_back("-lpng");
+  CmdArgs.push_back("-lscRuntime");
+  CmdArgs.push_back("-lscStandard");
+  CmdArgs.push_back("-lhwloc");
+  CmdArgs.push_back("-lSDL");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("Foundation");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("Cocoa");
+  CmdArgs.push_back("-framework");
+  CmdArgs.push_back("OpenGL");
+
+#ifdef SC_ENABLE_CUDA
+  CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
+#endif
+
+  CmdArgs.push_back("-lmpi");
+  CmdArgs.push_back("-lmpi_cxx");
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
   
@@ -5511,6 +5573,27 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/lib64/ld-linux-x86-64.so.2");
   }
 
+  // scout - add Scout library search paths
+  std::string sccPath = C.getDriver().Dir;
+  sccPath = llvm::sys::path::parent_path(sccPath);
+
+  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
+  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
+  static std::string scHwLocLibOpt = "-L/usr/local/lib";
+  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
+  static std::string scLibOpt = "-L" + sccPath + "/lib";
+
+  static std::string scCudaLib;
+  scCudaLib = "-L/usr/local/cuda/lib64";
+
+  CmdArgs.push_back(scRuntimeLibOpt.c_str());
+  CmdArgs.push_back(scStandardLibOpt.c_str());
+  CmdArgs.push_back(scHwLocLibOpt.c_str());
+  CmdArgs.push_back(scLLVMLibOpt.c_str());
+  CmdArgs.push_back(scLibOpt.c_str());
+
+  CmdArgs.push_back(scCudaLib.c_str());
+
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 
@@ -5609,6 +5692,22 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
+
+  // scout - add Scout libs and other dependencies
+
+  CmdArgs.push_back("-lpng");
+  CmdArgs.push_back("-lscRuntime");
+  CmdArgs.push_back("-lscStandard");
+  CmdArgs.push_back("-lBlocksRuntime");
+  CmdArgs.push_back("-lhwloc");
+  CmdArgs.push_back("-lGL");
+  CmdArgs.push_back("-lGLU");
+  CmdArgs.push_back("-lSDL");
+
+#ifdef SC_ENABLE_CUDA
+  CmdArgs.push_back("-lcuda");
+  CmdArgs.push_back("-lscCudaError");
+#endif
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }

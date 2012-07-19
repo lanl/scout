@@ -1116,6 +1116,11 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::Vector:
     case Type::FunctionNoProto:
     case Type::Record:
+      
+    // scout - Mesh
+    // Currently meshes are not used as templates
+    case Type::Mesh:
+      
     case Type::Enum:
     case Type::ObjCObject:
     case Type::ObjCInterface:
@@ -4468,6 +4473,10 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::VariableArray:
   case Type::FunctionNoProto:
   case Type::Record:
+
+  // scout - Mesh
+  case Type::Mesh:
+      
   case Type::Enum:
   case Type::ObjCInterface:
   case Type::ObjCObject:

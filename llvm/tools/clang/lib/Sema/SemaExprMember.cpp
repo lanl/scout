@@ -613,6 +613,85 @@ LookupMemberExprInRecord(Sema &SemaRef, LookupResult &R,
   return false;
 }
 
+// scout - Scout Mesh
+// return true if there is an error
+
+static bool
+LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
+                       SourceRange BaseRange, const MeshType *MTy,
+                       SourceLocation OpLoc, CXXScopeSpec &SS){
+  
+  MeshDecl *MDecl = MTy->getDecl();
+  
+  DeclContext *DC = MDecl;
+  
+  SemaRef.LookupQualifiedName(R, DC);
+ 
+  if(R.empty()){
+    SemaRef.Diag(OpLoc, diag::err_invalid_mesh_field) << R.getLookupName();
+    return true;
+  }
+  
+  NamedDecl* ND = R.getFoundDecl();
+
+  assert(isa<FieldDecl>(ND) && "expected a field decl");
+
+  FieldDecl* FD = cast<FieldDecl>(ND);
+  
+  if(MTy->getInstanceType() == MeshType::MeshInstance){
+    return false;
+  }
+  
+  switch(FD->meshFieldType()){
+    case FieldDecl::FieldCells:
+    {
+      if(MTy->getInstanceType() != MeshType::CellsInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldVertices:
+    {
+      if(MTy->getInstanceType() != MeshType::VerticesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_vertices_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldFaces:
+    {
+      if(MTy->getInstanceType() != MeshType::FacesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_faces_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldEdges:
+    {
+      if(MTy->getInstanceType() != MeshType::EdgesInstance){
+        SemaRef.Diag(OpLoc, diag::err_invalid_mesh_edges_field) << 
+        R.getLookupName();
+        return true;
+      }
+      break;
+    }
+    case FieldDecl::FieldAll:
+    {
+      break;
+    }
+    default:
+    {
+      assert(false && "unknown mesh field type");
+    }
+  }
+  
+  return false;
+}
+
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                SourceLocation OpLoc, bool IsArrow,
@@ -806,6 +885,13 @@ static MemberExpr *BuildMemberExpr(Sema &SemaRef,
   return E;
 }
 
+static ScoutVectorMemberExpr 
+*BuildScoutVectorMemberExpr(ASTContext &C, Expr* base, SourceLocation loc,
+                            unsigned index, QualType ty) {
+  
+  return ScoutVectorMemberExpr::Create(C, base, loc, index, ty);
+}
+
 ExprResult
 Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                SourceLocation OpLoc, bool IsArrow,
@@ -827,6 +913,121 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
   DeclarationName MemberName = MemberNameInfo.getName();
   SourceLocation MemberLoc = MemberNameInfo.getLoc();
 
+  // scout - Scout vector types
+  
+  if(const BuiltinType* BT = dyn_cast<BuiltinType>(BaseExprType.getTypePtr())){
+    QualType VCType;
+    bool isScoutVector = false;
+    
+    switch(BT->getKind()){
+      case BuiltinType::Bool2:
+      case BuiltinType::Bool3:
+      case BuiltinType::Bool4: {
+       
+        VCType = Context.BoolTy;
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Char2:
+      case BuiltinType::Char3:
+      case BuiltinType::Char4: {
+        
+        VCType = Context.CharTy;
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Short2:
+      case BuiltinType::Short3:
+      case BuiltinType::Short4: {
+        
+        VCType = Context.ShortTy;
+        isScoutVector = true;
+        break;
+        
+      }
+      case BuiltinType::Int2:
+      case BuiltinType::Int3:
+      case BuiltinType::Int4: {
+
+        VCType = Context.IntTy;
+        isScoutVector = true;
+        break;
+        
+      }
+        
+      case BuiltinType::Long2:
+      case BuiltinType::Long3:
+      case BuiltinType::Long4: {
+        
+        VCType = Context.LongTy;
+        isScoutVector = true;
+        break;
+        
+      }
+        
+      case BuiltinType::Float2:
+      case BuiltinType::Float3:
+      case BuiltinType::Float4: {
+        
+        VCType = Context.FloatTy;
+        isScoutVector = true;;
+        break;
+        
+      }
+        
+        
+      case BuiltinType::Double2:
+      case BuiltinType::Double3:
+      case BuiltinType::Double4: {
+
+        VCType = Context.DoubleTy;
+        isScoutVector = true;
+        break;
+        
+      }
+      default:
+        break;
+    }
+    
+    if(isScoutVector){
+      bool isColor = false;
+      
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(BaseExpr)){
+        if(dr->getDecl()->getName().str() == "color"){
+          isColor = true;
+        }
+      }
+      
+      std::string mn = MemberName.getAsString();
+      unsigned index;
+      if(mn == "x" || isColor && mn == "r"){
+        index = 0;
+      }
+      else if(mn == "y" || isColor && mn == "g"){
+        index = 1;
+      }
+      else if(mn == "z" || isColor && mn == "b"){
+        index = 2;
+      }
+      else if(mn == "w" || isColor && mn == "a"){
+        index = 3;
+      }
+      else{
+        if(isColor){
+          Diag(MemberLoc, diag::err_invalid_scout_color_component);
+        }
+        else{
+          Diag(MemberLoc, diag::err_invalid_scout_vector_component);
+        }
+      }
+      
+      return Owned(BuildScoutVectorMemberExpr(Context, BaseExpr, OpLoc,
+                                              index, VCType));
+    }
+  }
+  
   if (R.isAmbiguous())
     return ExprError();
 
@@ -1061,6 +1262,7 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
                        bool &IsArrow, SourceLocation OpLoc,
                        CXXScopeSpec &SS,
                        Decl *ObjCImpDecl, bool HasTemplateArgs) {
+
   assert(BaseExpr.get() && "no base expression");
 
   // Perform default conversions.
@@ -1115,6 +1317,67 @@ Sema::LookupMemberExpr(LookupResult &R, ExprResult &BaseExpr,
     return Owned((Expr*) 0);
   }
 
+  // scout - Mesh
+  
+  if (const MeshType *MTy = BaseType->getAs<MeshType>()) {
+    if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
+                               MTy, OpLoc, SS))
+      return ExprError();
+    
+    // Returning valid-but-null is how we indicate to the caller that
+    // the lookup result was filled in.
+    return Owned((Expr*) 0);
+  }
+  
+  if (const BuiltinType *BTy = BaseType->getAs<BuiltinType>()) {
+    switch(BTy->getKind()){
+      case BuiltinType::Bool2:
+      case BuiltinType::Char2:
+      case BuiltinType::Short2:
+      case BuiltinType::Int2:
+      case BuiltinType::Long2:
+      case BuiltinType::Float2:
+      case BuiltinType::Double2: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+        
+      case BuiltinType::Bool3:
+      case BuiltinType::Char3:
+      case BuiltinType::Short3:
+      case BuiltinType::Int3:
+      case BuiltinType::Long3:
+      case BuiltinType::Float3:
+      case BuiltinType::Double3: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y" || ms == "z"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+        
+      case BuiltinType::Bool4:
+      case BuiltinType::Char4:
+      case BuiltinType::Short4:
+      case BuiltinType::Int4:
+      case BuiltinType::Long4:
+      case BuiltinType::Float4:
+      case BuiltinType::Double4: {
+        std::string ms = MemberName.getAsString();
+        if(ms == "x" || ms == "y" || ms == "z" || ms == "w" ||
+           ms == "r" || ms == "g" || ms == "b" || ms == "a"){
+          return Owned((Expr*) 0);
+        }
+        break;
+      }
+      default:
+        break;
+    }    
+  }
+  
   // Handle ivar access to Objective-C objects.
   if (const ObjCObjectType *OTy = BaseType->getAs<ObjCObjectType>()) {
     if (!SS.isEmpty() && !SS.isInvalid()) {

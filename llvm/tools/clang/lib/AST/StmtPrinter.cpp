@@ -21,6 +21,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "llvm/ADT/SmallString.h"
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -290,6 +291,24 @@ void StmtPrinter::VisitForStmt(ForStmt *Node) {
     OS << "\n";
     PrintStmt(Node->getBody());
   }
+}
+
+// scout - Scout Stmts
+// TODO - implement
+void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
+  
+}
+
+void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) {
+  
+}
+
+void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
+  
+}
+
+void StmtPrinter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *Node) {
+
 }
 
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
@@ -875,13 +894,26 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   PrintCallArgs(Call);
   OS << ")";
 }
+
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  PrintExpr(Node->getBase());
+  
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
+  ValueDecl* d = dr->getDecl();
+  QualType qt = d->getType();
+  bool isMeshType = false;
+  if(isa<MeshType>(qt.getCanonicalType().getTypePtr())) {
+    isMeshType = true;
+  }
+  
+  if (!(isMeshType && Policy.SuppressMemberBase))
+    PrintExpr(Node->getBase());
+  
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;
-  OS << (Node->isArrow() ? "->" : ".");
+  if (!(isMeshType && Policy.SuppressMemberBase))
+    OS << (Node->isArrow() ? "->" : ".");
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())
@@ -893,6 +925,65 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
                                                     Node->getNumTemplateArgs(),
                                                                 Policy);
 }
+
+// scout - vector types
+// TODO - implement
+void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
+  bool isColor = false;
+
+  if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase())){
+    if(dr->getDecl()->getName() == "color"){
+      isColor = true;
+    }
+  }
+
+  PrintExpr(Node->getBase());
+
+  OS << ".";
+  switch(Node->getIdx()){
+    case 0:
+    {
+      if(isColor){
+        OS << "r";
+      }
+      else{
+        OS << "x";
+      }
+      break;
+    }
+    case 1:
+    {
+      if(isColor){
+        OS << "g";
+      }
+      else{
+        OS << "y";
+      }
+      break;
+    }
+    case 2:
+    {
+      if(isColor){
+        OS << "b";
+      }
+      else{
+        OS << "z";
+      }
+      break;
+    }
+    case 3:
+    {
+      if(isColor){
+        OS << "a";
+      }
+      else{
+        OS << "w";
+      }
+      break;
+    }
+  }
+}
+
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());
   OS << (Node->isArrow() ? "->isa" : ".isa");
@@ -1820,6 +1911,13 @@ void Stmt::printPretty(raw_ostream &OS, ASTContext& Context,
 
   StmtPrinter P(OS, Context, Helper, Policy, Indentation);
   P.Visit(const_cast<Stmt*>(this));
+}
+
+std::string Stmt::toCPPCode(ASTContext& context){
+  std::string str;
+  llvm::raw_string_ostream ostr(str);
+  printPretty(ostr, context, 0, PrintingPolicy(context.getLangOpts()));
+  return ostr.str();
 }
 
 //===----------------------------------------------------------------------===//

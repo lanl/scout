@@ -1568,7 +1568,7 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
 
   const VarDecl *InitDecl;
   const Expr *InitExpr = D->getAnyInitializer(InitDecl);
-
+  
   if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
     // implicitly initialized with { 0 }.
@@ -2655,7 +2655,27 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     // Make sure we handled everything we should, every other kind is a
     // non-top-level decl.  FIXME: Would be nice to have an isTopLevelDeclKind
     // function. Need to recode Decl::Kind to do that easily.
-    assert(isa<TypeDecl>(D) && "Unsupported decl kind");
+    TypeDecl* TD = dyn_cast<TypeDecl>(D);
+    
+    // scout if the -emit-all-definitions flag is set, then emit definitions
+    // in the module regardless of if they were used
+    assert(TD && "Unsupported decl kind");
+    const Type* TFD = TD->getTypeForDecl();
+    if(TFD && CodeGenOpts.ScoutEmitAllDefinitions){
+      llvm::Type* GT = getTypes().ConvertTypeForMem(QualType(TFD, 0));
+      
+      llvm::PointerType* PT = llvm::PointerType::get(GT, 0);
+      
+      llvm::GlobalVariable* GV = 
+      new llvm::GlobalVariable(getModule(),
+                               PT,
+                               true, 
+                               llvm::GlobalValue::InternalLinkage,
+                               llvm::Constant::getNullValue(PT),
+                               "");
+      
+      AddUsedGlobal(GV);
+    }
   }
 }
 

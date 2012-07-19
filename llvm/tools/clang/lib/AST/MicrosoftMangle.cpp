@@ -1213,6 +1213,13 @@ void MicrosoftCXXNameMangler::mangleType(const EnumType *T, SourceRange) {
 void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
   mangleType(static_cast<const TagType*>(T));
 }
+
+// scout - Mesh
+// TODO is this correct?
+void MicrosoftCXXNameMangler::mangleType(const MeshType *T, SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
 void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
   switch (T->getDecl()->getTagKind()) {
     case TTK_Union:

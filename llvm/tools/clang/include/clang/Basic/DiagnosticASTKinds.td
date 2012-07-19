@@ -208,4 +208,5 @@ def err_odr_non_type_parameter_type_inconsistent : Error<
   "non-type template parameter declared with incompatible types in different "
   "translation units (%0 vs. %1)">;
 def err_unsupported_ast_node: Error<"cannot import unsupported AST node %0">;
+
 }

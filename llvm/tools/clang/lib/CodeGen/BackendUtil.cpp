@@ -35,6 +35,11 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
+
+// scout includes
+#include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Vectorize.h"
+
 using namespace clang;
 using namespace llvm;
 
@@ -138,6 +143,21 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 }
 
 void EmitAssemblyHelper::CreatePasses() {
+
+  // scout - Check whether to enable Scout NVIDIA GPU support.
+  if(CodeGenOpts.ScoutNvidiaGPU) {
+    PassManager MPM;
+    MPM.add(createDoallToPTXPass());
+    MPM.run(*TheModule);
+  }
+
+  // enable the BB autovectorizer pass
+  if(CodeGenOpts.ScoutVectorize) {
+    PassManager MPM;
+    MPM.add(createBBVectorizePass());
+    MPM.run(*TheModule);
+  }
+  
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.Inlining;
 
@@ -147,7 +167,7 @@ void EmitAssemblyHelper::CreatePasses() {
     OptLevel = 0;
     Inlining = CodeGenOpts.NoInlining;
   }
-  
+
   PassManagerBuilder PMBuilder;
   PMBuilder.OptLevel = OptLevel;
   PMBuilder.SizeLevel = CodeGenOpts.OptimizeSize;
@@ -180,7 +200,7 @@ void EmitAssemblyHelper::CreatePasses() {
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addAddressSanitizerPass);
   }
-
+  
   if (LangOpts.ThreadSanitizer) {
     PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
                            addThreadSanitizerPass);
@@ -193,7 +213,7 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.LibraryInfo = new TargetLibraryInfo(TargetTriple);
   if (!CodeGenOpts.SimplifyLibCalls)
     PMBuilder.LibraryInfo->disableAllFunctions();
-  
+
   switch (Inlining) {
   case CodeGenOptions::NoInlining: break;
   case CodeGenOptions::NormalInlining: {
@@ -218,7 +238,7 @@ void EmitAssemblyHelper::CreatePasses() {
     break;
   }
 
- 
+
   // Set up the per-function pass manager.
   FunctionPassManager *FPM = getPerFunctionPasses();
   if (CodeGenOpts.VerifyModule)
@@ -236,8 +256,7 @@ void EmitAssemblyHelper::CreatePasses() {
     if (CodeGenOpts.DebugInfo == CodeGenOptions::NoDebugInfo)
       MPM->add(createStripSymbolsPass(true));
   }
-  
-  
+
   PMBuilder.populateModulePassManager(*MPM);
 }
 

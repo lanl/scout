@@ -18,6 +18,13 @@ def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
 def DoStmt : Stmt;
 def ForStmt : Stmt;
+
+// scout - Scout Stmts
+def ForAllStmt : Stmt;
+def ForAllArrayStmt : DStmt<ForAllStmt>;
+def RenderAllStmt : DStmt<ForAllStmt>;
+def VolumeRenderAllStmt : DStmt<CompoundStmt>;
+
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;
 def ContinueStmt : Stmt;
@@ -64,6 +71,10 @@ def UnaryExprOrTypeTraitExpr : DStmt<Expr>;
 def ArraySubscriptExpr : DStmt<Expr>;
 def CallExpr : DStmt<Expr>;
 def MemberExpr : DStmt<Expr>;
+
+// scout - Scout Vector Member Expr
+def ScoutVectorMemberExpr : DStmt<Expr>;
+
 def CastExpr : DStmt<Expr, 1>;
 def BinaryOperator : DStmt<Expr>;
 def CompoundAssignOperator : DStmt<BinaryOperator>;
@@ -163,7 +174,7 @@ def BlockExpr : DStmt<Expr>;
 def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
-def CXXUuidofExpr : DStmt<Expr>; 
+def CXXUuidofExpr : DStmt<Expr>;
 def SEHTryStmt : Stmt;
 def SEHExceptStmt : Stmt;
 def SEHFinallyStmt : Stmt;

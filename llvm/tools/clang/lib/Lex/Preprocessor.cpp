@@ -59,7 +59,10 @@ Preprocessor::Preprocessor(DiagnosticsEngine &diags, LangOptions &opts,
   : Diags(&diags), LangOpts(opts), Target(target),FileMgr(Headers.getFileMgr()),
     SourceMgr(SM), HeaderInfo(Headers), TheModuleLoader(TheModuleLoader),
     ExternalSource(0), Identifiers(opts, IILookup), 
-    IncrementalProcessing(IncrProcessing), CodeComplete(0), 
+    IncrementalProcessing(IncrProcessing), CodeComplete(0),
+    // scout - ScoutIdentifiers init - LangOpts empty because we don't want it
+    // to pick up the Scout keywords
+    ScoutIdentifiers(LangOptions()),
     CodeCompletionFile(0), CodeCompletionOffset(0), CodeCompletionReached(0),
     SkipMainFilePreamble(0, true), CurPPLexer(0), 
     CurDirLookup(0), CurLexerKind(CLK_Lexer), Callbacks(0), MacroArgCache(0), 

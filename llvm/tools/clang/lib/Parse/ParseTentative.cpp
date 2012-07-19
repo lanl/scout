@@ -778,6 +778,37 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_char:
   case tok::kw_const:
   case tok::kw_double:
+
+  // scout - vector types
+  
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_rectlinear:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+      
   case tok::kw_enum:
   case tok::kw_half:
   case tok::kw_float:
@@ -1138,6 +1169,37 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+
+  // scout - vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+  
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_rectlinear:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+      
   case tok::kw_void:
   case tok::annot_decltype:
     if (NextToken().is(tok::l_paren))

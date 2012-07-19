@@ -512,10 +512,25 @@ def cl_std_EQ : Joined<"-cl-std=">,
   HelpText<"OpenCL language standard to compile for">;
 
 //===----------------------------------------------------------------------===//
+// scout - Scout Options
+//===----------------------------------------------------------------------===//
+def view_ast : Flag<"-view-ast">,
+  HelpText<"View the AST of a parsed file with GraphViz">;
+def gpu : Flag<"-gpu">,
+  HelpText<"Enable NVIDIA GPU support.">;
+def emitAllDefinitions : Flag<"-emit-all-definitions">,
+  HelpText<"Emit all definitions regardless of it that definition was used.">;
+def vectorize : Flag<"-vectorize">,
+  HelpText<"Enable autovectorize pass.">;
+def cpuThreads : Flag<"-mt">,
+  HelpText<"Enable CPU multithreading support.">;
+def debugWait : Flag<"-debug-wait">,
+  HelpText<"Used to allow debugger to attach to the scc driver.">;
+
+//===----------------------------------------------------------------------===//
 // CUDA Options
 //===----------------------------------------------------------------------===//
 
 def fcuda_is_device : Flag<"-fcuda-is-device">,
   HelpText<"Generate code for CUDA device">;
-
 } // let Flags = [CC1Option]

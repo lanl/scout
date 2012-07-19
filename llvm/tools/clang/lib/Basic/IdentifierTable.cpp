@@ -103,7 +103,11 @@ namespace {
     KEYOPENCL = 0x200,
     KEYC11 = 0x400,
     KEYARC = 0x800,
-    KEYALL = 0x0fff
+
+    // scout - TokenKinds
+    KEYSCOUT = 0x1000,
+    
+    KEYALL = 0x0ffff
   };
 }
 
@@ -134,6 +138,9 @@ static void AddKeyword(StringRef Keyword,
   // We treat bridge casts as objective-C keywords so we can warn on them
   // in non-arc mode.
   else if (LangOpts.ObjC2 && (Flags & KEYARC)) AddResult = 2;
+  // scout - keywords
+  else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
+
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX0X)) AddResult = 3;
 
   // Don't add this keyword if disabled in this language.

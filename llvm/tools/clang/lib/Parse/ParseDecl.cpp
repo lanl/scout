@@ -22,6 +22,10 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
+
+// scout
+#include <map>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -723,6 +727,7 @@ void Parser::ParseAvailabilityAttribute(IdentifierInfo &Availability,
       return;
     }
     ConsumeToken();
+
     if (Keyword == Ident_message) {
       if (!isTokenStringLiteral()) {
         Diag(Tok, diag::err_expected_string_literal);
@@ -1079,6 +1084,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclaration(StmtVector &Stmts,
                                                 SourceLocation &DeclEnd,
                                           ParsedAttributesWithRange &attrs) {
   ParenBraceBracketBalancer BalancerRAIIObj(*this);
+
   // Must temporarily exit the objective-c container scope for
   // parsing c none objective-c decls.
   ObjCDeclContextSwitch ObjCDC(*this);
@@ -1145,6 +1151,7 @@ Parser::ParseSimpleDeclaration(StmtVector &Stmts, unsigned Context,
                                SourceLocation &DeclEnd,
                                ParsedAttributesWithRange &attrs,
                                bool RequireSemi, ForRangeInit *FRI) {
+
   // Parse the common declaration-specifiers piece.
   ParsingDeclSpec DS(*this);
   DS.takeAttributesFrom(attrs);
@@ -1319,6 +1326,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
                                               bool AllowFunctionDefinitions,
                                               SourceLocation *DeclEnd,
                                               ForRangeInit *FRI) {
+
   // Parse the first declarator.
   ParsingDeclarator D(*this, DS, static_cast<Declarator::TheContext>(Context));
   ParseDeclarator(D);
@@ -1343,7 +1351,6 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
       !isDeclarationAfterDeclarator() && 
       (!CurParsedObjCImpl || Tok.isNot(tok::l_brace) || 
        (getLangOpts().CPlusPlus && D.getCXXScopeSpec().isSet()))) {
-
     if (isStartOfFunctionDefinition(D)) {
       if (DS.getStorageClassSpec() == DeclSpec::SCS_typedef) {
         Diag(Tok, diag::err_function_declared_typedef);
@@ -1436,6 +1443,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     MaybeParseGNUAttributes(D);
 
     ParseDeclarator(D);
+
     if (!D.isInvalidType()) {
       Decl *ThisDecl = ParseDeclarationAfterDeclarator(D);
       D.complete(ThisDecl);
@@ -1579,6 +1587,28 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(Declarator &D,
         Actions.CodeCompleteInitializer(getCurScope(), ThisDecl);
         cutOffParsing();
         return 0;
+      }
+      // scout - handle scout vector initialization here
+      // e.g: float3 v1 = 0;
+      //      float4 v2 = float4(0,1,2,3);
+
+      if(VarDecl* vd = dyn_cast<VarDecl>(ThisDecl)){
+        BuiltinType::Kind kind;
+        if(isScoutVectorValueDecl(vd, kind)){
+          ScoutVectorType vectorType;
+
+          if(vd->getName().str() == "color"){
+            vectorType = ScoutVectorColor;
+          }
+          else{
+            vectorType = ScoutVectorGeneric;
+          }
+
+          ExprResult rhs = ParseScoutVectorRHS(kind, vectorType);
+          Actions.AddInitializerToScoutVector(vd, kind, rhs.take());
+          Actions.FinalizeDeclaration(ThisDecl);
+          return ThisDecl;
+        }
       }
 
       ExprResult Init(ParseInitializer());
@@ -1814,6 +1844,10 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
         TagName="struct"; FixitTagName = "struct ";TagKind=tok::kw_struct;break;
       case DeclSpec::TST_class:
         TagName="class" ; FixitTagName = "class " ;TagKind=tok::kw_class ;break;
+      
+      // scout - added TST mesh
+      case DeclSpec::TST_mesh:
+        TagName="mesh" ; FixitTagName = "mesh " ;TagKind=tok::kw_mesh ;break;
     }
 
     if (TagName) {
@@ -1901,6 +1935,7 @@ bool Parser::ParseImplicitInt(DeclSpec &DS, CXXScopeSpec *SS,
       DS.SetTypeSpecType(DeclSpec::TST_typename, Loc, PrevSpec, DiagID, T);
       DS.SetRangeEnd(Tok.getLocation());
       ConsumeToken();
+      
       // There may be other declaration specifiers after this.
       return true;
     } else if (II != Tok.getIdentifierInfo()) {
@@ -2534,10 +2569,40 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // type-specifier
     case tok::kw_short:
+      // scout - detect short <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout short4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_half;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_short);
+        if (myTst != TST_half) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+
       isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_short, Loc, PrevSpec,
                                       DiagID);
       break;
     case tok::kw_long:
+      // scout - detect long <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout long4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_int;  // There is no TST_long!!  hack
+        myTst = GetIspcScoutExtension(myTst, tok::kw_long);
+        if (myTst != TST_int) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      
       if (DS.getTypeSpecWidth() != DeclSpec::TSW_long)
         isInvalid = DS.SetTypeSpecWidth(DeclSpec::TSW_long, Loc, PrevSpec,
                                         DiagID);
@@ -2570,10 +2635,40 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_char:
+      // scout - detect char <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout char4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_char;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_char);
+        if (myTst != TST_char) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+      
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_int:
+      // scout - detect int <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout int4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_int;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_int);
+        if (myTst != TST_int) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+        
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int, Loc, PrevSpec,
                                      DiagID);
       break;
@@ -2586,13 +2681,154 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_float:
+      // scout - detect float <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout float4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_float;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_float);
+        if (myTst != TST_float) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+		   
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float, Loc, PrevSpec,
                                      DiagID);
       break;
     case tok::kw_double:
+      // scout - detect double <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout double4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_double;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_double);
+        if (myTst != TST_double) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double, Loc, PrevSpec,
                                      DiagID);
       break;
+
+    // scout - vector types
+
+    case tok::kw_bool2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_bool3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_bool4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_bool4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_char2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+
+    case tok::kw_char3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+
+    case tok::kw_char4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_char4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_short2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_short3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_short4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_short4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_int2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_int3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_int4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_int4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_long2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_long3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_long4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_long4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_float2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_float3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_float4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_float4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_double2:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double2, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_double3:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double3, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+    case tok::kw_double4:
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_double4, Loc, PrevSpec,
+                                     DiagID);
+      break;
+
+
     case tok::kw_wchar_t:
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_wchar, Loc, PrevSpec,
                                      DiagID);
@@ -2606,6 +2842,21 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                      DiagID);
       break;
     case tok::kw_bool:
+      // scout - detect bool <4>, int <3>, ... iSPC constructs and
+      //                 return TST_value of Scout bool4, int3, ...
+      //                 that should be substituted.  Return same if not iSPC
+      {
+        DeclSpec::TST myTst = TST_bool;
+        myTst = GetIspcScoutExtension(myTst, tok::kw_bool);
+        if (myTst != TST_bool) {
+          isInvalid = DS.SetTypeSpecType(myTst, Loc, PrevSpec, DiagID);
+          ConsumeToken();
+          ConsumeToken();
+          ConsumeToken();
+          break;
+        }
+      }
+
     case tok::kw__Bool:
       if (Tok.is(tok::kw_bool) &&
           DS.getTypeSpecType() != DeclSpec::TST_unspecified &&
@@ -2651,6 +2902,23 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       ConsumeToken();
       ParseClassSpecifier(Kind, Loc, DS, TemplateInfo, AS,
                           EnteringContext, DSContext);
+      continue;
+    }
+
+    // scout - Mesh definition
+
+    case tok::kw_uniform:
+    case tok::kw_rectlinear:
+    case tok::kw_structured:
+    case tok::kw_unstructured: {
+
+      // for now, at least the presence of one of the above keywords is sufficient
+      // to denote the beginning of a mesh definition
+
+      // so we know this is the start of:
+      //   uniform mesh MyMesh { ...
+      ParseMeshSpecifier(DS, TemplateInfo);
+
       continue;
     }
 
@@ -3033,7 +3301,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
     (TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation ||
      TemplateInfo.Kind == ParsedTemplateInfo::ExplicitSpecialization);
   SuppressAccessChecks diagsFromTag(*this, shouldDelayDiagsInTag);
-
+  
   // Enum definitions should not be parsed in a trailing-return-type.
   bool AllowDeclaration = DSC != DSC_trailing;
 
@@ -3209,6 +3477,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
   }
 
   MultiTemplateParamsArg TParams;
+
   if (TemplateInfo.Kind != ParsedTemplateInfo::NonTemplate &&
       TUK != Sema::TUK_Reference) {
     if (!getLangOpts().CPlusPlus0x || !SS.isSet()) {
@@ -3457,6 +3726,36 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+
+// scout - vector types
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4:
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4:
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4:
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4:
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4:
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4:
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4:
+
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+  case tok::kw_mesh:
+ 
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -3528,6 +3827,36 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+
+  // scout - Scout vector types
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4:
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4:
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4:
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4:
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4:
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4:
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4:
+
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -3665,6 +3994,37 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+
+  // scout - Scout vector types
+
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4:
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4:
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4:
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4:
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4:
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4:
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4:
+
+  case tok::kw_mesh:
+  case tok::kw_uniform:
+  case tok::kw_structured:
+  case tok::kw_unstructured:
+  case tok::kw_rectlinear:
+
   case tok::kw_bool:
   case tok::kw__Bool:
   case tok::kw__Decimal32:
@@ -4172,7 +4532,18 @@ static void diagnoseMisplacedEllipsis(Parser &P, Declarator &D,
 /// in isConstructorDeclarator.
 void Parser::ParseDirectDeclarator(Declarator &D) {
   DeclaratorScopeObj DeclScopeObj(*this, D.getCXXScopeSpec());
-
+ 
+  // scout - parse mesh paramters e.g: MyMesh[:]
+  DeclSpec& DS = D.getMutableDeclSpec();
+  DeclSpec::TST tst = DS.getTypeSpecType();
+  if(Tok.is(tok::l_square) && tst == DeclSpec::TST_typename){
+    ParsedType parsedType = DS.getRepAsType();
+    const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+    if(mt){
+      ParseMeshParameterDeclaration(DS);
+    }
+  }
+  
   if (getLangOpts().CPlusPlus && D.mayHaveIdentifier()) {
     // ParseDeclaratorInternal might already have parsed the scope.
     if (D.getCXXScopeSpec().isEmpty()) {
@@ -4186,7 +4557,7 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       if (Actions.ShouldEnterDeclaratorScope(getCurScope(), D.getCXXScopeSpec()))
         // Change the declaration context for name lookup, until this function
         // is exited (and the declarator has been parsed).
-        DeclScopeObj.EnterDeclaratorScope();
+		  DeclScopeObj.EnterDeclaratorScope();
     }
 
     // C++0x [dcl.fct]p14:
@@ -4215,7 +4586,6 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       // check for that in ParseParenDeclarator, after we have disambiguated
       // the l_paren token.
     }
-
     if (Tok.is(tok::identifier) || Tok.is(tok::kw_operator) ||
         Tok.is(tok::annot_template_id) || Tok.is(tok::tilde)) {
       // We found something that indicates the start of an unqualified-id.
@@ -4288,9 +4658,10 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       *(volatile int*) 0x11 = 0;
     if (D.getContext() == Declarator::MemberContext)
       Diag(Tok, diag::err_expected_member_name_or_semi)
-        << D.getDeclSpec().getSourceRange();
-    else if (getLangOpts().CPlusPlus)
+      << D.getDeclSpec().getSourceRange();
+    else if (getLangOpts().CPlusPlus){
       Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus;
+    }
     else
       Diag(Tok, diag::err_expected_ident_lparen);
     D.SetIdentifier(0, Tok.getLocation());
@@ -4495,7 +4866,7 @@ void Parser::ParseFunctionDeclarator(Declarator &D,
   TypeResult TrailingReturnType;
 
   Actions.ActOnStartFunctionDeclarator();
-
+  
   SourceLocation EndLoc;
   if (isFunctionDeclaratorIdentifierList()) {
     if (RequiresArg)
@@ -4754,9 +5125,30 @@ void Parser::ParseParameterDeclarationClause(
     // get rid of a parameter (FirstArgAttrs) and this statement. It might be
     // too much hassle.
     DS.takeAttributesFrom(FirstArgAttrs);
-
+    
     ParseDeclarationSpecifiers(DS);
+    
+    // scout - parse mesh parameters
+    // e.g: "MyMesh[]", "MyMesh[:]", "MyMesh[::]" and ensure that mesh
+    // parameters are declared as references or pointers
+    DeclSpec::TST tst = DS.getTypeSpecType();
+    if(tst == DeclSpec::TST_typename){
+      ParsedType parsedType = DS.getRepAsType();
+      const MeshType* mt = 
+      dyn_cast<MeshType>(parsedType.get().getCanonicalType().getTypePtr());
+      if(mt){
+        if(Tok.is(tok::l_square)){
+          ParseMeshParameterDeclaration(DS);
+        }
 
+        if(Tok.isNot(tok::amp) && Tok.isNot(tok::star)){
+          Diag(Tok, diag::err_expected_mesh_param_star_amp);
+          SkipUntil(tok::r_paren);
+          return;
+        }
+      }
+    }
+    
     // Parse the declarator.  This is "PrototypeContext", because we must
     // accept either 'declarator' or 'abstract-declarator' here.
     Declarator ParmDecl(DS, Declarator::PrototypeContext);
@@ -4885,7 +5277,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
 
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
-
+  
   // C array syntax has many features, but by-far the most common is [] and [4].
   // This code does a fast path to handle some of the most obvious cases.
   if (Tok.getKind() == tok::r_square) {
@@ -5088,6 +5480,103 @@ void Parser::ParseAtomicSpecifier(DeclSpec &DS) {
     Diag(StartLoc, DiagID) << PrevSpec;
 }
 
+// scout - Get value of LookAheadToken.  A hack just to
+//                 to get value between 2 and 4.  Needs replacement
+static int GetValueLAT(const char *v) {
+   if ((*v > '4') || (*v < '2')) return 0;
+   if ((*(v+1) >= '0') && (*(v+1) <= '9')) return 0;
+  return ((int) (*v - '0'));
+}
+
+// scout - detect float <4>, int <3>, ... iSPC constructs and
+//                 return TST_value of Scout float4, int3, ...
+//                 that should be substituted.  Return same if not iSPC
+//                 Involves lookahead and possible token consumption
+DeclSpec::TST Parser::GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw) {
+
+  
+  switch (kw) {
+    default: break;
+    case tok::kw_bool:
+    case tok::kw_char:
+    case tok::kw_short:
+    case tok::kw_int:
+    case tok::kw_long:
+    case tok::kw_float:
+    case tok::kw_double:
+      if ((GetLookAheadToken(1).is(tok::less))             &&
+          (GetLookAheadToken(2).is(tok::numeric_constant)) &&
+          (GetLookAheadToken(3).is(tok::greater)))            {
+        const char *v = GetLookAheadToken(2).getLiteralData();
+        int val = GetValueLAT(v);
+
+        if (val < 2 || val > 4) break;
+        switch(kw) {
+          default: assert(0 && "GetIspc bad kw 2 logic"); break;
+          case tok:: kw_bool:
+            switch (val) {
+              case 2: TagType = TST_bool2; break;
+              case 3: TagType = TST_bool3; break;
+              case 4: TagType = TST_bool4; break;
+              default: assert(0 && "GetIspc bad bool logic"); break;
+            } // end kw_bool
+            break;
+          case tok:: kw_char:
+            switch (val) {
+              case 2: TagType = TST_char2; break;
+              case 3: TagType = TST_char3; break;
+              case 4: TagType = TST_char4; break;
+              default: assert(0 && "GetIspc bad char logic"); break;
+            } // end kw_char
+            break;
+          case tok:: kw_short:
+            switch (val) {
+              case 2: TagType = TST_short2; break;
+              case 3: TagType = TST_short3; break;
+              case 4: TagType = TST_short4; break;
+              default: assert(0 && "GetIspc bad short logic"); break;
+            } // end kw_short
+            break;
+          case tok:: kw_int:
+            switch (val) {
+              case 2: TagType = TST_int2; break;
+              case 3: TagType = TST_int3; break;
+              case 4: TagType = TST_int4; break;
+              default: assert(0 && "GetIspc bad int logic"); break;
+            } // end kw_int
+            break;
+          case tok:: kw_long:
+            switch (val) {
+              case 2: TagType = TST_long2; break;
+              case 3: TagType = TST_long3; break;
+              case 4: TagType = TST_long4; break;
+              default: assert(0 && "GetIspc bad long logic"); break;
+            } // end kw_long
+            break;
+          case tok:: kw_float:
+            switch (val) {
+              case 2: TagType = TST_float2; break;
+              case 3: TagType = TST_float3; break;
+              case 4: TagType = TST_float4; break;
+              default: assert(0 && "GetIspc bad float logic"); break;
+            } // end kw_float
+            break;
+          case tok:: kw_double:
+            switch (val) {
+              case 2: TagType = TST_double2; break;
+              case 3: TagType = TST_double3; break;
+              case 4: TagType = TST_double4; break;
+              default: assert(0 && "GetIspc bad double logic"); break;
+            } // end kw_double
+            break;
+          } // end switch(kw)
+        } // end if lookahead
+        break; // endcase of all scout kw_bool2 ... kw_double4
+  } // endswitch(kw)
+
+  return TagType;
+}
+
 
 /// TryAltiVecVectorTokenOutOfLine - Out of line body that should only be called
 /// from TryAltiVecVectorToken.
@@ -5104,6 +5593,31 @@ bool Parser::TryAltiVecVectorTokenOutOfLine() {
   case tok::kw_int:
   case tok::kw_float:
   case tok::kw_double:
+
+  // scout - Scout vector types
+
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4:
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4:
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4:
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4:
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4:
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4:
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4:
+   
   case tok::kw_bool:
   case tok::kw___pixel:
     Tok.setKind(tok::kw___vector);
@@ -5152,3 +5666,329 @@ bool Parser::TryAltiVecTokenOutOfLine(DeclSpec &DS, SourceLocation Loc,
   }
   return false;
 }
+
+// scout - Scout Mesh
+// this method is used to parse a mesh field declaration, e.g:
+// uniform mesh MyMesh[512,512]{
+//   cells:
+//     float a; // <---- parser is here
+// ... }
+
+void Parser::
+ParseMeshDeclaration(DeclSpec &DS,
+                     FieldCallback &Fields,
+                     unsigned FieldType) {
+  ParseSpecifierQualifierList(DS);
+
+  // Read mesh-declarators until we find the semicolon.
+  bool FirstDeclarator = true;
+  while (1) {
+    ParsingDeclRAIIObject PD(*this, ParsingDeclRAIIObject::NoParent);
+    FieldDeclarator DeclaratorInfo(DS);
+
+    // Attributes are only allowed here on successive declarators.
+    if (!FirstDeclarator)
+      MaybeParseGNUAttributes(DeclaratorInfo.D);
+
+    ParseDeclarator(DeclaratorInfo.D);
+
+    // If attributes exist after the declarator, parse them.
+    MaybeParseGNUAttributes(DeclaratorInfo.D);
+
+    // We're done with this declarator;  invoke the callback.
+    Decl *D = Fields.invoke(DeclaratorInfo);
+
+    FieldDecl* FD = cast<FieldDecl>(D);
+    FD->setMeshFieldType(FieldDecl::MeshFieldType(FieldType), false);
+
+    PD.complete(D);
+
+    // If we don't have a comma, it is either the end of the list (a ';')
+    // or an error, bail out.
+    if (Tok.isNot(tok::comma)){
+      return;
+    }
+
+    // Consume the comma.
+    ConsumeToken();
+
+    FirstDeclarator = false;
+  }
+}
+// scout - parse a mesh parameter declaration
+// assumes on entry that the token stream looks like:
+// [], [:], [::], and that we have already parsed a mesh type
+void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
+  ParsedType parsedType = DS.getRepAsType();
+  const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+  
+  ConsumeBracket();
+  size_t numDims;
+  if(Tok.is(tok::r_square)){
+    numDims = 1;
+  }
+  else if(Tok.is(tok::colon)){
+    numDims = 2;
+    ConsumeToken();
+  } 
+  else if(Tok.is(tok::coloncolon)){
+    numDims = 3;
+    ConsumeToken();
+  }
+  else{
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  }
+  
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_mesh_param_token);
+    SkipUntil(tok::r_square);
+    return;
+  }
+  else{
+    ConsumeBracket();
+  }
+  
+  MeshType::MeshDimensionVec dims;
+  for(size_t i = 0; i < numDims; ++i){
+    dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
+  }
+  
+  MeshType* mdt = new MeshType(mt->getDecl());
+  mdt->setDimensions(dims);
+  parsedType.set(QualType(mdt, 0));
+  DS.UpdateTypeRep(parsedType);
+}
+
+// scout - parse a window or image declaration
+// return true on success
+// these look like:
+
+// window win[1024,1024] {
+//   background  = hsv(0.1, 0.2, 0.3);
+//   save_frames = true;
+//   filename    = "heat2d-####.png";
+// };
+
+// image img[1024, 1024]{
+//   background = hsv(0.0f, 0.0f, 0.0f);
+//   filename   = "heat2d-####.png";
+//  };
+
+
+StmtResult
+Parser::ParseWindowOrImageDeclaration(bool window,
+                                      StmtVector &Stmts,
+                                      bool OnlyStatement){
+  if(window){
+    assert(Tok.is(tok::kw_window) && "Not a window declaration stmt!");
+  }
+  else{
+    assert(Tok.is(tok::kw_image) && "Not an image declaration stmt!");
+  }
+
+  ConsumeToken();
+
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = ConsumeToken();
+
+  if(Tok.isNot(tok::l_square)){
+    Diag(Tok, diag::err_expected_lsquare);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeBracket();
+
+  if(Tok.isNot(tok::numeric_constant)){
+    Diag(Tok, diag::err_expected_numeric_constant_in_window_def);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ExprResult XSize = Actions.ActOnNumericConstant(Tok).get();
+
+  ConsumeToken();
+
+  if(Tok.isNot(tok::comma)){
+    Diag(Tok, diag::err_expected_comma);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeToken();
+
+  ExprResult YSize = Actions.ActOnNumericConstant(Tok).get();
+
+  ConsumeToken();
+
+  if(Tok.isNot(tok::r_square)){
+    Diag(Tok, diag::err_expected_rsquare);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeBracket();
+
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok, diag::err_expected_lbrace);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeBrace();
+
+  typedef std::map<std::string, Expr*> ArgExprMap;
+
+  ArgExprMap argExprMap;
+
+  bool error = false;
+
+  for(;;){
+    if(Tok.is(tok::r_brace) || Tok.is(tok::eof)){
+      break;
+    }
+
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    IdentifierInfo* Arg = Tok.getIdentifierInfo();
+    SourceLocation ArgLoc = ConsumeToken();
+
+    if(Tok.isNot(tok::equal)){
+      Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    ConsumeToken();
+
+    ExprResult argResult = ParseExpression();
+    if(argResult.isInvalid()){
+      error = true;
+    }
+
+    argExprMap[Arg->getName()] = argResult.get();
+
+    if(Tok.isNot(tok::semi)){
+      if(window){
+        Diag(Tok, diag::err_expected_semi_window_arg);
+      }
+      else{
+        Diag(Tok, diag::err_expected_semi_image_arg);
+      }
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    ConsumeToken();
+  }
+
+  assert(Tok.is(tok::r_brace) && "expected r_brace");
+
+  ConsumeBrace();
+
+  assert(Tok.is(tok::semi) && "expected semi");
+
+  ConsumeToken();
+
+  if(error){
+    return StmtError();
+  }
+
+  std::string code;
+
+  if(window){
+    code = "scout::window_rt " + Name->getName().str() + "(" +
+    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
+
+    ArgExprMap::iterator itr = argExprMap.find("background");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "background";
+      error = true;
+    }
+
+    code += ToCPPCode(itr->second) + ", ";
+
+    itr = argExprMap.find("save_frames");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "save_frames";
+      error = true;
+    }
+
+    code += ToCPPCode(itr->second) + ", ";
+
+    itr = argExprMap.find("filename");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_window_decl) << "filename";
+      error = true;
+    }
+
+    code += ToCPPCode(itr->second) + ");";
+  }
+  else{
+    code = "scout::image_rt " + Name->getName().str() + "(" +
+    ToCPPCode(XSize.get()) + ", " + ToCPPCode(YSize.get()) + ", ";
+
+    ArgExprMap::iterator itr = argExprMap.find("background");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_image_decl) << "background";
+      error = true;
+    }
+
+    code += ToCPPCode(itr->second) + ", ";
+
+    itr = argExprMap.find("filename");
+    if(itr == argExprMap.end()){
+      Diag(Tok, diag::err_missing_field_image_decl) << "filename";
+      error = true;
+    }
+
+    code += ToCPPCode(itr->second) + ");";
+  }
+
+  if(error){
+    return StmtError();
+  }
+
+  InsertCPPCode(code, NameLoc);
+
+  return ParseStatementOrDeclaration(Stmts, OnlyStatement);
+}
+
+

@@ -19,6 +19,9 @@
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ASTConsumer.h"
+
+#include <iostream>
+
 using namespace clang;
 
 /// \brief Parse a template declaration, explicit instantiation, or

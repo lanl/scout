@@ -16,6 +16,7 @@
 
 #include "clang/Lex/PreprocessorLexer.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/IdentifierTable.h"
 #include "llvm/ADT/SmallVector.h"
 #include <string>
 #include <cassert>
@@ -53,6 +54,10 @@ class Lexer : public PreprocessorLexer {
   SourceLocation FileLoc;        // Location for start of file.
   LangOptions LangOpts;          // LangOpts enabled by this language (cache).
   bool Is_PragmaLexer;           // True if lexer for _Pragma handling.
+  
+  // scout - support for lexing from a string
+  llvm::MemoryBuffer* StringLexerMemoryBuffer;
+  llvm::StringRef* StringLexerStringRef;
   
   //===--------------------------------------------------------------------===//
   // Context-specific lexing flags set by the preprocessor.
@@ -108,6 +113,12 @@ public:
   Lexer(FileID FID, const llvm::MemoryBuffer *InputBuffer,
         const SourceManager &SM, const LangOptions &LangOpts);
 
+  // scout - Ctor for string lexer
+  Lexer(const std::string& str, Preprocessor& PP);
+
+  // scout - added Dtor
+  ~Lexer();
+  
   /// Create_PragmaLexer: Lexer constructor - Create a new lexer object for
   /// _Pragma expansion.  This has a variety of magic semantics that this method
   /// sets up.  It returns a new'd Lexer that must be delete'd when done.

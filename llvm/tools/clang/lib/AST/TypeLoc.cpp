@@ -16,6 +16,9 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
 #include "llvm/Support/ErrorHandling.h"
+
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -54,6 +57,7 @@ namespace {
 /// \brief Returns the size of the type source info data block.
 unsigned TypeLoc::getFullDataSizeForType(QualType Ty) {
   if (Ty.isNull()) return 0;
+  
   return TypeSizer().Visit(TypeLoc(Ty, 0));
 }
 
@@ -197,6 +201,7 @@ SourceRange TypeOfExprTypeLoc::getLocalSourceRange() const {
 TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   if (needsExtraLocalData())
     return static_cast<TypeSpecifierType>(getWrittenBuiltinSpecs().Type);
+
   switch (getTypePtr()->getKind()) {
   case BuiltinType::Void:
     return TST_void;
@@ -228,6 +233,30 @@ TypeSpecifierType BuiltinTypeLoc::getWrittenTypeSpec() const {
   case BuiltinType::Float:
   case BuiltinType::Double:
   case BuiltinType::LongDouble:
+    
+  // scout - vector types
+        
+  case BuiltinType::Bool2:
+  case BuiltinType::Bool3:
+  case BuiltinType::Bool4:    
+  case BuiltinType::Char2:
+  case BuiltinType::Char3:
+  case BuiltinType::Char4:
+  case BuiltinType::Short2:
+  case BuiltinType::Short3:
+  case BuiltinType::Short4: 
+  case BuiltinType::Int2:
+  case BuiltinType::Int3:
+  case BuiltinType::Int4: 
+  case BuiltinType::Long2:
+  case BuiltinType::Long3:
+  case BuiltinType::Long4: 
+  case BuiltinType::Float2:
+  case BuiltinType::Float3:
+  case BuiltinType::Float4: 
+  case BuiltinType::Double2:
+  case BuiltinType::Double3:
+  case BuiltinType::Double4: 
     llvm_unreachable("Builtin type needs extra local data!");
     // Fall through, if the impossible happens.
       

@@ -299,6 +299,9 @@ std::string TargetData::parseSpecifier(StringRef Desc, TargetData *td) {
 /// @note This has to exist, because this is a pass, but it should never be
 /// used.
 TargetData::TargetData() : ImmutablePass(ID) {
+  // gpu2 - remove
+  assert(false);
+
   report_fatal_error("Bad TargetData ctor used.  "
                     "Tool did not specify a TargetData to use?");
 }

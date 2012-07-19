@@ -3392,6 +3392,11 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
   return false;
 }
 
+// scout - Mesh
+bool UnnamedLocalNoLinkageFinder::VisitMeshType(const MeshType* T) {
+  return false;
+}
+
 bool UnnamedLocalNoLinkageFinder::VisitAutoType(const AutoType *T) {
   return Visit(T->getDeducedType());
 }

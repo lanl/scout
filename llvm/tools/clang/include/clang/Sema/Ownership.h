@@ -330,7 +330,7 @@ namespace clang {
   };
 
   class ParsedTemplateArgument;
-    
+
   class ASTTemplateArgsPtr {
     ParsedTemplateArgument *Args;
     mutable unsigned Count;

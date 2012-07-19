@@ -846,6 +846,10 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ExtVector:
     case Type::FunctionProto:
     case Type::FunctionNoProto:
+
+    // scout - Mesh
+    case Type::Mesh:
+        
     case Type::Enum:
     case Type::Paren:
     case Type::Elaborated:
@@ -1875,6 +1879,30 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::Double: Out << 'd'; break;
   case BuiltinType::LongDouble: Out << 'e'; break;
   case BuiltinType::NullPtr: Out << "Dn"; break;
+    
+  // scout - vector types
+  // TODO implement correctly
+  case BuiltinType::Bool2: Out << "b2"; break;
+  case BuiltinType::Bool3: Out << "b3"; break;
+  case BuiltinType::Bool4: Out << "b4"; break;
+  case BuiltinType::Char2: Out << "c2"; break;
+  case BuiltinType::Char3: Out << "c3"; break;
+  case BuiltinType::Char4: Out << "c4"; break;
+  case BuiltinType::Short2: Out << "s2"; break;
+  case BuiltinType::Short3: Out << "s3"; break;
+  case BuiltinType::Short4: Out << "s4"; break;
+  case BuiltinType::Int2: Out << "i2"; break;
+  case BuiltinType::Int3: Out << "i3"; break;
+  case BuiltinType::Int4: Out << "i4"; break;
+  case BuiltinType::Long2: Out << "l2"; break;
+  case BuiltinType::Long3: Out << "l3"; break;
+  case BuiltinType::Long4: Out << "l4"; break;
+  case BuiltinType::Float2: Out << "f2"; break;
+  case BuiltinType::Float3: Out << "f3"; break;
+  case BuiltinType::Float4: Out << "f4"; break;
+  case BuiltinType::Double2: Out << "d2"; break;
+  case BuiltinType::Double3: Out << "d3"; break;
+  case BuiltinType::Double4: Out << "d4"; break;
 
 #define BUILTIN_TYPE(Id, SingletonId)
 #define PLACEHOLDER_TYPE(Id, SingletonId) \
@@ -1963,6 +1991,12 @@ void CXXNameMangler::mangleType(const RecordType *T) {
 }
 void CXXNameMangler::mangleType(const TagType *T) {
   mangleName(T->getDecl());
+}
+
+// scout - Mesh
+
+void CXXNameMangler::mangleType(const MeshType *T) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 // <type>       ::= <array-type>

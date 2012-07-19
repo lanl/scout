@@ -514,7 +514,7 @@ public:
   /// or evaluated at compile time. Example is a function call, volatile
   /// variable read.
   bool HasSideEffects(const ASTContext &Ctx) const;
-
+  
   /// \brief Determine whether this expression involves a call to any function
   /// that is not trivial.
   bool hasNonTrivialCall(ASTContext &Ctx);
@@ -2080,6 +2080,7 @@ public:
   Expr **getArgs() {
     return reinterpret_cast<Expr **>(SubExprs+getNumPreArgs()+PREARGS_START);
   }
+
   const Expr *const *getArgs() const {
     return const_cast<CallExpr*>(this)->getArgs();
   }
@@ -2426,7 +2427,7 @@ public:
   void setHadMultipleCandidates(bool V = true) {
     HadMultipleCandidates = V;
   }
-
+  
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MemberExprClass;
   }
@@ -2435,6 +2436,58 @@ public:
   // Iterators
   child_range children() { return child_range(&Base, &Base+1); }
 
+  friend class ASTReader;
+  friend class ASTStmtWriter;
+};
+
+// scout
+// represents indexing a scout vector, e.g:
+// float3 v;
+// v.y;
+// v[0];
+
+class ScoutVectorMemberExpr : public Expr {
+  Stmt* Base;
+
+  SourceLocation Loc;
+
+  // index is a value [0..3]
+  unsigned index;
+
+public:
+  ScoutVectorMemberExpr(Expr* base, SourceLocation loc,
+                        unsigned index, QualType ty)
+  : Expr(ScoutVectorMemberExprClass, ty, VK_LValue,
+         OK_Ordinary, false, false, false, false),
+    Base(base), Loc(loc), index(index){
+
+  }
+
+  static ScoutVectorMemberExpr *Create(ASTContext &C, Expr* base,
+                                       SourceLocation loc,
+                                       unsigned index, QualType ty);
+
+  void setBase(Expr *E) { Base = E; }
+  Expr *getBase() const { return cast<Expr>(Base); }
+
+  unsigned getIdx() const { return index; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ScoutVectorMemberExprClass;
+  }
+  static bool classof(const ScoutVectorMemberExpr *) { return true; }
+
+  // Iterators
+  child_range children() { return child_range(&Base, &Base+1); }
+
+  SourceRange getSourceRange() const{
+    return SourceRange(Loc, Loc);
+  }
+
+  SourceLocation getLocation(){
+    return Loc;
+  }
+  
   friend class ASTReader;
   friend class ASTStmtWriter;
 };

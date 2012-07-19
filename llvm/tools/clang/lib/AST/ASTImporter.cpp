@@ -66,7 +66,11 @@ namespace clang {
     QualType VisitUnaryTransformType(const UnaryTransformType *T);
     QualType VisitAutoType(const AutoType *T);
     // FIXME: DependentDecltypeType
-    QualType VisitRecordType(const RecordType *T);
+
+    // scout - Mesh
+    QualType VisitMeshType(const MeshType* T);
+
+                            QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
     // FIXME: TemplateTypeParmType
     // FIXME: SubstTemplateTypeParmType
@@ -131,6 +135,10 @@ namespace clang {
     Decl *VisitTypeAliasDecl(TypeAliasDecl *D);
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
+    
+    // scout - Mesh
+    Decl* VisitMeshDecl(MeshDecl* D);
+                            
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
     Decl *VisitCXXMethodDecl(CXXMethodDecl *D);
@@ -626,6 +634,12 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
+  // scout - Mesh
+  // we do not need to test the structural equivalance of meshes
+  // so simply return false
+  case Type::Mesh:    
+      return false;
+      
   case Type::Record:
   case Type::Enum:
     if (!IsStructurallyEquivalent(Context,
@@ -1595,6 +1609,16 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
   return Importer.getToContext().getTagDeclType(ToDecl);
 }
 
+// scout - Mesh
+QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
+  MeshDecl *ToDecl
+  = dyn_cast_or_null<MeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getMeshDeclType(ToDecl);
+}
+
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
   EnumDecl *ToDecl
     = dyn_cast_or_null<EnumDecl>(Importer.Import(T->getDecl()));
@@ -2270,6 +2294,13 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
     return 0;
 
   return D2;
+}
+
+// scout - Mesh
+// we are not using the AST import functionality for now
+// so simply return null
+Decl *ASTNodeImporter::VisitMeshDecl(MeshDecl *D){
+  return 0;
 }
 
 Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {

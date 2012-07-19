@@ -28,6 +28,7 @@ namespace clang {
   class SourceLocation;
   struct WarningOption;
 
+  
   // Import the diagnostic enums themselves.
   namespace diag {
     // Start position for diagnostics.

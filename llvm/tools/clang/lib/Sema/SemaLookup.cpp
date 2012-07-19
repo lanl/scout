@@ -1955,6 +1955,14 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Builtin:
       break;
 
+    // scout - Mesh
+    case Type::Mesh: {
+        //MeshDecl *Mesh
+        //= cast<MeshDecl>(cast<MeshType>(T)->getDecl());
+        //addAssociatedClassesAndNamespaces(Result, Mesh);
+        break;
+    }
+        
     //     -- If T is a class type (including unions), its associated
     //        classes are: the class itself; the class of which it is a
     //        member, if any; and its direct and indirect base

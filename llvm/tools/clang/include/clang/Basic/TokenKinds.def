@@ -44,6 +44,9 @@
 #ifndef ANNOTATION
 #define ANNOTATION(X) TOK(annot_ ## X)
 #endif
+#ifndef SCOUT_KEYWORD
+#define SCOUT_KEYWORD(X) KEYWORD(X, KEYSCOUT)
+#endif
 
 //===----------------------------------------------------------------------===//
 // Preprocessor keywords.
@@ -186,6 +189,9 @@ PUNCTUATOR(hash,                "#")
 PUNCTUATOR(hashhash,            "##")
 PUNCTUATOR(hashat,              "#@")
 
+// scout - specific punctuators
+PUNCTUATOR(periodperiod,        "..")
+
 // C++ Support
 PUNCTUATOR(periodstar,          ".*")
 PUNCTUATOR(arrowstar,           "->*")
@@ -216,6 +222,51 @@ PUNCTUATOR(greatergreatergreater, ">>>")
 //   KEYBORLAND - This is a keyword if Borland extensions are enabled
 //   BOOLSUPPORT - This is a keyword if 'bool' is a built-in type
 //
+
+// scout - Scout keywords
+SCOUT_KEYWORD(bool2)
+SCOUT_KEYWORD(bool3)
+SCOUT_KEYWORD(bool4)
+SCOUT_KEYWORD(char2)
+SCOUT_KEYWORD(char3)
+SCOUT_KEYWORD(char4)
+SCOUT_KEYWORD(short2)
+SCOUT_KEYWORD(short3)
+SCOUT_KEYWORD(short4)
+SCOUT_KEYWORD(int2)
+SCOUT_KEYWORD(int3)
+SCOUT_KEYWORD(int4)
+SCOUT_KEYWORD(long2)
+SCOUT_KEYWORD(long3)
+SCOUT_KEYWORD(long4)
+SCOUT_KEYWORD(float2)
+SCOUT_KEYWORD(float3)
+SCOUT_KEYWORD(float4)
+SCOUT_KEYWORD(double2)
+SCOUT_KEYWORD(double3)
+SCOUT_KEYWORD(double4)
+SCOUT_KEYWORD(forall)
+SCOUT_KEYWORD(structured)
+SCOUT_KEYWORD(uniform)
+SCOUT_KEYWORD(rectlinear)
+SCOUT_KEYWORD(unstructured)
+SCOUT_KEYWORD(mesh)
+SCOUT_KEYWORD(where)
+SCOUT_KEYWORD(of)
+SCOUT_KEYWORD(cells)
+SCOUT_KEYWORD(vertices)
+SCOUT_KEYWORD(in)
+SCOUT_KEYWORD(expr)
+SCOUT_KEYWORD(renderall)
+SCOUT_KEYWORD(faces)
+SCOUT_KEYWORD(edges)
+SCOUT_KEYWORD(window)
+SCOUT_KEYWORD(image)
+SCOUT_KEYWORD(as)
+SCOUT_KEYWORD(elements)
+SCOUT_KEYWORD(spheres)
+SCOUT_KEYWORD(stencil)
+
 KEYWORD(auto                        , KEYALL)
 KEYWORD(break                       , KEYALL)
 KEYWORD(case                        , KEYALL)

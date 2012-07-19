@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS
   bitwriter
   instrumentation
   ipo
+  doallToPTX
   linker
   vectorize
   )

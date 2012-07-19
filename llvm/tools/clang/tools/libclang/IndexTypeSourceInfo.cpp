@@ -90,6 +90,21 @@ public:
     IndexCtx.indexBody(S, Parent, ParentDC);
     return true;
   }
+
+  // scout - stubs to avoid linking errors in libclang
+
+  bool TraverseMeshTypeLoc(MeshTypeLoc){
+    return true;
+  }
+
+  bool TraverseMeshDecl(MeshDecl*){
+    return true;
+  }
+
+  bool TraverseMeshType(MeshType*){
+    return true;
+  }
+
 };
 
 } // anonymous namespace

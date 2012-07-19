@@ -1264,6 +1264,19 @@ SourceLocation MemberExpr::getLocEnd() const {
   return getMemberNameInfo().getEndLoc();
 }
 
+// scout - Scout vector types
+
+ScoutVectorMemberExpr*
+ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
+                              SourceLocation loc, 
+                              unsigned index, QualType ty){
+  
+  ScoutVectorMemberExpr* E = 
+  new (C) ScoutVectorMemberExpr(base, loc, index, ty);
+  
+  return E;
+}
+
 void CastExpr::CheckCastConsistency() const {
   switch (getCastKind()) {
   case CK_DerivedToBase:
@@ -2684,6 +2697,11 @@ bool Expr::hasNonTrivialCall(ASTContext &Ctx) {
 Expr::NullPointerConstantKind
 Expr::isNullPointerConstant(ASTContext &Ctx,
                             NullPointerConstantValueDependence NPC) const {
+  // scout - do not treat scout vector member expr's as constants
+  if(dyn_cast<ScoutVectorMemberExpr>(this)){
+    return NPCK_NotNull;
+  }
+  
   if (isValueDependent()) {
     switch (NPC) {
     case NPC_NeverValueDependent:
@@ -2763,7 +2781,7 @@ Expr::isNullPointerConstant(ASTContext &Ctx,
     if (!isIntegerConstantExpr(Ctx))
       return NPCK_NotNull;
   }
-
+  
   return (EvaluateKnownConstInt(Ctx) == 0) ? NPCK_ZeroInteger : NPCK_NotNull;
 }
 

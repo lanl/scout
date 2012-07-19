@@ -31,6 +31,7 @@ namespace llvm {
 
 namespace clang {
   class ASTContext;
+  class BlockExpr;
   class Expr;
   class Decl;
   class ParmVarDecl;
@@ -50,6 +51,9 @@ namespace clang {
 
   class Stmt;
   class Expr;
+  
+  // scout
+  class MemberExpr;
 
   class ExprIterator {
     Stmt** I;
@@ -387,6 +391,9 @@ public:
   ///   works on systems with GraphViz (Mac OS X) or dot+gv installed.
   void viewAST() const;
 
+  // scout - convert the Stmt or Expr back into code
+  std::string toCPPCode(ASTContext& context);
+
   /// Skip past any implicit AST nodes which might surround this
   /// statement, such as ExprWithCleanups or ImplicitCastExpr nodes.
   Stmt *IgnoreImplicit();
@@ -542,6 +549,7 @@ public:
 
 /// CompoundStmt - This represents a group of statements like { stmt stmt }.
 ///
+/// scout -- modified constructor args
 class CompoundStmt : public Stmt {
   Stmt** Body;
   SourceLocation LBracLoc, RBracLoc;
@@ -1789,6 +1797,483 @@ public:
 
   static bool classof(SEHTryStmt *) { return true; }
 };
+
+// scout - Stmts
+
+class ForAllStmt : public Stmt {
+
+public:
+  enum ForAllType{
+    Cells,
+    Vertices,
+    Edges,
+    ElementSpheres,
+    Array
+  };
+
+private:
+
+  // OP is the operation or condition: ... myMesh '(' OP ')' { ... }
+  // BODY is compound stmts : '{' BODY '}'
+
+  enum {OP, BODY, BLOCK, END_EXPR};
+
+  ForAllType Type;
+  const MeshType *meshType;
+
+  Stmt* SubExprs[END_EXPR];
+
+  SourceLocation ForAllLoc;
+  SourceLocation LParenLoc, RParenLoc;
+  IdentifierInfo* MeshII;
+  IdentifierInfo* LoopVariableII;
+  VarDecl* MeshVarDecl;
+  
+  Expr* XStart;
+  Expr* XEnd;
+  Expr* XStride;
+  Expr* YStart;
+  Expr* YEnd;
+  Expr* YStride;
+  Expr* ZStart;
+  Expr* ZEnd;
+  Expr* ZStride;
+
+public:
+  ForAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
+             IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+             Expr *Op, Stmt *Body, BlockExpr* Block,
+             SourceLocation FL, SourceLocation LP,
+             SourceLocation RP);
+
+  ForAllStmt(StmtClass SC, ASTContext &C, ForAllType Type,
+             const MeshType *MT, IdentifierInfo* LII, IdentifierInfo* MII, VarDecl* MVD,
+             Expr *Op, Stmt *Body, BlockExpr* Block,
+             SourceLocation FL, SourceLocation LP,
+             SourceLocation RP);
+
+  explicit ForAllStmt(EmptyShell Empty) : Stmt(ForAllStmtClass, Empty) { }
+
+  ForAllStmt(StmtClass SC, EmptyShell Empty) : Stmt(SC, Empty) { }
+
+  const MeshType *getMeshType() const {
+    return meshType;
+  }
+
+  ForAllType getType(){
+    return Type;
+  }
+
+  void setType(ForAllType T){
+    Type = T;
+  }
+
+  IdentifierInfo* getLoopVariable(){
+    return LoopVariableII;
+  }
+
+  const IdentifierInfo* getLoopVariable() const{
+    return LoopVariableII;
+  }
+  void setLoopVariable(IdentifierInfo* II){
+    LoopVariableII = II;
+  }
+
+  IdentifierInfo* getMesh(){
+    return MeshII;
+  }
+
+  const IdentifierInfo* getMesh() const{
+    return MeshII;
+  }
+  void setMesh(IdentifierInfo* II){
+    MeshII = II;
+  }
+
+  VarDecl* getMeshVarDecl(){
+    return MeshVarDecl;
+  }
+  
+  const VarDecl* getMeshVarDecl() const{
+    return MeshVarDecl;
+  }
+  
+  Expr* getOp(){
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  const Expr* getOp() const{
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  void setOp(Expr* O){
+    SubExprs[OP] = reinterpret_cast<Stmt*>(O);
+  }
+
+  BlockExpr* getBlock(){
+    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
+  }
+
+  const BlockExpr* getBlock() const{
+    return reinterpret_cast<BlockExpr*>(SubExprs[BLOCK]);
+  }
+
+  void setBlock(BlockExpr* B){
+    SubExprs[BLOCK] = reinterpret_cast<Stmt*>(B);
+  }
+
+  Stmt* getBody(){
+    return SubExprs[BODY];
+  }
+
+  const Stmt* getBody() const{
+    return SubExprs[BODY];
+  }
+
+  void setBody(Stmt* B){
+    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+
+  Expr* getXStart(){
+    return XStart;
+  }
+
+  void setXStart(Expr* XS){
+    XStart = XS;
+  }
+
+  Expr* getXEnd(){
+    return XEnd;
+  }
+
+  void setXEnd(Expr* XE){
+    XEnd = XE;
+  }
+
+  Expr* getXStride(){
+    return XStride;
+  }
+
+  void setXStride(Expr* XS){
+    XStride = XS;
+  }
+
+  Expr* getYStart(){
+    return YStart;
+  }
+
+  void setYStart(Expr* YS){
+    YStart = YS;
+  }
+
+  Expr* getYEnd(){
+    return YEnd;
+  }
+
+  void setYEnd(Expr* YE){
+    YEnd = YE;
+  }
+
+  Expr* getYStride(){
+    return YStride;
+  }
+
+  void setYStride(Expr* YS){
+    YStride = YS;
+  }
+
+  Expr* getZStart(){
+    return ZStart;
+  }
+
+  void setZStart(Expr* ZS){
+    ZStart = ZS;
+  }
+
+  Expr* getZEnd(){
+    return ZEnd;
+  }
+
+  void setZEnd(Expr* ZE){
+    ZEnd = ZE;
+  }
+
+  Expr* getZStride(){
+    return ZStride;
+  }
+
+  void setZStride(Expr* ZS){
+    ZStride = ZS;
+  }
+
+  Expr *getStart(int axis) const {
+    switch(axis) {
+      case 0: return XStart;
+      case 1: return YStart;
+      case 2: return ZStart;
+      default:
+        const char *s = "Unknown axis in getStart(int axis).\n";
+        assert(false && s);
+    }
+  }
+
+  void setStart(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XStart = E; return;
+      case 1: YStart = E; return;
+      case 2: ZStart = E; return;
+      default:
+        const char *s = "Unknown axis in setStart(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
+  Expr *getEnd(int axis) const {
+    switch(axis) {
+      case 0: return XEnd;
+      case 1: return YEnd;
+      case 2: return ZEnd;
+      default:
+        const char *s = "Unknown axis in getEnd(int axis).\n";
+        assert(false && s);
+    }
+  }
+
+  void setEnd(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XEnd = E; return;
+      case 1: YEnd = E; return;
+      case 2: ZEnd = E; return;
+      default:
+        const char *s = "Unknown axis in setEnd(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
+  Expr *getStride(int axis) const {
+    switch(axis) {
+      case 0: return XStride;
+      case 1: return YStride;
+      case 2: return ZStride;
+      default:
+        const char *s = "Unknown axis in getStride(int axis).\n";
+        assert(false && s);
+    }
+  }
+  
+  void setStride(int axis, Expr *E) {
+    switch(axis) {
+      case 0: XStride = E; return;
+      case 1: YStride = E; return;
+      case 2: ZStride = E; return;
+      default:
+        const char *s = "Unknown axis in setStride(int axis, Expr *E).\n";
+        assert(false && s);
+    }
+  }
+
+  SourceLocation getForAllLoc() const { return ForAllLoc; }
+  void setForAllLoc(SourceLocation L) { ForAllLoc = L; }
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+  void setLParenLoc(SourceLocation L) { LParenLoc = L; }
+  SourceLocation getRParenLoc() const { return RParenLoc; }
+  void setRParenLoc(SourceLocation L) { RParenLoc = L; }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ForAllStmtClass ||
+    T->getStmtClass() == RenderAllStmtClass ||
+    T->getStmtClass() == ForAllArrayStmtClass;
+  }
+
+  static bool classof(const ForAllStmt *) { return true; }
+
+  SourceRange getSourceRange() const {
+    return SourceRange(ForAllLoc, SubExprs[BODY]->getLocEnd());
+  }
+
+  child_range children() {
+    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
+  }
+
+};
+
+class RenderAllStmt : public ForAllStmt {
+public:
+
+  RenderAllStmt(ASTContext &C, ForAllType Type, const MeshType *MT,
+                IdentifierInfo* LII, IdentifierInfo* MII, 
+                VarDecl* MVD, Expr *Op,
+                Stmt *Body, BlockExpr *Block,
+                SourceLocation RL, SourceLocation LP,
+                SourceLocation RP);
+
+  explicit RenderAllStmt(EmptyShell Empty)
+    : ForAllStmt(RenderAllStmtClass, Empty) { }
+
+
+  SourceLocation getRenderAllLoc() const { return getForAllLoc(); }
+
+  void setRenderAllLoc(SourceLocation L) { setForAllLoc(L); }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == RenderAllStmtClass;
+  }
+
+  static bool classof(const RenderAllStmt *) { return true; }
+  
+  void setElementColor(Expr* e){
+    ElementColor = e;
+  }
+
+  Expr* getElementColor(){
+    return ElementColor;
+  }
+  
+  void setElementRadius(Expr* e){
+    ElementRadius = e;
+  }
+  
+  Expr* getElementRadius(){
+    return ElementRadius;
+  }
+  
+  void setElementMember(MemberExpr* e){
+    ElementMember = e;
+  }
+  
+  MemberExpr* getElementMember(){
+    return ElementMember;
+  }
+  
+private:
+  MemberExpr* ElementMember;
+  Expr* ElementColor;
+  Expr* ElementRadius;
+};
+
+class ForAllArrayStmt : public ForAllStmt {
+  IdentifierInfo* XInductionVarII;
+  IdentifierInfo* YInductionVarII;
+  IdentifierInfo* ZInductionVarII;
+    
+public:
+  ForAllArrayStmt(ASTContext &C,
+                  SourceLocation FAL,
+                  Stmt *Body,
+                  BlockExpr* Block);
+  
+  
+  explicit ForAllArrayStmt(EmptyShell Empty) : 
+  ForAllStmt(Empty) { }
+  
+  const IdentifierInfo* getInductionVar(size_t axis) const{
+    switch(axis){
+      case 0:
+        return XInductionVarII;
+      case 1:
+        return YInductionVarII;
+      case 2:
+        return ZInductionVarII;
+    }
+    
+    assert(false && "invalid axis");
+  }
+  
+  void setInductionVar(size_t axis, IdentifierInfo *II) {
+    switch(axis) {
+      case 0: XInductionVarII = II; return;
+      case 1: YInductionVarII = II; return;
+      case 2: ZInductionVarII = II; return;
+      default:
+        assert(false && "invalid axis.");
+    }
+  }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ForAllArrayStmtClass;
+  }
+  
+  static bool classof(const ForAllArrayStmt *) { return true; }
+    
+};
+
+/// scout 
+/// VolumeRenderAllStmt - This represents a group of statements like { stmt stmt }.
+/// that work together to perform functionality required to render a volume
+class VolumeRenderAllStmt : public CompoundStmt {
+  enum {OP, BODY, END_EXPR};
+
+  IdentifierInfo* MeshII;
+  VarDecl* MeshVarDecl;
+  Stmt* SubExprs[END_EXPR];
+  SourceLocation VolRenLoc;
+
+  public:
+  VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
+      SourceLocation VolRenLoc, SourceLocation LB, SourceLocation RB,  
+      IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* body);
+
+  static bool classof(const CompoundStmt *T) 
+  { return (T->getStmtClass() == VolumeRenderAllStmtClass); }
+  static bool classof(const VolumeRenderAllStmt *) { return true; }
+  static bool classof(const Stmt *T) 
+  { return (T->getStmtClass() == VolumeRenderAllStmtClass);}
+
+  const MeshType *getMeshType() const;
+
+  const IdentifierInfo* getMesh() const {
+    return MeshII;
+  }
+
+  IdentifierInfo* getMesh(){
+    return MeshII;
+  }
+
+  void setMesh(IdentifierInfo* II){
+    MeshII = II;
+  }
+
+  VarDecl* getMeshVarDecl(){
+    return MeshVarDecl;
+  }
+
+  const VarDecl* getMeshVarDecl() const{
+    return MeshVarDecl;
+  }
+
+  SourceLocation getVolRenLoc() const { return VolRenLoc; }
+  void setVolRenLoc(SourceLocation L) { VolRenLoc = L; }
+
+  Expr* getOp(){
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  const Expr* getOp() const{
+    return reinterpret_cast<Expr*>(SubExprs[OP]);
+  }
+
+  void setOp(Expr* O){
+    SubExprs[OP] = reinterpret_cast<Stmt*>(O);
+  }
+
+  Stmt* getBody(){
+    return SubExprs[BODY];
+  }
+
+  const Stmt* getBody() const{
+    return SubExprs[BODY];
+  }
+
+  void setBody(Stmt* B){
+    SubExprs[BODY] = reinterpret_cast<Stmt*>(B);
+  }
+
+  SourceRange getSourceRange() const {
+    return SourceRange(VolRenLoc, SubExprs[BODY]->getLocEnd());
+  }
+
+};
+
 
 }  // end namespace clang
 

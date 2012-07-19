@@ -27,6 +27,12 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
+// scout - include Scout AST viewer
+#include "clang/AST/ASTViewScout.h"
+
+#include <iostream>
+
 using namespace clang;
 
 namespace {
@@ -222,6 +228,15 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     return true;
   }
 
+  // scout - implicity include the Scout headers file if this is a Scout file
+  if(CI.getLangOpts().Scout){
+    CI.getPreprocessorOpts().Includes.push_back("runtime/scout.sch");
+    CI.getPreprocessorOpts().Includes.push_back("scout/scout.h");
+  }
+  
+  //PreprocessorOptions& opts = CI.getPreprocessorOpts();
+  //const LanguageOptions& langOpts = CI.getLangOpts();
+  
   // Set up the preprocessor.
   CI.createPreprocessor();
 
@@ -414,8 +429,28 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
-  ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
-           CI.getFrontendOpts().SkipFunctionBodies);
+  // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
+  ASTConsumer* scoutASTConsumer = CI.getScoutASTConsumer();
+  if(scoutASTConsumer){
+    Rewriter* scoutRewriter = CI.getScoutRewriter();
+    
+    scoutRewriter->setSourceMgr(CI.getSourceManager(),
+                                CI.getLangOpts());
+    
+    ParseAST(CI.getPreprocessor(), scoutASTConsumer,
+             CI.getASTContext());
+  }
+  else if(CI.getFrontendOpts().ViewAST){
+    ASTViewScout ASTViewer(CI.getSema());
+    
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+             false, &ASTViewer);
+  }
+  else{
+    ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
+             CI.getFrontendOpts().SkipFunctionBodies);
+    // scout - if else
+  }
 }
 
 void PluginASTAction::anchor() { }

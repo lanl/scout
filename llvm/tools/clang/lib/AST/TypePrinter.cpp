@@ -24,6 +24,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SaveAndRestore.h"
+
 using namespace clang;
 
 namespace {
@@ -177,6 +178,10 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::TypeOf:
     case Type::Decltype:
     case Type::UnaryTransform:
+
+    // scout - Mesh
+    case Type::Mesh:
+
     case Type::Record:
     case Type::Enum:
     case Type::Elaborated:
@@ -922,7 +927,19 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
 }
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
 
-void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T, 
+// scout - convert mesh type to mesh name - used in diagnostics
+void TypePrinter::printMeshBefore(const MeshType *T, raw_ostream &OS) {
+  MeshDecl* MD = T->getDecl();
+
+  OS << MD->getIdentifier()->getName().str();
+}
+
+// scout - convert mesh type to mesh name - used in diagnostics
+void TypePrinter::printMeshAfter(const MeshType *T, raw_ostream &OS) {
+  
+}
+
+void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
                                               raw_ostream &OS) { 
   if (IdentifierInfo *Id = T->getIdentifier())
     OS << Id->getName();
@@ -930,6 +947,7 @@ void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
     OS << "type-parameter-" << T->getDepth() << '-' << T->getIndex();
   spaceBeforePlaceHolder(OS);
 }
+
 void TypePrinter::printTemplateTypeParmAfter(const TemplateTypeParmType *T, 
                                              raw_ostream &OS) { } 
 

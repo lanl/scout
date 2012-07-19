@@ -1251,3 +1251,23 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
   E = ExprError();
   return true;
 }
+
+bool Sema::isScoutSource(SourceLocation location){
+  std::string bufferName = SourceMgr.getBufferName(location);
+  std::string ext;
+  
+  bool valid = false;
+  for(int i = bufferName.length() - 1; i >= 0; --i){
+    if(bufferName[i] == '.'){
+      valid = true;
+      break;
+    }
+    ext.insert(0, 1, bufferName[i]);
+  }
+  
+  if(!valid){
+    return false;
+  }
+  
+  return ext == "sc" || ext == "sch";
+}

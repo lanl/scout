@@ -263,6 +263,30 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_double:
     case TST_enum:
     case TST_error:
+
+    // scout - Scout vector types
+    case TST_bool2:
+    case TST_bool3:
+    case TST_bool4:
+    case TST_char2:
+    case TST_char3:
+    case TST_char4:
+    case TST_short2:
+    case TST_short3:
+    case TST_short4:
+    case TST_int2:
+    case TST_int3:
+    case TST_int4:
+    case TST_long2:
+    case TST_long3:
+    case TST_long4:
+    case TST_float2:
+    case TST_float3:
+    case TST_float4:
+    case TST_double2:
+    case TST_double3:
+    case TST_double4:
+      
     case TST_float:
     case TST_half:
     case TST_int:
@@ -386,6 +410,32 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_half:        return "half";
   case DeclSpec::TST_float:       return "float";
   case DeclSpec::TST_double:      return "double";
+
+  // scout - Scout vector types to strings
+  
+  case DeclSpec::TST_mesh:        return "mesh";
+  case DeclSpec::TST_bool2:       return "bool2";
+  case DeclSpec::TST_bool3:       return "bool3";
+  case DeclSpec::TST_bool4:       return "bool4";
+  case DeclSpec::TST_char2:       return "char2";
+  case DeclSpec::TST_char3:       return "char3";
+  case DeclSpec::TST_char4:       return "char4";
+  case DeclSpec::TST_short2:      return "short2";
+  case DeclSpec::TST_short3:      return "short3";
+  case DeclSpec::TST_short4:      return "short4";
+  case DeclSpec::TST_int2:        return "int2";
+  case DeclSpec::TST_int3:        return "int3";
+  case DeclSpec::TST_int4:        return "int4";
+  case DeclSpec::TST_long2:       return "long2";
+  case DeclSpec::TST_long3:       return "long3";
+  case DeclSpec::TST_long4:       return "long4";
+  case DeclSpec::TST_float2:      return "float2";
+  case DeclSpec::TST_float3:      return "float3";
+  case DeclSpec::TST_float4:      return "float4";
+  case DeclSpec::TST_double2:     return "double2";
+  case DeclSpec::TST_double3:     return "double3";
+  case DeclSpec::TST_double4:     return "double4";    
+
   case DeclSpec::TST_bool:        return "_Bool";
   case DeclSpec::TST_decimal32:   return "_Decimal32";
   case DeclSpec::TST_decimal64:   return "_Decimal64";

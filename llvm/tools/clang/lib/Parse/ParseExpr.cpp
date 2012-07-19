@@ -30,6 +30,10 @@
 #include "RAIIObjectsForParser.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallString.h"
+
+// scout
+#include "clang/AST/ASTContext.h"
+
 using namespace clang;
 
 /// \brief Return the precedence of the specified binary operator token.
@@ -272,6 +276,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
   prec::Level NextTokPrec = getBinOpPrecedence(Tok.getKind(),
                                                GreaterThanIsOperator,
                                                getLangOpts().CPlusPlus0x);
+  
   SourceLocation ColonLoc;
 
   while (1) {
@@ -359,16 +364,45 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // braced-init-list on the RHS of an assignment. For better diagnostics,
     // parse as if we were allowed braced-init-lists everywhere, and check that
     // they only appear on the RHS of assignments later.
+
     ExprResult RHS;
     bool RHSIsInitList = false;
-    if (getLangOpts().CPlusPlus0x && Tok.is(tok::l_brace)) {
-      RHS = ParseBraceInitializer();
-      RHSIsInitList = true;
-    } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
-      RHS = ParseAssignmentExpression();
-    else
-      RHS = ParseCastExpression(false);
 
+    // scout - vector binary operator rhs
+    bool rhsSet = false;
+    
+    if(!LHS.isInvalid()){
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
+        ValueDecl* vd = dr->getDecl();
+        
+        BuiltinType::Kind kind;
+        if(isScoutVectorValueDecl(vd, kind)){
+          
+          ScoutVectorType vectorType;
+          
+          if(vd->getName().str() == "color"){
+            vectorType = ScoutVectorColor;
+          }
+          else{
+            vectorType = ScoutVectorGeneric;
+          }
+          
+          RHS = ParseScoutVectorRHS(kind, vectorType);
+          rhsSet = true;
+        }
+      }
+    }
+    
+    if(!rhsSet){
+      if (getLangOpts().CPlusPlus0x && Tok.is(tok::l_brace)) {
+        RHS = ParseBraceInitializer();
+        RHSIsInitList = true;
+      } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
+        RHS = ParseAssignmentExpression();
+      else
+        RHS = ParseCastExpression(false);
+    }
+     
     if (RHS.isInvalid())
       LHS = ExprError();
     
@@ -456,8 +490,9 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
                                        isAddressOfOperand,
                                        NotCastExpr,
                                        isTypeCast);
-  if (NotCastExpr)
+  if (NotCastExpr){
     Diag(Tok, diag::err_expected_expression);
+  }
   return move(Res);
 }
 
@@ -1006,6 +1041,31 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_half:
   case tok::kw_float:
   case tok::kw_double:
+
+  // scout - Scout vector types
+      
+  case tok::kw_bool2:
+  case tok::kw_bool3:
+  case tok::kw_bool4: 
+  case tok::kw_char2:
+  case tok::kw_char3:
+  case tok::kw_char4: 
+  case tok::kw_short2:
+  case tok::kw_short3:
+  case tok::kw_short4: 
+  case tok::kw_int2:
+  case tok::kw_int3:
+  case tok::kw_int4: 
+  case tok::kw_long2:
+  case tok::kw_long3:
+  case tok::kw_long4: 
+  case tok::kw_float2:
+  case tok::kw_float3:
+  case tok::kw_float4: 
+  case tok::kw_double2:
+  case tok::kw_double3:
+  case tok::kw_double4: 
+
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:
@@ -2451,6 +2511,266 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   else
     Actions.ActOnBlockError(CaretLoc, getCurScope());
   return move(Result);
+}
+
+// scout - Parse the right hand side of a vector expression, e.g:
+// 1.0, or float3(1.0, 1.0, 1.0) 
+ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType vectorType){
+  size_t length;
+  tok::TokenKind expectKind;
+  QualType type;
+  
+  // set the dimensions and types based on the vector keyword
+  
+  switch(kind){
+    case BuiltinType::Bool2:
+    {
+      expectKind = tok::kw_bool2;
+      length = 2;
+      type = Actions.Context.Bool2Ty;
+      break;
+    }
+    case BuiltinType::Char2:
+    {
+      expectKind = tok::kw_char2;
+      length = 2;
+      type = Actions.Context.Char2Ty;
+      break;
+    }
+    case BuiltinType::Short2:
+    {
+      expectKind = tok::kw_short2;
+      length = 2;
+      type = Actions.Context.Short2Ty;
+      break;
+    } 
+    case BuiltinType::Int2:
+    {
+      expectKind = tok::kw_int2;
+      length = 2;
+      type = Actions.Context.Int2Ty;
+      break;
+    }
+    case BuiltinType::Long2:
+    {
+      expectKind = tok::kw_long2;
+      length = 2;
+      type = Actions.Context.Long2Ty;
+      break;
+    }
+    case BuiltinType::Float2:
+    {
+      expectKind = tok::kw_float2;
+      length = 2;
+      type = Actions.Context.Float2Ty;
+      break;
+    }
+    case BuiltinType::Double2:
+    {
+      expectKind = tok::kw_double2;
+      length = 2;
+      type = Actions.Context.Double2Ty;
+      break;
+    }
+    case BuiltinType::Bool3:
+    {
+      expectKind = tok::kw_bool3;
+      length = 3;
+      type = Actions.Context.Bool3Ty;
+      break;
+    }
+    case BuiltinType::Char3:
+    {
+      expectKind = tok::kw_char3;
+      length = 3;
+      type = Actions.Context.Char3Ty;
+      break;
+    }
+    case BuiltinType::Short3:
+    {
+      expectKind = tok::kw_short3;
+      length = 3;
+      type = Actions.Context.Short3Ty;
+      break;
+    } 
+    case BuiltinType::Int3:
+    {
+      expectKind = tok::kw_int3;
+      length = 3;
+      type = Actions.Context.Int3Ty;
+      break;
+    }
+    case BuiltinType::Long3:
+    {
+      expectKind = tok::kw_long3;
+      length = 3;
+      type = Actions.Context.Long3Ty;
+      break;
+    }
+    case BuiltinType::Float3:
+    {
+      expectKind = tok::kw_float3;
+      length = 3;
+      type = Actions.Context.Float3Ty;
+      break;
+    }
+    case BuiltinType::Double3:
+    {
+      expectKind = tok::kw_double3;
+      length = 3;
+      type = Actions.Context.Double3Ty;
+      break;
+    }      
+    case BuiltinType::Bool4:
+    {
+      expectKind = tok::kw_bool4;
+      length = 4;
+      type = Actions.Context.Bool4Ty;
+      break;
+    }
+    case BuiltinType::Char4:
+    {
+      expectKind = tok::kw_char4;
+      length = 4;
+      type = Actions.Context.Char4Ty;
+      break;
+    }
+    case BuiltinType::Short4:
+    {
+      expectKind = tok::kw_short4;
+      length = 4;
+      type = Actions.Context.Short4Ty;
+      break;
+    } 
+    case BuiltinType::Int4:
+    {
+      expectKind = tok::kw_int4;
+      length = 4;
+      type = Actions.Context.Int4Ty;
+      break;
+    }
+    case BuiltinType::Long4:
+    {
+      expectKind = tok::kw_long4;
+      length = 4;
+      type = Actions.Context.Long4Ty;
+      break;
+    }
+    case BuiltinType::Float4:
+    {
+      expectKind = tok::kw_float4;
+      length = 4;
+      type = Actions.Context.Float4Ty;
+      break;
+    }
+    case BuiltinType::Double4:
+    {
+      expectKind = tok::kw_double4;
+      length = 4;
+      type = Actions.Context.Double4Ty;
+      break;
+    }      
+    default:
+      assert(false && "expected a scout vector kind");
+  }
+  
+  if(Tok.is(expectKind)){
+    ConsumeToken();
+    
+    if(Tok.isNot(tok::l_paren)){
+      Diag(Tok, diag::err_expected_lparen);
+      return ExprError();
+    }
+    
+    SourceLocation LParenLoc = ConsumeParen();
+    
+    ExprVector Exprs(Actions);
+    CommaLocsTy CommaLocs;
+    
+    if(ParseExpressionList(Exprs, CommaLocs)){
+      return ExprError();
+    }
+
+    if(vectorType == ScoutVectorColor){
+      for(size_t i = 0; i < Exprs.size(); ++i){
+        
+        if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(Exprs[i])){
+          double v = fl->getValue().convertToDouble();
+          if(v < 0 || v > 1){
+            Diag(CommaLocs[i], diag::warn_vector_color_clamp);
+          }
+        }
+        else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(Exprs[i])){
+          double v = il->getValue().roundToDouble(true);
+          if(v < 0 || v > 1){
+            Diag(CommaLocs[i], diag::warn_vector_color_clamp);
+          }
+        }
+      }
+    }
+    
+    if(Exprs.size() != length){
+      Diag(Tok, diag::err_invalid_scout_vector_init);
+      return ExprError();
+    }
+    
+    if(Tok.isNot(tok::r_paren)){
+      Diag(Tok, diag::err_expected_rparen);
+      return ExprError();
+    }
+    
+    SourceLocation RParenLoc = ConsumeParen();
+    
+    InitListExpr* le = 
+    new (Actions.Context) 
+    InitListExpr(Actions.Context, LParenLoc, &Exprs[0], 
+                 Exprs.size(), RParenLoc);
+    
+    le->setType(type);
+    
+    return le;
+  }
+  else if(Tok.is(tok::numeric_constant)){
+    SourceLocation Loc = Tok.getLocation();
+    
+    ExprResult er = ParseExpression();
+    
+    if(vectorType == ScoutVectorColor){
+      if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(er.get())){
+        double v = fl->getValue().convertToDouble();
+        if(v < 0 || v > 1){
+          Diag(Loc, diag::warn_vector_color_clamp);
+        }
+      }
+      else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(er.get())){
+        double v = il->getValue().roundToDouble(true);
+        if(v < 0 || v > 1){
+          Diag(Loc, diag::warn_vector_color_clamp);
+        }
+      }
+    }
+    
+    if(er.isInvalid()){
+      return ExprError();
+    }
+    
+    SmallVector<Expr *, 4> initExprs;
+    
+    for(size_t i = 0; i < length; ++i){
+      initExprs.push_back(er.get());
+    }
+    
+    InitListExpr* le = 
+    new (Actions.Context) 
+    InitListExpr(Actions.Context, Loc, &initExprs[0], 
+                 initExprs.size(), Loc);
+    
+    le->setType(type);
+        
+    return le;
+  }
+
+  return ParseExpression();
 }
 
 /// ParseObjCBoolLiteral - This handles the objective-c Boolean literals.

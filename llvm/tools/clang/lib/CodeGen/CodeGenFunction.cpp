@@ -36,10 +36,12 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     LambdaThisCaptureField(0), NormalCleanupDest(0), NextCleanupDestIndex(1),
     FirstBlockInfo(0), EHResumeBlock(0), ExceptionSlot(0), EHSelectorSlot(0),
     DebugInfo(0), DisableDebugInfo(false), DidCallStackSave(false),
-    IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),
-    CXXABIThisDecl(0), CXXABIThisValue(0), CXXThisValue(0), CXXVTTDecl(0),
+    IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),    CXXABIThisDecl(0), CXXABIThisValue(0), CXXThisValue(0), CXXVTTDecl(0),
     CXXVTTValue(0), OutermostConditional(0), TerminateLandingPad(0),
-    TerminateHandler(0), TrapBB(0) {
+    TerminateHandler(0), TrapBB(0),
+    // scout
+    RenderAll(0), CurrentForAllArrayStmt(0)
+{
 
   CatchUndefined = getContext().getLangOpts().CatchUndefined;
   if (!suppressNewContext)
@@ -92,6 +94,9 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::ConstantArray:
   case Type::IncompleteArray:
   case Type::VariableArray:
+
+  // scout - Mesh
+  case Type::Mesh:
   case Type::Record:
   case Type::ObjCObject:
   case Type::ObjCInterface:
@@ -154,6 +159,7 @@ static void EmitIfUsed(CodeGenFunction &CGF, llvm::BasicBlock *BB) {
 }
 
 void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
+  DEBUG_OUT("FinishFunction");
   assert(BreakContinueStack.empty() &&
          "mismatched push/pop in break/continue stack!");
 
@@ -188,12 +194,12 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
     EmitBlock(IndirectBranch->getParent());
     Builder.ClearInsertionPoint();
   }
-  
+
   // Remove the AllocaInsertPt instruction, which is just a convenience for us.
   llvm::Instruction *Ptr = AllocaInsertPt;
   AllocaInsertPt = 0;
   Ptr->eraseFromParent();
-  
+
   // If someone took the address of a label but never did an indirect goto, we
   // made a zero entry PHI node, which is illegal, zap it now.
   if (IndirectBranch) {
@@ -332,8 +338,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
                                     const CGFunctionInfo &FnInfo,
                                     const FunctionArgList &Args,
                                     SourceLocation StartLoc) {
+  DEBUG_OUT("StartFunction");
   const Decl *D = GD.getDecl();
-  
+
   DidCallStackSave = false;
   CurCodeDecl = CurFuncDecl = D;
   FnRetTy = RetTy;
@@ -463,6 +470,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
 }
 
 void CodeGenFunction::EmitFunctionBody(FunctionArgList &Args) {
+  DEBUG_OUT("EmitFunctionBody");
   const FunctionDecl *FD = cast<FunctionDecl>(CurGD.getDecl());
   assert(FD->getBody());
   EmitStmt(FD->getBody());
@@ -490,8 +498,9 @@ static void TryMarkNoThrow(llvm::Function *F) {
 
 void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
                                    const CGFunctionInfo &FnInfo) {
+  DEBUG_OUT("GenerateCode");
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
-  
+
   // Check if we should generate debug info for this function.
   if (CGM.getModuleDebugInfo() && !FD->hasAttr<NoDebugAttr>())
     DebugInfo = CGM.getModuleDebugInfo();
@@ -558,7 +567,7 @@ bool CodeGenFunction::ContainsLabel(const Stmt *S, bool IgnoreCaseStmts) {
   // can't jump to one from outside their declared region.
   if (isa<LabelStmt>(S))
     return true;
-  
+
   // If this is a case/default statement, and we haven't seen a switch, we have
   // to emit the code.
   if (isa<SwitchCase>(S) && !IgnoreCaseStmts)
@@ -588,15 +597,15 @@ bool CodeGenFunction::containsBreak(const Stmt *S) {
   if (isa<SwitchStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S) ||
       isa<ForStmt>(S))
     return false;
-  
+
   if (isa<BreakStmt>(S))
     return true;
-  
+
   // Scan subexpressions for verboten breaks.
   for (Stmt::const_child_range I = S->children(); I; ++I)
     if (containsBreak(*I))
       return true;
-  
+
   return false;
 }
 
@@ -609,7 +618,7 @@ bool CodeGenFunction::ConstantFoldsToSimpleInteger(const Expr *Cond,
   llvm::APInt ResultInt;
   if (!ConstantFoldsToSimpleInteger(Cond, ResultInt))
     return false;
-  
+
   ResultBool = ResultInt.getBoolValue();
   return true;
 }
@@ -678,7 +687,7 @@ void CodeGenFunction::EmitBranchOnBoolExpr(const Expr *Cond,
 
       return;
     }
-    
+
     if (CondBOp->getOpcode() == BO_LOr) {
       // If we have "0 || X", simplify the code.  "1 || X" would have constant
       // folded if the case was simple enough.
@@ -761,7 +770,7 @@ void CodeGenFunction::ErrorUnsupported(const Stmt *S, const char *Type,
 /// base element of the array
 /// \param sizeInChars - the total size of the VLA, in chars
 static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
-                               llvm::Value *dest, llvm::Value *src, 
+                               llvm::Value *dest, llvm::Value *src,
                                llvm::Value *sizeInChars) {
   std::pair<CharUnits,CharUnits> baseSizeAndAlign
     = CGF.getContext().getTypeInfoInChars(baseType);
@@ -801,7 +810,7 @@ static void emitNonZeroVLAInit(CodeGenFunction &CGF, QualType baseType,
   cur->addIncoming(next, loopBB);
 
   CGF.EmitBlock(contBB);
-} 
+}
 
 void
 CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
@@ -821,7 +830,7 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
     DestPtr = Builder.CreateBitCast(DestPtr, BP);
 
   // Get size and alignment info for this aggregate.
-  std::pair<CharUnits, CharUnits> TypeInfo = 
+  std::pair<CharUnits, CharUnits> TypeInfo =
     getContext().getTypeInfoInChars(Ty);
   CharUnits Size = TypeInfo.first;
   CharUnits Align = TypeInfo.second;
@@ -862,9 +871,9 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
 
     llvm::Constant *NullConstant = CGM.EmitNullConstant(Ty);
 
-    llvm::GlobalVariable *NullVariable = 
+    llvm::GlobalVariable *NullVariable =
       new llvm::GlobalVariable(CGM.getModule(), NullConstant->getType(),
-                               /*isConstant=*/true, 
+                               /*isConstant=*/true,
                                llvm::GlobalVariable::PrivateLinkage,
                                NullConstant, Twine());
     llvm::Value *SrcPtr =
@@ -875,12 +884,12 @@ CodeGenFunction::EmitNullInitialization(llvm::Value *DestPtr, QualType Ty) {
     // Get and call the appropriate llvm.memcpy overload.
     Builder.CreateMemCpy(DestPtr, SrcPtr, SizeVal, Align.getQuantity(), false);
     return;
-  } 
-  
+  }
+
   // Otherwise, just memset the whole thing to zero.  This is legal
   // because in LLVM, all default initializers (other than the ones we just
   // handled above) are guaranteed to have a bit pattern of all zeros.
-  Builder.CreateMemSet(DestPtr, Builder.getInt8(0), SizeVal, 
+  Builder.CreateMemSet(DestPtr, Builder.getInt8(0), SizeVal,
                        Align.getQuantity(), false);
 }
 
@@ -888,9 +897,9 @@ llvm::BlockAddress *CodeGenFunction::GetAddrOfLabel(const LabelDecl *L) {
   // Make sure that there is a block for the indirect goto.
   if (IndirectBranch == 0)
     GetIndirectGotoBlock();
-  
+
   llvm::BasicBlock *BB = getJumpDestForLabel(L).getBlock();
-  
+
   // Make sure the indirect branch includes all of the address-taken blocks.
   IndirectBranch->addDestination(BB);
   return llvm::BlockAddress::get(CurFn, BB);
@@ -899,13 +908,13 @@ llvm::BlockAddress *CodeGenFunction::GetAddrOfLabel(const LabelDecl *L) {
 llvm::BasicBlock *CodeGenFunction::GetIndirectGotoBlock() {
   // If we already made the indirect branch for indirect goto, return its block.
   if (IndirectBranch) return IndirectBranch->getParent();
-  
+
   CGBuilderTy TmpBuilder(createBasicBlock("indirectgoto"));
-  
+
   // Create the PHI node that indirect gotos will add entries to.
   llvm::Value *DestVal = TmpBuilder.CreatePHI(Int8PtrTy, 0,
                                               "indirect.goto.dest");
-  
+
   // Create the indirect branch instruction.
   IndirectBranch = TmpBuilder.CreateIndirectBr(DestVal);
   return IndirectBranch->getParent();
@@ -1057,6 +1066,8 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
+    // scout
+    case Type::Mesh:
     case Type::Builtin:
     case Type::Complex:
     case Type::Vector:
@@ -1152,7 +1163,7 @@ llvm::Value* CodeGenFunction::EmitVAListRef(const Expr* E) {
   return EmitLValue(E).getAddress();
 }
 
-void CodeGenFunction::EmitDeclRefExprDbgValue(const DeclRefExpr *E, 
+void CodeGenFunction::EmitDeclRefExprDbgValue(const DeclRefExpr *E,
                                               llvm::Constant *Init) {
   assert (Init && "Invalid DeclRefExpr initializer!");
   if (CGDebugInfo *Dbg = getDebugInfo())

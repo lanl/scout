@@ -27,6 +27,10 @@
 #include "llvm/Support/CrashRecoveryContext.h"
 #include <cstdio>
 
+// scout - AST view
+#include "clang/AST/ASTViewScout.h"
+#include <iostream>
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -37,12 +41,16 @@ using namespace clang;
 /// the file is parsed.  This inserts the parsed decls into the translation unit
 /// held by Ctx.
 ///
+
 void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
                      ASTContext &Ctx, bool PrintStats,
                      TranslationUnitKind TUKind,
                      CodeCompleteConsumer *CompletionConsumer,
-                     bool SkipFunctionBodies) {
-
+                     bool SkipFunctionBodies,
+                     // scout - added ASTViewer param
+                     ASTViewScout* ASTViewer
+                     )
+{
   OwningPtr<Sema> S(new Sema(PP, Ctx, *Consumer,
                                    TUKind,
                                    CompletionConsumer));
@@ -50,10 +58,14 @@ void clang::ParseAST(Preprocessor &PP, ASTConsumer *Consumer,
   // Recover resources if we crash before exiting this method.
   llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(S.get());
   
-  ParseAST(*S.get(), PrintStats, SkipFunctionBodies);
+  ParseAST(*S.get(), PrintStats, SkipFunctionBodies, ASTViewer);
 }
 
-void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
+void clang::ParseAST(Sema &S, bool PrintStats,
+                     bool SkipFunctionBodies,
+                     // scout - added ASTViewer param
+                     ASTViewScout* ASTViewer
+                     ){
   // Collect global stats on Decls/Stmts (until we have a module streamer).
   if (PrintStats) {
     Decl::EnableStatistics();
@@ -97,8 +109,18 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
       // If we got a null return and something *was* parsed, ignore it.  This
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
-      if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
-	return;
+      if (ADecl){
+        if(!Consumer->HandleTopLevelDecl(ADecl.get())){
+          return;
+        }
+
+        // scout - AST Viewer, if the -ast-view front-end option 
+        // was passed potentially generate Graphviz output for this 
+        // decl. group
+        if(ASTViewer){
+          ASTViewer->outputGraphviz(ADecl.get());
+        }
+      }
     } while (!P.ParseTopLevelDecl(ADecl));
   }
 

@@ -226,7 +226,6 @@ public:
 
   const Token &getCurToken() const { return Tok; }
   Scope *getCurScope() const { return Actions.getCurScope(); }
-
   Decl  *getObjCDeclContext() const { return Actions.getObjCDeclContext(); }
 
   // Type forwarding.  All of these are statically 'void*', but they may all be
@@ -320,7 +319,7 @@ private:
 
     if (Tok.is(tok::code_completion))
       return handleUnexpectedCodeCompletionToken();
-
+    
     PrevTokLocation = Tok.getLocation();
     PP.Lex(Tok);
     return PrevTokLocation;
@@ -483,6 +482,12 @@ private:
                                    bool NeedType = false);
   bool TryAnnotateCXXScopeToken(bool EnteringContext = false);
 
+  // scout - detect float <4>, int <3>, ... iSPC constructs and
+  //                 return TST_value of Scout float4, int3, ...
+  //                 that should be substituted.  Return same if not iSPC
+  //                 Involves lookahead.  Pure
+  DeclSpec::TST GetIspcScoutExtension(DeclSpec::TST TagType, tok::TokenKind kw);
+
   /// TryAltiVecToken - Check for context-sensitive AltiVec identifier tokens,
   /// replacing them with the non-context-sensitive keywords.  This returns
   /// true if the token was replaced.
@@ -496,6 +501,7 @@ private:
 
     return TryAltiVecTokenOutOfLine(DS, Loc, PrevSpec, DiagID, isInvalid);
   }
+
 
   /// TryAltiVecVectorToken - Check for context-sensitive AltiVec vector
   /// identifier token, replacing it with the non-context-sensitive __vector.
@@ -1134,6 +1140,7 @@ private:
 
   ParsedType ParseObjCTypeName(ObjCDeclSpec &DS, Declarator::TheContext Ctx,
                                ParsedAttributes *ParamAttrs);
+  
   void ParseObjCMethodRequirement();
   Decl *ParseObjCMethodPrototype(
             tok::ObjCKeywordKind MethodImplKind = tok::objc_not_keyword,
@@ -1381,8 +1388,14 @@ private:
 
   StmtResult ParseStatement(SourceLocation *TrailingElseLoc = 0) {
     StmtVector Stmts(Actions);
-    return ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
+    // scout
+    StmtsStack.push_back(&Stmts);
+    StmtResult R = ParseStatementOrDeclaration(Stmts, true, TrailingElseLoc);
+    // scout
+    StmtsStack.pop_back();
+    return R;
   }
+
   StmtResult ParseStatementOrDeclaration(StmtVector &Stmts,
                                          bool OnlyStatement,
                                          SourceLocation *TrailingElseLoc = 0);
@@ -1841,6 +1854,7 @@ private:
                                          SourceLocation StartLoc,
                                          SourceLocation EndLoc);
   void ParseUnderlyingTypeSpecifier(DeclSpec &DS);
+
   void ParseAtomicSpecifier(DeclSpec &DS);
 
   ExprResult ParseAlignArgument(SourceLocation Start,
@@ -1979,7 +1993,7 @@ private:
   MemInitResult ParseMemInitializer(Decl *ConstructorDecl);
   void HandleMemberFunctionDeclDelays(Declarator& DeclaratorInfo,
                                       Decl *ThisDecl);
-
+  
   //===--------------------------------------------------------------------===//
   // C++ 10: Derived classes [class.derived]
   TypeResult ParseBaseTypeSpecifier(SourceLocation &BaseLoc,
@@ -2088,6 +2102,77 @@ private:
                                          MacroInfo *MacroInfo,
                                          unsigned ArgumentIndex);
   virtual void CodeCompleteNaturalLanguage();
+  
+  
+  // scout **************************** Scout parsing methods
+    
+  StmtResult ParseForAllStatement(ParsedAttributes &Attr, bool ForAll=true);
+  
+  StmtResult ParseForAllArrayStatement(ParsedAttributes &Attr);
+  
+  StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
+                                       SourceLocation NameLoc,
+                                       VarDecl* VD);
+  StmtResult ParseVolumeRenderAll(SourceLocation VolRenLoc,
+      ParsedAttributes &attrs,
+      IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
+      SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
+
+  bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
+  
+  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
+  
+  void ParseMeshDeclaration(DeclSpec &DS,
+                            FieldCallback &Fields,
+                            unsigned FieldType);
+
+  void ParseMeshParameterDeclaration(DeclSpec& DS);
+  
+  StmtResult ParseWindowOrImageDeclaration(bool window,
+                                           StmtVector &Stmts,
+                                           bool OnlyStatement);
+  
+  // scout - insert CPP code into the lexer stream for parsing.
+  // Inserts a stream of tokens before or after the current token Tok.
+  // This is a good method for handling cases such as inserting the call
+  // to initScout(argc, argv) at the beginning of main(), for other cases
+  // it may be necessary to construct the AST manually.
+  void InsertCPPCode(const std::string& code,
+                     SourceLocation location,
+                     bool beforeLookAhead=true);
+  
+  // scout
+  // Debugging method for displaying the next N lookahead tokens.
+  void DumpLookAheads(unsigned N);
+  
+  // scout - convert a token into a string representation
+  std::string TokToStr(const Token& tok);
+  
+  std::string ToCPPCode(Stmt* stmt){
+    return stmt->toCPPCode(Actions.Context);
+  }
+  
+  typedef std::vector<StmtVector*> StmtVectorVec;
+  
+  StmtVectorVec StmtsStack;
+  
+  bool DeclaringMesh;
+    
+  bool isScoutLang() const{
+    return getLangOpts().Scout;
+  }
+  
+  enum ScoutVectorType{
+    ScoutVectorGeneric,
+    ScoutVectorColor
+  };
+  
+  ExprResult
+  ParseScoutVectorRHS(BuiltinType::Kind kind,
+                      ScoutVectorType vectorType=ScoutVectorGeneric);
+  
+  bool isScoutVectorValueDecl(Decl* decl, BuiltinType::Kind &kind) const;
+  
 };
 
 }  // end namespace clang

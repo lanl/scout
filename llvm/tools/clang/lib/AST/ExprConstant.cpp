@@ -2755,6 +2755,11 @@ public:
       BaseTy = E->getBase()->getType();
     }
 
+    // scout
+    if(BaseTy->getAs<MeshType>()){
+      return true;
+    }
+
     const ValueDecl *MD = E->getMemberDecl();
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(E->getMemberDecl())) {
       assert(BaseTy->getAs<RecordType>()->getDecl()->getCanonicalDecl() ==
@@ -2767,7 +2772,7 @@ public:
         return false;
     } else
       return this->Error(E);
-
+    
     if (MD->getType()->isReferenceType()) {
       APValue RefValue;
       if (!HandleLValueToRValueConversion(this->Info, E, MD->getType(), Result,
@@ -6840,6 +6845,9 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(Ctx), Ctx);
   }
+  // ndm - scout expr types
+  case Expr::ScoutVectorMemberExprClass:
+    return NoDiag();
   }
 
   llvm_unreachable("Invalid StmtClass!");

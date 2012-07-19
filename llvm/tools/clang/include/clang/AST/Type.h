@@ -32,6 +32,12 @@
 #include "llvm/ADT/Twine.h"
 #include "clang/Basic/LLVM.h"
 
+using llvm::isa;
+using llvm::cast;
+using llvm::cast_or_null;
+using llvm::dyn_cast;
+using llvm::dyn_cast_or_null;
+
 namespace clang {
   enum {
     TypeAlignmentInBits = 4,
@@ -76,6 +82,11 @@ namespace clang {
   class NonTypeTemplateParmDecl;
   class TemplateTemplateParmDecl;
   class TagDecl;
+
+// scout
+  class MeshDecl;
+  class MemberExpr;
+
   class RecordDecl;
   class CXXRecordDecl;
   class EnumDecl;
@@ -3232,6 +3243,75 @@ public:
 
   static bool classof(const Type *T) { return T->getTypeClass() == Record; }
   static bool classof(const RecordType *) { return true; }
+};
+
+// scout - MeshType
+
+class MeshType : public Type{
+public:
+  // dimensions, e.g: [512,512]
+  typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
+  
+  enum InstanceType{
+    MeshInstance,
+    CellsInstance,
+    VerticesInstance,
+    FacesInstance,
+    EdgesInstance,
+    ElementsInstance
+  };
+
+private:
+
+  MeshDecl* decl;
+  InstanceType instanceType;
+  MeshDimensionVec dims;
+  MemberExpr* elementsMember;
+  
+public:
+
+  MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
+    : Type(Mesh, QualType(), false, false, false, false),
+  decl(const_cast<MeshDecl*>(D)), instanceType(IT),
+  elementsMember(0) {
+    
+  }
+
+  MeshDecl* getDecl() const {
+    return decl;
+  }
+
+  InstanceType getInstanceType() const{
+    return instanceType;
+  }
+
+  const MeshDimensionVec& dimensions() const{
+    return dims;
+  }
+  
+  void setDimensions(const MeshDimensionVec& dv){
+    dims = dv;
+  }
+  
+  bool isBeingDefined() const;
+
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+
+  static bool classof(const MeshType* T) { return true; }
+
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Mesh;
+  }
+
+  MemberExpr* getElementsMember(){
+    return elementsMember;
+  }
+  
+  void setElementsMember(MemberExpr* me){
+    elementsMember = me;
+  }
+  
 };
 
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast

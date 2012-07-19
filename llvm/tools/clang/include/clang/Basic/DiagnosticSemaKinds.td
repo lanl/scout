@@ -208,7 +208,7 @@ def warn_use_out_of_scope_declaration : Warning<
   "use of out-of-scope declaration of %0">;
 def err_inline_non_function : Error<
   "'inline' can only appear on functions">;
-def warn_qual_return_type : Warning< 
+def warn_qual_return_type : Warning<
   "'%0' type qualifier%s1 on return type %plural{1:has|:have}1 no effect">,
   InGroup<IgnoredQualifiers>, DefaultIgnore;
 
@@ -501,7 +501,7 @@ def err_inconsistant_ivar_count : Error<
 def warn_incomplete_impl : Warning<"incomplete implementation">,
   InGroup<DiagGroup<"incomplete-implementation">>;
 def note_undef_method_impl : Note<"method definition for %0 not found">;
-def note_required_for_protocol_at : 
+def note_required_for_protocol_at :
   Note<"required for direct or indirect protocol %0">;
 
 def warn_conflicting_overriding_ret_types : Warning<
@@ -590,7 +590,7 @@ def err_duplicate_method_decl : Error<"duplicate declaration of method %0">;
 def warn_duplicate_method_decl : 
   Warning<"multiple declarations of method %0 found and ignored">, 
   InGroup<MethodDuplicate>, DefaultIgnore;
-def err_objc_var_decl_inclass : 
+def err_objc_var_decl_inclass :
     Error<"cannot declare variable inside @interface or @protocol">;
 def error_missing_method_context : Error<
   "missing context for method declaration">;
@@ -742,7 +742,7 @@ def warn_auto_readonly_iboutlet_property : Warning<
   "not work correctly with 'nib' loader">,
   InGroup<DiagGroup<"readonly-iboutlet-property">>;
 def warn_auto_implicit_atomic_property : Warning<
-  "property is assumed atomic when auto-synthesizing the property">, 
+  "property is assumed atomic when auto-synthesizing the property">,
   InGroup<ImplicitAtomic>, DefaultIgnore;
 def warn_unimplemented_selector:  Warning<
   "unimplemented selector %0">, InGroup<Selector>, DefaultIgnore;
@@ -810,7 +810,7 @@ def err_throw_abstract_type : Error<
 def err_array_of_abstract_type : Error<"array of abstract class type %0">;
 
 def err_multiple_final_overriders : Error<
-  "virtual function %q0 has more than one final overrider in %1">; 
+  "virtual function %q0 has more than one final overrider in %1">;
 def note_final_overrider : Note<"final overrider of %q0 in %1">;
 
 def err_type_defined_in_type_specifier : Error<
@@ -839,7 +839,7 @@ def warn_weak_template_vtable : Warning<
 
 def ext_using_undefined_std : ExtWarn<
   "using directive refers to implicitly-defined namespace 'std'">;
-  
+
 // C++ exception specifications
 def err_exception_spec_in_typedef : Error<
   "exception specifications are not allowed in %select{typedefs|type aliases}0">;
@@ -880,7 +880,7 @@ def ext_ms_using_declaration_inaccessible : ExtWarn<
   "to accessible member '%1') is a Microsoft compatibility extension">,
     AccessControl, InGroup<Microsoft>;
 def err_access_ctor : Error<
-  "calling a %select{private|protected}0 constructor of class %2">, 
+  "calling a %select{private|protected}0 constructor of class %2">,
   AccessControl;
 def ext_rvalue_to_reference_access_ctor : ExtWarn<
   "C++98 requires an accessible copy constructor for class %2 when binding "
@@ -900,7 +900,7 @@ def err_access_field_ctor : Error<
   AccessControl;
 
 def err_access_dtor : Error<
-  "calling a %select{private|protected}1 destructor of class %0">, 
+  "calling a %select{private|protected}1 destructor of class %0">,
   AccessControl;
 def err_access_dtor_base :
     Error<"base class %0 has %select{private|protected}1 destructor">,
@@ -939,10 +939,11 @@ def note_access_protected_restricted_ctordtor : Note<
   "%select{construct|destroy}0 a base class subobject">;
 def note_access_protected_restricted_object : Note<
   "can only access this member on an object of type %0">;
+
 def warn_cxx98_compat_sfinae_access_control : Warning<
   "substitution failure due to access control is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore, NoSFINAE;
-  
+
 // C++ name lookup
 def err_incomplete_nested_name_spec : Error<
   "incomplete type %0 named in nested name specifier">;
@@ -964,10 +965,11 @@ def err_incomplete_member_access : Error<
   "member access into incomplete type %0">;
 def err_incomplete_type : Error<
   "incomplete type %0 where a complete type is required">;
+
 def warn_cxx98_compat_enum_nested_name_spec : Warning<
   "enumeration type in nested name specifier is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
-  
+
 // C++ class members
 def err_storageclass_invalid_for_member : Error<
   "storage class specified for a member declaration">;
@@ -1085,7 +1087,7 @@ def err_covariant_return_type_class_type_more_qualified : Error<
   "return type of virtual function %0 is not covariant with the return type of "
   "the function it overrides (class type %1 is more qualified than class "
   "type %2">;
-  
+
 // C++ constructors
 def err_constructor_cannot_be : Error<"constructor cannot be declared '%0'">;
 def err_invalid_qualified_constructor : Error<
@@ -1273,7 +1275,7 @@ def note_constructor_declared_here : Note<
 // C++11 decltype
 def err_decltype_in_declarator : Error<
     "'decltype' cannot be used to name a declaration">;
-    
+
 // C++11 auto
 def warn_cxx98_compat_auto_type_specifier : Warning<
   "'auto' type specifier is incompatible with C++98">,
@@ -1410,6 +1412,7 @@ def err_constexpr_tag : Error<
 def err_constexpr_dtor : Error<"destructor cannot be marked constexpr">;
 def err_constexpr_no_declarators : Error<
   "constexpr can only be used in variable and function declarations">;
+
 def err_invalid_constexpr_var_decl : Error<
   "constexpr variable declaration must be a definition">;
 def err_constexpr_static_mem_var_requires_init : Error<
@@ -1480,7 +1483,7 @@ def note_non_literal_nontrivial_dtor : Note<
 def warn_cxx98_compat_unicode_type : Warning<
   "'%0' type specifier is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
- 
+
 // Objective-C++
 def err_objc_decls_may_only_appear_in_global_scope : Error<
   "Objective-C declarations may only appear in global scope">;
@@ -1758,7 +1761,6 @@ def warn_availability_version_ordering : Warning<
   "attribute ignored">, InGroup<Availability>;
 def warn_mismatched_availability: Warning<
   "availability does not match previous declaration">, InGroup<Availability>;
-
 // Thread Safety Attributes
 def warn_thread_attribute_ignored : Warning<
   "ignoring %0 attribute because its argument is invalid">,
@@ -2134,7 +2136,7 @@ def note_ovl_candidate_substitution_failure : Note<
     "candidate template ignored: substitution failure%0%1">;
 def note_ovl_candidate_disabled_by_enable_if : Note<
     "candidate template ignored: disabled by %0%1">;
-    
+
 // Note that we don't treat templates differently for this diagnostic.
 def note_ovl_candidate_arity : Note<"candidate "
     "%select{function|function|constructor|function|function|constructor|"
@@ -2376,6 +2378,7 @@ def err_bound_member_function : Error<
   "%select{|; did you mean to call it with no arguments?}0">;
 def note_possible_target_of_call : Note<"possible target for call">;
 
+
 def err_ovl_no_viable_object_call : Error<
   "no matching function for call to object of type %0">;
 def err_ovl_ambiguous_object_call : Error<
@@ -2427,7 +2430,7 @@ def err_template_param_different_kind : Error<
   "%select{|template parameter }0redeclaration">;
 def note_template_param_different_kind : Note<
   "template parameter has a different kind in template argument">;
-  
+
 def err_template_nontype_parm_different_type : Error<
   "template non-type parameter has a different type %0 in template "
   "%select{|template parameter }1redeclaration">;
@@ -2700,7 +2703,7 @@ def err_dependent_typed_non_type_arg_in_partial_spec : Error<
 def err_partial_spec_args_match_primary_template : Error<
     "class template partial specialization does not specialize any template "
     "argument; to %select{declare|define}0 the primary template, remove the "
-    "template argument list">; 
+    "template argument list">;
 def warn_partial_specs_not_deducible : Warning<
     "class template partial specialization contains "
     "%select{a template parameter|template parameters}0 that can not be "
@@ -2716,7 +2719,7 @@ def note_prev_partial_spec_here : Note<
   "previous declaration of class template partial specialization %0 is here">;
 def err_partial_spec_fully_specialized : Error<
   "partial specialization of %0 does not use any of its template parameters">;
-  
+
 // C++ Function template specializations
 def err_function_template_spec_no_match : Error<
     "no function template matches function template specialization %0">;
@@ -2759,7 +2762,6 @@ def note_template_type_alias_instantiation_here : Note<
   "in instantiation of template type alias %0 requested here">;
 def note_template_exception_spec_instantiation_here : Note<
   "in instantiation of exception specification for %0 requested here">;
-  
 def note_default_arg_instantiation_here : Note<
   "in instantiation of default argument for '%0' required here">;
 def note_default_function_arg_instantiation_here : Note<
@@ -2816,12 +2818,12 @@ def err_explicit_instantiation_out_of_scope : Error<
 def err_explicit_instantiation_must_be_global : Error<
   "explicit instantiation of %0 must occur at global scope">;
 def warn_explicit_instantiation_out_of_scope_0x : Warning<
-  "explicit instantiation of %0 not in a namespace enclosing %1">, 
+  "explicit instantiation of %0 not in a namespace enclosing %1">,
   InGroup<CXX11Compat>, DefaultIgnore;
 def warn_explicit_instantiation_must_be_global_0x : Warning<
-  "explicit instantiation of %0 must occur at global scope">, 
+  "explicit instantiation of %0 must occur at global scope">,
   InGroup<CXX11Compat>, DefaultIgnore;
-  
+
 def err_explicit_instantiation_requires_name : Error<
   "explicit instantiation declaration requires a name">;
 def err_explicit_instantiation_of_typedef : Error<
@@ -2868,7 +2870,7 @@ def err_explicit_instantiation_declaration_after_definition : Error<
   "instantiation definition (without 'extern')">;
 def note_explicit_instantiation_definition_here : Note<
   "explicit instantiation definition is here">;
-  
+
 // C++ typename-specifiers
 def err_typename_nested_not_found : Error<"no type named %0 in %1">;
 def err_typename_nested_not_found_enable_if : Error<
@@ -2935,7 +2937,7 @@ def note_template_parameter_pack_non_pack : Note<
 def note_template_parameter_pack_here : Note<
   "previous %select{template type|non-type template|template template}0 "
   "parameter%select{| pack}1 declared here">;
-  
+
 def err_unexpanded_parameter_pack_0 : Error<
   "%select{expression|base type|declaration type|data member type|bit-field "
   "size|static assertion|fixed underlying type|enumerator value|"
@@ -3157,7 +3159,7 @@ def ext_ms_forward_ref_enum : Extension<
   "forward references to 'enum' types are a Microsoft extension">, InGroup<Microsoft>;
 def ext_forward_ref_enum_def : Extension<
   "redeclaration of already-defined enum %0 is a GNU extension">, InGroup<GNU>;
-  
+
 def err_redefinition_of_enumerator : Error<"redefinition of enumerator %0">;
 def err_duplicate_member : Error<"duplicate member %0">;
 def err_misplaced_ivar : Error<
@@ -3172,7 +3174,7 @@ def warn_enum_too_large : Warning<
   "enumeration values exceed range of largest integer">;
 def warn_enumerator_too_large : Warning<
   "enumerator value %0 is not representable in the largest integer type">;
-  
+
 def warn_illegal_constant_array_size : Extension<
   "size of static array must be an integer constant expression">;
 def err_vm_decl_in_file_scope : Error<
@@ -3538,7 +3540,7 @@ def warn_arc_retained_property_assign : Warning<
 def warn_arc_trivial_member_function_with_object_member : Warning<
   "%0 cannot be shared between ARC and non-ARC "
   "code; add a non-trivial %select{copy constructor|copy assignment operator|"
-  "destructor}1 to make it ABI-compatible">, 
+  "destructor}1 to make it ABI-compatible">,
   InGroup<AutomaticReferenceCountingABI>, DefaultIgnore;
 def err_arc_new_array_without_ownership : Error<
   "'new' cannot allocate an array of %0 with no explicit ownership">;
@@ -3580,7 +3582,7 @@ def warn_receiver_forward_instance : Warning<
   InGroup<ForwardClassReceiver>, DefaultIgnore;
 def err_arc_collection_forward : Error<
   "collection expression type %0 is a forward declaration">;
-def err_arc_multiple_method_decl : Error< 
+def err_arc_multiple_method_decl : Error<
   "multiple methods named %0 found with mismatched result, "
   "parameter type or attributes">;
 
@@ -3867,7 +3869,7 @@ def ext_out_of_line_declaration : ExtWarn<
 def warn_member_extra_qualification : Warning<
   "extra qualification on member %0">;
 def err_member_qualification : Error<
-  "non-friend class member %0 cannot have a qualified name">;  
+  "non-friend class member %0 cannot have a qualified name">;
 def note_member_def_close_match : Note<"member declaration nearly matches">;
 def note_member_def_close_const_match : Note<
   "member declaration does not match because "
@@ -3943,7 +3945,7 @@ def err_parens_pointer_member_function : Error<
 def err_typecheck_invalid_lvalue_addrof : Error<
   "address expression must be an lvalue or a function designator">;
 def ext_typecheck_addrof_class_temporary : ExtWarn<
-  "taking the address of a temporary object of type %0">, 
+  "taking the address of a temporary object of type %0">,
   InGroup<DiagGroup<"address-of-temporary">>, DefaultError;
 def err_typecheck_addrof_class_temporary : Error<
   "taking the address of a temporary object of type %0">;
@@ -4248,13 +4250,13 @@ def warn_cxx98_compat_cast_fn_obj : Warning<
 def err_bad_reinterpret_cast_small_int : Error<
   "cast from pointer to smaller type %2 loses information">;
 def err_bad_cxx_cast_vector_to_scalar_different_size : Error<
-  "%select{||reinterpret_cast||C-style cast|}0 from vector %1 " 
+  "%select{||reinterpret_cast||C-style cast|}0 from vector %1 "
   "to scalar %2 of different size">;
 def err_bad_cxx_cast_scalar_to_vector_different_size : Error<
-  "%select{||reinterpret_cast||C-style cast|}0 from scalar %1 " 
+  "%select{||reinterpret_cast||C-style cast|}0 from scalar %1 "
   "to vector %2 of different size">;
 def err_bad_cxx_cast_vector_to_vector_different_size : Error<
-  "%select{||reinterpret_cast||C-style cast|}0 from vector %1 " 
+  "%select{||reinterpret_cast||C-style cast|}0 from vector %1 "
   "to vector %2 of different size">;
 def err_bad_lvalue_to_rvalue_cast : Error<
   "cannot cast from lvalue of type %1 to rvalue reference type %2; types are "
@@ -4520,7 +4522,7 @@ def err_typecheck_nonviable_condition : Error<
 def err_typecheck_deleted_function : Error<
   "conversion function %diff{from $ to $|between types}0,1 "
   "invokes a deleted function">;
-  
+
 def err_expected_class_or_namespace : Error<"expected a class or namespace">;
 def err_expected_class : Error<"%0 is not a class%select{ or namespace|, "
   "namespace, or scoped enumeration}1">;
@@ -5132,8 +5134,8 @@ def err_reference_to_local_var_in_enclosing_context : Error<
 def note_local_variable_declared_here : Note<
   "%0 declared here">;
 def err_static_data_member_not_allowed_in_local_class : Error<
-  "static data member %0 not allowed in local class %1">; 
-  
+  "static data member %0 not allowed in local class %1">;
+
 // C++ derived classes
 def err_base_clause_on_union : Error<"unions cannot have base classes">;
 def err_base_must_be_class : Error<"base specifier must name a class">;
@@ -5225,7 +5227,6 @@ def warn_user_literal_reserved : Warning<
   "user-defined literal suffixes not starting with '_' are reserved; "
   "no literal will invoke this operator">,
   InGroup<UserDefinedLiterals>;
-
 // C++ conversion functions
 def err_conv_function_not_member : Error<
   "conversion function must be a non-static member function">;
@@ -5651,7 +5652,7 @@ def err_vector_incorrect_num_initializers : Error<
 def err_altivec_empty_initializer : Error<"expected initializer">;
 
 def err_invalid_neon_type_code : Error<
-  "incompatible constant for this __builtin_neon function">; 
+  "incompatible constant for this __builtin_neon function">;
 def err_argument_invalid_range : Error<
   "argument should be a value from %0 to %1">;
 
@@ -5664,7 +5665,7 @@ def err_constant_integer_arg_type : Error<
 def ext_mixed_decls_code : Extension<
   "ISO C90 forbids mixing declarations and code">,
   InGroup<DiagGroup<"declaration-after-statement">>;
-  
+
 def err_non_variable_decl_in_for : Error<
   "declaration of non-local variable in 'for' loop">;
 def err_toomany_element_decls : Error<
@@ -5716,7 +5717,7 @@ def err_nsconsumed_attribute_mismatch : Error<
 def err_nsreturns_retained_attribute_mismatch : Error<
   "overriding method has mismatched ns_returns_%select{not_retained|retained}0"
   " attributes">;
-  
+
 def note_getter_unavailable : Note<
   "or because setter is declared here, but no getter method %0 is found">;
 def err_invalid_protocol_qualifiers : Error<
@@ -5868,5 +5869,80 @@ let CategoryName = "Documentation Issue" in {
 def warn_not_a_doxygen_trailing_member_comment : Warning<
   "not a Doxygen trailing comment">, InGroup<Documentation>, DefaultIgnore;
 } // end of documentation issue category
+
+// scout - Scout
+let CategoryName = "Scout Issue" in {
+def err_loop_variable_shadows_forall : Error<
+"forall loop variable %0 shadows an existing identifier">;
+def err_loop_variable_shadows_renderall : Error<
+"renderall loop variable %0 shadows an existing identifier">;
+def err_elements_variable_shadows_renderall : Error<
+"renderall elements variable %0 shadows an existing identifier">;
+
+def err_unknown_mesh_variable_renderall : Error<
+"unknown mesh variable %0 while parsing renderall statement">;
+def err_unknown_mesh_variable_forall : Error<
+"unknown mesh variable %0 while parsing forall statement">;
+
+def err_not_mesh_variable_forall : Error<
+"not a mesh variable %0 while parsing forall statement">;
+def err_not_mesh_variable_renderall : Error<
+"not a mesh variable %0 while parsing renderall statement">;
+
+def err_invalid_mesh_field : Error<
+"%0 is not a valid mesh field">;
+
+def err_invalid_mesh_cells_field : Error<
+"%0 is not a cells field on the mesh">;
+
+def err_invalid_mesh_vertices_field : Error<
+"%0 is not a vertices field on the mesh">;
+
+def err_invalid_mesh_faces_field : Error<
+"%0 is not a faces field on the mesh">;
+
+def err_invalid_mesh_edges_field : Error<
+"%0 is not an edges field on the mesh">;
+
+def err_no_color_assignment_renderall : Error<
+"color or color components {r,g,b,a} were not assigned in all branches of renderall">;
+
+def err_rhs_after_lhs_forall : Error<
+"mesh field appears on LHS then on subsequent RHS">;
+
+def err_cshift_args : Error<
+"number of cshift args does not correspond to mesh dimensions">;
+
+def err_cshift_field : Error<
+"first argument to cshift must be a mesh field">;
+
+def err_pointer_field_mesh : Error<
+"mesh field element must be non-pointer type">;
+
+def err_elements_not_in_forall_renderall : Error<
+"renderall elements must appear within a forall loop">;
+
+def err_invalid_position_ref : Error<
+"mesh position component exceeds number of dimensions">;
+
+def err_invalid_height_mesh : Error<
+"invalid use of height field: number of mesh dimensions < 2">;
+
+def err_invalid_depth_mesh : Error<
+"invalid use of depth field: number of mesh dimensions < 3">;
+
+def warn_lhs_outside_forall : Warning<
+  "non-mesh variable '%0' from outside scope appears on LHS within parallel (forall) construct">;
+
+def err_invalid_scout_vector_component : Error<
+"invalid vector component, expected [x,y,z,w]">;
+
+def err_invalid_scout_color_component : Error<
+"invalid color vector component, expected {x,y,z,w} or {r,g,b,a}">;
+
+def err_mesh_param_dimensionality_mismatch : Error<
+"dimensionality mismatch when passing mesh as parameter">;
+
+} // end Scout issue category
 
 } // end of sema component.

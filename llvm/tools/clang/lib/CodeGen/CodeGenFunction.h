@@ -23,6 +23,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Support/Debug.h"
@@ -30,6 +31,7 @@
 #include "CGBuilder.h"
 #include "CGDebugInfo.h"
 #include "CGValue.h"
+#include <map>
 
 namespace llvm {
   class BasicBlock;
@@ -270,14 +272,14 @@ public:
     A0_saved a0_saved;
     A1_saved a1_saved;
     A2_saved a2_saved;
-    
+
     void Emit(CodeGenFunction &CGF, Flags flags) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
       A2 a2 = DominatingValue<A2>::restore(CGF, a2_saved);
       T(a0, a1, a2).Emit(CGF, flags);
     }
-    
+
   public:
     ConditionalCleanup3(A0_saved a0, A1_saved a1, A2_saved a2)
       : a0_saved(a0), a1_saved(a1), a2_saved(a2) {}
@@ -293,7 +295,7 @@ public:
     A1_saved a1_saved;
     A2_saved a2_saved;
     A3_saved a3_saved;
-    
+
     void Emit(CodeGenFunction &CGF, Flags flags) {
       A0 a0 = DominatingValue<A0>::restore(CGF, a0_saved);
       A1 a1 = DominatingValue<A1>::restore(CGF, a1_saved);
@@ -301,7 +303,7 @@ public:
       A3 a3 = DominatingValue<A3>::restore(CGF, a3_saved);
       T(a0, a1, a2, a3).Emit(CGF, flags);
     }
-    
+
   public:
     ConditionalCleanup4(A0_saved a0, A1_saved a1, A2_saved a2, A3_saved a3)
       : a0_saved(a0), a1_saved(a1), a2_saved(a2), a3_saved(a3) {}
@@ -637,6 +639,94 @@ public:
 
   llvm::BasicBlock *getInvokeDestImpl();
 
+  typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
+  typedef CallExpr::const_arg_iterator ArgIterator;
+  typedef std::pair< FieldDecl *, int > FieldPair;
+  typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
+  /// Scout forall explicit induction variable.
+  llvm::Value *ForallIndVal;
+  llvm::Value *ForallIndVar;
+  /// Scout forall implicit induction variables.
+  Vector ScoutIdxVars;
+  /// Scout mesh dimension sizes.
+  llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
+  llvm::Value *ImplicitMeshVar;
+  llvm::Value *ForallTripCount;
+  MemberMap MeshMembers;
+  bool RenderAll;
+  bool CallsPrintf;
+  llvm::Value *Colors;
+  const ForAllArrayStmt* CurrentForAllArrayStmt;
+  
+  llvm::Value *getGlobalIdx() {
+    return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
+  }
+
+  bool isGPU() {
+    return CGM.getCodeGenOpts().ScoutNvidiaGPU && !CallsPrintf;
+  }
+  
+  bool isCPU() {
+    return CGM.getCodeGenOpts().ScoutCPUThreads;
+  }
+
+  bool isSequential() {
+    return !isCPU() && !isGPU();
+  }
+
+  bool isMeshMember(llvm::Argument *arg) {
+    if(arg->getName().endswith("height")) return false;
+    if(arg->getName().endswith("width")) return false;
+    if(arg->getName().endswith("depth")) return false;
+
+    typedef MemberMap::iterator MemberIterator;
+    for(MemberIterator it = MeshMembers.begin(),
+          end = MeshMembers.end(); it != end; ++it) {
+      if(arg->getName().startswith(it->first)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  llvm::StringRef toString(int i) {
+    switch(i) {
+    case 0: return "width";
+    case 1: return "height";
+    case 2: return "depth";
+    default:
+      assert(false && "Unknown dimension in toString()!\n");
+    }
+  }
+
+  bool hasPrintfEdge(Stmt *S) {
+    typedef Stmt::child_iterator ChildIterator;
+    int sum = 0;
+    for(ChildIterator it = S->child_begin(), end = S->child_end(); it != end; ++it) {
+      sum += hasPrintfNode(*it);
+    }
+    return sum;
+  }
+
+  bool hasPrintfNode(Stmt *S) {
+    if(S == NULL) return false;
+
+    if(S->getStmtClass() == Expr::CallExprClass) {
+      const Decl *TD = cast< CallExpr >(S)->getCalleeDecl();
+      const FunctionDecl *FD = cast< FunctionDecl >(TD);
+      llvm::StringRef fname(FD->getNameInfo().getAsString());
+      return fname.startswith("printf");
+    } else if(S->getStmtClass() == Stmt::NullStmtClass) {
+      return false;
+    }
+
+    return hasPrintfEdge(S);
+  }
+
+  bool callsPrintf(Stmt *S) {
+    return hasPrintfNode(S);
+  }
+
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
     return DominatingValue<T>::save(*this, value);
@@ -715,11 +805,11 @@ public:
     if (!isInConditionalBranch()) {
       return EHStack.pushCleanup<T>(kind, a0, a1, a2);
     }
-    
+
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
-    
+
     typedef EHScopeStack::ConditionalCleanup3<T, A0, A1, A2> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved, a2_saved);
     initFullExprCleanup();
@@ -735,12 +825,12 @@ public:
     if (!isInConditionalBranch()) {
       return EHStack.pushCleanup<T>(kind, a0, a1, a2, a3);
     }
-    
+
     typename DominatingValue<A0>::saved_type a0_saved = saveValueInCond(a0);
     typename DominatingValue<A1>::saved_type a1_saved = saveValueInCond(a1);
     typename DominatingValue<A2>::saved_type a2_saved = saveValueInCond(a2);
     typename DominatingValue<A3>::saved_type a3_saved = saveValueInCond(a3);
-    
+
     typedef EHScopeStack::ConditionalCleanup4<T, A0, A1, A2, A3> CleanupType;
     EHStack.pushCleanup<CleanupType>(kind, a0_saved, a1_saved,
                                      a2_saved, a3_saved);
@@ -897,7 +987,7 @@ public:
   /// block through the normal cleanup handling code (if any) and then
   /// on to \arg Dest.
   void EmitBranchThroughCleanup(JumpDest Dest);
-  
+
   /// isObviouslyBranchWithoutCleanups - Return true if a branch to the
   /// specified destination obviously has no cleanups to run.  'false' is always
   /// a conservatively correct answer for this method.
@@ -1103,7 +1193,7 @@ public:
       if (Data.isValid()) Data.unbind(CGF);
     }
   };
-  
+
   /// getByrefValueFieldNumber - Given a declaration, returns the LLVM field
   /// number that holds the value.
   unsigned getByRefValueLLVMField(const ValueDecl *VD) const;
@@ -1213,10 +1303,10 @@ public:
 
   CodeGenTypes &getTypes() const { return CGM.getTypes(); }
   ASTContext &getContext() const { return CGM.getContext(); }
-  CGDebugInfo *getDebugInfo() { 
-    if (DisableDebugInfo) 
+  CGDebugInfo *getDebugInfo() {
+    if (DisableDebugInfo)
       return NULL;
-    return DebugInfo; 
+    return DebugInfo;
   }
   void disableDebugInfo() { DisableDebugInfo = true; }
   void enableDebugInfo() { DisableDebugInfo = false; }
@@ -1340,7 +1430,19 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
+  llvm::Value *EmitScoutBlockFnCall(CodeGenModule &CGM,
+                                    const CGBlockInfo &blockInfo,
+                                    llvm::Value *TheBlockFn,
+                                    const llvm::SmallVector< llvm::Value *, 3 >& ranges,
+                                    llvm::SetVector< llvm::Value * > &inputs);
+  
+  llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
+                                     CGBlockInfo &blockInfo,
+                                     const llvm::SmallVector< llvm::Value *, 3 >& ranges,
+                                     llvm::SetVector< llvm::Value * > &inputs);
+  
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
+  
   llvm::Value *EmitBlockLiteral(const CGBlockInfo &Info);
   static void destroyBlockInfos(CGBlockInfo *info);
   llvm::Constant *BuildDescriptorBlockDecl(const BlockExpr *,
@@ -1790,7 +1892,7 @@ public:
                               bool ForVirtualBase, llvm::Value *This,
                               CallExpr::const_arg_iterator ArgBeg,
                               CallExpr::const_arg_iterator ArgEnd);
-  
+
   void EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                               llvm::Value *This, llvm::Value *Src,
                               CallExpr::const_arg_iterator ArgBeg,
@@ -1912,7 +2014,7 @@ public:
   };
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
   void EmitAutoVarInit(const AutoVarEmission &emission);
-  void EmitAutoVarCleanups(const AutoVarEmission &emission);  
+  void EmitAutoVarCleanups(const AutoVarEmission &emission);
   void emitAutoVarTypeCleanup(const AutoVarEmission &emission,
                               QualType::DestructionKind dtorKind);
 
@@ -1971,6 +2073,64 @@ public:
   void EmitIfStmt(const IfStmt &S);
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
+
+  // scout - Stmts
+
+  void EmitForAllStmtWrapper(const ForAllStmt &S);
+  bool hasCalledFn(llvm::Function *Fn, llvm::StringRef name);
+  bool isCalledFn(llvm::Instruction *Instn, llvm::StringRef name);
+
+  llvm::Value *TranslateExprToValue(const Expr *E);
+  void EmitForAllStmt(const ForAllStmt &S);
+  void EmitForAllArrayStmt(const ForAllArrayStmt &S);
+  void EmitRenderAllStmt(const RenderAllStmt &S);
+  RValue EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S, 
+      bool GetLast = false, AggValueSlot AVS = AggValueSlot::ignored());
+
+
+  void insertMeshDump(llvm::Value* baseAddr);
+  
+  typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
+
+  LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
+  RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+  LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
+                            MySmallVector foo = MySmallVector());
+
+//                            llvm::SmallVector<llvm::Value*, 3> foo
+//                            = llvm::SmallVector<llvm::Value*, 3>());
+
+  llvm::Value *CreateMemAlloc(uint64_t numElts) {
+    llvm::AttrListPtr namPAL;
+    llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
+    llvm::AttributeWithIndex PAWI;
+    PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
+    Attrs.push_back(PAWI);
+    namPAL = llvm::AttrListPtr::get(Attrs);
+    llvm::Function *namF;
+
+    if(!CGM.getModule().getFunction("_Znam")) {
+      llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
+      namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
+                                    "_Znam", &CGM.getModule());
+      namF->setAttributes(namPAL);
+    } else {
+      namF = CGM.getModule().getFunction("_Znam");
+    }
+
+    llvm::CallInst *call =
+      Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
+    call->setAttributes(namPAL);
+
+    return call;
+  }
+
+  void DEBUG_OUT(const char *s) {
+    //llvm::outs() << "Attempting " << s << ".\n";
+  }
+
+  FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);
   void EmitDeclStmt(const DeclStmt &S);
@@ -2224,12 +2384,12 @@ public:
                                 llvm::Type *Ty);
   llvm::Value *BuildVirtualCall(const CXXDestructorDecl *DD, CXXDtorType Type,
                                 llvm::Value *This, llvm::Type *Ty);
-  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD, 
+  llvm::Value *BuildAppleKextVirtualCall(const CXXMethodDecl *MD,
                                          NestedNameSpecifier *Qual,
                                          llvm::Type *Ty);
-  
+
   llvm::Value *BuildAppleKextVirtualDestructorCall(const CXXDestructorDecl *DD,
-                                                   CXXDtorType Type, 
+                                                   CXXDtorType Type,
                                                    const CXXRecordDecl *RD);
 
   RValue EmitCXXMemberCall(const CXXMethodDecl *MD,
@@ -2338,11 +2498,11 @@ public:
   static Destroyer destroyARCStrongPrecise;
   static Destroyer destroyARCWeak;
 
-  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr); 
+  void EmitObjCAutoreleasePoolPop(llvm::Value *Ptr);
   llvm::Value *EmitObjCAutoreleasePoolPush();
   llvm::Value *EmitObjCMRRAutoreleasePoolPush();
   void EmitObjCAutoreleasePoolCleanup(llvm::Value *Ptr);
-  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr); 
+  void EmitObjCMRRAutoreleasePoolPop(llvm::Value *Ptr);
 
   /// EmitReferenceBindingToExpr - Emits a reference binding to the passed in
   /// expression. Will emit a temporary variable if E is not an LValue.
@@ -2456,7 +2616,7 @@ public:
                                         bool PerformInit);
 
   void EmitCXXConstructExpr(const CXXConstructExpr *E, AggValueSlot Dest);
-  
+
   void EmitSynthesizedCXXCopyCtor(llvm::Value *Dest, llvm::Value *Src,
                                   const Expr *Exp);
 
@@ -2502,7 +2662,7 @@ public:
   /// If the statement (recursively) contains a switch or loop with a break
   /// inside of it, this is fine.
   static bool containsBreak(const Stmt *S);
-  
+
   /// ConstantFoldsToSimpleInteger - If the specified expression does not fold
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the boolean result in Result.
@@ -2512,7 +2672,7 @@ public:
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the folded value.
   bool ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APInt &Result);
-  
+
   /// EmitBranchOnBoolExpr - Emit a branch on a boolean condition (e.g. for an
   /// if statement) to the specified blocks.  Based on the condition, this might
   /// try to simplify the codegen of the conditional based on the branch.
@@ -2595,10 +2755,19 @@ private:
             }
           }
         }
-        assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
-               getTypePtr() ==
-               getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-               "type mismatch in call argument!");
+        
+        // scout - special case for mesh types, because we cannot check
+        // for type pointer equality because each mesh has its own type
+        // pointer to hold the mesh dimensions and other instance data
+        const Type* argType = getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
+        const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
+
+        if(isa<MeshType>(argType) && isa<MeshType>(actualType)){
+          // fine ...
+        }
+        else if(argType != actualType){
+          assert(false && "type mismatch in call argument!");
+        }
 #endif
         EmitCallArg(Args, *Arg, ArgType);
       }

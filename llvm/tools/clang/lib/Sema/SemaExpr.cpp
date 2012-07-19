@@ -1447,6 +1447,7 @@ bool Sema::DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                                CorrectionCandidateCallback &CCC,
                                TemplateArgumentListInfo *ExplicitTemplateArgs,
                                llvm::ArrayRef<Expr *> Args) {
+  
   DeclarationName Name = R.getLookupName();
 
   unsigned diagnostic = diag::err_undeclared_var_use;
@@ -1766,7 +1767,69 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
     // If this name wasn't predeclared and if this is not a function
     // call, diagnose the problem.
     if (R.empty()) {
+      // scout - Scout forall/renderall
+      // check undeclared identifiers to see if they can be qualified
+      // as member reference expr's by enclosing forall / renderall 
+      // loop variables
+      
+      for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
+          sitrEnd = SCLStack.end();
+          sitr != sitrEnd; ++sitr){
+        
+        VarDecl* vd = *sitr;
+        
+        const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
+        MeshDecl* md = mt->getDecl();
+        
+        for(MeshDecl::field_iterator fitr = md->field_begin(),
+            fitrEnd = md->field_end();
+            fitr != fitrEnd; ++fitr){
+          
+          FieldDecl* fd = *fitr;
+          
+          bool valid;
 
+          if(mt->getInstanceType() == MeshType::MeshInstance){
+            valid = true;
+          }
+          else{
+            switch(fd->meshFieldType()){
+              case FieldDecl::FieldVertices:
+                
+                valid = mt->getInstanceType() == MeshType::VerticesInstance;
+                break;
+              case FieldDecl::FieldCells:
+                valid = mt->getInstanceType() == MeshType::CellsInstance;
+                break;
+              case FieldDecl::FieldFaces:
+                valid = mt->getInstanceType() == MeshType::FacesInstance;
+                break;
+              case FieldDecl::FieldEdges:
+                valid = mt->getInstanceType() == MeshType::EdgesInstance;
+                break;
+              case FieldDecl::FieldAll:
+                valid = true;
+                break;
+              default:
+                assert(false && "invalid field type while attempting "
+                       "to look up unqualified forall/renderall variable");
+            }
+          }
+          
+          if(valid && Name.getAsString() == fd->getName()){
+            Expr* baseExpr = 
+            BuildDeclRefExpr(vd, QualType(mt, 0), VK_LValue, NameLoc).get();
+
+            return Owned(BuildMemberReferenceExpr(baseExpr, QualType(mt, 0),
+                                                  NameLoc, false, 
+                                                  SS, SourceLocation(),
+                                                  0, NameInfo,
+                                                  TemplateArgs));
+                                         
+          }
+        }
+      }
+      
       // In Microsoft mode, if we are inside a template class member function
       // and we can't resolve an identifier then assume the identifier is type
       // dependent. The goal is to postpone name lookup to instantiation time 

@@ -223,6 +223,10 @@ CXCursor cxcursor::MakeCXCursor(Stmt *S, Decl *Parent, CXTranslationUnit TU,
   case Stmt::ImplicitCastExprClass:
   case Stmt::ImplicitValueInitExprClass:
   case Stmt::MaterializeTemporaryExprClass:
+  // ndm - Scout Stmts
+  case Stmt::ForAllStmtClass:  
+  case Stmt::RenderAllStmtClass: 
+
   case Stmt::ObjCIndirectCopyRestoreExprClass:
   case Stmt::OffsetOfExprClass:
   case Stmt::ParenListExprClass:

@@ -31,6 +31,7 @@ using namespace CodeGen;
 
 
 void CodeGenFunction::EmitDecl(const Decl &D) {
+  DEBUG_OUT("EmitDecl");
   switch (D.getKind()) {
   case Decl::TranslationUnit:
   case Decl::Namespace:
@@ -72,6 +73,11 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::ClassScopeFunctionSpecialization:
     llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
+
+  // scout - Mesh
+  case Decl::Mesh:
+    return;
+
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;
   case Decl::EnumConstant: // enum ? { X = ? }
@@ -107,6 +113,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
 /// EmitVarDecl - This method handles emission of any variable declaration
 /// inside a function, including static vars etc.
 void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
+  DEBUG_OUT("EmitVarDecl");
   switch (D.getStorageClass()) {
   case SC_None:
   case SC_Auto:
@@ -274,6 +281,7 @@ CodeGenFunction::AddInitializerToStaticVarDecl(const VarDecl &D,
 
 void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
                                       llvm::GlobalValue::LinkageTypes Linkage) {
+  DEBUG_OUT("EmitStaticVarDecl");
   llvm::Value *&DMEntry = LocalDeclMap[&D];
   assert(DMEntry == 0 && "Decl already exists in localdeclmap!");
 
@@ -529,6 +537,7 @@ void CodeGenFunction::EmitScalarInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
+  DEBUG_OUT("EmitScalarInit");
   Qualifiers::ObjCLifetime lifetime = lvalue.getObjCLifetime();
   if (!lifetime) {
     llvm::Value *value = EmitScalarExpr(init);
@@ -765,6 +774,7 @@ static bool shouldUseMemSetPlusStoresToInitialize(llvm::Constant *Init,
 /// variable declaration with auto, register, or no storage class specifier.
 /// These turn into simple stack objects, or GlobalValues depending on target.
 void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
+  DEBUG_OUT("EmitAutoVarDecl");
   AutoVarEmission emission = EmitAutoVarAlloca(D);
   EmitAutoVarInit(emission);
   EmitAutoVarCleanups(emission);
@@ -774,6 +784,7 @@ void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
 /// local variable.  Does not emit initalization or destruction.
 CodeGenFunction::AutoVarEmission
 CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
+  DEBUG_OUT("EmitAutoVarAlloca");
   QualType Ty = D.getType();
 
   AutoVarEmission emission(D);
@@ -862,6 +873,48 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
               getContext().toCharUnitsFromBits(Target.getPointerAlign(0)));
         Alloc->setAlignment(allocaAlignment.getQuantity());
         DeclPtr = Alloc;
+
+        QualType T = D.getType();
+        const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
+
+        if(Ty.getTypeClass() == Type::Mesh) {
+          // Variable has Scout mesh type. Each member becomes a pointer.
+          MeshType::MeshDimensionVec dims =
+          cast<MeshType>(T.getTypePtr())->dimensions();
+
+          uint64_t numElts = 1;
+          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+            llvm::APSInt result;
+            dims[i]->EvaluateAsInt(result, getContext());	    
+            numElts *= result.getSExtValue();
+          }
+
+          // store the mesh dimensions
+          for(size_t i = 0; i < 3; ++i){
+            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            
+            if(i >= dims.size()){
+              llvm::Value* intValue = 
+              llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
+              Builder.CreateStore(intValue, field);              
+            }
+            else{
+              llvm::APSInt result;
+              dims[i]->EvaluateAsInt(result, getContext());	
+              llvm::Value* intValue = llvm::ConstantInt::get(getLLVMContext(), result);
+              Builder.CreateStore(intValue, field);
+            }
+          }
+          
+          llvm::Type *structTy = Alloc->getType()->getContainedType(0);
+          for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
+            // Dynamically allocate memory.
+            llvm::Value *val = CreateMemAlloc(numElts);
+            val = Builder.CreateBitCast(val, structTy->getContainedType(i));
+            llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            Builder.CreateStore(val, field);
+          }
+        }
       }
     } else {
       // Targets that don't support recursion emit locals as globals.
@@ -994,6 +1047,7 @@ static bool isTrivialInitializer(const Expr *Init) {
   return false;
 }
 void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
+  DEBUG_OUT("EmitAutoVarInit");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.
@@ -1018,6 +1072,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
 
   if (isTrivialInitializer(Init))
     return;
+
 
   CharUnits alignment = emission.Alignment;
 
@@ -1099,6 +1154,7 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
                                      const ValueDecl *D,
                                      LValue lvalue,
                                      bool capturedByInit) {
+  DEBUG_OUT("EmitExprAsInt");
   QualType type = D->getType();
 
   if (type->isReferenceType()) {
@@ -1182,6 +1238,7 @@ void CodeGenFunction::emitAutoVarTypeCleanup(
 }
 
 void CodeGenFunction::EmitAutoVarCleanups(const AutoVarEmission &emission) {
+  DEBUG_OUT("EmitAutoVarCleanups");
   assert(emission.Variable && "emission was not valid!");
 
   // If this was emitted as a global constant, we're done.

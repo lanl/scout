@@ -66,7 +66,10 @@ enum InputKind {
   IK_OpenCL,
   IK_CUDA,
   IK_AST,
-  IK_LLVM_IR
+  IK_LLVM_IR,
+  // scout - input kind
+  IK_Scout
+
 };
 
   
@@ -111,6 +114,9 @@ public:
                                            /// not need them (e.g. with code
                                            /// completion).
 
+  // scout - View AST option
+  unsigned ViewAST : 1;
+  
   CodeCompleteOptions CodeCompleteOpts;
 
   enum {
@@ -181,6 +187,10 @@ public:
     RelocatablePCH = 0;
     ShowHelp = 0;
     ShowStats = 0;
+    
+    // scout - View AST flag
+    ViewAST = 0;
+    
     ShowTimers = 0;
     ShowVersion = 0;
     ARCMTAction = ARCMT_None;

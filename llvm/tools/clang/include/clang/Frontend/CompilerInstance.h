@@ -23,6 +23,10 @@
 #include <string>
 #include <utility>
 
+// scout - includes for rewriter
+#include "clang/Rewrite/Rewriter.h"
+#include "clang/Rewrite/Rewriters.h"
+
 namespace llvm {
 class raw_fd_ostream;
 class Timer;
@@ -112,6 +116,12 @@ class CompilerInstance : public ModuleLoader {
   ///
   Module *LastModuleImportResult;
   
+  // scout - AST consumer
+  ASTConsumer* ScoutASTConsumer;
+  
+  // scout - rewriter used with AST consumer
+  Rewriter* ScoutRewriter;
+  
   /// \brief Holds information about the output file.
   ///
   /// If TempFilename is not empty we must rename it to Filename at the end.
@@ -182,6 +192,26 @@ public:
     return *Invocation;
   }
 
+  // scout - set the AST consumer
+  void setScoutASTConsumer(ASTConsumer* astConsumer){
+    ScoutASTConsumer = astConsumer;
+  }
+  
+  // scout - get the AST Consumer
+  ASTConsumer* getScoutASTConsumer(){
+    return ScoutASTConsumer;
+  }
+
+  // scout - set the AST rewriter
+  void setScoutRewriter(Rewriter* rewriter){
+    ScoutRewriter = rewriter;
+  }
+  
+  // scout - get the AST Consumer
+  Rewriter* getScoutRewriter(){
+    return ScoutRewriter;
+  }
+  
   /// setInvocation - Replace the current invocation.
   void setInvocation(CompilerInvocation *Value);
 

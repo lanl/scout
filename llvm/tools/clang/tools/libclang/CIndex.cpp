@@ -1354,6 +1354,29 @@ bool CursorVisitor::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {
 #define FLOATING_TYPE(Id, SingletonId) case BuiltinType::Id:
 #define PLACEHOLDER_TYPE(Id, SingletonId) case BuiltinType::Id:
 #include "clang/AST/BuiltinTypes.def"
+
+  // ndm - Scout vector types
+  case BuiltinType::Bool2:
+  case BuiltinType::Bool3:
+  case BuiltinType::Bool4:
+  case BuiltinType::Char2:
+  case BuiltinType::Char3:
+  case BuiltinType::Char4:
+  case BuiltinType::Short2:
+  case BuiltinType::Short3:
+  case BuiltinType::Short4:
+  case BuiltinType::Int2:
+  case BuiltinType::Int3:
+  case BuiltinType::Int4:
+  case BuiltinType::Long2:
+  case BuiltinType::Long3:
+  case BuiltinType::Long4:
+  case BuiltinType::Float2:
+  case BuiltinType::Float3:
+  case BuiltinType::Float4:
+  case BuiltinType::Double2:
+  case BuiltinType::Double3:
+  case BuiltinType::Double4:
     break;
 
   case BuiltinType::ObjCId:
@@ -1547,6 +1570,11 @@ bool CursorVisitor::VisitDecltypeTypeLoc(DecltypeTypeLoc TL) {
 
 bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
   return Visit(MakeCursorTypeRef(TL.getDecl(), TL.getNameLoc(), TU));
+}
+
+// ndm - TODO - implement
+bool CursorVisitor::VisitMeshTypeLoc(MeshTypeLoc TL){
+  return false;
 }
 
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {
@@ -4321,6 +4349,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::Block:
   case Decl::Label:  // FIXME: Is this right??
   case Decl::ClassScopeFunctionSpecialization:
+  case Decl::Mesh:
   case Decl::Import:
     return C;
 

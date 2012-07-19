@@ -145,6 +145,38 @@ public:
     return true;
   }
 
+  // scout - stubs to avoid linking errors in libclang
+  bool TraverseMeshType(MeshType*){
+    return true;
+  }
+
+  bool TraverseScoutVectorMemberExpr(ScoutVectorMemberExpr*){
+    return true;
+  }
+  
+  bool TraverseForAllArrayStmt(ForAllArrayStmt*){
+    return true;
+  }
+
+  bool TraverseMeshTypeLoc(MeshTypeLoc*){
+    return true;
+  }
+
+  bool TraverseMeshDecl(MeshDecl*){
+    return true;
+  }
+
+  bool TraverseForAllStmt(ForAllStmt*){
+    return true;
+  }
+
+  bool TraverseRenderAllStmt(RenderAllStmt*){
+    return true;
+  }
+
+  bool TraverseVolumeRenderAllStmt(VolumeRenderAllStmt*){
+    return true;
+  }
 };
 
 } // anonymous namespace

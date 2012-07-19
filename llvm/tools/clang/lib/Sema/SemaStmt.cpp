@@ -32,6 +32,13 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+
+// scout
+#include "clang/AST/StmtVisitor.h"
+
+#include <map>
+#include <iostream>
+
 using namespace clang;
 using namespace sema;
 
@@ -656,7 +663,7 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     = CondExpr->isTypeDependent() || CondExpr->isValueDependent();
   unsigned CondWidth
     = HasDependentValue ? 0 : Context.getIntWidth(CondTypeBeforePromotion);
-  bool CondIsSigned 
+  bool CondIsSigned
     = CondTypeBeforePromotion->isSignedIntegerOrEnumerationType();
 
   // Accumulate all of the case values in a vector so that we can sort them
@@ -2315,7 +2322,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
   // Check for unexpanded parameter packs.
   if (RetValExp && DiagnoseUnexpandedParameterPack(RetValExp))
     return StmtError();
-  
+
   if (isa<CapturingScopeInfo>(getCurFunction()))
     return ActOnCapScopeReturnStmt(ReturnLoc, RetValExp);
 
@@ -2331,7 +2338,7 @@ Sema::ActOnReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp) {
     FnRetType = MD->getResultType();
     if (MD->hasRelatedResultType() && MD->getClassInterface()) {
       // In the implementation of a method with a related return type, the
-      // type used to type-check the validity of return statements within the 
+      // type used to type-check the validity of return statements within the
       // method body is a pointer to the type of the class being implemented.
       RelatedRetType = Context.getObjCInterfaceType(MD->getClassInterface());
       RelatedRetType = Context.getObjCObjectPointerType(RelatedRetType);
@@ -2505,7 +2512,7 @@ static bool CheckAsmLValue(const Expr *E, Sema &S) {
 
 /// isOperandMentioned - Return true if the specified operand # is mentioned
 /// anywhere in the decomposed asm string.
-static bool isOperandMentioned(unsigned OpNo, 
+static bool isOperandMentioned(unsigned OpNo,
                          ArrayRef<AsmStmt::AsmStringPiece> AsmStrPieces) {
   for (unsigned p = 0, e = AsmStrPieces.size(); p != e; ++p) {
     const AsmStmt::AsmStringPiece &Piece = AsmStrPieces[p];
@@ -2516,6 +2523,7 @@ static bool isOperandMentioned(unsigned OpNo,
     if (Piece.getOperandNo() == OpNo)
       return true;
   }
+  
   return false;
 }
 
@@ -2825,6 +2833,7 @@ Sema::ActOnObjCAtThrowStmt(SourceLocation AtLoc, Expr *Throw,
     if (!AtCatchParent)
       return StmtError(Diag(AtLoc, diag::error_rethrow_used_outside_catch));
   }
+  
   return BuildObjCAtThrowStmt(AtLoc, Throw);
 }
 
@@ -3003,6 +3012,771 @@ Sema::ActOnSEHFinallyBlock(SourceLocation Loc,
                            Stmt *Block) {
   assert(Block);
   return Owned(SEHFinallyStmt::Create(Context,Loc,Block));
+}
+
+// scout - ForAllVisitor class to check that LHS mesh field assignment
+// operators do not appear as subsequent RHS values, and various other
+// semantic checks
+
+namespace{
+
+  class ForAllVisitor : public StmtVisitor<ForAllVisitor> {
+  public:
+
+    enum NodeType{
+      NodeNone,
+      NodeLHS,
+      NodeRHS
+    };
+
+    ForAllVisitor(Sema& sema, ForAllStmt* fs)
+    : sema_(sema),
+    fs_(fs),
+    error_(false),
+    nodeType_(NodeNone){
+
+    }
+
+    void VisitStmt(Stmt* S){
+      VisitChildren(S);
+    }
+
+    void VisitCallExpr(CallExpr* E){
+      FunctionDecl* fd = E->getDirectCallee();
+      if(fd){
+        std::string name = fd->getName();
+        if(name == "cshift"){
+          unsigned args = E->getNumArgs();
+
+          const MeshType* mt = fs_->getMeshType();
+
+          if(args != mt->dimensions().size() + 1){
+            sema_.Diag(E->getRParenLoc(), diag::err_cshift_args);
+            error_ = true;
+          }
+          else{
+            Expr* fe = E->getArg(0);
+            if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)){
+              fe = ce->getSubExpr();
+            }
+
+            if(MemberExpr* me = dyn_cast<MemberExpr>(fe)){
+              if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())){
+                ValueDecl* bd = dr->getDecl();
+                if(!isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+                  sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+                  error_ = true;
+                }
+              }
+            }
+            else{
+              sema_.Diag(E->getRParenLoc(), diag::err_cshift_field);
+              error_ = true;
+            }
+          }
+        }
+      }
+
+      VisitChildren(E);
+    }
+
+    void VisitChildren(Stmt* S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+
+    void VisitMemberExpr(MemberExpr* E){
+      if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())){
+        ValueDecl* bd = dr->getDecl();
+        if(const MeshType* MT = 
+           dyn_cast<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+          
+          ValueDecl* md = E->getMemberDecl();
+
+          unsigned ND = MT->dimensions().size();
+          
+          if(md->getName() == "height" && ND < 2){
+            sema_.Diag(E->getMemberLoc(), diag::err_invalid_height_mesh);
+            error_ = true;
+          }
+          else if(md->getName() == "depth" && ND < 3){
+            sema_.Diag(E->getMemberLoc(), diag::err_invalid_depth_mesh);
+            error_ = true;
+          }
+          
+          std::string ref = bd->getName().str() + "." +
+          md->getName().str();
+
+          if(nodeType_ == NodeLHS){
+            refMap_.insert(make_pair(ref, true));
+          }
+          else if(nodeType_ == NodeRHS){
+            RefMap_::iterator itr = refMap_.find(ref);
+            if(itr != refMap_.end()){
+              sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
+              error_ = true;
+            }
+          }
+        }
+      }
+    }
+
+    void VisitDeclStmt(DeclStmt* S){
+      DeclGroupRef declGroup = S->getDeclGroup();
+      
+      for(DeclGroupRef::iterator itr = declGroup.begin(),
+          itrEnd = declGroup.end(); itr != itrEnd; ++itr){
+        Decl* decl = *itr;
+        
+        if(NamedDecl* nd = dyn_cast<NamedDecl>(decl)){
+          localMap_.insert(make_pair(nd->getName().str(), true));
+        }
+      }
+      
+      VisitChildren(S);
+    }
+    
+    void VisitScoutVectorMemberExpr(ScoutVectorMemberExpr* E){
+      if(MemberExpr* ME = dyn_cast<MemberExpr>(E->getBase())){
+        if(ME->getMemberDecl()->getName() == "position"){
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(ME->getBase())){
+            if(const MeshType* MT = 
+               dyn_cast<MeshType>(DR->getDecl()->getType().getCanonicalType().getTypePtr())){
+              if(E->getIdx() >= MT->dimensions().size()){
+                sema_.Diag(E->getLocation(), diag::err_invalid_position_ref);
+                error_ = true;
+              }
+            }
+          }
+        }
+      }
+      
+      VisitChildren(E);
+    }
+    
+    void VisitBinaryOperator(BinaryOperator* S){
+
+      switch(S->getOpcode()){
+        case BO_Assign:
+        case BO_MulAssign:
+        case BO_DivAssign:
+        case BO_RemAssign:
+        case BO_AddAssign:
+        case BO_SubAssign:
+        case BO_ShlAssign:
+        case BO_ShrAssign:
+        case BO_AndAssign:
+        case BO_XorAssign:
+        case BO_OrAssign:
+          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+            RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
+            if(itr == localMap_.end()){
+
+              sema_.Diag(DR->getLocation(),
+                         diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
+            }
+          }
+          
+          nodeType_ = NodeLHS;
+          break;
+        default:
+          break;
+      }
+
+      Visit(S->getLHS());
+      nodeType_ = NodeRHS;
+      Visit(S->getRHS());
+      nodeType_ = NodeNone;
+    }
+
+    bool error(){
+      return error_;
+    }
+
+  private:
+    Sema& sema_;
+    ForAllStmt* fs_;
+    typedef std::map<std::string, bool> RefMap_;
+    RefMap_ refMap_;
+    RefMap_ localMap_;
+    bool error_;
+    NodeType nodeType_;
+  };
+
+} // end namespace
+
+// scout - Scout Stmts
+StmtResult Sema::ActOnForAllStmt(SourceLocation ForAllLoc,
+                                 ForAllStmt::ForAllType Type,
+                                 const MeshType *MT,
+                                 VarDecl* MVD,
+                                 IdentifierInfo* LoopVariableII,
+                                 IdentifierInfo* MeshII,
+                                 SourceLocation LParenLoc,
+                                 Expr* Op, SourceLocation RParenLoc,
+                                 Stmt* Body,
+                                 BlockExpr* Block){
+
+  SCLStack.pop_back();
+
+  ForAllStmt* FS = new (Context) ForAllStmt(Context, Type, MT,
+                                            LoopVariableII, MeshII, MVD,
+                                            Op, Body, Block,
+                                            ForAllLoc, LParenLoc,
+                                            RParenLoc);
+
+  // check that LHS mesh field assignment
+  // operators do not appear as subsequent RHS values, and
+  // perform other semantic checks
+  ForAllVisitor v(*this, FS);
+  v.Visit(Body);
+
+  if(v.error()){
+    return StmtError();
+  }
+
+  return Owned(FS);
+}
+
+StmtResult Sema::ActOnForAllArrayStmt(SourceLocation ForAllLoc,
+                                      Stmt* Body,
+                                      BlockExpr* Block){
+  
+  ForAllArrayStmt* FS = 
+  new (Context) ForAllArrayStmt(Context, ForAllLoc, Body, Block);
+  
+  return Owned(FS);
+}
+
+namespace{
+
+  class RenderAllVisitor : public StmtVisitor<RenderAllVisitor> {
+  public:
+
+    RenderAllVisitor()
+    : foundColorAssign_(false){
+
+      for(size_t i = 0; i < 4; ++i){
+        foundComponentAssign_[i] = false;
+      }
+      
+    }
+
+    void VisitStmt(Stmt* S){
+      VisitChildren(S);
+    }
+
+    void VisitIfStmt(IfStmt* S){
+      size_t ic = 0;
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+
+        if(Stmt* child = *I){
+          if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
+            RenderAllVisitor v;
+            v.Visit(child);
+            if(v.foundColorAssign()){
+              foundColorAssign_ = true;
+            }
+            else{
+              foundColorAssign_ = false;
+              break;
+            }
+          }
+          else{
+            Visit(child);
+          }
+          ++ic;
+        }
+      }
+      if(ic == 2){
+        foundColorAssign_ = false;
+      }
+    }
+
+    void VisitBinaryOperator(BinaryOperator* S){
+      if(S->getOpcode() == BO_Assign){
+        if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
+          if(dr->getDecl()->getName().str() == "color"){
+            foundColorAssign_ = true;
+          }
+        }
+        else if(ScoutVectorMemberExpr* vm = 
+                dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
+          
+          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
+            if(dr->getDecl()->getName().str() == "color"){
+              foundComponentAssign_[vm->getIdx()] = true;
+            }
+          }
+        }
+      }
+      else{
+        VisitChildren(S);
+      }
+    }
+
+    void VisitChildren(Stmt* S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+
+    bool foundColorAssign(){
+      if(foundColorAssign_){
+        return true;
+      }
+      
+      for(size_t i = 0; i < 4; ++i){
+        if(!foundComponentAssign_[i]){
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+  private:
+    bool foundColorAssign_;
+    bool foundComponentAssign_[4];
+  };
+
+} // end namespace
+
+namespace {
+  // scout
+  class VolumeRenderAllVisitor : public StmtVisitor<VolumeRenderAllVisitor> {
+    public:
+      VolumeRenderAllVisitor() {}
+      void VisitStmt(Stmt* S){
+        VisitChildren(S);
+      }
+      void VisitIfStmt(IfStmt* S){}
+      void VisitBinaryOperator(BinaryOperator* S){}
+      void VisitChildren(Stmt* S){}
+#ifdef NOTYET
+      VolumeRenderAllVisitor()
+        foundColorAssign_(false){
+
+          for(size_t i = 0; i < 4; ++i){
+            foundComponentAssign_[i] = false;
+          }
+
+        }
+
+      void VisitStmt(Stmt* S){
+        VisitChildren(S);
+      }
+
+      void VisitIfStmt(IfStmt* S){
+        size_t ic = 0;
+        for(Stmt::child_iterator I = S->child_begin(),
+            E = S->child_end(); I != E; ++I){
+
+
+          if(Stmt* child = *I){
+            if(isa<CompoundStmt>(child) || isa<IfStmt>(child)){
+              RenderAllVisitor v;
+              v.Visit(child);
+              if(v.foundColorAssign()){
+                foundColorAssign_ = true;
+              }
+              else{
+                foundColorAssign_ = false;
+                break;
+              }
+            }
+            else{
+              Visit(child);
+            }
+            ++ic;
+          }
+        }
+        if(ic == 2){
+          foundColorAssign_ = false;
+        }
+      }
+
+      void VisitBinaryOperator(BinaryOperator* S){
+        if(S->getOpcode() == BO_Assign){
+          if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(S->getLHS())){
+            if(dr->getDecl()->getName().str() == "color"){
+              foundColorAssign_ = true;
+            }
+          }
+          else if(ScoutVectorMemberExpr* vm =
+              dyn_cast<ScoutVectorMemberExpr>(S->getLHS())){
+
+            if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(vm->getBase())){
+              if(dr->getDecl()->getName().str() == "color"){
+                foundComponentAssign_[vm->getIdx()] = true;
+              }
+            }
+          }
+        }
+        else{
+          VisitChildren(S);
+        }
+      }
+
+      void VisitChildren(Stmt* S){
+        for(Stmt::child_iterator I = S->child_begin(),
+            E = S->child_end(); I != E; ++I){
+          if(Stmt* child = *I){
+            Visit(child);
+          }
+        }
+      }
+
+      bool foundColorAssign(){
+        if(foundColorAssign_){
+          return true;
+        }
+
+        for(size_t i = 0; i < 4; ++i){
+          if(!foundComponentAssign_[i]){
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+    private:
+      bool foundColorAssign_;
+      bool foundComponentAssign_[4];
+#endif
+  };
+
+} // end namespace
+
+
+StmtResult Sema::ActOnRenderAllStmt(SourceLocation RenderAllLoc,
+                                    ForAllStmt::ForAllType Type,
+                                    const MeshType *MT,
+                                    VarDecl* MVD,
+                                    IdentifierInfo* LoopVariableII,
+                                    IdentifierInfo* MeshII,
+                                    SourceLocation LParenLoc,
+                                    Expr *Op, SourceLocation RParenLoc,
+                                    Stmt* Body,
+                                    BlockExpr *Block){
+
+  SCLStack.pop_back();
+
+  RenderAllVisitor v;
+  v.Visit(Body);
+
+  if(!v.foundColorAssign()){
+    Diag(RenderAllLoc, diag::err_no_color_assignment_renderall);
+    return StmtError();
+  }
+
+  return Owned(new (Context) RenderAllStmt(Context, Type, MT,
+                                           LoopVariableII, MeshII, MVD,
+                                           Op, Body, Block,
+                                           RenderAllLoc, LParenLoc,
+                                           RParenLoc));
+}
+
+// scout - Scout Stmts
+
+bool Sema::ActOnForAllLoopVariable(Scope* S,
+                                   tok::TokenKind VariableType,
+                                   IdentifierInfo* LoopVariableII,
+                                   SourceLocation LoopVariableLoc,
+                                   IdentifierInfo* MeshII,
+                                   SourceLocation MeshLoc){
+
+  // lookup result below
+
+  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
+                       LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_forall) << LoopVariableII;
+    return false;
+  }
+
+  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
+
+  LookupName(MResult, S);
+
+  if(MResult.getResultKind() != LookupResult::Found){
+    Diag(MeshLoc, diag::err_unknown_mesh_variable_forall) << MeshII;
+    return false;
+  }
+
+  NamedDecl* ND = MResult.getFoundDecl();
+
+  if(!isa<VarDecl>(ND)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
+    return false;
+  }
+
+  VarDecl* VD = cast<VarDecl>(ND);
+
+  const Type* T = VD->getType().getCanonicalType().getTypePtr();
+
+  if(!isa<MeshType>(T)){
+    T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
+    if(!isa<MeshType>(T)){
+      Diag(MeshLoc, diag::err_not_mesh_variable_forall) << MeshII;
+      return false;
+    }
+  }
+
+  MeshDecl* MD = cast<MeshType>(T)->getDecl();
+
+  MeshType::InstanceType IT;
+  switch(VariableType){
+    case tok::kw_cells:
+      IT = MeshType::CellsInstance;
+      break;
+    case tok::kw_vertices:
+      IT = MeshType::VerticesInstance;
+      break;
+    case tok::kw_faces:
+      IT = MeshType::FacesInstance;
+      break;
+    case tok::kw_edges:
+      IT = MeshType::EdgesInstance;
+      break;
+    default:
+      assert(false && "invalid variable type");
+  }
+
+
+  MeshType* MT = new MeshType(MD, IT);
+  MT->setDimensions(cast<MeshType>(T)->dimensions());
+
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
+                            LoopVariableII, QualType(MT, 0));
+
+
+  PushOnScopeChains(D, S, true);
+
+  SCLStack.push_back(D);
+
+  return true;
+}
+
+bool Sema::ActOnForAllArrayInductionVariable(Scope* S,
+                                             IdentifierInfo* InductionVarII,
+                                             SourceLocation InductionVarLoc){
+
+  // lookup result below
+
+  LookupResult LResult(*this, InductionVarII, InductionVarLoc,
+                       LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(InductionVarLoc, diag::err_loop_variable_shadows_forall) <<
+    InductionVarII;
+    return false;
+  }
+
+  ImplicitParamDecl* IV =
+  ImplicitParamDecl::Create(Context, CurContext,
+                            InductionVarLoc, InductionVarII,
+                            Context.IntTy);
+
+  PushOnScopeChains(IV, S, true);
+
+  return true;
+}
+
+// scout - Scout Stmts
+
+bool Sema::ActOnRenderAllLoopVariable(Scope* S,
+                                      tok::TokenKind VariableType,
+                                      IdentifierInfo* LoopVariableII,
+                                      SourceLocation LoopVariableLoc,
+                                      IdentifierInfo* MeshII,
+                                      SourceLocation MeshLoc){
+
+
+  LookupResult LResult(*this, LoopVariableII, LoopVariableLoc,
+                       LookupOrdinaryName);
+
+  LookupName(LResult, S);
+
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(LoopVariableLoc, diag::err_loop_variable_shadows_renderall) << LoopVariableII;
+    return false;
+  }
+
+  LookupResult MResult(*this, MeshII, MeshLoc, LookupOrdinaryName);
+
+  LookupName(MResult, S);
+
+  if(MResult.getResultKind() != LookupResult::Found){
+    Diag(MeshLoc, diag::err_unknown_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+
+  NamedDecl* ND = MResult.getFoundDecl();
+
+  if(!isa<VarDecl>(ND)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+
+  VarDecl* VD = cast<VarDecl>(ND);
+
+  const Type* T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
+
+  if(!isa<MeshType>(T)){
+    Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
+    return false;
+  }
+
+  MeshDecl* MD = cast<MeshType>(T)->getDecl();
+
+  MeshType::InstanceType IT;
+  switch(VariableType){
+    case tok::kw_cells:
+      IT = MeshType::CellsInstance;
+      break;
+    case tok::kw_vertices:
+      IT = MeshType::VerticesInstance;
+      break;
+    case tok::kw_faces:
+      IT = MeshType::FacesInstance;
+      break;
+    case tok::kw_edges:
+      IT = MeshType::EdgesInstance;
+      break;
+    default:
+      assert(false && "invalid variable type");
+  }
+
+  MeshType* MT = new MeshType(MD, IT);
+  MT->setDimensions(cast<MeshType>(T)->dimensions());
+
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
+                            LoopVariableII, QualType(MT, 0));
+
+
+  PushOnScopeChains(D, S, true);
+
+  ImplicitParamDecl* CD =
+  ImplicitParamDecl::Create(Context, CurContext, MeshLoc,
+                            &Context.Idents.get("color"),
+                            Context.Float4Ty);
+
+  PushOnScopeChains(CD, S, true);
+
+  SCLStack.push_back(D);
+
+  return true;
+}
+
+const MeshType* 
+Sema::ActOnRenderAllElementsVariable(Scope* S,
+                                     MemberExpr* ME,
+                                     tok::TokenKind VariableType,
+                                     IdentifierInfo* ElementsVariableII,
+                                     SourceLocation ElementsVariableLoc){
+ 
+  LookupResult LResult(*this, ElementsVariableII, ElementsVariableLoc,
+                       LookupOrdinaryName);
+  
+  LookupName(LResult, S);
+  
+  if(LResult.getResultKind() != LookupResult::NotFound){
+    Diag(ElementsVariableLoc, 
+         diag::err_elements_variable_shadows_renderall) << ElementsVariableII;
+    
+    return 0;
+  }
+  
+  if(SCLStack.empty()){
+    Diag(ElementsVariableLoc, diag::err_elements_not_in_forall_renderall);
+    return 0;
+  }
+    
+  MeshType::InstanceType IT;
+                              
+  switch(VariableType){
+    case tok::kw_elements:
+      IT = MeshType::ElementsInstance;
+      break;
+    default:
+      assert(false && "invalid elements variable type");
+  }
+  
+  VarDecl* MD = SCLStack.back();
+  const MeshType* T = 
+  dyn_cast<MeshType>(MD->getType().getCanonicalType().getTypePtr());
+  
+  MeshType* MT = new MeshType(T->getDecl(), IT);
+  MT->setDimensions(T->dimensions());
+  MT->setElementsMember(ME);
+  
+  ImplicitParamDecl* D =
+  ImplicitParamDecl::Create(Context, CurContext, ElementsVariableLoc,
+                            ElementsVariableII, QualType(MT, 0));
+  
+  PushOnScopeChains(D, S, true);
+  
+  SCLStack.push_back(D);
+  
+  return MT;
+}
+
+StmtResult
+Sema::ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+        SourceLocation L, SourceLocation R,
+        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, 
+        CompoundStmt* body, bool isStmtExpr)
+{
+
+  unsigned NumElts = elts.size();
+  Stmt **Elts = reinterpret_cast<Stmt**>(elts.release());
+  // If we're in C89 mode, check that we don't have any decls after stmts.  If
+  // so, emit an extension diagnostic.
+  if (!getLangOpts().C99 && !getLangOpts().CPlusPlus) {
+    // Note that __extension__ can be around a decl.
+    unsigned i = 0;
+    // Skip over all declarations.
+    for (; i != NumElts && isa<DeclStmt>(Elts[i]); ++i)
+      /*empty*/;
+
+    // We found the end of the list or a statement.  Scan for another declstmt.
+    for (; i != NumElts && !isa<DeclStmt>(Elts[i]); ++i)
+      /*empty*/;
+
+    if (i != NumElts) {
+      Decl *D = *cast<DeclStmt>(Elts[i])->decl_begin();
+      Diag(D->getLocation(), diag::ext_mixed_decls_code);
+    }
+  }
+  // Warn about unused expressions in statements.
+  for (unsigned i = 0; i != NumElts; ++i) {
+    // Ignore statements that are last in a statement expression.
+    if (isStmtExpr && i == NumElts - 1)
+      continue;
+    DiagnoseUnusedExprResult(Elts[i]);
+  }
+
+  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
+      NumElts, VolRenLoc, L, R, MII, MVD, body);
+
+  return Owned(vrs);
 }
 
 StmtResult Sema::BuildMSDependentExistsStmt(SourceLocation KeywordLoc,
