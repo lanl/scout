@@ -119,7 +119,7 @@ void* _runThread(void* t){
 class Condition{
 public:
   Condition(Mutex& mutex)
-    : mutex_(mutex){
+  : mutex_(mutex){
     pthread_cond_init(&condition_, 0);
   }
 
@@ -151,9 +151,9 @@ private:
 class VSem{
 public:
   VSem(int count)
-    : count_(count),
-      maxCount_(0),
-      condition_(mutex_){
+  : count_(count),
+    maxCount_(0),
+    condition_(mutex_){
 
   }
 
@@ -214,7 +214,7 @@ struct Item{
 class Queue{
 public:
   Queue()
-    : i_(0){
+  : i_(0){
 
   }
 
@@ -233,7 +233,7 @@ public:
       mutex_.unlock();
       return 0;
     }
-    
+
     Item* item = queue_[i_++];
     mutex_.unlock();
 
@@ -253,9 +253,9 @@ typedef vector<Queue*> QueueVec;
 class MeshThread : public Thread{
 public:
   MeshThread()
-    : beginSem_(0),
-      finishSem_(0),
-      queue_(0){
+  : beginSem_(0),
+    finishSem_(0),
+    queue_(0){
 
   }
 
@@ -273,33 +273,33 @@ public:
       beginSem_.acquire();
 
       for(;;){
-	Item* item = queue_->get();
+        Item* item = queue_->get();
 
-	if(!item){
-	  break;
-	}
+        if(!item){
+          break;
+        }
 
-	BlockLiteral* bl = (BlockLiteral*)item->blockLiteral;
+        BlockLiteral* bl = (BlockLiteral*)item->blockLiteral;
 
-	switch(item->dimensions){
-	  case 3:
-	    bl->zStart = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->zStart = item->zStart;
-	    bl->zEnd = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->zEnd = item->zEnd;
-	  case 2:
-	    bl->yStart = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->yStart = item->yStart;
-	    bl->yEnd = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->yEnd = item->yEnd;
-	  case 1:
-	    bl->xStart = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->xStart = item->xStart;
-	    bl->xEnd = (uint32_t*)malloc(sizeof(uint32_t));
-	    *bl->xEnd = item->xEnd;
-	}
+        switch(item->dimensions){
+        case 3:
+          bl->zStart = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->zStart = item->zStart;
+          bl->zEnd = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->zEnd = item->zEnd;
+        case 2:
+          bl->yStart = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->yStart = item->yStart;
+          bl->yEnd = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->yEnd = item->yEnd;
+        case 1:
+          bl->xStart = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->xStart = item->xStart;
+          bl->xEnd = (uint32_t*)malloc(sizeof(uint32_t));
+          *bl->xEnd = item->xEnd;
+        }
 
-	bl->invoke(bl);
+        bl->invoke(bl);
       }
 
       finishSem_.release();
@@ -318,168 +318,168 @@ typedef vector<MeshThread*> ThreadVec;
 
 namespace scout{
 
-  class tbq_rt_{
-  public:
-    tbq_rt_(tbq_rt* o)
-      : o_(o){
+class tbq_rt_{
+public:
+  tbq_rt_(tbq_rt* o)
+  : o_(o){
 
-      system_rt sysinfo;
+    system_rt sysinfo;
 
-      size_t n = sysinfo.totalProcessingUnits();
+    size_t n = sysinfo.totalProcessingUnits();
 
-      for(size_t i = 0; i < n; ++i){
-	MeshThread* ti = new MeshThread;
-	ti->start();
-	threadVec_.push_back(ti);
-      }
+    for(size_t i = 0; i < n; ++i){
+      MeshThread* ti = new MeshThread;
+      ti->start();
+      threadVec_.push_back(ti);
+    }
+  }
+
+  ~tbq_rt_(){
+    size_t n = threadVec_.size();
+
+    for(size_t i = 0; i < n; ++i){
+      delete threadVec_[i];
     }
 
-    ~tbq_rt_(){
-      size_t n = threadVec_.size();
+    for(QueueMap_::iterator itr = queueMap_.begin(),
+        itrEnd = queueMap_.end(); itr != itrEnd; ++itr){
+      delete itr->second;
+    }
+  }
 
-      for(size_t i = 0; i < n; ++i){
-	delete threadVec_[i];
-      }
+  void* createSubBlock(BlockLiteral* bl,
+      size_t numDimensions,
+      size_t numFields){
 
-      for(QueueMap_::iterator itr = queueMap_.begin(),
-	    itrEnd = queueMap_.end(); itr != itrEnd; ++itr){
-	delete itr->second;
-      }
+    void* bp = malloc(sizeof(BlockLiteral) - 6*sizeof(void*)
+    + numFields*sizeof(void*));
+
+    BlockLiteral* b = (BlockLiteral*)bp;
+    b->isa = bl->isa;
+    b->flags = bl->flags;
+    b->reserved = bl->reserved;
+    b->invoke = bl->invoke;
+    b->descriptor = bl->descriptor;
+
+    size_t offset = bl->descriptor->size + 2*numDimensions*sizeof(void*);
+
+    memcpy((char*)bp + offset, (char*)bl + offset,
+        (numFields - 2*numDimensions)*sizeof(void*));
+
+    return bp;
+  }
+
+  Queue* queue_(void* blockLiteral, int numDimensions, int numFields){
+    BlockLiteral* bl = (BlockLiteral*)blockLiteral;
+
+    QueueMap_::iterator itr = queueMap_.find((void*)bl->invoke);
+    if(itr != queueMap_.end()){
+      return itr->second;
     }
 
-    void* createSubBlock(BlockLiteral* bl,
-			 size_t numDimensions,
-			 size_t numFields){
+    Queue* queue = new Queue;
 
-      void* bp = malloc(sizeof(BlockLiteral) - 6*sizeof(void*)
-			+ numFields*sizeof(void*));
+    Item* item;
+    uint32_t extent;
+    uint32_t chunk;
+    uint32_t end;
 
-      BlockLiteral* b = (BlockLiteral*)bp;
-      b->isa = bl->isa;
-      b->flags = bl->flags;
-      b->reserved = bl->reserved;
-      b->invoke = bl->invoke;
-      b->descriptor = bl->descriptor;
+    switch(numDimensions){
+    case 1:
+    {
+      extent = *bl->xEnd - *bl->xStart;
+      chunk = extent / (threadVec_.size() * 2);
 
-      size_t offset = bl->descriptor->size + 2*numDimensions*sizeof(void*);
+      for(uint32_t i = 0; i < extent; i += chunk){
+        end = i + chunk;
 
-      memcpy((char*)bp + offset, (char*)bl + offset,
-	     (numFields - 2*numDimensions)*sizeof(void*));
+        if(end > extent){
+          end = extent;
+        }
 
-      return bp;
+        item = new Item;
+
+        item->blockLiteral = createSubBlock(bl, numDimensions,
+            numFields);
+
+        item->dimensions = 1;
+        item->xStart = i;
+        item->xEnd = end;
+
+        queue->add(item);
+      }
+      break;
+    }
+    case 2:
+    {
+      uint32_t x = *bl->xEnd - *bl->xStart;
+      uint32_t y = *bl->yEnd - *bl->yStart;
+
+      extent = y * x;
+      chunk = extent / (threadVec_.size() * 2);
+
+      if(chunk == 0){
+        chunk = 1;
+      }
+
+      for(uint32_t i = 0; i < extent; i += chunk){
+        end = i + chunk;
+
+        if(end > extent){
+          end = extent;
+        }
+
+        item = new Item;
+
+        item->blockLiteral = createSubBlock(bl, numDimensions,
+            numFields);
+
+        item->dimensions = 2;
+        item->xStart = i % x;
+        item->xEnd = end % x;
+        item->yStart = i / x;
+        item->yEnd = end / x;
+
+        queue->add(item);
+      }
+      break;
+    }
+    case 3:
+    {
+      assert(false && "runtime/tbq.cpp 3d case not yet implemented");
+      break;
+    }
     }
 
-    Queue* queue_(void* blockLiteral, int numDimensions, int numFields){
-      BlockLiteral* bl = (BlockLiteral*)blockLiteral;
-      
-      QueueMap_::iterator itr = queueMap_.find((void*)bl->invoke);
-      if(itr != queueMap_.end()){
-	return itr->second;
-      }
+    queueMap_[(void*)bl->invoke] = queue;
 
-      Queue* queue = new Queue;
+    return queue;
+  }
 
-      Item* item;
-      uint32_t extent;
-      uint32_t chunk;
-      uint32_t end;
+  void run(void* blockLiteral, int numDimensions, int numFields){
+    Queue* queue = queue_(blockLiteral, numDimensions, numFields);
+    queue->reset();
 
-      switch(numDimensions){
-        case 1:
-        {
-	  extent = *bl->xEnd - *bl->xStart;
-	  chunk = extent / (threadVec_.size() * 2);
+    size_t n = threadVec_.size();
 
-	  for(uint32_t i = 0; i < extent; i += chunk){
-	    end = i + chunk;
-
-	    if(end > extent){
-	      end = extent;
-	    }
-
-	    item = new Item;
-
-	    item->blockLiteral = createSubBlock(bl, numDimensions,
-						numFields);
-
-	    item->dimensions = 1;
-	    item->xStart = i;
-	    item->xEnd = end;
-
-	    queue->add(item);
-	  }
-	  break;
-	}
-        case 2:
-	{
-	  uint32_t x = *bl->xEnd - *bl->xStart;
-	  uint32_t y = *bl->yEnd - *bl->yStart;
-
-	  extent = y * x;
-          chunk = extent / (threadVec_.size() * 2);
-
-	  if(chunk == 0){
-	    chunk = 1;
-	  }
-
-	  for(uint32_t i = 0; i < extent; i += chunk){
-	    end = i + chunk;
-
-	    if(end > extent){
-	      end = extent;
-	    }
-
-	    item = new Item;
-
-	    item->blockLiteral = createSubBlock(bl, numDimensions,
-						numFields);
-
-	    item->dimensions = 2;
-	    item->xStart = i % x;
-	    item->xEnd = end % x;
-	    item->yStart = i / x;
-	    item->yEnd = end / x + 1;
-
-	    queue->add(item);
-	  }
-	  break;
-	}
-        case 3:
-        {
-	  assert(false && "runtime/tbq.cpp 3d case not yet implemented");
-	  break;
-	}
-      }
-
-      queueMap_[(void*)bl->invoke] = queue;
-      
-      return queue;
+    for(size_t i = 0; i < n; ++i){
+      threadVec_[i]->begin(queue);
     }
 
-    void run(void* blockLiteral, int numDimensions, int numFields){
-      Queue* queue = queue_(blockLiteral, numDimensions, numFields);
-      queue->reset();
+    // run ...
 
-      size_t n = threadVec_.size();
-      
-      for(size_t i = 0; i < n; ++i){
-	threadVec_[i]->begin(queue);
-      }
-
-      // run ...
-
-      for(size_t i = 0; i < n; ++i){
-	threadVec_[i]->finish();
-      }
+    for(size_t i = 0; i < n; ++i){
+      threadVec_[i]->finish();
     }
+  }
 
-  private:
-    typedef map<void*, Queue*> QueueMap_;
+private:
+  typedef map<void*, Queue*> QueueMap_;
 
-    tbq_rt* o_;
-    QueueMap_ queueMap_;
-    ThreadVec threadVec_;
-  };
+  tbq_rt* o_;
+  QueueMap_ queueMap_;
+  ThreadVec threadVec_;
+};
 
 } // end namespace scout
 
