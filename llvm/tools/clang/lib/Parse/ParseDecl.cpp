@@ -26,8 +26,6 @@
 // scout
 #include <map>
 
-using namespace std;
-#include <iostream>
 
 using namespace clang;
 
@@ -6175,7 +6173,6 @@ Parser::ParseCameraDeclaration(StmtVector &Stmts,
     return StmtError();
   }
 
-  cout << code << endl;
   InsertCPPCode(code, NameLoc);
 
   return ParseStatementOrDeclaration(Stmts, OnlyStatement);
