@@ -12,7 +12,7 @@
 arch        := $(shell uname -s)
 date        := $(shell /bin/date "+%m-%d-%Y")
 build_dir   := $(CURDIR)/build
-cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG  -DCMAKE_INSTALL_PREFIX=$(build_dir)
+cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG  -DCMAKE_INSTALL_PREFIX=.
 
 # Attempt to figure out how many processors are available for a parallel build.
 # Note that this could be fragile across platforms/operating systems.
@@ -30,7 +30,7 @@ endif
 # memory you might need to back off on the factor of 2...
 nprocs := $(shell expr $(nprocs) \* 2)
 
-all: $(build_dir)/Makefile compile
+all: $(build_dir)/Makefile compile compiletest
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -41,9 +41,21 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@(cd packages/libpng-1.5.4; make -j $(nprocs); make install)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
+
 .PHONY: compile
 compile: $(build_dir)/Makefile 
 	@(cd $(build_dir); make -j $(nprocs); make install)
+
+
+.PHONY: compiletest
+compiletest: 
+	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
+	@(cd $(build_dir)/test; cmake $(cmake_flags) ../../test)
+	@(cd $(build_dir)/test; make)
+
+.PHONY: test
+test: 
+	@(cd $(build_dir)/test; make test)
 
 .PHONY: xcode
 xcode:;
