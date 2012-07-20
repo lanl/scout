@@ -7262,9 +7262,10 @@ public:
                                 Stmt* Body,
                                 BlockExpr *Block);
 
-  StmtResult ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
                                       SourceLocation L, SourceLocation R, 
                                       IdentifierInfo* MII, VarDecl* MVD, 
+                                      IdentifierInfo* CII, SourceLocation CLoc,
                                       MultiStmtArg elts, CompoundStmt* Body,
                                       bool isStmtExpr);
 

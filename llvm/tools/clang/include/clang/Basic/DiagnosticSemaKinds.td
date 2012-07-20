@@ -5781,6 +5781,12 @@ def err_invalid_scout_color_component : Error<
 def err_mesh_param_dimensionality_mismatch : Error<
 "dimensionality mismatch when passing mesh as parameter">;
 
+def err_not_camera_variable_renderall : Error<
+"not a camera variable %0 while parsing renderall statement">;
+
+def err_unknown_camera_variable_renderall : Error<
+"unknown camera variable %0 while parsing renderall statement">;
+
 } // end Scout issue category
 
 } // end of sema component.

@@ -2113,9 +2113,9 @@ private:
   StmtResult ParseForAllShortStatement(IdentifierInfo* Name, 
                                        SourceLocation NameLoc,
                                        VarDecl* VD);
-  StmtResult ParseVolumeRenderAll(SourceLocation VolRenLoc,
-      ParsedAttributes &attrs,
-      IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
+  StmtResult ParseVolumeRenderAll(Scope* S, SourceLocation VolRenLoc,
+      ParsedAttributes &attrs, IdentifierInfo* MeshII, VarDecl* MVD, 
+      IdentifierInfo* CameraII, SourceLocation CameraLoc, Expr* Op,
       SourceLocation OpLParenLoc, SourceLocation OpRParenLoc);
 
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);

@@ -3690,11 +3690,45 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
 }
 
 StmtResult
-Sema::ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+Sema::ActOnVolumeRenderAllStmt(
+        Scope* scope, SourceLocation VolRenLoc,
         SourceLocation L, SourceLocation R,
-        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, 
+        IdentifierInfo* MeshII, VarDecl* MeshVD, 
+        IdentifierInfo* CameraII, SourceLocation CameraLoc,
+        MultiStmtArg elts, 
         CompoundStmt* body, bool isStmtExpr)
 {
+
+  // check camera if one was specified
+
+  if (CameraII != 0) {
+
+    LookupResult CameraResult(*this, CameraII, CameraLoc, LookupOrdinaryName);
+
+    LookupName(CameraResult, scope);
+
+    if(CameraResult.getResultKind() != LookupResult::Found){
+      Diag(CameraLoc, diag::err_unknown_camera_variable_renderall) << CameraII;
+      return false;
+    }
+
+    NamedDecl* CameraND = CameraResult.getFoundDecl();
+
+    if(!isa<VarDecl>(CameraND)){
+      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
+      return false;
+    }
+
+    VarDecl* CameraVD = cast<VarDecl>(CameraND);
+
+    QualType CameraVarType = CameraVD->getType();
+
+    if (CameraVarType.getAsString() != "scout::glCamera") {
+      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
+      return false;
+    }
+
+  }
 
   unsigned NumElts = elts.size();
   Stmt **Elts = reinterpret_cast<Stmt**>(elts.release());
@@ -3725,7 +3759,7 @@ Sema::ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
   }
 
   VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
-      NumElts, VolRenLoc, L, R, MII, MVD, body);
+      NumElts, VolRenLoc, L, R, MeshII, MeshVD, body);
 
   return Owned(vrs);
 }
