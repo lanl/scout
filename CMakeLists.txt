@@ -1,112 +1,302 @@
 #
-# ----- The Scout Programming Language
+###########################################################################
+# Copyright (c) 2010, Los Alamos National Security, LLC.
+# All rights reserved.
+# 
+#  Copyright 2010. Los Alamos National Security, LLC. This software was
+#  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+#  Alamos National Laboratory (LANL), which is operated by Los Alamos
+#  National Security, LLC for the U.S. Department of Energy. The
+#  U.S. Government has rights to use, reproduce, and distribute this
+#  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+#  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+#  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+#  derivative works, such modified software should be clearly marked,
+#  so as not to confuse it with the version available from LANL.
 #
-# This file is distributed under an open source license by Los Alamos
-# National Security, LCC.  See the file LICENSE.txt for details.
+#  Additionally, redistribution and use in source and binary forms,
+#  with or without modification, are permitted provided that the
+#  following conditions are met:
 #
-# See the file docs/build.html for instructions on how to build
-# Scout with CMake.
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
 #
+#    * Redistributions in binary form must reproduce the above
+#      copyright notice, this list of conditions and the following
+#      disclaimer in the documentation and/or other materials provided 
+#      with the distribution.  
+#
+#    * Neither the name of Los Alamos National Security, LLC, Los
+#      Alamos National Laboratory, LANL, the U.S. Government, nor the
+#      names of its contributors may be used to endorse or promote
+#      products derived from this software without specific prior
+#      written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+#  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+#  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+#  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+#  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+#  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+#  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+#  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+#  SUCH DAMAGE.
+#
+###########################################################################
+#
+# Notes
+#
+#   - For details and help with CMake see:
+#
+#       http://www.cmake.org/cmake/help/documentation.html
+#
+#   - Scout-centric configuration options are of the form
+#     SC_[description].  Please continue to use this form when
+#     modifying or adding to the build system.
+#
+#   - Note that we include the building of LLVM as a subproject.  This
+#     means that there can be some tricky ordering issues between
+#     project dependencies so use care when chaning the ordering of
+#     things within the build configuration(s).
+#
+#   - Our philosophy for determining the build configuration is based
+#     on what packages are available (found) on your system at
+#     configuration time.  You can override these settings manually
+#     with 'ccmake' or from the command line with 'cmake'. 
+#  
+# <-- LANL ONLY
+#
+#   - Lines within our source that match this pattern should be used
+#     for code that is intended for use within LANL (e.g. as a way to
+#     protect NDA information we have under vendor collaborations.
+#
+# LANL ONLY -->
+# 
+#####
+
 project(Scout)
 
-cmake_minimum_required(VERSION 2.8.4)
-enable_testing()
+  cmake_minimum_required(VERSION 2.8.5)
 
-set(CMAKE_INSTALL_PREFIX ${Scout_BINARY_DIR})
+  enable_testing()
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
+  set(CMAKE_VERBOSE_MAKEFILE ON)
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE DEBUG)
-  message("Note: Defaulting to debug build configuration...")
-endif()
+  ##### PACKAGE CREATION (via CPack)
+  #
+  # http://www.cmake.org/Wiki/CMake:Packaging_With_CPack)
+  #
+  set(SC_VERSION_MAJOR 0)
+  set(SC_VERSION_MINOR 1)
+  set(SC_VERSION_PATCH 0)
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The Scout Programming Language")
+  set(CPACK_PACKAGE_VENDOR scout)
+  set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/ReadMe.txt")
+  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/License.txt")
+  set(CPACK_PACKAGE_VERSION_MAJOR "${SC_VERSION_MAJOR}")
+  set(CPACK_PACKAGE_VERSION_MINOR "${SC_VERSION_MINOR}")
+  set(CPACK_PACKAGE_VERSION_PATCH "${SC_VERSION_PATCH}")
+  include(CPack)
+  #
+  #
+  #####
 
 
-# Add paths for custom cmake modules.  Note that we add some of our
-# own module paths as well as pick up llvm's (does this end up being
-# redundant since we're already including llvm within the project?).
-set(CMAKE_MODULE_PATH
-  ${CMAKE_MODULE_PATH}
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
-  "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake"
-  "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake/modules"
+  ##### CMAKE MODULES
+  #
+  # Add paths for our custom cmake modules.  
+  set(CMAKE_MODULE_PATH
+    ${CMAKE_MODULE_PATH}
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules"
+    "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/llvm/cmake/modules"
+    )
+  #
+  #
+  #####
+
+
+  ##### BUILD SETTINGS AND FLAGS
+  #
+  # 
+
+  # Check to see if we have a build-type set -- if not, default to a
+  # debugging build...
+  if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE DEBUG)
+    message("Note: Defaulting to debug build configuration...")
+  endif()
+  #
+  #
+  #####
+
+
+  ##### PACKAGE-DISCOVERY SETTINGS
+  #
+  # The following section searches the system for various packages and
+  # configures the build based on what packages are found. 
+  #
+
+  # --- OpenGL support. 
+  find_package(OpenGL)
+  if (OPENGL_FOUND)
+    set(SC_ENABLE_OPENGL ON  CACHE BOOL "Enable OpenGL support.")
+    add_definitions(-DSC_ENABLE_OPENGL)
+  endif()
+
+
+  # --- CUDA (NVIDIA GPU) support. 
+  # 
+  find_package(CUDA)
+  if (CUDA_FOUND) 
+
+    set(SC_ENABLE_CUDA ON CACHE BOOL "Enable CUDA/PTX code generation and runtime support.")
+    add_definitions(-DSC_ENABLE_CUDA) 
+
+    #<-- LANL-ONLY 
+    #
+    set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
+
+    if (SC_ENABLE_LIB_NVVM)
+      add_definitions(-DSC_ENABLE_LIB_NVVM)
+    endif()
+    #
+    # LANL ONLY --> 
+
+  endif()  
+
+
+  #<-- LANL-ONLY 
+  #
+  # --- OpenCL (AMD GPU) support.  
+  # TODO: This needs to be flushed out but we are currently using an
+  # NDA version of the LLVM backend (that will hopefully soon be open
+  # sourced).  Should we find a way to break the build if you are not
+  # within a pre-designated git branch?
+  #
+  find_package(OpenCL)
+  if (OPENCL_FOUND)
+
+    # TODO - should these separated or wrapped into one?  
+    set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
+    set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
+    add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
+
+  endif()
+  #
+  # LANL ONLY --> 
+
+
+  # --- NUMA (HWLOC) support. 
+  #
+  find_package(HWLOC)
+  if (HWLOC_FOUND)
+
+    set(SC_ENABLE_NUMA ON CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
+    add_definitions(-DSC_ENABLE_NUMA)
+
+  endif()
+
+
+  # --- MPI support. 
+  # 
+  find_package(MPI)
+
+  if (MPI_FOUND) 
+    set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.") 
+    add_definitions(-DSC_ENABLE_MPI) 
+
+  endif()
+
+  # Disable PNG for now -- some Linux systems are having a hard time 
+  # with matching the API we've used an we haven't had time to fully
+  # investigate.  Putting it on the backburner for now...
+  find_package(PNG)
+
+  if (PNG_FOUND)
+    set(SC_ENABLE_PNG ON  CACHE_BOOL "Enable PNG support in scout's runtime libraries.")
+    add_definitions(-DSC_ENABLE_PNG ${PNG_DEFINITIONS})
+  endif()
+  #
+  #
+  #####
+
+
+  ##### LLVM CONFIGURATION DETAILS
+  #
+  # Note: Here we try to override some of the LLVM default
+  # configurations such that we can skip building some of backends
+  # that we really don't care about...
+  #
+  set(LLVM_TARGETS_TO_BUILD X86 NVPTX
+    CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
+  #
+  #
+  #####
+
+
+  ##### INSTALL DETAILS
+  #
+  # Note: There are additional install configuration details
+  # within LLVM that should be considered as well...
+  #
+  install(DIRECTORY include 
+    DESTINATION include 
+    FILES_MATCHING
+      PATTERN  "*.h"
+      PATTERN  "*.sch"
+      PATTERN  "LICENSE.TXT"
+      PATTERN  ".svn" EXCLUDE
   )
 
-find_package(CUDA)
-# Disable PNG for now -- some Linux systems are having a hard time 
-# with matching the API we've used an we haven't had time to fully
-# investigate.  Putting it on the backburner for now...
-#find_package(PNG)
-find_package(OpenGL)
-find_package(HWLOC)
-find_package(MPI)
+  set(SC_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  set(SC_INCLUDE_DIR ${SC_SRC_DIR}/include)
+  set(SC_REGRESSION_DIR ${SC_SRC_DIR}/test)
+  set(SC_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  set(SC_BINARY_REGRESSION_DIR  ${SC_BINARY_DIR}/test)
 
-if (${CUDA_FOUND}) 
-  add_definitions(-DSC_ENABLE_CUDA) 
-endif()
+  # Install details...
+  set(CMAKE_INSTALL_PREFIX ${Scout_BINARY_DIR})
+  #
+  #
+  #####
 
-if (${MPI_FOUND}) 
-  add_definitions(-DSC_ENABLE_MPI) 
-endif()
+  ##### SUBPROJECTS
+  #
+  # Include the next level of projects below.  Please place only
+  # one level of projects below vs. paths to individual/single
+  # target projects below (e.g. use lib/CMakeLists.txt to add a
+  # library subproject vs. adding the library itself below). 
+  #
+  # Note that we are dependent upon llvm's build configuration 
+  # and ordering issues can become problematic/tricky (especially
+  # for parallel builds) if you are not careful here. 
+  #
+  # Summary of subprojects:
+  #
+  #    - utils  : a helpful set of utilities for general use.
+  #    - llvm   : our modified/extended versions of llvm, clang.
+  #    - lib    : supporting libraries (e.g. the runtime).
+  #    - tools  : various tools that support scout development.
+  #    - sandbox: proof-of-concept test codes.
+  #    - tests  : regression testing
+  #
+  add_subdirectory(utils)       # some helpful utilities we use during the build process
+  add_subdirectory(llvm)        # scout compiler based on active llvm development
+  add_subdirectory(lib)         # scout runtime and standard libraries
+  add_subdirectory(tools)       # various command line tools
+  add_subdirectory(sandbox)     # proof-of-concept test codes
 
-# TODO - we now build hwloc as part of the distribution so this can 
-# go away...
-if (NOT ${HWLOC_FOUND})
-  message("The portable hardware locality library (hwloc) was not found on your system.")
-  message("Please download it from: http://www.open-mpi.org/projects/hwloc/")
-  message(FATAL_ERROR, "Unable to proceed with configuration.")
-endif()
+  set(SC_ENABLE_REGRESS_TESTS ON CACHE STRING "Building the suite of regression tests.")
+  if (SC_ENABLE_REGRESSIONS)
+    add_subdirectory(test)
+  endif()
+  #
+  #
+  #####
 
-set(PACKAGE_NAME scout)
-set(PACKAGE_VERSION 0.10)
-set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_BUGREPORT "scoutbugs@lanl.gov")
-
-set(SCOUT_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(SCOUT_INCLUDE_DIR ${SCOUT_SRC_DIR}/include)
-set(SCOUT_REGRESSION_DIR ${SCOUT_SRC_DIR}/test)
-set(SCOUT_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-set(SCOUT_BINARY_REGRESSION_DIR  ${SCOUT_BINARY_DIR}/test)
-
-set(SCOUT_ENABLE_RT_THREADS  OFF CACHE BOOL "Enable threads in scout's runtime libraries.")
-
-set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL "Enable libnvvm instead of using the NVPTX backend for GPU mode.")
-
-if (SCOUT_ENABLE_LIB_NVVM)
-  add_definitions(-DSC_ENABLE_LIB_NVVM)
-endif()
-
-if (OPENGL_FOUND)
-  set(SCOUT_ENABLE_RT_OPENGL   ON  CACHE BOOL "Enable OpenGL in scout's runtime libraries.")
-  add_definitions(-DSC_ENABLE_OPENGL)
-endif()
-
-if (PNG_FOUND)
-  set(SCOUT_ENABLE_PNG_SUPPORT ON  CACHE_BOOL "Enable PNG in scout's runtime libraries.")
-  add_definitions(-DSC_ENABLE_PNG ${PNG_DEFINITIONS})
-endif()
-
-# Note: Here we try to override some of the LLVM default
-# configurations such that we can skip building some of
-# backends that we really don't care about...
-set(LLVM_TARGETS_TO_BUILD X86 CppBackend NVPTX
-  CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
-
-# Note: Please place individual entries within the associated
-# subdirectories vs. adding full paths here.  For example,
-# use lib/CMakeLists.txt to add a library vs. adding lib/mylib
-# below.
-#
-add_subdirectory(utils)       # some helpful utilities we use during the build process
-add_subdirectory(llvm)        # scout compiler based on active llvm development
-add_subdirectory(lib)         # scout runtime and standard libraries
-add_subdirectory(sandbox)     # proof-of-concept test codes
-add_subdirectory(tools)       # various command line tools
-
-# Note: For active developers we should always make sure that
-# regression checks are a standard practice...
-set(SCOUT_ENABLE_REGRESSIONS ON CACHE STRING "Enable the building of regression tests.")
-if (SCOUT_ENABLE_REGRESSIONS)
-  add_subdirectory(test)
-endif()
