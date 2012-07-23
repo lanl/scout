@@ -1,17 +1,30 @@
-
 The Scout Programming Language 
-==============================
-
-This directory and its subdirectories contain the source code for the
-Scout Programming Language, a domain-specific language for mesh-based
-data analysis, and visualization.  Scout relies heavily on LLVM (Low
-Level Virtual Machine) and Clang projects.  For more information on
-LLVM and Clang visit the website: http://llvm.org. 
+======================
 
 Scout is open source software. It is released under the terms of the
-license agreement found in the LICENSE.txt file.  Please see the
+license agreement found in the License.txt file.  Please see the
 documentation provided in docs/index.html for further details on the
 language.
+
+
+1. External Package Requirements
+---------------------------
+
+ Scout relies on a few optional packages to provide both basic and
+ extended capabilities.  These packages, and the details of the
+ features they enabled are listed below. 
+
+   * Simple Direct Media Layer (SDL) 
+
+     TODO: This project has considerably slowed down.  We should 
+     look for a replacement. 
+
+   * hwloc 
+
+   * 
+
+
+
 
 Directory descriptions: 
 

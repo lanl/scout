@@ -14,15 +14,15 @@ set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
 include_directories(
-  ${SCOUT_INCLUDE_DIR}
+  ${SC_INCLUDE_DIR}
 )
 
-file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.h)
+file(GLOB std_hdrs ${SC_INCLUDE_DIR}/scout/*.h)
 file(GLOB std_srcs *.cpp)
 
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
-if (SCOUT_ENABLE_RT_THREADS) 
+if (SC_ENABLE_RT_THREADS) 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 

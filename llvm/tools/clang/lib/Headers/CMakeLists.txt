@@ -47,7 +47,7 @@ if(MSVC_IDE OR XCODE)
 endif()
 
 # ndm - copy the clang specific headers so scc can find them
-set(scc_output_dir ${SCOUT_BINARY_DIR}/tools/lib/clang/${CLANG_VERSION}/include)
+set(scc_output_dir ${SC_BINARY_DIR}/tools/lib/clang/${CLANG_VERSION}/include)
 
 # Generate arm_neon.h
 clang_tablegen(arm_neon.h.inc -gen-arm-neon

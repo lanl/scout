@@ -179,15 +179,17 @@ project(Scout)
   # sourced).  Should we find a way to break the build if you are not
   # within a pre-designated git branch?
   #
-  find_package(OpenCL)
-  if (OPENCL_FOUND)
+  #  !!! This is currently not a FindOpenCL module...
+  #
+# find_package(OpenCL)
+# if (OPENCL_FOUND)
 
     # TODO - should these separated or wrapped into one?  
-    set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
-    set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
-    add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
+#   set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
+#   set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
+#   add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
 
-  endif()
+# endif()
   #
   # LANL ONLY --> 
 

@@ -54,15 +54,15 @@ target_link_libraries(scc-rewrite
 
 if(${APPLE})
   find_library(FOUNDATION_FRAMEWORK NAMES Foundation)
-  if(SCOUT_ENABLE_LIB_NVVM)
+  if(SC_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
-                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Mac/lib)
+                 HINTS ${SC_SRC_DIR}/lib/scc/Mac/lib)
     target_link_libraries(scc-rewrite ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 else()
-  if(SCOUT_ENABLE_LIB_NVVM)
+  if(SC_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
-                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Linux/lib)
+                 HINTS ${SC_SRC_DIR}/lib/scc/Linux/lib)
     target_link_libraries(scc-rewrite ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 endif()

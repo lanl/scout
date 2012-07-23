@@ -7,6 +7,7 @@
 # See the file docs/build.html for instructions on how to build 
 # Scout with CMake. 
 #
+project(scc)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -fno-common -Woverloaded-virtual -Wcast-qual -fno-strict-aliasing -pedantic -Wno-long-long -Wall -W -Wno-unused-parameter -Wwrite-strings -fno-rtti") 
 set(CLANG_ARGS -g -S -emit-ast -x c++ -fno-rtti) 
@@ -54,19 +55,19 @@ target_link_libraries(scc
 
 if(${APPLE})
   find_library(FOUNDATION_FRAMEWORK NAMES Foundation)
-  if(SCOUT_ENABLE_LIB_NVVM)
+  if(SC_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
-                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Mac/lib)
+                 HINTS ${SC_SRC_DIR}/lib/scc/Mac/lib)
     target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 else()
-  if(SCOUT_ENABLE_LIB_NVVM)
+  if(SC_ENABLE_LIB_NVVM)
     find_library(LIB_NVVM NAMES nvvm 
-                 HINTS ${SCOUT_SRC_DIR}/lib/scc/Linux/lib)
+                 HINTS ${SC_SRC_DIR}/lib/scc/Linux/lib)
     target_link_libraries(scc ${FOUNDATION_FRAMEWORK} ${LIB_NVVM})
   endif()
 endif()
 
-file(COPY scc-ast DESTINATION ${SCOUT_BINARY_DIR}/build/bin)
+file(COPY scc-ast DESTINATION ${SC_BINARY_DIR}/build/bin)
 
 install(TARGETS scc RUNTIME DESTINATION bin)

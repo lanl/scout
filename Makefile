@@ -72,10 +72,8 @@
 
 ##### PARALLEL BUILD CONFIGURATION 
 #
-ifdef($(SC_BUILD_NTHREADS))
+ifdef SC_BUILD_NTHREADS
   make_flags := -j $(SC_BUILD_NTHREADS)
-else
-  make_flags := -j 2
 endif
 #
 #####
@@ -83,7 +81,7 @@ endif
 
 ##### BUILD TYPE SELECTION 
 #
-ifdef($(SC_BUILD_TYPE))
+ifdef SC_BUILD_TYPE
   build_type  := $(SC_BUILD_TYPE)
 else
   build_type  := DEBUG
@@ -96,7 +94,7 @@ endif
 # 
 # We strongly advice against doing an in-source build with CMake...
 # 
-ifdef($(SC_BUILD_DIR))
+ifdef SC_BUILD_DIR
   build_dir := $(SC_BUILD_DIR)
 else
   build_dir := $(CURDIR)/build

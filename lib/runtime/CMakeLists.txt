@@ -16,10 +16,10 @@ set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 find_package(SDL)
 
 include_directories(
-  ${SCOUT_INCLUDE_DIR}
+  ${SC_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
-  ${SCOUT_SRC_DIR}/packages/hwloc/include
+  ${SC_SRC_DIR}/packages/hwloc/include
   ${SDL_INCLUDE_DIR} 
   $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
@@ -28,7 +28,7 @@ if(${MPI_FOUND})
   include_directories(${MPI_INCLUDE_PATH})
 endif()
 
-file(GLOB rt_hdrs ${SCOUT_INCLUDE_DIR}/runtime/*.h)
+file(GLOB rt_hdrs ${SC_INCLUDE_DIR}/runtime/*.h)
 
 if(${APPLE})
   file(GLOB rt_srcs *.cpp *.mm)
@@ -47,9 +47,9 @@ if(${CUDA_FOUND})
   list(APPEND rt_srcs ${rt_srcs_cuda})
 endif()
 
-if(SCOUT_ENABLE_RT_OPENGL) 
+if(SC_ENABLE_RT_OPENGL) 
   # Add OpenGL source files to the build...
-  file(GLOB gl_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/*.h)
+  file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
 if(${MPI_FOUND})
   file(GLOB gl_srcs_mpi opengl/mpi/*.cpp)
@@ -68,7 +68,7 @@ endif()
   # using the 'glslcc' utility (in the toplevel level utils
   # directory). 
   file(GLOB gl_vert_shaders opengl/glsl/*_vs.glsl) 
-  set(GLSLCC    ${SCOUT_BINARY_DIR}/bin/glslcc)
+  set(GLSLCC    ${SC_BINARY_DIR}/bin/glslcc)
   foreach(v_shader ${gl_vert_shaders}) 
 
     get_filename_component(name ${v_shader} NAME_WE) # file name w/out extension
@@ -123,39 +123,39 @@ endif()
   # convert them into C character string format so they may be
   # embedded within the runtime library.
   file(GLOB gl_shaders opengl/glsl/*.glsl)
-  set(GLSL2CSTR ${SCOUT_BINARY_DIR}/bin/glsl2cstr)
+  set(GLSL2CSTR ${SC_BINARY_DIR}/bin/glsl2cstr)
   foreach(shader ${gl_shaders}) 
 
     get_filename_component(name ${shader} NAME_WE) # file name w/out extension
 
     add_custom_command(
-      OUTPUT ${SCOUT_BINARY_DIR}/include/${name}.h
+      OUTPUT ${SC_BINARY_DIR}/include/${name}.h
       COMMAND ${GLSL2CSTR} 
         --in      ${shader} 
-	--out     ${SCOUT_BINARY_DIR}/include/${name}.h 
+	--out     ${SC_BINARY_DIR}/include/${name}.h 
         --varname ${name}
       DEPENDS ${GLSL2CSTR} ${shader}
       )
 
     add_custom_target(generate_${name}
       ALL
-      DEPENDS ${SCOUT_BINARY_DIR}/include/${name}.h ${GLSL2CSTR} 
+      DEPENDS ${SC_BINARY_DIR}/include/${name}.h ${GLSL2CSTR} 
       )
   endforeach()
 
   # Update the include path to include the generated include files that
   # hold the individual shaders... 
-  include_directories(${SCOUT_BINARY_DIR}/include)
+  include_directories(${SC_BINARY_DIR}/include)
 
 endif()
 
 # Check to see if we should add PNG support... 
-if(SCOUT_ENABLE_PNG_SUPPORT) 
+if(SC_ENABLE_PNG_SUPPORT) 
   file(GLOB png_srcs png/*.cpp)
 endif()
 
 
-if (SCOUT_ENABLE_RT_THREADS) 
+if (SC_ENABLE_RT_THREADS) 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
