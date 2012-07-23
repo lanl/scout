@@ -2131,7 +2131,10 @@ private:
   StmtResult ParseWindowOrImageDeclaration(bool window,
                                            StmtVector &Stmts,
                                            bool OnlyStatement);
-  
+ 
+  StmtResult ParseCameraDeclaration(StmtVector &Stmts,
+      bool OnlyStatement);
+
   // scout - insert CPP code into the lexer stream for parsing.
   // Inserts a stream of tokens before or after the current token Tok.
   // This is a good method for handling cases such as inserting the call

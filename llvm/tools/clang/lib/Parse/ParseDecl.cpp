@@ -26,6 +26,7 @@
 // scout
 #include <map>
 
+
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -5943,7 +5944,10 @@ Parser::ParseWindowOrImageDeclaration(bool window,
       error = true;
     }
 
-    code += ToCPPCode(itr->second) + ", ";
+    code += ToCPPCode(itr->second) + ".x, ";
+    code += ToCPPCode(itr->second) + ".y, ";
+    code += ToCPPCode(itr->second) + ".z, ";
+    code += ToCPPCode(itr->second) + ".w, ";
 
     itr = argExprMap.find("save_frames");
     if(itr == argExprMap.end()){
@@ -5991,4 +5995,186 @@ Parser::ParseWindowOrImageDeclaration(bool window,
   return ParseStatementOrDeclaration(Stmts, OnlyStatement);
 }
 
+// scout - parse a camera declaration
+// return true on success
+// these look like:
+
+//camera cam {
+//  near = 70.0;
+//  far = 500.0;
+//  fov = 40.0;
+//  pos = float3(350.0, -100.0, 650.0);
+//  lookat = float3(350.0, 200.0, 25.0);
+//  up = float3(-1.0, 0.0, 0.0);
+//};
+
+
+StmtResult
+Parser::ParseCameraDeclaration(StmtVector &Stmts,
+                               bool OnlyStatement){
+  ConsumeToken();
+
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  IdentifierInfo* Name = Tok.getIdentifierInfo();
+  SourceLocation NameLoc = ConsumeToken();
+
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok, diag::err_expected_lbrace);
+
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    ConsumeToken();
+    return StmtError();
+  }
+
+  ConsumeBrace();
+
+  typedef std::map<std::string, Expr*> ArgExprMap;
+
+  ArgExprMap argExprMap;
+
+  bool error = false;
+
+  for(;;){
+    if(Tok.is(tok::r_brace) || Tok.is(tok::eof)){
+      break;
+    }
+
+    if(Tok.isNot(tok::identifier)){
+      Diag(Tok, diag::err_expected_ident);
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    IdentifierInfo* Arg = Tok.getIdentifierInfo();
+    SourceLocation ArgLoc = ConsumeToken();
+
+    if(Tok.isNot(tok::equal)){
+      Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    ConsumeToken();
+
+    ExprResult argResult = ParseExpression();
+    if(argResult.isInvalid()){
+      error = true;
+    }
+
+    argExprMap[Arg->getName()] = argResult.get();
+
+    if(Tok.isNot(tok::semi)){
+      Diag(Tok, diag::err_expected_semi_camera_arg);
+
+      SkipUntil(tok::r_brace);
+      SkipUntil(tok::semi);
+      ConsumeToken();
+      return StmtError();
+    }
+
+    ConsumeToken();
+  }
+
+  assert(Tok.is(tok::r_brace) && "expected r_brace");
+
+  ConsumeBrace();
+
+  assert(Tok.is(tok::semi) && "expected semi");
+
+  ConsumeToken();
+
+  if(error){
+    return StmtError();
+  }
+
+  std::string code;
+
+  code = "scout::glCamera " + Name->getName().str() + "("; 
+
+  // put together the constructor call for glCamera
+
+  ArgExprMap::iterator itr = argExprMap.find("fov");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "fov";
+    error = true;
+  }
+
+  code += ToCPPCode(itr->second);
+  code += ",";
+
+  itr = argExprMap.find("pos");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "pos";
+    error = true;
+  }
+
+  code += "scout::glfloat3(";
+  code += ToCPPCode(itr->second) + ".x, ";
+  code += ToCPPCode(itr->second) + ".y, ";
+  code += ToCPPCode(itr->second) + ".z ";
+  code += "), ";
+
+  itr = argExprMap.find("lookat");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "lookat";
+    error = true;
+  }
+
+  code += "scout::glfloat3(";
+  code += ToCPPCode(itr->second) + ".x, ";
+  code += ToCPPCode(itr->second) + ".y, ";
+  code += ToCPPCode(itr->second) + ".z ";
+  code += "), ";
+
+  itr = argExprMap.find("up");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "up";
+    error = true;
+  }
+
+  code += "scout::glfloat3(";
+  code += ToCPPCode(itr->second) + ".x, ";
+  code += ToCPPCode(itr->second) + ".y, ";
+  code += ToCPPCode(itr->second) + ".z ";
+  code += "), ";
+
+  itr = argExprMap.find("near");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "near";
+    error = true;
+  }
+
+  code += ToCPPCode(itr->second);
+  code += ", ";
+
+  itr = argExprMap.find("far");
+  if(itr == argExprMap.end()){
+    Diag(Tok, diag::err_missing_field_window_decl) << "far";
+    error = true;
+  }
+
+  code += ToCPPCode(itr->second);
+  code += ");";
+
+  if(error){
+    return StmtError();
+  }
+
+  InsertCPPCode(code, NameLoc);
+
+  return ParseStatementOrDeclaration(Stmts, OnlyStatement);
+}
 

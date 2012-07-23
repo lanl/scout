@@ -15,11 +15,11 @@ set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
 
 find_package(SDL)
 
+#find_library(GLFW glfw)
+
 include_directories(
   ${SC_INCLUDE_DIR}
-  ${PNG_INCLUDE_DIR}
   ${HWLOC_INCLUDE_DIR}
-  ${SC_SRC_DIR}/packages/hwloc/include
   ${SDL_INCLUDE_DIR} 
   $ENV{SDLDIR}/include	   #deal w/ header files that have SDL/SDL.h
 )

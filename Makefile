@@ -69,6 +69,11 @@
 .PHONY : build 
 .PHONY : test
 
+arch        := $(shell uname -s)
+date        := $(shell /bin/date "+%m-%d-%Y")
+build_dir   := $(CURDIR)/build
+cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG  -DCMAKE_INSTALL_PREFIX=.
+>>>>>>> master
 
 ##### PARALLEL BUILD CONFIGURATION 
 #
@@ -104,16 +109,32 @@ endif
 
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir)
 
-all: $(build_dir)/Makefile compile
+all: $(build_dir)/Makefile compile compiletest
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
+
 .PHONY: compile
 compile: $(build_dir)/Makefile 
 	@(cd $(build_dir); make $(make_flags); make install)
+
+.PHONY: compiletest
+compiletest: 
+	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
+	@(cd $(build_dir)/test; cmake $(cmake_flags) ../../test)
+	@(cd $(build_dir)/test; make)
+
+.PHONY: test
+test: 
+	@(cd $(build_dir)/test; make test)
+
+.PHONY: xcode
+xcode:;
+	@((test -d xcode) || (mkdir xcode))
+	@(cd xcode; cmake -G Xcode ..)
 
 .PHONY: clean
 clean:
@@ -121,9 +142,3 @@ clean:
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
-
-.PHONY: xcode
-xcode:;
-	@((test -d xcode) || (mkdir xcode))
-	@(cd xcode; cmake -G Xcode ..)
-
