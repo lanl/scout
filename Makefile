@@ -69,11 +69,6 @@
 .PHONY : build 
 .PHONY : test
 
-arch        := $(shell uname -s)
-date        := $(shell /bin/date "+%m-%d-%Y")
-build_dir   := $(CURDIR)/build
-cmake_flags := -DCMAKE_BUILD_TYPE=DEBUG  -DCMAKE_INSTALL_PREFIX=.
->>>>>>> master
 
 ##### PARALLEL BUILD CONFIGURATION 
 #
@@ -91,6 +86,7 @@ ifdef SC_BUILD_TYPE
 else
   build_type  := DEBUG
 endif
+
 #
 #####
 
