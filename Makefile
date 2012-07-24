@@ -30,7 +30,7 @@ endif
 # memory you might need to back off on the factor of 2...
 nprocs := $(shell expr $(nprocs) \* 2)
 
-all: $(build_dir)/Makefile compile compiletest
+all: $(build_dir)/Makefile compile 
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
@@ -47,15 +47,13 @@ compile: $(build_dir)/Makefile
 	@(cd $(build_dir); make -j $(nprocs); make install)
 
 
-.PHONY: compiletest
-compiletest: 
+.PHONY: test
+test: 
 	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
 	@(cd $(build_dir)/test; cmake $(cmake_flags) ../../test)
 	@(cd $(build_dir)/test; make)
-
-.PHONY: test
-test: 
-	@(cd $(build_dir)/test; make test)
+	@(cd $(build_dir)/test; ARGS="-D ExperimentalTest --no-compress-output" make test)
+	@(cd $(build_dir)/test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
 
 .PHONY: xcode
 xcode:;
