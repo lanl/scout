@@ -103,11 +103,10 @@ namespace {
     KEYOPENCL = 0x200,
     KEYC11 = 0x400,
     KEYARC = 0x800,
-
     // scout - TokenKinds
-    KEYSCOUT = 0x1000,
-    
-    KEYALL = 0x0ffff
+    KEYNOMS = 0x01000,    
+    KEYSCOUT = 0x2000,
+    KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.    
   };
 }
 
@@ -143,6 +142,9 @@ static void AddKeyword(StringRef Keyword,
 
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX0X)) AddResult = 3;
 
+  // Don't add this keyword under MicrosoftMode.
+  if (LangOpts.MicrosoftMode && (Flags & KEYNOMS))
+     return;
   // Don't add this keyword if disabled in this language.
   if (AddResult == 0) return;
 

@@ -6101,10 +6101,11 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
     // compatible, and if it does, warn the user.
     if (NewFD->isExternC()) {
       QualType R = NewFD->getResultType();
-      if (!R.isPODType(Context) && 
-          !R->isVoidType())
-        Diag( NewFD->getLocation(), diag::warn_return_value_udt ) 
-          << NewFD << R;
+      if (R->isIncompleteType() && !R->isVoidType())
+        Diag(NewFD->getLocation(), diag::warn_return_value_udt_incomplete)
+            << NewFD << R;
+      else if (!R.isPODType(Context) && !R->isVoidType())
+        Diag(NewFD->getLocation(), diag::warn_return_value_udt) << NewFD << R;
     }
   }
   return Redeclaration;
@@ -9824,6 +9825,23 @@ void Sema::ActOnFields(Scope* S,
   if (EnclosingDecl->isInvalidDecl())
     return;
 
+  // If this is an Objective-C @implementation or category and we have
+  // new fields here we should reset the layout of the interface since
+  // it will now change.
+  if (!Fields.empty() && isa<ObjCContainerDecl>(EnclosingDecl)) {
+    ObjCContainerDecl *DC = cast<ObjCContainerDecl>(EnclosingDecl);
+    switch (DC->getKind()) {
+    default: break;
+    case Decl::ObjCCategory:
+      Context.ResetObjCLayout(cast<ObjCCategoryDecl>(DC)->getClassInterface());
+      break;
+    case Decl::ObjCImplementation:
+      Context.
+        ResetObjCLayout(cast<ObjCImplementationDecl>(DC)->getClassInterface());
+      break;
+    }
+  }
+  
   RecordDecl *Record = dyn_cast<RecordDecl>(EnclosingDecl);
 
   // Start counting up the number of named members; make sure to include
@@ -10027,11 +10045,11 @@ void Sema::ActOnFields(Scope* S,
           //   default constructor (if any), copy constructor, copy assignment
           //   operator, and destructor are non-trivial.
           //
-          // This rule is also handled by CXXRecordDecl::completeDefinition().
-          // However, here we check whether this particular class is only
-          // non-POD because of the presence of an Objective-C pointer member.
-          // If so, objects of this type cannot be shared between code compiled
-          // with instant objects and code compiled with manual retain/release.
+          // This rule is also handled by CXXRecordDecl::completeDefinition(). 
+          // However, here we check whether this particular class is only 
+          // non-POD because of the presence of an Objective-C pointer member. 
+          // If so, objects of this type cannot be shared between code compiled 
+          // with ARC and code compiled with manual retain/release.
           if (getLangOpts().ObjCAutoRefCount &&
               CXXRecord->hasObjectMember() &&
               CXXRecord->getLinkage() == ExternalLinkage) {
@@ -10428,15 +10446,16 @@ Decl *Sema::ActOnEnumConstant(Scope *S, Decl *theEnumDecl, Decl *lastEnumConst,
     }
   }
 
-  // C++ [class.mem]p13:
-  //   If T is the name of a class, then each of the following shall have a
-  //   name different from T:
-  //     - every enumerator of every member of class T that is an enumerated
-  //       type
+  // C++ [class.mem]p15:
+  // If T is the name of a class, then each of the following shall have a name 
+  // different from T:
+  // - every enumerator of every member of class T that is an unscoped 
+  // enumerated type
   if (CXXRecordDecl *Record
                       = dyn_cast<CXXRecordDecl>(
                              TheEnumDecl->getDeclContext()->getRedeclContext()))
-    if (Record->getIdentifier() && Record->getIdentifier() == Id)
+    if (!TheEnumDecl->isScoped() && 
+        Record->getIdentifier() && Record->getIdentifier() == Id)
       Diag(IdLoc, diag::err_member_name_of_class) << Id;
 
   EnumConstantDecl *New =

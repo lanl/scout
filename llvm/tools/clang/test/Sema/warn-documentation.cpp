@@ -104,6 +104,9 @@ int test_block_command4(int);
 /// \brief Aaa
 int test_block_command5(int);
 
+/// \brief \c Aaa
+int test_block_command6(int);
+
 // expected-warning@+1 {{'\param' command used in a comment that is not attached to a function declaration}}
 /// \param a Blah blah.
 int test_param1;
@@ -141,17 +144,21 @@ int test_param9(int a);
 /// \param [ junk] a Blah blah.
 int test_param10(int a);
 
+// expected-warning@+1 {{parameter 'a' not found in the function declaration}}
+/// \param a Blah blah.
+int test_param11();
+
 // expected-warning@+1 {{parameter 'A' not found in the function declaration}} expected-note@+1 {{did you mean 'a'?}}
 /// \param A Blah blah.
-int test_param11(int a);
+int test_param12(int a);
 
 // expected-warning@+1 {{parameter 'aab' not found in the function declaration}} expected-note@+1 {{did you mean 'aaa'?}}
 /// \param aab Blah blah.
-int test_param12(int aaa, int bbb);
+int test_param13(int aaa, int bbb);
 
 // expected-warning@+1 {{parameter 'aab' not found in the function declaration}}
 /// \param aab Blah blah.
-int test_param13(int bbb, int ccc);
+int test_param14(int bbb, int ccc);
 
 class C {
   // expected-warning@+1 {{parameter 'aaa' not found in the function declaration}}
@@ -160,9 +167,21 @@ class C {
 
   // expected-warning@+1 {{parameter 'aaa' not found in the function declaration}}
   /// \param aaa Blah blah.
- int test_param14(int bbb, int ccc);
+ int test_param15(int bbb, int ccc);
 };
 
+// expected-warning@+3 {{parameter 'a' is already documented}}
+// expected-note@+1 {{previous documentation}}
+/// \param a Aaa.
+/// \param a Aaa.
+int test_param16(int a);
+
+// expected-warning@+4 {{parameter 'x2' is already documented}}
+// expected-note@+2 {{previous documentation}}
+/// \param x1 Aaa.
+/// \param x2 Bbb.
+/// \param x2 Ccc.
+int test_param17(int x1, int x2, int x3);
 
 // expected-warning@+1 {{empty paragraph passed to '\brief' command}}
 int test1; ///< \brief\brief Aaa
@@ -272,4 +291,10 @@ namespace test_attach24 {
   namespace test_attach25 {
   }
 }
+
+// PR13411, reduced.  We used to crash on this.
+/**
+ * @code Aaa.
+ */
+void test_nocrash1(int);
 

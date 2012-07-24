@@ -48,7 +48,29 @@ protected:
     /// (There is no separate AST node for a newline.)
     unsigned HasTrailingNewline : 1;
   };
-  enum { NumInlineContentCommentBits = 9 };
+  enum { NumInlineContentCommentBits = NumCommentBits + 1 };
+
+  class TextCommentBitfields {
+    friend class TextComment;
+
+    unsigned : NumInlineContentCommentBits;
+
+    /// True if \c IsWhitespace field contains a valid value.
+    mutable unsigned IsWhitespaceValid : 1;
+
+    /// True if this comment AST node contains only whitespace.
+    mutable unsigned IsWhitespace : 1;
+  };
+  enum { NumTextCommentBits = NumInlineContentCommentBits + 2 };
+
+  class InlineCommandCommentBitfields {
+    friend class InlineCommandComment;
+
+    unsigned : NumInlineContentCommentBits;
+
+    unsigned RenderKind : 2;
+  };
+  enum { NumInlineCommandCommentBits = NumInlineContentCommentBits + 1 };
 
   class HTMLStartTagCommentBitfields {
     friend class HTMLStartTagComment;
@@ -59,6 +81,20 @@ protected:
     /// spelling in comment (plain <br> would not set this flag).
     unsigned IsSelfClosing : 1;
   };
+  enum { NumHTMLStartTagCommentBits = NumInlineContentCommentBits + 1 };
+
+  class ParagraphCommentBitfields {
+    friend class ParagraphComment;
+
+    unsigned : NumCommentBits;
+
+    /// True if \c IsWhitespace field contains a valid value.
+    mutable unsigned IsWhitespaceValid : 1;
+
+    /// True if this comment AST node contains only whitespace.
+    mutable unsigned IsWhitespace : 1;
+  };
+  enum { NumParagraphCommentBits = NumCommentBits + 2 };
 
   class ParamCommandCommentBitfields {
     friend class ParamCommandComment;
@@ -76,7 +112,10 @@ protected:
   union {
     CommentBitfields CommentBits;
     InlineContentCommentBitfields InlineContentCommentBits;
+    TextCommentBitfields TextCommentBits;
+    InlineCommandCommentBitfields InlineCommandCommentBits;
     HTMLStartTagCommentBitfields HTMLStartTagCommentBits;
+    ParagraphCommentBitfields ParagraphCommentBits;
     ParamCommandCommentBitfields ParamCommandCommentBits;
   };
 
@@ -179,8 +218,9 @@ public:
               SourceLocation LocEnd,
               StringRef Text) :
       InlineContentComment(TextCommentKind, LocBegin, LocEnd),
-      Text(Text)
-  { }
+      Text(Text) {
+    TextCommentBits.IsWhitespaceValid = false;
+  }
 
   static bool classof(const Comment *C) {
     return C->getCommentKind() == TextCommentKind;
@@ -194,7 +234,17 @@ public:
 
   StringRef getText() const LLVM_READONLY { return Text; }
 
-  bool isWhitespace() const;
+  bool isWhitespace() const {
+    if (TextCommentBits.IsWhitespaceValid)
+      return TextCommentBits.IsWhitespace;
+
+    TextCommentBits.IsWhitespace = isWhitespaceNoCache();
+    TextCommentBits.IsWhitespaceValid = true;
+    return TextCommentBits.IsWhitespace;
+  }
+
+private:
+  bool isWhitespaceNoCache() const;
 };
 
 /// A command with word-like arguments that is considered inline content.
@@ -205,6 +255,15 @@ public:
     StringRef Text;
 
     Argument(SourceRange Range, StringRef Text) : Range(Range), Text(Text) { }
+  };
+
+  /// The most appropriate rendering mode for this command, chosen on command
+  /// semantics in Doxygen.
+  enum RenderKind {
+    RenderNormal,
+    RenderBold,
+    RenderMonospaced,
+    RenderEmphasized
   };
 
 protected:
@@ -218,10 +277,12 @@ public:
   InlineCommandComment(SourceLocation LocBegin,
                        SourceLocation LocEnd,
                        StringRef Name,
+                       RenderKind RK,
                        llvm::ArrayRef<Argument> Args) :
-    InlineContentComment(InlineCommandCommentKind, LocBegin, LocEnd),
-    Name(Name), Args(Args)
-  { }
+      InlineContentComment(InlineCommandCommentKind, LocBegin, LocEnd),
+      Name(Name), Args(Args) {
+    InlineCommandCommentBits.RenderKind = RK;
+  }
 
   static bool classof(const Comment *C) {
     return C->getCommentKind() == InlineCommandCommentKind;
@@ -240,6 +301,10 @@ public:
   SourceRange getCommandNameRange() const {
     return SourceRange(getLocStart().getLocWithOffset(-1),
                        getLocEnd());
+  }
+
+  RenderKind getRenderKind() const {
+    return static_cast<RenderKind>(InlineCommandCommentBits.RenderKind);
   }
 
   unsigned getNumArgs() const {
@@ -441,8 +506,13 @@ public:
                           SourceLocation(),
                           SourceLocation()),
       Content(Content) {
-    if (Content.empty())
+    if (Content.empty()) {
+      ParagraphCommentBits.IsWhitespace = true;
+      ParagraphCommentBits.IsWhitespaceValid = true;
       return;
+    }
+
+    ParagraphCommentBits.IsWhitespaceValid = false;
 
     setSourceRange(SourceRange(Content.front()->getLocStart(),
                                Content.back()->getLocEnd()));
@@ -463,7 +533,17 @@ public:
     return reinterpret_cast<child_iterator>(Content.end());
   }
 
-  bool isWhitespace() const;
+  bool isWhitespace() const {
+    if (ParagraphCommentBits.IsWhitespaceValid)
+      return ParagraphCommentBits.IsWhitespace;
+
+    ParagraphCommentBits.IsWhitespace = isWhitespaceNoCache();
+    ParagraphCommentBits.IsWhitespaceValid = true;
+    return ParagraphCommentBits.IsWhitespace;
+  }
+
+private:
+  bool isWhitespaceNoCache() const;
 };
 
 /// A command that has zero or more word-like arguments (number of word-like
@@ -556,6 +636,10 @@ public:
 
   ParagraphComment *getParagraph() const LLVM_READONLY {
     return Paragraph;
+  }
+
+  bool hasNonWhitespaceParagraph() const {
+    return Paragraph && !Paragraph->isWhitespace();
   }
 
   void setParagraph(ParagraphComment *PC) {

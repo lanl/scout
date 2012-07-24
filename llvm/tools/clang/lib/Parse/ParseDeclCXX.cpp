@@ -1987,7 +1987,7 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
 
       // Consume the ';' - it's optional unless we have a delete or default
       if (Tok.is(tok::semi))
-        ConsumeExtraSemi(AfterDefinition);
+        ConsumeExtraSemi(AfterMemberFunctionDefinition);
 
       return;
     }
@@ -2337,8 +2337,7 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
 
       // Check for extraneous top-level semicolon.
       if (Tok.is(tok::semi)) {
-        ConsumeExtraSemi(InsideStruct,
-                         DeclSpec::getSpecifierName((DeclSpec::TST)TagType));
+        ConsumeExtraSemi(InsideStruct, TagType);
         continue;
       }
 
@@ -3063,8 +3062,7 @@ void Parser::ParseMicrosoftIfExistsClassDeclaration(DeclSpec::TST TagType,
 
     // Check for extraneous top-level semicolon.
     if (Tok.is(tok::semi)) {
-      ConsumeExtraSemi(InsideStruct,
-                       DeclSpec::getSpecifierName((DeclSpec::TST)TagType));
+      ConsumeExtraSemi(InsideStruct, TagType);
       continue;
     }
 

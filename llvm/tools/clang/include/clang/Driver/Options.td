@@ -400,7 +400,7 @@ def fassociative_math : Flag<"-fassociative-math">, Group<f_Group>;
 def fno_associative_math : Flag<"-fno-associative-math">, Group<f_Group>;
 def freciprocal_math : Flag<"-freciprocal-math">, Group<f_Group>;
 def fno_reciprocal_math : Flag<"-fno-reciprocal-math">, Group<f_Group>;
-def ffinite_math_only : Flag<"-ffinite-math-only">, Group<f_Group>;
+def ffinite_math_only : Flag<"-ffinite-math-only">, Group<f_Group>, Flags<[CC1Option]>;
 def fno_finite_math_only : Flag<"-fno-finite-math-only">, Group<f_Group>;
 def fsigned_zeros : Flag<"-fsigned-zeros">, Group<f_Group>;
 def fno_signed_zeros : Flag<"-fno-signed-zeros">, Group<f_Group>;
@@ -454,6 +454,8 @@ def fmerge_all_constants : Flag<"-fmerge-all-constants">, Group<f_Group>;
 def fmessage_length_EQ : Joined<"-fmessage-length=">, Group<f_Group>;
 def fms_extensions : Flag<"-fms-extensions">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Accept some non-standard constructs supported by the Microsoft compiler">;
+def fenable_experimental_ms_inline_asm : Flag<"-fenable-experimental-ms-inline-asm">, Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Enable support for Microsoft style inine assembly">;
 def fms_compatibility : Flag<"-fms-compatibility">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enable Microsoft compatibility mode">;
 def fmsc_version : Joined<"-fmsc-version=">, Group<f_Group>, Flags<[CC1Option]>,

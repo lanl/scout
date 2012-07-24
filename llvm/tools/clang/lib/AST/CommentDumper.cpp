@@ -106,6 +106,22 @@ void CommentDumper::visitTextComment(const TextComment *C) {
 void CommentDumper::visitInlineCommandComment(const InlineCommandComment *C) {
   dumpComment(C);
 
+  OS << " Name=\"" << C->getCommandName() << "\"";
+  switch (C->getRenderKind()) {
+  case InlineCommandComment::RenderNormal:
+    OS << " RenderNormal";
+    break;
+  case InlineCommandComment::RenderBold:
+    OS << " RenderBold";
+    break;
+  case InlineCommandComment::RenderMonospaced:
+    OS << " RenderMonospaced";
+    break;
+  case InlineCommandComment::RenderEmphasized:
+    OS << " RenderEmphasized";
+    break;
+  }
+
   for (unsigned i = 0, e = C->getNumArgs(); i != e; ++i)
     OS << " Arg[" << i << "]=\"" << C->getArgText(i) << "\"";
 }
@@ -139,6 +155,8 @@ void CommentDumper::visitBlockCommandComment(const BlockCommandComment *C) {
   dumpComment(C);
 
   OS << " Name=\"" << C->getCommandName() << "\"";
+  for (unsigned i = 0, e = C->getNumArgs(); i != e; ++i)
+    OS << " Arg[" << i << "]=\"" << C->getArgText(i) << "\"";
 }
 
 void CommentDumper::visitParamCommandComment(const ParamCommandComment *C) {

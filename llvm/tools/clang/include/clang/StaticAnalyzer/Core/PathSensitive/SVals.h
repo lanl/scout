@@ -68,7 +68,6 @@ protected:
 
 public:
   explicit SVal() : Data(0), Kind(0) {}
-  ~SVal() {}
 
   /// BufferTy - A temporary buffer to hold a set of SVals.
   typedef SmallVector<SVal,5> BufferTy;
@@ -407,7 +406,7 @@ public:
 
 namespace loc {
 
-enum Kind { GotoLabelKind, MemRegionKind, ConcreteIntKind, ObjCPropRefKind };
+enum Kind { GotoLabelKind, MemRegionKind, ConcreteIntKind };
 
 class GotoLabel : public Loc {
 public:
@@ -483,28 +482,6 @@ public:
 
   static inline bool classof(const Loc* V) {
     return V->getSubKind() == ConcreteIntKind;
-  }
-};
-
-/// \brief Pseudo-location SVal used by the ExprEngine to simulate a "load" or
-/// "store" of an ObjC property for the dot syntax.
-class ObjCPropRef : public Loc {
-public:
-  explicit ObjCPropRef(const ObjCPropertyRefExpr *E)
-    : Loc(ObjCPropRefKind, E) {}
-
-  const ObjCPropertyRefExpr *getPropRefExpr() const {
-    return static_cast<const ObjCPropertyRefExpr *>(Data);
-  }
-
-  // Implement isa<T> support.
-  static inline bool classof(const SVal* V) {
-    return V->getBaseKind() == LocKind &&
-           V->getSubKind() == ObjCPropRefKind;
-  }
-
-  static inline bool classof(const Loc* V) {
-    return V->getSubKind() == ObjCPropRefKind;
   }
 };
 
