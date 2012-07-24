@@ -131,8 +131,13 @@ void PrintReport(const ReportDesc *rep) {
 
 static void PrintStack(const ReportStack *ent) {
   for (int i = 0; ent; ent = ent->next, i++) {
+<<<<<<< HEAD
     TsanPrintf("  %s()\n      %s:%d +%p\n",
         ent->func, ent->file, ent->line, (void*)ent->pc);
+=======
+    TsanPrintf("  %s()\n      %s:%d +0x%zx\n",
+        ent->func, ent->file, ent->line, (void*)ent->offset);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   }
 }
 
@@ -144,11 +149,27 @@ static void PrintMop(const ReportMop *mop, bool first) {
   PrintStack(mop->stack);
 }
 
+<<<<<<< HEAD
+=======
+static void PrintThread(const ReportThread *rt) {
+  if (rt->id == 0)  // Little sense in describing the main thread.
+    return;
+  TsanPrintf("Goroutine %d (%s) created at:\n",
+    rt->id, rt->running ? "running" : "finished");
+  PrintStack(rt->stack);
+}
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 void PrintReport(const ReportDesc *rep) {
   TsanPrintf("==================\n");
   TsanPrintf("WARNING: DATA RACE at %p\n", (void*)rep->mops[0]->addr);
   for (uptr i = 0; i < rep->mops.Size(); i++)
     PrintMop(rep->mops[i], i == 0);
+<<<<<<< HEAD
+=======
+  for (uptr i = 0; i < rep->threads.Size(); i++)
+    PrintThread(rep->threads[i]);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   TsanPrintf("==================\n");
 }
 

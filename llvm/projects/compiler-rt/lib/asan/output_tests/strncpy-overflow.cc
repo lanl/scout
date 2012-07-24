@@ -11,7 +11,11 @@ int main(int argc, char **argv) {
 // Check-Common: {{WRITE of size 1 at 0x.* thread T0}}
 // Check-Linux: {{    #0 0x.* in .*strncpy}}
 // Check-Darwin: {{    #0 0x.* in wrap_strncpy}}
+<<<<<<< HEAD
 // Check-Common: {{    #1 0x.* in main .*strncpy-overflow.cc:[78]}}
+=======
+// Check-Common: {{    #1 0x.* in main .*strncpy-overflow.cc:7}}
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 // Check-Common: {{0x.* is located 0 bytes to the right of 9-byte region}}
 // Check-Common: {{allocated by thread T0 here:}}
 

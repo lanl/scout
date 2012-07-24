@@ -92,6 +92,13 @@ bool AsanInterceptsSignal(int signum) {
   return (signum == SIGSEGV || signum == SIGBUS) && flags()->handle_segv;
 }
 
+<<<<<<< HEAD
+=======
+void AsanPlatformThreadInit() {
+  ReplaceCFAllocator();
+}
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 AsanLock::AsanLock(LinkerInitialized) {
   // We assume that OS_SPINLOCK_INIT is zero
 }

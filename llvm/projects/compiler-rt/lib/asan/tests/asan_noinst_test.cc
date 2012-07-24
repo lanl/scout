@@ -21,8 +21,14 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+<<<<<<< HEAD
 #include <vector>
 #include <algorithm>
+=======
+#include <string.h>  // for memset()
+#include <algorithm>
+#include <vector>
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 #include "gtest/gtest.h"
 
 // Simple stand-alone pseudorandom number generator.
@@ -220,6 +226,10 @@ void CompressStackTraceTest(size_t n_iter) {
       std::max((size_t)2, (size_t)my_rand(&seed) % (2 * kNumPcs));
     size_t n_frames =
       __asan::AsanStackTrace::CompressStack(&stack0, compressed, compress_size);
+<<<<<<< HEAD
+=======
+    Ident(n_frames);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     assert(n_frames <= stack0.size);
     __asan::AsanStackTrace::UncompressStack(&stack1, compressed, compress_size);
     assert(stack1.size == n_frames);
@@ -274,6 +284,10 @@ TEST(AddressSanitizer, QuarantineTest) {
 }
 
 void *ThreadedQuarantineTestWorker(void *unused) {
+<<<<<<< HEAD
+=======
+  (void)unused;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   u32 seed = my_rand(&global_seed);
   __asan::AsanStackTrace stack;
   stack.trace[0] = 0x890;
@@ -301,6 +315,10 @@ TEST(AddressSanitizer, ThreadedQuarantineTest) {
 }
 
 void *ThreadedOneSizeMallocStress(void *unused) {
+<<<<<<< HEAD
+=======
+  (void)unused;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   __asan::AsanStackTrace stack;
   stack.trace[0] = 0x890;
   stack.size = 1;
@@ -328,6 +346,21 @@ TEST(AddressSanitizer, ThreadedOneSizeMallocStressTest) {
   }
 }
 
+<<<<<<< HEAD
+=======
+TEST(AddressSanitizer, MemsetWildAddressTest) {
+  typedef void*(*memset_p)(void*, int, size_t);
+  // Prevent inlining of memset().
+  volatile memset_p libc_memset = (memset_p)memset;
+  EXPECT_DEATH(libc_memset((void*)(kLowShadowBeg + kPageSize), 0, 100),
+               "unknown-crash.*low shadow");
+  EXPECT_DEATH(libc_memset((void*)(kShadowGapBeg + kPageSize), 0, 100),
+               "unknown-crash.*shadow gap");
+  EXPECT_DEATH(libc_memset((void*)(kHighShadowBeg + kPageSize), 0, 100),
+               "unknown-crash.*high shadow");
+}
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 TEST(AddressSanitizerInterface, GetEstimatedAllocatedSize) {
   EXPECT_EQ(1U, __asan_get_estimated_allocated_size(0));
   const size_t sizes[] = { 1, 30, 1<<30 };
@@ -465,9 +498,16 @@ TEST(AddressSanitizerInterface, GetFreeBytesTest) {
 
 static const size_t kManyThreadsMallocSizes[] = {5, 1UL<<10, 1UL<<20, 357};
 static const size_t kManyThreadsIterations = 250;
+<<<<<<< HEAD
 static const size_t kManyThreadsNumThreads = 200;
 
 void *ManyThreadsWithStatsWorker(void *arg) {
+=======
+static const size_t kManyThreadsNumThreads = (__WORDSIZE == 32) ? 40 : 200;
+
+void *ManyThreadsWithStatsWorker(void *arg) {
+  (void)arg;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   for (size_t iter = 0; iter < kManyThreadsIterations; iter++) {
     for (size_t size_index = 0; size_index < 4; size_index++) {
       free(Ident(malloc(kManyThreadsMallocSizes[size_index])));
@@ -584,8 +624,15 @@ TEST(AddressSanitizerInterface, PushAndPopWithPoisoningTest) {
 static void MakeShadowValid(bool *shadow, int length, int granularity) {
   bool can_be_poisoned = true;
   for (int i = length - 1; i >= 0; i--) {
+<<<<<<< HEAD
     can_be_poisoned &= shadow[i];
     shadow[i] &= can_be_poisoned;
+=======
+    if (!shadow[i])
+      can_be_poisoned = false;
+    if (!can_be_poisoned)
+      shadow[i] = false;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     if (i % (1 << granularity) == 0) {
       can_be_poisoned = true;
     }
@@ -606,9 +653,15 @@ TEST(AddressSanitizerInterface, PoisoningStressTest) {
           __asan_poison_memory_region(arr + l2, s2);
           memset(expected, false, kSize);
           memset(expected + l1, true, s1);
+<<<<<<< HEAD
           MakeShadowValid(expected, 24, /*granularity*/ 3);
           memset(expected + l2, true, s2);
           MakeShadowValid(expected, 24, /*granularity*/ 3);
+=======
+          MakeShadowValid(expected, kSize, /*granularity*/ 3);
+          memset(expected + l2, true, s2);
+          MakeShadowValid(expected, kSize, /*granularity*/ 3);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
           for (size_t i = 0; i < kSize; i++) {
             ASSERT_EQ(expected[i], __asan_address_is_poisoned(arr + i));
           }
@@ -618,9 +671,15 @@ TEST(AddressSanitizerInterface, PoisoningStressTest) {
           __asan_unpoison_memory_region(arr + l2, s2);
           memset(expected, true, kSize);
           memset(expected + l1, false, s1);
+<<<<<<< HEAD
           MakeShadowValid(expected, 24, /*granularity*/ 3);
           memset(expected + l2, false, s2);
           MakeShadowValid(expected, 24, /*granularity*/ 3);
+=======
+          MakeShadowValid(expected, kSize, /*granularity*/ 3);
+          memset(expected + l2, false, s2);
+          MakeShadowValid(expected, kSize, /*granularity*/ 3);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
           for (size_t i = 0; i < kSize; i++) {
             ASSERT_EQ(expected[i], __asan_address_is_poisoned(arr + i));
           }
@@ -657,7 +716,12 @@ static void ErrorReportCallbackOneToZ(const char *report) {
   for (int i = 0; i < len; i++) {
     if (dup[i] == '1') dup[i] = 'Z';
   }
+<<<<<<< HEAD
   write(2, dup, len);
+=======
+  int written = write(2, dup, len);
+  ASSERT_EQ(len, written);
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   free(dup);
 }
 

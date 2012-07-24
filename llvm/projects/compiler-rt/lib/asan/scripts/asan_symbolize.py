@@ -17,6 +17,7 @@ pipes = {}
 filetypes = {}
 DEBUG=False
 
+<<<<<<< HEAD
 def patch_address(frameno, addr_s):
   ''' Subtracts 1 or 2 from the top frame's address.
   Top frame is normally the return address from asan_report*
@@ -33,6 +34,8 @@ def patch_address(frameno, addr_s):
   return addr_s
 
 
+=======
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 def fix_filename(file_name):
   for path_to_cut in sys.argv[1:]:
     file_name = re.sub(".*" + path_to_cut, "", file_name)
@@ -49,7 +52,10 @@ def symbolize_addr2line(line):
     frameno = match.group(2)
     binary = match.group(3)
     addr = match.group(4)
+<<<<<<< HEAD
     addr = patch_address(frameno, addr)
+=======
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     if not pipes.has_key(binary):
       pipes[binary] = subprocess.Popen(["addr2line", "-f", "-e", binary],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -90,7 +96,11 @@ def symbolize_atos(line):
     orig_addr = match.group(3)
     binary = match.group(4)
     offset = match.group(5)
+<<<<<<< HEAD
     addr = patch_address(frameno, orig_addr)
+=======
+    addr = orig_addr
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     load_addr = hex(int(orig_addr, 16) - int(offset, 16))
     filetype = get_macho_filetype(binary)
 
@@ -105,8 +115,16 @@ def symbolize_atos(line):
       load_addr = "0x0"
     if DEBUG:
       print "atos -o %s -arch %s -l %s" % (binary, arch, load_addr)
+<<<<<<< HEAD
     pipes[binary] = subprocess.Popen(["atos", "-o", binary, "-arch", arch, "-l", load_addr],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,)
+=======
+    cmd = ["atos", "-o", binary, "-arch", arch, "-l", load_addr]
+    pipes[binary] = subprocess.Popen(cmd,
+                                     stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     p = pipes[binary]
     if filetype == "DYLIB":
       print >>p.stdin, "%s" % offset

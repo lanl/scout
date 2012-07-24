@@ -15,4 +15,8 @@ extern "C" {
   void TestGCDGroupAsync();
   void TestOOBNSObjects();
   void TestNSURLDeallocation();
+<<<<<<< HEAD
+=======
+  void TestPassCFMemoryToAnotherThread();
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 }

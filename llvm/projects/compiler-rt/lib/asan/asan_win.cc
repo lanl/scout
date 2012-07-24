@@ -172,6 +172,13 @@ void InstallSignalHandlers() {
   // FIXME: Decide what to do on Windows.
 }
 
+<<<<<<< HEAD
+=======
+void AsanPlatformThreadInit() {
+  // Nothing here for now.
+}
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 }  // namespace __asan
 
 #endif  // _WIN32

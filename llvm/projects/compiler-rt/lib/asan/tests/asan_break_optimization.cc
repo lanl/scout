@@ -15,4 +15,8 @@
 // Have this function in a separate file to avoid inlining.
 // (Yes, we know about cross-file inlining, but let's assume we don't use it).
 extern "C" void break_optimization(void *x) {
+<<<<<<< HEAD
+=======
+  (void)x;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 }

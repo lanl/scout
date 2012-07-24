@@ -408,8 +408,13 @@ class CombinedAllocator {
 
   void *Allocate(AllocatorCache *cache, uptr size, uptr alignment,
                  bool cleared = false) {
+<<<<<<< HEAD
     if (size == 0) return 0;
     CHECK_GT(size, 0);
+=======
+    // Returning 0 on malloc(0) may break a lot of code.
+    if (size == 0) size = 1;
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     if (alignment > 8)
       size = RoundUpTo(size, alignment);
     void *res;

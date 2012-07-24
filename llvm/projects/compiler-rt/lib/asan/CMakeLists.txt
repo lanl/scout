@@ -28,11 +28,24 @@ set(ASAN_CFLAGS
   -fno-exceptions
   -funwind-tables
   -fvisibility=hidden
+<<<<<<< HEAD
+=======
+  -fno-builtin
+  -fomit-frame-pointer
+  -O3
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
   )
 if (SUPPORTS_NO_VARIADIC_MACROS_FLAG)
   list(APPEND ASAN_CFLAGS -Wno-variadic-macros)
 endif ()
 
+<<<<<<< HEAD
+=======
+if (APPLE)
+  list(APPEND ASAN_CFLAGS -mmacosx-version-min=10.5)
+endif()
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 set(ASAN_COMMON_DEFINITIONS
   ASAN_HAS_EXCEPTIONS=1
   ASAN_NEEDS_SEGV=1
@@ -61,7 +74,11 @@ if(CAN_TARGET_I386)
     ${ASAN_CFLAGS}
     ${TARGET_I386_CFLAGS}
     )
+<<<<<<< HEAD
   set_property(TARGET clang_rt.asan-x86_64 APPEND PROPERTY COMPILE_DEFINITIONS
+=======
+  set_property(TARGET clang_rt.asan-i386 APPEND PROPERTY COMPILE_DEFINITIONS
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     ${ASAN_COMMON_DEFINITIONS})
 endif()
 

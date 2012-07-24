@@ -97,6 +97,13 @@ static inline bool AddrIsInShadow(uptr a) {
   return AddrIsInLowShadow(a) || AddrIsInHighShadow(a);
 }
 
+<<<<<<< HEAD
+=======
+static inline bool AddrIsInShadowGap(uptr a) {
+  return a >= kShadowGapBeg && a <= kShadowGapEnd;
+}
+
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 static inline bool AddrIsAlignedByGranularity(uptr a) {
   return (a & (SHADOW_GRANULARITY - 1)) == 0;
 }

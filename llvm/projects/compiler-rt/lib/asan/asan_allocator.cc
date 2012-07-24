@@ -42,7 +42,11 @@
 
 namespace __asan {
 
+<<<<<<< HEAD
 #define  REDZONE (flags()->redzone)
+=======
+#define REDZONE ((uptr)(flags()->redzone))
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 static const uptr kMinAllocSize = REDZONE * 2;
 static const u64 kMaxAvailableRam = 128ULL << 30;  // 128G
 static const uptr kMaxThreadLocalQuarantine = 1 << 20;  // 1M
@@ -344,7 +348,11 @@ class MallocInfo {
     AsanChunkFifoList *q = &x->quarantine_;
     if (q->size() > 0) {
       quarantine_.PushList(q);
+<<<<<<< HEAD
       while (quarantine_.size() > flags()->quarantine_size) {
+=======
+      while (quarantine_.size() > (uptr)flags()->quarantine_size) {
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
         QuarantinePop();
       }
     }
@@ -704,7 +712,11 @@ static u8 *Allocate(uptr alignment, uptr size, AsanStackTrace *stack) {
     PoisonHeapPartialRightRedzone(addr + rounded_size - REDZONE,
                                   size & (REDZONE - 1));
   }
+<<<<<<< HEAD
   if (size <= flags()->max_malloc_fill_size) {
+=======
+  if (size <= (uptr)(flags()->max_malloc_fill_size)) {
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
     REAL(memset)((void*)addr, 0, rounded_size);
   }
   return (u8*)addr;

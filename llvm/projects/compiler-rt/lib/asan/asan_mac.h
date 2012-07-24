@@ -46,6 +46,10 @@ enum {
 namespace __asan {
 
 int GetMacosVersion();
+<<<<<<< HEAD
+=======
+void ReplaceCFAllocator();
+>>>>>>> 853733e772b2885d93fdf994dedc4a1b5dc1369e
 
 }  // namespace __asan
 
