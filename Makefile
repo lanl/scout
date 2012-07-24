@@ -52,8 +52,7 @@ test:
 	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
 	@(cd $(build_dir)/test; cmake $(cmake_flags) ../../test)
 	@(cd $(build_dir)/test; make)
-	@(cd $(build_dir)/test; ARGS="-D ExperimentalTest --no-compress-output" make test)
-	@(cd $(build_dir)/test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
+	@(cd $(build_dir)/test; ARGS="-D ExperimentalTest --no-compress-output" make test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
 
 .PHONY: xcode
 xcode:;
