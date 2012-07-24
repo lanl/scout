@@ -375,7 +375,7 @@ typedef std::pair<Value*, APInt> RepeatedValue;
 /// nodes in Ops along with their weights (how many times the leaf occurs).  The
 /// original expression is the same as
 ///   (Ops[0].first op Ops[0].first op ... Ops[0].first)  <- Ops[0].second times
-/// op 
+/// op
 ///   (Ops[1].first op Ops[1].first op ... Ops[1].first)  <- Ops[1].second times
 /// op
 ///   ...
@@ -1581,7 +1581,8 @@ void Reassociate::OptimizeInst(Instruction *I) {
 
   // If this is an interior node of a reassociable tree, ignore it until we
   // get to the root of the tree, to avoid N^2 analysis.
-  if (BO->hasOneUse() && BO->use_back()->getOpcode() == BO->getOpcode())
+  unsigned Opcode = BO->getOpcode();
+  if (BO->hasOneUse() && BO->use_back()->getOpcode() == Opcode)
     return;
 
   // If this is an add tree that is used by a sub instruction, ignore it

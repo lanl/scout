@@ -1188,7 +1188,7 @@ protected:
     ShouldFoldAtomicFences = fold;
   }
 
-  /// setInsertFencesForAtomic - Set if the the DAG builder should
+  /// setInsertFencesForAtomic - Set if the DAG builder should
   /// automatically insert fences and reduce the order of atomic memory
   /// operations to Monotonic.
   void setInsertFencesForAtomic(bool fence) {
@@ -1318,7 +1318,7 @@ public:
   /// registers.  If false is returned, an sret-demotion is performed.
   ///
   virtual bool CanLowerReturn(CallingConv::ID /*CallConv*/,
-			      MachineFunction &/*MF*/, bool /*isVarArg*/,
+                              MachineFunction &/*MF*/, bool /*isVarArg*/,
                const SmallVectorImpl<ISD::OutputArg> &/*Outs*/,
                LLVMContext &/*Context*/) const
   {
