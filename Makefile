@@ -73,7 +73,7 @@
 ##### PARALLEL BUILD CONFIGURATION 
 #
 ifdef SC_BUILD_NTHREADS
-  make_flags := -j $(SC_BUILD_NTHREADS)
+  make_flags := --jobs=$(SC_BUILD_NTHREADS)
 endif
 #
 #####

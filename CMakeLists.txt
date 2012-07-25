@@ -84,7 +84,7 @@ project(Scout)
 
   enable_testing()
 
-  set(CMAKE_VERBOSE_MAKEFILE ON)
+  set(CMAKE_VERBOSE_MAKEFILE OFF)
 
   ##### PACKAGE CREATION (via CPack)
   #
@@ -281,17 +281,15 @@ project(Scout)
   #
   # Summary of subprojects:
   #
-  #    - utils  : a helpful set of utilities for general use.
+  #    - tools  : various tools that support scout development.
   #    - llvm   : our modified/extended versions of llvm, clang.
   #    - lib    : supporting libraries (e.g. the runtime).
-  #    - tools  : various tools that support scout development.
   #    - sandbox: proof-of-concept test codes.
   #    - tests  : regression testing
   #
-  add_subdirectory(utils)       # some helpful utilities we use during the build process
+  add_subdirectory(tools)       # various command line tools for the build and development
   add_subdirectory(llvm)        # scout compiler based on active llvm development
   add_subdirectory(lib)         # scout runtime and standard libraries
-  add_subdirectory(tools)       # various command line tools
   add_subdirectory(sandbox)     # proof-of-concept test codes
 
   set(SC_ENABLE_REGRESS_TESTS ON CACHE STRING "Building the suite of regression tests.")

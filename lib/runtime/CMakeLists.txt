@@ -48,27 +48,29 @@ if(${CUDA_FOUND})
 endif()
 
 if(SC_ENABLE_OPENGL) 
+
   # Add OpenGL source files to the build...
   file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
-if(${MPI_FOUND})
-  file(GLOB gl_srcs_mpi opengl/mpi/*.cpp)
-  list(APPEND gl_srcs ${gl_srcs_mpi})
-endif()
 
   # Add supporting opengl shaders to the build dependencies.  In this
   # case we actually package up the shaders into the library source by
   # converting them into C/C++ constant char strings that are included
-  # into the build process...  See the toplevel utils/glsl2cstr for
-  # details...
+  # into the build process...  See the toplevel tools/glsl-to-str for
+  # details.
+  # 
 
+  # We need a directory to output the generated/wrapped shaders. 
+  if (NOT EXISTS ${SC_BINARY_DIR}/include) 
+    file(MAKE_DIRECTORY ${SC_BINARY_DIR}/include) 
+  endif()
 
   # Make sure the shaders actually compile before we pack
   # them into the runtime library for use.  We do this 
   # using the 'glslcc' utility (in the toplevel level utils
   # directory). 
   file(GLOB gl_vert_shaders opengl/glsl/*_vs.glsl) 
-  set(GLSLCC    ${SC_BINARY_DIR}/bin/glslcc)
+  set(GLSLCC    ${SC_BINARY_DIR}/bin/glsl-cc)
   foreach(v_shader ${gl_vert_shaders}) 
 
     get_filename_component(name ${v_shader} NAME_WE) # file name w/out extension
@@ -118,28 +120,27 @@ endif()
       )
   endforeach()
 
-
   # If all the shaders compiled we then add a custom step in which we
   # convert them into C character string format so they may be
   # embedded within the runtime library.
   file(GLOB gl_shaders opengl/glsl/*.glsl)
-  set(GLSL2CSTR ${SC_BINARY_DIR}/bin/glsl2cstr)
+  set(GLSL2STR ${SC_BINARY_DIR}/bin/glsl-to-str)
   foreach(shader ${gl_shaders}) 
 
     get_filename_component(name ${shader} NAME_WE) # file name w/out extension
 
     add_custom_command(
       OUTPUT ${SC_BINARY_DIR}/include/${name}.h
-      COMMAND ${GLSL2CSTR} 
+      COMMAND ${GLSL2STR} 
         --in      ${shader} 
 	--out     ${SC_BINARY_DIR}/include/${name}.h 
         --varname ${name}
-      DEPENDS ${GLSL2CSTR} ${shader}
+      DEPENDS ${GLSL2STR} ${shader}
       )
 
     add_custom_target(generate_${name}
       ALL
-      DEPENDS ${SC_BINARY_DIR}/include/${name}.h ${GLSL2CSTR} 
+      DEPENDS ${SC_BINARY_DIR}/include/${name}.h ${GLSL2STR} 
       )
   endforeach()
 
@@ -148,6 +149,13 @@ endif()
   include_directories(${SC_BINARY_DIR}/include)
 
 endif()
+
+if(${MPI_FOUND})
+  file(GLOB gl_srcs_mpi opengl/mpi/*.cpp)
+  list(APPEND gl_srcs ${gl_srcs_mpi})
+endif()
+
+
 
 # Check to see if we should add PNG support... 
 if(SC_ENABLE_PNG_SUPPORT) 

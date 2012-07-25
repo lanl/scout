@@ -28,7 +28,7 @@
 #include <cstdio>
 
 // scout - AST view
-#include "clang/AST/ASTViewScout.h"
+#include "clang/Parse/ASTViewScout.h"
 #include <iostream>
 
 using namespace clang;

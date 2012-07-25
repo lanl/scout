@@ -29,7 +29,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 // scout - include Scout AST viewer
-#include "clang/AST/ASTViewScout.h"
+#include "clang/Parse/ASTViewScout.h"
 
 #include <iostream>
 
