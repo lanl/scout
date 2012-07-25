@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/AST/ASTViewScout.h"
+#include "clang/Parse/ASTViewScout.h"
 
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/Decl.h"

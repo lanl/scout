@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_AST_AST_VIEW_SCOUT_H
-#define LLVM_CLANG_AST_AST_VIEW_SCOUT_H
+#ifndef LLVM_CLANG_PARSE_AST_VIEW_SCOUT_H
+#define LLVM_CLANG_PARSE_AST_VIEW_SCOUT_H
 
 #include <string>
 #include <vector>
@@ -30,6 +30,6 @@ private:
 
 } // end namespace clang
 
-#endif // LLVM_CLANG_AST_AST_VIEW_SCOUT_H
+#endif // LLVM_CLANG_PARSE_AST_VIEW_SCOUT_H
 // ENDSCOUTCODE
 

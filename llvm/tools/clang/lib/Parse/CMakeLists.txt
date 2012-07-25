@@ -12,6 +12,8 @@ add_clang_library(clangParse
   ParseTemplate.cpp
   ParseTentative.cpp
   Parser.cpp
+# ndm - scout
+  ASTViewScout.cpp
   )
 
 add_dependencies(clangParse
