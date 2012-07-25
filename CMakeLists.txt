@@ -104,9 +104,3 @@ add_subdirectory(lib)         # scout runtime and standard libraries
 add_subdirectory(sandbox)     # proof-of-concept test codes
 add_subdirectory(tools)       # various command line tools
 
-# Note: For active developers we should always make sure that
-# regression checks are a standard practice...
-set(SCOUT_ENABLE_REGRESSIONS ON CACHE STRING "Enable the building of regression tests.")
-if (SCOUT_ENABLE_REGRESSIONS)
-  add_subdirectory(test)
-endif()
