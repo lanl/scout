@@ -110,7 +110,7 @@ all: $(build_dir)/Makefile compile
 
 $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
-	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+	@(cd $(build_dir); cmake $(cmake_flags) $(SC_BUILD_CMAKE_FLAGS)..;)
 
 
 .PHONY: compile

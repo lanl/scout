@@ -47,7 +47,7 @@ if(${CUDA_FOUND})
   list(APPEND rt_srcs ${rt_srcs_cuda})
 endif()
 
-if(SC_ENABLE_RT_OPENGL) 
+if(SC_ENABLE_OPENGL) 
   # Add OpenGL source files to the build...
   file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
@@ -152,11 +152,6 @@ endif()
 # Check to see if we should add PNG support... 
 if(SC_ENABLE_PNG_SUPPORT) 
   file(GLOB png_srcs png/*.cpp)
-endif()
-
-
-if (SC_ENABLE_RT_THREADS) 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
 endif()
 
 if(${MPI_FOUND})
