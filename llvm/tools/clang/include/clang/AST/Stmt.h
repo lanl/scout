@@ -556,6 +556,7 @@ class CompoundStmt : public Stmt {
 public:
   CompoundStmt(ASTContext &C, Stmt **StmtStart, unsigned NumStmts,
                SourceLocation LB, SourceLocation RB);
+  //             SourceLocation LB, SourceLocation RB, StmtClass SC = CompoundStmtClass);
 
   // \brief Build an empty compound statment with a location.
   explicit CompoundStmt(SourceLocation Loc)
@@ -2198,23 +2199,24 @@ public:
 };
 
 /// scout 
-/// VolumeRenderAllStmt - This represents a group of statements like { stmt stmt }.
-/// that work together to perform functionality required to render a volume
-class VolumeRenderAllStmt : public CompoundStmt {
+class VolumeRenderAllStmt : public Stmt {
   enum {OP, BODY, END_EXPR};
 
   IdentifierInfo* MeshII;
   VarDecl* MeshVarDecl;
+  IdentifierInfo* CameraII;
+  VarDecl* CameraVarDecl;
   Stmt* SubExprs[END_EXPR];
-  SourceLocation VolRenLoc;
+  SourceLocation VolRenLoc, LBracLoc, RBracLoc;
 
   public:
-  VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, unsigned NumStmts,
+  VolumeRenderAllStmt(ASTContext& C, 
       SourceLocation VolRenLoc, SourceLocation LB, SourceLocation RB,  
-      IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* body);
+      IdentifierInfo* MII, VarDecl* MVD, IdentifierInfo* CameraII, VarDecl* CameraVD,
+      CompoundStmt* body);
 
-  static bool classof(const CompoundStmt *T) 
-  { return (T->getStmtClass() == VolumeRenderAllStmtClass); }
+  explicit VolumeRenderAllStmt(EmptyShell Empty) : Stmt(VolumeRenderAllStmtClass, Empty) { }
+
   static bool classof(const VolumeRenderAllStmt *) { return true; }
   static bool classof(const Stmt *T) 
   { return (T->getStmtClass() == VolumeRenderAllStmtClass);}
@@ -2241,8 +2243,19 @@ class VolumeRenderAllStmt : public CompoundStmt {
     return MeshVarDecl;
   }
 
+  IdentifierInfo* getCamera(){
+    return CameraII;
+  }
+
+  VarDecl* getCameraVarDecl(){
+    return CameraVarDecl;
+  }
+
   SourceLocation getVolRenLoc() const { return VolRenLoc; }
   void setVolRenLoc(SourceLocation L) { VolRenLoc = L; }
+
+  SourceLocation getLBracLoc() const { return LBracLoc; }
+  SourceLocation getRBracLoc() const { return RBracLoc; }
 
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
@@ -2270,6 +2283,10 @@ class VolumeRenderAllStmt : public CompoundStmt {
 
   SourceRange getSourceRange() const {
     return SourceRange(VolRenLoc, SubExprs[BODY]->getLocEnd());
+  }
+
+  child_range children() {
+    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
 
 };

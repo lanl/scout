@@ -1220,8 +1220,8 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   RenderAll = 0;
 }
 
-RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S, 
-    bool GetLast, AggValueSlot AggSlot) {
+void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
+{ 
   DEBUG_OUT("EmitVolumeRenderallStmt");
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),S.getLBracLoc(),
                                 "LLVM IR generation of volume renderall statement ('{}')");
@@ -1373,27 +1373,6 @@ RValue CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S,
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
   
-  RValue RV;
-  if (!GetLast)
-    RV = RValue::get(0);
-  else {
-    // We have to special case labels here.  They are statements, but when put
-    // at the end of a statement expression, they yield the value of their
-    // subexpression.  Handle this by walking through all labels we encounter,
-    // emitting them before we evaluate the subexpr.
-    const Stmt *LastStmt = S.body_back();
-    while (const LabelStmt *LS = dyn_cast<LabelStmt>(LastStmt)) {
-      EmitLabel(LS->getDecl());
-      LastStmt = LS->getSubStmt();
-    }
-    
-    EnsureInsertPoint();
-    
-    RV = EmitAnyExpr(cast<Expr>(LastStmt), AggSlot);
-  }
-  
-  return RV;
-
 }
 
 void CodeGenFunction::EmitForStmt(const ForStmt &S) {

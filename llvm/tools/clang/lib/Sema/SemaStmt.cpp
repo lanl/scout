@@ -3701,6 +3701,8 @@ Sema::ActOnVolumeRenderAllStmt(
 
   // check camera if one was specified
 
+  VarDecl* CameraVD = 0;
+
   if (CameraII != 0) {
 
     LookupResult CameraResult(*this, CameraII, CameraLoc, LookupOrdinaryName);
@@ -3730,36 +3732,8 @@ Sema::ActOnVolumeRenderAllStmt(
 
   }
 
-  unsigned NumElts = elts.size();
-  Stmt **Elts = reinterpret_cast<Stmt**>(elts.release());
-  // If we're in C89 mode, check that we don't have any decls after stmts.  If
-  // so, emit an extension diagnostic.
-  if (!getLangOpts().C99 && !getLangOpts().CPlusPlus) {
-    // Note that __extension__ can be around a decl.
-    unsigned i = 0;
-    // Skip over all declarations.
-    for (; i != NumElts && isa<DeclStmt>(Elts[i]); ++i)
-      /*empty*/;
-
-    // We found the end of the list or a statement.  Scan for another declstmt.
-    for (; i != NumElts && !isa<DeclStmt>(Elts[i]); ++i)
-      /*empty*/;
-
-    if (i != NumElts) {
-      Decl *D = *cast<DeclStmt>(Elts[i])->decl_begin();
-      Diag(D->getLocation(), diag::ext_mixed_decls_code);
-    }
-  }
-  // Warn about unused expressions in statements.
-  for (unsigned i = 0; i != NumElts; ++i) {
-    // Ignore statements that are last in a statement expression.
-    if (isStmtExpr && i == NumElts - 1)
-      continue;
-    DiagnoseUnusedExprResult(Elts[i]);
-  }
-
-  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
-      NumElts, VolRenLoc, L, R, MeshII, MeshVD, body);
+  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context,
+      VolRenLoc, L, R, MeshII, MeshVD, CameraII, CameraVD, body);
 
   return Owned(vrs);
 }

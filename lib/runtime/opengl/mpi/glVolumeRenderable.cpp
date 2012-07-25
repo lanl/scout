@@ -29,7 +29,8 @@ glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
     int id, int root, MPI_Comm gcomm)
     :_npx(npx), _npy(npy), _npz(npz), _nx(nx), _ny(ny), _nz(nz),
     _x(x), _y(y), _z(z), _win_width(win_width), _win_height(win_height),
-    _trans_func(trans_func), _id(id), _root(root), _gcomm(gcomm)
+    _trans_func(trans_func), _id(id), _root(root), _gcomm(gcomm), 
+    _para_input(NULL), _block(NULL)
     
 {
   if (!hpgv_vis_valid()) {
@@ -86,9 +87,6 @@ glVolumeRenderable::~glVolumeRenderable()
   }
 
   if (_block) {
-    if (_block->volume_data[0]->data_original) {
-      free(_block->volume_data[0]->data_original);
-    }
     free(_block);
   }
 

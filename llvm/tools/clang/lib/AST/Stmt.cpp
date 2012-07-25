@@ -998,15 +998,18 @@ ElementRadius(0){
   
 }
 
-VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, Stmt **StmtStart, 
-    unsigned NumStmts, SourceLocation VolRenL,
+VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, SourceLocation VolRenLoc,
     SourceLocation LB, SourceLocation RB, 
-    IdentifierInfo* MII, VarDecl* MVD, CompoundStmt* Body)
-  : CompoundStmt(C, StmtStart, NumStmts, LB, RB),
-    VolRenLoc(VolRenL), MeshII(MII), MeshVarDecl(MVD) {
-
+    IdentifierInfo* MII, VarDecl* MVD, IdentifierInfo* CII,
+    VarDecl* CVD, CompoundStmt* Body)
+    : Stmt(VolumeRenderAllStmtClass),
+    LBracLoc(LB), RBracLoc(RB),
+    VolRenLoc(VolRenLoc), MeshII(MII), MeshVarDecl(MVD),
+    CameraII(CII), CameraVarDecl(CVD)
+{
+      setOp(0);
       setBody(Body);
-  }
+}
 
 const MeshType* VolumeRenderAllStmt::getMeshType() const {
   return dyn_cast<MeshType>(MeshVarDecl->getType().getTypePtr());

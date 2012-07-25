@@ -104,10 +104,25 @@ class ScoutVisitor : public RecursiveASTVisitor<ScoutVisitor>
         bc += rewriter_.ConvertToString(dims[i]);
       }
     }
+   
+    // window width/height arguments
+    bc += ", 1024, 1024, ";
+  
+    // camera argument 
+    IdentifierInfo* CameraII = vras->getCamera();
+  
+    std::string cameraName;
+    if (CameraII != 0) {
+      cameraName = "&" + CameraII->getName().str();
+    } else {
+          cameraName = "NULL";
+    }
+        
+    bc += cameraName + ", ";
     
     // One argument to the call is an apple block to hold body of renderall (transfer function closure)
-    bc += ", 1024, 1024, NULL, \
-    ^int(scout::block_t* block, scout::point_3d_t* pos, scout::rgba_t& color){";
+    bc += "^int(scout::block_t* block, scout::point_3d_t* pos, scout::rgba_t& color){";
+
     // Insert code to get values of data fields for transfer function closure
     size_t FieldCount = 0;
     const MeshDecl* MD = MT->getDecl();
