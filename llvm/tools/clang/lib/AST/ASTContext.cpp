@@ -885,11 +885,11 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   // scout - float vectors
   case BuiltinType::Float2:
   case BuiltinType::Float3:
-  case BuiltinType::Float4:
+  case BuiltinType::Float4: 
+  case BuiltinType::Float:      return Target->getFloatFormat();
   case BuiltinType::Double2:
   case BuiltinType::Double3:
-  case BuiltinType::Double4:  
-  case BuiltinType::Float:      return Target->getFloatFormat();
+  case BuiltinType::Double4: 
   case BuiltinType::Double:     return Target->getDoubleFormat();
   case BuiltinType::LongDouble: return Target->getLongDoubleFormat();
   }

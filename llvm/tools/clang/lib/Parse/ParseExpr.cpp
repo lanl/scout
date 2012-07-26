@@ -2522,12 +2522,17 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
   
   // set the dimensions and types based on the vector keyword
   
+  bool isFloatVec = false;
+  bool isDoubleVec = false;
+  
+  CanQualType elementType;
   switch(kind){
     case BuiltinType::Bool2:
     {
       expectKind = tok::kw_bool2;
       length = 2;
       type = Actions.Context.Bool2Ty;
+      elementType = Actions.Context.BoolTy;
       break;
     }
     case BuiltinType::Char2:
@@ -2535,6 +2540,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_char2;
       length = 2;
       type = Actions.Context.Char2Ty;
+      elementType = Actions.Context.CharTy;
       break;
     }
     case BuiltinType::Short2:
@@ -2542,6 +2548,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_short2;
       length = 2;
       type = Actions.Context.Short2Ty;
+      elementType = Actions.Context.ShortTy;
       break;
     } 
     case BuiltinType::Int2:
@@ -2549,6 +2556,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_int2;
       length = 2;
       type = Actions.Context.Int2Ty;
+      elementType = Actions.Context.IntTy;
       break;
     }
     case BuiltinType::Long2:
@@ -2556,6 +2564,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_long2;
       length = 2;
       type = Actions.Context.Long2Ty;
+      elementType = Actions.Context.LongTy;
       break;
     }
     case BuiltinType::Float2:
@@ -2563,6 +2572,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_float2;
       length = 2;
       type = Actions.Context.Float2Ty;
+      elementType = Actions.Context.FloatTy;
+      isFloatVec = true;
       break;
     }
     case BuiltinType::Double2:
@@ -2570,6 +2581,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_double2;
       length = 2;
       type = Actions.Context.Double2Ty;
+      elementType = Actions.Context.DoubleTy;
+      isDoubleVec = true;
       break;
     }
     case BuiltinType::Bool3:
@@ -2577,6 +2590,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_bool3;
       length = 3;
       type = Actions.Context.Bool3Ty;
+      elementType = Actions.Context.BoolTy;
       break;
     }
     case BuiltinType::Char3:
@@ -2584,6 +2598,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_char3;
       length = 3;
       type = Actions.Context.Char3Ty;
+      elementType = Actions.Context.CharTy;
       break;
     }
     case BuiltinType::Short3:
@@ -2591,6 +2606,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_short3;
       length = 3;
       type = Actions.Context.Short3Ty;
+      elementType = Actions.Context.ShortTy;
       break;
     } 
     case BuiltinType::Int3:
@@ -2598,6 +2614,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_int3;
       length = 3;
       type = Actions.Context.Int3Ty;
+      elementType = Actions.Context.IntTy;
       break;
     }
     case BuiltinType::Long3:
@@ -2605,6 +2622,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_long3;
       length = 3;
       type = Actions.Context.Long3Ty;
+      elementType = Actions.Context.LongTy;
       break;
     }
     case BuiltinType::Float3:
@@ -2612,6 +2630,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_float3;
       length = 3;
       type = Actions.Context.Float3Ty;
+      elementType = Actions.Context.FloatTy;
+      isFloatVec = true;
       break;
     }
     case BuiltinType::Double3:
@@ -2619,6 +2639,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_double3;
       length = 3;
       type = Actions.Context.Double3Ty;
+      elementType = Actions.Context.DoubleTy;
+      isDoubleVec = true;
       break;
     }      
     case BuiltinType::Bool4:
@@ -2626,6 +2648,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_bool4;
       length = 4;
       type = Actions.Context.Bool4Ty;
+      elementType = Actions.Context.BoolTy;
       break;
     }
     case BuiltinType::Char4:
@@ -2633,6 +2656,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_char4;
       length = 4;
       type = Actions.Context.Char4Ty;
+      elementType = Actions.Context.CharTy;
       break;
     }
     case BuiltinType::Short4:
@@ -2640,6 +2664,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_short4;
       length = 4;
       type = Actions.Context.Short4Ty;
+      elementType = Actions.Context.ShortTy;
       break;
     } 
     case BuiltinType::Int4:
@@ -2647,6 +2672,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_int4;
       length = 4;
       type = Actions.Context.Int4Ty;
+      elementType = Actions.Context.IntTy;
       break;
     }
     case BuiltinType::Long4:
@@ -2654,6 +2680,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_long4;
       length = 4;
       type = Actions.Context.Long4Ty;
+      elementType = Actions.Context.LongTy;
       break;
     }
     case BuiltinType::Float4:
@@ -2661,6 +2688,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_float4;
       length = 4;
       type = Actions.Context.Float4Ty;
+      elementType = Actions.Context.FloatTy;
+      isFloatVec = true;
       break;
     }
     case BuiltinType::Double4:
@@ -2668,6 +2697,8 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       expectKind = tok::kw_double4;
       length = 4;
       type = Actions.Context.Double4Ty;
+      elementType = Actions.Context.DoubleTy;
+      isDoubleVec = true;
       break;
     }      
     default:
@@ -2691,16 +2722,26 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
       return ExprError();
     }
 
-    if(vectorType == ScoutVectorColor){
-      for(size_t i = 0; i < Exprs.size(); ++i){
+    for(size_t i = 0; i < Exprs.size(); ++i){
+      if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(Exprs[i])){
+        if(isFloatVec){
+          float floatValue = fl->getValueAsApproximateDouble();
+          fl->setValue(Actions.Context, llvm::APFloat(floatValue));
+        }
+        else if(isDoubleVec){
+          double doubleValue = fl->getValueAsApproximateDouble();
+          fl->setValue(Actions.Context, llvm::APFloat(doubleValue));
+        }
         
-        if(FloatingLiteral* fl = dyn_cast<FloatingLiteral>(Exprs[i])){
+        if(vectorType == ScoutVectorColor){
           double v = fl->getValue().convertToDouble();
           if(v < 0 || v > 1){
             Diag(CommaLocs[i], diag::warn_vector_color_clamp);
           }
         }
-        else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(Exprs[i])){
+      }
+      else if(IntegerLiteral* il = dyn_cast<IntegerLiteral>(Exprs[i])){
+        if(vectorType == ScoutVectorColor){
           double v = il->getValue().roundToDouble(true);
           if(v < 0 || v > 1){
             Diag(CommaLocs[i], diag::warn_vector_color_clamp);
@@ -2765,7 +2806,7 @@ ExprResult Parser::ParseScoutVectorRHS(BuiltinType::Kind kind, ScoutVectorType v
     InitListExpr(Actions.Context, Loc, &initExprs[0], 
                  initExprs.size(), Loc);
     
-    le->setType(type);
+    le->setType(elementType);
         
     return le;
   }
