@@ -3739,42 +3739,50 @@ Sema::ActOnRenderAllElementsVariable(Scope* S,
 }
 
 StmtResult
-Sema::ActOnVolumeRenderAllStmt(SourceLocation VolRenLoc,
+Sema::ActOnVolumeRenderAllStmt(
+        Scope* scope, SourceLocation VolRenLoc,
         SourceLocation L, SourceLocation R,
-        IdentifierInfo* MII, VarDecl* MVD, MultiStmtArg elts, 
+        IdentifierInfo* MeshII, VarDecl* MeshVD, 
+        IdentifierInfo* CameraII, SourceLocation CameraLoc,
+        MultiStmtArg elts, 
         CompoundStmt* body, bool isStmtExpr)
 {
 
-  unsigned NumElts = elts.size();
-  Stmt **Elts = reinterpret_cast<Stmt**>(elts.release());
-  // If we're in C89 mode, check that we don't have any decls after stmts.  If
-  // so, emit an extension diagnostic.
-  if (!getLangOpts().C99 && !getLangOpts().CPlusPlus) {
-    // Note that __extension__ can be around a decl.
-    unsigned i = 0;
-    // Skip over all declarations.
-    for (; i != NumElts && isa<DeclStmt>(Elts[i]); ++i)
-      /*empty*/;
+  // check camera if one was specified
 
-    // We found the end of the list or a statement.  Scan for another declstmt.
-    for (; i != NumElts && !isa<DeclStmt>(Elts[i]); ++i)
-      /*empty*/;
+  VarDecl* CameraVD = 0;
 
-    if (i != NumElts) {
-      Decl *D = *cast<DeclStmt>(Elts[i])->decl_begin();
-      Diag(D->getLocation(), diag::ext_mixed_decls_code);
+  if (CameraII != 0) {
+
+    LookupResult CameraResult(*this, CameraII, CameraLoc, LookupOrdinaryName);
+
+    LookupName(CameraResult, scope);
+
+    if(CameraResult.getResultKind() != LookupResult::Found){
+      Diag(CameraLoc, diag::err_unknown_camera_variable_renderall) << CameraII;
+      return false;
     }
-  }
-  // Warn about unused expressions in statements.
-  for (unsigned i = 0; i != NumElts; ++i) {
-    // Ignore statements that are last in a statement expression.
-    if (isStmtExpr && i == NumElts - 1)
-      continue;
-    DiagnoseUnusedExprResult(Elts[i]);
+
+    NamedDecl* CameraND = CameraResult.getFoundDecl();
+
+    if(!isa<VarDecl>(CameraND)){
+      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
+      return false;
+    }
+
+    VarDecl* CameraVD = cast<VarDecl>(CameraND);
+
+    QualType CameraVarType = CameraVD->getType();
+
+    if (CameraVarType.getAsString() != "scout::glCamera") {
+      Diag(CameraLoc, diag::err_not_camera_variable_renderall) << CameraII;
+      return false;
+    }
+
   }
 
-  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context, Elts, 
-      NumElts, VolRenLoc, L, R, MII, MVD, body);
+  VolumeRenderAllStmt* vrs = new (Context) VolumeRenderAllStmt(Context,
+      VolRenLoc, L, R, MeshII, MeshVD, CameraII, CameraVD, body);
 
   return Owned(vrs);
 }

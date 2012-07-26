@@ -2587,6 +2587,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   
   const MeshType *MT;
   
+  IdentifierInfo* CameraII = 0;
+  SourceLocation CameraLoc;
+
   if(elements){
     if(MemberExpr* me = dyn_cast<MemberExpr>(ParseExpression().get())){
       if(FieldDecl* fd = dyn_cast<FieldDecl>(me->getMemberDecl())){
@@ -2803,6 +2806,28 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
           break;
       }
     }
+   
+    // If 3D and forall type is cell(volume renderall), it can accept a camera and window
+    // ala "with camera onto win", where camera and window were
+    // defined previously.  If none are given it can do a default, but that is
+    // probably not going to be a good thing.  You may not see the volume if the 
+    // camera is not pointing at it.
+
+
+    if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
+      if (Tok.is(tok::kw_with)) {
+        ConsumeToken();
+        if(Tok.isNot(tok::identifier)){
+          Diag(Tok, diag::err_expected_ident);
+          SkipUntil(tok::semi);
+          return StmtError();
+        }
+    
+        CameraII = Tok.getIdentifierInfo();
+        CameraLoc = Tok.getLocation();
+        ConsumeToken();
+      }
+    }
         
     if(Tok.is(tok::kw_where)){
       ConsumeToken();
@@ -2844,8 +2869,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   // then we branch off here into other code to handle it.
 
   if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
-    return(ParseVolumeRenderAll(ForAllLoc, attrs, MeshII, MVD, Op, 
-          LParenLoc, RParenLoc));
+    return(ParseVolumeRenderAll(getCurScope(), ForAllLoc, attrs, MeshII, MVD, 
+          CameraII, CameraLoc, Op, LParenLoc, RParenLoc));
   }
 
   SourceLocation BodyLoc = Tok.getLocation();
@@ -3297,9 +3322,10 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   return ForAllArrayResult;
 }
 
-StmtResult Parser::ParseVolumeRenderAll(SourceLocation VolRenLoc,
-    ParsedAttributes &attrs,
-    IdentifierInfo* MeshII, VarDecl* MVD, Expr* Op,
+StmtResult Parser::ParseVolumeRenderAll(Scope* scope,
+    SourceLocation VolRenLoc, ParsedAttributes &attrs,
+    IdentifierInfo* MeshII, VarDecl* MVD, 
+    IdentifierInfo* CameraII, SourceLocation CameraLoc, Expr* Op,
     SourceLocation OpLParenLoc, SourceLocation OpRParenLoc){
 
   ParseScope CompoundScope(this, Scope::DeclScope);
@@ -3333,7 +3359,7 @@ StmtResult Parser::ParseVolumeRenderAll(SourceLocation VolRenLoc,
 
   // TBD do more in here
 
-  return Actions.ActOnVolumeRenderAllStmt(VolRenLoc, LBraceLoc, RBraceLoc, 
-      MeshII, MVD, move_arg(Stmts), compoundStmt, false);
+  return Actions.ActOnVolumeRenderAllStmt(scope, VolRenLoc, LBraceLoc, RBraceLoc, 
+      MeshII, MVD, CameraII, CameraLoc, move_arg(Stmts), compoundStmt, false);
 
 }
