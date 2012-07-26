@@ -1073,6 +1073,10 @@ CanThrowResult Sema::canThrow(const Expr *E) {
     // These expressions can never throw.
     return CT_Cannot;
 
+  // scout - cannot throw on scout vector member expr
+  case Expr::ScoutVectorMemberExprClass:
+    return CT_Cannot;
+
 #define STMT(CLASS, PARENT) case Expr::CLASS##Class:
 #define STMT_RANGE(Base, First, Last)
 #define LAST_STMT_RANGE(BASE, FIRST, LAST)

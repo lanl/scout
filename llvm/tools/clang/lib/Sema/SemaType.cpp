@@ -743,8 +743,10 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
 
       
-  // scout - vector types
-
+  // scout - vector and mesh types
+  case DeclSpec::TST_mesh:
+    assert(false && "invalid case for TST_mesh");
+    break;  
   case DeclSpec::TST_bool2:
     Result = Context.Bool2Ty;  
   break;

@@ -1002,16 +1002,16 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       
       std::string mn = MemberName.getAsString();
       unsigned index;
-      if(mn == "x" || isColor && mn == "r"){
+      if(mn == "x" || (isColor && mn == "r")){
         index = 0;
       }
-      else if(mn == "y" || isColor && mn == "g"){
+      else if(mn == "y" || (isColor && mn == "g")){
         index = 1;
       }
-      else if(mn == "z" || isColor && mn == "b"){
+      else if(mn == "z" || (isColor && mn == "b")){
         index = 2;
       }
-      else if(mn == "w" || isColor && mn == "a"){
+      else if(mn == "w" || (isColor && mn == "a")){
         index = 3;
       }
       else{

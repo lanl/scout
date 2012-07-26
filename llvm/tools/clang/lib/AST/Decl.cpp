@@ -2839,10 +2839,6 @@ MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
   return M;
 }
 
-SourceLocation MeshDecl::getOuterLocStart() const {
-  
-}
-
 SourceRange MeshDecl::getSourceRange() const {
   SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
   return SourceRange(getOuterLocStart(), E);
