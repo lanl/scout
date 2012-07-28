@@ -3302,7 +3302,8 @@ public:
   
   SourceLocation getInnerLocStart() const { return getLocStart(); }
   
-  SourceLocation getOuterLocStart() const;
+  SourceLocation getOuterLocStart() const { return getLocStart(); }
+  
   virtual SourceRange getSourceRange() const;
   
   bool isThisDeclarationADefinition() const {

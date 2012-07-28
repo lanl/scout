@@ -264,7 +264,8 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_enum:
     case TST_error:
 
-    // scout - Scout vector types
+    // scout - Scout vector and mesh types
+    case TST_mesh:
     case TST_bool2:
     case TST_bool3:
     case TST_bool4:

@@ -602,7 +602,7 @@ int hpgv_para_read(para_input_t **out_para_input, char *buf, int size)
     count += readsize;
 
     if (count != size || count != totalbyte) {
-        fprintf(stderr, "Inconsistent read %d %d %ld\n", count, size, totalbyte);
+      fprintf(stderr, "Inconsistent read %d %d %ld\n", count, size, (long)totalbyte);
         exit(HPGV_ERR_IO);
     }
 
