@@ -446,10 +446,42 @@ public:
     }
     case 3:
     {
-      assert(false && "runtime/tbq.cpp 3d case not yet implemented");
+      uint32_t x = *bl->xEnd - *bl->xStart;
+      uint32_t y = *bl->yEnd - *bl->yStart;
+      uint32_t z = *bl->zEnd - *bl->zStart;
+
+      extent = z * y * x;
+      chunk = extent / (threadVec_.size() * 2);
+
+      if(chunk == 0){
+        chunk = 1;
+      }
+
+      for(uint32_t i = 0; i < extent; i += chunk){
+        end = i + chunk;
+
+        if(end > extent){
+          end = extent;
+        }
+
+        item = new Item;
+
+        item->blockLiteral = createSubBlock(bl, numDimensions,
+            numFields);
+
+        item->dimensions = 3;
+        item->xStart =  (i % (x * y)) % x;
+        item->xEnd =  (end % (x * y)) % x;
+        item->yStart = (i % (x * y)) / x;
+        item->yEnd = end % (x * y) / x;
+        item->zStart = i / (x * y);
+        item->zEnd = end / (x * y);
+
+        queue->add(item);
+      }
       break;
     }
-    }
+    } //switch
 
     queueMap_[(void*)bl->invoke] = queue;
 
