@@ -70,6 +70,10 @@ public:
     pthread_create(&thread_, 0, _runThread, (void*)this);
   }
 
+  void stop() {
+	  pthread_detach(thread_);
+  }
+
   virtual void run() = 0;
 
   void await(){
@@ -300,6 +304,20 @@ public:
         }
 
         bl->invoke(bl);
+
+        switch (item->dimensions) {
+        case 3:
+          free(bl->zStart);
+          free(bl->zEnd);
+        case 2:
+          free(bl->yStart);
+          free(bl->yEnd);
+        case 1:
+          free(bl->xStart);
+          free(bl->xEnd);
+        }
+        free(item->blockLiteral);
+        delete item;
       }
 
       finishSem_.release();
@@ -332,19 +350,19 @@ public:
       ti->start();
       threadVec_.push_back(ti);
     }
+
+    queue_ = new Queue;
   }
 
   ~tbq_rt_(){
     size_t n = threadVec_.size();
 
     for(size_t i = 0; i < n; ++i){
+      threadVec_[i]->stop();
       delete threadVec_[i];
     }
 
-    for(QueueMap_::iterator itr = queueMap_.begin(),
-        itrEnd = queueMap_.end(); itr != itrEnd; ++itr){
-      delete itr->second;
-    }
+    delete queue_;
   }
 
   void* createSubBlock(BlockLiteral* bl,
@@ -369,15 +387,8 @@ public:
     return bp;
   }
 
-  Queue* queue_(void* blockLiteral, int numDimensions, int numFields){
+ void queueblocks_(void* blockLiteral, int numDimensions, int numFields){
     BlockLiteral* bl = (BlockLiteral*)blockLiteral;
-
-    QueueMap_::iterator itr = queueMap_.find((void*)bl->invoke);
-    if(itr != queueMap_.end()){
-      return itr->second;
-    }
-
-    Queue* queue = new Queue;
 
     Item* item;
     uint32_t extent;
@@ -406,7 +417,7 @@ public:
         item->xStart = i;
         item->xEnd = end;
 
-        queue->add(item);
+        queue_->add(item);
       }
       break;
     }
@@ -440,7 +451,7 @@ public:
         item->yStart = i / x;
         item->yEnd = end / x;
 
-        queue->add(item);
+        queue_->add(item);
       }
       break;
     }
@@ -477,25 +488,20 @@ public:
         item->zStart = i / (x * y);
         item->zEnd = end / (x * y);
 
-        queue->add(item);
+        queue_->add(item);
       }
       break;
     }
     } //switch
-
-    queueMap_[(void*)bl->invoke] = queue;
-
-    return queue;
   }
 
   void run(void* blockLiteral, int numDimensions, int numFields){
-    Queue* queue = queue_(blockLiteral, numDimensions, numFields);
-    queue->reset();
+    queueblocks_(blockLiteral, numDimensions, numFields);
 
     size_t n = threadVec_.size();
 
     for(size_t i = 0; i < n; ++i){
-      threadVec_[i]->begin(queue);
+      threadVec_[i]->begin(queue_);
     }
 
     // run ...
@@ -509,7 +515,7 @@ private:
   typedef map<void*, Queue*> QueueMap_;
 
   tbq_rt* o_;
-  QueueMap_ queueMap_;
+  Queue *queue_;
   ThreadVec threadVec_;
 };
 
