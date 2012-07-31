@@ -419,6 +419,9 @@ int main(int argc_, const char **argv_) {
 #endif
   Driver TheDriver(Path.str(), llvm::sys::getDefaultTargetTriple(),
                    "a.out", IsProduction, Diags);
+  
+  // Patch the default driver name to match 'scc' vs. clang. 
+  TheDriver.setTitle("scc \"clang & gcc-compatible\" driver");
 
   // Attempt to find the original path used to invoke the driver, to determine
   // the installed path. We do this manually, because we want to support that
