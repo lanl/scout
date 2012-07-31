@@ -2206,11 +2206,14 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     
     std::string args;
     
-    if(getLangOpts().ScoutNvidiaGPU || getLangOpts().ScoutAMDGPU){
-      args = "true";
+    if(getLangOpts().ScoutNvidiaGPU){
+      args = "ScoutGPUCUDA";
+    }
+    else if(getLangOpts().ScoutAMDGPU){
+      args = "ScoutGPUOpenCL";
     }
     else{
-      args = "false";
+      args = "ScoutGPUNone";
     }
     
     if(fd->isMain()){

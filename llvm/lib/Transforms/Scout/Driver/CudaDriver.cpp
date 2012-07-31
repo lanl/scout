@@ -205,13 +205,13 @@ void CudaDriver::create(Function *func,
 
   Value *colors;
   if(func->getName().startswith("renderall")) {
-    if(!_module.getNamedGlobal("__sc_device_renderall_uniform_colors")) {
+    if(!_module.getNamedGlobal("__sc_cuda_device_renderall_uniform_colors")) {
       colors = new GlobalVariable(_module,
                                   getCUdeviceptrTy(),
                                   false,
                                   GlobalValue::ExternalLinkage,
                                   0,
-                                  "__sc_device_renderall_uniform_colors");
+                                  "__sc_cuda_device_renderall_uniform_colors");
 
     }
   }
@@ -252,7 +252,7 @@ void CudaDriver::create(Function *func,
 	  _builder.CreateGlobalStringPtr(arg->getName());
 
 	Value* args[] = {meshName, meshFieldName(i)}; 
-	Value* dp = insertCall("__sc_get_gpu_device_ptr", args, args+2);
+	Value* dp = insertCall("__sc_get_cuda_device_ptr", args, args+2);
 	  
 	Value* np = _builder.CreateIsNull(dp);
 	  
@@ -280,7 +280,7 @@ void CudaDriver::create(Function *func,
         memcpyList.push_back(Memcpy(arg, d_arg, size));
 	  
 	Value* args2[] = {meshName, meshFieldName(i), ld}; 
-	insertCall("__sc_put_gpu_device_ptr", args2, args2+3);
+	insertCall("__sc_put_cuda_device_ptr", args2, args2+3);
 	  
 	_builder.CreateBr(mb);
 	  
@@ -599,7 +599,7 @@ Value *CudaDriver::insertModuleLoadData(Value *a, Value *b) {
 
 Value *CudaDriver::insertScoutGetModule(Value *a, Value *b) {
   Value *args[] = { a, b };
-  return insertCheckedCall("__sc_get_gpu_module", ArrayRef< Value * >(args));
+  return insertCheckedCall("__sc_get_cuda_module", ArrayRef< Value * >(args));
 }
 
 Value *CudaDriver::insertModuleLoadDataEx(Value *a, Value *b, Value *c, Value *d, Value *e) {

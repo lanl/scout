@@ -17,11 +17,17 @@ extern scout::glCamera* __sc_camera;
 extern const size_t __sc_initial_width;
 extern const size_t __sc_initial_height;
 
+enum ScoutGPUType{
+  ScoutGPUNone,
+  ScoutGPUCUDA,
+  ScoutGPUOpenCL
+};
+
 void __sc_init_sdl(size_t width, size_t height, scout::glCamera* cam = NULL);
 
-void __sc_init(int argc, char** argv, bool gpu);
+void __sc_init(int argc, char** argv, ScoutGPUType gpuType);
 
-void __sc_init(bool gpu);
+void __sc_init(ScoutGPUType gpuType);
 
 void __sc_end();
 
