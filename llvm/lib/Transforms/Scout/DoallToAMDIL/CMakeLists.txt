@@ -8,11 +8,8 @@
 # Scout with CMake.
 #
 
-add_subdirectory(Driver)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
-if(${CUDA_FOUND})
-  add_subdirectory(CudaError)
-endif()
-
-add_subdirectory(DoallToPTX)
-add_subdirectory(DoallToAMDIL)
+add_llvm_library(LLVMdoallToAMDIL
+  DoallToAMDIL.cpp
+)

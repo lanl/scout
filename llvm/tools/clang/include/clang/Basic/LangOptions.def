@@ -44,6 +44,7 @@
 // scout language options
 LANGOPT(Scout               , 1, 0, "Scout")
 LANGOPT(ScoutNvidiaGPU      , 1, 0, "ScoutNvidiaGPU")
+LANGOPT(ScoutAMDGPU         , 1, 0, "ScoutAMDGPU")
 LANGOPT(ScoutVectorize      , 1, 0, "ScoutNvidiaVectorize")
 LANGOPT(ScoutCPUThreads     , 1, 0, "ScoutCPUThreads")
 

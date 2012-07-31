@@ -972,11 +972,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
   ForallArrayFn->setName("forall_array");
-  
-  if(isGPU()){
-    // ...
-  }
-  
+    
   if(isSequential() || isGPU()){
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
