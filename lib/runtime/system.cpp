@@ -285,6 +285,11 @@ namespace{
       ostr << indent;
 
       switch(kind_){
+      case None:
+      case System:
+      case Any:
+        assert(false && "invalid kind");
+
       case Socket:
 	ostr << "Socket";
 	break;

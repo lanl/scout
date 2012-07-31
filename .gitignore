@@ -14,9 +14,9 @@
 # Merge files created by git.
 *.orig
 # Byte compiled python modules.
-*.pyc
+.pyc
 # vim swap files
-.*.swp
+*.swp
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).
@@ -27,5 +27,7 @@ cscope.files
 cscope.out
 autoconf/aclocal.m4
 autoconf/autom4te.cache
+
+# Avoid scout's local build directory. 
 build
 

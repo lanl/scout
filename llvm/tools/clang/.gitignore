@@ -24,5 +24,3 @@
 cscope.files
 cscope.out
 
-# scout, ignore changes to Xcode project
-clang.xcodeproj/

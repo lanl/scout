@@ -29,7 +29,6 @@ language.
 Directory descriptions: 
 
    cmake   - cmake-centric configuration files
-   config  - configuration centric files (currently unused) 
    docs    - documentation related files 
    include - scout-centric include files
    lib     - scout-centric libraries (runtime and standard library) 
