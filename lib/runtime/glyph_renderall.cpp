@@ -18,7 +18,7 @@
 #include "runtime/types.h"
 
 #ifdef SC_ENABLE_CUDA
-#include "runtime/scout_gpu.h"
+#include "runtime/cuda/scout_cuda.h"
 #endif
 
 // ------  LLVM - globals accessed by LLVM / CUDA driver
@@ -53,9 +53,9 @@ namespace scout
     _renderable = new glGlyphRenderable(npoints);
 
 #ifdef SC_ENABLE_CUDA
-    if(__sc_gpu){
+    if(__sc_cuda){
       // register buffer object for access by CUDA, return handle 
-      assert(cuGraphicsGLRegisterBuffer(&__sc_device_resource, 
+      assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource, 
             _renderable->get_buffer_object_id(), 
             CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
           CUDA_SUCCESS);
@@ -85,7 +85,7 @@ namespace scout
   {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #ifdef SC_ENABLE_CUDA
-    if(__sc_gpu){
+    if(__sc_cuda){
       map_gpu_resources();
     }
     else{
@@ -100,7 +100,7 @@ namespace scout
   void glyph_renderall::end()
   {
 #ifdef SC_ENABLE_CUDA
-    if(__sc_gpu){
+    if(__sc_cuda){
       unmap_gpu_resources();
     }
     else{
@@ -127,13 +127,13 @@ namespace scout
   {
 #ifdef SC_ENABLE_CUDA
     // map one graphics resource for access by CUDA
-    assert(cuGraphicsMapResources(1, &__sc_device_resource, 0) == CUDA_SUCCESS);
+    assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
     size_t bytes;
     // return a pointer by which the mapped graphics resource may be accessed.
     assert(cuGraphicsResourceGetMappedPointer(
           &__sc_device_glyph_renderall_vertex_data, &bytes, 
-          __sc_device_resource) == CUDA_SUCCESS);
+          __sc_cuda_device_resource) == CUDA_SUCCESS);
 #endif // SC_ENABLE_CUDA
   }
 
@@ -142,7 +142,7 @@ namespace scout
   void glyph_renderall::unmap_gpu_resources()
   {
 #ifdef SC_ENABLE_CUDA
-    assert(cuGraphicsUnmapResources(1, &__sc_device_resource, 0) 
+    assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) 
         == CUDA_SUCCESS);
 #endif // SC_ENABLE_CUDA
   }

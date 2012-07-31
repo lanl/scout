@@ -43,7 +43,7 @@ endif()
 
 if(${CUDA_FOUND})
   include_directories(${CUDA_INCLUDE_DIRS})
-  file(GLOB rt_srcs_cuda gpu/*.cpp)
+  file(GLOB rt_srcs_cuda cuda/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_cuda})
 endif()
 

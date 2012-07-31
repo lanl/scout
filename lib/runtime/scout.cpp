@@ -6,7 +6,7 @@
 #define SC_USE_PNG
 
 #ifdef SC_ENABLE_CUDA
-#include "runtime/scout_gpu.h"
+#include "runtime/cuda/scout_cuda.h"
 #include "runtime/cuda/cuda.h"
 #endif // SC_ENABLE_CUDA
 
@@ -22,6 +22,12 @@ glSDL* __sc_glsdl = 0;
 
 size_t __sc_initial_width = 768;
 size_t __sc_initial_height = 768;
+
+enum ScoutGPUType{
+  ScoutGPUNone,
+  ScoutGPUCUDA,
+  ScoutGPUOpenCL
+};
 
 extern "C"
 void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
@@ -62,24 +68,35 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
   }
 }
 
-void __sc_init(int argc, char** argv, bool gpu){
+void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
   __sc_tbq = new tbq_rt;
 
-
-  if(gpu){
+  switch(gpuType){
+    case ScoutGPUCUDA:
+    {
 #ifdef SC_ENABLE_CUDA
-    __sc_init_sdl(__sc_initial_width, __sc_initial_height);
-    __sc_init_cuda();
+      __sc_init_sdl(__sc_initial_width, __sc_initial_height);
+      __sc_init_cuda();
 #else
-    cerr << "Error: Attempt to use GPU mode when Scout was compiled "
-      "without CUDA." << endl;
-    exit(1);
+      cerr << "Error: Attempt to use GPU mode when Scout was compiled "
+        "without CUDA." << endl;
+      exit(1);
 #endif // SC_ENABLE_CUDA
+      break;
+    }
+    case ScoutGPUOpenCL:
+    {
+        
+    }
+    case ScoutGPUNone:
+    {
+
+    }
   }
 }
 
-void __sc_init(bool gpu){
-  __sc_init(0, 0, gpu);
+void __sc_init(ScoutGPUType gpuType){
+  __sc_init(0, 0, gpuType);
 }
 
 void __sc_end(){
