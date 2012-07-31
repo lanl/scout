@@ -36,8 +36,8 @@ CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
     _gridSize(SmallVector< Constant *, 3 >(3, ConstantInt::get(i32Ty, 1))),
     _blockSize(SmallVector< Constant *, 3 >(3, ConstantInt::get(i32Ty, 1))),
     fnArgAttrs(SmallVector< ConstantInt *, 3 >()),
-    meshFieldNames(SmallVector< Value *, 3 >()),
-    dimensions(SmallVector< ConstantInt *, 3 >())
+    dimensions(SmallVector< ConstantInt *, 3 >()),
+    meshFieldNames(SmallVector< Value *, 3 >())
 {
   setCUDA_ARRAY_DESCRIPTORTy(module);
   setCUDA_ARRAY3D_DESCRIPTORTy(module);

@@ -552,6 +552,9 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     // scout - Scout Stmts
     case Stmt::ForAllStmtClass:
     case Stmt::RenderAllStmtClass:
+    case Stmt::ScoutVectorMemberExprClass:
+    case Stmt::ForAllArrayStmtClass:
+    case Stmt::VolumeRenderAllStmtClass:
 
     case Stmt::GotoStmtClass:
     case Stmt::IfStmtClass:

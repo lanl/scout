@@ -19,15 +19,14 @@
 
 // ASan flag values can be defined in three ways:
 // 1) initialized with default values at startup.
-// 2) overriden from user-specified string __asan_default_options.
+// 2) overriden from string returned by user-specified function
+//    __asan_default_options().
 // 3) overriden from env variable ASAN_OPTIONS.
 
 extern "C" {
-#if !defined(_WIN32)
-  // We do not need to redefine the defaults right now on Windows.
-  char *__asan_default_options SANITIZER_WEAK_ATTRIBUTE;
-#endif
-}
+// Can be overriden by user.
+const char *__asan_default_options() SANITIZER_WEAK_ATTRIBUTE;
+}  // extern "C"
 
 namespace __asan {
 
@@ -89,6 +88,7 @@ struct Flags {
   // to dump 16T+ core.
   bool disable_core;
 };
+
 Flags *flags();
 void InitializeFlags(Flags *f, const char *env);
 

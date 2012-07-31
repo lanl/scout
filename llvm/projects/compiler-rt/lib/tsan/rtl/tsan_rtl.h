@@ -437,6 +437,7 @@ int ThreadTid(ThreadState *thr, uptr pc, uptr uid);
 void ThreadJoin(ThreadState *thr, uptr pc, int tid);
 void ThreadDetach(ThreadState *thr, uptr pc, int tid);
 void ThreadFinalize(ThreadState *thr);
+void ThreadFinalizerGoroutine(ThreadState *thr);
 
 void MutexCreate(ThreadState *thr, uptr pc, uptr addr, bool rw, bool recursive);
 void MutexDestroy(ThreadState *thr, uptr pc, uptr addr);
@@ -448,6 +449,7 @@ void MutexReadOrWriteUnlock(ThreadState *thr, uptr pc, uptr addr);
 
 void Acquire(ThreadState *thr, uptr pc, uptr addr);
 void Release(ThreadState *thr, uptr pc, uptr addr);
+void ReleaseStore(ThreadState *thr, uptr pc, uptr addr);
 
 // The hacky call uses custom calling convention and an assembly thunk.
 // It is considerably faster that a normal call for the caller

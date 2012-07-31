@@ -48,6 +48,7 @@ elif [ "$MAC" != "" ]; then
         "
 fi
 
+SRCS+=$ADD_SRCS
 #ASMS="../rtl/tsan_rtl_amd64.S"
 
 rm -f gotsan.cc
@@ -69,9 +70,9 @@ fi
 echo gcc gotsan.cc -S -o tmp.s $FLAGS $CFLAGS
 gcc gotsan.cc -S -o tmp.s $FLAGS $CFLAGS
 cat tmp.s $ASMS > gotsan.s
-echo as gotsan.s -o gotsan_$SUFFIX.syso
-as gotsan.s -o gotsan_$SUFFIX.syso
+echo as gotsan.s -o race_$SUFFIX.syso
+as gotsan.s -o race_$SUFFIX.syso
 
-gcc test.c gotsan_$SUFFIX.syso -lpthread -o test
-./test
+gcc test.c race_$SUFFIX.syso -lpthread -o test
+TSAN_OPTIONS="exitcode=0" ./test
 

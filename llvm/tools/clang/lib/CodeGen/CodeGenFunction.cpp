@@ -38,9 +38,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     DebugInfo(0), DisableDebugInfo(false), DidCallStackSave(false),
     IndirectBranch(0), SwitchInsn(0), CaseRangeBlock(0), UnreachableBlock(0),    CXXABIThisDecl(0), CXXABIThisValue(0), CXXThisValue(0), CXXVTTDecl(0),
     CXXVTTValue(0), OutermostConditional(0), TerminateLandingPad(0),
-    TerminateHandler(0), TrapBB(0),
     // scout
-    RenderAll(0), CurrentForAllArrayStmt(0)
+    RenderAll(0), TerminateHandler(0), CurrentForAllArrayStmt(0), TrapBB(0) 
 {
 
   CatchUndefined = getContext().getLangOpts().CatchUndefined;

@@ -923,8 +923,9 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
-MeshVarDecl(MVD),
 LoopVariableII(LII),
+MeshVarDecl(MVD),
+
 XStart(0),
 XEnd(0),
 XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
@@ -954,8 +955,8 @@ ForAllLoc(FL),
 LParenLoc(LP),
 RParenLoc(RP),
 MeshII(MII),
-MeshVarDecl(MVD),
 LoopVariableII(LII),
+MeshVarDecl(MVD),
 XStart(0),
 XEnd(0),
 XStride(IntegerLiteral::Create(C, llvm::APInt(32, 1),
@@ -978,11 +979,13 @@ ForAllArrayStmt::ForAllArrayStmt(ASTContext &C,
                                  SourceLocation FAL,
                                  Stmt* Body,
                                  BlockExpr* Block)
-: XInductionVarII(0),
+: ForAllStmt(ForAllArrayStmtClass, C, 
+             ForAllStmt::Array, 0, 0, 0, 0, 0, Body, 
+             Block, FAL, SourceLocation(), SourceLocation()),
+XInductionVarII(0),
 YInductionVarII(0),
-ZInductionVarII(0),
-ForAllStmt(ForAllArrayStmtClass, C, ForAllStmt::Array, 0, 0, 0, 0, 0, Body, Block, FAL,
-           SourceLocation(), SourceLocation()){
+ZInductionVarII(0)
+{
   setBody(Body);
 }
 
@@ -1003,9 +1006,8 @@ VolumeRenderAllStmt::VolumeRenderAllStmt(ASTContext& C, SourceLocation VolRenLoc
     IdentifierInfo* MII, VarDecl* MVD, IdentifierInfo* CII,
     VarDecl* CVD, CompoundStmt* Body)
     : Stmt(VolumeRenderAllStmtClass),
-    LBracLoc(LB), RBracLoc(RB),
-    VolRenLoc(VolRenLoc), MeshII(MII), MeshVarDecl(MVD),
-    CameraII(CII), CameraVarDecl(CVD)
+      MeshII(MII), MeshVarDecl(MVD), CameraII(CII), CameraVarDecl(CVD), 
+      VolRenLoc(VolRenLoc), LBracLoc(LB), RBracLoc(RB) 
 {
       setOp(0);
       setBody(Body);

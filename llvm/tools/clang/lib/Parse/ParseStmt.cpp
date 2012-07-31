@@ -2793,6 +2793,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
             ++FieldCount;
           }
           break;
+        case ForAllStmt::ElementSpheres:
+        case ForAllStmt::Array:
+          assert(false && "unimplemented ForAllStmt case");
+          break;
       }
     }
     
