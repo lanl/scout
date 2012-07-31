@@ -2115,6 +2115,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // scout gpu support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
+  // scout AMD gpu support if present.
+  Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
+  
   // scout emit-all-definitions support if present.
   Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
   

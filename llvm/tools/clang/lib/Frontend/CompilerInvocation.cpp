@@ -1198,6 +1198,9 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // scout enable NVIDIA GPU support if OPT_gpu is present.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
+  // scout enable AMD GPU support if OPT_gpu is present.
+  Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+  
   // scout enable autovectorize pass OPT_vectorize is present.
   Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
   
@@ -1208,9 +1211,12 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ScoutEmitAllDefinitions = Args.hasArg(OPT_emitAllDefinitions);
   
   // OPT_gpu and OPT_cpuThreads operate exclusively.
-  if(Opts.ScoutNvidiaGPU && Opts.ScoutCPUThreads)
+  if((Opts.ScoutNvidiaGPU || Opts.ScoutAMDGPU) && Opts.ScoutCPUThreads)
     Diags.Report(diag::err_scout_cpu_gpu_combo);
 
+  if(Opts.ScoutNvidiaGPU && Opts.ScoutAMDGPU)
+    Diags.Report(diag::err_scout_gpu_nvidia_amd_combo);
+  
   if (Args.hasArg(OPT_gline_tables_only)) {
     Opts.DebugInfo = CodeGenOptions::DebugLineTablesOnly;
   } else if (Args.hasArg(OPT_g_Flag)) {
@@ -2138,6 +2144,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // scout - detect Scout -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
 
+  // scout - detect Scout -gpu-amd flag
+  Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+  
   Opts.ScoutVectorize = Args.hasArg(OPT_vectorize);
   
   // FIXME: Eliminate this dependency.

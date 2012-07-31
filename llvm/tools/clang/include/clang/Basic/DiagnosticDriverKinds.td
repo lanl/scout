@@ -139,4 +139,6 @@ def note_drv_command_failed_diag_msg : Note<
 
 def err_scout_cpu_gpu_combo : Error<"-gpu and -mt operate exclusively.">;
 
+def err_scout_gpu_nvidia_amd_combo : Error<"-gpu and -gpu-amd operate exclusively.">;
+
 }

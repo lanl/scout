@@ -38,6 +38,7 @@
 
 // scout includes
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
 #include "llvm/Transforms/Vectorize.h"
 
 using namespace clang;
@@ -150,7 +151,12 @@ void EmitAssemblyHelper::CreatePasses() {
     MPM.add(createDoallToPTXPass());
     MPM.run(*TheModule);
   }
-
+  else if(CodeGenOpts.ScoutAMDGPU) {
+    PassManager MPM;
+    MPM.add(createDoallToAMDILPass());
+    MPM.run(*TheModule);
+  }
+  
   // enable the BB autovectorizer pass
   if(CodeGenOpts.ScoutVectorize) {
     PassManager MPM;

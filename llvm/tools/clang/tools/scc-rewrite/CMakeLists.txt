@@ -49,6 +49,7 @@ target_link_libraries(scc-rewrite
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
   LLVMdoallToPTX
+  LLVMdoallToAMDIL
   scDriver
   )
 

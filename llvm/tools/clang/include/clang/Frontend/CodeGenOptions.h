@@ -118,6 +118,7 @@ public:
   unsigned UnwindTables      : 1; ///< Emit unwind tables.
 
   unsigned ScoutNvidiaGPU    : 1; /// scout NVIDIA GPU code generation.
+  unsigned ScoutAMDGPU       : 1; /// scout AMD GPU code generation.
   unsigned ScoutCPUThreads   : 1; /// scout CPU multithreading code generation.
   unsigned ScoutVectorize    : 1; /// scout enable autovectorize pass.
   unsigned ScoutEmitAllDefinitions : 1; /// scout emission of all defs.

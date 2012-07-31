@@ -36,6 +36,7 @@ target_link_libraries(clang
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
   LLVMdoallToPTX
+  LLVMdoallToAMDIL
   scDriver
   )
 

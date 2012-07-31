@@ -15,3 +15,4 @@ if(${CUDA_FOUND})
 endif()
 
 add_subdirectory(DoallToPTX)
+add_subdirectory(DoallToAMDIL)

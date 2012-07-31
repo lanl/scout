@@ -663,7 +663,9 @@ public:
   }
 
   bool isGPU() {
-    return CGM.getCodeGenOpts().ScoutNvidiaGPU && !CallsPrintf;
+    return (CGM.getCodeGenOpts().ScoutNvidiaGPU || 
+            CGM.getCodeGenOpts().ScoutAMDGPU)
+            && !CallsPrintf;
   }
   
   bool isCPU() {
