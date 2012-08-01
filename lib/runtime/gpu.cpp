@@ -17,6 +17,7 @@ using namespace scout;
 #include <cassert>
 
 //#define USE_OPENCL
+//#define USE_CUDA
 
 #ifdef USE_OPENCL
 
@@ -26,10 +27,8 @@ using namespace scout;
 #include <CL/cl.h>
 #endif
 
-#else
-
+#elifdef USE_CUDA
 #include <cuda.h>
-
 #endif // USE_OPENCL
 
 static const size_t MAX_DEVICES = 8;
@@ -100,7 +99,7 @@ public:
       deviceInfo_[i].vendor = vendor;
     }
 
-#else
+#elifdef USE_CUDA
     cuInit(0);
     
     int numDevices;
