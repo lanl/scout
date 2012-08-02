@@ -997,7 +997,7 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   }
 
   SourceLocation CloseLoc = Tok.getLocation();
-
+  
   // We broke out of the while loop because we found a '}' or EOF.
   if (Tok.isNot(tok::r_brace)) {
     Diag(Tok, diag::err_expected_rbrace);
@@ -2218,7 +2218,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
              "expected lbrace when inserting __sc_init()");
 
       if(fd->param_size() == 0){
-        InsertCPPCode("__sc_init(" + args + ");", LBraceLoc, false);
+        InsertCPPCode("__sc_init(" + args + "); atexit(__sc_end);", LBraceLoc, false);
       }
       else{
         assert(fd->param_size() == 2 && "expected main with two params");
@@ -2229,7 +2229,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
         ParmVarDecl* paramArgv = *itr;
 
         std::string code = "__sc_init(" + paramArgc->getName().str() +
-        ", " + paramArgv->getName().str() + ", " + args + ");";
+        ", " + paramArgv->getName().str() + ", " + args + "); atexit(__sc_end);";
 
         InsertCPPCode(code, LBraceLoc, false);
       }
