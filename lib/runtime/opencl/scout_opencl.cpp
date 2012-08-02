@@ -9,6 +9,141 @@ cl_program __sc_opencl_program;
 cl_command_queue __sc_opencl_command_queue;
 cl_device_id __sc_opencl_device_id;
 
+namespace{
+
+  struct ELFSection{
+    string name;
+    size_t offset;
+    size_t size;
+    const char* data;
+  };
+
+  typedef vector<ELFSection> ELFSectionVec;
+
+  // assumes elfImage is a 32-bit AMD OpenCL ELF image
+  static void readELF(const char* elfImage, ELFSectionVec& sectionVec){
+    Elf32_Ehdr* header = (Elf32_Ehdr*)elfImage;
+
+    size_t headerSize = sizeof(Elf32_Ehdr);
+    size_t numSections = header->e_shnum;
+
+    sectionVec.push_back(ELFSection());
+    ELFSection& firstSection = sectionVec.back();
+    firstSection.name = "";
+
+    size_t i = headerSize + 1;
+    for(;;){
+      sectionVec.push_back(ELFSection());
+      ELFSection& section = sectionVec.back();
+      section.name = "";
+
+      while(elfImage[i] != 0){
+	section.name += elfImage[i];
+	++i;
+      }
+
+      ++i;
+
+      if(elfImage[i] == 0){
+	break;
+      }
+    }
+    
+    i = header->e_shoff;
+
+    for(size_t j = 0; j < numSections; ++j){
+      Elf32_Shdr* sectionHeader = (Elf32_Shdr*)&elfImage[i];
+      ELFSection& section = sectionVec[j];
+      i += sizeof(Elf32_Shdr);
+      section.offset = sectionHeader->sh_offset;
+      section.size = sectionHeader->sh_size;
+      section.data = elfImage + section.offset;
+    }
+  }
+  
+  // assumes that the same number of sections exists in the new image
+  // to be created with the same names, in sectionVec input offsets
+  // are ignored, but updated based on sizes and data which are expected
+  // to be passed in sectionVec
+
+  char* updateELF(const char* oldImage,
+		  ELFSectionVec& sectionVec,
+		  size_t& size){
+
+    Elf32_Ehdr* oldHeader = (Elf32_Ehdr*)oldImage;
+
+    size_t numSections = sectionVec.size();
+
+    size = sizeof(Elf32_Ehdr);
+    for(size_t i = 0; i < numSections; ++i){
+      const ELFSection& section = sectionVec[i];
+      // .symtab section is aligned to 8 byte boundary
+      if(section.name == ".symtab"){
+	while(size % 8 != 0){
+	  ++size;
+	}
+      }
+      size += section.size;
+    }
+
+    // start of section headers aligned to a 4-byte boundary
+    while(size % 4 != 0){
+      ++size;
+    }
+
+    size_t sectionHeaderSize = sizeof(Elf32_Shdr) * sectionVec.size();
+    size += sectionHeaderSize;
+
+    char* newImage = (char*)malloc(size);
+    memcpy(newImage, oldImage, sizeof(Elf32_Ehdr));
+    Elf32_Ehdr* newHeader = (Elf32_Ehdr*)newImage;
+    size_t offset = sizeof(Elf32_Ehdr);
+
+    for(size_t i = 0; i < numSections; ++i){
+      ELFSection& section = sectionVec[i];
+      // .symtab section is aligned to 8 byte boundary
+      if(section.name == ".symtab"){
+	while(offset % 8 != 0){
+	  newImage[offset] = 0;
+	  ++offset;
+	}
+      }
+
+      if(section.size > 0){
+	memcpy(newImage + offset, section.data, section.size);
+	section.offset = offset;
+	offset += section.size;
+      }
+    }
+
+    // start of section headers aligned to 4-byte boundary
+    while(offset % 4 != 0){
+      newImage[offset] = 0;
+      ++offset;
+    }
+
+    newHeader->e_shoff = offset;
+
+    memcpy(newImage + offset, 
+	   oldImage + oldHeader->e_shoff, sectionHeaderSize);
+
+    for(size_t i = 0; i < numSections; ++i){
+      Elf32_Shdr* sectionHeader = (Elf32_Shdr*)(newImage + offset);
+      const ELFSection& section = sectionVec[i];
+      sectionHeader->sh_offset = section.offset; 
+      sectionHeader->sh_size = section.size;
+      offset += sizeof(Elf32_Shdr);
+    }
+
+    for(size_t i = 0; i < 3; ++i){
+      newImage[offset++] = 0;
+    }
+
+    return newImage;
+  }
+
+} // end namespace
+
 void __sc_init_opencl(){
   __sc_opencl = true;
 
@@ -74,10 +209,6 @@ void __sc_opencl_build_program(const void* bitcode, size_t size){
     clGetProgramInfo(stubProgram, CL_PROGRAM_BINARIES, 
                      programSize, programData, &numPrograms);
   assert(ret == CL_SUCCESS && "Error reading OpenCL stub program");
-
-  // TODO - add the bitcode for our actual program to the ELF image
-  // we need to resize the .llvmir section and adjust section
-  // offsets
 
   size_t newProgramSize;
   const unsigned char* newProgramBinary;
