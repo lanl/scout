@@ -2,6 +2,11 @@
 
 #include <cstring>
 #include <cassert>
+#include <string>
+#include <vector>
+#include <elf.h>
+
+using namespace std;
 
 bool __sc_opencl = false;
 cl_context __sc_opencl_context;
@@ -23,34 +28,34 @@ namespace{
   // assumes elfImage is a 32-bit AMD OpenCL ELF image
   static void readELF(const char* elfImage, ELFSectionVec& sectionVec){
     Elf32_Ehdr* header = (Elf32_Ehdr*)elfImage;
-
+    
     size_t headerSize = sizeof(Elf32_Ehdr);
     size_t numSections = header->e_shnum;
-
+    
     sectionVec.push_back(ELFSection());
     ELFSection& firstSection = sectionVec.back();
     firstSection.name = "";
-
+    
     size_t i = headerSize + 1;
     for(;;){
       sectionVec.push_back(ELFSection());
       ELFSection& section = sectionVec.back();
       section.name = "";
-
+      
       while(elfImage[i] != 0){
 	section.name += elfImage[i];
 	++i;
       }
-
+      
       ++i;
-
+      
       if(elfImage[i] == 0){
 	break;
       }
     }
     
     i = header->e_shoff;
-
+    
     for(size_t j = 0; j < numSections; ++j){
       Elf32_Shdr* sectionHeader = (Elf32_Shdr*)&elfImage[i];
       ELFSection& section = sectionVec[j];
@@ -65,15 +70,15 @@ namespace{
   // to be created with the same names, in sectionVec input offsets
   // are ignored, but updated based on sizes and data which are expected
   // to be passed in sectionVec
-
+  
   char* updateELF(const char* oldImage,
 		  ELFSectionVec& sectionVec,
 		  size_t& size){
-
+    
     Elf32_Ehdr* oldHeader = (Elf32_Ehdr*)oldImage;
 
     size_t numSections = sectionVec.size();
-
+    
     size = sizeof(Elf32_Ehdr);
     for(size_t i = 0; i < numSections; ++i){
       const ELFSection& section = sectionVec[i];
@@ -85,20 +90,20 @@ namespace{
       }
       size += section.size;
     }
-
+    
     // start of section headers aligned to a 4-byte boundary
     while(size % 4 != 0){
       ++size;
     }
-
+    
     size_t sectionHeaderSize = sizeof(Elf32_Shdr) * sectionVec.size();
     size += sectionHeaderSize;
-
+    
     char* newImage = (char*)malloc(size);
     memcpy(newImage, oldImage, sizeof(Elf32_Ehdr));
     Elf32_Ehdr* newHeader = (Elf32_Ehdr*)newImage;
     size_t offset = sizeof(Elf32_Ehdr);
-
+    
     for(size_t i = 0; i < numSections; ++i){
       ELFSection& section = sectionVec[i];
       // .symtab section is aligned to 8 byte boundary
@@ -115,7 +120,7 @@ namespace{
 	offset += section.size;
       }
     }
-
+    
     // start of section headers aligned to 4-byte boundary
     while(offset % 4 != 0){
       newImage[offset] = 0;
@@ -123,10 +128,10 @@ namespace{
     }
 
     newHeader->e_shoff = offset;
-
+    
     memcpy(newImage + offset, 
 	   oldImage + oldHeader->e_shoff, sectionHeaderSize);
-
+    
     for(size_t i = 0; i < numSections; ++i){
       Elf32_Shdr* sectionHeader = (Elf32_Shdr*)(newImage + offset);
       const ELFSection& section = sectionVec[i];
@@ -134,14 +139,14 @@ namespace{
       sectionHeader->sh_size = section.size;
       offset += sizeof(Elf32_Shdr);
     }
-
+    
     for(size_t i = 0; i < 3; ++i){
       newImage[offset++] = 0;
     }
-
+    
     return newImage;
   }
-
+  
 } // end namespace
 
 void __sc_init_opencl(){
@@ -196,22 +201,40 @@ void __sc_opencl_build_program(const void* bitcode, size_t size){
   clBuildProgram(stubProgram, 1, &__sc_opencl_device_id, 
                  "-fno-bin-amdil -fno-bin-exe", NULL, NULL);
 
-  size_t programSize;
+  size_t stubImageSize;
   size_t numDevices = 1;
   ret = clGetProgramInfo(stubProgram, CL_PROGRAM_BINARY_SIZES, 
-                         sizeof(size_t), &programSize, &numDevices);
+                         sizeof(size_t), &stubImageSize, &numDevices);
   assert(ret == CL_SUCCESS && "Error reading OpenCL stub size");
 
-  char* programData = (char*)malloc(sizeof(char)*programSize);
+  char* stubImage = (char*)malloc(sizeof(char)*stubImageSize);
 
   size_t numPrograms = 1;
   ret = 
     clGetProgramInfo(stubProgram, CL_PROGRAM_BINARIES, 
-                     programSize, programData, &numPrograms);
+                     stubImageSize, stubImage, &numPrograms);
   assert(ret == CL_SUCCESS && "Error reading OpenCL stub program");
 
-  size_t newProgramSize;
-  const unsigned char* newProgramBinary;
+  ELFSectionVec sections;
+  readELF(stubImage, sections);
+  ELFSection* irSection = 0;
+  for(size_t i = 0; i < sections.size(); ++i){
+    if(sections[i].name == ".llvmir"){
+      irSection = &sections[i];
+      break;
+    }
+  }
+  assert(irSection && "Failed to find .llvmir section");
+
+  irSection->data = (const char*)bitcode;
+  irSection->size = size;
+  
+  size_t newSize;
+  const unsigned char* newImage = 
+    (const unsigned char*)updateELF(stubImage, sections, newSize);
+  
+  free(stubImage);
+  clReleaseProgram(stubProgram);
 
   cl_int status;
   
@@ -219,8 +242,8 @@ void __sc_opencl_build_program(const void* bitcode, size_t size){
     clCreateProgramWithBinary(__sc_opencl_context,
                               1,
                               &__sc_opencl_device_id,
-                              &newProgramSize,
-                              &newProgramBinary,
+                              &newSize,
+                              &newImage,
                               &status,
                               &ret);
 
