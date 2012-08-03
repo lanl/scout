@@ -4,6 +4,7 @@
 #include <cassert>
 #include <string>
 #include <vector>
+#include <iostream>
 #include <elf.h>
 
 using namespace std;
@@ -31,7 +32,7 @@ namespace{
     
     size_t headerSize = sizeof(Elf32_Ehdr);
     size_t numSections = header->e_shnum;
-    
+
     sectionVec.push_back(ELFSection());
     ELFSection& firstSection = sectionVec.back();
     firstSection.name = "";
@@ -185,7 +186,7 @@ void __sc_init_opencl(){
 }
 
 extern "C"
-void __sc_opencl_build_program(const void* bitcode, size_t size){
+void __sc_opencl_build_program(const void* bitcode, uint32_t size){
   // create a stub kernel so we can generate the AMD binary ELF image
   // and fill it in with the real program LLVM IR bitcode
   static const char* stub = "__kernel void stub(__global int* a){}";
@@ -198,25 +199,27 @@ void __sc_opencl_build_program(const void* bitcode, size_t size){
                               (const char**)&stub, &stubSize, &ret);
   assert(ret == CL_SUCCESS && "Error creating OpenCL binary stub");
 
-  clBuildProgram(stubProgram, 1, &__sc_opencl_device_id, 
-                 "-fno-bin-amdil -fno-bin-exe", NULL, NULL);
+  ret = clBuildProgram(stubProgram, 1, &__sc_opencl_device_id, 
+		       "-fno-bin-amdil -fno-bin-exe", NULL, NULL);
+  assert(ret == CL_SUCCESS && "Failed to build OpenCL stub program");
 
   size_t stubImageSize;
   size_t numDevices = 1;
   ret = clGetProgramInfo(stubProgram, CL_PROGRAM_BINARY_SIZES, 
-                         sizeof(size_t), &stubImageSize, &numDevices);
+                         sizeof(size_t), &stubImageSize, 0);
   assert(ret == CL_SUCCESS && "Error reading OpenCL stub size");
 
-  char* stubImage = (char*)malloc(sizeof(char)*stubImageSize);
+  char* stubImage = (char*)malloc(stubImageSize);
 
   size_t numPrograms = 1;
   ret = 
     clGetProgramInfo(stubProgram, CL_PROGRAM_BINARIES, 
-                     stubImageSize, stubImage, &numPrograms);
+                     sizeof(unsigned char*), &stubImage, 0);
   assert(ret == CL_SUCCESS && "Error reading OpenCL stub program");
 
   ELFSectionVec sections;
   readELF(stubImage, sections);
+  
   ELFSection* irSection = 0;
   for(size_t i = 0; i < sections.size(); ++i){
     if(sections[i].name == ".llvmir"){

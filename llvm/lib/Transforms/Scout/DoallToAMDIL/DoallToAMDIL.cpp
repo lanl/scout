@@ -16,6 +16,8 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Instructions.h"
+#include "llvm/IRBuilder.h"
 
 #include <vector>
 #include <iostream>
@@ -44,6 +46,8 @@ const char *DoallToAMDIL::getPassName() const {
 }
 
 bool DoallToAMDIL::runOnModule(Module &m) {
+  IRBuilder<> builder(m.getContext());
+  
   ValueToValueMapTy valueMap;
   Module* nm = CloneModule(&m, valueMap);  
 
@@ -120,9 +124,56 @@ bool DoallToAMDIL::runOnModule(Module &m) {
                        GlobalValue::PrivateLinkage,
                        bitcodeData, "gpu.module");
 
-  //cout << "------------------- final module" << endl;
-  //m.dump();
+  Function* mainFunction = 0;
+  for(Module::iterator itr = m.begin(), itrEnd = m.end();
+      itr != itrEnd; ++itr){
+    if(itr->getName() == "main"){
+      mainFunction = itr;
+      break;
+    }
+  }
+  assert(mainFunction);
+  BasicBlock& mainEntry = *mainFunction->begin();
 
+  CallInst* initCall = 0;
+  Instruction* insertInst;
+  for(BasicBlock::iterator itr = mainEntry.begin(), itrEnd = mainEntry.end();
+      itr != itrEnd; ++itr){
+    if(CallInst* callInst = dyn_cast<CallInst>(itr)){
+      Function* calledFunc = callInst->getCalledFunction();
+      if(calledFunc->getName().find("__sc_init") != StringRef::npos){
+	initCall = callInst;
+	++itr;
+	insertInst = itr;
+	break;
+      }
+    }
+  }
+  assert(initCall);
+
+  Type* i32Ty = IntegerType::get(m.getContext(), 32);
+  Type* i8PtrTy = PointerType::get(IntegerType::get(m.getContext(), 8), 0);
+  
+  Function* buildFunc = m.getFunction("__sc_opencl_build_program");
+  if(!buildFunc){
+    vector<Type*> args;    
+    args.push_back(i8PtrTy);
+    args.push_back(i32Ty);
+
+    FunctionType* retType = 
+      FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
+    
+    buildFunc = Function::Create(retType, 
+				 Function::ExternalLinkage,
+				 "__sc_opencl_build_program", 
+				 &m);
+  }
+
+  builder.SetInsertPoint(insertInst);
+  Value* bc = builder.CreateBitCast(gv, i8PtrTy, "bitcode");
+  builder.CreateCall2(buildFunc, bc, 
+		      ConstantInt::get(i32Ty, bitcode.length()));
+  
   return true;
 }
 
