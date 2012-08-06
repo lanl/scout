@@ -1,3 +1,5 @@
+include(sc-llvm-link-libs) 
+
 set( LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   asmparser
@@ -35,9 +37,7 @@ target_link_libraries(clang
   clangStaticAnalyzerFrontend
   clangStaticAnalyzerCheckers
   clangStaticAnalyzerCore
-  LLVMdoallToPTX
-  LLVMdoallToAMDIL
-  scDriver
+  ${SC_LLVM_LINK_LIBS}
   )
 
 set_target_properties(clang PROPERTIES VERSION ${CLANG_EXECUTABLE_VERSION})

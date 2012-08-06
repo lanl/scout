@@ -4368,6 +4368,14 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
   // scout - add Scout library search paths
+  //
+  // NOTE: THIS HAS TURNED OUT TO BE DANGEROUS...  It is possible to
+  // get LLVM and Clang version cross version dependencies into the
+  // mix if users have a previous LLVM version in /usr/local.  You can
+  // get mixed headers and libraries this way and it causes very
+  // strange (and often infrequent) errors...  For now we've commented
+  // them out...
+  /*
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -4387,7 +4395,8 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
-
+  */
+  
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
   // categories.

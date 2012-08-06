@@ -84,7 +84,15 @@ project(Scout)
 
   enable_testing()
 
-  set(CMAKE_VERBOSE_MAKEFILE OFF)
+  set(SC_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+  set(SC_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  set(SC_INCLUDE_DIR ${SC_SRC_DIR}/include)
+  set(SC_REGRESSION_DIR ${SC_SRC_DIR}/test)
+
+  set(SC_LLVM_SRC_DIR ${SC_SRC_DIR}/llvm)
+  set(SC_LLVM_BIN_DIR ${SC_BUILD_DIR}/llvm/bin)
+
+  set(CMAKE_VERBOSE_MAKEFILE ON)
 
   ##### PACKAGE CREATION (via CPack)
   #
@@ -108,7 +116,9 @@ project(Scout)
 
   ##### CMAKE MODULES
   #
-  # Add paths for our custom cmake modules.  
+  # Add paths for our custom cmake modules.  Note that we also 
+  # include llvm's modules -- this makes life much easier for 
+  # building... 
   set(CMAKE_MODULE_PATH
     ${CMAKE_MODULE_PATH}
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
@@ -129,7 +139,7 @@ project(Scout)
   # debugging build...
   if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE DEBUG)
-    message("Note: Defaulting to debug build configuration...")
+    message(STATUS "scout: Defaulting to debug build configuration...")
   endif()
   #
   #
@@ -145,6 +155,7 @@ project(Scout)
   # --- OpenGL support. 
   find_package(OpenGL)
   if (OPENGL_FOUND)
+    message(STATUS "scout: OpenGL found, enabling support.")
     set(SC_ENABLE_OPENGL ON  CACHE BOOL "Enable OpenGL support.")
     add_definitions(-DSC_ENABLE_OPENGL)
   endif()
@@ -154,7 +165,7 @@ project(Scout)
   # 
   find_package(CUDA)
   if (CUDA_FOUND) 
-
+    message(STATUS "scout: CUDA found, enabling PTX codegen support.")
     set(SC_ENABLE_CUDA ON CACHE BOOL "Enable CUDA/PTX code generation and runtime support.")
     add_definitions(-DSC_ENABLE_CUDA) 
 
@@ -163,6 +174,7 @@ project(Scout)
     set(SC_ENABLE_LIB_NVVM OFF CACHE BOOL "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
 
     if (SC_ENABLE_LIB_NVVM)
+      message(STATUS "scout: Enabling NVIDIA libnvvm support.")
       add_definitions(-DSC_ENABLE_LIB_NVVM)
     endif()
     #
@@ -181,15 +193,17 @@ project(Scout)
   #
   #  !!! This is currently not a FindOpenCL module...
   #
-# find_package(OpenCL)
-# if (OPENCL_FOUND)
+  # find_package(OpenCL)
+  # if (OPENCL_FOUND)
 
     # TODO - should these separated or wrapped into one?  
-#   set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
-#   set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
-#   add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
 
-# endif()
+    # message(STATUS "scout: OpenCL found, enabling AMDIL codegen support.")    
+    # set(SC_ENABLE_OPENCL ON CACHE BOOL "Enable OpenCL code generation and runtime support.")
+    # set(SC_ENABLE_AMDIL ON CACHE BOOL "Enable AMD IL code generation and runtime support.")
+    # add_definitions(-DSC_ENABLE_OPENCL -DSC_ENABLE_AMDIL)
+
+  # endif()
   #
   # LANL ONLY --> 
 
@@ -198,10 +212,12 @@ project(Scout)
   #
   find_package(HWLOC)
   if (HWLOC_FOUND)
-
+    message(STATUS "scout: Found hwloc -- enabling NUMA support.")
     set(SC_ENABLE_NUMA ON CACHE BOOL "Enable NUMA (via libhwloc) runtime support.")
     add_definitions(-DSC_ENABLE_NUMA)
-
+    if (APPLE) 
+      message(STATUS "scout: Note NUMA support under Mac OS X has limited features.")
+    endif()
   endif()
 
 
@@ -210,6 +226,7 @@ project(Scout)
   find_package(MPI)
 
   if (MPI_FOUND) 
+    message(STATUS "scout: Found MPI -- enabling support.")
     set(SC_ENABLE_MPI ON CACHE BOOL "Enable MPI runtime support.") 
     add_definitions(-DSC_ENABLE_MPI) 
 
@@ -221,6 +238,7 @@ project(Scout)
   find_package(PNG)
 
   if (PNG_FOUND)
+    message(STATUS "scout: Found PNG -- enabling support.")
     set(SC_ENABLE_PNG ON  CACHE_BOOL "Enable PNG support in scout's runtime libraries.")
     add_definitions(-DSC_ENABLE_PNG ${PNG_DEFINITIONS})
   endif()
@@ -237,6 +255,7 @@ project(Scout)
   #
   set(LLVM_TARGETS_TO_BUILD X86 NVPTX
     CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
+  message(STATUS "scout: Reduced LLVM codegen targets (${LLVM_TARGETS_TO_BUILD}).")
   #
   #
   #####
@@ -245,28 +264,29 @@ project(Scout)
   ##### INSTALL DETAILS
   #
   # Note: There are additional install configuration details
-  # within LLVM that should be considered as well...
+  # within LLVM and we need to make sure we are compatible 
+  # with them as well... 
+  #
+
+  # Install details...
+  if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+    set(CMAKE_INSTALL_PREFIX ${SC_BUILD_DIR}/scout)
+    message(STATUS "scout: Debug build enabled, setting in-source install prefix of '${CMAKE_INSTALL_PREFIX}'.")
+  endif()
+
   #
   install(DIRECTORY include 
     DESTINATION include 
     FILES_MATCHING
       PATTERN  "*.h"
       PATTERN  "*.sch"
-      PATTERN  "LICENSE.TXT"
+      PATTERN  "License.txt"
       PATTERN  ".svn" EXCLUDE
   )
 
-  set(SC_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-  set(SC_INCLUDE_DIR ${SC_SRC_DIR}/include)
-  set(SC_REGRESSION_DIR ${SC_SRC_DIR}/test)
-  set(SC_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  set(SC_BINARY_REGRESSION_DIR  ${SC_BINARY_DIR}/test)
-
-  # Install details...
-  set(CMAKE_INSTALL_PREFIX ${Scout_BINARY_DIR})
-  #
   #
   #####
+
 
   ##### SUBPROJECTS
   #
@@ -289,6 +309,8 @@ project(Scout)
   #
   add_subdirectory(tools)       # various command line tools for the build and development
   add_subdirectory(llvm)        # scout compiler based on active llvm development
+  add_subdirectory(tools/llvm)  # llvm-centric tools (dependent upon llvm being built)
+  add_subdirectory(tools/clang) # clang-centric tools (dependent upon llvm+clang being built)
   add_subdirectory(lib)         # scout runtime and standard libraries
   add_subdirectory(sandbox)     # proof-of-concept test codes
 

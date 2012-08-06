@@ -37,8 +37,14 @@
 #include "llvm/Transforms/Scalar.h"
 
 // scout includes
+#ifdef SC_ENABLE_CUDA
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
+#endif
+
+#ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
+#endif
+
 #include "llvm/Transforms/Vectorize.h"
 
 using namespace clang;
@@ -146,16 +152,21 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 void EmitAssemblyHelper::CreatePasses() {
 
   // scout - Check whether to enable Scout NVIDIA GPU support.
+  #ifdef SC_ENABLE_CUDA 
   if(CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
     MPM.run(*TheModule);
   }
-  else if(CodeGenOpts.ScoutAMDGPU) {
+  #endif
+
+  #ifdef SC_ENABLE_OPENCL
+  if(CodeGenOpts.ScoutAMDGPU) {
     PassManager MPM;
     MPM.add(createDoallToAMDILPass());
     MPM.run(*TheModule);
   }
+  #endif
   
   // enable the BB autovectorizer pass
   if(CodeGenOpts.ScoutVectorize) {
