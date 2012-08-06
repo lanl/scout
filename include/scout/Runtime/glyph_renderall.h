@@ -12,9 +12,9 @@
 #ifndef SCOUT_GLYPH_RENDERALL_H_
 #define SCOUT_GLYPH_RENDERALL_H_
 
-#include "runtime/base_types.h"
-#include "runtime/vec_types.h"
-#include "runtime/renderall_base.h"
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/vec_types.h"
+#include "scout/Runtime/renderall_base.h"
 
 namespace scout 
 {

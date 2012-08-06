@@ -90,7 +90,12 @@ project(Scout)
   set(SC_REGRESSION_DIR ${SC_SRC_DIR}/test)
 
   set(SC_LLVM_SRC_DIR ${SC_SRC_DIR}/llvm)
-  set(SC_LLVM_BIN_DIR ${SC_BUILD_DIR}/llvm/bin)
+  set(SC_LLVM_INC_DIR ${SC_LLVM_SRC_DIR}/include)
+  set(SC_LLVM_BUILD_INC_DIR ${SC_BUILD_DIR}/llvm/include)
+
+  set(SC_CLANG_SRC_DIR ${SC_SRC_DIR}/llvm/tools/clang)
+  set(SC_CLANG_INC_DIR ${SC_CLANG_SRC_DIR}/include) 
+  set(SC_CLANG_BUILD_INC_DIR ${SC_BUILD_DIR}/llvm/tools/clang/include)
 
   set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -281,7 +286,6 @@ project(Scout)
       PATTERN  "*.h"
       PATTERN  "*.sch"
       PATTERN  "License.txt"
-      PATTERN  ".svn" EXCLUDE
   )
 
   #

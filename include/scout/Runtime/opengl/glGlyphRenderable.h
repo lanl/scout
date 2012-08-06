@@ -22,10 +22,10 @@
 #include <string>
 #include <list>
 
-#include "runtime/opengl/glCamera.h"
-#include "runtime/opengl/glRenderable.h"
-#include "runtime/opengl/glAttributeBuffer.h"
-#include "runtime/opengl/glyph_vertex.h"
+#include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glRenderable.h"
+#include "scout/Runtime/opengl/glAttributeBuffer.h"
+#include "scout/Runtime/opengl/glyph_vertex.h"
 
 
 // ----- glGlyphRenderable 

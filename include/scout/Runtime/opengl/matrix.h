@@ -18,7 +18,7 @@
 #ifndef SCOUT_MATRIX_H_
 #define SCOUT_MATRIX_H_
 
-#include "runtime/opengl/vectors.h"
+#include "scout/Runtime/opengl/vectors.h"
 
 namespace scout {
 

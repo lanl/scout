@@ -14,7 +14,7 @@
 
 #include <list>
 
-#include "runtime/types.h"
+#include "scout/Runtime/types.h"
 
 namespace scout 
 {

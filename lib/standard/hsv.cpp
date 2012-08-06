@@ -12,8 +12,8 @@
  */
 
 #include <math.h>
-#include <xmmintrin.h> 
-#include "runtime/types.h"
+//#include <xmmintrin.h> 
+#include "scout/Runtime/types.h"
 
 // ----- hsva
 //

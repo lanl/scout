@@ -451,8 +451,8 @@ add_subdirectory(cmake/modules)
 install(DIRECTORY include/
   DESTINATION include
   FILES_MATCHING
-  PATTERN "*.def"
   PATTERN "*.h"
+  PATTERN "*.def"
   PATTERN "*.td"
   PATTERN "*.inc"
   PATTERN "LICENSE.TXT"

@@ -20,7 +20,7 @@
 #define SCOUT_GL_SDL_H_
 
 #include <SDL/SDL.h>
-#include "runtime/opengl/glToolkit.h"
+#include "scout/Runtime/opengl/glToolkit.h"
 
 namespace scout
 {

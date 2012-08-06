@@ -18,7 +18,7 @@
 #ifndef SCOUT_OPENGL_TEXCOORD_BUFFER_H_
 #define SCOUT_OPENGL_TEXCOORD_BUFFER_H_
 
-#include "runtime/opengl/glBufferObject.h"
+#include "scout/Runtime/opengl/glBufferObject.h"
 
 namespace scout
 {

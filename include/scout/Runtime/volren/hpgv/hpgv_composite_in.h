@@ -18,7 +18,7 @@
 #define HPGV_COMPOSITE_IN_H
 
     
-#include "runtime/volren/hpgv/hpgv_composite.h"
+#include "scout/Runtime/volren/hpgv/hpgv_composite.h"
 
 namespace scout {
 

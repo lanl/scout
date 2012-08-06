@@ -58,7 +58,7 @@
 #include "scout/base_types.h"
 #include "scout/vec_types.h"
 
-#include "color_funcs.h"
+#include "scout/color_funcs.h"
 
 #endif 
 

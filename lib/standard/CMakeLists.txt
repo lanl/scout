@@ -8,25 +8,22 @@
 # Scout with CMake. 
 # 
 project(scStandard)
-enable_testing()
 
-set(CMAKE_C_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
-set(CMAKE_CXX_COMPILER ${LLVM_BINARY_DIR}/bin/scc)
+  enable_testing()
 
-include_directories(
-  ${SC_INCLUDE_DIR}
-)
+  set(CMAKE_C_COMPILER ${CMAKE_INSTALL_PREFIX}/bin/scc)
+  set(CMAKE_CXX_COMPILER ${CMAKE_INSTALL_PREFIX}/bin/scc)
 
-file(GLOB std_hdrs ${SC_INCLUDE_DIR}/scout/*.h)
-file(GLOB std_srcs *.cpp)
+  include_directories(
+    ${SC_INCLUDE_DIR}
+    )
+
+  file(GLOB std_hdrs ${SC_INCLUDE_DIR}/scout/*.h)
+  file(GLOB std_srcs *.cpp)
 
 
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
-if (SC_ENABLE_RT_THREADS) 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-endif()
 
-
-add_library(scStandard STATIC ${std_srcs})
-add_dependencies(scStandard scc)
+  add_library(scStandard STATIC ${std_srcs})
+  add_dependencies(scStandard scc)
 

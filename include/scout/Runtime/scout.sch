@@ -1,14 +1,14 @@
 #ifndef SCOUT_SCH_
 #define SCOUT_SCH_
 
-#include "runtime/renderall_uniform.h"
-#include "runtime/window.h"
-#include "runtime/image.h"
-#include "runtime/tbq.h"
-#include "runtime/opengl/glCamera.h"
+#include "scout/Runtime/renderall_uniform.h"
+#include "scout/Runtime/window.h"
+#include "scout/Runtime/image.h"
+#include "scout/Runtime/tbq.h"
+#include "scout/Runtime/opengl/glCamera.h"
 
 #ifdef SC_ENABLE_MPI
-#include "runtime/volume_renderall.h"
+#include "scout/Runtime/volume_renderall.h"
 #endif
 
 extern scout::tbq_rt* __sc_tbq;

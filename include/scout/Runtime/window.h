@@ -14,9 +14,9 @@
 
 #include <list>
 
-#include "runtime/types.h"
-#include "runtime/viewport.h"
-#include "runtime/vec_types.h"
+#include "scout/Runtime/types.h"
+#include "scout/Runtime/viewport.h"
+#include "scout/Runtime/vec_types.h"
 
 namespace scout 
 {

@@ -18,7 +18,7 @@
 #ifndef SCOUT_OPENGL_TEXTURE_2D_H_
 #define SCOUT_OPENGL_TEXTURE_2D_H_
 
-#include "runtime/opengl/glTexture.h"
+#include "scout/Runtime/opengl/glTexture.h"
 
 namespace scout
 {

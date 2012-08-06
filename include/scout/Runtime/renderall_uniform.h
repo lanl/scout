@@ -14,8 +14,8 @@
 
 #include <cstdlib>
 
-#include "runtime/renderall_base.h"
-#include "runtime/vec_types.h"
+#include "scout/Runtime/renderall_base.h"
+#include "scout/Runtime/vec_types.h"
 
 namespace scout{
 

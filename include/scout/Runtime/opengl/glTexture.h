@@ -12,7 +12,7 @@
 #ifndef SCOUT_OPENGL_TEXTURE_H_
 #define SCOUT_OPENGL_TEXTURE_H_
 
-#include "runtime/opengl/glTextureParamter.h"
+#include "scout/Runtime/opengl/glTextureParamter.h"
 
 namespace scout
 {

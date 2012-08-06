@@ -12,7 +12,7 @@
 #ifndef SCOUT_SDL_WINDOW_H_
 #define SCOUT_SDL_WINDOW_H_
 
-#include "runtime/window.h"
+#include "scout/Runtime/window.h"
 
 
 

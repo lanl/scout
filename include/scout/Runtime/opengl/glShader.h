@@ -20,7 +20,7 @@
 
 #include <string>
 
-#include "runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/opengl.h"
 
 namespace scout
 {

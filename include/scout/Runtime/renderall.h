@@ -12,7 +12,7 @@
 #ifndef SCOUT_RENDERALL_H_
 #define SCOUT_RENDERALL_H_
 
-#include <runtime/vec_types.h>
+#include "scout/Runtime/vec_types.h"
 
 namespace scout 
 {

@@ -18,8 +18,8 @@
 #ifndef SCOUT_QUATERNION_H_
 #define SCOUT_QUATERNION_H_
 
-#include "runtime/opengl/vectors.h"
-#include "runtime/opengl/matrix.h"
+#include "scout/Runtime/opengl/vectors.h"
+#include "scout/Runtime/opengl/matrix.h"
 
 
 namespace scout

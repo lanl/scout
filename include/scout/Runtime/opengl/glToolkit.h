@@ -18,9 +18,9 @@
 #ifndef SCOUT_GL_TOOLKIT_H_
 #define SCOUT_GL_TOOLKIT_H_
 #include <deque>
-#include "runtime/opengl/glCamera.h"
-#include "runtime/opengl/glRenderable.h"
-#include "runtime/opengl/glManipulator.h"
+#include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glRenderable.h"
+#include "scout/Runtime/opengl/glManipulator.h"
 
 namespace scout
 {

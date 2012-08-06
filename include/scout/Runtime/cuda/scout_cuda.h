@@ -1,7 +1,9 @@
 #ifndef SCOUT_CUDA_H_
 #define SCOUT_CUDA_H_
 
-#include "runtime/opengl/opengl.h"
+#ifdef SC_ENABLE_OPENGL 
+#include "scout/Runtime/opengl/opengl.h"
+#endif
 
 #include <cuda.h>
 #include <cudaGL.h>

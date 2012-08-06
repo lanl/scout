@@ -1,4 +1,4 @@
-/*
+ /*
  *           -----  The Scout Programming Language -----
  *
  * This file is distributed under an open source license by Los Alamos
@@ -18,7 +18,7 @@
 #ifndef SCOUT_OPENGL_TEXTURE_1D_H_
 #define SCOUT_OPENGL_TEXTURE_1D_H_
 
-#include "glTexture.h"
+#include "scout/Runtime/opengl/glTexture.h"
 
 namespace scout
 {

@@ -12,7 +12,7 @@
 #ifndef SCOUT_FRAMEBUFFER_H_
 #define SCOUT_FRAMEBUFFER_H_
 
-#include "runtime/types.h"
+#include "scout/Runtime/types.h"
 
 namespace scout 
 {

@@ -16,8 +16,8 @@
 #ifndef HPGV_PARAMETER_H
 #define HPGV_PARAMETER_H
 
-#include "runtime/volren/hpgv/hpgv_gl.h"
-#include "runtime/volren/hpgv/hpgv_util.h"
+#include "scout/Runtime/volren/hpgv/hpgv_gl.h"
+#include "scout/Runtime/volren/hpgv/hpgv_util.h"
 
 namespace scout {    
 

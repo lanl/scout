@@ -14,8 +14,8 @@
 
 #include <list>
 
-#include "runtime/types.h"
-#include "runtime/range.h"
+#include "scout/Runtime/types.h"
+#include "scout/Runtime/range.h"
 
 namespace scout 
 {

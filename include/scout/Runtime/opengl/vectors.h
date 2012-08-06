@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <cassert>
 
-#include "runtime/base_types.h"
+#include "scout/Runtime/base_types.h"
 
 namespace scout
 {

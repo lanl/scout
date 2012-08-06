@@ -18,12 +18,12 @@
 #ifndef SCOUT_GL_QUAD_RENDERABLE_VA_H_
 #define SCOUT_GL_QUAD_RENDERABLE_VA_H_
 
-#include "runtime/opengl/vectors.h"
-#include "runtime/opengl/glRenderable.h"
-#include "runtime/opengl/glTexture.h"
-#include "runtime/opengl/glVertexBuffer.h"
-#include "runtime/opengl/glTextureBuffer.h"
-#include "runtime/opengl/glTexCoordBuffer.h"
+#include "scout/Runtime/opengl/vectors.h"
+#include "scout/Runtime/opengl/glRenderable.h"
+#include "scout/Runtime/opengl/glTexture.h"
+#include "scout/Runtime/opengl/glVertexBuffer.h"
+#include "scout/Runtime/opengl/glTextureBuffer.h"
+#include "scout/Runtime/opengl/glTexCoordBuffer.h"
 
 namespace scout
 {

@@ -12,7 +12,7 @@
 #ifndef SCOUT_COLOR_FUNCS_H_
 #define SCOUT_COLOR_FUNCS_H_
 
-#include "scout/types.h"
+#include "scout/Runtime/types.h"
 
 extern float4 hsva(float hue, float sat, float value, float alpha);
 

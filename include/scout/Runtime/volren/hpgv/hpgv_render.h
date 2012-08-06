@@ -21,13 +21,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "runtime/volren/hpgv/hpgv_gl.h"    
-#include "runtime/volren/hpgv/hpgv_block.h"
-#include "runtime/volren/hpgv/hpgv_utilmath.h"
-#include "runtime/volren/hpgv/hpgv_util.h"
-#include "runtime/volren/hpgv/hpgv_composite.h"
-#include "runtime/volren/hpgv/hpgv_parameter.h"
-#include "runtime/vec_types.h"
+#include "scout/Runtime/volren/hpgv/hpgv_gl.h"    
+#include "scout/Runtime/volren/hpgv/hpgv_block.h"
+#include "scout/Runtime/volren/hpgv/hpgv_utilmath.h"
+#include "scout/Runtime/volren/hpgv/hpgv_util.h"
+#include "scout/Runtime/volren/hpgv/hpgv_composite.h"
+#include "scout/Runtime/volren/hpgv/hpgv_parameter.h"
+#include "scout/Runtime/vec_types.h"
 
 
 namespace scout {

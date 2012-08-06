@@ -18,10 +18,10 @@
 #define HPGV_COMPOSITE_H
 
 #include <mpi.h>
-#include "runtime/volren/hpgv/hpgv_gl.h"
-#include "runtime/volren/hpgv/hpgv_util.h"
-#include "runtime/volren/hpgv/hpgv_utilmath.h"
-#include "runtime/volren/hpgv/hpgv_utiltiming.h"
+#include "scout/Runtime/volren/hpgv/hpgv_gl.h"
+#include "scout/Runtime/volren/hpgv/hpgv_util.h"
+#include "scout/Runtime/volren/hpgv/hpgv_utilmath.h"
+#include "scout/Runtime/volren/hpgv/hpgv_utiltiming.h"
     
 
 namespace scout 

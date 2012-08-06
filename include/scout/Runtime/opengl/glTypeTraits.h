@@ -19,7 +19,7 @@
 #define SCOUT_GL_TYPE_TRAITS_H_
 
 #include "opengl.h"
-#include "runtime/vec_types.h"
+#include "scout/Runtime/vec_types.h"
 
 namespace scout
 {

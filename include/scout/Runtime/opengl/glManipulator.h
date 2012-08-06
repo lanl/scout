@@ -18,7 +18,7 @@
 #ifndef SCOUT_GL_MANIPULATOR_H_
 #define SCOUT_GL_MANIPULATOR_H_
 
-#include "runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glCamera.h"
 
 namespace scout
 {

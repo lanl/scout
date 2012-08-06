@@ -22,14 +22,14 @@
 #include <string>
 #include <list>
 
-#include "runtime/opengl/glCamera.h"
-#include "runtime/opengl/glTexture.h"
-#include "runtime/opengl/glTexture2D.h"
-#include "runtime/opengl/glTextureBuffer.h"
-#include "runtime/opengl/glRenderable.h"
-#include "runtime/opengl/glVertexBuffer.h"
-#include "runtime/opengl/glTexCoordBuffer.h"
-#include "runtime/volren/hpgv/hpgv.h"
+#include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glTexture.h"
+#include "scout/Runtime/opengl/glTexture2D.h"
+#include "scout/Runtime/opengl/glTextureBuffer.h"
+#include "scout/Runtime/opengl/glRenderable.h"
+#include "scout/Runtime/opengl/glVertexBuffer.h"
+#include "scout/Runtime/opengl/glTexCoordBuffer.h"
+#include "scout/Runtime/volren/hpgv/hpgv.h"
 
 
 // ----- glVolumeRenderable 

@@ -24,10 +24,10 @@
 #include <string>
 #include <list>
 
-#include "runtime/opengl/glVertexShader.h"
-#include "runtime/opengl/glGeometryShader.h"
-#include "runtime/opengl/glFragmentShader.h"
-#include "runtime/opengl/glUniformValue.h"
+#include "scout/Runtime/opengl/glVertexShader.h"
+#include "scout/Runtime/opengl/glGeometryShader.h"
+#include "scout/Runtime/opengl/glFragmentShader.h"
+#include "scout/Runtime/opengl/glUniformValue.h"
 
 namespace scout
 {

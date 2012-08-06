@@ -18,7 +18,7 @@
 #ifndef SCOUT_GEOMETRY_SHADER_H_
 #define SCOUT_GEOMETRY_SHADER_H_
 
-#include "runtime/opengl/glShader.h"
+#include "scout/Runtime/opengl/glShader.h"
 
 namespace scout
 {

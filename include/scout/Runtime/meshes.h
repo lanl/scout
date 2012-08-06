@@ -12,7 +12,7 @@
 #ifndef SCOUT_MESHES_H_
 #define SCOUT_MESHES_H_
 
-#include "runtime/base_types.h"
+#include "scout/Runtime/base_types.h"
 
 namespace scout
 {

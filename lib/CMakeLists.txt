@@ -11,4 +11,4 @@
 project(ScLibraries)
 
 add_subdirectory(standard)    # Scout's standard library
-add_subdirectory(runtime)     # Scout's runtime library
+add_subdirectory(Runtime)     # Scout's runtime library

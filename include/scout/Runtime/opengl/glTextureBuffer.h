@@ -12,7 +12,7 @@
 #ifndef SCOUT_GL_TEXTURE_BUFFER_H_
 #define SCOUT_GL_TEXTURE_BUFFER_H_
 
-#include "runtime/opengl/glBufferObject.h"
+#include "scout/Runtime/opengl/glBufferObject.h"
 
 namespace scout
 {

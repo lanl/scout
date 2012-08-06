@@ -18,19 +18,19 @@
 
 #include <mpi.h>
 
-#include "runtime/volren/hpgv/hpgv_error.h"
-#include "runtime/volren/hpgv/hpgv_gl.h"
-#include "runtime/volren/hpgv/hpgv_util.h"
-#include "runtime/volren/hpgv/hpgv_utilmath.h"
-#include "runtime/volren/hpgv/hpgv_utiltiming.h"
-#include "runtime/volren/hpgv/hpgv_socket.h"
+#include "scout/Runtime/volren/hpgv/hpgv_error.h"
+#include "scout/Runtime/volren/hpgv/hpgv_gl.h"
+#include "scout/Runtime/volren/hpgv/hpgv_util.h"
+#include "scout/Runtime/volren/hpgv/hpgv_utilmath.h"
+#include "scout/Runtime/volren/hpgv/hpgv_utiltiming.h"
+#include "scout/Runtime/volren/hpgv/hpgv_socket.h"
 
-#include "runtime/volren/hpgv/hpgv_block.h"
-#include "runtime/volren/hpgv/hpgv_render.h"
-#include "runtime/volren/hpgv/hpgv_parameter.h"
+#include "scout/Runtime/volren/hpgv/hpgv_block.h"
+#include "scout/Runtime/volren/hpgv/hpgv_render.h"
+#include "scout/Runtime/volren/hpgv/hpgv_parameter.h"
 
-#include "runtime/volren/hpgv/hpgv_composite.h"
+#include "scout/Runtime/volren/hpgv/hpgv_composite.h"
 
-#include "runtime/volren/hpgv/matrix_util.h"
+#include "scout/Runtime/volren/hpgv/matrix_util.h"
 
 #endif
