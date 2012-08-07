@@ -15,7 +15,7 @@
  * 
  */
 
-#include "runtime/opengl/glTexture2D.h"
+#include "scout/Runtime/opengl/glTexture2D.h"
 
 using namespace scout;
 

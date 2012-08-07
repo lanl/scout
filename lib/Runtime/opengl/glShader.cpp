@@ -22,7 +22,7 @@
 
 using namespace std;
 
-#include "runtime/opengl/glShader.h"
+#include "scout/Runtime/opengl/glShader.h"
 
 using namespace scout;
 

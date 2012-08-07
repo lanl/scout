@@ -15,9 +15,9 @@
  *
  */
 #include <iostream>
-#include "runtime/opengl/glQuadRenderableVA.h"
-#include "runtime/opengl/glTexture1D.h"
-#include "runtime/opengl/glTexture2D.h"
+#include "scout/Runtime/opengl/glQuadRenderableVA.h"
+#include "scout/Runtime/opengl/glTexture1D.h"
+#include "scout/Runtime/opengl/glTexture2D.h"
 
 using namespace std;
 using namespace scout;

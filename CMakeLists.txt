@@ -97,7 +97,7 @@ project(Scout)
   set(SC_CLANG_INC_DIR ${SC_CLANG_SRC_DIR}/include) 
   set(SC_CLANG_BUILD_INC_DIR ${SC_BUILD_DIR}/llvm/tools/clang/include)
 
-  set(CMAKE_VERBOSE_MAKEFILE ON)
+  set(CMAKE_VERBOSE_MAKEFILE OFF)
 
   ##### PACKAGE CREATION (via CPack)
   #
@@ -279,13 +279,16 @@ project(Scout)
     message(STATUS "scout: Debug build enabled, setting in-source install prefix of '${CMAKE_INSTALL_PREFIX}'.")
   endif()
 
+  # NOTE: There is a bug in CMake 2.8.8 that will not correctly
+  # install header files on Mac OS X using the syntax we have below.
+  # The patch for this is available here:
   #
-  install(DIRECTORY include 
-    DESTINATION include 
-    FILES_MATCHING
-      PATTERN  "*.h"
-      PATTERN  "*.sch"
-      PATTERN  "License.txt"
+  #    http://cmake.org/gitweb?p=cmake.git;a=commitdiff;h=a41557a2
+  #
+  install(DIRECTORY ${SC_INCLUDE_DIR}/
+    DESTINATION include
+    FILES_MATCHING PATTERN  "*.h"
+    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
   )
 
   #
@@ -311,14 +314,15 @@ project(Scout)
   #    - sandbox: proof-of-concept test codes.
   #    - tests  : regression testing
   #
-  add_subdirectory(tools)       # various command line tools for the build and development
-  add_subdirectory(llvm)        # scout compiler based on active llvm development
-  add_subdirectory(tools/llvm)  # llvm-centric tools (dependent upon llvm being built)
-  add_subdirectory(tools/clang) # clang-centric tools (dependent upon llvm+clang being built)
-  add_subdirectory(lib)         # scout runtime and standard libraries
-  add_subdirectory(sandbox)     # proof-of-concept test codes
+  add_subdirectory(tools)
+  add_subdirectory(llvm)
+  add_subdirectory(tools/llvm)
+  add_subdirectory(tools/clang)
+  add_subdirectory(lib)
+  #add_subdirectory(sandbox)
 
-  set(SC_ENABLE_REGRESS_TESTS ON CACHE STRING "Building the suite of regression tests.")
+  set(SC_ENABLE_REGRESS_TESTS ON CACHE STRING
+        "Building the suite of regression tests.")
   if (SC_ENABLE_REGRESSIONS)
     add_subdirectory(test)
   endif()

@@ -15,12 +15,12 @@
  * 
  */
 #include <iostream>
-#include "runtime/opengl/glSDL.h"
-#include "runtime/opengl/vectors.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/vectors.h"
 
 #ifdef __APPLE__
 
-#include "runtime/init_mac.h"
+#include "scout/Runtime/init_mac.h"
 
 #endif
 

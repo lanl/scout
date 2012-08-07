@@ -19,7 +19,7 @@
 #include <limits>
 #include <stdlib.h>
 
-#include "runtime/opengl/glGlyphRenderable.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
 #include "sphere_cast_vs.h"
 #include "sphere_cast_fs.h"
 

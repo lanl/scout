@@ -12,7 +12,7 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include "runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/opengl.h"
 
 using namespace std;
 

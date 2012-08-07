@@ -448,8 +448,10 @@ endif()
 
 add_subdirectory(cmake/modules)
 
-install(DIRECTORY include/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
   DESTINATION include
+  # Note: The use of 'files_matching' below is broken under 
+  # CMake 2.8.8 under Mac OS X.  --PM 
   FILES_MATCHING
   PATTERN "*.h"
   PATTERN "*.def"
@@ -459,8 +461,10 @@ install(DIRECTORY include/
   PATTERN ".svn" EXCLUDE
   )
 
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
-  DESTINATION include
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/llvm/
+  DESTINATION include/llvm/
+  # Note: The use of 'files_matching' below is broken under 
+  # CMake 2.8.8 under Mac OS X.  --PM 
   FILES_MATCHING
   PATTERN "*.def"
   PATTERN "*.h"

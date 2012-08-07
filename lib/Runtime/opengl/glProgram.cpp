@@ -18,7 +18,7 @@
 #include <cassert>
 #include <iostream>
 
-#include "runtime/opengl/glProgram.h"
+#include "scout/Runtime/opengl/glProgram.h"
 
 using namespace std;
 using namespace scout;

@@ -14,7 +14,7 @@
  *-----
  * 
  */
-#include "runtime/opengl/glTexture1D.h"
+#include "scout/Runtime/opengl/glTexture1D.h"
 
 using namespace scout;
 

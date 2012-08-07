@@ -15,10 +15,12 @@
  *
  */
 #include <iostream>
-#include "runtime/opengl/glVolumeRenderable.h"
-#include "runtime/volren/hpgv/hpgv_block.h"
-#include "runtime/volren/hpgv/matrix_util.h"
 #include <mpi.h>
+
+#include "scout/Runtime/opengl/glVolumeRenderable.h"
+#include "scout/Runtime/volren/hpgv/hpgv_block.h"
+#include "scout/Runtime/volren/hpgv/matrix_util.h"
+
 
 using namespace std;
 using namespace scout;

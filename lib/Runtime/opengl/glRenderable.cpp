@@ -15,7 +15,7 @@
  * 
  */
 
-#include "runtime/opengl/glRenderable.h"
+#include "scout/Runtime/opengl/glRenderable.h"
 #include <iostream>
 
 using namespace std;
