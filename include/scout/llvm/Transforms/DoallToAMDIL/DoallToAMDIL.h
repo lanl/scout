@@ -13,6 +13,8 @@
 #define _SC_LLVM_DOALLTOAMDIL_H_
 
 #include "llvm/Pass.h"
+#include "llvm/Module.h"
+#include "llvm/Transforms/Utils/ValueMapper.h"
 
 class DoallToAMDIL : public llvm::ModulePass {
  public:
@@ -27,6 +29,9 @@ class DoallToAMDIL : public llvm::ModulePass {
   const char *getPassName() const;
 
   bool runOnModule(llvm::Module &M);
+
+  llvm::Module* CloneGPUModule(const llvm::Module *M,
+			       llvm::ValueToValueMapTy &VMap);
 
 private:
   
