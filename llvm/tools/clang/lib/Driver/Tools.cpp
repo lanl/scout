@@ -5594,6 +5594,7 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   // scout - add Scout library search paths
+  /*
   std::string sccPath = C.getDriver().Dir;
   sccPath = llvm::sys::path::parent_path(sccPath);
 
@@ -5613,7 +5614,8 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(scLibOpt.c_str());
 
   CmdArgs.push_back(scCudaLib.c_str());
-
+  */
+  
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 

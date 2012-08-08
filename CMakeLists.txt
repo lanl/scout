@@ -171,6 +171,7 @@ project(Scout)
   find_package(CUDA)
   if (CUDA_FOUND) 
     message(STATUS "scout: CUDA found, enabling PTX codegen support.")
+    message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
     set(SC_ENABLE_CUDA ON CACHE BOOL "Enable CUDA/PTX code generation and runtime support.")
     add_definitions(-DSC_ENABLE_CUDA) 
 
@@ -287,8 +288,10 @@ project(Scout)
   #
   install(DIRECTORY ${SC_INCLUDE_DIR}/
     DESTINATION include
-    FILES_MATCHING PATTERN  "*.h"
-    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    FILES_MATCHING 
+      PATTERN  "*.h"
+      PATTERN  "*.sch"
+      PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
   )
 
   #

@@ -115,6 +115,7 @@ $(build_dir)/Makefile: CMakeLists.txt
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
+	@(cd $(build_dir)/llvm; make $(make_flags); make install)
 	@(cd $(build_dir); make $(make_flags); make install)
 
 .PHONY: test
