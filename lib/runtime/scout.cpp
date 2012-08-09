@@ -111,7 +111,7 @@ void __sc_init(ScoutGPUType gpuType){
 }
 
 void __sc_end(){
-
+  delete __sc_tbq;
 }
 
 double cshift(double a, int dx, int axis){

@@ -557,11 +557,11 @@ llvm::Value
 
   for(int i = 1, e = indVars.size(); i < e; ++i) {
     llvm::Value *dim = Builder.CreateLoad(ranges[i - 1]);
-    size = Builder.CreateAdd(size, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][1])));
 
     if(i == 2)
-      dim = Builder.CreateMul(dim, ranges[i - 2]);
+      dim = Builder.CreateMul(dim, Builder.CreateLoad(ranges[i - 2]));
 
+    size = Builder.CreateAdd(size, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][1])));
     start = Builder.CreateAdd(start, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][0])));
   }
 
