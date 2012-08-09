@@ -60,6 +60,16 @@ endfunction()
 
 add_subdirectory(lib)
 
+INCLUDE( ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ConfigureChecks.cmake )
+CONFIGURE_FILE( ${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.cmake
+                ${CMAKE_CURRENT_BINARY_DIR}/config.h )
+
+INCLUDE_DIRECTORIES(
+ ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+add_subdirectory(BlocksRuntime)
+
 if(LLVM_INCLUDE_TESTS)
   # Currently the tests have not been ported to CMake, so disable this
   # directory.
