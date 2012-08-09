@@ -235,7 +235,7 @@ project(Scout)
   # configurations such that we can skip building some of backends
   # that we really don't care about...
   #
-  set(LLVM_TARGETS_TO_BUILD X86 NVPTX
+  set(LLVM_TARGETS_TO_BUILD X86 NVPTX CppBackend
     CACHE STRING "Semicolon-separated list of LLVM backend targets to build, or \"all\".")
   #
   #
