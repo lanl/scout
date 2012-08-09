@@ -94,7 +94,7 @@ void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
       __sc_init_opencl();
 #else
       cerr << "Error: Attempt to use OpenCL GPU mode when Scout was "
-        "compiled without CUDA." << endl;
+        "compiled without OpenCL." << endl;
       exit(1);
 #endif // SC_ENABLE_OPENCL
       break;

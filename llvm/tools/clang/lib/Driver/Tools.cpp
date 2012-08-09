@@ -4525,6 +4525,10 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("-lscCudaError");
 #endif
 
+#ifdef SC_ENABLE_OPENCL
+  CmdArgs.push_back("-lOpenCL");
+#endif
+
   CmdArgs.push_back("-lmpi");
   CmdArgs.push_back("-lmpi_cxx");
 
@@ -5719,6 +5723,10 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
 #ifdef SC_ENABLE_CUDA
   CmdArgs.push_back("-lcuda");
   CmdArgs.push_back("-lscCudaError");
+#endif
+
+#ifdef SC_ENABLE_OPENCL
+  CmdArgs.push_back("-lOpenCL");
 #endif
 
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
