@@ -767,12 +767,21 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     // For each function argument, a bit to indicate whether it is
     // a mesh member.
     SmallVector< llvm::Value *, 3 > args;
+    SmallVector< llvm::Value *, 3 > signedArgs;
     SmallVector< llvm::Value *, 3 > meshArgs;
     typedef llvm::Function::arg_iterator ArgIterator;
     for(ArgIterator it = ForallFn->arg_begin(),
         end = ForallFn->arg_end(); it != end; ++it) {
-      if(isMeshMember(it)){
+      bool isSigned;
+      if(isMeshMember(it, isSigned)){
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
+        
+        if(isSigned){
+          signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 1));
+        }
+        else{
+          signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+        }
         
         // Convert mesh field arguments to the function which
         // have been uniqued by ExtractCodeRegion() back into mesh field names
@@ -789,6 +798,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
+        signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
       }
     }
@@ -811,6 +821,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(meshArgs)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(signedArgs)));
     
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
                                                 ArrayRef< llvm::Value * >(KMD)));
