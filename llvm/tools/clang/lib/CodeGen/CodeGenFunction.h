@@ -676,7 +676,7 @@ public:
     return !isCPU() && !isGPU();
   }
 
-  bool isMeshMember(llvm::Argument *arg, bool& isSigned) {
+  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
     isSigned = false;
     
     if(arg->getName().endswith("height")) return false;
@@ -689,6 +689,7 @@ public:
       if(arg->getName().startswith(it->first)) {
         QualType qt = it->second.second;
         isSigned = qt.getTypePtr()->isSignedIntegerType();
+        typeStr = qt.getAsString() + "*";
         return true;
       }
     }

@@ -762,18 +762,21 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::NamedMDNode *ScoutMetadata =
     CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
     
-    SmallVector< llvm::Value *, 4 > KMD; // Kernel MetaData
+    SmallVector<llvm::Value *, 4> KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
     // For each function argument, a bit to indicate whether it is
     // a mesh member.
-    SmallVector< llvm::Value *, 3 > args;
-    SmallVector< llvm::Value *, 3 > signedArgs;
-    SmallVector< llvm::Value *, 3 > meshArgs;
+    SmallVector<llvm::Value*, 3> args;
+    SmallVector<llvm::Value*, 3> signedArgs;
+    SmallVector<llvm::Value*, 3> meshArgs;
+    SmallVector<llvm::Value*, 3> typeArgs;
     typedef llvm::Function::arg_iterator ArgIterator;
+    size_t pos = 0;
     for(ArgIterator it = ForallFn->arg_begin(),
-        end = ForallFn->arg_end(); it != end; ++it) {
+        end = ForallFn->arg_end(); it != end; ++it, ++pos) {
       bool isSigned;
-      if(isMeshMember(it, isSigned)){
+      std::string typeStr;
+      if(isMeshMember(it, isSigned, typeStr)){
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         
         if(isSigned){
@@ -795,14 +798,23 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         }
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
+        
+        typeArgs.push_back(Builder.CreateGlobalStringPtr(typeStr));
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
+        
+        if(pos == 0){
+          typeArgs.push_back(Builder.CreateGlobalStringPtr("int*"));
+        }
+        else{
+          typeArgs.push_back(Builder.CreateGlobalStringPtr(""));
+        }
       }
     }
-    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
     // Add dimension information.
@@ -810,7 +822,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       args.push_back(TranslateExprToValue(S.getStart(i)));
       args.push_back(TranslateExprToValue(S.getEnd(i)));
     }
-    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
     args.push_back(Builder.CreateGlobalStringPtr(meshName));
@@ -819,12 +831,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     //llvm::ConstantArray::get(getLLVMContext(), meshName);
     //args.push_back(MeshNameArray);
     
-    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(args)));
-    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(meshArgs)));
-    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef< llvm::Value * >(signedArgs)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(args)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(meshArgs)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(signedArgs)));
+    KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(typeArgs)));
     
     ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
-                                                ArrayRef< llvm::Value * >(KMD)));
+                                                ArrayRef<llvm::Value*>(KMD)));
     
   }
      
