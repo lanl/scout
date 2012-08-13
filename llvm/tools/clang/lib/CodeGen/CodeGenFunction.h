@@ -676,7 +676,9 @@ public:
     return !isCPU() && !isGPU();
   }
 
-  bool isMeshMember(llvm::Argument *arg) {
+  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
+    isSigned = false;
+    
     if(arg->getName().endswith("height")) return false;
     if(arg->getName().endswith("width")) return false;
     if(arg->getName().endswith("depth")) return false;
@@ -685,12 +687,15 @@ public:
     for(MemberIterator it = MeshMembers.begin(),
           end = MeshMembers.end(); it != end; ++it) {
       if(arg->getName().startswith(it->first)) {
+        QualType qt = it->second.second;
+        isSigned = qt.getTypePtr()->isSignedIntegerType();
+        typeStr = qt.getAsString() + "*";
         return true;
       }
     }
     return false;
   }
-
+  
   llvm::StringRef toString(int i) {
     switch(i) {
     case 0: return "width";
