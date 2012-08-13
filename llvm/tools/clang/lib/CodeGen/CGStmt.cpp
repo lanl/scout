@@ -772,6 +772,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     SmallVector<llvm::Value*, 3> typeArgs;
     typedef llvm::Function::arg_iterator ArgIterator;
     size_t pos = 0;
+    llvm::Value* gs;
     for(ArgIterator it = ForallFn->arg_begin(),
         end = ForallFn->arg_end(); it != end; ++it, ++pos) {
       bool isSigned;
@@ -791,7 +792,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         std::string ns = (*it).getName().str();
         while(!ns.empty()){
           if(meshFieldMap.find(ns) != meshFieldMap.end()){
-            meshArgs.push_back(Builder.CreateGlobalStringPtr(ns));
+	    gs = Builder.CreateGlobalStringPtr(ns);
+            meshArgs.push_back(gs);
             break;
           }
           ns.erase(ns.length() - 1, 1);
@@ -799,18 +801,27 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
         
-        typeArgs.push_back(Builder.CreateGlobalStringPtr(typeStr));
+	gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
+	//gs = Builder.CreateGlobalStringPtr(typeStr);
+	
+        typeArgs.push_back(gs);
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-        meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
+	gs = Builder.CreateGlobalStringPtr((*it).getName().str());
+        meshArgs.push_back(gs);
         
         if(pos == 0){
-          typeArgs.push_back(Builder.CreateGlobalStringPtr("int*"));
+	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "int*");
+	  //gs = Builder.CreateGlobalStringPtr("int*");
+	  
+          typeArgs.push_back(gs);
         }
         else{
-          typeArgs.push_back(Builder.CreateGlobalStringPtr(""));
+	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
+	  //gs = Builder.CreateGlobalStringPtr("");
+          typeArgs.push_back(gs);
         }
       }
     }

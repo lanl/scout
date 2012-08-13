@@ -10,6 +10,11 @@
  */
 
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
+
+#include <vector>
+#include <iostream>
+#include <cxxabi.h>
+
 #include "llvm/Constants.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/FormattedStream.h"
@@ -17,10 +22,7 @@
 #include "llvm/Instructions.h"
 #include "llvm/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-
-#include <vector>
-#include <iostream>
-#include <cxxabi.h>
+#include "llvm/Support/InstVisitor.h"
 
 using namespace std;
 using namespace llvm;
@@ -34,6 +36,77 @@ namespace{
     free(dn);
     return ret;
   }
+
+  class ForAllVisitor : public InstVisitor<ForAllVisitor>{
+  public:
+    ForAllVisitor(Module& module, DoallToAMDIL::FunctionMDMap& functionMDMap)
+      : module(module),
+        functionMDMap(functionMDMap){
+
+    }
+
+    void visitCallInst(CallInst& I){
+      Function* f = I.getCalledFunction();
+
+      if(!f){
+        return;
+      }
+
+      if(f->getName().startswith("llvm.memcpy")){
+        Value* v = I.getArgOperand(0);
+	std::string vs = v->getName().str();
+        if(!vs.empty()){
+          symbolMap[vs] = true;
+        }
+        else{
+	  ValueMap::iterator itr = valueMap.find(v);
+          if(itr != valueMap.end()){
+            symbolMap[itr->second] = true;
+          }
+        }
+      }
+      else if(f->getName().startswith("forall") ||
+	      f->getName().startswith("renderall")){
+	SmallVector< llvm::Value *, 3 > args;
+        unsigned numArgs = I.getNumArgOperands();
+	for(unsigned i = 0; i < numArgs; ++i){
+          Value* arg = I.getArgOperand(i);
+	  std::string s = arg->getName().str();
+
+	  SymbolMap::iterator itr = symbolMap.find(s);
+          if(itr != symbolMap.end()){
+            args.push_back(arg);
+            symbolMap.erase(itr);
+          }
+        }
+
+        functionMDMap[f->getName().str()] =
+          MDNode::get(module.getContext(), args);
+      }
+    }
+
+    void visitStoreInst(StoreInst& I){
+      std::string s = I.getPointerOperand()->getName().str();
+      if(!s.empty()){
+        symbolMap[s] = true;
+      }
+    }
+
+    void visitBitCastInst(BitCastInst& I){
+      std::string vs = I.getOperand(0)->getName().str();
+      if(!vs.empty()){
+	valueMap[&I] = vs;
+      }
+    }
+
+    typedef std::map<std::string, bool> SymbolMap;
+    typedef std::map<Value*, std::string> ValueMap;
+
+    SymbolMap symbolMap;
+    ValueMap valueMap;
+    Module& module;
+    DoallToAMDIL::FunctionMDMap& functionMDMap;
+  };
 
 } // end namespace
 
@@ -118,6 +191,67 @@ const char *DoallToAMDIL::getPassName() const {
   return "Doall-to-AMDIL";
 }
 
+llvm::Module* DoallToAMDIL::createGPUModule(const llvm::Module& m){
+  ValueToValueMapTy valueMap;
+  Module* nm = CloneGPUModule(&m, valueMap);
+
+  typedef vector<GlobalVariable*> GlobalVec;
+  GlobalVec globalsToRemove;
+
+  Module::global_iterator itr = nm->global_begin();
+  while(itr != nm->global_end()){
+    GlobalVariable* global = &*itr;
+
+    Type* type = global->getType();
+
+    if(PointerType* pointerType = dyn_cast<PointerType>(type)){
+      if(pointerType->getAddressSpace() == 0){
+        globalsToRemove.push_back(global);
+        global->replaceAllUsesWith(UndefValue::get(type));
+      }
+    }
+    ++itr;
+  }
+
+  for(size_t i = 0; i < globalsToRemove.size(); ++i){
+    globalsToRemove[i]->eraseFromParent();
+  }
+
+  typedef vector<Function*> FunctionVec;
+  FunctionVec functionsToRemove;
+
+  for(Module::iterator fitr = nm->begin(),
+        fitrEnd = nm->end(); fitr != fitrEnd; ++fitr){
+    Function* function = &*fitr;
+
+    /*
+    f->removeFnAttr(Attribute::UWTable|                                 
+		    Attribute::StackProtect); 
+    */
+
+    if(function->getName().startswith("__OpenCL_renderall") ||
+       function->getName().startswith("__OpenCL_forall")){
+
+    }
+    else{
+      Type* type = function->getType();
+
+      function->replaceAllUsesWith(UndefValue::get(type));
+
+      functionsToRemove.push_back(function);
+    }
+  }
+
+  for(size_t i = 0; i < functionsToRemove.size(); ++i){
+    functionsToRemove[i]->eraseFromParent();
+  }
+
+  //cerr << "------------------ after pruning" << endl;
+  //nm->dump();
+
+  return nm;
+}
+
 // based on LLVM function to clone a module, plus some modifications
 // needed for AMDIL
 Module* DoallToAMDIL::CloneGPUModule(const Module *M, 
@@ -133,14 +267,29 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
   for (Module::const_global_iterator I = M->global_begin(), 
 	 E = M->global_end();
        I != E; ++I) {
-    GlobalVariable *GV = new GlobalVariable(*New, 
-                                            I->getType()->getElementType(),
-                                            I->isConstant(), I->getLinkage(),
-                                            (Constant*) 0, I->getName(),
-                                            (GlobalVariable*) 0,
-                                            I->getThreadLocalMode(),
-                                            I->getType()->getAddressSpace());
-    GV->copyAttributesFrom(I);
+
+    GlobalVariable* GV;
+    if(I->getName().startswith("scout.gpu")){
+      GV = new GlobalVariable(*New,
+			      I->getType()->getElementType(),
+			      I->isConstant(), GlobalValue::InternalLinkage,
+			      (Constant*) 0, I->getName(),
+			      (GlobalVariable*) 0,
+			      I->getThreadLocalMode(),
+			      2);
+    }
+    else{
+      GV = new GlobalVariable(*New,
+			      I->getType()->getElementType(),
+			      I->isConstant(), I->getLinkage(),
+			      (Constant*) 0, I->getName(),
+			      (GlobalVariable*) 0,
+			      I->getThreadLocalMode(),
+			      I->getType()->getAddressSpace());
+      GV->copyAttributesFrom(I);
+    }
+
+
     VMap[I] = GV;
   }
 
@@ -167,9 +316,11 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
     FunctionType* NFT = 
       FunctionType::get(FT->getReturnType(), args, FT->isVarArg());
 
+    string fullName = "__OpenCL_" + I->getName().str() + "_kernel";
+
     Function* NF = 
       Function::Create(NFT,
-		       I->getLinkage(), I->getName(), New);  
+		       I->getLinkage(), fullName, New);  
 
     NF->copyAttributesFrom(I);
     VMap[I] = NF;
@@ -226,77 +377,244 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
 
 bool DoallToAMDIL::runOnModule(Module &m) {
   IRBuilder<> builder(m.getContext());
-  
-  ValueToValueMapTy valueMap;
-  Module* nm = CloneGPUModule(&m, valueMap);  
 
-  //cerr << "------------------ before pruning" << endl;
-  //nm->dump();
-  
-  typedef vector<GlobalVariable*> GlobalVec;
-  GlobalVec globalsToRemove;
+  Type* i32Ty = IntegerType::get(m.getContext(), 32);
+  Type* i8PtrTy = PointerType::get(IntegerType::get(m.getContext(), 8), 0);
 
-  Module::global_iterator itr = nm->global_begin();
-  while(itr != nm->global_end()){
-    GlobalVariable* global = &*itr;
-    
-    Type* type = global->getType();
+  for(Module::iterator itr = m.begin(), itrEnd = m.end();
+      itr != itrEnd; ++itr){
+    Function& f = *itr;
+    ForAllVisitor visitor(m, functionMDMap);
+    visitor.visit(f);
+  }
 
-    if(PointerType* pointerType = dyn_cast<PointerType>(type)){
-      if(pointerType->getAddressSpace() == 0){
-        globalsToRemove.push_back(global);
-        global->replaceAllUsesWith(UndefValue::get(type));
+  //cerr << "----------- dumping original module" << endl;
+  //m.dump();
+
+  Module* gm = createGPUModule(m);
+  gm->setDataLayout("e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:"
+		    "64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:"
+		    "64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:"
+		    "256-v256:256:256-v512:512:512-v1024:1024:1024-a0:0:"
+		    "64-f80:32:32");
+  gm->setTargetTriple("amdil-pc-amdopencl");
+
+  ArrayType* sgvArrayType =
+    ArrayType::get(IntegerType::get(gm->getContext(), 8), 1);
+
+  ArrayType* fgvArrayType =
+    ArrayType::get(IntegerType::get(gm->getContext(), 8), 1);
+
+  ArrayType* lvgvArrayType =
+    ArrayType::get(IntegerType::get(gm->getContext(), 8), 0);
+
+  ArrayType* rvgvArrayType =
+    ArrayType::get(IntegerType::get(gm->getContext(), 8), 0);
+
+  vector<Type*> annotationStructFields;
+
+  for(size_t i = 0; i < 5; ++i){
+    annotationStructFields.push_back(i8PtrTy);
+  }
+
+  annotationStructFields.push_back(IntegerType::get(gm->getContext(), 32));
+
+  StructType* annotationStructTy = StructType::get(gm->getContext(),
+						   annotationStructFields,
+						   false);
+
+  vector<Constant*> annotations;
+
+  NamedMDNode* mdn = gm->getNamedMetadata("scout.kernels");
+  for(size_t i = 0; i < mdn->getNumOperands(); ++i){
+    MDNode* node = cast<MDNode>(mdn->getOperand(i)->getOperand(0));
+    Function* f = cast<Function>(node->getOperand(0));
+
+    // --------------------------------- signed args metadata
+
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(5));
+    Function::arg_iterator aitr = f->arg_begin();
+
+    vector<Constant*> signedArgGlobals;
+
+    for(size_t j = 0; j < node->getNumOperands(); ++j){
+      ConstantInt* signedArg = cast<ConstantInt>(node->getOperand(j));
+      if(signedArg->isOne()){
+	Constant* signedArgConstant =
+	  ConstantDataArray::getString(gm->getContext(), aitr->getName());
+
+	string name = aitr->getName().str() + ".str";
+
+	GlobalVariable* signedArgGlobal =
+	  new GlobalVariable(*gm,
+			     signedArgConstant->getType(),
+			     true,
+			     GlobalValue::InternalLinkage,
+			     signedArgConstant, name, 0,
+			     GlobalVariable::NotThreadLocal, 2);
+
+	signedArgGlobals.push_back(ConstantExpr::getBitCast(signedArgGlobal, 
+							    i8PtrTy));
       }
+      ++aitr;
     }
-    ++itr;
-  }
-  
-  for(size_t i = 0; i < globalsToRemove.size(); ++i){
-    globalsToRemove[i]->eraseFromParent();
-  }
-  
-  typedef vector<Function*> FunctionVec;
-  FunctionVec functionsToRemove;
 
-  for(Module::iterator fitr = nm->begin(),
-        fitrEnd = nm->end(); fitr != fitrEnd; ++fitr){
-    Function* function = &*fitr;
+    Constant* signedArgsConstant =
+      ConstantArray::get(ArrayType::get(i8PtrTy, signedArgGlobals.size()),
+			 signedArgGlobals);
 
-    /*
-      f->removeFnAttr(Attribute::UWTable|
-      Attribute::StackProtect);
-    */
+    string name = 
+      "llvm.signedOrSignedpointee.annotations." + f->getName().str();
 
-    if(function->getName().startswith("renderall") ||
-       function->getName().startswith("forall")){
+    GlobalVariable* signedArgsGlobal =
+      new GlobalVariable(*gm,
+			 signedArgsConstant->getType(),
+			 false,
+			 GlobalValue::ExternalLinkage,
+			 signedArgsConstant, name, 0);
+
+    signedArgsGlobal->setSection("llvm.metadata");
+
+    // --------------------------------- type args metadata
+
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(6));
+    aitr = f->arg_begin();
+
+    vector<Constant*> typeArgGlobals;
+
+    for(size_t j = 0; j < node->getNumOperands(); ++j){
+      ConstantDataArray* typeConstant = 
+	cast<ConstantDataArray>(node->getOperand(j));
+
+      Constant* typeArgConstant =
+	ConstantDataArray::getString(gm->getContext(), 
+				     typeConstant->getAsString(), false);
+
+      string name = aitr->getName().str() + ".type.str";
+
+      GlobalVariable* typeArgGlobal =
+	new GlobalVariable(*gm,
+			   typeArgConstant->getType(),
+			   true,
+			   GlobalValue::InternalLinkage,
+			   typeArgConstant, name, 0,
+			   GlobalVariable::NotThreadLocal, 2);
       
+      typeArgGlobals.push_back(ConstantExpr::getBitCast(typeArgGlobal,
+							i8PtrTy));
+
+      ++aitr;
     }
-    else{
-      Type* type = function->getType();
 
-      function->replaceAllUsesWith(UndefValue::get(type));
+    Constant* typeArgsConstant =
+      ConstantArray::get(ArrayType::get(i8PtrTy, typeArgGlobals.size()),
+			 typeArgGlobals);
 
-      functionsToRemove.push_back(function);
-    }
+    name = "llvm.argtypename.annotations." + f->getName().str();
+
+    GlobalVariable* typeArgsGlobal =
+      new GlobalVariable(*gm,
+			 typeArgsConstant->getType(),
+			 false,
+			 GlobalValue::ExternalLinkage,
+			 typeArgsConstant, name, 0);
+
+    typeArgsGlobal->setSection("llvm.metadata");
+
+    // --------------------------------- llvm.global.annotations
+    vector<Constant*> annotationElems;
+    annotationElems.push_back(ConstantExpr::getBitCast(f, i8PtrTy));
+
+    ConstantAggregateZero* sgvArray =
+      ConstantAggregateZero::get(sgvArrayType);
+    
+    GlobalVariable* sgvGlobal =
+      new GlobalVariable(*gm,
+			 sgvArrayType,
+			 true,
+			 GlobalValue::InternalLinkage,
+			 sgvArray,
+			 "sgv");
+    
+
+    annotationElems.push_back(ConstantExpr::getBitCast(sgvGlobal, i8PtrTy));
+
+    ConstantAggregateZero* fgvArray =
+      ConstantAggregateZero::get(fgvArrayType);
+    
+    GlobalVariable* fgvGlobal =
+      new GlobalVariable(*gm,
+			 fgvArrayType,
+			 true,
+			 GlobalValue::InternalLinkage,
+			 fgvArray,
+			 "fgv");
+    
+    annotationElems.push_back(ConstantExpr::getBitCast(fgvGlobal, i8PtrTy));
+    
+    ConstantAggregateZero* lvgvArray =
+      ConstantAggregateZero::get(lvgvArrayType);
+    
+    GlobalVariable* lvgvGlobal =
+      new GlobalVariable(*gm,
+			 lvgvArrayType,
+			 true,
+			 GlobalValue::InternalLinkage,
+			 lvgvArray,
+			 "lvgv");
+    
+    annotationElems.push_back(ConstantExpr::getBitCast(lvgvGlobal, i8PtrTy));
+
+    ConstantAggregateZero* rvgvArray =
+      ConstantAggregateZero::get(rvgvArrayType);
+    
+    GlobalVariable* rvgvGlobal =
+      new GlobalVariable(*gm,
+			 rvgvArrayType,
+			 true,
+			 GlobalValue::InternalLinkage,
+			 rvgvArray,
+			 "rvgv");
+    
+    annotationElems.push_back(ConstantExpr::getBitCast(rvgvGlobal, i8PtrTy));
+
+    annotationElems.push_back(ConstantInt::get(gm->getContext(), APInt(32, 0)));
+    Constant* annotation = 
+      ConstantStruct::get(annotationStructTy, annotationElems);
+    annotations.push_back(annotation);
   }
-  
-  for(size_t i = 0; i < functionsToRemove.size(); ++i){
-    functionsToRemove[i]->eraseFromParent();
-  }
 
-  //cerr << "------------------ after pruning" << endl;
-  //nm->dump();
+  ArrayType* annotationsArrayTy = 
+    ArrayType::get(annotationStructTy, annotations.size());
+
+  Constant* annotationsArray = 
+    ConstantArray::get(annotationsArrayTy, annotations);
+
+  GlobalVariable* annotationsGlobal =
+    new GlobalVariable(*gm,
+                       annotationsArrayTy,
+                       false,
+                       GlobalValue::AppendingLinkage,
+                       annotationsArray,
+                       "llvm.global.annotations");
+
+  annotationsGlobal->setSection("llvm.metadata");
+
+  mdn->eraseFromParent();
+
+  //cerr << "------------------ gpu module" << endl;
+  //gm->dump();
 
   string bitcode;
   raw_string_ostream bs(bitcode);
   formatted_raw_ostream fbs(bs);
 
-  WriteBitcodeToFile(nm, fbs);
+  WriteBitcodeToFile(gm, fbs);
 
   fbs.flush();
 
   Constant *bitcodeData =
-  ConstantDataArray::getString(m.getContext(), bitcode); 
+    ConstantDataArray::getString(m.getContext(), bitcode); 
 
   GlobalVariable* gv = 
     new GlobalVariable(m,
@@ -336,9 +654,6 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   }
   assert(initCall);
 
-  Type* i32Ty = IntegerType::get(m.getContext(), 32);
-  Type* i8PtrTy = PointerType::get(IntegerType::get(m.getContext(), 8), 0);
-  
   Function* buildFunc = m.getFunction("__sc_opencl_build_program");
   if(!buildFunc){
     vector<Type*> args;    
@@ -358,6 +673,65 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   Value* bc = builder.CreateBitCast(gv, i8PtrTy, "bitcode");
   builder.CreateCall2(buildFunc, bc, 
 		      ConstantInt::get(i32Ty, bitcode.length()));
+
+  mdn = m.getNamedMetadata("scout.kernels");
+  for(size_t i = 0; i < mdn->getNumOperands(); ++i){
+    MDNode* node = cast<MDNode>(mdn->getOperand(i)->getOperand(0));
+    Function* f = cast<Function>(node->getOperand(0));
+
+    SmallVector<ConstantInt*, 4> dims;
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(2));
+    for(size_t j = 0; j < node->getNumOperands(); ++j){
+      dims.push_back(cast<ConstantInt>(node->getOperand(j)));
+    }
+
+    SmallVector<Value*, 3> fields;
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(4));
+    for(size_t j = 0; j < node->getNumOperands(); ++j){
+      fields.push_back(cast<Value>(node->getOperand(j)));
+    }
+
+    f->deleteBody();
+    BasicBlock* entry = BasicBlock::Create(m.getContext(), "entry", f);
+    builder.SetInsertPoint(entry);
+
+    Function* initKernelFunc = m.getFunction("__sc_opencl_init_kernel");
+    if(!initKernelFunc){
+      vector<Type*> args;
+      args.push_back(i8PtrTy);
+      
+      FunctionType* retType =
+	FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
+
+      initKernelFunc = Function::Create(retType,
+					Function::ExternalLinkage,
+					"__sc_opencl_init_kernel",
+					&m);
+    }
+
+    Constant* kc =
+      ConstantDataArray::getString(m.getContext(), f->getName());
+
+    GlobalVariable* kg =
+      new GlobalVariable(m,
+			 kc->getType(),
+			 true,
+			 GlobalValue::PrivateLinkage,
+			 kc, "kernel.name");
+
+
+    Value* kn = builder.CreateBitCast(kg, i8PtrTy, "bitcode");
+    builder.CreateCall(initKernelFunc, kn);
+
+    GlobalVariable* gv =
+      new GlobalVariable(m,
+			 bitcodeData->getType(),
+                       true,
+			 GlobalValue::PrivateLinkage,
+			 bitcodeData, "gpu.module");
+
+    builder.CreateRetVoid();
+  }
 
   //cerr << "-------------- dumping final module" << endl;
   //m.dump();

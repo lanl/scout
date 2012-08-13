@@ -12,6 +12,9 @@
 #ifndef _SC_LLVM_DOALLTOAMDIL_H_
 #define _SC_LLVM_DOALLTOAMDIL_H_
 
+#include <string>
+#include <map>
+
 #include "llvm/Pass.h"
 #include "llvm/Module.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
@@ -19,6 +22,8 @@
 class DoallToAMDIL : public llvm::ModulePass {
  public:
   static char ID;
+  
+  typedef std::map<std::string, llvm::MDNode*> FunctionMDMap;
 
   DoallToAMDIL();
 
@@ -33,8 +38,10 @@ class DoallToAMDIL : public llvm::ModulePass {
   llvm::Module* CloneGPUModule(const llvm::Module *M,
 			       llvm::ValueToValueMapTy &VMap);
 
+  llvm::Module* createGPUModule(const llvm::Module& m);
+
 private:
-  
+  FunctionMDMap functionMDMap;
 };
 
 llvm::ModulePass *createDoallToAMDILPass();
