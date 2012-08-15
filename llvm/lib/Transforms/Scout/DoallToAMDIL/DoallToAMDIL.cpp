@@ -453,6 +453,9 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     MDNode* node = cast<MDNode>(mdn->getOperand(i)->getOperand(0));
     Function* f = cast<Function>(node->getOperand(0));
 
+    f->addFnAttr(Attribute::NoUnwind);                                          
+    f->addFnAttr(Attribute::ReadNone);  
+
     // --------------------------------- signed args metadata
 
     node = cast<MDNode>(mdn->getOperand(i)->getOperand(5));
@@ -479,6 +482,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 	signedArgGlobals.push_back(ConstantExpr::getBitCast(signedArgGlobal, 
 							    i8PtrTy));
       }
+      aitr->addAttr(Attribute::NoCapture);
       ++aitr;
     }
 
@@ -773,7 +777,11 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 	end->getValue().getZExtValue() - start->getValue().getZExtValue();
       
     }
-    
+
+    FunctionMDMap::iterator fitr = functionMDMap.find(f->getName().str());
+    assert(fitr != functionMDMap.end());
+    MDNode* readArgs = fitr->second;
+
     Function::arg_iterator aitr = f->arg_begin();
     node = cast<MDNode>(mdn->getOperand(i)->getOperand(1));
     vector<Value*> params;
@@ -813,11 +821,24 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
 	params.push_back(fieldSize);
 
+	uint8_t mode = 0;
+	for(unsigned i = 0; i < readArgs->getNumOperands(); ++i){
+	  Value* v = mdn->getOperand(i);
+	  std::string s = v->getName().str();
+	  std::string a = aitr->getName().str();
+	  
+	  if(s == a){
+	    mode = 1;
+	    break;
+	  }
+	}
+
 	// read/write type
-	params.push_back(ConstantInt::get(m.getContext(), APInt(8, 3)));
+	params.push_back(ConstantInt::get(m.getContext(), APInt(8, mode)));
       }
       ++aitr;
     }
+
     builder.CreateCall(setFieldFunc, params);
 
     Function* runKernelFunc = m.getFunction("__sc_opencl_run_kernel");
