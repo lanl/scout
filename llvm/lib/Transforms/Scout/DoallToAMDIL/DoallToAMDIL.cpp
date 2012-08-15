@@ -319,10 +319,11 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
     string fullName = "__OpenCL_" + I->getName().str() + "_kernel";
 
     Function* NF = 
-      Function::Create(NFT,
-		       I->getLinkage(), fullName, New);  
+      Function::Create(NFT,                                                   
+		       Function::ExternalLinkage, fullName, New);   
 
     NF->copyAttributesFrom(I);
+
     VMap[I] = NF;
   }
 
@@ -378,6 +379,7 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
 bool DoallToAMDIL::runOnModule(Module &m) {
   IRBuilder<> builder(m.getContext());
 
+  Type* i8Ty = IntegerType::get(m.getContext(), 8);
   Type* i32Ty = IntegerType::get(m.getContext(), 32);
   Type* i8PtrTy = PointerType::get(IntegerType::get(m.getContext(), 8), 0);
 
@@ -392,6 +394,27 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   //m.dump();
 
   Module* gm = createGPUModule(m);
+  
+  /*
+  for(Module::iterator I = gm->begin(), E = gm->end(); I != E; ++I) {
+    if(I->getName().str() == "__OpenCL_forall_kernel"){
+      I->deleteBody();
+      I->addFnAttr(Attribute::NoUnwind);
+      I->addFnAttr(Attribute::ReadNone);
+      BasicBlock* entry = BasicBlock::Create(gm->getContext(), "entry", I);
+      builder.SetInsertPoint(entry);
+      builder.CreateRetVoid();
+      Function::arg_iterator aitr = I->arg_begin();
+      aitr->setName("t");
+      while(aitr != I->arg_end()){
+	aitr->addAttr(Attribute::NoCapture);
+	++aitr;
+      }
+      break;
+    }
+  }
+  */
+
   gm->setDataLayout("e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:"
 		    "64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:"
 		    "64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:"
@@ -406,10 +429,10 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     ArrayType::get(IntegerType::get(gm->getContext(), 8), 1);
 
   ArrayType* lvgvArrayType =
-    ArrayType::get(IntegerType::get(gm->getContext(), 8), 0);
+    ArrayType::get(i8PtrTy, 0);
 
   ArrayType* rvgvArrayType =
-    ArrayType::get(IntegerType::get(gm->getContext(), 8), 0);
+    ArrayType::get(i8PtrTy, 0);
 
   vector<Type*> annotationStructFields;
 
@@ -466,14 +489,16 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     string name = 
       "llvm.signedOrSignedpointee.annotations." + f->getName().str();
 
-    GlobalVariable* signedArgsGlobal =
-      new GlobalVariable(*gm,
-			 signedArgsConstant->getType(),
-			 false,
-			 GlobalValue::ExternalLinkage,
-			 signedArgsConstant, name, 0);
-
-    signedArgsGlobal->setSection("llvm.metadata");
+    if(!signedArgGlobals.empty()){
+      GlobalVariable* signedArgsGlobal =
+	new GlobalVariable(*gm,
+		       signedArgsConstant->getType(),
+		       false,
+		       GlobalValue::ExternalLinkage,
+		       signedArgsConstant, name, 0);
+    
+      signedArgsGlobal->setSection("llvm.metadata");
+    }
 
     // --------------------------------- type args metadata
 
@@ -490,14 +515,12 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 	ConstantDataArray::getString(gm->getContext(), 
 				     typeConstant->getAsString(), false);
 
-      string name = aitr->getName().str() + ".type.str";
-
       GlobalVariable* typeArgGlobal =
 	new GlobalVariable(*gm,
 			   typeArgConstant->getType(),
 			   true,
 			   GlobalValue::InternalLinkage,
-			   typeArgConstant, name, 0,
+			   typeArgConstant, ".str", 0,
 			   GlobalVariable::NotThreadLocal, 2);
       
       typeArgGlobals.push_back(ConstantExpr::getBitCast(typeArgGlobal,
@@ -534,10 +557,9 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 			 true,
 			 GlobalValue::InternalLinkage,
 			 sgvArray,
-			 "sgv");
+			 "sgv", 0, GlobalVariable::NotThreadLocal, 2);
     
-
-    annotationElems.push_back(ConstantExpr::getBitCast(sgvGlobal, i8PtrTy));
+    annotationElems.push_back(ConstantExpr::getCast(Instruction::BitCast, sgvGlobal, i8PtrTy));
 
     ConstantAggregateZero* fgvArray =
       ConstantAggregateZero::get(fgvArrayType);
@@ -548,7 +570,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 			 true,
 			 GlobalValue::InternalLinkage,
 			 fgvArray,
-			 "fgv");
+			 "fgv", 0, GlobalVariable::NotThreadLocal, 2);
     
     annotationElems.push_back(ConstantExpr::getBitCast(fgvGlobal, i8PtrTy));
     
@@ -614,7 +636,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   fbs.flush();
 
   Constant *bitcodeData =
-    ConstantDataArray::getString(m.getContext(), bitcode); 
+    ConstantDataArray::getString(m.getContext(), bitcode, false); 
 
   GlobalVariable* gv = 
     new GlobalVariable(m,
@@ -720,16 +742,91 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 			 kc, "kernel.name");
 
 
-    Value* kn = builder.CreateBitCast(kg, i8PtrTy, "bitcode");
+    Value* kn = builder.CreateBitCast(kg, i8PtrTy, "kernel");
     builder.CreateCall(initKernelFunc, kn);
+    
+    Function* setFieldFunc = m.getFunction("__sc_opencl_set_kernel_field");
+    if(!setFieldFunc){
+      vector<Type*> args;
+      args.push_back(i8PtrTy);
+      args.push_back(i8PtrTy);
+      args.push_back(i32Ty);
+      args.push_back(i8PtrTy);
+      args.push_back(i32Ty);
+      args.push_back(i8Ty);
 
+      FunctionType* retType =
+        FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
+
+      setFieldFunc = Function::Create(retType,
+                                      Function::ExternalLinkage,
+                                      "__sc_opencl_set_kernel_field",
+                                      &m);
+    }
+
+    size_t meshSize = 0;
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(2));
+    for(size_t j = 0; j < node->getNumOperands(); j += 2){
+      ConstantInt* start = cast<ConstantInt>(node->getOperand(j));
+      ConstantInt* end = cast<ConstantInt>(node->getOperand(j+1));
+      meshSize += 
+	end->getValue().getZExtValue() - start->getValue().getZExtValue();
+      
+    }
+    
+    Function::arg_iterator aitr = f->arg_begin();
+    node = cast<MDNode>(mdn->getOperand(i)->getOperand(1));
+    vector<Value*> params;
+    for(size_t j = 0; j < node->getNumOperands(); ++j){
+      ConstantInt* isMeshArg = cast<ConstantInt>(node->getOperand(j));
+      if(isMeshArg->isOne()){
+	// name of kernel
+	params.push_back(kn);
+
+	Constant* fc =
+	  ConstantDataArray::getString(m.getContext(), aitr->getName());
+	
+	GlobalVariable* fg =
+	  new GlobalVariable(m,
+			     fc->getType(),
+			     true,
+			     GlobalValue::PrivateLinkage,
+			     fc, "field.name");
+
+	// name of mesh field
+	params.push_back(builder.CreateBitCast(fg, i8PtrTy, "field.name"));
+
+	// kernel argument position
+	params.push_back(ConstantInt::get(m.getContext(), APInt(32, j)));
+
+	// host ptr
+	params.push_back(builder.CreateBitCast(aitr, i8PtrTy, "field.ptr"));
+
+	PointerType* pointerType = cast<PointerType>(aitr->getType());
+
+        size_t elementSize =
+          pointerType->getElementType()->getPrimitiveSizeInBits()/8;
+
+        Value* fieldSize = 
+	  ConstantInt::get(m.getContext(),
+			   APInt(32, elementSize*meshSize));
+
+	params.push_back(fieldSize);
+
+	// read/write type
+	params.push_back(ConstantInt::get(m.getContext(), APInt(8, 3)));
+      }
+      ++aitr;
+    }
+    builder.CreateCall(setFieldFunc, params);
+    
     GlobalVariable* gv =
       new GlobalVariable(m,
 			 bitcodeData->getType(),
-                       true,
+			 true,
 			 GlobalValue::PrivateLinkage,
 			 bitcodeData, "gpu.module");
-
+    
     builder.CreateRetVoid();
   }
 
