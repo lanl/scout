@@ -29,6 +29,7 @@
 
 // scout - include code extractor
 #include "llvm/Transforms/Utils/CodeExtractor.h"
+#include "clang/AST/Decl.h"
 
 #include <map>
 
@@ -802,8 +803,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
         
 	gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
-	//gs = Builder.CreateGlobalStringPtr(typeStr);
-	
         typeArgs.push_back(gs);
       }
       else{
@@ -813,14 +812,24 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         meshArgs.push_back(gs);
         
         if(pos == 0){
-	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "int*");
-	  //gs = Builder.CreateGlobalStringPtr("int*");
-	  
+	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         }
         else{
-	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
-	  //gs = Builder.CreateGlobalStringPtr("");
+	  bool found = false;
+	  for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
+		itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
+	      itr != itrEnd; ++itr){
+	    if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
+	      if(vd->getName() == it->getName()){
+		std::string ts = vd->getType().getAsString();
+		gs = llvm::ConstantDataArray::getString(getLLVMContext(), ts);
+		found = true;
+		break;
+	      }
+	    }
+	  }
+	  assert(found && "failed to find captured variable decl in GPU kernel");
           typeArgs.push_back(gs);
         }
       }
