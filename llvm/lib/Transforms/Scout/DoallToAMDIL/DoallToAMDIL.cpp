@@ -819,7 +819,26 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       ++aitr;
     }
     builder.CreateCall(setFieldFunc, params);
-    
+
+    Function* runKernelFunc = m.getFunction("__sc_opencl_run_kernel");
+    if(!runKernelFunc){
+      vector<Type*> args;
+      args.push_back(i8PtrTy);
+      
+      FunctionType* retType =
+        FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
+
+      runKernelFunc = Function::Create(retType,
+                                      Function::ExternalLinkage,
+                                      "__sc_opencl_run_kernel",
+                                      &m);
+    }
+
+    params.clear();
+    params.push_back(kn);
+
+    builder.CreateCall(runKernelFunc, params);
+
     GlobalVariable* gv =
       new GlobalVariable(m,
 			 bitcodeData->getType(),
