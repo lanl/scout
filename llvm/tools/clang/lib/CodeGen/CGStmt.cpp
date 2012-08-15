@@ -793,7 +793,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         std::string ns = (*it).getName().str();
         while(!ns.empty()){
           if(meshFieldMap.find(ns) != meshFieldMap.end()){
-	    gs = Builder.CreateGlobalStringPtr(ns);
+            gs = Builder.CreateGlobalStringPtr(ns);
             meshArgs.push_back(gs);
             break;
           }
@@ -802,35 +802,37 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
         
-	gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
+        gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
         typeArgs.push_back(gs);
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-	gs = Builder.CreateGlobalStringPtr((*it).getName().str());
+        gs = Builder.CreateGlobalStringPtr((*it).getName().str());
         meshArgs.push_back(gs);
         
         if(pos == 0){
-	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
+          gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         }
         else{
-	  bool found = false;
-	  for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
-		itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
-	      itr != itrEnd; ++itr){
-	    if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
-	      if(vd->getName() == it->getName()){
-		std::string ts = vd->getType().getAsString();
-		gs = llvm::ConstantDataArray::getString(getLLVMContext(), ts);
-		found = true;
-		break;
-	      }
-	    }
-	  }
-	  assert(found && "failed to find captured variable decl in GPU kernel");
-          typeArgs.push_back(gs);
+          bool found = false;
+          for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
+              itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
+              itr != itrEnd; ++itr){
+            if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
+              if(vd->getName() == it->getName()){
+                std::string ts = vd->getType().getAsString();
+                gs = llvm::ConstantDataArray::getString(getLLVMContext(), ts);
+                found = true;
+                break;
+              }
+            }
+          }
+          
+          if(found){
+            typeArgs.push_back(gs);
+          }
         }
       }
     }
