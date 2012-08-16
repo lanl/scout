@@ -647,7 +647,20 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   ScoutMeshSizes.clear();
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
+    std::string name;
+    switch(i){
+    case 0:
+      name = "dim_x";
+      break;
+    case 1:
+      name = "dim_y";
+      break;
+    case 2:
+      name = "dim_z";
+      break;
+    }
+
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i, name);
     ScoutMeshSizes.push_back(lval);
   }
   
@@ -811,7 +824,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 	gs = Builder.CreateGlobalStringPtr((*it).getName().str());
         meshArgs.push_back(gs);
         
-        if(pos == 0){
+        if(it->getName() == "dim_x" || 
+	   it->getName() == "dim_y" ||
+	   it->getName() == "dim_z"){
 	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         }
