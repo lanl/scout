@@ -423,11 +423,8 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   gm->setTargetTriple("amdil-pc-amdopencl");
 
   ArrayType* sgvArrayType = ArrayType::get(i8Ty, 1);
-
   ArrayType* fgvArrayType = ArrayType::get(i8Ty, 1);
-
   ArrayType* lvgvArrayType = ArrayType::get(i8PtrTy, 0);
-
   ArrayType* rvgvArrayType = ArrayType::get(i8PtrTy, 0);
 
   vector<Type*> annotationStructFields;
@@ -479,8 +476,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       }
     }
 
-    f->addFnAttr(Attribute::NoUnwind);                                          
-    f->addFnAttr(Attribute::ReadNone);  
+    f->addFnAttr(Attribute::NoUnwind);                                             f->addFnAttr(Attribute::ReadNone);  
 
     // --------------------------------- signed args metadata
 
@@ -731,10 +727,18 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     MDNode* node = cast<MDNode>(mdn->getOperand(i)->getOperand(0));
     Function* f = cast<Function>(node->getOperand(0));
 
-    SmallVector<ConstantInt*, 4> dims;
+    uint32_t meshDims[] = {1,1,1};
+
+    size_t meshSize = 1;
     node = cast<MDNode>(mdn->getOperand(i)->getOperand(2));
-    for(size_t j = 0; j < node->getNumOperands(); ++j){
-      dims.push_back(cast<ConstantInt>(node->getOperand(j)));
+    for(size_t j = 0; j < node->getNumOperands(); j += 2){
+      ConstantInt* start = cast<ConstantInt>(node->getOperand(j));
+      ConstantInt* end = cast<ConstantInt>(node->getOperand(j+1));
+      uint32_t dim = end->getValue().getZExtValue() -
+        start->getValue().getZExtValue();
+
+      meshSize *= dim;
+      meshDims[j/2] = dim;
     }
 
     SmallVector<Value*, 3> fields;
@@ -752,6 +756,9 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       vector<Type*> args;
       args.push_back(i8PtrTy);
       args.push_back(i8PtrTy);
+      args.push_back(i32Ty);
+      args.push_back(i32Ty);
+      args.push_back(i32Ty);
       
       FunctionType* retType =
 	FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
@@ -787,7 +794,13 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
 
     Value* kn = builder.CreateBitCast(kg, i8PtrTy, "kernel");
-    builder.CreateCall2(initKernelFunc, mn, kn);
+
+    Value* widthValue = ConstantInt::get(i32Ty, meshDims[0]);
+    Value* heightValue = ConstantInt::get(i32Ty, meshDims[1]);
+    Value* depthValue = ConstantInt::get(i32Ty, meshDims[2]);
+
+    builder.CreateCall5(initKernelFunc, mn, kn,
+                        widthValue, heightValue, depthValue);
     
     Function* setFieldFunc = m.getFunction("__sc_opencl_set_kernel_field");
     if(!setFieldFunc){
@@ -806,16 +819,6 @@ bool DoallToAMDIL::runOnModule(Module &m) {
                                       Function::ExternalLinkage,
                                       "__sc_opencl_set_kernel_field",
                                       &m);
-    }
-
-    size_t meshSize = 0;
-    node = cast<MDNode>(mdn->getOperand(i)->getOperand(2));
-    for(size_t j = 0; j < node->getNumOperands(); j += 2){
-      ConstantInt* start = cast<ConstantInt>(node->getOperand(j));
-      ConstantInt* end = cast<ConstantInt>(node->getOperand(j+1));
-      meshSize += 
-	end->getValue().getZExtValue() - start->getValue().getZExtValue();
-      
     }
 
     FunctionMDMap::iterator fitr = functionMDMap.find(f->getName().str());

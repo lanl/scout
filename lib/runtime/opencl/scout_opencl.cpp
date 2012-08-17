@@ -63,6 +63,10 @@ namespace{
     string meshName;
     KernelFieldMap fieldMap;
     bool initialized;
+    uint32_t width;
+    uint32_t height;
+    uint32_t depth;
+    size_t globalWorkSize;
   };
 
   typedef map<string, Kernel*> KernelMap;
@@ -304,7 +308,11 @@ void __sc_opencl_build_program(const void* bitcode, uint32_t size){
 }
 
 extern "C"
-void __sc_opencl_init_kernel(const char* meshName, const char* kernelName){
+void __sc_opencl_init_kernel(const char* meshName,
+                             const char* kernelName,
+                             uint32_t width,
+                             uint32_t height,
+                             uint32_t depth){
   KernelMap::iterator itr = _kernelMap.find(kernelName);
   if(itr != _kernelMap.end()){
     return;
@@ -313,6 +321,10 @@ void __sc_opencl_init_kernel(const char* meshName, const char* kernelName){
   cl_int ret;
 
   Kernel* kernel = new Kernel;
+  kernel->width = width;
+  kernel->height = height;
+  kernel->depth = depth;
+  kernel->globalWorkSize = width*height*depth;
   kernel->meshName = meshName;
   kernel->kernel = clCreateKernel(__sc_opencl_program, kernelName, &ret);
   assert(ret == CL_SUCCESS && "Error creating OpenCL kernel");
@@ -401,12 +413,9 @@ void __sc_opencl_run_kernel(const char* kernelName){
     }
   }
 
-  // ndm - fix
-  size_t globalWorkSize = 512;
-  
   ret = 
     clEnqueueNDRangeKernel(__sc_opencl_command_queue, kernel->kernel, 1, 
-			   NULL, &globalWorkSize, NULL, 0, NULL, NULL);
+			   NULL, &kernel->globalWorkSize, NULL, 0, NULL, NULL);
   assert(ret == CL_SUCCESS && "Error running OpenCL kernel");
   
   for(KernelFieldMap::iterator fitr = kernel->fieldMap.begin(),
