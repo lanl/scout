@@ -806,7 +806,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         std::string ns = (*it).getName().str();
         while(!ns.empty()){
           if(meshFieldMap.find(ns) != meshFieldMap.end()){
-            gs = Builder.CreateGlobalStringPtr(ns);
+	    gs = llvm::ConstantDataArray::getString(getLLVMContext(), ns);
             meshArgs.push_back(gs);
             break;
           }
@@ -821,12 +821,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-        gs = Builder.CreateGlobalStringPtr((*it).getName().str());
+	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
+						(*it).getName());
         meshArgs.push_back(gs);
         
-        if(it->getName() == "dim_x" || 
-	   it->getName() == "dim_y" ||
-	   it->getName() == "dim_z"){
+        if(it->getName().startswith("dim_x") || 
+	   it->getName().startswith("dim_y") ||
+	   it->getName().startswith("dim_z")){
 	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         }
@@ -862,7 +863,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
-    args.push_back(Builder.CreateGlobalStringPtr(meshName));
+    args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(),
+						      meshName));;
     
     //llvm::Constant* MeshNameArray =
     //llvm::ConstantArray::get(getLLVMContext(), meshName);

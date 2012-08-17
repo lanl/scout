@@ -29,6 +29,13 @@ using namespace llvm;
 
 namespace{
 
+  static const uint8_t FIELD_READ = 0x01;
+  static const uint8_t FIELD_WRITE = 0x02;
+  static const uint8_t FIELD_READ_WRITE = 0x03;
+
+  static const uint8_t FIELD_READ_MASK = 0x01;
+  static const uint8_t FIELD_WRITE_MASK = 0x02;
+
   string demangleName(const string& str){
     int status;
     char* dn = abi::__cxa_demangle(str.c_str(), 0, 0, &status);
@@ -74,7 +81,7 @@ namespace{
 
       if(f->getName().startswith("llvm.memcpy")){
         Value* v = I.getArgOperand(0);
-	std::string vs = v->getName().str();
+	string vs = v->getName().str();
         if(!vs.empty()){
           symbolMap[vs] = true;
         }
@@ -87,11 +94,11 @@ namespace{
       }
       else if(f->getName().startswith("forall") ||
 	      f->getName().startswith("renderall")){
-	SmallVector< llvm::Value *, 3 > args;
+	SmallVector<llvm::Value *, 3> args;
         unsigned numArgs = I.getNumArgOperands();
 	for(unsigned i = 0; i < numArgs; ++i){
           Value* arg = I.getArgOperand(i);
-	  std::string s = arg->getName().str();
+	  string s = arg->getName().str();
 
 	  SymbolMap::iterator itr = symbolMap.find(s);
           if(itr != symbolMap.end()){
@@ -106,21 +113,21 @@ namespace{
     }
 
     void visitStoreInst(StoreInst& I){
-      std::string s = I.getPointerOperand()->getName().str();
+      string s = I.getPointerOperand()->getName().str();
       if(!s.empty()){
         symbolMap[s] = true;
       }
     }
 
     void visitBitCastInst(BitCastInst& I){
-      std::string vs = I.getOperand(0)->getName().str();
+      string vs = I.getOperand(0)->getName().str();
       if(!vs.empty()){
 	valueMap[&I] = vs;
       }
     }
 
-    typedef std::map<std::string, bool> SymbolMap;
-    typedef std::map<Value*, std::string> ValueMap;
+    typedef map<string, bool> SymbolMap;
+    typedef map<Value*, string> ValueMap;
 
     SymbolMap symbolMap;
     ValueMap valueMap;
@@ -176,7 +183,7 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
     if (BB.hasAddressTaken()) {
       Constant *OldBBAddr = BlockAddress::get(const_cast<Function*>(OldFunc),
                                               const_cast<BasicBlock*>(&BB));
-      VMap[OldBBAddr] = BlockAddress::get(NewFunc, CBB);                                         
+      VMap[OldBBAddr] = BlockAddress::get(NewFunc, CBB);
     }
 
     if (ReturnInst *RI = dyn_cast<ReturnInst>(CBB->getTerminator()))
@@ -244,20 +251,13 @@ llvm::Module* DoallToAMDIL::createGPUModule(const llvm::Module& m){
         fitrEnd = nm->end(); fitr != fitrEnd; ++fitr){
     Function* function = &*fitr;
 
-    /*
-    f->removeFnAttr(Attribute::UWTable|                                 
-		    Attribute::StackProtect); 
-    */
-
     if(function->getName().startswith("__OpenCL_renderall") ||
        function->getName().startswith("__OpenCL_forall")){
 
     }
     else{
       Type* type = function->getType();
-
       function->replaceAllUsesWith(UndefValue::get(type));
-
       functionsToRemove.push_back(function);
     }
   }
@@ -401,7 +401,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
   Type* i8Ty = IntegerType::get(m.getContext(), 8);
   Type* i32Ty = IntegerType::get(m.getContext(), 32);
-  Type* i8PtrTy = PointerType::get(IntegerType::get(m.getContext(), 8), 0);
+  Type* i8PtrTy = PointerType::get(i8Ty, 0);
 
   for(Module::iterator itr = m.begin(), itrEnd = m.end();
       itr != itrEnd; ++itr){
@@ -414,26 +414,6 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   //m.dump();
 
   Module* gm = createGPUModule(m);
-  
-  /*
-  for(Module::iterator I = gm->begin(), E = gm->end(); I != E; ++I) {
-    if(I->getName().str() == "__OpenCL_forall_kernel"){
-      I->deleteBody();
-      I->addFnAttr(Attribute::NoUnwind);
-      I->addFnAttr(Attribute::ReadNone);
-      BasicBlock* entry = BasicBlock::Create(gm->getContext(), "entry", I);
-      builder.SetInsertPoint(entry);
-      builder.CreateRetVoid();
-      Function::arg_iterator aitr = I->arg_begin();
-      aitr->setName("t");
-      while(aitr != I->arg_end()){
-	aitr->addAttr(Attribute::NoCapture);
-	++aitr;
-      }
-      break;
-    }
-  }
-  */
 
   gm->setDataLayout("e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:"
 		    "64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:"
@@ -442,17 +422,13 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 		    "64-f80:32:32");
   gm->setTargetTriple("amdil-pc-amdopencl");
 
-  ArrayType* sgvArrayType =
-    ArrayType::get(IntegerType::get(gm->getContext(), 8), 1);
+  ArrayType* sgvArrayType = ArrayType::get(i8Ty, 1);
 
-  ArrayType* fgvArrayType =
-    ArrayType::get(IntegerType::get(gm->getContext(), 8), 1);
+  ArrayType* fgvArrayType = ArrayType::get(i8Ty, 1);
 
-  ArrayType* lvgvArrayType =
-    ArrayType::get(i8PtrTy, 0);
+  ArrayType* lvgvArrayType = ArrayType::get(i8PtrTy, 0);
 
-  ArrayType* rvgvArrayType =
-    ArrayType::get(i8PtrTy, 0);
+  ArrayType* rvgvArrayType = ArrayType::get(i8PtrTy, 0);
 
   vector<Type*> annotationStructFields;
 
@@ -460,7 +436,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     annotationStructFields.push_back(i8PtrTy);
   }
 
-  annotationStructFields.push_back(IntegerType::get(gm->getContext(), 32));
+  annotationStructFields.push_back(i32Ty);
 
   StructType* annotationStructTy = StructType::get(gm->getContext(),
 						   annotationStructFields,
@@ -478,7 +454,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       for(BasicBlock::iterator bitr = itr->begin(), bitrEnd = itr->end();
 	  bitr != bitrEnd; ++bitr){
 	if(isa<AllocaInst>(bitr) && bitr->getName().startswith("indvar")){
-	  Function* getGlobalIdFunc = m.getFunction("get_global_id");
+	  Function* getGlobalIdFunc = gm->getFunction("get_global_id");
 	  if(!getGlobalIdFunc){
 	    vector<Type*> args;
 	    args.push_back(i32Ty);
@@ -689,7 +665,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
   fbs.flush();
 
-  Constant *bitcodeData =
+  Constant* bitcodeData =
     ConstantDataArray::getString(m.getContext(), bitcode, false); 
 
   GlobalVariable* gv = 
@@ -775,6 +751,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     if(!initKernelFunc){
       vector<Type*> args;
       args.push_back(i8PtrTy);
+      args.push_back(i8PtrTy);
       
       FunctionType* retType =
 	FunctionType::get(Type::getVoidTy(m.getContext()), args, false);
@@ -784,6 +761,19 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 					"__sc_opencl_init_kernel",
 					&m);
     }
+
+    MDNode* meshNameNode = 
+      cast<MDNode>(mdn->getOperand(i)->getOperand(3));
+    Constant* mc = cast<Constant>(meshNameNode->getOperand(0));
+
+    GlobalVariable* mg =
+      new GlobalVariable(m,
+			 mc->getType(),
+			 true,
+			 GlobalValue::PrivateLinkage,
+			 mc, "mesh.name");
+
+    Value* mn = builder.CreateBitCast(mg, i8PtrTy, "meshName");
 
     Constant* kc =
       ConstantDataArray::getString(m.getContext(), f->getName());
@@ -797,7 +787,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
 
     Value* kn = builder.CreateBitCast(kg, i8PtrTy, "kernel");
-    builder.CreateCall(initKernelFunc, kn);
+    builder.CreateCall2(initKernelFunc, mn, kn);
     
     Function* setFieldFunc = m.getFunction("__sc_opencl_set_kernel_field");
     if(!setFieldFunc){
@@ -835,13 +825,14 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     Function::arg_iterator aitr = f->arg_begin();
     node = cast<MDNode>(mdn->getOperand(i)->getOperand(1));
 
-    //cerr << "---------------- dumping node" << endl;
-    //node->dump();
-    //cerr << endl;
+    MDNode* argNode = cast<MDNode>(mdn->getOperand(i)->getOperand(4)); 
 
     for(size_t j = 0; j < node->getNumOperands(); ++j){
-      string argName = aitr->getName();
-      
+      ConstantDataArray* argNameConstant =
+	cast<ConstantDataArray>(argNode->getOperand(j));
+
+      string argName = argNameConstant->getAsString();
+
       vector<Value*> params;
 
       ConstantInt* isMeshArg = cast<ConstantInt>(node->getOperand(j));
@@ -850,7 +841,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       params.push_back(kn);
       
       Constant* fc =
-	ConstantDataArray::getString(m.getContext(), aitr->getName());
+	ConstantDataArray::getString(m.getContext(), argName);
       
       GlobalVariable* fg =
 	new GlobalVariable(m,
@@ -883,9 +874,14 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       for(unsigned i = 0; i < readArgs->getNumOperands(); ++i){
 	Value* v = readArgs->getOperand(i);
 	if(v->getName().str() == argName){
-	  mode = 1;
+	  mode = FIELD_READ;
 	  break;
 	}
+      }
+      
+      // debug - uncomment to write mesh fields back out
+      if(isMeshArg->isOne()){
+	mode |= FIELD_WRITE_MASK;
       }
 
       // read/write type

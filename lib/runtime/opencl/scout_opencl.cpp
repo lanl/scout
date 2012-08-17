@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <cassert>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <iostream>
@@ -35,12 +36,21 @@ namespace{
   class Field{
   public:
     cl_mem mem;
-    void* hostPtr;
-    uint8_t type;
     size_t size;
   };
 
+  class KernelField{
+  public:
+    Field* field;
+    uint8_t type;
+    void* hostPtr;
+  };
+
   typedef map<string, Field*> FieldMap;
+  typedef map<string, KernelField*> KernelFieldMap;
+  typedef map<string, FieldMap*> MeshFieldMap;
+
+  MeshFieldMap _meshFieldMap;
 
   class Kernel{
   public:
@@ -50,7 +60,8 @@ namespace{
     }
 
     cl_kernel kernel;
-    FieldMap fieldMap;
+    string meshName;
+    KernelFieldMap fieldMap;
     bool initialized;
   };
 
@@ -262,10 +273,10 @@ void __sc_opencl_build_program(const void* bitcode, uint32_t size){
     }
   }
   assert(irSection && "Failed to find .llvmir section");
-
+  
   irSection->data = (const char*)bitcode;
   irSection->size = size;
-  
+
   size_t newSize;
   const unsigned char* newImage = 
     (const unsigned char*)updateELF(stubImage, sections, newSize);
@@ -274,7 +285,7 @@ void __sc_opencl_build_program(const void* bitcode, uint32_t size){
   clReleaseProgram(stubProgram);
 
   cl_int status;
-  
+
   __sc_opencl_program = 
     clCreateProgramWithBinary(__sc_opencl_context,
                               1,
@@ -286,10 +297,14 @@ void __sc_opencl_build_program(const void* bitcode, uint32_t size){
 
   assert(status == CL_SUCCESS && ret == CL_SUCCESS &&
          "Error creating OpenCL program");
+
+  ret = clBuildProgram(__sc_opencl_program, 1, &__sc_opencl_device_id,
+                       "-fno-bin-amdil -fno-bin-exe",  NULL, NULL);
+  assert(ret == CL_SUCCESS && "Error building OpenCL program");
 }
 
 extern "C"
-void __sc_opencl_init_kernel(const char* kernelName){
+void __sc_opencl_init_kernel(const char* meshName, const char* kernelName){
   KernelMap::iterator itr = _kernelMap.find(kernelName);
   if(itr != _kernelMap.end()){
     return;
@@ -298,6 +313,7 @@ void __sc_opencl_init_kernel(const char* kernelName){
   cl_int ret;
 
   Kernel* kernel = new Kernel;
+  kernel->meshName = meshName;
   kernel->kernel = clCreateKernel(__sc_opencl_program, kernelName, &ret);
   assert(ret == CL_SUCCESS && "Error creating OpenCL kernel");
 
@@ -305,28 +321,9 @@ void __sc_opencl_init_kernel(const char* kernelName){
 }
 
 extern "C"
-void __sc_opencl_delete_kernel(const char* kernelName){
-  KernelMap::iterator itr = _kernelMap.find(kernelName);
-  if(itr == _kernelMap.end()){
-    return;
-  }
-
-  Kernel* kernel = itr->second;
-  for(FieldMap::iterator fitr = kernel->fieldMap.begin(),
-        fitrEnd = kernel->fieldMap.end(); fitr != fitrEnd; ++fitr){
-    Field* field = fitr->second;
-    clReleaseMemObject(field->mem);
-    delete field;
-  }
-  
-  clReleaseKernel(kernel->kernel);
-  delete(kernel);
-  _kernelMap.erase(itr);
-}
-
-extern "C"
 void __sc_opencl_set_kernel_field(const char* kernelName,
 				  const char* fieldName,
+				  uint32_t argNum,
 				  void* hostPtr,
 				  uint32_t size,
 				  uint8_t type){
@@ -336,39 +333,48 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
   if(kernel->initialized){
     return;
   }
-  
-  Field* field = new Field;
-  field->hostPtr = hostPtr;
-  field->size = size;
-  field->type = type;
 
-  cl_mem_flags memFlags;
-  switch(field->type){
-    case FIELD_READ:
-    {
-      memFlags = CL_MEM_READ_ONLY;
-      break;
-    }
-    case FIELD_WRITE:
-    {
-      memFlags = CL_MEM_WRITE_ONLY;
-      break;
-    }
-    case FIELD_READ_WRITE:
-    {
-      memFlags = CL_MEM_READ_WRITE;
-      break;
-    }
+  KernelFieldMap::iterator kitr = kernel->fieldMap.find(fieldName);
+  if(kitr != kernel->fieldMap.end()){
+    return;
   }
-  
+
+  MeshFieldMap::iterator mitr = _meshFieldMap.find(kernel->meshName);
+  FieldMap* fieldMap;
+  if(mitr == _meshFieldMap.end()){
+    fieldMap = new FieldMap;
+    _meshFieldMap.insert(make_pair(kernel->meshName, fieldMap));
+  }
+  else{
+    fieldMap = mitr->second;
+  }
+
   cl_int ret;
-  field->mem = 
-    clCreateBuffer(__sc_opencl_context, memFlags, field->size, NULL, &ret);
-  assert(ret == CL_SUCCESS);
 
-  size_t argNum = kernel->fieldMap.size();
+  FieldMap::iterator fitr = fieldMap->find(fieldName);
+  Field* field;
+  if(fitr == fieldMap->end()){
+    field = new Field;
 
-  kernel->fieldMap.insert(make_pair(fieldName, field));
+    field->size = size;
+    field->mem =
+      clCreateBuffer(__sc_opencl_context, CL_MEM_READ_WRITE, 
+		     field->size, NULL, &ret);
+
+    assert(ret == CL_SUCCESS && "Error creating OpenCL mem object");
+
+    fieldMap->insert(make_pair(fieldName, field));
+  }
+  else{
+    field = fitr->second;
+  }
+
+  KernelField* kernelField = new KernelField;
+  kernelField->field = field;
+  kernelField->type = type;
+  kernelField->hostPtr = hostPtr;
+
+  kernel->fieldMap.insert(make_pair(fieldName, kernelField));
 
   ret = clSetKernelArg(kernel->kernel, argNum, sizeof(cl_mem), &field->mem);
   assert(ret == CL_SUCCESS);
@@ -382,34 +388,39 @@ void __sc_opencl_run_kernel(const char* kernelName){
 
   cl_int ret;
 
-  for(FieldMap::iterator fitr = kernel->fieldMap.begin(),
+  for(KernelFieldMap::iterator fitr = kernel->fieldMap.begin(),
 	fitrEnd = kernel->fieldMap.end(); fitr != fitrEnd; ++fitr){
-    Field* field = fitr->second;
+    KernelField* field = fitr->second;
 
     if(field->type & FIELD_READ_MASK){
       ret = 
-	clEnqueueWriteBuffer(__sc_opencl_command_queue, field->mem, CL_TRUE, 
-			     0, field->size, field->hostPtr, 0, NULL, NULL); 
+	clEnqueueWriteBuffer(__sc_opencl_command_queue, field->field->mem, 
+			     CL_TRUE, 0, field->field->size, field->hostPtr, 0, 
+			     NULL, NULL); 
       assert(ret == CL_SUCCESS && "Error writing to OpenCL mem");
     }
   }
 
-  size_t workUnits = 32;
+  // ndm - fix
+  size_t globalWorkSize = 512;
   
   ret = 
     clEnqueueNDRangeKernel(__sc_opencl_command_queue, kernel->kernel, 1, 
-			   NULL, &workUnits, NULL, 0, NULL, NULL);
+			   NULL, &globalWorkSize, NULL, 0, NULL, NULL);
   assert(ret == CL_SUCCESS && "Error running OpenCL kernel");
   
-  for(FieldMap::iterator fitr = kernel->fieldMap.begin(),
+  for(KernelFieldMap::iterator fitr = kernel->fieldMap.begin(),
         fitrEnd = kernel->fieldMap.end(); fitr != fitrEnd; ++fitr){
-    Field* field = fitr->second;
+    KernelField* field = fitr->second;
 
     if(field->type & FIELD_WRITE_MASK){
       ret =
-        clEnqueueReadBuffer(__sc_opencl_command_queue, field->mem, CL_TRUE,
-                             0, field->size, field->hostPtr, 0, NULL, NULL);
+        clEnqueueReadBuffer(__sc_opencl_command_queue, field->field->mem,
+			    CL_TRUE, 0, field->field->size, field->hostPtr, 0,
+			    NULL, NULL);
       assert(ret == CL_SUCCESS && "Error reading OpenCL mem");
     }
   }
+
+  kernel->initialized = true;
 }
