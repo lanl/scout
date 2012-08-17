@@ -251,7 +251,35 @@ void CudaDriver::create(Function *func,
 	Value* name =
 	  _builder.CreateGlobalStringPtr(arg->getName());
 
-	Value* args[] = {meshName, meshFieldName(i)}; 
+        std::string meshNameStr = 
+          cast<ConstantDataArray>(meshName)->getAsString();
+
+        Constant* mnc =
+        ConstantDataArray::getString(_module.getContext(), meshNameStr);
+
+        GlobalVariable* mn =
+          new GlobalVariable(_module,
+                             mnc->getType(),
+                             true,
+                             GlobalValue::PrivateLinkage,
+                             mnc, "field.name");
+
+        std::string meshFieldStr = 
+          cast<ConstantDataArray>(meshFieldName(i))->getAsString();
+
+        Constant* mfc =
+        ConstantDataArray::getString(_module.getContext(), meshFieldStr);
+
+        GlobalVariable* mf =
+          new GlobalVariable(_module,
+                             mfc->getType(),
+                             true,
+                             GlobalValue::PrivateLinkage,
+                             mfc, "field.name");
+
+	Value* args[] = {_builder.CreateBitCast(mn, i8PtrTy),
+                          _builder.CreateBitCast(mf, i8PtrTy)}; 
+
 	Value* dp = insertCall("__sc_get_cuda_device_ptr", args, args+2);
 	  
 	Value* np = _builder.CreateIsNull(dp);
@@ -278,8 +306,10 @@ void CudaDriver::create(Function *func,
 			 size);
 
         memcpyList.push_back(Memcpy(arg, d_arg, size));
+
+	Value* args2[] = {_builder.CreateBitCast(mn, i8PtrTy),
+                          _builder.CreateBitCast(mf, i8PtrTy), ld}; 
 	  
-	Value* args2[] = {meshName, meshFieldName(i), ld}; 
 	insertCall("__sc_put_cuda_device_ptr", args2, args2+3);
 	  
 	_builder.CreateBr(mb);
