@@ -1,7 +1,5 @@
 /*
- *	
  * ###########################################################################
- *
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -47,21 +45,56 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ * 
+ *  TODO: Need vector-aware versions of the routines here...  This
+ *  includes not only functionality like that in GLSL but also the
+ *  ability to generate vector/SIMD code on the backend.  Might be
+ *  time to take the approach used by ISPC and build these as
+ *  intrinsic operations.
  *
+ * ##### 
  */
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef __SC_STD_MATH_SCH__
+#define __SC_STD_MATH_SCH__
 
-#include <cassert>
+#include <math.h>
 
-#include "scout/base_types.h"
-#include "scout/Runtime/vec_types.h"
+  // ----- min
+  // Return the minimum value of two scalar values.
+  template <typename Type>
+  Type min(const Type &v1, const Type &v2) {
+    return (v1 < v2) ? v1 : v2;
+  }
 
-#include "scout/color_funcs.h"
+  // ----- max
+  // Return the maximum value of two scalar values.
+  template <typename Type>
+  Type max(const Type &v1, const Type &v2) {
+    return (v1 > v2) ? v1 : v2;
+  }
 
-#endif 
+
+  // ----- clamp
+  // Clamp the given scalar value between two provided values.
+  template <typename Type>
+  Type clamp(const Type &value,
+             const Type &min_bound,
+             const Type &max_bound) {
+    return min(max(value, min_bound), max_bound);
+  }
 
 
+  // ----- mix
+  //
+  template <typename Type>
+  Type mix(const Type &value1,
+           const Type &value2,
+           const Type &weight) {
+    return value1 * (1.0 - weight) + value2 * weight;
+  }
 
-  
+#endif

@@ -526,6 +526,8 @@ def vectorize : Flag<"-vectorize">,
   HelpText<"Enable autovectorize pass.">;
 def cpuThreads : Flag<"-mt">,
   HelpText<"Enable CPU multithreading support.">;
+def disableScoutStdLib : Flag<"-disable-sc-stdlib">,
+  HelpText<"Disable automatic inclusion/use of the Scout standard library.">; 
 def debugWait : Flag<"-debug-wait">,
   HelpText<"Used to allow debugger to attach to the scc driver.">;
 

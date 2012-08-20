@@ -1,7 +1,6 @@
 /*
  *	
  * ###########################################################################
- *
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -47,21 +46,13 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- *
- */
+ * ########################################################################### 
+ */ 
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef __SC_STD_HSV_SCH__
+#define __SC_STD_HSV_SCH__
 
-#include <cassert>
-
-#include "scout/base_types.h"
-#include "scout/Runtime/vec_types.h"
-
-#include "scout/color_funcs.h"
+ extern float4 hsva(float hue, float sat, float val, float alpha);
+ extern float4 hsv(float hue, float sat, float val);
 
 #endif 
-
-
-
-  

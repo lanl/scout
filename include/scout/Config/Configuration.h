@@ -1,7 +1,6 @@
 /*
  *	
- * ###########################################################################
- *
+ *###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -47,21 +46,35 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- *
- */
+ */ 
+#ifndef SC_CONFIGURATION_H_
+#define SC_CONFIGURATION_H_
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#include "scout/Config/defs.h"
 
-#include <cassert>
+namespace scout {
 
-#include "scout/base_types.h"
-#include "scout/Runtime/vec_types.h"
+  namespace config {
 
-#include "scout/color_funcs.h"
+    // ----- Configuration
+    //
+    // The details of Scout's build-time configuration are stored
+    // within the following struct.  These include the supported
+    // features of the underlying system (e.g. is OpenGL, CUDA,
+    // etc. available?).  In addition the paths to important headers
+    // and libraries are also included.
+    //
+    struct Configuration {
+      static bool   OpenGLSupport;
+      static bool   CUDASupport;
+      static bool   NUMASupport;
+      static bool   MPISupport;
 
-#endif 
+      static const char* IncludePaths[];
+      static const char* LibraryPaths[];
+      static const char* Libraries[];      
+    };
+  }
+}
 
-
-
-  
+#endif

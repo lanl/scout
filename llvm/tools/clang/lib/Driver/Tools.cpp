@@ -2123,6 +2123,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   
   // scout enable autovectorize pass.
   Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
+
+  // scout disable automatic standard library inclusion. We use
+  // this to bootstrap scc and the building of the standard
+  // library.
+  Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
   
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).
@@ -4367,36 +4372,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_m_Separate);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
-  // scout - add Scout library search paths
-  //
-  // NOTE: THIS HAS TURNED OUT TO BE DANGEROUS...  It is possible to
-  // get LLVM and Clang version cross version dependencies into the
-  // mix if users have a previous LLVM version in /usr/local.  You can
-  // get mixed headers and libraries this way and it causes very
-  // strange (and often infrequent) errors...  For now we've commented
-  // them out...
-  /*
-  std::string sccPath = C.getDriver().Dir;
-  sccPath = llvm::sys::path::parent_path(sccPath);
-
-  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
-  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
-  static std::string scHwLocLibOpt = "-L/usr/local/lib";
-  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
-  static std::string scLibOpt = "-L" + sccPath + "/lib";
-
-  static std::string scCudaLib;
-  scCudaLib = "-L/usr/local/cuda/lib";
-
-  CmdArgs.push_back(scRuntimeLibOpt.c_str());
-  CmdArgs.push_back(scStandardLibOpt.c_str());
-  CmdArgs.push_back(scHwLocLibOpt.c_str());
-  CmdArgs.push_back(scLLVMLibOpt.c_str());
-  CmdArgs.push_back(scLibOpt.c_str());
-
-  CmdArgs.push_back(scCudaLib.c_str());
-  */
-  
   // Forward -ObjC when either -ObjC or -ObjC++ is used, to force loading
   // members of static archive libraries which implement Objective-C classes or
   // categories.
@@ -4514,32 +4489,6 @@ void darwin::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_fopenmp))
     // This is more complicated in gcc...
     CmdArgs.push_back("-lgomp");
-
-  // scout - add Scout libs and other dependencies
-  CmdArgs.push_back("-lpng");
-  CmdArgs.push_back("-lscRuntime");
-  CmdArgs.push_back("-lscStandard");
-  CmdArgs.push_back("-lhwloc");
-  //CmdArgs.push_back("-lglfw");
-  CmdArgs.push_back("-lSDL");
-  CmdArgs.push_back("-framework");
-  CmdArgs.push_back("Foundation");
-  CmdArgs.push_back("-framework");
-  CmdArgs.push_back("Cocoa");
-  CmdArgs.push_back("-framework");
-  CmdArgs.push_back("OpenGL");
-
-#ifdef SC_ENABLE_CUDA
-  CmdArgs.push_back("-lcuda");
-  CmdArgs.push_back("-lscCudaError");
-#endif
-
-#ifdef SC_ENABLE_OPENCL
-  CmdArgs.push_back("-lOpenCL");
-#endif
-
-  CmdArgs.push_back("-lmpi");
-  CmdArgs.push_back("-lmpi_cxx");
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
   

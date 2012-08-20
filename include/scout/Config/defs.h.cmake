@@ -1,7 +1,6 @@
 /*
  *	
- * ###########################################################################
- *
+ *###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -47,21 +46,22 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- *
- */
+ */ 
 
-#ifndef _SC_SCOUT_H_
-#define _SC_SCOUT_H_
+#ifndef SC_CONFIG_H_
+#define SC_CONFIG_H_
 
-#include <cassert>
+#cmakedefine APPLE
+#cmakedefine UNIX
 
-#include "scout/base_types.h"
-#include "scout/Runtime/vec_types.h"
+#cmakedefine SC_ENABLE_OPENGL     // Provide OpenGL support.
+#cmakedefine SC_ENABLE_CUDA       // Provide CUDA support. 
+#cmakedefine SC_ENABLE_LIB_NVVM   // Use NVIDIA's compiler SDK.
+#cmakedefine SC_ENABLE_OPENCL     // Provide OpenCL support.
+#cmakedefine SC_ENABLE_AMDIL      // Provide OpenCL+AMD IL support.
+#cmakedefine SC_ENABLE_NUMA       // Provide NUMA (hwloc) support.
+#cmakedefine SC_ENABLE_MPI        // Provide MPI support.
+#cmakedefine SC_ENABLE_PNG        // Provide PNG image support.
 
-#include "scout/color_funcs.h"
+#endif
 
-#endif 
-
-
-
-  
