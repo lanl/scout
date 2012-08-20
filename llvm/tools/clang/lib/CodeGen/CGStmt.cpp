@@ -29,6 +29,7 @@
 
 // scout - include code extractor
 #include "llvm/Transforms/Utils/CodeExtractor.h"
+#include "clang/AST/Decl.h"
 
 #include <map>
 
@@ -646,7 +647,20 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   ScoutMeshSizes.clear();
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
+    std::string name;
+    switch(i){
+    case 0:
+      name = "dim_x";
+      break;
+    case 1:
+      name = "dim_y";
+      break;
+    case 2:
+      name = "dim_z";
+      break;
+    }
+
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i, name);
     ScoutMeshSizes.push_back(lval);
   }
   
@@ -772,6 +786,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     SmallVector<llvm::Value*, 3> typeArgs;
     typedef llvm::Function::arg_iterator ArgIterator;
     size_t pos = 0;
+    llvm::Value* gs;
     for(ArgIterator it = ForallFn->arg_begin(),
         end = ForallFn->arg_end(); it != end; ++it, ++pos) {
       bool isSigned;
@@ -791,7 +806,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         std::string ns = (*it).getName().str();
         while(!ns.empty()){
           if(meshFieldMap.find(ns) != meshFieldMap.end()){
-            meshArgs.push_back(Builder.CreateGlobalStringPtr(ns));
+	    gs = llvm::ConstantDataArray::getString(getLLVMContext(), ns);
+            meshArgs.push_back(gs);
             break;
           }
           ns.erase(ns.length() - 1, 1);
@@ -799,18 +815,40 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
         
-        typeArgs.push_back(Builder.CreateGlobalStringPtr(typeStr));
+        gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
+        typeArgs.push_back(gs);
       }
       else{
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-        meshArgs.push_back(Builder.CreateGlobalStringPtr((*it).getName().str()));
+	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
+						(*it).getName());
+        meshArgs.push_back(gs);
         
-        if(pos == 0){
-          typeArgs.push_back(Builder.CreateGlobalStringPtr("int*"));
+        if(it->getName().startswith("dim_x") || 
+	   it->getName().startswith("dim_y") ||
+	   it->getName().startswith("dim_z")){
+	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
+          typeArgs.push_back(gs);
         }
         else{
-          typeArgs.push_back(Builder.CreateGlobalStringPtr(""));
+          bool found = false;
+          for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
+              itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
+              itr != itrEnd; ++itr){
+            if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
+              if(vd->getName() == it->getName()){
+                std::string ts = vd->getType().getAsString();
+                gs = llvm::ConstantDataArray::getString(getLLVMContext(), ts);
+                found = true;
+                break;
+              }
+            }
+          }
+          
+          if(found){
+            typeArgs.push_back(gs);
+          }
         }
       }
     }
@@ -825,7 +863,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
-    args.push_back(Builder.CreateGlobalStringPtr(meshName));
+    args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(),
+						      meshName));;
     
     //llvm::Constant* MeshNameArray =
     //llvm::ConstantArray::get(getLLVMContext(), meshName);
