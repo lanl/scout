@@ -1,0 +1,36 @@
+*** Build System 
+
+ 1. We need to add a flag to scc that allows us to disable the use
+    of the standard library -- this will be necessary to bootstrap 
+    the building of the standard library with scc... [DONE] 
+
+ 2. We currently can't build on a system w/out hwloc installed. The
+    current configuration will proceed and produce a makefiles but 
+    bad things eventually happen on systems w/out hwloc... 
+
+ 3. Explore the use of -rpath on our command line to avoid having 
+    to set (DY)LD_LIBRARY_PATH for scout-produced executables. This
+    may not be something we always want but it might be very helpful 
+    during development.  For reference:
+
+       During development, there's the potential problem of modifying
+       a library that's also used by many other programs -- and you
+       don't want the other programs to use the ``developmental''
+       library, only a particular application that you're testing
+       against it. One link option you might use is ld's ``rpath''
+       option, which specifies the runtime library search path of that
+       particular program being compiled. From gcc, you can invoke the
+       rpath option by specifying it this way:
+
+           -Wl,-rpath,$(DEFAULT_LIB_INSTALL_PATH) 
+
+       If you use this option when building the library client
+       program, you don't need to bother with LD_LIBRARY_PATH
+       (described next) other than to ensure it's not conflicting, or
+       using other techniques to hide the library.
+
+ 4. FindSDL modules appears broken -- not exited upon failure (REQUIRED
+    ignored?). [DONE]
+
+ 5. Update documentation to match new build configuration process. 
+
