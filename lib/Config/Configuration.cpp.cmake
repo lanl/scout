@@ -115,7 +115,7 @@ namespace scout {
       #endif  // OpenGL 
     
       #ifdef SC_ENABLE_CUDA    
-      "-L${CUDA_TOOLKIT_ROOT_DIR}/lib", 
+      "-L${CUDA_LIBRARY_DIR}", 
       #endif
 
       #ifdef SC_ENABLE_NUMA 
@@ -150,7 +150,7 @@ namespace scout {
       #endif // OPENGL 
     
       #ifdef SC_ENABLE_CUDA
-      "-lcuda -lcudart",
+      "${CUDA_LIBRARIES}",
       #endif
 
       #ifdef SC_ENABLE_NUMA

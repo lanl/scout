@@ -91,6 +91,10 @@ endif
 #####
 
 
+##### SOURCE LOCATION 
+# 
+src_dir := ${CURDIR}
+
 ##### BUILD LOCATION 
 # 
 # We strongly advice against doing an in-source build with CMake...
@@ -100,23 +104,31 @@ ifdef SC_BUILD_DIR
 else
   build_dir := $(CURDIR)/build
 endif
+
+stdlib_build_dir := $(build_dir)/lib/Standard
+stdlib_flags := -DCMAKE_SCC_BOOTSTRAP
+
 #
 #####
 
-cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir)
+cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir) $(SC_BUILD_CMAKE_FLAGS)
 
 all: $(build_dir)/Makefile compile 
 .PHONY: all 
 
 $(build_dir)/Makefile: CMakeLists.txt
+	@echo "*** Scout source directory: $(src_dir)"
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
-	@(cd $(build_dir); cmake $(cmake_flags) $(SC_BUILD_CMAKE_FLAGS)..;)
-
+	@echo "*** Creating Scout build directory: $(build_dir)"
+	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+	@echo "*** Creating standard library build directory: $(stdlib_build_dir)"
+	@((test -d $(stdlib_build_dir)) || (mkdir $(stdlib_build_dir)))
 
 .PHONY: compile
 compile: $(build_dir)/Makefile 
-	@(cd $(build_dir)/llvm; make $(make_flags); make install)
-	@(cd $(build_dir); make $(make_flags); make install)
+	@(cd $(build_dir); make $(make_flags) install)
+	@(cd $(stdlib_build_dir); cmake $(cmake_flags) -DCMAKE_SCC_BOOTSTRAP=ON $(src_dir)/lib/Standard)
+	@(cd $(stdlib_build_dir); make $(make_flags) install)
 
 .PHONY: test
 test: 

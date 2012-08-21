@@ -66,7 +66,7 @@ project(scConfig)
   message(STATUS "scout: generating Configuration.cpp for build-time configuration settings.")
   message(STATUS "       location: ${SC_CONFIGURE_SRC_DIR}/Configuration.cpp")
 
-  configure_file (
+  configure_file(
     Configuration.cpp.cmake 
     ${SC_CONFIGURE_SRC_DIR}/Configuration.cpp)
   #

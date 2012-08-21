@@ -5546,29 +5546,6 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("/lib64/ld-linux-x86-64.so.2");
   }
 
-  // scout - add Scout library search paths
-  /*
-  std::string sccPath = C.getDriver().Dir;
-  sccPath = llvm::sys::path::parent_path(sccPath);
-
-  static std::string scRuntimeLibOpt = "-L" + sccPath + "/lib/runtime";
-  static std::string scStandardLibOpt = "-L" + sccPath + "/lib/standard";
-  static std::string scHwLocLibOpt = "-L/usr/local/lib";
-  static std::string scLLVMLibOpt = "-L" + sccPath + "/llvm/lib";
-  static std::string scLibOpt = "-L" + sccPath + "/lib";
-
-  static std::string scCudaLib;
-  scCudaLib = "-L/usr/local/cuda/lib64";
-
-  CmdArgs.push_back(scRuntimeLibOpt.c_str());
-  CmdArgs.push_back(scStandardLibOpt.c_str());
-  CmdArgs.push_back(scHwLocLibOpt.c_str());
-  CmdArgs.push_back(scLLVMLibOpt.c_str());
-  CmdArgs.push_back(scLibOpt.c_str());
-
-  CmdArgs.push_back(scCudaLib.c_str());
-  */
-  
   CmdArgs.push_back("-o");
   CmdArgs.push_back(Output.getFilename());
 
@@ -5667,28 +5644,6 @@ void linuxtools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   addProfileRT(getToolChain(), Args, CmdArgs, getToolChain().getTriple());
-
-  // scout - add Scout libs and other dependencies
-
-  CmdArgs.push_back("-lpng");
-  CmdArgs.push_back("-lscRuntime");
-  CmdArgs.push_back("-lscStandard");
-  CmdArgs.push_back("-lBlocksRuntime");
-  CmdArgs.push_back("-lhwloc");
-  CmdArgs.push_back("-lGL");
-  CmdArgs.push_back("-lGLU");
-  CmdArgs.push_back("-lSDL");
-  //CmdArgs.push_back("-lglfw");
-
-#ifdef SC_ENABLE_CUDA
-  CmdArgs.push_back("-lcuda");
-  CmdArgs.push_back("-lscCudaError");
-#endif
-
-#ifdef SC_ENABLE_OPENCL
-  CmdArgs.push_back("-lOpenCL");
-#endif
-
   C.addCommand(new Command(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
 

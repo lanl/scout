@@ -127,18 +127,25 @@ project(Scout)
   #    - config  : library of scout's build-time configuration details.
   #    - tools   : various tools that support scout development.
   #    - runtime : scout's runtime library. 
-  #
-  # ** Note: The scout standard library must be build separately from
-  #    the projects above (and outside of this cmake configuration as
-  #    is requires scc to be built and cmake can't figure out dynamic
-  #    language/compiler configurations like this).
   # 
     add_subdirectory(llvm)
     add_subdirectory(include)   
-    add_subdirectory(config)
+    add_subdirectory(lib/Config)
     add_subdirectory(cmake)
     add_subdirectory(tools)
-    add_subdirectory(runtime)
+    add_subdirectory(lib/Runtime)
+    #-----
+    # Note: we have to build the standard library separately because
+    # the 'scc' driver needs to be bootstrapped.  We therefore treat
+    # the library as an entirely separate project.  The configuration
+    # file generation below helps out with the bootstrap process
+    # between these separate projects...
+    #-----
+    message(STATUS "scout: generatingn pre-configuration for std library bootstrap build.")
+    configure_file(
+      lib/Standard/cmake/Modules/Configuration.cmake.in
+      ${CMAKE_BINARY_DIR}/lib/Standard/CMake/Modules/Configuration.cmake
+      )
   #
   #
   #####
