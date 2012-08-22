@@ -45,17 +45,26 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
- *
+ * ########################################################################### 
+ * 
  * Notes
  *
+ * ##### 
  */ 
 
-#ifndef __SC_STD_SCOUT_SCH__
-#define __SC_STD_SCOUT_SCH__
+#ifndef __SC_STD_SHIFT_SCH__
+#define __SC_STD_SHIFT_SCH__
 
-#include "scout/Standard/math.sch"
-#include "scout/Standard/shift.sch"
-#include "scout/Standard/hsv.sch"
+double cshift(double a, int dx);
+double cshift(double a, int dx, int dy);
+double cshift(double a, int dx, int dy, int dz);
+
+float cshift(float a, int dx);
+float cshift(float a, int dx, int dy);
+float cshift(float a, int dx, int dy, int dz);
+
+int cshift(int a, int dx);
+int cshift(int a, int dx, int dy);
+int cshift(int a, int dx, int dy, int dz);
 
 #endif
