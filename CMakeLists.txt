@@ -135,16 +135,21 @@ project(Scout)
     add_subdirectory(tools)
     add_subdirectory(lib/Runtime)
     #-----
-    # Note: we have to build the standard library separately because
-    # the 'scc' driver needs to be bootstrapped.  We therefore treat
-    # the library as an entirely separate project.  The configuration
-    # file generation below helps out with the bootstrap process
-    # between these separate projects...
+    # Note: we have to build the standard library and test directory 
+    # separately because the 'scc' driver needs to be bootstrapped.  
+    # We therefore treat those directories as entirely separate projects.  
+    # The configuration file generation below helps out with the bootstrap 
+    # process between these separate projects...
     #-----
-    message(STATUS "scout: generatingn pre-configuration for std library bootstrap build.")
+    message(STATUS "scout: generating pre-configuration for std library bootstrap build.")
     configure_file(
       lib/Standard/cmake/Modules/Configuration.cmake.in
       ${CMAKE_BINARY_DIR}/lib/Standard/CMake/Modules/Configuration.cmake
+      )
+    message(STATUS "scout: generating pre-configuration for testing build.")
+    configure_file(
+      test/cmake/Modules/Configuration.cmake.in
+      ${CMAKE_BINARY_DIR}/test/CMake/Modules/Configuration.cmake
       )
   #
   #
