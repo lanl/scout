@@ -150,7 +150,7 @@ namespace scout {
       #endif // OPENGL 
     
       #ifdef SC_ENABLE_CUDA
-      "${CUDA_LIBRARIES}",
+      "${CUDA_LIBRARIES} -lscCudaError",
       #endif
 
       #ifdef SC_ENABLE_NUMA

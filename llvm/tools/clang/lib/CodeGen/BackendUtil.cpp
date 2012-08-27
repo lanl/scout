@@ -37,6 +37,8 @@
 #include "llvm/Transforms/Scalar.h"
 
 // scout includes
+#include "scout/Config/defs.h"
+
 #ifdef SC_ENABLE_CUDA
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 #endif

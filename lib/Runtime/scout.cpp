@@ -3,6 +3,8 @@
 #include <sstream>
 #include <cassert>
 
+#include "scout/Config/defs.h"
+
 #ifdef SC_ENABLE_CUDA
 #include "scout/Runtime/cuda/scout_cuda.h"
 #include "scout/Runtime/cuda/cuda.h"

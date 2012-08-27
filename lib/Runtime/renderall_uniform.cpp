@@ -16,6 +16,9 @@
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
+// scout includes
+#include "scout/Config/defs.h"
+
 #ifdef SC_ENABLE_CUDA
 #include "scout/Runtime/cuda/scout_cuda.h"
 #endif
