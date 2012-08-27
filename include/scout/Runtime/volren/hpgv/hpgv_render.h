@@ -47,7 +47,7 @@ namespace scout {
 
     void hpgv_vis_para(para_input_t *para_input);
 
-    typedef int (^trans_func_ab_t)(block_t* block, point_3d_t* pos, rgba_t& color);
+    typedef int (*trans_func_ab_t)(block_t* block, point_3d_t* pos, rgba_t& color);
 
     void hpgv_vis_render(block_t *block, int root, MPI_Comm comm, int opt, trans_func_ab_t xfer);
 
