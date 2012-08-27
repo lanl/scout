@@ -539,7 +539,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
       Constant* typeArgConstant =
 	ConstantDataArray::getString(gm->getContext(), 
-				     typeConstant->getAsString(), false);
+				     typeConstant->getAsCString(), false);
 
       GlobalVariable* typeArgGlobal =
 	new GlobalVariable(*gm,
@@ -834,7 +834,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       ConstantDataArray* argNameConstant =
 	cast<ConstantDataArray>(argNode->getOperand(j));
 
-      string argName = argNameConstant->getAsString();
+      string argName = argNameConstant->getAsCString();
 
       vector<Value*> params;
 
@@ -844,7 +844,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       params.push_back(kn);
       
       Constant* fc =
-	ConstantDataArray::getString(m.getContext(), argName);
+	ConstantDataArray::getString(m.getContext(), argName, false);
       
       GlobalVariable* fg =
 	new GlobalVariable(m,
@@ -874,8 +874,9 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       params.push_back(fieldSize);
 
       uint8_t mode = 0;
-      for(unsigned i = 0; i < readArgs->getNumOperands(); ++i){
-	Value* v = readArgs->getOperand(i);
+      for(size_t k = 0; k < readArgs->getNumOperands(); ++k){
+	Value* v = readArgs->getOperand(k);
+
 	if(v->getName().str() == argName){
 	  mode = FIELD_READ;
 	  break;
