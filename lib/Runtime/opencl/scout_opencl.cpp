@@ -42,7 +42,7 @@ namespace{
   class KernelField{
   public:
     Field* field;
-    uint8_t type;
+    uint8_t mode;
     void* hostPtr;
   };
 
@@ -338,7 +338,7 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
 				  uint32_t argNum,
 				  void* hostPtr,
 				  uint32_t size,
-				  uint8_t type){
+				  uint8_t mode){
   KernelMap::iterator itr = _kernelMap.find(kernelName);
   assert(itr != _kernelMap.end() && "Invalid OpenCL kernel");
   Kernel* kernel = itr->second;
@@ -383,7 +383,7 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
 
   KernelField* kernelField = new KernelField;
   kernelField->field = field;
-  kernelField->type = type;
+  kernelField->mode = mode;
   kernelField->hostPtr = hostPtr;
 
   kernel->fieldMap.insert(make_pair(fieldName, kernelField));
@@ -404,7 +404,7 @@ void __sc_opencl_run_kernel(const char* kernelName){
 	fitrEnd = kernel->fieldMap.end(); fitr != fitrEnd; ++fitr){
     KernelField* field = fitr->second;
 
-    if(field->type & FIELD_READ_MASK){
+    if(field->mode & FIELD_READ_MASK){
       ret = 
 	clEnqueueWriteBuffer(__sc_opencl_command_queue, field->field->mem, 
 			     CL_TRUE, 0, field->field->size, field->hostPtr, 0, 
@@ -422,7 +422,7 @@ void __sc_opencl_run_kernel(const char* kernelName){
         fitrEnd = kernel->fieldMap.end(); fitr != fitrEnd; ++fitr){
     KernelField* field = fitr->second;
 
-    if(field->type & FIELD_WRITE_MASK){
+    if(field->mode & FIELD_WRITE_MASK){
       ret =
         clEnqueueReadBuffer(__sc_opencl_command_queue, field->field->mem,
 			    CL_TRUE, 0, field->field->size, field->hostPtr, 0,

@@ -1,3 +1,8 @@
+# scout
+include_directories(
+ ${CMAKE_BINARY_DIR}/scout-config/include
+)
+
 set(LLVM_LINK_COMPONENTS
   asmparser
   bitreader
