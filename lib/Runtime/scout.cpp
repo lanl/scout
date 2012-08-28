@@ -21,7 +21,7 @@
 using namespace std;
 using namespace scout;
 
-tbq_rt* __sc_tbq;
+tbq_rt* __sc_tbq = 0;
 glSDL* __sc_glsdl = 0;
 
 size_t __sc_initial_width = 768;
@@ -35,6 +35,10 @@ enum ScoutGPUType{
 
 extern "C"
 void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
+  if(!__sc_tbq){
+    __sc_tbq = new tbq_rt;
+  }
+
   __sc_tbq->run(blockLiteral, numDimensions, numFields);
 }
 
@@ -73,8 +77,6 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
 }
 
 void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
-  __sc_tbq = new tbq_rt;
-
   switch(gpuType){
     case ScoutGPUCUDA:
     {
