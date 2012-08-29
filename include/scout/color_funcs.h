@@ -14,13 +14,6 @@
 
 #include "scout/Runtime/types.h"
 
-namespace scout {
-  
-  extern float4 hsva(float hue, float sat, float value, float alpha);
-
-  inline float4 hsv(float hue, float sat, float value)
-  { return hsva(hue, sat, value, 1.0); }
-
   inline float red(const scout::float4& color)
   { return color.components[0]; }
 
