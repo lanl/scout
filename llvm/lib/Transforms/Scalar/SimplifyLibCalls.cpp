@@ -28,6 +28,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetData.h"
@@ -38,6 +39,10 @@ using namespace llvm;
 STATISTIC(NumSimplified, "Number of library calls simplified");
 STATISTIC(NumAnnotated, "Number of attributes added to library functions");
 
+static cl::opt<bool> UnsafeFPShrink("enable-double-float-shrink", cl::Hidden,
+                                   cl::init(false),
+                                   cl::desc("Enable unsafe double to float "
+                                            "shrinking for math lib calls"));
 //===----------------------------------------------------------------------===//
 // Optimizer Base Class
 //===----------------------------------------------------------------------===//
@@ -157,14 +162,15 @@ struct StrCatOpt : public LibCallOptimization {
     // These optimizations require TargetData.
     if (!TD) return 0;
 
-    EmitStrLenMemCpy(Src, Dst, Len, B);
-    return Dst;
+    return EmitStrLenMemCpy(Src, Dst, Len, B);
   }
 
-  void EmitStrLenMemCpy(Value *Src, Value *Dst, uint64_t Len, IRBuilder<> &B) {
+  Value *EmitStrLenMemCpy(Value *Src, Value *Dst, uint64_t Len, IRBuilder<> &B) {
     // We need to find the end of the destination string.  That's where the
     // memory is to be moved to. We just generate a call to strlen.
     Value *DstLen = EmitStrLen(Dst, B, TD, TLI);
+    if (!DstLen)
+      return 0;
 
     // Now that we have the destination's length, we must index into the
     // destination's pointer to get the actual memcpy destination (end of
@@ -175,6 +181,7 @@ struct StrCatOpt : public LibCallOptimization {
     // concatenation for us.  Make a memcpy to copy the nul byte with align = 1.
     B.CreateMemCpy(CpyDst, Src,
                    ConstantInt::get(TD->getIntPtrType(*Context), Len + 1), 1);
+    return Dst;
   }
 };
 
@@ -221,8 +228,7 @@ struct StrNCatOpt : public StrCatOpt {
 
     // strncat(x, s, c) -> strcat(x, s)
     // s is constant so the strcat can be optimized further
-    EmitStrLenMemCpy(Src, Dst, SrcLen, B);
-    return Dst;
+    return EmitStrLenMemCpy(Src, Dst, SrcLen, B);
   }
 };
 
@@ -447,11 +453,10 @@ struct StrCpyOpt : public LibCallOptimization {
 
     // We have enough information to now generate the memcpy call to do the
     // concatenation for us.  Make a memcpy to copy the nul byte with align = 1.
-    if (OptChkCall)
-      EmitMemCpyChk(Dst, Src,
-                    ConstantInt::get(TD->getIntPtrType(*Context), Len),
-                    CI->getArgOperand(2), B, TD, TLI);
-    else
+    if (!OptChkCall ||
+        !EmitMemCpyChk(Dst, Src,
+                       ConstantInt::get(TD->getIntPtrType(*Context), Len),
+                       CI->getArgOperand(2), B, TD, TLI))
       B.CreateMemCpy(Dst, Src,
                      ConstantInt::get(TD->getIntPtrType(*Context), Len), 1);
     return Dst;
@@ -496,9 +501,8 @@ struct StpCpyOpt: public LibCallOptimization {
 
     // We have enough information to now generate the memcpy call to do the
     // copy for us.  Make a memcpy to copy the nul byte with align = 1.
-    if (OptChkCall)
-      EmitMemCpyChk(Dst, Src, LenV, CI->getArgOperand(2), B, TD, TLI);
-    else
+    if (!OptChkCall || !EmitMemCpyChk(Dst, Src, LenV, CI->getArgOperand(2), B,
+                                      TD, TLI))
       B.CreateMemCpy(Dst, Src, LenV, 1);
     return DstEnd;
   }
@@ -894,16 +898,56 @@ struct MemSetOpt : public LibCallOptimization {
 //===----------------------------------------------------------------------===//
 
 //===---------------------------------------===//
-// 'cos*' Optimizations
+// Double -> Float Shrinking Optimizations for Unary Functions like 'floor'
 
+struct UnaryDoubleFPOpt : public LibCallOptimization {
+  bool CheckRetType;
+  UnaryDoubleFPOpt(bool CheckReturnType): CheckRetType(CheckReturnType) {}
+  virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    FunctionType *FT = Callee->getFunctionType();
+    if (FT->getNumParams() != 1 || !FT->getReturnType()->isDoubleTy() ||
+        !FT->getParamType(0)->isDoubleTy())
+      return 0;
+
+    if (CheckRetType) {
+      // Check if all the uses for function like 'sin' are converted to float.
+      for (Value::use_iterator UseI = CI->use_begin(); UseI != CI->use_end();
+          ++UseI) {
+        FPTruncInst *Cast = dyn_cast<FPTruncInst>(*UseI);
+        if (Cast == 0 || !Cast->getType()->isFloatTy())
+          return 0;
+      }
+    }
+
+    // If this is something like 'floor((double)floatval)', convert to floorf.
+    FPExtInst *Cast = dyn_cast<FPExtInst>(CI->getArgOperand(0));
+    if (Cast == 0 || !Cast->getOperand(0)->getType()->isFloatTy())
+      return 0;
+
+    // floor((double)floatval) -> (double)floorf(floatval)
+    Value *V = Cast->getOperand(0);
+    V = EmitUnaryFloatFnCall(V, Callee->getName(), B, Callee->getAttributes());
+    return B.CreateFPExt(V, B.getDoubleTy());
+  }
+};
+
+//===---------------------------------------===//
+// 'cos*' Optimizations
 struct CosOpt : public LibCallOptimization {
   virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    Value *Ret = NULL;
+    if (UnsafeFPShrink && Callee->getName() == "cos" &&
+        TLI->has(LibFunc::cosf)) {
+      UnaryDoubleFPOpt UnsafeUnaryDoubleFP(true);
+      Ret = UnsafeUnaryDoubleFP.CallOptimizer(Callee, CI, B);
+    }
+
     FunctionType *FT = Callee->getFunctionType();
     // Just make sure this has 1 argument of FP type, which matches the
     // result type.
     if (FT->getNumParams() != 1 || FT->getReturnType() != FT->getParamType(0) ||
         !FT->getParamType(0)->isFloatingPointTy())
-      return 0;
+      return Ret;
 
     // cos(-x) -> cos(x)
     Value *Op1 = CI->getArgOperand(0);
@@ -911,7 +955,7 @@ struct CosOpt : public LibCallOptimization {
       BinaryOperator *BinExpr = cast<BinaryOperator>(Op1);
       return B.CreateCall(Callee, BinExpr->getOperand(1), "cos");
     }
-    return 0;
+    return Ret;
   }
 };
 
@@ -920,13 +964,20 @@ struct CosOpt : public LibCallOptimization {
 
 struct PowOpt : public LibCallOptimization {
   virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    Value *Ret = NULL;
+    if (UnsafeFPShrink && Callee->getName() == "pow" &&
+        TLI->has(LibFunc::powf)) {
+      UnaryDoubleFPOpt UnsafeUnaryDoubleFP(true);
+      Ret = UnsafeUnaryDoubleFP.CallOptimizer(Callee, CI, B);
+    }
+
     FunctionType *FT = Callee->getFunctionType();
     // Just make sure this has 2 arguments of the same FP type, which match the
     // result type.
     if (FT->getNumParams() != 2 || FT->getReturnType() != FT->getParamType(0) ||
         FT->getParamType(0) != FT->getParamType(1) ||
         !FT->getParamType(0)->isFloatingPointTy())
-      return 0;
+      return Ret;
 
     Value *Op1 = CI->getArgOperand(0), *Op2 = CI->getArgOperand(1);
     if (ConstantFP *Op1C = dyn_cast<ConstantFP>(Op1)) {
@@ -937,7 +988,7 @@ struct PowOpt : public LibCallOptimization {
     }
 
     ConstantFP *Op2C = dyn_cast<ConstantFP>(Op2);
-    if (Op2C == 0) return 0;
+    if (Op2C == 0) return Ret;
 
     if (Op2C->getValueAPF().isZero())  // pow(x, 0.0) -> 1.0
       return ConstantFP::get(CI->getType(), 1.0);
@@ -975,12 +1026,19 @@ struct PowOpt : public LibCallOptimization {
 
 struct Exp2Opt : public LibCallOptimization {
   virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
+    Value *Ret = NULL;
+    if (UnsafeFPShrink && Callee->getName() == "exp2" &&
+        TLI->has(LibFunc::exp2)) {
+      UnaryDoubleFPOpt UnsafeUnaryDoubleFP(true);
+      Ret = UnsafeUnaryDoubleFP.CallOptimizer(Callee, CI, B);
+    }
+
     FunctionType *FT = Callee->getFunctionType();
     // Just make sure this has 1 argument of FP type, which matches the
     // result type.
     if (FT->getNumParams() != 1 || FT->getReturnType() != FT->getParamType(0) ||
         !FT->getParamType(0)->isFloatingPointTy())
-      return 0;
+      return Ret;
 
     Value *Op = CI->getArgOperand(0);
     // Turn exp2(sitofp(x)) -> ldexp(1.0, sext(x))  if sizeof(x) <= 32
@@ -1017,29 +1075,7 @@ struct Exp2Opt : public LibCallOptimization {
 
       return CI;
     }
-    return 0;
-  }
-};
-
-//===---------------------------------------===//
-// Double -> Float Shrinking Optimizations for Unary Functions like 'floor'
-
-struct UnaryDoubleFPOpt : public LibCallOptimization {
-  virtual Value *CallOptimizer(Function *Callee, CallInst *CI, IRBuilder<> &B) {
-    FunctionType *FT = Callee->getFunctionType();
-    if (FT->getNumParams() != 1 || !FT->getReturnType()->isDoubleTy() ||
-        !FT->getParamType(0)->isDoubleTy())
-      return 0;
-
-    // If this is something like 'floor((double)floatval)', convert to floorf.
-    FPExtInst *Cast = dyn_cast<FPExtInst>(CI->getArgOperand(0));
-    if (Cast == 0 || !Cast->getOperand(0)->getType()->isFloatTy())
-      return 0;
-
-    // floor((double)floatval) -> (double)floorf(floatval)
-    Value *V = Cast->getOperand(0);
-    V = EmitUnaryFloatFnCall(V, Callee->getName(), B, Callee->getAttributes());
-    return B.CreateFPExt(V, B.getDoubleTy());
+    return Ret;
   }
 };
 
@@ -1187,7 +1223,7 @@ struct PrintFOpt : public LibCallOptimization {
     // printf("x") -> putchar('x'), even for '%'.
     if (FormatStr.size() == 1) {
       Value *Res = EmitPutChar(B.getInt32(FormatStr[0]), B, TD, TLI);
-      if (CI->use_empty()) return CI;
+      if (CI->use_empty() || !Res) return Res;
       return B.CreateIntCast(Res, CI->getType(), true);
     }
 
@@ -1210,7 +1246,7 @@ struct PrintFOpt : public LibCallOptimization {
         CI->getArgOperand(1)->getType()->isIntegerTy()) {
       Value *Res = EmitPutChar(CI->getArgOperand(1), B, TD, TLI);
 
-      if (CI->use_empty()) return CI;
+      if (CI->use_empty() || !Res) return Res;
       return B.CreateIntCast(Res, CI->getType(), true);
     }
 
@@ -1504,8 +1540,7 @@ struct PutsOpt : public LibCallOptimization {
     if (Str.empty() && CI->use_empty()) {
       // puts("") -> putchar('\n')
       Value *Res = EmitPutChar(B.getInt32('\n'), B, TD, TLI);
-      if (!Res) return 0;
-      if (CI->use_empty()) return CI;
+      if (CI->use_empty() || !Res) return Res;
       return B.CreateIntCast(Res, CI->getType(), true);
     }
 
@@ -1536,7 +1571,8 @@ namespace {
     StrToOpt StrTo; StrSpnOpt StrSpn; StrCSpnOpt StrCSpn; StrStrOpt StrStr;
     MemCmpOpt MemCmp; MemCpyOpt MemCpy; MemMoveOpt MemMove; MemSetOpt MemSet;
     // Math Library Optimizations
-    CosOpt Cos; PowOpt Pow; Exp2Opt Exp2; UnaryDoubleFPOpt UnaryDoubleFP;
+    CosOpt Cos; PowOpt Pow; Exp2Opt Exp2;
+    UnaryDoubleFPOpt UnaryDoubleFP, UnsafeUnaryDoubleFP;
     // Integer Optimizations
     FFSOpt FFS; AbsOpt Abs; IsDigitOpt IsDigit; IsAsciiOpt IsAscii;
     ToAsciiOpt ToAscii;
@@ -1549,10 +1585,13 @@ namespace {
   public:
     static char ID; // Pass identification
     SimplifyLibCalls() : FunctionPass(ID), StrCpy(false), StrCpyChk(true),
-                         StpCpy(false), StpCpyChk(true) {
+                         StpCpy(false), StpCpyChk(true),
+                         UnaryDoubleFP(false), UnsafeUnaryDoubleFP(true) {
       initializeSimplifyLibCallsPass(*PassRegistry::getPassRegistry());
     }
     void AddOpt(LibFunc::Func F, LibCallOptimization* Opt);
+    void AddOpt(LibFunc::Func F1, LibFunc::Func F2, LibCallOptimization* Opt);
+
     void InitOptimizations();
     bool runOnFunction(Function &F);
 
@@ -1586,6 +1625,12 @@ FunctionPass *llvm::createSimplifyLibCallsPass() {
 void SimplifyLibCalls::AddOpt(LibFunc::Func F, LibCallOptimization* Opt) {
   if (TLI->has(F))
     Optimizations[TLI->getName(F)] = Opt;
+}
+
+void SimplifyLibCalls::AddOpt(LibFunc::Func F1, LibFunc::Func F2,
+                              LibCallOptimization* Opt) {
+  if (TLI->has(F1) && TLI->has(F2))
+    Optimizations[TLI->getName(F1)] = Opt;
 }
 
 /// Optimizations - Populate the Optimizations map with all the optimizations
@@ -1643,16 +1688,37 @@ void SimplifyLibCalls::InitOptimizations() {
   Optimizations["llvm.exp2.f64"] = &Exp2;
   Optimizations["llvm.exp2.f32"] = &Exp2;
 
-  if (TLI->has(LibFunc::floor) && TLI->has(LibFunc::floorf))
-    Optimizations["floor"] = &UnaryDoubleFP;
-  if (TLI->has(LibFunc::ceil) && TLI->has(LibFunc::ceilf))
-    Optimizations["ceil"] = &UnaryDoubleFP;
-  if (TLI->has(LibFunc::round) && TLI->has(LibFunc::roundf))
-    Optimizations["round"] = &UnaryDoubleFP;
-  if (TLI->has(LibFunc::rint) && TLI->has(LibFunc::rintf))
-    Optimizations["rint"] = &UnaryDoubleFP;
-  if (TLI->has(LibFunc::nearbyint) && TLI->has(LibFunc::nearbyintf))
-    Optimizations["nearbyint"] = &UnaryDoubleFP;
+  AddOpt(LibFunc::ceil, LibFunc::ceilf, &UnaryDoubleFP);
+  AddOpt(LibFunc::fabs, LibFunc::fabsf, &UnaryDoubleFP);
+  AddOpt(LibFunc::floor, LibFunc::floorf, &UnaryDoubleFP);
+  AddOpt(LibFunc::rint, LibFunc::rintf, &UnaryDoubleFP);
+  AddOpt(LibFunc::round, LibFunc::roundf, &UnaryDoubleFP);
+  AddOpt(LibFunc::nearbyint, LibFunc::nearbyintf, &UnaryDoubleFP);
+  AddOpt(LibFunc::trunc, LibFunc::truncf, &UnaryDoubleFP);
+
+  if(UnsafeFPShrink) {
+    AddOpt(LibFunc::acos, LibFunc::acosf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::acosh, LibFunc::acoshf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::asin, LibFunc::asinf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::asinh, LibFunc::asinhf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::atan, LibFunc::atanf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::atanh, LibFunc::atanhf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::cbrt, LibFunc::cbrtf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::cosh, LibFunc::coshf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::exp, LibFunc::expf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::exp10, LibFunc::exp10f, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::expm1, LibFunc::expm1f, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::log, LibFunc::logf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::log10, LibFunc::log10f, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::log1p, LibFunc::log1pf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::log2, LibFunc::log2f, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::logb, LibFunc::logbf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::sin, LibFunc::sinf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::sinh, LibFunc::sinhf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::sqrt, LibFunc::sqrtf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::tan, LibFunc::tanf, &UnsafeUnaryDoubleFP);
+    AddOpt(LibFunc::tanh, LibFunc::tanhf, &UnsafeUnaryDoubleFP);
+  }
 
   // Integer Optimizations
   Optimizations["ffs"] = &FFS;

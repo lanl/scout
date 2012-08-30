@@ -2,7 +2,7 @@ set(LLVM_LINK_COMPONENTS
   Support
   )
 
-add_llvm_unittest(ADTTests
+set(ADTSources
   APFloatTest.cpp
   APIntTest.cpp
   BitVectorTest.cpp
@@ -26,7 +26,21 @@ add_llvm_unittest(ADTTests
   SparseSetTest.cpp
   StringMapTest.cpp
   StringRefTest.cpp
+  TinyPtrVectorTest.cpp
   TripleTest.cpp
   TwineTest.cpp
   VariadicFunctionTest.cpp
  )
+
+# They cannot be compiled on MSVC9 due to its bug.
+if(MSVC AND MSVC_VERSION LESS 1600)
+  set(LLVM_OPTIONAL_SOURCES
+    DenseMapTest.cpp
+    SmallVectorTest.cpp
+    )
+  list(REMOVE_ITEM ADTSources ${LLVM_OPTIONAL_SOURCES})
+endif()
+
+add_llvm_unittest(ADTTests
+  ${ADTSources}
+  )
