@@ -53,7 +53,7 @@
  */ 
 
 #include "scout/Config/defs.h"
-#include "scout/Runtime/cuda/CudaRuntime.h"
+#include "scout/Runtime/cuda/Cuda.h"
 #include "scout/Runtime/cuda/CudaDevice.h"
 
 using namespace scout;

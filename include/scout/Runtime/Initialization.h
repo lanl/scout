@@ -61,9 +61,9 @@
                                // others. 
 
 #include "scout/Runtime/cuda/CudaInitialization.h"
-#include "scout/Runtime/opengl/glInitialization.h"
-#include "scout/Runtime/opencl/clInitialization.h"
-#include "scout/Runtime/numa/NumaInitialization.h"
+//#include "scout/Runtime/opengl/glInitialization.h"
+//#include "scout/Runtime/opencl/clInitialization.h"
+//#include "scout/Runtime/numa/NumaInitialization.h"
 #include "scout/Runtime/DeviceList.h"
 
 namespace scout {

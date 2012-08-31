@@ -78,7 +78,7 @@ namespace scout {
   /** ----- scLookupErrorString
    * Given an error/return value look up the assocaited error string.
    */
-  const char *__scLookupErrorString(ScErrorId err_value,
+  const char *scLookupErrorString(ScErrorId err_value,
                                     ScErrorEntry entries[]); 
 
   
@@ -91,17 +91,6 @@ namespace scout {
     SCOUT_INIT_ERROR    = 1,
     SCOUT_NO_DEVICES    = 100,
     SCOUT_UNKNOWN_ERROR = -1,
-  };
-
-  
-  /** ----- scErrorEntry
-   * A single entry into an error table that we use as part of our
-   * error reporting infrastructure.  An entry contains a error string
-   * and a corresponding (unique per table) error ID.
-   */
-  struct ScErrorEntry {
-    char const *errorString;
-    ScErrorId   errorId;
   };
 
   
