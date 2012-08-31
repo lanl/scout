@@ -25,3 +25,6 @@ endif()
 add_llvm_library(LLVMdoallToPTX
   DoallToPTX.cpp
 )
+
+add_dependencies(LLVMdoallToPTX intrinsics_gen)
+
