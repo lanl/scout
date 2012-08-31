@@ -168,6 +168,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   setCurrentInput(Input);
   setCompilerInstance(&CI);
 
+  bool HasBegunSourceFile = false;
   if (!BeginInvocation(CI))
     goto failure;
 
@@ -220,6 +221,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
 
     // Inform the diagnostic client we are processing a source file.
     CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(), 0);
+    HasBegunSourceFile = true;
 
     // Initialize the action.
     if (!BeginSourceFileAction(CI, Input.File))
@@ -243,6 +245,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   // Inform the diagnostic client we are processing a source file.
   CI.getDiagnosticClient().BeginSourceFile(CI.getLangOpts(),
                                            &CI.getPreprocessor());
+  HasBegunSourceFile = true;
 
   // Initialize the action.
   if (!BeginSourceFileAction(CI, Input.File))
@@ -324,7 +327,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     CI.setFileManager(0);
   }
 
-  CI.getDiagnosticClient().EndSourceFile();
+  if (HasBegunSourceFile)
+    CI.getDiagnosticClient().EndSourceFile();
   setCurrentInput(FrontendInputFile());
   setCompilerInstance(0);
   return false;

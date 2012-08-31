@@ -56,10 +56,13 @@ add_clang_library(clangCodeGen
   )
 
 add_dependencies(clangCodeGen
+  ClangARMNeon
   ClangAttrClasses
   ClangAttrList
   ClangCommentNodes
   ClangDeclNodes
+  ClangDiagnosticCommon
+  ClangDiagnosticFrontend
   ClangStmtNodes
   )
 

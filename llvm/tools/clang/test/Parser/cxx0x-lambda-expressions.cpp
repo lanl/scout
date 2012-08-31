@@ -26,6 +26,7 @@ class C {
 
     [] -> int { return 0; }; // expected-error{{lambda requires '()' before return type}}
     [] mutable -> int { return 0; }; // expected-error{{lambda requires '()' before 'mutable'}}
+    [](int) -> {}; // PR13652 expected-error {{expected a type}}
     return 1;
   }
 
@@ -39,5 +40,12 @@ class C {
     int a4[1] = {[&b] = 1 }; // expected-error{{integral constant expression must have integral or unscoped enumeration type, not 'const int *'}}
     int a5[3] = { []{return 0;}() };
     int a6[1] = {[this] = 1 }; // expected-error{{integral constant expression must have integral or unscoped enumeration type, not 'C *'}}
+  }
+
+  void delete_lambda(int *p) {
+    delete [] p;
+    delete [] (int*) { new int }; // ok, compound-literal, not lambda
+    delete [] { return new int; } (); // expected-error{{expected expression}}
+    delete [&] { return new int; } (); // ok, lambda
   }
 };

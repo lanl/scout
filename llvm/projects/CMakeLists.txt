@@ -13,5 +13,5 @@ endforeach(entry)
 if(${CMAKE_VERSION} VERSION_GREATER 2.8.7 AND
    IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/compiler-rt AND
    EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/compiler-rt/CMakeLists.txt)
-  add_subdirectory(compiler-rt)
+  #add_subdirectory(compiler-rt)
 endif()

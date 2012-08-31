@@ -969,7 +969,7 @@ void MicrosoftCXXNameMangler::mangleType(QualType T, SourceRange Range) {
     return;
 #define TYPE(CLASS, PARENT) \
   case Type::CLASS: \
-    mangleType(static_cast<const CLASS##Type*>(T.getTypePtr()), Range); \
+    mangleType(cast<CLASS##Type>(T), Range); \
     break;
 #include "clang/AST/TypeNodes.def"
 #undef ABSTRACT_TYPE
@@ -1081,8 +1081,8 @@ void MicrosoftCXXNameMangler::mangleType(const FunctionProtoType *T,
                                          SourceRange) {
   // Structors only appear in decls, so at this point we know it's not a
   // structor type.
-  // I'll probably have mangleType(MemberPointerType) call the mangleType()
-  // method directly.
+  // FIXME: This may not be lambda-friendly.
+  Out << "$$A6";
   mangleType(T, NULL, false, false);
 }
 void MicrosoftCXXNameMangler::mangleType(const FunctionNoProtoType *T,
@@ -1112,8 +1112,15 @@ void MicrosoftCXXNameMangler::mangleType(const FunctionType *T,
   else {
     QualType Result = Proto->getResultType();
     const Type* RT = Result.getTypePtr();
-    if(isa<TagType>(RT) && !RT->isAnyPointerType() && !RT->isReferenceType())
-        Out << "?A";
+    if (!RT->isAnyPointerType() && !RT->isReferenceType()) {
+      if (Result.hasQualifiers() || !RT->isBuiltinType())
+        Out << '?';
+      if (!RT->isBuiltinType() && !Result.hasQualifiers()) {
+        // Lack of qualifiers for user types is mangled as 'A'.
+        Out << 'A';
+      }
+    }
+
     // FIXME: Get the source range for the result type. Or, better yet,
     // implement the unimplemented stuff so we don't need accurate source
     // location info anymore :).
@@ -1231,7 +1238,7 @@ void MicrosoftCXXNameMangler::mangleCallingConvention(const FunctionType *T,
   if (CC == CC_Default) {
     if (IsInstMethod) {
       const FunctionProtoType *FPT =
-        T->getCanonicalTypeUnqualified().getAs<FunctionProtoType>();
+        T->getCanonicalTypeUnqualified().castAs<FunctionProtoType>();
       bool isVariadic = FPT->isVariadic();
       CC = getASTContext().getDefaultCXXMethodCallConv(isVariadic);
     } else {
@@ -1277,10 +1284,10 @@ void MicrosoftCXXNameMangler::mangleType(const UnresolvedUsingType *T,
 // <class-type>  ::= V <name>
 // <enum-type>   ::= W <size> <name>
 void MicrosoftCXXNameMangler::mangleType(const EnumType *T, SourceRange) {
-  mangleType(static_cast<const TagType*>(T));
+  mangleType(cast<TagType>(T));
 }
 void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
-  mangleType(static_cast<const TagType*>(T));
+  mangleType(cast<TagType>(T));
 }
 
 // scout - Mesh
@@ -1328,19 +1335,19 @@ void MicrosoftCXXNameMangler::mangleType(const ArrayType *T, bool IsGlobal) {
 }
 void MicrosoftCXXNameMangler::mangleType(const ConstantArrayType *T,
                                          SourceRange) {
-  mangleType(static_cast<const ArrayType *>(T), false);
+  mangleType(cast<ArrayType>(T), false);
 }
 void MicrosoftCXXNameMangler::mangleType(const VariableArrayType *T,
                                          SourceRange) {
-  mangleType(static_cast<const ArrayType *>(T), false);
+  mangleType(cast<ArrayType>(T), false);
 }
 void MicrosoftCXXNameMangler::mangleType(const DependentSizedArrayType *T,
                                          SourceRange) {
-  mangleType(static_cast<const ArrayType *>(T), false);
+  mangleType(cast<ArrayType>(T), false);
 }
 void MicrosoftCXXNameMangler::mangleType(const IncompleteArrayType *T,
                                          SourceRange) {
-  mangleType(static_cast<const ArrayType *>(T), false);
+  mangleType(cast<ArrayType>(T), false);
 }
 void MicrosoftCXXNameMangler::mangleExtraDimensions(QualType ElementTy) {
   SmallVector<llvm::APInt, 3> Dimensions;
@@ -1521,7 +1528,9 @@ void MicrosoftCXXNameMangler::mangleType(const ObjCObjectType *T,
 void MicrosoftCXXNameMangler::mangleType(const BlockPointerType *T,
                                          SourceRange Range) {
   Out << "_E";
-  mangleType(T->getPointeeType(), Range);
+
+  QualType pointee = T->getPointeeType();
+  mangleType(pointee->castAs<FunctionProtoType>(), NULL, false, false);
 }
 
 void MicrosoftCXXNameMangler::mangleType(const InjectedClassNameType *T,
