@@ -132,7 +132,7 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
-      "-lscRuntime -lscStandard",
+      "-lscRuntime -lscStandard -lBlocksRuntime",
       "${SDL_LIBRARIES}",
 
       #ifdef APPLE 
