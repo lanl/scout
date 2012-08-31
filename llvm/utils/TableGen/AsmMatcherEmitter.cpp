@@ -1678,12 +1678,12 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
   std::string ConvertFnBody;
   raw_string_ostream CvtOS(ConvertFnBody);
   // Start the unified conversion function.
-  CvtOS << "bool " << Target.getName() << ClassName << "::\n"
+  CvtOS << "void " << Target.getName() << ClassName << "::\n"
         << "ConvertToMCInst(unsigned Kind, MCInst &Inst, "
         << "unsigned Opcode,\n"
-        << "                      const SmallVectorImpl<MCParsedAsmOperand*"
+        << "                const SmallVectorImpl<MCParsedAsmOperand*"
         << "> &Operands) {\n"
-        << "  if (Kind >= CVT_NUM_SIGNATURES) return false;\n"
+        << "  assert(Kind < CVT_NUM_SIGNATURES && \"Invalid signature!\");\n"
         << "  uint8_t *Converter = ConversionTable[Kind];\n"
         << "  Inst.setOpcode(Opcode);\n"
         << "  for (uint8_t *p = Converter; *p; p+= 2) {\n"
@@ -1697,6 +1697,26 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
         << "      Inst.addOperand(Inst.getOperand(*(p + 1)));\n"
         << "      break;\n";
 
+  std::string OperandFnBody;
+  raw_string_ostream OpOS(OperandFnBody);
+  // Start the operand number lookup function.
+  OpOS << "void " << Target.getName() << ClassName << "::\n"
+       << "GetMCInstOperandNum(unsigned Kind, MCInst &Inst,\n"
+       << "                 const SmallVectorImpl<MCParsedAsmOperand*> &Operands,"
+       << "\n                    unsigned OperandNum, unsigned &MCOperandNum) {\n"
+       << "  assert(Kind < CVT_NUM_SIGNATURES && \"Invalid signature!\");\n"
+       << "  MCOperandNum = 0;\n"
+       << "  uint8_t *Converter = ConversionTable[Kind];\n"
+       << "  for (uint8_t *p = Converter; *p; p+= 2) {\n"
+       << "    if (*(p + 1) > OperandNum) continue;\n"
+       << "    switch (*p) {\n"
+       << "    default: llvm_unreachable(\"invalid conversion entry!\");\n"
+       << "    case CVT_Reg:\n"
+       << "      ++MCOperandNum;\n"
+       << "      break;\n"
+       << "    case CVT_Tied:\n"
+       << "      //Inst.getOperand(*(p + 1)));\n"
+       << "      break;\n";
 
   // Pre-populate the operand conversion kinds with the standard always
   // available entries.
@@ -1731,9 +1751,10 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
 
       // Add the handler to the conversion driver function.
       CvtOS << "    case CVT_" << AsmMatchConverter << ":\n"
-            << "      return " << AsmMatchConverter
-            << "(Inst, Opcode, Operands);\n";
+            << "      " << AsmMatchConverter << "(Inst, Opcode, Operands);\n"
+            << "      break;\n";
 
+      // FIXME: Handle the operand number lookup for custom match functions.
       continue;
     }
 
@@ -1787,9 +1808,13 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
               << Op.Class->RenderMethod << "(Inst, " << OpInfo.MINumOperands
               << ");\n"
               << "      break;\n";
+
+        // Add a handler for the operand number lookup.
+        OpOS << "    case " << Name << ":\n"
+             << "      MCOperandNum += " << OpInfo.MINumOperands << ";\n"
+             << "      break;\n";
         break;
       }
-
       case MatchableInfo::ResOperand::TiedOperand: {
         // If this operand is tied to a previous one, just copy the MCInst
         // operand from the earlier one.We can only tie single MCOperand values.
@@ -1799,6 +1824,7 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
         Signature += "__Tie" + utostr(TiedOp);
         ConversionRow.push_back(CVT_Tied);
         ConversionRow.push_back(TiedOp);
+        // FIXME: Handle the operand number lookup for tied operands.
         break;
       }
       case MatchableInfo::ResOperand::ImmOperand: {
@@ -1821,6 +1847,9 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
               << "      Inst.addOperand(MCOperand::CreateImm(" << Val << "));\n"
               << "      break;\n";
 
+        OpOS << "    case " << Name << ":\n"
+             << "      ++MCOperandNum;\n"
+             << "      break;\n";
         break;
       }
       case MatchableInfo::ResOperand::RegOperand: {
@@ -1846,6 +1875,10 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
         CvtOS << "    case " << Name << ":\n"
               << "      Inst.addOperand(MCOperand::CreateReg(" << Reg << "));\n"
               << "      break;\n";
+
+        OpOS << "    case " << Name << ":\n"
+             << "      ++MCOperandNum;\n"
+             << "      break;\n";
       }
       }
     }
@@ -1866,7 +1899,10 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
   }
 
   // Finish up the converter driver function.
-  CvtOS << "    }\n  }\n  return true;\n}\n\n";
+  CvtOS << "    }\n  }\n  return;\n}\n\n";
+
+  // Finish up the operand number lookup function.
+  OpOS << "    }\n  }\n  return;\n}\n\n";
 
   OS << "namespace {\n";
 
@@ -1908,6 +1944,8 @@ static void emitConvertToMCInst(CodeGenTarget &Target, StringRef ClassName,
   // Spit out the conversion driver function.
   OS << CvtOS.str();
 
+  // Spit out the operand number lookup function.
+  OS << OpOS.str();
 }
 
 /// emitMatchClassEnumeration - Emit the enumeration for match class kinds.
@@ -2538,10 +2576,14 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "  // This should be included into the middle of the declaration of\n";
   OS << "  // your subclasses implementation of MCTargetAsmParser.\n";
   OS << "  unsigned ComputeAvailableFeatures(uint64_t FeatureBits) const;\n";
-  OS << "  bool ConvertToMCInst(unsigned Kind, MCInst &Inst, "
+  OS << "  void ConvertToMCInst(unsigned Kind, MCInst &Inst, "
      << "unsigned Opcode,\n"
      << "                       const SmallVectorImpl<MCParsedAsmOperand*> "
      << "&Operands);\n";
+  OS << "  void GetMCInstOperandNum(unsigned Kind, MCInst &Inst,\n"
+     << "                           const SmallVectorImpl<MCParsedAsmOperand*> "
+     << "&Operands,\n                           unsigned OperandNum, unsigned "
+     << "&MCOperandNum);\n";
   OS << "  bool MnemonicIsValid(StringRef Mnemonic);\n";
   OS << "  unsigned MatchInstructionImpl(\n";
   OS << "    const SmallVectorImpl<MCParsedAsmOperand*> &Operands,\n";
@@ -2728,6 +2770,12 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "                     MCInst &Inst, unsigned &ErrorInfo, ";
   OS << "unsigned VariantID) {\n";
 
+  OS << "  // Eliminate obvious mismatches.\n";
+  OS << "  if (Operands.size() > " << (MaxNumOperands+1) << ") {\n";
+  OS << "    ErrorInfo = " << (MaxNumOperands+1) << ";\n";
+  OS << "    return Match_InvalidOperand;\n";
+  OS << "  }\n\n";
+
   // Emit code to get the available features.
   OS << "  // Get the current feature set.\n";
   OS << "  unsigned AvailableFeatures = getAvailableFeatures();\n\n";
@@ -2744,12 +2792,6 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   }
 
   // Emit code to compute the class list for this operand vector.
-  OS << "  // Eliminate obvious mismatches.\n";
-  OS << "  if (Operands.size() > " << (MaxNumOperands+1) << ") {\n";
-  OS << "    ErrorInfo = " << (MaxNumOperands+1) << ";\n";
-  OS << "    return Match_InvalidOperand;\n";
-  OS << "  }\n\n";
-
   OS << "  // Some state to try to produce better error messages.\n";
   OS << "  bool HadMatchOtherThanFeatures = false;\n";
   OS << "  bool HadMatchOtherThanPredicate = false;\n";
@@ -2814,17 +2856,15 @@ void AsmMatcherEmitter::run(raw_ostream &OS) {
   OS << "      HadMatchOtherThanFeatures = true;\n";
   OS << "      unsigned NewMissingFeatures = it->RequiredFeatures & "
         "~AvailableFeatures;\n";
-  OS << "      if (CountPopulation_32(NewMissingFeatures) <= "
-        "CountPopulation_32(MissingFeatures))\n";
+  OS << "      if (CountPopulation_32(NewMissingFeatures) <=\n"
+        "          CountPopulation_32(MissingFeatures))\n";
   OS << "        MissingFeatures = NewMissingFeatures;\n";
   OS << "      continue;\n";
   OS << "    }\n";
   OS << "\n";
   OS << "    // We have selected a definite instruction, convert the parsed\n"
      << "    // operands into the appropriate MCInst.\n";
-  OS << "    if (!ConvertToMCInst(it->ConvertFn, Inst,\n"
-     << "                         it->Opcode, Operands))\n";
-  OS << "      return Match_ConversionFail;\n";
+  OS << "    ConvertToMCInst(it->ConvertFn, Inst, it->Opcode, Operands);\n";
   OS << "\n";
 
   // Verify the instruction with the target-specific match predicate function.
