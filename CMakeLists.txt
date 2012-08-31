@@ -134,6 +134,7 @@ project(Scout)
     add_subdirectory(cmake)
     add_subdirectory(tools)
     add_subdirectory(lib/Runtime)
+
     #-----
     # Note: we have to build the standard library and test directory 
     # separately because the 'scc' driver needs to be bootstrapped.  
@@ -151,6 +152,17 @@ project(Scout)
       test/cmake/Modules/Configuration.cmake.in
       ${CMAKE_BINARY_DIR}/test/CMake/Modules/Configuration.cmake
       )
+
+    #-----
+    # Some optional parts of the build... 
+    #
+    message(STATUS "scout: generating configuration file for sandbox.")
+    configure_file(
+      sandbox/SandboxConfig.cmake.in
+      ${CMAKE_SOURCE_DIR}/sandbox/SandboxConfig.cmake 
+      )
+    #
+    #-----
   #
   #
   #####

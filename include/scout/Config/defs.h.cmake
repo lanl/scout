@@ -63,5 +63,10 @@
 #cmakedefine SC_ENABLE_MPI        // Provide MPI support.
 #cmakedefine SC_ENABLE_PNG        // Provide PNG image support.
 
+#ifdef SC_ENABLE_CUDA
+#define CUDA_MAJOR_VERSION   ${CUDA_VERSION_MAJOR} // Major version number for CUDA.
+#define CUDA_MINOR_VERSION   ${CUDA_VERSION_MINOR} // Minor version number for CUDA. 
+#endif 
+
 #endif
 

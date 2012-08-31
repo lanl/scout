@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,37 +45,31 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
+#ifndef __SC_INITIALIZATION_H__
+#define __SC_INITIALIZATION_H__
+
+#include "scout/Config/defs.h" // All the files below are dependent upon the
+                               // build/configuration parameters generated via
+                               // cmake -- keep this header file before the 
+                               // others. 
+
+#include "scout/Runtime/cuda/CudaInitialization.h"
+#include "scout/Runtime/opengl/glInitialization.h"
+#include "scout/Runtime/opencl/clInitialization.h"
+#include "scout/Runtime/numa/NumaInitialization.h"
+#include "scout/Runtime/DeviceList.h"
 
 namespace scout {
-
-  namespace config {
-
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+  extern int __scInitializeRunime(DeviceList &deviceList);
+  extern int __scDestroyRuntime(DeviceList &deviceList);
 }
 
 #endif
+

@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,37 +45,53 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
 #include "scout/Config/defs.h"
+#include "scout/Runtime/cuda/CudaRuntime.h"
+#include "scout/Runtime/cuda/CudaDevice.h"
 
-namespace scout {
+using namespace scout;
 
-  namespace config {
+// ----- CudaDevice
+/// 
+CudaDevice::CudaDevice(int device_id)
+{
+  deviceID = device_id;
+  
+  if ((deviceStatus = cuDeviceGet(&cuDevice, deviceID)) != CUDA_SUCCESS) {
+    cuError(deviceStatus);
+  }
+  
+  char device_name[256];
+  if ((deviceStatus = cuDeviceGetName(device_name, 256, cuDevice)) != CUDA_SUCCESS) {
+    cuError(deviceStatus);
+  } else {
+    deviceName = std::string(device_name);
+  }
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
+  // ToDo -- CUDA 5 introduces some new flags for how host CPU threads
+  // interact relative to the GPU kernels they submit.  At some point
+  // we should consider what impact they have on our overall
+  // scheduling...
+  unsigned int flags = CU_CTX_SCHED_AUTO | CU_CTX_MAP_HOST;
+  if ((deviceStatus = cuCtxCreate(&cuContext, flags, deviceID)) != CUDA_SUCCESS) {
+    cuError(deviceStatus);
   }
 }
 
-#endif
+
+// ----- ~CudaDevice
+///
+CudaDevice::~CudaDevice()
+{
+  CUresult error_id;    
+  if ((error_id = cuCtxDestroy(cuContext)) != CUDA_SUCCESS) {
+    cuError(error_id);
+  }
+}

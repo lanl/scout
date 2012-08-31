@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,37 +45,63 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
+ */
 
-#include "scout/Config/defs.h"
+#ifndef __SC_DEVICE_H__
+#define __SC_DEVICE_H__
+
+#include <string>
+#include <list>
 
 namespace scout {
 
-  namespace config {
+  /**
+   * The Scout runtime is capable of utilizing a heterogeneous set of
+   * devices.  The Device class is responsible for capturing some of
+   * the basic details about each of these devices -- as such the
+   * Device class itself is the base class for any number of other
+   * architectures (e.g. CPU, GPU, etc.).
+   */
+  class Device {
+    
+   public:
+    
+    Device() {
+      // no-op...  
+    }
+      
+    virtual ~Device() {
+      // no-op...
+    }
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
+    /**
+     * Return the name of the device.
+     */
+    const std::string& name() const {
+      return deviceName;
+    }
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
+    /**
+     * Determine if the device was successfully created and
+     * initialized.
+     */
+    virtual bool isEnabled() const = 0;
+    
+   protected:
+    std::string    deviceName;
+  };
 
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+  
+  /**
+   * We keep a list of all devices around for our use.  This is just
+   * some nice shorthand to avoid dealing with template syntax...
+   */
+  typedef std::list<Device*> DeviceList;
 }
 
 #endif

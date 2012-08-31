@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,37 +45,45 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
+ */
 
-#include "scout/Config/defs.h"
+#include "scout/Runtime/Initialization.h"
 
 namespace scout {
 
-  namespace config {
-
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
+  
+  /** ----- scInitializeRuntime
+   * Search for and build a list of supported devices. 
+   */
+  int __scInitializeRuntime(DeviceList &deviceList) {
+    //(void)cuda::scInitialize(deviceList);
+    //(void)opengl::scInitialize(deviceList);
+    //(void)opencl::scInitialize(deviceList);
+    //(void)numa::scInitialize(deviceList);
+    
+    return 0; // Should we return the total number of devices initialized???
   }
+
+
+  /** ----- scDestroyRuntime
+   * Shutdown and destroy all devices. 
+   */
+  int __scDestroyRuntime(DeviceList &deviceList) {
+    DeviceList::iterator it = deviceList.begin();
+    while(it != deviceList.end()) {
+      delete *it;
+      ++it;
+    }
+
+    return 0;
+  }
+  
 }
 
-#endif
+
+  

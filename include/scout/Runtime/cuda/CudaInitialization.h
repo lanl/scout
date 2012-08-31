@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,36 +45,35 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
+#ifndef __SC_CUDA_INITIALIZATION_H__
+#define __SC_CUDA_INITIALIZATION_H__
 
-#include "scout/Config/defs.h"
+#include "scout/Runtime/DeviceList.h"
 
 namespace scout {
 
-  namespace config {
-
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
+  // Tuck away the CUDA-centric intialization within a device-centric
+  // namespace... 
+  namespace cuda {
+    
+  #ifdef SC_ENABLE_CUDA
+    extern int scInitialize(DeviceList &dev_list);
+  #else
+    // If we're not supporting CUDA our initialization is a no-op.
+    // This helps us avoid some #ifdef spaghetti in other spots of 
+    // the code -- at the expense of what might be an extra function
+    // call... 
+    inline int scInitialize(DeviceList &dev_list) {
+      return 0; // no-op -- return success... 
+    }
+    
+  #endif
   }
 }
 

@@ -67,7 +67,14 @@ namespace scout {
     bool Configuration::CUDASupport   = ${SC_ENABLE_CUDA};
     bool Configuration::NUMASupport   = ${SC_ENABLE_NUMA};
     bool Configuration::MPISupport    = ${SC_ENABLE_MPI};
+
     //bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
+
+
+    int Configuration::CudaVersion[2] = {
+      ${CUDA_VERSION_MAJOR}, 
+      ${CUDA_VERSION_MINOR}
+    }; 
   
     const char* Configuration::IncludePaths[] = {
 
@@ -132,7 +139,11 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
-      "-lscRuntime -lscStandard -lBlocksRuntime",
+      "-lscRuntime -lscStandard",
+      #ifdef SC_ENABLE_CUDA
+      "-lscCudaError",
+      #endif
+
       "${SDL_LIBRARIES}",
 
       #ifdef APPLE 
