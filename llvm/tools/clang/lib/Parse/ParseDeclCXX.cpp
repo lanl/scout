@@ -1037,6 +1037,8 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
   DeclSpec::TST TagType;
   if (TagTokKind == tok::kw_struct)
     TagType = DeclSpec::TST_struct;
+  else if (TagTokKind == tok::kw___interface)
+    TagType = DeclSpec::TST_interface;
   else if (TagTokKind == tok::kw_class)
     TagType = DeclSpec::TST_class;
   else {
@@ -1154,7 +1156,8 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
         << (TemplateInfo.Kind == ParsedTemplateInfo::ExplicitInstantiation)
         << (TagType == DeclSpec::TST_class? 0
             : TagType == DeclSpec::TST_struct? 1
-            : 2)
+            : TagType == DeclSpec::TST_interface? 2
+            : 3)
         << Name
         << SourceRange(LAngleLoc, RAngleLoc);
 
@@ -1246,8 +1249,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
     if (Tok.isNot(tok::semi)) {
       // A semicolon was missing after this declaration. Diagnose and recover.
       ExpectAndConsume(tok::semi, diag::err_expected_semi_after_tagdecl,
-                       TagType == DeclSpec::TST_class ? "class" :
-                       TagType == DeclSpec::TST_struct ? "struct" : "union");
+        DeclSpec::getSpecifierName(TagType));
       PP.EnterToken(Tok);
       Tok.setKind(tok::semi);
     }
@@ -1472,8 +1474,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
   if (TUK == Sema::TUK_Definition &&
       (TemplateInfo.Kind || !isValidAfterTypeSpecifier(false))) {
     ExpectAndConsume(tok::semi, diag::err_expected_semi_after_tagdecl,
-                     TagType == DeclSpec::TST_class ? "class" :
-                     TagType == DeclSpec::TST_struct ? "struct" : "union");
+      DeclSpec::getSpecifierName(TagType));
     // Push this token back into the preprocessor and change our current token
     // to ';' so that the rest of the code recovers as though there were an
     // ';' after the definition.
@@ -2242,6 +2243,7 @@ ExprResult Parser::ParseCXXMemberInitializer(Decl *D, bool IsFunction,
 void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
                                          unsigned TagType, Decl *TagDecl) {
   assert((TagType == DeclSpec::TST_struct ||
+         TagType == DeclSpec::TST_interface ||
          TagType == DeclSpec::TST_union  ||
          TagType == DeclSpec::TST_class) && "Invalid TagType!");
 

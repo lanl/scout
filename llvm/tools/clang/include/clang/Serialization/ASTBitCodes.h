@@ -644,7 +644,9 @@ namespace clang {
       PREDEF_TYPE_PSEUDO_OBJECT = 35,
       /// \brief The __va_list_tag placeholder type.
       PREDEF_TYPE_VA_LIST_TAG = 36,
-
+      /// \brief The placeholder type for builtin functions.
+      PREDEF_TYPE_BUILTIN_FN = 37,
+      
       // scout - Scout vector types support
       PREDEF_TYPE_BOOL2_ID     = 50,
       PREDEF_TYPE_BOOL3_ID     = 51,

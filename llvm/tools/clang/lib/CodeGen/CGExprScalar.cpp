@@ -1039,7 +1039,10 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   switch (Kind) {
   case CK_Dependent: llvm_unreachable("dependent cast kind in IR gen!");
 
-  case CK_LValueBitCast:
+  case CK_BuiltinFnToFnPtr:
+    llvm_unreachable("builtin functions are handled elsewhere");
+
+  case CK_LValueBitCast: 
   case CK_ObjCObjectLValueCast: {
     Value *V = EmitLValue(E).getAddress();
     V = Builder.CreateBitCast(V,

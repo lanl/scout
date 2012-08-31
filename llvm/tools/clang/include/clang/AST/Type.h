@@ -1523,6 +1523,7 @@ public:
   bool isRecordType() const;
   bool isClassType() const;
   bool isStructureType() const;
+  bool isInterfaceType() const;
   bool isStructureOrClassType() const;
   bool isUnionType() const;
   bool isComplexIntegerType() const;            // GCC _Complex integer type.
@@ -3876,6 +3877,8 @@ public:
 enum TagTypeKind {
   /// \brief The "struct" keyword.
   TTK_Struct,
+  /// \brief The "__interface" keyword.
+  TTK_Interface,
   /// \brief The "union" keyword.
   TTK_Union,
   /// \brief The "class" keyword.
@@ -3889,6 +3892,8 @@ enum TagTypeKind {
 enum ElaboratedTypeKeyword {
   /// \brief The "struct" keyword introduces the elaborated-type-specifier.
   ETK_Struct,
+  /// \brief The "__interface" keyword introduces the elaborated-type-specifier.
+  ETK_Interface,
   /// \brief The "union" keyword introduces the elaborated-type-specifier.
   ETK_Union,
   /// \brief The "class" keyword introduces the elaborated-type-specifier.

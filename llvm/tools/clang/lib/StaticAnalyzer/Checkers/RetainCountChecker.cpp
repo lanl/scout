@@ -950,8 +950,9 @@ void RetainSummaryManager::updateSummaryForCall(const RetainSummary *&S,
       IdentifierInfo *Name = FC->getDecl()->getIdentifier();
 
       // This callback frees the associated buffer.
-      if (Name->isStr("CGBitmapContextCreateWithData"))
-        RE = S->getRetEffect();
+      if (Name)
+        if (Name->isStr("CGBitmapContextCreateWithData"))
+          RE = S->getRetEffect();
     }
 
     S = getPersistentSummary(RE, RecEffect, DefEffect);
@@ -1145,6 +1146,11 @@ RetainSummaryManager::getFunctionSummary(const FunctionDecl *FD) {
       break;
 
     if (RetTy->isPointerType()) {
+      if (FD->getAttr<CFAuditedTransferAttr>()) {
+        S = getCFCreateGetRuleSummary(FD);
+        break;
+      }
+      
       // For CoreFoundation ('CF') types.
       if (cocoa::isRefType(RetTy, "CF", FName)) {
         if (isRetain(FD, FName))

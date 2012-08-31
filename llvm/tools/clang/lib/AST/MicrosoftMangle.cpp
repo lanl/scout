@@ -1302,6 +1302,7 @@ void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
       Out << 'T';
       break;
     case TTK_Struct:
+    case TTK_Interface:
       Out << 'U';
       break;
     case TTK_Class:

@@ -291,6 +291,7 @@ public:
   static const TST TST_enum = clang::TST_enum;
   static const TST TST_union = clang::TST_union;
   static const TST TST_struct = clang::TST_struct;
+  static const TST TST_interface = clang::TST_interface;
   static const TST TST_class = clang::TST_class;
   static const TST TST_typename = clang::TST_typename;
   static const TST TST_typeofType = clang::TST_typeofType;

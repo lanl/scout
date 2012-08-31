@@ -1323,12 +1323,16 @@ void CastExpr::CheckCastConsistency() const {
     assert(getType()->isBlockPointerType());
     assert(getSubExpr()->getType()->isBlockPointerType());
     goto CheckNoBasePath;
-      
+
+  case CK_FunctionToPointerDecay:
+    assert(getType()->isPointerType());
+    assert(getSubExpr()->getType()->isFunctionType());
+    goto CheckNoBasePath;
+
   // These should not have an inheritance path.
   case CK_Dynamic:
   case CK_ToUnion:
   case CK_ArrayToPointerDecay:
-  case CK_FunctionToPointerDecay:
   case CK_NullToMemberPointer:
   case CK_NullToPointer:
   case CK_ConstructorConversion:
@@ -1369,6 +1373,7 @@ void CastExpr::CheckCastConsistency() const {
   case CK_IntegralComplexToBoolean:
   case CK_LValueBitCast:            // -> bool&
   case CK_UserDefinedConversion:    // operator bool()
+  case CK_BuiltinFnToFnPtr:
   CheckNoBasePath:
     assert(path_empty() && "Cast kind should not have a base path!");
     break;
@@ -1481,6 +1486,8 @@ const char *CastExpr::getCastKindName() const {
     return "NonAtomicToAtomic";
   case CK_CopyAndAutoreleaseBlockObject:
     return "CopyAndAutoreleaseBlockObject";
+  case CK_BuiltinFnToFnPtr:
+    return "BuiltinFnToFnPtr";
   }
 
   llvm_unreachable("Unhandled cast kind!");

@@ -367,6 +367,8 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4:
+
+  case BuiltinType::BuiltinFn:
     break;
   }
   
