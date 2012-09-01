@@ -10,7 +10,7 @@
  */
 #include <iostream>
 
-#include "scout/Runtime/cuda/cuda.h"
+#include "scout/Runtime/cuda/Cuda.h"
 
 using namespace std;
 

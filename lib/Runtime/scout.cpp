@@ -7,7 +7,7 @@
 
 #ifdef SC_ENABLE_CUDA
 #include "scout/Runtime/cuda/scout_cuda.h"
-#include "scout/Runtime/cuda/cuda.h"
+#include "scout/Runtime/cuda/Cuda.h"
 #endif // SC_ENABLE_CUDA
 
 #ifdef SC_ENABLE_OPENCL

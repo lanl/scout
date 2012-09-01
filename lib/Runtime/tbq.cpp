@@ -67,6 +67,7 @@ public:
   }
 
   void start(){
+    cerr << "making a thread!\n";
     pthread_create(&thread_, 0, _runThread, (void*)this);
   }
 
