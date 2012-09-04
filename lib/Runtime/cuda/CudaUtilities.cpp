@@ -137,7 +137,7 @@ namespace scout {
   /// Non-error conditions will return false and no information will be reported. 
   bool cuCheckForError(CUresult status, const char *filename, const int line) {
     if (status != CUDA_SUCCESS) {
-      scReportError(status, filename, line);
+      cuReportError(status, filename, line);
       return true;
     } else {
       return false;

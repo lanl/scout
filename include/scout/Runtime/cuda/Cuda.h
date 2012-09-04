@@ -70,15 +70,12 @@ extern void cuda_error_check(cudaError_t err, const char* file, int line);
 
 namespace scout {
   extern void cuReportError(CUresult status, const char *filename, const int line);
-  #define cuError(status)  cuReportError(status, __FILE__, __LINE__)
-
   extern bool cuCheckForError(CUresult status, const char *filename, const int line);
-  #ifdef SC_DEBUG
-  #define cuErrorCheck(status) cuCheckForError(status, __FILE__, __LINE__)
-  #else
-  #define cuErrorCheck(status) /* no-op */
-  #endif
 }
+
+#define cuError(status)  scout::cuReportError(status, __FILE__, __LINE__)
+#define cuErrorCheck(status) scout::cuCheckForError(status, __FILE__, __LINE__)
+
 
 #endif
 

@@ -111,7 +111,6 @@ namespace scout {
       // If we can't find the image information for the given address
       // skip it and keep going...
       if (! dladdr(trace[cur_trace], &dlinfo)) {
-        fprintf(fp, "\t--- loader unable to find image, skipping entry %02d...\n", cur_trace);
         continue;
       }
 
