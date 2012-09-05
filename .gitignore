@@ -14,9 +14,15 @@
 # Merge files created by git.
 *.orig
 # Byte compiled python modules.
-.pyc
+*.pyc
 # vim swap files
 *.swp
+# xcode stuff.
+*.xcodeproj
+# object files (for shame!)
+*.o
+*.a 
+a.out 
 
 #==============================================================================#
 # Explicit files to ignore (only matches one).
@@ -27,9 +33,9 @@ cscope.files
 cscope.out
 autoconf/aclocal.m4
 autoconf/autom4te.cache
+.svn
 
 # Avoid scout's local build directory. 
 build
 # Avoid any xcode 's local build directory.
 xcode 
-*.xcodeproj/
