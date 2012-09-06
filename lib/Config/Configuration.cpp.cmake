@@ -139,7 +139,7 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
-      "-lscRuntime -lscStandard",
+      "-lscRuntime -lscStandard -lBlocksRuntime",
       #ifdef SC_ENABLE_CUDA
       "-lscCudaError",
       #endif
