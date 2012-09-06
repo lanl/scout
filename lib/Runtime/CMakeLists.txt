@@ -53,6 +53,10 @@ project(scRuntime)
 
 #find_library(GLFW glfw)
 
+# Build w/ clang as volren uses blocks
+set(CMAKE_CXX_COMPILER ${SC_BUILD_DIR}/llvm/bin/clang)
+set(CMAKE_CXX_FLAGS "-fblocks")
+
 include_directories(
   ${SC_INCLUDE_DIR}       
   ${SC_BUILD_DIR}/scout-config/include

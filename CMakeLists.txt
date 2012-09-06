@@ -133,6 +133,7 @@ project(Scout)
     add_subdirectory(lib/Config)
     add_subdirectory(cmake)
     add_subdirectory(tools)
+    #add this last as it is built w/ clang
     add_subdirectory(lib/Runtime)
 
     #-----
