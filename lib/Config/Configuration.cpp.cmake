@@ -168,6 +168,10 @@ namespace scout {
       "${HWLOC_LIBRARIES}",
       #endif
 
+      #ifdef SC_ENABLE_THREADS
+      "${CMAKE_THREAD_LIBS_INIT}",
+      #endif
+
       #ifdef SC_ENABLE_MPI
       // Note MPI includes compiler flags in libs string.      
       "${MPI_C_LINK_LIBS}", 

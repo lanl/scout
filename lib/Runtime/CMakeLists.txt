@@ -60,7 +60,6 @@ set(CMAKE_CXX_FLAGS "-fblocks")
 include_directories(
   ${SC_INCLUDE_DIR}       
   ${SC_BUILD_DIR}/scout-config/include
-  ${HWLOC_INCLUDE_DIR}
   ${SDL_INCLUDE_DIR} 
   $ENV{SDL_DIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
@@ -81,6 +80,14 @@ else()
     )
 endif()
 
+if (SC_ENABLE_NUMA)
+  include_directories(${HWLOC_INCLUDE_DIR})
+  #only include system.cpp for now
+  file(GLOB rt_srcs_cpu_numa numa/system.cpp)
+else()
+  file(GLOB rt_srcs_cpu_numa cpu/*.cpp)
+endif()
+list(APPEND rt_srcs ${rt_srcs_cpu_numa})
 
 if (SC_ENABLE_MPI)
   include_directories(${MPI_INCLUDE_PATH})
