@@ -67,7 +67,6 @@ public:
   }
 
   void start(){
-    cerr << "making a thread!\n";
     pthread_create(&thread_, 0, _runThread, (void*)this);
   }
 
@@ -224,6 +223,7 @@ public:
   }
 
   void reset(){
+    queue_.clear();
     i_ = 0;
   }
 
@@ -274,17 +274,20 @@ public:
   }
 
   void run(){
+    Item* item;
+    BlockLiteral* bl;
+
     for(;;){
       beginSem_.acquire();
 
       for(;;){
-        Item* item = queue_->get();
+        item = queue_->get();
 
         if(!item){
           break;
         }
 
-        BlockLiteral* bl = (BlockLiteral*)item->blockLiteral;
+        bl = (BlockLiteral*)item->blockLiteral;
 
         switch(item->dimensions){
         case 3:
@@ -471,6 +474,7 @@ public:
     for(size_t i = 0; i < n; ++i){
       threadVec_[i]->finish();
     }
+    queue_->reset();
   }
 
 private:
