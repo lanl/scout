@@ -52,6 +52,7 @@
  * ##### 
  */
 #include <cassert>
+#include <algorithm>
 #include "scout/Runtime/opengl/glDevice.h"
 
 using namespace scout;

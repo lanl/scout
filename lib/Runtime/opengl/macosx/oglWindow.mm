@@ -51,6 +51,8 @@
  *
  * ##### 
  */ 
+#include <iostream>
+using namespace std;
 
 #include "scout/Runtime/opengl/macosx/oglContext.h"
 #include "scout/Runtime/opengl/macosx/oglWindow.h"
@@ -82,19 +84,26 @@ oglWindow::oglWindow(unsigned short xpos,
                            styleMask:styleMask
                              backing:NSBackingStoreBuffered defer:NO];
 
+  nsView = [[oglView alloc]
+             initWithFrame:NSMakeRect(xpos, ypos, width, height)
+             openglContext:context];
+  
   appDelegate = [[oglDelegate alloc] init];
   
   if (appDelegate != nil) {
     // TODO: incompatible pointer types sending 'oglDelegate *' to
     // parameter of type 'id<NSWindowDelegate>'
     [nsWindow setDelegate:appDelegate];
-
     [NSApp setDelegate:appDelegate];
   
-    [nsWindow setContentView:[[oglView alloc] init]];
-    [nsWindow setAcceptsMouseMovedEvents:YES];
+    [nsWindow setContentView:nsView];
+    [nsView release];
+    
     [nsWindow center];
+    [nsWindow makeKeyAndOrderFront:nil];
+    
     [context->nsContext() setView:[nsWindow contentView]];
+    [context->nsContext() makeCurrentContext];
     valid = true;
   } else {
     valid = false;
@@ -107,8 +116,6 @@ oglWindow::oglWindow(unsigned short xpos,
  *
  */
 oglWindow::~oglWindow() {
-  
-
 }
 
 

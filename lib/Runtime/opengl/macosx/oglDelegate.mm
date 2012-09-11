@@ -54,7 +54,7 @@
 
 #include "scout/Runtime/opengl/macosx/oglDelegate.h"
 
-@implementation oglDelegate 
+@implementation oglDelegate
 
 
 /** ----- windowShouldClose

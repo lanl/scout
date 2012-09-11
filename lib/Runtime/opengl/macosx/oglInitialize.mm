@@ -72,6 +72,69 @@ static int getActiveGPUCount()
   return (int)count;
 }
 
+/** ----- createAppMenu
+ *
+ */
+static void createAppMenu() {
+
+  NSMenu *mainMenu = [[[NSMenu alloc] initWithTitle:@"Scout"] autorelease];
+  NSMenuItem *item;
+  NSMenu *submenu;
+
+  item = [mainMenu addItemWithTitle:@"Apple" action:NULL keyEquivalent:@""];
+  submenu = [[[NSMenu alloc] initWithTitle:@"Apple"] autorelease];
+  [NSApp performSelector:@selector(setAppleMenu:) withObject:submenu];
+  // Need to populate App menu here...
+  [mainMenu setSubmenu:submenu forItem:item];
+
+  item = [mainMenu addItemWithTitle:@"File" action:NULL keyEquivalent:@""];
+  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"File", @"The File menu")] autorelease];
+  // Need to populate File menu here... 
+  [mainMenu setSubmenu:submenu forItem:item];
+
+  item = [mainMenu addItemWithTitle:@"Edit" action:NULL keyEquivalent:@""];
+  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Edit", @"The Edit menu")] autorelease];
+  // Need to populate File menu here... 
+  [mainMenu setSubmenu:submenu forItem:item];
+
+  item = [mainMenu addItemWithTitle:@"Window" action:NULL keyEquivalent:@""];
+  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Window", @"The Window menu")] autorelease];
+  // Need to populate Window menu here... 
+  [mainMenu setSubmenu:submenu forItem:item];
+  [NSApp setWindowsMenu:submenu];
+
+  item = [mainMenu addItemWithTitle:@"Help" action:NULL keyEquivalent:@""];
+  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Help", @"The Help menu")] autorelease];
+  // Need to populate Window menu here...   
+  [mainMenu setSubmenu:submenu forItem:item];
+
+  [NSApp setMainMenu:mainMenu];
+}
+
+
+/** ----- scRunEventLoop
+ *
+ *
+ */
+void scRunEventLoop()
+{
+  NSEvent *event;
+  do {
+
+    event = [NSApp nextEventMatchingMask:NSAnyEventMask
+                               untilDate:[NSDate distantPast]
+                                  inMode:NSDefaultRunLoopMode
+                                 dequeue:YES];
+    if (event) {
+      [NSApp sendEvent:event];
+    }
+  } while (event);
+
+  [scAutoreleasePool drain];
+  scAutoreleasePool = [[NSAutoreleasePool alloc] init];  
+}
+
+
 
 /** ----- initializeCocoa
  *
@@ -92,6 +155,10 @@ static void initializeCocoa() {
 
     // Make sure we're the active application... 
     [NSApp activateIgnoringOtherApps:YES];
+
+
+    // Create the main menu for the app.
+    createAppMenu();
     
     // We intentionally want to avoid the event loop loop here -- we
     // need to take some special steps to deal with that to provide

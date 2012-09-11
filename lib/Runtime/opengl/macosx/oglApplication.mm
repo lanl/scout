@@ -64,6 +64,17 @@
     [super sendEvent:event];
   }
 }
+
+- (void) dealloc {
+  id delegate = [self delegate];
+  if (delegate) {
+    [self setDelegate:nil];
+    [delegate release];
+  }
+  
+  [super dealloc];
+}
+
     
 @end
 
