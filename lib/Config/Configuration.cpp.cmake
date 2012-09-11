@@ -71,11 +71,14 @@ namespace scout {
 
     //bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
 
-
+    #ifdef SC_ENABLE_CUDA
     int Configuration::CudaVersion[2] = {
       ${CUDA_VERSION_MAJOR}, 
       ${CUDA_VERSION_MINOR}
     }; 
+    #else
+    int Configuration::CudaVersion[2] = {0,0};
+    #endif
   
     const char* Configuration::IncludePaths[] = {
 
@@ -167,6 +170,10 @@ namespace scout {
 
       #ifdef SC_ENABLE_NUMA
       "${HWLOC_LIBRARIES}",
+      #endif
+
+      #ifdef SC_ENABLE_THREADS
+      "${CMAKE_THREAD_LIBS_INIT}",
       #endif
 
       #ifdef SC_ENABLE_MPI
