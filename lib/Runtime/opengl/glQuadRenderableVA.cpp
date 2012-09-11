@@ -64,7 +64,7 @@ void glQuadRenderableVA::glQuadRenderableVA_1D()
   fill_tcbo1d(0.0f, 1.0f);
   _tcbo->release();
 
-  OpenGLErrorCheck();
+  oglErrorCheck();
 
 }
 
@@ -98,7 +98,7 @@ void glQuadRenderableVA::glQuadRenderableVA_2D()
   fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
   _tcbo->release();
 
-  OpenGLErrorCheck();
+  oglErrorCheck();
 
 }
 
@@ -273,7 +273,7 @@ void glQuadRenderableVA::draw(glCamera* camera)
   _vbo->bind();
   glVertexPointer(3, GL_FLOAT, 0, 0);
 
-  OpenGLErrorCheck();
+  oglErrorCheck();
 
   glDrawArrays(GL_POLYGON, 0, _nverts);
 

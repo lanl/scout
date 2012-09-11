@@ -165,9 +165,9 @@ void glFW::paintStereo()
     double right  =  ratio * wd2 - 0.5 * _camera->eye_sep * ndfl;
     double top    =  wd2;
     double bottom = -wd2;
-    OpenGLErrorCheck();
+    oglErrorCheck();
     glFrustum(left, right, bottom, top, _camera->near, _camera->far);
-    OpenGLErrorCheck();
+    oglErrorCheck();
 
     glDrawBuffer(GL_BACK_RIGHT);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

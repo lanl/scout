@@ -46,7 +46,7 @@ void glTexture2D::initialize(const float* p_data)
   
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   glTexImage2D(target(), 0, internalFormat(), width(), height(), 0, pixelFormat(), type(), (void*)p_data);
-  OpenGLErrorCheck();      
+  oglErrorCheck();      
 }
 
 
@@ -57,7 +57,7 @@ bool glTexture2D::canDownload() const
   glTexImage2D(GL_PROXY_TEXTURE_2D, 0, internalFormat(), width(), height(), 0, pixelFormat(), type(), 0);
   GLsizei w;
   glGetTexLevelParameteriv(GL_PROXY_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
-  OpenGLErrorCheck();      
+  oglErrorCheck();      
   return(w != 0);
 }
 
@@ -67,7 +67,7 @@ bool glTexture2D::canDownload() const
 void glTexture2D::update(const float* p_data)
 {
   glTexSubImage2D(target(), 0, 0, 0, width(), height(), internalFormat(), type(), (void*)p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -76,7 +76,7 @@ void glTexture2D::update(const float* p_data)
 void glTexture2D::update(const float* p_data, GLsizei x_offset, GLsizei y_offset, GLsizei subwidth, GLsizei subheight)
 {
   glTexSubImage2D(target(), 0, x_offset, y_offset, subwidth, subheight, pixelFormat(), type(), (void*)p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -85,5 +85,5 @@ void glTexture2D::update(const float* p_data, GLsizei x_offset, GLsizei y_offset
 void glTexture2D::read(float* p_data) const
 {
   glGetTexImage(target(), 0, _format, _type, p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }

@@ -60,36 +60,35 @@
 
 namespace scout {
 
-
   /** ----- glWindow
    *
    */
   class glWindow {
     
    public:
-    glWindow(unsigned short win_width,
-             unsigned short win_height);
-    
-    glWindow(const std::string &win_title,
+    glWindow(unsigned short xpos,
+             unsigned short ypos,
              unsigned short win_width,
-             unsigned short win_height);
+             unsigned short win_height) {
+      // no-op for now... 
+    };
     
-    virtual ~glWindow();
+    virtual ~glWindow() {
+      // no-op
+    };
 
-    virtual void setTitle(const std::string &title) = 0;
     virtual void setTitle(const char *title) = 0;    
     
-    virtual void close()   = 0;
-    virtual void iconify() = 0;
+    virtual void minimize() = 0;
     virtual void restore() = 0;
     virtual void refresh() = 0;
 
-   private:
-    unsigned short width, height;
+   protected:
+    unsigned short xLocation, yLocation;
+    unsigned short pxWidth, pxHeight;
   };
-
-  typedef std::list<glWindow*> glWindowList;
   
+  typedef std::list<glWindow*> glWindowList;
 }
 
 #endif

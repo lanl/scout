@@ -61,28 +61,31 @@ namespace scout {
    * Search for and build a list of supported devices. 
    */
   int __scInitializeRuntime(DeviceList &deviceList) {
+    //(void)opengl::scInitialize(deviceList);    
     //(void)cuda::scInitialize(deviceList);
-    //(void)opengl::scInitialize(deviceList);
     //(void)opencl::scInitialize(deviceList);
     //(void)numa::scInitialize(deviceList);
-    
     return 0; // Should we return the total number of devices initialized???
   }
 
 
-  /** ----- scDestroyRuntime
+  /** ----- scFinalizeRuntime
    * Shutdown and destroy all devices. 
    */
-  int __scDestroyRuntime(DeviceList &deviceList) {
+  int __scFinalizeRuntime(DeviceList &deviceList) {
+
+    // Destroy all devices. 
     DeviceList::iterator it = deviceList.begin();
     while(it != deviceList.end()) {
       delete *it;
       ++it;
     }
 
+    // Clean up each of the invididual platform runtimes. 
+    // (void)cuda::scFinalize(deviceList);
+    // (void)opengl::scFinalize(deviceList);
     return 0;
   }
-  
 }
 
 

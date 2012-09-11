@@ -90,9 +90,12 @@ namespace scout {
      * Determine if the device was successfully created and
      * initialized.
      */
-    virtual bool isEnabled() const = 0;
+    virtual bool isEnabled() const {
+      return enabled;
+    }
     
    protected:
+    bool           enabled;
     std::string    deviceName;
   };
 

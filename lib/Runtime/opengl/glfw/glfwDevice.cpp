@@ -57,7 +57,6 @@
 
 using namepsace scout;
 
-
 /**
  *
  *

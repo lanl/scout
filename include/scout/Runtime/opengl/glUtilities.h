@@ -78,43 +78,6 @@
 namespace scout 
 {
   
-  /** ----- glReportError
-   * Report an error condition within the OpenGL API. 
-   */  
-  extern void glReportError(GLenum error_id, const char *file, int line_no);
-  #define glError(error_id) glReportError(error_id, __FILE__, __LINE__)
-
-  
-  /** -- glCheckForError
-   * Check to see if the OpenGL enviornment has set an error flag.  If
-   * an error condition is present it will be reported (via glReport
-   * Error).  Note that if you use the macro version of this call
-   * (glErrorCheck) these calls will be removed if you are using a
-   * release (optimized) build. 
-   */
-  extern void glCheckForError(const char *file, int line_no);
-  #ifdef SC_DEBUG
-  #define glErrorCheck() glCheckForError(__FILE__, __LINE__)
-  #else
-  #define glErrorCheck() /* no-op */
-  #endif
-
-  
-  /** ----- glVersion
-   * Return the major and minor versions of OpenGL in the associated
-   * parameter.  Error conditions are represented by the major version
-   * value being set to zero.
-   */
-  void glVersion(int &majorVersion, int &minorVersion);
-
-  
-  /** ----- glslVersion
-   * Return the major and minor version numbers for the OpenGL Shading
-   * Language.  Error conditions are represented by the major version
-   * value being set to zero.
-   */
-  void glslVersion(int &majorVersion, int &minorVersion);
-  
 }
 
 #endif

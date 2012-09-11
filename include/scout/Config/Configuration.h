@@ -69,6 +69,7 @@ namespace scout {
       static bool   CUDASupport;
       static bool   NUMASupport;
       static bool   MPISupport;
+      static bool   GLFWSupport;
 
       static const char* IncludePaths[];
       static const char* LibraryPaths[];
