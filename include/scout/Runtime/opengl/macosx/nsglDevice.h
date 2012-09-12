@@ -49,72 +49,32 @@
  * 
  * Notes
  *
- *
  * ##### 
  */ 
 
+#ifndef __SC_OGL_DEVICE_H__
+#define __SC_OGL_DEVICE_H__
 
-#include "scout/Runtime/opengl/macosx/oglContext.h"
-#include "scout/Runtime/opengl/macosx/oglWindow.h"
-#include "scout/Runtime/opengl/macosx/oglDevice.h"
+#include "scout/Runtime/opengl/glDevice.h"
 
-using namespace scout;
+namespace scout {
 
-/** ----- oglDevice
- *
- *
- */
-oglDevice::oglDevice() {
-  
-  context = new oglContext();
+  class nsglDevice : public glDevice {
 
-  if (context->isValid()) {
-    enabled = true;
-  } else {
-    delete context;
-    enabled = false;
-  }
+   public:
+    nsglDevice();
+    ~nsglDevice();
+
+    glWindow *createWindow(unsigned short width,
+                           unsigned short height);
+    
+    glWindow *createWindow(unsigned short xpos,
+                           unsigned short ypos,
+                           unsigned short width,
+                           unsigned short height);
+
+  };
+
 }
 
-
-/** ----- ~oglDevice
- *
- */
-oglDevice::~oglDevice() {
-  // do we need to destroy all windows first?
-  delete context;
-}
-
-
-/** ----- createWindow
- *
- */
-glWindow *oglDevice::createWindow(unsigned short width,
-                                  unsigned short height) {
-  return this->createWindow(0, 0, width, height);
-}
-
-
-/** ----- createWindow
- *
- */
-glWindow *oglDevice::createWindow(unsigned short xpos,
-                                  unsigned short ypos,
-                                  unsigned short width,
-                                  unsigned short height) {
-
-  if (isEnabled()) {
-    oglWindow *newWindow = new oglWindow(xpos, ypos, width, height, context);
-    if (newWindow && newWindow->isValid()) {
-      // TODO: need to add window to device's list... 
-      return newWindow;
-    } else {
-      delete newWindow;
-    }
-  }
-  
-  // Support a secondary level check for using a disabled device by
-  // returning null for a window creation. 
-  return 0;
-}
-
+#endif

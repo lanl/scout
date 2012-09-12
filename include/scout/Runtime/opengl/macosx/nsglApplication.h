@@ -52,33 +52,9 @@
  * ##### 
  */ 
 
-#ifndef __SC_OGL_DEVICE_H__
-#define __SC_OGL_DEVICE_H__
+#include <Cocoa/Cocoa.h>
 
-#include "scout/Runtime/opengl/glDevice.h"
-
-namespace scout {
-
-  class oglContext;
-
-  class oglDevice : public glDevice {
-
-   public:
-    oglDevice();
-    ~oglDevice();
-
-    glWindow *createWindow(unsigned short width,
-                           unsigned short height);
-    
-    glWindow *createWindow(unsigned short xpos,
-                           unsigned short ypos,
-                           unsigned short width,
-                           unsigned short height);
-
-   private:
-    oglContext   *context;
-  };
-
+@interface nsglApplication : NSApplication {
 }
-
-#endif
+- (void)sendEvent:(NSEvent *) event;
+@end

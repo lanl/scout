@@ -51,23 +51,89 @@
  *
  * ##### 
  */ 
+#include <iostream>
+using namespace std;
 
-#ifndef __SC_CGL_UTILITIES_H__
-#define __SC_CGL_UTILITIES_H__
+#include "scout/Runtime/opengl/macosx/nsglWindow.h"
 
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/CGLTypes.h>
-#include <OpenGL/CGLCurrent.h>
+using namespace scout;
 
-#include "scout/Runtime/Utilities.h"
 
-namespace scout {
-  extern void cglReportError(CGLError status, const char *filename, const int line);
-  extern bool cglCheckForError(CGLError status, const char *filename, const int line);  
+/** ----- nsglWindow
+ *
+ *
+ */
+nsglWindow::nsglWindow(unsigned short xpos,
+                       unsigned short ypos,
+                       unsigned short width,
+                       unsigned short height)
+  : glWindow(WindowRect(xpos, ypos, width, height))
+{
+  unsigned int styleMask =
+    NSTitledWindowMask         |
+    NSClosableWindowMask       |
+    NSMiniaturizableWindowMask |
+    NSResizableWindowMask;
+  
+  NSRect winRect = NSMakeRect(xpos, ypos, width, height);
+  
+  window = [[NSWindow alloc]
+            initWithContentRect:winRect
+            styleMask:styleMask
+            backing:NSBackingStoreBuffered defer:NO];
+
+  view = [[nsglView alloc] initWithFrame:winRect];
+  [window setContentView:view];
+  [view release];
+    
+  [window center];
+  [window makeKeyAndOrderFront:nil];
+  valid = true;
 }
 
-#define cglError(status) scout::cglReportError(status, __FILE__, __LINE__)
-#define coglErrorCheck(status) scout::cglCheckForError(status, __FILE__, __LINE__)
+  
+/** ----- ~nsglWindow
+ *
+ *
+ */
+nsglWindow::~nsglWindow() {
+  [window release];
+}
 
-#endif
+
+/** ----- setTitle
+ *
+ */
+void nsglWindow::setTitle(const char *title) {
+  NSString *title_string = [[NSString alloc]
+                            initWithCString:title
+                            encoding:NSMacOSRomanStringEncoding];
+  [window setTitle:title_string];
+  [title_string release];
+}
+
+
+/** ----- minimize
+ *
+ */
+void nsglWindow::minimize() {
+  [window miniaturize: nil];
+}
+
+  
+/** ----- restore
+ *
+ */
+void nsglWindow::restore() {
+  [window deminiaturize: nil];
+}
+
+
+/** ----- refresh
+ *
+ *
+ */
+void nsglWindow::refresh() {
+  [window update];
+}
 

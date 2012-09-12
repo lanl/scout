@@ -52,69 +52,21 @@
  * ##### 
  */ 
 
-#include "scout/Runtime/opengl/macosx/oglContext.h"
 
-using namespace scout;
+#include "scout/Runtime/opengl/macosx/nsglApplication.h"
 
+@implementation nsglApplication
 
-/** ----- oglContext
- * 
- *
- */
-oglContext::oglContext()
-    : glContext() {
-
-  NSOpenGLPixelFormatAttribute attrs[] = {
-    NSOpenGLPFADoubleBuffer,
-    NSOpenGLPFADepthSize, 24,
-    NSOpenGLPFAOpenGLProfile,
-    NSOpenGLProfileVersion3_2Core,
-    0
-  };
-
-  pxFormat = [[[NSOpenGLPixelFormat alloc]
-               initWithAttributes: attrs]
-              autorelease];
-
-  if (! pxFormat) {
-    valid = false;
+- (void)sendEvent:(NSEvent *) event {
+  if ([event type] == NSKeyUp && ([event modifierFlags] & NSCommandKeyMask)) {
+    [[self keyWindow] sendEvent:event];
   } else {
-    ctx = [[[NSOpenGLContext alloc]
-            initWithFormat:pxFormat
-            shareContext:nil] autorelease];
-  
-    valid   = true;
+    [super sendEvent:event];
   }
-  
-  current = false;
 }
 
-
-/** ----- oglContext
- *
- *
- */
-oglContext::~oglContext()
-{
-  [pxFormat release];
-  [ctx release];
-}
+    
+@end
 
 
-/** ----- makeCurrent 
- *
- *
- */
-void oglContext::makeCurrent() {
-  [ctx makeCurrentContext];  
-  scglSetActiveContext(this);
-}
 
-
-/** ----- swapBuffers 
- *
- *
- */
-void oglContext::swapBuffers() {
-  [ctx flushBuffer];
-}

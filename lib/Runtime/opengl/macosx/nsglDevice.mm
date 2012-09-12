@@ -49,34 +49,63 @@
  * 
  * Notes
  *
+ *
  * ##### 
  */ 
 
 
-#include "scout/Runtime/opengl/macosx/oglApplication.h"
+#include "scout/Runtime/opengl/macosx/nsglDevice.h"
+#include "scout/Runtime/opengl/macosx/nsglWindow.h"
 
-@implementation oglApplication
 
-- (void)sendEvent:(NSEvent *) event {
-  if ([event type] == NSKeyUp && ([event modifierFlags] & NSCommandKeyMask)) {
-    [[self keyWindow] sendEvent:event];
-  } else {
-    [super sendEvent:event];
-  }
+using namespace scout;
+
+/** ----- nsglDevice
+ *
+ *
+ */
+nsglDevice::nsglDevice() {
+  enabled = true;
 }
 
-- (void) dealloc {
-  id delegate = [self delegate];
-  if (delegate) {
-    [self setDelegate:nil];
-    [delegate release];
+
+/** ----- ~nsglDevice
+ *
+ */
+nsglDevice::~nsglDevice() {
+  // TODO: Destroy all windows. 
+}
+
+
+/** ----- createWindow
+ *
+ */
+glWindow *nsglDevice::createWindow(unsigned short width,
+                                  unsigned short height) {
+  return this->createWindow(0, 0, width, height);
+}
+
+
+/** ----- createWindow
+ *
+ */
+glWindow *nsglDevice::createWindow(unsigned short xpos,
+                                  unsigned short ypos,
+                                  unsigned short width,
+                                  unsigned short height) {
+
+  if (isEnabled()) {
+    nsglWindow *newWindow = new nsglWindow(xpos, ypos, width, height);
+    if (newWindow && newWindow->isValid()) {
+      // TODO: need to add window to device's list... 
+      return newWindow;
+    } else {
+      delete newWindow;
+    }
   }
   
-  [super dealloc];
+  // Support a secondary level check for using a disabled device by
+  // returning null for a window creation. 
+  return 0;
 }
-
-    
-@end
-
-
 

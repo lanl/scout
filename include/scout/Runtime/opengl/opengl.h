@@ -69,12 +69,21 @@
 #include <GL/glext.h>
 #endif // Linux/X11 
 
-#include "scout/Runtime/opengl/glDevice.h"
+#include "scout/Runtime/Device.h"
 
-namespace scout 
+namespace scout
 {
+  class glDevice;
+  
+  struct oglColor {
+    float red;
+    float green;
+    float blue;
+    float alpha;
+  };
+  
   namespace opengl {
-
+    
     /** ----- oglInitialize
      * Initialize the runtime's OpenGL layer.  This should be called
      * once at program startup -- and is only necessary if a program
@@ -118,7 +127,7 @@ namespace scout
    * Report an error condition within the OpenGL API. 
    */  
   extern void oglReportError(GLenum error_id, const char *file, int line_no);
-#define oglError(error_id) oglReportError(error_id, __FILE__, __LINE__)
+  #define oglError(error_id) oglReportError(error_id, __FILE__, __LINE__)
 
   
   /** ----- glCheckForError
@@ -129,43 +138,13 @@ namespace scout
    * release (optimized) build.
    */
   extern void oglCheckForError(const char *file, int line_no);
-#ifdef SC_DEBUG
-#define oglErrorCheck() glCheckForError(__FILE__, __LINE__)
-#else
-#define oglErrorCheck() /* no-op */
-#endif
+  #ifdef SC_DEBUG
+  #define oglErrorCheck() glCheckForError(__FILE__, __LINE__)
+  #else
+  #define oglErrorCheck() /* no-op */
+  #endif
 
   
-  class glWindow;
-  
-  /** ----- oglCreateWindow
-   * Create an OpenGL capable window with the given width and height
-   * measured in pixels.  Note that this routine is implemented for
-   * each unique platform/windowing system.
-   */
-  extern glWindow *oglCreateWindow(unsigned short width,
-                                   unsigned short height);
-
-  
-  /** ----- oglCreateWindow
-   * Create an OpenGL capable window at the given screen coordinate
-   * (xpos, ypos) and the given width and height measured in pixels.
-   * Note that this routine is implemented for each unique
-   * platform/windowing system.
-   */
-  extern glWindow *oglCreateWindow(unsigned short xpos,
-                                   unsigned short ypos,
-                                   unsigned short width,
-                                   unsigned short height);
-
-  
-  /** ----- oglCreateOffScreenWindow
-   * Create an OpenGL capable, off-screen, window with the given width
-   * and height measured in pixels.  Note that this routine is implemented
-   * for each unqiue platform/windowing system. 
-   */
-  extern glWindow *oglCreateOffScreenWindow(unsigned short width,
-                                            unsigned short height);
 }
 
 #endif

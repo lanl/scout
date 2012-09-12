@@ -52,56 +52,202 @@
  * ##### 
  */
 
-#include "scout/Runtime/opengl/macosx/oglContext.h"
-#include "scout/Runtime/opengl/macosx/oglView.h"
+#include "scout/Runtime/opengl/macosx/nsglView.h"
 
-using namespace scout;
-
-@implementation oglView
+@implementation nsglView
 
 /** ----- initWithFrame 
  *
  */
-- (id)initWithFrame:(NSRect)frameRect openglContext:(scout::oglContext*)ctx {
-
-  self = [super initWithFrame:frameRect];
-  if (self != nil) {
-    context = ctx;
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                           selector:@selector(_surfaceNeedsUpdate:)
-                                           name:NSViewGlobalFrameDidChangeNotification
-                                           object:self];
-  }
+- (id)initWithFrame:(NSRect)frameRect {
   
+  NSOpenGLPixelFormatAttribute attrs[] = {
+    NSOpenGLPFADoubleBuffer,
+    NSOpenGLPFADepthSize, 24,
+    NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
+    0
+  };
+  
+  NSOpenGLPixelFormat *pxFormat;
+  pxFormat = [[[NSOpenGLPixelFormat alloc] initWithAttributes: attrs]
+                autorelease];
+  
+  self = [super initWithFrame:frameRect pixelFormat:pxFormat];
   return self;
 }
 
+#pragma mark ---- OpenGL Initialization ----
 
-/** ----- _surfaceNeeedsUpdate
- *
- */
-- (void) _surfaceNeedsUpdate:(NSNotification*)notification {
-  [self update];
+- (void)prepareOpenGL {
+  
+  // If we want to avoiding tearing we should enable this -- however, it
+  // has the potential side effect of slowing down our computations.
+  GLint swapInt = 1;
+  [[self openGLContext] setValues:&swapInt forParameter:NSOpenGLCPSwapInterval];
+  
+	// init GL stuff here
+	glEnable(GL_DEPTH_TEST);
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 
-/** ----- isOpaque
+
+#pragma mark ---- Event Overrides ----
+
+
+/** ----- update 
+ *
  *
  */
-- (BOOL)isOpaque {
-  return YES;
+- (void) update {
+	[super update];
 }
 
 
-/** ----- canBecomeKeyView
+/** ----- drawRect 
+ *
  *
  */
-- (BOOL)canBecomeKeyView {
-  return YES;
+- (void) drawRect:(NSRect)rect {
+	[self resizeGL];
+  glClear (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  
+
+  // TODO: do scout-centric drawing here... 
+
+  [[self openGLContext] flushBuffer];
+}
+
+
+/** ----- resizeGL 
+ *
+ *
+ */
+- (void) resizeGL
+{
+	NSRect viewRect = [self bounds];
+  glViewport (0, 0, viewRect.size.width, viewRect.size.height);
+}
+
+
+
+/** ----- keyDown 
+ *
+ *
+ */
+-(void)keyDown:(NSEvent*)theEvent {
+  
+}
+
+/** ----- keyUp 
+ *
+ *
+ */
+- (void)keyUp:(NSEvent*)event {
+  
+}
+
+
+
+/** ----- mouseDown
+ *
+ *
+ */
+- (void)mouseDown:(NSEvent*)theEvent {
+  
+}
+
+/** ----- rightMouseDown 
+ *
+ *
+ */
+- (void)rightMouseDown:(NSEvent*)theEvent {
+  
+}
+
+
+/** ----- otherMouseDown 
+ *
+ *
+ */
+- (void)otherMouseDown:(NSEvent*)theEvent {
+  
+}
+
+
+/** ----- mouseUp 
+ *
+ *
+ */
+- (void)mouseUp:(NSEvent*)theEvent {
+
+}
+
+/** ----- rightMouseUp 
+ *
+ *
+ */
+- (void)rightMouseUp:(NSEvent*)theEvent {
+
+}
+
+
+/** ----- otherMouseUp 
+ *
+ *
+ */
+- (void)otherMouseUp:(NSEvent*)theEvent
+{
+
+}
+
+
+/** ----- mouseDragged 
+ *
+ *
+ */
+- (void)mouseDragged:(NSEvent*)theEvent {
+  
+}
+
+/** ----- mouseMoved
+ *
+ *
+ */
+- (void)mouseMoved:(NSEvent*)theEvent {
+  
+}
+
+
+/** ----- scrollWheel 
+ *
+ *
+ */
+- (void)scrollWheel:(NSEvent*)theEvent {
+
+}
+
+
+/** ----- rightMouseDragged 
+ *
+ *
+ */
+- (void)rightMouseDragged:(NSEvent*)theEvent {
+
+}
+
+
+/** ----- otherMouseDragged 
+ *
+ *
+ */
+- (void)otherMouseDragged:(NSEvent*)theEvent {
+
 }
 
 
 /** ----- acceptsFirstResponder
+ *
  *
  */
 - (BOOL)acceptsFirstResponder {
@@ -109,123 +255,22 @@ using namespace scout;
 }
 
 
-/** ----- mouseDown
+/** becomeFirstResponder
+ *
  *
  */
-- (void)mouseDown:(NSEvent*)event {
-
+- (BOOL)becomeFirstResponder {
+  return  YES;
 }
 
 
-/** ----- mouseDragged
+/** ----- resignFirstResponder 
+ *
  *
  */
-- (void)mouseDragged:(NSEvent*)event {
-
+- (BOOL)resignFirstResponder {
+  return YES;
 }
 
 
-/** ----- mouseUp
- *
- */
-- (void)mouseUp:(NSEvent*)event {
-
-}
-
-
-/** ----- mouseMoved
- *
- */
-- (void)mouseMoved:(NSEvent*)event {
-
-}
-
-
-/** ----- rightMouseDown
- *
- */
-- (void)rightMouseDown:(NSEvent*)event {
-
-}
-
-
-/** ----- rightMouseDragged
- *
- */
-- (void)rightMouseDragged:(NSEvent*)event {
-
-}
-
-/** ----- rightMouseUp
- *
- */
-- (void)rightMouseUp:(NSEvent*)event {
-
-}
-
-
-/** ----- otherMouseDown
- *
- */
-- (void)otherMouseDown:(NSEvent*)event {
-
-}
-
-
-/** ----- otherMouseDragged
- *
- */
-- (void)otherMouseDragged:(NSEvent*)event {
-
-}
-
-
-/** ----- otherMouseUp
- *
- */
-- (void)otherMouseUp:(NSEvent*)event {
-
-}
-
-
-/** ----- keyDown
- *
- */
-- (void)keyDown:(NSEvent*)event {
-
-}
-
-
-/** ----- flagsChanged
- *
- */
-- (void)flagsChanged:(NSEvent*)event {
-
-}
-
-
-/** ----- keyUp
- *
- */
-- (void)keyUp:(NSEvent*)event {
-
-}
-
-
-/** ----- scrollWheel
- *
- */
-- (void)scrollWheel:(NSEvent*)event {
-
-}
-
-
-/** ----- update
- *
- */
-- (void)update {
-
-}
- 
-
-@end 
+@end

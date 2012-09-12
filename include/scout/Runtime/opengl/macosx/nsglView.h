@@ -52,33 +52,40 @@
  * ##### 
  */ 
 
-#ifndef __SC_CGL_CONTEXT_H__
-#define __SC_CGL_CONTEXT_H__
+#ifndef __SC_NSGL_VIEW_H__
+#define __SC_NSGL_VIEW_H__
 
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/CGLTypes.h>
-#include <OpenGL/CGLCurrent.h>
+#import <Cocoa/Cocoa.h>
 
-#include "scout/Runtime/opengl/glContext.h"
-
-namespace scout {
-
-  /** ----- cglContext
-   *
-   *
-   */
-  class cglContext: public glContext {
-
-    cglContext();
-    ~cglContext();
-
-    void makeCurrent();
-    void swapBuffers();
-
-   private:
-    CGLContextObj  ctx;
-  };
-
+/** ----- nsglView 
+ *
+ *
+ */
+@interface nsglView : NSOpenGLView {
+  @private
 }
+- (id) initWithFrame: (NSRect) frameRect;
+- (void) prepareOpenGL;
+- (void) update;
+- (void) resizeGL;
+- (void) drawRect:(NSRect)rect;
 
-#endif 
+
+- (void)mouseDown:(NSEvent*)event;
+- (void)mouseDragged:(NSEvent*)event;
+- (void)mouseUp:(NSEvent*)event;
+- (void)mouseMoved:(NSEvent*)event;
+- (void)rightMouseDown:(NSEvent*)event;
+- (void)rightMouseDragged:(NSEvent*)event;
+- (void)rightMouseUp:(NSEvent*)event;
+- (void)otherMouseDown:(NSEvent*)event;
+- (void)otherMouseDragged:(NSEvent*)event;
+- (void)otherMouseUp:(NSEvent*)event;
+- (void)keyDown:(NSEvent*)event;
+- (void)keyUp:(NSEvent*)event;
+- (void)scrollWheel:(NSEvent*)event;
+
+
+@end
+
+#endif

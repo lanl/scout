@@ -52,46 +52,76 @@
  * ##### 
  */ 
 
-#ifndef __SC_OGL_VIEW_H__
-#define __SC_OGL_VIEW_H__
+#ifndef __SC_NSGL_WINDOW_H__
+#define __SC_NSGL_WINDOW_H__
 
-#import <Cocoa/Cocoa.h>
-#import "scout/Runtime/opengl/macosx/oglContext.h"
+#include "scout/Runtime/opengl/glWindow.h"
+#include "scout/Runtime/opengl/macosx/nsglView.h"
 
-/** ----- oglView 
- *
- *
- */
-@interface oglView : NSView {
-  @private
-    scout::oglContext *context;
+namespace scout {
+
+  /** ----- oglWindow
+   * This class serves primarily as the interface between C++
+   * and the supporting Cocoa/Objective C code. 
+   */
+  class nsglWindow : public glWindow {
+
+   public:
+
+    /**
+     * Create a window at the given (x, y) position and width
+     * and height.
+     */
+    nsglWindow(unsigned short xpos,
+               unsigned short ypos,
+               unsigned short width,
+               unsigned short height);
+
+    /**
+     * Destroy the window -- this will terminate an entire 
+     * Scout application.
+     */
+    ~nsglWindow();
+
+    /**
+     * Set the title of the window.
+     */
+    void setTitle(const char *title);
+
+    /**
+     * Close the window.
+     */
+    void close();
+
+    /**
+     * Minimize (iconify) the window.
+     */
+    void minimize();
+
+    /**
+     * Restore the window from an iconified state.
+     */
+    void restore();
+
+    /**
+     * Force the window to refresh/redraw its contents.
+     */
+    void refresh();
+
+    /**
+     * Is the window in a valid/usable state?
+     */
+    bool isValid() const {
+       return valid;
+    }
+    
+   private:
+    bool        valid;
+    NSWindow   *window;
+    nsglView   *view;
+  };
+
 }
 
-- (id)initWithFrame:(NSRect)frameRect openglContext:(scout::oglContext*)ctx;
-
-
-- (BOOL)isOpaque;
-- (BOOL)canBecomeKeyView;
-- (BOOL)acceptsFirstResponder;
-
-- (void)mouseDown:(NSEvent*)event;
-- (void)mouseDragged:(NSEvent*)event;
-- (void)mouseUp:(NSEvent*)event;
-- (void)mouseMoved:(NSEvent*)event;
-- (void)rightMouseDown:(NSEvent*)event;
-- (void)rightMouseDragged:(NSEvent*)event;
-- (void)rightMouseUp:(NSEvent*)event;
-- (void)otherMouseDown:(NSEvent*)event;
-- (void)otherMouseDragged:(NSEvent*)event;
-- (void)otherMouseUp:(NSEvent*)event;
-
-- (void)keyDown:(NSEvent*)event;
-- (void)flagsChanged:(NSEvent*)event;
-- (void)keyUp:(NSEvent*)event;
-- (void)scrollWheel:(NSEvent*)event;
-
-- (void) update;
-
-@end
-
 #endif
+

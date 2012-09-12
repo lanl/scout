@@ -55,15 +55,16 @@
 #include <Cocoa/Cocoa.h>
 #include <CoreGraphics/CGDirectDisplay.h>
 
-#include "scout/Runtime/opengl/macosx/oglApplication.h"
-#include "scout/Runtime/opengl/macosx/oglDevice.h"
+#include "scout/Runtime/opengl/macosx/nsglApplication.h"
+#include "scout/Runtime/opengl/macosx/nsglDevice.h"
 
 static id scAutoreleasePool;
 
 
 /** ----- getActiveGPUCount
- * Return the number of GPUs (video devices) that have a display
- * attached... 
+ * We currently use the number of displays hooked to a Mac OS X 
+ * system as an (incorrect) estimate of the number of GPUs we
+ * have available.  This needs some help...
  */
 static int getActiveGPUCount()
 {
@@ -72,10 +73,100 @@ static int getActiveGPUCount()
   return (int)count;
 }
 
+
 /** ----- createAppMenu
  *
  */
-static void createAppMenu() {
+static void createAppMenu(NSMenu *menu) {
+	NSMenuItem * item;
+  
+	item = [menu addItemWithTitle:[NSString stringWithFormat:@"%@ %@", NSLocalizedString(@"About", nil), @"Scout"]
+                         action:@selector(orderFrontStandardAboutPanel:)
+                  keyEquivalent:@""];
+	[item setTarget:NSApp];
+
+  [menu addItem:[NSMenuItem separatorItem]];
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Preferences...", nil)
+                         action:NULL
+                  keyEquivalent:@","];
+	
+	[menu addItem:[NSMenuItem separatorItem]];
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Services", nil)
+                         action:NULL
+                  keyEquivalent:@""];
+	NSMenu * servicesMenu = [[[NSMenu alloc] initWithTitle:@"Services"] autorelease];
+	[menu setSubmenu:servicesMenu forItem:item];
+	[NSApp setServicesMenu:servicesMenu];
+	
+	[menu addItem:[NSMenuItem separatorItem]];
+	
+	item = [menu addItemWithTitle:[NSString stringWithFormat:@"%@ %@", NSLocalizedString(@"Hide", nil), @"Scout"]
+                         action:@selector(hide:)
+                  keyEquivalent:@"h"];
+	[item setTarget:NSApp];
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Hide Others", nil)
+                         action:@selector(hideOtherApplications:)
+                  keyEquivalent:@"h"];
+	[item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
+	[item setTarget:NSApp];
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Show All", nil)
+                         action:@selector(unhideAllApplications:)
+                  keyEquivalent:@""];
+	[item setTarget:NSApp];
+	
+	[menu addItem:[NSMenuItem separatorItem]];
+	
+	item = [menu addItemWithTitle:[NSString stringWithFormat:@"%@ %@", NSLocalizedString(@"Quit", nil), @"Scout"]
+                         action:@selector(terminate:)
+                  keyEquivalent:@"q"];
+	[item setTarget:NSApp];
+
+  
+}
+
+
+/** ----- createFileMenu 
+ *
+ */
+static void createFileMenu(NSMenu* menu)  {
+  NSMenuItem *item;
+  
+  item = [menu addItemWithTitle:NSLocalizedString(@"Save", nil)
+                         action:NULL
+                  keyEquivalent:@"s"];
+  
+	item = [menu addItemWithTitle:NSLocalizedString(@"Save As...", nil)
+                         action:NULL
+                  keyEquivalent:@"S"];
+  
+	item = [menu addItemWithTitle:NSLocalizedString(@"Page Setup...", nil)
+                         action:@selector(runPageLayout:)
+                  keyEquivalent:@"P"];
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Print...", nil)
+                         action:@selector(print:)
+                  keyEquivalent:@"p"];
+}
+
+/** ----- createFileMenu
+ *
+ */
+static void createEditMenu(NSMenu* menu)  {
+	NSMenuItem * item;
+	
+	item = [menu addItemWithTitle:NSLocalizedString(@"Copy", nil)
+                         action:@selector(copy:)
+                  keyEquivalent:@"c"];
+}
+
+/** ----- createAppMenuBar
+ *
+ */
+static void createAppMenuBar() {
 
   NSMenu *mainMenu = [[[NSMenu alloc] initWithTitle:@"Scout"] autorelease];
   NSMenuItem *item;
@@ -84,28 +175,37 @@ static void createAppMenu() {
   item = [mainMenu addItemWithTitle:@"Apple" action:NULL keyEquivalent:@""];
   submenu = [[[NSMenu alloc] initWithTitle:@"Apple"] autorelease];
   [NSApp performSelector:@selector(setAppleMenu:) withObject:submenu];
-  // Need to populate App menu here...
+  createAppMenu(submenu);
   [mainMenu setSubmenu:submenu forItem:item];
 
   item = [mainMenu addItemWithTitle:@"File" action:NULL keyEquivalent:@""];
-  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"File", @"The File menu")] autorelease];
-  // Need to populate File menu here... 
+  submenu = [[[NSMenu alloc]
+              initWithTitle:NSLocalizedString(@"File", @"The File menu")]
+             autorelease];
+  createFileMenu(submenu);
+
   [mainMenu setSubmenu:submenu forItem:item];
 
   item = [mainMenu addItemWithTitle:@"Edit" action:NULL keyEquivalent:@""];
-  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Edit", @"The Edit menu")] autorelease];
-  // Need to populate File menu here... 
+  submenu = [[[NSMenu alloc]
+              initWithTitle:NSLocalizedString(@"Edit", @"The Edit menu")]
+             autorelease];
+  createEditMenu(submenu);
   [mainMenu setSubmenu:submenu forItem:item];
 
   item = [mainMenu addItemWithTitle:@"Window" action:NULL keyEquivalent:@""];
-  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Window", @"The Window menu")] autorelease];
+  submenu = [[[NSMenu alloc]
+              initWithTitle:NSLocalizedString(@"Window", @"The Window menu")]
+             autorelease];
   // Need to populate Window menu here... 
   [mainMenu setSubmenu:submenu forItem:item];
   [NSApp setWindowsMenu:submenu];
 
   item = [mainMenu addItemWithTitle:@"Help" action:NULL keyEquivalent:@""];
-  submenu = [[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Help", @"The Help menu")] autorelease];
-  // Need to populate Window menu here...   
+  submenu = [[[NSMenu alloc]
+              initWithTitle:NSLocalizedString(@"Help", @"The Help menu")]
+             autorelease];
+  // Need to populate Help menu here...   
   [mainMenu setSubmenu:submenu forItem:item];
 
   [NSApp setMainMenu:mainMenu];
@@ -147,7 +247,7 @@ static void initializeCocoa() {
     // Initialize the display environment -- this also has the side
     // effect of giving us a global handle to the application instance
     // NSApp...
-    [oglApplication sharedApplication];
+    [nsglApplication sharedApplication];
 
     // Make sure Scout application show up in the dock and have a
     // menu bar interface for the user... 
@@ -158,7 +258,7 @@ static void initializeCocoa() {
 
 
     // Create the main menu for the app.
-    createAppMenu();
+    createAppMenuBar();
     
     // We intentionally want to avoid the event loop loop here -- we
     // need to take some special steps to deal with that to provide
@@ -212,7 +312,7 @@ namespace scout {
       // device -- i.e. we don't handle the case where there are
       // multiple GPUs in a system.
       for(int i = 0; i < numDevices; ++i) {
-        oglDevice *device = new oglDevice();
+        nsglDevice *device = new nsglDevice();
         if (device->isEnabled()) {
           devList.push_back(device);
         }
