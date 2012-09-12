@@ -2648,13 +2648,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   SourceLocation LParenLoc;
   SourceLocation RParenLoc;
   
+  // Lookup the meshtype and store it for the ForAllStmt Constructor.
+  LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
+  Actions.LookupName(LR, getCurScope());
+  MVD = cast<VarDecl>(LR.getFoundDecl());
+  
   if(!elements){
     Op = 0;
     
-    // Lookup the meshtype and store it for the ForAllStmt Constructor.
-    LookupResult LR(Actions, MeshII, MeshLoc, Sema::LookupOrdinaryName);
-    Actions.LookupName(LR, getCurScope());
-    MVD = cast<VarDecl>(LR.getFoundDecl());
     MT = 
     cast<MeshType>(MVD->getType().getCanonicalType().getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
@@ -2818,22 +2819,11 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     else{
       bc = "__sc_begin_uniform_renderall(";
     }
+  
+    bc += MVD->getName().str() + ".width, ";
+    bc += MVD->getName().str() + ".height, ";
+    bc += MVD->getName().str() + ".depth);";
     
-    for(size_t i = 0; i < 3; ++i){
-      if(i > 0){
-        bc += ", ";
-      }
-
-      if(i >= dims.size()){
-        bc += "0";
-      }
-      else{
-        bc += ToCPPCode(dims[i]);
-      }
-    }
-
-    bc += ");";
-
     InsertCPPCode(bc, Tok.getLocation());
 
     StmtResult BR = ParseStatementOrDeclaration(*StmtsStack.back(), true).get();
