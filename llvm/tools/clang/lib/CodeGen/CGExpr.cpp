@@ -3019,11 +3019,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   if(!vals.empty()) {
     SmallVector< llvm::Value *, 3 > dims;
     for(unsigned i = 0, e = exprDims.size(); i < e; ++i) {
-      // scout - MERGE
-      llvm::APSInt result;
-      exprDims[i]->EvaluateAsInt(result, getContext());
-      unsigned dim = result.getSExtValue();
-      dims.push_back(llvm::ConstantInt::get(Int32Ty, dim));
+      dims.push_back(Builder.CreateLoad(ScoutMeshSizes[i]));
     }
 
     for(unsigned i = dims.size(); i < 3; ++i) {

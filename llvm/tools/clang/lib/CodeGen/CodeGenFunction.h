@@ -649,6 +649,7 @@ public:
   Vector ScoutIdxVars;
   /// Scout mesh dimension sizes.
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
+  llvm::Value *MeshBaseAddr;
   llvm::Value *ImplicitMeshVar;
   llvm::Value *ForallTripCount;
   MemberMap MeshMembers;

@@ -639,10 +639,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
   const VarDecl* MVD = S.getMeshVarDecl();
-  llvm::Value* baseAddr = LocalDeclMap[MVD];
+  MeshBaseAddr = LocalDeclMap[MVD];
 
   if(MVD->getType().getTypePtr()->isReferenceType()){
-    baseAddr = Builder.CreateLoad(baseAddr);
+    MeshBaseAddr = Builder.CreateLoad(MeshBaseAddr);
   }
   
   ScoutMeshSizes.clear();
@@ -660,7 +660,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       break;
     }
 
-    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i, name);
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i, name);
     ScoutMeshSizes.push_back(lval);
   }
   
@@ -675,7 +675,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth"))) {
-      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i+3, name);
+      llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+3, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
@@ -886,7 +886,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
     Builder.SetInsertPoint(cbb);
     
-    insertMeshDump(baseAddr);
+    insertMeshDump(MeshBaseAddr);
     return;
   }
 
@@ -922,7 +922,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
                        ScoutMeshSizes, inputs);
   
-  insertMeshDump(baseAddr);
+  insertMeshDump(MeshBaseAddr);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
