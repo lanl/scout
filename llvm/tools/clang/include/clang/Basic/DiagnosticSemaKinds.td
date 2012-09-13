@@ -739,8 +739,8 @@ def error_property_implemented : Error<"property %0 is already implemented">;
 def warn_objc_property_attr_mutually_exclusive : Warning<
   "property attributes '%0' and '%1' are mutually exclusive">,
   InGroup<ReadOnlySetterAttrs>, DefaultIgnore;
-def warn_objc_missing_super_dealloc : Warning<
-  "method possibly missing a [super dealloc] call">,
+def warn_objc_missing_super_call : Warning<
+  "method possibly missing a [super %0] call">,
   InGroup<ObjCMissingSuperCalls>;
 def error_dealloc_bad_result_type : Error<
   "dealloc return type must be correctly specified as 'void' under ARC, "
@@ -1432,6 +1432,8 @@ def err_for_range_invalid: Error<
 def err_for_range_dereference : Error<
   "invalid range expression of type %0; did you mean to dereference it "
   "with '*'?">;
+def note_for_range_invalid_iterator : Note <
+  "in implicit call to 'operator%select{!=|*|++}0' for iterator of type %1">;
 def note_for_range_begin_end : Note<
   "selected '%select{begin|end}0' %select{function|template }1%2 with iterator type %3">;
 
@@ -1865,14 +1867,6 @@ def warn_lock_exclusive_and_shared : Warning<
   InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
 def note_lock_exclusive_and_shared : Note<
   "the other lock of mutex '%0' is here">;
-def warn_variable_requires_lock : Warning<
-  "%select{reading|writing}2 variable '%0' requires locking "
-  "%select{'%1'|'%1' exclusively}2">,
-  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
-def warn_var_deref_requires_lock : Warning<
-  "%select{reading|writing}2 the value pointed to by '%0' requires locking "
-  "%select{'%1'|'%1' exclusively}2">,
-  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
 def warn_variable_requires_any_lock : Warning<
   "%select{reading|writing}1 variable '%0' requires locking "
   "%select{any mutex|any mutex exclusively}1">,
@@ -1881,9 +1875,6 @@ def warn_var_deref_requires_any_lock : Warning<
   "%select{reading|writing}1 the value pointed to by '%0' requires locking "
   "%select{any mutex|any mutex exclusively}1">,
   InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
-def warn_fun_requires_lock : Warning<
-  "calling function '%0' requires %select{shared|exclusive}2 lock on '%1'">,
-  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
 def warn_fun_excludes_mutex : Warning<
   "cannot call function '%0' while mutex '%1' is locked">,
   InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
@@ -1891,6 +1882,32 @@ def warn_cannot_resolve_lock : Warning<
   "cannot resolve lock expression">,
   InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
 
+// Imprecise thread safety warnings
+def warn_variable_requires_lock : Warning<
+  "%select{reading|writing}2 variable '%0' requires locking "
+  "%select{'%1'|'%1' exclusively}2">,
+  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
+def warn_var_deref_requires_lock : Warning<
+  "%select{reading|writing}2 the value pointed to by '%0' requires locking "
+  "%select{'%1'|'%1' exclusively}2">,
+  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
+def warn_fun_requires_lock : Warning<
+  "calling function '%0' requires %select{shared|exclusive}2 lock on '%1'">,
+  InGroup<ThreadSafetyAnalysis>, DefaultIgnore;
+
+// Precise thread safety warnings
+def warn_variable_requires_lock_precise : Warning<
+  "%select{reading|writing}2 variable '%0' requires locking "
+  "%select{'%1'|'%1' exclusively}2">,
+  InGroup<ThreadSafetyPrecise>, DefaultIgnore;
+def warn_var_deref_requires_lock_precise : Warning<
+  "%select{reading|writing}2 the value pointed to by '%0' requires locking "
+  "%select{'%1'|'%1' exclusively}2">,
+  InGroup<ThreadSafetyPrecise>, DefaultIgnore;
+def warn_fun_requires_lock_precise : Warning<
+  "calling function '%0' requires %select{shared|exclusive}2 lock on '%1'">,
+  InGroup<ThreadSafetyPrecise>, DefaultIgnore;
+def note_found_mutex_near_match : Note<"found near match '%0'">;
 
 def warn_impcast_vector_scalar : Warning<
   "implicit conversion turns vector to scalar: %0 to %1">,
@@ -2056,6 +2073,12 @@ def warn_ns_attribute_wrong_parameter_type : Warning<
   "%0 attribute only applies to %select{Objective-C object|pointer}1 "
   "parameters">,
   InGroup<IgnoredAttributes>;
+def warn_objc_requires_super_protocol : Warning<
+  "%0 attribute cannot be applied to %select{methods in protocols|dealloc}1">,
+  InGroup<DiagGroup<"requires-super-attribute">>;
+def note_protocol_decl : Note<
+  "protocol is declared here">;
+
 def err_ns_bridged_not_interface : Error<
   "parameter of 'ns_bridged' attribute does not name an Objective-C class">;
 
@@ -3385,7 +3408,7 @@ def warn_anon_bitfield_width_exceeds_type_size : Warning<
 
 def warn_missing_braces : Warning<
   "suggest braces around initialization of subobject">,
-  InGroup<DiagGroup<"missing-braces">>, DefaultIgnore;
+  InGroup<MissingBraces>, DefaultIgnore;
 def err_missing_braces : Error<
   "cannot omit braces around initialization of subobject when using direct "
   "list-initialization">;
@@ -5410,6 +5433,10 @@ def warn_scanf_nonzero_width : Warning<
 def warn_printf_conversion_argument_type_mismatch : Warning<
   "format specifies type %0 but the argument has type %1">,
   InGroup<Format>;
+def warn_format_argument_needs_cast : Warning<
+  "values of type '%0' should not be used as format arguments; add an explicit "
+  "cast to %1 instead">,
+  InGroup<Format>;
 def warn_printf_positional_arg_exceeds_data_args : Warning <
   "data argument position '%0' exceeds the number of data arguments (%1)">,
   InGroup<Format>;
@@ -5462,6 +5489,7 @@ def warn_scanf_scanlist_incomplete : Warning<
   "no closing ']' for '%%[' in scanf format string">,
   InGroup<Format>;
 def note_format_string_defined : Note<"format string is defined here">;
+def note_format_fix_specifier : Note<"did you mean to use '%0'?">;
 def note_printf_c_str: Note<"did you mean to call the %0 method?">;
 
 def warn_null_arg : Warning<

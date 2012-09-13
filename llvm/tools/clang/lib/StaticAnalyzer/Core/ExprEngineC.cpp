@@ -567,7 +567,8 @@ void ExprEngine::VisitInitListExpr(const InitListExpr *IE,
   QualType T = getContext().getCanonicalType(IE->getType());
   unsigned NumInitElements = IE->getNumInits();
   
-  if (T->isArrayType() || T->isRecordType() || T->isVectorType()) {
+  if (T->isArrayType() || T->isRecordType() || T->isVectorType() ||
+      T->isAnyComplexType()) {
     llvm::ImmutableList<SVal> vals = getBasicVals().getEmptySValList();
     
     // Handle base case where the initializer has no elements.
@@ -857,8 +858,10 @@ void ExprEngine::VisitIncrementDecrementOperator(const UnaryOperator* U,
     
     if (U->getType()->isAnyPointerType())
       RHS = svalBuilder.makeArrayIndex(1);
-    else
+    else if (U->getType()->isIntegralOrEnumerationType())
       RHS = svalBuilder.makeIntVal(1, U->getType());
+    else
+      RHS = UnknownVal();
     
     SVal Result = evalBinOp(state, Op, V2, RHS, U->getType());
     

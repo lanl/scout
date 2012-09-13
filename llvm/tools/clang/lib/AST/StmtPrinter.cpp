@@ -1738,6 +1738,10 @@ void StmtPrinter::VisitSubstNonTypeTemplateParmExpr(
   Visit(Node->getReplacement());
 }
 
+void StmtPrinter::VisitFunctionParmPackExpr(FunctionParmPackExpr *E) {
+  OS << *E->getParameterPack();
+}
+
 void StmtPrinter::VisitMaterializeTemporaryExpr(MaterializeTemporaryExpr *Node){
   PrintExpr(Node->GetTemporaryExpr());
 }

@@ -2659,6 +2659,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case UnresolvedMemberExprClass:
   case PackExpansionExprClass:
   case SubstNonTypeTemplateParmPackExprClass:
+  case FunctionParmPackExprClass:
     llvm_unreachable("shouldn't see dependent / unresolved nodes here");
 
   case DeclRefExprClass:
