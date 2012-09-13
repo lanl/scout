@@ -314,8 +314,6 @@ InstrEmitter::AddRegisterOperand(MachineInstr *MI, SDValue Op,
     const TargetRegisterClass *DstRC = 0;
     if (IIOpNum < II->getNumOperands())
       DstRC = TRI->getAllocatableClass(TII->getRegClass(*II,IIOpNum,TRI,*MF));
-    assert((DstRC || (MI->isVariadic() && IIOpNum >= MCID.getNumOperands())) &&
-           "Don't have operand info for this instruction!");
     if (DstRC && !MRI->constrainRegClass(VReg, DstRC, MinRCSize)) {
       unsigned NewVReg = MRI->createVirtualRegister(DstRC);
       BuildMI(*MBB, InsertPos, Op.getNode()->getDebugLoc(),
@@ -412,6 +410,7 @@ void InstrEmitter::AddOperand(MachineInstr *MI, SDValue Op,
                                             ES->getTargetFlags()));
   } else if (BlockAddressSDNode *BA = dyn_cast<BlockAddressSDNode>(Op)) {
     MI->addOperand(MachineOperand::CreateBA(BA->getBlockAddress(),
+                                            BA->getOffset(),
                                             BA->getTargetFlags()));
   } else if (TargetIndexSDNode *TI = dyn_cast<TargetIndexSDNode>(Op)) {
     MI->addOperand(MachineOperand::CreateTargetIndex(TI->getIndex(),
@@ -873,6 +872,17 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
     break;
   }
 
+  case ISD::LIFETIME_START:
+  case ISD::LIFETIME_END: {
+    unsigned TarOp = (Node->getOpcode() == ISD::LIFETIME_START) ?
+    TargetOpcode::LIFETIME_START : TargetOpcode::LIFETIME_END;
+
+    FrameIndexSDNode *FI = dyn_cast<FrameIndexSDNode>(Node->getOperand(1));
+    BuildMI(*MBB, InsertPos, Node->getDebugLoc(), TII->get(TarOp))
+    .addFrameIndex(FI->getIndex());
+    break;
+  }
+
   case ISD::INLINEASM: {
     unsigned NumOps = Node->getNumOperands();
     if (Node->getOperand(NumOps-1).getValueType() == MVT::Glue)
@@ -945,12 +955,8 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
           if (InlineAsm::isUseOperandTiedToDef(Flags, DefGroup)) {
             unsigned DefIdx = GroupIdx[DefGroup] + 1;
             unsigned UseIdx = GroupIdx.back() + 1;
-            for (unsigned j = 0; j != NumVals; ++j) {
-              assert(!MI->getOperand(DefIdx + j).isTied() &&
-                     "Def is already tied to another use");
-              MI->getOperand(DefIdx + j).setIsTied();
-              MI->getOperand(UseIdx + j).setIsTied();
-            }
+            for (unsigned j = 0; j != NumVals; ++j)
+              MI->tieOperands(DefIdx + j, UseIdx + j);
           }
         }
         break;

@@ -181,49 +181,44 @@ class ARMAsmParser : public MCTargetAsmParser {
   OperandMatchResultTy parseVectorLane(VectorLaneTy &LaneKind, unsigned &Index);
 
   // Asm Match Converter Methods
-  void cvtT2LdrdPre(MCInst &Inst, unsigned Opcode,
-                    const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtT2StrdPre(MCInst &Inst, unsigned Opcode,
-                    const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
+  void cvtT2LdrdPre(MCInst &Inst, const SmallVectorImpl<MCParsedAsmOperand*> &);
+  void cvtT2StrdPre(MCInst &Inst, const SmallVectorImpl<MCParsedAsmOperand*> &);
+  void cvtLdWriteBackRegT2AddrModeImm8(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
+  void cvtStWriteBackRegT2AddrModeImm8(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
+  void cvtLdWriteBackRegAddrMode2(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
+  void cvtLdWriteBackRegAddrModeImm12(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
+  void cvtStWriteBackRegAddrModeImm12(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
+  void cvtStWriteBackRegAddrMode2(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
+  void cvtStWriteBackRegAddrMode3(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
+  void cvtLdExtTWriteBackImm(MCInst &Inst,
                              const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
+  void cvtLdExtTWriteBackReg(MCInst &Inst,
                              const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
+  void cvtStExtTWriteBackImm(MCInst &Inst,
                              const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
+  void cvtStExtTWriteBackReg(MCInst &Inst,
                              const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdrdPre(MCInst &Inst, unsigned Opcode,
-                  const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtStrdPre(MCInst &Inst, unsigned Opcode,
-                  const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtLdWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
+  void cvtLdrdPre(MCInst &Inst, const SmallVectorImpl<MCParsedAsmOperand*> &);
+  void cvtStrdPre(MCInst &Inst, const SmallVectorImpl<MCParsedAsmOperand*> &);
+  void cvtLdWriteBackRegAddrMode3(MCInst &Inst,
                                   const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtThumbMultiply(MCInst &Inst, unsigned Opcode,
+  void cvtThumbMultiply(MCInst &Inst,
                         const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtVLDwbFixed(MCInst &Inst, unsigned Opcode,
+  void cvtVLDwbFixed(MCInst &Inst,
                      const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtVLDwbRegister(MCInst &Inst, unsigned Opcode,
+  void cvtVLDwbRegister(MCInst &Inst,
                         const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtVSTwbFixed(MCInst &Inst, unsigned Opcode,
+  void cvtVSTwbFixed(MCInst &Inst,
                      const SmallVectorImpl<MCParsedAsmOperand*> &);
-  void cvtVSTwbRegister(MCInst &Inst, unsigned Opcode,
+  void cvtVSTwbRegister(MCInst &Inst,
                         const SmallVectorImpl<MCParsedAsmOperand*> &);
-
   bool validateInstruction(MCInst &Inst,
                            const SmallVectorImpl<MCParsedAsmOperand*> &Ops);
   bool processInstruction(MCInst &Inst,
@@ -267,6 +262,12 @@ public:
   bool MatchAndEmitInstruction(SMLoc IDLoc,
                                SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                                MCStreamer &Out);
+
+  unsigned getMCInstOperandNum(unsigned Kind, MCInst &Inst,
+                           const SmallVectorImpl<MCParsedAsmOperand*> &Operands,
+                               unsigned OperandNum, unsigned &NumMCOperands) {
+    return getMCInstOperandNumImpl(Kind, Inst, Operands, OperandNum, NumMCOperands);
+  }
 };
 } // end anonymous namespace
 
@@ -862,7 +863,7 @@ public:
   bool isSPRRegList() const { return Kind == k_SPRRegisterList; }
   bool isToken() const { return Kind == k_Token; }
   bool isMemBarrierOpt() const { return Kind == k_MemBarrierOpt; }
-  bool isMemory() const { return Kind == k_Memory; }
+  bool isMem() const { return Kind == k_Memory; }
   bool isShifterImm() const { return Kind == k_ShifterImmediate; }
   bool isRegShiftedReg() const { return Kind == k_ShiftedRegister; }
   bool isRegShiftedImm() const { return Kind == k_ShiftedImmediate; }
@@ -873,14 +874,14 @@ public:
     return Kind == k_PostIndexRegister && PostIdxReg.ShiftTy ==ARM_AM::no_shift;
   }
   bool isMemNoOffset(bool alignOK = false) const {
-    if (!isMemory())
+    if (!isMem())
       return false;
     // No offset of any kind.
     return Memory.OffsetRegNum == 0 && Memory.OffsetImm == 0 &&
      (alignOK || Memory.Alignment == 0);
   }
   bool isMemPCRelImm12() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Base register must be PC.
     if (Memory.BaseRegNum != ARM::PC)
@@ -894,7 +895,7 @@ public:
     return isMemNoOffset(true);
   }
   bool isAddrMode2() const {
-    if (!isMemory() || Memory.Alignment != 0) return false;
+    if (!isMem() || Memory.Alignment != 0) return false;
     // Check for register offset.
     if (Memory.OffsetRegNum) return true;
     // Immediate offset in range [-4095, 4095].
@@ -916,7 +917,7 @@ public:
     // and we reject it.
     if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
-    if (!isMemory() || Memory.Alignment != 0) return false;
+    if (!isMem() || Memory.Alignment != 0) return false;
     // No shifts are legal for AM3.
     if (Memory.ShiftType != ARM_AM::no_shift) return false;
     // Check for register offset.
@@ -946,7 +947,7 @@ public:
     // and we reject it.
     if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
-    if (!isMemory() || Memory.Alignment != 0) return false;
+    if (!isMem() || Memory.Alignment != 0) return false;
     // Check for register offset.
     if (Memory.OffsetRegNum) return false;
     // Immediate offset in range [-1020, 1020] and a multiple of 4.
@@ -956,25 +957,25 @@ public:
       Val == INT32_MIN;
   }
   bool isMemTBB() const {
-    if (!isMemory() || !Memory.OffsetRegNum || Memory.isNegative ||
+    if (!isMem() || !Memory.OffsetRegNum || Memory.isNegative ||
         Memory.ShiftType != ARM_AM::no_shift || Memory.Alignment != 0)
       return false;
     return true;
   }
   bool isMemTBH() const {
-    if (!isMemory() || !Memory.OffsetRegNum || Memory.isNegative ||
+    if (!isMem() || !Memory.OffsetRegNum || Memory.isNegative ||
         Memory.ShiftType != ARM_AM::lsl || Memory.ShiftImm != 1 ||
         Memory.Alignment != 0 )
       return false;
     return true;
   }
   bool isMemRegOffset() const {
-    if (!isMemory() || !Memory.OffsetRegNum || Memory.Alignment != 0)
+    if (!isMem() || !Memory.OffsetRegNum || Memory.Alignment != 0)
       return false;
     return true;
   }
   bool isT2MemRegOffset() const {
-    if (!isMemory() || !Memory.OffsetRegNum || Memory.isNegative ||
+    if (!isMem() || !Memory.OffsetRegNum || Memory.isNegative ||
         Memory.Alignment != 0)
       return false;
     // Only lsl #{0, 1, 2, 3} allowed.
@@ -987,14 +988,14 @@ public:
   bool isMemThumbRR() const {
     // Thumb reg+reg addressing is simple. Just two registers, a base and
     // an offset. No shifts, negations or any other complicating factors.
-    if (!isMemory() || !Memory.OffsetRegNum || Memory.isNegative ||
+    if (!isMem() || !Memory.OffsetRegNum || Memory.isNegative ||
         Memory.ShiftType != ARM_AM::no_shift || Memory.Alignment != 0)
       return false;
     return isARMLowRegister(Memory.BaseRegNum) &&
       (!Memory.OffsetRegNum || isARMLowRegister(Memory.OffsetRegNum));
   }
   bool isMemThumbRIs4() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 ||
+    if (!isMem() || Memory.OffsetRegNum != 0 ||
         !isARMLowRegister(Memory.BaseRegNum) || Memory.Alignment != 0)
       return false;
     // Immediate offset, multiple of 4 in range [0, 124].
@@ -1003,7 +1004,7 @@ public:
     return Val >= 0 && Val <= 124 && (Val % 4) == 0;
   }
   bool isMemThumbRIs2() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 ||
+    if (!isMem() || Memory.OffsetRegNum != 0 ||
         !isARMLowRegister(Memory.BaseRegNum) || Memory.Alignment != 0)
       return false;
     // Immediate offset, multiple of 4 in range [0, 62].
@@ -1012,7 +1013,7 @@ public:
     return Val >= 0 && Val <= 62 && (Val % 2) == 0;
   }
   bool isMemThumbRIs1() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 ||
+    if (!isMem() || Memory.OffsetRegNum != 0 ||
         !isARMLowRegister(Memory.BaseRegNum) || Memory.Alignment != 0)
       return false;
     // Immediate offset in range [0, 31].
@@ -1021,7 +1022,7 @@ public:
     return Val >= 0 && Val <= 31;
   }
   bool isMemThumbSPI() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 ||
+    if (!isMem() || Memory.OffsetRegNum != 0 ||
         Memory.BaseRegNum != ARM::SP || Memory.Alignment != 0)
       return false;
     // Immediate offset, multiple of 4 in range [0, 1020].
@@ -1035,7 +1036,7 @@ public:
     // and we reject it.
     if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Immediate offset a multiple of 4 in range [-1020, 1020].
     if (!Memory.OffsetImm) return true;
@@ -1044,7 +1045,7 @@ public:
     return (Val >= -1020 && Val <= 1020 && (Val & 3) == 0) || Val == INT32_MIN;
   }
   bool isMemImm0_1020s4Offset() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Immediate offset a multiple of 4 in range [0, 1020].
     if (!Memory.OffsetImm) return true;
@@ -1052,7 +1053,7 @@ public:
     return Val >= 0 && Val <= 1020 && (Val & 3) == 0;
   }
   bool isMemImm8Offset() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Base reg of PC isn't allowed for these encodings.
     if (Memory.BaseRegNum == ARM::PC) return false;
@@ -1062,7 +1063,7 @@ public:
     return (Val == INT32_MIN) || (Val > -256 && Val < 256);
   }
   bool isMemPosImm8Offset() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Immediate offset in range [0, 255].
     if (!Memory.OffsetImm) return true;
@@ -1070,7 +1071,7 @@ public:
     return Val >= 0 && Val < 256;
   }
   bool isMemNegImm8Offset() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Base reg of PC isn't allowed for these encodings.
     if (Memory.BaseRegNum == ARM::PC) return false;
@@ -1080,7 +1081,7 @@ public:
     return (Val == INT32_MIN) || (Val > -256 && Val < 0);
   }
   bool isMemUImm12Offset() const {
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Immediate offset in range [0, 4095].
     if (!Memory.OffsetImm) return true;
@@ -1094,7 +1095,7 @@ public:
     if (isImm() && !isa<MCConstantExpr>(getImm()))
       return true;
 
-    if (!isMemory() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
+    if (!isMem() || Memory.OffsetRegNum != 0 || Memory.Alignment != 0)
       return false;
     // Immediate offset in range [-4095, 4095].
     if (!Memory.OffsetImm) return true;
@@ -3881,7 +3882,7 @@ parseAM3Offset(SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtT2LdrdPre(MCInst &Inst, unsigned Opcode,
+cvtT2LdrdPre(MCInst &Inst,
              const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Rt, Rt2
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
@@ -3898,7 +3899,7 @@ cvtT2LdrdPre(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtT2StrdPre(MCInst &Inst, unsigned Opcode,
+cvtT2StrdPre(MCInst &Inst,
              const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateReg(0));
@@ -3915,7 +3916,7 @@ cvtT2StrdPre(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
+cvtLdWriteBackRegT2AddrModeImm8(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
 
@@ -3930,7 +3931,7 @@ cvtLdWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
+cvtStWriteBackRegT2AddrModeImm8(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -3943,7 +3944,7 @@ cvtStWriteBackRegT2AddrModeImm8(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
+cvtLdWriteBackRegAddrMode2(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
 
@@ -3958,7 +3959,7 @@ cvtLdWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
+cvtLdWriteBackRegAddrModeImm12(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
 
@@ -3974,7 +3975,7 @@ cvtLdWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
+cvtStWriteBackRegAddrModeImm12(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -3987,7 +3988,7 @@ cvtStWriteBackRegAddrModeImm12(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
+cvtStWriteBackRegAddrMode2(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4000,7 +4001,7 @@ cvtStWriteBackRegAddrMode2(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
+cvtStWriteBackRegAddrMode3(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4013,7 +4014,7 @@ cvtStWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
+cvtLdExtTWriteBackImm(MCInst &Inst,
                       const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Rt
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
@@ -4031,7 +4032,7 @@ cvtLdExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
+cvtLdExtTWriteBackReg(MCInst &Inst,
                       const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Rt
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
@@ -4049,7 +4050,7 @@ cvtLdExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
+cvtStExtTWriteBackImm(MCInst &Inst,
                       const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4067,7 +4068,7 @@ cvtStExtTWriteBackImm(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
+cvtStExtTWriteBackReg(MCInst &Inst,
                       const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4085,7 +4086,7 @@ cvtStExtTWriteBackReg(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdrdPre(MCInst &Inst, unsigned Opcode,
+cvtLdrdPre(MCInst &Inst,
            const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Rt, Rt2
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
@@ -4102,7 +4103,7 @@ cvtLdrdPre(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtStrdPre(MCInst &Inst, unsigned Opcode,
+cvtStrdPre(MCInst &Inst,
            const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4119,7 +4120,7 @@ cvtStrdPre(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtLdWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
+cvtLdWriteBackRegAddrMode3(MCInst &Inst,
                          const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   ((ARMOperand*)Operands[2])->addRegOperands(Inst, 1);
   // Create a writeback register dummy placeholder.
@@ -4132,7 +4133,7 @@ cvtLdWriteBackRegAddrMode3(MCInst &Inst, unsigned Opcode,
 /// Needed here because the Asm Gen Matcher can't handle properly tied operands
 /// when they refer multiple MIOperands inside a single one.
 void ARMAsmParser::
-cvtThumbMultiply(MCInst &Inst, unsigned Opcode,
+cvtThumbMultiply(MCInst &Inst,
            const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   ((ARMOperand*)Operands[3])->addRegOperands(Inst, 1);
   ((ARMOperand*)Operands[1])->addCCOutOperands(Inst, 1);
@@ -4149,7 +4150,7 @@ cvtThumbMultiply(MCInst &Inst, unsigned Opcode,
 }
 
 void ARMAsmParser::
-cvtVLDwbFixed(MCInst &Inst, unsigned Opcode,
+cvtVLDwbFixed(MCInst &Inst,
               const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Vd
   ((ARMOperand*)Operands[3])->addVecListOperands(Inst, 1);
@@ -4162,7 +4163,7 @@ cvtVLDwbFixed(MCInst &Inst, unsigned Opcode,
 }
 
 void ARMAsmParser::
-cvtVLDwbRegister(MCInst &Inst, unsigned Opcode,
+cvtVLDwbRegister(MCInst &Inst,
                  const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Vd
   ((ARMOperand*)Operands[3])->addVecListOperands(Inst, 1);
@@ -4177,7 +4178,7 @@ cvtVLDwbRegister(MCInst &Inst, unsigned Opcode,
 }
 
 void ARMAsmParser::
-cvtVSTwbFixed(MCInst &Inst, unsigned Opcode,
+cvtVSTwbFixed(MCInst &Inst,
               const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -4190,7 +4191,7 @@ cvtVSTwbFixed(MCInst &Inst, unsigned Opcode,
 }
 
 void ARMAsmParser::
-cvtVSTwbRegister(MCInst &Inst, unsigned Opcode,
+cvtVSTwbRegister(MCInst &Inst,
                  const SmallVectorImpl<MCParsedAsmOperand*> &Operands) {
   // Create a writeback register dummy placeholder.
   Inst.addOperand(MCOperand::CreateImm(0));
@@ -7461,9 +7462,11 @@ MatchAndEmitInstruction(SMLoc IDLoc,
                         SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                         MCStreamer &Out) {
   MCInst Inst;
+  unsigned Kind;
   unsigned ErrorInfo;
   unsigned MatchResult;
-  MatchResult = MatchInstructionImpl(Operands, Inst, ErrorInfo);
+
+  MatchResult = MatchInstructionImpl(Operands, Kind, Inst, ErrorInfo);
   switch (MatchResult) {
   default: break;
   case Match_Success:
