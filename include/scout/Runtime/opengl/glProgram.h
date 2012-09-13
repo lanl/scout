@@ -63,14 +63,14 @@ namespace scout
       assert(glIsProgram(_prog_id) && _is_linked == true);
       
       GLint uloc = glGetUniformLocation(_prog_id, (const GLchar*)name.c_str());
-      OpenGLErrorCheck();
+      oglErrorCheck();
       if (uloc == -1) {
         std::cerr << "\t***warning: unable to locate uniform value '"
                   << name << "'.\n";
       } else {
         glUniformValue* uval = new glTypedUniformValue<ElementType>(uloc,
                                                                     value);
-        OpenGLErrorCheck();        
+        oglErrorCheck();        
         _uniforms.push_back(uval);
       }
     }

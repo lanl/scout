@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,83 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
+#ifndef __SC_NSGL_WINDOW_H__
+#define __SC_NSGL_WINDOW_H__
+
+#include "scout/Runtime/opengl/glWindow.h"
+#include "scout/Runtime/opengl/macosx/nsglView.h"
 
 namespace scout {
 
-  namespace config {
+  /** ----- oglWindow
+   * This class serves primarily as the interface between C++
+   * and the supporting Cocoa/Objective C code. 
+   */
+  class nsglWindow : public glWindow {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
+   public:
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
+    /**
+     * Create a window at the given (x, y) position and width
+     * and height.
+     */
+    nsglWindow(unsigned short xpos,
+               unsigned short ypos,
+               unsigned short width,
+               unsigned short height);
 
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+    /**
+     * Destroy the window -- this will terminate an entire 
+     * Scout application.
+     */
+    ~nsglWindow();
+
+    /**
+     * Set the title of the window.
+     */
+    void setTitle(const char *title);
+
+    /**
+     * Close the window.
+     */
+    void close();
+
+    /**
+     * Minimize (iconify) the window.
+     */
+    void minimize();
+
+    /**
+     * Restore the window from an iconified state.
+     */
+    void restore();
+
+    /**
+     * Force the window to refresh/redraw its contents.
+     */
+    void refresh();
+
+    /**
+     * Is the window in a valid/usable state?
+     */
+    bool isValid() const {
+       return valid;
+    }
+    
+   private:
+    bool        valid;
+    NSWindow   *window;
+    nsglView   *view;
+  };
+
 }
 
 #endif
+

@@ -57,8 +57,6 @@
 #include "scout/Runtime/Utilities.h"
 #include "scout/Runtime/opengl/opengl.h"
 
-using namespace std;
-
 namespace scout 
 {
   
@@ -82,7 +80,8 @@ namespace scout
    *
    */
   void glReportError(GLenum error_id, const char *file, int line) {
-    fprintf(stderr, "scout[runtime]: opengl error: '%s'\n", (const char*)gluErrorString(error_id));
+    fprintf(stderr, "scout[runtime]: opengl error: '%s'\n",
+            (const char*)gluErrorString(error_id));
     fprintf(stderr, "\terror (#%04d): (need more here).\n", int(error_id));
     fprintf(stderr, "\tfile         : %s\n", file);
     fprintf(stderr, "\tline         : %d\n", line);
@@ -103,6 +102,7 @@ namespace scout
     }
   }
 
+  
   /** ----- glVersion
    *
    */
@@ -140,15 +140,15 @@ namespace scout
       minorVersion = 0;
     } else {
       // We must parse the version string
-      const char *versionString = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+      const char *versionString;
+      versionString = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
       
       if (versionString != 0) {
-        int retval = sscanf(versionString, "%d.%d", &majorVersion, &minorVersion);
+        int retval = sscanf(versionString, "%d.%d",
+                            &majorVersion, &minorVersion);
         if (retval != 2) 
           majorVersion = minorVersion = 0;
       }
     }
   }
-
-  
 }

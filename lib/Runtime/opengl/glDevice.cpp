@@ -51,15 +51,24 @@
  *
  * ##### 
  */
-
+#include <cassert>
+#include <algorithm>
 #include "scout/Runtime/opengl/glDevice.h"
 
 using namespace scout;
 
-// ----- glDevice
-//
-glDevice::glDevice()
-{
-
+/** ----- deleteWindow
+ *
+ */
+void glDevice::deleteWindow(glWindow* win) {
+  using namespace std;
+  
+  glWindowList::iterator it = find(windows.begin(),
+                                   windows.end(),
+                                   win);
+  
+  if (it != windows.end()) {
+    delete (*it);    
+    windows.erase(it);
+  }
 }
-

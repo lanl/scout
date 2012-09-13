@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,67 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
 
-namespace scout {
+#include "scout/Runtime/opengl/macosx/nsglDevice.h"
+#include "scout/Runtime/opengl/macosx/nsglWindow.h"
 
-  namespace config {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
+using namespace scout;
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+/** ----- nsglDevice
+ *
+ *
+ */
+nsglDevice::nsglDevice() {
+  enabled = true;
 }
 
-#endif
+
+/** ----- ~nsglDevice
+ *
+ */
+nsglDevice::~nsglDevice() {
+  // TODO: Destroy all windows. 
+}
+
+
+/** ----- createWindow
+ *
+ */
+glWindow *nsglDevice::createWindow(unsigned short width,
+                                  unsigned short height) {
+  return this->createWindow(0, 0, width, height);
+}
+
+
+/** ----- createWindow
+ *
+ */
+glWindow *nsglDevice::createWindow(unsigned short xpos,
+                                  unsigned short ypos,
+                                  unsigned short width,
+                                  unsigned short height) {
+
+  if (isEnabled()) {
+    nsglWindow *newWindow = new nsglWindow(xpos, ypos, width, height);
+    if (newWindow && newWindow->isValid()) {
+      // TODO: need to add window to device's list... 
+      return newWindow;
+    } else {
+      delete newWindow;
+    }
+  }
+  
+  // Support a secondary level check for using a disabled device by
+  // returning null for a window creation. 
+  return 0;
+}
+

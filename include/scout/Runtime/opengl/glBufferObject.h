@@ -44,7 +44,7 @@ namespace scout
       assert(_mapped == false);
       bind();
       void *vp = glMapBuffer(_type, GL_WRITE_ONLY);
-      OpenGLErrorCheck();
+      oglErrorCheck();
       _mapped = true;
       return vp;
     }
@@ -54,7 +54,7 @@ namespace scout
       assert(_mapped == false);
       bind();
       void *vp = glMapBuffer(_type, GL_READ_ONLY);
-      OpenGLErrorCheck();
+      oglErrorCheck();
       _mapped = true;
       return vp;
     }
@@ -64,7 +64,7 @@ namespace scout
       assert(_mapped == false);
       bind();
       void *vp = glMapBuffer(_type, GL_READ_WRITE);
-      OpenGLErrorCheck();
+      oglErrorCheck();
       _mapped = true;
       return vp;
     }
@@ -74,7 +74,7 @@ namespace scout
       bind();
       assert(_mapped == true);
       glUnmapBuffer(_type);
-      OpenGLErrorCheck();
+      oglErrorCheck();
       _mapped = false;
       release();
     }

@@ -67,6 +67,7 @@ namespace scout {
     bool Configuration::CUDASupport   = ${SC_ENABLE_CUDA};
     bool Configuration::NUMASupport   = ${SC_ENABLE_NUMA};
     bool Configuration::MPISupport    = ${SC_ENABLE_MPI};
+    bool Configuration::GLFWSupport   = ${SC_ENABLE_GLFW};
 
     //bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
 

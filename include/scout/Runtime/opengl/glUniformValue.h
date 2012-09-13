@@ -49,26 +49,26 @@ namespace scout
   inline void glUniform(GLint location, const int* iptr)
   {
     glUniform1iv(location, 1, iptr);
-    OpenGLErrorCheck();        
+    oglErrorCheck();        
   }
 
   
   inline void glUniform(GLint location, const int4* iptr)
   {
     glUniform4iv(location, 4, &(iptr->components[0]));
-    OpenGLErrorCheck();    
+    oglErrorCheck();    
   }
   
   inline void glUniform(GLint location, const float* fptr)
   {
     glUniform1fv(location, 1, fptr);
-    OpenGLErrorCheck();
+    oglErrorCheck();
   }
 
   inline void glUniform(GLint location, const float4* fptr)
   {
     glUniform4fv(location, 4, &(fptr->components[0]));
-    OpenGLErrorCheck();    
+    oglErrorCheck();    
   }
 
   // ..... glTypedUniformValue
@@ -91,7 +91,7 @@ namespace scout
     void bind() 
     {
       glUniform(id(), m_value);
-      OpenGLErrorCheck();
+      oglErrorCheck();
     }
     
    private:

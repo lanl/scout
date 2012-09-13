@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,58 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
+#ifndef __SC_GL_CONTEXT_H__
+#define __SC_GL_CONTEXT_H__
 
 namespace scout {
 
-  namespace config {
+  /**
+   *
+   */
+  class glContext {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
+   public:
+    glContext() {
+      // no-op
+    }
+    
+    virtual ~glContext() {
+      // no-op
+    }
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
+    virtual void makeCurrent() = 0;
+    virtual void swapBuffers() = 0;
 
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+    static glContext* activeContext;
+
+    bool isCurrent() const {
+      return current;
+    }
+
+    void setCurrent(bool val) {
+      current = val;
+    }
+    
+    bool isValid() const  {
+      return valid;
+    }
+
+   protected:
+    bool current;
+    bool valid;
+  };
+
+  void scglSetActiveContext(glContext *ctx);
+  glContext *scglGetActiveContext();
+
 }
-
+  
 #endif
+

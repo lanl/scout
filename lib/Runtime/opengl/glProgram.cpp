@@ -31,7 +31,7 @@ glProgram::glProgram()
 {
   _prog_id = glCreateProgram();
   assert(glIsProgram(_prog_id));
-  OpenGLErrorCheck();
+  oglErrorCheck();
   _is_linked = false;
 }
 
@@ -42,7 +42,7 @@ glProgram::~glProgram()
 {
   if (glIsProgram(_prog_id)) {
     glDeleteProgram(_prog_id);
-    OpenGLErrorCheck();
+    oglErrorCheck();
   }
 
   glUniformList::iterator it = _uniforms.begin(), end = _uniforms.end();

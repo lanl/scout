@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,32 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
+#ifndef __SC_GLFW_DEVICE_H__
+#define __SC_GLFW_DEVICE_H__
+
+#include "scout/Runtime/opengl/glDevice.h"
+#include <GL/glfw.h>
 
 namespace scout {
 
-  namespace config {
+  class glfwDevice: public glDevice {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
+   public:
+    glfwDevice();
+    ~glfwDevice();
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
+    bool initialize();
 
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+   private:
+    int    Status;
+  };
 }
 
 #endif

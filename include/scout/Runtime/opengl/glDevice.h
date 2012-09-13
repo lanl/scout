@@ -68,21 +68,36 @@
 namespace scout {
 
   typedef std::list<glWindow*> glWindowList;
+  class glContext;  
 
+  /** ----- glDevice 
+   *
+   *
+   */
   class glDevice: public Device {
 
-    glDevice();
-    ~glDevice();
-
-    bool isEnabled() const;    
-
-    // We can make windows point back to their 'parent'
-    // device...
-    glWindow *createWindow(int width, int height);
+   public:
+    glDevice() {
+      // no-op
+    }
+      
+    virtual ~glDevice() {
+      // no op
+    }
+    
+    virtual glWindow *createWindow(unsigned short width,
+                                   unsigned short height) = 0;
+    
+    virtual glWindow *createWindow(unsigned short xpos,
+                                   unsigned short ypos,
+                                   unsigned short width,
+                                   unsigned short height)  = 0;
+    
     void deleteWindow(glWindow*);
-
-   private:
-
+    
+   protected:
+    glContext     *context;
+    glWindowList  windows;
   };
 }
 

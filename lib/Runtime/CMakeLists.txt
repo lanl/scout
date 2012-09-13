@@ -109,15 +109,21 @@ endif()
 if (SC_ENABLE_OPENGL) 
 
   # Add OpenGL source files to the build...
-  file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/*.h)
+  file(GLOB gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/*.h)
   file(GLOB gl_srcs opengl/*.cpp)
+
+  if (APPLE) 
+    file(GLOB apple_gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
+    file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
+    list(APPEND gl_hdrs ${apple_gl_hdrs})
+    list(APPEND gl_srcs ${apple_gl_srcs})
+  endif()
 
   # Add supporting opengl shaders to the build dependencies.  In this
   # case we actually package up the shaders into the library source by
   # converting them into C/C++ constant char strings that are included
   # into the build process...  See the toplevel tools/glsl-to-str for
   # details.
-  # 
 
   # We need a directory to output the generated/wrapped shaders. 
   if (NOT EXISTS ${SC_BUILD_DIR}/include)
@@ -132,9 +138,11 @@ if (SC_ENABLE_OPENGL)
   set(GLSLCC    ${SC_BUILD_DIR}/tools/glsl-cc/glsl-cc)
   foreach(v_shader ${gl_vert_shaders}) 
 
-    get_filename_component(name ${v_shader} NAME_WE) # file name w/out extension
+    # file name w/out extension
+    get_filename_component(name ${v_shader} NAME_WE)
 
-    if(DEFINED ENV{DISPLAY}) #only compile shaders if $DISPLAY is set
+    # only compile shaders if $DISPLAY is set
+    if(DEFINED ENV{DISPLAY}) 
       add_custom_command(
         OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
         COMMAND ${GLSLCC} --vertex ${v_shader} 
@@ -157,9 +165,11 @@ if (SC_ENABLE_OPENGL)
   file(GLOB gl_frag_shaders opengl/glsl/*_fs.glsl) 
   foreach(f_shader ${gl_frag_shaders}) 
 
-    get_filename_component(name ${f_shader} NAME_WE) # file name w/out extension
+    # file name w/out extension
+    get_filename_component(name ${f_shader} NAME_WE) 
 
-    if(DEFINED ENV{DISPLAY}) #only compile shaders if $DISPLAY is set
+    # only compile shaders if $DISPLAY is set
+    if(DEFINED ENV{DISPLAY}) 
       add_custom_command(
         OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
         COMMAND ${GLSLCC} --fragment ${f_shader} 
@@ -186,7 +196,8 @@ if (SC_ENABLE_OPENGL)
   set(GLSL2STR ${SC_BUILD_DIR}/tools/glsl-to-str/glsl-to-str)
   foreach(shader ${gl_shaders}) 
 
-    get_filename_component(name ${shader} NAME_WE) # file name w/out extension
+    # file name w/out extension
+    get_filename_component(name ${shader} NAME_WE) 
 
     add_custom_command(
       OUTPUT ${SC_BUILD_DIR}/include/${name}.h
@@ -206,6 +217,11 @@ if (SC_ENABLE_OPENGL)
   # Update the include path to include the generated include files that
   # hold the individual shaders... 
   include_directories(${SC_BUILD_DIR}/include)
+
+  if (SC_ENABLE_GLFW) 
+    file(GLOB glfw_hdrs ${SC_INCLUDE_DIR}/runtime/opengl/glfw/*.h)
+    file(GLOB glfw_srcs opengl/glfw/*.cpp)
+  endif()
 
 endif()
 

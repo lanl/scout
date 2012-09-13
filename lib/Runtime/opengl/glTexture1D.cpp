@@ -42,7 +42,7 @@ void glTexture1D::initialize(const float* p_data)
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  
   setParameters();
   glTexImage1D(target(), 0, internalFormat(), width(), 0, pixelFormat(), type(), (void*)p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -53,7 +53,7 @@ bool glTexture1D::canDownload() const
   glTexImage1D(GL_PROXY_TEXTURE_1D, 0, internalFormat(), width(), 0, pixelFormat(), type(), 0);
   GLsizei w;
   glGetTexLevelParameteriv(GL_PROXY_TEXTURE_1D, 0, GL_TEXTURE_WIDTH, &w);
-  OpenGLErrorCheck();      
+  oglErrorCheck();      
   return(w != 0);
 }
 
@@ -62,7 +62,7 @@ bool glTexture1D::canDownload() const
 void glTexture1D::update(const float *p_data)
 {
   glTexSubImage1D(target(), 0, 0, width(),internalFormat(), type(), (const void*)p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -71,7 +71,7 @@ void glTexture1D::update(const float *p_data)
 void glTexture1D::update(const float* p_data, GLsizei offset, GLsizei subwidth)
 {
   glTexSubImage1D(target(), 0, offset, subwidth, pixelFormat(), type(), (void*)p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -80,5 +80,5 @@ void glTexture1D::update(const float* p_data, GLsizei offset, GLsizei subwidth)
 void glTexture1D::read(float* p_data) const
 {
   glGetTexImage(target(), 0, pixelFormat(), type(), p_data);
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }

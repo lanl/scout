@@ -70,7 +70,7 @@ void glGlyphRenderable::allocateBuffer()
   _abo->alloc(sizeof(glyph_vertex) * _npoints, GL_STREAM_DRAW_ARB);
   _abo->release();
 
-  OpenGLErrorCheck();
+  oglErrorCheck();
 }
 
 
@@ -112,9 +112,9 @@ void glGlyphRenderable::loadShaders(const glCamera* camera)
   attachShader(fshader);
 
   glBindAttribLocation(shader_prog->id(), 1, "radius");
-  OpenGLErrorCheck();
+  oglErrorCheck();
   glBindAttribLocation(shader_prog->id(), 7, "color");
-  OpenGLErrorCheck();
+  oglErrorCheck();
 
   if (shader_prog->link() == false) {
     cerr << "scout: internal runtime error -- failed to link -- " << shader_prog->linkLog() << endl;

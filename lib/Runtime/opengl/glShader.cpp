@@ -35,7 +35,7 @@ glShader::glShader(GLenum type)
   shader_id = glCreateShader(shader_type);
   assert(glIsShader(shader_id));
   
-  OpenGLErrorCheck();
+  oglErrorCheck();
   
   is_compiled = false;
 }
@@ -49,7 +49,7 @@ glShader::glShader(const std::string& filename, GLenum type)
   shader_id = glCreateShader(shader_type);
   assert(glIsShader(shader_id));
   
-  OpenGLErrorCheck();
+  oglErrorCheck();
   
   is_compiled = false;
 
@@ -85,7 +85,7 @@ glShader::~glShader()
 {
   if (glIsShader(shader_id)) {
     glDeleteShader(shader_id);
-    OpenGLErrorCheck();
+    oglErrorCheck();
   }
 }
 

@@ -27,7 +27,7 @@ using namespace scout;
 glBufferObject::glBufferObject(GLenum type)
 {
   glGenBuffers(1, &_id);
-  OpenGLErrorCheck();
+  oglErrorCheck();
   _bound         = false;
   _mapped        = false;  
   _type          = type;
@@ -44,7 +44,7 @@ glBufferObject::~glBufferObject()
     glDeleteBuffers(1, &_id);
     _id = 0;
     release();
-    OpenGLErrorCheck();
+    oglErrorCheck();
   }
 }
 
@@ -55,7 +55,7 @@ void glBufferObject::alloc(size_t nbytes, GLenum mode, void *data_ptr)
 {
   assert(nbytes != 0 && glIsBuffer(_id));
   glBufferData(_type, nbytes, data_ptr, mode);
-  OpenGLErrorCheck();
+  oglErrorCheck();
   _size_in_bytes = nbytes;
 }
 
@@ -66,7 +66,7 @@ void glBufferObject::write(void *data_ptr, size_t nbytes)
 {
   bind();
   glBufferSubData(_type, 0, nbytes, data_ptr);
-  OpenGLErrorCheck();
+  oglErrorCheck();
   release();
 }
 

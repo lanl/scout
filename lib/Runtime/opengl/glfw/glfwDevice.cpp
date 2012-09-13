@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,74 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
 
-#include "scout/Config/defs.h"
+#include "scout/Runtime/opengl/glfw/glfwDevice.h"
+#include "scout/Runtime/opengl/glfw/glfwWindow.h"
 
-namespace scout {
+using namepsace scout;
 
-  namespace config {
+/**
+ *
+ *
+ */
+glfwDevice::glfwDevice()
+    : glDevice() {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
-
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
+  if (glfwInit() == GL_FALSE) {
+    Enabled = false;
+  } else {
+    Enabled = true;
   }
 }
 
-#endif
+
+/**
+ *
+ *
+ */
+glfwDevice::~glfwDevice() {
+  if (Enabled) {
+    glWindowList::iterator it = Windows.begin(), end = Windows.end();
+    while(it != end) {
+      delete *it;
+      ++it;
+    }
+    
+    glfwTerminate();
+  }
+}
+
+
+/**
+ *
+ *
+ */
+glWindow *glfwDevice::createWindow(int width, int height) {
+
+  glfwWindow *newWindow = new glfwWindow(width, height);
+  if (newWindow->isEnabled()) 
+    Windows.push_back(newWindow);
+  else
+    delete newWindow;
+}
+
+
+/**
+ *
+ *
+ */
+void glfwDevice::deleteWindow(glWindow *window) {
+  Windows::iterator it = Windows.find(Windows.begin(), Windows.end() window);
+  if (it != Windows.end()) 
+    delete window;
+  else {
+
+
+  }
+}

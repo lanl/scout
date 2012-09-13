@@ -31,7 +31,7 @@ glTexture::glTexture(GLenum target, GLenum iformat, GLenum format, GLenum type)
   _tex_unit = GL_TEXTURE0;
   
   glGenTextures(1, &_id);
-  OpenGLErrorCheck();  
+  oglErrorCheck();  
 }
 
 

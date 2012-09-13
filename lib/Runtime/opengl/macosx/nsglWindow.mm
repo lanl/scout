@@ -1,6 +1,5 @@
 /*
- *	
- *###########################################################################
+ * ###########################################################################
  * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,38 +45,95 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
-#ifndef SC_CONFIGURATION_H_
-#define SC_CONFIGURATION_H_
+#include <iostream>
+using namespace std;
 
-#include "scout/Config/defs.h"
+#include "scout/Runtime/opengl/macosx/nsglWindow.h"
 
-namespace scout {
+using namespace scout;
 
-  namespace config {
 
-    // ----- Configuration
-    //
-    // The details of Scout's build-time configuration are stored
-    // within the following struct.  These include the supported
-    // features of the underlying system (e.g. is OpenGL, CUDA,
-    // etc. available?).  In addition the paths to important headers
-    // and libraries are also included.
-    //
-    struct Configuration {
-      static bool   OpenGLSupport;
-      static bool   CUDASupport;
-      static bool   NUMASupport;
-      static bool   MPISupport;
-      static bool   GLFWSupport;
+/** ----- nsglWindow
+ *
+ *
+ */
+nsglWindow::nsglWindow(unsigned short xpos,
+                       unsigned short ypos,
+                       unsigned short width,
+                       unsigned short height)
+  : glWindow(WindowRect(xpos, ypos, width, height))
+{
+  unsigned int styleMask =
+    NSTitledWindowMask         |
+    NSClosableWindowMask       |
+    NSMiniaturizableWindowMask |
+    NSResizableWindowMask;
+  
+  NSRect winRect = NSMakeRect(xpos, ypos, width, height);
+  
+  window = [[NSWindow alloc]
+            initWithContentRect:winRect
+            styleMask:styleMask
+            backing:NSBackingStoreBuffered defer:NO];
 
-      static const char* IncludePaths[];
-      static const char* LibraryPaths[];
-      static const char* Libraries[];
-
-      static int   CudaVersion[2];  // Only populated when CUDA enabled. 
-    };
-  }
+  view = [[nsglView alloc] initWithFrame:winRect];
+  [window setContentView:view];
+  [view release];
+    
+  [window center];
+  [window makeKeyAndOrderFront:nil];
+  valid = true;
 }
 
-#endif
+  
+/** ----- ~nsglWindow
+ *
+ *
+ */
+nsglWindow::~nsglWindow() {
+  [window release];
+}
+
+
+/** ----- setTitle
+ *
+ */
+void nsglWindow::setTitle(const char *title) {
+  NSString *title_string = [[NSString alloc]
+                            initWithCString:title
+                            encoding:NSMacOSRomanStringEncoding];
+  [window setTitle:title_string];
+  [title_string release];
+}
+
+
+/** ----- minimize
+ *
+ */
+void nsglWindow::minimize() {
+  [window miniaturize: nil];
+}
+
+  
+/** ----- restore
+ *
+ */
+void nsglWindow::restore() {
+  [window deminiaturize: nil];
+}
+
+
+/** ----- refresh
+ *
+ *
+ */
+void nsglWindow::refresh() {
+  [window update];
+}
+
