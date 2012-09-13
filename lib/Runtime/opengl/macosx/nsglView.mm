@@ -54,6 +54,8 @@
 
 #include "scout/Runtime/opengl/macosx/nsglView.h"
 
+#include <OpenGL/gl.h>
+
 @implementation nsglView
 
 /** ----- initWithFrame 
