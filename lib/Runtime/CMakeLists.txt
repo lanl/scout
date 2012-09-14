@@ -113,6 +113,8 @@ if (SC_ENABLE_OPENGL)
   file(GLOB gl_srcs opengl/*.cpp)
 
   if (APPLE) 
+    #find CoreGraphics headers if they are inside of ApplicationServices
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
     file(GLOB apple_gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
