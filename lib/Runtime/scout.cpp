@@ -14,6 +14,9 @@
 #include "runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
 
+#include "scout/Runtime/numa/NumaInitialization.h"
+#include "scout/Runtime/cpu/CpuInitialization.h"
+
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/tbq.h"
@@ -103,7 +106,6 @@ void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
     }
     case ScoutGPUNone:
     {
-
     }
   }
 }

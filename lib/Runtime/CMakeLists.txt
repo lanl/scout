@@ -82,8 +82,7 @@ endif()
 
 if (SC_ENABLE_NUMA)
   include_directories(${HWLOC_INCLUDE_DIR})
-  #only include system.cpp for now
-  file(GLOB rt_srcs_cpu_numa numa/system.cpp)
+  file(GLOB rt_srcs_cpu_numa numa/*.cpp)
 else()
   file(GLOB rt_srcs_cpu_numa cpu/*.cpp)
 endif()

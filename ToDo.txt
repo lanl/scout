@@ -6,7 +6,7 @@
 
  2. We currently can't build on a system w/out hwloc installed. The
     current configuration will proceed and produce a makefiles but 
-    bad things eventually happen on systems w/out hwloc... 
+    bad things eventually happen on systems w/out hwloc... [DONE]
 
  3. Explore the use of -rpath on our command line to avoid having 
     to set (DY)LD_LIBRARY_PATH for scout-produced executables. This
