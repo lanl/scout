@@ -65,8 +65,10 @@ namespace scout {
    public:
     CpuDevice();
     ~CpuDevice();
+    //void QueueBlock(void* blockLiteral, int numDimensions, int numFields);
 
    private:
+     //tbq_rt* __sc_tbq;
   };
 
   void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields);

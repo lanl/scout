@@ -52,7 +52,7 @@
  * #####
  */
 
-#include "scout/Runtime/numa/NumaUtilities.h"
+#include "scout/Runtime/cpu/NumaUtilities.h"
 
 #include <vector>
 #include <sstream>

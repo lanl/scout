@@ -69,7 +69,7 @@ namespace scout {
     }
 
     int scFinalize(DeviceList &dev_list) {
-       
+       return 0;
     }
   }
 }

@@ -63,18 +63,9 @@ namespace scout {
   // namespace... 
   namespace cpu {
     
-  #ifndef SC_ENABLE_NUMA
     extern int scInitialize(DeviceList &dev_list);
-  #else
-    // If we're not supporting CPU our initialization is a no-op.
-    // This helps us avoid some #ifdef spaghetti in other spots of 
-    // the code -- at the expense of what might be an extra function
-    // call... 
-    inline int scInitialize(DeviceList &dev_list) {
-      return 0; // no-op -- return success... 
-    }
-    
-  #endif
+    extern void scFinalize(DeviceList &dev_list);
+
   }
 }
 

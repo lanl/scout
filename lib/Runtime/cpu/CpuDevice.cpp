@@ -57,13 +57,25 @@
 
 using namespace scout;
 
+//namespace cpu {
 tbq_rt* __sc_tbq;
+//}
+
+extern "C"
+void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields)
+{
+  if(!__sc_tbq){
+     __sc_tbq = new tbq_rt;
+   }
+  __sc_tbq->run(blockLiteral, numDimensions, numFields);
+}
+
 
 // ----- CpuDevice
 /// 
 CpuDevice::CpuDevice()
 {
-  __sc_tbq = new tbq_rt;
+  __sc_tbq = 0;
 }
 
 
@@ -71,10 +83,10 @@ CpuDevice::CpuDevice()
 ///
 CpuDevice::~CpuDevice()
 {
-  delete __sc_tbq;
+  if(__sc_tbq) {
+    delete __sc_tbq;
+  }
 }
 
-void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields)
-{
-  __sc_tbq->run(blockLiteral, numDimensions, numFields);
-}
+
+

@@ -16,15 +16,18 @@
 
 #include "scout/Runtime/numa/NumaInitialization.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
+#include "scout/Runtime/cpu/CpuDevice.h"
 
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/tbq.h"
+#include "scout/Runtime/DeviceList.h"
 
 using namespace std;
 using namespace scout;
+//static CpuDevice *CpuDev;
+static DeviceList DevList;
 
-tbq_rt* __sc_tbq = 0;
 glSDL* __sc_glsdl = 0;
 
 size_t __sc_initial_width = 768;
@@ -36,14 +39,20 @@ enum ScoutGPUType{
   ScoutGPUOpenCL
 };
 
+/*
 extern "C"
 void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields){
+
   if(!__sc_tbq){
     __sc_tbq = new tbq_rt;
   }
 
   __sc_tbq->run(blockLiteral, numDimensions, numFields);
+
+    //CpuDev->QueueBlock(blockLiteral, numDimensions, numFields);
+    QueueBlock(blockLiteral, numDimensions, numFields);
 }
+*/
 
 extern "C"
 void __sc_dump_mesh(void* mp){
@@ -106,6 +115,8 @@ void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
     }
     case ScoutGPUNone:
     {
+        cpu::scInitialize(DevList);
+        //CpuDev = (CpuDevice *)DevList.back();
     }
   }
 }
@@ -115,8 +126,11 @@ void __sc_init(ScoutGPUType gpuType){
 }
 
 void __sc_end(){
-  if(__sc_tbq) {
-    delete __sc_tbq;
+  // Destroy all devices.
+  DeviceList::iterator it = DevList.begin();
+  while(it != DevList.end()) {
+    delete *it;
+    ++it;
   }
 }
 
