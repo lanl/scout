@@ -76,6 +76,7 @@ void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields)
 CpuDevice::CpuDevice()
 {
   cpu::__sc_tbq = 0;
+  Device::enabled = true;
 }
 
 
@@ -87,6 +88,5 @@ CpuDevice::~CpuDevice()
     delete cpu::__sc_tbq;
   }
 }
-
 
 

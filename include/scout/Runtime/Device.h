@@ -72,7 +72,7 @@ namespace scout {
    public:
     
     Device() {
-      // no-op...  
+      enabled = false;
     }
       
     virtual ~Device() {

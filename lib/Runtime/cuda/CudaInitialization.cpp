@@ -85,7 +85,7 @@ namespace scout {
         
         // Create and initialize each device... 
         CudaDevice* cu_dev = new CudaDevice(dev);
-        if (cu_dev->isEnabled()) {
+        if (!cu_dev->isEnabled()) {
           delete cu_dev;        
         } else {
           num_initialized++;

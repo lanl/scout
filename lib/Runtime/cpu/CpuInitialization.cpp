@@ -51,7 +51,6 @@
  *
  * ##### 
  */
-
 #include "scout/Runtime/cpu/CpuDevice.h"
 
 namespace scout {
@@ -60,7 +59,7 @@ namespace scout {
 
     int scInitialize(DeviceList &dev_list) {
       CpuDevice* cpu_dev = new CpuDevice();
-      if (cpu_dev->isEnabled()) {
+      if (!cpu_dev->isEnabled()) {
         delete cpu_dev;        
       } else {
         dev_list.push_back(cpu_dev);        
