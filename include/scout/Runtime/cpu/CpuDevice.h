@@ -55,7 +55,7 @@
 #ifndef __SC_CPU_DEVICE_H_
 #define __SC_CPU_DEVICE_H_
 
-#include "scout/Runtime/tbq.h"
+#include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/Device.h"
 
 namespace scout {
@@ -65,10 +65,7 @@ namespace scout {
    public:
     CpuDevice();
     ~CpuDevice();
-    //void QueueBlock(void* blockLiteral, int numDimensions, int numFields);
 
-   private:
-     //tbq_rt* __sc_tbq;
   };
 
   void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields);

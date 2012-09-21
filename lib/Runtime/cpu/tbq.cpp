@@ -52,7 +52,7 @@
  * #####
  */
 
-#include "scout/Runtime/tbq.h"
+#include "scout/Runtime/cpu/tbq.h"
 
 using namespace std;
 using namespace scout;
@@ -64,7 +64,7 @@ using namespace scout;
 #include <cstring>
 #include <map>
 
-#include "scout/Runtime/system.h"
+#include "scout/Runtime/cpu/CpuUtilities.h"
 
 using namespace std;
 using namespace scout;
