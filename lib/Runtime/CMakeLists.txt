@@ -117,6 +117,11 @@ if (SC_ENABLE_OPENGL)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
     list(APPEND gl_srcs ${apple_gl_srcs})
+  else()
+    file(GLOB glx_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/glx/*.h)
+    file(GLOB glx_srcs opengl/macosx/*.cpp opengl/glx/*.cpp)
+    list(APPEND gl_hdrs ${glx_hdrs})
+    list(APPEND gl_srcs ${glx_srcs})
   endif()
 
   # Add supporting opengl shaders to the build dependencies.  In this
