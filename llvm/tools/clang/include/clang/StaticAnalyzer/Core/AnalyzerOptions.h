@@ -17,8 +17,10 @@
 
 #include <string>
 #include <vector>
-#include "llvm/ADT/StringMap.h"
+#include "clang/Basic/LLVM.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clang {
 class ASTConsumer;
@@ -147,7 +149,6 @@ public:
   unsigned visualizeExplodedGraphWithGraphViz : 1;
   unsigned visualizeExplodedGraphWithUbiGraph : 1;
   unsigned UnoptimizedCFG : 1;
-  unsigned CFGAddImplicitDtors : 1;
   unsigned eagerlyTrimExplodedGraph : 1;
   unsigned PrintStats : 1;
   
@@ -167,13 +168,69 @@ public:
 private:
   /// Controls which C++ member functions will be considered for inlining.
   CXXInlineableMemberKind CXXMemberInliningMode;
+  
+  /// \sa includeTemporaryDtorsInCFG
+  llvm::Optional<bool> IncludeTemporaryDtorsInCFG;
+  
+  /// \sa mayInlineCXXStandardLibrary
+  llvm::Optional<bool> InlineCXXStandardLibrary;
+  
+  /// \sa mayInlineTemplateFunctions
+  llvm::Optional<bool> InlineTemplateFunctions;
+
+  /// \sa mayInlineObjCMethod
+  llvm::Optional<bool> ObjCInliningMode;
+
+  // Cache of the "ipa-always-inline-size" setting.
+  // \sa getAlwaysInlineSize
+  llvm::Optional<unsigned> AlwaysInlineSize;
+  
+  /// Interprets an option's string value as a boolean.
+  ///
+  /// Accepts the strings "true" and "false".
+  /// If an option value is not provided, returns the given \p DefaultVal.
+  bool getBooleanOption(StringRef Name, bool DefaultVal) const;
+
+  /// Interprets an option's string value as an integer value.
+  int getOptionAsInteger(llvm::StringRef Name, int DefaultVal) const;
 
 public:
   /// Returns the option controlling which C++ member functions will be
   /// considered for inlining.
   ///
+  /// This is controlled by the 'c++-inlining' config option.
+  ///
   /// \sa CXXMemberInliningMode
   bool mayInlineCXXMemberFunction(CXXInlineableMemberKind K) const;
+
+  /// Returns true if ObjectiveC inlining is enabled, false otherwise.
+  bool mayInlineObjCMethod() const;
+
+  /// Returns whether or not the destructors for C++ temporary objects should
+  /// be included in the CFG.
+  ///
+  /// This is controlled by the 'cfg-temporary-dtors' config option, which
+  /// accepts the values "true" and "false".
+  bool includeTemporaryDtorsInCFG() const;
+
+  /// Returns whether or not C++ standard library functions may be considered
+  /// for inlining.
+  ///
+  /// This is controlled by the 'c++-stdlib-inlining' config option, which
+  /// accepts the values "true" and "false".
+  bool mayInlineCXXStandardLibrary() const;
+
+  /// Returns whether or not templated functions may be considered for inlining.
+  ///
+  /// This is controlled by the 'c++-template-inlining' config option, which
+  /// accepts the values "true" and "false".
+  bool mayInlineTemplateFunctions() const;
+
+  // Returns the size of the functions (in basic blocks), which should be
+  // considered to be small enough to always inline.
+  //
+  // This is controlled by "ipa-always-inline-size" analyzer-config option.
+  unsigned getAlwaysInlineSize() const;
 
 public:
   AnalyzerOptions() : CXXMemberInliningMode() {
@@ -191,7 +248,6 @@ public:
     visualizeExplodedGraphWithGraphViz = 0;
     visualizeExplodedGraphWithUbiGraph = 0;
     UnoptimizedCFG = 0;
-    CFGAddImplicitDtors = 0;
     eagerlyTrimExplodedGraph = 0;
     PrintStats = 0;
     NoRetryExhausted = 0;

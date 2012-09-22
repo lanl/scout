@@ -85,7 +85,7 @@ public:
   /// On failure, the target parser is responsible for emitting a diagnostic
   /// explaining the match failure.
   virtual bool
-  MatchInstruction(SMLoc IDLoc,
+  MatchInstruction(SMLoc IDLoc, unsigned &Kind,
                    SmallVectorImpl<MCParsedAsmOperand*> &Operands,
                    SmallVectorImpl<MCInst> &MCInsts,
                    unsigned &OrigErrorInfo,
@@ -111,6 +111,10 @@ public:
     return Match_Success;
   }
 
+  virtual unsigned getMCInstOperandNum(unsigned Kind, MCInst &Inst,
+                           const SmallVectorImpl<MCParsedAsmOperand*> &Operands,
+                                       unsigned OperandNum,
+                                       unsigned &NumMCOperands) = 0;
 };
 
 } // End llvm namespace

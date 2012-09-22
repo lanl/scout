@@ -14,6 +14,7 @@ add_clang_library(clangStaticAnalyzerCore
   CheckerHelpers.cpp
   CheckerManager.cpp
   CheckerRegistry.cpp
+  ConstraintManager.cpp
   CoreEngine.cpp
   Environment.cpp
   ExplodedGraph.cpp
@@ -54,5 +55,5 @@ target_link_libraries(clangStaticAnalyzerCore
   clangLex
   clangAST
   clangFrontend
-  clangRewrite
+  clangRewriteCore
   )

@@ -80,12 +80,13 @@ else()
     )
 endif()
 
+file(GLOB rt_srcs_cpu cpu/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_cpu})
 if (SC_ENABLE_NUMA)
   include_directories(${HWLOC_INCLUDE_DIR})
-  #only include system.cpp for now
-  file(GLOB rt_srcs_cpu_numa numa/system.cpp)
+  file(GLOB rt_srcs_cpu_numa cpu/numa/*.cpp)
 else()
-  file(GLOB rt_srcs_cpu_numa cpu/*.cpp)
+  file(GLOB rt_srcs_cpu_numa cpu/cpu/*.cpp)
 endif()
 list(APPEND rt_srcs ${rt_srcs_cpu_numa})
 
@@ -113,6 +114,8 @@ if (SC_ENABLE_OPENGL)
   file(GLOB gl_srcs opengl/*.cpp)
 
   if (APPLE) 
+    #find CoreGraphics headers if they are inside of ApplicationServices
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
     file(GLOB apple_gl_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})

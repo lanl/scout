@@ -636,7 +636,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     // "<proto1,proto2>" is an objc qualified ID with a missing id.
     if (DeclSpec::ProtocolQualifierListTy PQ = DS.getProtocolQualifiers()) {
       Result = Context.getObjCObjectType(Context.ObjCBuiltinIdTy,
-                                         (ObjCProtocolDecl**)PQ,
+                                         (ObjCProtocolDecl*const*)PQ,
                                          DS.getNumProtocolQualifiers());
       Result = Context.getObjCObjectPointerType(Result);
       break;
@@ -865,18 +865,18 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
 
         if (DS.getNumProtocolQualifiers())
           Result = Context.getObjCObjectType(Result,
-                                             (ObjCProtocolDecl**) PQ,
+                                             (ObjCProtocolDecl*const*) PQ,
                                              DS.getNumProtocolQualifiers());
       } else if (Result->isObjCIdType()) {
         // id<protocol-list>
         Result = Context.getObjCObjectType(Context.ObjCBuiltinIdTy,
-                                           (ObjCProtocolDecl**) PQ,
+                                           (ObjCProtocolDecl*const*) PQ,
                                            DS.getNumProtocolQualifiers());
         Result = Context.getObjCObjectPointerType(Result);
       } else if (Result->isObjCClassType()) {
         // Class<protocol-list>
         Result = Context.getObjCObjectType(Context.ObjCBuiltinClassTy,
-                                           (ObjCProtocolDecl**) PQ,
+                                           (ObjCProtocolDecl*const*) PQ,
                                            DS.getNumProtocolQualifiers());
         Result = Context.getObjCObjectPointerType(Result);
       } else {
@@ -4507,15 +4507,13 @@ bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
 /// WARNING: Indexes apply to particular diagnostics only!
 ///
 /// \returns diagnostic %select index.
-static unsigned getLiteralDiagFromTagKind(TagTypeKind Tag)
-{
+static unsigned getLiteralDiagFromTagKind(TagTypeKind Tag) {
   switch (Tag) {
-    case TTK_Struct: return 0;
-    case TTK_Interface: return 1;
-    case TTK_Class:  return 2;
-    default: assert("Invalid tag kind for literal type diagnostic!");
+  case TTK_Struct: return 0;
+  case TTK_Interface: return 1;
+  case TTK_Class:  return 2;
+  default: llvm_unreachable("Invalid tag kind for literal type diagnostic!");
   }
-  return -1;
 }
 
 /// @brief Ensure that the type T is a literal type.

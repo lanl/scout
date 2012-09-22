@@ -682,15 +682,13 @@ static bool CheckConstexprParameterTypes(Sema &SemaRef,
 /// WARNING: Indexes apply to particular diagnostics only!
 ///
 /// \returns diagnostic %select index.
-static unsigned getRecordDiagFromTagKind(TagTypeKind Tag)
-{
+static unsigned getRecordDiagFromTagKind(TagTypeKind Tag) {
   switch (Tag) {
-    case TTK_Struct: return 0;
-    case TTK_Interface: return 1;
-    case TTK_Class:  return 2;
-    default: assert("Invalid tag kind for record diagnostic!");
+  case TTK_Struct: return 0;
+  case TTK_Interface: return 1;
+  case TTK_Class:  return 2;
+  default: llvm_unreachable("Invalid tag kind for record diagnostic!");
   }
-  return -1;
 }
 
 // CheckConstexprFunctionDecl - Check whether a function declaration satisfies
@@ -1424,6 +1422,9 @@ bool Sema::ActOnAccessSpecifier(AccessSpecifier Access,
 
 /// CheckOverrideControl - Check C++11 override control semantics.
 void Sema::CheckOverrideControl(Decl *D) {
+  if (D->isInvalidDecl())
+    return;
+
   const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(D);
 
   // Do we know which functions this declaration might be overriding?
@@ -4323,7 +4324,7 @@ bool SpecialMemberDeletionInfo::isAccessible(Subobject Subobj,
   /// If we're operating on a base class, the object type is the
   /// type of this special member.
   QualType objectTy;
-  AccessSpecifier access = target->getAccess();;
+  AccessSpecifier access = target->getAccess();
   if (CXXBaseSpecifier *base = Subobj.dyn_cast<CXXBaseSpecifier*>()) {
     objectTy = S.Context.getTypeDeclType(MD->getParent());
     access = CXXRecordDecl::MergeAccess(base->getAccessSpecifier(), access);

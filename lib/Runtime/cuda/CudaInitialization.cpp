@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -85,7 +85,7 @@ namespace scout {
         
         // Create and initialize each device... 
         CudaDevice* cu_dev = new CudaDevice(dev);
-        if (cu_dev->isEnabled()) {
+        if (!cu_dev->isEnabled()) {
           delete cu_dev;        
         } else {
           num_initialized++;

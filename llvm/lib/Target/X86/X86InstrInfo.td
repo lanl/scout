@@ -397,7 +397,7 @@ def i64mem_TC : Operand<i64> {
 
 let OperandType = "OPERAND_PCREL",
     ParserMatchClass = X86AbsMemAsmOperand,
-    PrintMethod = "print_pcrel_imm" in {
+    PrintMethod = "printPCRelImm" in {
 def i32imm_pcrel : Operand<i32>;
 def i16imm_pcrel : Operand<i16>;
 
@@ -499,7 +499,7 @@ def i64i32imm  : Operand<i64> {
 // 64-bits but only 32 bits are significant, and those bits are treated as being
 // pc relative.
 def i64i32imm_pcrel : Operand<i64> {
-  let PrintMethod = "print_pcrel_imm";
+  let PrintMethod = "printPCRelImm";
   let ParserMatchClass = X86AbsMemAsmOperand;
   let OperandType = "OPERAND_PCREL";
 }
@@ -542,6 +542,10 @@ def tls64addr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
 
 def tls64baseaddr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
                                [tglobaltlsaddr], []>;
+
+// Same as addr, but reject addressing modes requiring more than one register.
+def single_reg_addr : ComplexPattern<iPTR, 5, "SelectSingleRegAddr", [],
+                                     [SDNPWantParent]>;
 
 //===----------------------------------------------------------------------===//
 // X86 Instruction Predicate Definitions.

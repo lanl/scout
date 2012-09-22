@@ -1211,8 +1211,6 @@ bool QualType::isCXX11PODType(ASTContext &Context) const {
       return false;
 
     case Qualifiers::OCL_None:
-      if (ty->isObjCLifetimeType())
-        return false;
       break;
     }        
   }
@@ -1496,7 +1494,6 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case ObjCId:            return "id";
   case ObjCClass:         return "Class";
   case ObjCSel:           return "SEL";
-
   // scout - vector types to strings
   case Bool2:             return "bool2";
   case Bool3:             return "bool3";
@@ -2094,7 +2091,6 @@ static CachedProperties computeCachedProperties(const Type *T) {
     //     - it is a fundamental type (3.9.1); or
     return CachedProperties(NamedDecl::LinkageInfo(), false);
 
-  
   // scout - Mesh
   // TODO - is this correct?
     case Type::Mesh: {
@@ -2105,7 +2101,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
       Mesh->getDeclContext()->isFunctionOrMethod() || !Mesh->getIdentifier();
     return CachedProperties(LV, IsLocalOrUnnamed);
   }
-      
+
   case Type::Record:
   case Type::Enum: {
     const TagDecl *Tag = cast<TagType>(T)->getDecl();
@@ -2344,5 +2340,3 @@ bool QualType::hasTrivialAssignment(ASTContext &Context, bool Copying) const {
 bool MeshType::isBeingDefined() const{
   return decl->isBeingDefined();
 }
-
-

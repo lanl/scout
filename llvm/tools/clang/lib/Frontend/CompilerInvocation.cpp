@@ -808,6 +808,8 @@ static void LangOptsToArgs(const LangOptions &Opts, ToArgsList &Res) {
     Res.push_back("-fno-access-control");
   if (!Opts.CharIsSigned)
     Res.push_back("-fno-signed-char");
+  if (Opts.CPlusPlus && !Opts.WChar)
+    Res.push_back("-fno-wchar");
   if (Opts.ShortWChar)
     Res.push_back("-fshort-wchar");
   if (!Opts.ElideConstructors)
@@ -1139,7 +1141,6 @@ static bool ParseAnalyzerArgs(AnalyzerOptions &Opts, ArgList &Args,
   Opts.eagerlyAssumeBinOpBifurcation = Args.hasArg(OPT_analyzer_eagerly_assume);
   Opts.AnalyzeSpecificFunction = Args.getLastArgValue(OPT_analyze_function);
   Opts.UnoptimizedCFG = Args.hasArg(OPT_analysis_UnoptimizedCFG);
-  Opts.CFGAddImplicitDtors = Args.hasArg(OPT_analysis_CFGAddImplicitDtors);
   Opts.TrimGraph = Args.hasArg(OPT_trim_egraph);
   Opts.MaxNodes = Args.getLastArgIntValue(OPT_analyzer_max_nodes, 150000,Diags);
   Opts.maxBlockVisitOnPath = Args.getLastArgIntValue(OPT_analyzer_max_loop, 4, Diags);
@@ -1913,6 +1914,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   // OpenCL and C++ both have bool, true, false keywords.
   Opts.Bool = Opts.OpenCL || Opts.CPlusPlus;
 
+  // C++ has wchar_t keyword.
+  Opts.WChar = Opts.CPlusPlus;
+
   Opts.GNUKeywords = Opts.GNUMode;
   Opts.CXXOperatorNames = Opts.CPlusPlus;
 
@@ -2129,6 +2133,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.BlocksRuntimeOptional = Args.hasArg(OPT_fblocks_runtime_optional);
   Opts.Modules = Args.hasArg(OPT_fmodules);
   Opts.CharIsSigned = !Args.hasArg(OPT_fno_signed_char);
+  Opts.WChar = Opts.CPlusPlus && !Args.hasArg(OPT_fno_wchar);
   Opts.ShortWChar = Args.hasArg(OPT_fshort_wchar);
   Opts.ShortEnums = Args.hasArg(OPT_fshort_enums);
   Opts.Freestanding = Args.hasArg(OPT_ffreestanding);
@@ -2204,6 +2209,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.FiniteMathOnly = Args.hasArg(OPT_ffinite_math_only);
 
   Opts.EmitMicrosoftInlineAsm = Args.hasArg(OPT_fenable_experimental_ms_inline_asm);
+
+  Opts.RetainCommentsFromSystemHeaders =
+      Args.hasArg(OPT_fretain_comments_from_system_headers);
 
   unsigned SSP = Args.getLastArgIntValue(OPT_stack_protector, 0, Diags);
   switch (SSP) {

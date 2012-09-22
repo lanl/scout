@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Comment.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclObjC.h"
@@ -28,6 +29,20 @@ const char *Comment::getCommentKindName() const {
 #undef ABSTRACT_COMMENT
   }
   llvm_unreachable("Unknown comment kind!");
+}
+
+void Comment::dump() const {
+  // It is important that Comment::dump() is defined in a different TU than
+  // Comment::dump(raw_ostream, SourceManager).  If both functions were defined
+  // in CommentDumper.cpp, that object file would be removed by linker because
+  // none of its functions are referenced by other object files, despite the
+  // LLVM_ATTRIBUTE_USED.
+  dump(llvm::errs(), NULL, NULL);
+}
+
+void Comment::dump(const ASTContext &Context) const {
+  dump(llvm::errs(), &Context.getCommentCommandTraits(),
+       &Context.getSourceManager());
 }
 
 namespace {

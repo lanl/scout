@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -73,6 +73,7 @@ CudaDevice::CudaDevice(int device_id)
     cuError(deviceStatus);
   } else {
     deviceName = std::string(device_name);
+    Device::enabled = true;
   }
 
   // ToDo -- CUDA 5 introduces some new flags for how host CPU threads

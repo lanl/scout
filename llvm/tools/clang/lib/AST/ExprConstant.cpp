@@ -6485,6 +6485,7 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   case Expr::OpaqueValueExprClass:
   case Expr::PackExpansionExprClass:
   case Expr::SubstNonTypeTemplateParmPackExprClass:
+  case Expr::FunctionParmPackExprClass:
   case Expr::AsTypeExprClass:
   case Expr::ObjCIndirectCopyRestoreExprClass:
   case Expr::MaterializeTemporaryExprClass:
