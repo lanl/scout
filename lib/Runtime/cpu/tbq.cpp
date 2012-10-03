@@ -53,9 +53,11 @@
  */
 
 #include "scout/Runtime/cpu/tbq.h"
-
-using namespace std;
-using namespace scout;
+#include "scout/Runtime/cpu/CpuUtilities.h"
+#include "scout/Runtime/cpu/Thread.h"
+#include "scout/Runtime/cpu/Mutex.h"
+#include "scout/Runtime/cpu/Condition.h"
+#include "scout/Runtime/cpu/VSem.h"
 
 #include <vector>
 #include <cmath>
@@ -64,12 +66,11 @@ using namespace scout;
 #include <cstring>
 #include <map>
 
-#include "scout/Runtime/cpu/CpuUtilities.h"
-
 using namespace std;
 using namespace scout;
+using namespace cpu;
 
-namespace{
+namespace cpu {
 
 struct BlockLiteral{
   void* isa;
@@ -94,156 +95,6 @@ struct BlockLiteral{
   uint32_t* zEnd;
 
   // ... void* captured fields
-};
-
-void* _runThread(void* t);
-
-class Thread{
-public:
-  Thread(){
-
-  }
-
-  virtual ~Thread(){
-
-  }
-
-  void start(){
-    pthread_create(&thread_, 0, _runThread, (void*)this);
-  }
-
-  void stop() {
-    pthread_cancel(thread_);
-  }
-
-  virtual void run() = 0;
-
-  void await(){
-    pthread_join(thread_, 0);
-  }
-
-private:
-  pthread_t thread_;
-};
-
-class Mutex{
-public:
-  Mutex(){
-    pthread_mutex_init(&mutex_, 0);
-  }
-
-  ~Mutex(){
-    pthread_mutex_destroy(&mutex_);
-  }
-
-  void lock(){
-    pthread_mutex_lock(&mutex_);
-  }
-
-  bool tryLock(){
-    return pthread_mutex_trylock(&mutex_) == 0;
-  }
-
-  void unlock(){
-    pthread_mutex_unlock(&mutex_);
-  }
-
-  pthread_mutex_t& mutex(){
-    return mutex_;
-  }
-
-private:
-  pthread_mutex_t mutex_;
-};
-
-void* _runThread(void* t){
-  Thread* thread = static_cast<Thread*>(t);
-  thread->run();
-  return 0;
-};
-
-class Condition{
-public:
-  Condition(Mutex& mutex)
-  : mutex_(mutex){
-    pthread_cond_init(&condition_, 0);
-  }
-
-  ~Condition(){
-    pthread_cond_destroy(&condition_);
-  }
-
-  void await(){
-    pthread_cond_wait(&condition_, &mutex_.mutex());
-  }
-
-  void signal(){
-    pthread_cond_signal(&condition_);
-  }
-
-  void broadcast(){
-    pthread_cond_broadcast(&condition_);
-  }
-
-  pthread_cond_t& condition(){
-    return condition_;
-  }
-
-private:
-  Mutex& mutex_;
-  pthread_cond_t condition_;
-};
-
-class VSem{
-public:
-  VSem(int count)
-  : count_(count),
-    maxCount_(0),
-    condition_(mutex_){
-
-  }
-
-  VSem(int count, int maxCount)
-  : count_(count),
-    maxCount_(maxCount),
-    condition_(mutex_){
-
-  }
-
-  void acquire(){
-    mutex_.lock();
-    while(count_ <= 0){
-      condition_.await();
-    }
-    --count_;
-    mutex_.unlock();
-  }
-
-  bool tryAcquire(){
-    mutex_.lock();
-    if(count_ > 0){
-      --count_;
-      mutex_.unlock();
-      return true;
-    }
-    mutex_.unlock();
-    return false;
-  }
-
-  void release(){
-    mutex_.lock();
-    if(maxCount_ == 0 || count_ < maxCount_){
-      ++count_;
-    }
-    condition_.signal();
-    mutex_.unlock();
-  }
-
-private:
-  Mutex mutex_;
-  Condition condition_;
-  int count_;
-  int maxCount_;
 };
 
 struct Item{
