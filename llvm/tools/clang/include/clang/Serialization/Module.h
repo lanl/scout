@@ -25,6 +25,7 @@
 
 namespace clang {
 
+class FileEntry;
 class DeclContext;
 class Module;
 template<typename Info> class OnDiskChainedHashTable;
@@ -74,6 +75,9 @@ public:
   /// \brief The file name of the module file.
   std::string FileName;
 
+  /// \brief The file entry for the module file.
+  const FileEntry *File;
+
   /// \brief Whether this module has been directly imported by the
   /// user.
   bool DirectlyImported;
@@ -98,6 +102,7 @@ public:
   llvm::BitstreamCursor Stream;
 
   /// \brief The source location where this module was first imported.
+  /// FIXME: This is not properly initialized yet.
   SourceLocation ImportLoc;
 
   /// \brief The first source location in this module.
@@ -167,6 +172,22 @@ public:
   /// \brief The cursor to the start of the preprocessor block, which stores
   /// all of the macro definitions.
   llvm::BitstreamCursor MacroCursor;
+
+  /// \brief The number of macros in this AST file.
+  unsigned LocalNumMacros;
+
+  /// \brief Offsets of macros in the preprocessor block.
+  ///
+  /// This array is indexed by the macro ID (-1), and provides
+  /// the offset into the preprocessor block where macro definitions are
+  /// stored.
+  const uint32_t *MacroOffsets;
+
+  /// \brief Base macro ID for macros local to this module.
+  serialization::MacroID BaseMacroID;
+
+  /// \brief Remapping table for macro IDs in this module.
+  ContinuousRangeMap<uint32_t, int, 2> MacroRemap;
 
   /// \brief The offset of the start of the set of defined macros.
   uint64_t MacroStartOffset;
@@ -294,6 +315,7 @@ public:
 
   /// \brief Array of file-level DeclIDs sorted by file.
   const serialization::DeclID *FileSortedDecls;
+  unsigned NumFileSortedDecls;
 
   /// \brief Array of redeclaration chain location information within this 
   /// module file, sorted by the first declaration ID.

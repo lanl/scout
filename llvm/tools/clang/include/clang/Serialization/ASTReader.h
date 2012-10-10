@@ -24,6 +24,7 @@
 #include "clang/AST/TemplateBase.h"
 #include "clang/Lex/ExternalPreprocessorSource.h"
 #include "clang/Lex/HeaderSearch.h"
+#include "clang/Lex/PPMutationListener.h"
 #include "clang/Lex/PreprocessingRecord.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/FileManager.h"
@@ -33,6 +34,7 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -103,14 +105,16 @@ public:
   /// \brief Receives the language options.
   ///
   /// \returns true to indicate the options are invalid or false otherwise.
-  virtual bool ReadLanguageOptions(const LangOptions &LangOpts) {
+  virtual bool ReadLanguageOptions(const serialization::ModuleFile &M,
+                                   const LangOptions &LangOpts) {
     return false;
   }
 
   /// \brief Receives the target triple.
   ///
   /// \returns true to indicate the target triple is invalid or false otherwise.
-  virtual bool ReadTargetTriple(StringRef Triple) {
+  virtual bool ReadTargetTriple(const serialization::ModuleFile &M,
+                                StringRef Triple) {
     return false;
   }
 
@@ -136,7 +140,8 @@ public:
   virtual void ReadHeaderFileInfo(const HeaderFileInfo &HFI, unsigned ID) {}
 
   /// \brief Receives __COUNTER__ value.
-  virtual void ReadCounter(unsigned Value) {}
+  virtual void ReadCounter(const serialization::ModuleFile &M,
+                           unsigned Value) {}
 };
 
 /// \brief ASTReaderListener implementation to validate the information of
@@ -151,14 +156,16 @@ public:
   PCHValidator(Preprocessor &PP, ASTReader &Reader)
     : PP(PP), Reader(Reader), NumHeaderInfos(0) {}
 
-  virtual bool ReadLanguageOptions(const LangOptions &LangOpts);
-  virtual bool ReadTargetTriple(StringRef Triple);
+  virtual bool ReadLanguageOptions(const serialization::ModuleFile &M,
+                                   const LangOptions &LangOpts);
+  virtual bool ReadTargetTriple(const serialization::ModuleFile &M,
+                                StringRef Triple);
   virtual bool ReadPredefinesBuffer(const PCHPredefinesBlocks &Buffers,
                                     StringRef OriginalFileName,
                                     std::string &SuggestedPredefines,
                                     FileManager &FileMgr);
   virtual void ReadHeaderFileInfo(const HeaderFileInfo &HFI, unsigned ID);
-  virtual void ReadCounter(unsigned Value);
+  virtual void ReadCounter(const serialization::ModuleFile &M, unsigned Value);
 
 private:
   void Error(const char *Msg);
@@ -341,7 +348,15 @@ private:
   /// \brief The set of C++ or Objective-C classes that have forward 
   /// declarations that have not yet been linked to their definitions.
   llvm::SmallPtrSet<Decl *, 4> PendingDefinitions;
-  
+
+  typedef llvm::MapVector<Decl *, uint64_t,
+                          llvm::SmallDenseMap<Decl *, unsigned, 4>,
+                          llvm::SmallVector<std::pair<Decl *, uint64_t>, 4> >
+    PendingBodiesMap;
+
+  /// \brief Functions or methods that have bodies that will be attached.
+  PendingBodiesMap PendingBodies;
+
   /// \brief Read the records that describe the contents of declcontexts.
   bool ReadDeclContextStorage(ModuleFile &M,
                               llvm::BitstreamCursor &Cursor,
@@ -359,10 +374,32 @@ private:
   typedef ContinuousRangeMap<serialization::IdentID, ModuleFile *, 4>
     GlobalIdentifierMapType;
 
-  /// \brief Mapping from global identifer IDs to the module in which the
+  /// \brief Mapping from global identifier IDs to the module in which the
   /// identifier resides along with the offset that should be added to the
   /// global identifier ID to produce a local ID.
   GlobalIdentifierMapType GlobalIdentifierMap;
+
+  /// \brief A vector containing macros that have already been
+  /// loaded.
+  ///
+  /// If the pointer at index I is non-NULL, then it refers to the
+  /// MacroInfo for the identifier with ID=I+1 that has already
+  /// been loaded.
+  std::vector<MacroInfo *> MacrosLoaded;
+
+  typedef ContinuousRangeMap<serialization::MacroID, ModuleFile *, 4>
+    GlobalMacroMapType;
+
+  /// \brief Mapping from global macro IDs to the module in which the
+  /// macro resides along with the offset that should be added to the
+  /// global macro ID to produce a local ID.
+  GlobalMacroMapType GlobalMacroMap;
+
+  typedef llvm::DenseMap<serialization::MacroID, MacroUpdate> MacroUpdatesMap;
+
+  /// \brief Mapping from (global) macro IDs to the set of updates to be
+  /// performed to the corresponding macro.
+  MacroUpdatesMap MacroUpdates;
 
   /// \brief A vector containing submodules that have already been loaded.
   ///
@@ -432,9 +469,8 @@ private:
   llvm::DenseMap<Selector, unsigned> SelectorGeneration;
 
   /// \brief Mapping from identifiers that represent macros whose definitions
-  /// have not yet been deserialized to the global offset where the macro
-  /// record resides.
-  llvm::DenseMap<IdentifierInfo *, uint64_t> UnreadMacroRecordOffsets;
+  /// have not yet been deserialized to the global ID of the macro.
+  llvm::DenseMap<IdentifierInfo *, serialization::MacroID> UnreadMacroIDs;
 
   typedef ContinuousRangeMap<unsigned, ModuleFile *, 4>
     GlobalPreprocessedEntityMapType;
@@ -687,7 +723,7 @@ private:
   /// Objective-C protocols.
   std::deque<Decl *> InterestingDecls;
 
-  /// \brief The set of redeclarable declaraations that have been deserialized
+  /// \brief The set of redeclarable declarations that have been deserialized
   /// since the last time the declaration chains were linked.
   llvm::SmallPtrSet<Decl *, 16> RedeclsDeserialized;
   
@@ -758,8 +794,8 @@ private:
     ASTReader &Reader;
     enum ReadingKind PrevKind;
 
-    ReadingKindTracker(const ReadingKindTracker&); // do not implement
-    ReadingKindTracker &operator=(const ReadingKindTracker&);// do not implement
+    ReadingKindTracker(const ReadingKindTracker &) LLVM_DELETED_FUNCTION;
+    void operator=(const ReadingKindTracker &) LLVM_DELETED_FUNCTION;
 
   public:
     ReadingKindTracker(enum ReadingKind newKind, ASTReader &reader)
@@ -803,7 +839,7 @@ private:
   llvm::BitstreamCursor &SLocCursorForID(int ID);
   SourceLocation getImportLocation(ModuleFile *F);
   ASTReadResult ReadSubmoduleBlock(ModuleFile &F);
-  bool ParseLanguageOptions(const RecordData &Record);
+  bool ParseLanguageOptions(const ModuleFile &M, const RecordData &Record);
   
   struct RecordLocation {
     RecordLocation(ModuleFile *M, uint64_t O)
@@ -849,6 +885,69 @@ private:
   std::pair<ModuleFile *, unsigned>
     getModulePreprocessedEntity(unsigned GlobalIndex);
 
+  /// \brief Returns (begin, end) pair for the preprocessed entities of a
+  /// particular module.
+  std::pair<PreprocessingRecord::iterator, PreprocessingRecord::iterator>
+    getModulePreprocessedEntities(ModuleFile &Mod) const;
+
+  class ModuleDeclIterator {
+    ASTReader *Reader;
+    ModuleFile *Mod;
+    const serialization::LocalDeclID *Pos;
+
+  public:
+    typedef const Decl *value_type;
+    typedef value_type&         reference;
+    typedef value_type*         pointer;
+
+    ModuleDeclIterator() : Reader(0), Mod(0), Pos(0) { }
+
+    ModuleDeclIterator(ASTReader *Reader, ModuleFile *Mod,
+                       const serialization::LocalDeclID *Pos)
+      : Reader(Reader), Mod(Mod), Pos(Pos) { }
+
+    value_type operator*() const {
+      return Reader->GetDecl(Reader->getGlobalDeclID(*Mod, *Pos));
+    }
+
+    ModuleDeclIterator &operator++() {
+      ++Pos;
+      return *this;
+    }
+
+    ModuleDeclIterator operator++(int) {
+      ModuleDeclIterator Prev(*this);
+      ++Pos;
+      return Prev;
+    }
+
+    ModuleDeclIterator &operator--() {
+      --Pos;
+      return *this;
+    }
+
+    ModuleDeclIterator operator--(int) {
+      ModuleDeclIterator Prev(*this);
+      --Pos;
+      return Prev;
+    }
+
+    friend bool operator==(const ModuleDeclIterator &LHS,
+                           const ModuleDeclIterator &RHS) {
+      assert(LHS.Reader == RHS.Reader && LHS.Mod == RHS.Mod);
+      return LHS.Pos == RHS.Pos;
+    }
+
+    friend bool operator!=(const ModuleDeclIterator &LHS,
+                           const ModuleDeclIterator &RHS) {
+      assert(LHS.Reader == RHS.Reader && LHS.Mod == RHS.Mod);
+      return LHS.Pos != RHS.Pos;
+    }
+  };
+
+  std::pair<ModuleDeclIterator, ModuleDeclIterator>
+    getModuleFileLevelDecls(ModuleFile &Mod);
+
   void PassInterestingDeclsToConsumer();
   void PassInterestingDeclToConsumer(Decl *D);
 
@@ -862,8 +961,8 @@ private:
   void Error(unsigned DiagID, StringRef Arg1 = StringRef(),
              StringRef Arg2 = StringRef());
 
-  ASTReader(const ASTReader&); // do not implement
-  ASTReader &operator=(const ASTReader &); // do not implement
+  ASTReader(const ASTReader &) LLVM_DELETED_FUNCTION;
+  void operator=(const ASTReader &) LLVM_DELETED_FUNCTION;
 public:
   /// \brief Load the AST file and validate its contents against the given
   /// Preprocessor.
@@ -993,6 +1092,11 @@ public:
     return static_cast<unsigned>(IdentifiersLoaded.size());
   }
 
+  /// \brief Returns the number of macros found in the chain.
+  unsigned getTotalNumMacros() const {
+    return static_cast<unsigned>(MacrosLoaded.size());
+  }
+
   /// \brief Returns the number of types found in the chain.
   unsigned getTotalNumTypes() const {
     return static_cast<unsigned>(TypesLoaded.size());
@@ -1066,7 +1170,8 @@ public:
 
   /// \brief Map from a local declaration ID within a given module to a
   /// global declaration ID.
-  serialization::DeclID getGlobalDeclID(ModuleFile &F, unsigned LocalID) const;
+  serialization::DeclID getGlobalDeclID(ModuleFile &F,
+                                      serialization::LocalDeclID LocalID) const;
 
   /// \brief Returns true if global DeclID \p ID originated from module \p M.
   bool isDeclIDFromModule(serialization::GlobalDeclID ID, ModuleFile &M) const;
@@ -1293,6 +1398,13 @@ public:
   serialization::IdentifierID getGlobalIdentifierID(ModuleFile &M,
                                                     unsigned LocalID);
 
+  /// \brief Retrieve the macro with the given ID.
+  MacroInfo *getMacro(serialization::MacroID ID);
+
+  /// \brief Retrieve the global macro ID corresponding to the given local
+  /// ID within the given module file.
+  serialization::MacroID getGlobalMacroID(ModuleFile &M, unsigned LocalID);
+
   /// \brief Read the source location entry with index ID.
   virtual bool ReadSLocEntry(int ID);
 
@@ -1448,14 +1560,11 @@ public:
   ///
   /// \param II The name of the macro.
   ///
-  /// \param F The module file from which the macro definition was deserialized.
-  ///
-  /// \param Offset The offset into the module file at which the macro 
-  /// definition is located.
+  /// \param ID The global macro ID.
   ///
   /// \param Visible Whether the macro should be made visible.
-  void setIdentifierIsMacro(IdentifierInfo *II, ModuleFile &F,
-                            uint64_t Offset, bool Visible);
+  void setIdentifierIsMacro(IdentifierInfo *II, serialization::MacroID ID,
+                            bool Visible);
 
   /// \brief Read the set of macros defined by this external macro source.
   virtual void ReadDefinedMacros();
@@ -1468,11 +1577,11 @@ public:
 
   /// \brief Note that this identifier is up-to-date.
   void markIdentifierUpToDate(IdentifierInfo *II);
-  
+
   /// \brief Read the macro definition corresponding to this iterator
   /// into the unread macro record offsets table.
   void LoadMacroDefinition(
-                     llvm::DenseMap<IdentifierInfo *, uint64_t>::iterator Pos);
+         llvm::DenseMap<IdentifierInfo *,serialization::MacroID>::iterator Pos);
 
   /// \brief Load all external visible decls in the given DeclContext.
   void completeVisibleDeclsMap(const DeclContext *DC);

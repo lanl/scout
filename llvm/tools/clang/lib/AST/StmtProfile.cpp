@@ -1197,6 +1197,10 @@ void StmtProfiler::VisitTemplateArgument(const TemplateArgument &Arg) {
     VisitDecl(Arg.getAsDecl());
     break;
 
+  case TemplateArgument::NullPtr:
+    VisitType(Arg.getNullPtrType());
+    break;
+
   case TemplateArgument::Integral:
     Arg.getAsIntegral().Profile(ID);
     VisitType(Arg.getIntegralType());

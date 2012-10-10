@@ -11,8 +11,8 @@
 
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
+#include "llvm/DataLayout.h"
 #include "llvm/Support/InstVisitor.h"
-#include "llvm/Target/TargetData.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #ifdef SC_ENABLE_LIB_NVVM
@@ -87,10 +87,10 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 				   CodeModel::Default,
 				   Lvl);
 
-  if(const TargetData* targetData = TheTarget->getTargetData())
-    pm.add(new TargetData(*targetData));
+  if(const DataLayout* dataLayout = TheTarget->getDataLayout())
+    pm.add(new DataLayout(*dataLayout));
   else
-    pm.add(new TargetData(&ptxModule));
+    pm.add(new DataLayout(&ptxModule));
 
   std::auto_ptr<TargetMachine> Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");

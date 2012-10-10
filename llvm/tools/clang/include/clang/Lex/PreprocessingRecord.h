@@ -227,13 +227,18 @@ namespace clang {
     /// This is a value of type InclusionKind.
     unsigned Kind : 2;
 
+    /// \brief Whether the inclusion directive was automatically turned into
+    /// a module import.
+    unsigned ImportedModule : 1;
+
     /// \brief The file that was included.
     const FileEntry *File;
 
   public:
     InclusionDirective(PreprocessingRecord &PPRec,
                        InclusionKind Kind, StringRef FileName, 
-                       bool InQuotes, const FileEntry *File, SourceRange Range);
+                       bool InQuotes, bool ImportedModule,
+                       const FileEntry *File, SourceRange Range);
     
     /// \brief Determine what kind of inclusion directive this is.
     InclusionKind getKind() const { return static_cast<InclusionKind>(Kind); }
@@ -244,6 +249,10 @@ namespace clang {
     /// \brief Determine whether the included file name was written in quotes;
     /// otherwise, it was written in angle brackets.
     bool wasInQuotes() const { return InQuotes; }
+
+    /// \brief Determine whether the inclusion directive was automatically
+    /// turned into a module import.
+    bool importedModule() const { return ImportedModule; }
     
     /// \brief Retrieve the file entry for the actual file that was included
     /// by this directive.
@@ -343,14 +352,21 @@ namespace clang {
     /// Negative values are used to indicate preprocessed entities
     /// loaded from the external source while non-negative values are used to
     /// indicate preprocessed entities introduced by the current preprocessor.
-    /// If M is the number of loaded preprocessed entities, value -M
-    /// corresponds to element 0 in the loaded entities vector, position -M+1
-    /// corresponds to element 1 in the loaded entities vector, etc.
-    typedef int PPEntityID;
+    /// Value -1 corresponds to element 0 in the loaded entities vector,
+    /// value -2 corresponds to element 1 in the loaded entities vector, etc.
+    /// Value 0 is an invalid value, the index to local entities is 1-based,
+    /// value 1 corresponds to element 0 in the local entities vector,
+    /// value 2 corresponds to element 1 in the local entities vector, etc.
+    class PPEntityID {
+      int ID;
+      explicit PPEntityID(int ID) : ID(ID) {}
+      friend class PreprocessingRecord;
+    public:
+      PPEntityID() : ID(0) {}
+    };
 
-    PPEntityID getPPEntityID(unsigned Index, bool isLoaded) const {
-      return isLoaded ? PPEntityID(Index) - LoadedPreprocessedEntities.size()
-                      : Index;
+    static PPEntityID getPPEntityID(unsigned Index, bool isLoaded) {
+      return isLoaded ? PPEntityID(-int(Index)-1) : PPEntityID(Index+1);
     }
 
     /// \brief Mapping from MacroInfo structures to their definitions.
@@ -419,7 +435,7 @@ namespace clang {
       /// corresponds to element 0 in the loaded entities vector, position -M+1
       /// corresponds to element 1 in the loaded entities vector, etc. This
       /// gives us a reasonably efficient, source-order walk.
-      PPEntityID Position;
+      int Position;
       
     public:
       typedef PreprocessedEntity *value_type;
@@ -430,11 +446,15 @@ namespace clang {
       
       iterator() : Self(0), Position(0) { }
       
-      iterator(PreprocessingRecord *Self, PPEntityID Position) 
+      iterator(PreprocessingRecord *Self, int Position)
         : Self(Self), Position(Position) { }
       
       value_type operator*() const {
-        return Self->getPreprocessedEntity(Position);
+        bool isLoaded = Position < 0;
+        unsigned Index = isLoaded ?
+            Self->LoadedPreprocessedEntities.size() + Position : Position;
+        PPEntityID ID = Self->getPPEntityID(Index, isLoaded);
+        return Self->getPreprocessedEntity(ID);
       }
       
       value_type operator[](difference_type D) {
@@ -539,6 +559,17 @@ namespace clang {
       return iterator(this, PreprocessedEntities.size());
     }
 
+    /// \brief begin/end iterator pair for the given range of loaded
+    /// preprocessed entities.
+    std::pair<iterator, iterator>
+    getIteratorsForLoadedRange(unsigned start, unsigned count) {
+      unsigned end = start + count;
+      assert(end <= LoadedPreprocessedEntities.size());
+      return std::make_pair(
+                   iterator(this, int(start)-LoadedPreprocessedEntities.size()),
+                   iterator(this, int(end)-LoadedPreprocessedEntities.size()));
+    }
+
     /// \brief Returns a pair of [Begin, End) iterators of preprocessed entities
     /// that source range \p R encompasses.
     ///
@@ -597,10 +628,11 @@ namespace clang {
                                     const Token &IncludeTok,
                                     StringRef FileName,
                                     bool IsAngled,
+                                    CharSourceRange FilenameRange,
                                     const FileEntry *File,
-                                    SourceLocation EndLoc,
                                     StringRef SearchPath,
-                                    StringRef RelativePath);
+                                    StringRef RelativePath,
+                                    const Module *Imported);
     virtual void If(SourceLocation Loc, SourceRange ConditionRange);
     virtual void Elif(SourceLocation Loc, SourceRange ConditionRange,
                       SourceLocation IfLoc);
@@ -613,11 +645,10 @@ namespace clang {
     /// query.
     struct {
       SourceRange Range;
-      std::pair<PPEntityID, PPEntityID> Result;
+      std::pair<int, int> Result;
     } CachedRangeQuery;
 
-    std::pair<PPEntityID, PPEntityID>
-      getPreprocessedEntitiesInRangeSlow(SourceRange R);
+    std::pair<int, int> getPreprocessedEntitiesInRangeSlow(SourceRange R);
 
     friend class ASTReader;
     friend class ASTWriter;

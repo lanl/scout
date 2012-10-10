@@ -18,6 +18,7 @@
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/PTHLexer.h"
 #include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/PPMutationListener.h"
 #include "clang/Lex/TokenLexer.h"
 #include "clang/Lex/PTHManager.h"
 #include "clang/Basic/Builtins.h"
@@ -54,6 +55,27 @@ class CodeCompletionHandler;
 class DirectoryLookup;
 class PreprocessingRecord;
 class ModuleLoader;
+
+/// \brief Stores token information for comparing actual tokens with
+/// predefined values.  Only handles simple tokens and identifiers.
+class TokenValue {
+  tok::TokenKind Kind;
+  IdentifierInfo *II;
+
+public:
+  TokenValue(tok::TokenKind Kind) : Kind(Kind), II(0) {
+    assert(Kind != tok::raw_identifier && "Raw identifiers are not supported.");
+    assert(Kind != tok::identifier &&
+           "Identifiers should be created by TokenValue(IdentifierInfo *)");
+    assert(!tok::isLiteral(Kind) && "Literals are not supported.");
+    assert(!tok::isAnnotation(Kind) && "Annotations are not supported.");
+  }
+  TokenValue(IdentifierInfo *II) : Kind(tok::identifier), II(II) {}
+  bool operator==(const Token &Tok) const {
+    return Tok.getKind() == Kind &&
+        (!II || II == Tok.getIdentifierInfo());
+  }
+};
 
 /// Preprocessor - This object engages in a tight little dance with the lexer to
 /// efficiently preprocess tokens.  Lexers know only about tokens within a
@@ -98,6 +120,8 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   IdentifierInfo *Ident__has_include;              // __has_include
   IdentifierInfo *Ident__has_include_next;         // __has_include_next
   IdentifierInfo *Ident__has_warning;              // __has_warning
+  IdentifierInfo *Ident__building_module;          // __building_module
+  IdentifierInfo *Ident__MODULE__;                 // __MODULE__
 
   SourceLocation DATELoc, TIMELoc;
   unsigned CounterValue;  // Next __COUNTER__ value.
@@ -268,6 +292,11 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// encountered (e.g. a file is \#included, etc).
   PPCallbacks *Callbacks;
 
+  /// \brief Listener whose actions are invoked when an entity in the
+  /// preprocessor (e.g., a macro) that was loaded from an AST file is
+  /// later mutated.
+  PPMutationListener *Listener;
+
   struct MacroExpandsInfo {
     Token Tok;
     MacroInfo *MI;
@@ -281,7 +310,8 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// keep a mapping to the history of all macro definitions and #undefs in
   /// the reverse order (the latest one is in the head of the list).
   llvm::DenseMap<IdentifierInfo*, MacroInfo*> Macros;
-
+  friend class ASTReader;
+  
   /// \brief Macros that we want to warn because they are not used at the end
   /// of the translation unit; we store just their SourceLocations instead
   /// something like MacroInfo*. The benefit of this is that when we are
@@ -365,8 +395,6 @@ private:  // Cached tokens state.
   /// MICache - A "freelist" of MacroInfo objects that can be reused for quick
   /// allocation.
   MacroInfoChain *MICache;
-
-  MacroInfo *getInfoForMacro(IdentifierInfo *II) const;
 
 public:
   Preprocessor(DiagnosticsEngine &diags, LangOptions &opts,
@@ -461,14 +489,35 @@ public:
     Callbacks = C;
   }
 
+  /// \brief Attach an preprocessor mutation listener to the preprocessor.
+  ///
+  /// The preprocessor mutation listener provides the ability to track
+  /// modifications to the preprocessor entities committed after they were
+  /// initially created.
+  void setPPMutationListener(PPMutationListener *Listener) {
+    this->Listener = Listener;
+  }
+
+  /// \brief Retrieve a pointer to the preprocessor mutation listener
+  /// associated with this preprocessor, if any.
+  PPMutationListener *getPPMutationListener() const { return Listener; }
+
   /// \brief Given an identifier, return the MacroInfo it is \#defined to
   /// or null if it isn't \#define'd.
   MacroInfo *getMacroInfo(IdentifierInfo *II) const {
     if (!II->hasMacroDefinition())
       return 0;
 
-    return getInfoForMacro(II);
+    MacroInfo *MI = getMacroInfoHistory(II);
+    assert(MI->getUndefLoc().isInvalid() && "Macro is undefined!");
+    return MI;
   }
+
+  /// \brief Given an identifier, return the (probably #undef'd) MacroInfo
+  /// representing the most recent macro definition. One can iterate over all
+  /// previous macro definitions from it. This method should only be called for
+  /// identifiers that hadMacroDefinition().
+  MacroInfo *getMacroInfoHistory(IdentifierInfo *II) const;
 
   /// \brief Specify a macro for this identifier.
   void setMacroInfo(IdentifierInfo *II, MacroInfo *MI,
@@ -484,6 +533,12 @@ public:
                          MacroInfo*>::const_iterator macro_iterator;
   macro_iterator macro_begin(bool IncludeExternalMacros = true) const;
   macro_iterator macro_end(bool IncludeExternalMacros = true) const;
+
+  /// \brief Return the name of the macro defined before \p Loc that has
+  /// spelling \p Tokens.  If there are multiple macros with same spelling,
+  /// return the last one defined.
+  StringRef getLastMacroWithSpelling(SourceLocation Loc,
+                                     ArrayRef<TokenValue> Tokens) const;
 
   const std::string &getPredefines() const { return Predefines; }
   /// setPredefines - Set the predefines for this Preprocessor.  These
@@ -909,7 +964,7 @@ public:
   /// CreateString - Plop the specified string into a scratch buffer and set the
   /// specified token's location and length to it.  If specified, the source
   /// location provides a location of the expansion point of the token.
-  void CreateString(const char *Buf, unsigned Len, Token &Tok,
+  void CreateString(StringRef Str, Token &Tok,
                     SourceLocation ExpansionLocStart = SourceLocation(),
                     SourceLocation ExpansionLocEnd = SourceLocation());
 
@@ -1311,6 +1366,8 @@ private:
   // Macro handling.
   void HandleDefineDirective(Token &Tok);
   void HandleUndefDirective(Token &Tok);
+  void UndefineMacro(IdentifierInfo *II, MacroInfo *MI,
+                     SourceLocation UndefLoc);
 
   // Conditional Inclusion.
   void HandleIfdefDirective(Token &Tok, bool isIfndef,

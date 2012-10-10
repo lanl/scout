@@ -287,21 +287,18 @@ void Sema::AddAnyMethodToGlobalPool(Decl *D) {
 static bool
 HasExplicitOwnershipAttr(Sema &S, ParmVarDecl *Param) {
   QualType T = Param->getType();
-  if (!T->isObjCIndirectLifetimeType())
+  
+  if (const PointerType *PT = T->getAs<PointerType>()) {
+    T = PT->getPointeeType();
+  } else if (const ReferenceType *RT = T->getAs<ReferenceType>()) {
+    T = RT->getPointeeType();
+  } else {
     return true;
-  if (!T->isPointerType() && !T->isReferenceType())
-    return true;
-  T = T->isPointerType() 
-        ? T->getAs<PointerType>()->getPointeeType() 
-        : T->getAs<ReferenceType>()->getPointeeType();
-  if (T->isObjCLifetimeType()) {
-    // when lifetime is Qualifiers::OCL_None it means that it has
-    // no implicit ownership qualifier (which means it is explicit).
-    Qualifiers::ObjCLifetime lifetime = 
-      T.getLocalQualifiers().getObjCLifetime();
-    return lifetime == Qualifiers::OCL_None;
   }
-  return true;
+  
+  // If we have a lifetime qualifier, but it's local, we must have 
+  // inferred it. So, it is implicit.
+  return !T.getLocalQualifiers().hasObjCLifetime();
 }
 
 /// ActOnStartOfObjCMethodDef - This routine sets up parameters; invisible
@@ -1581,9 +1578,9 @@ void Sema::CheckProtocolMethodDefs(SourceLocation ImpLoc,
          E = PDecl->instmeth_end(); I != E; ++I) {
       ObjCMethodDecl *method = *I;
       if (method->getImplementationControl() != ObjCMethodDecl::Optional &&
-          !method->isSynthesized() && !InsMap.count(method->getSelector()) &&
-          (!Super ||
-           !Super->lookupInstanceMethod(method->getSelector()))) {
+          !method->isPropertyAccessor() &&
+          !InsMap.count(method->getSelector()) &&
+          (!Super || !Super->lookupInstanceMethod(method->getSelector()))) {
             // If a method is not implemented in the category implementation but
             // has been declared in its primary class, superclass,
             // or in one of their protocols, no need to issue the warning. 
@@ -1596,7 +1593,7 @@ void Sema::CheckProtocolMethodDefs(SourceLocation ImpLoc,
             if (ObjCMethodDecl *MethodInClass =
                   IDecl->lookupInstanceMethod(method->getSelector(), 
                                               true /*shallowCategoryLookup*/))
-              if (C || MethodInClass->isSynthesized())
+              if (C || MethodInClass->isPropertyAccessor())
                 continue;
             unsigned DIAG = diag::warn_unimplemented_protocol_method;
             if (Diags.getDiagnosticLevel(DIAG, ImpLoc)
@@ -1657,7 +1654,7 @@ void Sema::MatchAllMethodDeclarations(const SelectorSet &InsMap,
     if (InsMapSeen.count((*I)->getSelector()))
         continue;
     InsMapSeen.insert((*I)->getSelector());
-    if (!(*I)->isSynthesized() &&
+    if (!(*I)->isPropertyAccessor() &&
         !InsMap.count((*I)->getSelector())) {
       if (ImmediateClass)
         WarnUndefinedMethod(IMPDecl->getLocation(), *I, IncompleteImpl,
@@ -1674,7 +1671,7 @@ void Sema::MatchAllMethodDeclarations(const SelectorSet &InsMap,
         if (!WarnCategoryMethodImpl)
           WarnConflictingTypedMethods(ImpMethodDecl, MethodDecl,
                                       isa<ObjCProtocolDecl>(CDecl));
-        else if (!MethodDecl->isSynthesized())
+        else if (!MethodDecl->isPropertyAccessor())
           WarnExactTypedMethods(ImpMethodDecl, MethodDecl,
                                 isa<ObjCProtocolDecl>(CDecl));
       }
@@ -2375,11 +2372,11 @@ Decl *Sema::ActOnAtEnd(Scope *S, SourceRange AtEnd,
                CExtDecl; CExtDecl = CExtDecl->getNextClassExtension()) {
             if (ObjCMethodDecl *GetterMethod =
                 CExtDecl->getInstanceMethod(Property->getGetterName()))
-              GetterMethod->setSynthesized(true);
+              GetterMethod->setPropertyAccessor(true);
             if (!Property->isReadOnly())
               if (ObjCMethodDecl *SetterMethod =
                   CExtDecl->getInstanceMethod(Property->getSetterName()))
-                SetterMethod->setSynthesized(true);
+                SetterMethod->setPropertyAccessor(true);
           }        
         }
       }
@@ -2827,7 +2824,7 @@ Decl *Sema::ActOnMethodDeclaration(
                            ResultTInfo,
                            CurContext,
                            MethodType == tok::minus, isVariadic,
-                           /*isSynthesized=*/false,
+                           /*isPropertyAccessor=*/false,
                            /*isImplicitlyDeclared=*/false, /*isDefined=*/false,
                            MethodDeclKind == tok::objc_optional 
                              ? ObjCMethodDecl::Optional

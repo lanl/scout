@@ -269,6 +269,17 @@ ExprResult Parser::ParseConstantExpression(TypeCastState isTypeCast) {
   return Actions.ActOnConstantExpression(Res);
 }
 
+bool Parser::isNotExpressionStart() {
+  tok::TokenKind K = Tok.getKind();
+  if (K == tok::l_brace || K == tok::r_brace  ||
+      K == tok::kw_for  || K == tok::kw_while ||
+      K == tok::kw_if   || K == tok::kw_else  ||
+      K == tok::kw_goto || K == tok::kw_try)
+    return true;
+  // If this is a decl-specifier, we can't be at the start of an expression.
+  return isKnownToBeDeclarationSpecifier();
+}
+
 /// \brief Parse a binary expression that starts with \p LHS and has a
 /// precedence of at least \p MinPrec.
 ExprResult
@@ -289,6 +300,17 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // Consume the operator, saving the operator token for error reporting.
     Token OpToken = Tok;
     ConsumeToken();
+
+    // Bail out when encountering a comma followed by a token which can't
+    // possibly be the start of an expression. For instance:
+    //   int f() { return 1, }
+    // We can't do this before consuming the comma, because
+    // isNotExpressionStart() looks at the token stream.
+    if (OpToken.is(tok::comma) && isNotExpressionStart()) {
+      PP.EnterToken(Tok);
+      Tok = OpToken;
+      return LHS;
+    }
 
     // Special case handling for the ternary operator.
     ExprResult TernaryMiddle(true);
@@ -1247,6 +1269,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw___is_class:
   case tok::kw___is_empty:
   case tok::kw___is_enum:
+  case tok::kw___is_interface_class:
   case tok::kw___is_literal:
   case tok::kw___is_arithmetic:
   case tok::kw___is_integral:
@@ -1761,7 +1784,8 @@ ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
   if (OpTok.is(tok::kw_alignof) || OpTok.is(tok::kw__Alignof))
     Diag(OpTok, diag::warn_cxx98_compat_alignof);
 
-  EnterExpressionEvaluationContext Unevaluated(Actions, Sema::Unevaluated);
+  EnterExpressionEvaluationContext Unevaluated(Actions, Sema::Unevaluated,
+                                               Sema::ReuseLambdaContextDecl);
 
   bool isCastExpr;
   ParsedType CastTy;
@@ -2523,18 +2547,28 @@ ExprResult Parser::ParseBlockLiteralExpression() {
   } else {
     // Otherwise, pretend we saw (void).
     ParsedAttributes attrs(AttrFactory);
-    ParamInfo.AddTypeInfo(DeclaratorChunk::getFunction(true, false, false,
-                                                       SourceLocation(),
-                                                       0, 0, 0,
-                                                       true, SourceLocation(),
-                                                       SourceLocation(),
-                                                       SourceLocation(),
-                                                       SourceLocation(),
-                                                       EST_None,
-                                                       SourceLocation(),
-                                                       0, 0, 0, 0,
-                                                       CaretLoc, CaretLoc,
-                                                       ParamInfo),
+    SourceLocation NoLoc;
+    ParamInfo.AddTypeInfo(DeclaratorChunk::getFunction(/*HasProto=*/true,
+                                             /*IsAmbiguous=*/false,
+                                             /*RParenLoc=*/NoLoc,
+                                             /*ArgInfo=*/0,
+                                             /*NumArgs=*/0,
+                                             /*EllipsisLoc=*/NoLoc,
+                                             /*RParenLoc=*/NoLoc,
+                                             /*TypeQuals=*/0,
+                                             /*RefQualifierIsLvalueRef=*/true,
+                                             /*RefQualifierLoc=*/NoLoc,
+                                             /*ConstQualifierLoc=*/NoLoc,
+                                             /*VolatileQualifierLoc=*/NoLoc,
+                                             /*MutableLoc=*/NoLoc,
+                                             EST_None,
+                                             /*ESpecLoc=*/NoLoc,
+                                             /*Exceptions=*/0,
+                                             /*ExceptionRanges=*/0,
+                                             /*NumExceptions=*/0,
+                                             /*NoexceptExpr=*/0,
+                                             CaretLoc, CaretLoc,
+                                             ParamInfo),
                           attrs, CaretLoc);
 
     MaybeParseGNUAttributes(ParamInfo);

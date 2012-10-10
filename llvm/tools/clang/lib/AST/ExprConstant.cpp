@@ -4301,6 +4301,16 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
     return Error(E);
   }
 
+  case Builtin::BI__builtin_bswap16:
+  case Builtin::BI__builtin_bswap32:
+  case Builtin::BI__builtin_bswap64: {
+    APSInt Val;
+    if (!EvaluateInteger(E->getArg(0), Val, Info))
+      return false;
+
+    return Success(Val.byteSwap(), E);
+  }
+
   case Builtin::BI__builtin_classify_type:
     return Success(EvaluateBuiltinClassifyType(E), E);
 
@@ -4915,7 +4925,7 @@ bool IntExprEvaluator::VisitBinaryOperator(const BinaryOperator *E) {
           if (!LHSValue.Offset.isZero() || !RHSValue.Offset.isZero())
             return false;
           const Expr *LHSExpr = LHSValue.Base.dyn_cast<const Expr*>();
-          const Expr *RHSExpr = LHSValue.Base.dyn_cast<const Expr*>();
+          const Expr *RHSExpr = RHSValue.Base.dyn_cast<const Expr*>();
           if (!LHSExpr || !RHSExpr)
             return false;
           const AddrLabelExpr *LHSAddrExpr = dyn_cast<AddrLabelExpr>(LHSExpr);
@@ -6192,11 +6202,9 @@ static bool Evaluate(APValue &Result, EvalInfo &Info, const Expr *E) {
       return false;
     Result = Info.CurrentCall->Temporaries[E];
   } else if (E->getType()->isVoidType()) {
-    if (Info.getLangOpts().CPlusPlus0x)
+    if (!Info.getLangOpts().CPlusPlus0x)
       Info.CCEDiag(E, diag::note_constexpr_nonliteral)
         << E->getType();
-    else
-      Info.CCEDiag(E, diag::note_invalid_subexpr_in_const_expr);
     if (!EvaluateVoid(E, Info))
       return false;
   } else if (Info.getLangOpts().CPlusPlus0x) {
@@ -6779,7 +6787,7 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   }
   // ndm - scout expr types
   case Expr::ScoutVectorMemberExprClass:
-    return NoDiag();
+    return ICEDiag(2, E->getLocStart());
   }
 
   llvm_unreachable("Invalid StmtClass!");
