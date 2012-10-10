@@ -60,73 +60,75 @@
 #include <vector>
 using namespace std;
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-  struct BlockDescriptor {
-    unsigned long int reserved;
-    unsigned long int size;
-    void (*copy_helper)(void* dst, void* src);
-    void (*dispose_helper)(void* src);
-    const char* signature;
-  };
+    struct BlockDescriptor {
+      unsigned long int reserved;
+      unsigned long int size;
+      void (*copy_helper) (void *dst, void *src);
+      void (*dispose_helper) (void *src);
+      const char *signature;
+    };
 
-  struct BlockLiteral{
-    void* isa;
-    int flags;
-    int reserved;
-    void (*invoke)(void*, ...);
-    struct BlockDescriptor *descriptor;
+    struct BlockLiteral {
+      void *isa;
+      int flags;
+      int reserved;
+      void (*invoke) (void *, ...);
+      struct BlockDescriptor *descriptor;
 
-    // some of these fields may not actually be present depending
-    // on the mesh dimensions
-    uint32_t* xStart;
-    uint32_t* xEnd;
-    uint32_t* yStart;
-    uint32_t* yEnd;
-    uint32_t* zStart;
-    uint32_t* zEnd;
+      // some of these fields may not actually be present depending
+      // on the mesh dimensions
+      uint32_t *xStart;
+      uint32_t *xEnd;
+      uint32_t *yStart;
+      uint32_t *yEnd;
+      uint32_t *zStart;
+      uint32_t *zEnd;
 
-    // ... void* captured fields
-  };
+      // ... void* captured fields
+    };
 
-  struct Item{
-    void* blockLiteral;
-    uint32_t dimensions;
-    uint32_t xStart;
-    uint32_t xEnd;
-    uint32_t yStart;
-    uint32_t yEnd;
-    uint32_t zStart;
-    uint32_t zEnd;
-  };
+    struct Item {
+      void *blockLiteral;
+      uint32_t dimensions;
+      uint32_t xStart;
+      uint32_t xEnd;
+      uint32_t yStart;
+      uint32_t yEnd;
+      uint32_t zStart;
+      uint32_t zEnd;
+    };
 
-  class Queue {
+    class Queue {
 
-  public:
-    Queue(): i_(0) {
-     }
+    public:
+      Queue():i_(0) {
+      } 
+      
+      ~Queue() {
+      } 
 
-    ~Queue() {
-    }
+      void reset() {
+        queue_.clear();
+        i_ = 0;
+      } 
 
-    void reset() {
-      queue_.clear();
-      i_ = 0;
-    }
+      void add(Item * item) {
+        queue_.push_back(item);
+      }
 
-    void add(Item* item) {
-      queue_.push_back(item);
-    }
+      Item *get();
 
-    Item* get();
+    private:
+      typedef vector < Item * >Queue_;
+      Mutex mutex_;
+      Queue_ queue_;
+      size_t i_;
+    };
 
-  private:
-    typedef vector<Item*> Queue_;
-    Mutex mutex_;
-    Queue_ queue_;
-    size_t i_;
-  };
-
-  typedef vector<Queue*> QueueVec;
+    typedef vector < Queue * >QueueVec;
+  }
 }
-#endif // __SC_CPU_QUEUE_H__
+#endif                          // __SC_CPU_QUEUE_H__

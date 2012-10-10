@@ -56,54 +56,55 @@
 #include "scout/Runtime/cpu/MeshThread.h"
 #include "scout/Runtime/cpu/Queue.h"
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-  void MeshThread::run(){
-    Item* item;
-    BlockLiteral* bl;
+    void MeshThread::run() {
+      Item *item;
+      BlockLiteral *bl;
 
-    for(;;){
-      beginSem_.acquire();
+      for (;;) {
+        beginSem_.acquire();
 
-      for(;;){
-        item = queue_->get();
+        for (;;) {
+          item = queue_->get();
 
-        if(!item){
-          break;
+          if (!item) {
+            break;
+          }
+
+          bl = (BlockLiteral *) item->blockLiteral;
+
+          switch (item->dimensions) {
+          case 3:
+            bl->zStart = new uint32_t(item->zStart);
+            bl->zEnd = new uint32_t(item->zEnd);
+          case 2:
+            bl->yStart = new uint32_t(item->yStart);
+            bl->yEnd = new uint32_t(item->yEnd);
+          case 1:
+            bl->xStart = new uint32_t(item->xStart);
+            bl->xEnd = new uint32_t(item->xEnd);
+          } 
+          bl->invoke(bl);
+
+          switch (item->dimensions) {
+          case 3:
+            delete bl->zStart;
+            delete bl->zEnd;
+          case 2:
+            delete bl->yStart;
+            delete bl->yEnd;
+          case 1:
+            delete bl->xStart;
+            delete bl->xEnd;
+          }
+          free(item->blockLiteral);
+          delete item;
         }
 
-        bl = (BlockLiteral*)item->blockLiteral;
-
-        switch(item->dimensions){
-        case 3:
-          bl->zStart = new uint32_t(item->zStart);
-          bl->zEnd = new uint32_t(item->zEnd);
-        case 2:
-          bl->yStart = new uint32_t(item->yStart);
-          bl->yEnd = new uint32_t(item->yEnd);
-        case 1:
-          bl->xStart = new uint32_t(item->xStart);
-          bl->xEnd = new uint32_t(item->xEnd);
-        }
-
-        bl->invoke(bl);
-
-        switch (item->dimensions) {
-        case 3:
-          delete bl->zStart;
-          delete bl->zEnd;
-        case 2:
-          delete bl->yStart;
-          delete bl->yEnd;
-        case 1:
-          delete bl->xStart;
-          delete bl->xEnd;
-        }
-        free(item->blockLiteral);
-        delete item;
+        finishSem_.release();
       }
-
-      finishSem_.release();
     }
   }
 }

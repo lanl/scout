@@ -55,36 +55,37 @@
 #include "scout/Runtime/cpu/VSem.h"
 #include "scout/Runtime/cpu/Mutex.h"
 #include "scout/Runtime/cpu/Condition.h"
+        
+namespace scout {
+  namespace cpu {
 
-namespace cpu {
-
-  void VSem::acquire() {
-    mutex_.lock();
-    while (count_ <= 0) {
-      condition_.await();
-    }
-    --count_;
-    mutex_.unlock();
-  }
-
-  bool VSem::tryAcquire() {
-    mutex_.lock();
-    if (count_ > 0) {
+    void VSem::acquire() {
+      mutex_.lock();
+      while (count_ <= 0) {
+        condition_.await();
+      }
       --count_;
-      mutex_.unlock();
-      return true;
-    }
-    mutex_.unlock();
-    return false;
-  }
+       mutex_.unlock();
+    } 
 
-  void VSem::release() {
-    mutex_.lock();
-    if (maxCount_ == 0 || count_ < maxCount_) {
-      ++count_;
+    bool VSem::tryAcquire() {
+      mutex_.lock();
+      if (count_ > 0) {
+        --count_;
+        mutex_.unlock();
+        return true;
+      }
+      mutex_.unlock();
+      return false;
     }
-    condition_.signal();
-    mutex_.unlock();
+
+    void VSem::release() {
+      mutex_.lock();
+      if (maxCount_ == 0 || count_ < maxCount_) {
+        ++count_;
+      }
+      condition_.signal();
+      mutex_.unlock();
+    }
   }
 }
-

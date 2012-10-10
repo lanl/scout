@@ -57,37 +57,39 @@
 
 #include <pthread.h>
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-  class Mutex{
+    class Mutex {
 
-  public:
-    Mutex(){
-      pthread_mutex_init(&mutex_, 0);
-    }
+    public:
+      Mutex() {
+        pthread_mutex_init(&mutex_, 0);
+      } 
+      
+      ~Mutex() {
+        pthread_mutex_destroy(&mutex_);
+      } 
 
-    ~Mutex(){
-      pthread_mutex_destroy(&mutex_);
-    }
+      void lock() {
+        pthread_mutex_lock(&mutex_);
+      } 
 
-    void lock(){
-      pthread_mutex_lock(&mutex_);
-    }
+      bool tryLock() {
+        return (pthread_mutex_trylock(&mutex_) == 0);
+      }
 
-    bool tryLock(){
-      return pthread_mutex_trylock(&mutex_) == 0;
-    }
+      void unlock() {
+        pthread_mutex_unlock(&mutex_);
+      }
 
-    void unlock(){
-      pthread_mutex_unlock(&mutex_);
-    }
+      pthread_mutex_t & mutex() {
+        return mutex_;
+      }
 
-    pthread_mutex_t& mutex(){
-      return mutex_;
-    }
-
-  private:
-    pthread_mutex_t mutex_;
-  };
+    private:
+      pthread_mutex_t mutex_;
+    };
+  }
 }
 #endif // __SC_CPU_MUTEX_H__

@@ -58,7 +58,8 @@
 #include <pthread.h>
 #include "scout/Runtime/cpu/Mutex.h"
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
     class Condition{
 
@@ -93,5 +94,6 @@ namespace cpu {
       pthread_cond_t condition_;
     };
 
+  }
 }
 #endif // __SC_CPU_CONDITION_H__

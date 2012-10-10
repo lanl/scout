@@ -51,39 +51,44 @@
  *
  * #####
  */
+#ifndef __SC_CPU_MESHTHREAD_H__
+#define __SC_CPU_MESHTHREAD_H__
+
 #include "scout/Runtime/cpu/Thread.h"
 #include "scout/Runtime/cpu/VSem.h"
 #include "scout/Runtime/cpu/Queue.h"
 #include <vector>
 using namespace std;
+using namespace scout::cpu;
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-class MeshThread : public Thread{
-public:
-  MeshThread()
-  : beginSem_(0),
-    finishSem_(0),
-    queue_(0) {
-  }
+    class MeshThread:public Thread {
+    public:
+      MeshThread() :beginSem_(0), finishSem_(0), queue_(0) {
+      } 
 
-  void begin(Queue* queue) {
-    queue_ = queue;
-    beginSem_.release();
-  }
+      void begin(Queue * queue) {
+        queue_ = queue;
+        beginSem_.release();
+      } 
 
-  void finish() {
-    finishSem_.acquire();
-  }
+      void finish() {
+        finishSem_.acquire();
+      } 
 
-  void run();
+      void run();
 
-private:
-  Queue* queue_;
-  VSem beginSem_;
-  VSem finishSem_;
-};
+    private:
+      Queue * queue_;
+      VSem beginSem_;
+      VSem finishSem_;
+    };
 
-typedef vector<MeshThread*> ThreadVec;
+    typedef vector < MeshThread * >ThreadVec;
 
-} // end namespace
+  }           
+}            
+
+#endif // __SC_CPU_MESHTHREAD_H__

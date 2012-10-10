@@ -57,31 +57,33 @@
 
 #include <pthread.h>
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-  class Thread{
+    class Thread {
 
-  public:
-    Thread() {
-    }
+    public:
+      Thread() {
+      } 
+      
+      virtual ~Thread() {
+      } 
 
-    virtual ~Thread() {
-    }
+      void start();
 
-    void start();
+      void stop() {
+        pthread_cancel(thread_);
+      } 
 
-    void stop() {
-      pthread_cancel(thread_);
-    }
+      virtual void run() = 0;
 
-    virtual void run() = 0;
+      void await() {
+        pthread_join(thread_, 0);
+      }
 
-    void await(){
-      pthread_join(thread_, 0);
-    }
-
-  private:
-    pthread_t thread_;
-  };
+    private:
+      pthread_t thread_;
+    };
+  }
 }
 #endif // __SC_CPU_THREAD_H__

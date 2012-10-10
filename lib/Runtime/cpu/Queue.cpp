@@ -55,19 +55,22 @@
 #include "scout/Runtime/cpu/Queue.h"
 #include "scout/Runtime/cpu/Mutex.h"
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-  Item* Queue::get() {
-    mutex_.lock();
+    Item *Queue::get() {
+      mutex_.lock();
 
-    if(i_ >= queue_.size()) {
-      mutex_.unlock();
-      return 0;
+      if (i_ >= queue_.size()) {
+        mutex_.unlock();
+        return 0;
+      }
+
+      Item *item = queue_[i_++];
+       mutex_.unlock();
+
+       return item;
     }
-
-    Item* item = queue_[i_++];
-    mutex_.unlock();
-
-    return item;
   }
 }
+

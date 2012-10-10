@@ -59,32 +59,31 @@
 #include "scout/Runtime/cpu/Mutex.h"
 #include "scout/Runtime/cpu/Condition.h"
 
-namespace cpu {
+namespace scout {
+  namespace cpu {
 
-class VSem {
+    class VSem {
 
-public:
-    VSem(int count) :
-            count_(count), maxCount_(0), condition_(mutex_) {
+    public:
+      VSem(int count):count_(count), maxCount_(0), condition_(mutex_) {
 
-    }
+      } VSem(int count, int maxCount):count_(count), maxCount_(maxCount),
+          condition_(mutex_) {
 
-    VSem(int count, int maxCount) :
-            count_(count), maxCount_(maxCount), condition_(mutex_) {
+      } 
 
-    }
+      void acquire();
 
-    void acquire();
+      bool tryAcquire();
 
-    bool tryAcquire();
+      void release();
 
-    void release();
-
-private:
-    Mutex mutex_;
-    Condition condition_;
-    int count_;
-    int maxCount_;
-};
+    private:
+      Mutex mutex_;
+      Condition condition_;
+      int count_;
+      int maxCount_;
+    };
+  }
 }
 #endif // __SC_CPU_VSEM_H__

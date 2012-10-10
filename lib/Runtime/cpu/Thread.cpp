@@ -54,14 +54,17 @@
 
 #include "scout/Runtime/cpu/Thread.h"
 
-namespace cpu {
-  void* _runThread(void* t) {
-    Thread* thread = static_cast<Thread*>(t);
-    thread->run();
-    return 0;
-  }
+namespace scout {
+  namespace cpu {
 
-  void Thread::start() {
-    pthread_create(&thread_, 0, _runThread, (void*) this);
+    void *_runThread(void *t) {
+      Thread *thread = static_cast < Thread * >(t);
+       thread->run();
+       return 0;
+    }
+
+    void Thread::start() {
+      pthread_create(&thread_, 0, _runThread, (void *) this);
+    }
   }
 }
