@@ -193,19 +193,25 @@ Retry:
           MeshType::MeshDimensionVec dims;
               
           ConsumeBracket();
-              
+          
+          ExprResult NumElements;
+          
           for(;;){
-                
-            if(Tok.isNot(tok::numeric_constant)){
-              Diag(Tok, diag::err_expected_numeric_constant_in_mesh_def);
-              SkipUntil(tok::r_square);
-              SkipUntil(tok::semi);
-              return StmtError();
+            if(Tok.is(tok::numeric_constant)) {
+              dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+              ConsumeToken();
+            } else if (Tok.isNot(tok::r_square)) {
+              NumElements = ParseConstantExpression(); // consumes it too
+            
+              // If there was an error parsing the assignment-expression, recover.
+              // Maybe should print a diagnostic, tho.
+              if (NumElements.isInvalid()) {
+                // If the expression was invalid, skip it.
+                SkipUntil(tok::r_square);
+                return StmtError();
+              }
+              dims.push_back(NumElements.get());
             }
-                
-            dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-                
-            ConsumeToken();
                 
             if(Tok.is(tok::r_square)){
               break;
