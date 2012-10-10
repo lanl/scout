@@ -962,7 +962,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
             // Compute size of needed field memory in bytes 
             llvm::Type *fieldTy = structTy->getContainedType(i);
-            uint64_t fieldTyBytes = CGM.getTargetData().getTypeAllocSize(fieldTy);
+            uint64_t fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(fieldTy);
             llvm::Value *fieldTotalBytes = 0;
             llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
                         

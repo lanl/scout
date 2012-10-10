@@ -2161,26 +2161,18 @@ public:
   }
 
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue) {
-    llvm::AttrListPtr namPAL;
-    llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
-    llvm::AttributeWithIndex PAWI;
-    PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
-    Attrs.push_back(PAWI);
-    namPAL = llvm::AttrListPtr::get(Attrs);
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("_Znam")) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                     "_Znam", &CGM.getModule());
-      namF->setAttributes(namPAL);
     } else {
       namF = CGM.getModule().getFunction("_Znam");
     }
 
     llvm::CallInst *call =
       Builder.CreateCall(namF, numEltsValue);
-    call->setAttributes(namPAL);
 
     return call;
   }
