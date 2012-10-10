@@ -342,11 +342,19 @@ void CallInst::removeAttribute(unsigned i, Attributes attr) {
   setAttributes(PAL);
 }
 
-bool CallInst::paramHasAttr(unsigned i, Attributes attr) const {
-  if (AttributeList.paramHasAttr(i, attr))
+bool CallInst::hasFnAttr(Attributes::AttrVal A) const {
+  if (AttributeList.getParamAttributes(~0U).hasAttribute(A))
     return true;
   if (const Function *F = getCalledFunction())
-    return F->paramHasAttr(i, attr);
+    return F->getParamAttributes(~0U).hasAttribute(A);
+  return false;
+}
+
+bool CallInst::paramHasAttr(unsigned i, Attributes::AttrVal A) const {
+  if (AttributeList.getParamAttributes(i).hasAttribute(A))
+    return true;
+  if (const Function *F = getCalledFunction())
+    return F->getParamAttributes(i).hasAttribute(A);
   return false;
 }
 
@@ -562,11 +570,19 @@ void InvokeInst::setSuccessorV(unsigned idx, BasicBlock *B) {
   return setSuccessor(idx, B);
 }
 
-bool InvokeInst::paramHasAttr(unsigned i, Attributes attr) const {
-  if (AttributeList.paramHasAttr(i, attr))
+bool InvokeInst::hasFnAttr(Attributes::AttrVal A) const {
+  if (AttributeList.getParamAttributes(~0U).hasAttribute(A))
     return true;
   if (const Function *F = getCalledFunction())
-    return F->paramHasAttr(i, attr);
+    return F->getParamAttributes(~0U).hasAttribute(A);
+  return false;
+}
+
+bool InvokeInst::paramHasAttr(unsigned i, Attributes::AttrVal A) const {
+  if (AttributeList.getParamAttributes(i).hasAttribute(A))
+    return true;
+  if (const Function *F = getCalledFunction())
+    return F->getParamAttributes(i).hasAttribute(A);
   return false;
 }
 
@@ -2836,7 +2852,7 @@ BitCastInst::BitCastInst(
 //                               CmpInst Classes
 //===----------------------------------------------------------------------===//
 
-void CmpInst::Anchor() const {}
+void CmpInst::anchor() {}
 
 CmpInst::CmpInst(Type *ty, OtherOps op, unsigned short predicate,
                  Value *LHS, Value *RHS, const Twine &Name,

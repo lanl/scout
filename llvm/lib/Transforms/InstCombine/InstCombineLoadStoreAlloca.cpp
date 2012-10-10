@@ -14,7 +14,7 @@
 #include "InstCombine.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Analysis/Loads.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/ADT/Statistic.h"
@@ -152,7 +152,7 @@ isOnlyCopiedFromConstantGlobal(AllocaInst *AI,
 
 /// getPointeeAlignment - Compute the minimum alignment of the value pointed
 /// to by the given pointer.
-static unsigned getPointeeAlignment(Value *V, const TargetData &TD) {
+static unsigned getPointeeAlignment(Value *V, const DataLayout &TD) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(V))
     if (CE->getOpcode() == Instruction::BitCast ||
         (CE->getOpcode() == Instruction::GetElementPtr &&
@@ -246,12 +246,16 @@ Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
           return &AI;
         }
 
+        // If the alignment of the entry block alloca is 0 (unspecified),
+        // assign it the preferred alignment.
+        if (EntryAI->getAlignment() == 0)
+          EntryAI->setAlignment(
+            TD->getPrefTypeAlignment(EntryAI->getAllocatedType()));
         // Replace this zero-sized alloca with the one at the start of the entry
         // block after ensuring that the address will be aligned enough for both
         // types.
-        unsigned MaxAlign =
-          std::max(TD->getPrefTypeAlignment(EntryAI->getAllocatedType()),
-                   TD->getPrefTypeAlignment(AI.getAllocatedType()));
+        unsigned MaxAlign = std::max(EntryAI->getAlignment(),
+                                     AI.getAlignment());
         EntryAI->setAlignment(MaxAlign);
         if (AI.getType() != EntryAI->getType())
           return new BitCastInst(EntryAI, AI.getType());
@@ -260,26 +264,28 @@ Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
     }
   }
 
-  // Check to see if this allocation is only modified by a memcpy/memmove from
-  // a constant global whose alignment is equal to or exceeds that of the
-  // allocation.  If this is the case, we can change all users to use
-  // the constant global instead.  This is commonly produced by the CFE by
-  // constructs like "void foo() { int A[] = {1,2,3,4,5,6,7,8,9...}; }" if 'A'
-  // is only subsequently read.
-  SmallVector<Instruction *, 4> ToDelete;
-  if (MemTransferInst *Copy = isOnlyCopiedFromConstantGlobal(&AI, ToDelete)) {
-    if (AI.getAlignment() <= getPointeeAlignment(Copy->getSource(), *TD)) {
-      DEBUG(dbgs() << "Found alloca equal to global: " << AI << '\n');
-      DEBUG(dbgs() << "  memcpy = " << *Copy << '\n');
-      for (unsigned i = 0, e = ToDelete.size(); i != e; ++i)
-        EraseInstFromFunction(*ToDelete[i]);
-      Constant *TheSrc = cast<Constant>(Copy->getSource());
-      Instruction *NewI
-        = ReplaceInstUsesWith(AI, ConstantExpr::getBitCast(TheSrc,
-                                                           AI.getType()));
-      EraseInstFromFunction(*Copy);
-      ++NumGlobalCopies;
-      return NewI;
+  if (TD) {
+    // Check to see if this allocation is only modified by a memcpy/memmove from
+    // a constant global whose alignment is equal to or exceeds that of the
+    // allocation.  If this is the case, we can change all users to use
+    // the constant global instead.  This is commonly produced by the CFE by
+    // constructs like "void foo() { int A[] = {1,2,3,4,5,6,7,8,9...}; }" if 'A'
+    // is only subsequently read.
+    SmallVector<Instruction *, 4> ToDelete;
+    if (MemTransferInst *Copy = isOnlyCopiedFromConstantGlobal(&AI, ToDelete)) {
+      if (AI.getAlignment() <= getPointeeAlignment(Copy->getSource(), *TD)) {
+        DEBUG(dbgs() << "Found alloca equal to global: " << AI << '\n');
+        DEBUG(dbgs() << "  memcpy = " << *Copy << '\n');
+        for (unsigned i = 0, e = ToDelete.size(); i != e; ++i)
+          EraseInstFromFunction(*ToDelete[i]);
+        Constant *TheSrc = cast<Constant>(Copy->getSource());
+        Instruction *NewI
+          = ReplaceInstUsesWith(AI, ConstantExpr::getBitCast(TheSrc,
+                                                             AI.getType()));
+        EraseInstFromFunction(*Copy);
+        ++NumGlobalCopies;
+        return NewI;
+      }
     }
   }
 
@@ -291,7 +297,7 @@ Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
 
 /// InstCombineLoadCast - Fold 'load (cast P)' -> cast (load P)' when possible.
 static Instruction *InstCombineLoadCast(InstCombiner &IC, LoadInst &LI,
-                                        const TargetData *TD) {
+                                        const DataLayout *TD) {
   User *CI = cast<User>(LI.getOperand(0));
   Value *CastOp = CI->getOperand(0);
 
@@ -321,14 +327,14 @@ static Instruction *InstCombineLoadCast(InstCombiner &IC, LoadInst &LI,
             SrcPTy = SrcTy->getElementType();
           }
 
-      if (IC.getTargetData() &&
+      if (IC.getDataLayout() &&
           (SrcPTy->isIntegerTy() || SrcPTy->isPointerTy() || 
             SrcPTy->isVectorTy()) &&
           // Do not allow turning this into a load of an integer, which is then
           // casted to a pointer, this pessimizes pointer analysis a lot.
           (SrcPTy->isPointerTy() == LI.getType()->isPointerTy()) &&
-          IC.getTargetData()->getTypeSizeInBits(SrcPTy) ==
-               IC.getTargetData()->getTypeSizeInBits(DestPTy)) {
+          IC.getDataLayout()->getTypeSizeInBits(SrcPTy) ==
+               IC.getDataLayout()->getTypeSizeInBits(DestPTy)) {
 
         // Okay, we are casting from one integer or pointer type to another of
         // the same size.  Instead of casting the pointer before the load, cast
@@ -506,11 +512,11 @@ static Instruction *InstCombineStoreToCast(InstCombiner &IC, StoreInst &SI) {
   
   // If the pointers point into different address spaces or if they point to
   // values with different sizes, we can't do the transformation.
-  if (!IC.getTargetData() ||
+  if (!IC.getDataLayout() ||
       SrcTy->getAddressSpace() != 
         cast<PointerType>(CI->getType())->getAddressSpace() ||
-      IC.getTargetData()->getTypeSizeInBits(SrcPTy) !=
-      IC.getTargetData()->getTypeSizeInBits(DestPTy))
+      IC.getDataLayout()->getTypeSizeInBits(SrcPTy) !=
+      IC.getDataLayout()->getTypeSizeInBits(DestPTy))
     return 0;
 
   // Okay, we are casting from one integer or pointer type to another of

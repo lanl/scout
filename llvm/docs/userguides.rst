@@ -7,14 +7,19 @@ User Guides
    :hidden:
 
    CMake
+   HowToBuildOnARM
    CommandGuide/index
    DeveloperPolicy
+   GettingStarted
    GettingStartedVS
    FAQ
    Lexicon
    Packaging
+   HowToAddABuilder
+   yaml2obj
+   HowToSubmitABug
 
-* `The LLVM Getting Started Guide <GettingStarted.html>`_
+* :ref:`getting_started`
     
    Discusses how to get up and running quickly with the LLVM infrastructure.
    Everything from unpacking and compilation of the distribution to execution
@@ -24,7 +29,11 @@ User Guides
 
    An addendum to the main Getting Started guide for those using the `CMake
    build system <http://www.cmake.org>`_.
-    
+
+* :ref:`how_to_build_on_arm`
+
+   Notes on building and testing LLVM/Clang on ARM.
+
 * `Getting Started with the LLVM System using Microsoft Visual Studio
   <GettingStartedVS.html>`_
 
@@ -57,7 +66,7 @@ User Guides
 
    This describes new features, known bugs, and other limitations.
 
-* `How to Submit A Bug Report <HowToSubmitABug.html>`_
+* :ref:`how-to-submit-a-bug-report`
     
    Instructions for properly submitting information about any bugs you run into
    in the LLVM system.
@@ -78,7 +87,7 @@ User Guides
 
    Definition of acronyms, terms and concepts used in LLVM.
 
-* `How To Add Your Build Configuration To LLVM Buildbot Infrastructure <HowToAddABuilder.html>`_
+* :ref:`how_to_add_a_builder`
 
    Instructions for adding new builder to LLVM buildbot master.
     

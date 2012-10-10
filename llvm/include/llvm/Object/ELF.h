@@ -413,6 +413,35 @@ struct Elf_Ehdr_Impl {
 };
 
 template<support::endianness target_endianness, bool is64Bits>
+struct Elf_Phdr;
+
+template<support::endianness target_endianness>
+struct Elf_Phdr<target_endianness, false> {
+  LLVM_ELF_IMPORT_TYPES(target_endianness, false)
+  Elf_Word p_type;   // Type of segment
+  Elf_Off  p_offset; // FileOffset where segment is located, in bytes
+  Elf_Addr p_vaddr;  // Virtual Address of beginning of segment 
+  Elf_Addr p_paddr;  // Physical address of beginning of segment (OS-specific)
+  Elf_Word p_filesz; // Num. of bytes in file image of segment (may be zero)
+  Elf_Word p_memsz;  // Num. of bytes in mem image of segment (may be zero)
+  Elf_Word p_flags;  // Segment flags
+  Elf_Word p_align;  // Segment alignment constraint
+};
+
+template<support::endianness target_endianness>
+struct Elf_Phdr<target_endianness, true> {
+  LLVM_ELF_IMPORT_TYPES(target_endianness, true)
+  Elf_Word p_type;   // Type of segment
+  Elf_Word p_flags;  // Segment flags
+  Elf_Off  p_offset; // FileOffset where segment is located, in bytes
+  Elf_Addr p_vaddr;  // Virtual Address of beginning of segment 
+  Elf_Addr p_paddr;  // Physical address of beginning of segment (OS-specific)
+  Elf_Word p_filesz; // Num. of bytes in file image of segment (may be zero)
+  Elf_Word p_memsz;  // Num. of bytes in mem image of segment (may be zero)
+  Elf_Word p_align;  // Segment alignment constraint
+};
+
+template<support::endianness target_endianness, bool is64Bits>
 class ELFObjectFile : public ObjectFile {
   LLVM_ELF_IMPORT_TYPES(target_endianness, is64Bits)
 
@@ -462,6 +491,59 @@ private:
   // This is set the first time getLoadName is called.
   mutable const char *dt_soname;
 
+public:
+  /// \brief Iterate over relocations in a .rel or .rela section.
+  template<class RelocT>
+  class ELFRelocationIterator {
+  public:
+    typedef void difference_type;
+    typedef const RelocT value_type;
+    typedef std::forward_iterator_tag iterator_category;
+    typedef value_type &reference;
+    typedef value_type *pointer;
+
+    /// \brief Default construct iterator.
+    ELFRelocationIterator() : Section(0), Current(0) {}
+    ELFRelocationIterator(const Elf_Shdr *Sec, const char *Start)
+      : Section(Sec)
+      , Current(Start) {}
+
+    reference operator *() {
+      assert(Current && "Attempted to dereference an invalid iterator!");
+      return *reinterpret_cast<const RelocT*>(Current);
+    }
+
+    pointer operator ->() {
+      assert(Current && "Attempted to dereference an invalid iterator!");
+      return reinterpret_cast<const RelocT*>(Current);
+    }
+
+    bool operator ==(const ELFRelocationIterator &Other) {
+      return Section == Other.Section && Current == Other.Current;
+    }
+
+    bool operator !=(const ELFRelocationIterator &Other) {
+      return !(*this == Other);
+    }
+
+    ELFRelocationIterator &operator ++(int) {
+      assert(Current && "Attempted to increment an invalid iterator!");
+      Current += Section->sh_entsize;
+      return *this;
+    }
+
+    ELFRelocationIterator operator ++() {
+      ELFRelocationIterator Tmp = *this;
+      ++*this;
+      return Tmp;
+    }
+
+  private:
+    const Elf_Shdr *Section;
+    const char *Current;
+  };
+
+private:
   // Records for each version index the corresponding Verdef or Vernaux entry.
   // This is filled the first time LoadVersionMap() is called.
   class VersionMapEntry : public PointerIntPair<const void*, 1> {
@@ -558,6 +640,7 @@ protected:
                                                    bool &Res) const;
   virtual error_code isSectionVirtual(DataRefImpl Sec, bool &Res) const;
   virtual error_code isSectionZeroInit(DataRefImpl Sec, bool &Res) const;
+  virtual error_code isSectionReadOnlyData(DataRefImpl Sec, bool &Res) const;
   virtual error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
                                            bool &Result) const;
   virtual relocation_iterator getSectionRelBegin(DataRefImpl Sec) const;
@@ -597,6 +680,27 @@ public:
   virtual dyn_iterator begin_dynamic_table() const;
   virtual dyn_iterator end_dynamic_table() const;
 
+  typedef ELFRelocationIterator<Elf_Rela> Elf_Rela_Iter;
+  typedef ELFRelocationIterator<Elf_Rel> Elf_Rel_Iter;
+
+  virtual Elf_Rela_Iter beginELFRela(const Elf_Shdr *sec) const {
+    return Elf_Rela_Iter(sec, (const char *)(base() + sec->sh_offset));
+  }
+
+  virtual Elf_Rela_Iter endELFRela(const Elf_Shdr *sec) const {
+    return Elf_Rela_Iter(sec, (const char *)
+                         (base() + sec->sh_offset + sec->sh_size));
+  }
+
+  virtual Elf_Rel_Iter beginELFRel(const Elf_Shdr *sec) const {
+    return Elf_Rel_Iter(sec, (const char *)(base() + sec->sh_offset));
+  }
+
+  virtual Elf_Rel_Iter endELFRel(const Elf_Shdr *sec) const {
+    return Elf_Rel_Iter(sec, (const char *)
+                        (base() + sec->sh_offset + sec->sh_size));
+  }
+
   virtual uint8_t getBytesInAddress() const;
   virtual StringRef getFileFormatName() const;
   virtual StringRef getObjectType() const { return "ELF"; }
@@ -611,6 +715,7 @@ public:
   const Elf_Shdr *getSection(const Elf_Sym *symb) const;
   const Elf_Shdr *getElfSection(section_iterator &It) const;
   const Elf_Sym *getElfSymbol(symbol_iterator &It) const;
+  const Elf_Sym *getElfSymbol(uint32_t index) const;
 
   // Methods for type inquiry through isa, cast, and dyn_cast
   bool isDyldType() const { return isDyldELFObject; }
@@ -807,6 +912,16 @@ ELFObjectFile<target_endianness, is64Bits>
 }
 
 template<support::endianness target_endianness, bool is64Bits>
+const typename ELFObjectFile<target_endianness, is64Bits>::Elf_Sym *
+ELFObjectFile<target_endianness, is64Bits>
+                             ::getElfSymbol(uint32_t index) const {
+  DataRefImpl SymbolData;
+  SymbolData.d.a = index;
+  SymbolData.d.b = 1;
+  return getSymbol(SymbolData);
+}
+
+template<support::endianness target_endianness, bool is64Bits>
 error_code ELFObjectFile<target_endianness, is64Bits>
                         ::getSymbolFileOffset(DataRefImpl Symb,
                                           uint64_t &Result) const {
@@ -866,7 +981,18 @@ error_code ELFObjectFile<target_endianness, is64Bits>
   case ELF::STT_FUNC:
   case ELF::STT_OBJECT:
   case ELF::STT_NOTYPE:
-    Result = symb->st_value + (Section ? Section->sh_addr : 0);
+    bool IsRelocatable;
+    switch(Header->e_type) {
+    case ELF::ET_EXEC:
+    case ELF::ET_DYN:
+      IsRelocatable = false;
+      break;
+    default:
+      IsRelocatable = true;
+    }
+    Result = symb->st_value;
+    if (IsRelocatable && Section != 0)
+      Result += Section->sh_addr;
     return object_error::success;
   default:
     Result = UnknownAddressOrSize;
@@ -1163,7 +1289,8 @@ error_code ELFObjectFile<target_endianness, is64Bits>
 }
 
 template<support::endianness target_endianness, bool is64Bits>
-error_code ELFObjectFile<target_endianness, is64Bits>::isSectionZeroInit(DataRefImpl Sec,
+error_code ELFObjectFile<target_endianness, is64Bits>
+                        ::isSectionZeroInit(DataRefImpl Sec,
                                             bool &Result) const {
   const Elf_Shdr *sec = reinterpret_cast<const Elf_Shdr *>(Sec.p);
   // For ELF, all zero-init sections are virtual (that is, they occupy no space
@@ -1172,6 +1299,18 @@ error_code ELFObjectFile<target_endianness, is64Bits>::isSectionZeroInit(DataRef
     Result = true;
   else
     Result = false;
+  return object_error::success;
+}
+
+template<support::endianness target_endianness, bool is64Bits>
+error_code ELFObjectFile<target_endianness, is64Bits>
+                       ::isSectionReadOnlyData(DataRefImpl Sec,
+                                               bool &Result) const {
+  const Elf_Shdr *sec = reinterpret_cast<const Elf_Shdr *>(Sec.p);
+  if (sec->sh_flags & ELF::SHF_WRITE || sec->sh_flags & ELF::SHF_EXECINSTR)
+    Result = false;
+  else
+    Result = true;
   return object_error::success;
 }
 
@@ -2176,6 +2315,8 @@ StringRef ELFObjectFile<target_endianness, is64Bits>
       return "ELF64-i386";
     case ELF::EM_X86_64:
       return "ELF64-x86-64";
+    case ELF::EM_PPC64:
+      return "ELF64-ppc64";
     default:
       return "ELF64-unknown";
     }
@@ -2199,6 +2340,8 @@ unsigned ELFObjectFile<target_endianness, is64Bits>::getArch() const {
   case ELF::EM_MIPS:
     return (target_endianness == support::little) ?
            Triple::mipsel : Triple::mips;
+  case ELF::EM_PPC64:
+    return Triple::ppc64;
   default:
     return Triple::UnknownArch;
   }

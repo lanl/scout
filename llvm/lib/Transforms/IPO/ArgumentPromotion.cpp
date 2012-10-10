@@ -153,7 +153,8 @@ CallGraphNode *ArgPromotion::PromoteArguments(CallGraphNode *CGN) {
   SmallPtrSet<Argument*, 8> ArgsToPromote;
   SmallPtrSet<Argument*, 8> ByValArgsToTransform;
   for (unsigned i = 0; i != PointerArgs.size(); ++i) {
-    bool isByVal = F->paramHasAttr(PointerArgs[i].second+1, Attribute::ByVal);
+    bool isByVal=F->getParamAttributes(PointerArgs[i].second+1).
+      hasAttribute(Attributes::ByVal);
     Argument *PtrArg = PointerArgs[i].first;
     Type *AgTy = cast<PointerType>(PtrArg->getType())->getElementType();
 
@@ -592,14 +593,6 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
 
   Type *RetTy = FTy->getReturnType();
 
-  // Work around LLVM bug PR56: the CWriter cannot emit varargs functions which
-  // have zero fixed arguments.
-  bool ExtraArgHack = false;
-  if (Params.empty() && FTy->isVarArg()) {
-    ExtraArgHack = true;
-    Params.push_back(Type::getInt32Ty(F->getContext()));
-  }
-
   // Construct the new function type using the new arguments.
   FunctionType *NFTy = FunctionType::get(RetTy, Params, FTy->isVarArg());
 
@@ -710,9 +703,6 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
           AA.copyValue(OrigLoad, Args.back());
         }
       }
-
-    if (ExtraArgHack)
-      Args.push_back(Constant::getNullValue(Type::getInt32Ty(F->getContext())));
 
     // Push any varargs arguments on the list.
     for (; AI != CS.arg_end(); ++AI, ++ArgIndex) {
@@ -870,15 +860,8 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
     }
 
     // Increment I2 past all of the arguments added for this promoted pointer.
-    for (unsigned i = 0, e = ArgIndices.size(); i != e; ++i)
-      ++I2;
+    std::advance(I2, ArgIndices.size());
   }
-
-  // Notify the alias analysis implementation that we inserted a new argument.
-  if (ExtraArgHack)
-    AA.copyValue(Constant::getNullValue(Type::getInt32Ty(F->getContext())), 
-                 NF->arg_begin());
-
 
   // Tell the alias analysis that the old function is about to disappear.
   AA.replaceWithNewValue(F, NF);

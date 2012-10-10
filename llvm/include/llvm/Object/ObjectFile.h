@@ -163,6 +163,7 @@ public:
   error_code isRequiredForExecution(bool &Result) const;
   error_code isVirtual(bool &Result) const;
   error_code isZeroInit(bool &Result) const;
+  error_code isReadOnlyData(bool &Result) const;
 
   error_code containsSymbol(SymbolRef S, bool &Result) const;
 
@@ -212,6 +213,8 @@ public:
   error_code getNext(SymbolRef &Result) const;
 
   error_code getName(StringRef &Result) const;
+  /// Returns the symbol virtual address (i.e. address at which it will be
+  /// mapped).
   error_code getAddress(uint64_t &Result) const;
   error_code getFileOffset(uint64_t &Result) const;
   error_code getSize(uint64_t &Result) const;
@@ -266,8 +269,8 @@ const uint64_t UnknownAddressOrSize = ~0ULL;
 /// figure out which type to create.
 class ObjectFile : public Binary {
   virtual void anchor();
-  ObjectFile(); // = delete
-  ObjectFile(const ObjectFile &other); // = delete
+  ObjectFile() LLVM_DELETED_FUNCTION;
+  ObjectFile(const ObjectFile &other) LLVM_DELETED_FUNCTION;
 
 protected:
   ObjectFile(unsigned int Type, MemoryBuffer *source, error_code &ec);
@@ -314,6 +317,7 @@ protected:
   // A section is 'virtual' if its contents aren't present in the object image.
   virtual error_code isSectionVirtual(DataRefImpl Sec, bool &Res) const = 0;
   virtual error_code isSectionZeroInit(DataRefImpl Sec, bool &Res) const = 0;
+  virtual error_code isSectionReadOnlyData(DataRefImpl Sec, bool &Res) const = 0;
   virtual error_code sectionContainsSymbol(DataRefImpl Sec, DataRefImpl Symb,
                                            bool &Result) const = 0;
   virtual relocation_iterator getSectionRelBegin(DataRefImpl Sec) const = 0;
@@ -506,6 +510,10 @@ inline error_code SectionRef::isVirtual(bool &Result) const {
 
 inline error_code SectionRef::isZeroInit(bool &Result) const {
   return OwningObject->isSectionZeroInit(SectionPimpl, Result);
+}
+
+inline error_code SectionRef::isReadOnlyData(bool &Result) const {
+  return OwningObject->isSectionReadOnlyData(SectionPimpl, Result);
 }
 
 inline error_code SectionRef::containsSymbol(SymbolRef S, bool &Result) const {
