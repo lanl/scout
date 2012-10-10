@@ -127,6 +127,12 @@ namespace clang {
     /// \brief The number of predefined identifier IDs.
     const unsigned int NUM_PREDEF_IDENT_IDS = 1;
 
+    /// \brief An ID number that refers to a macro in an AST file.
+    typedef uint32_t MacroID;
+    
+    /// \brief The number of predefined macro IDs.
+    const unsigned int NUM_PREDEF_MACRO_IDS = 1;
+
     /// \brief An ID number that refers to an ObjC selector in an AST file.
     typedef uint32_t SelectorID;
 
@@ -472,7 +478,18 @@ namespace clang {
       ///
       /// This array can only be interpreted properly using the Objective-C
       /// categories map.
-      OBJC_CATEGORIES = 54
+      OBJC_CATEGORIES = 54,
+
+      /// \brief Record code for the table of offsets of each macro ID.
+      ///
+      /// The offset table contains offsets into the blob stored in
+      /// the preprocessor block. Each offset points to the corresponding
+      /// macro definition.
+      MACRO_OFFSET = 55,
+
+      /// \brief Record of updates for a macro that was modified after
+      /// being deserialized.
+      MACRO_UPDATES = 56
     };
 
     /// \brief Record types used within a source manager block.
@@ -537,16 +554,18 @@ namespace clang {
       SUBMODULE_UMBRELLA_HEADER = 2,
       /// \brief Specifies a header that falls into this (sub)module.
       SUBMODULE_HEADER = 3,
+      /// \brief Specifies a top-level header that falls into this (sub)module.
+      SUBMODULE_TOPHEADER = 4,
       /// \brief Specifies an umbrella directory.
-      SUBMODULE_UMBRELLA_DIR = 4,
+      SUBMODULE_UMBRELLA_DIR = 5,
       /// \brief Specifies the submodules that are imported by this 
       /// submodule.
-      SUBMODULE_IMPORTS = 5,
+      SUBMODULE_IMPORTS = 6,
       /// \brief Specifies the submodules that are re-exported from this 
       /// submodule.
-      SUBMODULE_EXPORTS = 6,
+      SUBMODULE_EXPORTS = 7,
       /// \brief Specifies a required feature.
-      SUBMODULE_REQUIRES = 7
+      SUBMODULE_REQUIRES = 8
     };
 
     /// \brief Record types used within a comments block.

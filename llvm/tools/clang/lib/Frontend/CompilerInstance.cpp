@@ -948,6 +948,8 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
           getASTConsumer().GetASTDeserializationListener());
         getASTContext().setASTMutationListener(
           getASTConsumer().GetASTMutationListener());
+        getPreprocessor().setPPMutationListener(
+          getASTConsumer().GetPPMutationListener());
       }
       OwningPtr<ExternalASTSource> Source;
       Source.reset(ModuleManager);
@@ -982,6 +984,9 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
       Module = PP->getHeaderSearchInfo().getModuleMap()
                  .findModule((Path[0].first->getName()));
     }
+
+    if (Module)
+      Module->setASTFile(ModuleFile);
     
     // Cache the result of this top-level module lookup for later.
     Known = KnownModules.insert(std::make_pair(Path[0].first, Module)).first;
@@ -1081,9 +1086,12 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
   // implicit import declaration to capture it in the AST.
   if (IsInclusionDirective && hasASTContext()) {
     TranslationUnitDecl *TU = getASTContext().getTranslationUnitDecl();
-    TU->addDecl(ImportDecl::CreateImplicit(getASTContext(), TU,
-                                           ImportLoc, Module, 
-                                           Path.back().second));
+    ImportDecl *ImportD = ImportDecl::CreateImplicit(getASTContext(), TU,
+                                                     ImportLoc, Module,
+                                                     Path.back().second);
+    TU->addDecl(ImportD);
+    if (Consumer)
+      Consumer->HandleImplicitImportDecl(ImportD);
   }
   
   LastModuleImportLoc = ImportLoc;

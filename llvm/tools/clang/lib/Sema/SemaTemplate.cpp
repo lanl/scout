@@ -2843,6 +2843,7 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
 
     case TemplateArgument::Declaration:
     case TemplateArgument::Integral:
+    case TemplateArgument::NullPtr:
       // We've already checked this template argument, so just copy
       // it to the list of converted arguments.
       Converted.push_back(Arg.getArgument());
@@ -2977,6 +2978,8 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param,
     llvm_unreachable("Declaration argument with template template parameter");
   case TemplateArgument::Integral:
     llvm_unreachable("Integral argument with template template parameter");
+  case TemplateArgument::NullPtr:
+    llvm_unreachable("Null pointer argument with template template parameter");
 
   case TemplateArgument::Pack:
     llvm_unreachable("Caller must expand template argument packs");
@@ -3068,15 +3071,12 @@ bool Sema::CheckTemplateArgumentList(TemplateDecl *Template,
       if (*Expansions == ArgumentPack.size()) {
         // We're done with this parameter pack. Pack up its arguments and add
         // them to the list.
-        if (ArgumentPack.empty())
-          Converted.push_back(TemplateArgument(0, 0));
-        else {
-          Converted.push_back(
-            TemplateArgument::CreatePackCopy(Context,
-                                             ArgumentPack.data(),
-                                             ArgumentPack.size()));
-          ArgumentPack.clear();
-        }
+        Converted.push_back(
+          TemplateArgument::CreatePackCopy(Context,
+                                           ArgumentPack.data(),
+                                           ArgumentPack.size()));
+        ArgumentPack.clear();
+
         // This argument is assigned to the next parameter.
         ++Param;
         continue;
@@ -3143,15 +3143,11 @@ bool Sema::CheckTemplateArgumentList(TemplateDecl *Template,
 
         // Push the argument pack onto the list of converted arguments.
         if (InFinalParameterPack) {
-          if (ArgumentPack.empty())
-            Converted.push_back(TemplateArgument(0, 0));
-          else {
-            Converted.push_back(
-              TemplateArgument::CreatePackCopy(Context,
-                                               ArgumentPack.data(),
-                                               ArgumentPack.size()));
-            ArgumentPack.clear();
-          }
+          Converted.push_back(
+            TemplateArgument::CreatePackCopy(Context,
+                                             ArgumentPack.data(),
+                                             ArgumentPack.size()));
+          ArgumentPack.clear();
         } else if (ExpansionIntoFixedList) {
           // We have expanded a pack into a fixed list.
           *ExpansionIntoFixedList = true;
@@ -3185,14 +3181,10 @@ bool Sema::CheckTemplateArgumentList(TemplateDecl *Template,
       if (Param + 1 != ParamEnd)
         return true;
 
-      if (ArgumentPack.empty())
-        Converted.push_back(TemplateArgument(0, 0));
-      else {
-        Converted.push_back(TemplateArgument::CreatePackCopy(Context,
-                                                         ArgumentPack.data(),
-                                                         ArgumentPack.size()));
-        ArgumentPack.clear();
-      }
+      Converted.push_back(TemplateArgument::CreatePackCopy(Context,
+                                                       ArgumentPack.data(),
+                                                       ArgumentPack.size()));
+      ArgumentPack.clear();
 
       ++Param;
       continue;
@@ -3684,7 +3676,7 @@ CheckTemplateArgumentAddressOfObjectOrFunction(Sema &S,
     switch (isNullPointerValueTemplateArgument(S, Param, ParamType, Arg)) {
     case NPV_NullPointer:
       S.Diag(Arg->getExprLoc(), diag::warn_cxx98_compat_template_arg_null);
-      Converted = TemplateArgument((Decl *)0);
+      Converted = TemplateArgument(ParamType, /*isNullPtr*/true);
       return false;
 
     case NPV_Error:
@@ -3772,7 +3764,7 @@ CheckTemplateArgumentAddressOfObjectOrFunction(Sema &S,
     return true;
   }
 
-  NamedDecl *Entity = DRE->getDecl();
+  ValueDecl *Entity = DRE->getDecl();
 
   // Cannot refer to non-static data members
   if (FieldDecl *Field = dyn_cast<FieldDecl>(Entity)) {
@@ -3960,7 +3952,8 @@ CheckTemplateArgumentAddressOfObjectOrFunction(Sema &S,
   }
 
   // Create the template argument.
-  Converted = TemplateArgument(Entity->getCanonicalDecl());
+  Converted = TemplateArgument(cast<ValueDecl>(Entity->getCanonicalDecl()),
+                               ParamType->isReferenceType());
   S.MarkAnyDeclReferenced(Arg->getLocStart(), Entity);
   return false;
 }
@@ -3981,7 +3974,7 @@ static bool CheckTemplateArgumentPointerToMember(Sema &S,
     return true;
   case NPV_NullPointer:
     S.Diag(Arg->getExprLoc(), diag::warn_cxx98_compat_template_arg_null);
-    Converted = TemplateArgument((Decl *)0);
+    Converted = TemplateArgument(ParamType, /*isNullPtr*/true);
     return false;
   case NPV_NotNullPointer:
     break;
@@ -4050,10 +4043,12 @@ static bool CheckTemplateArgumentPointerToMember(Sema &S,
         if (isa<NonTypeTemplateParmDecl>(VD) ||
             (isa<VarDecl>(VD) &&
              S.Context.getCanonicalType(VD->getType()).isConstQualified())) {
-          if (Arg->isTypeDependent() || Arg->isValueDependent())
+          if (Arg->isTypeDependent() || Arg->isValueDependent()) {
             Converted = TemplateArgument(Arg);
-          else
-            Converted = TemplateArgument(VD->getCanonicalDecl());
+          } else {
+            VD = cast<ValueDecl>(VD->getCanonicalDecl());
+            Converted = TemplateArgument(VD, /*isReferenceParam*/false);
+          }
           return Invalid;
         }
       }
@@ -4074,10 +4069,12 @@ static bool CheckTemplateArgumentPointerToMember(Sema &S,
 
     // Okay: this is the address of a non-static member, and therefore
     // a member pointer constant.
-    if (Arg->isTypeDependent() || Arg->isValueDependent())
+    if (Arg->isTypeDependent() || Arg->isValueDependent()) {
       Converted = TemplateArgument(Arg);
-    else
-      Converted = TemplateArgument(DRE->getDecl()->getCanonicalDecl());
+    } else {
+      ValueDecl *D = cast<ValueDecl>(DRE->getDecl()->getCanonicalDecl());
+      Converted = TemplateArgument(D, /*isReferenceParam*/false);
+    }
     return Invalid;
   }
 
@@ -4430,7 +4427,7 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
       
     case NPV_NullPointer:
       Diag(Arg->getExprLoc(), diag::warn_cxx98_compat_template_arg_null);
-      Converted = TemplateArgument((Decl *)0);
+      Converted = TemplateArgument(ParamType, /*isNullPtr*/true);
       return Owned(Arg);
     }
   }
@@ -4453,7 +4450,7 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
 bool Sema::CheckTemplateArgument(TemplateTemplateParmDecl *Param,
                                  const TemplateArgumentLoc &Arg,
                                  unsigned ArgumentPackIndex) {
-  TemplateName Name = Arg.getArgument().getAsTemplate();
+  TemplateName Name = Arg.getArgument().getAsTemplateOrTemplatePattern();
   TemplateDecl *Template = Name.getAsTemplateDecl();
   if (!Template) {
     // Any dependent template name is fine.
@@ -4502,12 +4499,9 @@ ExprResult
 Sema::BuildExpressionFromDeclTemplateArgument(const TemplateArgument &Arg,
                                               QualType ParamType,
                                               SourceLocation Loc) {
-  assert(Arg.getKind() == TemplateArgument::Declaration &&
-         "Only declaration template arguments permitted here");
-  
   // For a NULL non-type template argument, return nullptr casted to the
   // parameter's type.
-  if (!Arg.getAsDecl()) {
+  if (Arg.getKind() == TemplateArgument::NullPtr) {
     return ImpCastExprToType(
              new (Context) CXXNullPtrLiteralExpr(Context.NullPtrTy, Loc),
                              ParamType,
@@ -4515,7 +4509,9 @@ Sema::BuildExpressionFromDeclTemplateArgument(const TemplateArgument &Arg,
                                ? CK_NullToMemberPointer
                                : CK_NullToPointer);
   }
-  
+  assert(Arg.getKind() == TemplateArgument::Declaration &&
+         "Only declaration template arguments permitted here");
+
   ValueDecl *VD = cast<ValueDecl>(Arg.getAsDecl());
 
   if (VD->getDeclContext()->isRecord() &&
@@ -5110,10 +5106,10 @@ static bool CheckNonTypeClassTemplatePartialSpecializationArgs(Sema &S,
       continue;
     }
 
-    Expr *ArgExpr = Args[I].getAsExpr();
-    if (!ArgExpr) {
+    if (Args[I].getKind() != TemplateArgument::Expression)
       continue;
-    }
+
+    Expr *ArgExpr = Args[I].getAsExpr();
 
     // We can have a pack expansion of any of the bullets below.
     if (PackExpansionExpr *Expansion = dyn_cast<PackExpansionExpr>(ArgExpr))
@@ -5940,7 +5936,7 @@ Sema::CheckFunctionTemplateSpecialization(FunctionDecl *FD,
       // Perform template argument deduction to determine whether we may be
       // specializing this template.
       // FIXME: It is somewhat wasteful to build
-      TemplateDeductionInfo Info(Context, FD->getLocation());
+      TemplateDeductionInfo Info(FD->getLocation());
       FunctionDecl *Specialization = 0;
       if (TemplateDeductionResult TDK
             = DeduceTemplateArguments(FunTmpl, ExplicitTemplateArgs,
@@ -6796,7 +6792,7 @@ DeclResult Sema::ActOnExplicitInstantiation(Scope *S,
     if (!FunTmpl)
       continue;
 
-    TemplateDeductionInfo Info(Context, D.getIdentifierLoc());
+    TemplateDeductionInfo Info(D.getIdentifierLoc());
     FunctionDecl *Specialization = 0;
     if (TemplateDeductionResult TDK
           = DeduceTemplateArguments(FunTmpl,

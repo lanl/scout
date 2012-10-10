@@ -31,7 +31,6 @@
 #include "llvm/CodeGen/RegisterPressure.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
 #include "llvm/Target/TargetInstrInfo.h"
-#include "llvm/MC/MCInstrItineraries.h"
 
 namespace llvm {
 
@@ -179,6 +178,14 @@ public:
 #endif
 };
 
+/// Mutate the DAG as a postpass after normal DAG building.
+class ScheduleDAGMutation {
+public:
+  virtual ~ScheduleDAGMutation() {}
+
+  virtual void apply(ScheduleDAGMI *DAG) = 0;
+};
+
 /// ScheduleDAGMI is an implementation of ScheduleDAGInstrs that schedules
 /// machine instructions while updating LiveIntervals and tracking regpressure.
 class ScheduleDAGMI : public ScheduleDAGInstrs {
@@ -186,6 +193,9 @@ protected:
   AliasAnalysis *AA;
   RegisterClassInfo *RegClassInfo;
   MachineSchedStrategy *SchedImpl;
+
+  /// Ordered list of DAG postprocessing steps.
+  std::vector<ScheduleDAGMutation*> Mutations;
 
   MachineBasicBlock::iterator LiveRegionEnd;
 
@@ -229,6 +239,13 @@ public:
     delete SchedImpl;
   }
 
+  /// Add a postprocessing step to the DAG builder.
+  /// Mutations are applied in the order that they are added after normal DAG
+  /// building and before MachineSchedStrategy initialization.
+  void addMutation(ScheduleDAGMutation *Mutation) {
+    Mutations.push_back(Mutation);
+  }
+
   MachineBasicBlock::iterator top() const { return CurrentTop; }
   MachineBasicBlock::iterator bottom() const { return CurrentBottom; }
 
@@ -260,19 +277,6 @@ public:
     return RegionCriticalPSets;
   }
 
-  /// getIssueWidth - Return the max instructions per scheduling group.
-  unsigned getIssueWidth() const {
-    return (InstrItins && InstrItins->SchedModel)
-      ? InstrItins->SchedModel->IssueWidth : 1;
-  }
-
-  /// getNumMicroOps - Return the number of issue slots required for this MI.
-  unsigned getNumMicroOps(MachineInstr *MI) const {
-    if (!InstrItins) return 1;
-    int UOps = InstrItins->getNumMicroOps(MI->getDesc().getSchedClass());
-    return (UOps >= 0) ? UOps : TII->getNumMicroOps(InstrItins, MI);
-  }
-
 protected:
   // Top-Level entry points for the schedule() driver...
 
@@ -281,6 +285,10 @@ protected:
   /// region, TopTracker and BottomTracker will be initialized to the top and
   /// bottom of the DAG region without covereing any unscheduled instruction.
   void buildDAGWithRegPressure();
+
+  /// Apply each ScheduleDAGMutation step in order. This allows different
+  /// instances of ScheduleDAGMI to perform custom DAG postprocessing.
+  void postprocessDAG();
 
   /// Identify DAG roots and setup scheduler queues.
   void initQueues();

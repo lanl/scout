@@ -1121,9 +1121,8 @@ namespace {
     bool relatedSelect(const SelectInst *A, const Value *B);
     bool relatedPHI(const PHINode *A, const Value *B);
 
-    // Do not implement.
-    void operator=(const ProvenanceAnalysis &);
-    ProvenanceAnalysis(const ProvenanceAnalysis &);
+    void operator=(const ProvenanceAnalysis &) LLVM_DELETED_FUNCTION;
+    ProvenanceAnalysis(const ProvenanceAnalysis &) LLVM_DELETED_FUNCTION;
 
   public:
     ProvenanceAnalysis() {}
@@ -1789,7 +1788,9 @@ Constant *ObjCARCOpt::getRetainRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     RetainRVCallee =
       M->getOrInsertFunction("objc_retainAutoreleasedReturnValue", FTy,
                              Attributes);
@@ -1803,7 +1804,9 @@ Constant *ObjCARCOpt::getAutoreleaseRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     AutoreleaseRVCallee =
       M->getOrInsertFunction("objc_autoreleaseReturnValue", FTy,
                              Attributes);
@@ -1815,7 +1818,9 @@ Constant *ObjCARCOpt::getReleaseCallee(Module *M) {
   if (!ReleaseCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     ReleaseCallee =
       M->getOrInsertFunction(
         "objc_release",
@@ -1829,7 +1834,9 @@ Constant *ObjCARCOpt::getRetainCallee(Module *M) {
   if (!RetainCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     RetainCallee =
       M->getOrInsertFunction(
         "objc_retain",
@@ -1858,7 +1865,9 @@ Constant *ObjCARCOpt::getAutoreleaseCallee(Module *M) {
   if (!AutoreleaseCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     AutoreleaseCallee =
       M->getOrInsertFunction(
         "objc_autorelease",
@@ -3550,19 +3559,19 @@ bool ObjCARCOpt::OptimizeSequences(Function &F) {
 }
 
 /// OptimizeReturns - Look for this pattern:
-///
+/// \code
 ///    %call = call i8* @something(...)
 ///    %2 = call i8* @objc_retain(i8* %call)
 ///    %3 = call i8* @objc_autorelease(i8* %2)
 ///    ret i8* %3
-///
+/// \endcode
 /// And delete the retain and autorelease.
 ///
 /// Otherwise if it's just this:
-///
+/// \code
 ///    %3 = call i8* @objc_autorelease(i8* %2)
 ///    ret i8* %3
-///
+/// \endcode
 /// convert the autorelease to autoreleaseRV.
 void ObjCARCOpt::OptimizeReturns(Function &F) {
   if (!F.getReturnType()->isPointerTy())
@@ -3831,9 +3840,13 @@ Constant *ObjCARCContract::getStoreStrongCallee(Module *M) {
     Type *I8XX = PointerType::getUnqual(I8X);
     Type *Params[] = { I8XX, I8X };
 
+    Attributes::Builder BNoUnwind;
+    BNoUnwind.addAttribute(Attributes::NoUnwind);
+    Attributes::Builder BNoCapture;
+    BNoCapture.addAttribute(Attributes::NoCapture);
     AttrListPtr Attributes = AttrListPtr()
-      .addAttr(~0u, Attribute::NoUnwind)
-      .addAttr(1, Attribute::NoCapture);
+      .addAttr(~0u, Attributes::get(BNoUnwind))
+      .addAttr(1, Attributes::get(BNoCapture));
 
     StoreStrongCallee =
       M->getOrInsertFunction(
@@ -3850,7 +3863,9 @@ Constant *ObjCARCContract::getRetainAutoreleaseCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     RetainAutoreleaseCallee =
       M->getOrInsertFunction("objc_retainAutorelease", FTy, Attributes);
   }
@@ -3863,7 +3878,9 @@ Constant *ObjCARCContract::getRetainAutoreleaseRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attribute::NoUnwind);
+    Attributes::Builder B;
+    B.addAttribute(Attributes::NoUnwind);
+    AttrListPtr Attributes = AttrListPtr().addAttr(~0u, Attributes::get(B));
     RetainAutoreleaseRVCallee =
       M->getOrInsertFunction("objc_retainAutoreleaseReturnValue", FTy,
                              Attributes);

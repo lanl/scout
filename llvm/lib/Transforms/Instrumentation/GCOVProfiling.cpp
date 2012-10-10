@@ -682,7 +682,7 @@ void GCOVProfiler::insertCounterWriteout(
                                  "__llvm_gcov_init", M);
   F->setUnnamedAddr(true);
   F->setLinkage(GlobalValue::InternalLinkage);
-  F->addFnAttr(Attribute::NoInline);
+  F->addFnAttr(Attributes::NoInline);
 
   BB = BasicBlock::Create(*Ctx, "entry", F);
   Builder.SetInsertPoint(BB);
@@ -701,7 +701,7 @@ void GCOVProfiler::insertIndirectCounterIncrement() {
     cast<Function>(GCOVProfiler::getIncrementIndirectCounterFunc());
   Fn->setUnnamedAddr(true);
   Fn->setLinkage(GlobalValue::InternalLinkage);
-  Fn->addFnAttr(Attribute::NoInline);
+  Fn->addFnAttr(Attributes::NoInline);
 
   Type *Int32Ty = Type::getInt32Ty(*Ctx);
   Type *Int64Ty = Type::getInt64Ty(*Ctx);
@@ -751,10 +751,10 @@ void GCOVProfiler::insertIndirectCounterIncrement() {
 void GCOVProfiler::
 insertFlush(ArrayRef<std::pair<GlobalVariable*, MDNode*> > CountersBySP) {
   FunctionType *FTy = FunctionType::get(Type::getVoidTy(*Ctx), false);
-  Function *FlushF = M->getFunction("__llvm_gcov_flush");
+  Function *FlushF = M->getFunction("__gcov_flush");
   if (!FlushF)
     FlushF = Function::Create(FTy, GlobalValue::InternalLinkage,
-                              "__llvm_gcov_flush", M);
+                              "__gcov_flush", M);
   else
     FlushF->setLinkage(GlobalValue::InternalLinkage);
   FlushF->setUnnamedAddr(true);
@@ -774,15 +774,15 @@ insertFlush(ArrayRef<std::pair<GlobalVariable*, MDNode*> > CountersBySP) {
        I != E; ++I) {
     GlobalVariable *GV = I->first;
     Constant *Null = Constant::getNullValue(GV->getType()->getElementType());
-    Builder.CreateStore(Null, GV);//Builder.CreateConstGEP2_64(GV, 0, 0));
+    Builder.CreateStore(Null, GV);
   }
 
   Type *RetTy = FlushF->getReturnType();
   if (RetTy == Type::getVoidTy(*Ctx))
     Builder.CreateRetVoid();
   else if (RetTy->isIntegerTy())
-    // Used if __llvm_gcov_flush was implicitly declared.
+    // Used if __gcov_flush was implicitly declared.
     Builder.CreateRet(ConstantInt::get(RetTy, 0));
   else
-    report_fatal_error("invalid return type for __llvm_gcov_flush");
+    report_fatal_error("invalid return type for __gcov_flush");
 }

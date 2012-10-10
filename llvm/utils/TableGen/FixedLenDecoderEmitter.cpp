@@ -1758,7 +1758,7 @@ static bool populateInstruction(const CodeGenInstruction &CGI, unsigned Opc,
     // FIXME: This need to be extended to handle instructions with custom
     // decoder methods, and operands with (simple) MIOperandInfo's.
     TypedInit *TI = dynamic_cast<TypedInit*>(NI->first);
-    RecordRecTy *Type = dynamic_cast<RecordRecTy*>(TI->getType());
+    RecordRecTy *Type = dyn_cast<RecordRecTy>(TI->getType());
     Record *TypeRecord = Type->getRecord();
     bool isReg = false;
     if (TypeRecord->isSubClassOf("RegisterOperand"))
@@ -1882,7 +1882,7 @@ static void emitDecodeInstruction(formatted_raw_ostream &OS) {
      << "  uint64_t Bits = STI.getFeatureBits();\n"
      << "\n"
      << "  const uint8_t *Ptr = DecodeTable;\n"
-     << "  uint32_t CurFieldValue;\n"
+     << "  uint32_t CurFieldValue = 0;\n"
      << "  DecodeStatus S = MCDisassembler::Success;\n"
      << "  for (;;) {\n"
      << "    ptrdiff_t Loc = Ptr - DecodeTable;\n"

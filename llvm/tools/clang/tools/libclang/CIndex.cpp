@@ -1021,12 +1021,12 @@ bool CursorVisitor::VisitObjCPropertyDecl(ObjCPropertyDecl *PD) {
   // Visit synthesized methods since they will be skipped when visiting
   // the @interface.
   if (ObjCMethodDecl *MD = prevDecl->getGetterMethodDecl())
-    if (MD->isSynthesized() && MD->getLexicalDeclContext() == CDecl)
+    if (MD->isPropertyAccessor() && MD->getLexicalDeclContext() == CDecl)
       if (Visit(MakeCXCursor(MD, TU, RegionOfInterest)))
         return true;
 
   if (ObjCMethodDecl *MD = prevDecl->getSetterMethodDecl())
-    if (MD->isSynthesized() && MD->getLexicalDeclContext() == CDecl)
+    if (MD->isPropertyAccessor() && MD->getLexicalDeclContext() == CDecl)
       if (Visit(MakeCXCursor(MD, TU, RegionOfInterest)))
         return true;
 
@@ -1327,7 +1327,12 @@ bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
     if (Expr *E = TAL.getSourceDeclExpression())
       return Visit(MakeCXCursor(E, StmtParent, TU, RegionOfInterest));
     return false;
-      
+
+  case TemplateArgument::NullPtr:
+    if (Expr *E = TAL.getSourceNullPtrExpression())
+      return Visit(MakeCXCursor(E, StmtParent, TU, RegionOfInterest));
+    return false;
+
   case TemplateArgument::Expression:
     if (Expr *E = TAL.getSourceExpression())
       return Visit(MakeCXCursor(E, StmtParent, TU, RegionOfInterest));
@@ -2740,7 +2745,8 @@ static void clang_saveTranslationUnit_Impl(void *UserData) {
   if (CXXIdx->isOptEnabled(CXGlobalOpt_ThreadBackgroundPriorityForIndexing))
     setThreadBackgroundPriority();
 
-  STUI->result = static_cast<ASTUnit *>(STUI->TU->TUData)->Save(STUI->FileName);
+  bool hadError = static_cast<ASTUnit *>(STUI->TU->TUData)->Save(STUI->FileName);
+  STUI->result = hadError ? CXSaveError_Unknown : CXSaveError_None;
 }
 
 int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
@@ -3069,6 +3075,10 @@ static CXString getDeclSpelling(Decl *D) {
       if (ObjCPropertyDecl *Property = PropImpl->getPropertyDecl())
         return createCXString(Property->getIdentifier()->getName());
     
+    if (ImportDecl *ImportD = dyn_cast<ImportDecl>(D))
+      if (Module *Mod = ImportD->getImportedModule())
+        return createCXString(Mod->getFullModuleName());
+
     return createCXString("");
   }
   
@@ -3268,6 +3278,18 @@ CXSourceRange clang_Cursor_getSpellingNameRange(CXCursor C,
     if (ObjCCategoryImplDecl *
           CID = dyn_cast_or_null<ObjCCategoryImplDecl>(getCursorDecl(C)))
       return cxloc::translateSourceRange(Ctx, CID->getCategoryNameLoc());
+  }
+
+  if (C.kind == CXCursor_ModuleImportDecl) {
+    if (pieceIndex > 0)
+      return clang_getNullRange();
+    if (ImportDecl *ImportD = dyn_cast_or_null<ImportDecl>(getCursorDecl(C))) {
+      ArrayRef<SourceLocation> Locs = ImportD->getIdentifierLocs();
+      if (!Locs.empty())
+        return cxloc::translateSourceRange(Ctx,
+                                         SourceRange(Locs.front(), Locs.back()));
+    }
+    return clang_getNullRange();
   }
 
   // FIXME: A CXCursor_InclusionDirective should give the location of the
@@ -3665,6 +3687,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return createCXString("ObjCDynamicDecl");
   case CXCursor_CXXAccessSpecifier:
     return createCXString("CXXAccessSpecifier");
+  case CXCursor_ModuleImportDecl:
+    return createCXString("ModuleImport");
   }
 
   llvm_unreachable("Unhandled CXCursorKind");
@@ -3861,7 +3885,8 @@ unsigned clang_isInvalid(enum CXCursorKind K) {
 }
 
 unsigned clang_isDeclaration(enum CXCursorKind K) {
-  return K >= CXCursor_FirstDecl && K <= CXCursor_LastDecl;
+  return (K >= CXCursor_FirstDecl && K <= CXCursor_LastDecl) ||
+         (K >= CXCursor_FirstExtraDecl && K <= CXCursor_LastExtraDecl);
 }
 
 unsigned clang_isReference(enum CXCursorKind K) {
@@ -4008,7 +4033,7 @@ CXSourceLocation clang_getCursorLocation(CXCursor C) {
     return cxloc::translateSourceLocation(getCursorContext(C), L);
   }
 
-  if (C.kind < CXCursor_FirstDecl || C.kind > CXCursor_LastDecl)
+  if (!clang_isDeclaration(C.kind))
     return clang_getNullLocation();
 
   Decl *D = getCursorDecl(C);
@@ -4143,7 +4168,7 @@ static SourceRange getRawCursorExtent(CXCursor C) {
     return SourceRange(Start, End);
   }
 
-  if (C.kind >= CXCursor_FirstDecl && C.kind <= CXCursor_LastDecl) {
+  if (clang_isDeclaration(C.kind)) {
     Decl *D = cxcursor::getCursorDecl(C);
     if (!D)
       return SourceRange();
@@ -4166,7 +4191,7 @@ static SourceRange getRawCursorExtent(CXCursor C) {
 /// \brief Retrieves the "raw" cursor extent, which is then extended to include
 /// the decl-specifier-seq for declarations.
 static SourceRange getFullCursorExtent(CXCursor C, SourceManager &SrcMgr) {
-  if (C.kind >= CXCursor_FirstDecl && C.kind <= CXCursor_LastDecl) {
+  if (clang_isDeclaration(C.kind)) {
     Decl *D = cxcursor::getCursorDecl(C);
     if (!D)
       return SourceRange();
@@ -5131,7 +5156,7 @@ AnnotateTokensWorker::Visit(CXCursor cursor, CXCursor parent) {
 
   // Adjust the annotated range based specific declarations.
   const enum CXCursorKind cursorK = clang_getCursorKind(cursor);
-  if (cursorK >= CXCursor_FirstDecl && cursorK <= CXCursor_LastDecl) {
+  if (clang_isDeclaration(cursorK)) {
     Decl *D = cxcursor::getCursorDecl(cursor);
     
     SourceLocation StartLoc;
@@ -5833,9 +5858,57 @@ CXComment clang_Cursor_getParsedComment(CXCursor C) {
 
   const Decl *D = getCursorDecl(C);
   const ASTContext &Context = getCursorContext(C);
-  const comments::FullComment *FC = Context.getCommentForDecl(D);
+  const comments::FullComment *FC = Context.getCommentForDecl(D, /*PP=*/ NULL);
 
   return cxcomment::createCXComment(FC, getCursorTU(C));
+}
+
+CXModule clang_Cursor_getModule(CXCursor C) {
+  if (C.kind == CXCursor_ModuleImportDecl) {
+    if (ImportDecl *ImportD = dyn_cast_or_null<ImportDecl>(getCursorDecl(C)))
+      return ImportD->getImportedModule();
+  }
+
+  return 0;
+}
+
+CXModule clang_Module_getParent(CXModule CXMod) {
+  if (!CXMod)
+    return 0;
+  Module *Mod = static_cast<Module*>(CXMod);
+  return Mod->Parent;
+}
+
+CXString clang_Module_getName(CXModule CXMod) {
+  if (!CXMod)
+    return createCXString("");
+  Module *Mod = static_cast<Module*>(CXMod);
+  return createCXString(Mod->Name);
+}
+
+CXString clang_Module_getFullName(CXModule CXMod) {
+  if (!CXMod)
+    return createCXString("");
+  Module *Mod = static_cast<Module*>(CXMod);
+  return createCXString(Mod->getFullModuleName());
+}
+
+unsigned clang_Module_getNumTopLevelHeaders(CXModule CXMod) {
+  if (!CXMod)
+    return 0;
+  Module *Mod = static_cast<Module*>(CXMod);
+  return Mod->TopHeaders.size();
+}
+
+CXFile clang_Module_getTopLevelHeader(CXModule CXMod, unsigned Index) {
+  if (!CXMod)
+    return 0;
+  Module *Mod = static_cast<Module*>(CXMod);
+
+  if (Index < Mod->TopHeaders.size())
+    return const_cast<FileEntry *>(Mod->TopHeaders[Index]);
+
+  return 0;
 }
 
 } // end: extern "C"

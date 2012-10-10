@@ -1956,6 +1956,25 @@ static int inspect_cursor_at(int argc, const char **argv) {
         if (clang_Cursor_isDynamicCall(Cursor))
           printf(" Dynamic-call");
 
+        {
+          CXModule mod = clang_Cursor_getModule(Cursor);
+          CXString name;
+          unsigned i, numHeaders;
+          if (mod) {
+            name = clang_Module_getFullName(mod);
+            numHeaders = clang_Module_getNumTopLevelHeaders(mod);
+            printf(" ModuleName=%s Headers(%d):",
+                   clang_getCString(name), numHeaders);
+            clang_disposeString(name);
+            for (i = 0; i < numHeaders; ++i) {
+              CXFile file = clang_Module_getTopLevelHeader(mod, i);
+              CXString filename = clang_getFileName(file);
+              printf("\n%s", clang_getCString(filename));
+              clang_disposeString(filename);
+            }
+          }
+        }
+
         if (completionString != NULL) {
           printf("\nCompletion string: ");
           print_completion_string(completionString, stdout);
@@ -2349,6 +2368,26 @@ static CXIdxClientFile index_ppIncludedFile(CXClientData client_data,
   return (CXIdxClientFile)info->file;
 }
 
+static CXIdxClientFile index_importedASTFile(CXClientData client_data,
+                                         const CXIdxImportedASTFileInfo *info) {
+  IndexData *index_data;
+  index_data = (IndexData *)client_data;
+  printCheck(index_data);
+
+  printf("[importedASTFile]: ");
+  printCXIndexFile((CXIdxClientFile)info->file);
+  if (info->module) {
+    CXString name = clang_Module_getFullName(info->module);
+    printf(" | loc: ");
+    printCXIndexLoc(info->loc, client_data);
+    printf(" | name: \"%s\"", clang_getCString(name));
+    printf(" | isImplicit: %d\n", info->isImplicit);
+    clang_disposeString(name);
+  }
+
+  return (CXIdxClientFile)info->file;
+}
+
 static CXIdxClientContainer index_startedTranslationUnit(CXClientData client_data,
                                                    void *reserved) {
   IndexData *index_data;
@@ -2479,7 +2518,7 @@ static IndexerCallbacks IndexCB = {
   index_diagnostic,
   index_enteredMainFile,
   index_ppIncludedFile,
-  0, /*importedASTFile*/
+  index_importedASTFile,
   index_startedTranslationUnit,
   index_indexDeclaration,
   index_indexEntityReference
@@ -2534,7 +2573,8 @@ static int index_file(int argc, const char **argv) {
   idxAction = clang_IndexAction_create(Idx);
   result = clang_indexSourceFile(idxAction, &index_data,
                                  &IndexCB,sizeof(IndexCB), index_opts,
-                                 0, argv, argc, 0, 0, 0, 0);
+                                 0, argv, argc, 0, 0, 0,
+                                 getDefaultParsingOptions());
   if (index_data.fail_for_error)
     result = -1;
 

@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include <stdlib.h>
 using namespace clang;
 
 Module::ExportDecl 
@@ -151,6 +152,7 @@ Module *ModuleMap::findModuleForHeader(const FileEntry *File) {
         StringRef Name = llvm::sys::path::stem(File->getName());
         Result = findOrCreateModule(Name, Result, /*IsFramework=*/false,
                                     Explicit).first;
+        Result->TopHeaders.insert(File);
         
         // If inferred submodules export everything they import, add a 
         // wildcard to the set of exports.
@@ -343,9 +345,37 @@ ModuleMap::inferFrameworkModule(StringRef ModuleName,
        Dir != DirEnd && !EC; Dir.increment(EC)) {
     if (!StringRef(Dir->path()).endswith(".framework"))
       continue;
-    
+
     if (const DirectoryEntry *SubframeworkDir
           = FileMgr.getDirectory(Dir->path())) {
+      // Note: as an egregious but useful hack, we use the real path here and
+      // check whether it is actually a subdirectory of the parent directory.
+      // This will not be the case if the 'subframework' is actually a symlink
+      // out to a top-level framework.
+#ifdef LLVM_ON_UNIX
+      char RealSubframeworkDirName[PATH_MAX];
+      if (realpath(Dir->path().c_str(), RealSubframeworkDirName)) {
+        StringRef SubframeworkDirName = RealSubframeworkDirName;
+
+        bool FoundParent = false;
+        do {
+          // Get the parent directory name.
+          SubframeworkDirName
+            = llvm::sys::path::parent_path(SubframeworkDirName);
+          if (SubframeworkDirName.empty())
+            break;
+
+          if (FileMgr.getDirectory(SubframeworkDirName) == FrameworkDir) {
+            FoundParent = true;
+            break;
+          }
+        } while (true);
+
+        if (!FoundParent)
+          continue;
+      }
+#endif
+
       // FIXME: Do we want to warn about subframeworks without umbrella headers?
       inferFrameworkModule(llvm::sys::path::stem(Dir->path()), SubframeworkDir,
                            IsSystem, Result);

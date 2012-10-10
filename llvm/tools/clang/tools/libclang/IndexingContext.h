@@ -251,8 +251,8 @@ class AttrListInfo {
   SmallVector<CXIdxAttrInfo *, 2> CXAttrs;
   unsigned ref_cnt;
 
-  AttrListInfo(const AttrListInfo&); // DO NOT IMPLEMENT
-  void operator=(const AttrListInfo&); // DO NOT IMPLEMENT
+  AttrListInfo(const AttrListInfo &) LLVM_DELETED_FUNCTION;
+  void operator=(const AttrListInfo &) LLVM_DELETED_FUNCTION;
 public:
   AttrListInfo(const Decl *D, IndexingContext &IdxCtx);
 
@@ -381,6 +381,9 @@ public:
   void ppIncludedFile(SourceLocation hashLoc,
                       StringRef filename, const FileEntry *File,
                       bool isImport, bool isAngled);
+
+  void importedModule(const ImportDecl *ImportD);
+  void importedPCH(const FileEntry *File);
 
   void startedTranslationUnit();
 

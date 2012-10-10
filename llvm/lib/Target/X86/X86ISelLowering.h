@@ -233,6 +233,9 @@ namespace llvm {
       // VFPEXT - Vector FP extend.
       VFPEXT,
 
+      // VFPROUND - Vector FP round.
+      VFPROUND,
+
       // VSHL, VSRL - 128-bit vector logical left / right shift
       VSHLDQ, VSRLDQ,
 
@@ -348,6 +351,10 @@ namespace llvm {
       ATOMXOR64_DAG,
       ATOMAND64_DAG,
       ATOMNAND64_DAG,
+      ATOMMAX64_DAG,
+      ATOMMIN64_DAG,
+      ATOMUMAX64_DAG,
+      ATOMUMIN64_DAG,
       ATOMSWAP64_DAG,
 
       // LCMPXCHG_DAG, LCMPXCHG8_DAG, LCMPXCHG16_DAG - Compare and swap.
@@ -697,7 +704,7 @@ namespace llvm {
     /// make the right decision when generating code for different targets.
     const X86Subtarget *Subtarget;
     const X86RegisterInfo *RegInfo;
-    const TargetData *TD;
+    const DataLayout *TD;
 
     /// X86StackPtr - X86 physical register used as stack ptr.
     unsigned X86StackPtr;
@@ -744,6 +751,7 @@ namespace llvm {
                                            bool isVarArg,
                                            bool isCalleeStructRet,
                                            bool isCallerStructRet,
+                                           Type *RetTy,
                                     const SmallVectorImpl<ISD::OutputArg> &Outs,
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -783,6 +791,7 @@ namespace llvm {
     SDValue LowerUINT_TO_FP_i32(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_TO_SINT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFP_TO_UINT(SDValue Op, SelectionDAG &DAG) const;
+    SDValue lowerFP_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFABS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFNEG(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFCOPYSIGN(SDValue Op, SelectionDAG &DAG) const;
@@ -811,7 +820,7 @@ namespace llvm {
     SDValue LowerVectorBroadcast(SDValue Op, SelectionDAG &DAG) const;
     SDValue NormalizeVectorShuffle(SDValue Op, SelectionDAG &DAG) const;
 
-    SDValue LowerVectorFpExtend(SDValue &Op, SelectionDAG &DAG) const;
+    SDValue LowerVectorAllZeroTest(SDValue Op, SelectionDAG &DAG) const;
 
     virtual SDValue
       LowerFormalArguments(SDValue Chain,
@@ -859,36 +868,17 @@ namespace llvm {
                                    MachineBasicBlock *BB) const;
     MachineBasicBlock *EmitMwait(MachineInstr *MI, MachineBasicBlock *BB) const;
 
-    /// Utility function to emit atomic bitwise operations (and, or, xor).
-    /// It takes the bitwise instruction to expand, the associated machine basic
-    /// block, and the associated X86 opcodes for reg/reg and reg/imm.
-    MachineBasicBlock *EmitAtomicBitwiseWithCustomInserter(
-                                                    MachineInstr *BInstr,
-                                                    MachineBasicBlock *BB,
-                                                    unsigned regOpc,
-                                                    unsigned immOpc,
-                                                    unsigned loadOpc,
-                                                    unsigned cxchgOpc,
-                                                    unsigned notOpc,
-                                                    unsigned EAXreg,
-                                              const TargetRegisterClass *RC,
-                                                    bool Invert = false) const;
+    /// Utility function to emit atomic-load-arith operations (and, or, xor,
+    /// nand, max, min, umax, umin). It takes the corresponding instruction to
+    /// expand, the associated machine basic block, and the associated X86
+    /// opcodes for reg/reg.
+    MachineBasicBlock *EmitAtomicLoadArith(MachineInstr *MI,
+                                           MachineBasicBlock *MBB) const;
 
-    MachineBasicBlock *EmitAtomicBit6432WithCustomInserter(
-                                                    MachineInstr *BInstr,
-                                                    MachineBasicBlock *BB,
-                                                    unsigned regOpcL,
-                                                    unsigned regOpcH,
-                                                    unsigned immOpcL,
-                                                    unsigned immOpcH,
-                                                    bool Invert = false) const;
-
-    /// Utility function to emit atomic min and max.  It takes the min/max
-    /// instruction to expand, the associated basic block, and the associated
-    /// cmov opcode for moving the min or max value.
-    MachineBasicBlock *EmitAtomicMinMaxWithCustomInserter(MachineInstr *BInstr,
-                                                          MachineBasicBlock *BB,
-                                                        unsigned cmovOpc) const;
+    /// Utility function to emit atomic-load-arith operations (and, or, xor,
+    /// nand, add, sub, swap) for 64-bit operands on 32-bit target.
+    MachineBasicBlock *EmitAtomicLoadArith6432(MachineInstr *MI,
+                                               MachineBasicBlock *MBB) const;
 
     // Utility function to emit the low-level va_arg code for X86-64.
     MachineBasicBlock *EmitVAARG64WithCustomInserter(

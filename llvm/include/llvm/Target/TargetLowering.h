@@ -22,6 +22,7 @@
 #ifndef LLVM_TARGET_TARGETLOWERING_H
 #define LLVM_TARGET_TARGETLOWERING_H
 
+#include "llvm/AddressingMode.h"
 #include "llvm/CallingConv.h"
 #include "llvm/InlineAsm.h"
 #include "llvm/Attributes.h"
@@ -50,7 +51,7 @@ namespace llvm {
   class MCContext;
   class MCExpr;
   template<typename T> class SmallVectorImpl;
-  class TargetData;
+  class DataLayout;
   class TargetRegisterClass;
   class TargetLibraryInfo;
   class TargetLoweringObjectFile;
@@ -77,8 +78,8 @@ namespace llvm {
 /// target-specific constructs to SelectionDAG operators.
 ///
 class TargetLowering {
-  TargetLowering(const TargetLowering&);  // DO NOT IMPLEMENT
-  void operator=(const TargetLowering&);  // DO NOT IMPLEMENT
+  TargetLowering(const TargetLowering&) LLVM_DELETED_FUNCTION;
+  void operator=(const TargetLowering&) LLVM_DELETED_FUNCTION;
 public:
   /// LegalizeAction - This enum indicates whether operations are valid for a
   /// target, and if not, what action should be used to make them valid.
@@ -137,12 +138,15 @@ public:
   virtual ~TargetLowering();
 
   const TargetMachine &getTargetMachine() const { return TM; }
-  const TargetData *getTargetData() const { return TD; }
+  const DataLayout *getDataLayout() const { return TD; }
   const TargetLoweringObjectFile &getObjFileLowering() const { return TLOF; }
 
   bool isBigEndian() const { return !IsLittleEndian; }
   bool isLittleEndian() const { return IsLittleEndian; }
-  MVT getPointerTy() const { return PointerTy; }
+  // Return the pointer type for the given address space, defaults to
+  // the pointer type from the data layout.
+  // FIXME: The default needs to be removed once all the code is updated.
+  virtual MVT getPointerTy(uint32_t addrspace = 0) const { return PointerTy; }
   virtual MVT getShiftAmountTy(EVT LHSTy) const;
 
   /// isSelectExpensive - Return true if the select operation is expensive for
@@ -157,12 +161,12 @@ public:
 
   /// isSlowDivBypassed - Returns true if target has indicated at least one
   /// type should be bypassed.
-  bool isSlowDivBypassed() const { return !BypassSlowDivTypes.empty(); }
+  bool isSlowDivBypassed() const { return !BypassSlowDivWidths.empty(); }
 
   /// getBypassSlowDivTypes - Returns map of slow types for division or
   /// remainder with corresponding fast types
-  const DenseMap<Type *, Type *> &getBypassSlowDivTypes() const {
-    return BypassSlowDivTypes;
+  const DenseMap<unsigned int, unsigned int> &getBypassSlowDivWidths() const {
+    return BypassSlowDivWidths;
   }
 
   /// isPow2DivCheap() - Return true if pow2 div is cheaper than a chain of
@@ -496,6 +500,9 @@ public:
     assert((unsigned)CC < array_lengthof(CondCodeActions) &&
            (unsigned)VT.getSimpleVT().SimpleTy < sizeof(CondCodeActions[0])*4 &&
            "Table isn't big enough!");
+    /// The lower 5 bits of the SimpleTy index into Nth 2bit set from the 64bit
+    /// value and the upper 27 bits index into the second dimension of the
+    /// array to select what 64bit value to use.
     LegalizeAction Action = (LegalizeAction)
       ((CondCodeActions[CC][VT.getSimpleVT().SimpleTy >> 5]
         >> (2*(VT.getSimpleVT().SimpleTy & 0x1F))) & 3);
@@ -707,6 +714,12 @@ public:
   /// jump tables.
   bool supportJumpTables() const {
     return SupportJumpTables;
+  }
+
+  /// getMinimumJumpTableEntries - return integer threshold on number of
+  /// blocks to use jump tables rather than if sequence.
+  int getMinimumJumpTableEntries() const {
+    return MinimumJumpTableEntries;
   }
 
   /// getStackPointerRegisterToSaveRestore - If a physical register, this
@@ -1029,6 +1042,12 @@ protected:
     SupportJumpTables = Val;
   }
 
+  /// setMinimumJumpTableEntries - Indicate the number of blocks to generate
+  /// jump tables rather than if sequence.
+  void setMinimumJumpTableEntries(int Val) {
+    MinimumJumpTableEntries = Val;
+  }
+
   /// setStackPointerRegisterToSaveRestore - If set to a physical register, this
   /// specifies the register that llvm.savestack/llvm.restorestack should save
   /// and restore.
@@ -1068,9 +1087,9 @@ protected:
   /// of instructions not containing an integer divide.
   void setIntDivIsCheap(bool isCheap = true) { IntDivIsCheap = isCheap; }
 
-  /// addBypassSlowDivType - Tells the code generator which types to bypass.
-  void addBypassSlowDivType(Type *slow_type, Type *fast_type) {
-    BypassSlowDivTypes[slow_type] = fast_type;
+  /// addBypassSlowDiv - Tells the code generator which bitwidths to bypass.
+  void addBypassSlowDiv(unsigned int SlowBitWidth, unsigned int FastBitWidth) {
+    BypassSlowDivWidths[SlowBitWidth] = FastBitWidth;
   }
 
   /// setPow2DivIsCheap - Tells the code generator that it shouldn't generate
@@ -1155,6 +1174,9 @@ protected:
     assert(VT < MVT::LAST_VALUETYPE &&
            (unsigned)CC < array_lengthof(CondCodeActions) &&
            "Table isn't big enough!");
+    /// The lower 5 bits of the SimpleTy index into Nth 2bit set from the 64bit
+    /// value and the upper 27 bits index into the second dimension of the
+    /// array to select what 64bit value to use.
     CondCodeActions[(unsigned)CC][VT.SimpleTy >> 5]
       &= ~(uint64_t(3UL)  << (VT.SimpleTy & 0x1F)*2);
     CondCodeActions[(unsigned)CC][VT.SimpleTy >> 5]
@@ -1301,9 +1323,9 @@ public:
                      FunctionType *FTy, bool isTailCall, SDValue callee,
                      ArgListTy &args, SelectionDAG &dag, DebugLoc dl,
                      ImmutableCallSite &cs)
-    : Chain(chain), RetTy(retTy), RetSExt(cs.paramHasAttr(0, Attribute::SExt)),
-      RetZExt(cs.paramHasAttr(0, Attribute::ZExt)), IsVarArg(FTy->isVarArg()),
-      IsInReg(cs.paramHasAttr(0, Attribute::InReg)),
+    : Chain(chain), RetTy(retTy), RetSExt(cs.paramHasAttr(0, Attributes::SExt)),
+      RetZExt(cs.paramHasAttr(0, Attributes::ZExt)), IsVarArg(FTy->isVarArg()),
+      IsInReg(cs.paramHasAttr(0, Attributes::InReg)),
       DoesNotReturn(cs.doesNotReturn()),
       IsReturnValueUsed(!cs.getInstruction()->use_empty()),
       IsTailCall(isTailCall), NumFixedArgs(FTy->getNumParams()),
@@ -1614,22 +1636,6 @@ public:
   // Addressing mode description hooks (used by LSR etc).
   //
 
-  /// AddrMode - This represents an addressing mode of:
-  ///    BaseGV + BaseOffs + BaseReg + Scale*ScaleReg
-  /// If BaseGV is null,  there is no BaseGV.
-  /// If BaseOffs is zero, there is no base offset.
-  /// If HasBaseReg is false, there is no base register.
-  /// If Scale is zero, there is no ScaleReg.  Scale of 1 indicates a reg with
-  /// no scale.
-  ///
-  struct AddrMode {
-    GlobalValue *BaseGV;
-    int64_t      BaseOffs;
-    bool         HasBaseReg;
-    int64_t      Scale;
-    AddrMode() : BaseGV(0), BaseOffs(0), HasBaseReg(false), Scale(0) {}
-  };
-
   /// GetAddrModeArguments - CodeGenPrepare sinks address calculations into the
   /// same BB as Load/Store instructions reading the address.  This allows as
   /// much computation as possible to be done in the address mode for that
@@ -1771,10 +1777,11 @@ public:
 
 private:
   const TargetMachine &TM;
-  const TargetData *TD;
+  const DataLayout *TD;
   const TargetLoweringObjectFile &TLOF;
 
-  /// PointerTy - The type to use for pointers, usually i32 or i64.
+  /// PointerTy - The type to use for pointers for the default address space,
+  /// usually i32 or i64.
   ///
   MVT PointerTy;
 
@@ -1792,11 +1799,11 @@ private:
   /// set to true unconditionally.
   bool IntDivIsCheap;
 
-  /// BypassSlowDivTypes - Tells the code generator to bypass slow divide or
-  /// remainder instructions. For example, SlowDivBypass[i32,u8] tells the code
-  /// generator to bypass 32-bit signed integer div/rem with an 8-bit unsigned
+  /// BypassSlowDivMap - Tells the code generator to bypass slow divide or
+  /// remainder instructions. For example, BypassSlowDivWidths[32,8] tells the
+  /// code generator to bypass 32-bit integer div/rem with an 8-bit unsigned
   /// integer div/rem when the operands are positive and less than 256.
-  DenseMap <Type *, Type *> BypassSlowDivTypes;
+  DenseMap <unsigned int, unsigned int> BypassSlowDivWidths;
 
   /// Pow2DivIsCheap - Tells the code generator that it shouldn't generate
   /// srl/add/sra for a signed divide by power of two, and let the target handle
@@ -1819,6 +1826,9 @@ private:
   /// SupportJumpTables - Whether the target can generate code for jumptables.
   /// If it's not true, then each jumptable must be lowered into if-then-else's.
   bool SupportJumpTables;
+
+  /// MinimumJumpTableEntries - Number of blocks threshold to use jump tables.
+  int MinimumJumpTableEntries;
 
   /// BooleanContents - Information about the contents of the high-bits in
   /// boolean values held in a type wider than i1.  See getBooleanContents.
@@ -1937,7 +1947,10 @@ private:
   /// CondCodeActions - For each condition code (ISD::CondCode) keep a
   /// LegalizeAction that indicates how instruction selection should
   /// deal with the condition code.
-  uint64_t CondCodeActions[ISD::SETCC_INVALID][2];
+  /// Because each CC action takes up 2 bits, we need to have the array size
+  /// be large enough to fit all of the value types. This can be done by
+  /// dividing the MVT::LAST_VALUETYPE by 32 and adding one.
+  uint64_t CondCodeActions[ISD::SETCC_INVALID][(MVT::LAST_VALUETYPE / 32) + 1];
 
   ValueTypeActionImpl ValueTypeActions;
 

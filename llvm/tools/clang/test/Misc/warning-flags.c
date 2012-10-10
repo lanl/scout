@@ -18,7 +18,7 @@ This test serves two purposes:
 
 The list of warnings below should NEVER grow.  It should gradually shrink to 0.
 
-CHECK: Warnings without flags (159):
+CHECK: Warnings without flags (156):
 CHECK-NEXT:   ext_delete_void_ptr_operand
 CHECK-NEXT:   ext_enum_friend
 CHECK-NEXT:   ext_expected_semi_decl_list
@@ -71,7 +71,6 @@ CHECK-NEXT:   warn_delete_array_type
 CHECK-NEXT:   warn_double_const_requires_fp64
 CHECK-NEXT:   warn_drv_assuming_mfloat_abi_is
 CHECK-NEXT:   warn_drv_clang_unsupported
-CHECK-NEXT:   warn_drv_not_using_clang_arch
 CHECK-NEXT:   warn_drv_not_using_clang_cpp
 CHECK-NEXT:   warn_drv_not_using_clang_cxx
 CHECK-NEXT:   warn_drv_objc_gc_unsupported
@@ -101,7 +100,6 @@ CHECK-NEXT:   warn_integer_too_large_for_signed
 CHECK-NEXT:   warn_invalid_asm_cast_lvalue
 CHECK-NEXT:   warn_many_braces_around_scalar_init
 CHECK-NEXT:   warn_maynot_respond
-CHECK-NEXT:   warn_member_extra_qualification
 CHECK-NEXT:   warn_method_param_redefinition
 CHECK-NEXT:   warn_mismatched_exception_spec
 CHECK-NEXT:   warn_missing_case_for_condition
@@ -134,7 +132,6 @@ CHECK-NEXT:   warn_pragma_expected_rparen
 CHECK-NEXT:   warn_pragma_extra_tokens_at_eol
 CHECK-NEXT:   warn_pragma_ms_struct
 CHECK-NEXT:   warn_pragma_options_align_reset_failed
-CHECK-NEXT:   warn_pragma_options_align_unsupported_option
 CHECK-NEXT:   warn_pragma_options_expected_align
 CHECK-NEXT:   warn_pragma_pack_invalid_action
 CHECK-NEXT:   warn_pragma_pack_invalid_alignment
@@ -181,4 +178,4 @@ CHECK-NEXT:   warn_weak_import
 
 The list of warnings in -Wpedantic should NEVER grow.
 
-CHECK: Number in -Wpedantic (not covered by other -W flags): 38
+CHECK: Number in -Wpedantic (not covered by other -W flags): 37

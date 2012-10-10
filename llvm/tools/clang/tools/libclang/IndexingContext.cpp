@@ -253,6 +253,39 @@ void IndexingContext::ppIncludedFile(SourceLocation hashLoc,
   FileMap[File] = idxFile;
 }
 
+void IndexingContext::importedModule(const ImportDecl *ImportD) {
+  if (!CB.importedASTFile)
+    return;
+
+  Module *Mod = ImportD->getImportedModule();
+  if (!Mod)
+    return;
+  std::string ModuleName = Mod->getFullModuleName();
+
+  CXIdxImportedASTFileInfo Info = {
+                                    (CXFile)Mod->getASTFile(),
+                                    Mod,
+                                    getIndexLoc(ImportD->getLocation()),
+                                    ImportD->isImplicit()
+                                  };
+  CXIdxClientASTFile astFile = CB.importedASTFile(ClientData, &Info);
+  (void)astFile;
+}
+
+void IndexingContext::importedPCH(const FileEntry *File) {
+  if (!CB.importedASTFile)
+    return;
+
+  CXIdxImportedASTFileInfo Info = {
+                                    (CXFile)File,
+                                    /*module=*/NULL,
+                                    getIndexLoc(SourceLocation()),
+                                    /*isImplicit=*/false
+                                  };
+  CXIdxClientASTFile astFile = CB.importedASTFile(ClientData, &Info);
+  (void)astFile;
+}
+
 void IndexingContext::startedTranslationUnit() {
   CXIdxClientContainer idxCont = 0;
   if (CB.startedTranslationUnit)
@@ -1088,6 +1121,8 @@ bool IndexingContext::shouldIgnoreIfImplicit(const Decl *D) {
   if (isa<ObjCIvarDecl>(D))
     return false;
   if (isa<ObjCMethodDecl>(D))
+    return false;
+  if (isa<ImportDecl>(D))
     return false;
   return true;
 }

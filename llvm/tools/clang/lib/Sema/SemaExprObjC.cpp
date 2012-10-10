@@ -229,7 +229,7 @@ static ObjCMethodDecl *getNSNumberFactoryMethod(Sema &S, SourceLocation Loc,
                                     S.NSNumberPointer, ResultTInfo,
                                     S.NSNumberDecl,
                                     /*isInstance=*/false, /*isVariadic=*/false,
-                                    /*isSynthesized=*/false,
+                                    /*isPropertyAccessor=*/false,
                                     /*isImplicitlyDeclared=*/true,
                                     /*isDefined=*/false,
                                     ObjCMethodDecl::Required,
@@ -477,7 +477,7 @@ ExprResult Sema::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
                                    stringWithUTF8String, NSStringPointer,
                                    ResultTInfo, NSStringDecl,
                                    /*isInstance=*/false, /*isVariadic=*/false,
-                                   /*isSynthesized=*/false,
+                                   /*isPropertyAccessor=*/false,
                                    /*isImplicitlyDeclared=*/true,
                                    /*isDefined=*/false,
                                    ObjCMethodDecl::Required,
@@ -646,7 +646,7 @@ ExprResult Sema::BuildObjCArrayLiteral(SourceRange SR, MultiExprArg Elements) {
                            ResultTInfo,
                            Context.getTranslationUnitDecl(),
                            false /*Instance*/, false/*isVariadic*/,
-                           /*isSynthesized=*/false,
+                           /*isPropertyAccessor=*/false,
                            /*isImplicitlyDeclared=*/true, /*isDefined=*/false,
                            ObjCMethodDecl::Required,
                            false);
@@ -764,7 +764,7 @@ ExprResult Sema::BuildObjCDictionaryLiteral(SourceRange SR,
                            0 /*TypeSourceInfo */,
                            Context.getTranslationUnitDecl(),
                            false /*Instance*/, false/*isVariadic*/,
-                           /*isSynthesized=*/false,
+                           /*isPropertyAccessor=*/false,
                            /*isImplicitlyDeclared=*/true, /*isDefined=*/false,
                            ObjCMethodDecl::Required,
                            false);
@@ -1305,8 +1305,8 @@ static void DiagnoseARCUseOfWeakReceiver(Sema &S, Expr *Receiver) {
   Expr *RExpr = Receiver->IgnoreParenImpCasts();
   SourceLocation Loc = RExpr->getLocStart();
   QualType T = RExpr->getType();
-  ObjCPropertyDecl *PDecl = 0;
-  ObjCMethodDecl *GDecl = 0;
+  const ObjCPropertyDecl *PDecl = 0;
+  const ObjCMethodDecl *GDecl = 0;
   if (PseudoObjectExpr *POE = dyn_cast<PseudoObjectExpr>(RExpr)) {
     RExpr = POE->getSyntacticForm();
     if (ObjCPropertyRefExpr *PRE = dyn_cast<ObjCPropertyRefExpr>(RExpr)) {
@@ -1328,34 +1328,29 @@ static void DiagnoseARCUseOfWeakReceiver(Sema &S, Expr *Receiver) {
     // See if receiver is a method which envokes a synthesized getter
     // backing a 'weak' property.
     ObjCMethodDecl *Method = ME->getMethodDecl();
-    if (Method && Method->isSynthesized()) {
-      Selector Sel = Method->getSelector();
-      if (Sel.getNumArgs() == 0) {
-        const DeclContext *Container = Method->getDeclContext();
-        PDecl = 
-          S.LookupPropertyDecl(cast<ObjCContainerDecl>(Container),
-                               Sel.getIdentifierInfoForSlot(0));
-      }
+    if (Method && Method->getSelector().getNumArgs() == 0) {
+      PDecl = Method->findPropertyDecl();
       if (PDecl)
         T = PDecl->getType();
     }
   }
   
-  if (T.getObjCLifetime() == Qualifiers::OCL_Weak) {
-    S.Diag(Loc, diag::warn_receiver_is_weak) 
-      << ((!PDecl && !GDecl) ? 0 : (PDecl ? 1 : 2));
-    if (PDecl)
-      S.Diag(PDecl->getLocation(), diag::note_property_declare);
-    else if (GDecl)
-      S.Diag(GDecl->getLocation(), diag::note_method_declared_at) << GDecl;
-    return;
+  if (T.getObjCLifetime() != Qualifiers::OCL_Weak) {
+    if (!PDecl)
+      return;
+    if (!(PDecl->getPropertyAttributes() & ObjCPropertyDecl::OBJC_PR_weak))
+      return;
   }
-  
-  if (PDecl && 
-      (PDecl->getPropertyAttributes() & ObjCPropertyDecl::OBJC_PR_weak)) {
-    S.Diag(Loc, diag::warn_receiver_is_weak) << 1;
+
+  S.Diag(Loc, diag::warn_receiver_is_weak)
+    << ((!PDecl && !GDecl) ? 0 : (PDecl ? 1 : 2));
+
+  if (PDecl)
     S.Diag(PDecl->getLocation(), diag::note_property_declare);
-  }
+  else if (GDecl)
+    S.Diag(GDecl->getLocation(), diag::note_method_declared_at) << GDecl;
+
+  S.Diag(Loc, diag::note_arc_assign_to_strong);
 }
 
 /// HandleExprPropertyRefExpr - Handle foo.bar where foo is a pointer to an
