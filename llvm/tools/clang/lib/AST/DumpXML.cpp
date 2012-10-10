@@ -316,12 +316,12 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
     }
     case TemplateArgument::Template:
     case TemplateArgument::TemplateExpansion:
+    case TemplateArgument::NullPtr:
       // FIXME: Implement!
       break;
         
     case TemplateArgument::Declaration: {
-      if (Decl *D = A.getAsDecl())
-        visitDeclRef(D);
+      visitDeclRef(A.getAsDecl());
       break;
     }
     case TemplateArgument::Integral: {
@@ -841,7 +841,7 @@ struct XMLDumper : public XMLDeclVisitor<XMLDumper>,
 
     setFlag("instance", D->isInstanceMethod());
     setFlag("variadic", D->isVariadic());
-    setFlag("synthesized", D->isSynthesized());
+    setFlag("property_accessor", D->isPropertyAccessor());
     setFlag("defined", D->isDefined());
     setFlag("related_result_type", D->hasRelatedResultType());
   }

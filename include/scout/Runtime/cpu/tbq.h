@@ -55,25 +55,38 @@
 #ifndef SCOUT_TBQ_H_
 #define SCOUT_TBQ_H_
 
-#include <list>
+#include "scout/Runtime/cpu/Queue.h"
+#include "scout/Runtime/cpu/MeshThread.h"
+#include <map>
+using namespace std;
+using namespace scout::cpu;
 
-#include "scout/Runtime/types.h"
-#include "scout/Runtime/range.h"
+namespace scout {
+  namespace cpu {
 
-namespace scout 
-{
-  
-  class tbq_rt{
-  public:
-    tbq_rt();
+    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
+                         size_t numFields);
+    Item *createItem(BlockLiteral * bl, int numDimensions,
+                     size_t start, size_t end);
+    size_t findExtent(BlockLiteral * bl, int numDimensions);
 
-    ~tbq_rt();
+    class tbq_rt {
+    public:
+      tbq_rt();
 
-    void run(void* blockLiteral, int numDimensions, int numFields);
+      ~tbq_rt();
 
-  private:
-    class tbq_rt_* x_;
-  };
+      void run(void *blockLiteral, int numDimensions, int numFields);
+
+    private:
+      void queueBlocks(void *blockLiteral, int numDimensions,
+                       int numFields);
+      typedef map < void *, Queue * >QueueMap_;
+      Queue *queue_;
+      ThreadVec threadVec_;
+
+    };
+  }
 }
 
 #endif

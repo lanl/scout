@@ -756,10 +756,10 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                               Scope::FunctionPrototypeScope |
                               Scope::DeclScope);
 
-    SourceLocation DeclLoc, DeclEndLoc;
+    SourceLocation DeclEndLoc;
     BalancedDelimiterTracker T(*this, tok::l_paren);
     T.consumeOpen();
-    DeclLoc = T.getOpenLocation();
+    SourceLocation LParenLoc = T.getOpenLocation();
 
     // Parse parameter-declaration-clause.
     ParsedAttributes Attr(AttrFactory);
@@ -770,7 +770,8 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
       ParseParameterDeclarationClause(D, Attr, ParamInfo, EllipsisLoc);
 
     T.consumeClose();
-    DeclEndLoc = T.getCloseLocation();
+    SourceLocation RParenLoc = T.getCloseLocation();
+    DeclEndLoc = RParenLoc;
 
     // Parse 'mutable'[opt].
     SourceLocation MutableLoc;
@@ -796,9 +797,12 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     // Parse attribute-specifier[opt].
     MaybeParseCXX0XAttributes(Attr, &DeclEndLoc);
 
+    SourceLocation FunLocalRangeEnd = DeclEndLoc;
+
     // Parse trailing-return-type[opt].
     TypeResult TrailingReturnType;
     if (Tok.is(tok::arrow)) {
+      FunLocalRangeEnd = Tok.getLocation();
       SourceRange Range;
       TrailingReturnType = ParseTrailingReturnType(Range);
       if (Range.getEnd().isValid())
@@ -807,15 +811,17 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
 
     PrototypeScope.Exit();
 
+    SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(/*hasProto=*/true,
-                                           /*isVariadic=*/EllipsisLoc.isValid(),
-                                           /*isAmbiguous=*/false, EllipsisLoc,
+                                           /*isAmbiguous=*/false,
+                                           LParenLoc,
                                            ParamInfo.data(), ParamInfo.size(),
+                                           EllipsisLoc, RParenLoc,
                                            DS.getTypeQualifiers(),
                                            /*RefQualifierIsLValueRef=*/true,
-                                           /*RefQualifierLoc=*/SourceLocation(),
-                                         /*ConstQualifierLoc=*/SourceLocation(),
-                                      /*VolatileQualifierLoc=*/SourceLocation(),
+                                           /*RefQualifierLoc=*/NoLoc,
+                                           /*ConstQualifierLoc=*/NoLoc,
+                                           /*VolatileQualifierLoc=*/NoLoc,
                                            MutableLoc,
                                            ESpecType, ESpecRange.getBegin(),
                                            DynamicExceptions.data(),
@@ -823,7 +829,7 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
                                            DynamicExceptions.size(),
                                            NoexceptExpr.isUsable() ?
                                              NoexceptExpr.get() : 0,
-                                           DeclLoc, DeclEndLoc, D,
+                                           LParenLoc, FunLocalRangeEnd, D,
                                            TrailingReturnType),
                   Attr, DeclEndLoc);
   } else if (Tok.is(tok::kw_mutable) || Tok.is(tok::arrow)) {
@@ -852,25 +858,28 @@ ExprResult Parser::ParseLambdaExpressionAfterIntroducer(
     }
 
     ParsedAttributes Attr(AttrFactory);
+    SourceLocation NoLoc;
     D.AddTypeInfo(DeclaratorChunk::getFunction(/*hasProto=*/true,
-                     /*isVariadic=*/false,
-                     /*isAmbiguous=*/false,
-                     /*EllipsisLoc=*/SourceLocation(),
-                     /*Params=*/0, /*NumParams=*/0,
-                     /*TypeQuals=*/0,
-                     /*RefQualifierIsLValueRef=*/true,
-                     /*RefQualifierLoc=*/SourceLocation(),
-                     /*ConstQualifierLoc=*/SourceLocation(),
-                     /*VolatileQualifierLoc=*/SourceLocation(),
-                     MutableLoc,
-                     EST_None, 
-                     /*ESpecLoc=*/SourceLocation(),
-                     /*Exceptions=*/0,
-                     /*ExceptionRanges=*/0,
-                     /*NumExceptions=*/0,
-                     /*NoexceptExpr=*/0,
-                     DeclLoc, DeclEndLoc, D,
-                     TrailingReturnType),
+                                               /*isAmbiguous=*/false,
+                                               /*LParenLoc=*/NoLoc,
+                                               /*Params=*/0,
+                                               /*NumParams=*/0,
+                                               /*EllipsisLoc=*/NoLoc,
+                                               /*RParenLoc=*/NoLoc,
+                                               /*TypeQuals=*/0,
+                                               /*RefQualifierIsLValueRef=*/true,
+                                               /*RefQualifierLoc=*/NoLoc,
+                                               /*ConstQualifierLoc=*/NoLoc,
+                                               /*VolatileQualifierLoc=*/NoLoc,
+                                               MutableLoc,
+                                               EST_None,
+                                               /*ESpecLoc=*/NoLoc,
+                                               /*Exceptions=*/0,
+                                               /*ExceptionRanges=*/0,
+                                               /*NumExceptions=*/0,
+                                               /*NoexceptExpr=*/0,
+                                               DeclLoc, DeclEndLoc, D,
+                                               TrailingReturnType),
                   Attr, DeclEndLoc);
   }
   
@@ -1001,7 +1010,8 @@ ExprResult Parser::ParseCXXTypeid() {
   // We enter the unevaluated context before trying to determine whether we
   // have a type-id, because the tentative parse logic will try to resolve
   // names, and must treat them as unevaluated.
-  EnterExpressionEvaluationContext Unevaluated(Actions, Sema::Unevaluated);
+  EnterExpressionEvaluationContext Unevaluated(Actions, Sema::Unevaluated,
+                                               Sema::ReuseLambdaContextDecl);
 
   if (isTypeIdInParens()) {
     TypeResult Ty = ParseTypeName();
@@ -2526,6 +2536,7 @@ static UnaryTypeTrait UnaryTypeTraitFromTokKind(tok::TokenKind kind) {
   case tok::kw___is_function:                return UTT_IsFunction;
   case tok::kw___is_fundamental:             return UTT_IsFundamental;
   case tok::kw___is_integral:                return UTT_IsIntegral;
+  case tok::kw___is_interface_class:         return UTT_IsInterfaceClass;
   case tok::kw___is_lvalue_reference:        return UTT_IsLvalueReference;
   case tok::kw___is_member_function_pointer: return UTT_IsMemberFunctionPointer;
   case tok::kw___is_member_object_pointer:   return UTT_IsMemberObjectPointer;

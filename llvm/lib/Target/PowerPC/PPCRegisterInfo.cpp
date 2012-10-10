@@ -119,7 +119,7 @@ PPCRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return Subtarget.isPPC64() ? CSR_SVR464_SaveList : CSR_SVR432_SaveList;
 }
 
-const unsigned*
+const uint32_t*
 PPCRegisterInfo::getCallPreservedMask(CallingConv::ID CC) const {
   if (Subtarget.isDarwinABI())
     return Subtarget.isPPC64() ? CSR_Darwin64_RegMask :
@@ -596,7 +596,7 @@ PPCRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   // to Offset to get the correct offset.
   // Naked functions have stack size 0, although getStackSize may not reflect that
   // because we didn't call all the pieces that compute it for naked functions.
-  if (!MF.getFunction()->hasFnAttr(Attribute::Naked))
+  if (!MF.getFunction()->getFnAttributes().hasAttribute(Attributes::Naked))
     Offset += MFI->getStackSize();
 
   // If we can, encode the offset directly into the instruction.  If this is a

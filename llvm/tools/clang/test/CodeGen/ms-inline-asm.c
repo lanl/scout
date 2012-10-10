@@ -1,3 +1,4 @@
+// REQUIRES: x86-64-registered-target
 // RUN: %clang_cc1 %s -triple x86_64-apple-darwin10 -O0 -fms-extensions -fenable-experimental-ms-inline-asm -w -emit-llvm -o - | FileCheck %s
 
 void t1() {
@@ -56,6 +57,7 @@ void t7() {
 // CHECK: call void asm sideeffect inteldialect "int $$0x2c", "~{dirflag},~{fpsr},~{flags}"() nounwind
 // CHECK: call void asm sideeffect inteldialect "", "~{dirflag},~{fpsr},~{flags}"() nounwind
 }
+
 int t8() {
   __asm int 3 ; } comments for single-line asm
   __asm {}
@@ -67,6 +69,7 @@ int t8() {
 // CHECK: call void asm sideeffect inteldialect "int $$4", "~{dirflag},~{fpsr},~{flags}"() nounwind
 // CHECK: ret i32 10
 }
+
 void t9() {
   __asm {
     push ebx
@@ -88,7 +91,7 @@ unsigned t10(void) {
 // CHECK: [[I:%[a-zA-Z0-9]+]] = alloca i32, align 4
 // CHECK: [[J:%[a-zA-Z0-9]+]] = alloca i32, align 4
 // CHECK: store i32 1, i32* [[I]], align 4
-// CHECK: call i32 asm sideeffect inteldialect "mov eax, $1\0A\09mov $0, eax", "=r,r,~{eax},~{dirflag},~{fpsr},~{flags}"(i32 %{{.*}}) nounwind
+// CHECK: call void asm sideeffect inteldialect "mov eax, $1\0A\09mov $0, eax", "=*m,*m,~{eax},~{dirflag},~{fpsr},~{flags}"(i32* %{{.*}}, i32* %{{.*}}) nounwind
 // CHECK: [[RET:%[a-zA-Z0-9]+]] = load i32* [[J]], align 4
 // CHECK: ret i32 [[RET]]
 }
@@ -134,10 +137,10 @@ void t15(void) {
 // CHECK: call void asm sideeffect inteldialect "mov eax, DWORD PTR [eax]", "~{eax},~{dirflag},~{fpsr},~{flags}"() nounwind
 }
 
-void t16(unsigned long long V) {
+void t16(unsigned V) {
   __asm mov eax, DWORD PTR [V]
 // CHECK: t16
-// CHECK: call void asm sideeffect inteldialect "mov eax, DWORD PTR [$0]", "r,~{eax},~{dirflag},~{fpsr},~{flags}"(i64 %{{.*}}) nounwind
+// CHECK: call void asm sideeffect inteldialect "mov eax, DWORD PTR [$0]", "*m,~{eax},~{dirflag},~{fpsr},~{flags}"(i32* %{{.*}}) nounwind
 }
 
 void t17(void) {
@@ -162,5 +165,14 @@ unsigned t19(void) {
   }
   return j + m;
 // CHECK: t19
-// CHECK: call { i32, i32 } asm sideeffect inteldialect "mov eax, $2\0A\09mov $0, eax\0A\09mov eax, $3\0A\09mov $1, eax", "=r,=r,r,r,~{eax},~{dirflag},~{fpsr},~{flags}"(i32 %{{.*}}, i32 %{{.*}}) nounwind
+// CHECK: call void asm sideeffect inteldialect "mov eax, $2\0A\09mov $0, eax\0A\09mov eax, $3\0A\09mov $1, eax", "=*m,=*m,*m,*m,~{eax},~{dirflag},~{fpsr},~{flags}"(i32* %{{.*}}, i32* %{{.*}}, i32* %{{.*}}, i32* %{{.*}}) nounwind
+}
+
+void t20(void) {
+   __asm {
+     mov eax, fs:[0x10]
+     mov eax, [eax]
+   }
+// CHECK: t20
+// call void asm sideeffect inteldialect "mov eax, fs:[0x10]\0A\09mov eax, [eax]", "~{eax},~{dirflag},~{fpsr},~{flags}"() nounwind
 }

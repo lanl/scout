@@ -218,7 +218,7 @@ std::auto_ptr<PBQPRAProblem> PBQPBuilder::build(MachineFunction *mf,
     LiveInterval *vregLI = &LIS->getInterval(vreg);
 
     // Record any overlaps with regmask operands.
-    BitVector regMaskOverlaps(tri->getNumRegs());
+    BitVector regMaskOverlaps;
     LIS->checkRegMaskInterference(*vregLI, regMaskOverlaps);
 
     // Compute an initial allowed set for the current vreg.
@@ -432,6 +432,7 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.addRequired<SlotIndexes>();
   au.addPreserved<SlotIndexes>();
   au.addRequired<LiveIntervals>();
+  au.addPreserved<LiveIntervals>();
   //au.addRequiredID(SplitCriticalEdgesID);
   if (customPassID)
     au.addRequiredID(*customPassID);
@@ -443,6 +444,7 @@ void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.addRequired<MachineLoopInfo>();
   au.addPreserved<MachineLoopInfo>();
   au.addRequired<VirtRegMap>();
+  au.addPreserved<VirtRegMap>();
   MachineFunctionPass::getAnalysisUsage(au);
 }
 

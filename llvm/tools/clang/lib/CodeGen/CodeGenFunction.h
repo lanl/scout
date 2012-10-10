@@ -534,8 +534,8 @@ public:
 /// CodeGenFunction - This class organizes the per-function state that is used
 /// while generating LLVM code.
 class CodeGenFunction : public CodeGenTypeCache {
-  CodeGenFunction(const CodeGenFunction&); // DO NOT IMPLEMENT
-  void operator=(const CodeGenFunction&);  // DO NOT IMPLEMENT
+  CodeGenFunction(const CodeGenFunction &) LLVM_DELETED_FUNCTION;
+  void operator=(const CodeGenFunction &) LLVM_DELETED_FUNCTION;
 
   friend class CGCXXABI;
 public:
@@ -892,8 +892,8 @@ public:
     bool OldDidCallStackSave;
     bool PerformCleanup;
 
-    RunCleanupsScope(const RunCleanupsScope &); // DO NOT IMPLEMENT
-    RunCleanupsScope &operator=(const RunCleanupsScope &); // DO NOT IMPLEMENT
+    RunCleanupsScope(const RunCleanupsScope &) LLVM_DELETED_FUNCTION;
+    void operator=(const RunCleanupsScope &) LLVM_DELETED_FUNCTION;
 
   protected:
     CodeGenFunction& CGF;
@@ -936,8 +936,8 @@ public:
     SourceRange Range;
     bool PopDebugStack;
 
-    LexicalScope(const LexicalScope &); // DO NOT IMPLEMENT THESE
-    LexicalScope &operator=(const LexicalScope &);
+    LexicalScope(const LexicalScope &) LLVM_DELETED_FUNCTION;
+    void operator=(const LexicalScope &) LLVM_DELETED_FUNCTION;
 
   public:
     /// \brief Enter a new cleanup scope.
@@ -1613,7 +1613,7 @@ public:
   static bool hasAggregateLLVMType(QualType T);
 
   /// createBasicBlock - Create an LLVM basic block.
-  llvm::BasicBlock *createBasicBlock(StringRef name = "",
+  llvm::BasicBlock *createBasicBlock(const Twine &name = "",
                                      llvm::Function *parent = 0,
                                      llvm::BasicBlock *before = 0) {
 #ifdef NDEBUG
@@ -1763,13 +1763,26 @@ public:
   void EmitExprAsInit(const Expr *init, const ValueDecl *D,
                       LValue lvalue, bool capturedByInit);
 
+  /// EmitAggregateCopy - Emit an aggrate assignment.
+  ///
+  /// The difference to EmitAggregateCopy is that tail padding is not copied.
+  /// This is required for correctness when assigning non-POD structures in C++.
+  void EmitAggregateAssign(llvm::Value *DestPtr, llvm::Value *SrcPtr,
+                           QualType EltTy, bool isVolatile=false,
+                           CharUnits Alignment = CharUnits::Zero()) {
+    EmitAggregateCopy(DestPtr, SrcPtr, EltTy, isVolatile, Alignment, true);
+  }
+
   /// EmitAggregateCopy - Emit an aggrate copy.
   ///
   /// \param isVolatile - True iff either the source or the destination is
   /// volatile.
+  /// \param isAssignment - If false, allow padding to be copied.  This often
+  /// yields more efficient.
   void EmitAggregateCopy(llvm::Value *DestPtr, llvm::Value *SrcPtr,
                          QualType EltTy, bool isVolatile=false,
-                         CharUnits Alignment = CharUnits::Zero());
+                         CharUnits Alignment = CharUnits::Zero(),
+                         bool isAssignment = false);
 
   /// StartBlock - Start new block named N. If insert block is a dummy block
   /// then reuse it.
@@ -1964,7 +1977,7 @@ public:
 
   /// \brief Emit a check that \p V is the address of storage of the
   /// appropriate size and alignment for an object of type \p Type.
-  void EmitTypeCheck(TypeCheckKind TCK, llvm::Value *V,
+  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, llvm::Value *V,
                      QualType Type, CharUnits Alignment = CharUnits::Zero());
 
   llvm::Value *EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
@@ -2131,27 +2144,19 @@ public:
 
 
   llvm::Value *CreateMemAlloc(uint64_t numElts) {
-    llvm::AttrListPtr namPAL;
-    llvm::SmallVector< llvm::AttributeWithIndex, 4 > Attrs;
-    llvm::AttributeWithIndex PAWI;
-    PAWI.Index = 0u; PAWI.Attrs = llvm::Attribute::NoAlias;
-    Attrs.push_back(PAWI);
-    namPAL = llvm::AttrListPtr::get(Attrs);
     llvm::Function *namF;
 
     if(!CGM.getModule().getFunction("_Znam")) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
                                     "_Znam", &CGM.getModule());
-      namF->setAttributes(namPAL);
     } else {
       namF = CGM.getModule().getFunction("_Znam");
     }
 
     llvm::CallInst *call =
       Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
-    call->setAttributes(namPAL);
-
+    
     return call;
   }
 
@@ -2443,6 +2448,7 @@ public:
                                                    const CXXRecordDecl *RD);
 
   RValue EmitCXXMemberCall(const CXXMethodDecl *MD,
+                           SourceLocation CallLoc,
                            llvm::Value *Callee,
                            ReturnValueSlot ReturnValue,
                            llvm::Value *This,
@@ -2729,9 +2735,23 @@ public:
   void EmitBranchOnBoolExpr(const Expr *Cond, llvm::BasicBlock *TrueBlock,
                             llvm::BasicBlock *FalseBlock);
 
+  /// \brief Emit a description of a type in a format suitable for passing to
+  /// a runtime sanitizer handler.
+  llvm::Constant *EmitCheckTypeDescriptor(QualType T);
+
+  /// \brief Convert a value into a format suitable for passing to a runtime
+  /// sanitizer handler.
+  llvm::Value *EmitCheckValue(llvm::Value *V);
+
+  /// \brief Emit a description of a source location in a format suitable for
+  /// passing to a runtime sanitizer handler.
+  llvm::Constant *EmitCheckSourceLocation(SourceLocation Loc);
+
   /// \brief Create a basic block that will call the trap intrinsic, and emit a
   /// conditional branch to it.
-  void EmitCheck(llvm::Value *Checked);
+  void EmitCheck(llvm::Value *Checked, StringRef CheckName,
+                 llvm::ArrayRef<llvm::Constant *> StaticArgs,
+                 llvm::ArrayRef<llvm::Value *> DynamicArgs);
 
   /// EmitCallArg - Emit a single call argument.
   void EmitCallArg(CallArgList &args, const Expr *E, QualType ArgType);
