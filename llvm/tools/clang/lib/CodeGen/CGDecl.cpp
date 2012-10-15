@@ -26,6 +26,7 @@
 #include "llvm/Intrinsics.h"
 #include "llvm/DataLayout.h"
 #include "llvm/Type.h"
+#include "llvm/Instructions.h"
 using namespace clang;
 using namespace CodeGen;
 
@@ -892,9 +893,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           // we want to evaluate each dim and if its a variable
           // then we want to make an expression multiplying
           // the dims to get numElts as a variable.
-          
+         
           llvm::Value *numElements = Builder.getInt64(1);
-          
+
           for(unsigned i = 0, e = dims.size(); i < e; ++i) {
             
             llvm::Value* intValue;
@@ -908,17 +909,20 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
               RValue RV;
               RV = EmitLoadOfLValue(LV);
               intValue = RV.getScalarVal();
-            } else {
+            } else if (E->isConstantInitializer(getContext(), false)){
               bool evalret;
               llvm::APSInt dimAPValue;
               evalret = E->EvaluateAsInt(dimAPValue, getContext());
               // TODO: check the evalret
               intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+            } else { // it is an Rvalue
+              RValue RV = EmitAnyExpr(E);
+              intValue = RV.getScalarVal();
             }
             
             intValue = Builder.CreateZExt(intValue, Int64Ty);
             // TODO: check the evalret
-            numElements = Builder.CreateNUWMul(numElements, intValue);
+            numElements = Builder.CreateMul(intValue, numElements);
           }
           
           // store the mesh dimensions
