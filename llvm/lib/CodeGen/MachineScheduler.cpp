@@ -484,6 +484,8 @@ void ScheduleDAGMI::releaseRoots() {
 void ScheduleDAGMI::schedule() {
   buildDAGWithRegPressure();
 
+  postprocessDAG();
+
   DEBUG(for (unsigned su = 0, e = SUnits.size(); su != e; ++su)
           SUnits[su].dumpAll(this));
 
@@ -493,6 +495,7 @@ void ScheduleDAGMI::schedule() {
 
   bool IsTopNode = false;
   while (SUnit *SU = SchedImpl->pickNode(IsTopNode)) {
+    assert(!SU->isScheduled && "Node already scheduled");
     if (!checkSchedLimit())
       break;
 
@@ -520,6 +523,13 @@ void ScheduleDAGMI::buildDAGWithRegPressure() {
 
   // Initialize top/bottom trackers after computing region pressure.
   initRegPressure();
+}
+
+/// Apply each ScheduleDAGMutation step in order.
+void ScheduleDAGMI::postprocessDAG() {
+  for (unsigned i = 0, e = Mutations.size(); i < e; ++i) {
+    Mutations[i]->apply(this);
+  }
 }
 
 /// Identify DAG roots and setup scheduler queues.
@@ -642,6 +652,7 @@ class ConvergingScheduler : public MachineSchedStrategy {
   /// of "hazards" and other interlocks at the current cycle.
   struct SchedBoundary {
     ScheduleDAGMI *DAG;
+    const TargetSchedModel *SchedModel;
 
     ReadyQueue Available;
     ReadyQueue Pending;
@@ -661,12 +672,17 @@ class ConvergingScheduler : public MachineSchedStrategy {
     /// Pending queues extend the ready queues with the same ID and the
     /// PendingFlag set.
     SchedBoundary(unsigned ID, const Twine &Name):
-      DAG(0), Available(ID, Name+".A"),
+      DAG(0), SchedModel(0), Available(ID, Name+".A"),
       Pending(ID << ConvergingScheduler::LogMaxQID, Name+".P"),
       CheckPending(false), HazardRec(0), CurrCycle(0), IssueCount(0),
       MinReadyCycle(UINT_MAX), MaxMinLatency(0) {}
 
     ~SchedBoundary() { delete HazardRec; }
+
+    void init(ScheduleDAGMI *dag, const TargetSchedModel *smodel) {
+      DAG = dag;
+      SchedModel = smodel;
+    }
 
     bool isTop() const {
       return Available.getID() == ConvergingScheduler::TopQID;
@@ -688,6 +704,7 @@ class ConvergingScheduler : public MachineSchedStrategy {
   };
 
   ScheduleDAGMI *DAG;
+  const TargetSchedModel *SchedModel;
   const TargetRegisterInfo *TRI;
 
   // State of the top and bottom scheduled instruction boundaries.
@@ -703,7 +720,7 @@ public:
   };
 
   ConvergingScheduler():
-    DAG(0), TRI(0), Top(TopQID, "TopQ"), Bot(BotQID, "BotQ") {}
+    DAG(0), SchedModel(0), TRI(0), Top(TopQID, "TopQ"), Bot(BotQID, "BotQ") {}
 
   virtual void initialize(ScheduleDAGMI *dag);
 
@@ -730,13 +747,15 @@ protected:
 
 void ConvergingScheduler::initialize(ScheduleDAGMI *dag) {
   DAG = dag;
+  SchedModel = DAG->getSchedModel();
   TRI = DAG->TRI;
-  Top.DAG = dag;
-  Bot.DAG = dag;
+  Top.init(DAG, SchedModel);
+  Bot.init(DAG, SchedModel);
 
-  // Initialize the HazardRecognizers.
+  // Initialize the HazardRecognizers. If itineraries don't exist, are empty, or
+  // are disabled, then these HazardRecs will be disabled.
+  const InstrItineraryData *Itin = SchedModel->getInstrItineraries();
   const TargetMachine &TM = DAG->MF.getTarget();
-  const InstrItineraryData *Itin = TM.getInstrItineraryData();
   Top.HazardRec = TM.getInstrInfo()->CreateTargetMIHazardRecognizer(Itin, DAG);
   Bot.HazardRec = TM.getInstrInfo()->CreateTargetMIHazardRecognizer(Itin, DAG);
 
@@ -797,7 +816,8 @@ bool ConvergingScheduler::SchedBoundary::checkHazard(SUnit *SU) {
   if (HazardRec->isEnabled())
     return HazardRec->getHazardType(SU) != ScheduleHazardRecognizer::NoHazard;
 
-  if (IssueCount + DAG->getNumMicroOps(SU->getInstr()) > DAG->getIssueWidth())
+  unsigned uops = SchedModel->getNumMicroOps(SU->getInstr());
+  if (IssueCount + uops > SchedModel->getIssueWidth())
     return true;
 
   return false;
@@ -818,7 +838,7 @@ void ConvergingScheduler::SchedBoundary::releaseNode(SUnit *SU,
 
 /// Move the boundary of scheduled code by one cycle.
 void ConvergingScheduler::SchedBoundary::bumpCycle() {
-  unsigned Width = DAG->getIssueWidth();
+  unsigned Width = SchedModel->getIssueWidth();
   IssueCount = (IssueCount <= Width) ? 0 : IssueCount - Width;
 
   assert(MinReadyCycle < UINT_MAX && "MinReadyCycle uninitialized");
@@ -856,8 +876,8 @@ void ConvergingScheduler::SchedBoundary::bumpNode(SUnit *SU) {
   }
   // Check the instruction group dispatch limit.
   // TODO: Check if this SU must end a dispatch group.
-  IssueCount += DAG->getNumMicroOps(SU->getInstr());
-  if (IssueCount >= DAG->getIssueWidth()) {
+  IssueCount += SchedModel->getNumMicroOps(SU->getInstr());
+  if (IssueCount >= SchedModel->getIssueWidth()) {
     DEBUG(dbgs() << "*** Max instrs at cycle " << CurrCycle << '\n');
     bumpCycle();
   }
@@ -1110,33 +1130,36 @@ SUnit *ConvergingScheduler::pickNode(bool &IsTopNode) {
     return NULL;
   }
   SUnit *SU;
-  if (ForceTopDown) {
-    SU = Top.pickOnlyChoice();
-    if (!SU) {
-      SchedCandidate TopCand;
-      CandResult TopResult =
-        pickNodeFromQueue(Top.Available, DAG->getTopRPTracker(), TopCand);
-      assert(TopResult != NoCand && "failed to find the first candidate");
-      (void)TopResult;
-      SU = TopCand.SU;
+  do {
+    if (ForceTopDown) {
+      SU = Top.pickOnlyChoice();
+      if (!SU) {
+        SchedCandidate TopCand;
+        CandResult TopResult =
+          pickNodeFromQueue(Top.Available, DAG->getTopRPTracker(), TopCand);
+        assert(TopResult != NoCand && "failed to find the first candidate");
+        (void)TopResult;
+        SU = TopCand.SU;
+      }
+      IsTopNode = true;
     }
-    IsTopNode = true;
-  }
-  else if (ForceBottomUp) {
-    SU = Bot.pickOnlyChoice();
-    if (!SU) {
-      SchedCandidate BotCand;
-      CandResult BotResult =
-        pickNodeFromQueue(Bot.Available, DAG->getBotRPTracker(), BotCand);
-      assert(BotResult != NoCand && "failed to find the first candidate");
-      (void)BotResult;
-      SU = BotCand.SU;
+    else if (ForceBottomUp) {
+      SU = Bot.pickOnlyChoice();
+      if (!SU) {
+        SchedCandidate BotCand;
+        CandResult BotResult =
+          pickNodeFromQueue(Bot.Available, DAG->getBotRPTracker(), BotCand);
+        assert(BotResult != NoCand && "failed to find the first candidate");
+        (void)BotResult;
+        SU = BotCand.SU;
+      }
+      IsTopNode = false;
     }
-    IsTopNode = false;
-  }
-  else {
-    SU = pickNodeBidrectional(IsTopNode);
-  }
+    else {
+      SU = pickNodeBidrectional(IsTopNode);
+    }
+  } while (SU->isScheduled);
+
   if (SU->isTopReady())
     Top.removeReady(SU);
   if (SU->isBottomReady())

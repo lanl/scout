@@ -36,6 +36,7 @@ protected: // Can only create subclasses.
   MCAsmBackend();
 
   unsigned HasReliableSymbolDifference : 1;
+  unsigned HasDataInCodeSupport : 1;
 
 public:
   virtual ~MCAsmBackend();
@@ -63,6 +64,12 @@ public:
   /// eventually should be eliminated.
   bool hasReliableSymbolDifference() const {
     return HasReliableSymbolDifference;
+  }
+
+  /// hasDataInCodeSupport - Check whether this target implements data-in-code
+  /// markers. If not, data region directives will be ignored.
+  bool hasDataInCodeSupport() const {
+    return HasDataInCodeSupport;
   }
 
   /// doesSectionRequireSymbols - Check whether the given section requires that
@@ -99,7 +106,7 @@ public:
 
   /// @}
 
-  /// applyFixup - Apply the \arg Value for given \arg Fixup into the provided
+  /// applyFixup - Apply the \p Value for given \p Fixup into the provided
   /// data fragment, at the offset specified by the fixup and following the
   /// fixup kind as appropriate.
   virtual void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,

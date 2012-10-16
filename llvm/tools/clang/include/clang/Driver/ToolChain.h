@@ -115,7 +115,7 @@ public:
   // Helper methods
 
   std::string GetFilePath(const char *Name) const;
-  std::string GetProgramPath(const char *Name, bool WantFile = false) const;
+  std::string GetProgramPath(const char *Name) const;
 
   // Platform defaults information
 
@@ -166,7 +166,7 @@ public:
 
   /// IsUnwindTablesDefault - Does this tool chain use -funwind-tables
   /// by default.
-  virtual bool IsUnwindTablesDefault() const = 0;
+  virtual bool IsUnwindTablesDefault() const;
 
   /// GetDefaultRelocationModel - Return the LLVM name of the default
   /// relocation model for this tool chain.
@@ -252,6 +252,13 @@ public:
   /// for kernel extensions (Darwin-specific).
   virtual void AddCCKextLibArgs(const ArgList &Args,
                                 ArgStringList &CmdArgs) const;
+
+  /// AddFastMathRuntimeIfAvailable - If a runtime library exists that sets
+  /// global flags for unsafe floating point math, add it and return true.
+  ///
+  /// This checks for presence of the -ffast-math or -funsafe-math flags.
+  virtual bool AddFastMathRuntimeIfAvailable(const ArgList &Args,
+                                             ArgStringList &CmdArgs) const;
 };
 
 } // end namespace driver

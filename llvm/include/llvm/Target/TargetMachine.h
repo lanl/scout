@@ -31,7 +31,7 @@ class MCCodeGenInfo;
 class MCContext;
 class PassManagerBase;
 class Target;
-class TargetData;
+class DataLayout;
 class TargetELFWriterInfo;
 class TargetFrameLowering;
 class TargetInstrInfo;
@@ -52,8 +52,8 @@ class raw_ostream;
 /// through this interface.
 ///
 class TargetMachine {
-  TargetMachine(const TargetMachine &);   // DO NOT IMPLEMENT
-  void operator=(const TargetMachine &);  // DO NOT IMPLEMENT
+  TargetMachine(const TargetMachine &) LLVM_DELETED_FUNCTION;
+  void operator=(const TargetMachine &) LLVM_DELETED_FUNCTION;
 protected: // Can only create subclasses.
   TargetMachine(const Target &T, StringRef TargetTriple,
                 StringRef CPU, StringRef FS, const TargetOptions &Options);
@@ -106,7 +106,7 @@ public:
   virtual const TargetFrameLowering *getFrameLowering() const { return 0; }
   virtual const TargetLowering    *getTargetLowering() const { return 0; }
   virtual const TargetSelectionDAGInfo *getSelectionDAGInfo() const{ return 0; }
-  virtual const TargetData             *getTargetData() const { return 0; }
+  virtual const DataLayout             *getDataLayout() const { return 0; }
 
   /// getMCAsmInfo - Return target specific asm information.
   ///

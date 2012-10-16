@@ -24,8 +24,9 @@
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/GlobalVariable.h"
 #include "llvm/Intrinsics.h"
-#include "llvm/Target/TargetData.h"
+#include "llvm/DataLayout.h"
 #include "llvm/Type.h"
+#include "llvm/Instructions.h"
 using namespace clang;
 using namespace CodeGen;
 
@@ -886,34 +887,93 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           MeshType::MeshDimensionVec dims =
           cast<MeshType>(T.getTypePtr())->dimensions();
 
-          uint64_t numElts = 1;
-          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-            llvm::APSInt result;
-            dims[i]->EvaluateAsInt(result, getContext());	    
-            numElts *= result.getSExtValue();
-          }
+          // maybe dimensions needs to hold values
+          
+          // Need to make this different for variable dims
+          // we want to evaluate each dim and if its a variable
+          // then we want to make an expression multiplying
+          // the dims to get numElts as a variable.
+         
+          llvm::Value *numElements = Builder.getInt64(1);
 
+          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
+            
+            llvm::Value* intValue;
+            Expr* E = dims[i];
+            
+            if (E->isGLValue()) {
+              // Emit the expression as an lvalue.
+              LValue LV = EmitLValue(E);
+       
+              // We have to load the lvalue.
+              RValue RV;
+              RV = EmitLoadOfLValue(LV);
+              intValue = RV.getScalarVal();
+            } else if (E->isConstantInitializer(getContext(), false)){
+              bool evalret;
+              llvm::APSInt dimAPValue;
+              evalret = E->EvaluateAsInt(dimAPValue, getContext());
+              // TODO: check the evalret
+              intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+            } else { // it is an Rvalue
+              RValue RV = EmitAnyExpr(E);
+              intValue = RV.getScalarVal();
+            }
+            
+            intValue = Builder.CreateZExt(intValue, Int64Ty);
+            // TODO: check the evalret
+            numElements = Builder.CreateMul(intValue, numElements);
+          }
+          
           // store the mesh dimensions
           for(size_t i = 0; i < 3; ++i){
             llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
             
             if(i >= dims.size()){
-              llvm::Value* intValue = 
-              llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
-              Builder.CreateStore(intValue, field);              
+              // store a 0 in that dim if above size
+              llvm::Value* intValue = llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
+              Builder.CreateStore(intValue, field);
             }
             else{
-              llvm::APSInt result;
-              dims[i]->EvaluateAsInt(result, getContext());	
-              llvm::Value* intValue = llvm::ConstantInt::get(getLLVMContext(), result);
+              llvm::Value* intValue;
+              Expr* E = dims[i];
+              
+              if (E->isGLValue()) {
+                // Emit the expression as an lvalue.
+                LValue LV = EmitLValue(E);
+                
+                // We have to load the lvalue.
+                RValue RV;
+                RV = EmitLoadOfLValue(LV);
+                intValue = RV.getScalarVal();
+              } else if (E->isConstantInitializer(getContext(), false)){
+                bool evalret;
+                llvm::APSInt dimAPValue;
+                evalret = E->EvaluateAsInt(dimAPValue, getContext());
+                // TODO: check the evalret
+                intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+              } else { // it is an Rvalue
+                RValue RV = EmitAnyExpr(E);
+                intValue = RV.getScalarVal();
+              }
+
+              //CurFn->viewCFG();
               Builder.CreateStore(intValue, field);
             }
           }
           
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
           for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
-            // Dynamically allocate memory.
-            llvm::Value *val = CreateMemAlloc(numElts);
+            // Compute size of needed field memory in bytes 
+            llvm::Type *fieldTy = structTy->getContainedType(i);
+            uint64_t fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(fieldTy);
+            llvm::Value *fieldTotalBytes = 0;
+            llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
+                        
+            fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
+            
+             // Dynamically allocate memory.
+            llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
             val = Builder.CreateBitCast(val, structTy->getContainedType(i));
             llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
             Builder.CreateStore(val, field);
@@ -1115,7 +1175,7 @@ void CodeGenFunction::EmitAutoVarInit(const AutoVarEmission &emission) {
   // If the initializer is all or mostly zeros, codegen with memset then do
   // a few stores afterward.
   if (shouldUseMemSetPlusStoresToInitialize(constant,
-                CGM.getTargetData().getTypeAllocSize(constant->getType()))) {
+                CGM.getDataLayout().getTypeAllocSize(constant->getType()))) {
     Builder.CreateMemSet(Loc, llvm::ConstantInt::get(Int8Ty, 0), SizeVal,
                          alignment.getQuantity(), isVolatile);
     // Zero and undef don't require a stores.

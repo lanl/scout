@@ -137,6 +137,11 @@ test:
 	@(cd $(build_dir)/test; make $(make_flags))
 	@(cd $(build_dir)/test; ARGS="-D ExperimentalTest --no-compress-output" make test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
 
+.PHONY: testclean
+testclean: 
+	-@/bin/rm -rf $(build_dir)/test
+	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+
 .PHONY: xcode
 xcode:;
 	@((test -d xcode) || (mkdir xcode))

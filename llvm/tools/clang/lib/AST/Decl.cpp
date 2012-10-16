@@ -126,12 +126,12 @@ static LinkageInfo getLVForTemplateArgumentList(const TemplateArgument *Args,
       break;
 
     case TemplateArgument::Declaration:
-      // The decl can validly be null as the representation of nullptr
-      // arguments, valid only in C++0x.
-      if (Decl *D = Args[I].getAsDecl()) {
-        if (NamedDecl *ND = dyn_cast<NamedDecl>(D))
-          LV.mergeWithMin(getLVForDecl(ND, OnlyTemplate));
-      }
+      if (NamedDecl *ND = dyn_cast<NamedDecl>(Args[I].getAsDecl()))
+        LV.mergeWithMin(getLVForDecl(ND, OnlyTemplate));
+      break;
+
+    case TemplateArgument::NullPtr:
+      LV.mergeWithMin(getLVForType(Args[I].getNullPtrType()));
       break;
 
     case TemplateArgument::Template:
@@ -1204,8 +1204,11 @@ void VarDecl::setStorageClass(StorageClass SC) {
 }
 
 SourceRange VarDecl::getSourceRange() const {
-  if (getInit())
-    return SourceRange(getOuterLocStart(), getInit()->getLocEnd());
+  if (const Expr *Init = getInit()) {
+    SourceLocation InitEnd = Init->getLocEnd();
+    if (InitEnd.isValid())
+      return SourceRange(getOuterLocStart(), InitEnd);
+  }
   return DeclaratorDecl::getSourceRange();
 }
 

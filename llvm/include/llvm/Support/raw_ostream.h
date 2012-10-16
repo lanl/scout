@@ -15,6 +15,7 @@
 #define LLVM_SUPPORT_RAW_OSTREAM_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
@@ -29,8 +30,8 @@ namespace llvm {
 class raw_ostream {
 private:
   // Do not implement. raw_ostream is noncopyable.
-  void operator=(const raw_ostream &);
-  raw_ostream(const raw_ostream &);
+  void operator=(const raw_ostream &) LLVM_DELETED_FUNCTION;
+  raw_ostream(const raw_ostream &) LLVM_DELETED_FUNCTION;
 
   /// The buffer is handled in such a way that the buffer is
   /// uninitialized, unbuffered, or out of space when OutBufCur >=
@@ -321,14 +322,14 @@ class raw_fd_ostream : public raw_ostream {
   uint64_t pos;
 
   /// write_impl - See raw_ostream::write_impl.
-  virtual void write_impl(const char *Ptr, size_t Size);
+  virtual void write_impl(const char *Ptr, size_t Size) LLVM_OVERRIDE;
 
   /// current_pos - Return the current position within the stream, not
   /// counting the bytes currently in the buffer.
-  virtual uint64_t current_pos() const { return pos; }
+  virtual uint64_t current_pos() const LLVM_OVERRIDE { return pos; }
 
   /// preferred_buffer_size - Determine an efficient buffer size.
-  virtual size_t preferred_buffer_size() const;
+  virtual size_t preferred_buffer_size() const LLVM_OVERRIDE;
 
   /// error_detected - Set the flag indicating that an output error has
   /// been encountered.
@@ -389,14 +390,14 @@ public:
   }
 
   virtual raw_ostream &changeColor(enum Colors colors, bool bold=false,
-                                   bool bg=false);
-  virtual raw_ostream &resetColor();
+                                   bool bg=false) LLVM_OVERRIDE;
+  virtual raw_ostream &resetColor() LLVM_OVERRIDE;
 
-  virtual raw_ostream &reverseColor();
+  virtual raw_ostream &reverseColor() LLVM_OVERRIDE;
 
-  virtual bool is_displayed() const;
+  virtual bool is_displayed() const LLVM_OVERRIDE;
 
-  virtual bool has_colors() const;
+  virtual bool has_colors() const LLVM_OVERRIDE;
 
   /// has_error - Return the value of the flag in this raw_fd_ostream indicating
   /// whether an output error has been encountered.
@@ -442,11 +443,11 @@ class raw_string_ostream : public raw_ostream {
   std::string &OS;
 
   /// write_impl - See raw_ostream::write_impl.
-  virtual void write_impl(const char *Ptr, size_t Size);
+  virtual void write_impl(const char *Ptr, size_t Size) LLVM_OVERRIDE;
 
   /// current_pos - Return the current position within the stream, not
   /// counting the bytes currently in the buffer.
-  virtual uint64_t current_pos() const { return OS.size(); }
+  virtual uint64_t current_pos() const LLVM_OVERRIDE { return OS.size(); }
 public:
   explicit raw_string_ostream(std::string &O) : OS(O) {}
   ~raw_string_ostream();
@@ -466,11 +467,11 @@ class raw_svector_ostream : public raw_ostream {
   SmallVectorImpl<char> &OS;
 
   /// write_impl - See raw_ostream::write_impl.
-  virtual void write_impl(const char *Ptr, size_t Size);
+  virtual void write_impl(const char *Ptr, size_t Size) LLVM_OVERRIDE;
 
   /// current_pos - Return the current position within the stream, not
   /// counting the bytes currently in the buffer.
-  virtual uint64_t current_pos() const;
+  virtual uint64_t current_pos() const LLVM_OVERRIDE;
 public:
   /// Construct a new raw_svector_ostream.
   ///
@@ -492,11 +493,11 @@ public:
 /// raw_null_ostream - A raw_ostream that discards all output.
 class raw_null_ostream : public raw_ostream {
   /// write_impl - See raw_ostream::write_impl.
-  virtual void write_impl(const char *Ptr, size_t size);
+  virtual void write_impl(const char *Ptr, size_t size) LLVM_OVERRIDE;
 
   /// current_pos - Return the current position within the stream, not
   /// counting the bytes currently in the buffer.
-  virtual uint64_t current_pos() const;
+  virtual uint64_t current_pos() const LLVM_OVERRIDE;
 
 public:
   explicit raw_null_ostream() {}

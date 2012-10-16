@@ -50,31 +50,32 @@
  * Notes
  *
  * ##### 
- */ 
+ */
 
 #include "scout/Config/defs.h"
 #include "scout/Runtime/cpu/CpuDevice.h"
 
 using namespace scout;
 
-namespace cpu {
-tbq_rt* __sc_tbq;
-}
+namespace scout {
+  namespace cpu {
+    tbq_rt *__sc_tbq;
+  }
+} 
 
 extern "C"
-void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields)
-{
-  if(!cpu::__sc_tbq){
-     cpu::__sc_tbq = new tbq_rt;
-   }
+void __sc_queue_block(void *blockLiteral, int numDimensions,
+                          int numFields) {
+  if (!cpu::__sc_tbq) {
+    cpu::__sc_tbq = new tbq_rt;
+  }
   cpu::__sc_tbq->run(blockLiteral, numDimensions, numFields);
 }
 
 
 // ----- CpuDevice
 /// 
-CpuDevice::CpuDevice()
-{
+CpuDevice::CpuDevice() {
   cpu::__sc_tbq = 0;
   Device::enabled = true;
 }
@@ -82,11 +83,9 @@ CpuDevice::CpuDevice()
 
 // ----- ~CpuDevice
 ///
-CpuDevice::~CpuDevice()
-{
-  if(cpu::__sc_tbq) {
+CpuDevice::~CpuDevice() {
+  if (cpu::__sc_tbq) {
     delete cpu::__sc_tbq;
   }
 }
-
 

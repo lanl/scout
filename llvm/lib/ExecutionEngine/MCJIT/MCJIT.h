@@ -13,10 +13,10 @@
 #include "llvm/PassManager.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
+
+class ObjectImage;
 
 // FIXME: This makes all kinds of horrible assumptions for the time being,
 // like only having one module, not needing to worry about multi-threading,
@@ -34,10 +34,7 @@ class MCJIT : public ExecutionEngine {
   // FIXME: Add support for multiple modules
   bool isCompiled;
   Module *M;
-
-  // FIXME: Move these to a single container which manages JITed objects
-  SmallVector<char, 4096> Buffer; // Working buffer into which we JIT.
-  raw_svector_ostream OS;
+  OwningPtr<ObjectImage> LoadedObject;
 
 public:
   ~MCJIT();
@@ -71,7 +68,8 @@ public:
   /// Map the address of a JIT section as returned from the memory manager
   /// to the address in the target process as the running code will see it.
   /// This is the address which will be used for relocation resolution.
-  virtual void mapSectionAddress(void *LocalAddress, uint64_t TargetAddress) {
+  virtual void mapSectionAddress(const void *LocalAddress,
+                                 uint64_t TargetAddress) {
     Dyld.mapSectionAddress(LocalAddress, TargetAddress);
   }
 

@@ -193,19 +193,25 @@ Retry:
           MeshType::MeshDimensionVec dims;
               
           ConsumeBracket();
-              
+          
+          ExprResult NumElements;
+          
           for(;;){
-                
-            if(Tok.isNot(tok::numeric_constant)){
-              Diag(Tok, diag::err_expected_numeric_constant_in_mesh_def);
-              SkipUntil(tok::r_square);
-              SkipUntil(tok::semi);
-              return StmtError();
+            if(Tok.is(tok::numeric_constant)) {
+              dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+              ConsumeToken();
+            } else if (Tok.isNot(tok::r_square)) {
+              NumElements = ParseConstantExpression(); // consumes it too
+            
+              // If there was an error parsing the assignment-expression, recover.
+              // Maybe should print a diagnostic, tho.
+              if (NumElements.isInvalid()) {
+                // If the expression was invalid, skip it.
+                SkipUntil(tok::r_square);
+                return StmtError();
+              }
+              dims.push_back(NumElements.get());
             }
-                
-            dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-                
-            ConsumeToken();
                 
             if(Tok.is(tok::r_square)){
               break;
@@ -410,6 +416,41 @@ Retry:
   case tok::annot_pragma_pack:
     ProhibitAttributes(Attrs);
     HandlePragmaPack();
+    return StmtEmpty();
+
+  case tok::annot_pragma_msstruct:
+    ProhibitAttributes(Attrs);
+    HandlePragmaMSStruct();
+    return StmtEmpty();
+
+  case tok::annot_pragma_align:
+    ProhibitAttributes(Attrs);
+    HandlePragmaAlign();
+    return StmtEmpty();
+
+  case tok::annot_pragma_weak:
+    ProhibitAttributes(Attrs);
+    HandlePragmaWeak();
+    return StmtEmpty();
+
+  case tok::annot_pragma_weakalias:
+    ProhibitAttributes(Attrs);
+    HandlePragmaWeakAlias();
+    return StmtEmpty();
+
+  case tok::annot_pragma_redefine_extname:
+    ProhibitAttributes(Attrs);
+    HandlePragmaRedefineExtname();
+    return StmtEmpty();
+
+  case tok::annot_pragma_fp_contract:
+    ProhibitAttributes(Attrs);
+    HandlePragmaFPContract();
+    return StmtEmpty();
+
+  case tok::annot_pragma_opencl_extension:
+    ProhibitAttributes(Attrs);
+    HandlePragmaOpenCLExtension();
     return StmtEmpty();
   }
 
@@ -837,6 +878,11 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   PrettyStackTraceLoc CrashInfo(PP.getSourceManager(),
                                 Tok.getLocation(),
                                 "in compound statement ('{}')");
+
+  // Record the state of the FP_CONTRACT pragma, restore on leaving the
+  // compound statement.
+  Sema::FPContractStateRAII SaveFPContractState(Actions);
+
   InMessageExpressionRAIIObject InMessage(*this, false);
   BalancedDelimiterTracker T(*this, tok::l_brace);
   if (T.consumeOpen())
@@ -1605,7 +1651,8 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
     ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, FirstPart.take(),
                                                 ForRangeInit.ColonLoc,
                                                 ForRangeInit.RangeExpr.get(),
-                                                T.getCloseLocation(), true);
+                                                T.getCloseLocation(),
+                                                Sema::BFRK_Build);
 
 
   // Similarly, we need to do the semantic analysis for a for-range

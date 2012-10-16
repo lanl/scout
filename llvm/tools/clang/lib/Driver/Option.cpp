@@ -17,14 +17,13 @@
 #include <algorithm>
 using namespace clang::driver;
 
-Option::Option(const OptTable::Info *info, OptSpecifier _ID,
-               const Option *_Group, const Option *_Alias)
-  : Info(info), ID(_ID.getID()), Group(_Group), Alias(_Alias) {
+Option::Option(const OptTable::Info *info, const OptTable *owner)
+  : Info(info), Owner(owner) {
 
   // Multi-level aliases are not supported, and alias options cannot
   // have groups. This just simplifies option tracking, it is not an
   // inherent limitation.
-  assert((!Alias || (!Alias->Alias && !Group)) &&
+  assert((!getAlias() || (!getAlias()->getAlias() && !getGroup())) &&
          "Multi-level aliases and aliases with groups are unsupported.");
 }
 
@@ -50,11 +49,13 @@ void Option::dump() const {
 
   llvm::errs() << " Name:\"" << getName() << '"';
 
+  const Option *Group = getGroup();
   if (Group) {
     llvm::errs() << " Group:";
     Group->dump();
   }
 
+  const Option *Alias = getAlias();
   if (Alias) {
     llvm::errs() << " Alias:";
     Alias->dump();
@@ -68,13 +69,15 @@ void Option::dump() const {
 
 bool Option::matches(OptSpecifier Opt) const {
   // Aliases are never considered in matching, look through them.
+  const Option *Alias = getAlias();
   if (Alias)
     return Alias->matches(Opt);
 
   // Check exact match.
-  if (ID == Opt)
+  if (getID() == Opt.getID())
     return true;
 
+  const Option *Group = getGroup();
   if (Group)
     return Group->matches(Opt);
   return false;

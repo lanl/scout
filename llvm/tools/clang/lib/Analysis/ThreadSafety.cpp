@@ -226,8 +226,21 @@ private:
     return NodeVec.size()-1;
   }
 
-  unsigned makeMCall(unsigned NumArgs, const NamedDecl *D) {
-    NodeVec.push_back(SExprNode(EOP_MCall, NumArgs, D));
+  // Grab the very first declaration of virtual method D
+  const CXXMethodDecl* getFirstVirtualDecl(const CXXMethodDecl *D) {
+    while (true) {
+      D = D->getCanonicalDecl();
+      CXXMethodDecl::method_iterator I = D->begin_overridden_methods(),
+                                     E = D->end_overridden_methods();
+      if (I == E)
+        return D;  // Method does not override anything
+      D = *I;      // FIXME: this does not work with multiple inheritance.
+    }
+    return 0;
+  }
+
+  unsigned makeMCall(unsigned NumArgs, const CXXMethodDecl *D) {
+    NodeVec.push_back(SExprNode(EOP_MCall, NumArgs, getFirstVirtualDecl(D)));
     return NodeVec.size()-1;
   }
 
@@ -328,8 +341,7 @@ private:
         return buildSExpr(CMCE->getImplicitObjectArgument(), CallCtx, NDeref);
       }
       unsigned NumCallArgs = CMCE->getNumArgs();
-      unsigned Root =
-        makeMCall(NumCallArgs, CMCE->getMethodDecl()->getCanonicalDecl());
+      unsigned Root = makeMCall(NumCallArgs, CMCE->getMethodDecl());
       unsigned Sz = buildSExpr(CMCE->getImplicitObjectArgument(), CallCtx);
       Expr** CallArgs = CMCE->getArgs();
       for (unsigned i = 0; i < NumCallArgs; ++i) {
@@ -451,7 +463,8 @@ private:
   /// \param DeclExp An expression involving the Decl on which the attribute
   ///        occurs.
   /// \param D  The declaration to which the lock/unlock attribute is attached.
-  void buildSExprFromExpr(Expr *MutexExp, Expr *DeclExp, const NamedDecl *D) {
+  void buildSExprFromExpr(Expr *MutexExp, Expr *DeclExp, const NamedDecl *D,
+                          VarDecl *SelfDecl = 0) {
     CallingContext CallCtx(D);
 
     if (MutexExp) {
@@ -487,7 +500,7 @@ private:
       CallCtx.NumArgs = CE->getNumArgs();
       CallCtx.FunArgs = CE->getArgs();
     } else if (CXXConstructExpr *CE = dyn_cast<CXXConstructExpr>(DeclExp)) {
-      CallCtx.SelfArg = 0;  // FIXME -- get the parent from DeclStmt
+      CallCtx.SelfArg = 0;  // Will be set below
       CallCtx.NumArgs = CE->getNumArgs();
       CallCtx.FunArgs = CE->getArgs();
     } else if (D && isa<CXXDestructorDecl>(D)) {
@@ -495,14 +508,26 @@ private:
       CallCtx.SelfArg = DeclExp;
     }
 
-    // If the attribute has no arguments, then assume the argument is "this".
-    if (MutexExp == 0) {
-      buildSExpr(CallCtx.SelfArg, 0);
+    // Hack to handle constructors, where self cannot be recovered from
+    // the expression.
+    if (SelfDecl && !CallCtx.SelfArg) {
+      DeclRefExpr SelfDRE(SelfDecl, false, SelfDecl->getType(), VK_LValue,
+                          SelfDecl->getLocation());
+      CallCtx.SelfArg = &SelfDRE;
+
+      // If the attribute has no arguments, then assume the argument is "this".
+      if (MutexExp == 0)
+        buildSExpr(CallCtx.SelfArg, 0);
+      else  // For most attributes.
+        buildSExpr(MutexExp, &CallCtx);
       return;
     }
 
-    // For most attributes.
-    buildSExpr(MutexExp, &CallCtx);
+    // If the attribute has no arguments, then assume the argument is "this".
+    if (MutexExp == 0)
+      buildSExpr(CallCtx.SelfArg, 0);
+    else  // For most attributes.
+      buildSExpr(MutexExp, &CallCtx);
   }
 
   /// \brief Get index of next sibling of node i.
@@ -518,8 +543,9 @@ public:
   ///        occurs.
   /// \param D  The declaration to which the lock/unlock attribute is attached.
   /// Caller must check isValid() after construction.
-  SExpr(Expr* MutexExp, Expr *DeclExp, const NamedDecl* D) {
-    buildSExprFromExpr(MutexExp, DeclExp, D);
+  SExpr(Expr* MutexExp, Expr *DeclExp, const NamedDecl* D,
+        VarDecl *SelfDecl=0) {
+    buildSExprFromExpr(MutexExp, DeclExp, D, SelfDecl);
   }
 
   /// Return true if this is a valid decl sequence.
@@ -880,6 +906,7 @@ struct CFGBlockInfo {
   SourceLocation EntryLoc;      // Location of first statement in block
   SourceLocation ExitLoc;       // Location of last statement in block.
   unsigned EntryIndex;          // Used to replay contexts later
+  bool Reachable;               // Is this block reachable?
 
   const FactSet &getSet(CFGBlockSide Side) const {
     return Side == CBS_Entry ? EntrySet : ExitSet;
@@ -890,7 +917,7 @@ struct CFGBlockInfo {
 
 private:
   CFGBlockInfo(LocalVarContext EmptyCtx)
-    : EntryContext(EmptyCtx), ExitContext(EmptyCtx)
+    : EntryContext(EmptyCtx), ExitContext(EmptyCtx), Reachable(false)
   { }
 
 public:
@@ -1408,7 +1435,7 @@ public:
 
   template <typename AttrType>
   void getMutexIDs(MutexIDList &Mtxs, AttrType *Attr, Expr *Exp,
-                   const NamedDecl *D);
+                   const NamedDecl *D, VarDecl *SelfDecl=0);
 
   template <class AttrType>
   void getMutexIDs(MutexIDList &Mtxs, AttrType *Attr, Expr *Exp,
@@ -1498,12 +1525,13 @@ void ThreadSafetyAnalyzer::removeLock(FactSet &FSet,
 /// and push them onto Mtxs, discarding any duplicates.
 template <typename AttrType>
 void ThreadSafetyAnalyzer::getMutexIDs(MutexIDList &Mtxs, AttrType *Attr,
-                                       Expr *Exp, const NamedDecl *D) {
+                                       Expr *Exp, const NamedDecl *D,
+                                       VarDecl *SelfDecl) {
   typedef typename AttrType::args_iterator iterator_type;
 
   if (Attr->args_size() == 0) {
     // The mutex held is the "this" object.
-    SExpr Mu(0, Exp, D);
+    SExpr Mu(0, Exp, D, SelfDecl);
     if (!Mu.isValid())
       SExpr::warnInvalidLock(Handler, 0, Exp, D);
     else
@@ -1512,7 +1540,7 @@ void ThreadSafetyAnalyzer::getMutexIDs(MutexIDList &Mtxs, AttrType *Attr,
   }
 
   for (iterator_type I=Attr->args_begin(), E=Attr->args_end(); I != E; ++I) {
-    SExpr Mu(*I, Exp, D);
+    SExpr Mu(*I, Exp, D, SelfDecl);
     if (!Mu.isValid())
       SExpr::warnInvalidLock(Handler, *I, Exp, D);
     else
@@ -1669,7 +1697,7 @@ void ThreadSafetyAnalyzer::getEdgeLockset(FactSet& Result,
       case attr::SharedTrylockFunction: {
         SharedTrylockFunctionAttr *A =
           cast<SharedTrylockFunctionAttr>(Attr);
-        getMutexIDs(ExclusiveLocksToAdd, A, Exp, FunDecl,
+        getMutexIDs(SharedLocksToAdd, A, Exp, FunDecl,
                     PredBlock, CurrBlock, A->getSuccessValue(), Negate);
         break;
       }
@@ -1794,9 +1822,12 @@ void BuildLockset::warnIfMutexHeld(const NamedDecl *D, Expr* Exp,
   }
 
   LockData* LDat = FSet.findLock(Analyzer->FactMan, Mutex);
-  if (LDat)
-    Analyzer->Handler.handleFunExcludesLock(D->getName(), Mutex.toString(),
+  if (LDat) {
+    std::string DeclName = D->getNameAsString();
+    StringRef   DeclNameSR (DeclName);
+    Analyzer->Handler.handleFunExcludesLock(DeclNameSR, Mutex.toString(),
                                             Exp->getExprLoc());
+  }
 }
 
 
@@ -1868,7 +1899,7 @@ void BuildLockset::handleCall(Expr *Exp, const NamedDecl *D, VarDecl *VD) {
       // to our lockset with kind exclusive.
       case attr::ExclusiveLockFunction: {
         ExclusiveLockFunctionAttr *A = cast<ExclusiveLockFunctionAttr>(At);
-        Analyzer->getMutexIDs(ExclusiveLocksToAdd, A, Exp, D);
+        Analyzer->getMutexIDs(ExclusiveLocksToAdd, A, Exp, D, VD);
         break;
       }
 
@@ -1876,7 +1907,7 @@ void BuildLockset::handleCall(Expr *Exp, const NamedDecl *D, VarDecl *VD) {
       // to our lockset with kind shared.
       case attr::SharedLockFunction: {
         SharedLockFunctionAttr *A = cast<SharedLockFunctionAttr>(At);
-        Analyzer->getMutexIDs(SharedLocksToAdd, A, Exp, D);
+        Analyzer->getMutexIDs(SharedLocksToAdd, A, Exp, D, VD);
         break;
       }
 
@@ -1884,7 +1915,7 @@ void BuildLockset::handleCall(Expr *Exp, const NamedDecl *D, VarDecl *VD) {
       // mutexes from the lockset, and flag a warning if they are not there.
       case attr::UnlockFunction: {
         UnlockFunctionAttr *A = cast<UnlockFunctionAttr>(At);
-        Analyzer->getMutexIDs(LocksToRemove, A, Exp, D);
+        Analyzer->getMutexIDs(LocksToRemove, A, Exp, D, VD);
         break;
       }
 
@@ -2168,6 +2199,9 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
   PostOrderCFGView *SortedGraph = AC.getAnalysis<PostOrderCFGView>();
   PostOrderCFGView::CFGBlockSet VisitedBlocks(CFGraph);
 
+  // Mark entry block as reachable
+  BlockInfo[CFGraph->getEntry().getBlockID()].Reachable = true;
+
   // Compute SSA names for local variables
   LocalVarMap.traverseCFG(CFGraph, SortedGraph, BlockInfo);
 
@@ -2255,9 +2289,15 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
       if (*PI == 0 || !VisitedBlocks.alreadySet(*PI))
         continue;
 
+      int PrevBlockID = (*PI)->getBlockID();
+      CFGBlockInfo *PrevBlockInfo = &BlockInfo[PrevBlockID];
+
       // Ignore edges from blocks that can't return.
-      if ((*PI)->hasNoReturnElement())
+      if ((*PI)->hasNoReturnElement() || !PrevBlockInfo->Reachable)
         continue;
+
+      // Okay, we can reach this block from the entry.
+      CurrBlockInfo->Reachable = true;
 
       // If the previous block ended in a 'continue' or 'break' statement, then
       // a difference in locksets is probably due to a bug in that block, rather
@@ -2270,8 +2310,7 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
         }
       }
 
-      int PrevBlockID = (*PI)->getBlockID();
-      CFGBlockInfo *PrevBlockInfo = &BlockInfo[PrevBlockID];
+
       FactSet PrevLockset;
       getEdgeLockset(PrevLockset, PrevBlockInfo->ExitSet, *PI, CurrBlock);
 
@@ -2284,6 +2323,10 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
                          LEK_LockedSomePredecessors);
       }
     }
+
+    // Skip rest of block if it's not reachable.
+    if (!CurrBlockInfo->Reachable)
+      continue;
 
     // Process continue and break blocks. Assume that the lockset for the
     // resulting block is unaffected by any discrepancies in them.
@@ -2373,6 +2416,10 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
 
   CFGBlockInfo *Initial = &BlockInfo[CFGraph->getEntry().getBlockID()];
   CFGBlockInfo *Final   = &BlockInfo[CFGraph->getExit().getBlockID()];
+
+  // Skip the final check if the exit block is unreachable.
+  if (!Final->Reachable)
+    return;
 
   // FIXME: Should we call this function for all blocks which exit the function?
   intersectAndWarn(Initial->EntrySet, Final->ExitSet,

@@ -40,7 +40,7 @@ namespace llvm {
   class DominatorTree;
   class Type;
   class ScalarEvolution;
-  class TargetData;
+  class DataLayout;
   class TargetLibraryInfo;
   class LLVMContext;
   class Loop;
@@ -70,8 +70,8 @@ namespace llvm {
     unsigned short SubclassData;
 
   private:
-    SCEV(const SCEV &);            // DO NOT IMPLEMENT
-    void operator=(const SCEV &);  // DO NOT IMPLEMENT
+    SCEV(const SCEV &) LLVM_DELETED_FUNCTION;
+    void operator=(const SCEV &) LLVM_DELETED_FUNCTION;
 
   public:
     /// NoWrapFlags are bitfield indices into SubclassData.
@@ -227,7 +227,7 @@ namespace llvm {
 
     /// TD - The target data information for the target we are targeting.
     ///
-    TargetData *TD;
+    DataLayout *TD;
 
     /// TLI - The target library information for the target we are targeting.
     ///

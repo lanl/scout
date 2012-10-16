@@ -26,7 +26,7 @@
   inline float alpha(const scout::float4& color)
   { return color.components[3]; }
 
-}
+
 
 
 #endif

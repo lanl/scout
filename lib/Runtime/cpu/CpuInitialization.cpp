@@ -57,19 +57,17 @@ namespace scout {
 
   namespace cpu {
 
-    int scInitialize(DeviceList &dev_list) {
-      CpuDevice* cpu_dev = new CpuDevice();
+    int scInitialize(DeviceList & dev_list) {
+      CpuDevice *cpu_dev = new CpuDevice();
       if (!cpu_dev->isEnabled()) {
-        delete cpu_dev;        
+        delete cpu_dev;
       } else {
-        dev_list.push_back(cpu_dev);        
-      }
-      return 1;
+        dev_list.push_back(cpu_dev);
+      } return 1;
     }
 
-    int scFinalize(DeviceList &dev_list) {
-       return 0;
+    int scFinalize(DeviceList & dev_list) {
+      return 0;
     }
   }
 }
-  

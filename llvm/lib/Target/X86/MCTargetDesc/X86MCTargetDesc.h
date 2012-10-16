@@ -64,8 +64,6 @@ namespace X86_MC {
 
   unsigned getDwarfRegFlavour(StringRef TT, bool isEH);
 
-  unsigned getX86RegNum(unsigned RegNo);
-
   void InitLLVM2SEHRegisterMapping(MCRegisterInfo *MRI);
 
   /// createX86MCSubtargetInfo - Create a X86 MCSubtargetInfo instance.
@@ -80,8 +78,8 @@ MCCodeEmitter *createX86MCCodeEmitter(const MCInstrInfo &MCII,
                                       const MCSubtargetInfo &STI,
                                       MCContext &Ctx);
 
-MCAsmBackend *createX86_32AsmBackend(const Target &T, StringRef TT);
-MCAsmBackend *createX86_64AsmBackend(const Target &T, StringRef TT);
+MCAsmBackend *createX86_32AsmBackend(const Target &T, StringRef TT, StringRef CPU);
+MCAsmBackend *createX86_64AsmBackend(const Target &T, StringRef TT, StringRef CPU);
 
 /// createX86MachObjectWriter - Construct an X86 Mach-O object writer.
 MCObjectWriter *createX86MachObjectWriter(raw_ostream &OS,
