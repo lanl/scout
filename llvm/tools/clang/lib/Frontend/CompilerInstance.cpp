@@ -54,6 +54,7 @@ ScoutASTConsumer(0), ScoutRewriter(0){
 }
 
 CompilerInstance::~CompilerInstance() {
+  assert(OutputFiles.empty() && "Still output files in flight?");
 }
 
 void CompilerInstance::setInvocation(CompilerInvocation *Value) {
@@ -838,6 +839,7 @@ static void compileModule(CompilerInstance &ImportingInstance,
   // FIXME: Even though we're executing under crash protection, it would still
   // be nice to do this with RemoveFileOnSignal when we can. However, that
   // doesn't make sense for all clients, so clean this up manually.
+  Instance.clearOutputFiles(/*EraseFiles=*/true);
   if (!TempModuleMapFileName.empty())
     llvm::sys::Path(TempModuleMapFileName).eraseFromDisk();
 }

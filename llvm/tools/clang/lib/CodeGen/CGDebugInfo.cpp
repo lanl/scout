@@ -254,9 +254,13 @@ unsigned CGDebugInfo::getLineNumber(SourceLocation Loc) {
   return PLoc.isValid()? PLoc.getLine() : 0;
 }
 
-/// getColumnNumber - Get column number for the location. If location is 
-/// invalid then use current location.
+/// getColumnNumber - Get column number for the location.
 unsigned CGDebugInfo::getColumnNumber(SourceLocation Loc) {
+  // We may not want column information at all.
+  if (!CGM.getCodeGenOpts().DebugColumnInfo)
+    return 0;
+
+  // If the location is invalid then use the current column.
   if (Loc.isInvalid() && CurLoc.isInvalid())
     return 0;
   SourceManager &SM = CGM.getContext().getSourceManager();
@@ -848,7 +852,7 @@ CollectRecordFields(const RecordDecl *record, llvm::DIFile tunit,
       }
     }
   } else {
-    bool IsMsStruct = record->hasAttr<MsStructAttr>();
+    bool IsMsStruct = record->isMsStruct(CGM.getContext());
     const FieldDecl *LastFD = 0;
     for (RecordDecl::field_iterator I = record->field_begin(),
            E = record->field_end();
@@ -1047,12 +1051,8 @@ CollectCXXMemberFunctions(const CXXRecordDecl *RD, llvm::DIFile Unit,
     if (D->isImplicit() && !D->isUsed())
       continue;
 
-    if (const CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(D)) {
-      // Only emit debug information for user provided functions, we're
-      // unlikely to want info for artificial functions.
-      if (Method->isUserProvided())
-        EltTys.push_back(CreateCXXMemberFunction(Method, Unit, RecordTy));
-    }
+    if (const CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(D))
+      EltTys.push_back(CreateCXXMemberFunction(Method, Unit, RecordTy));
     else if (FunctionTemplateDecl *FTD = dyn_cast<FunctionTemplateDecl>(D))
       for (FunctionTemplateDecl::spec_iterator SI = FTD->spec_begin(),
              SE = FTD->spec_end(); SI != SE; ++SI)
@@ -2510,7 +2510,7 @@ void CGDebugInfo::EmitDeclareOfBlockDeclRefVariable(const VarDecl *VD,
     addr.push_back(llvm::ConstantInt::get(Int64Ty, llvm::DIBuilder::OpPlus));
     // offset of __forwarding field
     offset = CGM.getContext()
-                .toCharUnitsFromBits(target.getPointerSizeInBits());
+                .toCharUnitsFromBits(target.getPointerSizeInBits(0));
     addr.push_back(llvm::ConstantInt::get(Int64Ty, offset.getQuantity()));
     addr.push_back(llvm::ConstantInt::get(Int64Ty, llvm::DIBuilder::OpDeref));
     addr.push_back(llvm::ConstantInt::get(Int64Ty, llvm::DIBuilder::OpPlus));

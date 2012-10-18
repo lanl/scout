@@ -142,9 +142,6 @@ void TypePrinter::print(const Type *T, Qualifiers Quals, raw_ostream &OS,
     OS << "NULL TYPE";
     return;
   }
-  
-  if (Policy.SuppressSpecifiers && T->isSpecifierType())
-    return;
 
   SaveAndRestore<bool> PHVal(HasEmptyPlaceHolder, PlaceHolder.empty());
 
@@ -651,6 +648,9 @@ void TypePrinter::printFunctionProtoAfter(const FunctionProtoType *T,
     break;
   case CC_AAPCS_VFP:
     OS << " __attribute__((pcs(\"aapcs-vfp\")))";
+    break;
+  case CC_PnaclCall:
+    OS << " __attribute__((pnaclcall))";
     break;
   }
   if (Info.getNoReturn())
@@ -1184,6 +1184,7 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
    OS << ')';
    break;
   }
+  case AttributedType::attr_pnaclcall: OS << "pnaclcall"; break;
   }
   OS << "))";
 }

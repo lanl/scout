@@ -399,9 +399,6 @@ public:
       const_cast<const Stmt*>(this)->stripLabelLikeStatements());
   }
 
-  // Implement isa<T> support.
-  static bool classof(const Stmt *) { return true; }
-
   /// hasImplicitControlFlow - Some statements (e.g. short circuited operations)
   ///  contain implicit control-flow in the order their subexpressions
   ///  are evaluated.  This predicate returns true if this statement has
@@ -487,7 +484,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DeclStmtClass;
   }
-  static bool classof(const DeclStmt *) { return true; }
 
   // Iterators over subexpressions.
   child_range children() {
@@ -542,7 +538,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == NullStmtClass;
   }
-  static bool classof(const NullStmt *) { return true; }
 
   child_range children() { return child_range(); }
 
@@ -624,7 +619,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CompoundStmtClass;
   }
-  static bool classof(const CompoundStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -663,7 +657,6 @@ public:
     return T->getStmtClass() == CaseStmtClass ||
            T->getStmtClass() == DefaultStmtClass;
   }
-  static bool classof(const SwitchCase *) { return true; }
 };
 
 class CaseStmt : public SwitchCase {
@@ -723,7 +716,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CaseStmtClass;
   }
-  static bool classof(const CaseStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -758,7 +750,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DefaultStmtClass;
   }
-  static bool classof(const DefaultStmt *) { return true; }
 
   // Iterators
   child_range children() { return child_range(&SubStmt, &SubStmt+1); }
@@ -797,7 +788,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == LabelStmtClass;
   }
-  static bool classof(const LabelStmt *) { return true; }
 };
 
 
@@ -846,7 +836,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == AttributedStmtClass;
   }
-  static bool classof(const AttributedStmt *) { return true; }
 };
 
 
@@ -915,7 +904,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == IfStmtClass;
   }
-  static bool classof(const IfStmt *) { return true; }
 };
 
 /// SwitchStmt - This represents a 'switch' stmt.
@@ -1009,7 +997,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == SwitchStmtClass;
   }
-  static bool classof(const SwitchStmt *) { return true; }
 };
 
 
@@ -1059,7 +1046,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == WhileStmtClass;
   }
-  static bool classof(const WhileStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -1108,7 +1094,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DoStmtClass;
   }
-  static bool classof(const DoStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -1180,7 +1165,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForStmtClass;
   }
-  static bool classof(const ForStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -1215,7 +1199,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == GotoStmtClass;
   }
-  static bool classof(const GotoStmt *) { return true; }
 
   // Iterators
   child_range children() { return child_range(); }
@@ -1260,7 +1243,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == IndirectGotoStmtClass;
   }
-  static bool classof(const IndirectGotoStmt *) { return true; }
 
   // Iterators
   child_range children() { return child_range(&Target, &Target+1); }
@@ -1287,7 +1269,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ContinueStmtClass;
   }
-  static bool classof(const ContinueStmt *) { return true; }
 
   // Iterators
   child_range children() { return child_range(); }
@@ -1311,7 +1292,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == BreakStmtClass;
   }
-  static bool classof(const BreakStmt *) { return true; }
 
   // Iterators
   child_range children() { return child_range(); }
@@ -1363,7 +1343,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ReturnStmtClass;
   }
-  static bool classof(const ReturnStmt *) { return true; }
 
   // Iterators
   child_range children() {
@@ -1481,7 +1460,6 @@ public:
     return T->getStmtClass() == GCCAsmStmtClass ||
       T->getStmtClass() == MSAsmStmtClass;
   }
-  static bool classof(const AsmStmt *) { return true; }
 
   // Input expr iterators.
 
@@ -1674,7 +1652,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == GCCAsmStmtClass;
   }
-  static bool classof(const GCCAsmStmt *) { return true; }
 };
 
 /// This represents a Microsoft inline-assembly statement extension.
@@ -1692,9 +1669,9 @@ class MSAsmStmt : public AsmStmt {
 public:
   MSAsmStmt(ASTContext &C, SourceLocation asmloc, SourceLocation lbraceloc,
             bool issimple, bool isvolatile, ArrayRef<Token> asmtoks,
-            ArrayRef<IdentifierInfo*> inputs, ArrayRef<IdentifierInfo*> outputs,
-            ArrayRef<Expr*> inputexprs, ArrayRef<Expr*> outputexprs,
-            StringRef asmstr, ArrayRef<StringRef> constraints, 
+            unsigned numoutputs, unsigned numinputs,
+            ArrayRef<IdentifierInfo*> names, ArrayRef<StringRef> constraints,
+            ArrayRef<Expr*> exprs, StringRef asmstr,
             ArrayRef<StringRef> clobbers, SourceLocation endloc);
 
   /// \brief Build an empty MS-style inline-assembly statement.
@@ -1755,7 +1732,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MSAsmStmtClass;
   }
-  static bool classof(const MSAsmStmt *) { return true; }
 
   child_range children() {
     return child_range(&Exprs[0], &Exprs[0]);
@@ -1804,8 +1780,6 @@ public:
     return T->getStmtClass() == SEHExceptStmtClass;
   }
 
-  static bool classof(SEHExceptStmt *) { return true; }
-
 };
 
 class SEHFinallyStmt : public Stmt {
@@ -1840,8 +1814,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == SEHFinallyStmtClass;
   }
-
-  static bool classof(SEHFinallyStmt *) { return true; }
 
 };
 
@@ -1894,8 +1866,6 @@ public:
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == SEHTryStmtClass;
   }
-
-  static bool classof(SEHTryStmt *) { return true; }
 };
 
 // scout - Stmts

@@ -190,6 +190,18 @@ ObjCInterfaceDecl::FindPropertyVisibleInPrimaryClass(
   return 0;
 }
 
+void ObjCInterfaceDecl::collectPropertiesToImplement(PropertyMap& PM) const {
+  for (ObjCContainerDecl::prop_iterator P = prop_begin(),
+      E = prop_end(); P != E; ++P) {
+    ObjCPropertyDecl *Prop = *P;
+    PM[Prop->getIdentifier()] = Prop;
+  }
+  for (ObjCInterfaceDecl::all_protocol_iterator
+      PI = all_referenced_protocol_begin(),
+      E = all_referenced_protocol_end(); PI != E; ++PI)
+    (*PI)->collectPropertiesToImplement(PM);
+}
+
 void ObjCInterfaceDecl::mergeClassExtensionProtocolList(
                               ObjCProtocolDecl *const* ExtList, unsigned ExtNum,
                               ASTContext &C)
@@ -859,6 +871,8 @@ static void collectOnCategoriesAfterLocation(SourceLocation Loc,
 /// overrides lookup that it does for methods, inside implementations, will
 /// stop at the interface level (if there is a method there) and not look
 /// further in super classes.
+/// Methods in an implementation can overide methods in super class's category
+/// but not in current class's category. But, such methods
 static void collectOverriddenMethodsFast(SourceManager &SM,
                                          const ObjCMethodDecl *Method,
                              SmallVectorImpl<const ObjCMethodDecl *> &Methods) {
@@ -902,7 +916,7 @@ ObjCMethodDecl::findPropertyDecl(bool CheckOverrides) const {
   if (NumArgs > 1)
     return 0;
 
-  if (getMethodFamily() != OMF_None)
+  if (!isInstanceMethod() || getMethodFamily() != OMF_None)
     return 0;
   
   if (isPropertyAccessor()) {
@@ -1310,6 +1324,20 @@ void ObjCProtocolDecl::startDefinition() {
        RD != RDEnd; ++RD)
     RD->Data = this->Data;
 }
+
+void ObjCProtocolDecl::collectPropertiesToImplement(PropertyMap& PM) const {
+  for (ObjCProtocolDecl::prop_iterator P = prop_begin(),
+      E = prop_end(); P != E; ++P) {
+    ObjCPropertyDecl *Prop = *P;
+    // Insert into PM if not there already.
+    PM.insert(std::make_pair(Prop->getIdentifier(), Prop));
+  }
+  // Scan through protocol's protocols.
+  for (ObjCProtocolDecl::protocol_iterator PI = protocol_begin(),
+      E = protocol_end(); PI != E; ++PI)
+    (*PI)->collectPropertiesToImplement(PM);
+}
+
 
 //===----------------------------------------------------------------------===//
 // ObjCCategoryDecl
