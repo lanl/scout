@@ -132,9 +132,6 @@ public:
     ///
     /// We flag partitions as splittable when they are formed entirely due to
     /// accesses by trivially splittable operations such as memset and memcpy.
-    ///
-    /// FIXME: At some point we should consider loads and stores of FCAs to be
-    /// splittable and eagerly split them into scalar values.
     bool IsSplittable;
 
     /// \brief Test whether a partition has been marked as dead.
@@ -447,6 +444,7 @@ protected:
 
   bool computeConstantGEPOffset(GetElementPtrInst &GEPI, int64_t &GEPOffset) {
     GEPOffset = Offset;
+    unsigned int AS = GEPI.getPointerAddressSpace();
     for (gep_type_iterator GTI = gep_type_begin(GEPI), GTE = gep_type_end(GEPI);
          GTI != GTE; ++GTI) {
       ConstantInt *OpC = dyn_cast<ConstantInt>(GTI.getOperand());
@@ -476,7 +474,7 @@ protected:
         continue;
       }
 
-      APInt Index = OpC->getValue().sextOrTrunc(TD.getPointerSizeInBits());
+      APInt Index = OpC->getValue().sextOrTrunc(TD.getPointerSizeInBits(AS));
       Index *= APInt(Index.getBitWidth(),
                      TD.getTypeAllocSize(GTI.getIndexedType()));
       Index += APInt(Index.getBitWidth(), (uint64_t)GEPOffset,
@@ -1784,7 +1782,9 @@ static Value *getNaturalGEPWithType(IRBuilder<> &IRB, const DataLayout &TD,
       break;
     if (SequentialType *SeqTy = dyn_cast<SequentialType>(ElementTy)) {
       ElementTy = SeqTy->getElementType();
-      Indices.push_back(IRB.getInt(APInt(TD.getPointerSizeInBits(), 0)));
+      // Note that we use the default address space as this index is over an
+      // array or a vector, not a pointer.
+      Indices.push_back(IRB.getInt(APInt(TD.getPointerSizeInBits(0), 0)));
     } else if (StructType *STy = dyn_cast<StructType>(ElementTy)) {
       if (STy->element_begin() == STy->element_end())
         break; // Nothing left to descend into.
@@ -1825,7 +1825,7 @@ static Value *getNaturalGEPRecursively(IRBuilder<> &IRB, const DataLayout &TD,
     if (ElementSizeInBits % 8)
       return 0; // GEPs over non-multiple of 8 size vector elements are invalid.
     APInt ElementSize(Offset.getBitWidth(), ElementSizeInBits / 8);
-    APInt NumSkippedElements = Offset.udiv(ElementSize);
+    APInt NumSkippedElements = Offset.sdiv(ElementSize);
     if (NumSkippedElements.ugt(VecTy->getNumElements()))
       return 0;
     Offset -= NumSkippedElements * ElementSize;
@@ -1837,7 +1837,7 @@ static Value *getNaturalGEPRecursively(IRBuilder<> &IRB, const DataLayout &TD,
   if (ArrayType *ArrTy = dyn_cast<ArrayType>(Ty)) {
     Type *ElementTy = ArrTy->getElementType();
     APInt ElementSize(Offset.getBitWidth(), TD.getTypeAllocSize(ElementTy));
-    APInt NumSkippedElements = Offset.udiv(ElementSize);
+    APInt NumSkippedElements = Offset.sdiv(ElementSize);
     if (NumSkippedElements.ugt(ArrTy->getNumElements()))
       return 0;
 
@@ -1893,7 +1893,7 @@ static Value *getNaturalGEPWithOffset(IRBuilder<> &IRB, const DataLayout &TD,
   APInt ElementSize(Offset.getBitWidth(), TD.getTypeAllocSize(ElementTy));
   if (ElementSize == 0)
     return 0; // Zero-length arrays can't help us build a natural GEP.
-  APInt NumSkippedElements = Offset.udiv(ElementSize);
+  APInt NumSkippedElements = Offset.sdiv(ElementSize);
 
   Offset -= NumSkippedElements * ElementSize;
   Indices.push_back(IRB.getInt(NumSkippedElements));
@@ -2004,6 +2004,51 @@ static Value *getAdjustedPtr(IRBuilder<> &IRB, const DataLayout &TD,
   return Ptr;
 }
 
+/// \brief Test whether we can convert a value from the old to the new type.
+///
+/// This predicate should be used to guard calls to convertValue in order to
+/// ensure that we only try to convert viable values. The strategy is that we
+/// will peel off single element struct and array wrappings to get to an
+/// underlying value, and convert that value.
+static bool canConvertValue(const DataLayout &DL, Type *OldTy, Type *NewTy) {
+  if (OldTy == NewTy)
+    return true;
+  if (DL.getTypeSizeInBits(NewTy) != DL.getTypeSizeInBits(OldTy))
+    return false;
+  if (!NewTy->isSingleValueType() || !OldTy->isSingleValueType())
+    return false;
+
+  if (NewTy->isPointerTy() || OldTy->isPointerTy()) {
+    if (NewTy->isPointerTy() && OldTy->isPointerTy())
+      return true;
+    if (NewTy->isIntegerTy() || OldTy->isIntegerTy())
+      return true;
+    return false;
+  }
+
+  return true;
+}
+
+/// \brief Generic routine to convert an SSA value to a value of a different
+/// type.
+///
+/// This will try various different casting techniques, such as bitcasts,
+/// inttoptr, and ptrtoint casts. Use the \c canConvertValue predicate to test
+/// two types for viability with this routine.
+static Value *convertValue(const DataLayout &DL, IRBuilder<> &IRB, Value *V,
+                           Type *Ty) {
+  assert(canConvertValue(DL, V->getType(), Ty) &&
+         "Value not convertable to type");
+  if (V->getType() == Ty)
+    return V;
+  if (V->getType()->isIntegerTy() && Ty->isPointerTy())
+    return IRB.CreateIntToPtr(V, Ty);
+  if (V->getType()->isPointerTy() && Ty->isIntegerTy())
+    return IRB.CreatePtrToInt(V, Ty);
+
+  return IRB.CreateBitCast(V, Ty);
+}
+
 /// \brief Test whether the given alloca partition can be promoted to a vector.
 ///
 /// This is a quick test to check whether we can rewrite a particular alloca
@@ -2075,47 +2120,74 @@ static bool isVectorPromotionViable(const DataLayout &TD,
   return true;
 }
 
-/// \brief Test whether the given alloca partition can be promoted to an int.
+/// \brief Test whether the given alloca partition's integer operations can be
+/// widened to promotable ones.
 ///
-/// This is a quick test to check whether we can rewrite a particular alloca
-/// partition (and its newly formed alloca) into an integer alloca suitable for
-/// promotion to an SSA value. We only can ensure this for a limited set of
-/// operations, and we don't want to do the rewrites unless we are confident
-/// that the result will be promotable, so we have an early test here.
-static bool isIntegerPromotionViable(const DataLayout &TD,
-                                     Type *AllocaTy,
-                                     uint64_t AllocBeginOffset,
-                                     AllocaPartitioning &P,
-                                     AllocaPartitioning::const_use_iterator I,
-                                     AllocaPartitioning::const_use_iterator E) {
-  IntegerType *Ty = dyn_cast<IntegerType>(AllocaTy);
-  if (!Ty || 8*TD.getTypeStoreSize(Ty) != Ty->getBitWidth())
+/// This is a quick test to check whether we can rewrite the integer loads and
+/// stores to a particular alloca into wider loads and stores and be able to
+/// promote the resulting alloca.
+static bool isIntegerWideningViable(const DataLayout &TD,
+                                    Type *AllocaTy,
+                                    uint64_t AllocBeginOffset,
+                                    AllocaPartitioning &P,
+                                    AllocaPartitioning::const_use_iterator I,
+                                    AllocaPartitioning::const_use_iterator E) {
+  uint64_t SizeInBits = TD.getTypeSizeInBits(AllocaTy);
+
+  // Don't try to handle allocas with bit-padding.
+  if (SizeInBits != TD.getTypeStoreSizeInBits(AllocaTy))
     return false;
+
+  uint64_t Size = TD.getTypeStoreSize(AllocaTy);
 
   // Check the uses to ensure the uses are (likely) promoteable integer uses.
   // Also ensure that the alloca has a covering load or store. We don't want
-  // promote because of some other unsplittable entry (which we may make
-  // splittable later) and lose the ability to promote each element access.
+  // to widen the integer operotains only to fail to promote due to some other
+  // unsplittable entry (which we may make splittable later).
   bool WholeAllocaOp = false;
   for (; I != E; ++I) {
     if (!I->U)
       continue; // Skip dead use.
 
+    uint64_t RelBegin = I->BeginOffset - AllocBeginOffset;
+    uint64_t RelEnd = I->EndOffset - AllocBeginOffset;
+
     // We can't reasonably handle cases where the load or store extends past
     // the end of the aloca's type and into its padding.
-    if ((I->EndOffset - AllocBeginOffset) > TD.getTypeStoreSize(Ty))
+    if (RelEnd > Size)
       return false;
 
     if (LoadInst *LI = dyn_cast<LoadInst>(I->U->getUser())) {
-      if (LI->isVolatile() || !LI->getType()->isIntegerTy())
+      if (LI->isVolatile())
         return false;
-      if (LI->getType() == Ty)
+      if (RelBegin == 0 && RelEnd == Size)
         WholeAllocaOp = true;
+      if (IntegerType *ITy = dyn_cast<IntegerType>(LI->getType())) {
+        if (ITy->getBitWidth() < TD.getTypeStoreSize(ITy))
+          return false;
+        continue;
+      }
+      // Non-integer loads need to be convertible from the alloca type so that
+      // they are promotable.
+      if (RelBegin != 0 || RelEnd != Size ||
+          !canConvertValue(TD, AllocaTy, LI->getType()))
+        return false;
     } else if (StoreInst *SI = dyn_cast<StoreInst>(I->U->getUser())) {
-      if (SI->isVolatile() || !SI->getValueOperand()->getType()->isIntegerTy())
+      Type *ValueTy = SI->getValueOperand()->getType();
+      if (SI->isVolatile())
         return false;
-      if (SI->getValueOperand()->getType() == Ty)
+      if (RelBegin == 0 && RelEnd == Size)
         WholeAllocaOp = true;
+      if (IntegerType *ITy = dyn_cast<IntegerType>(ValueTy)) {
+        if (ITy->getBitWidth() < TD.getTypeStoreSize(ITy))
+          return false;
+        continue;
+      }
+      // Non-integer stores need to be convertible to the alloca type so that
+      // they are promotable.
+      if (RelBegin != 0 || RelEnd != Size ||
+          !canConvertValue(TD, ValueTy, AllocaTy))
+        return false;
     } else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(I->U->getUser())) {
       if (MI->isVolatile())
         return false;
@@ -2125,11 +2197,57 @@ static bool isIntegerPromotionViable(const DataLayout &TD,
         if (!MTO.IsSplittable)
           return false;
       }
+    } else if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(I->U->getUser())) {
+      if (II->getIntrinsicID() != Intrinsic::lifetime_start &&
+          II->getIntrinsicID() != Intrinsic::lifetime_end)
+        return false;
     } else {
       return false;
     }
   }
   return WholeAllocaOp;
+}
+
+static Value *extractInteger(const DataLayout &DL, IRBuilder<> &IRB, Value *V,
+                             IntegerType *Ty, uint64_t Offset,
+                             const Twine &Name) {
+  IntegerType *IntTy = cast<IntegerType>(V->getType());
+  assert(DL.getTypeStoreSize(Ty) + Offset <= DL.getTypeStoreSize(IntTy) &&
+         "Element extends past full value");
+  uint64_t ShAmt = 8*Offset;
+  if (DL.isBigEndian())
+    ShAmt = 8*(DL.getTypeStoreSize(IntTy) - DL.getTypeStoreSize(Ty) - Offset);
+  if (ShAmt)
+    V = IRB.CreateLShr(V, ShAmt, Name + ".shift");
+  assert(Ty->getBitWidth() <= IntTy->getBitWidth() &&
+         "Cannot extract to a larger integer!");
+  if (Ty != IntTy)
+    V = IRB.CreateTrunc(V, Ty, Name + ".trunc");
+  return V;
+}
+
+static Value *insertInteger(const DataLayout &DL, IRBuilder<> &IRB, Value *Old,
+                            Value *V, uint64_t Offset, const Twine &Name) {
+  IntegerType *IntTy = cast<IntegerType>(Old->getType());
+  IntegerType *Ty = cast<IntegerType>(V->getType());
+  assert(Ty->getBitWidth() <= IntTy->getBitWidth() &&
+         "Cannot insert a larger integer!");
+  if (Ty != IntTy)
+    V = IRB.CreateZExt(V, IntTy, Name + ".ext");
+  assert(DL.getTypeStoreSize(Ty) + Offset <= DL.getTypeStoreSize(IntTy) &&
+         "Element store outside of alloca store");
+  uint64_t ShAmt = 8*Offset;
+  if (DL.isBigEndian())
+    ShAmt = 8*(DL.getTypeStoreSize(IntTy) - DL.getTypeStoreSize(Ty) - Offset);
+  if (ShAmt)
+    V = IRB.CreateShl(V, ShAmt, Name + ".shift");
+
+  if (ShAmt || Ty->getBitWidth() < IntTy->getBitWidth()) {
+    APInt Mask = ~Ty->getMask().zext(IntTy->getBitWidth()).shl(ShAmt);
+    Old = IRB.CreateAnd(Old, Mask, Name + ".mask");
+    V = IRB.CreateOr(Old, V, Name + ".insert");
+  }
+  return V;
 }
 
 namespace {
@@ -2149,6 +2267,7 @@ class AllocaPartitionRewriter : public InstVisitor<AllocaPartitionRewriter,
   SROA &Pass;
   AllocaInst &OldAI, &NewAI;
   const uint64_t NewAllocaBeginOffset, NewAllocaEndOffset;
+  Type *NewAllocaTy;
 
   // If we are rewriting an alloca partition which can be written as pure
   // vector operations, we stash extra information here. When VecTy is
@@ -2164,10 +2283,10 @@ class AllocaPartitionRewriter : public InstVisitor<AllocaPartitionRewriter,
   uint64_t ElementSize;
 
   // This is a convenience and flag variable that will be null unless the new
-  // alloca has a promotion-targeted integer type due to passing
-  // isIntegerPromotionViable above. If it is non-null does, the desired
+  // alloca's integer operations should be widened to this integer type due to
+  // passing isIntegerWideningViable above. If it is non-null, the desired
   // integer type will be stored here for easy access during rewriting.
-  IntegerType *IntPromotionTy;
+  IntegerType *IntTy;
 
   // The offset of the partition user currently being rewritten.
   uint64_t BeginOffset, EndOffset;
@@ -2186,7 +2305,8 @@ public:
       OldAI(OldAI), NewAI(NewAI),
       NewAllocaBeginOffset(NewBeginOffset),
       NewAllocaEndOffset(NewEndOffset),
-      VecTy(), ElementTy(), ElementSize(), IntPromotionTy(),
+      NewAllocaTy(NewAI.getAllocatedType()),
+      VecTy(), ElementTy(), ElementSize(), IntTy(),
       BeginOffset(), EndOffset() {
   }
 
@@ -2202,9 +2322,10 @@ public:
       assert((VecTy->getScalarSizeInBits() % 8) == 0 &&
              "Only multiple-of-8 sized vector elements are viable");
       ElementSize = VecTy->getScalarSizeInBits() / 8;
-    } else if (isIntegerPromotionViable(TD, NewAI.getAllocatedType(),
-                                        NewAllocaBeginOffset, P, I, E)) {
-      IntPromotionTy = cast<IntegerType>(NewAI.getAllocatedType());
+    } else if (isIntegerWideningViable(TD, NewAI.getAllocatedType(),
+                                       NewAllocaBeginOffset, P, I, E)) {
+      IntTy = Type::getIntNTy(NewAI.getContext(),
+                              TD.getTypeSizeInBits(NewAI.getAllocatedType()));
     }
     bool CanSROA = true;
     for (; I != E; ++I) {
@@ -2223,6 +2344,10 @@ public:
       ElementTy = 0;
       ElementSize = 0;
     }
+    if (IntTy) {
+      assert(CanSROA);
+      IntTy = 0;
+    }
     return CanSROA;
   }
 
@@ -2239,7 +2364,8 @@ private:
 
   Value *getAdjustedAllocaPtr(IRBuilder<> &IRB, Type *PointerTy) {
     assert(BeginOffset >= NewAllocaBeginOffset);
-    APInt Offset(TD.getPointerSizeInBits(), BeginOffset - NewAllocaBeginOffset);
+    unsigned AS = cast<PointerType>(PointerTy)->getAddressSpace();
+    APInt Offset(TD.getPointerSizeInBits(AS), BeginOffset - NewAllocaBeginOffset);
     return getAdjustedPtr(IRB, TD, &NewAI, Offset, PointerTy, getName(""));
   }
 
@@ -2284,72 +2410,10 @@ private:
     return IRB.getInt32(Index);
   }
 
-  Value *extractInteger(IRBuilder<> &IRB, IntegerType *TargetTy,
-                        uint64_t Offset) {
-    assert(IntPromotionTy && "Alloca is not an integer we can extract from");
-    Value *V = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
-                                     getName(".load"));
-    assert(Offset >= NewAllocaBeginOffset && "Out of bounds offset");
-    uint64_t RelOffset = Offset - NewAllocaBeginOffset;
-    assert(TD.getTypeStoreSize(TargetTy) + RelOffset <=
-           TD.getTypeStoreSize(IntPromotionTy) &&
-           "Element load outside of alloca store");
-    uint64_t ShAmt = 8*RelOffset;
-    if (TD.isBigEndian())
-      ShAmt = 8*(TD.getTypeStoreSize(IntPromotionTy) -
-                 TD.getTypeStoreSize(TargetTy) - RelOffset);
-    if (ShAmt)
-      V = IRB.CreateLShr(V, ShAmt, getName(".shift"));
-    if (TargetTy != IntPromotionTy) {
-      assert(TargetTy->getBitWidth() < IntPromotionTy->getBitWidth() &&
-             "Cannot extract to a larger integer!");
-      V = IRB.CreateTrunc(V, TargetTy, getName(".trunc"));
-    }
-    return V;
-  }
-
-  StoreInst *insertInteger(IRBuilder<> &IRB, Value *V, uint64_t Offset) {
-    IntegerType *Ty = cast<IntegerType>(V->getType());
-    if (Ty == IntPromotionTy)
-      return IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
-
-    assert(Ty->getBitWidth() < IntPromotionTy->getBitWidth() &&
-           "Cannot insert a larger integer!");
-    V = IRB.CreateZExt(V, IntPromotionTy, getName(".ext"));
-    assert(Offset >= NewAllocaBeginOffset && "Out of bounds offset");
-    uint64_t RelOffset = Offset - NewAllocaBeginOffset;
-    assert(TD.getTypeStoreSize(Ty) + RelOffset <=
-           TD.getTypeStoreSize(IntPromotionTy) &&
-           "Element store outside of alloca store");
-    uint64_t ShAmt = 8*RelOffset;
-    if (TD.isBigEndian())
-      ShAmt = 8*(TD.getTypeStoreSize(IntPromotionTy) - TD.getTypeStoreSize(Ty)
-                 - RelOffset);
-    if (ShAmt)
-      V = IRB.CreateShl(V, ShAmt, getName(".shift"));
-
-    APInt Mask = ~Ty->getMask().zext(IntPromotionTy->getBitWidth()).shl(ShAmt);
-    Value *Old = IRB.CreateAnd(IRB.CreateAlignedLoad(&NewAI,
-                                                     NewAI.getAlignment(),
-                                                     getName(".oldload")),
-                               Mask, getName(".mask"));
-    return IRB.CreateAlignedStore(IRB.CreateOr(Old, V, getName(".insert")),
-                                  &NewAI, NewAI.getAlignment());
-  }
-
   void deleteIfTriviallyDead(Value *V) {
     Instruction *I = cast<Instruction>(V);
     if (isInstructionTriviallyDead(I))
       Pass.DeadInsts.push_back(I);
-  }
-
-  Value *getValueCast(IRBuilder<> &IRB, Value *V, Type *Ty) {
-    if (V->getType()->isIntegerTy() && Ty->isPointerTy())
-      return IRB.CreateIntToPtr(V, Ty);
-    if (V->getType()->isPointerTy() && Ty->isIntegerTy())
-      return IRB.CreatePtrToInt(V, Ty);
-
-    return IRB.CreateBitCast(V, Ty);
   }
 
   bool rewriteVectorizedLoadInst(IRBuilder<> &IRB, LoadInst &LI, Value *OldOp) {
@@ -2364,7 +2428,7 @@ private:
                                      getName(".load"));
     }
     if (Result->getType() != LI.getType())
-      Result = getValueCast(IRB, Result, LI.getType());
+      Result = convertValue(TD, IRB, Result, LI.getType());
     LI.replaceAllUsesWith(Result);
     Pass.DeadInsts.push_back(&LI);
 
@@ -2373,12 +2437,18 @@ private:
   }
 
   bool rewriteIntegerLoad(IRBuilder<> &IRB, LoadInst &LI) {
+    assert(IntTy && "We cannot insert an integer to the alloca");
     assert(!LI.isVolatile());
-    Value *Result = extractInteger(IRB, cast<IntegerType>(LI.getType()),
-                                   BeginOffset);
-    LI.replaceAllUsesWith(Result);
+    Value *V = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                     getName(".load"));
+    V = convertValue(TD, IRB, V, IntTy);
+    assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+    uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+    V = extractInteger(TD, IRB, V, cast<IntegerType>(LI.getType()), Offset,
+                       getName(".extract"));
+    LI.replaceAllUsesWith(V);
     Pass.DeadInsts.push_back(&LI);
-    DEBUG(dbgs() << "          to: " << *Result << "\n");
+    DEBUG(dbgs() << "          to: " << *V << "\n");
     return true;
   }
 
@@ -2390,8 +2460,22 @@ private:
 
     if (VecTy)
       return rewriteVectorizedLoadInst(IRB, LI, OldOp);
-    if (IntPromotionTy)
+    if (IntTy && LI.getType()->isIntegerTy())
       return rewriteIntegerLoad(IRB, LI);
+
+    if (BeginOffset == NewAllocaBeginOffset &&
+        canConvertValue(TD, NewAllocaTy, LI.getType())) {
+      Value *NewLI = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                           LI.isVolatile(), getName(".load"));
+      Value *NewV = convertValue(TD, IRB, NewLI, LI.getType());
+      LI.replaceAllUsesWith(NewV);
+      Pass.DeadInsts.push_back(&LI);
+
+      DEBUG(dbgs() << "          to: " << *NewLI << "\n");
+      return !LI.isVolatile();
+    }
+
+    assert(!IntTy && "Invalid load found with int-op widening enabled");
 
     Value *NewPtr = getAdjustedAllocaPtr(IRB,
                                          LI.getPointerOperand()->getType());
@@ -2409,13 +2493,13 @@ private:
     if (V->getType() == ElementTy ||
         BeginOffset > NewAllocaBeginOffset || EndOffset < NewAllocaEndOffset) {
       if (V->getType() != ElementTy)
-        V = getValueCast(IRB, V, ElementTy);
+        V = convertValue(TD, IRB, V, ElementTy);
       LoadInst *LI = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
                                            getName(".load"));
       V = IRB.CreateInsertElement(LI, V, getIndex(IRB, BeginOffset),
                                   getName(".insert"));
     } else if (V->getType() != VecTy) {
-      V = getValueCast(IRB, V, VecTy);
+      V = convertValue(TD, IRB, V, VecTy);
     }
     StoreInst *Store = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
     Pass.DeadInsts.push_back(&SI);
@@ -2426,8 +2510,20 @@ private:
   }
 
   bool rewriteIntegerStore(IRBuilder<> &IRB, StoreInst &SI) {
+    assert(IntTy && "We cannot extract an integer from the alloca");
     assert(!SI.isVolatile());
-    StoreInst *Store = insertInteger(IRB, SI.getValueOperand(), BeginOffset);
+    Value *V = SI.getValueOperand();
+    if (TD.getTypeSizeInBits(V->getType()) != IntTy->getBitWidth()) {
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      V = insertInteger(TD, IRB, Old, SI.getValueOperand(), Offset,
+                        getName(".insert"));
+    }
+    V = convertValue(TD, IRB, V, NewAllocaTy);
+    StoreInst *Store = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment());
     Pass.DeadInsts.push_back(&SI);
     (void)Store;
     DEBUG(dbgs() << "          to: " << *Store << "\n");
@@ -2442,15 +2538,30 @@ private:
 
     if (VecTy)
       return rewriteVectorizedStoreInst(IRB, SI, OldOp);
-    if (IntPromotionTy)
+    Type *ValueTy = SI.getValueOperand()->getType();
+    if (IntTy && ValueTy->isIntegerTy())
       return rewriteIntegerStore(IRB, SI);
 
     // Strip all inbounds GEPs and pointer casts to try to dig out any root
     // alloca that should be re-examined after promoting this alloca.
-    if (SI.getValueOperand()->getType()->isPointerTy())
+    if (ValueTy->isPointerTy())
       if (AllocaInst *AI = dyn_cast<AllocaInst>(SI.getValueOperand()
                                                   ->stripInBoundsOffsets()))
         Pass.PostPromotionWorklist.insert(AI);
+
+    if (BeginOffset == NewAllocaBeginOffset &&
+        canConvertValue(TD, ValueTy, NewAllocaTy)) {
+      Value *NewV = convertValue(TD, IRB, SI.getValueOperand(), NewAllocaTy);
+      StoreInst *NewSI = IRB.CreateAlignedStore(NewV, &NewAI, NewAI.getAlignment(),
+                                                SI.isVolatile());
+      (void)NewSI;
+      Pass.DeadInsts.push_back(&SI);
+
+      DEBUG(dbgs() << "          to: " << *NewSI << "\n");
+      return !SI.isVolatile();
+    }
+
+    assert(!IntTy && "Invalid store found with int-op widening enabled");
 
     Value *NewPtr = getAdjustedAllocaPtr(IRB,
                                          SI.getPointerOperand()->getType());
@@ -2487,10 +2598,11 @@ private:
 
     // If this doesn't map cleanly onto the alloca type, and that type isn't
     // a single value type, just emit a memset.
-    if (!VecTy && (BeginOffset != NewAllocaBeginOffset ||
-                   EndOffset != NewAllocaEndOffset ||
-                   !AllocaTy->isSingleValueType() ||
-                   !TD.isLegalInteger(TD.getTypeSizeInBits(ScalarTy)))) {
+    if (!VecTy && !IntTy &&
+        (BeginOffset != NewAllocaBeginOffset ||
+         EndOffset != NewAllocaEndOffset ||
+         !AllocaTy->isSingleValueType() ||
+         !TD.isLegalInteger(TD.getTypeSizeInBits(ScalarTy)))) {
       Type *SizeTy = II.getLength()->getType();
       Constant *Size = ConstantInt::get(SizeTy, EndOffset - BeginOffset);
       CallInst *New
@@ -2508,32 +2620,24 @@ private:
     // a sensible representation for the alloca type. This is essentially
     // splatting the byte to a sufficiently wide integer, bitcasting to the
     // desired scalar type, and splatting it across any desired vector type.
+    uint64_t Size = EndOffset - BeginOffset;
     Value *V = II.getValue();
     IntegerType *VTy = cast<IntegerType>(V->getType());
-    Type *IntTy = Type::getIntNTy(VTy->getContext(),
-                                  TD.getTypeSizeInBits(ScalarTy));
-    if (TD.getTypeSizeInBits(ScalarTy) > VTy->getBitWidth())
-      V = IRB.CreateMul(IRB.CreateZExt(V, IntTy, getName(".zext")),
+    Type *SplatIntTy = Type::getIntNTy(VTy->getContext(), Size*8);
+    if (Size*8 > VTy->getBitWidth())
+      V = IRB.CreateMul(IRB.CreateZExt(V, SplatIntTy, getName(".zext")),
                         ConstantExpr::getUDiv(
-                          Constant::getAllOnesValue(IntTy),
+                          Constant::getAllOnesValue(SplatIntTy),
                           ConstantExpr::getZExt(
                             Constant::getAllOnesValue(V->getType()),
-                            IntTy)),
+                            SplatIntTy)),
                         getName(".isplat"));
-    if (V->getType() != ScalarTy) {
-      if (ScalarTy->isPointerTy())
-        V = IRB.CreateIntToPtr(V, ScalarTy);
-      else if (ScalarTy->isPrimitiveType() || ScalarTy->isVectorTy())
-        V = IRB.CreateBitCast(V, ScalarTy);
-      else if (ScalarTy->isIntegerTy())
-        llvm_unreachable("Computed different integer types with equal widths");
-      else
-        llvm_unreachable("Invalid scalar type");
-    }
 
     // If this is an element-wide memset of a vectorizable alloca, insert it.
     if (VecTy && (BeginOffset > NewAllocaBeginOffset ||
                   EndOffset < NewAllocaEndOffset)) {
+      if (V->getType() != ScalarTy)
+        V = convertValue(TD, IRB, V, ScalarTy);
       StoreInst *Store = IRB.CreateAlignedStore(
         IRB.CreateInsertElement(IRB.CreateAlignedLoad(&NewAI,
                                                       NewAI.getAlignment(),
@@ -2546,17 +2650,21 @@ private:
       return true;
     }
 
-    // Splat to a vector if needed.
-    if (VectorType *VecTy = dyn_cast<VectorType>(AllocaTy)) {
-      VectorType *SplatSourceTy = VectorType::get(V->getType(), 1);
-      V = IRB.CreateShuffleVector(
-        IRB.CreateInsertElement(UndefValue::get(SplatSourceTy), V,
-                                IRB.getInt32(0), getName(".vsplat.insert")),
-        UndefValue::get(SplatSourceTy),
-        ConstantVector::getSplat(VecTy->getNumElements(), IRB.getInt32(0)),
-        getName(".vsplat.shuffle"));
-      assert(V->getType() == VecTy);
+    // If this is a memset on an alloca where we can widen stores, insert the
+    // set integer.
+    if (IntTy && (BeginOffset > NewAllocaBeginOffset ||
+                  EndOffset < NewAllocaEndOffset)) {
+      assert(!II.isVolatile());
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      V = insertInteger(TD, IRB, Old, V, Offset, getName(".insert"));
     }
+
+    if (V->getType() != AllocaTy)
+      V = convertValue(TD, IRB, V, AllocaTy);
 
     Value *New = IRB.CreateAlignedStore(V, &NewAI, NewAI.getAlignment(),
                                         II.isVolatile());
@@ -2578,8 +2686,10 @@ private:
     const AllocaPartitioning::MemTransferOffsets &MTO
       = P.getMemTransferOffsets(II);
 
+    assert(OldPtr->getType()->isPointerTy() && "Must be a pointer type!");
+    unsigned AS = cast<PointerType>(OldPtr->getType())->getAddressSpace();
     // Compute the relative offset within the transfer.
-    unsigned IntPtrWidth = TD.getPointerSizeInBits();
+    unsigned IntPtrWidth = TD.getPointerSizeInBits(AS);
     APInt RelOffset(IntPtrWidth, BeginOffset - (IsDest ? MTO.DestBegin
                                                        : MTO.SourceBegin));
 
@@ -2618,9 +2728,9 @@ private:
     // If this doesn't map cleanly onto the alloca type, and that type isn't
     // a single value type, just emit a memcpy.
     bool EmitMemCpy
-      = !VecTy && (BeginOffset != NewAllocaBeginOffset ||
-                   EndOffset != NewAllocaEndOffset ||
-                   !NewAI.getAllocatedType()->isSingleValueType());
+      = !VecTy && !IntTy && (BeginOffset != NewAllocaBeginOffset ||
+                             EndOffset != NewAllocaEndOffset ||
+                             !NewAI.getAllocatedType()->isSingleValueType());
 
     // If we're just going to emit a memcpy, the alloca hasn't changed, and the
     // size hasn't been shrunk based on analysis of the viable range, this is
@@ -2642,14 +2752,23 @@ private:
     if (Pass.DeadSplitInsts.insert(&II))
       Pass.DeadInsts.push_back(&II);
 
-    bool IsVectorElement = VecTy && (BeginOffset > NewAllocaBeginOffset ||
-                                     EndOffset < NewAllocaEndOffset);
+    bool IsWholeAlloca = BeginOffset == NewAllocaBeginOffset &&
+                         EndOffset == NewAllocaEndOffset;
+    bool IsVectorElement = VecTy && !IsWholeAlloca;
+    uint64_t Size = EndOffset - BeginOffset;
+    IntegerType *SubIntTy
+      = IntTy ? Type::getIntNTy(IntTy->getContext(), Size*8) : 0;
 
     Type *OtherPtrTy = IsDest ? II.getRawSource()->getType()
                               : II.getRawDest()->getType();
-    if (!EmitMemCpy)
-      OtherPtrTy = IsVectorElement ? VecTy->getElementType()->getPointerTo()
-                                   : NewAI.getType();
+    if (!EmitMemCpy) {
+      if (IsVectorElement)
+        OtherPtrTy = VecTy->getElementType()->getPointerTo();
+      else if (IntTy && !IsWholeAlloca)
+        OtherPtrTy = SubIntTy->getPointerTo();
+      else
+        OtherPtrTy = NewAI.getType();
+    }
 
     // Compute the other pointer, folding as much as possible to produce
     // a single, simple GEP in most cases.
@@ -2696,9 +2815,26 @@ private:
         IRB.CreateAlignedLoad(SrcPtr, Align, getName(".copyload")),
         getIndex(IRB, BeginOffset),
         getName(".copyextract"));
+    } else if (IntTy && !IsWholeAlloca && !IsDest) {
+      Src = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                  getName(".load"));
+      Src = convertValue(TD, IRB, Src, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      Src = extractInteger(TD, IRB, Src, SubIntTy, Offset, getName(".extract"));
     } else {
       Src = IRB.CreateAlignedLoad(SrcPtr, Align, II.isVolatile(),
                                   getName(".copyload"));
+    }
+
+    if (IntTy && !IsWholeAlloca && IsDest) {
+      Value *Old = IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                         getName(".oldload"));
+      Old = convertValue(TD, IRB, Old, IntTy);
+      assert(BeginOffset >= NewAllocaBeginOffset && "Out of bounds offset");
+      uint64_t Offset = BeginOffset - NewAllocaBeginOffset;
+      Src = insertInteger(TD, IRB, Old, Src, Offset, getName(".insert"));
+      Src = convertValue(TD, IRB, Src, NewAllocaTy);
     }
 
     if (IsVectorElement && IsDest) {
@@ -2993,6 +3129,36 @@ private:
 };
 }
 
+/// \brief Strip aggregate type wrapping.
+///
+/// This removes no-op aggregate types wrapping an underlying type. It will
+/// strip as many layers of types as it can without changing either the type
+/// size or the allocated size.
+static Type *stripAggregateTypeWrapping(const DataLayout &DL, Type *Ty) {
+  if (Ty->isSingleValueType())
+    return Ty;
+
+  uint64_t AllocSize = DL.getTypeAllocSize(Ty);
+  uint64_t TypeSize = DL.getTypeSizeInBits(Ty);
+
+  Type *InnerTy;
+  if (ArrayType *ArrTy = dyn_cast<ArrayType>(Ty)) {
+    InnerTy = ArrTy->getElementType();
+  } else if (StructType *STy = dyn_cast<StructType>(Ty)) {
+    const StructLayout *SL = DL.getStructLayout(STy);
+    unsigned Index = SL->getElementContainingOffset(0);
+    InnerTy = STy->getElementType(Index);
+  } else {
+    return Ty;
+  }
+
+  if (AllocSize > DL.getTypeAllocSize(InnerTy) ||
+      TypeSize > DL.getTypeSizeInBits(InnerTy))
+    return Ty;
+
+  return stripAggregateTypeWrapping(DL, InnerTy);
+}
+
 /// \brief Try to find a partition of the aggregate type passed in for a given
 /// offset and size.
 ///
@@ -3009,7 +3175,7 @@ private:
 static Type *getTypePartition(const DataLayout &TD, Type *Ty,
                               uint64_t Offset, uint64_t Size) {
   if (Offset == 0 && TD.getTypeAllocSize(Ty) == Size)
-    return Ty;
+    return stripAggregateTypeWrapping(TD, Ty);
 
   if (SequentialType *SeqTy = dyn_cast<SequentialType>(Ty)) {
     // We can't partition pointers...
@@ -3038,7 +3204,7 @@ static Type *getTypePartition(const DataLayout &TD, Type *Ty,
     assert(Offset == 0);
 
     if (Size == ElementSize)
-      return ElementTy;
+      return stripAggregateTypeWrapping(TD, ElementTy);
     assert(Size > ElementSize);
     uint64_t NumElements = Size / ElementSize;
     if (NumElements * ElementSize != Size)
@@ -3074,7 +3240,7 @@ static Type *getTypePartition(const DataLayout &TD, Type *Ty,
   assert(Offset == 0);
 
   if (Size == ElementSize)
-    return ElementTy;
+    return stripAggregateTypeWrapping(TD, ElementTy);
 
   StructType::element_iterator EI = STy->element_begin() + Index,
                                EE = STy->element_end();

@@ -567,9 +567,10 @@ void Verifier::VerifyParameterAttrs(Attributes Attrs, Type *Ty,
             Attrs.hasAttribute(Attributes::AlwaysInline)), "Attributes "
           "'noinline and alwaysinline' are incompatible!", V);
 
-  Attributes TypeI = Attrs & Attributes::typeIncompatible(Ty);
-  Assert1(!TypeI, "Wrong type for attribute " +
-          TypeI.getAsString(), V);
+  Assert1(!AttrBuilder(Attrs).
+            hasAttributes(Attributes::typeIncompatible(Ty)),
+          "Wrong types for attribute: " +
+          Attributes::typeIncompatible(Ty).getAsString(), V);
 
   if (PointerType *PTy = dyn_cast<PointerType>(Ty))
     Assert1(!Attrs.hasAttribute(Attributes::ByVal) ||
@@ -614,10 +615,10 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT,
   }
 
   Attributes FAttrs = Attrs.getFnAttributes();
-  Attributes::Builder NotFn(FAttrs);
+  AttrBuilder NotFn(FAttrs);
   NotFn.removeFunctionOnlyAttrs();
   Assert1(!NotFn.hasAttributes(), "Attributes '" +
-          Attributes::get(NotFn).getAsString() +
+          Attributes::get(V->getContext(), NotFn).getAsString() +
           "' do not apply to the function!", V);
 
   // Check for mutually incompatible attributes.
