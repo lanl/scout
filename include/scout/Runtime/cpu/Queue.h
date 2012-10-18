@@ -122,13 +122,13 @@ namespace scout {
       Item *get();
 
     private:
-      typedef vector < Item * >Queue_;
+      typedef vector <Item*>Queue_;
       Mutex mutex_;
       Queue_ queue_;
       size_t i_;
     };
 
-    typedef vector < Queue * >QueueVec;
+    typedef vector <Queue*>QueueVec;
   }
 }
-#endif                          // __SC_CPU_QUEUE_H__
+#endif // __SC_CPU_QUEUE_H__

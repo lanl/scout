@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,29 +46,53 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
+ *
  * Notes
  *
  * #####
  */
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_ 
+#include <cstdlib>
+#include "scout/Runtime/cpu/Settings.h"
 
-namespace scout{
+namespace scout {
+  namespace cpu {
 
-  class system_rt{
-  public:
-    system_rt();
+    int getenvBool(const char *name) {
+      char *env;
+      env = getenv(name);
+      if (env == NULL) return 0;
+      if (atoi(env) != 0) return 1;
+      return 0;
+    }
 
-    ~system_rt();
+    int getenvUint(const char *name) {
+      char *env;
+      int val;
+      env = getenv(name);
+      if (env == NULL) return 0;
+      val = atoi(env);
+      if (val > 0) return val;
+      return 0;
+    }
 
-    size_t totalProcessingUnits() const;
+    Settings::Settings() {
 
-  private:
-    class system_rt_* x_;
-  };
+      hyperThreading_ = getenvBool("SC_RUNTIME_HT");
+      nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
+      blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
 
-} // end namespace scout
+      numaSettings();
 
-#endif //  __SC_CPU_UTILITIES_H_ 
+      std::cout << "HT " << hyperThreading_ << std::endl;
+      std::cout << "NTHREADS " << nThreads_ << std::endl;
+      std::cout << "BPT " << blocksPerThread_ << std::endl;
+      std::cout << "NDOMAINS " << nDomains_ << std::endl;
+      std::cout << "THREADBIND " << threadBind_ << std::endl;
+      std::cout << "WORKSTEALING " << workStealing_ << std::endl;
+
+    }
+
+  }
+}
+

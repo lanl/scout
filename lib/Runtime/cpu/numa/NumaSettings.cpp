@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,29 +46,21 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
+ *
  * Notes
  *
  * #####
  */
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_ 
+#include "scout/Runtime/cpu/Settings.h"
 
-namespace scout{
+namespace scout {
+  namespace cpu {
 
-  class system_rt{
-  public:
-    system_rt();
-
-    ~system_rt();
-
-    size_t totalProcessingUnits() const;
-
-  private:
-    class system_rt_* x_;
-  };
-
-} // end namespace scout
-
-#endif //  __SC_CPU_UTILITIES_H_ 
+    void Settings::numaSettings() {
+      nDomains_ = getenvUint("SC_RUNTIME_NDOMAINS");
+      threadBind_ = getenvUint("SC_RUNTIME_THREADBIND");
+      workStealing_ = getenvUint("SC_RUNTIME_WORKSTEALING");
+    }
+  }
+}

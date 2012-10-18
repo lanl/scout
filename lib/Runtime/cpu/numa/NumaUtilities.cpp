@@ -52,7 +52,8 @@
  * #####
  */
 
-#include "scout/Runtime/cpu/CpuUtilities.h"
+#include "scout/Runtime/cpu/NumaUtilities.h"
+#include "scout/Runtime/cpu/Settings.h"
 
 #include <vector>
 #include <sstream>
@@ -64,6 +65,8 @@
 
 using namespace std;
 using namespace scout;
+using namespace scout::cpu;
+
 
 namespace{
 
@@ -421,6 +424,8 @@ public:
     hwloc_topology_load(topology_);
 
     root_ = new SINode(hwloc_get_root_obj(topology_));
+    processingUnit_ = NULL;
+    core_ = NULL;
 
     // cache summary information
     totalSockets_ = root_->totalSockets();
@@ -431,6 +436,8 @@ public:
     memoryPerSocket_ = root_->memoryPerSocket();
     memoryPerNumaNode_ = root_->memoryPerNumaNode();
     processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
+    cout << "ht " << setting_.hyperThreading() << endl;
+
   }
 
   ~system_rt_(){
@@ -525,9 +532,44 @@ public:
     return status != -1;
   }
 
+  void getNextCpuset(hwloc_cpuset_t *set) {
+    core_ = hwloc_get_next_obj_by_type(topology_, HWLOC_OBJ_CORE, core_);
+    *set = hwloc_bitmap_dup(core_->cpuset);
+    hwloc_bitmap_singlify(*set);
+  }
+
+  void getNextPU(hwloc_cpuset_t *set) {
+    processingUnit_ = hwloc_get_next_obj_by_type(topology_, HWLOC_OBJ_PU, processingUnit_);
+    *set = hwloc_bitmap_dup(processingUnit_->cpuset);
+    hwloc_bitmap_singlify(*set);
+  }
+
+  int bindThreadOutside(pthread_t& thread) {
+    int err;
+    hwloc_cpuset_t set;
+    if (setting_.hyperThreading()) getNextPU(&set);
+    else getNextCpuset(&set);
+    err = hwloc_set_thread_cpubind(topology_, thread, set, HWLOC_CPUBIND_THREAD);
+    hwloc_bitmap_free(set);
+    return err;
+  }
+
+  int bindThreadInside() {
+    int err;
+    hwloc_cpuset_t set;
+    if (setting_.hyperThreading()) getNextPU(&set);
+    else getNextCpuset(&set);
+    err = hwloc_set_cpubind(topology_, set, HWLOC_CPUBIND_THREAD);
+    hwloc_bitmap_free(set);
+    return err;
+  }
+
 private:
   system_rt* o_;
   SINode* root_;
+  Settings setting_;
+  hwloc_obj_t core_;
+  hwloc_obj_t processingUnit_;
   hwloc_topology_t topology_;
   size_t totalSockets_;
   size_t totalNumaNodes_;
@@ -601,4 +643,12 @@ void system_rt::freeArrayFromNumaNode(void* m){
 
 bool system_rt::bindThreadToNumaNode(size_t nodeId){
   return x_->bindThreadToNumaNode(nodeId);
+}
+
+int system_rt::bindThreadOutside(pthread_t& thread) {
+   return x_->bindThreadOutside(thread);
+}
+
+int system_rt::bindThreadInside() {
+   return x_->bindThreadInside();
 }

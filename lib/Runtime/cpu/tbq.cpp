@@ -51,7 +51,7 @@
  *
  * #####
  */
-
+#include <stdlib.h>
 #include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
 #include "scout/Runtime/cpu/Thread.h"

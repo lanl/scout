@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,30 +45,55 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ * ##### 
+ */ 
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_ 
+#ifndef __SC_CPU_SETTINGS_H_
+#define __SC_CPU_SETTINGS_H_
 
-namespace scout{
+#include <iostream>
 
-  class system_rt{
-  public:
-    system_rt();
+namespace scout {
+  namespace cpu {
+    int getenvBool(const char *name);
+    int getenvUint(const char *name);
 
-    ~system_rt();
 
-    size_t totalProcessingUnits() const;
+    class Settings {
 
-  private:
-    class system_rt_* x_;
-  };
+    public:
+      Settings();
 
-} // end namespace scout
+      ~Settings() {
+      }
 
-#endif //  __SC_CPU_UTILITIES_H_ 
+      void numaSettings();
+
+      bool hyperThreading() const {
+        return hyperThreading_;
+      }
+
+      int nThreads() const {
+        return nThreads_;
+      }
+
+      int nDomains() const {
+        return nDomains_;
+      }
+
+    private:
+      bool hyperThreading_;
+      int nThreads_;
+      int blocksPerThread_;
+      int nDomains_;
+      int threadBind_;
+      int workStealing_;
+    };
+  }
+}
+
+#endif
