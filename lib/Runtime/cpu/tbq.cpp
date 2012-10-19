@@ -142,72 +142,93 @@ namespace scout {
     }
 
     tbq_rt::tbq_rt() {
+      int val;
 
-      system_rt sysinfo;
-
-      size_t n = sysinfo.totalProcessingUnits();
-
-      for (size_t i = 0; i < n; ++i) {
-        MeshThread *ti = new MeshThread;
-        ti->start();
-        threadVec_.push_back(ti);
+      val = settings_.nThreads();
+      if (val) nThreads_ = val;
+      else {
+        if (settings_.hyperThreading()) nThreads_ = system_.totalProcessingUnits();
+        else nThreads_ = system_.totalCores();
       }
 
-      queue_ = new Queue;
+      val = settings_.nDomains();
+      if (val) nDomains_ = val;
+      else nDomains_ = system_.totalNumaNodes();
+
+      val = settings_.blocksPerThread();
+      if (val) blocksPerThread_ = val;
+      else blocksPerThread_ = 4;
+
+      // setup queues
+      for(size_t i = 0; i < nDomains_; i++) {
+        Queue* queue = new Queue;
+        queueVec_.push_back(queue);
+      }
+
+      //start threads
+      for (size_t i = 0; i < nThreads_; i++) {
+        MeshThread* ti = new MeshThread(system_, queueVec_, settings_);
+        ti->start();
+        if (settings_.threadBind() == 2) system_.bindThreadOutside(ti->thread());
+        threadVec_.push_back(ti);
+      }
     }
 
     tbq_rt::~tbq_rt() {
-      size_t n = threadVec_.size();
 
-      for (size_t i = 0; i < n; ++i) {
+      for (size_t i = 0; i < nThreads_; i++) {
         threadVec_[i]->stop();
       }
-
-      for (size_t i = 0; i < n; ++i) {
+      for (size_t i = 0; i < nThreads_; i++) {
         threadVec_[i]->await();
         delete threadVec_[i];
       }
-
-      delete queue_;
+      for(size_t i = 0; i < nDomains_; i++) {
+        delete queueVec_[i];
+      }
     }
 
-    void tbq_rt::queueBlocks(void *blockLiteral, int numDimensions,
-                             int numFields) {
-      BlockLiteral *bl = (BlockLiteral *) blockLiteral;
-      size_t extent, chunk, end;
+    void tbq_rt::queueBlocks(void* blockLiteral, int numDimensions, int numFields) {
+      BlockLiteral* bl = (BlockLiteral*) blockLiteral;
+      size_t count, extent, chunk, end;
 
       extent = findExtent(bl, numDimensions);
-      chunk = extent / (threadVec_.size() * 2);
-
-      for (size_t i = 0; i < extent; i += chunk) {
+      chunk = extent / (threadVec_.size() * blocksPerThread_);
+      nChunk_ = extent / chunk;
+      if (extent % nChunk_) {
+        nChunk_++;
+      }
+      count = 0;
+      for (uint32_t i = 0; i < extent; i += chunk) {
         end = i + chunk;
 
         if (end > extent) {
           end = extent;
         }
 
-        Item *item = createItem(bl, numDimensions, i, end);
-        item->blockLiteral = createSubBlock(bl, numDimensions, numFields);
+        Item* item = createItem(bl, numDimensions, i, end);
+        item->blockLiteral = createSubBlock(bl, numDimensions,
+            numFields);
 
-        queue_->add(item);
+        // One queue for each numa domain
+        queueVec_[count++ * nDomains_ / nChunk_]->add(item);
       }
     }
 
-    void tbq_rt::run(void *blockLiteral, int numDimensions, int numFields) {
+    void tbq_rt::run(void* blockLiteral, int numDimensions, int numFields) {
       queueBlocks(blockLiteral, numDimensions, numFields);
-
       size_t n = threadVec_.size();
 
-      for (size_t i = 0; i < n; ++i) {
-        threadVec_[i]->begin(queue_);
+      for (size_t i = 0; i < n; i++) {  // release each beginSem
+        threadVec_[i]->begin(i*nDomains_/nThreads_);
       }
-
-      // run ...
-
-      for (size_t i = 0; i < n; ++i) {
+      //MeshThread::run() in each thread till queue empty
+      for (size_t i = 0; i < n; i++) { //acquire each finishSem
         threadVec_[i]->finish();
       }
-      queue_->reset();
+      for (size_t i = 0; i < queueVec_.size(); i++) {
+        queueVec_[i]->reset();
+      }
     }
   } // end namespace cpu
 } // end namespace scout

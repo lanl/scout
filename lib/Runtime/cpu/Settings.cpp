@@ -53,7 +53,10 @@
  */
 
 #include <cstdlib>
+#include <iostream>
 #include "scout/Runtime/cpu/Settings.h"
+
+using namespace std;
 
 namespace scout {
   namespace cpu {
@@ -81,16 +84,18 @@ namespace scout {
       hyperThreading_ = getenvBool("SC_RUNTIME_HT");
       nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
       blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
+      debug_ = getenvBool("SC_RUNTIME_DEBUG");
 
       numaSettings();
 
-      std::cout << "HT " << hyperThreading_ << std::endl;
-      std::cout << "NTHREADS " << nThreads_ << std::endl;
-      std::cout << "BPT " << blocksPerThread_ << std::endl;
-      std::cout << "NDOMAINS " << nDomains_ << std::endl;
-      std::cout << "THREADBIND " << threadBind_ << std::endl;
-      std::cout << "WORKSTEALING " << workStealing_ << std::endl;
-
+      if (debug_) {
+        cerr << "HT " << hyperThreading_ << endl;
+        cerr << "NTHREADS " << nThreads_ << endl;
+        cerr << "BPT " << blocksPerThread_ << endl;
+        cerr << "NDOMAINS " << nDomains_ << endl;
+        cerr << "THREADBIND " << threadBind_ << endl;
+        cerr << "WORKSTEALING " << workStealing_ << endl;
+      }
     }
 
   }

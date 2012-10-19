@@ -85,13 +85,30 @@ namespace scout {
         return nDomains_;
       }
 
+      int blocksPerThread() const {
+        return blocksPerThread_;
+      }
+
+      int threadBind() const {
+        return threadBind_;
+      }
+
+      int workStealing() const {
+        return workStealing_;
+      }
+
+      int debug() const {
+        return debug_;
+      }
+
     private:
       bool hyperThreading_;
       int nThreads_;
-      int blocksPerThread_;
       int nDomains_;
+      int blocksPerThread_;
       int threadBind_;
       int workStealing_;
+      int debug_;
     };
   }
 }

@@ -82,7 +82,59 @@ system_rt::~system_rt(){
   delete x_;
 }
 
-size_t system_rt::totalProcessingUnits() const{
+size_t system_rt::totalSockets() const {
+  return 1;
+}
+
+size_t system_rt::totalNumaNodes() const {
+  return 1;
+}
+
+size_t system_rt::totalProcessingUnits() const {
   return x_->totalProcessingUnits();
 }
 
+size_t system_rt::processingUnitsPerCore() const {
+  return x_->totalProcessingUnits();
+}
+
+size_t system_rt::numaNodesPerSocket() const {
+  return 1;
+}
+
+size_t system_rt::memoryPerSocket() const {
+  return NULL;
+}
+
+size_t system_rt::memoryPerNumaNode() const {
+  return NULL;
+}
+
+size_t system_rt::processingUnitsPerNumaNode() const {
+  return x_->totalProcessingUnits();
+}
+
+std::string system_rt::treeToString() const; {
+  return NULL;
+}
+
+void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId) {
+  return NULL;
+}
+
+
+void system_rt::freeArrayFromNumaNode(void* m) {
+}
+
+
+bool system_rt::bindThreadToNumaNode(size_t nodeId) {
+  return false;
+}
+
+int system_rt::bindThreadOutside(pthread_t& thread) {
+  return 0;
+}
+
+int system_rt::bindThreadInside() {
+  return 0;
+}

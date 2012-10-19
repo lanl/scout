@@ -55,26 +55,53 @@
 #include <stdlib.h>
 #include "scout/Runtime/cpu/MeshThread.h"
 #include "scout/Runtime/cpu/Queue.h"
+#include "scout/Runtime/cpu/Settings.h"
+#include "scout/Runtime/cpu/CpuUtilities.h"
 
 namespace scout {
   namespace cpu {
 
     void MeshThread::run() {
       Item *item;
-      BlockLiteral *bl;
+      BlockLiteral* bl;
+      size_t qCurrent;
+      size_t size;
+      bool done;
 
+      if (settings_.threadBind() == 1) system_.bindThreadInside();
       for (;;) {
         beginSem_.acquire();
 
         for (;;) {
-          item = queue_->get();
-
-          if (!item) {
-            break;
+          if (settings_.workStealing() == 2) { //steal from all
+            qCurrent = qIndex_;
+            size = queueVec_.size();
+            done = false;
+            for(size_t i = 0; i < size; i++) {
+              item = queueVec_[qCurrent]->get();
+              if (item) break;
+              qCurrent = (qCurrent+1) % queueVec_.size();
+              if (i == size - 1) done = true;
+            }
+            if (done) break;
+          } else if (settings_.workStealing() == 1) { //steal from neighbors only
+            qCurrent = qIndex_;
+            item = queueVec_[qCurrent]->get();
+            if (!item) {
+              qCurrent = (qCurrent+1) % queueVec_.size();
+              item = queueVec_[qCurrent]->get();
+            }
+            if (!item) {
+              qCurrent = (qCurrent-1) % queueVec_.size();
+              item = queueVec_[qCurrent]->get();
+            }
+            if (!item) break;
+          } else {
+            item = queueVec_[qIndex_]->get();
+            if (!item) break;
           }
 
-          bl = (BlockLiteral *) item->blockLiteral;
-
+          bl = (BlockLiteral*) item->blockLiteral;
           switch (item->dimensions) {
           case 3:
             bl->zStart = new uint32_t(item->zStart);
@@ -85,7 +112,8 @@ namespace scout {
           case 1:
             bl->xStart = new uint32_t(item->xStart);
             bl->xEnd = new uint32_t(item->xEnd);
-          } 
+          }
+
           bl->invoke(bl);
 
           switch (item->dimensions) {
@@ -99,12 +127,12 @@ namespace scout {
             delete bl->xStart;
             delete bl->xEnd;
           }
+
           free(item->blockLiteral);
           delete item;
         }
-
         finishSem_.release();
       }
     }
-  }
-}
+  } // end namespace cpu
+} // end namespace scout

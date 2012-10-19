@@ -52,7 +52,7 @@
  * #####
  */
 
-#include "scout/Runtime/cpu/NumaUtilities.h"
+#include "scout/Runtime/cpu/CpuUtilities.h"
 #include "scout/Runtime/cpu/Settings.h"
 
 #include <vector>
@@ -436,8 +436,6 @@ public:
     memoryPerSocket_ = root_->memoryPerSocket();
     memoryPerNumaNode_ = root_->memoryPerNumaNode();
     processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
-    cout << "ht " << setting_.hyperThreading() << endl;
-
   }
 
   ~system_rt_(){
