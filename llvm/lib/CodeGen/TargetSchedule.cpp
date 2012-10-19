@@ -50,10 +50,20 @@ unsigned TargetSchedModel::getNumMicroOps(MachineInstr *MI) const {
     int UOps = InstrItins.getNumMicroOps(MI->getDesc().getSchedClass());
     return (UOps >= 0) ? UOps : TII->getNumMicroOps(&InstrItins, MI);
   }
-  if (hasInstrSchedModel())
-    return resolveSchedClass(MI)->NumMicroOps;
+  if (hasInstrSchedModel()) {
+    const MCSchedClassDesc *SCDesc = resolveSchedClass(MI);
+    if (SCDesc->isValid())
+      return SCDesc->NumMicroOps;
+  }
+  return MI->isTransient() ? 0 : 1;
+}
 
-  return 1;
+// The machine model may explicitly specify an invalid latency, which
+// effectively means infinite latency. Since users of the TargetSchedule API
+// don't know how to handle this, we convert it to a very large latency that is
+// easy to distinguish when debugging the DAG but won't induce overflow.
+static unsigned convertLatency(int Cycles) {
+  return Cycles >= 0 ? Cycles : 1000;
 }
 
 /// If we can determine the operand latency from the def only, without machine
@@ -176,7 +186,7 @@ unsigned TargetSchedModel::computeOperandLatency(
     const MCWriteLatencyEntry *WLEntry =
       STI->getWriteLatencyEntry(SCDesc, DefIdx);
     unsigned WriteID = WLEntry->WriteResourceID;
-    unsigned Latency = WLEntry->Cycles;
+    unsigned Latency = convertLatency(WLEntry->Cycles);
     if (!UseMI)
       return Latency;
 
@@ -199,7 +209,7 @@ unsigned TargetSchedModel::computeOperandLatency(
     report_fatal_error(ss.str());
   }
 #endif
-  return 1;
+  return DefMI->isTransient() ? 0 : 1;
 }
 
 unsigned TargetSchedModel::computeInstrLatency(const MachineInstr *MI) const {
@@ -209,16 +219,18 @@ unsigned TargetSchedModel::computeInstrLatency(const MachineInstr *MI) const {
     return TII->getInstrLatency(&InstrItins, MI);
 
   if (hasInstrSchedModel()) {
-    unsigned Latency = 0;
     const MCSchedClassDesc *SCDesc = resolveSchedClass(MI);
-    for (unsigned DefIdx = 0, DefEnd = SCDesc->NumWriteLatencyEntries;
-         DefIdx != DefEnd; ++DefIdx) {
-      // Lookup the definition's write latency in SubtargetInfo.
-      const MCWriteLatencyEntry *WLEntry =
-        STI->getWriteLatencyEntry(SCDesc, DefIdx);
-      Latency = std::max(Latency, WLEntry->Cycles);
+    if (SCDesc->isValid()) {
+      unsigned Latency = 0;
+      for (unsigned DefIdx = 0, DefEnd = SCDesc->NumWriteLatencyEntries;
+           DefIdx != DefEnd; ++DefIdx) {
+        // Lookup the definition's write latency in SubtargetInfo.
+        const MCWriteLatencyEntry *WLEntry =
+          STI->getWriteLatencyEntry(SCDesc, DefIdx);
+        Latency = std::max(Latency, convertLatency(WLEntry->Cycles));
+      }
+      return Latency;
     }
-    return Latency;
   }
   return TII->defaultDefLatency(&SchedModel, MI);
 }
@@ -251,10 +263,12 @@ computeOutputLatency(const MachineInstr *DefMI, unsigned DefOperIdx,
   // an unbuffered resource. If so, it treated like an in-order cpu.
   if (hasInstrSchedModel()) {
     const MCSchedClassDesc *SCDesc = resolveSchedClass(DefMI);
-    for (const MCWriteProcResEntry *PRI = STI->getWriteProcResBegin(SCDesc),
-           *PRE = STI->getWriteProcResEnd(SCDesc); PRI != PRE; ++PRI) {
-      if (!SchedModel.getProcResource(PRI->ProcResourceIdx)->IsBuffered)
-        return 1;
+    if (SCDesc->isValid()) {
+      for (const MCWriteProcResEntry *PRI = STI->getWriteProcResBegin(SCDesc),
+             *PRE = STI->getWriteProcResEnd(SCDesc); PRI != PRE; ++PRI) {
+        if (!SchedModel.getProcResource(PRI->ProcResourceIdx)->IsBuffered)
+          return 1;
+      }
     }
   }
   return 0;

@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86AsmPrinter.h"
-#include "X86MCInstLower.h"
 #include "X86.h"
 #include "X86COFFMachineModuleInfo.h"
 #include "X86MachineFunctionInfo.h"
@@ -693,7 +692,7 @@ void X86AsmPrinter::EmitEndOfAsmFile(Module &M) {
       for (unsigned i = 0, e = Stubs.size(); i != e; ++i) {
         OutStreamer.EmitLabel(Stubs[i].first);
         OutStreamer.EmitSymbolValue(Stubs[i].second.getPointer(),
-                                    TD->getPointerSize(), 0);
+                                    TD->getPointerSize(0), 0);
       }
       Stubs.clear();
     }

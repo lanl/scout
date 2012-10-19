@@ -2061,28 +2061,26 @@ static void ChangeCalleesToFastCall(Function *F) {
   }
 }
 
-static AttrListPtr StripNest(const AttrListPtr &Attrs) {
-  Attributes::Builder B;
-  B.addAttribute(Attributes::Nest);
-
+static AttrListPtr StripNest(LLVMContext &C, const AttrListPtr &Attrs) {
   for (unsigned i = 0, e = Attrs.getNumSlots(); i != e; ++i) {
     if (!Attrs.getSlot(i).Attrs.hasAttribute(Attributes::Nest))
       continue;
 
     // There can be only one.
-    return Attrs.removeAttr(Attrs.getSlot(i).Index, Attributes::get(B));
+    return Attrs.removeAttr(C, Attrs.getSlot(i).Index,
+                            Attributes::get(C, Attributes::Nest));
   }
 
   return Attrs;
 }
 
 static void RemoveNestAttribute(Function *F) {
-  F->setAttributes(StripNest(F->getAttributes()));
+  F->setAttributes(StripNest(F->getContext(), F->getAttributes()));
   for (Value::use_iterator UI = F->use_begin(), E = F->use_end(); UI != E;++UI){
     if (isa<BlockAddress>(*UI))
       continue;
     CallSite User(cast<Instruction>(*UI));
-    User.setAttributes(StripNest(User.getAttributes()));
+    User.setAttributes(StripNest(F->getContext(), User.getAttributes()));
   }
 }
 

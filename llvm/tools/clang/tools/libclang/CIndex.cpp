@@ -2584,6 +2584,7 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
   bool IncludeBriefCommentsInCodeCompletion
     = options & CXTranslationUnit_IncludeBriefCommentsInCodeCompletion;
   bool SkipFunctionBodies = options & CXTranslationUnit_SkipFunctionBodies;
+  bool ForSerialization = options & CXTranslationUnit_ForSerialization;
 
   // Configure the diagnostics.
   DiagnosticOptions DiagOpts;
@@ -2671,6 +2672,7 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
                                  /*AllowPCHWithCompilerErrors=*/true,
                                  SkipFunctionBodies,
                                  /*UserFilesAreVolatile=*/true,
+                                 ForSerialization,
                                  &ErrUnit));
 
   if (NumErrors != Diags->getClient()->getNumErrors()) {

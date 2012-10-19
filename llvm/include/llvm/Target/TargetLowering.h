@@ -146,7 +146,7 @@ public:
   // Return the pointer type for the given address space, defaults to
   // the pointer type from the data layout.
   // FIXME: The default needs to be removed once all the code is updated.
-  virtual MVT getPointerTy(uint32_t addrspace = 0) const { return PointerTy; }
+  virtual MVT getPointerTy(uint32_t AS = 0) const { return PointerTy; }
   virtual MVT getShiftAmountTy(EVT LHSTy) const;
 
   /// isSelectExpensive - Return true if the select operation is expensive for
@@ -1366,7 +1366,7 @@ public:
   }
 
   /// HandleByVal - Target-specific cleanup for formal ByVal parameters.
-  virtual void HandleByVal(CCState *, unsigned &) const {}
+  virtual void HandleByVal(CCState *, unsigned &, unsigned) const {}
 
   /// CanLowerReturn - This hook should be implemented to check whether the
   /// return values described by the Outs array can fit into the return
