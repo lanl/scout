@@ -90,6 +90,10 @@ size_t system_rt::totalNumaNodes() const {
   return 1;
 }
 
+size_t system_rt::totalCores() const {
+  return x_->totalProcessingUnits();
+}
+
 size_t system_rt::totalProcessingUnits() const {
   return x_->totalProcessingUnits();
 }
@@ -103,18 +107,18 @@ size_t system_rt::numaNodesPerSocket() const {
 }
 
 size_t system_rt::memoryPerSocket() const {
-  return NULL;
+  return 0;
 }
 
 size_t system_rt::memoryPerNumaNode() const {
-  return NULL;
+  return 0;
 }
 
 size_t system_rt::processingUnitsPerNumaNode() const {
   return x_->totalProcessingUnits();
 }
 
-std::string system_rt::treeToString() const; {
+std::string system_rt::treeToString() const {
   return NULL;
 }
 
