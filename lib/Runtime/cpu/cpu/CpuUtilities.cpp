@@ -55,23 +55,37 @@
 #include "scout/Runtime/cpu/CpuUtilities.h"
 #include <unistd.h>
 
-using namespace scout;
+using namespace scout::cpu;
 
 namespace scout{
+  namespace  cpu{
 
-class system_rt_{
-public:
-  system_rt_(system_rt* o){
-  }
+    class system_rt_{
+    public:
+      system_rt_(system_rt* o){
+        _totalProcessingUnits = sysconf(_SC_NPROCESSORS_ONLN);
 
-  ~system_rt_(){
-  }
+         int val = settings_.nThreads();
+         if (val) nThreads_ = val;
+         else nThreads_ = x_->totalProcessingUnits();
+         if (settings_.debug()) cerr << "nThreads " << nThreads_ << endl;
+      }
 
-  size_t totalProcessingUnits() const{
-    return sysconf( _SC_NPROCESSORS_ONLN );
-  }
-};
+      ~system_rt_(){
+      }
 
+      size_t totalProcessingUnits() const {
+        return  _totalProcessingUnits;
+      }
+
+      size_t nThreads() const {
+       return nThreads_;
+      }
+    private:
+      size_t totalProcessingUnits_;
+      size_t nThreads_;
+    };
+  } // end namespace cpu;
 } // end namespace scout
 
 system_rt::system_rt(){
@@ -141,4 +155,14 @@ int system_rt::bindThreadOutside(pthread_t& thread) {
 
 int system_rt::bindThreadInside() {
   return 0;
+}
+
+
+size_t system_rt::nThreads() {
+  return x_->nThreads();
+}
+
+size_t system_rt::nDomains() {
+  return 1;
+}
 }

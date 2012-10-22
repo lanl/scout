@@ -80,8 +80,8 @@ namespace scout {
     }
 
     Settings::Settings() {
-
       hyperThreading_ = getenvBool("SC_RUNTIME_HT");
+      enableNuma_ = getenvBool("SC_RUNTIME_NUMA");
       nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
       blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
       debug_ = getenvBool("SC_RUNTIME_DEBUG");
@@ -90,6 +90,7 @@ namespace scout {
 
       if (debug_) {
         cerr << "HT " << hyperThreading_ << endl;
+        cerr << "NUMA " << enableNuma_ << endl;
         cerr << "NTHREADS " << nThreads_ << endl;
         cerr << "BPT " << blocksPerThread_ << endl;
         cerr << "NDOMAINS " << nDomains_ << endl;

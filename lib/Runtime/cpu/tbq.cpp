@@ -54,17 +54,12 @@
 #include <stdlib.h>
 #include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
-#include "scout/Runtime/cpu/Thread.h"
-#include "scout/Runtime/cpu/Mutex.h"
-#include "scout/Runtime/cpu/Condition.h"
-#include "scout/Runtime/cpu/VSem.h"
 #include "scout/Runtime/cpu/Queue.h"
 #include "scout/Runtime/cpu/MeshThread.h"
 #include <iostream>
 #include <cstring>
 
 using namespace std;
-using namespace scout;
 using namespace scout::cpu;
 
 namespace scout {
@@ -141,19 +136,12 @@ namespace scout {
       return extent;
     }
 
+
     tbq_rt::tbq_rt() {
       int val;
 
-      val = settings_.nThreads();
-      if (val) nThreads_ = val;
-      else {
-        if (settings_.hyperThreading()) nThreads_ = system_.totalProcessingUnits();
-        else nThreads_ = system_.totalCores();
-      }
-
-      val = settings_.nDomains();
-      if (val) nDomains_ = val;
-      else nDomains_ = system_.totalNumaNodes();
+      nThreads_ = system_.nThreads();
+      nDomains_ = system_.nDomains();
 
       val = settings_.blocksPerThread();
       if (val) blocksPerThread_ = val;
@@ -199,7 +187,7 @@ namespace scout {
         nChunk_++;
       }
       count = 0;
-      for (uint32_t i = 0; i < extent; i += chunk) {
+      for (size_t i = 0; i < extent; i += chunk) {
         end = i + chunk;
 
         if (end > extent) {

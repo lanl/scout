@@ -78,13 +78,17 @@ namespace scout {
 
       void run(void *blockLiteral, int numDimensions, int numFields);
 
-    private:
+    protected:
       void queueBlocks(void *blockLiteral, int numDimensions,
                        int numFields);
+      int nThreads();
+      int nDomains();
+      int blocksPerThread();
+    private:
+      Settings settings_;
       system_rt system_;
       QueueVec queueVec_;
       ThreadVec threadVec_;
-      Settings settings_;
       size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
     };
   }
