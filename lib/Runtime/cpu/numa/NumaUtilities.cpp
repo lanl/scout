@@ -48,7 +48,7 @@
  * ###########################################################################
  *
  * Notes
- *
+ *  system_rt for the Numa case (hwloc is enabled)
  * #####
  */
 
@@ -416,8 +416,8 @@ namespace scout{
   namespace cpu {
     class system_rt_{
     public:
-      system_rt_(system_rt* o)
-      : o_(o){
+      system_rt_(system_rt* o, Settings &settings)
+      : o_(o), settings_(settings) {
 
         hwloc_topology_init(&topology_);
         hwloc_topology_load(topology_);
@@ -437,7 +437,6 @@ namespace scout{
         processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
         nThreads_ = getThreads();
         nDomains_ = getDomains();
-        hyperThreading_ = getHyperThreading();
       }
 
       ~system_rt_(){
@@ -555,7 +554,7 @@ namespace scout{
       int bindThreadOutside(pthread_t& thread) {
         int err;
         hwloc_cpuset_t set;
-        if (hyperThreading_) getNextPU(&set);
+        if (settings_.enableHt()) getNextPU(&set);
         else getNextCpuset(&set);
         err = hwloc_set_thread_cpubind(topology_, thread, set, HWLOC_CPUBIND_THREAD);
         hwloc_bitmap_free(set);
@@ -565,7 +564,7 @@ namespace scout{
       int bindThreadInside() {
         int err;
         hwloc_cpuset_t set;
-        if (hyperThreading_) getNextPU(&set);
+        if (settings_.enableHt()) getNextPU(&set);
         else getNextCpuset(&set);
         err = hwloc_set_cpubind(topology_, set, HWLOC_CPUBIND_THREAD);
         hwloc_bitmap_free(set);
@@ -578,7 +577,7 @@ namespace scout{
           val = settings_.nThreads();
           if (val) ret = val;
           else {
-            if (settings_.hyperThreading()) ret = totalProcessingUnits();
+            if (settings_.enableHt()) ret = totalProcessingUnits();
             else ret = totalCores();
           }
           if (settings_.debug()) cerr << "nThreads " << ret << endl;
@@ -593,20 +592,18 @@ namespace scout{
           if (val) {
             ret = val;
           } else {
-            if (settings_.enableNuma()) ret = totalNumaNodes();
+            if (settings_.enableNuma() == 1) ret = totalNumaNodes();
             else ret = 1;
           }
           if (settings_.debug()) cerr << "nDomains " << ret << endl;
           return ret;
         }
-        int getHyperThreading() {
-            return settings_.hyperThreading();
-          }
+
 
     private:
       system_rt* o_;
       SINode* root_;
-      Settings settings_;
+      Settings& settings_;
       hwloc_obj_t core_;
       hwloc_obj_t processingUnit_;
       hwloc_topology_t topology_;
@@ -621,14 +618,13 @@ namespace scout{
       size_t memoryPerNumaNode_;
       size_t nThreads_;
       size_t nDomains_;
-      size_t hyperThreading_;
     };
   } // end namespace cpu
 } // end namespace scout
 
 
-system_rt::system_rt(){
-  x_ = new system_rt_(this);
+system_rt::system_rt(Settings& settings){
+  x_ = new system_rt_(this, settings);
 }
 
 system_rt::~system_rt(){

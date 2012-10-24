@@ -48,7 +48,7 @@
  * ###########################################################################
  *
  * Notes
- *
+ *  system_rt for the non-numa case (no hwloc)
  * #####
  */
 
@@ -62,34 +62,38 @@ namespace scout{
 
     class system_rt_{
     public:
-      system_rt_(system_rt* o){
-        _totalProcessingUnits = sysconf(_SC_NPROCESSORS_ONLN);
+      system_rt_(system_rt* o, Settings &settings)
+      : o_(o), settings_(settings) {
+        totalProcessingUnits_ = sysconf(_SC_NPROCESSORS_ONLN);
 
          int val = settings_.nThreads();
          if (val) nThreads_ = val;
-         else nThreads_ = x_->totalProcessingUnits();
-         if (settings_.debug()) cerr << "nThreads " << nThreads_ << endl;
+         else nThreads_ = totalProcessingUnits_;
+         if (settings_.debug()) std::cerr << "nThreads " << nThreads_ << std::endl;
       }
 
       ~system_rt_(){
       }
 
       size_t totalProcessingUnits() const {
-        return  _totalProcessingUnits;
+        return  totalProcessingUnits_;
       }
 
       size_t nThreads() const {
        return nThreads_;
       }
     private:
+      system_rt* o_;
+      Settings& settings_;
       size_t totalProcessingUnits_;
       size_t nThreads_;
     };
   } // end namespace cpu;
 } // end namespace scout
 
-system_rt::system_rt(){
-  x_ = new system_rt_(this);
+
+system_rt::system_rt(Settings& settings){
+  x_ = new system_rt_(this, settings);
 }
 
 system_rt::~system_rt(){
@@ -164,5 +168,4 @@ size_t system_rt::nThreads() {
 
 size_t system_rt::nDomains() {
   return 1;
-}
 }

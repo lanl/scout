@@ -70,7 +70,7 @@ namespace scout {
     class MeshThread:public Thread {
     public:
 
-      MeshThread(system_rt& system, QueueVec& queueVec, Settings& settings) :
+      MeshThread(system_rt* system, QueueVec& queueVec, Settings& settings) :
         system_(system), beginSem_(0), finishSem_(0), queueVec_(queueVec), settings_(settings) {
       }
 
@@ -86,7 +86,7 @@ namespace scout {
       void run();
 
     private:
-      system_rt& system_;
+      system_rt* system_;
       QueueVec& queueVec_;
       Settings& settings_;
       size_t qIndex_;

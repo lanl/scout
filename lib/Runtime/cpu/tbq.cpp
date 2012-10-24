@@ -140,8 +140,9 @@ namespace scout {
     tbq_rt::tbq_rt() {
       int val;
 
-      nThreads_ = system_.nThreads();
-      nDomains_ = system_.nDomains();
+      system_rt *system_ = new system_rt(settings_);
+      nThreads_ = system_->nThreads();
+      nDomains_ = system_->nDomains();
 
       val = settings_.blocksPerThread();
       if (val) blocksPerThread_ = val;
@@ -157,7 +158,7 @@ namespace scout {
       for (size_t i = 0; i < nThreads_; i++) {
         MeshThread* ti = new MeshThread(system_, queueVec_, settings_);
         ti->start();
-        if (settings_.threadBind() == 2) system_.bindThreadOutside(ti->thread());
+        if (settings_.threadBind() == 2) system_->bindThreadOutside(ti->thread());
         threadVec_.push_back(ti);
       }
     }

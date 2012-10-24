@@ -48,7 +48,7 @@
  * ###########################################################################
  *
  * Notes
- *
+ *    Disable Numa specific settings if hwloc is not available
  * #####
  */
 

@@ -73,11 +73,11 @@ namespace scout {
 
       void numaSettings();
 
-      bool hyperThreading() const {
-        return hyperThreading_;
+      int enableHt() const {
+        return enableHt_;
       }
 
-      bool enableNuma() const {
+      int enableNuma() const {
         return enableNuma_;
       }
 
@@ -106,8 +106,8 @@ namespace scout {
       }
 
     private:
-      bool hyperThreading_;
-      bool enableNuma_;
+      int enableHt_;
+      int enableNuma_;
       int nThreads_;
       int nDomains_;
       int blocksPerThread_;

@@ -68,7 +68,7 @@ namespace scout {
       size_t size;
       bool done;
 
-      if (settings_.threadBind() == 1) system_.bindThreadInside();
+      if (settings_.threadBind() == 1) system_->bindThreadInside();
       for (;;) {
         beginSem_.acquire();
 
