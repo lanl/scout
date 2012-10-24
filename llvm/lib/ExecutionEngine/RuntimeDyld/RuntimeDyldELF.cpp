@@ -59,9 +59,6 @@ public:
       const ELFObjectFile<target_endianness, is64Bits> *v) {
     return v->isDyldType();
   }
-  static inline bool classof(const DyldELFObject *v) {
-    return true;
-  }
 };
 
 template<support::endianness target_endianness, bool is64Bits>
@@ -416,7 +413,13 @@ void RuntimeDyldELF::processRelocationRef(const ObjRelocationInfo &Rel,
           if (si == Obj.end_sections())
             llvm_unreachable("Symbol section not found, bad object file format!");
           DEBUG(dbgs() << "\t\tThis is section symbol\n");
-          Value.SectionID = findOrEmitSection(Obj, (*si), true, ObjSectionToID);
+          // Default to 'true' in case isText fails (though it never does).
+          bool isCode = true;
+          si->isText(isCode);
+          Value.SectionID = findOrEmitSection(Obj, 
+                                              (*si), 
+                                              isCode, 
+                                              ObjSectionToID);
           Value.Addend = Addend;
           break;
         }

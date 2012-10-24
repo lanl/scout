@@ -209,9 +209,11 @@ def TautologicalCompare : DiagGroup<"tautological-compare",
                                     [TautologicalOutOfRangeCompare]>;
 def HeaderHygiene : DiagGroup<"header-hygiene">;
 def DuplicateDeclSpecifier : DiagGroup<"duplicate-decl-specifier">;
+def CompareDistinctPointerType : DiagGroup<"compare-distinct-pointer-type">;
 
 // Preprocessor warnings.
 def : DiagGroup<"builtin-macro-redefined">;
+def AmbiguousMacro : DiagGroup<"ambiguous-macro">;
 
 // Just silence warnings about -Wstrict-aliasing for now.
 def : DiagGroup<"strict-aliasing=0">;
@@ -317,6 +319,7 @@ def ParenthesesOnEquality : DiagGroup<"parentheses-equality">;
 def Parentheses : DiagGroup<"parentheses",
                             [LogicalOpParentheses,
                              BitwiseOpParentheses,
+                             ShiftOpParentheses,
                              ParenthesesOnEquality,
                              DanglingElse]>;
 
@@ -363,6 +366,8 @@ def Format2 : DiagGroup<"format=2",
 
 def TypeSafety : DiagGroup<"type-safety">;
 
+def IntToPointerCast : DiagGroup<"int-to-pointer-cast">;
+
 def Extra : DiagGroup<"extra", [
     MissingFieldInitializers,
     IgnoredQualifiers,
@@ -379,6 +384,7 @@ def Most : DiagGroup<"most", [
     DeleteNonVirtualDtor,
     Format,
     Implicit,
+    IntToPointerCast,
     MismatchedTags,
     MissingBraces,
     MultiChar,

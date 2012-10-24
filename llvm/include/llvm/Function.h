@@ -178,9 +178,7 @@ public:
   ///
   void addFnAttr(Attributes::AttrVal N) { 
     // Function Attributes are stored at ~0 index 
-    Attributes::Builder B;
-    B.addAttribute(N);
-    addAttribute(~0U, Attributes::get(B));
+    addAttribute(AttrListPtr::FunctionIndex, Attributes::get(getContext(), N));
   }
 
   /// removeFnAttr - Remove function attributes from this function.
@@ -278,9 +276,7 @@ public:
     return getParamAttributes(n).hasAttribute(Attributes::NoAlias);
   }
   void setDoesNotAlias(unsigned n) {
-    Attributes::Builder B;
-    B.addAttribute(Attributes::NoAlias);
-    addAttribute(n, Attributes::get(B));
+    addAttribute(n, Attributes::get(getContext(), Attributes::NoAlias));
   }
 
   /// @brief Determine if the parameter can be captured.
@@ -289,9 +285,7 @@ public:
     return getParamAttributes(n).hasAttribute(Attributes::NoCapture);
   }
   void setDoesNotCapture(unsigned n) {
-    Attributes::Builder B;
-    B.addAttribute(Attributes::NoCapture);
-    addAttribute(n, Attributes::get(B));
+    addAttribute(n, Attributes::get(getContext(), Attributes::NoCapture));
   }
 
   /// copyAttributesFrom - copy all additional attributes (those not needed to
@@ -404,7 +398,6 @@ public:
   void viewCFGOnly() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Function *) { return true; }
   static inline bool classof(const Value *V) {
     return V->getValueID() == Value::FunctionVal;
   }

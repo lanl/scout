@@ -35,6 +35,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/SourceManagerInternals.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TargetOptions.h"
 #include "clang/Basic/Version.h"
 #include "clang/Basic/VersionTuple.h"
 #include "llvm/ADT/APFloat.h"
@@ -779,14 +780,19 @@ void ASTWriter::WriteBlockInfoBlock() {
 #define BLOCK(X) EmitBlockID(X ## _ID, #X, Stream, Record)
 #define RECORD(X) EmitRecordID(X, #X, Stream, Record)
 
+  // Control Block.
+  BLOCK(CONTROL_BLOCK);
+  RECORD(METADATA);
+  RECORD(IMPORTS);
+  RECORD(LANGUAGE_OPTIONS);
+  RECORD(TARGET_OPTIONS);
+  RECORD(ORIGINAL_FILE);
+  RECORD(ORIGINAL_PCH_DIR);
+
   // AST Top-Level Block.
   BLOCK(AST_BLOCK);
-  RECORD(ORIGINAL_FILE_NAME);
-  RECORD(ORIGINAL_FILE_ID);
   RECORD(TYPE_OFFSET);
   RECORD(DECL_OFFSET);
-  RECORD(LANGUAGE_OPTIONS);
-  RECORD(METADATA);
   RECORD(IDENTIFIER_OFFSET);
   RECORD(IDENTIFIER_TABLE);
   RECORD(EXTERNAL_DEFINITIONS);
@@ -802,9 +808,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(SOURCE_LOCATION_PRELOADS);
   RECORD(STAT_CACHE);
   RECORD(EXT_VECTOR_DECLS);
-  RECORD(VERSION_CONTROL_BRANCH_REVISION);
   RECORD(PPD_ENTITIES_OFFSETS);
-  RECORD(IMPORTS);
   RECORD(REFERENCED_SELECTOR_POOL);
   RECORD(TU_UPDATE_LEXICAL);
   RECORD(LOCAL_REDECLARATIONS_MAP);
@@ -819,7 +823,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(DIAG_PRAGMA_MAPPINGS);
   RECORD(CUDA_SPECIAL_DECL_REFS);
   RECORD(HEADER_SEARCH_TABLE);
-  RECORD(ORIGINAL_PCH_DIR);
   RECORD(FP_PRAGMA_OPTIONS);
   RECORD(OPENCL_EXTENSIONS);
   RECORD(DELEGATING_CTORS);
@@ -990,25 +993,24 @@ adjustFilenameForRelocatablePCH(const char *Filename, StringRef isysroot) {
   return Filename + Pos;
 }
 
-/// \brief Write the AST metadata (e.g., i686-apple-darwin9).
-void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
-                              const std::string &OutputFile) {
+/// \brief Write the control block.
+void ASTWriter::WriteControlBlock(ASTContext &Context, StringRef isysroot,
+                                  const std::string &OutputFile) {
   using namespace llvm;
-
-  // Metadata
-  const TargetInfo &Target = Context.getTargetInfo();
-  BitCodeAbbrev *MetaAbbrev = new BitCodeAbbrev();
-  MetaAbbrev->Add(BitCodeAbbrevOp(METADATA));
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // AST major
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // AST minor
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang major
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang minor
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Relocatable
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Has errors
-  MetaAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Target triple
-  unsigned MetaAbbrevCode = Stream.EmitAbbrev(MetaAbbrev);
-
+  Stream.EnterSubblock(CONTROL_BLOCK_ID, 5);
   RecordData Record;
+  
+  // Metadata
+  BitCodeAbbrev *MetadataAbbrev = new BitCodeAbbrev();
+  MetadataAbbrev->Add(BitCodeAbbrevOp(METADATA));
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Major
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Minor
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang maj.
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang min.
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Relocatable
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Errors
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // SVN branch/tag
+  unsigned MetadataAbbrevCode = Stream.EmitAbbrev(MetadataAbbrev);
   Record.push_back(METADATA);
   Record.push_back(VERSION_MAJOR);
   Record.push_back(VERSION_MINOR);
@@ -1016,9 +1018,10 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
   Record.push_back(CLANG_VERSION_MINOR);
   Record.push_back(!isysroot.empty());
   Record.push_back(ASTHasCompilerErrors);
-  const std::string &Triple = Target.getTriple().getTriple();
-  Stream.EmitRecordWithBlob(MetaAbbrevCode, Record, Triple);
+  Stream.EmitRecordWithBlob(MetadataAbbrevCode, Record,
+                            getClangFullRepositoryVersion());
 
+  // Imports
   if (Chain) {
     serialization::ModuleManager &Mgr = Chain->getModuleManager();
     llvm::SmallVector<char, 128> ModulePaths;
@@ -1040,11 +1043,47 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
     Stream.EmitRecord(IMPORTS, Record);
   }
 
+  // Language options.
+  Record.clear();
+  const LangOptions &LangOpts = Context.getLangOpts();
+#define LANGOPT(Name, Bits, Default, Description) \
+  Record.push_back(LangOpts.Name);
+#define ENUM_LANGOPT(Name, Type, Bits, Default, Description) \
+  Record.push_back(static_cast<unsigned>(LangOpts.get##Name()));
+#include "clang/Basic/LangOptions.def"  
+
+  Record.push_back((unsigned) LangOpts.ObjCRuntime.getKind());
+  AddVersionTuple(LangOpts.ObjCRuntime.getVersion(), Record);
+  
+  Record.push_back(LangOpts.CurrentModule.size());
+  Record.append(LangOpts.CurrentModule.begin(), LangOpts.CurrentModule.end());
+  Stream.EmitRecord(LANGUAGE_OPTIONS, Record);
+
+  // Target options.
+  Record.clear();
+  const TargetInfo &Target = Context.getTargetInfo();
+  const TargetOptions &TargetOpts = Target.getTargetOpts();
+  AddString(TargetOpts.Triple, Record);
+  AddString(TargetOpts.CPU, Record);
+  AddString(TargetOpts.ABI, Record);
+  AddString(TargetOpts.CXXABI, Record);
+  AddString(TargetOpts.LinkerVersion, Record);
+  Record.push_back(TargetOpts.FeaturesAsWritten.size());
+  for (unsigned I = 0, N = TargetOpts.FeaturesAsWritten.size(); I != N; ++I) {
+    AddString(TargetOpts.FeaturesAsWritten[I], Record);
+  }
+  Record.push_back(TargetOpts.Features.size());
+  for (unsigned I = 0, N = TargetOpts.Features.size(); I != N; ++I) {
+    AddString(TargetOpts.Features[I], Record);
+  }
+  Stream.EmitRecord(TARGET_OPTIONS, Record);
+
   // Original file name and file ID
   SourceManager &SM = Context.getSourceManager();
   if (const FileEntry *MainFile = SM.getFileEntryForID(SM.getMainFileID())) {
     BitCodeAbbrev *FileAbbrev = new BitCodeAbbrev();
-    FileAbbrev->Add(BitCodeAbbrevOp(ORIGINAL_FILE_NAME));
+    FileAbbrev->Add(BitCodeAbbrevOp(ORIGINAL_FILE));
+    FileAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // File ID
     FileAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // File name
     unsigned FileAbbrevCode = Stream.EmitAbbrev(FileAbbrev);
 
@@ -1056,12 +1095,10 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
     MainFileNameStr = adjustFilenameForRelocatablePCH(MainFileNameStr,
                                                       isysroot);
     RecordData Record;
-    Record.push_back(ORIGINAL_FILE_NAME);
-    Stream.EmitRecordWithBlob(FileAbbrevCode, Record, MainFileNameStr);
-    
-    Record.clear();
+    Record.push_back(ORIGINAL_FILE);
     Record.push_back(SM.getMainFileID().getOpaqueValue());
-    Stream.EmitRecord(ORIGINAL_FILE_ID, Record);
+    Stream.EmitRecordWithBlob(FileAbbrevCode, Record, MainFileNameStr);
+    Record.clear();
   }
 
   // Original PCH directory
@@ -1081,32 +1118,7 @@ void ASTWriter::WriteMetadata(ASTContext &Context, StringRef isysroot,
     Stream.EmitRecordWithBlob(AbbrevCode, Record, origDir);
   }
 
-  // Repository branch/version information.
-  BitCodeAbbrev *RepoAbbrev = new BitCodeAbbrev();
-  RepoAbbrev->Add(BitCodeAbbrevOp(VERSION_CONTROL_BRANCH_REVISION));
-  RepoAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // SVN branch/tag
-  unsigned RepoAbbrevCode = Stream.EmitAbbrev(RepoAbbrev);
-  Record.clear();
-  Record.push_back(VERSION_CONTROL_BRANCH_REVISION);
-  Stream.EmitRecordWithBlob(RepoAbbrevCode, Record,
-                            getClangFullRepositoryVersion());
-}
-
-/// \brief Write the LangOptions structure.
-void ASTWriter::WriteLanguageOptions(const LangOptions &LangOpts) {
-  RecordData Record;
-#define LANGOPT(Name, Bits, Default, Description) \
-  Record.push_back(LangOpts.Name);
-#define ENUM_LANGOPT(Name, Type, Bits, Default, Description) \
-  Record.push_back(static_cast<unsigned>(LangOpts.get##Name()));
-#include "clang/Basic/LangOptions.def"  
-
-  Record.push_back((unsigned) LangOpts.ObjCRuntime.getKind());
-  AddVersionTuple(LangOpts.ObjCRuntime.getVersion(), Record);
-  
-  Record.push_back(LangOpts.CurrentModule.size());
-  Record.append(LangOpts.CurrentModule.begin(), LangOpts.CurrentModule.end());
-  Stream.EmitRecord(LANGUAGE_OPTIONS, Record);
+  Stream.ExitBlock();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1707,16 +1719,6 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
   llvm::array_pod_sort(MacrosToEmit.begin(), MacrosToEmit.end(),
                        &compareMacroDefinitions);
 
-  // Resolve any identifiers that defined macros at the time they were
-  // deserialized, adding them to the list of macros to emit (if appropriate).
-  for (unsigned I = 0, N = DeserializedMacroNames.size(); I != N; ++I) {
-    IdentifierInfo *Name
-      = const_cast<IdentifierInfo *>(DeserializedMacroNames[I]);
-    if (Name->hadMacroDefinition() && MacroDefinitionsSeen.insert(Name))
-      MacrosToEmit.push_back(std::make_pair(Name,
-                                            PP.getMacroInfoHistory(Name)));
-  }
-
   /// \brief Offsets of each of the macros into the bitstream, indexed by
   /// the local macro ID
   ///
@@ -1757,6 +1759,7 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
 
       AddIdentifierRef(Name, Record);
       addMacroRef(MI, Record);
+      Record.push_back(inferSubmoduleIDFromLocation(MI->getDefinitionLoc()));
       AddSourceLocation(MI->getDefinitionLoc(), Record);
       AddSourceLocation(MI->getUndefLoc(), Record);
       Record.push_back(MI->isUsed());
@@ -2005,6 +2008,11 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Feature
   unsigned RequiresAbbrev = Stream.EmitAbbrev(Abbrev);
 
+  Abbrev = new BitCodeAbbrev();
+  Abbrev->Add(BitCodeAbbrevOp(SUBMODULE_EXCLUDED_HEADER));
+  Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Name
+  unsigned ExcludedHeaderAbbrev = Stream.EmitAbbrev(Abbrev);
+
   // Write the submodule metadata block.
   RecordData Record;
   Record.push_back(getNumberOfModules(WritingModule));
@@ -2065,6 +2073,13 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
       Record.push_back(SUBMODULE_HEADER);
       Stream.EmitRecordWithBlob(HeaderAbbrev, Record, 
                                 Mod->Headers[I]->getName());
+    }
+    // Emit the excluded headers.
+    for (unsigned I = 0, N = Mod->ExcludedHeaders.size(); I != N; ++I) {
+      Record.clear();
+      Record.push_back(SUBMODULE_EXCLUDED_HEADER);
+      Stream.EmitRecordWithBlob(ExcludedHeaderAbbrev, Record, 
+                                Mod->ExcludedHeaders[I]->getName());
     }
     for (unsigned I = 0, N = Mod->TopHeaders.size(); I != N; ++I) {
       Record.clear();
@@ -2600,8 +2615,14 @@ public:
     if (isInterestingIdentifier(II, Macro)) {
       DataLen += 2; // 2 bytes for builtin ID
       DataLen += 2; // 2 bytes for flags
-      if (hadMacroDefinition(II, Macro))
-        DataLen += 8;
+      if (hadMacroDefinition(II, Macro)) {
+        for (MacroInfo *M = Macro; M; M = M->getPreviousDefinition()) {
+          if (Writer.getMacroRef(M) != 0)
+            DataLen += 4;
+        }
+
+        DataLen += 4;
+      }
 
       for (IdentifierResolver::iterator D = IdResolver.begin(II),
                                      DEnd = IdResolver.end();
@@ -2638,8 +2659,6 @@ public:
     clang::io::Emit16(Out, Bits);
     Bits = 0;
     bool HadMacroDefinition = hadMacroDefinition(II, Macro);
-    bool HasMacroDefinition = HadMacroDefinition && II->hasMacroDefinition();
-    Bits = (Bits << 1) | unsigned(HasMacroDefinition);
     Bits = (Bits << 1) | unsigned(HadMacroDefinition);
     Bits = (Bits << 1) | unsigned(II->isExtensionToken());
     Bits = (Bits << 1) | unsigned(II->isPoisoned());
@@ -2648,9 +2667,13 @@ public:
     clang::io::Emit16(Out, Bits);
 
     if (HadMacroDefinition) {
-      clang::io::Emit32(Out, Writer.getMacroRef(Macro));
-      clang::io::Emit32(Out,
-        Writer.inferSubmoduleIDFromLocation(Macro->getDefinitionLoc()));
+      // Write all of the macro IDs associated with this identifier.
+      for (MacroInfo *M = Macro; M; M = M->getPreviousDefinition()) {
+        if (MacroID ID = Writer.getMacroRef(M))
+          clang::io::Emit32(Out, ID);
+      }
+
+      clang::io::Emit32(Out, 0);
     }
 
     // Emit the declaration IDs in reverse order, because the
@@ -3433,12 +3456,13 @@ void ASTWriter::WriteASTCore(Sema &SemaRef, MemorizeStatCalls *StatCalls,
     if (!I->second)
       AddDeclRef(I->first, KnownNamespaces);
   }
-  
+
+  // Write the control block
+  WriteControlBlock(Context, isysroot, OutputFile);
+
   // Write the remaining AST contents.
   RecordData Record;
   Stream.EnterSubblock(AST_BLOCK_ID, 5);
-  WriteMetadata(Context, isysroot, OutputFile);
-  WriteLanguageOptions(Context.getLangOpts());
   if (StatCalls && isysroot.empty())
     WriteStatCache(*StatCalls);
 
@@ -3700,6 +3724,7 @@ void ASTWriter::WriteMacroUpdates() {
        I != E; ++I) {
     addMacroRef(I->first, Record);
     AddSourceLocation(I->second.UndefLoc, Record);
+    Record.push_back(inferSubmoduleIDFromLocation(I->second.UndefLoc));
   }
   Stream.EmitRecord(MACRO_UPDATES, Record);
 }
@@ -4561,8 +4586,6 @@ void ASTWriter::ReaderInitialized(ASTReader *Reader) {
 
 void ASTWriter::IdentifierRead(IdentID ID, IdentifierInfo *II) {
   IdentifierIDs[II] = ID;
-  if (II->hadMacroDefinition())
-    DeserializedMacroNames.push_back(II);
 }
 
 void ASTWriter::MacroRead(serialization::MacroID ID, MacroInfo *MI) {
@@ -4588,10 +4611,6 @@ void ASTWriter::MacroDefinitionRead(serialization::PreprocessedEntityID ID,
                                     MacroDefinition *MD) {
   assert(MacroDefinitions.find(MD) == MacroDefinitions.end());
   MacroDefinitions[MD] = ID;
-}
-
-void ASTWriter::MacroVisible(IdentifierInfo *II) {
-  DeserializedMacroNames.push_back(II);
 }
 
 void ASTWriter::ModuleRead(serialization::SubmoduleID ID, Module *Mod) {

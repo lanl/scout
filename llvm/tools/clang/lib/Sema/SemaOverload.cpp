@@ -7736,8 +7736,7 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
                                            llvm::ArrayRef<Expr *> Args,
                                  TemplateArgumentListInfo *ExplicitTemplateArgs,
                                            OverloadCandidateSet& CandidateSet,
-                                           bool PartialOverloading,
-                                           bool StdNamespaceIsAssociated) {
+                                           bool PartialOverloading) {
   ADLResult Fns;
 
   // FIXME: This approach for uniquing ADL results (and removing
@@ -7748,8 +7747,7 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
   // we supposed to consider on ADL candidates, anyway?
 
   // FIXME: Pass in the explicit template arguments?
-  ArgumentDependentLookup(Name, Operator, Loc, Args, Fns,
-                          StdNamespaceIsAssociated);
+  ArgumentDependentLookup(Name, Operator, Loc, Args, Fns);
 
   // Erase all of the candidates we already knew about.
   for (OverloadCandidateSet::iterator Cand = CandidateSet.begin(),
@@ -9542,8 +9540,7 @@ void Sema::AddOverloadedCallCandidates(UnresolvedLookupExpr *ULE,
     AddArgumentDependentLookupCandidates(ULE->getName(), /*Operator*/ false,
                                          ULE->getExprLoc(),
                                          Args, ExplicitTemplateArgs,
-                                         CandidateSet, PartialOverloading,
-                                         ULE->isStdAssociatedNamespace());
+                                         CandidateSet, PartialOverloading);
 }
 
 /// Attempt to recover from an ill-formed use of a non-dependent name in a
@@ -9827,9 +9824,7 @@ bool Sema::buildOverloadedCallSet(Scope *S, Expr *Fn,
 
     // We don't perform ADL in C.
     assert(getLangOpts().CPlusPlus && "ADL enabled in C");
-  } else
-    assert(!ULE->isStdAssociatedNamespace() &&
-           "std is associated namespace but not doing ADL");
+  }
 #endif
 
   UnbridgedCastsSet UnbridgedCasts;
@@ -11395,14 +11390,11 @@ Sema::BuildForRangeBeginEndCall(Scope *S, SourceLocation Loc,
     }
   } else {
     UnresolvedSet<0> FoundNames;
-    // C++11 [stmt.ranged]p1: For the purposes of this name lookup, namespace
-    // std is an associated namespace.
     UnresolvedLookupExpr *Fn =
       UnresolvedLookupExpr::Create(Context, /*NamingClass=*/0,
                                    NestedNameSpecifierLoc(), NameInfo,
                                    /*NeedsADL=*/true, /*Overloaded=*/false,
-                                   FoundNames.begin(), FoundNames.end(),
-                                   /*LookInStdNamespace=*/true);
+                                   FoundNames.begin(), FoundNames.end());
 
     bool CandidateSetError = buildOverloadedCallSet(S, Fn, Fn, &Range, 1, Loc,
                                                     CandidateSet, CallExpr);

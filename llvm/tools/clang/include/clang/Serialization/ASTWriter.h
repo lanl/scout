@@ -262,9 +262,6 @@ private:
   /// table, indexed by the Selector ID (-1).
   std::vector<uint32_t> SelectorOffsets;
 
-  /// \brief The set of identifiers that had macro definitions at some point.
-  std::vector<const IdentifierInfo *> DeserializedMacroNames;
-
   typedef llvm::MapVector<MacroInfo *, MacroUpdate> MacroUpdatesMap;
 
   /// \brief Updates to macro definitions that were loaded from an AST file.
@@ -412,9 +409,8 @@ private:
                     llvm::DenseSet<Stmt *> &ParentStmts);
 
   void WriteBlockInfoBlock();
-  void WriteMetadata(ASTContext &Context, StringRef isysroot,
-                     const std::string &OutputFile);
-  void WriteLanguageOptions(const LangOptions &LangOpts);
+  void WriteControlBlock(ASTContext &Context, StringRef isysroot,
+                         const std::string &OutputFile);
   void WriteStatCache(MemorizeStatCalls &StatCalls);
   void WriteSourceManagerBlock(SourceManager &SourceMgr,
                                const Preprocessor &PP,
@@ -700,7 +696,6 @@ public:
   void SelectorRead(serialization::SelectorID ID, Selector Sel);
   void MacroDefinitionRead(serialization::PreprocessedEntityID ID,
                            MacroDefinition *MD);
-  void MacroVisible(IdentifierInfo *II);
   void ModuleRead(serialization::SubmoduleID ID, Module *Mod);
 
   // PPMutationListener implementation.

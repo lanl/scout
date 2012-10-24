@@ -2035,9 +2035,8 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
       ObjSize = Flags.getByValSize();
       ArgSize = ((ObjSize + PtrByteSize - 1)/PtrByteSize) * PtrByteSize;
       // All aggregates smaller than 8 bytes must be passed right-justified.
-      if (ObjSize==1 || ObjSize==2) {
-        CurArgOffset = CurArgOffset + (4 - ObjSize);
-      }
+      if (ObjSize < PtrByteSize)
+        CurArgOffset = CurArgOffset + (PtrByteSize - ObjSize);
       // The value of the object is its address.
       int FI = MFI->CreateFixedObject(ObjSize, CurArgOffset, true);
       SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
@@ -2087,7 +2086,7 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
           ++GPR_idx;
           ArgOffset += PtrByteSize;
         } else {
-          ArgOffset += ArgSize - (ArgOffset-CurArgOffset);
+          ArgOffset += ArgSize - j;
           break;
         }
       }
@@ -2142,6 +2141,7 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
         ++FPR_idx;
       } else {
         needsLoad = true;
+        ArgSize = PtrByteSize;
       }
 
       ArgOffset += 8;
@@ -3638,12 +3638,13 @@ PPCTargetLowering::LowerCall_Darwin_Or_64SVR4(SDValue Chain, SDValue Callee,
 
           ArgOffset += PtrByteSize;
         } else {
-          SDValue Const = DAG.getConstant(4 - Size, PtrOff.getValueType());
+          SDValue Const = DAG.getConstant(PtrByteSize - Size,
+                                          PtrOff.getValueType());
           SDValue AddPtr = DAG.getNode(ISD::ADD, dl, PtrVT, PtrOff, Const);
           SDValue MemcpyCall = CreateCopyOfByValArgument(Arg, AddPtr,
                                 CallSeqStart.getNode()->getOperand(0),
                                 Flags, DAG, dl);
-          // This must go outside the CALLSEQ_START..END.
+          // The MEMCPY must go outside the CALLSEQ_START..END.
           SDValue NewCallSeqStart = DAG.getCALLSEQ_START(MemcpyCall,
                                CallSeqStart.getNode()->getOperand(1));
           DAG.ReplaceAllUsesWith(CallSeqStart.getNode(),
@@ -3651,6 +3652,25 @@ PPCTargetLowering::LowerCall_Darwin_Or_64SVR4(SDValue Chain, SDValue Callee,
           Chain = CallSeqStart = NewCallSeqStart;
           ArgOffset += PtrByteSize;
         }
+        continue;
+      } else if (isSVR4ABI && GPR_idx == NumGPRs && Size < 8) {
+        // Case: Size is 3, 5, 6, or 7 for SVR4 and we're out of registers.
+        // This is the same case as 1, 2, and 4 for SVR4 with no registers.
+        // FIXME: Separate into 64-bit SVR4 and Darwin versions of this
+        // function, and combine the duplicated code chunks.
+        SDValue Const = DAG.getConstant(PtrByteSize - Size,
+                                        PtrOff.getValueType());
+        SDValue AddPtr = DAG.getNode(ISD::ADD, dl, PtrVT, PtrOff, Const);
+        SDValue MemcpyCall = CreateCopyOfByValArgument(Arg, AddPtr,
+                              CallSeqStart.getNode()->getOperand(0),
+                              Flags, DAG, dl);
+        // The MEMCPY must go outside the CALLSEQ_START..END.
+        SDValue NewCallSeqStart = DAG.getCALLSEQ_START(MemcpyCall,
+                                    CallSeqStart.getNode()->getOperand(1));
+        DAG.ReplaceAllUsesWith(CallSeqStart.getNode(),
+                               NewCallSeqStart.getNode());
+        Chain = CallSeqStart = NewCallSeqStart;
+        ArgOffset += PtrByteSize;
         continue;
       }
       // Copy entire object into memory.  There are cases where gcc-generated
@@ -3786,6 +3806,13 @@ PPCTargetLowering::LowerCall_Darwin_Or_64SVR4(SDValue Chain, SDValue Callee,
             ++GPR_idx;
         }
       } else {
+        // Single-precision floating-point values are mapped to the
+        // second (rightmost) word of the stack doubleword.
+        if (Arg.getValueType() == MVT::f32 && isPPC64 && isSVR4ABI) {
+          SDValue ConstFour = DAG.getConstant(4, PtrOff.getValueType());
+          PtrOff = DAG.getNode(ISD::ADD, dl, PtrVT, PtrOff, ConstFour);
+        }
+
         LowerMemOpCallTo(DAG, MF, Chain, Arg, PtrOff, SPDiff, ArgOffset,
                          isPPC64, isTailCall, false, MemOpChains,
                          TailCallArguments, dl);
@@ -4197,7 +4224,52 @@ SDValue PPCTargetLowering::LowerSINT_TO_FP(SDValue Op,
     return SDValue();
 
   if (Op.getOperand(0).getValueType() == MVT::i64) {
-    SDValue Bits = DAG.getNode(ISD::BITCAST, dl, MVT::f64, Op.getOperand(0));
+    SDValue SINT = Op.getOperand(0);
+    // When converting to single-precision, we actually need to convert
+    // to double-precision first and then round to single-precision.
+    // To avoid double-rounding effects during that operation, we have
+    // to prepare the input operand.  Bits that might be truncated when
+    // converting to double-precision are replaced by a bit that won't
+    // be lost at this stage, but is below the single-precision rounding
+    // position.
+    //
+    // However, if -enable-unsafe-fp-math is in effect, accept double
+    // rounding to avoid the extra overhead.
+    if (Op.getValueType() == MVT::f32 &&
+        !DAG.getTarget().Options.UnsafeFPMath) {
+
+      // Twiddle input to make sure the low 11 bits are zero.  (If this
+      // is the case, we are guaranteed the value will fit into the 53 bit
+      // mantissa of an IEEE double-precision value without rounding.)
+      // If any of those low 11 bits were not zero originally, make sure
+      // bit 12 (value 2048) is set instead, so that the final rounding
+      // to single-precision gets the correct result.
+      SDValue Round = DAG.getNode(ISD::AND, dl, MVT::i64,
+                                  SINT, DAG.getConstant(2047, MVT::i64));
+      Round = DAG.getNode(ISD::ADD, dl, MVT::i64,
+                          Round, DAG.getConstant(2047, MVT::i64));
+      Round = DAG.getNode(ISD::OR, dl, MVT::i64, Round, SINT);
+      Round = DAG.getNode(ISD::AND, dl, MVT::i64,
+                          Round, DAG.getConstant(-2048, MVT::i64));
+
+      // However, we cannot use that value unconditionally: if the magnitude
+      // of the input value is small, the bit-twiddling we did above might
+      // end up visibly changing the output.  Fortunately, in that case, we
+      // don't need to twiddle bits since the original input will convert
+      // exactly to double-precision floating-point already.  Therefore,
+      // construct a conditional to use the original value if the top 11
+      // bits are all sign-bit copies, and use the rounded value computed
+      // above otherwise.
+      SDValue Cond = DAG.getNode(ISD::SRA, dl, MVT::i64,
+                                 SINT, DAG.getConstant(53, MVT::i32));
+      Cond = DAG.getNode(ISD::ADD, dl, MVT::i64,
+                         Cond, DAG.getConstant(1, MVT::i64));
+      Cond = DAG.getSetCC(dl, MVT::i32,
+                          Cond, DAG.getConstant(1, MVT::i64), ISD::SETUGT);
+
+      SINT = DAG.getNode(ISD::SELECT, dl, MVT::i64, Cond, Round, SINT);
+    }
+    SDValue Bits = DAG.getNode(ISD::BITCAST, dl, MVT::f64, SINT);
     SDValue FP = DAG.getNode(PPCISD::FCFID, dl, MVT::f64, Bits);
     if (Op.getValueType() == MVT::f32)
       FP = DAG.getNode(ISD::FP_ROUND, dl,
