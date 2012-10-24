@@ -48,11 +48,12 @@
  * ###########################################################################
  *
  * Notes
- *
+ *  system_rt for the Numa case (hwloc is enabled)
  * #####
  */
 
 #include "scout/Runtime/cpu/CpuUtilities.h"
+#include "scout/Runtime/cpu/Settings.h"
 
 #include <vector>
 #include <sstream>
@@ -63,7 +64,8 @@
 #define SC_PREFERRED_ALIGNMENT 64
 
 using namespace std;
-using namespace scout;
+using namespace scout::cpu;
+
 
 namespace{
 
@@ -411,140 +413,218 @@ private:
 } // end namespace
 
 namespace scout{
+  namespace cpu {
+    class system_rt_{
+    public:
+      system_rt_(system_rt* o, Settings &settings)
+      : o_(o), settings_(settings) {
 
-class system_rt_{
-public:
-  system_rt_(system_rt* o)
-  : o_(o){
+        hwloc_topology_init(&topology_);
+        hwloc_topology_load(topology_);
 
-    hwloc_topology_init(&topology_);
-    hwloc_topology_load(topology_);
+        root_ = new SINode(hwloc_get_root_obj(topology_));
+        processingUnit_ = NULL;
+        core_ = NULL;
 
-    root_ = new SINode(hwloc_get_root_obj(topology_));
+        // cache summary information
+        totalSockets_ = root_->totalSockets();
+        totalNumaNodes_ = root_->totalNumaNodes();
+        totalCores_ = root_->totalCores();
+        totalProcessingUnits_ = root_->totalProcessingUnits();
+        numaNodesPerSocket_ = root_->numaNodesPerSocket();
+        memoryPerSocket_ = root_->memoryPerSocket();
+        memoryPerNumaNode_ = root_->memoryPerNumaNode();
+        processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
+        nThreads_ = getThreads();
+        nDomains_ = getDomains();
+      }
 
-    // cache summary information
-    totalSockets_ = root_->totalSockets();
-    totalNumaNodes_ = root_->totalNumaNodes();
-    totalCores_ = root_->totalCores();
-    totalProcessingUnits_ = root_->totalProcessingUnits();
-    numaNodesPerSocket_ = root_->numaNodesPerSocket();
-    memoryPerSocket_ = root_->memoryPerSocket();
-    memoryPerNumaNode_ = root_->memoryPerNumaNode();
-    processingUnitsPerNumaNode_ = root_->processingUnitsPerNumaNode();
-  }
+      ~system_rt_(){
+        delete root_;
+        hwloc_topology_destroy(topology_);
+      }
 
-  ~system_rt_(){
-    delete root_;
-    hwloc_topology_destroy(topology_);
-  }
+      size_t totalSockets() const{
+        return totalSockets_;
+      }
 
-  size_t totalSockets() const{
-    return totalSockets_;
-  }
+      size_t totalNumaNodes() const{
+        return totalNumaNodes_;
+      }
 
-  size_t totalNumaNodes() const{
-    return totalNumaNodes_;
-  }
+      size_t totalCores() const{
+        return totalCores_;
+      }
 
-  size_t totalCores() const{
-    return totalCores_;
-  }
+      size_t totalProcessingUnits() const{
+        return totalProcessingUnits_;
+      }
 
-  size_t totalProcessingUnits() const{
-    return totalProcessingUnits_;
-  }
+      size_t processingUnitsPerCore() const{
+        return processingUnitsPerCore_;
+      }
 
-  size_t processingUnitsPerCore() const{
-    return processingUnitsPerCore_;
-  }
+      size_t numaNodesPerSocket() const{
+        return numaNodesPerSocket_;
+      }
 
-  size_t numaNodesPerSocket() const{
-    return numaNodesPerSocket_;
-  }
+      size_t memoryPerSocket() const{
+        return memoryPerSocket_;
+      }
 
-  size_t memoryPerSocket() const{
-    return memoryPerSocket_;
-  }
+      size_t memoryPerNumaNode() const{
+        return memoryPerNumaNode_;
+      }
 
-  size_t memoryPerNumaNode() const{
-    return memoryPerNumaNode_;
-  }
+      size_t processingUnitsPerNumaNode() const{
+        return processingUnitsPerNumaNode_;
+      }
 
-  size_t processingUnitsPerNumaNode() const{
-    return processingUnitsPerNumaNode_;
-  }
+      size_t nThreads() const {
+        return nThreads_;
+      }
 
-  std::string treeToString() const{
-    stringstream ostr;
-    root_->toStream("", ostr);
-    return ostr.str();
-  }
+      size_t nDomains() const {
+        return nDomains_;
+      }
 
-  void* allocArrayOnNumaNode(size_t size, size_t nodeId){
-    hwloc_obj_t obj =
-        hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
+      std::string treeToString() const{
+        stringstream ostr;
+        root_->toStream("", ostr);
+        return ostr.str();
+      }
 
-    if(!obj){
-      return 0;
-    }
+      void* allocArrayOnNumaNode(size_t size, size_t nodeId){
+        hwloc_obj_t obj =
+            hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
 
-    void* m = hwloc_alloc_membind_nodeset(topology_,
-        size + sizeof(NumaArrayHeader),
-        obj->nodeset,
-        HWLOC_MEMBIND_DEFAULT, 0);
+        if(!obj){
+          return 0;
+        }
 
-    ((NumaArrayHeader*)m)->size = size;
+        void* m = hwloc_alloc_membind_nodeset(topology_,
+            size + sizeof(NumaArrayHeader),
+            obj->nodeset,
+            HWLOC_MEMBIND_DEFAULT, 0);
 
-    return (char*)m + sizeof(NumaArrayHeader);
-  }
+        ((NumaArrayHeader*)m)->size = size;
 
-  void freeArrayFromNumaNode(void* m){
-    void* ms = (char*)m - sizeof(NumaArrayHeader);
-    hwloc_free(topology_, ms, ((NumaArrayHeader*)m)->size);
-  }
+        return (char*)m + sizeof(NumaArrayHeader);
+      }
 
-  bool bindThreadToNumaNode(size_t nodeId){
-    // the hwloc call below does not work on Apple systems
-    // so we simply return true here
-#ifdef __APPLE__
-    return true;
-#endif
+      void freeArrayFromNumaNode(void* m){
+        void* ms = (char*)m - sizeof(NumaArrayHeader);
+        hwloc_free(topology_, ms, ((NumaArrayHeader*)m)->size);
+      }
 
-    hwloc_obj_t obj =
-        hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
+      bool bindThreadToNumaNode(size_t nodeId){
+        // the hwloc call below does not work on Apple systems
+        // so we simply return true here
+    #ifdef __APPLE__
+        return true;
+    #endif
 
-    if(!obj){
-      return false;
-    }
+        hwloc_obj_t obj =
+            hwloc_get_obj_by_type(topology_, HWLOC_OBJ_NODE, nodeId);
 
-    int status = hwloc_set_membind_nodeset(topology_,
-        obj->nodeset,
-        HWLOC_MEMBIND_DEFAULT,
-        HWLOC_MEMBIND_THREAD);
+        if(!obj){
+          return false;
+        }
 
-    return status != -1;
-  }
+        int status = hwloc_set_membind_nodeset(topology_,
+            obj->nodeset,
+            HWLOC_MEMBIND_DEFAULT,
+            HWLOC_MEMBIND_THREAD);
 
-private:
-  system_rt* o_;
-  SINode* root_;
-  hwloc_topology_t topology_;
-  size_t totalSockets_;
-  size_t totalNumaNodes_;
-  size_t totalCores_;
-  size_t totalProcessingUnits_;
-  size_t processingUnitsPerCore_;
-  size_t processingUnitsPerNumaNode_;
-  size_t numaNodesPerSocket_;
-  size_t memoryPerSocket_;
-  size_t memoryPerNumaNode_;
-};
+        return status != -1;
+      }
 
+      void getNextCpuset(hwloc_cpuset_t *set) {
+        core_ = hwloc_get_next_obj_by_type(topology_, HWLOC_OBJ_CORE, core_);
+        *set = hwloc_bitmap_dup(core_->cpuset);
+        hwloc_bitmap_singlify(*set);
+      }
+
+      void getNextPU(hwloc_cpuset_t *set) {
+        processingUnit_ = hwloc_get_next_obj_by_type(topology_, HWLOC_OBJ_PU, processingUnit_);
+        *set = hwloc_bitmap_dup(processingUnit_->cpuset);
+        hwloc_bitmap_singlify(*set);
+      }
+
+      int bindThreadOutside(pthread_t& thread) {
+        int err;
+        hwloc_cpuset_t set;
+        if (settings_.enableHt()) getNextPU(&set);
+        else getNextCpuset(&set);
+        err = hwloc_set_thread_cpubind(topology_, thread, set, HWLOC_CPUBIND_THREAD);
+        hwloc_bitmap_free(set);
+        return err;
+      }
+
+      int bindThreadInside() {
+        int err;
+        hwloc_cpuset_t set;
+        if (settings_.enableHt()) getNextPU(&set);
+        else getNextCpuset(&set);
+        err = hwloc_set_cpubind(topology_, set, HWLOC_CPUBIND_THREAD);
+        hwloc_bitmap_free(set);
+        return err;
+      }
+
+      // Number of threads to use based on ENV variables and hardware
+      int getThreads() {
+          int val, ret;
+          val = settings_.nThreads();
+          if (val) ret = val;
+          else {
+            if (settings_.enableHt()) ret = totalProcessingUnits();
+            else ret = totalCores();
+          }
+          if (settings_.debug()) cerr << "nThreads " << ret << endl;
+          return ret;
+        }
+
+        // Number of numa domains to use based on ENV variables and hardware
+        // default is one for now.
+        int getDomains() {
+          int val, ret;
+          val = settings_.nDomains();
+          if (val) {
+            ret = val;
+          } else {
+            if (settings_.enableNuma() == 1) ret = totalNumaNodes();
+            else ret = 1;
+          }
+          if (settings_.debug()) cerr << "nDomains " << ret << endl;
+          return ret;
+        }
+
+
+    private:
+      system_rt* o_;
+      SINode* root_;
+      Settings& settings_;
+      hwloc_obj_t core_;
+      hwloc_obj_t processingUnit_;
+      hwloc_topology_t topology_;
+      size_t totalSockets_;
+      size_t totalNumaNodes_;
+      size_t totalCores_;
+      size_t totalProcessingUnits_;
+      size_t processingUnitsPerCore_;
+      size_t processingUnitsPerNumaNode_;
+      size_t numaNodesPerSocket_;
+      size_t memoryPerSocket_;
+      size_t memoryPerNumaNode_;
+      size_t nThreads_;
+      size_t nDomains_;
+    };
+  } // end namespace cpu
 } // end namespace scout
 
 
-system_rt::system_rt(){
-  x_ = new system_rt_(this);
+system_rt::system_rt(Settings& settings){
+  x_ = new system_rt_(this, settings);
 }
 
 system_rt::~system_rt(){
@@ -601,4 +681,20 @@ void system_rt::freeArrayFromNumaNode(void* m){
 
 bool system_rt::bindThreadToNumaNode(size_t nodeId){
   return x_->bindThreadToNumaNode(nodeId);
+}
+
+int system_rt::bindThreadOutside(pthread_t& thread) {
+   return x_->bindThreadOutside(thread);
+}
+
+int system_rt::bindThreadInside() {
+   return x_->bindThreadInside();
+}
+
+size_t system_rt::nThreads() {
+  return x_->nThreads();
+}
+
+size_t system_rt::nDomains() {
+  return x_->nDomains();
 }

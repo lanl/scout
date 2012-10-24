@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,51 +45,75 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ * ##### 
+ */ 
 
-#ifndef SCOUT_TBQ_H_
-#define SCOUT_TBQ_H_
+#ifndef __SC_CPU_SETTINGS_H_
+#define __SC_CPU_SETTINGS_H_
 
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
-#include <map>
-using namespace std;
-using namespace scout::cpu;
+#include <iostream>
 
 namespace scout {
   namespace cpu {
+    int getenvBool(const char *name);
+    int getenvUint(const char *name);
 
-    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
-                         size_t numFields);
-    Item *createItem(BlockLiteral * bl, int numDimensions,
-                     size_t start, size_t end);
-    size_t findExtent(BlockLiteral * bl, int numDimensions);
 
-    class tbq_rt {
+    class Settings {
+
     public:
-      tbq_rt();
+      Settings();
 
-      ~tbq_rt();
+      ~Settings() {
+      }
 
-      void run(void *blockLiteral, int numDimensions, int numFields);
+      void numaSettings();
 
-    protected:
-      void queueBlocks(void *blockLiteral, int numDimensions,
-                       int numFields);
-      int nThreads();
-      int nDomains();
-      int blocksPerThread();
+      int enableHt() const {
+        return enableHt_;
+      }
+
+      int enableNuma() const {
+        return enableNuma_;
+      }
+
+      int nThreads() const {
+        return nThreads_;
+      }
+
+      int nDomains() const {
+        return nDomains_;
+      }
+
+      int blocksPerThread() const {
+        return blocksPerThread_;
+      }
+
+      int threadBind() const {
+        return threadBind_;
+      }
+
+      int workStealing() const {
+        return workStealing_;
+      }
+
+      int debug() const {
+        return debug_;
+      }
+
     private:
-      Settings settings_;
-      system_rt *system_;
-      QueueVec queueVec_;
-      ThreadVec threadVec_;
-      size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
+      int enableHt_;
+      int enableNuma_;
+      int nThreads_;
+      int nDomains_;
+      int blocksPerThread_;
+      int threadBind_;
+      int workStealing_;
+      int debug_;
     };
   }
 }

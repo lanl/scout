@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,52 +46,21 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
- * Notes
  *
+ * Notes
+ *    Disable Numa specific settings if hwloc is not available
  * #####
  */
 
-#ifndef SCOUT_TBQ_H_
-#define SCOUT_TBQ_H_
-
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
-#include <map>
-using namespace std;
-using namespace scout::cpu;
+#include "scout/Runtime/cpu/Settings.h"
 
 namespace scout {
   namespace cpu {
 
-    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
-                         size_t numFields);
-    Item *createItem(BlockLiteral * bl, int numDimensions,
-                     size_t start, size_t end);
-    size_t findExtent(BlockLiteral * bl, int numDimensions);
-
-    class tbq_rt {
-    public:
-      tbq_rt();
-
-      ~tbq_rt();
-
-      void run(void *blockLiteral, int numDimensions, int numFields);
-
-    protected:
-      void queueBlocks(void *blockLiteral, int numDimensions,
-                       int numFields);
-      int nThreads();
-      int nDomains();
-      int blocksPerThread();
-    private:
-      Settings settings_;
-      system_rt *system_;
-      QueueVec queueVec_;
-      ThreadVec threadVec_;
-      size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
-    };
+    void Settings::numaSettings() {
+      nDomains_ = 1;
+      threadBind_ = 0;
+      workStealing_ = 0;
+    }
   }
 }
-
-#endif
