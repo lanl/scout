@@ -163,12 +163,15 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
         Anew->addAttr( OldFunc->getAttributes()
                        .getParamAttributes(I->getArgNo() + 1));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(0, OldFunc->getAttributes()
-				    .getRetAttributes()));
+                           .addAttr(NewFunc->getContext(),
+                                    AttrListPtr::ReturnIndex,
+                                    OldFunc->getAttributes()
+                                    .getRetAttributes()));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(~0, OldFunc->getAttributes()
-				    .getFnAttributes()));
-
+                           .addAttr(NewFunc->getContext(),
+                                    AttrListPtr::FunctionIndex,
+                                    OldFunc->getAttributes()
+                                    .getFnAttributes()));
   }
 
   for (Function::const_iterator BI = OldFunc->begin(), BE = OldFunc->end();
@@ -464,7 +467,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 					       "get_global_id",
 					       gm);
 
-	    getGlobalIdFunc->addFnAttr(Attribute::NoUnwind);         
+	    getGlobalIdFunc->addFnAttr(Attributes::NoUnwind);         
 	  }
 	  builder.SetInsertPoint(bitr);
 	  Value* v = builder.CreateCall(getGlobalIdFunc,
@@ -476,8 +479,8 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       }
     }
 
-    f->addFnAttr(Attribute::NoUnwind);                                             f->addFnAttr(Attribute::ReadNone);  
-
+    f->addFnAttr(Attributes::NoUnwind);                                            f->addFnAttr(Attributes::ReadNone);  
+    
     // --------------------------------- signed args metadata
 
     node = cast<MDNode>(mdn->getOperand(i)->getOperand(5));
@@ -504,7 +507,11 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 	signedArgGlobals.push_back(ConstantExpr::getBitCast(signedArgGlobal, 
 							    i8PtrTy));
       }
-      aitr->addAttr(Attribute::NoCapture);
+
+      vector<Attributes::AttrVal> attrs;
+      attrs.push_back(Attributes::NoCapture);
+
+      aitr->addAttr(Attributes::get(gm->getContext(), attrs));
       ++aitr;
     }
 

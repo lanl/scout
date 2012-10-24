@@ -81,6 +81,10 @@ namespace scout {
         pthread_join(thread_, 0);
       }
 
+      pthread_t& thread() {
+        return thread_;
+      }
+
     private:
       pthread_t thread_;
     };

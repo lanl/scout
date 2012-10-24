@@ -53,49 +53,60 @@
  */
 
 #ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_ 
+#define __SC_CPU_UTILITIES_H_
 
+#include "scout/Runtime/cpu/Settings.h"
+#include <pthread.h>
 #include <cstdlib>
 #include <string>
 
 namespace scout{
+  namespace cpu {
 
-  class system_rt{
-  public:
-    system_rt();
+    class system_rt{
+    public:
+      system_rt(Settings& settings);
 
-    ~system_rt();
+      ~system_rt();
 
-    size_t totalSockets() const;
+      size_t totalSockets() const;
 
-    size_t totalNumaNodes() const;
+      size_t totalNumaNodes() const;
 
-    size_t totalCores() const;
+      size_t totalCores() const;
 
-    size_t totalProcessingUnits() const;
+      size_t totalProcessingUnits() const;
 
-    size_t processingUnitsPerCore() const;
+      size_t processingUnitsPerCore() const;
 
-    size_t numaNodesPerSocket() const;
+      size_t numaNodesPerSocket() const;
 
-    size_t memoryPerSocket() const;
+      size_t memoryPerSocket() const;
+
+      size_t memoryPerNumaNode() const;
+
+      size_t processingUnitsPerNumaNode() const;
+
+      std::string treeToString() const;
+
+      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
+
+      void freeArrayFromNumaNode(void* m);
+
+      bool bindThreadToNumaNode(size_t nodeId);
+
+      int bindThreadOutside(pthread_t& thread);
+
+      int bindThreadInside();
+
+      size_t nThreads();
+
+      size_t nDomains();
   
-    size_t memoryPerNumaNode() const;
-
-    size_t processingUnitsPerNumaNode() const;
-
-    std::string treeToString() const;
-
-    void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-    void freeArrayFromNumaNode(void* m);
-
-    bool bindThreadToNumaNode(size_t nodeId);
-
-  private:
-    class system_rt_* x_;
-  };
-
+    private:
+      class system_rt_* x_;
+    };
+  } // end namespace cpu
 } // end namespace scout
 
-#endif //  __SC_CPU_UTILITIES_H_ 
+#endif //  __SC_CPU_UTILITIES_H_
