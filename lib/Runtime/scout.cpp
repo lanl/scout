@@ -11,7 +11,7 @@
 #endif // SC_ENABLE_CUDA
 
 #ifdef SC_ENABLE_OPENCL
-#include "runtime/opencl/scout_opencl.h"
+#include "scout/Runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
 
 #include "scout/Runtime/cpu/CpuInitialization.h"
