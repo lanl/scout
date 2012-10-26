@@ -962,10 +962,25 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             }
           }
           
+          // need access to these field decls so we
+          // can determine if we will dynamically allocate
+          // memory for each field
+          
+          const MeshType* MT = cast<MeshType>(T.getTypePtr());
+          MeshDecl* MD = MT->getDecl();
+          MeshDecl::field_iterator itr = MD->field_begin();
+          MeshDecl::field_iterator itr_end = MD->field_end();
+          
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
           for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
             // Compute size of needed field memory in bytes 
             llvm::Type *fieldTy = structTy->getContainedType(i);
+            
+            // If this is a externally allocated field, go on
+            FieldDecl* FD = *itr;
+            if (itr != itr_end) ++itr;
+            if (FD->isExternAlloc()) continue;
+            
             uint64_t fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(fieldTy);
             llvm::Value *fieldTotalBytes = 0;
             llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);

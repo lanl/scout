@@ -7763,6 +7763,42 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
     return QualType();
 
   QualType LHSType = LHSExpr->getType();
+
+  // If this is a mesh member in the case of assigning it to a pointer
+  // to allocated mesh values, make it think we have a pointer
+  // type as the mesh member.
+
+  // Check if this is a Scout mesh member expression.
+  if (isa<MemberExpr>(LHSExpr)) {
+    Expr *Base = LHSExpr->IgnoreParenImpCasts();
+    MemberExpr *ME = dyn_cast<MemberExpr>(Base);
+    Expr *BaseExpr = ME->getBase()->IgnoreParenImpCasts();
+    if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
+      const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
+      if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
+        if(isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())){
+          if(!isa<ImplicitParamDecl>(VD) ) {
+            const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
+            MeshDecl* MD = MT->getDecl();
+            MeshDecl::field_iterator itr_end = MD->field_end();
+            llvm::StringRef memberName = ME->getMemberDecl()->getName();
+            for(MeshDecl::field_iterator itr = MD->field_begin(); itr != itr_end; ++itr) {
+              if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
+                if ((*itr)->isExternAlloc()) {
+                  LHSType = Context.getPointerType(LHSType);
+                } else {
+                  Diags.getDiagnosticLevel(diag::err_typecheck_expression_not_modifiable_lvalue,
+                                           LHSExpr->getLocStart());
+                  // error
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
   QualType RHSType = CompoundType.isNull() ? RHS.get()->getType() :
                                              CompoundType;
   AssignConvertType ConvTy;

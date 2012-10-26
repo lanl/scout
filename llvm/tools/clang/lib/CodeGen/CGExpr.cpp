@@ -3161,8 +3161,34 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   DEBUG_OUT("EmitMeshMemberExpr");
 
   const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
-  MeshType::MeshDimensionVec exprDims = MT->dimensions();
 
+  // If it is not a mesh member, assume we want the pointer to storage
+  // for all mesh members of that name.  In that case, figure out the index 
+  // to the member and access that.
+  if(!isa<ImplicitParamDecl>(VD) )  {
+
+    MeshDecl* MD = MT->getDecl();
+    MeshDecl::field_iterator itr = MD->field_begin();
+    MeshDecl::field_iterator itr_end = MD->field_end();
+
+    for(unsigned int i = 3; itr != itr_end; ++itr, ++i) {
+      if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
+        if ((*itr)->isExternAlloc()) {
+          QualType memberTy = dyn_cast< FieldDecl >(*itr)->getType();
+          QualType memberPtrTy = getContext().getPointerType(memberTy);
+          llvm::Value* baseAddr = LocalDeclMap[VD];
+          llvm::Value *memberAddr = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
+          return MakeAddrLValue(memberAddr, memberPtrTy);
+        } else {
+          // error?
+        }
+       }
+    }
+    // if got here, there was no member of that name, so issue an error
+  }  
+
+  // Now we deal with the case of an individual mesh member value
+  MeshType::MeshDimensionVec exprDims = MT->dimensions();
   llvm::Value *arg = getGlobalIdx();
 
   if(!vals.empty()) {

@@ -3256,6 +3256,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       Decl* MeshDecl;
       llvm::SmallVectorImpl<Decl*>& FieldDecls;
       FieldDecl::MeshFieldType fieldType;
+      bool externAlloc;
       
       ScoutFieldCallback(Parser& P, Decl* MeshDecl,
                          llvm::SmallVectorImpl<Decl*>& FieldDecls) :
@@ -3270,6 +3271,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
        
         FieldDecl* FDecl = cast<FieldDecl>(Field);
         FDecl->setMeshFieldType(fieldType, false);
+        FDecl->setExternAlloc(externAlloc);
         
         FieldDecls.push_back(Field);
         FD.complete(Field);
@@ -3277,6 +3279,10 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       
       void setFieldType(FieldDecl::MeshFieldType ft){
         fieldType = ft;
+      }
+      
+      void setFieldExternAlloc(bool externalloc){
+        externAlloc = externalloc;
       }
       
     } Callback(*this, Dec, FieldDecls);
@@ -3288,6 +3294,14 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       valid = false;
     }
     
+    bool externalloc = false;
+    if (Tok.getKind() == tok::kw_extern) {
+      externalloc = true;
+      ConsumeToken();
+    }
+    
+    Callback.setFieldExternAlloc(externalloc);
+
     ParseMeshDeclaration(DS, Callback, fieldType);
     
     if(Tok.is(tok::semi)){

@@ -2108,6 +2108,8 @@ private:
 
   // bit to set whether this is an implicitly added mesh field, e.g: "position"
   bool IsMeshImplicit : 1;
+
+  bool IsExternAlloc : 1;
   
   /// \brief A pointer to either the in-class initializer for this field (if
   /// the boolean value is false), or the bit width expression for this bit
@@ -2133,6 +2135,7 @@ protected:
       Mutable(Mutable), CachedFieldIndex(0),
       FieldType(FieldNone),
       IsMeshImplicit(false),
+      IsExternAlloc(false),
       InitializerOrBitWidth(BW, InitStyle) {
     assert((!BW || InitStyle == ICIS_NoInit) && "got initializer for bitfield");
   }
@@ -2239,7 +2242,15 @@ public:
   MeshFieldType meshFieldType() const{
     return MeshFieldType(FieldType);
   }
-  
+
+  void setExternAlloc(bool externalloc) {
+    IsExternAlloc = externalloc;
+  }
+
+  bool isExternAlloc() const{
+    return IsExternAlloc;
+  }
+
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K >= firstField && K <= lastField; }
