@@ -150,9 +150,9 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
     }
   }
 
-  //std::cerr << "----------------- pruned module" << std::endl;
-  //ptxModule.dump();
-  //std::cerr << "----------------- end pruned module" << std::endl;
+  std::cerr << "----------------- pruned module" << std::endl;
+  ptxModule.dump();
+  std::cerr << "----------------- end pruned module" << std::endl;
 
   std::string ptxStrName = "ptxAssembly";
 
