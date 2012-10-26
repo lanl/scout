@@ -598,7 +598,7 @@ void CodeGenFunction::EmitDoStmt(const DoStmt &S) {
 
 void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
   // comment out to enable mesh dumping
-  //return;
+  return;
   
   llvm::Function* dumpBlockFunc =
   CGM.getModule().getFunction("__sc_dump_mesh");
