@@ -48,7 +48,7 @@ void __sc_dump_mesh(void* mp){
 
   float* aStart = (float*)mesh[0];
 
-  size_t len = width * height;
+  size_t len = width;
 
   for(size_t i = 0; i < len; ++i){
     if(i > 0){
