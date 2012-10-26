@@ -580,6 +580,12 @@ namespace scout{
             if (settings_.enableHt()) ret = totalProcessingUnits();
             else ret = totalCores();
           }
+
+          // for numa case don't allow there to be more threads than PU/Cores.
+          if(settings_.enableNuma()) {
+            if (settings_.enableHt() && ret > totalProcessingUnits()) ret = totalProcessingUnits();
+            if (!settings_.enableHt() && ret > totalCores()) ret = totalCores();
+          }
           if (settings_.debug()) cerr << "nThreads " << ret << endl;
           return ret;
         }
