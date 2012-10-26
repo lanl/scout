@@ -1,4 +1,4 @@
-#include "runtime/opencl/scout_opencl.h"
+#include "scout/Runtime/opencl/scout_opencl.h"
 
 #include <cstring>
 #include <cassert>

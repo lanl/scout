@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,52 +46,64 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
+ *
  * Notes
  *
  * #####
  */
 
-#ifndef SCOUT_TBQ_H_
-#define SCOUT_TBQ_H_
+#include <cstdlib>
+#include <iostream>
+#include "scout/Runtime/cpu/Settings.h"
 
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
-#include <map>
 using namespace std;
-using namespace scout::cpu;
 
 namespace scout {
   namespace cpu {
 
-    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
-                         size_t numFields);
-    Item *createItem(BlockLiteral * bl, int numDimensions,
-                     size_t start, size_t end);
-    size_t findExtent(BlockLiteral * bl, int numDimensions);
+   int getenvBool(const char *name) {
+      char *env;
+      env = getenv(name);
+      if (env == NULL) return -1;
+      if (atoi(env) == 1) return 1;
+      return 0;
+    }
 
-    class tbq_rt {
-    public:
-      tbq_rt();
+    int getenvUint(const char *name) {
+      char *env;
+      int val;
+      env = getenv(name);
+      if (env == NULL) return 0;
+      val = atoi(env);
+      if (val > 0) return val;
+      return 0;
+    }
 
-      ~tbq_rt();
+    Settings::Settings() {
+      enableHt_ = getenvBool("SC_RUNTIME_HT");
+      enableNuma_ = getenvBool("SC_RUNTIME_NUMA");
+      nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
+      blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
+      debug_ = getenvBool("SC_RUNTIME_DEBUG");
+      if (debug_ == -1) debug_ = 0;           // debug off by default
+      if (enableHt_ == -1) enableHt_ = 1;     // Hyperthreading on by default;
+      if (enableNuma_ == -1) enableNuma_ = 0; // Numa off by default
 
-      void run(void *blockLiteral, int numDimensions, int numFields);
+      // numa specific settings in NumaSettings.cpp/CpuSettings.cpp
+      // depending on if hwloc is available or not.
+      numaSettings();
 
-    protected:
-      void queueBlocks(void *blockLiteral, int numDimensions,
-                       int numFields);
-      int nThreads();
-      int nDomains();
-      int blocksPerThread();
-    private:
-      Settings settings_;
-      system_rt *system_;
-      QueueVec queueVec_;
-      ThreadVec threadVec_;
-      size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
-    };
+      if (debug_) {
+        cerr << "HT " << enableHt_ << endl;
+        cerr << "NUMA " << enableNuma_ << endl;
+        cerr << "NTHREADS " << nThreads_ << endl;
+        cerr << "BPT " << blocksPerThread_ << endl;
+        cerr << "NDOMAINS " << nDomains_ << endl;
+        cerr << "THREADBIND " << threadBind_ << endl;
+        cerr << "WORKSTEALING " << workStealing_ << endl;
+      }
+    }
+
   }
 }
 
-#endif

@@ -105,6 +105,10 @@ endif()
 if (SC_ENABLE_OPENCL)
   file(GLOB rt_srcs_opencl opencl/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_opencl})
+
+  include_directories(
+    /opt/AMDAPP/include
+  )
 endif()
 
 if (SC_ENABLE_OPENGL) 
