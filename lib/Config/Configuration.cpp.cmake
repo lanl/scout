@@ -168,6 +168,14 @@ namespace scout {
       "${CUDA_LIBRARIES} -lscCudaError",
       #endif
 
+      #ifdef SC_ENABLE_OPENCL
+        #ifdef APPLE 
+        "-framework OpenCL", 
+        #else
+        "-lOpenCL",
+        #endif
+      #endif
+
       #ifdef SC_ENABLE_NUMA
       "${HWLOC_LIBRARIES}",
       #endif
