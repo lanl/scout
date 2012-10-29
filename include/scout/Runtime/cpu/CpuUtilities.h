@@ -55,7 +55,6 @@
 #ifndef __SC_CPU_UTILITIES_H_
 #define __SC_CPU_UTILITIES_H_
 
-#include "scout/Runtime/cpu/Settings.h"
 #include <pthread.h>
 #include <cstdlib>
 #include <string>
@@ -65,7 +64,7 @@ namespace scout{
 
     class system_rt{
     public:
-      system_rt(Settings& settings);
+      system_rt();
 
       ~system_rt();
 

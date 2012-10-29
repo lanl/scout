@@ -57,7 +57,6 @@
 #include "scout/Runtime/cpu/Thread.h"
 #include "scout/Runtime/cpu/VSem.h"
 #include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/Settings.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
 
 #include <vector>
@@ -70,8 +69,8 @@ namespace scout {
     class MeshThread:public Thread {
     public:
 
-      MeshThread(system_rt* system, QueueVec& queueVec, Settings& settings) :
-        system_(system), beginSem_(0), finishSem_(0), queueVec_(queueVec), settings_(settings) {
+      MeshThread(system_rt* system, QueueVec& queueVec) :
+        system_(system), beginSem_(0), finishSem_(0), queueVec_(queueVec) {
       }
 
       void begin(size_t qIndex) {
@@ -88,7 +87,6 @@ namespace scout {
     private:
       system_rt* system_;
       QueueVec& queueVec_;
-      Settings& settings_;
       size_t qIndex_;
       VSem beginSem_;
       VSem finishSem_;

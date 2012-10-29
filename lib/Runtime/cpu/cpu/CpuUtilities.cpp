@@ -52,9 +52,11 @@
  * #####
  */
 
+#include "scout/Runtime/Settings.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
 #include <unistd.h>
 
+using namespace scout;
 using namespace scout::cpu;
 
 namespace scout{
@@ -62,14 +64,15 @@ namespace scout{
 
     class system_rt_{
     public:
-      system_rt_(system_rt* o, Settings &settings)
-      : o_(o), settings_(settings) {
+      system_rt_(system_rt* o)
+      : o_(o) {
+        Settings *settings = Settings::Instance();
         totalProcessingUnits_ = sysconf(_SC_NPROCESSORS_ONLN);
 
-         int val = settings_.nThreads();
+         int val = settings->nThreads();
          if (val) nThreads_ = val;
          else nThreads_ = totalProcessingUnits_;
-         if (settings_.debug()) std::cerr << "nThreads " << nThreads_ << std::endl;
+         if (settings->debug()) std::cerr << "nThreads " << nThreads_ << std::endl;
       }
 
       ~system_rt_(){
@@ -84,7 +87,6 @@ namespace scout{
       }
     private:
       system_rt* o_;
-      Settings& settings_;
       size_t totalProcessingUnits_;
       size_t nThreads_;
     };
@@ -92,8 +94,8 @@ namespace scout{
 } // end namespace scout
 
 
-system_rt::system_rt(Settings& settings){
-  x_ = new system_rt_(this, settings);
+system_rt::system_rt(){
+  x_ = new system_rt_(this);
 }
 
 system_rt::~system_rt(){

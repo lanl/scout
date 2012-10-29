@@ -52,8 +52,8 @@
  * #####
  */
 
+#include "scout/Runtime/Settings.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
-#include "scout/Runtime/cpu/Settings.h"
 
 #include <vector>
 #include <sstream>
@@ -64,6 +64,7 @@
 #define SC_PREFERRED_ALIGNMENT 64
 
 using namespace std;
+using namespace scout;
 using namespace scout::cpu;
 
 
@@ -416,12 +417,13 @@ namespace scout{
   namespace cpu {
     class system_rt_{
     public:
-      system_rt_(system_rt* o, Settings &settings)
-      : o_(o), settings_(settings) {
+      system_rt_(system_rt* o)
+      : o_(o){
 
         hwloc_topology_init(&topology_);
         hwloc_topology_load(topology_);
 
+        settings_ = Settings::Instance();
         root_ = new SINode(hwloc_get_root_obj(topology_));
         processingUnit_ = NULL;
         core_ = NULL;
@@ -554,7 +556,7 @@ namespace scout{
       int bindThreadOutside(pthread_t& thread) {
         int err;
         hwloc_cpuset_t set;
-        if (settings_.enableHt()) getNextPU(&set);
+        if (settings_->enableHt()) getNextPU(&set);
         else getNextCpuset(&set);
         err = hwloc_set_thread_cpubind(topology_, thread, set, HWLOC_CPUBIND_THREAD);
         hwloc_bitmap_free(set);
@@ -564,7 +566,7 @@ namespace scout{
       int bindThreadInside() {
         int err;
         hwloc_cpuset_t set;
-        if (settings_.enableHt()) getNextPU(&set);
+        if (settings_->enableHt()) getNextPU(&set);
         else getNextCpuset(&set);
         err = hwloc_set_cpubind(topology_, set, HWLOC_CPUBIND_THREAD);
         hwloc_bitmap_free(set);
@@ -574,19 +576,19 @@ namespace scout{
       // Number of threads to use based on ENV variables and hardware
       int getThreads() {
           int val, ret;
-          val = settings_.nThreads();
+          val = settings_->nThreads();
           if (val) ret = val;
           else {
-            if (settings_.enableHt()) ret = totalProcessingUnits();
+            if (settings_->enableHt()) ret = totalProcessingUnits();
             else ret = totalCores();
           }
 
           // for numa case don't allow there to be more threads than PU/Cores.
-          if(settings_.enableNuma()) {
-            if (settings_.enableHt() && ret > totalProcessingUnits()) ret = totalProcessingUnits();
-            if (!settings_.enableHt() && ret > totalCores()) ret = totalCores();
+          if(settings_->enableNuma()) {
+            if (settings_->enableHt() && ret > totalProcessingUnits()) ret = totalProcessingUnits();
+            if (!settings_->enableHt() && ret > totalCores()) ret = totalCores();
           }
-          if (settings_.debug()) cerr << "nThreads " << ret << endl;
+          if (settings_->debug()) cerr << "nThreads " << ret << endl;
           return ret;
         }
 
@@ -594,14 +596,14 @@ namespace scout{
         // default is one for now.
         int getDomains() {
           int val, ret;
-          val = settings_.nDomains();
+          val = settings_->nDomains();
           if (val) {
             ret = val;
           } else {
-            if (settings_.enableNuma() == 1) ret = totalNumaNodes();
+            if (settings_->enableNuma() == 1) ret = totalNumaNodes();
             else ret = 1;
           }
-          if (settings_.debug()) cerr << "nDomains " << ret << endl;
+          if (settings_->debug()) cerr << "nDomains " << ret << endl;
           return ret;
         }
 
@@ -609,7 +611,7 @@ namespace scout{
     private:
       system_rt* o_;
       SINode* root_;
-      Settings& settings_;
+      Settings* settings_;
       hwloc_obj_t core_;
       hwloc_obj_t processingUnit_;
       hwloc_topology_t topology_;
@@ -629,8 +631,8 @@ namespace scout{
 } // end namespace scout
 
 
-system_rt::system_rt(Settings& settings){
-  x_ = new system_rt_(this, settings);
+system_rt::system_rt(){
+  x_ = new system_rt_(this);
 }
 
 system_rt::~system_rt(){

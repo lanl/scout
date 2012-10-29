@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,77 +45,71 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
-#ifndef __SC_CPU_SETTINGS_H_
-#define __SC_CPU_SETTINGS_H_
-
+#include <cstdlib>
 #include <iostream>
+#include "scout/Runtime/Settings.h"
+
+using namespace std;
 
 namespace scout {
-  namespace cpu {
-    int getenvBool(const char *name);
-    int getenvUint(const char *name);
 
+  int getenvBool(const char *name) {
+    char *env;
+    env = getenv(name);
+    if (env == NULL) return -1;
+    if (atoi(env) == 1) return 1;
+    return 0;
+  }
 
-    class Settings {
+  int getenvUint(const char *name) {
+    char *env;
+    int val;
+    env = getenv(name);
+    if (env == NULL) return 0;
+    val = atoi(env);
+    if (val > 0) return val;
+    return 0;
+  }
 
-    public:
-      Settings();
+  Settings* Settings::instance_=0;
 
-      ~Settings() {
-      }
+  Settings* Settings::Instance() {
+    if (instance_ == 0) {
+      instance_ = new Settings();
+    }
+    return instance_;
+  }
 
-      void numaSettings();
+  Settings::Settings() {
+    enableHt_ = getenvBool("SC_RUNTIME_HT");
+    enableNuma_ = getenvBool("SC_RUNTIME_NUMA");
+    nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
+    blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
+    debug_ = getenvBool("SC_RUNTIME_DEBUG");
+    if (debug_ == -1) debug_ = 0;           // debug off by default
+    if (enableHt_ == -1) enableHt_ = 1;     // Hyperthreading on by default;
+    if (enableNuma_ == -1) enableNuma_ = 0; // Numa off by default
 
-      int enableHt() const {
-        return enableHt_;
-      }
+    // numa specific settings in NumaSettings.cpp/CpuSettings.cpp
+    // depending on if hwloc is available or not.
+    numaSettings();
 
-      int enableNuma() const {
-        return enableNuma_;
-      }
-
-      int nThreads() const {
-        return nThreads_;
-      }
-
-      int nDomains() const {
-        return nDomains_;
-      }
-
-      int blocksPerThread() const {
-        return blocksPerThread_;
-      }
-
-      int threadBind() const {
-        return threadBind_;
-      }
-
-      int workStealing() const {
-        return workStealing_;
-      }
-
-      int debug() const {
-        return debug_;
-      }
-
-    private:
-      int enableHt_;
-      int enableNuma_;
-      int nThreads_;
-      int nDomains_;
-      int blocksPerThread_;
-      int threadBind_;
-      int workStealing_;
-      int debug_;
-    };
+    if (debug_) {
+      cerr << "HT " << enableHt_ << endl;
+      cerr << "NUMA " << enableNuma_ << endl;
+      cerr << "NTHREADS " << nThreads_ << endl;
+      cerr << "BPT " << blocksPerThread_ << endl;
+      cerr << "NDOMAINS " << nDomains_ << endl;
+      cerr << "THREADBIND " << threadBind_ << endl;
+      cerr << "WORKSTEALING " << workStealing_ << endl;
+    }
   }
 }
 
-#endif

@@ -53,10 +53,11 @@
  */
 
 #include <stdlib.h>
+#include "scout/Runtime/Settings.h"
 #include "scout/Runtime/cpu/MeshThread.h"
 #include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/Settings.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
+using namespace scout;
 
 namespace scout {
   namespace cpu {
@@ -67,13 +68,14 @@ namespace scout {
       size_t qCurrent;
       size_t size;
       bool done;
+      Settings *settings = Settings::Instance();
 
-      if (settings_.threadBind() == 1) system_->bindThreadInside();
+      if (settings->threadBind() == 1) system_->bindThreadInside();
       for (;;) {
         beginSem_.acquire();
 
         for (;;) {
-          if (settings_.workStealing() == 2) { //steal from all
+          if (settings->workStealing() == 2) { //steal from all
             qCurrent = qIndex_;
             size = queueVec_.size();
             done = false;
@@ -84,7 +86,7 @@ namespace scout {
               if (i == size - 1) done = true;
             }
             if (done) break;
-          } else if (settings_.workStealing() == 1) { //steal from neighbors only
+          } else if (settings->workStealing() == 1) { //steal from neighbors only
             qCurrent = qIndex_;
             item = queueVec_[qCurrent]->get();
             if (!item) {

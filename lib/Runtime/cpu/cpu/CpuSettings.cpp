@@ -52,15 +52,13 @@
  * #####
  */
 
-#include "scout/Runtime/cpu/Settings.h"
+#include "scout/Runtime/Settings.h"
 
 namespace scout {
-  namespace cpu {
 
     void Settings::numaSettings() {
       nDomains_ = 1;
       threadBind_ = 0;
       workStealing_ = 0;
     }
-  }
 }

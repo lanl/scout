@@ -52,6 +52,7 @@
  * #####
  */
 #include <stdlib.h>
+#include "scout/Runtime/Settings.h"
 #include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
 #include "scout/Runtime/cpu/Queue.h"
@@ -60,6 +61,7 @@
 #include <cstring>
 
 using namespace std;
+using namespace scout;
 using namespace scout::cpu;
 
 namespace scout {
@@ -139,12 +141,12 @@ namespace scout {
 
     tbq_rt::tbq_rt() {
       int val;
-
-      system_rt *system_ = new system_rt(settings_);
+      Settings *settings = Settings::Instance();
+      system_rt *system_ = new system_rt();
       nThreads_ = system_->nThreads();
       nDomains_ = system_->nDomains();
 
-      val = settings_.blocksPerThread();
+      val = settings->blocksPerThread();
       if (val) blocksPerThread_ = val;
       else blocksPerThread_ = 4;
 
@@ -156,9 +158,9 @@ namespace scout {
 
       //start threads
       for (size_t i = 0; i < nThreads_; i++) {
-        MeshThread* ti = new MeshThread(system_, queueVec_, settings_);
+        MeshThread* ti = new MeshThread(system_, queueVec_);
         ti->start();
-        if (settings_.threadBind() == 2) system_->bindThreadOutside(ti->thread());
+        if (settings->threadBind() == 2) system_->bindThreadOutside(ti->thread());
         threadVec_.push_back(ti);
       }
     }

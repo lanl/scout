@@ -85,7 +85,6 @@ namespace scout {
       int nDomains();
       int blocksPerThread();
     private:
-      Settings settings_;
       system_rt *system_;
       QueueVec queueVec_;
       ThreadVec threadVec_;
