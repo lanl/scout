@@ -172,7 +172,7 @@ namespace scout {
         #ifdef APPLE 
         "-framework OpenCL", 
         #else
-        "-lOpenCL",
+        "-lamdocl64",
         #endif
       #endif
 
