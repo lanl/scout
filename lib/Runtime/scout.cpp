@@ -17,7 +17,6 @@
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/DeviceList.h"
 
 using namespace std;

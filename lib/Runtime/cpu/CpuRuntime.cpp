@@ -53,7 +53,7 @@
  */
 #include <stdlib.h>
 #include "scout/Runtime/Settings.h"
-#include "scout/Runtime/cpu/tbq.h"
+#include "scout/Runtime/cpu/CpuRuntime.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
 #include "scout/Runtime/cpu/Queue.h"
 #include "scout/Runtime/cpu/MeshThread.h"
@@ -139,7 +139,7 @@ namespace scout {
     }
 
 
-    tbq_rt::tbq_rt() {
+    CpuRuntime::CpuRuntime() {
       int val;
       Settings *settings = Settings::Instance();
       system_rt *system_ = new system_rt();
@@ -165,7 +165,7 @@ namespace scout {
       }
     }
 
-    tbq_rt::~tbq_rt() {
+    CpuRuntime::~CpuRuntime() {
 
       for (size_t i = 0; i < nThreads_; i++) {
         threadVec_[i]->stop();
@@ -179,7 +179,7 @@ namespace scout {
       }
     }
 
-    void tbq_rt::queueBlocks(void* blockLiteral, int numDimensions, int numFields) {
+    void CpuRuntime::queueBlocks(void* blockLiteral, int numDimensions, int numFields) {
       BlockLiteral* bl = (BlockLiteral*) blockLiteral;
       size_t count, extent, chunk, end;
 
@@ -206,7 +206,7 @@ namespace scout {
       }
     }
 
-    void tbq_rt::run(void* blockLiteral, int numDimensions, int numFields) {
+    void CpuRuntime::run(void* blockLiteral, int numDimensions, int numFields) {
       queueBlocks(blockLiteral, numDimensions, numFields);
       size_t n = threadVec_.size();
 

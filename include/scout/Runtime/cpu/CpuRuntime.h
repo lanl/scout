@@ -52,8 +52,8 @@
  * #####
  */
 
-#ifndef SCOUT_TBQ_H_
-#define SCOUT_TBQ_H_
+#ifndef SCOUT_CPU_RUNTIME_H_
+#define SCOUT_CPU_RUNTIME_H_
 
 #include "scout/Runtime/cpu/Queue.h"
 #include "scout/Runtime/cpu/MeshThread.h"
@@ -70,11 +70,11 @@ namespace scout {
                      size_t start, size_t end);
     size_t findExtent(BlockLiteral * bl, int numDimensions);
 
-    class tbq_rt {
+    class CpuRuntime {
     public:
-      tbq_rt();
+      CpuRuntime();
 
-      ~tbq_rt();
+      ~CpuRuntime();
 
       void run(void *blockLiteral, int numDimensions, int numFields);
 
