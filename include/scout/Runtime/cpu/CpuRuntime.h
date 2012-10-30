@@ -52,60 +52,45 @@
  * #####
  */
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
+#ifndef SCOUT_CPU_RUNTIME_H_
+#define SCOUT_CPU_RUNTIME_H_
 
-#include <pthread.h>
-#include <cstdlib>
-#include <string>
+#include "scout/Runtime/cpu/Queue.h"
+#include "scout/Runtime/cpu/MeshThread.h"
+#include <map>
+using namespace std;
+using namespace scout::cpu;
 
-namespace scout{
+namespace scout {
   namespace cpu {
 
-    class system_rt{
+    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
+                         size_t numFields);
+    Item *createItem(BlockLiteral * bl, int numDimensions,
+                     size_t start, size_t end);
+    size_t findExtent(BlockLiteral * bl, int numDimensions);
+
+    class CpuRuntime {
     public:
-      system_rt();
+      CpuRuntime();
 
-      ~system_rt();
+      ~CpuRuntime();
 
-      size_t totalSockets() const;
+      void run(void *blockLiteral, int numDimensions, int numFields);
 
-      size_t totalNumaNodes() const;
-
-      size_t totalCores() const;
-
-      size_t totalProcessingUnits() const;
-
-      size_t processingUnitsPerCore() const;
-
-      size_t numaNodesPerSocket() const;
-
-      size_t memoryPerSocket() const;
-
-      size_t memoryPerNumaNode() const;
-
-      size_t processingUnitsPerNumaNode() const;
-
-      std::string treeToString() const;
-
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
-  
+    protected:
+      void queueBlocks(void *blockLiteral, int numDimensions,
+                       int numFields);
+      int nThreads();
+      int nDomains();
+      int blocksPerThread();
     private:
-      class system_rt_* x_;
+      system_rt *system_;
+      QueueVec queueVec_;
+      ThreadVec threadVec_;
+      size_t nThreads_, nDomains_, nChunk_, blocksPerThread_;
     };
-  } // end namespace cpu
-} // end namespace scout
+  }
+}
 
-#endif //  __SC_CPU_UTILITIES_H_
+#endif

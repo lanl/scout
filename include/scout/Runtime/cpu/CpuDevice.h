@@ -55,7 +55,7 @@
 #ifndef __SC_CPU_DEVICE_H_
 #define __SC_CPU_DEVICE_H_
 
-#include "scout/Runtime/cpu/tbq.h"
+#include "scout/Runtime/cpu/CpuRuntime.h"
 #include "scout/Runtime/Device.h"
 
 namespace scout {

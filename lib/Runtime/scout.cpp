@@ -11,13 +11,12 @@
 #endif // SC_ENABLE_CUDA
 
 #ifdef SC_ENABLE_OPENCL
-#include "runtime/opencl/scout_opencl.h"
+#include "scout/Runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
 
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/cpu/tbq.h"
 #include "scout/Runtime/DeviceList.h"
 
 using namespace std;
@@ -48,7 +47,7 @@ void __sc_dump_mesh(void* mp){
 
   float* aStart = (float*)mesh[0];
 
-  size_t len = width * height;
+  size_t len = width;
 
   for(size_t i = 0; i < len; ++i){
     if(i > 0){

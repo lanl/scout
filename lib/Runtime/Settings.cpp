@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,66 +46,70 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
+ *
  * Notes
  *
  * #####
  */
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
-
-#include <pthread.h>
 #include <cstdlib>
-#include <string>
+#include <iostream>
+#include "scout/Runtime/Settings.h"
 
-namespace scout{
-  namespace cpu {
+using namespace std;
 
-    class system_rt{
-    public:
-      system_rt();
+namespace scout {
 
-      ~system_rt();
+  int getenvBool(const char *name) {
+    char *env;
+    env = getenv(name);
+    if (env == NULL) return -1;
+    if (atoi(env) == 1) return 1;
+    return 0;
+  }
 
-      size_t totalSockets() const;
+  int getenvUint(const char *name) {
+    char *env;
+    int val;
+    env = getenv(name);
+    if (env == NULL) return 0;
+    val = atoi(env);
+    if (val > 0) return val;
+    return 0;
+  }
 
-      size_t totalNumaNodes() const;
+  Settings* Settings::instance_=0;
 
-      size_t totalCores() const;
+  Settings* Settings::Instance() {
+    if (instance_ == 0) {
+      instance_ = new Settings();
+    }
+    return instance_;
+  }
 
-      size_t totalProcessingUnits() const;
+  Settings::Settings() {
+    enableHt_ = getenvBool("SC_RUNTIME_HT");
+    enableNuma_ = getenvBool("SC_RUNTIME_NUMA");
+    nThreads_ = getenvUint("SC_RUNTIME_NTHREADS");
+    blocksPerThread_ = getenvUint("SC_RUNTIME_BPT");
+    debug_ = getenvBool("SC_RUNTIME_DEBUG");
+    if (debug_ == -1) debug_ = 0;           // debug off by default
+    if (enableHt_ == -1) enableHt_ = 1;     // Hyperthreading on by default;
+    if (enableNuma_ == -1) enableNuma_ = 0; // Numa off by default
 
-      size_t processingUnitsPerCore() const;
+    // numa specific settings in NumaSettings.cpp/CpuSettings.cpp
+    // depending on if hwloc is available or not.
+    numaSettings();
 
-      size_t numaNodesPerSocket() const;
+    if (debug_) {
+      cerr << "HT " << enableHt_ << endl;
+      cerr << "NUMA " << enableNuma_ << endl;
+      cerr << "NTHREADS " << nThreads_ << endl;
+      cerr << "BPT " << blocksPerThread_ << endl;
+      cerr << "NDOMAINS " << nDomains_ << endl;
+      cerr << "THREADBIND " << threadBind_ << endl;
+      cerr << "WORKSTEALING " << workStealing_ << endl;
+    }
+  }
+}
 
-      size_t memoryPerSocket() const;
-
-      size_t memoryPerNumaNode() const;
-
-      size_t processingUnitsPerNumaNode() const;
-
-      std::string treeToString() const;
-
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
-  
-    private:
-      class system_rt_* x_;
-    };
-  } // end namespace cpu
-} // end namespace scout
-
-#endif //  __SC_CPU_UTILITIES_H_

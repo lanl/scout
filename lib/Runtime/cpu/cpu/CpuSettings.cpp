@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,66 +46,19 @@
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
  * ###########################################################################
- * 
- * Notes
  *
+ * Notes
+ *    Disable Numa specific settings if hwloc is not available
  * #####
  */
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
+#include "scout/Runtime/Settings.h"
 
-#include <pthread.h>
-#include <cstdlib>
-#include <string>
+namespace scout {
 
-namespace scout{
-  namespace cpu {
-
-    class system_rt{
-    public:
-      system_rt();
-
-      ~system_rt();
-
-      size_t totalSockets() const;
-
-      size_t totalNumaNodes() const;
-
-      size_t totalCores() const;
-
-      size_t totalProcessingUnits() const;
-
-      size_t processingUnitsPerCore() const;
-
-      size_t numaNodesPerSocket() const;
-
-      size_t memoryPerSocket() const;
-
-      size_t memoryPerNumaNode() const;
-
-      size_t processingUnitsPerNumaNode() const;
-
-      std::string treeToString() const;
-
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
-  
-    private:
-      class system_rt_* x_;
-    };
-  } // end namespace cpu
-} // end namespace scout
-
-#endif //  __SC_CPU_UTILITIES_H_
+    void Settings::numaSettings() {
+      nDomains_ = 1;
+      threadBind_ = 0;
+      workStealing_ = 0;
+    }
+}

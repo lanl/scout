@@ -23,6 +23,10 @@
 #include "scout/Runtime/cuda/scout_cuda.h"
 #endif
 
+#ifdef SC_ENABLE_OPENCL
+#include "scout/Runtime/opencl/scout_opencl.h"
+#endif
+
 using namespace std;
 using namespace scout;
 
@@ -32,6 +36,14 @@ float4* __sc_renderall_uniform_colors;
 
 #ifdef SC_ENABLE_CUDA
 CUdeviceptr __sc_cuda_device_renderall_uniform_colors;
+#else
+static bool __sc_cuda = false;
+#endif
+
+#ifdef SC_ENABLE_OPENCL
+cl_mem __sc_opencl_device_renderall_uniform_colors;
+#else
+static bool __sc_opencl = false;
 #endif
 
 // -------------
@@ -65,13 +77,14 @@ namespace scout{
         _renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
           glfloat3(o_->width(), o_->height(), 0.0));
 
-#ifdef SC_ENABLE_CUDA
+#if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
         if(__sc_cuda){
-          //register_gpu_pbo(pbo_->id();
-          register_gpu_pbo(_renderable->get_buffer_object_id(),
-              CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD);
+          register_cuda_pbo(_renderable->get_buffer_object_id());
         }
-#endif // SC_ENABLE_CUDA
+        else if(__sc_opencl){
+          register_opencl_pbo(_renderable->get_buffer_object_id());
+        }
+#endif
 
         _renderable->initialize(NULL);
 
@@ -81,29 +94,35 @@ namespace scout{
 
       void begin(){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-#ifdef SC_ENABLE_CUDA
+#if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
         if(__sc_cuda){
-          map_gpu_resources();
+          map_cuda_resources();
+        }
+        else if(__sc_opencl){
+          map_opencl_resources();
         }
         else{
          __sc_renderall_uniform_colors =_renderable->map_colors();
         }
 #else
        __sc_renderall_uniform_colors =_renderable->map_colors(); 
-#endif // SC_ENABLE_CUDA
+#endif
       }
 
       void end(){
-#ifdef SC_ENABLE_CUDA
+#if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
         if(__sc_cuda){
-          unmap_gpu_resources();
+          unmap_cuda_resources();
+        }
+        else if(__sc_opencl){
+          unmap_opencl_resources();
         }
         else{
           _renderable->unmap_colors();
         }
 #else
         _renderable->unmap_colors(); 
-#endif // SC_ENABLE_CUDA
+#endif
 
         exec();
 
@@ -116,7 +135,7 @@ namespace scout{
 
       }
 
-      void map_gpu_resources(){
+      void map_cuda_resources(){
 #ifdef SC_ENABLE_CUDA
         // map one graphics resource for access by CUDA
         assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
@@ -124,23 +143,61 @@ namespace scout{
         size_t bytes;
         // return a pointer by which the mapped graphics resource may be accessed.
         assert(cuGraphicsResourceGetMappedPointer(&__sc_cuda_device_renderall_uniform_colors, &bytes, __sc_cuda_device_resource) == CUDA_SUCCESS);
-#endif // SC_ENABLE_CUDA
+#endif
       }
 
-      void unmap_gpu_resources(){
+      void unmap_cuda_resources(){
 #ifdef SC_ENABLE_CUDA
         assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
         _renderable->alloc_texture();
-#endif // SC_ENABLE_CUDA
+#endif
+      }
+
+      void map_opencl_resources(){
+#ifdef SC_ENABLE_OPENCL
+        glFinish();
+        clEnqueueAcquireGLObjects(__sc_opencl_command_queue, 
+                                  1, 
+                                  &__sc_opencl_device_renderall_uniform_colors,
+                                  0,
+                                  NULL,
+                                  NULL);
+#endif
+      }
+
+      void unmap_opencl_resources(){
+#ifdef SC_ENABLE_OPENCL
+        clEnqueueReleaseGLObjects(__sc_opencl_command_queue,
+                                  1,
+                                  &__sc_opencl_device_renderall_uniform_colors,
+                                  0,
+                                  NULL,
+                                  NULL);
+        clFinish(__sc_opencl_command_queue);
+#endif
       }
 
       // register pbo for access by CUDA, return handle 
-      void register_gpu_pbo(GLuint pbo, unsigned int flags){
+      void register_cuda_pbo(GLuint pbo){
 #ifdef SC_ENABLE_CUDA
-        assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource, pbo, flags) ==
-            CUDA_SUCCESS);
-#endif // SC_ENABLE_CUDA
+        assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource, 
+                                          pbo, 
+                                          CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) == CUDA_SUCCESS);
+#endif
+      }
+
+      // register pbo for access by CUDA, return handle 
+      void register_opencl_pbo(GLuint pbo){
+#ifdef SC_ENABLE_OPENCL
+        cl_int ret;
+        __sc_opencl_device_renderall_uniform_colors = 
+          clCreateFromGLBuffer(__sc_opencl_context,
+                               CL_MEM_WRITE_ONLY,
+                               pbo,
+                               &ret);
+        assert(ret == CL_SUCCESS);
+#endif
       }
 
       void exec(){

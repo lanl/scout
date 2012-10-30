@@ -1,4 +1,4 @@
-#include "runtime/opencl/scout_opencl.h"
+#include "scout/Runtime/opencl/scout_opencl.h"
 
 #include <cstring>
 #include <cassert>
@@ -8,6 +8,13 @@
 #include <iostream>
 #include <map>
 #include <elf.h>
+
+#ifdef __APPLE__
+// to include for gl interop?
+#else
+#include <GL/glx.h>
+#include <CL/cl_gl.h>
+#endif
 
 using namespace std;
 
@@ -223,9 +230,25 @@ void __sc_init_opencl(){
   ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU,
                        1, &__sc_opencl_device_id, NULL);
   assert(ret == CL_SUCCESS && "Error getting first OpenCL device");
-  
+
+#ifdef __APPLE__
+  CGLContextObj glContext = CGLGetCurrentContext();
+  CGLShareGroupObj shareGroup = CGLGetShareGroup(glContext);
+
+  cl_context_properties properties[] = {
+    CL_CONTEXT_PROPERTY_USE_CGL_SHAREGROUP_APPLE,
+    (cl_context_properties)shareGroup,
+    0};
+#else
+  cl_context_properties properties[] = {
+    CL_GL_CONTEXT_KHR, (cl_context_properties) glXGetCurrentContext(),
+    CL_GLX_DISPLAY_KHR, (cl_context_properties) glXGetCurrentDisplay(), 
+    CL_CONTEXT_PLATFORM, (cl_context_properties) platform, 
+    0};
+#endif
+
   __sc_opencl_context = 
-    clCreateContext(NULL, 1, &__sc_opencl_device_id, NULL, NULL, &ret);
+    clCreateContext(properties, 1, &__sc_opencl_device_id, NULL, NULL, &ret);
   assert(ret == CL_SUCCESS && "Error creating OpenCL context");
   
   __sc_opencl_command_queue = 
@@ -346,6 +369,18 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
     return;
   }
 
+  cl_int ret;
+
+  if(itr->first.find("renderall") != string::npos){
+    if(string(fieldName).find("colors") != string::npos){
+      ret = 
+        clSetKernelArg(kernel->kernel, argNum, sizeof(cl_mem),
+                       &__sc_opencl_device_renderall_uniform_colors);
+      assert(ret == CL_SUCCESS);
+      return;
+    }
+  }
+
   KernelFieldMap::iterator kitr = kernel->fieldMap.find(fieldName);
   if(kitr != kernel->fieldMap.end()){
     return;
@@ -360,8 +395,6 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
   else{
     fieldMap = mitr->second;
   }
-
-  cl_int ret;
 
   FieldMap::iterator fitr = fieldMap->find(fieldName);
   Field* field;

@@ -59,24 +59,24 @@ using namespace scout;
 
 namespace scout {
   namespace cpu {
-    tbq_rt *__sc_tbq;
+    CpuRuntime *__cpuRuntime;
   }
 } 
 
 extern "C"
 void __sc_queue_block(void *blockLiteral, int numDimensions,
                           int numFields) {
-  if (!cpu::__sc_tbq) {
-    cpu::__sc_tbq = new tbq_rt;
+  if (!cpu::__cpuRuntime) {
+    cpu::__cpuRuntime = new CpuRuntime;
   }
-  cpu::__sc_tbq->run(blockLiteral, numDimensions, numFields);
+  cpu::__cpuRuntime->run(blockLiteral, numDimensions, numFields);
 }
 
 
 // ----- CpuDevice
 /// 
 CpuDevice::CpuDevice() {
-  cpu::__sc_tbq = 0;
+  cpu::__cpuRuntime = 0;
   Device::enabled = true;
 }
 
@@ -84,8 +84,8 @@ CpuDevice::CpuDevice() {
 // ----- ~CpuDevice
 ///
 CpuDevice::~CpuDevice() {
-  if (cpu::__sc_tbq) {
-    delete cpu::__sc_tbq;
+  if (cpu::__cpuRuntime) {
+    delete cpu::__cpuRuntime;
   }
 }
 

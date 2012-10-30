@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,67 +45,69 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ * ##### 
+ */ 
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
+#ifndef __SC_GL_EVENT_H__
+#define __SC_GL_EVENT_H__
 
-#include <pthread.h>
-#include <cstdlib>
-#include <string>
+namespace scout  {
 
-namespace scout{
-  namespace cpu {
-
-    class system_rt{
-    public:
-      system_rt();
-
-      ~system_rt();
-
-      size_t totalSockets() const;
-
-      size_t totalNumaNodes() const;
-
-      size_t totalCores() const;
-
-      size_t totalProcessingUnits() const;
-
-      size_t processingUnitsPerCore() const;
-
-      size_t numaNodesPerSocket() const;
-
-      size_t memoryPerSocket() const;
-
-      size_t memoryPerNumaNode() const;
-
-      size_t processingUnitsPerNumaNode() const;
-
-      std::string treeToString() const;
-
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
+  enum glEventType {
+    SCKeyPress,
+    SCKeyRelase,
+    SCMouseButtonPress,
+    SCMouseButtonRelease,
+    SCMouseMove,
+    SCMouseWheel,
+    SCWinRefresh,
+    SCWinResize,
+    SCWinMinimized,
+    SCWInMaximized,
+    SCWinOpen,
+    SCWinClose
+  };
   
-    private:
-      class system_rt_* x_;
-    };
-  } // end namespace cpu
-} // end namespace scout
+  class glEvent {
 
-#endif //  __SC_CPU_UTILITIES_H_
+   public:
+    glEvent(glEventType t)
+    : type(t) {
+      
+    }
+    
+    virtual ~glEvent() {
+      // no-op
+    }
+
+    glEventType eventType() const {
+      return type;
+    }
+    
+   protected:
+    glEventType   type;
+  };
+
+
+  class glInputEvent: public glEvent {
+
+   public:
+    glInputEvent(glEventType t)
+      : glEvent(t) {
+    };
+    
+   private:
+    glKey    modifier;   // Is one of the modifier keys on the
+                         // keyboard pressed (e.g. ctrl, alt, ...)
+
+    
+  };
+
+  
+}
+
+#endif

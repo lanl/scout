@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,67 +45,82 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ * ##### 
+ */ 
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
+#ifndef __SC_SETTINGS_H_
+#define __SC_SETTINGS_H_
 
-#include <pthread.h>
-#include <cstdlib>
-#include <string>
+#include <iostream>
 
-namespace scout{
-  namespace cpu {
+namespace scout {
+    int getenvBool(const char *name);
+    int getenvUint(const char *name);
 
-    class system_rt{
+
+    class Settings {
+
     public:
-      system_rt();
+      static Settings* Instance();
 
-      ~system_rt();
+      void numaSettings();
 
-      size_t totalSockets() const;
+      int enableHt() {
+        return enableHt_;
+      }
 
-      size_t totalNumaNodes() const;
+      int enableNuma() {
+        return enableNuma_;
+      }
 
-      size_t totalCores() const;
+      int nThreads() {
+        return nThreads_;
+      }
 
-      size_t totalProcessingUnits() const;
+      int nDomains() {
+        return nDomains_;
+      }
 
-      size_t processingUnitsPerCore() const;
+      int blocksPerThread() {
+        return blocksPerThread_;
+      }
 
-      size_t numaNodesPerSocket() const;
+      int threadBind() {
+        return threadBind_;
+      }
 
-      size_t memoryPerSocket() const;
+      int workStealing() {
+        return workStealing_;
+      }
 
-      size_t memoryPerNumaNode() const;
+      int debug() {
+        return debug_;
+      }
 
-      size_t processingUnitsPerNumaNode() const;
+    protected:
+      Settings();
 
-      std::string treeToString() const;
+      ~Settings() {
+      }
+      Settings(const Settings&);
+      Settings& operator= (const Settings&);
 
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
-  
     private:
-      class system_rt_* x_;
+      static Settings* instance_;
+    public:
+      int enableHt_;
+      int enableNuma_;
+      int nThreads_;
+      int nDomains_;
+      int blocksPerThread_;
+      int threadBind_;
+      int workStealing_;
+      int debug_;
     };
-  } // end namespace cpu
-} // end namespace scout
+}
 
-#endif //  __SC_CPU_UTILITIES_H_
+#endif

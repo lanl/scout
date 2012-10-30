@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,67 +45,53 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ *  A decent web site for understanding X events:
+ *
+ *    http://www.csl.mtu.edu/cs5760/www/Lectures/OlderLectures/HCIExamplesLectures/XWin/xWinEvents.htm
+ *
+ * ##### 
+ */ 
 
-#ifndef __SC_CPU_UTILITIES_H_
-#define __SC_CPU_UTILITIES_H_
+#ifndef __SC_GLX_DEVICE_H__
+#define __SC_GLX_DEVICE_H__
 
-#include <pthread.h>
-#include <cstdlib>
-#include <string>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
-namespace scout{
-  namespace cpu {
+#include "scout/Runtime/opengl/glDevice.h"
 
-    class system_rt{
-    public:
-      system_rt();
+namespace scout {
 
-      ~system_rt();
+  class glWindow;
 
-      size_t totalSockets() const;
+  /** ----- glxDevice
+   *
+   *
+   */
+  class glxDevice : public glDevice {
+    
+   public:
+    glxDevice(Display *dpy);
+    ~glxDevice();
 
-      size_t totalNumaNodes() const;
+    glWindow *createWindow(unsigned short xpos,
+                           unsigned short ypos,
+                           unsigned short width,
+                           unsigned short height);
+    
+   private:
+    bool processXEvent();
+    
+    Display *display;
+  };
 
-      size_t totalCores() const;
+}
 
-      size_t totalProcessingUnits() const;
+#endif
 
-      size_t processingUnitsPerCore() const;
 
-      size_t numaNodesPerSocket() const;
 
-      size_t memoryPerSocket() const;
-
-      size_t memoryPerNumaNode() const;
-
-      size_t processingUnitsPerNumaNode() const;
-
-      std::string treeToString() const;
-
-      void* allocArrayOnNumaNode(size_t size, size_t nodeId);
-
-      void freeArrayFromNumaNode(void* m);
-
-      bool bindThreadToNumaNode(size_t nodeId);
-
-      int bindThreadOutside(pthread_t& thread);
-
-      int bindThreadInside();
-
-      size_t nThreads();
-
-      size_t nDomains();
-  
-    private:
-      class system_rt_* x_;
-    };
-  } // end namespace cpu
-} // end namespace scout
-
-#endif //  __SC_CPU_UTILITIES_H_

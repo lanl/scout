@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyrigh (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,48 +45,47 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
+ * ########################################################################### 
  * 
  * Notes
  *
- * #####
- */
+ * ##### 
+ */ 
 
-#ifndef SCOUT_TBQ_H_
-#define SCOUT_TBQ_H_
+#ifndef __SC_GLX_WINDOW_H__
+#define __SC_GLX_WINDOW_H__
 
-#include "scout/Runtime/cpu/Queue.h"
-#include "scout/Runtime/cpu/MeshThread.h"
-#include <map>
-using namespace std;
-using namespace scout::cpu;
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <GL/glx.h>
 
-namespace scout {
-  namespace cpu {
+#include "scout/Runtime/opengl/glWindow.h"
 
-    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
-                         size_t numFields);
-    Item *createItem(BlockLiteral * bl, int numDimensions,
-                     size_t start, size_t end);
-    size_t findExtent(BlockLiteral * bl, int numDimensions);
+namespace scout  {
 
-    class tbq_rt {
-    public:
-      tbq_rt();
+  /** ----- glxWindow 
+   *
+   *
+   */
+  class glxWindow : public glWindow {
 
-      ~tbq_rt();
+   public:
+    
+    glxWindow(unsigned short xpos,
+              unsigned short ypos,
+              unsigned short width,
+              unsigned short height,
+              Display        *display,
+              GLXFBConfig    fbConfig);
 
-      void run(void *blockLiteral, int numDimensions, int numFields);
+    ~glxWindow();
 
-    private:
-      void queueBlocks(void *blockLiteral, int numDimensions,
-                       int numFields);
-      typedef map < void *, Queue * >QueueMap_;
-      Queue *queue_;
-      ThreadVec threadVec_;
-
-    };
-  }
+   private:
+    Display     display;
+    Colormap    cmap;    
+    Window      xWin;
+    GLXContext  context;
+  };
 }
 
 #endif

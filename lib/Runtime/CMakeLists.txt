@@ -105,6 +105,10 @@ endif()
 if (SC_ENABLE_OPENCL)
   file(GLOB rt_srcs_opencl opencl/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_opencl})
+
+  include_directories(
+    /opt/AMDAPP/include
+  )
 endif()
 
 if (SC_ENABLE_OPENGL) 
@@ -120,6 +124,12 @@ if (SC_ENABLE_OPENGL)
     file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
     list(APPEND gl_srcs ${apple_gl_srcs})
+  else()
+    #disable glx stuff on linux for now
+    #file(GLOB glx_hdrs ${SC_INCLUDE_DIR}/Runtime/opengl/glx/*.h)
+    #file(GLOB glx_srcs opengl/macosx/*.cpp opengl/glx/*.cpp)
+    list(APPEND gl_hdrs ${glx_hdrs})
+    list(APPEND gl_srcs ${glx_srcs})
   endif()
 
   # Add supporting opengl shaders to the build dependencies.  In this
