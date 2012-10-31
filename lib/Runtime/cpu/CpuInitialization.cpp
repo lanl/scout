@@ -54,7 +54,6 @@
 #include "scout/Runtime/cpu/CpuDevice.h"
 
 namespace scout {
-
   namespace cpu {
 
     int scInitialize(DeviceList & dev_list) {

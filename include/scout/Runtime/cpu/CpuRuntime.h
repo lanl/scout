@@ -72,19 +72,23 @@ namespace scout {
 
     class CpuRuntime {
     public:
-      CpuRuntime();
+      static CpuRuntime* Instance();
 
       ~CpuRuntime();
 
       void run(void *blockLiteral, int numDimensions, int numFields);
 
     protected:
+      CpuRuntime();
+      CpuRuntime(const CpuRuntime&);
+      CpuRuntime& operator= (const CpuRuntime&);
       void queueBlocks(void *blockLiteral, int numDimensions,
                        int numFields);
       int nThreads();
       int nDomains();
       int blocksPerThread();
     private:
+      static CpuRuntime* instance_;
       system_rt *system_;
       QueueVec queueVec_;
       ThreadVec threadVec_;

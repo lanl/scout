@@ -69,35 +69,35 @@ namespace scout {
 
       void numaSettings();
 
-      int enableHt() {
+      int enableHt() const {
         return enableHt_;
       }
 
-      int enableNuma() {
+      int enableNuma() const {
         return enableNuma_;
       }
 
-      int nThreads() {
+      int nThreads() const {
         return nThreads_;
       }
 
-      int nDomains() {
+      int nDomains() const {
         return nDomains_;
       }
 
-      int blocksPerThread() {
+      int blocksPerThread() const {
         return blocksPerThread_;
       }
 
-      int threadBind() {
+      int threadBind() const {
         return threadBind_;
       }
 
-      int workStealing() {
+      int workStealing() const {
         return workStealing_;
       }
 
-      int debug() {
+      int debug() const {
         return debug_;
       }
 
@@ -111,7 +111,6 @@ namespace scout {
 
     private:
       static Settings* instance_;
-    public:
       int enableHt_;
       int enableNuma_;
       int nThreads_;

@@ -57,15 +57,13 @@
 #include <unistd.h>
 
 using namespace scout;
-using namespace scout::cpu;
 
 namespace scout{
   namespace  cpu{
 
     class system_rt_{
     public:
-      system_rt_(system_rt* o)
-      : o_(o) {
+      system_rt_() {
         Settings *settings = Settings::Instance();
         totalProcessingUnits_ = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -86,88 +84,87 @@ namespace scout{
        return nThreads_;
       }
     private:
-      system_rt* o_;
       size_t totalProcessingUnits_;
       size_t nThreads_;
     };
+
+
+    system_rt::system_rt(){
+      x_ = new system_rt_();
+    }
+
+    system_rt::~system_rt(){
+      delete x_;
+    }
+
+    size_t system_rt::totalSockets() const {
+      return 1;
+    }
+
+    size_t system_rt::totalNumaNodes() const {
+      return 1;
+    }
+
+    size_t system_rt::totalCores() const {
+      return x_->totalProcessingUnits();
+    }
+
+    size_t system_rt::totalProcessingUnits() const {
+      return x_->totalProcessingUnits();
+    }
+
+    size_t system_rt::processingUnitsPerCore() const {
+      return x_->totalProcessingUnits();
+    }
+
+    size_t system_rt::numaNodesPerSocket() const {
+      return 1;
+    }
+
+    size_t system_rt::memoryPerSocket() const {
+      return 0;
+    }
+
+    size_t system_rt::memoryPerNumaNode() const {
+      return 0;
+    }
+
+    size_t system_rt::processingUnitsPerNumaNode() const {
+      return x_->totalProcessingUnits();
+    }
+
+    std::string system_rt::treeToString() const {
+      return NULL;
+    }
+
+    void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId) {
+      return NULL;
+    }
+
+
+    void system_rt::freeArrayFromNumaNode(void* m) {
+    }
+
+
+    bool system_rt::bindThreadToNumaNode(size_t nodeId) {
+      return false;
+    }
+
+    int system_rt::bindThreadOutside(pthread_t& thread) {
+      return 0;
+    }
+
+    int system_rt::bindThreadInside() {
+      return 0;
+    }
+
+
+    size_t system_rt::nThreads() {
+      return x_->nThreads();
+    }
+
+    size_t system_rt::nDomains() {
+      return 1;
+    }
   } // end namespace cpu;
 } // end namespace scout
-
-
-system_rt::system_rt(){
-  x_ = new system_rt_(this);
-}
-
-system_rt::~system_rt(){
-  delete x_;
-}
-
-size_t system_rt::totalSockets() const {
-  return 1;
-}
-
-size_t system_rt::totalNumaNodes() const {
-  return 1;
-}
-
-size_t system_rt::totalCores() const {
-  return x_->totalProcessingUnits();
-}
-
-size_t system_rt::totalProcessingUnits() const {
-  return x_->totalProcessingUnits();
-}
-
-size_t system_rt::processingUnitsPerCore() const {
-  return x_->totalProcessingUnits();
-}
-
-size_t system_rt::numaNodesPerSocket() const {
-  return 1;
-}
-
-size_t system_rt::memoryPerSocket() const {
-  return 0;
-}
-
-size_t system_rt::memoryPerNumaNode() const {
-  return 0;
-}
-
-size_t system_rt::processingUnitsPerNumaNode() const {
-  return x_->totalProcessingUnits();
-}
-
-std::string system_rt::treeToString() const {
-  return NULL;
-}
-
-void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId) {
-  return NULL;
-}
-
-
-void system_rt::freeArrayFromNumaNode(void* m) {
-}
-
-
-bool system_rt::bindThreadToNumaNode(size_t nodeId) {
-  return false;
-}
-
-int system_rt::bindThreadOutside(pthread_t& thread) {
-  return 0;
-}
-
-int system_rt::bindThreadInside() {
-  return 0;
-}
-
-
-size_t system_rt::nThreads() {
-  return x_->nThreads();
-}
-
-size_t system_rt::nDomains() {
-  return 1;
-}

@@ -61,8 +61,6 @@
 #include <cstring>
 
 using namespace std;
-using namespace scout;
-using namespace scout::cpu;
 
 namespace scout {
   namespace cpu {
@@ -138,17 +136,26 @@ namespace scout {
       return extent;
     }
 
+    CpuRuntime* CpuRuntime::instance_=0;
+
+    CpuRuntime* CpuRuntime::Instance() {
+       if (instance_ == 0) {
+         instance_ = new CpuRuntime();
+       }
+       return instance_;
+     }
 
     CpuRuntime::CpuRuntime() {
       int val;
       Settings *settings = Settings::Instance();
-      system_rt *system_ = new system_rt();
+      system_ = new system_rt();
       nThreads_ = system_->nThreads();
       nDomains_ = system_->nDomains();
 
       val = settings->blocksPerThread();
       if (val) blocksPerThread_ = val;
       else blocksPerThread_ = 4;
+      if (settings->debug()) cerr << "blocksPerThread " << blocksPerThread_ << endl;
 
       // setup queues
       for(size_t i = 0; i < nDomains_; i++) {
@@ -163,6 +170,7 @@ namespace scout {
         if (settings->threadBind() == 2) system_->bindThreadOutside(ti->thread());
         threadVec_.push_back(ti);
       }
+      delete system_;
     }
 
     CpuRuntime::~CpuRuntime() {

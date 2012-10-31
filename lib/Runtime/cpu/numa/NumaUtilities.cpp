@@ -65,8 +65,6 @@
 
 using namespace std;
 using namespace scout;
-using namespace scout::cpu;
-
 
 namespace{
 
@@ -211,7 +209,6 @@ public:
 
   SINode(Kind kind)
   : kind_(kind){
-
   }
 
   ~SINode(){
@@ -417,9 +414,7 @@ namespace scout{
   namespace cpu {
     class system_rt_{
     public:
-      system_rt_(system_rt* o)
-      : o_(o){
-
+      system_rt_() {
         hwloc_topology_init(&topology_);
         hwloc_topology_load(topology_);
 
@@ -607,9 +602,7 @@ namespace scout{
           return ret;
         }
 
-
     private:
-      system_rt* o_;
       SINode* root_;
       Settings* settings_;
       hwloc_obj_t core_;
@@ -627,82 +620,82 @@ namespace scout{
       size_t nThreads_;
       size_t nDomains_;
     };
+
+    system_rt::system_rt() {
+      x_ = new system_rt_();
+    }
+
+    system_rt::~system_rt(){
+      delete x_;
+    }
+
+    size_t system_rt::totalSockets() const{
+      return x_->totalSockets();
+    }
+
+    size_t system_rt::totalNumaNodes() const{
+      return x_->totalNumaNodes();
+    }
+
+    size_t system_rt::totalCores() const{
+      return x_->totalCores();
+    }
+
+    size_t system_rt::totalProcessingUnits() const{
+      return x_->totalProcessingUnits();
+    }
+
+    size_t system_rt::processingUnitsPerCore() const{
+      return x_->processingUnitsPerCore();
+    }
+
+    size_t system_rt::numaNodesPerSocket() const{
+      return x_->numaNodesPerSocket();
+    }
+
+    size_t system_rt::memoryPerSocket() const{
+      return x_->memoryPerSocket();
+    }
+
+    size_t system_rt::memoryPerNumaNode() const{
+      return x_->memoryPerNumaNode();
+    }
+
+    size_t system_rt::processingUnitsPerNumaNode() const{
+      return x_->processingUnitsPerNumaNode();
+    }
+
+    std::string system_rt::treeToString() const{
+      return x_->treeToString();
+    }
+
+    void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId){
+      return x_->allocArrayOnNumaNode(size, nodeId);
+    }
+
+    void system_rt::freeArrayFromNumaNode(void* m){
+      x_->freeArrayFromNumaNode(m);
+    }
+
+    bool system_rt::bindThreadToNumaNode(size_t nodeId){
+      return x_->bindThreadToNumaNode(nodeId);
+    }
+
+    int system_rt::bindThreadOutside(pthread_t& thread) {
+      return x_->bindThreadOutside(thread);
+    }
+
+    int system_rt::bindThreadInside() {
+      return x_->bindThreadInside();
+    }
+
+    size_t system_rt::nThreads() {
+      return x_->nThreads();
+    }
+
+    size_t system_rt::nDomains() {
+      return x_->nDomains();
+    }
+
   } // end namespace cpu
 } // end namespace scout
-
-
-system_rt::system_rt(){
-  x_ = new system_rt_(this);
-}
-
-system_rt::~system_rt(){
-  delete x_;
-}
-
-size_t system_rt::totalSockets() const{
-  return x_->totalSockets();
-}
-
-size_t system_rt::totalNumaNodes() const{
-  return x_->totalNumaNodes();
-}
-
-size_t system_rt::totalCores() const{
-  return x_->totalCores();
-}
-
-size_t system_rt::totalProcessingUnits() const{
-  return x_->totalProcessingUnits();
-}
-
-size_t system_rt::processingUnitsPerCore() const{
-  return x_->processingUnitsPerCore();
-}
-
-size_t system_rt::numaNodesPerSocket() const{
-  return x_->numaNodesPerSocket();
-}
-
-size_t system_rt::memoryPerSocket() const{
-  return x_->memoryPerSocket();
-}
-
-size_t system_rt::memoryPerNumaNode() const{
-  return x_->memoryPerNumaNode();
-}
-
-size_t system_rt::processingUnitsPerNumaNode() const{
-  return x_->processingUnitsPerNumaNode();
-}
-
-std::string system_rt::treeToString() const{
-  return x_->treeToString();
-}
-
-void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId){
-  return x_->allocArrayOnNumaNode(size, nodeId);
-}
-
-void system_rt::freeArrayFromNumaNode(void* m){
-  x_->freeArrayFromNumaNode(m);
-}
-
-bool system_rt::bindThreadToNumaNode(size_t nodeId){
-  return x_->bindThreadToNumaNode(nodeId);
-}
-
-int system_rt::bindThreadOutside(pthread_t& thread) {
-   return x_->bindThreadOutside(thread);
-}
-
-int system_rt::bindThreadInside() {
-   return x_->bindThreadInside();
-}
-
-size_t system_rt::nThreads() {
-  return x_->nThreads();
-}
-
-size_t system_rt::nDomains() {
-  return x_->nDomains();
-}

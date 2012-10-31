@@ -57,26 +57,18 @@
 
 using namespace scout;
 
-namespace scout {
-  namespace cpu {
-    CpuRuntime *__cpuRuntime;
-  }
-} 
-
 extern "C"
 void __sc_queue_block(void *blockLiteral, int numDimensions,
                           int numFields) {
-  if (!cpu::__cpuRuntime) {
-    cpu::__cpuRuntime = new CpuRuntime;
-  }
-  cpu::__cpuRuntime->run(blockLiteral, numDimensions, numFields);
+
+  CpuRuntime *cpuRuntime = CpuRuntime::Instance();
+  cpuRuntime->run(blockLiteral, numDimensions, numFields);
 }
 
 
 // ----- CpuDevice
 /// 
 CpuDevice::CpuDevice() {
-  cpu::__cpuRuntime = 0;
   Device::enabled = true;
 }
 
@@ -84,8 +76,9 @@ CpuDevice::CpuDevice() {
 // ----- ~CpuDevice
 ///
 CpuDevice::~CpuDevice() {
-  if (cpu::__cpuRuntime) {
-    delete cpu::__cpuRuntime;
+  CpuRuntime *cpuRuntime = CpuRuntime::Instance();
+  if (cpuRuntime) {
+    delete cpuRuntime;
   }
 }
 
