@@ -20,11 +20,11 @@
 #include "MBlazeSelectionDAGInfo.h"
 #include "MBlazeIntrinsicInfo.h"
 #include "MBlazeFrameLowering.h"
-#include "MBlazeELFWriterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/DataLayout.h"
 #include "llvm/Target/TargetFrameLowering.h"
+#include "llvm/Target/TargetTransformImpl.h"
 
 namespace llvm {
   class formatted_raw_ostream;
@@ -37,8 +37,9 @@ namespace llvm {
     MBlazeTargetLowering   TLInfo;
     MBlazeSelectionDAGInfo TSInfo;
     MBlazeIntrinsicInfo    IntrinsicInfo;
-    MBlazeELFWriterInfo    ELFWriterInfo;
     InstrItineraryData     InstrItins;
+    ScalarTargetTransformImpl STTI;
+    VectorTargetTransformImpl VTTI;
 
   public:
     MBlazeTargetMachine(const Target &T, StringRef TT,
@@ -74,9 +75,10 @@ namespace llvm {
     const TargetIntrinsicInfo *getIntrinsicInfo() const
     { return &IntrinsicInfo; }
 
-    virtual const MBlazeELFWriterInfo *getELFWriterInfo() const {
-      return &ELFWriterInfo;
-    }
+    virtual const ScalarTargetTransformInfo *getScalarTargetTransformInfo()const
+    { return &STTI; }
+    virtual const VectorTargetTransformInfo *getVectorTargetTransformInfo()const
+    { return &VTTI; }
 
     // Pass Pipeline Configuration
     virtual TargetPassConfig *createPassConfig(PassManagerBase &PM);

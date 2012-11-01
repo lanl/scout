@@ -37,6 +37,7 @@ class AllocaInst;
 class ConstantExpr;
 class DataLayout;
 class TargetLibraryInfo;
+class TargetTransformInfo;
 class DIBuilder;
 
 template<typename T> class SmallVectorImpl;
@@ -134,7 +135,8 @@ bool EliminateDuplicatePHINodes(BasicBlock *BB);
 /// of the CFG.  It returns true if a modification was made, possibly deleting
 /// the basic block that was pointed to.
 ///
-bool SimplifyCFG(BasicBlock *BB, const DataLayout *TD = 0);
+bool SimplifyCFG(BasicBlock *BB, const DataLayout *TD = 0,
+                 const TargetTransformInfo *TTI = 0);
 
 /// FoldBranchToCommonDest - If this basic block is ONLY a setcc and a branch,
 /// and if a predecessor branches to us and one of our successors, fold the
@@ -186,8 +188,7 @@ Value *EmitGEPOffset(IRBuilderTy *Builder, const DataLayout &TD, User *GEP,
   bool isInBounds = cast<GEPOperator>(GEP)->isInBounds() && !NoAssumptions;
 
   // Build a mask for high order bits.
-  unsigned AS = cast<GEPOperator>(GEP)->getPointerAddressSpace();
-  unsigned IntPtrWidth = TD.getPointerSizeInBits(AS);
+  unsigned IntPtrWidth = TD.getPointerSizeInBits();
   uint64_t PtrSizeMask = ~0ULL >> (64-IntPtrWidth);
 
   for (User::op_iterator i = GEP->op_begin() + 1, e = GEP->op_end(); i != e;

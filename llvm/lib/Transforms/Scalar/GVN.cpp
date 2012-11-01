@@ -746,7 +746,6 @@ static bool CanCoerceMustAliasedValueToLoad(Value *StoredVal,
   return true;
 }
 
-
 /// CoerceAvailableValueToLoadType - If we saw a store of a value to memory, and
 /// then a load from a must-aliased pointer of a different type, try to coerce
 /// the stored value.  LoadedTy is the type of the load we want to replace and
@@ -769,24 +768,25 @@ static Value *CoerceAvailableValueToLoadType(Value *StoredVal,
   // If the store and reload are the same size, we can always reuse it.
   if (StoreSize == LoadSize) {
     // Pointer to Pointer -> use bitcast.
-    if (StoredValTy->isPointerTy() && LoadedTy->isPointerTy())
+    if (StoredValTy->getScalarType()->isPointerTy() &&
+        LoadedTy->getScalarType()->isPointerTy())
       return new BitCastInst(StoredVal, LoadedTy, "", InsertPt);
 
     // Convert source pointers to integers, which can be bitcast.
-    if (StoredValTy->isPointerTy()) {
-      StoredValTy = TD.getIntPtrType(StoredValTy->getContext());
+    if (StoredValTy->getScalarType()->isPointerTy()) {
+      StoredValTy = TD.getIntPtrType(StoredValTy);
       StoredVal = new PtrToIntInst(StoredVal, StoredValTy, "", InsertPt);
     }
 
     Type *TypeToCastTo = LoadedTy;
-    if (TypeToCastTo->isPointerTy())
-      TypeToCastTo = TD.getIntPtrType(StoredValTy->getContext());
+    if (TypeToCastTo->getScalarType()->isPointerTy())
+      TypeToCastTo = TD.getIntPtrType(StoredValTy);
 
     if (StoredValTy != TypeToCastTo)
       StoredVal = new BitCastInst(StoredVal, TypeToCastTo, "", InsertPt);
 
     // Cast to pointer if the load needs a pointer type.
-    if (LoadedTy->isPointerTy())
+    if (LoadedTy->getScalarType()->isPointerTy())
       StoredVal = new IntToPtrInst(StoredVal, LoadedTy, "", InsertPt);
 
     return StoredVal;
@@ -798,8 +798,8 @@ static Value *CoerceAvailableValueToLoadType(Value *StoredVal,
   assert(StoreSize >= LoadSize && "CanCoerceMustAliasedValueToLoad fail");
 
   // Convert source pointers to integers, which can be manipulated.
-  if (StoredValTy->isPointerTy()) {
-    StoredValTy = TD.getIntPtrType(StoredValTy->getContext());
+  if (StoredValTy->getScalarType()->isPointerTy()) {
+    StoredValTy = TD.getIntPtrType(StoredValTy);
     StoredVal = new PtrToIntInst(StoredVal, StoredValTy, "", InsertPt);
   }
 
@@ -824,7 +824,7 @@ static Value *CoerceAvailableValueToLoadType(Value *StoredVal,
     return StoredVal;
 
   // If the result is a pointer, inttoptr.
-  if (LoadedTy->isPointerTy())
+  if (LoadedTy->getScalarType()->isPointerTy())
     return new IntToPtrInst(StoredVal, LoadedTy, "inttoptr", InsertPt);
 
   // Otherwise, bitcast.
@@ -1019,8 +1019,9 @@ static Value *GetStoreValueForLoad(Value *SrcVal, unsigned Offset,
 
   // Compute which bits of the stored value are being used by the load.  Convert
   // to an integer type to start with.
-  if (SrcVal->getType()->isPointerTy())
-    SrcVal = Builder.CreatePtrToInt(SrcVal, TD.getIntPtrType(Ctx));
+  if (SrcVal->getType()->getScalarType()->isPointerTy())
+    SrcVal = Builder.CreatePtrToInt(SrcVal,
+        TD.getIntPtrType(SrcVal->getType()));
   if (!SrcVal->getType()->isIntegerTy())
     SrcVal = Builder.CreateBitCast(SrcVal, IntegerType::get(Ctx, StoreSize*8));
 
@@ -1301,7 +1302,7 @@ static Value *ConstructSSAForLoadSet(LoadInst *LI,
   Value *V = SSAUpdate.GetValueInMiddleOfBlock(LI->getParent());
 
   // If new PHI nodes were created, notify alias analysis.
-  if (V->getType()->isPointerTy()) {
+  if (V->getType()->getScalarType()->isPointerTy()) {
     AliasAnalysis *AA = gvn.getAliasAnalysis();
 
     for (unsigned i = 0, e = NewPHIs.size(); i != e; ++i)
@@ -1498,7 +1499,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
 
     if (isa<PHINode>(V))
       V->takeName(LI);
-    if (V->getType()->isPointerTy())
+    if (V->getType()->getScalarType()->isPointerTy())
       MD->invalidateCachedPointerInfo(V);
     markInstructionForDeletion(LI);
     ++NumGVNLoad;
@@ -1730,7 +1731,7 @@ bool GVN::processNonLocalLoad(LoadInst *LI) {
   LI->replaceAllUsesWith(V);
   if (isa<PHINode>(V))
     V->takeName(LI);
-  if (V->getType()->isPointerTy())
+  if (V->getType()->getScalarType()->isPointerTy())
     MD->invalidateCachedPointerInfo(V);
   markInstructionForDeletion(LI);
   ++NumPRELoad;
@@ -1857,7 +1858,7 @@ bool GVN::processLoad(LoadInst *L) {
 
       // Replace the load!
       L->replaceAllUsesWith(AvailVal);
-      if (AvailVal->getType()->isPointerTy())
+      if (AvailVal->getType()->getScalarType()->isPointerTy())
         MD->invalidateCachedPointerInfo(AvailVal);
       markInstructionForDeletion(L);
       ++NumGVNLoad;
@@ -1914,7 +1915,7 @@ bool GVN::processLoad(LoadInst *L) {
 
     // Remove it!
     L->replaceAllUsesWith(StoredVal);
-    if (StoredVal->getType()->isPointerTy())
+    if (StoredVal->getType()->getScalarType()->isPointerTy())
       MD->invalidateCachedPointerInfo(StoredVal);
     markInstructionForDeletion(L);
     ++NumGVNLoad;
@@ -1943,7 +1944,7 @@ bool GVN::processLoad(LoadInst *L) {
 
     // Remove it!
     patchAndReplaceAllUsesWith(AvailableVal, L);
-    if (DepLI->getType()->isPointerTy())
+    if (DepLI->getType()->getScalarType()->isPointerTy())
       MD->invalidateCachedPointerInfo(DepLI);
     markInstructionForDeletion(L);
     ++NumGVNLoad;
@@ -2184,7 +2185,7 @@ bool GVN::processInstruction(Instruction *I) {
   // "%z = and i32 %x, %y" becomes "%z = and i32 %x, %x" which we now simplify.
   if (Value *V = SimplifyInstruction(I, TD, TLI, DT)) {
     I->replaceAllUsesWith(V);
-    if (MD && V->getType()->isPointerTy())
+    if (MD && V->getType()->getScalarType()->isPointerTy())
       MD->invalidateCachedPointerInfo(V);
     markInstructionForDeletion(I);
     ++NumGVNSimpl;
@@ -2284,7 +2285,7 @@ bool GVN::processInstruction(Instruction *I) {
 
   // Remove it!
   patchAndReplaceAllUsesWith(repl, I);
-  if (MD && repl->getType()->isPointerTy())
+  if (MD && repl->getType()->getScalarType()->isPointerTy())
     MD->invalidateCachedPointerInfo(repl);
   markInstructionForDeletion(I);
   return true;
@@ -2532,7 +2533,7 @@ bool GVN::performPRE(Function &F) {
       addToLeaderTable(ValNo, Phi, CurrentBlock);
       Phi->setDebugLoc(CurInst->getDebugLoc());
       CurInst->replaceAllUsesWith(Phi);
-      if (Phi->getType()->isPointerTy()) {
+      if (Phi->getType()->getScalarType()->isPointerTy()) {
         // Because we have added a PHI-use of the pointer value, it has now
         // "escaped" from alias analysis' perspective.  We need to inform
         // AA of this.
