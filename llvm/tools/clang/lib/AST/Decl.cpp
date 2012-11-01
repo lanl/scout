@@ -213,12 +213,12 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
     if (Var->getStorageClass() == SC_Static)
       return LinkageInfo::internal();
 
-    // - an object or reference that is explicitly declared const
-    //   and neither explicitly declared extern nor previously
-    //   declared to have external linkage; or
-    // (there is no equivalent in C99)
+    // - a non-volatile object or reference that is explicitly declared const
+    //   or constexpr and neither explicitly declared extern nor previously
+    //   declared to have external linkage; or (there is no equivalent in C99)
     if (Context.getLangOpts().CPlusPlus &&
-        Var->getType().isConstant(Context) && 
+        Var->getType().isConstQualified() && 
+        !Var->getType().isVolatileQualified() &&
         Var->getStorageClass() != SC_Extern &&
         Var->getStorageClass() != SC_PrivateExtern) {
       bool FoundExtern = false;
@@ -236,8 +236,8 @@ static LinkageInfo getLVForNamespaceScopeDecl(const NamedDecl *D,
       for (; PrevVar; PrevVar = PrevVar->getPreviousDecl())
         if (PrevVar->getStorageClass() == SC_PrivateExtern)
           break;
-        if (PrevVar)
-          return PrevVar->getLinkageAndVisibility();
+      if (PrevVar)
+        return PrevVar->getLinkageAndVisibility();
     }
   } else if (isa<FunctionDecl>(D) || isa<FunctionTemplateDecl>(D)) {
     // C++ [temp]p4:

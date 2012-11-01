@@ -18,7 +18,7 @@ This test serves two purposes:
 
 The list of warnings below should NEVER grow.  It should gradually shrink to 0.
 
-CHECK: Warnings without flags (154):
+CHECK: Warnings without flags (151):
 CHECK-NEXT:   ext_delete_void_ptr_operand
 CHECK-NEXT:   ext_enum_friend
 CHECK-NEXT:   ext_expected_semi_decl_list
@@ -57,7 +57,6 @@ CHECK-NEXT:   warn_call_to_pure_virtual_member_function_from_ctor_dtor
 CHECK-NEXT:   warn_call_wrong_number_of_arguments
 CHECK-NEXT:   warn_case_empty_range
 CHECK-NEXT:   warn_char_constant_too_large
-CHECK-NEXT:   warn_cmdline_missing_macro_defs
 CHECK-NEXT:   warn_collection_expr_type
 CHECK-NEXT:   warn_conflicting_param_types
 CHECK-NEXT:   warn_conflicting_ret_types
@@ -69,8 +68,6 @@ CHECK-NEXT:   warn_delete_array_type
 CHECK-NEXT:   warn_double_const_requires_fp64
 CHECK-NEXT:   warn_drv_assuming_mfloat_abi_is
 CHECK-NEXT:   warn_drv_clang_unsupported
-CHECK-NEXT:   warn_drv_not_using_clang_cpp
-CHECK-NEXT:   warn_drv_not_using_clang_cxx
 CHECK-NEXT:   warn_drv_objc_gc_unsupported
 CHECK-NEXT:   warn_drv_pch_not_first_include
 CHECK-NEXT:   warn_dup_category_def

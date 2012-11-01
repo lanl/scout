@@ -209,7 +209,7 @@ def TautologicalCompare : DiagGroup<"tautological-compare",
                                     [TautologicalOutOfRangeCompare]>;
 def HeaderHygiene : DiagGroup<"header-hygiene">;
 def DuplicateDeclSpecifier : DiagGroup<"duplicate-decl-specifier">;
-def CompareDistinctPointerType : DiagGroup<"compare-distinct-pointer-type">;
+def CompareDistinctPointerType : DiagGroup<"compare-distinct-pointer-types">;
 
 // Preprocessor warnings.
 def : DiagGroup<"builtin-macro-redefined">;
@@ -279,6 +279,8 @@ def ImplicitAtomic : DiagGroup<"implicit-atomic-properties">;
 def CustomAtomic : DiagGroup<"custom-atomic-properties">;
 def AtomicProperties : DiagGroup<"atomic-properties",
                                  [ImplicitAtomic, CustomAtomic]>;
+// FIXME: Remove arc-abi once an Xcode is released that doesn't pass this flag.
+def : DiagGroup<"arc-abi">;
 def ARCUnsafeRetainedAssign : DiagGroup<"arc-unsafe-retained-assign">;
 def ARCRetainCycles : DiagGroup<"arc-retain-cycles">;
 def ARCNonPodMemAccess : DiagGroup<"arc-non-pod-memaccess">;
@@ -478,4 +480,10 @@ def ObjCCocoaAPI : DiagGroup<"objc-cocoa-api", [
 def ObjCStringComparison : DiagGroup<"objc-string-compare">;
 def ObjCLiteralComparison : DiagGroup<"objc-literal-compare", [
     ObjCStringComparison
+  ]>;
+
+// Inline ASM warnings.
+def ASMOperandWidths : DiagGroup<"asm-operand-widths">;
+def ASM : DiagGroup<"asm", [
+    ASMOperandWidths
   ]>;

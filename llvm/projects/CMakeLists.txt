@@ -12,5 +12,5 @@ endforeach(entry)
 # recent version of CMake.
 if(${CMAKE_VERSION} VERSION_GREATER 2.8.7 AND
    ${LLVM_BUILD_RUNTIME})
-  add_llvm_external_project(compiler-rt)
+  #add_llvm_external_project(compiler-rt)
 endif()

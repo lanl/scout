@@ -1061,14 +1061,11 @@ void MallocChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   RegionStateTy RS = state->get<RegionState>();
   RegionStateTy::Factory &F = state->get_context<RegionState>();
 
-  bool generateReport = false;
   llvm::SmallVector<SymbolRef, 2> Errors;
   for (RegionStateTy::iterator I = RS.begin(), E = RS.end(); I != E; ++I) {
     if (SymReaper.isDead(I->first)) {
-      if (I->second.isAllocated()) {
-        generateReport = true;
+      if (I->second.isAllocated())
         Errors.push_back(I->first);
-      }
       // Remove the dead symbol from the map.
       RS = F.remove(RS, I->first);
 
@@ -1085,15 +1082,16 @@ void MallocChecker::checkDeadSymbols(SymbolReaper &SymReaper,
   }
 
   // Generate leak node.
-  static SimpleProgramPointTag Tag("MallocChecker : DeadSymbolsLeak");
-  ExplodedNode *N = C.addTransition(C.getState(), C.getPredecessor(), &Tag);
-
-  if (generateReport) {
+  ExplodedNode *N = C.getPredecessor();
+  if (!Errors.empty()) {
+    static SimpleProgramPointTag Tag("MallocChecker : DeadSymbolsLeak");
+    N = C.addTransition(C.getState(), C.getPredecessor(), &Tag);
     for (llvm::SmallVector<SymbolRef, 2>::iterator
-         I = Errors.begin(), E = Errors.end(); I != E; ++I) {
+        I = Errors.begin(), E = Errors.end(); I != E; ++I) {
       reportLeak(*I, N, C);
     }
   }
+
   C.addTransition(state->set<RegionState>(RS), N);
 }
 
@@ -1294,7 +1292,9 @@ ProgramStateRef MallocChecker::evalAssume(ProgramStateRef state,
   RegionStateTy RS = state->get<RegionState>();
   for (RegionStateTy::iterator I = RS.begin(), E = RS.end(); I != E; ++I) {
     // If the symbol is assumed to be NULL, remove it from consideration.
-    if (state->getConstraintManager().isNull(state, I.getKey()).isTrue())
+    ConstraintManager &CMgr = state->getConstraintManager();
+    ConditionTruthVal AllocFailed = CMgr.isNull(state, I.getKey());
+    if (AllocFailed.isConstrainedTrue())
       state = state->remove<RegionState>(I.getKey());
   }
 
@@ -1303,8 +1303,11 @@ ProgramStateRef MallocChecker::evalAssume(ProgramStateRef state,
   ReallocMap RP = state->get<ReallocPairs>();
   for (ReallocMap::iterator I = RP.begin(), E = RP.end(); I != E; ++I) {
     // If the symbol is assumed to be NULL, remove it from consideration.
-    if (!state->getConstraintManager().isNull(state, I.getKey()).isTrue())
+    ConstraintManager &CMgr = state->getConstraintManager();
+    ConditionTruthVal AllocFailed = CMgr.isNull(state, I.getKey());
+    if (!AllocFailed.isConstrainedTrue())
       continue;
+
     SymbolRef ReallocSym = I.getData().ReallocatedSym;
     if (const RefState *RS = state->get<RegionState>(ReallocSym)) {
       if (RS->isReleased()) {

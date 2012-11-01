@@ -754,9 +754,6 @@ def warn_objc_missing_super_call : Warning<
 def error_dealloc_bad_result_type : Error<
   "dealloc return type must be correctly specified as 'void' under ARC, "
   "instead of %0">;
-def warn_objc_missing_super_finalize : Warning<
-  "method possibly missing a [super finalize] call">,
-  InGroup<ObjCMissingSuperCalls>;
 def warn_undeclared_selector : Warning<
   "undeclared selector %0">, InGroup<UndeclaredSelector>, DefaultIgnore;
 def warn_implicit_atomic_property : Warning<
@@ -3143,6 +3140,9 @@ def note_sentinel_here : Note<
 def warn_missing_prototype : Warning<
   "no previous prototype for function %0">,
   InGroup<DiagGroup<"missing-prototypes">>, DefaultIgnore;
+def warn_missing_variable_declarations : Warning<
+  "no previous extern declaration for non-static variable %0">,
+  InGroup<DiagGroup<"missing-variable-declarations">>, DefaultIgnore;
 def err_redefinition : Error<"redefinition of %0">;
 def err_definition_of_implicitly_declared_member : Error<
   "definition of implicitly declared %select{default constructor|copy "
@@ -3869,7 +3869,8 @@ def warn_logical_and_in_logical_or : Warning<
   "'&&' within '||'">, InGroup<LogicalOpParentheses>;
 
 def warn_addition_in_bitshift : Warning<
-  "'%0' within '%1'">, InGroup<ShiftOpParentheses>;
+  "operator '%0' has lower precedence than '%1'; "
+  "'%1' will be evaluated first">, InGroup<ShiftOpParentheses>;
 
 def warn_self_assignment : Warning<
   "explicitly assigning a variable of type %0 to itself">,
@@ -5136,16 +5137,20 @@ let CategoryName = "Inline Assembly Issue" in {
     "%diff{$ matching output with type $|}0,1">;
   def err_asm_unknown_register_name : Error<"unknown register name '%0' in asm">;
   def err_asm_empty : Error<"__asm used with no assembly instructions">;
-  def warn_asm_label_on_auto_decl : Warning<
-    "ignored asm label '%0' on automatic variable">;
   def err_invalid_asm_cast_lvalue : Error<
     "invalid use of a cast in a inline asm context requiring an l-value: "
     "remove the cast or build with -fheinous-gnu-extensions">;
+  def err_inline_ms_asm_parsing : Error<"%0">;
 
+  def warn_asm_label_on_auto_decl : Warning<
+    "ignored asm label '%0' on automatic variable">;
   def warn_invalid_asm_cast_lvalue : Warning<
-    "invalid use of a cast in a inline asm context requiring an l-value: "
+    "invalid use of a cast in an inline asm context requiring an l-value: "
     "accepted due to -fheinous-gnu-extensions, but clang may remove support "
     "for this in the future">;
+  def warn_asm_mismatched_size_modifier : Warning<
+    "the size being stored is truncated, use a modifier to specify the size">,
+    InGroup<ASMOperandWidths>;
 }
 
 let CategoryName = "Semantic Issue" in {
@@ -5427,6 +5432,10 @@ def err_out_of_line_default_deletes : Error<
   "defaulting this %select{default constructor|copy constructor|move "
   "constructor|copy assignment operator|move assignment operator|destructor}0 "
   "would delete it after its first declaration">;
+def ext_implicit_exception_spec_mismatch : ExtWarn<
+  "function previously declared with an %select{explicit|implicit}0 exception "
+  "specification redeclared with an %select{implicit|explicit}0 exception "
+  "specification">, InGroup<DiagGroup<"implicit-exception-spec-mismatch">>;
 
 def warn_ptr_arith_precedes_bounds : Warning<
   "the pointer decremented by %0 refers before the beginning of the array">,

@@ -1558,6 +1558,7 @@ void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
     OS << '.';
   if (E->getQualifier())
     E->getQualifier()->print(OS, Policy);
+  OS << "~";
 
   std::string TypeS;
   if (IdentifierInfo *II = E->getDestroyedTypeIdentifier())

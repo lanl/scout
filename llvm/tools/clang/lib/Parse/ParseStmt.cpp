@@ -444,9 +444,9 @@ Retry:
     return StmtEmpty();
 
   case tok::annot_pragma_fp_contract:
-    ProhibitAttributes(Attrs);
-    HandlePragmaFPContract();
-    return StmtEmpty();
+    Diag(Tok, diag::err_pragma_fp_contract_scope);
+    ConsumeToken();
+    return StmtError();
 
   case tok::annot_pragma_opencl_extension:
     ProhibitAttributes(Attrs);
@@ -891,6 +891,10 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
   Sema::CompoundScopeRAII CompoundScope(Actions);
 
   StmtVector Stmts;
+
+  // Parse FP_CONTRACT if present.
+  if (Tok.is(tok::annot_pragma_fp_contract))
+    HandlePragmaFPContract();
 
   // "__label__ X, Y, Z;" is the GNU "Local Label" extension.  These are
   // only allowed at the start of a compound stmt regardless of the language.
@@ -2233,12 +2237,18 @@ bool Parser::trySkippingFunctionBody() {
   assert(SkipFunctionBodies &&
          "Should only be called when SkipFunctionBodies is enabled");
 
+  if (!PP.isCodeCompletionEnabled()) {
+    ConsumeBrace();
+    SkipUntil(tok::r_brace, /*StopAtSemi=*/false, /*DontConsume=*/false);
+    return true;
+  }
+
   // We're in code-completion mode. Skip parsing for all function bodies unless
   // the body contains the code-completion point.
   TentativeParsingAction PA(*this);
   ConsumeBrace();
   if (SkipUntil(tok::r_brace, /*StopAtSemi=*/false, /*DontConsume=*/false,
-                /*StopAtCodeCompletion=*/PP.isCodeCompletionEnabled())) {
+                /*StopAtCodeCompletion=*/true)) {
     PA.Commit();
     return true;
   }

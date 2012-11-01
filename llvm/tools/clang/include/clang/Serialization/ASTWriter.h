@@ -45,11 +45,11 @@ class ASTContext;
 class NestedNameSpecifier;
 class CXXBaseSpecifier;
 class CXXCtorInitializer;
+class FileEntry;
 class FPOptions;
 class HeaderSearch;
 class IdentifierResolver;
 class MacroDefinition;
-class MemorizeStatCalls;
 class OpaqueValueExpr;
 class OpenCLOptions;
 class ASTReader;
@@ -120,6 +120,10 @@ private:
 
   /// \brief Indicates that the AST contained compiler errors.
   bool ASTHasCompilerErrors;
+
+  /// \brief Mapping from input file entries to the index into the
+  /// offset table where information about that input file is stored.
+  llvm::DenseMap<const FileEntry *, uint32_t> InputFileIDs;
 
   /// \brief Stores a declaration or a type to be written to the AST file.
   class DeclOrType {
@@ -409,9 +413,9 @@ private:
                     llvm::DenseSet<Stmt *> &ParentStmts);
 
   void WriteBlockInfoBlock();
-  void WriteControlBlock(ASTContext &Context, StringRef isysroot,
-                         const std::string &OutputFile);
-  void WriteStatCache(MemorizeStatCalls &StatCalls);
+  void WriteControlBlock(Preprocessor &PP, ASTContext &Context,
+                         StringRef isysroot, const std::string &OutputFile);
+  void WriteInputFiles(SourceManager &SourceMgr, StringRef isysroot);
   void WriteSourceManagerBlock(SourceManager &SourceMgr,
                                const Preprocessor &PP,
                                StringRef isysroot);
@@ -461,7 +465,7 @@ private:
   void WriteDeclsBlockAbbrevs();
   void WriteDecl(ASTContext &Context, Decl *D);
 
-  void WriteASTCore(Sema &SemaRef, MemorizeStatCalls *StatCalls,
+  void WriteASTCore(Sema &SemaRef,
                     StringRef isysroot, const std::string &OutputFile,
                     Module *WritingModule);
 
@@ -476,15 +480,12 @@ public:
   /// \param SemaRef a reference to the semantic analysis object that processed
   /// the AST to be written into the precompiled header.
   ///
-  /// \param StatCalls the object that cached all of the stat() calls made while
-  /// searching for source files and headers.
-  ///
   /// \param WritingModule The module that we are writing. If null, we are
   /// writing a precompiled header.
   ///
   /// \param isysroot if non-empty, write a relocatable file whose headers
   /// are relative to the given system root.
-  void WriteAST(Sema &SemaRef, MemorizeStatCalls *StatCalls,
+  void WriteAST(Sema &SemaRef,
                 const std::string &OutputFile,
                 Module *WritingModule, StringRef isysroot,
                 bool hasErrors = false);
@@ -727,7 +728,6 @@ class PCHGenerator : public SemaConsumer {
   std::string isysroot;
   raw_ostream *Out;
   Sema *SemaPtr;
-  MemorizeStatCalls *StatCalls; // owned by the FileManager
   llvm::SmallVector<char, 128> Buffer;
   llvm::BitstreamWriter Stream;
   ASTWriter Writer;

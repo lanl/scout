@@ -140,11 +140,11 @@ StringRef Darwin::getDarwinArchName(const ArgList &Args) const {
   case llvm::Triple::thumb:
   case llvm::Triple::arm: {
     if (const Arg *A = Args.getLastArg(options::OPT_march_EQ))
-      if (const char *Arch = GetArmArchForMArch(A->getValue(Args)))
+      if (const char *Arch = GetArmArchForMArch(A->getValue()))
         return Arch;
 
     if (const Arg *A = Args.getLastArg(options::OPT_mcpu_EQ))
-      if (const char *Arch = GetArmArchForMCpu(A->getValue(Args)))
+      if (const char *Arch = GetArmArchForMCpu(A->getValue()))
         return Arch;
 
     return "arm";
@@ -326,7 +326,7 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
     break;
   default:
     getDriver().Diag(diag::err_drv_unsupported_rtlib_for_platform)
-      << Args.getLastArg(options::OPT_rtlib_EQ)->getValue(Args) << "darwin";
+      << Args.getLastArg(options::OPT_rtlib_EQ)->getValue() << "darwin";
     return;
   }
 
@@ -476,7 +476,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
   if (!iOSVersion && !iOSSimVersion) {
     for (arg_iterator it = Args.filtered_begin(options::OPT_D),
            ie = Args.filtered_end(); it != ie; ++it) {
-      StringRef define = (*it)->getValue(Args);
+      StringRef define = (*it)->getValue();
       if (define.startswith(SimulatorVersionDefineName())) {
         unsigned Major = 0, Minor = 0, Micro = 0;
         if (GetVersionFromSimulatorDefine(define, Major, Minor, Micro) &&
@@ -522,7 +522,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
     if (iOSTarget.empty()) {
       if (const Arg *A = Args.getLastArg(options::OPT_isysroot)) {
         StringRef first, second;
-        StringRef isysroot = A->getValue(Args);
+        StringRef isysroot = A->getValue();
         llvm::tie(first, second) = isysroot.split(StringRef("SDKs/iPhoneOS"));
         if (second != "")
           iOSTarget = second.substr(0,3);
@@ -591,7 +591,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
   bool HadExtra;
   if (OSXVersion) {
     assert((!iOSVersion && !iOSSimVersion) && "Unknown target platform!");
-    if (!Driver::GetReleaseVersion(OSXVersion->getValue(Args), Major, Minor,
+    if (!Driver::GetReleaseVersion(OSXVersion->getValue(), Major, Minor,
                                    Micro, HadExtra) || HadExtra ||
         Major != 10 || Minor >= 100 || Micro >= 100)
       getDriver().Diag(diag::err_drv_invalid_version_number)
@@ -599,7 +599,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
   } else {
     const Arg *Version = iOSVersion ? iOSVersion : iOSSimVersion;
     assert(Version && "Unknown target platform!");
-    if (!Driver::GetReleaseVersion(Version->getValue(Args), Major, Minor,
+    if (!Driver::GetReleaseVersion(Version->getValue(), Major, Minor,
                                    Micro, HadExtra) || HadExtra ||
         Major >= 10 || Minor >= 100 || Micro >= 100)
       getDriver().Diag(diag::err_drv_invalid_version_number)
@@ -637,7 +637,7 @@ void DarwinClang::AddCXXStdlibLibArgs(const ArgList &Args,
     // Check in the sysroot first.
     bool Exists;
     if (const Arg *A = Args.getLastArg(options::OPT_isysroot)) {
-      llvm::sys::Path P(A->getValue(Args));
+      llvm::sys::Path P(A->getValue());
       P.appendComponent("usr");
       P.appendComponent("lib");
       P.appendComponent("libstdc++.dylib");
@@ -714,14 +714,14 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
       // Skip this argument unless the architecture matches either the toolchain
       // triple arch, or the arch being bound.
       llvm::Triple::ArchType XarchArch =
-        llvm::Triple::getArchTypeForDarwinArchName(A->getValue(Args, 0));
+        tools::darwin::getArchTypeForDarwinArchName(A->getValue(0));
       if (!(XarchArch == getArch()  ||
             (BoundArch && XarchArch ==
-             llvm::Triple::getArchTypeForDarwinArchName(BoundArch))))
+             tools::darwin::getArchTypeForDarwinArchName(BoundArch))))
         continue;
 
       Arg *OriginalArg = A;
-      unsigned Index = Args.getBaseArgs().MakeIndex(A->getValue(Args, 1));
+      unsigned Index = Args.getBaseArgs().MakeIndex(A->getValue(1));
       unsigned Prev = Index;
       Arg *XarchArg = Opts.ParseOneArg(Args, Index);
 
@@ -756,7 +756,7 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
         for (unsigned i = 0, e = A->getNumValues(); i != e; ++i) {
           DAL->AddSeparateArg(OriginalArg,
                               Opts.getOption(options::OPT_Zlinker_input),
-                              A->getValue(Args, i));
+                              A->getValue(i));
 
         }
         continue;
@@ -779,7 +779,7 @@ DerivedArgList *Darwin::TranslateArgs(const DerivedArgList &Args,
 
     case options::OPT_dependency_file:
       DAL->AddSeparateArg(A, Opts.getOption(options::OPT_MF),
-                          A->getValue(Args));
+                          A->getValue());
       break;
 
     case options::OPT_gfull:
@@ -1068,7 +1068,7 @@ bool Generic_GCC::GCCVersion::operator<(const GCCVersion &RHS) const {
 static StringRef getGCCToolchainDir(const ArgList &Args) {
   const Arg *A = Args.getLastArg(options::OPT_gcc_toolchain);
   if (A)
-    return A->getValue(Args);
+    return A->getValue();
   return GCC_INSTALL_PREFIX;
 }
 
@@ -1127,7 +1127,8 @@ Generic_GCC::GCCInstallationDetector::GCCInstallationDetector(
       if (!llvm::sys::fs::exists(LibDir))
         continue;
       for (unsigned k = 0, ke = CandidateTripleAliases.size(); k < ke; ++k)
-        ScanLibDirForGCCTriple(TargetArch, LibDir, CandidateTripleAliases[k]);
+        ScanLibDirForGCCTriple(TargetArch, Args, LibDir,
+                               CandidateTripleAliases[k]);
     }
     for (unsigned j = 0, je = CandidateMultiarchLibDirs.size(); j < je; ++j) {
       const std::string LibDir
@@ -1136,7 +1137,7 @@ Generic_GCC::GCCInstallationDetector::GCCInstallationDetector(
         continue;
       for (unsigned k = 0, ke = CandidateMultiarchTripleAliases.size(); k < ke;
            ++k)
-        ScanLibDirForGCCTriple(TargetArch, LibDir,
+        ScanLibDirForGCCTriple(TargetArch, Args, LibDir,
                                CandidateMultiarchTripleAliases[k],
                                /*NeedsMultiarchSuffix=*/true);
     }
@@ -1322,8 +1323,32 @@ Generic_GCC::GCCInstallationDetector::GCCInstallationDetector(
     MultiarchTripleAliases.push_back(MultiarchTriple.str());
 }
 
+// FIXME: There is the same routine in the Tools.cpp.
+static bool hasMipsN32ABIArg(const ArgList &Args) {
+  Arg *A = Args.getLastArg(options::OPT_mabi_EQ);
+  return A && (A->getValue() == StringRef("n32"));
+}
+
+static StringRef getTargetMultiarchSuffix(llvm::Triple::ArchType TargetArch,
+                                          const ArgList &Args) {
+  if (TargetArch == llvm::Triple::x86_64 ||
+      TargetArch == llvm::Triple::ppc64)
+    return "/64";
+
+  if (TargetArch == llvm::Triple::mips64 ||
+      TargetArch == llvm::Triple::mips64el) {
+    if (hasMipsN32ABIArg(Args))
+      return "/n32";
+    else
+      return "/64";
+  }
+
+  return "/32";
+}
+
 void Generic_GCC::GCCInstallationDetector::ScanLibDirForGCCTriple(
-    llvm::Triple::ArchType TargetArch, const std::string &LibDir,
+    llvm::Triple::ArchType TargetArch, const ArgList &Args,
+    const std::string &LibDir,
     StringRef CandidateTriple, bool NeedsMultiarchSuffix) {
   // There are various different suffixes involving the triple we
   // check for. We also record what is necessary to walk from each back
@@ -1370,11 +1395,7 @@ void Generic_GCC::GCCInstallationDetector::ScanLibDirForGCCTriple(
       // *if* there is a subdirectory of the right name with crtbegin.o in it,
       // we use that. If not, and if not a multiarch triple, we look for
       // crtbegin.o without the subdirectory.
-      StringRef MultiarchSuffix
-        = (TargetArch == llvm::Triple::x86_64 ||
-           TargetArch == llvm::Triple::ppc64 ||
-           TargetArch == llvm::Triple::mips64 ||
-           TargetArch == llvm::Triple::mips64el) ? "/64" : "/32";
+      StringRef MultiarchSuffix = getTargetMultiarchSuffix(TargetArch, Args);
       if (llvm::sys::fs::exists(LI->path() + MultiarchSuffix + "/crtbegin.o")) {
         GCCMultiarchSuffix = MultiarchSuffix.str();
       } else {
@@ -2118,7 +2139,7 @@ static bool isMipsR2Arch(llvm::Triple::ArchType Arch,
   if (A->getOption().matches(options::OPT_mips_CPUs_Group))
     return A->getOption().matches(options::OPT_mips32r2);
 
-  return A->getValue(Args) == StringRef("mips32r2");
+  return A->getValue() == StringRef("mips32r2");
 }
 
 static StringRef getMultilibDir(const llvm::Triple &Triple,
@@ -2129,8 +2150,7 @@ static StringRef getMultilibDir(const llvm::Triple &Triple,
   // lib32 directory has a special meaning on MIPS targets.
   // It contains N32 ABI binaries. Use this folder if produce
   // code for N32 ABI only.
-  Arg *A = Args.getLastArg(options::OPT_mabi_EQ);
-  if (A && (A->getValue(Args) == StringRef("n32")))
+  if (hasMipsN32ABIArg(Args))
     return "lib32";
 
   return Triple.isArch32Bit() ? "lib" : "lib64";
