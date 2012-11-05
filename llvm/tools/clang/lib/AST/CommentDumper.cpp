@@ -18,17 +18,18 @@ class CommentDumper: public comments::ConstCommentVisitor<CommentDumper> {
   raw_ostream &OS;
   const CommandTraits *Traits;
   const SourceManager *SM;
-  unsigned IndentLevel;
+
+  /// The \c FullComment parent of the comment being dumped.
   const FullComment *FC;
-  
+
+  unsigned IndentLevel;
+
 public:
   CommentDumper(raw_ostream &OS,
                 const CommandTraits *Traits,
                 const SourceManager *SM,
-                const FullComment * FC) :
-      OS(OS), Traits(Traits), SM(SM), IndentLevel(0),
-      FC(FC)
-  
+                const FullComment *FC) :
+      OS(OS), Traits(Traits), SM(SM), FC(FC), IndentLevel(0)
   { }
 
   void dumpIndent() const {
@@ -188,7 +189,7 @@ void CommentDumper::visitParamCommandComment(const ParamCommandComment *C) {
 
   if (C->hasParamName()) {
     if (C->isParamIndexValid())
-      OS << " Param=\"" << C->getParamName(const_cast<FullComment*>(FC)) << "\"";
+      OS << " Param=\"" << C->getParamName(FC) << "\"";
     else
       OS << " Param=\"" << C->getParamNameAsWritten() << "\"";
   }
@@ -202,7 +203,7 @@ void CommentDumper::visitTParamCommandComment(const TParamCommandComment *C) {
 
   if (C->hasParamName()) {
     if (C->isPositionValid())
-      OS << " Param=\"" << C->getParamName(const_cast<FullComment*>(FC)) << "\"";
+      OS << " Param=\"" << C->getParamName(FC) << "\"";
     else
       OS << " Param=\"" << C->getParamNameAsWritten() << "\"";
   }

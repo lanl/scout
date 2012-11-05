@@ -1,5 +1,3 @@
-set(LLVM_REQUIRES_RTTI 1)
-
 add_llvm_library(LLVMCore
   AsmWriter.cpp
   Attributes.cpp
@@ -33,6 +31,7 @@ add_llvm_library(LLVMCore
   PrintModulePass.cpp
   Type.cpp
   TypeFinder.cpp
+  TargetTransformInfo.cpp
   Use.cpp
   User.cpp
   Value.cpp

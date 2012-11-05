@@ -34,8 +34,11 @@ class Twine;
 /// MCAsmParserSemaCallback - Generic Sema callback for assembly parser.
 class MCAsmParserSemaCallback {
 public:
+  virtual ~MCAsmParserSemaCallback(); 
   virtual void *LookupInlineAsmIdentifier(StringRef Name, void *Loc,
                                           unsigned &Size) = 0;
+  virtual bool LookupInlineAsmField(StringRef Base, StringRef Member,
+                                    unsigned &Offset) = 0;
 };
 
 /// MCAsmParser - Generic assembler parser interface, for use by target specific
@@ -89,15 +92,12 @@ public:
   /// ParseMSInlineAsm - Parse ms-style inline assembly.
   virtual bool ParseMSInlineAsm(void *AsmLoc, std::string &AsmString,
                                 unsigned &NumOutputs, unsigned &NumInputs,
-                                SmallVectorImpl<void *> &OpDecls,
+                                SmallVectorImpl<std::pair<void *, bool> > &OpDecls,
                                 SmallVectorImpl<std::string> &Constraints,
                                 SmallVectorImpl<std::string> &Clobbers,
                                 const MCInstrInfo *MII,
                                 const MCInstPrinter *IP,
                                 MCAsmParserSemaCallback &SI) = 0;
-
-  /// ParseStatement - Parse the next statement.
-  virtual bool ParseStatement() = 0;
 
   /// Warning - Emit a warning at the location \p L, with the message \p Msg.
   ///

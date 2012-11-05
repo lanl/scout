@@ -26,6 +26,7 @@
 
 using namespace clang;
 
+
 namespace {
 /// \brief A comment handler that passes comments found by the preprocessor
 /// to the parser action.
@@ -50,11 +51,13 @@ IdentifierInfo *Parser::getSEHExceptKeyword() {
   return Ident__except;
 }
 
-Parser::Parser(Preprocessor &pp, Sema &actions, bool SkipFunctionBodies)
+Parser::Parser(Preprocessor &pp, Sema &actions, bool skipFunctionBodies)
   : PP(pp), Actions(actions), Diags(PP.getDiagnostics()),
     GreaterThanIsOperator(true), ColonIsSacred(false), 
     InMessageExpression(false), TemplateParameterDepth(0),
-    ParsingInObjCContainer(false), SkipFunctionBodies(SkipFunctionBodies) {
+    ParsingInObjCContainer(false) {
+  SkipFunctionBodies = pp.isCodeCompletionEnabled() || skipFunctionBodies;
+  Tok.startToken();
   Tok.setKind(tok::eof);
   Actions.CurScope = 0;
   NumCachedScopes = 0;

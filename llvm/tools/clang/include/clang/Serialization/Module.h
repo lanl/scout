@@ -128,6 +128,18 @@ public:
   /// \brief The first source location in this module.
   SourceLocation FirstLoc;
 
+  // === Input Files ===
+  /// \brief The cursor to the start of the input-files block.
+  llvm::BitstreamCursor InputFilesCursor;
+
+  /// \brief Offsets for all of the input file entries in the AST file.
+  const uint32_t *InputFileOffsets;
+
+  /// \brief The input files that have been loaded from this AST file, along
+  /// with a bool indicating whether this was an overridden buffer.
+  std::vector<llvm::PointerIntPair<const FileEntry *, 1, bool> > 
+    InputFilesLoaded;
+
   // === Source Locations ===
 
   /// \brief Cursor used to read source location entries.
@@ -148,13 +160,6 @@ public:
 
   /// \brief SLocEntries that we're going to preload.
   SmallVector<uint64_t, 4> PreloadSLocEntries;
-
-  /// \brief The number of source location file entries in this AST file.
-  unsigned LocalNumSLocFileEntries;
-
-  /// \brief Offsets for all of the source location file entries in the
-  /// AST file.
-  const uint32_t *SLocFileOffsets;
 
   /// \brief Remapping table for source locations in this module.
   ContinuousRangeMap<uint32_t, int, 2> SLocRemap;
@@ -379,11 +384,6 @@ public:
 
   /// \brief Diagnostic IDs and their mappings that the user changed.
   SmallVector<uint64_t, 8> PragmaDiagMappings;
-
-  /// \brief The AST stat cache installed for this file, if any.
-  ///
-  /// The dynamic type of this stat cache is always ASTStatCache
-  void *StatCache;
 
   /// \brief List of modules which depend on this module
   llvm::SetVector<ModuleFile *> ImportedBy;

@@ -231,7 +231,9 @@ public:
   }
 
   /// Layout pointer alignment
-  unsigned getPointerABIAlignment(unsigned AS)  const {
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerABIAlignment(unsigned AS = 0)  const {
     DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
     if (val == Pointers.end()) {
       val = Pointers.find(0);
@@ -239,7 +241,9 @@ public:
     return val->second.ABIAlign;
   }
   /// Return target's alignment for stack-based pointers
-  unsigned getPointerPrefAlignment(unsigned AS) const {
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerPrefAlignment(unsigned AS = 0) const {
     DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
     if (val == Pointers.end()) {
       val = Pointers.find(0);
@@ -247,7 +251,9 @@ public:
     return val->second.PrefAlign;
   }
   /// Layout pointer size
-  unsigned getPointerSize(unsigned AS)          const {
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerSize(unsigned AS = 0)          const {
     DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
     if (val == Pointers.end()) {
       val = Pointers.find(0);
@@ -255,12 +261,10 @@ public:
     return val->second.TypeBitWidth;
   }
   /// Layout pointer size, in bits
-  unsigned getPointerSizeInBits(unsigned AS)    const {
-    DenseMap<unsigned, PointerAlignElem>::const_iterator val = Pointers.find(AS);
-    if (val == Pointers.end()) {
-      val = Pointers.find(0);
-    }
-    return 8*val->second.TypeBitWidth;
+  /// FIXME: The defaults need to be removed once all of
+  /// the backends/clients are updated.
+  unsigned getPointerSizeInBits(unsigned AS = 0)    const {
+    return getPointerSize(AS) * 8;
   }
   /// Size examples:
   ///
@@ -337,11 +341,14 @@ public:
   ///
   unsigned getPreferredTypeAlignmentShift(Type *Ty) const;
 
-  /// getIntPtrType - Return an unsigned integer type that is the same size or
-  /// greater to the host pointer size.
-  /// FIXME: Need to remove the default argument when the rest of the LLVM code
-  /// base has been updated.
+  /// getIntPtrType - Return an integer type with size at least as big as that
+  /// of a pointer in the given address space.
   IntegerType *getIntPtrType(LLVMContext &C, unsigned AddressSpace = 0) const;
+
+  /// getIntPtrType - Return an integer (vector of integer) type with size at
+  /// least as big as that of a pointer of the given pointer (vector of pointer)
+  /// type.
+  Type *getIntPtrType(Type *) const;
 
   /// getIndexedOffset - return the offset from the beginning of the type for
   /// the specified indices.  This is used to implement getelementptr.

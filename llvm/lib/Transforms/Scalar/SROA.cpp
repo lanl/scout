@@ -444,7 +444,6 @@ protected:
 
   bool computeConstantGEPOffset(GetElementPtrInst &GEPI, int64_t &GEPOffset) {
     GEPOffset = Offset;
-    unsigned int AS = GEPI.getPointerAddressSpace();
     for (gep_type_iterator GTI = gep_type_begin(GEPI), GTE = gep_type_end(GEPI);
          GTI != GTE; ++GTI) {
       ConstantInt *OpC = dyn_cast<ConstantInt>(GTI.getOperand());
@@ -474,7 +473,7 @@ protected:
         continue;
       }
 
-      APInt Index = OpC->getValue().sextOrTrunc(TD.getPointerSizeInBits(AS));
+      APInt Index = OpC->getValue().sextOrTrunc(TD.getPointerSizeInBits());
       Index *= APInt(Index.getBitWidth(),
                      TD.getTypeAllocSize(GTI.getIndexedType()));
       Index += APInt(Index.getBitWidth(), (uint64_t)GEPOffset,
@@ -582,7 +581,8 @@ private:
     P.Partitions.push_back(New);
   }
 
-  bool handleLoadOrStore(Type *Ty, Instruction &I, int64_t Offset) {
+  bool handleLoadOrStore(Type *Ty, Instruction &I, int64_t Offset,
+                         bool IsVolatile) {
     uint64_t Size = TD.getTypeStoreSize(Ty);
 
     // If this memory access can be shown to *statically* extend outside the
@@ -603,7 +603,14 @@ private:
       return true;
     }
 
-    insertUse(I, Offset, Size);
+    // We allow splitting of loads and stores where the type is an integer type
+    // and which cover the entire alloca. Such integer loads and stores
+    // often require decomposition into fine grained loads and stores.
+    bool IsSplittable = false;
+    if (IntegerType *ITy = dyn_cast<IntegerType>(Ty))
+      IsSplittable = !IsVolatile && ITy->getBitWidth() == AllocSize*8;
+
+    insertUse(I, Offset, Size, IsSplittable);
     return true;
   }
 
@@ -624,7 +631,7 @@ private:
   bool visitLoadInst(LoadInst &LI) {
     assert((!LI.isSimple() || LI.getType()->isSingleValueType()) &&
            "All simple FCA loads should have been pre-split");
-    return handleLoadOrStore(LI.getType(), LI, Offset);
+    return handleLoadOrStore(LI.getType(), LI, Offset, LI.isVolatile());
   }
 
   bool visitStoreInst(StoreInst &SI) {
@@ -634,7 +641,7 @@ private:
 
     assert((!SI.isSimple() || ValOp->getType()->isSingleValueType()) &&
            "All simple FCA stores should have been pre-split");
-    return handleLoadOrStore(ValOp->getType(), SI, Offset);
+    return handleLoadOrStore(ValOp->getType(), SI, Offset, SI.isVolatile());
   }
 
 
@@ -1173,6 +1180,21 @@ Type *AllocaPartitioning::getCommonType(iterator I) const {
       UserTy = LI->getType();
     } else if (StoreInst *SI = dyn_cast<StoreInst>(UI->U->getUser())) {
       UserTy = SI->getValueOperand()->getType();
+    } else {
+      return 0; // Bail if we have weird uses.
+    }
+
+    if (IntegerType *ITy = dyn_cast<IntegerType>(UserTy)) {
+      // If the type is larger than the partition, skip it. We only encounter
+      // this for split integer operations where we want to use the type of the
+      // entity causing the split.
+      if (ITy->getBitWidth() > (I->EndOffset - I->BeginOffset)*8)
+        continue;
+
+      // If we have found an integer type use covering the alloca, use that
+      // regardless of the other types, as integers are often used for a "bucket
+      // of bits" type.
+      return ITy;
     }
 
     if (Ty && Ty != UserTy)
@@ -2138,6 +2160,14 @@ static bool isIntegerWideningViable(const DataLayout &TD,
   if (SizeInBits != TD.getTypeStoreSizeInBits(AllocaTy))
     return false;
 
+  // We need to ensure that an integer type with the appropriate bitwidth can
+  // be converted to the alloca type, whatever that is. We don't want to force
+  // the alloca itself to have an integer type if there is a more suitable one.
+  Type *IntTy = Type::getIntNTy(AllocaTy->getContext(), SizeInBits);
+  if (!canConvertValue(TD, AllocaTy, IntTy) ||
+      !canConvertValue(TD, IntTy, AllocaTy))
+    return false;
+
   uint64_t Size = TD.getTypeStoreSize(AllocaTy);
 
   // Check the uses to ensure the uses are (likely) promoteable integer uses.
@@ -2364,8 +2394,7 @@ private:
 
   Value *getAdjustedAllocaPtr(IRBuilder<> &IRB, Type *PointerTy) {
     assert(BeginOffset >= NewAllocaBeginOffset);
-    unsigned AS = cast<PointerType>(PointerTy)->getAddressSpace();
-    APInt Offset(TD.getPointerSizeInBits(AS), BeginOffset - NewAllocaBeginOffset);
+    APInt Offset(TD.getPointerSizeInBits(), BeginOffset - NewAllocaBeginOffset);
     return getAdjustedPtr(IRB, TD, &NewAI, Offset, PointerTy, getName(""));
   }
 
@@ -2458,6 +2487,49 @@ private:
     assert(OldOp == OldPtr);
     IRBuilder<> IRB(&LI);
 
+    uint64_t Size = EndOffset - BeginOffset;
+    if (Size < TD.getTypeStoreSize(LI.getType())) {
+      assert(!LI.isVolatile());
+      assert(LI.getType()->isIntegerTy() &&
+             "Only integer type loads and stores are split");
+      assert(LI.getType()->getIntegerBitWidth() ==
+             TD.getTypeStoreSizeInBits(LI.getType()) &&
+             "Non-byte-multiple bit width");
+      assert(LI.getType()->getIntegerBitWidth() ==
+             TD.getTypeAllocSizeInBits(OldAI.getAllocatedType()) &&
+             "Only alloca-wide loads can be split and recomposed");
+      IntegerType *NarrowTy = Type::getIntNTy(LI.getContext(), Size * 8);
+      bool IsConvertable = (BeginOffset - NewAllocaBeginOffset == 0) &&
+                           canConvertValue(TD, NewAllocaTy, NarrowTy);
+      Value *V;
+      // Move the insertion point just past the load so that we can refer to it.
+      IRB.SetInsertPoint(llvm::next(BasicBlock::iterator(&LI)));
+      if (IsConvertable)
+        V = convertValue(TD, IRB,
+                         IRB.CreateAlignedLoad(&NewAI, NewAI.getAlignment(),
+                                               getName(".load")),
+                         NarrowTy);
+      else
+        V = IRB.CreateAlignedLoad(
+          getAdjustedAllocaPtr(IRB, NarrowTy->getPointerTo()),
+          getPartitionTypeAlign(NarrowTy), getName(".load"));
+      // Create a placeholder value with the same type as LI to use as the
+      // basis for the new value. This allows us to replace the uses of LI with
+      // the computed value, and then replace the placeholder with LI, leaving
+      // LI only used for this computation.
+      Value *Placeholder
+        = new LoadInst(UndefValue::get(LI.getType()->getPointerTo()));
+      V = insertInteger(TD, IRB, Placeholder, V, BeginOffset,
+                        getName(".insert"));
+      LI.replaceAllUsesWith(V);
+      Placeholder->replaceAllUsesWith(&LI);
+      delete Placeholder;
+      if (Pass.DeadSplitInsts.insert(&LI))
+        Pass.DeadInsts.push_back(&LI);
+      DEBUG(dbgs() << "          to: " << *V << "\n");
+      return IsConvertable;
+    }
+
     if (VecTy)
       return rewriteVectorizedLoadInst(IRB, LI, OldOp);
     if (IntTy && LI.getType()->isIntegerTy())
@@ -2539,6 +2611,39 @@ private:
     if (VecTy)
       return rewriteVectorizedStoreInst(IRB, SI, OldOp);
     Type *ValueTy = SI.getValueOperand()->getType();
+
+    uint64_t Size = EndOffset - BeginOffset;
+    if (Size < TD.getTypeStoreSize(ValueTy)) {
+      assert(!SI.isVolatile());
+      assert(ValueTy->isIntegerTy() &&
+             "Only integer type loads and stores are split");
+      assert(ValueTy->getIntegerBitWidth() ==
+             TD.getTypeStoreSizeInBits(ValueTy) &&
+             "Non-byte-multiple bit width");
+      assert(ValueTy->getIntegerBitWidth() ==
+             TD.getTypeSizeInBits(OldAI.getAllocatedType()) &&
+             "Only alloca-wide stores can be split and recomposed");
+      IntegerType *NarrowTy = Type::getIntNTy(SI.getContext(), Size * 8);
+      Value *V = extractInteger(TD, IRB, SI.getValueOperand(), NarrowTy,
+                                BeginOffset, getName(".extract"));
+      StoreInst *NewSI;
+      bool IsConvertable = (BeginOffset - NewAllocaBeginOffset == 0) &&
+                           canConvertValue(TD, NarrowTy, NewAllocaTy);
+      if (IsConvertable)
+        NewSI = IRB.CreateAlignedStore(convertValue(TD, IRB, V, NewAllocaTy),
+                                       &NewAI, NewAI.getAlignment());
+      else
+        NewSI = IRB.CreateAlignedStore(
+          V, getAdjustedAllocaPtr(IRB, NarrowTy->getPointerTo()),
+          getPartitionTypeAlign(NarrowTy));
+      (void)NewSI;
+      if (Pass.DeadSplitInsts.insert(&SI))
+        Pass.DeadInsts.push_back(&SI);
+
+      DEBUG(dbgs() << "          to: " << *NewSI << "\n");
+      return IsConvertable;
+    }
+
     if (IntTy && ValueTy->isIntegerTy())
       return rewriteIntegerStore(IRB, SI);
 
@@ -2686,10 +2791,8 @@ private:
     const AllocaPartitioning::MemTransferOffsets &MTO
       = P.getMemTransferOffsets(II);
 
-    assert(OldPtr->getType()->isPointerTy() && "Must be a pointer type!");
-    unsigned AS = cast<PointerType>(OldPtr->getType())->getAddressSpace();
     // Compute the relative offset within the transfer.
-    unsigned IntPtrWidth = TD.getPointerSizeInBits(AS);
+    unsigned IntPtrWidth = TD.getPointerSizeInBits();
     APInt RelOffset(IntPtrWidth, BeginOffset - (IsDest ? MTO.DestBegin
                                                        : MTO.SourceBegin));
 
@@ -2888,10 +2991,7 @@ private:
 
     Value *NewPtr = getAdjustedAllocaPtr(PtrBuilder, OldPtr->getType());
     // Replace the operands which were using the old pointer.
-    User::op_iterator OI = PN.op_begin(), OE = PN.op_end();
-    for (; OI != OE; ++OI)
-      if (*OI == OldPtr)
-        *OI = NewPtr;
+    std::replace(PN.op_begin(), PN.op_end(), cast<Value>(OldPtr), NewPtr);
 
     DEBUG(dbgs() << "          to: " << PN << "\n");
     deleteIfTriviallyDead(OldPtr);
@@ -3176,6 +3276,9 @@ static Type *getTypePartition(const DataLayout &TD, Type *Ty,
                               uint64_t Offset, uint64_t Size) {
   if (Offset == 0 && TD.getTypeAllocSize(Ty) == Size)
     return stripAggregateTypeWrapping(TD, Ty);
+  if (Offset > TD.getTypeAllocSize(Ty) ||
+      (TD.getTypeAllocSize(Ty) - Offset) < Size)
+    return 0;
 
   if (SequentialType *SeqTy = dyn_cast<SequentialType>(Ty)) {
     // We can't partition pointers...
@@ -3261,11 +3364,7 @@ static Type *getTypePartition(const DataLayout &TD, Type *Ty,
   }
 
   // Try to build up a sub-structure.
-  SmallVector<Type *, 4> ElementTys;
-  do {
-    ElementTys.push_back(*EI++);
-  } while (EI != EE);
-  StructType *SubTy = StructType::get(STy->getContext(), ElementTys,
+  StructType *SubTy = StructType::get(STy->getContext(), makeArrayRef(EI, EE),
                                       STy->isPacked());
   const StructLayout *SubSL = TD.getStructLayout(SubTy);
   if (Size != SubSL->getSizeInBytes())
@@ -3470,6 +3569,8 @@ void SROA::deleteDeadInstructions(SmallPtrSet<AllocaInst*, 4> &DeletedAllocas) {
   while (!DeadInsts.empty()) {
     Instruction *I = DeadInsts.pop_back_val();
     DEBUG(dbgs() << "Deleting dead instruction: " << *I << "\n");
+
+    I->replaceAllUsesWith(UndefValue::get(I->getType()));
 
     for (User::op_iterator OI = I->op_begin(), E = I->op_end(); OI != E; ++OI)
       if (Instruction *U = dyn_cast<Instruction>(*OI)) {

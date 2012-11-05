@@ -91,19 +91,18 @@ void CompilerInstance::setASTConsumer(ASTConsumer *Value) {
 
 void CompilerInstance::setCodeCompletionConsumer(CodeCompleteConsumer *Value) {
   CompletionConsumer.reset(Value);
-  getFrontendOpts().SkipFunctionBodies = Value != 0;
 }
 
 // Diagnostics
-static void SetUpBuildDumpLog(const DiagnosticOptions &DiagOpts,
+static void SetUpBuildDumpLog(DiagnosticOptions *DiagOpts,
                               unsigned argc, const char* const *argv,
                               DiagnosticsEngine &Diags) {
   std::string ErrorInfo;
   OwningPtr<raw_ostream> OS(
-    new llvm::raw_fd_ostream(DiagOpts.DumpBuildInformation.c_str(), ErrorInfo));
+    new llvm::raw_fd_ostream(DiagOpts->DumpBuildInformation.c_str(),ErrorInfo));
   if (!ErrorInfo.empty()) {
     Diags.Report(diag::err_fe_unable_to_open_logfile)
-                 << DiagOpts.DumpBuildInformation << ErrorInfo;
+                 << DiagOpts->DumpBuildInformation << ErrorInfo;
     return;
   }
 
@@ -118,20 +117,20 @@ static void SetUpBuildDumpLog(const DiagnosticOptions &DiagOpts,
   Diags.setClient(new ChainedDiagnosticConsumer(Diags.takeClient(), Logger));
 }
 
-static void SetUpDiagnosticLog(const DiagnosticOptions &DiagOpts,
+static void SetUpDiagnosticLog(DiagnosticOptions *DiagOpts,
                                const CodeGenOptions *CodeGenOpts,
                                DiagnosticsEngine &Diags) {
   std::string ErrorInfo;
   bool OwnsStream = false;
   raw_ostream *OS = &llvm::errs();
-  if (DiagOpts.DiagnosticLogFile != "-") {
+  if (DiagOpts->DiagnosticLogFile != "-") {
     // Create the output stream.
     llvm::raw_fd_ostream *FileOS(
-      new llvm::raw_fd_ostream(DiagOpts.DiagnosticLogFile.c_str(),
+      new llvm::raw_fd_ostream(DiagOpts->DiagnosticLogFile.c_str(),
                                ErrorInfo, llvm::raw_fd_ostream::F_Append));
     if (!ErrorInfo.empty()) {
       Diags.Report(diag::warn_fe_cc_log_diagnostics_failure)
-        << DiagOpts.DumpBuildInformation << ErrorInfo;
+        << DiagOpts->DumpBuildInformation << ErrorInfo;
     } else {
       FileOS->SetUnbuffered();
       FileOS->SetUseAtomicWrites(true);
@@ -148,7 +147,7 @@ static void SetUpDiagnosticLog(const DiagnosticOptions &DiagOpts,
   Diags.setClient(new ChainedDiagnosticConsumer(Diags.takeClient(), Logger));
 }
 
-static void SetupSerializedDiagnostics(const DiagnosticOptions &DiagOpts,
+static void SetupSerializedDiagnostics(DiagnosticOptions *DiagOpts,
                                        DiagnosticsEngine &Diags,
                                        StringRef OutputFile) {
   std::string ErrorInfo;
@@ -174,13 +173,13 @@ void CompilerInstance::createDiagnostics(int Argc, const char* const *Argv,
                                          DiagnosticConsumer *Client,
                                          bool ShouldOwnClient,
                                          bool ShouldCloneClient) {
-  Diagnostics = createDiagnostics(getDiagnosticOpts(), Argc, Argv, Client,
+  Diagnostics = createDiagnostics(&getDiagnosticOpts(), Argc, Argv, Client,
                                   ShouldOwnClient, ShouldCloneClient,
                                   &getCodeGenOpts());
 }
 
 IntrusiveRefCntPtr<DiagnosticsEngine>
-CompilerInstance::createDiagnostics(const DiagnosticOptions &Opts,
+CompilerInstance::createDiagnostics(DiagnosticOptions *Opts,
                                     int Argc, const char* const *Argv,
                                     DiagnosticConsumer *Client,
                                     bool ShouldOwnClient,
@@ -188,7 +187,7 @@ CompilerInstance::createDiagnostics(const DiagnosticOptions &Opts,
                                     const CodeGenOptions *CodeGenOpts) {
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   IntrusiveRefCntPtr<DiagnosticsEngine>
-      Diags(new DiagnosticsEngine(DiagID));
+      Diags(new DiagnosticsEngine(DiagID, Opts));
 
   // Create the diagnostic client for reporting errors or for
   // implementing -verify.
@@ -201,22 +200,22 @@ CompilerInstance::createDiagnostics(const DiagnosticOptions &Opts,
     Diags->setClient(new TextDiagnosticPrinter(llvm::errs(), Opts));
 
   // Chain in -verify checker, if requested.
-  if (Opts.VerifyDiagnostics)
+  if (Opts->VerifyDiagnostics)
     Diags->setClient(new VerifyDiagnosticConsumer(*Diags));
 
   // Chain in -diagnostic-log-file dumper, if requested.
-  if (!Opts.DiagnosticLogFile.empty())
+  if (!Opts->DiagnosticLogFile.empty())
     SetUpDiagnosticLog(Opts, CodeGenOpts, *Diags);
 
-  if (!Opts.DumpBuildInformation.empty())
+  if (!Opts->DumpBuildInformation.empty())
     SetUpBuildDumpLog(Opts, Argc, Argv, *Diags);
 
-  if (!Opts.DiagnosticSerializationFile.empty())
+  if (!Opts->DiagnosticSerializationFile.empty())
     SetupSerializedDiagnostics(Opts, *Diags,
-                               Opts.DiagnosticSerializationFile);
+                               Opts->DiagnosticSerializationFile);
   
   // Configure our handling of diagnostics.
-  ProcessWarningOptions(*Diags, Opts);
+  ProcessWarningOptions(*Diags, *Opts);
 
   return Diags;
 }
@@ -244,11 +243,13 @@ void CompilerInstance::createPreprocessor() {
     PTHMgr = PTHManager::Create(PPOpts.TokenCache, getDiagnostics());
 
   // Create the Preprocessor.
-  HeaderSearch *HeaderInfo = new HeaderSearch(getFileManager(), 
+  HeaderSearch *HeaderInfo = new HeaderSearch(&getHeaderSearchOpts(),
+                                              getFileManager(),
                                               getDiagnostics(),
                                               getLangOpts(),
                                               &getTarget());
-  PP = new Preprocessor(getDiagnostics(), getLangOpts(), &getTarget(),
+  PP = new Preprocessor(&getPreprocessorOpts(),
+                        getDiagnostics(), getLangOpts(), &getTarget(),
                         getSourceManager(), *HeaderInfo, *this, PTHMgr,
                         /*OwnsHeaderSearch=*/true);
 
@@ -309,14 +310,12 @@ void CompilerInstance::createASTContext() {
 
 void CompilerInstance::createPCHExternalASTSource(StringRef Path,
                                                   bool DisablePCHValidation,
-                                                  bool DisableStatCache,
                                                 bool AllowPCHWithCompilerErrors,
                                                  void *DeserializationListener){
   OwningPtr<ExternalASTSource> Source;
   bool Preamble = getPreprocessorOpts().PrecompiledPreambleBytes.first != 0;
   Source.reset(createPCHExternalASTSource(Path, getHeaderSearchOpts().Sysroot,
                                           DisablePCHValidation,
-                                          DisableStatCache,
                                           AllowPCHWithCompilerErrors,
                                           getPreprocessor(), getASTContext(),
                                           DeserializationListener,
@@ -329,7 +328,6 @@ ExternalASTSource *
 CompilerInstance::createPCHExternalASTSource(StringRef Path,
                                              const std::string &Sysroot,
                                              bool DisablePCHValidation,
-                                             bool DisableStatCache,
                                              bool AllowPCHWithCompilerErrors,
                                              Preprocessor &PP,
                                              ASTContext &Context,
@@ -338,14 +336,15 @@ CompilerInstance::createPCHExternalASTSource(StringRef Path,
   OwningPtr<ASTReader> Reader;
   Reader.reset(new ASTReader(PP, Context,
                              Sysroot.empty() ? "" : Sysroot.c_str(),
-                             DisablePCHValidation, DisableStatCache,
+                             DisablePCHValidation,
                              AllowPCHWithCompilerErrors));
 
   Reader->setDeserializationListener(
             static_cast<ASTDeserializationListener *>(DeserializationListener));
   switch (Reader->ReadAST(Path,
                           Preamble ? serialization::MK_Preamble
-                                   : serialization::MK_PCH)) {
+                                   : serialization::MK_PCH,
+                          ASTReader::ARR_None)) {
   case ASTReader::Success:
     // Set the predefines buffer as suggested by the PCH reader. Typically, the
     // predefines buffer will be empty.
@@ -356,7 +355,10 @@ CompilerInstance::createPCHExternalASTSource(StringRef Path,
     // Unrecoverable failure: don't even try to process the input file.
     break;
 
-  case ASTReader::IgnorePCH:
+  case ASTReader::OutOfDate:
+  case ASTReader::VersionMismatch:
+  case ASTReader::ConfigurationMismatch:
+  case ASTReader::HadErrors:
     // No suitable PCH file could be found. Return an error.
     break;
   }
@@ -943,8 +945,7 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
       const PreprocessorOptions &PPOpts = getPreprocessorOpts();
       ModuleManager = new ASTReader(getPreprocessor(), *Context,
                                     Sysroot.empty() ? "" : Sysroot.c_str(),
-                                    PPOpts.DisablePCHValidation,
-                                    PPOpts.DisableStatCache);
+                                    PPOpts.DisablePCHValidation);
       if (hasASTConsumer()) {
         ModuleManager->setDeserializationListener(
           getASTConsumer().GetASTDeserializationListener());
@@ -964,11 +965,15 @@ Module *CompilerInstance::loadModule(SourceLocation ImportLoc,
 
     // Try to load the module we found.
     switch (ModuleManager->ReadAST(ModuleFile->getName(),
-                                   serialization::MK_Module)) {
+                                   serialization::MK_Module,
+                                   ASTReader::ARR_None)) {
     case ASTReader::Success:
       break;
 
-    case ASTReader::IgnorePCH:
+    case ASTReader::OutOfDate:
+    case ASTReader::VersionMismatch:
+    case ASTReader::ConfigurationMismatch:
+    case ASTReader::HadErrors:
       // FIXME: The ASTReader will already have complained, but can we showhorn
       // that diagnostic information into a more useful form?
       KnownModules[Path[0].first] = 0;

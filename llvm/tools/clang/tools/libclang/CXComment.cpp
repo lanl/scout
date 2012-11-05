@@ -536,7 +536,7 @@ class CommentASTToHTMLConverter :
     public ConstCommentVisitor<CommentASTToHTMLConverter> {
 public:
   /// \param Str accumulator for HTML.
-  CommentASTToHTMLConverter(FullComment *FC,
+  CommentASTToHTMLConverter(const FullComment *FC,
                             SmallVectorImpl<char> &Str,
                             const CommandTraits &Traits) :
       FC(FC), Result(Str), Traits(Traits)
@@ -568,7 +568,7 @@ public:
   void appendToResultWithHTMLEscaping(StringRef S);
 
 private:
-  FullComment *FC;
+  const FullComment *FC;
   /// Output stream for HTML.
   llvm::raw_svector_ostream Result;
 
@@ -844,8 +844,7 @@ CXString clang_FullComment_getAsHTML(CXComment CXC) {
     return createCXString((const char *) 0);
 
   SmallString<1024> HTML;
-  CommentASTToHTMLConverter Converter(const_cast<FullComment *>(FC),
-                                      HTML, getCommandTraits(CXC));
+  CommentASTToHTMLConverter Converter(FC, HTML, getCommandTraits(CXC));
   Converter.visit(FC);
   return createCXString(HTML.str(), /* DupString = */ true);
 }
@@ -857,7 +856,7 @@ class CommentASTToXMLConverter :
     public ConstCommentVisitor<CommentASTToXMLConverter> {
 public:
   /// \param Str accumulator for XML.
-  CommentASTToXMLConverter(FullComment *FC,
+  CommentASTToXMLConverter(const FullComment *FC,
                            SmallVectorImpl<char> &Str,
                            const CommandTraits &Traits,
                            const SourceManager &SM) :
@@ -884,14 +883,27 @@ public:
   void appendToResultWithXMLEscaping(StringRef S);
 
 private:
-  FullComment *FC;
-      
+  const FullComment *FC;
+
   /// Output stream for XML.
   llvm::raw_svector_ostream Result;
 
   const CommandTraits &Traits;
   const SourceManager &SM;
 };
+
+void getSourceTextOfDeclaration(const DeclInfo *ThisDecl,
+                                SmallVectorImpl<char> &Str) {
+  ASTContext &Context = ThisDecl->CurrentDecl->getASTContext();
+  const LangOptions &LangOpts = Context.getLangOpts();
+  llvm::raw_svector_ostream OS(Str);
+  PrintingPolicy PPolicy(LangOpts);
+  PPolicy.SuppressAttributes = true;
+  PPolicy.TerseOutput = true;
+  ThisDecl->CurrentDecl->print(OS, PPolicy,
+                               /*Indentation*/0, /*PrintInstantiation*/true);
+}
+
 } // end unnamed namespace
 
 void CommentASTToXMLConverter::visitTextComment(const TextComment *C) {
@@ -1033,20 +1045,6 @@ void CommentASTToXMLConverter::visitVerbatimLineComment(
   Result << "</Verbatim>";
 }
 
-static std::string getSourceTextOfDeclaration(const DeclInfo *ThisDecl) {
-  
-  ASTContext &Context = ThisDecl->CurrentDecl->getASTContext();
-  const LangOptions &LangOpts = Context.getLangOpts();
-  std::string SStr;
-  llvm::raw_string_ostream S(SStr);
-  PrintingPolicy PPolicy(LangOpts);
-  PPolicy.SuppressAttributes = true;
-  PPolicy.TerseOutput = true;
-  ThisDecl->CurrentDecl->print(S, PPolicy,
-                               /*Indentation*/0, /*PrintInstantiation*/true);
-  return S.str();
-}
-
 void CommentASTToXMLConverter::visitFullComment(const FullComment *C) {
   FullCommentParts Parts(C, Traits);
 
@@ -1165,11 +1163,16 @@ void CommentASTToXMLConverter::visitFullComment(const FullComment *C) {
     Result << "<Other><Name>unknown</Name>";
   }
 
+  {
+    // Pretty-print the declaration.
+    Result << "<Declaration>";
+    SmallString<128> Declaration;
+    getSourceTextOfDeclaration(DI, Declaration);
+    appendToResultWithXMLEscaping(Declaration);
+    Result << "</Declaration>";
+  }
+
   bool FirstParagraphIsBrief = false;
-  Result << "<Declaration>";
-  appendToResultWithXMLEscaping(getSourceTextOfDeclaration(DI));
-  Result << "</Declaration>";
-  
   if (Parts.Brief) {
     Result << "<Abstract>";
     visit(Parts.Brief);
@@ -1325,8 +1328,7 @@ CXString clang_FullComment_getAsXML(CXComment CXC) {
   SourceManager &SM = static_cast<ASTUnit *>(TU->TUData)->getSourceManager();
 
   SmallString<1024> XML;
-  CommentASTToXMLConverter Converter(const_cast<FullComment *>(FC), XML,
-                                     getCommandTraits(CXC), SM);
+  CommentASTToXMLConverter Converter(FC, XML, getCommandTraits(CXC), SM);
   Converter.visit(FC);
   return createCXString(XML.str(), /* DupString = */ true);
 }

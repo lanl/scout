@@ -25,7 +25,7 @@ ModuleFile::ModuleFile(ModuleKind Kind, unsigned Generation)
     Generation(Generation), SizeInBits(0),
     LocalNumSLocEntries(0), SLocEntryBaseID(0),
     SLocEntryBaseOffset(0), SLocEntryOffsets(0),
-    SLocFileOffsets(0), LocalNumIdentifiers(0),
+    LocalNumIdentifiers(0),
     IdentifierOffsets(0), BaseIdentifierID(0), IdentifierTableData(0),
     IdentifierLookupTable(0),
     LocalNumMacros(0), MacroOffsets(0),
@@ -41,7 +41,7 @@ ModuleFile::ModuleFile(ModuleKind Kind, unsigned Generation)
     FileSortedDecls(0), NumFileSortedDecls(0),
     RedeclarationsMap(0), LocalNumRedeclarationsInMap(0),
     ObjCCategoriesMap(0), LocalNumObjCCategoriesInMap(0),
-    LocalNumTypes(0), TypeOffsets(0), BaseTypeIndex(0), StatCache(0)
+    LocalNumTypes(0), TypeOffsets(0), BaseTypeIndex(0)
 {}
 
 ModuleFile::~ModuleFile() {

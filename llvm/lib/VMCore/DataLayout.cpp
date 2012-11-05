@@ -559,8 +559,10 @@ uint64_t DataLayout::getTypeSizeInBits(Type *Ty) const {
   // only 80 bits contain information.
   case Type::X86_FP80TyID:
     return 80;
-  case Type::VectorTyID:
-    return cast<VectorType>(Ty)->getBitWidth();
+  case Type::VectorTyID: {
+    VectorType *VTy = cast<VectorType>(Ty);
+    return VTy->getNumElements()*getTypeSizeInBits(VTy->getElementType());
+  }
   default:
     llvm_unreachable("DataLayout::getTypeSizeInBits(): Unsupported type");
   }
@@ -658,13 +660,30 @@ unsigned DataLayout::getPreferredTypeAlignmentShift(Type *Ty) const {
   return Log2_32(Align);
 }
 
-/// getIntPtrType - Return an unsigned integer type that is the same size or
-/// greater to the host pointer size.
+/// getIntPtrType - Return an integer type with size at least as big as that
+/// of a pointer in the given address space.
 IntegerType *DataLayout::getIntPtrType(LLVMContext &C,
                                        unsigned AddressSpace) const {
   return IntegerType::get(C, getPointerSizeInBits(AddressSpace));
 }
 
+/// getIntPtrType - Return an integer (vector of integer) type with size at
+/// least as big as that of a pointer of the given pointer (vector of pointer)
+/// type.
+Type *DataLayout::getIntPtrType(Type *Ty) const {
+#if 0
+  // FIXME: This assert should always have been here, but the review comments
+  // weren't addressed in time, and now there is lots of code "depending" on
+  // this. Uncomment once this is cleaned up.
+  assert(Ty->isPtrOrPtrVectorTy() &&
+         "Expected a pointer or pointer vector type.");
+#endif
+  unsigned NumBits = getTypeSizeInBits(Ty->getScalarType());
+  IntegerType *IntTy = IntegerType::get(Ty->getContext(), NumBits);
+  if (VectorType *VecTy = dyn_cast<VectorType>(Ty))
+    return VectorType::get(IntTy, VecTy->getNumElements());
+  return IntTy;
+}
 
 uint64_t DataLayout::getIndexedOffset(Type *ptrTy,
                                       ArrayRef<Value *> Indices) const {
