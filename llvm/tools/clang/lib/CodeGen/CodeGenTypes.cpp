@@ -594,7 +594,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     for( ; it != it_end; ++it) {
       llvm::StringRef name = it->getName();
       // Do not generate code for implicit mesh member variables.
-      if(!(name == "position" || name == "width" || name == "height" || name == "depth")) {
+      if(!(name == "position" || name == "width" || name == "height" ||
+           name == "depth" || name == "ptr")) {
         // Identify the type of each mesh member.
         llvm::Type *ty = ConvertType(it->getType());
         uint64_t numElts = 1;

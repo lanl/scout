@@ -2324,6 +2324,8 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
   Expr *BaseExpr = E->getBase();
 
+  // scout
+  
   // Check if this is a Scout mesh member expression.
   if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
 
@@ -2342,7 +2344,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
         // Check if this is a Scout '*.width' instrinsic.
         if(memberName == "width")
-          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 0), 
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 0),
                                 getContext().IntTy);
 
         // Check if this is a Scout '*.height' instrinsic.
@@ -2354,6 +2356,14 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
         if(memberName == "depth")
           return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 2), 
                                 getContext().IntTy);
+        
+        // Check if this is a Scout '*.ptr' instrinsic.
+        if(memberName == "ptr"){
+          llvm::Value* mp = Builder.CreateBitCast(baseAddr, VoidPtrTy, "mesh.ptr");
+          llvm::Value* tempAddr = CreateMemTemp(getContext().VoidPtrTy, "ref.temp");
+          Builder.CreateStore(mp, tempAddr);
+          return MakeAddrLValue(tempAddr, getContext().VoidPtrTy);
+        }
 
         return EmitMeshMemberExpr(VD, memberName);
       }

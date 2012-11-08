@@ -36,9 +36,9 @@ if (SUPPORTS_NO_VARIADIC_MACROS_FLAG)
   list(APPEND ASAN_CFLAGS -Wno-variadic-macros)
 endif ()
 
-if (APPLE)
-  list(APPEND ASAN_CFLAGS -mmacosx-version-min=10.5)
-endif()
+#if (APPLE)
+#  list(APPEND ASAN_CFLAGS -mmacosx-version-min=10.5)
+#endif()
 
 set(ASAN_COMMON_DEFINITIONS
   ASAN_HAS_EXCEPTIONS=1

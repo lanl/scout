@@ -11130,8 +11130,6 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // return true on success
 
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  // scout - ok to pass null type source info and bit field width? SCOUTCODE
-
   FieldDecl *PositionFD =
   FieldDecl::Create(Context, Mesh, Loc, Loc,
                     &Context.Idents.get("position"), Context.Int4Ty, 0,
@@ -11167,6 +11165,16 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
 
   Mesh->addDecl(DepthFD);
+  
+  FieldDecl *PtrFD =
+  FieldDecl::Create(Context, Mesh, Loc, Loc,
+                    &Context.Idents.get("ptr"), Context.VoidPtrTy, 0,
+                    0, true, ICIS_NoInit);
+  
+
+  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
+
+  Mesh->addDecl(PtrFD);
 
   PopDeclContext();
 
@@ -11174,6 +11182,10 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
 }
 
 bool Sema::IsValidMeshField(FieldDecl* FD){
+  if(FD->getName() == "ptr"){
+    return true;
+  }
+  
   QualType QT = FD->getType();
   const Type* T = QT.getTypePtr();
   if(T->isPointerType()){

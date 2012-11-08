@@ -679,7 +679,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     
     if(!(name.equals("position") || name.equals("width") ||
-         name.equals("height") || name.equals("depth"))) {
+         name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
       llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+3, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
@@ -1356,7 +1356,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     
     if(!(name.equals("position") || name.equals("width") ||
-         name.equals("height") || name.equals("depth"))) {
+         name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
       
       llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i+3, name);
       addr = Builder.CreateLoad(addr);
