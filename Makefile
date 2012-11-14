@@ -130,6 +130,12 @@ compile: $(build_dir)/Makefile
 	@(cd $(stdlib_build_dir); cmake $(cmake_flags) -DCMAKE_SCC_BOOTSTRAP=ON $(src_dir)/lib/Standard)
 	@(cd $(stdlib_build_dir); make $(make_flags) install)
 
+.PHONY: scc-only
+scc-only: $(build_dir)/Makefile
+	@(cd $(build_dir); make $(make_flags))
+	cp $(build_dir)/tools/clang/scc/scc $(build_dir)/scout/bin/scc
+	cp $(build_dir)/tools/clang/scc-rewrite/scc-rewrite $(build_dir)/scout/bin/scc-rewrite
+
 .PHONY: test
 test: 
 	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
