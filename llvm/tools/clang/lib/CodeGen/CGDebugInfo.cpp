@@ -1249,10 +1249,15 @@ llvm::DIType CGDebugInfo::getOrCreateInterfaceType(QualType D,
   return T;
 }
 
-// scout - Scout Mesh
-// TODO - implement
+// scout - Scout Mesh debugger support
 llvm::DIType CGDebugInfo::CreateType(const MeshType *Ty) {
-  return llvm::DIType();
+  unsigned Size = 
+    CGM.getContext().getTypeSize(CGM.getContext().VoidPtrTy);
+
+  llvm::DIType DITy =
+    DBuilder.createPointerType(ClassTy, Size);
+  
+  return DITy;
 }
 
 /// CreateType - get structure or union type.
@@ -2329,7 +2334,7 @@ llvm::DIType CGDebugInfo::EmitTypeForVarWithBlocksAttr(const ValueDecl *VD,
 /// EmitDeclare - Emit local variable declaration debug info.
 void CGDebugInfo::EmitDeclare(const VarDecl *VD, unsigned Tag,
                               llvm::Value *Storage, 
-                              unsigned ArgNo, CGBuilderTy &Builder) {
+                              unsigned ArgNo, CGBuilderTy &Builder) {  
   assert(CGM.getCodeGenOpts().getDebugInfo() >= CodeGenOptions::LimitedDebugInfo);
   assert(!LexicalBlockStack.empty() && "Region stack mismatch, stack empty!");
 

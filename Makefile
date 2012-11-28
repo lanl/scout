@@ -90,7 +90,6 @@ endif
 #
 #####
 
-
 ##### SOURCE LOCATION 
 # 
 src_dir := ${CURDIR}
@@ -112,6 +111,11 @@ stdlib_flags := -DCMAKE_SCC_BOOTSTRAP
 #####
 
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir) $(SC_BUILD_CMAKE_FLAGS)
+
+### cmake options required to build scout for LLDB on the Mac
+ifdef SC_USE_LIBCPP
+  cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
+endif
 
 all: $(build_dir)/Makefile compile 
 .PHONY: all 
