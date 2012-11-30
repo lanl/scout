@@ -1251,13 +1251,12 @@ llvm::DIType CGDebugInfo::getOrCreateInterfaceType(QualType D,
 
 // scout - Scout Mesh debugger support
 llvm::DIType CGDebugInfo::CreateType(const MeshType *Ty) {
-  unsigned Size = 
-    CGM.getContext().getTypeSize(CGM.getContext().VoidPtrTy);
-
-  llvm::DIType DITy =
-    DBuilder.createPointerType(ClassTy, Size);
+  RecordDecl* rd = Ty->getDecl()->getStructRep();
   
-  return DITy;
+  const RecordType* rt =
+  cast<RecordType>(CGM.getContext().getRecordType(rd).getTypePtr());
+  
+  return CreateType(rt);
 }
 
 /// CreateType - get structure or union type.

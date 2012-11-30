@@ -2868,7 +2868,7 @@ MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
   
   RecordDecl* SR =
   RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
-                     IdLoc, &C.Idents.get("mesh.struct"));
+                     IdLoc, &C.Idents.get(M->getName()));
   
   M->setStructRep(SR);
   

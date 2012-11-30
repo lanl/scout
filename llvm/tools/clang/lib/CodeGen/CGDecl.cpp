@@ -1057,9 +1057,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             >= CodeGenOptions::LimitedDebugInfo) {
 
         // scout - the decl ptr for meshes
-        if(ScoutDeclPtr){
-          DeclPtr = ScoutDeclPtr;
-        }
+        //if(ScoutDeclPtr){
+          //DeclPtr = ScoutDeclPtr;
+        //}
         
         DI->setLocation(D.getLocation());
         if (Target.useGlobalsForAutomaticVariables()) {
