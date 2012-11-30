@@ -2866,6 +2866,12 @@ MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
   
   MeshDecl* M = new (C) MeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
   
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get("mesh.struct"));
+  
+  M->setStructRep(SR);
+  
   C.getTypeDeclType(M);
   return M;
 }
@@ -2879,7 +2885,65 @@ void MeshDecl::startDefinition() {
   IsBeingDefined = true;
 }
 
-void MeshDecl::completeDefinition() {
+void MeshDecl::completeDefinition(ASTContext& C) {
+  assert(StructRep && "MeshDecl::completeDefinition: uninitialized StructRep");
+
+  FieldDecl* Field = FieldDecl::Create(C, StructRep, getLocation(),
+                                       getLocation(),
+                                       &C.Idents.get("width"),
+                                       C.UnsignedIntTy,
+                                       0,
+                                       0,
+                                       false,
+                                       ICIS_NoInit);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+
+  Field = FieldDecl::Create(C, StructRep, getLocation(),
+                            getLocation(),
+                            &C.Idents.get("height"),
+                            C.UnsignedIntTy,
+                            0,
+                            0,
+                            false,
+                            ICIS_NoInit);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+  
+  Field = FieldDecl::Create(C, StructRep, getLocation(),
+                            getLocation(),
+                            &C.Idents.get("depth"),
+                            C.UnsignedIntTy,
+                            0,
+                            0,
+                            false,
+                            ICIS_NoInit);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+  
+  for(MeshDecl::field_iterator itr = field_begin(),
+      itrEnd = field_end(); itr != itrEnd; ++itr){
+
+    FieldDecl* field = *itr;
+
+    
+    if(!field->isMeshImplicit()){
+      Field = FieldDecl::Create(C, StructRep, field->getLocation(),
+                                field->getLocation(),
+                                &C.Idents.get(field->getName()),
+                                C.getPointerType(field->getType()),
+                                0,
+                                0,
+                                false,
+                                ICIS_NoInit);
+
+      
+      StructRep->addDecl(Field);
+    }
+  }
+  
+  StructRep->completeDefinition();
+
   IsDefinition = true;
   IsBeingDefined = false;
 }
