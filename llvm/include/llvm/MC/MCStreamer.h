@@ -14,12 +14,12 @@
 #ifndef LLVM_MC_MCSTREAMER_H
 #define LLVM_MC_MCSTREAMER_H
 
-#include "llvm/Support/DataTypes.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/MC/MCDirectives.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCWin64EH.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/DataTypes.h"
 
 namespace llvm {
   class MCAsmBackend;
@@ -55,6 +55,7 @@ namespace llvm {
 
     std::vector<MCDwarfFrameInfo> FrameInfos;
     MCDwarfFrameInfo *getCurrentFrameInfo();
+    MCSymbol *EmitCFICommon();
     void EnsureValidFrame();
 
     std::vector<MCWin64EHUnwindInfo *> W64UnwindInfos;
@@ -515,6 +516,8 @@ namespace llvm {
     virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
     virtual void EmitCFIEscape(StringRef Values);
     virtual void EmitCFISignalFrame();
+    virtual void EmitCFIUndefined(int64_t Register);
+    virtual void EmitCFIRegister(int64_t Register1, int64_t Register2);
 
     virtual void EmitWin64EHStartProc(const MCSymbol *Symbol);
     virtual void EmitWin64EHEndProc();

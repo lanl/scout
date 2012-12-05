@@ -15,29 +15,29 @@
 
 #define DEBUG_TYPE "globalopt"
 #include "llvm/Transforms/IPO.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/ConstantFolding.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/CallingConv.h"
 #include "llvm/Constants.h"
+#include "llvm/DataLayout.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Module.h"
 #include "llvm/Operator.h"
 #include "llvm/Pass.h"
-#include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Analysis/MemoryBuiltins.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -225,6 +225,7 @@ static bool AnalyzeGlobal(const Value *V, GlobalStatus &GS,
 
         // Don't hack on volatile stores.
         if (SI->isVolatile()) return true;
+
         GS.Ordering = StrongerOrdering(GS.Ordering, SI->getOrdering());
 
         // If this is a direct store to the global (i.e., the global is a scalar
@@ -234,6 +235,14 @@ static bool AnalyzeGlobal(const Value *V, GlobalStatus &GS,
           if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(
                                                            SI->getOperand(1))) {
             Value *StoredVal = SI->getOperand(0);
+
+            if (Constant *C = dyn_cast<Constant>(StoredVal)) {
+              if (C->isThreadDependent()) {
+                // The stored value changes between threads; don't track it.
+                return true;
+              }
+            }
+
             if (StoredVal == GV->getInitializer()) {
               if (GS.StoredType < GlobalStatus::isInitializerStored)
                 GS.StoredType = GlobalStatus::isInitializerStored;

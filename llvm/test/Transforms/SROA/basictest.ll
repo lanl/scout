@@ -1100,12 +1100,12 @@ entry:
   %imag = getelementptr inbounds { float, float }* %retval, i32 0, i32 1
   store float %phi.real, float* %real
   store float %phi.imag, float* %imag
+  ; CHECK-NEXT: %[[real_convert:.*]] = bitcast float %[[real]] to i32
   ; CHECK-NEXT: %[[imag_convert:.*]] = bitcast float %[[imag]] to i32
   ; CHECK-NEXT: %[[imag_ext:.*]] = zext i32 %[[imag_convert]] to i64
   ; CHECK-NEXT: %[[imag_shift:.*]] = shl i64 %[[imag_ext]], 32
   ; CHECK-NEXT: %[[imag_mask:.*]] = and i64 undef, 4294967295
   ; CHECK-NEXT: %[[imag_insert:.*]] = or i64 %[[imag_mask]], %[[imag_shift]]
-  ; CHECK-NEXT: %[[real_convert:.*]] = bitcast float %[[real]] to i32
   ; CHECK-NEXT: %[[real_ext:.*]] = zext i32 %[[real_convert]] to i64
   ; CHECK-NEXT: %[[real_mask:.*]] = and i64 %[[imag_insert]], -4294967296
   ; CHECK-NEXT: %[[real_insert:.*]] = or i64 %[[real_mask]], %[[real_ext]]
@@ -1131,6 +1131,19 @@ entry:
   %cast1 = bitcast { [16 x i8 ] }* %gep to i8*
   %cast2 = bitcast { [16 x i8 ] }* %a to i8*
   call void @llvm.memcpy.p0i8.p0i8.i32(i8* %cast1, i8* %cast2, i32 16, i32 8, i1 true)
+  ret void
+; CHECK: ret
+}
+
+define void @PR14465() {
+; Ensure that we don't crash when analyzing a alloca larger than the maximum
+; integer type width (MAX_INT_BITS) supported by llvm (1048576*32 > (1<<23)-1).
+; CHECK: @PR14465
+
+  %stack = alloca [1048576 x i32], align 16
+; CHECK: alloca [1048576 x i32]
+  %cast = bitcast [1048576 x i32]* %stack to i8*
+  call void @llvm.memset.p0i8.i64(i8* %cast, i8 -2, i64 4194304, i32 16, i1 false)
   ret void
 ; CHECK: ret
 }

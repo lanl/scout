@@ -12,17 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Module.h"
-#include "llvm/InstrTypes.h"
+#include "SymbolTableListTraitsImpl.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/GVMaterializer.h"
+#include "llvm/InstrTypes.h"
 #include "llvm/LLVMContext.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LeakDetector.h"
-#include "SymbolTableListTraitsImpl.h"
 #include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
@@ -55,7 +55,6 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
-  LibraryList.clear();
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -449,21 +448,4 @@ void Module::dropAllReferences() {
 
   for(Module::alias_iterator I = alias_begin(), E = alias_end(); I != E; ++I)
     I->dropAllReferences();
-}
-
-void Module::addLibrary(StringRef Lib) {
-  for (Module::lib_iterator I = lib_begin(), E = lib_end(); I != E; ++I)
-    if (*I == Lib)
-      return;
-  LibraryList.push_back(Lib);
-}
-
-void Module::removeLibrary(StringRef Lib) {
-  LibraryListType::iterator I = LibraryList.begin();
-  LibraryListType::iterator E = LibraryList.end();
-  for (;I != E; ++I)
-    if (*I == Lib) {
-      LibraryList.erase(I);
-      return;
-    }
 }

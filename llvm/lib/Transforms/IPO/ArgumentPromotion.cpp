@@ -31,21 +31,21 @@
 
 #define DEBUG_TYPE "argpromotion"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Module.h"
-#include "llvm/CallGraphSCCPass.h"
-#include "llvm/Instructions.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Analysis/CallGraph.h"
-#include "llvm/Support/CallSite.h"
-#include "llvm/Support/CFG.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/CallGraph.h"
+#include "llvm/CallGraphSCCPass.h"
+#include "llvm/Constants.h"
+#include "llvm/DerivedTypes.h"
+#include "llvm/Instructions.h"
+#include "llvm/LLVMContext.h"
+#include "llvm/Module.h"
+#include "llvm/Support/CFG.h"
+#include "llvm/Support/CallSite.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include <set>
 using namespace llvm;
 
@@ -611,7 +611,7 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
   
   // Recompute the parameter attributes list based on the new arguments for
   // the function.
-  NF->setAttributes(AttrListPtr::get(AttributesVec));
+  NF->setAttributes(AttrListPtr::get(F->getContext(), AttributesVec));
   AttributesVec.clear();
 
   F->getParent()->getFunctionList().insert(F, NF);
@@ -731,11 +731,13 @@ CallGraphNode *ArgPromotion::DoPromotion(Function *F,
       New = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
                                Args, "", Call);
       cast<InvokeInst>(New)->setCallingConv(CS.getCallingConv());
-      cast<InvokeInst>(New)->setAttributes(AttrListPtr::get(AttributesVec));
+      cast<InvokeInst>(New)->setAttributes(AttrListPtr::get(II->getContext(),
+                                                            AttributesVec));
     } else {
       New = CallInst::Create(NF, Args, "", Call);
       cast<CallInst>(New)->setCallingConv(CS.getCallingConv());
-      cast<CallInst>(New)->setAttributes(AttrListPtr::get(AttributesVec));
+      cast<CallInst>(New)->setAttributes(AttrListPtr::get(New->getContext(),
+                                                          AttributesVec));
       if (cast<CallInst>(Call)->isTailCall())
         cast<CallInst>(New)->setTailCall();
     }

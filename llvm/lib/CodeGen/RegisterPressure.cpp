@@ -12,14 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/CodeGen/RegisterPressure.h"
 #include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
-#include "llvm/CodeGen/RegisterPressure.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -64,7 +64,17 @@ void RegisterPressure::decrease(const TargetRegisterClass *RC,
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void RegisterPressure::dump(const TargetRegisterInfo *TRI) {
+static void dumpSetPressure(const std::vector<unsigned> &SetPressure,
+                            const TargetRegisterInfo *TRI) {
+  for (unsigned i = 0, e = SetPressure.size(); i < e; ++i) {
+    if (SetPressure[i] != 0)
+      dbgs() << TRI->getRegPressureSetName(i) << "=" << SetPressure[i] << '\n';
+  }
+}
+
+void RegisterPressure::dump(const TargetRegisterInfo *TRI) const {
+  dbgs() << "Max Pressure: ";
+  dumpSetPressure(MaxSetPressure, TRI);
   dbgs() << "Live In: ";
   for (unsigned i = 0, e = LiveInRegs.size(); i < e; ++i)
     dbgs() << PrintReg(LiveInRegs[i], TRI) << " ";
@@ -73,11 +83,12 @@ void RegisterPressure::dump(const TargetRegisterInfo *TRI) {
   for (unsigned i = 0, e = LiveOutRegs.size(); i < e; ++i)
     dbgs() << PrintReg(LiveOutRegs[i], TRI) << " ";
   dbgs() << '\n';
-  for (unsigned i = 0, e = MaxSetPressure.size(); i < e; ++i) {
-    if (MaxSetPressure[i] != 0)
-      dbgs() << TRI->getRegPressureSetName(i) << "=" << MaxSetPressure[i]
-             << '\n';
-  }
+}
+
+void RegPressureTracker::dump(const TargetRegisterInfo *TRI) const {
+  dbgs() << "Curr Pressure: ";
+  dumpSetPressure(CurrSetPressure, TRI);
+  P.dump(TRI);
 }
 #endif
 
@@ -181,9 +192,6 @@ void RegPressureTracker::init(const MachineFunction *mf,
   }
 
   CurrPos = pos;
-  while (CurrPos != MBB->end() && CurrPos->isDebugValue())
-    ++CurrPos;
-
   CurrSetPressure.assign(TRI->getNumRegPressureSets(), 0);
 
   if (RequireIntervals)
@@ -214,11 +222,20 @@ bool RegPressureTracker::isBottomClosed() const {
           MachineBasicBlock::const_iterator());
 }
 
+
+SlotIndex RegPressureTracker::getCurrSlot() const {
+  MachineBasicBlock::const_iterator IdxPos = CurrPos;
+  while (IdxPos != MBB->end() && IdxPos->isDebugValue())
+    ++IdxPos;
+  if (IdxPos == MBB->end())
+    return LIS->getMBBEndIdx(MBB);
+  return LIS->getInstructionIndex(IdxPos).getRegSlot();
+}
+
 /// Set the boundary for the top of the region and summarize live ins.
 void RegPressureTracker::closeTop() {
   if (RequireIntervals)
-    static_cast<IntervalPressure&>(P).TopIdx =
-      LIS->getInstructionIndex(CurrPos).getRegSlot();
+    static_cast<IntervalPressure&>(P).TopIdx = getCurrSlot();
   else
     static_cast<RegionPressure&>(P).TopPos = CurrPos;
 
@@ -236,11 +253,7 @@ void RegPressureTracker::closeTop() {
 /// Set the boundary for the bottom of the region and summarize live outs.
 void RegPressureTracker::closeBottom() {
   if (RequireIntervals)
-    if (CurrPos == MBB->end())
-      static_cast<IntervalPressure&>(P).BottomIdx = LIS->getMBBEndIdx(MBB);
-    else
-      static_cast<IntervalPressure&>(P).BottomIdx =
-        LIS->getInstructionIndex(CurrPos).getRegSlot();
+    static_cast<IntervalPressure&>(P).BottomIdx = getCurrSlot();
   else
     static_cast<RegionPressure&>(P).BottomPos = CurrPos;
 
@@ -322,10 +335,8 @@ struct RegisterOperands {
         if (findReg(MO.getReg(), isVReg, DeadDefs, TRI) == DeadDefs.end())
           DeadDefs.push_back(MO.getReg());
       }
-      else {
-        if (findReg(MO.getReg(), isVReg, Defs, TRI) == Defs.end())
-          Defs.push_back(MO.getReg());
-      }
+      else if (findReg(MO.getReg(), isVReg, Defs, TRI) == Defs.end())
+        Defs.push_back(MO.getReg());
     }
   }
 };
@@ -512,7 +523,7 @@ bool RegPressureTracker::advance() {
 
   SlotIndex SlotIdx;
   if (RequireIntervals)
-    SlotIdx = LIS->getInstructionIndex(CurrPos).getRegSlot();
+    SlotIdx = getCurrSlot();
 
   // Open the bottom of the region using slot indexes.
   if (isBottomClosed()) {
@@ -676,9 +687,16 @@ void RegPressureTracker::bumpUpwardPressure(const MachineInstr *MI) {
   decreaseVirtRegPressure(VirtRegOpers.DeadDefs);
 
   // Kill liveness at live defs.
-  decreasePhysRegPressure(PhysRegOpers.Defs);
-  decreaseVirtRegPressure(VirtRegOpers.Defs);
-
+  for (unsigned i = 0, e = PhysRegOpers.Defs.size(); i < e; ++i) {
+    unsigned Reg = PhysRegOpers.Defs[i];
+    if (!findReg(Reg, false, PhysRegOpers.Uses, TRI))
+      decreasePhysRegPressure(PhysRegOpers.Defs);
+  }
+  for (unsigned i = 0, e = VirtRegOpers.Defs.size(); i < e; ++i) {
+    unsigned Reg = VirtRegOpers.Defs[i];
+    if (!findReg(Reg, true, VirtRegOpers.Uses, TRI))
+      decreaseVirtRegPressure(VirtRegOpers.Defs);
+  }
   // Generate liveness for uses.
   for (unsigned i = 0, e = PhysRegOpers.Uses.size(); i < e; ++i) {
     unsigned Reg = PhysRegOpers.Uses[i];
@@ -764,7 +782,7 @@ void RegPressureTracker::bumpDownwardPressure(const MachineInstr *MI) {
       const LiveInterval *LI = &LIS->getInterval(Reg);
       // FIXME: allow the caller to pass in the list of vreg uses that remain to
       // be bottom-scheduled to avoid searching uses at each query.
-      SlotIndex CurrIdx = LIS->getInstructionIndex(CurrPos).getRegSlot();
+      SlotIndex CurrIdx = getCurrSlot();
       if (LI->killedAt(SlotIdx)
           && !findUseBetween(Reg, CurrIdx, SlotIdx, MRI, LIS)) {
         decreaseVirtRegPressure(Reg);

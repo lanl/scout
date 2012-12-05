@@ -13,9 +13,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Constants.h"
+#include "llvm/DataLayout.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Function.h"
 #include "llvm/GlobalAlias.h"
@@ -25,16 +32,9 @@
 #include "llvm/LLVMContext.h"
 #include "llvm/Operator.h"
 #include "llvm/Pass.h"
-#include "llvm/Analysis/CaptureTracking.h"
-#include "llvm/Analysis/MemoryBuiltins.h"
-#include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Target/TargetLibraryInfo.h"
-#include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/GetElementPtrTypeIterator.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -58,12 +58,12 @@ static bool isNonEscapingLocalObject(const Value *V) {
   // then it has not escaped before entering the function.  Check if it escapes
   // inside the function.
   if (const Argument *A = dyn_cast<Argument>(V))
-    if (A->hasByValAttr() || A->hasNoAliasAttr()) {
-      // Don't bother analyzing arguments already known not to escape.
-      if (A->hasNoCaptureAttr())
-        return true;
+    if (A->hasByValAttr() || A->hasNoAliasAttr())
+      // Note even if the argument is marked nocapture we still need to check
+      // for copies made inside the function. The nocapture attribute only
+      // specifies that there are no copies made that outlive the function.
       return !PointerMayBeCaptured(V, false, /*StoreCaptures=*/true);
-    }
+
   return false;
 }
 
@@ -1065,9 +1065,15 @@ BasicAliasAnalysis::aliasPHI(const PHINode *PN, uint64_t PNSize,
       if (PN > V2)
         std::swap(Locs.first, Locs.second);
 
+      // Find the first incoming phi value not from its parent.
+      unsigned f = 0;
+      while (PN->getIncomingBlock(f) == PN->getParent() &&
+             f < PN->getNumIncomingValues()-1)
+        ++f;
+
       AliasResult Alias =
-        aliasCheck(PN->getIncomingValue(0), PNSize, PNTBAAInfo,
-                   PN2->getIncomingValueForBlock(PN->getIncomingBlock(0)),
+        aliasCheck(PN->getIncomingValue(f), PNSize, PNTBAAInfo,
+                   PN2->getIncomingValueForBlock(PN->getIncomingBlock(f)),
                    V2Size, V2TBAAInfo);
       if (Alias == MayAlias)
         return MayAlias;
@@ -1096,7 +1102,10 @@ BasicAliasAnalysis::aliasPHI(const PHINode *PN, uint64_t PNSize,
         ArePhisAssumedNoAlias = true;
       }
 
-      for (unsigned i = 1, e = PN->getNumIncomingValues(); i != e; ++i) {
+      for (unsigned i = 0, e = PN->getNumIncomingValues(); i != e; ++i) {
+        if (i == f)
+          continue;
+
         AliasResult ThisAlias =
           aliasCheck(PN->getIncomingValue(i), PNSize, PNTBAAInfo,
                      PN2->getIncomingValueForBlock(PN->getIncomingBlock(i)),
@@ -1245,6 +1254,7 @@ BasicAliasAnalysis::aliasCheck(const Value *V1, uint64_t V1Size,
     std::swap(V1, V2);
     std::swap(V1Size, V2Size);
     std::swap(O1, O2);
+    std::swap(V1TBAAInfo, V2TBAAInfo);
   }
   if (const GEPOperator *GV1 = dyn_cast<GEPOperator>(V1)) {
     AliasResult Result = aliasGEP(GV1, V1Size, V1TBAAInfo, V2, V2Size, V2TBAAInfo, O1, O2);
@@ -1254,6 +1264,7 @@ BasicAliasAnalysis::aliasCheck(const Value *V1, uint64_t V1Size,
   if (isa<PHINode>(V2) && !isa<PHINode>(V1)) {
     std::swap(V1, V2);
     std::swap(V1Size, V2Size);
+    std::swap(V1TBAAInfo, V2TBAAInfo);
   }
   if (const PHINode *PN = dyn_cast<PHINode>(V1)) {
     AliasResult Result = aliasPHI(PN, V1Size, V1TBAAInfo,
@@ -1264,6 +1275,7 @@ BasicAliasAnalysis::aliasCheck(const Value *V1, uint64_t V1Size,
   if (isa<SelectInst>(V2) && !isa<SelectInst>(V1)) {
     std::swap(V1, V2);
     std::swap(V1Size, V2Size);
+    std::swap(V1TBAAInfo, V2TBAAInfo);
   }
   if (const SelectInst *S1 = dyn_cast<SelectInst>(V1)) {
     AliasResult Result = aliasSelect(S1, V1Size, V1TBAAInfo,

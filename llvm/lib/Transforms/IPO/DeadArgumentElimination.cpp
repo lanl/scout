@@ -19,11 +19,15 @@
 
 #define DEBUG_TYPE "deadargelim"
 #include "llvm/Transforms/IPO.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/CallingConv.h"
 #include "llvm/Constant.h"
+#include "llvm/DIBuilder.h"
 #include "llvm/DebugInfo.h"
 #include "llvm/DerivedTypes.h"
-#include "llvm/DIBuilder.h"
 #include "llvm/Instructions.h"
 #include "llvm/IntrinsicInst.h"
 #include "llvm/LLVMContext.h"
@@ -32,10 +36,6 @@
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/StringExtras.h"
 #include <map>
 #include <set>
 using namespace llvm;
@@ -280,7 +280,7 @@ bool DAE::DeleteDeadVarargs(Function &Fn) {
       if (FnAttrs.hasAttributes())
         AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::FunctionIndex,
                                                         FnAttrs));
-      PAL = AttrListPtr::get(AttributesVec);
+      PAL = AttrListPtr::get(Fn.getContext(), AttributesVec);
     }
 
     Instruction *New;
@@ -806,7 +806,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
                                                     FnAttrs));
 
   // Reconstruct the AttributesList based on the vector we constructed.
-  AttrListPtr NewPAL = AttrListPtr::get(AttributesVec);
+  AttrListPtr NewPAL = AttrListPtr::get(F->getContext(), AttributesVec);
 
   // Create the new function type based on the recomputed parameters.
   FunctionType *NFTy = FunctionType::get(NRetTy, Params, FTy->isVarArg());
@@ -874,7 +874,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
                                                       FnAttrs));
 
     // Reconstruct the AttributesList based on the vector we constructed.
-    AttrListPtr NewCallPAL = AttrListPtr::get(AttributesVec);
+    AttrListPtr NewCallPAL = AttrListPtr::get(F->getContext(), AttributesVec);
 
     Instruction *New;
     if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {

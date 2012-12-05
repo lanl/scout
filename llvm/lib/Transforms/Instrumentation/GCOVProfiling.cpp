@@ -16,19 +16,19 @@
 
 #define DEBUG_TYPE "insert-gcov-profiling"
 
-#include "ProfilingUtils.h"
 #include "llvm/Transforms/Instrumentation.h"
-#include "llvm/DebugInfo.h"
-#include "llvm/IRBuilder.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
-#include "llvm/Pass.h"
+#include "ProfilingUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/UniqueVector.h"
+#include "llvm/DebugInfo.h"
+#include "llvm/IRBuilder.h"
+#include "llvm/Instructions.h"
+#include "llvm/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/DebugLoc.h"
 #include "llvm/Support/InstIterator.h"
@@ -540,13 +540,13 @@ GlobalVariable *GCOVProfiler::buildEdgeLookupTable(
   // read it. Threads and invoke make this untrue.
 
   // emit [(succs * preds) x i64*], logically [succ x [pred x i64*]].
+  size_t TableSize = Succs.size() * Preds.size();
   Type *Int64PtrTy = Type::getInt64PtrTy(*Ctx);
-  ArrayType *EdgeTableTy = ArrayType::get(
-      Int64PtrTy, Succs.size() * Preds.size());
+  ArrayType *EdgeTableTy = ArrayType::get(Int64PtrTy, TableSize);
 
-  Constant **EdgeTable = new Constant*[Succs.size() * Preds.size()];
+  OwningArrayPtr<Constant *> EdgeTable(new Constant*[TableSize]);
   Constant *NullValue = Constant::getNullValue(Int64PtrTy);
-  for (int i = 0, ie = Succs.size() * Preds.size(); i != ie; ++i)
+  for (size_t i = 0; i != TableSize; ++i)
     EdgeTable[i] = NullValue;
 
   unsigned Edge = 0;
@@ -566,7 +566,7 @@ GlobalVariable *GCOVProfiler::buildEdgeLookupTable(
     Edge += Successors;
   }
 
-  ArrayRef<Constant*> V(&EdgeTable[0], Succs.size() * Preds.size());
+  ArrayRef<Constant*> V(&EdgeTable[0], TableSize);
   GlobalVariable *EdgeTableGV =
       new GlobalVariable(
           *M, EdgeTableTy, true, GlobalValue::InternalLinkage,

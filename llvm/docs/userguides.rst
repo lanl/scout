@@ -20,6 +20,8 @@ User Guides
    HowToSubmitABug
    SphinxQuickstartTemplate
    Phabricator
+   TestingGuide
+   tutorial/index
 
 * :ref:`getting_started`
     
@@ -36,13 +38,12 @@ User Guides
 
    Notes on building and testing LLVM/Clang on ARM.
 
-* `Getting Started with the LLVM System using Microsoft Visual Studio
-  <GettingStartedVS.html>`_
+* :doc:`GettingStartedVS`
 
    An addendum to the main Getting Started guide for those using Visual Studio
    on Windows.
     
-* `LLVM Tutorial <tutorial/>`_
+* :doc:`tutorial/index`
 
    A walk through the process of using LLVM for a custom language, and the
    facilities LLVM offers in tutorial form.
@@ -77,7 +78,7 @@ User Guides
   A template + tutorial for writing new Sphinx documentation. It is meant
   to be read in source form.
     
-* `LLVM Testing Infrastructure Guide <TestingGuide.html>`_
+* :doc:`LLVM Testing Infrastructure Guide <TestingGuide>`
 
    A reference manual for using the LLVM testing infrastructure.
     

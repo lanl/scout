@@ -9,7 +9,6 @@
 
 #include "Disassembler.h"
 #include "llvm-c/Disassembler.h"
-
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler.h"
@@ -18,10 +17,9 @@
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MemoryObject.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/ErrorHandling.h"
 
 namespace llvm {
 class Target;
@@ -38,18 +36,6 @@ using namespace llvm;
 LLVMDisasmContextRef LLVMCreateDisasm(const char *TripleName, void *DisInfo,
                                       int TagType, LLVMOpInfoCallback GetOpInfo,
                                       LLVMSymbolLookupCallback SymbolLookUp) {
-  // Initialize targets and assembly printers/parsers.
-  // FIXME: Clients are responsible for initializing the targets. And this
-  // would be done by calling routines in "llvm-c/Target.h" which are static
-  // line functions. But the current use of LLVMCreateDisasm() is to dynamically
-  // load libLTO with dlopen() and then lookup the symbols using dlsym().
-  // And since these initialize routines are static that does not work which
-  // is why the call to them in this 'C' library API was added back.
-  llvm::InitializeAllTargetInfos();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmParsers();
-  llvm::InitializeAllDisassemblers();
-
   // Get the target.
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, Error);
@@ -195,6 +181,12 @@ int LLVMSetDisasmOptions(LLVMDisasmContextRef DCR, uint64_t Options){
       MCInstPrinter *IP = DC->getIP();
       IP->setUseMarkup(1);
       Options &= ~LLVMDisassembler_Option_UseMarkup;
+  }
+  if (Options & LLVMDisassembler_Option_PrintImmHex){
+      LLVMDisasmContext *DC = (LLVMDisasmContext *)DCR;
+      MCInstPrinter *IP = DC->getIP();
+      IP->setPrintImmHex(1);
+      Options &= ~LLVMDisassembler_Option_PrintImmHex;
   }
   return (Options == 0);
 }

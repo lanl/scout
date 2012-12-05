@@ -12,12 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstCombine.h"
-#include "llvm/Support/CallSite.h"
-#include "llvm/DataLayout.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/DataLayout.h"
+#include "llvm/Support/CallSite.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
+
+STATISTIC(NumSimplified, "Number of library calls simplified");
 
 /// getPromotedType - Return the specified type promoted as it would be to pass
 /// though a va_arg area.
@@ -785,8 +788,10 @@ static bool isSafeToEliminateVarargsCast(const CallSite CS,
 Instruction *InstCombiner::tryOptimizeCall(CallInst *CI, const DataLayout *TD) {
   if (CI->getCalledFunction() == 0) return 0;
 
-  if (Value *With = Simplifier->optimizeCall(CI))
-    return ReplaceInstUsesWith(*CI, With);
+  if (Value *With = Simplifier->optimizeCall(CI)) {
+    ++NumSimplified;
+    return CI->use_empty() ? CI : ReplaceInstUsesWith(*CI, With);
+  }
 
   return 0;
 }
@@ -1177,7 +1182,8 @@ bool InstCombiner::transformConstExprCastCall(CallSite CS) {
   if (NewRetTy->isVoidTy())
     Caller->setName("");   // Void type should not have a name.
 
-  const AttrListPtr &NewCallerPAL = AttrListPtr::get(attrVec);
+  const AttrListPtr &NewCallerPAL = AttrListPtr::get(Callee->getContext(),
+                                                     attrVec);
 
   Instruction *NC;
   if (InvokeInst *II = dyn_cast<InvokeInst>(Caller)) {
@@ -1355,7 +1361,7 @@ InstCombiner::transformCallThroughTrampoline(CallSite CS,
         NestF->getType() == PointerType::getUnqual(NewFTy) ?
         NestF : ConstantExpr::getBitCast(NestF,
                                          PointerType::getUnqual(NewFTy));
-      const AttrListPtr &NewPAL = AttrListPtr::get(NewAttrs);
+      const AttrListPtr &NewPAL = AttrListPtr::get(FTy->getContext(), NewAttrs);
 
       Instruction *NewCaller;
       if (InvokeInst *II = dyn_cast<InvokeInst>(Caller)) {

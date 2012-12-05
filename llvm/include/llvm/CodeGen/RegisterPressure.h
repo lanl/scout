@@ -15,9 +15,9 @@
 #ifndef LLVM_CODEGEN_REGISTERPRESSURE_H
 #define LLVM_CODEGEN_REGISTERPRESSURE_H
 
+#include "llvm/ADT/SparseSet.h"
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/ADT/SparseSet.h"
 
 namespace llvm {
 
@@ -43,7 +43,7 @@ struct RegisterPressure {
   /// class. This is only useful to account for spilling or rematerialization.
   void decrease(const TargetRegisterClass *RC, const TargetRegisterInfo *TRI);
 
-  void dump(const TargetRegisterInfo *TRI);
+  void dump(const TargetRegisterInfo *TRI) const;
 };
 
 /// RegisterPressure computed within a region of instructions delimited by
@@ -150,7 +150,8 @@ class RegPressureTracker {
   bool RequireIntervals;
 
   /// Register pressure corresponds to liveness before this instruction
-  /// iterator. It may point to the end of the block rather than an instruction.
+  /// iterator. It may point to the end of the block or a DebugValue rather than
+  /// an instruction.
   MachineBasicBlock::const_iterator CurrPos;
 
   /// Pressure map indexed by pressure set ID, not class ID.
@@ -184,6 +185,10 @@ public:
   // position changes while pressure does not.
   void setPos(MachineBasicBlock::const_iterator Pos) { CurrPos = Pos; }
 
+  /// \brief Get the SlotIndex for the first nondebug instruction including or
+  /// after the current position.
+  SlotIndex getCurrSlot() const;
+
   /// Recede across the previous instruction.
   bool recede();
 
@@ -197,6 +202,7 @@ public:
   /// This result is complete if either advance() or recede() has returned true,
   /// or if closeRegion() was explicitly invoked.
   RegisterPressure &getPressure() { return P; }
+  const RegisterPressure &getPressure() const { return P; }
 
   /// Get the register set pressure at the current position, which may be less
   /// than the pressure across the traversed region.
@@ -266,6 +272,8 @@ public:
     assert(isBottomClosed() && "Uninitialized pressure tracker");
     return getDownwardPressure(MI, PressureResult, MaxPressureResult);
   }
+
+  void dump(const TargetRegisterInfo *TRI) const;
 
 protected:
   void increasePhysRegPressure(ArrayRef<unsigned> Regs);

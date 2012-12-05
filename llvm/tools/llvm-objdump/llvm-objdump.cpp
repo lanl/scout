@@ -15,13 +15,10 @@
 
 #include "llvm-objdump.h"
 #include "MCFunction.h"
-#include "llvm/Object/Archive.h"
-#include "llvm/Object/COFF.h"
-#include "llvm/Object/ObjectFile.h"
 #include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
@@ -29,6 +26,9 @@
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Object/Archive.h"
+#include "llvm/Object/COFF.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -99,6 +99,10 @@ MAttrs("mattr",
   cl::CommaSeparated,
   cl::desc("Target specific attributes"),
   cl::value_desc("a1,+a2,-a3,..."));
+
+static cl::opt<bool>
+NoShowRawInsn("no-show-raw-insn", cl::desc("When disassembling instructions, "
+                                           "do not print the instruction bytes."));
 
 static StringRef ToolName;
 
@@ -321,8 +325,11 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
         if (DisAsm->getInstruction(Inst, Size, memoryObject, Index,
                                    DebugOut, nulls())) {
-          outs() << format("%8" PRIx64 ":\t", SectionAddr + Index);
-          DumpBytes(StringRef(Bytes.data() + Index, Size));
+          outs() << format("%8" PRIx64 ":", SectionAddr + Index);
+          if (!NoShowRawInsn) {
+            outs() << "\t";
+            DumpBytes(StringRef(Bytes.data() + Index, Size));
+          }
           IP->printInst(&Inst, outs(), "");
           outs() << "\n";
         } else {
