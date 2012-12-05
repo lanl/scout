@@ -35,28 +35,154 @@ enum ScoutGPUType{
 };
 
 extern "C"
-void __sc_dump_mesh(void* mp){
-  int32_t width = *(int32_t*)mp;
-  int32_t height = *(int32_t*)((char*)mp + sizeof(int32_t));
-  int32_t depth = *(int32_t*)((char*)mp + sizeof(int32_t)*2);
-  
-  // mesh starts at this i32*4 offset due to alignment
-  float** mesh = (float**)((char*)mp + sizeof(int32_t)*4);
+void __sc_debugger_dump_mesh_field(size_t width,
+                                   size_t height,
+                                   size_t depth,
+                                   void* fp,
+                                   size_t fieldType){
 
-  cout << "-------- mesh dump" << endl;
-
-  float* aStart = (float*)mesh[0];
-
-  size_t len = width;
-
-  for(size_t i = 0; i < len; ++i){
-    if(i > 0){
-      cout << ", ";
-    }
-    cout << i << ": " << aStart[i];
+  if(height == 0){
+    height = 1;
   }
 
-  cout << endl << "-------- end mesh dump" << endl;
+  if(depth == 0){
+    depth = 1;
+  }
+
+  size_t span = width * height * depth;
+
+  switch(fieldType){
+    case 0:
+    {
+      int8_t* f = static_cast<int8_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << int(f[i]);
+      }
+
+      break;
+    }
+    case 1:
+    {
+      uint8_t* f = static_cast<uint8_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << int(f[i]);
+      }
+
+      break;
+    }
+    case 2:
+    {
+      int16_t* f = static_cast<int16_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 3:
+    {
+      uint16_t* f = static_cast<uint16_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 4:
+    {
+      int32_t* f = static_cast<int32_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 5:
+    {
+      uint32_t* f = static_cast<uint32_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 6:
+    {
+      int64_t* f = static_cast<int64_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 7:
+    {
+      uint64_t* f = static_cast<uint64_t*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+    case 8:
+    {
+      float* f = static_cast<float*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }      
+
+      break;
+    }
+    case 9:
+    {
+      double* f = static_cast<double*>(fp);
+
+      for(size_t i = 0; i < span; ++i){
+        if(i > 0){
+          cerr << ", ";
+        }
+        cerr << i << ": " << f[i];
+      }
+
+      break;
+    }
+  }
 }
 
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){

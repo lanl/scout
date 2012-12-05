@@ -3277,13 +3277,15 @@ private:
   bool IsDefinition : 1;
   bool IsBeingDefined : 1;
   SourceLocation RBraceLoc;
+  RecordDecl* StructRep;
   
 protected:
   MeshDecl(Kind DK, DeclContext* DC,
            SourceLocation L, SourceLocation StartL,
            IdentifierInfo* Id, MeshDecl* PrevDecl)
   : TypeDecl(DK, DC, L, Id, StartL),
-  DeclContext(DK){
+  DeclContext(DK),
+  StructRep(0){
     IsDefinition = false;
     IsBeingDefined = false;
   }  
@@ -3294,9 +3296,15 @@ public:
                           SourceLocation StartLoc, SourceLocation IdLoc, 
                           IdentifierInfo* Id, MeshDecl* PrevDecl);
   
-
+  void completeDefinition(ASTContext& C);
   
-  void completeDefinition();
+  RecordDecl* getStructRep(){
+    return StructRep;
+  }
+  
+  void setStructRep(RecordDecl* SR){
+    StructRep = SR;
+  }
   
   SourceLocation getRBraceLoc() const { return RBraceLoc; }
   void setRBraceLoc(SourceLocation L) { RBraceLoc = L; }

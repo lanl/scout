@@ -805,6 +805,10 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     EmitVariablyModifiedType(Ty);
 
   llvm::Value *DeclPtr;
+  
+  // scout - the decl ptr for debug info for scout meshes
+  llvm::Value *ScoutDeclPtr = 0;
+
   if (Ty->isConstantSizeType()) {
     if (!Target.useGlobalsForAutomaticVariables()) {
       bool NRVO = getContext().getLangOpts().ElideConstructors &&
@@ -993,6 +997,13 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
             Builder.CreateStore(val, field);
           }
+
+          // debugger support
+          ScoutDeclPtr =
+          CreateMemTemp(getContext().VoidPtrTy, "mesh.temp");
+
+          llvm::Value* AllocVP = Builder.CreateBitCast(Alloc, VoidPtrTy);
+          Builder.CreateStore(AllocVP, ScoutDeclPtr);
         }
       }
     } else {
@@ -1044,6 +1055,12 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     if (CGDebugInfo *DI = getDebugInfo()) {
       if (CGM.getCodeGenOpts().getDebugInfo()
             >= CodeGenOptions::LimitedDebugInfo) {
+
+        // scout - the decl ptr for meshes
+        //if(ScoutDeclPtr){
+          //DeclPtr = ScoutDeclPtr;
+        //}
+        
         DI->setLocation(D.getLocation());
         if (Target.useGlobalsForAutomaticVariables()) {
           DI->EmitGlobalVariable(static_cast<llvm::GlobalVariable *>(DeclPtr),

@@ -3213,7 +3213,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
   bool valid = ParseMeshBody(MeshLocation, Dec);
   
   if(valid){
-    Dec->completeDefinition();
+    Dec->completeDefinition(Actions.Context);
     
     unsigned DiagID;
     const char* PrevSpec;
