@@ -568,6 +568,23 @@ namespace scout{
         return err;
       }
 
+      int bindArrayToNumaNodes(void *p, size_t bytes) {
+        int err;
+        size_t start, end;
+        size_t chunk = bytes/totalNumaNodes_;
+        hwloc_obj_t obj = NULL;
+
+        for (int i = 0; i < totalNumaNodes_; i++) {
+          start = i*chunk;
+          end = start + chunk;
+          obj = hwloc_get_next_obj_by_type(topology_, HWLOC_OBJ_NODE, obj);
+          err = hwloc_set_area_membind_nodeset(topology_,
+              (char *)p + start, (end - start),
+              obj->nodeset, HWLOC_MEMBIND_BIND, HWLOC_MEMBIND_MIGRATE);
+        }
+        return err;
+      }
+
       // Number of threads to use based on ENV variables and hardware
       int getThreads() {
           int val, ret;
@@ -687,6 +704,10 @@ namespace scout{
 
     int system_rt::bindThreadInside() {
       return x_->bindThreadInside();
+    }
+
+    int system_rt::bindArrayToNumaNodes(void *p, size_t bytes) {
+      return x_->bindArrayToNumaNodes(p, bytes);
     }
 
     size_t system_rt::nThreads() {

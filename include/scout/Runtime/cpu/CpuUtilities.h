@@ -98,6 +98,8 @@ namespace scout{
 
       int bindThreadInside();
 
+      int bindArrayToNumaNodes(void *p, size_t bytes);
+
       size_t nThreads();
 
       size_t nDomains();
