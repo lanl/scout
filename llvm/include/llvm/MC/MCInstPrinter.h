@@ -10,6 +10,7 @@
 #ifndef LLVM_MC_MCINSTPRINTER_H
 #define LLVM_MC_MCINSTPRINTER_H
 
+#include <stdint.h>
 #include "llvm/Support/Format.h"
 
 namespace llvm {
