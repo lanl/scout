@@ -13,14 +13,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/AST/ParentMap.h"
+#include "clang/Basic/TargetInfo.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
-#include "clang/AST/ParentMap.h"
-#include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace clang;
 using namespace ento;
@@ -77,7 +78,7 @@ void CallAndMessageChecker::emitBadCall(BugType *BT, CheckerContext &C,
     R->addRange(BadE->getSourceRange());
     bugreporter::trackNullOrUndefValue(N, BadE, *R);
   }
-  C.EmitReport(R);
+  C.emitReport(R);
 }
 
 static StringRef describeUninitializedArgumentInCall(const CallEvent &Call,
@@ -123,7 +124,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
       R->addRange(argRange);
       if (argEx)
         bugreporter::trackNullOrUndefValue(N, argEx, *R);
-      C.EmitReport(R);
+      C.emitReport(R);
     }
     return true;
   }
@@ -207,7 +208,7 @@ bool CallAndMessageChecker::PreVisitProcessArg(CheckerContext &C,
 
         // FIXME: enhance track back for uninitialized value for arbitrary
         // memregions
-        C.EmitReport(R);
+        C.emitReport(R);
       }
       return true;
     }
@@ -336,7 +337,7 @@ void CallAndMessageChecker::checkPreObjCMessage(const ObjCMethodCall &msg,
       // FIXME: getTrackNullOrUndefValueVisitor can't handle "super" yet.
       if (const Expr *ReceiverE = ME->getInstanceReceiver())
         bugreporter::trackNullOrUndefValue(N, ReceiverE, *R);
-      C.EmitReport(R);
+      C.emitReport(R);
     }
     return;
   } else {
@@ -379,7 +380,7 @@ void CallAndMessageChecker::emitNilReceiverBug(CheckerContext &C,
   if (const Expr *receiver = ME->getInstanceReceiver()) {
     bugreporter::trackNullOrUndefValue(N, receiver, *report);
   }
-  C.EmitReport(report);
+  C.emitReport(report);
 }
 
 static bool supportsNilWithFloatRet(const llvm::Triple &triple) {

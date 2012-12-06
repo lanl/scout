@@ -12,7 +12,7 @@
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
 #include "llvm/DataLayout.h"
-#include "llvm/Support/InstVisitor.h"
+#include "llvm/InstVisitor.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #ifdef SC_ENABLE_LIB_NVVM

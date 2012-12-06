@@ -16,33 +16,34 @@
 
 #include "clang/AST/APValue.h"
 #include "clang/AST/DeclBase.h"
-#include "clang/AST/Redeclarable.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/ExternalASTSource.h"
+#include "clang/AST/Redeclarable.h"
+#include "clang/AST/Type.h"
 #include "clang/Basic/Linkage.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/Compiler.h"
 
 namespace clang {
+struct ASTTemplateArgumentListInfo;
 class CXXTemporary;
+class CompoundStmt;
+class DependentFunctionTemplateSpecializationInfo;
 class Expr;
 class FunctionTemplateDecl;
-class Stmt;
-class CompoundStmt;
-class StringLiteral;
-class NestedNameSpecifier;
-class TemplateParameterList;
-class TemplateArgumentList;
-struct ASTTemplateArgumentListInfo;
-class MemberSpecializationInfo;
 class FunctionTemplateSpecializationInfo;
-class DependentFunctionTemplateSpecializationInfo;
+class LabelStmt;
+class MemberSpecializationInfo;
+class Module;
+class NestedNameSpecifier;
+class Stmt;
+class StringLiteral;
+class TemplateArgumentList;
+class TemplateParameterList;
 class TypeLoc;
 class UnresolvedSetImpl;
-class LabelStmt;
-class Module;
-  
+
 /// \brief A container of type source information.
 ///
 /// A client can read the relevant info using TypeLoc wrappers, e.g:
@@ -213,8 +214,8 @@ public:
   bool isCXXInstanceMember() const;
 
   class LinkageInfo {
-    uint8_t linkage_    : 4;
-    uint8_t visibility_ : 3;
+    uint8_t linkage_    : 2;
+    uint8_t visibility_ : 2;
     uint8_t explicit_   : 1;
 
     void setVisibility(Visibility V, bool E) { visibility_ = V; explicit_ = E; }
@@ -538,9 +539,7 @@ public:
 
   /// \brief Determine whether this symbol is weakly-imported,
   ///        or declared with the weak or weak-ref attr.
-  bool isWeak() const {
-    return hasAttr<WeakAttr>() || hasAttr<WeakRefAttr>() || isWeakImported();
-  }
+  bool isWeak() const;
 
   // Implement isa/cast/dyncast/etc.
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
@@ -3454,10 +3453,10 @@ void Redeclarable<decl_type>::setPreviousDeclaration(decl_type *PrevDecl) {
     // Point to previous. Make sure that this is actually the most recent
     // redeclaration, or we can build invalid chains. If the most recent
     // redeclaration is invalid, it won't be PrevDecl, but we want it anyway.
-    RedeclLink = PreviousDeclLink(
-                   llvm::cast<decl_type>(PrevDecl->getMostRecentDecl()));
     First = PrevDecl->getFirstDeclaration();
     assert(First->RedeclLink.NextIsLatest() && "Expected first");
+    decl_type *MostRecent = First->RedeclLink.getNext();
+    RedeclLink = PreviousDeclLink(llvm::cast<decl_type>(MostRecent));
   } else {
     // Make this first.
     First = static_cast<decl_type*>(this);

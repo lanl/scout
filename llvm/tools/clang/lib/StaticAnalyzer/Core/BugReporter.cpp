@@ -13,23 +13,23 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/Analysis/CFG.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/AST/StmtObjC.h"
-#include "clang/Basic/SourceManager.h"
+#include "clang/Analysis/CFG.h"
 #include "clang/Analysis/ProgramPoint.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
-#include "llvm/Support/raw_ostream.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
+#include "llvm/ADT/OwningPtr.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/raw_ostream.h"
 #include <queue>
 
 using namespace clang;
@@ -193,7 +193,7 @@ static void removeRedundantMsgs(PathPieces &path) {
 /// that aren't needed.  Return true if afterwards the path contains
 /// "interesting stuff" which means it should be pruned from the parent path.
 bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R,
-                                     PathDiagnosticCallPiece *CallWithLoc) {
+                                     PathDiagnosticLocation *LastCallLocation) {
   bool containsSomethingInteresting = false;
   const unsigned N = pieces.size();
   
@@ -217,18 +217,25 @@ bool BugReporter::RemoveUneededCalls(PathPieces &pieces, BugReport *R,
           containsSomethingInteresting = true;
           break;
         }
+
+        if (LastCallLocation) {
+          if (!call->callEnter.asLocation().isValid())
+            call->callEnter = *LastCallLocation;
+          if (!call->callReturn.asLocation().isValid())
+            call->callReturn = *LastCallLocation;
+        }
+
         // Recursively clean out the subclass.  Keep this call around if
         // it contains any informative diagnostics.
-        PathDiagnosticCallPiece *NewCallWithLoc =
-          call->getLocation().asLocation().isValid()
-            ? call : CallWithLoc;
-        
-        if (!RemoveUneededCalls(call->path, R, NewCallWithLoc))
-          continue;
+        PathDiagnosticLocation *ThisCallLocation;
+        if (call->callEnterWithin.asLocation().isValid())
+          ThisCallLocation = &call->callEnterWithin;
+        else
+          ThisCallLocation = &call->callEnter;
 
-        if (NewCallWithLoc == CallWithLoc && CallWithLoc) {
-          call->callEnter = CallWithLoc->callEnter;
-        }
+        assert(ThisCallLocation && "Outermost call has an invalid location");
+        if (!RemoveUneededCalls(call->path, R, ThisCallLocation))
+          continue;
         
         containsSomethingInteresting = true;
         break;
@@ -1667,6 +1674,9 @@ PathDiagnosticLocation BugReport::getLocation(const SourceManager &SM) const {
       if (const BinaryOperator *B = dyn_cast<BinaryOperator>(S))
         return PathDiagnosticLocation::createOperatorLoc(B, SM);
 
+      if (isa<PostStmtPurgeDeadSymbols>(ErrorNode->getLocation()))
+        return PathDiagnosticLocation::createEnd(S, SM, LC);
+
       return PathDiagnosticLocation::createBegin(S, SM, LC);
     }
   } else {
@@ -2106,7 +2116,7 @@ void BugReporter::Register(BugType *BT) {
   BugTypes = F.add(BugTypes, BT);
 }
 
-void BugReporter::EmitReport(BugReport* R) {
+void BugReporter::emitReport(BugReport* R) {
   // Compute the bug report's hash to determine its equivalence class.
   llvm::FoldingSetNodeID ID;
   R->Profile(ID);
@@ -2309,7 +2319,7 @@ void BugReporter::EmitBasicReport(const Decl *DeclWithIssue,
   BugReport *R = new BugReport(*BT, str, Loc);
   R->setDeclWithIssue(DeclWithIssue);
   for ( ; NumRanges > 0 ; --NumRanges, ++RBeg) R->addRange(*RBeg);
-  EmitReport(R);
+  emitReport(R);
 }
 
 BugType *BugReporter::getBugTypeForName(StringRef name,

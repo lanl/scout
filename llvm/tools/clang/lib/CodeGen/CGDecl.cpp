@@ -11,10 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CGDebugInfo.h"
 #include "CodeGenFunction.h"
-#include "CodeGenModule.h"
+#include "CGDebugInfo.h"
 #include "CGOpenCLRuntime.h"
+#include "CodeGenModule.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Decl.h"
@@ -22,9 +22,9 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CodeGenOptions.h"
+#include "llvm/DataLayout.h"
 #include "llvm/GlobalVariable.h"
 #include "llvm/Intrinsics.h"
-#include "llvm/DataLayout.h"
 #include "llvm/Type.h"
 #include "llvm/Instructions.h"
 using namespace clang;
@@ -129,7 +129,7 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
     // uniqued.  We can't do this in C, though, because there's no
     // standard way to agree on which variables are the same (i.e.
     // there's no mangling).
-    if (getContext().getLangOpts().CPlusPlus)
+    if (getLangOpts().CPlusPlus)
       if (llvm::GlobalValue::isWeakForLinker(CurFn->getLinkage()))
         Linkage = CurFn->getLinkage();
 
@@ -149,7 +149,7 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
 static std::string GetStaticDeclName(CodeGenFunction &CGF, const VarDecl &D,
                                      const char *Separator) {
   CodeGenModule &CGM = CGF.CGM;
-  if (CGF.getContext().getLangOpts().CPlusPlus) {
+  if (CGF.getLangOpts().CPlusPlus) {
     StringRef Name = CGM.getMangledName(&D);
     return Name.str();
   }
@@ -230,7 +230,7 @@ CodeGenFunction::AddInitializerToStaticVarDecl(const VarDecl &D,
   // If constant emission failed, then this should be a C++ static
   // initializer.
   if (!Init) {
-    if (!getContext().getLangOpts().CPlusPlus)
+    if (!getLangOpts().CPlusPlus)
       CGM.ErrorUnsupported(D.getInit(), "constant l-value expression");
     else if (Builder.GetInsertBlock()) {
       // Since we have a static initializer, this global variable can't
@@ -811,7 +811,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
   if (Ty->isConstantSizeType()) {
     if (!Target.useGlobalsForAutomaticVariables()) {
-      bool NRVO = getContext().getLangOpts().ElideConstructors &&
+      bool NRVO = getLangOpts().ElideConstructors &&
                   D.isNRVOVariable();
 
       // If this value is a POD array or struct with a statically

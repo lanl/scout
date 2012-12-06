@@ -10,14 +10,12 @@
 #ifndef CLANG_LIB_DRIVER_TOOLCHAINS_H_
 #define CLANG_LIB_DRIVER_TOOLCHAINS_H_
 
+#include "Tools.h"
+#include "clang/Basic/VersionTuple.h"
 #include "clang/Driver/Action.h"
 #include "clang/Driver/ToolChain.h"
-
-#include "clang/Basic/VersionTuple.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Compiler.h"
-
-#include "Tools.h"
 
 namespace clang {
 namespace driver {
@@ -129,8 +127,8 @@ public:
                            const ActionList &Inputs) const;
 
   virtual bool IsUnwindTablesDefault() const;
-  virtual const char *GetDefaultRelocationModel() const;
-  virtual const char *GetForcedPicModel() const;
+  virtual bool isPICDefault() const;
+  virtual bool isPICDefaultForced() const;
 
 protected:
   /// \name ToolChain Implementation Helper Functions
@@ -156,8 +154,8 @@ public:
   virtual Tool &SelectTool(const Compilation &C, const JobAction &JA,
                            const ActionList &Inputs) const;
 
-  virtual const char *GetDefaultRelocationModel() const;
-  virtual const char *GetForcedPicModel() const;
+  virtual bool isPICDefault() const;
+  virtual bool isPICDefaultForced() const;
 };
 
   /// Darwin - The base Darwin tool chain.
@@ -184,11 +182,6 @@ private:
 
   /// The OS version we are targeting.
   mutable VersionTuple TargetVersion;
-
-protected:
-  // FIXME: Remove this once there is a proper way to detect an ARC runtime
-  // for the simulator.
-  mutable VersionTuple TargetSimulatorVersionFromDefines;
 
 private:
   /// The default macosx-version-min of this tool chain; empty until
@@ -243,9 +236,7 @@ public:
   }
 
   bool isTargetMacOS() const {
-    return !isTargetIOSSimulator() &&
-           !isTargetIPhoneOS() &&
-           TargetSimulatorVersionFromDefines == VersionTuple();
+    return !isTargetIOSSimulator() && !isTargetIPhoneOS();
   }
 
   bool isTargetInitialized() const { return TargetInitialized; }
@@ -325,6 +316,10 @@ public:
     return true;
   }
 
+  virtual bool IsEncodeExtendedBlockSignatureDefault() const {
+    return true;
+  }
+  
   virtual bool IsObjCNonFragileABIDefault() const {
     // Non-fragile ABI is default for everything but i386.
     return getTriple().getArch() != llvm::Triple::x86;
@@ -347,8 +342,8 @@ public:
   virtual RuntimeLibType GetDefaultRuntimeLibType() const {
     return ToolChain::RLT_CompilerRT;
   }
-  virtual const char *GetDefaultRelocationModel() const;
-  virtual const char *GetForcedPicModel() const;
+  virtual bool isPICDefault() const;
+  virtual bool isPICDefaultForced() const;
 
   virtual bool SupportsProfiling() const;
 
@@ -365,9 +360,6 @@ public:
 
 /// DarwinClang - The Darwin toolchain used by Clang.
 class LLVM_LIBRARY_VISIBILITY DarwinClang : public Darwin {
-private:
-  void AddGCCLibexecPath(unsigned darwinVersion);
-
 public:
   DarwinClang(const Driver &D, const llvm::Triple& Triple);
 
@@ -376,9 +368,10 @@ public:
 
   virtual void AddLinkRuntimeLibArgs(const ArgList &Args,
                                      ArgStringList &CmdArgs) const;
-  void AddLinkRuntimeLib(const ArgList &Args, ArgStringList &CmdArgs, 
-                         const char *DarwinStaticLib) const;
-  
+  void AddLinkRuntimeLib(const ArgList &Args, ArgStringList &CmdArgs,
+                         const char *DarwinStaticLib,
+                         bool AlwaysLink = false) const;
+
   virtual void AddCXXStdlibLibArgs(const ArgList &Args,
                                    ArgStringList &CmdArgs) const;
 
@@ -399,7 +392,7 @@ public:
   std::string ComputeEffectiveClangTriple(const ArgList &Args,
                                           types::ID InputType) const;
 
-  virtual const char *GetDefaultRelocationModel() const { return "pic"; }
+  virtual bool isPICDefault() const { return false; }
 };
 
 class LLVM_LIBRARY_VISIBILITY Generic_ELF : public Generic_GCC {
@@ -516,7 +509,8 @@ public:
 
   virtual void AddClangSystemIncludeArgs(const ArgList &DriverArgs,
                                          ArgStringList &CC1Args) const;
-  virtual void addClangTargetOptions(ArgStringList &CC1Args) const;
+  virtual void addClangTargetOptions(const ArgList &DriverArgs,
+                                     ArgStringList &CC1Args) const;
   virtual void AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
                                             ArgStringList &CC1Args) const;
 
@@ -540,8 +534,8 @@ public:
   virtual Tool &SelectTool(const Compilation &C, const JobAction &JA,
                            const ActionList &Inputs) const;
   bool IsMathErrnoDefault() const;
-  const char* GetDefaultRelocationModel() const;
-  const char* GetForcedPicModel() const;
+  bool isPICDefault() const;
+  bool isPICDefaultForced() const;
 
 private:
   mutable llvm::DenseMap<unsigned, Tool*> Tools;
@@ -563,8 +557,8 @@ public:
 
   virtual bool IsIntegratedAssemblerDefault() const;
   virtual bool IsUnwindTablesDefault() const;
-  virtual const char *GetDefaultRelocationModel() const;
-  virtual const char *GetForcedPicModel() const;
+  virtual bool isPICDefault() const;
+  virtual bool isPICDefaultForced() const;
 
   virtual void AddClangSystemIncludeArgs(const ArgList &DriverArgs,
                                          ArgStringList &CC1Args) const;

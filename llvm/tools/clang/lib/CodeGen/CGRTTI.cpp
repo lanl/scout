@@ -13,10 +13,10 @@
 
 #include "CodeGenModule.h"
 #include "CGCXXABI.h"
+#include "CGObjCRuntime.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Type.h"
 #include "clang/Frontend/CodeGenOptions.h"
-#include "CGObjCRuntime.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -1013,7 +1013,7 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
   // Return a bogus pointer if RTTI is disabled, unless it's for EH.
   // FIXME: should we even be calling this method if RTTI is disabled
   // and it's not for EH?
-  if (!ForEH && !getContext().getLangOpts().RTTI)
+  if (!ForEH && !getLangOpts().RTTI)
     return llvm::Constant::getNullValue(Int8PtrTy);
   
   if (ForEH && Ty->isObjCObjectPointerType() &&

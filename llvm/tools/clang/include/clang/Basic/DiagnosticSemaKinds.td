@@ -95,7 +95,7 @@ def err_variably_modified_new_type : Error<
 
 // C99 Designated Initializers
 def ext_designated_init : Extension<
-  "designated initializers are a C99 feature">;
+  "designated initializers are a C99 feature">, InGroup<C99>;
 def err_array_designator_negative : Error<
   "array designator value '%0' is negative">;
 def err_array_designator_empty_range : Error<
@@ -512,7 +512,8 @@ def warn_conflicting_overriding_ret_types : Warning<
 
 def warn_conflicting_ret_types : Warning<
   "conflicting return type in "
-  "implementation of %0%diff{: $ vs $|}1,2">;
+  "implementation of %0%diff{: $ vs $|}1,2">,
+  InGroup<MismatchedReturnTypes>;
 
 def warn_conflicting_overriding_ret_type_modifiers : Warning<
   "conflicting distributed object modifiers on return type "
@@ -541,7 +542,9 @@ def warn_conflicting_overriding_param_types : Warning<
 
 def warn_conflicting_param_types : Warning<
   "conflicting parameter types in "
-  "implementation of %0%diff{: $ vs $|}1,2">;
+  "implementation of %0%diff{: $ vs $|}1,2">,
+  InGroup<MismatchedParameterTypes>;
+
 def warn_conflicting_param_modifiers : Warning<
   "conflicting distributed object modifiers on parameter type "
   "in implementation of %0">,
@@ -718,7 +721,7 @@ def warn_arc_repeated_use_of_weak : Warning <
 def warn_implicitly_retains_self : Warning <
   "block implicitly retains 'self'; explicitly mention 'self' to indicate "
   "this is intended behavior">,
-  InGroup<DiagGroup<"implicit-retain-self">>;
+  InGroup<DiagGroup<"implicit-retain-self">>, DefaultIgnore;
 def warn_arc_possible_repeated_use_of_weak : Warning <
   "weak %select{variable|property|implicit property|instance variable}0 %1 may "
   "be accessed multiple times in this %select{function|method|block|lambda}2 "
@@ -889,6 +892,8 @@ def err_distant_exception_spec : Error<
 def err_incomplete_in_exception_spec : Error<
   "%select{|pointer to |reference to }0incomplete type %1 is not allowed "
   "in exception specification">;
+def err_rref_in_exception_spec : Error<
+  "rvalue reference type %0 is not allowed in exception specification">;
 def err_mismatched_exception_spec : Error<
   "exception specification in declaration does not match previous declaration">;
 def warn_mismatched_exception_spec : ExtWarn<
@@ -1583,8 +1588,6 @@ def err_attribute_argument_not_int : Error<
   "'%0' attribute requires integer constant">;
 def err_aligned_attribute_argument_not_int : Error<
   "'aligned' attribute requires integer constant">;
-def err_attribute_argument_not_class : Error<
-  "%0 attribute requires arguments that are class type or point to class type">;
 def err_attribute_first_argument_not_int_or_bool : Error<
   "%0 attribute first argument must be of int or bool type">;
 def err_attribute_argument_outof_range : Error<
@@ -1772,17 +1775,18 @@ def err_alias_not_supported_on_darwin : Error <
 def warn_attribute_wrong_decl_type : Warning<
   "%0 attribute only applies to %select{functions|unions|"
   "variables and functions|functions and methods|parameters|"
-  "functions, methods and blocks|functions, methods, and parameters|"
-  "classes|variables|methods|variables, functions and labels|"
-  "fields and global variables|structs|"
+  "functions, methods and blocks|functions, methods, and classes|"
+  "functions, methods, and parameters|classes|variables|methods|"
+  "variables, functions and labels|fields and global variables|structs|"
   "variables, functions and tag types|thread-local variables}1">,
   InGroup<IgnoredAttributes>;
 def err_attribute_wrong_decl_type : Error<
   "%0 attribute only applies to %select{functions|unions|"
   "variables and functions|functions and methods|parameters|"
-  "functions, methods and blocks|functions, methods, and parameters|"
-  "classes|variables|methods|variables, functions and labels|"
-  "fields and global variables|structs|thread-local variables}1">;
+  "functions, methods and blocks|functions, methods, and classes|"
+  "functions, methods, and parameters|classes|variables|methods|"
+  "variables, functions and labels|fields and global variables|structs|"
+  "variables, functions and tag types|thread-local variables}1">;
 def warn_function_attribute_wrong_type : Warning<
   "'%0' only applies to function types; type here is %1">,
   InGroup<IgnoredAttributes>;
@@ -1935,6 +1939,10 @@ def warn_fun_requires_lock_precise : Warning<
   "calling function '%0' requires %select{shared|exclusive}2 lock on '%1'">,
   InGroup<ThreadSafetyPrecise>, DefaultIgnore;
 def note_found_mutex_near_match : Note<"found near match '%0'">;
+
+// Dummy warning that will trigger "beta" warnings from the analysis if enabled. 
+def warn_thread_safety_beta : Warning<
+  "Thread safety beta warning.">, InGroup<ThreadSafetyBeta>, DefaultIgnore;
 
 def warn_impcast_vector_scalar : Warning<
   "implicit conversion turns vector to scalar: %0 to %1">,
@@ -2158,13 +2166,9 @@ def err_uninitialized_member_for_assign : Error<
 def err_uninitialized_member_in_ctor : Error<
   "%select{|implicit default }0constructor for %1 must explicitly initialize "
   "the %select{reference|const}2 member %3">;
-def warn_default_arg_makes_ctor_special : Warning<
+def err_default_arg_makes_ctor_special : Error<
   "addition of default argument on redeclaration makes this constructor a "
-  "%select{default|copy|move}0 constructor">, InGroup<DefaultArgSpecialMember>;
-def note_previous_declaration_special : Note<
-  // The ERRORs are in hopes that if they occur, they'll get reported.
-  "previous declaration was %select{*ERROR*|a copy constructor|a move "
-  "constructor|*ERROR*|*ERROR*|*ERROR*|not a special member function}0">;
+  "%select{default|copy|move}0 constructor">;
 
 def err_use_of_default_argument_to_function_declared_later : Error<
   "use of default argument to function %0 that is declared later in class %1">;
@@ -4183,7 +4187,7 @@ def err_property_not_found : Error<
 def err_invalid_property_name : Error<
   "%0 is not a valid property name (accessing an object of type %1)">;
 def err_getter_not_found : Error<
-  "expected getter method not found on object of type %0">;
+  "no getter method for read from property">;
 def err_objc_subscript_method_not_found : Error<
   "expected method to %select{read|write}1 %select{dictionary|array}2 element not "
   "found on object of type %0">;
@@ -4462,7 +4466,7 @@ def ext_delete_void_ptr_operand : ExtWarn<
 def err_ambiguous_delete_operand : Error<"ambiguous conversion of delete "
                                          "expression of type %0 to a pointer">;
 def warn_delete_incomplete : Warning<
-  "deleting pointer to incomplete type %0 may cause undefined behaviour">,
+  "deleting pointer to incomplete type %0 may cause undefined behavior">,
   InGroup<DiagGroup<"delete-incomplete">>;
 def err_delete_incomplete_class_type : Error<
   "deleting incomplete class type %0; no conversions to pointer type">;
@@ -5048,7 +5052,9 @@ def err_typecheck_cast_to_incomplete : Error<
   "cast to incomplete type %0">;
 def ext_typecheck_cast_nonscalar : Extension<
   "C99 forbids casting nonscalar type %0 to the same type">;
-def ext_typecheck_cast_to_union : Extension<"C99 forbids casts to union type">;
+def ext_typecheck_cast_to_union : Extension<
+  "cast to union type is a GNU extension">,
+  InGroup<GNU>;
 def err_typecheck_cast_to_union_no_type : Error<
   "cast to union type from type %0 not present in union">;
 def err_cast_pointer_from_non_pointer_int : Error<
@@ -5137,6 +5143,8 @@ let CategoryName = "Inline Assembly Issue" in {
     "%diff{$ matching output with type $|}0,1">;
   def err_asm_unknown_register_name : Error<"unknown register name '%0' in asm">;
   def err_asm_empty : Error<"__asm used with no assembly instructions">;
+  def err_asm_invalid_input_size : Error<
+    "invalid input size for constraint '%0'">;
   def err_invalid_asm_cast_lvalue : Error<
     "invalid use of a cast in a inline asm context requiring an l-value: "
     "remove the cast or build with -fheinous-gnu-extensions">;
@@ -5149,7 +5157,8 @@ let CategoryName = "Inline Assembly Issue" in {
     "accepted due to -fheinous-gnu-extensions, but clang may remove support "
     "for this in the future">;
   def warn_asm_mismatched_size_modifier : Warning<
-    "the size being stored is truncated, use a modifier to specify the size">,
+    "the value is truncated when put into register, "
+    "use a modifier to specify the size">,
     InGroup<ASMOperandWidths>;
 }
 
@@ -5215,7 +5224,7 @@ def err_in_class_initializer_references_def_ctor : Error<
 
 def ext_in_class_initializer_non_constant : Extension<
   "in-class initializer for static data member is not a constant expression; "
-  "folding it to a constant is a GNU extension">;
+  "folding it to a constant is a GNU extension">, InGroup<GNU>;
 
 // C++ anonymous unions and GNU anonymous structs/unions
 def ext_anonymous_union : Extension<
@@ -5271,6 +5280,8 @@ def err_static_data_member_not_allowed_in_local_class : Error<
 def err_base_clause_on_union : Error<"unions cannot have base classes">;
 def err_base_must_be_class : Error<"base specifier must name a class">;
 def err_union_as_base_class : Error<"unions cannot be base classes">;
+def err_circular_inheritance : Error<
+  "circular inheritance between %0 and %1">;
 def err_incomplete_base_class : Error<"base class has incomplete type">;
 def err_duplicate_base_class : Error<
   "base class %0 specified more than once as a direct base class">;
@@ -5497,7 +5508,8 @@ def warn_format_string_is_wide_literal : Warning<
 def warn_printf_format_string_contains_null_char : Warning<
   "format string contains '\\0' within the string body">, InGroup<Format>;
 def warn_printf_asterisk_missing_arg : Warning<
-  "'%select{*|.*}0' specified field %select{width|precision}0 is missing a matching 'int' argument">;
+  "'%select{*|.*}0' specified field %select{width|precision}0 is missing a matching 'int' argument">,
+  InGroup<Format>;
 def warn_printf_asterisk_wrong_type : Warning<
   "field %select{width|precision}0 should have type %1, but argument has type %2">,
   InGroup<Format>;
@@ -5862,6 +5874,8 @@ def err_c99_array_usage_cxx : Error<
   "feature, not permitted in C++">;
 def err_double_requires_fp64 : Error<
   "use of type 'double' requires cl_khr_fp64 extension to be enabled">;
+def err_int128_unsupported : Error<
+  "__int128 is not supported on this target">;
 def err_nsconsumed_attribute_mismatch : Error<
   "overriding method has mismatched ns_consumed attribute on its"
   " parameter">;

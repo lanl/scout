@@ -14,11 +14,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 
 using namespace clang;
 using namespace ento;
@@ -70,7 +70,7 @@ void ReturnUndefChecker::checkPreStmt(const ReturnStmt *RS,
   report->addRange(RetE->getSourceRange());
   bugreporter::trackNullOrUndefValue(N, RetE, *report);
 
-  C.EmitReport(report);
+  C.emitReport(report);
 }
 
 void ento::registerReturnUndefChecker(CheckerManager &mgr) {

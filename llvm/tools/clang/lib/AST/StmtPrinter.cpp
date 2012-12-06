@@ -13,13 +13,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/StmtVisitor.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
-#include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/PrettyPrinter.h"
+#include "clang/AST/StmtVisitor.h"
 #include "llvm/ADT/SmallString.h"
 
 using namespace clang;
@@ -929,7 +930,6 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
 
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  
   DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
   ValueDecl* d = dr->getDecl();
   QualType qt = d->getType();
@@ -937,15 +937,21 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   if(isa<MeshType>(qt.getCanonicalType().getTypePtr())) {
     isMeshType = true;
   }
-  
+
   if (!isMeshType)
     PrintExpr(Node->getBase());
-  
+
+
+  MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
+  FieldDecl  *ParentDecl   = ParentMember
+    ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : NULL;
+
+  if (!isMeshType && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion()))
+    OS << (Node->isArrow() ? "->" : ".");  
+
   if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
     if (FD->isAnonymousStructOrUnion())
       return;
-  if (!isMeshType)
-    OS << (Node->isArrow() ? "->" : ".");
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())
@@ -1920,6 +1926,7 @@ void StmtPrinter::VisitBlockExpr(BlockExpr *Node) {
     }
     OS << ')';
   }
+  OS << "{ }";
 }
 
 void StmtPrinter::VisitOpaqueValueExpr(OpaqueValueExpr *Node) { 

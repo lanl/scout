@@ -13,15 +13,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/Basic/TargetInfo.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
-#include "clang/Basic/TargetInfo.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include <fcntl.h>
 
 using namespace clang;
@@ -139,7 +140,7 @@ void UnixAPIChecker::CheckOpen(CheckerContext &C, const CallExpr *CE) const {
                             "Call to 'open' requires a third argument when "
                             "the 'O_CREAT' flag is set", N);
     report->addRange(oflagsEx->getSourceRange());
-    C.EmitReport(report);
+    C.emitReport(report);
   }
 }
 
@@ -184,7 +185,7 @@ void UnixAPIChecker::CheckPthreadOnce(CheckerContext &C,
 
   BugReport *report = new BugReport(*BT_pthreadOnce, os.str(), N);
   report->addRange(CE->getArg(0)->getSourceRange());
-  C.EmitReport(report);
+  C.emitReport(report);
 }
 
 //===----------------------------------------------------------------------===//
@@ -227,7 +228,7 @@ bool UnixAPIChecker::ReportZeroByteAllocation(CheckerContext &C,
 
   report->addRange(arg->getSourceRange());
   bugreporter::trackNullOrUndefValue(N, arg, *report);
-  C.EmitReport(report);
+  C.emitReport(report);
 
   return true;
 }

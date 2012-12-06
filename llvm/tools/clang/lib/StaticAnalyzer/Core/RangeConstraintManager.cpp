@@ -16,16 +16,13 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/APSIntType.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/ImmutableSet.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace clang;
 using namespace ento;
-
-namespace { class ConstraintRange {}; }
-static int ConstraintRangeIndex = 0;
 
 /// A Range represents the closed range [from, to].  The caller must
 /// guarantee that from <= to.  Note that Range is immutable, so as not
@@ -280,17 +277,9 @@ public:
 };
 } // end anonymous namespace
 
-typedef llvm::ImmutableMap<SymbolRef,RangeSet> ConstraintRangeTy;
-
-namespace clang {
-namespace ento {
-template<>
-struct ProgramStateTrait<ConstraintRange>
-  : public ProgramStatePartialTrait<ConstraintRangeTy> {
-  static inline void *GDMIndex() { return &ConstraintRangeIndex; }
-};
-}
-}
+REGISTER_TRAIT_WITH_PROGRAMSTATE(ConstraintRange,
+                                 CLANG_ENTO_PROGRAMSTATE_MAP(SymbolRef,
+                                                             RangeSet))
 
 namespace {
 class RangeConstraintManager : public SimpleConstraintManager{

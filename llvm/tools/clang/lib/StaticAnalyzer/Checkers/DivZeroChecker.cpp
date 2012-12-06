@@ -13,10 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "ClangSACheckers.h"
+#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 
 using namespace clang;
 using namespace ento;
@@ -41,7 +41,7 @@ void DivZeroChecker::reportBug(const char *Msg,
 
     BugReport *R = new BugReport(*BT, Msg, N);
     bugreporter::trackNullOrUndefValue(N, bugreporter::GetDenomExpr(N), *R);
-    C.EmitReport(R);
+    C.emitReport(R);
   }
 }
 

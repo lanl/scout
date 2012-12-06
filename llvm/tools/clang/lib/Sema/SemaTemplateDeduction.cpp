@@ -10,18 +10,18 @@
 //
 //===----------------------------------------------------------------------===/
 
-#include "clang/Sema/Sema.h"
-#include "clang/Sema/DeclSpec.h"
-#include "clang/Sema/Template.h"
 #include "clang/Sema/TemplateDeduction.h"
+#include "TreeTransform.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
-#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/StmtVisitor.h"
+#include "clang/Sema/DeclSpec.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/Template.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "TreeTransform.h"
 #include <algorithm>
 
 namespace clang {
@@ -1398,9 +1398,11 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
             // If this is a base class, try to perform template argument
             // deduction from it.
             if (NextT != RecordT) {
+              TemplateDeductionInfo BaseInfo(Info.getLocation());
               Sema::TemplateDeductionResult BaseResult
                 = DeduceTemplateArguments(S, TemplateParams, SpecParam,
-                                          QualType(NextT, 0), Info, Deduced);
+                                          QualType(NextT, 0), BaseInfo,
+                                          Deduced);
 
               // If template argument deduction for this base was successful,
               // note that we had some success. Otherwise, ignore any deductions
@@ -1409,6 +1411,9 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
                 Successful = true;
                 DeducedOrig.clear();
                 DeducedOrig.append(Deduced.begin(), Deduced.end());
+                Info.Param = BaseInfo.Param;
+                Info.FirstArg = BaseInfo.FirstArg;
+                Info.SecondArg = BaseInfo.SecondArg;
               }
               else
                 Deduced = DeducedOrig;
@@ -3045,11 +3050,6 @@ DeduceTemplateArgumentByListElement(Sema &S,
 ///
 /// \param Args the function call arguments
 ///
-/// \param Name the name of the function being called. This is only significant
-/// when the function template is a conversion function template, in which
-/// case this routine will also perform template argument deduction based on
-/// the function to which
-///
 /// \param Specialization if template argument deduction was successful,
 /// this will be set to the function template specialization produced by
 /// template argument deduction.
@@ -3654,9 +3654,10 @@ Sema::DeduceAutoType(TypeSourceInfo *Type, Expr *&Init,
       return DAR_Failed;
   }
 
-  QualType DeducedType = Deduced[0].getAsType();
-  if (DeducedType.isNull())
+  if (Deduced[0].getKind() != TemplateArgument::Type)
     return DAR_Failed;
+
+  QualType DeducedType = Deduced[0].getAsType();
 
   if (InitList) {
     DeducedType = BuildStdInitializerList(DeducedType, Loc);
@@ -4050,10 +4051,6 @@ static bool isSameTemplate(TemplateDecl *T1, TemplateDecl *T2) {
 /// specialization that is a candidate in the ambiguous ordering. One parameter
 /// in this diagnostic should be unbound, which will correspond to the string
 /// describing the template arguments for the function template specialization.
-///
-/// \param Index if non-NULL and the result of this function is non-nULL,
-/// receives the index corresponding to the resulting function template
-/// specialization.
 ///
 /// \returns the most specialized function template specialization, if
 /// found. Otherwise, returns SpecEnd.

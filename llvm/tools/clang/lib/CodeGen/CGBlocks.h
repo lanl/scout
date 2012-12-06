@@ -14,19 +14,18 @@
 #ifndef CLANG_CODEGEN_CGBLOCKS_H
 #define CLANG_CODEGEN_CGBLOCKS_H
 
+#include "CGBuilder.h"
+#include "CGCall.h"
+#include "CGValue.h"
+#include "CodeGenFunction.h"
 #include "CodeGenTypes.h"
-#include "clang/AST/Type.h"
-#include "llvm/Module.h"
-#include "clang/Basic/TargetInfo.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
-
-#include "CodeGenFunction.h"
-#include "CGBuilder.h"
-#include "CGCall.h"
-#include "CGValue.h"
+#include "clang/AST/Type.h"
+#include "clang/Basic/TargetInfo.h"
+#include "llvm/Module.h"
 
 namespace llvm {
   class Module;
@@ -63,16 +62,18 @@ enum BlockLiteralFlags {
   BLOCK_HAS_CXX_OBJ =       (1 << 26),
   BLOCK_IS_GLOBAL =         (1 << 28),
   BLOCK_USE_STRET =         (1 << 29),
-  BLOCK_HAS_SIGNATURE  =    (1 << 30)
+  BLOCK_HAS_SIGNATURE  =    (1 << 30),
+  BLOCK_HAS_EXTENDED_LAYOUT = (1 << 31)
 };
 class BlockFlags {
   uint32_t flags;
 
-  BlockFlags(uint32_t flags) : flags(flags) {}
 public:
+  BlockFlags(uint32_t flags) : flags(flags) {}
   BlockFlags() : flags(0) {}
   BlockFlags(BlockLiteralFlags flag) : flags(flag) {}
-
+  BlockFlags(BlockByrefFlags flag) : flags(flag) {}
+  
   uint32_t getBitMask() const { return flags; }
   bool empty() const { return flags == 0; }
 
@@ -85,6 +86,9 @@ public:
   }
   friend bool operator&(BlockFlags l, BlockFlags r) {
     return (l.flags & r.flags);
+  }
+  bool operator==(BlockFlags r) {
+    return (flags == r.flags);
   }
 };
 inline BlockFlags operator|(BlockLiteralFlags l, BlockLiteralFlags r) {
@@ -193,6 +197,10 @@ public:
   /// UsesStret : True if the block uses an stret return.  Mutable
   /// because it gets set later in the block-creation process.
   mutable bool UsesStret : 1;
+  
+  /// HasCapturedVariableLayout : True if block has captured variables
+  /// and their layout meta-data has been generated.
+  bool HasCapturedVariableLayout : 1;
 
   /// The mapping of allocated indexes within the block.
   llvm::DenseMap<const VarDecl*, Capture> Captures;  
@@ -203,6 +211,14 @@ public:
   const BlockExpr *BlockExpression;
   CharUnits BlockSize;
   CharUnits BlockAlign;
+  
+  // Offset of the gap caused by block header having a smaller
+  // alignment than the alignment of the block descriptor. This
+  // is the gap offset before the first capturued field.
+  CharUnits BlockHeaderForcedGapOffset;
+  // Gap size caused by aligning first field after block header.
+  // This could be zero if no forced alignment is required.
+  CharUnits BlockHeaderForcedGapSize;
 
   /// An instruction which dominates the full-expression that the
   /// block is inside.

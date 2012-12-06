@@ -25,8 +25,8 @@
 #include "CodeGenModule.h"
 #include "clang/AST/Mangle.h"
 #include "clang/AST/Type.h"
-#include "llvm/Intrinsics.h"
 #include "llvm/DataLayout.h"
+#include "llvm/Intrinsics.h"
 #include "llvm/Value.h"
 
 using namespace clang;
@@ -1173,7 +1173,7 @@ void ItaniumCXXABI::registerGlobalDtor(CodeGenFunction &CGF,
 
   // In Apple kexts, we want to add a global destructor entry.
   // FIXME: shouldn't this be guarded by some variable?
-  if (CGM.getContext().getLangOpts().AppleKext) {
+  if (CGM.getLangOpts().AppleKext) {
     // Generate a global destructor entry.
     return CGM.AddCXXDtorEntry(dtor, addr);
   }
