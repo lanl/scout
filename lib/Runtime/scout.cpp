@@ -183,6 +183,8 @@ void __sc_debugger_dump_mesh_field(size_t width,
       break;
     }
   }
+
+  cerr << endl;
 }
 
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
