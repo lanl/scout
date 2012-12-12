@@ -1,4 +1,3 @@
-BUSTED
 #
 ###########################################################################
 # Copyright (c) 2010, Los Alamos National Security, LLC.
