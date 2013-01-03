@@ -1272,6 +1272,12 @@ bool Sema::tryToRecoverWithCall(ExprResult &E, const PartialDiagnostic &PD,
 
 bool Sema::isScoutSource(SourceLocation location){
   std::string bufferName = SourceMgr.getBufferName(location);
+  
+  // LLDB uses a buffer named Parse
+  if(bufferName == "Parse"){
+    return true;
+  }
+  
   std::string ext;
   
   bool valid = false;

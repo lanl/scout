@@ -150,7 +150,8 @@ Lexer::Lexer(FileID FID, const llvm::MemoryBuffer *InputFile, Preprocessor &PP)
     ext.insert(0, 1, bufferName[i]);
   }
 
-  if(!valid || (ext != "sc" && ext != "sch")){
+  // scout - LLDB uses a buffer named Parse
+  if(bufferName != "Parse" && (!valid || (ext != "sc" && ext != "sch"))){
     LangOpts.Scout = false;
   }
 }

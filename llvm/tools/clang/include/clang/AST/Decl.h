@@ -3295,6 +3295,12 @@ public:
                           SourceLocation StartLoc, SourceLocation IdLoc, 
                           IdentifierInfo* Id, MeshDecl* PrevDecl);
   
+  static MeshDecl* CreateFromStructRep(ASTContext& C,
+                                       Kind DK,
+                                       DeclContext* DC,
+                                       IdentifierInfo* Id,
+                                       RecordDecl* SR);
+  
   void completeDefinition(ASTContext& C);
   
   RecordDecl* getStructRep(){

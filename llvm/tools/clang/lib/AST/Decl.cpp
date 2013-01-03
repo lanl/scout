@@ -2830,6 +2830,87 @@ MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
   return M;
 }
 
+MeshDecl* MeshDecl::CreateFromStructRep(ASTContext& C,
+                                        Kind DK,
+                                        DeclContext* DC,
+                                        IdentifierInfo* Id,
+                                        RecordDecl* SR){
+  
+  MeshDecl* M = new (C) MeshDecl(DK, DC, SR->getLocStart(),
+                                 SR->getLocStart(), SR->getIdentifier(), 0);
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  
+  for(RecordDecl::field_iterator itr = SR->field_begin(),
+      itrEnd = SR->field_end(); itr != itrEnd; ++itr){
+    FieldDecl* field = *itr;
+    
+    FieldDecl* newField =
+    FieldDecl::Create(C, M, field->getLocation(),
+                      field->getLocation(),
+                      &C.Idents.get(field->getName()),
+                      field->getType().getTypePtr()->getPointeeType(),
+                      0,
+                      0,
+                      true,
+                      ICIS_NoInit);
+
+    newField->setMeshFieldType(FieldDecl::FieldCells, false);
+    
+    M->addDecl(newField);
+  }
+  
+  FieldDecl* PositionFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("position"), C.Int4Ty, 0,
+                    0, true, ICIS_NoInit);
+  
+  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
+  
+  M->addDecl(PositionFD);
+  
+  FieldDecl *WidthFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("width"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(WidthFD);
+  
+  FieldDecl *HeightFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("height"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(HeightFD);
+  
+  FieldDecl *DepthFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("depth"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(DepthFD);
+  
+  FieldDecl *PtrFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("ptr"), C.VoidPtrTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  
+  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(PtrFD);
+
+  return M;
+}
+
 SourceRange MeshDecl::getSourceRange() const {
   SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
   return SourceRange(getOuterLocStart(), E);
@@ -2897,7 +2978,7 @@ void MeshDecl::completeDefinition(ASTContext& C) {
   }
   
   StructRep->completeDefinition();
-
+  
   IsDefinition = true;
   IsBeingDefined = false;
 }
