@@ -47,12 +47,13 @@ class AsanThreadRegistry {
   // Returns stats for GetCurrent(), or stats for
   // T0 if GetCurrent() returns 0.
   AsanStats &GetCurrentThreadStats();
-  // Flushes all thread-local stats to accumulated stats, and returns
+  // Flushes all thread-local stats to accumulated stats, and makes
   // a copy of accumulated stats.
-  AsanStats GetAccumulatedStats();
+  void GetAccumulatedStats(AsanStats *stats);
   uptr GetCurrentAllocatedBytes();
   uptr GetHeapSize();
   uptr GetFreeBytes();
+  void FillMallocStatistics(AsanMallocStats *malloc_stats);
 
   AsanThreadSummary *FindByTid(u32 tid);
   AsanThread *FindThreadByStackAddress(uptr addr);
@@ -68,6 +69,9 @@ class AsanThreadRegistry {
   AsanThread main_thread_;
   AsanThreadSummary main_thread_summary_;
   AsanStats accumulated_stats_;
+  // Required for malloc_zone_statistics() on OS X. This can't be stored in
+  // per-thread AsanStats.
+  uptr max_malloced_memory_;
   u32 n_threads_;
   AsanLock mu_;
   bool inited_;
