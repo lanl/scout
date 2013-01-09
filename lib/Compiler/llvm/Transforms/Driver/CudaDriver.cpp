@@ -15,6 +15,11 @@
 
 using namespace llvm;
 
+int alignTo(int x, int alignment) {
+  int mask = (1 << alignment) - 1;
+  return (x + mask) & ~mask;
+}
+
 CudaDriver::CudaDriver(Module &module, IRBuilder<> &builder, bool debug)
   : Driver(module, builder, debug),
     CUaddress_modeTy(i32Ty),
@@ -165,7 +170,7 @@ bool CudaDriver::setGridAndBlockSizes() {
 
   int gridDims = getLinearizedMeshSize() / 256;
 
-  if(gridDims < 65535)
+  if(gridDims < 65535) {
     if(getLinearizedMeshSize() % 256 == 0) {
       _gridSize[0] = llvm::ConstantInt::get(i32Ty, gridDims);
       return true;
@@ -173,6 +178,7 @@ bool CudaDriver::setGridAndBlockSizes() {
       _gridSize[0] = llvm::ConstantInt::get(i32Ty, gridDims + 1);
       return false;
     }
+  }
 
   int half = gridDims / 2;
   if(gridDims % 2 == 0) {
@@ -248,9 +254,6 @@ void CudaDriver::create(Function *func,
         Value *size = ConstantInt::get(i64Ty, numElements);
         d_arg = _builder.CreateAlloca(getCUdeviceptrTy(), 0, "d_" + arg->getName());
 	
-	Value* name =
-	  _builder.CreateGlobalStringPtr(arg->getName());
-
         std::string meshNameStr = 
           cast<ConstantDataArray>(meshName)->getAsString();
 

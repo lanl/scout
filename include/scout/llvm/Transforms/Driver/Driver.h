@@ -18,35 +18,8 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 
-static unsigned getSizeInBytes(llvm::Type *type) {
-  if(type->isSingleValueType() && !type->isPointerTy()) {
-    return type->getPrimitiveSizeInBits() / 8;
-  } else if(type->isArrayTy()) {
-    int numElements = llvm::cast< llvm::ArrayType >(type)->getNumElements();
-    return numElements * getSizeInBytes(type->getContainedType(0));
-  } else {
-    unsigned size = 0;
-
-    typedef llvm::Type::subtype_iterator SubTypeIterator;
-    SubTypeIterator subtype = type->subtype_begin();
-    for( ; subtype != type->subtype_end(); ++subtype) {
-      size += getSizeInBytes(*subtype);
-    }
-    return size;
-  }
-}
-
-static llvm::Type *getOrInsertType(llvm::Module &module, std::string name, llvm::Type *type = NULL) {
-  if(llvm::Type *ty = module.getTypeByName(name))
-    return ty;
-
-  if(type == NULL)
-    type = llvm::StructType::create(llvm::getGlobalContext(), name);
-  else
-    type = llvm::StructType::create(llvm::ArrayRef< llvm::Type * >(type), name);
-
-  return type;
-}
+llvm::Type *getOrInsertType(llvm::Module &module, std::string name, llvm::Type *type=NULL);
+unsigned getSizeInBytes(llvm::Type *type);
 
 class Driver {
 public:

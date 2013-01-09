@@ -17,21 +17,17 @@ Type *CUarrayDblPtrTy = getPtrTy(CUarrayPtrTy);
 Type *CUarray_formatPtrTy = getPtrTy(CUarray_formatTy);
 
 Type *CUDA_ARRAY_DESCRIPTORPtrTy = getPtrTy(CUDA_ARRAY_DESCRIPTORTy);
-Type *CUDA_ARRAY_DESCRIPTORDblPtrTy = getPtrTy(CUDA_ARRAY_DESCRIPTORPtrTy);
 
 Type *CUDA_ARRAY3D_DESCRIPTORPtrTy = getPtrTy(CUDA_ARRAY3D_DESCRIPTORTy);
-Type *CUDA_ARRAY3D_DESCRIPTORDblPtrTy = getPtrTy(CUDA_ARRAY3D_DESCRIPTORPtrTy);
 
 Type *CUcontextPtrTy = getPtrTy(CUcontextTy);
 Type *CUcontextDblPtrTy = getPtrTy(CUcontextPtrTy);
 
 Type *CUdevicePtrTy = getPtrTy(CUdeviceTy);
-Type *CUdeviceDblPtrTy = getPtrTy(CUdevicePtrTy);
 
 Type *CUdeviceptrPtrTy = getPtrTy(CUdeviceptrTy);
 
 Type *CUdevpropPtrTy = getPtrTy(CUdevpropTy);
-Type *CUdevpropDblPtrTy = getPtrTy(CUdevpropPtrTy);
 
 Type *CUeventPtrTy = getPtrTy(CUeventTy);
 Type *CUeventDblPtrTy = getPtrTy(CUeventPtrTy);
@@ -45,10 +41,8 @@ Type *CUmodulePtrTy = getPtrTy(CUmoduleTy);
 Type *CUmoduleDblPtrTy = getPtrTy(CUmodulePtrTy);
 
 Type *CUDA_MEMCPY2DPtrTy = getPtrTy(CUDA_MEMCPY2DTy);
-Type *CUDA_MEMCPY2DDblPtrTy = getPtrTy(CUDA_MEMCPY2DPtrTy);
 
 Type *CUDA_MEMCPY3DPtrTy = getPtrTy(CUDA_MEMCPY3DTy);
-Type *CUDA_MEMCPY3DDblPtrTy = getPtrTy(CUDA_MEMCPY3DPtrTy);
 
 Type *CUstreamPtrTy = getPtrTy(CUstreamTy);
 Type *CUstreamDblPtrTy = getPtrTy(CUstreamPtrTy);

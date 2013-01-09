@@ -495,7 +495,7 @@ swaptree_set_schedule(swap_control_t *swapctrl,
                 newmsg->pixelsize = pixelsize;
 
                 if (newmsg->mpiid >= swapctrl->totalprocnum) {
-                    fprintf(stderr, "%d recv overflow. otherworkid %d; mpiid %d\n",
+                    fprintf(stderr, "%d recv overflow. otherworkid %u; mpiid %u\n",
                             swapctrl->mpiid, otherworkid, newmsg->mpiid);
                 }
                 
@@ -545,7 +545,7 @@ swaptree_set_schedule(swap_control_t *swapctrl,
                 newmsg->pixelsize = pixelsize;
 
                 if (newmsg->mpiid >= swapctrl->totalprocnum) {
-                    fprintf(stderr, "%d send overflow. otherworkid %d; mpiid %d\n",
+                    fprintf(stderr, "%d send overflow. otherworkid %u; mpiid %u\n",
                             swapctrl->mpiid, otherworkid, newmsg->mpiid);
                 }
 

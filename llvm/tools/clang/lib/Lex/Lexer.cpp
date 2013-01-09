@@ -1612,6 +1612,7 @@ FinishIdentifier:
       IdentifierInfo* NII = 0;
       
       switch(Result.getKind()){
+#undef SCOUT_KEYWORD
 #define SCOUT_KEYWORD(X) case tok::kw_##X: NII = PP->getScoutIdentifier(#X); break;
 #include "clang/Basic/TokenKinds.def"
         default:

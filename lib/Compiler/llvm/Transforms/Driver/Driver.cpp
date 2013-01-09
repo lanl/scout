@@ -13,6 +13,36 @@
 
 using namespace llvm;
 
+llvm::Type *getOrInsertType(llvm::Module &module, std::string name, llvm::Type *type) {
+  if(llvm::Type *ty = module.getTypeByName(name))
+    return ty;
+
+  if(type == NULL)
+    type = llvm::StructType::create(llvm::getGlobalContext(), name);
+  else
+    type = llvm::StructType::create(llvm::ArrayRef< llvm::Type * >(type), name);
+
+  return type;
+}
+
+unsigned getSizeInBytes(llvm::Type *type) {
+  if(type->isSingleValueType() && !type->isPointerTy()) {
+    return type->getPrimitiveSizeInBits() / 8;
+  } else if(type->isArrayTy()) {
+    int numElements = llvm::cast< llvm::ArrayType >(type)->getNumElements();
+    return numElements * getSizeInBytes(type->getContainedType(0));
+  } else {
+    unsigned size = 0;
+
+    typedef llvm::Type::subtype_iterator SubTypeIterator;
+    SubTypeIterator subtype = type->subtype_begin();
+    for( ; subtype != type->subtype_end(); ++subtype) {
+      size += getSizeInBytes(*subtype);
+    }
+    return size;
+  }
+}
+
 Driver::Driver(Module &module, IRBuilder<> &builder, bool debug)
   : _module(module), _builder(builder), _debug(debug),
     i8Ty((Type::getInt8Ty(_builder.getContext()))),
