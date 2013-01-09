@@ -5,21 +5,17 @@
 #include "scout/Runtime/window.h"
 #include "scout/Runtime/image.h"
 #include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/gpu.h"
 
 #ifdef SC_ENABLE_MPI
 #include "scout/Runtime/volume_renderall.h"
 #endif
 
+extern scout::DeviceList DevList;
 extern scout::glCamera* __sc_camera;
-
 extern const size_t __sc_initial_width;
 extern const size_t __sc_initial_height;
-
-enum ScoutGPUType{
-  ScoutGPUNone,
-  ScoutGPUCUDA,
-  ScoutGPUOpenCL
-};
 
 void __sc_init_sdl(size_t width, size_t height, scout::glCamera* cam = NULL);
 

@@ -17,7 +17,7 @@
 #include "scout/Runtime/types.h"
 
 #ifdef SC_ENABLE_CUDA
-#include "scout/Runtime/cuda/scout_cuda.h"
+#include "scout/Runtime/cuda/CudaDevice.h"
 #endif
 
 // ------  LLVM - globals accessed by LLVM / CUDA driver

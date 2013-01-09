@@ -20,7 +20,9 @@
 #include "scout/Config/defs.h"
 
 #ifdef SC_ENABLE_CUDA
-#include "scout/Runtime/cuda/scout_cuda.h"
+#include <cuda.h>
+#include <cudaGL.h>
+#include "scout/Runtime/cuda/CudaDevice.h"
 #endif
 
 #ifdef SC_ENABLE_OPENCL

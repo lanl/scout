@@ -62,17 +62,16 @@
 #include <cuda_gl_interop.h>
 #endif
 
-extern void cuda_error_check(cudaError_t err, const char* file, int line);
-
-// Todo: It would probably be nice to have an option of turning on or
-// off these checks in the build configuration. --psm 
-#define CUDAErrorCheck(func)  cuda_error_check((func), __FILE__, __LINE__)
 
 namespace scout {
+  extern void cuda_error_check(cudaError_t err, const char* file, int line);
   extern void cuReportError(CUresult status, const char *filename, const int line);
   extern bool cuCheckForError(CUresult status, const char *filename, const int line);
 }
 
+// Todo: It would probably be nice to have an option of turning on or
+// off these checks in the build configuration. --psm
+#define CUDAErrorCheck(func)  scout::cuda_error_check((func), __FILE__, __LINE__)
 #define cuError(status)  scout::cuReportError(status, __FILE__, __LINE__)
 #define cuErrorCheck(status) scout::cuCheckForError(status, __FILE__, __LINE__)
 

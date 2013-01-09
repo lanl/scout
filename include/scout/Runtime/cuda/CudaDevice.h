@@ -58,6 +58,9 @@
 #include <cuda.h>
 #include "scout/Runtime/Device.h"
 
+extern bool __sc_cuda;
+extern CUgraphicsResource __sc_cuda_device_resource;
+
 namespace scout {
 
   class CudaDevice: public Device {
