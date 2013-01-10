@@ -596,8 +596,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
     std::vector< llvm::Type * > eltTys;
 
-    // width, height, depth
-    for(size_t i = 0; i < 3; ++i){
+    // mesh_flags__, width, height, depth
+    for(size_t i = 0; i < 4; ++i){
       eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
     }
 

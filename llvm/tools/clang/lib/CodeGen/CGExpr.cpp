@@ -2350,28 +2350,34 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
 
     if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
       if(isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())){
-        llvm::Value* baseAddr = LocalDeclMap[VD];
+        llvm::Value* baseAddr;
         
-        if(VD->getType().getTypePtr()->isReferenceType()){
-          baseAddr = Builder.CreateLoad(baseAddr);
+        if(VD->hasGlobalStorage()){
+          baseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(VD));
         }
-        
+        else{
+          baseAddr = LocalDeclMap[VD];
+          
+          if(VD->getType().getTypePtr()->isReferenceType()){
+            baseAddr = Builder.CreateLoad(baseAddr);
+          }
+        }
         
         llvm::StringRef memberName = E->getMemberDecl()->getName();
 
         // Check if this is a Scout '*.width' instrinsic.
         if(memberName == "width")
-          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 0),
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 1),
                                 getContext().IntTy);
 
         // Check if this is a Scout '*.height' instrinsic.
         if(memberName == "height")
-          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 1), 
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 2),
                                 getContext().IntTy);
 
         // Check if this is a Scout '*.depth' instrinsic.
         if(memberName == "depth")
-          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 2), 
+          return MakeAddrLValue(Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, 3),
                                 getContext().IntTy);
         
         // Check if this is a Scout '*.ptr' instrinsic.
@@ -3125,6 +3131,7 @@ EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
   if(isa<MemberExpr>(E->getBase())) {
     ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
     if(VD->getName() == "position") {
+      std::cerr << "idx is: " << E->getIdx() << std::endl;
       return MakeAddrLValue(ScoutIdxVars[E->getIdx()], getContext().IntTy);
     }
     assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
@@ -3190,7 +3197,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
     MeshDecl::field_iterator itr = MD->field_begin();
     MeshDecl::field_iterator itr_end = MD->field_end();
 
-    for(unsigned int i = 3; itr != itr_end; ++itr, ++i) {
+    for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
       if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
         if ((*itr)->isExternAlloc()) {
           QualType memberTy = dyn_cast< FieldDecl >(*itr)->getType();

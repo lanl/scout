@@ -650,6 +650,31 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
   DeclContext::lookup_const_iterator I, E;
   for (llvm::tie(I, E) = DC->lookup(R.getLookupName()); I != E; ++I) {
     NamedDecl *D = *I;
+
+    // scout - convert mesh struct rep to mesh decl - used to
+    // interface with Scout LLDB debugger
+    if(ValueDecl* vd = dyn_cast<ValueDecl>(D)){
+      if(const RecordType* rt =
+         dyn_cast<RecordType>(vd->getType().getNonReferenceType().getTypePtr())){
+        RecordDecl* rd = rt->getDecl();
+        RecordDecl::field_iterator itr = rd->field_begin();
+        if(itr != rd->field_end() && 
+           itr->getName().str() == "mesh_flags__"){
+          MeshDecl* MD =
+            MeshDecl::
+              CreateFromStructRep(S.Context,
+                                  clang::Decl::Mesh,
+                                  D->getDeclContext(),
+                                  &S.Context.Idents.get(rd->getName()),
+                                  rd);
+          
+          MeshType* mt = new MeshType(MD);
+          
+          vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
+        }
+      }
+    }
+    
     if ((D = R.getAcceptableDecl(D))) {
       R.addDecl(D);
       Found = true;

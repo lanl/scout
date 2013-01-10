@@ -931,7 +931,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           
           // store the mesh dimensions
           for(size_t i = 0; i < 3; ++i){
-            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);
             
             if(i >= dims.size()){
               // store a 0 in that dim if above size
@@ -976,12 +976,13 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           MeshDecl::field_iterator itr_end = MD->field_end();
           
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-          for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
+          for(unsigned i = 4, e = structTy->getNumContainedTypes(); i < e; ++i) {
             // Compute size of needed field memory in bytes 
             llvm::Type *fieldTy = structTy->getContainedType(i);
             
             // If this is a externally allocated field, go on
             FieldDecl* FD = *itr;
+            
             if (itr != itr_end) ++itr;
             if (FD->isExternAlloc()) continue;
             

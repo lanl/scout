@@ -2922,15 +2922,26 @@ void MeshDecl::startDefinition() {
 
 void MeshDecl::completeDefinition(ASTContext& C) {
   assert(StructRep && "MeshDecl::completeDefinition: uninitialized StructRep");
-
+  
   FieldDecl* Field = FieldDecl::Create(C, StructRep, getLocation(),
                                        getLocation(),
-                                       &C.Idents.get("width"),
+                                       &C.Idents.get("mesh_flags__"),
                                        C.UnsignedIntTy,
                                        0,
                                        0,
                                        false,
                                        ICIS_NoInit);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+  
+  Field = FieldDecl::Create(C, StructRep, getLocation(),
+                            getLocation(),
+                            &C.Idents.get("width"),
+                            C.UnsignedIntTy,
+                            0,
+                            0,
+                            false,
+                            ICIS_NoInit);
   Field->setAccess(AS_public);
   StructRep->addDecl(Field);
 
