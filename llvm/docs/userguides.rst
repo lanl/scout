@@ -22,6 +22,9 @@ User Guides
    Phabricator
    TestingGuide
    tutorial/index
+   ReleaseNotes
+   Passes
+   YamlIO
 
 * :ref:`getting_started`
     
@@ -57,15 +60,15 @@ User Guides
    A reference manual for the LLVM command line utilities ("man" pages for LLVM
    tools).
     
-* `LLVM's Analysis and Transform Passes <Passes.html>`_
+* :doc:`Passes`
 
    A list of optimizations and analyses implemented in LLVM.
-    
+
 * :ref:`faq`
 
    A list of common questions and problems and their solutions.
     
-* `Release notes for the current release <ReleaseNotes.html>`_
+* :doc:`Release notes for the current release <ReleaseNotes>`
 
    This describes new features, known bugs, and other limitations.
 
@@ -98,6 +101,10 @@ User Guides
 
    Instructions for adding new builder to LLVM buildbot master.
     
+* :ref:`yamlio`
+
+   A reference guide for using LLVM's YAML I/O library.
+
 * **IRC** -- You can probably find help on the unofficial LLVM IRC.
 
    We often are on irc.oftc.net in the #llvm channel.  If you are using the

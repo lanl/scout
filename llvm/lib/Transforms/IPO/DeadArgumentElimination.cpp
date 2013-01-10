@@ -23,15 +23,15 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/CallingConv.h"
-#include "llvm/Constant.h"
 #include "llvm/DIBuilder.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/Instructions.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/Debug.h"
@@ -271,16 +271,16 @@ bool DAE::DeleteDeadVarargs(Function &Fn) {
     Args.assign(CS.arg_begin(), CS.arg_begin() + NumArgs);
 
     // Drop any attributes that were on the vararg arguments.
-    AttrListPtr PAL = CS.getAttributes();
+    AttributeSet PAL = CS.getAttributes();
     if (!PAL.isEmpty() && PAL.getSlot(PAL.getNumSlots() - 1).Index > NumArgs) {
       SmallVector<AttributeWithIndex, 8> AttributesVec;
       for (unsigned i = 0; PAL.getSlot(i).Index <= NumArgs; ++i)
         AttributesVec.push_back(PAL.getSlot(i));
-      Attributes FnAttrs = PAL.getFnAttributes();
+      Attribute FnAttrs = PAL.getFnAttributes();
       if (FnAttrs.hasAttributes())
-        AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::FunctionIndex,
+        AttributesVec.push_back(AttributeWithIndex::get(AttributeSet::FunctionIndex,
                                                         FnAttrs));
-      PAL = AttrListPtr::get(Fn.getContext(), AttributesVec);
+      PAL = AttributeSet::get(Fn.getContext(), AttributesVec);
     }
 
     Instruction *New;
@@ -698,11 +698,11 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
 
   // Set up to build a new list of parameter attributes.
   SmallVector<AttributeWithIndex, 8> AttributesVec;
-  const AttrListPtr &PAL = F->getAttributes();
+  const AttributeSet &PAL = F->getAttributes();
 
   // The existing function return attributes.
-  Attributes RAttrs = PAL.getRetAttributes();
-  Attributes FnAttrs = PAL.getFnAttributes();
+  Attribute RAttrs = PAL.getRetAttributes();
+  Attribute FnAttrs = PAL.getFnAttributes();
 
   // Find out the new return value.
 
@@ -765,15 +765,15 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
   // required when new return value attributes are added.
   if (NRetTy->isVoidTy())
     RAttrs =
-      Attributes::get(NRetTy->getContext(), AttrBuilder(RAttrs).
-                      removeAttributes(Attributes::typeIncompatible(NRetTy)));
+      Attribute::get(NRetTy->getContext(), AttrBuilder(RAttrs).
+                      removeAttributes(Attribute::typeIncompatible(NRetTy)));
   else
     assert(!AttrBuilder(RAttrs).
-             hasAttributes(Attributes::typeIncompatible(NRetTy)) &&
+             hasAttributes(Attribute::typeIncompatible(NRetTy)) &&
            "Return attributes no longer compatible?");
 
   if (RAttrs.hasAttributes())
-    AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::ReturnIndex,
+    AttributesVec.push_back(AttributeWithIndex::get(AttributeSet::ReturnIndex,
                                                     RAttrs));
 
   // Remember which arguments are still alive.
@@ -791,7 +791,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
 
       // Get the original parameter attributes (skipping the first one, that is
       // for the return value.
-      Attributes Attrs = PAL.getParamAttributes(i + 1);
+      Attribute Attrs = PAL.getParamAttributes(i + 1);
       if (Attrs.hasAttributes())
         AttributesVec.push_back(AttributeWithIndex::get(Params.size(), Attrs));
     } else {
@@ -802,11 +802,11 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
   }
 
   if (FnAttrs.hasAttributes())
-    AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::FunctionIndex,
+    AttributesVec.push_back(AttributeWithIndex::get(AttributeSet::FunctionIndex,
                                                     FnAttrs));
 
   // Reconstruct the AttributesList based on the vector we constructed.
-  AttrListPtr NewPAL = AttrListPtr::get(F->getContext(), AttributesVec);
+  AttributeSet NewPAL = AttributeSet::get(F->getContext(), AttributesVec);
 
   // Create the new function type based on the recomputed parameters.
   FunctionType *NFTy = FunctionType::get(NRetTy, Params, FTy->isVarArg());
@@ -833,17 +833,17 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
     Instruction *Call = CS.getInstruction();
 
     AttributesVec.clear();
-    const AttrListPtr &CallPAL = CS.getAttributes();
+    const AttributeSet &CallPAL = CS.getAttributes();
 
     // The call return attributes.
-    Attributes RAttrs = CallPAL.getRetAttributes();
-    Attributes FnAttrs = CallPAL.getFnAttributes();
+    Attribute RAttrs = CallPAL.getRetAttributes();
+    Attribute FnAttrs = CallPAL.getFnAttributes();
     // Adjust in case the function was changed to return void.
     RAttrs =
-      Attributes::get(NF->getContext(), AttrBuilder(RAttrs).
-           removeAttributes(Attributes::typeIncompatible(NF->getReturnType())));
+      Attribute::get(NF->getContext(), AttrBuilder(RAttrs).
+           removeAttributes(Attribute::typeIncompatible(NF->getReturnType())));
     if (RAttrs.hasAttributes())
-      AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::ReturnIndex,
+      AttributesVec.push_back(AttributeWithIndex::get(AttributeSet::ReturnIndex,
                                                       RAttrs));
 
     // Declare these outside of the loops, so we can reuse them for the second
@@ -856,7 +856,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
       if (ArgAlive[i]) {
         Args.push_back(*I);
         // Get original parameter attributes, but skip return attributes.
-        Attributes Attrs = CallPAL.getParamAttributes(i + 1);
+        Attribute Attrs = CallPAL.getParamAttributes(i + 1);
         if (Attrs.hasAttributes())
           AttributesVec.push_back(AttributeWithIndex::get(Args.size(), Attrs));
       }
@@ -864,17 +864,17 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
     // Push any varargs arguments on the list. Don't forget their attributes.
     for (CallSite::arg_iterator E = CS.arg_end(); I != E; ++I, ++i) {
       Args.push_back(*I);
-      Attributes Attrs = CallPAL.getParamAttributes(i + 1);
+      Attribute Attrs = CallPAL.getParamAttributes(i + 1);
       if (Attrs.hasAttributes())
         AttributesVec.push_back(AttributeWithIndex::get(Args.size(), Attrs));
     }
 
     if (FnAttrs.hasAttributes())
-      AttributesVec.push_back(AttributeWithIndex::get(AttrListPtr::FunctionIndex,
+      AttributesVec.push_back(AttributeWithIndex::get(AttributeSet::FunctionIndex,
                                                       FnAttrs));
 
     // Reconstruct the AttributesList based on the vector we constructed.
-    AttrListPtr NewCallPAL = AttrListPtr::get(F->getContext(), AttributesVec);
+    AttributeSet NewCallPAL = AttributeSet::get(F->getContext(), AttributesVec);
 
     Instruction *New;
     if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {

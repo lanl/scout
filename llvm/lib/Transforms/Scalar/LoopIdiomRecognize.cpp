@@ -48,15 +48,15 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/DataLayout.h"
-#include "llvm/IRBuilder.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetLibraryInfo.h"
-#include "llvm/TargetTransformInfo.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
 
@@ -135,12 +135,12 @@ namespace {
     DominatorTree *DT;
     ScalarEvolution *SE;
     TargetLibraryInfo *TLI;
-    const ScalarTargetTransformInfo *STTI;
+    const TargetTransformInfo *TTI;
   public:
     static char ID;
     explicit LoopIdiomRecognize() : LoopPass(ID) {
       initializeLoopIdiomRecognizePass(*PassRegistry::getPassRegistry());
-      TD = 0; DT = 0; SE = 0; TLI = 0; STTI = 0;
+      TD = 0; DT = 0; SE = 0; TLI = 0; TTI = 0;
     }
 
     bool runOnLoop(Loop *L, LPPassManager &LPM);
@@ -177,6 +177,7 @@ namespace {
       AU.addPreserved<DominatorTree>();
       AU.addRequired<DominatorTree>();
       AU.addRequired<TargetLibraryInfo>();
+      AU.addRequired<TargetTransformInfo>();
     }
 
     const DataLayout *getDataLayout() {
@@ -195,12 +196,8 @@ namespace {
       return TLI ? TLI : (TLI = &getAnalysis<TargetLibraryInfo>());
     }
 
-    const ScalarTargetTransformInfo *getScalarTargetTransformInfo() {
-      if (!STTI) {
-        TargetTransformInfo *TTI = getAnalysisIfAvailable<TargetTransformInfo>();
-        if (TTI) STTI = TTI->getScalarTargetTransformInfo();
-      }
-      return STTI;
+    const TargetTransformInfo *getTargetTransformInfo() {
+      return TTI ? TTI : (TTI = &getAnalysis<TargetTransformInfo>());
     }
 
     Loop *getLoop() const { return CurLoop; }
@@ -221,6 +218,7 @@ INITIALIZE_PASS_DEPENDENCY(LCSSA)
 INITIALIZE_PASS_DEPENDENCY(ScalarEvolution)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfo)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
+INITIALIZE_AG_DEPENDENCY(TargetTransformInfo)
 INITIALIZE_PASS_END(LoopIdiomRecognize, "loop-idiom", "Recognize loop idioms",
                     false, false)
 
@@ -312,8 +310,8 @@ NclPopcountRecognize::NclPopcountRecognize(LoopIdiomRecognize &TheLIR):
 }
 
 bool NclPopcountRecognize::preliminaryScreen() {
-  const ScalarTargetTransformInfo *STTI = LIR.getScalarTargetTransformInfo();
-  if (STTI->getPopcntHwSupport(32) != ScalarTargetTransformInfo::Fast)
+  const TargetTransformInfo *TTI = LIR.getTargetTransformInfo();
+  if (TTI->getPopcntSupport(32) != TargetTransformInfo::PSK_FastHardware)
     return false;
 
   // Counting population are usually conducted by few arithmetic instrutions.
@@ -455,7 +453,7 @@ bool NclPopcountRecognize::detectIdiom(Instruction *&CntInst,
         continue;
 
       PHINode *Phi = dyn_cast<PHINode>(Inst->getOperand(0));
-      if (!Phi && Phi->getParent() != LoopEntry)
+      if (!Phi || Phi->getParent() != LoopEntry)
         continue;
 
       // Check if the result of the instruction is live of the loop.
@@ -509,7 +507,7 @@ void NclPopcountRecognize::transform(Instruction *CntInst,
  
   // Step 1: Insert the ctpop instruction at the end of the precondition block
   IRBuilderTy Builder(PreCondBr);
-  Value *PopCnt, *PopCntZext, *NewCount;
+  Value *PopCnt, *PopCntZext, *NewCount, *TripCnt;
   {
     PopCnt = createPopcntIntrinsic(Builder, Var, DL);
     NewCount = PopCntZext =
@@ -518,11 +516,14 @@ void NclPopcountRecognize::transform(Instruction *CntInst,
     if (NewCount != PopCnt)
       (cast<Instruction>(NewCount))->setDebugLoc(DL);
 
+    // TripCnt is exactly the number of iterations the loop has
+    TripCnt = NewCount;
+
     // If the popoulation counter's initial value is not zero, insert Add Inst.
     Value *CntInitVal = CntPhi->getIncomingValueForBlock(PreHead);
     ConstantInt *InitConst = dyn_cast<ConstantInt>(CntInitVal);
     if (!InitConst || !InitConst->isZero()) {
-      NewCount = Builder.CreateAdd(PopCnt, InitConst);
+      NewCount = Builder.CreateAdd(NewCount, CntInitVal);
       (cast<Instruction>(NewCount))->setDebugLoc(DL);
     }
   }
@@ -570,7 +571,7 @@ void NclPopcountRecognize::transform(Instruction *CntInst,
   {
     BranchInst *LbBr = LIRUtil::getBranch(Body);
     ICmpInst *LbCond = cast<ICmpInst>(LbBr->getCondition());
-    Type *Ty = NewCount->getType();
+    Type *Ty = TripCnt->getType();
 
     PHINode *TcPhi = PHINode::Create(Ty, 2, "tcphi", Body->begin());
 
@@ -580,7 +581,7 @@ void NclPopcountRecognize::transform(Instruction *CntInst,
     Instruction *TcDec =
       cast<Instruction>(Builder.CreateSub(Opnd1, Opnd2, "tcdec", false, true));
 
-    TcPhi->addIncoming(NewCount, PreHead);
+    TcPhi->addIncoming(TripCnt, PreHead);
     TcPhi->addIncoming(TcDec, Body);
 
     CmpInst::Predicate Pred = (LbBr->getSuccessor(0) == Body) ?
@@ -628,7 +629,7 @@ CallInst *NclPopcountRecognize::createPopcntIntrinsic(IRBuilderTy &IRBuilder,
 ///   call, and return true; otherwise, return false.
 bool NclPopcountRecognize::recognize() {
 
-  if (!LIR.getScalarTargetTransformInfo())
+  if (!LIR.getTargetTransformInfo())
     return false;
 
   LIR.getScalarEvolution();
@@ -666,12 +667,14 @@ bool LoopIdiomRecognize::runOnCountableLoop() {
   if (!getDataLayout())
     return false;
 
-  getDominatorTree();
+  // set DT 
+  (void)getDominatorTree();
 
   LoopInfo &LI = getAnalysis<LoopInfo>();
   TLI = &getAnalysis<TargetLibraryInfo>();
 
-  getTargetLibraryInfo();
+  // set TLI 
+  (void)getTargetLibraryInfo();
 
   SmallVector<BasicBlock*, 8> ExitBlocks;
   CurLoop->getUniqueExitBlocks(ExitBlocks);

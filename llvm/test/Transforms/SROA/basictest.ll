@@ -575,8 +575,8 @@ entry:
   store i8 0, i8* %a2ptr
   %aiptr = bitcast [3 x i8]* %a to i24*
   %ai = load i24* %aiptr
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 ; CHECK:      %[[ext2:.*]] = zext i8 0 to i24
 ; CHECK-NEXT: %[[shift2:.*]] = shl i24 %[[ext2]], 16
 ; CHECK-NEXT: %[[mask2:.*]] = and i24 undef, 65535
@@ -597,8 +597,8 @@ entry:
   %b1 = load i8* %b1ptr
   %b2ptr = getelementptr [3 x i8]* %b, i64 0, i32 2
   %b2 = load i8* %b2ptr
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 ; CHECK:      %[[trunc0:.*]] = trunc i24 %[[insert0]] to i8
 ; CHECK-NEXT: %[[shift1:.*]] = lshr i24 %[[insert0]], 8
 ; CHECK-NEXT: %[[trunc1:.*]] = trunc i24 %[[shift1]] to i8
@@ -1146,4 +1146,80 @@ define void @PR14465() {
   call void @llvm.memset.p0i8.i64(i8* %cast, i8 -2, i64 4194304, i32 16, i1 false)
   ret void
 ; CHECK: ret
+}
+
+define void @PR14548(i1 %x) {
+; Handle a mixture of i1 and i8 loads and stores to allocas. This particular
+; pattern caused crashes and invalid output in the PR, and its nature will
+; trigger a mixture in several permutations as we resolve each alloca
+; iteratively.
+; Note that we don't do a particularly good *job* of handling these mixtures,
+; but the hope is that this is very rare.
+; CHECK: @PR14548
+
+entry:
+  %a = alloca <{ i1 }>, align 8
+  %b = alloca <{ i1 }>, align 8
+; Nothing of interest is simplified here.
+; CHECK: alloca
+; CHECK: alloca
+
+  %b.i1 = bitcast <{ i1 }>* %b to i1*
+  store i1 %x, i1* %b.i1, align 8
+  %b.i8 = bitcast <{ i1 }>* %b to i8*
+  %foo = load i8* %b.i8, align 1
+
+  %a.i8 = bitcast <{ i1 }>* %a to i8*
+  call void @llvm.memcpy.p0i8.p0i8.i32(i8* %a.i8, i8* %b.i8, i32 1, i32 1, i1 false) nounwind
+  %bar = load i8* %a.i8, align 1
+  %a.i1 = getelementptr inbounds <{ i1 }>* %a, i32 0, i32 0
+  %baz = load i1* %a.i1, align 1
+  ret void
+}
+
+define <3 x i8> @PR14572.1(i32 %x) {
+; Ensure that a split integer store which is wider than the type size of the
+; alloca (relying on the alloc size padding) doesn't trigger an assert.
+; CHECK: @PR14572.1
+
+entry:
+  %a = alloca <3 x i8>, align 4
+; CHECK-NOT: alloca
+
+  %cast = bitcast <3 x i8>* %a to i32*
+  store i32 %x, i32* %cast, align 1
+  %y = load <3 x i8>* %a, align 4
+  ret <3 x i8> %y
+; CHECK: ret <3 x i8>
+}
+
+define i32 @PR14572.2(<3 x i8> %x) {
+; Ensure that a split integer load which is wider than the type size of the
+; alloca (relying on the alloc size padding) doesn't trigger an assert.
+; CHECK: @PR14572.2
+
+entry:
+  %a = alloca <3 x i8>, align 4
+; CHECK-NOT: alloca
+
+  store <3 x i8> %x, <3 x i8>* %a, align 1
+  %cast = bitcast <3 x i8>* %a to i32*
+  %y = load i32* %cast, align 4
+  ret i32 %y
+; CHECK: ret i32
+}
+
+define i32 @PR14601(i32 %x) {
+; Don't try to form a promotable integer alloca when there is a variable length
+; memory intrinsic.
+; CHECK: @PR14601
+
+entry:
+  %a = alloca i32
+; CHECK: alloca
+
+  %a.i8 = bitcast i32* %a to i8*
+  call void @llvm.memset.p0i8.i32(i8* %a.i8, i8 0, i32 %x, i32 1, i1 false)
+  %v = load i32* %a
+  ret i32 %v
 }

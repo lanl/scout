@@ -31,6 +31,7 @@
 #define DEBUG_TYPE "objc-arc"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -134,8 +135,8 @@ namespace {
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Transforms/Utils/Local.h"
 
@@ -886,24 +887,32 @@ bool ObjCARCExpand::runOnFunction(Function &F) {
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
     Instruction *Inst = &*I;
 
+    DEBUG(dbgs() << "ObjCARCExpand: Visiting: " << *Inst << "\n");
+
     switch (GetBasicInstructionClass(Inst)) {
     case IC_Retain:
     case IC_RetainRV:
     case IC_Autorelease:
     case IC_AutoreleaseRV:
     case IC_FusedRetainAutorelease:
-    case IC_FusedRetainAutoreleaseRV:
+    case IC_FusedRetainAutoreleaseRV: {
       // These calls return their argument verbatim, as a low-level
       // optimization. However, this makes high-level optimizations
       // harder. Undo any uses of this optimization that the front-end
       // emitted here. We'll redo them in the contract pass.
       Changed = true;
-      Inst->replaceAllUsesWith(cast<CallInst>(Inst)->getArgOperand(0));
+      Value *Value = cast<CallInst>(Inst)->getArgOperand(0);
+      DEBUG(dbgs() << "ObjCARCExpand: Old = " << *Inst << "\n"
+                      "               New = " << *Value << "\n");
+      Inst->replaceAllUsesWith(Value);
       break;
+    }
     default:
       break;
     }
   }
+
+  DEBUG(dbgs() << "ObjCARCExpand: Finished List.\n\n");
 
   return Changed;
 }
@@ -913,7 +922,7 @@ bool ObjCARCExpand::runOnFunction(Function &F) {
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Constants.h"
+#include "llvm/IR/Constants.h"
 
 namespace {
   /// ObjCARCAPElim - Autorelease pool elimination.
@@ -986,6 +995,9 @@ bool ObjCARCAPElim::OptimizeBB(BasicBlock *BB) {
       // zap the pair.
       if (Push && cast<CallInst>(Inst)->getArgOperand(0) == Push) {
         Changed = true;
+        DEBUG(dbgs() << "ObjCARCAPElim::OptimizeBB: Zapping push pop autorelease pair:\n"
+                     << "                           Pop: " << *Inst << "\n"
+                     << "                           Push: " << *Push << "\n");
         Inst->eraseFromParent();
         Push->eraseFromParent();
       }
@@ -1095,7 +1107,7 @@ bool ObjCARCAPElim::runOnModule(Module &M) {
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/LLVMContext.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CFG.h"
 
 STATISTIC(NumNoops,       "Number of no-op objc calls eliminated");
@@ -1788,12 +1800,12 @@ Constant *ObjCARCOpt::getRetainRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     RetainRVCallee =
       M->getOrInsertFunction("objc_retainAutoreleasedReturnValue", FTy,
-                             Attributes);
+                             Attribute);
   }
   return RetainRVCallee;
 }
@@ -1804,12 +1816,12 @@ Constant *ObjCARCOpt::getAutoreleaseRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     AutoreleaseRVCallee =
       M->getOrInsertFunction("objc_autoreleaseReturnValue", FTy,
-                             Attributes);
+                             Attribute);
   }
   return AutoreleaseRVCallee;
 }
@@ -1818,14 +1830,14 @@ Constant *ObjCARCOpt::getReleaseCallee(Module *M) {
   if (!ReleaseCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     ReleaseCallee =
       M->getOrInsertFunction(
         "objc_release",
         FunctionType::get(Type::getVoidTy(C), Params, /*isVarArg=*/false),
-        Attributes);
+        Attribute);
   }
   return ReleaseCallee;
 }
@@ -1834,14 +1846,14 @@ Constant *ObjCARCOpt::getRetainCallee(Module *M) {
   if (!RetainCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     RetainCallee =
       M->getOrInsertFunction(
         "objc_retain",
         FunctionType::get(Params[0], Params, /*isVarArg=*/false),
-        Attributes);
+        Attribute);
   }
   return RetainCallee;
 }
@@ -1856,7 +1868,7 @@ Constant *ObjCARCOpt::getRetainBlockCallee(Module *M) {
       M->getOrInsertFunction(
         "objc_retainBlock",
         FunctionType::get(Params[0], Params, /*isVarArg=*/false),
-        AttrListPtr());
+        AttributeSet());
   }
   return RetainBlockCallee;
 }
@@ -1865,14 +1877,14 @@ Constant *ObjCARCOpt::getAutoreleaseCallee(Module *M) {
   if (!AutoreleaseCallee) {
     LLVMContext &C = M->getContext();
     Type *Params[] = { PointerType::getUnqual(Type::getInt8Ty(C)) };
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     AutoreleaseCallee =
       M->getOrInsertFunction(
         "objc_autorelease",
         FunctionType::get(Params[0], Params, /*isVarArg=*/false),
-        Attributes);
+        Attribute);
   }
   return AutoreleaseCallee;
 }
@@ -2187,7 +2199,17 @@ ObjCARCOpt::OptimizeRetainCall(Function &F, Instruction *Retain) {
   // Turn it to an objc_retainAutoreleasedReturnValue..
   Changed = true;
   ++NumPeeps;
+
+  DEBUG(dbgs() << "ObjCARCOpt::OptimizeRetainCall: Transforming "
+                  "objc_retainAutoreleasedReturnValue => "
+                  "objc_retain since the operand is not a return value.\n"
+                  "                                Old: "
+               << *Retain << "\n");
+
   cast<CallInst>(Retain)->setCalledFunction(getRetainRVCallee(F.getParent()));
+
+  DEBUG(dbgs() << "                                New: "
+               << *Retain << "\n");
 }
 
 /// OptimizeRetainRVCall - Turn objc_retainAutoreleasedReturnValue into
@@ -2225,6 +2247,11 @@ ObjCARCOpt::OptimizeRetainRVCall(Function &F, Instruction *RetainRV) {
         GetObjCArg(I) == Arg) {
       Changed = true;
       ++NumPeeps;
+
+      DEBUG(dbgs() << "ObjCARCOpt::OptimizeRetainRVCall: Erasing " << *I << "\n"
+                   << "                                  Erasing " << *RetainRV
+                   << "\n");
+
       EraseInstruction(I);
       EraseInstruction(RetainRV);
       return true;
@@ -2234,7 +2261,18 @@ ObjCARCOpt::OptimizeRetainRVCall(Function &F, Instruction *RetainRV) {
   // Turn it to a plain objc_retain.
   Changed = true;
   ++NumPeeps;
+
+  DEBUG(dbgs() << "ObjCARCOpt::OptimizeRetainRVCall: Transforming "
+                  "objc_retainAutoreleasedReturnValue => "
+                  "objc_retain since the operand is not a return value.\n"
+                  "                                  Old: "
+               << *RetainRV << "\n");
+
   cast<CallInst>(RetainRV)->setCalledFunction(getRetainCallee(F.getParent()));
+
+  DEBUG(dbgs() << "                                  New: "
+               << *RetainRV << "\n");
+
   return false;
 }
 
@@ -2260,8 +2298,20 @@ ObjCARCOpt::OptimizeAutoreleaseRVCall(Function &F, Instruction *AutoreleaseRV) {
 
   Changed = true;
   ++NumPeeps;
+
+  DEBUG(dbgs() << "ObjCARCOpt::OptimizeAutoreleaseRVCall: Transforming "
+                  "objc_autoreleaseReturnValue => "
+                  "objc_autorelease since its operand is not used as a return "
+                  "value.\n"
+                  "                                       Old: "
+               << *AutoreleaseRV << "\n");
+
   cast<CallInst>(AutoreleaseRV)->
     setCalledFunction(getAutoreleaseCallee(F.getParent()));
+
+  DEBUG(dbgs() << "                                       New: "
+               << *AutoreleaseRV << "\n");
+
 }
 
 /// OptimizeIndividualCalls - Visit each call, one at a time, and make
@@ -2273,6 +2323,10 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
   // Visit all objc_* calls in F.
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ) {
     Instruction *Inst = &*I++;
+
+    DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Visiting: " <<
+          *Inst << "\n");
+
     InstructionClass Class = GetBasicInstructionClass(Inst);
 
     switch (Class) {
@@ -2289,6 +2343,8 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
     case IC_NoopCast:
       Changed = true;
       ++NumNoops;
+      DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Erasing no-op cast:"
+                   " " << *Inst << "\n");
       EraseInstruction(Inst);
       continue;
 
@@ -2305,7 +2361,13 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
         new StoreInst(UndefValue::get(cast<PointerType>(Ty)->getElementType()),
                       Constant::getNullValue(Ty),
                       CI);
-        CI->replaceAllUsesWith(UndefValue::get(CI->getType()));
+        llvm::Value *NewValue = UndefValue::get(CI->getType());
+        DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: A null "
+                        "pointer-to-weak-pointer is undefined behavior.\n"
+                        "                                     Old = " << *CI <<
+                        "\n                                     New = " <<
+                        *NewValue << "\n");
+        CI->replaceAllUsesWith(NewValue);
         CI->eraseFromParent();
         continue;
       }
@@ -2321,7 +2383,15 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
         new StoreInst(UndefValue::get(cast<PointerType>(Ty)->getElementType()),
                       Constant::getNullValue(Ty),
                       CI);
-        CI->replaceAllUsesWith(UndefValue::get(CI->getType()));
+
+        llvm::Value *NewValue = UndefValue::get(CI->getType());
+        DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: A null "
+                        "pointer-to-weak-pointer is undefined behavior.\n"
+                        "                                     Old = " << *CI <<
+                        "\n                                     New = " <<
+                        *NewValue << "\n");
+
+        CI->replaceAllUsesWith(NewValue);
         CI->eraseFromParent();
         continue;
       }
@@ -2355,6 +2425,14 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
                            Call->getArgOperand(0), "", Call);
         NewCall->setMetadata(ImpreciseReleaseMDKind,
                              MDNode::get(C, ArrayRef<Value *>()));
+
+        DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Replacing "
+                        "objc_autorelease(x) with objc_release(x) since x is "
+                        "otherwise unused.\n"
+                        "                                     Old: " << *Call <<
+                        "\n                                     New: " <<
+                        *NewCall << "\n");
+
         EraseInstruction(Call);
         Inst = NewCall;
         Class = IC_Release;
@@ -2365,12 +2443,17 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
     // a tail keyword.
     if (IsAlwaysTail(Class)) {
       Changed = true;
+      DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Adding tail keyword"
+            " to function since it can never be passed stack args: " << *Inst <<
+            "\n");
       cast<CallInst>(Inst)->setTailCall();
     }
 
     // Set nounwind as needed.
     if (IsNoThrow(Class)) {
       Changed = true;
+      DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Found no throw"
+            " class. Setting nounwind on: " << *Inst << "\n");
       cast<CallInst>(Inst)->setDoesNotThrow();
     }
 
@@ -2385,6 +2468,8 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
     if (isNullOrUndef(Arg)) {
       Changed = true;
       ++NumNoops;
+      DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: ARC calls with "
+            " null are no-ops. Erasing: " << *Inst << "\n");
       EraseInstruction(Inst);
       continue;
     }
@@ -2477,15 +2562,24 @@ void ObjCARCOpt::OptimizeIndividualCalls(Function &F) {
                 Op = new BitCastInst(Op, ParamTy, "", InsertPos);
               Clone->setArgOperand(0, Op);
               Clone->insertBefore(InsertPos);
+
+              DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Cloning "
+                           << *CInst << "\n"
+                           "                                     And inserting "
+                           "clone at " << *InsertPos << "\n");
               Worklist.push_back(std::make_pair(Clone, Incoming));
             }
           }
           // Erase the original call.
+          DEBUG(dbgs() << "Erasing: " << *CInst << "\n");
           EraseInstruction(CInst);
           continue;
         }
       }
     } while (!Worklist.empty());
+
+    DEBUG(dbgs() << "ObjCARCOpt::OptimizeIndividualCalls: Finished Queue.\n\n");
+
   }
 }
 
@@ -3138,6 +3232,11 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
                         MDNode::get(M->getContext(), ArrayRef<Value *>()));
     else
       Call->setTailCall();
+
+    DEBUG(dbgs() << "ObjCARCOpt::MoveCalls: Inserting new Release: " << *Call
+                 << "\n"
+                    "                       At insertion point: " << *InsertPt
+                 << "\n");
   }
   for (SmallPtrSet<Instruction *, 2>::const_iterator
        PI = RetainsToMove.ReverseInsertPts.begin(),
@@ -3153,6 +3252,11 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
     Call->setDoesNotThrow();
     if (ReleasesToMove.IsTailCallRelease)
       Call->setTailCall();
+
+    DEBUG(dbgs() << "ObjCARCOpt::MoveCalls: Inserting new Retain: " << *Call
+                 << "\n"
+                    "                       At insertion point: " << *InsertPt
+                 << "\n");
   }
 
   // Delete the original retain and release calls.
@@ -3162,6 +3266,8 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
     Instruction *OrigRetain = *AI;
     Retains.blot(OrigRetain);
     DeadInsts.push_back(OrigRetain);
+    DEBUG(dbgs() << "ObjCARCOpt::MoveCalls: Deleting retain: " << *OrigRetain <<
+                    "\n");
   }
   for (SmallPtrSet<Instruction *, 2>::const_iterator
        AI = ReleasesToMove.Calls.begin(),
@@ -3169,6 +3275,8 @@ void ObjCARCOpt::MoveCalls(Value *Arg,
     Instruction *OrigRelease = *AI;
     Releases.erase(OrigRelease);
     DeadInsts.push_back(OrigRelease);
+    DEBUG(dbgs() << "ObjCARCOpt::MoveCalls: Deleting release: " << *OrigRelease
+                 << "\n");
   }
 }
 
@@ -3194,6 +3302,10 @@ ObjCARCOpt::PerformCodePlacement(DenseMap<const BasicBlock *, BBState>
     if (!V) continue; // blotted
 
     Instruction *Retain = cast<Instruction>(V);
+
+    DEBUG(dbgs() << "ObjCARCOpt::PerformCodePlacement: Visiting: " << *Retain
+          << "\n");
+
     Value *Arg = GetObjCArg(Retain);
 
     // If the object being released is in static or stack storage, we know it's
@@ -3389,6 +3501,10 @@ void ObjCARCOpt::OptimizeWeakCalls(Function &F) {
   // queries instead.
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ) {
     Instruction *Inst = &*I++;
+
+    DEBUG(dbgs() << "ObjCARCOpt::OptimizeWeakCalls: Visiting: " << *Inst <<
+          "\n");
+
     InstructionClass Class = GetBasicInstructionClass(Inst);
     if (Class != IC_LoadWeak && Class != IC_LoadWeakRetained)
       continue;
@@ -3534,6 +3650,9 @@ void ObjCARCOpt::OptimizeWeakCalls(Function &F) {
     done:;
     }
   }
+
+  DEBUG(dbgs() << "ObjCARCOpt::OptimizeWeakCalls: Finished List.\n\n");
+
 }
 
 /// OptimizeSequences - Identify program paths which execute sequences of
@@ -3582,6 +3701,9 @@ void ObjCARCOpt::OptimizeReturns(Function &F) {
   for (Function::iterator FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
     BasicBlock *BB = FI;
     ReturnInst *Ret = dyn_cast<ReturnInst>(&BB->back());
+
+    DEBUG(dbgs() << "ObjCARCOpt::OptimizeReturns: Visiting: " << *Ret << "\n");
+
     if (!Ret) continue;
 
     const Value *Arg = StripPointerCastsAndObjCCalls(Ret->getOperand(0));
@@ -3627,7 +3749,13 @@ void ObjCARCOpt::OptimizeReturns(Function &F) {
         // Convert the autorelease to an autoreleaseRV, since it's
         // returning the value.
         if (AutoreleaseClass == IC_Autorelease) {
+          DEBUG(dbgs() << "ObjCARCOpt::OptimizeReturns: Converting autorelease "
+                          "=> autoreleaseRV since it's returning a value.\n"
+                          "                             In: " << *Autorelease
+                       << "\n");
           Autorelease->setCalledFunction(getAutoreleaseRVCallee(F.getParent()));
+          DEBUG(dbgs() << "                             Out: " << *Autorelease
+                       << "\n");
           AutoreleaseClass = IC_AutoreleaseRV;
         }
 
@@ -3655,6 +3783,9 @@ void ObjCARCOpt::OptimizeReturns(Function &F) {
           // If so, we can zap the retain and autorelease.
           Changed = true;
           ++NumRets;
+          DEBUG(dbgs() << "ObjCARCOpt::OptimizeReturns: Erasing: " << *Retain
+                       << "\n                             Erasing: "
+                       << *Autorelease << "\n");
           EraseInstruction(Retain);
           EraseInstruction(Autorelease);
         }
@@ -3665,6 +3796,9 @@ void ObjCARCOpt::OptimizeReturns(Function &F) {
     DependingInstructions.clear();
     Visited.clear();
   }
+
+  DEBUG(dbgs() << "ObjCARCOpt::OptimizeReturns: Finished List.\n\n");
+
 }
 
 bool ObjCARCOpt::doInitialization(Module &M) {
@@ -3757,8 +3891,8 @@ void ObjCARCOpt::releaseMemory() {
 // dominated by single calls.
 
 #include "llvm/Analysis/Dominators.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Operator.h"
 
 STATISTIC(NumStoreStrongs, "Number objc_storeStrong calls formed");
 
@@ -3840,16 +3974,16 @@ Constant *ObjCARCContract::getStoreStrongCallee(Module *M) {
     Type *I8XX = PointerType::getUnqual(I8X);
     Type *Params[] = { I8XX, I8X };
 
-    AttrListPtr Attributes = AttrListPtr()
-      .addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-               Attributes::get(C, Attributes::NoUnwind))
-      .addAttr(M->getContext(), 1, Attributes::get(C, Attributes::NoCapture));
+    AttributeSet Attribute = AttributeSet()
+      .addAttr(M->getContext(), AttributeSet::FunctionIndex,
+               Attribute::get(C, Attribute::NoUnwind))
+      .addAttr(M->getContext(), 1, Attribute::get(C, Attribute::NoCapture));
 
     StoreStrongCallee =
       M->getOrInsertFunction(
         "objc_storeStrong",
         FunctionType::get(Type::getVoidTy(C), Params, /*isVarArg=*/false),
-        Attributes);
+        Attribute);
   }
   return StoreStrongCallee;
 }
@@ -3860,11 +3994,11 @@ Constant *ObjCARCContract::getRetainAutoreleaseCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     RetainAutoreleaseCallee =
-      M->getOrInsertFunction("objc_retainAutorelease", FTy, Attributes);
+      M->getOrInsertFunction("objc_retainAutorelease", FTy, Attribute);
   }
   return RetainAutoreleaseCallee;
 }
@@ -3875,12 +4009,12 @@ Constant *ObjCARCContract::getRetainAutoreleaseRVCallee(Module *M) {
     Type *I8X = PointerType::getUnqual(Type::getInt8Ty(C));
     Type *Params[] = { I8X };
     FunctionType *FTy = FunctionType::get(I8X, Params, /*isVarArg=*/false);
-    AttrListPtr Attributes =
-      AttrListPtr().addAttr(M->getContext(), AttrListPtr::FunctionIndex,
-                            Attributes::get(C, Attributes::NoUnwind));
+    AttributeSet Attribute =
+      AttributeSet().addAttr(M->getContext(), AttributeSet::FunctionIndex,
+                            Attribute::get(C, Attribute::NoUnwind));
     RetainAutoreleaseRVCallee =
       M->getOrInsertFunction("objc_retainAutoreleaseReturnValue", FTy,
-                             Attributes);
+                             Attribute);
   }
   return RetainAutoreleaseRVCallee;
 }
@@ -3924,10 +4058,18 @@ ObjCARCContract::ContractAutorelease(Function &F, Instruction *Autorelease,
   Changed = true;
   ++NumPeeps;
 
+  DEBUG(dbgs() << "ObjCARCContract::ContractAutorelease: Fusing "
+                  "retain/autorelease. Erasing: " << *Autorelease << "\n"
+                  "                                      Old Retain: "
+               << *Retain << "\n");
+
   if (Class == IC_AutoreleaseRV)
     Retain->setCalledFunction(getRetainAutoreleaseRVCallee(F.getParent()));
   else
     Retain->setCalledFunction(getRetainAutoreleaseCallee(F.getParent()));
+
+  DEBUG(dbgs() << "                                      New Retain: "
+               << *Retain << "\n");
 
   EraseInstruction(Autorelease);
   return true;
@@ -4079,6 +4221,8 @@ bool ObjCARCContract::runOnFunction(Function &F) {
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ) {
     Instruction *Inst = &*I++;
 
+    DEBUG(dbgs() << "ObjCARCContract: Visiting: " << *Inst << "\n");
+
     // Only these library routines return their argument. In particular,
     // objc_retainBlock does not necessarily return its argument.
     InstructionClass Class = GetBasicInstructionClass(Inst);
@@ -4116,6 +4260,8 @@ bool ObjCARCContract::runOnFunction(Function &F) {
       } while (isNoopInstruction(BBI));
 
       if (&*BBI == GetObjCArg(Inst)) {
+        DEBUG(dbgs() << "ObjCARCContract: Adding inline asm marker for "
+                        "retainAutoreleasedReturnValue optimization.\n");
         Changed = true;
         InlineAsm *IA =
           InlineAsm::get(FunctionType::get(Type::getVoidTy(Inst->getContext()),
@@ -4135,6 +4281,10 @@ bool ObjCARCContract::runOnFunction(Function &F) {
           ConstantPointerNull::get(cast<PointerType>(CI->getType()));
         Changed = true;
         new StoreInst(Null, CI->getArgOperand(0), CI);
+
+        DEBUG(dbgs() << "OBJCARCContract: Old = " << *CI << "\n"
+                     << "                 New = " << *Null << "\n");
+
         CI->replaceAllUsesWith(Null);
         CI->eraseFromParent();
       }
@@ -4153,6 +4303,8 @@ bool ObjCARCContract::runOnFunction(Function &F) {
     default:
       continue;
     }
+
+    DEBUG(dbgs() << "ObjCARCContract: Finished List.\n\n");
 
     // Don't use GetObjCArg because we don't want to look through bitcasts
     // and such; to do the replacement, the argument must have type i8*.

@@ -25,9 +25,9 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/UniqueVector.h"
 #include "llvm/DebugInfo.h"
-#include "llvm/IRBuilder.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/DebugLoc.h"
@@ -45,13 +45,14 @@ namespace {
     static char ID;
     GCOVProfiler()
         : ModulePass(ID), EmitNotes(true), EmitData(true), Use402Format(false),
-          UseExtraChecksum(false) {
+          UseExtraChecksum(false), NoRedZone(false) {
       initializeGCOVProfilerPass(*PassRegistry::getPassRegistry());
     }
-    GCOVProfiler(bool EmitNotes, bool EmitData, bool use402Format = false,
-                 bool useExtraChecksum = false)
+    GCOVProfiler(bool EmitNotes, bool EmitData, bool use402Format,
+                 bool useExtraChecksum, bool NoRedZone_)
         : ModulePass(ID), EmitNotes(EmitNotes), EmitData(EmitData),
-          Use402Format(use402Format), UseExtraChecksum(useExtraChecksum) {
+          Use402Format(use402Format), UseExtraChecksum(useExtraChecksum),
+          NoRedZone(NoRedZone_) {
       assert((EmitNotes || EmitData) && "GCOVProfiler asked to do nothing?");
       initializeGCOVProfilerPass(*PassRegistry::getPassRegistry());
     }
@@ -98,6 +99,7 @@ namespace {
     bool EmitData;
     bool Use402Format;
     bool UseExtraChecksum;
+    bool NoRedZone;
 
     Module *M;
     LLVMContext *Ctx;
@@ -110,8 +112,10 @@ INITIALIZE_PASS(GCOVProfiler, "insert-gcov-profiling",
 
 ModulePass *llvm::createGCOVProfilerPass(bool EmitNotes, bool EmitData,
                                          bool Use402Format,
-                                         bool UseExtraChecksum) {
-  return new GCOVProfiler(EmitNotes, EmitData, Use402Format, UseExtraChecksum);
+                                         bool UseExtraChecksum,
+                                         bool NoRedZone) {
+  return new GCOVProfiler(EmitNotes, EmitData, Use402Format, UseExtraChecksum,
+                          NoRedZone);
 }
 
 namespace {
@@ -638,6 +642,9 @@ void GCOVProfiler::insertCounterWriteout(
     WriteoutF = Function::Create(WriteoutFTy, GlobalValue::InternalLinkage,
                                  "__llvm_gcov_writeout", M);
   WriteoutF->setUnnamedAddr(true);
+  WriteoutF->addFnAttr(Attribute::NoInline);
+  if (NoRedZone)
+    WriteoutF->addFnAttr(Attribute::NoRedZone);
 
   BasicBlock *BB = BasicBlock::Create(*Ctx, "entry", WriteoutF);
   IRBuilder<> Builder(BB);
@@ -682,7 +689,9 @@ void GCOVProfiler::insertCounterWriteout(
                                  "__llvm_gcov_init", M);
   F->setUnnamedAddr(true);
   F->setLinkage(GlobalValue::InternalLinkage);
-  F->addFnAttr(Attributes::NoInline);
+  F->addFnAttr(Attribute::NoInline);
+  if (NoRedZone)
+    F->addFnAttr(Attribute::NoRedZone);
 
   BB = BasicBlock::Create(*Ctx, "entry", F);
   Builder.SetInsertPoint(BB);
@@ -701,7 +710,9 @@ void GCOVProfiler::insertIndirectCounterIncrement() {
     cast<Function>(GCOVProfiler::getIncrementIndirectCounterFunc());
   Fn->setUnnamedAddr(true);
   Fn->setLinkage(GlobalValue::InternalLinkage);
-  Fn->addFnAttr(Attributes::NoInline);
+  Fn->addFnAttr(Attribute::NoInline);
+  if (NoRedZone)
+    Fn->addFnAttr(Attribute::NoRedZone);
 
   Type *Int32Ty = Type::getInt32Ty(*Ctx);
   Type *Int64Ty = Type::getInt64Ty(*Ctx);
@@ -758,6 +769,9 @@ insertFlush(ArrayRef<std::pair<GlobalVariable*, MDNode*> > CountersBySP) {
   else
     FlushF->setLinkage(GlobalValue::InternalLinkage);
   FlushF->setUnnamedAddr(true);
+  FlushF->addFnAttr(Attribute::NoInline);
+  if (NoRedZone)
+    FlushF->addFnAttr(Attribute::NoRedZone);
 
   BasicBlock *Entry = BasicBlock::Create(*Ctx, "entry", FlushF);
 

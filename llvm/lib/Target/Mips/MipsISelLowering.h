@@ -149,7 +149,7 @@ namespace llvm {
 
     virtual MVT getShiftAmountTy(EVT LHSTy) const { return MVT::i32; }
 
-    virtual bool allowsUnalignedMemoryAccesses (EVT VT) const;
+    virtual bool allowsUnalignedMemoryAccesses (EVT VT, bool *Fast) const;
 
     virtual void LowerOperationWrapper(SDNode *N,
                                        SmallVectorImpl<SDValue> &Results,
@@ -173,6 +173,8 @@ namespace llvm {
 
     virtual SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const;
   private:
+
+    void setMips16HardFloatLibCalls();
 
     /// ByValArgInfo - Byval argument information.
     struct ByValArgInfo {
@@ -362,7 +364,8 @@ namespace llvm {
     virtual bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const;
 
     virtual EVT getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
-                                    unsigned SrcAlign, bool IsZeroVal,
+                                    unsigned SrcAlign,
+                                    bool IsMemset, bool ZeroMemset,
                                     bool MemcpyStrSrc,
                                     MachineFunction &MF) const;
 

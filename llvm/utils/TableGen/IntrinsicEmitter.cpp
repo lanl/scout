@@ -511,10 +511,10 @@ EmitAttributes(const std::vector<CodeGenIntrinsic> &Ints, raw_ostream &OS) {
   OS << "// Add parameter attributes that are not common to all intrinsics.\n";
   OS << "#ifdef GET_INTRINSIC_ATTRIBUTES\n";
   if (TargetOnly)
-    OS << "static AttrListPtr getAttributes(LLVMContext &C, " << TargetPrefix
+    OS << "static AttributeSet getAttributes(LLVMContext &C, " << TargetPrefix
        << "Intrinsic::ID id) {\n";
   else
-    OS << "AttrListPtr Intrinsic::getAttributes(LLVMContext &C, ID id) {\n";
+    OS << "AttributeSet Intrinsic::getAttributes(LLVMContext &C, ID id) {\n";
 
   // Compute the maximum number of attribute arguments and the map
   typedef std::map<const CodeGenIntrinsic*, unsigned,
@@ -548,7 +548,7 @@ EmitAttributes(const std::vector<CodeGenIntrinsic> &Ints, raw_ostream &OS) {
   OS << "  AttributeWithIndex AWI[" << maxArgAttrs+1 << "];\n";
   OS << "  unsigned NumAttrs = 0;\n";
   OS << "  if (id != 0) {\n";
-  OS << "    SmallVector<Attributes::AttrVal, 8> AttrVec;\n";
+  OS << "    SmallVector<Attribute::AttrKind, 8> AttrVec;\n";
   OS << "    switch(IntrinsicsToAttributesMap[id - ";
   if (TargetOnly)
     OS << "Intrinsic::num_intrinsics";
@@ -576,7 +576,7 @@ EmitAttributes(const std::vector<CodeGenIntrinsic> &Ints, raw_ostream &OS) {
         do {
           switch (intrinsic.ArgumentAttributes[ai].second) {
           case CodeGenIntrinsic::NoCapture:
-            OS << "      AttrVec.push_back(Attributes::NoCapture);\n";
+            OS << "      AttrVec.push_back(Attribute::NoCapture);\n";
             break;
           }
 
@@ -594,34 +594,34 @@ EmitAttributes(const std::vector<CodeGenIntrinsic> &Ints, raw_ostream &OS) {
       OS << "      AttrVec.clear();\n";
 
       if (!intrinsic.canThrow)
-        OS << "      AttrVec.push_back(Attributes::NoUnwind);\n";
+        OS << "      AttrVec.push_back(Attribute::NoUnwind);\n";
       if (intrinsic.isNoReturn)
-        OS << "      AttrVec.push_back(Attributes::NoReturn);\n";
+        OS << "      AttrVec.push_back(Attribute::NoReturn);\n";
 
       switch (modRef) {
       case MRK_none: break;
       case MRK_readonly:
-        OS << "      AttrVec.push_back(Attributes::ReadOnly);\n";
+        OS << "      AttrVec.push_back(Attribute::ReadOnly);\n";
         break;
       case MRK_readnone:
-        OS << "      AttrVec.push_back(Attributes::ReadNone);\n"; 
+        OS << "      AttrVec.push_back(Attribute::ReadNone);\n"; 
         break;
       }
       OS << "      AWI[" << numAttrs++ << "] = AttributeWithIndex::get(C, "
-         << "AttrListPtr::FunctionIndex, AttrVec);\n";
+         << "AttributeSet::FunctionIndex, AttrVec);\n";
     }
 
     if (numAttrs) {
       OS << "      NumAttrs = " << numAttrs << ";\n";
       OS << "      break;\n";
     } else {
-      OS << "      return AttrListPtr();\n";
+      OS << "      return AttributeSet();\n";
     }
   }
   
   OS << "    }\n";
   OS << "  }\n";
-  OS << "  return AttrListPtr::get(C, ArrayRef<AttributeWithIndex>(AWI, "
+  OS << "  return AttributeSet::get(C, ArrayRef<AttributeWithIndex>(AWI, "
              "NumAttrs));\n";
   OS << "}\n";
   OS << "#endif // GET_INTRINSIC_ATTRIBUTES\n\n";

@@ -30,7 +30,7 @@ class StringRef;
 class ARMSubtarget : public ARMGenSubtargetInfo {
 protected:
   enum ARMProcFamilyEnum {
-    Others, CortexA5, CortexA8, CortexA9, CortexA15, Swift
+    Others, CortexA5, CortexA8, CortexA9, CortexA15, CortexR5, Swift
   };
 
   /// ARMProcFamily - ARM processor family: Cortex-A8, Cortex-A9, and others.
@@ -131,6 +131,10 @@ protected:
   /// CPSR setting instruction.
   bool AvoidCPSRPartialUpdate;
 
+  /// AvoidMOVsShifterOperand - If true, codegen should avoid using flag setting
+  /// movs with shifter operand (i.e. asr, lsl, lsr).
+  bool AvoidMOVsShifterOperand;
+
   /// HasRAS - Some processors perform return stack prediction. CodeGen should
   /// avoid issue "normal" call instructions to callees which do not return.
   bool HasRAS;
@@ -211,6 +215,7 @@ protected:
   bool isSwift()    const { return ARMProcFamily == Swift; }
   bool isCortexM3() const { return CPUString == "cortex-m3"; }
   bool isLikeA9() const { return isCortexA9() || isCortexA15(); }
+  bool isCortexR5() const { return ARMProcFamily == CortexR5; }
 
   bool hasARMOps() const { return !NoARM; }
 
@@ -232,6 +237,7 @@ protected:
   bool isFPOnlySP() const { return FPOnlySP; }
   bool prefers32BitThumb() const { return Pref32BitThumb; }
   bool avoidCPSRPartialUpdate() const { return AvoidCPSRPartialUpdate; }
+  bool avoidMOVsShifterOperand() const { return AvoidMOVsShifterOperand; }
   bool hasRAS() const { return HasRAS; }
   bool hasMPExtension() const { return HasMPExtension; }
   bool hasThumb2DSP() const { return Thumb2DSP; }

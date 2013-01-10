@@ -33,7 +33,8 @@ ModulePass *createPathProfilerPass();
 // Insert GCOV profiling instrumentation
 ModulePass *createGCOVProfilerPass(bool EmitNotes = true, bool EmitData = true,
                                    bool Use402Format = false,
-                                   bool UseExtraChecksum = false);
+                                   bool UseExtraChecksum = false,
+                                   bool NoRedZone = false);
 
 // Insert AddressSanitizer (address sanity checking) instrumentation
 FunctionPass *createAddressSanitizerFunctionPass(
@@ -41,10 +42,13 @@ FunctionPass *createAddressSanitizerFunctionPass(
     bool CheckLifetime = false, StringRef BlacklistFile = StringRef());
 ModulePass *createAddressSanitizerModulePass(
     bool CheckInitOrder = false, StringRef BlacklistFile = StringRef());
+
 // Insert MemorySanitizer instrumentation (detection of uninitialized reads)
-FunctionPass *createMemorySanitizerPass();
+FunctionPass *createMemorySanitizerPass(bool TrackOrigins = false,
+                                        StringRef BlacklistFile = StringRef());
+
 // Insert ThreadSanitizer (race detection) instrumentation
-FunctionPass *createThreadSanitizerPass();
+FunctionPass *createThreadSanitizerPass(StringRef BlacklistFile = StringRef());
 
 
 // BoundsChecking - This pass instruments the code to perform run-time bounds

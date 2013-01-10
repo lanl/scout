@@ -18,18 +18,18 @@ Subsystem Documentation
    DebuggingJITedCode
    GoldPlugin
    MarkedUpDisassembly
-   HowToUseInstrMappings
    SystemLibrary
    SourceLevelDebugging
+   Vectorizers
    WritingAnLLVMBackend
+   GarbageCollection
+   WritingAnLLVMPass
+   TableGen/LangRef
 
-.. FIXME: once LangRef is Sphinxified, HowToUseInstrMappings should be put
-   under LangRef's toctree instead of this page's toctree.
+* :doc:`WritingAnLLVMPass`
 
-* `Writing an LLVM Pass <WritingAnLLVMPass.html>`_
-    
    Information on how to write LLVM transformations and analyses.
-    
+
 * :doc:`WritingAnLLVMBackend`
 
    Information on how to write LLVM backends for machine targets.
@@ -49,9 +49,9 @@ Subsystem Documentation
     
    Information on how to write a new alias analysis implementation or how to
    use existing analyses.
-    
-* `Accurate Garbage Collection with LLVM <GarbageCollection.html>`_
-    
+
+* :doc:`GarbageCollection`
+
    The interfaces source-language compilers should use for compiling GC'd
    programs.
 
@@ -59,6 +59,10 @@ Subsystem Documentation
     
    This document describes the design and philosophy behind the LLVM
    source-level debugger.
+
+* :doc:`Vectorizers`
+    
+   This document describes the current status of vectorization in LLVM.
     
 * :ref:`exception_handling`
     
@@ -99,13 +103,6 @@ Subsystem Documentation
 * :ref:`segmented_stacks`
 
    This document describes segmented stacks and how they are used in LLVM.
-
-* `Howto: Implementing LLVM Integrated Assembler`_
-
-   A simple guide for how to implement an LLVM integrated assembler for an
-   architecture.
-
-.. _`Howto: Implementing LLVM Integrated Assembler`: http://www.embecosm.com/download/ean10.html
 
 * :ref:`marked_up_disassembly`
 
