@@ -14,11 +14,6 @@
 
 #include "Driver.h"
 
-static int alignTo(int x, int alignment) {
-  int mask = (1 << alignment) - 1;
-  return (x + mask) & ~mask;
-}
-
 class CudaDriver: public Driver {
  public:
   struct Memcpy {

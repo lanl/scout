@@ -22,7 +22,7 @@ PTXDriver::PTXDriver(Module &module, IRBuilder<> &builder, bool debug)
 }
 
 llvm::Value *PTXDriver::insertGetThreadIdx(int dim) {
-  assert(dim == X || dim == Y || dim == Z &&
+  assert((dim == X || dim == Y || dim == Z) &&
          "ThreadIdx.* must specify a dimension x, y, or z!");
 
   std::string f = 
@@ -45,7 +45,7 @@ llvm::Value *PTXDriver::insertGetThreadIdx(int dim) {
 }
 
 llvm::Value *PTXDriver::insertGetBlockDim(int dim) {
-  assert(dim == X || dim == Y || dim == Z &&
+  assert((dim == X || dim == Y || dim == Z) &&
          "BlockDim.* must specify a dimension x, y, or z!");
 
   std::string f = 
@@ -67,7 +67,7 @@ llvm::Value *PTXDriver::insertGetBlockDim(int dim) {
 }
 
 llvm::Value *PTXDriver::insertGetBlockIdx(int dim) {
-  assert(dim == X || dim == Y &&
+  assert((dim == X || dim == Y) &&
          "BlockIdx.* must specify a dimension x, or y!");
 
   std::string f = 
@@ -89,7 +89,7 @@ llvm::Value *PTXDriver::insertGetBlockIdx(int dim) {
 }
 
 llvm::Value *PTXDriver::insertGetGridDim(int dim) {
-  assert(dim == X || dim == Y &&
+  assert((dim == X || dim == Y) &&
          "GridDim.* must specify dimension x or y!");
 
   std::string f = 
@@ -119,7 +119,7 @@ llvm::Value *PTXDriver::insertGetGlobalThreadIdx(int dim) {
   llvm::Value *blockIdx;
   llvm::Value *blockIdx32;
   Type *i32Ty = Type::getInt32Ty(_module.getContext());
-  Type *i64Ty = Type::getInt64Ty(_module.getContext());
+  //Type *i64Ty = Type::getInt64Ty(_module.getContext());
   if(_blocksInY) {
     blockIdx   = insertGetBlockIdx(Y);
     blockIdx32 = _builder.CreateZExt(blockIdx, i32Ty);

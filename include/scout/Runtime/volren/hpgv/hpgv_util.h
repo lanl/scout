@@ -57,7 +57,7 @@ namespace scout {
 }
 
 #define HPGV_ABORT_P(id, msg, errno) {\
-  HPGV_ERR_MSG_P(id, msg); \
+  HPGV_ERR_MSG_P((int)id, msg); \
   MPI_Abort(MPI_COMM_WORLD, errno);\
   exit(errno);\
 }

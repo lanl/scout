@@ -56,6 +56,7 @@
 #include <cuda.h>
 
 #include "scout/Runtime/Utilities.h"
+#include "scout/Runtime/cuda/CudaUtilities.h"
 
 namespace scout {
   
@@ -113,6 +114,15 @@ namespace scout {
   };
 
   
+  void cuda_error_check(cudaError_t err, const char* file, int line)
+  {
+    if (err != cudaSuccess) {
+      fprintf(stderr, "cuda runtime error:\n");
+      fprintf(stderr, "  %s (%d): %s\n", file, line, cudaGetErrorString(err));
+      abort();
+    }
+  }
+
   /** ----- cuReportError
    * Print the details about the given CUDA error value to standard
    * error.  This function is best called when you have already
@@ -143,5 +153,4 @@ namespace scout {
       return false;
     }
   }
-  
-}
+} // end namespace scout

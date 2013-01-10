@@ -5,34 +5,34 @@
 
 #include "scout/Config/defs.h"
 
+#ifdef SC_ENABLE_OPENGL
+#include "scout/Runtime/opengl/opengl.h"
+#endif
+
 #ifdef SC_ENABLE_CUDA
-#include "scout/Runtime/cuda/scout_cuda.h"
-#include "scout/Runtime/cuda/Cuda.h"
+#include "scout/Runtime/cuda/CudaInitialization.h"
+#include "scout/Runtime/cuda/CudaDevice.h"
+#include "scout/Runtime/cuda/CudaUtilities.h"
 #endif // SC_ENABLE_CUDA
 
 #ifdef SC_ENABLE_OPENCL
 #include "scout/Runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
-
+#include "scout/Runtime/gpu.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/DeviceList.h"
 
+
 using namespace std;
 using namespace scout;
 
-static DeviceList DevList;
+DeviceList DevList;
 glSDL* __sc_glsdl = 0;
-
 size_t __sc_initial_width = 768;
 size_t __sc_initial_height = 768;
 
-enum ScoutGPUType{
-  ScoutGPUNone,
-  ScoutGPUCUDA,
-  ScoutGPUOpenCL
-};
 
 extern "C"
 void __sc_debugger_dump_mesh_field(size_t width,
@@ -202,7 +202,7 @@ void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
     {
 #ifdef SC_ENABLE_CUDA
       __sc_init_sdl(__sc_initial_width, __sc_initial_height);
-      __sc_init_cuda();
+      if (cuda::scInitialize(DevList)) __sc_cuda = true;
 #else
       cerr << "Error: Attempt to use CUDA GPU mode when Scout was "
         "compiled without CUDA." << endl;

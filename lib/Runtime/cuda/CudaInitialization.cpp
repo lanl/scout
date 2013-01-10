@@ -52,8 +52,9 @@
  * ##### 
  */ 
 
-#include "scout/Runtime/cuda/Cuda.h"
+#include "scout/Runtime/cuda/CudaUtilities.h"
 #include "scout/Runtime/cuda/CudaDevice.h"
+#include "scout/Runtime/cuda/CudaInitialization.h"
 
 namespace scout {
 
