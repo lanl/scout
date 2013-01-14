@@ -157,6 +157,11 @@ xcode:;
 	@((test -d xcode) || (mkdir xcode))
 	@(cd xcode; cmake -G Xcode ..)
 
+.PHONY: llvm-3.1
+llvm-3.1: 
+	@((test -d llvm-3.1-build) || (mkdir llvm-3.1-build))
+	(cd llvm-3.1-build; ../llvm-3.1/configure --enable-targets=host; make -j $(SC_BUILD_NTHREADS))
+
 .PHONY: clean
 clean:
 	-@/bin/rm -rf $(build_dir)
