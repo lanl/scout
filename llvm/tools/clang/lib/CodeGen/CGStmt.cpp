@@ -21,10 +21,9 @@
 #include "clang/Basic/TargetInfo.h"
 
 #include "llvm/ADT/StringExtras.h"
-
-#include "llvm/DataLayout.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Intrinsics.h"
 
 // scout - includes
 #include "llvm/Transforms/Utils/CodeExtractor.h"
@@ -2522,9 +2521,9 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
     llvm::InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect,
                          /* IsAlignStack */ false, AsmDialect);
   llvm::CallInst *Result = Builder.CreateCall(IA, Args);
-  Result->addAttribute(llvm::AttrListPtr::FunctionIndex,
-                       llvm::Attributes::get(getLLVMContext(),
-                                             llvm::Attributes::NoUnwind));
+  Result->addAttribute(llvm::AttributeSet::FunctionIndex,
+                       llvm::Attribute::get(getLLVMContext(),
+                                             llvm::Attribute::NoUnwind));
 
   // Slap the source location of the inline asm into a !srcloc metadata on the
   // call.  FIXME: Handle metadata for MS-style inline asms.

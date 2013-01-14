@@ -82,7 +82,7 @@ IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
       
 
   // Add the '_experimental_modules_import' contextual keyword.
-  get("__experimental_modules_import").setModulesImport(true);
+  get("import").setModulesImport(true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -94,7 +94,7 @@ namespace {
   enum {
     KEYC99 = 0x1,
     KEYCXX = 0x2,
-    KEYCXX0X = 0x4,
+    KEYCXX11 = 0x4,
     KEYGNU = 0x8,
     KEYMS = 0x10,
     BOOLSUPPORT = 0x20,
@@ -126,7 +126,7 @@ static void AddKeyword(StringRef Keyword,
   unsigned AddResult = 0;
   if (Flags == KEYALL) AddResult = 2;
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX)) AddResult = 2;
-  else if (LangOpts.CPlusPlus0x && (Flags & KEYCXX0X)) AddResult = 2;
+  else if (LangOpts.CPlusPlus11 && (Flags & KEYCXX11)) AddResult = 2;
   else if (LangOpts.C99 && (Flags & KEYC99)) AddResult = 2;
   else if (LangOpts.GNUKeywords && (Flags & KEYGNU)) AddResult = 1;
   else if (LangOpts.MicrosoftExt && (Flags & KEYMS)) AddResult = 1;
@@ -143,7 +143,7 @@ static void AddKeyword(StringRef Keyword,
   // scout - keywords
   else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
 
-  else if (LangOpts.CPlusPlus && (Flags & KEYCXX0X)) AddResult = 3;
+  else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
 
   // Don't add this keyword under MicrosoftMode.
   if (LangOpts.MicrosoftMode && (Flags & KEYNOMS))

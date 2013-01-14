@@ -1285,11 +1285,6 @@ protected:
     /// C++ 8.3.5p4: The return type, the parameter type list and the
     /// cv-qualifier-seq, [...], are part of the function type.
     unsigned TypeQuals : 3;
-
-    /// \brief The ref-qualifier associated with a \c FunctionProtoType.
-    ///
-    /// This is a value of type \c RefQualifierKind.
-    unsigned RefQualifier : 2;
   };
 
   class ObjCObjectTypeBitfields {
@@ -1591,6 +1586,17 @@ public:
   bool isNullPtrType() const;                   // C++0x nullptr_t
   bool isAtomicType() const;                    // C11 _Atomic()
 
+  bool isImage1dT() const;                      // OpenCL image1d_t
+  bool isImage1dArrayT() const;                 // OpenCL image1d_array_t
+  bool isImage1dBufferT() const;                // OpenCL image1d_buffer_t
+  bool isImage2dT() const;                      // OpenCL image2d_t
+  bool isImage2dArrayT() const;                 // OpenCL image2d_array_t
+  bool isImage3dT() const;                      // OpenCL image3d_t
+
+  bool isImageType() const;                     // Any OpenCL image type
+
+  bool isOpenCLSpecificType() const;            // Any OpenCL specific type
+
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
   /// than implicitly __strong.
@@ -1786,7 +1792,7 @@ public:
   std::pair<Linkage,Visibility> getLinkageAndVisibility() const;
 
   /// \brief Note that the linkage is no longer known.
-  void ClearLinkageCache();
+  void ClearLVCache();
 
   const char *getTypeClassName() const;
 
@@ -2693,8 +2699,7 @@ class FunctionType : public Type {
 
 protected:
   FunctionType(TypeClass tc, QualType res,
-               unsigned typeQuals, RefQualifierKind RefQualifier,
-               QualType Canonical, bool Dependent,
+               unsigned typeQuals, QualType Canonical, bool Dependent,
                bool InstantiationDependent,
                bool VariablyModified, bool ContainsUnexpandedParameterPack,
                ExtInfo Info)
@@ -2703,13 +2708,8 @@ protected:
       ResultType(res) {
     FunctionTypeBits.ExtInfo = Info.Bits;
     FunctionTypeBits.TypeQuals = typeQuals;
-    FunctionTypeBits.RefQualifier = static_cast<unsigned>(RefQualifier);
   }
   unsigned getTypeQuals() const { return FunctionTypeBits.TypeQuals; }
-
-  RefQualifierKind getRefQualifier() const {
-    return static_cast<RefQualifierKind>(FunctionTypeBits.RefQualifier);
-  }
 
 public:
 
@@ -2742,7 +2742,7 @@ public:
 /// no information available about its arguments.
 class FunctionNoProtoType : public FunctionType, public llvm::FoldingSetNode {
   FunctionNoProtoType(QualType Result, QualType Canonical, ExtInfo Info)
-    : FunctionType(FunctionNoProto, Result, 0, RQ_None, Canonical,
+    : FunctionType(FunctionNoProto, Result, 0, Canonical,
                    /*Dependent=*/false, /*InstantiationDependent=*/false,
                    Result->isVariablyModifiedType(),
                    /*ContainsUnexpandedParameterPack=*/false, Info) {}
@@ -2815,7 +2815,7 @@ private:
                     QualType canonical, const ExtProtoInfo &epi);
 
   /// NumArgs - The number of arguments this function has, not counting '...'.
-  unsigned NumArgs : 17;
+  unsigned NumArgs : 15;
 
   /// NumExceptions - The number of types in the exception spec, if any.
   unsigned NumExceptions : 9;
@@ -2831,6 +2831,11 @@ private:
 
   /// HasTrailingReturn - Whether this function has a trailing return type.
   unsigned HasTrailingReturn : 1;
+
+  /// \brief The ref-qualifier associated with a \c FunctionProtoType.
+  ///
+  /// This is a value of type \c RefQualifierKind.
+  unsigned RefQualifier : 2;
 
   // ArgInfo - There is an variable size array after the class in memory that
   // holds the argument types.
@@ -2979,7 +2984,7 @@ public:
 
   /// \brief Retrieve the ref-qualifier associated with this function type.
   RefQualifierKind getRefQualifier() const {
-    return FunctionType::getRefQualifier();
+    return static_cast<RefQualifierKind>(RefQualifier);
   }
 
   typedef const QualType *arg_type_iterator;
@@ -3399,7 +3404,8 @@ public:
     attr_stdcall,
     attr_thiscall,
     attr_pascal,
-    attr_pnaclcall
+    attr_pnaclcall,
+    attr_inteloclbicc
   };
 
 private:
@@ -4963,6 +4969,40 @@ inline bool Type::isObjCSelType() const {
 inline bool Type::isObjCBuiltinType() const {
   return isObjCIdType() || isObjCClassType() || isObjCSelType();
 }
+
+inline bool Type::isImage1dT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage1d);
+}
+
+inline bool Type::isImage1dArrayT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage1dArray);
+}
+
+inline bool Type::isImage1dBufferT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage1dBuffer);
+}
+
+inline bool Type::isImage2dT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage2d);
+}
+
+inline bool Type::isImage2dArrayT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage2dArray);
+}
+
+inline bool Type::isImage3dT() const {
+  return isSpecificBuiltinType(BuiltinType::OCLImage3d);
+}
+inline bool Type::isImageType() const {
+  return isImage3dT() ||
+         isImage2dT() || isImage2dArrayT() ||
+         isImage1dT() || isImage1dArrayT() || isImage1dBufferT();
+}
+
+inline bool Type::isOpenCLSpecificType() const {
+  return isImageType();
+}
+
 inline bool Type::isTemplateTypeParmType() const {
   return isa<TemplateTypeParmType>(CanonicalType);
 }

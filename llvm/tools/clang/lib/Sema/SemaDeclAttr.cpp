@@ -295,12 +295,12 @@ static bool isIntOrBool(Expr *Exp) {
 static bool threadSafetyCheckIsSmartPointer(Sema &S, const RecordType* RT) {
   DeclContextLookupConstResult Res1 = RT->getDecl()->lookup(
     S.Context.DeclarationNames.getCXXOperatorName(OO_Star));
-  if (Res1.first == Res1.second)
+  if (Res1.empty())
     return false;
 
   DeclContextLookupConstResult Res2 = RT->getDecl()->lookup(
     S.Context.DeclarationNames.getCXXOperatorName(OO_Arrow));
-  if (Res2.first == Res2.second)
+  if (Res2.empty())
     return false;
 
   return true;
@@ -1729,7 +1729,7 @@ static void handleAnalyzerNoReturnAttr(Sema &S, Decl *D,
     if (VD == 0 || (!VD->getType()->isBlockPointerType()
                     && !VD->getType()->isFunctionPointerType())) {
       S.Diag(Attr.getLoc(),
-             Attr.isCXX0XAttribute() ? diag::err_attribute_wrong_decl_type
+             Attr.isCXX11Attribute() ? diag::err_attribute_wrong_decl_type
              : diag::warn_attribute_wrong_decl_type)
         << Attr.getName() << ExpectedFunctionMethodOrBlock;
       return;
@@ -2032,7 +2032,7 @@ static bool checkAvailabilityAttr(Sema &S, SourceRange Range,
   return false;
 }
 
-AvailabilityAttr *Sema::mergeAvailabilityAttr(Decl *D, SourceRange Range,
+AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
                                               IdentifierInfo *Platform,
                                               VersionTuple Introduced,
                                               VersionTuple Deprecated,
@@ -2043,6 +2043,7 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(Decl *D, SourceRange Range,
   VersionTuple MergedDeprecated = Deprecated;
   VersionTuple MergedObsoleted = Obsoleted;
   bool FoundAny = false;
+  bool DroppedAny = false;
 
   if (D->hasAttrs()) {
     AttrVec &Attrs = D->getAttrs();
@@ -2077,6 +2078,7 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(Decl *D, SourceRange Range,
         Diag(OldAA->getLocation(), diag::warn_mismatched_availability);
         Diag(Range.getBegin(), diag::note_previous_attribute);
         Attrs.erase(Attrs.begin() + i);
+        DroppedAny = true;
         --e;
         continue;
       }
@@ -2096,6 +2098,7 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(Decl *D, SourceRange Range,
                                 MergedIntroduced2, MergedDeprecated2,
                                 MergedObsoleted2)) {
         Attrs.erase(Attrs.begin() + i);
+        DroppedAny = true;
         --e;
         continue;
       }
@@ -2106,6 +2109,9 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(Decl *D, SourceRange Range,
       ++i;
     }
   }
+
+  if (DroppedAny)
+    D->ClearLVCache();
 
   if (FoundAny &&
       MergedIntroduced == Introduced &&
@@ -2131,6 +2137,12 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
     S.Diag(PlatformLoc, diag::warn_availability_unknown_platform)
       << Platform;
 
+  NamedDecl *ND = dyn_cast<NamedDecl>(D);
+  if (!ND) {
+    S.Diag(Attr.getLoc(), diag::warn_attribute_ignored) << Attr.getName();
+    return;
+  }
+
   AvailabilityChange Introduced = Attr.getAvailabilityIntroduced();
   AvailabilityChange Deprecated = Attr.getAvailabilityDeprecated();
   AvailabilityChange Obsoleted = Attr.getAvailabilityObsoleted();
@@ -2141,14 +2153,16 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
   if (SE)
     Str = SE->getString();
 
-  AvailabilityAttr *NewAttr = S.mergeAvailabilityAttr(D, Attr.getRange(),
+  AvailabilityAttr *NewAttr = S.mergeAvailabilityAttr(ND, Attr.getRange(),
                                                       Platform,
                                                       Introduced.Version,
                                                       Deprecated.Version,
                                                       Obsoleted.Version,
                                                       IsUnavailable, Str);
-  if (NewAttr)
+  if (NewAttr) {
     D->addAttr(NewAttr);
+    ND->ClearLVCache();
+  }
 }
 
 VisibilityAttr *Sema::mergeVisibilityAttr(Decl *D, SourceRange Range,
@@ -2165,6 +2179,8 @@ VisibilityAttr *Sema::mergeVisibilityAttr(Decl *D, SourceRange Range,
     Diag(ExistingAttr->getLocation(), diag::err_mismatched_visibility);
     Diag(Range.getBegin(), diag::note_previous_attribute);
     D->dropAttr<VisibilityAttr>();
+    NamedDecl *ND = cast<NamedDecl>(D);
+    ND->ClearLVCache();
   }
   return ::new (Context) VisibilityAttr(Range, Context, Vis);
 }
@@ -2208,8 +2224,11 @@ static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   }
 
   VisibilityAttr *NewAttr = S.mergeVisibilityAttr(D, Attr.getRange(), type);
-  if (NewAttr)
+  if (NewAttr) {
     D->addAttr(NewAttr);
+    NamedDecl *ND = cast<NamedDecl>(D);
+    ND->ClearLVCache();
+  }
 }
 
 static void handleObjCMethodFamilyAttr(Sema &S, Decl *decl,
@@ -3262,6 +3281,10 @@ static void handleModeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     if (Str == "pointer")
       DestWidth = S.Context.getTargetInfo().getPointerWidth(0);
     break;
+  case 11:
+    if (Str == "unwind_word")
+      DestWidth = S.Context.getTargetInfo().getUnwindWordWidth();
+    break;
   }
 
   QualType OldTy;
@@ -3557,10 +3580,11 @@ static void handleGNUInlineAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 static void handleCallConvAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   if (hasDeclarator(D)) return;
 
+  const FunctionDecl *FD = dyn_cast<FunctionDecl>(D);
   // Diagnostic is emitted elsewhere: here we store the (valid) Attr
   // in the Decl node for syntactic reasoning, e.g., pretty-printing.
   CallingConv CC;
-  if (S.CheckCallingConvAttr(Attr, CC))
+  if (S.CheckCallingConvAttr(Attr, CC, FD))
     return;
 
   if (!isa<ObjCMethodDecl>(D)) {
@@ -3604,6 +3628,9 @@ static void handleCallConvAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   case AttributeList::AT_PnaclCall:
     D->addAttr(::new (S.Context) PnaclCallAttr(Attr.getRange(), S.Context));
     return;
+  case AttributeList::AT_IntelOclBicc:
+    D->addAttr(::new (S.Context) IntelOclBiccAttr(Attr.getRange(), S.Context));
+    return;
 
   default:
     llvm_unreachable("unexpected attribute kind");
@@ -3615,7 +3642,8 @@ static void handleOpenCLKernelAttr(Sema &S, Decl *D, const AttributeList &Attr){
   D->addAttr(::new (S.Context) OpenCLKernelAttr(Attr.getRange(), S.Context));
 }
 
-bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC) {
+bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC, 
+                                const FunctionDecl *FD) {
   if (attr.isInvalid())
     return true;
 
@@ -3658,6 +3686,7 @@ bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC) {
     return true;
   }
   case AttributeList::AT_PnaclCall: CC = CC_PnaclCall; break;
+  case AttributeList::AT_IntelOclBicc: CC = CC_IntelOclBicc; break;
   default: llvm_unreachable("unexpected attribute kind");
   }
 
@@ -3665,7 +3694,12 @@ bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC) {
   TargetInfo::CallingConvCheckResult A = TI.checkCallingConvention(CC);
   if (A == TargetInfo::CCCR_Warning) {
     Diag(attr.getLoc(), diag::warn_cconv_ignored) << attr.getName();
-    CC = TI.getDefaultCallingConv();
+
+    TargetInfo::CallingConvMethodType MT = TargetInfo::CCMT_Unknown;
+    if (FD)
+      MT = FD->isCXXInstanceMember() ? TargetInfo::CCMT_Member : 
+                                    TargetInfo::CCMT_NonMember;
+    CC = TI.getDefaultCallingConv(MT);
   }
 
   return false;
@@ -4425,6 +4459,7 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_Pascal:
   case AttributeList::AT_Pcs:
   case AttributeList::AT_PnaclCall:
+  case AttributeList::AT_IntelOclBicc:
     handleCallConvAttr(S, D, Attr);
     break;
   case AttributeList::AT_OpenCLKernel:

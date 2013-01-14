@@ -18,9 +18,9 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/SchedulerRegistry.h"
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/Module.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
@@ -72,13 +72,8 @@ private:
     if (!CodeGenPasses) {
       CodeGenPasses = new PassManager();
       CodeGenPasses->add(new DataLayout(TheModule));
-      // Add TargetTransformInfo.
-      if (TM) {
-        TargetTransformInfo *TTI =
-        new TargetTransformInfo(TM->getScalarTargetTransformInfo(),
-                                TM->getVectorTargetTransformInfo());
-        CodeGenPasses->add(TTI);
-      }
+      if (TM)
+        TM->addAnalysisPasses(*CodeGenPasses);
     }
     return CodeGenPasses;
   }
@@ -87,12 +82,8 @@ private:
     if (!PerModulePasses) {
       PerModulePasses = new PassManager();
       PerModulePasses->add(new DataLayout(TheModule));
-      if (TM) {
-        TargetTransformInfo *TTI =
-        new TargetTransformInfo(TM->getScalarTargetTransformInfo(),
-                                TM->getVectorTargetTransformInfo());
-        PerModulePasses->add(TTI);
-      }
+      if (TM)
+        TM->addAnalysisPasses(*PerModulePasses);
     }
     return PerModulePasses;
   }
@@ -101,12 +92,8 @@ private:
     if (!PerFunctionPasses) {
       PerFunctionPasses = new FunctionPassManager(TheModule);
       PerFunctionPasses->add(new DataLayout(TheModule));
-      if (TM) {
-        TargetTransformInfo *TTI =
-        new TargetTransformInfo(TM->getScalarTargetTransformInfo(),
-                                TM->getVectorTargetTransformInfo());
-        PerFunctionPasses->add(TTI);
-      }
+      if (TM)
+        TM->addAnalysisPasses(*PerFunctionPasses);
     }
     return PerFunctionPasses;
   }
@@ -149,8 +136,8 @@ public:
   void EmitAssembly(BackendAction Action, raw_ostream *OS);
 };
 
-// We need this wrapper to access LangOpts from extension functions that
-// we add to the PassManagerBuilder.
+// We need this wrapper to access LangOpts and CGOpts from extension functions
+// that we add to the PassManagerBuilder.
 class PassManagerBuilderWrapper : public PassManagerBuilder {
 public:
   PassManagerBuilderWrapper(const CodeGenOptions &CGOpts,
@@ -201,12 +188,19 @@ static void addAddressSanitizerPasses(const PassManagerBuilder &Builder,
 
 static void addMemorySanitizerPass(const PassManagerBuilder &Builder,
                                    PassManagerBase &PM) {
-  PM.add(createMemorySanitizerPass());
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
+  PM.add(createMemorySanitizerPass(CGOpts.MemorySanitizerTrackOrigins,
+                                   CGOpts.SanitizerBlacklistFile));
 }
 
 static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
                                    PassManagerBase &PM) {
-  PM.add(createThreadSanitizerPass());
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const CodeGenOptions &CGOpts = BuilderWrapper.getCGOpts();
+  PM.add(createThreadSanitizerPass(CGOpts.SanitizerBlacklistFile));
 }
 
 void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
@@ -243,7 +237,6 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
     OptLevel = 0;
     Inlining = CodeGenOpts.NoInlining;
   }
-
 
   PassManagerBuilderWrapper PMBuilder(CodeGenOpts, LangOpts);
   PMBuilder.OptLevel = OptLevel;
@@ -333,7 +326,9 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
   if (CodeGenOpts.EmitGcovArcs || CodeGenOpts.EmitGcovNotes) {
     MPM->add(createGCOVProfilerPass(CodeGenOpts.EmitGcovNotes,
                                     CodeGenOpts.EmitGcovArcs,
-                                    TargetTriple.isMacOSX()));
+                                    TargetTriple.isMacOSX(),
+                                    false,
+                                    CodeGenOpts.DisableRedZone));
 
     if (CodeGenOpts.getDebugInfo() == CodeGenOptions::NoDebugInfo)
       MPM->add(createStripSymbolsPass(true));
@@ -510,9 +505,8 @@ bool EmitAssemblyHelper::AddEmitPasses(BackendAction Action,
     TLI->disableAllFunctions();
   PM->add(TLI);
 
-  // Add TargetTransformInfo.
-  PM->add(new TargetTransformInfo(TM->getScalarTargetTransformInfo(),
-                                  TM->getVectorTargetTransformInfo()));
+  // Add Target specific analysis passes.
+  TM->addAnalysisPasses(*PM);
 
   // Normal mode, emit a .s or .o file by running the code generator. Note,
   // this also adds codegenerator level optimization passes.

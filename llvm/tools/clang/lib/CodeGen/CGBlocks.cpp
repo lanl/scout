@@ -18,8 +18,8 @@
 #include "CodeGenModule.h"
 #include "clang/AST/DeclObjC.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Module.h"
 
 // scout - include code extractor
 #include "llvm/Transforms/Utils/CodeExtractor.h"
@@ -1303,7 +1303,7 @@ RValue CodeGenFunction::EmitBlockCallExpr(const CallExpr* E,
 
   const FunctionType *FuncTy = FnType->castAs<FunctionType>();
   const CGFunctionInfo &FnInfo =
-    CGM.getTypes().arrangeFreeFunctionCall(Args, FuncTy);
+    CGM.getTypes().arrangeBlockFunctionCall(Args, FuncTy);
 
   // Cast the function pointer to the right type.
   llvm::Type *BlockFTy = CGM.getTypes().GetFunctionType(FnInfo);
@@ -1574,6 +1574,9 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
                                               Builder, blockInfo);
       }
     }
+    // Recover location if it was changed in the above loop.
+    DI->EmitLocation(Builder,
+        cast<CompoundStmt>(blockDecl->getBody())->getRBracLoc());
   }
 
   // And resume where we left off.
@@ -1960,6 +1963,13 @@ public:
     llvm::Value *null =
       llvm::ConstantPointerNull::get(cast<llvm::PointerType>(value->getType()));
 
+    if (CGF.CGM.getCodeGenOpts().OptimizationLevel == 0) {
+      llvm::StoreInst *store = CGF.Builder.CreateStore(null, destField);
+      store->setAlignment(Alignment.getQuantity());
+      CGF.EmitARCStoreStrongCall(destField, value, /*ignored*/ true);
+      CGF.EmitARCStoreStrongCall(srcField, null, /*ignored*/ true);
+      return;
+    }
     llvm::StoreInst *store = CGF.Builder.CreateStore(value, destField);
     store->setAlignment(Alignment.getQuantity());
 

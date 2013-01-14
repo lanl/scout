@@ -16,6 +16,7 @@
 #include "clang/Driver/ArgList.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
+#include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/OptTable.h"
 #include "clang/Driver/Option.h"
 #include "clang/Driver/Options.h"
@@ -42,6 +43,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 #include <cctype>
+
+#include <unistd.h>
+#include <iostream>
+
 using namespace clang;
 using namespace clang::driver;
 
@@ -352,6 +357,17 @@ int main(int argc_, const char **argv_) {
   if (argv.size() > 1 && StringRef(argv[1]).startswith("-cc1")) {
     StringRef Tool = argv[1] + 4;
 
+    for (int i = 2, size = argv.size(); i < size; ++i) {
+      if (StringRef(argv[i]) == "-debug-wait") {
+        size_t pid = getpid();
+        
+        std::cerr << "PID: " << pid << std::endl;
+        std::cerr << "<press return>" << std::endl;
+        std::string str;
+        std::getline(std::cin, str); 
+      }
+    }
+
     if (Tool == "")
       return cc1_main(argv.data()+2, argv.data()+argv.size(), argv[0],
                       (void*) (intptr_t) GetExecutablePath);
@@ -470,8 +486,10 @@ int main(int argc_, const char **argv_) {
     Res = TheDriver.ExecuteCompilation(*C, FailingCommand);
 
   // Force a crash to test the diagnostics.
-  if(::getenv("FORCE_CLANG_DIAGNOSTICS_CRASH"))
-     Res = -1;
+  if (::getenv("FORCE_CLANG_DIAGNOSTICS_CRASH")) {
+    Diags.Report(diag::err_drv_force_crash) << "FORCE_CLANG_DIAGNOSTICS_CRASH";
+    Res = -1;
+  }
 
   // If result status is < 0, then the driver command signalled an error.
   // If result status is 70, then the driver command reported a fatal error.

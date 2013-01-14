@@ -1168,8 +1168,17 @@ void Sema::CheckImplementationIvars(ObjCImplementationDecl *ImpDecl,
 void Sema::WarnUndefinedMethod(SourceLocation ImpLoc, ObjCMethodDecl *method,
                                bool &IncompleteImpl, unsigned DiagID) {
   // No point warning no definition of method which is 'unavailable'.
-  if (method->hasAttr<UnavailableAttr>())
+  switch (method->getAvailability()) {
+  case AR_Available:
+  case AR_Deprecated:
+    break;
+
+      // Don't warn about unavailable or not-yet-introduced methods.
+  case AR_NotYetIntroduced:
+  case AR_Unavailable:
     return;
+  }
+  
   if (!IncompleteImpl) {
     Diag(ImpLoc, diag::warn_incomplete_impl);
     IncompleteImpl = true;
@@ -1584,6 +1593,11 @@ void Sema::CheckProtocolMethodDefs(SourceLocation ImpLoc,
       NSIDecl = IDecl->lookupInheritedClass(&Context.Idents.get("NSProxy"));
   }
 
+  // If this is a forward protocol declaration, get its definition.
+  if (!PDecl->isThisDeclarationADefinition() &&
+      PDecl->getDefinition())
+    PDecl = PDecl->getDefinition();
+  
   // If a method lookup fails locally we still need to look and see if
   // the method was implemented by a base class or an inherited
   // protocol. This lookup is slow, but occurs rarely in correct code

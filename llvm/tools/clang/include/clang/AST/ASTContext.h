@@ -233,6 +233,8 @@ class ASTContext : public RefCountedBase<ASTContext> {
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
   
+  mutable QualType ObjCSuperType;
+  
   QualType ObjCNSStringType;
 
   /// \brief The typedef declaration for the Objective-C "instancetype" type.
@@ -716,6 +718,9 @@ public:
   CanQualType PseudoObjectTy, ARCUnbridgedCastTy;
   CanQualType ObjCBuiltinIdTy, ObjCBuiltinClassTy, ObjCBuiltinSelTy;
   CanQualType ObjCBuiltinBoolTy;
+  CanQualType OCLImage1dTy, OCLImage1dArrayTy, OCLImage1dBufferTy;
+  CanQualType OCLImage2dTy, OCLImage2dArrayTy;
+  CanQualType OCLImage3dTy;
 
   // scout - vector types
   // essentially, we keep on QualType for each of the vector
@@ -1145,7 +1150,11 @@ public:
 
   /// \brief Return the C structure type used to represent constant CFStrings.
   QualType getCFConstantStringType() const;
-
+  
+  /// \brief Returns the C struct type for objc_super
+  QualType getObjCSuperType() const;
+  void setObjCSuperType(QualType ST) { ObjCSuperType = ST; }
+  
   /// Get the structure type used to representation CFStrings, or NULL
   /// if it hasn't yet been built.
   QualType getRawCFConstantStringType() const {
