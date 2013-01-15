@@ -14,7 +14,12 @@
 #include <vector>
 #include <iostream>
 #include <cxxabi.h>
+#include <fstream>
+#include <cstdio>
 
+#include "llvm/Support/Program.h"
+#include "llvm/Support/PathV1.h"
+#include "llvm/Support/PathV2.h"
 #include "llvm/Constants.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/FormattedStream.h"
@@ -661,16 +666,65 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   //cerr << "------------------ gpu module" << endl;
   //gm->dump();
 
-  string bitcode;
-  raw_string_ostream bs(bitcode);
-  formatted_raw_ostream fbs(bs);
+  std::string strIR;
+  raw_string_ostream IROut(strIR);
+  gm.print(IROut, 0);
+  std::string sccPath = 
+    "/Users/nickm/scout/build/scout/bin/scc";
 
-  WriteBitcodeToFile(gm, fbs);
+  SmallString<128> commandPath(sccPath);
+  sys::path::remove_filename(commandPath);
+  sys::path::append(commandPath, "llvm-as-3.1");
 
-  fbs.flush();
+  SmallString<128> inputPath;
+  sys::path::system_temp_directory(false, inputPath);
+  sys::path::append(inputPath, "sc_amdil_in.ll");
+  std::string inPath = inputPath.str().str();
+
+  std::ofstream istr(inPath.c_str());
+  assert(istr.is_open() && 
+         "Failed to open output file stream in DoallToAMDIL.");
+  istr << strIR;
+  istr.close();
+
+  SmallString<128> outputPath;
+  sys::path::system_temp_directory(false, outputPath);
+  sys::path::append(commandPath, "sc_amdil_out.bc");
+  std::string outPath = outputPath.str().str();
+
+  typedef std::vector<char*> ArgVec;
+  ArgVec argVec;
+  argVec.push_back(strdup("-o"));
+  argVec.push_back(strdup(outPath.c_str()));
+
+  sys::Path executePath(commandPath.str());
+
+  int status = 
+    sys::Program::ExecuteAndWait(executePath,
+                                 (const char**)argVec.data());
+  assert(status == 0 && 
+         "Failed to run llvm-as in DoallToAMDIL.");
+
+  FILE* fh = fopen(outPath.c_str(), "r");
+  fseek(fh, 0, SEEK_END);
+
+  size_t size = ftell(fh);
+
+  rewind(fh);
+
+  char* buf = (char*)malloc(size + 1);
+  buf[size] = '\0';
+  fread(buf, sizeof(char), size, fh);
+  fclose(fh);
+
+  remove(inPath.c_str());
+  remove(outPath.c_str());
+
+  free(argVec[0]);
+  free(argVec[1]);
 
   Constant* bitcodeData =
-    ConstantDataArray::getString(m.getContext(), bitcode, false); 
+    ConstantDataArray::getString(m.getContext(), buf, false); 
 
   GlobalVariable* gv = 
     new GlobalVariable(m,
