@@ -114,6 +114,9 @@ public:
 
   /// A list of command-line options to forward to the LLVM backend.
   std::vector<std::string> BackendOptions;
+  
+  // scout - the path the scc executable, so we can find the llvm-as-3.1 command
+  std::string SccPath;
 
 public:
   // Define accessors/mutators for code generation options of enumeration type.

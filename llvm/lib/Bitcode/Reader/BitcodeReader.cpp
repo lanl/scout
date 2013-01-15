@@ -16,13 +16,13 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/AutoUpgrade.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/Module.h"
-#include "llvm/OperandTraits.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/OperandTraits.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -47,7 +47,7 @@ void BitcodeReader::FreeState() {
   ValueList.clear();
   MDValueList.clear();
 
-  std::vector<AttrListPtr>().swap(MAttributes);
+  std::vector<AttributeSet>().swap(MAttributes);
   std::vector<BasicBlock*>().swap(FunctionBBs);
   std::vector<Function*>().swap(FunctionsWithBodies);
   DeferredFunctionInfo.clear();
@@ -475,8 +475,8 @@ bool BitcodeReader::ParseAttributeBlock() {
         return Error("Invalid ENTRY record");
 
       for (unsigned i = 0, e = Record.size(); i != e; i += 2) {
-        Attributes ReconstitutedAttr =
-          Attributes::decodeLLVMAttributesForBitcode(Context, Record[i+1]);
+        Attribute ReconstitutedAttr =
+          Attribute::decodeLLVMAttributesForBitcode(Context, Record[i+1]);
         Record[i+1] = ReconstitutedAttr.Raw();
       }
 
@@ -484,10 +484,10 @@ bool BitcodeReader::ParseAttributeBlock() {
         AttrBuilder B(Record[i+1]);
         if (B.hasAttributes())
           Attrs.push_back(AttributeWithIndex::get(Record[i],
-                                                  Attributes::get(Context, B)));
+                                                  Attribute::get(Context, B)));
       }
 
-      MAttributes.push_back(AttrListPtr::get(Context, Attrs));
+      MAttributes.push_back(AttributeSet::get(Context, Attrs));
       Attrs.clear();
       break;
     }
@@ -2047,16 +2047,16 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
             cast<BinaryOperator>(I)->setIsExact(true);
         } else if (isa<FPMathOperator>(I)) {
           FastMathFlags FMF;
-          FMF.UnsafeAlgebra =
-            0 != (Record[OpNum] & (1 << bitc::FMF_UNSAFE_ALGEBRA));
-          FMF.NoNaNs =
-            0 != (Record[OpNum] & (1 << bitc::FMF_NO_NANS));
-          FMF.NoInfs =
-            0 != (Record[OpNum] & (1 << bitc::FMF_NO_INFS));
-          FMF.NoSignedZeros =
-            0 != (Record[OpNum] & (1 << bitc::FMF_NO_SIGNED_ZEROS));
-          FMF.AllowReciprocal =
-            0 != (Record[OpNum] & (1 << bitc::FMF_ALLOW_RECIPROCAL));
+          if (0 != (Record[OpNum] & FastMathFlags::UnsafeAlgebra))
+            FMF.setUnsafeAlgebra();
+          if (0 != (Record[OpNum] & FastMathFlags::NoNaNs))
+            FMF.setNoNaNs();
+          if (0 != (Record[OpNum] & FastMathFlags::NoInfs))
+            FMF.setNoInfs();
+          if (0 != (Record[OpNum] & FastMathFlags::NoSignedZeros))
+            FMF.setNoSignedZeros();
+          if (0 != (Record[OpNum] & FastMathFlags::AllowReciprocal))
+            FMF.setAllowReciprocal();
           if (FMF.any())
             I->setFastMathFlags(FMF);
         }
@@ -2398,7 +2398,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
     case bitc::FUNC_CODE_INST_INVOKE: {
       // INVOKE: [attrs, cc, normBB, unwindBB, fnty, op0,op1,op2, ...]
       if (Record.size() < 4) return Error("Invalid INVOKE record");
-      AttrListPtr PAL = getAttributes(Record[0]);
+      AttributeSet PAL = getAttributes(Record[0]);
       unsigned CCInfo = Record[1];
       BasicBlock *NormalBB = getBasicBlock(Record[2]);
       BasicBlock *UnwindBB = getBasicBlock(Record[3]);
@@ -2663,7 +2663,7 @@ bool BitcodeReader::ParseFunctionBody(Function *F) {
       if (Record.size() < 3)
         return Error("Invalid CALL record");
 
-      AttrListPtr PAL = getAttributes(Record[0]);
+      AttributeSet PAL = getAttributes(Record[0]);
       unsigned CCInfo = Record[1];
 
       unsigned OpNum = 2;

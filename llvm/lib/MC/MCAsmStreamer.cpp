@@ -135,6 +135,8 @@ public:
   }
 
   virtual void EmitLabel(MCSymbol *Symbol);
+  virtual void EmitDebugLabel(MCSymbol *Symbol);
+
   virtual void EmitEHSymAttributes(const MCSymbol *Symbol,
                                    MCSymbol *EHSymbol);
   virtual void EmitAssemblerFlag(MCAssemblerFlag Flag);
@@ -257,6 +259,10 @@ public:
 
   virtual void EmitInstruction(const MCInst &Inst);
 
+  virtual void EmitBundleAlignMode(unsigned AlignPow2);
+  virtual void EmitBundleLock(bool AlignToEnd);
+  virtual void EmitBundleUnlock();
+
   /// EmitRawText - If this file is backed by an assembly streamer, this dumps
   /// the specified string in the output .s file.  This capability is
   /// indicated by the hasRawTextSupport() predicate.
@@ -342,6 +348,14 @@ void MCAsmStreamer::EmitLabel(MCSymbol *Symbol) {
   MCStreamer::EmitLabel(Symbol);
 
   OS << *Symbol << MAI.getLabelSuffix();
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
+  MCStreamer::EmitDebugLabel(Symbol);
+
+  OS << *Symbol << MAI.getDebugLabelSuffix();
   EmitEOL();
 }
 
@@ -1348,6 +1362,23 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst) {
     InstPrinter->printInst(&Inst, OS, "");
   else
     Inst.print(OS, &MAI);
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
+  OS << "\t.bundle_align_mode " << AlignPow2;
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleLock(bool AlignToEnd) {
+  OS << "\t.bundle_lock";
+  if (AlignToEnd)
+    OS << " align_to_end";
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitBundleUnlock() {
+  OS << "\t.bundle_unlock";
   EmitEOL();
 }
 

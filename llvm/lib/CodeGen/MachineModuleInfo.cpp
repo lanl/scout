@@ -13,12 +13,12 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/GlobalVariable.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Module.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
@@ -253,7 +253,7 @@ void MMIAddrLabelMapCallbackPtr::allUsesReplacedWith(Value *V2) {
 MachineModuleInfo::MachineModuleInfo(const MCAsmInfo &MAI,
                                      const MCRegisterInfo &MRI,
                                      const MCObjectFileInfo *MOFI)
-  : ImmutablePass(ID), Context(MAI, MRI, MOFI) {
+  : ImmutablePass(ID), Context(MAI, MRI, MOFI, 0, false) {
   initializeMachineModuleInfoPass(*PassRegistry::getPassRegistry());
 }
 
@@ -266,10 +266,10 @@ MachineModuleInfo::MachineModuleInfo()
 }
 
 MachineModuleInfo::~MachineModuleInfo() {
-  delete ObjFileMMI;
 }
 
 bool MachineModuleInfo::doInitialization(Module &M) {
+
   ObjFileMMI = 0;
   CompactUnwindEncoding = 0;
   CurCallSite = 0;
@@ -290,6 +290,11 @@ bool MachineModuleInfo::doFinalization(Module &M) {
 
   delete AddrLabelSymbols;
   AddrLabelSymbols = 0;
+
+  Context.reset();
+
+  delete ObjFileMMI;
+  ObjFileMMI = 0;
 
   return false;
 }

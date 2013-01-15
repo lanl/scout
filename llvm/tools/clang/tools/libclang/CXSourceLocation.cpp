@@ -17,9 +17,12 @@
 #include "CXSourceLocation.h"
 #include "CXString.h"
 #include "CXTranslationUnit.h"
+#include "CLog.h"
+#include "llvm/Support/Format.h"
 
 using namespace clang;
 using namespace clang::cxstring;
+using namespace clang::cxindex;
 
 //===----------------------------------------------------------------------===//
 // Internal predicates on CXSourceLocations.
@@ -122,24 +125,25 @@ CXSourceLocation clang_getLocation(CXTranslationUnit tu,
   if (!tu || !file)
     return clang_getNullLocation();
   
-  bool Logging = ::getenv("LIBCLANG_LOGGING");
+  LogRef Log = Logger::make(__func__);
   ASTUnit *CXXUnit = static_cast<ASTUnit *>(tu->TUData);
   ASTUnit::ConcurrencyCheck Check(*CXXUnit);
   const FileEntry *File = static_cast<const FileEntry *>(file);
   SourceLocation SLoc = CXXUnit->getLocation(File, line, column);
   if (SLoc.isInvalid()) {
-    if (Logging)
-      llvm::errs() << "clang_getLocation(\"" << File->getName() 
-      << "\", " << line << ", " << column << ") = invalid\n";
+    if (Log)
+      *Log << llvm::format("(\"%s\", %d, %d) = invalid",
+                           File->getName(), line, column);
     return clang_getNullLocation();
   }
   
-  if (Logging)
-    llvm::errs() << "clang_getLocation(\"" << File->getName() 
-    << "\", " << line << ", " << column << ") = " 
-    << SLoc.getRawEncoding() << "\n";
+  CXSourceLocation CXLoc =
+      cxloc::translateSourceLocation(CXXUnit->getASTContext(), SLoc);
+  if (Log)
+    *Log << llvm::format("(\"%s\", %d, %d) = ", File->getName(), line, column)
+         << CXLoc;
   
-  return cxloc::translateSourceLocation(CXXUnit->getASTContext(), SLoc);
+  return CXLoc;
 }
   
 CXSourceLocation clang_getLocationForOffset(CXTranslationUnit tu,
@@ -294,16 +298,8 @@ void clang_getSpellingLocation(CXSourceLocation location,
   
   const SourceManager &SM =
   *static_cast<const SourceManager*>(location.ptr_data[0]);
-  SourceLocation SpellLoc = Loc;
-  if (SpellLoc.isMacroID()) {
-    SourceLocation SimpleSpellingLoc = SM.getImmediateSpellingLoc(SpellLoc);
-    if (SimpleSpellingLoc.isFileID() &&
-        SM.getFileEntryForID(SM.getDecomposedLoc(SimpleSpellingLoc).first))
-      SpellLoc = SimpleSpellingLoc;
-    else
-      SpellLoc = SM.getExpansionLoc(SpellLoc);
-  }
-  
+  // FIXME: This should call SourceManager::getSpellingLoc().
+  SourceLocation SpellLoc = SM.getFileLoc(Loc);
   std::pair<FileID, unsigned> LocInfo = SM.getDecomposedLoc(SpellLoc);
   FileID FID = LocInfo.first;
   unsigned FileOffset = LocInfo.second;
@@ -321,5 +317,41 @@ void clang_getSpellingLocation(CXSourceLocation location,
     *offset = FileOffset;
 }
 
-} // end extern "C"
+void clang_getFileLocation(CXSourceLocation location,
+                           CXFile *file,
+                           unsigned *line,
+                           unsigned *column,
+                           unsigned *offset) {
 
+  if (!isASTUnitSourceLocation(location)) {
+    CXLoadedDiagnostic::decodeLocation(location, file, line,
+                                           column, offset);
+    return;
+  }
+
+  SourceLocation Loc = SourceLocation::getFromRawEncoding(location.int_data);
+
+  if (!location.ptr_data[0] || Loc.isInvalid())
+    return createNullLocation(file, line, column, offset);
+
+  const SourceManager &SM =
+  *static_cast<const SourceManager*>(location.ptr_data[0]);
+  SourceLocation FileLoc = SM.getFileLoc(Loc);
+  std::pair<FileID, unsigned> LocInfo = SM.getDecomposedLoc(FileLoc);
+  FileID FID = LocInfo.first;
+  unsigned FileOffset = LocInfo.second;
+
+  if (FID.isInvalid())
+    return createNullLocation(file, line, column, offset);
+
+  if (file)
+    *file = (void *)SM.getFileEntryForID(FID);
+  if (line)
+    *line = SM.getLineNumber(FID, FileOffset);
+  if (column)
+    *column = SM.getColumnNumber(FID, FileOffset);
+  if (offset)
+    *offset = FileOffset;
+}
+
+} // end extern "C"

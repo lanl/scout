@@ -28,11 +28,11 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/DataLayout.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/IntrinsicInst.h"
-#include "llvm/LLVMContext.h"
-#include "llvm/Module.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CallSite.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
@@ -64,8 +64,8 @@ private:
     return CGM.CreateRuntimeFunction(llvm::FunctionType::get(ObjectPtrTy,
                                                              params, true),
                                      "objc_msgSend",
-                                     llvm::Attributes::get(CGM.getLLVMContext(),
-                                                llvm::Attributes::NonLazyBind));
+                                     llvm::Attribute::get(CGM.getLLVMContext(),
+                                                llvm::Attribute::NonLazyBind));
   }
 
   /// void objc_msgSend_stret (id, SEL, ...)
@@ -582,8 +582,8 @@ public:
     return CGM.CreateRuntimeFunction(llvm::FunctionType::get(CGM.Int32Ty,
                                                              params, false),
                                      "_setjmp",
-                                     llvm::Attributes::get(CGM.getLLVMContext(),
-                                                llvm::Attributes::NonLazyBind));
+                                     llvm::Attribute::get(CGM.getLLVMContext(),
+                                                llvm::Attribute::NonLazyBind));
   }
 
 public:
@@ -1223,7 +1223,8 @@ public:
                                                           bool copy);
   virtual llvm::Constant *GetGetStructFunction();
   virtual llvm::Constant *GetSetStructFunction();
-  virtual llvm::Constant *GetCppAtomicObjectFunction();
+  virtual llvm::Constant *GetCppAtomicObjectGetFunction();
+  virtual llvm::Constant *GetCppAtomicObjectSetFunction();
   virtual llvm::Constant *EnumerationMutationFunction();
 
   virtual void EmitTryStmt(CodeGen::CodeGenFunction &CGF,
@@ -1232,7 +1233,8 @@ public:
                                     const ObjCAtSynchronizedStmt &S);
   void EmitTryOrSynchronizedStmt(CodeGen::CodeGenFunction &CGF, const Stmt &S);
   virtual void EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
-                             const ObjCAtThrowStmt &S);
+                             const ObjCAtThrowStmt &S,
+                             bool ClearInsertionPoint=true);
   virtual llvm::Value * EmitObjCWeakRead(CodeGen::CodeGenFunction &CGF,
                                          llvm::Value *AddrWeakObj);
   virtual void EmitObjCWeakAssign(CodeGen::CodeGenFunction &CGF,
@@ -1494,7 +1496,10 @@ public:
   virtual llvm::Constant *GetGetStructFunction() {
     return ObjCTypes.getCopyStructFn();
   }
-  virtual llvm::Constant *GetCppAtomicObjectFunction() {
+  virtual llvm::Constant *GetCppAtomicObjectSetFunction() {
+    return ObjCTypes.getCppAtomicObjectFunction();
+  }
+  virtual llvm::Constant *GetCppAtomicObjectGetFunction() {
     return ObjCTypes.getCppAtomicObjectFunction();
   }
   
@@ -1507,7 +1512,8 @@ public:
   virtual void EmitSynchronizedStmt(CodeGen::CodeGenFunction &CGF,
                                     const ObjCAtSynchronizedStmt &S);
   virtual void EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
-                             const ObjCAtThrowStmt &S);
+                             const ObjCAtThrowStmt &S,
+                             bool ClearInsertionPoint=true);
   virtual llvm::Value * EmitObjCWeakRead(CodeGen::CodeGenFunction &CGF,
                                          llvm::Value *AddrWeakObj);
   virtual void EmitObjCWeakAssign(CodeGen::CodeGenFunction &CGF,
@@ -3409,7 +3415,10 @@ llvm::Constant *CGObjCMac::GetSetStructFunction() {
   return ObjCTypes.getCopyStructFn();
 }
 
-llvm::Constant *CGObjCMac::GetCppAtomicObjectFunction() {
+llvm::Constant *CGObjCMac::GetCppAtomicObjectGetFunction() {
+  return ObjCTypes.getCppAtomicObjectFunction();
+}
+llvm::Constant *CGObjCMac::GetCppAtomicObjectSetFunction() {
   return ObjCTypes.getCppAtomicObjectFunction();
 }
 
@@ -4064,7 +4073,8 @@ void CGObjCMac::EmitTryOrSynchronizedStmt(CodeGen::CodeGenFunction &CGF,
 }
 
 void CGObjCMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
-                              const ObjCAtThrowStmt &S) {
+                              const ObjCAtThrowStmt &S,
+                              bool ClearInsertionPoint) {
   llvm::Value *ExceptionAsObject;
 
   if (const Expr *ThrowExpr = S.getThrowExpr()) {
@@ -4082,7 +4092,8 @@ void CGObjCMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
   CGF.Builder.CreateUnreachable();
 
   // Clear the insertion point to indicate we are in unreachable code.
-  CGF.Builder.ClearInsertionPoint();
+  if (ClearInsertionPoint)
+    CGF.Builder.ClearInsertionPoint();
 }
 
 /// EmitObjCWeakRead - Code gen for loading value of a __weak
@@ -6917,7 +6928,8 @@ void CGObjCNonFragileABIMac::EmitTryStmt(CodeGen::CodeGenFunction &CGF,
 
 /// EmitThrowStmt - Generate code for a throw statement.
 void CGObjCNonFragileABIMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
-                                           const ObjCAtThrowStmt &S) {
+                                           const ObjCAtThrowStmt &S,
+                                           bool ClearInsertionPoint) {
   if (const Expr *ThrowExpr = S.getThrowExpr()) {
     llvm::Value *Exception = CGF.EmitObjCThrowOperand(ThrowExpr);
     Exception = CGF.Builder.CreateBitCast(Exception, ObjCTypes.ObjectPtrTy);
@@ -6929,7 +6941,8 @@ void CGObjCNonFragileABIMac::EmitThrowStmt(CodeGen::CodeGenFunction &CGF,
   }
 
   CGF.Builder.CreateUnreachable();
-  CGF.Builder.ClearInsertionPoint();
+  if (ClearInsertionPoint)
+    CGF.Builder.ClearInsertionPoint();
 }
 
 llvm::Constant *

@@ -634,7 +634,7 @@ ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
     Comments(SM), CommentsLoaded(false),
     CommentCommandTraits(BumpAlloc),
     LastSDM(0, 0),
-    UniqueBlockByRefTypeID(0) 
+    UniqueBlockByRefTypeID(0)
 {
   if (size_reserve > 0) Types.reserve(size_reserve);
   TUDecl = TranslationUnitDecl::Create(*this);
@@ -898,12 +898,23 @@ void ASTContext::InitBuiltinTypes(const TargetInfo &Target) {
   InitBuiltinType(ObjCBuiltinIdTy, BuiltinType::ObjCId);
   InitBuiltinType(ObjCBuiltinClassTy, BuiltinType::ObjCClass);
   InitBuiltinType(ObjCBuiltinSelTy, BuiltinType::ObjCSel);
+
+  if (LangOpts.OpenCL) { 
+    InitBuiltinType(OCLImage1dTy, BuiltinType::OCLImage1d);
+    InitBuiltinType(OCLImage1dArrayTy, BuiltinType::OCLImage1dArray);
+    InitBuiltinType(OCLImage1dBufferTy, BuiltinType::OCLImage1dBuffer);
+    InitBuiltinType(OCLImage2dTy, BuiltinType::OCLImage2d);
+    InitBuiltinType(OCLImage2dArrayTy, BuiltinType::OCLImage2dArray);
+    InitBuiltinType(OCLImage3dTy, BuiltinType::OCLImage3d);
+  }
   
   // Builtin type for __objc_yes and __objc_no
   ObjCBuiltinBoolTy = (Target.useSignedCharForObjCBool() ?
                        SignedCharTy : BoolTy);
   
   ObjCConstantStringType = QualType();
+  
+  ObjCSuperType = QualType();
 
   // void * type
   VoidPtrTy = getPointerType(VoidTy);
@@ -962,6 +973,7 @@ ASTContext::setInstantiatedFromStaticDataMember(VarDecl *Inst, VarDecl *Tmpl,
          "Already noted what static data member was instantiated from");
   InstantiatedFromStaticDataMember[Inst]
     = new (*this) MemberSpecializationInfo(Tmpl, TSK, PointOfInstantiation);
+  Inst->ClearLVCache();
 }
 
 FunctionDecl *ASTContext::getClassScopeSpecializationPattern(
@@ -1468,6 +1480,16 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::ObjCId:
     case BuiltinType::ObjCClass:
     case BuiltinType::ObjCSel:
+      Width = Target->getPointerWidth(0);
+      Align = Target->getPointerAlign(0);
+      break;
+    case BuiltinType::OCLImage1d:
+    case BuiltinType::OCLImage1dArray:
+    case BuiltinType::OCLImage1dBuffer:
+    case BuiltinType::OCLImage2d:
+    case BuiltinType::OCLImage2dArray:
+    case BuiltinType::OCLImage3d:
+      // Currently these types are pointers to opaque types.
       Width = Target->getPointerWidth(0);
       Align = Target->getPointerAlign(0);
       break;
@@ -4096,7 +4118,8 @@ ASTContext::getConstantArrayElementCount(const ConstantArrayType *CA)  const {
   uint64_t ElementCount = 1;
   do {
     ElementCount *= CA->getSize().getZExtValue();
-    CA = dyn_cast<ConstantArrayType>(CA->getElementType());
+    CA = dyn_cast_or_null<ConstantArrayType>(
+      CA->getElementType()->getAsArrayTypeUnsafe());
   } while (CA);
   return ElementCount;
 }
@@ -4376,6 +4399,16 @@ QualType ASTContext::getCFConstantStringType() const {
   return getTagDeclType(CFConstantStringTypeDecl);
 }
 
+QualType ASTContext::getObjCSuperType() const {
+  if (ObjCSuperType.isNull()) {
+    RecordDecl *ObjCSuperTypeDecl  =
+      CreateRecordDecl(*this, TTK_Struct, TUDecl, &Idents.get("objc_super"));
+    TUDecl->addDecl(ObjCSuperTypeDecl);
+    ObjCSuperType = getTagDeclType(ObjCSuperTypeDecl);
+  }
+  return ObjCSuperType;
+}
+
 void ASTContext::setCFConstantStringType(QualType T) {
   const RecordType *Rec = T->getAs<RecordType>();
   assert(Rec && "Invalid CFConstantStringType");
@@ -4514,7 +4547,7 @@ bool ASTContext::getByrefLifetime(QualType Ty,
     return false;
   
   HasByrefExtendedLayout = false;
-  if (Ty->isAggregateType()) {
+  if (Ty->isRecordType()) {
     HasByrefExtendedLayout = true;
     LifeTime = Qualifiers::OCL_None;
   }
@@ -4886,17 +4919,19 @@ void ASTContext::getObjCEncodingForType(QualType T, std::string& S,
                              true /* outermost type */);
 }
 
-static char ObjCEncodingForPrimitiveKind(const ASTContext *C, QualType T) {
-    switch (T->getAs<BuiltinType>()->getKind()) {
-    default: llvm_unreachable("Unhandled builtin type kind");
+static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
+                                            BuiltinType::Kind kind) {
+    switch (kind) {
     case BuiltinType::Void:       return 'v';
     case BuiltinType::Bool:       return 'B';
     case BuiltinType::Char_U:
     case BuiltinType::UChar:      return 'C';
+    case BuiltinType::Char16:
     case BuiltinType::UShort:     return 'S';
+    case BuiltinType::Char32:
     case BuiltinType::UInt:       return 'I';
     case BuiltinType::ULong:
-        return C->getIntWidth(T) == 32 ? 'L' : 'Q';
+        return C->getTargetInfo().getLongWidth() == 32 ? 'L' : 'Q';
     case BuiltinType::UInt128:    return 'T';
     case BuiltinType::ULongLong:  return 'Q';
     case BuiltinType::Char_S:
@@ -4906,13 +4941,38 @@ static char ObjCEncodingForPrimitiveKind(const ASTContext *C, QualType T) {
     case BuiltinType::WChar_U:
     case BuiltinType::Int:        return 'i';
     case BuiltinType::Long:
-      return C->getIntWidth(T) == 32 ? 'l' : 'q';
+      return C->getTargetInfo().getLongWidth() == 32 ? 'l' : 'q';
     case BuiltinType::LongLong:   return 'q';
     case BuiltinType::Int128:     return 't';
     case BuiltinType::Float:      return 'f';
     case BuiltinType::Double:     return 'd';
     case BuiltinType::LongDouble: return 'D';
+    case BuiltinType::NullPtr:    return '*'; // like char*
+
+    case BuiltinType::Half:
+      // FIXME: potentially need @encodes for these!
+      return ' ';
+
+    case BuiltinType::ObjCId:
+    case BuiltinType::ObjCClass:
+    case BuiltinType::ObjCSel:
+      llvm_unreachable("@encoding ObjC primitive type");
+
+    // OpenCL and placeholder types don't need @encodings.
+    case BuiltinType::OCLImage1d:
+    case BuiltinType::OCLImage1dArray:
+    case BuiltinType::OCLImage1dBuffer:
+    case BuiltinType::OCLImage2d:
+    case BuiltinType::OCLImage2dArray:
+    case BuiltinType::OCLImage3d:
+    case BuiltinType::Dependent:
+#define BUILTIN_TYPE(KIND, ID)
+#define PLACEHOLDER_TYPE(KIND, ID) \
+    case BuiltinType::KIND:
+#include "clang/AST/BuiltinTypes.def"
+      llvm_unreachable("invalid builtin type for @encode");
     }
+    llvm_unreachable("invalid BuiltinType::Kind value");
 }
 
 static char ObjCEncodingForEnumType(const ASTContext *C, const EnumType *ET) {
@@ -4923,7 +4983,8 @@ static char ObjCEncodingForEnumType(const ASTContext *C, const EnumType *ET) {
     return 'i';
   
   // The encoding of a fixed enum type matches its fixed underlying type.
-  return ObjCEncodingForPrimitiveKind(C, Enum->getIntegerType());
+  const BuiltinType *BT = Enum->getIntegerType()->castAs<BuiltinType>();
+  return getObjCEncodingForPrimitiveKind(C, BT->getKind());
 }
 
 static void EncodeBitField(const ASTContext *Ctx, std::string& S,
@@ -4951,8 +5012,10 @@ static void EncodeBitField(const ASTContext *Ctx, std::string& S,
     S += llvm::utostr(RL.getFieldOffset(FD->getFieldIndex()));
     if (const EnumType *ET = T->getAs<EnumType>())
       S += ObjCEncodingForEnumType(Ctx, ET);
-    else
-      S += ObjCEncodingForPrimitiveKind(Ctx, T);
+    else {
+      const BuiltinType *BT = T->castAs<BuiltinType>();
+      S += getObjCEncodingForPrimitiveKind(Ctx, BT->getKind());
+    }
   }
   S += llvm::utostr(FD->getBitWidthValue(*Ctx));
 }
@@ -4967,32 +5030,50 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
                                             bool StructField,
                                             bool EncodeBlockParameters,
                                             bool EncodeClassNames) const {
-  if (T->getAs<BuiltinType>()) {
+  CanQualType CT = getCanonicalType(T);
+  switch (CT->getTypeClass()) {
+  case Type::Builtin:
+  case Type::Enum:
     if (FD && FD->isBitField())
       return EncodeBitField(this, S, T, FD);
-    S += ObjCEncodingForPrimitiveKind(this, T);
+    if (const BuiltinType *BT = dyn_cast<BuiltinType>(CT))
+      S += getObjCEncodingForPrimitiveKind(this, BT->getKind());
+    else
+      S += ObjCEncodingForEnumType(this, cast<EnumType>(CT));
     return;
-  }
 
-  if (const ComplexType *CT = T->getAs<ComplexType>()) {
+  case Type::Complex: {
+    const ComplexType *CT = T->castAs<ComplexType>();
     S += 'j';
     getObjCEncodingForTypeImpl(CT->getElementType(), S, false, false, 0, false,
                                false);
     return;
   }
 
-  // encoding for pointer or r3eference types.
-  QualType PointeeTy;
-  if (const PointerType *PT = T->getAs<PointerType>()) {
-    if (PT->isObjCSelType()) {
-      S += ':';
-      return;
-    }
-    PointeeTy = PT->getPointeeType();
+  case Type::Atomic: {
+    const AtomicType *AT = T->castAs<AtomicType>();
+    S += 'A';
+    getObjCEncodingForTypeImpl(AT->getValueType(), S, false, false, 0,
+                               false, false);
+    return;
   }
-  else if (const ReferenceType *RT = T->getAs<ReferenceType>())
-    PointeeTy = RT->getPointeeType();
-  if (!PointeeTy.isNull()) {
+
+  // encoding for pointer or reference types.
+  case Type::Pointer:
+  case Type::LValueReference:
+  case Type::RValueReference: {
+    QualType PointeeTy;
+    if (isa<PointerType>(CT)) {
+      const PointerType *PT = T->castAs<PointerType>();
+      if (PT->isObjCSelType()) {
+        S += ':';
+        return;
+      }
+      PointeeTy = PT->getPointeeType();
+    } else {
+      PointeeTy = T->castAs<ReferenceType>()->getPointeeType();
+    }
+
     bool isReadOnly = false;
     // For historical/compatibility reasons, the read-only qualifier of the
     // pointee gets emitted _before_ the '^'.  The read-only qualifier of
@@ -5048,9 +5129,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  if (const ArrayType *AT =
-      // Ignore type qualifiers etc.
-        dyn_cast<ArrayType>(T->getCanonicalTypeInternal())) {
+  case Type::ConstantArray:
+  case Type::IncompleteArray:
+  case Type::VariableArray: {
+    const ArrayType *AT = cast<ArrayType>(CT);
+
     if (isa<IncompleteArrayType>(AT) && !StructField) {
       // Incomplete arrays are encoded as a pointer to the array element.
       S += '^';
@@ -5079,13 +5162,13 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  if (T->getAs<FunctionType>()) {
+  case Type::FunctionNoProto:
+  case Type::FunctionProto:
     S += '?';
     return;
-  }
 
-  if (const RecordType *RTy = T->getAs<RecordType>()) {
-    RecordDecl *RDecl = RTy->getDecl();
+  case Type::Record: {
+    RecordDecl *RDecl = cast<RecordType>(CT)->getDecl();
     S += RDecl->isUnion() ? '(' : '{';
     // Anonymous structures print as '?'
     if (const IdentifierInfo *II = RDecl->getIdentifier()) {
@@ -5137,18 +5220,11 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  if (const EnumType *ET = T->getAs<EnumType>()) {
-    if (FD && FD->isBitField())
-      EncodeBitField(this, S, T, FD);
-    else
-      S += ObjCEncodingForEnumType(this, ET);
-    return;
-  }
-
-  if (const BlockPointerType *BT = T->getAs<BlockPointerType>()) {
+  case Type::BlockPointer: {
+    const BlockPointerType *BT = T->castAs<BlockPointerType>();
     S += "@?"; // Unlike a pointer-to-function, which is "^?".
     if (EncodeBlockParameters) {
-      const FunctionType *FT = BT->getPointeeType()->getAs<FunctionType>();
+      const FunctionType *FT = BT->getPointeeType()->castAs<FunctionType>();
       
       S += '<';
       // Block return type
@@ -5182,11 +5258,14 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  // Ignore protocol qualifiers when mangling at this level.
-  if (const ObjCObjectType *OT = T->getAs<ObjCObjectType>())
-    T = OT->getBaseType();
+  case Type::ObjCObject:
+  case Type::ObjCInterface: {
+    // Ignore protocol qualifiers when mangling at this level.
+    T = T->castAs<ObjCObjectType>()->getBaseType();
 
-  if (const ObjCInterfaceType *OIT = T->getAs<ObjCInterfaceType>()) {
+    // The assumption seems to be that this assert will succeed
+    // because nested levels will have filtered out 'id' and 'Class'.
+    const ObjCInterfaceType *OIT = T->castAs<ObjCInterfaceType>();
     // @encode(class_name)
     ObjCInterfaceDecl *OI = OIT->getDecl();
     S += '{';
@@ -5206,7 +5285,8 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     return;
   }
 
-  if (const ObjCObjectPointerType *OPT = T->getAs<ObjCObjectPointerType>()) {
+  case Type::ObjCObjectPointer: {
+    const ObjCObjectPointerType *OPT = T->castAs<ObjCObjectPointerType>();
     if (OPT->isObjCIdType()) {
       S += '@';
       return;
@@ -5269,18 +5349,28 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   }
 
   // gcc just blithely ignores member pointers.
-  // TODO: maybe there should be a mangling for these
-  if (T->getAs<MemberPointerType>())
+  // FIXME: we shoul do better than that.  'M' is available.
+  case Type::MemberPointer:
     return;
-
-  if (T->isVectorType()) {
+  case Type::Vector:
+  case Type::ExtVector:
     // This matches gcc's encoding, even though technically it is
     // insufficient.
     // FIXME. We should do a better job than gcc.
     return;
-  }
 
-  llvm_unreachable("@encode for type not implemented!");
+#define ABSTRACT_TYPE(KIND, BASE)
+#define TYPE(KIND, BASE)
+#define DEPENDENT_TYPE(KIND, BASE) \
+  case Type::KIND:
+#define NON_CANONICAL_TYPE(KIND, BASE) \
+  case Type::KIND:
+#define NON_CANONICAL_UNLESS_DEPENDENT_TYPE(KIND, BASE) \
+  case Type::KIND:
+#include "clang/AST/TypeNodes.def"
+    llvm_unreachable("@encode for dependent type!");
+  }
+  llvm_unreachable("bad type kind!");
 }
 
 void ASTContext::getObjCEncodingForStructureImpl(RecordDecl *RDecl,
@@ -7233,6 +7323,9 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
   case 'H':
     Type = Context.getObjCSelType();
     break;
+  case 'M':
+    Type = Context.getObjCSuperType();
+    break;
   case 'a':
     Type = Context.getBuiltinVaListType();
     assert(!Type.isNull() && "builtin va list type not initialized!");
@@ -7479,9 +7572,8 @@ GVALinkage ASTContext::GetGVALinkageForVariable(const VarDecl *VD) {
     TSK = VD->getTemplateSpecializationKind();
 
   Linkage L = VD->getLinkage();
-  if (L == ExternalLinkage && getLangOpts().CPlusPlus &&
-      VD->getType()->getLinkage() == UniqueExternalLinkage)
-    L = UniqueExternalLinkage;
+  assert (!(L == ExternalLinkage && getLangOpts().CPlusPlus &&
+            VD->getType()->getLinkage() == UniqueExternalLinkage));
 
   switch (L) {
   case NoLinkage:

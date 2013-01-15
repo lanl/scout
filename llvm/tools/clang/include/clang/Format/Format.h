@@ -46,6 +46,19 @@ struct FormatStyle {
   /// \brief Split two consecutive closing '>' by a space, i.e. use
   /// A<A<int> > instead of A<A<int>>.
   bool SplitTemplateClosingGreater;
+
+  /// \brief Indent case labels one level from the switch statement.
+  ///
+  /// When false, use the same indentation level as for the switch statement.
+  /// Switch statement body is always indented one level more than case labels.
+  bool IndentCaseLabels;
+
+  /// \brief The number of spaces to before trailing line comments.
+  unsigned SpacesBeforeTrailingComments;
+
+  /// \brief Add a space in front of an Objective-C protocol list, i.e. use
+  /// Foo <Protocol> instead of Foo<Protocol>.
+  bool ObjCSpaceBeforeProtocolList;
 };
 
 /// \brief Returns a format style complying with the LLVM coding standards:
@@ -69,7 +82,10 @@ tooling::Replacements reformat(const FormatStyle &Style, Lexer &Lex,
                                SourceManager &SourceMgr,
                                std::vector<CharSourceRange> Ranges);
 
-}  // end namespace format
-}  // end namespace clang
+/// \brief Returns the \c LangOpts that the formatter expects you to set.
+LangOptions getFormattingLangOpts();
+
+} // end namespace format
+} // end namespace clang
 
 #endif // LLVM_CLANG_FORMAT_FORMAT_H

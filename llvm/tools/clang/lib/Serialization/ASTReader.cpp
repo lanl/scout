@@ -53,7 +53,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <iterator>
-#include <sys/stat.h>
 
 #include <iostream>
 
@@ -1144,6 +1143,7 @@ void ASTReader::ReadMacroRecord(ModuleFile &F, uint64_t Offset,
       unsigned NextIndex = 3;
       SourceLocation Loc = ReadSourceLocation(F, Record, NextIndex);
       MacroInfo *MI = PP.AllocateMacroInfo(Loc);
+      MI->setDefinitionEndLoc(ReadSourceLocation(F, Record, NextIndex));
 
       // Record this macro.
       MacrosLoaded[GlobalID - NUM_PREDEF_MACRO_IDS] = MI;
@@ -1559,20 +1559,12 @@ ASTReader::getInputFile(ModuleFile &F, unsigned ID, bool Complain) {
     if (Overridden)
       return InputFile(File, Overridden);
 
-    // The stat info from the FileEntry came from the cached stat
-    // info of the PCH, so we cannot trust it.
-    struct stat StatBuf;
-    if (::stat(File->getName(), &StatBuf) != 0) {
-      StatBuf.st_size = File->getSize();
-      StatBuf.st_mtime = File->getModificationTime();
-    }
-
-    if ((StoredSize != StatBuf.st_size
+    if ((StoredSize != File->getSize()
 #if !defined(LLVM_ON_WIN32)
          // In our regression testing, the Windows file system seems to
          // have inconsistent modification times that sometimes
          // erroneously trigger this error-handling path.
-         || StoredTime != StatBuf.st_mtime
+         || StoredTime != File->getModificationTime()
 #endif
          )) {
       if (Complain)
@@ -2874,6 +2866,9 @@ ASTReader::ReadASTCore(StringRef FileName,
     return Failure;
   }
 
+  // This is used for compatibility with older PCH formats.
+  bool HaveReadControlBlock = false;
+
   while (!Stream.AtEndOfStream()) {
     unsigned Code = Stream.ReadCode();
 
@@ -2893,6 +2888,7 @@ ASTReader::ReadASTCore(StringRef FileName,
       }
       break;
     case CONTROL_BLOCK_ID:
+      HaveReadControlBlock = true;
       switch (ReadControlBlock(F, Loaded, ClientLoadCapabilities)) {
       case Success:
         break;
@@ -2905,6 +2901,12 @@ ASTReader::ReadASTCore(StringRef FileName,
       }
       break;
     case AST_BLOCK_ID:
+      if (!HaveReadControlBlock) {
+        if ((ClientLoadCapabilities & ARR_VersionMismatch) == 0)
+          Diag(diag::warn_pch_version_too_old);
+        return VersionMismatch;
+      }
+
       // Record that we've loaded this module.
       Loaded.push_back(ImportedModule(M, ImportedBy, ImportLoc));
       return Success;
@@ -4887,6 +4889,12 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_OBJC_ID:       T = Context.ObjCBuiltinIdTy;    break;
     case PREDEF_TYPE_OBJC_CLASS:    T = Context.ObjCBuiltinClassTy; break;
     case PREDEF_TYPE_OBJC_SEL:      T = Context.ObjCBuiltinSelTy;   break;
+    case PREDEF_TYPE_IMAGE1D_ID:    T = Context.OCLImage1dTy;       break;
+    case PREDEF_TYPE_IMAGE1D_ARR_ID: T = Context.OCLImage1dArrayTy; break;
+    case PREDEF_TYPE_IMAGE1D_BUFF_ID: T = Context.OCLImage1dBufferTy; break;
+    case PREDEF_TYPE_IMAGE2D_ID:    T = Context.OCLImage2dTy;       break;
+    case PREDEF_TYPE_IMAGE2D_ARR_ID: T = Context.OCLImage2dArrayTy; break;
+    case PREDEF_TYPE_IMAGE3D_ID:    T = Context.OCLImage3dTy;       break;
     case PREDEF_TYPE_AUTO_DEDUCT:   T = Context.getAutoDeductType(); break;
     case PREDEF_TYPE_AUTO_RREF_DEDUCT: 
       T = Context.getAutoRRefDeductType(); 
@@ -5448,13 +5456,15 @@ namespace {
     ASTReader &Reader;
     llvm::SmallVectorImpl<const DeclContext *> &Contexts;
     llvm::DenseMap<DeclarationName, SmallVector<NamedDecl *, 8> > &Decls;
+    bool VisitAll;
 
   public:
     DeclContextAllNamesVisitor(ASTReader &Reader,
                                SmallVectorImpl<const DeclContext *> &Contexts,
                                llvm::DenseMap<DeclarationName,
-                                           SmallVector<NamedDecl *, 8> > &Decls)
-      : Reader(Reader), Contexts(Contexts), Decls(Decls) { }
+                                           SmallVector<NamedDecl *, 8> > &Decls,
+                                bool VisitAll)
+      : Reader(Reader), Contexts(Contexts), Decls(Decls), VisitAll(VisitAll) { }
 
     static bool visit(ModuleFile &M, void *UserData) {
       DeclContextAllNamesVisitor *This
@@ -5495,7 +5505,7 @@ namespace {
         }
       }
 
-      return FoundAnything;
+      return FoundAnything && !This->VisitAll;
     }
   };
 }
@@ -5521,7 +5531,8 @@ void ASTReader::completeVisibleDeclsMap(const DeclContext *DC) {
     }
   }
 
-  DeclContextAllNamesVisitor Visitor(*this, Contexts, Decls);
+  DeclContextAllNamesVisitor Visitor(*this, Contexts, Decls,
+                                     /*VisitAll=*/DC->isFileContext());
   ModuleMgr.visit(&DeclContextAllNamesVisitor::visit, &Visitor);
   ++NumVisibleDeclContextsRead;
 

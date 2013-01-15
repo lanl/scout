@@ -25,7 +25,7 @@ class DoallToAMDIL : public llvm::ModulePass {
   
   typedef std::map<std::string, llvm::MDNode*> FunctionMDMap;
 
-  DoallToAMDIL();
+  DoallToAMDIL(const std::string& sccPath);
 
   ~DoallToAMDIL();
 
@@ -42,6 +42,7 @@ class DoallToAMDIL : public llvm::ModulePass {
 
 private:
   FunctionMDMap functionMDMap;
+  std::string sccPath_;
 };
 
 llvm::ModulePass *createDoallToAMDILPass();

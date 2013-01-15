@@ -52,6 +52,9 @@ class CGDebugInfo {
   llvm::DIType ClassTy;
   llvm::DIType ObjTy;
   llvm::DIType SelTy;
+  llvm::DIType OCLImage1dDITy, OCLImage1dArrayDITy, OCLImage1dBufferDITy;
+  llvm::DIType OCLImage2dDITy, OCLImage2dArrayDITy;
+  llvm::DIType OCLImage3dDITy;
   
   /// TypeCache - Cache of previously constructed Types.
   llvm::DenseMap<void *, llvm::WeakVH> TypeCache;
@@ -111,6 +114,8 @@ class CGDebugInfo {
   llvm::DIType getCompletedTypeOrNull(const QualType);
   llvm::DIType getOrCreateMethodType(const CXXMethodDecl *Method,
                                      llvm::DIFile F);
+  llvm::DIType getOrCreateInstanceMethodType(
+      QualType ThisPtr, const FunctionProtoType *Func, llvm::DIFile Unit);
   llvm::DIType getOrCreateFunctionType(const Decl *D, QualType FnType,
                                        llvm::DIFile F);
   llvm::DIType getOrCreateVTablePtrType(llvm::DIFile F);
@@ -119,7 +124,9 @@ class CGDebugInfo {
   llvm::DIType CreatePointerLikeType(unsigned Tag,
                                      const Type *Ty, QualType PointeeTy,
                                      llvm::DIFile F);
-  
+
+  llvm::DIType getOrCreateStructPtrType(StringRef Name, llvm::DIType &Cache);
+
   llvm::DISubprogram CreateCXXMemberFunction(const CXXMethodDecl *Method,
                                              llvm::DIFile F,
                                              llvm::DIType RecordTy);

@@ -175,12 +175,12 @@ def err_bad_string_encoding : Error<
   "illegal character encoding in string literal">;
 def warn_bad_string_encoding : ExtWarn<
   "illegal character encoding in string literal">,
-  InGroup<DiagGroup<"invalid-source-encoding">>;
+  InGroup<InvalidSourceEncoding>;
 def err_bad_character_encoding : Error<
   "illegal character encoding in character literal">;
 def warn_bad_character_encoding : ExtWarn<
   "illegal character encoding in character literal">,
-  InGroup<DiagGroup<"invalid-source-encoding">>;
+  InGroup<InvalidSourceEncoding>;
 def err_lexing_string : Error<"failure when lexing a string">;
 
 
@@ -521,7 +521,8 @@ def warn_auto_module_import : Warning<
   "treating #%select{include|import|include_next|__include_macros}0 as an "
   "import of module '%1'">, InGroup<AutoImport>, DefaultIgnore;
 def warn_uncovered_module_header : Warning<
-  "umbrella header does not include header '%0'">, InGroup<IncompleteUmbrella>;
+  "umbrella header for module '%0' does not include header '%1'">, 
+  InGroup<IncompleteUmbrella>;
 def err_expected_id_building_module : Error<
   "expected a module name in '__building_module' expression">;
   

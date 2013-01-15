@@ -17,12 +17,12 @@
 #include "LLLexer.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Attributes.h"
-#include "llvm/Instructions.h"
-#include "llvm/Module.h"
-#include "llvm/Operator.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/IR/Type.h"
 #include "llvm/Support/ValueHandle.h"
-#include "llvm/Type.h"
 #include <map>
 
 namespace llvm {
@@ -160,11 +160,11 @@ namespace llvm {
       FastMathFlags FMF;
       while (true)
         switch (Lex.getKind()) {
-        case lltok::kw_fast: FMF.UnsafeAlgebra   = true; Lex.Lex(); continue;
-        case lltok::kw_nnan: FMF.NoNaNs          = true; Lex.Lex(); continue;
-        case lltok::kw_ninf: FMF.NoInfs          = true; Lex.Lex(); continue;
-        case lltok::kw_nsz:  FMF.NoSignedZeros   = true; Lex.Lex(); continue;
-        case lltok::kw_arcp: FMF.AllowReciprocal = true; Lex.Lex(); continue;
+        case lltok::kw_fast: FMF.setUnsafeAlgebra();   Lex.Lex(); continue;
+        case lltok::kw_nnan: FMF.setNoNaNs();          Lex.Lex(); continue;
+        case lltok::kw_ninf: FMF.setNoInfs();          Lex.Lex(); continue;
+        case lltok::kw_nsz:  FMF.setNoSignedZeros();   Lex.Lex(); continue;
+        case lltok::kw_arcp: FMF.setAllowReciprocal(); Lex.Lex(); continue;
         default: return FMF;
         }
       return FMF;
@@ -326,8 +326,8 @@ namespace llvm {
     struct ParamInfo {
       LocTy Loc;
       Value *V;
-      Attributes Attrs;
-      ParamInfo(LocTy loc, Value *v, Attributes attrs)
+      Attribute Attrs;
+      ParamInfo(LocTy loc, Value *v, Attribute attrs)
         : Loc(loc), V(v), Attrs(attrs) {}
     };
     bool ParseParameterList(SmallVectorImpl<ParamInfo> &ArgList,
@@ -347,9 +347,9 @@ namespace llvm {
     struct ArgInfo {
       LocTy Loc;
       Type *Ty;
-      Attributes Attrs;
+      Attribute Attrs;
       std::string Name;
-      ArgInfo(LocTy L, Type *ty, Attributes Attr, const std::string &N)
+      ArgInfo(LocTy L, Type *ty, Attribute Attr, const std::string &N)
         : Loc(L), Ty(ty), Attrs(Attr), Name(N) {}
     };
     bool ParseArgumentList(SmallVectorImpl<ArgInfo> &ArgList, bool &isVarArg);

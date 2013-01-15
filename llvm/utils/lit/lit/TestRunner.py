@@ -77,7 +77,7 @@ def executeShCmd(cmd, cfg, cwd, results):
     # output. This is null until we have seen some output using
     # stderr.
     for i,j in enumerate(cmd.commands):
-        # Apply the redirections, we use (N,) as a sentinal to indicate stdin,
+        # Apply the redirections, we use (N,) as a sentinel to indicate stdin,
         # stdout, stderr for N equal to 0, 1, or 2 respectively. Redirects to or
         # from a file are represented with a list [file, mode, file-object]
         # where file-object is initially None.
@@ -241,11 +241,16 @@ def executeShCmd(cmd, cfg, cwd, results):
     return exitCode
 
 def executeScriptInternal(test, litConfig, tmpBase, commands, cwd):
-    ln = ' &&\n'.join(commands)
-    try:
-        cmd = ShUtil.ShParser(ln, litConfig.isWindows).parse()
-    except:
-        return (Test.FAIL, "shell parser error on: %r" % ln)
+    cmds = []
+    for ln in commands:
+        try:
+            cmds.append(ShUtil.ShParser(ln, litConfig.isWindows).parse())
+        except:
+            return (Test.FAIL, "shell parser error on: %r" % ln)
+
+    cmd = cmds[0]
+    for c in cmds[1:]:
+        cmd = ShUtil.Seq(cmd, '&&', c)
 
     results = []
     try:
@@ -352,7 +357,7 @@ def executeScript(test, litConfig, tmpBase, commands, cwd):
     if isWin32CMDEXE:
         f.write('\nif %ERRORLEVEL% NEQ 0 EXIT\n'.join(commands))
     else:
-        f.write(' &&\n'.join(commands))
+        f.write('{ ' + '; } &&\n{ '.join(commands) + '; }')
     f.write('\n')
     f.close()
 

@@ -473,9 +473,8 @@ public:
   SourceLocation getEndLoc() const { return EndLoc; }
   void setEndLoc(SourceLocation L) { EndLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(StartLoc, EndLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DeclStmtClass;
@@ -529,7 +528,8 @@ public:
 
   bool hasLeadingEmptyMacro() const { return HasLeadingEmptyMacro; }
 
-  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(SemiLoc); }
+  SourceLocation getLocStart() const LLVM_READONLY { return SemiLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SemiLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == NullStmtClass;
@@ -548,7 +548,7 @@ class CompoundStmt : public Stmt {
   Stmt** Body;
   SourceLocation LBracLoc, RBracLoc;
 public:
-  CompoundStmt(ASTContext &C, Stmt **StmtStart, unsigned NumStmts,
+  CompoundStmt(ASTContext &C, ArrayRef<Stmt*> Stmts,
                SourceLocation LB, SourceLocation RB);
   //             SourceLocation LB, SourceLocation RB, StmtClass SC = CompoundStmtClass);
 
@@ -603,9 +603,8 @@ public:
     return const_reverse_body_iterator(body_begin());
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(LBracLoc, RBracLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return LBracLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return RBracLoc; }
 
   SourceLocation getLBracLoc() const { return LBracLoc; }
   void setLBracLoc(SourceLocation L) { LBracLoc = L; }
@@ -632,8 +631,14 @@ protected:
   // A pointer to the following CaseStmt or DefaultStmt class,
   // used by SwitchStmt.
   SwitchCase *NextSwitchCase;
+  SourceLocation KeywordLoc;
+  SourceLocation ColonLoc;
 
-  SwitchCase(StmtClass SC) : Stmt(SC), NextSwitchCase(0) {}
+  SwitchCase(StmtClass SC, SourceLocation KWLoc, SourceLocation ColonLoc)
+    : Stmt(SC), NextSwitchCase(0), KeywordLoc(KWLoc), ColonLoc(ColonLoc) {}
+
+  SwitchCase(StmtClass SC, EmptyShell)
+    : Stmt(SC), NextSwitchCase(0) {}
 
 public:
   const SwitchCase *getNextSwitchCase() const { return NextSwitchCase; }
@@ -642,12 +647,18 @@ public:
 
   void setNextSwitchCase(SwitchCase *SC) { NextSwitchCase = SC; }
 
+  SourceLocation getKeywordLoc() const { return KeywordLoc; }
+  void setKeywordLoc(SourceLocation L) { KeywordLoc = L; }
+  SourceLocation getColonLoc() const { return ColonLoc; }
+  void setColonLoc(SourceLocation L) { ColonLoc = L; }
+
   Stmt *getSubStmt();
   const Stmt *getSubStmt() const {
     return const_cast<SwitchCase*>(this)->getSubStmt();
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(); }
+  SourceLocation getLocStart() const LLVM_READONLY { return KeywordLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY;
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CaseStmtClass ||
@@ -659,26 +670,22 @@ class CaseStmt : public SwitchCase {
   enum { LHS, RHS, SUBSTMT, END_EXPR };
   Stmt* SubExprs[END_EXPR];  // The expression for the RHS is Non-null for
                              // GNU "case 1 ... 4" extension
-  SourceLocation CaseLoc;
   SourceLocation EllipsisLoc;
-  SourceLocation ColonLoc;
 public:
   CaseStmt(Expr *lhs, Expr *rhs, SourceLocation caseLoc,
            SourceLocation ellipsisLoc, SourceLocation colonLoc)
-    : SwitchCase(CaseStmtClass) {
+    : SwitchCase(CaseStmtClass, caseLoc, colonLoc) {
     SubExprs[SUBSTMT] = 0;
     SubExprs[LHS] = reinterpret_cast<Stmt*>(lhs);
     SubExprs[RHS] = reinterpret_cast<Stmt*>(rhs);
-    CaseLoc = caseLoc;
     EllipsisLoc = ellipsisLoc;
-    ColonLoc = colonLoc;
   }
 
   /// \brief Build an empty switch case statement.
-  explicit CaseStmt(EmptyShell Empty) : SwitchCase(CaseStmtClass) { }
+  explicit CaseStmt(EmptyShell Empty) : SwitchCase(CaseStmtClass, Empty) { }
 
-  SourceLocation getCaseLoc() const { return CaseLoc; }
-  void setCaseLoc(SourceLocation L) { CaseLoc = L; }
+  SourceLocation getCaseLoc() const { return KeywordLoc; }
+  void setCaseLoc(SourceLocation L) { KeywordLoc = L; }
   SourceLocation getEllipsisLoc() const { return EllipsisLoc; }
   void setEllipsisLoc(SourceLocation L) { EllipsisLoc = L; }
   SourceLocation getColonLoc() const { return ColonLoc; }
@@ -700,15 +707,16 @@ public:
   void setLHS(Expr *Val) { SubExprs[LHS] = reinterpret_cast<Stmt*>(Val); }
   void setRHS(Expr *Val) { SubExprs[RHS] = reinterpret_cast<Stmt*>(Val); }
 
-
-  SourceRange getSourceRange() const LLVM_READONLY {
+  SourceLocation getLocStart() const LLVM_READONLY { return KeywordLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
     // Handle deeply nested case statements with iteration instead of recursion.
     const CaseStmt *CS = this;
     while (const CaseStmt *CS2 = dyn_cast<CaseStmt>(CS->getSubStmt()))
       CS = CS2;
 
-    return SourceRange(CaseLoc, CS->getSubStmt()->getLocEnd());
+    return CS->getSubStmt()->getLocEnd();
   }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CaseStmtClass;
   }
@@ -721,28 +729,26 @@ public:
 
 class DefaultStmt : public SwitchCase {
   Stmt* SubStmt;
-  SourceLocation DefaultLoc;
-  SourceLocation ColonLoc;
 public:
   DefaultStmt(SourceLocation DL, SourceLocation CL, Stmt *substmt) :
-    SwitchCase(DefaultStmtClass), SubStmt(substmt), DefaultLoc(DL),
-    ColonLoc(CL) {}
+    SwitchCase(DefaultStmtClass, DL, CL), SubStmt(substmt) {}
 
   /// \brief Build an empty default statement.
-  explicit DefaultStmt(EmptyShell) : SwitchCase(DefaultStmtClass) { }
+  explicit DefaultStmt(EmptyShell Empty)
+    : SwitchCase(DefaultStmtClass, Empty) { }
 
   Stmt *getSubStmt() { return SubStmt; }
   const Stmt *getSubStmt() const { return SubStmt; }
   void setSubStmt(Stmt *S) { SubStmt = S; }
 
-  SourceLocation getDefaultLoc() const { return DefaultLoc; }
-  void setDefaultLoc(SourceLocation L) { DefaultLoc = L; }
+  SourceLocation getDefaultLoc() const { return KeywordLoc; }
+  void setDefaultLoc(SourceLocation L) { KeywordLoc = L; }
   SourceLocation getColonLoc() const { return ColonLoc; }
   void setColonLoc(SourceLocation L) { ColonLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(DefaultLoc, SubStmt->getLocEnd());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return KeywordLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubStmt->getLocEnd();}
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DefaultStmtClass;
   }
@@ -751,6 +757,11 @@ public:
   child_range children() { return child_range(&SubStmt, &SubStmt+1); }
 };
 
+inline SourceLocation SwitchCase::getLocEnd() const {
+  if (const CaseStmt *CS = dyn_cast<CaseStmt>(this))
+    return CS->getLocEnd();
+  return cast<DefaultStmt>(this)->getLocEnd();
+}
 
 /// LabelStmt - Represents a label, which has a substatement.  For example:
 ///    foo: return;
@@ -776,9 +787,9 @@ public:
   void setIdentLoc(SourceLocation L) { IdentLoc = L; }
   void setSubStmt(Stmt *SS) { SubStmt = SS; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(IdentLoc, SubStmt->getLocEnd());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return IdentLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubStmt->getLocEnd();}
+
   child_range children() { return child_range(&SubStmt, &SubStmt+1); }
 
   static bool classof(const Stmt *T) {
@@ -824,9 +835,9 @@ public:
   Stmt *getSubStmt() { return SubStmt; }
   const Stmt *getSubStmt() const { return SubStmt; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(AttrLoc, SubStmt->getLocEnd());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return AttrLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubStmt->getLocEnd();}
+
   child_range children() { return child_range(&SubStmt, &SubStmt + 1); }
 
   static bool classof(const Stmt *T) {
@@ -884,11 +895,12 @@ public:
   SourceLocation getElseLoc() const { return ElseLoc; }
   void setElseLoc(SourceLocation L) { ElseLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
+  SourceLocation getLocStart() const LLVM_READONLY { return IfLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
     if (SubExprs[ELSE])
-      return SourceRange(IfLoc, SubExprs[ELSE]->getLocEnd());
+      return SubExprs[ELSE]->getLocEnd();
     else
-      return SourceRange(IfLoc, SubExprs[THEN]->getLocEnd());
+      return SubExprs[THEN]->getLocEnd();
   }
 
   // Iterators over subexpressions.  The iterators will include iterating
@@ -982,9 +994,11 @@ public:
     return (bool) AllEnumCasesCovered;
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(SwitchLoc, SubExprs[BODY]->getLocEnd());
+  SourceLocation getLocStart() const LLVM_READONLY { return SwitchLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SubExprs[BODY]->getLocEnd();
   }
+
   // Iterators
   child_range children() {
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
@@ -1036,9 +1050,11 @@ public:
   SourceLocation getWhileLoc() const { return WhileLoc; }
   void setWhileLoc(SourceLocation L) { WhileLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(WhileLoc, SubExprs[BODY]->getLocEnd());
+  SourceLocation getLocStart() const LLVM_READONLY { return WhileLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SubExprs[BODY]->getLocEnd();
   }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == WhileStmtClass;
   }
@@ -1084,9 +1100,9 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(DoLoc, RParenLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return DoLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return RParenLoc; }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == DoStmtClass;
   }
@@ -1155,9 +1171,11 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(ForLoc, SubExprs[BODY]->getLocEnd());
+  SourceLocation getLocStart() const LLVM_READONLY { return ForLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return SubExprs[BODY]->getLocEnd();
   }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForStmtClass;
   }
@@ -1189,9 +1207,9 @@ public:
   SourceLocation getLabelLoc() const { return LabelLoc; }
   void setLabelLoc(SourceLocation L) { LabelLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(GotoLoc, LabelLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return GotoLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return LabelLoc; }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == GotoStmtClass;
   }
@@ -1232,9 +1250,8 @@ public:
     return const_cast<IndirectGotoStmt*>(this)->getConstantTarget();
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(GotoLoc, Target->getLocEnd());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return GotoLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return Target->getLocEnd(); }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == IndirectGotoStmtClass;
@@ -1258,9 +1275,8 @@ public:
   SourceLocation getContinueLoc() const { return ContinueLoc; }
   void setContinueLoc(SourceLocation L) { ContinueLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(ContinueLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return ContinueLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return ContinueLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ContinueStmtClass;
@@ -1283,7 +1299,8 @@ public:
   SourceLocation getBreakLoc() const { return BreakLoc; }
   void setBreakLoc(SourceLocation L) { BreakLoc = L; }
 
-  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(BreakLoc); }
+  SourceLocation getLocStart() const LLVM_READONLY { return BreakLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return BreakLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == BreakStmtClass;
@@ -1334,7 +1351,10 @@ public:
   const VarDecl *getNRVOCandidate() const { return NRVOCandidate; }
   void setNRVOCandidate(const VarDecl *Var) { NRVOCandidate = Var; }
 
-  SourceRange getSourceRange() const LLVM_READONLY;
+  SourceLocation getLocStart() const LLVM_READONLY { return RetLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY {
+    return RetExpr ? RetExpr->getLocEnd() : RetLoc;
+  }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ReturnStmtClass;
@@ -1386,7 +1406,8 @@ public:
   bool isVolatile() const { return IsVolatile; }
   void setVolatile(bool V) { IsVolatile = V; }
 
-  SourceRange getSourceRange() const LLVM_READONLY { return SourceRange(); }
+  SourceLocation getLocStart() const LLVM_READONLY { return SourceLocation(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
 
   //===--- Asm String Analysis ---===//
 
@@ -1641,9 +1662,8 @@ public:
     return Clobbers[i];
   }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(AsmLoc, RParenLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return AsmLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return RParenLoc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == GCCAsmStmtClass;
@@ -1722,9 +1742,9 @@ public:
 
   StringRef getClobber(unsigned i) const { return Clobbers[i]; }
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(AsmLoc, EndLoc);
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return AsmLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
+
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == MSAsmStmtClass;
   }
@@ -1753,9 +1773,9 @@ public:
                                SourceLocation ExceptLoc,
                                Expr *FilterExpr,
                                Stmt *Block);
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(getExceptLoc(), getEndLoc());
-  }
+
+  SourceLocation getLocStart() const LLVM_READONLY { return getExceptLoc(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return getEndLoc(); }
 
   SourceLocation getExceptLoc() const { return Loc; }
   SourceLocation getEndLoc() const { return getBlock()->getLocEnd(); }
@@ -1794,9 +1814,8 @@ public:
                                 SourceLocation FinallyLoc,
                                 Stmt *Block);
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(getFinallyLoc(), getEndLoc());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return getFinallyLoc(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return getEndLoc(); }
 
   SourceLocation getFinallyLoc() const { return Loc; }
   SourceLocation getEndLoc() const { return Block->getLocEnd(); }
@@ -1836,9 +1855,8 @@ public:
                             Stmt *TryBlock,
                             Stmt *Handler);
 
-  SourceRange getSourceRange() const LLVM_READONLY {
-    return SourceRange(getTryLoc(), getEndLoc());
-  }
+  SourceLocation getLocStart() const LLVM_READONLY { return getTryLoc(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return getEndLoc(); }
 
   SourceLocation getTryLoc() const { return TryLoc; }
   SourceLocation getEndLoc() const { return Children[HANDLER]->getLocEnd(); }
@@ -2145,6 +2163,9 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
+  SourceLocation getLocStart() const LLVM_READONLY { Stmt::getLocStart(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { Stmt::getLocEnd(); }
+  
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForAllStmtClass ||
     T->getStmtClass() == RenderAllStmtClass ||
@@ -2322,6 +2343,9 @@ class VolumeRenderAllStmt : public Stmt {
   SourceLocation getLBracLoc() const { return LBracLoc; }
   SourceLocation getRBracLoc() const { return RBracLoc; }
 
+  SourceLocation getLocStart() const LLVM_READONLY { return LBracLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return RBracLoc; }
+  
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
   }

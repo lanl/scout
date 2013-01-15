@@ -195,7 +195,9 @@ EmitRegUnitPressure(raw_ostream &OS, const CodeGenRegBank &RegBank,
   }
   OS << "/// Get the weight in units of pressure for this register unit.\n"
      << "unsigned " << ClassName << "::\n"
-     << "getRegUnitWeight(unsigned RegUnit) const {\n";
+     << "getRegUnitWeight(unsigned RegUnit) const {\n"
+     << "  assert(RegUnit < " << RegBank.getNumNativeRegUnits()
+     << " && \"invalid register unit\");\n";
   if (!RegUnitsHaveUnitWeight) {
     OS << "  static const uint8_t RUWeightTable[] = {\n    ";
     for (unsigned UnitIdx = 0, UnitEnd = RegBank.getNumNativeRegUnits();
@@ -290,7 +292,9 @@ EmitRegUnitPressure(raw_ostream &OS, const CodeGenRegBank &RegBank,
      << "register unit.\n"
      << "/// Returns a -1 terminated array of pressure set IDs\n"
      << "const int* " << ClassName << "::\n"
-     << "getRegUnitPressureSets(unsigned RegUnit) const {\n";
+     << "getRegUnitPressureSets(unsigned RegUnit) const {\n"
+     << "  assert(RegUnit < " << RegBank.getNumNativeRegUnits()
+     << " && \"invalid register unit\");\n";
   OS << "  static const unsigned RUSetStartTable[] = {\n    ";
   for (unsigned UnitIdx = 0, UnitEnd = RegBank.getNumNativeRegUnits();
        UnitIdx < UnitEnd; ++UnitIdx) {
@@ -917,9 +921,9 @@ RegisterInfoEmitter::runMCDesc(raw_ostream &OS, CodeGenTarget &Target,
   // MCRegisterInfo initialization routine.
   OS << "static inline void Init" << TargetName
      << "MCRegisterInfo(MCRegisterInfo *RI, unsigned RA, "
-     << "unsigned DwarfFlavour = 0, unsigned EHFlavour = 0) {\n"
+     << "unsigned DwarfFlavour = 0, unsigned EHFlavour = 0, unsigned PC = 0) {\n"
      << "  RI->InitMCRegisterInfo(" << TargetName << "RegDesc, "
-     << Regs.size()+1 << ", RA, " << TargetName << "MCRegisterClasses, "
+     << Regs.size()+1 << ", RA, PC, " << TargetName << "MCRegisterClasses, "
      << RegisterClasses.size() << ", "
      << TargetName << "RegUnitRoots, "
      << RegBank.getNumNativeRegUnits() << ", "
@@ -954,7 +958,7 @@ RegisterInfoEmitter::runTargetHeader(raw_ostream &OS, CodeGenTarget &Target,
 
   OS << "struct " << ClassName << " : public TargetRegisterInfo {\n"
      << "  explicit " << ClassName
-     << "(unsigned RA, unsigned D = 0, unsigned E = 0);\n"
+     << "(unsigned RA, unsigned D = 0, unsigned E = 0, unsigned PC = 0);\n"
      << "  virtual bool needsStackRealignment(const MachineFunction &) const\n"
      << "     { return false; }\n";
   if (!RegBank.getSubRegIndices().empty()) {
@@ -1263,12 +1267,12 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
   EmitRegMappingTables(OS, Regs, true);
 
   OS << ClassName << "::\n" << ClassName
-     << "(unsigned RA, unsigned DwarfFlavour, unsigned EHFlavour)\n"
+     << "(unsigned RA, unsigned DwarfFlavour, unsigned EHFlavour, unsigned PC)\n"
      << "  : TargetRegisterInfo(" << TargetName << "RegInfoDesc"
      << ", RegisterClasses, RegisterClasses+" << RegisterClasses.size() <<",\n"
      << "             SubRegIndexNameTable, SubRegIndexLaneMaskTable) {\n"
      << "  InitMCRegisterInfo(" << TargetName << "RegDesc, "
-     << Regs.size()+1 << ", RA,\n                     " << TargetName
+     << Regs.size()+1 << ", RA, PC,\n                     " << TargetName
      << "MCRegisterClasses, " << RegisterClasses.size() << ",\n"
      << "                     " << TargetName << "RegUnitRoots,\n"
      << "                     " << RegBank.getNumNativeRegUnits() << ",\n"

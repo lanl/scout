@@ -26,8 +26,10 @@
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/DataLayout.h"
 #include "llvm/DebugInfo.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -35,7 +37,6 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Module.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/MathExtras.h"
@@ -149,6 +150,8 @@ void AsmPrinter::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool AsmPrinter::doInitialization(Module &M) {
+  OutStreamer.InitStreamer();
+
   MMI = getAnalysisIfAvailable<MachineModuleInfo>();
   MMI->AnalyzeModule(M);
 
@@ -388,9 +391,9 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     //   - pointer to mangled symbol above with initializer
     unsigned PtrSize = TD->getPointerSizeInBits()/8;
     OutStreamer.EmitSymbolValue(GetExternalSymbolSymbol("_tlv_bootstrap"),
-                          PtrSize, 0);
-    OutStreamer.EmitIntValue(0, PtrSize, 0);
-    OutStreamer.EmitSymbolValue(MangSym, PtrSize, 0);
+				PtrSize);
+    OutStreamer.EmitIntValue(0, PtrSize);
+    OutStreamer.EmitSymbolValue(MangSym, PtrSize);
 
     OutStreamer.AddBlankLine();
     return;
@@ -944,6 +947,8 @@ bool AsmPrinter::doFinalization(Module &M) {
   MMI = 0;
 
   OutStreamer.Finish();
+  OutStreamer.reset();
+
   return false;
 }
 
@@ -1035,7 +1040,7 @@ void AsmPrinter::EmitConstantPool() {
       // Emit inter-object padding for alignment.
       unsigned AlignMask = CPE.getAlignment() - 1;
       unsigned NewOffset = (Offset + AlignMask) & ~AlignMask;
-      OutStreamer.EmitFill(NewOffset - Offset, 0/*fillval*/, 0/*addrspace*/);
+      OutStreamer.EmitZeros(NewOffset - Offset);
 
       Type *Ty = CPE.getType();
       Offset = NewOffset + TM.getDataLayout()->getTypeAllocSize(Ty);
@@ -1198,7 +1203,7 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
   assert(Value && "Unknown entry kind!");
 
   unsigned EntrySize = MJTI->getEntrySize(*TM.getDataLayout());
-  OutStreamer.EmitValue(Value, EntrySize, /*addrspace*/0);
+  OutStreamer.EmitValue(Value, EntrySize);
 }
 
 
@@ -1321,19 +1326,19 @@ void AsmPrinter::EmitXXStructorList(const Constant *List, bool isCtor) {
 /// EmitInt8 - Emit a byte directive and value.
 ///
 void AsmPrinter::EmitInt8(int Value) const {
-  OutStreamer.EmitIntValue(Value, 1, 0/*addrspace*/);
+  OutStreamer.EmitIntValue(Value, 1);
 }
 
 /// EmitInt16 - Emit a short directive and value.
 ///
 void AsmPrinter::EmitInt16(int Value) const {
-  OutStreamer.EmitIntValue(Value, 2, 0/*addrspace*/);
+  OutStreamer.EmitIntValue(Value, 2);
 }
 
 /// EmitInt32 - Emit a long directive and value.
 ///
 void AsmPrinter::EmitInt32(int Value) const {
-  OutStreamer.EmitIntValue(Value, 4, 0/*addrspace*/);
+  OutStreamer.EmitIntValue(Value, 4);
 }
 
 /// EmitLabelDifference - Emit something like ".long Hi-Lo" where the size
@@ -1348,14 +1353,14 @@ void AsmPrinter::EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
                             OutContext);
 
   if (!MAI->hasSetDirective()) {
-    OutStreamer.EmitValue(Diff, Size, 0/*AddrSpace*/);
+    OutStreamer.EmitValue(Diff, Size);
     return;
   }
 
   // Otherwise, emit with .set (aka assignment).
   MCSymbol *SetLabel = GetTempSymbol("set", SetCounter++);
   OutStreamer.EmitAssignment(SetLabel, Diff);
-  OutStreamer.EmitSymbolValue(SetLabel, Size, 0/*AddrSpace*/);
+  OutStreamer.EmitSymbolValue(SetLabel, Size);
 }
 
 /// EmitLabelOffsetDifference - Emit something like ".long Hi+Offset-Lo"
@@ -1379,12 +1384,12 @@ void AsmPrinter::EmitLabelOffsetDifference(const MCSymbol *Hi, uint64_t Offset,
                             OutContext);
 
   if (!MAI->hasSetDirective())
-    OutStreamer.EmitValue(Diff, 4, 0/*AddrSpace*/);
+    OutStreamer.EmitValue(Diff, 4);
   else {
     // Otherwise, emit with .set (aka assignment).
     MCSymbol *SetLabel = GetTempSymbol("set", SetCounter++);
     OutStreamer.EmitAssignment(SetLabel, Diff);
-    OutStreamer.EmitSymbolValue(SetLabel, 4, 0/*AddrSpace*/);
+    OutStreamer.EmitSymbolValue(SetLabel, 4);
   }
 }
 
@@ -1402,7 +1407,7 @@ void AsmPrinter::EmitLabelPlusOffset(const MCSymbol *Label, uint64_t Offset,
                                    MCConstantExpr::Create(Offset, OutContext),
                                    OutContext);
 
-  OutStreamer.EmitValue(Expr, Size, 0/*AddrSpace*/);
+  OutStreamer.EmitValue(Expr, Size);
 }
 
 
@@ -1473,19 +1478,14 @@ static const MCExpr *lowerConstant(const Constant *CV, AsmPrinter &AP) {
   case Instruction::GetElementPtr: {
     const DataLayout &TD = *AP.TM.getDataLayout();
     // Generate a symbolic expression for the byte address
-    const Constant *PtrVal = CE->getOperand(0);
-    SmallVector<Value*, 8> IdxVec(CE->op_begin()+1, CE->op_end());
-    int64_t Offset = TD.getIndexedOffset(PtrVal->getType(), IdxVec);
+    APInt OffsetAI(TD.getPointerSizeInBits(), 0);
+    cast<GEPOperator>(CE)->accumulateConstantOffset(TD, OffsetAI);
 
     const MCExpr *Base = lowerConstant(CE->getOperand(0), AP);
-    if (Offset == 0)
+    if (!OffsetAI)
       return Base;
 
-    // Truncate/sext the offset to the pointer size.
-    unsigned Width = TD.getPointerSizeInBits();
-    if (Width < 64)
-      Offset = SignExtend64(Offset, Width);
-
+    int64_t Offset = OffsetAI.getSExtValue();
     return MCBinaryExpr::CreateAdd(Base, MCConstantExpr::Create(Offset, Ctx),
                                    Ctx);
   }
@@ -1784,27 +1784,30 @@ static void emitGlobalConstantFP(const ConstantFP *CFP, unsigned AddrSpace,
     return;
   }
 
-  if (CFP->getType()->isX86_FP80Ty()) {
+  if (CFP->getType()->isX86_FP80Ty() || CFP->getType()->isFP128Ty()) {
     // all long double variants are printed as hex
     // API needed to prevent premature destruction
     APInt API = CFP->getValueAPF().bitcastToAPInt();
     const uint64_t *p = API.getRawData();
     if (AP.isVerbose()) {
       // Convert to double so we can print the approximate val as a comment.
-      APFloat DoubleVal = CFP->getValueAPF();
-      bool ignored;
-      DoubleVal.convert(APFloat::IEEEdouble, APFloat::rmNearestTiesToEven,
-                        &ignored);
-      AP.OutStreamer.GetCommentOS() << "x86_fp80 ~= "
-        << DoubleVal.convertToDouble() << '\n';
+      SmallString<8> StrVal;
+      CFP->getValueAPF().toString(StrVal);
+
+      const char *TyNote = CFP->getType()->isFP128Ty() ? "fp128 " : "x86_fp80 ";
+      AP.OutStreamer.GetCommentOS() << TyNote << StrVal << '\n';
     }
 
+    // The 80-bit type is made of a 64-bit and 16-bit value, the 128-bit has 2
+    // 64-bit words.
+    uint32_t TrailingSize = CFP->getType()->isFP128Ty() ? 8 : 2;
+
     if (AP.TM.getDataLayout()->isBigEndian()) {
-      AP.OutStreamer.EmitIntValue(p[1], 2, AddrSpace);
+      AP.OutStreamer.EmitIntValue(p[1], TrailingSize, AddrSpace);
       AP.OutStreamer.EmitIntValue(p[0], 8, AddrSpace);
     } else {
       AP.OutStreamer.EmitIntValue(p[0], 8, AddrSpace);
-      AP.OutStreamer.EmitIntValue(p[1], 2, AddrSpace);
+      AP.OutStreamer.EmitIntValue(p[1], TrailingSize, AddrSpace);
     }
 
     // Emit the tail padding for the long double.

@@ -28,8 +28,8 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/Constants.h"
-#include "llvm/DerivedTypes.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/PassManager.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -209,7 +209,7 @@ unsigned MipsCodeEmitter::getSizeInsEncoding(const MachineInstr &MI,
 unsigned MipsCodeEmitter::getMachineOpValue(const MachineInstr &MI,
                                             const MachineOperand &MO) const {
   if (MO.isReg())
-    return getMipsRegisterNumbering(MO.getReg());
+    return TM.getRegisterInfo()->getEncodingValue(MO.getReg());
   else if (MO.isImm())
     return static_cast<unsigned>(MO.getImm());
   else if (MO.isGlobal())

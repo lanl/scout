@@ -193,6 +193,9 @@ private:
   /// \sa getGraphTrimInterval
   llvm::Optional<unsigned> GraphTrimInterval;
 
+  /// \sa getMaxTimesInlineLarge
+  llvm::Optional<unsigned> MaxTimesInlineLarge;
+
   /// Interprets an option's string value as a boolean.
   ///
   /// Accepts the strings "true" and "false".
@@ -276,6 +279,11 @@ public:
   /// node reclamation, set the option to "0".
   unsigned getGraphTrimInterval();
 
+  /// Returns the maximum times a large function could be inlined.
+  ///
+  /// This is controlled by the 'max-times-inline-large' config option.
+  unsigned getMaxTimesInlineLarge();
+
 public:
   AnalyzerOptions() : CXXMemberInliningMode() {
     AnalysisStoreOpt = RegionStoreModel;
@@ -296,7 +304,7 @@ public:
     NoRetryExhausted = 0;
     // Cap the stack depth at 4 calls (5 stack frames, base + 4 calls).
     InlineMaxStackDepth = 5;
-    InlineMaxFunctionSize = 200;
+    InlineMaxFunctionSize = 50;
     InliningMode = NoRedundancy;
   }
 };

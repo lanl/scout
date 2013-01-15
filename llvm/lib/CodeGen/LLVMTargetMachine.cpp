@@ -79,6 +79,10 @@ LLVMTargetMachine::LLVMTargetMachine(const Target &T, StringRef Triple,
          "and that InitializeAllTargetMCs() is being invoked!");
 }
 
+void LLVMTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
+  PM.add(createBasicTargetTransformInfoPass(getTargetLowering()));
+}
+
 /// addPassesToX helper drives creation and initialization of TargetPassConfig.
 static MCContext *addPassesToGenerateCode(LLVMTargetMachine *TM,
                                           PassManagerBase &PM,
@@ -202,7 +206,7 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                                          *Context, *MAB, Out,
                                                          MCE, hasMCRelaxAll(),
                                                          hasMCNoExecStack()));
-    AsmStreamer.get()->InitSections();
+    AsmStreamer.get()->setAutoInitSections(true);
     break;
   }
   case CGFT_Null:

@@ -60,6 +60,8 @@ def warn_fe_cc_log_diagnostics_failure : Warning<
     "unable to open CC_LOG_DIAGNOSTICS file: %0 (using stderr)">;
 def err_fe_no_pch_in_dir : Error<
     "no suitable precompiled header file found in directory '%0'">;
+def err_fe_action_not_available : Error<
+    "action %0 not compiled in">;
 
 def warn_fe_serialized_diag_failure : Warning<
     "unable to open file %0 for serializing diagnostics (%1)">,
@@ -100,19 +102,19 @@ def err_relocatable_without_isysroot : Error<
 
 def warn_unknown_warning_option : Warning<
     "unknown warning option '%0'">,
-    InGroup<DiagGroup<"unknown-warning-option"> >;
+    InGroup<UnknownWarningOption>;
 def warn_unknown_negative_warning_option : Warning<
     "unknown warning option '%0'">,
-    InGroup<DiagGroup<"unknown-warning-option"> >;
+    InGroup<UnknownWarningOption>;
 def warn_unknown_warning_option_suggest : Warning<
     "unknown warning option '%0'; did you mean '%1'?">,
-    InGroup<DiagGroup<"unknown-warning-option"> >;
+    InGroup<UnknownWarningOption>;
 def warn_unknown_negative_warning_option_suggest : Warning<
     "unknown warning option '%0'; did you mean '%1'?">,
-    InGroup<DiagGroup<"unknown-warning-option"> >;
+    InGroup<UnknownWarningOption>;
 def warn_unknown_warning_specifier : Warning<
     "unknown %0 warning specifier: '%1'">,
-    InGroup<DiagGroup<"unknown-warning-option"> >;
+    InGroup<UnknownWarningOption>;
 
 def err_unknown_analyzer_checker : Error<
     "no analyzer checkers are associated with '%0'">;

@@ -36,67 +36,6 @@
 
 using namespace clang;
 
-/// \brief Return the precedence of the specified binary operator token.
-static prec::Level getBinOpPrecedence(tok::TokenKind Kind,
-                                      bool GreaterThanIsOperator,
-                                      bool CPlusPlus0x) {
-  switch (Kind) {
-  case tok::greater:
-    // C++ [temp.names]p3:
-    //   [...] When parsing a template-argument-list, the first
-    //   non-nested > is taken as the ending delimiter rather than a
-    //   greater-than operator. [...]
-    if (GreaterThanIsOperator)
-      return prec::Relational;
-    return prec::Unknown;
-
-  case tok::greatergreater:
-    // C++0x [temp.names]p3:
-    //
-    //   [...] Similarly, the first non-nested >> is treated as two
-    //   consecutive but distinct > tokens, the first of which is
-    //   taken as the end of the template-argument-list and completes
-    //   the template-id. [...]
-    if (GreaterThanIsOperator || !CPlusPlus0x)
-      return prec::Shift;
-    return prec::Unknown;
-
-  default:                        return prec::Unknown;
-  case tok::comma:                return prec::Comma;
-  case tok::equal:
-  case tok::starequal:
-  case tok::slashequal:
-  case tok::percentequal:
-  case tok::plusequal:
-  case tok::minusequal:
-  case tok::lesslessequal:
-  case tok::greatergreaterequal:
-  case tok::ampequal:
-  case tok::caretequal:
-  case tok::pipeequal:            return prec::Assignment;
-  case tok::question:             return prec::Conditional;
-  case tok::pipepipe:             return prec::LogicalOr;
-  case tok::ampamp:               return prec::LogicalAnd;
-  case tok::pipe:                 return prec::InclusiveOr;
-  case tok::caret:                return prec::ExclusiveOr;
-  case tok::amp:                  return prec::And;
-  case tok::exclaimequal:
-  case tok::equalequal:           return prec::Equality;
-  case tok::lessequal:
-  case tok::less:
-  case tok::greaterequal:         return prec::Relational;
-  case tok::lessless:             return prec::Shift;
-  case tok::plus:
-  case tok::minus:                return prec::Additive;
-  case tok::percent:
-  case tok::slash:
-  case tok::star:                 return prec::Multiplicative;
-  case tok::periodstar:
-  case tok::arrowstar:            return prec::PointerToMember;
-  }
-}
-
-
 /// \brief Simple precedence-based parser for binary/ternary operators.
 ///
 /// Note: we diverge from the C99 grammar when parsing the assignment-expression
@@ -286,8 +225,7 @@ ExprResult
 Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
   prec::Level NextTokPrec = getBinOpPrecedence(Tok.getKind(),
                                                GreaterThanIsOperator,
-                                               getLangOpts().CPlusPlus0x);
-  
+                                               getLangOpts().CPlusPlus11);
   SourceLocation ColonLoc;
 
   while (1) {
@@ -387,11 +325,10 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // parse as if we were allowed braced-init-lists everywhere, and check that
     // they only appear on the RHS of assignments later.
 
-    ExprResult RHS;
-    bool RHSIsInitList = false;
-
     // scout - vector binary operator rhs
     bool rhsSet = false;
+
+    ExprResult RHS;
     
     if(!LHS.isInvalid()){
       if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(LHS.get())){
@@ -414,9 +351,12 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
         }
       }
     }
+
+    bool RHSIsInitList = false;
     
     if(!rhsSet){
-      if (getLangOpts().CPlusPlus0x && Tok.is(tok::l_brace)) {
+
+      if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
         RHS = ParseBraceInitializer();
         RHSIsInitList = true;
       } else if (getLangOpts().CPlusPlus && NextTokPrec <= prec::Conditional)
@@ -432,7 +372,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     // operator immediately to the right of the RHS.
     prec::Level ThisPrec = NextTokPrec;
     NextTokPrec = getBinOpPrecedence(Tok.getKind(), GreaterThanIsOperator,
-                                     getLangOpts().CPlusPlus0x);
+                                     getLangOpts().CPlusPlus11);
 
     // Assignment and conditional expressions are right-associative.
     bool isRightAssoc = ThisPrec == prec::Conditional ||
@@ -460,7 +400,7 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
         LHS = ExprError();
 
       NextTokPrec = getBinOpPrecedence(Tok.getKind(), GreaterThanIsOperator,
-                                       getLangOpts().CPlusPlus0x);
+                                       getLangOpts().CPlusPlus11);
     }
     assert(NextTokPrec <= ThisPrec && "Recursion didn't work!");
 
@@ -728,6 +668,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   // to handle the postfix expression suffixes.  Cases that cannot be followed
   // by postfix exprs should return without invoking
   // ParsePostfixExpressionSuffix.
+  
   switch (SavedKind) {
   case tok::l_paren: {
     // If this expression is limited to being a unary-expression, the parent can
@@ -1139,7 +1080,13 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
   case tok::kw_void:
   case tok::kw_typename:
   case tok::kw_typeof:
-  case tok::kw___vector: {
+  case tok::kw___vector:
+  case tok::kw_image1d_t:
+  case tok::kw_image1d_array_t:
+  case tok::kw_image1d_buffer_t:
+  case tok::kw_image2d_t:
+  case tok::kw_image2d_array_t:
+  case tok::kw_image3d_t: {
     if (!getLangOpts().CPlusPlus) {
       Diag(Tok, diag::err_expected_expression);
       return ExprError();
@@ -1158,7 +1105,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     DeclSpec DS(AttrFactory);
     ParseCXXSimpleTypeSpecifier(DS);
     if (Tok.isNot(tok::l_paren) &&
-        (!getLangOpts().CPlusPlus0x || Tok.isNot(tok::l_brace)))
+        (!getLangOpts().CPlusPlus11 || Tok.isNot(tok::l_brace)))
       return ExprError(Diag(Tok, diag::err_expected_lparen_after_type)
                          << DS.getSourceRange());
 
@@ -1343,7 +1290,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     return ExprError();
   }
   case tok::l_square:
-    if (getLangOpts().CPlusPlus0x) {
+    if (getLangOpts().CPlusPlus11) {
       if (getLangOpts().ObjC1) {
         // C++11 lambda expressions and Objective-C message sends both start with a
         // square bracket.  There are three possibilities here:
@@ -1364,6 +1311,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     }
     // FALL THROUGH.
   default:
+    std::cerr << "fall through, bad" << std::endl;
     NotCastExpr = true;
     return ExprError();
   }
@@ -1442,7 +1390,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       T.consumeOpen();
       Loc = T.getOpenLocation();
       ExprResult Idx;
-      if (getLangOpts().CPlusPlus0x && Tok.is(tok::l_brace)) {
+      if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
         Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
         Idx = ParseBraceInitializer();
       } else
@@ -2437,7 +2385,7 @@ bool Parser::ParseExpressionList(SmallVectorImpl<Expr*> &Exprs,
     }
 
     ExprResult Expr;
-    if (getLangOpts().CPlusPlus0x && Tok.is(tok::l_brace)) {
+    if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
       Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
       Expr = ParseBraceInitializer();
     } else

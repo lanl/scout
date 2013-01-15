@@ -19,9 +19,9 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/SelectionDAG.h"
-#include "llvm/DataLayout.h"
-#include "llvm/DerivedTypes.h"
-#include "llvm/GlobalVariable.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/Support/CommandLine.h"
@@ -94,98 +94,124 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::ADD_F32] = "__addsf3";
   Names[RTLIB::ADD_F64] = "__adddf3";
   Names[RTLIB::ADD_F80] = "__addxf3";
+  Names[RTLIB::ADD_F128] = "__addtf3";
   Names[RTLIB::ADD_PPCF128] = "__gcc_qadd";
   Names[RTLIB::SUB_F32] = "__subsf3";
   Names[RTLIB::SUB_F64] = "__subdf3";
   Names[RTLIB::SUB_F80] = "__subxf3";
+  Names[RTLIB::SUB_F128] = "__subtf3";
   Names[RTLIB::SUB_PPCF128] = "__gcc_qsub";
   Names[RTLIB::MUL_F32] = "__mulsf3";
   Names[RTLIB::MUL_F64] = "__muldf3";
   Names[RTLIB::MUL_F80] = "__mulxf3";
+  Names[RTLIB::MUL_F128] = "__multf3";
   Names[RTLIB::MUL_PPCF128] = "__gcc_qmul";
   Names[RTLIB::DIV_F32] = "__divsf3";
   Names[RTLIB::DIV_F64] = "__divdf3";
   Names[RTLIB::DIV_F80] = "__divxf3";
+  Names[RTLIB::DIV_F128] = "__divtf3";
   Names[RTLIB::DIV_PPCF128] = "__gcc_qdiv";
   Names[RTLIB::REM_F32] = "fmodf";
   Names[RTLIB::REM_F64] = "fmod";
   Names[RTLIB::REM_F80] = "fmodl";
+  Names[RTLIB::REM_F128] = "fmodl";
   Names[RTLIB::REM_PPCF128] = "fmodl";
   Names[RTLIB::FMA_F32] = "fmaf";
   Names[RTLIB::FMA_F64] = "fma";
   Names[RTLIB::FMA_F80] = "fmal";
+  Names[RTLIB::FMA_F128] = "fmal";
   Names[RTLIB::FMA_PPCF128] = "fmal";
   Names[RTLIB::POWI_F32] = "__powisf2";
   Names[RTLIB::POWI_F64] = "__powidf2";
   Names[RTLIB::POWI_F80] = "__powixf2";
+  Names[RTLIB::POWI_F128] = "__powitf2";
   Names[RTLIB::POWI_PPCF128] = "__powitf2";
   Names[RTLIB::SQRT_F32] = "sqrtf";
   Names[RTLIB::SQRT_F64] = "sqrt";
   Names[RTLIB::SQRT_F80] = "sqrtl";
+  Names[RTLIB::SQRT_F128] = "sqrtl";
   Names[RTLIB::SQRT_PPCF128] = "sqrtl";
   Names[RTLIB::LOG_F32] = "logf";
   Names[RTLIB::LOG_F64] = "log";
   Names[RTLIB::LOG_F80] = "logl";
+  Names[RTLIB::LOG_F128] = "logl";
   Names[RTLIB::LOG_PPCF128] = "logl";
   Names[RTLIB::LOG2_F32] = "log2f";
   Names[RTLIB::LOG2_F64] = "log2";
   Names[RTLIB::LOG2_F80] = "log2l";
+  Names[RTLIB::LOG2_F128] = "log2l";
   Names[RTLIB::LOG2_PPCF128] = "log2l";
   Names[RTLIB::LOG10_F32] = "log10f";
   Names[RTLIB::LOG10_F64] = "log10";
   Names[RTLIB::LOG10_F80] = "log10l";
+  Names[RTLIB::LOG10_F128] = "log10l";
   Names[RTLIB::LOG10_PPCF128] = "log10l";
   Names[RTLIB::EXP_F32] = "expf";
   Names[RTLIB::EXP_F64] = "exp";
   Names[RTLIB::EXP_F80] = "expl";
+  Names[RTLIB::EXP_F128] = "expl";
   Names[RTLIB::EXP_PPCF128] = "expl";
   Names[RTLIB::EXP2_F32] = "exp2f";
   Names[RTLIB::EXP2_F64] = "exp2";
   Names[RTLIB::EXP2_F80] = "exp2l";
+  Names[RTLIB::EXP2_F128] = "exp2l";
   Names[RTLIB::EXP2_PPCF128] = "exp2l";
   Names[RTLIB::SIN_F32] = "sinf";
   Names[RTLIB::SIN_F64] = "sin";
   Names[RTLIB::SIN_F80] = "sinl";
+  Names[RTLIB::SIN_F128] = "sinl";
   Names[RTLIB::SIN_PPCF128] = "sinl";
   Names[RTLIB::COS_F32] = "cosf";
   Names[RTLIB::COS_F64] = "cos";
   Names[RTLIB::COS_F80] = "cosl";
+  Names[RTLIB::COS_F128] = "cosl";
   Names[RTLIB::COS_PPCF128] = "cosl";
   Names[RTLIB::POW_F32] = "powf";
   Names[RTLIB::POW_F64] = "pow";
   Names[RTLIB::POW_F80] = "powl";
+  Names[RTLIB::POW_F128] = "powl";
   Names[RTLIB::POW_PPCF128] = "powl";
   Names[RTLIB::CEIL_F32] = "ceilf";
   Names[RTLIB::CEIL_F64] = "ceil";
   Names[RTLIB::CEIL_F80] = "ceill";
+  Names[RTLIB::CEIL_F128] = "ceill";
   Names[RTLIB::CEIL_PPCF128] = "ceill";
   Names[RTLIB::TRUNC_F32] = "truncf";
   Names[RTLIB::TRUNC_F64] = "trunc";
   Names[RTLIB::TRUNC_F80] = "truncl";
+  Names[RTLIB::TRUNC_F128] = "truncl";
   Names[RTLIB::TRUNC_PPCF128] = "truncl";
   Names[RTLIB::RINT_F32] = "rintf";
   Names[RTLIB::RINT_F64] = "rint";
   Names[RTLIB::RINT_F80] = "rintl";
+  Names[RTLIB::RINT_F128] = "rintl";
   Names[RTLIB::RINT_PPCF128] = "rintl";
   Names[RTLIB::NEARBYINT_F32] = "nearbyintf";
   Names[RTLIB::NEARBYINT_F64] = "nearbyint";
   Names[RTLIB::NEARBYINT_F80] = "nearbyintl";
+  Names[RTLIB::NEARBYINT_F128] = "nearbyintl";
   Names[RTLIB::NEARBYINT_PPCF128] = "nearbyintl";
   Names[RTLIB::FLOOR_F32] = "floorf";
   Names[RTLIB::FLOOR_F64] = "floor";
   Names[RTLIB::FLOOR_F80] = "floorl";
+  Names[RTLIB::FLOOR_F128] = "floorl";
   Names[RTLIB::FLOOR_PPCF128] = "floorl";
   Names[RTLIB::COPYSIGN_F32] = "copysignf";
   Names[RTLIB::COPYSIGN_F64] = "copysign";
   Names[RTLIB::COPYSIGN_F80] = "copysignl";
+  Names[RTLIB::COPYSIGN_F128] = "copysignl";
   Names[RTLIB::COPYSIGN_PPCF128] = "copysignl";
+  Names[RTLIB::FPEXT_F64_F128] = "__extenddftf2";
+  Names[RTLIB::FPEXT_F32_F128] = "__extendsftf2";
   Names[RTLIB::FPEXT_F32_F64] = "__extendsfdf2";
   Names[RTLIB::FPEXT_F16_F32] = "__gnu_h2f_ieee";
   Names[RTLIB::FPROUND_F32_F16] = "__gnu_f2h_ieee";
   Names[RTLIB::FPROUND_F64_F32] = "__truncdfsf2";
   Names[RTLIB::FPROUND_F80_F32] = "__truncxfsf2";
+  Names[RTLIB::FPROUND_F128_F32] = "__trunctfsf2";
   Names[RTLIB::FPROUND_PPCF128_F32] = "__trunctfsf2";
   Names[RTLIB::FPROUND_F80_F64] = "__truncxfdf2";
+  Names[RTLIB::FPROUND_F128_F64] = "__trunctfdf2";
   Names[RTLIB::FPROUND_PPCF128_F64] = "__trunctfdf2";
   Names[RTLIB::FPTOSINT_F32_I8] = "__fixsfqi";
   Names[RTLIB::FPTOSINT_F32_I16] = "__fixsfhi";
@@ -200,6 +226,9 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::FPTOSINT_F80_I32] = "__fixxfsi";
   Names[RTLIB::FPTOSINT_F80_I64] = "__fixxfdi";
   Names[RTLIB::FPTOSINT_F80_I128] = "__fixxfti";
+  Names[RTLIB::FPTOSINT_F128_I32] = "__fixtfsi";
+  Names[RTLIB::FPTOSINT_F128_I64] = "__fixtfdi";
+  Names[RTLIB::FPTOSINT_F128_I128] = "__fixtfti";
   Names[RTLIB::FPTOSINT_PPCF128_I32] = "__fixtfsi";
   Names[RTLIB::FPTOSINT_PPCF128_I64] = "__fixtfdi";
   Names[RTLIB::FPTOSINT_PPCF128_I128] = "__fixtfti";
@@ -216,49 +245,66 @@ static void InitLibcallNames(const char **Names) {
   Names[RTLIB::FPTOUINT_F80_I32] = "__fixunsxfsi";
   Names[RTLIB::FPTOUINT_F80_I64] = "__fixunsxfdi";
   Names[RTLIB::FPTOUINT_F80_I128] = "__fixunsxfti";
+  Names[RTLIB::FPTOUINT_F128_I32] = "__fixunstfsi";
+  Names[RTLIB::FPTOUINT_F128_I64] = "__fixunstfdi";
+  Names[RTLIB::FPTOUINT_F128_I128] = "__fixunstfti";
   Names[RTLIB::FPTOUINT_PPCF128_I32] = "__fixunstfsi";
   Names[RTLIB::FPTOUINT_PPCF128_I64] = "__fixunstfdi";
   Names[RTLIB::FPTOUINT_PPCF128_I128] = "__fixunstfti";
   Names[RTLIB::SINTTOFP_I32_F32] = "__floatsisf";
   Names[RTLIB::SINTTOFP_I32_F64] = "__floatsidf";
   Names[RTLIB::SINTTOFP_I32_F80] = "__floatsixf";
+  Names[RTLIB::SINTTOFP_I32_F128] = "__floatsitf";
   Names[RTLIB::SINTTOFP_I32_PPCF128] = "__floatsitf";
   Names[RTLIB::SINTTOFP_I64_F32] = "__floatdisf";
   Names[RTLIB::SINTTOFP_I64_F64] = "__floatdidf";
   Names[RTLIB::SINTTOFP_I64_F80] = "__floatdixf";
+  Names[RTLIB::SINTTOFP_I64_F128] = "__floatditf";
   Names[RTLIB::SINTTOFP_I64_PPCF128] = "__floatditf";
   Names[RTLIB::SINTTOFP_I128_F32] = "__floattisf";
   Names[RTLIB::SINTTOFP_I128_F64] = "__floattidf";
   Names[RTLIB::SINTTOFP_I128_F80] = "__floattixf";
+  Names[RTLIB::SINTTOFP_I128_F128] = "__floattitf";
   Names[RTLIB::SINTTOFP_I128_PPCF128] = "__floattitf";
   Names[RTLIB::UINTTOFP_I32_F32] = "__floatunsisf";
   Names[RTLIB::UINTTOFP_I32_F64] = "__floatunsidf";
   Names[RTLIB::UINTTOFP_I32_F80] = "__floatunsixf";
+  Names[RTLIB::UINTTOFP_I32_F128] = "__floatunsitf";
   Names[RTLIB::UINTTOFP_I32_PPCF128] = "__floatunsitf";
   Names[RTLIB::UINTTOFP_I64_F32] = "__floatundisf";
   Names[RTLIB::UINTTOFP_I64_F64] = "__floatundidf";
   Names[RTLIB::UINTTOFP_I64_F80] = "__floatundixf";
+  Names[RTLIB::UINTTOFP_I64_F128] = "__floatunditf";
   Names[RTLIB::UINTTOFP_I64_PPCF128] = "__floatunditf";
   Names[RTLIB::UINTTOFP_I128_F32] = "__floatuntisf";
   Names[RTLIB::UINTTOFP_I128_F64] = "__floatuntidf";
   Names[RTLIB::UINTTOFP_I128_F80] = "__floatuntixf";
+  Names[RTLIB::UINTTOFP_I128_F128] = "__floatuntitf";
   Names[RTLIB::UINTTOFP_I128_PPCF128] = "__floatuntitf";
   Names[RTLIB::OEQ_F32] = "__eqsf2";
   Names[RTLIB::OEQ_F64] = "__eqdf2";
+  Names[RTLIB::OEQ_F128] = "__eqtf2";
   Names[RTLIB::UNE_F32] = "__nesf2";
   Names[RTLIB::UNE_F64] = "__nedf2";
+  Names[RTLIB::UNE_F128] = "__netf2";
   Names[RTLIB::OGE_F32] = "__gesf2";
   Names[RTLIB::OGE_F64] = "__gedf2";
+  Names[RTLIB::OGE_F128] = "__getf2";
   Names[RTLIB::OLT_F32] = "__ltsf2";
   Names[RTLIB::OLT_F64] = "__ltdf2";
+  Names[RTLIB::OLT_F128] = "__lttf2";
   Names[RTLIB::OLE_F32] = "__lesf2";
   Names[RTLIB::OLE_F64] = "__ledf2";
+  Names[RTLIB::OLE_F128] = "__letf2";
   Names[RTLIB::OGT_F32] = "__gtsf2";
   Names[RTLIB::OGT_F64] = "__gtdf2";
+  Names[RTLIB::OGT_F128] = "__gttf2";
   Names[RTLIB::UO_F32] = "__unordsf2";
   Names[RTLIB::UO_F64] = "__unorddf2";
+  Names[RTLIB::UO_F128] = "__unordtf2";
   Names[RTLIB::O_F32] = "__unordsf2";
   Names[RTLIB::O_F64] = "__unorddf2";
+  Names[RTLIB::O_F128] = "__unordtf2";
   Names[RTLIB::MEMCPY] = "memcpy";
   Names[RTLIB::MEMMOVE] = "memmove";
   Names[RTLIB::MEMSET] = "memset";
@@ -311,6 +357,11 @@ RTLIB::Libcall RTLIB::getFPEXT(EVT OpVT, EVT RetVT) {
   if (OpVT == MVT::f32) {
     if (RetVT == MVT::f64)
       return FPEXT_F32_F64;
+    if (RetVT == MVT::f128)
+      return FPEXT_F32_F128;
+  } else if (OpVT == MVT::f64) {
+    if (RetVT == MVT::f128)
+      return FPEXT_F64_F128;
   }
 
   return UNKNOWN_LIBCALL;
@@ -324,11 +375,15 @@ RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {
       return FPROUND_F64_F32;
     if (OpVT == MVT::f80)
       return FPROUND_F80_F32;
+    if (OpVT == MVT::f128)
+      return FPROUND_F128_F32;
     if (OpVT == MVT::ppcf128)
       return FPROUND_PPCF128_F32;
   } else if (RetVT == MVT::f64) {
     if (OpVT == MVT::f80)
       return FPROUND_F80_F64;
+    if (OpVT == MVT::f128)
+      return FPROUND_F128_F64;
     if (OpVT == MVT::ppcf128)
       return FPROUND_PPCF128_F64;
   }
@@ -368,6 +423,13 @@ RTLIB::Libcall RTLIB::getFPTOSINT(EVT OpVT, EVT RetVT) {
       return FPTOSINT_F80_I64;
     if (RetVT == MVT::i128)
       return FPTOSINT_F80_I128;
+  } else if (OpVT == MVT::f128) {
+    if (RetVT == MVT::i32)
+      return FPTOSINT_F128_I32;
+    if (RetVT == MVT::i64)
+      return FPTOSINT_F128_I64;
+    if (RetVT == MVT::i128)
+      return FPTOSINT_F128_I128;
   } else if (OpVT == MVT::ppcf128) {
     if (RetVT == MVT::i32)
       return FPTOSINT_PPCF128_I32;
@@ -411,6 +473,13 @@ RTLIB::Libcall RTLIB::getFPTOUINT(EVT OpVT, EVT RetVT) {
       return FPTOUINT_F80_I64;
     if (RetVT == MVT::i128)
       return FPTOUINT_F80_I128;
+  } else if (OpVT == MVT::f128) {
+    if (RetVT == MVT::i32)
+      return FPTOUINT_F128_I32;
+    if (RetVT == MVT::i64)
+      return FPTOUINT_F128_I64;
+    if (RetVT == MVT::i128)
+      return FPTOUINT_F128_I128;
   } else if (OpVT == MVT::ppcf128) {
     if (RetVT == MVT::i32)
       return FPTOUINT_PPCF128_I32;
@@ -428,29 +497,35 @@ RTLIB::Libcall RTLIB::getSINTTOFP(EVT OpVT, EVT RetVT) {
   if (OpVT == MVT::i32) {
     if (RetVT == MVT::f32)
       return SINTTOFP_I32_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return SINTTOFP_I32_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return SINTTOFP_I32_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return SINTTOFP_I32_F128;
+    if (RetVT == MVT::ppcf128)
       return SINTTOFP_I32_PPCF128;
   } else if (OpVT == MVT::i64) {
     if (RetVT == MVT::f32)
       return SINTTOFP_I64_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return SINTTOFP_I64_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return SINTTOFP_I64_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return SINTTOFP_I64_F128;
+    if (RetVT == MVT::ppcf128)
       return SINTTOFP_I64_PPCF128;
   } else if (OpVT == MVT::i128) {
     if (RetVT == MVT::f32)
       return SINTTOFP_I128_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return SINTTOFP_I128_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return SINTTOFP_I128_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return SINTTOFP_I128_F128;
+    if (RetVT == MVT::ppcf128)
       return SINTTOFP_I128_PPCF128;
   }
   return UNKNOWN_LIBCALL;
@@ -462,29 +537,35 @@ RTLIB::Libcall RTLIB::getUINTTOFP(EVT OpVT, EVT RetVT) {
   if (OpVT == MVT::i32) {
     if (RetVT == MVT::f32)
       return UINTTOFP_I32_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return UINTTOFP_I32_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return UINTTOFP_I32_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return UINTTOFP_I32_F128;
+    if (RetVT == MVT::ppcf128)
       return UINTTOFP_I32_PPCF128;
   } else if (OpVT == MVT::i64) {
     if (RetVT == MVT::f32)
       return UINTTOFP_I64_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return UINTTOFP_I64_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return UINTTOFP_I64_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return UINTTOFP_I64_F128;
+    if (RetVT == MVT::ppcf128)
       return UINTTOFP_I64_PPCF128;
   } else if (OpVT == MVT::i128) {
     if (RetVT == MVT::f32)
       return UINTTOFP_I128_F32;
-    else if (RetVT == MVT::f64)
+    if (RetVT == MVT::f64)
       return UINTTOFP_I128_F64;
-    else if (RetVT == MVT::f80)
+    if (RetVT == MVT::f80)
       return UINTTOFP_I128_F80;
-    else if (RetVT == MVT::ppcf128)
+    if (RetVT == MVT::f128)
+      return UINTTOFP_I128_F128;
+    if (RetVT == MVT::ppcf128)
       return UINTTOFP_I128_PPCF128;
   }
   return UNKNOWN_LIBCALL;
@@ -496,20 +577,28 @@ static void InitCmpLibcallCCs(ISD::CondCode *CCs) {
   memset(CCs, ISD::SETCC_INVALID, sizeof(ISD::CondCode)*RTLIB::UNKNOWN_LIBCALL);
   CCs[RTLIB::OEQ_F32] = ISD::SETEQ;
   CCs[RTLIB::OEQ_F64] = ISD::SETEQ;
+  CCs[RTLIB::OEQ_F128] = ISD::SETEQ;
   CCs[RTLIB::UNE_F32] = ISD::SETNE;
   CCs[RTLIB::UNE_F64] = ISD::SETNE;
+  CCs[RTLIB::UNE_F128] = ISD::SETNE;
   CCs[RTLIB::OGE_F32] = ISD::SETGE;
   CCs[RTLIB::OGE_F64] = ISD::SETGE;
+  CCs[RTLIB::OGE_F128] = ISD::SETGE;
   CCs[RTLIB::OLT_F32] = ISD::SETLT;
   CCs[RTLIB::OLT_F64] = ISD::SETLT;
+  CCs[RTLIB::OLT_F128] = ISD::SETLT;
   CCs[RTLIB::OLE_F32] = ISD::SETLE;
   CCs[RTLIB::OLE_F64] = ISD::SETLE;
+  CCs[RTLIB::OLE_F128] = ISD::SETLE;
   CCs[RTLIB::OGT_F32] = ISD::SETGT;
   CCs[RTLIB::OGT_F64] = ISD::SETGT;
+  CCs[RTLIB::OGT_F128] = ISD::SETGT;
   CCs[RTLIB::UO_F32] = ISD::SETNE;
   CCs[RTLIB::UO_F64] = ISD::SETNE;
+  CCs[RTLIB::UO_F128] = ISD::SETNE;
   CCs[RTLIB::O_F32] = ISD::SETEQ;
   CCs[RTLIB::O_F64] = ISD::SETEQ;
+  CCs[RTLIB::O_F128] = ISD::SETEQ;
 }
 
 /// NOTE: The constructor takes ownership of TLOF.
@@ -547,6 +636,7 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   setOperationAction(ISD::ConstantFP, MVT::f32, Expand);
   setOperationAction(ISD::ConstantFP, MVT::f64, Expand);
   setOperationAction(ISD::ConstantFP, MVT::f80, Expand);
+  setOperationAction(ISD::ConstantFP, MVT::f128, Expand);
 
   // These library functions default to expand.
   setOperationAction(ISD::FLOG ,  MVT::f16, Expand);
@@ -579,6 +669,16 @@ TargetLowering::TargetLowering(const TargetMachine &tm,
   setOperationAction(ISD::FCEIL,  MVT::f64, Expand);
   setOperationAction(ISD::FRINT,  MVT::f64, Expand);
   setOperationAction(ISD::FTRUNC, MVT::f64, Expand);
+  setOperationAction(ISD::FLOG ,  MVT::f128, Expand);
+  setOperationAction(ISD::FLOG2,  MVT::f128, Expand);
+  setOperationAction(ISD::FLOG10, MVT::f128, Expand);
+  setOperationAction(ISD::FEXP ,  MVT::f128, Expand);
+  setOperationAction(ISD::FEXP2,  MVT::f128, Expand);
+  setOperationAction(ISD::FFLOOR, MVT::f128, Expand);
+  setOperationAction(ISD::FNEARBYINT, MVT::f128, Expand);
+  setOperationAction(ISD::FCEIL,  MVT::f128, Expand);
+  setOperationAction(ISD::FRINT,  MVT::f128, Expand);
+  setOperationAction(ISD::FTRUNC, MVT::f128, Expand);
 
   // Default ISD::TRAP to expand (which turns it into abort).
   setOperationAction(ISD::TRAP, MVT::Other, Expand);
@@ -653,7 +753,7 @@ bool TargetLowering::canOpTrap(unsigned Op, EVT VT) const {
 
 static unsigned getVectorTypeBreakdownMVT(MVT VT, MVT &IntermediateVT,
                                           unsigned &NumIntermediates,
-                                          EVT &RegisterVT,
+                                          MVT &RegisterVT,
                                           TargetLowering *TLI) {
   // Figure out the right, legal destination reg to copy into.
   unsigned NumElts = VT.getVectorNumElements();
@@ -688,7 +788,7 @@ static unsigned getVectorTypeBreakdownMVT(MVT VT, MVT &IntermediateVT,
   if (!isPowerOf2_32(NewVTSize))
     NewVTSize = NextPowerOf2(NewVTSize);
 
-  EVT DestVT = TLI->getRegisterType(NewVT);
+  MVT DestVT = TLI->getRegisterType(NewVT);
   RegisterVT = DestVT;
   if (EVT(DestVT).bitsLT(NewVT))    // Value is expanded, e.g. i64 -> i16.
     return NumVectorRegs*(NewVTSize/DestVT.getSizeInBits());
@@ -712,9 +812,9 @@ bool TargetLowering::isLegalRC(const TargetRegisterClass *RC) const {
 /// findRepresentativeClass - Return the largest legal super-reg register class
 /// of the register class for the specified type and its associated "cost".
 std::pair<const TargetRegisterClass*, uint8_t>
-TargetLowering::findRepresentativeClass(EVT VT) const {
+TargetLowering::findRepresentativeClass(MVT VT) const {
   const TargetRegisterInfo *TRI = getTargetMachine().getRegisterInfo();
-  const TargetRegisterClass *RC = RegClassForVT[VT.getSimpleVT().SimpleTy];
+  const TargetRegisterClass *RC = RegClassForVT[VT.SimpleTy];
   if (!RC)
     return std::make_pair(RC, 0);
 
@@ -772,7 +872,7 @@ void TargetLowering::computeRegisterProperties() {
   unsigned LegalIntReg = LargestIntReg;
   for (unsigned IntReg = LargestIntReg - 1;
        IntReg >= (unsigned)MVT::i1; --IntReg) {
-    EVT IVT = (MVT::SimpleValueType)IntReg;
+    MVT IVT = (MVT::SimpleValueType)IntReg;
     if (isTypeLegal(IVT)) {
       LegalIntReg = IntReg;
     } else {
@@ -823,14 +923,14 @@ void TargetLowering::computeRegisterProperties() {
 
     // Determine if there is a legal wider type.  If so, we should promote to
     // that wider vector type.
-    EVT EltVT = VT.getVectorElementType();
+    MVT EltVT = VT.getVectorElementType();
     unsigned NElts = VT.getVectorNumElements();
     if (NElts != 1 && !shouldSplitVectorElementType(EltVT)) {
       bool IsLegalWiderType = false;
       // First try to promote the elements of integer vectors. If no legal
       // promotion was found, fallback to the widen-vector method.
       for (unsigned nVT = i+1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
-        EVT SVT = (MVT::SimpleValueType)nVT;
+        MVT SVT = (MVT::SimpleValueType)nVT;
         // Promote vectors of integers to vectors with the same number
         // of elements, with a wider element type.
         if (SVT.getVectorElementType().getSizeInBits() > EltVT.getSizeInBits()
@@ -849,7 +949,7 @@ void TargetLowering::computeRegisterProperties() {
 
       // Try to widen the vector.
       for (unsigned nVT = i+1; nVT <= MVT::LAST_VECTOR_VALUETYPE; ++nVT) {
-        EVT SVT = (MVT::SimpleValueType)nVT;
+        MVT SVT = (MVT::SimpleValueType)nVT;
         if (SVT.getVectorElementType() == EltVT &&
             SVT.getVectorNumElements() > NElts &&
             isTypeLegal(SVT)) {
@@ -865,14 +965,14 @@ void TargetLowering::computeRegisterProperties() {
     }
 
     MVT IntermediateVT;
-    EVT RegisterVT;
+    MVT RegisterVT;
     unsigned NumIntermediates;
     NumRegistersForVT[i] =
       getVectorTypeBreakdownMVT(VT, IntermediateVT, NumIntermediates,
                                 RegisterVT, this);
     RegisterTypeForVT[i] = RegisterVT;
 
-    EVT NVT = VT.getPow2VectorType();
+    MVT NVT = VT.getPow2VectorType();
     if (NVT == VT) {
       // Type is already a power of 2.  The default action is to split.
       TransformToType[i] = MVT::Other;
@@ -912,6 +1012,161 @@ MVT::SimpleValueType TargetLowering::getCmpLibcallReturnType() const {
   return MVT::i32; // return the default value
 }
 
+/// Check whether a given call node is in tail position within its function. If
+/// so, it sets Chain to the input chain of the tail call.
+bool TargetLowering::isInTailCallPosition(SelectionDAG &DAG, SDNode *Node,
+                                          SDValue &Chain) const {
+  const Function *F = DAG.getMachineFunction().getFunction();
+
+  // Conservatively require the attributes of the call to match those of
+  // the return. Ignore noalias because it doesn't affect the call sequence.
+  Attribute CallerRetAttr = F->getAttributes().getRetAttributes();
+  if (AttrBuilder(CallerRetAttr)
+      .removeAttribute(Attribute::NoAlias).hasAttributes())
+    return false;
+
+  // It's not safe to eliminate the sign / zero extension of the return value.
+  if (CallerRetAttr.hasAttribute(Attribute::ZExt) ||
+      CallerRetAttr.hasAttribute(Attribute::SExt))
+    return false;
+
+  // Check if the only use is a function return node.
+  return isUsedByReturnOnly(Node, Chain);
+}
+
+
+/// Generate a libcall taking the given operands as arguments and returning a
+/// result of type RetVT.
+SDValue TargetLowering::makeLibCall(SelectionDAG &DAG,
+                                    RTLIB::Libcall LC, EVT RetVT,
+                                    const SDValue *Ops, unsigned NumOps,
+                                    bool isSigned, DebugLoc dl) const {
+  TargetLowering::ArgListTy Args;
+  Args.reserve(NumOps);
+
+  TargetLowering::ArgListEntry Entry;
+  for (unsigned i = 0; i != NumOps; ++i) {
+    Entry.Node = Ops[i];
+    Entry.Ty = Entry.Node.getValueType().getTypeForEVT(*DAG.getContext());
+    Entry.isSExt = isSigned;
+    Entry.isZExt = !isSigned;
+    Args.push_back(Entry);
+  }
+  SDValue Callee = DAG.getExternalSymbol(getLibcallName(LC), getPointerTy());
+
+  Type *RetTy = RetVT.getTypeForEVT(*DAG.getContext());
+  TargetLowering::
+  CallLoweringInfo CLI(DAG.getEntryNode(), RetTy, isSigned, !isSigned, false,
+                    false, 0, getLibcallCallingConv(LC),
+                    /*isTailCall=*/false,
+                    /*doesNotReturn=*/false, /*isReturnValueUsed=*/true,
+                    Callee, Args, DAG, dl);
+  std::pair<SDValue,SDValue> CallInfo = LowerCallTo(CLI);
+
+  return CallInfo.first;
+}
+
+
+/// SoftenSetCCOperands - Soften the operands of a comparison.  This code is
+/// shared among BR_CC, SELECT_CC, and SETCC handlers.
+void TargetLowering::softenSetCCOperands(SelectionDAG &DAG, EVT VT,
+                                         SDValue &NewLHS, SDValue &NewRHS,
+                                         ISD::CondCode &CCCode,
+                                         DebugLoc dl) const {
+  assert((VT == MVT::f32 || VT == MVT::f64 || VT == MVT::f128)
+         && "Unsupported setcc type!");
+
+  // Expand into one or more soft-fp libcall(s).
+  RTLIB::Libcall LC1 = RTLIB::UNKNOWN_LIBCALL, LC2 = RTLIB::UNKNOWN_LIBCALL;
+  switch (CCCode) {
+  case ISD::SETEQ:
+  case ISD::SETOEQ:
+    LC1 = (VT == MVT::f32) ? RTLIB::OEQ_F32 :
+          (VT == MVT::f64) ? RTLIB::OEQ_F64 : RTLIB::OEQ_F128;
+    break;
+  case ISD::SETNE:
+  case ISD::SETUNE:
+    LC1 = (VT == MVT::f32) ? RTLIB::UNE_F32 :
+          (VT == MVT::f64) ? RTLIB::UNE_F64 : RTLIB::UNE_F128;
+    break;
+  case ISD::SETGE:
+  case ISD::SETOGE:
+    LC1 = (VT == MVT::f32) ? RTLIB::OGE_F32 :
+          (VT == MVT::f64) ? RTLIB::OGE_F64 : RTLIB::OGE_F128;
+    break;
+  case ISD::SETLT:
+  case ISD::SETOLT:
+    LC1 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
+          (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+    break;
+  case ISD::SETLE:
+  case ISD::SETOLE:
+    LC1 = (VT == MVT::f32) ? RTLIB::OLE_F32 :
+          (VT == MVT::f64) ? RTLIB::OLE_F64 : RTLIB::OLE_F128;
+    break;
+  case ISD::SETGT:
+  case ISD::SETOGT:
+    LC1 = (VT == MVT::f32) ? RTLIB::OGT_F32 :
+          (VT == MVT::f64) ? RTLIB::OGT_F64 : RTLIB::OGT_F128;
+    break;
+  case ISD::SETUO:
+    LC1 = (VT == MVT::f32) ? RTLIB::UO_F32 :
+          (VT == MVT::f64) ? RTLIB::UO_F64 : RTLIB::UO_F128;
+    break;
+  case ISD::SETO:
+    LC1 = (VT == MVT::f32) ? RTLIB::O_F32 :
+          (VT == MVT::f64) ? RTLIB::O_F64 : RTLIB::O_F128;
+    break;
+  default:
+    LC1 = (VT == MVT::f32) ? RTLIB::UO_F32 :
+          (VT == MVT::f64) ? RTLIB::UO_F64 : RTLIB::UO_F128;
+    switch (CCCode) {
+    case ISD::SETONE:
+      // SETONE = SETOLT | SETOGT
+      LC1 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
+            (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+      // Fallthrough
+    case ISD::SETUGT:
+      LC2 = (VT == MVT::f32) ? RTLIB::OGT_F32 :
+            (VT == MVT::f64) ? RTLIB::OGT_F64 : RTLIB::OGT_F128;
+      break;
+    case ISD::SETUGE:
+      LC2 = (VT == MVT::f32) ? RTLIB::OGE_F32 :
+            (VT == MVT::f64) ? RTLIB::OGE_F64 : RTLIB::OGE_F128;
+      break;
+    case ISD::SETULT:
+      LC2 = (VT == MVT::f32) ? RTLIB::OLT_F32 :
+            (VT == MVT::f64) ? RTLIB::OLT_F64 : RTLIB::OLT_F128;
+      break;
+    case ISD::SETULE:
+      LC2 = (VT == MVT::f32) ? RTLIB::OLE_F32 :
+            (VT == MVT::f64) ? RTLIB::OLE_F64 : RTLIB::OLE_F128;
+      break;
+    case ISD::SETUEQ:
+      LC2 = (VT == MVT::f32) ? RTLIB::OEQ_F32 :
+            (VT == MVT::f64) ? RTLIB::OEQ_F64 : RTLIB::OEQ_F128;
+      break;
+    default: llvm_unreachable("Do not know how to soften this setcc!");
+    }
+  }
+
+  // Use the target specific return value for comparions lib calls.
+  EVT RetVT = getCmpLibcallReturnType();
+  SDValue Ops[2] = { NewLHS, NewRHS };
+  NewLHS = makeLibCall(DAG, LC1, RetVT, Ops, 2, false/*sign irrelevant*/, dl);
+  NewRHS = DAG.getConstant(0, RetVT);
+  CCCode = getCmpLibcallCC(LC1);
+  if (LC2 != RTLIB::UNKNOWN_LIBCALL) {
+    SDValue Tmp = DAG.getNode(ISD::SETCC, dl, getSetCCResultType(RetVT),
+                              NewLHS, NewRHS, DAG.getCondCode(CCCode));
+    NewLHS = makeLibCall(DAG, LC2, RetVT, Ops, 2, false/*sign irrelevant*/, dl);
+    NewLHS = DAG.getNode(ISD::SETCC, dl, getSetCCResultType(RetVT), NewLHS,
+                         NewRHS, DAG.getCondCode(getCmpLibcallCC(LC2)));
+    NewLHS = DAG.getNode(ISD::OR, dl, Tmp.getValueType(), Tmp, NewLHS);
+    NewRHS = SDValue();
+  }
+}
+
 /// getVectorTypeBreakdown - Vector types are broken down into some number of
 /// legal first class types.  For example, MVT::v8f32 maps to 2 MVT::v4f32
 /// with Altivec or SSE1, or 8 promoted MVT::f64 values with the X86 FP stack.
@@ -924,7 +1179,7 @@ MVT::SimpleValueType TargetLowering::getCmpLibcallReturnType() const {
 unsigned TargetLowering::getVectorTypeBreakdown(LLVMContext &Context, EVT VT,
                                                 EVT &IntermediateVT,
                                                 unsigned &NumIntermediates,
-                                                EVT &RegisterVT) const {
+                                                MVT &RegisterVT) const {
   unsigned NumElts = VT.getVectorNumElements();
 
   // If there is a wider vector type with the same element type as this one,
@@ -934,9 +1189,10 @@ unsigned TargetLowering::getVectorTypeBreakdown(LLVMContext &Context, EVT VT,
   // <4 x i1> -> <4 x i32>.
   LegalizeTypeAction TA = getTypeAction(Context, VT);
   if (NumElts != 1 && (TA == TypeWidenVector || TA == TypePromoteInteger)) {
-    RegisterVT = getTypeToTransformTo(Context, VT);
-    if (isTypeLegal(RegisterVT)) {
-      IntermediateVT = RegisterVT;
+    EVT RegisterEVT = getTypeToTransformTo(Context, VT);
+    if (isTypeLegal(RegisterEVT)) {
+      IntermediateVT = RegisterEVT;
+      RegisterVT = RegisterEVT.getSimpleVT();
       NumIntermediates = 1;
       return 1;
     }
@@ -969,7 +1225,7 @@ unsigned TargetLowering::getVectorTypeBreakdown(LLVMContext &Context, EVT VT,
     NewVT = EltTy;
   IntermediateVT = NewVT;
 
-  EVT DestVT = getRegisterType(Context, NewVT);
+  MVT DestVT = getRegisterType(Context, NewVT);
   RegisterVT = DestVT;
   unsigned NewVTSize = NewVT.getSizeInBits();
 
@@ -977,7 +1233,7 @@ unsigned TargetLowering::getVectorTypeBreakdown(LLVMContext &Context, EVT VT,
   if (!isPowerOf2_32(NewVTSize))
     NewVTSize = NextPowerOf2(NewVTSize);
 
-  if (DestVT.bitsLT(NewVT))   // Value is expanded, e.g. i64 -> i16.
+  if (EVT(DestVT).bitsLT(NewVT))   // Value is expanded, e.g. i64 -> i16.
     return NumVectorRegs*(NewVTSize/DestVT.getSizeInBits());
 
   // Otherwise, promotion or legal types use the same number of registers as
@@ -989,7 +1245,7 @@ unsigned TargetLowering::getVectorTypeBreakdown(LLVMContext &Context, EVT VT,
 /// type of the given function.  This does not require a DAG or a return value,
 /// and is suitable for use before any DAGs for the function are constructed.
 /// TODO: Move this out of TargetLowering.cpp.
-void llvm::GetReturnInfo(Type* ReturnType, Attributes attr,
+void llvm::GetReturnInfo(Type* ReturnType, AttributeSet attr,
                          SmallVectorImpl<ISD::OutputArg> &Outs,
                          const TargetLowering &TLI) {
   SmallVector<EVT, 4> ValueVTs;
@@ -1001,9 +1257,9 @@ void llvm::GetReturnInfo(Type* ReturnType, Attributes attr,
     EVT VT = ValueVTs[j];
     ISD::NodeType ExtendKind = ISD::ANY_EXTEND;
 
-    if (attr.hasAttribute(Attributes::SExt))
+    if (attr.hasAttribute(AttributeSet::ReturnIndex, Attribute::SExt))
       ExtendKind = ISD::SIGN_EXTEND;
-    else if (attr.hasAttribute(Attributes::ZExt))
+    else if (attr.hasAttribute(AttributeSet::ReturnIndex, Attribute::ZExt))
       ExtendKind = ISD::ZERO_EXTEND;
 
     // FIXME: C calling convention requires the return type to be promoted to
@@ -1011,23 +1267,23 @@ void llvm::GetReturnInfo(Type* ReturnType, Attributes attr,
     // conventions. The frontend should mark functions whose return values
     // require promoting with signext or zeroext attributes.
     if (ExtendKind != ISD::ANY_EXTEND && VT.isInteger()) {
-      EVT MinVT = TLI.getRegisterType(ReturnType->getContext(), MVT::i32);
+      MVT MinVT = TLI.getRegisterType(ReturnType->getContext(), MVT::i32);
       if (VT.bitsLT(MinVT))
         VT = MinVT;
     }
 
     unsigned NumParts = TLI.getNumRegisters(ReturnType->getContext(), VT);
-    EVT PartVT = TLI.getRegisterType(ReturnType->getContext(), VT);
+    MVT PartVT = TLI.getRegisterType(ReturnType->getContext(), VT);
 
     // 'inreg' on function refers to return value
     ISD::ArgFlagsTy Flags = ISD::ArgFlagsTy();
-    if (attr.hasAttribute(Attributes::InReg))
+    if (attr.hasAttribute(AttributeSet::ReturnIndex, Attribute::InReg))
       Flags.setInReg();
 
     // Propagate extension type if any
-    if (attr.hasAttribute(Attributes::SExt))
+    if (attr.hasAttribute(AttributeSet::ReturnIndex, Attribute::SExt))
       Flags.setSExt();
-    else if (attr.hasAttribute(Attributes::ZExt))
+    else if (attr.hasAttribute(AttributeSet::ReturnIndex, Attribute::ZExt))
       Flags.setZExt();
 
     for (unsigned i = 0; i < NumParts; ++i)
@@ -1098,6 +1354,103 @@ TargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
 }
 
 //===----------------------------------------------------------------------===//
+//  TargetTransformInfo Helpers
+//===----------------------------------------------------------------------===//
+
+int TargetLowering::InstructionOpcodeToISD(unsigned Opcode) const {
+  enum InstructionOpcodes {
+#define HANDLE_INST(NUM, OPCODE, CLASS) OPCODE = NUM,
+#define LAST_OTHER_INST(NUM) InstructionOpcodesCount = NUM
+#include "llvm/IR/Instruction.def"
+  };
+  switch (static_cast<InstructionOpcodes>(Opcode)) {
+  case Ret:            return 0;
+  case Br:             return 0;
+  case Switch:         return 0;
+  case IndirectBr:     return 0;
+  case Invoke:         return 0;
+  case Resume:         return 0;
+  case Unreachable:    return 0;
+  case Add:            return ISD::ADD;
+  case FAdd:           return ISD::FADD;
+  case Sub:            return ISD::SUB;
+  case FSub:           return ISD::FSUB;
+  case Mul:            return ISD::MUL;
+  case FMul:           return ISD::FMUL;
+  case UDiv:           return ISD::UDIV;
+  case SDiv:           return ISD::UDIV;
+  case FDiv:           return ISD::FDIV;
+  case URem:           return ISD::UREM;
+  case SRem:           return ISD::SREM;
+  case FRem:           return ISD::FREM;
+  case Shl:            return ISD::SHL;
+  case LShr:           return ISD::SRL;
+  case AShr:           return ISD::SRA;
+  case And:            return ISD::AND;
+  case Or:             return ISD::OR;
+  case Xor:            return ISD::XOR;
+  case Alloca:         return 0;
+  case Load:           return ISD::LOAD;
+  case Store:          return ISD::STORE;
+  case GetElementPtr:  return 0;
+  case Fence:          return 0;
+  case AtomicCmpXchg:  return 0;
+  case AtomicRMW:      return 0;
+  case Trunc:          return ISD::TRUNCATE;
+  case ZExt:           return ISD::ZERO_EXTEND;
+  case SExt:           return ISD::SIGN_EXTEND;
+  case FPToUI:         return ISD::FP_TO_UINT;
+  case FPToSI:         return ISD::FP_TO_SINT;
+  case UIToFP:         return ISD::UINT_TO_FP;
+  case SIToFP:         return ISD::SINT_TO_FP;
+  case FPTrunc:        return ISD::FP_ROUND;
+  case FPExt:          return ISD::FP_EXTEND;
+  case PtrToInt:       return ISD::BITCAST;
+  case IntToPtr:       return ISD::BITCAST;
+  case BitCast:        return ISD::BITCAST;
+  case ICmp:           return ISD::SETCC;
+  case FCmp:           return ISD::SETCC;
+  case PHI:            return 0;
+  case Call:           return 0;
+  case Select:         return ISD::SELECT;
+  case UserOp1:        return 0;
+  case UserOp2:        return 0;
+  case VAArg:          return 0;
+  case ExtractElement: return ISD::EXTRACT_VECTOR_ELT;
+  case InsertElement:  return ISD::INSERT_VECTOR_ELT;
+  case ShuffleVector:  return ISD::VECTOR_SHUFFLE;
+  case ExtractValue:   return ISD::MERGE_VALUES;
+  case InsertValue:    return ISD::MERGE_VALUES;
+  case LandingPad:     return 0;
+  }
+
+  llvm_unreachable("Unknown instruction type encountered!");
+}
+
+std::pair<unsigned, MVT>
+TargetLowering::getTypeLegalizationCost(Type *Ty) const {
+  LLVMContext &C = Ty->getContext();
+  EVT MTy = getValueType(Ty);
+
+  unsigned Cost = 1;
+  // We keep legalizing the type until we find a legal kind. We assume that
+  // the only operation that costs anything is the split. After splitting
+  // we need to handle two types.
+  while (true) {
+    LegalizeKind LK = getTypeConversion(C, MTy);
+
+    if (LK.first == TypeLegal)
+      return std::make_pair(Cost, MTy.getSimpleVT());
+
+    if (LK.first == TypeSplitVector || LK.first == TypeExpandInteger)
+      Cost *= 2;
+
+    // Keep legalizing the type.
+    MTy = LK.second;
+  }
+}
+
+//===----------------------------------------------------------------------===//
 //  Optimization Methods
 //===----------------------------------------------------------------------===//
 
@@ -1161,7 +1514,8 @@ TargetLowering::TargetLoweringOpt::ShrinkDemandedOp(SDValue Op,
   // Search for the smallest integer type with free casts to and from
   // Op's type. For expedience, just check power-of-2 integer types.
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
-  unsigned SmallVTBits = BitWidth - Demanded.countLeadingZeros();
+  unsigned DemandedSize = BitWidth - Demanded.countLeadingZeros();
+  unsigned SmallVTBits = DemandedSize;
   if (!isPowerOf2_32(SmallVTBits))
     SmallVTBits = NextPowerOf2(SmallVTBits);
   for (; SmallVTBits < BitWidth; SmallVTBits = NextPowerOf2(SmallVTBits)) {
@@ -1174,7 +1528,9 @@ TargetLowering::TargetLoweringOpt::ShrinkDemandedOp(SDValue Op,
                                           Op.getNode()->getOperand(0)),
                               DAG.getNode(ISD::TRUNCATE, dl, SmallVT,
                                           Op.getNode()->getOperand(1)));
-      SDValue Z = DAG.getNode(ISD::ZERO_EXTEND, dl, Op.getValueType(), X);
+      bool NeedZext = DemandedSize > SmallVTBits;
+      SDValue Z = DAG.getNode(NeedZext ? ISD::ZERO_EXTEND : ISD::ANY_EXTEND,
+                              dl, Op.getValueType(), X);
       return CombineTo(Op, Z);
     }
   }
@@ -2110,7 +2466,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
         EVT newVT = N0.getOperand(0).getValueType();
         if (DCI.isBeforeLegalizeOps() ||
             (isOperationLegal(ISD::SETCC, newVT) &&
-              getCondCodeAction(Cond, newVT)==Legal))
+             getCondCodeAction(Cond, newVT.getSimpleVT())==Legal))
           return DAG.getSetCC(dl, VT, N0.getOperand(0),
                               DAG.getConstant(C1.trunc(InSize), newVT),
                               Cond);
@@ -2206,9 +2562,10 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
           Cond = (Cond == ISD::SETEQ) ? ISD::SETNE : ISD::SETEQ;
           return DAG.getSetCC(dl, VT, Op0.getOperand(0), Op0.getOperand(1),
                               Cond);
-        } else if (Op0.getOpcode() == ISD::AND &&
-                isa<ConstantSDNode>(Op0.getOperand(1)) &&
-                cast<ConstantSDNode>(Op0.getOperand(1))->getAPIntValue() == 1) {
+        }
+        if (Op0.getOpcode() == ISD::AND &&
+            isa<ConstantSDNode>(Op0.getOperand(1)) &&
+            cast<ConstantSDNode>(Op0.getOperand(1))->getAPIntValue() == 1) {
           // If this is (X&1) == / != 1, normalize it to (X&1) != / == 0.
           if (Op0.getValueType().bitsGT(VT))
             Op0 = DAG.getNode(ISD::AND, dl, VT,
@@ -2223,6 +2580,11 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
                               DAG.getConstant(0, Op0.getValueType()),
                               Cond == ISD::SETEQ ? ISD::SETNE : ISD::SETEQ);
         }
+        if (Op0.getOpcode() == ISD::AssertZext &&
+            cast<VTSDNode>(Op0.getOperand(1))->getVT() == MVT::i1)
+          return DAG.getSetCC(dl, VT, Op0,
+                              DAG.getConstant(0, Op0.getValueType()),
+                              Cond == ISD::SETEQ ? ISD::SETNE : ISD::SETEQ);
       }
     }
 
@@ -2275,7 +2637,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
                           DAG.getConstant(MinVal, N0.getValueType()),
                           ISD::SETEQ);
     // If we have setugt X, Max-1, turn it into seteq X, Max
-    else if ((Cond == ISD::SETGT || Cond == ISD::SETUGT) && C1 == MaxVal-1)
+    if ((Cond == ISD::SETGT || Cond == ISD::SETUGT) && C1 == MaxVal-1)
       return DAG.getSetCC(dl, VT, N0,
                           DAG.getConstant(MaxVal, N0.getValueType()),
                           ISD::SETEQ);
@@ -2405,36 +2767,36 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
 
     // If the condition is not legal, see if we can find an equivalent one
     // which is legal.
-    if (!isCondCodeLegal(Cond, N0.getValueType())) {
+    if (!isCondCodeLegal(Cond, N0.getSimpleValueType())) {
       // If the comparison was an awkward floating-point == or != and one of
       // the comparison operands is infinity or negative infinity, convert the
       // condition to a less-awkward <= or >=.
       if (CFP->getValueAPF().isInfinity()) {
         if (CFP->getValueAPF().isNegative()) {
           if (Cond == ISD::SETOEQ &&
-              isCondCodeLegal(ISD::SETOLE, N0.getValueType()))
+              isCondCodeLegal(ISD::SETOLE, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETOLE);
           if (Cond == ISD::SETUEQ &&
-              isCondCodeLegal(ISD::SETOLE, N0.getValueType()))
+              isCondCodeLegal(ISD::SETOLE, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETULE);
           if (Cond == ISD::SETUNE &&
-              isCondCodeLegal(ISD::SETUGT, N0.getValueType()))
+              isCondCodeLegal(ISD::SETUGT, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETUGT);
           if (Cond == ISD::SETONE &&
-              isCondCodeLegal(ISD::SETUGT, N0.getValueType()))
+              isCondCodeLegal(ISD::SETUGT, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETOGT);
         } else {
           if (Cond == ISD::SETOEQ &&
-              isCondCodeLegal(ISD::SETOGE, N0.getValueType()))
+              isCondCodeLegal(ISD::SETOGE, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETOGE);
           if (Cond == ISD::SETUEQ &&
-              isCondCodeLegal(ISD::SETOGE, N0.getValueType()))
+              isCondCodeLegal(ISD::SETOGE, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETUGE);
           if (Cond == ISD::SETUNE &&
-              isCondCodeLegal(ISD::SETULT, N0.getValueType()))
+              isCondCodeLegal(ISD::SETULT, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETULT);
           if (Cond == ISD::SETONE &&
-              isCondCodeLegal(ISD::SETULT, N0.getValueType()))
+              isCondCodeLegal(ISD::SETULT, N0.getSimpleValueType()))
             return DAG.getSetCC(dl, VT, N0, N1, ISD::SETOLT);
         }
       }
@@ -2468,7 +2830,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
     // if it is not already.
     ISD::CondCode NewCond = UOF == 0 ? ISD::SETO : ISD::SETUO;
     if (NewCond != Cond && (DCI.isBeforeLegalizeOps() ||
-          getCondCodeAction(NewCond, N0.getValueType()) == Legal))
+          getCondCodeAction(NewCond, N0.getSimpleValueType()) == Legal))
       return DAG.getSetCC(dl, VT, N0, N1, NewCond);
   }
 
@@ -2549,7 +2911,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
           if (DAG.isCommutativeBinOp(N0.getOpcode()))
             return DAG.getSetCC(dl, VT, N0.getOperand(0),
                                 DAG.getConstant(0, N0.getValueType()), Cond);
-          else if (N0.getNode()->hasOneUse()) {
+          if (N0.getNode()->hasOneUse()) {
             assert(N0.getOpcode() == ISD::SUB && "Unexpected operation!");
             // (Z-X) == X  --> Z == X<<1
             SDValue SH = DAG.getNode(ISD::SHL, dl, N1.getValueType(), N1,
@@ -2565,14 +2927,14 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
     if (N1.getOpcode() == ISD::ADD || N1.getOpcode() == ISD::SUB ||
         N1.getOpcode() == ISD::XOR) {
       // Simplify  X == (X+Z) -->  Z == 0
-      if (N1.getOperand(0) == N0) {
+      if (N1.getOperand(0) == N0)
         return DAG.getSetCC(dl, VT, N1.getOperand(1),
                         DAG.getConstant(0, N1.getValueType()), Cond);
-      } else if (N1.getOperand(1) == N0) {
-        if (DAG.isCommutativeBinOp(N1.getOpcode())) {
+      if (N1.getOperand(1) == N0) {
+        if (DAG.isCommutativeBinOp(N1.getOpcode()))
           return DAG.getSetCC(dl, VT, N1.getOperand(0),
                           DAG.getConstant(0, N1.getValueType()), Cond);
-        } else if (N1.getNode()->hasOneUse()) {
+        if (N1.getNode()->hasOneUse()) {
           assert(N1.getOpcode() == ISD::SUB && "Unexpected operation!");
           // X == (Z-X)  --> X<<1 == Z
           SDValue SH = DAG.getNode(ISD::SHL, dl, N1.getValueType(), N0,
@@ -2829,6 +3191,9 @@ getRegForInlineAsmConstraint(const std::string &Constraint,
   // Remove the braces from around the name.
   StringRef RegName(Constraint.data()+1, Constraint.size()-2);
 
+  std::pair<unsigned, const TargetRegisterClass*> R =
+    std::make_pair(0u, static_cast<const TargetRegisterClass*>(0));
+
   // Figure out which register class contains this reg.
   const TargetRegisterInfo *RI = TM.getRegisterInfo();
   for (TargetRegisterInfo::regclass_iterator RCI = RI->regclass_begin(),
@@ -2842,12 +3207,22 @@ getRegForInlineAsmConstraint(const std::string &Constraint,
 
     for (TargetRegisterClass::iterator I = RC->begin(), E = RC->end();
          I != E; ++I) {
-      if (RegName.equals_lower(RI->getName(*I)))
-        return std::make_pair(*I, RC);
+      if (RegName.equals_lower(RI->getName(*I))) {
+        std::pair<unsigned, const TargetRegisterClass*> S =
+          std::make_pair(*I, RC);
+
+        // If this register class has the requested value type, return it,
+        // otherwise keep searching and return the first class found
+        // if no other is found which explicitly has the requested type.
+        if (RC->hasType(VT))
+          return S;
+        else if (!R.second)
+          R = S;
+      }
     }
   }
 
-  return std::make_pair(0u, static_cast<const TargetRegisterClass*>(0));
+  return R;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2912,10 +3287,10 @@ TargetLowering::AsmOperandInfoVector TargetLowering::ParseConstraints(
       assert(!CS.getType()->isVoidTy() &&
              "Bad inline asm!");
       if (StructType *STy = dyn_cast<StructType>(CS.getType())) {
-        OpInfo.ConstraintVT = getValueType(STy->getElementType(ResNo));
+        OpInfo.ConstraintVT = getSimpleValueType(STy->getElementType(ResNo));
       } else {
         assert(ResNo == 0 && "Asm only has one result!");
-        OpInfo.ConstraintVT = getValueType(CS.getType());
+        OpInfo.ConstraintVT = getSimpleValueType(CS.getType());
       }
       ++ResNo;
       break;
@@ -2954,14 +3329,14 @@ TargetLowering::AsmOperandInfoVector TargetLowering::ParseConstraints(
         case 64:
         case 128:
           OpInfo.ConstraintVT =
-              EVT::getEVT(IntegerType::get(OpTy->getContext(), BitSize), true);
+            MVT::getVT(IntegerType::get(OpTy->getContext(), BitSize), true);
           break;
         }
       } else if (PointerType *PT = dyn_cast<PointerType>(OpTy)) {
         OpInfo.ConstraintVT = MVT::getIntegerVT(
             8*TD->getPointerSize(PT->getAddressSpace()));
       } else {
-        OpInfo.ConstraintVT = EVT::getEVT(OpTy, true);
+        OpInfo.ConstraintVT = MVT::getVT(OpTy, true);
       }
     }
   }
@@ -3324,7 +3699,7 @@ SDValue TargetLowering::BuildExactSDIV(SDValue Op1, SDValue Op2, DebugLoc dl,
 /// <http://the.wall.riscom.net/books/proc/ppc/cwg/code2.html>
 SDValue TargetLowering::
 BuildSDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
-          std::vector<SDNode*>* Created) const {
+          std::vector<SDNode*> *Created) const {
   EVT VT = N->getValueType(0);
   DebugLoc dl= N->getDebugLoc();
 
@@ -3384,7 +3759,7 @@ BuildSDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
 /// <http://the.wall.riscom.net/books/proc/ppc/cwg/code2.html>
 SDValue TargetLowering::
 BuildUDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
-          std::vector<SDNode*>* Created) const {
+          std::vector<SDNode*> *Created) const {
   EVT VT = N->getValueType(0);
   DebugLoc dl = N->getDebugLoc();
 

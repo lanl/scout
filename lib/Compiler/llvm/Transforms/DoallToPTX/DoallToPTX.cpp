@@ -11,7 +11,7 @@
 
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 
-#include "llvm/DataLayout.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/InstVisitor.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 

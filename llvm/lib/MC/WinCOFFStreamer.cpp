@@ -51,6 +51,7 @@ public:
 
   virtual void InitSections();
   virtual void EmitLabel(MCSymbol *Symbol);
+  virtual void EmitDebugLabel(MCSymbol *Symbol);
   virtual void EmitAssemblerFlag(MCAssemblerFlag Flag);
   virtual void EmitThumbFunc(MCSymbol *Func);
   virtual void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value);
@@ -71,16 +72,25 @@ public:
   virtual void EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                               uint64_t Size, unsigned ByteAlignment);
   virtual void EmitFileDirective(StringRef Filename);
-  virtual void EmitInstruction(const MCInst &Instruction);
   virtual void EmitWin64EHHandlerData();
   virtual void FinishImpl();
 
 private:
-  virtual void EmitInstToFragment(const MCInst &Inst) {
-    llvm_unreachable("Not used by WinCOFF.");
-  }
   virtual void EmitInstToData(const MCInst &Inst) {
-    llvm_unreachable("Not used by WinCOFF.");
+    MCDataFragment *DF = getOrCreateDataFragment();
+
+    SmallVector<MCFixup, 4> Fixups;
+    SmallString<256> Code;
+    raw_svector_ostream VecOS(Code);
+    getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+    VecOS.flush();
+
+    // Add the fixups and data.
+    for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
+      Fixups[i].setOffset(Fixups[i].getOffset() + DF->getContents().size());
+      DF->getFixups().push_back(Fixups[i]);
+    }
+    DF->getContents().append(Code.begin(), Code.end());
   }
 
   void SetSection(StringRef Section,
@@ -115,7 +125,6 @@ private:
                SectionKind::getBSS());
     EmitCodeAlignment(4, 0);
   }
-
 };
 } // end anonymous namespace.
 
@@ -176,6 +185,9 @@ void WinCOFFStreamer::EmitLabel(MCSymbol *Symbol) {
   MCObjectStreamer::EmitLabel(Symbol);
 }
 
+void WinCOFFStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  EmitLabel(Symbol);
+}
 void WinCOFFStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
   llvm_unreachable("not implemented");
 }
@@ -193,11 +205,7 @@ void WinCOFFStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
   // don't really even do.
 
   if (Value->getKind() != MCExpr::SymbolRef) {
-    // TODO: This is exactly the same as MachOStreamer. Consider merging into
-    // MCObjectStreamer.
-    getAssembler().getOrCreateSymbolData(*Symbol);
-    AddValueSymbols(Value);
-    Symbol->setVariableValue(Value);
+    MCObjectStreamer::EmitAssignment(Symbol, Value);
   } else {
     // FIXME: This is a horrible way to do this :(. This should really be
     // handled after we are done with the MC* objects and immediately before
@@ -292,9 +300,10 @@ void WinCOFFStreamer::EmitCOFFSecRel32(MCSymbol const *Symbol)
 {
   MCDataFragment *DF = getOrCreateDataFragment();
 
-  DF->addFixup(MCFixup::Create(DF->getContents().size(),
-                               MCSymbolRefExpr::Create (Symbol, getContext ()),
-                               FK_SecRel_4));
+  DF->getFixups().push_back(
+      MCFixup::Create(DF->getContents().size(),
+                      MCSymbolRefExpr::Create (Symbol, getContext ()),
+                      FK_SecRel_4));
   DF->getContents().resize(DF->getContents().size() + 4, 0);
 }
 
@@ -331,22 +340,6 @@ void WinCOFFStreamer::EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
 void WinCOFFStreamer::EmitFileDirective(StringRef Filename) {
   // Ignore for now, linkers don't care, and proper debug
   // info will be a much large effort.
-}
-
-void WinCOFFStreamer::EmitInstruction(const MCInst &Instruction) {
-  for (unsigned i = 0, e = Instruction.getNumOperands(); i != e; ++i)
-    if (Instruction.getOperand(i).isExpr())
-      AddValueSymbols(Instruction.getOperand(i).getExpr());
-
-  getCurrentSectionData()->setHasInstructions(true);
-
-  MCInstFragment *Fragment =
-    new MCInstFragment(Instruction, getCurrentSectionData());
-
-  raw_svector_ostream VecOS(Fragment->getCode());
-
-  getAssembler().getEmitter().EncodeInstruction(Instruction, VecOS,
-                                                Fragment->getFixups());
 }
 
 void WinCOFFStreamer::EmitWin64EHHandlerData() {

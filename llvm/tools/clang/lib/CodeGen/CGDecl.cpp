@@ -22,11 +22,10 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CodeGenOptions.h"
-#include "llvm/DataLayout.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Type.h"
-#include "llvm/Instructions.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Type.h"
 using namespace clang;
 using namespace CodeGen;
 
@@ -115,7 +114,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
 /// inside a function, including static vars etc.
 void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
   DEBUG_OUT("EmitVarDecl");
-  switch (D.getStorageClass()) {
+  switch (D.getStorageClassAsWritten()) {
   case SC_None:
   case SC_Auto:
   case SC_Register:
@@ -931,7 +930,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           
           // store the mesh dimensions
           for(size_t i = 0; i < 3; ++i){
-            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
+            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);
             
             if(i >= dims.size()){
               // store a 0 in that dim if above size
@@ -976,12 +975,13 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           MeshDecl::field_iterator itr_end = MD->field_end();
           
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-          for(unsigned i = 3, e = structTy->getNumContainedTypes(); i < e; ++i) {
+          for(unsigned i = 4, e = structTy->getNumContainedTypes(); i < e; ++i) {
             // Compute size of needed field memory in bytes 
             llvm::Type *fieldTy = structTy->getContainedType(i);
             
             // If this is a externally allocated field, go on
             FieldDecl* FD = *itr;
+            
             if (itr != itr_end) ++itr;
             if (FD->isExternAlloc()) continue;
             
@@ -1583,10 +1583,6 @@ namespace {
 ///
 /// \param elementType - the immediate element type of the array;
 ///   possibly still an array type
-/// \param array - a value of type elementType*
-/// \param destructionKind - the kind of destruction required
-/// \param initializedElementCount - a value of type size_t* holding
-///   the number of successfully-constructed elements
 void CodeGenFunction::pushIrregularPartialArrayCleanup(llvm::Value *arrayBegin,
                                                  llvm::Value *arrayEndPointer,
                                                        QualType elementType,
@@ -1602,10 +1598,6 @@ void CodeGenFunction::pushIrregularPartialArrayCleanup(llvm::Value *arrayBegin,
 ///
 /// \param elementType - the immediate element type of the array;
 ///   possibly still an array type
-/// \param array - a value of type elementType*
-/// \param destructionKind - the kind of destruction required
-/// \param initializedElementCount - a value of type size_t* holding
-///   the number of successfully-constructed elements
 void CodeGenFunction::pushRegularPartialArrayCleanup(llvm::Value *arrayBegin,
                                                      llvm::Value *arrayEnd,
                                                      QualType elementType,

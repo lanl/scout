@@ -21,10 +21,9 @@
 #include "clang/Basic/TargetInfo.h"
 
 #include "llvm/ADT/StringExtras.h"
-
-#include "llvm/DataLayout.h"
-#include "llvm/InlineAsm.h"
-#include "llvm/Intrinsics.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Intrinsics.h"
 
 // scout - includes
 #include "llvm/Transforms/Utils/CodeExtractor.h"
@@ -642,10 +641,16 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
   const VarDecl* MVD = S.getMeshVarDecl();
-  MeshBaseAddr = LocalDeclMap[MVD];
 
-  if(MVD->getType().getTypePtr()->isReferenceType()){
-    MeshBaseAddr = Builder.CreateLoad(MeshBaseAddr);
+  if(MVD->hasGlobalStorage()){
+    MeshBaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MVD));
+  }
+  else{
+    MeshBaseAddr = LocalDeclMap[MVD];
+    
+    if(MVD->getType().getTypePtr()->isReferenceType()){
+      MeshBaseAddr = Builder.CreateLoad(MeshBaseAddr);
+    }    
   }
   
   ScoutMeshSizes.clear();
@@ -663,14 +668,15 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       break;
     }
 
-    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i, name);
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, name);
     ScoutMeshSizes.push_back(lval);
   }
   
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  
+  size_t k = 0;
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-
     llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
     meshFieldMap[name.str()] = true;
     
@@ -678,12 +684,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     if(!(name.equals("position") || name.equals("width") ||
          name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
-      llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+3, name);
+      llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+4, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
       MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
       MeshMembers[name].first->setName(var->getName());
+      ++k;
     }
   }
 
@@ -1343,7 +1350,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   }
 
   
-  int fieldcount = 0;
+  size_t fieldcount = 0;
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
@@ -1354,9 +1361,10 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     
     if(!(name.equals("position") || name.equals("width") ||
-         name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
+         name.equals("height") || name.equals("depth") || name.equals("ptr"))){
       
-      llvm::Value *addr = Builder.CreateStructGEP(baseAddr, i+3, name);
+      llvm::Value *addr =
+      Builder.CreateStructGEP(baseAddr, i+4, name);
       addr = Builder.CreateLoad(addr);
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
@@ -1367,15 +1375,16 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
       llvm::Value* meshField = MeshMembers[name].first;
       
       // the Value* for the volume number
-      llvm::ConstantInt* volumeNum = llvm::ConstantInt::get(Int32Ty, fieldcount);
+      llvm::ConstantInt* volumeNum =
+      llvm::ConstantInt::get(Int32Ty, fieldcount);
       
       // emit the call
             
-      llvm::CallInst* CI = Builder.CreateCall2(addVolFunc, meshField, volumeNum);
+      llvm::CallInst* CI =
+      Builder.CreateCall2(addVolFunc, meshField, volumeNum);
       
-      fieldcount++;
-
-    } 
+      ++fieldcount;
+    }
   }
   
   std::vector<llvm::Value*> Args;
@@ -2512,9 +2521,9 @@ void CodeGenFunction::EmitAsmStmt(const AsmStmt &S) {
     llvm::InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect,
                          /* IsAlignStack */ false, AsmDialect);
   llvm::CallInst *Result = Builder.CreateCall(IA, Args);
-  Result->addAttribute(llvm::AttrListPtr::FunctionIndex,
-                       llvm::Attributes::get(getLLVMContext(),
-                                             llvm::Attributes::NoUnwind));
+  Result->addAttribute(llvm::AttributeSet::FunctionIndex,
+                       llvm::Attribute::get(getLLVMContext(),
+                                             llvm::Attribute::NoUnwind));
 
   // Slap the source location of the inline asm into a !srcloc metadata on the
   // call.  FIXME: Handle metadata for MS-style inline asms.

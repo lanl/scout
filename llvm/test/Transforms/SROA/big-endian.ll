@@ -24,8 +24,8 @@ entry:
   store i8 0, i8* %a2ptr
   %aiptr = bitcast [3 x i8]* %a to i24*
   %ai = load i24* %aiptr
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 ; CHECK:      %[[ext2:.*]] = zext i8 0 to i24
 ; CHECK-NEXT: %[[mask2:.*]] = and i24 undef, -256
 ; CHECK-NEXT: %[[insert2:.*]] = or i24 %[[mask2]], %[[ext2]]
@@ -46,8 +46,8 @@ entry:
   %b1 = load i8* %b1ptr
   %b2ptr = getelementptr [3 x i8]* %b, i64 0, i32 2
   %b2 = load i8* %b2ptr
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 ; CHECK:      %[[shift0:.*]] = lshr i24 %[[insert0]], 16
 ; CHECK-NEXT: %[[trunc0:.*]] = trunc i24 %[[shift0]] to i8
 ; CHECK-NEXT: %[[shift1:.*]] = lshr i24 %[[insert0]], 8
@@ -77,19 +77,14 @@ entry:
   %a2ptr = getelementptr [7 x i8]* %a, i64 0, i32 2
   %a3ptr = getelementptr [7 x i8]* %a, i64 0, i32 3
 
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 
   %a0i16ptr = bitcast i8* %a0ptr to i16*
   store i16 1, i16* %a0i16ptr
-; CHECK:      %[[mask0:.*]] = and i16 1, -16
-
-  %a1i4ptr = bitcast i8* %a1ptr to i4*
-  store i4 1, i4* %a1i4ptr
-; CHECK-NEXT: %[[insert0:.*]] = or i16 %[[mask0]], 1
 
   store i8 1, i8* %a2ptr
-; CHECK-NEXT: %[[mask1:.*]] = and i40 undef, 4294967295
+; CHECK:      %[[mask1:.*]] = and i40 undef, 4294967295
 ; CHECK-NEXT: %[[insert1:.*]] = or i40 %[[mask1]], 4294967296
 
   %a3i24ptr = bitcast i8* %a3ptr to i24*
@@ -103,14 +98,14 @@ entry:
 ; CHECK-NEXT: %[[mask3:.*]] = and i56 undef, -1099511627776
 ; CHECK-NEXT: %[[insert3:.*]] = or i56 %[[mask3]], %[[ext3]]
 
-; CHCEK-NOT: store
-; CHCEK-NOT: load
+; CHECK-NOT: store
+; CHECK-NOT: load
 
   %aiptr = bitcast [7 x i8]* %a to i56*
   %ai = load i56* %aiptr
   %ret = zext i56 %ai to i64
   ret i64 %ret
-; CHECK-NEXT: %[[ext4:.*]] = zext i16 %[[insert0]] to i56
+; CHECK-NEXT: %[[ext4:.*]] = zext i16 1 to i56
 ; CHECK-NEXT: %[[shift4:.*]] = shl i56 %[[ext4]], 40
 ; CHECK-NEXT: %[[mask4:.*]] = and i56 %[[insert3]], 1099511627775
 ; CHECK-NEXT: %[[insert4:.*]] = or i56 %[[mask4]], %[[shift4]]

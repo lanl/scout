@@ -210,24 +210,16 @@ public:
   std::string OverrideRecordLayoutsFile;
   
 public:
-  FrontendOptions() {
-    DisableFree = 0;
-    ProgramAction = frontend::ParseSyntaxOnly;
-    ActionName = "";
-    RelocatablePCH = 0;
-    ShowHelp = 0;
-    ShowStats = 0;
-    
-    // scout - View AST flag
-    ViewAST = 0;
-    
-    ShowTimers = 0;
-    ShowVersion = 0;
-    ARCMTAction = ARCMT_None;
-    ARCMTMigrateEmitARCErrors = 0;
-    SkipFunctionBodies = 0;
-    ObjCMTAction = ObjCMT_None;
-  }
+  FrontendOptions() :
+    DisableFree(false), RelocatablePCH(false), ShowHelp(false),
+    ShowStats(false), ShowTimers(false), ShowVersion(false),
+    FixWhatYouCan(false), FixOnlyWarnings(false), FixAndRecompile(false),
+    FixToTemporaries(false), ARCMTMigrateEmitARCErrors(false),
+    SkipFunctionBodies(false), ARCMTAction(ARCMT_None),
+    ObjCMTAction(ObjCMT_None), ProgramAction(frontend::ParseSyntaxOnly)
+    // scout
+    ,ViewAST(false)
+  {}
 
   /// getInputKindForExtension - Return the appropriate input kind for a file
   /// extension. For example, "c" would return IK_C.

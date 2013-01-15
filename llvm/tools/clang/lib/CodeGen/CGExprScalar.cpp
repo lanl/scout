@@ -22,12 +22,12 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CodeGenOptions.h"
-#include "llvm/Constants.h"
-#include "llvm/DataLayout.h"
-#include "llvm/Function.h"
-#include "llvm/GlobalVariable.h"
-#include "llvm/Intrinsics.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CFG.h"
 #include <cstdarg>
 
@@ -266,7 +266,7 @@ public:
   Value *VisitInitListExpr(InitListExpr *E);
 
   Value *VisitImplicitValueInitExpr(const ImplicitValueInitExpr *E) {
-    return CGF.CGM.EmitNullConstant(E->getType());
+    return EmitNullValue(E->getType());
   }
   Value *VisitExplicitCastExpr(ExplicitCastExpr *E) {
     if (E->getType()->isVariablyModifiedType())
@@ -433,6 +433,8 @@ public:
   // Check for undefined division and modulus behaviors.
   void EmitUndefinedBehaviorIntegerDivAndRemCheck(const BinOpInfo &Ops,
                                                   llvm::Value *Zero,bool isDiv);
+  // Common helper for getting how wide LHS of shift is.
+  static Value *GetWidthMinusOneValue(Value* LHS,Value* RHS);
   Value *EmitDiv(const BinOpInfo &Ops);
   Value *EmitRem(const BinOpInfo &Ops);
   Value *EmitAdd(const BinOpInfo &Ops);
@@ -716,17 +718,9 @@ Value *ScalarExprEmitter::EmitScalarConversion(Value *Src, QualType SrcType,
     QualType EltTy = DstType->getAs<ExtVectorType>()->getElementType();
     llvm::Value *Elt = EmitScalarConversion(Src, SrcType, EltTy);
 
-    // Insert the element in element zero of an undef vector
-    llvm::Value *UnV = llvm::UndefValue::get(DstTy);
-    llvm::Value *Idx = Builder.getInt32(0);
-    UnV = Builder.CreateInsertElement(UnV, Elt, Idx);
-
     // Splat the element across to all elements
     unsigned NumElements = cast<llvm::VectorType>(DstTy)->getNumElements();
-    llvm::Constant *Mask = llvm::ConstantVector::getSplat(NumElements,
-                                                          Builder.getInt32(0));
-    llvm::Value *Yay = Builder.CreateShuffleVector(UnV, UnV, Mask, "splat");
-    return Yay;
+    return Builder.CreateVectorSplat(NumElements, Elt, "splat");
   }
 
   // Allow bitcast from vector to integer/fp of the same size.
@@ -804,10 +798,7 @@ EmitComplexToScalarConversion(CodeGenFunction::ComplexPairTy Src,
 }
 
 Value *ScalarExprEmitter::EmitNullValue(QualType Ty) {
-  if (const MemberPointerType *MPT = Ty->getAs<MemberPointerType>())
-    return CGF.CGM.getCXXABI().EmitNullMemberPointer(MPT);
-
-  return llvm::Constant::getNullValue(ConvertType(Ty));
+  return CGF.EmitFromMemory(CGF.CGM.EmitNullConstant(Ty), Ty);
 }
 
 /// \brief Emit a sanitization check for the given "binary" operation (which
@@ -840,7 +831,7 @@ void ScalarExprEmitter::EmitBinOpCheck(Value *Check, const BinOpInfo &Info) {
     } else if (Opcode == BO_Div || Opcode == BO_Rem) {
       // Divide or modulo by zero, or signed overflow (eg INT_MAX / -1).
       CheckName = "divrem_overflow";
-      StaticData.push_back(CGF.EmitCheckTypeDescriptor(Info.E->getType()));
+      StaticData.push_back(CGF.EmitCheckTypeDescriptor(Info.Ty));
     } else {
       // Signed arithmetic overflow (+, -, *).
       switch (Opcode) {
@@ -849,7 +840,7 @@ void ScalarExprEmitter::EmitBinOpCheck(Value *Check, const BinOpInfo &Info) {
       case BO_Mul: CheckName = "mul_overflow"; break;
       default: llvm_unreachable("unexpected opcode for bin op check");
       }
-      StaticData.push_back(CGF.EmitCheckTypeDescriptor(Info.E->getType()));
+      StaticData.push_back(CGF.EmitCheckTypeDescriptor(Info.Ty));
     }
     DynamicData.push_back(Info.LHS);
     DynamicData.push_back(Info.RHS);
@@ -1361,17 +1352,9 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     Elt = EmitScalarConversion(Elt, E->getType(),
                                DestTy->getAs<VectorType>()->getElementType());
 
-    // Insert the element in element zero of an undef vector
-    llvm::Value *UnV = llvm::UndefValue::get(DstTy);
-    llvm::Value *Idx = Builder.getInt32(0);
-    UnV = Builder.CreateInsertElement(UnV, Elt, Idx);
-
     // Splat the element across to all elements
     unsigned NumElements = cast<llvm::VectorType>(DstTy)->getNumElements();
-    llvm::Constant *Zero = Builder.getInt32(0);
-    llvm::Constant *Mask = llvm::ConstantVector::getSplat(NumElements, Zero);
-    llvm::Value *Yay = Builder.CreateShuffleVector(UnV, UnV, Mask, "splat");
-    return Yay;
+    return Builder.CreateVectorSplat(NumElements, Elt, "splat");;
   }
 
   case CK_IntegralCast:
@@ -2386,6 +2369,15 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
   return Builder.CreateExactSDiv(diffInChars, divisor, "sub.ptr.div");
 }
 
+Value *ScalarExprEmitter::GetWidthMinusOneValue(Value* LHS,Value* RHS) {
+  llvm::IntegerType *Ty;
+  if (llvm::VectorType *VT = dyn_cast<llvm::VectorType>(LHS->getType()))
+    Ty = cast<llvm::IntegerType>(VT->getElementType());
+  else
+    Ty = cast<llvm::IntegerType>(LHS->getType());
+  return llvm::ConstantInt::get(RHS->getType(), Ty->getBitWidth() - 1);
+}
+
 Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
   // LLVM requires the LHS and RHS to be the same type: promote or truncate the
   // RHS to the same size as the LHS.
@@ -2393,11 +2385,9 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
   if (Ops.LHS->getType() != RHS->getType())
     RHS = Builder.CreateIntCast(RHS, Ops.LHS->getType(), false, "sh_prom");
 
-  if (CGF.getLangOpts().SanitizeShift &&
-      isa<llvm::IntegerType>(Ops.LHS->getType())) {
-    unsigned Width = cast<llvm::IntegerType>(Ops.LHS->getType())->getBitWidth();
-    llvm::Value *WidthMinusOne =
-      llvm::ConstantInt::get(RHS->getType(), Width - 1);
+  if (CGF.getLangOpts().SanitizeShift && !CGF.getLangOpts().OpenCL
+      && isa<llvm::IntegerType>(Ops.LHS->getType())) {
+    llvm::Value *WidthMinusOne = GetWidthMinusOneValue(Ops.LHS, RHS);
     // FIXME: Emit the branching explicitly rather than emitting the check
     // twice.
     EmitBinOpCheck(Builder.CreateICmpULE(RHS, WidthMinusOne), Ops);
@@ -2422,6 +2412,9 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
       EmitBinOpCheck(Builder.CreateICmpEQ(BitsShiftedOff, Zero), Ops);
     }
   }
+  // OpenCL 6.3j: shift values are effectively % word size of LHS.
+  if (CGF.getLangOpts().OpenCL)
+    RHS = Builder.CreateAnd(RHS, GetWidthMinusOneValue(Ops.LHS, RHS), "shl.mask");
 
   return Builder.CreateShl(Ops.LHS, RHS, "shl");
 }
@@ -2433,12 +2426,13 @@ Value *ScalarExprEmitter::EmitShr(const BinOpInfo &Ops) {
   if (Ops.LHS->getType() != RHS->getType())
     RHS = Builder.CreateIntCast(RHS, Ops.LHS->getType(), false, "sh_prom");
 
-  if (CGF.getLangOpts().SanitizeShift &&
-      isa<llvm::IntegerType>(Ops.LHS->getType())) {
-    unsigned Width = cast<llvm::IntegerType>(Ops.LHS->getType())->getBitWidth();
-    llvm::Value *WidthVal = llvm::ConstantInt::get(RHS->getType(), Width);
-    EmitBinOpCheck(Builder.CreateICmpULT(RHS, WidthVal), Ops);
-  }
+  if (CGF.getLangOpts().SanitizeShift && !CGF.getLangOpts().OpenCL
+      && isa<llvm::IntegerType>(Ops.LHS->getType()))
+    EmitBinOpCheck(Builder.CreateICmpULE(RHS, GetWidthMinusOneValue(Ops.LHS, RHS)), Ops);
+
+  // OpenCL 6.3j: shift values are effectively % word size of LHS.
+  if (CGF.getLangOpts().OpenCL)
+    RHS = Builder.CreateAnd(RHS, GetWidthMinusOneValue(Ops.LHS, RHS), "shr.mask");
 
   if (Ops.Ty->hasUnsignedIntegerRepresentation())
     return Builder.CreateLShr(Ops.LHS, RHS, "shr");

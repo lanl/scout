@@ -338,6 +338,9 @@ public:
     return getTypeWidth(IntMaxType);
   }
 
+  // Return the size of unwind_word for this target.
+  unsigned getUnwindWordWidth() const { return getPointerWidth(0); }
+
   /// \brief Return the "preferred" register width on this target.
   uint64_t getRegisterWidth() const {
     // Currently we assume the register width on the target matches the pointer
@@ -742,13 +745,19 @@ public:
 
   bool isBigEndian() const { return BigEndian; }
 
+  enum CallingConvMethodType {
+    CCMT_Unknown,
+    CCMT_Member,
+    CCMT_NonMember
+  };
+
   /// \brief Gets the default calling convention for the given target and
   /// declaration context.
-  virtual CallingConv getDefaultCallingConv() const {
+  virtual CallingConv getDefaultCallingConv(CallingConvMethodType MT) const {
     // Not all targets will specify an explicit calling convention that we can
     // express.  This will always do the right thing, even though it's not
     // an explicit calling convention.
-    return CC_Default;
+    return CC_C;
   }
 
   enum CallingConvCheckResult {
