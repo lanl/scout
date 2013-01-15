@@ -161,6 +161,7 @@ xcode:;
 llvm-3.1: 
 	@((test -d llvm-3.1-build) || (mkdir llvm-3.1-build))
 	(cd llvm-3.1-build; ../llvm-3.1/configure --enable-targets=host; make -j $(SC_BUILD_NTHREADS))
+	cp llvm-3.1-build/Release+Asserts/bin/llvm-as build/scout/bin/llvm-as-3.1
 
 .PHONY: clean
 clean:

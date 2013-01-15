@@ -201,16 +201,17 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
                        TypeMapper);
 }
 
-DoallToAMDIL::DoallToAMDIL()
-  : ModulePass(ID){
+DoallToAMDIL::DoallToAMDIL(const std::string& sccPath)
+  : ModulePass(ID),
+    sccPath_(sccPath){
 }
 
 DoallToAMDIL::~DoallToAMDIL(){
 
 }
 
-ModulePass *createDoallToAMDILPass() {
-  return new DoallToAMDIL();
+ModulePass *createDoallToAMDILPass(const std::string& sccPath) {
+  return new DoallToAMDIL(sccPath);
 }
 
 void DoallToAMDIL::getAnalysisUsage(AnalysisUsage &au) const {

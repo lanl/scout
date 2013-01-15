@@ -216,7 +216,7 @@ void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
 #ifdef SC_ENABLE_OPENCL
   if(CodeGenOpts.ScoutAMDGPU) {
     PassManager MPM;
-    MPM.add(createDoallToAMDILPass());
+    MPM.add(createDoallToAMDILPass(CodeGenOpts.SccPath));
     MPM.run(*TheModule);
   }
 #endif
