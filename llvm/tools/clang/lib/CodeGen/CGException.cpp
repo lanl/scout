@@ -156,6 +156,7 @@ namespace {
     static const EHPersonality GNU_C;
     static const EHPersonality GNU_C_SJLJ;
     static const EHPersonality GNU_ObjC;
+    static const EHPersonality GNUstep_ObjC;
     static const EHPersonality GNU_ObjCXX;
     static const EHPersonality NeXT_ObjC;
     static const EHPersonality GNU_CPlusPlus;
@@ -173,6 +174,8 @@ const EHPersonality
 EHPersonality::GNU_ObjC = {"__gnu_objc_personality_v0", "objc_exception_throw"};
 const EHPersonality
 EHPersonality::GNU_ObjCXX = { "__gnustep_objcxx_personality_v0", 0 };
+const EHPersonality
+EHPersonality::GNUstep_ObjC = { "__gnustep_objc_personality_v0", 0 };
 
 static const EHPersonality &getCPersonality(const LangOptions &L) {
   if (L.SjLjExceptions)
@@ -188,6 +191,9 @@ static const EHPersonality &getObjCPersonality(const LangOptions &L) {
   case ObjCRuntime::iOS:
     return EHPersonality::NeXT_ObjC;
   case ObjCRuntime::GNUstep:
+    if (L.ObjCRuntime.getVersion() >= VersionTuple(1, 7))
+      return EHPersonality::GNUstep_ObjC;
+    // fallthrough
   case ObjCRuntime::GCC:
   case ObjCRuntime::ObjFW:
     return EHPersonality::GNU_ObjC;
@@ -865,7 +871,7 @@ llvm::BasicBlock *CodeGenFunction::EmitLandingPad() {
     // Create a filter expression: a constant array indicating which filter
     // types there are. The personality routine only lands here if the filter
     // doesn't match.
-    llvm::SmallVector<llvm::Constant*, 8> Filters;
+    SmallVector<llvm::Constant*, 8> Filters;
     llvm::ArrayType *AType =
       llvm::ArrayType::get(!filterTypes.empty() ?
                              filterTypes[0]->getType() : Int8PtrTy,

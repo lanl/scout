@@ -285,6 +285,8 @@ def warn_cxx98_compat_empty_fnmacro_arg : Warning<
 def note_macro_here : Note<"macro %0 defined here">;
 
 def err_pp_invalid_directive : Error<"invalid preprocessing directive">;
+def err_pp_directive_required : Error<
+  "%0 must be used within a preprocessing directive">;
 def err_pp_file_not_found : Error<"'%0' file not found">, DefaultFatal;
 def err_pp_file_not_found_not_fatal : Error<
   "'%0' file not found with <angled> include; use \"quotes\" instead">;
@@ -486,6 +488,8 @@ def err_mmap_umbrella_clash : Error<
   "umbrella for module '%0' already covers this directory">;
 def err_mmap_export_module_id : Error<
   "expected an exported module name or '*'">;
+def err_mmap_expected_library_name : Error<
+  "expected %select{library|framework}0 name as a string">;
 def err_mmap_missing_module_unqualified : Error<
   "no module named '%0' visible from '%1'">;
 def err_mmap_missing_module_qualified : Error<

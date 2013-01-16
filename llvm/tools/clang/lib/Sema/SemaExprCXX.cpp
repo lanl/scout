@@ -3365,8 +3365,8 @@ static bool evaluateTypeTrait(Sema &S, TypeTrait Kind, SourceLocation KWLoc,
     if (SawVoid)
       return false;
     
-    llvm::SmallVector<OpaqueValueExpr, 2> OpaqueArgExprs;
-    llvm::SmallVector<Expr *, 2> ArgExprs;
+    SmallVector<OpaqueValueExpr, 2> OpaqueArgExprs;
+    SmallVector<Expr *, 2> ArgExprs;
     ArgExprs.reserve(Args.size() - 1);
     for (unsigned I = 1, N = Args.size(); I != N; ++I) {
       QualType T = Args[I]->getType();
@@ -3433,7 +3433,7 @@ ExprResult Sema::BuildTypeTrait(TypeTrait Kind, SourceLocation KWLoc,
 ExprResult Sema::ActOnTypeTrait(TypeTrait Kind, SourceLocation KWLoc, 
                                 ArrayRef<ParsedType> Args, 
                                 SourceLocation RParenLoc) {
-  llvm::SmallVector<TypeSourceInfo *, 4> ConvertedArgs;
+  SmallVector<TypeSourceInfo *, 4> ConvertedArgs;
   ConvertedArgs.reserve(Args.size());
   
   for (unsigned I = 0, N = Args.size(); I != N; ++I) {
@@ -5467,7 +5467,8 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
   return Owned(E);
 }
 
-ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC) {
+ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
+                                     bool DiscardedValue) {
   ExprResult FullExpr = Owned(FE);
 
   if (!FullExpr.get())
@@ -5477,21 +5478,23 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC) {
     return ExprError();
 
   // Top-level message sends default to 'id' when we're in a debugger.
-  if (getLangOpts().DebuggerCastResultToId &&
+  if (DiscardedValue && getLangOpts().DebuggerCastResultToId &&
       FullExpr.get()->getType() == Context.UnknownAnyTy &&
       isa<ObjCMessageExpr>(FullExpr.get())) {
     FullExpr = forceUnknownAnyToType(FullExpr.take(), Context.getObjCIdType());
     if (FullExpr.isInvalid())
       return ExprError();
   }
-  
-  FullExpr = CheckPlaceholderExpr(FullExpr.take());
-  if (FullExpr.isInvalid())
-    return ExprError();
 
-  FullExpr = IgnoredValueConversions(FullExpr.take());
-  if (FullExpr.isInvalid())
-    return ExprError();
+  if (DiscardedValue) {
+    FullExpr = CheckPlaceholderExpr(FullExpr.take());
+    if (FullExpr.isInvalid())
+      return ExprError();
+
+    FullExpr = IgnoredValueConversions(FullExpr.take());
+    if (FullExpr.isInvalid())
+      return ExprError();
+  }
 
   CheckImplicitConversions(FullExpr.get(), CC);
   return MaybeCreateExprWithCleanups(FullExpr);

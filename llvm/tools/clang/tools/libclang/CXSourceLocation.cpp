@@ -18,6 +18,7 @@
 #include "CXString.h"
 #include "CXTranslationUnit.h"
 #include "CLog.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Format.h"
 
 using namespace clang;
@@ -125,7 +126,7 @@ CXSourceLocation clang_getLocation(CXTranslationUnit tu,
   if (!tu || !file)
     return clang_getNullLocation();
   
-  LogRef Log = Logger::make(__func__);
+  LogRef Log = Logger::make(LLVM_FUNCTION_NAME);
   ASTUnit *CXXUnit = static_cast<ASTUnit *>(tu->TUData);
   ASTUnit::ConcurrencyCheck Check(*CXXUnit);
   const FileEntry *File = static_cast<const FileEntry *>(file);
@@ -231,7 +232,7 @@ void clang_getExpansionLocation(CXSourceLocation location,
   }
   
   if (file)
-    *file = (void *)SM.getFileEntryForSLocEntry(sloc);
+    *file = const_cast<FileEntry *>(SM.getFileEntryForSLocEntry(sloc));
   if (line)
     *line = SM.getExpansionLineNumber(ExpansionLoc);
   if (column)
@@ -308,7 +309,7 @@ void clang_getSpellingLocation(CXSourceLocation location,
     return createNullLocation(file, line, column, offset);
   
   if (file)
-    *file = (void *)SM.getFileEntryForID(FID);
+    *file = const_cast<FileEntry *>(SM.getFileEntryForID(FID));
   if (line)
     *line = SM.getLineNumber(FID, FileOffset);
   if (column)

@@ -410,7 +410,7 @@ int main(int argc_, const char **argv_) {
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
-  ProcessWarningOptions(Diags, *DiagOpts);
+  ProcessWarningOptions(Diags, *DiagOpts, /*ReportDiags=*/false);
 
   Driver TheDriver(Path.str(), llvm::sys::getDefaultTargetTriple(),
                    "a.out", Diags);
