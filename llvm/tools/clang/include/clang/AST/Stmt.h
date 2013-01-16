@@ -2163,8 +2163,8 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { Stmt::getLocStart(); }
-  SourceLocation getLocEnd() const LLVM_READONLY { Stmt::getLocEnd(); }
+  SourceLocation getLocStart() const LLVM_READONLY { return ForAllLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
   
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForAllStmtClass ||
@@ -2343,8 +2343,8 @@ class VolumeRenderAllStmt : public Stmt {
   SourceLocation getLBracLoc() const { return LBracLoc; }
   SourceLocation getRBracLoc() const { return RBracLoc; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { return LBracLoc; }
-  SourceLocation getLocEnd() const LLVM_READONLY { return RBracLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return VolRenLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
   
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);
