@@ -42,13 +42,18 @@ namespace scout
   using namespace std;
 
   volume_renderall::volume_renderall(
-      int npx, int npy, int npz, int nx, int ny, int nz, 
+      int nx, int ny, int nz,  // number mesh cells in each dimension for local mesh
       size_t win_width, size_t win_height,
       glCamera* camera, trans_func_ab_t trans_func,
-      int id, int root, MPI_Comm gcomm, bool stop_mpi_after)
+      int root, MPI_Comm gcomm, bool stop_mpi_after)
     : renderall_base_rt(nx, ny, nz), _camera(camera),
-    _id(id), _root(root), _stop_mpi_after(stop_mpi_after)
+     _root(root), _gcomm(gcomm), _stop_mpi_after(stop_mpi_after)
   {
+
+    int myid;
+    MPI_Comm_rank(_gcomm, &myid);
+    _id = myid;
+
     if((_id == root) && (!__sc_glsdl)){
       __sc_init_sdl(win_width, win_height);
     }
@@ -88,11 +93,14 @@ namespace scout
      //_camera = new glCamera();
     }
 
-    genGrid(id, npx, npy, npz, &nx, &ny, &nz);
+    int procdims[3], periodic[3], mycoord[3];
+    MPI_Cart_get(_gcomm, 3, procdims, periodic, mycoord);
 
-    _renderable = new glVolumeRenderable(npx, npy, npz, nx, ny, nz, 
-        _x, _y, _z, win_width, win_height, _camera, trans_func, id, root, gcomm);
+    genGrid();
 
+    _renderable = new glVolumeRenderable(procdims[0], procdims[1], procdims[2],
+        nx, ny, nz, _x, _y, _z, win_width, win_height, 
+        _camera, trans_func, _id, _root, _gcomm);
 
     _renderable->initialize(_camera);
 
@@ -100,60 +108,50 @@ namespace scout
     if (_id == _root) __sc_glsdl->swapBuffers();
   }
 
-  void volume_renderall::genGrid(int id, int npx, int npy, int npz, 
-      int* pnx, int* pny, int* pnz)
+  void volume_renderall::genGrid()
   {
-    int domain_grid_size[3];
+    int procdims[3], periodic[3], mycoord[3]; // we only really use the prodims
+    MPI_Cart_get(_gcomm, 3, procdims, periodic, mycoord);
 
-    domain_grid_size[0] = *pnx;
-    domain_grid_size[1] = *pny;
-    domain_grid_size[2] = *pnz;
-
-    int nx = domain_grid_size[0] / npx;
-    int ny = domain_grid_size[1] / npy;
-    int nz = domain_grid_size[2] / npz;
-
-    int mypz = id /(npx * npy);
-    int mypx = (id - mypz * npx * npy) % npx;
-    int mypy = (id - mypz * npx * npy) / npx;
+    // determine my coordinate -- different from how MPI does it
+    // so we ignore the mycoord
+    int mypz = _id /(procdims[0] * procdims[1]);
+    int mypx = (_id - mypz * procdims[0] * procdims[1]) % procdims[0];
+    int mypy = (_id - mypz * procdims[0] * procdims[1]) / procdims[0];
 
     uint64_t start[3];
 
-    start[0] = mypx * nx;
-    start[1] = mypy * ny;
-    start[2] = mypz * nz;
+    start[0] = mypx * width();
+    start[1] = mypy * height();
+    start[2] = mypz * depth();
 
     // set grid with evenly spaced 1-unit ticks on all axes
 
-    _x = (double *)calloc(nx, sizeof(double));
-    _y = (double *)calloc(ny, sizeof(double));
-    _z = (double *)calloc(nz, sizeof(double));
+    _x = (double *)calloc(width(), sizeof(double));
+    _y = (double *)calloc(height(), sizeof(double));
+    _z = (double *)calloc(depth(), sizeof(double));
 
     int i;
 
-    for (i = 0; i < nx; i++) {
+    for (i = 0; i < width(); i++) {
       _x[i] = start[0] + i;
     }
 
-    for (i = 0; i < ny; i++) {
+    for (i = 0; i < height(); i++) {
       _y[i] = start[1] + i;
     }
 
-    for (i = 0; i < nz; i++) {
+    for (i = 0; i < depth(); i++) {
       _z[i] = start[2] + i;
     }
 
-    *pnx = nx;
-    *pny = ny;
-    *pnz = nz;
   }
 
   volume_renderall::~volume_renderall()
   {
-    if (_x) free((void*)_x);
-    if (_y) free((void*)_y);
-    if (_z) free((void*)_z);
-
+    if (_x) {free((void*)_x); _x = NULL;}
+    if (_y) {free((void*)_y); _y = NULL;}
+    if (_z) {free((void*)_z); _z = NULL;}
     delete _renderable;
   }
 
@@ -203,33 +201,41 @@ namespace scout
 
 
 void __sc_init_volume_renderall(
-    int nx, int ny, int nz, 
-    size_t win_width, size_t win_height, 
+    MPI_Comm gcomm,
+    int meshsizex, int meshsizey, int meshsizez,  // size of mesh in each dim
+    size_t win_width, size_t win_height,
     glCamera* camera, trans_func_ab_t trans_func)
 {
   if(!__sc_renderall){
+    int procdims[3], periodic[3], mycoord[3];
     bool stop_mpi_after = false;
-   int flag;
+    int flag;
     MPI_Initialized(&flag);
+    MPI_Comm agcomm = gcomm;
+
     // hardwire process dims to 1 1 1 for now
     if (!flag) {
       stop_mpi_after = true;
-      int argc = 3;
-      char argv[3][10]; 
-      strcpy(argv[0], "1");
+      int argc = 4;
+      char argv[4][100];
       strcpy(argv[1], "1");
       strcpy(argv[2], "1");
+      strcpy(argv[3], "1");
       MPI_Init(&argc, (char***)&argv);
-    }
+      procdims[0] = 1;
+      procdims[1] = 1;
+      procdims[2] = 1;
+      periodic[0] = 0;
+      periodic[1] = 0;
+      periodic[2] = 0;
+      MPI_Cart_create(MPI_COMM_WORLD, 3, procdims, periodic, 0, &agcomm);
+    } 
 
-    MPI_Comm gcomm = MPI_COMM_WORLD;
-    int id;
-    MPI_Comm_rank(gcomm, &id);
-
-    __sc_renderall = new volume_renderall(1, 1, 1, nx, ny, nz, 
-        win_width, win_height, camera, trans_func, id, 0, gcomm, stop_mpi_after);
+    __sc_renderall = new volume_renderall(meshsizex, meshsizey, meshsizez,
+        win_width, win_height, camera, trans_func, 0, agcomm, stop_mpi_after);
   }
 }
+
 
 void __sc_add_volume(float* dataptr, unsigned volumenum)
 {

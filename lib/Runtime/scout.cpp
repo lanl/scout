@@ -33,6 +33,10 @@ glSDL* __sc_glsdl = 0;
 size_t __sc_initial_width = 768;
 size_t __sc_initial_height = 768;
 
+#ifdef SC_ENABLE_MPI
+#include <mpi.h>
+MPI_Comm __volren_gcomm = MPI_COMM_WORLD;
+#endif // SC_ENABLE_MPI
 
 extern "C"
 void __sc_debugger_dump_mesh_field(size_t width,
