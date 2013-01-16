@@ -13,6 +13,7 @@
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 #include <string>
 
@@ -37,7 +38,7 @@ typedef IntrusiveRefCntPtr<Logger> LogRef;
 class Logger : public RefCountedBase<Logger> {
   std::string Name;
   bool Trace;
-  llvm::SmallString<64> Msg;
+  SmallString<64> Msg;
   llvm::raw_svector_ostream LogOS;
 public:
   static const char *getEnvVar() {
@@ -91,6 +92,6 @@ public:
 ///   }
 /// \endcode
 #define LOG_SECTION(NAME) if (LogRef Log = clang::cxindex::Logger::make(NAME))
-#define LOG_FUNC_SECTION LOG_SECTION(__func__)
+#define LOG_FUNC_SECTION LOG_SECTION(LLVM_FUNCTION_NAME)
 
 #endif

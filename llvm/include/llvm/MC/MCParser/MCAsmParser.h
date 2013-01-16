@@ -11,10 +11,11 @@
 #define LLVM_MC_MCPARSER_MCASMPARSER_H
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
-class AsmToken;
 class MCAsmInfo;
 class MCAsmLexer;
 class MCAsmParserExtension;
@@ -22,13 +23,11 @@ class MCContext;
 class MCExpr;
 class MCInstPrinter;
 class MCInstrInfo;
-class MCParsedAsmOperand;
 class MCStreamer;
 class MCTargetAsmParser;
 class SMLoc;
 class SMRange;
 class SourceMgr;
-class StringRef;
 class Twine;
 
 /// MCAsmParserSemaCallback - Generic Sema callback for assembly parser.
@@ -36,16 +35,19 @@ class MCAsmParserSemaCallback {
 public:
   virtual ~MCAsmParserSemaCallback(); 
   virtual void *LookupInlineAsmIdentifier(StringRef Name, void *Loc,
-                                          unsigned &Size) = 0;
+                                          unsigned &Size, bool &IsVarDecl) = 0;
   virtual bool LookupInlineAsmField(StringRef Base, StringRef Member,
                                     unsigned &Offset) = 0;
 };
+
 
 /// MCAsmParser - Generic assembler parser interface, for use by target specific
 /// assembly parsers.
 class MCAsmParser {
 public:
   typedef bool (*DirectiveHandler)(MCAsmParserExtension*, StringRef, SMLoc);
+  typedef std::pair<MCAsmParserExtension*, DirectiveHandler>
+    ExtensionDirectiveHandler;
 
 private:
   MCAsmParser(const MCAsmParser &) LLVM_DELETED_FUNCTION;
@@ -61,9 +63,8 @@ protected: // Can only create subclasses.
 public:
   virtual ~MCAsmParser();
 
-  virtual void AddDirectiveHandler(MCAsmParserExtension *Object,
-                                   StringRef Directive,
-                                   DirectiveHandler Handler) = 0;
+  virtual void AddDirectiveHandler(StringRef Directive,
+                                   ExtensionDirectiveHandler Handler) = 0;
 
   virtual SourceMgr &getSourceManager() = 0;
 
@@ -159,6 +160,10 @@ public:
   /// on error.
   /// @result - False on success.
   virtual bool ParseAbsoluteExpression(int64_t &Res) = 0;
+
+  /// CheckForValidSection - Ensure that we have a valid section set in the
+  /// streamer. Otherwise, report and error and switch to .text.
+  virtual void CheckForValidSection() = 0;
 };
 
 /// \brief Create an MCAsmParser instance.
