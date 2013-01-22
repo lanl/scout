@@ -57,6 +57,7 @@ using namespace std;
 
 #include "scout/Config/defs.h"
 #include "scout/Runtime/cuda/CudaUtilities.h"
+#include "scout/Runtime/Device.h"
 #include "scout/Runtime/cuda/CudaDevice.h"
 
 using namespace scout;
@@ -146,7 +147,8 @@ CudaDevice::CudaDevice(int device_id)
   if ((deviceStatus = cuDeviceGetName(device_name, 256, cuDevice)) != CUDA_SUCCESS) {
     cuError(deviceStatus);
   } else {
-    deviceName = std::string(device_name);
+    Device::deviceName = std::string(device_name);
+    Device::deviceType = ScoutGPUCUDA;
     Device::enabled = true;
   }
 

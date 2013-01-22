@@ -15,12 +15,6 @@
 #include <cstdlib>
 #include <string>
 
-enum ScoutGPUType{
-  ScoutGPUNone,
-  ScoutGPUCUDA,
-  ScoutGPUOpenCL
-};
-
 namespace scout{
 
   class gpu_rt{

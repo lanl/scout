@@ -5,6 +5,7 @@
 #include "scout/Runtime/window.h"
 #include "scout/Runtime/image.h"
 #include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/Device.h"
 #include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/gpu.h"
 
@@ -19,9 +20,9 @@ extern const size_t __sc_initial_height;
 
 void __sc_init_sdl(size_t width, size_t height, scout::glCamera* cam = NULL);
 
-void __sc_init(int argc, char** argv, ScoutGPUType gpuType);
+void __sc_init(int argc, char** argv, ScoutDeviceType gpuType);
 
-void __sc_init(ScoutGPUType gpuType);
+void __sc_init(ScoutDeviceType gpuType);
 
 void __sc_end();
 

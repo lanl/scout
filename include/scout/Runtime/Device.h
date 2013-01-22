@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -58,6 +58,12 @@
 #include <string>
 #include <list>
 
+enum ScoutDeviceType{
+  ScoutGPUNone,
+  ScoutGPUCUDA,
+  ScoutGPUOpenCL
+};
+
 namespace scout {
 
   /**
@@ -73,6 +79,7 @@ namespace scout {
     
     Device() {
       enabled = false;
+      deviceType = ScoutGPUNone;
     }
       
     virtual ~Device() {
@@ -95,8 +102,9 @@ namespace scout {
     }
     
    protected:
-    bool           enabled;
-    std::string    deviceName;
+    bool            enabled;
+    ScoutDeviceType deviceType;
+    std::string     deviceName;
   };
 
   

@@ -22,6 +22,7 @@
 #include "scout/Runtime/cpu/CpuInitialization.h"
 #include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/Device.h"
 #include "scout/Runtime/DeviceList.h"
 
 
@@ -196,8 +197,8 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
   }
 }
 
-void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
-  switch(gpuType){
+void __sc_init(int argc, char** argv, ScoutDeviceType devType){
+  switch(devType){
     case ScoutGPUCUDA:
     {
 #ifdef SC_ENABLE_CUDA
@@ -228,8 +229,8 @@ void __sc_init(int argc, char** argv, ScoutGPUType gpuType){
   }
 }
 
-void __sc_init(ScoutGPUType gpuType){
-  __sc_init(0, 0, gpuType);
+void __sc_init(ScoutDeviceType devType){
+  __sc_init(0, 0, devType);
 }
 
 void __sc_end(){

@@ -53,6 +53,7 @@
  */
 
 #include "scout/Config/defs.h"
+#include "scout/Runtime/Device.h"
 #include "scout/Runtime/cpu/CpuDevice.h"
 
 using namespace scout;
@@ -70,6 +71,7 @@ void __sc_queue_block(void *blockLiteral, int numDimensions,
 /// 
 CpuDevice::CpuDevice() {
   Device::enabled = true;
+  Device::deviceType = ScoutGPUNone;
 }
 
 
