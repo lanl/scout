@@ -65,6 +65,10 @@ inline void MCELFStreamer::SetSectionBss() {
 MCELFStreamer::~MCELFStreamer() {
 }
 
+void MCELFStreamer::InitToTextSection() {
+  SetSectionText();
+}
+
 void MCELFStreamer::InitSections() {
   // This emulates the same behavior of GNU as. This makes it easier
   // to compare the output as the major sections are in the same order.
@@ -367,8 +371,10 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   // data fragment).
   //
   // If bundling is enabled:
-  // - If we're not in a bundle-locked group, emit the instruction into a data
-  //   fragment of its own.
+  // - If we're not in a bundle-locked group, emit the instruction into a
+  //   fragment of its own. If there are no fixups registered for the
+  //   instruction, emit a MCCompactEncodedInstFragment. Otherwise, emit a
+  //   MCDataFragment.
   // - If we're in a bundle-locked group, append the instruction to the current
   //   data fragment because we want all the instructions in a group to get into
   //   the same fragment. Be careful not to do that for the first instruction in
@@ -379,6 +385,14 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
     MCSectionData *SD = getCurrentSectionData();
     if (SD->isBundleLocked() && !SD->isBundleGroupBeforeFirstInst())
       DF = getOrCreateDataFragment();
+    else if (!SD->isBundleLocked() && Fixups.size() == 0) {
+      // Optimize memory usage by emitting the instruction to a
+      // MCCompactEncodedInstFragment when not in a bundle-locked group and
+      // there are no fixups registered.
+      MCCompactEncodedInstFragment *CEIF = new MCCompactEncodedInstFragment(SD);
+      CEIF->getContents().append(Code.begin(), Code.end());
+      return;
+    }
     else {
       DF = new MCDataFragment(SD);
       if (SD->getBundleLockState() == MCSectionData::BundleLockedAlignToEnd) {

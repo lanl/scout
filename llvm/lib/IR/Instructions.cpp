@@ -2386,11 +2386,11 @@ CastInst *CastInst::CreatePointerCast(Value *S, Type *Ty,
 CastInst *CastInst::CreatePointerCast(Value *S, Type *Ty, 
                                       const Twine &Name, 
                                       Instruction *InsertBefore) {
-  assert(S->getType()->isPointerTy() && "Invalid cast");
-  assert((Ty->isIntegerTy() || Ty->isPointerTy()) &&
+  assert(S->getType()->isPtrOrPtrVectorTy() && "Invalid cast");
+  assert((Ty->isIntOrIntVectorTy() || Ty->isPtrOrPtrVectorTy()) &&
          "Invalid cast");
 
-  if (Ty->isIntegerTy())
+  if (Ty->isIntOrIntVectorTy())
     return Create(Instruction::PtrToInt, S, Ty, Name, InsertBefore);
   return Create(Instruction::BitCast, S, Ty, Name, InsertBefore);
 }
@@ -2624,6 +2624,11 @@ CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
 
   // Check for type sanity on the arguments
   Type *SrcTy = S->getType();
+
+  // If this is a cast to the same type then it's trivially true.
+  if (SrcTy == DstTy)
+    return true;
+
   if (!SrcTy->isFirstClassType() || !DstTy->isFirstClassType() ||
       SrcTy->isAggregateType() || DstTy->isAggregateType())
     return false;

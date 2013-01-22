@@ -32,7 +32,8 @@ glVolumeRenderable::glVolumeRenderable(int npx, int npy, int npz,
     :_npx(npx), _npy(npy), _npz(npz), _nx(nx), _ny(ny), _nz(nz),
     _x(x), _y(y), _z(z), _win_width(win_width), _win_height(win_height),
     _trans_func(trans_func), _id(id), _root(root), _gcomm(gcomm), 
-    _para_input(NULL), _block(NULL)
+    _para_input(NULL), _block(NULL), _texture(NULL), _vbo(NULL), _pbo(NULL),
+    _tcbo(NULL)
     
 {
   if (!hpgv_vis_valid()) {
@@ -92,14 +93,16 @@ glVolumeRenderable::~glVolumeRenderable()
     free(_block);
   }
 
-  if (_texture != 0) delete _texture;
-  if (_pbo != 0) delete _pbo;
-  if (_vbo != 0) delete _vbo;
-  if (_tcbo != 0) delete _tcbo;
-  _texture = NULL;
-  _pbo = NULL;
-  _vbo = NULL;
-  _tcbo = NULL;
+  if (_id == _root) {
+    if (_texture != 0) delete _texture;
+    if (_pbo != 0) delete _pbo;
+    if (_vbo != 0) delete _vbo;
+    if (_tcbo != 0) delete _tcbo;
+    _texture = NULL;
+    _pbo = NULL;
+    _vbo = NULL;
+    _tcbo = NULL;
+  }
 
 }
 

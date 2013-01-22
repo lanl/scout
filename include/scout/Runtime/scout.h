@@ -11,6 +11,7 @@
 
 #ifdef SC_ENABLE_MPI
 #include "scout/Runtime/volume_renderall.h"
+extern MPI_Comm __volren_gcomm;
 #endif
 
 extern scout::DeviceList DevList;

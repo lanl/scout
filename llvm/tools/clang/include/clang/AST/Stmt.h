@@ -1785,7 +1785,7 @@ public:
   }
 
   CompoundStmt *getBlock() const {
-    return llvm::cast<CompoundStmt>(Children[BLOCK]);
+    return cast<CompoundStmt>(Children[BLOCK]);
   }
 
   child_range children() {
@@ -1820,7 +1820,7 @@ public:
   SourceLocation getFinallyLoc() const { return Loc; }
   SourceLocation getEndLoc() const { return Block->getLocEnd(); }
 
-  CompoundStmt *getBlock() const { return llvm::cast<CompoundStmt>(Block); }
+  CompoundStmt *getBlock() const { return cast<CompoundStmt>(Block); }
 
   child_range children() {
     return child_range(&Block,&Block+1);
@@ -1864,7 +1864,7 @@ public:
   bool getIsCXXTry() const { return IsCXXTry; }
 
   CompoundStmt* getTryBlock() const {
-    return llvm::cast<CompoundStmt>(Children[TRY]);
+    return cast<CompoundStmt>(Children[TRY]);
   }
 
   Stmt *getHandler() const { return Children[HANDLER]; }
@@ -2163,8 +2163,8 @@ public:
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { Stmt::getLocStart(); }
-  SourceLocation getLocEnd() const LLVM_READONLY { Stmt::getLocEnd(); }
+  SourceLocation getLocStart() const LLVM_READONLY { return ForAllLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
   
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForAllStmtClass ||
@@ -2343,8 +2343,8 @@ class VolumeRenderAllStmt : public Stmt {
   SourceLocation getLBracLoc() const { return LBracLoc; }
   SourceLocation getRBracLoc() const { return RBracLoc; }
 
-  SourceLocation getLocStart() const LLVM_READONLY { return LBracLoc; }
-  SourceLocation getLocEnd() const LLVM_READONLY { return RBracLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return VolRenLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[BODY]->getLocEnd(); }
   
   Expr* getOp(){
     return reinterpret_cast<Expr*>(SubExprs[OP]);

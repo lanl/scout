@@ -86,5 +86,9 @@ clang::createInvocationFromCommandLine(ArrayRef<const char *> ArgList,
                                      CCArgs.size(),
                                      *Diags))
     return 0;
+
+  // scout - attach the path of the scc executable
+  CI.get()->getCodeGenOpts().SccPath = TheDriver.getClangProgramPath();
+  
   return CI.take();
 }

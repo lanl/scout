@@ -118,6 +118,8 @@ CODEGENOPT(ScoutCPUThreads, 1, 0) /// set with -mt flag
 CODEGENOPT(ScoutVectorize, 1, 0) /// set with -vectorize flag
 CODEGENOPT(ScoutEmitAllDefinitions, 1, 0) /// set with -emit-all-definitions flag
 
+CODEGENOPT(ModulesAutolink, 1, 0) ///< Whether to auto-link imported modules
+
 /// The user specified number of registers to be used for integral arguments,
 /// or 0 if unspecified.
 VALUE_CODEGENOPT(NumRegisterParameters, 32, 0)

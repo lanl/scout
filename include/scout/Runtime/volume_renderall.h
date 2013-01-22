@@ -26,13 +26,13 @@ namespace scout
   class volume_renderall : public renderall_base_rt {
     public:
      volume_renderall(
-      int npx, int npy, int npz, int nx, int ny, int nz,
+      int nx, int ny, int nz,
       size_t win_width, size_t win_height,
       glCamera* camera, trans_func_ab_t trans_func,
-      int id, int root, MPI_Comm gcomm, bool stop_mpi_after);
+      int root, MPI_Comm gcomm, bool stop_mpi_after);
 
       ~volume_renderall();
-      void genGrid(int id, int npx, int npy, int npz, int* pnx, int* pny, int* pnz);
+      void genGrid();
       void addVolume(void* dataptr, unsigned volumenum); 
       void begin();
       void end();
@@ -44,6 +44,7 @@ namespace scout
       glCamera* _camera;
       int _id;
       int _root;
+      MPI_Comm _gcomm;
       double *_x, *_y, *_z;
       bool _stop_mpi_after;
   };
@@ -54,9 +55,9 @@ namespace scout
 using namespace scout;
 
 extern void __sc_init_volume_renderall(
-        int nx, int ny, int nz,
-            size_t win_width, size_t win_height,
-                glCamera* camera, trans_func_ab_t trans_func);
+    MPI_Comm gcomm, int mesh_size_x, int mesh_size_y, int mesh_size_z,
+    size_t win_width, size_t win_height,
+    glCamera* camera, trans_func_ab_t trans_func);
 
 extern "C" 
 void __sc_add_volume(float* dataptr, unsigned volumenum);
