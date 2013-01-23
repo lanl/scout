@@ -186,7 +186,7 @@ namespace scout {
 
       #ifdef SC_ENABLE_MPI
       // Note MPI includes compiler flags in libs string.      
-      "${MPI_C_LINK_LIBS}", 
+      "${MPI_C_LINK_LIBS}", "${MPI_CXX_LINK_LIBS}",
       #endif
     
       0 // mark end of library paths.      
