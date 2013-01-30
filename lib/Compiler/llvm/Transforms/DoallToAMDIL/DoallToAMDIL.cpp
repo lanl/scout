@@ -157,29 +157,25 @@ CloneGPUBasicBlock(const BasicBlock *BB,
   for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end();
        II != IE; ++II) {
 
-    Instruction* NewInst = II->clone();
+    Instruction* NewInst;
 
     if(const GetElementPtrInst* gep = 
-       dyn_cast<GetElementPtrInst>(NewInst)){
+       dyn_cast<GetElementPtrInst>(II)){
       vector<Value*> indices;
       
       for(size_t i = 1; i < gep->getNumOperands(); ++i){
         indices.push_back(gep->getOperand(i));
       }
 
-      assert(VMap.count(II->getOperand(0)) && 
-             "DoallToAMDIL failed to remap GEP");
-
       Value* op0 = VMap[II->getOperand(0)];
-
-      Instruction* OldInst = NewInst;
 
       NewInst = 
         GetElementPtrInst::Create(op0, ArrayRef<Value*>(indices));
 
-      delete OldInst;
-      
       VMap[op0] = op0;
+    }
+    else{
+      NewInst = II->clone();
     }
 
     if (II->hasName())
@@ -779,10 +775,16 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   
   std::string errOut;
 
+  //cerr << "outputPath: " << outPath << endl;
+  //cerr << "inputPath: " << inPath << endl;
+  //cerr << "commandPath: " << commandPath.str().str() << endl;
+
   int status = 
     sys::Program::ExecuteAndWait(executePath,
                                  (const char**)argVec.data(),
                                  0, 0, 0, 0, &errOut);
+
+  //cerr << "errOut is: " << errOut << endl;
 
   assert(status == 0 && 
          "Failed to run llvm-as in DoallToAMDIL.");
