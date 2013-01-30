@@ -16,7 +16,7 @@
 #include <map>
 
 #include "llvm/Pass.h"
-#include "llvm/Module.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 
 class DoallToAMDIL : public llvm::ModulePass {
@@ -25,7 +25,7 @@ class DoallToAMDIL : public llvm::ModulePass {
   
   typedef std::map<std::string, llvm::MDNode*> FunctionMDMap;
 
-  DoallToAMDIL(const std::string& sccPath);
+  DoallToAMDIL(const std::string& sccPath="");
 
   ~DoallToAMDIL();
 
@@ -45,6 +45,6 @@ private:
   std::string sccPath_;
 };
 
-llvm::ModulePass *createDoallToAMDILPass();
+llvm::ModulePass *createDoallToAMDILPass(const std::string& sccPath);
 
 #endif

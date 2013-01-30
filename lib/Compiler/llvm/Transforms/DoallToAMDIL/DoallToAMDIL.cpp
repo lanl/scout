@@ -20,14 +20,14 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/PathV1.h"
 #include "llvm/Support/PathV2.h"
-#include "llvm/Constants.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Instructions.h"
-#include "llvm/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Support/InstVisitor.h"
+#include "llvm/InstVisitor.h"
 
 using namespace std;
 using namespace llvm;
@@ -142,6 +142,63 @@ namespace{
 
 } // end namespace
 
+static BasicBlock* 
+CloneGPUBasicBlock(const BasicBlock *BB,
+                   ValueToValueMapTy &VMap,
+                   const Twine &NameSuffix,
+                   Function *F,
+                   ClonedCodeInfo *CodeInfo) {
+  BasicBlock *NewBB = BasicBlock::Create(BB->getContext(), "", F);
+  if (BB->hasName()) NewBB->setName(BB->getName()+NameSuffix);
+
+  bool hasCalls = false, hasDynamicAllocas = false, hasStaticAllocas = false;
+  
+  // Loop over all instructions, and copy them over.
+  for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end();
+       II != IE; ++II) {
+
+    Instruction* NewInst = II->clone();
+
+    if(const GetElementPtrInst* gep = 
+       dyn_cast<GetElementPtrInst>(NewInst)){
+      vector<Value*> indices;
+      
+      for(size_t i = 1; i < gep->getNumOperands(); ++i){
+        indices.push_back(gep->getOperand(i));
+      }
+
+      assert(VMap.count(II->getOperand(0)) && 
+             "DoallToAMDIL failed to remap GEP");
+
+      Value* op0 = VMap[II->getOperand(0)];
+      NewInst = 
+        GetElementPtrInst::Create(op0, ArrayRef<Value*>(indices));
+      VMap[op0] = op0;
+    }
+
+    if (II->hasName())
+      NewInst->setName(II->getName()+NameSuffix);
+    NewBB->getInstList().push_back(NewInst);
+    VMap[II] = NewInst;                // Add instruction map to value.
+    
+    hasCalls |= (isa<CallInst>(II) && !isa<DbgInfoIntrinsic>(II));
+    if (const AllocaInst *AI = dyn_cast<AllocaInst>(II)) {
+      if (isa<ConstantInt>(AI->getArraySize()))
+        hasStaticAllocas = true;
+      else
+        hasDynamicAllocas = true;
+    }
+  }
+  
+  if (CodeInfo) {
+    CodeInfo->ContainsCalls          |= hasCalls;
+    CodeInfo->ContainsDynamicAllocas |= hasDynamicAllocas;
+    CodeInfo->ContainsDynamicAllocas |= hasStaticAllocas && 
+      BB != &BB->getParent()->getEntryBlock();
+  }
+  return NewBB;
+}
+
 // based on LLVM function to clone a function, plus some modifications 
 // needed for AMDIL   
 static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
@@ -169,12 +226,12 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
                        .getParamAttributes(I->getArgNo() + 1));
     NewFunc->setAttributes(NewFunc->getAttributes()
                            .addAttr(NewFunc->getContext(),
-                                    AttrListPtr::ReturnIndex,
+                                    AttributeSet::ReturnIndex,
                                     OldFunc->getAttributes()
                                     .getRetAttributes()));
     NewFunc->setAttributes(NewFunc->getAttributes()
                            .addAttr(NewFunc->getContext(),
-                                    AttrListPtr::FunctionIndex,
+                                    AttributeSet::FunctionIndex,
                                     OldFunc->getAttributes()
                                     .getFnAttributes()));
   }
@@ -184,7 +241,7 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
     const BasicBlock &BB = *BI;
 
     BasicBlock *CBB = 
-      CloneBasicBlock(&BB, VMap, NameSuffix, NewFunc, CodeInfo);
+      CloneGPUBasicBlock(&BB, VMap, NameSuffix, NewFunc, CodeInfo);
 
     VMap[&BB] = CBB;
 
@@ -200,16 +257,17 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
 
   for (Function::iterator BB = cast<BasicBlock>(VMap[OldFunc->begin()]),
          BE = NewFunc->end(); BB != BE; ++BB)
-    for (BasicBlock::iterator II = BB->begin(); II != BB->end(); ++II)
+    for (BasicBlock::iterator II = BB->begin(); II != BB->end(); ++II){
       RemapInstruction(II, VMap,
                        ModuleLevelChanges ? RF_None : RF_NoModuleLevelChanges,
                        TypeMapper);
+    }
 }
 
 DoallToAMDIL::DoallToAMDIL(const std::string& sccPath)
   : ModulePass(ID),
     sccPath_(sccPath){
-}
+ }
 
 DoallToAMDIL::~DoallToAMDIL(){
 
@@ -230,6 +288,9 @@ const char *DoallToAMDIL::getPassName() const {
 llvm::Module* DoallToAMDIL::createGPUModule(const llvm::Module& m){
   ValueToValueMapTy valueMap;
   Module* nm = CloneGPUModule(&m, valueMap);
+
+  //cerr << "---------------- dumping cloned module" << endl;
+  //nm->dump();
 
   typedef vector<GlobalVariable*> GlobalVec;
   GlobalVec globalsToRemove;
@@ -290,9 +351,6 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
   New->setTargetTriple(M->getTargetTriple());
   New->setModuleInlineAsm(M->getModuleInlineAsm());
    
-  for (Module::lib_iterator I = M->lib_begin(), E = M->lib_end(); I != E; ++I)
-    New->addLibrary(*I);
-
   for (Module::const_global_iterator I = M->global_begin(), 
 	 E = M->global_end();
        I != E; ++I) {
@@ -322,10 +380,10 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
     VMap[I] = GV;
   }
 
-  for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
-    // modify the address space of the params to correspond
+  for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {    // modify the address space of the params to correspond
     // to the OpenCL address spaces
-    FunctionType* FT = cast<FunctionType>(I->getType()->getElementType());
+    FunctionType* FT = 
+      cast<FunctionType>(I->getType()->getElementType());
 
     vector<Type*> args;
     for(FunctionType::param_iterator pitr = FT->param_begin(),
@@ -333,6 +391,7 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
       const Type* ty = *pitr;
       if(const PointerType* pty = dyn_cast<PointerType>(ty)){
 	PointerType* npt = PointerType::get(pty->getElementType(), 1);
+
 	args.push_back(npt);
       }
       else{
@@ -348,9 +407,21 @@ Module* DoallToAMDIL::CloneGPUModule(const Module *M,
     string fullName = "__OpenCL_" + I->getName().str() + "_kernel";
 
     Function* NF = 
-      Function::Create(NFT,                                                   
-		       Function::ExternalLinkage, fullName, New);   
+      Function::Create(NFT,               
+    		       Function::ExternalLinkage, fullName, New);
 
+    /*
+    Function::const_arg_iterator itr = I->arg_begin();
+    Function::arg_iterator itr2 = NF->arg_begin();
+    while(itr != I->arg_end()){
+      const Value* v1 = itr;
+      Value* v2 = itr2;
+      VMap[v1] = v2;
+      ++itr;
+      ++itr2;
+    }
+    */
+    
     NF->copyAttributesFrom(I);
 
     VMap[I] = NF;
@@ -473,7 +544,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 					       "get_global_id",
 					       gm);
 
-	    getGlobalIdFunc->addFnAttr(Attributes::NoUnwind);         
+	    getGlobalIdFunc->addFnAttr(Attribute::NoUnwind);         
 	  }
 	  builder.SetInsertPoint(bitr);
 	  Value* v = builder.CreateCall(getGlobalIdFunc,
@@ -485,7 +556,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       }
     }
 
-    f->addFnAttr(Attributes::NoUnwind);                                            f->addFnAttr(Attributes::ReadNone);  
+    f->addFnAttr(Attribute::NoUnwind);                                            f->addFnAttr(Attribute::ReadNone);  
     
     // --------------------------------- signed args metadata
 
@@ -514,10 +585,10 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 							    i8PtrTy));
       }
 
-      vector<Attributes::AttrVal> attrs;
-      attrs.push_back(Attributes::NoCapture);
+      vector<Attribute::AttrKind> attrs;
+      attrs.push_back(Attribute::NoCapture);
 
-      aitr->addAttr(Attributes::get(gm->getContext(), attrs));
+      aitr->addAttr(Attribute::get(gm->getContext(), attrs));
       ++aitr;
     }
 
@@ -668,11 +739,9 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
   std::string strIR;
   raw_string_ostream IROut(strIR);
-  gm.print(IROut, 0);
-  std::string sccPath = 
-    "/Users/nickm/scout/build/scout/bin/scc";
+  gm->print(IROut, 0);
 
-  SmallString<128> commandPath(sccPath);
+  SmallString<128> commandPath(sccPath_);
   sys::path::remove_filename(commandPath);
   sys::path::append(commandPath, "llvm-as-3.1");
 
@@ -680,7 +749,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   sys::path::system_temp_directory(false, inputPath);
   sys::path::append(inputPath, "sc_amdil_in.ll");
   std::string inPath = inputPath.str().str();
-
+  
   std::ofstream istr(inPath.c_str());
   assert(istr.is_open() && 
          "Failed to open output file stream in DoallToAMDIL.");
@@ -689,42 +758,47 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
   SmallString<128> outputPath;
   sys::path::system_temp_directory(false, outputPath);
-  sys::path::append(commandPath, "sc_amdil_out.bc");
+  sys::path::append(outputPath, "sc_amdil_out.bc");
   std::string outPath = outputPath.str().str();
 
-  typedef std::vector<char*> ArgVec;
+  typedef std::vector<const char*> ArgVec;
   ArgVec argVec;
-  argVec.push_back(strdup("-o"));
-  argVec.push_back(strdup(outPath.c_str()));
+  argVec.push_back(commandPath.str().str().c_str());
+  argVec.push_back("-o");
+  argVec.push_back(outPath.c_str());
+  argVec.push_back(inPath.c_str());
+  argVec.push_back(0);
 
   sys::Path executePath(commandPath.str());
+  
+  std::string errOut;
 
   int status = 
     sys::Program::ExecuteAndWait(executePath,
-                                 (const char**)argVec.data());
+                                 (const char**)argVec.data(),
+                                 0, 0, 0, 0, &errOut);
+
   assert(status == 0 && 
          "Failed to run llvm-as in DoallToAMDIL.");
 
   FILE* fh = fopen(outPath.c_str(), "r");
   fseek(fh, 0, SEEK_END);
 
-  size_t size = ftell(fh);
+  size_t bitcodeSize = ftell(fh);
 
   rewind(fh);
 
-  char* buf = (char*)malloc(size + 1);
-  buf[size] = '\0';
-  fread(buf, sizeof(char), size, fh);
+  char* buf = (char*)malloc(bitcodeSize + 1);
+  buf[bitcodeSize] = '\0';
+  fread(buf, sizeof(char), bitcodeSize, fh);
   fclose(fh);
 
   remove(inPath.c_str());
   remove(outPath.c_str());
 
-  free(argVec[0]);
-  free(argVec[1]);
-
-  Constant* bitcodeData =
-    ConstantDataArray::getString(m.getContext(), buf, false); 
+  Constant* bitcodeData =                                                    
+    ConstantDataArray::get(m.getContext(),
+                           ArrayRef<unsigned char>((unsigned char*)buf, bitcodeSize));  
 
   GlobalVariable* gv = 
     new GlobalVariable(m,
@@ -746,7 +820,6 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 
   CallInst* initCall = 0;
   Instruction* insertInst;
-  int status;
   for(BasicBlock::iterator itr = mainEntry.begin(), itrEnd = mainEntry.end();
       itr != itrEnd; ++itr){
     if(CallInst* callInst = dyn_cast<CallInst>(itr)){
@@ -782,7 +855,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
   builder.SetInsertPoint(insertInst);
   Value* bc = builder.CreateBitCast(gv, i8PtrTy, "bitcode");
   builder.CreateCall2(buildFunc, bc, 
-		      ConstantInt::get(i32Ty, bitcode.length()));
+		      ConstantInt::get(i32Ty, bitcodeSize));
 
   mdn = m.getNamedMetadata("scout.kernels");
   for(size_t i = 0; i < mdn->getNumOperands(); ++i){
