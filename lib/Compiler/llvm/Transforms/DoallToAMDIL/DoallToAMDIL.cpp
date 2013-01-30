@@ -171,8 +171,14 @@ CloneGPUBasicBlock(const BasicBlock *BB,
              "DoallToAMDIL failed to remap GEP");
 
       Value* op0 = VMap[II->getOperand(0)];
+
+      Instruction* OldInst = NewInst;
+
       NewInst = 
         GetElementPtrInst::Create(op0, ArrayRef<Value*>(indices));
+
+      delete OldInst;
+      
       VMap[op0] = op0;
     }
 
