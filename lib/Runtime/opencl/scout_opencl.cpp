@@ -224,9 +224,10 @@ void __sc_init_opencl(){
   cl_uint numDevices;
 
   ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, NULL, &numDevices);
+
   assert(ret == CL_SUCCESS && "Error getting # of OpenCL devices");
   assert(numDevices > 0 && "No OpenCL GPU devices");
-  
+
   ret = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU,
                        1, &__sc_opencl_device_id, NULL);
   assert(ret == CL_SUCCESS && "Error getting first OpenCL device");
@@ -247,10 +248,16 @@ void __sc_init_opencl(){
     0};
 #endif
 
+  /*
   __sc_opencl_context = 
-    clCreateContext(properties, 1, &__sc_opencl_device_id, NULL, NULL, &ret);
+  clCreateContext(properties, 1, &__sc_opencl_device_id, NULL, NULL, &ret);
   assert(ret == CL_SUCCESS && "Error creating OpenCL context");
-  
+  */
+
+  __sc_opencl_context =                                                   
+    clCreateContext(NULL, 1, &__sc_opencl_device_id, NULL, NULL, &ret);
+  assert(ret == CL_SUCCESS && "Error creating OpenCL context"); 
+
   __sc_opencl_command_queue = 
     clCreateCommandQueue(__sc_opencl_context, __sc_opencl_device_id,
                          0, &ret);

@@ -179,6 +179,11 @@ bool ToolInvocation::run() {
   }
   OwningPtr<clang::CompilerInvocation> Invocation(
       newInvocation(&Diagnostics, *CC1Args));
+
+  // scout - attach the path of the scc executable
+  Invocation.get()->getCodeGenOpts().SccPath = 
+    Driver.get()->getClangProgramPath();
+
   return runInvocation(BinaryName, Compilation.get(), Invocation.take(),
                        *CC1Args);
 }

@@ -686,6 +686,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
          name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
       llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+4, name);
       addr = Builder.CreateLoad(addr);
+
+      //insertMeshDump(addr);
+
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
       MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
@@ -824,7 +827,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         }
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
-        
+
         gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
         typeArgs.push_back(gs);
       }
@@ -849,7 +852,16 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
             if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
               if(vd->getName() == it->getName()){
                 std::string ts = vd->getType().getAsString();
-                gs = llvm::ConstantDataArray::getString(getLLVMContext(), ts);
+
+                size_t pos = ts.find(" [");
+                if(pos != std::string::npos){
+                  ts = ts.substr(0, pos);
+                  ts += "*";
+                }
+
+                gs = 
+                  llvm::ConstantDataArray::getString(getLLVMContext(),
+                                                     ts);
                 found = true;
                 break;
               }
@@ -896,7 +908,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
     Builder.SetInsertPoint(cbb);
     
-    insertMeshDump(MeshBaseAddr);
+    //insertMeshDump(MeshBaseAddr);
     return;
   }
 
@@ -932,7 +944,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
                        ScoutMeshSizes, inputs);
   
-  insertMeshDump(MeshBaseAddr);
+  //insertMeshDump(MeshBaseAddr);
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
