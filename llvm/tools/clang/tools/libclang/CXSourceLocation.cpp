@@ -13,16 +13,15 @@
 
 #include "clang/Frontend/ASTUnit.h"
 #include "CIndexer.h"
+#include "CLog.h"
 #include "CXLoadedDiagnostic.h"
 #include "CXSourceLocation.h"
 #include "CXString.h"
 #include "CXTranslationUnit.h"
-#include "CLog.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Format.h"
 
 using namespace clang;
-using namespace clang::cxstring;
 using namespace clang::cxindex;
 
 //===----------------------------------------------------------------------===//
@@ -119,15 +118,15 @@ CXSourceLocation clang_getRangeEnd(CXSourceRange range) {
 
 extern "C" {
   
-CXSourceLocation clang_getLocation(CXTranslationUnit tu,
+CXSourceLocation clang_getLocation(CXTranslationUnit TU,
                                    CXFile file,
                                    unsigned line,
                                    unsigned column) {
-  if (!tu || !file)
+  if (!TU || !file)
     return clang_getNullLocation();
   
   LogRef Log = Logger::make(LLVM_FUNCTION_NAME);
-  ASTUnit *CXXUnit = static_cast<ASTUnit *>(tu->TUData);
+  ASTUnit *CXXUnit = cxtu::getASTUnit(TU);
   ASTUnit::ConcurrencyCheck Check(*CXXUnit);
   const FileEntry *File = static_cast<const FileEntry *>(file);
   SourceLocation SLoc = CXXUnit->getLocation(File, line, column);
@@ -147,13 +146,13 @@ CXSourceLocation clang_getLocation(CXTranslationUnit tu,
   return CXLoc;
 }
   
-CXSourceLocation clang_getLocationForOffset(CXTranslationUnit tu,
+CXSourceLocation clang_getLocationForOffset(CXTranslationUnit TU,
                                             CXFile file,
                                             unsigned offset) {
-  if (!tu || !file)
+  if (!TU || !file)
     return clang_getNullLocation();
   
-  ASTUnit *CXXUnit = static_cast<ASTUnit *>(tu->TUData);
+  ASTUnit *CXXUnit = cxtu::getASTUnit(TU);
 
   SourceLocation SLoc 
     = CXXUnit->getLocation(static_cast<const FileEntry *>(file), offset);
@@ -187,7 +186,7 @@ static void createNullLocation(CXFile *file, unsigned *line,
 static void createNullLocation(CXString *filename, unsigned *line,
                                unsigned *column, unsigned *offset = 0) {
   if (filename)
-    *filename = createCXString("");
+    *filename = cxstring::createEmpty();
   if (line)
     *line = 0;
   if (column)
@@ -263,7 +262,7 @@ void clang_getPresumedLocation(CXSourceLocation location,
     PresumedLoc PreLoc = SM.getPresumedLoc(Loc);
     
     if (filename)
-      *filename = createCXString(PreLoc.getFilename());
+      *filename = cxstring::createRef(PreLoc.getFilename());
     if (line)
       *line = PreLoc.getLine();
     if (column)
@@ -346,7 +345,7 @@ void clang_getFileLocation(CXSourceLocation location,
     return createNullLocation(file, line, column, offset);
 
   if (file)
-    *file = (void *)SM.getFileEntryForID(FID);
+    *file = const_cast<FileEntry *>(SM.getFileEntryForID(FID));
   if (line)
     *line = SM.getLineNumber(FID, FileOffset);
   if (column)

@@ -874,6 +874,8 @@ Parser::isExpressionOrTypeSpecifierSimple(tok::TokenKind Kind) {
   case tok::kw_image2d_t:
   case tok::kw_image2d_array_t:
   case tok::kw_image3d_t:
+  case tok::kw_sampler_t:
+  case tok::kw_event_t:
   case tok::kw___unknown_anytype:
     return TPResult::False();
 

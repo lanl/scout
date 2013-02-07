@@ -575,6 +575,9 @@ public:
   /// \brief id<NSCopying> type.
   QualType QIDNSCopying;
 
+  /// \brief will hold 'respondsToSelector:'
+  Selector RespondsToSelectorSel;
+  
   /// A flag to remember whether the implicit forms of operator new and delete
   /// have been declared.
   bool GlobalNewDeleteDeclared;
@@ -733,11 +736,15 @@ public:
 
   // Contains the locations of the beginning of unparsed default
   // argument locations.
-  llvm::DenseMap<ParmVarDecl *,SourceLocation> UnparsedDefaultArgLocs;
+  llvm::DenseMap<ParmVarDecl *, SourceLocation> UnparsedDefaultArgLocs;
 
-  /// UndefinedInternals - all the used, undefined objects with
-  /// internal linkage in this translation unit.
-  llvm::DenseMap<NamedDecl*, SourceLocation> UndefinedInternals;
+  /// UndefinedInternals - all the used, undefined objects which require a
+  /// definition in this translation unit.
+  llvm::DenseMap<NamedDecl *, SourceLocation> UndefinedButUsed;
+
+  /// Obtain a sorted list of functions that are undefined but ODR-used.
+  void getUndefinedButUsed(
+    llvm::SmallVectorImpl<std::pair<NamedDecl *, SourceLocation> > &Undefined);
 
   typedef std::pair<ObjCMethodList, ObjCMethodList> GlobalMethods;
   typedef llvm::DenseMap<Selector, GlobalMethods> GlobalMethodPool;
@@ -1680,14 +1687,20 @@ public:
                                           VersionTuple Obsoleted,
                                           bool IsUnavailable,
                                           StringRef Message,
-                                          bool Override);
+                                          bool Override,
+                                          unsigned AttrSpellingListIndex);
   VisibilityAttr *mergeVisibilityAttr(Decl *D, SourceRange Range,
-                                      VisibilityAttr::VisibilityType Vis);
-  DLLImportAttr *mergeDLLImportAttr(Decl *D, SourceRange Range);
-  DLLExportAttr *mergeDLLExportAttr(Decl *D, SourceRange Range);
+                                      VisibilityAttr::VisibilityType Vis,
+                                      unsigned AttrSpellingListIndex);
+  DLLImportAttr *mergeDLLImportAttr(Decl *D, SourceRange Range,
+                                    unsigned AttrSpellingListIndex);
+  DLLExportAttr *mergeDLLExportAttr(Decl *D, SourceRange Range,
+                                    unsigned AttrSpellingListIndex);
   FormatAttr *mergeFormatAttr(Decl *D, SourceRange Range, StringRef Format,
-                              int FormatIdx, int FirstArg);
-  SectionAttr *mergeSectionAttr(Decl *D, SourceRange Range, StringRef Name);
+                              int FormatIdx, int FirstArg,
+                              unsigned AttrSpellingListIndex);
+  SectionAttr *mergeSectionAttr(Decl *D, SourceRange Range, StringRef Name,
+                                unsigned AttrSpellingListIndex);
   bool mergeDeclAttribute(NamedDecl *New, InheritableAttr *Attr,
                           bool Override);
 
@@ -2228,7 +2241,7 @@ private:
   //
   // The boolean value will be true to indicate that the namespace was loaded
   // from an AST/PCH file, or false otherwise.
-  llvm::DenseMap<NamespaceDecl*, bool> KnownNamespaces;
+  llvm::MapVector<NamespaceDecl*, bool> KnownNamespaces;
 
   /// \brief Whether we have already loaded known namespaces from an extenal
   /// source.
@@ -2326,9 +2339,12 @@ public:
 
   // Decl attributes - this routine is the top level dispatcher.
   void ProcessDeclAttributes(Scope *S, Decl *D, const Declarator &PD,
-                           bool NonInheritable = true, bool Inheritable = true);
+                             bool NonInheritable = true,
+                             bool Inheritable = true);
   void ProcessDeclAttributeList(Scope *S, Decl *D, const AttributeList *AL,
-                           bool NonInheritable = true, bool Inheritable = true);
+                                bool NonInheritable = true,
+                                bool Inheritable = true,
+                                bool IncludeCXX11Attributes = true);
   bool ProcessAccessDeclAttributeList(AccessSpecDecl *ASDecl,
                                       const AttributeList *AttrList);
 
@@ -2338,6 +2354,7 @@ public:
   bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC, 
                             const FunctionDecl *FD = 0);
   bool CheckNoReturnAttr(const AttributeList &attr);
+  void CheckAlignasUnderalignment(Decl *D);
 
   /// \brief Stmt attributes - this routine is the top level dispatcher.
   StmtResult ProcessStmtAttributes(Stmt *Stmt, AttributeList *Attrs,
@@ -2407,19 +2424,19 @@ public:
   
   /// Called by ActOnProperty to handle \@property declarations in
   /// class extensions.
-  Decl *HandlePropertyInClassExtension(Scope *S,
-                                       SourceLocation AtLoc,
-                                       SourceLocation LParenLoc,
-                                       FieldDeclarator &FD,
-                                       Selector GetterSel,
-                                       Selector SetterSel,
-                                       const bool isAssign,
-                                       const bool isReadWrite,
-                                       const unsigned Attributes,
-                                       const unsigned AttributesAsWritten,
-                                       bool *isOverridingProperty,
-                                       TypeSourceInfo *T,
-                                       tok::ObjCKeywordKind MethodImplKind);
+  ObjCPropertyDecl *HandlePropertyInClassExtension(Scope *S,
+                      SourceLocation AtLoc,
+                      SourceLocation LParenLoc,
+                      FieldDeclarator &FD,
+                      Selector GetterSel,
+                      Selector SetterSel,
+                      const bool isAssign,
+                      const bool isReadWrite,
+                      const unsigned Attributes,
+                      const unsigned AttributesAsWritten,
+                      bool *isOverridingProperty,
+                      TypeSourceInfo *T,
+                      tok::ObjCKeywordKind MethodImplKind);
 
   /// Called by ActOnProperty and HandlePropertyInClassExtension to
   /// handle creating the ObjcPropertyDecl for a category or \@interface.
@@ -2705,7 +2722,8 @@ public:
                              SourceLocation RParenLoc);
 
   NamedDecl *LookupInlineAsmIdentifier(StringRef Name, SourceLocation Loc,
-                                       unsigned &Size, bool &IsVarDecl);
+                                       unsigned &Length, unsigned &Size, 
+                                       unsigned &Type, bool &IsVarDecl);
   bool LookupInlineAsmField(StringRef Base, StringRef Member,
                             unsigned &Offset, SourceLocation AsmLoc);
   StmtResult ActOnMSAsmStmt(SourceLocation AsmLoc, SourceLocation LBraceLoc,
@@ -2851,7 +2869,7 @@ public:
   // for expressions referring to a decl; these exist because odr-use marking
   // needs to be delayed for some constant variables when we build one of the
   // named expressions.
-  void MarkAnyDeclReferenced(SourceLocation Loc, Decl *D);
+  void MarkAnyDeclReferenced(SourceLocation Loc, Decl *D, bool OdrUse);
   void MarkFunctionReferenced(SourceLocation Loc, FunctionDecl *Func);
   void MarkVariableReferenced(SourceLocation Loc, VarDecl *Var);
   void MarkDeclRefReferenced(DeclRefExpr *E);
@@ -3685,7 +3703,8 @@ public:
                                MultiExprArg ArgsPtr,
                                SourceLocation Loc,
                                SmallVectorImpl<Expr*> &ConvertedArgs,
-                               bool AllowExplicit = false);
+                               bool AllowExplicit = false,
+                               bool IsListInitialization = false);
 
   ParsedType getDestructorName(SourceLocation TildeLoc,
                                IdentifierInfo &II, SourceLocation NameLoc,
@@ -3986,7 +4005,8 @@ public:
                                           : SourceLocation());
   }
   ExprResult ActOnFinishFullExpr(Expr *Expr, SourceLocation CC,
-                                 bool DiscardedValue = false);
+                                 bool DiscardedValue = false,
+                                 bool IsConstexpr = false);
   StmtResult ActOnFinishFullStmt(Stmt *Stmt);
 
   // Marks SS invalid if it represents an incomplete type.
@@ -4012,7 +4032,7 @@ public:
   bool ActOnCXXGlobalScopeSpecifier(Scope *S, SourceLocation CCLoc,
                                     CXXScopeSpec &SS);
 
-  bool isAcceptableNestedNameSpecifier(NamedDecl *SD);
+  bool isAcceptableNestedNameSpecifier(const NamedDecl *SD);
   NamedDecl *FindFirstQualifierInScope(Scope *S, NestedNameSpecifier *NNS);
 
   bool isNonTypeNestedNameSpecifier(Scope *S, CXXScopeSpec &SS,
@@ -4373,9 +4393,9 @@ public:
   bool SetDelegatingInitializer(CXXConstructorDecl *Constructor,
                                 CXXCtorInitializer *Initializer);
 
-  bool SetCtorInitializers(CXXConstructorDecl *Constructor,
-                           CXXCtorInitializer **Initializers,
-                           unsigned NumInitializers, bool AnyErrors);
+  bool SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
+                           ArrayRef<CXXCtorInitializer *> Initializers =
+                               ArrayRef<CXXCtorInitializer *>());
 
   void SetIvarInitializers(ObjCImplementationDecl *ObjCImplementation);
 
@@ -4438,8 +4458,7 @@ public:
 
   void ActOnMemInitializers(Decl *ConstructorDecl,
                             SourceLocation ColonLoc,
-                            CXXCtorInitializer **MemInits,
-                            unsigned NumMemInits,
+                            ArrayRef<CXXCtorInitializer*> MemInits,
                             bool AnyErrors);
 
   void CheckCompletedCXXClass(CXXRecordDecl *Record);
@@ -5440,10 +5459,8 @@ public:
     /// \brief Substitution of the deduced template argument values
     /// resulted in an error.
     TDK_SubstitutionFailure,
-    /// \brief Substitution of the deduced template argument values
-    /// into a non-deduced context produced a type or value that
-    /// produces a type that does not match the original template
-    /// arguments provided.
+    /// \brief A non-depnedent component of the parameter did not match the
+    /// corresponding component of the argument.
     TDK_NonDeducedMismatch,
     /// \brief When performing template argument deduction for a function
     /// template, there were too many call arguments.
@@ -5456,7 +5473,9 @@ public:
     TDK_InvalidExplicitArguments,
     /// \brief The arguments included an overloaded function name that could
     /// not be resolved to a suitable function.
-    TDK_FailedOverloadResolution
+    TDK_FailedOverloadResolution,
+    /// \brief Deduction failed; that's all we know.
+    TDK_MiscellaneousDeductionFailure
   };
 
   TemplateDeductionResult
@@ -5557,13 +5576,14 @@ public:
                                   bool OnlyDeduced,
                                   unsigned Depth,
                                   llvm::SmallBitVector &Used);
-  void MarkDeducedTemplateParameters(FunctionTemplateDecl *FunctionTemplate,
-                                     llvm::SmallBitVector &Deduced) {
+  void MarkDeducedTemplateParameters(
+                                  const FunctionTemplateDecl *FunctionTemplate,
+                                  llvm::SmallBitVector &Deduced) {
     return MarkDeducedTemplateParameters(Context, FunctionTemplate, Deduced);
   }
   static void MarkDeducedTemplateParameters(ASTContext &Ctx,
-                                         FunctionTemplateDecl *FunctionTemplate,
-                                         llvm::SmallBitVector &Deduced);
+                                  const FunctionTemplateDecl *FunctionTemplate,
+                                  llvm::SmallBitVector &Deduced);
 
   //===--------------------------------------------------------------------===//
   // C++ Template Instantiation
@@ -6215,10 +6235,6 @@ public:
   void DiagnosePropertyMismatch(ObjCPropertyDecl *Property,
                                 ObjCPropertyDecl *SuperProperty,
                                 const IdentifierInfo *Name);
-  void ComparePropertiesInBaseAndSuper(ObjCInterfaceDecl *IDecl);
-
-
-  void CompareProperties(Decl *CDecl, Decl *MergeProtocols);
 
   void DiagnoseClassExtensionDupMethods(ObjCCategoryDecl *CAT,
                                         ObjCInterfaceDecl *ID);
@@ -6398,7 +6414,7 @@ public:
                                   ParsedType Type,
                                   SourceLocation RParenLoc,
                                   Expr *SubExpr);
-
+  
   bool checkInitMethod(ObjCMethodDecl *method, QualType receiverTypeIfCall);
 
   /// \brief Check whether the given new method is a valid override of the
@@ -6523,9 +6539,9 @@ public:
 
   /// AddAlignedAttr - Adds an aligned attribute to a particular declaration.
   void AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
-                      bool isDeclSpec);
+                      unsigned SpellingListIndex);
   void AddAlignedAttr(SourceRange AttrRange, Decl *D, TypeSourceInfo *T,
-                      bool isDeclSpec);
+                      unsigned SpellingListIndex);
 
   /// \brief The kind of conversion being performed.
   enum CheckedConversionKind {
@@ -6614,7 +6630,8 @@ public:
                               Expr **Args, unsigned NumArgs,
                               SmallVector<Expr *, 8> &AllArgs,
                               VariadicCallType CallType = VariadicDoesNotApply,
-                              bool AllowExplicit = false);
+                              bool AllowExplicit = false,
+                              bool IsListInitialization = false);
 
   // DefaultVariadicArgumentPromotion - Like DefaultArgumentPromotion, but
   // will create a runtime trap if the resulting type is not a POD type.
@@ -7325,6 +7342,13 @@ private:
                             SourceLocation ReturnLoc);
   void CheckFloatComparison(SourceLocation Loc, Expr* LHS, Expr* RHS);
   void CheckImplicitConversions(Expr *E, SourceLocation CC = SourceLocation());
+  void CheckForIntOverflow(Expr *E);
+  void CheckUnsequencedOperations(Expr *E);
+
+  /// \brief Perform semantic checks on a completed expression. This will either
+  /// be a full-expression or a default argument expression.
+  void CheckCompletedExpr(Expr *E, SourceLocation CheckLoc = SourceLocation(),
+                          bool IsConstexpr = false);
 
   void CheckBitFieldInitialization(SourceLocation InitLoc, FieldDecl *Field,
                                    Expr *Init);

@@ -18,6 +18,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclObjC.h"
+#include "clang/AST/EvaluatedExprVisitor.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/TypeLoc.h"
@@ -2782,6 +2783,12 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     break;
   }
 
+  case ICK_Zero_Event_Conversion:
+    From = ImpCastExprToType(From, ToType,
+                             CK_ZeroToOCLEvent,
+                             From->getValueKind()).take();
+    break;
+
   case ICK_Lvalue_To_Rvalue:
   case ICK_Array_To_Pointer:
   case ICK_Function_To_Pointer:
@@ -5468,7 +5475,8 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
 }
 
 ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
-                                     bool DiscardedValue) {
+                                     bool DiscardedValue,
+                                     bool IsConstexpr) {
   ExprResult FullExpr = Owned(FE);
 
   if (!FullExpr.get())
@@ -5496,7 +5504,7 @@ ExprResult Sema::ActOnFinishFullExpr(Expr *FE, SourceLocation CC,
       return ExprError();
   }
 
-  CheckImplicitConversions(FullExpr.get(), CC);
+  CheckCompletedExpr(FullExpr.get(), CC, IsConstexpr);
   return MaybeCreateExprWithCleanups(FullExpr);
 }
 

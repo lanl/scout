@@ -183,16 +183,14 @@ bool ToolInvocation::run() {
   // scout - attach the path of the scc executable
   Invocation.get()->getCodeGenOpts().SccPath = 
     Driver.get()->getClangProgramPath();
-
-  return runInvocation(BinaryName, Compilation.get(), Invocation.take(),
-                       *CC1Args);
+    
+  return runInvocation(BinaryName, Compilation.get(), Invocation.take());
 }
 
 bool ToolInvocation::runInvocation(
     const char *BinaryName,
     clang::driver::Compilation *Compilation,
-    clang::CompilerInvocation *Invocation,
-    const clang::driver::ArgStringList &CC1Args) {
+    clang::CompilerInvocation *Invocation) {
   // Show the invocation, with -v.
   if (Invocation->getHeaderSearchOpts().Verbose) {
     llvm::errs() << "clang Invocation:\n";
@@ -212,8 +210,7 @@ bool ToolInvocation::runInvocation(
   OwningPtr<FrontendAction> ScopedToolAction(ToolAction.take());
 
   // Create the compilers actual diagnostics engine.
-  Compiler.createDiagnostics(CC1Args.size(),
-                             const_cast<char**>(CC1Args.data()));
+  Compiler.createDiagnostics();
   if (!Compiler.hasDiagnostics())
     return false;
 

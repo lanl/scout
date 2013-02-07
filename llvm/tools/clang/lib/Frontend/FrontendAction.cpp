@@ -23,6 +23,7 @@
 #include "clang/Parse/ParseAST.h"
 #include "clang/Serialization/ASTDeserializationListener.h"
 #include "clang/Serialization/ASTReader.h"
+#include "clang/Serialization/GlobalModuleIndex.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -204,7 +205,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     if (!BeginSourceFileAction(CI, InputFile))
       goto failure;
 
-    /// Create the AST consumer.
+    // Create the AST consumer.
     CI.setASTConsumer(CreateWrappedASTConsumer(CI, InputFile));
     if (!CI.hasASTConsumer())
       goto failure;
@@ -261,16 +262,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
                                            CI.getLangOpts(),
                                            CI.getTargetOpts(),
                                            CI.getPreprocessorOpts())) {
-          for (unsigned I = 0, N = PPOpts.Includes.size(); I != N; ++I) {
-            if (PPOpts.Includes[I] == PPOpts.ImplicitPCHInclude) {
-              PPOpts.Includes[I] = Dir->path();
-              PPOpts.ImplicitPCHInclude = Dir->path();
-              Found = true;
-              break;
-            }
-          }
-
-          assert(Found && "Implicit PCH include not in includes list?");
+          PPOpts.ImplicitPCHInclude = Dir->path();
+          Found = true;
           break;
         }
       }
@@ -294,8 +287,8 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   if (!BeginSourceFileAction(CI, InputFile))
     goto failure;
 
-  /// Create the AST context and consumer unless this is a preprocessor only
-  /// action.
+  // Create the AST context and consumer unless this is a preprocessor only
+  // action.
   if (!usesPreprocessorOnly()) {
     CI.createASTContext();
 
@@ -394,6 +387,15 @@ bool FrontendAction::Execute() {
     ExecuteAction();
   }
   else ExecuteAction();
+
+  // If we are supposed to rebuild the global module index, do so now unless
+  // there were any module-build failures.
+  if (CI.shouldBuildGlobalModuleIndex() && CI.hasFileManager() &&
+      CI.hasPreprocessor()) {
+    GlobalModuleIndex::writeIndex(
+      CI.getFileManager(),
+      CI.getPreprocessor().getHeaderSearchInfo().getModuleCachePath());
+  }
 
   return true;
 }

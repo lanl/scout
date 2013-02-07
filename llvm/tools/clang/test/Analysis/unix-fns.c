@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,unix.API,osx.API %s -analyzer-store=region -analyzer-output=plist -analyzer-ipa=inlining -analyzer-eagerly-assume -analyzer-config faux-bodies=true -fblocks -verify -o %t.plist
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,unix.API,osx.API %s -analyzer-store=region -analyzer-output=plist -analyzer-eagerly-assume -analyzer-config faux-bodies=true -fblocks -verify -o %t.plist
 // RUN: FileCheck --input-file=%t.plist %s
 
 struct _opaque_pthread_once_t {
@@ -1418,17 +1418,46 @@ void test_inline_dispatch_once() {
 // CHECK-NEXT:          <array>
 // CHECK-NEXT:           <dict>
 // CHECK-NEXT:            <key>line</key><integer>190</integer>
-// CHECK-NEXT:            <key>col</key><integer>3</integer>
+// CHECK-NEXT:            <key>col</key><integer>24</integer>
 // CHECK-NEXT:            <key>file</key><integer>0</integer>
 // CHECK-NEXT:           </dict>
 // CHECK-NEXT:           <dict>
 // CHECK-NEXT:            <key>line</key><integer>190</integer>
-// CHECK-NEXT:            <key>col</key><integer>15</integer>
+// CHECK-NEXT:            <key>col</key><integer>24</integer>
 // CHECK-NEXT:            <key>file</key><integer>0</integer>
 // CHECK-NEXT:           </dict>
 // CHECK-NEXT:          </array>
 // CHECK-NEXT:        </dict>
 // CHECK-NEXT:       </array>
+// CHECK-NEXT:     </dict>
+// CHECK-NEXT:     <dict>
+// CHECK-NEXT:      <key>kind</key><string>event</string>
+// CHECK-NEXT:      <key>location</key>
+// CHECK-NEXT:      <dict>
+// CHECK-NEXT:       <key>line</key><integer>190</integer>
+// CHECK-NEXT:       <key>col</key><integer>24</integer>
+// CHECK-NEXT:       <key>file</key><integer>0</integer>
+// CHECK-NEXT:      </dict>
+// CHECK-NEXT:      <key>ranges</key>
+// CHECK-NEXT:      <array>
+// CHECK-NEXT:        <array>
+// CHECK-NEXT:         <dict>
+// CHECK-NEXT:          <key>line</key><integer>190</integer>
+// CHECK-NEXT:          <key>col</key><integer>24</integer>
+// CHECK-NEXT:          <key>file</key><integer>0</integer>
+// CHECK-NEXT:         </dict>
+// CHECK-NEXT:         <dict>
+// CHECK-NEXT:          <key>line</key><integer>194</integer>
+// CHECK-NEXT:          <key>col</key><integer>3</integer>
+// CHECK-NEXT:          <key>file</key><integer>0</integer>
+// CHECK-NEXT:         </dict>
+// CHECK-NEXT:        </array>
+// CHECK-NEXT:      </array>
+// CHECK-NEXT:      <key>depth</key><integer>0</integer>
+// CHECK-NEXT:      <key>extended_message</key>
+// CHECK-NEXT:      <string>Variable &apos;p&apos; captured by block as a null pointer value</string>
+// CHECK-NEXT:      <key>message</key>
+// CHECK-NEXT:      <string>Variable &apos;p&apos; captured by block as a null pointer value</string>
 // CHECK-NEXT:     </dict>
 // CHECK-NEXT:     <dict>
 // CHECK-NEXT:      <key>kind</key><string>event</string>
@@ -1737,6 +1766,69 @@ void test_inline_dispatch_once() {
 // CHECK-NEXT:      <string>Variable &apos;p&apos; initialized to a null pointer value</string>
 // CHECK-NEXT:      <key>message</key>
 // CHECK-NEXT:      <string>Variable &apos;p&apos; initialized to a null pointer value</string>
+// CHECK-NEXT:     </dict>
+// CHECK-NEXT:     <dict>
+// CHECK-NEXT:      <key>kind</key><string>control</string>
+// CHECK-NEXT:      <key>edges</key>
+// CHECK-NEXT:       <array>
+// CHECK-NEXT:        <dict>
+// CHECK-NEXT:         <key>start</key>
+// CHECK-NEXT:          <array>
+// CHECK-NEXT:           <dict>
+// CHECK-NEXT:            <key>line</key><integer>200</integer>
+// CHECK-NEXT:            <key>col</key><integer>3</integer>
+// CHECK-NEXT:            <key>file</key><integer>0</integer>
+// CHECK-NEXT:           </dict>
+// CHECK-NEXT:           <dict>
+// CHECK-NEXT:            <key>line</key><integer>200</integer>
+// CHECK-NEXT:            <key>col</key><integer>5</integer>
+// CHECK-NEXT:            <key>file</key><integer>0</integer>
+// CHECK-NEXT:           </dict>
+// CHECK-NEXT:          </array>
+// CHECK-NEXT:         <key>end</key>
+// CHECK-NEXT:          <array>
+// CHECK-NEXT:           <dict>
+// CHECK-NEXT:            <key>line</key><integer>201</integer>
+// CHECK-NEXT:            <key>col</key><integer>24</integer>
+// CHECK-NEXT:            <key>file</key><integer>0</integer>
+// CHECK-NEXT:           </dict>
+// CHECK-NEXT:           <dict>
+// CHECK-NEXT:            <key>line</key><integer>201</integer>
+// CHECK-NEXT:            <key>col</key><integer>24</integer>
+// CHECK-NEXT:            <key>file</key><integer>0</integer>
+// CHECK-NEXT:           </dict>
+// CHECK-NEXT:          </array>
+// CHECK-NEXT:        </dict>
+// CHECK-NEXT:       </array>
+// CHECK-NEXT:     </dict>
+// CHECK-NEXT:     <dict>
+// CHECK-NEXT:      <key>kind</key><string>event</string>
+// CHECK-NEXT:      <key>location</key>
+// CHECK-NEXT:      <dict>
+// CHECK-NEXT:       <key>line</key><integer>201</integer>
+// CHECK-NEXT:       <key>col</key><integer>24</integer>
+// CHECK-NEXT:       <key>file</key><integer>0</integer>
+// CHECK-NEXT:      </dict>
+// CHECK-NEXT:      <key>ranges</key>
+// CHECK-NEXT:      <array>
+// CHECK-NEXT:        <array>
+// CHECK-NEXT:         <dict>
+// CHECK-NEXT:          <key>line</key><integer>201</integer>
+// CHECK-NEXT:          <key>col</key><integer>24</integer>
+// CHECK-NEXT:          <key>file</key><integer>0</integer>
+// CHECK-NEXT:         </dict>
+// CHECK-NEXT:         <dict>
+// CHECK-NEXT:          <key>line</key><integer>203</integer>
+// CHECK-NEXT:          <key>col</key><integer>3</integer>
+// CHECK-NEXT:          <key>file</key><integer>0</integer>
+// CHECK-NEXT:         </dict>
+// CHECK-NEXT:        </array>
+// CHECK-NEXT:      </array>
+// CHECK-NEXT:      <key>depth</key><integer>0</integer>
+// CHECK-NEXT:      <key>extended_message</key>
+// CHECK-NEXT:      <string>Variable &apos;p&apos; captured by block as a null pointer value</string>
+// CHECK-NEXT:      <key>message</key>
+// CHECK-NEXT:      <string>Variable &apos;p&apos; captured by block as a null pointer value</string>
 // CHECK-NEXT:     </dict>
 // CHECK-NEXT:     <dict>
 // CHECK-NEXT:      <key>kind</key><string>event</string>

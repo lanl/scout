@@ -402,7 +402,7 @@ bool ExprEngine::shouldInlineDecl(const Decl *D, ExplodedNode *Pred) {
   if (Engine.FunctionSummaries->hasReachedMaxBlockCount(D))
     return false;
 
-  if (CalleeCFG->getNumBlockIDs() > AMgr.options.InlineMaxFunctionSize)
+  if (CalleeCFG->getNumBlockIDs() > AMgr.options.getMaxInlinableSize())
     return false;
 
   // Do not inline variadic calls (for now).
@@ -558,8 +558,9 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
   case CE_ObjCMessage:
     if (!Opts.mayInlineObjCMethod())
       return false;
-    if (!(getAnalysisManager().options.IPAMode == DynamicDispatch ||
-          getAnalysisManager().options.IPAMode == DynamicDispatchBifurcate))
+    AnalyzerOptions &Options = getAnalysisManager().options;
+    if (!(Options.getIPAMode() == IPAK_DynamicDispatch ||
+          Options.getIPAMode() == IPAK_DynamicDispatchBifurcate))
       return false;
     break;
   }
@@ -713,13 +714,27 @@ void ExprEngine::conservativeEvalCall(const CallEvent &Call, NodeBuilder &Bldr,
   Bldr.generateNode(Call.getProgramPoint(), State, Pred);
 }
 
+static bool isEssentialToInline(const CallEvent &Call) {
+  const Decl *D = Call.getDecl();
+  if (D) {
+    AnalysisDeclContext *AD =
+      Call.getLocationContext()->getAnalysisDeclContext()->
+      getManager()->getContext(D);
+
+    // The auto-synthesized bodies are essential to inline as they are
+    // usually small and commonly used.
+    return AD->isBodyAutosynthesized();
+  }
+  return false;
+}
+
 void ExprEngine::defaultEvalCall(NodeBuilder &Bldr, ExplodedNode *Pred,
                                  const CallEvent &CallTemplate) {
   // Make sure we have the most recent state attached to the call.
   ProgramStateRef State = Pred->getState();
   CallEventRef<> Call = CallTemplate.cloneWithState(State);
 
-  if (HowToInline == Inline_None) {
+  if (HowToInline == Inline_None && !isEssentialToInline(CallTemplate)) {
     conservativeEvalCall(*Call, Bldr, Pred, State);
     return;
   }
@@ -737,14 +752,16 @@ void ExprEngine::defaultEvalCall(NodeBuilder &Bldr, ExplodedNode *Pred,
     const Decl *D = RD.getDecl();
     if (D) {
       if (RD.mayHaveOtherDefinitions()) {
+        AnalyzerOptions &Options = getAnalysisManager().options;
+
         // Explore with and without inlining the call.
-        if (getAnalysisManager().options.IPAMode == DynamicDispatchBifurcate) {
+        if (Options.getIPAMode() == IPAK_DynamicDispatchBifurcate) {
           BifurcateCall(RD.getDispatchRegion(), *Call, D, Bldr, Pred);
           return;
         }
 
         // Don't inline if we're not in any dynamic dispatch mode.
-        if (getAnalysisManager().options.IPAMode != DynamicDispatch) {
+        if (Options.getIPAMode() != IPAK_DynamicDispatch) {
           conservativeEvalCall(*Call, Bldr, Pred, State);
           return;
         }

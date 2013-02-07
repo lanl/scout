@@ -311,6 +311,8 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_image2d_t:
     case TST_image2d_array_t:
     case TST_image3d_t:
+    case TST_sampler_t:
+    case TST_event_t:
       return false;
 
     case TST_decltype:
@@ -354,7 +356,8 @@ unsigned DeclSpec::getParsedSpecifiers() const {
   if (hasTypeSpecifier())
     Res |= PQ_TypeSpecifier;
 
-  if (FS_inline_specified || FS_virtual_specified || FS_explicit_specified)
+  if (FS_inline_specified || FS_virtual_specified || FS_explicit_specified ||
+      FS_noreturn_specified)
     Res |= PQ_FunctionSpecifier;
   return Res;
 }
@@ -477,6 +480,8 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T) {
   case DeclSpec::TST_image2d_t:   return "image2d_t";
   case DeclSpec::TST_image2d_array_t: return "image2d_array_t";
   case DeclSpec::TST_image3d_t:   return "image3d_t";
+  case DeclSpec::TST_sampler_t:   return "sampler_t";
+  case DeclSpec::TST_event_t:     return "event_t";
   case DeclSpec::TST_error:       return "(error)";
   }
   llvm_unreachable("Unknown typespec!");
@@ -782,6 +787,13 @@ bool DeclSpec::setFunctionSpecExplicit(SourceLocation Loc) {
   // 'explicit explicit' is ok.
   FS_explicit_specified = true;
   FS_explicitLoc = Loc;
+  return false;
+}
+
+bool DeclSpec::setFunctionSpecNoreturn(SourceLocation Loc) {
+  // '_Noreturn _Noreturn' is ok.
+  FS_noreturn_specified = true;
+  FS_noreturnLoc = Loc;
   return false;
 }
 

@@ -602,6 +602,9 @@ public:
   /// calls to EmitTypeCheck can be skipped.
   bool SanitizePerformTypeCheck;
 
+  /// \brief Sanitizer options to use for this function.
+  const SanitizerOptions *SanOpts;
+
   /// In ARC, whether we should autorelease the return value.
   bool AutoreleaseResult;
 
@@ -901,7 +904,7 @@ public:
 
   protected:
     CodeGenFunction& CGF;
-    
+
   public:
     /// \brief Enter a new cleanup scope.
     explicit RunCleanupsScope(CodeGenFunction &CGF)
@@ -1381,6 +1384,8 @@ public:
 
   void pushDestroy(QualType::DestructionKind dtorKind,
                    llvm::Value *addr, QualType type);
+  void pushEHDestroy(QualType::DestructionKind dtorKind,
+                     llvm::Value *addr, QualType type);
   void pushDestroy(CleanupKind kind, llvm::Value *addr, QualType type,
                    Destroyer *destroyer, bool useEHCleanupForArray);
   void emitDestroy(llvm::Value *addr, QualType type, Destroyer *destroyer,
@@ -1776,17 +1781,27 @@ public:
   void EmitExprAsInit(const Expr *init, const ValueDecl *D,
                       LValue lvalue, bool capturedByInit);
 
-  /// EmitAggregateCopy - Emit an aggrate assignment.
+  /// hasVolatileMember - returns true if aggregate type has a volatile
+  /// member.
+  bool hasVolatileMember(QualType T) {
+    if (const RecordType *RT = T->getAs<RecordType>()) {
+      const RecordDecl *RD = cast<RecordDecl>(RT->getDecl());
+      return RD->hasVolatileMember();
+    }
+    return false;
+  }
+  /// EmitAggregateCopy - Emit an aggregate assignment.
   ///
   /// The difference to EmitAggregateCopy is that tail padding is not copied.
   /// This is required for correctness when assigning non-POD structures in C++.
   void EmitAggregateAssign(llvm::Value *DestPtr, llvm::Value *SrcPtr,
-                           QualType EltTy, bool isVolatile=false,
-                           CharUnits Alignment = CharUnits::Zero()) {
-    EmitAggregateCopy(DestPtr, SrcPtr, EltTy, isVolatile, Alignment, true);
+                           QualType EltTy) {
+    bool IsVolatile = hasVolatileMember(EltTy);
+    EmitAggregateCopy(DestPtr, SrcPtr, EltTy, IsVolatile, CharUnits::Zero(),
+                      true);
   }
 
-  /// EmitAggregateCopy - Emit an aggrate copy.
+  /// EmitAggregateCopy - Emit an aggregate copy.
   ///
   /// \param isVolatile - True iff either the source or the destination is
   /// volatile.
@@ -1917,7 +1932,8 @@ public:
   void EmitDelegatingCXXConstructorCall(const CXXConstructorDecl *Ctor,
                                         const FunctionArgList &Args);
   void EmitCXXConstructorCall(const CXXConstructorDecl *D, CXXCtorType Type,
-                              bool ForVirtualBase, llvm::Value *This,
+                              bool ForVirtualBase, bool Delegating,
+                              llvm::Value *This,
                               CallExpr::const_arg_iterator ArgBeg,
                               CallExpr::const_arg_iterator ArgEnd);
 
@@ -1943,7 +1959,8 @@ public:
   static Destroyer destroyCXXObject;
 
   void EmitCXXDestructorCall(const CXXDestructorDecl *D, CXXDtorType Type,
-                             bool ForVirtualBase, llvm::Value *This);
+                             bool ForVirtualBase, bool Delegating,
+                             llvm::Value *This);
 
   void EmitNewArrayInitializer(const CXXNewExpr *E, QualType elementType,
                                llvm::Value *NewPtr, llvm::Value *NumElements);
@@ -2114,6 +2131,9 @@ public:
 
   RValue EmitCompoundStmt(const CompoundStmt &S, bool GetLast = false,
                           AggValueSlot AVS = AggValueSlot::ignored());
+  RValue EmitCompoundStmtWithoutScope(const CompoundStmt &S,
+                                      bool GetLast = false, AggValueSlot AVS =
+                                          AggValueSlot::ignored());
 
   /// EmitLabel - Emit the block for the given label. It is legal to call this
   /// function even if there is no current insertion point.
@@ -2772,7 +2792,7 @@ public:
 
   /// \brief Create a basic block that will call the trap intrinsic, and emit a
   /// conditional branch to it, for the -ftrapv checks.
-  void EmitTrapvCheck(llvm::Value *Checked);
+  void EmitTrapCheck(llvm::Value *Checked);
 
   /// EmitCallArg - Emit a single call argument.
   void EmitCallArg(CallArgList &args, const Expr *E, QualType ArgType);

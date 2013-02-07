@@ -10,9 +10,6 @@
 /// \file
 /// Various functions to configurably format source code.
 ///
-/// This is EXPERIMENTAL code under heavy development. It is not in a state yet,
-/// where it can be used to format real code.
-///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_CLANG_FORMAT_FORMAT_H
@@ -35,18 +32,33 @@ struct FormatStyle {
   /// \brief The column limit.
   unsigned ColumnLimit;
 
+  /// \brief The penalty for each character outside of the column limit.
+  unsigned PenaltyExcessCharacter;
+
   /// \brief The maximum number of consecutive empty lines to keep.
   unsigned MaxEmptyLinesToKeep;
 
   /// \brief Set whether & and * bind to the type as opposed to the variable.
-  bool PointerAndReferenceBindToType;
+  bool PointerBindsToType;
+
+  /// \brief If \c true, analyze the formatted file for the most common binding.
+  bool DerivePointerBinding;
 
   /// \brief The extra indent or outdent of access modifiers (e.g.: public:).
   int AccessModifierOffset;
 
-  /// \brief Split two consecutive closing '>' by a space, i.e. use
-  /// A<A<int> > instead of A<A<int>>.
-  bool SplitTemplateClosingGreater;
+  enum LanguageStandard {
+    LS_Cpp03,
+    LS_Cpp11,
+    LS_Auto
+  };
+
+  /// \brief Format compatible with this standard, e.g. use \c A<A<int> >
+  /// instead of \c A<A<int>> for LS_Cpp03.
+  LanguageStandard Standard;
+
+  /// \brief If \c true, analyze the formatted file for C++03 compatibility.
+  bool DeriveBackwardsCompatibility;
 
   /// \brief Indent case labels one level from the switch statement.
   ///
@@ -61,6 +73,13 @@ struct FormatStyle {
   /// will either all be on the same line or will have one line each.
   bool BinPackParameters;
 
+  /// \brief Allow putting all parameters of a function declaration onto
+  /// the next line even if \c BinPackParameters is \c false.
+  bool AllowAllParametersOfDeclarationOnNextLine;
+
+  /// \brief Allow putting the return type of a function onto its own line.
+  bool AllowReturnTypeOnItsOwnLine;
+
   /// \brief If the constructor initializers don't fit on a line, put each
   /// initializer on its own line.
   bool ConstructorInitializerAllOnOneLineOrOnePerLine;
@@ -71,10 +90,6 @@ struct FormatStyle {
   /// \brief Add a space in front of an Objective-C protocol list, i.e. use
   /// Foo <Protocol> instead of Foo<Protocol>.
   bool ObjCSpaceBeforeProtocolList;
-
-  /// \brief Add a space in front method return types, i.e. use
-  /// + (id)init instead of +(id) init
-  bool ObjCSpaceBeforeReturnType;
 };
 
 /// \brief Returns a format style complying with the LLVM coding standards:

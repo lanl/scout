@@ -1376,7 +1376,7 @@ void Preprocessor::HandleIncludeDirective(SourceLocation HashLoc,
       if (Callbacks->FileNotFound(Filename, RecoveryPath)) {
         if (const DirectoryEntry *DE = FileMgr.getDirectory(RecoveryPath)) {
           // Add the recovery path to the list of search paths.
-          DirectoryLookup DL(DE, SrcMgr::C_User, true, false);
+          DirectoryLookup DL(DE, SrcMgr::C_User, false);
           HeaderInfo.AddSearchPath(DL, isAngled);
           
           // Try the lookup again, skipping the cache.
@@ -1648,6 +1648,12 @@ bool Preprocessor::ReadMacroDefinitionArgList(MacroInfo *MI, Token &Tok) {
         Diag(Tok, LangOpts.CPlusPlus11 ? 
              diag::warn_cxx98_compat_variadic_macro :
              diag::ext_variadic_macro);
+
+      // OpenCL v1.2 s6.9.e: variadic macros are not supported.
+      if (LangOpts.OpenCL) {
+        Diag(Tok, diag::err_pp_opencl_variadic_macros);
+        return true;
+      }
 
       // Lex the token after the identifier.
       LexUnexpandedToken(Tok);

@@ -33,10 +33,11 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   : CodeGenTypeCache(cgm), CGM(cgm),
     Target(CGM.getContext().getTargetInfo()),
     Builder(cgm.getModule().getContext()),
-    SanitizePerformTypeCheck(CGM.getLangOpts().SanitizeNull |
-                             CGM.getLangOpts().SanitizeAlignment |
-                             CGM.getLangOpts().SanitizeObjectSize |
-                             CGM.getLangOpts().SanitizeVptr),
+    SanitizePerformTypeCheck(CGM.getSanOpts().Null |
+                             CGM.getSanOpts().Alignment |
+                             CGM.getSanOpts().ObjectSize |
+                             CGM.getSanOpts().Vptr),
+    SanOpts(&CGM.getSanOpts()),
     AutoreleaseResult(false), BlockInfo(0), BlockPointer(0),
     LambdaThisCaptureField(0), NormalCleanupDest(0), NextCleanupDestIndex(1),
     FirstBlockInfo(0), EHResumeBlock(0), ExceptionSlot(0), EHSelectorSlot(0),
@@ -146,6 +147,8 @@ void CodeGenFunction::EmitReturnBlock() {
     if (BI && BI->isUnconditional() &&
         BI->getSuccessor(0) == ReturnBlock.getBlock()) {
       // Reset insertion point, including debug location, and delete the branch.
+      // This is really subtle & only works because the next change in location
+      // will hit the caching in CGDebugInfo::EmitLocation & not override this.
       Builder.SetCurrentDebugLocation(BI->getDebugLoc());
       Builder.SetInsertPoint(BI->getParent());
       BI->eraseFromParent();
@@ -173,6 +176,9 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   assert(BreakContinueStack.empty() &&
          "mismatched push/pop in break/continue stack!");
 
+  if (CGDebugInfo *DI = getDebugInfo())
+    DI->EmitLocation(Builder, EndLoc);
+
   // Pop any cleanups that might have been associated with the
   // parameters.  Do this in whatever block we're currently in; it's
   // important to do this before we enter the return block or return
@@ -188,7 +194,6 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
 
   // Emit debug descriptor for function end.
   if (CGDebugInfo *DI = getDebugInfo()) {
-    DI->setLocation(EndLoc);
     DI->EmitFunctionEnd(Builder);
   }
 
@@ -352,6 +357,11 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
   CurFnInfo = &FnInfo;
   assert(CurFn->isDeclaration() && "Function already has body?");
 
+  if (CGM.getSanitizerBlacklist().isIn(*Fn)) {
+    SanOpts = &SanitizerOptions::Disabled;
+    SanitizePerformTypeCheck = false;
+  }
+
   // Pass inline keyword to optimizer if it appears explicitly on any
   // declaration.
   if (!CGM.getCodeGenOpts().NoInline)
@@ -486,7 +496,10 @@ void CodeGenFunction::EmitFunctionBody(FunctionArgList &Args) {
   DEBUG_OUT("EmitFunctionBody");
   const FunctionDecl *FD = cast<FunctionDecl>(CurGD.getDecl());
   assert(FD->getBody());
-  EmitStmt(FD->getBody());
+  if (const CompoundStmt *S = dyn_cast<CompoundStmt>(FD->getBody()))
+    EmitCompoundStmtWithoutScope(*S);
+  else
+    EmitStmt(FD->getBody());
 }
 
 /// Tries to mark the given function nounwind based on the
@@ -565,7 +578,7 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   //   function call is used by the caller, the behavior is undefined.
   if (getLangOpts().CPlusPlus && !FD->hasImplicitReturnZero() &&
       !FD->getResultType()->isVoidType() && Builder.GetInsertBlock()) {
-    if (getLangOpts().SanitizeReturn)
+    if (SanOpts->Return)
       EmitCheck(Builder.getFalse(), "missing_return",
                 EmitCheckSourceLocation(FD->getLocation()),
                 ArrayRef<llvm::Value *>(), CRK_Unrecoverable);
@@ -1152,7 +1165,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
           //   If the size is an expression that is not an integer constant
           //   expression [...] each time it is evaluated it shall have a value
           //   greater than zero.
-          if (getLangOpts().SanitizeVLABound &&
+          if (SanOpts->VLABound &&
               size->getType()->isSignedIntegerType()) {
             llvm::Value *Zero = llvm::Constant::getNullValue(Size->getType());
             llvm::Constant *StaticArgs[] = {

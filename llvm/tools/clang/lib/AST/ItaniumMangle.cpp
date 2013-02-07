@@ -1914,6 +1914,8 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::OCLImage2d: Out << "11ocl_image2d"; break;
   case BuiltinType::OCLImage2dArray: Out << "16ocl_image2darray"; break;
   case BuiltinType::OCLImage3d: Out << "11ocl_image3d"; break;
+  case BuiltinType::OCLSampler: Out << "11ocl_sampler"; break;
+  case BuiltinType::OCLEvent: Out << "9ocl_event"; break;
   }
 }
 

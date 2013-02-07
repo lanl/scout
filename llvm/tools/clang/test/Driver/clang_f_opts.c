@@ -36,9 +36,6 @@
 // FP-CONTRACT-FAST-CHECK: -ffp-contract=fast
 // FP-CONTRACT-OFF-CHECK: -ffp-contract=off
 
-// RUN: %clang -fms-extensions -fenable-experimental-ms-inline-asm %s -### 2>&1 | FileCheck -check-prefix=CHECK-OPTIONS3 %s
-// CHECK-OPTIONS3: -fenable-experimental-ms-inline-asm
-
 // RUN: %clang -### -S -fvectorize %s 2>&1 | FileCheck -check-prefix=CHECK-VECTORIZE %s
 // RUN: %clang -### -S -fno-vectorize -fvectorize %s 2>&1 | FileCheck -check-prefix=CHECK-VECTORIZE %s
 // RUN: %clang -### -S -fno-vectorize %s 2>&1 | FileCheck -check-prefix=CHECK-NO-VECTORIZE %s
@@ -60,3 +57,9 @@
 // RUN: %clang -### -S -ftree-slp-vectorize -fno-slp-vectorize %s 2>&1 | FileCheck -check-prefix=CHECK-NO-SLP-VECTORIZE %s
 // CHECK-SLP-VECTORIZE: "-vectorize"
 // CHECK-NO-SLP-VECTORIZE-NOT: "-vectorize"
+
+// RUN: %clang -### -S -fextended-identifiers %s 2>&1 | FileCheck -check-prefix=CHECK-EXTENDED-IDENTIFIERS %s
+// RUN: %clang -### -S -fno-extended-identifiers %s 2>&1 | FileCheck -check-prefix=CHECK-NO-EXTENDED-IDENTIFIERS %s
+// CHECK-EXTENDED-IDENTIFIERS: "-cc1"
+// CHECK-EXTENDED-IDENTIFIERS-NOT: "-fextended-identifiers"
+// CHECK-NO-EXTENDED-IDENTIFIERS: error: unsupported option '-fno-extended-identifiers'
