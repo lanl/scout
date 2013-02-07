@@ -511,12 +511,12 @@ def IMAGE_SAMPLE_L : MIMG_Load_Helper <0x00000024, "IMAGE_SAMPLE_L">;
 def IMAGE_SAMPLE_B : MIMG_Load_Helper <0x00000025, "IMAGE_SAMPLE_B">;
 //def IMAGE_SAMPLE_B_CL : MIMG_NoPattern_ <"IMAGE_SAMPLE_B_CL", 0x00000026>;
 //def IMAGE_SAMPLE_LZ : MIMG_NoPattern_ <"IMAGE_SAMPLE_LZ", 0x00000027>;
-//def IMAGE_SAMPLE_C : MIMG_NoPattern_ <"IMAGE_SAMPLE_C", 0x00000028>;
+def IMAGE_SAMPLE_C : MIMG_Load_Helper <0x00000028, "IMAGE_SAMPLE_C">;
 //def IMAGE_SAMPLE_C_CL : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_CL", 0x00000029>;
 //def IMAGE_SAMPLE_C_D : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_D", 0x0000002a>;
 //def IMAGE_SAMPLE_C_D_CL : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_D_CL", 0x0000002b>;
-//def IMAGE_SAMPLE_C_L : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_L", 0x0000002c>;
-//def IMAGE_SAMPLE_C_B : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_B", 0x0000002d>;
+def IMAGE_SAMPLE_C_L : MIMG_Load_Helper <0x0000002c, "IMAGE_SAMPLE_C_L">;
+def IMAGE_SAMPLE_C_B : MIMG_Load_Helper <0x0000002d, "IMAGE_SAMPLE_C_B">;
 //def IMAGE_SAMPLE_C_B_CL : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_B_CL", 0x0000002e>;
 //def IMAGE_SAMPLE_C_LZ : MIMG_NoPattern_ <"IMAGE_SAMPLE_C_LZ", 0x0000002f>;
 //def IMAGE_SAMPLE_O : MIMG_NoPattern_ <"IMAGE_SAMPLE_O", 0x00000030>;
@@ -584,7 +584,7 @@ defm V_CVT_F32_I32 : VOP1_32 <0x00000005, "V_CVT_F32_I32",
 //defm V_CVT_F32_U32 : VOP1_32 <0x00000006, "V_CVT_F32_U32", []>;
 //defm V_CVT_U32_F32 : VOP1_32 <0x00000007, "V_CVT_U32_F32", []>;
 defm V_CVT_I32_F32 : VOP1_32 <0x00000008, "V_CVT_I32_F32",
-  [(set VReg_32:$dst, (fp_to_sint AllReg_32:$src0))]
+  [(set (i32 VReg_32:$dst), (fp_to_sint AllReg_32:$src0))]
 >;
 defm V_MOV_FED_B32 : VOP1_32 <0x00000009, "V_MOV_FED_B32", []>;
 ////def V_CVT_F16_F32 : VOP1_F16 <0x0000000a, "V_CVT_F16_F32", []>;
@@ -615,7 +615,9 @@ defm V_EXP_F32 : VOP1_32 <0x00000025, "V_EXP_F32",
   [(set VReg_32:$dst, (fexp2 AllReg_32:$src0))]
 >;
 defm V_LOG_CLAMP_F32 : VOP1_32 <0x00000026, "V_LOG_CLAMP_F32", []>;
-defm V_LOG_F32 : VOP1_32 <0x00000027, "V_LOG_F32", []>;
+defm V_LOG_F32 : VOP1_32 <0x00000027, "V_LOG_F32",
+  [(set VReg_32:$dst, (flog2 AllReg_32:$src0))]
+>;
 defm V_RCP_CLAMP_F32 : VOP1_32 <0x00000028, "V_RCP_CLAMP_F32", []>;
 defm V_RCP_LEGACY_F32 : VOP1_32 <0x00000029, "V_RCP_LEGACY_F32", []>;
 defm V_RCP_F32 : VOP1_32 <0x0000002a, "V_RCP_F32",
@@ -998,17 +1000,17 @@ def S_BFE_I64 : SOP2_64 <0x0000002a, "S_BFE_I64", []>;
 //def S_CBRANCH_G_FORK : SOP2_ <0x0000002b, "S_CBRANCH_G_FORK", []>;
 def S_ABSDIFF_I32 : SOP2_32 <0x0000002c, "S_ABSDIFF_I32", []>;
 
-class V_MOV_IMM <Operand immType, SDNode immNode> : InstSI <
+class V_MOV_IMM <ValueType type, Operand immType, SDNode immNode> : InstSI <
   (outs VReg_32:$dst),
   (ins immType:$src0),
   "V_MOV_IMM",
-   [(set VReg_32:$dst, (immNode:$src0))]
+   [(set VReg_32:$dst, (type immNode:$src0))]
 >;
 
 let isCodeGenOnly = 1, isPseudo = 1 in {
 
-def V_MOV_IMM_I32 : V_MOV_IMM<i32imm, imm>;
-def V_MOV_IMM_F32 : V_MOV_IMM<f32imm, fpimm>;
+def V_MOV_IMM_I32 : V_MOV_IMM<i32, i32imm, imm>;
+def V_MOV_IMM_F32 : V_MOV_IMM<f32, f32imm, fpimm>;
 
 def S_MOV_IMM_I32 : InstSI <
   (outs SReg_32:$dst),
@@ -1078,13 +1080,6 @@ def SI_INTERP_CONST : InstSI <
   "SI_INTERP_CONST $dst, $attr_chan, $attr, $params",
   [(set VReg_32:$dst, (int_SI_fs_interp_constant imm:$attr_chan,
                                                  imm:$attr, SReg_32:$params))]
->;
-
-def SI_KIL : InstSI <
-  (outs),
-  (ins VReg_32:$src),
-  "SI_KIL $src",
-  [(int_AMDGPU_kill VReg_32:$src)]
 >;
 
 def SI_WQM : InstSI <
@@ -1157,10 +1152,22 @@ def SI_END_CF : InstSI <
   [(int_SI_end_cf SReg_64:$saved)]
 >;
 
+def SI_KILL : InstSI <
+  (outs),
+  (ins VReg_32:$src),
+  "SI_KIL $src",
+  [(int_AMDGPU_kill VReg_32:$src)]
+>;
+
 } // end mayLoad = 1, mayStore = 1, hasSideEffects = 1
   // Uses = [EXEC], Defs = [EXEC]
 
 } // end IsCodeGenOnly, isPseudo
+
+def : Pat <
+  (int_AMDGPU_kilp),
+  (SI_KILL (V_MOV_IMM_I32 0xbf800000))
+>;
 
 /* int_SI_vs_load_input */
 def : Pat<
@@ -1179,43 +1186,105 @@ def : Pat <
        VReg_32:$src0, VReg_32:$src1, VReg_32:$src2, VReg_32:$src3)
 >;
 
-/* int_SI_sample */
+
+/* int_SI_sample for simple 1D texture lookup */
 def : Pat <
-  (int_SI_sample imm:$writemask, VReg_128:$coord, SReg_256:$rsrc, SReg_128:$sampler),
-  (IMAGE_SAMPLE imm:$writemask, 0, 0, 0, 0, 0, 0, 0, VReg_128:$coord,
+  (int_SI_sample imm:$writemask, (v1i32 VReg_32:$addr),
+                 SReg_256:$rsrc, SReg_128:$sampler, imm),
+  (IMAGE_SAMPLE imm:$writemask, 0, 0, 0, 0, 0, 0, 0,
+                (i32 (COPY_TO_REGCLASS VReg_32:$addr, VReg_32)),
                 SReg_256:$rsrc, SReg_128:$sampler)
 >;
 
-/* int_SI_sample_lod */
-def : Pat <
-  (int_SI_sample_lod imm:$writemask, VReg_128:$coord, SReg_256:$rsrc, SReg_128:$sampler),
-  (IMAGE_SAMPLE_L imm:$writemask, 0, 0, 0, 0, 0, 0, 0, VReg_128:$coord,
-                  SReg_256:$rsrc, SReg_128:$sampler)
+class SamplePattern<Intrinsic name, MIMG opcode, RegisterClass addr_class,
+                    ValueType addr_type> : Pat <
+    (name imm:$writemask, (addr_type addr_class:$addr),
+          SReg_256:$rsrc, SReg_128:$sampler, imm),
+    (opcode imm:$writemask, 0, 0, 0, 0, 0, 0, 0,
+          (EXTRACT_SUBREG addr_class:$addr, sub0),
+          SReg_256:$rsrc, SReg_128:$sampler)
 >;
 
-/* int_SI_sample_bias */
-def : Pat <
-  (int_SI_sample_bias imm:$writemask, VReg_128:$coord, SReg_256:$rsrc, SReg_128:$sampler),
-  (IMAGE_SAMPLE_B imm:$writemask, 0, 0, 0, 0, 0, 0, 0, VReg_128:$coord,
-                  SReg_256:$rsrc, SReg_128:$sampler)
+class SampleRectPattern<Intrinsic name, MIMG opcode, RegisterClass addr_class,
+                        ValueType addr_type> : Pat <
+    (name imm:$writemask, (addr_type addr_class:$addr),
+          SReg_256:$rsrc, SReg_128:$sampler, TEX_RECT),
+    (opcode imm:$writemask, 1, 0, 0, 0, 0, 0, 0,
+          (EXTRACT_SUBREG addr_class:$addr, sub0),
+          SReg_256:$rsrc, SReg_128:$sampler)
 >;
+
+class SampleArrayPattern<Intrinsic name, MIMG opcode, RegisterClass addr_class,
+                         ValueType addr_type> : Pat <
+    (name imm:$writemask, (addr_type addr_class:$addr),
+          SReg_256:$rsrc, SReg_128:$sampler, TEX_ARRAY),
+    (opcode imm:$writemask, 0, 0, 1, 0, 0, 0, 0,
+          (EXTRACT_SUBREG addr_class:$addr, sub0),
+          SReg_256:$rsrc, SReg_128:$sampler)
+>;
+
+class SampleShadowPattern<Intrinsic name, MIMG opcode,
+                          RegisterClass addr_class, ValueType addr_type> : Pat <
+    (name imm:$writemask, (addr_type addr_class:$addr),
+          SReg_256:$rsrc, SReg_128:$sampler, TEX_SHADOW),
+    (opcode imm:$writemask, 0, 0, 0, 0, 0, 0, 0,
+          (EXTRACT_SUBREG addr_class:$addr, sub0),
+          SReg_256:$rsrc, SReg_128:$sampler)
+>;
+
+class SampleShadowArrayPattern<Intrinsic name, MIMG opcode,
+                               RegisterClass addr_class, ValueType addr_type> : Pat <
+    (name imm:$writemask, (addr_type addr_class:$addr),
+          SReg_256:$rsrc, SReg_128:$sampler, TEX_SHADOW_ARRAY),
+    (opcode imm:$writemask, 0, 0, 1, 0, 0, 0, 0,
+          (EXTRACT_SUBREG addr_class:$addr, sub0),
+          SReg_256:$rsrc, SReg_128:$sampler)
+>;
+
+/* int_SI_sample* for texture lookups consuming more address parameters */
+multiclass SamplePatterns<RegisterClass addr_class, ValueType addr_type> {
+  def : SamplePattern <int_SI_sample, IMAGE_SAMPLE, addr_class, addr_type>;
+  def : SampleRectPattern <int_SI_sample, IMAGE_SAMPLE, addr_class, addr_type>;
+  def : SampleArrayPattern <int_SI_sample, IMAGE_SAMPLE, addr_class, addr_type>;
+  def : SampleShadowPattern <int_SI_sample, IMAGE_SAMPLE_C, addr_class, addr_type>;
+  def : SampleShadowArrayPattern <int_SI_sample, IMAGE_SAMPLE_C, addr_class, addr_type>;
+
+  def : SamplePattern <int_SI_samplel, IMAGE_SAMPLE_L, addr_class, addr_type>;
+  def : SampleArrayPattern <int_SI_samplel, IMAGE_SAMPLE_L, addr_class, addr_type>;
+  def : SampleShadowPattern <int_SI_samplel, IMAGE_SAMPLE_C_L, addr_class, addr_type>;
+  def : SampleShadowArrayPattern <int_SI_samplel, IMAGE_SAMPLE_C_L, addr_class, addr_type>;
+
+  def : SamplePattern <int_SI_sampleb, IMAGE_SAMPLE_B, addr_class, addr_type>;
+  def : SampleArrayPattern <int_SI_sampleb, IMAGE_SAMPLE_B, addr_class, addr_type>;
+  def : SampleShadowPattern <int_SI_sampleb, IMAGE_SAMPLE_C_B, addr_class, addr_type>;
+  def : SampleShadowArrayPattern <int_SI_sampleb, IMAGE_SAMPLE_C_B, addr_class, addr_type>;
+}
+
+defm : SamplePatterns<VReg_64, v2i32>;
+defm : SamplePatterns<VReg_128, v4i32>;
+defm : SamplePatterns<VReg_256, v8i32>;
+defm : SamplePatterns<VReg_512, v16i32>;
 
 def CLAMP_SI : CLAMP<VReg_32>;
 def FABS_SI : FABS<VReg_32>;
 def FNEG_SI : FNEG<VReg_32>;
 
-def : Extract_Element <f32, v4f32, VReg_128, 0, sel_x>;
-def : Extract_Element <f32, v4f32, VReg_128, 1, sel_y>;
-def : Extract_Element <f32, v4f32, VReg_128, 2, sel_z>;
-def : Extract_Element <f32, v4f32, VReg_128, 3, sel_w>;
+def : Extract_Element <f32, v4f32, VReg_128, 0, sub0>;
+def : Extract_Element <f32, v4f32, VReg_128, 1, sub1>;
+def : Extract_Element <f32, v4f32, VReg_128, 2, sub2>;
+def : Extract_Element <f32, v4f32, VReg_128, 3, sub3>;
 
-def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 4, sel_x>;
-def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 5, sel_y>;
-def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 6, sel_z>;
-def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 7, sel_w>;
+def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 4, sub0>;
+def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 5, sub1>;
+def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 6, sub2>;
+def : Insert_Element <f32, v4f32, VReg_32, VReg_128, 7, sub3>;
 
+def : Vector1_Build <v1i32, VReg_32, i32, VReg_32>;
+def : Vector2_Build <v2i32, VReg_64, i32, VReg_32>;
 def : Vector_Build <v4f32, VReg_128, f32, VReg_32>;
-def : Vector_Build <v4i32, SReg_128, i32, SReg_32>;
+def : Vector_Build <v4i32, VReg_128, i32, VReg_32>;
+def : Vector8_Build <v8i32, VReg_256, i32, VReg_32>;
+def : Vector16_Build <v16i32, VReg_512, i32, VReg_32>;
 
 def : BitConvert <i32, f32, SReg_32>;
 def : BitConvert <i32, f32, VReg_32>;
@@ -1315,29 +1384,34 @@ def : Pat<
 >;
 
 def : Pat <
-  (int_AMDGPU_kilp),
-  (SI_KIL (V_MOV_IMM_I32 0xbf800000))
+  (fcos AllReg_32:$src0),
+  (V_COS_F32_e32 (V_MUL_F32_e32 AllReg_32:$src0, (V_MOV_IMM_I32 CONST.TWO_PI_INV)))
+>;
+
+def : Pat <
+  (fsin AllReg_32:$src0),
+  (V_SIN_F32_e32 (V_MUL_F32_e32 AllReg_32:$src0, (V_MOV_IMM_I32 CONST.TWO_PI_INV)))
 >;
 
 def : Pat <
   (int_AMDGPU_cube VReg_128:$src),
   (INSERT_SUBREG (INSERT_SUBREG (INSERT_SUBREG (INSERT_SUBREG (v4f32 (IMPLICIT_DEF)),
-    (V_CUBETC_F32 (EXTRACT_SUBREG VReg_128:$src, sel_x),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_y),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_z),
-                  0, 0, 0, 0), sel_x),
-    (V_CUBESC_F32 (EXTRACT_SUBREG VReg_128:$src, sel_x),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_y),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_z),
-                  0, 0, 0, 0), sel_y),
-    (V_CUBEMA_F32 (EXTRACT_SUBREG VReg_128:$src, sel_x),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_y),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_z),
-                  0, 0, 0, 0), sel_z),
-    (V_CUBEID_F32 (EXTRACT_SUBREG VReg_128:$src, sel_x),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_y),
-                  (EXTRACT_SUBREG VReg_128:$src, sel_z),
-                  0, 0, 0, 0), sel_w)
+    (V_CUBETC_F32 (EXTRACT_SUBREG VReg_128:$src, sub0),
+                  (EXTRACT_SUBREG VReg_128:$src, sub1),
+                  (EXTRACT_SUBREG VReg_128:$src, sub2),
+                  0, 0, 0, 0), sub0),
+    (V_CUBESC_F32 (EXTRACT_SUBREG VReg_128:$src, sub0),
+                  (EXTRACT_SUBREG VReg_128:$src, sub1),
+                  (EXTRACT_SUBREG VReg_128:$src, sub2),
+                  0, 0, 0, 0), sub1),
+    (V_CUBEMA_F32 (EXTRACT_SUBREG VReg_128:$src, sub0),
+                  (EXTRACT_SUBREG VReg_128:$src, sub1),
+                  (EXTRACT_SUBREG VReg_128:$src, sub2),
+                  0, 0, 0, 0), sub2),
+    (V_CUBEID_F32 (EXTRACT_SUBREG VReg_128:$src, sub0),
+                  (EXTRACT_SUBREG VReg_128:$src, sub1),
+                  (EXTRACT_SUBREG VReg_128:$src, sub2),
+                  0, 0, 0, 0), sub3)
 >;
 
 /********** ================== **********/

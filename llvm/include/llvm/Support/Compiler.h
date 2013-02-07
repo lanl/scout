@@ -15,6 +15,8 @@
 #ifndef LLVM_SUPPORT_COMPILER_H
 #define LLVM_SUPPORT_COMPILER_H
 
+#include "llvm/Config/llvm-config.h"
+
 #ifndef __has_feature
 # define __has_feature(x) 0
 #endif
@@ -40,6 +42,33 @@
 #define LLVM_HAS_RVALUE_REFERENCE_THIS 1
 #else
 #define LLVM_HAS_RVALUE_REFERENCE_THIS 0
+#endif
+
+/// \macro LLVM_HAS_CXX11_TYPETRAITS
+/// \brief Does the compiler have the C++11 type traits.
+///
+/// #include <type_traits>
+///
+/// * enable_if
+/// * {true,false}_type
+/// * is_constructible
+/// * etc...
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) \
+    || (defined(_MSC_VER) && _MSC_VER >= 1700)
+#define LLVM_HAS_CXX11_TYPETRAITS 1
+#else
+#define LLVM_HAS_CXX11_TYPETRAITS 0
+#endif
+
+/// \macro LLVM_HAS_CXX11_STDLIB
+/// \brief Does the compiler have the C++11 standard library.
+///
+/// Implies LLVM_HAS_RVALUE_REFERENCES, LLVM_HAS_CXX11_TYPETRAITS
+#if defined(__GXX_EXPERIMENTAL_CXX0X__) \
+    || (defined(_MSC_VER) && _MSC_VER >= 1700)
+#define LLVM_HAS_CXX11_STDLIB 1
+#else
+#define LLVM_HAS_CXX11_STDLIB 0
 #endif
 
 /// llvm_move - Expands to ::std::move if the compiler supports
@@ -81,7 +110,8 @@
 
 /// LLVM_FINAL - Expands to 'final' if the compiler supports it.
 /// Use to mark classes or virtual methods as final.
-#if (__has_feature(cxx_override_control))
+#if __has_feature(cxx_override_control) \
+    || (defined(_MSC_VER) && _MSC_VER >= 1700)
 #define LLVM_FINAL final
 #else
 #define LLVM_FINAL
@@ -89,7 +119,8 @@
 
 /// LLVM_OVERRIDE - Expands to 'override' if the compiler supports it.
 /// Use to mark virtual methods as overriding a base class method.
-#if (__has_feature(cxx_override_control))
+#if __has_feature(cxx_override_control) \
+    || (defined(_MSC_VER) && _MSC_VER >= 1700)
 #define LLVM_OVERRIDE override
 #else
 #define LLVM_OVERRIDE
@@ -262,6 +293,42 @@
 # define LLVM_FUNCTION_NAME __FUNCTION__
 #else
 # define LLVM_FUNCTION_NAME __func__
+#endif
+
+#if defined(LLVM_HAVE_MSAN_ANNOTATIONS)
+# include <sanitizer/msan_interface.h>
+#else
+# define __msan_allocated_memory(p, size)
+# define __msan_unpoison(p, size)
+#endif
+
+/// \macro LLVM_MEMORY_SANITIZER_BUILD
+/// \brief Whether LLVM itself is built with MemorySanitizer instrumentation.
+#if __has_feature(memory_sanitizer)
+# define LLVM_MEMORY_SANITIZER_BUILD 1
+#else
+# define LLVM_MEMORY_SANITIZER_BUILD 0
+#endif
+
+/// \macro LLVM_ADDRESS_SANITIZER_BUILD
+/// \brief Whether LLVM itself is built with AddressSanitizer instrumentation.
+#if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+# define LLVM_ADDRESS_SANITIZER_BUILD 1
+#else
+# define LLVM_ADDRESS_SANITIZER_BUILD 0
+#endif
+
+/// \macro LLVM_IS_UNALIGNED_ACCESS_FAST
+/// \brief Is unaligned memory access fast on the host machine.
+///
+/// Don't specialize on alignment for platforms where unaligned memory accesses
+/// generates the same code as aligned memory accesses for common types.
+#if defined(_M_AMD64) || defined(_M_IX86) || defined(__amd64) || \
+    defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || \
+    defined(_X86_) || defined(__i386) || defined(__i386__)
+# define LLVM_IS_UNALIGNED_ACCESS_FAST 1
+#else
+# define LLVM_IS_UNALIGNED_ACCESS_FAST 0
 #endif
 
 #endif

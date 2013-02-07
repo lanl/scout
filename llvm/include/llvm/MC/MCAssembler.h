@@ -849,6 +849,10 @@ private:
   std::vector<IndirectSymbolData> IndirectSymbols;
 
   std::vector<DataRegionData> DataRegions;
+
+  /// The list of linker options to propagate into the object file.
+  std::vector<std::vector<std::string> > LinkerOptions;
+
   /// The set of function symbols for which a .thumb_func directive has
   /// been seen.
   //
@@ -867,6 +871,12 @@ private:
   unsigned NoExecStack : 1;
   unsigned SubsectionsViaSymbols : 1;
 
+  /// ELF specific e_header flags
+  // It would be good if there were an MCELFAssembler class to hold this.
+  // ELF header flags are used both by the integrated and standalone assemblers.
+  // Access to the flags is necessary in cases where assembler directives affect
+  // which flags to be set.
+  unsigned ELFHeaderEFlags;
 private:
   /// Evaluate a fixup to a relocatable expression and the value which should be
   /// placed into the fixup.
@@ -943,6 +953,10 @@ public:
 
   /// Flag a function symbol as the target of a .thumb_func directive.
   void setIsThumbFunc(const MCSymbol *Func) { ThumbFuncs.insert(Func); }
+
+  /// ELF e_header flags
+  unsigned getELFHeaderEFlags() const {return ELFHeaderEFlags;}
+  void setELFHeaderEFlags(unsigned Flags) { ELFHeaderEFlags = Flags;}
 
 public:
   /// Construct a new assembler instance.
@@ -1058,6 +1072,14 @@ public:
   }
 
   size_t indirect_symbol_size() const { return IndirectSymbols.size(); }
+
+  /// @}
+  /// @name Linker Option List Access
+  /// @{
+
+  std::vector<std::vector<std::string> > &getLinkerOptions() {
+    return LinkerOptions;
+  }
 
   /// @}
   /// @name Data Region List Access

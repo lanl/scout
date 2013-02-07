@@ -174,7 +174,8 @@ bool LLParser::ParseTopLevelEntities() {
     case lltok::GlobalID:   if (ParseUnnamedGlobal()) return true; break;
     case lltok::GlobalVar:  if (ParseNamedGlobal()) return true; break;
     case lltok::exclaim:    if (ParseStandaloneMetadata()) return true; break;
-    case lltok::MetadataVar: if (ParseNamedMetadata()) return true; break;
+    case lltok::MetadataVar:if (ParseNamedMetadata()) return true; break;
+    case lltok::AttrGrpID:  if (ParseUnnamedAttrGrp()) return true; break;
 
     // The Global variable production with no name can have many different
     // optional leading prefixes, the production is:
@@ -632,9 +633,11 @@ bool LLParser::ParseAlias(const std::string &Name, LocTy NameLoc,
 
 /// ParseGlobal
 ///   ::= GlobalVar '=' OptionalLinkage OptionalVisibility OptionalThreadLocal
-///       OptionalAddrSpace OptionalUnNammedAddr GlobalType Type Const
+///       OptionalAddrSpace OptionalUnNammedAddr
+///       OptionalExternallyInitialized GlobalType Type Const
 ///   ::= OptionalLinkage OptionalVisibility OptionalThreadLocal
-///       OptionalAddrSpace OptionalUnNammedAddr GlobalType Type Const
+///       OptionalAddrSpace OptionalUnNammedAddr
+///       OptionalExternallyInitialized GlobalType Type Const
 ///
 /// Everything through visibility has been parsed already.
 ///
@@ -642,9 +645,10 @@ bool LLParser::ParseGlobal(const std::string &Name, LocTy NameLoc,
                            unsigned Linkage, bool HasLinkage,
                            unsigned Visibility) {
   unsigned AddrSpace;
-  bool IsConstant, UnnamedAddr;
+  bool IsConstant, UnnamedAddr, IsExternallyInitialized;
   GlobalVariable::ThreadLocalMode TLM;
   LocTy UnnamedAddrLoc;
+  LocTy IsExternallyInitializedLoc;
   LocTy TyLoc;
 
   Type *Ty = 0;
@@ -652,6 +656,9 @@ bool LLParser::ParseGlobal(const std::string &Name, LocTy NameLoc,
       ParseOptionalAddrSpace(AddrSpace) ||
       ParseOptionalToken(lltok::kw_unnamed_addr, UnnamedAddr,
                          &UnnamedAddrLoc) ||
+      ParseOptionalToken(lltok::kw_externally_initialized,
+                         IsExternallyInitialized,
+                         &IsExternallyInitializedLoc) ||
       ParseGlobalType(IsConstant) ||
       ParseType(Ty, TyLoc))
     return true;
@@ -709,6 +716,7 @@ bool LLParser::ParseGlobal(const std::string &Name, LocTy NameLoc,
   GV->setConstant(IsConstant);
   GV->setLinkage((GlobalValue::LinkageTypes)Linkage);
   GV->setVisibility((GlobalValue::VisibilityTypes)Visibility);
+  GV->setExternallyInitialized(IsExternallyInitialized);
   GV->setThreadLocalMode(TLM);
   GV->setUnnamedAddr(UnnamedAddr);
 
@@ -733,6 +741,102 @@ bool LLParser::ParseGlobal(const std::string &Name, LocTy NameLoc,
   return false;
 }
 
+/// ParseUnnamedAttrGrp
+///   ::= AttrGrpID '=' '{' AttrValPair+ '}'
+bool LLParser::ParseUnnamedAttrGrp() {
+  assert(Lex.getKind() == lltok::AttrGrpID);
+  LocTy AttrGrpLoc = Lex.getLoc();
+  unsigned VarID = Lex.getUIntVal();
+  Lex.Lex();
+
+  if (ParseToken(lltok::equal, "expected '=' here") ||
+      ParseToken(lltok::kw_attributes, "expected 'attributes' keyword here") ||
+      ParseToken(lltok::lbrace, "expected '{' here") ||
+      ParseAttributeValuePairs(ForwardRefAttrBuilder[VarID]) ||
+      ParseToken(lltok::rbrace, "expected end of attribute group"))
+    return true;
+
+  if (!ForwardRefAttrBuilder[VarID].hasAttributes())
+    return Error(AttrGrpLoc, "attribute group has no attributes");
+
+  return false;
+}
+
+/// ParseAttributeValuePairs
+///   ::= <attr> | <attr> '=' <value>
+bool LLParser::ParseAttributeValuePairs(AttrBuilder &B) {
+  while (true) {
+    lltok::Kind Token = Lex.getKind();
+    switch (Token) {
+    default:
+      return Error(Lex.getLoc(), "unterminated attribute group");
+    case lltok::rbrace:
+      // Finished.
+      return false;
+
+    // Target-dependent attributes:
+    case lltok::StringConstant: {
+      std::string Attr = Lex.getStrVal();
+      Lex.Lex();
+      std::string Val;
+      if (EatIfPresent(lltok::equal) &&
+          ParseStringConstant(Val))
+        return true;
+
+      B.addAttribute(Attr, Val);
+      break;
+    }
+
+    // Target-independent attributes:
+    case lltok::kw_align: {
+      unsigned Alignment;
+      if (ParseToken(lltok::equal, "expected '=' here") ||
+          ParseUInt32(Alignment))
+        return true;
+      B.addAlignmentAttr(Alignment);
+      break;
+    }
+    case lltok::kw_alignstack: {
+      unsigned Alignment;
+      if (ParseToken(lltok::equal, "expected '=' here") ||
+          ParseUInt32(Alignment))
+        return true;
+      B.addStackAlignmentAttr(Alignment);
+      break;
+    }
+    case lltok::kw_address_safety:  B.addAttribute(Attribute::AddressSafety); break;
+    case lltok::kw_alwaysinline:    B.addAttribute(Attribute::AlwaysInline); break;
+    case lltok::kw_byval:           B.addAttribute(Attribute::ByVal); break;
+    case lltok::kw_inlinehint:      B.addAttribute(Attribute::InlineHint); break;
+    case lltok::kw_inreg:           B.addAttribute(Attribute::InReg); break;
+    case lltok::kw_minsize:         B.addAttribute(Attribute::MinSize); break;
+    case lltok::kw_naked:           B.addAttribute(Attribute::Naked); break;
+    case lltok::kw_nest:            B.addAttribute(Attribute::Nest); break;
+    case lltok::kw_noalias:         B.addAttribute(Attribute::NoAlias); break;
+    case lltok::kw_nocapture:       B.addAttribute(Attribute::NoCapture); break;
+    case lltok::kw_noduplicate:     B.addAttribute(Attribute::NoDuplicate); break;
+    case lltok::kw_noimplicitfloat: B.addAttribute(Attribute::NoImplicitFloat); break;
+    case lltok::kw_noinline:        B.addAttribute(Attribute::NoInline); break;
+    case lltok::kw_nonlazybind:     B.addAttribute(Attribute::NonLazyBind); break;
+    case lltok::kw_noredzone:       B.addAttribute(Attribute::NoRedZone); break;
+    case lltok::kw_noreturn:        B.addAttribute(Attribute::NoReturn); break;
+    case lltok::kw_nounwind:        B.addAttribute(Attribute::NoUnwind); break;
+    case lltok::kw_optsize:         B.addAttribute(Attribute::OptimizeForSize); break;
+    case lltok::kw_readnone:        B.addAttribute(Attribute::ReadNone); break;
+    case lltok::kw_readonly:        B.addAttribute(Attribute::ReadOnly); break;
+    case lltok::kw_returns_twice:   B.addAttribute(Attribute::ReturnsTwice); break;
+    case lltok::kw_signext:         B.addAttribute(Attribute::SExt); break;
+    case lltok::kw_sret:            B.addAttribute(Attribute::StructRet); break;
+    case lltok::kw_ssp:             B.addAttribute(Attribute::StackProtect); break;
+    case lltok::kw_sspreq:          B.addAttribute(Attribute::StackProtectReq); break;
+    case lltok::kw_sspstrong:       B.addAttribute(Attribute::StackProtectStrong); break;
+    case lltok::kw_uwtable:         B.addAttribute(Attribute::UWTable); break;
+    case lltok::kw_zeroext:         B.addAttribute(Attribute::ZExt); break;
+    }
+
+    Lex.Lex();
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // GlobalValue Reference/Resolution Routines.
@@ -956,6 +1060,7 @@ bool LLParser::ParseOptionalFuncAttrs(AttrBuilder &B) {
     case lltok::kw_returns_twice:   B.addAttribute(Attribute::ReturnsTwice); break;
     case lltok::kw_ssp:             B.addAttribute(Attribute::StackProtect); break;
     case lltok::kw_sspreq:          B.addAttribute(Attribute::StackProtectReq); break;
+    case lltok::kw_sspstrong:       B.addAttribute(Attribute::StackProtectStrong); break;
     case lltok::kw_uwtable:         B.addAttribute(Attribute::UWTable); break;
     case lltok::kw_noduplicate:     B.addAttribute(Attribute::NoDuplicate); break;
 
@@ -1050,11 +1155,11 @@ bool LLParser::ParseOptionalReturnAttrs(AttrBuilder &B) {
     case lltok::kw_readonly:       case lltok::kw_inlinehint:
     case lltok::kw_alwaysinline:   case lltok::kw_optsize:
     case lltok::kw_ssp:            case lltok::kw_sspreq:
-    case lltok::kw_noredzone:      case lltok::kw_noimplicitfloat:
-    case lltok::kw_naked:          case lltok::kw_nonlazybind:
-    case lltok::kw_address_safety: case lltok::kw_minsize:
-    case lltok::kw_alignstack:     case lltok::kw_align:
-    case lltok::kw_noduplicate:
+    case lltok::kw_sspstrong:      case lltok::kw_noimplicitfloat:
+    case lltok::kw_noredzone:      case lltok::kw_naked:
+    case lltok::kw_nonlazybind:    case lltok::kw_address_safety:
+    case lltok::kw_minsize:        case lltok::kw_alignstack:
+    case lltok::kw_align:          case lltok::kw_noduplicate:
       HaveError |= Error(Lex.getLoc(), "invalid use of function-only attribute");
       break;
     }
@@ -1471,6 +1576,7 @@ bool LLParser::ParseParameterList(SmallVectorImpl<ParamInfo> &ArgList,
   if (ParseToken(lltok::lparen, "expected '(' in call"))
     return true;
 
+  unsigned AttrIndex = 1;
   while (Lex.getKind() != lltok::rparen) {
     // If this isn't the first argument, we need a comma.
     if (!ArgList.empty() &&
@@ -1488,8 +1594,9 @@ bool LLParser::ParseParameterList(SmallVectorImpl<ParamInfo> &ArgList,
     // Otherwise, handle normal operands.
     if (ParseOptionalParamAttrs(ArgAttrs) || ParseValue(ArgTy, V, PFS))
       return true;
-    ArgList.push_back(ParamInfo(ArgLoc, V, Attribute::get(V->getContext(),
-                                                           ArgAttrs)));
+    ArgList.push_back(ParamInfo(ArgLoc, V, AttributeSet::get(V->getContext(),
+                                                             AttrIndex++,
+                                                             ArgAttrs)));
   }
 
   Lex.Lex();  // Lex the ')'.
@@ -1538,9 +1645,10 @@ bool LLParser::ParseArgumentList(SmallVectorImpl<ArgInfo> &ArgList,
     if (!FunctionType::isValidArgumentType(ArgTy))
       return Error(TypeLoc, "invalid type for function argument");
 
+    unsigned AttrIndex = 1;
     ArgList.push_back(ArgInfo(TypeLoc, ArgTy,
-                              Attribute::get(ArgTy->getContext(),
-                                              Attrs), Name));
+                              AttributeSet::get(ArgTy->getContext(),
+                                                AttrIndex++, Attrs), Name));
 
     while (EatIfPresent(lltok::comma)) {
       // Handle ... at end of arg list.
@@ -1567,7 +1675,8 @@ bool LLParser::ParseArgumentList(SmallVectorImpl<ArgInfo> &ArgList,
         return Error(TypeLoc, "invalid type for function argument");
 
       ArgList.push_back(ArgInfo(TypeLoc, ArgTy,
-                                Attribute::get(ArgTy->getContext(), Attrs),
+                                AttributeSet::get(ArgTy->getContext(),
+                                                  AttrIndex++, Attrs),
                                 Name));
     }
   }
@@ -1592,7 +1701,7 @@ bool LLParser::ParseFunctionType(Type *&Result) {
   for (unsigned i = 0, e = ArgList.size(); i != e; ++i) {
     if (!ArgList[i].Name.empty())
       return Error(ArgList[i].Loc, "argument name invalid in function type");
-    if (ArgList[i].Attrs.hasAttributes())
+    if (ArgList[i].Attrs.hasAttributes(i + 1))
       return Error(ArgList[i].Loc,
                    "argument attributes invalid in function type");
   }
@@ -2812,25 +2921,25 @@ bool LLParser::ParseFunctionHeader(Function *&Fn, bool isDefine) {
   // Okay, if we got here, the function is syntactically valid.  Convert types
   // and do semantic checks.
   std::vector<Type*> ParamTypeList;
-  SmallVector<AttributeWithIndex, 8> Attrs;
+  SmallVector<AttributeSet, 8> Attrs;
 
   if (RetAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::ReturnIndex,
-                              Attribute::get(RetType->getContext(),
-                                              RetAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::ReturnIndex,
+                                      RetAttrs));
 
   for (unsigned i = 0, e = ArgList.size(); i != e; ++i) {
     ParamTypeList.push_back(ArgList[i].Ty);
-    if (ArgList[i].Attrs.hasAttributes())
-      Attrs.push_back(AttributeWithIndex::get(i+1, ArgList[i].Attrs));
+    if (ArgList[i].Attrs.hasAttributes(i + 1)) {
+      AttrBuilder B(ArgList[i].Attrs, i + 1);
+      Attrs.push_back(AttributeSet::get(RetType->getContext(), i + 1, B));
+    }
   }
 
   if (FuncAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::FunctionIndex,
-                              Attribute::get(RetType->getContext(),
-                                              FuncAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::FunctionIndex,
+                                      FuncAttrs));
 
   AttributeSet PAL = AttributeSet::get(Context, Attrs);
 
@@ -3357,12 +3466,11 @@ bool LLParser::ParseInvoke(Instruction *&Inst, PerFunctionState &PFS) {
   if (ConvertValIDToValue(PFTy, CalleeID, Callee, &PFS)) return true;
 
   // Set up the Attribute for the function.
-  SmallVector<AttributeWithIndex, 8> Attrs;
+  SmallVector<AttributeSet, 8> Attrs;
   if (RetAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::ReturnIndex,
-                              Attribute::get(Callee->getContext(),
-                                              RetAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::ReturnIndex,
+                                      RetAttrs));
 
   SmallVector<Value*, 8> Args;
 
@@ -3382,18 +3490,19 @@ bool LLParser::ParseInvoke(Instruction *&Inst, PerFunctionState &PFS) {
       return Error(ArgList[i].Loc, "argument is not of expected type '" +
                    getTypeString(ExpectedTy) + "'");
     Args.push_back(ArgList[i].V);
-    if (ArgList[i].Attrs.hasAttributes())
-      Attrs.push_back(AttributeWithIndex::get(i+1, ArgList[i].Attrs));
+    if (ArgList[i].Attrs.hasAttributes(i + 1)) {
+      AttrBuilder B(ArgList[i].Attrs, i + 1);
+      Attrs.push_back(AttributeSet::get(RetType->getContext(), i + 1, B));
+    }
   }
 
   if (I != E)
     return Error(CallLoc, "not enough parameters specified for call");
 
   if (FnAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::FunctionIndex,
-                              Attribute::get(Callee->getContext(),
-                                              FnAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::FunctionIndex,
+                                      FnAttrs));
 
   // Finish off the Attribute and check them
   AttributeSet PAL = AttributeSet::get(Context, Attrs);
@@ -3759,12 +3868,11 @@ bool LLParser::ParseCall(Instruction *&Inst, PerFunctionState &PFS,
   if (ConvertValIDToValue(PFTy, CalleeID, Callee, &PFS)) return true;
 
   // Set up the Attribute for the function.
-  SmallVector<AttributeWithIndex, 8> Attrs;
+  SmallVector<AttributeSet, 8> Attrs;
   if (RetAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::ReturnIndex,
-                              Attribute::get(Callee->getContext(),
-                                              RetAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::ReturnIndex,
+                                      RetAttrs));
 
   SmallVector<Value*, 8> Args;
 
@@ -3784,18 +3892,19 @@ bool LLParser::ParseCall(Instruction *&Inst, PerFunctionState &PFS,
       return Error(ArgList[i].Loc, "argument is not of expected type '" +
                    getTypeString(ExpectedTy) + "'");
     Args.push_back(ArgList[i].V);
-    if (ArgList[i].Attrs.hasAttributes())
-      Attrs.push_back(AttributeWithIndex::get(i+1, ArgList[i].Attrs));
+    if (ArgList[i].Attrs.hasAttributes(i + 1)) {
+      AttrBuilder B(ArgList[i].Attrs, i + 1);
+      Attrs.push_back(AttributeSet::get(RetType->getContext(), i + 1, B));
+    }
   }
 
   if (I != E)
     return Error(CallLoc, "not enough parameters specified for call");
 
   if (FnAttrs.hasAttributes())
-    Attrs.push_back(
-      AttributeWithIndex::get(AttributeSet::FunctionIndex,
-                              Attribute::get(Callee->getContext(),
-                                              FnAttrs)));
+    Attrs.push_back(AttributeSet::get(RetType->getContext(),
+                                      AttributeSet::FunctionIndex,
+                                      FnAttrs));
 
   // Finish off the Attribute and check them
   AttributeSet PAL = AttributeSet::get(Context, Attrs);

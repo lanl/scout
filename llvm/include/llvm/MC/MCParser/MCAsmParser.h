@@ -35,7 +35,9 @@ class MCAsmParserSemaCallback {
 public:
   virtual ~MCAsmParserSemaCallback(); 
   virtual void *LookupInlineAsmIdentifier(StringRef Name, void *Loc,
-                                          unsigned &Size, bool &IsVarDecl) = 0;
+                                          unsigned &Length, unsigned &Size, 
+                                          unsigned &Type, bool &IsVarDecl) = 0;
+
   virtual bool LookupInlineAsmField(StringRef Base, StringRef Member,
                                     unsigned &Offset) = 0;
 };
@@ -132,6 +134,10 @@ public:
   /// current token until the end of the statement; the current token on exit
   /// will be either the EndOfStatement or EOF.
   virtual StringRef ParseStringToEndOfStatement() = 0;
+
+  /// ParseEscapedString - Parse the current token as a string which may include
+  /// escaped characters and return the string contents.
+  virtual bool ParseEscapedString(std::string &Data) = 0;
 
   /// EatToEndOfStatement - Skip to the end of the current statement, for error
   /// recovery.

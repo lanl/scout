@@ -11,6 +11,9 @@
 // dumps out a plethora of information about an object file depending on the
 // flags.
 //
+// The flags and output of this program should be near identical to those of
+// binutils objdump.
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm-objdump.h"
@@ -28,7 +31,6 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
-#include "llvm/Object/ELF.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"

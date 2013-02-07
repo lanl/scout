@@ -20,6 +20,8 @@
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
+#include <deque>
+#include <string>
 
 namespace llvm {
   namespace MipsISD {
@@ -62,6 +64,8 @@ namespace llvm {
 
       // Return
       Ret,
+
+      EH_RETURN,
 
       // MAdd/Sub nodes
       MAdd,
@@ -174,7 +178,15 @@ namespace llvm {
     virtual SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const;
   private:
 
+    void SetMips16LibcallName(RTLIB::Libcall, const char *Name);
+
     void setMips16HardFloatLibCalls();
+
+    unsigned int
+      getMips16HelperFunctionStubNumber(ArgListTy &Args) const;
+
+    const char *getMips16HelperFunction
+      (Type* RetTy, ArgListTy &Args, bool &needHelper) const;
 
     /// ByValArgInfo - Byval argument information.
     struct ByValArgInfo {
@@ -265,6 +277,7 @@ namespace llvm {
     SDValue LowerFABS(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerMEMBARRIER(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerATOMIC_FENCE(SDValue Op, SelectionDAG& DAG) const;
     SDValue LowerShiftLeftParts(SDValue Op, SelectionDAG& DAG) const;
@@ -294,7 +307,7 @@ namespace llvm {
 
     /// passByValArg - Pass a byval argument in registers or on stack.
     void passByValArg(SDValue Chain, DebugLoc DL,
-                      SmallVector<std::pair<unsigned, SDValue>, 16> &RegsToPass,
+                      std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
                       SmallVector<SDValue, 8> &MemOpChains, SDValue StackPtr,
                       MachineFrameInfo *MFI, SelectionDAG &DAG, SDValue Arg,
                       const MipsCC &CC, const ByValArgInfo &ByVal,

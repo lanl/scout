@@ -378,6 +378,25 @@ define <2 x i1> @ICmpSLT_vector(<2 x i32*> %x) nounwind uwtable readnone {
 ; CHECK: ret <2 x i1>
 
 
+; Check that we propagate shadow for unsigned relational comparisons with
+; constants
+
+define zeroext i1 @ICmpUGTConst(i32 %x) nounwind uwtable readnone {
+entry:
+  %cmp = icmp ugt i32 %x, 7
+  ret i1 %cmp
+}
+
+; CHECK: @ICmpUGTConst
+; CHECK: icmp ugt i32
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp ugt i32
+; CHECK-NOT: call void @__msan_warning
+; CHECK: icmp ugt i32
+; CHECK-NOT: call void @__msan_warning
+; CHECK: ret i1
+
+
 ; Check that loads of shadow have the same aligment as the original loads.
 ; Check that loads of origin have the aligment of max(4, original alignment).
 
@@ -562,4 +581,18 @@ define void @VACopy(i8* %p1, i8* %p2) nounwind uwtable {
 
 ; CHECK: @VACopy
 ; CHECK: call void @llvm.memset.p0i8.i64({{.*}}, i8 0, i64 24, i32 8, i1 false)
+; CHECK: ret void
+
+
+; Test handling of volatile stores.
+; Check that MemorySanitizer does not add a check of the value being stored.
+
+define void @VolatileStore(i32* nocapture %p, i32 %x) nounwind uwtable {
+entry:
+  store volatile i32 %x, i32* %p, align 4
+  ret void
+}
+
+; CHECK: @VolatileStore
+; CHECK-NOT: @__msan_warning
 ; CHECK: ret void

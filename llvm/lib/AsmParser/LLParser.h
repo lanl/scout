@@ -125,6 +125,9 @@ namespace llvm {
     std::map<ValID, std::vector<std::pair<ValID, GlobalValue*> > >
       ForwardRefBlockAddresses;
 
+    // Attribute builder reference information.
+    std::map<unsigned, AttrBuilder> ForwardRefAttrBuilder;
+
   public:
     LLParser(MemoryBuffer *F, SourceMgr &SM, SMDiagnostic &Err, Module *m) :
       Context(m->getContext()), Lex(F, SM, Err, m->getContext()),
@@ -236,6 +239,8 @@ namespace llvm {
     bool ParseMDString(MDString *&Result);
     bool ParseMDNodeID(MDNode *&Result);
     bool ParseMDNodeID(MDNode *&Result, unsigned &SlotNo);
+    bool ParseUnnamedAttrGrp();
+    bool ParseAttributeValuePairs(AttrBuilder &B);
 
     // Type Parsing.
     bool ParseType(Type *&Result, bool AllowVoid = false);
@@ -326,8 +331,8 @@ namespace llvm {
     struct ParamInfo {
       LocTy Loc;
       Value *V;
-      Attribute Attrs;
-      ParamInfo(LocTy loc, Value *v, Attribute attrs)
+      AttributeSet Attrs;
+      ParamInfo(LocTy loc, Value *v, AttributeSet attrs)
         : Loc(loc), V(v), Attrs(attrs) {}
     };
     bool ParseParameterList(SmallVectorImpl<ParamInfo> &ArgList,
@@ -347,9 +352,9 @@ namespace llvm {
     struct ArgInfo {
       LocTy Loc;
       Type *Ty;
-      Attribute Attrs;
+      AttributeSet Attrs;
       std::string Name;
-      ArgInfo(LocTy L, Type *ty, Attribute Attr, const std::string &N)
+      ArgInfo(LocTy L, Type *ty, AttributeSet Attr, const std::string &N)
         : Loc(L), Ty(ty), Attrs(Attr), Name(N) {}
     };
     bool ParseArgumentList(SmallVectorImpl<ArgInfo> &ArgList, bool &isVarArg);

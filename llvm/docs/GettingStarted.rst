@@ -217,11 +217,7 @@ uses the package and provides other details.
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
 | `SVN <http://subversion.tigris.org/project_packages.html>`_  | >=1.3           | Subversion access to LLVM\ :sup:`2`         |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `DejaGnu <http://savannah.gnu.org/projects/dejagnu>`_        | 1.4.2           | Automated test suite\ :sup:`3`              |
-+--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `tcl <http://www.tcl.tk/software/tcltk/>`_                   | 8.3, 8.4        | Automated test suite\ :sup:`3`              |
-+--------------------------------------------------------------+-----------------+---------------------------------------------+
-| `expect <http://expect.nist.gov/>`_                          | 5.38.0          | Automated test suite\ :sup:`3`              |
+| `python <http://www.python.org/>`_                           | >=2.4           | Automated test suite\ :sup:`3`              |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
 | `perl <http://www.perl.com/download.csp>`_                   | >=5.6.0         | Utilities                                   |
 +--------------------------------------------------------------+-----------------+---------------------------------------------+
@@ -642,6 +638,34 @@ upstream git repo, run:
 This leaves your working directories on their master branches, so you'll need to
 ``checkout`` each working branch individually and ``rebase`` it on top of its
 parent branch.
+
+For those who wish to be able to update an llvm repo in a simpler fashion,
+consider placing the following git script in your path under the name
+``git-svnup``:
+
+.. code-block:: bash
+
+  #!/bin/bash
+
+  STATUS=$(git status -s | grep -v "??")
+
+  if [ ! -z "$STATUS" ]; then
+      STASH="yes"
+      git stash >/dev/null
+  fi
+
+  git fetch
+  OLD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  git checkout master 2> /dev/null
+  git svn rebase -l
+  git checkout $OLD_BRANCH 2> /dev/null
+
+  if [ ! -z $STASH ]; then
+      git stash pop >/dev/null
+  fi
+
+Then to perform the aforementioned update steps go into your source directory
+and just type ``git-svnup`` or ``git svnup`` and everything will just work.
 
 To commit back changes via git-svn, use ``dcommit``:
 

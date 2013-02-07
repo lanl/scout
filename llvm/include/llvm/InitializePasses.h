@@ -31,6 +31,10 @@ void initializeTransformUtils(PassRegistry&);
 /// ScalarOpts library.
 void initializeScalarOpts(PassRegistry&);
 
+/// initializeObjCARCOpts - Initialize all passes linked into the ObjCARCOpts
+/// library.
+void initializeObjCARCOpts(PassRegistry&);
+
 /// initializeVectorization - Initialize all passes linked into the
 /// Vectorize library.
 void initializeVectorization(PassRegistry&);
@@ -132,6 +136,7 @@ void initializeIPSCCPPass(PassRegistry&);
 void initializeIVUsersPass(PassRegistry&);
 void initializeIfConverterPass(PassRegistry&);
 void initializeIndVarSimplifyPass(PassRegistry&);
+void initializeInlineCostAnalysisPass(PassRegistry&);
 void initializeInstCombinerPass(PassRegistry&);
 void initializeInstCountPass(PassRegistry&);
 void initializeInstNamerPass(PassRegistry&);

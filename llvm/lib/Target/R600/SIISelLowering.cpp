@@ -34,8 +34,11 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   addRegisterClass(MVT::i1, &AMDGPU::SCCRegRegClass);
   addRegisterClass(MVT::i1, &AMDGPU::VCCRegRegClass);
 
-  addRegisterClass(MVT::v4i32, &AMDGPU::SReg_128RegClass);
-  addRegisterClass(MVT::v8i32, &AMDGPU::SReg_256RegClass);
+  addRegisterClass(MVT::v1i32, &AMDGPU::VReg_32RegClass);
+  addRegisterClass(MVT::v2i32, &AMDGPU::VReg_64RegClass);
+  addRegisterClass(MVT::v4i32, &AMDGPU::VReg_128RegClass);
+  addRegisterClass(MVT::v8i32, &AMDGPU::VReg_256RegClass);
+  addRegisterClass(MVT::v16i32, &AMDGPU::VReg_512RegClass);
 
   computeRegisterProperties();
 
@@ -65,11 +68,6 @@ MachineBasicBlock * SITargetLowering::EmitInstrWithCustomInserter(
   const TargetInstrInfo * TII = getTargetMachine().getInstrInfo();
   MachineRegisterInfo & MRI = BB->getParent()->getRegInfo();
   MachineBasicBlock::iterator I = MI;
-
-  if (TII->get(MI->getOpcode()).TSFlags & SIInstrFlags::NEED_WAIT) {
-    AppendS_WAITCNT(MI, *BB, llvm::next(I));
-    return BB;
-  }
 
   switch (MI->getOpcode()) {
   default:
@@ -131,9 +129,6 @@ MachineBasicBlock * SITargetLowering::EmitInstrWithCustomInserter(
   case AMDGPU::SI_INTERP_CONST:
     LowerSI_INTERP_CONST(MI, *BB, I, MRI);
     break;
-  case AMDGPU::SI_KIL:
-    LowerSI_KIL(MI, *BB, I, MRI);
-    break;
   case AMDGPU::SI_WQM:
     LowerSI_WQM(MI, *BB, I, MRI);
     break;
@@ -143,13 +138,6 @@ MachineBasicBlock * SITargetLowering::EmitInstrWithCustomInserter(
   }
   return BB;
 }
-
-void SITargetLowering::AppendS_WAITCNT(MachineInstr *MI, MachineBasicBlock &BB,
-    MachineBasicBlock::iterator I) const {
-  BuildMI(BB, I, BB.findDebugLoc(I), TII->get(AMDGPU::S_WAITCNT))
-          .addImm(0);
-}
-
 
 void SITargetLowering::LowerSI_WQM(MachineInstr *MI, MachineBasicBlock &BB,
     MachineBasicBlock::iterator I, MachineRegisterInfo & MRI) const {
@@ -207,17 +195,6 @@ void SITargetLowering::LowerSI_INTERP_CONST(MachineInstr *MI,
           .addOperand(attr_chan)
           .addOperand(attr)
           .addReg(M0);
-
-  MI->eraseFromParent();
-}
-
-void SITargetLowering::LowerSI_KIL(MachineInstr *MI, MachineBasicBlock &BB,
-    MachineBasicBlock::iterator I, MachineRegisterInfo & MRI) const {
-  // Clear this pixel from the exec mask if the operand is negative
-  BuildMI(BB, I, BB.findDebugLoc(I), TII->get(AMDGPU::V_CMPX_LE_F32_e32),
-          AMDGPU::VCC)
-          .addReg(AMDGPU::SREG_LIT_0)
-          .addOperand(MI->getOperand(0));
 
   MI->eraseFromParent();
 }

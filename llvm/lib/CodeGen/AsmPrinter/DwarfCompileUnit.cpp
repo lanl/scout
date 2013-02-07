@@ -190,6 +190,22 @@ void CompileUnit::addLabelAddress(DIE *Die, unsigned Attribute,
   }
 }
 
+/// addOpAddress - Add a dwarf op address data and value using the
+/// form given and an op of either DW_FORM_addr or DW_FORM_GNU_addr_index.
+///
+void CompileUnit::addOpAddress(DIE *Die, MCSymbol *Sym) {
+
+  if (!DD->useSplitDwarf()) {
+    addUInt(Die, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_addr);
+    addLabel(Die, 0, dwarf::DW_FORM_udata, Sym);
+  } else {
+    unsigned idx = DU->getAddrPoolIndex(Sym);
+    DIEValue *Value = new (DIEValueAllocator) DIEInteger(idx);
+    addUInt(Die, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_GNU_addr_index);
+    Die->addValue(0, dwarf::DW_FORM_GNU_addr_index, Value);
+  }
+}
+
 /// addDelta - Add a label delta attribute data and value.
 ///
 void CompileUnit::addDelta(DIE *Die, unsigned Attribute, unsigned Form,
@@ -612,10 +628,21 @@ bool CompileUnit::addConstantFPValue(DIE *Die, const MachineOperand &MO) {
   return true;
 }
 
+/// addConstantFPValue - Add constant value entry in variable DIE.
+bool CompileUnit::addConstantFPValue(DIE *Die, const ConstantFP *CFP) {
+  return addConstantValue(Die, CFP->getValueAPF().bitcastToAPInt(), false);
+}
+
 /// addConstantValue - Add constant value entry in variable DIE.
 bool CompileUnit::addConstantValue(DIE *Die, const ConstantInt *CI,
                                    bool Unsigned) {
-  unsigned CIBitWidth = CI->getBitWidth();
+  return addConstantValue(Die, CI->getValue(), Unsigned);
+}
+
+// addConstantValue - Add constant value entry in variable DIE.
+bool CompileUnit::addConstantValue(DIE *Die, const APInt &Val,
+                                   bool Unsigned) {
+  unsigned CIBitWidth = Val.getBitWidth();
   if (CIBitWidth <= 64) {
     unsigned form = 0;
     switch (CIBitWidth) {
@@ -627,16 +654,15 @@ bool CompileUnit::addConstantValue(DIE *Die, const ConstantInt *CI,
       form = Unsigned ? dwarf::DW_FORM_udata : dwarf::DW_FORM_sdata;
     }
     if (Unsigned)
-      addUInt(Die, dwarf::DW_AT_const_value, form, CI->getZExtValue());
+      addUInt(Die, dwarf::DW_AT_const_value, form, Val.getZExtValue());
     else
-      addSInt(Die, dwarf::DW_AT_const_value, form, CI->getSExtValue());
+      addSInt(Die, dwarf::DW_AT_const_value, form, Val.getSExtValue());
     return true;
   }
 
   DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
 
   // Get the raw data form of the large APInt.
-  const APInt Val = CI->getValue();
   const uint64_t *Ptr64 = Val.getRawData();
 
   int NumBytes = Val.getBitWidth() / 8; // 8 bits per byte.
@@ -887,6 +913,8 @@ void CompileUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
       } else {
         DIE *Arg = new DIE(dwarf::DW_TAG_formal_parameter);
         addType(Arg, DIType(Ty));
+        if (DIType(Ty).isArtificial())
+          addFlag(Arg, dwarf::DW_AT_artificial);
         Buffer.addChild(Arg);
       }
     }
@@ -1258,6 +1286,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
   // If this is a static data member definition, some attributes belong
   // to the declaration DIE.
   DIE *VariableDIE = NULL;
+  bool IsStaticMember = false;
   DIDerivedType SDMDecl = GV.getStaticDataMemberDeclaration();
   if (SDMDecl.Verify()) {
     assert(SDMDecl.isStaticMember() && "Expected static member decl");
@@ -1267,6 +1296,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     getOrCreateContextDIE(SDMDecl.getContext());
     VariableDIE = getDIE(SDMDecl);
     assert(VariableDIE && "Static member decl has no context?");
+    IsStaticMember = true;
   }
 
   // If this is not a static data member definition, create the variable
@@ -1297,9 +1327,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
   if (isGlobalVariable) {
     addToAccelTable = true;
     DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
-    addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_addr);
-    addLabel(Block, 0, dwarf::DW_FORM_udata,
-             Asm->Mang->getSymbol(GV.getGlobal()));
+    addOpAddress(Block, Asm->Mang->getSymbol(GV.getGlobal()));
     // Do not create specification DIE if context is either compile unit
     // or a subprogram.
     if (GVContext && GV.isDefinition() && !GVContext.isCompileUnit() &&
@@ -1322,16 +1350,18 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
       addString(VariableDIE, dwarf::DW_AT_MIPS_linkage_name,
                 getRealLinkageName(LinkageName));
   } else if (const ConstantInt *CI =
-             dyn_cast_or_null<ConstantInt>(GV.getConstant()))
-    addConstantValue(VariableDIE, CI, GTy.isUnsignedDIType());
-  else if (const ConstantExpr *CE = getMergedGlobalExpr(N->getOperand(11))) {
+             dyn_cast_or_null<ConstantInt>(GV.getConstant())) {
+    // AT_const_value was added when the static memeber was created. To avoid
+    // emitting AT_const_value multiple times, we only add AT_const_value when
+    // it is not a static member.
+    if (!IsStaticMember)
+      addConstantValue(VariableDIE, CI, GTy.isUnsignedDIType());
+  } else if (const ConstantExpr *CE = getMergedGlobalExpr(N->getOperand(11))) {
     addToAccelTable = true;
     // GV is a merged global.
     DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
     Value *Ptr = CE->getOperand(0);
-    addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_addr);
-    addLabel(Block, 0, dwarf::DW_FORM_udata,
-                    Asm->Mang->getSymbol(cast<GlobalValue>(Ptr)));
+    addOpAddress(Block, Asm->Mang->getSymbol(cast<GlobalValue>(Ptr)));
     addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_constu);
     SmallVector<Value*, 3> Idx(CE->op_begin()+1, CE->op_end());
     addUInt(Block, 0, dwarf::DW_FORM_udata,
@@ -1685,6 +1715,8 @@ DIE *CompileUnit::createStaticMemberDIE(const DIDerivedType DT) {
 
   if (const ConstantInt *CI = dyn_cast_or_null<ConstantInt>(DT.getConstant()))
     addConstantValue(StaticMemberDIE, CI, Ty.isUnsignedDIType());
+  if (const ConstantFP *CFP = dyn_cast_or_null<ConstantFP>(DT.getConstant()))
+    addConstantFPValue(StaticMemberDIE, CFP);
 
   insertDIE(DT, StaticMemberDIE);
   return StaticMemberDIE;

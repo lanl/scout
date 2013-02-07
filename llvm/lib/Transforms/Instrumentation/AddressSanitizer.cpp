@@ -16,7 +16,6 @@
 #define DEBUG_TYPE "asan"
 
 #include "llvm/Transforms/Instrumentation.h"
-#include "BlackList.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
@@ -43,6 +42,7 @@
 #include "llvm/Support/system_error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Utils/BlackList.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <algorithm>
@@ -53,7 +53,7 @@ using namespace llvm;
 static const uint64_t kDefaultShadowScale = 3;
 static const uint64_t kDefaultShadowOffset32 = 1ULL << 29;
 static const uint64_t kDefaultShadowOffset64 = 1ULL << 44;
-static const uint64_t kDefaultShadowOffsetPie = 0;
+static const uint64_t kPPC64_ShadowOffset64 = 1ULL << 41;
 
 static const size_t kMaxStackMallocSize = 1 << 16;  // 64K
 static const uintptr_t kCurrentStackFrameMagic = 0x41B58AB3;
@@ -187,20 +187,29 @@ class SetOfDynamicallyInitializedGlobals {
 };
 
 /// This struct defines the shadow mapping using the rule:
-///   shadow = (mem >> Scale) + Offset.
+///   shadow = (mem >> Scale) ADD-or-OR Offset.
 struct ShadowMapping {
   int Scale;
   uint64_t Offset;
+  bool OrShadowOffset;
 };
 
-static ShadowMapping getShadowMapping(const Module &M, int LongSize) {
-  llvm::Triple targetTriple(M.getTargetTriple());
-  bool isAndroid = targetTriple.getEnvironment() == llvm::Triple::Android;
+static ShadowMapping getShadowMapping(const Module &M, int LongSize,
+                                      bool ZeroBaseShadow) {
+  llvm::Triple TargetTriple(M.getTargetTriple());
+  bool IsAndroid = TargetTriple.getEnvironment() == llvm::Triple::Android;
+  bool IsPPC64 = TargetTriple.getArch() == llvm::Triple::ppc64;
 
   ShadowMapping Mapping;
 
-  Mapping.Offset = isAndroid ? kDefaultShadowOffsetPie :
-      (LongSize == 32 ? kDefaultShadowOffset32 : kDefaultShadowOffset64);
+  // OR-ing shadow offset if more efficient (at least on x86),
+  // but on ppc64 we have to use add since the shadow offset is not neccesary
+  // 1/8-th of the address space.
+  Mapping.OrShadowOffset = !IsPPC64;
+
+  Mapping.Offset = (IsAndroid || ZeroBaseShadow) ? 0 :
+      (LongSize == 32 ? kDefaultShadowOffset32 :
+       IsPPC64 ? kPPC64_ShadowOffset64 : kDefaultShadowOffset64);
   if (ClMappingOffsetLog >= 0) {
     // Zero offset log is the special case.
     Mapping.Offset = (ClMappingOffsetLog == 0) ? 0 : 1ULL << ClMappingOffsetLog;
@@ -225,13 +234,15 @@ struct AddressSanitizer : public FunctionPass {
   AddressSanitizer(bool CheckInitOrder = false,
                    bool CheckUseAfterReturn = false,
                    bool CheckLifetime = false,
-                   StringRef BlacklistFile = StringRef())
+                   StringRef BlacklistFile = StringRef(),
+                   bool ZeroBaseShadow = false)
       : FunctionPass(ID),
         CheckInitOrder(CheckInitOrder || ClInitializers),
         CheckUseAfterReturn(CheckUseAfterReturn || ClUseAfterReturn),
         CheckLifetime(CheckLifetime || ClCheckLifetime),
         BlacklistFile(BlacklistFile.empty() ? ClBlacklistFile
-                                            : BlacklistFile) {}
+                                            : BlacklistFile),
+        ZeroBaseShadow(ZeroBaseShadow) {}
   virtual const char *getPassName() const {
     return "AddressSanitizerFunctionPass";
   }
@@ -265,6 +276,9 @@ struct AddressSanitizer : public FunctionPass {
   bool CheckInitOrder;
   bool CheckUseAfterReturn;
   bool CheckLifetime;
+  SmallString<64> BlacklistFile;
+  bool ZeroBaseShadow;
+
   LLVMContext *C;
   DataLayout *TD;
   int LongSize;
@@ -273,7 +287,6 @@ struct AddressSanitizer : public FunctionPass {
   Function *AsanCtorFunction;
   Function *AsanInitFunction;
   Function *AsanHandleNoReturnFunc;
-  SmallString<64> BlacklistFile;
   OwningPtr<BlackList> BL;
   // This array is indexed by AccessIsWrite and log2(AccessSize).
   Function *AsanErrorCallback[2][kNumberOfAccessSizes];
@@ -286,11 +299,13 @@ struct AddressSanitizer : public FunctionPass {
 class AddressSanitizerModule : public ModulePass {
  public:
   AddressSanitizerModule(bool CheckInitOrder = false,
-                         StringRef BlacklistFile = StringRef())
+                         StringRef BlacklistFile = StringRef(),
+                         bool ZeroBaseShadow = false)
       : ModulePass(ID),
         CheckInitOrder(CheckInitOrder || ClInitializers),
         BlacklistFile(BlacklistFile.empty() ? ClBlacklistFile
-                                            : BlacklistFile) {}
+                                            : BlacklistFile),
+        ZeroBaseShadow(ZeroBaseShadow) {}
   bool runOnModule(Module &M);
   static char ID;  // Pass identification, replacement for typeid
   virtual const char *getPassName() const {
@@ -309,6 +324,8 @@ class AddressSanitizerModule : public ModulePass {
 
   bool CheckInitOrder;
   SmallString<64> BlacklistFile;
+  bool ZeroBaseShadow;
+
   OwningPtr<BlackList> BL;
   SetOfDynamicallyInitializedGlobals DynamicallyInitializedGlobals;
   Type *IntptrTy;
@@ -473,9 +490,9 @@ INITIALIZE_PASS(AddressSanitizer, "asan",
     false, false)
 FunctionPass *llvm::createAddressSanitizerFunctionPass(
     bool CheckInitOrder, bool CheckUseAfterReturn, bool CheckLifetime,
-    StringRef BlacklistFile) {
+    StringRef BlacklistFile, bool ZeroBaseShadow) {
   return new AddressSanitizer(CheckInitOrder, CheckUseAfterReturn,
-                              CheckLifetime, BlacklistFile);
+                              CheckLifetime, BlacklistFile, ZeroBaseShadow);
 }
 
 char AddressSanitizerModule::ID = 0;
@@ -483,8 +500,9 @@ INITIALIZE_PASS(AddressSanitizerModule, "asan-module",
     "AddressSanitizer: detects use-after-free and out-of-bounds bugs."
     "ModulePass", false, false)
 ModulePass *llvm::createAddressSanitizerModulePass(
-    bool CheckInitOrder, StringRef BlacklistFile) {
-  return new AddressSanitizerModule(CheckInitOrder, BlacklistFile);
+    bool CheckInitOrder, StringRef BlacklistFile, bool ZeroBaseShadow) {
+  return new AddressSanitizerModule(CheckInitOrder, BlacklistFile,
+                                    ZeroBaseShadow);
 }
 
 static size_t TypeSizeToSizeIndex(uint32_t TypeSize) {
@@ -511,8 +529,10 @@ Value *AddressSanitizer::memToShadow(Value *Shadow, IRBuilder<> &IRB) {
   if (Mapping.Offset == 0)
     return Shadow;
   // (Shadow >> scale) | offset
-  return IRB.CreateOr(Shadow, ConstantInt::get(IntptrTy,
-                                               Mapping.Offset));
+  if (Mapping.OrShadowOffset)
+    return IRB.CreateOr(Shadow, ConstantInt::get(IntptrTy, Mapping.Offset));
+  else
+    return IRB.CreateAdd(Shadow, ConstantInt::get(IntptrTy, Mapping.Offset));
 }
 
 void AddressSanitizer::instrumentMemIntrinsicParam(
@@ -818,7 +838,7 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
   C = &(M.getContext());
   int LongSize = TD->getPointerSizeInBits();
   IntptrTy = Type::getIntNTy(*C, LongSize);
-  Mapping = getShadowMapping(M, LongSize);
+  Mapping = getShadowMapping(M, LongSize, ZeroBaseShadow);
   initializeCallbacks(M);
   DynamicallyInitializedGlobals.Init(M);
 
@@ -855,12 +875,22 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
   Value *FirstDynamic = 0, *LastDynamic = 0;
 
   for (size_t i = 0; i < n; i++) {
+    static const uint64_t kMaxGlobalRedzone = 1 << 18;
     GlobalVariable *G = GlobalsToChange[i];
     PointerType *PtrTy = cast<PointerType>(G->getType());
     Type *Ty = PtrTy->getElementType();
     uint64_t SizeInBytes = TD->getTypeAllocSize(Ty);
-    size_t RZ = RedzoneSize();
-    uint64_t RightRedzoneSize = RZ + (RZ - (SizeInBytes % RZ));
+    uint64_t MinRZ = RedzoneSize();
+    // MinRZ <= RZ <= kMaxGlobalRedzone
+    // and trying to make RZ to be ~ 1/4 of SizeInBytes.
+    uint64_t RZ = std::max(MinRZ,
+                         std::min(kMaxGlobalRedzone,
+                                  (SizeInBytes / MinRZ / 4) * MinRZ));
+    uint64_t RightRedzoneSize = RZ;
+    // Round up to MinRZ
+    if (SizeInBytes % MinRZ)
+      RightRedzoneSize += MinRZ - (SizeInBytes % MinRZ);
+    assert(((RightRedzoneSize + SizeInBytes) % MinRZ) == 0);
     Type *RightRedZoneTy = ArrayType::get(IRB.getInt8Ty(), RightRedzoneSize);
     // Determine whether this global should be poisoned in initialization.
     bool GlobalHasDynamicInitializer =
@@ -884,7 +914,7 @@ bool AddressSanitizerModule::runOnModule(Module &M) {
         M, NewTy, G->isConstant(), G->getLinkage(),
         NewInitializer, "", G, G->getThreadLocalMode());
     NewGlobal->copyAttributesFrom(G);
-    NewGlobal->setAlignment(RZ);
+    NewGlobal->setAlignment(MinRZ);
 
     Value *Indices2[2];
     Indices2[0] = IRB.getInt32(0);
@@ -967,25 +997,20 @@ void AddressSanitizer::initializeCallbacks(Module &M) {
 }
 
 void AddressSanitizer::emitShadowMapping(Module &M, IRBuilder<> &IRB) const {
-  // Tell the values of mapping offset and scale to the run-time if they are
-  // specified by command-line flags.
-  if (ClMappingOffsetLog >= 0) {
-    GlobalValue *asan_mapping_offset =
-        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                       ConstantInt::get(IntptrTy, Mapping.Offset),
-                       kAsanMappingOffsetName);
-    // Read the global, otherwise it may be optimized away.
-    IRB.CreateLoad(asan_mapping_offset, true);
-  }
+  // Tell the values of mapping offset and scale to the run-time.
+  GlobalValue *asan_mapping_offset =
+      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                     ConstantInt::get(IntptrTy, Mapping.Offset),
+                     kAsanMappingOffsetName);
+  // Read the global, otherwise it may be optimized away.
+  IRB.CreateLoad(asan_mapping_offset, true);
 
-  if (ClMappingScale) {
-    GlobalValue *asan_mapping_scale =
-        new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
-                           ConstantInt::get(IntptrTy, Mapping.Scale),
-                           kAsanMappingScaleName);
-    // Read the global, otherwise it may be optimized away.
-    IRB.CreateLoad(asan_mapping_scale, true);
-  }
+  GlobalValue *asan_mapping_scale =
+      new GlobalVariable(M, IntptrTy, true, GlobalValue::LinkOnceODRLinkage,
+                         ConstantInt::get(IntptrTy, Mapping.Scale),
+                         kAsanMappingScaleName);
+  // Read the global, otherwise it may be optimized away.
+  IRB.CreateLoad(asan_mapping_scale, true);
 }
 
 // virtual
@@ -1013,7 +1038,7 @@ bool AddressSanitizer::doInitialization(Module &M) {
   AsanInitFunction->setLinkage(Function::ExternalLinkage);
   IRB.CreateCall(AsanInitFunction);
 
-  Mapping = getShadowMapping(M, LongSize);
+  Mapping = getShadowMapping(M, LongSize, ZeroBaseShadow);
   emitShadowMapping(M, IRB);
 
   appendToGlobalCtors(M, AsanCtorFunction, kAsanCtorAndCtorPriority);

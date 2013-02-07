@@ -44,6 +44,15 @@ class FEXT_CCRXI16_ins<bits<5> _op, string asmstr,
   let isCodeGenOnly=1;
 }
 
+// JAL and JALX instruction format
+//
+class FJAL16_ins<bits<1> _X, string asmstr,
+                 InstrItinClass itin>:
+  FJAL16<_X, (outs), (ins simm20:$imm),
+         !strconcat(asmstr, "\t$imm\n\tnop"),[],
+         itin>  {
+  let isCodeGenOnly=1;
+}
 //
 // EXT-I instruction format
 //
@@ -257,7 +266,7 @@ class FRR16_JALRC_RA_only_ins<bits<1> nd_, bits<1> l_,
 
 class FRR16_JALRC_ins<bits<1> nd, bits<1> l, bits<1> ra,
                       string asmstr, InstrItinClass itin>:
-  FRR16_JALRC<nd, l, ra, (outs), (ins CPU16Regs:$rx), 
+  FRR16_JALRC<nd, l, ra, (outs), (ins CPU16Regs:$rx),
               !strconcat(asmstr, "\t $rx"), [], itin> ;
 
 //
@@ -363,7 +372,7 @@ def imm32: Operand<i32>;
 
 def Constant32:
   MipsPseudo16<(outs), (ins imm32:$imm), "\t.word $imm", []>;
-  
+
 def LwConstant32:
   MipsPseudo16<(outs), (ins CPU16Regs:$rx, imm32:$imm),
     "lw\t$rx, 1f\n\tb\t2f\n\t.align\t2\n1: \t.word\t$imm\n2:", []>;
@@ -430,7 +439,7 @@ def AddiuSpImmX16
   : FEXT_I816_SP_ins<0b011, "addiu", IIAlu> {
   let Defs = [SP];
   let Uses = [SP];
-}   
+}
 
 //
 // Format: ADDU rz, rx, ry MIPS16e
@@ -526,7 +535,19 @@ def DivRxRy16: FRR16_div_ins<0b11010, "div", IIAlu> {
 def DivuRxRy16: FRR16_div_ins<0b11011, "divu", IIAlu> {
   let Defs = [HI, LO];
 }
+//
+// Format: JAL target MIPS16e
+// Purpose: Jump and Link
+// To execute a procedure call within the current 256 MB-aligned
+// region and preserve the current ISA.
+//
 
+def Jal16 : FJAL16_ins<0b0, "jal", IIAlu> {
+  let isBranch = 1;
+  let hasDelaySlot = 0;  // not true, but we add the nop for now
+  let isTerminator=1;
+  let isBarrier=1;
+}
 
 //
 // Format: JR ra MIPS16e
@@ -1067,14 +1088,19 @@ def: StoreM16_pat<store, SwRxRyOffMemX16>;
 // Unconditional branch
 class UncondBranch16_pat<SDNode OpNode, Instruction I>:
   Mips16Pat<(OpNode bb:$imm16), (I bb:$imm16)> {
-    let Predicates = [RelocPIC, InMips16Mode];
+    let Predicates = [InMips16Mode];
   }
+
+def : Mips16Pat<(MipsJmpLink (i32 tglobaladdr:$dst)),
+                (Jal16 tglobaladdr:$dst)>;
+
+def : Mips16Pat<(MipsJmpLink (i32 texternalsym:$dst)),
+                (Jal16 texternalsym:$dst)>;
 
 // Indirect branch
 def: Mips16Pat<
-  (brind CPU16Regs:$rs), 
-  (JrcRx16 CPU16Regs:$rs)>;  
-
+  (brind CPU16Regs:$rs),
+  (JrcRx16 CPU16Regs:$rs)>;
 
 // Jump and Link (Call)
 let isCall=1, hasDelaySlot=0 in
@@ -1562,7 +1588,9 @@ def: Mips16Pat<(add CPU16Regs:$hi, (MipsLo tglobaladdr:$lo)),
 
 // hi/lo relocs
 
-def : Mips16Pat<(MipsHi tglobaltlsaddr:$in), 
+def : Mips16Pat<(MipsHi tglobaladdr:$in), 
+                (SllX16 (LiRxImmX16 tglobaladdr:$in), 16)>;
+def : Mips16Pat<(MipsHi tglobaltlsaddr:$in),
                 (SllX16 (LiRxImmX16 tglobaltlsaddr:$in), 16)>;
 
 // wrapper_pic
