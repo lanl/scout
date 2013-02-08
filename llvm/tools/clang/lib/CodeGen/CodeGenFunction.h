@@ -689,16 +689,26 @@ public:
     if(arg->getName().endswith("width")) return false;
     if(arg->getName().endswith("depth")) return false;
     if(arg->getName().endswith("ptr")) return false;
+    if(arg->getName().endswith("dim_x")) return false;
+    if(arg->getName().endswith("dim_y")) return false;
+    if(arg->getName().endswith("dim_z")) return false;
     
     typedef MemberMap::iterator MemberIterator;
     for(MemberIterator it = MeshMembers.begin(),
           end = MeshMembers.end(); it != end; ++it) {
-      if(arg->getName().startswith(it->first)) {
+
+      std::string name = it->first;
+      std::string argName = arg->getName();
+
+      size_t pos = argName.find(name);
+      size_t len = name.length();
+      if(pos == 0 && (argName.length() <= len || 
+                      std::isdigit(argName[len]))){
         QualType qt = it->second.second;
         isSigned = qt.getTypePtr()->isSignedIntegerType();
         typeStr = qt.getAsString() + "*";
         return true;
-      }
+      }  
     }
     return false;
   }
