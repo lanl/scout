@@ -155,7 +155,12 @@ namespace{
     
     size_t sectionHeaderSize = sizeof(Elf32_Shdr) * sectionVec.size();
     size += sectionHeaderSize;
-    
+    ++size;
+
+    while(size % 16 != 0){
+      ++size;
+    }
+
     char* newImage = (char*)malloc(size);
     memcpy(newImage, oldImage, sizeof(Elf32_Ehdr));
     Elf32_Ehdr* newHeader = (Elf32_Ehdr*)newImage;
@@ -196,11 +201,13 @@ namespace{
       sectionHeader->sh_size = section.size;
       offset += sizeof(Elf32_Shdr);
     }
-    
-    for(size_t i = 0; i < 3; ++i){
+
+    newImage[offset++] = 0;
+
+    while(offset % 16 != 0){
       newImage[offset++] = 0;
     }
-    
+
     return newImage;
   }
   
@@ -307,14 +314,14 @@ void __sc_opencl_build_program(const void* bitcode, uint32_t size){
     }
   }
   assert(irSection && "Failed to find .llvmir section");
-  
+
   irSection->data = (const char*)bitcode;
   irSection->size = size;
 
   size_t newSize;
   const unsigned char* newImage = 
     (const unsigned char*)updateELF(stubImage, sections, newSize);
-  
+
   free(stubImage);
   clReleaseProgram(stubProgram);
 

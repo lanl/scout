@@ -983,7 +983,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       params.push_back(kn);
       
       Constant* fc =
-	ConstantDataArray::getString(m.getContext(), argName, false);
+	ConstantDataArray::getString(m.getContext(), argName, true);
       
       GlobalVariable* fg =
 	new GlobalVariable(m,
