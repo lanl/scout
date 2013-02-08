@@ -227,15 +227,13 @@ static void CloneGPUFunctionInto(Function *NewFunc, const Function *OldFunc,
         Anew->addAttr( OldFunc->getAttributes()
                        .getParamAttributes(I->getArgNo() + 1));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(NewFunc->getContext(),
-                                    AttributeSet::ReturnIndex,
-                                    OldFunc->getAttributes()
-                                    .getRetAttributes()));
+                           .addAttributes(NewFunc->getContext(),
+                                          AttributeSet::ReturnIndex,
+                                          OldFunc->getAttributes()));
     NewFunc->setAttributes(NewFunc->getAttributes()
-                           .addAttr(NewFunc->getContext(),
-                                    AttributeSet::FunctionIndex,
-                                    OldFunc->getAttributes()
-                                    .getFnAttributes()));
+                           .addAttributes(NewFunc->getContext(),
+                                          AttributeSet::FunctionIndex,
+                                          OldFunc->getAttributes()));
   }
 
   for (Function::const_iterator BI = OldFunc->begin(), BE = OldFunc->end();
@@ -587,10 +585,8 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 							    i8PtrTy));
       }
 
-      vector<Attribute::AttrKind> attrs;
-      attrs.push_back(Attribute::NoCapture);
-
-      aitr->addAttr(Attribute::get(gm->getContext(), attrs));
+      aitr->addAttr(AttributeSet::get(gm->getContext(), 0, 
+                                      Attribute::NoCapture));
       ++aitr;
     }
 
