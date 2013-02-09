@@ -526,11 +526,36 @@ bool DoallToAMDIL::runOnModule(Module &m) {
     MDNode* node = cast<MDNode>(mdn->getOperand(i)->getOperand(0));
     Function* f = cast<Function>(node->getOperand(0));
 
+    std::vector<Instruction*> uses;
+    std::vector<Instruction*> toErase;
+    Value* tid = 0;
+    Value* dimX = 0;
+    Value* dimY = 0;
+    Value* dimZ = 0;
+
+    Value* posX = 0;
+    Value* posY = 0;
+    Value* posZ = 0;
+
     for(Function::iterator itr = f->begin(), itrEnd = f->end(); 
 	itr != itrEnd; ++itr){
       for(BasicBlock::iterator bitr = itr->begin(), bitrEnd = itr->end();
 	  bitr != bitrEnd; ++bitr){
-	if(isa<AllocaInst>(bitr) && bitr->getName().startswith("indvar")){
+        if(isa<LoadInst>(bitr) && bitr->getName().startswith("dim.")){
+          string name = bitr->getName().str();
+
+          if(name == "dim.x"){
+            dimX = bitr;
+          }
+          else if(name == "dim.y"){
+            dimY = bitr;
+          }
+          else if(name == "dim.z"){
+            dimZ = bitr;
+          }
+        }
+	else if(!tid && isa<AllocaInst>(bitr) && 
+                bitr->getName().startswith("indvar")){
 	  Function* getGlobalIdFunc = gm->getFunction("get_global_id");
 	  if(!getGlobalIdFunc){
 	    vector<Type*> args;
@@ -547,16 +572,65 @@ bool DoallToAMDIL::runOnModule(Module &m) {
 	    getGlobalIdFunc->addFnAttr(Attribute::NoUnwind);         
 	  }
 	  builder.SetInsertPoint(bitr);
-	  Value* v = builder.CreateCall(getGlobalIdFunc,
-					ConstantInt::get(i32Ty, 0), "threadidx");
-	  ++bitr;
-	  bitr->replaceAllUsesWith(v);
-	  break;
+	  tid = builder.CreateCall(getGlobalIdFunc,
+                                   ConstantInt::get(i32Ty, 0), 
+                                   "threadidx");
+
+          typedef llvm::Value::use_iterator UseIterator;
+          for(UseIterator use = bitr->use_begin(),
+                end = bitr->use_end(); use != end; ++use) {
+            uses.push_back(dyn_cast<Instruction>(*use));
+          }
+
+          if(dimX){
+            posX = builder.CreateURem(tid, dimX, "pos.x");
+          }
+
+          if(dimY){
+            posY = builder.CreateUDiv(tid, dimX, "pos.y");
+          }
+
+          ++bitr;
 	}
+        else if(isa<StoreInst>(bitr) && 
+                bitr->getOperand(1)->getName().startswith("indvar.")){
+          string name = bitr->getOperand(1)->getName();
+          Value* dst = bitr->getOperand(1);
+
+          if(name == "indvar.x" && posX){
+            toErase.push_back(bitr);
+            builder.SetInsertPoint(bitr);
+            builder.CreateStore(posX, dst);
+          }
+          else if(name == "indvar.y" && posY){
+            toErase.push_back(bitr);
+            builder.SetInsertPoint(bitr);
+            builder.CreateStore(posY, dst);
+          }
+          else if(name == "indvar.z" && posZ){
+            toErase.push_back(bitr);
+            builder.SetInsertPoint(bitr);
+            builder.CreateStore(posZ, dst);
+          }
+
+          ++bitr;
+        }
       }
     }
 
-    f->addFnAttr(Attribute::NoUnwind);                                            f->addFnAttr(Attribute::ReadNone);  
+    if(tid){
+      for(unsigned i = 0, e = uses.size(); i < e; ++i) {
+        uses[i]->replaceAllUsesWith(tid);
+        uses[i]->eraseFromParent();
+      }
+    }
+
+    for(unsigned i = 0, e = toErase.size(); i < e; ++i) {
+      toErase[i]->eraseFromParent();
+    }
+
+    f->addFnAttr(Attribute::NoUnwind);                                    
+    f->addFnAttr(Attribute::ReadNone);  
     
     // --------------------------------- signed args metadata
 
@@ -1016,7 +1090,12 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       for(size_t k = 0; k < readArgs->getNumOperands(); ++k){
 	Value* v = readArgs->getOperand(k);
 
-	if(v->getName().str() == argName){
+        string name = v->getName().str();
+
+	if(name == argName ||
+           name == "dim_x" ||
+           name == "dim_y" ||
+           name == "dim_z"){
 	  mode = FIELD_READ;
 	  break;
 	}

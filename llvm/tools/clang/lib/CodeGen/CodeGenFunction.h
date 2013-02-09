@@ -673,7 +673,11 @@ public:
             CGM.getCodeGenOpts().ScoutAMDGPU)
             && !CallsPrintf;
   }
-  
+
+  bool isAMDGPU(){
+    return CGM.getCodeGenOpts().ScoutAMDGPU && !CallsPrintf;
+  }
+
   bool isCPU() {
     return CGM.getCodeGenOpts().ScoutCPUThreads;
   }

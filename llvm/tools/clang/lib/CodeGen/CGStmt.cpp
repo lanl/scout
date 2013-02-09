@@ -862,6 +862,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                 size_t pos = ts.find(" [");
                 if(pos != std::string::npos){
                   ts = ts.substr(0, pos);
+                }
+
+                if(ts.find("*") == std::string::npos){
                   ts += "*";
                 }
 
@@ -1171,7 +1174,21 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
     //diff.push_back(Builder.CreateSub(end.back(), start.back()));
     //ForallTripCount = Builder.CreateMul(ForallTripCount, diff.back());
 
-    llvm::Value* msi = Builder.CreateLoad(ScoutMeshSizes[i]);
+    llvm::Value* msi;
+    
+    switch(i){
+      case 0:
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.x");
+        break;
+      case 1:
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.y");
+        break;
+      case 2:
+        msi = Builder.CreateLoad(ScoutMeshSizes[i], "dim.z");
+        break;
+      default:
+        assert(false && "Dimension case not handled in EmitForAllStmt");
+    }
     
     start.push_back(zero);
     end.push_back(msi);
@@ -1191,7 +1208,22 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
 
   // Initialize the index variables.
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    llvm::Value *lval = Builder.CreateAlloca(Int32Ty, 0);
+    llvm::Value *lval;
+    
+    switch(i){
+      case 0:
+        lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.x");
+        break;
+      case 1:
+        lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.y");
+        break;
+      case 2:
+        lval = Builder.CreateAlloca(Int32Ty, 0, "indvar.z");
+        break;
+      default:
+        assert(false && "Case not handled for ForAll indvar");
+    }
+
     Builder.CreateStore(start[i], lval);
     ScoutIdxVars.push_back(lval);
   }
