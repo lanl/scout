@@ -61,7 +61,6 @@ include_directories(
   ${SC_INCLUDE_DIR}       
   ${SC_BUILD_DIR}/scout-config/include
   ${SDL_INCLUDE_DIR} 
-  $ENV{SDL_DIR}/include	   #deal w/ header files that have SDL/SDL.h
 )
 
 file(GLOB rt_hdrs 
