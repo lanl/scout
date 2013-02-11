@@ -54,6 +54,7 @@
 #ifndef __SC_CUDA_INITIALIZATION_H__
 #define __SC_CUDA_INITIALIZATION_H__
 
+#include "scout/Config/defs.h" // this is where SC_ENABLE_CUDA gets defined from cmake
 #include "scout/Runtime/DeviceList.h"
 
 namespace scout {
