@@ -71,7 +71,7 @@ project(scStandard SCC)
 
   cmake_minimum_required(VERSION 2.8.9)
   message(STATUS "standard library: scc compile flags: '${CMAKE_SCC_FLAGS}'")
-  message(STATUS "standard library: scc linke flags  : '${CMAKE_SCC_LINK_FLAGS}'")
+  message(STATUS "standard library: scc linker flags  : '${CMAKE_SCC_LINK_FLAGS}'")
 
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
 
