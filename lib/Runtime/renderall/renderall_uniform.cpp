@@ -11,7 +11,7 @@
 
 
 #include <iostream>
-#include "scout/Runtime/renderall_uniform.h"
+#include "scout/Runtime/renderall/renderall_uniform.h"
 #include "scout/Runtime/base_types.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"

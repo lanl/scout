@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/glyph_renderall.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/types.h"

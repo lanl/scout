@@ -9,7 +9,7 @@
  * 
  */
 
-#include "scout/Runtime/renderall_base.h"
+#include "scout/Runtime/renderall/renderall_base.h"
 
 using namespace std;
 using namespace scout;

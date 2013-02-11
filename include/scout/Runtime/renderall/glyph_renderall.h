@@ -14,7 +14,7 @@
 
 #include "scout/Runtime/base_types.h"
 #include "scout/Runtime/vec_types.h"
-#include "scout/Runtime/renderall_base.h"
+#include "scout/Runtime/renderall/renderall_base.h"
 
 namespace scout 
 {
