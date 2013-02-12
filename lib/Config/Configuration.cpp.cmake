@@ -105,8 +105,8 @@ namespace scout {
 
       #ifdef SC_ENABLE_MPI 
       "-I${MPI_C_INCLUDE_PATH}",
+      "-I${MPI_CXX_INCLUDE_PATH}",
       #endif
-
       #ifdef SC_ENABLE_PNG
       "-I${PNG_INCLUDE_DIR}",
       #endif
@@ -140,7 +140,8 @@ namespace scout {
 
       #ifdef SC_ENABLE_MPI
       // Note MPI includes compiler flags in dirs string.       
-      "${MPI_C_LINK_DIRS}", "${MPI_CXX_LINK_LIBS}",
+      "${MPI_C_LINK_DIRS}",
+      "${MPI_CXX_LINK_DIRS}",
       #endif
     
       #ifdef SC_ENABLE_PNG
@@ -194,8 +195,8 @@ namespace scout {
       #endif
 
       #ifdef SC_ENABLE_MPI
-      // Note MPI includes compiler flags in libs string.      
-      "${MPI_C_LINK_LIBS}", "${MPI_CXX_LINK_LIBS}",
+      "${MPI_C_LINK_LIBS}", 
+      "${MPI_CXX_LINK_LIBS}",
       #endif
     
       #ifdef SC_ENABLE_PNG
