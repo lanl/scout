@@ -16,7 +16,6 @@
 
 using namespace scout;
 
-#ifdef SC_ENABLE_PNG
 #include <png.h>
 
 // ----- save_framebuffer_as_png
@@ -119,4 +118,3 @@ bool save_framebuffer_as_png(const framebuffer_rt* fb, const char *filename)
   return true;
 }
 
-#endif

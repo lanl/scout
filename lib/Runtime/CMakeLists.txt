@@ -61,7 +61,7 @@ include_directories(
   ${SC_INCLUDE_DIR}       
   ${SC_BUILD_DIR}/scout-config/include
   ${SDL_INCLUDE_DIR} 
-  $ENV{SDL_DIR}/include	   #deal w/ header files that have SDL/SDL.h
+  ${PNG_INCLUDE_DIR}
 )
 
 file(GLOB rt_hdrs 
@@ -260,7 +260,7 @@ if (SC_ENABLE_MPI)
 endif()
 
 # Check to see if we should add PNG support... 
-if (SC_ENABLE_PNG_SUPPORT) 
+if (SC_ENABLE_PNG) 
   file(GLOB png_srcs png/*.cpp)
 endif()
 
