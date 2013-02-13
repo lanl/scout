@@ -51,31 +51,18 @@
  *
  * ##### 
  */ 
-#ifndef __SC_CUDA_INITIALIZATION_H__
-#define __SC_CUDA_INITIALIZATION_H__
 
-#include "scout/Config/defs.h" // this is where SC_ENABLE_CUDA gets defined from cmake
-#include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
 
-namespace scout {
-
-  // Tuck away the CUDA-centric intialization within a device-centric
-  // namespace... 
-  namespace cuda {
-    
-  #ifdef SC_ENABLE_CUDA
-    extern int scInitialize(DeviceList &dev_list);
-  #else
-    // If we're not supporting CUDA our initialization is a no-op.
-    // This helps us avoid some #ifdef spaghetti in other spots of 
-    // the code -- at the expense of what might be an extra function
-    // call... 
-    inline int scInitialize(DeviceList &dev_list) {
-      return 0; // no-op -- return success... 
-    }
-    
-  #endif
-  }
+void glyph_renderall::map_gpu_resources() {
+ //TODO
 }
 
-#endif
+
+void glyph_renderall::unmap_gpu_resources() {
+ //TODO
+}
+
+void glyph_renderall::register_buffer() {
+ //TODO
+}

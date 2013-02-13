@@ -61,7 +61,7 @@ include_directories(
   ${SC_INCLUDE_DIR}       
   ${SC_BUILD_DIR}/scout-config/include
   ${SDL_INCLUDE_DIR} 
-  $ENV{SDL_DIR}/include	   #deal w/ header files that have SDL/SDL.h
+  ${PNG_INCLUDE_DIR}
 )
 
 file(GLOB rt_hdrs 
@@ -80,6 +80,21 @@ else()
     )
 endif()
 
+#renderall
+file(GLOB rt_srcs_renderall renderall/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_renderall})
+if (SC_ENABLE_CUDA)
+  file(GLOB rt_srcs_renderall_cuda renderall/cuda/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_renderall_cuda})
+elseif (SC_ENABLE_OPENCL)
+  file(GLOB rt_srcs_renderall_opencl renderall/opencl/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_renderall_opencl})
+else()
+  file(GLOB rt_srcs_renderall_cpu renderall/cpu/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_renderall_cpu})
+endif()
+
+#cpu/numa
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
 if (SC_ENABLE_NUMA)
@@ -92,7 +107,7 @@ list(APPEND rt_srcs ${rt_srcs_cpu_numa})
 
 if (SC_ENABLE_MPI)
   include_directories(${MPI_INCLUDE_PATH})
-  file(GLOB rt_srcs_mpi mpi/*.cpp)
+  file(GLOB rt_srcs_mpi renderall/mpi/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_mpi})
 endif()
 
@@ -245,7 +260,7 @@ if (SC_ENABLE_MPI)
 endif()
 
 # Check to see if we should add PNG support... 
-if (SC_ENABLE_PNG_SUPPORT) 
+if (SC_ENABLE_PNG) 
   file(GLOB png_srcs png/*.cpp)
 endif()
 

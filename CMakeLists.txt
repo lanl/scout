@@ -127,14 +127,20 @@ project(Scout)
   #    - config  : library of scout's build-time configuration details.
   #    - tools   : various tools that support scout development.
   #    - runtime : scout's runtime library. 
-  # 
-    add_subdirectory(llvm)
-    add_subdirectory(include)   
-    add_subdirectory(lib/Config)
-    add_subdirectory(cmake)
-    add_subdirectory(tools)
-    #add this last as it is built w/ clang
-    add_subdirectory(lib/Runtime)
+  #
+    if(CMAKE_SCC_RUNTIME_ONLY STREQUAL "ON") 
+      message(STATUS "scout: build runtime only")
+      add_subdirectory(lib/Runtime)
+    else()
+      message(STATUS "scout: build all")
+      add_subdirectory(llvm)
+      add_subdirectory(include)   
+      add_subdirectory(lib/Config)
+      add_subdirectory(cmake)
+      add_subdirectory(tools)
+      #add this last as it is built w/ clang
+      add_subdirectory(lib/Runtime)
+    endif()
 
     #-----
     # Note: we have to build the standard library and test directory 

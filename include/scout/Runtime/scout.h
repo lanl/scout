@@ -1,7 +1,7 @@
 #ifndef SCOUT_H_
 #define SCOUT_H_
 
-#include "scout/Runtime/renderall_uniform.h"
+#include "scout/Runtime/renderall/renderall_uniform.h"
 #include "scout/Runtime/window.h"
 #include "scout/Runtime/image.h"
 #include "scout/Runtime/opengl/glCamera.h"
@@ -10,7 +10,7 @@
 #include "scout/Runtime/gpu.h"
 
 #ifdef SC_ENABLE_MPI
-#include "scout/Runtime/volume_renderall.h"
+#include "scout/Runtime/renderall/mpi/volume_renderall.h"
 extern MPI_Comm __volren_gcomm;
 #endif
 

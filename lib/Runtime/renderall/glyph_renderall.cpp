@@ -51,31 +51,94 @@
  *
  * ##### 
  */ 
-#ifndef __SC_CUDA_INITIALIZATION_H__
-#define __SC_CUDA_INITIALIZATION_H__
 
-#include "scout/Config/defs.h" // this is where SC_ENABLE_CUDA gets defined from cmake
-#include "scout/Runtime/DeviceList.h"
+#include <iostream>
+#include <stdlib.h>
 
-namespace scout {
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
+#include "scout/Runtime/opengl/glyph_vertex.h"
+#include "scout/Runtime/types.h"
 
-  // Tuck away the CUDA-centric intialization within a device-centric
-  // namespace... 
-  namespace cuda {
-    
-  #ifdef SC_ENABLE_CUDA
-    extern int scInitialize(DeviceList &dev_list);
-  #else
-    // If we're not supporting CUDA our initialization is a no-op.
-    // This helps us avoid some #ifdef spaghetti in other spots of 
-    // the code -- at the expense of what might be an extra function
-    // call... 
-    inline int scInitialize(DeviceList &dev_list) {
-      return 0; // no-op -- return success... 
+// ------  LLVM - globals accessed by LLVM / CUDA driver
+glyph_vertex* __sc_glyph_renderall_vertex_data;
+
+extern glSDL* __sc_glsdl;
+extern size_t __sc_initial_width;
+extern size_t __sc_initial_height;
+
+void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
+
+namespace scout 
+{
+
+  using namespace std;
+
+  glyph_renderall::glyph_renderall(size_t width, size_t height, size_t depth, 
+      size_t npoints, glCamera* camera)
+    : renderall_base_rt(width, height, depth), _camera(camera)
+  {
+      if(!__sc_glsdl){
+        __sc_init_sdl(__sc_initial_width, __sc_initial_height, camera);
+      }
+
+    _renderable = new glGlyphRenderable(npoints);
+
+    register_buffer();
+
+    // we need a camera or nothing will happen! 
+    if (camera ==  NULL) 
+    {
+        cerr << "Warning: no camera so can't view anything!" << endl;
     }
-    
-  #endif
+
+    _renderable->initialize(camera);
+
+    // show empty buffer
+    __sc_glsdl->swapBuffers();
+  }
+
+
+  glyph_renderall::~glyph_renderall()
+  {
+    delete _renderable;
+  }
+
+
+  void glyph_renderall::begin()
+  {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    map_gpu_resources();
+  }
+
+
+  void glyph_renderall::end()
+  {
+    unmap_gpu_resources();
+    exec();
+
+    // show what we just drew
+    __sc_glsdl->swapBuffers();
+
+    bool done = __sc_glsdl->processEvent();
+
+    // fix this
+    if (done) exit(0);
+  }
+
+  void glyph_renderall::exec() 
+  {
+    __sc_glsdl->update();
+    _renderable->draw(_camera);
   }
 }
 
-#endif
+void __sc_init_glyph_renderall(size_t width, size_t height, size_t depth, 
+    size_t npoints, glCamera* camera)
+{
+  if(!__sc_renderall){
+    __sc_renderall = new glyph_renderall(width, height, depth, npoints, camera);
+  }
+}

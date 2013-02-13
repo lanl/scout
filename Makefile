@@ -104,8 +104,20 @@ else
   build_dir := $(CURDIR)/build
 endif
 
-stdlib_build_dir := $(build_dir)/lib/Standard
-stdlib_flags := -DCMAKE_SCC_BOOTSTRAP
+stdlib_dir := lib/Standard
+stdlib_build_dir := $(build_dir)/$(stdlib_dir)
+stdlib_src_dir := $(src_dir)/$(stdlib_dir)
+stdlib_flags := -DCMAKE_SCC_BOOTSTRAP=ON
+
+runtime_dir := lib/Runtime
+runtime_build_dir := $(build_dir)/$(runtime_dir)
+runtime_flags := -DCMAKE_SCC_RUNTIME_ONLY=ON
+
+test_dir := test
+test_build_dir := $(build_dir)/$(test_dir)
+test_src_dir := $(src_dir)/$(test_dir)
+
+docs_build_dir := docs/_build
 
 #
 #####
@@ -131,7 +143,7 @@ $(build_dir)/Makefile: CMakeLists.txt
 .PHONY: compile
 compile: $(build_dir)/Makefile 
 	@(cd $(build_dir); make $(make_flags) install)
-	@(cd $(stdlib_build_dir); cmake $(cmake_flags) -DCMAKE_SCC_BOOTSTRAP=ON $(src_dir)/lib/Standard)
+	@(cd $(stdlib_build_dir); cmake $(cmake_flags) $(stdlib_flags) $(stdlib_src_dir))
 	@(cd $(stdlib_build_dir); make $(make_flags) install)
 
 .PHONY: scc-only
@@ -142,15 +154,29 @@ scc-only: $(build_dir)/Makefile
 
 .PHONY: test
 test: 
-	@((test -d $(build_dir)/test) || (mkdir $(build_dir)/test))
-	@(cd $(build_dir)/test; cmake $(cmake_flags) $(src_dir)/test)
-	@(cd $(build_dir)/test; make $(make_flags))
-	@(cd $(build_dir)/test; ARGS="-D ExperimentalTest --no-compress-output" make test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
+	@((test -d $(test_build_dir)) || (mkdir $(test_build_dir)))
+	@(cd $(test_build_dir); cmake $(cmake_flags) $(test_src_dir))
+	@(cd $(test_build_dir); make $(make_flags))
+	@(cd $(test_build_dir); ARGS="-D ExperimentalTest --no-compress-output" make test; cp Testing/`head -n 1 Testing/TAG`/Test.xml ./CTestResults.xml)
 
 .PHONY: testclean
 testclean: 
-	-@/bin/rm -rf $(build_dir)/test
+	-@/bin/rm -rf $(test_build_dir)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+
+.PHONY: runtime
+runtime: 
+	@((test -d $(runtime_build_dir)) || (mkdir $(runtime_build_dir)))
+	@(cd $(build_dir); cmake $(cmake_flags) $(runtime_flags) $(src_dir))
+	@(cd $(runtime_build_dir); make $(make_flags) install)
+
+.PHONY: runtimeclean
+runtimeclean:
+	-@/bin/rm -rf $(runtime_build_dir)
+
+.PHONY: cacheclean
+cacheclean:
+	-@/bin/rm -rf $(build_dir)/CMakeCache.txt
 
 .PHONY: xcode
 xcode:;
@@ -166,6 +192,7 @@ llvm-3.1:
 .PHONY: clean
 clean:
 	-@/bin/rm -rf $(build_dir)
+	-@/bin/rm -rf $(docs_build_dir)
 	-@/usr/bin/find ./sandbox -name build -exec rm -rf {} \;
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \;

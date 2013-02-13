@@ -51,31 +51,43 @@
  *
  * ##### 
  */ 
-#ifndef __SC_CUDA_INITIALIZATION_H__
-#define __SC_CUDA_INITIALIZATION_H__
 
-#include "scout/Config/defs.h" // this is where SC_ENABLE_CUDA gets defined from cmake
-#include "scout/Runtime/DeviceList.h"
+#ifndef SCOUT_GLYPH_RENDERALL_H_
+#define SCOUT_GLYPH_RENDERALL_H_
 
-namespace scout {
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/vec_types.h"
+#include "scout/Runtime/renderall/renderall_base.h"
 
-  // Tuck away the CUDA-centric intialization within a device-centric
-  // namespace... 
-  namespace cuda {
-    
-  #ifdef SC_ENABLE_CUDA
-    extern int scInitialize(DeviceList &dev_list);
-  #else
-    // If we're not supporting CUDA our initialization is a no-op.
-    // This helps us avoid some #ifdef spaghetti in other spots of 
-    // the code -- at the expense of what might be an extra function
-    // call... 
-    inline int scInitialize(DeviceList &dev_list) {
-      return 0; // no-op -- return success... 
-    }
-    
-  #endif
-  }
-}
+namespace scout 
+{
+  class glCamera;
+  class glGlyphRenderable;
 
-#endif
+  class glyph_renderall : public renderall_base_rt {
+    public:
+      glyph_renderall(size_t width, size_t height, size_t depth, size_t npts,
+          glCamera* camera);
+      ~glyph_renderall();
+      void addVolume(void* dataptr, unsigned volumenum){}
+      void begin();
+      void end();
+    private:
+      void map_gpu_resources();
+      void unmap_gpu_resources();
+      void register_buffer();
+      void exec();
+
+    private:
+      glGlyphRenderable* _renderable;
+      glCamera* _camera;
+  };
+
+} // end namespace scout
+
+using namespace scout;
+
+extern void __sc_init_glyph_renderall(size_t width, size_t height, 
+    size_t depth, size_t npoints, glCamera* camera = NULL);
+
+#endif 

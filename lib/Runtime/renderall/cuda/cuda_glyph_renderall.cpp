@@ -51,31 +51,56 @@
  *
  * ##### 
  */ 
-#ifndef __SC_CUDA_INITIALIZATION_H__
-#define __SC_CUDA_INITIALIZATION_H__
 
-#include "scout/Config/defs.h" // this is where SC_ENABLE_CUDA gets defined from cmake
-#include "scout/Runtime/DeviceList.h"
+#include <cassert>
 
-namespace scout {
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
+#include "scout/Runtime/opengl/glyph_vertex.h"
+#include "scout/Runtime/types.h"
+#include <cuda.h>
+#include <cudaGL.h>
+#include "scout/Runtime/cuda/CudaDevice.h"
 
-  // Tuck away the CUDA-centric intialization within a device-centric
-  // namespace... 
-  namespace cuda {
-    
-  #ifdef SC_ENABLE_CUDA
-    extern int scInitialize(DeviceList &dev_list);
-  #else
-    // If we're not supporting CUDA our initialization is a no-op.
-    // This helps us avoid some #ifdef spaghetti in other spots of 
-    // the code -- at the expense of what might be an extra function
-    // call... 
-    inline int scInitialize(DeviceList &dev_list) {
-      return 0; // no-op -- return success... 
-    }
-    
-  #endif
+// ------  LLVM - global accessed by LLVM / CUDA driver
+CUdeviceptr __sc_device_glyph_renderall_vertex_data;
+
+extern CUgraphicsResource __sc_cuda_device_resource;
+extern glyph_vertex* __sc_glyph_renderall_vertex_data;
+
+void glyph_renderall::map_gpu_resources() {
+  if(__sc_cuda) {
+    // map one graphics resource for access by CUDA
+    assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
+
+    size_t bytes;
+    // return a pointer by which the mapped graphics resource may be accessed.
+    assert(cuGraphicsResourceGetMappedPointer(
+        &__sc_device_glyph_renderall_vertex_data, &bytes,
+        __sc_cuda_device_resource) == CUDA_SUCCESS);
+  } else {
+    __sc_glyph_renderall_vertex_data = _renderable->map_vertex_data();
   }
 }
 
-#endif
+void glyph_renderall::unmap_gpu_resources() {
+  if(__sc_cuda) {
+    assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0)
+      == CUDA_SUCCESS);
+  } else {
+     _renderable->unmap_vertex_data();
+  }
+}
+
+void glyph_renderall::register_buffer() {
+  if(__sc_cuda) {
+    // register buffer object for access by CUDA, return handle
+    assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
+      _renderable->get_buffer_object_id(),
+      CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
+          CUDA_SUCCESS);
+  }
+}
+

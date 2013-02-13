@@ -68,6 +68,7 @@ namespace scout {
     bool Configuration::NUMASupport   = ${SC_ENABLE_NUMA};
     bool Configuration::MPISupport    = ${SC_ENABLE_MPI};
     bool Configuration::GLFWSupport   = ${SC_ENABLE_GLFW};
+    bool Configuration::PNGSupport   = ${SC_ENABLE_PNG};
 
     //bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
 
@@ -104,6 +105,10 @@ namespace scout {
 
       #ifdef SC_ENABLE_MPI 
       "-I${MPI_C_INCLUDE_PATH}",
+      "-I${MPI_CXX_INCLUDE_PATH}",
+      #endif
+      #ifdef SC_ENABLE_PNG
+      "-I${PNG_INCLUDE_DIR}",
       #endif
 
       0 // end of include paths. 
@@ -136,8 +141,13 @@ namespace scout {
       #ifdef SC_ENABLE_MPI
       // Note MPI includes compiler flags in dirs string.       
       "${MPI_C_LINK_DIRS}",
+      "${MPI_CXX_LINK_DIRS}",
       #endif
     
+      #ifdef SC_ENABLE_PNG
+      "-L${PNG_LIBRARY_DIR}",
+      #endif
+
       0 // mark end of library paths.
     };
   
@@ -185,10 +195,14 @@ namespace scout {
       #endif
 
       #ifdef SC_ENABLE_MPI
-      // Note MPI includes compiler flags in libs string.      
-      "${MPI_C_LINK_LIBS}", "${MPI_CXX_LINK_LIBS}",
+      "${MPI_C_LINK_LIBS}", 
+      "${MPI_CXX_LINK_LIBS}",
       #endif
     
+      #ifdef SC_ENABLE_PNG
+      "${PNG_LINK_LIBS}",
+      #endif
+
       0 // mark end of library paths.      
     };
   }

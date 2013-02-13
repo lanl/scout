@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/volume_renderall.h"
+#include "scout/Runtime/renderall/mpi/volume_renderall.h"
 #include "scout/Runtime/opengl/glVolumeRenderable.h"
 #include "scout/Runtime/types.h"
 

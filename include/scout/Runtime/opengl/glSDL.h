@@ -15,16 +15,12 @@
  *-----
  * 
  */
-
-#ifndef SCOUT_GL_SDL__H_
+#ifndef SCOUT_GL_SDL_H_
 #define SCOUT_GL_SDL_H_
-
 #include <SDL/SDL.h>
 #include "scout/Runtime/opengl/glToolkit.h"
-
 namespace scout
 {
-  
   class glSDL : public glToolkit {
 
    public:
@@ -58,8 +54,5 @@ namespace scout
     SDL_Surface*      _surface;
     SDL_Event         _event;
   };
-  
 }
-
 #endif
-
