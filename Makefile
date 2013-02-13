@@ -166,6 +166,7 @@ llvm-3.1:
 .PHONY: clean
 clean:
 	-@/bin/rm -rf $(build_dir)
-	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
-	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
-	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
+	-@/usr/bin/find ./sandbox -name build -exec rm -rf {} \;
+	-@/usr/bin/find . -name '*~' -exec rm -f {} \;
+	-@/usr/bin/find . -name '._*' -exec rm -f {} \;
+	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \;
