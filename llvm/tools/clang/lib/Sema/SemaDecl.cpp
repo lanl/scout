@@ -2810,7 +2810,9 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
       DS.getTypeSpecType() == DeclSpec::TST_interface ||
       DS.getTypeSpecType() == DeclSpec::TST_union ||
-      DS.getTypeSpecType() == DeclSpec::TST_enum) {
+      DS.getTypeSpecType() == DeclSpec::TST_enum ||
+      // scout - handle case for mesh
+      DS.getTypeSpecType() == DeclSpec::TST_mesh) {
     TagD = DS.getRepAsDecl();
 
     if (!TagD) // We probably had an error
