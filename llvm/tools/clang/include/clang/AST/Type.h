@@ -1534,6 +1534,9 @@ public:
   bool isFundamentalType() const;
   bool isCompoundType() const;
 
+  // Scout
+  bool isMeshType() const;
+
   // Type Predicates: Check to see if this type is structurally the specified
   // type, ignoring typedefs and qualifiers.
   bool isFunctionType() const;
@@ -3281,14 +3284,32 @@ public:
   static bool classof(const Type *T) { return T->getTypeClass() == Record; }
 };
 
-// scout - MeshType
 
-class MeshType : public Type{
-public:
+// #include "clang/scout/MeshTypes.h"
+  
+// scout - MeshType
+//
+// TOOD: We should probably add a new type for
+// each mesh possibility (uniform, rectilinear, etc.).
+// They are different types.  As documented below we
+// also need to make it possible to store all mesh
+// data (for edges, faces, cells, ...) within a single
+// mesh type -- this will make it easier to analyze
+// data layout choices by interogating a single type
+// vs. having to visit an instance per attribute.
+// In this case, can the InstanceType be replaced with
+// a set of MemberExpr's per attribute (mesh location).
+// We can then use accessor methods to get hold of each
+// set of location data and also determine if it doesn't
+// have any (e.g. null pointer return).
+//
+class MeshType : public Type {
+  
+ public:
   // dimensions, e.g: [512,512]
   typedef llvm::SmallVector<Expr*, 3> MeshDimensionVec;
   
-  enum InstanceType{
+  enum InstanceType {
     MeshInstance,
     CellsInstance,
     VerticesInstance,
@@ -3297,14 +3318,25 @@ public:
     ElementsInstance
   };
 
-private:
+ private:
 
   MeshDecl* decl;
   InstanceType instanceType;
   MeshDimensionVec dims;
+
+  // TODO: We need a location to store data for all
+  // topology locations (cells, faces, edges).
+  // Storing this within one type will make life
+  // easier for us as we move towards more advanced
+  // capabilities.
+  //
+  // MemberExpr *cellDataMember;
+  // MemberExpr *vertexDataMember;
+  // MemberExpr *edgeDataMember;
+  // MemberExpr *faceDataMember;
   MemberExpr* elementsMember;
   
-public:
+ public:
 
   MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
     : Type(Mesh, QualType(), false, false, false, false),
@@ -3347,9 +3379,9 @@ public:
   void setElementsMember(MemberExpr* me){
     elementsMember = me;
   }
-  
 };
 
+  
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.
 class EnumType : public TagType {
@@ -4858,6 +4890,11 @@ inline bool Type::isCompoundType() const {
          isMemberPointerType();
 }
 
+// Scout 
+inline bool Type::isMeshType() const {
+  return isa<MeshType>(CanonicalType);
+}
+  
 inline bool Type::isFunctionType() const {
   return isa<FunctionType>(CanonicalType);
 }
