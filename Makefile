@@ -164,6 +164,12 @@ testclean:
 	-@/bin/rm -rf $(test_build_dir)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
+#run llvm/cmake tests
+.PHONY: check
+check: 
+	@(cd $(build_dir); make check $(make_flags))
+	@(cd $(build_dir); make check-clang $(make_flags))
+
 .PHONY: runtime
 runtime: 
 	@((test -d $(runtime_build_dir)) || (mkdir $(runtime_build_dir)))

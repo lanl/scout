@@ -1,17 +1,18 @@
 // RUN: %clang_cc1 -x c -fblocks -fms-extensions -rewrite-objc %s -o %t-rw.cpp
 // RUN: FileCheck --input-file=%t-rw.cpp %s
 // rdar://9006279
+// REQUIRES: scoutdisable
 
 void q(void (^p)(void)) {
     p();
 }
 
 void f() {
-    __block char BYREF_VAR_CHECK = 'a';
-    __block char d = 'd';
+    __apple_block char BYREF_VAR_CHECK = 'a';
+    __apple_block char d = 'd';
     q(^{
         q(^{
-            __block char e = 'e';
+            __apple_block char e = 'e';
             char l = 'l';
             BYREF_VAR_CHECK = 'b';
             d = 'd';

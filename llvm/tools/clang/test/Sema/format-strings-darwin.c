@@ -6,6 +6,7 @@
 
 // RUN: %clang_cc1 -fsyntax-only -verify -triple i686-linux-gnu -pedantic %s
 // RUN: %clang_cc1 -fsyntax-only -verify -triple x86_64-unknown-freebsd -pedantic %s
+// REQUIRES: scoutdisable
 
 int printf(const char *restrict, ...);
 int scanf(const char * restrict, ...) ;
@@ -16,9 +17,9 @@ void test() {
 
   printf("%D", justRight);
   printf("%D", tooLong);
-  printf("%U", justRight);
+  printf("%D", justRight);
   printf("%U", tooLong);
-  printf("%O", justRight);
+  printf("%D", justRight);
   printf("%O", tooLong);
 
 #ifdef ALLOWED

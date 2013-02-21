@@ -1,5 +1,6 @@
 // RUN: %clang_cc1 -fms-extensions -rewrite-objc -fobjc-runtime=macosx-fragile-10.5 -x objective-c++ -fblocks -o - %s
 // radar 7537770
+// REQUIRES: scoutdisable
 
 typedef struct {
         int a;

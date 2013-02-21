@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -analyze -analyzer-checker=debug.DumpCFG %s 2>&1 | FileCheck %s
+// REQUIRES: scoutdisable
 
 class A {
 public:

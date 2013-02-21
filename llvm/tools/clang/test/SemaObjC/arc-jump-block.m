@@ -33,7 +33,7 @@ extern __attribute__((visibility("default"))) struct dispatch_queue_s _dispatch_
         break;
     }
 
-    __block SwitchBlockCrashAppDelegate *captured_block_obj;
+    __apple_block SwitchBlockCrashAppDelegate *captured_block_obj;
     switch (button) {
     case 10:
       {

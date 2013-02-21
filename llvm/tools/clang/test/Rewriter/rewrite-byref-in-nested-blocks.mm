@@ -3,7 +3,7 @@
 // RUN: %clang_cc1 -x objective-c++ -Wno-return-type -fblocks -fms-extensions -rewrite-objc %s -o %t-modern-rw.cpp
 // RUN: %clang_cc1 -fsyntax-only -Werror -Wno-address-of-temporary -D"SEL=void*" -U__declspec  -D"__declspec(X)=" %t-modern-rw.cpp
 // radar 7692350
-
+// REQUIRES: scoutdisable
 // rdar://11375908
 typedef unsigned long size_t;
 
@@ -17,9 +17,9 @@ void f(void (^block)(void));
 
 @implementation X
 - (void)foo {
-        __block int kerfluffle;
+        __apple_block int kerfluffle;
         // radar 7692183
-        __block x; 
+        __apple_block x; 
         f(^{
                 f(^{
                                 y = 42;

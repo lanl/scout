@@ -359,7 +359,7 @@ void test14() {
 }
 
 void test15() {
-  __block __autoreleasing id x; // expected-error {{__block variables cannot have __autoreleasing ownership}}
+  __apple_block __autoreleasing id x; // expected-error {{__block variables cannot have __autoreleasing ownership}}
 }
 
 struct Test16;
@@ -652,7 +652,7 @@ void test35(void) {
   test36_helper(xp); // expected-error {{passing address of non-local object to __autoreleasing parameter for write-back}}
 
   // rdar://problem/9665710
-  __block id y;
+  __apple_block id y;
   test36_helper(&y);
   ^{ test36_helper(&y); }();
 

@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -E %s -o - | FileCheck -strict-whitespace %s
-
+// REQUIRES: scoutdisable
 
 #define y(a) ..a
 A: y(.)

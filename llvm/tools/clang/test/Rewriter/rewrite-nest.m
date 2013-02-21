@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -rewrite-objc -fobjc-runtime=macosx-fragile-10.5  %s -o -
+// REQUIRES: scoutdisable
 
 @interface NSMapTable @end
 @interface NSEnumerator @end

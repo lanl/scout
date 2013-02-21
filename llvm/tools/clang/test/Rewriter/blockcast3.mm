@@ -4,6 +4,7 @@
 // RUN: %clang_cc1 -x objective-c++ -fblocks -fms-extensions -rewrite-objc %t.mm -o %t-modern-rw.cpp
 // RUN: FileCheck -check-prefix LP --input-file=%t-modern-rw.cpp %s
 // radar 7607781
+// REQUIRES: scoutdisable
 
 typedef struct {
 	int a;
@@ -16,7 +17,7 @@ void g(int (^block)(mystruct s)) {
 }
 
 void f(const void **arg) {
-	__block const void **q = arg;
+	__apple_block const void **q = arg;
 	g(^(mystruct s){
 		*q++ = (void*)s.a;
 		return 314;

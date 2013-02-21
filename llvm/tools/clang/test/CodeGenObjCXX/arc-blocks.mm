@@ -14,7 +14,7 @@ namespace test0 {
   };
 
   void foo() {
-    __block A v;
+    __apple_block A v;
   }
   // CHECK:    define void @_ZN5test03fooEv() 
   // CHECK:      [[V:%.*]] = alloca [[BYREF_A:%.*]], align 8

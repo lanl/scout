@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -ast-print %s | FileCheck %s
-
+// REQUIRES: scoutdisable
 // CHECK: r;
 // CHECK-NEXT: (r->method());
 struct MyClass

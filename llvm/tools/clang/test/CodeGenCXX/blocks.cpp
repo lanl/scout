@@ -71,8 +71,8 @@ namespace test2 {
 
   // CHECK: define void @_ZN5test24testEv()
   void test() {
-    __block A a;
-    __block B b;
+    __apple_block A a;
+    __apple_block B b;
   }
 
   // CHECK: define internal void @__Block_byref_object_copy

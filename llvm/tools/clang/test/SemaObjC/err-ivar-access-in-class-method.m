@@ -1,6 +1,7 @@
 // RUN: %clang_cc1 -x objective-c -fsyntax-only -verify -Wno-objc-root-class %s
 // RUN: %clang_cc1 -x objective-c++ -fsyntax-only -verify -Wno-objc-root-class %s
 // rdar://10593227
+// REQUIRES: scoutdisable
 
 @class UIWindow;
 

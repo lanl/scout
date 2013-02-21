@@ -3,7 +3,7 @@
 typedef int __attribute__((aligned(32)))  ai;
 
 void f() {
-  __block ai a = 10;
+  __apple_block ai a = 10;
 
   ^{
     a = 20;
@@ -11,7 +11,7 @@ void f() {
 }
 
 void g() {
-  __block double a = 10;
+  __apple_block double a = 10;
 
   ^{
     a = 20;

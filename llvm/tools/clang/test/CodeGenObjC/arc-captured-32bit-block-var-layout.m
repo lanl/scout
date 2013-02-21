@@ -10,7 +10,7 @@ extern id opaque_id();
 
 void f() {
     __weak id wid;
-    __block int byref_int = 0;
+    __apple_block int byref_int = 0;
     char ch = 'a';
     char ch1 = 'b';
     char ch2 = 'c';
@@ -18,8 +18,8 @@ void f() {
     const id bar = (id) opaque_id();
     id baz = 0;
     __strong id strong_void_sta;
-    __block id byref_bab = (id)0;
-    __block id bl_var1;
+    __apple_block id byref_bab = (id)0;
+    __apple_block id bl_var1;
     int i; double dob;
 
 // The patterns here are a sequence of bytes, each saying first how
@@ -104,7 +104,7 @@ void h() {
 
   struct S5 s2;
   union U u2;
-  __block id block_id;
+  __apple_block id block_id;
 
 /**
 block variable layout: BL_NON_OBJECT_WORD:1, BL_UNRETAINE:1, BL_NON_OBJECT_WORD:1, 

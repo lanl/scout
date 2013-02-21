@@ -3,6 +3,7 @@
 // RUN: %clang_cc1 -x objective-c++ -Wno-return-type -fblocks -fms-extensions -rewrite-objc %s -o %t-modern-rw.cpp
 // RUN: %clang_cc1 -fsyntax-only -Wno-address-of-temporary -D"id=void*" -D"SEL=void*" -D"__declspec(X)=" %t-modern-rw.cpp
 // radar 7696893
+// REQUIRES: scoutdisable
 
 typedef unsigned long size_t;
 void *sel_registerName(const char *);
@@ -29,8 +30,8 @@ char f4(id, id);
     Baz *down;
 	int at;
     id cq;
-    __block char didit = 'a';
-    __block char upIsFinished = 'b';
+    __apple_block char didit = 'a';
+    __apple_block char upIsFinished = 'b';
     f(^{
             id old_cq;
 			f2(cq);

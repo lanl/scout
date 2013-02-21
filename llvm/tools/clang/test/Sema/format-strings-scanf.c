@@ -132,7 +132,7 @@ void test_writeback(int *x) {
   scanf("%hn", (int*)0); // expected-warning{{format specifies type 'short *' but the argument has type 'int *'}}
 
   scanf("%n", (int*)0); // no-warning
-  scanf("%n", (unsigned int*)0); // no-warning
+  scanf("%un", (unsigned int*)0); // no-warning
   scanf("%n", (char*)0); // expected-warning{{format specifies type 'int *' but the argument has type 'char *'}}
 
   scanf("%ln", (long*)0); // no-warning

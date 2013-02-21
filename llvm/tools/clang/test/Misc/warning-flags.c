@@ -1,5 +1,6 @@
 RUN: diagtool list-warnings > %t 2>&1
 RUN: FileCheck --input-file=%t %s
+REQUIRES: disablescout
 
 This test serves two purposes:
 

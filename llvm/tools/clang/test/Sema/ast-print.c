@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 %s -ast-print | FileCheck %s
+// REQUIRES: scoutdisable
 
 typedef void func_typedef();
 func_typedef xxx;
