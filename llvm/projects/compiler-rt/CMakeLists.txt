@@ -173,7 +173,8 @@ endmacro(add_clang_compiler_rt_libraries)
 # Add the public header's directory to the includes for all of compiler-rt.
 include_directories(include)
 
-add_subdirectory(lib)
+#disable for now as scout only uses blocks
+#add_subdirectory(lib)
 
 INCLUDE( ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ConfigureChecks.cmake )
 CONFIGURE_FILE( ${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.cmake
