@@ -58,15 +58,6 @@
 
 using namespace scout;
 
-extern "C"
-void __sc_queue_block(void *blockLiteral, int numDimensions,
-                          int numFields) {
-
-  CpuRuntime *cpuRuntime = CpuRuntime::Instance();
-  cpuRuntime->run(blockLiteral, numDimensions, numFields);
-}
-
-
 // ----- CpuDevice
 /// 
 CpuDevice::CpuDevice() {

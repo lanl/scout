@@ -63,6 +63,16 @@
 using namespace std;
 
 namespace scout {
+
+  // hook used in llvm/tools/clang/lib/CodeGen/CGBlocks.cpp
+  extern "C"
+  void __sc_queue_block(void *blockLiteral, int numDimensions,
+                            int numFields) {
+
+    CpuRuntime *cpuRuntime = CpuRuntime::Instance();
+    cpuRuntime->run(blockLiteral, numDimensions, numFields);
+  }
+
   namespace cpu {
 
     void *createSubBlock(BlockLiteral * bl,
