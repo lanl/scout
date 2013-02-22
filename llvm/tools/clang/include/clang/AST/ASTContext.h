@@ -1007,8 +1007,14 @@ public:
   QualType getTypedefType(const TypedefNameDecl *Decl,
                           QualType Canon = QualType()) const;
 
-  // scout - Mesh
-  QualType getMeshType(const MeshDecl *Decl) const;
+  // scout - Mesh types
+  QualType getUniformMeshType(const UniformMeshDecl *Decl) const;
+
+  QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
+  
+  QualType getRectlinearMeshType(const RectlinearMeshDecl *Decl) const;
+  
+  QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;
   
   QualType getRecordType(const RecordDecl *Decl) const;
 
@@ -1105,8 +1111,11 @@ public:
   /// (struct/union/class/enum) decl.
   QualType getTagDeclType(const TagDecl *Decl) const;
   
-  // scout - Mesh
-  QualType getMeshDeclType(const MeshDecl *Decl) const;
+  // scout - Mesh - types
+  QualType getUniformMeshDeclType(const UniformMeshDecl *Decl) const;
+  QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
+  QualType getRectlinearMeshDeclType(const RectlinearMeshDecl *Decl) const;
+  QualType getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const;
   
   /// \brief Return the unique type for "size_t" (C99 7.17), defined in
   /// <stddef.h>.

@@ -1841,7 +1841,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
             fitr != fitrEnd; ++fitr){
           
           FieldDecl* fd = *fitr;
-          
+
           bool valid;
 
           if(mt->getInstanceType() == MeshType::MeshInstance){
@@ -1850,7 +1850,6 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
           else{
             switch(fd->meshFieldType()){
               case FieldDecl::FieldVertices:
-                
                 valid = mt->getInstanceType() == MeshType::VerticesInstance;
                 break;
               case FieldDecl::FieldCells:
@@ -1872,7 +1871,7 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
           }
           
           if(valid && Name.getAsString() == fd->getName()){
-            Expr* baseExpr = 
+            Expr* baseExpr =
             BuildDeclRefExpr(vd, QualType(mt, 0), VK_LValue, NameLoc).get();
 
             return Owned(BuildMemberReferenceExpr(baseExpr, QualType(mt, 0),

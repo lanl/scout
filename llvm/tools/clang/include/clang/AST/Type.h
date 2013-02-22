@@ -84,8 +84,13 @@ namespace clang {
   class TemplateTemplateParmDecl;
   class TagDecl;
 
-// scout
+// scout - decls
   class MeshDecl;
+  class UniformMeshDecl;
+  class StructuredMeshDecl;
+  class RectlinearMeshDecl;
+  class UnstructuredMeshDecl;
+
   class MemberExpr;
 
   class RecordDecl;
@@ -1173,7 +1178,9 @@ public:
 #define LAST_TYPE(Class) TypeLast = Class,
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
-    TagFirst = Record, TagLast = Enum
+    TagFirst = Record, TagLast = Enum,
+// scout - mesh types
+    MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
   };
 
 private:
@@ -3319,36 +3326,26 @@ class MeshType : public Type {
   };
 
  private:
-
   MeshDecl* decl;
+  
   InstanceType instanceType;
   MeshDimensionVec dims;
-
-  // TODO: We need a location to store data for all
-  // topology locations (cells, faces, edges).
-  // Storing this within one type will make life
-  // easier for us as we move towards more advanced
-  // capabilities.
-  //
-  // MemberExpr *cellDataMember;
-  // MemberExpr *vertexDataMember;
-  // MemberExpr *edgeDataMember;
-  // MemberExpr *faceDataMember;
   MemberExpr* elementsMember;
-  
- public:
 
-  MeshType(const MeshDecl* D, InstanceType IT=MeshInstance)
-    : Type(Mesh, QualType(), false, false, false, false),
-  decl(const_cast<MeshDecl*>(D)), instanceType(IT),
-  elementsMember(0) {
+ protected:
+  MeshType(TypeClass C, const MeshDecl* D, InstanceType IT=MeshInstance)
+  : Type(C, QualType(), false, false, false, false),
+  decl(const_cast<MeshDecl*>(D)),
+  instanceType(IT){
     
   }
 
-  MeshDecl* getDecl() const {
+ public:
+
+  MeshDecl* getDecl() const{
     return decl;
   }
-
+  
   InstanceType getInstanceType() const{
     return instanceType;
   }
@@ -3367,11 +3364,11 @@ class MeshType : public Type {
   QualType desugar() const { return QualType(this, 0); }
 
   static bool classof(const MeshType* T) { return true; }
-
+  
   static bool classof(const Type *T) {
-    return T->getTypeClass() == Mesh;
+    return T->getTypeClass() >= MeshFirst && T->getTypeClass() <= MeshLast;
   }
-
+  
   MemberExpr* getElementsMember(){
     return elementsMember;
   }
@@ -3379,8 +3376,80 @@ class MeshType : public Type {
   void setElementsMember(MemberExpr* me){
     elementsMember = me;
   }
+
 };
 
+class UniformMeshType : public MeshType{
+public:
+  UniformMeshType(const UniformMeshDecl* D, InstanceType IT=MeshInstance)
+  : MeshType(UniformMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+    
+  }
+  
+  UniformMeshDecl* getDecl() const {
+    return reinterpret_cast<UniformMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const UniformMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == UniformMesh;
+  }
+};
+
+class StructuredMeshType : public MeshType{
+public:
+  StructuredMeshType(const StructuredMeshDecl* D, InstanceType IT=MeshInstance)
+  : MeshType(StructuredMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+    
+  }
+
+  StructuredMeshDecl* getDecl() const {
+    return reinterpret_cast<StructuredMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const StructuredMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == StructuredMesh;
+  }
+};
+
+class RectlinearMeshType : public MeshType{
+public:
+  RectlinearMeshType(const RectlinearMeshDecl* D, InstanceType IT=MeshInstance)
+  : MeshType(RectlinearMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+    
+  }
+  
+  RectlinearMeshDecl* getDecl() const {
+    return reinterpret_cast<RectlinearMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const RectlinearMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == RectlinearMesh;
+  }
+};
+
+class UnstructuredMeshType : public MeshType{
+public:
+  UnstructuredMeshType(const UnstructuredMeshDecl* D, InstanceType IT=MeshInstance)
+  : MeshType(UnstructuredMesh, reinterpret_cast<const MeshDecl*>(D), IT){
+    
+  }
+
+  UnstructuredMeshDecl* getDecl() const {
+    return reinterpret_cast<UnstructuredMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const UnstructuredMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == UnstructuredMesh;
+  }
+};
   
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.

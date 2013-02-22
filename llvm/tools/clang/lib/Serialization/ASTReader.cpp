@@ -4746,7 +4746,16 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 // scout - Mesh
 // we are not using AST reader functionality for meshes for now,
 // so this is simply a no-op
-void TypeLocReader::VisitMeshTypeLoc(MeshTypeLoc TL) {
+void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
+}
+
+void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {
+}
+
+void TypeLocReader::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) {
+}
+
+void TypeLocReader::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
 }
 
 void TypeLocReader::VisitEnumTypeLoc(EnumTypeLoc TL) {

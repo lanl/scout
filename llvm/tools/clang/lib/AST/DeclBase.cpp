@@ -522,8 +522,11 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCIvar:
       return IDNS_Member;
 
-    // scout - Mesh
-    case Mesh:
+    // scout - Mesh types
+    case UniformMesh:
+    case StructuredMesh:
+    case RectlinearMesh:
+    case UnstructuredMesh:
       
     case Record:
     case CXXRecord:
@@ -875,7 +878,10 @@ DeclContext *DeclContext::getPrimaryContext() {
     }
 
     // scout - Mesh decl. context
-    if(DeclKind == Decl::Mesh){
+    if(DeclKind == Decl::UniformMesh ||
+       DeclKind == Decl::StructuredMesh ||
+       DeclKind == Decl::RectlinearMesh ||
+       DeclKind == Decl::UnstructuredMesh){
       MeshDecl *Mesh = cast<MeshDecl>(this);
       
       assert(isa<MeshType>(Mesh->TypeForDecl) ||

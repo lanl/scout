@@ -254,10 +254,22 @@ void ASTTypeWriter::VisitTagType(const TagType *T) {
          "Cannot serialize in the middle of a type definition");
 }
 
-// scout - Scout Mesh
-// TODO implement
-void ASTTypeWriter::VisitMeshType(const MeshType *T) {
+// scout - Scout Mesh types
+// TODO implement - we are not currently using the AST writer
+void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) {
 
+}
+
+void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) {
+  
+}
+
+void ASTTypeWriter::VisitRectlinearMeshType(const RectlinearMeshType *T) {
+  
+}
+
+void ASTTypeWriter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
+  
 }
 
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
@@ -536,10 +548,22 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
   Writer.AddSourceLocation(TL.getNameLoc(), Record);
 }
 
-// scout - Scout Mesh
+// scout - Scout Mesh types
 // TODO implement
-void TypeLocWriter::VisitMeshTypeLoc(MeshTypeLoc TL) {
+void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
 
+}
+
+void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {
+  
+}
+
+void TypeLocWriter::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL) {
+  
+}
+
+void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL) {
+  
 }
 
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {

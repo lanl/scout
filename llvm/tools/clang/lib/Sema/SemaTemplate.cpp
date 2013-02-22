@@ -3418,8 +3418,20 @@ bool UnnamedLocalNoLinkageFinder::VisitUnaryTransformType(
   return false;
 }
 
-// scout - Mesh
-bool UnnamedLocalNoLinkageFinder::VisitMeshType(const MeshType* T) {
+// scout - Mesh types
+bool UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitStructuredMeshType(const StructuredMeshType* T) {
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitRectlinearMeshType(const RectlinearMeshType* T) {
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitUnstructuredMeshType(const UnstructuredMeshType* T) {
   return false;
 }
 

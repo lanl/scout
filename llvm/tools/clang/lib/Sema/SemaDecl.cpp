@@ -11598,9 +11598,9 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
 
-  MeshDecl* MD = MeshDecl::Create(Context, Decl::Mesh, CurContext,
-                                  KWLoc, NameLoc,
-                                  Name, 0);
+  UniformMeshDecl* MD = UniformMeshDecl::Create(Context, Decl::UniformMesh, CurContext,
+                                                KWLoc, NameLoc,
+                                                Name, 0);
 
   PushOnScopeChains(MD, S, true);
 

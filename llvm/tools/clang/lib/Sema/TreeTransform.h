@@ -4532,11 +4532,11 @@ QualType TreeTransform<Derived>::TransformRecordType(TypeLocBuilder &TLB,
 
 // scout - Mesh
 // TODO - implement
-  
+
+/*
 template<typename Derived>
 QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
                                                    MeshTypeLoc TL) {
-  /*
   const MeshType *T = TL.getTypePtr();
   MeshDecl *Mesh
   = cast_or_null<RecordDecl>(getDerived().TransformDecl(TL.getNameLoc(),
@@ -4556,7 +4556,34 @@ QualType TreeTransform<Derived>::TransformMeshType(TypeLocBuilder &TLB,
   NewTL.setNameLoc(TL.getNameLoc());
   
   return Result;
-  */
+}
+*/
+
+template<typename Derived>
+QualType
+  TreeTransform<Derived>::TransformUniformMeshType(TypeLocBuilder &TLB,
+                                                   UniformMeshTypeLoc TL) {
+  return QualType();
+}
+
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformStructuredMeshType(TypeLocBuilder &TLB,
+                                                    StructuredMeshTypeLoc TL) {
+  return QualType();
+}
+
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformRectlinearMeshType(TypeLocBuilder &TLB,
+                                                    RectlinearMeshTypeLoc TL) {
+  return QualType();
+}
+
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformUnstructuredMeshType(TypeLocBuilder &TLB,
+                                                      UnstructuredMeshTypeLoc TL) {
   return QualType();
 }
   

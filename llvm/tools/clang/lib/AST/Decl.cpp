@@ -2866,103 +2866,7 @@ SourceRange BlockDecl::getSourceRange() const {
   return SourceRange(getLocation(), Body? Body->getLocEnd() : getLocation());
 }
 
-// scout - Scout Decl implementation
-MeshDecl* MeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
-                           SourceLocation StartLoc, SourceLocation IdLoc,
-                           IdentifierInfo* Id, MeshDecl* PrevDecl){
-  
-  MeshDecl* M = new (C) MeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
-  
-  RecordDecl* SR =
-  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
-                     IdLoc, &C.Idents.get(M->getName()));
-  
-  M->setStructRep(SR);
-  
-  C.getTypeDeclType(M);
-  return M;
-}
-
-MeshDecl* MeshDecl::CreateFromStructRep(ASTContext& C,
-                                        Kind DK,
-                                        DeclContext* DC,
-                                        IdentifierInfo* Id,
-                                        RecordDecl* SR){
-  
-  MeshDecl* M = new (C) MeshDecl(DK, DC, SR->getLocStart(),
-                                 SR->getLocStart(), SR->getIdentifier(), 0);
-  
-  M->setStructRep(SR);
-  
-  C.getTypeDeclType(M);
-  
-  for(RecordDecl::field_iterator itr = SR->field_begin(),
-      itrEnd = SR->field_end(); itr != itrEnd; ++itr){
-    FieldDecl* field = *itr;
-    
-    FieldDecl* newField =
-    FieldDecl::Create(C, M, field->getLocation(),
-                      field->getLocation(),
-                      &C.Idents.get(field->getName()),
-                      field->getType().getTypePtr()->getPointeeType(),
-                      0,
-                      0,
-                      true,
-                      ICIS_NoInit);
-
-    newField->setMeshFieldType(FieldDecl::FieldCells, false);
-    
-    M->addDecl(newField);
-  }
-  
-  FieldDecl* PositionFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("position"), C.Int4Ty, 0,
-                    0, true, ICIS_NoInit);
-  
-  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
-  
-  M->addDecl(PositionFD);
-  
-  FieldDecl *WidthFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("width"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
-  M->addDecl(WidthFD);
-  
-  FieldDecl *HeightFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("height"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
-  M->addDecl(HeightFD);
-  
-  FieldDecl *DepthFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("depth"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
-  M->addDecl(DepthFD);
-  
-  FieldDecl *PtrFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("ptr"), C.VoidPtrTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  
-  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
-  M->addDecl(PtrFD);
-
-  return M;
-}
+// scout - Scout Decl types implementation
 
 SourceRange MeshDecl::getSourceRange() const {
   SourceLocation E = RBraceLoc.isValid() ? RBraceLoc : getLocation();
@@ -3077,6 +2981,159 @@ bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
   }
 
   return true;
+}
+
+UniformMeshDecl* UniformMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                                         SourceLocation StartLoc, SourceLocation IdLoc,
+                                         IdentifierInfo* Id, UniformMeshDecl* PrevDecl){
+  
+  UniformMeshDecl* M =
+  new (C) UniformMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get(M->getName()));
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+UniformMeshDecl* UniformMeshDecl::CreateFromStructRep(ASTContext& C,
+                                                      Kind DK,
+                                                      DeclContext* DC,
+                                                      IdentifierInfo* Id,
+                                                      RecordDecl* SR){
+  
+  UniformMeshDecl* M =
+  new (C) UniformMeshDecl(DK, DC, SR->getLocStart(),
+                          SR->getLocStart(), SR->getIdentifier(), 0);
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  
+  for(RecordDecl::field_iterator itr = SR->field_begin(),
+      itrEnd = SR->field_end(); itr != itrEnd; ++itr){
+    FieldDecl* field = *itr;
+    
+    FieldDecl* newField =
+    FieldDecl::Create(C, M, field->getLocation(),
+                      field->getLocation(),
+                      &C.Idents.get(field->getName()),
+                      field->getType().getTypePtr()->getPointeeType(),
+                      0,
+                      0,
+                      true,
+                      ICIS_NoInit);
+    
+    newField->setMeshFieldType(FieldDecl::FieldCells, false);
+    
+    M->addDecl(newField);
+  }
+  
+  FieldDecl* PositionFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("position"), C.Int4Ty, 0,
+                    0, true, ICIS_NoInit);
+  
+  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
+  
+  M->addDecl(PositionFD);
+  
+  FieldDecl *WidthFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("width"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(WidthFD);
+  
+  FieldDecl *HeightFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("height"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(HeightFD);
+  
+  FieldDecl *DepthFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("depth"), C.IntTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(DepthFD);
+  
+  FieldDecl *PtrFD =
+  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                    &C.Idents.get("ptr"), C.VoidPtrTy, 0,
+                    0, true, ICIS_NoInit);
+  
+  
+  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
+  
+  M->addDecl(PtrFD);
+  
+  return M;
+}
+
+StructuredMeshDecl*
+StructuredMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                           SourceLocation StartLoc, SourceLocation IdLoc,
+                           IdentifierInfo* Id, StructuredMeshDecl* PrevDecl){
+  
+  StructuredMeshDecl* M =
+  new (C) StructuredMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get(M->getName()));
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+RectlinearMeshDecl*
+RectlinearMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                           SourceLocation StartLoc, SourceLocation IdLoc,
+                           IdentifierInfo* Id, RectlinearMeshDecl* PrevDecl){
+  
+  RectlinearMeshDecl* M =
+  new (C) RectlinearMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get(M->getName()));
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  return M;
+}
+
+UnstructuredMeshDecl*
+UnstructuredMeshDecl::Create(ASTContext& C, Kind K, DeclContext* DC,
+                             SourceLocation StartLoc, SourceLocation IdLoc,
+                             IdentifierInfo* Id, UnstructuredMeshDecl* PrevDecl){
+  
+  UnstructuredMeshDecl* M =
+  new (C) UnstructuredMeshDecl(K, DC, StartLoc, IdLoc, Id, PrevDecl);
+  
+  RecordDecl* SR =
+  RecordDecl::Create(C, TTK_Struct, DC, IdLoc,
+                     IdLoc, &C.Idents.get(M->getName()));
+  
+  M->setStructRep(SR);
+  
+  C.getTypeDeclType(M);
+  return M;
 }
 
 //===----------------------------------------------------------------------===//

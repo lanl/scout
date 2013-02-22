@@ -5958,7 +5958,7 @@ ParseMeshDeclaration(ParsingDeclSpec &DS,
 // [], [:], [::], and that we have already parsed a mesh type
 void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
   ParsedType parsedType = DS.getRepAsType();
-  const MeshType* mt = dyn_cast<MeshType>(parsedType.get().getTypePtr());
+  const UniformMeshType* mt = dyn_cast<UniformMeshType>(parsedType.get().getTypePtr());
   
   ConsumeBracket();
   size_t numDims;
@@ -5993,7 +5993,7 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
     dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
   }
   
-  MeshType* mdt = new MeshType(mt->getDecl());
+  UniformMeshType* mdt = new UniformMeshType(mt->getDecl());
   mdt->setDimensions(dims);
   parsedType.set(QualType(mdt, 0));
   DS.UpdateTypeRep(parsedType);

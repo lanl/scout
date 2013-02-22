@@ -839,8 +839,11 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::FunctionProto:
     case Type::FunctionNoProto:
 
-    // scout - Mesh
-    case Type::Mesh:
+    // scout - Mesh types
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh:
         
     case Type::Enum:
     case Type::Paren:
@@ -1998,7 +2001,19 @@ void CXXNameMangler::mangleType(const TagType *T) {
 
 // scout - Mesh
 
-void CXXNameMangler::mangleType(const MeshType *T) {
+void CXXNameMangler::mangleType(const UniformMeshType *T) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void CXXNameMangler::mangleType(const StructuredMeshType *T) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void CXXNameMangler::mangleType(const RectlinearMeshType *T) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void CXXNameMangler::mangleType(const UnstructuredMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
