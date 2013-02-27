@@ -246,11 +246,11 @@ Retry:
           VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
           assert(vd);
               
-          const MeshType* mt = 
-            dyn_cast<MeshType>(vd->getType().getCanonicalType().getTypePtr());
+          const UniformMeshType* mt =
+            dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
           assert(mt);
               
-          MeshType* mdt = new MeshType(mt->getDecl());
+          UniformMeshType* mdt = new UniformMeshType(mt->getDecl());
           mdt->setDimensions(dims);
           vd->setType(QualType(mdt, 0));
               
@@ -2562,7 +2562,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Expr* ElementColor = 0;
   Expr* ElementRadius = 0;
   
-  const MeshType *MT;
+  const UniformMeshType *MT;
   
   IdentifierInfo* CameraII = 0;
   SourceLocation CameraLoc;
@@ -2701,12 +2701,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   }
   else{
     if(elements){
+      const MeshType* mt2 =
+      Actions.ActOnRenderAllElementsVariable(getCurScope(),
+                                             ElementMember,
+                                             VariableType,
+                                             LoopVariableII,
+                                             LoopVariableLoc);
       
-      MT = Actions.ActOnRenderAllElementsVariable(getCurScope(),
-                                                  ElementMember,
-                                                  VariableType,
-                                                  LoopVariableII,
-                                                  LoopVariableLoc);
+      MT = cast<UniformMeshType>(mt2);
       
       if(MT){
         success = true;
@@ -2742,9 +2744,12 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     Op = 0;
     
     MT = 
-    cast<MeshType>(MVD->getType().getCanonicalType().getNonReferenceType().getTypePtr());
+    dyn_cast<UniformMeshType>(MVD->getType().getCanonicalType().
+                          getNonReferenceType().getTypePtr());
     size_t FieldCount = 0;
-    const MeshDecl* MD = MT->getDecl();
+    const UniformMeshDecl* MD = MT->getDecl();
+    
+    //Sema::ContextRAII contextRAII(Actions, const_cast<UniformMeshDecl*>(MD));
     
     for(MeshDecl::field_iterator FI = MD->field_begin(),
         FE = MD->field_end(); FI != FE; ++FI){
@@ -2856,8 +2861,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   }
 
   SourceLocation BodyLoc = Tok.getLocation();
-
+  
   StmtResult BodyResult(ParseStatement());
+  
   if(BodyResult.isInvalid()){
     if(ForAll)
       Diag(Tok, diag::err_invalid_forall_body);

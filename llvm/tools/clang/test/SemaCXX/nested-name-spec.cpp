@@ -1,4 +1,6 @@
 // RUN: %clang_cc1 -fsyntax-only -std=c++98 -verify %s 
+// REQUIRES: scoutdisable
+
 namespace A {
   struct C {
     static int cx;

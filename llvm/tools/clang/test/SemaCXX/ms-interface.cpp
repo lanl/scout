@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 %s -fsyntax-only -verify -fms-extensions -Wno-microsoft -std=c++11
+// REQUIRES: scoutdisable
 
 __interface I1 {
   // expected-error@+1 {{user-declared constructor is not permitted within an interface type}}

@@ -67,9 +67,12 @@ namespace clang {
     // FIXME: DependentDecltypeType
 
     // scout - Mesh
-    QualType VisitMeshType(const MeshType* T);
-
-                            QualType VisitRecordType(const RecordType *T);
+    QualType VisitUniformMeshType(const UniformMeshType* T);
+    QualType VisitStructuredMeshType(const StructuredMeshType* T);
+    QualType VisitRectlinearMeshType(const RectlinearMeshType* T);
+    QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
+                            
+    QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
     // FIXME: TemplateTypeParmType
     // FIXME: SubstTemplateTypeParmType
@@ -136,8 +139,11 @@ namespace clang {
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
     
-    // scout - Mesh
-    Decl* VisitMeshDecl(MeshDecl* D);
+    // scout - Mesh types
+    Decl* VisitUniformMeshDecl(UniformMeshDecl* D);
+    Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
+    Decl* VisitRectlinearMeshDecl(RectlinearMeshDecl* D);
+    Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
                             
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
@@ -641,10 +647,13 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
-  // scout - Mesh
+  // scout - Mesh types
   // we do not need to test the structural equivalance of meshes
   // so simply return false
-  case Type::Mesh:    
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
       return false;
       
   case Type::Record:
@@ -1719,14 +1728,41 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
   return Importer.getToContext().getTagDeclType(ToDecl);
 }
 
-// scout - Mesh
-QualType ASTNodeImporter::VisitMeshType(const MeshType *T) {
-  MeshDecl *ToDecl
-  = dyn_cast_or_null<MeshDecl>(Importer.Import(T->getDecl()));
+// scout - Mesh types
+QualType ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
+  UniformMeshDecl *ToDecl
+  = dyn_cast_or_null<UniformMeshDecl>(Importer.Import(T->getDecl()));
   if (!ToDecl)
     return QualType();
   
-  return Importer.getToContext().getMeshDeclType(ToDecl);
+  return Importer.getToContext().getUniformMeshDeclType(ToDecl);
+}
+
+QualType ASTNodeImporter::VisitStructuredMeshType(const StructuredMeshType *T) {
+  StructuredMeshDecl *ToDecl
+  = dyn_cast_or_null<StructuredMeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getStructuredMeshDeclType(ToDecl);
+}
+
+QualType ASTNodeImporter::VisitRectlinearMeshType(const RectlinearMeshType *T) {
+  RectlinearMeshDecl *ToDecl
+  = dyn_cast_or_null<RectlinearMeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getRectlinearMeshDeclType(ToDecl);
+}
+
+QualType ASTNodeImporter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
+  UnstructuredMeshDecl *ToDecl
+  = dyn_cast_or_null<UnstructuredMeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getUnstructuredMeshDeclType(ToDecl);
 }
 
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
@@ -2436,7 +2472,19 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
 // scout - Mesh
 // we are not using the AST import functionality for now
 // so simply return null
-Decl *ASTNodeImporter::VisitMeshDecl(MeshDecl *D){
+Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D){
+  return 0;
+}
+
+Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D){
+  return 0;
+}
+
+Decl *ASTNodeImporter::VisitRectlinearMeshDecl(RectlinearMeshDecl *D){
+  return 0;
+}
+
+Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D){
   return 0;
 }
 

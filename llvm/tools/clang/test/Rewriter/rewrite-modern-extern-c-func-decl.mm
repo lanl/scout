@@ -1,10 +1,11 @@
 // RUN: %clang_cc1 -fms-extensions -U__declspec -rewrite-objc -x objective-c++ -fblocks -o %t-rw.cpp %s
 // RUN: %clang_cc1 -fsyntax-only -Werror -Wno-address-of-temporary -Wno-attributes -D"Class=void*" -D"id=void*" -D"SEL=void*" -U__declspec -D"__declspec(X)=" %t-rw.cpp
 // rdar://11131490
+// REQUIRES: scoutdisable
 
 typedef unsigned long size_t;
 extern "C" __declspec(dllexport) void BreakTheRewriter(void) {
-        __block int aBlockVariable = 0;
+        __apple_block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };
@@ -19,7 +20,7 @@ extern "C" __declspec(dllexport) void BreakTheRewriter(void) {
 }
 __declspec(dllexport) extern "C" void AnotherBreakTheRewriter(int *p1, double d) {
 
-        __block int bBlockVariable = 0;
+        __apple_block int bBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 bBlockVariable = 42;
         };
@@ -39,7 +40,7 @@ __declspec (dllexport)
 
 main (int argc, char *argv[])
 {
-        __block int bBlockVariable = 0;
+        __apple_block int bBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 bBlockVariable = 42;
         };

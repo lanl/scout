@@ -1317,7 +1317,19 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
 
 // scout - Mesh
 // TODO is this correct?
-void MicrosoftCXXNameMangler::mangleType(const MeshType *T, SourceRange) {
+void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T, SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T, SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void MicrosoftCXXNameMangler::mangleType(const RectlinearMeshType *T, SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T, SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 

@@ -135,9 +135,9 @@ unsigned false4() {
 // Block pseudoconstants
 void false4a() {
   // Pseudo-constant
-  __block int a = 1;
+  __apple_block int a = 1;
   int b = 10;
-  __block int c = 0;
+  __apple_block int c = 0;
   b *= a; // no-warning
 
   ^{

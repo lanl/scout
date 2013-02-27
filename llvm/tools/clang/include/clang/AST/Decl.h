@@ -3303,8 +3303,9 @@ public:
 //   }
   
 class MeshDecl : public TypeDecl, public DeclContext{
-private:
+public:
   
+private:
   bool IsDefinition : 1;
   bool IsBeingDefined : 1;
   SourceLocation RBraceLoc;
@@ -3322,16 +3323,9 @@ protected:
   }  
   
 public:
+  typedef std::vector<const FieldDecl*> FieldVec;
   
-  static MeshDecl* Create(ASTContext& C, Kind DK, DeclContext* DC, 
-                          SourceLocation StartLoc, SourceLocation IdLoc, 
-                          IdentifierInfo* Id, MeshDecl* PrevDecl);
-  
-  static MeshDecl* CreateFromStructRep(ASTContext& C,
-                                       Kind DK,
-                                       DeclContext* DC,
-                                       IdentifierInfo* Id,
-                                       RecordDecl* SR);
+  typedef const FieldDecl* const* mesh_field_iterator;
   
   void completeDefinition(ASTContext& C);
   
@@ -3385,17 +3379,193 @@ public:
   }
   
   static bool classof(const Decl* D) { return classofKind(D->getKind()); }
-  static bool classof(const MeshDecl* D) { return true; }
-  static bool classofKind(Kind K) { return K == Mesh; }
+  static bool classofKind(Kind K) { return K >= firstMesh && K <= lastMesh; }
   
   static DeclContext* castToDeclContext(const MeshDecl* D){
     return static_cast<DeclContext*>(const_cast<MeshDecl*>(D));
   }
 
+  static MeshDecl *castFromDeclContext(const DeclContext *DC) {
+    return static_cast<MeshDecl *>(const_cast<DeclContext*>(DC));
+  }
+  
   bool canConvertTo(ASTContext& C, MeshDecl* MD);
   
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
+};
+
+class UniformMeshDecl : public MeshDecl{
+private:
+  FieldVec CellFields;
+  FieldVec VertexFields;
+  FieldVec FaceFields;
+  FieldVec EdgeFields;
+  
+protected:
+  UniformMeshDecl(Kind DK, DeclContext* DC,
+                  SourceLocation L, SourceLocation StartL,
+                  IdentifierInfo* Id, UniformMeshDecl* PrevDecl)
+  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
+    
+  }
+  
+public:
+  static UniformMeshDecl* Create(ASTContext& C, Kind DK, DeclContext* DC,
+                                 SourceLocation StartLoc, SourceLocation IdLoc,
+                                 IdentifierInfo* Id, UniformMeshDecl* PrevDecl);
+  
+  
+  static UniformMeshDecl* CreateFromStructRep(ASTContext& C,
+                                              Kind DK,
+                                              DeclContext* DC,
+                                              IdentifierInfo* Id,
+                                              RecordDecl* SR);
+  
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const UniformMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == UniformMesh; }
+  
+  void addCellField(const FieldDecl* cellField){
+    assert(cellField->meshFieldType() == FieldDecl::FieldCells &&
+           "expected a cell field");
+    
+    CellFields.push_back(cellField);
+  }
+  
+  mesh_field_iterator cell_begin() const{
+    return CellFields.data();
+  }
+  
+  mesh_field_iterator cell_end() const{
+    return CellFields.data() + CellFields.size();
+  }
+  
+  bool cell_empty() const{
+    return CellFields.empty();
+  }
+
+  void addVertexField(const FieldDecl* vertexField){
+    assert(vertexField->meshFieldType() == FieldDecl::FieldVertices &&
+           "expected a vertex field");
+    
+    VertexFields.push_back(vertexField);
+  }
+
+  mesh_field_iterator vertex_begin() const{
+    return VertexFields.data();
+  }
+  
+  mesh_field_iterator vertex_end() const{
+    return VertexFields.data() + VertexFields.size();
+  }
+  
+  bool vertex_empty() const{
+    return VertexFields.empty();
+  }
+  
+  void addFaceField(const FieldDecl* faceField){
+    assert(faceField->meshFieldType() == FieldDecl::FieldFaces &&
+           "expected a face field");
+    
+    FaceFields.push_back(faceField);
+  }
+
+  mesh_field_iterator face_begin() const{
+    return FaceFields.data();
+  }
+  
+  mesh_field_iterator face_end() const{
+    return FaceFields.data() + FaceFields.size();
+  }
+  
+  bool face_empty() const{
+    return FaceFields.empty();
+  }
+  
+  void addEdgeField(const FieldDecl* edgeField){
+    assert(edgeField->meshFieldType() == FieldDecl::FieldEdges &&
+           "expected an edge field");
+    
+    EdgeFields.push_back(edgeField);
+  }
+  
+  mesh_field_iterator edge_begin() const{
+    return EdgeFields.data();
+  }
+  
+  mesh_field_iterator edge_end() const{
+    return EdgeFields.data() + EdgeFields.size();
+  }
+  
+  bool edge_empty() const{
+    return EdgeFields.empty();
+  }
+  
+};
+
+  
+class StructuredMeshDecl : public MeshDecl{
+protected:
+  StructuredMeshDecl(Kind DK, DeclContext* DC,
+                     SourceLocation L, SourceLocation StartL,
+                     IdentifierInfo* Id, MeshDecl* PrevDecl)
+  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
+    
+  }
+
+public:
+  static StructuredMeshDecl*
+  Create(ASTContext& C, Kind DK, DeclContext* DC,
+         SourceLocation StartLoc, SourceLocation IdLoc,
+         IdentifierInfo* Id, StructuredMeshDecl* PrevDecl);
+  
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const StructuredMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == StructuredMesh; }
+  
+};
+
+class RectlinearMeshDecl : public MeshDecl{
+protected:
+  RectlinearMeshDecl(Kind DK, DeclContext* DC,
+                     SourceLocation L, SourceLocation StartL,
+                     IdentifierInfo* Id, MeshDecl* PrevDecl)
+  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
+    
+  }
+  
+public:
+  static RectlinearMeshDecl*
+  Create(ASTContext& C, Kind DK, DeclContext* DC,
+         SourceLocation StartLoc, SourceLocation IdLoc,
+         IdentifierInfo* Id, RectlinearMeshDecl* PrevDecl);
+  
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const RectlinearMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == RectlinearMesh; }
+  
+};
+
+class UnstructuredMeshDecl : public MeshDecl{
+protected:
+  UnstructuredMeshDecl(Kind DK, DeclContext* DC,
+                       SourceLocation L, SourceLocation StartL,
+                       IdentifierInfo* Id, MeshDecl* PrevDecl)
+  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
+    
+  }
+  
+public:
+  static UnstructuredMeshDecl*
+  Create(ASTContext& C, Kind DK, DeclContext* DC,
+         SourceLocation StartLoc, SourceLocation IdLoc,
+         IdentifierInfo* Id, UnstructuredMeshDecl* PrevDecl);
+  
+  static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+  static bool classof(const UnstructuredMeshDecl* D) { return true; }
+  static bool classofKind(Kind K) { return K == UnstructuredMesh; }
+  
 };
   
 /// \brief Describes a module import declaration, which makes the contents

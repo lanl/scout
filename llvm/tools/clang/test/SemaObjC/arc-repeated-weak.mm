@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -fobjc-runtime-has-weak -fobjc-arc -fblocks -Wno-objc-root-class -std=c++11 -Warc-repeated-use-of-weak -verify %s
+// REQUIRES: scoutdisable
 
 @interface Test {
 @public

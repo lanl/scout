@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -ast-print %s | FileCheck %s
+// REQUIRES: scoutdisable
 
 // CHECK: test12_A::foo()
 struct test12_A {

@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
+// REQUIRES: scoutdisable
 
 // C++0x [class.access.base]p1(a):
 //   If a class is declared to be a base class for another class using

@@ -661,15 +661,15 @@ static bool LookupDirect(Sema &S, LookupResult &R, const DeclContext *DC) {
         RecordDecl::field_iterator itr = rd->field_begin();
         if(itr != rd->field_end() && 
            itr->getName().str() == "mesh_flags__"){
-          MeshDecl* MD =
-            MeshDecl::
+          UniformMeshDecl* MD =
+            UniformMeshDecl::
               CreateFromStructRep(S.Context,
-                                  clang::Decl::Mesh,
+                                  clang::Decl::UniformMesh,
                                   D->getDeclContext(),
                                   &S.Context.Idents.get(rd->getName()),
                                   rd);
           
-          MeshType* mt = new MeshType(MD);
+          UniformMeshType* mt = new UniformMeshType(MD);
           
           vd->setType(S.Context.getLValueReferenceType(QualType(mt, 0)));
         }
@@ -1979,7 +1979,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;
 
     // scout - Mesh
-    case Type::Mesh: {
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh: {
         //MeshDecl *Mesh
         //= cast<MeshDecl>(cast<MeshType>(T)->getDecl());
         //addAssociatedClassesAndNamespaces(Result, Mesh);

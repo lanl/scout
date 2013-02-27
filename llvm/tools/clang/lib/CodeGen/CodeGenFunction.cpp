@@ -107,8 +107,12 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::VariableArray:
 
   // scout - Mesh
-  case Type::Mesh:
-  case Type::Record:
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
+
+    case Type::Record:
   case Type::ObjCObject:
   case Type::ObjCInterface:
     return true;
@@ -1111,7 +1115,11 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 
     // These types are never variably-modified.
     // scout
-    case Type::Mesh:
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh:
+
     case Type::Builtin:
     case Type::Complex:
     case Type::Vector:

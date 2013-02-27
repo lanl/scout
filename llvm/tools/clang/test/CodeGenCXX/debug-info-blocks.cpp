@@ -7,7 +7,7 @@ struct A {
 };
 
 void test() {
-  __block A a;
+  __apple_block A a;
 }
 
 // CHECK: [ DW_TAG_subprogram ] [line 10] [local] [def] [__Block_byref_object_copy_]

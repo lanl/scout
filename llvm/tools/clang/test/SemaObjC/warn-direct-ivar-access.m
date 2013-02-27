@@ -1,5 +1,6 @@
 // RUN: %clang_cc1  -fsyntax-only -fobjc-arc -fobjc-runtime-has-weak  -Wdirect-ivar-access -verify -Wno-objc-root-class %s
 // rdar://6505197
+// REQUIRES: scoutdisable
 
 __attribute__((objc_root_class)) @interface MyObject {
 @public

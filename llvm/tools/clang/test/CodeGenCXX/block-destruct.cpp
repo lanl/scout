@@ -3,7 +3,7 @@
 struct A { ~A(); };
 
 void f() {
-  __block A a;
+  __apple_block A a;
 }
 
 // CHECK: call void @_ZN1AD1Ev

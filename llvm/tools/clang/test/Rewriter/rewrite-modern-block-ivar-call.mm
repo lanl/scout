@@ -2,6 +2,7 @@
 // RUN: %clang_cc1 -fblocks -rewrite-objc -fms-extensions %t.m -o %t-rw.cpp 
 // RUN: FileCheck --input-file=%t-rw.cpp %s
 // RUN: %clang_cc1 -fsyntax-only -Wno-address-of-temporary -D"Class=void*" -D"id=void*" -D"SEL=void*" -D"__declspec(X)=" %t-rw.cpp
+// REQUIRES: scoutdisable
 
 @interface Foo {
     void (^_block)(void);

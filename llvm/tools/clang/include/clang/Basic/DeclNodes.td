@@ -23,7 +23,11 @@ def Named : Decl<1>;
     def UnresolvedUsingTypename : DDecl<Type>;
 
 // scout - Mesh
-    def Mesh : DDecl<Type>, DeclContext;
+    def Mesh : DDecl<Type, 1>, DeclContext;
+      def UniformMesh : DDecl<Mesh>;
+      def StructuredMesh : DDecl<Mesh>;
+      def RectlinearMesh : DDecl<Mesh>;
+      def UnstructuredMesh : DDecl<Mesh>;
 
     def Tag : DDecl<Type, 1>, DeclContext;
       def Enum : DDecl<Tag>;

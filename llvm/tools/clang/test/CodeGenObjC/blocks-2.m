@@ -8,7 +8,7 @@
 // CHECK:      call i8* @objc_assign_strongCast(
 // CHECK-NEXT: ret void
 id test0(id x) {
-  __block id result;
+  __apple_block id result;
   ^{ result = x; }();
   return result;
 }
@@ -21,7 +21,7 @@ void test1() {
   // CHECK:      [[N:%.*]] = alloca [[N_T:%.*]], align 8
   // CHECK:      [[T0:%.*]] = getelementptr inbounds [[N_T]]* [[N]], i32 0, i32 4
   // CHECK-NEXT: store double 1.000000e+{{0?}}01, double* [[T0]], align 8
-  __block double n = 10;
+  __apple_block double n = 10;
 
   // CHECK:      invoke void @{{.*}}test1_help
   test1_help(^{ n = 20; });

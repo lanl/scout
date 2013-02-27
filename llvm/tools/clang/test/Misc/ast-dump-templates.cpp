@@ -1,6 +1,7 @@
 // RUN: %clang_cc1 -ast-print %s > %t
 // RUN: FileCheck < %t %s -check-prefix=CHECK1
 // RUN: FileCheck < %t %s -check-prefix=CHECK2
+// REQUIRES: scoutdisable
 
 template <int X, typename Y, int Z = 5>
 struct foo {

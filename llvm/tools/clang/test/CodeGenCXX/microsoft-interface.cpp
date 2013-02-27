@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -std=c++11 -fms-extensions -Wno-microsoft -triple=i386-pc-win32 -emit-llvm %s -o - | FileCheck %s
+// REQUIRES: scoutdisable
 
 __interface I {
   int test() {

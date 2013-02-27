@@ -1602,7 +1602,10 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
   // scout - Mesh
   // TODO - finish implementation
   // Do we need ASTMeshLayout like ASTRecordLayout?
-  case Type::Mesh: {
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh: {
     const MeshType *MT = cast<MeshType>(T);
 
     if (MT->getDecl()->isInvalidDecl()) {
@@ -2326,7 +2329,10 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
 
   // scout - Mesh
   // a mesh is not variably-modified
-  case Type::Mesh:
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
   case Type::Enum:
   case Type::UnresolvedUsing:
   case Type::TypeOfExpr:
@@ -2861,9 +2867,15 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     assert(!Enum->getPreviousDecl() &&
            "enum has previous declaration");
     return getEnumType(Enum);
-  // scout - Mesh
-  } else if (const MeshDecl *Mesh = dyn_cast<MeshDecl>(Decl)) {
-    return getMeshType(Mesh);
+  // scout - Mesh decls
+  } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
+    return getUniformMeshType(Mesh);
+  } else if (const StructuredMeshDecl *Mesh = dyn_cast<StructuredMeshDecl>(Decl)) {
+    return getStructuredMeshType(Mesh);
+  } else if (const RectlinearMeshDecl *Mesh = dyn_cast<RectlinearMeshDecl>(Decl)) {
+    return getRectlinearMeshType(Mesh);
+  } else if (const UnstructuredMeshDecl *Mesh = dyn_cast<UnstructuredMeshDecl>(Decl)) {
+    return getUnstructuredMeshType(Mesh);
   } else if (const UnresolvedUsingTypenameDecl *Using =
                dyn_cast<UnresolvedUsingTypenameDecl>(Decl)) {
     Type *newType = new (*this, TypeAlignment) UnresolvedUsingType(Using);
@@ -2905,11 +2917,41 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
 }
 
 // scout
-QualType ASTContext::getMeshType(const MeshDecl *Decl) const {
+QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
 
-  MeshType *newType =
-  new (*this, TypeAlignment) MeshType(Decl);
+  UniformMeshType *newType =
+  new (*this, TypeAlignment) UniformMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getStructuredMeshType(const StructuredMeshDecl *Decl) const {
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+  
+  StructuredMeshType *newType =
+  new (*this, TypeAlignment) StructuredMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getRectlinearMeshType(const RectlinearMeshDecl *Decl) const {
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+  
+  RectlinearMeshType *newType =
+  new (*this, TypeAlignment) RectlinearMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const {
+  if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
+  
+  UnstructuredMeshType *newType =
+  new (*this, TypeAlignment) UnstructuredMeshType(Decl);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);
@@ -3671,12 +3713,33 @@ QualType ASTContext::getTagDeclType(const TagDecl *Decl) const {
   return getTypeDeclType(const_cast<TagDecl*>(Decl));
 }
 
-// scout - Mesh
-QualType ASTContext::getMeshDeclType(const MeshDecl *Decl) const {
+// scout - Mesh types
+QualType ASTContext::getUniformMeshDeclType(const UniformMeshDecl *Decl) const {
   assert (Decl);
   // FIXME: What is the design on getTagDeclType when it requires casting
   // away const?  mutable?
-  return getTypeDeclType(const_cast<MeshDecl*>(Decl));
+  return getTypeDeclType(const_cast<UniformMeshDecl*>(Decl));
+}
+
+QualType ASTContext::getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const {
+  assert (Decl);
+  // FIXME: What is the design on getTagDeclType when it requires casting
+  // away const?  mutable?
+  return getTypeDeclType(const_cast<StructuredMeshDecl*>(Decl));
+}
+
+QualType ASTContext::getRectlinearMeshDeclType(const RectlinearMeshDecl *Decl) const {
+  assert (Decl);
+  // FIXME: What is the design on getTagDeclType when it requires casting
+  // away const?  mutable?
+  return getTypeDeclType(const_cast<RectlinearMeshDecl*>(Decl));
+}
+
+QualType ASTContext::getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const {
+  assert (Decl);
+  // FIXME: What is the design on getTagDeclType when it requires casting
+  // away const?  mutable?
+  return getTypeDeclType(const_cast<UnstructuredMeshDecl*>(Decl));
 }
 
 /// getSizeType - Return the unique type for "size_t" (C99 7.17), the result
@@ -7166,8 +7229,11 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   case Type::FunctionNoProto:
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
 
-  // scout - Mesh
-  case Type::Mesh:
+  // scout - Mesh types
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
   case Type::Record:
   case Type::Enum:
     return QualType();

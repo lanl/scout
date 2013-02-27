@@ -6,7 +6,7 @@
 // RUN: %clang_cc1 -fblocks -E -dM < /dev/null | FileCheck -check-prefix BLOCKS %s
 //
 // BLOCKS:#define __BLOCKS__ 1
-// BLOCKS:#define __block __attribute__((__blocks__(byref)))
+// BLOCKS:#define __apple_block __attribute__((__blocks__(byref)))
 //
 // 
 // RUN: %clang_cc1 -x c++ -std=c++11 -E -dM < /dev/null | FileCheck -check-prefix CXX11 %s

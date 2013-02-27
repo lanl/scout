@@ -9,6 +9,6 @@ int add(int a, int b) {
 }
 
 int scaled_add(int a, int b, int s) {
-  __block int scale = s;
+  __apple_block int scale = s;
   return call_block(^(int x, int y) { return x*scale + y; }, a, b);
 }

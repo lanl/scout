@@ -584,13 +584,53 @@ public:
 };
 
 // scout - Mesh support class
+
+class MeshTypeLoc :
+  public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
+  MeshTypeLoc,
+  MeshType> {
+  public:
+    MeshDecl *getDecl() const { return getTypePtr()->getDecl(); }
+    
+    /// \brief True if the tag was defined in this type specifier.
+    bool isDefinition() const {
+      MeshDecl *D = getDecl();
+      
+      return D->isDefinition();
+    }
+};
   
 /// \brief Wrapper for source info for mesh types.
-class MeshTypeLoc : public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
-                                                     MeshTypeLoc,
-                                                     MeshType> {
+class UniformMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  UniformMeshTypeLoc,
+  UniformMeshType> {
   public:
-    MeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+    UniformMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class StructuredMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  StructuredMeshTypeLoc,
+  StructuredMeshType> {
+  public:
+    StructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class RectlinearMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  RectlinearMeshTypeLoc,
+  RectlinearMeshType> {
+  public:
+    RectlinearMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+};
+
+class UnstructuredMeshTypeLoc :
+  public InheritingConcreteTypeLoc<MeshTypeLoc,
+  UnstructuredMeshTypeLoc,
+  UnstructuredMeshType> {
+  public:
+    UnstructuredMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
 };
   
 /// \brief Wrapper for template type parameters.

@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 "-triple" "x86_64-apple-darwin9.0.0" -fsyntax-only -verify %s
+// REQUIRES: scoutdisable
 
 void f0(int) __attribute__((availability(macosx,introduced=10.4,deprecated=10.6)));
 void f1(int) __attribute__((availability(macosx,introduced=10.5)));

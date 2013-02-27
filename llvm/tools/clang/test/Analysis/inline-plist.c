@@ -1,6 +1,7 @@
 // RUN: %clang --analyze %s -fblocks -Xanalyzer -analyzer-output=text -Xanalyzer -analyzer-config -Xanalyzer suppress-null-return-paths=false -Xclang -verify %s
 // RUN: %clang --analyze %s -fblocks -Xanalyzer -analyzer-config -Xanalyzer suppress-null-return-paths=false -o %t
 // RUN: FileCheck -input-file %t %s
+// REQUIRES: scoutdisable
 
 // <rdar://problem/10967815>
 void mmm(int y) {
@@ -71,7 +72,7 @@ void test_block_ret() {
 }
 
 void test_block_blockvar() {
-  __block int *p;
+  __apple_block int *p;
   ^(){ // expected-note{{Calling anonymous block}} expected-note{{Returning to caller}}
     p = 0; // expected-note{{Null pointer value stored to 'p'}}
   }();

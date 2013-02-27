@@ -59,7 +59,6 @@
 #include "scout/Runtime/Device.h"
 
 namespace scout {
-
   class CpuDevice: public Device {
 
    public:
@@ -67,8 +66,6 @@ namespace scout {
     ~CpuDevice();
 
   };
-
-  void __sc_queue_block(void* blockLiteral, int numDimensions, int numFields);
 }
 
 #endif

@@ -468,7 +468,10 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     break;
 
   // scout - Mesh
-  case Type::Mesh:
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
     VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
     break;
       
@@ -664,7 +667,10 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
       
   // scout - Mesh
   // TODO - fix  
-  case Type::Mesh:
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
     // abi::__enum_mesh_info adds no data members to std::type_info.
     break;
       

@@ -561,7 +561,7 @@ double rdar_6811085(void) {
 void indirect_block_call(void (^f)());
 
 int blocks_1(int *p, int z) {
-  __block int *q = 0;
+  __apple_block int *q = 0;
   void (^bar)() = ^{ q = p; };
   
   if (z == 1) {
@@ -606,15 +606,15 @@ typedef void (^RDar7582031CB)(void);
 
 // Test with one block.
 unsigned rdar7582031(RDar7582031 *o) {
-  __block unsigned x;
+  __apple_block unsigned x;
   [o rdar7582031:^{ x = 1; }];
   return x; // no-warning
 }
 
 // Test with two blocks.
 unsigned long rdar7582031_b(RDar7582031 *o) {
-  __block unsigned y;
-  __block unsigned long x;
+  __apple_block unsigned y;
+  __apple_block unsigned long x;
   [o rdar7582031:^{ y = 1; }];
   [o rdar7582031_b:^{ x = 1LL; }];
   return x + (unsigned long) y; // no-warning
@@ -623,8 +623,8 @@ unsigned long rdar7582031_b(RDar7582031 *o) {
 // Show we get an error when 'o' is null because the message
 // expression has no effect.
 unsigned long rdar7582031_b2(RDar7582031 *o) {
-  __block unsigned y;
-  __block unsigned long x;
+  __apple_block unsigned y;
+  __apple_block unsigned long x;
   if (o)
     return 1;
   [o rdar7582031:^{ y = 1; }];
@@ -640,7 +640,7 @@ unsigned rdar7582031_static() {
   static RDar7582031 *o = 0;
   rdar7582031_aux(^{ o = rdar7582031_aux_2(); });
   
-  __block unsigned x;
+  __apple_block unsigned x;
   [o rdar7582031:^{ x = 1; }];
   return x; // no-warning
 }
@@ -660,7 +660,7 @@ typedef void (^RDar_7462324_Callback)(id obj);
 
 @implementation RDar7462324
 - (void) foo:(id)target {
-  __block RDar_7462324_Callback builder = ((void*) 0);
+  __apple_block RDar_7462324_Callback builder = ((void*) 0);
   builder = ^(id object) {
     if (object) {
       builder(self); // no-warning
@@ -669,7 +669,7 @@ typedef void (^RDar_7462324_Callback)(id obj);
   builder(target);
 }
 - (void) foo_positive:(id)target {
-  __block RDar_7462324_Callback builder = ((void*) 0);
+  __apple_block RDar_7462324_Callback builder = ((void*) 0);
   builder = ^(id object) {
     id x;
     if (object) {
@@ -689,7 +689,7 @@ int rdar7468209_aux();
 void rdar7468209_aux_2();
 
 void rdar7468209() {
-  __block int x = 0;
+  __apple_block int x = 0;
   ^{
     x = rdar7468209_aux();
     // We need a second statement so that 'x' would be removed from the store if it wasn't

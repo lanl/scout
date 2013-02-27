@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 %s -fsyntax-only -Wno-unused-value -Wmicrosoft -verify -fms-extensions
-
+// REQUIRES: scoutdisable
 
 struct A
 {

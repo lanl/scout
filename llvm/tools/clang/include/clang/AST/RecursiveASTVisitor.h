@@ -405,9 +405,12 @@ private:
   bool TraverseRecordHelper(RecordDecl *D);
   bool TraverseCXXRecordHelper(CXXRecordDecl *D);
   
-// scout - Scout mesh
+// scout - Scout mesh types
   
-  bool TraverseMeshHelper(MeshDecl* D);
+  bool TraverseUniformMeshHelper(UniformMeshDecl* D);
+  bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
+  bool TraverseRectlinearMeshHelper(RectlinearMeshDecl* D);
+  bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
   
   bool TraverseDeclaratorHelper(DeclaratorDecl *D);
   bool TraverseDeclContextHelper(DeclContext *DC);
@@ -925,9 +928,12 @@ DEF_TRAVERSE_TYPE(AutoType, {
     TRY_TO(TraverseType(T->getDeducedType()));
   })
 
-// scout - Scout Mesh
-DEF_TRAVERSE_TYPE(MeshType, { })
-
+// scout - Scout Mesh types
+DEF_TRAVERSE_TYPE(UniformMeshType, { })
+DEF_TRAVERSE_TYPE(StructuredMeshType, { })
+DEF_TRAVERSE_TYPE(RectlinearMeshType, { })
+DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
+  
 DEF_TRAVERSE_TYPE(RecordType, { })
 DEF_TRAVERSE_TYPE(EnumType, { })
 DEF_TRAVERSE_TYPE(TemplateTypeParmType, { })
@@ -1152,8 +1158,11 @@ DEF_TRAVERSE_TYPELOC(AutoType, {
     TRY_TO(TraverseType(TL.getTypePtr()->getDeducedType()));
   })
 
-// scout - Scout Mesh
-DEF_TRAVERSE_TYPELOC(MeshType, { })
+// scout - Scout Mesh types
+DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
+DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
+DEF_TRAVERSE_TYPELOC(RectlinearMeshType, { })
+DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
   
 DEF_TRAVERSE_TYPELOC(RecordType, { })
 DEF_TRAVERSE_TYPELOC(EnumType, { })
@@ -1575,12 +1584,39 @@ bool RecursiveASTVisitor<Derived>::TraverseRecordHelper(
 
 // scout - Scout Mesh
   
-// Helper methods for MeshDecl and its children.
+// Helper methods for MeshDecl types.
 template<typename Derived>
-bool RecursiveASTVisitor<Derived>::TraverseMeshHelper(                                                          MeshDecl *D) {
+bool RecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(                                                          UniformMeshDecl *D) {
 // We shouldn't traverse D->getTypeForDecl(); it's a result of
 // declaring the type, not something that was written in the source.
     
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(                                                          StructuredMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the source.
+  
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseRectlinearMeshHelper(                                                          RectlinearMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the source.
+  
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(                                                          UnstructuredMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the source.
+  
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
 }
@@ -1607,9 +1643,21 @@ DEF_TRAVERSE_DECL(RecordDecl, {
   })
 
   
-// scout - Scout Mesh
-DEF_TRAVERSE_DECL(MeshDecl, {
-  TRY_TO(TraverseMeshHelper(D));
+// scout - Scout Mesh types
+DEF_TRAVERSE_DECL(UniformMeshDecl, {
+  TRY_TO(TraverseUniformMeshHelper(D));
+})
+
+DEF_TRAVERSE_DECL(StructuredMeshDecl, {
+  TRY_TO(TraverseStructuredMeshHelper(D));
+})
+
+DEF_TRAVERSE_DECL(RectlinearMeshDecl, {
+  TRY_TO(TraverseRectlinearMeshHelper(D));
+})
+  
+DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
+  TRY_TO(TraverseUnstructuredMeshHelper(D));
 })
   
 DEF_TRAVERSE_DECL(CXXRecordDecl, {

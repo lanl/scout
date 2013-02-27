@@ -176,9 +176,12 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Decltype:
     case Type::UnaryTransform:
 
-    // scout - Mesh
-    case Type::Mesh:
-
+    // scout - Mesh types
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh:
+      
     case Type::Record:
     case Type::Enum:
     case Type::Elaborated:
@@ -933,14 +936,45 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
 
 // scout - convert mesh type to mesh name - used in diagnostics
-void TypePrinter::printMeshBefore(const MeshType *T, raw_ostream &OS) {
+void TypePrinter::printUniformMeshBefore(const UniformMeshType *T, raw_ostream &OS) {
   MeshDecl* MD = T->getDecl();
 
   OS << MD->getIdentifier()->getName().str();
 }
 
+void TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T, raw_ostream &OS) {
+  MeshDecl* MD = T->getDecl();
+  
+  OS << MD->getIdentifier()->getName().str();
+}
+
+void TypePrinter::printRectlinearMeshBefore(const RectlinearMeshType *T, raw_ostream &OS) {
+  MeshDecl* MD = T->getDecl();
+  
+  OS << MD->getIdentifier()->getName().str();
+}
+
+void TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T, raw_ostream &OS) {
+  MeshDecl* MD = T->getDecl();
+  
+  OS << MD->getIdentifier()->getName().str();
+}
+
 // scout - convert mesh type to mesh name - used in diagnostics
-void TypePrinter::printMeshAfter(const MeshType *T, raw_ostream &OS) {
+// TODO - implement
+void TypePrinter::printUniformMeshAfter(const UniformMeshType *T, raw_ostream &OS) {
+  
+}
+
+void TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T, raw_ostream &OS) {
+  
+}
+
+void TypePrinter::printRectlinearMeshAfter(const RectlinearMeshType *T, raw_ostream &OS) {
+  
+}
+
+void TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T, raw_ostream &OS) {
   
 }
 

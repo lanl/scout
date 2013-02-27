@@ -10,7 +10,7 @@ void foo(MyView *(^obj)(void)) ;
 @implementation MyView
 - (void)MyView_sharedInit {
     
-    __block __weak MyView *weakSelf = self;
+    __apple_block __weak MyView *weakSelf = self;
     foo(
     ^{
 	return weakSelf;

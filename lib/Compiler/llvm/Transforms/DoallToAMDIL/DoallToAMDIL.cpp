@@ -1086,17 +1086,23 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       
       params.push_back(fieldSize);
 
-      uint8_t mode = 0;
+      uint8_t mode;
+      if(argName.find("dim_x") == 0 ||
+         argName.find("dim_y") == 0 ||
+         argName.find("dim_z") == 0){
+        mode = FIELD_READ;
+      }
+      else{
+        mode = 0;
+      }
+
       for(size_t k = 0; k < readArgs->getNumOperands(); ++k){
 	Value* v = readArgs->getOperand(k);
 
         string name = v->getName().str();
 
-	if(name == argName ||
-           name == "dim_x" ||
-           name == "dim_y" ||
-           name == "dim_z"){
-	  mode = FIELD_READ;
+	if(name == argName){
+          mode = FIELD_READ;
 	  break;
 	}
       }

@@ -4,7 +4,7 @@
 template <typename T, typename T1> void foo(T t, T1 r)
 {
     T block_arg;
-    __block T1 byref_block_arg;
+    __apple_block T1 byref_block_arg;
 
     T1 (^block)(T)  =  ^ T1 (T arg) { 
          byref_block_arg = arg;

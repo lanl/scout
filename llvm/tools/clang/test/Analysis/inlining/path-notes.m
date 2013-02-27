@@ -29,7 +29,7 @@ void testReturnZeroIfNil() {
 int testDispatchSyncInlining() {
   extern dispatch_queue_t globalQueue;
 
-  __block int x;
+  __apple_block int x;
 
   // expected-note@+2 {{Calling 'dispatch_sync'}}
   // expected-note@+1 {{Returning from 'dispatch_sync'}}
@@ -50,7 +50,7 @@ int testDispatchSyncInliningNoPruning(int coin) {
   // In this case 
   extern dispatch_queue_t globalQueue;
 
-  __block int y;
+  __apple_block int y;
 
   // expected-note@+1 {{Calling 'dispatch_sync'}}
   dispatch_sync(globalQueue, ^{

@@ -8,7 +8,7 @@ void test1() {
   // CHECK:     define void @test1()
   // CHECK-ARM: define arm_aapcscc void @test1()
 
-  __block int x = 10;
+  __apple_block int x = 10;
 
   // CHECK:     invoke void @test1_helper(
   // CHECK-ARM: invoke arm_aapcscc void @test1_helper(
@@ -22,7 +22,7 @@ void test1() {
 
 void test2_helper();
 void test2() {
-  __block int x = 10;
+  __apple_block int x = 10;
   test2_helper(5, 6, 7);
 }
 void test2_helper(int x, int y) {

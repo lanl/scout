@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -Wunused-private-field -Wused-but-marked-unused -verify -std=c++11 %s
+// REQUIRES: scoutdisable
 
 class NotFullyDefined {
  public:

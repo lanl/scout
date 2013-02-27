@@ -51,87 +51,12 @@
  *
  * ##### 
  */ 
-#include <cassert>
-#include <map>
-using namespace std;
-
 #include "scout/Config/defs.h"
 #include "scout/Runtime/cuda/CudaUtilities.h"
 #include "scout/Runtime/Device.h"
 #include "scout/Runtime/cuda/CudaDevice.h"
 
 using namespace scout;
-
-namespace{
-
-typedef map<const void*, CUmodule> ModuleMap;
-typedef map<string, CUdeviceptr> FieldMap;
-
- struct Mesh{
-   FieldMap fieldMap;
- };
-
- typedef map<string, Mesh*> MeshMap;
-
- static ModuleMap _moduleMap;
- static MeshMap _meshMap;
-
-} // end namespace
-
-bool __sc_cuda = false;
-CUgraphicsResource __sc_cuda_device_resource;
-
-extern "C"
-CUresult __sc_get_cuda_module(CUmodule* module, const void* image){
-  ModuleMap::iterator itr = _moduleMap.find(image);
-  if(itr == _moduleMap.end()){
-    CUresult result = cuModuleLoadData(module, image);
-
-    if(result != CUDA_SUCCESS){
-      return result;
-    }
-
-    _moduleMap[image] = *module;
-
-    return CUDA_SUCCESS;
-  }
-
-  *module = itr->second;
-
-  return CUDA_SUCCESS;
-}
-
-extern "C"
-CUdeviceptr __sc_get_cuda_device_ptr(const char* meshName,
-                                     const char* fieldName){
-  MeshMap::iterator itr = _meshMap.find(meshName);
-  Mesh* mesh;
-  if(itr == _meshMap.end()){
-    mesh = new Mesh;
-    _meshMap[meshName] = mesh;
-    return 0;
-  }
-  mesh = itr->second;
-
-  FieldMap::iterator fitr = mesh->fieldMap.find(fieldName);
-  if(fitr == mesh->fieldMap.end()){
-    return 0;
-  }
-
-  return fitr->second;
-}
-
-extern "C"
-void __sc_put_cuda_device_ptr(const char* meshName,
-                              const char* fieldName,
-                              CUdeviceptr ptr){
-  MeshMap::iterator itr = _meshMap.find(meshName);
-  assert(itr != _meshMap.end());
-  Mesh* mesh = itr->second;
-  mesh->fieldMap[fieldName] = ptr;
-}
-
-
 
 // ----- CudaDevice
 /// 

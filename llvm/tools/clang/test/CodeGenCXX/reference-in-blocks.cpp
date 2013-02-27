@@ -24,7 +24,7 @@ class A {
 
 void A::F()
     {
-	__block A &tlc = *this;
+	__apple_block A &tlc = *this;
 	// crashed in code gen (radar 7495203)
         ^{ tlc.S(); }();
     }

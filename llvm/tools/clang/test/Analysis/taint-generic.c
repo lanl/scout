@@ -194,7 +194,7 @@ unsigned radar11369570_hanging(const unsigned char *arr, int l) {
   a = b = c = 0x9899e3 + l;
   while (l >= 6) {
     unsigned t;
-    scanf("%d", &t);
+    scanf("%u", &t);
     a += b;
     a ^= a;
     a += (arr[3] + ((unsigned) arr[2] << 8) + ((unsigned) arr[1] << 16) + ((unsigned) arr[0] << 24));

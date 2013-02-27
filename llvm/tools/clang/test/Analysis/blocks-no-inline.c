@@ -3,7 +3,7 @@
 void clang_analyzer_eval(int);
 
 void testInvalidation() {
-  __block int i = 0;
+  __apple_block int i = 0;
   ^{
     ++i;
   }();

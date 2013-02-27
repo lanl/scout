@@ -597,7 +597,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   }
 
   // scout - Scout Mesh
-  case Type::Mesh: {
+  case Type::UniformMesh: {
     // Implemented as a struct of n-dimensional array's type.
     MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
     MeshType::MeshDimensionVec dims = 

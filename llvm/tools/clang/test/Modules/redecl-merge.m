@@ -1,5 +1,7 @@
 // RUN: rm -rf %t
 // RUN: %clang_cc1 -fmodules -fmodule-cache-path %t -I %S/Inputs %s -verify -Wno-objc-root-class
+// REQUIRES: scoutdisable
+
 @class C2;
 @class C3;
 @class C3;

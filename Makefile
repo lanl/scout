@@ -164,6 +164,12 @@ testclean:
 	-@/bin/rm -rf $(test_build_dir)
 	@(cd $(build_dir); cmake $(cmake_flags) ..;)
 
+#run llvm/cmake tests
+.PHONY: check
+check: 
+	@(cd $(build_dir); make check $(make_flags))
+	@(cd $(build_dir); make check-clang $(make_flags))
+
 .PHONY: runtime
 runtime: 
 	@((test -d $(runtime_build_dir)) || (mkdir $(runtime_build_dir)))
@@ -193,6 +199,7 @@ llvm-3.1:
 clean:
 	-@/bin/rm -rf $(build_dir)
 	-@/bin/rm -rf $(docs_build_dir)
-	-@/usr/bin/find . -name '*~' -exec rm -f {} \{\} \;
-	-@/usr/bin/find . -name '._*' -exec rm -f {} \{\} \;
-	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \{\} \;
+	-@/usr/bin/find ./sandbox -name build -exec rm -rf {} \;
+	-@/usr/bin/find . -name '*~' -exec rm -f {} \;
+	-@/usr/bin/find . -name '._*' -exec rm -f {} \;
+	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \;

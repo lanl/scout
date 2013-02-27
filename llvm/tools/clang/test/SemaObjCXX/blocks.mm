@@ -86,11 +86,11 @@ namespace N2 {
   };
 
   void test1() {
-    __block A<1> x; // expected-note {{requested here}}
+    __apple_block A<1> x; // expected-note {{requested here}}
   }
 
   template <int n> void test2() {
-    __block A<n> x; // expected-note {{requested here}}
+    __apple_block A<n> x; // expected-note {{requested here}}
   }
   template void test2<2>();
 }

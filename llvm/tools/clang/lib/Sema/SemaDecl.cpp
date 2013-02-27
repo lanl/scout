@@ -2810,7 +2810,9 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
       DS.getTypeSpecType() == DeclSpec::TST_interface ||
       DS.getTypeSpecType() == DeclSpec::TST_union ||
-      DS.getTypeSpecType() == DeclSpec::TST_enum) {
+      DS.getTypeSpecType() == DeclSpec::TST_enum ||
+      // scout - handle case for mesh
+      DS.getTypeSpecType() == DeclSpec::TST_mesh) {
     TagD = DS.getRepAsDecl();
 
     if (!TagD) // We probably had an error
@@ -11596,9 +11598,9 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
   LookupResult LR(*this, Name, NameLoc, LookupTagName, Sema::NotForRedeclaration);
 
-  MeshDecl* MD = MeshDecl::Create(Context, Decl::Mesh, CurContext,
-                                  KWLoc, NameLoc,
-                                  Name, 0);
+  UniformMeshDecl* MD = UniformMeshDecl::Create(Context, Decl::UniformMesh, CurContext,
+                                                KWLoc, NameLoc,
+                                                Name, 0);
 
   PushOnScopeChains(MD, S, true);
 

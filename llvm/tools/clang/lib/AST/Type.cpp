@@ -2124,7 +2124,10 @@ static CachedProperties computeCachedProperties(const Type *T) {
 
   // scout - Mesh
   // TODO - is this correct?
-    case Type::Mesh: {
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh: {
     const MeshDecl *Mesh = cast<MeshType>(T)->getDecl();
     
     NamedDecl::LinkageInfo LV = Mesh->getLinkageAndVisibility();

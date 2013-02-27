@@ -1,17 +1,18 @@
 // RUN: %clang_cc1 -E %s -o %t.mm
 // RUN: %clang_cc1 -x objective-c++ -fblocks -fms-extensions -rewrite-objc %t.mm -o - | FileCheck %s
 // rdar://9006279
+// REQUIRES: scoutdisable
 
 void q(void (^p)(void)) {
     p();
 }
 
 void f() {
-    __block char BYREF_VAR_CHECK = 'a';
-    __block char d = 'd';
+    __apple_block char BYREF_VAR_CHECK = 'a';
+    __apple_block char d = 'd';
     q(^{
         q(^{
-            __block char e = 'e';
+            __apple_block char e = 'e';
             char l = 'l';
             BYREF_VAR_CHECK = 'b';
             d = 'd';

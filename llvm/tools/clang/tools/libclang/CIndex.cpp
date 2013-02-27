@@ -1625,7 +1625,19 @@ bool CursorVisitor::VisitInjectedClassNameTypeLoc(InjectedClassNameTypeLoc TL) {
 }
 
 // ndm - TODO - implement
-bool CursorVisitor::VisitMeshTypeLoc(MeshTypeLoc TL){
+bool CursorVisitor::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL){
+  return false;
+}
+
+bool CursorVisitor::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL){
+  return false;
+}
+
+bool CursorVisitor::VisitRectlinearMeshTypeLoc(RectlinearMeshTypeLoc TL){
+  return false;
+}
+
+bool CursorVisitor::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL){
   return false;
 }
 
@@ -4480,7 +4492,10 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::Block:
   case Decl::Label:  // FIXME: Is this right??
   case Decl::ClassScopeFunctionSpecialization:
-  case Decl::Mesh:
+  case Decl::UniformMesh:
+  case Decl::StructuredMesh:
+  case Decl::RectlinearMesh:
+  case Decl::UnstructuredMesh:
   case Decl::Import:
     return C;
 

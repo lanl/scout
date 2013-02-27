@@ -92,15 +92,51 @@ public:
 
   // scout - stubs to avoid linking errors in libclang
 
-  bool TraverseMeshTypeLoc(MeshTypeLoc){
+  bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc){
     return true;
   }
 
-  bool TraverseMeshDecl(MeshDecl*){
+  bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc){
     return true;
   }
 
-  bool TraverseMeshType(MeshType*){
+  bool TraverseRectlinearMeshTypeLoc(RectlinearMeshTypeLoc){
+    return true;
+  }
+
+  bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc){
+    return true;
+  }
+
+  bool TraverseUniformMeshDecl(UniformMeshDecl*){
+    return true;
+  }
+
+  bool TraverseStructuredMeshDecl(StructuredMeshDecl*){
+    return true;
+  }
+
+  bool TraverseRectlinearMeshDecl(RectlinearMeshDecl*){
+    return true;
+  }
+
+  bool TraverseUnstructuredMeshDecl(UnstructuredMeshDecl*){
+    return true;
+  }
+
+  bool TraverseUniformMeshType(UniformMeshType*){
+    return true;
+  }
+
+  bool TraverseStructuredMeshType(StructuredMeshType*){
+    return true;
+  }
+
+  bool TraverseRectlinearMeshType(RectlinearMeshType*){
+    return true;
+  }
+
+  bool TraverseUnstructuredMeshType(UnstructuredMeshType*){
     return true;
   }
 

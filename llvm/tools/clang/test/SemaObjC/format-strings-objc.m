@@ -45,7 +45,7 @@ int printf(const char * restrict, ...) ;
 //===----------------------------------------------------------------------===//
 
 void check_nslog(unsigned k) {
-  NSLog(@"%d%%", k); // no-warning
+  NSLog(@"%u%%", k); // no-warning
   NSLog(@"%s%lb%d", "unix", 10,20); // expected-warning {{invalid conversion specifier 'b'}}
 }
 

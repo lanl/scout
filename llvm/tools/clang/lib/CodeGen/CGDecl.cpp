@@ -74,8 +74,11 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
     llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
 
-  // scout - Mesh
-  case Decl::Mesh:
+  // scout - Mesh types
+  case Decl::UniformMesh:
+  case Decl::StructuredMesh:
+  case Decl::RectlinearMesh:
+  case Decl::UnstructuredMesh:
     return;
 
   case Decl::Record:    // struct/union/class X;
@@ -887,7 +890,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
         QualType T = D.getType();
         const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
 
-        if(Ty.getTypeClass() == Type::Mesh) {
+        if(Ty.getTypeClass() == Type::UniformMesh) {
           // Variable has Scout mesh type. Each member becomes a pointer.
           MeshType::MeshDimensionVec dims =
           cast<MeshType>(T.getTypePtr())->dimensions();

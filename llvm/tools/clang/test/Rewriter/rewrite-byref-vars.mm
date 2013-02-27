@@ -1,15 +1,16 @@
 // RUN: %clang_cc1 -x objective-c++ -Wno-return-type -fblocks -fms-extensions -rewrite-objc -fobjc-runtime=macosx-fragile-10.5 %s -o %t-rw.cpp
 // RUN: %clang_cc1 -fsyntax-only -fblocks -Wno-address-of-temporary -D"id=void*" -D"SEL=void*" -D"__declspec(X)=" %t-rw.cpp
 // radar 7540194
+// REQUIRES: scoutdisable
 
 extern "C" __declspec(dllexport) void BreakTheRewriter(int i) {
-        __block int aBlockVariable = 0;
+        __apple_block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };
         aBlockVariable++;
 	if (i) {
-	  __block int bbBlockVariable = 0;
+	  __apple_block int bbBlockVariable = 0;
 	  void (^aBlock)(void) = ^ {
                 bbBlockVariable = 42;
           };
@@ -18,7 +19,7 @@ extern "C" __declspec(dllexport) void BreakTheRewriter(int i) {
 
 __declspec(dllexport) extern "C" __declspec(dllexport) void XXXXBreakTheRewriter(void) {
 
-        __block int aBlockVariable = 0;
+        __apple_block int aBlockVariable = 0;
         void (^aBlock)(void) = ^ {
                 aBlockVariable = 42;
         };
