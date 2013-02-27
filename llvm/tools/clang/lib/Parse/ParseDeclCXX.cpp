@@ -3437,7 +3437,25 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
         FDecl->setExternAlloc(externAlloc);
         
         FieldDecls.push_back(Field);
+        
         FD.complete(Field);
+        
+        if(UniformMeshDecl* UM = dyn_cast<UniformMeshDecl>(MeshDecl)){
+          switch(fieldType){
+            case FieldDecl::FieldCells:
+              UM->addCellField(FDecl);
+              break;
+            case FieldDecl::FieldVertices:
+              UM->addVertexField(FDecl);
+              break;
+            case FieldDecl::FieldFaces:
+              UM->addFaceField(FDecl);
+              break;
+            case FieldDecl::FieldEdges:
+              UM->addEdgeField(FDecl);
+              break;
+          }
+        }
       }
       
       void setFieldType(FieldDecl::MeshFieldType ft){
