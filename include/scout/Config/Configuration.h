@@ -67,6 +67,7 @@ namespace scout {
     struct Configuration {
       static bool   OpenGLSupport;
       static bool   CUDASupport;
+      static bool   OpenCLSupport;
       static bool   NUMASupport;
       static bool   MPISupport;
       static bool   GLFWSupport;

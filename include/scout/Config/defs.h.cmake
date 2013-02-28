@@ -1,7 +1,7 @@
 /*
  *	
  *###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was

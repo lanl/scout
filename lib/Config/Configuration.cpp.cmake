@@ -69,8 +69,7 @@ namespace scout {
     bool Configuration::MPISupport    = ${SC_ENABLE_MPI};
     bool Configuration::GLFWSupport   = ${SC_ENABLE_GLFW};
     bool Configuration::PNGSupport   = ${SC_ENABLE_PNG};
-
-    //bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
+    bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
 
     #ifdef SC_ENABLE_CUDA
     int Configuration::CudaVersion[2] = {
@@ -97,6 +96,10 @@ namespace scout {
     
       #ifdef SC_ENABLE_CUDA
       "-I${CUDA_INCLUDE_DIRS}",
+      #endif
+      
+      #ifdef SC_ENABLE_OPENCL
+      "-I${OPENCL_INCLUDE_DIRS}",
       #endif
 
       #ifdef SC_ENABLE_NUMA 
@@ -182,7 +185,8 @@ namespace scout {
         #ifdef APPLE 
         "-framework OpenCL", 
         #else
-        "-lamdocl64",
+        //"-lamdocl64", //dpx test 
+        "${OPENCL_LIBRARIES}",
         #endif
       #endif
 

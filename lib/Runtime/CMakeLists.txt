@@ -118,6 +118,7 @@ if (SC_ENABLE_CUDA)
 endif()
 
 if (SC_ENABLE_OPENCL)
+  include_directories(${OPENCL_INCLUDE_DIRS})
   file(GLOB rt_srcs_opencl opencl/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_opencl})
 
