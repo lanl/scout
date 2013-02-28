@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include "scout/Runtime/renderall/renderall_uniform.h"
+#include "scout/Runtime/renderall/renderall_uniform_.h"
 #include "scout/Runtime/base_types.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
@@ -58,9 +59,7 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout{
 
-  class renderall_uniform_rt_{
-    public:
-      renderall_uniform_rt_(renderall_uniform_rt* o)
+    renderall_uniform_rt_::renderall_uniform_rt_(renderall_uniform_rt* o)
         : o_(o){
 
 
@@ -71,22 +70,15 @@ namespace scout{
           init();
         }
 
-      ~renderall_uniform_rt_(){
+    renderall_uniform_rt_::~renderall_uniform_rt_(){
         if (_renderable != NULL) delete _renderable;
       }
 
-      void init(){
+      void renderall_uniform_rt_::init(){
         _renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
           glfloat3(o_->width(), o_->height(), 0.0));
 
-#if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
-        if(__sc_cuda){
-          register_cuda_pbo(_renderable->get_buffer_object_id());
-        }
-        else if(__sc_opencl){
-          register_opencl_pbo(_renderable->get_buffer_object_id());
-        }
-#endif
+        register_pbo(_renderable->get_buffer_object_id());
 
         _renderable->initialize(NULL);
 
@@ -94,7 +86,7 @@ namespace scout{
         __sc_glsdl->swapBuffers();
       }
 
-      void begin(){
+      void renderall_uniform_rt_::begin(){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
         if(__sc_cuda){
@@ -111,7 +103,7 @@ namespace scout{
 #endif
       }
 
-      void end(){
+      void renderall_uniform_rt_::end(){
 #if defined(SC_ENABLE_CUDA) || defined(SC_ENABLE_OPENCL)
         if(__sc_cuda){
           unmap_cuda_resources();
@@ -137,7 +129,7 @@ namespace scout{
 
       }
 
-      void map_cuda_resources(){
+      void renderall_uniform_rt_::map_cuda_resources(){
 #ifdef SC_ENABLE_CUDA
         // map one graphics resource for access by CUDA
         assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
@@ -148,7 +140,7 @@ namespace scout{
 #endif
       }
 
-      void unmap_cuda_resources(){
+      void renderall_uniform_rt_::unmap_cuda_resources(){
 #ifdef SC_ENABLE_CUDA
         assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
@@ -156,7 +148,7 @@ namespace scout{
 #endif
       }
 
-      void map_opencl_resources(){
+      void renderall_uniform_rt_::map_opencl_resources(){
 #ifdef SC_ENABLE_OPENCL
         glFinish();
         clEnqueueAcquireGLObjects(__sc_opencl_command_queue, 
@@ -168,7 +160,7 @@ namespace scout{
 #endif
       }
 
-      void unmap_opencl_resources(){
+      void renderall_uniform_rt_::unmap_opencl_resources(){
 #ifdef SC_ENABLE_OPENCL
         clEnqueueReleaseGLObjects(__sc_opencl_command_queue,
                                   1,
@@ -181,7 +173,7 @@ namespace scout{
       }
 
       // register pbo for access by CUDA, return handle 
-      void register_cuda_pbo(GLuint pbo){
+      void renderall_uniform_rt_::register_cuda_pbo(GLuint pbo){
 #ifdef SC_ENABLE_CUDA
         assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource, 
                                           pbo, 
@@ -190,7 +182,7 @@ namespace scout{
       }
 
       // register pbo for access by CUDA, return handle 
-      void register_opencl_pbo(GLuint pbo){
+      void renderall_uniform_rt_::register_opencl_pbo(GLuint pbo){
 #ifdef SC_ENABLE_OPENCL
         cl_int ret;
         __sc_opencl_device_renderall_uniform_colors = 
@@ -202,14 +194,9 @@ namespace scout{
 #endif
       }
 
-      void exec(){
+      void renderall_uniform_rt_::exec(){
         _renderable->draw(NULL);
       }
-
-    private:
-      renderall_uniform_rt* o_;
-      glQuadRenderableVA* _renderable;
-  };
 
 } // end namespace scout
 
