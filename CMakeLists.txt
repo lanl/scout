@@ -276,13 +276,15 @@ add_subdirectory(runtime)
 option(CLANG_BUILD_EXAMPLES "Build CLANG example programs by default." OFF)
 add_subdirectory(examples)
 
+option(CLANG_INCLUDE_TESTS
+       "Generate build targets for the Clang unit tests."
+       ${LLVM_INCLUDE_TESTS})
+
 # TODO: docs.
 add_subdirectory(test)
 
-if( LLVM_INCLUDE_TESTS )
-  if( NOT CLANG_BUILT_STANDALONE )
-    add_subdirectory(unittests)
-  endif()
+if( CLANG_INCLUDE_TESTS )
+  add_subdirectory(unittests)
 endif()
 
 # Workaround for MSVS10 to avoid the Dialog Hell
