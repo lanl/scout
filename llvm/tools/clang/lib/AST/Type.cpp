@@ -2110,18 +2110,18 @@ static CachedProperties computeCachedProperties(const Type *T) {
     //     - it is a fundamental type (3.9.1); or
     return CachedProperties(ExternalLinkage, false);
 
-  // scout - Mesh
-  // TODO - is this correct?
-    case Type::UniformMesh:
-    case Type::StructuredMesh:
-    case Type::RectlinearMesh:
-    case Type::UnstructuredMesh: {
+    // scout - Mesh
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh: {
     const MeshDecl *Mesh = cast<MeshType>(T)->getDecl();
     
-    NamedDecl::LinkageInfo LV = Mesh->getLinkageAndVisibility();
+    Linkage L = Mesh->getLinkage();
     bool IsLocalOrUnnamed =
-      Mesh->getDeclContext()->isFunctionOrMethod() || !Mesh->getIdentifier();
-    return CachedProperties(LV, IsLocalOrUnnamed);
+      Mesh->getDeclContext()->isFunctionOrMethod() || 
+      !Mesh->getIdentifier();
+    return CachedProperties(L, IsLocalOrUnnamed);
   }
 
   case Type::Record:

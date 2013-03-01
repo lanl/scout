@@ -727,8 +727,8 @@ public:
     }
   }
 
-  bool hasPrintfEdge(Stmt *S) {
-    typedef Stmt::child_iterator ChildIterator;
+  bool hasPrintfEdge(const Stmt *S) {
+    typedef Stmt::const_child_iterator ChildIterator;
     int sum = 0;
     for(ChildIterator it = S->child_begin(), end = S->child_end(); it != end; ++it) {
       sum += hasPrintfNode(*it);
@@ -736,7 +736,7 @@ public:
     return sum;
   }
 
-  bool hasPrintfNode(Stmt *S) {
+  bool hasPrintfNode(const Stmt *S) {
     if(S == NULL) return false;
 
     if(S->getStmtClass() == Expr::CallExprClass) {
@@ -751,7 +751,7 @@ public:
     return hasPrintfEdge(S);
   }
 
-  bool callsPrintf(Stmt *S) {
+  bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
 
