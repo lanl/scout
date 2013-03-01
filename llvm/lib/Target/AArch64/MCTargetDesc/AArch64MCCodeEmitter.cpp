@@ -29,17 +29,12 @@ using namespace llvm;
 
 namespace {
 class AArch64MCCodeEmitter : public MCCodeEmitter {
-  AArch64MCCodeEmitter(const AArch64MCCodeEmitter &); // DO NOT IMPLEMENT
-  void operator=(const AArch64MCCodeEmitter &); // DO NOT IMPLEMENT
-  const MCInstrInfo &MCII;
-  const MCSubtargetInfo &STI;
+  AArch64MCCodeEmitter(const AArch64MCCodeEmitter &) LLVM_DELETED_FUNCTION;
+  void operator=(const AArch64MCCodeEmitter &) LLVM_DELETED_FUNCTION;
   MCContext &Ctx;
 
 public:
-  AArch64MCCodeEmitter(const MCInstrInfo &mcii, const MCSubtargetInfo &sti,
-                       MCContext &ctx)
-    : MCII(mcii), STI(sti), Ctx(ctx) {
-  }
+  AArch64MCCodeEmitter(MCContext &ctx) : Ctx(ctx) {}
 
   ~AArch64MCCodeEmitter() {}
 
@@ -110,8 +105,6 @@ public:
 
   void EncodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups) const;
-
-  unsigned fixFCMPImm(const MCInst &MI, unsigned EncodedValue) const;
 
   template<int hasRs, int hasRt2> unsigned
   fixLoadStoreExclusive(const MCInst &MI, unsigned EncodedValue) const;
@@ -428,15 +421,6 @@ AArch64MCCodeEmitter::getMoveWideImmOpValue(const MCInst &MI, unsigned OpIdx,
   return Result | getAddressWithFixup(UImm16MO, requestedFixup, Fixups);
 }
 
-unsigned AArch64MCCodeEmitter::fixFCMPImm(const MCInst &MI,
-                                          unsigned EncodedValue) const {
-    // For FCMP[E] Rn, #0.0, the Rm field has a canonical representation
-    // with 0s, but is architecturally ignored
-    EncodedValue &= ~0x1f0000u;
-
-    return EncodedValue;
-}
-
 template<int hasRs, int hasRt2> unsigned
 AArch64MCCodeEmitter::fixLoadStoreExclusive(const MCInst &MI,
                                             unsigned EncodedValue) const {
@@ -492,7 +476,7 @@ MCCodeEmitter *llvm::createAArch64MCCodeEmitter(const MCInstrInfo &MCII,
                                                 const MCRegisterInfo &MRI,
                                                 const MCSubtargetInfo &STI,
                                                 MCContext &Ctx) {
-  return new AArch64MCCodeEmitter(MCII, STI, Ctx);
+  return new AArch64MCCodeEmitter(Ctx);
 }
 
 void AArch64MCCodeEmitter::

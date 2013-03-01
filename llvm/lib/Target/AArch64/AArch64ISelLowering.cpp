@@ -57,17 +57,6 @@ AArch64TargetLowering::AArch64TargetLowering(AArch64TargetMachine &TM)
   addRegisterClass(MVT::f64, &AArch64::FPR64RegClass);
   addRegisterClass(MVT::f128, &AArch64::FPR128RegClass);
 
-  // And the vectors
-  addRegisterClass(MVT::v8i8, &AArch64::VPR64RegClass);
-  addRegisterClass(MVT::v4i16, &AArch64::VPR64RegClass);
-  addRegisterClass(MVT::v2i32, &AArch64::VPR64RegClass);
-  addRegisterClass(MVT::v2f32, &AArch64::VPR64RegClass);
-  addRegisterClass(MVT::v16i8, &AArch64::VPR128RegClass);
-  addRegisterClass(MVT::v8i16, &AArch64::VPR128RegClass);
-  addRegisterClass(MVT::v4i32, &AArch64::VPR128RegClass);
-  addRegisterClass(MVT::v4f32, &AArch64::VPR128RegClass);
-  addRegisterClass(MVT::v2f64, &AArch64::VPR128RegClass);
-
   computeRegisterProperties();
 
   // Some atomic operations can be folded into load-acquire or store-release
@@ -352,8 +341,7 @@ AArch64TargetLowering::emitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
   //   ldxr dest, ptr
   //   <binop> scratch, dest, incr
   //   stxr stxr_status, scratch, ptr
-  //   cmp stxr_status, #0
-  //   b.ne loopMBB
+  //   cbnz stxr_status, loopMBB
   //   fallthrough --> exitMBB
   BB = loopMBB;
   BuildMI(BB, dl, TII->get(ldrOpc), dest).addReg(ptr);
@@ -375,10 +363,8 @@ AArch64TargetLowering::emitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
   MRI.constrainRegClass(stxr_status, &AArch64::GPR32wspRegClass);
 
   BuildMI(BB, dl, TII->get(strOpc), stxr_status).addReg(scratch).addReg(ptr);
-  BuildMI(BB, dl, TII->get(AArch64::SUBwwi_lsl0_cmp))
-    .addReg(stxr_status).addImm(0);
-  BuildMI(BB, dl, TII->get(AArch64::Bcc))
-    .addImm(A64CC::NE).addMBB(loopMBB);
+  BuildMI(BB, dl, TII->get(AArch64::CBNZw))
+    .addReg(stxr_status).addMBB(loopMBB);
 
   BB->addSuccessor(loopMBB);
   BB->addSuccessor(exitMBB);
@@ -448,8 +434,7 @@ AArch64TargetLowering::emitAtomicBinaryMinMax(MachineInstr *MI,
   //   cmp incr, dest (, sign extend if necessary)
   //   csel scratch, dest, incr, cond
   //   stxr stxr_status, scratch, ptr
-  //   cmp stxr_status, #0
-  //   b.ne loopMBB
+  //   cbnz stxr_status, loopMBB
   //   fallthrough --> exitMBB
   BB = loopMBB;
   BuildMI(BB, dl, TII->get(ldrOpc), dest).addReg(ptr);
@@ -468,10 +453,8 @@ AArch64TargetLowering::emitAtomicBinaryMinMax(MachineInstr *MI,
 
   BuildMI(BB, dl, TII->get(strOpc), stxr_status)
     .addReg(scratch).addReg(ptr);
-  BuildMI(BB, dl, TII->get(AArch64::SUBwwi_lsl0_cmp))
-    .addReg(stxr_status).addImm(0);
-  BuildMI(BB, dl, TII->get(AArch64::Bcc))
-    .addImm(A64CC::NE).addMBB(loopMBB);
+  BuildMI(BB, dl, TII->get(AArch64::CBNZw))
+    .addReg(stxr_status).addMBB(loopMBB);
 
   BB->addSuccessor(loopMBB);
   BB->addSuccessor(exitMBB);
@@ -544,17 +527,14 @@ AArch64TargetLowering::emitAtomicCmpSwap(MachineInstr *MI,
 
   // loop2MBB:
   //   strex stxr_status, newval, [ptr]
-  //   cmp stxr_status, #0
-  //   b.ne loop1MBB
+  //   cbnz stxr_status, loop1MBB
   BB = loop2MBB;
   unsigned stxr_status = MRI.createVirtualRegister(&AArch64::GPR32RegClass);
   MRI.constrainRegClass(stxr_status, &AArch64::GPR32wspRegClass);
 
   BuildMI(BB, dl, TII->get(strOpc), stxr_status).addReg(newval).addReg(ptr);
-  BuildMI(BB, dl, TII->get(AArch64::SUBwwi_lsl0_cmp))
-    .addReg(stxr_status).addImm(0);
-  BuildMI(BB, dl, TII->get(AArch64::Bcc))
-    .addImm(A64CC::NE).addMBB(loop1MBB);
+  BuildMI(BB, dl, TII->get(AArch64::CBNZw))
+    .addReg(stxr_status).addMBB(loop1MBB);
   BB->addSuccessor(loop1MBB);
   BB->addSuccessor(exitMBB);
 
@@ -1872,16 +1852,27 @@ AArch64TargetLowering::LowerGlobalAddressELF(SDValue Op,
   const GlobalValue *GV = GN->getGlobal();
   unsigned Alignment = GV->getAlignment();
   Reloc::Model RelocM = getTargetMachine().getRelocationModel();
+  if (GV->isWeakForLinker() && GV->isDeclaration() && RelocM == Reloc::Static) {
+    // Weak undefined symbols can't use ADRP/ADD pair since they should evaluate
+    // to zero when they remain undefined. In PIC mode the GOT can take care of
+    // this, but in absolute mode we use a constant pool load.
+    SDValue PoolAddr;
+    PoolAddr = DAG.getNode(AArch64ISD::WrapperSmall, dl, PtrVT,
+                           DAG.getTargetConstantPool(GV, PtrVT, 0, 0,
+                                                     AArch64II::MO_NO_FLAG),
+                           DAG.getTargetConstantPool(GV, PtrVT, 0, 0,
+                                                     AArch64II::MO_LO12),
+                           DAG.getConstant(8, MVT::i32));
+    SDValue GlobalAddr = DAG.getLoad(PtrVT, dl, DAG.getEntryNode(), PoolAddr,
+                                     MachinePointerInfo::getConstantPool(),
+                                     /*isVolatile=*/ false,
+                                     /*isNonTemporal=*/ true,
+                                     /*isInvariant=*/ true, 8);
+    if (GN->getOffset() != 0)
+      return DAG.getNode(ISD::ADD, dl, PtrVT, GlobalAddr,
+                         DAG.getConstant(GN->getOffset(), PtrVT));
 
-  if (GV->isWeakForLinker() && RelocM == Reloc::Static) {
-    // Weak symbols can't use ADRP/ADD pair since they should evaluate to
-    // zero when undefined. In PIC mode the GOT can take care of this, but in
-    // absolute mode we use a constant pool load.
-    return DAG.getLoad(PtrVT, dl, DAG.getEntryNode(),
-                       DAG.getConstantPool(GV, GN->getValueType(0)),
-                       MachinePointerInfo::getConstantPool(),
-                       /*isVolatile=*/ false,  /*isNonTemporal=*/ true,
-                       /*isInvariant=*/ true, 8);
+    return GlobalAddr;
   }
 
   if (Alignment == 0) {
@@ -2517,7 +2508,7 @@ static bool findMaskedBFI(SDValue N, SDValue &BFI, uint64_t &Mask,
     N = N.getOperand(0);
   } else {
     // Mask is the whole width.
-    Mask = (1ULL << N.getValueType().getSizeInBits()) - 1;
+    Mask = -1ULL >> (64 - N.getValueType().getSizeInBits());
   }
 
   if (N.getOpcode() == AArch64ISD::BFI) {
@@ -2595,7 +2586,7 @@ static SDValue tryCombineToBFI(SDNode *N,
                             DAG.getConstant(Width, MVT::i64));
 
   // Mask is trivial
-  if ((LHSMask | RHSMask) == (1ULL << VT.getSizeInBits()) - 1)
+  if ((LHSMask | RHSMask) == (-1ULL >> (64 - VT.getSizeInBits())))
     return BFI;
 
   return DAG.getNode(ISD::AND, DL, VT, BFI,
@@ -2665,7 +2656,7 @@ static SDValue tryCombineToLargerBFI(SDNode *N,
                     BFI.getOperand(2), BFI.getOperand(3));
 
   // If the masking is trivial, we don't need to create it.
-  if ((ExtraMask | ExistingMask) == (1ULL << VT.getSizeInBits()) - 1)
+  if ((ExtraMask | ExistingMask) == (-1ULL >> (64 - VT.getSizeInBits())))
     return BFI;
 
   return DAG.getNode(ISD::AND, DL, VT, BFI,
@@ -2691,7 +2682,7 @@ static bool findEXTRHalf(SDValue N, SDValue &Src, uint32_t &ShiftAmount,
   return true;
 }
 
-/// EXTR instruciton extracts a contiguous chunk of bits from two existing
+/// EXTR instruction extracts a contiguous chunk of bits from two existing
 /// registers viewed as a high/low pair. This function looks for the pattern:
 /// (or (shl VAL1, #N), (srl VAL2, #RegWidth-N)) and replaces it with an
 /// EXTR. Can't quite be done in TableGen because the two immediates aren't

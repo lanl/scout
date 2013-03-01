@@ -9,10 +9,10 @@
 //
 // This is the LLVM loop vectorizer. This pass modifies 'vectorizable' loops
 // and generates target-independent LLVM-IR. Legalization of the IR is done
-// in the codegen. However, the vectorizes uses (will use) the codegen
+// in the codegen. However, the vectorizer uses (will use) the codegen
 // interfaces to generate IR that is likely to result in an optimal binary.
 //
-// The loop vectorizer combines consecutive loop iteration into a single
+// The loop vectorizer combines consecutive loop iterations into a single
 // 'wide' iteration. After this transformation the index is incremented
 // by the SIMD vector width, and not by one.
 //
@@ -32,7 +32,7 @@
 //  D. Nuzman and R. Henderson. Multi-platform Auto-vectorization.
 //
 // Variable uniformity checks are inspired by:
-// Karrenberg, R. and Hack, S. Whole Function Vectorization.
+//  Karrenberg, R. and Hack, S. Whole Function Vectorization.
 //
 // Other ideas/concepts are from:
 //  A. Zaks and D. Nuzman. Autovectorization in GCC-two years later.
@@ -79,6 +79,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -102,8 +103,11 @@ EnableIfConversion("enable-if-conversion", cl::init(true), cl::Hidden,
 
 /// We don't vectorize loops with a known constant trip count below this number.
 static cl::opt<unsigned>
-TinyTripCountVectorThreshold("vectorizer-min-trip-count", cl::init(16), cl::Hidden,
-                             cl::desc("The minimum trip count in the loops to vectorize."));
+TinyTripCountVectorThreshold("vectorizer-min-trip-count", cl::init(16),
+                             cl::Hidden,
+                             cl::desc("Don't vectorize loops with a constant "
+                                      "trip count that is smaller than this "
+                                      "value."));
 
 /// We don't unroll loops with a known constant trip count below this number.
 static const unsigned TinyTripCountUnrollThreshold = 128;
@@ -135,10 +139,11 @@ class LoopVectorizationCostModel;
 class InnerLoopVectorizer {
 public:
   InnerLoopVectorizer(Loop *OrigLoop, ScalarEvolution *SE, LoopInfo *LI,
-                      DominatorTree *DT, DataLayout *DL, unsigned VecWidth,
+                      DominatorTree *DT, DataLayout *DL,
+                      const TargetLibraryInfo *TLI, unsigned VecWidth,
                       unsigned UnrollFactor)
-      : OrigLoop(OrigLoop), SE(SE), LI(LI), DT(DT), DL(DL), VF(VecWidth),
-        UF(UnrollFactor), Builder(SE->getContext()), Induction(0),
+      : OrigLoop(OrigLoop), SE(SE), LI(LI), DT(DT), DL(DL), TLI(TLI),
+        VF(VecWidth), UF(UnrollFactor), Builder(SE->getContext()), Induction(0),
         OldInduction(0), WidenMap(UnrollFactor) {}
 
   // Perform the actual loop widening (vectorization).
@@ -265,6 +270,9 @@ private:
   DominatorTree *DT;
   /// Data Layout.
   DataLayout *DL;
+  /// Target Library Info.
+  const TargetLibraryInfo *TLI;
+
   /// The vectorization SIMD factor to use. Each vector will have this many
   /// vector elements.
   unsigned VF;
@@ -316,8 +324,10 @@ private:
 class LoopVectorizationLegality {
 public:
   LoopVectorizationLegality(Loop *L, ScalarEvolution *SE, DataLayout *DL,
-                            DominatorTree *DT)
-      : TheLoop(L), SE(SE), DL(DL), DT(DT), Induction(0) {}
+                            DominatorTree *DT, TargetTransformInfo* TTI,
+                            AliasAnalysis *AA, TargetLibraryInfo *TLI)
+      : TheLoop(L), SE(SE), DL(DL), DT(DT), TTI(TTI), AA(AA), TLI(TLI),
+        Induction(0) {}
 
   /// This enum represents the kinds of reductions that we support.
   enum ReductionKind {
@@ -401,6 +411,11 @@ public:
   /// induction descriptor.
   typedef MapVector<PHINode*, InductionInfo> InductionList;
 
+  /// Alias(Multi)Map stores the values (GEPs or underlying objects and their
+  /// respective Store/Load instruction(s) to calculate aliasing.
+  typedef DenseMap<Value*, Instruction* > AliasMap;
+  typedef DenseMap<Value*, std::vector<Instruction*> > AliasMultiMap;
+
   /// Returns true if it is legal to vectorize this loop.
   /// This does not mean that it is profitable to vectorize this
   /// loop, only that it is legal to do so.
@@ -474,6 +489,14 @@ private:
   InductionKind isInductionVariable(PHINode *Phi);
   /// Return true if can compute the address bounds of Ptr within the loop.
   bool hasComputableBounds(Value *Ptr);
+  /// Return true if there is the chance of write reorder.
+  bool hasPossibleGlobalWriteReorder(Value *Object,
+                                     Instruction *Inst,
+                                     AliasMultiMap &WriteObjects,
+                                     unsigned MaxByteWidth);
+  /// Return the AA location for a load or a store.
+  AliasAnalysis::Location getLoadStoreLocation(Instruction *Inst);
+
 
   /// The loop that we evaluate.
   Loop *TheLoop;
@@ -481,8 +504,14 @@ private:
   ScalarEvolution *SE;
   /// DataLayout analysis.
   DataLayout *DL;
-  // Dominators.
+  /// Dominators.
   DominatorTree *DT;
+  /// Target Info.
+  TargetTransformInfo *TTI;
+  /// Alias Analysis.
+  AliasAnalysis *AA;
+  /// Target Library Info.
+  TargetLibraryInfo *TLI;
 
   //  ---  vectorization state --- //
 
@@ -519,8 +548,8 @@ public:
   LoopVectorizationCostModel(Loop *L, ScalarEvolution *SE, LoopInfo *LI,
                              LoopVectorizationLegality *Legal,
                              const TargetTransformInfo &TTI,
-                             DataLayout *DL)
-      : TheLoop(L), SE(SE), LI(LI), Legal(Legal), TTI(TTI), DL(DL) {}
+                             DataLayout *DL, const TargetLibraryInfo *TLI)
+      : TheLoop(L), SE(SE), LI(LI), Legal(Legal), TTI(TTI), DL(DL), TLI(TLI) {}
 
   /// Information about vectorization costs
   struct VectorizationFactor {
@@ -531,7 +560,8 @@ public:
   /// This method checks every power of two up to VF. If UserVF is not ZERO
   /// then this vectorization factor will be selected if vectorization is
   /// possible.
-  VectorizationFactor selectVectorizationFactor(bool OptForSize, unsigned UserVF);
+  VectorizationFactor selectVectorizationFactor(bool OptForSize,
+                                                unsigned UserVF);
 
   /// \return The size (in bits) of the widest type in the code that
   /// needs to be vectorized. We ignore values that remain scalar such as
@@ -560,11 +590,6 @@ public:
   /// \return  information about the register usage of the loop.
   RegisterUsage calculateRegisterUsage();
 
-  /// A helper function for converting Scalar types to vector types.
-  /// If the incoming type is void, we return void. If the VF is 1, we return
-  /// the scalar type.
-  static Type* ToVectorTy(Type *Scalar, unsigned VF);
-
 private:
   /// Returns the expected execution cost. The unit of the cost does
   /// not matter because we use the 'cost' units to compare different
@@ -575,6 +600,11 @@ private:
   /// Returns the execution time cost of an instruction for a given vector
   /// width. Vector width of one means scalar.
   unsigned getInstructionCost(Instruction *I, unsigned VF);
+
+  /// A helper function for converting Scalar types to vector types.
+  /// If the incoming type is void, we return void. If the VF is 1, we return
+  /// the scalar type.
+  static Type* ToVectorTy(Type *Scalar, unsigned VF);
 
   /// Returns whether the instruction is a load or store and will be a emitted
   /// as a vector operation.
@@ -592,177 +622,8 @@ private:
   const TargetTransformInfo &TTI;
   /// Target data layout information.
   DataLayout *DL;
-};
-
-/// A helper class to compute the cost of a memory operation (load or store).
-class MemoryCostComputation {
-public:
-  /// \brief This function computes the cost of a memory instruction, either of
-  /// a load or of a store.
-  /// \param Inst a pointer to a LoadInst or a StoreInst.
-  /// \param VF the vector factor to use.
-  /// \param TTI the target transform information used to obtain costs.
-  /// \param Legality the legality class used by this function to obtain the
-  ///                 access strid of the memory operation.
-  /// \returns the estimated cost of the memory instruction.
-  static unsigned computeCost(Value *Inst, unsigned VF,
-                              const TargetTransformInfo &TTI,
-                              LoopVectorizationLegality *Legality) {
-    if (StoreInst *Store = dyn_cast<StoreInst>(Inst))
-      return StoreCost(Store, VF, TTI, Legality).cost();
-
-    return LoadCost(cast<LoadInst>(Inst), VF, TTI, Legality).cost();
-  }
-
-private:
-  /// An helper class to compute the cost of vectorize memory instruction. It is
-  /// subclassed by load and store cost computation classes who fill the fields
-  /// with values that require knowing about the concrete Load/StoreInst class.
-  class MemoryOpCost {
-  public:
-    /// \return the cost of vectorizing the memory access instruction.
-    unsigned cost() {
-      if (VectorFactor == 1)
-        return TTI.getMemoryOpCost(Opcode, VectorTy, Alignment, AddressSpace);
-
-      if ((Stride = Legality->isConsecutivePtr(PointerOperand)))
-        return costOfWideMemInst();
-
-      return costOfScalarizedMemInst();
-    }
-
-  protected:
-    /// The pointer operand of the memory instruction.
-    Value *PointerOperand;
-    /// The scalar type of the memory access.
-    Type *ScalarTy;
-    /// The vector type of the memory access.
-    Type *VectorTy;
-    /// The vector factor by which we vectorize.
-    unsigned VectorFactor;
-    /// The stride of the memory access.
-    int Stride;
-    /// The alignment of the memory operation.
-    unsigned Alignment;
-    /// The address space of the memory operation.
-    unsigned AddressSpace;
-    /// The opcode of the memory instruction.
-    unsigned Opcode;
-    /// Are we looking at a load or store instruction.
-    bool IsLoadInst;
-    const TargetTransformInfo &TTI;
-    LoopVectorizationLegality *Legality;
-
-    /// Constructs a helper class to compute the cost of a memory instruction.
-    /// \param VF the vector factor (the length of the vector).
-    /// \param TI the target transform information used by this class to obtain
-    ///           costs.
-    /// \param L the legality class used by this class to obtain the access
-    ///          stride of the memory operation.
-    MemoryOpCost(unsigned VF, const TargetTransformInfo &TI,
-                 LoopVectorizationLegality *L) :
-      VectorFactor(VF), TTI(TI), Legality(L) {
-    }
-
-  private:
-    /// \return the cost if the memory instruction is scalarized.
-    unsigned costOfScalarizedMemInst() {
-      unsigned Cost = 0;
-      Cost += costOfExtractFromPointerVector();
-      Cost += costOfExtractFromValueVector();
-      Cost += VectorFactor * TTI.getMemoryOpCost(Opcode, ScalarTy, Alignment,
-                                                 AddressSpace);
-      Cost += costOfInsertIntoValueVector();
-      return Cost;
-    }
-
-    /// \return the cost of extracting the pointers out of the pointer vector.
-    unsigned costOfExtractFromPointerVector() {
-      Type *PtrTy = getVectorizedPointerOperandType();
-      return costOfVectorInstForAllElems(Instruction::ExtractElement, PtrTy);
-    }
-
-    /// \return the cost for extracting values out of the value vector if the
-    /// memory instruction is a store and zero otherwise.
-    unsigned costOfExtractFromValueVector() {
-      if (IsLoadInst)
-        return 0;
-
-      return costOfVectorInstForAllElems(Instruction::ExtractElement, VectorTy);
-    }
-
-    /// \return the cost of insert values into the value vector if the memory
-    /// instruction was a load and zero otherwise.
-    unsigned costOfInsertIntoValueVector() {
-      if (!IsLoadInst)
-        return 0;
-
-      return costOfVectorInstForAllElems(Instruction::InsertElement, VectorTy);
-    }
-
-    /// \return the cost of a vector memory instruction.
-    unsigned costOfWideMemInst() {
-      unsigned Cost = TTI.getMemoryOpCost(Opcode, VectorTy, Alignment,
-                                          AddressSpace);
-      // Reverse stride.
-      if (Stride < 0)
-        Cost += TTI.getShuffleCost(TargetTransformInfo::SK_Reverse, VectorTy,
-                                   0);
-      return Cost;
-    }
-
-    /// Helper function to compute the cost of one insert- or extractelement
-    /// instruction per vector element.
-    /// \param VecOpcode the vector instruction opcode (Can be either
-    ///                  InsertElement or an ExtractElement).
-    /// \param Ty the vector type the vector instruction operates on.
-    /// \return the cost of an vector instruction applied to each vector
-    ///         element.
-    unsigned costOfVectorInstForAllElems(unsigned VecOpcode, Type *Ty) {
-      unsigned Cost = 0;
-      for (unsigned i = 0; i < VectorFactor; ++i)
-        Cost += TTI.getVectorInstrCost(VecOpcode, Ty, i);
-      return Cost;
-    }
-
-    /// \return a vectorized type for the pointer operand.
-    Type * getVectorizedPointerOperandType() {
-      Type *PointerOpTy = PointerOperand->getType();
-      return LoopVectorizationCostModel::ToVectorTy(PointerOpTy, VectorFactor);
-    }
-  };
-
-  /// Implementation of the abstract memory cost base class. Sets field of base
-  /// class whose value depends on the LoadInst.
-  class LoadCost : public MemoryOpCost {
-  public:
-    LoadCost(LoadInst *Load, unsigned VF, const TargetTransformInfo &TI,
-             LoopVectorizationLegality *L) : MemoryOpCost(VF, TI, L) {
-      PointerOperand = Load->getPointerOperand();
-      ScalarTy = Load->getType();
-      VectorTy = LoopVectorizationCostModel::ToVectorTy(ScalarTy, VF);
-      Alignment = Load->getAlignment();
-      AddressSpace = Load->getPointerAddressSpace();
-      Opcode = Load->getOpcode();
-      IsLoadInst = true;
-    }
-  };
-
-  /// Implementation of the abstract memory cost base class. Sets field of base
-  /// class whose value depends on the StoreInst.
-  class StoreCost : public MemoryOpCost {
-  public:
-    StoreCost(StoreInst *Store, unsigned VF, const TargetTransformInfo &TI,
-              LoopVectorizationLegality *L) : MemoryOpCost(VF, TI, L) {
-      PointerOperand = Store->getPointerOperand();
-      ScalarTy = Store->getValueOperand()->getType();
-      VectorTy = LoopVectorizationCostModel::ToVectorTy(ScalarTy, VF);
-      Alignment = Store->getAlignment();
-      AddressSpace = Store->getPointerAddressSpace();
-      Opcode = Store->getOpcode();
-      IsLoadInst = false;
-    }
-  };
+  /// Target Library Info.
+  const TargetLibraryInfo *TLI;
 };
 
 /// The LoopVectorize Pass.
@@ -779,6 +640,8 @@ struct LoopVectorize : public LoopPass {
   LoopInfo *LI;
   TargetTransformInfo *TTI;
   DominatorTree *DT;
+  AliasAnalysis *AA;
+  TargetLibraryInfo *TLI;
 
   virtual bool runOnLoop(Loop *L, LPPassManager &LPM) {
     // We only vectorize innermost loops.
@@ -790,21 +653,23 @@ struct LoopVectorize : public LoopPass {
     LI = &getAnalysis<LoopInfo>();
     TTI = &getAnalysis<TargetTransformInfo>();
     DT = &getAnalysis<DominatorTree>();
+    AA = getAnalysisIfAvailable<AliasAnalysis>();
+    TLI = getAnalysisIfAvailable<TargetLibraryInfo>();
 
     DEBUG(dbgs() << "LV: Checking a loop in \"" <<
           L->getHeader()->getParent()->getName() << "\"\n");
 
     // Check if it is legal to vectorize the loop.
-    LoopVectorizationLegality LVL(L, SE, DL, DT);
+    LoopVectorizationLegality LVL(L, SE, DL, DT, TTI, AA, TLI);
     if (!LVL.canVectorize()) {
       DEBUG(dbgs() << "LV: Not vectorizing.\n");
       return false;
     }
 
     // Use the cost model.
-    LoopVectorizationCostModel CM(L, SE, LI, &LVL, *TTI, DL);
+    LoopVectorizationCostModel CM(L, SE, LI, &LVL, *TTI, DL, TLI);
 
-    // Check the function attribues to find out if this function should be
+    // Check the function attributes to find out if this function should be
     // optimized for size.
     Function *F = L->getHeader()->getParent();
     Attribute::AttrKind SzAttr = Attribute::OptimizeForSize;
@@ -835,8 +700,8 @@ struct LoopVectorize : public LoopPass {
           F->getParent()->getModuleIdentifier()<<"\n");
     DEBUG(dbgs() << "LV: Unroll Factor is " << UF << "\n");
 
-    // If we decided that it is *legal* to vectorizer the loop then do it.
-    InnerLoopVectorizer LB(L, SE, LI, DT, DL, VF.Width, UF);
+    // If we decided that it is *legal* to vectorize the loop then do it.
+    InnerLoopVectorizer LB(L, SE, LI, DT, DL, TLI, VF.Width, UF);
     LB.vectorize(&LVL);
 
     DEBUG(verifyFunction(*L->getHeader()->getParent()));
@@ -1585,34 +1450,108 @@ getReductionIdentity(LoopVectorizationLegality::ReductionKind K, Type *Tp) {
   }
 }
 
-static bool
-isTriviallyVectorizableIntrinsic(Instruction *Inst) {
-  IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst);
-  if (!II)
-    return false;
-  switch (II->getIntrinsicID()) {
-  case Intrinsic::sqrt:
-  case Intrinsic::sin:
-  case Intrinsic::cos:
-  case Intrinsic::exp:
-  case Intrinsic::exp2:
-  case Intrinsic::log:
-  case Intrinsic::log10:
-  case Intrinsic::log2:
-  case Intrinsic::fabs:
-  case Intrinsic::floor:
-  case Intrinsic::ceil:
-  case Intrinsic::trunc:
-  case Intrinsic::rint:
-  case Intrinsic::nearbyint:
-  case Intrinsic::pow:
-  case Intrinsic::fma:
-  case Intrinsic::fmuladd:
-    return true;
-  default:
-    return false;
+static Intrinsic::ID
+getIntrinsicIDForCall(CallInst *CI, const TargetLibraryInfo *TLI) {
+  // If we have an intrinsic call, check if it is trivially vectorizable.
+  if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(CI)) {
+    switch (II->getIntrinsicID()) {
+    case Intrinsic::sqrt:
+    case Intrinsic::sin:
+    case Intrinsic::cos:
+    case Intrinsic::exp:
+    case Intrinsic::exp2:
+    case Intrinsic::log:
+    case Intrinsic::log10:
+    case Intrinsic::log2:
+    case Intrinsic::fabs:
+    case Intrinsic::floor:
+    case Intrinsic::ceil:
+    case Intrinsic::trunc:
+    case Intrinsic::rint:
+    case Intrinsic::nearbyint:
+    case Intrinsic::pow:
+    case Intrinsic::fma:
+    case Intrinsic::fmuladd:
+      return II->getIntrinsicID();
+    default:
+      return Intrinsic::not_intrinsic;
+    }
   }
-  return false;
+
+  if (!TLI)
+    return Intrinsic::not_intrinsic;
+
+  LibFunc::Func Func;
+  Function *F = CI->getCalledFunction();
+  // We're going to make assumptions on the semantics of the functions, check
+  // that the target knows that it's available in this environment.
+  if (!F || !TLI->getLibFunc(F->getName(), Func))
+    return Intrinsic::not_intrinsic;
+
+  // Otherwise check if we have a call to a function that can be turned into a
+  // vector intrinsic.
+  switch (Func) {
+  default:
+    break;
+  case LibFunc::sin:
+  case LibFunc::sinf:
+  case LibFunc::sinl:
+    return Intrinsic::sin;
+  case LibFunc::cos:
+  case LibFunc::cosf:
+  case LibFunc::cosl:
+    return Intrinsic::cos;
+  case LibFunc::exp:
+  case LibFunc::expf:
+  case LibFunc::expl:
+    return Intrinsic::exp;
+  case LibFunc::exp2:
+  case LibFunc::exp2f:
+  case LibFunc::exp2l:
+    return Intrinsic::exp2;
+  case LibFunc::log:
+  case LibFunc::logf:
+  case LibFunc::logl:
+    return Intrinsic::log;
+  case LibFunc::log10:
+  case LibFunc::log10f:
+  case LibFunc::log10l:
+    return Intrinsic::log10;
+  case LibFunc::log2:
+  case LibFunc::log2f:
+  case LibFunc::log2l:
+    return Intrinsic::log2;
+  case LibFunc::fabs:
+  case LibFunc::fabsf:
+  case LibFunc::fabsl:
+    return Intrinsic::fabs;
+  case LibFunc::floor:
+  case LibFunc::floorf:
+  case LibFunc::floorl:
+    return Intrinsic::floor;
+  case LibFunc::ceil:
+  case LibFunc::ceilf:
+  case LibFunc::ceill:
+    return Intrinsic::ceil;
+  case LibFunc::trunc:
+  case LibFunc::truncf:
+  case LibFunc::truncl:
+    return Intrinsic::trunc;
+  case LibFunc::rint:
+  case LibFunc::rintf:
+  case LibFunc::rintl:
+    return Intrinsic::rint;
+  case LibFunc::nearbyint:
+  case LibFunc::nearbyintf:
+  case LibFunc::nearbyintl:
+    return Intrinsic::nearbyint;
+  case LibFunc::pow:
+  case LibFunc::powf:
+  case LibFunc::powl:
+    return Intrinsic::pow;
+  }
+
+  return Intrinsic::not_intrinsic;
 }
 
 /// This function translates the reduction kind to an LLVM binary operator.
@@ -2138,17 +2077,17 @@ InnerLoopVectorizer::vectorizeBlockInLoop(LoopVectorizationLegality *Legal,
     }
 
     case Instruction::Call: {
-      assert(isTriviallyVectorizableIntrinsic(it));
       Module *M = BB->getParent()->getParent();
-      IntrinsicInst *II = cast<IntrinsicInst>(it);
-      Intrinsic::ID ID = II->getIntrinsicID();
+      CallInst *CI = cast<CallInst>(it);
+      Intrinsic::ID ID = getIntrinsicIDForCall(CI, TLI);
+      assert(ID && "Not an intrinsic call!");
       for (unsigned Part = 0; Part < UF; ++Part) {
         SmallVector<Value*, 4> Args;
-        for (unsigned i = 0, ie = II->getNumArgOperands(); i != ie; ++i) {
-          VectorParts &Arg = getVectorValue(II->getArgOperand(i));
+        for (unsigned i = 0, ie = CI->getNumArgOperands(); i != ie; ++i) {
+          VectorParts &Arg = getVectorValue(CI->getArgOperand(i));
           Args.push_back(Arg[Part]);
         }
-        Type *Tys[] = { VectorType::get(II->getType()->getScalarType(), VF) };
+        Type *Tys[] = { VectorType::get(CI->getType()->getScalarType(), VF) };
         Function *F = Intrinsic::getDeclaration(M, ID, Tys);
         Entry[Part] = Builder.CreateCall(F, Args);
       }
@@ -2369,7 +2308,7 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
 
       // We still don't handle functions.
       CallInst *CI = dyn_cast<CallInst>(it);
-      if (CI && !isTriviallyVectorizableIntrinsic(it)) {
+      if (CI && !getIntrinsicIDForCall(CI, TLI)) {
         DEBUG(dbgs() << "LV: Found a call site.\n");
         return false;
       }
@@ -2442,7 +2381,51 @@ void LoopVectorizationLegality::collectLoopUniforms() {
   }
 }
 
+AliasAnalysis::Location
+LoopVectorizationLegality::getLoadStoreLocation(Instruction *Inst) {
+  if (StoreInst *Store = dyn_cast<StoreInst>(Inst))
+    return AA->getLocation(Store);
+  else if (LoadInst *Load = dyn_cast<LoadInst>(Inst))
+    return AA->getLocation(Load);
+
+  llvm_unreachable("Should be either load or store instruction");
+}
+
+bool
+LoopVectorizationLegality::hasPossibleGlobalWriteReorder(
+                                                Value *Object,
+                                                Instruction *Inst,
+                                                AliasMultiMap& WriteObjects,
+                                                unsigned MaxByteWidth) {
+
+  AliasAnalysis::Location ThisLoc = getLoadStoreLocation(Inst);
+
+  std::vector<Instruction*>::iterator
+              it = WriteObjects[Object].begin(),
+              end = WriteObjects[Object].end();
+
+  for (; it != end; ++it) {
+    Instruction* I = *it;
+    if (I == Inst)
+      continue;
+
+    AliasAnalysis::Location ThatLoc = getLoadStoreLocation(I);
+    if (AA->alias(ThisLoc.getWithNewSize(MaxByteWidth),
+                  ThatLoc.getWithNewSize(MaxByteWidth)))
+      return true;
+  }
+  return false;
+}
+
 bool LoopVectorizationLegality::canVectorizeMemory() {
+
+  if (TheLoop->isAnnotatedParallel()) {
+    DEBUG(dbgs()
+          << "LV: A loop annotated parallel, ignore memory dependency "
+          << "checks.\n");
+    return true;
+  }
+
   typedef SmallVector<Value*, 16> ValueVector;
   typedef SmallPtrSet<Value*, 16> ValueSet;
   // Holds the Load and Store *instructions*.
@@ -2496,9 +2479,10 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
     return true;
   }
 
-  // Holds the read and read-write *pointers* that we find.
-  ValueVector Reads;
-  ValueVector ReadWrites;
+  // Holds the read and read-write *pointers* that we find. These maps hold
+  // unique values for pointers (so no need for multi-map).
+  AliasMap Reads;
+  AliasMap ReadWrites;
 
   // Holds the analyzed pointers. We don't want to call GetUnderlyingObjects
   // multiple times on the same object. If the ptr is accessed twice, once
@@ -2520,7 +2504,7 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
     // If we did *not* see this pointer before, insert it to
     // the read-write list. At this phase it is only a 'write' list.
     if (Seen.insert(Ptr))
-      ReadWrites.push_back(Ptr);
+      ReadWrites.insert(std::make_pair(Ptr, ST));
   }
 
   for (I = Loads.begin(), IE = Loads.end(); I != IE; ++I) {
@@ -2535,7 +2519,7 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
     // read a few words, modify, and write a few words, and some of the
     // words may be written to the same address.
     if (Seen.insert(Ptr) || 0 == isConsecutivePtr(Ptr))
-      Reads.push_back(Ptr);
+      Reads.insert(std::make_pair(Ptr, LD));
   }
 
   // If we write (or read-write) to a single destination and there are no
@@ -2548,22 +2532,27 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
   // Find pointers with computable bounds. We are going to use this information
   // to place a runtime bound check.
   bool CanDoRT = true;
-  for (I = ReadWrites.begin(), IE = ReadWrites.end(); I != IE; ++I)
-    if (hasComputableBounds(*I)) {
-      PtrRtCheck.insert(SE, TheLoop, *I);
-      DEBUG(dbgs() << "LV: Found a runtime check ptr:" << **I <<"\n");
+  AliasMap::iterator MI, ME;
+  for (MI = ReadWrites.begin(), ME = ReadWrites.end(); MI != ME; ++MI) {
+    Value *V = (*MI).first;
+    if (hasComputableBounds(V)) {
+      PtrRtCheck.insert(SE, TheLoop, V);
+      DEBUG(dbgs() << "LV: Found a runtime check ptr:" << *V <<"\n");
     } else {
       CanDoRT = false;
       break;
     }
-  for (I = Reads.begin(), IE = Reads.end(); I != IE; ++I)
-    if (hasComputableBounds(*I)) {
-      PtrRtCheck.insert(SE, TheLoop, *I);
-      DEBUG(dbgs() << "LV: Found a runtime check ptr:" << **I <<"\n");
+  }
+  for (MI = Reads.begin(), ME = Reads.end(); MI != ME; ++MI) {
+    Value *V = (*MI).first;
+    if (hasComputableBounds(V)) {
+      PtrRtCheck.insert(SE, TheLoop, V);
+      DEBUG(dbgs() << "LV: Found a runtime check ptr:" << *V <<"\n");
     } else {
       CanDoRT = false;
       break;
     }
+  }
 
   // Check that we did not collect too many pointers or found a
   // unsizeable pointer.
@@ -2578,47 +2567,104 @@ bool LoopVectorizationLegality::canVectorizeMemory() {
 
   bool NeedRTCheck = false;
 
+  // Biggest vectorized access possible, vector width * unroll factor.
+  // TODO: We're being very pessimistic here, find a way to know the
+  // real access width before getting here.
+  unsigned MaxByteWidth = (TTI->getRegisterBitWidth(true) / 8) *
+                           TTI->getMaximumUnrollFactor();
   // Now that the pointers are in two lists (Reads and ReadWrites), we
   // can check that there are no conflicts between each of the writes and
   // between the writes to the reads.
-  ValueSet WriteObjects;
+  // Note that WriteObjects duplicates the stores (indexed now by underlying
+  // objects) to avoid pointing to elements inside ReadWrites.
+  // TODO: Maybe create a new type where they can interact without duplication.
+  AliasMultiMap WriteObjects;
   ValueVector TempObjects;
 
   // Check that the read-writes do not conflict with other read-write
   // pointers.
   bool AllWritesIdentified = true;
-  for (I = ReadWrites.begin(), IE = ReadWrites.end(); I != IE; ++I) {
-    GetUnderlyingObjects(*I, TempObjects, DL);
-    for (ValueVector::iterator it=TempObjects.begin(), e=TempObjects.end();
-         it != e; ++it) {
-      if (!isIdentifiedObject(*it)) {
-        DEBUG(dbgs() << "LV: Found an unidentified write ptr:"<< **it <<"\n");
+  for (MI = ReadWrites.begin(), ME = ReadWrites.end(); MI != ME; ++MI) {
+    Value *Val = (*MI).first;
+    Instruction *Inst = (*MI).second;
+
+    GetUnderlyingObjects(Val, TempObjects, DL);
+    for (ValueVector::iterator UI=TempObjects.begin(), UE=TempObjects.end();
+         UI != UE; ++UI) {
+      if (!isIdentifiedObject(*UI)) {
+        DEBUG(dbgs() << "LV: Found an unidentified write ptr:"<< **UI <<"\n");
         NeedRTCheck = true;
         AllWritesIdentified = false;
       }
-      if (!WriteObjects.insert(*it)) {
+
+      // Never seen it before, can't alias.
+      if (WriteObjects[*UI].empty()) {
+        DEBUG(dbgs() << "LV: Adding Underlying value:" << **UI <<"\n");
+        WriteObjects[*UI].push_back(Inst);
+        continue;
+      }
+      // Direct alias found.
+      if (!AA || dyn_cast<GlobalValue>(*UI) == NULL) {
         DEBUG(dbgs() << "LV: Found a possible write-write reorder:"
-              << **it <<"\n");
+              << **UI <<"\n");
         return false;
       }
+      DEBUG(dbgs() << "LV: Found a conflicting global value:"
+            << **UI <<"\n");
+      DEBUG(dbgs() << "LV: While examining store:" << *Inst <<"\n");
+      DEBUG(dbgs() << "LV: On value:" << *Val <<"\n");
+
+      // If global alias, make sure they do alias.
+      if (hasPossibleGlobalWriteReorder(*UI,
+                                        Inst,
+                                        WriteObjects,
+                                        MaxByteWidth)) {
+        DEBUG(dbgs() << "LV: Found a possible write-write reorder:"
+              << *UI <<"\n");
+        return false;
+      }
+
+      // Didn't alias, insert into map for further reference.
+      WriteObjects[*UI].push_back(Inst);
     }
     TempObjects.clear();
   }
 
   /// Check that the reads don't conflict with the read-writes.
-  for (I = Reads.begin(), IE = Reads.end(); I != IE; ++I) {
-    GetUnderlyingObjects(*I, TempObjects, DL);
-    for (ValueVector::iterator it=TempObjects.begin(), e=TempObjects.end();
-         it != e; ++it) {
+  for (MI = Reads.begin(), ME = Reads.end(); MI != ME; ++MI) {
+    Value *Val = (*MI).first;
+    GetUnderlyingObjects(Val, TempObjects, DL);
+    for (ValueVector::iterator UI=TempObjects.begin(), UE=TempObjects.end();
+         UI != UE; ++UI) {
       // If all of the writes are identified then we don't care if the read
       // pointer is identified or not.
-      if (!AllWritesIdentified && !isIdentifiedObject(*it)) {
-        DEBUG(dbgs() << "LV: Found an unidentified read ptr:"<< **it <<"\n");
+      if (!AllWritesIdentified && !isIdentifiedObject(*UI)) {
+        DEBUG(dbgs() << "LV: Found an unidentified read ptr:"<< **UI <<"\n");
         NeedRTCheck = true;
       }
-      if (WriteObjects.count(*it)) {
-        DEBUG(dbgs() << "LV: Found a possible read/write reorder:"
-              << **it <<"\n");
+
+      // Never seen it before, can't alias.
+      if (WriteObjects[*UI].empty())
+        continue;
+      // Direct alias found.
+      if (!AA || dyn_cast<GlobalValue>(*UI) == NULL) {
+        DEBUG(dbgs() << "LV: Found a possible write-write reorder:"
+              << **UI <<"\n");
+        return false;
+      }
+      DEBUG(dbgs() << "LV: Found a global value:  "
+            << **UI <<"\n");
+      Instruction *Inst = (*MI).second;
+      DEBUG(dbgs() << "LV: While examining load:" << *Inst <<"\n");
+      DEBUG(dbgs() << "LV: On value:" << *Val <<"\n");
+
+      // If global alias, make sure they do alias.
+      if (hasPossibleGlobalWriteReorder(*UI,
+                                        Inst,
+                                        WriteObjects,
+                                        MaxByteWidth)) {
+        DEBUG(dbgs() << "LV: Found a possible read-write reorder:"
+              << *UI <<"\n");
         return false;
       }
     }
@@ -2964,17 +3010,17 @@ unsigned LoopVectorizationCostModel::getWidestType() {
           continue;
 
       // Examine the stored values.
-      StoreInst *ST = 0;
-      if ((ST = dyn_cast<StoreInst>(it)))
+      if (StoreInst *ST = dyn_cast<StoreInst>(it))
         T = ST->getValueOperand()->getType();
 
       // Ignore loaded pointer types and stored pointer types that are not
       // consecutive. However, we do want to take consecutive stores/loads of
       // pointer vectors into account.
-      if (T->isPointerTy() && isConsecutiveLoadOrStore(it))
-        MaxWidth = std::max(MaxWidth, DL->getPointerSizeInBits());
-      else
-        MaxWidth = std::max(MaxWidth, T->getScalarSizeInBits());
+      if (T->isPointerTy() && !isConsecutiveLoadOrStore(it))
+        continue;
+
+      MaxWidth = std::max(MaxWidth,
+                          (unsigned)DL->getTypeSizeInBits(T->getScalarType()));
     }
   }
 
@@ -3223,9 +3269,10 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
   // TODO: We need to estimate the cost of intrinsic calls.
   switch (I->getOpcode()) {
   case Instruction::GetElementPtr:
-    // We mark this instruction as zero-cost because scalar GEPs are usually
-    // lowered to the intruction addressing mode. At the moment we don't
-    // generate vector geps.
+    // We mark this instruction as zero-cost because the cost of GEPs in
+    // vectorized code depends on whether the corresponding memory instruction
+    // is scalarized or not. Therefore, we handle GEPs with the memory
+    // instruction cost.
     return 0;
   case Instruction::Br: {
     return TTI.getCFInstrCost(I->getOpcode());
@@ -3268,11 +3315,59 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
     VectorTy = ToVectorTy(ValTy, VF);
     return TTI.getCmpSelInstrCost(I->getOpcode(), VectorTy);
   }
-  case Instruction::Load:
-  case Instruction::Store: {
-    return MemoryCostComputation::computeCost(I, VF, TTI, Legal);
-  }
+  case Instruction::Store:
+  case Instruction::Load: {
+    StoreInst *SI = dyn_cast<StoreInst>(I);
+    LoadInst *LI = dyn_cast<LoadInst>(I);
+    Type *ValTy = (SI ? SI->getValueOperand()->getType() :
+                   LI->getType());
+    VectorTy = ToVectorTy(ValTy, VF);
 
+    unsigned Alignment = SI ? SI->getAlignment() : LI->getAlignment();
+    unsigned AS = SI ? SI->getPointerAddressSpace() :
+      LI->getPointerAddressSpace();
+    Value *Ptr = SI ? SI->getPointerOperand() : LI->getPointerOperand();
+    // We add the cost of address computation here instead of with the gep
+    // instruction because only here we know whether the operation is
+    // scalarized.
+    if (VF == 1)
+      return TTI.getAddressComputationCost(VectorTy) +
+        TTI.getMemoryOpCost(I->getOpcode(), VectorTy, Alignment, AS);
+
+    // Scalarized loads/stores.
+    int Stride = Legal->isConsecutivePtr(Ptr);
+    bool Reverse = Stride < 0;
+    if (0 == Stride) {
+      unsigned Cost = 0;
+      // The cost of extracting from the value vector and pointer vector.
+      Type *PtrTy = ToVectorTy(Ptr->getType(), VF);
+      for (unsigned i = 0; i < VF; ++i) {
+        //  The cost of extracting the pointer operand.
+        Cost += TTI.getVectorInstrCost(Instruction::ExtractElement, PtrTy, i);
+        // In case of STORE, the cost of ExtractElement from the vector.
+        // In case of LOAD, the cost of InsertElement into the returned
+        // vector.
+        Cost += TTI.getVectorInstrCost(SI ? Instruction::ExtractElement :
+                                            Instruction::InsertElement,
+                                            VectorTy, i);
+      }
+
+      // The cost of the scalar loads/stores.
+      Cost += VF * TTI.getAddressComputationCost(ValTy->getScalarType());
+      Cost += VF * TTI.getMemoryOpCost(I->getOpcode(), ValTy->getScalarType(),
+                                       Alignment, AS);
+      return Cost;
+    }
+
+    // Wide load/stores.
+    unsigned Cost = TTI.getAddressComputationCost(VectorTy);
+    Cost += TTI.getMemoryOpCost(I->getOpcode(), VectorTy, Alignment, AS);
+
+    if (Reverse)
+      Cost += TTI.getShuffleCost(TargetTransformInfo::SK_Reverse,
+                                  VectorTy, 0);
+    return Cost;
+  }
   case Instruction::ZExt:
   case Instruction::SExt:
   case Instruction::FPToUI:
@@ -3296,13 +3391,14 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
     return TTI.getCastInstrCost(I->getOpcode(), VectorTy, SrcVecTy);
   }
   case Instruction::Call: {
-    assert(isTriviallyVectorizableIntrinsic(I));
-    IntrinsicInst *II = cast<IntrinsicInst>(I);
-    Type *RetTy = ToVectorTy(II->getType(), VF);
+    CallInst *CI = cast<CallInst>(I);
+    Intrinsic::ID ID = getIntrinsicIDForCall(CI, TLI);
+    assert(ID && "Not an intrinsic call!");
+    Type *RetTy = ToVectorTy(CI->getType(), VF);
     SmallVector<Type*, 4> Tys;
-    for (unsigned i = 0, ie = II->getNumArgOperands(); i != ie; ++i)
-      Tys.push_back(ToVectorTy(II->getArgOperand(i)->getType(), VF));
-    return TTI.getIntrinsicInstrCost(II->getIntrinsicID(), RetTy, Tys);
+    for (unsigned i = 0, ie = CI->getNumArgOperands(); i != ie; ++i)
+      Tys.push_back(ToVectorTy(CI->getArgOperand(i)->getType(), VF));
+    return TTI.getIntrinsicInstrCost(ID, RetTy, Tys);
   }
   default: {
     // We are scalarizing the instruction. Return the cost of the scalar
@@ -3352,13 +3448,11 @@ namespace llvm {
 
 bool LoopVectorizationCostModel::isConsecutiveLoadOrStore(Instruction *Inst) {
   // Check for a store.
-  StoreInst *ST = dyn_cast<StoreInst>(Inst);
-  if (ST)
+  if (StoreInst *ST = dyn_cast<StoreInst>(Inst))
     return Legal->isConsecutivePtr(ST->getPointerOperand()) != 0;
 
   // Check for a load.
-  LoadInst *LI = dyn_cast<LoadInst>(Inst);
-  if (LI)
+  if (LoadInst *LI = dyn_cast<LoadInst>(Inst))
     return Legal->isConsecutivePtr(LI->getPointerOperand()) != 0;
 
   return false;

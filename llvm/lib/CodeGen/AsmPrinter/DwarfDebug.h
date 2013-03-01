@@ -386,7 +386,7 @@ class DwarfDebug {
   // section offsets and are created by EmitSectionLabels.
   MCSymbol *DwarfInfoSectionSym, *DwarfAbbrevSectionSym;
   MCSymbol *DwarfStrSectionSym, *TextSectionSym, *DwarfDebugRangeSectionSym;
-  MCSymbol *DwarfDebugLocSectionSym;
+  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym;
   MCSymbol *FunctionBeginSym, *FunctionEndSym;
   MCSymbol *DwarfAbbrevDWOSectionSym, *DwarfStrDWOSectionSym;
 
@@ -499,6 +499,9 @@ private:
 
   /// \brief Emit type dies into a hashed accelerator table.
   void emitAccelTypes();
+
+  /// \brief Emit visible names into a debug pubnames section.
+  void emitDebugPubnames();
 
   /// \brief Emit visible types into a debug pubtypes section.
   void emitDebugPubTypes();

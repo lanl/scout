@@ -19,6 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm-readobj.h"
+
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Object/ELF.h"
@@ -240,7 +242,8 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  ObjectFile *obj = ObjectFile::createObjectFile(File.take());
+  OwningPtr<ObjectFile> o(ObjectFile::createObjectFile(File.take()));
+  ObjectFile *obj = o.get();
   if (!obj) {
     errs() << InputFilename << ": Object type not recognized\n";
   }
@@ -261,6 +264,13 @@ int main(int argc, char** argv) {
   dumpSectionHeader();
   dump(obj, &dumpSection, obj->begin_sections(), obj->end_sections(),
        "Section iteration failed");
+
+  if (obj->isELF()) {
+    if (ErrorOr<void> e = dumpELFDynamicTable(obj, outs()))
+      ;
+    else
+      errs() << "InputFilename" << ": " << error_code(e).message() << "\n";
+  }
 
   outs() << "Libraries needed:\n";
   dump(obj, &dumpLibrary, obj->begin_libraries_needed(),

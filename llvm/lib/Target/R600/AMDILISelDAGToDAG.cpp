@@ -16,6 +16,7 @@
 #include "AMDGPURegisterInfo.h"
 #include "AMDILDevices.h"
 #include "R600InstrInfo.h"
+#include "SIISelLowering.h"
 #include "llvm/ADT/ValueMap.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
@@ -43,6 +44,7 @@ public:
 
   SDNode *Select(SDNode *N);
   virtual const char *getPassName() const;
+  virtual void PostprocessISelDAG();
 
 private:
   inline SDValue getSmallIPtrImm(unsigned Imm);
@@ -72,8 +74,6 @@ private:
   bool SelectGlobalValueConstantOffset(SDValue Addr, SDValue& IntPtr);
   bool SelectGlobalValueVariableOffset(SDValue Addr,
       SDValue &BaseReg, SDValue& Offset);
-  bool SelectADDR8BitOffset(SDValue Addr, SDValue& Base, SDValue& Offset);
-  bool SelectADDRReg(SDValue Addr, SDValue& Base, SDValue& Offset);
   bool SelectADDRVTX_READ(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectADDRIndirect(SDValue Addr, SDValue &Base, SDValue &Offset);
 
@@ -220,7 +220,9 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
             continue;
           }
       } else {
-        if (!TII->isALUInstr(Use->getMachineOpcode())) {
+        if (!TII->isALUInstr(Use->getMachineOpcode()) ||
+            (TII->get(Use->getMachineOpcode()).TSFlags &
+            R600_InstFlag::VECTOR)) {
           continue;
         }
 
@@ -263,7 +265,8 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
   if (ST.device()->getGeneration() <= AMDGPUDeviceInfo::HD6XXX) {
     const R600InstrInfo *TII =
         static_cast<const R600InstrInfo*>(TM.getInstrInfo());
-    if (Result && Result->isMachineOpcode()
+    if (Result && Result->isMachineOpcode() &&
+        !(TII->get(Result->getMachineOpcode()).TSFlags & R600_InstFlag::VECTOR)
         && TII->isALUInstr(Result->getMachineOpcode())) {
       // Fold FNEG/FABS/CONST_ADDRESS
       // TODO: Isel can generate multiple MachineInst, we need to recursively
@@ -333,6 +336,8 @@ bool AMDGPUDAGToDAGISel::FoldOperands(unsigned Opcode,
     SDValue Operand = Ops[OperandIdx[i] - 1];
     switch (Operand.getOpcode()) {
     case AMDGPUISD::CONST_ADDRESS: {
+      if (i == 2)
+        break;
       SDValue CstOffset;
       if (!Operand.getValueType().isVector() &&
           SelectGlobalValueConstantOffset(Operand.getOperand(0), CstOffset)) {
@@ -527,43 +532,6 @@ bool AMDGPUDAGToDAGISel::SelectGlobalValueVariableOffset(SDValue Addr,
   return false;
 }
 
-bool AMDGPUDAGToDAGISel::SelectADDR8BitOffset(SDValue Addr, SDValue& Base,
-                                             SDValue& Offset) {
-  if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
-      Addr.getOpcode() == ISD::TargetGlobalAddress) {
-    return false;
-  }
-
-
-  if (Addr.getOpcode() == ISD::ADD) {
-    bool Match = false;
-
-    // Find the base ptr and the offset
-    for (unsigned i = 0; i < Addr.getNumOperands(); i++) {
-      SDValue Arg = Addr.getOperand(i);
-      ConstantSDNode * OffsetNode = dyn_cast<ConstantSDNode>(Arg);
-      // This arg isn't a constant so it must be the base PTR.
-      if (!OffsetNode) {
-        Base = Addr.getOperand(i);
-        continue;
-      }
-      // Check if the constant argument fits in 8-bits.  The offset is in bytes
-      // so we need to convert it to dwords.
-      if (isUInt<8>(OffsetNode->getZExtValue() >> 2)) {
-        Match = true;
-        Offset = CurDAG->getTargetConstant(OffsetNode->getZExtValue() >> 2,
-                                           MVT::i32);
-      }
-    }
-    return Match;
-  }
-
-  // Default case, no offset
-  Base = Addr;
-  Offset = CurDAG->getTargetConstant(0, MVT::i32);
-  return true;
-}
-
 bool AMDGPUDAGToDAGISel::SelectADDRVTX_READ(SDValue Addr, SDValue &Base,
                                            SDValue &Offset) {
   ConstantSDNode * IMMOffset;
@@ -591,20 +559,6 @@ bool AMDGPUDAGToDAGISel::SelectADDRVTX_READ(SDValue Addr, SDValue &Base,
   return true;
 }
 
-bool AMDGPUDAGToDAGISel::SelectADDRReg(SDValue Addr, SDValue& Base,
-                                      SDValue& Offset) {
-  if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
-      Addr.getOpcode() == ISD::TargetGlobalAddress  ||
-      Addr.getOpcode() != ISD::ADD) {
-    return false;
-  }
-
-  Base = Addr.getOperand(0);
-  Offset = Addr.getOperand(1);
-
-  return true;
-}
-
 bool AMDGPUDAGToDAGISel::SelectADDRIndirect(SDValue Addr, SDValue &Base,
                                             SDValue &Offset) {
   ConstantSDNode *C;
@@ -623,3 +577,21 @@ bool AMDGPUDAGToDAGISel::SelectADDRIndirect(SDValue Addr, SDValue &Base,
 
   return true;
 }
+
+void AMDGPUDAGToDAGISel::PostprocessISelDAG() {
+
+  // Go over all selected nodes and try to fold them a bit more
+  const AMDGPUTargetLowering& Lowering = ((const AMDGPUTargetLowering&)TLI);
+  for (SelectionDAG::allnodes_iterator I = CurDAG->allnodes_begin(),
+       E = CurDAG->allnodes_end(); I != E; ++I) {
+
+    MachineSDNode *Node = dyn_cast<MachineSDNode>(I);
+    if (!Node)
+      continue;
+
+    SDNode *ResNode = Lowering.PostISelFolding(Node, *CurDAG);
+    if (ResNode != Node)
+      ReplaceUses(Node, ResNode);
+  }
+}
+

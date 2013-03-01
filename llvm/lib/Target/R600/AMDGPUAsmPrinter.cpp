@@ -91,8 +91,6 @@ void AMDGPUAsmPrinter::EmitProgramInfo(MachineFunction &MF) {
         switch (reg) {
         default: break;
         case AMDGPU::EXEC:
-        case AMDGPU::SI_LITERAL_CONSTANT:
-        case AMDGPU::SREG_LIT_0:
         case AMDGPU::M0:
           continue;
         }
@@ -127,7 +125,7 @@ void AMDGPUAsmPrinter::EmitProgramInfo(MachineFunction &MF) {
         } else {
           assert(!"Unknown register class");
         }
-        hwReg = RI->getEncodingValue(reg);
+        hwReg = RI->getEncodingValue(reg) & 0xff;
         maxUsed = hwReg + width - 1;
         if (isSGPR) {
           MaxSGPR = maxUsed > MaxSGPR ? maxUsed : MaxSGPR;

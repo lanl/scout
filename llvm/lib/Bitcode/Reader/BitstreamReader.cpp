@@ -26,34 +26,28 @@ void BitstreamCursor::operator=(const BitstreamCursor &RHS) {
 
   // Copy abbreviations, and bump ref counts.
   CurAbbrevs = RHS.CurAbbrevs;
-  for (unsigned i = 0, e = static_cast<unsigned>(CurAbbrevs.size());
-       i != e; ++i)
+  for (size_t i = 0, e = CurAbbrevs.size(); i != e; ++i)
     CurAbbrevs[i]->addRef();
 
   // Copy block scope and bump ref counts.
   BlockScope = RHS.BlockScope;
-  for (unsigned S = 0, e = static_cast<unsigned>(BlockScope.size());
-       S != e; ++S) {
+  for (size_t S = 0, e = BlockScope.size(); S != e; ++S) {
     std::vector<BitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
-    for (unsigned i = 0, e = static_cast<unsigned>(Abbrevs.size());
-         i != e; ++i)
+    for (size_t i = 0, e = Abbrevs.size(); i != e; ++i)
       Abbrevs[i]->addRef();
   }
 }
 
 void BitstreamCursor::freeState() {
   // Free all the Abbrevs.
-  for (unsigned i = 0, e = static_cast<unsigned>(CurAbbrevs.size());
-       i != e; ++i)
+  for (size_t i = 0, e = CurAbbrevs.size(); i != e; ++i)
     CurAbbrevs[i]->dropRef();
   CurAbbrevs.clear();
 
   // Free all the Abbrevs in the block scope.
-  for (unsigned S = 0, e = static_cast<unsigned>(BlockScope.size());
-       S != e; ++S) {
+  for (size_t S = 0, e = BlockScope.size(); S != e; ++S) {
     std::vector<BitCodeAbbrev*> &Abbrevs = BlockScope[S].PrevAbbrevs;
-    for (unsigned i = 0, e = static_cast<unsigned>(Abbrevs.size());
-         i != e; ++i)
+    for (size_t i = 0, e = Abbrevs.size(); i != e; ++i)
       Abbrevs[i]->dropRef();
   }
   BlockScope.clear();
@@ -69,8 +63,7 @@ bool BitstreamCursor::EnterSubBlock(unsigned BlockID, unsigned *NumWordsP) {
   // Add the abbrevs specific to this block to the CurAbbrevs list.
   if (const BitstreamReader::BlockInfo *Info =
       BitStream->getBlockInfo(BlockID)) {
-    for (unsigned i = 0, e = static_cast<unsigned>(Info->Abbrevs.size());
-         i != e; ++i) {
+    for (size_t i = 0, e = Info->Abbrevs.size(); i != e; ++i) {
       CurAbbrevs.push_back(Info->Abbrevs[i]);
       CurAbbrevs.back()->addRef();
     }
@@ -288,9 +281,20 @@ void BitstreamCursor::ReadAbbrevRecord() {
     }
 
     BitCodeAbbrevOp::Encoding E = (BitCodeAbbrevOp::Encoding)Read(3);
-    if (BitCodeAbbrevOp::hasEncodingData(E))
-      Abbv->Add(BitCodeAbbrevOp(E, ReadVBR64(5)));
-    else
+    if (BitCodeAbbrevOp::hasEncodingData(E)) {
+      unsigned Data = ReadVBR64(5);
+
+      // As a special case, handle fixed(0) (i.e., a fixed field with zero bits)
+      // and vbr(0) as a literal zero.  This is decoded the same way, and avoids
+      // a slow path in Read() to have to handle reading zero bits.
+      if ((E == BitCodeAbbrevOp::Fixed || E == BitCodeAbbrevOp::VBR) &&
+          Data == 0) {
+        Abbv->Add(BitCodeAbbrevOp(0));
+        continue;
+      }
+      
+      Abbv->Add(BitCodeAbbrevOp(E, Data));
+    } else
       Abbv->Add(BitCodeAbbrevOp(E));
   }
   CurAbbrevs.push_back(Abbv);

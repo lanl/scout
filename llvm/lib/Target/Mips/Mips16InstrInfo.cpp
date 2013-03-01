@@ -19,7 +19,9 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
 
@@ -130,7 +132,6 @@ loadRegFromStackSlot(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
 
 bool Mips16InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
   MachineBasicBlock &MBB = *MI->getParent();
-
   switch(MI->getDesc().getOpcode()) {
   default:
     return false;
@@ -183,7 +184,7 @@ void Mips16InstrInfo::makeFrame(unsigned SP, int64_t FrameSize,
       int64_t Remainder = FrameSize - Base;
       BuildMI(MBB, I, DL, get(Mips::SaveRaF16)). addImm(Base);
       if (isInt<16>(-Remainder))
-        BuildMI(MBB, I, DL, get(Mips::AddiuSpImmX16)). addImm(-Remainder);
+        BuildAddiuSpImm(MBB, I, -Remainder);
       else
         adjustStackPtrBig(SP, -Remainder, MBB, I, Mips::V0, Mips::V1);
     }
@@ -224,7 +225,7 @@ void Mips16InstrInfo::restoreFrame(unsigned SP, int64_t FrameSize,
                        // returns largest possible n bit unsigned integer
       int64_t Remainder = FrameSize - Base;
       if (isInt<16>(Remainder))
-        BuildMI(MBB, I, DL, get(Mips::AddiuSpImmX16)). addImm(Remainder);
+        BuildAddiuSpImm(MBB, I, Remainder);
       else
         adjustStackPtrBig(SP, Remainder, MBB, I, Mips::A0, Mips::A1);
       BuildMI(MBB, I, DL, get(Mips::RestoreRaF16)). addImm(Base);
@@ -296,9 +297,8 @@ void Mips16InstrInfo::adjustStackPtrBigUnrestricted(unsigned SP, int64_t Amount,
 void Mips16InstrInfo::adjustStackPtr(unsigned SP, int64_t Amount,
                                      MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator I) const {
-  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   if (isInt<16>(Amount))  // need to change to addiu sp, ....and isInt<16>
-    BuildMI(MBB, I, DL, get(Mips::AddiuSpImmX16)). addImm(Amount);
+    BuildAddiuSpImm(MBB, I, Amount);
   else
     adjustStackPtrBigUnrestricted(SP, Amount, MBB, I);
 }
@@ -306,11 +306,79 @@ void Mips16InstrInfo::adjustStackPtr(unsigned SP, int64_t Amount,
 /// This function generates the sequence of instructions needed to get the
 /// result of adding register REG and immediate IMM.
 unsigned
-Mips16InstrInfo::loadImmediate(int64_t Imm, MachineBasicBlock &MBB,
+Mips16InstrInfo::loadImmediate(unsigned FrameReg,
+                               int64_t Imm, MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator II, DebugLoc DL,
-                               unsigned *NewImm) const {
+                               unsigned &NewImm) const {
+  //
+  // given original instruction is:
+  // Instr rx, T[offset] where offset is too big.
+  //
+  // lo = offset & 0xFFFF
+  // hi = ((offset >> 16) + (lo >> 15)) & 0xFFFF;
+  //
+  // let T = temporary register
+  // li T, hi
+  // shl T, 16
+  // add T, Rx, T
+  //
+  RegScavenger rs;
+  int32_t lo = Imm & 0xFFFF;
+  int32_t hi = ((Imm >> 16) + (lo >> 15)) & 0xFFFF;
+  NewImm = lo;
+  unsigned Reg =0;
+  unsigned SpReg = 0;
+  rs.enterBasicBlock(&MBB);
+  rs.forward(II);
+  //
+  // we use T0 for the first register, if we need to save something away.
+  // we use T1 for the second register, if we need to save something away.
+  //
+  unsigned FirstRegSaved =0, SecondRegSaved=0;
+  unsigned FirstRegSavedTo = 0, SecondRegSavedTo = 0;
 
-  return 0;
+  Reg = rs.FindUnusedReg(&Mips::CPU16RegsRegClass);
+  if (Reg == 0) {
+    FirstRegSaved = Reg = Mips::V0;
+    FirstRegSavedTo = Mips::T0;
+    copyPhysReg(MBB, II, DL, FirstRegSavedTo, FirstRegSaved, true);
+  }
+  else
+    rs.setUsed(Reg);
+  BuildMI(MBB, II, DL, get(Mips::LiRxImmX16), Reg).addImm(hi);
+  BuildMI(MBB, II, DL, get(Mips::SllX16), Reg).addReg(Reg).
+    addImm(16);
+  if (FrameReg == Mips::SP) {
+    SpReg = rs.FindUnusedReg(&Mips::CPU16RegsRegClass);
+    if (SpReg == 0) {
+      if (Reg != Mips::V1) {
+        SecondRegSaved = SpReg = Mips::V1;
+        SecondRegSavedTo = Mips::T1;
+      }
+      else {
+        SecondRegSaved = SpReg = Mips::V0;
+        SecondRegSavedTo = Mips::T0;
+      }
+      copyPhysReg(MBB, II, DL, SecondRegSavedTo, SecondRegSaved, true);
+    }
+    else
+      rs.setUsed(SpReg);
+
+    copyPhysReg(MBB, II, DL, SpReg, Mips::SP, false);
+    BuildMI(MBB, II, DL, get(Mips::  AdduRxRyRz16), Reg).addReg(SpReg)
+      .addReg(Reg);
+  }
+  else
+    BuildMI(MBB, II, DL, get(Mips::  AdduRxRyRz16), Reg).addReg(FrameReg)
+      .addReg(Reg, RegState::Kill);
+  if (FirstRegSaved || SecondRegSaved) {
+    II = llvm::next(II);
+    if (FirstRegSaved)
+      copyPhysReg(MBB, II, DL, FirstRegSaved, FirstRegSavedTo, true);
+    if (SecondRegSaved)
+      copyPhysReg(MBB, II, DL, SecondRegSaved, SecondRegSavedTo, true);
+  }
+  return Reg;
 }
 
 unsigned Mips16InstrInfo::GetAnalyzableBrOpc(unsigned Opc) const {
@@ -329,6 +397,20 @@ void Mips16InstrInfo::ExpandRetRA16(MachineBasicBlock &MBB,
                                   MachineBasicBlock::iterator I,
                                   unsigned Opc) const {
   BuildMI(MBB, I, I->getDebugLoc(), get(Opc));
+}
+
+
+const MCInstrDesc &Mips16InstrInfo::AddiuSpImm(int64_t Imm) const {
+  if (validSpImm8(Imm))
+    return get(Mips::AddiuSpImm16);
+  else
+    return get(Mips::AddiuSpImmX16);
+}
+
+void Mips16InstrInfo::BuildAddiuSpImm
+  (MachineBasicBlock &MBB, MachineBasicBlock::iterator I, int64_t Imm) const {
+  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
+  BuildMI(MBB, I, DL, AddiuSpImm(Imm)).addImm(Imm);
 }
 
 const MipsInstrInfo *llvm::createMips16InstrInfo(MipsTargetMachine &TM) {

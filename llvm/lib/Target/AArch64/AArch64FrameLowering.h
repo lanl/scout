@@ -7,7 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//
+// This class implements the AArch64-specific parts of the TargetFrameLowering
+// class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -69,6 +70,10 @@ public:
                                         MachineBasicBlock::iterator MI,
                                         const std::vector<CalleeSavedInfo> &CSI,
                                         const TargetRegisterInfo *TRI) const;
+
+  void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                     MachineBasicBlock &MBB,
+                                     MachineBasicBlock::iterator MI) const;
 
   /// If the register is X30 (i.e. LR) and the return address is used in the
   /// function then the callee-save store doesn't actually kill the register,

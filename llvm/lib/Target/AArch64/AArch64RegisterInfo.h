@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains the AArch64 implementation of the MRegisterInfo class.
+// This file contains the AArch64 implementation of the MCRegisterInfo class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -43,10 +43,6 @@ public:
   void eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj,
                            unsigned FIOperandNum,
                            RegScavenger *Rs = NULL) const;
-
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-                                     MachineBasicBlock &MBB,
-                                     MachineBasicBlock::iterator MI) const;
 
   /// getCrossCopyRegClass - Returns a legal register class to copy a register
   /// in the specified class to or from. Returns original class if it is

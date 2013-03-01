@@ -720,6 +720,11 @@ Currently, only the following parameter attributes are defined:
     This indicates that the pointer parameter can be excised using the
     :ref:`trampoline intrinsics <int_trampoline>`. This is not a valid
     attribute for return values.
+``nobuiltin``
+    This indicates that the callee function at a call site is not
+    recognized as a built-in function. LLVM will retain the original call
+    and not replace it with equivalent code based on the semantics of the
+    built-in function.
 
 .. _gc:
 
@@ -788,9 +793,6 @@ example:
     define void @f() alwaysinline optsize { ... }
     define void @f() optsize { ... }
 
-``address_safety``
-    This attribute indicates that the address safety analysis is enabled
-    for this function.
 ``alignstack(<n>)``
     This attribute indicates that, when emitting the prologue and
     epilogue, the backend should forcibly align the stack pointer.
@@ -868,6 +870,15 @@ example:
     ``setjmp`` is an example of such a function. The compiler disables
     some optimizations (like tail calls) in the caller of these
     functions.
+``sanitize_address``
+    This attribute indicates that AddressSanitizer checks
+    (dynamic address safety analysis) are enabled for this function.
+``sanitize_memory``
+    This attribute indicates that MemorySanitizer checks (dynamic detection
+    of accesses to uninitialized memory) are enabled for this function.
+``sanitize_thread``
+    This attribute indicates that ThreadSanitizer checks
+    (dynamic thread safety analysis) are enabled for this function.
 ``ssp``
     This attribute indicates that the function should emit a stack
     smashing protector. It is in the form of a "canary" --- a random value
@@ -2515,6 +2526,124 @@ Examples:
     !1 = metadata !{ i8 255, i8 2 }
     !2 = metadata !{ i8 0, i8 2, i8 3, i8 6 }
     !3 = metadata !{ i8 -2, i8 0, i8 3, i8 6 }
+
+'``llvm.loop``'
+^^^^^^^^^^^^^^^
+
+It is sometimes useful to attach information to loop constructs. Currently,
+loop metadata is implemented as metadata attached to the branch instruction
+in the loop latch block. This type of metadata refer to a metadata node that is
+guaranteed to be separate for each loop. The loop-level metadata is prefixed
+with ``llvm.loop``.
+
+The loop identifier metadata is implemented using a metadata that refers to
+itself to avoid merging it with any other identifier metadata, e.g., 
+during module linkage or function inlining. That is, each loop should refer 
+to their own identification metadata even if they reside in separate functions. 
+The following example contains loop identifier metadata for two separate loop 
+constructs:
+
+.. code-block:: llvm
+
+    !0 = metadata !{ metadata !0 }
+    !1 = metadata !{ metadata !1 }
+
+
+'``llvm.loop.parallel``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This loop metadata can be used to communicate that a loop should be considered
+a parallel loop. The semantics of parallel loops in this case is the one
+with the strongest cross-iteration instruction ordering freedom: the
+iterations in the loop can be considered completely independent of each
+other (also known as embarrassingly parallel loops).
+
+This metadata can originate from a programming language with parallel loop
+constructs. In such a case it is completely the programmer's responsibility
+to ensure the instructions from the different iterations of the loop can be
+executed in an arbitrary order, in parallel, or intertwined. No loop-carried
+dependency checking at all must be expected from the compiler.
+
+In order to fulfill the LLVM requirement for metadata to be safely ignored,
+it is important to ensure that a parallel loop is converted to
+a sequential loop in case an optimization (agnostic of the parallel loop
+semantics) converts the loop back to such. This happens when new memory
+accesses that do not fulfill the requirement of free ordering across iterations
+are added to the loop. Therefore, this metadata is required, but not
+sufficient, to consider the loop at hand a parallel loop. For a loop
+to be parallel,  all its memory accessing instructions need to be
+marked with the ``llvm.mem.parallel_loop_access`` metadata that refer
+to the same loop identifier metadata that identify the loop at hand.
+
+'``llvm.mem``'
+^^^^^^^^^^^^^^^
+
+Metadata types used to annotate memory accesses with information helpful
+for optimizations are prefixed with ``llvm.mem``.
+
+'``llvm.mem.parallel_loop_access``' Metadata
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a loop to be parallel, in addition to using
+the ``llvm.loop.parallel`` metadata to mark the loop latch branch instruction,
+also all of the memory accessing instructions in the loop body need to be
+marked with the ``llvm.mem.parallel_loop_access`` metadata. If there
+is at least one memory accessing instruction not marked with the metadata,
+the loop, despite it possibly using the ``llvm.loop.parallel`` metadata,
+must be considered a sequential loop. This causes parallel loops to be
+converted to sequential loops due to optimization passes that are unaware of
+the parallel semantics and that insert new memory instructions to the loop
+body.
+
+Example of a loop that is considered parallel due to its correct use of
+both ``llvm.loop.parallel`` and ``llvm.mem.parallel_loop_access``
+metadata types that refer to the same loop identifier metadata.
+
+.. code-block:: llvm
+
+   for.body:
+   ...
+   %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   br i1 %exitcond, label %for.end, label %for.body, !llvm.loop.parallel !0
+
+   for.end:
+   ...
+   !0 = metadata !{ metadata !0 }
+
+It is also possible to have nested parallel loops. In that case the
+memory accesses refer to a list of loop identifier metadata nodes instead of
+the loop identifier metadata node directly:
+
+.. code-block:: llvm
+
+   outer.for.body:
+   ...
+
+   inner.for.body:
+   ...
+   %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   br i1 %exitcond, label %inner.for.end, label %inner.for.body, !llvm.loop.parallel !1
+
+   inner.for.end:
+   ...
+   %0 = load i32* %arrayidx, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   store i32 %0, i32* %arrayidx4, align 4, !llvm.mem.parallel_loop_access !0
+   ...
+   br i1 %exitcond, label %outer.for.end, label %outer.for.body, !llvm.loop.parallel !2
+
+   outer.for.end:                                          ; preds = %for.body
+   ...
+   !0 = metadata !{ metadata !1, metadata !2 } ; a list of parallel loop identifiers
+   !1 = metadata !{ metadata !1 } ; an identifier for the inner parallel loop
+   !2 = metadata !{ metadata !2 } ; an identifier for the outer parallel loop
+
 
 Module Flags Metadata
 =====================

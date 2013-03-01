@@ -135,7 +135,8 @@ class ELFObjectWriter : public MCObjectWriter {
     const MCSymbol *undefinedExplicitRelSym(const MCValue &Target,
                                             const MCFixup &Fixup,
                                             bool IsPCRel) const {
-      return TargetObjectWriter->undefinedExplicitRelSym(Target, Fixup, IsPCRel);
+      return TargetObjectWriter->undefinedExplicitRelSym(Target, Fixup,
+                                                         IsPCRel);
     }
 
     bool is64Bit() const { return TargetObjectWriter->is64Bit(); }
@@ -545,12 +546,17 @@ void ELFObjectWriter::WriteSymbol(MCDataFragment *SymtabF,
   bool IsReserved = Data.isCommon() || Data.getSymbol().isAbsolute() ||
     Data.getSymbol().isVariable();
 
+  // Binding and Type share the same byte as upper and lower nibbles
   uint8_t Binding = MCELF::GetBinding(OrigData);
-  uint8_t Visibility = MCELF::GetVisibility(OrigData);
   uint8_t Type = MCELF::GetType(Data);
-
   uint8_t Info = (Binding << ELF_STB_Shift) | (Type << ELF_STT_Shift);
-  uint8_t Other = Visibility;
+
+  // Other and Visibility share the same byte with Visability using the lower
+  // 2 bits
+  uint8_t Visibility = MCELF::GetVisibility(OrigData);
+  uint8_t Other = MCELF::getOther(OrigData) <<
+    (ELF_Other_Shift - ELF_STV_Shift);
+  Other |= Visibility;
 
   uint64_t Value = SymbolValue(Data, Layout);
   uint64_t Size = 0;

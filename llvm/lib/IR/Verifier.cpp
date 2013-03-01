@@ -650,8 +650,11 @@ void Verifier::VerifyParameterAttrs(AttributeSet Attrs, uint64_t Idx, Type *Ty,
           !Attrs.hasAttribute(Idx, Attribute::UWTable) &&
           !Attrs.hasAttribute(Idx, Attribute::NonLazyBind) &&
           !Attrs.hasAttribute(Idx, Attribute::ReturnsTwice) &&
-          !Attrs.hasAttribute(Idx, Attribute::AddressSafety) &&
-          !Attrs.hasAttribute(Idx, Attribute::MinSize),
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeAddress) &&
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeThread) &&
+          !Attrs.hasAttribute(Idx, Attribute::SanitizeMemory) &&
+          !Attrs.hasAttribute(Idx, Attribute::MinSize) &&
+          !Attrs.hasAttribute(Idx, Attribute::NoBuiltin),
           "Some attributes in '" + Attrs.getAsString(Idx) +
           "' only apply to functions!", V);
 
@@ -744,7 +747,7 @@ void Verifier::VerifyFunctionAttrs(FunctionType *FT,
 
   AttrBuilder NotFn(Attrs, AttributeSet::FunctionIndex);
   NotFn.removeFunctionOnlyAttrs();
-  Assert1(!NotFn.hasAttributes(), "Attribute '" +
+  Assert1(NotFn.empty(), "Attributes '" +
           AttributeSet::get(V->getContext(),
                             AttributeSet::FunctionIndex,
                             NotFn).getAsString(AttributeSet::FunctionIndex) +

@@ -161,28 +161,52 @@ static void WriteStringRecord(unsigned Code, StringRef Str,
   Stream.EmitRecord(Code, Vals, AbbrevToUse);
 }
 
-/// \brief This returns an integer containing an encoding of all the LLVM
-/// attributes found in the given attribute bitset.  Any change to this encoding
-/// is a breaking change to bitcode compatibility.
-/// N.B. This should be used only by the bitcode writer!
-static uint64_t encodeLLVMAttributesForBitcode(AttributeSet Attrs,
-                                               unsigned Index) {
-  // FIXME: Remove in 4.0!
+static void WriteAttributeGroupTable(const ValueEnumerator &VE,
+                                     BitstreamWriter &Stream) {
+  const std::vector<AttributeSet> &AttrGrps = VE.getAttributeGroups();
+  if (AttrGrps.empty()) return;
 
-  // FIXME: It doesn't make sense to store the alignment information as an
-  // expanded out value, we should store it as a log2 value.  However, we can't
-  // just change that here without breaking bitcode compatibility.  If this ever
-  // becomes a problem in practice, we should introduce new tag numbers in the
-  // bitcode file and have those tags use a more efficiently encoded alignment
-  // field.
+  Stream.EnterSubblock(bitc::PARAMATTR_GROUP_BLOCK_ID, 3);
 
-  // Store the alignment in the bitcode as a 16-bit raw value instead of a 5-bit
-  // log2 encoded value. Shift the bits above the alignment up by 11 bits.
-  uint64_t EncodedAttrs = Attrs.Raw(Index) & 0xffff;
-  if (Attrs.hasAttribute(Index, Attribute::Alignment))
-    EncodedAttrs |= Attrs.getParamAlignment(Index) << 16;
-  EncodedAttrs |= (Attrs.Raw(Index) & (0xffffULL << 21)) << 11;
-  return EncodedAttrs;
+  SmallVector<uint64_t, 64> Record;
+  for (unsigned i = 0, e = AttrGrps.size(); i != e; ++i) {
+    AttributeSet AS = AttrGrps[i];
+    for (unsigned i = 0, e = AS.getNumSlots(); i != e; ++i) {
+      AttributeSet A = AS.getSlotAttributes(i);
+
+      Record.push_back(VE.getAttributeGroupID(A));
+      Record.push_back(AS.getSlotIndex(i));
+
+      for (AttributeSet::iterator I = AS.begin(0), E = AS.end(0);
+           I != E; ++I) {
+        Attribute Attr = *I;
+        if (Attr.isEnumAttribute()) {
+          Record.push_back(0);
+          Record.push_back(Attr.getKindAsEnum());
+        } else if (Attr.isAlignAttribute()) {
+          Record.push_back(1);
+          Record.push_back(Attr.getKindAsEnum());
+          Record.push_back(Attr.getValueAsInt());
+        } else {
+          StringRef Kind = Attr.getKindAsString();
+          StringRef Val = Attr.getValueAsString();
+
+          Record.push_back(Val.empty() ? 3 : 4);
+          Record.append(Kind.begin(), Kind.end());
+          Record.push_back(0);
+          if (!Val.empty()) {
+            Record.append(Val.begin(), Val.end());
+            Record.push_back(0);
+          }
+        }
+      }
+
+      Stream.EmitRecord(bitc::PARAMATTR_GRP_CODE_ENTRY, Record);
+      Record.clear();
+    }
+  }
+
+  Stream.ExitBlock();
 }
 
 static void WriteAttributeTable(const ValueEnumerator &VE,
@@ -195,14 +219,10 @@ static void WriteAttributeTable(const ValueEnumerator &VE,
   SmallVector<uint64_t, 64> Record;
   for (unsigned i = 0, e = Attrs.size(); i != e; ++i) {
     const AttributeSet &A = Attrs[i];
-    for (unsigned i = 0, e = A.getNumSlots(); i != e; ++i) {
-      unsigned Index = A.getSlotIndex(i);
-      Record.push_back(Index);
-      Record.push_back(encodeLLVMAttributesForBitcode(A.getSlotAttributes(i),
-                                                      Index));
-    }
+    for (unsigned i = 0, e = A.getNumSlots(); i != e; ++i)
+      Record.push_back(VE.getAttributeGroupID(A.getSlotAttributes(i)));
 
-    Stream.EmitRecord(bitc::PARAMATTR_CODE_ENTRY_OLD, Record);
+    Stream.EmitRecord(bitc::PARAMATTR_CODE_ENTRY, Record);
     Record.clear();
   }
 
@@ -1199,7 +1219,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
   case Instruction::Br:
     {
       Code = bitc::FUNC_CODE_INST_BR;
-      BranchInst &II = cast<BranchInst>(I);
+      const BranchInst &II = cast<BranchInst>(I);
       Vals.push_back(VE.getValueID(II.getSuccessor(0)));
       if (II.isConditional()) {
         Vals.push_back(VE.getValueID(II.getSuccessor(1)));
@@ -1214,7 +1234,7 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       SmallVector<uint64_t, 128> Vals64;
 
       Code = bitc::FUNC_CODE_INST_SWITCH;
-      SwitchInst &SI = cast<SwitchInst>(I);
+      const SwitchInst &SI = cast<SwitchInst>(I);
 
       uint32_t SwitchRecordHeader = SI.hash() | (SWITCH_INST_MAGIC << 16);
       Vals64.push_back(SwitchRecordHeader);
@@ -1223,9 +1243,9 @@ static void WriteInstruction(const Instruction &I, unsigned InstID,
       pushValue64(SI.getCondition(), InstID, Vals64, VE);
       Vals64.push_back(VE.getValueID(SI.getDefaultDest()));
       Vals64.push_back(SI.getNumCases());
-      for (SwitchInst::CaseIt i = SI.case_begin(), e = SI.case_end();
+      for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
            i != e; ++i) {
-        IntegersSubset& CaseRanges = i.getCaseValueEx();
+        const IntegersSubset& CaseRanges = i.getCaseValueEx();
         unsigned Code, Abbrev; // will unused.
 
         if (CaseRanges.isSingleNumber()) {
@@ -1853,6 +1873,9 @@ static void WriteModule(const Module *M, BitstreamWriter &Stream) {
 
   // Emit blockinfo, which defines the standard abbreviations etc.
   WriteBlockInfo(VE, Stream);
+
+  // Emit information about attribute groups.
+  WriteAttributeGroupTable(VE, Stream);
 
   // Emit information about parameter attributes.
   WriteAttributeTable(VE, Stream);

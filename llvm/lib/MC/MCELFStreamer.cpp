@@ -334,6 +334,19 @@ void  MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_Mips_GOTTPREL:
     case MCSymbolRefExpr::VK_Mips_TPREL_HI:
     case MCSymbolRefExpr::VK_Mips_TPREL_LO:
+    case MCSymbolRefExpr::VK_PPC_TPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_TPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_DTPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_DTPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_GOT_TPREL16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TPREL16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLS:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSGD16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSGD16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLSGD:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSLD16_HA:
+    case MCSymbolRefExpr::VK_PPC_GOT_TLSLD16_LO:
+    case MCSymbolRefExpr::VK_PPC_TLSLD:
       break;
     }
     MCSymbolData &SD = getAssembler().getOrCreateSymbolData(symRef.getSymbol());
@@ -386,7 +399,9 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   if (Assembler.isBundlingEnabled()) {
     MCSectionData *SD = getCurrentSectionData();
     if (SD->isBundleLocked() && !SD->isBundleGroupBeforeFirstInst())
-      DF = getOrCreateDataFragment();
+      // If we are bundle-locked, we re-use the current fragment.
+      // The bundle-locking directive ensures this is a new data fragment.
+      DF = cast<MCDataFragment>(getCurrentFragment());
     else if (!SD->isBundleLocked() && Fixups.size() == 0) {
       // Optimize memory usage by emitting the instruction to a
       // MCCompactEncodedInstFragment when not in a bundle-locked group and
@@ -394,8 +409,7 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
       MCCompactEncodedInstFragment *CEIF = new MCCompactEncodedInstFragment(SD);
       CEIF->getContents().append(Code.begin(), Code.end());
       return;
-    }
-    else {
+    } else {
       DF = new MCDataFragment(SD);
       if (SD->getBundleLockState() == MCSectionData::BundleLockedAlignToEnd) {
         // If this is a new fragment created for a bundle-locked group, and the
@@ -501,6 +515,10 @@ MCStreamer *llvm::createELFStreamer(MCContext &Context, MCAsmBackend &MAB,
 
 void MCELFStreamer::EmitThumbFunc(MCSymbol *Func) {
   llvm_unreachable("Generic ELF doesn't support this directive");
+}
+
+MCSymbolData &MCELFStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+  return getAssembler().getOrCreateSymbolData(*Symbol);
 }
 
 void MCELFStreamer::EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {

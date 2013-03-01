@@ -1,9 +1,15 @@
-//===- AArch64Disassembler.cpp - Disassembler for AArch64/Thumb ISA -------===//
+//===- AArch64Disassembler.cpp - Disassembler for AArch64 ISA -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains the functions necessary to decode AArch64 instruction
+// bitpatterns into MCInsts (with the help of TableGenerated information from
+// the instruction definitions).
 //
 //===----------------------------------------------------------------------===//
 
@@ -99,6 +105,11 @@ static DecodeStatus DecodeCVT32FixedPosOperand(llvm::MCInst &Inst,
                                                unsigned Imm6Bits,
                                                uint64_t Address,
                                                const void *Decoder);
+
+static DecodeStatus DecodeFPZeroOperand(llvm::MCInst &Inst,
+                                        unsigned RmBits,
+                                        uint64_t Address,
+                                        const void *Decoder);
 
 template<int RegWidth>
 static DecodeStatus DecodeMoveWideImmOperand(llvm::MCInst &Inst,
@@ -374,6 +385,17 @@ static DecodeStatus DecodeCVT32FixedPosOperand(llvm::MCInst &Inst,
   Inst.addOperand(MCOperand::CreateImm(Imm6Bits));
   return MCDisassembler::Success;
 }
+
+static DecodeStatus DecodeFPZeroOperand(llvm::MCInst &Inst,
+                                        unsigned RmBits,
+                                        uint64_t Address,
+                                        const void *Decoder) {
+  // Any bits are valid in the instruction (they're architecturally ignored),
+  // but a code generator should insert 0.
+  Inst.addOperand(MCOperand::CreateImm(0));
+  return MCDisassembler::Success;
+}
+
 
 
 template<int RegWidth>

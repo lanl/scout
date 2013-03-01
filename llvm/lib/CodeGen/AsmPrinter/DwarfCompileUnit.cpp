@@ -1311,8 +1311,10 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     addType(VariableDIE, GTy);
 
     // Add scoping info.
-    if (!GV.isLocalToUnit())
+    if (!GV.isLocalToUnit()) {
       addFlag(VariableDIE, dwarf::DW_AT_external);
+      addGlobalName(GV.getName(), VariableDIE);
+    }
 
     // Add line number info.
     addSourceLine(VariableDIE, GV);
@@ -1346,9 +1348,19 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     }
     // Add linkage name.
     StringRef LinkageName = GV.getLinkageName();
-    if (!LinkageName.empty() && isGlobalVariable)
-      addString(VariableDIE, dwarf::DW_AT_MIPS_linkage_name,
+    if (!LinkageName.empty()) {
+      // From DWARF4: DIEs to which DW_AT_linkage_name may apply include:
+      // TAG_common_block, TAG_constant, TAG_entry_point, TAG_subprogram and
+      // TAG_variable.
+      addString(IsStaticMember && VariableSpecDIE ?
+                VariableSpecDIE : VariableDIE, dwarf::DW_AT_MIPS_linkage_name,
                 getRealLinkageName(LinkageName));
+      // In compatibility mode with older gdbs we put the linkage name on both
+      // the TAG_variable DIE and on the TAG_member DIE.
+      if (IsStaticMember && VariableSpecDIE && DD->useDarwinGDBCompat())
+        addString(VariableDIE, dwarf::DW_AT_MIPS_linkage_name,
+                  getRealLinkageName(LinkageName));
+    }
   } else if (const ConstantInt *CI =
              dyn_cast_or_null<ConstantInt>(GV.getConstant())) {
     // AT_const_value was added when the static memeber was created. To avoid

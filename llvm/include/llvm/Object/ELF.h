@@ -471,9 +471,9 @@ public:
   template<class EntT>
   class ELFEntityIterator {
   public:
-    typedef void difference_type;
+    typedef ptrdiff_t difference_type;
     typedef EntT value_type;
-    typedef std::forward_iterator_tag iterator_category;
+    typedef std::random_access_iterator_tag iterator_category;
     typedef value_type &reference;
     typedef value_type *pointer;
 
@@ -513,12 +513,25 @@ public:
       return Tmp;
     }
 
+    ELFEntityIterator &operator =(const ELFEntityIterator &Other) {
+      EntitySize = Other.EntitySize;
+      Current = Other.Current;
+      return *this;
+    }
+
+    difference_type operator -(const ELFEntityIterator &Other) const {
+      assert(EntitySize == Other.EntitySize &&
+             "Subtracting iterators of different EntitiySize!");
+      return (Current - Other.Current) / EntitySize;
+    }
+
+    const char *get() const { return Current; }
+
   private:
-    const uint64_t EntitySize;
+    uint64_t EntitySize;
     const char *Current;
   };
 
-private:
   typedef Elf_Ehdr_Impl<ELFT> Elf_Ehdr;
   typedef Elf_Shdr_Impl<ELFT> Elf_Shdr;
   typedef Elf_Sym_Impl<ELFT> Elf_Sym;
@@ -531,7 +544,10 @@ private:
   typedef Elf_Verneed_Impl<ELFT> Elf_Verneed;
   typedef Elf_Vernaux_Impl<ELFT> Elf_Vernaux;
   typedef Elf_Versym_Impl<ELFT> Elf_Versym;
-  typedef ELFEntityIterator<const Elf_Dyn> dyn_iterator;
+  typedef ELFEntityIterator<const Elf_Dyn> Elf_Dyn_iterator;
+  typedef ELFEntityIterator<const Elf_Sym> Elf_Sym_iterator;
+  typedef ELFEntityIterator<const Elf_Rela> Elf_Rela_Iter;
+  typedef ELFEntityIterator<const Elf_Rel> Elf_Rel_Iter;
 
 protected:
   // This flag is used for classof, to distinguish ELFObjectFile from
@@ -540,7 +556,7 @@ protected:
   bool isDyldELFObject;
 
 private:
-  typedef SmallVector<const Elf_Shdr*, 1> Sections_t;
+  typedef SmallVector<const Elf_Shdr *, 2> Sections_t;
   typedef DenseMap<unsigned, unsigned> IndexMap_t;
   typedef DenseMap<const Elf_Shdr*, SmallVector<uint32_t, 1> > RelocMap_t;
 
@@ -601,6 +617,7 @@ private:
     return getSection(Rel.w.b);
   }
 
+public:
   bool            isRelocationHasAddend(DataRefImpl Rel) const;
   template<typename T>
   const T        *getEntry(uint16_t Section, uint32_t Entry) const;
@@ -698,11 +715,34 @@ public:
   virtual library_iterator begin_libraries_needed() const;
   virtual library_iterator end_libraries_needed() const;
 
-  dyn_iterator begin_dynamic_table() const;
-  dyn_iterator end_dynamic_table() const;
+  const Elf_Shdr *getDynamicSymbolTableSectionHeader() const {
+    return SymbolTableSections[0];
+  }
 
-  typedef ELFEntityIterator<const Elf_Rela> Elf_Rela_Iter;
-  typedef ELFEntityIterator<const Elf_Rel> Elf_Rel_Iter;
+  const Elf_Shdr *getDynamicStringTableSectionHeader() const {
+    return dot_dynstr_sec;
+  }
+
+  Elf_Dyn_iterator begin_dynamic_table() const;
+  /// \param NULLEnd use one past the first DT_NULL entry as the end instead of
+  /// the section size.
+  Elf_Dyn_iterator end_dynamic_table(bool NULLEnd = false) const;
+
+  Elf_Sym_iterator begin_elf_dynamic_symbols() const {
+    const Elf_Shdr *DynSymtab = SymbolTableSections[0];
+    if (DynSymtab)
+      return Elf_Sym_iterator(DynSymtab->sh_entsize,
+                              (const char *)base() + DynSymtab->sh_offset);
+    return Elf_Sym_iterator(0, 0);
+  }
+
+  Elf_Sym_iterator end_elf_dynamic_symbols() const {
+    const Elf_Shdr *DynSymtab = SymbolTableSections[0];
+    if (DynSymtab)
+      return Elf_Sym_iterator(DynSymtab->sh_entsize, (const char *)base() +
+                              DynSymtab->sh_offset + DynSymtab->sh_size);
+    return Elf_Sym_iterator(0, 0);
+  }
 
   Elf_Rela_Iter beginELFRela(const Elf_Shdr *sec) const {
     return Elf_Rela_Iter(sec->sh_entsize,
@@ -846,6 +886,7 @@ void ELFObjectFile<ELFT>::LoadVersionMap() const {
 
 template<class ELFT>
 void ELFObjectFile<ELFT>::validateSymbol(DataRefImpl Symb) const {
+#ifndef NDEBUG
   const Elf_Sym  *symb = getSymbol(Symb);
   const Elf_Shdr *SymbolTableSection = SymbolTableSections[Symb.d.b];
   // FIXME: We really need to do proper error handling in the case of an invalid
@@ -860,6 +901,7 @@ void ELFObjectFile<ELFT>::validateSymbol(DataRefImpl Symb) const {
                    + SymbolTableSection->sh_size)))
     // FIXME: Proper error handling.
     report_fatal_error("Symb must point to a valid symbol!");
+#endif
 }
 
 template<class ELFT>
@@ -2243,29 +2285,42 @@ section_iterator ELFObjectFile<ELFT>::end_sections() const {
 }
 
 template<class ELFT>
-typename ELFObjectFile<ELFT>::dyn_iterator
+typename ELFObjectFile<ELFT>::Elf_Dyn_iterator
 ELFObjectFile<ELFT>::begin_dynamic_table() const {
   if (dot_dynamic_sec)
-    return dyn_iterator(dot_dynamic_sec->sh_entsize,
-                        (const char *)base() + dot_dynamic_sec->sh_offset);
-  return dyn_iterator(0, 0);
+    return Elf_Dyn_iterator(dot_dynamic_sec->sh_entsize,
+                            (const char *)base() + dot_dynamic_sec->sh_offset);
+  return Elf_Dyn_iterator(0, 0);
 }
 
 template<class ELFT>
-typename ELFObjectFile<ELFT>::dyn_iterator
-ELFObjectFile<ELFT>::end_dynamic_table() const {
-  if (dot_dynamic_sec)
-    return dyn_iterator(dot_dynamic_sec->sh_entsize, (const char *)base() +
-                        dot_dynamic_sec->sh_offset + dot_dynamic_sec->sh_size);
-  return dyn_iterator(0, 0);
+typename ELFObjectFile<ELFT>::Elf_Dyn_iterator
+ELFObjectFile<ELFT>::end_dynamic_table(bool NULLEnd) const {
+  if (dot_dynamic_sec) {
+    Elf_Dyn_iterator Ret(dot_dynamic_sec->sh_entsize,
+                         (const char *)base() + dot_dynamic_sec->sh_offset +
+                         dot_dynamic_sec->sh_size);
+
+    if (NULLEnd) {
+      Elf_Dyn_iterator Start = begin_dynamic_table();
+      for (; Start != Ret && Start->getTag() != ELF::DT_NULL; ++Start)
+        ;
+      // Include the DT_NULL.
+      if (Start != Ret)
+        ++Start;
+      Ret = Start;
+    }
+    return Ret;
+  }
+  return Elf_Dyn_iterator(0, 0);
 }
 
 template<class ELFT>
 StringRef ELFObjectFile<ELFT>::getLoadName() const {
   if (!dt_soname) {
     // Find the DT_SONAME entry
-    dyn_iterator it = begin_dynamic_table();
-    dyn_iterator ie = end_dynamic_table();
+    Elf_Dyn_iterator it = begin_dynamic_table();
+    Elf_Dyn_iterator ie = end_dynamic_table();
     for (; it != ie; ++it) {
       if (it->getTag() == ELF::DT_SONAME)
         break;
@@ -2284,15 +2339,15 @@ StringRef ELFObjectFile<ELFT>::getLoadName() const {
 template<class ELFT>
 library_iterator ELFObjectFile<ELFT>::begin_libraries_needed() const {
   // Find the first DT_NEEDED entry
-  dyn_iterator i = begin_dynamic_table();
-  dyn_iterator e = end_dynamic_table();
-  while (i != e) {
+  Elf_Dyn_iterator i = begin_dynamic_table();
+  Elf_Dyn_iterator e = end_dynamic_table();
+  for (; i != e; ++i) {
     if (i->getTag() == ELF::DT_NEEDED)
       break;
   }
 
   DataRefImpl DRI;
-  DRI.p = reinterpret_cast<uintptr_t>(&*i);
+  DRI.p = reinterpret_cast<uintptr_t>(i.get());
   return library_iterator(LibraryRef(DRI, this));
 }
 
@@ -2300,19 +2355,18 @@ template<class ELFT>
 error_code ELFObjectFile<ELFT>::getLibraryNext(DataRefImpl Data,
                                                LibraryRef &Result) const {
   // Use the same DataRefImpl format as DynRef.
-  dyn_iterator i = dyn_iterator(dot_dynamic_sec->sh_entsize,
-                                reinterpret_cast<const char *>(Data.p));
-  dyn_iterator e = end_dynamic_table();
+  Elf_Dyn_iterator i = Elf_Dyn_iterator(dot_dynamic_sec->sh_entsize,
+                                        reinterpret_cast<const char *>(Data.p));
+  Elf_Dyn_iterator e = end_dynamic_table();
 
   // Skip the current dynamic table entry.
   ++i;
 
   // Find the next DT_NEEDED entry.
-  for (; i != e && i->getTag() != ELF::DT_NEEDED; ++i)
-    ;
+  for (; i != e && i->getTag() != ELF::DT_NEEDED; ++i);
 
   DataRefImpl DRI;
-  DRI.p = reinterpret_cast<uintptr_t>(&*i);
+  DRI.p = reinterpret_cast<uintptr_t>(i.get());
   Result = LibraryRef(DRI, this);
   return object_error::success;
 }
@@ -2320,8 +2374,8 @@ error_code ELFObjectFile<ELFT>::getLibraryNext(DataRefImpl Data,
 template<class ELFT>
 error_code ELFObjectFile<ELFT>::getLibraryPath(DataRefImpl Data,
                                                StringRef &Res) const {
-  dyn_iterator i = dyn_iterator(dot_dynamic_sec->sh_entsize,
-                                reinterpret_cast<const char *>(Data.p));
+  Elf_Dyn_iterator i = Elf_Dyn_iterator(dot_dynamic_sec->sh_entsize,
+                                        reinterpret_cast<const char *>(Data.p));
   if (i == end_dynamic_table())
     report_fatal_error("getLibraryPath() called on iterator end");
 
@@ -2341,9 +2395,9 @@ error_code ELFObjectFile<ELFT>::getLibraryPath(DataRefImpl Data,
 
 template<class ELFT>
 library_iterator ELFObjectFile<ELFT>::end_libraries_needed() const {
-  dyn_iterator e = end_dynamic_table();
+  Elf_Dyn_iterator e = end_dynamic_table();
   DataRefImpl DRI;
-  DRI.p = reinterpret_cast<uintptr_t>(&*e);
+  DRI.p = reinterpret_cast<uintptr_t>(e.get());
   return library_iterator(LibraryRef(DRI, this));
 }
 

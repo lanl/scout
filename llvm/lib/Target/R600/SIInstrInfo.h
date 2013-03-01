@@ -35,11 +35,8 @@ public:
                            unsigned DestReg, unsigned SrcReg,
                            bool KillSrc) const;
 
-  /// \returns the encoding type of this instruction.
-  unsigned getEncodingType(const MachineInstr &MI) const;
-
-  /// \returns the size of this instructions encoding in number of bytes.
-  unsigned getEncodingBytes(const MachineInstr &MI) const;
+  virtual MachineInstr *commuteInstruction(MachineInstr *MI,
+                                           bool NewMI=false) const;
 
   virtual MachineInstr * getMovImmInstr(MachineFunction *MF, unsigned DstReg,
                                         int64_t Imm) const;
@@ -76,14 +73,20 @@ public:
   virtual const TargetRegisterClass *getSuperIndirectRegClass() const;
   };
 
+namespace AMDGPU {
+
+  int getVOPe64(uint16_t Opcode);
+
+} // End namespace AMDGPU
+
 } // End namespace llvm
 
 namespace SIInstrFlags {
   enum Flags {
     // First 4 bits are the instruction encoding
-    VM_CNT = 1 << 4,
-    EXP_CNT = 1 << 5,
-    LGKM_CNT = 1 << 6
+    VM_CNT = 1 << 0,
+    EXP_CNT = 1 << 1,
+    LGKM_CNT = 1 << 2
   };
 }
 
