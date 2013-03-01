@@ -420,12 +420,9 @@ def err_object_cannot_be_passed_returned_by_value : Error<
   "; did you forget * in %1?">;
 def err_parameters_retval_cannot_have_fp16_type : Error<
   "%select{parameters|function return value}0 cannot have __fp16 type; did you forget * ?">;
-def err_opencl_half_dereferencing : Error<
-  "dereferencing pointer of type %0 is not allowed">;
-def err_opencl_half_subscript : Error<
-  "subscript to array of type %0 is not allowed">;
+def err_opencl_half_load_store : Error<
+  "%select{loading directly from|assigning directly to}0 pointer to type %1 is not allowed">;
 def err_opencl_cast_to_half : Error<"casting to type %0 is not allowed">;
-def err_opencl_cast_from_half : Error<"casting from type %0 is not allowed">;
 def err_opencl_half_declaration : Error<
   "declaring variable of type %0 is not allowed">;
 def err_opencl_half_argument : Error<
@@ -482,7 +479,7 @@ def warn_readonly_property : Warning<
   "'readwrite' of property inherited from %1">;
 
 def warn_property_attribute : Warning<
-  "property %0 '%1' attribute does not match the property inherited from %2">;
+  "'%1' attribute on property %0 does not match the property inherited from %2">;
 def warn_property_types_are_incompatible : Warning<
   "property type %0 is incompatible with type %1 inherited from %2">;
 def err_undef_interface : Error<"cannot find interface declaration for %0">;
@@ -790,9 +787,9 @@ def warn_undeclared_selector : Warning<
 def warn_implicit_atomic_property : Warning<
   "property is assumed atomic by default">, InGroup<ImplicitAtomic>, DefaultIgnore;
 def note_auto_readonly_iboutlet_fixup_suggest : Note<
-  "readonly IBOutlet property should be changed to be readwrite">;
+  "property should be changed to be readwrite">;
 def warn_auto_readonly_iboutlet_property : Warning<
-  "readonly IBOutlet property when auto-synthesized may "
+  "readonly IBOutlet property '%0' when auto-synthesized may "
   "not work correctly with 'nib' loader">,
   InGroup<DiagGroup<"readonly-iboutlet-property">>;
 def warn_auto_implicit_atomic_property : Warning<
@@ -1095,6 +1092,7 @@ def note_field_decl : Note<"member is declared here">;
 def note_ivar_decl : Note<"instance variable is declared here">;
 def note_bitfield_decl : Note<"bit-field is declared here">;
 def note_previous_decl : Note<"%0 declared here">;
+def note_implicit_param_decl : Note<"%0 is an implicit parameter">;
 def note_member_synthesized_at : Note<
   "implicit default %select{constructor|copy constructor|move constructor|copy "
   "assignment operator|move assignment operator|destructor}0 for %1 first "
@@ -1656,9 +1654,16 @@ def err_attribute_argument_not_int : Error<
 def err_aligned_attribute_argument_not_int : Error<
   "'aligned' attribute requires integer constant">;
 def err_alignas_attribute_wrong_decl_type : Error<
-  "%0 attribute cannot be applied to a %select{"
+  "'%select{alignas|_Alignas}0' attribute cannot be applied to a %select{"
   "function parameter|variable with 'register' storage class|"
   "'catch' variable|bit-field}1">;
+def err_alignas_missing_on_definition : Error<
+  "'%select{alignas|_Alignas}0' must be specified on definition if it is "
+  "specified on any declaration">;
+def note_alignas_on_declaration : Note<
+  "declared with '%select{alignas|_Alignas}0' attribute here">;
+def err_alignas_mismatch : Error<
+  "redeclaration has different alignment requirement (%1 vs %0)">;
 def err_alignas_underaligned : Error<
   "requested alignment is less than minimum alignment of %1 for type %0">;
 def err_attribute_first_argument_not_int_or_bool : Error<
@@ -1726,6 +1731,8 @@ def err_as_qualified_auto_decl : Error<
   "automatic variable qualified with an address space">;
 def err_arg_with_address_space : Error<
   "parameter may not be qualified with an address space">;
+def err_field_with_address_space : Error<
+  "field may not be qualified with an address space">;
 def err_attr_objc_ownership_redundant : Error<
   "the type %0 is already explicitly ownership-qualified">;
 def err_attribute_not_string : Error<
@@ -1806,9 +1813,8 @@ def warn_cxx11_gnu_attribute_on_type : Warning<
 def warn_unhandled_ms_attribute_ignored : Warning<
   "__declspec attribute %0 is not supported">, 
   InGroup<IgnoredAttributes>;
-def warn_attribute_invalid_on_stmt : Warning<
-  "attribute %0 cannot be specified on a statement">,
-  InGroup<IgnoredAttributes>;
+def err_attribute_invalid_on_stmt : Error<
+  "%0 attribute cannot be applied to a statement">;
 def warn_declspec_attribute_ignored : Warning<
   "attribute %0 is ignored, place it after "
   "\"%select{class|struct|union|interface|enum}1\" to apply attribute to "
@@ -1855,7 +1861,8 @@ def warn_attribute_wrong_decl_type : Warning<
   "functions, methods, and parameters|classes|variables|methods|"
   "variables, functions and labels|fields and global variables|structs|"
   "variables, functions and tag types|thread-local variables|"
-  "variables and fields|variables, data members and tag types}1">,
+  "variables and fields|variables, data members and tag types|"
+  "types and namespaces}1">,
   InGroup<IgnoredAttributes>;
 def err_attribute_wrong_decl_type : Error<
   "%0 attribute only applies to %select{functions|unions|"
@@ -1864,7 +1871,8 @@ def err_attribute_wrong_decl_type : Error<
   "functions, methods, and parameters|classes|variables|methods|"
   "variables, functions and labels|fields and global variables|structs|"
   "variables, functions and tag types|thread-local variables|"
-  "variables and fields|variables, data members and tag types}1">;
+  "variables and fields|variables, data members and tag types|"
+  "types and namespaces}1">;
 def warn_function_attribute_wrong_type : Warning<
   "'%0' only applies to function types; type here is %1">,
   InGroup<IgnoredAttributes>;
@@ -1894,7 +1902,7 @@ def err_cconv_knr : Error<
   "function with no prototype cannot use %0 calling convention">;
 def err_cconv_varargs : Error<
   "variadic function cannot use %0 calling convention">;
-def err_regparm_mismatch : Error<"function declared with with regparm(%0) "
+def err_regparm_mismatch : Error<"function declared with regparm(%0) "
   "attribute was previously declared "
   "%plural{0:without the regparm|:with the regparm(%1)}1 attribute">;
 def err_returns_retained_mismatch : Error<
@@ -1910,6 +1918,8 @@ def err_attribute_can_be_applied_only_to_value_decl : Error<
   "%0 attribute can only be applied to value declarations">;
 def warn_attribute_not_on_decl : Warning<
   "%0 attribute ignored when parsing type">, InGroup<IgnoredAttributes>;
+def err_base_specifier_attribute : Error<
+  "%0 attribute cannot be applied to a base specifier">;
 
 // Availability attribute
 def warn_availability_unknown_platform : Warning<
@@ -3851,11 +3861,19 @@ def err_arc_cast_requires_bridge : Error<
   "requires a bridged cast">;
 def note_arc_bridge : Note<
   "use __bridge to convert directly (no change in ownership)">;
+def note_arc_cstyle_bridge : Note<
+  "use __bridge with C-style cast to convert directly (no change in ownership)">;
 def note_arc_bridge_transfer : Note<
   "use %select{__bridge_transfer|CFBridgingRelease call}1 to transfer "
   "ownership of a +1 %0 into ARC">;
+def note_arc_cstyle_bridge_transfer : Note<
+  "use __bridge_transfer with C-style cast to transfer "
+  "ownership of a +1 %0 into ARC">;
 def note_arc_bridge_retained : Note<
   "use %select{__bridge_retained|CFBridgingRetain call}1 to make an "
+  "ARC object available as a +1 %0">;
+def note_arc_cstyle_bridge_retained : Note<
+  "use __bridge_retained with C-style cast to make an "
   "ARC object available as a +1 %0">;
 
 } // ARC Casting category

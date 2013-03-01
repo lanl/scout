@@ -28,6 +28,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/ValueHandle.h"
 #include "llvm/Transforms/Utils/BlackList.h"
@@ -65,6 +66,7 @@ namespace clang {
   class VarDecl;
   class LangOptions;
   class CodeGenOptions;
+  class TargetOptions;
   class DiagnosticsEngine;
   class AnnotateAttr;
   class CXXDestructorDecl;
@@ -144,6 +146,11 @@ namespace CodeGen {
       unsigned char PointerSizeInBytes;
       unsigned char SizeSizeInBytes;     // sizeof(size_t)
     };
+
+    llvm::CallingConv::ID RuntimeCC;
+    llvm::CallingConv::ID getRuntimeCC() const {
+      return RuntimeCC;
+    }
   };
 
 struct RREntrypoints {
@@ -222,6 +229,7 @@ class CodeGenModule : public CodeGenTypeCache {
   ASTContext &Context;
   const LangOptions &LangOpts;
   const CodeGenOptions &CodeGenOpts;
+  const TargetOptions &TargetOpts;
   llvm::Module &TheModule;
   const llvm::DataLayout &TheDataLayout;
   mutable const TargetCodeGenInfo *TheTargetCodeGenInfo;
@@ -378,8 +386,8 @@ class CodeGenModule : public CodeGenTypeCache {
   /// @}
 public:
   CodeGenModule(ASTContext &C, const CodeGenOptions &CodeGenOpts,
-                llvm::Module &M, const llvm::DataLayout &TD,
-                DiagnosticsEngine &Diags);
+                const TargetOptions &TargetOpts, llvm::Module &M,
+                const llvm::DataLayout &TD, DiagnosticsEngine &Diags);
 
   ~CodeGenModule();
 
@@ -837,7 +845,8 @@ public:
   void ConstructAttributeList(const CGFunctionInfo &Info,
                               const Decl *TargetDecl,
                               AttributeListType &PAL,
-                              unsigned &CallingConv);
+                              unsigned &CallingConv,
+                              bool AttrOnCallSite);
 
   StringRef getMangledName(GlobalDecl GD);
   void getBlockMangledName(GlobalDecl GD, MangleBuffer &Buffer,

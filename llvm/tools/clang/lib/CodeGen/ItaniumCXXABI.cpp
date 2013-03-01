@@ -112,6 +112,21 @@ public:
 
   void EmitInstanceFunctionProlog(CodeGenFunction &CGF);
 
+  void EmitConstructorCall(CodeGenFunction &CGF,
+                           const CXXConstructorDecl *D,
+                           CXXCtorType Type, bool ForVirtualBase,
+                           bool Delegating,
+                           llvm::Value *This,
+                           CallExpr::const_arg_iterator ArgBeg,
+                           CallExpr::const_arg_iterator ArgEnd);
+
+  RValue EmitVirtualDestructorCall(CodeGenFunction &CGF,
+                                   const CXXDestructorDecl *Dtor,
+                                   CXXDtorType DtorType,
+                                   SourceLocation CallLoc,
+                                   ReturnValueSlot ReturnValue,
+                                   llvm::Value *This);
+
   StringRef GetPureVirtualCallName() { return "__cxa_pure_virtual"; }
   StringRef GetDeletedVirtualCallName() { return "__cxa_deleted_virtual"; }
 
@@ -819,6 +834,40 @@ void ARMCXXABI::EmitInstanceFunctionProlog(CodeGenFunction &CGF) {
     CGF.Builder.CreateStore(getThisValue(CGF), CGF.ReturnValue);
 }
 
+void ItaniumCXXABI::EmitConstructorCall(CodeGenFunction &CGF,
+                                        const CXXConstructorDecl *D,
+                                        CXXCtorType Type, bool ForVirtualBase,
+                                        bool Delegating,
+                                        llvm::Value *This,
+                                        CallExpr::const_arg_iterator ArgBeg,
+                                        CallExpr::const_arg_iterator ArgEnd) {
+  llvm::Value *VTT = CGF.GetVTTParameter(GlobalDecl(D, Type), ForVirtualBase,
+                                         Delegating);
+  QualType VTTTy = getContext().getPointerType(getContext().VoidPtrTy);
+  llvm::Value *Callee = CGM.GetAddrOfCXXConstructor(D, Type);
+
+  // FIXME: Provide a source location here.
+  CGF.EmitCXXMemberCall(D, SourceLocation(), Callee, ReturnValueSlot(), This,
+                        VTT, VTTTy, ArgBeg, ArgEnd);
+}
+
+RValue ItaniumCXXABI::EmitVirtualDestructorCall(CodeGenFunction &CGF,
+                                                const CXXDestructorDecl *Dtor,
+                                                CXXDtorType DtorType,
+                                                SourceLocation CallLoc,
+                                                ReturnValueSlot ReturnValue,
+                                                llvm::Value *This) {
+  assert(DtorType == Dtor_Deleting || DtorType == Dtor_Complete);
+
+  const CGFunctionInfo *FInfo
+    = &CGM.getTypes().arrangeCXXDestructor(Dtor, DtorType);
+  llvm::Type *Ty = CGF.CGM.getTypes().GetFunctionType(*FInfo);
+  llvm::Value *Callee = CGF.BuildVirtualCall(Dtor, DtorType, This, Ty);
+
+  return CGF.EmitCXXMemberCall(Dtor, CallLoc, Callee, ReturnValue, This,
+                               /*ImplicitParam=*/0, QualType(), 0, 0);
+}
+
 void ARMCXXABI::EmitReturnFromThunk(CodeGenFunction &CGF,
                                     RValue RV, QualType ResultType) {
   if (!isa<CXXDestructorDecl>(CGF.CurGD.getDecl()))
@@ -994,8 +1043,8 @@ namespace {
     CallGuardAbort(llvm::GlobalVariable *Guard) : Guard(Guard) {}
 
     void Emit(CodeGenFunction &CGF, Flags flags) {
-      CGF.Builder.CreateCall(getGuardAbortFn(CGF.CGM, Guard->getType()), Guard)
-        ->setDoesNotThrow();
+      CGF.EmitNounwindRuntimeCall(getGuardAbortFn(CGF.CGM, Guard->getType()),
+                                  Guard);
     }
   };
 }
@@ -1114,7 +1163,7 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
   if (threadsafe) {    
     // Call __cxa_guard_acquire.
     llvm::Value *V
-      = Builder.CreateCall(getGuardAcquireFn(CGM, guardPtrTy), guard);
+      = CGF.EmitNounwindRuntimeCall(getGuardAcquireFn(CGM, guardPtrTy), guard);
                
     llvm::BasicBlock *InitBlock = CGF.createBasicBlock("init");
   
@@ -1135,7 +1184,7 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
     CGF.PopCleanupBlock();
 
     // Call __cxa_guard_release.  This cannot throw.
-    Builder.CreateCall(getGuardReleaseFn(CGM, guardPtrTy), guard);
+    CGF.EmitNounwindRuntimeCall(getGuardReleaseFn(CGM, guardPtrTy), guard);
   } else {
     Builder.CreateStore(llvm::ConstantInt::get(guardTy, 1), guard);
   }
@@ -1173,7 +1222,7 @@ static void emitGlobalDtorWithCXAAtExit(CodeGenFunction &CGF,
     llvm::ConstantExpr::getBitCast(addr, CGF.Int8PtrTy),
     handle
   };
-  CGF.Builder.CreateCall(atexit, args)->setDoesNotThrow();
+  CGF.EmitNounwindRuntimeCall(atexit, args);
 }
 
 /// Register a global destructor as best as we know how.

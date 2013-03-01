@@ -1209,13 +1209,9 @@ private:
     /// (for C++0x variadic templates).
     unsigned ContainsUnexpandedParameterPack : 1;
 
-    /// \brief Nonzero if the cache (i.e. the bitfields here starting
-    /// with 'Cache') is valid.  If so, then this is a
-    /// LangOptions::VisibilityMode+1.
-    mutable unsigned CacheValidAndVisibility : 2;
-
-    /// \brief True if the visibility was set explicitly in the source code.
-    mutable unsigned CachedExplicitVisibility : 1;
+    /// \brief True if the cache (i.e. the bitfields here starting with
+    /// 'Cache') is valid.
+    mutable unsigned CacheValid : 1;
 
     /// \brief Linkage of this type.
     mutable unsigned CachedLinkage : 2;
@@ -1227,15 +1223,7 @@ private:
     mutable unsigned FromAST : 1;
 
     bool isCacheValid() const {
-      return (CacheValidAndVisibility != 0);
-    }
-    Visibility getVisibility() const {
-      assert(isCacheValid() && "getting linkage from invalid cache");
-      return static_cast<Visibility>(CacheValidAndVisibility-1);
-    }
-    bool isVisibilityExplicit() const {
-      assert(isCacheValid() && "getting linkage from invalid cache");
-      return CachedExplicitVisibility;
+      return CacheValid;
     }
     Linkage getLinkage() const {
       assert(isCacheValid() && "getting linkage from invalid cache");
@@ -1391,8 +1379,7 @@ protected:
     TypeBits.InstantiationDependent = Dependent || InstantiationDependent;
     TypeBits.VariablyModified = VariablyModified;
     TypeBits.ContainsUnexpandedParameterPack = ContainsUnexpandedParameterPack;
-    TypeBits.CacheValidAndVisibility = 0;
-    TypeBits.CachedExplicitVisibility = false;
+    TypeBits.CacheValid = false;
     TypeBits.CachedLocalOrUnnamed = false;
     TypeBits.CachedLinkage = NoLinkage;
     TypeBits.FromAST = false;
@@ -1796,13 +1783,17 @@ public:
   Linkage getLinkage() const;
 
   /// \brief Determine the visibility of this type.
-  Visibility getVisibility() const;
+  Visibility getVisibility() const {
+    return getLinkageAndVisibility().getVisibility();
+  }
 
   /// \brief Return true if the visibility was explicitly set is the code.
-  bool isVisibilityExplicit() const;
+  bool isVisibilityExplicit() const {
+    return getLinkageAndVisibility().isVisibilityExplicit();
+  }
 
   /// \brief Determine the linkage and visibility of this type.
-  std::pair<Linkage,Visibility> getLinkageAndVisibility() const;
+  LinkageInfo getLinkageAndVisibility() const;
 
   /// \brief Note that the linkage is no longer known.
   void ClearLinkageCache();
@@ -3033,9 +3024,6 @@ public:
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
-  // FIXME: Remove the string version.
-  void printExceptionSpecification(std::string &S, 
-                                   const PrintingPolicy &Policy) const;
   void printExceptionSpecification(raw_ostream &OS, 
                                    const PrintingPolicy &Policy) const;
 
@@ -3837,21 +3825,6 @@ public:
 
   /// \brief Print a template argument list, including the '<' and '>'
   /// enclosing the template arguments.
-  // FIXME: remove the string ones.
-  static std::string PrintTemplateArgumentList(const TemplateArgument *Args,
-                                               unsigned NumArgs,
-                                               const PrintingPolicy &Policy,
-                                               bool SkipBrackets = false);
-
-  static std::string PrintTemplateArgumentList(const TemplateArgumentLoc *Args,
-                                               unsigned NumArgs,
-                                               const PrintingPolicy &Policy);
-
-  static std::string PrintTemplateArgumentList(const TemplateArgumentListInfo &,
-                                               const PrintingPolicy &Policy);
-
-  /// \brief Print a template argument list, including the '<' and '>'
-  /// enclosing the template arguments.
   static void PrintTemplateArgumentList(raw_ostream &OS,
                                         const TemplateArgument *Args,
                                         unsigned NumArgs,
@@ -4314,7 +4287,7 @@ class PackExpansionType : public Type, public llvm::FoldingSetNode {
   unsigned NumExpansions;
 
   PackExpansionType(QualType Pattern, QualType Canon,
-                    llvm::Optional<unsigned> NumExpansions)
+                    Optional<unsigned> NumExpansions)
     : Type(PackExpansion, Canon, /*Dependent=*/Pattern->isDependentType(),
            /*InstantiationDependent=*/true,
            /*VariableModified=*/Pattern->isVariablyModifiedType(),
@@ -4332,11 +4305,11 @@ public:
 
   /// \brief Retrieve the number of expansions that this pack expansion will
   /// generate, if known.
-  llvm::Optional<unsigned> getNumExpansions() const {
+  Optional<unsigned> getNumExpansions() const {
     if (NumExpansions)
       return NumExpansions - 1;
 
-    return llvm::Optional<unsigned>();
+    return None;
   }
 
   bool isSugared() const { return false; }
@@ -4347,9 +4320,9 @@ public:
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Pattern,
-                      llvm::Optional<unsigned> NumExpansions) {
+                      Optional<unsigned> NumExpansions) {
     ID.AddPointer(Pattern.getAsOpaquePtr());
-    ID.AddBoolean(NumExpansions);
+    ID.AddBoolean(NumExpansions.hasValue());
     if (NumExpansions)
       ID.AddInteger(*NumExpansions);
   }

@@ -151,32 +151,29 @@ public:
   /// \brief Set the name of this declaration.
   void setDeclName(DeclarationName N) { Name = N; }
 
-  /// getQualifiedNameAsString - Returns human-readable qualified name for
+  /// printQualifiedName - Returns human-readable qualified name for
   /// declaration, like A::B::i, for i being member of namespace A::B.
   /// If declaration is not member of context which can be named (record,
-  /// namespace), it will return same result as getNameAsString().
+  /// namespace), it will return same result as printName().
   /// Creating this name is expensive, so it should be called only when
   /// performance doesn't matter.
+  void printQualifiedName(raw_ostream &OS) const;
+  void printQualifiedName(raw_ostream &OS, const PrintingPolicy &Policy) const;
+
+  // FIXME: Remove string versions.
   std::string getQualifiedNameAsString() const;
   std::string getQualifiedNameAsString(const PrintingPolicy &Policy) const;
 
   /// getNameForDiagnostic - Appends a human-readable name for this
-  /// declaration into the given string.
+  /// declaration into the given stream.
   ///
   /// This is the method invoked by Sema when displaying a NamedDecl
   /// in a diagnostic.  It does not necessarily produce the same
-  /// result as getNameAsString(); for example, class template
+  /// result as printName(); for example, class template
   /// specializations are printed with their template arguments.
-  ///
-  /// TODO: use an API that doesn't require so many temporary strings
-  virtual void getNameForDiagnostic(std::string &S,
+  virtual void getNameForDiagnostic(raw_ostream &OS,
                                     const PrintingPolicy &Policy,
-                                    bool Qualified) const {
-    if (Qualified)
-      S += getQualifiedNameAsString(Policy);
-    else
-      S += getNameAsString();
-  }
+                                    bool Qualified) const;
 
   /// declarationReplaces - Determine whether this declaration, if
   /// known to be well-formed within its context, will replace the
@@ -214,113 +211,27 @@ public:
   /// a C++ class.
   bool isCXXInstanceMember() const;
 
-  class LinkageInfo {
-    uint8_t linkage_    : 2;
-    uint8_t visibility_ : 2;
-    uint8_t explicit_   : 1;
-
-    void setVisibility(Visibility V, bool E) { visibility_ = V; explicit_ = E; }
-  public:
-    LinkageInfo() : linkage_(ExternalLinkage), visibility_(DefaultVisibility),
-                    explicit_(false) {}
-    LinkageInfo(Linkage L, Visibility V, bool E)
-      : linkage_(L), visibility_(V), explicit_(E) {
-      assert(linkage() == L && visibility() == V && visibilityExplicit() == E &&
-             "Enum truncated!");
-    }
-
-    static LinkageInfo external() {
-      return LinkageInfo();
-    }
-    static LinkageInfo internal() {
-      return LinkageInfo(InternalLinkage, DefaultVisibility, false);
-    }
-    static LinkageInfo uniqueExternal() {
-      return LinkageInfo(UniqueExternalLinkage, DefaultVisibility, false);
-    }
-    static LinkageInfo none() {
-      return LinkageInfo(NoLinkage, DefaultVisibility, false);
-    }
-
-    Linkage linkage() const { return (Linkage)linkage_; }
-    Visibility visibility() const { return (Visibility)visibility_; }
-    bool visibilityExplicit() const { return explicit_; }
-
-    void setLinkage(Linkage L) { linkage_ = L; }
-    void mergeLinkage(Linkage L) {
-      setLinkage(minLinkage(linkage(), L));
-    }
-    void mergeLinkage(LinkageInfo Other) {
-      mergeLinkage(Other.linkage());
-    }
-
-    // Merge the visibility V giving preference to explicit ones.
-    // This is used, for example, when merging the visibility of a class
-    // down to one of its members. If the member has no explicit visibility,
-    // the class visibility wins.
-    void mergeVisibility(Visibility V, bool E = false) {
-      // Never increase the visibility
-      if (visibility() < V)
-        return;
-
-      // If we have an explicit visibility, keep it
-      if (visibilityExplicit())
-        return;
-
-      setVisibility(V, E);
-    }
-    // Merge the visibility V, keeping the most restrictive one.
-    // This is used for cases like merging the visibility of a template
-    // argument to an instantiation. If we already have a hidden class,
-    // no argument should give it default visibility.
-    void mergeVisibilityWithMin(Visibility V, bool E = false) {
-      // Never increase the visibility
-      if (visibility() < V)
-        return;
-
-      // FIXME: this
-      // If this visibility is explicit, keep it.
-      if (visibilityExplicit() && !E)
-        return;
-
-      // should be replaced with this
-      // Don't lose the explicit bit for nothing
-      //      if (visibility() == V && visibilityExplicit())
-      //        return;
-
-      setVisibility(V, E);
-    }
-    void mergeVisibility(LinkageInfo Other) {
-      mergeVisibility(Other.visibility(), Other.visibilityExplicit());
-    }
-    void mergeVisibilityWithMin(LinkageInfo Other) {
-      mergeVisibilityWithMin(Other.visibility(), Other.visibilityExplicit());
-    }
-
-    void merge(LinkageInfo Other) {
-      mergeLinkage(Other);
-      mergeVisibility(Other);
-    }
-    void mergeWithMin(LinkageInfo Other) {
-      mergeLinkage(Other);
-      mergeVisibilityWithMin(Other);
-    }
-  };
-
   /// \brief Determine what kind of linkage this entity has.
   Linkage getLinkage() const;
 
   /// \brief Determines the visibility of this entity.
   Visibility getVisibility() const {
-    return getLinkageAndVisibility().visibility();
+    return getLinkageAndVisibility().getVisibility();
   }
 
   /// \brief Determines the linkage and visibility of this entity.
   LinkageInfo getLinkageAndVisibility() const;
 
+  /// Kinds of explicit visibility.
+  enum ExplicitVisibilityKind {
+    VisibilityForType,
+    VisibilityForValue
+  };
+
   /// \brief If visibility was explicitly specified for this
   /// declaration, return that visibility.
-  llvm::Optional<Visibility> getExplicitVisibility() const;
+  Optional<Visibility>
+  getExplicitVisibility(ExplicitVisibilityKind kind) const;
 
   /// \brief Clear the linkage cache in response to a change
   /// to the declaration.
@@ -894,15 +805,14 @@ public:
   ///  as static variables declared within a function.
   bool hasGlobalStorage() const { return !hasLocalStorage(); }
 
+  /// Compute the language linkage.
+  LanguageLinkage getLanguageLinkage() const;
+
   /// \brief Determines whether this variable is a variable with
   /// external, C linkage.
-  bool isExternC() const;
-
-  /// Checks if this variable has C language linkage. Note that this is not the
-  /// same as isExternC since decls with non external linkage can have C
-  /// language linkage. They can also have C language linkage when they are not
-  /// declared in an extern C context, but a previous decl is.
-  bool hasCLanguageLinkage() const;
+  bool isExternC() const {
+    return getLanguageLinkage() == CLanguageLinkage;
+  }
 
   /// isLocalVarDecl - Returns true for local variable declarations
   /// other than parameters.  Note that this includes static variables
@@ -1618,7 +1528,7 @@ public:
     return DeclarationNameInfo(getDeclName(), getLocation(), DNLoc);
   }
 
-  virtual void getNameForDiagnostic(std::string &S,
+  virtual void getNameForDiagnostic(raw_ostream &OS,
                                     const PrintingPolicy &Policy,
                                     bool Qualified) const;
 
@@ -1786,15 +1696,14 @@ public:
   /// This function must be an allocation or deallocation function.
   bool isReservedGlobalPlacementOperator() const;
 
+  /// Compute the language linkage.
+  LanguageLinkage getLanguageLinkage() const;
+
   /// \brief Determines whether this function is a function with
   /// external, C linkage.
-  bool isExternC() const;
-
-  /// Checks if this function has C language linkage. Note that this is not the
-  /// same as isExternC since decls with non external linkage can have C
-  /// language linkage. They can also have C language linkage when they are not
-  /// declared in an extern C context, but a previous decl is.
-  bool hasCLanguageLinkage() const;
+  bool isExternC() const {
+    return getLanguageLinkage() == CLanguageLinkage;
+  }
 
   /// \brief Determines whether this is a global function.
   bool isGlobal() const;
@@ -1932,7 +1841,9 @@ public:
   /// \brief If this function is an instantiation of a member function of a
   /// class template specialization, retrieves the member specialization
   /// information.
-  MemberSpecializationInfo *getMemberSpecializationInfo() const;
+  MemberSpecializationInfo *getMemberSpecializationInfo() const {
+    return TemplateOrSpecialization.dyn_cast<MemberSpecializationInfo*>();
+  }
 
   /// \brief Specify that this record is an instantiation of the
   /// member function FD.
@@ -2551,6 +2462,12 @@ protected:
   /// IsFixed - True if this is an enumeration with fixed underlying type. Only
   /// possible in C++11 or Microsoft extensions mode.
   bool IsFixed : 1;
+
+  /// \brief Indicates whether it is possible for declarations of this kind
+  /// to have an out-of-date definition.
+  ///
+  /// This option is only enabled when modules are enabled.
+  bool MayHaveOutOfDateDef : 1;
 
 private:
   SourceLocation RBraceLoc;
@@ -3634,7 +3551,22 @@ public:
   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
   static bool classofKind(Kind K) { return K == Import; }
 };
-  
+
+/// \brief Represents an empty-declaration.
+class EmptyDecl : public Decl {
+  virtual void anchor();
+  EmptyDecl(DeclContext *DC, SourceLocation L)
+    : Decl(Empty, DC, L) { }
+
+public:
+  static EmptyDecl *Create(ASTContext &C, DeclContext *DC,
+                           SourceLocation L);
+  static EmptyDecl *CreateDeserialized(ASTContext &C, unsigned ID);
+
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) { return K == Empty; }
+};
+
 /// Insertion operator for diagnostics.  This allows sending NamedDecl's
 /// into a diagnostic with <<.
 inline const DiagnosticBuilder &operator<<(const DiagnosticBuilder &DB,

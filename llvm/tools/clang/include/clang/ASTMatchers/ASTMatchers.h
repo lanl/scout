@@ -142,7 +142,7 @@ inline internal::PolymorphicMatcherWithParam0<internal::TrueMatcher> anything() 
 ///     friend X;
 ///   };
 /// \endcode
-const internal::VariadicDynCastAllOfMatcher<Decl, Decl> decl;
+const internal::VariadicAllOfMatcher<Decl> decl;
 
 /// \brief Matches a declaration of anything that could have a name.
 ///
@@ -191,6 +191,69 @@ const internal::VariadicDynCastAllOfMatcher<
 const internal::VariadicDynCastAllOfMatcher<
   Decl,
   ClassTemplateSpecializationDecl> classTemplateSpecializationDecl;
+
+/// \brief Matches C++ access specifier declarations.
+///
+/// Given
+/// \code
+///   class C {
+///   public:
+///     int a;
+///   };
+/// \endcode
+/// accessSpecDecl()
+///   matches 'public:'
+const internal::VariadicDynCastAllOfMatcher<
+  Decl,
+  AccessSpecDecl> accessSpecDecl;
+
+/// \brief Matches public C++ declarations.
+///
+/// Given
+/// \code
+///   class C {
+///   public:    int a;
+///   protected: int b;
+///   private:   int c;
+///   };
+/// \endcode
+/// fieldDecl(isPublic())
+///   matches 'int a;' 
+AST_MATCHER(Decl, isPublic) {
+  return Node.getAccess() == AS_public;
+}
+
+/// \brief Matches protected C++ declarations.
+///
+/// Given
+/// \code
+///   class C {
+///   public:    int a;
+///   protected: int b;
+///   private:   int c;
+///   };
+/// \endcode
+/// fieldDecl(isProtected())
+///   matches 'int b;' 
+AST_MATCHER(Decl, isProtected) {
+  return Node.getAccess() == AS_protected;
+}
+
+/// \brief Matches private C++ declarations.
+///
+/// Given
+/// \code
+///   class C {
+///   public:    int a;
+///   protected: int b;
+///   private:   int c;
+///   };
+/// \endcode
+/// fieldDecl(isPrivate())
+///   matches 'int c;' 
+AST_MATCHER(Decl, isPrivate) {
+  return Node.getAccess() == AS_private;
+}
 
 /// \brief Matches classTemplateSpecializations that have at least one
 /// TemplateArgument matching the given InnerMatcher.
@@ -453,7 +516,7 @@ const internal::VariadicDynCastAllOfMatcher<
 /// \endcode
 /// stmt()
 ///   matches both the compound statement '{ ++a; }' and '++a'.
-const internal::VariadicDynCastAllOfMatcher<Stmt, Stmt> stmt;
+const internal::VariadicAllOfMatcher<Stmt> stmt;
 
 /// \brief Matches declaration statements.
 ///
@@ -1100,10 +1163,10 @@ const internal::VariadicDynCastAllOfMatcher<
 const internal::VariadicAllOfMatcher<QualType> qualType;
 
 /// \brief Matches \c Types in the clang AST.
-const internal::VariadicDynCastAllOfMatcher<Type, Type> type;
+const internal::VariadicAllOfMatcher<Type> type;
 
 /// \brief Matches \c TypeLocs in the clang AST.
-const internal::VariadicDynCastAllOfMatcher<TypeLoc, TypeLoc> typeLoc;
+const internal::VariadicAllOfMatcher<TypeLoc> typeLoc;
 
 /// \brief Matches if any of the given matchers matches.
 ///
@@ -1175,17 +1238,39 @@ anyOf(const M1 &P1, const M2 &P2, const M3 &P3, const M4 &P4, const M5 &P5) {
 /// \brief Matches if all given matchers match.
 ///
 /// Usable as: Any Matcher
-template<typename M1, typename M2>
+template <typename M1, typename M2>
 internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher, M1, M2>
 allOf(const M1 &P1, const M2 &P2) {
-  return internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher,
-                                                M1, M2>(P1, P2);
+  return internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher, M1, M2>(
+      P1, P2);
 }
-template<typename M1, typename M2, typename M3>
-internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher, M1,
+template <typename M1, typename M2, typename M3>
+internal::PolymorphicMatcherWithParam2<
+    internal::AllOfMatcher, M1,
     internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher, M2, M3> >
 allOf(const M1 &P1, const M2 &P2, const M3 &P3) {
   return allOf(P1, allOf(P2, P3));
+}
+template <typename M1, typename M2, typename M3, typename M4>
+internal::PolymorphicMatcherWithParam2<
+    internal::AllOfMatcher, M1,
+    internal::PolymorphicMatcherWithParam2<
+        internal::AllOfMatcher, M2, internal::PolymorphicMatcherWithParam2<
+                                        internal::AllOfMatcher, M3, M4> > >
+allOf(const M1 &P1, const M2 &P2, const M3 &P3, const M4 &P4) {
+  return allOf(P1, allOf(P2, P3, P4));
+}
+template <typename M1, typename M2, typename M3, typename M4, typename M5>
+internal::PolymorphicMatcherWithParam2<
+    internal::AllOfMatcher, M1,
+    internal::PolymorphicMatcherWithParam2<
+        internal::AllOfMatcher, M2,
+        internal::PolymorphicMatcherWithParam2<
+            internal::AllOfMatcher, M3,
+            internal::PolymorphicMatcherWithParam2<internal::AllOfMatcher, M4,
+                                                   M5> > > >
+allOf(const M1 &P1, const M2 &P2, const M3 &P3, const M4 &P4, const M5 &P5) {
+  return allOf(P1, allOf(P2, P3, P4, P5));
 }
 
 /// @}
@@ -1539,8 +1624,13 @@ unless(const M &InnerMatcher) {
 /// \brief Matches a type if the declaration of the type matches the given
 /// matcher.
 ///
+/// In addition to being usable as Matcher<TypedefType>, also usable as
+/// Matcher<T> for any T supporting the getDecl() member function. e.g. various
+/// subtypes of clang::Type.
+///
 /// Usable as: Matcher<QualType>, Matcher<CallExpr>, Matcher<CXXConstructExpr>,
-///   Matcher<MemberExpr>
+///   Matcher<MemberExpr>, Matcher<TypedefType>,
+///   Matcher<TemplateSpecializationType>
 inline internal::PolymorphicMatcherWithParam1< internal::HasDeclarationMatcher,
                                      internal::Matcher<Decl> >
     hasDeclaration(const internal::Matcher<Decl> &InnerMatcher) {
@@ -2824,11 +2914,113 @@ AST_TYPELOC_TRAVERSE_MATCHER(pointee, getPointee);
 ///   matches "typedef int X"
 AST_TYPE_MATCHER(TypedefType, typedefType);
 
-/// \brief Matches \c TypedefTypes referring to a specific
-/// \c TypedefNameDecl.
-AST_MATCHER_P(TypedefType, hasDecl,
-              internal::Matcher<TypedefNameDecl>, InnerMatcher) {
-  return InnerMatcher.matches(*Node.getDecl(), Finder, Builder);
+/// \brief Matches template specialization types.
+///
+/// Given
+/// \code
+///   template <typename T>
+///   class C { };
+///
+///   template class C<int>;  // A
+///   C<char> var;            // B
+/// \code
+///
+/// \c templateSpecializationType() matches the type of the explicit
+/// instantiation in \c A and the type of the variable declaration in \c B.
+AST_TYPE_MATCHER(TemplateSpecializationType, templateSpecializationType);
+
+/// \brief Matches record types (e.g. structs, classes).
+///
+/// Given
+/// \code
+///   class C {};
+///   struct S {};
+///
+///   C c;
+///   S s;
+/// \code
+///
+/// \c recordType() matches the type of the variable declarations of both \c c
+/// and \c s.
+AST_TYPE_MATCHER(RecordType, recordType);
+
+/// \brief Matches types specified with an elaborated type keyword or with a
+/// qualified name.
+///
+/// Given
+/// \code
+///   namespace N {
+///     namespace M {
+///       class D {};
+///     }
+///   }
+///   class C {};
+///
+///   class C c;
+///   N::M::D d;
+/// \code
+///
+/// \c elaboratedType() matches the type of the variable declarations of both
+/// \c c and \c d.
+AST_TYPE_MATCHER(ElaboratedType, elaboratedType);
+
+/// \brief Matches ElaboratedTypes whose qualifier, a NestedNameSpecifier,
+/// matches \c InnerMatcher.
+///
+/// Given
+/// \code
+///   namespace N {
+///     namespace M {
+///       class D {};
+///     }
+///   }
+///   N::M::D d;
+/// \code
+///
+/// \c elaboratedType(hasQualifier(hasPrefix(specifiesNamespace(hasName("N"))))
+/// matches the type of the variable declaration of \c d.
+AST_MATCHER_P(ElaboratedType, hasQualifier,
+              internal::Matcher<NestedNameSpecifier>, InnerMatcher) {
+  return InnerMatcher.matches(*Node.getQualifier(), Finder, Builder);
+}
+
+/// \brief Matches ElaboratedTypes whose named type matches \c InnerMatcher.
+///
+/// Given
+/// \code
+///   namespace N {
+///     namespace M {
+///       class D {};
+///     }
+///   }
+///   N::M::D d;
+/// \code
+///
+/// \c elaboratedType(namesType(recordType(
+/// hasDeclaration(namedDecl(hasName("D")))))) matches the type of the variable
+/// declaration of \c d.
+AST_MATCHER_P(ElaboratedType, namesType, internal::Matcher<QualType>,
+              InnerMatcher) {
+  return InnerMatcher.matches(Node.getNamedType(), Finder, Builder);
+}
+
+/// \brief Matches declarations whose declaration context, interpreted as a
+/// Decl, matches \c InnerMatcher.
+///
+/// Given
+/// \code
+///   namespace N {
+///     namespace M {
+///       class D {};
+///     }
+///   }
+/// \code
+///
+/// \c recordDecl(hasDeclContext(namedDecl(hasName("M")))) matches the
+/// declaration of \c class \c D.
+AST_MATCHER_P(Decl, hasDeclContext, internal::Matcher<Decl>, InnerMatcher) {
+  return InnerMatcher.matches(*Decl::castFromDeclContext(Node.getDeclContext()),
+                              Finder, Builder);
 }
 
 /// \brief Matches nested name specifiers.

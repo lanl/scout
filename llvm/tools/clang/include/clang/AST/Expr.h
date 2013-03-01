@@ -22,13 +22,13 @@
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/TypeTraits.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
-#include <cctype>
 
 namespace clang {
   class APValue;
@@ -1521,7 +1521,7 @@ public:
   bool containsNonAsciiOrNull() const {
     StringRef Str = getString();
     for (unsigned i = 0, e = Str.size(); i != e; ++i)
-      if (!isascii(Str[i]) || !Str[i])
+      if (!isASCII(Str[i]) || !Str[i])
         return true;
     return false;
   }

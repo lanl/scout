@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Frontend/Utils.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/PreprocessorOutputOptions.h"
@@ -26,7 +27,6 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include <cctype>
 #include <cstdio>
 using namespace clang;
 
@@ -160,10 +160,10 @@ public:
   void HandleNewlinesInToken(const char *TokStr, unsigned Len);
 
   /// MacroDefined - This hook is called whenever a macro definition is seen.
-  void MacroDefined(const Token &MacroNameTok, const MacroInfo *MI);
+  void MacroDefined(const Token &MacroNameTok, const MacroDirective *MD);
 
   /// MacroUndefined - This hook is called whenever a macro #undef is seen.
-  void MacroUndefined(const Token &MacroNameTok, const MacroInfo *MI);
+  void MacroUndefined(const Token &MacroNameTok, const MacroDirective *MD);
 };
 }  // end anonymous namespace
 
@@ -317,7 +317,8 @@ void PrintPPOutputPPCallbacks::Ident(SourceLocation Loc, const std::string &S) {
 
 /// MacroDefined - This hook is called whenever a macro definition is seen.
 void PrintPPOutputPPCallbacks::MacroDefined(const Token &MacroNameTok,
-                                            const MacroInfo *MI) {
+                                            const MacroDirective *MD) {
+  const MacroInfo *MI = MD->getInfo();
   // Only print out macro definitions in -dD mode.
   if (!DumpDefines ||
       // Ignore __FILE__ etc.
@@ -329,7 +330,7 @@ void PrintPPOutputPPCallbacks::MacroDefined(const Token &MacroNameTok,
 }
 
 void PrintPPOutputPPCallbacks::MacroUndefined(const Token &MacroNameTok,
-                                              const MacroInfo *MI) {
+                                              const MacroDirective *MD) {
   // Only print out macro definitions in -dD mode.
   if (!DumpDefines) return;
 
@@ -350,7 +351,7 @@ void PrintPPOutputPPCallbacks::PragmaComment(SourceLocation Loc,
 
     for (unsigned i = 0, e = Str.size(); i != e; ++i) {
       unsigned char Char = Str[i];
-      if (isprint(Char) && Char != '\\' && Char != '"')
+      if (isPrintable(Char) && Char != '\\' && Char != '"')
         OS << (char)Char;
       else  // Output anything hard as an octal escape.
         OS << '\\'
@@ -375,7 +376,7 @@ void PrintPPOutputPPCallbacks::PragmaMessage(SourceLocation Loc,
 
   for (unsigned i = 0, e = Str.size(); i != e; ++i) {
     unsigned char Char = Str[i];
-    if (isprint(Char) && Char != '\\' && Char != '"')
+    if (isPrintable(Char) && Char != '\\' && Char != '"')
       OS << (char)Char;
     else  // Output anything hard as an octal escape.
       OS << '\\'
@@ -548,7 +549,7 @@ static void PrintPreprocessedTokens(Preprocessor &PP, Token &Tok,
 
       // Tokens that can contain embedded newlines need to adjust our current
       // line number.
-      if (Tok.getKind() == tok::comment)
+      if (Tok.getKind() == tok::comment || Tok.getKind() == tok::unknown)
         Callbacks->HandleNewlinesInToken(TokPtr, Len);
     } else {
       std::string S = PP.getSpelling(Tok);
@@ -556,7 +557,7 @@ static void PrintPreprocessedTokens(Preprocessor &PP, Token &Tok,
 
       // Tokens that can contain embedded newlines need to adjust our current
       // line number.
-      if (Tok.getKind() == tok::comment)
+      if (Tok.getKind() == tok::comment || Tok.getKind() == tok::unknown)
         Callbacks->HandleNewlinesInToken(&S[0], S.size());
     }
     Callbacks->setEmittedTokensOnThisLine();
@@ -592,7 +593,7 @@ static void DoPrintMacros(Preprocessor &PP, raw_ostream *OS) {
   for (Preprocessor::macro_iterator I = PP.macro_begin(), E = PP.macro_end();
        I != E; ++I) {
     if (I->first->hasMacroDefinition())
-      MacrosByID.push_back(id_macro_pair(I->first, I->second));
+      MacrosByID.push_back(id_macro_pair(I->first, I->second->getInfo()));
   }
   llvm::array_pod_sort(MacrosByID.begin(), MacrosByID.end(), MacroIDCompare);
 

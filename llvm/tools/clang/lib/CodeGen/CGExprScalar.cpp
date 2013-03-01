@@ -990,7 +990,12 @@ Value *ScalarExprEmitter::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
   // integer value.
   Value *Base = Visit(E->getBase());
   Value *Idx  = Visit(E->getIdx());
-  bool IdxSigned = E->getIdx()->getType()->isSignedIntegerOrEnumerationType();
+  QualType IdxTy = E->getIdx()->getType();
+
+  if (CGF.SanOpts->Bounds)
+    CGF.EmitBoundsCheck(E, E->getBase(), Idx, IdxTy, /*Accessed*/true);
+
+  bool IdxSigned = IdxTy->isSignedIntegerOrEnumerationType();
   Idx = Builder.CreateIntCast(Idx, CGF.Int32Ty, IdxSigned, "vecidxcast");
   return Builder.CreateExtractElement(Base, Idx, "vecext");
 }
@@ -1222,8 +1227,16 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
   case CK_BaseToDerived: {
     const CXXRecordDecl *DerivedClassDecl = DestTy->getPointeeCXXRecordDecl();
     assert(DerivedClassDecl && "BaseToDerived arg isn't a C++ object pointer!");
-    
-    return CGF.GetAddressOfDerivedClass(Visit(E), DerivedClassDecl,
+
+    llvm::Value *V = Visit(E);
+
+    // C++11 [expr.static.cast]p11: Behavior is undefined if a downcast is
+    // performed and the object is not of the derived type.
+    if (CGF.SanitizePerformTypeCheck)
+      CGF.EmitTypeCheck(CodeGenFunction::TCK_DowncastPointer, CE->getExprLoc(),
+                        V, DestTy->getPointeeType());
+
+    return CGF.GetAddressOfDerivedClass(V, DerivedClassDecl,
                                         CE->path_begin(), CE->path_end(),
                                         ShouldNullCheckClassCastValue(CE));
   }
@@ -1631,12 +1644,15 @@ Value *ScalarExprEmitter::VisitUnaryNot(const UnaryOperator *E) {
 }
 
 Value *ScalarExprEmitter::VisitUnaryLNot(const UnaryOperator *E) {
-  
   // Perform vector logical not on comparison with zero vector.
   if (E->getType()->isExtVectorType()) {
     Value *Oper = Visit(E->getSubExpr());
     Value *Zero = llvm::Constant::getNullValue(Oper->getType());
-    Value *Result = Builder.CreateICmp(llvm::CmpInst::ICMP_EQ, Oper, Zero, "cmp");
+    Value *Result;
+    if (Oper->getType()->isFPOrFPVectorTy())
+      Result = Builder.CreateFCmp(llvm::CmpInst::FCMP_OEQ, Oper, Zero, "cmp");
+    else
+      Result = Builder.CreateICmp(llvm::CmpInst::ICMP_EQ, Oper, Zero, "cmp");
     return Builder.CreateSExt(Result, ConvertType(E->getType()), "sext");
   }
   
@@ -2077,9 +2093,14 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
 
   // Call the handler with the two arguments, the operation, and the size of
   // the result.
-  llvm::Value *handlerResult = Builder.CreateCall4(handler, lhs, rhs,
-      Builder.getInt8(OpID),
-      Builder.getInt8(cast<llvm::IntegerType>(opTy)->getBitWidth()));
+  llvm::Value *handlerArgs[] = {
+    lhs,
+    rhs,
+    Builder.getInt8(OpID),
+    Builder.getInt8(cast<llvm::IntegerType>(opTy)->getBitWidth())
+  };
+  llvm::Value *handlerResult =
+    CGF.EmitNounwindRuntimeCall(handler, handlerArgs);
 
   // Truncate the result back to the desired size.
   handlerResult = Builder.CreateTrunc(handlerResult, opTy);
@@ -2124,6 +2145,10 @@ static Value *emitPointerArithmetic(CodeGenFunction &CGF,
   // If this is subtraction, negate the index.
   if (isSubtraction)
     index = CGF.Builder.CreateNeg(index, "idx.neg");
+
+  if (CGF.SanOpts->Bounds)
+    CGF.EmitBoundsCheck(op.E, pointerOperand, index, indexOperand->getType(),
+                        /*Accessed*/ false);
 
   const PointerType *pointerType
     = pointerOperand->getType()->getAs<PointerType>();
@@ -2389,13 +2414,17 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
   if (CGF.SanOpts->Shift && !CGF.getLangOpts().OpenCL &&
       isa<llvm::IntegerType>(Ops.LHS->getType())) {
     llvm::Value *WidthMinusOne = GetWidthMinusOneValue(Ops.LHS, RHS);
-    // FIXME: Emit the branching explicitly rather than emitting the check
-    // twice.
-    EmitBinOpCheck(Builder.CreateICmpULE(RHS, WidthMinusOne), Ops);
+    llvm::Value *Valid = Builder.CreateICmpULE(RHS, WidthMinusOne);
 
     if (Ops.Ty->hasSignedIntegerRepresentation()) {
+      llvm::BasicBlock *Orig = Builder.GetInsertBlock();
+      llvm::BasicBlock *Cont = CGF.createBasicBlock("cont");
+      llvm::BasicBlock *CheckBitsShifted = CGF.createBasicBlock("check");
+      Builder.CreateCondBr(Valid, CheckBitsShifted, Cont);
+
       // Check whether we are shifting any non-zero bits off the top of the
       // integer.
+      CGF.EmitBlock(CheckBitsShifted);
       llvm::Value *BitsShiftedOff =
         Builder.CreateLShr(Ops.LHS,
                            Builder.CreateSub(WidthMinusOne, RHS, "shl.zeros",
@@ -2410,8 +2439,15 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
         BitsShiftedOff = Builder.CreateLShr(BitsShiftedOff, One);
       }
       llvm::Value *Zero = llvm::ConstantInt::get(BitsShiftedOff->getType(), 0);
-      EmitBinOpCheck(Builder.CreateICmpEQ(BitsShiftedOff, Zero), Ops);
+      llvm::Value *SecondCheck = Builder.CreateICmpEQ(BitsShiftedOff, Zero);
+      CGF.EmitBlock(Cont);
+      llvm::PHINode *P = Builder.CreatePHI(Valid->getType(), 2);
+      P->addIncoming(Valid, Orig);
+      P->addIncoming(SecondCheck, CheckBitsShifted);
+      Valid = P;
     }
+
+    EmitBinOpCheck(Valid, Ops);
   }
   // OpenCL 6.3j: shift values are effectively % word size of LHS.
   if (CGF.getLangOpts().OpenCL)
@@ -2662,16 +2698,20 @@ Value *ScalarExprEmitter::VisitBinAssign(const BinaryOperator *E) {
 }
 
 Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
-  
   // Perform vector logical and on comparisons with zero vectors.
   if (E->getType()->isVectorType()) {
     Value *LHS = Visit(E->getLHS());
     Value *RHS = Visit(E->getRHS());
     Value *Zero = llvm::ConstantAggregateZero::get(LHS->getType());
-    LHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, LHS, Zero, "cmp");
-    RHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, RHS, Zero, "cmp");
+    if (LHS->getType()->isFPOrFPVectorTy()) {
+      LHS = Builder.CreateFCmp(llvm::CmpInst::FCMP_UNE, LHS, Zero, "cmp");
+      RHS = Builder.CreateFCmp(llvm::CmpInst::FCMP_UNE, RHS, Zero, "cmp");
+    } else {
+      LHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, LHS, Zero, "cmp");
+      RHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, RHS, Zero, "cmp");
+    }
     Value *And = Builder.CreateAnd(LHS, RHS);
-    return Builder.CreateSExt(And, Zero->getType(), "sext");
+    return Builder.CreateSExt(And, ConvertType(E->getType()), "sext");
   }
   
   llvm::Type *ResTy = ConvertType(E->getType());
@@ -2729,16 +2769,20 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
 }
 
 Value *ScalarExprEmitter::VisitBinLOr(const BinaryOperator *E) {
-  
   // Perform vector logical or on comparisons with zero vectors.
   if (E->getType()->isVectorType()) {
     Value *LHS = Visit(E->getLHS());
     Value *RHS = Visit(E->getRHS());
     Value *Zero = llvm::ConstantAggregateZero::get(LHS->getType());
-    LHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, LHS, Zero, "cmp");
-    RHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, RHS, Zero, "cmp");
+    if (LHS->getType()->isFPOrFPVectorTy()) {
+      LHS = Builder.CreateFCmp(llvm::CmpInst::FCMP_UNE, LHS, Zero, "cmp");
+      RHS = Builder.CreateFCmp(llvm::CmpInst::FCMP_UNE, RHS, Zero, "cmp");
+    } else {
+      LHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, LHS, Zero, "cmp");
+      RHS = Builder.CreateICmp(llvm::CmpInst::ICMP_NE, RHS, Zero, "cmp");
+    }
     Value *Or = Builder.CreateOr(LHS, RHS);
-    return Builder.CreateSExt(Or, Zero->getType(), "sext");
+    return Builder.CreateSExt(Or, ConvertType(E->getType()), "sext");
   }
   
   llvm::Type *ResTy = ConvertType(E->getType());

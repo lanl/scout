@@ -23,6 +23,7 @@
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Lexer.h"
@@ -476,8 +477,9 @@ std::string PredefinedExpr::ComputeName(IdentType IT, const Decl *CurrentDecl) {
     }
 
     PrintingPolicy Policy(Context.getLangOpts());
-    std::string Proto = FD->getQualifiedNameAsString(Policy);
+    std::string Proto;
     llvm::raw_string_ostream POut(Proto);
+    FD->printQualifiedName(POut, Policy);
 
     const FunctionDecl *Decl = FD;
     if (const FunctionDecl* Pattern = FD->getTemplateInstantiationPattern())
@@ -844,7 +846,7 @@ void StringLiteral::outputString(raw_ostream &OS) const {
       assert(Char <= 0xff &&
              "Characters above 0xff should already have been handled.");
 
-      if (isprint(Char))
+      if (isPrintable(Char))
         OS << (char)Char;
       else  // Output anything hard as an octal escape.
         OS << '\\'

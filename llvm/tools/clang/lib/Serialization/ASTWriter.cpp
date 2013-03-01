@@ -371,7 +371,7 @@ ASTTypeWriter::VisitDependentTemplateSpecializationType(
 
 void ASTTypeWriter::VisitPackExpansionType(const PackExpansionType *T) {
   Writer.AddTypeRef(T->getPattern(), Record);
-  if (llvm::Optional<unsigned> NumExpansions = T->getNumExpansions())
+  if (Optional<unsigned> NumExpansions = T->getNumExpansions())
     Record.push_back(*NumExpansions + 1);
   else
     Record.push_back(0);
@@ -1094,6 +1094,16 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   
   Record.push_back(LangOpts.CurrentModule.size());
   Record.append(LangOpts.CurrentModule.begin(), LangOpts.CurrentModule.end());
+
+  // Comment options.
+  Record.push_back(LangOpts.CommentOpts.BlockCommandNames.size());
+  for (CommentOptions::BlockCommandNamesTy::const_iterator
+           I = LangOpts.CommentOpts.BlockCommandNames.begin(),
+           IEnd = LangOpts.CommentOpts.BlockCommandNames.end();
+       I != IEnd; ++I) {
+    AddString(*I, Record);
+  }
+
   Stream.EmitRecord(LANGUAGE_OPTIONS, Record);
 
   // Target options.
@@ -1783,7 +1793,7 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
   // emitting each to the PP section.
 
   // Construct the list of macro definitions that need to be serialized.
-  SmallVector<std::pair<const IdentifierInfo *, MacroInfo *>, 2> 
+  SmallVector<std::pair<const IdentifierInfo *, MacroDirective *>, 2>
     MacrosToEmit;
   llvm::SmallPtrSet<const IdentifierInfo*, 4> MacroDefinitionsSeen;
   for (Preprocessor::macro_iterator I = PP.macro_begin(Chain == 0),
@@ -1811,19 +1821,19 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
   for (unsigned I = 0, N = MacrosToEmit.size(); I != N; ++I) {
     const IdentifierInfo *Name = MacrosToEmit[I].first;
 
-    for (MacroInfo *MI = MacrosToEmit[I].second; MI;
-         MI = MI->getPreviousDefinition()) {
-      MacroID ID = getMacroRef(MI);
+    for (MacroDirective *MD = MacrosToEmit[I].second; MD;
+         MD = MD->getPrevious()) {
+      MacroID ID = getMacroRef(MD);
       if (!ID)
         continue;
 
       // Skip macros from a AST file if we're chaining.
-      if (Chain && MI->isFromAST() && !MI->hasChangedAfterLoad())
+      if (Chain && MD->isImported() && !MD->hasChangedAfterLoad())
         continue;
 
       if (ID < FirstMacroID) {
         // This will have been dealt with via an update record.
-        assert(MacroUpdates.count(MI) > 0 && "Missing macro update");
+        assert(MacroUpdates.count(MD) > 0 && "Missing macro update");
         continue;
       }
 
@@ -1839,14 +1849,15 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
       }
 
       AddIdentifierRef(Name, Record);
-      addMacroRef(MI, Record);
+      addMacroRef(MD, Record);
+      const MacroInfo *MI = MD->getInfo();
       Record.push_back(inferSubmoduleIDFromLocation(MI->getDefinitionLoc()));
       AddSourceLocation(MI->getDefinitionLoc(), Record);
       AddSourceLocation(MI->getDefinitionEndLoc(), Record);
-      AddSourceLocation(MI->getUndefLoc(), Record);
+      AddSourceLocation(MD->getUndefLoc(), Record);
       Record.push_back(MI->isUsed());
-      Record.push_back(MI->isPublic());
-      AddSourceLocation(MI->getVisibilityLocation(), Record);
+      Record.push_back(MD->isPublic());
+      AddSourceLocation(MD->getVisibilityLocation(), Record);
       unsigned Code;
       if (MI->isObjectLike()) {
         Code = PP_MACRO_OBJECT_LIKE;
@@ -2680,7 +2691,7 @@ class ASTIdentifierTableTrait {
   /// \brief Determines whether this is an "interesting" identifier
   /// that needs a full IdentifierInfo structure written into the hash
   /// table.
-  bool isInterestingIdentifier(IdentifierInfo *II, MacroInfo *&Macro) {
+  bool isInterestingIdentifier(IdentifierInfo *II, MacroDirective *&Macro) {
     if (II->isPoisoned() ||
         II->isExtensionToken() ||
         II->getObjCOrBuiltinID() ||
@@ -2691,12 +2702,13 @@ class ASTIdentifierTableTrait {
     return hadMacroDefinition(II, Macro);
   }
 
-  bool hadMacroDefinition(IdentifierInfo *II, MacroInfo *&Macro) {
+  bool hadMacroDefinition(IdentifierInfo *II, MacroDirective *&Macro) {
     if (!II->hadMacroDefinition())
       return false;
 
-    if (Macro || (Macro = PP.getMacroInfoHistory(II)))
-      return !Macro->isBuiltinMacro() && (!IsModule || Macro->isPublic());
+    if (Macro || (Macro = PP.getMacroDirectiveHistory(II)))
+      return !Macro->getInfo()->isBuiltinMacro() &&
+             (!IsModule || Macro->isPublic());
 
     return false;
   }
@@ -2720,12 +2732,12 @@ public:
   EmitKeyDataLength(raw_ostream& Out, IdentifierInfo* II, IdentID ID) {
     unsigned KeyLen = II->getLength() + 1;
     unsigned DataLen = 4; // 4 bytes for the persistent ID << 1
-    MacroInfo *Macro = 0;
+    MacroDirective *Macro = 0;
     if (isInterestingIdentifier(II, Macro)) {
       DataLen += 2; // 2 bytes for builtin ID
       DataLen += 2; // 2 bytes for flags
       if (hadMacroDefinition(II, Macro)) {
-        for (MacroInfo *M = Macro; M; M = M->getPreviousDefinition()) {
+        for (MacroDirective *M = Macro; M; M = M->getPrevious()) {
           if (Writer.getMacroRef(M) != 0)
             DataLen += 4;
         }
@@ -2756,7 +2768,7 @@ public:
 
   void EmitData(raw_ostream& Out, IdentifierInfo* II,
                 IdentID ID, unsigned) {
-    MacroInfo *Macro = 0;
+    MacroDirective *Macro = 0;
     if (!isInterestingIdentifier(II, Macro)) {
       clang::io::Emit32(Out, ID << 1);
       return;
@@ -2777,7 +2789,7 @@ public:
 
     if (HadMacroDefinition) {
       // Write all of the macro IDs associated with this identifier.
-      for (MacroInfo *M = Macro; M; M = M->getPreviousDefinition()) {
+      for (MacroDirective *M = Macro; M; M = M->getPrevious()) {
         if (MacroID ID = Writer.getMacroRef(M))
           clang::io::Emit32(Out, ID);
       }
@@ -2836,7 +2848,7 @@ void ASTWriter::WriteIdentifierTable(Preprocessor &PP,
       assert(ID->first && "NULL identifier in identifier table");
       if (!Chain || !ID->first->isFromAST() || 
           ID->first->hasChangedSinceDeserialization())
-        Generator.insert(const_cast<IdentifierInfo *>(ID->first), ID->second, 
+        Generator.insert(const_cast<IdentifierInfo *>(ID->first), ID->second,
                          Trait);
     }
 
@@ -2873,6 +2885,11 @@ void ASTWriter::WriteIdentifierTable(Preprocessor &PP,
   Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob));
   unsigned IdentifierOffsetAbbrev = Stream.EmitAbbrev(Abbrev);
 
+#ifndef NDEBUG
+  for (unsigned I = 0, N = IdentifierOffsets.size(); I != N; ++I)
+    assert(IdentifierOffsets[I] && "Missing identifier offset?");
+#endif
+  
   RecordData Record;
   Record.push_back(IDENTIFIER_OFFSET);
   Record.push_back(IdentifierOffsets.size());
@@ -3173,20 +3190,32 @@ void ASTWriter::WriteRedeclarations() {
     LocalRedeclChains.push_back(0); // Placeholder for the size.
     
     // Collect the set of local redeclarations of this declaration.
-    for (Decl *Prev = MostRecent; Prev != First; 
+    for (Decl *Prev = MostRecent; Prev != First;
          Prev = Prev->getPreviousDecl()) { 
       if (!Prev->isFromASTFile()) {
         AddDeclRef(Prev, LocalRedeclChains);
         ++Size;
       }
     }
+
+    if (!First->isFromASTFile() && Chain) {
+      Decl *FirstFromAST = MostRecent;
+      for (Decl *Prev = MostRecent; Prev; Prev = Prev->getPreviousDecl()) {
+        if (Prev->isFromASTFile())
+          FirstFromAST = Prev;
+      }
+
+      Chain->MergedDecls[FirstFromAST].push_back(getDeclID(First));
+    }
+
     LocalRedeclChains[Offset] = Size;
     
     // Reverse the set of local redeclarations, so that we store them in
     // order (since we found them in reverse order).
     std::reverse(LocalRedeclChains.end() - Size, LocalRedeclChains.end());
     
-    // Add the mapping from the first ID to the set of local declarations.
+    // Add the mapping from the first ID from the AST to the set of local
+    // declarations.
     LocalRedeclarationsInfo Info = { getDeclID(First), Offset };
     LocalRedeclsMap.push_back(Info);
     
@@ -3319,11 +3348,11 @@ void ASTWriter::AddString(StringRef Str, RecordDataImpl &Record) {
 void ASTWriter::AddVersionTuple(const VersionTuple &Version,
                                 RecordDataImpl &Record) {
   Record.push_back(Version.getMajor());
-  if (llvm::Optional<unsigned> Minor = Version.getMinor())
+  if (Optional<unsigned> Minor = Version.getMinor())
     Record.push_back(*Minor + 1);
   else
     Record.push_back(0);
-  if (llvm::Optional<unsigned> Subminor = Version.getSubminor())
+  if (Optional<unsigned> Subminor = Version.getSubminor())
     Record.push_back(*Subminor + 1);
   else
     Record.push_back(0);
@@ -3839,8 +3868,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   WriteMacroUpdates();
   WriteDeclUpdatesBlocks();
   WriteDeclReplacementsBlock();
-  WriteMergedDecls();
   WriteRedeclarations();
+  WriteMergedDecls();
   WriteObjCCategories();
   
   // Some simple statistics
@@ -3963,8 +3992,8 @@ void ASTWriter::AddIdentifierRef(const IdentifierInfo *II, RecordDataImpl &Recor
   Record.push_back(getIdentifierRef(II));
 }
 
-void ASTWriter::addMacroRef(MacroInfo *MI, RecordDataImpl &Record) {
-  Record.push_back(getMacroRef(MI));
+void ASTWriter::addMacroRef(MacroDirective *MD, RecordDataImpl &Record) {
+  Record.push_back(getMacroRef(MD));
 }
 
 IdentID ASTWriter::getIdentifierRef(const IdentifierInfo *II) {
@@ -3977,14 +4006,14 @@ IdentID ASTWriter::getIdentifierRef(const IdentifierInfo *II) {
   return ID;
 }
 
-MacroID ASTWriter::getMacroRef(MacroInfo *MI) {
+MacroID ASTWriter::getMacroRef(MacroDirective *MD) {
   // Don't emit builtin macros like __LINE__ to the AST file unless they
   // have been redefined by the header (in which case they are not
   // isBuiltinMacro).
-  if (MI == 0 || MI->isBuiltinMacro())
+  if (MD == 0 || MD->getInfo()->isBuiltinMacro())
     return 0;
 
-  MacroID &ID = MacroIDs[MI];
+  MacroID &ID = MacroIDs[MD];
   if (ID == 0)
     ID = NextMacroID++;
   return ID;
@@ -3999,14 +4028,16 @@ SelectorID ASTWriter::getSelectorRef(Selector Sel) {
     return 0;
   }
 
-  SelectorID &SID = SelectorIDs[Sel];
+  SelectorID SID = SelectorIDs[Sel];
   if (SID == 0 && Chain) {
     // This might trigger a ReadSelector callback, which will set the ID for
     // this selector.
     Chain->LoadSelector(Sel);
+    SID = SelectorIDs[Sel];
   }
   if (SID == 0) {
     SID = NextSelectorID++;
+    SelectorIDs[Sel] = SID;
   }
   return SID;
 }
@@ -4479,7 +4510,7 @@ void ASTWriter::AddTemplateArgument(const TemplateArgument &Arg,
     break;
   case TemplateArgument::TemplateExpansion:
     AddTemplateName(Arg.getAsTemplateOrTemplatePattern(), Record);
-    if (llvm::Optional<unsigned> NumExpansions = Arg.getNumTemplateExpansions())
+    if (Optional<unsigned> NumExpansions = Arg.getNumTemplateExpansions())
       Record.push_back(*NumExpansions + 1);
     else
       Record.push_back(0);
@@ -4721,11 +4752,17 @@ void ASTWriter::ReaderInitialized(ASTReader *Reader) {
 }
 
 void ASTWriter::IdentifierRead(IdentID ID, IdentifierInfo *II) {
-  IdentifierIDs[II] = ID;
+  // Always keep the highest ID. See \p TypeRead() for more information.
+  IdentID &StoredID = IdentifierIDs[II];
+  if (ID > StoredID)
+    StoredID = ID;
 }
 
-void ASTWriter::MacroRead(serialization::MacroID ID, MacroInfo *MI) {
-  MacroIDs[MI] = ID;
+void ASTWriter::MacroRead(serialization::MacroID ID, MacroDirective *MD) {
+  // Always keep the highest ID. See \p TypeRead() for more information.
+  MacroID &StoredID = MacroIDs[MD];
+  if (ID > StoredID)
+    StoredID = ID;
 }
 
 void ASTWriter::TypeRead(TypeIdx Idx, QualType T) {
@@ -4740,7 +4777,10 @@ void ASTWriter::TypeRead(TypeIdx Idx, QualType T) {
 }
 
 void ASTWriter::SelectorRead(SelectorID ID, Selector S) {
-  SelectorIDs[S] = ID;
+  // Always keep the highest ID. See \p TypeRead() for more information.
+  SelectorID &StoredID = SelectorIDs[S];
+  if (ID > StoredID)
+    StoredID = ID;
 }
 
 void ASTWriter::MacroDefinitionRead(serialization::PreprocessedEntityID ID,
@@ -4754,8 +4794,8 @@ void ASTWriter::ModuleRead(serialization::SubmoduleID ID, Module *Mod) {
   SubmoduleIDs[Mod] = ID;
 }
 
-void ASTWriter::UndefinedMacro(MacroInfo *MI) {
-  MacroUpdates[MI].UndefLoc = MI->getUndefLoc();
+void ASTWriter::UndefinedMacro(MacroDirective *MD) {
+  MacroUpdates[MD].UndefLoc = MD->getUndefLoc();
 }
 
 void ASTWriter::CompletedTagDefinition(const TagDecl *D) {

@@ -16,6 +16,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/ParentMap.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/SourceManager.h"
@@ -153,6 +154,7 @@ namespace {
     // This container maps an <class, group number for ivar> tuple to the type
     // of the struct where the bitfield belongs.
     llvm::DenseMap<std::pair<const ObjCInterfaceDecl*, unsigned>, QualType> GroupRecordType;
+    SmallVector<FunctionDecl*, 32> FunctionDefinitionsSeen;
     
     // This maps an original source AST to it's rewritten form. This allows
     // us to avoid rewriting the same node twice (which is very uncommon).
@@ -162,6 +164,7 @@ namespace {
     // Needed for header files being rewritten
     bool IsHeader;
     bool SilenceRewriteMacroWarning;
+    bool GenerateLineInfo;
     bool objc_impl_method;
     
     bool DisableReplaceStmt;
@@ -203,6 +206,18 @@ namespace {
           }
         }
 
+        if (FunctionDecl *FDecl = dyn_cast<FunctionDecl>(*I)) {
+          // Under modern abi, we cannot translate body of the function
+          // yet until all class extensions and its implementation is seen.
+          // This is because they may introduce new bitfields which must go
+          // into their grouping struct.
+          if (FDecl->isThisDeclarationADefinition() &&
+              // Not c functions defined inside an objc container.
+              !FDecl->isTopLevelDeclInObjCContainer()) {
+            FunctionDefinitionsSeen.push_back(FDecl);
+            break;
+          }
+        }
         HandleTopLevelSingleDecl(*I);
       }
       return true;
@@ -211,7 +226,7 @@ namespace {
     void HandleDeclInMainFile(Decl *D);
     RewriteModernObjC(std::string inFile, raw_ostream *OS,
                 DiagnosticsEngine &D, const LangOptions &LOpts,
-                bool silenceMacroWarn);
+                bool silenceMacroWarn, bool LineInfo);
     
     ~RewriteModernObjC() {}
     
@@ -620,9 +635,10 @@ static bool IsHeaderFile(const std::string &Filename) {
 
 RewriteModernObjC::RewriteModernObjC(std::string inFile, raw_ostream* OS,
                          DiagnosticsEngine &D, const LangOptions &LOpts,
-                         bool silenceMacroWarn)
+                         bool silenceMacroWarn,
+                         bool LineInfo)
       : Diags(D), LangOpts(LOpts), InFileName(inFile), OutFile(OS),
-        SilenceRewriteMacroWarning(silenceMacroWarn) {
+        SilenceRewriteMacroWarning(silenceMacroWarn), GenerateLineInfo(LineInfo) {
   IsHeader = IsHeaderFile(inFile);
   RewriteFailedDiag = Diags.getCustomDiagID(DiagnosticsEngine::Warning,
                "rewriting sub-expression within a macro (may not be correct)");
@@ -641,8 +657,10 @@ ASTConsumer *clang::CreateModernObjCRewriter(const std::string& InFile,
                                        raw_ostream* OS,
                                        DiagnosticsEngine &Diags,
                                        const LangOptions &LOpts,
-                                       bool SilenceRewriteMacroWarning) {
-    return new RewriteModernObjC(InFile, OS, Diags, LOpts, SilenceRewriteMacroWarning);
+                                       bool SilenceRewriteMacroWarning,
+                                       bool LineInfo) {
+    return new RewriteModernObjC(InFile, OS, Diags, LOpts,
+                                 SilenceRewriteMacroWarning, LineInfo);
 }
 
 void RewriteModernObjC::InitializeCommon(ASTContext &context) {
@@ -1026,7 +1044,7 @@ void RewriteModernObjC::RewritePropertyImplDecl(ObjCPropertyImplDecl *PID,
 
 static void RewriteOneForwardClassDecl(ObjCInterfaceDecl *ForwardDecl,
                                        std::string &typedefString) {
-  typedefString += "#ifndef _REWRITER_typedef_";
+  typedefString += "\n#ifndef _REWRITER_typedef_";
   typedefString += ForwardDecl->getNameAsString();
   typedefString += "\n";
   typedefString += "#define _REWRITER_typedef_";
@@ -1059,7 +1077,7 @@ void RewriteModernObjC::RewriteForwardClassDecl(DeclGroupRef D) {
       // as a comment.
       typedefString += "// @class ";
       typedefString += ForwardDecl->getNameAsString();
-      typedefString += ";\n";
+      typedefString += ";";
     }
     RewriteOneForwardClassDecl(ForwardDecl, typedefString);
   }
@@ -1075,7 +1093,7 @@ void RewriteModernObjC::RewriteForwardClassDecl(
     if (i == 0) {
       typedefString += "// @class ";
       typedefString += ForwardDecl->getNameAsString();
-      typedefString += ";\n";
+      typedefString += ";";
     }
     RewriteOneForwardClassDecl(ForwardDecl, typedefString);
   }
@@ -1641,7 +1659,7 @@ Stmt *RewriteModernObjC::RewriteBreakStmt(BreakStmt *S) {
 void RewriteModernObjC::ConvertSourceLocationToLineDirective(
                                           SourceLocation Loc,
                                           std::string &LineString) {
-  if (Loc.isFileID()) {
+  if (Loc.isFileID() && GenerateLineInfo) {
     LineString += "\n#line ";
     PresumedLoc PLoc = SM->getPresumedLoc(Loc);
     LineString += utostr(PLoc.getLine());
@@ -2075,7 +2093,9 @@ Stmt *RewriteModernObjC::RewriteObjCThrowStmt(ObjCAtThrowStmt *S) {
   assert((*wBuf == 'w') && "@throw: can't find 'w'");
   ReplaceText(startLoc, wBuf-startBuf+1, buf);
 
-  const char *semiBuf = strchr(startBuf, ';');
+  SourceLocation endLoc = S->getLocEnd();
+  const char *endBuf = SM->getCharacterData(endLoc);
+  const char *semiBuf = strchr(endBuf, ';');
   assert((*semiBuf == ';') && "@throw: can't find ';'");
   SourceLocation semiLoc = startLoc.getLocWithOffset(semiBuf-startBuf);
   if (S->getThrowExpr())
@@ -2591,7 +2611,7 @@ Stmt *RewriteModernObjC::RewriteObjCStringLiteral(ObjCStringLiteral *Exp) {
   for (i=0; i < tmpName.length(); i++) {
     char c = tmpName.at(i);
     // replace any non alphanumeric characters with '_'.
-    if (!isalpha(c) && (c < '0' || c > '9'))
+    if (!isAlphanumeric(c))
       tmpName[i] = '_';
   }
   S += tmpName;
@@ -3134,7 +3154,7 @@ void RewriteModernObjC::RewriteLineDirective(const Decl *D) {
   
   SourceLocation Location = D->getLocation();
   
-  if (Location.isFileID()) {
+  if (Location.isFileID() && GenerateLineInfo) {
     std::string LineString("\n#line ");
     PresumedLoc PLoc = SM->getPresumedLoc(Location);
     LineString += utostr(PLoc.getLine());
@@ -5268,7 +5288,7 @@ void RewriteModernObjC::RewriteByRefVar(VarDecl *ND, bool firstDecl,
       flag |= BLOCK_FIELD_IS_OBJECT;
     std::string HF = SynthesizeByrefCopyDestroyHelper(ND, flag);
     if (!HF.empty())
-      InsertText(FunLocStart, HF);
+      Preamble += HF;
   }
   
   // struct __Block_byref_ND ND = 
@@ -5643,6 +5663,8 @@ Stmt *RewriteModernObjC::RewriteFunctionBodyOrGlobalInitializer(Stmt *S) {
   } else if (ObjCIvarRefExpr *IvarRefExpr = dyn_cast<ObjCIvarRefExpr>(S)) {
     return RewriteObjCIvarRefExpr(IvarRefExpr);
   }
+  else if (isa<OpaqueValueExpr>(S))
+    S = cast<OpaqueValueExpr>(S)->getSourceExpr();
 
   SourceRange OrigStmtRange = S->getSourceRange();
 
@@ -6023,6 +6045,14 @@ void RewriteModernObjC::HandleTranslationUnit(ASTContext &C) {
 
   RewriteInclude();
 
+  for (unsigned i = 0, e = FunctionDefinitionsSeen.size(); i < e; i++) {
+    // translation of function bodies were postponed untill all class and
+    // their extensions and implementations are seen. This is because, we
+    // cannot build grouping structs for bitfields untill they are all seen.
+    FunctionDecl *FDecl = FunctionDefinitionsSeen[i];
+    HandleTopLevelSingleDecl(FDecl);
+  }
+
   // Here's a great place to add any extra declarations that may be needed.
   // Write out meta data for each @protocol(<expr>).
   for (llvm::SmallPtrSet<ObjCProtocolDecl *,8>::iterator I = ProtocolExprDecls.begin(),
@@ -6044,7 +6074,7 @@ void RewriteModernObjC::HandleTranslationUnit(ASTContext &C) {
     // private ivars.
     RewriteInterfaceDecl(CDecl);
   }
-
+  
   // Get the buffer corresponding to MainFileID.  If we haven't changed it, then
   // we are done.
   if (const RewriteBuffer *RewriteBuf =

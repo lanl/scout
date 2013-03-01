@@ -43,6 +43,10 @@ using namespace clang;
 #define ABSTRACT_DECL(DECL)
 #include "clang/AST/DeclNodes.inc"
 
+void Decl::updateOutOfDate(IdentifierInfo &II) const {
+  getASTContext().getExternalSource()->updateOutOfDateIdentifier(II);
+}
+
 void *Decl::AllocateDeserializedDecl(const ASTContext &Context, 
                                      unsigned ID,
                                      unsigned Size) {
@@ -189,8 +193,11 @@ void PrettyStackTraceDecl::print(raw_ostream &OS) const {
 
   OS << Message;
 
-  if (const NamedDecl *DN = dyn_cast_or_null<NamedDecl>(TheDecl))
-    OS << " '" << DN->getQualifiedNameAsString() << '\'';
+  if (const NamedDecl *DN = dyn_cast_or_null<NamedDecl>(TheDecl)) {
+    OS << " '";
+    DN->printQualifiedName(OS);
+    OS << '\'';
+  }
   OS << '\n';
 }
 
@@ -563,6 +570,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCCategory:
     case ObjCCategoryImpl:
     case Import:
+    case Empty:
       // Never looked up by name.
       return 0;
   }
@@ -811,6 +819,17 @@ bool DeclContext::isExternCContext() const {
   return false;
 }
 
+bool DeclContext::isExternCXXContext() const {
+  const DeclContext *DC = this;
+  while (DC->DeclKind != Decl::TranslationUnit) {
+    if (DC->DeclKind == Decl::LinkageSpec)
+      return cast<LinkageSpecDecl>(DC)->getLanguage()
+        == LinkageSpecDecl::lang_cxx;
+    DC = DC->getParent();
+  }
+  return false;
+}
+
 bool DeclContext::Encloses(const DeclContext *DC) const {
   if (getPrimaryContext() != this)
     return getPrimaryContext()->Encloses(DC);
@@ -944,10 +963,7 @@ DeclContext::BuildDeclChain(ArrayRef<Decl*> Decls,
 /// built a lookup map. For every name in the map, pull in the new names from
 /// the external storage.
 void DeclContext::reconcileExternalVisibleStorage() {
-  assert(NeedToReconcileExternalVisibleStorage);
-  if (!LookupPtr.getPointer())
-    return;
-
+  assert(NeedToReconcileExternalVisibleStorage && LookupPtr.getPointer());
   NeedToReconcileExternalVisibleStorage = false;
 
   StoredDeclsMap &Map = *LookupPtr.getPointer();
@@ -1171,6 +1187,7 @@ static bool shouldBeHidden(NamedDecl *D) {
 StoredDeclsMap *DeclContext::buildLookup() {
   assert(this == getPrimaryContext() && "buildLookup called on non-primary DC");
 
+  // FIXME: Should we keep going if hasExternalVisibleStorage?
   if (!LookupPtr.getInt())
     return LookupPtr.getPointer();
 
@@ -1181,6 +1198,7 @@ StoredDeclsMap *DeclContext::buildLookup() {
 
   // We no longer have any lazy decls.
   LookupPtr.setInt(false);
+  NeedToReconcileExternalVisibleStorage = false;
   return LookupPtr.getPointer();
 }
 
@@ -1189,10 +1207,6 @@ StoredDeclsMap *DeclContext::buildLookup() {
 /// DeclContext, a DeclContext linked to it, or a transparent context
 /// nested within it.
 void DeclContext::buildLookupImpl(DeclContext *DCtx) {
-  // FIXME: If buildLookup is supposed to return a complete map, we should not
-  // bail out in buildLookup if hasExternalVisibleStorage. If it is not required
-  // to include names from PCH and modules, we should use the noload_ iterators
-  // here.
   for (decl_iterator I = DCtx->decls_begin(), E = DCtx->decls_end();
        I != E; ++I) {
     Decl *D = *I;
@@ -1223,21 +1237,22 @@ DeclContext::lookup(DeclarationName Name) {
     return PrimaryContext->lookup(Name);
 
   if (hasExternalVisibleStorage()) {
-    if (NeedToReconcileExternalVisibleStorage)
-      reconcileExternalVisibleStorage();
-
     StoredDeclsMap *Map = LookupPtr.getPointer();
     if (LookupPtr.getInt())
       Map = buildLookup();
+    else if (NeedToReconcileExternalVisibleStorage)
+      reconcileExternalVisibleStorage();
+
+    if (!Map)
+      Map = CreateStoredDeclsMap(getParentASTContext());
 
     // If a PCH/module has a result for this name, and we have a local
     // declaration, we will have imported the PCH/module result when adding the
     // local declaration or when reconciling the module.
-    if (Map) {
-      StoredDeclsMap::iterator I = Map->find(Name);
-      if (I != Map->end())
-        return I->second.getLookupResult();
-    }
+    std::pair<StoredDeclsMap::iterator, bool> R =
+        Map->insert(std::make_pair(Name, StoredDeclsList()));
+    if (!R.second)
+      return R.first->second.getLookupResult();
 
     ExternalASTSource *Source = getParentASTContext().getExternalSource();
     if (Source->FindExternalVisibleDeclsByName(this, Name)) {

@@ -282,6 +282,10 @@ static bool ParseMigratorArgs(MigratorOptions &Opts, ArgList &Args) {
   return true;
 }
 
+static void ParseCommentArgs(CommentOptions &Opts, ArgList &Args) {
+  Opts.BlockCommandNames = Args.getAllArgValues(OPT_fcomment_block_commands);
+}
+
 static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                              DiagnosticsEngine &Diags) {
   using namespace options;
@@ -336,6 +340,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       Opts.setDebugInfo(CodeGenOptions::FullDebugInfo);
   }
   Opts.DebugColumnInfo = Args.hasArg(OPT_dwarf_column_info);
+  Opts.SplitDwarfFile = Args.getLastArgValue(OPT_split_dwarf_file);
 
   Opts.ModulesAutolink = Args.hasArg(OPT_fmodules_autolink);
   Opts.DisableLLVMOpts = Args.hasArg(OPT_disable_llvm_optzns);
@@ -843,7 +848,7 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   if (const Arg *A = Args.getLastArg(OPT_stdlib_EQ))
     Opts.UseLibcxx = (strcmp(A->getValue(), "libc++") == 0);
   Opts.ResourceDir = Args.getLastArgValue(OPT_resource_dir);
-  Opts.ModuleCachePath = Args.getLastArgValue(OPT_fmodule_cache_path);
+  Opts.ModuleCachePath = Args.getLastArgValue(OPT_fmodules_cache_path);
   Opts.DisableModuleHash = Args.hasArg(OPT_fdisable_module_hash);
 
   for (arg_iterator it = Args.filtered_begin(OPT_fmodules_ignore_macro),
@@ -1040,6 +1045,24 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   }
 }
 
+/// Attempt to parse a visibility value out of the given argument.
+static Visibility parseVisibility(Arg *arg, ArgList &args,
+                                  DiagnosticsEngine &diags) {
+  StringRef value = arg->getValue();
+  if (value == "default") {
+    return DefaultVisibility;
+  } else if (value == "hidden") {
+    return HiddenVisibility;
+  } else if (value == "protected") {
+    // FIXME: diagnose if target does not support protected visibility
+    return ProtectedVisibility;
+  }
+
+  diags.Report(diag::err_drv_invalid_value)
+    << arg->getAsString(args) << value;
+  return DefaultVisibility;
+}
+
 static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                           DiagnosticsEngine &Diags) {
   // FIXME: Cleanup per-file based stuff.
@@ -1175,17 +1198,19 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   if (Args.hasArg(OPT_fdelayed_template_parsing))
     Opts.DelayedTemplateParsing = 1;
 
-  StringRef Vis = Args.getLastArgValue(OPT_fvisibility, "default");
-  if (Vis == "default")
-    Opts.setVisibilityMode(DefaultVisibility);
-  else if (Vis == "hidden")
-    Opts.setVisibilityMode(HiddenVisibility);
-  else if (Vis == "protected")
-    // FIXME: diagnose if target does not support protected visibility
-    Opts.setVisibilityMode(ProtectedVisibility);
-  else
-    Diags.Report(diag::err_drv_invalid_value)
-      << Args.getLastArg(OPT_fvisibility)->getAsString(Args) << Vis;
+  // The value-visibility mode defaults to "default".
+  if (Arg *visOpt = Args.getLastArg(OPT_fvisibility)) {
+    Opts.setValueVisibilityMode(parseVisibility(visOpt, Args, Diags));
+  } else {
+    Opts.setValueVisibilityMode(DefaultVisibility);
+  }
+
+  // The type-visibility mode defaults to the value-visibility mode.
+  if (Arg *typeVisOpt = Args.getLastArg(OPT_ftype_visibility)) {
+    Opts.setTypeVisibilityMode(parseVisibility(typeVisOpt, Args, Diags));
+  } else {
+    Opts.setTypeVisibilityMode(Opts.getValueVisibilityMode());
+  }
 
   if (Args.hasArg(OPT_fvisibility_inlines_hidden))
     Opts.InlineVisibilityHidden = 1;
@@ -1244,6 +1269,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
                                                     Diags);
   Opts.ConstexprCallDepth = Args.getLastArgIntValue(OPT_fconstexpr_depth, 512,
                                                     Diags);
+  Opts.BracketDepth = Args.getLastArgIntValue(OPT_fbracket_depth, 256, Diags);
   Opts.DelayedTemplateParsing = Args.hasArg(OPT_fdelayed_template_parsing);
   Opts.NumLargeByValueCopy = Args.getLastArgIntValue(OPT_Wlarge_by_value_copy_EQ,
                                                     0, Diags);
@@ -1552,6 +1578,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   ParseDependencyOutputArgs(Res.getDependencyOutputOpts(), *Args);
   Success = ParseDiagnosticArgs(Res.getDiagnosticOpts(), *Args, &Diags)
             && Success;
+  ParseCommentArgs(Res.getLangOpts()->CommentOpts, *Args);
   ParseFileSystemArgs(Res.getFileSystemOpts(), *Args);
   // FIXME: We shouldn't have to pass the DashX option around here
   InputKind DashX = ParseFrontendArgs(Res.getFrontendOpts(), *Args, Diags);

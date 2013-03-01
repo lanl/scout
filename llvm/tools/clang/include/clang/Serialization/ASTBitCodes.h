@@ -1054,7 +1054,9 @@ namespace clang {
       /// function specialization. (Microsoft extension).
       DECL_CLASS_SCOPE_FUNCTION_SPECIALIZATION,
       /// \brief An ImportDecl recording a module import.
-      DECL_IMPORT
+      DECL_IMPORT,
+      /// \brief An EmptyDecl record.
+      DECL_EMPTY
     };
 
     /// \brief Record codes for each kind of statement or expression.

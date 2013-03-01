@@ -732,6 +732,14 @@ def Visibility : InheritableAttr {
                            ["Default", "Hidden", "Hidden", "Protected"]>];
 }
 
+def TypeVisibility : InheritableAttr {
+  let Clone = 0;
+  let Spellings = [GNU<"type_visibility">, CXX11<"clang", "type_visibility">];
+  let Args = [EnumArgument<"Visibility", "VisibilityType",
+                           ["default", "hidden", "internal", "protected"],
+                           ["Default", "Hidden", "Hidden", "Protected"]>];
+}
+
 def VecReturn : InheritableAttr {
   let Spellings = [GNU<"vecreturn">];
   let Subjects = [CXXRecord];
@@ -759,9 +767,20 @@ def X86ForceAlignArgPointer : InheritableAttr {
   let Spellings = [];
 }
 
-// AddressSafety attribute (e.g. for AddressSanitizer)
-def NoAddressSafetyAnalysis : InheritableAttr {
-  let Spellings = [GNU<"no_address_safety_analysis">];
+// Attribute to disable AddressSanitizer (or equivalent) checks.
+def NoSanitizeAddress : InheritableAttr {
+  let Spellings = [GNU<"no_address_safety_analysis">,
+                   GNU<"no_sanitize_address">];
+}
+
+// Attribute to disable ThreadSanitizer checks.
+def NoSanitizeThread : InheritableAttr {
+  let Spellings = [GNU<"no_sanitize_thread">];
+}
+
+// Attribute to disable MemorySanitizer checks.
+def NoSanitizeMemory : InheritableAttr {
+  let Spellings = [GNU<"no_sanitize_memory">];
 }
 
 // C/C++ Thread safety attributes (e.g. for deadlock, data race checking)

@@ -19,6 +19,8 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/Mangle.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/DeclSpec.h"
@@ -49,7 +51,8 @@ enum AttributeDeclKind {
   ExpectedVariableFunctionOrTag,
   ExpectedTLSVar,
   ExpectedVariableOrField,
-  ExpectedVariableFieldOrTag
+  ExpectedVariableFieldOrTag,
+  ExpectedTypeOrNamespace
 };
 
 //===----------------------------------------------------------------------===//
@@ -608,8 +611,8 @@ static void handleScopedLockableAttr(Sema &S, Decl *D,
                                 Attr.getAttributeSpellingListIndex()));
 }
 
-static void handleNoThreadSafetyAttr(Sema &S, Decl *D,
-                                     const AttributeList &Attr) {
+static void handleNoThreadSafetyAnalysis(Sema &S, Decl *D,
+                                         const AttributeList &Attr) {
   assert(!Attr.isInvalid());
 
   if (!checkAttributeNumArgs(S, Attr, 0))
@@ -625,7 +628,7 @@ static void handleNoThreadSafetyAttr(Sema &S, Decl *D,
                                                           S.Context));
 }
 
-static void handleNoAddressSafetyAttr(Sema &S, Decl *D,
+static void handleNoSanitizeAddressAttr(Sema &S, Decl *D,
                                       const AttributeList &Attr) {
   assert(!Attr.isInvalid());
 
@@ -633,14 +636,48 @@ static void handleNoAddressSafetyAttr(Sema &S, Decl *D,
     return;
 
   if (!isa<FunctionDecl>(D) && !isa<FunctionTemplateDecl>(D)) {
-    S.Diag(Attr.getLoc(), diag::warn_attribute_wrong_decl_type)
+    S.Diag(Attr.getLoc(), diag::err_attribute_wrong_decl_type)
       << Attr.getName() << ExpectedFunctionOrMethod;
     return;
   }
 
   D->addAttr(::new (S.Context)
-             NoAddressSafetyAnalysisAttr(Attr.getRange(), S.Context,
-                                         Attr.getAttributeSpellingListIndex()));
+             NoSanitizeAddressAttr(Attr.getRange(), S.Context,
+                                   Attr.getAttributeSpellingListIndex()));
+}
+
+static void handleNoSanitizeMemory(Sema &S, Decl *D,
+                                   const AttributeList &Attr) {
+  assert(!Attr.isInvalid());
+
+  if (!checkAttributeNumArgs(S, Attr, 0))
+    return;
+
+  if (!isa<FunctionDecl>(D) && !isa<FunctionTemplateDecl>(D)) {
+    S.Diag(Attr.getLoc(), diag::err_attribute_wrong_decl_type)
+      << Attr.getName() << ExpectedFunctionOrMethod;
+    return;
+  }
+
+  D->addAttr(::new (S.Context) NoSanitizeMemoryAttr(Attr.getRange(),
+                                                         S.Context));
+}
+
+static void handleNoSanitizeThread(Sema &S, Decl *D,
+                                   const AttributeList &Attr) {
+  assert(!Attr.isInvalid());
+
+  if (!checkAttributeNumArgs(S, Attr, 0))
+    return;
+
+  if (!isa<FunctionDecl>(D) && !isa<FunctionTemplateDecl>(D)) {
+    S.Diag(Attr.getLoc(), diag::err_attribute_wrong_decl_type)
+      << Attr.getName() << ExpectedFunctionOrMethod;
+    return;
+  }
+
+  D->addAttr(::new (S.Context) NoSanitizeThreadAttr(Attr.getRange(),
+                                                    S.Context));
 }
 
 static bool checkAcquireOrderAttrCommon(Sema &S, Decl *D,
@@ -1095,7 +1132,11 @@ static void handleAllocSizeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   // In C++ the implicit 'this' function parameter also counts, and they are
   // counted from one.
   bool HasImplicitThisParam = isInstanceMethod(D);
-  unsigned NumArgs = getFunctionOrMethodNumArgs(D) + HasImplicitThisParam;
+  unsigned NumArgs;
+  if (hasFunctionProto(D))
+    NumArgs = getFunctionOrMethodNumArgs(D) + HasImplicitThisParam;
+  else
+    NumArgs = 0;
 
   SmallVector<unsigned, 8> SizeArgs;
 
@@ -2253,29 +2294,57 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
     D->addAttr(NewAttr);
 }
 
+template <class T>
+static T *mergeVisibilityAttr(Sema &S, Decl *D, SourceRange range,
+                              typename T::VisibilityType value,
+                              unsigned attrSpellingListIndex) {
+  T *existingAttr = D->getAttr<T>();
+  if (existingAttr) {
+    typename T::VisibilityType existingValue = existingAttr->getVisibility();
+    if (existingValue == value)
+      return NULL;
+    S.Diag(existingAttr->getLocation(), diag::err_mismatched_visibility);
+    S.Diag(range.getBegin(), diag::note_previous_attribute);
+    D->dropAttr<T>();
+  }
+  return ::new (S.Context) T(range, S.Context, value, attrSpellingListIndex);
+}
+
 VisibilityAttr *Sema::mergeVisibilityAttr(Decl *D, SourceRange Range,
                                           VisibilityAttr::VisibilityType Vis,
                                           unsigned AttrSpellingListIndex) {
-  if (isa<TypedefNameDecl>(D)) {
-    Diag(Range.getBegin(), diag::warn_attribute_ignored) << "visibility";
-    return NULL;
-  }
-  VisibilityAttr *ExistingAttr = D->getAttr<VisibilityAttr>();
-  if (ExistingAttr) {
-    VisibilityAttr::VisibilityType ExistingVis = ExistingAttr->getVisibility();
-    if (ExistingVis == Vis)
-      return NULL;
-    Diag(ExistingAttr->getLocation(), diag::err_mismatched_visibility);
-    Diag(Range.getBegin(), diag::note_previous_attribute);
-    D->dropAttr<VisibilityAttr>();
-  }
-  return ::new (Context) VisibilityAttr(Range, Context, Vis,
-                                        AttrSpellingListIndex);
+  return ::mergeVisibilityAttr<VisibilityAttr>(*this, D, Range, Vis,
+                                               AttrSpellingListIndex);
 }
 
-static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
+TypeVisibilityAttr *Sema::mergeTypeVisibilityAttr(Decl *D, SourceRange Range,
+                                      TypeVisibilityAttr::VisibilityType Vis,
+                                      unsigned AttrSpellingListIndex) {
+  return ::mergeVisibilityAttr<TypeVisibilityAttr>(*this, D, Range, Vis,
+                                                   AttrSpellingListIndex);
+}
+
+static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr,
+                                 bool isTypeVisibility) {
+  // Visibility attributes don't mean anything on a typedef.
+  if (isa<TypedefNameDecl>(D)) {
+    S.Diag(Attr.getRange().getBegin(), diag::warn_attribute_ignored)
+      << Attr.getName();
+    return;
+  }
+
+  // 'type_visibility' can only go on a type or namespace.
+  if (isTypeVisibility &&
+      !(isa<TagDecl>(D) ||
+        isa<ObjCInterfaceDecl>(D) ||
+        isa<NamespaceDecl>(D))) {
+    S.Diag(Attr.getRange().getBegin(), diag::err_attribute_wrong_decl_type)
+      << Attr.getName() << ExpectedTypeOrNamespace;
+    return;
+  }
+
   // check the attribute arguments.
-  if(!checkAttributeNumArgs(S, Attr, 1))
+  if (!checkAttributeNumArgs(S, Attr, 1))
     return;
 
   Expr *Arg = Attr.getArg(0);
@@ -2284,7 +2353,7 @@ static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 
   if (!Str || !Str->isAscii()) {
     S.Diag(Attr.getLoc(), diag::err_attribute_argument_n_not_string)
-      << "visibility" << 1;
+      << (isTypeVisibility ? "type_visibility" : "visibility") << 1;
     return;
   }
 
@@ -2312,10 +2381,16 @@ static void handleVisibilityAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   }
 
   unsigned Index = Attr.getAttributeSpellingListIndex();
-  VisibilityAttr *NewAttr = S.mergeVisibilityAttr(D, Attr.getRange(), type,
-                                                  Index);
-  if (NewAttr)
-    D->addAttr(NewAttr);
+  clang::Attr *newAttr;
+  if (isTypeVisibility) {
+    newAttr = S.mergeTypeVisibilityAttr(D, Attr.getRange(),
+                                    (TypeVisibilityAttr::VisibilityType) type,
+                                        Index);
+  } else {
+    newAttr = S.mergeVisibilityAttr(D, Attr.getRange(), type, Index);
+  }
+  if (newAttr)
+    D->addAttr(newAttr);
 }
 
 static void handleObjCMethodFamilyAttr(Sema &S, Decl *decl,
@@ -2848,6 +2923,7 @@ static void handleCleanupAttr(Sema &S, Decl *D, const AttributeList &Attr) {
              CleanupAttr(Attr.getRange(), S.Context, FD,
                          Attr.getAttributeSpellingListIndex()));
   S.MarkFunctionReferenced(Attr.getParameterLoc(), FD);
+  S.DiagnoseUseOfDecl(FD, Attr.getParameterLoc());
 }
 
 /// Handle __attribute__((format_arg((idx)))) attribute based on
@@ -3274,27 +3350,28 @@ static void handleAlignedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     return;
   }
 
-  // FIXME: The C++11 version of this attribute should error out when it is
-  //        used to specify a weaker alignment, rather than being silently
-  //        ignored. This constraint cannot be applied until we have seen
-  //        all the attributes which apply to the variable.
-
   if (Attr.getNumArgs() == 0) {
     D->addAttr(::new (S.Context) AlignedAttr(Attr.getRange(), S.Context,
                true, 0, Attr.getAttributeSpellingListIndex()));
     return;
   }
 
-  S.AddAlignedAttr(Attr.getRange(), D, Attr.getArg(0),
-                   Attr.getAttributeSpellingListIndex());
+  Expr *E = Attr.getArg(0);
+  if (Attr.isPackExpansion() && !E->containsUnexpandedParameterPack()) {
+    S.Diag(Attr.getEllipsisLoc(),
+           diag::err_pack_expansion_without_parameter_packs);
+    return;
+  }
+
+  if (!Attr.isPackExpansion() && S.DiagnoseUnexpandedParameterPack(E))
+    return;
+
+  S.AddAlignedAttr(Attr.getRange(), D, E, Attr.getAttributeSpellingListIndex(),
+                   Attr.isPackExpansion());
 }
 
 void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
-                          unsigned SpellingListIndex) {
-  // FIXME: Handle pack-expansions here.
-  if (DiagnoseUnexpandedParameterPack(E))
-    return;
-
+                          unsigned SpellingListIndex, bool IsPackExpansion) {
   AlignedAttr TmpAttr(AttrRange, Context, true, E, SpellingListIndex);
   SourceLocation AttrLoc = AttrRange.getBegin();
 
@@ -3331,15 +3408,16 @@ void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
     }
     if (DiagKind != -1) {
       Diag(AttrLoc, diag::err_alignas_attribute_wrong_decl_type)
-        << (TmpAttr.isC11() ? "'_Alignas'" : "'alignas'")
-        << DiagKind;
+        << TmpAttr.isC11() << DiagKind;
       return;
     }
   }
 
   if (E->isTypeDependent() || E->isValueDependent()) {
     // Save dependent expressions in the AST to be instantiated.
-    D->addAttr(::new (Context) AlignedAttr(TmpAttr));
+    AlignedAttr *AA = ::new (Context) AlignedAttr(TmpAttr);
+    AA->setPackExpansion(IsPackExpansion);
+    D->addAttr(AA);
     return;
   }
 
@@ -3374,17 +3452,20 @@ void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
     }
   }
 
-  D->addAttr(::new (Context) AlignedAttr(AttrRange, Context, true,
-                                         ICE.take(), SpellingListIndex));
+  AlignedAttr *AA = ::new (Context) AlignedAttr(AttrRange, Context, true,
+                                                ICE.take(), SpellingListIndex);
+  AA->setPackExpansion(IsPackExpansion);
+  D->addAttr(AA);
 }
 
 void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, TypeSourceInfo *TS,
-                          unsigned SpellingListIndex) {
+                          unsigned SpellingListIndex, bool IsPackExpansion) {
   // FIXME: Cache the number on the Attr object if non-dependent?
   // FIXME: Perform checking of type validity
-  D->addAttr(::new (Context) AlignedAttr(AttrRange, Context, false, TS,
-                                         SpellingListIndex));
-  return;
+  AlignedAttr *AA = ::new (Context) AlignedAttr(AttrRange, Context, false, TS,
+                                                SpellingListIndex);
+  AA->setPackExpansion(IsPackExpansion);
+  D->addAttr(AA);
 }
 
 void Sema::CheckAlignasUnderalignment(Decl *D) {
@@ -3395,7 +3476,7 @@ void Sema::CheckAlignasUnderalignment(Decl *D) {
     Ty = VD->getType();
   else
     Ty = Context.getTagDeclType(cast<TagDecl>(D));
-  if (Ty->isDependentType())
+  if (Ty->isDependentType() || Ty->isIncompleteType())
     return;
 
   // C++11 [dcl.align]p5, C11 6.7.5/4:
@@ -3713,10 +3794,10 @@ static void handleGlobalAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     FunctionDecl *FD = cast<FunctionDecl>(D);
     if (!FD->getResultType()->isVoidType()) {
       TypeLoc TL = FD->getTypeSourceInfo()->getTypeLoc().IgnoreParens();
-      if (FunctionTypeLoc* FTL = dyn_cast<FunctionTypeLoc>(&TL)) {
+      if (FunctionTypeLoc FTL = TL.getAs<FunctionTypeLoc>()) {
         S.Diag(FD->getTypeSpecStartLoc(), diag::err_kern_type_not_void_return)
           << FD->getType()
-          << FixItHint::CreateReplacement(FTL->getResultLoc().getSourceRange(),
+          << FixItHint::CreateReplacement(FTL.getResultLoc().getSourceRange(),
                                           "void");
       } else {
         S.Diag(FD->getTypeSpecStartLoc(), diag::err_kern_type_not_void_return)
@@ -4478,7 +4559,7 @@ static void handleUuidAttr(Sema &S, Decl *D, const AttributeList &Attr) {
           S.Diag(Attr.getLoc(), diag::err_attribute_uuid_malformed_guid);
           return;
         }
-      } else if (!isxdigit(*I)) {
+      } else if (!isHexDigit(*I)) {
         S.Diag(Attr.getLoc(), diag::err_attribute_uuid_malformed_guid);
         return;
       }
@@ -4691,7 +4772,12 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
     handleReturnsTwiceAttr(S, D, Attr);
     break;
   case AttributeList::AT_Used:        handleUsedAttr        (S, D, Attr); break;
-  case AttributeList::AT_Visibility:  handleVisibilityAttr  (S, D, Attr); break;
+  case AttributeList::AT_Visibility:
+    handleVisibilityAttr(S, D, Attr, false);
+    break;
+  case AttributeList::AT_TypeVisibility:
+    handleVisibilityAttr(S, D, Attr, true);
+    break;
   case AttributeList::AT_WarnUnusedResult: handleWarnUnusedResult(S, D, Attr);
     break;
   case AttributeList::AT_Weak:        handleWeakAttr        (S, D, Attr); break;
@@ -4766,11 +4852,17 @@ static void ProcessInheritableDeclAttr(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_ScopedLockable:
     handleScopedLockableAttr(S, D, Attr);
     break;
-  case AttributeList::AT_NoAddressSafetyAnalysis:
-    handleNoAddressSafetyAttr(S, D, Attr);
+  case AttributeList::AT_NoSanitizeAddress:
+    handleNoSanitizeAddressAttr(S, D, Attr);
     break;
   case AttributeList::AT_NoThreadSafetyAnalysis:
-    handleNoThreadSafetyAttr(S, D, Attr);
+    handleNoThreadSafetyAnalysis(S, D, Attr);
+    break;
+  case AttributeList::AT_NoSanitizeThread:
+    handleNoSanitizeThread(S, D, Attr);
+    break;
+  case AttributeList::AT_NoSanitizeMemory:
+    handleNoSanitizeMemory(S, D, Attr);
     break;
   case AttributeList::AT_Lockable:
     handleLockableAttr(S, D, Attr);
@@ -5005,11 +5097,18 @@ void Sema::ProcessDeclAttributes(Scope *S, Decl *D, const Declarator &PD,
   if (Inheritable) {
     LoadExternalWeakUndeclaredIdentifiers();
     if (!WeakUndeclaredIdentifiers.empty()) {
-      if (NamedDecl *ND = dyn_cast<NamedDecl>(D)) {
+      NamedDecl *ND = NULL;
+      if (VarDecl *VD = dyn_cast<VarDecl>(D))
+        if (VD->isExternC())
+          ND = VD;
+      if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
+        if (FD->isExternC())
+          ND = FD;
+      if (ND) {
         if (IdentifierInfo *Id = ND->getIdentifier()) {
           llvm::DenseMap<IdentifierInfo*,WeakInfo>::iterator I
             = WeakUndeclaredIdentifiers.find(Id);
-          if (I != WeakUndeclaredIdentifiers.end() && ND->hasLinkage()) {
+          if (I != WeakUndeclaredIdentifiers.end()) {
             WeakInfo W = I->second;
             DeclApplyPragmaWeak(S, ND, W);
             WeakUndeclaredIdentifiers[Id] = W;

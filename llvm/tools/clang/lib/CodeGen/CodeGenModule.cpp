@@ -30,10 +30,12 @@
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/Module.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TargetOptions.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/Triple.h"
@@ -68,10 +70,11 @@ static CGCXXABI &createCXXABI(CodeGenModule &CGM) {
 
 
 CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
-                             llvm::Module &M, const llvm::DataLayout &TD,
+                             const TargetOptions &TO, llvm::Module &M,
+                             const llvm::DataLayout &TD,
                              DiagnosticsEngine &diags)
-  : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
-    TheDataLayout(TD), TheTargetCodeGenInfo(0), Diags(diags),
+  : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TargetOpts(TO),
+    TheModule(M), TheDataLayout(TD), TheTargetCodeGenInfo(0), Diags(diags),
     ABI(createCXXABI(*this)), 
     Types(*this),
     TBAA(0),
@@ -103,6 +106,8 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   IntPtrTy = llvm::IntegerType::get(LLVMContext, PointerWidthInBits);
   Int8PtrTy = Int8Ty->getPointerTo(0);
   Int8PtrPtrTy = Int8PtrTy->getPointerTo(0);
+
+  RuntimeCC = getTargetCodeGenInfo().getABIInfo().getRuntimeCC();
 
   if (LangOpts.ObjC1)
     createObjCRuntime();
@@ -273,9 +278,9 @@ void CodeGenModule::setGlobalVisibility(llvm::GlobalValue *GV,
   }
 
   // Set visibility for definitions.
-  NamedDecl::LinkageInfo LV = D->getLinkageAndVisibility();
-  if (LV.visibilityExplicit() || !GV->hasAvailableExternallyLinkage())
-    GV->setVisibility(GetLLVMVisibility(LV.visibility()));
+  LinkageInfo LV = D->getLinkageAndVisibility();
+  if (LV.isVisibilityExplicit() || !GV->hasAvailableExternallyLinkage())
+    GV->setVisibility(GetLLVMVisibility(LV.getVisibility()));
 }
 
 static llvm::GlobalVariable::ThreadLocalMode GetLLVMTLSModel(StringRef S) {
@@ -344,7 +349,7 @@ void CodeGenModule::setTypeVisibility(llvm::GlobalValue *GV,
     return;
 
   // Don't override an explicit visibility attribute.
-  if (RD->getExplicitVisibility())
+  if (RD->getExplicitVisibility(NamedDecl::VisibilityForType))
     return;
 
   switch (RD->getTemplateSpecializationKind()) {
@@ -547,7 +552,7 @@ void CodeGenModule::SetLLVMFunctionAttributes(const Decl *D,
                                               llvm::Function *F) {
   unsigned CallingConv;
   AttributeListType AttributeList;
-  ConstructAttributeList(Info, D, AttributeList, CallingConv);
+  ConstructAttributeList(Info, D, AttributeList, CallingConv, false);
   F->setAttributes(llvm::AttributeSet::get(getLLVMContext(), AttributeList));
   F->setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
 }
@@ -614,12 +619,16 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   else if (LangOpts.getStackProtector() == LangOptions::SSPReq)
     F->addFnAttr(llvm::Attribute::StackProtectReq);
 
-  if (SanOpts.Address) {
-    // When AddressSanitizer is enabled, set AddressSafety attribute
-    // unless __attribute__((no_address_safety_analysis)) is used.
-    if (!D->hasAttr<NoAddressSafetyAnalysisAttr>())
-      F->addFnAttr(llvm::Attribute::AddressSafety);
-  }
+  // When AddressSanitizer is enabled, set SanitizeAddress attribute
+  // unless __attribute__((no_sanitize_address)) is used.
+  if (SanOpts.Address && !D->hasAttr<NoSanitizeAddressAttr>())
+    F->addFnAttr(llvm::Attribute::SanitizeAddress);
+  // Same for ThreadSanitizer and __attribute__((no_sanitize_thread))
+  if (SanOpts.Thread && !D->hasAttr<NoSanitizeThreadAttr>())
+    F->addFnAttr(llvm::Attribute::SanitizeThread);
+  // Same for MemorySanitizer and __attribute__((no_sanitize_memory))
+  if (SanOpts.Memory && !D->hasAttr<NoSanitizeMemoryAttr>())
+    F->addFnAttr(llvm::Attribute::SanitizeMemory);
 
   unsigned alignment = D->getMaxAlignment() / Context.getCharWidth();
   if (alignment)
@@ -686,9 +695,9 @@ void CodeGenModule::SetFunctionAttributes(GlobalDecl GD,
   } else {
     F->setLinkage(llvm::Function::ExternalLinkage);
 
-    NamedDecl::LinkageInfo LV = FD->getLinkageAndVisibility();
-    if (LV.linkage() == ExternalLinkage && LV.visibilityExplicit()) {
-      F->setVisibility(GetLLVMVisibility(LV.visibility()));
+    LinkageInfo LV = FD->getLinkageAndVisibility();
+    if (LV.getLinkage() == ExternalLinkage && LV.isVisibilityExplicit()) {
+      F->setVisibility(GetLLVMVisibility(LV.getVisibility()));
     }
   }
 
@@ -1347,8 +1356,13 @@ llvm::Constant *
 CodeGenModule::CreateRuntimeFunction(llvm::FunctionType *FTy,
                                      StringRef Name,
                                      llvm::AttributeSet ExtraAttrs) {
-  return GetOrCreateLLVMFunction(Name, FTy, GlobalDecl(), /*ForVTable=*/false,
-                                 ExtraAttrs);
+  llvm::Constant *C
+    = GetOrCreateLLVMFunction(Name, FTy, GlobalDecl(), /*ForVTable=*/false,
+                              ExtraAttrs);
+  if (llvm::Function *F = dyn_cast<llvm::Function>(C))
+    if (F->empty())
+      F->setCallingConv(getRuntimeCC());
+  return C;
 }
 
 /// isTypeConstant - Determine whether an object of this type can be emitted
@@ -1426,8 +1440,8 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
     GV->setConstant(isTypeConstant(D->getType(), false));
 
     // Set linkage and visibility in case we never see a definition.
-    NamedDecl::LinkageInfo LV = D->getLinkageAndVisibility();
-    if (LV.linkage() != ExternalLinkage) {
+    LinkageInfo LV = D->getLinkageAndVisibility();
+    if (LV.getLinkage() != ExternalLinkage) {
       // Don't set internal linkage on declarations.
     } else {
       if (D->hasAttr<DLLImportAttr>())
@@ -1436,8 +1450,8 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
         GV->setLinkage(llvm::GlobalValue::ExternalWeakLinkage);
 
       // Set visibility on a declaration only if it's explicit.
-      if (LV.visibilityExplicit())
-        GV->setVisibility(GetLLVMVisibility(LV.visibility()));
+      if (LV.isVisibilityExplicit())
+        GV->setVisibility(GetLLVMVisibility(LV.getVisibility()));
     }
 
     if (D->isThreadSpecified())
@@ -1974,6 +1988,8 @@ void CodeGenModule::HandleCXXStaticMemberVarInstantiation(VarDecl *VD) {
   // instantiation is explicit, make sure we emit it at the end.
   if (VD->getDefinition() && TSK == TSK_ExplicitInstantiationDefinition)
     GetAddrOfGlobalVar(VD);
+
+  EmitTopLevelDecl(VD);
 }
 
 void CodeGenModule::EmitGlobalFunctionDefinition(GlobalDecl GD) {
@@ -2739,6 +2755,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
   case Decl::TypeAliasTemplate:
   case Decl::NamespaceAlias:
   case Decl::Block:
+  case Decl::Empty:
     break;
   case Decl::CXXConstructor:
     // Skip function templates
@@ -2956,7 +2973,7 @@ llvm::Constant *CodeGenModule::EmitUuidofInitializer(StringRef Uuid,
   const char *Uuidstr = Uuid.data();
   for (int i = 0; i < 36; ++i) {
     if (i == 8 || i == 13 || i == 18 || i == 23) assert(Uuidstr[i] == '-');
-    else                                         assert(isxdigit(Uuidstr[i]));
+    else                                         assert(isHexDigit(Uuidstr[i]));
   }
   
   llvm::APInt Field0(32, StringRef(Uuidstr     , 8), 16);

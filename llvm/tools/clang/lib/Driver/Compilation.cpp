@@ -111,7 +111,7 @@ static bool skipArg(const char *Flag, bool &SkipNextArg) {
   bool Res = llvm::StringSwitch<bool>(Flag)
     .Cases("-I", "-MF", "-MT", "-MQ", true)
     .Cases("-o", "-coverage-file", "-dependency-file", true)
-    .Cases("-fdebug-compilation-dir", "-fmodule-cache-path", "-idirafter", true)
+    .Cases("-fdebug-compilation-dir", "-idirafter", true)
     .Cases("-include", "-include-pch", "-internal-isystem", true)
     .Cases("-internal-externc-isystem", "-iprefix", "-iwithprefix", true)
     .Cases("-iwithprefixbefore", "-isysroot", "-isystem", "-iquote", true)
@@ -307,9 +307,36 @@ int Compilation::ExecuteCommand(const Command &C,
   return Res;
 }
 
+typedef SmallVectorImpl< std::pair<int, const Command *> > FailingCommandList;
+
+static bool ActionFailed(const Action *A,
+                         const FailingCommandList &FailingCommands) {
+
+  if (FailingCommands.empty())
+    return false;
+
+  for (FailingCommandList::const_iterator CI = FailingCommands.begin(),
+         CE = FailingCommands.end(); CI != CE; ++CI)
+    if (A == &(CI->second->getSource()))
+      return true;
+
+  for (Action::const_iterator AI = A->begin(), AE = A->end(); AI != AE; ++AI)
+    if (ActionFailed(*AI, FailingCommands))
+      return true;
+
+  return false;
+}
+
+static bool InputsOk(const Command &C,
+                     const FailingCommandList &FailingCommands) {
+  return !ActionFailed(&C.getSource(), FailingCommands);
+}
+
 void Compilation::ExecuteJob(const Job &J,
-    SmallVectorImpl< std::pair<int, const Command *> > &FailingCommands) const {
+                             FailingCommandList &FailingCommands) const {
   if (const Command *C = dyn_cast<Command>(&J)) {
+    if (!InputsOk(*C, FailingCommands))
+      return;
     const Command *FailingCommand = 0;
     if (int Res = ExecuteCommand(*C, FailingCommand))
       FailingCommands.push_back(std::make_pair(Res, FailingCommand));

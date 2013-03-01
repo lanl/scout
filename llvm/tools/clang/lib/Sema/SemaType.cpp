@@ -150,6 +150,10 @@ namespace {
       return declarator;
     }
 
+    bool isProcessingDeclSpec() const {
+      return chunkIndex == declarator.getNumTypeObjects();
+    }
+
     unsigned getCurrentChunkIndex() const {
       return chunkIndex;
     }
@@ -160,8 +164,7 @@ namespace {
     }
 
     AttributeList *&getCurrentAttrListRef() const {
-      assert(chunkIndex <= declarator.getNumTypeObjects());
-      if (chunkIndex == declarator.getNumTypeObjects())
+      if (isProcessingDeclSpec())
         return getMutableDeclSpec().getAttributes().getListRef();
       return declarator.getTypeObject(chunkIndex).getAttrListRef();
     }
@@ -302,6 +305,66 @@ static bool handleObjCPointerTypeAttr(TypeProcessingState &state,
   return handleObjCOwnershipTypeAttr(state, attr, type);
 }
 
+/// Given the index of a declarator chunk, check whether that chunk
+/// directly specifies the return type of a function and, if so, find
+/// an appropriate place for it.
+///
+/// \param i - a notional index which the search will start
+///   immediately inside
+static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
+                                                unsigned i) {
+  assert(i <= declarator.getNumTypeObjects());
+
+  DeclaratorChunk *result = 0;
+
+  // First, look inwards past parens for a function declarator.
+  for (; i != 0; --i) {
+    DeclaratorChunk &fnChunk = declarator.getTypeObject(i-1);
+    switch (fnChunk.Kind) {
+    case DeclaratorChunk::Paren:
+      continue;
+
+    // If we find anything except a function, bail out.
+    case DeclaratorChunk::Pointer:
+    case DeclaratorChunk::BlockPointer:
+    case DeclaratorChunk::Array:
+    case DeclaratorChunk::Reference:
+    case DeclaratorChunk::MemberPointer:
+      return result;
+
+    // If we do find a function declarator, scan inwards from that,
+    // looking for a block-pointer declarator.
+    case DeclaratorChunk::Function:
+      for (--i; i != 0; --i) {
+        DeclaratorChunk &blockChunk = declarator.getTypeObject(i-1);
+        switch (blockChunk.Kind) {
+        case DeclaratorChunk::Paren:
+        case DeclaratorChunk::Pointer:
+        case DeclaratorChunk::Array:
+        case DeclaratorChunk::Function:
+        case DeclaratorChunk::Reference:
+        case DeclaratorChunk::MemberPointer:
+          continue;
+        case DeclaratorChunk::BlockPointer:
+          result = &blockChunk;
+          goto continue_outer;
+        }
+        llvm_unreachable("bad declarator chunk kind");
+      }
+
+      // If we run out of declarators doing that, we're done.
+      return result;
+    }
+    llvm_unreachable("bad declarator chunk kind");
+
+    // Okay, reconsider from our new point.
+  continue_outer: ;
+  }
+
+  // Ran out of chunks, bail out.
+  return result;
+}
+
 /// Given that an objc_gc attribute was written somewhere on a
 /// declaration *other* than on the declarator itself (for which, use
 /// distributeObjCPointerTypeAttrFromDeclarator), and given that it
@@ -311,22 +374,44 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
                                           AttributeList &attr,
                                           QualType type) {
   Declarator &declarator = state.getDeclarator();
+
+  // Move it to the outermost normal or block pointer declarator.
   for (unsigned i = state.getCurrentChunkIndex(); i != 0; --i) {
     DeclaratorChunk &chunk = declarator.getTypeObject(i-1);
     switch (chunk.Kind) {
     case DeclaratorChunk::Pointer:
-    case DeclaratorChunk::BlockPointer:
+    case DeclaratorChunk::BlockPointer: {
+      // But don't move an ARC ownership attribute to the return type
+      // of a block.
+      DeclaratorChunk *destChunk = 0;
+      if (state.isProcessingDeclSpec() &&
+          attr.getKind() == AttributeList::AT_ObjCOwnership)
+        destChunk = maybeMovePastReturnType(declarator, i - 1);
+      if (!destChunk) destChunk = &chunk;
+
       moveAttrFromListToList(attr, state.getCurrentAttrListRef(),
-                             chunk.getAttrListRef());
+                             destChunk->getAttrListRef());
       return;
+    }
 
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::Array:
       continue;
 
+    // We may be starting at the return type of a block.
+    case DeclaratorChunk::Function:
+      if (state.isProcessingDeclSpec() &&
+          attr.getKind() == AttributeList::AT_ObjCOwnership) {
+        if (DeclaratorChunk *dest = maybeMovePastReturnType(declarator, i)) {
+          moveAttrFromListToList(attr, state.getCurrentAttrListRef(),
+                                 dest->getAttrListRef());
+          return;
+        }
+      }
+      goto error;
+
     // Don't walk through these.
     case DeclaratorChunk::Reference:
-    case DeclaratorChunk::Function:
     case DeclaratorChunk::MemberPointer:
       goto error;
     }
@@ -2650,6 +2735,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           // definition.
           S.Diag(FTI.ArgInfo[0].IdentLoc, diag::err_ident_list_in_fn_declaration);
           D.setInvalidType(true);
+          // Recover by creating a K&R-style function type.
+          T = Context.getFunctionNoProtoType(T);
           break;
         }
 
@@ -2712,6 +2799,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
                 S.Diag(Param->getLocation(),
                   diag::err_opencl_half_argument) << ArgTy;
                 D.setInvalidType();
+                Param->setInvalidDecl();
               }
             } else {
               S.Diag(Param->getLocation(),
@@ -2958,7 +3046,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           << T <<  D.getSourceRange();
         D.setEllipsisLoc(SourceLocation());
       } else {
-        T = Context.getPackExpansionType(T, llvm::Optional<unsigned>());
+        T = Context.getPackExpansionType(T, None);
       }
       break;
 
@@ -2972,7 +3060,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       // parameter packs in the type of the non-type template parameter, then
       // it expands those parameter packs.
       if (T->containsUnexpandedParameterPack())
-        T = Context.getPackExpansionType(T, llvm::Optional<unsigned>());
+        T = Context.getPackExpansionType(T, None);
       else
         S.Diag(D.getEllipsisLoc(),
                LangOpts.CPlusPlus11
@@ -3277,13 +3365,13 @@ namespace {
 
       TypeLoc OldTL = TInfo->getTypeLoc();
       if (TInfo->getType()->getAs<ElaboratedType>()) {
-        ElaboratedTypeLoc ElabTL = cast<ElaboratedTypeLoc>(OldTL);
-        TemplateSpecializationTypeLoc NamedTL =
-          cast<TemplateSpecializationTypeLoc>(ElabTL.getNamedTypeLoc());
+        ElaboratedTypeLoc ElabTL = OldTL.castAs<ElaboratedTypeLoc>();
+        TemplateSpecializationTypeLoc NamedTL = ElabTL.getNamedTypeLoc()
+            .castAs<TemplateSpecializationTypeLoc>();
         TL.copy(NamedTL);
       }
       else
-        TL.copy(cast<TemplateSpecializationTypeLoc>(OldTL));
+        TL.copy(OldTL.castAs<TemplateSpecializationTypeLoc>());
     }
     void VisitTypeOfExprTypeLoc(TypeOfExprTypeLoc TL) {
       assert(DS.getTypeSpecType() == DeclSpec::TST_typeofExpr);
@@ -3331,7 +3419,7 @@ namespace {
         TypeSourceInfo *TInfo = 0;
         Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
         if (TInfo) {
-          TL.copy(cast<ElaboratedTypeLoc>(TInfo->getTypeLoc()));
+          TL.copy(TInfo->getTypeLoc().castAs<ElaboratedTypeLoc>());
           return;
         }
       }
@@ -3347,7 +3435,7 @@ namespace {
       TypeSourceInfo *TInfo = 0;
       Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
       assert(TInfo);
-      TL.copy(cast<DependentNameTypeLoc>(TInfo->getTypeLoc()));
+      TL.copy(TInfo->getTypeLoc().castAs<DependentNameTypeLoc>());
     }
     void VisitDependentTemplateSpecializationTypeLoc(
                                  DependentTemplateSpecializationTypeLoc TL) {
@@ -3355,8 +3443,8 @@ namespace {
       TypeSourceInfo *TInfo = 0;
       Sema::GetTypeFromParser(DS.getRepAsType(), &TInfo);
       assert(TInfo);
-      TL.copy(cast<DependentTemplateSpecializationTypeLoc>(
-                TInfo->getTypeLoc()));
+      TL.copy(
+          TInfo->getTypeLoc().castAs<DependentTemplateSpecializationTypeLoc>());
     }
     void VisitTagTypeLoc(TagTypeLoc TL) {
       TL.setNameLoc(DS.getTypeSpecTypeNameLoc());
@@ -3417,7 +3505,7 @@ namespace {
       case NestedNameSpecifier::Identifier:
         assert(isa<DependentNameType>(ClsTy) && "Unexpected TypeLoc");
         {
-          DependentNameTypeLoc DNTLoc = cast<DependentNameTypeLoc>(ClsTL);
+          DependentNameTypeLoc DNTLoc = ClsTL.castAs<DependentNameTypeLoc>();
           DNTLoc.setElaboratedKeywordLoc(SourceLocation());
           DNTLoc.setQualifierLoc(NNSLoc.getPrefix());
           DNTLoc.setNameLoc(NNSLoc.getLocalBeginLoc());
@@ -3427,7 +3515,7 @@ namespace {
       case NestedNameSpecifier::TypeSpec:
       case NestedNameSpecifier::TypeSpecWithTemplate:
         if (isa<ElaboratedType>(ClsTy)) {
-          ElaboratedTypeLoc ETLoc = *cast<ElaboratedTypeLoc>(&ClsTL);
+          ElaboratedTypeLoc ETLoc = ClsTL.castAs<ElaboratedTypeLoc>();
           ETLoc.setElaboratedKeywordLoc(SourceLocation());
           ETLoc.setQualifierLoc(NNSLoc.getPrefix());
           TypeLoc NamedTL = ETLoc.getNamedTypeLoc();
@@ -3506,13 +3594,12 @@ Sema::GetTypeSourceInfoForDeclarator(Declarator &D, QualType T,
 
   // Handle parameter packs whose type is a pack expansion.
   if (isa<PackExpansionType>(T)) {
-    cast<PackExpansionTypeLoc>(CurrTL).setEllipsisLoc(D.getEllipsisLoc());
+    CurrTL.castAs<PackExpansionTypeLoc>().setEllipsisLoc(D.getEllipsisLoc());
     CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
   }
 
   for (unsigned i = 0, e = D.getNumTypeObjects(); i != e; ++i) {
-    while (isa<AttributedTypeLoc>(CurrTL)) {
-      AttributedTypeLoc TL = cast<AttributedTypeLoc>(CurrTL);
+    while (AttributedTypeLoc TL = CurrTL.getAs<AttributedTypeLoc>()) {
       fillAttributedTypeLoc(TL, D.getTypeObject(i).getAttrs());
       CurrTL = TL.getNextTypeLoc().getUnqualifiedLoc();
     }
@@ -3567,7 +3654,11 @@ TypeResult Sema::ActOnTypeName(Scope *S, Declarator &D) {
   // Make sure there are no unused decl attributes on the declarator.
   // We don't want to do this for ObjC parameters because we're going
   // to apply them to the actual parameter declaration.
-  if (D.getContext() != Declarator::ObjCParameterContext)
+  // Likewise, we don't want to do this for alias declarations, because
+  // we are actually going to build a declaration from this eventually.
+  if (D.getContext() != Declarator::ObjCParameterContext &&
+      D.getContext() != Declarator::AliasDeclContext &&
+      D.getContext() != Declarator::AliasTemplateContext)
     checkUnusedDeclAttributes(D);
 
   if (getLangOpts().CPlusPlus) {
@@ -3702,6 +3793,14 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
     } else if (!type->isObjCRetainableType()) {
       return false;
     }
+
+    // Don't accept an ownership attribute in the declspec if it would
+    // just be the return type of a block pointer.
+    if (state.isProcessingDeclSpec()) {
+      Declarator &D = state.getDeclarator();
+      if (maybeMovePastReturnType(D, D.getNumTypeObjects()))
+        return false;
+    }
   }
 
   Sema &S = state.getSema();
@@ -3808,10 +3907,8 @@ static bool handleObjCOwnershipTypeAttr(TypeProcessingState &state,
   // Forbid __weak for class objects marked as
   // objc_arc_weak_reference_unavailable
   if (lifetime == Qualifiers::OCL_Weak) {
-    QualType T = type;
-    while (const PointerType *ptr = T->getAs<PointerType>())
-      T = ptr->getPointeeType();
-    if (const ObjCObjectPointerType *ObjT = T->getAs<ObjCObjectPointerType>()) {
+    if (const ObjCObjectPointerType *ObjT =
+          type->getAs<ObjCObjectPointerType>()) {
       if (ObjCInterfaceDecl *Class = ObjT->getInterfaceDecl()) {
         if (Class->isArcWeakrefUnavailable()) {
             S.Diag(AttrLoc, diag::err_arc_unsupported_weak_class);

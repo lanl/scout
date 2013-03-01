@@ -1144,6 +1144,7 @@ void ASTStmtWriter::VisitCXXNamedCastExpr(CXXNamedCastExpr *E) {
   VisitExplicitCastExpr(E);
   Writer.AddSourceRange(SourceRange(E->getOperatorLoc(), E->getRParenLoc()),
                         Record);
+  Writer.AddSourceRange(E->getAngleBrackets(), Record);
 }
 
 void ASTStmtWriter::VisitCXXStaticCastExpr(CXXStaticCastExpr *E) {
