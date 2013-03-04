@@ -40,3 +40,6 @@ autoconf/autom4te.cache
 build
 # Avoid any xcode 's local build directory.
 xcode 
+# Avoid scout-local repo
+scout-local
+
