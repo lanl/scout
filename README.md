@@ -111,7 +111,7 @@ prior to invoking `make`.
 		$ export SC_BUILD_DIR=/the/path/to/the/build
                 
   * `SC_BUILD_CMAKE_FLAGS` -- (*Advanced*) This should primarily be used by those who have a detailed  
-    understanding of CMake and the configuration parameters within both Scout and LLMV.  The set of 
+    understanding of CMake and the configuration parameters within both Scout and LLVM.  The set of 
     provided flags will be passed to CMake as part of the configuration run.  Full details of this
     using this option are currently beyond the scope of this document.
 
