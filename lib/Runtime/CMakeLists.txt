@@ -161,7 +161,7 @@ if (SC_ENABLE_OPENGL)
 
   # Make sure the shaders actually compile before we pack
   # them into the runtime library for use.  We do this 
-  # using the 'glslcc' utility (in the toplevel level utils
+  # using the 'glsl-cc' utility (in the toplevel level tools
   # directory). 
   file(GLOB gl_vert_shaders opengl/glsl/*_vs.glsl) 
   set(GLSLCC    ${SC_BUILD_DIR}/tools/glsl-cc/glsl-cc)
