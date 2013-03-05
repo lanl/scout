@@ -52,7 +52,7 @@
 # 
 #   - The primary job of this Makefile is to run CMake for you.  If you
 #     prefer to run CMake manually you are free to do so (see details in
-#     the ReadMe.txt file).
+#     the ReadMe.md file).
 #
 # Enviornment variables:
 # 
