@@ -199,7 +199,7 @@ llvm-3.1:
 clean:
 	-@/bin/rm -rf $(build_dir)
 	-@/bin/rm -rf $(docs_build_dir)
-	-@/usr/bin/find ./sandbox -name build -exec rm -rf {} \;
+	-@(if test -d scout-local/sandbox; then /usr/bin/find ./scout-local/sandbox -name build -exec rm -rf {} \; ;fi)
 	-@/usr/bin/find . -name '*~' -exec rm -f {} \;
 	-@/usr/bin/find . -name '._*' -exec rm -f {} \;
 	-@/usr/bin/find . -name '.DS_Store' -exec rm -f {} \;
