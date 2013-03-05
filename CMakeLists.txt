@@ -163,11 +163,14 @@ project(Scout)
     #-----
     # Some optional parts of the build... 
     #
-    message(STATUS "scout: generating configuration file for sandbox.")
-    configure_file(
-      sandbox/SandboxConfig.cmake.in
-      ${CMAKE_SOURCE_DIR}/sandbox/SandboxConfig.cmake 
-      )
+    set(sandbox scout-local/sandbox)
+    if(EXISTS ${sandbox} AND IS_DIRECTORY ${sandbox}) 
+      message(STATUS "scout: generating configuration file for sandbox.")
+      configure_file(
+        ${sandbox}/SandboxConfig.cmake.in
+        ${CMAKE_SOURCE_DIR}/${sandbox}/SandboxConfig.cmake 
+        )
+    endif()
     #
     #-----
   #
