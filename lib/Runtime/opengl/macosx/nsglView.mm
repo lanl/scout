@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -55,6 +55,19 @@
 #include "scout/Runtime/opengl/macosx/nsglView.h"
 
 #include <OpenGL/gl.h>
+
+/* support older opengl versions */
+#ifndef NSOpenGLPFAOpenGLProfile
+#define NSOpenGLPFAOpenGLProfile 99
+#endif
+
+#ifndef NSOpenGLProfileVersionLegacy
+#define NSOpenGLProfileVersionLegacy 0x1000
+#endif
+
+#ifndef NSOpenGLProfileVersion3_2Core
+#define NSOpenGLProfileVersion3_2Core 0x3200
+#endif
 
 @implementation nsglView
 
