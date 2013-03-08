@@ -10,7 +10,9 @@
 #include <elf.h>
 
 #ifdef __APPLE__
-// to include for gl interop?
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/CGLDevice.h>
+#include <OpenCL/cl_gl_ext.h>
 #else
 #include <GL/glx.h>
 #include <CL/cl_gl.h>
