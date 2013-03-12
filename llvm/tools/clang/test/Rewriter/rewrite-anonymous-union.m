@@ -1,6 +1,5 @@
 // RUN: %clang_cc1 -rewrite-objc -fobjc-runtime=macosx-fragile-10.5  -o - %s
 // rdar://6948022
-// REQUIRES: scoutdisable
 
 typedef unsigned int uint32_t;
 

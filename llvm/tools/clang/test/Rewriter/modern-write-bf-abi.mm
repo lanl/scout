@@ -1,7 +1,7 @@
 // RUN: %clang_cc1 -x objective-c++ -Wno-return-type -fms-extensions -rewrite-objc %s -o %t-modern-rw.cpp
 // RUN: %clang_cc1 -fsyntax-only -Wno-address-of-temporary -D"Class=void*" -D"id=void*" -D"SEL=void*" -D"__declspec(X)=" %t-modern-rw.cpp
 // rdar://13138459
-// REQUIRES: scoutdisable
+
 // -Did="void*" -DSEL="void *" -DClass="void*"
 @interface NSMutableArray {
   id isa;

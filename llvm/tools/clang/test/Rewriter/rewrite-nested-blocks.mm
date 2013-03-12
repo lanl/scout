@@ -3,7 +3,6 @@
 // RUN: %clang_cc1 -x objective-c++ -Wno-return-type -fblocks -fms-extensions -rewrite-objc %s -o %t-modern-rw.cpp
 // RUN: %clang_cc1 -fsyntax-only -Wno-address-of-temporary -D"SEL=void*" -D"__declspec(X)=" %t-modern-rw.cpp
 // radar 7682149
-// REQUIRES: scoutdisable
 
 typedef unsigned long size_t;
 void f(void (^block)(void));
