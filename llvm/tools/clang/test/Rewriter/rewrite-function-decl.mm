@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fms-extensions -rewrite-objc -fobjc-runtime=macosx-fragile-10.5 -x objective-c++ -fblocks -o - %s
-// REQUIRES: scoutdisable
 
 extern "C" __declspec(dllexport) void BreakTheRewriter(void) {
         __apple_block int aBlockVariable = 0;

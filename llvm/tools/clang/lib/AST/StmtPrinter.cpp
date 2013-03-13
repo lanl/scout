@@ -11,7 +11,6 @@
 // pretty print the AST back out to C code.
 //
 //===----------------------------------------------------------------------===//
-
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
@@ -928,17 +927,17 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
 
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
-  ValueDecl* d = dr->getDecl();
-  QualType qt = d->getType();
   bool isMeshType = false;
-  if(isa<MeshType>(qt.getCanonicalType().getTypePtr())) {
-    isMeshType = true;
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase());
+  if (dr) {
+    ValueDecl* d = dr->getDecl();
+    QualType qt = d->getType();
+    if(isa<MeshType>(qt.getCanonicalType().getTypePtr())) {
+      isMeshType = true;
+    }
   }
-
   if (!isMeshType)
     PrintExpr(Node->getBase());
-
 
   MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
   FieldDecl  *ParentDecl   = ParentMember
