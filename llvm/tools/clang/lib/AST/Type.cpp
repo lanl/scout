@@ -2263,6 +2263,13 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
     return computeLinkageInfo(cast<ObjCObjectPointerType>(T)->getPointeeType());
   case Type::Atomic:
     return computeLinkageInfo(cast<AtomicType>(T)->getValueType());
+
+  //scout
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
+    return LinkageInfo::external();
   }
 
   llvm_unreachable("unhandled type class");

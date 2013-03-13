@@ -3447,6 +3447,9 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
             case FieldDecl::FieldEdges:
               UM->addEdgeField(FDecl);
               break;
+            case FieldDecl::FieldAll:
+            case FieldDecl::FieldNone:
+              break;
           }
         }
       }

@@ -221,10 +221,9 @@ public:
     FixToTemporaries(false), ARCMTMigrateEmitARCErrors(false),
     SkipFunctionBodies(false), UseGlobalModuleIndex(true),
     GenerateGlobalModuleIndex(true),
+    ViewAST(false), //scout
     ARCMTAction(ARCMT_None), ObjCMTAction(ObjCMT_None),
     ProgramAction(frontend::ParseSyntaxOnly)
-    // scout
-    ,ViewAST(false)
   {}
 
   /// getInputKindForExtension - Return the appropriate input kind for a file

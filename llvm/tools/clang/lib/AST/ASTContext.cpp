@@ -5101,6 +5101,29 @@ static char getObjCEncodingForPrimitiveKind(const ASTContext *C,
     case BuiltinType::KIND:
 #include "clang/AST/BuiltinTypes.def"
       llvm_unreachable("invalid builtin type for @encode");
+    //scout
+    case BuiltinType::Bool2:
+    case BuiltinType::Bool3:
+    case BuiltinType::Bool4:
+    case BuiltinType::Char2:
+    case BuiltinType::Char3:
+    case BuiltinType::Char4:
+    case BuiltinType::Short2:
+    case BuiltinType::Short3:
+    case BuiltinType::Short4:
+    case BuiltinType::Int2:
+    case BuiltinType::Int3:
+    case BuiltinType::Int4:
+    case BuiltinType::Long2:
+    case BuiltinType::Long3:
+    case BuiltinType::Long4:
+    case BuiltinType::Float2:
+    case BuiltinType::Float3:
+    case BuiltinType::Float4:
+    case BuiltinType::Double2:
+    case BuiltinType::Double3:
+    case BuiltinType::Double4:
+      llvm_unreachable("invalid builtin type for scout type");
     }
     llvm_unreachable("invalid BuiltinType::Kind value");
 }
@@ -5503,6 +5526,12 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   case Type::KIND:
 #include "clang/AST/TypeNodes.def"
     llvm_unreachable("@encode for dependent type!");
+  //scout
+  case Type::UniformMesh:
+  case Type::StructuredMesh:
+  case Type::RectlinearMesh:
+  case Type::UnstructuredMesh:
+    return;
   }
   llvm_unreachable("bad type kind!");
 }
