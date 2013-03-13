@@ -3352,8 +3352,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
     llvm::Value *mul   = Builder.CreateMul(dims[0], dims[1]);
     llvm::Value *div4  = Builder.CreateUDiv(idx, mul);
     llvm::Value *rem5  = Builder.CreateURem(div4, dims[2]);
-    llvm::Value *fac   = Builder.CreateShl(vals[2], llvm::ConstantInt::get(Int32Ty, 1));
-    llvm::Value *add7  = Builder.CreateAdd(fac, rem5);
+    llvm::Value *add7  = Builder.CreateAdd(vals[2], rem5);
     llvm::Value *rem8  = Builder.CreateURem(add7, dims[2]);
     llvm::Value *mul12 = Builder.CreateMul(rem8, dims[1]);
     llvm::Value *tmp   = Builder.CreateAdd(mul12, rem3);

@@ -1471,8 +1471,9 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
                                            "__sc_end_renderall", 
                                            &CGM.getModule());
   }
+
   Builder.CreateCall(endRendFunc, Args);
-  
+ /* 
   llvm::Function *delRendFunc = CGM.getModule().getFunction("__sc_delete_renderall");
   
   if(!delRendFunc){
@@ -1489,7 +1490,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
                                            &CGM.getModule());
   }
   Builder.CreateCall(delRendFunc, Args);
-
+*/
 
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());

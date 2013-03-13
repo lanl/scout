@@ -160,12 +160,13 @@ namespace scout
     _renderable->addVolume(dataptr, volumenum);
   }
 
-
   void volume_renderall::begin()
   {
     // TO DO:  clear previous data in _renderable's block first
 
-    if (_id == _root) glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (_id == _root) {
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
 
   }
 
@@ -173,7 +174,7 @@ namespace scout
   void volume_renderall::end()
   {
 
-    exec();
+    exec();  // calls draw, which calls render
 
     // show what we just drew
     if (_id == _root) {
@@ -216,11 +217,8 @@ void __sc_init_volume_renderall(
     // hardwire process dims to 1 1 1 for now
     if (!flag) {
       stop_mpi_after = true;
-      int argc = 4;
-      char argv[4][100];
-      strcpy(argv[1], "1");
-      strcpy(argv[2], "1");
-      strcpy(argv[3], "1");
+      int argc = 1;
+      char argv;
       MPI_Init(&argc, (char***)&argv);
       procdims[0] = 1;
       procdims[1] = 1;
@@ -233,7 +231,7 @@ void __sc_init_volume_renderall(
 
     __sc_renderall = new volume_renderall(meshsizex, meshsizey, meshsizez,
         win_width, win_height, camera, trans_func, 0, agcomm, stop_mpi_after);
-  }
+  } 
 }
 
 
