@@ -2,6 +2,5 @@
 // RUN: %clang_cc1 -ast-print %s
 // RUN: %clang_cc1 -ast-dump %s
 // RUN: %clang_cc1 -print-decl-contexts %s
-// REQUIRES: scoutdisable
 
 #include "c-language-features.inc"
