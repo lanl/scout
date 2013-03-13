@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wno-objc-root-class %s
-// REQUIRES: scoutdisable
 
 @interface Sprite { // expected-note{{'Sprite' declared here}}
   int sprite, spree;

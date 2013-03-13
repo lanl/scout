@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -verify -Wunused -Wused-but-marked-unused -Wunused-parameter -Wunused -fsyntax-only %s
-// REQUIRES: scoutdisable
 
 static void (*fp0)(void) __attribute__((unused));
 

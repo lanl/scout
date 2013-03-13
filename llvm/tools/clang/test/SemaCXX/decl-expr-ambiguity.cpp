@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -Wno-int-to-pointer-cast -fsyntax-only -verify -pedantic-errors %s
-// REQUIRES: scoutdisable
 
 void f() {
   int a;
