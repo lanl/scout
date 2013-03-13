@@ -11,7 +11,6 @@
 // pretty print the AST back out to C code.
 //
 //===----------------------------------------------------------------------===//
-#include <iostream>
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
