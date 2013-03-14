@@ -1432,7 +1432,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
             
       llvm::CallInst* CI =
       Builder.CreateCall2(addVolFunc, meshField, volumeNum);
-      
+      (void)CI; //suppress warning 
       ++fieldcount;
     }
   }

@@ -397,8 +397,10 @@ void CudaDriver::create(Function *func,
 
 void CudaDriver::initialize() {
   StringRef name = "cudaCreate";
-  if(Function *func = _module.getFunction(name)) return;
-
+  if(Function *func = _module.getFunction(name)) { 
+    (void)func; //suppress warning
+    return;
+  }
   std::vector< Type * > types;
   Function *init = Function::Create(FunctionType::get(voidTy, types, false),
                                     GlobalValue::ExternalLinkage,

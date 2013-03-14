@@ -2567,6 +2567,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         
         if(const ArrayType* at = 
            dyn_cast<ArrayType>(fd->getType().getTypePtr())){
+            (void)at; //suppress warning;
         }
         else{
           Diag(Tok, diag::err_not_array_renderall_elements);
