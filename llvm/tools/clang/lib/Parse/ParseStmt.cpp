@@ -251,7 +251,7 @@ Retry:
               dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
             assert(mt);
                 
-            UniformMeshType* mdt = new UniformMeshType(mt->getDecl());
+            UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
             mdt->setDimensions(dims);
             vd->setType(QualType(mdt, 0));
                 
