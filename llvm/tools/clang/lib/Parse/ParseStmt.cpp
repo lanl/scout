@@ -171,97 +171,99 @@ Retry:
       }
     }
     
-    Sema::NameClassification Classification
-      = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false);
-    if(Classification.getKind() == Sema::NC_Type &&
-       isScoutLang() && Actions.isScoutSource(Tok.getLocation())){
-      QualType qt = Sema::GetTypeFromParser(Classification.getType());
-          
-      if(qt->getAs<MeshType>() &&
-         GetLookAheadToken(1).is(tok::identifier)){
+    if (isScoutLang()) {
+      Sema::NameClassification Classification
+        = Actions.ClassifyName(getCurScope(), SS, Name, NameLoc, Next, false);
+      if(Classification.getKind() == Sema::NC_Type &&
+          Actions.isScoutSource(Tok.getLocation())){
+        QualType qt = Sema::GetTypeFromParser(Classification.getType());
             
-        if(GetLookAheadToken(2).is(tok::l_square)){
+        if(qt->getAs<MeshType>() &&
+           GetLookAheadToken(1).is(tok::identifier)){
               
-          std::string meshType = TokToStr(Tok);
-          ConsumeToken();
-          std::string meshName = TokToStr(Tok);
-          ConsumeToken();
+          if(GetLookAheadToken(2).is(tok::l_square)){
+
+            std::string meshType = TokToStr(Tok);
+            ConsumeToken();
+            std::string meshName = TokToStr(Tok);
+            ConsumeToken();
+
+            // parse mesh dimensions, e.g: [512,512]
+
+            MeshType::MeshDimensionVec dims;
+
+            ConsumeBracket();
+
+            ExprResult NumElements;
+
+            for(;;){
+              if(Tok.is(tok::numeric_constant)) {
+                dims.push_back(Actions.ActOnNumericConstant(Tok).get());
+                ConsumeToken();
+              } else if (Tok.isNot(tok::r_square)) {
+                NumElements = ParseConstantExpression(); // consumes it too
               
-          // parse mesh dimensions, e.g: [512,512]
-              
-          MeshType::MeshDimensionVec dims;
-              
-          ConsumeBracket();
-          
-          ExprResult NumElements;
-          
-          for(;;){
-            if(Tok.is(tok::numeric_constant)) {
-              dims.push_back(Actions.ActOnNumericConstant(Tok).get());
-              ConsumeToken();
-            } else if (Tok.isNot(tok::r_square)) {
-              NumElements = ParseConstantExpression(); // consumes it too
-            
-              // If there was an error parsing the assignment-expression, recover.
-              // Maybe should print a diagnostic, tho.
-              if (NumElements.isInvalid()) {
-                // If the expression was invalid, skip it.
-                SkipUntil(tok::r_square);
+                // If there was an error parsing the assignment-expression, recover.
+                // Maybe should print a diagnostic, tho.
+                if (NumElements.isInvalid()) {
+                  // If the expression was invalid, skip it.
+                  SkipUntil(tok::r_square);
+                  return StmtError();
+                }
+                dims.push_back(NumElements.get());
+              }
+
+              if(Tok.is(tok::r_square)){
+                break;
+              }
+
+              if(Tok.is(tok::eof)){
+                Diag(Tok, diag::err_expected_lsquare);
                 return StmtError();
               }
-              dims.push_back(NumElements.get());
-            }
-                
-            if(Tok.is(tok::r_square)){
-              break;
-            }
-                
-            if(Tok.is(tok::eof)){
-              Diag(Tok, diag::err_expected_lsquare);
-              return StmtError();
-            }
-                
-            if(Tok.isNot(tok::comma)){
-              Diag(Tok, diag::err_expected_comma);
-              SkipUntil(tok::r_square);
-              SkipUntil(tok::semi);
-              return StmtError();
-            }
-                
-            ConsumeToken();
-          }
-              
-          ConsumeBracket();
-              
-          InsertCPPCode(meshType + " " + meshName, NameLoc);
 
-          DeclaringMesh = true;
-          StmtResult result = ParseStatementOrDeclaration(Stmts, OnlyStatement);
-              
-          DeclaringMesh = false;
-              
-          DeclStmt* ds = dyn_cast<DeclStmt>(result.get());
-          assert(ds->isSingleDecl());
-              
-          VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
-          assert(vd);
-              
-          const UniformMeshType* mt =
-            dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
-          assert(mt);
-              
-          UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
-          mdt->setDimensions(dims);
-          vd->setType(QualType(mdt, 0));
-              
-          return result;
-        }
-        else if(!DeclaringMesh){
-          Diag(Tok, diag::err_expected_lsquare);
-              
-          SkipUntil(tok::r_square);
-          SkipUntil(tok::semi);
-          return StmtError();
+              if(Tok.isNot(tok::comma)){
+                Diag(Tok, diag::err_expected_comma);
+                SkipUntil(tok::r_square);
+                SkipUntil(tok::semi);
+                return StmtError();
+              }
+
+              ConsumeToken();
+            }
+                
+            ConsumeBracket();
+
+            InsertCPPCode(meshType + " " + meshName, NameLoc);
+
+            DeclaringMesh = true;
+            StmtResult result = ParseStatementOrDeclaration(Stmts, OnlyStatement);
+
+            DeclaringMesh = false;
+
+            DeclStmt* ds = dyn_cast<DeclStmt>(result.get());
+            assert(ds->isSingleDecl());
+
+            VarDecl* vd = dyn_cast<VarDecl>(ds->getSingleDecl());
+            assert(vd);
+
+            const UniformMeshType* mt =
+              dyn_cast<UniformMeshType>(vd->getType().getCanonicalType().getTypePtr());
+            assert(mt);
+                
+            UniformMeshType* mdt = const_cast<UniformMeshType*>(mt);
+            mdt->setDimensions(dims);
+            vd->setType(QualType(mdt, 0));
+                
+            return result;
+          }
+          else if(!DeclaringMesh){
+            Diag(Tok, diag::err_expected_lsquare);
+                
+            SkipUntil(tok::r_square);
+            SkipUntil(tok::semi);
+            return StmtError();
+          }
         }
       }
     }
@@ -2565,6 +2567,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         
         if(const ArrayType* at = 
            dyn_cast<ArrayType>(fd->getType().getTypePtr())){
+            (void)at; //suppress warning;
         }
         else{
           Diag(Tok, diag::err_not_array_renderall_elements);
@@ -2782,6 +2785,9 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
           break;
         case ForAllStmt::Vertices:
           Diag(ForAllLoc, diag::warn_no_vertices_fields_forall);
+          break;
+        case ForAllStmt::ElementSpheres:
+        case ForAllStmt::Array:
           break;
       }
     }
