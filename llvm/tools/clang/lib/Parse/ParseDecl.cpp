@@ -6144,6 +6144,7 @@ Parser::ParseWindowOrImageDeclaration(bool window,
 
     IdentifierInfo* Arg = Tok.getIdentifierInfo();
     SourceLocation ArgLoc = ConsumeToken();
+    (void)ArgLoc; //suppress warning    
 
     if(Tok.isNot(tok::equal)){
       Diag(Tok, diag::err_expected_equal_after) << Arg->getName();
@@ -6317,6 +6318,7 @@ Parser::ParseCameraDeclaration(StmtVector &Stmts,
 
     IdentifierInfo* Arg = Tok.getIdentifierInfo();
     SourceLocation ArgLoc = ConsumeToken();
+    (void)ArgLoc; //suppress warning    
 
     if(Tok.isNot(tok::equal)){
       Diag(Tok, diag::err_expected_equal_after) << Arg->getName();

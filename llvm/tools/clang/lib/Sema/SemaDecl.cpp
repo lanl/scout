@@ -11979,6 +11979,7 @@ bool Sema::IsValidMeshField(FieldDecl* FD){
 bool Sema::IsValidDeclInMesh(Decl* D){
   if(MeshDecl* MD = dyn_cast<MeshDecl>(D)){
     MeshDecl::field_iterator itr = MD->field_begin();
+    (void)itr; //suppress warning
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itrEnd = MD->field_end(); itr != itrEnd; ++itr){
       FieldDecl* FD = *itr;
@@ -11989,6 +11990,7 @@ bool Sema::IsValidDeclInMesh(Decl* D){
   }
   else if(RecordDecl* RD = dyn_cast<RecordDecl>(D)){
     RecordDecl::field_iterator itr = RD->field_begin();
+    (void)itr; //suppress warning
     for(RecordDecl::field_iterator itr = RD->field_begin(),
         itrEnd = RD->field_end(); itr != itrEnd; ++itr){
       FieldDecl* FD = *itr;
