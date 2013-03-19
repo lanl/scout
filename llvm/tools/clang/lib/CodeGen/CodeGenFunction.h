@@ -34,6 +34,11 @@
 
 // scout
 #include <map>
+#ifdef SC_32BIT
+#define SC_MANGLED_NEW "_Znaj"
+#else
+#define SC_MANGLED_NEW "_Znam"
+#endif
 
 namespace llvm {
   class BasicBlock;
@@ -2221,12 +2226,12 @@ public:
   llvm::Value *CreateMemAlloc(uint64_t numElts) {
     llvm::Function *namF;
 
-    if(!CGM.getModule().getFunction("_Znam")) {
+    if(!CGM.getModule().getFunction(SC_MANGLED_NEW)) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "_Znam", &CGM.getModule());
+                                    SC_MANGLED_NEW, &CGM.getModule());
     } else {
-      namF = CGM.getModule().getFunction("_Znam");
+      namF = CGM.getModule().getFunction(SC_MANGLED_NEW);
     }
 
     llvm::CallInst *call =
@@ -2238,12 +2243,12 @@ public:
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue) {
     llvm::Function *namF;
 
-    if(!CGM.getModule().getFunction("_Znam")) {
+    if(!CGM.getModule().getFunction(SC_MANGLED_NEW)) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "_Znam", &CGM.getModule());
+                                    SC_MANGLED_NEW, &CGM.getModule());
     } else {
-      namF = CGM.getModule().getFunction("_Znam");
+      namF = CGM.getModule().getFunction(SC_MANGLED_NEW);
     }
 
     llvm::CallInst *call =
