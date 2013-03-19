@@ -2967,6 +2967,7 @@ Parser::ParseForAllShortStatement(IdentifierInfo* Name,
 
   IdentifierInfo* FieldName = Tok.getIdentifierInfo();
   SourceLocation FieldLoc = ConsumeToken();
+  (void)FieldLoc; //suppress warning
 
   Expr* XStart = 0;
   Expr* XEnd = 0;

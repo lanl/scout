@@ -1154,6 +1154,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
+  (void)meshName; //supress warning
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
@@ -1355,7 +1356,8 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   MeshMembers.clear();
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  
+  (void)meshName; //supress warning 
+ 
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   const MeshDecl *MD = MT->getDecl();  
