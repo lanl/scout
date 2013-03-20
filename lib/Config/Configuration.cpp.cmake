@@ -1,7 +1,7 @@
 /*
  *	
  *###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -107,7 +107,6 @@ namespace scout {
       #endif
 
       #ifdef SC_ENABLE_MPI 
-      "-I${MPI_C_INCLUDE_PATH}",
       "-I${MPI_CXX_INCLUDE_PATH}",
       #endif
       #ifdef SC_ENABLE_PNG
@@ -143,14 +142,9 @@ namespace scout {
 
       #ifdef SC_ENABLE_MPI
       // Note MPI includes compiler flags in dirs string.       
-      "${MPI_C_LINK_DIRS}",
       "${MPI_CXX_LINK_DIRS}",
       #endif
     
-      #ifdef SC_ENABLE_PNG
-      "-L${PNG_LIBRARY_DIR}",
-      #endif
-
       0 // mark end of library paths.
     };
   
@@ -185,7 +179,6 @@ namespace scout {
         #ifdef APPLE 
         "-framework OpenCL", 
         #else
-        //"-lamdocl64", //dpx test 
         "${OPENCL_LIBRARIES}",
         #endif
       #endif
@@ -195,11 +188,10 @@ namespace scout {
       #endif
 
       #ifdef SC_ENABLE_THREADS
-      "${CMAKE_THREAD_LIBS_INIT}",
+      "${CMAKE_THREAD_LIBS_INIT}", 
       #endif
 
       #ifdef SC_ENABLE_MPI
-      "${MPI_C_LINK_LIBS}", 
       "${MPI_CXX_LINK_LIBS}",
       #endif
     
