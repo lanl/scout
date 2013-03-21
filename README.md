@@ -7,8 +7,8 @@ The license is BSD-like with a "modifications must be indicated" clause. See the
 **NOTE**: Scout is still very much a *work-in-progress* and the documentation and source are both 
 under active development.  We use Linux-based systems and Mac OS X 10.8.X as our primary software 
 development platforms with a range of supported GPU architectures.  For CPU architectures we 
-primarily support x86 systems but have recently started working on providing support on ARM-based
-platforms. More details on specific hardware support is included below. 
+primarily support x86 systems but have recently added support for ARM-based platforms. More details 
+on specific hardware support is included below. 
 
 ## Requirements 
 
@@ -28,9 +28,9 @@ each of these packages.*
 several varieties of Linux-based distributions.  A list of Linux releases that we monitor as part of 
 our continuous integration development process are listed below: 
 
-  * [Scientific Linux 6.1](https://www.scientificlinux.org)
-  * [Linux Mint 13 & 14](http://linuxmint.org)
-  * [Ubuntu 12.0.4](http://www.ubuntu.com)
+  * [Scientific Linux 6.2](https://www.scientificlinux.org)
+  * [Fedora Core 17](http://fedoraproject.org)
+  * [Ubuntu 12.04](http://www.ubuntu.com)
 
 Each of these platforms requires the installation of additional software development packages and 
 libraries.  This can be achieved used either the various software package management systems on 
@@ -78,7 +78,7 @@ install location for these packages you can set the following environment variab
 the build (more details below):
 
   * `SDL_DIR=/path/to/sdl/install`
-  * `CUDA_PATH=/path/to/cuda/install`
+  * `CUDA_DIR=/path/to/cuda/install`
   
 ### Building From Source 
 In the top-level directory of the source code there is a `Makefile` that will automate the process 
