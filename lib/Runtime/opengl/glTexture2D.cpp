@@ -23,7 +23,7 @@ using namespace scout;
 // ..... glTexture2D
 //
 glTexture2D::glTexture2D(GLsizei w, GLsizei h)
-    : glTexture(GL_TEXTURE_2D, GL_RGBA32F_ARB, GL_RGBA, GL_FLOAT)
+    : glTexture(GL_TEXTURE_2D, SC_GL_IFORMAT, GL_RGBA, GL_FLOAT)
 {
   _width   = w;
   _height  = h;

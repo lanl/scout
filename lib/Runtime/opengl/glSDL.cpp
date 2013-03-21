@@ -64,8 +64,10 @@ glSDL::glSDL(size_t width, size_t height, glCamera* camera)
   SDL_GL_SetAttribute(SDL_GL_ACCUM_BLUE_SIZE, 8);
   SDL_GL_SetAttribute(SDL_GL_ACCUM_ALPHA_SIZE, 8);
 
+#ifndef SC_CHROMEBOOK
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
   SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
+#endif
 
   resize(width, height);
   initialize();

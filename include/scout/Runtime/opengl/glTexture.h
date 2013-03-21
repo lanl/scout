@@ -14,6 +14,12 @@
 
 #include "scout/Runtime/opengl/glTextureParamter.h"
 
+#ifdef SC_CHROMEBOOK
+#define SC_GL_IFORMAT GL_RGBA
+#else
+#define SC_GL_IFORMAT GL_RGBA32F_ARB
+#endif
+
 namespace scout
 {
   

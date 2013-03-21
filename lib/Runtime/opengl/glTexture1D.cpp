@@ -22,7 +22,7 @@ using namespace scout;
 // ----- glTexture1D
 //
 glTexture1D::glTexture1D(GLsizei width) 
-    : glTexture(GL_TEXTURE_1D, GL_RGBA32F_ARB, GL_RGBA, GL_FLOAT)
+    : glTexture(GL_TEXTURE_1D, SC_GL_IFORMAT, GL_RGBA, GL_FLOAT)
 {
   _width   = width;
 }
