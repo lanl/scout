@@ -232,7 +232,7 @@ if (SC_ENABLE_OPENGL)
       OUTPUT ${SC_BUILD_DIR}/include/${name}.h
       COMMAND ${GLSL2STR} 
         --in      ${shader} 
-	--out     ${SC_BUILD_DIR}/include/${name}.h 
+        --out     ${SC_BUILD_DIR}/include/${name}.h 
         --varname ${name}
       DEPENDS ${GLSL2STR} ${shader}
       )
