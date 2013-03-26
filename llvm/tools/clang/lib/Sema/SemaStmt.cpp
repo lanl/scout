@@ -3370,6 +3370,7 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
   }
 
   UniformMeshDecl* MD = cast<UniformMeshType>(T)->getDecl();
+  (void)MD; //suppress warning
 
   MeshType::InstanceType IT;
   switch(VariableType){
@@ -3478,6 +3479,7 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
   }
 
   UniformMeshDecl* MD = cast<UniformMeshType>(T)->getDecl();
+  (void)MD; //suppress warning
 
   MeshType::InstanceType IT;
   switch(VariableType){
