@@ -65,12 +65,6 @@
 using namespace std;
 using namespace scout;
 
-// ------  LLVM - globals accessed by LLVM / CUDA driver
-
-float4* __sc_renderall_uniform_colors;
-
-// -------------
-
 extern glSDL* __sc_glsdl;
 extern size_t __sc_initial_width;
 extern size_t __sc_initial_height;

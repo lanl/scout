@@ -59,6 +59,7 @@
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/renderall/renderall_uniform_.h"
 
+//todo remove
 using namespace scout;
 extern float4* __sc_renderall_uniform_colors;
 

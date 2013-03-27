@@ -54,15 +54,72 @@
 
 #ifndef __SC_DEVICE_LIST__H__
 #define __SC_DEVICE_LIST__H__
-
+#include <iostream> //dpx debug
 #include <list>
 
 #include "scout/Runtime/Device.h"
 
 namespace scout {
+  typedef std::list<Device*> Devices;
 
-  typedef std::list<Device*> DeviceList;
+  class DeviceList {
+  public:
+    DeviceList() {
+      hasCuda = false;
+      hasOpenCL = false;
+    }
 
+    ~DeviceList() {
+       Devices::iterator it = devices.begin();
+       while(it != devices.end()) {
+         delete *it;
+         ++it;
+       }
+    }
+
+    bool hasCudaDevice() {
+      return hasCuda;
+    }
+
+    bool hasOpenCLDevice() {
+      return hasOpenCL;
+    }
+
+    void push(Device* dev) {
+      devices.push_back(dev);
+      if (dev->type() ==  ScoutGPUCUDA) {
+        hasCuda = true;
+        std::cout << "added cuda device\n";
+      }
+      if (dev->type() ==  ScoutGPUOpenCL) {
+        hasOpenCL = true;
+        std::cout << "added opencl device\n";
+      }
+
+    }
+
+    /*
+    bool findCudaDevice() {
+      Devices::iterator it = devices.begin();
+      while(it != devices.end()) {
+        if ((*it)->type() == ScoutGPUCUDA) {
+          std::cout << "found cuda device\n";
+          return true;
+        }
+      }
+      return false;
+    }
+    */
+
+  private:
+   Devices devices;
+   bool hasCuda;
+   bool hasOpenCL;
+  };
 }
+
+// global defined in lib/Runtime/scout
+// todo: singleton
+extern scout::DeviceList DevList;
 
 #endif

@@ -93,6 +93,10 @@ namespace scout {
       return deviceName;
     }
 
+    ScoutDeviceType type() const {
+      return deviceType;
+    }
+
     /**
      * Determine if the device was successfully created and
      * initialized.
@@ -112,7 +116,7 @@ namespace scout {
    * We keep a list of all devices around for our use.  This is just
    * some nice shorthand to avoid dealing with template syntax...
    */
-  typedef std::list<Device*> DeviceList;
+  typedef std::list<Device*> Devices;
 }
 
 #endif

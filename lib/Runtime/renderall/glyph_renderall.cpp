@@ -55,15 +55,10 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/types.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/glyph_renderall.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
-#include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/types.h"
-
-// ------  LLVM - globals accessed by LLVM / CUDA driver
-glyph_vertex* __sc_glyph_renderall_vertex_data;
 
 extern glSDL* __sc_glsdl;
 extern size_t __sc_initial_width;

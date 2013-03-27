@@ -62,7 +62,6 @@
 
 using namespace scout;
 cl_mem __sc_opencl_device_renderall_uniform_colors;
-extern float4* __sc_renderall_uniform_colors;
 
 namespace scout{
 

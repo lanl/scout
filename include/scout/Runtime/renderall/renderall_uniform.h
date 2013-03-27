@@ -54,7 +54,10 @@
 #include <cstdlib>
 
 #include "scout/Runtime/renderall/renderall_base.h"
-#include "scout/Runtime/vec_types.h"
+#include "scout/Runtime/types.h"
+
+// global defined in lib/Runtime/scout.cpp
+extern scout::float4* __sc_renderall_uniform_colors;
 
 namespace scout{
 

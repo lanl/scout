@@ -4,10 +4,14 @@
 #include <cassert>
 
 #include "scout/Config/defs.h"
-
-#ifdef SC_ENABLE_OPENGL
+#include "scout/Runtime/Device.h"
+#include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/opengl/opengl.h"
-#endif
+#include "scout/Runtime/opengl/glyph_vertex.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/gpu.h"
+#include "scout/Runtime/cpu/CpuInitialization.h"
+#include "scout/Runtime/init_mac.h"
 
 #ifdef SC_ENABLE_CUDA
 #include "scout/Runtime/cuda/CudaInitialization.h"
@@ -18,12 +22,6 @@
 #ifdef SC_ENABLE_OPENCL
 #include "scout/Runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
-#include "scout/Runtime/gpu.h"
-#include "scout/Runtime/cpu/CpuInitialization.h"
-#include "scout/Runtime/init_mac.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/Device.h"
-#include "scout/Runtime/DeviceList.h"
 
 
 using namespace std;
@@ -33,6 +31,11 @@ DeviceList DevList;
 glSDL* __sc_glsdl = 0;
 size_t __sc_initial_width = 768;
 size_t __sc_initial_height = 768;
+
+//globals accessed by llvm/tools/clang/lib/CodeGen/CGStmt.cpp
+scout::float4* __sc_renderall_uniform_colors;
+glyph_vertex* __sc_glyph_renderall_vertex_data;
+// -------------
 
 #ifdef SC_ENABLE_MPI
 #include <mpi.h>
@@ -239,11 +242,13 @@ void __sc_init(ScoutDeviceType devType){
 
 void __sc_end(){
   // Destroy all devices.
-  DeviceList::iterator it = DevList.begin();
-  while(it != DevList.end()) {
+  /*
+  Devices::iterator it = DevList.devices.begin();
+  while(it != DevList.devices.end()) {
     delete *it;
     ++it;
   }
+  */
 }
 
 double cshift(double a, int dx, int axis){
