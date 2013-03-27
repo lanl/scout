@@ -61,32 +61,33 @@
 #include <cuda.h>
 #include <cudaGL.h>
 #include "scout/Runtime/DeviceList.h"
-#include "scout/Runtime/cuda/CudaDevice.h" //has __sc_cuda_device_resource 
 #include "scout/Runtime/renderall/renderall_uniform_.h"
 
-// global accessed by lib/Compiler/llvm/Transforms/Driver/CudaDriver.cpp
-CUdeviceptr __sc_cuda_device_renderall_uniform_colors;
+// global in lib/Runtime/CudaRuntime.cpp
+extern CUgraphicsResource __sc_cuda_device_resource;
 
 namespace scout{
 
   void renderall_uniform_rt_::register_pbo(GLuint pbo) {
-    if(DevList.hasCudaDevice()) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
       assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
           pbo,
           CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) == CUDA_SUCCESS);
     } else {
-      std::cout << "no cuda using SDL\n";
+      //std::cout << "no cuda using SDL\n";
     }
   }
 
   void renderall_uniform_rt_::map_gpu_resources(void) {
-    if(DevList.hasCudaDevice()) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
     // map one graphics resource for access by CUDA
       assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
       size_t bytes;
              // return a pointer by which the mapped graphics resource may be accessed.
-      assert(cuGraphicsResourceGetMappedPointer(&__sc_cuda_device_renderall_uniform_colors,
+      assert(cuGraphicsResourceGetMappedPointer((CUdeviceptr *)&__sc_cuda_device_renderall_uniform_colors,
              &bytes, __sc_cuda_device_resource) == CUDA_SUCCESS);
     } else {
       __sc_renderall_uniform_colors =_renderable->map_colors();
@@ -94,7 +95,8 @@ namespace scout{
   }
 
   void renderall_uniform_rt_::unmap_gpu_resources(void) {
-    if(DevList.hasCudaDevice()) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
       assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
       _renderable->alloc_texture();
     } else {

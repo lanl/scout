@@ -1,9 +1,8 @@
 /*
- *  
- *###########################################################################
+ * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -21,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -32,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -46,39 +45,35 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- */ 
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
 
-#ifndef SCOUT_RENDERALL_UNIFORM_H_
-#define SCOUT_RENDERALL_UNIFORM_H_
+#include "scout/Runtime/DeviceList.h"
+//#include <iostream>
 
-#include <cstdlib>
+namespace scout {
+  DeviceList* DeviceList::instance_=0;
 
-#include "scout/Runtime/renderall/renderall_base.h"
-#include "scout/Runtime/types.h"
+    DeviceList* DeviceList::Instance(void) {
+      if (instance_ == 0) {
+        instance_ = new DeviceList();
+      }
+      return instance_;
+    }
 
-namespace scout{
-
-  class renderall_uniform_rt : public renderall_base_rt {
-  public:
-    renderall_uniform_rt(size_t width, size_t height, size_t depth);
-
-    ~renderall_uniform_rt();
-
-    void begin();
-
-    void end();
-
-    void addVolume(void* dataptr, unsigned volumenum){}
-
-  private:
-    class renderall_uniform_rt_* x_;
-  };
-
-} // end namespace scout
-
-extern void __sc_begin_uniform_renderall(size_t width,
-           size_t height,
-           size_t depth);
-
-#endif // SCOUT_RENDERALL_UNIFORM_H_
-
+  void DeviceList::push(Device* dev) {
+    devices_.push_back(dev);
+    if (dev->type() ==  ScoutGPUCUDA) {
+      hasCuda_ = true;
+      //std::cout << "added cuda device\n";
+    }
+    if (dev->type() ==  ScoutGPUOpenCL) {
+      hasOpenCL_ = true;
+      //std::cout << "added opencl device\n";
+    }
+  }
+}

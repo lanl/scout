@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -54,9 +54,8 @@
 
 #ifndef __SC_DEVICE_LIST__H__
 #define __SC_DEVICE_LIST__H__
-#include <iostream> //dpx debug
-#include <list>
 
+#include <list>
 #include "scout/Runtime/Device.h"
 
 namespace scout {
@@ -64,62 +63,40 @@ namespace scout {
 
   class DeviceList {
   public:
+    static DeviceList* Instance(void);
+
+    bool hasCudaDevice(void) {
+      return hasCuda_;
+    }
+
+    bool hasOpenCLDevice(void) {
+      return hasOpenCL_;
+    }
+
+    void push(Device*);
+
+  protected:
     DeviceList() {
-      hasCuda = false;
-      hasOpenCL = false;
+      hasCuda_ = false;
+      hasOpenCL_ = false;
     }
 
     ~DeviceList() {
-       Devices::iterator it = devices.begin();
-       while(it != devices.end()) {
-         delete *it;
-         ++it;
-       }
-    }
-
-    bool hasCudaDevice() {
-      return hasCuda;
-    }
-
-    bool hasOpenCLDevice() {
-      return hasOpenCL;
-    }
-
-    void push(Device* dev) {
-      devices.push_back(dev);
-      if (dev->type() ==  ScoutGPUCUDA) {
-        hasCuda = true;
-        std::cout << "added cuda device\n";
+      Devices::iterator it = devices_.begin();
+      while(it != devices_.end()) {
+        delete *it;
+        ++it;
       }
-      if (dev->type() ==  ScoutGPUOpenCL) {
-        hasOpenCL = true;
-        std::cout << "added opencl device\n";
-      }
-
     }
-
-    /*
-    bool findCudaDevice() {
-      Devices::iterator it = devices.begin();
-      while(it != devices.end()) {
-        if ((*it)->type() == ScoutGPUCUDA) {
-          std::cout << "found cuda device\n";
-          return true;
-        }
-      }
-      return false;
-    }
-    */
+    DeviceList(const DeviceList&);
+    DeviceList& operator= (const DeviceList&);
 
   private:
-   Devices devices;
-   bool hasCuda;
-   bool hasOpenCL;
+   static DeviceList* instance_;
+   Devices devices_;
+   bool hasCuda_;
+   bool hasOpenCL_;
   };
 }
-
-// global defined in lib/Runtime/scout
-// todo: singleton
-extern scout::DeviceList DevList;
 
 #endif

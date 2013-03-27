@@ -59,6 +59,9 @@
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
+// globals defined in lib/Runtime/scout.cpp
+extern scout::float4* __sc_renderall_uniform_colors;
+extern unsigned long long __sc_cuda_device_renderall_uniform_colors;
 
 namespace scout{
 

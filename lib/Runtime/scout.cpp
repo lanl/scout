@@ -27,7 +27,6 @@
 using namespace std;
 using namespace scout;
 
-DeviceList DevList;
 glSDL* __sc_glsdl = 0;
 size_t __sc_initial_width = 768;
 size_t __sc_initial_height = 768;
@@ -35,6 +34,11 @@ size_t __sc_initial_height = 768;
 //globals accessed by llvm/tools/clang/lib/CodeGen/CGStmt.cpp
 scout::float4* __sc_renderall_uniform_colors;
 glyph_vertex* __sc_glyph_renderall_vertex_data;
+// -------------
+
+// globals accessed by lib/Compiler/llvm/Transforms/Driver/CudaDriver.cpp
+unsigned long long __sc_device_glyph_renderall_vertex_data;
+unsigned long long __sc_cuda_device_renderall_uniform_colors;
 // -------------
 
 #ifdef SC_ENABLE_MPI
@@ -205,12 +209,13 @@ void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
 }
 
 void __sc_init(int argc, char** argv, ScoutDeviceType devType){
+  DeviceList *devicelist = DeviceList::Instance();
   switch(devType){
     case ScoutGPUCUDA:
     {
 #ifdef SC_ENABLE_CUDA
       __sc_init_sdl(__sc_initial_width, __sc_initial_height);
-      if (cuda::scInitialize(DevList)) __sc_cuda = true;
+      cuda::scInitialize(*devicelist);
 #else
       cerr << "Error: Attempt to use CUDA GPU mode when Scout was "
         "compiled without CUDA." << endl;
@@ -231,7 +236,7 @@ void __sc_init(int argc, char** argv, ScoutDeviceType devType){
     }
     case ScoutGPUNone:
     {
-        cpu::scInitialize(DevList);
+        cpu::scInitialize(*devicelist);
     }
   }
 }
@@ -241,14 +246,6 @@ void __sc_init(ScoutDeviceType devType){
 }
 
 void __sc_end(){
-  // Destroy all devices.
-  /*
-  Devices::iterator it = DevList.devices.begin();
-  while(it != DevList.devices.end()) {
-    delete *it;
-    ++it;
-  }
-  */
 }
 
 double cshift(double a, int dx, int axis){

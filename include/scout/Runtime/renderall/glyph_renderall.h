@@ -59,8 +59,9 @@
 #include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/renderall/renderall_base.h"
 
-// global defined in lib/Runtime/scout.cpp
+// globals defined in lib/Runtime/scout.cpp
 extern scout::glyph_vertex* __sc_glyph_renderall_vertex_data;
+extern unsigned long long __sc_device_glyph_renderall_vertex_data;
 
 namespace scout 
 {

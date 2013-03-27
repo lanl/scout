@@ -57,24 +57,23 @@
 #include "scout/Runtime/opengl/glSDL.h"
 #include <cuda.h>
 #include <cudaGL.h>
-#include "scout/Runtime/renderall/glyph_renderall.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
 #include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
 
-// global accessed by lib/Compiler/llvm/Transforms/Driver/CudaDriver.cpp
-CUdeviceptr __sc_device_glyph_renderall_vertex_data;
-
+// global in lib/Runtime/CudaRuntime.cpp
 extern CUgraphicsResource __sc_cuda_device_resource;
 
 void glyph_renderall::map_gpu_resources() {
-  if(DevList.hasCudaDevice()) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     // map one graphics resource for access by CUDA
     assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
     size_t bytes;
     // return a pointer by which the mapped graphics resource may be accessed.
     assert(cuGraphicsResourceGetMappedPointer(
-        &__sc_device_glyph_renderall_vertex_data, &bytes,
+        (CUdeviceptr *)&__sc_device_glyph_renderall_vertex_data, &bytes,
         __sc_cuda_device_resource) == CUDA_SUCCESS);
   } else {
     __sc_glyph_renderall_vertex_data = _renderable->map_vertex_data();
@@ -82,7 +81,8 @@ void glyph_renderall::map_gpu_resources() {
 }
 
 void glyph_renderall::unmap_gpu_resources() {
-  if(DevList.hasCudaDevice()) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0)
       == CUDA_SUCCESS);
   } else {
@@ -91,7 +91,8 @@ void glyph_renderall::unmap_gpu_resources() {
 }
 
 void glyph_renderall::register_buffer() {
-  if(DevList.hasCudaDevice()) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     // register buffer object for access by CUDA, return handle
     assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
       _renderable->get_buffer_object_id(),

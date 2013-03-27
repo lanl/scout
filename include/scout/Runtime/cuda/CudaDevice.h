@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -57,9 +57,6 @@
 
 #include <cuda.h>
 #include "scout/Runtime/Device.h"
-
-extern bool __sc_cuda;
-extern CUgraphicsResource __sc_cuda_device_resource;
 
 namespace scout {
 
