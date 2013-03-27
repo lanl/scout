@@ -73,5 +73,6 @@ namespace scout{
 
   void renderall_uniform_rt_::unmap_gpu_resources(void) {
     _renderable->unmap_colors();
+  }
 }
 
