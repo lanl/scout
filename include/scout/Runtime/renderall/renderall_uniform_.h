@@ -88,6 +88,7 @@ namespace scout{
     private:
       renderall_uniform_rt* o_;
       glQuadRenderableVA* _renderable;
+      glSDL *_glsdl;
   };
 } // end namespace scout
 

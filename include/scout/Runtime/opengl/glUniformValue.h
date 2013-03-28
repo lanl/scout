@@ -17,7 +17,6 @@
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/vec_types.h"
 
-
 namespace scout
 {
   

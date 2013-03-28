@@ -23,13 +23,8 @@
 #include "scout/Runtime/opencl/scout_opencl.h"
 #endif // SC_ENABLE_OPENCL
 
-
 using namespace std;
 using namespace scout;
-
-glSDL* __sc_glsdl = 0;
-size_t __sc_initial_width = 768;
-size_t __sc_initial_height = 768;
 
 //globals accessed by llvm/tools/clang/lib/CodeGen/CGStmt.cpp
 scout::float4* __sc_renderall_uniform_colors;
@@ -199,14 +194,6 @@ void __sc_debugger_dump_mesh_field(size_t width,
   cerr << endl;
 }
 
-void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL){
-
-  if (__sc_glsdl) {
-    __sc_glsdl->resize(width, height);
-  } else {
-    __sc_glsdl = new glSDL(width, height, camera);
-  }
-}
 
 void __sc_init(int argc, char** argv, ScoutDeviceType devType){
   DeviceList *devicelist = DeviceList::Instance();
@@ -214,7 +201,7 @@ void __sc_init(int argc, char** argv, ScoutDeviceType devType){
     case ScoutGPUCUDA:
     {
 #ifdef SC_ENABLE_CUDA
-      __sc_init_sdl(__sc_initial_width, __sc_initial_height);
+      glSDL *glsdl = glSDL::Instance();
       cuda::scInitialize(*devicelist);
 #else
       cerr << "Error: Attempt to use CUDA GPU mode when Scout was "

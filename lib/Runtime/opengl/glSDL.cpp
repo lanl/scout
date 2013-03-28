@@ -64,7 +64,17 @@
 using namespace std;
 using namespace scout;
 
-extern glSDL* __sc_glsdl;
+glSDL* glSDL::_instance=0;
+
+glSDL* glSDL::Instance(size_t width, size_t height) {
+
+  if (_instance) {
+    _instance->resize(width, height);
+  } else {
+    _instance = new glSDL(width, height);
+  }
+  return _instance;
+}
 
 
 // ---- glSDL
@@ -490,5 +500,7 @@ bool glSDL::processEvent()
 void glSDL::update() {
   paint();
 }
+
+
 
 

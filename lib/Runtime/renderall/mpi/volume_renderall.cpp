@@ -30,10 +30,6 @@ CUdeviceptr __sc_device_volume_renderall_data;
 
 // -------------
 
-extern glSDL* __sc_glsdl;
-extern size_t __sc_initial_width;
-extern size_t __sc_initial_height;
-
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout 
@@ -54,8 +50,8 @@ namespace scout
     MPI_Comm_rank(_gcomm, &myid);
     _id = myid;
 
-    if((_id == root) && (!__sc_glsdl)){
-      __sc_init_sdl(win_width, win_height);
+    if(_id == root){
+      _glsdl = glSDL::Instance(win_width, win_height);
     }
 
     // we need a camera or nothing will happen! 
@@ -105,7 +101,7 @@ namespace scout
     _renderable->initialize(_camera);
 
     // show empty buffer
-    if (_id == _root) __sc_glsdl->swapBuffers();
+    if (_id == _root) _glsdl->swapBuffers();
   }
 
   void volume_renderall::genGrid()
@@ -178,9 +174,9 @@ namespace scout
 
     // show what we just drew
     if (_id == _root) {
-      __sc_glsdl->swapBuffers();
+      _glsdl->swapBuffers();
 
-      bool done = __sc_glsdl->processEvent();
+      bool done = _glsdl->processEvent();
 
       // fix this
       if (done) {
@@ -194,7 +190,7 @@ namespace scout
 
 
   void volume_renderall::exec(){
-    if (_id == _root)__sc_glsdl->update();
+    if (_id == _root) _glsdl->update();
     _renderable->draw(_camera);
   }
 

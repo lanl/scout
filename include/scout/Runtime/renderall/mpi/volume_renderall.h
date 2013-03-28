@@ -16,6 +16,7 @@
 #include "scout/Runtime/renderall/renderall_base.h"
 #include "scout/Runtime/volren/hpgv/hpgv_render.h"
 #include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glSDL.h"
 #include <mpi.h>
 
 namespace scout 
@@ -47,6 +48,7 @@ namespace scout
       MPI_Comm _gcomm;
       double *_x, *_y, *_z;
       bool _stop_mpi_after;
+      glSDL *_glsdl;
   };
 
 } // end namespace scout

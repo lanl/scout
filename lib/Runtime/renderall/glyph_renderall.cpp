@@ -60,10 +60,6 @@
 #include "scout/Runtime/renderall/glyph_renderall.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
 
-extern glSDL* __sc_glsdl;
-extern size_t __sc_initial_width;
-extern size_t __sc_initial_height;
-
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout 
@@ -75,9 +71,7 @@ namespace scout
       size_t npoints, glCamera* camera)
     : renderall_base_rt(width, height, depth), _camera(camera)
   {
-      if(!__sc_glsdl){
-        __sc_init_sdl(__sc_initial_width, __sc_initial_height, camera);
-      }
+    _glsdl = glSDL::Instance();
 
     _renderable = new glGlyphRenderable(npoints);
 
@@ -92,7 +86,7 @@ namespace scout
     _renderable->initialize(camera);
 
     // show empty buffer
-    __sc_glsdl->swapBuffers();
+    _glsdl->swapBuffers();
   }
 
 
@@ -115,9 +109,9 @@ namespace scout
     exec();
 
     // show what we just drew
-    __sc_glsdl->swapBuffers();
+    _glsdl->swapBuffers();
 
-    bool done = __sc_glsdl->processEvent();
+    bool done = _glsdl->processEvent();
 
     // fix this
     if (done) exit(0);
@@ -125,7 +119,7 @@ namespace scout
 
   void glyph_renderall::exec() 
   {
-    __sc_glsdl->update();
+    _glsdl->update();
     _renderable->draw(_camera);
   }
 }

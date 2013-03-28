@@ -58,12 +58,12 @@
 namespace scout {
   DeviceList* DeviceList::instance_=0;
 
-    DeviceList* DeviceList::Instance(void) {
-      if (instance_ == 0) {
-        instance_ = new DeviceList();
-      }
-      return instance_;
+  DeviceList* DeviceList::Instance(void) {
+    if (instance_ == 0) {
+      instance_ = new DeviceList();
     }
+    return instance_;
+  }
 
   void DeviceList::push(Device* dev) {
     devices_.push_back(dev);

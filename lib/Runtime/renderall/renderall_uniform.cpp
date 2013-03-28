@@ -65,10 +65,6 @@
 using namespace std;
 using namespace scout;
 
-extern glSDL* __sc_glsdl;
-extern size_t __sc_initial_width;
-extern size_t __sc_initial_height;
-
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout{
@@ -76,10 +72,7 @@ namespace scout{
   renderall_uniform_rt_::renderall_uniform_rt_(renderall_uniform_rt* o)
   : o_(o){
 
-
-    if(!__sc_glsdl){
-      __sc_init_sdl(__sc_initial_width, __sc_initial_height);
-    }
+    _glsdl = glSDL::Instance();
 
     init();
   }
@@ -97,7 +90,7 @@ namespace scout{
     _renderable->initialize(NULL);
 
     // show empty buffer
-    __sc_glsdl->swapBuffers();
+    _glsdl->swapBuffers();
   }
 
   void renderall_uniform_rt_::begin(){
@@ -111,9 +104,9 @@ namespace scout{
     exec();
 
     // show what we just drew
-    __sc_glsdl->swapBuffers();
+    _glsdl->swapBuffers();
 
-    bool done = __sc_glsdl->processEvent();
+    bool done = _glsdl->processEvent();
 
     if (done) exit(0);
 
