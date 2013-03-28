@@ -53,6 +53,7 @@
  */ 
 
 #include "scout/Runtime/renderall/glyph_renderall.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
 
 void glyph_renderall::map_gpu_resources() {
   __sc_glyph_renderall_vertex_data =_renderable->map_vertex_data();

@@ -56,11 +56,10 @@
 #include <stdlib.h>
 
 #include "scout/Runtime/types.h"
+#include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/glyph_renderall.h"
 #include "scout/Runtime/opengl/glGlyphRenderable.h"
-
-void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
 namespace scout 
 {
@@ -71,7 +70,7 @@ namespace scout
       size_t npoints, glCamera* camera)
     : renderall_base_rt(width, height, depth), _camera(camera)
   {
-    _glsdl = glSDL::Instance();
+    _glsdl = glSDL::Instance(__sc_initial_width, __sc_initial_height, camera);
 
     _renderable = new glGlyphRenderable(npoints);
 

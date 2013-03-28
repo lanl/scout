@@ -92,7 +92,7 @@ namespace scout
     void mouseMoveEvent();
     void resizeEvent();
     void swapBuffers() { SDL_GL_SwapBuffers();}
-    static glSDL* Instance(size_t width = __sc_initial_width, size_t height = __sc_initial_height);
+    static glSDL* Instance(size_t width = __sc_initial_width, size_t height = __sc_initial_height, glCamera* camera = NULL);
 
    private:
     static glSDL*     _instance;

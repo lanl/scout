@@ -66,12 +66,10 @@ using namespace scout;
 
 glSDL* glSDL::_instance=0;
 
-glSDL* glSDL::Instance(size_t width, size_t height) {
+glSDL* glSDL::Instance(size_t width, size_t height, glCamera* camera) {
 
-  if (_instance) {
-    _instance->resize(width, height);
-  } else {
-    _instance = new glSDL(width, height);
+  if (!_instance) {
+    _instance = new glSDL(width, height, camera);
   }
   return _instance;
 }
@@ -81,7 +79,7 @@ glSDL* glSDL::Instance(size_t width, size_t height) {
 //
 glSDL::glSDL()
 {
-  glSDL(500, 500);
+  glSDL(__sc_initial_width, __sc_initial_height);
 }
 
 glSDL::glSDL(size_t width, size_t height, glCamera* camera)
