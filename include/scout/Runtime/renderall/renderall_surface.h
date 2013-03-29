@@ -15,6 +15,7 @@
 
 #include <cstdlib>
 
+#include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/renderall/renderall_base.h"
 #include "scout/Runtime/opengl/glSurfaceRenderable.h"
 #include "scout/Runtime/opengl/glCamera.h"
@@ -38,6 +39,7 @@ class renderall_surface_rt : public renderall_base_rt {
     void addVolume(void* dataptr, unsigned volumenum){}
 
   private:
+    glSDL* _glsdl;
     glSurfaceRenderable* _renderable;
     glCamera* _camera;
     float* _vertices, *_normals, *_colors;

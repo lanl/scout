@@ -55,9 +55,9 @@ static bool __sc_opencl = false;
 
 // -------------
 
-extern glSDL* __sc_glsdl;
-extern size_t __sc_initial_width;
-extern size_t __sc_initial_height;
+extern glSDL* _instance;
+extern const size_t __sc_initial_width;
+extern const size_t __sc_initial_height;
 
 void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
 
@@ -66,9 +66,7 @@ renderall_surface_rt::renderall_surface_rt(size_t width, size_t height, size_t d
 :renderall_base_rt(width, height, depth), _vertices(vertices),
   _normals(normals), _colors(colors), _num_vertices(num_vertices), _camera(camera)
 {
-  if(!__sc_glsdl){
-    __sc_init_sdl(__sc_initial_width, __sc_initial_height);
-  }
+  _glsdl = glSDL::Instance(__sc_initial_width, __sc_initial_height, camera);
 
   _localcamera = false;
 
@@ -98,7 +96,7 @@ renderall_surface_rt::renderall_surface_rt(size_t width, size_t height, size_t d
       colors, _num_vertices, _camera);
 
   // show empty buffer
-  __sc_glsdl->swapBuffers();
+  _glsdl->swapBuffers();
 }
 
 renderall_surface_rt::~renderall_surface_rt(){
@@ -115,9 +113,9 @@ void renderall_surface_rt::end(){
   exec();
 
   // show what we just drew
-  __sc_glsdl->swapBuffers();
+  _glsdl->swapBuffers();
 
-  bool done = __sc_glsdl->processEvent();
+  bool done = _glsdl->processEvent();
 
   if (done) exit(0);
 
