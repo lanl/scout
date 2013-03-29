@@ -70,6 +70,7 @@
 #endif // Linux/X11 
 
 #include "scout/Runtime/Device.h"
+#include "scout/Runtime/DeviceList.h"
 
 namespace scout
 {

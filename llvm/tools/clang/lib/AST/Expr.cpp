@@ -2833,6 +2833,8 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case MaterializeTemporaryExprClass:
   case ShuffleVectorExprClass:
   case AsTypeExprClass:
+  //scout
+  case ScoutVectorMemberExprClass:
     // These have a side-effect if any subexpression does.
     break;
 

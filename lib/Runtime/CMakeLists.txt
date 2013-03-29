@@ -55,7 +55,7 @@ project(scRuntime)
 
 # Build w/ clang as volren uses blocks
 set(CMAKE_CXX_COMPILER ${SC_BUILD_DIR}/llvm/bin/clang)
-set(CMAKE_CXX_FLAGS "-fblocks")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fblocks")
 
 include_directories(
   ${SC_INCLUDE_DIR}       
@@ -240,7 +240,7 @@ if (SC_ENABLE_OPENGL)
       OUTPUT ${SC_BUILD_DIR}/include/${name}.h
       COMMAND ${GLSL2STR} 
         --in      ${shader} 
-	--out     ${SC_BUILD_DIR}/include/${name}.h 
+        --out     ${SC_BUILD_DIR}/include/${name}.h 
         --varname ${name}
       DEPENDS ${GLSL2STR} ${shader}
       )

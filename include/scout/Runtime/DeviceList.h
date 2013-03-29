@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -56,13 +56,47 @@
 #define __SC_DEVICE_LIST__H__
 
 #include <list>
-
 #include "scout/Runtime/Device.h"
 
 namespace scout {
+  typedef std::list<Device*> Devices;
 
-  typedef std::list<Device*> DeviceList;
+  class DeviceList {
+  public:
+    static DeviceList* Instance(void);
 
+    bool hasCudaDevice(void) {
+      return hasCuda_;
+    }
+
+    bool hasOpenCLDevice(void) {
+      return hasOpenCL_;
+    }
+
+    void push(Device*);
+
+  protected:
+    DeviceList() {
+      hasCuda_ = false;
+      hasOpenCL_ = false;
+    }
+
+    ~DeviceList() {
+      Devices::iterator it = devices_.begin();
+      while(it != devices_.end()) {
+        delete *it;
+        ++it;
+      }
+    }
+    DeviceList(const DeviceList&);
+    DeviceList& operator= (const DeviceList&);
+
+  private:
+   static DeviceList* instance_;
+   Devices devices_;
+   bool hasCuda_;
+   bool hasOpenCL_;
+  };
 }
 
 #endif

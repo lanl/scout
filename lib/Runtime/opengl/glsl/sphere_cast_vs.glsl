@@ -8,6 +8,7 @@
  *-----
  * 
  */
+
 #version 120
 
 uniform float windowWidth; 
@@ -43,6 +44,6 @@ void main()
   } else {
     gl_PointSize = 0.0;
   }
-	gl_FrontColor = color;
+  gl_FrontColor = color;
   varycolor = color;
 }

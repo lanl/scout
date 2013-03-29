@@ -53,32 +53,27 @@
  */ 
 
 #include <cassert>
-
-#include "scout/Runtime/base_types.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/renderall/glyph_renderall.h"
-#include "scout/Runtime/opengl/glGlyphRenderable.h"
-#include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/types.h"
+#include "scout/Runtime/opengl/glSDL.h"
 #include <cuda.h>
 #include <cudaGL.h>
-#include "scout/Runtime/cuda/CudaDevice.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
+#include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
 
-// ------  LLVM - global accessed by LLVM / CUDA driver
-CUdeviceptr __sc_device_glyph_renderall_vertex_data;
-
+// global in lib/Runtime/CudaRuntime.cpp
 extern CUgraphicsResource __sc_cuda_device_resource;
-extern glyph_vertex* __sc_glyph_renderall_vertex_data;
 
 void glyph_renderall::map_gpu_resources() {
-  if(__sc_cuda) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     // map one graphics resource for access by CUDA
     assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
 
     size_t bytes;
     // return a pointer by which the mapped graphics resource may be accessed.
     assert(cuGraphicsResourceGetMappedPointer(
-        &__sc_device_glyph_renderall_vertex_data, &bytes,
+        (CUdeviceptr *)&__sc_device_glyph_renderall_vertex_data, &bytes,
         __sc_cuda_device_resource) == CUDA_SUCCESS);
   } else {
     __sc_glyph_renderall_vertex_data = _renderable->map_vertex_data();
@@ -86,7 +81,8 @@ void glyph_renderall::map_gpu_resources() {
 }
 
 void glyph_renderall::unmap_gpu_resources() {
-  if(__sc_cuda) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0)
       == CUDA_SUCCESS);
   } else {
@@ -95,7 +91,8 @@ void glyph_renderall::unmap_gpu_resources() {
 }
 
 void glyph_renderall::register_buffer() {
-  if(__sc_cuda) {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
     // register buffer object for access by CUDA, return handle
     assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
       _renderable->get_buffer_object_id(),

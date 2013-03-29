@@ -54,9 +54,9 @@ with similar header files we have placed everything under a 'scout'
 subdirectory.  As is common, please use the quoted notation for
 including scout headers:
 
-	  #include "scout/[Category]/file.h"
+    #include "scout/[Category]/file.h"
 
 where 'Category' should be replaced with the appropriate subdirectory
 within the hierarchy.
 
-	  
+    

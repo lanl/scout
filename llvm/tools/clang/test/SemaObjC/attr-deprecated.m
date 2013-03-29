@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wno-objc-root-class %s
-// REQUIRES: scoutdisable
 
 @interface A {
   int X __attribute__((deprecated)); // expected-note 2 {{declared here}}

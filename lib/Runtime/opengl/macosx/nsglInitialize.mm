@@ -314,7 +314,7 @@ namespace scout {
       for(int i = 0; i < numDevices; ++i) {
         nsglDevice *device = new nsglDevice();
         if (device->isEnabled()) {
-          devList.push_back(device);
+          devList.push(device);
         }
       }
       return 0;

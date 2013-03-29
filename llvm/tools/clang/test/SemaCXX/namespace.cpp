@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s 
-// REQUIRES: scoutdisable
 
 namespace A { // expected-note 2 {{previous definition is here}}
   int A;

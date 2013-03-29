@@ -15,6 +15,7 @@
 
 #include "scout/Runtime/volren/hpgv/hpgv_composite_in.h"
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -551,7 +552,7 @@ swaptree_set_schedule(swap_control_t *swapctrl,
 
                 if (newmsg->offset >= usefulpixels) {
                     fprintf(stderr, "%d overflow. offset %ld; total %ld\n",
-                            swapctrl->mpiid,newmsg->offset, usefulpixels);
+                            swapctrl->mpiid, (long)newmsg->offset, (long)usefulpixels);
                 }
 
                 schedule->send_count++;

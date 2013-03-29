@@ -55,9 +55,15 @@
 #ifndef SCOUT_GLYPH_RENDERALL_H_
 #define SCOUT_GLYPH_RENDERALL_H_
 
-#include "scout/Runtime/base_types.h"
-#include "scout/Runtime/vec_types.h"
+#include "scout/Runtime/types.h"
+#include "scout/Runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/glyph_vertex.h"
 #include "scout/Runtime/renderall/renderall_base.h"
+#include "scout/Runtime/opengl/glSDL.h"
+
+// globals defined in lib/Runtime/scout.cpp
+extern scout::glyph_vertex* __sc_glyph_renderall_vertex_data;
+extern unsigned long long __sc_device_glyph_renderall_vertex_data;
 
 namespace scout 
 {
@@ -81,6 +87,7 @@ namespace scout
     private:
       glGlyphRenderable* _renderable;
       glCamera* _camera;
+      glSDL* _glsdl;
   };
 
 } // end namespace scout

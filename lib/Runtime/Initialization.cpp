@@ -74,13 +74,14 @@ namespace scout {
    */
   int __scFinalizeRuntime(DeviceList &deviceList) {
 
-    // Destroy all devices. 
-    DeviceList::iterator it = deviceList.begin();
-    while(it != deviceList.end()) {
+    // Destroy all devices.
+    /*
+    Devices::iterator it = deviceList.devices.begin();
+    while(it != deviceList.devices.end()) {
       delete *it;
       ++it;
     }
-
+    */
     // Clean up each of the invididual platform runtimes. 
     // (void)cuda::scFinalize(deviceList);
     // (void)opengl::scFinalize(deviceList);

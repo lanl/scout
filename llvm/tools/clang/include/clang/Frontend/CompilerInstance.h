@@ -117,18 +117,18 @@ class CompilerInstance : public ModuleLoader {
   ///
   ModuleLoadResult LastModuleImportResult;
   
-  // scout - AST consumer
-  ASTConsumer* ScoutASTConsumer;
-  
-  // scout - rewriter used with AST consumer
-  Rewriter* ScoutRewriter;
-
   /// \brief Whether we should (re)build the global module index once we
   /// have finished with this translation unit.
   bool BuildGlobalModuleIndex;
 
   /// \brief One or more modules failed to build.
   bool ModuleBuildFailed;
+
+  // scout - AST consumer
+  ASTConsumer* ScoutASTConsumer;
+  
+  // scout - rewriter used with AST consumer
+  Rewriter* ScoutRewriter;
 
   /// \brief Holds information about the output file.
   ///

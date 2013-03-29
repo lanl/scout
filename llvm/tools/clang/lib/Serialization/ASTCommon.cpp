@@ -228,6 +228,13 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::Import:
     return false;
+
+  //scout
+  case Decl::UniformMesh:
+  case Decl::StructuredMesh:
+  case Decl::RectlinearMesh:
+  case Decl::UnstructuredMesh:
+    return false;
   }
 
   llvm_unreachable("Unhandled declaration kind");

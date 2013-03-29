@@ -30,7 +30,6 @@
 #include "clang/AST/Decl.h"
 #include "CGBlocks.h"
 #include "clang/Analysis/Analyses/Dominators.h"
-
 using namespace clang;
 using namespace CodeGen;
 
@@ -1155,6 +1154,7 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   // Use the mesh's name to identify which mesh variable to use whem implicitly defined.
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
+  (void)meshName; //supress warning
 
   // Get the number and size of the mesh's dimensions.
   const MeshType *MT = S.getMeshType();
@@ -1307,17 +1307,17 @@ void CodeGenFunction::EmitRenderAllStmt(const RenderAllStmt &S) {
   Attrs.push_back(PAWI);
   namPAL = llvm::AttrListPtr::get(Attrs.begin(), Attrs.end());
 
-  if(!CGM.getModule().getFunction("_Znam")) {
+  if(!CGM.getModule().getFunction(SC_MANGLED_NEW)) {
     llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, isVarArg=false);
     llvm::Function *namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                                  "_Znam", &CGM.getModule());
+                                                  SC_MANGLED_NEW, &CGM.getModule());
     namF->setAttributes(namPAL);
   }
 
   llvm::BasicBlock *BB = Builder.GetInsertBlock();
   Builder.SetInsertPoint(&*AllocaInsertPt);
 
-  llvm::Constant *nam = CGM.getModule().getFunction("_Znam");
+  llvm::Constant *nam = CGM.getModule().getFunction(SC_MANGLED_NEW);
 
   llvm::CallInst *call = Builder.CreateCall(nam, llvm::ConstantInt::get(Int64Ty, 16 * dim));
   call->setAttributes(namPAL);
@@ -1356,7 +1356,8 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   MeshMembers.clear();
   const IdentifierInfo *MeshII = S.getMesh();
   llvm::StringRef meshName = MeshII->getName();
-  
+  (void)meshName; //supress warning 
+ 
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   const MeshDecl *MD = MT->getDecl();  
@@ -1432,7 +1433,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
             
       llvm::CallInst* CI =
       Builder.CreateCall2(addVolFunc, meshField, volumeNum);
-      
+      (void)CI; //suppress warning 
       ++fieldcount;
     }
   }

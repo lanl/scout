@@ -1,6 +1,5 @@
 // RUN: %clang_cc1  -fsyntax-only -verify %s
 // rdar://9092208
-// REQUIRES: scoutdisable
 
 __attribute__((unavailable("not available")))
 @interface MyClass { // expected-note 8 {{declaration has been explicitly marked unavailable here}}

@@ -1634,9 +1634,6 @@ bool Lexer::isHexaLiteral(const char *Start, const LangOptions &LangOpts) {
 void Lexer::LexNumericConstant(Token &Result, const char *CurPtr) {
   unsigned Size;
 
-  // scout
-  unsigned Size2;
-
   char C = getCharAndSize(CurPtr, Size);
   char PrevCh = 0;
 

@@ -76,7 +76,7 @@ typedef map<string, CUdeviceptr> FieldMap;
 
 } // end namespace
 
-bool __sc_cuda = false;
+// global used by renderall
 CUgraphicsResource __sc_cuda_device_resource;
 
 // hooks called from lib/Compiler/llvm/Transforms/Driver/CudaDriver.cpp

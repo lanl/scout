@@ -121,8 +121,7 @@ docs_build_dir := docs/_build
 
 #
 #####
-
-cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir) $(SC_BUILD_CMAKE_FLAGS)
+cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) -DCMAKE_INSTALL_PREFIX=$(build_dir) -DCMAKE_SOURCE_DIR=$(src_dir) $(SC_BUILD_CMAKE_FLAGS)
 
 ### cmake options required to build scout for LLDB on the Mac
 ifdef SC_USE_LIBCPP
@@ -136,7 +135,7 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@echo "*** Scout source directory: $(src_dir)"
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@echo "*** Creating Scout build directory: $(build_dir)"
-	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
 	@echo "*** Creating standard library build directory: $(stdlib_build_dir)"
 	@((test -d $(stdlib_build_dir)) || (mkdir $(stdlib_build_dir)))
 
@@ -162,7 +161,7 @@ test:
 .PHONY: testclean
 testclean: 
 	-@/bin/rm -rf $(test_build_dir)
-	@(cd $(build_dir); cmake $(cmake_flags) ..;)
+	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
 
 #run llvm/cmake tests
 .PHONY: check
@@ -187,7 +186,7 @@ cacheclean:
 .PHONY: xcode
 xcode:;
 	@((test -d xcode) || (mkdir xcode))
-	@(cd xcode; cmake -G Xcode ..)
+	@(cd xcode; cmake -G Xcode $(src_dir))
 
 .PHONY: llvm-3.1
 llvm-3.1: 

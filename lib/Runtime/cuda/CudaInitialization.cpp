@@ -51,7 +51,7 @@
  *
  * ##### 
  */ 
-
+#include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/cuda/CudaUtilities.h"
 #include "scout/Runtime/cuda/CudaDevice.h"
 #include "scout/Runtime/cuda/CudaInitialization.h"
@@ -90,7 +90,7 @@ namespace scout {
           delete cu_dev;        
         } else {
           num_initialized++;
-          dev_list.push_back(cu_dev);        
+          dev_list.push(cu_dev);
         }
       }
       

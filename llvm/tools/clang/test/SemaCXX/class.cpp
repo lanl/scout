@@ -1,5 +1,4 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wc++11-compat %s 
-// REQUIRES: scoutdisable
 
 class C {
 public:
