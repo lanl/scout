@@ -127,6 +127,14 @@ if (SC_ENABLE_OPENCL)
   )
 endif()
 
+# CPP backend
+if (SC_ENABLE_CPP_THRUST)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP")
+  include_directories(${THRUST_INCLUDE_DIR})
+  file(GLOB rt_srcs_isosurface_cpp isosurf/*_cpp.cpp)
+  list(APPEND rt_srcs ${rt_srcs_isosurface_cpp})
+endif()
+
 if (SC_ENABLE_OPENGL) 
 
   # Add OpenGL source files to the build...
