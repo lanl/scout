@@ -71,14 +71,10 @@ namespace scout {
     bool Configuration::PNGSupport   = ${SC_ENABLE_PNG};
     bool Configuration::OpenCLSupport = ${SC_ENABLE_OPENCL};
 
-    #ifdef SC_ENABLE_CUDA
     int Configuration::CudaVersion[2] = {
       ${CUDA_VERSION_MAJOR}, 
       ${CUDA_VERSION_MINOR}
     }; 
-    #else
-    int Configuration::CudaVersion[2] = {0,0};
-    #endif
   
     const char* Configuration::IncludePaths[] = {
 
