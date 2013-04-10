@@ -2154,6 +2154,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
+#ifndef USE_SCCPLUS // for testing rewriter
   // scout - insert call to __sc_init(argc, argv, gpu) at the top of main
   if(getLangOpts().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
@@ -2192,6 +2193,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
       }
     }
   }
+#endif
 
   // Do not enter a scope for the brace, as the arguments are in the same scope
   // (the function body) as the body itself.  Instead, just read the statement
@@ -2874,41 +2876,27 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Stmt* Body = BodyResult.get();
 
   StmtResult ForAllResult;
+
+  InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
+  BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
+  assert(Block && "expected a block expression");
+  Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
+
   if(ForAll){
-    InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
-
-    BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
-    assert(Block && "expected a block expression");
-    Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
-
     ForAllResult = Actions.ActOnForAllStmt(ForAllLoc, FT, MT, MVD,
                                            LoopVariableII, MeshII, LParenLoc,
                                            Op, RParenLoc, Body, Block);
     if(!ForAllResult.isUsable())
       return StmtError();
-  }
-  else {
-    InsertCPPCode("^(void* m, int* i, int* j, int* k){}", BodyLoc);
-
-    BlockExpr* Block = dyn_cast<BlockExpr>(ParseExpression().get());
-    assert(Block && "expected a block expression");
-    Block->getBlockDecl()->setBody(cast<class CompoundStmt>(Body));
-
+  } else { //renderall
     assert(!StmtsStack.empty());
     
     MeshType::MeshDimensionVec dims = MT->dimensions();
 
     assert(dims.size() >= 1);
-
+#ifndef USE_SCCPLUS // for testing rewriter
     std::string bc;
-    
-    if(elements){
-      bc = "scoutBeginRenderAllElements(";
-    }
-    else{
-      bc = "__sc_begin_uniform_renderall(";
-    }
-  
+    bc = "__sc_begin_uniform_renderall(";
     bc += MVD->getName().str() + ".width, ";
     bc += MVD->getName().str() + ".height, ";
     bc += MVD->getName().str() + ".depth);";
@@ -2919,13 +2907,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     StmtsStack.back()->push_back(BR.get());
 
-    if(elements){
-      InsertCPPCode("__sc_end_renderall();", BodyLoc);
-    }
-    else{
-      InsertCPPCode("__sc_end_renderall();", BodyLoc);      
-    }
-
+    InsertCPPCode("__sc_end_renderall();", BodyLoc);
+#endif
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT, MVD,
                                               LoopVariableII, MeshII, LParenLoc,
                                               Op, RParenLoc, Body, Block);
