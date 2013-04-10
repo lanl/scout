@@ -540,6 +540,10 @@ def disableScoutStdLib : Flag<["-"], "disable-sc-stdlib">,
   HelpText<"Disable automatic inclusion/use of the Scout standard library.">; 
 def debugWait : Flag<["-"], "debug-wait">,
   HelpText<"Used to allow debugger to attach to the scc driver.">;
+def noRewrite : Flag<["-"], "no-rewrite">,
+  HelpText<"do not run the rewriter">;
+def dumpRewrite : Flag<["-"], "dump-rewrite">,
+  HelpText<"dump rewritten code to stdout">;
 
 //===----------------------------------------------------------------------===//
 // CUDA Options

@@ -2460,7 +2460,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // this to bootstrap scc and the building of the standard
   // library.
   Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
-  
+ 
+  // scout don't run the rewriter
+  Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
+
+  // scout dump output of rewriter to stdout
+  Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
+
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).
   //
