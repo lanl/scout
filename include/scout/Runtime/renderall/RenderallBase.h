@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,56 +45,57 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
+ * ###########################################################################
  * 
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
-#ifndef SCOUT_GLYPH_RENDERALL_H_
-#define SCOUT_GLYPH_RENDERALL_H_
+#ifndef SCOUT_RENDERALL_BASE_H_
+#define SCOUT_RENDERALL_BASE_H_
 
-#include "scout/Runtime/types.h"
-#include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/renderall/renderall_base.h"
-#include "scout/Runtime/opengl/glSDL.h"
+#include <cstdlib>
 
-// globals defined in lib/Runtime/scout.cpp
-extern scout::glyph_vertex* __sc_glyph_renderall_vertex_data;
-extern unsigned long long __sc_device_glyph_renderall_vertex_data;
+namespace scout{
 
-namespace scout 
-{
-  class glCamera;
-  class glGlyphRenderable;
+  class RenderallBase {
+  public:
+    RenderallBase(size_t width, size_t height, size_t depth);
 
-  class glyph_renderall : public renderall_base_rt {
-    public:
-      glyph_renderall(size_t width, size_t height, size_t depth, size_t npts,
-          glCamera* camera);
-      ~glyph_renderall();
-      void addVolume(void* dataptr, unsigned volumenum){}
-      void begin();
-      void end();
-    private:
-      void map_gpu_resources();
-      void unmap_gpu_resources();
-      void register_buffer();
-      void exec();
+    virtual ~RenderallBase();
 
-    private:
-      glGlyphRenderable* _renderable;
-      glCamera* _camera;
-      glSDL* _glsdl;
+    virtual void begin() = 0;
+
+    virtual void end() = 0;
+
+    virtual void addVolume(void* dataptr, unsigned volumenum) = 0;
+
+    size_t width(){
+      return width_;
+    }
+
+    size_t height(){
+      return height_;
+    }
+
+    size_t depth(){
+      return depth_;
+    }
+
+  private:
+    size_t width_;
+    size_t height_;
+    size_t depth_;
   };
-
+  
 } // end namespace scout
 
-using namespace scout;
+extern scout::RenderallBase* __scrt_renderall;
 
-extern void __sc_init_glyph_renderall(size_t width, size_t height, 
-    size_t depth, size_t npoints, glCamera* camera = NULL);
+extern "C" void __scrt_renderall_begin();
+extern "C" void __scrt_renderall_end();
+extern "C" void __scrt_renderall_delete();
 
-#endif 
+#endif // SCOUT_RENDERALL_BASE_H_
+

@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,64 +45,54 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
+ * ###########################################################################
  * 
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
-#include <cassert>
-#include "scout/Runtime/base_types.h"
+#ifndef SCOUT_RENDERALL_SURFACE_H_
+#define SCOUT_RENDERALL_SURFACE_H_
+
+#include <cstdlib>
+
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
-
-#include "scout/Runtime/opencl/scout_opencl.h"
-#include "scout/Runtime/renderall/renderall_uniform_.h"
-
-using namespace scout;
-cl_mem __sc_opencl_device_renderall_uniform_colors;
+#include "scout/Runtime/renderall/RenderallBase.h"
+#include "scout/Runtime/opengl/glSurfaceRenderable.h"
+#include "scout/Runtime/opengl/glCamera.h"
 
 namespace scout{
 
-  void renderall_uniform_rt_::register_pbo(GLuint pbo){
-    cl_int ret;
-    if(__sc_opencl) {
-      __sc_opencl_device_renderall_uniform_colors =
-          clCreateFromGLBuffer(__sc_opencl_context,
-              CL_MEM_WRITE_ONLY,
-              pbo,
-              &ret);
-      assert(ret == CL_SUCCESS);
-    }
-  }
+class RenderallSurface : public RenderallBase {
+  public:
+    RenderallSurface(size_t width, size_t height, size_t depth,
+        float* vertices, float* normals, float* colors, int num_vertices,
+        glCamera* camera);
 
-  void renderall_uniform_rt_::map_gpu_resources(void) {
-    if(__sc_opencl) {
-      glFinish();
-      clEnqueueAcquireGLObjects(__sc_opencl_command_queue,
-          1,
-          &__sc_opencl_device_renderall_uniform_colors,
-          0,
-          NULL,
-          NULL);
-    } else {
-      __sc_renderall_uniform_colors =_renderable->map_colors();
-    }
-  }
+    ~RenderallSurface();
 
-  void renderall_uniform_rt_::unmap_gpu_resources(void) {
-    if(__sc_opencl) {
-      clEnqueueReleaseGLObjects(__sc_opencl_command_queue,
-          1,
-          &__sc_opencl_device_renderall_uniform_colors,
-          0,
-          NULL,
-          NULL);
-      clFinish(__sc_opencl_command_queue);
-    } else {
-      _renderable->unmap_colors();
-    }
-  }
-}
+    void exec();
+
+    void begin();
+
+    void end();
+
+    void addVolume(void* dataptr, unsigned volumenum){}
+
+  private:
+    glSDL* glsdl_;
+    glSurfaceRenderable* renderable_;
+    glCamera* camera_;
+    float* vertices_, *normals_, *colors_;
+    int numVertices_;
+    bool localCamera_;
+};
+
+} // end namespace scout
+
+extern void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
+    float* vertices, float* normals, float* colors, size_t num_vertices, scout::glCamera* cam);
+
+#endif // SCOUT_RENDERALL_SURFACE_H_
 

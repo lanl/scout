@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -45,60 +45,67 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
+ * ###########################################################################
  * 
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
+#ifndef SCOUT_RENDERALL_VOLUME_H_
+#define SCOUT_RENDERALL_VOLUME_H_
 
-#ifndef SCOUT_GL_SDL_H_
-#define SCOUT_GL_SDL_H_
-#include <SDL/SDL.h>
-#include "scout/Runtime/opengl/glToolkit.h"
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/vec_types.h"
+#include "scout/Runtime/renderall/RenderallBase.h"
+#include "scout/Runtime/volren/hpgv/hpgv_render.h"
+#include "scout/Runtime/opengl/glCamera.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include <mpi.h>
 
-const size_t __scrt_initial_window_width = 768;
-const size_t __scrt_initial_window_height = 768;
-
-namespace scout
+namespace scout 
 {
-  class glSDL : public glToolkit {
+  class glCamera;
+  class glVolumeRenderable;
 
-   protected:
-    glSDL();
-    glSDL(size_t width, size_t height, glCamera* camera = NULL);
-    ~glSDL();
-    glSDL(const glSDL&);
-    glSDL& operator= (const glSDL&);
+  class RenderallVolume : public RenderallBase {
+    public:
+     RenderallVolume(
+      int nx, int ny, int nz,
+      size_t win_width, size_t win_height,
+      glCamera* camera, trans_func_ab_t trans_func,
+      int root, MPI_Comm gcomm, bool stopMpiAfter);
 
-   public:
-    void resize(size_t width, size_t height);
-    void update(); // { SDL_UpdateRect(_surface, 0, 0, 0, 0); }
-    void paintMono();    
-    void paintStereo();    
+      ~RenderallVolume();
+      void genGrid();
+      void addVolume(void* dataptr, unsigned volumenum); 
+      void begin();
+      void end();
+    private:
+      void exec();
 
-    bool processEvent();
-    void eventLoop();
-
-    void keyPressEvent();
-    void keyReleaseEvent();        
-    void mousePressLeft();
-    void mousePressMiddle();
-    void mousePressRight();
-    void mouseReleaseLeft();    
-    void mouseReleaseMiddle();    
-    void mouseReleaseRight();    
-    void mouseMoveEvent();
-    void resizeEvent();
-    void swapBuffers() { SDL_GL_SwapBuffers();}
-    static glSDL* Instance(size_t width = __scrt_initial_window_width,
-        size_t height = __scrt_initial_window_height, glCamera* camera = NULL);
-
-   private:
-    static glSDL*     _instance;
-    SDL_Surface*      _surface;
-    SDL_Event         _event;
+    private:
+      glVolumeRenderable* renderable_;
+      glCamera* camera_;
+      int id_;
+      int root_;
+      MPI_Comm gcomm_;
+      double *x_, *y_, *z_;
+      bool stopMpiAfter_;
+      glSDL *glsdl_;
   };
-}
-#endif
+
+} // end namespace scout
+
+
+using namespace scout;
+
+extern void  __scrt_renderall_volume_init (
+    MPI_Comm gcomm, int mesh_size_x, int mesh_size_y, int mesh_size_z,
+    size_t win_width, size_t win_height,
+    glCamera* camera, trans_func_ab_t trans_func);
+
+extern "C" 
+void __scrt_renderall_add_volume(float* dataptr, unsigned volumenum);
+
+#endif 

@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/renderall/mpi/volume_renderall.h"
+#include "scout/Runtime/renderall/mpi/RenderallVolume.h"
 #include "scout/Runtime/opengl/glVolumeRenderable.h"
 #include "scout/Runtime/types.h"
 
@@ -20,38 +20,26 @@
 #include "scout/Runtime/cuda/CudaDevice.h"
 #endif
 
-// ------  LLVM - globals accessed by LLVM / CUDA driver
-
-void* __sc_volume_renderall_data;
-
-#ifdef SC_ENABLE_CUDA
-CUdeviceptr __sc_device_volume_renderall_data;
-#endif
-
-// -------------
-
-void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
-
 namespace scout 
 {
 
   using namespace std;
 
-  volume_renderall::volume_renderall(
+  RenderallVolume::RenderallVolume(
       int nx, int ny, int nz,  // number mesh cells in each dimension for local mesh
       size_t win_width, size_t win_height,
       glCamera* camera, trans_func_ab_t trans_func,
-      int root, MPI_Comm gcomm, bool stop_mpi_after)
-    : renderall_base_rt(nx, ny, nz), _camera(camera),
-     _root(root), _gcomm(gcomm), _stop_mpi_after(stop_mpi_after)
+      int root, MPI_Comm gcomm, bool stopMpiAfter)
+    : RenderallBase(nx, ny, nz), camera_(camera),
+     root_(root), gcomm_(gcomm), stopMpiAfter_(stopMpiAfter)
   {
 
     int myid;
-    MPI_Comm_rank(_gcomm, &myid);
-    _id = myid;
+    MPI_Comm_rank(gcomm_, &myid);
+    id_ = myid;
 
-    if(_id == root){
-      _glsdl = glSDL::Instance(win_width, win_height);
+    if(id_ == root){
+      glsdl_ = glSDL::Instance(win_width, win_height);
     }
 
     // we need a camera or nothing will happen! 
@@ -59,12 +47,12 @@ namespace scout
     {
       cerr << "Warning: creating default camera" << endl;
 
-      _camera = new glCamera();
+      camera_ = new glCamera();
 
       // for combustion test
-      _camera->near = 70.0;
-      _camera->far = 500.0;
-      _camera->fov  = 40.0;
+      camera_->near = 70.0;
+      camera_->far = 500.0;
+      camera_->fov  = 40.0;
       const glfloat3 pos = glfloat3(350.0, -100.0, 650.0);
       const glfloat3 lookat = glfloat3(350.0, 200.0, 25.0);
       const glfloat3 up = glfloat3(-1.0, 0.0, 0.0);
@@ -72,48 +60,48 @@ namespace scout
       
       // for volren test
       /*
-      _camera->near = 70.0;
-      _camera->far = 100.0;
-      _camera->fov  = 40.0;
+      camera_->near = 70.0;
+      camera_->far = 100.0;
+      camera_->fov  = 40.0;
       const glfloat3 pos = glfloat3(-300.0, -300.0, -300.0);
       const glfloat3 lookat = glfloat3(0.0, 0.0, 0.0);
       const glfloat3 up = glfloat3(0.0, 0.0, -1.0);
       */
 
-      _camera->setPosition(pos);
-      _camera->setLookAt(lookat);
-      _camera->setUp(up);
-      _camera->resize(win_width, win_height);
+      camera_->setPosition(pos);
+      camera_->setLookAt(lookat);
+      camera_->setUp(up);
+      camera_->resize(win_width, win_height);
      
      // default 
      //_camera = new glCamera();
     }
 
     int procdims[3], periodic[3], mycoord[3];
-    MPI_Cart_get(_gcomm, 3, procdims, periodic, mycoord);
+    MPI_Cart_get(gcomm_, 3, procdims, periodic, mycoord);
 
     genGrid();
 
-    _renderable = new glVolumeRenderable(procdims[0], procdims[1], procdims[2],
-        nx, ny, nz, _x, _y, _z, win_width, win_height, 
-        _camera, trans_func, _id, _root, _gcomm);
+    renderable_ = new glVolumeRenderable(procdims[0], procdims[1], procdims[2],
+        nx, ny, nz, x_, y_, z_, win_width, win_height,
+        camera_, trans_func, id_, root_, gcomm_);
 
-    _renderable->initialize(_camera);
+    renderable_->initialize(camera_);
 
     // show empty buffer
-    if (_id == _root) _glsdl->swapBuffers();
+    if (id_ == root_) glsdl_->swapBuffers();
   }
 
-  void volume_renderall::genGrid()
+  void RenderallVolume::genGrid()
   {
     int procdims[3], periodic[3], mycoord[3]; // we only really use the prodims
-    MPI_Cart_get(_gcomm, 3, procdims, periodic, mycoord);
+    MPI_Cart_get(gcomm_, 3, procdims, periodic, mycoord);
 
     // determine my coordinate -- different from how MPI does it
     // so we ignore the mycoord
-    int mypz = _id /(procdims[0] * procdims[1]);
-    int mypx = (_id - mypz * procdims[0] * procdims[1]) % procdims[0];
-    int mypy = (_id - mypz * procdims[0] * procdims[1]) / procdims[0];
+    int mypz = id_ /(procdims[0] * procdims[1]);
+    int mypx = (id_ - mypz * procdims[0] * procdims[1]) % procdims[0];
+    int mypy = (id_ - mypz * procdims[0] * procdims[1]) / procdims[0];
 
     uint64_t start[3];
 
@@ -123,64 +111,64 @@ namespace scout
 
     // set grid with evenly spaced 1-unit ticks on all axes
 
-    _x = (double *)calloc(width(), sizeof(double));
-    _y = (double *)calloc(height(), sizeof(double));
-    _z = (double *)calloc(depth(), sizeof(double));
+    x_ = (double *)calloc(width(), sizeof(double));
+    y_ = (double *)calloc(height(), sizeof(double));
+    z_ = (double *)calloc(depth(), sizeof(double));
 
     int i;
 
     for (i = 0; i < width(); i++) {
-      _x[i] = start[0] + i;
+      x_[i] = start[0] + i;
     }
 
     for (i = 0; i < height(); i++) {
-      _y[i] = start[1] + i;
+      y_[i] = start[1] + i;
     }
 
     for (i = 0; i < depth(); i++) {
-      _z[i] = start[2] + i;
+      z_[i] = start[2] + i;
     }
 
   }
 
-  volume_renderall::~volume_renderall()
+  RenderallVolume::~RenderallVolume()
   {
-    if (_x) {free((void*)_x); _x = NULL;}
-    if (_y) {free((void*)_y); _y = NULL;}
-    if (_z) {free((void*)_z); _z = NULL;}
-    delete _renderable;
+    if (x_) {free((void*)x_); x_ = NULL;}
+    if (y_) {free((void*)y_); y_ = NULL;}
+    if (z_) {free((void*)z_); z_ = NULL;}
+    delete renderable_;
   }
 
 
-  void volume_renderall::addVolume(void* dataptr, unsigned volumenum){
-    _renderable->addVolume(dataptr, volumenum);
+  void RenderallVolume::addVolume(void* dataptr, unsigned volumenum){
+    renderable_->addVolume(dataptr, volumenum);
   }
 
-  void volume_renderall::begin()
+  void RenderallVolume::begin()
   {
     // TO DO:  clear previous data in _renderable's block first
 
-    if (_id == _root) {
+    if (id_ == root_) {
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
   }
 
 
-  void volume_renderall::end()
+  void RenderallVolume::end()
   {
 
     exec();  // calls draw, which calls render
 
     // show what we just drew
-    if (_id == _root) {
-      _glsdl->swapBuffers();
+    if (id_ == root_) {
+      glsdl_->swapBuffers();
 
-      bool done = _glsdl->processEvent();
+      bool done = glsdl_->processEvent();
 
       // fix this
       if (done) {
-        if (_stop_mpi_after) {
+        if (stopMpiAfter_) {
           MPI_Finalize();
         }
         exit(0);
@@ -189,21 +177,21 @@ namespace scout
   }
 
 
-  void volume_renderall::exec(){
-    if (_id == _root) _glsdl->update();
-    _renderable->draw(_camera);
+  void RenderallVolume::exec(){
+    if (id_ == root_) glsdl_->update();
+    renderable_->draw(camera_);
   }
 
 }
 
 
-void __sc_init_volume_renderall(
+void  __scrt_renderall_volume_init(
     MPI_Comm gcomm,
     int meshsizex, int meshsizey, int meshsizez,  // size of mesh in each dim
     size_t win_width, size_t win_height,
     glCamera* camera, trans_func_ab_t trans_func)
 {
-  if(!__sc_renderall){
+  if(!__scrt_renderall){
     int procdims[3], periodic[3], mycoord[3];
     bool stop_mpi_after = false;
     int flag;
@@ -225,15 +213,15 @@ void __sc_init_volume_renderall(
       MPI_Cart_create(MPI_COMM_WORLD, 3, procdims, periodic, 0, &agcomm);
     } 
 
-    __sc_renderall = new volume_renderall(meshsizex, meshsizey, meshsizez,
+    __scrt_renderall = new RenderallVolume(meshsizex, meshsizey, meshsizez,
         win_width, win_height, camera, trans_func, 0, agcomm, stop_mpi_after);
   } 
 }
 
 
-void __sc_add_volume(float* dataptr, unsigned volumenum)
+void __scrt_renderall_add_volume(float* dataptr, unsigned volumenum)
 {
-  __sc_renderall->addVolume((void*)dataptr, volumenum);
+  __scrt_renderall->addVolume((void*)dataptr, volumenum);
 }
 
 

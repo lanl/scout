@@ -9,8 +9,8 @@
  * 
  */
 
-#ifndef SCOUT_RENDERALL_H_
-#define SCOUT_RENDERALL_H_
+#ifndef SCOUT_RENDERALL_UTILITIES_H_
+#define SCOUT_RENDERALL_UTILITIES_H_
 
 #include "scout/Runtime/vec_types.h"
 

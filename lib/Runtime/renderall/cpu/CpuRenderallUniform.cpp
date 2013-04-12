@@ -52,53 +52,20 @@
  * ##### 
  */ 
 
+#include "scout/Runtime/types.h"
+#include "scout/Runtime/renderall/RenderallUniformImpl.h"
 
-#ifndef SCOUT_GL_SDL_H_
-#define SCOUT_GL_SDL_H_
-#include <SDL/SDL.h>
-#include "scout/Runtime/opengl/glToolkit.h"
+namespace scout{
 
-const size_t __scrt_initial_window_width = 768;
-const size_t __scrt_initial_window_height = 768;
+  void RenderallUniformImpl::registerPbo(GLuint pbo) {
+  }
 
-namespace scout
-{
-  class glSDL : public glToolkit {
+  void RenderallUniformImpl::mapGpuResources(void) {
+    __scrt_renderall_uniform_colors = renderable_->map_colors();
+  }
 
-   protected:
-    glSDL();
-    glSDL(size_t width, size_t height, glCamera* camera = NULL);
-    ~glSDL();
-    glSDL(const glSDL&);
-    glSDL& operator= (const glSDL&);
-
-   public:
-    void resize(size_t width, size_t height);
-    void update(); // { SDL_UpdateRect(_surface, 0, 0, 0, 0); }
-    void paintMono();    
-    void paintStereo();    
-
-    bool processEvent();
-    void eventLoop();
-
-    void keyPressEvent();
-    void keyReleaseEvent();        
-    void mousePressLeft();
-    void mousePressMiddle();
-    void mousePressRight();
-    void mouseReleaseLeft();    
-    void mouseReleaseMiddle();    
-    void mouseReleaseRight();    
-    void mouseMoveEvent();
-    void resizeEvent();
-    void swapBuffers() { SDL_GL_SwapBuffers();}
-    static glSDL* Instance(size_t width = __scrt_initial_window_width,
-        size_t height = __scrt_initial_window_height, glCamera* camera = NULL);
-
-   private:
-    static glSDL*     _instance;
-    SDL_Surface*      _surface;
-    SDL_Event         _event;
-  };
+  void RenderallUniformImpl::unmapGpuResources(void) {
+    renderable_->unmap_colors();
+  }
 }
-#endif
+

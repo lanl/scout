@@ -211,13 +211,13 @@ void CudaDriver::create(Function *func,
 
   Value *colors;
   if(func->getName().startswith("renderall")) {
-    if(!_module.getNamedGlobal("__sc_cuda_device_renderall_uniform_colors")) {
+    if(!_module.getNamedGlobal("__scrt_renderall_uniform_cuda_device")) {
       colors = new GlobalVariable(_module,
                                   getCUdeviceptrTy(),
                                   false,
                                   GlobalValue::ExternalLinkage,
                                   0,
-                                  "__sc_cuda_device_renderall_uniform_colors");
+                                  "__scrt_renderall_uniform_cuda_device");
 
     }
   }

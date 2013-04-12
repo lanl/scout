@@ -52,20 +52,52 @@
  * ##### 
  */ 
 
+#include <cassert>
 #include "scout/Runtime/types.h"
-#include "scout/Runtime/renderall/renderall_uniform_.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include <cuda.h>
+#include <cudaGL.h>
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
+#include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/renderall/RenderallGlyph.h"
 
-namespace scout{
+// global in lib/Runtime/CudaRuntime.cpp
+extern CUgraphicsResource __sc_cuda_device_resource;
 
-  void renderall_uniform_rt_::register_pbo(GLuint pbo) {
+void RenderallGlyph::mapGpuResources() {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
+    // map one graphics resource for access by CUDA
+    assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
+
+    size_t bytes;
+    // return a pointer by which the mapped graphics resource may be accessed.
+    assert(cuGraphicsResourceGetMappedPointer(
+        (CUdeviceptr *)&__scrt_renderall_glyph_cuda_device, &bytes,
+        __sc_cuda_device_resource) == CUDA_SUCCESS);
+  } else {
+    __scrt_renderall_glyph_vertex_data = renderable_->map_vertex_data();
   }
+}
 
-  void renderall_uniform_rt_::map_gpu_resources(void) {
-    __sc_renderall_uniform_colors =_renderable->map_colors();
+void RenderallGlyph::unmapGpuResources() {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
+    assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0)
+      == CUDA_SUCCESS);
+  } else {
+     renderable_->unmap_vertex_data();
   }
+}
 
-  void renderall_uniform_rt_::unmap_gpu_resources(void) {
-    _renderable->unmap_colors();
+void RenderallGlyph::registerBuffer() {
+  DeviceList *devicelist = DeviceList::Instance();
+  if(devicelist->hasCudaDevice()) {
+    // register buffer object for access by CUDA, return handle
+    assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
+      renderable_->get_buffer_object_id(),
+      CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
+          CUDA_SUCCESS);
   }
 }
 

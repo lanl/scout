@@ -1,5 +1,6 @@
 /*
- * ###########################################################################
+ *  
+ *###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -45,88 +46,40 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
- * Notes
- *
- * ##### 
  */ 
 
-#include <iostream>
-#include <stdlib.h>
+#include "scout/Runtime/renderall/RenderallBase.h"
 
-#include "scout/Runtime/types.h"
-#include "scout/Runtime/opengl/opengl.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/renderall/glyph_renderall.h"
-#include "scout/Runtime/opengl/glGlyphRenderable.h"
+//using namespace std;
+using namespace scout;
 
-namespace scout 
-{
+RenderallBase* __scrt_renderall = 0;
 
-  using namespace std;
+RenderallBase::RenderallBase(size_t width,
+            size_t height,
+            size_t depth)
+  : width_(width),
+    height_(height),
+    depth_(depth){
+}
 
-  glyph_renderall::glyph_renderall(size_t width, size_t height, size_t depth, 
-      size_t npoints, glCamera* camera)
-    : renderall_base_rt(width, height, depth), _camera(camera)
-  {
-    _glsdl = glSDL::Instance(__sc_initial_width, __sc_initial_height, camera);
+RenderallBase::~RenderallBase(){
+}
 
-    _renderable = new glGlyphRenderable(npoints);
+void __scrt_renderall_begin(){
+  __scrt_renderall->begin();
+}
 
-    register_buffer();
+void __scrt_renderall_end(){
+  __scrt_renderall->end();
+}
 
-    // we need a camera or nothing will happen! 
-    if (camera ==  NULL) 
-    {
-        cerr << "Warning: no camera so can't view anything!" << endl;
-    }
-
-    _renderable->initialize(camera);
-
-    // show empty buffer
-    _glsdl->swapBuffers();
-  }
-
-
-  glyph_renderall::~glyph_renderall()
-  {
-    delete _renderable;
-  }
-
-
-  void glyph_renderall::begin()
-  {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    map_gpu_resources();
-  }
-
-
-  void glyph_renderall::end()
-  {
-    unmap_gpu_resources();
-    exec();
-
-    // show what we just drew
-    _glsdl->swapBuffers();
-
-    bool done = _glsdl->processEvent();
-
-    // fix this
-    if (done) exit(0);
-  }
-
-  void glyph_renderall::exec() 
-  {
-    _glsdl->update();
-    _renderable->draw(_camera);
+void __scrt_renderall_delete(){
+  if (__scrt_renderall != NULL) {
+    delete __scrt_renderall;
+    __scrt_renderall = NULL;
   }
 }
 
-void __sc_init_glyph_renderall(size_t width, size_t height, size_t depth, 
-    size_t npoints, glCamera* camera)
-{
-  if(!__sc_renderall){
-    __sc_renderall = new glyph_renderall(width, height, depth, npoints, camera);
-  }
-}
+
+

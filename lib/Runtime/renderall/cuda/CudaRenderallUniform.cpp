@@ -52,17 +52,56 @@
  * ##### 
  */ 
 
-#include "scout/Runtime/renderall/glyph_renderall.h"
-#include "scout/Runtime/opengl/glGlyphRenderable.h"
+#include <iostream>
+#include <cassert>
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
-void glyph_renderall::map_gpu_resources() {
-  __sc_glyph_renderall_vertex_data =_renderable->map_vertex_data();
+#include <cuda.h>
+#include <cudaGL.h>
+#include "scout/Runtime/DeviceList.h"
+#include "scout/Runtime/renderall/RenderallUniformImpl.h"
+
+// global in lib/Runtime/CudaRuntime.cpp
+extern CUgraphicsResource __sc_cuda_device_resource;
+
+namespace scout{
+
+  void RenderallUniformImpl::registerPbo(GLuint pbo) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
+      assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
+          pbo,
+          CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) == CUDA_SUCCESS);
+    } else {
+      //std::cout << "no cuda using SDL\n";
+    }
+  }
+
+  void RenderallUniformImpl::mapGpuResources(void) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
+    // map one graphics resource for access by CUDA
+      assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
+
+      size_t bytes;
+             // return a pointer by which the mapped graphics resource may be accessed.
+      assert(cuGraphicsResourceGetMappedPointer((CUdeviceptr *)&__scrt_renderall_uniform_cuda_device,
+             &bytes, __sc_cuda_device_resource) == CUDA_SUCCESS);
+    } else {
+      __scrt_renderall_uniform_colors =renderable_->map_colors();
+    }
+  }
+
+  void RenderallUniformImpl::unmapGpuResources(void) {
+    DeviceList *devicelist = DeviceList::Instance();
+    if(devicelist->hasCudaDevice()) {
+      assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
+      renderable_->alloc_texture();
+    } else {
+      renderable_->unmap_colors();
+    }
+  }
 }
 
-
-void glyph_renderall::unmap_gpu_resources() {
-  _renderable->unmap_vertex_data();
-}
-
-void glyph_renderall::register_buffer() {
-}

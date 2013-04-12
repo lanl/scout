@@ -52,56 +52,17 @@
  * ##### 
  */ 
 
-#include <iostream>
-#include <cassert>
-#include "scout/Runtime/base_types.h"
-#include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
+#include "scout/Runtime/renderall/glyph_renderall.h"
 
-#include <cuda.h>
-#include <cudaGL.h>
-#include "scout/Runtime/DeviceList.h"
-#include "scout/Runtime/renderall/renderall_uniform_.h"
-
-// global in lib/Runtime/CudaRuntime.cpp
-extern CUgraphicsResource __sc_cuda_device_resource;
-
-namespace scout{
-
-  void renderall_uniform_rt_::register_pbo(GLuint pbo) {
-    DeviceList *devicelist = DeviceList::Instance();
-    if(devicelist->hasCudaDevice()) {
-      assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
-          pbo,
-          CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) == CUDA_SUCCESS);
-    } else {
-      //std::cout << "no cuda using SDL\n";
-    }
-  }
-
-  void renderall_uniform_rt_::map_gpu_resources(void) {
-    DeviceList *devicelist = DeviceList::Instance();
-    if(devicelist->hasCudaDevice()) {
-    // map one graphics resource for access by CUDA
-      assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
-
-      size_t bytes;
-             // return a pointer by which the mapped graphics resource may be accessed.
-      assert(cuGraphicsResourceGetMappedPointer((CUdeviceptr *)&__sc_cuda_device_renderall_uniform_colors,
-             &bytes, __sc_cuda_device_resource) == CUDA_SUCCESS);
-    } else {
-      __sc_renderall_uniform_colors =_renderable->map_colors();
-    }
-  }
-
-  void renderall_uniform_rt_::unmap_gpu_resources(void) {
-    DeviceList *devicelist = DeviceList::Instance();
-    if(devicelist->hasCudaDevice()) {
-      assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
-      _renderable->alloc_texture();
-    } else {
-      _renderable->unmap_colors();
-    }
-  }
+void glyph_renderall::mapGpu_Resources() {
+ //SC_TODO
 }
 
+
+void glyph_renderall::unmapGpuResources() {
+ //SC_TODO
+}
+
+void glyph_renderall::registerBuffer() {
+ //SC_TODO
+}

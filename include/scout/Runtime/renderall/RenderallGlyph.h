@@ -52,53 +52,49 @@
  * ##### 
  */ 
 
+#ifndef SCOUT_RENDERALL_GLYPH_H_
+#define SCOUT_RENDERALL_GLYPH_H_
 
-#ifndef SCOUT_GL_SDL_H_
-#define SCOUT_GL_SDL_H_
-#include <SDL/SDL.h>
-#include "scout/Runtime/opengl/glToolkit.h"
+#include "scout/Runtime/types.h"
+#include "scout/Runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/glyph_vertex.h"
+#include "scout/Runtime/renderall/RenderallBase.h"
+#include "scout/Runtime/opengl/glSDL.h"
 
-const size_t __scrt_initial_window_width = 768;
-const size_t __scrt_initial_window_height = 768;
+// globals defined in lib/Runtime/scout.cpp
+extern scout::glyph_vertex* __scrt_renderall_glyph_vertex_data;
+extern unsigned long long __scrt_renderall_glyph_cuda_device;
 
-namespace scout
+namespace scout 
 {
-  class glSDL : public glToolkit {
+  class glCamera;
+  class glGlyphRenderable;
 
-   protected:
-    glSDL();
-    glSDL(size_t width, size_t height, glCamera* camera = NULL);
-    ~glSDL();
-    glSDL(const glSDL&);
-    glSDL& operator= (const glSDL&);
+  class RenderallGlyph : public RenderallBase {
+    public:
+      RenderallGlyph(size_t width, size_t height, size_t depth, size_t npts,
+          glCamera* camera);
+      ~RenderallGlyph();
+      void addVolume(void* dataptr, unsigned volumenum){}
+      void begin();
+      void end();
+    private:
+      void mapGpuResources();
+      void unmapGpuResources();
+      void registerBuffer();
+      void exec();
 
-   public:
-    void resize(size_t width, size_t height);
-    void update(); // { SDL_UpdateRect(_surface, 0, 0, 0, 0); }
-    void paintMono();    
-    void paintStereo();    
-
-    bool processEvent();
-    void eventLoop();
-
-    void keyPressEvent();
-    void keyReleaseEvent();        
-    void mousePressLeft();
-    void mousePressMiddle();
-    void mousePressRight();
-    void mouseReleaseLeft();    
-    void mouseReleaseMiddle();    
-    void mouseReleaseRight();    
-    void mouseMoveEvent();
-    void resizeEvent();
-    void swapBuffers() { SDL_GL_SwapBuffers();}
-    static glSDL* Instance(size_t width = __scrt_initial_window_width,
-        size_t height = __scrt_initial_window_height, glCamera* camera = NULL);
-
-   private:
-    static glSDL*     _instance;
-    SDL_Surface*      _surface;
-    SDL_Event         _event;
+    private:
+      glGlyphRenderable* renderable_;
+      glCamera* camera_;
+      glSDL* glsdl_;
   };
-}
-#endif
+
+} // end namespace scout
+
+using namespace scout;
+
+extern void __scrt_renderall_glyph_init(size_t width, size_t height,
+    size_t depth, size_t npoints, glCamera* camera = NULL);
+
+#endif 

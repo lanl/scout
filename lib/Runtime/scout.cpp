@@ -27,13 +27,15 @@ using namespace std;
 using namespace scout;
 
 //globals accessed by llvm/tools/clang/lib/CodeGen/CGStmt.cpp
-scout::float4* __sc_renderall_uniform_colors;
-glyph_vertex* __sc_glyph_renderall_vertex_data;
+scout::float4* __scrt_renderall_uniform_colors;
+glyph_vertex* __scrt_renderall_glyph_vertex_data;
 // -------------
 
 // globals accessed by lib/Compiler/llvm/Transforms/Driver/CudaDriver.cpp
-unsigned long long __sc_device_glyph_renderall_vertex_data;
-unsigned long long __sc_cuda_device_renderall_uniform_colors;
+unsigned long long __scrt_renderall_glyph_cuda_device;
+unsigned long long __scrt_renderall_surface_cuda_device;
+unsigned long long __scrt_renderall_uniform_cuda_device;
+unsigned long long __scrt_renderall_volume_cuda_device;
 // -------------
 
 #ifdef SC_ENABLE_MPI
@@ -195,7 +197,7 @@ void __sc_debugger_dump_mesh_field(size_t width,
 }
 
 
-void __sc_init(int argc, char** argv, ScoutDeviceType devType){
+void __scrt_init(ScoutDeviceType devType){
   DeviceList *devicelist = DeviceList::Instance();
   switch(devType){
     case ScoutGPUCUDA:
@@ -228,11 +230,8 @@ void __sc_init(int argc, char** argv, ScoutDeviceType devType){
   }
 }
 
-void __sc_init(ScoutDeviceType devType){
-  __sc_init(0, 0, devType);
-}
 
-void __sc_end(){
+void __scrt_end(){
 }
 
 double cshift(double a, int dx, int axis){

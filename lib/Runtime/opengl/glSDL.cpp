@@ -79,7 +79,7 @@ glSDL* glSDL::Instance(size_t width, size_t height, glCamera* camera) {
 //
 glSDL::glSDL()
 {
-  glSDL(__sc_initial_width, __sc_initial_height);
+  glSDL(__scrt_initial_window_width, __scrt_initial_window_height);
 }
 
 glSDL::glSDL(size_t width, size_t height, glCamera* camera)

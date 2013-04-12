@@ -391,7 +391,7 @@ void __sc_opencl_set_kernel_field(const char* kernelName,
     if(string(fieldName).find("colors") != string::npos){
       ret = 
         clSetKernelArg(kernel->kernel, argNum, sizeof(cl_mem),
-                       &__sc_opencl_device_renderall_uniform_colors);
+                       &__scrt_renderall_uniform_opencl_device);
       assert(ret == CL_SUCCESS);
       return;
     }

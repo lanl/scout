@@ -52,17 +52,17 @@
  * ##### 
  */ 
 
-#include "scout/Runtime/renderall/glyph_renderall.h"
+#include "scout/Runtime/renderall/RenderallGlyph.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
 
-void glyph_renderall::map_gpu_resources() {
- //TODO
+void RenderallGlyph::mapGpuResources() {
+  __scrt_renderall_glyph_vertex_data = renderable_->map_vertex_data();
 }
 
 
-void glyph_renderall::unmap_gpu_resources() {
- //TODO
+void RenderallGlyph::unmapGpuResources() {
+  renderable_->unmap_vertex_data();
 }
 
-void glyph_renderall::register_buffer() {
- //TODO
+void RenderallGlyph::registerBuffer() {
 }

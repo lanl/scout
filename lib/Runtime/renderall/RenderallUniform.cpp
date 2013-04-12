@@ -52,44 +52,97 @@
  * ##### 
  */ 
 
-#ifndef SCOUT_RENDERALL_UNIFORM__H_
-#define SCOUT_RENDERALL_UNIFORM__H_
-
-#include "scout/Runtime/renderall/renderall_uniform.h"
+#include <iostream>
+#include "scout/Runtime/renderall/RenderallUniform.h"
+#include "scout/Runtime/renderall/RenderallUniformImpl.h"
+#include "scout/Runtime/base_types.h"
 #include "scout/Runtime/opengl/glSDL.h"
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
-// globals defined in lib/Runtime/scout.cpp
-extern scout::float4* __sc_renderall_uniform_colors;
-extern unsigned long long __sc_cuda_device_renderall_uniform_colors;
+// scout includes
+#include "scout/Config/defs.h"
+
+using namespace std;
+using namespace scout;
 
 namespace scout{
 
-  class renderall_uniform_rt_{
-    public:
-      renderall_uniform_rt_(renderall_uniform_rt* o);
+  RenderallUniformImpl::RenderallUniformImpl(RenderallUniform* o)
+  : o_(o){
 
-      ~renderall_uniform_rt_();
+    glsdl_ = glSDL::Instance();
 
-      void init();
+    init();
+  }
 
-      void begin();
+  RenderallUniformImpl::~RenderallUniformImpl(){
+    if (renderable_ != NULL) delete renderable_;
+  }
 
-      void end();
+  void RenderallUniformImpl::init(){
+    renderable_ = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
+        glfloat3(o_->width(), o_->height(), 0.0));
 
-      void map_gpu_resources();
+    registerPbo(renderable_->get_buffer_object_id());
 
-      void unmap_gpu_resources();
+    renderable_->initialize(NULL);
 
-      void register_pbo(GLuint pbo);
+    // show empty buffer
+    glsdl_->swapBuffers();
+  }
 
-      void exec();
+  void RenderallUniformImpl::begin(){
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    mapGpuResources();
+  }
 
-    private:
-      renderall_uniform_rt* o_;
-      glQuadRenderableVA* _renderable;
-      glSDL *_glsdl;
-  };
+  void RenderallUniformImpl::end(){
+    unmapGpuResources();
+
+    exec();
+
+    // show what we just drew
+    glsdl_->swapBuffers();
+
+    bool done = glsdl_->processEvent();
+
+    if (done) exit(0);
+
+  }
+  void RenderallUniformImpl::exec(){
+    renderable_->draw(NULL);
+  }
+
 } // end namespace scout
 
-#endif
+RenderallUniform::RenderallUniform(size_t width,
+    size_t height,
+    size_t depth)
+: RenderallBase(width, height, depth){
+
+  x_ = new RenderallUniformImpl(this);
+
+}
+
+RenderallUniform::~RenderallUniform(){
+  delete x_;
+}
+
+void RenderallUniform::begin(){
+  x_->begin();
+}
+
+void RenderallUniform::end(){
+  x_->end();
+}
+
+void __scrt_renderall_uniform_begin(size_t width,
+    size_t height,
+    size_t depth){
+  if(!__scrt_renderall){
+    __scrt_renderall = new RenderallUniform(width, height, depth);
+  }
+
+  __scrt_renderall->begin();
+
+}

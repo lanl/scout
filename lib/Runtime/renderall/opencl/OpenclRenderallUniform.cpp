@@ -52,53 +52,57 @@
  * ##### 
  */ 
 
+#include <cassert>
+#include "scout/Runtime/base_types.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
-#ifndef SCOUT_GL_SDL_H_
-#define SCOUT_GL_SDL_H_
-#include <SDL/SDL.h>
-#include "scout/Runtime/opengl/glToolkit.h"
+#include "scout/Runtime/opencl/scout_opencl.h"
+#include "scout/Runtime/renderall/renderall_uniform_.h"
 
-const size_t __scrt_initial_window_width = 768;
-const size_t __scrt_initial_window_height = 768;
+using namespace scout;
+cl_mem __scrt_renderall_uniform_opencl_device;
 
-namespace scout
-{
-  class glSDL : public glToolkit {
+namespace scout{
 
-   protected:
-    glSDL();
-    glSDL(size_t width, size_t height, glCamera* camera = NULL);
-    ~glSDL();
-    glSDL(const glSDL&);
-    glSDL& operator= (const glSDL&);
+  void renderall_uniform_rt_::registerPbo(GLuint pbo){
+    cl_int ret;
+    if(__sc_opencl) {
+      __scrt_renderall_uniform_opencl_device =
+          clCreateFromGLBuffer(__sc_opencl_context,
+              CL_MEM_WRITE_ONLY,
+              pbo,
+              &ret);
+      assert(ret == CL_SUCCESS);
+    }
+  }
 
-   public:
-    void resize(size_t width, size_t height);
-    void update(); // { SDL_UpdateRect(_surface, 0, 0, 0, 0); }
-    void paintMono();    
-    void paintStereo();    
+  void renderall_uniform_rt_::mapGpuResources(void) {
+    if(__sc_opencl) {
+      glFinish();
+      clEnqueueAcquireGLObjects(__sc_opencl_command_queue,
+          1,
+          &__scrt_renderall_uniform_opencl_device,
+          0,
+          NULL,
+          NULL);
+    } else {
+      __scrt_renderall_uniform_colors =_renderable->map_colors();
+    }
+  }
 
-    bool processEvent();
-    void eventLoop();
-
-    void keyPressEvent();
-    void keyReleaseEvent();        
-    void mousePressLeft();
-    void mousePressMiddle();
-    void mousePressRight();
-    void mouseReleaseLeft();    
-    void mouseReleaseMiddle();    
-    void mouseReleaseRight();    
-    void mouseMoveEvent();
-    void resizeEvent();
-    void swapBuffers() { SDL_GL_SwapBuffers();}
-    static glSDL* Instance(size_t width = __scrt_initial_window_width,
-        size_t height = __scrt_initial_window_height, glCamera* camera = NULL);
-
-   private:
-    static glSDL*     _instance;
-    SDL_Surface*      _surface;
-    SDL_Event         _event;
-  };
+  void renderall_uniform_rt_::unmapGpuResources(void) {
+    if(__sc_opencl) {
+      clEnqueueReleaseGLObjects(__sc_opencl_command_queue,
+          1,
+          &__scrt_renderall_uniform_opencl_device,
+          0,
+          NULL,
+          NULL);
+      clFinish(__sc_opencl_command_queue);
+    } else {
+      _renderable->unmap_colors();
+    }
+  }
 }
-#endif
+

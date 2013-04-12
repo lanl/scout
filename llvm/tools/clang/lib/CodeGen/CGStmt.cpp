@@ -708,19 +708,19 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
     llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
 
-    if(!CGM.getModule().getNamedGlobal("__sc_renderall_uniform_colors")) {
+    if(!CGM.getModule().getNamedGlobal("__scrt_renderall_uniform_colors")) {
 
       new llvm::GlobalVariable(CGM.getModule(),
                                flt4PtrTy,
                                false,
                                llvm::GlobalValue::ExternalLinkage,
                                0,
-                               "__sc_renderall_uniform_colors");
+                               "__scrt_renderall_uniform_colors");
     }
 
     llvm::Value *local_colors  = Builder.CreateAlloca(flt4PtrTy, 0, "colors");
     llvm::Value *global_colors = 
-    CGM.getModule().getNamedGlobal("__sc_renderall_uniform_colors");
+    CGM.getModule().getNamedGlobal("__scrt_renderall_uniform_colors");
     
     Builder.CreateStore(Builder.CreateLoad(global_colors), local_colors);
     Colors = Builder.CreateLoad(local_colors, "colors");
@@ -1379,7 +1379,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   }
 
 
-  llvm::Function *addVolFunc = CGM.getModule().getFunction("__sc_add_volume");
+  llvm::Function *addVolFunc = CGM.getModule().getFunction("__scrt_renderall_add_volume");
   
   if(!addVolFunc){
     
@@ -1396,7 +1396,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     
     addVolFunc = llvm::Function::Create(FTy, 
                                         llvm::Function::ExternalLinkage,
-                                        "__sc_add_volume", 
+                                        "__scrt_renderall_add_volume",
                                         &CGM.getModule());
   }
 
@@ -1440,7 +1440,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   
   std::vector<llvm::Value*> Args;
   
-  llvm::Function *beginRendFunc = CGM.getModule().getFunction("__sc_begin_renderall");
+  llvm::Function *beginRendFunc = CGM.getModule().getFunction("__scrt_renderall_begin");
   
   if(!beginRendFunc){
     
@@ -1452,12 +1452,12 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     
     beginRendFunc = llvm::Function::Create(FTy, 
                                         llvm::Function::ExternalLinkage,
-                                        "__sc_begin_renderall", 
+                                        "__scrt_renderall_begin",
                                         &CGM.getModule());
   }
   Builder.CreateCall(beginRendFunc, Args);
   
-  llvm::Function *endRendFunc = CGM.getModule().getFunction("__sc_end_renderall");
+  llvm::Function *endRendFunc = CGM.getModule().getFunction("__scrt_renderall_end");
   
   if(!endRendFunc){
     
@@ -1469,13 +1469,13 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     
     endRendFunc = llvm::Function::Create(FTy, 
                                            llvm::Function::ExternalLinkage,
-                                           "__sc_end_renderall", 
+                                           "__scrt_renderall_end",
                                            &CGM.getModule());
   }
 
   Builder.CreateCall(endRendFunc, Args);
  /* 
-  llvm::Function *delRendFunc = CGM.getModule().getFunction("__sc_delete_renderall");
+  llvm::Function *delRendFunc = CGM.getModule().getFunction("__scrt_renderall_delete");
   
   if(!delRendFunc){
     
@@ -1487,7 +1487,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     
     delRendFunc = llvm::Function::Create(FTy, 
                                            llvm::Function::ExternalLinkage,
-                                           "__sc_delete_renderall", 
+                                           "__scrt_renderall_delete",
                                            &CGM.getModule());
   }
   Builder.CreateCall(delRendFunc, Args);

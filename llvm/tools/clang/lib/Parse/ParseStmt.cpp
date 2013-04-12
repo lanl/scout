@@ -2155,7 +2155,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
                                       "parsing function body");
 
 #ifndef USE_SCCPLUS // for testing rewriter
-  // scout - insert call to __sc_init(argc, argv, gpu) at the top of main
+  // scout - insert call to __scrt_init(gpu) at the top of main
   if(getLangOpts().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
     
@@ -2173,24 +2173,10 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
     
     if(fd->isMain()){
       assert(Tok.is(tok::l_brace) &&
-             "expected lbrace when inserting __sc_init()");
+             "expected lbrace when inserting __scrt_init()");
 
-      if(fd->param_size() == 0){
-        InsertCPPCode("__sc_init(" + args + "); atexit(__sc_end);", LBraceLoc, false);
-      }
-      else{
-        assert(fd->param_size() == 2 && "expected main with two params");
-        FunctionDecl::param_iterator itr = fd->param_begin();
+      InsertCPPCode("__scrt_init(" + args + "); atexit(__scrt_end);", LBraceLoc, false);
 
-        ParmVarDecl* paramArgc = *itr;
-        ++itr;
-        ParmVarDecl* paramArgv = *itr;
-
-        std::string code = "__sc_init(" + paramArgc->getName().str() +
-        ", " + paramArgv->getName().str() + ", " + args + "); atexit(__sc_end);";
-
-        InsertCPPCode(code, LBraceLoc, false);
-      }
     }
   }
 #endif
@@ -2896,7 +2882,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     assert(dims.size() >= 1);
 #ifndef USE_SCCPLUS // for testing rewriter
     std::string bc;
-    bc = "__sc_begin_uniform_renderall(";
+    bc = "__scrt_renderall_uniform_begin(";
     bc += MVD->getName().str() + ".width, ";
     bc += MVD->getName().str() + ".height, ";
     bc += MVD->getName().str() + ".depth);";
@@ -2907,7 +2893,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     StmtsStack.back()->push_back(BR.get());
 
-    InsertCPPCode("__sc_end_renderall();", BodyLoc);
+    InsertCPPCode("__scrt_renderall_end();", BodyLoc);
 #endif
     ForAllResult = Actions.ActOnRenderAllStmt(ForAllLoc, FT, MT, MVD,
                                               LoopVariableII, MeshII, LParenLoc,

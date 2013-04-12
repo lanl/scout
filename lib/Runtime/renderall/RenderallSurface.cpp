@@ -2,7 +2,7 @@
  * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,106 +45,121 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
  *
- * ##### 
- */ 
+ * #####
+ */
 
 #include <iostream>
-#include "scout/Runtime/renderall/renderall_uniform.h"
-#include "scout/Runtime/renderall/renderall_uniform_.h"
 #include "scout/Runtime/base_types.h"
+#include "scout/Runtime/renderall/RenderallSurface.h"
 #include "scout/Runtime/opengl/glSDL.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
 // scout includes
 #include "scout/Config/defs.h"
 
+#ifdef SC_ENABLE_CUDA
+#include <cuda.h>
+#include <cudaGL.h>
+#include "scout/Runtime/cuda/CudaDevice.h"
+#endif
+
+#ifdef SC_ENABLE_OPENCL
+#include "scout/Runtime/opencl/scout_opencl.h"
+#endif
+
+#ifdef SC_ENABLE_CUDA
+#include <thrust/extrema.h>
+#include <thrust/host_vector.h>
+#endif
+
 using namespace std;
 using namespace scout;
 
-void __sc_init_sdl(size_t width, size_t height, glCamera* camera = NULL);
+// ------  LLVM - globals accessed by LLVM / CUDA driver
 
-namespace scout{
 
-  renderall_uniform_rt_::renderall_uniform_rt_(renderall_uniform_rt* o)
-  : o_(o){
+// CUDA and OPENCL parts not done yet, just borrowed code from RenderallUniform
 
-    _glsdl = glSDL::Instance();
+#ifdef SC_ENABLE_OPENCL
+cl_mem __scrt_renderall_surface_opencl_device;
+#endif
 
-    init();
-  }
+// -------------
 
-  renderall_uniform_rt_::~renderall_uniform_rt_(){
-    if (_renderable != NULL) delete _renderable;
-  }
 
-  void renderall_uniform_rt_::init(){
-    _renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0),
-        glfloat3(o_->width(), o_->height(), 0.0));
+RenderallSurface::RenderallSurface(size_t width, size_t height, size_t depth,
+    float* vertices, float* normals, float* colors, int numVertices, glCamera* camera) 
+:RenderallBase(width, height, depth), vertices_(vertices),
+  normals_(normals), colors_(colors), numVertices_(numVertices), camera_(camera)
+{
+  glsdl_ = glSDL::Instance(__scrt_initial_window_width, __scrt_initial_window_height, camera);
 
-    register_pbo(_renderable->get_buffer_object_id());
+  localCamera_ = false;
 
-    _renderable->initialize(NULL);
+  // we need a camera or nothing will happen! 
+  if (camera_ ==  NULL)
+  {
+    cerr << "Warning: creating default camera" << endl;
 
-    // show empty buffer
-    _glsdl->swapBuffers();
-  }
+    camera_ = new glCamera();
+    localCamera_ = true;
 
-  void renderall_uniform_rt_::begin(){
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    map_gpu_resources();
-  }
+    camera_->near = 70.0;
+    camera_->far = 500.0;
+    camera_->fov  = 40.0;
+    const glfloat3 pos = glfloat3(350.0, -100.0, 650.0);
+    const glfloat3 lookat = glfloat3(350.0, 200.0, 25.0);
+    const glfloat3 up = glfloat3(-1.0, 0.0, 0.0);
 
-  void renderall_uniform_rt_::end(){
-    unmap_gpu_resources();
-
-    exec();
-
-    // show what we just drew
-    _glsdl->swapBuffers();
-
-    bool done = _glsdl->processEvent();
-
-    if (done) exit(0);
+    camera_->setPosition(pos);
+    camera_->setLookAt(lookat);
+    camera_->setUp(up);
+    camera_->resize(__scrt_initial_window_width, __scrt_initial_window_height);
 
   }
-  void renderall_uniform_rt_::exec(){
-    _renderable->draw(NULL);
-  }
 
-} // end namespace scout
+  renderable_ = new glSurfaceRenderable(width, height, depth, vertices_, normals_,
+      colors, numVertices_, camera_);
 
-renderall_uniform_rt::renderall_uniform_rt(size_t width,
-    size_t height,
-    size_t depth)
-: renderall_base_rt(width, height, depth){
+  // show empty buffer
+  glsdl_->swapBuffers();
+}
 
-  x_ = new renderall_uniform_rt_(this);
+RenderallSurface::~RenderallSurface(){
+  if (renderable_ != NULL) delete renderable_;
+  if (localCamera_ && (camera_ != NULL)) delete camera_;
+}
+
+void RenderallSurface::begin(){
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void RenderallSurface::end(){
+
+  exec();
+
+  // show what we just drew
+  glsdl_->swapBuffers();
+
+  bool done = glsdl_->processEvent();
+
+  if (done) exit(0);
 
 }
 
-renderall_uniform_rt::~renderall_uniform_rt(){
-  delete x_;
+void RenderallSurface::exec(){
+  renderable_->draw(camera_);
 }
 
-void renderall_uniform_rt::begin(){
-  x_->begin();
-}
 
-void renderall_uniform_rt::end(){
-  x_->end();
-}
+void __scrt_renderall_surface_begin(size_t width, size_t height, size_t depth,
+    float* vertices, float* normals, float* colors, size_t numVertices, glCamera* camera){
 
-void __sc_begin_uniform_renderall(size_t width,
-    size_t height,
-    size_t depth){
-  if(!__sc_renderall){
-    __sc_renderall = new renderall_uniform_rt(width, height, depth);
-  }
-
-  __sc_renderall->begin();
+  __scrt_renderall = new RenderallSurface(width, height, depth, vertices, normals,
+      (float*)colors, numVertices, camera);
 
 }
+

@@ -52,52 +52,44 @@
  * ##### 
  */ 
 
-#include <cassert>
-#include "scout/Runtime/types.h"
+#ifndef SCOUT_RENDERALL_UNIFORM_IMPL_H_
+#define SCOUT_RENDERALL_UNIFORM_IMPL_H_
+
+#include "scout/Runtime/renderall/RenderallUniform.h"
 #include "scout/Runtime/opengl/glSDL.h"
-#include <cuda.h>
-#include <cudaGL.h>
-#include "scout/Runtime/opengl/glGlyphRenderable.h"
-#include "scout/Runtime/DeviceList.h"
-#include "scout/Runtime/renderall/glyph_renderall.h"
+#include "scout/Runtime/opengl/glQuadRenderableVA.h"
 
-// global in lib/Runtime/CudaRuntime.cpp
-extern CUgraphicsResource __sc_cuda_device_resource;
+// globals defined in lib/Runtime/scout.cpp
+extern scout::float4* __scrt_renderall_uniform_colors;
+extern unsigned long long __scrt_renderall_uniform_cuda_device;
 
-void glyph_renderall::map_gpu_resources() {
-  DeviceList *devicelist = DeviceList::Instance();
-  if(devicelist->hasCudaDevice()) {
-    // map one graphics resource for access by CUDA
-    assert(cuGraphicsMapResources(1, &__sc_cuda_device_resource, 0) == CUDA_SUCCESS);
+namespace scout{
 
-    size_t bytes;
-    // return a pointer by which the mapped graphics resource may be accessed.
-    assert(cuGraphicsResourceGetMappedPointer(
-        (CUdeviceptr *)&__sc_device_glyph_renderall_vertex_data, &bytes,
-        __sc_cuda_device_resource) == CUDA_SUCCESS);
-  } else {
-    __sc_glyph_renderall_vertex_data = _renderable->map_vertex_data();
-  }
-}
+  class RenderallUniformImpl{
+    public:
+      RenderallUniformImpl(RenderallUniform* o);
 
-void glyph_renderall::unmap_gpu_resources() {
-  DeviceList *devicelist = DeviceList::Instance();
-  if(devicelist->hasCudaDevice()) {
-    assert(cuGraphicsUnmapResources(1, &__sc_cuda_device_resource, 0)
-      == CUDA_SUCCESS);
-  } else {
-     _renderable->unmap_vertex_data();
-  }
-}
+      ~RenderallUniformImpl();
 
-void glyph_renderall::register_buffer() {
-  DeviceList *devicelist = DeviceList::Instance();
-  if(devicelist->hasCudaDevice()) {
-    // register buffer object for access by CUDA, return handle
-    assert(cuGraphicsGLRegisterBuffer(&__sc_cuda_device_resource,
-      _renderable->get_buffer_object_id(),
-      CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ==
-          CUDA_SUCCESS);
-  }
-}
+      void init();
 
+      void begin();
+
+      void end();
+
+      void mapGpuResources();
+
+      void unmapGpuResources();
+
+      void registerPbo(GLuint pbo);
+
+      void exec();
+
+    private:
+      RenderallUniform* o_;
+      glQuadRenderableVA* renderable_;
+      glSDL *glsdl_;
+  };
+} // end namespace scout
+
+#endif

@@ -48,40 +48,37 @@
  *  SUCH DAMAGE.
  */ 
 
-#include "scout/Runtime/renderall/renderall_base.h"
+#ifndef SCOUT_RENDERALL_UNIFORM_H_
+#define SCOUT_RENDERALL_UNIFORM_H_
 
-using namespace std;
-using namespace scout;
+#include <cstdlib>
 
-renderall_base_rt* __sc_renderall = 0;
+#include "scout/Runtime/renderall/RenderallBase.h"
+#include "scout/Runtime/types.h"
 
-renderall_base_rt::renderall_base_rt(size_t width,
-            size_t height,
-            size_t depth)
-  : width_(width),
-    height_(height),
-    depth_(depth){
-    
-}
+namespace scout{
 
-renderall_base_rt::~renderall_base_rt(){
-    
-}
+  class RenderallUniform : public RenderallBase {
+  public:
+    RenderallUniform(size_t width, size_t height, size_t depth);
 
-void __sc_begin_renderall(){
-  __sc_renderall->begin();
-}
+    ~RenderallUniform();
 
-void __sc_end_renderall(){
-  __sc_renderall->end();
-}
+    void begin();
 
-void __sc_delete_renderall(){
-  if (__sc_renderall != NULL) {
-    delete __sc_renderall;
-    __sc_renderall = NULL;
-  }
-}
+    void end();
 
+    void addVolume(void* dataptr, unsigned volumenum){}
 
+  private:
+    class RenderallUniformImpl* x_;
+  };
+
+} // end namespace scout
+
+extern void __scrt_renderall_uniform_begin(size_t width,
+           size_t height,
+           size_t depth);
+
+#endif // SCOUT_RENDERALL_UNIFORM_H_
 

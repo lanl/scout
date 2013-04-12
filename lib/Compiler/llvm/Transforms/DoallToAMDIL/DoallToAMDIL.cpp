@@ -905,7 +905,7 @@ bool DoallToAMDIL::runOnModule(Module &m) {
       
       string name = demangleName(calledFunc->getName().str());
 
-      if(name.find("__sc_init(") == 0){
+      if(name.find("__scrt_init(") == 0){
 	initCall = callInst;
 	++itr;
 	insertInst = itr;

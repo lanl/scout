@@ -1,6 +1,5 @@
 /*
- *  
- *###########################################################################
+ * ###########################################################################
  * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
@@ -46,39 +45,88 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
+ *
+ * ##### 
  */ 
 
-#ifndef SCOUT_RENDERALL_UNIFORM_H_
-#define SCOUT_RENDERALL_UNIFORM_H_
+#include <iostream>
+#include <stdlib.h>
 
-#include <cstdlib>
-
-#include "scout/Runtime/renderall/renderall_base.h"
 #include "scout/Runtime/types.h"
+#include "scout/Runtime/opengl/opengl.h"
+#include "scout/Runtime/opengl/glSDL.h"
+#include "scout/Runtime/renderall/RenderallGlyph.h"
+#include "scout/Runtime/opengl/glGlyphRenderable.h"
 
-namespace scout{
+namespace scout 
+{
 
-  class renderall_uniform_rt : public renderall_base_rt {
-  public:
-    renderall_uniform_rt(size_t width, size_t height, size_t depth);
+  using namespace std;
 
-    ~renderall_uniform_rt();
+  RenderallGlyph::RenderallGlyph(size_t width, size_t height, size_t depth,
+      size_t npoints, glCamera* camera)
+    : RenderallBase(width, height, depth), camera_(camera)
+  {
+    glsdl_ = glSDL::Instance(__scrt_initial_window_width, __scrt_initial_window_height, camera);
 
-    void begin();
+    renderable_ = new glGlyphRenderable(npoints);
 
-    void end();
+    registerBuffer();
 
-    void addVolume(void* dataptr, unsigned volumenum){}
+    // we need a camera or nothing will happen! 
+    if (camera ==  NULL) 
+    {
+        cerr << "Warning: no camera so can't view anything!" << endl;
+    }
 
-  private:
-    class renderall_uniform_rt_* x_;
-  };
+    renderable_->initialize(camera);
 
-} // end namespace scout
+    // show empty buffer
+    glsdl_->swapBuffers();
+  }
 
-extern void __sc_begin_uniform_renderall(size_t width,
-           size_t height,
-           size_t depth);
 
-#endif // SCOUT_RENDERALL_UNIFORM_H_
+  RenderallGlyph::~RenderallGlyph()
+  {
+    delete renderable_;
+  }
 
+
+  void RenderallGlyph::begin()
+  {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    mapGpuResources();
+  }
+
+
+  void RenderallGlyph::end()
+  {
+    unmapGpuResources();
+    exec();
+
+    // show what we just drew
+    glsdl_->swapBuffers();
+
+    bool done = glsdl_->processEvent();
+
+    // fix this
+    if (done) exit(0);
+  }
+
+  void RenderallGlyph::exec()
+  {
+    glsdl_->update();
+    renderable_->draw(camera_);
+  }
+}
+
+void __scrt_renderall_glyph_init(size_t width, size_t height, size_t depth,
+    size_t npoints, glCamera* camera)
+{
+  if(!__scrt_renderall){
+    __scrt_renderall = new RenderallGlyph(width, height, depth, npoints, camera);
+  }
+}
