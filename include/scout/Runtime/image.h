@@ -63,11 +63,12 @@ namespace scout
 
    public:
   
-    image_rt(dim_t w, dim_t h, float4 bgColor, const char* filename)
+    image_rt(dim_t w, dim_t h, float bg_r, float br_g, float bg_b, float bg_a, const char* filename)
         : width(w), height(h) {
     }
 
-    virtual ~image_rt();
+    ~image_rt() {
+    }
 
     dim_t width, height;
   };

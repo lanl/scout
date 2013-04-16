@@ -6236,7 +6236,10 @@ Parser::ParseWindowOrImageDeclaration(bool window,
       error = true;
     }
 
-    code += ToCPPCode(itr->second) + ", ";
+    code += ToCPPCode(itr->second) + ".x, ";
+    code += ToCPPCode(itr->second) + ".y, ";
+    code += ToCPPCode(itr->second) + ".z, ";
+    code += ToCPPCode(itr->second) + ".w, ";
 
     itr = argExprMap.find("filename");
     if(itr == argExprMap.end()){
