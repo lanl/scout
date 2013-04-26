@@ -6016,7 +6016,8 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS){
     dims.push_back(Actions.ActOnIntegerConstant(Tok.getLocation(), 0).get());
   }
   
-  UniformMeshType* mdt = new UniformMeshType(mt->getDecl());
+  UniformMeshType* mdt = new UniformMeshType(mt->getDecl()); //SC_TODO: possible alignment problem?
+
   mdt->setDimensions(dims);
   parsedType.set(QualType(mdt, 0));
   DS.UpdateTypeRep(parsedType);

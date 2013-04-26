@@ -3369,9 +3369,6 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
     }
   }
 
-  UniformMeshDecl* MD = cast<UniformMeshType>(T)->getDecl();
-  (void)MD; //suppress warning
-
   MeshType::InstanceType IT;
   switch(VariableType){
     case tok::kw_cells:
@@ -3390,14 +3387,12 @@ bool Sema::ActOnForAllLoopVariable(Scope* S,
       assert(false && "invalid variable type");
   }
 
-
   UniformMeshType* MT = const_cast<UniformMeshType *>(cast<UniformMeshType>(T));
   MT->setDimensions(cast<MeshType>(T)->dimensions());
 
   ImplicitParamDecl* D =
   ImplicitParamDecl::Create(Context, CurContext, LoopVariableLoc,
                             LoopVariableII, QualType(MT, 0));
-
 
   PushOnScopeChains(D, S, true);
 
@@ -3477,9 +3472,6 @@ bool Sema::ActOnRenderAllLoopVariable(Scope* S,
     Diag(MeshLoc, diag::err_not_mesh_variable_renderall) << MeshII;
     return false;
   }
-
-  UniformMeshDecl* MD = cast<UniformMeshType>(T)->getDecl();
-  (void)MD; //suppress warning
 
   MeshType::InstanceType IT;
   switch(VariableType){
