@@ -996,8 +996,9 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
                         
             fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
-            
-             // Dynamically allocate memory.
+           
+            // SC_TODO: should we do this memory allocation in the runtime? 
+            // Dynamically allocate memory.
             llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
             val = Builder.CreateBitCast(val, structTy->getContainedType(i));
             llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
