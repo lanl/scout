@@ -108,11 +108,6 @@ project(Scout)
   #
   #####
 
-  # look for 32bit arm 
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^armv7") 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSC_32BIT")
-  endif()
-
   ##### SUBPROJECTS
   #
   # Include the next level of projects below.  Please place only one
