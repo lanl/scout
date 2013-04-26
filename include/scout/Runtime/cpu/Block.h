@@ -47,62 +47,46 @@
  *  SUCH DAMAGE.
  * ###########################################################################
  * 
- * Notes
+ * Notes:
+ * This is the BlockLiteral struct that is built by the Codegen in CGBlocks.cpp
  *
  * #####
  */
 
-#ifndef __SC_CPU_QUEUE_H__
-#define __SC_CPU_QUEUE_H__
+#ifndef __SC_CPU_BLOCK_H__
+#define __SC_CPU_BLOCK_H__
 
-#include "scout/Runtime/cpu/Block.h"
-#include "scout/Runtime/cpu/Mutex.h"
 #include <stdint.h>
-#include <vector>
-using namespace std;
 
 namespace scout {
   namespace cpu {
 
-    struct Item {
-      void *blockLiteral;
-      uint32_t dimensions;
-      uint32_t xStart;
-      uint32_t xEnd;
-      uint32_t yStart;
-      uint32_t yEnd;
-      uint32_t zStart;
-      uint32_t zEnd;
+    struct BlockDescriptor {
+      unsigned long int reserved;
+      unsigned long int size;
+      void (*copy_helper) (void *dst, void *src);
+      void (*dispose_helper) (void *src);
+      const char *signature;
     };
 
-    class Queue {
+    struct BlockLiteral {
+      void *isa;
+      int flags;
+      int reserved;
+      void (*invoke) (void *, ...);
+      struct BlockDescriptor *descriptor;
 
-    public:
-      Queue():i_(0) {
-      } 
-      
-      ~Queue() {
-      } 
+      // some of these fields may not actually be present depending
+      // on the mesh dimensions
+      uint32_t *xStart;
+      uint32_t *xEnd;
+      uint32_t *yStart;
+      uint32_t *yEnd;
+      uint32_t *zStart;
+      uint32_t *zEnd;
 
-      void reset() {
-        queue_.clear();
-        i_ = 0;
-      } 
-
-      void add(Item * item) {
-        queue_.push_back(item);
-      }
-
-      Item *get();
-
-    private:
-      typedef vector <Item*>Queue_;
-      Mutex mutex_;
-      Queue_ queue_;
-      size_t i_;
+      // ... void* captured fields
     };
-
-    typedef vector <Queue*>QueueVec;
   }
 }
-#endif // __SC_CPU_QUEUE_H__
+#endif // __SC_CPU_BLOCK_H__
