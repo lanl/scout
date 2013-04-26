@@ -2154,7 +2154,7 @@ Decl *Parser::ParseFunctionStatementBody(Decl *Decl, ParseScope &BodyScope) {
   PrettyDeclStackTraceEntry CrashInfo(Actions, Decl, LBraceLoc,
                                       "parsing function body");
 
-#ifndef USE_SCCPLUS // for testing rewriter
+#ifndef SC_USE_RT_REWRITER // for testing rewriter
   // scout - insert call to __scrt_init(gpu) at the top of main
   if(getLangOpts().Scout){
     FunctionDecl* fd = Actions.getCurFunctionDecl();
@@ -2880,7 +2880,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     MeshType::MeshDimensionVec dims = MT->dimensions();
 
     assert(dims.size() >= 1);
-#ifndef USE_SCCPLUS // for testing rewriter
+#ifndef SC_USE_RT_REWRITER // for testing rewriter
     std::string bc;
     bc = "__scrt_renderall_uniform_begin(";
     bc += MVD->getName().str() + ".width, ";
