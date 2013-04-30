@@ -62,11 +62,11 @@
 namespace scout{
   namespace cpu {
 
-    class system_rt{
+    class System{
     public:
-      system_rt();
+      System();
 
-      ~system_rt();
+      ~System();
 
       size_t totalSockets() const;
 
@@ -105,7 +105,7 @@ namespace scout{
       size_t nDomains();
   
     private:
-      class system_rt_* x_;
+      class SystemImpl* x_;
     };
   } // end namespace cpu
 } // end namespace scout

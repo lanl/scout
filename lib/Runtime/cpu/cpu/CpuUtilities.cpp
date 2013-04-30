@@ -48,7 +48,7 @@
  * ###########################################################################
  *
  * Notes
- *  system_rt for the non-numa case (no hwloc)
+ *  System for the non-numa case (no hwloc)
  * #####
  */
 
@@ -61,9 +61,9 @@ using namespace scout;
 namespace scout{
   namespace  cpu{
 
-    class system_rt_{
+    class SystemImpl{
     public:
-      system_rt_() {
+      SystemImpl() {
         Settings *settings = Settings::Instance();
         totalProcessingUnits_ = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -73,7 +73,7 @@ namespace scout{
          if (settings->debug()) std::cerr << "nThreads " << nThreads_ << std::endl;
       }
 
-      ~system_rt_(){
+      ~SystemImpl(){
       }
 
       size_t totalProcessingUnits() const {
@@ -89,81 +89,78 @@ namespace scout{
     };
 
 
-    system_rt::system_rt(){
-      x_ = new system_rt_();
+    System::System(){
+      x_ = new SystemImpl();
     }
 
-    system_rt::~system_rt(){
+    System::~System(){
       delete x_;
     }
 
-    size_t system_rt::totalSockets() const {
+    size_t System::totalSockets() const {
       return 1;
     }
 
-    size_t system_rt::totalNumaNodes() const {
+    size_t System::totalNumaNodes() const {
       return 1;
     }
 
-    size_t system_rt::totalCores() const {
+    size_t System::totalCores() const {
       return x_->totalProcessingUnits();
     }
 
-    size_t system_rt::totalProcessingUnits() const {
+    size_t System::totalProcessingUnits() const {
       return x_->totalProcessingUnits();
     }
 
-    size_t system_rt::processingUnitsPerCore() const {
+    size_t System::processingUnitsPerCore() const {
       return x_->totalProcessingUnits();
     }
 
-    size_t system_rt::numaNodesPerSocket() const {
+    size_t System::numaNodesPerSocket() const {
       return 1;
     }
 
-    size_t system_rt::memoryPerSocket() const {
+    size_t System::memoryPerSocket() const {
       return 0;
     }
 
-    size_t system_rt::memoryPerNumaNode() const {
+    size_t System::memoryPerNumaNode() const {
       return 0;
     }
 
-    size_t system_rt::processingUnitsPerNumaNode() const {
+    size_t System::processingUnitsPerNumaNode() const {
       return x_->totalProcessingUnits();
     }
 
-    std::string system_rt::treeToString() const {
+    std::string System::treeToString() const {
       return NULL;
     }
 
-    void* system_rt::allocArrayOnNumaNode(size_t size, size_t nodeId) {
+    void* System::allocArrayOnNumaNode(size_t size, size_t nodeId) {
       return NULL;
     }
 
-
-    void system_rt::freeArrayFromNumaNode(void* m) {
+    void System::freeArrayFromNumaNode(void* m) {
     }
 
-
-    bool system_rt::bindThreadToNumaNode(size_t nodeId) {
+    bool System::bindThreadToNumaNode(size_t nodeId) {
       return false;
     }
 
-    int system_rt::bindThreadOutside(pthread_t& thread) {
+    int System::bindThreadOutside(pthread_t& thread) {
       return 0;
     }
 
-    int system_rt::bindThreadInside() {
+    int System::bindThreadInside() {
       return 0;
     }
 
-
-    size_t system_rt::nThreads() {
+    size_t System::nThreads() {
       return x_->nThreads();
     }
 
-    size_t system_rt::nDomains() {
+    size_t System::nDomains() {
       return 1;
     }
   } // end namespace cpu;

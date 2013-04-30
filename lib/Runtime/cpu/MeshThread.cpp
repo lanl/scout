@@ -98,12 +98,16 @@ namespace scout {
               item = queueVec_[qCurrent]->get();
             }
             if (!item) break;
-          } else {
+          } else { // default case, no stealing
             item = queueVec_[qIndex_]->get();
             if (!item) break;
           }
 
           bl = (BlockLiteral*) item->blockLiteral;
+          //SC_TODO: would be cleaner if this was done in createSubBlock()
+          // then we could get rid of item??
+          // allocate the space for the (start, end) pairs and copy the
+          // values from the item.
           switch (item->dimensions) {
           case 3:
             bl->zStart = new uint32_t(item->zStart);
@@ -118,6 +122,8 @@ namespace scout {
 
           bl->invoke(bl);
 
+          // free the space for the (start, end) pairs
+          // SC_TODO: this should be in deleteSubBlock()
           switch (item->dimensions) {
           case 3:
             delete bl->zStart;
@@ -130,7 +136,7 @@ namespace scout {
             delete bl->xEnd;
           }
 
-          free(item->blockLiteral);
+          free(item->blockLiteral); // this was malloc'ed by createSubBlock()
           delete item;
         }
         finishSem_.release();

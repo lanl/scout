@@ -47,7 +47,7 @@
  *  SUCH DAMAGE.
  * ########################################################################### 
  * 
- * Notes: Scout specific code to emit blocks used by cpu runtime
+ * Notes: Scout specific code to emit blocks used by the threaded cpu runtime
  *
  * ##### 
  */ 
@@ -70,6 +70,7 @@
 #include "clang/Analysis/Analyses/Dominators.h"
 #include <algorithm>
 //#include <cstdio>
+//#include <iostream>
 // =============================================================================
 
 using namespace clang;
@@ -99,6 +100,7 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges, 
                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockLiteral");
+  //std::cout << "esbl inputs" <<inputs.size() << "\n"; // 0
 
   // Start generating block function.
   llvm::BasicBlock *blockEntry = createBasicBlock("block_entry");
@@ -128,13 +130,13 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   llvm::Function *Fn = blockEntry->getParent();
 
   std::vector< std::vector< llvm::Value * > > indVars;
-  std::string prefix[] = { "x", "y", "z" };
+  std::string dim[] = { "x", "y", "z" };
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
     std::vector< llvm::Value * > indVar;
-    ScoutIdxVars[i]->setName("var." + prefix[i]);
+    ScoutIdxVars[i]->setName("var." + dim[i]);
     Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
-    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + prefix[i]));
-    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + prefix[i]));
+    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + dim[i]));
+    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + dim[i]));
     Builder.SetInsertPoint(blockEntry);
     indVars.push_back(indVar);
   }
@@ -235,20 +237,22 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
       for(llvm::User::op_iterator O = I->op_begin(), E = I->op_end(); O != E; ++O) {
         if(llvm::Instruction *Instn = dyn_cast< llvm::Instruction >(*O)) {
           if(!region.count(Instn->getParent()) &&
-             !(*O)->getName().startswith("var."))
+             !(*O)->getName().startswith("var.")) {
             inputs.insert(*O);
+            //std::cout << (*O)->getName().str() << "\n"; //start, end pairs then dim_x, etc.
+          }
         }
       }
     }
   }
+  //std::cout << "esbl2 inputs" <<inputs.size() << "\n";
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
   
   llvm::CodeExtractor 
   codeExtractor(std::vector<llvm::BasicBlock *>(region.begin(),
-                                                region.end()),
-                &DT, false);
+                region.end()), &DT, false);
   
   llvm::Function *BlockFn = codeExtractor.extractCodeRegion();
 
@@ -279,12 +283,13 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   typedef llvm::Function::arg_iterator ArgIterator;
 
-  std::vector< llvm::Value * > indvars;
-
+  //ordering of args is (start,end) pairs, then dim_x etc, then captured vars
   for(ArgIterator arg = BlockFn->arg_begin(),
         end = BlockFn->arg_end(); arg != end; ++arg)
-    if(!(arg->getName().startswith("var.")))
+    if(!(arg->getName().startswith("var."))) {
+      //std:: << "arg " << arg->getName().str() << "\n";
       arrayTy.push_back(Int8PtrTy);
+    }
 
   blockInfo.StructureType = llvm::StructType::get(getLLVMContext(), arrayTy, true);
   blockInfo.CanBeGlobal = false;
@@ -361,6 +366,7 @@ llvm::Value
                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockFnCall");
+  //std::cout << "esbfc inputs" << inputs.size() << "\n";
   blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
                                            VoidPtrTy);
   llvm::Constant *isa = CGM.getNSConcreteStackBlock();
@@ -413,8 +419,10 @@ llvm::Value
     if(I->getName().startswith("start.")) {
       Builder.CreateStore(zero, I); var = I;
     } else if(I->getName().startswith("end.")) {
-      int axis = (I->getName()[4]) - 120;
-      llvm::Value *val = Builder.CreateLoad(ranges[axis]);
+      llvm::Value *val;
+      if(I->getName().startswith("end.x")) val = Builder.CreateLoad(ranges[0]);
+      if(I->getName().startswith("end.y")) val = Builder.CreateLoad(ranges[1]);
+      if(I->getName().startswith("end.z")) val = Builder.CreateLoad(ranges[2]);
       Builder.CreateStore(val, I); var = I;
       ++numDimensions;
     } else if(I->getName().startswith("var.")) {

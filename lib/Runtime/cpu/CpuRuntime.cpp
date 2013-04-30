@@ -59,6 +59,7 @@
 #include "scout/Runtime/cpu/MeshThread.h"
 #include <iostream>
 #include <cstring>
+#include <cassert>
 
 using namespace std;
 
@@ -75,16 +76,22 @@ namespace scout {
 
   namespace cpu {
 
+    // create a BlockLiteral with just the required number of start, end pairs,
+    // induction variables, and captured fields
+    // numFields = captured vars + 3*Dim (start, end, and induction var)
+    // layout of Fields is (start, end) pairs, then induction vars (dim_x, etc),
+    // and last captured vars.
     void *createSubBlock(BlockLiteral * bl,
                          size_t numDimensions, size_t numFields) {
 
+      // numFields also includes start, end pairs
+      // so need to subtract off the 6 entries from BlockLiteral
+      // (xStart, xEnd, yStart, yEnd, zStart, zEnd)
       void *bp = malloc(sizeof(BlockLiteral)
-                        + (numFields + 6) * sizeof(void *));
+                        + (numFields - 6) * sizeof(void *));
 
-      if (bp == NULL) {
-        cout << "bad malloc" << endl;
-        return NULL;
-      }
+      assert(bp != NULL);
+
       BlockLiteral *b = (BlockLiteral *) bp;
        b->isa = bl->isa;
        b->flags = bl->flags;
@@ -92,21 +99,29 @@ namespace scout {
        b->invoke = bl->invoke;
        b->descriptor = bl->descriptor;
 
+      // offset to start of void* captured fields from Block.h
       size_t offset =
           bl->descriptor->size + 2 * numDimensions * sizeof(void *);
 
+      // start, end pairs will be allocated and filled in by MeshThread::run()
+
+       // copy the ptrs to the other captured fields
+      // induction vars (dim_x etc) and captured vars but not start/end pairs
        memcpy((char *) bp + offset, (char *) bl + offset,
               (numFields - 2 * numDimensions) * sizeof(void *));
 
        return bp;
     } 
 
+    // An Item (defined in Queue.h) contains the start, end pairs for
+    // the sub-block, these will be copied into the BlockLiteral by MeshThread::run()
     Item *createItem(BlockLiteral * bl, int numDimensions, size_t start,
                        size_t end) {
       size_t x, y;
       Item *item = new Item;
       item->dimensions = numDimensions;
 
+      // split up so each thread gets a chuck that is contiguous in memory
       switch (numDimensions) {
       case 1:
         item->xStart = start;
@@ -158,7 +173,7 @@ namespace scout {
     CpuRuntime::CpuRuntime() {
       int val;
       Settings *settings = Settings::Instance();
-      system_ = new system_rt();
+      system_ = new System();
       nThreads_ = system_->nThreads();
       nDomains_ = system_->nDomains();
 
