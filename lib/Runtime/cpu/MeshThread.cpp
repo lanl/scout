@@ -57,6 +57,7 @@
 #include "scout/Runtime/cpu/MeshThread.h"
 #include "scout/Runtime/cpu/Queue.h"
 #include "scout/Runtime/cpu/CpuUtilities.h"
+#include "scout/Runtime/cpu/CpuRuntime.h"
 using namespace scout;
 
 namespace scout {
@@ -104,40 +105,10 @@ namespace scout {
           }
 
           bl = (BlockLiteral*) item->blockLiteral;
-          //SC_TODO: would be cleaner if this was done in createSubBlock()
-          // then we could get rid of item??
-          // allocate the space for the (start, end) pairs and copy the
-          // values from the item.
-          switch (item->dimensions) {
-          case 3:
-            bl->zStart = new uint32_t(item->zStart);
-            bl->zEnd = new uint32_t(item->zEnd);
-          case 2:
-            bl->yStart = new uint32_t(item->yStart);
-            bl->yEnd = new uint32_t(item->yEnd);
-          case 1:
-            bl->xStart = new uint32_t(item->xStart);
-            bl->xEnd = new uint32_t(item->xEnd);
-          }
 
           bl->invoke(bl);
 
-          // free the space for the (start, end) pairs
-          // SC_TODO: this should be in deleteSubBlock()
-          switch (item->dimensions) {
-          case 3:
-            delete bl->zStart;
-            delete bl->zEnd;
-          case 2:
-            delete bl->yStart;
-            delete bl->yEnd;
-          case 1:
-            delete bl->xStart;
-            delete bl->xEnd;
-          }
-
-          free(item->blockLiteral); // this was malloc'ed by createSubBlock()
-          delete item;
+          deleteItem(item);
         }
         finishSem_.release();
       }

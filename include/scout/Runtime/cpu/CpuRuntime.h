@@ -66,8 +66,10 @@ namespace scout {
 
     void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
                          size_t numFields);
-    Item *createItem(BlockLiteral * bl, int numDimensions,
+    void deleteSubBlock(BlockLiteral * bl, size_t numDimensions);
+    Item *createItem(BlockLiteral * bl, int numDimensions, int numFields,
                      size_t start, size_t end);
+    void deleteItem(Item *item);
     size_t findExtent(BlockLiteral * bl, int numDimensions);
 
     class CpuRuntime {

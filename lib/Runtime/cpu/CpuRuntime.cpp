@@ -81,7 +81,7 @@ namespace scout {
     // numFields = captured vars + 3*Dim (start, end, and induction var)
     // layout of Fields is (start, end) pairs, then induction vars (dim_x, etc),
     // and last captured vars.
-    void *createSubBlock(BlockLiteral * bl,
+    void *createSubBlock(BlockLiteral *bl,
                          size_t numDimensions, size_t numFields) {
 
       // numFields also includes start, end pairs
@@ -103,7 +103,18 @@ namespace scout {
       size_t offset =
           bl->descriptor->size + 2 * numDimensions * sizeof(void *);
 
-      // start, end pairs will be allocated and filled in by MeshThread::run()
+      // allocate the space for the (start, end) pairs
+      switch (numDimensions) {
+      case 3:
+    	  b->zStart = new uint32_t;
+    	  b->zEnd = new uint32_t;
+      case 2:
+    	  b->yStart = new uint32_t;
+    	  b->yEnd = new uint32_t;
+      case 1:
+    	  b->xStart = new uint32_t;
+    	  b->xEnd = new uint32_t;
+      }
 
        // copy the ptrs to the other captured fields
       // induction vars (dim_x etc) and captured vars but not start/end pairs
@@ -113,39 +124,83 @@ namespace scout {
        return bp;
     } 
 
+    void deleteSubBlock(void *bl, size_t numDimensions) {
+
+    	 // free the space for the (start, end) pairs
+    	 BlockLiteral *b = (BlockLiteral *) bl;
+    	switch (numDimensions) {
+    	case 3:
+    		delete b->zStart;
+    		delete b->zEnd;
+    	case 2:
+    		delete b->yStart;
+    		delete b->yEnd;
+    	case 1:
+    		delete b->xStart;
+    		delete b->xEnd;
+    	}
+
+    	free(bl); // this was malloc'ed by createSubBlock()
+    }
+
     // An Item (defined in Queue.h) contains the start, end pairs for
     // the sub-block, these will be copied into the BlockLiteral by MeshThread::run()
-    Item *createItem(BlockLiteral * bl, int numDimensions, size_t start,
+    Item *createItem(BlockLiteral * bl, int numDimensions, int numFields, size_t start,
                        size_t end) {
       size_t x, y;
       Item *item = new Item;
       item->dimensions = numDimensions;
+      item->blockLiteral = createSubBlock(bl, numDimensions,
+                               numFields);
+      BlockLiteral *b = (BlockLiteral *)item->blockLiteral;
 
       // split up so each thread gets a chuck that is contiguous in memory
       switch (numDimensions) {
       case 1:
-        item->xStart = start;
-        item->xEnd = end;
+        *b->xStart = start;
+        *b->xEnd = end;
         break;
       case 2:
         x = (*bl->xEnd - *bl->xStart);
-        item->xStart = start % x;
-        item->xEnd = end % x;
-        item->yStart = start / x;
-        item->yEnd = end / x;
+
+        *b->xStart = start % x;
+        *b->xEnd = end % x;
+        *b->yStart = start / x;
+        *b->yEnd = end / x;
         break;
       case 3:
         x = (*bl->xEnd - *bl->xStart);
         y = (*bl->yEnd - *bl->yStart);
-        item->xStart = (start % (x * y)) % x;
-        item->xEnd = (end % (x * y)) % x;
-        item->yStart = (start % (x * y)) / x;
-        item->yEnd = end % (x * y) / x;
-        item->zStart = start / (x * y);
-        item->zEnd = end / (x * y);
+        *b->xStart = (start % (x * y)) % x;
+        *b->xEnd = (end % (x * y)) % x;
+        *b->yStart = (start % (x * y)) / x;
+        *b->yEnd = end % (x * y) / x;
+        *b->zStart = start / (x * y);
+        *b->zEnd = end / (x * y);
         break;
       }
+/*
+      item->blockLiteral = createSubBlock(bl, numDimensions,
+                          numFields);
+      BlockLiteral *b = (BlockLiteral *)item->blockLiteral;
+      switch (numDimensions) {
+      case 3:
+    	  *b->zStart = item->zStart;
+    	  *b->zEnd = item->zEnd;
+      case 2:
+    	  *b->yStart = item->yStart;
+    	  *b->yEnd = item->yEnd;
+      case 1:
+    	  *b->xStart = item->xStart;
+    	  *b->xEnd = item->xEnd;
+      }
+ */
       return item;
+    }
+
+    void deleteItem(Item *item) {
+    	deleteSubBlock(item->blockLiteral, item->dimensions);
+    	delete item;
     }
 
     size_t findExtent(BlockLiteral * bl, int numDimensions) {
@@ -230,9 +285,7 @@ namespace scout {
           end = extent;
         }
 
-        Item* item = createItem(bl, numDimensions, i, end);
-        item->blockLiteral = createSubBlock(bl, numDimensions,
-            numFields);
+        Item* item = createItem(bl, numDimensions, numFields, i, end);
 
         // One queue for each numa domain
         queueVec_[count++ * nDomains_ / nChunk_]->add(item);
