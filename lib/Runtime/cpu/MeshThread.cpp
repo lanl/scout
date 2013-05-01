@@ -63,9 +63,9 @@ using namespace scout;
 namespace scout {
   namespace cpu {
 
-    // each thread run this which gets an item from the queue and runs it.
+    // each thread runs this which gets an block from the queue and invokes it.
     void MeshThread::run() {
-      Item *item;
+      Block *block;
       BlockLiteral* bl;
       size_t qCurrent;
       size_t size;
@@ -82,34 +82,34 @@ namespace scout {
             size = queueVec_.size();
             done = false;
             for(size_t i = 0; i < size; i++) {
-              item = queueVec_[qCurrent]->get();
-              if (item) break;
+              block = queueVec_[qCurrent]->get();
+              if (block) break;
               qCurrent = (qCurrent+1) % queueVec_.size();
               if (i == size - 1) done = true;
             }
             if (done) break;
           } else if (settings->workStealing() == 1) { //steal from neighbors only
             qCurrent = qIndex_;
-            item = queueVec_[qCurrent]->get();
-            if (!item) {
+            block = queueVec_[qCurrent]->get();
+            if (!block) {
               qCurrent = (qCurrent+1) % queueVec_.size();
-              item = queueVec_[qCurrent]->get();
+              block = queueVec_[qCurrent]->get();
             }
-            if (!item) {
+            if (!block) {
               qCurrent = (qCurrent-1) % queueVec_.size();
-              item = queueVec_[qCurrent]->get();
+              block = queueVec_[qCurrent]->get();
             }
-            if (!item) break;
+            if (!block) break;
           } else { // default case, no stealing
-            item = queueVec_[qIndex_]->get();
-            if (!item) break;
+            block = queueVec_[qIndex_]->get();
+            if (!block) break;
           }
 
-          bl = (BlockLiteral*) item->blockLiteral;
+          bl = block->getBlockLiteral();
 
           bl->invoke(bl);
 
-          deleteItem(item);
+          delete(block);
         }
         finishSem_.release();
       }

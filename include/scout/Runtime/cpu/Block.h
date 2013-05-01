@@ -87,6 +87,25 @@ namespace scout {
 
       // ... void* captured fields
     };
+
+    // find total extent (product of dimensions)
+    int findExtent(BlockLiteral *bl, int numDimensions);
+
+    // Blocks are what we insert into the queues
+    // It is a blockLiteral + the number of dimensions and fields.
+    class Block {
+    public:
+      Block(BlockLiteral * bl, int numDimensions, int numFields, int start,
+          int end);
+      ~Block();
+      BlockLiteral* getBlockLiteral();
+      uint32_t getNDimensions() { return nDimensions_;}
+      uint32_t getNFields() {return nFields_;}
+    private:
+      BlockLiteral *blockLiteral_;
+      uint32_t nDimensions_;
+      uint32_t nFields_;
+    };
   }
 }
 #endif // __SC_CPU_BLOCK_H__

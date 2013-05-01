@@ -66,11 +66,6 @@ namespace scout {
   namespace cpu {
 
 
-    struct Item {
-      void *blockLiteral;
-      uint32_t dimensions;
-    };
-
     class Queue {
 
     public:
@@ -85,14 +80,14 @@ namespace scout {
         i_ = 0;
       } 
 
-      void add(Item * item) {
-        queue_.push_back(item);
+      void add(Block* block) {
+        queue_.push_back(block);
       }
 
-     Item *get();
+     Block *get();
 
     private:
-      typedef vector <Item*>Queue_;
+      typedef vector <Block*>Queue_;
       Mutex mutex_;
       Queue_ queue_;
       size_t i_;

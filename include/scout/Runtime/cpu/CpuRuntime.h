@@ -64,14 +64,6 @@ using namespace scout::cpu;
 namespace scout {
   namespace cpu {
 
-    void *createSubBlock(BlockLiteral * bl, size_t numDimensions,
-                         size_t numFields);
-    void deleteSubBlock(BlockLiteral * bl, size_t numDimensions);
-    Item *createItem(BlockLiteral * bl, int numDimensions, int numFields,
-                     size_t start, size_t end);
-    void deleteItem(Item *item);
-    size_t findExtent(BlockLiteral * bl, int numDimensions);
-
     class CpuRuntime {
     public:
       static CpuRuntime* Instance();

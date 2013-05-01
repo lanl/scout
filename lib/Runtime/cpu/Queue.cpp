@@ -53,12 +53,13 @@
  */
 
 #include "scout/Runtime/cpu/Queue.h"
+#include "scout/Runtime/cpu/Block.h"
 #include "scout/Runtime/cpu/Mutex.h"
 
 namespace scout {
   namespace cpu {
 
-    Item *Queue::get() {
+    Block *Queue::get() {
       mutex_.lock();
 
       if (i_ >= queue_.size()) {
@@ -66,10 +67,10 @@ namespace scout {
         return 0;
       }
 
-      Item *item = queue_[i_++];
+      Block *block = queue_[i_++];
        mutex_.unlock();
 
-       return item;
+       return block;
     }
   }
 }
