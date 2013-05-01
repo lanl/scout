@@ -57,6 +57,7 @@
 
 #include "scout/Runtime/cpu/Block.h"
 #include "scout/Runtime/cpu/Mutex.h"
+
 #include <stdint.h>
 #include <vector>
 using namespace std;
@@ -64,17 +65,10 @@ using namespace std;
 namespace scout {
   namespace cpu {
 
+
     struct Item {
       void *blockLiteral;
       uint32_t dimensions;
-      /*
-      uint32_t xStart;
-      uint32_t xEnd;
-      uint32_t yStart;
-      uint32_t yEnd;
-      uint32_t zStart;
-      uint32_t zEnd;
-      */
     };
 
     class Queue {

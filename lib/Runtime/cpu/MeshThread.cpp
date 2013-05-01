@@ -63,6 +63,7 @@ using namespace scout;
 namespace scout {
   namespace cpu {
 
+    // each thread run this which gets an item from the queue and runs it.
     void MeshThread::run() {
       Item *item;
       BlockLiteral* bl;

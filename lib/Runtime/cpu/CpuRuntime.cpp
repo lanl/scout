@@ -68,7 +68,7 @@ namespace scout {
   // hook used in llvm/tools/clang/lib/CodeGen/CGBlocks.cpp
   extern "C"
   void __sc_queue_block(void *blockLiteral, int numDimensions,
-                            int numFields) {
+      int numFields) {
 
     CpuRuntime *cpuRuntime = CpuRuntime::Instance();
     cpuRuntime->run(blockLiteral, numDimensions, numFields);
@@ -82,22 +82,22 @@ namespace scout {
     // layout of Fields is (start, end) pairs, then induction vars (dim_x, etc),
     // and last captured vars.
     void *createSubBlock(BlockLiteral *bl,
-                         size_t numDimensions, size_t numFields) {
+        size_t numDimensions, size_t numFields) {
 
       // numFields also includes start, end pairs
       // so need to subtract off the 6 entries from BlockLiteral
       // (xStart, xEnd, yStart, yEnd, zStart, zEnd)
       void *bp = malloc(sizeof(BlockLiteral)
-                        + (numFields - 6) * sizeof(void *));
+          + (numFields - 6) * sizeof(void *));
 
       assert(bp != NULL);
 
       BlockLiteral *b = (BlockLiteral *) bp;
-       b->isa = bl->isa;
-       b->flags = bl->flags;
-       b->reserved = bl->reserved;
-       b->invoke = bl->invoke;
-       b->descriptor = bl->descriptor;
+      b->isa = bl->isa;
+      b->flags = bl->flags;
+      b->reserved = bl->reserved;
+      b->invoke = bl->invoke;
+      b->descriptor = bl->descriptor;
 
       // offset to start of void* captured fields from Block.h
       size_t offset =
@@ -106,54 +106,54 @@ namespace scout {
       // allocate the space for the (start, end) pairs
       switch (numDimensions) {
       case 3:
-    	  b->zStart = new uint32_t;
-    	  b->zEnd = new uint32_t;
+        b->zStart = new uint32_t;
+        b->zEnd = new uint32_t;
       case 2:
-    	  b->yStart = new uint32_t;
-    	  b->yEnd = new uint32_t;
+        b->yStart = new uint32_t;
+        b->yEnd = new uint32_t;
       case 1:
-    	  b->xStart = new uint32_t;
-    	  b->xEnd = new uint32_t;
+        b->xStart = new uint32_t;
+        b->xEnd = new uint32_t;
       }
 
-       // copy the ptrs to the other captured fields
+      // copy the ptrs to the other captured fields
       // induction vars (dim_x etc) and captured vars but not start/end pairs
-       memcpy((char *) bp + offset, (char *) bl + offset,
-              (numFields - 2 * numDimensions) * sizeof(void *));
+      memcpy((char *) bp + offset, (char *) bl + offset,
+          (numFields - 2 * numDimensions) * sizeof(void *));
 
-       return bp;
-    } 
+      return bp;
+    }
 
     void deleteSubBlock(void *bl, size_t numDimensions) {
 
-    	 // free the space for the (start, end) pairs
-    	 BlockLiteral *b = (BlockLiteral *) bl;
-    	switch (numDimensions) {
-    	case 3:
-    		delete b->zStart;
-    		delete b->zEnd;
-    	case 2:
-    		delete b->yStart;
-    		delete b->yEnd;
-    	case 1:
-    		delete b->xStart;
-    		delete b->xEnd;
-    	}
+      // free the space for the (start, end) pairs
+      BlockLiteral *b = (BlockLiteral *) bl;
+      switch (numDimensions) {
+      case 3:
+        delete b->zStart;
+        delete b->zEnd;
+      case 2:
+        delete b->yStart;
+        delete b->yEnd;
+      case 1:
+        delete b->xStart;
+        delete b->xEnd;
+      }
 
-    	free(bl); // this was malloc'ed by createSubBlock()
+      free(bl); // this was malloc'ed by createSubBlock()
     }
 
-    // An Item (defined in Queue.h) contains the start, end pairs for
-    // the sub-block, these will be copied into the BlockLiteral by MeshThread::run()
+    // An Item (defined in Queue.h) contains a BlockLiteral and numDimensions
     Item *createItem(BlockLiteral * bl, int numDimensions, int numFields, size_t start,
-                       size_t end) {
+        size_t end) {
       size_t x, y;
-      Item *item = new Item;
+      Item *item;
       item->dimensions = numDimensions;
-      item->blockLiteral = createSubBlock(bl, numDimensions,
-                               numFields);
+      item = createSubBlock(bl, numDimensions,
+          numFields);
       BlockLiteral *b = (BlockLiteral *)item->blockLiteral;
 
+      // populate the (start, end) pairs
       // split up so each thread gets a chuck that is contiguous in memory
       switch (numDimensions) {
       case 1:
@@ -179,28 +179,12 @@ namespace scout {
         *b->zEnd = end / (x * y);
         break;
       }
-/*
-      item->blockLiteral = createSubBlock(bl, numDimensions,
-                          numFields);
-      BlockLiteral *b = (BlockLiteral *)item->blockLiteral;
-      switch (numDimensions) {
-      case 3:
-    	  *b->zStart = item->zStart;
-    	  *b->zEnd = item->zEnd;
-      case 2:
-    	  *b->yStart = item->yStart;
-    	  *b->yEnd = item->yEnd;
-      case 1:
-    	  *b->xStart = item->xStart;
-    	  *b->xEnd = item->xEnd;
-      }
- */
       return item;
     }
 
     void deleteItem(Item *item) {
-    	deleteSubBlock(item->blockLiteral, item->dimensions);
-    	delete item;
+      deleteSubBlock(item->blockLiteral, item->dimensions);
+      delete item;
     }
 
     size_t findExtent(BlockLiteral * bl, int numDimensions) {
@@ -219,11 +203,11 @@ namespace scout {
     CpuRuntime* CpuRuntime::instance_=0;
 
     CpuRuntime* CpuRuntime::Instance() {
-       if (instance_ == 0) {
-         instance_ = new CpuRuntime();
-       }
-       return instance_;
-     }
+      if (instance_ == 0) {
+        instance_ = new CpuRuntime();
+      }
+      return instance_;
+    }
 
     CpuRuntime::CpuRuntime() {
       int val;
