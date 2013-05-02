@@ -29,7 +29,6 @@
 using namespace clang;
 using namespace CodeGen;
 
-
 void CodeGenFunction::EmitDecl(const Decl &D) {
   DEBUG_OUT("EmitDecl");
   switch (D.getKind()) {
@@ -997,7 +996,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
                         
             fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
            
-            // SC_TODO: should we do this memory allocation in the runtime? 
             // Dynamically allocate memory.
             llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
             val = Builder.CreateBitCast(val, structTy->getContainedType(i));

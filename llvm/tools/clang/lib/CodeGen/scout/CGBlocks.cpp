@@ -460,7 +460,7 @@ llvm::Value
 
 
   llvm::Function* queueBlockFunc =
-  CGM.getModule().getFunction("__sc_queue_block");
+  CGM.getModule().getFunction("__scrt_queue_block");
 
   if(!queueBlockFunc){
     llvm::PointerType* p1 =
@@ -481,7 +481,7 @@ llvm::Value
 
     queueBlockFunc =
     llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
-                           "__sc_queue_block", &CGM.getModule());
+                           "__scrt_queue_block", &CGM.getModule());
   }
 
   llvm::Value* numDims = llvm::ConstantInt::get(Int32Ty, numDimensions);

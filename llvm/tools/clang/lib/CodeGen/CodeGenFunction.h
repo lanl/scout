@@ -2221,29 +2221,29 @@ public:
   llvm::Value *CreateMemAlloc(uint64_t numElts) {
     llvm::Function *namF;
 
-    if(!CGM.getModule().getFunction("malloc")) {
+    if(!CGM.getModule().getFunction("__scrt_malloc")) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "malloc", &CGM.getModule());
+                                    "__scrt_malloc", &CGM.getModule());
     } else {
-      namF = CGM.getModule().getFunction("malloc");
+      namF = CGM.getModule().getFunction("_scrt_malloc");
     }
 
     llvm::CallInst *call =
       Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
-    
+
     return call;
   }
 
   llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue) {
     llvm::Function *namF;
 
-    if(!CGM.getModule().getFunction("malloc")) {
+    if(!CGM.getModule().getFunction("__scrt_malloc")) {
       llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
       namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "malloc", &CGM.getModule());
+                                    "__scrt_malloc", &CGM.getModule());
     } else {
-      namF = CGM.getModule().getFunction("malloc");
+      namF = CGM.getModule().getFunction("__scrt_malloc");
     }
 
     llvm::CallInst *call =
