@@ -949,7 +949,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
                                                inputs);
 
   // Generate a function call to BlockFn.
-  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn,
+  EmitScoutBlockFnCall(BlockFn, blockInfo,
                        ScoutMeshSizes, inputs);
   
   //insertMeshDump(MeshBaseAddr);
@@ -1107,7 +1107,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   CurrentForAllArrayStmt = 0;
   
   // Generate a function call to BlockFn.
-  EmitScoutBlockFnCall(CGM, blockInfo, BlockFn, ranges, inputs);
+  EmitScoutBlockFnCall(BlockFn, blockInfo, ranges, inputs);
 }
 
 bool CodeGenFunction::hasCalledFn(llvm::Function *Fn, llvm::StringRef name) {

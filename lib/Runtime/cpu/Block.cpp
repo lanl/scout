@@ -23,8 +23,8 @@ namespace scout {
 
     // create a BlockLiteral with just the required number of start, end pairs,
     // induction variables, and captured fields
-    // numFields = captured vars + 3*Dim (start, end, and induction var)
-    // layout of Fields is (start, end) pairs, then induction vars (dim_x, etc),
+    // numFields = captured vars + 3*Dim (start, end, and size)
+    // layout of Fields is (start, end) pairs, then width, height, depth (dim_x,y,z),
     // and last captured vars.
     BlockLiteral *createBlockLiteral(BlockLiteral *bl,
         int numDimensions, int numFields) {
@@ -61,7 +61,7 @@ namespace scout {
       }
 
       // copy the ptrs to the other captured fields
-      // induction vars (dim_x etc) and captured vars but not start/end pairs
+      // width,height,depth (dim_x,y,z) and captured vars but not start/end pairs
       memcpy((char *) bp + offset, (char *) bl + offset,
           (numFields - 2 * numDimensions) * sizeof(void *));
 

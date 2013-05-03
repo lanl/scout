@@ -55,6 +55,7 @@ add_clang_library(clangCodeGen
   TargetInfo.cpp
 # scout
   scout/CGBlocks.cpp
+  scout/MemAlloc.cpp
   )
 
 add_dependencies(clangCodeGen
