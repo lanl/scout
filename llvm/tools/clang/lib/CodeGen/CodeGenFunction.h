@@ -1469,9 +1469,8 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
-  llvm::Value *EmitScoutBlockFnCall(CodeGenModule &CGM,
+  llvm::Value *EmitScoutBlockFnCall(llvm::Value *TheBlockFn,
                                     const CGBlockInfo &blockInfo,
-                                    llvm::Value *TheBlockFn,
                                     const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                     llvm::SetVector< llvm::Value * > &inputs);
   
@@ -2191,7 +2190,8 @@ public:
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
 
-  // scout - Stmts
+  // ===========================================================================
+  // Scout:
 
   llvm::Value *GetMeshBaseAddr(const ForAllStmt &S);
   void GetMeshDimValues(const ForAllStmt &S,
@@ -2218,50 +2218,16 @@ public:
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());
 
-//                            llvm::SmallVector<llvm::Value*, 3> foo
-//                            = llvm::SmallVector<llvm::Value*, 3>());
 
-
-
-  llvm::Value *CreateMemAlloc(uint64_t numElts) {
-    llvm::Function *namF;
-
-    if(!CGM.getModule().getFunction("__scrt_malloc")) {
-      llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
-      namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "__scrt_malloc", &CGM.getModule());
-    } else {
-      namF = CGM.getModule().getFunction("_scrt_malloc");
-    }
-
-    llvm::CallInst *call =
-      Builder.CreateCall(namF, llvm::ConstantInt::get(Int64Ty, 4 * numElts));
-
-    return call;
-  }
-
-  llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue) {
-    llvm::Function *namF;
-
-    if(!CGM.getModule().getFunction("__scrt_malloc")) {
-      llvm::FunctionType *FTy = llvm::FunctionType::get(Int8PtrTy, Int64Ty, /*isVarArg=*/false);
-      namF = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                    "__scrt_malloc", &CGM.getModule());
-    } else {
-      namF = CGM.getModule().getFunction("__scrt_malloc");
-    }
-
-    llvm::CallInst *call =
-      Builder.CreateCall(namF, numEltsValue);
-
-    return call;
-  }
+  llvm::Value *CreateMemAlloc(uint64_t numElts);
+  llvm::Value *CreateMemAllocForValue(llvm::Value* numEltsValue);
 
   void DEBUG_OUT(const char *s) {
     //llvm::outs() << "Attempting " << s << ".\n";
   }
 
   FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+  // ===========================================================================
 
   void EmitForStmt(const ForStmt &S);
   void EmitReturnStmt(const ReturnStmt &S);

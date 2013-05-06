@@ -129,51 +129,50 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   // the induction variable range information.
   llvm::Function *Fn = blockEntry->getParent();
 
-  std::vector< std::vector< llvm::Value * > > indVars;
+  std::vector< llvm::Value * > PtrStart;
+  std::vector< llvm::Value * > PtrEnd;
   std::string dim[] = { "x", "y", "z" };
   for(int i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
-    std::vector< llvm::Value * > indVar;
     ScoutIdxVars[i]->setName("var." + dim[i]);
     Builder.SetInsertPoint(Fn->begin(), Fn->begin()->begin());
-    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + dim[i]));
-    indVar.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + dim[i]));
+    PtrStart.push_back(Builder.CreateAlloca(Int32Ty, 0, "start." + dim[i]));
+    PtrEnd.push_back(Builder.CreateAlloca(Int32Ty, 0, "end." + dim[i]));
     Builder.SetInsertPoint(blockEntry);
-    indVars.push_back(indVar);
   }
 
   // (start, end) pairs must start the function argument list.
-  for(unsigned i = 0, e = indVars.size(); i < e; ++i) {
-    Builder.CreateLoad(indVars[i][0]);
-    Builder.CreateLoad(indVars[i][1]);
+  // SC_TODO: what does a CreateLoad do w/o a lhs??
+  for(unsigned i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
+    Builder.CreateLoad(PtrStart[i]);
+    Builder.CreateLoad(PtrEnd[i]);
   }
 
-  llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, "blk.indvar");
-  llvm::Value *start  = Builder.CreateLoad(indVars[0][0]);
+  // setup indvar and extent
+  llvm::Value *PtrIndVar = Builder.CreateAlloca(Int32Ty, 0, "forall.indvar");
+  llvm::Value *IndVar  = Builder.CreateLoad(PtrStart[0]);
+  llvm::Value *PtrExtent = Builder.CreateAlloca(Int32Ty, 0, "forall.extent");
+  llvm::Value *Extent = Builder.CreateLoad(PtrEnd[0]);
 
-  llvm::Value *extent = Builder.CreateAlloca(Int32Ty, 0, "size");
-  llvm::Value *size = Builder.CreateLoad(indVars[0][1]);
-
-  for(int i = 1, e = indVars.size(); i < e; ++i) {
-    llvm::Value *dim = Builder.CreateLoad(ranges[i - 1]);
+  for(int i = 1, e = ScoutIdxVars.size(); i < e; ++i) {
+    llvm::Value *x = Builder.CreateLoad(ranges[i - 1]);
 
     if(i == 2)
-      dim = Builder.CreateMul(dim, Builder.CreateLoad(ranges[i - 2]));
+      x = Builder.CreateMul(x, Builder.CreateLoad(ranges[i - 2]));
 
-    size = Builder.CreateAdd(size, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][1])));
-    start = Builder.CreateAdd(start, Builder.CreateMul(dim, Builder.CreateLoad(indVars[i][0])));
+    IndVar = Builder.CreateAdd(IndVar, Builder.CreateMul(x, Builder.CreateLoad(PtrStart[i])));
+    Extent = Builder.CreateAdd(Extent, Builder.CreateMul(x, Builder.CreateLoad(PtrEnd[i])));
   }
 
-  Builder.CreateStore(start, indVar);
-  ForallIndVar = indVar;
-
-  Builder.CreateStore(size, extent);
+  Builder.CreateStore(IndVar, PtrIndVar);
+  Builder.CreateStore(Extent, PtrExtent);
+  ForallIndVar = PtrIndVar;
 
   // Start the loop with a block that tests the condition.
   JumpDest Continue = getJumpDestInCurrentScope("for.blk.cond");
   llvm::BasicBlock *CondBlock = Continue.getBlock();
   EmitBlock(CondBlock);
-  llvm::Value *cond = Builder.CreateICmpSLT(Builder.CreateLoad(indVar),
-                                            Builder.CreateLoad(extent),
+  llvm::Value *cond = Builder.CreateICmpSLT(Builder.CreateLoad(PtrIndVar),
+                                            Builder.CreateLoad(PtrExtent),
                                             "cmptmp");
 
   llvm::BasicBlock *ForBody = createBasicBlock("for.blk.body");
@@ -183,9 +182,9 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   EmitBlock(ForBody);
   Builder.SetInsertPoint(ForBody);
 
- llvm::Value *lval;
-  for(unsigned i = 0, e = indVars.size(); i < e; ++i) {
-    lval = Builder.CreateLoad(indVar);
+  llvm::Value *lval;
+  for(unsigned i = 0, e = ScoutIdxVars.size(); i < e; ++i) {
+    lval = Builder.CreateLoad(PtrIndVar);
     llvm::Value *val;
     if(i > 0) {
       if(i == 1)
@@ -203,9 +202,9 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   const BlockDecl *blockDecl = blockInfo.getBlockDecl();
   EmitStmt(blockDecl->getBody());
 
-  lval = Builder.CreateLoad(indVar);
+  lval = Builder.CreateLoad(PtrIndVar);
   llvm::Value *one = llvm::ConstantInt::get(Int32Ty, 1);
-  Builder.CreateStore(Builder.CreateAdd(lval, one), indVar);
+  Builder.CreateStore(Builder.CreateAdd(lval, one), PtrIndVar);
   Builder.CreateBr(CondBlock);
 
   EmitBlock(ExitBlock);
@@ -360,9 +359,8 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
 
 llvm::Value 
-*CodeGenFunction::EmitScoutBlockFnCall(CodeGenModule &CGM,
+*CodeGenFunction::EmitScoutBlockFnCall(llvm::Value *blockFn,
                                        const CGBlockInfo &blockInfo,
-                                       llvm::Value *blockFn,
                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockFnCall");
