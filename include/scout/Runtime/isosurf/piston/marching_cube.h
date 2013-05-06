@@ -31,6 +31,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 #include <thrust/binary_search.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/extrema.h>
 
 #include <scout/Runtime/isosurf/piston/image3d.h>
 #include <scout/Runtime/isosurf/piston/piston_math.h> //#include <vector_types.h>

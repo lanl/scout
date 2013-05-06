@@ -630,14 +630,57 @@ void CodeGenFunction::insertMeshDump(llvm::Value* baseAddr){
   Builder.CreateCall(dumpBlockFunc, dumpArgs);
 }
 
+
+// ----- scGetMeshBaseAddr
+//
+llvm::Value *CodeGenFunction::GetMeshBaseAddr(const ForAllStmt &S) {
+  const VarDecl *MeshVarDecl = S.getMeshVarDecl();
+  llvm::Value *BaseAddr = 0;
+  
+  if (MeshVarDecl->hasGlobalStorage()) {
+    BaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MeshVarDecl));
+  } else {
+    BaseAddr = LocalDeclMap[MeshVarDecl];
+    if (MeshVarDecl->getType().getTypePtr()->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+
+  return BaseAddr;
+}
+
+// ----- GetMeshDimensions
+//
+void CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
+                                       llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
+                                       llvm::Value* MeshBaseAddr) {
+  
+  llvm::Value *BaseAddr;
+  if (MeshBaseAddr != 0) {
+    BaseAddr = MeshBaseAddr;
+  } else {
+    BaseAddr = GetMeshBaseAddr(S);
+  }
+  
+  MeshType::MeshDimensionVec dims = S.getMeshType()->dimensions();
+  const char  *DimNames[] = { "dim_x", "dim_y", "dim_z" };  
+
+  for(unsigned int i = 0; i < dims.size(); ++i) {
+    llvm::Value *LVal = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, i+1, DimNames[i]);
+    MeshDimensions.push_back(LVal);
+  }
+}
+
+
 // scout - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmtWrapper");
   
   // Clear stale mesh elements.
   MeshMembers.clear();
-  const IdentifierInfo *MeshII = S.getMesh();
-  llvm::StringRef meshName = MeshII->getName();
+  ScoutMeshSizes.clear();
+  
+  llvm::StringRef MeshName = S.getMesh()->getName();
 
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
@@ -645,70 +688,65 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
   typedef std::map<std::string, bool> MeshFieldMap;
   MeshFieldMap meshFieldMap;
-  const VarDecl* MVD = S.getMeshVarDecl();
 
-  if(MVD->hasGlobalStorage()){
-    MeshBaseAddr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(MVD));
-  }
-  else{
-    MeshBaseAddr = LocalDeclMap[MVD];
-    
-    if(MVD->getType().getTypePtr()->isReferenceType()){
-      MeshBaseAddr = Builder.CreateLoad(MeshBaseAddr);
-    }    
-  }
+  MeshBaseAddr = GetMeshBaseAddr(S);
+
+  // This is the name we emit for various items into the IR.  It is a
+  // bit tricky to always nail down the string length for these -- I'm
+  // also not crazy about dynamic allocation and deallocation here but
+  // at this point in time the important part is making the code more
+  // readable as we move from Scout to LLVM IR.
   
-  ScoutMeshSizes.clear();
+  char *IRNameStr = new char[MeshName.size() + 16];
+  const char *DimNames[] = { "width", "height", "depth" };
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-    std::string name;
-    switch(i){
-    case 0:
-      name = "dim_x";
-      break;
-    case 1:
-      name = "dim_y";
-      break;
-    case 2:
-      name = "dim_z";
-      break;
-    }
-
-    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, name);
+    sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[i]);
+    llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     ScoutMeshSizes.push_back(lval);
   }
+  delete []IRNameStr;  
   
   typedef MeshDecl::field_iterator MeshFieldIterator;
   MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
   
-  size_t k = 0;
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
-    meshFieldMap[name.str()] = true;
+    
+    llvm::StringRef FieldName = dyn_cast< FieldDecl >(*it)->getName();
+    meshFieldMap[FieldName.str()] = true;
     
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
     
-    if(!(name.equals("position") || name.equals("width") ||
-         name.equals("height") || name.equals("depth") || name.equals("ptr"))) {
-      llvm::Value *addr = Builder.CreateStructGEP(MeshBaseAddr, i+4, name);
-      addr = Builder.CreateLoad(addr);
+    if(!(FieldName.equals("position") ||
+         FieldName.equals("width")    ||
+         FieldName.equals("height")   ||
+         FieldName.equals("depth")    ||
+         FieldName.equals("ptr"))) {
+
+      IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
+      
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
+      llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+4, IRNameStr);
+      FieldPtr = Builder.CreateLoad(FieldPtr);
 
       //insertMeshDump(addr);
+      
+      sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), FieldName.str().c_str());
+      llvm::Value *FieldVar = Builder.CreateAlloca(FieldPtr->getType(), 0, IRNameStr);
+      Builder.CreateStore(FieldPtr, FieldVar);
+      MeshMembers[FieldName] = std::make_pair(Builder.CreateLoad(FieldVar) , Ty);
+      MeshMembers[FieldName].first->setName(FieldVar->getName());
 
-      llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
-      Builder.CreateStore(addr, var);
-      MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
-      MeshMembers[name].first->setName(var->getName());
-      ++k;
+      delete []IRNameStr;
     }
   }
 
   // Acquire a local copy of colors buffer.
-  if(isa< RenderAllStmt >(S)) {
+  if (isa< RenderAllStmt >(S)) {
     llvm::Type *fltTy = llvm::Type::getFloatTy(getLLVMContext());
     llvm::Type *flt4Ty = llvm::VectorType::get(fltTy, 4);
     llvm::Type *flt4PtrTy = llvm::PointerType::get(flt4Ty, 0);
 
-    if(!CGM.getModule().getNamedGlobal("__scrt_renderall_uniform_colors")) {
+    if (!CGM.getModule().getNamedGlobal("__scrt_renderall_uniform_colors")) {
 
       new llvm::GlobalVariable(CGM.getModule(),
                                flt4PtrTy,
@@ -726,14 +764,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     Colors = Builder.CreateLoad(local_colors, "colors");
   }
   
-  llvm::BasicBlock *entry = createBasicBlock("forall_entry");
+  llvm::BasicBlock *entry = createBasicBlock("uniform.forall.cells.entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
   llvm::Value *Undef = llvm::UndefValue::get(Int32Ty);
   llvm::Instruction *ForallAllocaInsertPt =
     new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
-  ForallAllocaInsertPt->setName("forall.allocapt");
+  ForallAllocaInsertPt->setName("uniform.forall.cells.allocapt");
 
   // Save the AllocaInsertPt.
   llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
@@ -761,7 +799,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
 
   llvm::BasicBlock *split;
-  for( ; BB->getName() != entry->getName(); ++BB){
+  for( ; BB->getName() != entry->getName(); ++BB) {
     split = BB;
   }
 
@@ -779,17 +817,18 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
-  if(isa< RenderAllStmt >(S))
-    ForallFn->setName("renderall");
+  if (isa< RenderAllStmt >(S))
+    ForallFn->setName("unirendall.cells.fn");
   else
-    ForallFn->setName("forall");
-
-  std::string name = ForallFn->getName().str();
-  assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
+    ForallFn->setName("uniforall.cells.fn");
 
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
-  if(isGPU()) {
+  if (isGPU()) {
+
+    std::string name = ForallFn->getName().str();
+    assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
+    
     // Add metadata for scout kernel function.
     llvm::NamedMDNode *ScoutMetadata =
     CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
@@ -805,25 +844,30 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     typedef llvm::Function::arg_iterator ArgIterator;
     size_t pos = 0;
     llvm::Value* gs;
+    
+    IRNameStr = new char[MeshName.size() + 16];
+    
     for(ArgIterator it = ForallFn->arg_begin(),
         end = ForallFn->arg_end(); it != end; ++it, ++pos) {
       bool isSigned;
       std::string typeStr;
-      if(isMeshMember(it, isSigned, typeStr)){
+      if (isMeshMember(it, isSigned, typeStr)) {
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         
-        if(isSigned){
+        if (isSigned) {
           signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 1));
-        }
-        else{
+        } else {
           signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         }
         
-        // Convert mesh field arguments to the function which
-        // have been uniqued by ExtractCodeRegion() back into mesh field names
+        // Convert mesh field arguments to the function which have
+        // been uniqued by ExtractCodeRegion() back into mesh field
+        // names.
+        // SC_TODO: There has to be a better way to do this... 
         std::string ns = (*it).getName().str();
-        while(!ns.empty()){
-          if(meshFieldMap.find(ns) != meshFieldMap.end()){
+        while(!ns.empty()) {
+          
+          if (meshFieldMap.find(ns) != meshFieldMap.end()) {
 	    gs = llvm::ConstantDataArray::getString(getLLVMContext(), ns);
             meshArgs.push_back(gs);
             break;
@@ -835,21 +879,21 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
         gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
         typeArgs.push_back(gs);
-      }
-      else{
+      } else {
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
 						(*it).getName());
         meshArgs.push_back(gs);
-        
-        if(it->getName().startswith("dim_x") || 
-	   it->getName().startswith("dim_y") ||
-	   it->getName().startswith("dim_z")){
+
+        // SC_TODO: these are now named FieldName.[width|height|depth]
+        // (see code above).
+        if (it->getName().startswith("width")   ||  
+            it->getName().startswith("height")  ||
+            it->getName().startswith("depth")) {
 	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
-        }
-        else{
+        } else {
           bool found = false;
           for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
               itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
@@ -876,7 +920,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
             }
           }
           
-          if(found){
+          if (found) {
             typeArgs.push_back(gs);
           }
         }
@@ -894,10 +938,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     args.clear();
     args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(),
-						      meshName));;
+						      MeshName));;
     
     //llvm::Constant* MeshNameArray =
-    //llvm::ConstantArray::get(getLLVMContext(), meshName);
+    //llvm::ConstantArray::get(getLLVMContext(), MeshName);
     //args.push_back(MeshNameArray);
     
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(args)));
@@ -910,12 +954,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
   }
      
-  if(isSequential() || isGPU()){
+  if (isSequential() || isGPU()) {
     llvm::BasicBlock *cbb = ret->getParent();
     ret->eraseFromParent();
-
     Builder.SetInsertPoint(cbb);
-    
     //insertMeshDump(MeshBaseAddr);
     return;
   }
@@ -925,7 +967,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   typedef llvm::BasicBlock::iterator InstIterator;
   InstIterator I = CallBB->begin(), IE = CallBB->end();
   for( ; I != IE; ++I) {
-    if(llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
+    if (llvm::CallInst *call = dyn_cast< llvm::CallInst >(I)) {
       call->eraseFromParent();
       break;
     }
