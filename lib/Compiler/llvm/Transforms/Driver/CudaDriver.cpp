@@ -10,7 +10,7 @@
  */
 
 #include "llvm/Transforms/Scout/Driver/CudaDriver.h"
-
+#include <stdio.h>
 #include <iostream>
 
 using namespace llvm;
@@ -134,11 +134,14 @@ Type *CudaDriver::getCUdeviceptrTy() {
 }
 
 Value *CudaDriver::insertCheckedCall(StringRef name,
-                                Value **begin,
-                                Value **end) {
-  if(_debug) {
+                                     Value **begin,
+                                     Value **end) {
+  if (_debug) {
     Value *a = _module.getGlobalVariable(name);
-    if(a == NULL) a = getBuilder().CreateGlobalStringPtr(name.data(), name);
+    
+    if(a == NULL)
+      a = getBuilder().CreateGlobalStringPtr(name.data(), name);
+    
     Value *b = insertCall(name, begin, end);
     Value *args[] = { a, b };
     return insertCall("CheckCudaError", args, args + 2);
@@ -149,9 +152,10 @@ Value *CudaDriver::insertCheckedCall(StringRef name,
 
 Value *CudaDriver::insertCheckedCall(StringRef name,
                                      ArrayRef< Value * > args) {
- if(_debug) {
+ if (_debug) {
     Value *a = _module.getGlobalVariable(name);
-    if(a == NULL) a = getBuilder().CreateGlobalStringPtr(name.data(), name);
+    if (a == NULL)
+      a = getBuilder().CreateGlobalStringPtr(name.data(), name);
     Value *b = insertCall(name, args);
     Value *args[] = { a, b };
     return insertCall("CheckCudaError", ArrayRef< Value * >(args));
@@ -195,6 +199,7 @@ void CudaDriver::create(Function *func,
 			GlobalValue *ptxAsm,
 			Value* meshName,
 			MDNode* mdn) {
+  
   setInsertPoint(&func->getEntryBlock());
 
   // Calculate the total number of mesh elements.
@@ -210,8 +215,11 @@ void CudaDriver::create(Function *func,
   insertScoutGetModule(cuModule, image);
 
   Value *colors;
-  if(func->getName().startswith("renderall")) {
-    if(!_module.getNamedGlobal("__scrt_renderall_uniform_cuda_device")) {
+  
+  if (func->getName().startswith("uniRenderall")) {
+    
+    if (!_module.getNamedGlobal("__scrt_renderall_uniform_cuda_device")) {
+      
       colors = new GlobalVariable(_module,
                                   getCUdeviceptrTy(),
                                   false,
@@ -223,12 +231,13 @@ void CudaDriver::create(Function *func,
   }
 
   // Create variable of type CUFunctionTy.
-  Value *cuFunction = _builder.CreateAlloca(getPtrTy(getCUfunctionTy()),
-                                             0,
-                                             "cuFunction");
+  Value *cuFunction = _builder.CreateAlloca(getPtrTy(getCUfunctionTy()), 0, "cuFunction");
 
   // Get function handle.
-  Value *kernelName = _builder.CreateGlobalStringPtr(func->getName().str().c_str(), func->getName());
+  fprintf(stderr, "function name in cuda driver: %s\n", func->getName().str().c_str());
+  char FuncNameStr[256];
+  sprintf(FuncNameStr, "%s.fn_name", func->getName().str().c_str());
+  Value *kernelName = _builder.CreateGlobalStringPtr(func->getName().str().c_str(), FuncNameStr);
   insertModuleGetFunction(cuFunction, _builder.CreateLoad(cuModule), kernelName);
 
   int offset = 0;
@@ -242,7 +251,7 @@ void CudaDriver::create(Function *func,
     if(type->isPointerTy()) {
 
       Value *d_arg;
-      if(arg->getName().startswith("colors")){
+      if (arg->getName().startswith("colors")) {
         d_arg = colors;
       }
       else {
@@ -321,25 +330,23 @@ void CudaDriver::create(Function *func,
 
 	_builder.CreateStore(dp, d_arg);
 
-	if(!isMeshMember(i)){
+	if (!isMeshMember(i)) {
 	  unsigned numOperands = mdn->getNumOperands();
 	  bool found = false;
-	  for(unsigned i = 0; i < numOperands; ++i){
+	  for(unsigned i = 0; i < numOperands; ++i) {
 	    Value* v = mdn->getOperand(i);
 	    std::string s = v->getName().str();
 	    std::string a = arg->getName().str();
 
-	    if(s == a){
+	    if (s == a) {
 	      found = true;
 	      break;
 	    }
 	  }
 	  
-	  if(found){
+	  if (found) {
 	    Value* ld = _builder.CreateLoad(d_arg);
-	    insertMemcpyHtoD(ld,
-			     _builder.CreateBitCast(arg, i8PtrTy),
-			     size);
+	    insertMemcpyHtoD(ld, _builder.CreateBitCast(arg, i8PtrTy), size);
 	  }
 	}
 	
@@ -358,8 +365,7 @@ void CudaDriver::create(Function *func,
     }
   }
 
-  insertParamSetSize(_builder.CreateLoad(cuFunction),
-                     ConstantInt::get(i32Ty, offset));
+  insertParamSetSize(_builder.CreateLoad(cuFunction), ConstantInt::get(i32Ty, offset));
 
   // Set block-dimensions for kernel.
   insertFuncSetBlockShape(_builder.CreateLoad(cuFunction),

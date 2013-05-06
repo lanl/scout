@@ -54,7 +54,9 @@
 #include "Driver.h"
 
 class CudaDriver: public Driver {
+  
  public:
+  
   struct Memcpy {
     llvm::Value *host;
     llvm::Value *device;

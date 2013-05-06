@@ -18,14 +18,13 @@
 #ifdef SC_ENABLE_LIB_NVVM
 #include "nvvm.h"
 #endif
-
 #include <map>
 #include <vector>
 
 using namespace llvm;
 
 DoallToPTX::DoallToPTX()
-  : ModulePass(ID){
+  : ModulePass(ID) {
 #ifdef SC_ENABLE_LIB_NVVM
   assert(nvvmInit() == NVVM_SUCCESS);
 #endif
@@ -95,8 +94,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   std::auto_ptr<TargetMachine> Target(TheTarget);
   assert(Target.get() && "Could not allocate target machine!");
 
-  const TargetMachine::CodeGenFileType FileType = 
-    TargetMachine::CGFT_AssemblyFile;
+  const TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_AssemblyFile;
 
   const bool DisableVerify = true;
 
@@ -109,13 +107,13 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   GlobalVec globalsToRemove;
 
   Module::global_iterator itr = ptxModule.global_begin();
-  while(itr != ptxModule.global_end()){
+  while(itr != ptxModule.global_end()) {
     GlobalVariable* global = &*itr;
     
     Type* type = global->getType();
 
-    if(PointerType* pointerType = dyn_cast<PointerType>(type)){
-      if(pointerType->getAddressSpace() == 0){
+    if (PointerType* pointerType = dyn_cast<PointerType>(type)) {
+      if (pointerType->getAddressSpace() == 0) {
         globalsToRemove.push_back(global);
         global->replaceAllUsesWith(UndefValue::get(type));
       }
@@ -123,15 +121,14 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
     ++itr;
   }
 
-  for(size_t i = 0; i < globalsToRemove.size(); ++i){
+  for(size_t i = 0; i < globalsToRemove.size(); ++i) {
     globalsToRemove[i]->eraseFromParent();
   }
 
-  llvm::NamedMDNode* annotations =
-    ptxModule.getOrInsertNamedMetadata("nvvm.annotations");
+  llvm::NamedMDNode* annotations = ptxModule.getOrInsertNamedMetadata("nvvm.annotations");
 
-  for(Module::iterator fitr = ptxModule.begin(),
-        fitrEnd = ptxModule.end(); fitr != fitrEnd; ++fitr){
+  for(Module::iterator fitr = ptxModule.begin(), fitrEnd = ptxModule.end();
+      fitr != fitrEnd; ++fitr) {
     Function* f = &*fitr;
 
     /*
@@ -139,13 +136,15 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
                     Attribute::StackProtect);
     */
 
-    if(f->getName().startswith("renderall") || 
-       f->getName().startswith("forall")){
+    if (f->getName().startswith("uniRenderall") || 
+        f->getName().startswith("uniForall")) {
+      
       SmallVector<Value*, 3> av;
+      
       av.push_back(f);
       av.push_back(MDString::get(ptxModule.getContext(), "kernel"));
-      av.push_back(ConstantInt::get(IntegerType::get(ptxModule.getContext(),
-                                                     32), 1));
+      av.push_back(ConstantInt::get(IntegerType::get(ptxModule.getContext(), 32), 1));
+      
       annotations->addOperand(MDNode::get(ptxModule.getContext(), av)); 
     }
   }
@@ -154,7 +153,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
   //ptxModule.dump();
   //std::cerr << "----------------- end pruned module" << std::endl;
 
-  std::string ptxStrName = "ptxAssembly";
+  const std::string ptxStrName = "ptxAssembly";
 
 #ifdef SC_ENABLE_LIB_NVVM
   nvvmCU cu;
@@ -170,8 +169,7 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
     {"-target=ptx", /*verify*/
      "-arch=compute_20" /*compute_30*/};
   
-  assert(nvvmCUAddModule(cu, ptxIR.c_str(), ptxIR.length()) == 
-         NVVM_SUCCESS);
+  assert(nvvmCUAddModule(cu, ptxIR.c_str(), ptxIR.length()) == NVVM_SUCCESS);
 
   assert(nvvmCompileCU(cu, 2, options) == NVVM_SUCCESS);
 
@@ -208,21 +206,27 @@ GlobalValue *DoallToPTX::embedPTX(Module &ptxModule, Module &cpuModule) {
 
 
 void DoallToPTX::identifyDependentFns(FnSet &fnSet, llvm::Function *FN) {
+  
   typedef llvm::Function::iterator BasicBlockIterator;
   typedef llvm::BasicBlock::iterator InstIterator;
-  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB)
-    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst)
-      if(isa< llvm::CallInst >(inst)) {
+  
+  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB) {
+    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst) {
+      
+      if (isa< llvm::CallInst >(inst)) {
         llvm::Function *new_FN = cast< llvm::CallInst >(inst)->getCalledFunction();
-        if(!fnSet.count(new_FN->getName())) {
+        if (!fnSet.count(new_FN->getName())) {
           fnSet.insert(new_FN->getName());
           identifyDependentFns(fnSet, new_FN);
         }
       }
+    }
+  }
+      
 }
 
-void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap,
-                             Function &FN) {
+void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap, Function &FN) {
+
   PassManager pm;
 
   FnSet fnSet;
@@ -246,6 +250,7 @@ void DoallToPTX::pruneModule(Module &module, ValueToValueMapTy &valueMap,
 }
 
 void DoallToPTX::translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bool uniform) {
+  
   llvm::BasicBlock *BB = inst->getParent();
   llvm::Function *FN = BB->getParent();
   llvm::Module *module = FN->getParent();
@@ -303,14 +308,18 @@ void DoallToPTX::translateVarToTid(CudaDriver &cuda, llvm::Instruction *inst, bo
 
 void DoallToPTX::setGPUThreading(CudaDriver &cuda, llvm::Function *FN, bool uniform) {
   llvm::SmallVector< llvm::Value *, 3 > indvars;
+  
   typedef llvm::Function::iterator BasicBlockIterator;
   typedef llvm::BasicBlock::iterator InstIterator;
-  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB)
-    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst)
-      if(isa< AllocaInst >(inst) && inst->getName().startswith("indvar")) {
+  
+  for(BasicBlockIterator BB = FN->begin(), BB_end = FN->end(); BB != BB_end; ++BB) {
+    for(InstIterator inst = BB->begin(), inst_end = BB->end(); inst != inst_end; ++inst) {
+      if (isa< AllocaInst >(inst) && inst->getName().startswith("indvar")) {
         translateVarToTid(cuda, inst, uniform);
         return;
       }
+    }
+  }
 }
 
 void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
@@ -335,51 +344,51 @@ void DoallToPTX::generatePTXHandler(CudaDriver &cuda, Module &module,
 
 namespace{
 
-  class ForAllVisitor : public InstVisitor<ForAllVisitor>{
-  public:
+  class ForAllVisitor : public InstVisitor<ForAllVisitor> {
+    
+   public:
     ForAllVisitor(Module& module, DoallToPTX::FunctionMDMap& functionMDMap)
       : module(module),
-	functionMDMap(functionMDMap){
-
+	functionMDMap(functionMDMap) {
     }
 
-    void visitCallInst(CallInst& I){
+    void visitCallInst(CallInst& I) {
+      
       Function* f = I.getCalledFunction();
 
-      if(!f){
+      if (!f) {
         return;
       }
 
-      if(f->getName().startswith("llvm.memcpy")){
+      if (f->getName().startswith("llvm.memcpy")) {
 	Value* v = I.getArgOperand(0);
 	std::string vs = v->getName().str();
-	if(!vs.empty()){
+	if (!vs.empty()) {
 	  symbolMap[vs] = true;
-	}
-	else{
+	} else {
 	  ValueMap::iterator itr = valueMap.find(v);
-	  if(itr != valueMap.end()){
+	  if (itr != valueMap.end()) {
 	    symbolMap[itr->second] = true;
 	  }
 	}
-      }
-      else if(f->getName().startswith("forall") ||
-	 f->getName().startswith("renderall")){
+      } else if (f->getName().startswith("uniForall") ||
+                f->getName().startswith("uniRenderall")) {
+        
 	SmallVector< llvm::Value *, 3 > args;
 	unsigned numArgs = I.getNumArgOperands();
-	for(unsigned i = 0; i < numArgs; ++i){
+        
+	for(unsigned i = 0; i < numArgs; ++i) {
 	  Value* arg = I.getArgOperand(i);
 	  std::string s = arg->getName().str();
 	  
 	  SymbolMap::iterator itr = symbolMap.find(s);
-	  if(itr != symbolMap.end()){
+	  if (itr != symbolMap.end()) {
 	    args.push_back(arg);
 	    symbolMap.erase(itr);
 	  }
 	}
 
-	functionMDMap[f->getName().str()] = 
-	  MDNode::get(module.getContext(), args);
+	functionMDMap[f->getName().str()] = MDNode::get(module.getContext(), args);
       }
     }
     
@@ -474,4 +483,4 @@ bool DoallToPTX::runOnModule(Module &M) {
 }
 
 char DoallToPTX::ID = 1;
-RegisterPass< DoallToPTX > DoallToPTX("Doall-to-PTX", "Generate PTX assembly from doall region and embed assembly as a string literal");
+RegisterPass< DoallToPTX > DoallToPTX("Doall-to-PTX", "Generate PTX from forall region and embed as a string literal");

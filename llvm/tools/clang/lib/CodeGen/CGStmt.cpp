@@ -674,6 +674,7 @@ void CodeGenFunction::GetMeshDimValues(const ForAllStmt &S,
 
 // scout - Scout Stmts
 void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
+  
   DEBUG_OUT("EmitForAllStmtWrapper");
   
   // Clear stale mesh elements.
@@ -691,12 +692,12 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   MeshBaseAddr = GetMeshBaseAddr(S);
 
-  // This is the name we emit for various items into the IR.  It is a
-  // bit tricky to always nail down the string length for these -- I'm
-  // also not crazy about dynamic allocation and deallocation here but
-  // at this point in time the important part is making the code more
-  // readable as we move from Scout to LLVM IR.
-  
+  // We use 'IRNameStr' to hold the names we emit for various items at
+  // the IR level.  It is a bit tricky to always nail down the string
+  // length for these -- I'm also not crazy about dynamic allocation
+  // and deallocation here but at this point in time the important
+  // part is making the code more readable as we move from Scout to
+  // LLVM IR.
   char *IRNameStr = new char[MeshName.size() + 16];
   const char *DimNames[] = { "width", "height", "depth" };
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
@@ -764,14 +765,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     Colors = Builder.CreateLoad(local_colors, "colors");
   }
   
-  llvm::BasicBlock *entry = createBasicBlock("uniform.forall.cells.entry");
+  llvm::BasicBlock *entry = createBasicBlock("forall_entry");
   Builder.CreateBr(entry);
   EmitBlock(entry);
 
   llvm::Value *Undef = llvm::UndefValue::get(Int32Ty);
   llvm::Instruction *ForallAllocaInsertPt =
     new llvm::BitCastInst(Undef, Int32Ty, "", Builder.GetInsertBlock());
-  ForallAllocaInsertPt->setName("uniform.forall.cells.allocapt");
+  ForallAllocaInsertPt->setName("forall.allocapt");
 
   // Save the AllocaInsertPt.
   llvm::Instruction *savedAllocaInsertPt = AllocaInsertPt;
@@ -812,15 +813,18 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
   
-  llvm::Function *ForallFn = 
-  llvm::CodeExtractor(region, &DT, false).extractCodeRegion();
-  
+  llvm::Function *ForallFn;
+  ForallFn = llvm::CodeExtractor(region, &DT, false).extractCodeRegion();
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
-  if (isa< RenderAllStmt >(S))
-    ForallFn->setName("unirendall.cells.fn");
+  // SC_TODO: WARNING -- these function names are once again used as a special
+  // case within the DoallToPTX transformation pass (in the LLVM source).  If
+  // you change the name here you will need to also make the changes in the
+  // pass... 
+  if (isa<RenderAllStmt>(S))
+    ForallFn->setName("uniRenderallCellsFn");
   else
-    ForallFn->setName("uniforall.cells.fn");
+    ForallFn->setName("uniForallCellsFn");
 
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
@@ -830,13 +834,12 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
     
     // Add metadata for scout kernel function.
-    llvm::NamedMDNode *ScoutMetadata =
-    CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
+    llvm::NamedMDNode *ScoutMetadata;
+    ScoutMetadata = CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
     
     SmallVector<llvm::Value *, 4> KMD; // Kernel MetaData
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ForallFn));
-    // For each function argument, a bit to indicate whether it is
-    // a mesh member.
+    // For each function argument, a bit to indicate whether it is a mesh member.
     SmallVector<llvm::Value*, 3> args;
     SmallVector<llvm::Value*, 3> signedArgs;
     SmallVector<llvm::Value*, 3> meshArgs;
@@ -846,9 +849,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::Value* gs;
     
     IRNameStr = new char[MeshName.size() + 16];
-    
-    for(ArgIterator it = ForallFn->arg_begin(),
-        end = ForallFn->arg_end(); it != end; ++it, ++pos) {
+    for(ArgIterator it = ForallFn->arg_begin(), end = ForallFn->arg_end();
+        it != end; ++it, ++pos) {
       bool isSigned;
       std::string typeStr;
       if (isMeshMember(it, isSigned, typeStr)) {
@@ -897,23 +899,22 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
           bool found = false;
           for(llvm::DenseMap<const Decl*, llvm::Value*>::iterator
               itr = LocalDeclMap.begin(), itrEnd = LocalDeclMap.end();
-              itr != itrEnd; ++itr){
-            if(const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)){
-              if(vd->getName() == it->getName()){
-                std::string ts = vd->getType().getAsString();
+              itr != itrEnd; ++itr) {
+            
+            if (const ValueDecl* vd = dyn_cast<ValueDecl>(itr->first)) {
 
+              if (vd->getName() == it->getName()) {
+                std::string ts = vd->getType().getAsString();
                 size_t pos = ts.find(" [");
-                if(pos != std::string::npos){
+                if (pos != std::string::npos) {
                   ts = ts.substr(0, pos);
                 }
-
-                if(ts.find("*") == std::string::npos){
+                
+                if (ts.find("*") == std::string::npos) {
                   ts += "*";
                 }
 
-                gs = 
-                  llvm::ConstantDataArray::getString(getLLVMContext(),
-                                                     ts);
+                gs =  llvm::ConstantDataArray::getString(getLLVMContext(), ts);
                 found = true;
                 break;
               }
@@ -929,6 +930,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
+    
     // Add dimension information.
     for(unsigned i = 0, e = dims.size(); i < e; ++i) {
       args.push_back(TranslateExprToValue(S.getStart(i)));
@@ -937,21 +939,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
     args.clear();
-    args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(),
-						      MeshName));;
-    
-    //llvm::Constant* MeshNameArray =
-    //llvm::ConstantArray::get(getLLVMContext(), MeshName);
-    //args.push_back(MeshNameArray);
+    args.push_back(llvm::ConstantDataArray::getString(getLLVMContext(), MeshName));;
     
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(args)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(meshArgs)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(signedArgs)));
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(typeArgs)));
     
-    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(),
-                                                ArrayRef<llvm::Value*>(KMD)));
-    
+    ScoutMetadata->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(KMD)));
   }
      
   if (isSequential() || isGPU()) {
