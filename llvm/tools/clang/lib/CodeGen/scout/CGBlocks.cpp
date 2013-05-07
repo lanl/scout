@@ -81,6 +81,7 @@ void computeBlockInfo(CodeGenModule &CGM, CodeGenFunction *CGF,
 llvm::Constant *buildBlockDescriptor(CodeGenModule &CGM,
                                             const CGBlockInfo &blockInfo);
 
+
 // =============================================================================
 // Scout:
 //
@@ -100,7 +101,6 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges, 
                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockLiteral");
-  //std::cout << "esbl inputs" <<inputs.size() << "\n"; // 0
 
   // Start generating block function.
   llvm::BasicBlock *blockEntry = createBasicBlock("block_entry");
@@ -154,13 +154,14 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   llvm::Value *Extent = Builder.CreateLoad(PtrEnd[0]);
 
   for(int i = 1, e = ScoutIdxVars.size(); i < e; ++i) {
-    llvm::Value *x = Builder.CreateLoad(ranges[i - 1]);
-
+    llvm::Value *n;
+    if(i == 1)
+      n = Builder.CreateLoad(ranges[0]); //size_x
     if(i == 2)
-      x = Builder.CreateMul(x, Builder.CreateLoad(ranges[i - 2]));
-
-    IndVar = Builder.CreateAdd(IndVar, Builder.CreateMul(x, Builder.CreateLoad(PtrStart[i])));
-    Extent = Builder.CreateAdd(Extent, Builder.CreateMul(x, Builder.CreateLoad(PtrEnd[i])));
+      n = Builder.CreateMul(Builder.CreateLoad(ranges[0]),
+                            Builder.CreateLoad(ranges[1])); //size_x * size_y
+    IndVar = Builder.CreateAdd(IndVar, Builder.CreateMul(n, Builder.CreateLoad(PtrStart[i])));
+    Extent = Builder.CreateAdd(Extent, Builder.CreateMul(n, Builder.CreateLoad(PtrEnd[i])));
   }
 
   Builder.CreateStore(IndVar, PtrIndVar);
@@ -188,10 +189,10 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
     llvm::Value *val;
     if(i > 0) {
       if(i == 1)
-        val = Builder.CreateLoad(ranges[i - 1]);
-      else
-        val = Builder.CreateMul(Builder.CreateLoad(ranges[i]),
-                                Builder.CreateLoad(ranges[i - 1]));
+        val = Builder.CreateLoad(ranges[0]); //size_x
+      if (i == 2)
+        val = Builder.CreateMul(Builder.CreateLoad(ranges[0]),
+                                Builder.CreateLoad(ranges[1])); // size_x*size y
       lval = Builder.CreateUDiv(lval, val);
     }
     
@@ -244,7 +245,6 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
       }
     }
   }
-  //std::cout << "esbl2 inputs" <<inputs.size() << "\n";
 
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
@@ -282,7 +282,7 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
 
   typedef llvm::Function::arg_iterator ArgIterator;
 
-  //ordering of args is (start,end) pairs, then dim_x etc, then captured vars
+  // Ordering of args is (start,end) pairs, then dim_x etc, then captured vars
   for(ArgIterator arg = BlockFn->arg_begin(),
         end = BlockFn->arg_end(); arg != end; ++arg)
     if(!(arg->getName().startswith("var."))) {
@@ -364,7 +364,7 @@ llvm::Value
                                        const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                        llvm::SetVector< llvm::Value * > &inputs) {
   DEBUG_OUT("EmitScoutBlockFnCall");
-  //std::cout << "esbfc inputs" << inputs.size() << "\n";
+
   blockFn = llvm::ConstantExpr::getBitCast(cast< llvm::Function >(blockFn),
                                            VoidPtrTy);
   llvm::Constant *isa = CGM.getNSConcreteStackBlock();
@@ -456,6 +456,12 @@ llvm::Value
 
   genericBlk = Builder.CreateBitCast(genericBlk, Int8PtrTy);
 
+  return EmitScoutQueueBlock(genericBlk, numDimensions, inputs.size());
+
+}
+
+// Emit call to __scrt_queue_block runtime function
+llvm::Value *CodeGenFunction::EmitScoutQueueBlock(llvm::Value *genericBlk, size_t numDimensions, size_t numInputs) {
 
   llvm::Function* queueBlockFunc =
   CGM.getModule().getFunction("__scrt_queue_block");
@@ -482,14 +488,12 @@ llvm::Value
                            "__scrt_queue_block", &CGM.getModule());
   }
 
-  llvm::Value* numDims = llvm::ConstantInt::get(Int32Ty, numDimensions);
-  llvm::Value* numInputs = llvm::ConstantInt::get(Int32Ty, inputs.size());
+  llvm::Value* Dims = llvm::ConstantInt::get(Int32Ty, numDimensions);
+  llvm::Value* Inputs = llvm::ConstantInt::get(Int32Ty, numInputs);
 
-  // scout - to enable block queueing
-  return Builder.CreateCall3(queueBlockFunc, genericBlk, numDims, numInputs);
-
-  // scout - to call the block directly
-  //Builder.CreateCall(blk, genericBlk);
+  return Builder.CreateCall3(queueBlockFunc, genericBlk, Dims, Inputs);
 }
+
+
 //
 // =============================================================================

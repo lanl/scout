@@ -784,12 +784,14 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   else
     ForallFn->setName("forall");
 
-  std::string name = ForallFn->getName().str();
-  assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
 
   // Do not add metadata if the ForallFn or a function ForallFn calls
   // contains a printf.
   if(isGPU()) {
+
+    std::string name = ForallFn->getName().str();
+    assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
+
     // Add metadata for scout kernel function.
     llvm::NamedMDNode *ScoutMetadata =
     CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
@@ -1200,8 +1202,8 @@ void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   llvm::Value *indVar = Builder.CreateAlloca(Int32Ty, 0, name);
   if(isSequential() || isCPU())
     Builder.CreateStore(zero, indVar);
+
   ForallIndVar = indVar;
-  ForallIndVal = Builder.CreateLoad(indVar);
 
   // Clear the list of stale ScoutIdxVars.
   ScoutIdxVars.clear();

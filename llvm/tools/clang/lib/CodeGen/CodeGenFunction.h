@@ -649,7 +649,6 @@ public:
   typedef std::pair< FieldDecl *, int > FieldPair;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   /// Scout forall explicit induction variable.
-  llvm::Value *ForallIndVal;
   llvm::Value *ForallIndVar;
   /// Scout forall implicit induction variables.
   Vector ScoutIdxVars;
@@ -665,7 +664,7 @@ public:
   const ForAllArrayStmt* CurrentForAllArrayStmt;
   
   llvm::Value *getGlobalIdx() {
-    return isGPU() ? ForallIndVal : Builder.CreateLoad(ForallIndVar);
+    return Builder.CreateLoad(ForallIndVar);
   }
 
   bool isGPU() {
@@ -1478,6 +1477,7 @@ public:
                                      CGBlockInfo &blockInfo,
                                      const llvm::SmallVector< llvm::Value *, 3 >& ranges,
                                      llvm::SetVector< llvm::Value * > &inputs);
+  llvm::Value *EmitScoutQueueBlock(llvm::Value *genericBlk, size_t numDimensions, size_t numInputs);
   
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
   
