@@ -716,7 +716,8 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     meshFieldMap[FieldName.str()] = true;
     
     QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
-    
+
+    fprintf(stderr, "field name = %s\n", FieldName.str().c_str());
     if(!(FieldName.equals("position") ||
          FieldName.equals("width")    ||
          FieldName.equals("height")   ||
@@ -848,12 +849,16 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     size_t pos = 0;
     llvm::Value* gs;
     
-    IRNameStr = new char[MeshName.size() + 16];
     for(ArgIterator it = ForallFn->arg_begin(), end = ForallFn->arg_end();
         it != end; ++it, ++pos) {
       bool isSigned;
       std::string typeStr;
+
+      fprintf(stderr, "argument: %s\n", (*it).getName().str().c_str());
+      
       if (isMeshMember(it, isSigned, typeStr)) {
+        fprintf(stderr, "'%s' is a mesh member\n", (*it).getName().str().c_str());        
+        
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         
         if (isSigned) {
@@ -867,6 +872,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         // names.
         // SC_TODO: There has to be a better way to do this... 
         std::string ns = (*it).getName().str();
+        fprintf(stderr, "mangled mesh field name: %s\n", ns.c_str());        
         while(!ns.empty()) {
           
           if (meshFieldMap.find(ns) != meshFieldMap.end()) {
@@ -879,20 +885,28 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
 
+        fprintf(stderr, "unmangled mesh field name: %s\n", ns.c_str());
+        
         gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
         typeArgs.push_back(gs);
       } else {
+        fprintf(stderr, "'%s' is NOT a mesh member\n", (*it).getName().str().c_str());
+        
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
 						(*it).getName());
         meshArgs.push_back(gs);
 
-        // SC_TODO: these are now named FieldName.[width|height|depth]
-        // (see code above).
-        if (it->getName().startswith("width")   ||  
-            it->getName().startswith("height")  ||
-            it->getName().startswith("depth")) {
+        // SC_TODO: these are now named MeshName.[width|height|depth]
+        // (see code above).  We probably should find something better
+        // here than string comparisons... 
+        std::string FieldWidthStr(MeshName.str() + std::string(".width"));
+        std::string FieldHeightStr(MeshName.str() + std::string(".height"));
+        std::string FieldDepthStr(MeshName.str() + std::string(".depth"));
+        if (it->getName().startswith(FieldWidthStr)   ||  
+            it->getName().startswith(FieldHeightStr)  ||
+            it->getName().startswith(FieldDepthStr)) {
 	  gs = llvm::ConstantDataArray::getString(getLLVMContext(), "uint*");
           typeArgs.push_back(gs);
         } else {
@@ -926,6 +940,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
           }
         }
       }
+      fprintf(stderr, "\n\n");
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     

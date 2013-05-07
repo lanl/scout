@@ -689,17 +689,17 @@ public:
   bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
     isSigned = false;
     
-    if(arg->getName().endswith("height")) return false;
-    if(arg->getName().endswith("width")) return false;
-    if(arg->getName().endswith("depth")) return false;
-    if(arg->getName().endswith("ptr")) return false;
-    if(arg->getName().endswith("dim_x")) return false;
-    if(arg->getName().endswith("dim_y")) return false;
-    if(arg->getName().endswith("dim_z")) return false;
+    if (arg->getName().endswith("height")) return false;
+    if (arg->getName().endswith("width"))  return false;
+    if (arg->getName().endswith("depth"))  return false;
+    if (arg->getName().endswith("ptr"))    return false;
+    if (arg->getName().endswith("dim_x"))  return false;
+    if (arg->getName().endswith("dim_y"))  return false;
+    if (arg->getName().endswith("dim_z"))  return false;
     
     typedef MemberMap::iterator MemberIterator;
-    for(MemberIterator it = MeshMembers.begin(),
-          end = MeshMembers.end(); it != end; ++it) {
+    for(MemberIterator it = MeshMembers.begin(), end = MeshMembers.end();
+        it != end; ++it) {
 
       std::string name = it->first;
       std::string argName = arg->getName();
