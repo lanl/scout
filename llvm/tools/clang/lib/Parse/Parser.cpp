@@ -22,8 +22,6 @@
 #include "clang/Sema/Scope.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
-
 using namespace clang;
 
 
@@ -1928,15 +1926,15 @@ void Parser::DumpLookAheads(unsigned N){
   for(unsigned i = 0; i < N; ++i){
     const Token& t = GetLookAheadToken(i);
         
-    std::cerr << "lookahead[" << i << "]: " << t.getName();
+    llvm::outs() << "lookahead[" << i << "]: " << t.getName();
     
     if(t.is(tok::eof) || t.is(tok::semi)){
-      std::cerr << std::endl;
+      llvm::outs() << "\n";
       break;
     }
     
     if(t.isAnnotation()){
-      std::cerr << std::endl;
+      llvm::outs() << "\n";
       continue;
     }
     
@@ -1945,19 +1943,19 @@ void Parser::DumpLookAheads(unsigned N){
     if(t.isLiteral()){
       std::string str = t.getLiteralData();
       str = str.substr(0, length);
-      std::cerr << " = " << str;
+      llvm::outs() << " = " << str;
     }
     else if(t.is(tok::identifier)){
-      std::cerr << " = " << t.getIdentifierInfo()->getName().str();
+      llvm::outs() << " = " << t.getIdentifierInfo()->getName().str();
     }
     else if(t.is(tok::raw_identifier)){
       std::string str = t.getRawIdentifierData();
       str = str.substr(0, length);
-      std::cerr << " = " << str;
+      llvm::outs() << " = " << str;
     }
-    std::cerr << std::endl;
+    llvm::outs() << "\n";
   }
-  std::cerr << std::endl;
+  llvm::outs() << "\n";
 }
 
 std::string Parser::TokToStr(const Token& tok){

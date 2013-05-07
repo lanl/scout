@@ -30,8 +30,6 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 
-#include <iostream>
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//

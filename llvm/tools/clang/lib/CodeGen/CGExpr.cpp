@@ -3242,7 +3242,7 @@ EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
   if(isa<MemberExpr>(E->getBase())) {
     ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
     if(VD->getName() == "position") {
-      std::cerr << "idx is: " << E->getIdx() << std::endl;
+      llvm::outs() << "idx is: " << E->getIdx() << "\n";
       return MakeAddrLValue(ScoutIdxVars[E->getIdx()], getContext().IntTy);
     }
     assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");

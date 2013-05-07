@@ -69,8 +69,7 @@
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/Analysis/Analyses/Dominators.h"
 #include <algorithm>
-//#include <cstdio>
-//#include <iostream>
+
 // =============================================================================
 
 using namespace clang;
@@ -239,7 +238,7 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
           if(!region.count(Instn->getParent()) &&
              !(*O)->getName().startswith("var.")) {
             inputs.insert(*O);
-            //std::cout << (*O)->getName().str() << "\n"; //start, end pairs then dim_x, etc.
+            //llvm::outs() << (*O)->getName().str() << "\n"; //start, end pairs then dim_x, etc.
           }
         }
       }
@@ -286,7 +285,7 @@ CodeGenFunction::EmitScoutBlockLiteral(const BlockExpr *blockExpr,
   for(ArgIterator arg = BlockFn->arg_begin(),
         end = BlockFn->arg_end(); arg != end; ++arg)
     if(!(arg->getName().startswith("var."))) {
-      //std:: << "arg " << arg->getName().str() << "\n";
+      //llvm::outs() << "arg " << arg->getName().str() << "\n";
       arrayTy.push_back(Int8PtrTy);
     }
 

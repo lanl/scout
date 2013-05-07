@@ -34,8 +34,6 @@
 // scout - include Scout AST viewer
 #include "clang/Parse/ASTViewScout.h"
 
-#include <iostream>
-
 using namespace clang;
 
 namespace {

@@ -20,8 +20,6 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
 
-#include <iostream>
-
 using namespace clang;
 
 /// \brief Parse a template declaration, explicit instantiation, or

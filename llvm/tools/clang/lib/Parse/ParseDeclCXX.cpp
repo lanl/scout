@@ -23,8 +23,6 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/ADT/SmallString.h"
 
-#include <iostream>
-
 using namespace clang;
 
 /// ParseNamespace - We know that the current token is a namespace keyword. This
@@ -3503,17 +3501,17 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     FieldDecl* fd = cast<FieldDecl>(*itr);
     switch(fd->meshFieldType()){
       case FieldDecl::FieldNone:
-        std::cerr << "none: ";
+        llvm::outs() << "none: ";
         break;
       case FieldDecl::FieldCells:
-        std::cerr << "cells: ";
+        llvm::outs()  << "cells: ";
         break;
       case FieldDecl::FieldVertices:
-        std::cerr << "vertices: ";
+        llvm::outs()  << "vertices: ";
         break;
     }
     fd->dump();
-    std::cerr << std::endl;
+    llvm::outs()  << "\n";
     ++itr;
   }
   */

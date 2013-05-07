@@ -18,8 +18,6 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//

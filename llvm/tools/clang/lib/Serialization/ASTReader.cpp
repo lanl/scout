@@ -53,8 +53,6 @@
 #include <cstdio>
 #include <iterator>
 
-#include <iostream>
-
 using namespace clang;
 using namespace clang::serialization;
 using namespace clang::serialization::reader;
