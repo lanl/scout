@@ -1313,7 +1313,7 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     }
     // FALL THROUGH.
   default:
-    llvm::outs() << "fall through, bad\n";
+    llvm::errs() << "fall through, bad\n"; 
     NotCastExpr = true;
     return ExprError();
   }
