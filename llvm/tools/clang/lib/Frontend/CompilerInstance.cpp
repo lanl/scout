@@ -47,11 +47,16 @@
 
 using namespace clang;
 
-// scout - added ScoutASTConsumer / ScoutRewriter init
+
 CompilerInstance::CompilerInstance()
   : Invocation(new CompilerInvocation()), ModuleManager(0),
     BuildGlobalModuleIndex(false), ModuleBuildFailed(false),
+    // =============================================================================
+    // Scout: Added ScoutASTConsumer / ScoutRewriter init which are used to
+    // communicate between the scout driver and FrontendAction.cpp when the
+    // rewriter is being used.
     ScoutASTConsumer(0), ScoutRewriter(0){
+    // =============================================================================
 
 }
 

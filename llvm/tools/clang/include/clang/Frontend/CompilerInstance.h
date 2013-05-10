@@ -124,11 +124,18 @@ class CompilerInstance : public ModuleLoader {
   /// \brief One or more modules failed to build.
   bool ModuleBuildFailed;
 
-  // scout - AST consumer
+  // =============================================================================
+  // scout: the following are in used by the rewriter
+  // they are set in /tools/clang/scc/cc1_main.cpp
+  // and used by FrontendAction.cpp where calls ParseAST
+
+  // AST consumer with visitor for rewriter
+  // see tools/clang/scc/ScoutASTConsumer.h
   ASTConsumer* ScoutASTConsumer;
   
-  // scout - rewriter used with AST consumer
+  // rewriter used with AST consumer
   Rewriter* ScoutRewriter;
+  // =============================================================================
 
   /// \brief Holds information about the output file.
   ///
@@ -200,25 +207,31 @@ public:
     return *Invocation;
   }
 
-  // scout - set the AST consumer
+  // =============================================================================
+  // scout: access functions for AST consumer/rewriter
+  // these are used by the scout driver: tools/clang/scc/cc1_main.cpp
+  // and FrontendAction.cpp where calls ParseAST
+
+  // set the AST consumer
   void setScoutASTConsumer(ASTConsumer* astConsumer){
     ScoutASTConsumer = astConsumer;
   }
   
-  // scout - get the AST Consumer
+  // get the AST Consumer
   ASTConsumer* getScoutASTConsumer(){
     return ScoutASTConsumer;
   }
 
-  // scout - set the AST rewriter
+  // set the AST rewriter
   void setScoutRewriter(Rewriter* rewriter){
     ScoutRewriter = rewriter;
   }
   
-  // scout - get the AST Consumer
+  // get the AST rewriter
   Rewriter* getScoutRewriter(){
     return ScoutRewriter;
   }
+  // =============================================================================
   
   /// setInvocation - Replace the current invocation.
   void setInvocation(CompilerInvocation *Value);

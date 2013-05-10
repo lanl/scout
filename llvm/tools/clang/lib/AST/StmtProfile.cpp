@@ -133,24 +133,6 @@ void StmtProfiler::VisitDoStmt(const DoStmt *S) {
   VisitStmt(S);
 }
 
-// scout - Scout Stmts
-
-void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitVolumeRenderAllStmt(const VolumeRenderAllStmt *S) {
-    VisitStmt(S);
-}
-
 void StmtProfiler::VisitForStmt(const ForStmt *S) {
   VisitStmt(S);
 }
@@ -374,12 +356,6 @@ void StmtProfiler::VisitMemberExpr(const MemberExpr *S) {
   if (!Canonical)
     VisitNestedNameSpecifier(S->getQualifier());
   ID.AddBoolean(S->isArrow());
-}
-
-// scout - vector types
-// TODO - implement
-void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S){
-  
 }
 
 void StmtProfiler::VisitCompoundLiteralExpr(const CompoundLiteralExpr *S) {
@@ -1223,3 +1199,35 @@ void Stmt::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
   StmtProfiler Profiler(ID, Context, Canonical);
   Profiler.Visit(this);
 }
+
+// =============================================================================
+// scout
+
+void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitVolumeRenderAllStmt(const VolumeRenderAllStmt *S) {
+    VisitStmt(S);
+}
+
+// scout - vector types
+//  SC_TODO - implement
+void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S){
+
+}
+
+// =============================================================================
+
+
+
+
+

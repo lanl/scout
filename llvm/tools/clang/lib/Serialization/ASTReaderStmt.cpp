@@ -236,28 +236,6 @@ void ASTStmtReader::VisitForStmt(ForStmt *S) {
   S->setRParenLoc(ReadSourceLocation(Record, Idx));
 }
 
-// scout - Stmts
-void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
-
-}
-
-void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) {
-  
-}
-
-void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
-
-}
-
-void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
-
-}
-
-void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
-
-}
-
-
 void ASTStmtReader::VisitGotoStmt(GotoStmt *S) {
   VisitStmt(S);
   S->setLabel(ReadDeclAs<LabelDecl>(Record, Idx));
@@ -2267,3 +2245,30 @@ Done:
   assert(StmtStack.size() == PrevNumStmts + 1 && "Extra expressions on stack!");
   return StmtStack.pop_back_val();
 }
+
+// =============================================================================
+// scout
+//SC_TODO: Implement these
+
+void ASTStmtReader::VisitForAllStmt(ForAllStmt *S) {
+
+}
+
+void ASTStmtReader::VisitForAllArrayStmt(ForAllArrayStmt *S) {
+
+}
+
+void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) {
+
+}
+
+void ASTStmtReader::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+
+}
+
+void ASTStmtReader::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+
+}
+
+// =============================================================================
+

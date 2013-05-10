@@ -710,6 +710,7 @@ public:
         QualType qt = it->second.second;
         isSigned = qt.getTypePtr()->isSignedIntegerType();
         typeStr = qt.getAsString() + "*";
+        //llvm::outs() << "mesh " << name << " " << typeStr << "\n";
         return true;
       }  
     }
