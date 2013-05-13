@@ -302,24 +302,6 @@ void StmtPrinter::VisitForStmt(ForStmt *Node) {
   }
 }
 
-// scout - Scout Stmts
-// TODO - implement
-void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
-  
-}
-
-void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) {
-  
-}
-
-void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
-  
-}
-
-void StmtPrinter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *Node) {
-
-}
-
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
   Indent() << "for (";
   if (DeclStmt *DS = dyn_cast<DeclStmt>(Node->getElement()))
@@ -957,64 +939,6 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   if (Node->hasExplicitTemplateArgs())
     TemplateSpecializationType::PrintTemplateArgumentList(
         OS, Node->getTemplateArgs(), Node->getNumTemplateArgs(), Policy);
-}
-
-// scout - vector types
-// TODO - implement
-void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
-  bool isColor = false;
-
-  if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase())){
-    if(dr->getDecl()->getName() == "color"){
-      isColor = true;
-    }
-  }
-
-  PrintExpr(Node->getBase());
-
-  OS << ".";
-  switch(Node->getIdx()){
-    case 0:
-    {
-      if(isColor){
-        OS << "r";
-      }
-      else{
-        OS << "x";
-      }
-      break;
-    }
-    case 1:
-    {
-      if(isColor){
-        OS << "g";
-      }
-      else{
-        OS << "y";
-      }
-      break;
-    }
-    case 2:
-    {
-      if(isColor){
-        OS << "b";
-      }
-      else{
-        OS << "z";
-      }
-      break;
-    }
-    case 3:
-    {
-      if(isColor){
-        OS << "a";
-      }
-      else{
-        OS << "w";
-      }
-      break;
-    }
-  }
 }
 
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
@@ -1979,3 +1903,83 @@ std::string Stmt::toCPPCode(ASTContext& context){
 
 // Implement virtual destructor.
 PrinterHelper::~PrinterHelper() {}
+
+
+// =============================================================================
+// scout
+// SC_TODO - implement
+void StmtPrinter::VisitForAllStmt(ForAllStmt *Node) {
+
+}
+
+void StmtPrinter::VisitForAllArrayStmt(ForAllArrayStmt *Node) {
+
+}
+
+void StmtPrinter::VisitRenderAllStmt(RenderAllStmt *Node) {
+
+}
+
+void StmtPrinter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *Node) {
+
+}
+
+// scout - vector types
+void StmtPrinter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *Node) {
+  bool isColor = false;
+
+  if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Node->getBase())){
+    if(dr->getDecl()->getName() == "color"){
+      isColor = true;
+    }
+  }
+
+  PrintExpr(Node->getBase());
+
+  OS << ".";
+  switch(Node->getIdx()){
+    case 0:
+    {
+      if(isColor){
+        OS << "r";
+      }
+      else{
+        OS << "x";
+      }
+      break;
+    }
+    case 1:
+    {
+      if(isColor){
+        OS << "g";
+      }
+      else{
+        OS << "y";
+      }
+      break;
+    }
+    case 2:
+    {
+      if(isColor){
+        OS << "b";
+      }
+      else{
+        OS << "z";
+      }
+      break;
+    }
+    case 3:
+    {
+      if(isColor){
+        OS << "a";
+      }
+      else{
+        OS << "w";
+      }
+      break;
+    }
+  }
+}
+
+// =============================================================================
+

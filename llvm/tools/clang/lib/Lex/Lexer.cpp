@@ -39,8 +39,6 @@
 #include "UnicodeCharSets.h"
 #include <cstring>
 
-#include <iostream>
-
 using namespace clang;
 
 //===----------------------------------------------------------------------===//

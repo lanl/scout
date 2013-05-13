@@ -20,8 +20,6 @@
 #include "llvm/Support/type_traits.h"
 #include <iterator>
 
-#include <iostream>
-
 namespace clang {
 
 template<typename T> class CanProxy;

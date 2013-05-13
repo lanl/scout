@@ -38,7 +38,6 @@
 #include "clang/AST/StmtVisitor.h"
 
 #include <map>
-#include <iostream>
 
 using namespace clang;
 using namespace sema;

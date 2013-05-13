@@ -26,7 +26,6 @@
 
 // scout
 #include "clang/AST/ASTContext.h"
-#include <iostream>
 
 using namespace clang;
 

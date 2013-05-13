@@ -34,8 +34,6 @@
 // scout - include Scout AST viewer
 #include "clang/Parse/ASTViewScout.h"
 
-#include <iostream>
-
 using namespace clang;
 
 namespace {
@@ -200,7 +198,6 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     CI.setSourceManager(&AST->getSourceManager());
     CI.setPreprocessor(&AST->getPreprocessor());
     CI.setASTContext(&AST->getASTContext());
-
     // Initialize the action.
     if (!BeginSourceFileAction(CI, InputFile))
       goto failure;
@@ -477,28 +474,36 @@ void ASTFrontendAction::ExecuteAction() {
   if (!CI.hasSema())
     CI.createSema(getTranslationUnitKind(), CompletionConsumer);
 
-  // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
-  ASTConsumer* scoutASTConsumer = CI.getScoutASTConsumer();
-  if(scoutASTConsumer){
-    Rewriter* scoutRewriter = CI.getScoutRewriter();
+
+  // =============================================================================
+  // scout: Parse the AST
+
+  // see if we are using the rewriter or not.
+  Rewriter* scoutRewriter = CI.getScoutRewriter();
+  if(scoutRewriter) {
+    // get the AST consumer instance which is going to get called by ParseAST.
+    ASTConsumer* Consumer = CI.getScoutASTConsumer();
     
     scoutRewriter->setSourceMgr(CI.getSourceManager(),
                                 CI.getLangOpts());
     
-    ParseAST(CI.getPreprocessor(), scoutASTConsumer,
+    // Parse the file to AST, registering this consumer as the AST consumer.
+    ParseAST(CI.getPreprocessor(), Consumer,
              CI.getASTContext());
-  }
-  else if(CI.getFrontendOpts().ViewAST){
+  } else if(CI.getFrontendOpts().ViewAST) {
+    // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
+    // SC_TODO: currently not working.
     ASTViewScout ASTViewer(CI.getSema());
     
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
              false, &ASTViewer);
-  }
-  else{
+  } else {
+    // original clang call to ParseAST
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
              CI.getFrontendOpts().SkipFunctionBodies);
-    // scout - if else
+
   }
+  // =============================================================================
 }
 
 void PluginASTAction::anchor() { }

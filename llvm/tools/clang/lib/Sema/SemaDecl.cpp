@@ -45,7 +45,6 @@
 #include <cstring>
 #include <functional>
 
-#include <iostream>
 
 using namespace clang;
 using namespace sema;

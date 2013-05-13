@@ -13,8 +13,6 @@
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
-
 using namespace std;
 using namespace clang;
 
@@ -326,23 +324,23 @@ namespace{
   // the root node
   void viewASTOutputNodes(ViewASTNode* n, int& id){
     n->setId(id);
-    cout << "  node" << id << " [label = \"";
+    llvm::outs() << "  node" << id << " [label = \"";
 
-    cout << "<f0> ";
+    llvm::outs() << "<f0> ";
     
-    cout << n->head();
+    llvm::outs() << n->head();
         
     for(size_t i = 0; i < n->attrCount(); ++i){
-      cout << " | <f" << i+1 << "> " << n->attr(i);
+      llvm::outs() << " | <f" << i+1 << "> " << n->attr(i);
     }
     
-    cout << "\"";
+    llvm::outs() << "\"";
     
     if(isScoutASTNode(n->head())){
-      cout << ", style=\"filled\", fillcolor=\"slategray3\"";
+      llvm::outs() << ", style=\"filled\", fillcolor=\"slategray3\"";
     }
     
-    cout << "];" << endl;
+    llvm::outs() << "];\n";
     
     for(size_t i = 0; i < n->childCount(); ++i){
       viewASTOutputNodes(n->child(i), ++id);
@@ -355,8 +353,8 @@ namespace{
     for(size_t i = 0; i < n->childCount(); ++i){
       ViewASTNode* ni = n->child(i);
       
-      cout << "\"node" << n->id() << "\":f0 -> \"node" << 
-      ni->id() << "\":f0;" << endl;
+      llvm::outs() << "\"node" << n->id() << "\":f0 -> \"node" <<
+      ni->id() << "\":f0;\n";
       
       viewASTOutputLinks(ni);
     }
@@ -364,12 +362,12 @@ namespace{
   
   // generate the top-level Graphviz output
   void viewASTOutputGraphviz(ViewASTNode* n){
-    cout << "digraph G{" << endl;
-    cout << "  node [shape = record];" << endl;
+    llvm::outs() << "digraph G{\n";
+    llvm::outs() << "  node [shape = record];\n";
     int id = 0;
     viewASTOutputNodes(n, id);
     viewASTOutputLinks(n);
-    cout << "}" << endl;
+    llvm::outs() << "}\n";
   }
   
 } // end namespace
@@ -401,7 +399,7 @@ void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
           string str;
           llvm::raw_string_ostream ostr(str);
           body->dump(ostr, sema_.getSourceManager());
-          cerr << ostr.str() << endl;
+          llvm::outs() << ostr.str() << "\n";
           ViewASTNode* root = viewASTParse(ostr.str());
           viewASTOutputGraphviz(root);
           delete root;

@@ -170,22 +170,6 @@ void ASTStmtWriter::VisitForStmt(ForStmt *S) {
   Code = serialization::STMT_FOR;
 }
 
-void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) {
-
-}
-
-void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) {
-  
-}
-
-void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) {
-
-}
-
-void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
-
-}
-
 void ASTStmtWriter::VisitGotoStmt(GotoStmt *S) {
   VisitStmt(S);
   Writer.AddDeclRef(S->getLabel(), Record);
@@ -1706,3 +1690,26 @@ void ASTWriter::FlushStmts() {
 
   StmtsToEmit.clear();
 }
+
+// =============================================================================
+// scout
+//SC_TODO: Implement these
+
+void ASTStmtWriter::VisitForAllStmt(ForAllStmt *S) {
+
+}
+
+void ASTStmtWriter::VisitForAllArrayStmt(ForAllArrayStmt *S) {
+
+}
+
+void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) {
+
+}
+
+void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) {
+
+}
+
+// =============================================================================
+
