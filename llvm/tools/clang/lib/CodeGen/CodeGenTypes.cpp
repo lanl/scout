@@ -611,8 +611,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
     typedef llvm::ArrayType ArrayTy;
 
-    MeshDecl::field_iterator it     = mesh->field_begin();
-    MeshDecl::field_iterator it_end = mesh->field_end();
+    MeshDecl::mesh_field_iterator it     = mesh->mesh_field_begin();
+    MeshDecl::mesh_field_iterator it_end = mesh->mesh_field_end();
 
     std::vector< llvm::Type * > eltTys;
 
@@ -622,10 +622,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     }
 
     for( ; it != it_end; ++it) {
-      llvm::StringRef name = it->getName();
+      
       // Do not generate code for implicit mesh member variables.
-      if(!(name == "position" || name == "width" || name == "height" ||
-           name == "depth" || name == "ptr")) {
+      if (! it->isImplicit()) {
         // Identify the type of each mesh member.
         llvm::Type *ty = ConvertType(it->getType());
         uint64_t numElts = 1;
@@ -635,6 +634,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
           dims[i]->EvaluateAsInt(result, Context);
           numElts *= result.getSExtValue();
         }
+        
         eltTys.push_back(llvm::PointerType::getUnqual(ty));
       }
     }

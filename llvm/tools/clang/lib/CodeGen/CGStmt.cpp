@@ -682,7 +682,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   ScoutMeshSizes.clear();
   
   llvm::StringRef MeshName = S.getMesh()->getName();
-
   const MeshType *MT = S.getMeshType();
   MeshType::MeshDimensionVec dims = MT->dimensions();
   MeshDecl *MD = MT->getDecl();
@@ -694,10 +693,10 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 
   // We use 'IRNameStr' to hold the names we emit for various items at
   // the IR level.  It is a bit tricky to always nail down the string
-  // length for these -- I'm also not crazy about dynamic allocation
-  // and deallocation here but at this point in time the important
-  // part is making the code more readable as we move from Scout to
-  // LLVM IR.
+  // length for these -- should probably give this aspect some more
+  // thought (it is easy to introduce leaks here given the code
+  // structure).  The naming is key to making the IR code more
+  // readable...
   char *IRNameStr = new char[MeshName.size() + 16];
   const char *DimNames[] = { "width", "height", "depth" };
   for(unsigned i = 0, e = dims.size(); i < e; ++i) {
@@ -705,27 +704,22 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     llvm::Value* lval = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, i+1, IRNameStr);
     ScoutMeshSizes.push_back(lval);
   }
-  delete []IRNameStr;  
+  delete []IRNameStr;
   
-  typedef MeshDecl::field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
   
   for(unsigned i = 0; it != it_end; ++it, ++i) {
+    MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(*it);
+    llvm::StringRef FieldName = MFD->getName();
+    QualType Ty = MFD->getType();
     
-    llvm::StringRef FieldName = dyn_cast< FieldDecl >(*it)->getName();
     meshFieldMap[FieldName.str()] = true;
-    
-    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
 
-    fprintf(stderr, "field name = %s\n", FieldName.str().c_str());
-    if(!(FieldName.equals("position") ||
-         FieldName.equals("width")    ||
-         FieldName.equals("height")   ||
-         FieldName.equals("depth")    ||
-         FieldName.equals("ptr"))) {
+    fprintf(stderr, "(EmitForAllStmtWrapper) field name = %s\n", FieldName.str().c_str());
 
+    if (! MFD->isImplicit()) {
       IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
-      
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldPtr = Builder.CreateStructGEP(MeshBaseAddr, i+4, IRNameStr);
       FieldPtr = Builder.CreateLoad(FieldPtr);
@@ -734,6 +728,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
       
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), FieldName.str().c_str());
       llvm::Value *FieldVar = Builder.CreateAlloca(FieldPtr->getType(), 0, IRNameStr);
+
       Builder.CreateStore(FieldPtr, FieldVar);
       MeshMembers[FieldName] = std::make_pair(Builder.CreateLoad(FieldVar) , Ty);
       MeshMembers[FieldName].first->setName(FieldVar->getName());
@@ -815,21 +810,42 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   DT.runOnFunction(*CurFn);
   
   llvm::Function *ForallFn;
-  ForallFn = llvm::CodeExtractor(region, &DT, false).extractCodeRegion();
+
+  llvm::CodeExtractor codeExtractor(region, &DT, false);  
+
+  typedef llvm::SetVector<llvm::Value *> ValueSet;
+  ValueSet ce_inputs, ce_outputs;
+  codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
+  ValueSet::iterator vsit, vsend;
+  
+  llvm::errs() << "*** forall body inputs\n";  
+  vsend = ce_inputs.end();
+  for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
+    llvm::Value *v = *vsit;
+    llvm::errs() << "\t" << v->getName().str() << "\n";
+  }
+  
+  llvm::errs() << "*** forall body outputs\n";  
+  vsend = ce_outputs.end();
+  for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
+    llvm::Value *v = *vsit;
+    llvm::errs() << "\t" << v->getName().str() << "\n";
+  }
+  llvm::errs() << "\n\n";
+  
+  ForallFn = codeExtractor.extractCodeRegion();  
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
   // SC_TODO: WARNING -- these function names are once again used as a special
   // case within the DoallToPTX transformation pass (in the LLVM source).  If
-  // you change the name here you will need to also make the changes in the
+  // you change the name here you will need to also make the changes to the
   // pass... 
   if (isa<RenderAllStmt>(S))
     ForallFn->setName("uniRenderallCellsFn");
   else
     ForallFn->setName("uniForallCellsFn");
 
-  // Do not add metadata if the ForallFn or a function ForallFn calls
-  // contains a printf.
-  if(isGPU()) {
+  if (isGPU()) {
 
     std::string name = ForallFn->getName().str();
     assert(name.find(".") == std::string::npos && "Illegal PTX identifier (function name).\n");
@@ -851,14 +867,22 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     for(ArgIterator it = ForallFn->arg_begin(), end = ForallFn->arg_end();
         it != end; ++it, ++pos) {
-      bool isSigned;
-      std::string typeStr;
+
 
       fprintf(stderr, "argument: %s\n", (*it).getName().str().c_str());
       
-      if (isMeshMember(it, isSigned, typeStr)) {
-        fprintf(stderr, "'%s' is a mesh member\n", (*it).getName().str().c_str());        
+      bool isSigned = false;
+      std::string typeStr;
+      // All of our values from the mesh are prefixed with the
+      // mesh name (we do this as we lower). 
+      if (it->getName().startswith(MeshName) && isMeshMember(it, isSigned, typeStr)) {
+
+        // SC_TODO - need to fix this...  At present, I'm not sure why we
+        // even need it...  It should refect wether the current argument
+        // is a signed value or not... 
+        isSigned = false;
         
+        fprintf(stderr, "'%s' IS a mesh member\n", it->getName().str().c_str());        
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         
         if (isSigned) {
@@ -869,12 +893,13 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         // Convert mesh field arguments to the function which have
         // been uniqued by ExtractCodeRegion() back into mesh field
-        // names.
-        // SC_TODO: There has to be a better way to do this... 
+        // names. 
+        // SC_TODO - this code was, and still is, fundamentally flawed...
+        // We can't simply strip numbers off the end of the name as the
+        // programmer could have specified 
         std::string ns = (*it).getName().str();
         fprintf(stderr, "mangled mesh field name: %s\n", ns.c_str());        
         while(!ns.empty()) {
-          
           if (meshFieldMap.find(ns) != meshFieldMap.end()) {
 	    gs = llvm::ConstantDataArray::getString(getLLVMContext(), ns);
             meshArgs.push_back(gs);
@@ -1008,6 +1033,7 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
 }
 
 void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
+  
   llvm::SmallVector< llvm::Value *, 3 > ranges;
   for(size_t i = 0; i < 3; ++i){
     Expr* end = S.getEnd(i);
@@ -1102,7 +1128,8 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   BBIterator BB = CurFn->begin(), BB_end = CurFn->end();
   
   llvm::BasicBlock *split;
-  for( ; BB->getName() != entry->getName(); ++BB) split = BB;
+  for( ; BB->getName() != entry->getName(); ++BB)
+    split = BB;
   
   for( ; BB != BB_end; ++BB) {
     region.push_back(BB);
@@ -1111,8 +1138,26 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   llvm::DominatorTree DT;
   DT.runOnFunction(*CurFn);
 
-  llvm::CodeExtractor codeExtractor(region,
-                                    &DT, false);
+  llvm::CodeExtractor codeExtractor(region, &DT, false);
+
+  typedef llvm::SetVector<llvm::Value *> ValueSet;
+  ValueSet ce_inputs, ce_outputs;
+  codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
+  ValueSet::iterator vsit, vsend;
+  
+  llvm::errs() << "*** forall body inputs\n";  
+  vsend = ce_inputs.end();
+  for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
+    llvm::Value *v = *vsit;
+    llvm::errs() << "\t" << v->getName().str() << "\n";
+  }
+  
+  llvm::errs() << "*** forall body outputs\n";  
+  vsend = ce_outputs.end();
+  for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
+    llvm::Value *v = *vsit;
+    llvm::errs() << "\t" << v->getName().str() << "\n";
+  }  
   
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
@@ -1196,6 +1241,7 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 
 void CodeGenFunction::EmitForAllStmt(const ForAllStmt &S) {
   DEBUG_OUT("EmitForAllStmt");
+
   // Forall will initially behave exactly like a for loop.
   RunCleanupsScope Forallscope(*this);
 
@@ -1430,11 +1476,9 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     ScoutMeshSizes.push_back(lval);      
   }
 
-
   llvm::Function *addVolFunc = CGM.getModule().getFunction("__scrt_renderall_add_volume");
   
-  if(!addVolFunc){
-    
+  if (!addVolFunc) {
     llvm::PointerType* p1 = llvm::PointerType::get(llvm::Type::getFloatTy(getLLVMContext()), 0);
     llvm::Type* p2 = llvm::Type::getInt32Ty(getLLVMContext());       
     std::vector<llvm::Type*> args;    
@@ -1454,35 +1498,36 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
 
   
   size_t fieldcount = 0;
-  typedef MeshDecl::field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
+  
   for(unsigned i = 0; it != it_end; ++it, ++i) {
     
-    llvm::StringRef name = dyn_cast< FieldDecl >(*it)->getName();
+    MeshFieldDecl *FD = dyn_cast<MeshFieldDecl>(*it);
+    llvm::StringRef name = FD->getName();
     meshFieldMap[name.str()] = true;
     
-    QualType Ty = dyn_cast< FieldDecl >(*it)->getType();
+    QualType Ty = FD->getType();
     
-    if(!(name.equals("position") || name.equals("width") ||
-         name.equals("height") || name.equals("depth") || name.equals("ptr"))){
+    if (! FD->isImplicit()) {
       
-      llvm::Value *addr =
-      Builder.CreateStructGEP(baseAddr, i+4, name);
+      llvm::Value *addr;
+      addr = Builder.CreateStructGEP(baseAddr, i+4, name);
       addr = Builder.CreateLoad(addr);
+      
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
       Builder.CreateStore(addr, var);
       MeshMembers[name] = std::make_pair(Builder.CreateLoad(var) , Ty);
       MeshMembers[name].first->setName(var->getName());
       
       // the Value* var holding the addr where the mesh member is 
-      llvm::Value* meshField = MeshMembers[name].first;
+      llvm::Value* meshField = MeshMembers[name].first;  // SC_TODO -- isn't this 'var' from above???
       
       // the Value* for the volume number
-      llvm::ConstantInt* volumeNum =
-      llvm::ConstantInt::get(Int32Ty, fieldcount);
+      llvm::ConstantInt* volumeNum;
+      volumeNum = llvm::ConstantInt::get(Int32Ty, fieldcount);
       
       // emit the call
-            
       llvm::CallInst* CI =
       Builder.CreateCall2(addVolFunc, meshField, volumeNum);
       (void)CI; //suppress warning 

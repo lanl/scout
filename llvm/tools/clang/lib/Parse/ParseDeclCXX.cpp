@@ -3307,11 +3307,10 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
   // parse mesh name
   IdentifierInfo* Name;
   SourceLocation NameLoc;
-  if(Tok.is(tok::identifier)){
+  if (Tok.is(tok::identifier)) {
     Name = Tok.getIdentifierInfo();
     NameLoc = ConsumeToken();
-  }
-  else{
+  } else {
     Diag(Tok, diag::err_expected_ident);
     
     DS.SetTypeSpecError();
@@ -3320,7 +3319,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
     return false;
   }
   
-  if(Tok.isNot(tok::l_brace)){
+  if (Tok.isNot(tok::l_brace)) {
     Diag(Tok, diag::err_expected_lbrace);
     
     DS.SetTypeSpecError();
@@ -3349,7 +3348,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
   
   bool valid = ParseMeshBody(MeshLocation, Dec);
   
-  if(valid){
+  if (valid) {
     Dec->completeDefinition(Actions.Context);
     
     unsigned DiagID;
@@ -3370,7 +3369,8 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &Template
 // }
 // return true on success
 
-bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
+bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
+  
   PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
                                       "parsing Scout mesh body");
   
@@ -3379,30 +3379,44 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   ParseScope MeshScope(this, Scope::ClassScope|Scope::DeclScope);
   Actions.ActOnMeshStartDefinition(getCurScope(), Dec);
   
-  FieldDecl::MeshFieldType fieldType = FieldDecl::FieldNone;
-  
+  MeshFieldDecl::MeshFieldDeclLocationType FieldLoc = MeshFieldDecl::NoLoc;
   bool valid = true;
   
   llvm::SmallVector<Decl *, 32> FieldDecls;
-  while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)){
 
-    if(Tok.is(tok::kw_cells)){
+  while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
+
+    if (Tok.is(tok::kw_cells)) {
       ConsumeToken();
-      fieldType = FieldDecl::FieldCells;
-      if(Tok.isNot(tok::colon)){
+      FieldLoc = MeshFieldDecl::CellLoc;
+      if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "cells";
         SkipUntil(tok::r_brace, true, true);
       }
       ConsumeToken();
-    }
-    else if(Tok.is(tok::kw_vertices)){
+      
+    } else if (Tok.is(tok::kw_vertices)) {
       ConsumeToken();
-      fieldType = FieldDecl::FieldVertices;
-      if(Tok.isNot(tok::colon)){
+      FieldLoc = MeshFieldDecl::VertexLoc;
+      if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon_after) << "vertices";
         SkipUntil(tok::r_brace, true, true);
       }
       ConsumeToken();
+    } else if (Tok.is(tok::kw_faces)) {
+      ConsumeToken();
+      FieldLoc = MeshFieldDecl::FaceLoc;
+      if (Tok.isNot(tok::colon)) {
+        Diag(Tok, diag::err_expected_colon_after) << " faces";
+        SkipUntil(tok::r_brace, true, true);
+      }
+    } else if (Tok.is(tok::kw_edges)) {
+      ConsumeToken();
+      FieldLoc = MeshFieldDecl::EdgeLoc;
+      if (Tok.isNot(tok::colon)) {
+        Diag(Tok, diag::err_expected_colon_after) << " edges";
+        SkipUntil(tok::r_brace, true, true);
+      }
     }
     
     ParsingDeclSpec DS(*this);
@@ -3411,62 +3425,67 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
       Parser& P;
       Decl* MeshDecl;
       llvm::SmallVectorImpl<Decl*>& FieldDecls;
-      FieldDecl::MeshFieldType fieldType;
+      MeshFieldDecl::MeshFieldDeclLocationType FieldLoc;
       bool externAlloc;
       
       ScoutFieldCallback(Parser& P, Decl* MeshDecl,
                          llvm::SmallVectorImpl<Decl*>& FieldDecls) :
-      P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
+          P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
       
       void invoke(ParsingFieldDeclarator& FD) {
         // Install the declarator into the current MeshDecl.
-        Decl* Field = 
-        P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
-                                 FD.D.getDeclSpec().getSourceRange().getBegin(),
-                                 FD.D);
+        Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
+                                   FD.D.getDeclSpec().getSourceRange().getBegin(),
+                                   FD.D);
        
-        FieldDecl* FDecl = cast<FieldDecl>(Field);
-        FDecl->setMeshFieldType(fieldType, false);
+        MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
+        FDecl->setMeshLocation(FieldLoc);
+        FDecl->setImplicit(false);
         FDecl->setExternAlloc(externAlloc);
-        
         FieldDecls.push_back(Field);
-        
         FD.complete(Field);
         
-        if(UniformMeshDecl* UM = dyn_cast<UniformMeshDecl>(MeshDecl)){
-          switch(fieldType){
-            case FieldDecl::FieldCells:
+        if (UniformMeshDecl* UM = dyn_cast<UniformMeshDecl>(MeshDecl)) {
+          
+          switch(FieldLoc) {
+            
+            case MeshFieldDecl::CellLoc:
               UM->addCellField(FDecl);
               break;
-            case FieldDecl::FieldVertices:
+              
+            case MeshFieldDecl::VertexLoc:
               UM->addVertexField(FDecl);
               break;
-            case FieldDecl::FieldFaces:
+              
+            case MeshFieldDecl::FaceLoc:
               UM->addFaceField(FDecl);
               break;
-            case FieldDecl::FieldEdges:
+              
+            case MeshFieldDecl::EdgeLoc:
               UM->addEdgeField(FDecl);
               break;
-            case FieldDecl::FieldAll:
-            case FieldDecl::FieldNone:
+              
+            case MeshFieldDecl::BuiltIn:
+            case MeshFieldDecl::NoLoc:
+            case MeshFieldDecl::UnknownLoc:  // SC_TODO - we should error on this case. 
               break;
           }
         }
       }
       
-      void setFieldType(FieldDecl::MeshFieldType ft){
-        fieldType = ft;
+      void setFieldLocation(MeshFieldDecl::MeshFieldDeclLocationType loc) {
+        FieldLoc = loc;
       }
       
-      void setFieldExternAlloc(bool externalloc){
+      void setFieldExternAlloc(bool externalloc) {
         externAlloc = externalloc;
       }
       
     } Callback(*this, Dec, FieldDecls);
     
-    Callback.setFieldType(fieldType);
+    Callback.setFieldLocation(FieldLoc);
     
-    if(fieldType == FieldDecl::FieldNone){
+    if (FieldLoc == MeshFieldDecl::NoLoc){
       Diag(Tok, diag::err_no_mesh_field_specifier);
       valid = false;
     }
@@ -3479,18 +3498,16 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
     
     Callback.setFieldExternAlloc(externalloc);
 
-    ParseMeshDeclaration(DS, Callback, fieldType);
+    ParseMeshDeclaration(DS, Callback, FieldLoc);
     
-    if(Tok.is(tok::semi)){
+    if (Tok.is(tok::semi)) {
       ConsumeToken();
-    }
-    else if(Tok.is(tok::r_brace)){
+    } else if (Tok.is(tok::r_brace)) {
       ExpectAndConsume(tok::semi, diag::ext_expected_semi_decl_list);
-    }
-    else{
+    } else {
       ExpectAndConsume(tok::semi, diag::err_expected_semi_decl_list);
       SkipUntil(tok::r_brace, true, true);
-      if(Tok.is(tok::semi)){
+      if (Tok.is(tok::semi)) {
         ConsumeToken();
       }
     }
@@ -3518,7 +3535,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   }
   */
   
-  if(FieldDecls.empty()){
+  if (FieldDecls.empty()) {
     Diag(LBraceLoc, diag::warn_empty_mesh);
   }
 
@@ -3527,10 +3544,9 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec){
   assert(Tok.is(tok::r_brace));
   ConsumeBrace();
   
-
   MeshScope.Exit();
   
-  if(!valid){
+  if (!valid) {
     return false;
   }
   

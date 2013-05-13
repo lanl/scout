@@ -1847,48 +1847,54 @@ ExprResult Sema::ActOnIdExpression(Scope *S,
       
       for(ScoutLoopStack::iterator sitr = SCLStack.begin(),
           sitrEnd = SCLStack.end();
-          sitr != sitrEnd; ++sitr){
+          sitr != sitrEnd; ++sitr) {
         
         VarDecl* vd = *sitr;
         
         const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
         MeshDecl* md = mt->getDecl();
         
-        for(MeshDecl::field_iterator fitr = md->field_begin(),
-            fitrEnd = md->field_end();
-            fitr != fitrEnd; ++fitr){
+        for(MeshDecl::mesh_field_iterator fitr = md->mesh_field_begin(),
+            fitrEnd = md->mesh_field_end();
+            fitr != fitrEnd; ++fitr) {
           
-          FieldDecl* fd = *fitr;
+          MeshFieldDecl* fd = *fitr;
 
           bool valid;
 
-          if(mt->getInstanceType() == MeshType::MeshInstance){
+          if (mt->getInstanceType() == MeshType::MeshInstance) {
             valid = true;
-          }
-          else{
-            switch(fd->meshFieldType()){
-              case FieldDecl::FieldVertices:
+          } else {
+            
+            switch(fd->meshLocation()) {
+              
+              case MeshFieldDecl::VertexLoc:
                 valid = mt->getInstanceType() == MeshType::VerticesInstance;
                 break;
-              case FieldDecl::FieldCells:
+                
+              case MeshFieldDecl::CellLoc:
                 valid = mt->getInstanceType() == MeshType::CellsInstance;
                 break;
-              case FieldDecl::FieldFaces:
+                
+              case MeshFieldDecl::FaceLoc:
                 valid = mt->getInstanceType() == MeshType::FacesInstance;
                 break;
-              case FieldDecl::FieldEdges:
+                
+              case MeshFieldDecl::EdgeLoc:
                 valid = mt->getInstanceType() == MeshType::EdgesInstance;
                 break;
-              case FieldDecl::FieldAll:
+                
+              case MeshFieldDecl::BuiltIn:
                 valid = true;
                 break;
+                
               default:
                 assert(false && "invalid field type while attempting "
                        "to look up unqualified forall/renderall variable");
             }
           }
           
-          if(valid && Name.getAsString() == fd->getName()){
+          if (valid && Name.getAsString() == fd->getName()) {
             Expr* baseExpr =
             BuildDeclRefExpr(vd, QualType(mt, 0), VK_LValue, NameLoc).get();
 
@@ -7850,20 +7856,23 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
 
   // Check if this is a Scout mesh member expression.
   if (isa<MemberExpr>(LHSExpr)) {
+    
     Expr *Base = LHSExpr->IgnoreParenImpCasts();
     MemberExpr *ME = dyn_cast<MemberExpr>(Base);
     Expr *BaseExpr = ME->getBase()->IgnoreParenImpCasts();
-    if(BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
+    
+    if (BaseExpr->getStmtClass() == Expr::DeclRefExprClass) {
       const NamedDecl *ND = cast< DeclRefExpr >(BaseExpr)->getDecl();
-      if(const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
-        if(isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())){
-          if(!isa<ImplicitParamDecl>(VD) ) {
+      
+      if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
+        if (isa<MeshType>(VD->getType().getCanonicalType().getNonReferenceType())) {
+          if (!isa<ImplicitParamDecl>(VD) ) {
             const MeshType *MT = cast<MeshType>(VD->getType().getCanonicalType());
             MeshDecl* MD = MT->getDecl();
-            MeshDecl::field_iterator itr_end = MD->field_end();
+            MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
             llvm::StringRef memberName = ME->getMemberDecl()->getName();
-            for(MeshDecl::field_iterator itr = MD->field_begin(); itr != itr_end; ++itr) {
-              if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
+            for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(); itr != itr_end; ++itr) {
+              if (dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
                 if ((*itr)->isExternAlloc()) {
                   LHSType = Context.getPointerType(LHSType);
                 } else {

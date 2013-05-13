@@ -2017,32 +2017,12 @@ public:
 /// FieldDecl - An instance of this class is created by Sema::ActOnField to
 /// represent a member of a struct/union/class.
 class FieldDecl : public DeclaratorDecl {
-  // scout - Scout Mesh fields are instances of FieldDecl, with appropriate
-  // FieldType of MeshFieldType set, a normal FieldDecl from a non-mesh,
-  // e.g: RecordDecl, gets FieldNone
-  
-public:
-  
-  enum MeshFieldType{
-    FieldNone,
-    FieldAll,
-    FieldVertices,
-    FieldCells,
-    FieldFaces,
-    FieldEdges
-  };
 
 private:
   
   // FIXME: This can be packed into the bitfields in Decl.
   bool Mutable : 1;
   mutable unsigned CachedFieldIndex : 31;
-
-  // scout - Mesh
-  unsigned FieldType : 2;
-
-  // bit to set whether this is an implicitly added mesh field, e.g: "position"
-  bool IsMeshImplicit : 1;
 
   bool IsExternAlloc : 1;
   
@@ -2068,9 +2048,6 @@ protected:
             InClassInitStyle InitStyle)
     : DeclaratorDecl(DK, DC, IdLoc, Id, T, TInfo, StartLoc),
       Mutable(Mutable), CachedFieldIndex(0),
-      FieldType(FieldNone),
-      IsMeshImplicit(false),
-      IsExternAlloc(false),
       InitializerOrBitWidth(BW, InitStyle) {
     assert((!BW || InitStyle == ICIS_NoInit) && "got initializer for bitfield");
   }
@@ -2162,22 +2139,6 @@ public:
 
   SourceRange getSourceRange() const LLVM_READONLY;
 
-  // scout - Mesh field methods
-  // pass implicit if this is an implicitly added mesh field such as 
-  // "position", or "color"
-  void setMeshFieldType(MeshFieldType type, bool implicit){
-    FieldType = type;
-    IsMeshImplicit = implicit;
-  }
-  
-  bool isMeshImplicit() const{
-    return IsMeshImplicit;
-  }
-  
-  MeshFieldType meshFieldType() const{
-    return MeshFieldType(FieldType);
-  }
-
   void setExternAlloc(bool externalloc) {
     IsExternAlloc = externalloc;
   }
@@ -2193,6 +2154,90 @@ public:
   friend class ASTDeclReader;
   friend class ASTDeclWriter;
 };
+
+
+// ===== Scout ===============================================================
+/// MeshFieldDecl - An instance of this class if create by
+/// Sema::ActOnMeshField to represent a member of a Scout mesh.  We build
+/// directly on the features of FieldDecl's.
+class MeshFieldDecl : public FieldDecl {
+
+ public:
+  enum MeshFieldDeclLocationType {
+    NoLoc       =   -1,    
+    CellLoc     =    1,
+    VertexLoc   =    2,
+    EdgeLoc     =    3,
+    FaceLoc     =    4,
+    UnknownLoc  =  999,
+    BuiltIn     = 1000
+  };
+
+ private:
+  bool                         IsImplicit;
+  MeshFieldDeclLocationType    MeshLocation;
+
+ protected:
+  
+  MeshFieldDecl(Kind DK, DeclContext *DC, SourceLocation StartLoc,
+                SourceLocation IdLoc, IdentifierInfo *Id,
+                QualType T, TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
+                InClassInitStyle InitStyle, MeshFieldDeclLocationType DeclLoc)
+      : FieldDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo,
+                  BW, Mutable, InitStyle) 
+  { MeshLocation = DeclLoc; }
+  
+ public:
+  static MeshFieldDecl *Create(const ASTContext &C, DeclContext *DC,
+                               SourceLocation StartLoc, SourceLocation IdLoc,
+                               IdentifierInfo *Id, QualType T,
+                               TypeSourceInfo *TInfo, Expr *BW, bool Mutable,
+                               InClassInitStyle InitStyle,
+                               MeshFieldDeclLocationType DeclLoc);
+
+  static FieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);  
+
+  bool isImplicit() const {
+    return IsImplicit;
+  }
+
+  void setIsImplicit(bool flag) {
+    IsImplicit = flag;
+  }
+  
+  void setMeshLocation(MeshFieldDeclLocationType loc) {
+    MeshLocation = loc;
+  }
+  
+  MeshFieldDeclLocationType meshLocation() const{
+    return MeshLocation;
+  }
+
+  bool isCellLocated() const {
+    return MeshLocation == CellLoc;
+  }
+
+  bool isVertexLocated() const {
+    return MeshLocation == VertexLoc;
+  }
+  
+  bool isEdgeLocated() const {
+    return MeshLocation == EdgeLoc;
+  }
+
+  bool isFaceLocated() const {
+    return MeshLocation == FaceLoc;
+  }
+
+  // SC_TODO : Is this correct for our subclass?  What do we do about static???
+  // Implement isa/cast/dyncast/etc.
+  static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+  static bool classofKind(Kind K) { return K >= firstField && K <= lastField; }
+
+  friend class ASTDeclReader;
+  friend class ASTDeclWriter;
+};
+      
 
 /// EnumConstantDecl - An instance of this object exists for each enum constant
 /// that is defined.  For example, in "enum X {a,b}", each of a/b are
@@ -3010,6 +3055,25 @@ public:
     return field_begin() == field_end();
   }
 
+  // ===== Scout ===============================================================
+  // Iterator access to mesh field members. The mesh field iterator
+  // only visits the non-static data members of this class, ignoring
+  // any static data members, functions, constructors, destructors,
+  // etc.
+  typedef specific_decl_iterator<MeshFieldDecl> mesh_field_iterator;
+
+  mesh_field_iterator mesh_field_begin() const;
+
+  mesh_field_iterator mesh_field_end() const {
+    return mesh_field_iterator(decl_iterator());
+  }
+
+  bool mesh_field_empty() const {
+    return mesh_field_begin() == mesh_field_end();
+  }
+
+  // ===========================================================================
+
   /// completeDefinition - Notes that the definition of this type is
   /// now complete.
   virtual void completeDefinition();
@@ -3218,39 +3282,37 @@ public:
 //     cells:
 //          float a;
 //   }
-  
 class MeshDecl : public TypeDecl, public DeclContext{
-public:
   
-private:
+ private:
   bool IsDefinition : 1;
   bool IsBeingDefined : 1;
   SourceLocation RBraceLoc;
   RecordDecl* StructRep;
   
-protected:
+ protected:
+  
   MeshDecl(Kind DK, DeclContext* DC,
            SourceLocation L, SourceLocation StartL,
            IdentifierInfo* Id, MeshDecl* PrevDecl)
   : TypeDecl(DK, DC, L, Id, StartL),
-  DeclContext(DK),
-  StructRep(0){
+    DeclContext(DK),
+    StructRep(0){
     IsDefinition = false;
     IsBeingDefined = false;
   }  
   
-public:
-  typedef std::vector<const FieldDecl*> FieldVec;
-  
-  typedef const FieldDecl* const* mesh_field_iterator;
+ public:
+  typedef std::vector<const MeshFieldDecl*> MeshFieldVec;
+  typedef const MeshFieldDecl* const* const_mesh_field_iterator;
   
   void completeDefinition(ASTContext& C);
   
-  RecordDecl* getStructRep(){
+  RecordDecl* getStructRep() {
     return StructRep;
   }
   
-  void setStructRep(RecordDecl* SR){
+  void setStructRep(RecordDecl* SR) {
     StructRep = SR;
   }
   
@@ -3279,16 +3341,16 @@ public:
   
   MeshDecl* getDefinition() const;
   
-  typedef specific_decl_iterator<FieldDecl> field_iterator;
+  typedef specific_decl_iterator<MeshFieldDecl> mesh_field_iterator;
   
-  field_iterator field_begin() const;
+  mesh_field_iterator mesh_field_begin() const;
   
-  field_iterator field_end() const{
-    return field_iterator(decl_iterator());
+  mesh_field_iterator mesh_field_end() const{
+    return mesh_field_iterator(decl_iterator());
   }
   
-  bool field_empty() const{
-    return field_begin() == field_end();
+  bool mesh_field_empty() const{
+    return mesh_field_begin() == mesh_field_end();
   }
   
   NestedNameSpecifierLoc getQualifierLoc() const {
@@ -3312,12 +3374,13 @@ public:
   friend class ASTDeclWriter;
 };
 
-class UniformMeshDecl : public MeshDecl{
-private:
-  FieldVec CellFields;
-  FieldVec VertexFields;
-  FieldVec FaceFields;
-  FieldVec EdgeFields;
+class UniformMeshDecl : public MeshDecl {
+  
+ private:
+  MeshFieldVec CellFields;
+  MeshFieldVec VertexFields;
+  MeshFieldVec FaceFields;
+  MeshFieldVec EdgeFields;
   
 protected:
   UniformMeshDecl(Kind DK, DeclContext* DC,
@@ -3343,95 +3406,91 @@ public:
   static bool classof(const UniformMeshDecl* D) { return true; }
   static bool classofKind(Kind K) { return K == UniformMesh; }
   
-  void addCellField(const FieldDecl* cellField){
-    assert(cellField->meshFieldType() == FieldDecl::FieldCells &&
+  void addCellField(const MeshFieldDecl *field) {
+    assert(field->meshLocation() == MeshFieldDecl::CellLoc &&
            "expected a cell field");
-    
-    CellFields.push_back(cellField);
+    CellFields.push_back(field);
   }
   
-  mesh_field_iterator cell_begin() const{
+  const_mesh_field_iterator cell_begin() const {
     return CellFields.data();
   }
   
-  mesh_field_iterator cell_end() const{
+  const_mesh_field_iterator cell_end() const {
     return CellFields.data() + CellFields.size();
   }
   
-  bool cell_empty() const{
+  bool cell_empty() const {
     return CellFields.empty();
   }
 
-  void addVertexField(const FieldDecl* vertexField){
-    assert(vertexField->meshFieldType() == FieldDecl::FieldVertices &&
+  void addVertexField(const MeshFieldDecl *field) {
+    assert(field->meshLocation() == MeshFieldDecl::VertexLoc &&
            "expected a vertex field");
-    
-    VertexFields.push_back(vertexField);
+    VertexFields.push_back(field);
   }
 
-  mesh_field_iterator vertex_begin() const{
+  const_mesh_field_iterator vertex_begin() const {
     return VertexFields.data();
   }
   
-  mesh_field_iterator vertex_end() const{
+  const_mesh_field_iterator vertex_end() const {
     return VertexFields.data() + VertexFields.size();
   }
   
-  bool vertex_empty() const{
+  bool vertex_empty() const {
     return VertexFields.empty();
   }
   
-  void addFaceField(const FieldDecl* faceField){
-    assert(faceField->meshFieldType() == FieldDecl::FieldFaces &&
+  void addFaceField(const MeshFieldDecl *field) {
+    assert(field->meshLocation() == MeshFieldDecl::FaceLoc &&
            "expected a face field");
-    
-    FaceFields.push_back(faceField);
+    FaceFields.push_back(field);
   }
 
-  mesh_field_iterator face_begin() const{
+  const_mesh_field_iterator face_begin() const {
     return FaceFields.data();
   }
   
-  mesh_field_iterator face_end() const{
+  const_mesh_field_iterator face_end() const {
     return FaceFields.data() + FaceFields.size();
   }
   
-  bool face_empty() const{
+  bool face_empty() const {
     return FaceFields.empty();
   }
   
-  void addEdgeField(const FieldDecl* edgeField){
-    assert(edgeField->meshFieldType() == FieldDecl::FieldEdges &&
+  void addEdgeField(const MeshFieldDecl *field) {
+    assert(field->meshLocation() == MeshFieldDecl::EdgeLoc &&
            "expected an edge field");
-    
-    EdgeFields.push_back(edgeField);
+    EdgeFields.push_back(field);
   }
   
-  mesh_field_iterator edge_begin() const{
+  const_mesh_field_iterator edge_begin() const {
     return EdgeFields.data();
   }
   
-  mesh_field_iterator edge_end() const{
+  const_mesh_field_iterator edge_end() const {
     return EdgeFields.data() + EdgeFields.size();
   }
   
-  bool edge_empty() const{
+  bool edge_empty() const {
     return EdgeFields.empty();
   }
   
 };
 
   
-class StructuredMeshDecl : public MeshDecl{
-protected:
+class StructuredMeshDecl : public MeshDecl {
+ protected:
   StructuredMeshDecl(Kind DK, DeclContext* DC,
                      SourceLocation L, SourceLocation StartL,
                      IdentifierInfo* Id, MeshDecl* PrevDecl)
-  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl){
+  : MeshDecl(DK, DC, L, StartL, Id, PrevDecl) {
     
   }
 
-public:
+ public:
   static StructuredMeshDecl*
   Create(ASTContext& C, Kind DK, DeclContext* DC,
          SourceLocation StartLoc, SourceLocation IdLoc,

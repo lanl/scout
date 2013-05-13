@@ -126,6 +126,7 @@ namespace clang {
 /// * C99: const, volatile, and restrict
 /// * Embedded C (TR18037): address spaces
 /// * Objective C: the GC attributes (none, weak, or strong)
+/// * Scout-centric mesh field identification. 
 class Qualifiers {
 public:
   enum TQ { // NOTE: These flags must be kept in sync with DeclSpec::TQ.
@@ -654,6 +655,7 @@ public:
     return getLocalFastQualifiers() || hasLocalNonFastQualifiers();
   }
 
+
   /// \brief Determine whether this type has any qualifiers.
   bool hasQualifiers() const;
 
@@ -1179,8 +1181,9 @@ public:
 #define ABSTRACT_TYPE(Class, Base)
 #include "clang/AST/TypeNodes.def"
     TagFirst = Record, TagLast = Enum,
-// scout - mesh types
+    // ===== Scout ========================================================
     MeshFirst = UniformMesh, MeshLast = UnstructuredMesh
+    // ====================================================================
   };
 
 private:
@@ -1384,6 +1387,7 @@ protected:
     TypeBits.CachedLinkage = NoLinkage;
     TypeBits.FromAST = false;
   }
+
   friend class ASTContext;
 
   void setDependent(bool D = true) {
@@ -1528,9 +1532,10 @@ public:
   bool isFundamentalType() const;
   bool isCompoundType() const;
 
-  // Scout
+  // ===== Scout ========================================================
   bool isMeshType() const;
-
+  // ====================================================================
+  
   // Type Predicates: Check to see if this type is structurally the specified
   // type, ignoring typedefs and qualifiers.
   bool isFunctionType() const;
@@ -3443,6 +3448,55 @@ public:
     return T->getTypeClass() == UnstructuredMesh;
   }
 };
+
+
+  // ===== Scout ==========================================================
+  //
+  class MeshFieldType: public Type {
+    
+   public:
+  
+    enum FieldLocation {
+      UnknownFieldLoc = 0,    
+      CellsLoc,
+      VertexLoc,
+      EdgeLoc,
+      FaceLoc
+    };
+
+   protected:
+    MeshFieldType(TypeClass tc, QualType canon, bool Dependent,
+                  bool InstantiationDependent, bool VariablyModified,
+                  bool ContainsUnexpandedParameterPack,
+                  FieldLocation Loc)
+        : Type(tc, canon, Dependent, InstantiationDependent, VariablyModified,
+               ContainsUnexpandedParameterPack)
+    { Location = Loc; }
+
+   public:
+
+    FieldLocation getLocation() const
+    { return Location; };
+  
+    bool LocatedAtCell() const
+    { return Location == CellsLoc; }
+    
+    bool LoatedAtVertex() const
+    { return Location == VertexLoc; }
+  
+    bool LocatedAtEdge() const
+    { return Location == EdgeLoc; }
+
+    bool LocatedAtFace() const
+    { return Location == FaceLoc; };
+
+   private:
+    FieldLocation Location;
+    friend class ASTContext;   // ASTContext creates these.    
+  };
+  
+  //
+  // ========================================================================  
   
 /// EnumType - This is a helper class that allows the use of isa/cast/dyncast
 /// to detect TagType objects of enums.

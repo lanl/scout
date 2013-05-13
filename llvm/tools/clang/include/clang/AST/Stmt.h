@@ -1899,11 +1899,13 @@ public:
 class ForAllStmt : public Stmt {
 
 public:
+
   enum ForAllType{
     Cells,
     Vertices,
     Edges,
-    ElementSpheres,
+    Faces, 
+    ElementSpheres,  // SC_TODO - we should have a 'renderall' class to separate these. 
     Array
   };
 
@@ -1962,6 +1964,30 @@ public:
 
   void setType(ForAllType T){
     Type = T;
+  }
+
+  bool isForAllCells() const {
+    return Type == Cells;
+  }
+
+  bool isForAllVertices() const {
+    return Type == Vertices;
+  }
+
+  bool isForAllEdges() const {
+    return Type == Edges;
+  }
+
+  bool isForAllFaces() const {
+    return Type == Faces;
+  }
+
+  bool isForAllArray() const {
+    return Type == Array;
+  }
+
+  bool isForAllElementSpehres() const {
+    return Type == ElementSpheres;
   }
 
   IdentifierInfo* getLoopVariable(){

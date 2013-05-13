@@ -976,8 +976,8 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
           
           const MeshType* MT = cast<MeshType>(T.getTypePtr());
           MeshDecl* MD = MT->getDecl();
-          MeshDecl::field_iterator itr = MD->field_begin();
-          MeshDecl::field_iterator itr_end = MD->field_end();
+          MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
+          MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
           
           llvm::Type *structTy = Alloc->getType()->getContainedType(0);
           for(unsigned i = 4, e = structTy->getNumContainedTypes(); i < e; ++i) {
@@ -985,7 +985,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
             llvm::Type *fieldTy = structTy->getContainedType(i);
             
             // If this is a externally allocated field, go on
-            FieldDecl* FD = *itr;
+            MeshFieldDecl* FD = *itr;
             
             if (itr != itr_end) ++itr;
             if (FD->isExternAlloc()) continue;

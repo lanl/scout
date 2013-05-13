@@ -2519,15 +2519,14 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
   ConsumeToken();
 
-  if(elements){
-    if(Tok.isNot(tok::kw_in)){
+  if (elements) {
+    if (Tok.isNot(tok::kw_in)) {
       Diag(Tok, diag::err_expected_in_kw);
       SkipUntil(tok::semi);
       return StmtError();
     }  
-  }
-  else{
-    if(Tok.isNot(tok::kw_of)){
+  } else {
+    if (Tok.isNot(tok::kw_of)) {
       Diag(Tok, diag::err_expected_of_kw);
       SkipUntil(tok::semi);
       return StmtError();
@@ -2549,33 +2548,32 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   IdentifierInfo* CameraII = 0;
   SourceLocation CameraLoc;
 
-  if(elements){
-    if(MemberExpr* me = dyn_cast<MemberExpr>(ParseExpression().get())){
-      if(FieldDecl* fd = dyn_cast<FieldDecl>(me->getMemberDecl())){
+  if (elements) {
+    if (MemberExpr* me = dyn_cast<MemberExpr>(ParseExpression().get())) {
+      if (MeshFieldDecl* fd = dyn_cast<MeshFieldDecl>(me->getMemberDecl())) {
         
-        if(const ArrayType* at = 
-           dyn_cast<ArrayType>(fd->getType().getTypePtr())){
+        if (const ArrayType* at = 
+           dyn_cast<ArrayType>(fd->getType().getTypePtr())) {
             (void)at; //suppress warning;
-        }
-        else{
+        } else {
           Diag(Tok, diag::err_not_array_renderall_elements);
           SkipUntil(tok::semi);
           return StmtError();
         }
 
-        if(fd->meshFieldType() == FieldDecl::FieldCells){
+        if (fd->isCellLocated()) {
           ElementMember = me;
         }
       }
     }
 
-    if(!ElementMember){
+    if (!ElementMember) {
       Diag(Tok, diag::err_expected_mesh_field);
       SkipUntil(tok::semi);
       return StmtError();
     }
     
-    if(Tok.isNot(tok::kw_as)){
+    if (Tok.isNot(tok::kw_as)) {
       Diag(Tok, diag::err_expected_as_kw);
       SkipUntil(tok::semi);
       return StmtError();
@@ -2583,7 +2581,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
     ConsumeToken();
     
-    if(Tok.isNot(tok::kw_spheres)){
+    if (Tok.isNot(tok::kw_spheres)) {
       Diag(Tok, diag::err_expected_spheres_kw);
       SkipUntil(tok::semi);
       return StmtError();
@@ -2593,7 +2591,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     
     FT = ForAllStmt::ElementSpheres;
     
-    if(Tok.isNot(tok::l_paren)){
+    if (Tok.isNot(tok::l_paren)) {
       Diag(Tok, diag::err_expected_lparen);
       SkipUntil(tok::semi);
       return StmtError();
@@ -2601,18 +2599,18 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     
     ConsumeParen();
     
-    for(unsigned i = 0; i < 2; ++i){
-      if(Tok.is(tok::r_paren)){
+    for(unsigned i = 0; i < 2; ++i) {
+      if (Tok.is(tok::r_paren)) {
         break;
       }
       
-      if(Tok.is(tok::identifier)){
+      if (Tok.is(tok::identifier)) {
         IdentifierInfo* II = Tok.getIdentifierInfo();
         SourceLocation IILoc = Tok.getLocation();
         
         ConsumeToken();
         
-        if(Tok.isNot(tok::equal)){
+        if (Tok.isNot(tok::equal)) {
           Diag(Tok, diag::err_expected_equal_after_element_default);
           SkipUntil(tok::semi);
           return StmtError();
@@ -2622,29 +2620,30 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
         
         ExprResult result = ParseAssignmentExpression();
         
-        if(result.isInvalid()){
+        if (result.isInvalid()) {
           return StmtError();
         }
         
-        if(II->getName() == "radius"){
-          if(ElementRadius){
+        if (II->getName() == "radius") {
+          
+          if (ElementRadius) {
             Diag(IILoc, diag::err_duplicate_radius_default);
             SkipUntil(tok::semi);
             return StmtError();
           }
           
           ElementRadius = result.get();
-        }
-        else if(II->getName() == "color"){
-          if(ElementColor){
+          
+        } else if(II->getName() == "color") {
+          
+          if (ElementColor){
             Diag(Tok, diag::err_duplicate_color_default);
             SkipUntil(tok::semi);
             return StmtError();
           }
           
           ElementColor = result.get();
-        }
-        else{
+        } else {
           Diag(IILoc, diag::err_invalid_default_element);
           SkipUntil(tok::semi);
           return StmtError();
@@ -2652,16 +2651,16 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       }
     }
     
-    if(Tok.isNot(tok::r_paren)){
+    if (Tok.isNot(tok::r_paren)) {
       Diag(Tok, diag::err_expected_rparen);
       SkipUntil(tok::semi);
       return StmtError();
     }
     
     ConsumeParen();
-  }
-  else{
-    if(Tok.isNot(tok::identifier)){
+  } else {
+    
+    if (Tok.isNot(tok::identifier)) {
       Diag(Tok, diag::err_expected_ident);
       SkipUntil(tok::semi);
       return StmtError();
@@ -2674,16 +2673,15 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   }
 
   bool success = false;
-  if(ForAll){
+  if (ForAll) {
     success = Actions.ActOnForAllLoopVariable(getCurScope(),
                                               VariableType,
                                               LoopVariableII,
                                               LoopVariableLoc,
                                               MeshII,
                                               MeshLoc);
-  }
-  else{
-    if(elements){
+  } else {
+    if (elements) {
       const MeshType* mt2 =
       Actions.ActOnRenderAllElementsVariable(getCurScope(),
                                              ElementMember,
@@ -2693,12 +2691,11 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       
       MT = cast<UniformMeshType>(mt2);
       
-      if(MT){
+      if (MT) {
         success = true;
       }
       
-    }
-    else{
+    } else {
     
       success = Actions.ActOnRenderAllLoopVariable(getCurScope(),
                                                    VariableType,
@@ -2709,7 +2706,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     }
   }
   
-  if(!success) {
+  if (!success) {
     return StmtError();
   }
 
@@ -2723,7 +2720,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
   Actions.LookupName(LR, getCurScope());
   MVD = cast<VarDecl>(LR.getFoundDecl());
   
-  if(!elements){
+  if (!elements) {
     Op = 0;
     
     MT = 
@@ -2734,25 +2731,22 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     
     //Sema::ContextRAII contextRAII(Actions, const_cast<UniformMeshDecl*>(MD));
     
-    for(MeshDecl::field_iterator FI = MD->field_begin(),
-        FE = MD->field_end(); FI != FE; ++FI){
-      FieldDecl* FD = *FI;
-      switch(FT){
+    for(MeshDecl::mesh_field_iterator FI = MD->mesh_field_begin(),
+        FE = MD->mesh_field_end(); FI != FE; ++FI) {
+      MeshFieldDecl* FD = *FI;
+      switch(FT) {
         case ForAllStmt::Cells:
-          if(!FD->isMeshImplicit() &&
-             FD->meshFieldType() == FieldDecl::FieldCells){
+          if (!FD->isImplicit() && FD->isCellLocated()) {
             ++FieldCount;
           }
           break;
         case ForAllStmt::Edges:
-          if(!FD->isMeshImplicit() &&
-             FD->meshFieldType() == FieldDecl::FieldEdges){
+          if (!FD->isImplicit() && FD->isEdgeLocated()) {
             ++FieldCount;
           }
           break;
         case ForAllStmt::Vertices:
-          if(!FD->isMeshImplicit() &&
-             FD->meshFieldType() == FieldDecl::FieldVertices){
+          if (!FD->isImplicit() && FD->isVertexLocated()) {
             ++FieldCount;
           }
           break;
@@ -2763,8 +2757,8 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       }
     }
     
-    if(FieldCount == 0){
-      switch(FT){
+    if (FieldCount == 0) {
+      switch(FT) {
         case ForAllStmt::Cells:
           Diag(ForAllLoc, diag::warn_no_cells_fields_forall);
           break;
@@ -2785,7 +2779,6 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     // defined previously.  If none are given it can do a default, but that is
     // probably not going to be a good thing.  You may not see the volume if the 
     // camera is not pointing at it.
-
 
     if (!ForAll && (MT->dimensions().size() == 3) && (FT == ForAllStmt::Cells)) {
       if (Tok.is(tok::kw_with)) {

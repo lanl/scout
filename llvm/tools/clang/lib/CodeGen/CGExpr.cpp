@@ -3255,11 +3255,12 @@ EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
   }
 }
 
-std::pair< FieldDecl *, int > CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
-  typedef MeshDecl::field_iterator MeshFieldIterator;
-  MeshFieldIterator it = MD->field_begin(), it_end = MD->field_end();
+std::pair< MeshFieldDecl *, int >
+CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {
+  typedef MeshDecl::mesh_field_iterator MeshFieldIterator;
+  MeshFieldIterator it = MD->mesh_field_begin(), it_end = MD->mesh_field_end();
   for(unsigned i = 0; it != it_end; ++it, ++i) {
-    if(dyn_cast<NamedDecl>(*it)->getName() == memberName) {
+    if (dyn_cast<NamedDecl>(*it)->getName() == memberName) {
       return std::make_pair(*it, i);
     }
   }
@@ -3305,8 +3306,8 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
   if(!isa<ImplicitParamDecl>(VD) )  {
 
     MeshDecl* MD = MT->getDecl();
-    MeshDecl::field_iterator itr = MD->field_begin();
-    MeshDecl::field_iterator itr_end = MD->field_end();
+    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
+    MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
 
     for(unsigned int i = 4; itr != itr_end; ++itr, ++i) {
       if(dyn_cast<NamedDecl>(*itr)->getName() == memberName) {
@@ -3317,7 +3318,7 @@ LValue CodeGenFunction::EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef me
           llvm::Value *memberAddr = Builder.CreateConstInBoundsGEP2_32(baseAddr, 0, i);
           return MakeAddrLValue(memberAddr, memberPtrTy);
         } else {
-          // error?
+          // SC_TODO - is this an error?
         }
        }
     }

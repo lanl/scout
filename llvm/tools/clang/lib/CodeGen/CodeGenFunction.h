@@ -646,7 +646,7 @@ public:
 
   typedef llvm::SmallVector< llvm::Value *, 4 > Vector;
   typedef CallExpr::const_arg_iterator ArgIterator;
-  typedef std::pair< FieldDecl *, int > FieldPair;
+  typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
   /// Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
@@ -685,37 +685,37 @@ public:
     return !isCPU() && !isGPU();
   }
 
-  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
+   bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
+     
     isSigned = false;
-    
-    if (arg->getName().endswith("height")) return false;
-    if (arg->getName().endswith("width"))  return false;
-    if (arg->getName().endswith("depth"))  return false;
-    if (arg->getName().endswith("ptr"))    return false;
-    if (arg->getName().endswith("dim_x"))  return false;
-    if (arg->getName().endswith("dim_y"))  return false;
-    if (arg->getName().endswith("dim_z"))  return false;
+
+    if(arg->getName().endswith("height")) return false;
+    if(arg->getName().endswith("width")) return false;
+    if(arg->getName().endswith("depth")) return false;
+    if(arg->getName().endswith("ptr")) return false;
+    if(arg->getName().endswith("dim_x")) return false;
+    if(arg->getName().endswith("dim_y")) return false;
+    if(arg->getName().endswith("dim_z")) return false;
     
     typedef MemberMap::iterator MemberIterator;
-    for(MemberIterator it = MeshMembers.begin(), end = MeshMembers.end();
-        it != end; ++it) {
+    for(MemberIterator it = MeshMembers.begin(), end = MeshMembers.end(); it != end; ++it) {
 
       std::string name = it->first;
       std::string argName = arg->getName();
 
       size_t pos = argName.find(name);
       size_t len = name.length();
-      if(pos == 0 && (argName.length() <= len || 
-                      std::isdigit(argName[len]))){
+      if (pos == 0 && (argName.length() <= len || std::isdigit(argName[len]))) {
         QualType qt = it->second.second;
         isSigned = qt.getTypePtr()->isSignedIntegerType();
         typeStr = qt.getAsString() + "*";
+        //llvm::outs() << "mesh: " << name << " " << typeStr << "\n";
         return true;
       }  
     }
     return false;
   }
-  
+
   llvm::StringRef toString(int i) {
     switch(i) {
     case 0: return "width";
@@ -2226,7 +2226,7 @@ public:
     //llvm::outs() << "Attempting " << s << ".\n";
   }
 
-  FieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+  MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
   // ===========================================================================
 
   void EmitForStmt(const ForStmt &S);

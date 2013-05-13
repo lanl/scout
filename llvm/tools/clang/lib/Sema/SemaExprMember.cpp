@@ -626,25 +626,26 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
   
   NamedDecl* ND = R.getFoundDecl();
 
-  assert(isa<FieldDecl>(ND) && "expected a field decl");
+  assert(isa<MeshFieldDecl>(ND) && "expected a mesh field decl");
 
-  FieldDecl* FD = cast<FieldDecl>(ND);
+  MeshFieldDecl* FD = cast<MeshFieldDecl>(ND);
   
-  if(MTy->getInstanceType() == MeshType::MeshInstance){
+  if (MTy->getInstanceType() == MeshType::MeshInstance) {
     return false;
   }
   
-  switch(FD->meshFieldType()){
-    case FieldDecl::FieldCells:
+  switch(FD->meshLocation()){
+    
+    case MeshFieldDecl::CellLoc:
     {
-      if(MTy->getInstanceType() != MeshType::CellsInstance){
+      if (MTy->getInstanceType() != MeshType::CellsInstance){
         SemaRef.Diag(OpLoc, diag::err_invalid_mesh_cells_field) << 
         R.getLookupName();
         return true;
       }
       break;
     }
-    case FieldDecl::FieldVertices:
+    case MeshFieldDecl::VertexLoc:
     {
       if(MTy->getInstanceType() != MeshType::VerticesInstance){
         SemaRef.Diag(OpLoc, diag::err_invalid_mesh_vertices_field) << 
@@ -653,7 +654,7 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
       }
       break;
     }
-    case FieldDecl::FieldFaces:
+    case MeshFieldDecl::FaceLoc:
     {
       if(MTy->getInstanceType() != MeshType::FacesInstance){
         SemaRef.Diag(OpLoc, diag::err_invalid_mesh_faces_field) << 
@@ -662,7 +663,7 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
       }
       break;
     }
-    case FieldDecl::FieldEdges:
+    case MeshFieldDecl::EdgeLoc:
     {
       if(MTy->getInstanceType() != MeshType::EdgesInstance){
         SemaRef.Diag(OpLoc, diag::err_invalid_mesh_edges_field) << 
@@ -671,7 +672,7 @@ LookupMemberExprInMesh(Sema &SemaRef, LookupResult &R,
       }
       break;
     }
-    case FieldDecl::FieldAll:
+    case MeshFieldDecl::BuiltIn:
     {
       break;
     }
@@ -993,24 +994,19 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       }
       
       std::string mn = MemberName.getAsString();
-      unsigned index;
-      if(mn == "x" || (isColor && mn == "r")){
+      unsigned index = 999;
+      if (mn == "x" || (isColor && mn == "r")) {
         index = 0;
-      }
-      else if(mn == "y" || (isColor && mn == "g")){
+      } else if(mn == "y" || (isColor && mn == "g")) {
         index = 1;
-      }
-      else if(mn == "z" || (isColor && mn == "b")){
+      } else if(mn == "z" || (isColor && mn == "b")) {
         index = 2;
-      }
-      else if(mn == "w" || (isColor && mn == "a")){
+      } else if(mn == "w" || (isColor && mn == "a")) {
         index = 3;
-      }
-      else{
-        if(isColor){
+      } else {
+        if (isColor) {
           Diag(MemberLoc, diag::err_invalid_scout_color_component);
-        }
-        else{
+        } else {
           Diag(MemberLoc, diag::err_invalid_scout_vector_component);
         }
       }

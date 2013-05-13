@@ -3089,7 +3089,6 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     }
 
     // scout - Mesh definition
-
     case tok::kw_uniform:
     case tok::kw_rectlinear:
     case tok::kw_structured:

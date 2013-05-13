@@ -11849,6 +11849,8 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     SourceLocation TSSL,
                                     NamedDecl *PrevDecl,
                                     Declarator *D) {
+
+  
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
   if (D) InvalidDecl = D->isInvalidType();
@@ -11864,7 +11866,6 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
     Mesh->setInvalidDecl();
     InvalidDecl = true;
   }
-
 
   if (!InvalidDecl && RequireNonAbstractType(Loc, T,
                                              diag::err_abstract_type_in_decl,
@@ -11893,80 +11894,78 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
 // return true on success
 
 bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
-  FieldDecl *PositionFD =
-  FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("position"), Context.Int4Ty, 0,
-                    0, true, ICIS_NoInit);
 
-  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
-
+  // SC_TODO - (1) Didn't we already do all this in the Parse stage?
+  //           (2) Do we always have to add width/height/depth or can
+  //               we do so based on mesh dimensions (is this a mesh
+  //               instance or the general/generic mesh description)?
+  //
+  MeshFieldDecl *PositionFD =
+  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
+                        &Context.Idents.get("position"), Context.Int4Ty, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PositionFD->setImplicit(true);
   Mesh->addDecl(PositionFD);
 
-  FieldDecl *WidthFD =
-  FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("width"), Context.IntTy, 0,
-                    0, true, ICIS_NoInit);
-
-  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-
+  MeshFieldDecl *WidthFD =
+  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
+                        &Context.Idents.get("width"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  WidthFD->setImplicit(true);
   Mesh->addDecl(WidthFD);
 
-  FieldDecl *HeightFD =
-  FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("height"), Context.IntTy, 0,
-                    0, true, ICIS_NoInit);
-
-  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
-
+  MeshFieldDecl *HeightFD =
+  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
+                        &Context.Idents.get("height"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  HeightFD->setImplicit(true);
   Mesh->addDecl(HeightFD);
 
-  FieldDecl *DepthFD =
-  FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("depth"), Context.IntTy, 0,
-                    0, true, ICIS_NoInit);
-
-  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-
+  MeshFieldDecl *DepthFD =
+  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
+                        &Context.Idents.get("depth"), Context.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  DepthFD->setImplicit(true);
   Mesh->addDecl(DepthFD);
-  
-  FieldDecl *PtrFD =
-  FieldDecl::Create(Context, Mesh, Loc, Loc,
-                    &Context.Idents.get("ptr"), Context.VoidPtrTy, 0,
-                    0, true, ICIS_NoInit);
-  
 
-  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
-
+  // SC_TODO - what the heck is 'ptr' again?  What do we use it for?
+  MeshFieldDecl *PtrFD =
+  MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
+                        &Context.Idents.get("ptr"), Context.VoidPtrTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PtrFD->setImplicit(true);
   Mesh->addDecl(PtrFD);
 
   PopDeclContext();
-
   return IsValidDeclInMesh(Mesh);
 }
 
-bool Sema::IsValidMeshField(FieldDecl* FD){
-  if(FD->getName() == "ptr"){
-    return true;
+
+bool Sema::IsValidMeshField(MeshFieldDecl* FD){
+  
+  if (FD->getName() == "ptr") {
+    return true;  // SC_TODO - what the heck is this?  
   }
   
   QualType QT = FD->getType();
   const Type* T = QT.getTypePtr();
-  if(T->isPointerType()){
+
+  // We don't allow pointers in the mesh description (this helps us
+  // avoid aliasing issues in the mesh-oriented loops). 
+  if (T->isPointerType()) {
     Diag(FD->getSourceRange().getBegin(),
          diag::err_pointer_field_mesh);
-
     return false;
   }
 
   if(const MeshType* MT = dyn_cast<MeshType>(T)){
-    if(!IsValidDeclInMesh(MT->getDecl())){
+    if (!IsValidDeclInMesh(MT->getDecl())) {
       Diag(FD->getSourceRange().getBegin(),
            diag::err_pointer_field_mesh);
       return false;
     }
-  }
-  else if(const RecordType* RT = dyn_cast<RecordType>(T)){
-    if(!IsValidDeclInMesh(RT->getDecl())){
+  } else if(const RecordType* RT = dyn_cast<RecordType>(T)) {
+    if (!IsValidDeclInMesh(RT->getDecl())) {
       Diag(FD->getSourceRange().getBegin(),
            diag::err_pointer_field_mesh);
       return false;
@@ -11977,28 +11976,35 @@ bool Sema::IsValidMeshField(FieldDecl* FD){
 }
 
 bool Sema::IsValidDeclInMesh(Decl* D){
-  if(MeshDecl* MD = dyn_cast<MeshDecl>(D)){
-    MeshDecl::field_iterator itr = MD->field_begin();
-    (void)itr; //suppress warning
-    for(MeshDecl::field_iterator itr = MD->field_begin(),
-        itrEnd = MD->field_end(); itr != itrEnd; ++itr){
-      FieldDecl* FD = *itr;
-      if(!IsValidMeshField(FD)){
+
+  // SC_TODO - why both mesh decl and record decl here?  Should we have
+  // MeshFieldDecl instead of RecordDecl?
+  if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
+    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
+    (void)itr; //suppress warning -- SC_TODO - huh?  What are we doing?  'itr' twice?  Why?
+    for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(),
+        itrEnd = MD->mesh_field_end(); itr != itrEnd; ++itr){
+      MeshFieldDecl* FD = *itr;
+      if (!IsValidMeshField(FD)) {
         return false;
       }
     }
-  }
-  else if(RecordDecl* RD = dyn_cast<RecordDecl>(D)){
+  } else if (RecordDecl* RD = dyn_cast<RecordDecl>(D)) {
+    // SC_TODO - trying to understand this code still... 
+    assert(false && "Do we ever get here on this path?");
+    /*
     RecordDecl::field_iterator itr = RD->field_begin();
-    (void)itr; //suppress warning
+    (void)itr; //suppress warning -- SC_TODO - 'itr' twice?  Why?
     for(RecordDecl::field_iterator itr = RD->field_begin(),
         itrEnd = RD->field_end(); itr != itrEnd; ++itr){
       FieldDecl* FD = *itr;
-      if(!IsValidMeshField(FD)){
+      if (!IsValidMeshField(FD)){
         return false;
       }
     }
+    */
   }
+  
   return true;
 }
 

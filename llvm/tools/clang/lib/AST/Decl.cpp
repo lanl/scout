@@ -2850,6 +2850,31 @@ void FieldDecl::setInClassInitializer(Expr *Init) {
   InitializerOrBitWidth.setPointer(Init);
 }
 
+
+// ===== Scout =================================================================
+
+//===----------------------------------------------------------------------===//
+// MeshFieldDecl Implementation
+//===----------------------------------------------------------------------===//
+
+MeshFieldDecl *MeshFieldDecl::Create(const ASTContext &C,
+                                     DeclContext *DC,
+                                     SourceLocation StartLoc,
+                                     SourceLocation IdLoc,
+                                     IdentifierInfo *Id, QualType T,
+                                     TypeSourceInfo *TInfo,
+                                     Expr *BW,
+                                     bool Mutable,
+                                     InClassInitStyle InitStyle,
+                                     MeshFieldDeclLocationType DeclLoc) {
+  
+  return new (C) MeshFieldDecl(Decl::Field, DC, StartLoc, IdLoc, Id, T, TInfo,
+                               BW, Mutable, InitStyle, DeclLoc);
+}
+
+//
+// =============================================================================
+
 //===----------------------------------------------------------------------===//
 // TagDecl Implementation
 //===----------------------------------------------------------------------===//
@@ -3070,6 +3095,15 @@ RecordDecl::field_iterator RecordDecl::field_begin() const {
   return field_iterator(decl_iterator(FirstDecl));
 }
 
+// ===== Scout =================================================================
+RecordDecl::mesh_field_iterator RecordDecl::mesh_field_begin() const {
+  if (hasExternalLexicalStorage() && !LoadedFieldsFromExternalStorage)
+    LoadFieldsFromExternalStorage();
+
+  return mesh_field_iterator(decl_iterator(FirstDecl));
+}
+// =============================================================================
+
 /// completeDefinition - Notes that the definition of this type is now
 /// complete.
 void RecordDecl::completeDefinition() {
@@ -3183,68 +3217,79 @@ void MeshDecl::startDefinition() {
 }
 
 void MeshDecl::completeDefinition(ASTContext& C) {
+
   assert(StructRep && "MeshDecl::completeDefinition: uninitialized StructRep");
   
-  FieldDecl* Field = FieldDecl::Create(C, StructRep, getLocation(),
-                                       getLocation(),
-                                       &C.Idents.get("mesh_flags__"),
-                                       C.UnsignedIntTy,
-                                       0,
-                                       0,
-                                       false,
-                                       ICIS_NoInit);
+  MeshFieldDecl* Field = MeshFieldDecl::Create(C, StructRep,
+                                               getLocation(),
+                                               getLocation(),
+                                               &C.Idents.get("mesh_flags__"),
+                                               C.UnsignedIntTy,
+                                               0,
+                                               0,
+                                               false,
+                                               ICIS_NoInit,
+                                               MeshFieldDecl::BuiltIn);
+  
   Field->setAccess(AS_public);
   StructRep->addDecl(Field);
   
-  Field = FieldDecl::Create(C, StructRep, getLocation(),
-                            getLocation(),
-                            &C.Idents.get("width"),
-                            C.UnsignedIntTy,
-                            0,
-                            0,
-                            false,
-                            ICIS_NoInit);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-
-  Field = FieldDecl::Create(C, StructRep, getLocation(),
-                            getLocation(),
-                            &C.Idents.get("height"),
-                            C.UnsignedIntTy,
-                            0,
-                            0,
-                            false,
-                            ICIS_NoInit);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-  
-  Field = FieldDecl::Create(C, StructRep, getLocation(),
-                            getLocation(),
-                            &C.Idents.get("depth"),
-                            C.UnsignedIntTy,
-                            0,
-                            0,
-                            false,
-                            ICIS_NoInit);
-  Field->setAccess(AS_public);
-  StructRep->addDecl(Field);
-  
-  for(MeshDecl::field_iterator itr = field_begin(),
-      itrEnd = field_end(); itr != itrEnd; ++itr){
-
-    FieldDecl* field = *itr;
-
-    
-    if(!field->isMeshImplicit()){
-      Field = FieldDecl::Create(C, StructRep, field->getLocation(),
-                                field->getLocation(),
-                                &C.Idents.get(field->getName()),
-                                C.getPointerType(field->getType()),
+  Field = MeshFieldDecl::Create(C, StructRep,
+                                getLocation(),
+                                getLocation(),
+                                &C.Idents.get("width"),
+                                C.UnsignedIntTy,
                                 0,
                                 0,
                                 false,
-                                ICIS_NoInit);
+                                ICIS_NoInit,
+                                MeshFieldDecl::BuiltIn);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
 
+  Field = MeshFieldDecl::Create(C, StructRep,
+                                getLocation(),
+                                getLocation(),
+                                &C.Idents.get("height"),
+                                C.UnsignedIntTy,
+                                0,
+                                0,
+                                false,
+                                ICIS_NoInit,
+                                MeshFieldDecl::BuiltIn);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+  
+  Field = MeshFieldDecl::Create(C, StructRep,
+                                getLocation(),
+                                getLocation(),
+                                &C.Idents.get("depth"),
+                                C.UnsignedIntTy,
+                                0,
+                                0,
+                                false,
+                                ICIS_NoInit,
+                                MeshFieldDecl::BuiltIn);
+  Field->setAccess(AS_public);
+  StructRep->addDecl(Field);
+  
+  for(MeshDecl::mesh_field_iterator itr = mesh_field_begin(),
+        itrEnd = mesh_field_end();
+      itr != itrEnd; ++itr) {
+
+    MeshFieldDecl *field = *itr;
+    
+    if (! field->isImplicit()) {
+      
+      Field = MeshFieldDecl::Create(C, StructRep, field->getLocation(),
+                                    field->getLocation(),
+                                    &C.Idents.get(field->getName()),
+                                    C.getPointerType(field->getType()),
+                                    0,
+                                    0,
+                                    false,
+                                    ICIS_NoInit,
+                                    field->meshLocation());
       
       StructRep->addDecl(Field);
     }
@@ -3264,15 +3309,16 @@ MeshDecl* MeshDecl::getDefinition() const{
   return 0;
 }
 
-MeshDecl::field_iterator MeshDecl::field_begin() const{
-  return field_iterator(decl_iterator(FirstDecl));
+MeshDecl::mesh_field_iterator MeshDecl::mesh_field_begin() const{
+  return mesh_field_iterator(decl_iterator(FirstDecl));
 }
 
-bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD){
-  field_iterator fromItr = field_begin();
-  for(field_iterator itr = MD->field_begin(), itrEnd = MD->field_end();
-      itr != itrEnd; ++itr){
-    if(fromItr == field_end()){
+bool MeshDecl::canConvertTo(ASTContext& C, MeshDecl* MD) {
+  mesh_field_iterator fromItr = mesh_field_begin();
+  for(mesh_field_iterator itr = MD->mesh_field_begin(), itrEnd = MD->mesh_field_end();
+      itr != itrEnd; ++itr) {
+    
+    if(fromItr == mesh_field_end()) { // SC_TODO -- what???  How many mesh_field_ends do we have?
       return false;
     }
 
@@ -3319,69 +3365,59 @@ UniformMeshDecl* UniformMeshDecl::CreateFromStructRep(ASTContext& C,
   
   C.getTypeDeclType(M);
   
-  for(RecordDecl::field_iterator itr = SR->field_begin(),
-      itrEnd = SR->field_end(); itr != itrEnd; ++itr){
-    FieldDecl* field = *itr;
+  for(RecordDecl::mesh_field_iterator itr = SR->mesh_field_begin(),
+        itrEnd = SR->mesh_field_end(); itr != itrEnd; ++itr){
     
-    FieldDecl* newField =
-    FieldDecl::Create(C, M, field->getLocation(),
-                      field->getLocation(),
-                      &C.Idents.get(field->getName()),
-                      field->getType().getTypePtr()->getPointeeType(),
-                      0,
-                      0,
-                      true,
-                      ICIS_NoInit);
+    MeshFieldDecl* field = *itr;
     
-    newField->setMeshFieldType(FieldDecl::FieldCells, false);
-    
+    MeshFieldDecl* newField =
+    MeshFieldDecl::Create(C, M, field->getLocation(),
+                          field->getLocation(),
+                          &C.Idents.get(field->getName()),
+                          field->getType().getTypePtr()->getPointeeType(),
+                          0,
+                          0,
+                          true,
+                          ICIS_NoInit,
+                          MeshFieldDecl::CellLoc);
+    newField->setImplicit(false);
     M->addDecl(newField);
   }
   
-  FieldDecl* PositionFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("position"), C.Int4Ty, 0,
-                    0, true, ICIS_NoInit);
-  
-  PositionFD->setMeshFieldType(FieldDecl::FieldCells, true);
-  
+  MeshFieldDecl* PositionFD =
+  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                        &C.Idents.get("position"), C.Int4Ty, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PositionFD->setImplicit(true);
   M->addDecl(PositionFD);
   
-  FieldDecl *WidthFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("width"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  WidthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
+  MeshFieldDecl *WidthFD =
+  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                        &C.Idents.get("width"), C.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  WidthFD->setImplicit(true);
   M->addDecl(WidthFD);
   
-  FieldDecl *HeightFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("height"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  HeightFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
+  MeshFieldDecl *HeightFD =
+  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                        &C.Idents.get("height"), C.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  HeightFD->setImplicit(true);
   M->addDecl(HeightFD);
   
-  FieldDecl *DepthFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("depth"), C.IntTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  DepthFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
+  MeshFieldDecl *DepthFD =
+  MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                        &C.Idents.get("depth"), C.IntTy, 0,
+                        0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  DepthFD->setImplicit(true);
   M->addDecl(DepthFD);
-  
-  FieldDecl *PtrFD =
-  FieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
-                    &C.Idents.get("ptr"), C.VoidPtrTy, 0,
-                    0, true, ICIS_NoInit);
-  
-  
-  PtrFD->setMeshFieldType(FieldDecl::FieldAll, true);
-  
+
+  // SC_TODO -- what the heck is 'ptr' again?
+  MeshFieldDecl *PtrFD =
+    MeshFieldDecl::Create(C, M, SR->getLocStart(), SR->getLocStart(),
+                          &C.Idents.get("ptr"), C.VoidPtrTy, 0,
+                          0, true, ICIS_NoInit, MeshFieldDecl::BuiltIn);
+  PtrFD->setImplicit(true);
   M->addDecl(PtrFD);
   
   return M;
