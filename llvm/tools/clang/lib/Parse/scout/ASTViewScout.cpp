@@ -1,11 +1,59 @@
-//===----------------------------------------------------------------------===//
-//
-// SCOUTCODE ndm - This file implements the Scout AST viewer functionality used
-// by the scc command for debugging purposes.
-//
-//===----------------------------------------------------------------------===//
+/*
+ * ###########################################################################
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes: This file implements the Scout AST viewer functionality used
+ * by the scc command for debugging purposes. -ndm
+ *
+ * #####
+ */
 
-#include "clang/Parse/ASTViewScout.h"
+#include "clang/Parse/scout/ASTViewScout.h"
 
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/Decl.h"
@@ -31,7 +79,16 @@ using namespace clang;
 // ...
 // (ReturnStmt 0x1071d89a8 <line:22:3, col:10>
 //  (IntegerLiteral 0x1071d8980 <col:10> 'int' 0)))
-
+//
+// SC_TODO: seems like the output has changed and is now like
+// CompoundStmt 0x7ff6c3953af8 <forall.sc:65:32, line:85:1>
+// |-CallExpr 0x7ff6c3951950 <line:65:32> 'void'
+// | |-ImplicitCastExpr 0x7ff6c3951938 <col:32> 'void (*)(enum ScoutDeviceType)' <FunctionToPointerDecay>
+// | | `-DeclRefExpr 0x7ff6c39518e8 <col:32> 'void (enum ScoutDeviceType)' lvalue Function 0x7ff6c3946380 '__scrt_init' 'void (enum ScoutDeviceType)'
+// | `-DeclRefExpr 0x7ff6c39518c0 <col:32> 'enum ScoutDeviceType' EnumConstant 0x7ff6c392f370 'ScoutGPUNone' 'enum ScoutDeviceType'
+//
+// SC_TODO: why are we not using -ast-dump or -ast-print???
+//
 // This file implements a parser that parses this output, creates the
 // ViewASTNodes, then walks these nodes to generate GraphViz output
 // in order to view the AST graphically.
@@ -40,7 +97,7 @@ namespace{
   
   // A ViewASTNode has a number of children, a head label, and variable
   // number of attrs fields. These fields need to be escaped so that they
-  // do not conlfict with Graphviz metacharacters.
+  // do not conflict with Graphviz metacharacters.
   
   class ViewASTNode{
   public:
@@ -136,9 +193,9 @@ namespace{
   // line/character information: <...> (can contain nested '<'/'>', so
   // we need to balance these characters
   // single-quoted sequence, e.g: 'void'
-  // double-quoated sequence, e.g: "..." - which can span multiple lines
+  // double-quoted sequence, e.g: "..." - which can span multiple lines
   // and sometimes needs to get recursively parsed
-  
+#if 0
   ViewASTNode* viewASTParse(const string& str){
     typedef vector<ViewASTNode*> ViewASTNodeStack;
     ViewASTNodeStack stack;
@@ -166,7 +223,7 @@ namespace{
         }
         
         stack.push_back(n);
-      }
+      } // end if(str[i] == '(')
       // parse a single-quoted sequence
       else if(str[i] == '\''){
         string attr;
@@ -189,7 +246,7 @@ namespace{
         }
         
         stack.back()->addAttr(attr);
-      }
+      } // end if(str[i] == '\'')
       // parse a double-quoted sequence and recursively parse
       // if necessary
       else if(str[i] == '\"'){
@@ -262,14 +319,14 @@ namespace{
         assert(str[i] == '\"');
         
         n->addChild(viewASTParse(body));
-      }
+      } // end if(str[i] == '\"')
       else if(str[i] == ')'){
         if(stack.size() == 1){
           return stack[0];
         }
         
         stack.pop_back();
-      }
+      } //end if(str[i] == ')')
       // parse a balanced angle-bracket sequence
       else if(str[i] == '<'){
         string attr;
@@ -290,7 +347,7 @@ namespace{
         }
         
         stack.back()->addAttr(attr);
-      }
+      } //end if(str[i] == '<')
       // other, parse a non-whitespace sequence
       else{
         string attr;
@@ -305,7 +362,7 @@ namespace{
           
           ++i;
         }
-        
+        //SC_TODO: fails here if stack empty
         stack.back()->addAttr(attr);
       }
     }
@@ -319,7 +376,7 @@ namespace{
     return name == "ForAllStmt" || name == "RenderAllStmt" || 
     name == "ScoutVectorMemberExpr" || name == "VolumeRenderAllStmt";
   }
-  
+
   // output the nodes in the GraphViz graph, initially passed
   // the root node
   void viewASTOutputNodes(ViewASTNode* n, int& id){
@@ -360,6 +417,7 @@ namespace{
     }
   }
   
+
   // generate the top-level Graphviz output
   void viewASTOutputGraphviz(ViewASTNode* n){
     llvm::outs() << "digraph G{\n";
@@ -369,6 +427,8 @@ namespace{
     viewASTOutputLinks(n);
     llvm::outs() << "}\n";
   }
+#endif
+
   
 } // end namespace
 
@@ -397,12 +457,14 @@ void ASTViewScout::outputGraphviz(DeclGroupRef declGroup){
         if(fd->hasBody()){
           Stmt* body = fd->getBody();
           string str;
+          ;
           llvm::raw_string_ostream ostr(str);
           body->dump(ostr, sema_.getSourceManager());
           llvm::outs() << ostr.str() << "\n";
-          ViewASTNode* root = viewASTParse(ostr.str());
-          viewASTOutputGraphviz(root);
-          delete root;
+          //SC_TODO: disabled for now as is segfaulting
+          //ViewASTNode* root = viewASTParse(ostr.str());
+          //viewASTOutputGraphviz(root);
+          //delete root;
         }
       }
       else{

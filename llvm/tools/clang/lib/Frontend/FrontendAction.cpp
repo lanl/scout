@@ -31,8 +31,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/system_error.h"
 
+//======================================================
 // scout - include Scout AST viewer
-#include "clang/Parse/ASTViewScout.h"
+#include "clang/Parse/scout/ASTViewScout.h"
+//======================================================
 
 using namespace clang;
 
@@ -491,8 +493,7 @@ void ASTFrontendAction::ExecuteAction() {
     ParseAST(CI.getPreprocessor(), Consumer,
              CI.getASTContext());
   } else if(CI.getFrontendOpts().ViewAST) {
-    // scout - use AST viewer if the front-end option -Xclang -view-ast was passed
-    // SC_TODO: currently not working.
+    // scout - use AST viewer if the front-end options -no-rewrite -Xclang -view-ast were passed
     ASTViewScout ASTViewer(CI.getSema());
     
     ParseAST(CI.getSema(), CI.getFrontendOpts().ShowStats,
