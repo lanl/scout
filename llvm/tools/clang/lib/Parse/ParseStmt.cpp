@@ -3091,11 +3091,11 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   SourceLocation IVSL[3];
 
   size_t count;
-  for(size_t i = 0; i < 3; ++i){
+  // parse up to 3 identifiers
+  for(size_t i = 0; i < 3; ++i) {
     if(Tok.isNot(tok::identifier)){
       Diag(Tok, diag::err_expected_ident);
-      SkipUntil(tok::r_brace);
-      ConsumeBrace();
+      SkipUntil(tok::r_brace, false, true);
       return StmtError();
     }
 
@@ -3108,18 +3108,16 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       break;
     }
     else if(Tok.isNot(tok::comma)){
-      Diag(Tok, diag::err_expected_comma);
-      SkipUntil(tok::r_brace);
-      ConsumeBrace();
+      Diag(Tok, diag::err_expected_comma_or_in_kw);
+      SkipUntil(tok::r_brace, false, true);
       return StmtError();
     }
     ConsumeToken();
-  }
+  } //end for i
 
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_expected_in_kw);
-    SkipUntil(tok::r_brace);
-    ConsumeBrace();
+    SkipUntil(tok::r_brace, false, true);
     return StmtError();
   }
 
@@ -3127,8 +3125,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
 
   if(Tok.isNot(tok::l_square)){
     Diag(Tok, diag::err_expected_lsquare);
-    SkipUntil(tok::r_brace);
-    ConsumeBrace();
+    SkipUntil(tok::r_brace, false, true);
     return StmtError();
   }
 
@@ -3138,54 +3135,56 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   Expr* End[3] = {0,0,0};
   Expr* Stride[3] = {0,0,0};
 
-  for(size_t i = 0; i < 3; ++i){
-    if(Tok.is(tok::coloncolon)){
-      ConsumeToken();
-    }
-    else{
-      if(Tok.isNot(tok::colon)){
+  for(size_t i = 0; i < 3; ++i) {
+    if(Tok.is(tok::coloncolon)) { // don't allow ::
+      Diag(Tok, diag::err_invalid_end_forall_array);
+      SkipUntil(tok::r_brace, false, true);
+      return StmtError();
+    } else {
+
+      //parse start
+      if(Tok.is(tok::colon)) {
+        Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
+                    Actions.Context.IntTy, ForAllLoc);
+      } else {
         ExprResult StartResult = ParseAssignmentExpression();
-        if(StartResult.isInvalid() ||
-           (Tok.isNot(tok::colon) && Tok.isNot(tok::coloncolon))){
+        if(StartResult.isInvalid()){
           Diag(Tok, diag::err_invalid_start_forall_array);
-          SkipUntil(tok::r_brace);
-          ConsumeBrace();
+          SkipUntil(tok::r_brace, false, true);
           return StmtError();
         }
         Start[i] = StartResult.get();
-      }
+      } // end if is :
+      ConsumeToken();
 
-      if(Tok.is(tok::coloncolon)){
-        ConsumeToken();
-      }
-      else{
-        ConsumeToken();
-
-        if(Tok.isNot(tok::colon)){
-          ExprResult EndResult = ParseAssignmentExpression();
-          if(EndResult.isInvalid() || Tok.isNot(tok::colon)){
-            Diag(Tok, diag::err_invalid_end_forall_array);
-            SkipUntil(tok::r_brace);
-            ConsumeBrace();
-            return StmtError();
-          }
-          End[i] = EndResult.get();
+      // parse end
+      if(Tok.is(tok::colon)) {
+        Diag(Tok, diag::err_invalid_end_forall_array);
+        SkipUntil(tok::r_brace, false, true);
+        return StmtError();
+      } else {
+        ExprResult EndResult = ParseAssignmentExpression();
+        if(EndResult.isInvalid()){
+          Diag(Tok, diag::err_invalid_end_forall_array);
+          SkipUntil(tok::r_brace, false, true);
+          return StmtError();
         }
-        ConsumeToken();
+        End[i] = EndResult.get();
       }
+      ConsumeToken();
+
     }
 
+    //parse stride
     if(Tok.is(tok::comma) || Tok.is(tok::r_square)){
       Stride[i] =
       IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
                              Actions.Context.IntTy, ForAllLoc);
-    }
-    else{
+    } else {
       ExprResult StrideResult = ParseAssignmentExpression();
       if(StrideResult.isInvalid()){
         Diag(Tok, diag::err_invalid_stride_forall_array);
-        SkipUntil(tok::r_brace);
-        ConsumeBrace();
+        SkipUntil(tok::r_brace, false, true);
         return StmtError();
       }
       Stride[i] = StrideResult.get();
@@ -3194,20 +3193,18 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     if(Tok.isNot(tok::comma)){
       if(i != count - 1){
         Diag(Tok, diag::err_mismatch_forall_array);
-        SkipUntil(tok::r_brace);
-        ConsumeBrace();
+        SkipUntil(tok::r_brace, false, true);
         return StmtError();
       }
       break;
     }
-
     ConsumeToken();
-  }
+
+  } // end for i
 
   if(Tok.isNot(tok::r_square)){
     Diag(Tok, diag::err_expected_rsquare);
-    SkipUntil(tok::r_brace);
-    ConsumeBrace();
+    SkipUntil(tok::r_brace, false, true);
     return StmtError();
   }
 

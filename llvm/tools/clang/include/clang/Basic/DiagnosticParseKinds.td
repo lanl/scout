@@ -777,6 +777,7 @@ def err_expected_numeric_constant_in_mesh_def : Error<
 def err_expected_faces_edges_cells: Error<"expected faces, edges, or cells keyword">;
 def err_expected_vertices_cells: Error<"expected vertices or cells keyword">;
 def err_expected_of_kw: Error<"expected 'of' keyword">;
+def err_expected_comma_or_in_kw: Error<"expected comma or 'in' keyword">;
 def err_expected_in_kw: Error<"expected 'in' keyword">;
 def err_expected_as_kw: Error<"expected 'as' keyword">;
 def err_expected_spheres_kw: Error<"expected 'spheres' keyword">;
