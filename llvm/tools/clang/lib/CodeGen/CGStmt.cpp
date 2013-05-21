@@ -716,8 +716,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     
     meshFieldMap[FieldName.str()] = true;
 
-    fprintf(stderr, "(EmitForAllStmtWrapper) field name = %s\n", FieldName.str().c_str());
-
     if (! MFD->isImplicit()) {
       IRNameStr = new char[MeshName.size() + FieldName.size() + 16];
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), FieldName.str().c_str());
@@ -818,21 +816,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
   codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
   ValueSet::iterator vsit, vsend;
   
-  llvm::errs() << "*** forall body inputs\n";  
-  vsend = ce_inputs.end();
-  for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
-    llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
-  }
-  
-  llvm::errs() << "*** forall body outputs\n";  
-  vsend = ce_outputs.end();
-  for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
-    llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
-  }
-  llvm::errs() << "\n\n";
-  
   ForallFn = codeExtractor.extractCodeRegion();  
   assert(ForallFn != 0 && "Failed to rip forall statement into a new function.");
 
@@ -868,9 +851,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
     for(ArgIterator it = ForallFn->arg_begin(), end = ForallFn->arg_end();
         it != end; ++it, ++pos) {
 
-
-      fprintf(stderr, "argument: %s\n", (*it).getName().str().c_str());
-      
       bool isSigned = false;
       std::string typeStr;
       // All of our values from the mesh are prefixed with the
@@ -882,7 +862,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         // is a signed value or not... 
         isSigned = false;
         
-        fprintf(stderr, "'%s' IS a mesh member\n", it->getName().str().c_str());        
         args.push_back(llvm::ConstantInt::get(Int32Ty, 1));
         
         if (isSigned) {
@@ -898,7 +877,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         // We can't simply strip numbers off the end of the name as the
         // programmer could have specified 
         std::string ns = (*it).getName().str();
-        fprintf(stderr, "mangled mesh field name: %s\n", ns.c_str());        
         while(!ns.empty()) {
           if (meshFieldMap.find(ns) != meshFieldMap.end()) {
 	    gs = llvm::ConstantDataArray::getString(getLLVMContext(), ns);
@@ -910,13 +888,9 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
         
         assert(!ns.empty() && "failed to convert uniqued mesh field name");
 
-        fprintf(stderr, "unmangled mesh field name: %s\n", ns.c_str());
-        
         gs = llvm::ConstantDataArray::getString(getLLVMContext(), typeStr);
         typeArgs.push_back(gs);
       } else {
-        fprintf(stderr, "'%s' is NOT a mesh member\n", (*it).getName().str().c_str());
-        
         args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
         signedArgs.push_back(llvm::ConstantInt::get(Int32Ty, 0));
 	gs = llvm::ConstantDataArray::getString(getLLVMContext(),
@@ -965,7 +939,6 @@ void CodeGenFunction::EmitForAllStmtWrapper(const ForAllStmt &S) {
           }
         }
       }
-      fprintf(stderr, "\n\n");
     }
     KMD.push_back(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value * >(args)));
     
