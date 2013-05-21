@@ -1191,17 +1191,21 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   switch (BT->getKind()) {
   default: llvm_unreachable("Not a floating point type!");
   case BuiltinType::Half:       return Target->getHalfFormat();
- // ===== Scout ==============================================================
+  // ===== Scout ==============================================================
   // SC_TODO - We need to replace scout's vectors with Clang's "builtin" 
   // vectors. This has been done in the "refactor" branch but has not yet 
   // been merged with the devel branch. 
   case BuiltinType::Float2:
   case BuiltinType::Float3:
   case BuiltinType::Float4: 
+  //======================================================
   case BuiltinType::Float:      return Target->getFloatFormat();
+  //======================================================
+  // scout - double vectors
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4: 
+  //======================================================
   case BuiltinType::Double:     return Target->getDoubleFormat();
   case BuiltinType::LongDouble: return Target->getLongDoubleFormat();
   }
@@ -1418,6 +1422,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Bool2:
     case BuiltinType::Bool3:
     case BuiltinType::Bool4:
+    //======================================================
     case BuiltinType::Bool:
       Width = Target->getBoolWidth();
       Align = Target->getBoolAlign();
@@ -1445,6 +1450,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Char2:
     case BuiltinType::Char3:
     case BuiltinType::Char4:
+    //======================================================
     case BuiltinType::Char32:
       Width = Target->getChar32Width();
       Align = Target->getChar32Align();
@@ -1456,6 +1462,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Short2:
     case BuiltinType::Short3:
     case BuiltinType::Short4:
+    //======================================================
     case BuiltinType::UShort:
     case BuiltinType::Short:
       Width = Target->getShortWidth();
@@ -1468,6 +1475,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Int2:
     case BuiltinType::Int3:
     case BuiltinType::Int4:
+    //======================================================
     case BuiltinType::UInt:
     case BuiltinType::Int:
       Width = Target->getIntWidth();
@@ -1480,6 +1488,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Long2:
     case BuiltinType::Long3:
     case BuiltinType::Long4:
+    //======================================================
     case BuiltinType::ULong:
     case BuiltinType::Long:
       Width = Target->getLongWidth();
@@ -1506,6 +1515,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Float2:
     case BuiltinType::Float3:
     case BuiltinType::Float4:
+    //======================================================
     case BuiltinType::Float:
       Width = Target->getFloatWidth();
       Align = Target->getFloatAlign();
@@ -1517,6 +1527,7 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     case BuiltinType::Double2:
     case BuiltinType::Double3:
     case BuiltinType::Double4:
+    //======================================================
     case BuiltinType::Double:
       Width = Target->getDoubleWidth();
       Align = Target->getDoubleAlign();
@@ -1647,7 +1658,6 @@ ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
   // ===========================================================================
-
 
   case Type::SubstTemplateTypeParm:
     return getTypeInfo(cast<SubstTemplateTypeParmType>(T)->
@@ -2900,8 +2910,7 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     return getEnumType(Enum);
   // ===== Scout ==============================================================  
   // 
-  } else if (const UniformMeshDecl *Mesh = 
-      dyn_cast<UniformMeshDecl>(Decl)) {
+  } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
     return getUniformMeshType(Mesh);
   } else if (const StructuredMeshDecl *Mesh = 
     dyn_cast<StructuredMeshDecl>(Decl)) {
@@ -2952,8 +2961,6 @@ QualType ASTContext::getRecordType(const RecordDecl *Decl) const {
   Types.push_back(newType);
   return QualType(newType, 0);
 }
-
-
 
 QualType ASTContext::getEnumType(const EnumDecl *Decl) const {
   if (Decl->TypeForDecl) return QualType(Decl->TypeForDecl, 0);
