@@ -1200,34 +1200,7 @@ void Stmt::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
   Profiler.Visit(this);
 }
 
-// =============================================================================
-// scout
-
-void StmtProfiler::VisitForAllStmt(const ForAllStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitForAllArrayStmt(const ForAllArrayStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitRenderAllStmt(const RenderAllStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitVolumeRenderAllStmt(const VolumeRenderAllStmt *S) {
-    VisitStmt(S);
-}
-
-// scout - vector types
-//  SC_TODO - implement
-void StmtProfiler::VisitScoutVectorMemberExpr(const ScoutVectorMemberExpr *S){
-
-}
-
-// =============================================================================
-
-
+#include "Scout/StmtProfile.cpp"
 
 
 

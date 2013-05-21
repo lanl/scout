@@ -1354,18 +1354,7 @@ SourceLocation MemberExpr::getLocEnd() const {
   return EndLoc;
 }
 
-// scout - Scout vector types
 
-ScoutVectorMemberExpr*
-ScoutVectorMemberExpr::Create(ASTContext &C, Expr* base,
-                              SourceLocation loc, 
-                              unsigned index, QualType ty){
-  
-  ScoutVectorMemberExpr* E = 
-  new (C) ScoutVectorMemberExpr(base, loc, index, ty);
-  
-  return E;
-}
 
 void CastExpr::CheckCastConsistency() const {
   switch (getCastKind()) {
@@ -2833,10 +2822,16 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case MaterializeTemporaryExprClass:
   case ShuffleVectorExprClass:
   case AsTypeExprClass:
-  //scout
-  case ScoutVectorMemberExprClass:
     // These have a side-effect if any subexpression does.
+    break;  
+
+  // ===== Scout ================================================================
+  // SC_TODO - we need to remove our own vector support in favor of 
+  // clang's "builtin" version.  This has been done in the "refactor" 
+  // branch but has not yet been merged with the "devel" branch. 
+  case ScoutVectorMemberExprClass:
     break;
+  // ============================================================================  
 
   case UnaryOperatorClass:
     if (cast<UnaryOperator>(this)->isIncrementDecrementOp())
@@ -3013,10 +3008,15 @@ bool Expr::hasNonTrivialCall(ASTContext &Ctx) {
 Expr::NullPointerConstantKind
 Expr::isNullPointerConstant(ASTContext &Ctx,
                             NullPointerConstantValueDependence NPC) const {
-  // scout - do not treat scout vector member expr's as constants
-  if(dyn_cast<ScoutVectorMemberExpr>(this)){
+  
+  // ===== Scout - do not treat vector member expr's as constants. ============
+  // SC_TODO - we need to remove our own vector support in favor of 
+  // clang's "builtin" version.  This has been done in the "refactor" 
+  // branch but has not yet been merged with the "devel" branch. 
+  if (dyn_cast<ScoutVectorMemberExpr>(this)) {
     return NPCK_NotNull;
   }
+  // ==========================================================================
   
   if (isValueDependent()) {
     switch (NPC) {

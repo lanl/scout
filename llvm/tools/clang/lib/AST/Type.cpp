@@ -2408,7 +2408,4 @@ QualType::DestructionKind QualType::isDestructedTypeImpl(QualType type) {
   return DK_none;
 }
 
-// scout - types
-bool MeshType::isBeingDefined() const{
-  return decl->isBeingDefined();
-}
+

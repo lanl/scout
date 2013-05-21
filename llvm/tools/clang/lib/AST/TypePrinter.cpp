@@ -935,48 +935,7 @@ void TypePrinter::printEnumBefore(const EnumType *T, raw_ostream &OS) {
 }
 void TypePrinter::printEnumAfter(const EnumType *T, raw_ostream &OS) { }
 
-// scout - convert mesh type to mesh name - used in diagnostics
-void TypePrinter::printUniformMeshBefore(const UniformMeshType *T, raw_ostream &OS) {
-  MeshDecl* MD = T->getDecl();
 
-  OS << MD->getIdentifier()->getName().str();
-}
-
-void TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T, raw_ostream &OS) {
-  MeshDecl* MD = T->getDecl();
-  
-  OS << MD->getIdentifier()->getName().str();
-}
-
-void TypePrinter::printRectlinearMeshBefore(const RectlinearMeshType *T, raw_ostream &OS) {
-  MeshDecl* MD = T->getDecl();
-  
-  OS << MD->getIdentifier()->getName().str();
-}
-
-void TypePrinter::printUnstructuredMeshBefore(const UnstructuredMeshType *T, raw_ostream &OS) {
-  MeshDecl* MD = T->getDecl();
-  
-  OS << MD->getIdentifier()->getName().str();
-}
-
-// scout - convert mesh type to mesh name - used in diagnostics
-// TODO - implement
-void TypePrinter::printUniformMeshAfter(const UniformMeshType *T, raw_ostream &OS) {
-  
-}
-
-void TypePrinter::printStructuredMeshAfter(const StructuredMeshType *T, raw_ostream &OS) {
-  
-}
-
-void TypePrinter::printRectlinearMeshAfter(const RectlinearMeshType *T, raw_ostream &OS) {
-  
-}
-
-void TypePrinter::printUnstructuredMeshAfter(const UnstructuredMeshType *T, raw_ostream &OS) {
-  
-}
 
 void TypePrinter::printTemplateTypeParmBefore(const TemplateTypeParmType *T,
                                               raw_ostream &OS) { 
@@ -1543,3 +1502,6 @@ void QualType::getAsStringInternal(const Type *ty, Qualifiers qs,
   std::string str = StrOS.str();
   buffer.swap(str);
 }
+
+#include "Scout/TypePrinter.cpp"
+

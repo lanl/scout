@@ -527,12 +527,14 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case ObjCIvar:
       return IDNS_Member;
 
-    // scout - Mesh types
+    // ===== Scout ============================================================
     case UniformMesh:
     case StructuredMesh:
     case RectlinearMesh:
     case UnstructuredMesh:
-      
+      return IDNS_Tag | IDNS_Type;    
+    // ========================================================================
+
     case Record:
     case CXXRecord:
     case Enum:
@@ -894,23 +896,27 @@ DeclContext *DeclContext::getPrimaryContext() {
       return Tag;
     }
 
-    // scout - Mesh decl. context
-    if(DeclKind == Decl::UniformMesh ||
-       DeclKind == Decl::StructuredMesh ||
-       DeclKind == Decl::RectlinearMesh ||
-       DeclKind == Decl::UnstructuredMesh){
-      MeshDecl *Mesh = cast<MeshDecl>(this);
+    // ===== Scout ============================================================
+    //
+    if (DeclKind == Decl::UniformMesh    ||
+        DeclKind == Decl::StructuredMesh ||
+        DeclKind == Decl::RectlinearMesh ||
+        DeclKind == Decl::UnstructuredMesh) {
+
+        MeshDecl *Mesh = cast<MeshDecl>(this);
+        assert(isa<MeshType>(Mesh->TypeForDecl) ||
+               isa<InjectedClassNameType>(Mesh->TypeForDecl));
       
-      assert(isa<MeshType>(Mesh->TypeForDecl) ||
-             isa<InjectedClassNameType>(Mesh->TypeForDecl));
       
-      
-      if (MeshDecl *Def = Mesh->getDefinition()){
-        return Def;
-      }
+        if (MeshDecl *Def = Mesh->getDefinition()) {
+          return Def;
+        }
       
       return Mesh;
     }
+    //
+    // ========================================================================
+
       
     assert(DeclKind >= Decl::firstFunction && DeclKind <= Decl::lastFunction &&
           "Unknown DeclContext kind");

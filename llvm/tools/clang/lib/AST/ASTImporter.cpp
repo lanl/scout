@@ -25,6 +25,7 @@
 #include <deque>
 
 namespace clang {
+
   class ASTNodeImporter : public TypeVisitor<ASTNodeImporter, QualType>,
                           public DeclVisitor<ASTNodeImporter, Decl *>,
                           public StmtVisitor<ASTNodeImporter, Stmt *> {
@@ -66,11 +67,12 @@ namespace clang {
     QualType VisitAutoType(const AutoType *T);
     // FIXME: DependentDecltypeType
 
-    // scout - Mesh
+    // ===== Scout ============================================================
     QualType VisitUniformMeshType(const UniformMeshType* T);
     QualType VisitStructuredMeshType(const StructuredMeshType* T);
     QualType VisitRectlinearMeshType(const RectlinearMeshType* T);
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
+    // ========================================================================
                             
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
@@ -139,11 +141,12 @@ namespace clang {
     Decl *VisitEnumDecl(EnumDecl *D);
     Decl *VisitRecordDecl(RecordDecl *D);
     
-    // scout - Mesh types
+    // ===== Scout ============================================================
     Decl* VisitUniformMeshDecl(UniformMeshDecl* D);
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectlinearMeshDecl(RectlinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
+    // ========================================================================
                             
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
@@ -647,14 +650,16 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     break;
 
-  // scout - Mesh types
-  // we do not need to test the structural equivalance of meshes
-  // so simply return false
+  // ===== Scout ==============================================================
+  // We do not need to test the structural equivalance of meshes so simply 
+  // return false.  
+  // SC_TODO - Not sure why we state this...  Why no equivalance?  
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
       return false;
+  // ===========================================================================
       
   case Type::Record:
   case Type::Enum:
@@ -1725,42 +1730,7 @@ QualType ASTNodeImporter::VisitRecordType(const RecordType *T) {
   return Importer.getToContext().getTagDeclType(ToDecl);
 }
 
-// scout - Mesh types
-QualType ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
-  UniformMeshDecl *ToDecl
-  = dyn_cast_or_null<UniformMeshDecl>(Importer.Import(T->getDecl()));
-  if (!ToDecl)
-    return QualType();
-  
-  return Importer.getToContext().getUniformMeshDeclType(ToDecl);
-}
 
-QualType ASTNodeImporter::VisitStructuredMeshType(const StructuredMeshType *T) {
-  StructuredMeshDecl *ToDecl
-  = dyn_cast_or_null<StructuredMeshDecl>(Importer.Import(T->getDecl()));
-  if (!ToDecl)
-    return QualType();
-  
-  return Importer.getToContext().getStructuredMeshDeclType(ToDecl);
-}
-
-QualType ASTNodeImporter::VisitRectlinearMeshType(const RectlinearMeshType *T) {
-  RectlinearMeshDecl *ToDecl
-  = dyn_cast_or_null<RectlinearMeshDecl>(Importer.Import(T->getDecl()));
-  if (!ToDecl)
-    return QualType();
-  
-  return Importer.getToContext().getRectlinearMeshDeclType(ToDecl);
-}
-
-QualType ASTNodeImporter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
-  UnstructuredMeshDecl *ToDecl
-  = dyn_cast_or_null<UnstructuredMeshDecl>(Importer.Import(T->getDecl()));
-  if (!ToDecl)
-    return QualType();
-  
-  return Importer.getToContext().getUnstructuredMeshDeclType(ToDecl);
-}
 
 QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
   EnumDecl *ToDecl
@@ -2466,24 +2436,7 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   return D2;
 }
 
-// scout - Mesh
-// we are not using the AST import functionality for now
-// so simply return null
-Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D){
-  return 0;
-}
 
-Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D){
-  return 0;
-}
-
-Decl *ASTNodeImporter::VisitRectlinearMeshDecl(RectlinearMeshDecl *D){
-  return 0;
-}
-
-Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D){
-  return 0;
-}
 
 Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // If this record has a definition in the translation unit we're coming from,
@@ -4962,3 +4915,7 @@ bool ASTImporter::IsStructurallyEquivalent(QualType From, QualType To,
                                    false, Complain);
   return Ctx.IsStructurallyEquivalent(From, To);
 }
+
+// ===== Scout ================================================================
+#include "Scout/ASTImporter.cpp"
+// ============================================================================

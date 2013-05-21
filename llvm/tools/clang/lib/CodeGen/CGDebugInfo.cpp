@@ -465,7 +465,10 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   case BuiltinType::WChar_S:
   case BuiltinType::LongLong:  Encoding = llvm::dwarf::DW_ATE_signed; break;
   case BuiltinType::Bool:      Encoding = llvm::dwarf::DW_ATE_boolean; break;
-  // scout - TODO - implement debugging information for scout vector types 
+  // ===== Scout ==============================================================
+  // SC_TODO - we need to replace scout's vector types with clang's "builtin"
+  // types.  This has been done in the "refactor" branch but needs to be 
+  // merged with "devel"...
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
   case BuiltinType::Bool4:
@@ -488,6 +491,7 @@ llvm::DIType CGDebugInfo::CreateType(const BuiltinType *BT) {
   case BuiltinType::Double3:
   case BuiltinType::Double4:
     break;
+  // ==========================================================================
 
   case BuiltinType::Half:
   case BuiltinType::Float:
@@ -1342,15 +1346,8 @@ llvm::DIType CGDebugInfo::getOrCreateInterfaceType(QualType D,
   return T;
 }
 
-// scout - Scout Mesh debugger support
-llvm::DIType CGDebugInfo::CreateType(const MeshType *Ty) {
-  RecordDecl* rd = Ty->getDecl()->getStructRep();
-  
-  const RecordType* rt =
-  cast<RecordType>(CGM.getContext().getRecordType(rd).getTypePtr());
-  
-  return CreateType(rt);
-}
+
+
 
 /// CreateType - get structure or union type.
 llvm::DIType CGDebugInfo::CreateType(const RecordType *Ty) {
@@ -1904,7 +1901,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
   case Type::Typedef:
     return CreateType(cast<TypedefType>(Ty), Unit);
   
-  // scout - Mesh types
+  // ===== Scout ==============================================================
   case Type::UniformMesh:
     return CreateType(cast<UniformMeshType>(Ty));
   case Type::StructuredMesh:
@@ -1913,6 +1910,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<RectlinearMeshType>(Ty));
   case Type::UnstructuredMesh:
     return CreateType(cast<UnstructuredMeshType>(Ty));
+  // ==========================================================================
       
   case Type::Record:
     return CreateType(cast<RecordType>(Ty));

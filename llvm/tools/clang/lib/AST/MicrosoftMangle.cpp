@@ -1115,7 +1115,10 @@ void MicrosoftCXXNameMangler::mangleType(const BuiltinType *T,
  
   case BuiltinType::NullPtr: Out << "$$T"; break;
 
-  // scout - don't mangle these scout vector types
+  // ===== Scout -- don't mangle our vector types. ============================
+  // SC_TODO - drop support for our own vector types.  
+  // This work has been done in the refactor repo...  
+  // Need to merge at some point... 
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
   case BuiltinType::Bool4:
@@ -1137,6 +1140,8 @@ void MicrosoftCXXNameMangler::mangleType(const BuiltinType *T,
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4:
+  // ==========================================================================
+
   case BuiltinType::Char16:
   case BuiltinType::Char32:
   case BuiltinType::Half: {
@@ -1374,23 +1379,29 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, SourceRange) {
   mangleType(cast<TagType>(T));
 }
 
-// scout - Mesh
-// TODO is this correct?
-void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T, SourceRange) {
+// ===== Scout ================================================================
+// SC_TODO - is this correct?
+void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T, 
+                                         SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T, SourceRange) {
+void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T, 
+                                         SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const RectlinearMeshType *T, SourceRange) {
+void MicrosoftCXXNameMangler::mangleType(const RectlinearMeshType *T, 
+                                         SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
-void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T, SourceRange) {
+void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T, 
+                                         SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
+// ============================================================================
+
 
 void MicrosoftCXXNameMangler::mangleType(const TagType *T) {
   switch (T->getDecl()->getTagKind()) {

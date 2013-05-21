@@ -360,7 +360,10 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
   case BuiltinType::Half:
   case BuiltinType::PseudoObject:
 
-  // scout - vector types
+  // ===== Scout ==============================================================
+  // SC_TODO - We need to replace scout's vectors with Clang's "builtin"
+  // version.  This has been done in the "refactor" branch but needs to be
+  // pulled into devel... 
   case BuiltinType::Bool2:
   case BuiltinType::Bool3:
   case BuiltinType::Bool4:
@@ -382,6 +385,7 @@ NSAPI::getNSNumberFactoryMethodKind(QualType T) const {
   case BuiltinType::Double2:
   case BuiltinType::Double3:
   case BuiltinType::Double4:
+  // ==========================================================================
 
   case BuiltinType::BuiltinFn:
     break;

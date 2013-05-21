@@ -53,9 +53,9 @@ add_clang_library(clangCodeGen
   MicrosoftCXXABI.cpp
   ModuleBuilder.cpp
   TargetInfo.cpp
-# scout
   scout/CGBlocks.cpp
   scout/MemAlloc.cpp
+  scout/CGDebugInfo.cpp
   )
 
 add_dependencies(clangCodeGen

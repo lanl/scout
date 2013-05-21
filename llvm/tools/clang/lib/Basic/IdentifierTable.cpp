@@ -106,8 +106,9 @@ namespace {
     KEYARC = 0x800,
     KEYNOMS = 0x01000,    
     WCHARSUPPORT = 0x02000,
+    // ===== Scout ============================================================
     KEYSCOUT = 0x4000,
-    // scout - TokenKinds
+    // ========================================================================
     KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.
   };
 }
@@ -140,8 +141,10 @@ static void AddKeyword(StringRef Keyword,
   // We treat bridge casts as objective-C keywords so we can warn on them
   // in non-arc mode.
   else if (LangOpts.ObjC2 && (Flags & KEYARC)) AddResult = 2;
-  // scout - keywords
+  
+  // ===== Scout - keywords ===================================================
   else if (LangOpts.Scout && (Flags & KEYSCOUT)) AddResult = 1;
+  // ==========================================================================  
 
   else if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) AddResult = 3;
 

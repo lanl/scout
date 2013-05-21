@@ -37,18 +37,17 @@
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
 
-// scout includes
+// ===== Scout ================================================================
 #include "scout/Config/defs.h"
-
 #ifdef SC_ENABLE_CUDA
 #include "llvm/Transforms/Scout/DoallToPTX/DoallToPTX.h"
 #endif
-
 #ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
 #endif
-
 #include "llvm/Transforms/Vectorize.h"
+// ============================================================================
+
 
 using namespace clang;
 using namespace llvm;
@@ -101,6 +100,11 @@ private:
 
 
   void CreatePasses(TargetMachine *TM);
+
+  // ===== Scout ==============================================================
+  // Implemented in 'scout' subdirectory. 
+  void CreateScoutPasses(TargetMachine *TM);
+  // ==========================================================================
 
   /// CreateTargetMachine - Generates the TargetMachine.
   /// Returns Null if it is unable to create the target machine.
@@ -220,30 +224,45 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
   PM.add(createThreadSanitizerPass(CGOpts.SanitizerBlacklistFile));
 }
 
-void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
-  // scout - Check whether to enable Scout NVIDIA GPU support.
+// ===== Scout ================================================================
+// 
+void EmitAssemblyHelper::CreateScoutPasses(TargetMachine *TM) {
+
 #ifdef SC_ENABLE_CUDA
-  if(CodeGenOpts.ScoutNvidiaGPU) {
+  
+  if (CodeGenOpts.ScoutNvidiaGPU) {
     PassManager MPM;
     MPM.add(createDoallToPTXPass());
     MPM.run(*TheModule);
   }
+  
 #endif
 
 #ifdef SC_ENABLE_OPENCL
-  if(CodeGenOpts.ScoutAMDGPU) {
+
+  if (CodeGenOpts.ScoutAMDGPU) {
     PassManager MPM;
     MPM.add(createDoallToAMDILPass(CodeGenOpts.SccPath));
     MPM.run(*TheModule);
   }
+  
 #endif
 
-  // enable the BB autovectorizer pass     
+  // SC_TODO - we really don't need this anymore... -O3 will
+  // enable this on versions of LLVM 3.3 or later. 
   if(CodeGenOpts.ScoutVectorize) {
     PassManager MPM;
     MPM.add(createBBVectorizePass());
     MPM.run(*TheModule);
   }
+}
+
+// ============================================================================
+
+
+void EmitAssemblyHelper::CreatePasses(TargetMachine *TM) {
+
+  CreateScoutPasses(TM);
 
   unsigned OptLevel = CodeGenOpts.OptimizationLevel;
   CodeGenOptions::InliningMethod Inlining = CodeGenOpts.getInlining();

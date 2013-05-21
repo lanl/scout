@@ -90,18 +90,23 @@ bool types::isAcceptedByClang(ID Id) {
   case TY_AST:
   case TY_LLVM_IR: case TY_LLVM_BC:
 
-  // scout - Scout input type
+  // ===== Scout ==============================================================
   case TY_Scout:
-
     return true;
+  // ==========================================================================
   }
 }
 
 bool types::isObjC(ID Id) {
   switch (Id) {
-  // scout - Scout does not currently support ObjC 
+
   default:
     return false;
+
+  // ===== Scout ==============================================================
+  case TY_Scout:
+    return false;
+  // ==========================================================================    
 
   case TY_ObjC: case TY_PP_ObjC: case TY_PP_ObjC_Alias:
   case TY_ObjCXX: case TY_PP_ObjCXX:
@@ -116,12 +121,15 @@ bool types::isCXX(ID Id) {
   default:
     return false;
 
+  // ===== Scout ==============================================================
+  case TY_Scout:
+    return true;
+  // ==========================================================================
+
   case TY_CXX: case TY_PP_CXX:
   case TY_ObjCXX: case TY_PP_ObjCXX: case TY_PP_ObjCXX_Alias:
   case TY_CXXHeader: case TY_PP_CXXHeader:
   case TY_ObjCXXHeader: case TY_PP_ObjCXXHeader:
-  // scout - Scout input type
-  case TY_Scout:
   case TY_CUDA:
     return true;
   }
@@ -171,8 +179,9 @@ types::ID types::lookupTypeForExtension(const char *Ext) {
            .Case("F90", TY_Fortran)
            .Case("F95", TY_Fortran)
            .Case("mii", TY_PP_ObjCXX)
-           // scout - Scout type extension
+           // ===== Scout =====================================================
            .Case("sc", TY_Scout)
+           // =================================================================
            .Default(TY_INVALID);
 }
 

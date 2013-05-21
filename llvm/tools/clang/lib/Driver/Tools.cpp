@@ -1761,13 +1761,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
-  // scout - debug wait flag
+  // ===== Scout ==============================================================
+  // This flag can be helpful if you want to stop the compilation thread
+  // for debugging. 
   if(Args.hasArg(options::OPT_debugWait)){
     CmdArgs.push_back("-debug-wait");
   }
 
-  // scout - add pthread arg
+  // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
+  // ==========================================================================
   
   // Select the appropriate action.
   RewriteKind rewriteKind = RK_None;
@@ -2441,31 +2444,39 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddLastArg(CmdArgs, options::OPT_pedantic_errors);
   Args.AddLastArg(CmdArgs, options::OPT_w);
 
-  // scout cpu multithreading support if present.
+  // ===== Scout ==============================================================
+  // SC_TODO - we should probably skip some of these flags on systems
+  // that have no support enabled (no need to add flags if the build 
+  // configuration hasn't enabled them).
+
+  // Enable cpu multithreading.  
   Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
 
-  // scout gpu support if present.
+  // Enable NVIDIA gpu support (if available).
   Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
-  // scout AMD gpu support if present.
+  // Enable AMD gpu support (if available).
   Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
   
-  // scout emit-all-definitions support if present.
+  // Emit-all-definitions from compilation. 
   Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
   
-  // scout enable autovectorize pass.
+  // Enable vectorization pass. 
+  // SC_TODO - we should be able to skip this now... 
   Args.AddAllArgs(CmdArgs, options::OPT_vectorize);
 
-  // scout disable automatic standard library inclusion. We use
+  // Disable automatic standard library inclusion. We use
   // this to bootstrap scc and the building of the standard
   // library.
   Args.AddAllArgs(CmdArgs, options::OPT_disableScoutStdLib);
  
-  // scout don't run the rewriter
+  // Do not run the rewriter. 
   Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
 
-  // scout dump output of rewriter to stdout
+  // Dump the output of rewriter to stdout
   Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
+  // 
+  // ==========================================================================
 
   // Handle -{std, ansi, trigraphs} -- take the last of -{std, ansi}
   // (-ansi is equivalent to -std=c89).

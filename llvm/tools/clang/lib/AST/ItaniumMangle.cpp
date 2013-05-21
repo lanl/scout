@@ -837,13 +837,6 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ExtVector:
     case Type::FunctionProto:
     case Type::FunctionNoProto:
-
-    // scout - Mesh types
-    case Type::UniformMesh:
-    case Type::StructuredMesh:
-    case Type::RectlinearMesh:
-    case Type::UnstructuredMesh:
-        
     case Type::Enum:
     case Type::Paren:
     case Type::Elaborated:
@@ -855,6 +848,15 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::ObjCObjectPointer:
     case Type::Atomic:
       llvm_unreachable("type is illegal as a nested name specifier");
+          
+    // ===== Scout ===========================================================
+    case Type::UniformMesh:
+    case Type::StructuredMesh:
+    case Type::RectlinearMesh:
+    case Type::UnstructuredMesh:
+      llvm_unreachable("type is illegal as a nested name specifier");    
+    // =======================================================================
+
 
     case Type::SubstTemplateTypeParmPack:
       // FIXME: not clear how to mangle this!
@@ -1878,8 +1880,10 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::LongDouble: Out << 'e'; break;
   case BuiltinType::NullPtr: Out << "Dn"; break;
     
-  // scout - vector types
-  // TODO implement correctly
+  // ===== Scout ==============================================================
+  // SC_TODO - implement these correctly.  (We have a version of Scout 
+  // with these removed and replaced with Clang's "builtin" vector 
+  // support...  (see refactor repo)...
   case BuiltinType::Bool2: Out << "b2"; break;
   case BuiltinType::Bool3: Out << "b3"; break;
   case BuiltinType::Bool4: Out << "b4"; break;
@@ -1901,6 +1905,7 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   case BuiltinType::Double2: Out << "d2"; break;
   case BuiltinType::Double3: Out << "d3"; break;
   case BuiltinType::Double4: Out << "d4"; break;
+  // ==========================================================================
 
 #define BUILTIN_TYPE(Id, SingletonId)
 #define PLACEHOLDER_TYPE(Id, SingletonId) \
@@ -1999,7 +2004,7 @@ void CXXNameMangler::mangleType(const TagType *T) {
   mangleName(T->getDecl());
 }
 
-// scout - Mesh
+// ===== Scout - Mesh name mangling support ===================================
 
 void CXXNameMangler::mangleType(const UniformMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
@@ -2016,6 +2021,8 @@ void CXXNameMangler::mangleType(const RectlinearMeshType *T) {
 void CXXNameMangler::mangleType(const UnstructuredMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
+
+// ============================================================================
 
 // <type>       ::= <array-type>
 // <array-type> ::= A <positive dimension number> _ <element type>
@@ -2471,7 +2478,10 @@ recurse:
   case Expr::AsTypeExprClass:
   case Expr::PseudoObjectExprClass:
   case Expr::AtomicExprClass:
-  // scout
+  // ===== Scout ==============================================================
+  // SC_TODO - As bad as the diagnostic is below, it is better than crashing.
+  //           We need to trash Scout's vectors and replace them with Clang's 
+  //           "builtin" version (done in the refactor repo).
   case Expr::ScoutVectorMemberExprClass:
   {
     // As bad as this diagnostic is, it's better than crashing.
@@ -2482,6 +2492,7 @@ recurse:
       << E->getStmtClassName() << E->getSourceRange();
     break;
   }
+  // ==========================================================================
 
   // Even gcc-4.5 doesn't mangle this.
   case Expr::BinaryConditionalOperatorClass: {

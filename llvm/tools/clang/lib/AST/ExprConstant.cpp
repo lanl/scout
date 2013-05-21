@@ -2694,10 +2694,11 @@ public:
       BaseTy = E->getBase()->getType();
     }
 
-    // scout
-    if(BaseTy->getAs<MeshType>()){
+    // ===== Scout ============================================================
+    if (BaseTy->getAs<MeshType>()) {
       return true;
     }
+    // ========================================================================
 
     const ValueDecl *MD = E->getMemberDecl();
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(E->getMemberDecl())) {
@@ -6827,10 +6828,11 @@ static ICEDiag CheckICE(const Expr* E, ASTContext &Ctx) {
   case Expr::ChooseExprClass: {
     return CheckICE(cast<ChooseExpr>(E)->getChosenSubExpr(Ctx), Ctx);
   }
-  // ndm - scout expr types
+  // ===== Scout ==========================================================
   case Expr::ScoutVectorMemberExprClass:
     return ICEDiag(IK_NotICE, E->getLocStart());
   }
+  // ======================================================================  
 
   llvm_unreachable("Invalid StmtClass!");
 }
