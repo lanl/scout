@@ -2805,8 +2805,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       ConsumeToken();
       if(Tok.isNot(tok::l_paren)){
         Diag(Tok, diag::err_invalid_forall_op);
-        SkipUntil(tok::l_brace);
-        ConsumeToken();
+        SkipUntil(tok::r_brace, false, true); //multiline skip, don't consume brace
         return StmtError();
       }
       
@@ -2815,8 +2814,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       ExprResult OpResult = ParseExpression();
       if(OpResult.isInvalid()){
         Diag(Tok, diag::err_invalid_forall_op);
-        SkipUntil(tok::l_brace);
-        ConsumeToken();
+        SkipUntil(tok::r_brace, false, true);
         return StmtError();
       }
       
@@ -2824,8 +2822,7 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
       
       if(Tok.isNot(tok::r_paren)){
         Diag(Tok, diag::err_expected_rparen);
-        SkipUntil(tok::l_brace);
-        ConsumeToken();
+        SkipUntil(tok::r_brace, false, true);
         return StmtError();
       }
       RParenLoc = ConsumeParen();
@@ -3095,7 +3092,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   for(size_t i = 0; i < 3; ++i) {
     if(Tok.isNot(tok::identifier)){
       Diag(Tok, diag::err_expected_ident);
-      SkipUntil(tok::r_brace, false, true);
+      SkipUntil(tok::r_brace, false, true); //multiline skip, don't consume brace
       return StmtError();
     }
 
@@ -3113,7 +3110,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       return StmtError();
     }
     ConsumeToken();
-  } //end for i
+  } //end for i (identifiers)
 
   if(Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_expected_in_kw);
@@ -3135,6 +3132,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   Expr* End[3] = {0,0,0};
   Expr* Stride[3] = {0,0,0};
 
+  // parse up to 3 (start:end:stride) ranges
   for(size_t i = 0; i < 3; ++i) {
     if(Tok.is(tok::coloncolon)) { // don't allow ::
       Diag(Tok, diag::err_invalid_end_forall_array);
@@ -3142,7 +3140,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
       return StmtError();
     } else {
 
-      //parse start
+      // parse start
       if(Tok.is(tok::colon)) {
         Start[i] = IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 0),
                     Actions.Context.IntTy, ForAllLoc);
@@ -3175,8 +3173,9 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
 
     }
 
-    //parse stride
+    // parse stride
     if(Tok.is(tok::comma) || Tok.is(tok::r_square)){
+      // note: non-zero stride is used to denote this dimension exists
       Stride[i] =
       IntegerLiteral::Create(Actions.Context, llvm::APInt(32, 1),
                              Actions.Context.IntTy, ForAllLoc);
@@ -3200,7 +3199,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
     }
     ConsumeToken();
 
-  } // end for i
+  } // end for i (ranges)
 
   if(Tok.isNot(tok::r_square)){
     Diag(Tok, diag::err_expected_rsquare);
@@ -3249,6 +3248,7 @@ StmtResult Parser::ParseForAllArrayStatement(ParsedAttributes &attrs){
   ForAllArrayStmt* FA = dyn_cast<ForAllArrayStmt>(stmt);
 
   for(size_t i = 0; i < 3; ++i){
+    // non-zero stride is used to denote this dimension exists
     if(!Stride[i]){
       break;
     }
