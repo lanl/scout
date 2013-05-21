@@ -26,6 +26,7 @@
 #include "llvm/IR/Intrinsics.h"
 
 // scout - includes
+#include <stdio.h>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
 #include "CGBlocks.h"
