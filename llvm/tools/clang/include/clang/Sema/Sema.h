@@ -7523,7 +7523,7 @@ public:
                                       MultiStmtArg elts, CompoundStmt* Body,
                                       bool isStmtExpr);
 
-  bool IsValidMeshField(MeshFieldDecl* FD);
+  bool IsValidMeshField(FieldDecl* FD);
 
   bool IsValidDeclInMesh(Decl* D);
 
