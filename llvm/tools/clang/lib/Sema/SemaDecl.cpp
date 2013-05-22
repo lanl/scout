@@ -11784,9 +11784,9 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
 // scout - Scout Mesh field
 Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
-                           Declarator &D) {
-  FieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
-                                   DeclStart, D);
+                           Declarator &D,  MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
+  MeshFieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
+                                   DeclStart, D, FieldLoc);
   return Res;
 }
 
@@ -11799,9 +11799,10 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
 }
 
 // scout - Scout Mesh
-FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
+MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
                                  SourceLocation DeclStart,
-                                 Declarator &D) {
+                                 Declarator &D,
+                                 MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
   IdentifierInfo *II = D.getIdentifier();
   SourceLocation Loc = DeclStart;
   if (II) Loc = D.getIdentifierLoc();
@@ -11824,8 +11825,8 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
     PrevDecl = 0;
 
   SourceLocation TSSL = D.getSourceRange().getBegin();
-  FieldDecl *NewFD
-  = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D);
+  MeshFieldDecl *NewFD
+  = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D, FieldLoc);
 
   if (NewFD->isInvalidDecl())
     Mesh->setInvalidDecl();
@@ -11842,14 +11843,14 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
 }
 
 // scout - Scout Mesh
-FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
+MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     TypeSourceInfo *TInfo,
                                     MeshDecl *Mesh, SourceLocation Loc,
                                     SourceLocation TSSL,
                                     NamedDecl *PrevDecl,
-                                    Declarator *D) {
+                                    Declarator *D,
+                                    MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
 
-  
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
   if (D) InvalidDecl = D->isInvalidType();
@@ -11871,8 +11872,8 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                              AbstractFieldType))
     InvalidDecl = true;
 
-  FieldDecl *NewFD = FieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
-                                       0, true, ICIS_NoInit);
+  MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
+                                       0, true, ICIS_NoInit, FieldLoc );
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 

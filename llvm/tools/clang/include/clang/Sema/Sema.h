@@ -7439,22 +7439,25 @@ public:
                             MultiTemplateParamsArg TemplateParameterLists);
 
   Decl* ActOnMeshField(Scope *S, Decl *MeshD,
-                       SourceLocation DeclStart, Declarator &D);
+                       SourceLocation DeclStart, Declarator &D, MeshFieldDecl::MeshFieldDeclLocationType FieldLoc);
 
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
 
   bool ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh);
 
-  FieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
-                             SourceLocation DeclStart, Declarator &D);
+  MeshFieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
+                             SourceLocation DeclStart, Declarator &D,
+                             MeshFieldDecl::MeshFieldDeclLocationType FieldLoc);
 
 
-  FieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
+  MeshFieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                 TypeSourceInfo *TInfo,
                                 MeshDecl *Mesh, SourceLocation Loc,
                                 SourceLocation TSSL,
                                 NamedDecl *PrevDecl,
-                                Declarator *D = 0);
+                                Declarator *D,
+                                MeshFieldDecl::MeshFieldDeclLocationType FieldLoc);
+
 
   bool ActOnForAllLoopVariable(Scope* S,
                                tok::TokenKind VariableType,
