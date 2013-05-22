@@ -11989,6 +11989,7 @@ bool Sema::IsValidDeclInMesh(Decl* D){
       }
     }
   } else if (RecordDecl* RD = dyn_cast<RecordDecl>(D)) {
+    (void)RD; //suppress warning
     // SC_TODO - trying to understand this code still... 
     assert(false && "Do we ever get here on this path?");
     /*
