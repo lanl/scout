@@ -919,8 +919,13 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
   case Expr::MaterializeTemporaryExprClass:
     return EmitMaterializeTemporaryExpr(cast<MaterializeTemporaryExpr>(E));
 
+  // ===== Scout ==============================================================
+  // SC_TODO - we need to remove scout's vector types in favor of Clang's 
+  // "builtin" type.  This has been done in the "refactor" branch but it still
+  // needs to be merged with "devel".
   case Expr::ScoutVectorMemberExprClass:
     return EmitScoutVectorMemberExpr(cast<ScoutVectorMemberExpr>(E));
+  // ==========================================================================
   }
 }
 
@@ -1751,29 +1756,22 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   CharUnits Alignment = getContext().getDeclAlign(ND);
   QualType T = E->getType();
   
-  // scout
+  // ===== Scout ==============================================================
   // Check if this is a Scout 'color' expression.
-  if(ND->getDeclName().isIdentifier() && isa<ImplicitParamDecl>(ND) ) {
+  if (ND->getDeclName().isIdentifier() && 
+      isa<ImplicitParamDecl>(ND)) {
 
-    if(ND->getName() == "color"){
-      
-      const ValueDecl *VD = cast<ValueDecl>(ND);
-      
-      llvm::Value *idx = getGlobalIdx();
-      llvm::Value* ep = Builder.CreateInBoundsGEP(Colors, idx);
-      
-      return MakeAddrLValue(ep, VD->getType(), Alignment);
-    }
-    else if(CurrentForAllArrayStmt){
-      for(unsigned i = 0; i < 3; ++i){
+    if (ND->getName() == "color") {
+      return EmitScoutColorDeclRefLValue(ND);
+    } else if(CurrentForAllArrayStmt) {
+      for(unsigned i = 0; i < 3; ++i) {
         const IdentifierInfo* ii = CurrentForAllArrayStmt->getInductionVar(i);
-        if(!ii){
+        if (!ii) {
           break;
         }
         
-        if(ii->getName().equals(ND->getName())){
+        if (ii->getName().equals(ND->getName())) {
           const ValueDecl *VD = cast<ValueDecl>(ND);
-          
           return MakeAddrLValue(ScoutIdxVars[i], VD->getType(), Alignment);
         }
       }
@@ -3235,25 +3233,6 @@ EmitPointerToDataMemberBinaryExpr(const BinaryOperator *E) {
   return MakeAddrLValue(AddV, MPT->getPointeeType());
 }
 
-// scout - no ndm
-LValue CodeGenFunction::
-EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E) {
-  DEBUG_OUT("EmitScoutVectorMemberExpr");
-  if(isa<MemberExpr>(E->getBase())) {
-    ValueDecl *VD = cast<MemberExpr>(E->getBase())->getMemberDecl();
-    if(VD->getName() == "position") {
-      llvm::outs() << "idx is: " << E->getIdx() << "\n";
-      return MakeAddrLValue(ScoutIdxVars[E->getIdx()], getContext().IntTy);
-    }
-    assert(false && "Attempt to translate Scout 'position' to LLVM IR failed");
-  } else {
-    LValue LHS = EmitLValue(E->getBase());
-    llvm::Value *Idx = llvm::ConstantInt::get(Int32Ty, E->getIdx());
-    return LValue::MakeVectorElt(LHS.getAddress(), Idx,
-                                 E->getBase()->getType(),
-                                 LHS.getAlignment());
-  }
-}
 
 std::pair< MeshFieldDecl *, int >
 CodeGenFunction::FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName) {

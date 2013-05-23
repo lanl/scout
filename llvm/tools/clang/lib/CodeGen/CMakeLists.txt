@@ -56,6 +56,8 @@ add_clang_library(clangCodeGen
   scout/CGBlocks.cpp
   scout/MemAlloc.cpp
   scout/CGDebugInfo.cpp
+  scout/CGDecl.cpp
+  scout/CGExpr.cpp
   )
 
 add_dependencies(clangCodeGen

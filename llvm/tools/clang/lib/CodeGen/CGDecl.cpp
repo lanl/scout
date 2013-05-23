@@ -72,13 +72,15 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::ClassScopeFunctionSpecialization:
     llvm_unreachable("Declaration should not be in declstmts!");
   case Decl::Function:  // void X();
+    return;
 
-  // scout - Mesh types
+  // ===== Scout ==============================================================
   case Decl::UniformMesh:
   case Decl::StructuredMesh:
   case Decl::RectlinearMesh:
   case Decl::UnstructuredMesh:
     return;
+  // ==========================================================================
 
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;
@@ -810,9 +812,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
   llvm::Value *DeclPtr;
   
-  // scout - the decl ptr for debug info for scout meshes
-  llvm::Value *ScoutDeclPtr = 0;
-
   if (Ty->isConstantSizeType()) {
     if (!Target.useGlobalsForAutomaticVariables()) {
       bool NRVO = getLangOpts().ElideConstructors &&
@@ -890,126 +889,13 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
         QualType T = D.getType();
         const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
 
-        if(Ty.getTypeClass() == Type::UniformMesh) {
-          // Variable has Scout mesh type. Each member becomes a pointer.
-          MeshType::MeshDimensionVec dims =
-          cast<MeshType>(T.getTypePtr())->dimensions();
-
-          // maybe dimensions needs to hold values
-          
-          // Need to make this different for variable dims
-          // we want to evaluate each dim and if its a variable
-          // then we want to make an expression multiplying
-          // the dims to get numElts as a variable.
-         
-          llvm::Value *numElements = Builder.getInt64(1);
-
-          for(unsigned i = 0, e = dims.size(); i < e; ++i) {
-            
-            llvm::Value* intValue;
-            Expr* E = dims[i];
-            
-            if (E->isGLValue()) {
-              // Emit the expression as an lvalue.
-              LValue LV = EmitLValue(E);
-       
-              // We have to load the lvalue.
-              RValue RV;
-              RV = EmitLoadOfLValue(LV);
-              intValue = RV.getScalarVal();
-            } else if (E->isConstantInitializer(getContext(), false)){
-              bool evalret;
-              llvm::APSInt dimAPValue;
-              evalret = E->EvaluateAsInt(dimAPValue, getContext());
-              // TODO: check the evalret
-              intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-            } else { // it is an Rvalue
-              RValue RV = EmitAnyExpr(E);
-              intValue = RV.getScalarVal();
-            }
-            
-            intValue = Builder.CreateZExt(intValue, Int64Ty);
-            // TODO: check the evalret
-            numElements = Builder.CreateMul(intValue, numElements);
-          }
-          
-          // store the mesh dimensions
-          for(size_t i = 0; i < 3; ++i){
-            llvm::Value* field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i+1);
-            
-            if(i >= dims.size()){
-              // store a 0 in that dim if above size
-              llvm::Value* intValue = llvm::ConstantInt::getSigned(llvm::IntegerType::get(getLLVMContext(), 32), 0);
-              Builder.CreateStore(intValue, field);
-            }
-            else{
-              llvm::Value* intValue;
-              Expr* E = dims[i];
-              
-              if (E->isGLValue()) {
-                // Emit the expression as an lvalue.
-                LValue LV = EmitLValue(E);
-                
-                // We have to load the lvalue.
-                RValue RV;
-                RV = EmitLoadOfLValue(LV);
-                intValue = RV.getScalarVal();
-              } else if (E->isConstantInitializer(getContext(), false)){
-                bool evalret;
-                llvm::APSInt dimAPValue;
-                evalret = E->EvaluateAsInt(dimAPValue, getContext());
-                // TODO: check the evalret
-                intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
-              } else { // it is an Rvalue
-                RValue RV = EmitAnyExpr(E);
-                intValue = RV.getScalarVal();
-              }
-
-              //CurFn->viewCFG();
-              Builder.CreateStore(intValue, field);
-            }
-          }
-          
-          // need access to these field decls so we
-          // can determine if we will dynamically allocate
-          // memory for each field
-          
-          const MeshType* MT = cast<MeshType>(T.getTypePtr());
-          MeshDecl* MD = MT->getDecl();
-          MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
-          MeshDecl::mesh_field_iterator itr_end = MD->mesh_field_end();
-          
-          llvm::Type *structTy = Alloc->getType()->getContainedType(0);
-          for(unsigned i = 4, e = structTy->getNumContainedTypes(); i < e; ++i) {
-            // Compute size of needed field memory in bytes 
-            llvm::Type *fieldTy = structTy->getContainedType(i);
-            
-            // If this is a externally allocated field, go on
-            MeshFieldDecl* FD = *itr;
-            
-            if (itr != itr_end) ++itr;
-            if (FD->isExternAlloc()) continue;
-            
-            uint64_t fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(fieldTy);
-            llvm::Value *fieldTotalBytes = 0;
-            llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
-                        
-            fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
-           
-            // Dynamically allocate memory.
-            llvm::Value *val = CreateMemAllocForValue(fieldTotalBytes);
-            val = Builder.CreateBitCast(val, structTy->getContainedType(i));
-            llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i);
-            Builder.CreateStore(val, field);
-          }
-
-          // debugger support
-          ScoutDeclPtr =
-          CreateMemTemp(getContext().VoidPtrTy, "mesh.temp");
-
-          llvm::Value* AllocVP = Builder.CreateBitCast(Alloc, VoidPtrTy);
-          Builder.CreateStore(AllocVP, ScoutDeclPtr);
-        }
+        // ===== Scout ========================================================
+        // SC_TODO - we need to make sure we handle other mesh types here.
+        //
+        if (Ty.getTypeClass() == Type::UniformMesh) 
+          EmitScoutAutoVarAlloca(Alloc, D);
+        //
+        // ====================================================================
       }
     } else {
       // Targets that don't support recursion emit locals as globals.
@@ -1060,11 +946,6 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
     if (CGDebugInfo *DI = getDebugInfo()) {
       if (CGM.getCodeGenOpts().getDebugInfo()
             >= CodeGenOptions::LimitedDebugInfo) {
-
-        // scout - the decl ptr for meshes
-        //if(ScoutDeclPtr){
-          //DeclPtr = ScoutDeclPtr;
-        //}
         
         DI->setLocation(D.getLocation());
         if (Target.useGlobalsForAutomaticVariables()) {

@@ -2126,6 +2126,10 @@ public:
     }
   };
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
+  // ===== Scout ==============================================================
+  void EmitScoutAutoVarAlloca(llvm::AllocaInst *Alloc,
+                              const VarDecl &var);
+  // ==========================================================================
   void EmitAutoVarInit(const AutoVarEmission &emission);
   void EmitAutoVarCleanups(const AutoVarEmission &emission);
   void emitAutoVarTypeCleanup(const AutoVarEmission &emission,
@@ -2364,6 +2368,9 @@ public:
   // Note: only available for agg return types
   LValue EmitVAArgExprLValue(const VAArgExpr *E);
   LValue EmitDeclRefLValue(const DeclRefExpr *E);
+  // ===== Scout ==============================================================
+  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
+  // ==========================================================================
   LValue EmitStringLiteralLValue(const StringLiteral *E);
   LValue EmitObjCEncodeExprLValue(const ObjCEncodeExpr *E);
   LValue EmitPredefinedLValue(const PredefinedExpr *E);
