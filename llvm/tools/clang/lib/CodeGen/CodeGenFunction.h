@@ -648,11 +648,17 @@ public:
   typedef CallExpr::const_arg_iterator ArgIterator;
   typedef std::pair< MeshFieldDecl *, int > MeshFieldPair;
   typedef std::map< llvm::StringRef, std::pair< llvm::Value *, QualType > > MemberMap;
-  /// Scout forall explicit induction variable.
+  // ===== Scout ==============================================================
+  // SC_TODO - are all of these really necessary?
+  // SC_TODO - A lot of this should be moved out of the header file
+  //           to make our merges with the clang trunks a happier
+  //           activity... 
+
+  // Scout forall explicit induction variable.
   llvm::Value *ForallIndVar;
-  /// Scout forall implicit induction variables.
+  // Scout forall implicit induction variables.
   Vector ScoutIdxVars;
-  /// Scout mesh dimension sizes.
+  // Scout mesh dimension sizes.
   llvm::SmallVector< llvm::Value *, 3 > ScoutMeshSizes;
   llvm::Value *MeshBaseAddr;
   llvm::Value *ImplicitMeshVar;
@@ -673,7 +679,7 @@ public:
             && !CallsPrintf;
   }
 
-  bool isAMDGPU(){
+  bool isAMDGPU() {
     return CGM.getCodeGenOpts().ScoutAMDGPU && !CallsPrintf;
   }
 
@@ -685,7 +691,7 @@ public:
     return !isCPU() && !isGPU();
   }
 
-   bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
+  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
      
     isSigned = false;
 
@@ -753,6 +759,8 @@ public:
   bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
+  // ==========================================================================
+
 
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
@@ -2194,7 +2202,7 @@ public:
   void EmitWhileStmt(const WhileStmt &S);
   void EmitDoStmt(const DoStmt &S);
 
-  // ===========================================================================
+  // ===== Scout ==============================================================
   // Scout:
 
   llvm::Value *GetMeshBaseAddr(const ForAllStmt &S);
@@ -2217,7 +2225,10 @@ public:
   
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
+  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
+
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
+  LValue EmitScoutMemberExpr(const MemberExpr *E, const VarDecl *VD);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   LValue EmitMeshMemberExpr(const VarDecl *VD, llvm::StringRef memberName,
                             MySmallVector foo = MySmallVector());
@@ -2368,10 +2379,7 @@ public:
   // Note: only available for agg return types
   LValue EmitVAArgExprLValue(const VAArgExpr *E);
   LValue EmitDeclRefLValue(const DeclRefExpr *E);
-  // ===== Scout ==============================================================
-  LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
-  // ==========================================================================
-  LValue EmitStringLiteralLValue(const StringLiteral *E);
+   LValue EmitStringLiteralLValue(const StringLiteral *E);
   LValue EmitObjCEncodeExprLValue(const ObjCEncodeExpr *E);
   LValue EmitPredefinedLValue(const PredefinedExpr *E);
   LValue EmitUnaryOpLValue(const UnaryOperator *E);
@@ -2907,16 +2915,21 @@ private:
           }
         }
         
-        // scout - special case for mesh types, because we cannot check
+        // ===== Scout ========================================================
+        // Special case for mesh types, because we cannot check
         // for type pointer equality because each mesh has its own type
         // pointer to hold the mesh dimensions and other instance data
-        const Type* argType = getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
-        const Type* actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
+        // 
+        // SC_TODO - long call chains (like those below) should be turned into
+        // a convenience function to clean things up.
+        const Type* argType;
+        argType = getContext().getCanonicalType(ArgType.getNonReferenceType()).getTypePtr();
+        const Type* actualType;
+        actualType = getContext().getCanonicalType(ActualArgType).getTypePtr();
 
-        if(isa<MeshType>(argType) && isa<MeshType>(actualType)){
+        if (isa<MeshType>(argType) && isa<MeshType>(actualType)) {
           // fine ...
-        }
-        else if(argType != actualType){
+        } else if (argType != actualType) {
           assert(false && "type mismatch in call argument!");
         }
 #endif
