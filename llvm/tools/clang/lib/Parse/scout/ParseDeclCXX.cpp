@@ -215,10 +215,11 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
           P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
 
       void invoke(ParsingFieldDeclarator& FD) {
+        //llvm::outs() << "FieldLoc " << FieldLoc << "\n";
         // Install the declarator into the current MeshDecl.
         Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
                                    FD.D.getDeclSpec().getSourceRange().getBegin(),
-                                   FD.D);
+                                   FD.D, FieldLoc);
 
         MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
         FDecl->setMeshLocation(FieldLoc);

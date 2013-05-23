@@ -11784,9 +11784,9 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
 
 // scout - Scout Mesh field
 Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD, SourceLocation DeclStart,
-                           Declarator &D) {
-  FieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
-                                   DeclStart, D);
+                           Declarator &D,  MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
+  MeshFieldDecl *Res = HandleMeshField(S, cast_or_null<MeshDecl>(MeshD),
+                                   DeclStart, D, FieldLoc);
   return Res;
 }
 
@@ -11799,9 +11799,10 @@ void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
 }
 
 // scout - Scout Mesh
-FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
+MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
                                  SourceLocation DeclStart,
-                                 Declarator &D) {
+                                 Declarator &D,
+                                 MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
   IdentifierInfo *II = D.getIdentifier();
   SourceLocation Loc = DeclStart;
   if (II) Loc = D.getIdentifierLoc();
@@ -11824,8 +11825,8 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
     PrevDecl = 0;
 
   SourceLocation TSSL = D.getSourceRange().getBegin();
-  FieldDecl *NewFD
-  = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D);
+  MeshFieldDecl *NewFD
+  = CheckMeshFieldDecl(II, T, TInfo, Mesh, Loc, TSSL, PrevDecl, &D, FieldLoc);
 
   if (NewFD->isInvalidDecl())
     Mesh->setInvalidDecl();
@@ -11842,14 +11843,14 @@ FieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
 }
 
 // scout - Scout Mesh
-FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
+MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                     TypeSourceInfo *TInfo,
                                     MeshDecl *Mesh, SourceLocation Loc,
                                     SourceLocation TSSL,
                                     NamedDecl *PrevDecl,
-                                    Declarator *D) {
+                                    Declarator *D,
+                                    MeshFieldDecl::MeshFieldDeclLocationType FieldLoc) {
 
-  
   IdentifierInfo *II = Name.getAsIdentifierInfo();
   bool InvalidDecl = false;
   if (D) InvalidDecl = D->isInvalidType();
@@ -11871,8 +11872,8 @@ FieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                              AbstractFieldType))
     InvalidDecl = true;
 
-  FieldDecl *NewFD = FieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
-                                       0, true, ICIS_NoInit);
+  MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
+                                       0, true, ICIS_NoInit, FieldLoc );
   if (InvalidDecl)
     NewFD->setInvalidDecl();
 
@@ -11940,7 +11941,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
 }
 
 
-bool Sema::IsValidMeshField(MeshFieldDecl* FD){
+bool Sema::IsValidMeshField(FieldDecl* FD){
   
   if (FD->getName() == "ptr") {
     return true;  // SC_TODO - what the heck is this?  
@@ -11970,7 +11971,6 @@ bool Sema::IsValidMeshField(MeshFieldDecl* FD){
       return false;
     }
   }
-
   return true;
 }
 
@@ -11979,30 +11979,25 @@ bool Sema::IsValidDeclInMesh(Decl* D){
   // SC_TODO - why both mesh decl and record decl here?  Should we have
   // MeshFieldDecl instead of RecordDecl?
   if (MeshDecl* MD = dyn_cast<MeshDecl>(D)) {
-    MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin();
-    (void)itr; //suppress warning -- SC_TODO - huh?  What are we doing?  'itr' twice?  Why?
     for(MeshDecl::mesh_field_iterator itr = MD->mesh_field_begin(),
         itrEnd = MD->mesh_field_end(); itr != itrEnd; ++itr){
-      MeshFieldDecl* FD = *itr;
+      FieldDecl* FD = *itr;
       if (!IsValidMeshField(FD)) {
         return false;
       }
     }
+  // SC_TODO - trying to understand this code still... 
+  // look for a struct embedded in a mesh.
+  // error_mesh_indirect_ptr.sc test gets us here
   } else if (RecordDecl* RD = dyn_cast<RecordDecl>(D)) {
-    (void)RD; //suppress warning
-    // SC_TODO - trying to understand this code still... 
-    assert(false && "Do we ever get here on this path?");
-    /*
-    RecordDecl::field_iterator itr = RD->field_begin();
-    (void)itr; //suppress warning -- SC_TODO - 'itr' twice?  Why?
     for(RecordDecl::field_iterator itr = RD->field_begin(),
         itrEnd = RD->field_end(); itr != itrEnd; ++itr){
       FieldDecl* FD = *itr;
+      // look for ptrs in struct
       if (!IsValidMeshField(FD)){
         return false;
       }
     }
-    */
   }
   
   return true;

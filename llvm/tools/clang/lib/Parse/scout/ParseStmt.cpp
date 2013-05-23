@@ -337,8 +337,10 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
     for(MeshDecl::mesh_field_iterator FI = MD->mesh_field_begin(),
         FE = MD->mesh_field_end(); FI != FE; ++FI) {
       MeshFieldDecl* FD = *FI;
+
       switch(FT) {
         case ForAllStmt::Cells:
+          //llvm::errs() << "cells " << FD->isImplicit() << " " << FD->isCellLocated() << "\n";
           if (!FD->isImplicit() && FD->isCellLocated()) {
             ++FieldCount;
           }
