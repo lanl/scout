@@ -340,7 +340,6 @@ StmtResult Parser::ParseForAllStatement(ParsedAttributes &attrs, bool ForAll) {
 
       switch(FT) {
         case ForAllStmt::Cells:
-          //llvm::errs() << "cells " << FD->isImplicit() << " " << FD->isCellLocated() << "\n";
           if (!FD->isImplicit() && FD->isCellLocated()) {
             ++FieldCount;
           }

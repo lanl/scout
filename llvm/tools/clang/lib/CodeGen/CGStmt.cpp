@@ -1114,6 +1114,7 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
 
   llvm::CodeExtractor codeExtractor(region, &DT, false);
 
+  /*
   typedef llvm::SetVector<llvm::Value *> ValueSet;
   ValueSet ce_inputs, ce_outputs;
   codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
@@ -1132,7 +1133,8 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
     llvm::Value *v = *vsit;
     llvm::errs() << "\t" << v->getName().str() << "\n";
   }  
-  
+  */
+
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
   ForallArrayFn->setName("forall_array");
@@ -1486,7 +1488,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     if (! FD->isImplicit()) {
       
       llvm::Value *addr;
-      addr = Builder.CreateStructGEP(baseAddr, i+4, name);
+      addr = Builder.CreateStructGEP(baseAddr, i+4, name); //SC_TODO: why i+4??
       addr = Builder.CreateLoad(addr);
       
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);
