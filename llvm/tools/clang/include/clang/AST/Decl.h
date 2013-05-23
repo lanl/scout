@@ -24,7 +24,6 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/raw_ostream.h"
 
 namespace clang {
 struct ASTTemplateArgumentListInfo;
@@ -2175,7 +2174,6 @@ class MeshFieldDecl : public FieldDecl {
   };
 
  private:
-  bool                         IsImplicit;
   MeshFieldDeclLocationType    MeshLocation;
 
  protected:
@@ -2186,7 +2184,7 @@ class MeshFieldDecl : public FieldDecl {
                 InClassInitStyle InitStyle, MeshFieldDeclLocationType DeclLoc)
       : FieldDecl(DK, DC, StartLoc, IdLoc, Id, T, TInfo,
                   BW, Mutable, InitStyle) 
-  { IsImplicit = false; MeshLocation = DeclLoc; }
+  { MeshLocation = DeclLoc; }
   
  public:
   static MeshFieldDecl *Create(const ASTContext &C, DeclContext *DC,
@@ -2198,14 +2196,6 @@ class MeshFieldDecl : public FieldDecl {
 
   static FieldDecl *CreateDeserialized(ASTContext &C, unsigned ID);  
 
-  bool isImplicit() const {
-    return IsImplicit;
-  }
-
-  void setIsImplicit(bool flag) {
-    IsImplicit = flag;
-  }
-  
   void setMeshLocation(MeshFieldDeclLocationType loc) {
     MeshLocation = loc;
   }
@@ -2215,7 +2205,6 @@ class MeshFieldDecl : public FieldDecl {
   }
 
   bool isCellLocated() const {
-    //llvm::errs() << "cellloc " << MeshLocation << "\n";
     return MeshLocation == CellLoc;
   }
 

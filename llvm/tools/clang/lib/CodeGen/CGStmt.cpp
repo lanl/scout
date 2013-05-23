@@ -1119,18 +1119,18 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
   ValueSet::iterator vsit, vsend;
   
-  llvm::errs() << "*** forall body inputs\n";  
+  //llvm::errs() << "*** forall body inputs\n";  
   vsend = ce_inputs.end();
   for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
     llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
+    //llvm::errs() << "\t" << v->getName().str() << "\n";
   }
   
-  llvm::errs() << "*** forall body outputs\n";  
+  //llvm::errs() << "*** forall body outputs\n";  
   vsend = ce_outputs.end();
   for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
     llvm::Value *v = *vsit;
-    llvm::errs() << "\t" << v->getName().str() << "\n";
+    //llvm::errs() << "\t" << v->getName().str() << "\n";
   }  
   
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
@@ -1486,7 +1486,7 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
     if (! FD->isImplicit()) {
       
       llvm::Value *addr;
-      addr = Builder.CreateStructGEP(baseAddr, i+4, name);
+      addr = Builder.CreateStructGEP(baseAddr, i+4, name); //SC_TODO: why i+4??
       addr = Builder.CreateLoad(addr);
       
       llvm::Value *var = Builder.CreateAlloca(addr->getType(), 0, name);

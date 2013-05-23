@@ -11872,6 +11872,7 @@ MeshFieldDecl *Sema::CheckMeshFieldDecl(DeclarationName Name, QualType T,
                                              AbstractFieldType))
     InvalidDecl = true;
 
+  // add mesh members
   MeshFieldDecl *NewFD = MeshFieldDecl::Create(Context, Mesh, TSSL, Loc, II, T, TInfo,
                                        0, true, ICIS_NoInit, FieldLoc );
   if (InvalidDecl)
@@ -11900,6 +11901,7 @@ bool Sema::ActOnMeshFinish(SourceLocation Loc, MeshDecl* Mesh){
   //               we do so based on mesh dimensions (is this a mesh
   //               instance or the general/generic mesh description)?
   //
+  // add Implicit mesh members
   MeshFieldDecl *PositionFD =
   MeshFieldDecl::Create(Context, Mesh, Loc, Loc,
                         &Context.Idents.get("position"), Context.Int4Ty, 0,
