@@ -1114,25 +1114,27 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
 
   llvm::CodeExtractor codeExtractor(region, &DT, false);
 
+  /*
   typedef llvm::SetVector<llvm::Value *> ValueSet;
   ValueSet ce_inputs, ce_outputs;
   codeExtractor.findInputsOutputs(ce_inputs, ce_outputs);
   ValueSet::iterator vsit, vsend;
   
-  //llvm::errs() << "*** forall body inputs\n";  
+  llvm::errs() << "*** forall body inputs\n";  
   vsend = ce_inputs.end();
   for(vsit = ce_inputs.begin(); vsit != vsend; vsit++) {
     llvm::Value *v = *vsit;
-    //llvm::errs() << "\t" << v->getName().str() << "\n";
+    llvm::errs() << "\t" << v->getName().str() << "\n";
   }
   
-  //llvm::errs() << "*** forall body outputs\n";  
+  llvm::errs() << "*** forall body outputs\n";  
   vsend = ce_outputs.end();
   for(vsit = ce_outputs.begin(); vsit != vsend; vsit++) {
     llvm::Value *v = *vsit;
-    //llvm::errs() << "\t" << v->getName().str() << "\n";
+    llvm::errs() << "\t" << v->getName().str() << "\n";
   }  
-  
+  */
+
   llvm::Function *ForallArrayFn = codeExtractor.extractCodeRegion();
   
   ForallArrayFn->setName("forall_array");
