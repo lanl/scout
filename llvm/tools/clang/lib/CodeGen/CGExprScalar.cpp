@@ -302,8 +302,12 @@ public:
     return EmitScalarPrePostIncDec(E, LV, true, true);
   }
 
-  // Scout Operators.
+  // ===== Scout ==============================================================
+  // Scout vector support -- we need to replace our types with Clang's 
+  // "builtin" versions.  This has been done in the "refactor" branch 
+  // but needs to be merged with "devel".
   Value *VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E);
+  // ==========================================================================
 
   llvm::Value *EmitAddConsiderOverflowBehavior(const UnaryOperator *E,
                                                llvm::Value *InVal,
@@ -3069,7 +3073,10 @@ Value *ScalarExprEmitter::VisitAsTypeExpr(AsTypeExpr *E) {
   return Builder.CreateBitCast(Src, DstTy, "astype");
 }
 
-Value *ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
+
+// ===== Scout ================================================================
+Value *
+ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
   CGF.DEBUG_OUT("VisitScoutVectorMemberExpr");
   TestAndClearIgnoreResultAssign();
 
@@ -3085,6 +3092,7 @@ Value *ScalarExprEmitter::VisitScoutVectorMemberExpr(ScoutVectorMemberExpr *E) {
     return Builder.CreateExtractElement(Base, Idx, "scvecext");
   }
 }
+// ============================================================================
 
 Value *ScalarExprEmitter::VisitAtomicExpr(AtomicExpr *E) {
   return CGF.EmitAtomicExpr(E).getScalarVal();

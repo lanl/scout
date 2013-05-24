@@ -1757,24 +1757,14 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
   QualType T = E->getType();
   
   // ===== Scout ==============================================================
-  // Check if this is a Scout 'color' expression.
+  // Check if this is a 'color' expression.
   if (ND->getDeclName().isIdentifier() && 
       isa<ImplicitParamDecl>(ND)) {
 
     if (ND->getName() == "color") {
       return EmitScoutColorDeclRefLValue(ND);
     } else if(CurrentForAllArrayStmt) {
-      for(unsigned i = 0; i < 3; ++i) {
-        const IdentifierInfo* ii = CurrentForAllArrayStmt->getInductionVar(i);
-        if (!ii) {
-          break;
-        }
-        
-        if (ii->getName().equals(ND->getName())) {
-          const ValueDecl *VD = cast<ValueDecl>(ND);
-          return MakeAddrLValue(ScoutIdxVars[i], VD->getType(), Alignment);
-        }
-      }
+      return EmitScoutForAllArrayDeclRefLValue(ND);
     }
   }
   // ==========================================================================

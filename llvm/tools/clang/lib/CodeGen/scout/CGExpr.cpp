@@ -51,6 +51,25 @@ CodeGenFunction::EmitScoutColorDeclRefLValue(const NamedDecl *ND) {
   return MakeAddrLValue(ep, VD->getType(), Alignment);
 }
 
+LValue
+CodeGenFunction::EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND) {
+  CharUnits Alignment = getContext().getDeclAlign(ND);  
+  for(unsigned i = 0; i < 3; ++i) {
+    const IdentifierInfo* ii = CurrentForAllArrayStmt->getInductionVar(i);
+    if (!ii) 
+      break;
+    
+    if (ii->getName().equals(ND->getName())) {
+      const ValueDecl *VD = cast<ValueDecl>(ND);
+      return MakeAddrLValue(ScoutIdxVars[i], VD->getType(), Alignment);
+    }
+
+  }
+  // SC_TODO -- what happens if we fall through here?  For now we'll
+  // bail with an assertion.  Overall, the logic seems a bit screwy
+  // to me here...
+  assert(false && "unhandled conditional in emiting forall array lval.");
+}
 
 LValue
 CodeGenFunction::EmitScoutMemberExpr(const MemberExpr *E,

@@ -669,7 +669,7 @@ public:
   llvm::Value *Colors;
   const ForAllArrayStmt* CurrentForAllArrayStmt;
   
-  llvm::Value *getGlobalIdx() {
+  inline llvm::Value *getGlobalIdx() {
     return Builder.CreateLoad(ForallIndVar);
   }
 
@@ -691,36 +691,7 @@ public:
     return !isCPU() && !isGPU();
   }
 
-  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr) {
-     
-    isSigned = false;
-
-    if(arg->getName().endswith("height")) return false;
-    if(arg->getName().endswith("width")) return false;
-    if(arg->getName().endswith("depth")) return false;
-    if(arg->getName().endswith("ptr")) return false;
-    if(arg->getName().endswith("dim_x")) return false;
-    if(arg->getName().endswith("dim_y")) return false;
-    if(arg->getName().endswith("dim_z")) return false;
-    
-    typedef MemberMap::iterator MemberIterator;
-    for(MemberIterator it = MeshMembers.begin(), end = MeshMembers.end(); it != end; ++it) {
-
-      std::string name = it->first;
-      std::string argName = arg->getName();
-
-      size_t pos = argName.find(name);
-      size_t len = name.length();
-      if (pos == 0 && (argName.length() <= len || std::isdigit(argName[len]))) {
-        QualType qt = it->second.second;
-        isSigned = qt.getTypePtr()->isSignedIntegerType();
-        typeStr = qt.getAsString() + "*";
-        //llvm::outs() << "mesh: " << name << " " << typeStr << "\n";
-        return true;
-      }  
-    }
-    return false;
-  }
+  bool isMeshMember(llvm::Argument *arg, bool& isSigned, std::string& typeStr);
 
   llvm::StringRef toString(int i) {
     switch(i) {
@@ -2226,7 +2197,7 @@ public:
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;
 
   LValue EmitScoutColorDeclRefLValue(const NamedDecl *ND);
-
+  LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitScoutVectorMemberExpr(const ScoutVectorMemberExpr *E);
   LValue EmitScoutMemberExpr(const MemberExpr *E, const VarDecl *VD);
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);

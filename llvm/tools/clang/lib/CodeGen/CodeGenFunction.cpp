@@ -107,17 +107,18 @@ bool CodeGenFunction::hasAggregateLLVMType(QualType type) {
   case Type::ConstantArray:
   case Type::IncompleteArray:
   case Type::VariableArray:
+  case Type::Record:
+  case Type::ObjCObject:
+  case Type::ObjCInterface:
+    return true;
 
-  // scout - Mesh
+  // ===== Scout ==============================================================
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
-
-    case Type::Record:
-  case Type::ObjCObject:
-  case Type::ObjCInterface:
     return true;
+  // ==========================================================================
 
   // In IRGen, atomic types are just the underlying type
   case Type::Atomic:
@@ -1125,11 +1126,14 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
       llvm_unreachable("unexpected dependent type!");
 
     // These types are never variably-modified.
-    // scout
+
+    // ===== Scout ============================================================
     case Type::UniformMesh:
     case Type::StructuredMesh:
     case Type::RectlinearMesh:
     case Type::UnstructuredMesh:
+      llvm_unreachable("type class is never variably-modified!");
+    // ========================================================================      
 
     case Type::Builtin:
     case Type::Complex:

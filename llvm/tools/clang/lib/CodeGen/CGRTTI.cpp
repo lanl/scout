@@ -187,8 +187,26 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Float:
     case BuiltinType::Double:
 
-    // scout - vector types
-    
+  
+    case BuiltinType::LongDouble:
+    case BuiltinType::Char16:
+    case BuiltinType::Char32:
+    case BuiltinType::Int128:
+    case BuiltinType::UInt128:
+    case BuiltinType::OCLImage1d:
+    case BuiltinType::OCLImage1dArray:
+    case BuiltinType::OCLImage1dBuffer:
+    case BuiltinType::OCLImage2d:
+    case BuiltinType::OCLImage2dArray:
+    case BuiltinType::OCLImage3d:
+    case BuiltinType::OCLSampler:
+    case BuiltinType::OCLEvent:
+      return true;
+
+    // ===== Scout ============================================================
+    // SC_TODO - We need to replace Scout's vector types with those 
+    // "builtin" types provided within Clang.  This has been done within 
+    // the "refactor" branch but needs to be merged into "devel"...
     case BuiltinType::Bool2:
     case BuiltinType::Bool3:
     case BuiltinType::Bool4:
@@ -210,21 +228,8 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::Double2:
     case BuiltinType::Double3:
     case BuiltinType::Double4:
-
-    case BuiltinType::LongDouble:
-    case BuiltinType::Char16:
-    case BuiltinType::Char32:
-    case BuiltinType::Int128:
-    case BuiltinType::UInt128:
-    case BuiltinType::OCLImage1d:
-    case BuiltinType::OCLImage1dArray:
-    case BuiltinType::OCLImage1dBuffer:
-    case BuiltinType::OCLImage2d:
-    case BuiltinType::OCLImage2dArray:
-    case BuiltinType::OCLImage3d:
-    case BuiltinType::OCLSampler:
-    case BuiltinType::OCLEvent:
       return true;
+    // ========================================================================
       
     case BuiltinType::Dependent:
 #define BUILTIN_TYPE(Id, SingletonId)
@@ -467,13 +472,15 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv116__enum_type_infoE";
     break;
 
-  // scout - Mesh
+  // ===== Scout ==============================================================
+  //
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
     VTableName = "_ZTVN10__cxxabiv???__mesh_type_infoE";
     break;
+  // ==========================================================================
       
   case Type::Record: {
     const CXXRecordDecl *RD = 
@@ -665,14 +672,16 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // abi::__function_type_info adds no data members to std::type_info.
     break;
       
-  // scout - Mesh
-  // TODO - fix  
+  // ===== Scout ==============================================================
+  // SC_TODO -- we had an original comment here, "fix"...  Not sure what 
+  // this meant in any detail... 
   case Type::UniformMesh:
   case Type::StructuredMesh:
   case Type::RectlinearMesh:
   case Type::UnstructuredMesh:
     // abi::__enum_mesh_info adds no data members to std::type_info.
     break;
+  // ==========================================================================
       
   case Type::Enum:
     // Itanium C++ ABI 2.9.5p5:
