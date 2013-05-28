@@ -524,10 +524,8 @@ void CodeGenFunction::EmitForAllArrayStmt(const ForAllArrayStmt &S) {
   
   CurrentForAllArrayStmt = &S;
   
-  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(),
-                                               blockInfo,
-                                               ranges,
-                                               inputs);
+  llvm::Value *BlockFn = EmitScoutBlockLiteral(S.getBlock(), blockInfo,
+                                               ranges, inputs);
   
   CurrentForAllArrayStmt = 0;
   
@@ -899,13 +897,10 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
   }
 
   Builder.CreateCall(endRendFunc, Args);
- /* 
+  /* 
   llvm::Function *delRendFunc = CGM.getModule().getFunction("__scrt_renderall_delete");
-  
-  if(!delRendFunc){
-    
+  if(!delRendFunc) {
     std::vector<llvm::Type*> args;    
-    
     llvm::FunctionType *FTy = 
     llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()),    
                             args, false);
@@ -920,5 +915,5 @@ void CodeGenFunction::EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S)
 
   if (DI)
     DI->EmitLexicalBlockEnd(Builder, S.getRBracLoc());
-  
 }
+

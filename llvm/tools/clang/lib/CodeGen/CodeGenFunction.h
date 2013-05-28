@@ -32,8 +32,9 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ValueHandle.h"
 
-// scout
+// ===== Scout =================================================================
 #include <map>
+// =============================================================================
 
 namespace llvm {
   class BasicBlock;
@@ -731,7 +732,6 @@ public:
     return hasPrintfNode(S);
   }
   // ==========================================================================
-
 
   template <class T>
   typename DominatingValue<T>::saved_type saveValueInCond(T value) {
@@ -1447,16 +1447,24 @@ public:
   //                                  Block Bits
   //===--------------------------------------------------------------------===//
 
+  // ===== Scout ===============================================================
   llvm::Value *EmitScoutBlockFnCall(llvm::Value *TheBlockFn,
-                                    const CGBlockInfo &blockInfo,
-                                    const llvm::SmallVector< llvm::Value *, 3 >& ranges,
-                                    llvm::SetVector< llvm::Value * > &inputs);
+                           const CGBlockInfo &blockInfo,
+                           const llvm::SmallVector<llvm::Value*,3>& ranges,
+                           llvm::SetVector< llvm::Value * > &inputs);
   
   llvm::Value *EmitScoutBlockLiteral(const BlockExpr *,
-                                     CGBlockInfo &blockInfo,
-                                     const llvm::SmallVector< llvm::Value *, 3 >& ranges,
-                                     llvm::SetVector< llvm::Value * > &inputs);
-  llvm::Value *EmitScoutQueueBlock(llvm::Value *genericBlk, size_t numDimensions, size_t numInputs);
+                           CGBlockInfo &blockInfo,
+                           const llvm::SmallVector< llvm::Value *, 3 >& ranges,
+                           llvm::SetVector< llvm::Value * > &inputs);
+  
+  llvm::Value *EmitScoutQueueBlock(llvm::Value *genericBlk,
+                                   size_t numDimensions,
+                                   size_t numInputs);
+
+  // SC_TODO -- Need to make sure some of the member functions
+  // below are not also for scout... 
+  // ===========================================================================
   
   llvm::Value *EmitBlockLiteral(const BlockExpr *);
   
@@ -2174,8 +2182,7 @@ public:
   void EmitDoStmt(const DoStmt &S);
 
   // ===== Scout ==============================================================
-  // Scout:
-
+  // 
   llvm::Value *GetMeshBaseAddr(const ForAllStmt &S);
   void GetMeshDimValues(const ForAllStmt &S,
                         llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
@@ -2190,7 +2197,6 @@ public:
   void EmitForAllArrayStmt(const ForAllArrayStmt &S);
   void EmitRenderAllStmt(const RenderAllStmt &S);
   void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
-
 
   void insertMeshDump(llvm::Value* baseAddr);
   

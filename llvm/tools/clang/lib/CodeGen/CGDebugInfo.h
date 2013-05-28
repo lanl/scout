@@ -99,9 +99,7 @@ class CGDebugInfo {
   llvm::DIType CreateType(const BlockPointerType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const FunctionType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const RecordType *Ty);
-  // scout - Mesh
-  llvm::DIType CreateType(const MeshType *Ty);
-
+  
   llvm::DIType CreateLimitedType(const RecordType *Ty);
   llvm::DIType CreateType(const ObjCInterfaceType *Ty, llvm::DIFile F);
   llvm::DIType CreateType(const ObjCObjectType *Ty, llvm::DIFile F);
@@ -132,6 +130,10 @@ class CGDebugInfo {
   llvm::DISubprogram CreateCXXMemberFunction(const CXXMethodDecl *Method,
                                              llvm::DIFile F,
                                              llvm::DIType RecordTy);
+
+  // ===== Scout ===============================================================
+  llvm::DIType CreateType(const MeshType *Ty);
+  // ===========================================================================
   
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl,
                                  llvm::DIFile F,
