@@ -110,38 +110,26 @@ namespace {
 
     /// SelectCC - Select a comparison of the specified values with the
     /// specified condition code, returning the CR# of the expression.
-    SDValue SelectCC(SDValue LHS, SDValue RHS, ISD::CondCode CC, DebugLoc dl);
+    SDValue SelectCC(SDValue LHS, SDValue RHS, ISD::CondCode CC, SDLoc dl);
 
     /// SelectAddrImm - Returns true if the address N can be represented by
     /// a base register plus a signed 16-bit displacement [r+imm].
     bool SelectAddrImm(SDValue N, SDValue &Disp,
                        SDValue &Base) {
-      return PPCLowering.SelectAddressRegImm(N, Disp, Base, *CurDAG);
+      return PPCLowering.SelectAddressRegImm(N, Disp, Base, *CurDAG, false);
     }
 
     /// SelectAddrImmOffs - Return true if the operand is valid for a preinc
-    /// immediate field.  Because preinc imms have already been validated, just
-    /// accept it.
+    /// immediate field.  Note that the operand at this point is already the
+    /// result of a prior SelectAddressRegImm call.
     bool SelectAddrImmOffs(SDValue N, SDValue &Out) const {
-      if (isa<ConstantSDNode>(N) || N.getOpcode() == PPCISD::Lo ||
+      if (N.getOpcode() == ISD::TargetConstant ||
           N.getOpcode() == ISD::TargetGlobalAddress) {
         Out = N;
         return true;
       }
 
       return false;
-    }
-
-    /// SelectAddrIdxOffs - Return true if the operand is valid for a preinc
-    /// index field.  Because preinc imms have already been validated, just
-    /// accept it.
-    bool SelectAddrIdxOffs(SDValue N, SDValue &Out) const {
-      if (isa<ConstantSDNode>(N) || N.getOpcode() == PPCISD::Lo ||
-          N.getOpcode() == ISD::TargetGlobalAddress)
-        return false;
-
-      Out = N;
-      return true;
     }
 
     /// SelectAddrIdx - Given the specified addressed, check to see if it can be
@@ -157,11 +145,17 @@ namespace {
       return PPCLowering.SelectAddressRegRegOnly(N, Base, Index, *CurDAG);
     }
 
-    /// SelectAddrImmShift - Returns true if the address N can be represented by
-    /// a base register plus a signed 14-bit displacement [r+imm*4].  Suitable
-    /// for use by STD and friends.
-    bool SelectAddrImmShift(SDValue N, SDValue &Disp, SDValue &Base) {
-      return PPCLowering.SelectAddressRegImmShift(N, Disp, Base, *CurDAG);
+    /// SelectAddrImmX4 - Returns true if the address N can be represented by
+    /// a base register plus a signed 16-bit displacement that is a multiple of 4.
+    /// Suitable for use by STD and friends.
+    bool SelectAddrImmX4(SDValue N, SDValue &Disp, SDValue &Base) {
+      return PPCLowering.SelectAddressRegImm(N, Disp, Base, *CurDAG, true);
+    }
+
+    // Select an address into a single register.
+    bool SelectAddr(SDValue N, SDValue &Base) {
+      Base = N;
+      return true;
     }
 
     /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
@@ -338,17 +332,17 @@ static bool isOpcWithIntImmediate(SDNode *N, unsigned Opc, unsigned& Imm) {
 bool PPCDAGToDAGISel::isRunOfOnes(unsigned Val, unsigned &MB, unsigned &ME) {
   if (isShiftedMask_32(Val)) {
     // look for the first non-zero bit
-    MB = CountLeadingZeros_32(Val);
+    MB = countLeadingZeros(Val);
     // look for the first zero bit after the run of ones
-    ME = CountLeadingZeros_32((Val - 1) ^ Val);
+    ME = countLeadingZeros((Val - 1) ^ Val);
     return true;
   } else {
     Val = ~Val; // invert mask
     if (isShiftedMask_32(Val)) {
       // effectively look for the first zero bit
-      ME = CountLeadingZeros_32(Val) - 1;
+      ME = countLeadingZeros(Val) - 1;
       // effectively look for the first one bit after the run of zeros
-      MB = CountLeadingZeros_32((Val - 1) ^ Val) + 1;
+      MB = countLeadingZeros((Val - 1) ^ Val) + 1;
       return true;
     }
   }
@@ -403,7 +397,7 @@ bool PPCDAGToDAGISel::isRotateAndMask(SDNode *N, unsigned Mask,
 SDNode *PPCDAGToDAGISel::SelectBitfieldInsert(SDNode *N) {
   SDValue Op0 = N->getOperand(0);
   SDValue Op1 = N->getOperand(1);
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
 
   APInt LKZ, LKO, RKZ, RKO;
   CurDAG->ComputeMaskedBits(Op0, LKZ, LKO);
@@ -463,7 +457,7 @@ SDNode *PPCDAGToDAGISel::SelectBitfieldInsert(SDNode *N) {
       SH &= 31;
       SDValue Ops[] = { Op0, Op1, getI32Imm(SH), getI32Imm(MB),
                           getI32Imm(ME) };
-      return CurDAG->getMachineNode(PPC::RLWIMI, dl, MVT::i32, Ops, 5);
+      return CurDAG->getMachineNode(PPC::RLWIMI, dl, MVT::i32, Ops);
     }
   }
   return 0;
@@ -472,7 +466,7 @@ SDNode *PPCDAGToDAGISel::SelectBitfieldInsert(SDNode *N) {
 /// SelectCC - Select a comparison of the specified values with the specified
 /// condition code, returning the CR# of the expression.
 SDValue PPCDAGToDAGISel::SelectCC(SDValue LHS, SDValue RHS,
-                                    ISD::CondCode CC, DebugLoc dl) {
+                                    ISD::CondCode CC, SDLoc dl) {
   // Always select the LHS.
   unsigned Opc;
 
@@ -716,7 +710,7 @@ static unsigned int getVCmpEQInst(MVT::SimpleValueType VecVT) {
 
 
 SDNode *PPCDAGToDAGISel::SelectSETCC(SDNode *N) {
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
   unsigned Imm;
   ISD::CondCode CC = cast<CondCodeSDNode>(N->getOperand(2))->get();
   EVT PtrVT = CurDAG->getTargetLoweringInfo().getPointerTy();
@@ -786,7 +780,7 @@ SDNode *PPCDAGToDAGISel::SelectSETCC(SDNode *N) {
       }
       case ISD::SETGT: {
         SDValue Ops[] = { Op, getI32Imm(1), getI32Imm(31), getI32Imm(31) };
-        Op = SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops, 4),
+        Op = SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops),
                      0);
         return CurDAG->SelectNodeTo(N, PPC::XORI, MVT::i32, Op,
                                     getI32Imm(1));
@@ -879,7 +873,7 @@ SDNode *PPCDAGToDAGISel::SelectSETCC(SDNode *N) {
 
   // Get the specified bit.
   SDValue Tmp =
-    SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops, 4), 0);
+    SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops), 0);
   if (Inv) {
     assert(OtherCondIdx == -1 && "Can't have split plus negation");
     return CurDAG->SelectNodeTo(N, PPC::XORI, MVT::i32, Tmp, getI32Imm(1));
@@ -891,7 +885,7 @@ SDNode *PPCDAGToDAGISel::SelectSETCC(SDNode *N) {
   // Get the other bit of the comparison.
   Ops[1] = getI32Imm((32-(3-OtherCondIdx)) & 31);
   SDValue OtherCond =
-    SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops, 4), 0);
+    SDValue(CurDAG->getMachineNode(PPC::RLWINM, dl, MVT::i32, Ops), 0);
 
   return CurDAG->SelectNodeTo(N, PPC::OR, MVT::i32, Tmp, OtherCond);
 }
@@ -900,7 +894,7 @@ SDNode *PPCDAGToDAGISel::SelectSETCC(SDNode *N) {
 // Select - Convert the specified operand from a target-independent to a
 // target-specific node if it hasn't already been changed.
 SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
-  DebugLoc dl = N->getDebugLoc();
+  SDLoc dl(N);
   if (N->isMachineOpcode())
     return NULL;   // Already selected.
 
@@ -918,7 +912,7 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
 
       // If it can't be represented as a 32 bit value.
       if (!isInt<32>(Imm)) {
-        Shift = CountTrailingZeros_64(Imm);
+        Shift = countTrailingZeros<uint64_t>(Imm);
         int64_t ImmSh = static_cast<uint64_t>(Imm) >> Shift;
 
         // If the shifted value fits 32 bits.
@@ -1050,7 +1044,7 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
       break;
 
     SDValue Offset = LD->getOffset();
-    if (isa<ConstantSDNode>(Offset) ||
+    if (Offset.getOpcode() == ISD::TargetConstant ||
         Offset.getOpcode() == ISD::TargetGlobalAddress) {
 
       unsigned Opcode;
@@ -1085,7 +1079,7 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
       SDValue Ops[] = { Offset, Base, Chain };
       return CurDAG->getMachineNode(Opcode, dl, LD->getValueType(0),
                                     PPCLowering.getPointerTy(),
-                                    MVT::Other, Ops, 3);
+                                    MVT::Other, Ops);
     } else {
       unsigned Opcode;
       bool isSExt = LD->getExtensionType() == ISD::SEXTLOAD;
@@ -1117,10 +1111,10 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
 
       SDValue Chain = LD->getChain();
       SDValue Base = LD->getBasePtr();
-      SDValue Ops[] = { Offset, Base, Chain };
+      SDValue Ops[] = { Base, Offset, Chain };
       return CurDAG->getMachineNode(Opcode, dl, LD->getValueType(0),
                                     PPCLowering.getPointerTy(),
-                                    MVT::Other, Ops, 3);
+                                    MVT::Other, Ops);
     }
   }
 
@@ -1169,7 +1163,7 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
         SDValue Ops[] = { N->getOperand(0).getOperand(0),
                             N->getOperand(0).getOperand(1),
                             getI32Imm(0), getI32Imm(MB),getI32Imm(ME) };
-        return CurDAG->getMachineNode(PPC::RLWIMI, dl, MVT::i32, Ops, 5);
+        return CurDAG->getMachineNode(PPC::RLWIMI, dl, MVT::i32, Ops);
       }
     }
 
@@ -1247,6 +1241,15 @@ SDNode *PPCDAGToDAGISel::Select(SDNode *N) {
     SDValue Ops[] = { CCReg, N->getOperand(2), N->getOperand(3),
                         getI32Imm(BROpc) };
     return CurDAG->SelectNodeTo(N, SelectCCOp, N->getValueType(0), Ops, 4);
+  }
+  case PPCISD::BDNZ:
+  case PPCISD::BDZ: {
+    bool IsPPC64 = PPCSubTarget.isPPC64();
+    SDValue Ops[] = { N->getOperand(1), N->getOperand(0) };
+    return CurDAG->SelectNodeTo(N, N->getOpcode() == PPCISD::BDNZ ?
+                                   (IsPPC64 ? PPC::BDNZ8 : PPC::BDNZ) :
+                                   (IsPPC64 ? PPC::BDZ8 : PPC::BDZ),
+                                MVT::Other, Ops, 2);
   }
   case PPCISD::COND_BRANCH: {
     // Op #0 is the Chain.
@@ -1483,8 +1486,7 @@ void PPCDAGToDAGISel::PostprocessISelDAG() {
     default: continue;
 
     case PPC::ADDI8:
-    case PPC::ADDI8L:
-    case PPC::ADDIL:
+    case PPC::ADDI:
       // In some cases (such as TLS) the relocation information
       // is already in place on the operand, so copying the operand
       // is sufficient.
@@ -1526,7 +1528,7 @@ void PPCDAGToDAGISel::PostprocessISelDAG() {
     // immediate operand, add it now.
     if (ReplaceFlags) {
       if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(ImmOpnd)) {
-        DebugLoc dl = GA->getDebugLoc();
+        SDLoc dl(GA);
         const GlobalValue *GV = GA->getGlobal();
         ImmOpnd = CurDAG->getTargetGlobalAddress(GV, dl, MVT::i64, 0, Flags);
       } else if (ConstantPoolSDNode *CP =

@@ -1,5 +1,4 @@
-
-//===-- Mips16RegisterInfo.cpp - MIPS16 Register Information -== ----------===//
+//===-- Mips16RegisterInfo.cpp - MIPS16 Register Information --------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -48,11 +47,11 @@ Mips16RegisterInfo::Mips16RegisterInfo(const MipsSubtarget &ST,
 
 bool Mips16RegisterInfo::requiresRegisterScavenging
   (const MachineFunction &MF) const {
-  return true;
+  return false;
 }
 bool Mips16RegisterInfo::requiresFrameIndexScavenging
   (const MachineFunction &MF) const {
-  return true;
+  return false;
 }
 
 bool Mips16RegisterInfo::useFPForScavengingIndex
@@ -70,6 +69,12 @@ bool Mips16RegisterInfo::saveScavengerRegister
   TII.copyPhysReg(MBB, I, DL, Mips::T0, Reg, true);
   TII.copyPhysReg(MBB, UseMI, DL, Reg, Mips::T0, true);
   return true;
+}
+
+const TargetRegisterClass *
+Mips16RegisterInfo::intRegClass(unsigned Size) const {
+  assert(Size == 4);
+  return &Mips::CPU16RegsRegClass;
 }
 
 void Mips16RegisterInfo::eliminateFI(MachineBasicBlock::iterator II,

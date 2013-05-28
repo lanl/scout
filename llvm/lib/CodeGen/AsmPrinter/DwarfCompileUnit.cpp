@@ -32,11 +32,12 @@
 using namespace llvm;
 
 /// CompileUnit - Compile unit constructor.
-CompileUnit::CompileUnit(unsigned UID, unsigned L, DIE *D, AsmPrinter *A,
-                         DwarfDebug *DW, DwarfUnits *DWU)
+CompileUnit::CompileUnit(unsigned UID, unsigned L, DIE *D, const MDNode *N,
+			 AsmPrinter *A, DwarfDebug *DW, DwarfUnits *DWU)
   : UniqueID(UID), Language(L), CUDie(D), Asm(A), DD(DW), DU(DWU),
-    IndexTyDie(0) {
+    IndexTyDie(0), DebugInfoOffset(0) {
   DIEIntegerOne = new (DIEValueAllocator) DIEInteger(1);
+  insertDIE(N, D);
 }
 
 /// ~CompileUnit - Destructor for compile unit.
@@ -241,7 +242,8 @@ void CompileUnit::addSourceLine(DIE *Die, DIVariable V) {
   if (Line == 0)
     return;
   unsigned FileID = DD->getOrCreateSourceID(V.getContext().getFilename(),
-                                            V.getContext().getDirectory());
+                                            V.getContext().getDirectory(),
+                                            getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -257,7 +259,8 @@ void CompileUnit::addSourceLine(DIE *Die, DIGlobalVariable G) {
   unsigned Line = G.getLineNumber();
   if (Line == 0)
     return;
-  unsigned FileID = DD->getOrCreateSourceID(G.getFilename(), G.getDirectory());
+  unsigned FileID = DD->getOrCreateSourceID(G.getFilename(), G.getDirectory(),
+                                            getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -276,7 +279,7 @@ void CompileUnit::addSourceLine(DIE *Die, DISubprogram SP) {
     return;
 
   unsigned FileID = DD->getOrCreateSourceID(SP.getFilename(),
-                                            SP.getDirectory());
+                                            SP.getDirectory(), getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -293,7 +296,7 @@ void CompileUnit::addSourceLine(DIE *Die, DIType Ty) {
   if (Line == 0)
     return;
   unsigned FileID = DD->getOrCreateSourceID(Ty.getFilename(),
-                                            Ty.getDirectory());
+                                            Ty.getDirectory(), getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -311,7 +314,7 @@ void CompileUnit::addSourceLine(DIE *Die, DIObjCProperty Ty) {
     return;
   DIFile File = Ty.getFile();
   unsigned FileID = DD->getOrCreateSourceID(File.getFilename(),
-                                            File.getDirectory());
+                                            File.getDirectory(), getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -329,7 +332,8 @@ void CompileUnit::addSourceLine(DIE *Die, DINameSpace NS) {
     return;
   StringRef FN = NS.getFilename();
 
-  unsigned FileID = DD->getOrCreateSourceID(FN, NS.getDirectory());
+  unsigned FileID = DD->getOrCreateSourceID(FN, NS.getDirectory(),
+                                            getUniqueID());
   assert(FileID && "Invalid file id");
   addUInt(Die, dwarf::DW_AT_decl_file, 0, FileID);
   addUInt(Die, dwarf::DW_AT_decl_line, 0, Line);
@@ -584,6 +588,9 @@ static bool isTypeSigned(DIType Ty, int *SizeInBits) {
 /// addConstantValue - Add constant value entry in variable DIE.
 bool CompileUnit::addConstantValue(DIE *Die, const MachineOperand &MO,
                                    DIType Ty) {
+  // FIXME: This is a bit conservative/simple - it emits negative values at
+  // their maximum bit width which is a bit unfortunate (& doesn't prefer
+  // udata/sdata over dataN as suggested by the DWARF spec)
   assert(MO.isImm() && "Invalid machine operand!");
   DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
   int SizeInBits = -1;
@@ -682,7 +689,7 @@ bool CompileUnit::addConstantValue(DIE *Die, const APInt &Val,
   return true;
 }
 
-/// addTemplateParams - Add template parameters in buffer.
+/// addTemplateParams - Add template parameters into buffer.
 void CompileUnit::addTemplateParams(DIE &Buffer, DIArray TParams) {
   // Add template parameters.
   for (unsigned i = 0, e = TParams.getNumElements(); i != e; ++i) {
@@ -704,7 +711,7 @@ DIE *CompileUnit::getOrCreateContextDIE(DIDescriptor Context) {
     return getOrCreateNameSpace(DINameSpace(Context));
   else if (Context.isSubprogram())
     return getOrCreateSubprogramDIE(DISubprogram(Context));
-  else 
+  else
     return getDIE(Context);
 }
 
@@ -1091,8 +1098,21 @@ CompileUnit::getOrCreateTemplateValueParameterDIE(DITemplateValueParameter TPV){
   addType(ParamDIE, TPV.getType());
   if (!TPV.getName().empty())
     addString(ParamDIE, dwarf::DW_AT_name, TPV.getName());
-  addUInt(ParamDIE, dwarf::DW_AT_const_value, dwarf::DW_FORM_udata,
-          TPV.getValue());
+  if (Value *Val = TPV.getValue()) {
+    if (ConstantInt *CI = dyn_cast<ConstantInt>(Val))
+      addConstantValue(ParamDIE, CI, TPV.getType().isUnsignedDIType());
+    else if (GlobalValue *GV = dyn_cast<GlobalValue>(Val)) {
+      // For declaration non-type template parameters (such as global values and
+      // functions)
+      DIEBlock *Block = new (DIEValueAllocator) DIEBlock();
+      addOpAddress(Block, Asm->Mang->getSymbol(GV));
+      // Emit DW_OP_stack_value to use the address as the immediate value of the
+      // parameter, rather than a pointer to it.
+      addUInt(Block, 0, dwarf::DW_FORM_data1, dwarf::DW_OP_stack_value);
+      addBlock(ParamDIE, dwarf::DW_AT_location, 0, Block);
+    }
+  }
+
   return ParamDIE;
 }
 
@@ -1188,13 +1208,11 @@ DIE *CompileUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
 
   // Add Return Type.
   DICompositeType SPTy = SP.getType();
-  DIArray Args = SPTy.getTypeArray();
-  unsigned SPTag = SPTy.getTag();
+  assert(SPTy.getTag() == dwarf::DW_TAG_subroutine_type &&
+         "the type of a subprogram should be a subroutine");
 
-  if (Args.getNumElements() == 0 || SPTag != dwarf::DW_TAG_subroutine_type)
-    addType(SPDie, SPTy);
-  else
-    addType(SPDie, DIType(Args.getElement(0)));
+  DIArray Args = SPTy.getTypeArray();
+  addType(SPDie, DIType(Args.getElement(0)));
 
   unsigned VK = SP.getVirtuality();
   if (VK) {
@@ -1212,19 +1230,14 @@ DIE *CompileUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
 
     // Add arguments. Do not add arguments for subprogram definition. They will
     // be handled while processing variables.
-    DICompositeType SPTy = SP.getType();
-    DIArray Args = SPTy.getTypeArray();
-    unsigned SPTag = SPTy.getTag();
-
-    if (SPTag == dwarf::DW_TAG_subroutine_type)
-      for (unsigned i = 1, N =  Args.getNumElements(); i < N; ++i) {
-        DIE *Arg = new DIE(dwarf::DW_TAG_formal_parameter);
-        DIType ATy = DIType(Args.getElement(i));
-        addType(Arg, ATy);
-        if (ATy.isArtificial())
-          addFlag(Arg, dwarf::DW_AT_artificial);
-        SPDie->addChild(Arg);
-      }
+    for (unsigned i = 1, N =  Args.getNumElements(); i < N; ++i) {
+      DIE *Arg = new DIE(dwarf::DW_TAG_formal_parameter);
+      DIType ATy = DIType(Args.getElement(i));
+      addType(Arg, ATy);
+      if (ATy.isArtificial())
+        addFlag(Arg, dwarf::DW_AT_artificial);
+      SPDie->addChild(Arg);
+    }
   }
 
   if (SP.isArtificial())
@@ -1363,7 +1376,7 @@ void CompileUnit::createGlobalVariableDIE(const MDNode *N) {
     }
   } else if (const ConstantInt *CI =
              dyn_cast_or_null<ConstantInt>(GV.getConstant())) {
-    // AT_const_value was added when the static memeber was created. To avoid
+    // AT_const_value was added when the static member was created. To avoid
     // emitting AT_const_value multiple times, we only add AT_const_value when
     // it is not a static member.
     if (!IsStaticMember)
@@ -1491,9 +1504,14 @@ DIE *CompileUnit::constructVariableDIE(DbgVariable *DV, bool isScopeAbstract) {
   DIE *VariableDie = new DIE(Tag);
   DbgVariable *AbsVar = DV->getAbstractVariable();
   DIE *AbsDIE = AbsVar ? AbsVar->getDIE() : NULL;
-  if (AbsDIE)
+  if (AbsDIE) {
+    bool InSameCU = AbsDIE->getCompileUnit() == getCUDie();
     addDIEEntry(VariableDie, dwarf::DW_AT_abstract_origin,
-                            dwarf::DW_FORM_ref4, AbsDIE);
+                InSameCU ? dwarf::DW_FORM_ref4 : dwarf::DW_FORM_ref_addr,
+                AbsDIE);
+    if (!InSameCU)
+      DD->setUseRefAddr(true);
+  }
   else {
     addString(VariableDie, dwarf::DW_AT_name, Name);
     addSourceLine(VariableDie, DV->getVariable());
@@ -1669,33 +1687,6 @@ DIE *CompileUnit::createMemberDIE(DIDerivedType DT) {
   if (DT.isArtificial())
     addFlag(MemberDie, dwarf::DW_AT_artificial);
 
-  // This is only for backward compatibility.
-  StringRef PropertyName = DT.getObjCPropertyName();
-  if (!PropertyName.empty()) {
-    addString(MemberDie, dwarf::DW_AT_APPLE_property_name, PropertyName);
-    StringRef GetterName = DT.getObjCPropertyGetterName();
-    if (!GetterName.empty())
-      addString(MemberDie, dwarf::DW_AT_APPLE_property_getter, GetterName);
-    StringRef SetterName = DT.getObjCPropertySetterName();
-    if (!SetterName.empty())
-      addString(MemberDie, dwarf::DW_AT_APPLE_property_setter, SetterName);
-    unsigned PropertyAttributes = 0;
-    if (DT.isReadOnlyObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_readonly;
-    if (DT.isReadWriteObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_readwrite;
-    if (DT.isAssignObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_assign;
-    if (DT.isRetainObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_retain;
-    if (DT.isCopyObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_copy;
-    if (DT.isNonAtomicObjCProperty())
-      PropertyAttributes |= dwarf::DW_APPLE_PROPERTY_nonatomic;
-    if (PropertyAttributes)
-      addUInt(MemberDie, dwarf::DW_AT_APPLE_property_attribute, 0,
-              PropertyAttributes);
-  }
   return MemberDie;
 }
 

@@ -99,19 +99,15 @@ public:
   bool isAllocatable() const { return Allocatable; }
 };
 
-/// MCRegisterDesc - This record contains all of the information known about
-/// a particular register.  The Overlaps field contains a pointer to a zero
-/// terminated array of registers that this register aliases, starting with
-/// itself. This is needed for architectures like X86 which have AL alias AX
-/// alias EAX. The SubRegs field is a zero terminated array of registers that
-/// are sub-registers of the specific register, e.g. AL, AH are sub-registers of
-/// AX. The SuperRegs field is a zero terminated array of registers that are
-/// super-registers of the specific register, e.g. RAX, EAX, are super-registers
-/// of AX.
+/// MCRegisterDesc - This record contains information about a particular
+/// register.  The SubRegs field is a zero terminated array of registers that
+/// are sub-registers of the specific register, e.g. AL, AH are sub-registers
+/// of AX. The SuperRegs field is a zero terminated array of registers that are
+/// super-registers of the specific register, e.g. RAX, EAX, are
+/// super-registers of AX.
 ///
 struct MCRegisterDesc {
   uint32_t Name;      // Printable name for the reg (for debugging)
-  uint32_t Overlaps;  // Overlapping registers, described above
   uint32_t SubRegs;   // Sub-register set, described above
   uint32_t SuperRegs; // Super-register set, described above
 
@@ -226,7 +222,6 @@ public:
   // internal list pointers.
   friend class MCSubRegIterator;
   friend class MCSuperRegIterator;
-  friend class MCRegAliasIterator;
   friend class MCRegUnitIterator;
   friend class MCRegUnitRootIterator;
 
@@ -421,30 +416,26 @@ public:
 // aliasing registers. Use these iterator classes to traverse the lists.
 
 /// MCSubRegIterator enumerates all sub-registers of Reg.
+/// If IncludeSelf is set, Reg itself is included in the list.
 class MCSubRegIterator : public MCRegisterInfo::DiffListIterator {
 public:
-  MCSubRegIterator(unsigned Reg, const MCRegisterInfo *MCRI) {
+  MCSubRegIterator(unsigned Reg, const MCRegisterInfo *MCRI,
+                     bool IncludeSelf = false) {
     init(Reg, MCRI->DiffLists + MCRI->get(Reg).SubRegs);
-    ++*this;
+    // Initially, the iterator points to Reg itself.
+    if (!IncludeSelf)
+      ++*this;
   }
 };
 
 /// MCSuperRegIterator enumerates all super-registers of Reg.
+/// If IncludeSelf is set, Reg itself is included in the list.
 class MCSuperRegIterator : public MCRegisterInfo::DiffListIterator {
 public:
-  MCSuperRegIterator(unsigned Reg, const MCRegisterInfo *MCRI) {
+  MCSuperRegIterator() {}
+  MCSuperRegIterator(unsigned Reg, const MCRegisterInfo *MCRI,
+                     bool IncludeSelf = false) {
     init(Reg, MCRI->DiffLists + MCRI->get(Reg).SuperRegs);
-    ++*this;
-  }
-};
-
-/// MCRegAliasIterator enumerates all registers aliasing Reg.
-/// If IncludeSelf is set, Reg itself is included in the list.
-class MCRegAliasIterator : public MCRegisterInfo::DiffListIterator {
-public:
-  MCRegAliasIterator(unsigned Reg, const MCRegisterInfo *MCRI,
-                     bool IncludeSelf) {
-    init(Reg, MCRI->DiffLists + MCRI->get(Reg).Overlaps);
     // Initially, the iterator points to Reg itself.
     if (!IncludeSelf)
       ++*this;
@@ -478,6 +469,7 @@ class MCRegUnitIterator : public MCRegisterInfo::DiffListIterator {
 public:
   /// MCRegUnitIterator - Create an iterator that traverses the register units
   /// in Reg.
+  MCRegUnitIterator() {}
   MCRegUnitIterator(unsigned Reg, const MCRegisterInfo *MCRI) {
     assert(Reg && "Null register has no regunits");
     // Decode the RegUnits MCRegisterDesc field.
@@ -502,9 +494,7 @@ public:
 // super-registers. All registers aliasing Unit can be visited like this:
 //
 //   for (MCRegUnitRootIterator RI(Unit, MCRI); RI.isValid(); ++RI) {
-//     unsigned Root = *RI;
-//     visit(Root);
-//     for (MCSuperRegIterator SI(Root, MCRI); SI.isValid(); ++SI)
+//     for (MCSuperRegIterator SI(*RI, MCRI, true); SI.isValid(); ++SI)
 //       visit(*SI);
 //    }
 
@@ -513,6 +503,7 @@ class MCRegUnitRootIterator {
   uint16_t Reg0;
   uint16_t Reg1;
 public:
+  MCRegUnitRootIterator() : Reg0(0), Reg1(0) {}
   MCRegUnitRootIterator(unsigned RegUnit, const MCRegisterInfo *MCRI) {
     assert(RegUnit < MCRI->getNumRegUnits() && "Invalid register unit");
     Reg0 = MCRI->RegUnitRoots[RegUnit][0];
@@ -534,6 +525,68 @@ public:
     assert(isValid() && "Cannot move off the end of the list.");
     Reg0 = Reg1;
     Reg1 = 0;
+  }
+};
+
+/// MCRegAliasIterator enumerates all registers aliasing Reg.  If IncludeSelf is
+/// set, Reg itself is included in the list.  This iterator does not guarantee
+/// any ordering or that entries are unique.
+class MCRegAliasIterator {
+private:
+  unsigned Reg;
+  const MCRegisterInfo *MCRI;
+  bool IncludeSelf;
+  
+  MCRegUnitIterator RI;
+  MCRegUnitRootIterator RRI;
+  MCSuperRegIterator SI;
+public:
+  MCRegAliasIterator(unsigned Reg, const MCRegisterInfo *MCRI,
+                     bool IncludeSelf)
+    : Reg(Reg), MCRI(MCRI), IncludeSelf(IncludeSelf) {
+
+    // Initialize the iterators.
+    for (RI = MCRegUnitIterator(Reg, MCRI); RI.isValid(); ++RI) {
+      for (RRI = MCRegUnitRootIterator(*RI, MCRI); RRI.isValid(); ++RRI) {
+        for (SI = MCSuperRegIterator(*RRI, MCRI, true); SI.isValid(); ++SI) {
+          if (!(!IncludeSelf && Reg == *SI))
+            return;
+        }
+      }
+    }
+  }
+
+  bool isValid() const {
+    return RI.isValid();
+  }
+  
+  unsigned operator*() const {
+    assert (SI.isValid() && "Cannot dereference an invalid iterator.");
+    return *SI;
+  }
+
+  void advance() {
+    // Assuming SI is valid.
+    ++SI;
+    if (SI.isValid()) return;
+
+    ++RRI;
+    if (RRI.isValid()) {
+      SI = MCSuperRegIterator(*RRI, MCRI, true);
+      return;
+    }
+
+    ++RI;
+    if (RI.isValid()) {
+      RRI = MCRegUnitRootIterator(*RI, MCRI);
+      SI = MCSuperRegIterator(*RRI, MCRI, true);
+    }
+  }
+
+  void operator++() {
+    assert(isValid() && "Cannot move off the end of the list.");
+    do advance();
+    while (!IncludeSelf && isValid() && *SI == Reg);
   }
 };
 

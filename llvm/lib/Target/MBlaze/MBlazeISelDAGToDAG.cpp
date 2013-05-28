@@ -188,7 +188,7 @@ SDNode *MBlazeDAGToDAGISel::getGlobalBaseReg() {
 /// expanded, promoted and normal instructions
 SDNode* MBlazeDAGToDAGISel::Select(SDNode *Node) {
   unsigned Opcode = Node->getOpcode();
-  DebugLoc dl = Node->getDebugLoc();
+  SDLoc dl(Node);
 
   // If we have a custom node, we already have selected!
   if (Node->isMachineOpcode())
@@ -237,7 +237,7 @@ SDNode* MBlazeDAGToDAGISel::Select(SDNode *Node) {
           // Use load to get GOT target
           SDValue Ops[] = { Callee, GPReg, Chain };
           SDValue Load = SDValue(CurDAG->getMachineNode(MBlaze::LW, dl,
-                                 MVT::i32, MVT::Other, Ops, 3), 0);
+                                 MVT::i32, MVT::Other, Ops), 0);
           Chain = Load.getValue(1);
 
           // Call target must be on T9

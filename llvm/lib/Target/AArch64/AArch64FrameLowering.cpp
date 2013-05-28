@@ -54,7 +54,7 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF) const {
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
   MachineModuleInfo &MMI = MF.getMMI();
-  std::vector<MachineMove> &Moves = MMI.getFrameMoves();
+  const MCRegisterInfo &MRI = MMI.getContext().getRegisterInfo();
   bool NeedsFrameMoves = MMI.hasDebugInfo()
     || MF.getFunction()->needsUnwindTableEntry();
 
@@ -97,8 +97,9 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF) const {
       .addSym(SPLabel);
 
     MachineLocation Dst(MachineLocation::VirtualFP);
-    MachineLocation Src(AArch64::XSP, NumInitialBytes);
-    Moves.push_back(MachineMove(SPLabel, Dst, Src));
+    unsigned Reg = MRI.getDwarfRegNum(AArch64::XSP, true);
+    MMI.addFrameInst(
+        MCCFIInstruction::createDefCfa(SPLabel, Reg, -NumInitialBytes));
   }
 
   // Otherwise we need to set the frame pointer and/or add a second stack
@@ -131,9 +132,9 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF) const {
         MCSymbol *FPLabel = MMI.getContext().CreateTempSymbol();
         BuildMI(MBB, MBBI, DL, TII.get(TargetOpcode::PROLOG_LABEL))
           .addSym(FPLabel);
-        MachineLocation Dst(MachineLocation::VirtualFP);
-        MachineLocation Src(AArch64::X29, -MFI->getObjectOffset(X29FrameIdx));
-        Moves.push_back(MachineMove(FPLabel, Dst, Src));
+        unsigned Reg = MRI.getDwarfRegNum(AArch64::X29, true);
+        unsigned Offset = MFI->getObjectOffset(X29FrameIdx);
+        MMI.addFrameInst(MCCFIInstruction::createDefCfa(FPLabel, Reg, Offset));
       }
 
       FPNeedsSetting = false;
@@ -164,8 +165,9 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF) const {
       .addSym(CSLabel);
 
     MachineLocation Dst(MachineLocation::VirtualFP);
-    MachineLocation Src(AArch64::XSP, NumResidualBytes + NumInitialBytes);
-    Moves.push_back(MachineMove(CSLabel, Dst, Src));
+    unsigned Reg = MRI.getDwarfRegNum(AArch64::XSP, true);
+    unsigned Offset = NumResidualBytes + NumInitialBytes;
+    MMI.addFrameInst(MCCFIInstruction::createDefCfa(CSLabel, Reg, -Offset));
   }
 
   // And any callee-saved registers (it's fine to leave them to the end here,
@@ -180,10 +182,9 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF) const {
 
     for (std::vector<CalleeSavedInfo>::const_iterator I = CSI.begin(),
            E = CSI.end(); I != E; ++I) {
-      MachineLocation Dst(MachineLocation::VirtualFP,
-                          MFI->getObjectOffset(I->getFrameIdx()));
-      MachineLocation Src(I->getReg());
-      Moves.push_back(MachineMove(CSLabel, Dst, Src));
+      unsigned Offset = MFI->getObjectOffset(I->getFrameIdx());
+      unsigned Reg = MRI.getDwarfRegNum(I->getReg(), true);
+      MMI.addFrameInst(MCCFIInstruction::createOffset(CSLabel, Reg, Offset));
     }
   }
 }
@@ -349,59 +350,6 @@ AArch64FrameLowering::resolveFrameIndexReference(MachineFunction &MF,
   return TopOfFrameOffset - FrameRegPos;
 }
 
-/// Estimate and return the size of the frame.
-static unsigned estimateStackSize(MachineFunction &MF) {
-  // FIXME: Make generic? Really consider after upstreaming.  This code is now
-  // shared between PEI, ARM *and* here.
-  const MachineFrameInfo *MFI = MF.getFrameInfo();
-  const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
-  const TargetRegisterInfo *RegInfo = MF.getTarget().getRegisterInfo();
-  unsigned MaxAlign = MFI->getMaxAlignment();
-  int Offset = 0;
-
-  // This code is very, very similar to PEI::calculateFrameObjectOffsets().
-  // It really should be refactored to share code. Until then, changes
-  // should keep in mind that there's tight coupling between the two.
-
-  for (int i = MFI->getObjectIndexBegin(); i != 0; ++i) {
-    int FixedOff = -MFI->getObjectOffset(i);
-    if (FixedOff > Offset) Offset = FixedOff;
-  }
-  for (unsigned i = 0, e = MFI->getObjectIndexEnd(); i != e; ++i) {
-    if (MFI->isDeadObjectIndex(i))
-      continue;
-    Offset += MFI->getObjectSize(i);
-    unsigned Align = MFI->getObjectAlignment(i);
-    // Adjust to alignment boundary
-    Offset = (Offset+Align-1)/Align*Align;
-
-    MaxAlign = std::max(Align, MaxAlign);
-  }
-
-  if (MFI->adjustsStack() && TFI->hasReservedCallFrame(MF))
-    Offset += MFI->getMaxCallFrameSize();
-
-  // Round up the size to a multiple of the alignment.  If the function has
-  // any calls or alloca's, align to the target's StackAlignment value to
-  // ensure that the callee's frame or the alloca data is suitably aligned;
-  // otherwise, for leaf functions, align to the TransientStackAlignment
-  // value.
-  unsigned StackAlign;
-  if (MFI->adjustsStack() || MFI->hasVarSizedObjects() ||
-      (RegInfo->needsStackRealignment(MF) && MFI->getObjectIndexEnd() != 0))
-    StackAlign = TFI->getStackAlignment();
-  else
-    StackAlign = TFI->getTransientStackAlignment();
-
-  // If the frame pointer is eliminated, all frame offsets will be relative to
-  // SP not FP. Align to MaxAlign so this works.
-  StackAlign = std::max(StackAlign, MaxAlign);
-  unsigned AlignMask = StackAlign - 1;
-  Offset = (Offset + AlignMask) & ~uint64_t(AlignMask);
-
-  return (unsigned)Offset;
-}
-
 void
 AArch64FrameLowering::processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
                                                        RegScavenger *RS) const {
@@ -420,9 +368,8 @@ AArch64FrameLowering::processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   // shoving a base register and an offset into the instruction then we may well
   // need to scavenge registers. We should either specifically add an
   // callee-save register for this purpose or allocate an extra spill slot.
-
   bool BigStack =
-    (RS && estimateStackSize(MF) >= TII.estimateRSStackLimit(MF))
+    MFI->estimateStackSize(MF) >= TII.estimateRSStackLimit(MF)
     || MFI->hasVarSizedObjects() // Access will be from X29: messes things up
     || (MFI->adjustsStack() && !hasReservedCallFrame(MF));
 
@@ -445,11 +392,13 @@ AArch64FrameLowering::processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
   if (ExtraReg != 0) {
     MF.getRegInfo().setPhysRegUsed(ExtraReg);
   } else {
+    assert(RS && "Expect register scavenger to be available");
+
     // Create a stack slot for scavenging purposes. PrologEpilogInserter
     // helpfully places it near either SP or FP for us to avoid
     // infinitely-regression during scavenging.
     const TargetRegisterClass *RC = &AArch64::GPR64RegClass;
-    RS->setScavengingFrameIndex(MFI->CreateStackObject(RC->getSize(),
+    RS->addScavengingFrameIndex(MFI->CreateStackObject(RC->getSize(),
                                                        RC->getAlignment(),
                                                        false));
   }

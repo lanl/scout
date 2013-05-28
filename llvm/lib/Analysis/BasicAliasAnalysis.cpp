@@ -142,6 +142,17 @@ static bool isObjectSize(const Value *V, uint64_t Size,
   return ObjectSize != AliasAnalysis::UnknownSize && ObjectSize == Size;
 }
 
+/// isIdentifiedFunctionLocal - Return true if V is umabigously identified
+/// at the function-level. Different IdentifiedFunctionLocals can't alias.
+/// Further, an IdentifiedFunctionLocal can not alias with any function
+/// arguments other than itself, which is not neccessarily true for
+/// IdentifiedObjects.
+static bool isIdentifiedFunctionLocal(const Value *V)
+{
+  return isa<AllocaInst>(V) || isNoAliasCall(V) || isNoAliasArgument(V);
+}
+
+
 //===----------------------------------------------------------------------===//
 // GetElementPtr Instruction Decomposition and Analysis
 //===----------------------------------------------------------------------===//
@@ -880,9 +891,13 @@ BasicAliasAnalysis::aliasGEP(const GEPOperator *GEP1, uint64_t V1Size,
   // pointers, figure out if the indexes to the GEP tell us anything about the
   // derived pointer.
   if (const GEPOperator *GEP2 = dyn_cast<GEPOperator>(V2)) {
+    // Do the base pointers alias?
+    AliasResult BaseAlias = aliasCheck(UnderlyingV1, UnknownSize, 0,
+                                       UnderlyingV2, UnknownSize, 0);
+
     // Check for geps of non-aliasing underlying pointers where the offsets are
     // identical.
-    if (V1Size == V2Size) {
+    if ((BaseAlias == MayAlias) && V1Size == V2Size) {
       // Do the base pointers alias assuming type and size.
       AliasResult PreciseBaseAlias = aliasCheck(UnderlyingV1, V1Size,
                                                 V1TBAAInfo, UnderlyingV2,
@@ -910,10 +925,6 @@ BasicAliasAnalysis::aliasGEP(const GEPOperator *GEP1, uint64_t V1Size,
         GEP1VariableIndices.clear();
       }
     }
-
-    // Do the base pointers alias?
-    AliasResult BaseAlias = aliasCheck(UnderlyingV1, UnknownSize, 0,
-                                       UnderlyingV2, UnknownSize, 0);
     
     // If we get a No or May, then return it immediately, no amount of analysis
     // will improve this situation.
@@ -1205,10 +1216,10 @@ BasicAliasAnalysis::aliasCheck(const Value *V1, uint64_t V1Size,
         (isa<Constant>(O2) && isIdentifiedObject(O1) && !isa<Constant>(O1)))
       return NoAlias;
 
-    // Arguments can't alias with local allocations or noalias calls
-    // in the same function.
-    if (((isa<Argument>(O1) && (isa<AllocaInst>(O2) || isNoAliasCall(O2))) ||
-         (isa<Argument>(O2) && (isa<AllocaInst>(O1) || isNoAliasCall(O1)))))
+    // Function arguments can't alias with things that are known to be
+    // unambigously identified at the function level.
+    if ((isa<Argument>(O1) && isIdentifiedFunctionLocal(O2)) ||
+        (isa<Argument>(O2) && isIdentifiedFunctionLocal(O1)))
       return NoAlias;
 
     // Most objects can't alias null.

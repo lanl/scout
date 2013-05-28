@@ -178,9 +178,9 @@ public:
   unsigned count() const {
     if (isSmall()) {
       uintptr_t Bits = getSmallBits();
-      if (sizeof(uintptr_t) * CHAR_BIT == 32)
+      if (NumBaseBits == 32)
         return CountPopulation_32(Bits);
-      if (sizeof(uintptr_t) * CHAR_BIT == 64)
+      if (NumBaseBits == 64)
         return CountPopulation_64(Bits);
       llvm_unreachable("Unsupported!");
     }
@@ -215,10 +215,10 @@ public:
       uintptr_t Bits = getSmallBits();
       if (Bits == 0)
         return -1;
-      if (sizeof(uintptr_t) * CHAR_BIT == 32)
-        return CountTrailingZeros_32(Bits);
-      if (sizeof(uintptr_t) * CHAR_BIT == 64)
-        return CountTrailingZeros_64(Bits);
+      if (NumBaseBits == 32)
+        return countTrailingZeros(Bits);
+      if (NumBaseBits == 64)
+        return countTrailingZeros(Bits);
       llvm_unreachable("Unsupported!");
     }
     return getPointer()->find_first();
@@ -233,10 +233,10 @@ public:
       Bits &= ~uintptr_t(0) << (Prev + 1);
       if (Bits == 0 || Prev + 1 >= getSmallSize())
         return -1;
-      if (sizeof(uintptr_t) * CHAR_BIT == 32)
-        return CountTrailingZeros_32(Bits);
-      if (sizeof(uintptr_t) * CHAR_BIT == 64)
-        return CountTrailingZeros_64(Bits);
+      if (NumBaseBits == 32)
+        return countTrailingZeros(Bits);
+      if (NumBaseBits == 64)
+        return countTrailingZeros(Bits);
       llvm_unreachable("Unsupported!");
     }
     return getPointer()->find_next(Prev);

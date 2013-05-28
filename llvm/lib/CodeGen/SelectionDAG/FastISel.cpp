@@ -63,13 +63,11 @@
 #include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
-#ifndef NDEBUG
 STATISTIC(NumFastIselSuccessIndependent, "Number of insts selected by "
           "target-independent selector");
 STATISTIC(NumFastIselSuccessTarget, "Number of insts selected by "
           "target-specific selector");
 STATISTIC(NumFastIselDead, "Number of dead insts removed on failure");
-#endif // NDEBUG
 
 /// startNewBlock - Set the current block to which generated machine
 /// instructions will be appended, and clear the local CSE map.
@@ -334,7 +332,7 @@ void FastISel::removeDeadCode(MachineBasicBlock::iterator I,
     MachineInstr *Dead = &*I;
     ++I;
     Dead->eraseFromParent();
-    DEBUG(++NumFastIselDead);
+    ++NumFastIselDead;
   }
   recomputeInsertPt();
 }
@@ -650,7 +648,7 @@ bool FastISel::SelectCall(const User *I) {
     else
       // We can't yet handle anything else here because it would require
       // generating code, thus altering codegen because of debug info.
-      DEBUG(dbgs() << "Dropping debug info for " << DI);
+      DEBUG(dbgs() << "Dropping debug info for " << *DI << "\n");
     return true;
   }
   case Intrinsic::dbg_value: {
@@ -684,7 +682,7 @@ bool FastISel::SelectCall(const User *I) {
     } else {
       // We can't yet handle anything else here because it would require
       // generating code, thus altering codegen because of debug info.
-      DEBUG(dbgs() << "Dropping debug info for " << DI);
+      DEBUG(dbgs() << "Dropping debug info for " << *DI << "\n");
     }
     return true;
   }
@@ -693,6 +691,13 @@ bool FastISel::SelectCall(const User *I) {
     unsigned long long Res = CI->isZero() ? -1ULL : 0;
     Constant *ResCI = ConstantInt::get(Call->getType(), Res);
     unsigned ResultReg = getRegForValue(ResCI);
+    if (ResultReg == 0)
+      return false;
+    UpdateValueMap(Call, ResultReg);
+    return true;
+  }
+  case Intrinsic::expect: {
+    unsigned ResultReg = getRegForValue(Call->getArgOperand(0));
     if (ResultReg == 0)
       return false;
     UpdateValueMap(Call, ResultReg);
@@ -825,7 +830,7 @@ FastISel::SelectInstruction(const Instruction *I) {
 
   // First, try doing target-independent selection.
   if (SelectOperator(I, I->getOpcode())) {
-    DEBUG(++NumFastIselSuccessIndependent);
+    ++NumFastIselSuccessIndependent;
     DL = DebugLoc();
     return true;
   }
@@ -840,7 +845,7 @@ FastISel::SelectInstruction(const Instruction *I) {
   // Next, try calling the target to attempt to handle the instruction.
   SavedInsertPt = FuncInfo.InsertPt;
   if (TargetSelectInstruction(I)) {
-    DEBUG(++NumFastIselSuccessTarget);
+    ++NumFastIselSuccessTarget;
     DL = DebugLoc();
     return true;
   }
@@ -1178,6 +1183,8 @@ unsigned FastISel::FastEmit_ri_(MVT VT, unsigned Opcode,
     IntegerType *ITy = IntegerType::get(FuncInfo.Fn->getContext(),
                                               VT.getSizeInBits());
     MaterialReg = getRegForValue(ConstantInt::get(ITy, Imm));
+    assert (MaterialReg != 0 && "Unable to materialize imm.");
+    if (MaterialReg == 0) return 0;
   }
   return FastEmit_rr(VT, VT, Opcode,
                      Op0, Op0IsKill,
@@ -1498,3 +1505,61 @@ bool FastISel::HandlePHINodesInSuccessorBlocks(const BasicBlock *LLVMBB) {
 
   return true;
 }
+
+bool FastISel::tryToFoldLoad(const LoadInst *LI, const Instruction *FoldInst) {
+  assert(LI->hasOneUse() &&
+      "tryToFoldLoad expected a LoadInst with a single use");
+  // We know that the load has a single use, but don't know what it is.  If it
+  // isn't one of the folded instructions, then we can't succeed here.  Handle
+  // this by scanning the single-use users of the load until we get to FoldInst.
+  unsigned MaxUsers = 6;  // Don't scan down huge single-use chains of instrs.
+
+  const Instruction *TheUser = LI->use_back();
+  while (TheUser != FoldInst &&   // Scan up until we find FoldInst.
+         // Stay in the right block.
+         TheUser->getParent() == FoldInst->getParent() &&
+         --MaxUsers) {  // Don't scan too far.
+    // If there are multiple or no uses of this instruction, then bail out.
+    if (!TheUser->hasOneUse())
+      return false;
+
+    TheUser = TheUser->use_back();
+  }
+
+  // If we didn't find the fold instruction, then we failed to collapse the
+  // sequence.
+  if (TheUser != FoldInst)
+    return false;
+
+  // Don't try to fold volatile loads.  Target has to deal with alignment
+  // constraints.
+  if (LI->isVolatile())
+    return false;
+
+  // Figure out which vreg this is going into.  If there is no assigned vreg yet
+  // then there actually was no reference to it.  Perhaps the load is referenced
+  // by a dead instruction.
+  unsigned LoadReg = getRegForValue(LI);
+  if (LoadReg == 0)
+    return false;
+
+  // We can't fold if this vreg has no uses or more than one use.  Multiple uses
+  // may mean that the instruction got lowered to multiple MIs, or the use of
+  // the loaded value ended up being multiple operands of the result.
+  if (!MRI.hasOneUse(LoadReg))
+    return false;
+
+  MachineRegisterInfo::reg_iterator RI = MRI.reg_begin(LoadReg);
+  MachineInstr *User = &*RI;
+
+  // Set the insertion point properly.  Folding the load can cause generation of
+  // other random instructions (like sign extends) for addressing modes; make
+  // sure they get inserted in a logical place before the new instruction.
+  FuncInfo.InsertPt = User;
+  FuncInfo.MBB = User->getParent();
+
+  // Ask the target to try folding the load.
+  return tryToFoldLoadIntoMI(User, RI.getOperandNo(), LI);
+}
+
+

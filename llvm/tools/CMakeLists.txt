@@ -43,13 +43,17 @@ add_subdirectory(llvm-mcmarkup)
 
 add_subdirectory(llvm-symbolizer)
 
+add_subdirectory(obj2yaml)
+add_subdirectory(yaml2obj)
+
 if( NOT WIN32 )
   add_subdirectory(lto)
 endif()
 
 if( LLVM_ENABLE_PIC )
   # TODO: support other systems:
-  if( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
+  if( (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD") )
     add_subdirectory(gold)
   endif()
 endif()

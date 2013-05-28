@@ -36,7 +36,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Dominators.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 
 namespace llvm {
@@ -51,7 +50,9 @@ inline void RemoveFromVector(std::vector<T*> &V, T *N) {
 class DominatorTree;
 class LoopInfo;
 class Loop;
+class MDNode;
 class PHINode;
+class raw_ostream;
 template<class N, class M> class LoopInfoBase;
 template<class N, class M> class LoopBase;
 
@@ -147,10 +148,10 @@ public:
   /// block that is outside of the current loop.
   ///
   bool isLoopExiting(const BlockT *BB) const {
-    typedef GraphTraits<BlockT*> BlockTraits;
+    typedef GraphTraits<const BlockT*> BlockTraits;
     for (typename BlockTraits::ChildIteratorType SI =
-         BlockTraits::child_begin(const_cast<BlockT*>(BB)),
-         SE = BlockTraits::child_end(const_cast<BlockT*>(BB)); SI != SE; ++SI) {
+         BlockTraits::child_begin(BB),
+         SE = BlockTraits::child_end(BB); SI != SE; ++SI) {
       if (!contains(*SI))
         return true;
     }
@@ -165,8 +166,8 @@ public:
 
     typedef GraphTraits<Inverse<BlockT*> > InvBlockTraits;
     for (typename InvBlockTraits::ChildIteratorType I =
-         InvBlockTraits::child_begin(const_cast<BlockT*>(H)),
-         E = InvBlockTraits::child_end(const_cast<BlockT*>(H)); I != E; ++I)
+         InvBlockTraits::child_begin(H),
+         E = InvBlockTraits::child_end(H); I != E; ++I)
       if (contains(*I))
         ++NumBackEdges;
 
@@ -390,6 +391,22 @@ public:
   /// implement actual concurrent execution of instructions across multiple
   /// iterations.
   bool isAnnotatedParallel() const;
+
+  /// Return the llvm.loop loop id metadata node for this loop if it is present.
+  ///
+  /// If this loop contains the same llvm.loop metadata on each branch to the
+  /// header then the node is returned. If any latch instruction does not
+  /// contain llvm.loop or or if multiple latches contain different nodes then
+  /// 0 is returned.
+  MDNode *getLoopID() const;
+  /// Set the llvm.loop loop id metadata for this loop.
+  ///
+  /// The LoopID metadata node will be added to each terminator instruction in
+  /// the loop that branches to the loop header.
+  ///
+  /// The LoopID metadata node should have one or more operands and the first
+  /// operand should should be the node itself.
+  void setLoopID(MDNode *LoopID) const;
 
   /// hasDedicatedExits - Return true if no exit block for the loop
   /// has a predecessor that is outside the loop.

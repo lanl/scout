@@ -274,6 +274,10 @@ public:
 
   /// \brief Returns the address pool.
   AddrPool *getAddrPool() { return &AddressPool; }
+
+  /// \brief for a given compile unit DIE, returns offset from beginning of
+  /// debug info.
+  unsigned getCUOffset(DIE *Die);
 };
 
 /// \brief Collects and handles dwarf debug information.
@@ -305,7 +309,9 @@ class DwarfDebug {
   // A list of all the unique abbreviations in use.
   std::vector<DIEAbbrev *> Abbreviations;
 
-  // Source id map, i.e. pair of source filename and directory,
+  // Stores the current file ID for a given compile unit.
+  DenseMap <unsigned, unsigned> FileIDCUMap;
+  // Source id map, i.e. CUID, source filename and directory,
   // separated by a zero byte, mapped to a unique id.
   StringMap<unsigned, BumpPtrAllocator&> SourceIdMap;
 
@@ -371,22 +377,12 @@ class DwarfDebug {
   // body.
   DebugLoc PrologEndLoc;
 
-  struct FunctionDebugFrameInfo {
-    unsigned Number;
-    std::vector<MachineMove> Moves;
-
-    FunctionDebugFrameInfo(unsigned Num, const std::vector<MachineMove> &M)
-      : Number(Num), Moves(M) {}
-  };
-
-  std::vector<FunctionDebugFrameInfo> DebugFrames;
-
   // Section Symbols: these are assembler temporary labels that are emitted at
   // the beginning of each supported dwarf section.  These are used to form
   // section offsets and are created by EmitSectionLabels.
   MCSymbol *DwarfInfoSectionSym, *DwarfAbbrevSectionSym;
   MCSymbol *DwarfStrSectionSym, *TextSectionSym, *DwarfDebugRangeSectionSym;
-  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym;
+  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym, *DwarfAddrSectionSym;
   MCSymbol *FunctionBeginSym, *FunctionEndSym;
   MCSymbol *DwarfAbbrevDWOSectionSym, *DwarfStrDWOSectionSym;
 
@@ -405,6 +401,9 @@ class DwarfDebug {
 
   // Whether or not we're emitting info for older versions of gdb on darwin.
   bool IsDarwinGDBCompat;
+
+  // Whether or not we use ref_addr in the generated DWARF.
+  unsigned UseRefAddr;
 
   // DWARF5 Experimental Options
   bool HasDwarfAccelTables;
@@ -426,6 +425,10 @@ class DwarfDebug {
 
   // Holder for the skeleton information.
   DwarfUnits SkeletonHolder;
+
+  typedef SmallVector<std::pair<const MDNode *, const MDNode *>, 32>
+    ImportedEntityMap;
+  ImportedEntityMap ScopesWithImportedEntities;
 
 private:
 
@@ -549,6 +552,18 @@ private:
   /// \brief Construct subprogram DIE.
   void constructSubprogramDIE(CompileUnit *TheCU, const MDNode *N);
 
+  /// \brief Construct imported_module or imported_declaration DIE.
+  void constructImportedEntityDIE(CompileUnit *TheCU, const MDNode *N);
+
+  /// \brief Construct import_module DIE.
+  void constructImportedEntityDIE(CompileUnit *TheCU, const MDNode *N,
+                                  DIE *Context);
+
+  /// \brief Construct import_module DIE.
+  void constructImportedEntityDIE(CompileUnit *TheCU,
+                                  const DIImportedEntity &Module,
+                                  DIE *Context);
+
   /// \brief Register a source line with debug info. Returns the unique
   /// label that was emitted and which provides correspondence to the
   /// source line list.
@@ -589,20 +604,15 @@ private:
   /// \brief Return Label immediately following the instruction.
   MCSymbol *getLabelAfterInsn(const MachineInstr *MI);
 
+  /// \brief Search all compile units to find the SP DIE for the given MDNode.
+  DIE *findSPDieInAllCUs(const MDNode *N);
+
 public:
   //===--------------------------------------------------------------------===//
   // Main entry points.
   //
   DwarfDebug(AsmPrinter *A, Module *M);
   ~DwarfDebug();
-
-  /// \brief Collect debug info from named mdnodes such as llvm.dbg.enum
-  /// and llvm.dbg.ty
-  void collectInfoFromNamedMDNodes(const Module *M);
-
-  /// \brief Collect debug info using DebugInfoFinder.
-  /// FIXME - Remove this when DragonEgg switches to DIBuilder.
-  bool collectLegacyDebugInfo(const Module *M);
 
   /// \brief Emit all Dwarf sections that should come prior to the
   /// content.
@@ -626,7 +636,8 @@ public:
   /// \brief Look up the source id with the given directory and source file
   /// names. If none currently exists, create a new id and insert it in the
   /// SourceIds map.
-  unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName);
+  unsigned getOrCreateSourceID(StringRef DirName, StringRef FullName,
+                               unsigned CUID);
 
   /// \brief Recursively Emits a debug information entry.
   void emitDIE(DIE *Die, std::vector<DIEAbbrev *> *Abbrevs);
@@ -634,6 +645,9 @@ public:
   /// \brief Returns whether or not to limit some of our debug
   /// output to the limitations of darwin gdb.
   bool useDarwinGDBCompat() { return IsDarwinGDBCompat; }
+
+  bool getUseRefAddr() { return UseRefAddr; }
+  void setUseRefAddr(bool RefAddr) { UseRefAddr = RefAddr; }
 
   // Experimental DWARF5 features.
 

@@ -1,4 +1,4 @@
-; RUN: llc < %s -O0 -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
+; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios | FileCheck %s --check-prefix=ARM
 ; rdar://10418009
 
 define zeroext i16 @t1(i16* nocapture %a) nounwind uwtable readonly ssp {
@@ -103,7 +103,7 @@ entry:
 ; ARM: t11
   %add.ptr = getelementptr inbounds i16* %a, i64 8
   store i16 0, i16* %add.ptr, align 2
-; ARM strh r{{[1-9]}}, [r0, #16]
+; ARM: strh r{{[1-9]}}, [r0, #16]
   ret void
 }
 

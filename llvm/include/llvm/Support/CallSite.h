@@ -28,7 +28,6 @@
 
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/IR/Attributes.h"
-#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Instructions.h"
 
@@ -79,7 +78,7 @@ public:
 
   InstrTy *getInstruction() const { return I.getPointer(); }
   InstrTy *operator->() const { return I.getPointer(); }
-  operator bool() const { return I.getPointer(); }
+  LLVM_EXPLICIT operator bool() const { return I.getPointer(); }
 
   /// getCalledValue - Return the pointer to function that is being called.
   ///

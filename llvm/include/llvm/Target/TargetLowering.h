@@ -30,7 +30,6 @@
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/Support/CallSite.h"
-#include "llvm/Support/DebugLoc.h"
 #include "llvm/Target/TargetCallingConv.h"
 #include "llvm/Target/TargetMachine.h"
 #include <climits>
@@ -135,6 +134,11 @@ public:
                               const TargetLoweringObjectFile *TLOF);
   virtual ~TargetLoweringBase();
 
+protected:
+  /// \brief Initialize all of the actions to default values.
+  void initActions();
+
+public:
   const TargetMachine &getTargetMachine() const { return TM; }
   const DataLayout *getDataLayout() const { return TD; }
   const TargetLoweringObjectFile &getObjFileLowering() const { return TLOF; }
@@ -145,7 +149,9 @@ public:
   // the pointer type from the data layout.
   // FIXME: The default needs to be removed once all the code is updated.
   virtual MVT getPointerTy(uint32_t AS = 0) const { return PointerTy; }
-  virtual MVT getShiftAmountTy(EVT LHSTy) const;
+  virtual MVT getScalarShiftAmountTy(EVT LHSTy) const;
+
+  EVT getShiftAmountTy(EVT LHSTy) const;
 
   /// isSelectExpensive - Return true if the select operation is expensive for
   /// this target.
@@ -191,7 +197,7 @@ public:
   /// the condition operand of SELECT and BRCOND nodes.  In the case of
   /// BRCOND the argument passed is MVT::Other since there are no other
   /// operands to get a type hint from.
-  virtual EVT getSetCCResultType(EVT VT) const;
+  virtual EVT getSetCCResultType(LLVMContext &Context, EVT VT) const;
 
   /// getCmpLibcallReturnType - Return the ValueType for comparison
   /// libcalls. Comparions libcalls include floating point comparion calls,
@@ -692,13 +698,6 @@ public:
     return false;
   }
 
-  /// This function returns true if the target would benefit from code placement
-  /// optimization.
-  /// @brief Determine if the target should perform code placement optimization.
-  bool shouldOptimizeCodePlacement() const {
-    return BenefitFromCodePlacementOpt;
-  }
-
   /// getOptimalMemOpType - Returns the target specific optimal type for load
   /// and store operations as a result of memset, memcpy, and memmove
   /// lowering. If DstAlign is zero that means it's safe to destination
@@ -810,13 +809,6 @@ public:
     return PrefLoopAlignment;
   }
 
-  /// getShouldFoldAtomicFences - return whether the combiner should fold
-  /// fence MEMBARRIER instructions into the atomic intrinsic instructions.
-  ///
-  bool getShouldFoldAtomicFences() const {
-    return ShouldFoldAtomicFences;
-  }
-
   /// getInsertFencesFor - return whether the DAG builder should automatically
   /// insert fences and reduce ordering for atomics.
   ///
@@ -855,6 +847,9 @@ public:
   // TargetLowering Configuration Methods - These methods should be invoked by
   // the derived class constructor to configure this object for the target.
   //
+
+  /// \brief Reset the operation actions based on target options.
+  virtual void resetOperationActions() {}
 
 protected:
   /// setBooleanContents - Specify how the target extends the result of a
@@ -954,6 +949,17 @@ protected:
     assert((unsigned)VT.SimpleTy < array_lengthof(RegClassForVT));
     AvailableRegClasses.push_back(std::make_pair(VT, RC));
     RegClassForVT[VT.SimpleTy] = RC;
+  }
+
+  /// clearRegisterClasses - Remove all register classes.
+  void clearRegisterClasses() {
+    memset(RegClassForVT, 0,MVT::LAST_VALUETYPE * sizeof(TargetRegisterClass*));
+
+    AvailableRegClasses.clear();
+  }
+
+  /// \brief Remove all operation actions.
+  void clearOperationActions() {
   }
 
   /// findRepresentativeClass - Return the largest legal super-reg register class
@@ -1085,12 +1091,6 @@ protected:
   /// argument (in log2(bytes)).
   void setMinStackArgumentAlignment(unsigned Align) {
     MinStackArgumentAlignment = Align;
-  }
-
-  /// setShouldFoldAtomicFences - Set if the target's implementation of the
-  /// atomic operation intrinsics includes locking. Default is false.
-  void setShouldFoldAtomicFences(bool fold) {
-    ShouldFoldAtomicFences = fold;
   }
 
   /// setInsertFencesForAtomic - Set if the DAG builder should
@@ -1350,11 +1350,6 @@ private:
   ///
   unsigned PrefLoopAlignment;
 
-  /// ShouldFoldAtomicFences - Whether fencing MEMBARRIER instructions should
-  /// be folded into the enclosed atomic intrinsic instruction by the
-  /// combiner.
-  bool ShouldFoldAtomicFences;
-
   /// InsertFencesForAtomic - Whether the DAG builder should automatically
   /// insert fences and reduce ordering for atomics.  (This will be set for
   /// for most architectures with weak memory ordering.)
@@ -1509,6 +1504,7 @@ public:
       // or until the element integer type is too big. If a legal type was not
       // found, fallback to the usual mechanism of widening/splitting the
       // vector.
+      EVT OldEltVT = EltVT;
       while (1) {
         // Increase the bitwidth of the element to the next pow-of-two
         // (which is greater than 8 bits).
@@ -1527,6 +1523,10 @@ public:
           return LegalizeKind(TypePromoteInteger,
                               EVT::getVectorVT(Context, EltVT, NumElts));
       }
+
+      // Reset the type to the unexpanded type if we did not find a legal vector
+      // type with a promoted vector element type.
+      EltVT = OldEltVT;
     }
 
     // Try to widen the vector until a legal type is found.
@@ -1635,10 +1635,6 @@ protected:
   /// to memmove, used for functions with OpSize attribute.
   unsigned MaxStoresPerMemmoveOptSize;
 
-  /// This field specifies whether the target can benefit from code placement
-  /// optimization.
-  bool BenefitFromCodePlacementOpt;
-
   /// PredictableSelectIsExpensive - Tells the code generator that select is
   /// more expensive than a branch if the branch is usually predicted right.
   bool PredictableSelectIsExpensive;
@@ -1720,11 +1716,11 @@ public:
 
   void softenSetCCOperands(SelectionDAG &DAG, EVT VT,
                            SDValue &NewLHS, SDValue &NewRHS,
-                           ISD::CondCode &CCCode, DebugLoc DL) const;
+                           ISD::CondCode &CCCode, SDLoc DL) const;
 
   SDValue makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC, EVT RetVT,
                       const SDValue *Ops, unsigned NumOps,
-                      bool isSigned, DebugLoc dl) const;
+                      bool isSigned, SDLoc dl) const;
 
   //===--------------------------------------------------------------------===//
   // TargetLowering Optimization Methods
@@ -1764,7 +1760,7 @@ public:
     /// cast, but it could be generalized for targets with other types of
     /// implicit widening casts.
     bool ShrinkDemandedOp(SDValue Op, unsigned BitWidth, const APInt &Demanded,
-                          DebugLoc dl);
+                          SDLoc dl);
   };
 
   /// SimplifyDemandedBits - Look at Op.  At this point, we know that only the
@@ -1826,7 +1822,7 @@ public:
   /// and cc. If it is unable to simplify it, return a null SDValue.
   SDValue SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
                           ISD::CondCode Cond, bool foldBooleans,
-                          DAGCombinerInfo &DCI, DebugLoc dl) const;
+                          DAGCombinerInfo &DCI, SDLoc dl) const;
 
   /// isGAPlusOffset - Returns true (and the GlobalValue and the offset) if the
   /// node is a GlobalAddress + offset.
@@ -1887,7 +1883,7 @@ public:
     LowerFormalArguments(SDValue /*Chain*/, CallingConv::ID /*CallConv*/,
                          bool /*isVarArg*/,
                          const SmallVectorImpl<ISD::InputArg> &/*Ins*/,
-                         DebugLoc /*dl*/, SelectionDAG &/*DAG*/,
+                         SDLoc /*dl*/, SelectionDAG &/*DAG*/,
                          SmallVectorImpl<SDValue> &/*InVals*/) const {
     llvm_unreachable("Not Implemented");
   }
@@ -1895,16 +1891,18 @@ public:
   struct ArgListEntry {
     SDValue Node;
     Type* Ty;
-    bool isSExt  : 1;
-    bool isZExt  : 1;
-    bool isInReg : 1;
-    bool isSRet  : 1;
-    bool isNest  : 1;
-    bool isByVal : 1;
+    bool isSExt     : 1;
+    bool isZExt     : 1;
+    bool isInReg    : 1;
+    bool isSRet     : 1;
+    bool isNest     : 1;
+    bool isByVal    : 1;
+    bool isReturned : 1;
     uint16_t Alignment;
 
     ArgListEntry() : isSExt(false), isZExt(false), isInReg(false),
-      isSRet(false), isNest(false), isByVal(false), Alignment(0) { }
+      isSRet(false), isNest(false), isByVal(false), isReturned(false),
+      Alignment(0) { }
   };
   typedef std::vector<ArgListEntry> ArgListTy;
 
@@ -1931,7 +1929,7 @@ public:
     SDValue Callee;
     ArgListTy &Args;
     SelectionDAG &DAG;
-    DebugLoc DL;
+    SDLoc DL;
     ImmutableCallSite *CS;
     SmallVector<ISD::OutputArg, 32> Outs;
     SmallVector<SDValue, 32> OutVals;
@@ -1942,7 +1940,7 @@ public:
     /// ImmutableCallSite \p cs.
     CallLoweringInfo(SDValue chain, Type *retTy,
                      FunctionType *FTy, bool isTailCall, SDValue callee,
-                     ArgListTy &args, SelectionDAG &dag, DebugLoc dl,
+                     ArgListTy &args, SelectionDAG &dag, SDLoc dl,
                      ImmutableCallSite &cs)
     : Chain(chain), RetTy(retTy), RetSExt(cs.paramHasAttr(0, Attribute::SExt)),
       RetZExt(cs.paramHasAttr(0, Attribute::ZExt)), IsVarArg(FTy->isVarArg()),
@@ -1959,7 +1957,7 @@ public:
                      bool isVarArg, bool isInReg, unsigned numFixedArgs,
                      CallingConv::ID callConv, bool isTailCall,
                      bool doesNotReturn, bool isReturnValueUsed, SDValue callee,
-                     ArgListTy &args, SelectionDAG &dag, DebugLoc dl)
+                     ArgListTy &args, SelectionDAG &dag, SDLoc dl)
     : Chain(chain), RetTy(retTy), RetSExt(retSExt), RetZExt(retZExt),
       IsVarArg(isVarArg), IsInReg(isInReg), DoesNotReturn(doesNotReturn),
       IsReturnValueUsed(isReturnValueUsed), IsTailCall(isTailCall),
@@ -2012,7 +2010,7 @@ public:
                 bool /*isVarArg*/,
                 const SmallVectorImpl<ISD::OutputArg> &/*Outs*/,
                 const SmallVectorImpl<SDValue> &/*OutVals*/,
-                DebugLoc /*dl*/, SelectionDAG &/*DAG*/) const {
+                SDLoc /*dl*/, SelectionDAG &/*DAG*/) const {
     llvm_unreachable("Not Implemented");
   }
 
@@ -2236,7 +2234,7 @@ public:
   //===--------------------------------------------------------------------===//
   // Div utility functions
   //
-  SDValue BuildExactSDIV(SDValue Op1, SDValue Op2, DebugLoc dl,
+  SDValue BuildExactSDIV(SDValue Op1, SDValue Op2, SDLoc dl,
                          SelectionDAG &DAG) const;
   SDValue BuildSDIV(SDNode *N, SelectionDAG &DAG, bool IsAfterLegalization,
                       std::vector<SDNode*> *Created) const;

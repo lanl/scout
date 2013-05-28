@@ -36,9 +36,9 @@ public:
                                       CallingConv::ID CallConv,
                                       bool isVarArg,
                                       const SmallVectorImpl<ISD::InputArg> &Ins,
-                                      DebugLoc DL, SelectionDAG &DAG,
+                                      SDLoc DL, SelectionDAG &DAG,
                                       SmallVectorImpl<SDValue> &InVals) const;
-  virtual EVT getSetCCResultType(EVT VT) const;
+  virtual EVT getSetCCResultType(LLVMContext &, EVT VT) const;
 private:
   const R600InstrInfo * TII;
 
@@ -47,22 +47,18 @@ private:
   /// lowered to load instructions which retreive the values from the Vertex
   /// Buffer.
   SDValue LowerImplicitParameter(SelectionDAG &DAG, EVT VT,
-                                 DebugLoc DL, unsigned DwordOffset) const;
+                                 SDLoc DL, unsigned DwordOffset) const;
 
   void lowerImplicitParameter(MachineInstr *MI, MachineBasicBlock &BB,
       MachineRegisterInfo & MRI, unsigned dword_offset) const;
-
-  SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
 
   /// \brief Lower ROTL opcode to BITALIGN
   SDValue LowerROTL(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
-  SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFPTOUINT(SDValue Op, SelectionDAG &DAG) const;
-  SDValue LowerFPOW(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFrameIndex(SDValue Op, SelectionDAG &DAG) const;
 

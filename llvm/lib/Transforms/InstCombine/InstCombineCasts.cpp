@@ -104,6 +104,12 @@ Instruction *InstCombiner::PromoteCastOfAllocation(BitCastInst &CI,
   uint64_t CastElTySize = TD->getTypeAllocSize(CastElTy);
   if (CastElTySize == 0 || AllocElTySize == 0) return 0;
 
+  // If the allocation has multiple uses, only promote it if we're not
+  // shrinking the amount of memory being allocated.
+  uint64_t AllocElTyStoreSize = TD->getTypeStoreSize(AllocElTy);
+  uint64_t CastElTyStoreSize = TD->getTypeStoreSize(CastElTy);
+  if (!AI.hasOneUse() && CastElTyStoreSize < AllocElTyStoreSize) return 0;
+
   // See if we can satisfy the modulus by pulling a scale out of the array
   // size argument.
   unsigned ArraySizeScale;
@@ -671,7 +677,6 @@ static bool CanEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear) {
   case Instruction::Add:
   case Instruction::Sub:
   case Instruction::Mul:
-  case Instruction::Shl:
     if (!CanEvaluateZExtd(I->getOperand(0), Ty, BitsToClear) ||
         !CanEvaluateZExtd(I->getOperand(1), Ty, Tmp))
       return false;
@@ -695,6 +700,17 @@ static bool CanEvaluateZExtd(Value *V, Type *Ty, unsigned &BitsToClear) {
     // Otherwise, we don't know how to analyze this BitsToClear case yet.
     return false;
 
+  case Instruction::Shl:
+    // We can promote shl(x, cst) if we can promote x.  Since shl overwrites the
+    // upper bits we can reduce BitsToClear by the shift amount.
+    if (ConstantInt *Amt = dyn_cast<ConstantInt>(I->getOperand(1))) {
+      if (!CanEvaluateZExtd(I->getOperand(0), Ty, BitsToClear))
+        return false;
+      uint64_t ShiftAmt = Amt->getZExtValue();
+      BitsToClear = ShiftAmt < BitsToClear ? BitsToClear - ShiftAmt : 0;
+      return true;
+    }
+    return false;
   case Instruction::LShr:
     // We can promote lshr(x, cst) if we can promote x.  This requires the
     // ultimate 'and' to clear out the high zero bits we're clearing out though.
@@ -1604,6 +1620,9 @@ static Value *OptimizeIntegerToVectorInsertions(BitCastInst &CI,
 /// OptimizeIntToFloatBitCast - See if we can optimize an integer->float/double
 /// bitcast.  The various long double bitcasts can't get in here.
 static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
+  // We need to know the target byte order to perform this optimization.
+  if (!IC.getDataLayout()) return 0;
+
   Value *Src = CI.getOperand(0);
   Type *DestTy = CI.getType();
 
@@ -1625,7 +1644,10 @@ static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
         VecInput = IC.Builder->CreateBitCast(VecInput, VecTy);
       }
 
-      return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(0));
+      unsigned Elt = 0;
+      if (IC.getDataLayout()->isBigEndian())
+        Elt = VecTy->getPrimitiveSizeInBits() / DestWidth - 1;
+      return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(Elt));
     }
   }
 
@@ -1647,6 +1669,8 @@ static Instruction *OptimizeIntToFloatBitCast(BitCastInst &CI,InstCombiner &IC){
       }
 
       unsigned Elt = ShAmt->getZExtValue() / DestWidth;
+      if (IC.getDataLayout()->isBigEndian())
+        Elt = VecTy->getPrimitiveSizeInBits() / DestWidth - 1 - Elt;
       return ExtractElementInst::Create(VecInput, IC.Builder->getInt32(Elt));
     }
   }

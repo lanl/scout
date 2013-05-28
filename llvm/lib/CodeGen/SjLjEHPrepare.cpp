@@ -222,7 +222,9 @@ setupFunctionContext(Function &F, ArrayRef<LandingPadInst*> LPads) {
     PersonalityFn = LPads[0]->getPersonalityFn();
   Value *PersonalityFieldPtr = Builder.CreateConstGEP2_32(FuncCtx, 0, 3,
                                                           "pers_fn_gep");
-  Builder.CreateStore(PersonalityFn, PersonalityFieldPtr, /*isVolatile=*/true);
+  Builder.CreateStore(Builder.CreateBitCast(PersonalityFn,
+                                            Builder.getInt8PtrTy()),
+                      PersonalityFieldPtr, /*isVolatile=*/true);
 
   // LSDA address
   Value *LSDA = Builder.CreateCall(LSDAAddrFn, "lsda_addr");
@@ -379,13 +381,22 @@ void SjLjEHPrepare::lowerAcrossUnwindEdges(Function &F,
 /// the function context and marking the call sites with the appropriate
 /// values. These values are used by the DWARF EH emitter.
 bool SjLjEHPrepare::setupEntryBlockAndCallSites(Function &F) {
-  SmallVector<ReturnInst*,     16> Returns;
-  SmallVector<InvokeInst*,     16> Invokes;
+  SmallVector<ReturnInst*, 16> Returns;
+  SmallVector<InvokeInst*, 16> Invokes;
   SmallSetVector<LandingPadInst*, 16> LPads;
 
   // Look through the terminators of the basic blocks to find invokes.
   for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
     if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator())) {
+      if (Function *Callee = II->getCalledFunction())
+        if (Callee->isIntrinsic() &&
+            Callee->getIntrinsicID() == Intrinsic::donothing) {
+          // Remove the NOP invoke.
+          BranchInst::Create(II->getNormalDest(), II);
+          II->eraseFromParent();
+          continue;
+        }
+
       Invokes.push_back(II);
       LPads.insert(II->getUnwindDest()->getLandingPadInst());
     } else if (ReturnInst *RI = dyn_cast<ReturnInst>(BB->getTerminator())) {
