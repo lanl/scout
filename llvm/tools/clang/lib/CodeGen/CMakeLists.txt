@@ -60,6 +60,7 @@ add_clang_library(clangCodeGen
   scout/CGExpr.cpp
   scout/CGStmt.cpp
   scout/CodeGenFunction.cpp
+  scout/CodeGenTypes.cpp
   )
 
 add_dependencies(clangCodeGen

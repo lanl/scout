@@ -285,7 +285,12 @@ static llvm::Type *getTypeForFormat(llvm::LLVMContext &VMContext,
 
 /// ConvertType - Convert the specified type to its LLVM form.
 llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+  // ===== Scout ===============================================================
+  // We need to save the original QualType for generating mesh types. A bit
+  // awkward but better than modifying the code below to account for this... 
   QualType OT = T;
+  // ===========================================================================
+  
   T = Context.getCanonicalType(T);
 
   typedef llvm::VectorType VectorTy;
@@ -351,7 +356,10 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
                                  static_cast<unsigned>(Context.getTypeSize(T)));
       break;
 
-    // scout - Scout vector types
+    // ===== Scout ==================================================================
+    // We need to replace Scout's vector types with Clang's "builtin" support.
+    // this has been done in the "refactor" branch but has not been merged with
+    // "devel".
     case BuiltinType::Bool2:
       return VectorTy::get(llvm::Type::getInt1Ty(getLLVMContext()), 2);
     case BuiltinType::Bool3:
@@ -388,6 +396,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     case BuiltinType::Double4:
       return VectorTy::get(getTypeForFormat(getLLVMContext(),
         Context.getFloatTypeSemantics(T)), 4);
+    // ==============================================================================
+      
     case BuiltinType::Half:
       // Half FP can either be storage-only (lowered to i16) or native.
       ResultType = getTypeForFormat(getLLVMContext(),
@@ -596,59 +606,17 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     break;
   }
 
-  // scout - Scout Mesh
+  // ===== Scout ======================================================================
+  // SC_TODO - We have hard-coded the way we generate field data for
+  // meshes. For some of our explorations (e.g. SOA vs. AOS) we will
+  // need to find a more flexible approach for this...
   case Type::UniformMesh: 
   case Type::StructuredMesh: 
   case Type::RectlinearMesh: 
-  case Type::UnstructuredMesh: 
-  {
-    // Implemented as a struct of n-dimensional array's type.
-    MeshDecl *mesh = cast<MeshType>(Ty)->getDecl();
-    MeshType::MeshDimensionVec dims = 
-    cast<MeshType>(OT.getCanonicalType().getTypePtr())->dimensions();
-    
-    llvm::StringRef meshName = mesh->getName();
-
-    typedef llvm::ArrayType ArrayTy;
-
-    MeshDecl::mesh_field_iterator it     = mesh->mesh_field_begin();
-    MeshDecl::mesh_field_iterator it_end = mesh->mesh_field_end();
-
-    std::vector< llvm::Type * > eltTys;
-
-    // mesh_flags__, width, height, depth
-    for(size_t i = 0; i < 4; ++i){
-      eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
-    }
-
-    for( ; it != it_end; ++it) {
-      
-      // Do not generate code for implicit mesh member variables.
-      if (! it->isImplicit()) {
-        // Identify the type of each mesh member.
-        llvm::Type *ty = ConvertType(it->getType());
-        uint64_t numElts = 1;
-        // Construct a pointer for each type.
-        for(unsigned i = 0; i < dims.size(); ++i) {
-          llvm::APSInt result;
-          dims[i]->EvaluateAsInt(result, Context);
-          numElts *= result.getSExtValue();
-        }
-        
-        eltTys.push_back(llvm::PointerType::getUnqual(ty));
-      }
-    }
-
-    typedef llvm::ArrayRef< llvm::Type * > Array;
-    typedef llvm::StructType StructTy;
-    // Construct a struct of array's type.
-    StructTy *structTy = StructTy::create(getLLVMContext(),
-					  Array(eltTys),
-					  meshName,
-					  false);
-
-    return structTy;
-  }
+  case Type::UnstructuredMesh:
+    return ConvertScoutMeshType(OT);
+  //
+  // ==================================================================================  
 
   case Type::Enum: {
     const EnumDecl *ED = cast<EnumType>(Ty)->getDecl();
