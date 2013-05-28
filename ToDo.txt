@@ -1,0 +1,86 @@
+This document describes a series of 'todo' items for the code base.
+We have split the details into categories that include refactoring,
+features, bugs, and bigger picture ideas to explore...  The status of
+an entry is marked with a 'o' for open, 'c' for complete, and 'a' for
+in 'active' developemnt.
+
+NOTE: It is also worthwhile to look for 'SC_TODO' comments within the
+code base -- in many cases important features and refactoring are
+highlighted there and have not yet been transfered into this file...
+
+-----------------------------------------------------------------------
+
+===== Refactoring ===== 
+
+1. [c] Clang front-end : Make mesh fields a subclass of fields versus
+   directly modifying Clang fields.  This not only helps us separate
+   scout from clang source but also will make it easier to distinguish
+   the details when lowering to LLVM IR (as we currently resort to
+   some problematic string-based comparisons for some of our logic).
+
+2. [c/o] Clang front-end: Generate readable/sensible names in LLVM IR
+   lowering -- our current scheme is messy making it hard to see the
+   mapping back to the original scout input.  
+
+   NOTE: A first pass of this is now complete, we need to revisit this
+   across all platforms/targets (e.g. GPU, CPU).  There is still some
+   messy details in the GPU code gen pieces. 
+
+3. [o] Clang front-end : We still have some painful string-based
+   comparison for Scout details in the codegen.  This is potentially
+   not only slow but very difficult to reason about.  We need to make
+   several more passes through the source to ferret out these sections
+   of code.
+
+
+4. [o/a] Clang front-end: Remove Scout's vector types in favor of
+   Clang's "builtin" support.  This will not only give us features
+   we've yet to implement in Scout but will sigificantly clean up the
+   code base; giving us much less code to maintain and fight with 
+
+   NOTE: This has been done in the "refactor" branch but the changes
+   have some impacts on correct code generation due to (1) some odd
+   naming choices, (2) some potentially overly complex, and confusing
+   code generation implementation choices.  See #5 below... 
+
+5. [o] Clang front-end: Fix forall code generation -- it really seems
+   way too complicated.  It would appear we were either working around
+   limitations it past versions of LLVM or we were trying to generate
+   optimized code ourselves.  Recent experiments show that a much
+   easier/simplier path for lowering to LLVM IR is more beneficial in
+   terms of optimization capabilities of LLVM's passes.  In this case
+   (for uniform meshes) we should generate a loop per rank and use a
+   single index value (incremented independently of the loop trip
+   counts).
+
+6. [o/a] Clang front-end: We really need to modify the lowering code
+   to handle the various mesh types and looping constructs in a more
+   modular fashion.  more directly.  For example, forall and renderall
+   should not be duct taped together in the same functions -- break
+   them out for readability and maintainability.  We also need code to
+   lower mesh types separately -- in some cases we treat all meshes 
+   identically when they shouldn't be (we loose distinction of mesh 
+   types when lowering.
+
+7. [o] Runtime - volume rendering: Need to understand where rendering 
+   artifacts are coming from. 
+
+===== Features ===== 
+
+1. [o] Full compiler toolchain: We need to add support for the full
+   suite of mesh types. We currently only have full (but unoptimized)
+   support for uniform meshes.  (See 'refactoring' section above for
+   details about simplifying mesh/forall code generation/lowering.
+
+2. [o] Debugging: We need to explore the details of getting lldb
+   support integrated for Scout's mesh types and forall statements. 
+
+3. [o] Isosurfacing and structured mesh support. 
+
+
+
+===== "Big Picture" Details ===== 
+
+1. [o] How much detail do we want to pump into our runtime in areas
+   that runtimes like Legion can help us???  
+
