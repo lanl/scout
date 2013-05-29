@@ -823,7 +823,7 @@ def warn_auto_implicit_atomic_property : Warning<
   "property is assumed atomic when auto-synthesizing the property">,
   InGroup<ImplicitAtomic>, DefaultIgnore;
 def warn_unimplemented_selector:  Warning<
-  "unimplemented selector %0">, InGroup<Selector>, DefaultIgnore;
+  "creating selector for nonexistent method %0">, InGroup<Selector>, DefaultIgnore;
 def warn_unimplemented_protocol_method : Warning<
   "method %0 in protocol not implemented">, InGroup<Protocol>;
 

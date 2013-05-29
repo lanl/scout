@@ -1690,6 +1690,42 @@ TEST_F(FormatTest, MacroDefinitionsWithIncompleteCode) {
                "f(STR(this_is_a_string_literal{));");
 }
 
+TEST_F(FormatTest, MacrosWithoutTrailingSemicolon) {
+  verifyFormat("SOME_TYPE_NAME abc;"); // Gated on the newline.
+  EXPECT_EQ("class A : public QObject {\n"
+            "  Q_OBJECT\n"
+            "\n"
+            "  A() {}\n"
+            "};",
+            format("class A  :  public QObject {\n"
+                   "     Q_OBJECT\n"
+                   "\n"
+                   "  A() {\n}\n"
+                   "}  ;"));
+  EXPECT_EQ("SOME_MACRO\n"
+            "namespace {\n"
+            "void f();\n"
+            "}",
+            format("SOME_MACRO\n"
+                   "  namespace    {\n"
+                   "void   f(  );\n"
+                   "}"));
+  // Only if the identifier contains at least 5 characters.
+  EXPECT_EQ("HTTP f();",
+            format("HTTP\nf();"));
+  EXPECT_EQ("MACRO\nf();",
+            format("MACRO\nf();"));
+  // Only if everything is upper case.
+  EXPECT_EQ("class A : public QObject {\n"
+            "  Q_Object A() {}\n"
+            "};",
+            format("class A  :  public QObject {\n"
+                   "     Q_Object\n"
+                   "\n"
+                   "  A() {\n}\n"
+                   "}  ;"));
+}
+
 TEST_F(FormatTest, MacroCallsWithoutTrailingSemicolon) {
   EXPECT_EQ("INITIALIZE_PASS_BEGIN(ScopDetection, \"polly-detect\")\n"
             "INITIALIZE_AG_DEPENDENCY(AliasAnalysis)\n"
@@ -2774,6 +2810,16 @@ TEST_F(FormatTest, WrapsTemplateDeclarations) {
 
   verifyFormat("a<aaaaaaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaaaaa>(\n"
                "    a(aaaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaa));");
+
+  verifyFormat("template <typename T> class C {\n};");
+  verifyFormat("template <typename T> void f();");
+  verifyFormat("template <typename T> void f() {}");
+
+  FormatStyle AlwaysBreak = getLLVMStyle();
+  AlwaysBreak.AlwaysBreakTemplateDeclarations = true;
+  verifyFormat("template <typename T>\nclass C {\n};", AlwaysBreak);
+  verifyFormat("template <typename T>\nvoid f();", AlwaysBreak);
+  verifyFormat("template <typename T>\nvoid f() {}", AlwaysBreak);
 }
 
 TEST_F(FormatTest, WrapsAtNestedNameSpecifiers) {
@@ -4646,6 +4692,7 @@ TEST_F(FormatTest, ParsesConfiguration) {
   CHECK_PARSE_BOOL(AllowAllParametersOfDeclarationOnNextLine);
   CHECK_PARSE_BOOL(AllowShortIfStatementsOnASingleLine);
   CHECK_PARSE_BOOL(AllowShortLoopsOnASingleLine);
+  CHECK_PARSE_BOOL(AlwaysBreakTemplateDeclarations);
   CHECK_PARSE_BOOL(BinPackParameters);
   CHECK_PARSE_BOOL(ConstructorInitializerAllOnOneLineOrOnePerLine);
   CHECK_PARSE_BOOL(DerivePointerBinding);
